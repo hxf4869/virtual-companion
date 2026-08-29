@@ -1,6 +1,6 @@
 # ADR-0001：采用 V0.3.1 技术与传输基线
 
-- 状态：Accepted
+- 状态：Accepted（Go 目标 runtime、Fetch-SSE 恢复协议由 ADR-0007 在 Go cutover 时替代；当前 Java 行为在 cutover 前仍按本 ADR）
 - 日期：2026-07-29
 - 决策范围：Technical Alpha
 

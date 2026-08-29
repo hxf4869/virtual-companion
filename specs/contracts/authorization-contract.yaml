@@ -21,3 +21,11 @@ failureDisposition:
   state: CANCELLED_BY_AUTHORIZATION
   externalDataTransferAllowed: false
   quotaAction: RELEASE
+applicability:
+  javaRuntimeUntilCutover: requested and execution snapshots remain the Java writers
+  goV1EffectiveAt: go_generation_cutover
+goV1:
+  dualAuthorizationSnapshots: RETIRE
+  outboundUsesCurrentConsentAndCategories: true
+  attemptStoresImmutableEffectiveAuthorization: true
+  withdrawnConsentCannotBeOverriddenByCachedAudit: true

@@ -21,3 +21,8 @@ optionalCommunityCandidates:
   - Centrifugo OSS
   - Keycloak Community
 rule: if a required behavior exists only in a commercial edition, implement it in the owned core or choose another community component
+goV1:
+  unknownPriceOrReservationCeiling: FAIL_CLOSED
+  fabricatedDisplayedCostForbidden: true
+  javaRuntimeUntilCutoverUnknownPlanContinue: ADR-0006_section_3_3
+  trialEntitlementProductQuota: RETIRE

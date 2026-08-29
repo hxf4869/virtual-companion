@@ -29,3 +29,14 @@ requiredOwnershipTuple:
   - relationshipId
   - conversationId
   - generationId
+applicability:
+  javaRuntimeUntilCutover: route decision, provider_attempt and generation_candidate remain the Java writers
+  goV1EffectiveAt: go_generation_cutover
+goV1:
+  routeDecisionTable: RETIRE
+  generationCandidateSet: RETIRE
+  activeAttemptTable: model_attempt
+  oneTurnOneFinalAssistantMessage: true
+  unknownOutboundOutcome: OUTCOME_UNKNOWN_terminal_no_automatic_replay
+  javaEraMapping:
+    outcomeUnknown: attempt_intent.ABANDONED_LATE_plus_generation_FAILED_reason_PROVIDER_OUTCOME_UNKNOWN

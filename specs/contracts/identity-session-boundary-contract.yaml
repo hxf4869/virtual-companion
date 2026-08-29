@@ -75,6 +75,14 @@ providerBoundary:
   matureIdentityComponentRequired: true
   projectOwnedProviderNeutralPortRequired: true
   projectOwnedAuthenticationCoreFromScratchForbidden: true
+  goV1OwnerOnlyOpaqueSession:
+    allowed: true
+    effectiveAt: phase5_auth_generation_cutover
+    supersedes: projectOwnedAuthenticationCoreFromScratchForbidden
+    stillForbidden:
+      - oauth_oidc_from_scratch
+      - public_registration
+      - jwt_and_opaque_dual_issuer
   forbiddenAsCorePrerequisite:
     - commercial_software_license
     - managed_identity_only_feature
@@ -190,6 +198,17 @@ ageCapabilityBoundary:
     - age_verification
     - age_appeal
 h5CredentialBoundary:
+  goV1:
+    effectiveAt: phase5_auth_generation_cutover
+    sessionCookie:
+      name: vc_session
+      attributes:
+        - HttpOnly
+        - Secure
+        - SameSite
+      sameSite: Lax
+      refreshEndpoint: RETIRE
+      accessTokenInResponseBodyForbidden: true
   preferredSessionCookie:
     name: vc_refresh
     attributes:

@@ -12,8 +12,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 /**
- * ROUTE-HARDEN: consecutive failures trip OPEN; the cooldown admits exactly
- * one half-open probe; success closes, failure re-opens.
+ * Java runtime until Go generation cutover (ADR-0006 §3.4 / ROUTE-HARDEN):
+ * consecutive failures trip OPEN; the cooldown admits exactly one half-open
+ * probe; success closes, failure re-opens.
+ *
+ * <p>Go v1 (ADR-0007) does not port this durable consecutive-failure circuit.
+ * Ordinary retryable failures are per-request only.
  */
 class SupplierCircuitBreakerTest {
 

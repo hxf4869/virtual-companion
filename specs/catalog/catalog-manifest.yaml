@@ -5,6 +5,8 @@ packageName: com.virtualcompanion.catalog
 catalogs:
 - file: product-scope.yaml
   kind: config
+- file: go-v1-api-scope.yaml
+  kind: config
 - file: risk-levels.yaml
   kind: enum
   typeName: RiskLevel

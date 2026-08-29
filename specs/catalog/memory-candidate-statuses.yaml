@@ -13,3 +13,7 @@ entries:
   order: 4
 alphaModelCandidateInitialStatus: PENDING_CONFIRMATION
 alphaModelCandidatesRequireConfirmation: true
+goV1:
+  autoSave: false
+  modelAutoExtractionJob: false
+  productionSemanticRecallClaimed: false

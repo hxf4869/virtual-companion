@@ -14,6 +14,15 @@ import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Java runtime until Go generation cutover (ADR-0006 §3.4): consecutive
+ * supplier failures durable-disable matching deployments.
+ *
+ * <p>Go v1 (ADR-0007 / model-protocol-contract goV1.providerDisable): ordinary
+ * 429/5xx/timeout stay per-request; only a safety leak, an explicitly invalid
+ * credential, or an Owner operation may durable-disable. These assertions
+ * document current Java behaviour and are not the Go target contract.
+ */
 class DurableProviderRollbackListenerTest {
 
     @Test

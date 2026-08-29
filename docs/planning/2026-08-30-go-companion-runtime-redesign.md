@@ -1,6 +1,6 @@
 # Virtual Companion：Pi-inspired Agent Runtime 与 Go 服务端重构实施规范
 
-> 状态：Owner 已确认方向，实施尚未开始
+> 状态：implementation baseline（G0 已合入：ADR-0007 与 Catalog/OpenAPI scope；下一步 G1）
 > 日期：2026-08-30
 > 适用阶段：Owner-only 本地 Technical Alpha 及其后续单机并发验证
 > 实施目标：用 Go 重写并优化常驻服务端，以 Pi Agent Core 的小核心、显式状态、上下文变换和事件流思想重构陪伴对话运行时

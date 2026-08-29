@@ -1,5 +1,8 @@
 schemaVersion: 1
 contractId: SAFETY_CLASSIFIER_FAIL_CLOSED
+applicability:
+  javaRuntimeUntilCutover: ADR-0006 remote input/final classifier remains enabled
+  goV1EffectiveAt: safety_contract_and_go_cutover
 priority:
   - deterministic_hard_rules
   - approved_classifier_signals
@@ -18,3 +21,19 @@ requiredOutcomes:
   - UNAVAILABLE
   - INVALID_RESPONSE
   - RULE_CONFLICT
+goV1:
+  approvedReviewPaths:
+    - local_deterministic_safety_policy
+  remoteClassifier: DEFER
+  networkCallsOnInputRollingFinal: false
+  rules:
+    - input, rolling-window and final-full-output review use the same LocalSafetyPolicy
+    - rolling review must not produce network calls
+    - a remote/model classifier is not an approved Go v1 review path
+    - remote classifier outcomes remain in the catalog only for Java-era compatibility
+javaRuntimeUntilCutover:
+  remoteClassifier: ENABLED_PER_ADR_0006
+  maxRemoteCallsPerTurn:
+    input: 1
+    final: 1
+    rolling: 0

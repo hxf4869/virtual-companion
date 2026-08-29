@@ -1,6 +1,6 @@
 # ADR-0006：Owner-only 本地 7 天 Dogfood 边界
 
-- 状态：Accepted
+- 状态：Accepted（§3.3 / §3.4 / §5.2–5.4 / §6.1 由 ADR-0007 在对应 Go cutover 时替代；其余 Owner-only 边界继续有效。当前 Java 行为在替代契约生效前仍按本 ADR）
 - 日期：2026-08-24
 - 决策范围：Technical Alpha / Owner-only local dogfood
 

@@ -18,9 +18,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
- * DOGFOOD-STABILIZATION audit (ADR-0006 §4): every gate condition must pass
- * BEFORE the remote leg is reached; each deny path is proven by a counting
- * delegate — zero remote calls on every deny or read failure.
+ * Java runtime until Go safety/generation cutover (ADR-0006 §5): every gate
+ * condition must pass BEFORE the remote leg is reached; each deny path is
+ * proven by a counting delegate — zero remote calls on every deny or read
+ * failure.
+ *
+ * <p>Go v1 (ADR-0007 / safety-fail-closed-contract goV1): remote classifier is
+ * DEFER. Input, rolling and final review use one local LocalSafetyPolicy and
+ * must not make network calls. These assertions document current Java behaviour.
  *
  * <p>DOGFOOD-STABILIZATION-02: the consent/deletion/admission probe phase
  * runs inside one short owner-bound transaction (the worker's FINAL call is

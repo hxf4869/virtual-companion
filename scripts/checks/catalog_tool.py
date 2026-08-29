@@ -162,6 +162,168 @@ def validate(root: Path) -> list[str]:
         errors.append(f"realtime-events.yaml: missing required events {sorted(required_events - realtime)}")
     if "NORMAL" in set(codes(load_yaml(cdir / "risk-levels.yaml"))):
         errors.append("risk-levels.yaml: NORMAL alias is forbidden; use R0_NORMAL")
+    tech = product.get("technology", {})
+    if tech.get("goBaseline") != "1.26":
+        errors.append("product-scope.yaml: technology.goBaseline must be '1.26'")
+    if tech.get("targetRuntime") != "GO_COMPANIOND":
+        errors.append("product-scope.yaml: technology.targetRuntime must be GO_COMPANIOND")
+    if tech.get("currentRuntimeUntilCutover") != "JAVA_SPRING_BOOT":
+        errors.append("product-scope.yaml: technology.currentRuntimeUntilCutover must be JAVA_SPRING_BOOT")
+    if tech.get("modelProtocols") != ["OPENAI_CHAT_COMPLETIONS"]:
+        errors.append("product-scope.yaml: technology.modelProtocols must be exactly [OPENAI_CHAT_COMPLETIONS]")
+    if "ANTHROPIC_MESSAGES" not in (tech.get("deferredModelProtocols") or []):
+        errors.append("product-scope.yaml: technology.deferredModelProtocols must include ANTHROPIC_MESSAGES")
+    memory_scope = product.get("memory", {})
+    if memory_scope.get("autoSaveEnabled") is not False:
+        errors.append("product-scope.yaml: memory.autoSaveEnabled must be false")
+    if memory_scope.get("productionSemanticRecallClaimed") is not False:
+        errors.append("product-scope.yaml: memory.productionSemanticRecallClaimed must be false")
+    if product.get("safety", {}).get("remoteClassifier") != "DEFER":
+        errors.append("product-scope.yaml: safety.remoteClassifier must be DEFER")
+    protocols_doc = load_yaml(cdir / "model-protocols.yaml")
+    by_protocol = {str(e.get("code")): e for e in protocols_doc.get("entries", [])}
+    if by_protocol.get("OPENAI_CHAT_COMPLETIONS", {}).get("alphaAllowed") is not True:
+        errors.append("model-protocols.yaml: OPENAI_CHAT_COMPLETIONS alphaAllowed must be true")
+    if by_protocol.get("ANTHROPIC_MESSAGES", {}).get("alphaAllowed") is not False:
+        errors.append("model-protocols.yaml: ANTHROPIC_MESSAGES alphaAllowed must be false (Go v1 DEFER)")
+    if candidate.get("goV1", {}).get("autoSave") is not False:
+        errors.append("memory-candidate-statuses.yaml: goV1.autoSave must be false")
+    if candidate.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
+        errors.append("memory-candidate-statuses.yaml: goV1.productionSemanticRecallClaimed must be false")
+    safety_contract = load_yaml(root / "specs/contracts/safety-fail-closed-contract.yaml")
+    if safety_contract.get("goV1", {}).get("remoteClassifier") != "DEFER":
+        errors.append("safety-fail-closed-contract.yaml: goV1.remoteClassifier must be DEFER")
+    if safety_contract.get("goV1", {}).get("networkCallsOnInputRollingFinal") is not False:
+        errors.append("safety-fail-closed-contract.yaml: goV1.networkCallsOnInputRollingFinal must be false")
+    model_contract = load_yaml(root / "specs/contracts/model-protocol-contract.yaml")
+    if model_contract.get("protocolFamilies", {}).get("ANTHROPIC_MESSAGES", {}).get("alphaAllowed") is not False:
+        errors.append("model-protocol-contract.yaml: ANTHROPIC_MESSAGES alphaAllowed must be false")
+    if model_contract.get("goV1", {}).get("liveProtocols") != ["OPENAI_CHAT_COMPLETIONS"]:
+        errors.append("model-protocol-contract.yaml: goV1.liveProtocols must be exactly [OPENAI_CHAT_COMPLETIONS]")
+    memory_contract = load_yaml(root / "specs/contracts/memory-recall-contract.yaml")
+    if memory_contract.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
+        errors.append("memory-recall-contract.yaml: goV1.productionSemanticRecallClaimed must be false")
+    if memory_contract.get("goV1", {}).get("autoSave") is not False:
+        errors.append("memory-recall-contract.yaml: goV1.autoSave must be false")
+    errors.extend(validate_go_v1_api_scope(root))
+    return errors
+
+
+KEEP_REASONS = {"core-outcome", "h5-caller", "safety-or-data-rights", "owner-instruction"}
+GO_DECISIONS = {"KEEP", "SIMPLIFY", "DEFER", "RETIRE"}
+
+
+def openapi_operations(root: Path) -> dict[str, tuple[str, str]]:
+    doc = load_yaml(root / "specs/openapi/virtual-companion.yaml")
+    found: dict[str, tuple[str, str]] = {}
+    for path, item in doc.get("paths", {}).items():
+        if not isinstance(item, dict):
+            continue
+        for method, op in item.items():
+            if method == "parameters" or not isinstance(op, dict):
+                continue
+            oid = op.get("operationId")
+            if not oid:
+                continue
+            if oid in found:
+                raise ValueError(f"duplicate OpenAPI operationId {oid}")
+            found[str(oid)] = (method.upper(), str(path))
+    return found
+
+
+def validate_go_v1_api_scope(root: Path) -> list[str]:
+    errors: list[str] = []
+    scope_path = root / "specs/catalog/go-v1-api-scope.yaml"
+    if not scope_path.exists():
+        return ["missing catalog: go-v1-api-scope.yaml"]
+    scope = load_yaml(scope_path)
+    if scope.get("catalogId") != "go-v1-api-scope":
+        errors.append("go-v1-api-scope.yaml: catalogId must be go-v1-api-scope")
+    operations = scope.get("operations")
+    if not isinstance(operations, list) or not operations:
+        errors.append("go-v1-api-scope.yaml: operations must be a non-empty list")
+        return errors
+    try:
+        openapi = openapi_operations(root)
+    except (ValueError, OSError) as exc:
+        errors.append(f"go-v1-api-scope.yaml: cannot read OpenAPI operations ({exc})")
+        return errors
+    seen: set[str] = set()
+    counts = {"KEEP": 0, "SIMPLIFY": 0, "DEFER": 0, "RETIRE": 0}
+    for index, entry in enumerate(operations):
+        if not isinstance(entry, dict):
+            errors.append(f"go-v1-api-scope.yaml: operations[{index}] must be an object")
+            continue
+        oid = str(entry.get("operationId") or "")
+        if not oid:
+            errors.append(f"go-v1-api-scope.yaml: operations[{index}] missing operationId")
+            continue
+        if oid in seen:
+            errors.append(f"go-v1-api-scope.yaml: duplicate operationId {oid}")
+            continue
+        seen.add(oid)
+        if oid not in openapi:
+            errors.append(f"go-v1-api-scope.yaml: {oid} is not an OpenAPI operationId")
+            continue
+        method, path = openapi[oid]
+        if entry.get("method") != method:
+            errors.append(f"go-v1-api-scope.yaml: {oid} method must be {method}")
+        if entry.get("path") != path:
+            errors.append(f"go-v1-api-scope.yaml: {oid} path must be {path}")
+        decision = entry.get("decision")
+        if decision not in GO_DECISIONS:
+            errors.append(f"go-v1-api-scope.yaml: {oid} decision must be one of {sorted(GO_DECISIONS)}")
+        else:
+            counts[str(decision)] += 1
+        callers = entry.get("currentH5Callers")
+        if not isinstance(callers, list) or any(not isinstance(c, str) or not c for c in callers):
+            errors.append(f"go-v1-api-scope.yaml: {oid} currentH5Callers must be a list of strings")
+            callers = []
+        impact = entry.get("replacementOrImpact")
+        if not isinstance(impact, str) or not impact.strip():
+            errors.append(f"go-v1-api-scope.yaml: {oid} replacementOrImpact is required")
+        if decision == "KEEP":
+            reasons = entry.get("keepBecause")
+            if not isinstance(reasons, list) or not reasons:
+                errors.append(f"go-v1-api-scope.yaml: {oid} KEEP requires keepBecause")
+            else:
+                unknown = [r for r in reasons if r not in KEEP_REASONS]
+                if unknown:
+                    errors.append(f"go-v1-api-scope.yaml: {oid} unknown keepBecause {unknown}")
+        elif "keepBecause" in entry:
+            errors.append(f"go-v1-api-scope.yaml: {oid} keepBecause is only valid for KEEP")
+        hide = entry.get("h5CallerMustHideInSameSlice")
+        if decision in {"DEFER", "RETIRE"} and callers:
+            if hide is not True:
+                errors.append(
+                    f"go-v1-api-scope.yaml: {oid} has H5 callers and must set "
+                    "h5CallerMustHideInSameSlice true"
+                )
+        elif hide not in (False, None):
+            errors.append(f"go-v1-api-scope.yaml: {oid} h5CallerMustHideInSameSlice must be false or omitted")
+    missing = sorted(set(openapi) - seen)
+    if missing:
+        errors.append(f"go-v1-api-scope.yaml: missing OpenAPI operationIds {missing}")
+    declared = scope.get("counts") or {}
+    for key, value in counts.items():
+        if declared.get(key) != value:
+            errors.append(f"go-v1-api-scope.yaml: counts.{key} must be {value}")
+    undeclared = scope.get("undeclaredJavaEraOperations")
+    if not isinstance(undeclared, list) or not undeclared:
+        errors.append("go-v1-api-scope.yaml: undeclaredJavaEraOperations must list invite paths")
+    else:
+        for item in undeclared:
+            if not isinstance(item, dict):
+                errors.append("go-v1-api-scope.yaml: undeclaredJavaEraOperations entries must be objects")
+                continue
+            if item.get("decision") != "RETIRE":
+                errors.append(
+                    f"go-v1-api-scope.yaml: undeclared {item.get('path')} must be RETIRE"
+                )
+            if item.get("path") in {path for _, path in openapi.values()}:
+                errors.append(
+                    f"go-v1-api-scope.yaml: {item.get('path')} is now in OpenAPI; move it into operations"
+                )
     return errors
 
 

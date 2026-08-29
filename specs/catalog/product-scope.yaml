@@ -32,13 +32,31 @@ technology:
   javaFallback: 21-LTS_BY_ADR_ONLY
   springBootLine: 4.1.x
   springAiLine: 2.0.x
+  goBaseline: '1.26'
+  currentRuntimeUntilCutover: JAVA_SPRING_BOOT
+  targetRuntime: GO_COMPANIOND
   database: POSTGRESQL_18
   vector: PGVECTOR_0.8.5
   modelProtocols:
   - OPENAI_CHAT_COMPLETIONS
+  deferredModelProtocols:
   - ANTHROPIC_MESSAGES
   optionalProtocolSpikes:
   - OPENAI_RESPONSES
+memory:
+  autoSaveEnabled: false
+  productionSemanticRecallClaimed: false
+  productionRecall:
+  - EXPLICIT_CANDIDATE
+  - KEYWORD
+  - SOURCE
+  - RECENCY
+  deterministic64dHash: JAVA_RUNTIME_LIFECYCLE_ONLY
+  ollamaEmbedding: SHADOW_EVAL_ONLY
+safety:
+  goV1ReviewPaths:
+  - LOCAL_DETERMINISTIC_SAFETY_POLICY
+  remoteClassifier: DEFER
 costBoundary:
   commercialSoftwareLicenseRequired: false
   hostedSaasRequired: false

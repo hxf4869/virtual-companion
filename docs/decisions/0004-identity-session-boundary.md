@@ -1,6 +1,6 @@
 # ADR-0004：先冻结供应商中立的身份与登录会话安全边界
 
-- 状态：Accepted
+- 状态：Accepted（Owner-only Go v1 opaque session 由 ADR-0007 替代「禁止从零实现认证核心」；成熟 IdP 仍是真实用户 Beta 前置。当前 Java JWT/refresh 在 cutover 前仍按本 ADR 与 identity-session-boundary-contract）
 - 日期：2026-07-30
 - 决策范围：Technical Alpha 身份与登录会话安全边界
 

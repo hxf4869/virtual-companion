@@ -7,13 +7,35 @@ protocolFamilies:
     alphaAllowed: true
   ANTHROPIC_MESSAGES:
     endpointShape: /v1/messages
-    alphaAllowed: true
+    alphaAllowed: false
+    deferred: true
   OPENAI_RESPONSES:
     endpointShape: /v1/responses
     alphaAllowed: false
     spikeOnly: true
-alphaLiveRequirement: exactly one approved live deployment using either primary protocol family
-offlineContractRequirement: both primary protocol adapters pass local mock-server tests
+alphaLiveRequirement: exactly one approved live deployment using OPENAI_CHAT_COMPLETIONS
+offlineContractRequirement: the OpenAI Chat Completions adapter passes local mock-server tests
+javaRuntimeUntilCutover:
+  anthropicMessagesAdapter: retained_for_java_offline_tests_not_go_v1_live
+goV1:
+  liveProtocols:
+    - OPENAI_CHAT_COMPLETIONS
+  deferredProtocols:
+    - ANTHROPIC_MESSAGES
+  testOnlyProtocols:
+    - FAKE
+    - FAILURE
+    - ZERO_LLM
+  providerDisable:
+    ordinaryRetryableFailure: per_request_only
+    durableDisableAllowedReasons:
+      - safety_leak
+      - credential_explicitly_invalid
+      - owner_operation
+    consecutiveFailureDurableCircuit: RETIRE
+javaRuntimeUntilCutoverProviderDisable:
+  consecutiveFailureDurableCircuit: ADR-0006_section_3_4
+
 requiredContractTests:
   - non_stream_success
   - sse_stream_success

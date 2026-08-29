@@ -1,0 +1,28 @@
+schemaVersion: 1
+contractId: MEMORY_RECALL_GO_V1
+applicability:
+  javaRuntimeUntilCutover: deterministic 64-d hash remains the Java default vector; it must not be claimed as Chinese semantic recall
+  goV1EffectiveAt: go_memory_writer_recall_cutover
+canonicalInvariants:
+  - canonical memory belongs to one owner and one relationship
+  - a candidate is not a Prompt fact until the owner explicitly confirms it
+  - auto-save is forbidden in Go v1
+  - incognito and no-memory messages are not long-term extraction sources
+  - delete, supersede and consent withdrawal make the item immediately unrecallable
+  - restore-before-read must honour tombstones
+  - provider or agent sessions are not a second canonical memory
+goV1:
+  autoSave: false
+  modelAutoExtractionJob: false
+  productionSemanticRecallClaimed: false
+  productionRecall:
+    - EXPLICIT_CANDIDATE
+    - KEYWORD
+    - SOURCE
+    - RECENCY
+  deterministic64dHash: JAVA_RUNTIME_LIFECYCLE_ONLY
+  ollamaEmbedding: SHADOW_EVAL_ONLY
+  semanticRecallFailureDisposition: degrade_to_no_semantic_memory_chat_continues
+javaRuntimeUntilCutover:
+  defaultEmbedder: DETERMINISTIC_64D_HASH
+  productionSemanticRecallClaimed: false

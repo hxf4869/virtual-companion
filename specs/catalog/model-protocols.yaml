@@ -17,7 +17,8 @@ entries:
 - code: ANTHROPIC_MESSAGES
   order: 2
   external: true
-  alphaAllowed: true
+  alphaAllowed: false
+  deferred: true
   defaultPath: /v1/messages
   streamTransport: SSE
 - code: FAKE

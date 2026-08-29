@@ -48,6 +48,16 @@ rules:
   - an epoch mismatch discards uncommitted draft and requires reset
   - missing deltas are never fabricated
   - chat.completed exists only after final message and final safety review commit
+applicability:
+  javaRuntimeUntilCutover: ticket, durable seq, gap and reset remain the Java SSE resume protocol
+  goV1EffectiveAt: go_realtime_and_auth_cutover
+goV1:
+  ticketEndpoint: RETIRE
+  streamAuthentication: opaque_session_cookie
+  resume: snapshot_only
+  gapResetEvents: RETIRE
+  fanOut: per_subscriber_bounded_channel
+  longLivedCredentialInQueryForbidden: true
 h5Security:
   preferredSession: HttpOnly Secure SameSite cookie
   csrfRequiredForStateChanges: true

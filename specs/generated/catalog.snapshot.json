@@ -368,6 +368,10 @@
             "kind": "config"
           },
           {
+            "file": "go-v1-api-scope.yaml",
+            "kind": "config"
+          },
+          {
             "file": "risk-levels.yaml",
             "kind": "enum",
             "typeName": "RiskLevel"
@@ -479,7 +483,7 @@
         "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "39347f56cff516d8fd5f1a9fe9c31abed29ef4427935db0d337351d6a0dfb929"
+      "sha256": "2c6532d6cd77e24124065a50c71e0f694d514177687900f42a49a38619986043"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -911,6 +915,1383 @@
       },
       "sha256": "b6e7ae2890d07b55a5c33bc1490538879f99ecc8d4f194bfd41d0afca7202b2a"
     },
+    "go-v1-api-scope.yaml": {
+      "document": {
+        "adr": "docs/decisions/0007-go-companion-runtime.md",
+        "catalogId": "go-v1-api-scope",
+        "counts": {
+          "DEFER": 15,
+          "KEEP": 46,
+          "RETIRE": 39,
+          "SIMPLIFY": 6
+        },
+        "javaRuntimeUntilCutover": "Java continues to serve every listed operation until the matching Go slice and Phase 5 cutover.",
+        "note": "Phase 0 API consumer matrix. KEEP requires core-outcome, current H5 production caller, safety/data-rights, or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations are removed with H5 in a later slice, not in G0.",
+        "operations": [
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/ops/ops.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getVersion",
+            "path": "/api/v1/version",
+            "replacementOrImpact": "Keep public version identity. Liveness/readiness stay outside this OpenAPI surface (actuator/health)."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts",
+              "frontend/src/stores/data.ts",
+              "frontend/src/pages/ops/ops.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "getServiceMode",
+            "path": "/api/v1/service-mode",
+            "replacementOrImpact": "Keep user-visible generation availability. Go v1 may project this as the single provider enabled/disabled plus ZERO_LLM/fake test modes."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/age.ts",
+              "frontend/src/pages/age/age.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getAgeState",
+            "path": "/api/v1/age/state",
+            "replacementOrImpact": "Keep simulated adult state for the unique Owner. Remote age provider remains DEFER."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/age.ts",
+              "frontend/src/pages/age/age.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "verifyAge",
+            "path": "/api/v1/age/verification",
+            "replacementOrImpact": "Keep Owner simulated adult verification only. No documents or biometrics."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/age.ts",
+              "frontend/src/pages/age/age.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "submitAgeAppeal",
+            "path": "/api/v1/age/appeal",
+            "replacementOrImpact": "Remote age appeal is DEFER. Hide the age-page appeal form in the same slice that drops this operation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/age.ts",
+              "frontend/src/pages/age/age.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listAgeAppeals",
+            "path": "/api/v1/age/appeals",
+            "replacementOrImpact": "Hide appeal history on the age page in the same slice. Owner simulated adult state remains on getAgeState."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/usage-health.ts",
+              "frontend/src/pages/health/health.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "getUsageHealth",
+            "path": "/api/v1/usage-health",
+            "replacementOrImpact": "Usage-health backend is DEFER. Hide 使用与休息 page APIs in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/usage-health.ts",
+              "frontend/src/pages/health/health.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "PUT",
+            "operationId": "updateUsageHealthPrefs",
+            "path": "/api/v1/usage-health",
+            "replacementOrImpact": "Hide usage-health preference editor in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/usage-health.ts",
+              "frontend/src/pages/chat/chat.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "usageHealthHeartbeat",
+            "path": "/api/v1/usage-health/heartbeat",
+            "replacementOrImpact": "Remove chat-page heartbeat in the same slice. Chat send/stream must not depend on it."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/usage-health.ts",
+              "frontend/src/pages/health/health.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "recordUsageReminder",
+            "path": "/api/v1/usage-health/reminder",
+            "replacementOrImpact": "Hide usage-reminder recording in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/incognito.ts",
+              "frontend/src/pages/incognito/incognito.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "getIncognitoPref",
+            "path": "/api/v1/incognito-pref",
+            "replacementOrImpact": "Keep incognito default. Outbound must read current state."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/incognito.ts",
+              "frontend/src/pages/incognito/incognito.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "PUT",
+            "operationId": "updateIncognitoPref",
+            "path": "/api/v1/incognito-pref",
+            "replacementOrImpact": "Keep the ability to change the incognito default."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts",
+              "frontend/src/pages/companion/companion.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "createRelationship",
+            "path": "/api/v1/relationships",
+            "replacementOrImpact": "Keep creating the unique active companion."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts",
+              "frontend/src/stores/data.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "listRelationships",
+            "path": "/api/v1/relationships",
+            "replacementOrImpact": "Keep list because current H5 selector and data page call it. Alpha still has activeCompanionLimit=1."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "RETIRE",
+            "method": "GET",
+            "operationId": "getRelationship",
+            "path": "/api/v1/relationships/{relationshipId}",
+            "replacementOrImpact": "No production H5 caller. List plus prefs/update cover the unique companion. Delete in a later OpenAPI/H5 slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "activateRelationship",
+            "path": "/api/v1/relationships/{relationshipId}",
+            "replacementOrImpact": "Keep because the relationship store activates the unique companion."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "DELETE",
+            "operationId": "deleteRelationship",
+            "path": "/api/v1/relationships/{relationshipId}",
+            "replacementOrImpact": "Keep deleting the unique companion."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts",
+              "frontend/src/pages/companion/companion.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "PATCH",
+            "operationId": "updateRelationshipPrefs",
+            "path": "/api/v1/relationships/{relationshipId}",
+            "replacementOrImpact": "Keep viewing/modifying companion preferences."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "deactivateRelationship",
+            "path": "/api/v1/relationships/{relationshipId}/deactivate",
+            "replacementOrImpact": "Keep because current H5 deactivates companions through this operation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "safety-or-data-rights",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "previewRelationshipClearance",
+            "path": "/api/v1/relationships/{relationshipId}/clearance-preview",
+            "replacementOrImpact": "Keep clearance preview before companion data deletion."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "safety-or-data-rights",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "resetRelationship",
+            "path": "/api/v1/relationships/{relationshipId}/reset",
+            "replacementOrImpact": "Keep companion data reset as a data-rights operation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listMemoryImports",
+            "path": "/api/v1/memory-imports",
+            "replacementOrImpact": "Memory import is DEFER. Hide companion import UI in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "DELETE",
+            "operationId": "discardMemoryImport",
+            "path": "/api/v1/memory-imports",
+            "replacementOrImpact": "Hide discard-import in the same slice as list/import."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/relationship.ts"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "importMemories",
+            "path": "/api/v1/relationships/{relationshipId}/memory-imports",
+            "replacementOrImpact": "Hide import action in the same slice. Canonical memory stays confirm/edit/delete."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "createConversation",
+            "path": "/api/v1/conversations",
+            "replacementOrImpact": "Keep creating or continuing a conversation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts",
+              "frontend/src/stores/data.ts",
+              "frontend/src/pages/index/index.vue",
+              "frontend/src/pages/conversations/conversations.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "listConversations",
+            "path": "/api/v1/conversations",
+            "replacementOrImpact": "Keep conversation list/history."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "RETIRE",
+            "method": "GET",
+            "operationId": "getConversationSummary",
+            "path": "/api/v1/conversations/{conversationId}/summary",
+            "replacementOrImpact": "No H5 caller. Summary becomes an internal context capability; display it in conversation responses if needed later."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/conversations/conversations.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "safety-or-data-rights",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "previewChatWipe",
+            "path": "/api/v1/conversations/wipe-preview",
+            "replacementOrImpact": "Keep wipe preview before deleting all chats."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/conversations/conversations.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "safety-or-data-rights",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "wipeAllChats",
+            "path": "/api/v1/conversations/wipe",
+            "replacementOrImpact": "Keep deleting all chats as a data-rights operation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/conversations/conversations.vue",
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "DELETE",
+            "operationId": "deleteConversation",
+            "path": "/api/v1/conversations/{conversationId}",
+            "replacementOrImpact": "Keep deleting one conversation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/conversations/conversations.vue",
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller"
+            ],
+            "method": "PATCH",
+            "operationId": "renameConversation",
+            "path": "/api/v1/conversations/{conversationId}",
+            "replacementOrImpact": "Keep rename because current conversations UI calls it."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/conversations/conversations.vue",
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "endConversation",
+            "path": "/api/v1/conversations/{conversationId}/end",
+            "replacementOrImpact": "Keep ending a conversation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "sendGeneration",
+            "path": "/api/v1/conversations/{conversationId}/generations",
+            "replacementOrImpact": "Keep send as StartTurn. One turn, one final assistant message; no version select."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "listMessages",
+            "path": "/api/v1/conversations/{conversationId}/messages",
+            "replacementOrImpact": "Keep message history."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "safety-or-data-rights"
+            ],
+            "method": "DELETE",
+            "operationId": "deleteMessage",
+            "path": "/api/v1/conversations/{conversationId}/messages/{messageId}",
+            "replacementOrImpact": "Keep single-message delete because current chat UI and data rights use it."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "PATCH",
+            "operationId": "setMessageNoMemory",
+            "path": "/api/v1/conversations/{conversationId}/messages/{messageId}",
+            "replacementOrImpact": "Keep no-memory on a message. Outbound and extraction must honour current state."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts",
+              "frontend/src/pages/chat/chat.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "selectGenerationVersion",
+            "path": "/api/v1/generations/{generationId}/select",
+            "replacementOrImpact": "One turn, one final result. Hide version-select UI in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts",
+              "frontend/src/pages/chat/chat.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listGenerationVersions",
+            "path": "/api/v1/messages/{messageId}/generation-versions",
+            "replacementOrImpact": "Hide version list in the same slice as selectGenerationVersion."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "cancelGeneration",
+            "path": "/api/v1/generations/{generationId}/cancel",
+            "replacementOrImpact": "Keep cancel. SSE disconnect must not imply cancel."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/api/realtime-transport.ts",
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "getGenerationSnapshot",
+            "path": "/api/v1/generations/{generationId}/snapshot",
+            "replacementOrImpact": "Keep durable snapshot for reconnect. Go v1 resume is snapshot-only."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/chat.ts",
+              "frontend/src/pages/chat/chat.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "recordGenerationFeedback",
+            "path": "/api/v1/generations/{generationId}/feedback",
+            "replacementOrImpact": "Keep because the chat page records feedback. Not a second generation plane."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/api/realtime-transport.ts"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "createRealtimeTicket",
+            "path": "/api/v1/realtime/tickets",
+            "replacementOrImpact": "Delete ticket mint. SSE uses the opaque session cookie after auth cutover. Remove H5 ticket helper in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/api/realtime-transport.ts",
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "SIMPLIFY",
+            "method": "GET",
+            "operationId": "openRealtimeStream",
+            "path": "/api/v1/realtime/streams/{generationId}",
+            "replacementOrImpact": "Keep authenticated SSE. Drop ticket/gap/reset query binding; reconnect uses snapshot. Same path, new auth at Phase 5."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/memory.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "createMemoryCandidate",
+            "path": "/api/v1/relationships/{relationshipId}/memories/candidates",
+            "replacementOrImpact": "Keep explicit Owner candidate create. No auto-save and no MEMORY_EXTRACT job in Go v1."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/memory.ts",
+              "frontend/src/stores/data.ts",
+              "frontend/src/stores/chat.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "listMemories",
+            "path": "/api/v1/relationships/{relationshipId}/memories",
+            "replacementOrImpact": "Keep listing canonical and pending memory."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/memory-detail/memory-detail.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "getMemory",
+            "path": "/api/v1/memories/{memoryId}",
+            "replacementOrImpact": "Keep memory detail."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/memory.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "PATCH",
+            "operationId": "updateMemory",
+            "path": "/api/v1/memories/{memoryId}",
+            "replacementOrImpact": "Keep Owner edit of canonical memory."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/memory.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "DELETE",
+            "operationId": "deleteMemory",
+            "path": "/api/v1/memories/{memoryId}",
+            "replacementOrImpact": "Keep delete/tombstone. Restore must not resurrect."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/memory.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "confirmMemoryCandidate",
+            "path": "/api/v1/memories/{memoryId}/confirm",
+            "replacementOrImpact": "Keep explicit confirm. Unconfirmed candidates are not Prompt facts."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/memory.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "rejectMemoryCandidate",
+            "path": "/api/v1/memories/{memoryId}/reject",
+            "replacementOrImpact": "Keep explicit reject."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/memory-detail/memory-detail.vue",
+              "frontend/src/stores/memory.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "safety-or-data-rights"
+            ],
+            "method": "GET",
+            "operationId": "listMemoryEvidence",
+            "path": "/api/v1/memories/{memoryId}/evidence",
+            "replacementOrImpact": "Keep evidence list because memory-detail renders it and memory must remain attributable."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/memory/memory.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "getMemoryAutoSave",
+            "path": "/api/v1/memories/auto-save",
+            "replacementOrImpact": "Go v1 has no auto-save. Hide the memory-page switch in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/memory/memory.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "PUT",
+            "operationId": "setMemoryAutoSave",
+            "path": "/api/v1/memories/auto-save",
+            "replacementOrImpact": "Hide auto-save toggle in the same slice. Candidates are Owner-explicit only."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/reminder.ts",
+              "frontend/src/pages/reminder/reminder.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "createReminder",
+            "path": "/api/v1/relationships/{relationshipId}/reminders",
+            "replacementOrImpact": "Reminder/proactive follow-up is DEFER. Hide the reminder page in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/reminder.ts",
+              "frontend/src/pages/reminder/reminder.vue",
+              "frontend/src/stores/data.ts",
+              "frontend/src/pages/index/index.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listReminders",
+            "path": "/api/v1/relationships/{relationshipId}/reminders",
+            "replacementOrImpact": "Hide reminder list on home/data/reminder pages in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/reminder.ts",
+              "frontend/src/pages/reminder/reminder.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "PATCH",
+            "operationId": "updateReminder",
+            "path": "/api/v1/reminders/{reminderId}",
+            "replacementOrImpact": "Hide reminder edit in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/reminder.ts",
+              "frontend/src/pages/reminder/reminder.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "DELETE",
+            "operationId": "deleteReminder",
+            "path": "/api/v1/reminders/{reminderId}",
+            "replacementOrImpact": "Hide reminder delete in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/report.ts",
+              "frontend/src/pages/report/report.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "safety-or-data-rights"
+            ],
+            "method": "POST",
+            "operationId": "createReport",
+            "path": "/api/v1/reports",
+            "replacementOrImpact": "Keep Owner safety report create. H5 report page is a current caller."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/report.ts",
+              "frontend/src/pages/report/report.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "listReports",
+            "path": "/api/v1/reports",
+            "replacementOrImpact": "Keep the caller-visible report list. Admin/Beta report queues stay RETIRE."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "RETIRE",
+            "method": "GET",
+            "operationId": "getReport",
+            "path": "/api/v1/reports/{reportId}",
+            "replacementOrImpact": "No production H5 caller. List/create cover the Owner report result."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "assignServiceClass",
+            "path": "/api/v1/auth/admin/service-class",
+            "replacementOrImpact": "Service class is RETIRE. Hide admin assignment in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listServiceClassAssignments",
+            "path": "/api/v1/auth/admin/service-classes",
+            "replacementOrImpact": "Hide admin service-class list in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/consent.ts",
+              "frontend/src/pages/consent/consent.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "PUT",
+            "operationId": "recordConsent",
+            "path": "/api/v1/consents",
+            "replacementOrImpact": "Keep record/withdraw. Outbound uses current consent, not a stale snapshot."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/consent.ts",
+              "frontend/src/stores/data.ts"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "GET",
+            "operationId": "listConsents",
+            "path": "/api/v1/consents",
+            "replacementOrImpact": "Keep listing consent state."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/export.ts",
+              "frontend/src/pages/export/export.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller",
+              "safety-or-data-rights"
+            ],
+            "method": "POST",
+            "operationId": "createExport",
+            "path": "/api/v1/exports",
+            "replacementOrImpact": "Keep export create. MinIO/object lifecycle stays until a later dedicated slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/export.ts",
+              "frontend/src/pages/export/export.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller",
+              "safety-or-data-rights"
+            ],
+            "method": "GET",
+            "operationId": "getExportStatus",
+            "path": "/api/v1/exports/{exportId}",
+            "replacementOrImpact": "Keep export status."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/export.ts",
+              "frontend/src/pages/export/export.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller",
+              "safety-or-data-rights"
+            ],
+            "method": "GET",
+            "operationId": "downloadExport",
+            "path": "/api/v1/exports/{exportId}/download",
+            "replacementOrImpact": "Keep one-time application download. No reusable presigned URL."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/auth.ts",
+              "frontend/src/pages/login/login.vue"
+            ],
+            "decision": "SIMPLIFY",
+            "method": "POST",
+            "operationId": "login",
+            "path": "/api/v1/auth/login",
+            "replacementOrImpact": "Keep password login. Go cutover issues opaque vc_session cookie and no JWT in the body. Owner re-logins; no dual issuer."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/auth.ts"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "refresh",
+            "path": "/api/v1/auth/refresh",
+            "replacementOrImpact": "Delete refresh rotation. Remove H5 auto-refresh in the same slice as opaque session cutover."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/stores/auth.ts"
+            ],
+            "decision": "SIMPLIFY",
+            "method": "POST",
+            "operationId": "logout",
+            "path": "/api/v1/auth/logout",
+            "replacementOrImpact": "Keep logout. Cookie becomes vc_session; next request must fail after revoke."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/account/account.vue"
+            ],
+            "decision": "SIMPLIFY",
+            "method": "GET",
+            "operationId": "listAuthSessions",
+            "path": "/api/v1/auth/sessions",
+            "replacementOrImpact": "Keep listing live sessions. Rows become opaque sessions, not refresh families."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/account/account.vue"
+            ],
+            "decision": "SIMPLIFY",
+            "method": "DELETE",
+            "operationId": "revokeAuthSession",
+            "path": "/api/v1/auth/sessions/{sessionId}",
+            "replacementOrImpact": "Keep revoking one session. Next request must fail."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/account/account.vue"
+            ],
+            "decision": "SIMPLIFY",
+            "method": "POST",
+            "operationId": "revokeAllAuthSessions",
+            "path": "/api/v1/auth/sessions/revoke-all",
+            "replacementOrImpact": "Keep revoke-all. Password change continues to invalidate sessions."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/account/account.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller"
+            ],
+            "method": "POST",
+            "operationId": "changeAuthPassword",
+            "path": "/api/v1/auth/password",
+            "replacementOrImpact": "Keep password change. Existing BCrypt hashes remain."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "reauthAuth",
+            "path": "/api/v1/auth/reauth",
+            "replacementOrImpact": "Keep fresh reauth for high-risk operations. Admin reset is not the Go consumer; account delete/export already require current password."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "adminResetPassword",
+            "path": "/api/v1/auth/admin/accounts/{accountId}/reset-password",
+            "replacementOrImpact": "Hide admin password reset with the admin page. Unique Owner self-service uses changeAuthPassword."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/account/account.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "h5-caller",
+              "safety-or-data-rights"
+            ],
+            "method": "DELETE",
+            "operationId": "deleteAccount",
+            "path": "/api/v1/auth/account",
+            "replacementOrImpact": "Keep self-service account deletion with current-password confirmation."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "createInternalAccount",
+            "path": "/api/v1/auth/admin/accounts",
+            "replacementOrImpact": "No public registration. Go v1 uses the seeded Owner account. Hide admin create in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listInternalAccounts",
+            "path": "/api/v1/auth/admin/accounts",
+            "replacementOrImpact": "Hide admin account list. E2E helpers are not a production H5 caller for KEEP."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "disableInternalAccount",
+            "path": "/api/v1/auth/admin/accounts/{accountId}/disable",
+            "replacementOrImpact": "Hide admin disable. Owner-only has one account."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listAdminAuditEvents",
+            "path": "/api/v1/auth/admin/audit",
+            "replacementOrImpact": "Hide admin audit view with the operator console."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "getAdminUsageSummary",
+            "path": "/api/v1/auth/admin/usage",
+            "replacementOrImpact": "Hide admin usage summary. Go v1 keeps usage internally for the monthly hard cap."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "getAdminProviderPlan",
+            "path": "/api/v1/auth/admin/provider-plan",
+            "replacementOrImpact": "Hide provider-plan admin. Go generation fail-closes when price or reservation ceiling is missing; no fabricated cost."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "grantTrial",
+            "path": "/api/v1/auth/admin/trial-grants",
+            "replacementOrImpact": "Trial/entitlement is RETIRE. Hide admin grant in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "quotaReconciliation",
+            "path": "/api/v1/auth/admin/quota-reconciliation",
+            "replacementOrImpact": "Product quota reconciliation is RETIRE."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "providerRegistry",
+            "path": "/api/v1/auth/admin/provider-registry",
+            "replacementOrImpact": "Multi-provider registry is RETIRE. Go v1 has one durable enabled/disabled provider."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/health/health.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "getTrialStatus",
+            "path": "/api/v1/trial-status",
+            "replacementOrImpact": "Hide trial status on the health page in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/account/account.vue"
+            ],
+            "decision": "DEFER",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "recordSurvey",
+            "path": "/api/v1/survey",
+            "replacementOrImpact": "Survey is DEFER. Hide the account-page score card in the same slice."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "DEFER",
+            "method": "GET",
+            "operationId": "listMySurveys",
+            "path": "/api/v1/survey",
+            "replacementOrImpact": "No production caller. Do not port. Hide if an entry appears later."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listSafetyEvents",
+            "path": "/api/v1/auth/admin/safety-events",
+            "replacementOrImpact": "Hide admin safety-event queue. Owner report create/list remain."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listOpsCases",
+            "path": "/api/v1/auth/admin/ops-cases",
+            "replacementOrImpact": "Beta operator console is DEFER/RETIRE. Hide ops-case list."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "transitionOpsCase",
+            "path": "/api/v1/auth/admin/ops-cases/{caseId}/actions",
+            "replacementOrImpact": "Hide ops-case transitions with the admin page."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "PUT",
+            "operationId": "updateOpsCaseNote",
+            "path": "/api/v1/auth/admin/ops-cases/{caseId}/notes",
+            "replacementOrImpact": "Hide ops-case notes."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "readOpsCaseInternalNote",
+            "path": "/api/v1/auth/admin/ops-cases/{caseId}/internal-note",
+            "replacementOrImpact": "Hide internal notes."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "RETIRE",
+            "method": "POST",
+            "operationId": "setRetentionLegalHold",
+            "path": "/api/v1/auth/admin/retention-holds",
+            "replacementOrImpact": "Retention legal-hold UI is RETIRE. 30-day dogfood retention and tombstones remain."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "RETIRE",
+            "method": "DELETE",
+            "operationId": "releaseRetentionLegalHold",
+            "path": "/api/v1/auth/admin/retention-holds/{holdId}",
+            "replacementOrImpact": "RETIRE with setRetentionLegalHold."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listBetaReports",
+            "path": "/api/v1/auth/admin/reports",
+            "replacementOrImpact": "Hide Beta admin report queue."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listBetaAgeAppeals",
+            "path": "/api/v1/auth/admin/age-appeals",
+            "replacementOrImpact": "Hide Beta age-appeal queue. Remote appeal remains DEFER."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "resolveAgeAppeal",
+            "path": "/api/v1/auth/admin/age-appeals/{appealId}/resolve",
+            "replacementOrImpact": "Hide admin appeal resolution."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listBetaExportTasks",
+            "path": "/api/v1/auth/admin/export-tasks",
+            "replacementOrImpact": "Hide Beta export-task admin. Owner export create/status/download remain."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "listBetaMemorySampling",
+            "path": "/api/v1/auth/admin/memory-sampling",
+            "replacementOrImpact": "Hide memory sampling admin."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/consent/consent.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "operationId": "getEmergencyContact",
+            "path": "/api/v1/emergency-contact",
+            "replacementOrImpact": "Emergency contact stays closed. Hide the consent-page contact UI in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/consent/consent.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "PUT",
+            "operationId": "saveEmergencyContact",
+            "path": "/api/v1/emergency-contact",
+            "replacementOrImpact": "Hide save-contact in the same slice."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/consent/consent.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "startEmergencyContactVerification",
+            "path": "/api/v1/emergency-contact/verify-start",
+            "replacementOrImpact": "Hide contact verification start."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/consent/consent.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "confirmEmergencyContactVerification",
+            "path": "/api/v1/emergency-contact/verify-confirm",
+            "replacementOrImpact": "Hide contact verification confirm."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/consent/consent.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "operationId": "revokeEmergencyContact",
+            "path": "/api/v1/emergency-contact/revoke",
+            "replacementOrImpact": "Hide contact revoke. Crisis copy may still show real-world resources without claiming notification."
+          }
+        ],
+        "schemaVersion": 1,
+        "sourceOpenApi": "specs/openapi/virtual-companion.yaml",
+        "undeclaredJavaEraOperations": [
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "path": "/api/v1/auth/admin/invites",
+            "replacementOrImpact": "Invite mint is not in OpenAPI and is not ported. Hide admin invite UI."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "GET",
+            "path": "/api/v1/auth/admin/invites",
+            "replacementOrImpact": "Hide admin invite list."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/admin.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "path": "/api/v1/auth/admin/invites/disable",
+            "replacementOrImpact": "Hide admin invite disable."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/login/login.vue"
+            ],
+            "decision": "RETIRE",
+            "h5CallerMustHideInSameSlice": true,
+            "method": "POST",
+            "path": "/api/v1/auth/invite-register",
+            "replacementOrImpact": "Public/invite registration stays closed. Hide login invite-register in the same slice."
+          }
+        ]
+      },
+      "sha256": "ba0d7401451cd570002fb9dc3a58c0340ad9c60411604b00f4e8ec7006379b78"
+    },
     "memory-candidate-statuses.yaml": {
       "document": {
         "alphaModelCandidateInitialStatus": "PENDING_CONFIRMATION",
@@ -938,9 +2319,14 @@
             "order": 4
           }
         ],
+        "goV1": {
+          "autoSave": false,
+          "modelAutoExtractionJob": false,
+          "productionSemanticRecallClaimed": false
+        },
         "schemaVersion": 1
       },
-      "sha256": "9d7611534a36661c92c031fa1321805a14f577c2c046b43c1bcb881e91b09c9e"
+      "sha256": "a8040e03897061b7994fd47e38c98b3642a28dbfe797a9a6f166886633d41e89"
     },
     "memory-event-statuses.yaml": {
       "document": {
@@ -1151,9 +2537,10 @@
             "streamTransport": "SSE"
           },
           {
-            "alphaAllowed": true,
+            "alphaAllowed": false,
             "code": "ANTHROPIC_MESSAGES",
             "defaultPath": "/v1/messages",
+            "deferred": true,
             "external": true,
             "order": 2,
             "streamTransport": "SSE"
@@ -1179,7 +2566,7 @@
         ],
         "schemaVersion": 1
       },
-      "sha256": "dd5d45b1118baf560591f8f29434a365467cfdd943c539fe0f407d6a8f66c0ab"
+      "sha256": "7e3e33b80c90c66cae5eea76a8547c59e02af121531bedb5a9898d7059ef3044"
     },
     "persona-templates.yaml": {
       "document": {
@@ -1295,25 +2682,48 @@
           "invalidatesAutomaticallyWhenDiscoveryGateFails": true,
           "primaryAudience": "evening-office-workers-25-35"
         },
+        "memory": {
+          "autoSaveEnabled": false,
+          "deterministic64dHash": "JAVA_RUNTIME_LIFECYCLE_ONLY",
+          "ollamaEmbedding": "SHADOW_EVAL_ONLY",
+          "productionRecall": [
+            "EXPLICIT_CANDIDATE",
+            "KEYWORD",
+            "SOURCE",
+            "RECENCY"
+          ],
+          "productionSemanticRecallClaimed": false
+        },
         "phase": "TECHNICAL_ALPHA",
+        "safety": {
+          "goV1ReviewPaths": [
+            "LOCAL_DETERMINISTIC_SAFETY_POLICY"
+          ],
+          "remoteClassifier": "DEFER"
+        },
         "schemaVersion": 1,
         "technology": {
+          "currentRuntimeUntilCutover": "JAVA_SPRING_BOOT",
           "database": "POSTGRESQL_18",
+          "deferredModelProtocols": [
+            "ANTHROPIC_MESSAGES"
+          ],
+          "goBaseline": "1.26",
           "javaBaseline": "25-LTS",
           "javaFallback": "21-LTS_BY_ADR_ONLY",
           "modelProtocols": [
-            "OPENAI_CHAT_COMPLETIONS",
-            "ANTHROPIC_MESSAGES"
+            "OPENAI_CHAT_COMPLETIONS"
           ],
           "optionalProtocolSpikes": [
             "OPENAI_RESPONSES"
           ],
           "springAiLine": "2.0.x",
           "springBootLine": "4.1.x",
+          "targetRuntime": "GO_COMPANIOND",
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "c56002587131b6312b3fb323f3fa6e9722cb77ac26e74e20650bcaaeb0f25ea7"
+      "sha256": "b0287873424181652f75e7370523eaa7ce4c4b01de636a62dae869e299b53243"
     },
     "provider-attempt-statuses.yaml": {
       "document": {

@@ -2,6 +2,13 @@
 
 产品待办（现状声明见 README）：
 
+## Go companion runtime（ADR-0007，2026-08-30 起）
+
+实施基线：`docs/planning/2026-08-30-go-companion-runtime-redesign.md`。一次一个可验证 slice。
+
+- [x] `G0` ADR/Catalog/OpenAPI scope 与 API consumer matrix（catalog/openapi check；不写 Go 业务代码）
+- [ ] `G1` Java 资源/事务基线与 benchmark workload
+
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 
 > 2026-08-19 逐章对照 `docs/source/虚拟对象_AI陪伴项目_V0.3_产品需求与技术方案.md`

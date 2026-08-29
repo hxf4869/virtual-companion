@@ -55,7 +55,7 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 | 命令 | 实测 | 覆盖 |
 |---|---|---|
 | `bash scripts/check.sh` | ~6s | 下述全部 |
-| ├ catalog validate/drift | <1s | `specs/catalog` 契约与 `specs/generated` 漂移 |
+| ├ catalog validate/drift | <1s | `specs/catalog` 契约（含 Go v1 API scope 对账 OpenAPI）与 `specs/generated` 漂移 |
 | ├ openapi validate/drift | <1s | `specs/openapi` 合同与生成物漂移 |
 | ├ paid-features | <1s | 依赖/配置中禁止付费运行时前提 |
 | ├ licenses | <1s | Maven/前端直接依赖许可证清单核对 |
