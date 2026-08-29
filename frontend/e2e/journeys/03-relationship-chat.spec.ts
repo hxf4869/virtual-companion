@@ -284,7 +284,7 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
   const { relationshipId, conversationId } = await createRelationshipAndConversation(
     session.accessToken,
   );
-  await seedTurns(request, session.accessToken, conversationId, 12);
+  await seedTurns(request, session.accessToken, conversationId, 15);
 
   await navigateToPage(page, `${CHAT_HREF}?relationshipId=${relationshipId}&conversationId=${conversationId}`);
   await expect(page.getByTestId("chat-message").first()).toBeVisible({ timeout: 30_000 });

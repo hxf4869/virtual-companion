@@ -71,6 +71,11 @@ typography:
     fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.5
+  icon:
+    fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
+    fontSize: "24px"
+    fontWeight: 400
+    lineHeight: 1
 rounded:
   s: "8px"
   m: "12px"
@@ -186,6 +191,9 @@ sans-serif）。无外部字体、无衬线标题、无等宽正文。
 - **Label**（500，12px，1.4）：字段标签、meta 行。
 - **Mono**（400，13px，1.5，ui-monospace/"SF Mono"/Menlo/Consolas 栈）：
   请求 id 等代码样文本。
+
+图标不是文字：AppIcon 以 24px 为默认基线（`1em` 缩放，size prop 覆盖），
+不进入文字字号阶梯。
 
 ## Layout
 

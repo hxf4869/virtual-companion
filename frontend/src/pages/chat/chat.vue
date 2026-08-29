@@ -719,14 +719,14 @@ export default defineComponent({
 
     // 新消息、流式草稿与尾部状态行到达时跟随；写入由 rAF 合并。
     // （放在 statusText 声明之后，watch 源立即求值。）
-    // 会话切换：取消旧帧、回到跟随态、清空滚动位置；新内容到达后落到底部。
+    // 会话切换：取消旧帧、回到跟随态。不手写 scrollTop=0——消息清空/替换
+    // 时浏览器会把 scrollTop 自动 clamp，而手写会派发一次伪 scroll 事件把
+    // following 翻 false，吞掉随后的落底帧。
     watch(
       () => store.conversationId,
       () => {
         cancelPendingScrollFrame();
         followingLatest.value = true;
-        const el = historyNode();
-        if (el) el.scrollTop = 0;
       },
     );
 
