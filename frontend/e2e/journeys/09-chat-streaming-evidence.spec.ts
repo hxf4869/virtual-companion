@@ -486,6 +486,10 @@ test("in-browser transport streams deltas and completes through a real snapshot-
   await expect(
     page.locator('[data-testid="chat-message"].assistant').last(),
   ).toContainText(DRAFT_FULL.slice(-12));
+  // 终态提交行 append 与跟随落底帧之间有一帧间隙：轮询等待落底完成。
+  await expect
+    .poll(async () => (await measureSwitch(page)).following, { timeout: 8_000, intervals: [80, 160] })
+    .toBe("true");
   expect((await measureSwitch(page)).following, "follows latest on settle")
     .toBe("true");
 

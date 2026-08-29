@@ -656,6 +656,11 @@ export default defineComponent({
     }
 
     /** 跟随状态下把视图落到最新内容；同一帧内的多次更新合并为一次写入。 */
+    /** 跟随状态下把视图落到最新内容；同一帧内的多次更新合并为一次写入。
+     * 帧以注册时刻的意图为准（入口已检查 following）：会话清空时 scrollTop
+     * 被 clamp 产生的 scroll 事件会在新内容渲染后才派发，把 following 翻
+     * false——若帧执行时复查就会放弃落底，视图停在顶部。用户滚离时入口
+     * 检查会拒绝注册新帧，防抢位置语义不变。 */
     function scheduleScrollToBottom(): void {
       if (!followingLatest.value || pendingScrollFrame) return;
       const el = historyNode();
@@ -663,7 +668,7 @@ export default defineComponent({
       pendingScrollFrame = requestAnimationFrame(() => {
         pendingScrollFrame = 0;
         const node = historyNode();
-        if (!node || !followingLatest.value) return;
+        if (!node) return;
         node.scrollTop = node.scrollHeight;
       });
     }
