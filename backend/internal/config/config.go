@@ -81,10 +81,9 @@ type Session struct {
 	ReauthWindow time.Duration
 }
 
-// Provider is the single OpenAI-compatible Chat Completions adapter.
-// Enabled=false (the default) leaves chat unwired; companiond does not
-// construct the adapter in G4. Missing credential/endpoint while Enabled
-// fails startup. Secrets never log.
+// Provider is the migration bootstrap OpenAI-compatible route plus shared
+// provider HTTP budgets. Database-managed routes take precedence; Enabled=false
+// leaves only the administrator route chain. Secrets never log.
 type Provider struct {
 	ID                string
 	SupplierName      string

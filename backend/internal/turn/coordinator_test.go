@@ -234,6 +234,22 @@ func TestConnectTimeoutMayRetryOnce(t *testing.T) {
 	}
 }
 
+func TestPublishedDeltaPreventsRetryEvenWhenProviderClaimsNotSent(t *testing.T) {
+	t.Parallel()
+	p := &scripted{
+		deltas: []string{"partial"},
+		err:    companion.Disconnected(companion.DeliveryNotSent),
+	}
+	c, store, _ := newCoord(t, p, baseSeed())
+	res := c.Run(context.Background(), Command{TurnID: "turn-1", RunID: "run-r", Budget: budget()})
+	if res.RetryAllowed {
+		t.Fatalf("published output must prevent retry: %+v", res)
+	}
+	if store.Phase("turn-1") != companion.PhaseFailed {
+		t.Fatalf("durable phase %s", store.Phase("turn-1"))
+	}
+}
+
 func TestHighRelMemoryPreferredOverOldHistory(t *testing.T) {
 	t.Parallel()
 	seed := baseSeed()

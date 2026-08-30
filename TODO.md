@@ -10,7 +10,7 @@
 - [x] `G1` Java 资源/事务基线与 benchmark workload（Linux 可重复报告：`docs/planning/g1-java-resource-baseline.md`；Owner Mac 门槛未冻结）
 - [x] `G2` Go module、config、health、logging、metrics、shutdown、`api-migration/full` 硬隔离（unit/check；migration 模式无法启动 provider/jobs；不含 DB 业务 API）
 - [x] `G3` pgx owner-bound 短事务、RLS/least-privilege、crypto（BCrypt、owner HMAC、enc1/enc2）与 Java JWT migration verifier（DB/golden vectors；不签发 JWT、不写 login/refresh/logout）
-- [x] `G4` OpenAI-compatible provider adapter（mock contract；Fake/Failure 仅为测试 fixture；不含 real provider shadow、Companion Core 或真实外网调用）
+- [x] `G4` OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三协议 provider adapter（本地 mock contract；Fake/Failure 仅为测试 fixture；不含 real provider shadow、Companion Core 或真实外网调用）
 - [x] `G5` Companion Core、Context、Persona、Safety、Budget（unit/Golden Set；不含 tools、memory write、RealtimeHub/SSE、业务 HTTP API、真实 provider 外网调用）
 - [x] `G6` RealtimeHub 与 authenticated SSE（fan-out/reconnect/leak；同源 HttpOnly cookie + Origin；无 ticket 兼容层、无业务 CRUD API、无 Memory/Consent、无真实外网 provider）
 - [x] `G7` Relationship/Conversation/Message core API（OpenAPI KEEP 最小面；隔离 PostgreSQL E2E；api-migration 写路由硬禁；不含 generation plane、Memory/Consent、opaque auth 生产切换）
@@ -18,7 +18,7 @@
 - [x] `G9` Opaque Auth + H5 transport 实现和离线验证（session/CSRF/reauth E2E 对隔离 PostgreSQL；api-migration 不启用 opaque 生产切换；不含 JWT/opaque 双 issuer、generation worker、Phase 5 切流）
 - [x] `G10` Jobs、generation worker、finalize/cancel/provider integration（V117 additive migration + go_* 函数族：intake/claim/attempt outcome/billing reservation/finalize/terminalize/cancel/queue timeout/§16.2.1 恢复协议；loop/scheduler/export handler；隔离 PostgreSQL contract 测试 + httpapi E2E：send→202→claim→fake provider→hub snapshot/delta/completed→durable snapshot、cancel-during-stream、outstanding 429+Retry-After；realtime-events 补 chat.snapshot；send 202/Retry-After 2/配置默认 1·8·5min 对齐 §19.5；jobs claim/recovery 指标；不含 Java/Go dual active、Phase 5 切流、V117 之后 destructive migration）
 - [x] `G11` Auth/H5 + generation plane 同窗口 maintenance/drain/cutover/rollback rehearsal（`ops/deploy/g11-switchover/run-drill.sh`，17/17 PASS：Java serving→maintenance 503→drain 取消 in-flight/无 live claim→pg_dump 备份与恢复比对→Go full 负向闸门（Java 持 lease 拒绝启动）→停 Java/lease 释放→Go 接管 lease + opaque auth/SSE/cancel smoke→Caddy API/SSE 切到 Go→回滚：drain/停 Go/lease 释放/备份恢复/Java 重接 lease 并 COMPLETED；VC_PROVIDER_ALLOW_LOOPBACK_HTTP 配置项；不写 destructive schema cleanup）
-- [ ] `G12` Resource/capacity 验收与 Go-only dogfood（三次独立 runtime-only 测量均 PASS：idle RSS 18.894–19.631 MiB、16gen+64SSE 实际并发峰值 16/16 且零错误；报告与候选门槛见 `docs/planning/g12-go-capacity-sample.md`。仍待 Owner 冻结 runtime gate，并补齐 10 分钟 idle、retained-stack、Go image 与 real-provider dogfood）
+- [ ] `G12` Resource/capacity 验收与 Go-only dogfood（三次独立 runtime-only 测量均 PASS：idle RSS 18.894–19.631 MiB、16gen+64SSE 实际并发峰值 16/16 且零错误；管理员三协议 provider/model 配置与有界主备链已就绪；报告与候选门槛见 `docs/planning/g12-go-capacity-sample.md`。仍待 Owner 冻结 runtime gate，并补齐 10 分钟 idle、retained-stack、Go image 与 real-provider dogfood）
 
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 

@@ -63,7 +63,7 @@ companiond（一个 Go module、一个常驻二进制、一个实例）
   ├─ Realtime Hub
   ├─ Background Jobs
   ├─ PostgreSQL access ─────────────→ PostgreSQL 18 + pgvector
-  ├─ approved model egress ─────────→ 当前一个 OpenAI-compatible provider
+  ├─ approved model egress ─────────→ 管理员配置的三协议 provider/model 优先链
   └─ approved export storage ───────→ MinIO
                                       （generation cutover 默认保留，
                                        只服务已批准的导出/备份契约）
@@ -189,7 +189,7 @@ Go v1 必须让唯一 Owner 完成以下连续旅程：
 - tool-call loop、planner、reflection、chain-of-thought 存储；
 - 通用 `Tool` 接口或 Tool Registry；
 - 多 Agent、Agent 编排、MCP、插件市场；
-- 多 provider 动态路由、会话 affinity、服务等级降级平台；
+- 权重/随机负载均衡、按用户或会话 affinity、自动熔断/半开探测、自学习路由、服务等级降级平台；
 - Redis、Kafka、NATS、Actor framework、通用 event sourcing；
 - WebSocket；
 - 多 runtime、多节点、高可用、leader election；
@@ -645,9 +645,15 @@ Prompt bundle 必须版本化并用合成对话评测以下行为：
 
 ### 10.1 Provider 范围
 
-Go v1 只实现当前真实使用的 OpenAI Chat Completions compatible adapter。Anthropic、Responses API 与 provider marketplace 均为 `DEFER`。
+2026-08-30 Owner 将 G12 dogfood 的 provider 决策改为 **管理员自助配置**，不在部署规范中写死某一家供应商。Go runtime 必须支持三个明确协议：
 
-Fake/Failure 不再是生产 module，只作为 provider contract test fixture。
+- `OPENAI_CHAT_COMPLETIONS`：base URL + `/v1/chat/completions`；
+- `OPENAI_RESPONSES`：base URL + `/v1/responses`，请求显式 `store=false`；
+- `ANTHROPIC_MESSAGES`：base URL + `/v1/messages`，使用 `x-api-key` 与固定 `anthropic-version`。
+
+一个 provider 保存一组 endpoint/credential/protocol，一个 provider 可以挂多个 model。真正参与聊天路由的是 `(provider_id, model_id)` 目标；每个启用目标有唯一、连续的优先顺序。管理员可以创建、编辑、禁用 provider，新增/编辑/禁用 model，并调整全局聊天链顺序。当前只存在一条全局链，不做按用户、persona、service class 或时间段分流。
+
+这不是 provider marketplace：没有自动发现第三方插件、SDK 注册、权重流量、随机选择、会话 affinity、自学习评分或自动熔断。Fake/Failure 仍只作为 provider contract test fixture。
 
 ### 10.2 Provider adapter 的责任
 
@@ -673,10 +679,13 @@ Fake/Failure 不再是生产 module，只作为 provider contract test fixture�
 
 ### 10.3 HTTP client 约束
 
-- endpoint 只能来自仓库外私有配置；
+- endpoint 来自数据库中的管理员配置；迁移/演练期环境变量只作为“数据库没有启用目标”时的显式 bootstrap，不覆盖管理员链；
+- credential 使用现有 `enc2` application-layer cipher 加密后入库；管理 API 永不返回明文、密文、前后缀或可关联指纹，只返回 `credentialConfigured`；空 credential 的更新表示保留原值，不允许把启用 provider 清成无 credential；
 - 只允许明确批准的 HTTPS scheme/host/port；
+- 管理员填写常见的 provider base URL（可止于 origin、网关前缀或 `/v1`）；adapter 确定性追加固定协议 path，避免重复 `/v1`。base URL 不得包含 userinfo、query、fragment 或已追加的协议终点 path；
 - 禁止自动跟随到未批准 host；
 - credential 只加在批准 endpoint 的请求上；
+- DNS 解析结果拒绝 loopback、private、link-local、multicast 和云 metadata 地址；只有 Owner 本机 dogfood 显式启用既有 loopback 开关时才允许 loopback HTTP，不能由管理 API 自己放宽；
 - connect/first-token/total timeout 默认保持 10s/60s/240s，测量后再收紧；
 - `maxResponseBytes` 默认 256 KiB，非法配置启动失败；
 - 不使用 `io.ReadAll` 读取无上限响应；
@@ -692,16 +701,16 @@ Retry 只能由一个小的显式 policy 决定，每次重试创建新 Attempt�
 | cancel | 不重试 |
 | total timeout | 不自动重试 |
 | outbound 是否到达 provider 不确定 | 标记 `OUTCOME_UNKNOWN`，不自动重放 |
-| 明确未发送的 connect failure | 最多一次新 Attempt |
+| 明确未发送的 connect failure | 最多一次新 Attempt；若存在下一优先级目标则切到该目标 |
 | 429 | 不自动重试；没有当前供应商不计费证据，按未知费用收敛 |
 | 5xx/early EOF | 默认不自动重放，除非 provider 有可靠幂等语义 |
 | finalize 持久化失败 | 只重试 finalize，禁止再次调用 provider |
 
-“最多三次 Attempt”只是迁移兼容上限，不是必须用满的恢复链。实际数据支持前，Go v1 默认 `maxAttempts=2`。
+“最多三次 Attempt”只是迁移兼容上限，不是必须用满的恢复链。Go v1 固定 `maxAttempts=2`，因此一轮最多主目标 + 一个备用目标。fallback 每次都创建新的 durable Attempt，并写入实际 provider/model；不得复活或改写旧 Attempt。
 
-### 10.5 Provider state
+### 10.5 Provider、Model 与路由状态
 
-单 provider 只需要一份权威状态：
+每个 provider 只需要一份管理员状态：
 
 ```text
 ENABLED | DISABLED
@@ -711,9 +720,49 @@ updatedAt
 
 - 普通 429、5xx、超时、断连只按本次请求的有限 retry/退避规则处理，不累计成持久熔断状态；
 - 明确 safety leak、credential 被撤销/判定无效或 Owner 主动操作时，才允许持久化 `DISABLED`；
-- 启动配置缺失不写 durable state，runtime 直接 not-ready；
+- 启用 provider 必须同时具备合法 base URL、credential 和至少一个启用 model；没有任何可用路由时 runtime 保持可管理但 generation 返回诚实的 `PROVIDER_DISABLED`，不能伪造回复；
 - 恢复由 Owner 明确操作；
-- 不实现“连续 N 次失败自动禁用”、半开探测、route registry、affinity、failover、service-class 或 durable rollback 链。
+- 普通请求失败不修改 provider/model 的 durable 状态或优先级；
+- 不实现“连续 N 次失败自动禁用”、半开探测、健康分数、affinity、权重、service-class 或 durable rollback 链。
+
+路由选择只有一个确定性规则：在一个短 DB 读取中取得当前 `ENABLED` provider 下的 `ENABLED` model，按 `priority ASC, provider_id ASC, model_id ASC` 排序并冻结为本轮候选链。主目标始终是第一项。仅当 `AllowNewAttempt` 判断当前失败为“connect 阶段且明确未发送”，且没有向 public SSE 发布 delta 时，才取链中下一项；其余失败直接终结本轮。一次 generation 读取一次链，管理员在本轮执行中修改优先级只影响下一轮。
+
+最小持久化结构：
+
+```text
+provider_config
+  provider_id PK
+  display_name
+  protocol
+  base_url
+  credential_cipher
+  state ENABLED|DISABLED
+  created_at / updated_at / updated_by
+
+provider_model
+  provider_id + model_id PK
+  display_name
+  context_window_tokens nullable
+  max_output_tokens
+  priority
+  state ENABLED|DISABLED
+  created_at / updated_at / updated_by
+```
+
+不把瞬时 health、失败次数、last error body、provider model 列表缓存或 API key 片段写入数据库。`provider_deployment` 在 additive 迁移期继续作为 outbound admission 权威；管理员启用/禁用 `provider_config` 时在同一事务同步该 provider 的 `ADMITTED`/`DISABLED`，避免出现 UI 已禁用但 attempt gate 仍允许的窗口。Phase 6 再决定是否把两者原位收敛，G12 不建双向同步器。
+
+管理 API 只对当前 `ADMIN` 开放，写操作要求 CSRF 与 15 分钟内 reauth：
+
+```text
+GET    /api/v1/admin/providers
+PUT    /api/v1/admin/providers/{providerId}
+POST   /api/v1/admin/providers/{providerId}/models/discover
+PUT    /api/v1/admin/model-routing-order
+```
+
+`PUT /providers/{providerId}` 同时提交 provider 与其完整 model 快照；省略的旧 model 从配置表删除（历史 Attempt 已保存实际 provider/model 文本，不受影响），显式保留但暂不参与路由的 model 才设为 `DISABLED`。这样无需再建一组细粒度 CRUD 和部分成功语义，也不会让 UI 删除项在刷新后复活或长期占用 32 条配置上限。新 provider 必须提交 credential；更新时省略 credential 表示保留已经加密的值。
+
+“获取可用模型”是辅助能力：管理员显式点击后，服务端只调用当前表单地址的标准 `GET /v1/models`，有界返回、无重试、不缓存、不落库、不修改路由。新建时使用表单中的 write-only credential；编辑时若表单 credential 留空，则只在 Go 进程内解密已保存值用于本次请求。返回值仅导入 H5 草稿，管理员确认 model ID、显示名和 token 上限后仍需另行保存；网关不支持时明确提示并保留手工输入。v1 不增加单独“测试连接”API，避免一次保存流程隐含额外推理调用或费用；保存配置本身绝不外呼。
 
 ### 10.6 TurnBudget
 
@@ -941,6 +990,7 @@ Go v1 的重连只做 snapshot，不做逐 token 重放：
 - password change；
 - reauth；
 - account deletion。
+- ADMIN provider/model 配置、显式模型目录发现与优先顺序；credential 写入或用于目录发现均要求 fresh reauth，读取永不回显 secret。
 
 删除或不移植：
 
@@ -961,7 +1011,7 @@ Go v1 的重连只做 snapshot，不做逐 token 重放：
 | generation/model attempt/final message | PostgreSQL |
 | canonical memory/tombstone | PostgreSQL |
 | job/lease/fence | PostgreSQL |
-| provider enabled/disabled 与成本累计 | PostgreSQL |
+| provider/model 配置、加密 credential、优先顺序与成本累计 | PostgreSQL |
 | active cancel func、subscriber channel、partial output | Go 进程内 |
 | provider session/cache | 无产品 ownership |
 | H5 | 只拥有未提交输入与 UI 草稿 |
@@ -1058,7 +1108,7 @@ Phase 0 必须按受保护列统计 `enc2`、`enc1`、旧明文和不可识别�
 删除/合并候选：
 
 - 把已扩展且由 Go 单写的 `attempt_intent` 原位提升/重命名为 `model_attempt`，删除 Java-era 函数/caller 以及 `provider_attempt` 的 runtime grant；不做两表 merge；
-- `generation_route` 及 route-decision audit：单 provider 无路由消费者；
+- `generation_route` 及 route-decision audit：每轮候选链只在内存冻结，实际选中的 provider/model 已逐 Attempt 落库，没有独立审计表消费者；
 - 通用 `generation_candidate` set 与版本选择：首版只有一个最终结果；
 - requested/execution 双授权快照：折入 attempt 审计；
 - synthetic/product quota、entitlement/trial 账本；
@@ -1217,7 +1267,7 @@ generation feedback、memory evidence 独立 endpoint、safety report list/get�
 | realtime ticket/gap/reset/seq | 正常 session SSE + bounded fan-out + reconnect snapshot |
 | generation versions/select | 一个 Turn 一个最终结果；删除多版本选择 |
 | conversation summary endpoint | summary 作为 context 内部能力；需要展示时并入 conversation response |
-| provider registry/plan status | 单 provider enabled/disabled 与本地状态 |
+| Java provider registry/plan status | 管理员 provider/model 配置、write-only credential 与全局优先链；不展示伪造配额 |
 | quota/entitlement/trial | usage + request limit + monthly cost hard cap |
 | requested/execution snapshots | outbound 当前检查 + attempt 一份不可变审计 |
 | work item batch/fence API | minimal job claim/lock token/fence |
@@ -1228,7 +1278,6 @@ generation feedback、memory evidence 独立 endpoint、safety report list/get�
 - reminder/proactive follow-up；
 - usage-health heartbeat/reminder 后端；
 - survey；
-- Anthropic adapter；
 - remote age provider/appeal operations；
 - external alert delivery；
 - semantic re-embed job；
@@ -1282,13 +1331,13 @@ operationId | current H5 caller | Go decision | replacement/user impact
 | Auth rate | 进程 + DB 两套来源限流 | 简化 | 单实例有界内存滑窗；多实例前再设计 |
 | Consent | requested/execution 两份快照，多次重读 | 简化 | outbound 当前检查 + attempt audit |
 | Generation | DB runtime 外另有未接入 reducer/aggregate | 不移植 | DB-backed lifecycle 唯一真源 |
-| Generation | route/attempt/candidate 多层描述单 provider | 简化 | generation + model_attempt + final message |
+| Generation | route/attempt/candidate 多层状态 | 简化 | generation + 按实际目标记录的 model_attempt + final message |
 | Safety | 固定“已分类”占位报告 | 不移植 | 一次真实 input review + rolling/final output review |
 | Realtime | ticket/epoch/durable seq/gap/reset，delta 却不持久 | 简化 | authenticated SSE + fan-out + snapshot |
 | Realtime | subscriber 共享 queue | 删除 | 每 subscriber 独立 bounded channel |
 | Memory | candidate/confirm/delete/tombstone | 保留 | 产品核心，不得弱化 |
 | Memory | 截取消息 + 64D hash + placeholder reembed | 不移植 | 显式 candidate + 评测后真实 embedding |
-| Provider | registry/admission/circuit/affinity/rollback 多层 | 简化 | 一个 adapter + 一份 durable enabled state |
+| Provider | registry/admission/circuit/affinity/rollback 多层 | 简化 | 三协议闭集 adapter factory + provider/model 配置 + 确定性优先链 |
 | Cost | synthetic quota + product quota + trial + entitlement | 不移植 | usage + monthly hard cap |
 | Jobs | owner enumeration/batch token/ThreadLocal/legacy API | 简化 | minimal jobs + per-handler policy |
 | Singleton | replicas + preflight + advisory + datasource gate/watchdog | 迁移后删除 | Java/Go 共存期一个 advisory lease；Phase 6 与迁移模式一并删除 |
@@ -1446,7 +1495,7 @@ stop readiness / stop new turn admission
 交付：
 
 - 本文状态改为 implementation baseline；
-- 新 ADR：Go 单二进制、opaque session、Pi-inspired bounded turn、单 provider，并逐条声明下表中的 supersession；
+- 新 ADR：Go 单二进制、opaque session、Pi-inspired bounded turn、管理员 provider/model 优先链，并逐条声明下表中的 supersession；
 - 更新 `product-scope.yaml` technology/protocol active scope；
 - 同步更新 safety/provider/memory 相关 Catalog、contract 和旧断言测试；不得只写 ADR 让机器契约继续冲突；
 - API consumer matrix 与 OpenAPI 删除清单；
@@ -1485,7 +1534,7 @@ ADR-0006 的 Owner-only、本机单实例、数据类别/consent、MinIO/备份/
 - pgx pool 与 owner-bound transaction；
 - Java JWT verifier（仅迁移兼容）；
 - BCrypt、owner HMAC、`enc1/enc2` golden vectors；
-- OpenAI-compatible provider mock contract；
+- OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三套本地 mock contract；
 - fake/failure test fixture；
 - shutdown 与仅迁移期使用的 generation plane lease。
 
@@ -1818,7 +1867,7 @@ pprof 默认关闭，只允许本机/受控诊断启用；不得经 Caddy 公开
 
 - 一个显式 `Config`，启动时解析并完整校验；
 - Secret 只来自环境或仓库外私有文件；
-- provider enabled 时缺 credential/endpoint 必须启动失败或明确禁用 chat，不得半配置运行；
+- provider 保存为 enabled 时缺 credential、合法 base URL 或 enabled model 必须拒绝；无启用路由时明确禁用 chat，不得半配置运行；
 - 不建立动态通用 feature-flag 系统；
 - 只保留真实配置：DB、session、provider、budget、cost、concurrency、retention、export、observability；
 - defaults 必须服务当前 Owner dogfood，不复制 Beta/商业化配置；
@@ -1873,7 +1922,7 @@ pprof 默认关闭，只允许本机/受控诊断启用；不得经 Caddy 公开
 | G1 | Java 资源/事务基线与 benchmark workload | 可重复报告 | Java 架构优化 |
 | G2 | Go module、config、health、logging、metrics、shutdown、`api-migration/full` 硬隔离 | unit/check；migration 模式无法启动 provider/jobs | DB 业务 API |
 | G3 | pgx owner tx、RLS、crypto/Bcrypt/JWT migration verifier | DB/golden vectors | auth writer |
-| G4 | OpenAI-compatible provider adapter | mock contract | real provider shadow |
+| G4 | 三协议 provider adapter 与受限 HTTP client | 三套 mock contract | real provider shadow |
 | G5 | Companion Core、Context、Persona、Safety、Budget | unit/Golden Set | tools/memory write |
 | G6 | RealtimeHub 与 authenticated SSE | fan-out/reconnect/leak | ticket compatibility |
 | G7 | Relationship/Conversation/Message core API | OpenAPI/E2E | generation plane |
@@ -1892,7 +1941,7 @@ pprof 默认关闭，只允许本机/受控诊断启用；不得经 Caddy 公开
 
 ### 功能
 
-- Owner 核心旅程只依赖 Caddy、Go、PostgreSQL、当前一个获批模型 provider，以及当前批准的导出存储（generation cutover 默认 MinIO）；
+- Owner 核心旅程只依赖 Caddy、Go、PostgreSQL、管理员明确启用的 provider/model 链，以及当前批准的导出存储（generation cutover 默认 MinIO）；
 - Java runtime 可以关闭；
 - chat、cancel、snapshot、reconnect、memory、consent、auth、数据权利 E2E 通过；
 - persona/category/memory 的实际生效状态可解释；

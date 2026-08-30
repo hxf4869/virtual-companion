@@ -175,6 +175,8 @@
         <text>开通失败，请检查输入或权限（不会披露用户名是否存在）。</text>
       </view>
 
+      <ProviderRoutingPanel id="admin-sec-models" />
+
       <!-- DOGFOOD-05 (ADR-0006 §3.3): provider plan status card. UNKNOWN
            renders no quota, allowance or cost figure at all — never a zero
            or fabricated remaining amount. -->
@@ -796,6 +798,7 @@ import { canEnterAdminPage } from "@/domain/nav-guard";
 import type { PublicOpsCase } from "@/domain/ops-case-redact";
 import { createAuthenticatedTransport } from "@/api/transport";
 import InternalShell from "@/app/InternalShell.vue";
+import ProviderRoutingPanel from "./ProviderRoutingPanel.vue";
 import { useAuthStore } from "@/stores/auth";
 
 /** ADMIN-OPS: audit page size (the server clamps its own band). */
@@ -803,11 +806,12 @@ const AUDIT_PAGE_SIZE = 50;
 
 export default defineComponent({
   name: "AdminPage",
-  components: { InternalShell },
+  components: { InternalShell, ProviderRoutingPanel },
   setup() {
     // 内部分区导航（运行时锚点；不做第二套路由）。
     const SECTIONS = [
       { id: "accounts", label: "账户" },
+      { id: "models", label: "模型" },
       { id: "usage", label: "用量" },
       { id: "audit", label: "审计" },
       { id: "safety", label: "安全" },

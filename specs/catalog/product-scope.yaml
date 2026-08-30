@@ -12,7 +12,8 @@ alpha:
   personaTemplates:
   - gentle-listener
   publicRegistrationEnabled: false
-  realModelEndpointCount: 1
+  maxConfiguredModelProviders: 8
+  maxConfiguredModelRoutes: 32
   fakeAdapterRequired: true
   failureAdapterRequired: true
   paymentEnabled: false
@@ -39,10 +40,8 @@ technology:
   vector: PGVECTOR_0.8.5
   modelProtocols:
   - OPENAI_CHAT_COMPLETIONS
-  deferredModelProtocols:
-  - ANTHROPIC_MESSAGES
-  optionalProtocolSpikes:
   - OPENAI_RESPONSES
+  - ANTHROPIC_MESSAGES
 memory:
   autoSaveEnabled: false
   productionSemanticRecallClaimed: false

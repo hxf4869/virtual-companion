@@ -99,6 +99,15 @@ type GenerationAPI interface {
 	RecordGenerationFeedback(ctx context.Context, owner, generationID int64, kind, note string) (postgres.GenerationFeedback, error)
 }
 
+// ProviderAdminStore is the small platform-level configuration surface used by
+// ADMIN. It stays separate from CompanionStore because it is not owner data.
+type ProviderAdminStore interface {
+	ListProviderConfigs(ctx context.Context, actingAccountID int64) ([]postgres.ProviderConfig, error)
+	GetProviderCredential(ctx context.Context, actingAccountID int64, providerID string) (string, error)
+	SaveProviderConfig(ctx context.Context, actingAccountID int64, in postgres.SaveProvider) error
+	ReorderProviderModels(ctx context.Context, actingAccountID int64, order []postgres.RouteRef) error
+}
+
 // Core is the G7/G9/G10 command surface. companiond wires it only in full mode
 // against an isolation or cutover database. api-migration never registers
 // these routes (Phase 4 write hard-ban).
@@ -109,6 +118,7 @@ type Core struct {
 	Blobs     BlobStore
 	Limiter   *auth.Limiter
 	Turns     GenerationAPI
+	Providers ProviderAdminStore
 	Cancels   *jobs.Cancels
 	Hub       *realtime.Hub
 }
@@ -162,6 +172,10 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/auth/password", s.handleChangePassword)
 	s.mux.HandleFunc("POST /api/v1/auth/reauth", s.handleReauth)
 	s.mux.HandleFunc("DELETE /api/v1/auth/account", s.handleDeleteAccount)
+	s.mux.HandleFunc("GET /api/v1/admin/providers", s.handleListProviders)
+	s.mux.HandleFunc("PUT /api/v1/admin/providers/{providerId}", s.handleSaveProvider)
+	s.mux.HandleFunc("POST /api/v1/admin/providers/{providerId}/models/discover", s.handleDiscoverProviderModels)
+	s.mux.HandleFunc("PUT /api/v1/admin/model-routing-order", s.handleReorderProviderModels)
 	s.registerGeneration()
 }
 

@@ -12,7 +12,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/provider/openai"
 )
 
-func TestConnectTimeout(t *testing.T) {
+func TestConnectPhaseTimeoutAfterTCPConnectIsOutcomeUnknown(t *testing.T) {
 	t.Parallel()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -43,7 +43,10 @@ func TestConnectTimeout(t *testing.T) {
 	if pe.Phase != companion.TimeoutConnect {
 		t.Fatalf("phase %s", pe.Phase)
 	}
-	if pe.Delivery != companion.DeliveryNotSent {
+	// net.Listen leaves the TCP accept queue open, so the client can connect
+	// and write the request before timing out on response headers. That is not
+	// safe to replay even though the server handler never accepted the socket.
+	if pe.Delivery != companion.DeliveryUnknown {
 		t.Fatalf("delivery %s", pe.Delivery)
 	}
 }

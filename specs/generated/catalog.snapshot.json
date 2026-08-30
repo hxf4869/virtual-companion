@@ -922,7 +922,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 46,
+          "KEEP": 50,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -2032,7 +2032,63 @@
             "method": "GET",
             "operationId": "providerRegistry",
             "path": "/api/v1/auth/admin/provider-registry",
-            "replacementOrImpact": "Multi-provider registry is RETIRE. Go v1 has one durable enabled/disabled provider."
+            "replacementOrImpact": "Legacy Java deployment-registry projection is RETIRE. Go v1 replaces it with the administrator-owned provider/model configuration and global route order below."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listModelProviders",
+            "path": "/api/v1/admin/providers",
+            "replacementOrImpact": "Keep the secret-free ADMIN configuration view for multiple providers and models."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "saveModelProvider",
+            "path": "/api/v1/admin/providers/{providerId}",
+            "replacementOrImpact": "Keep atomic provider/model snapshot save; credentials are write-only and encrypted."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "discoverProviderModels",
+            "path": "/api/v1/admin/providers/{providerId}/models/discover",
+            "replacementOrImpact": "Keep explicit bounded model-catalog discovery; results remain unsaved draft candidates."
+          },
+          {
+            "currentH5Callers": [
+              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "reorderModelRoutes",
+            "path": "/api/v1/admin/model-routing-order",
+            "replacementOrImpact": "Keep the complete deterministic global provider/model priority chain."
           },
           {
             "currentH5Callers": [
@@ -2291,7 +2347,7 @@
           }
         ]
       },
-      "sha256": "ba0d7401451cd570002fb9dc3a58c0340ad9c60411604b00f4e8ec7006379b78"
+      "sha256": "9a9d7d8624c0b39f86176c364854dea526833aa9e1a5550a03ceaa7f6a33ab08"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2529,19 +2585,17 @@
             "streamTransport": "SSE"
           },
           {
-            "alphaAllowed": false,
+            "alphaAllowed": true,
             "code": "OPENAI_RESPONSES",
             "defaultPath": "/v1/responses",
             "external": true,
             "order": 1,
-            "spikeOnly": true,
             "streamTransport": "SSE"
           },
           {
-            "alphaAllowed": false,
+            "alphaAllowed": true,
             "code": "ANTHROPIC_MESSAGES",
             "defaultPath": "/v1/messages",
-            "deferred": true,
             "external": true,
             "order": 2,
             "streamTransport": "SSE"
@@ -2567,7 +2621,7 @@
         ],
         "schemaVersion": 1
       },
-      "sha256": "7e3e33b80c90c66cae5eea76a8547c59e02af121531bedb5a9898d7059ef3044"
+      "sha256": "62180516e8c0136b8661f4ee9e9d1c877f70a890da8da8b58d4336b477217b23"
     },
     "persona-templates.yaml": {
       "document": {
@@ -2631,13 +2685,14 @@
           "failureAdapterRequired": true,
           "fakeAdapterRequired": true,
           "imageEnabled": false,
+          "maxConfiguredModelProviders": 8,
+          "maxConfiguredModelRoutes": 32,
           "modelCandidatesRequireConfirmation": true,
           "paymentEnabled": false,
           "personaTemplates": [
             "gentle-listener"
           ],
           "publicRegistrationEnabled": false,
-          "realModelEndpointCount": 1,
           "romanceModeEnabled": false,
           "transport": "HTTP_SSE",
           "voiceEnabled": false,
@@ -2706,17 +2761,13 @@
         "technology": {
           "currentRuntimeUntilCutover": "JAVA_SPRING_BOOT",
           "database": "POSTGRESQL_18",
-          "deferredModelProtocols": [
-            "ANTHROPIC_MESSAGES"
-          ],
           "goBaseline": "1.26",
           "javaBaseline": "25-LTS",
           "javaFallback": "21-LTS_BY_ADR_ONLY",
           "modelProtocols": [
-            "OPENAI_CHAT_COMPLETIONS"
-          ],
-          "optionalProtocolSpikes": [
-            "OPENAI_RESPONSES"
+            "OPENAI_CHAT_COMPLETIONS",
+            "OPENAI_RESPONSES",
+            "ANTHROPIC_MESSAGES"
           ],
           "springAiLine": "2.0.x",
           "springBootLine": "4.1.x",
@@ -2724,7 +2775,7 @@
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "b0287873424181652f75e7370523eaa7ce4c4b01de636a62dae869e299b53243"
+      "sha256": "f1eb963f8f487937167d507870add8b6eef5c53a6e1edc0ddeb7a80cc12d7de7"
     },
     "provider-attempt-statuses.yaml": {
       "document": {

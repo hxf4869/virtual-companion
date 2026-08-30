@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
+	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/safety"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/turn"
@@ -42,12 +43,14 @@ func (l *Loop) handleGeneration(ctx context.Context, c postgres.JobClaim, runID 
 	if budget.MaxAttempts < 1 {
 		budget.MaxAttempts = 1
 	}
-	coord := &turn.Coordinator{
-		Store:    l.store,
-		Provider: l.provider,
-		Policy:   safety.New(),
-		Log:      l.log,
-		Hub:      l.hub,
+	routes, err := l.resolveGenerationRoutes(ctx)
+	if err != nil {
+		l.log.Error("provider route read failed",
+			slog.String("operation", "provider_route_read"),
+			slog.String("outcome", "error"),
+			slog.String("error_code", "PROVIDER_CONFIG_UNAVAILABLE"),
+		)
+		return l.terminal(ctx, c, companion.PhaseFailed, "PROVIDER_CONFIG_UNAVAILABLE")
 	}
 	cmd := turn.Command{
 		TurnID:                  fmtInt(c.RefID),
@@ -65,11 +68,52 @@ func (l *Loop) handleGeneration(ctx context.Context, c postgres.JobClaim, runID 
 	}
 
 	var last turn.Result
-	for attempt := 1; attempt <= budget.MaxAttempts; attempt++ {
-		if l.provider == nil {
+	attemptLimit := budget.MaxAttempts
+	if len(routes) > 0 && len(routes) < attemptLimit {
+		attemptLimit = len(routes)
+	}
+	for attempt := 1; attempt <= attemptLimit; attempt++ {
+		cmd.AttemptNo = attempt
+		current := l.provider
+		dynamic := false
+		if len(routes) > 0 {
+			route := routes[attempt-1]
+			if l.providerFactory == nil {
+				return l.terminal(ctx, c, companion.PhaseFailed, "PROVIDER_CONFIG_UNAVAILABLE")
+			}
+			current, err = l.providerFactory(modelprovider.Route{
+				ProviderID: route.ProviderID, SupplierName: route.SupplierName,
+				Protocol: route.Protocol, BaseURL: route.BaseURL,
+				Credential: route.Credential, ModelID: route.ModelID,
+				MaxOutputTokens: route.MaxOutputTokens, Priority: route.Priority,
+			})
+			if err != nil {
+				l.log.Error("provider route invalid",
+					slog.String("operation", "provider_route_build"),
+					slog.String("outcome", "error"),
+					slog.String("error_code", "PROVIDER_CONFIG_INVALID"),
+				)
+				return l.terminal(ctx, c, companion.PhaseFailed, "PROVIDER_CONFIG_INVALID")
+			}
+			dynamic = true
+			cmd.ProviderID = route.ProviderID
+			cmd.SupplierName = route.SupplierName
+			cmd.ModelID = route.ModelID
+			cmd.ProviderContractVersion = "go-v1-" + route.Protocol
+		}
+		if current == nil {
 			return l.terminal(ctx, c, companion.PhaseFailed, "PROVIDER_DISABLED")
 		}
+		coord := &turn.Coordinator{
+			Store: l.store, Provider: current, Policy: safety.New(),
+			Log: l.log, Hub: l.hub,
+		}
 		last = coord.Run(callCtx, cmd)
+		if dynamic {
+			if closer, ok := current.(interface{ Close() }); ok {
+				closer.Close()
+			}
+		}
 		if last.PersistRetry {
 			return l.retryFinalize(ctx, c, last)
 		}
@@ -85,7 +129,22 @@ func (l *Loop) handleGeneration(ctx context.Context, c postgres.JobClaim, runID 
 	if last.PersistRetry {
 		return l.retryFinalize(ctx, c, last)
 	}
+	if last.RetryAllowed {
+		return l.terminalAttempt(ctx, c, last)
+	}
 	return nil
+}
+
+type routeStore interface {
+	ResolveProviderRoutes(ctx context.Context) ([]postgres.ProviderRoute, error)
+}
+
+func (l *Loop) resolveGenerationRoutes(ctx context.Context) ([]postgres.ProviderRoute, error) {
+	store, ok := l.store.(routeStore)
+	if !ok {
+		return nil, nil
+	}
+	return store.ResolveProviderRoutes(ctx)
 }
 
 func (l *Loop) retryFinalize(ctx context.Context, c postgres.JobClaim, last turn.Result) error {
@@ -132,6 +191,25 @@ func (l *Loop) terminal(ctx context.Context, c postgres.JobClaim, phase companio
 		case companion.PhaseCancelled:
 			l.hub.Cancelled(fmtInt(c.RefID))
 		case companion.PhaseBlocked:
+			l.hub.Blocked(fmtInt(c.RefID))
+		default:
+			l.hub.Failed(fmtInt(c.RefID))
+		}
+	}
+	return err
+}
+
+func (l *Loop) terminalAttempt(ctx context.Context, c postgres.JobClaim, last turn.Result) error {
+	err := l.store.TerminalizeGeneration(ctx, turn.TerminalCommand{
+		OwnerID: c.OwnerID, TurnID: fmtInt(c.RefID), AttemptID: last.Attempt.AttemptID,
+		JobID: c.JobID, ClaimToken: c.Token, ClaimFence: c.Fence,
+		Phase: last.Phase, Reason: last.SafetyCode,
+	})
+	if l.hub != nil {
+		switch last.Public {
+		case companion.EventCancelled:
+			l.hub.Cancelled(fmtInt(c.RefID))
+		case companion.EventBlocked:
 			l.hub.Blocked(fmtInt(c.RefID))
 		default:
 			l.hub.Failed(fmtInt(c.RefID))

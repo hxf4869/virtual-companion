@@ -10,15 +10,13 @@ entries:
 - code: OPENAI_RESPONSES
   order: 1
   external: true
-  alphaAllowed: false
-  spikeOnly: true
+  alphaAllowed: true
   defaultPath: /v1/responses
   streamTransport: SSE
 - code: ANTHROPIC_MESSAGES
   order: 2
   external: true
-  alphaAllowed: false
-  deferred: true
+  alphaAllowed: true
   defaultPath: /v1/messages
   streamTransport: SSE
 - code: FAKE

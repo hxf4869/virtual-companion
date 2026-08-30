@@ -87,6 +87,10 @@
     "grantTrial",
     "quotaReconciliation",
     "providerRegistry",
+    "listModelProviders",
+    "saveModelProvider",
+    "discoverProviderModels",
+    "reorderModelRoutes",
     "getTrialStatus",
     "recordSurvey",
     "listMySurveys",
@@ -110,6 +114,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "7bb5f9f7efd36108ab0acc2eb2ccafd31c819d0239eee93f2ad4738c10473c9a"
+    "sha256": "ee8ed8adb072024ffe97bea0f0929f10df4a53e3827bc76d8d4bd0869ffed94d"
   }
 }

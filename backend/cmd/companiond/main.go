@@ -12,6 +12,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/observability"
+	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/provider/openai"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
@@ -76,6 +77,15 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 	hub := realtime.New()
 	loop := jobs.NewLoop(log, jobs.PolicyFrom(cfg), app.TurnBudget(cfg))
 	loop.Use(nil, nil, hub, nil)
+	factory := modelprovider.Factory{
+		ConnectTimeout:    cfg.Provider.ConnectTimeout,
+		FirstTokenTimeout: cfg.Provider.FirstTokenTimeout,
+		TotalTimeout:      cfg.Provider.TotalTimeout,
+		MaxResponseBytes:  cfg.Provider.MaxResponseBytes,
+		Temperature:       cfg.Provider.Temperature,
+		AllowLoopbackHTTP: cfg.Provider.AllowLoopbackHTTP,
+	}
+	loop.UseProviderFactory(factory.Build)
 	if cfg.Provider.Enabled {
 		ad, err := openai.New(openai.Config{
 			Endpoint:          cfg.Provider.Endpoint,

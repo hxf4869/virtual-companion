@@ -14,6 +14,7 @@ import (
 const (
 	chatCompletionsPath      = "/v1/chat/completions"
 	defaultMaxTokens         = 8192
+	hardMaxTokens            = 262144
 	defaultTemperature       = 1.0
 	minTemperature           = 0.0
 	maxTemperature           = 2.0
@@ -81,8 +82,8 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Model) == "" {
 		return fmt.Errorf("provider model is required")
 	}
-	if c.MaxTokens < 1 || c.MaxTokens > defaultMaxTokens {
-		return fmt.Errorf("provider maxTokens must be between 1 and %d", defaultMaxTokens)
+	if c.MaxTokens < 1 || c.MaxTokens > hardMaxTokens {
+		return fmt.Errorf("provider maxTokens must be between 1 and %d", hardMaxTokens)
 	}
 	if math.IsNaN(c.Temperature) || math.IsInf(c.Temperature, 0) ||
 		c.Temperature < minTemperature || c.Temperature > maxTemperature {

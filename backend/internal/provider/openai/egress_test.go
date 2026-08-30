@@ -3,11 +3,45 @@ package openai
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 )
+
+func TestResponseHeaderTimeoutAfterWriteIsNotReplayable(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(120 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	a, err := New(Config{
+		Endpoint:    strings.TrimSuffix(srv.URL, "/") + "/v1/chat/completions",
+		BearerToken: "offline-token-sentinel", Model: "offline-model-sentinel",
+		ConnectTimeout: 40 * time.Millisecond, FirstTokenTimeout: time.Second,
+		TotalTimeout: time.Second, MaxResponseBytes: 1024,
+		AllowLoopbackHTTP: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	_, err = a.Stream(context.Background(), companion.ModelRequest{
+		Messages: []companion.Message{{Role: companion.RoleUser, Content: "hi"}},
+		Stream:   true,
+	}, nil)
+	pe := companion.AsError(err)
+	if pe == nil || pe.Code != companion.CodeTimeout || pe.Phase != companion.TimeoutConnect ||
+		pe.Delivery != companion.DeliveryUnknown {
+		t.Fatalf("timeout classification: %+v err=%v", pe, err)
+	}
+}
 
 func TestStreamFailsClosedOnBlockedDNS(t *testing.T) {
 	t.Parallel()

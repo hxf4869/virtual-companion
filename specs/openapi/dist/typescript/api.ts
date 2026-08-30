@@ -591,6 +591,68 @@ export interface QuotaReconciliation {
   failedWithoutRelease: string
 }
 
+export interface AdminProviderModel {
+  modelId: string
+  displayName: string
+  contextWindowTokens?: string
+  maxOutputTokens: string
+  priority: string
+  state: string
+  updatedAt?: string
+}
+
+export interface AdminProviderModelInput {
+  modelId: string
+  displayName: string
+  contextWindowTokens?: string
+  maxOutputTokens: string
+  state: string
+}
+
+export interface AdminModelProvider {
+  providerId: string
+  displayName: string
+  protocol: string
+  baseUrl: string
+  credentialConfigured: string
+  state: string
+  updatedAt?: string
+  models: string
+}
+
+export interface AdminModelProviderSaveRequest {
+  displayName: string
+  protocol: string
+  baseUrl: string
+  credential?: string
+  state: string
+  models: string
+}
+
+export interface ModelDiscoveryRequest {
+  protocol: string
+  baseUrl: string
+  credential?: string
+}
+
+export interface DiscoveredProviderModel {
+  modelId: string
+  displayName: string
+}
+
+export interface ModelRouteRef {
+  providerId: string
+  modelId: string
+}
+
+export interface ModelRoutingOrderRequest {
+  routes: string
+}
+
+export interface AdminProviderMutationResponse {
+  ok: string
+}
+
 export interface ProviderRegistryItem {
   providerId: string
   protocol: string
@@ -865,6 +927,10 @@ export interface VirtualCompanionApiClient {
   grantTrial(): Promise<TrialGrantResponse>
   quotaReconciliation(): Promise<QuotaReconciliation>
   providerRegistry(): Promise<void>
+  listModelProviders(): Promise<void>
+  saveModelProvider(): Promise<AdminProviderMutationResponse>
+  discoverProviderModels(): Promise<void>
+  reorderModelRoutes(): Promise<AdminProviderMutationResponse>
   getTrialStatus(): Promise<TrialStatus>
   recordSurvey(): Promise<SurveyAccepted>
   listMySurveys(): Promise<void>

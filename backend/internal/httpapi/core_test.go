@@ -499,8 +499,9 @@ func newCoreServer(t *testing.T, mode string, store CompanionStore) *Server {
 		t.Fatal(err)
 	}
 	sessions, _ := store.(auth.Sessions)
+	providers, _ := store.(ProviderAdminStore)
 	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
-		Store: store, Sessions: sessions, Passwords: pw, Limiter: auth.NewLimiter(),
+		Store: store, Sessions: sessions, Passwords: pw, Limiter: auth.NewLimiter(), Providers: providers,
 	})
 }
 

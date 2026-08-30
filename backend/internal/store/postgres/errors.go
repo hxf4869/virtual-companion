@@ -81,6 +81,8 @@ func mapRaise(msg string) error {
 		return ErrConflict
 	case strings.Contains(msg, "user content is required"):
 		return ErrInvalid
+	case strings.Contains(msg, "go_admin_provider"):
+		return ErrInvalid
 	default:
 		return errStore
 	}

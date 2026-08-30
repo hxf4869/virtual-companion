@@ -37,6 +37,7 @@ type Command struct {
 	ProviderContractVersion string
 	ReservedCost            int64
 	MonthlyCostLimit        int64
+	AttemptNo               int
 }
 
 // Result is the process-local turn outcome. Blocked/failed/cancelled never
@@ -218,7 +219,12 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		return c.fail(ctx, cmd, prep.AttemptID, companion.PhaseFailed, "OUTCOME_WRITE", &outcome, plan.Trace)
 	}
 
-	retry := companion.AllowNewAttempt(prep.Budget, 1, stream.Status, stream.ProviderErr)
+	attemptNo := cmd.AttemptNo
+	if attemptNo < 1 {
+		attemptNo = 1
+	}
+	retry := len(stream.Published) == 0 &&
+		companion.AllowNewAttempt(prep.Budget, attemptNo, stream.Status, stream.ProviderErr)
 
 	if stream.Withdraw || !stream.Persistable || !stream.Safety.Allow {
 		phase := companion.PhaseBlocked

@@ -260,6 +260,18 @@ public interface VirtualCompanionApi {
     /** The persisted deployment registry (QUOTA-PERSIST, ADMIN only). */
     Void providerRegistry();
 
+    /** List administrator-configured model providers and routes. */
+    Void listModelProviders();
+
+    /** Create or replace one provider configuration. */
+    AdminProviderMutationResponse saveModelProvider();
+
+    /** Read a provider's standard model catalog. */
+    Void discoverProviderModels();
+
+    /** Replace the complete global model route order. */
+    AdminProviderMutationResponse reorderModelRoutes();
+
     /** The caller's live simulated trial (ENT-TRIAL, FR-ENT-005). */
     TrialStatus getTrialStatus();
 

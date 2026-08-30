@@ -169,10 +169,16 @@ def validate(root: Path) -> list[str]:
         errors.append("product-scope.yaml: technology.targetRuntime must be GO_COMPANIOND")
     if tech.get("currentRuntimeUntilCutover") != "JAVA_SPRING_BOOT":
         errors.append("product-scope.yaml: technology.currentRuntimeUntilCutover must be JAVA_SPRING_BOOT")
-    if tech.get("modelProtocols") != ["OPENAI_CHAT_COMPLETIONS"]:
-        errors.append("product-scope.yaml: technology.modelProtocols must be exactly [OPENAI_CHAT_COMPLETIONS]")
-    if "ANTHROPIC_MESSAGES" not in (tech.get("deferredModelProtocols") or []):
-        errors.append("product-scope.yaml: technology.deferredModelProtocols must include ANTHROPIC_MESSAGES")
+    live_model_protocols = [
+        "OPENAI_CHAT_COMPLETIONS",
+        "OPENAI_RESPONSES",
+        "ANTHROPIC_MESSAGES",
+    ]
+    if tech.get("modelProtocols") != live_model_protocols:
+        errors.append(
+            "product-scope.yaml: technology.modelProtocols must be exactly "
+            f"{live_model_protocols}"
+        )
     memory_scope = product.get("memory", {})
     if memory_scope.get("autoSaveEnabled") is not False:
         errors.append("product-scope.yaml: memory.autoSaveEnabled must be false")
@@ -182,10 +188,9 @@ def validate(root: Path) -> list[str]:
         errors.append("product-scope.yaml: safety.remoteClassifier must be DEFER")
     protocols_doc = load_yaml(cdir / "model-protocols.yaml")
     by_protocol = {str(e.get("code")): e for e in protocols_doc.get("entries", [])}
-    if by_protocol.get("OPENAI_CHAT_COMPLETIONS", {}).get("alphaAllowed") is not True:
-        errors.append("model-protocols.yaml: OPENAI_CHAT_COMPLETIONS alphaAllowed must be true")
-    if by_protocol.get("ANTHROPIC_MESSAGES", {}).get("alphaAllowed") is not False:
-        errors.append("model-protocols.yaml: ANTHROPIC_MESSAGES alphaAllowed must be false (Go v1 DEFER)")
+    for protocol in live_model_protocols:
+        if by_protocol.get(protocol, {}).get("alphaAllowed") is not True:
+            errors.append(f"model-protocols.yaml: {protocol} alphaAllowed must be true")
     if candidate.get("goV1", {}).get("autoSave") is not False:
         errors.append("memory-candidate-statuses.yaml: goV1.autoSave must be false")
     if candidate.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
@@ -196,10 +201,14 @@ def validate(root: Path) -> list[str]:
     if safety_contract.get("goV1", {}).get("networkCallsOnInputRollingFinal") is not False:
         errors.append("safety-fail-closed-contract.yaml: goV1.networkCallsOnInputRollingFinal must be false")
     model_contract = load_yaml(root / "specs/contracts/model-protocol-contract.yaml")
-    if model_contract.get("protocolFamilies", {}).get("ANTHROPIC_MESSAGES", {}).get("alphaAllowed") is not False:
-        errors.append("model-protocol-contract.yaml: ANTHROPIC_MESSAGES alphaAllowed must be false")
-    if model_contract.get("goV1", {}).get("liveProtocols") != ["OPENAI_CHAT_COMPLETIONS"]:
-        errors.append("model-protocol-contract.yaml: goV1.liveProtocols must be exactly [OPENAI_CHAT_COMPLETIONS]")
+    for protocol in live_model_protocols:
+        if model_contract.get("protocolFamilies", {}).get(protocol, {}).get("alphaAllowed") is not True:
+            errors.append(f"model-protocol-contract.yaml: {protocol} alphaAllowed must be true")
+    if model_contract.get("goV1", {}).get("liveProtocols") != live_model_protocols:
+        errors.append(
+            "model-protocol-contract.yaml: goV1.liveProtocols must be exactly "
+            f"{live_model_protocols}"
+        )
     memory_contract = load_yaml(root / "specs/contracts/memory-recall-contract.yaml")
     if memory_contract.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
         errors.append("memory-recall-contract.yaml: goV1.productionSemanticRecallClaimed must be false")

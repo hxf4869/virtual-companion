@@ -2833,6 +2833,201 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/providers:
+    get:
+      operationId: listModelProviders
+      summary: List administrator-configured model providers and routes
+      description: Go v1 ADMIN surface. Returns every configured provider and model route, including global priority and whether
+        a credential exists. Credential plaintext, ciphertext, prefixes and fingerprints are never returned.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Secret-free provider configuration
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 8
+                items:
+                  $ref: '#/components/schemas/AdminModelProvider'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/providers/{providerId}:
+    put:
+      operationId: saveModelProvider
+      summary: Create or replace one provider configuration
+      description: Go v1 ADMIN surface requiring fresh reauthentication and CSRF. The body is the complete model snapshot
+        for this provider; previously stored models omitted from the body are removed from configuration. Historical attempts
+        retain their provider/model text. credential is required for a new provider and optional when updating; omission preserves
+        the encrypted value. The response never contains a secret.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ProviderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminModelProviderSaveRequest'
+      responses:
+        '200':
+          description: Provider snapshot saved atomically
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProviderMutationResponse'
+        '400':
+          description: Invalid provider, URL, protocol, model list or credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ADMIN role, CSRF or fresh reauthentication requirement failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/providers/{providerId}/models/discover:
+    post:
+      operationId: discoverProviderModels
+      summary: Read a provider's standard model catalog
+      description: 'Explicit Go v1 ADMIN action requiring fresh reauthentication and CSRF. Performs one bounded GET of the
+        provider''s /v1/models endpoint. A supplied write-only credential is used for this request; when omitted, the encrypted
+        credential already stored for providerId is decrypted only in Go process memory. Results are candidates only: this
+        operation does not save models, retry, cache, health-score or alter routing.'
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ProviderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelDiscoveryRequest'
+      responses:
+        '200':
+          description: Normalized model candidates, at most 100
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: '#/components/schemas/DiscoveredProviderModel'
+        '400':
+          description: Invalid provider id, protocol or base URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ADMIN role, CSRF or fresh reauthentication requirement failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: No saved provider exists when credential is omitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: Provider catalog could not be read or validated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/model-routing-order:
+    put:
+      operationId: reorderModelRoutes
+      summary: Replace the complete global model route order
+      description: Go v1 ADMIN surface requiring fresh reauthentication and CSRF. routes must contain every currently enabled
+        provider/model pair exactly once. Array order becomes deterministic global priority. Each generation freezes only
+        the first two eligible routes and never observes mid-turn edits.
+      security:
+      - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelRoutingOrderRequest'
+      responses:
+        '200':
+          description: Global route order saved atomically
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProviderMutationResponse'
+        '400':
+          description: Route list is incomplete, duplicated or contains a disabled route
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ADMIN role, CSRF or fresh reauthentication requirement failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/trial-status:
     get:
       operationId: getTrialStatus
@@ -3597,6 +3792,12 @@ components:
       bearerFormat: JWT
       description: 'Java runtime until Go cutover: HS256 JWT access token. Go v1 (ADR-0007, Phase 5) replaces this scheme
         with an opaque HttpOnly vc_session cookie in the same H5 transport slice; JWT and opaque issuers must not coexist.'
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: vc_session
+      description: Go v1 opaque HttpOnly session cookie. State-changing requests also require the existing CSRF double-submit
+        header.
   schemas:
     ErrorEnvelope:
       type: object
@@ -5508,6 +5709,225 @@ components:
         failedWithoutRelease:
           type: integer
           description: Anomaly — failed terminals with attempts but no release.
+    ModelProviderProtocol:
+      type: string
+      description: Closed Go v1 model-provider protocol set; custom runtime plugins are not supported.
+      enum:
+      - OPENAI_CHAT_COMPLETIONS
+      - OPENAI_RESPONSES
+      - ANTHROPIC_MESSAGES
+    ModelProviderState:
+      type: string
+      enum:
+      - ENABLED
+      - DISABLED
+    AdminProviderModel:
+      type: object
+      additionalProperties: false
+      required:
+      - modelId
+      - displayName
+      - maxOutputTokens
+      - priority
+      - state
+      properties:
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        contextWindowTokens:
+          type: integer
+          minimum: 1
+          maximum: 2000000
+        maxOutputTokens:
+          type: integer
+          minimum: 1
+          maximum: 262144
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 32
+          description: Global priority across every provider/model pair; smaller values run first.
+        state:
+          $ref: '#/components/schemas/ModelProviderState'
+        updatedAt:
+          type: string
+          format: date-time
+    AdminProviderModelInput:
+      type: object
+      additionalProperties: false
+      required:
+      - modelId
+      - displayName
+      - maxOutputTokens
+      - state
+      properties:
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        contextWindowTokens:
+          type: integer
+          minimum: 1
+          maximum: 2000000
+        maxOutputTokens:
+          type: integer
+          minimum: 1
+          maximum: 262144
+        state:
+          $ref: '#/components/schemas/ModelProviderState'
+    AdminModelProvider:
+      type: object
+      additionalProperties: false
+      description: Secret-free ADMIN view of one provider and all of its model routes.
+      required:
+      - providerId
+      - displayName
+      - protocol
+      - baseUrl
+      - credentialConfigured
+      - state
+      - models
+      properties:
+        providerId:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,63}$
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 80
+        protocol:
+          $ref: '#/components/schemas/ModelProviderProtocol'
+        baseUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: HTTPS origin/prefix or an address ending in /v1; never a terminal protocol path.
+        credentialConfigured:
+          type: boolean
+          description: Presence only. No credential material, prefix, ciphertext or fingerprint is exposed.
+        state:
+          $ref: '#/components/schemas/ModelProviderState'
+        updatedAt:
+          type: string
+          format: date-time
+        models:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/AdminProviderModel'
+    AdminModelProviderSaveRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - displayName
+      - protocol
+      - baseUrl
+      - state
+      - models
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 80
+        protocol:
+          $ref: '#/components/schemas/ModelProviderProtocol'
+        baseUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+        credential:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          writeOnly: true
+          description: Required when creating; omission on update preserves the encrypted credential.
+        state:
+          $ref: '#/components/schemas/ModelProviderState'
+        models:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/AdminProviderModelInput'
+    ModelDiscoveryRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - protocol
+      - baseUrl
+      properties:
+        protocol:
+          $ref: '#/components/schemas/ModelProviderProtocol'
+        baseUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+        credential:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          writeOnly: true
+          description: Optional only when providerId already has an encrypted credential.
+    DiscoveredProviderModel:
+      type: object
+      additionalProperties: false
+      required:
+      - modelId
+      - displayName
+      properties:
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+    ModelRouteRef:
+      type: object
+      additionalProperties: false
+      required:
+      - providerId
+      - modelId
+      properties:
+        providerId:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,63}$
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ModelRoutingOrderRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - routes
+      properties:
+        routes:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ModelRouteRef'
+    AdminProviderMutationResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+          const: true
     ProviderRegistryItem:
       type: object
       description: One persisted deployment registry row (V4, §12.4).
@@ -6175,6 +6595,14 @@ components:
           type: string
           description: ACTIVE at creation
   parameters:
+    ProviderId:
+      name: providerId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^[a-z][a-z0-9-]{0,63}$
+      description: Stable administrator-defined provider identifier
     AccountId:
       name: accountId
       in: path

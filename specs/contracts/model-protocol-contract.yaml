@@ -7,20 +7,18 @@ protocolFamilies:
     alphaAllowed: true
   ANTHROPIC_MESSAGES:
     endpointShape: /v1/messages
-    alphaAllowed: false
-    deferred: true
+    alphaAllowed: true
   OPENAI_RESPONSES:
     endpointShape: /v1/responses
-    alphaAllowed: false
-    spikeOnly: true
-alphaLiveRequirement: exactly one approved live deployment using OPENAI_CHAT_COMPLETIONS
-offlineContractRequirement: the OpenAI Chat Completions adapter passes local mock-server tests
+    alphaAllowed: true
+alphaLiveRequirement: at least one admin-enabled provider/model route; deterministic global priority order; at most one safe fallback
+offlineContractRequirement: every live protocol adapter passes local mock-server tests
 javaRuntimeUntilCutover:
-  anthropicMessagesAdapter: retained_for_java_offline_tests_not_go_v1_live
+  anthropicMessagesAdapter: java_era_offline_only_go_v1_uses_independent_adapter
 goV1:
   liveProtocols:
     - OPENAI_CHAT_COMPLETIONS
-  deferredProtocols:
+    - OPENAI_RESPONSES
     - ANTHROPIC_MESSAGES
   testOnlyProtocols:
     - FAKE
@@ -33,6 +31,18 @@ goV1:
       - credential_explicitly_invalid
       - owner_operation
     consecutiveFailureDurableCircuit: RETIRE
+  routing:
+    scope: GLOBAL_CHAT_CHAIN
+    selection: priority_ascending
+    maxAttempts: 2
+    fallbackAllowedOnlyWhen:
+      - no_public_delta
+      - connect_failure_delivery_not_sent
+    forbidden:
+      - weighted_random
+      - session_affinity
+      - automatic_circuit_breaker
+      - health_score_routing
 javaRuntimeUntilCutoverProviderDisable:
   consecutiveFailureDurableCircuit: ADR-0006_section_3_4
 

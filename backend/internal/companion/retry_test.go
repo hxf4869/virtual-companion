@@ -5,11 +5,14 @@ import (
 	"time"
 )
 
-func TestRetryOnlyForUnsentConnectTimeout(t *testing.T) {
+func TestRetryOnlyForUnsentConnectFailure(t *testing.T) {
 	t.Parallel()
 	b := TurnBudget{MaxAttempts: 2, MaxOutputTokens: 16, ConnectTimeout: time.Second}
 	if !AllowNewAttempt(b, 1, AttemptTimedOut, Timeout(TimeoutConnect, DeliveryNotSent)) {
 		t.Fatal("unsent connect may retry once")
+	}
+	if !AllowNewAttempt(b, 1, AttemptFailed, Disconnected(DeliveryNotSent)) {
+		t.Fatal("unsent dial failure may retry once")
 	}
 	if AllowNewAttempt(b, 2, AttemptTimedOut, Timeout(TimeoutConnect, DeliveryNotSent)) {
 		t.Fatal("must not exceed maxAttempts")

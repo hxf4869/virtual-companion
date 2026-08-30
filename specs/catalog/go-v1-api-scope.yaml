@@ -9,7 +9,7 @@ note: 'Phase 0 API consumer matrix. KEEP requires core-outcome, current H5 produ
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 46
+  KEEP: 50
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -832,7 +832,48 @@ operations:
   - frontend/src/pages/admin/admin.vue
   decision: RETIRE
   h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Multi-provider registry is RETIRE. Go v1 has one durable enabled/disabled provider.
+  replacementOrImpact: Legacy Java deployment-registry projection is RETIRE. Go v1 replaces it with
+    the administrator-owned provider/model configuration and global route order below.
+- operationId: listModelProviders
+  method: GET
+  path: /api/v1/admin/providers
+  currentH5Callers:
+  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  decision: KEEP
+  keepBecause:
+  - h5-caller
+  - owner-instruction
+  replacementOrImpact: Keep the secret-free ADMIN configuration view for multiple providers and models.
+- operationId: saveModelProvider
+  method: PUT
+  path: /api/v1/admin/providers/{providerId}
+  currentH5Callers:
+  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  decision: KEEP
+  keepBecause:
+  - h5-caller
+  - owner-instruction
+  replacementOrImpact: Keep atomic provider/model snapshot save; credentials are write-only and encrypted.
+- operationId: discoverProviderModels
+  method: POST
+  path: /api/v1/admin/providers/{providerId}/models/discover
+  currentH5Callers:
+  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  decision: KEEP
+  keepBecause:
+  - h5-caller
+  - owner-instruction
+  replacementOrImpact: Keep explicit bounded model-catalog discovery; results remain unsaved draft candidates.
+- operationId: reorderModelRoutes
+  method: PUT
+  path: /api/v1/admin/model-routing-order
+  currentH5Callers:
+  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  decision: KEEP
+  keepBecause:
+  - h5-caller
+  - owner-instruction
+  replacementOrImpact: Keep the complete deterministic global provider/model priority chain.
 - operationId: getTrialStatus
   method: GET
   path: /api/v1/trial-status

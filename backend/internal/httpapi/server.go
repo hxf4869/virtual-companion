@@ -264,7 +264,17 @@ func operation(path string) string {
 		return "auth_password"
 	case "/api/v1/auth/reauth":
 		return "auth_reauth"
+	case "/api/v1/admin/providers":
+		return "admin_providers"
+	case "/api/v1/admin/model-routing-order":
+		return "admin_model_routing_order"
 	default:
+		if strings.HasPrefix(path, "/api/v1/admin/providers/") {
+			if strings.HasSuffix(path, "/models/discover") {
+				return "admin_provider_model_discovery"
+			}
+			return "admin_provider"
+		}
 		if strings.HasPrefix(path, "/api/v1/realtime/streams/") {
 			return "realtime_stream"
 		}

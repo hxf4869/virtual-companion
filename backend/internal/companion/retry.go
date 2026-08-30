@@ -17,6 +17,10 @@ func AllowNewAttempt(budget TurnBudget, attemptsUsed int, status AttemptStatus, 
 	switch pe.Code {
 	case CodeInvalidRequest, CodeCanceled, CodeRateLimited:
 		return false
+	case CodeDisconnected:
+		// DNS/dial failures can use the next route only when the transport can
+		// prove that no request bytes left this process.
+		return pe.Delivery == DeliveryNotSent && attemptsUsed == 1
 	case CodeTimeout:
 		if pe.Phase == TimeoutTotal {
 			return false

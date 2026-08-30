@@ -279,6 +279,21 @@ func (r *Runtime) openStore(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
+	if r.cfg.Crypto.RestKeyBase64 != "" {
+		ciph, err := postgres.NewFieldCipherWithPrevious(
+			r.cfg.Crypto.RestKeyID,
+			r.cfg.Crypto.RestKeyVersion,
+			r.cfg.Crypto.RestKeyBase64,
+			r.cfg.Crypto.PreviousRestKeyID,
+			r.cfg.Crypto.PreviousRestKeyVersion,
+			r.cfg.Crypto.PreviousRestKeyBase64,
+		)
+		if err != nil {
+			store.Close()
+			return fmt.Errorf("rest cipher: %w", err)
+		}
+		store.UseCipher(ciph)
+	}
 	r.store = store
 	r.metrics.SetDBStatsSource(func() observability.DBStats {
 		st := store.Stats()
@@ -298,20 +313,6 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 	if r.cfg.Mode != config.ModeFull || r.store == nil {
 		return nil, nil
 	}
-	if r.cfg.Crypto.RestKeyBase64 != "" {
-		ciph, err := postgres.NewFieldCipherWithPrevious(
-			r.cfg.Crypto.RestKeyID,
-			r.cfg.Crypto.RestKeyVersion,
-			r.cfg.Crypto.RestKeyBase64,
-			r.cfg.Crypto.PreviousRestKeyID,
-			r.cfg.Crypto.PreviousRestKeyVersion,
-			r.cfg.Crypto.PreviousRestKeyBase64,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("rest cipher: %w", err)
-		}
-		r.store.UseCipher(ciph)
-	}
 	pw, err := auth.NewPassword()
 	if err != nil {
 		return nil, fmt.Errorf("password verifier: %w", err)
@@ -322,6 +323,7 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 		Passwords: pw,
 		Limiter:   auth.NewLimiter(),
 		Turns:     r.store,
+		Providers: r.store,
 	}
 	if loop, ok := r.deps.Jobs.(*jobs.Loop); ok {
 		core.Cancels = loop.Cancels()

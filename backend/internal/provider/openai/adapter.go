@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"sync/atomic"
 	"time"
@@ -111,6 +112,18 @@ func (a *Adapter) Stream(ctx context.Context, request companion.ModelRequest, em
 	timeouts := a.clampTimeouts(request.Timeouts)
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
+	var gotConn atomic.Bool
+	var wroteRequest atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn:      func(httptrace.GotConnInfo) { gotConn.Store(true) },
+		WroteRequest: func(httptrace.WroteRequestInfo) { wroteRequest.Store(true) },
+	})
+	deliveryNow := func() companion.Delivery {
+		if gotConn.Load() || wroteRequest.Load() {
+			return companion.DeliveryUnknown
+		}
+		return companion.DeliveryNotSent
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint.String(), bytes.NewReader(body))
 	if err != nil {
@@ -156,26 +169,26 @@ func (a *Adapter) Stream(ctx context.Context, request companion.ModelRequest, em
 	case res = <-ch:
 		timer.Stop()
 	case <-timer.C:
-		cancel(timeoutErr{phase: connectPhase, delivery: companion.DeliveryNotSent})
+		cancel(timeoutErr{phase: connectPhase, delivery: deliveryNow()})
 		res = <-ch
 		if res.resp != nil {
 			closeBody(res.resp.Body)
 		}
-		return companion.AttemptResult{}, classify(ctx, res.err, companion.DeliveryNotSent)
+		return companion.AttemptResult{}, classify(ctx, res.err, deliveryNow())
 	case <-ctx.Done():
 		timer.Stop()
 		res = <-ch
 		if res.resp != nil {
 			closeBody(res.resp.Body)
 		}
-		return companion.AttemptResult{}, classify(ctx, ctx.Err(), companion.DeliveryUnknown)
+		return companion.AttemptResult{}, classify(ctx, ctx.Err(), deliveryNow())
 	}
 	if res.err != nil {
 		if res.resp != nil {
 			closeBody(res.resp.Body)
 		}
-		delivery := companion.DeliveryUnknown
-		if isNotSent(res.err) {
+		delivery := deliveryNow()
+		if isNotSent(res.err) && !gotConn.Load() {
 			delivery = companion.DeliveryNotSent
 		}
 		return companion.AttemptResult{}, classify(ctx, res.err, delivery)

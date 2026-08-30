@@ -13,6 +13,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/observability"
+	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/turn"
@@ -129,15 +130,16 @@ func (c *Cancels) Cancel(id int64) bool {
 
 // Loop is the single worker claim/dispatch loop (PlaneJobs).
 type Loop struct {
-	log      *slog.Logger
-	policy   Policy
-	budget   companion.TurnBudget
-	store    Store
-	provider companion.Provider
-	hub      *realtime.Hub
-	cancels  *Cancels
-	blobs    BlobStore
-	metrics  *observability.Registry
+	log             *slog.Logger
+	policy          Policy
+	budget          companion.TurnBudget
+	store           Store
+	provider        companion.Provider
+	providerFactory func(modelprovider.Route) (companion.Provider, error)
+	hub             *realtime.Hub
+	cancels         *Cancels
+	blobs           BlobStore
+	metrics         *observability.Registry
 
 	claimMu         sync.Mutex
 	generationSlots chan struct{}
@@ -201,6 +203,14 @@ func (l *Loop) Use(store Store, provider companion.Provider, hub *realtime.Hub, 
 	l.provider = provider
 	l.hub = hub
 	l.blobs = blobs
+}
+
+// UseProviderFactory enables database-configured routes. The route list is
+// resolved once per generation; the factory is a closed protocol switch.
+func (l *Loop) UseProviderFactory(factory func(modelprovider.Route) (companion.Provider, error)) {
+	if l != nil {
+		l.providerFactory = factory
+	}
 }
 
 func (l *Loop) Cancels() *Cancels {
