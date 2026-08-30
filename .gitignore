@@ -73,6 +73,7 @@ ops/deploy/.local/
 
 # G1 measurement local run (synthetic secrets, docker env, raw snapshots)
 scripts/measure/g1-java-baseline/.run/
+scripts/measure/g12-go-capacity/.run/
 ops/deploy/g11-switchover/.run/
 
 # Go build artifacts
