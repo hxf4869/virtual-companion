@@ -2,9 +2,15 @@ package turn
 
 import (
 	"context"
+	"errors"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 )
+
+// ErrOutboundDenied means the current authorization/provider gate changed
+// before the durable attempt intent could be committed. It is safe to expose
+// only as the stable blocked disposition; the store never returns gate detail.
+var ErrOutboundDenied = errors.New("outbound denied")
 
 // Store is the durable Turn/Attempt boundary. PostgreSQL is the production
 // implementation; MemStore is unit tests only. There is no
@@ -25,24 +31,24 @@ type TurnKey struct {
 
 // PrepareAttempt freezes budget and intent. It does not call the provider.
 type PrepareAttempt struct {
-	OwnerID                   int64
-	TurnID                    string
-	JobID                     int64
-	ClaimToken                string
-	ClaimFence                string
-	Budget                    companion.TurnBudget
-	Categories                []DataCategory
-	PromptVersion             string
-	PersonaVersion            string
-	ConfigVersion             string
-	ConsentVersion            string
-	ProviderContractVersion   string
-	ProviderID                string
-	SupplierName              string
-	ModelID                   string
-	EstimatedTokens           int
-	ReservedCost              int64
-	MonthlyCostLimit          int64
+	OwnerID                 int64
+	TurnID                  string
+	JobID                   int64
+	ClaimToken              string
+	ClaimFence              string
+	Budget                  companion.TurnBudget
+	Categories              []DataCategory
+	PromptVersion           string
+	PersonaVersion          string
+	ConfigVersion           string
+	ConsentVersion          string
+	ProviderContractVersion string
+	ProviderID              string
+	SupplierName            string
+	ModelID                 string
+	EstimatedTokens         int
+	ReservedCost            int64
+	MonthlyCostLimit        int64
 }
 
 // PreparedAttempt is the frozen intent returned by PrepareAttempt.

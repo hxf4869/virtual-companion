@@ -86,6 +86,8 @@ type Session struct {
 // construct the adapter in G4. Missing credential/endpoint while Enabled
 // fails startup. Secrets never log.
 type Provider struct {
+	ID                string
+	SupplierName      string
 	Enabled           bool
 	Endpoint          string
 	BearerToken       string
@@ -238,6 +240,8 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			PreviousRestKeyBase64:  strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY")),
 		},
 		Provider: Provider{
+			ID:                valueOr(strings.TrimSpace(getenv("VC_PROVIDER_ID")), "openai-compatible"),
+			SupplierName:      valueOr(strings.TrimSpace(getenv("VC_PROVIDER_SUPPLIER_NAME")), "openai-compatible"),
 			Enabled:           strings.EqualFold(strings.TrimSpace(getenv("VC_PROVIDER_ENABLED")), "true"),
 			Endpoint:          strings.TrimSpace(getenv("VC_PROVIDER_ENDPOINT")),
 			BearerToken:       getenv("VC_PROVIDER_TOKEN"),
@@ -563,6 +567,12 @@ func (c Config) Validate() error {
 		}
 	}
 	if c.Provider.Enabled {
+		if len(c.Provider.ID) < 1 || len(c.Provider.ID) > 128 {
+			return fmt.Errorf("VC_PROVIDER_ID must be 1..128 characters")
+		}
+		if len(c.Provider.SupplierName) < 1 || len(c.Provider.SupplierName) > 128 {
+			return fmt.Errorf("VC_PROVIDER_SUPPLIER_NAME must be 1..128 characters")
+		}
 		if strings.TrimSpace(c.Provider.Endpoint) == "" {
 			return fmt.Errorf("VC_PROVIDER_ENDPOINT is required when VC_PROVIDER_ENABLED=true")
 		}

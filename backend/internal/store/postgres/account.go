@@ -42,6 +42,9 @@ func (s *Store) LookupIdentity(ctx context.Context, username string) (Identity, 
 
 func (s *Store) RequestAccountDeletion(ctx context.Context, owner int64) error {
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT vc.go_lock_outbound_owner($1)`, owner); err != nil {
+			return err
+		}
 		var ok bool
 		if err := tx.QueryRow(ctx, `SELECT vc.request_account_deletion_current()`).Scan(&ok); err != nil {
 			return err

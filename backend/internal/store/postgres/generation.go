@@ -14,14 +14,14 @@ import (
 
 // GenerationView is the KEEP send/cancel response.
 type GenerationView struct {
-	ID                   int64
-	ConversationID       int64
-	LogicalGenerationID  string
-	Status               string
-	Mode                 string
-	CreatedAt            time.Time
-	Created              bool
-	JobID                int64
+	ID                  int64
+	ConversationID      int64
+	LogicalGenerationID string
+	Status              string
+	Mode                string
+	CreatedAt           time.Time
+	Created             bool
+	JobID               int64
 }
 
 // GenerationSnapshot is the durable reconnect view. Partial text is never
@@ -44,12 +44,12 @@ type GenerationFeedback struct {
 
 // StartTurn is the durable intake command.
 type StartTurn struct {
-	ConversationID     int64
-	IdempotencyKey     string
-	UserContent        string
-	Mode               string
-	SourceMessageID    *int64
-	MaxOutstanding     int
+	ConversationID  int64
+	IdempotencyKey  string
+	UserContent     string
+	Mode            string
+	SourceMessageID *int64
+	MaxOutstanding  int
 }
 
 func parseTurnID(raw string) (int64, error) {
@@ -401,7 +401,7 @@ func (s *Store) PrepareAttempt(ctx context.Context, cmd turn.PrepareAttempt) (tu
 		var paid string
 		err := tx.QueryRow(ctx,
 			`SELECT out_attempt_id, out_attempt_no, out_provider_attempt_id
-			   FROM vc.go_create_model_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+			   FROM vc.go_prepare_model_attempt($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 			cmd.OwnerID, cmd.JobID, genID, cmd.ClaimToken, cmd.ClaimFence,
 			providerID, supplier, cmd.ModelID, cats,
 			cmd.ConsentVersion, cmd.ProviderContractVersion,

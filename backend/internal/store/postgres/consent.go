@@ -86,6 +86,9 @@ func (s *Store) RecordConsent(ctx context.Context, owner int64, consentType, ver
 	}
 	var out Consent
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT vc.go_lock_outbound_owner($1)`, owner); err != nil {
+			return err
+		}
 		var id int64
 		if err := tx.QueryRow(ctx, `SELECT vc.record_consent($1,$2,$3,$4)`,
 			owner, consentType, version, granted).Scan(&id); err != nil {

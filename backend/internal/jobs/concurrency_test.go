@@ -19,10 +19,14 @@ type concurrencyStore struct {
 	claims     []postgres.JobClaim
 	claimCalls int
 	mem        *turn.MemStore
+	gate       postgres.OutboundDecision
 }
 
 func newConcurrencyStore(n int) *concurrencyStore {
-	s := &concurrencyStore{mem: turn.NewMemStore()}
+	s := &concurrencyStore{
+		mem:  turn.NewMemStore(),
+		gate: postgres.OutboundDecision{Allow: true, Code: "OK", Categories: []string{"MESSAGE_TEXT"}},
+	}
 	for i := 1; i <= n; i++ {
 		id := int64(i)
 		s.claims = append(s.claims, postgres.JobClaim{
@@ -62,7 +66,7 @@ func (s *concurrencyStore) PromoteClaimedGeneration(context.Context, int64, int6
 }
 
 func (s *concurrencyStore) OutboundCheck(context.Context, int64) (postgres.OutboundDecision, error) {
-	return postgres.OutboundDecision{Allow: true, Code: "OK", Categories: []string{"MESSAGE_TEXT"}}, nil
+	return s.gate, nil
 }
 
 func (s *concurrencyStore) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSeed, error) {
@@ -215,5 +219,23 @@ func TestLoopStopCancelsAndDrainsGeneration(t *testing.T) {
 	}
 	if stats := loop.Stats(); stats.ActiveGenerations != 0 {
 		t.Fatalf("active after stop %+v", stats)
+	}
+}
+
+func TestLoopDeniedOutboundNeverCallsProvider(t *testing.T) {
+	store := newConcurrencyStore(1)
+	store.gate = postgres.OutboundDecision{Allow: false, Code: "CONSENT_WITHDRAWN", Categories: []string{}}
+	provider := newConcurrencyProvider()
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, provider, nil, nil)
+
+	if got := loop.ClaimOnce(context.Background()); got != 1 {
+		t.Fatalf("claim %d want 1", got)
+	}
+	waitFor(t, "denied handler drain", func() bool {
+		return len(loop.generationSlots) == 0
+	})
+	if got := provider.calls.Load(); got != 0 {
+		t.Fatalf("provider calls %d want 0", got)
 	}
 }

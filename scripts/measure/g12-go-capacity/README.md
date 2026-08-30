@@ -3,7 +3,8 @@
 Single-trial capacity sample for §19.1 场景 5 (4 generation + 8 SSE), 场景 10
 (16 generation + 64 SSE), and the 100-turn post-idle recovery check against
 the host Go companiond `full` mode with a loopback fake provider. Java appears
-only as the Flyway migrator (applies V1–V117, then stops — §21.2). Never a real
+only as the Flyway migrator (applies all current migrations, then stops — §21.2).
+The harness rebuilds its Boot jar when migration source is newer. Never a real
 provider, never real user data; secrets are synthetic and generated into
 `.run/` (gitignored).
 

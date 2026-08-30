@@ -34,6 +34,9 @@ func (l *Loop) handleGeneration(ctx context.Context, c postgres.JobClaim, runID 
 	if err != nil {
 		return l.terminal(ctx, c, companion.PhaseFailed, "OUTBOUND_CHECK")
 	}
+	if !gate.Allow {
+		return l.terminal(ctx, c, companion.PhaseBlocked, gate.Code)
+	}
 
 	budget := l.budget
 	if budget.MaxAttempts < 1 {
@@ -54,8 +57,9 @@ func (l *Loop) handleGeneration(ctx context.Context, c postgres.JobClaim, runID 
 		JobID:                   c.JobID,
 		ClaimToken:              c.Token,
 		ClaimFence:              c.Fence,
-		ProviderID:              "openai-compatible",
-		SupplierName:            "openai-compatible",
+		ProviderID:              l.policy.ProviderID,
+		SupplierName:            l.policy.SupplierName,
+		ModelID:                 l.policy.ModelID,
 		ConsentVersion:          gate.Code,
 		ProviderContractVersion: "go-v1",
 	}

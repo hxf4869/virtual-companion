@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # G12 Go capacity profile (synthetic): §19.1 场景 5 (4 gen + 8 SSE stable) and
 # 场景 10 (16 gen + 64 SSE capacity profile) against the host Go companiond
-# `full` mode with a loopback fake provider. Java is NOT part of this run.
+# `full` mode with a loopback fake provider. Java is not measured; it runs only
+# long enough to apply Flyway migrations and is stopped before Go sampling.
 #
 # Reuses the g11-switchover compose for db + go-fake-provider only. Secrets
 # and the opaque session are synthetic and fabricated locally; never a real
@@ -77,6 +78,20 @@ export PATH="$HOME/.local/go/bin:$PATH"
 go build -C "$ROOT/backend" -o "$RUN_DIR/companiond" ./cmd/companiond
 echo "  companiond built"
 
+# The migrator image copies a prebuilt Boot jar. Refresh it only when absent
+# or when a forward migration is newer, so a stale local image cannot silently
+# stop before the schema version required by the Go binary.
+RUNTIME_JAR=$(find "$ROOT/service/apps/runtime/target" -maxdepth 1 -type f \
+  -name 'virtual-companion-runtime-*.jar' ! -name '*.original' -print 2>/dev/null \
+  | head -1 || true)
+if [ -z "$RUNTIME_JAR" ] || [ -n "$(find "$ROOT/service/platform/persistence/src/main/resources/db/migration" \
+    -type f -name 'V*.sql' -newer "$RUNTIME_JAR" -print -quit 2>/dev/null)" ]; then
+  echo "  packaging Java Flyway migrator (migration source is newer than Boot jar)"
+  docker run --rm -v "$ROOT:/src" -v vc-g1-m2:/root/.m2 -w /src \
+    eclipse-temurin:25-jdk \
+    ./mvnw --batch-mode --no-transfer-progress -DskipTests package >/dev/null
+fi
+
 echo "== stack up (db + go-fake-provider) =="
 VC_MIGRATOR_DB_PASSWORD=$(openssl rand -hex 32)
 VC_RUNTIME_DB_PASSWORD=$(openssl rand -hex 32)
@@ -101,6 +116,7 @@ G11_HOLD_MS=0
 G11_UPSTREAM=runtime:8080
 EOF
 umask 022
+"${COMPOSE[@]}" build runtime >/dev/null
 "${COMPOSE[@]}" up -d db go-fake-provider >/dev/null
 DB_READY=0
 for _ in $(seq 1 60); do
@@ -179,6 +195,8 @@ VC_JWT_SECRET=$VC_JWT_SECRET
 VC_AUTH_ISSUER=virtual-companion
 VC_PROVIDER_ENABLED=true
 VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true
+VC_PROVIDER_ID=g11-openai
+VC_PROVIDER_SUPPLIER_NAME=g11-local-fake
 VC_PROVIDER_ENDPOINT=http://127.0.0.1:$GO_FAKE_PORT/v1/chat/completions
 VC_PROVIDER_TOKEN=g12-fake-token
 VC_PROVIDER_MODEL=g1-model

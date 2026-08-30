@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -75,7 +76,7 @@ func TestG10AttemptIntentOutcomeFinalizeAndRecovery(t *testing.T) {
 		ClaimToken: c.Token, ClaimFence: c.Fence,
 		Budget: companion.TurnBudget{MaxInputTokens: 8000, MaxOutputTokens: 128, MaxAttempts: 2, MaxResponseBytes: 1024,
 			ConnectTimeout: time.Second, FirstTokenTimeout: time.Second, TotalTimeout: 5 * time.Second},
-		Categories: []turn.DataCategory{turn.CategoryMessage},
+		Categories:    []turn.DataCategory{turn.CategoryMessage},
 		PromptVersion: "companion-chat-go-v1", ConsentVersion: "OK",
 		ProviderID: "openai-compatible", SupplierName: "openai-compatible",
 	})
@@ -119,6 +120,85 @@ func TestG10AttemptIntentOutcomeFinalizeAndRecovery(t *testing.T) {
 	}
 }
 
+func TestG12PrepareAttemptRechecksCurrentOutboundGate(t *testing.T) {
+	resetFixtures(t)
+	ctx := context.Background()
+	store := testEnv.store
+	rel, err := store.CreateRelationship(ctx, 1, "gentle-listener")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conv, err := store.CreateConversation(ctx, 1, rel.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grantOutboundConsents(t, store, 1)
+
+	claim := func(key string) JobClaim {
+		view := mustStart(t, store, conv, key)
+		c := mustClaimOne(t, store, view.ID)
+		if _, err := store.PromoteClaimedGeneration(ctx, c.OwnerID, c.RefID, c.JobID, c.Token, c.Fence); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	prepare := func(c JobClaim) error {
+		_, err := store.PrepareAttempt(ctx, turn.PrepareAttempt{
+			OwnerID: c.OwnerID, TurnID: itoa(c.RefID), JobID: c.JobID,
+			ClaimToken: c.Token, ClaimFence: c.Fence,
+			Budget: companion.TurnBudget{MaxAttempts: 1, MaxInputTokens: 8, MaxOutputTokens: 4,
+				MaxResponseBytes: 64, ConnectTimeout: time.Second,
+				FirstTokenTimeout: time.Second, TotalTimeout: time.Second},
+			Categories: []turn.DataCategory{turn.CategoryMessage},
+			ProviderID: "openai-compatible", SupplierName: "openai-compatible",
+		})
+		return err
+	}
+
+	consentClaim := claim("gate-consent")
+	if _, err := store.RecordConsent(ctx, 1, "THIRD_PARTY_MODEL_PROCESSING", "2026-08", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepare(consentClaim); !errors.Is(err, turn.ErrOutboundDenied) {
+		t.Fatalf("withdrawn consent error %v", err)
+	}
+	grantOutboundConsents(t, store, 1)
+
+	providerClaim := claim("gate-provider")
+	if err := IsolationSuperExec(ctx,
+		`UPDATE vc.provider_deployment SET admission_state = 'DISABLED'
+		  WHERE provider_id = 'openai-compatible'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepare(providerClaim); !errors.Is(err, turn.ErrOutboundDenied) {
+		t.Fatalf("disabled provider error %v", err)
+	}
+
+	count, err := psqlSuper(`SELECT count(*) FROM vc.attempt_intent`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != "0" {
+		t.Fatalf("denied prepare created %s attempt rows", count)
+	}
+	privileges, err := psqlSuper(`
+SELECT has_function_privilege(
+           'vc_runtime_login',
+           'vc.go_create_model_attempt(bigint,bigint,bigint,text,text,text,text,text,text[],text,text,text,text,text,bigint,bigint)',
+           'EXECUTE')::text
+       || ',' ||
+       has_function_privilege(
+           'vc_runtime_login',
+           'vc.go_prepare_model_attempt(bigint,bigint,bigint,text,text,text,text,text,text[],text,text,text,text,text,bigint,bigint)',
+           'EXECUTE')::text`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if privileges != "false,true" {
+		t.Fatalf("attempt function privileges %s", privileges)
+	}
+}
+
 func TestG10CrashRecoveryMatrix(t *testing.T) {
 	resetFixtures(t)
 	ctx := context.Background()
@@ -131,6 +211,7 @@ func TestG10CrashRecoveryMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	grantOutboundConsents(t, store, 1)
 
 	t.Run("no-intent-requeues", func(t *testing.T) {
 		view := mustStart(t, store, conv, "rec-a")

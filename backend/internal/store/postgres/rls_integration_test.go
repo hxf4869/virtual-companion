@@ -199,6 +199,10 @@ TRUNCATE vc.account_deletion_intent, vc.relationship, vc.vc_user CASCADE;
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice'), (2, 'bob');
 INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active)
 VALUES (1, 10, 'persona-a', true), (2, 20, 'persona-bob', true);
+INSERT INTO vc.provider_deployment(provider_id, protocol, capabilities, admission_state)
+VALUES ('openai-compatible', 'OPENAI_CHAT_COMPLETIONS', '{}', 'ADMITTED')
+ON CONFLICT (provider_id) DO UPDATE
+   SET protocol = EXCLUDED.protocol, admission_state = EXCLUDED.admission_state;
 `)
 	if err != nil {
 		t.Fatal(err)

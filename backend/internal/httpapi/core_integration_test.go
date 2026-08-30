@@ -340,6 +340,13 @@ func resetIsolation(t *testing.T) {
 	if err := postgres.IsolationSuperExec(ctx, `INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice'), (2, 'bob')`); err != nil {
 		t.Fatal(err)
 	}
+	if err := postgres.IsolationSuperExec(ctx,
+		`INSERT INTO vc.provider_deployment(provider_id, protocol, capabilities, admission_state)
+		 VALUES ('openai-compatible', 'OPENAI_CHAT_COMPLETIONS', '{}', 'ADMITTED')
+		 ON CONFLICT (provider_id) DO UPDATE
+		 SET protocol = EXCLUDED.protocol, admission_state = EXCLUDED.admission_state`); err != nil {
+		t.Fatal(err)
+	}
 	if isoPasswordHash == "" {
 		t.Fatal("isolation password hash missing")
 	}

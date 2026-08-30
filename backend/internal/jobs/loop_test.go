@@ -56,6 +56,9 @@ func TestPolicyFromUsesBudgetTotalPlusFinalizeMargin(t *testing.T) {
 	if p.MaxConcurrentTurns != cfg.Concurrency.MaxConcurrentTurns {
 		t.Fatalf("concurrent turns %d", p.MaxConcurrentTurns)
 	}
+	if p.ProviderID != cfg.Provider.ID || p.SupplierName != cfg.Provider.SupplierName || p.ModelID != cfg.Provider.Model {
+		t.Fatalf("provider identity %+v", p)
+	}
 }
 
 func TestNamedPlanesDoNotStartWork(t *testing.T) {

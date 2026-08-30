@@ -163,10 +163,10 @@ func TestSessionDefaults(t *testing.T) {
 		t.Fatalf("session %+v", cfg.Session)
 	}
 	cfg, err = LoadEnv(env(map[string]string{
-		"VC_MODE":                   "full",
-		"VC_SESSION_TTL":            "24h",
-		"VC_SESSION_COOKIE_SECURE":  "false",
-		"VC_SESSION_REAUTH_WINDOW":  "10m",
+		"VC_MODE":                  "full",
+		"VC_SESSION_TTL":           "24h",
+		"VC_SESSION_COOKIE_SECURE": "false",
+		"VC_SESSION_REAUTH_WINDOW": "10m",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -196,6 +196,9 @@ func TestProviderDisabledByDefault(t *testing.T) {
 	if cfg.Provider.Enabled {
 		t.Fatal("provider must be disabled unless VC_PROVIDER_ENABLED=true")
 	}
+	if cfg.Provider.ID != "openai-compatible" || cfg.Provider.SupplierName != "openai-compatible" {
+		t.Fatalf("provider identity defaults %+v", cfg.Provider)
+	}
 	if cfg.Provider.ConnectTimeout != 10*time.Second ||
 		cfg.Provider.FirstTokenTimeout != 60*time.Second ||
 		cfg.Provider.TotalTimeout != 240*time.Second ||
@@ -223,17 +226,22 @@ func TestProviderEnabledRequiresEndpointTokenModel(t *testing.T) {
 		t.Fatalf("expected model error, got %v", err)
 	}
 	cfg, err := LoadEnv(env(map[string]string{
-		"VC_MODE":              "api-migration",
-		"VC_PROVIDER_ENABLED":  "true",
-		"VC_PROVIDER_ENDPOINT": "https://models.example/v1/chat/completions",
-		"VC_PROVIDER_TOKEN":    "offline-token-sentinel",
-		"VC_PROVIDER_MODEL":    "offline-model-sentinel",
+		"VC_MODE":                   "api-migration",
+		"VC_PROVIDER_ENABLED":       "true",
+		"VC_PROVIDER_ID":            "owner-provider",
+		"VC_PROVIDER_SUPPLIER_NAME": "owner-supplier",
+		"VC_PROVIDER_ENDPOINT":      "https://models.example/v1/chat/completions",
+		"VC_PROVIDER_TOKEN":         "offline-token-sentinel",
+		"VC_PROVIDER_MODEL":         "offline-model-sentinel",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.Provider.Enabled || cfg.Allows(PlaneProvider) {
 		t.Fatal("api-migration must still hard-disable the provider plane")
+	}
+	if cfg.Provider.ID != "owner-provider" || cfg.Provider.SupplierName != "owner-supplier" {
+		t.Fatalf("provider identity %+v", cfg.Provider)
 	}
 }
 

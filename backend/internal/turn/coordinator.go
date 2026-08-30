@@ -2,6 +2,7 @@ package turn
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -140,6 +141,18 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		MonthlyCostLimit:        cmd.MonthlyCostLimit,
 	})
 	if err != nil {
+		if errors.Is(err, ErrOutboundDenied) {
+			_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+				OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, JobID: cmd.JobID,
+				ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
+				Phase: companion.PhaseBlocked, Reason: "OUTBOUND_DENIED",
+			})
+			c.hubTerminal(cmd.TurnID, companion.EventBlocked)
+			return Result{
+				Phase: companion.PhaseBlocked, Public: companion.EventBlocked,
+				SafetyCode: "OUTBOUND_DENIED", Withdraw: true, Trace: plan.Trace,
+			}
+		}
 		return c.fail(ctx, cmd, "", companion.PhaseFailed, "PREPARE_FAILED", nil, plan.Trace)
 	}
 

@@ -20,6 +20,12 @@ type scripted struct {
 	calls  int
 }
 
+type deniedPrepareStore struct{ *MemStore }
+
+func (s deniedPrepareStore) PrepareAttempt(context.Context, PrepareAttempt) (PreparedAttempt, error) {
+	return PreparedAttempt{}, ErrOutboundDenied
+}
+
 func (s *scripted) Stream(ctx context.Context, req companion.ModelRequest, emit func(companion.OutputDelta) error) (companion.AttemptResult, error) {
 	s.calls++
 	for _, d := range s.deltas {
@@ -82,6 +88,30 @@ func TestInputSafetyBlocksWithoutProviderOrFinalText(t *testing.T) {
 	}
 	if res.SafetyCode != "input-imminent-self-harm" {
 		t.Fatalf("code %s", res.SafetyCode)
+	}
+}
+
+func TestPrepareGateChangeBlocksWithoutProvider(t *testing.T) {
+	t.Parallel()
+	provider := &scripted{
+		deltas: []string{"should-not-run"},
+		result: companion.AttemptResult{Finish: companion.FinishStop},
+	}
+	mem := NewMemStore()
+	mem.PutSeed(baseSeed())
+	coord := &Coordinator{
+		Store: deniedPrepareStore{MemStore: mem}, Provider: provider,
+		Policy: safety.New(), Log: observability.NewLogger("error", bytes.NewBuffer(nil)),
+	}
+	res := coord.Run(context.Background(), Command{TurnID: "turn-1", RunID: "run-gate", Budget: budget()})
+	if provider.calls != 0 {
+		t.Fatal("provider called after prepare gate denial")
+	}
+	if res.Phase != companion.PhaseBlocked || res.Public != companion.EventBlocked || res.SafetyCode != "OUTBOUND_DENIED" {
+		t.Fatalf("result %+v", res)
+	}
+	if mem.Phase("turn-1") != companion.PhaseBlocked {
+		t.Fatalf("durable phase %s", mem.Phase("turn-1"))
 	}
 }
 

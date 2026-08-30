@@ -57,6 +57,9 @@ type Policy struct {
 	GenerationLease    time.Duration
 	ExportLease        time.Duration
 	DefaultLease       time.Duration
+	ProviderID         string
+	SupplierName       string
+	ModelID            string
 	MaxConcurrentTurns int
 	ClaimLimit         int
 	RecoverEvery       time.Duration
@@ -70,6 +73,9 @@ func PolicyFrom(cfg config.Config) Policy {
 		GenerationLease:    cfg.Budget.TotalTimeout + 30*time.Second,
 		ExportLease:        10 * time.Minute,
 		DefaultLease:       60 * time.Second,
+		ProviderID:         cfg.Provider.ID,
+		SupplierName:       cfg.Provider.SupplierName,
+		ModelID:            cfg.Provider.Model,
 		MaxConcurrentTurns: cfg.Concurrency.MaxConcurrentTurns,
 		ClaimLimit:         cfg.Concurrency.ClaimLimit,
 		RecoverEvery:       cfg.Concurrency.RecoverInterval,
@@ -160,6 +166,12 @@ func NewLoop(log *slog.Logger, policy Policy, budget companion.TurnBudget) *Loop
 	}
 	if policy.MaxConcurrentTurns < 1 {
 		policy.MaxConcurrentTurns = 1
+	}
+	if policy.ProviderID == "" {
+		policy.ProviderID = "openai-compatible"
+	}
+	if policy.SupplierName == "" {
+		policy.SupplierName = policy.ProviderID
 	}
 	return &Loop{
 		log:             log,

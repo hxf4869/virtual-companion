@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/hxf4869/virtual-companion/internal/turn"
 )
 
 // ErrNotFound is the owner-scoped miss: foreign and absent are the same.
@@ -27,7 +29,10 @@ func mapStoreErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) || errors.Is(err, ErrConflict) || errors.Is(err, ErrRateLimited) || errors.Is(err, ErrOwnerContextRejected) || errors.Is(err, errStore) {
+	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) ||
+		errors.Is(err, ErrConflict) || errors.Is(err, ErrRateLimited) ||
+		errors.Is(err, ErrOwnerContextRejected) || errors.Is(err, turn.ErrOutboundDenied) ||
+		errors.Is(err, errStore) {
 		return err
 	}
 	var pgErr *pgconn.PgError
@@ -62,6 +67,10 @@ func mapRaise(msg string) error {
 		return ErrRateLimited
 	case strings.Contains(msg, "monthly cost hard cap"):
 		return ErrRateLimited
+	case strings.Contains(msg, "outbound is not currently authorized"):
+		return turn.ErrOutboundDenied
+	case strings.Contains(msg, "provider is not currently admitted"):
+		return turn.ErrOutboundDenied
 	case strings.Contains(msg, "no live claim"):
 		return ErrConflict
 	case strings.Contains(msg, "already terminal"):

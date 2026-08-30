@@ -300,6 +300,7 @@ phase "P5 backup (fix point) + restore-to-check proof"
 # pipefail would misread as a failure.
 "${COMPOSE[@]}" exec -T db pg_restore -l < "$RUN_DIR/precutover.dump" > "$RUN_DIR/precutover.toc"
 grep -q "go_claim_jobs" "$RUN_DIR/precutover.toc" || die "dump misses V117 go_claim_jobs"
+grep -q "go_prepare_model_attempt" "$RUN_DIR/precutover.toc" || die "dump misses V118 checked attempt prepare"
 grep -q "go_monthly_cost" "$RUN_DIR/precutover.toc" || die "dump misses V117 go_monthly_cost"
 grep -q "attempt_intent" "$RUN_DIR/precutover.toc" || die "dump misses attempt_intent"
 for tbl in vc.generation vc.attempt_intent vc.work_item vc.message; do
@@ -328,6 +329,8 @@ VC_JWT_SECRET=$VC_JWT_SECRET
 VC_AUTH_ISSUER=virtual-companion
 VC_PROVIDER_ENABLED=true
 VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true
+VC_PROVIDER_ID=g11-openai
+VC_PROVIDER_SUPPLIER_NAME=g11-local-fake
 VC_PROVIDER_ENDPOINT=$GO_FAKE_BASE/v1/chat/completions
 VC_PROVIDER_TOKEN=g11-fake-token
 VC_PROVIDER_MODEL=g1-model
