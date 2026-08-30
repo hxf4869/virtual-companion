@@ -96,6 +96,12 @@ type Provider struct {
 	FirstTokenTimeout time.Duration
 	TotalTimeout      time.Duration
 	MaxResponseBytes  int64
+	// AllowLoopbackHTTP permits http://127.0.0.1 provider endpoints for the
+	// G11 switchover drill / G12 capacity measurement fake provider and the
+	// §19.1 local model provider (Ollama) on the Owner dogfood stack. Default
+	// false keeps the fail-closed production posture (provider never uses
+	// plaintext loopback unless explicitly configured).
+	AllowLoopbackHTTP bool
 }
 
 // Budget is the per-turn freeze applied at intake/prepare (redesign §10.6).
@@ -242,6 +248,7 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			FirstTokenTimeout: 60 * time.Second,
 			TotalTimeout:      240 * time.Second,
 			MaxResponseBytes:  256 << 10,
+			AllowLoopbackHTTP: strings.EqualFold(strings.TrimSpace(getenv("VC_PROVIDER_ALLOW_LOOPBACK_HTTP")), "true"),
 		},
 		Budget: Budget{
 			MaxInputTokens:    8000,
@@ -587,7 +594,8 @@ func (c Config) Validate() error {
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			return fmt.Errorf("VC_PROVIDER_ENDPOINT must be an absolute URL")
 		}
-		if !strings.EqualFold(u.Scheme, "https") {
+		if !strings.EqualFold(u.Scheme, "https") &&
+			!(c.Provider.AllowLoopbackHTTP && strings.EqualFold(u.Scheme, "http") && isLoopbackHost(u.Hostname())) {
 			return fmt.Errorf("VC_PROVIDER_ENDPOINT must use https")
 		}
 		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -739,4 +747,14 @@ func validateOrigins(origins []string) error {
 		}
 	}
 	return nil
+}
+
+// isLoopbackHost reports whether host is a loopback literal or localhost.
+// Used to bound VC_PROVIDER_ALLOW_LOOPBACK_HTTP to loopback endpoints only.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

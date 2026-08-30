@@ -45,10 +45,16 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   + `go_*` 函数族：intake/claim/attempt outcome/billing reservation/finalize/
   cancel/queue timeout/§16.2.1 崩溃恢复；隔离 PostgreSQL contract 测试 +
   httpapi E2E：send→202→claim→fake provider→hub snapshot/delta/completed→
-  durable snapshot、cancel-during-stream、outstanding 429）。
-  G5–G10 均不发起真实 provider 调用。
+  durable snapshot、cancel-during-stream、outstanding 429），以及
+  G11 Phase 5 同窗口切换演练（`ops/deploy/g11-switchover/run-drill.sh`：
+  Java serving → maintenance 503 → drain（取消 in-flight、无 live claim）→
+  pg_dump 备份 + 恢复比对 → Go `full` 在 Java 持有 lease 时拒绝启动 → 停
+  Java 后 lease 释放 → Go 接管 lease 并 opaque auth/SSE/cancel smoke →
+  Caddy API/SSE 切到 Go → 回滚：drain Go、停 Go、lease 释放、备份恢复、
+  Java 重新持有 lease 并服务；17/17 PASS，合成 smoke 不发起真实 provider）。
+  G5–G11 均不发起真实 provider 调用。
   **当前常驻 runtime 仍是 Java**；companiond 不接生产流量、不写当前生产 DB，
-  generation plane 切换与 opaque auth 启用留待 Phase 5（G11）。
+  generation plane 切换与 opaque auth 启用仍按 Phase 5 窗口执行（G11 已演练）。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
 

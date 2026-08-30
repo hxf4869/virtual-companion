@@ -58,6 +58,7 @@ func run() int {
 			slog.String("operation", "run"),
 			slog.String("outcome", "error"),
 			slog.String("error_code", "RUN_FAILED"),
+			slog.Any("error", err),
 		)
 		return 1
 	}
@@ -86,6 +87,7 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 			FirstTokenTimeout: cfg.Provider.FirstTokenTimeout,
 			TotalTimeout:      cfg.Provider.TotalTimeout,
 			MaxResponseBytes:  cfg.Provider.MaxResponseBytes,
+			AllowLoopbackHTTP: cfg.Provider.AllowLoopbackHTTP,
 		})
 		if err != nil {
 			return app.Deps{}, err

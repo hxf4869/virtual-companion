@@ -3,7 +3,7 @@
 
 import http from "node:http";
 
-const HOST = "127.0.0.1";
+const HOST = process.env.E2E_PROVIDER_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.E2E_PROVIDER_PORT ?? "19090");
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const PROVIDER_REPLY = "I hear you. Take a breath; there is no rush.";

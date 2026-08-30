@@ -237,6 +237,40 @@ func TestProviderEnabledRequiresEndpointTokenModel(t *testing.T) {
 	}
 }
 
+func TestProviderAllowLoopbackHTTPGated(t *testing.T) {
+	t.Parallel()
+	base := map[string]string{
+		"VC_MODE":              "full",
+		"VC_PROVIDER_ENABLED":  "true",
+		"VC_PROVIDER_ENDPOINT": "http://127.0.0.1:19090/v1/chat/completions",
+		"VC_PROVIDER_TOKEN":    "offline-token-sentinel",
+		"VC_PROVIDER_MODEL":    "offline-model-sentinel",
+	}
+	// Fail-closed: plaintext loopback provider is refused unless explicitly
+	// enabled, and the flag must not weaken an https endpoint.
+	_, err := LoadEnv(env(base))
+	if err == nil || !strings.Contains(err.Error(), "must use https") {
+		t.Fatalf("http loopback provider must be refused by default, got %v", err)
+	}
+	cfg, err := LoadEnv(env(mergeEnv(base, map[string]string{"VC_PROVIDER_ALLOW_LOOPBACK_HTTP": "true"})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Provider.AllowLoopbackHTTP {
+		t.Fatal("VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true must be honored")
+	}
+	https := mergeEnv(base, map[string]string{"VC_PROVIDER_ENDPOINT": "https://models.example/v1/chat/completions"})
+	cfg, err = LoadEnv(env(mergeEnv(https, map[string]string{"VC_PROVIDER_ALLOW_LOOPBACK_HTTP": "true"})))
+	if err != nil {
+		t.Fatalf("allow-loopback must not reject https endpoints: %v", err)
+	}
+	// The flag must not open non-loopback plaintext endpoints.
+	_, err = LoadEnv(env(mergeEnv(https, map[string]string{"VC_PROVIDER_ENDPOINT": "http://models.example/v1/chat/completions"})))
+	if err == nil || !strings.Contains(err.Error(), "must use https") {
+		t.Fatalf("non-loopback http provider must be refused even with the flag, got %v", err)
+	}
+}
+
 func TestProviderRejectsHTTPAndIllegalBudgets(t *testing.T) {
 	t.Parallel()
 	_, err := LoadEnv(env(map[string]string{
@@ -320,4 +354,15 @@ func TestBudgetCannotExceedEnabledProvider(t *testing.T) {
 
 func env(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
+}
+
+func mergeEnv(base, extra map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(extra))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range extra {
+		merged[k] = v
+	}
+	return merged
 }

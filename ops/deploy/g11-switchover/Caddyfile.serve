@@ -1,0 +1,38 @@
+# G11 drill edge — serving mode. HTTP loopback only (no TLS/ACME; the drill is
+# about the runtime switch mechanics, not the TLS layer).
+# Upstream switches between the Java runtime (runtime:8080) and the host Go
+# runtime (host.docker.internal:18080) via G11_UPSTREAM + `caddy reload`
+# (the local admin API stays on for the drill so reload can push configs).
+{
+	auto_https off
+}
+
+:80 {
+	encode gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	# API + realtime SSE (flush immediately; SSE must not buffer).
+	handle /api/* {
+		reverse_proxy {$G11_UPSTREAM:runtime:8080} {
+			flush_interval -1
+		}
+	}
+
+	# Health probe only.
+	handle /actuator/health {
+		reverse_proxy {$G11_UPSTREAM:runtime:8080}
+	}
+
+	handle {
+		root * /srv/h5
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

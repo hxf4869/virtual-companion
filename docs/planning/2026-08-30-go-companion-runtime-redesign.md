@@ -1,8 +1,12 @@
 # Virtual Companion：Pi-inspired Agent Runtime 与 Go 服务端重构实施规范
 
-> 状态：implementation baseline（G0–G9 已合入；G10 已合入——V117 additive migration 与 go_* 函数族、
-> worker loop/scheduler、httpapi E2E（send/claim/provider/hub/cancel/429）；G1 Linux 资源报告见
-> `docs/planning/g1-java-resource-baseline.md`，Owner Mac 门槛未冻结；G11 起为 Phase 5 同窗口切换演练）
+> 状态：implementation baseline（G0–G10 已合入；G11 已合入——Phase 5 同窗口
+> maintenance/drain/cutover/rollback 演练 `ops/deploy/g11-switchover/run-drill.sh`，
+> 17/17 PASS：Java serving→maintenance 503→drain→pg_dump 备份与恢复比对→
+> Go full 负向闸门（lease 拒绝）→停 Java/lease 释放→Go 接管并 smoke→
+> Caddy 切流→回滚（drain/停 Go/备份恢复/Java 重接 lease）；G1 Linux 资源
+> 报告见 `docs/planning/g1-java-resource-baseline.md`，Owner Mac 门槛未冻结；
+> G12 起为资源/容量验收与 Go-only dogfood）
 > 日期：2026-08-30
 > 适用阶段：Owner-only 本地 Technical Alpha 及其后续单机并发验证
 > 实施目标：用 Go 重写并优化常驻服务端，以 Pi Agent Core 的小核心、显式状态、上下文变换和事件流思想重构陪伴对话运行时
