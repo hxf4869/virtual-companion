@@ -22,9 +22,20 @@ type Coordinator struct {
 
 // Command starts one turn that already has a seed in Store.
 type Command struct {
-	TurnID string
-	RunID  string
-	Budget companion.TurnBudget
+	TurnID                  string
+	RunID                   string
+	Budget                  companion.TurnBudget
+	OwnerID                 int64
+	JobID                   int64
+	ClaimToken              string
+	ClaimFence              string
+	ProviderID              string
+	SupplierName            string
+	ModelID                 string
+	ConsentVersion          string
+	ProviderContractVersion string
+	ReservedCost            int64
+	MonthlyCostLimit        int64
 }
 
 // Result is the process-local turn outcome. Blocked/failed/cancelled never
@@ -39,6 +50,7 @@ type Result struct {
 	Attempt      companion.AttemptOutcome
 	Trace        BuildTrace
 	RetryAllowed bool
+	PersistRetry bool
 }
 
 func (c *Coordinator) logger() *slog.Logger {
@@ -60,7 +72,7 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		policy = safety.New()
 	}
 
-	seed, err := c.Store.LoadSeed(ctx, cmd.TurnID)
+	seed, err := c.Store.LoadSeed(ctx, TurnKey{OwnerID: cmd.OwnerID, TurnID: cmd.TurnID})
 	if err != nil {
 		return c.fail(ctx, cmd, "", companion.PhaseFailed, "SEED_MISSING", nil, BuildTrace{})
 	}
@@ -69,7 +81,9 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	in := policy.ReviewInput(seed.CurrentUserMessage)
 	if !in.Allow {
 		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
-			TurnID: cmd.TurnID, Phase: companion.PhaseBlocked, Reason: in.Code(),
+			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, JobID: cmd.JobID,
+			ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
+			Phase: companion.PhaseBlocked, Reason: in.Code(),
 		})
 		c.hubTerminal(cmd.TurnID, companion.EventBlocked)
 		log.Info("turn blocked",
@@ -97,20 +111,33 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 			pub = companion.EventBlocked
 		}
 		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
-			TurnID: cmd.TurnID, Phase: phase, Reason: string(plan.Reason),
+			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, JobID: cmd.JobID,
+			ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
+			Phase: phase, Reason: string(plan.Reason),
 		})
 		c.hubTerminal(cmd.TurnID, pub)
 		return Result{Phase: phase, Public: pub, Trace: plan.Trace, SafetyCode: string(plan.Reason), Withdraw: true}
 	}
 
 	prep, err := c.Store.PrepareAttempt(ctx, PrepareAttempt{
-		TurnID:          cmd.TurnID,
-		Budget:          cmd.Budget,
-		Categories:      plan.Trace.EffectiveCategories,
-		PromptVersion:   plan.Trace.PromptVersion,
-		PersonaVersion:  plan.Trace.PersonaVersion,
-		ConfigVersion:   plan.Trace.ConfigVersion,
-		EstimatedTokens: plan.Trace.EstimatedTokens,
+		OwnerID:                 cmd.OwnerID,
+		TurnID:                  cmd.TurnID,
+		JobID:                   cmd.JobID,
+		ClaimToken:              cmd.ClaimToken,
+		ClaimFence:              cmd.ClaimFence,
+		Budget:                  cmd.Budget,
+		Categories:              plan.Trace.EffectiveCategories,
+		PromptVersion:           plan.Trace.PromptVersion,
+		PersonaVersion:          plan.Trace.PersonaVersion,
+		ConfigVersion:           plan.Trace.ConfigVersion,
+		ConsentVersion:          cmd.ConsentVersion,
+		ProviderContractVersion: cmd.ProviderContractVersion,
+		ProviderID:              cmd.ProviderID,
+		SupplierName:            cmd.SupplierName,
+		ModelID:                 cmd.ModelID,
+		EstimatedTokens:         plan.Trace.EstimatedTokens,
+		ReservedCost:            cmd.ReservedCost,
+		MonthlyCostLimit:        cmd.MonthlyCostLimit,
 	})
 	if err != nil {
 		return c.fail(ctx, cmd, "", companion.PhaseFailed, "PREPARE_FAILED", nil, plan.Trace)
@@ -118,12 +145,14 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 
 	if ctx.Err() != nil {
 		_ = c.Store.RecordAttemptOutcome(ctx, companion.AttemptOutcome{
-			TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Status: companion.AttemptCancelled, Failure: string(companion.CodeCanceled),
 			Delivery: companion.DeliveryNotSent, Billing: companion.BillingNotSent, Budget: prep.Budget,
 		})
 		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
-			TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Phase: companion.PhaseCancelled, Reason: string(companion.CodeCanceled),
 		})
 		c.hubTerminal(cmd.TurnID, companion.EventCancelled)
@@ -157,8 +186,12 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	})
 
 	outcome := companion.AttemptOutcome{
+		OwnerID:    cmd.OwnerID,
 		TurnID:     cmd.TurnID,
 		AttemptID:  prep.AttemptID,
+		JobID:      cmd.JobID,
+		ClaimToken: cmd.ClaimToken,
+		ClaimFence: cmd.ClaimFence,
 		Status:     stream.Status,
 		Failure:    stream.Failure,
 		Delivery:   stream.Delivery,
@@ -199,8 +232,22 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		if reason == "" {
 			reason = stream.Failure
 		}
+		if retry {
+			return Result{
+				Phase:        phase,
+				Public:       pub,
+				Published:    published,
+				Withdraw:     true,
+				SafetyCode:   reason,
+				Attempt:      outcome,
+				Trace:        plan.Trace,
+				RetryAllowed: true,
+			}
+		}
 		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
-			TurnID: cmd.TurnID, AttemptID: prep.AttemptID, Phase: phase, Reason: reason,
+			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
+			Phase: phase, Reason: reason,
 		})
 		c.hubTerminal(cmd.TurnID, pub)
 		log.Info("turn terminal",
@@ -223,9 +270,20 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	}
 
 	if err := c.Store.FinalizeGeneration(ctx, FinalizeCommand{
-		TurnID: cmd.TurnID, AttemptID: prep.AttemptID, Text: stream.Text,
+		OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+		JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
+		Text: stream.Text,
 	}); err != nil {
-		return c.fail(ctx, cmd, prep.AttemptID, companion.PhaseFailed, "FINALIZE_FAILED", &outcome, plan.Trace)
+		return Result{
+			Phase:        companion.PhaseFailed,
+			Public:       companion.EventFailed,
+			Published:    published,
+			Text:         stream.Text,
+			SafetyCode:   "FINALIZE_FAILED",
+			Attempt:      outcome,
+			Trace:        plan.Trace,
+			PersistRetry: true,
+		}
 	}
 	c.hubTerminal(cmd.TurnID, companion.EventCompleted)
 	log.Info("turn completed",
@@ -248,7 +306,9 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 
 func (c *Coordinator) fail(ctx context.Context, cmd Command, attemptID string, phase companion.Phase, reason string, outcome *companion.AttemptOutcome, trace BuildTrace) Result {
 	_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
-		TurnID: cmd.TurnID, AttemptID: attemptID, Phase: phase, Reason: reason,
+		OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: attemptID,
+		JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
+		Phase: phase, Reason: reason,
 	})
 	c.hubTerminal(cmd.TurnID, companion.EventFailed)
 	res := Result{Phase: phase, Public: companion.EventFailed, Withdraw: true, SafetyCode: reason, Trace: trace}

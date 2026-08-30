@@ -39,10 +39,10 @@ func (m *MemStore) PutSeed(seed ContextSeed) {
 	m.phase[seed.TurnID] = companion.PhaseAccepted
 }
 
-func (m *MemStore) LoadSeed(_ context.Context, turnID string) (ContextSeed, error) {
+func (m *MemStore) LoadSeed(_ context.Context, key TurnKey) (ContextSeed, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s, ok := m.seeds[turnID]
+	s, ok := m.seeds[key.TurnID]
 	if !ok {
 		return ContextSeed{}, fmt.Errorf("seed not found")
 	}

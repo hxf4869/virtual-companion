@@ -16,6 +16,9 @@ var ErrInvalid = errors.New("invalid request")
 // ErrConflict is a state clash that is safe to disclose (in-flight export).
 var ErrConflict = errors.New("conflict")
 
+// ErrRateLimited is an admission rejection. HTTP maps it to 429.
+var ErrRateLimited = errors.New("rate limited")
+
 // errStore is the opaque persistence failure. Callers must not wrap it
 // with SQL, ids, or body text.
 var errStore = errors.New("store operation failed")
@@ -24,7 +27,7 @@ func mapStoreErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) || errors.Is(err, ErrConflict) || errors.Is(err, ErrOwnerContextRejected) || errors.Is(err, errStore) {
+	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) || errors.Is(err, ErrConflict) || errors.Is(err, ErrRateLimited) || errors.Is(err, ErrOwnerContextRejected) || errors.Is(err, errStore) {
 		return err
 	}
 	var pgErr *pgconn.PgError
@@ -54,6 +57,20 @@ func mapRaise(msg string) error {
 	case strings.Contains(msg, "not found"):
 		return ErrNotFound
 	case strings.Contains(msg, "idempotency_key is invalid"):
+		return ErrInvalid
+	case strings.Contains(msg, "outstanding generations exceeded"):
+		return ErrRateLimited
+	case strings.Contains(msg, "monthly cost hard cap"):
+		return ErrRateLimited
+	case strings.Contains(msg, "no live claim"):
+		return ErrConflict
+	case strings.Contains(msg, "already terminal"):
+		return ErrConflict
+	case strings.Contains(msg, "not cancellable"):
+		return ErrInvalid
+	case strings.Contains(msg, "cancel requested"):
+		return ErrConflict
+	case strings.Contains(msg, "user content is required"):
 		return ErrInvalid
 	default:
 		return errStore

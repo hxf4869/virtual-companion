@@ -327,7 +327,7 @@ func newIsoServer(t *testing.T, store *postgres.Store) *Server {
 		t.Fatal(err)
 	}
 	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
-		Store: store, Sessions: store, Passwords: pw, Limiter: auth.NewLimiter(),
+		Store: store, Sessions: store, Passwords: pw, Limiter: auth.NewLimiter(), Turns: store,
 	})
 }
 

@@ -313,6 +313,21 @@ func operation(path string) string {
 		if strings.HasPrefix(path, "/api/v1/auth/sessions/") {
 			return "auth_session"
 		}
+		if strings.HasSuffix(path, "/generations") {
+			return "generation_send"
+		}
+		if strings.HasSuffix(path, "/cancel") {
+			return "generation_cancel"
+		}
+		if strings.HasSuffix(path, "/snapshot") {
+			return "generation_snapshot"
+		}
+		if strings.HasSuffix(path, "/feedback") {
+			return "generation_feedback"
+		}
+		if strings.HasPrefix(path, "/api/v1/generations/") {
+			return "generation"
+		}
 		return "unmapped"
 	}
 }

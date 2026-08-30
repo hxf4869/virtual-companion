@@ -152,8 +152,12 @@ type OutputGuard struct {
 
 // AttemptOutcome is the terminal Attempt record. It never carries body text.
 type AttemptOutcome struct {
+	OwnerID    int64
 	TurnID     string
 	AttemptID  string
+	JobID      int64
+	ClaimToken string
+	ClaimFence string
 	Status     AttemptStatus
 	Failure    string
 	Delivery   Delivery

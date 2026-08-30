@@ -6,25 +6,43 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/companion"
 )
 
-// Store is the durable Turn/Attempt boundary. The only production
-// implementation will be PostgreSQL (G10). G5 uses an in-memory fake in tests.
+// Store is the durable Turn/Attempt boundary. PostgreSQL is the production
+// implementation; MemStore is unit tests only. There is no
+// AppendAssistantMessage — final text goes through FinalizeGeneration.
 type Store interface {
-	LoadSeed(ctx context.Context, turnID string) (ContextSeed, error)
+	LoadSeed(ctx context.Context, key TurnKey) (ContextSeed, error)
 	PrepareAttempt(ctx context.Context, cmd PrepareAttempt) (PreparedAttempt, error)
 	RecordAttemptOutcome(ctx context.Context, outcome companion.AttemptOutcome) error
 	FinalizeGeneration(ctx context.Context, cmd FinalizeCommand) error
 	TerminalizeGeneration(ctx context.Context, cmd TerminalCommand) error
 }
 
+// TurnKey identifies one generation for an already-authenticated owner.
+type TurnKey struct {
+	OwnerID int64
+	TurnID  string
+}
+
 // PrepareAttempt freezes budget and intent. It does not call the provider.
 type PrepareAttempt struct {
-	TurnID          string
-	Budget          companion.TurnBudget
-	Categories      []DataCategory
-	PromptVersion   string
-	PersonaVersion  string
-	ConfigVersion   string
-	EstimatedTokens int
+	OwnerID                   int64
+	TurnID                    string
+	JobID                     int64
+	ClaimToken                string
+	ClaimFence                string
+	Budget                    companion.TurnBudget
+	Categories                []DataCategory
+	PromptVersion             string
+	PersonaVersion            string
+	ConfigVersion             string
+	ConsentVersion            string
+	ProviderContractVersion   string
+	ProviderID                string
+	SupplierName              string
+	ModelID                   string
+	EstimatedTokens           int
+	ReservedCost              int64
+	MonthlyCostLimit          int64
 }
 
 // PreparedAttempt is the frozen intent returned by PrepareAttempt.
@@ -37,15 +55,23 @@ type PreparedAttempt struct {
 // FinalizeCommand commits the single final assistant message. The Attempt
 // must already be closed; the store must not rewrite outcome or usage.
 type FinalizeCommand struct {
-	TurnID    string
-	AttemptID string
-	Text      string
+	OwnerID    int64
+	TurnID     string
+	AttemptID  string
+	JobID      int64
+	ClaimToken string
+	ClaimFence string
+	Text       string
 }
 
 // TerminalCommand records a non-completed Turn. It must not persist body.
 type TerminalCommand struct {
-	TurnID    string
-	AttemptID string
-	Phase     companion.Phase
-	Reason    string
+	OwnerID    int64
+	TurnID     string
+	AttemptID  string
+	JobID      int64
+	ClaimToken string
+	ClaimFence string
+	Phase      companion.Phase
+	Reason     string
 }

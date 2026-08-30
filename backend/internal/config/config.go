@@ -61,6 +61,16 @@ type Config struct {
 	Provider     Provider
 	Budget       Budget
 	Session      Session
+	Concurrency  Concurrency
+}
+
+// Concurrency is runtime admission, not a per-turn budget (§10.6).
+type Concurrency struct {
+	MaxOutstandingTurns int
+	MaxConcurrentTurns  int
+	QueueTimeout        time.Duration
+	ClaimLimit          int
+	RecoverInterval     time.Duration
 }
 
 // Session is the Go v1 opaque cookie lifetime. Actual production cutover
@@ -248,6 +258,13 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			CookieSecure: true,
 			ReauthWindow: 15 * time.Minute,
 		},
+		Concurrency: Concurrency{
+			MaxOutstandingTurns: 4,
+			MaxConcurrentTurns:  4,
+			QueueTimeout:        2 * time.Minute,
+			ClaimLimit:          8,
+			RecoverInterval:     5 * time.Second,
+		},
 	}
 	if raw := strings.TrimSpace(getenv("VC_SHUTDOWN_TIMEOUT")); raw != "" {
 		d, err := time.ParseDuration(raw)
@@ -332,6 +349,9 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 	if err := loadSessionEnv(&cfg, getenv); err != nil {
 		return Config{}, err
 	}
+	if err := loadConcurrencyEnv(&cfg, getenv); err != nil {
+		return Config{}, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -362,6 +382,45 @@ func loadSessionEnv(cfg *Config, getenv func(string) string) error {
 			return fmt.Errorf("VC_SESSION_REAUTH_WINDOW: %w", err)
 		}
 		cfg.Session.ReauthWindow = d
+	}
+	return nil
+}
+
+func loadConcurrencyEnv(cfg *Config, getenv func(string) string) error {
+	if raw := strings.TrimSpace(getenv("VC_MAX_OUTSTANDING_TURNS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("VC_MAX_OUTSTANDING_TURNS: %w", err)
+		}
+		cfg.Concurrency.MaxOutstandingTurns = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_MAX_CONCURRENT_TURNS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("VC_MAX_CONCURRENT_TURNS: %w", err)
+		}
+		cfg.Concurrency.MaxConcurrentTurns = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_QUEUE_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("VC_QUEUE_TIMEOUT: %w", err)
+		}
+		cfg.Concurrency.QueueTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_JOB_CLAIM_LIMIT")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("VC_JOB_CLAIM_LIMIT: %w", err)
+		}
+		cfg.Concurrency.ClaimLimit = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_JOB_RECOVER_INTERVAL")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("VC_JOB_RECOVER_INTERVAL: %w", err)
+		}
+		cfg.Concurrency.RecoverInterval = d
 	}
 	return nil
 }
@@ -540,6 +599,21 @@ func (c Config) Validate() error {
 	}
 	if c.Session.ReauthWindow < time.Minute || c.Session.ReauthWindow > time.Hour {
 		return fmt.Errorf("VC_SESSION_REAUTH_WINDOW must be between 1m and 1h")
+	}
+	if c.Concurrency.MaxOutstandingTurns < 1 || c.Concurrency.MaxOutstandingTurns > 16 {
+		return fmt.Errorf("VC_MAX_OUTSTANDING_TURNS must be in [1, 16]")
+	}
+	if c.Concurrency.MaxConcurrentTurns < 1 || c.Concurrency.MaxConcurrentTurns > 16 {
+		return fmt.Errorf("VC_MAX_CONCURRENT_TURNS must be in [1, 16]")
+	}
+	if c.Concurrency.QueueTimeout < 5*time.Second || c.Concurrency.QueueTimeout > 30*time.Minute {
+		return fmt.Errorf("VC_QUEUE_TIMEOUT must be between 5s and 30m")
+	}
+	if c.Concurrency.ClaimLimit < 1 || c.Concurrency.ClaimLimit > 32 {
+		return fmt.Errorf("VC_JOB_CLAIM_LIMIT must be in [1, 32]")
+	}
+	if c.Concurrency.RecoverInterval < time.Second || c.Concurrency.RecoverInterval > time.Minute {
+		return fmt.Errorf("VC_JOB_RECOVER_INTERVAL must be between 1s and 1m")
 	}
 	return c.Budget.validate(c.Provider)
 }

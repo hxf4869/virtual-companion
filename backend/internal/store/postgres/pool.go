@@ -118,6 +118,49 @@ func (s *Store) Stats() Stats {
 // TxWork runs inside one already owner-bound short transaction.
 type TxWork func(ctx context.Context, tx pgx.Tx) error
 
+// withoutOwner opens a short transaction for SECURITY DEFINER worker
+// functions that are not owner-scoped (claim, list expired jobs).
+func (s *Store) withoutOwner(ctx context.Context, work TxWork) (err error) {
+	if s == nil || s.pool == nil {
+		return fmt.Errorf("database pool is not open")
+	}
+	if work == nil {
+		return fmt.Errorf("work is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	start := time.Now()
+	defer func() {
+		s.txCount.Add(1)
+		s.txNanos.Add(uint64(time.Since(start).Nanoseconds()))
+	}()
+	ctx, cancel := context.WithTimeout(ctx, s.txTimeout)
+	defer cancel()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin worker transaction: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(context.Background())
+			panic(p)
+		}
+		if err != nil {
+			_ = tx.Rollback(context.Background())
+		}
+	}()
+	if workErr := work(ctx, tx); workErr != nil {
+		err = workErr
+		return err
+	}
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		err = fmt.Errorf("commit worker transaction: %w", commitErr)
+		return err
+	}
+	return nil
+}
+
 // WithOwner opens a short transaction, binds the existing V27 owner
 // context on that same connection, runs work, then commits or rolls back.
 // ownerUserID is the server-verified account id (user_id == owner_user_id).

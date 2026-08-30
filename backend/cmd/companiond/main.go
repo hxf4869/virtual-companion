@@ -10,7 +10,11 @@ import (
 
 	"github.com/hxf4869/virtual-companion/internal/app"
 	"github.com/hxf4869/virtual-companion/internal/config"
+	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/observability"
+	"github.com/hxf4869/virtual-companion/internal/provider/openai"
+	"github.com/hxf4869/virtual-companion/internal/realtime"
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 func main() {
@@ -29,7 +33,16 @@ func run() int {
 		slog.String("outcome", "ok"),
 		slog.String("mode", string(cfg.Mode)),
 	)
-	rt, err := app.New(cfg, log, app.Deps{})
+	deps, err := wireDeps(cfg, log)
+	if err != nil {
+		log.Error("companiond wiring failed",
+			slog.String("operation", "wire"),
+			slog.String("outcome", "error"),
+			slog.String("error_code", "WIRING_FAILED"),
+		)
+		return 1
+	}
+	rt, err := app.New(cfg, log, deps)
 	if err != nil {
 		log.Error("companiond wiring failed",
 			slog.String("operation", "wire"),
@@ -53,4 +66,38 @@ func run() int {
 		slog.String("outcome", "ok"),
 	)
 	return 0
+}
+
+func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
+	if cfg.Mode != config.ModeFull || cfg.Database.DSN == "" {
+		return app.Deps{}, nil
+	}
+	hub := realtime.New()
+	loop := jobs.NewLoop(log, jobs.PolicyFrom(cfg), app.TurnBudget(cfg))
+	loop.Use(nil, nil, hub, nil)
+	if cfg.Provider.Enabled {
+		ad, err := openai.New(openai.Config{
+			Endpoint:          cfg.Provider.Endpoint,
+			BearerToken:       cfg.Provider.BearerToken,
+			Model:             cfg.Provider.Model,
+			MaxTokens:         cfg.Provider.MaxTokens,
+			Temperature:       cfg.Provider.Temperature,
+			ConnectTimeout:    cfg.Provider.ConnectTimeout,
+			FirstTokenTimeout: cfg.Provider.FirstTokenTimeout,
+			TotalTimeout:      cfg.Provider.TotalTimeout,
+			MaxResponseBytes:  cfg.Provider.MaxResponseBytes,
+		})
+		if err != nil {
+			return app.Deps{}, err
+		}
+		loop.Use(nil, ad, hub, nil)
+	}
+	return app.Deps{
+		Lease:            postgres.NewPlaneLease(cfg.Database.DSN),
+		Jobs:             loop,
+		Scheduler:        jobs.NewScheduler(loop),
+		Provider:         jobs.ProviderPlane(),
+		Realtime:         jobs.RealtimePlane(),
+		GenerationWorker: jobs.GenerationWorkerPlane(),
+	}, nil
 }

@@ -10,6 +10,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
+	"github.com/hxf4869/virtual-companion/internal/jobs"
+	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
@@ -89,16 +91,26 @@ type BlobStore interface {
 	Delete(ctx context.Context, key string) error
 }
 
-// Core is the G7/G9 command surface. companiond wires it only in full mode
+// GenerationAPI is the G10 send/cancel/snapshot/feedback surface.
+type GenerationAPI interface {
+	StartTurn(ctx context.Context, owner int64, in postgres.StartTurn) (postgres.GenerationView, error)
+	CancelTurn(ctx context.Context, owner, generationID int64) (postgres.GenerationView, error)
+	GenerationSnapshot(ctx context.Context, owner, generationID int64) (postgres.GenerationSnapshot, error)
+	RecordGenerationFeedback(ctx context.Context, owner, generationID int64, kind, note string) (postgres.GenerationFeedback, error)
+}
+
+// Core is the G7/G9/G10 command surface. companiond wires it only in full mode
 // against an isolation or cutover database. api-migration never registers
-// these routes (Phase 4 write hard-ban). Opaque auth is not enabled for
-// production traffic in G9.
+// these routes (Phase 4 write hard-ban).
 type Core struct {
 	Store     CompanionStore
 	Sessions  auth.Sessions
 	Passwords *auth.Password
 	Blobs     BlobStore
 	Limiter   *auth.Limiter
+	Turns     GenerationAPI
+	Cancels   *jobs.Cancels
+	Hub       *realtime.Hub
 }
 
 func (s *Server) registerCore() {
@@ -150,6 +162,7 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/auth/password", s.handleChangePassword)
 	s.mux.HandleFunc("POST /api/v1/auth/reauth", s.handleReauth)
 	s.mux.HandleFunc("DELETE /api/v1/auth/account", s.handleDeleteAccount)
+	s.registerGeneration()
 }
 
 func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write bool) *auth.Principal {
@@ -230,6 +243,9 @@ func (s *Server) writeStoreErr(w http.ResponseWriter, err error) {
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 	case errors.Is(err, postgres.ErrConflict):
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+	case errors.Is(err, postgres.ErrRateLimited):
+		w.Header().Set("Retry-After", "1")
+		s.writeAPIError(w, http.StatusTooManyRequests, "RATE_LIMITED", "rate limited")
 	case errors.Is(err, postgres.ErrOwnerContextRejected):
 		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
 	default:

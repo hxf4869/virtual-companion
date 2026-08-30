@@ -12,11 +12,18 @@ import (
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
+	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/httpapi"
+	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
+
+// StoreBinder receives the owner-bound pool after Runtime opens it.
+type StoreBinder interface {
+	BindStore(*postgres.Store)
+}
 
 // Plane is a startable production capability. G2 only wires spies in tests;
 // production companiond has none until later slices provide implementations.
@@ -158,6 +165,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		r.releaseLease(ctx)
 		return err
 	}
+	r.bindStore()
 	if err := r.startPlanes(ctx); err != nil {
 		_ = r.stopStarted(ctx)
 		r.closeStore()
@@ -178,7 +186,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		r.releaseLease(ctx)
 		return err
 	}
-	api := httpapi.New(r.cfg, r.log, r, r.metrics, nil, core)
+	api := httpapi.New(r.cfg, r.log, r, r.metrics, r.realtime(), core)
 	ln, err := net.Listen("tcp", r.cfg.HTTP.Addr)
 	if err != nil {
 		_ = r.stopPprof(ctx)
@@ -308,12 +316,37 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 	if err != nil {
 		return nil, fmt.Errorf("password verifier: %w", err)
 	}
-	return &httpapi.Core{
+	core := &httpapi.Core{
 		Store:     r.store,
 		Sessions:  r.store,
 		Passwords: pw,
 		Limiter:   auth.NewLimiter(),
-	}, nil
+		Turns:     r.store,
+	}
+	if loop, ok := r.deps.Jobs.(*jobs.Loop); ok {
+		core.Cancels = loop.Cancels()
+		core.Hub = loop.Hub()
+	}
+	return core, nil
+}
+
+func (r *Runtime) bindStore() {
+	if r.store == nil {
+		return
+	}
+	for _, p := range r.deps.planes() {
+		if b, ok := p.(StoreBinder); ok {
+			b.BindStore(r.store)
+		}
+	}
+}
+
+func (r *Runtime) realtime() *httpapi.Realtime {
+	loop, ok := r.deps.Jobs.(*jobs.Loop)
+	if !ok || loop == nil || loop.Hub() == nil || r.store == nil {
+		return nil
+	}
+	return &httpapi.Realtime{Hub: loop.Hub(), Sessions: r.store, Snapshots: r.store}
 }
 
 func (r *Runtime) closeStore() {
@@ -322,6 +355,19 @@ func (r *Runtime) closeStore() {
 	}
 	r.store.Close()
 	r.store = nil
+}
+
+func TurnBudget(cfg config.Config) companion.TurnBudget {
+	return companion.TurnBudget{
+		MaxInputTokens:    cfg.Budget.MaxInputTokens,
+		MaxOutputTokens:   cfg.Budget.MaxOutputTokens,
+		MaxResponseBytes:  cfg.Budget.MaxResponseBytes,
+		ConnectTimeout:    cfg.Budget.ConnectTimeout,
+		FirstTokenTimeout: cfg.Budget.FirstTokenTimeout,
+		TotalTimeout:      cfg.Budget.TotalTimeout,
+		MaxAttempts:       cfg.Budget.MaxAttempts,
+		MaxReservedCost:   cfg.Budget.MaxReservedCost,
+	}
 }
 
 func (r *Runtime) startPlanes(ctx context.Context) error {

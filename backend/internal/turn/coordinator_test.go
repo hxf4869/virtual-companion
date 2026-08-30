@@ -191,13 +191,16 @@ func TestMemStoreRejectsFinalizeWithoutClosedSucceededAttempt(t *testing.T) {
 func TestConnectTimeoutMayRetryOnce(t *testing.T) {
 	t.Parallel()
 	p := &scripted{err: companion.Timeout(companion.TimeoutConnect, companion.DeliveryNotSent)}
-	c, _, _ := newCoord(t, p, baseSeed())
+	c, store, _ := newCoord(t, p, baseSeed())
 	res := c.Run(context.Background(), Command{TurnID: "turn-1", RunID: "run-r", Budget: budget()})
 	if !res.RetryAllowed {
 		t.Fatalf("retry %+v", res)
 	}
 	if res.Public == companion.EventCompleted {
 		t.Fatal("completed")
+	}
+	if store.Phase("turn-1") == companion.PhaseFailed || store.Phase("turn-1") == companion.PhaseCancelled {
+		t.Fatal("in-process retry must not terminalize the generation")
 	}
 }
 
