@@ -16,7 +16,7 @@ function stubFetch(fail = false): { calls: string[] } {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       calls.push(url);
-      if (fail && !url.includes("/auth/refresh")) {
+      if (fail && !url.includes("/auth/sessions")) {
         return { ok: false, status: 500, json: async () => null };
       }
       if (url === "/api/v1/relationships") {

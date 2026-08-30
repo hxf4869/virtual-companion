@@ -53,5 +53,6 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
+	s.clearSessionCookies(w)
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

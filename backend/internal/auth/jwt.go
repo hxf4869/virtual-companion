@@ -1,13 +1,10 @@
-// Package auth holds migration-window credential checks.
+// Package auth holds credential checks and the Go v1 opaque session.
 //
 // JWT verifier: only verifies HMAC access tokens issued by the Java
-// runtime (JwtTokenService). Go must not issue JWT. Java remains the only
-// login / refresh / logout writer. jjwt selects HS256/HS384/HS512 from key
-// length; this verifier accepts those three HMAC algs and nothing else.
-//
-// Deletion: Phase 5 / G9 opaque-session cutover. After Owner re-login,
-// delete this verifier, /auth/refresh, and the H5 automatic refresh chain
-// (redesign §13.2, §17.2, G9, G13). Do not grow this into a second issuer.
+// runtime (JwtTokenService). Go must not issue JWT. The verifier is the
+// api-migration read path; G9 opaque session is the full-mode writer.
+// Deletion: Phase 5 / G13 after Owner re-login. Do not grow this into a
+// second issuer (redesign §13.2, §17.2, G9, G13).
 package auth
 
 import (
@@ -31,13 +28,17 @@ type Verifier struct {
 	now    func() time.Time
 }
 
-// Principal is the server-verified identity bound to an access token.
-// AccountID is both the identity id and the owner_user_id used for RLS.
+// Principal is the server-verified identity bound to a session or, during
+// api-migration, a Java access token. AccountID is both the identity id and
+// the owner_user_id used for RLS.
 type Principal struct {
-	AccountID    int64
-	Role         string
-	Username     string
-	SessionEpoch int64
+	AccountID          int64
+	Role               string
+	Username           string
+	SessionEpoch       int64
+	SessionID          int64
+	ReauthAt           time.Time
+	PasswordMustChange bool
 }
 
 // NewVerifier fails closed if the secret is shorter than 256 bits or issuer is blank.

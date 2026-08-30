@@ -34,14 +34,12 @@ function transportFor(response: AuthApiResponse): AuthTransport {
 }
 
 describe("auth api client", () => {
-  it("parses a confirmed login into tokens (no refreshToken in the response body)", async () => {
+  it("parses a confirmed login into session identity (no access token in the body)", async () => {
     const t = transportFor({
       ok: true,
       status: 200,
       json: {
-        accessToken: "a-token",
-        tokenType: "Bearer",
-        expiresInSeconds: 7200,
+        expiresInSeconds: 604800,
         accountId: "7",
         role: "ADMIN",
         passwordMustChange: true,
@@ -51,27 +49,25 @@ describe("auth api client", () => {
     const tokens = await login(t, "root", "pw");
 
     expect(tokens).toEqual({
-      accessToken: "a-token",
-      tokenType: "Bearer",
-      expiresInSeconds: 7200,
+      expiresInSeconds: 604800,
       accountId: "7",
       role: "ADMIN",
       passwordMustChange: true,
     });
+    expect(tokens).not.toHaveProperty("accessToken");
     expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/login", {
       username: "root",
       password: "pw",
     });
   });
 
-  it("tolerates a legacy response body that still carries refreshToken (ignored)", async () => {
+  it("ignores a leftover accessToken in the login body", async () => {
     const t = transportFor({
       ok: true,
       status: 200,
       json: {
-        accessToken: "a-token",
+        accessToken: "must-ignore",
         refreshToken: "r-token",
-        tokenType: "Bearer",
         expiresInSeconds: 7200,
         accountId: "7",
         role: "USER",
@@ -81,16 +77,17 @@ describe("auth api client", () => {
 
     const tokens = await login(t, "root", "pw");
 
-    expect(tokens?.accessToken).toBe("a-token");
+    expect(tokens?.accountId).toBe("7");
+    expect(tokens).not.toHaveProperty("accessToken");
     expect(tokens).not.toHaveProperty("refreshToken");
   });
 
-  it("rejects a token response without passwordMustChange instead of bypassing reset", async () => {
+  it("rejects a login response without passwordMustChange instead of bypassing reset", async () => {
     const t = transportFor({
       ok: true,
       status: 200,
       json: {
-        accessToken: "a-token", tokenType: "Bearer", expiresInSeconds: 7200,
+        expiresInSeconds: 7200,
         accountId: "7", role: "USER",
       },
     });
@@ -123,25 +120,26 @@ describe("auth api client", () => {
     await expect(login(t, "root", "pw")).rejects.toThrow("offline");
   });
 
-  it("refresh sends no body and no token argument (cookie-based)", async () => {
+  it("restore uses GET /auth/sessions, not /auth/refresh", async () => {
     const t = transportFor({
       ok: true,
       status: 200,
-      json: {
-        accessToken: "a-2",
-        tokenType: "Bearer",
-        expiresInSeconds: 7200,
+      json: [{
+        id: "1",
+        createdAt: "2026-01-01T00:00:00Z",
+        expiresAt: "2026-01-08T00:00:00Z",
+        current: true,
         accountId: "7",
         role: "USER",
         passwordMustChange: false,
-      },
+      }],
     });
 
     const tokens = await refresh(t);
 
-    expect(tokens?.accessToken).toBe("a-2");
-    expect(tokens).not.toHaveProperty("refreshToken");
-    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/refresh");
+    expect(tokens?.accountId).toBe("7");
+    expect(tokens).not.toHaveProperty("accessToken");
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/sessions");
   });
 
   it("maps an invalid refresh to null", async () => {
@@ -171,6 +169,7 @@ describe("auth api client", () => {
     await expect(listAuthSessions(sessions)).resolves.toEqual([{
       id: "11", familyId: "family", clientLabel: "h5",
       createdAt: "c", lastSeenAt: "l", expiresAt: "e", current: true,
+      accountId: undefined, role: undefined, passwordMustChange: undefined,
     }]);
 
     const revoked = transportFor({ ok: true, status: 200, json: { ok: true } });

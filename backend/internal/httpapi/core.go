@@ -69,6 +69,15 @@ type CompanionStore interface {
 	RequestAccountDeletion(ctx context.Context, owner int64) error
 	DeletionIntentActive(ctx context.Context, owner int64) (bool, error)
 	DeleteAccount(ctx context.Context, owner int64) error
+
+	IssueOpaqueSession(ctx context.Context, accountID int64, tokenHash string, expires time.Time) (int64, error)
+	LookupOpaqueSession(ctx context.Context, tokenHash string) (*auth.Principal, error)
+	ListOpaqueSessions(ctx context.Context, accountID int64) ([]postgres.OpaqueSession, error)
+	RevokeOpaqueSession(ctx context.Context, accountID, sessionID int64) error
+	RevokeOpaqueSessionHash(ctx context.Context, tokenHash string) error
+	RevokeAllOpaqueSessions(ctx context.Context, accountID int64) (int, error)
+	RecordOpaqueReauth(ctx context.Context, accountID, sessionID int64) error
+	ChangePasswordHash(ctx context.Context, accountID int64, passwordHash string) error
 }
 
 // BlobStore is the isolation object store for export envelopes. Production
@@ -80,14 +89,16 @@ type BlobStore interface {
 	Delete(ctx context.Context, key string) error
 }
 
-// Core is the G7/G8 command surface. companiond wires it only in full mode
+// Core is the G7/G9 command surface. companiond wires it only in full mode
 // against an isolation or cutover database. api-migration never registers
-// these routes (Phase 4 write hard-ban).
+// these routes (Phase 4 write hard-ban). Opaque auth is not enabled for
+// production traffic in G9.
 type Core struct {
 	Store     CompanionStore
-	JWT       *auth.Verifier
+	Sessions  auth.Sessions
 	Passwords *auth.Password
 	Blobs     BlobStore
+	Limiter   *auth.Limiter
 }
 
 func (s *Server) registerCore() {
@@ -131,31 +142,60 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("GET /api/v1/exports/{exportId}", s.handleGetExport)
 	s.mux.HandleFunc("GET /api/v1/exports/{exportId}/download", s.handleDownloadExport)
 
+	s.mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	s.mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
+	s.mux.HandleFunc("GET /api/v1/auth/sessions", s.handleListSessions)
+	s.mux.HandleFunc("DELETE /api/v1/auth/sessions/{sessionId}", s.handleRevokeSession)
+	s.mux.HandleFunc("POST /api/v1/auth/sessions/revoke-all", s.handleRevokeAllSessions)
+	s.mux.HandleFunc("POST /api/v1/auth/password", s.handleChangePassword)
+	s.mux.HandleFunc("POST /api/v1/auth/reauth", s.handleReauth)
 	s.mux.HandleFunc("DELETE /api/v1/auth/account", s.handleDeleteAccount)
 }
 
 func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write bool) *auth.Principal {
 	if write {
 		s.metrics.ObserveCoreWrite()
-		if !apiOriginAllowed(r.Header.Get("Origin"), s.cfg.HTTP.AllowedOrigins) {
+		if !auth.AllowOrigin(r.Header.Get("Origin"), s.cfg.HTTP.AllowedOrigins) {
 			s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "origin rejected")
 			return nil
 		}
-		if hasSessionCookie(r) && !csrfMatches(r) {
+		if !csrfMatches(r) {
 			s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "csrf rejected")
 			return nil
 		}
 	}
-	if s.core == nil || s.core.JWT == nil {
+	if s.core == nil || s.core.Sessions == nil {
 		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
 		return nil
 	}
-	p := s.core.JWT.VerifyAccessToken(bearerToken(r))
+	token := auth.CookieToken(r)
+	if token == "" {
+		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
+		return nil
+	}
+	p, err := s.core.Sessions.Lookup(r.Context(), token)
+	if err != nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return nil
+	}
 	if p == nil || p.AccountID <= 0 {
 		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
 		return nil
 	}
+	if write && p.PasswordMustChange && !passwordChangeAllowed(r.URL.Path) {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "password change required")
+		return nil
+	}
 	return p
+}
+
+func passwordChangeAllowed(path string) bool {
+	switch path {
+	case "/api/v1/auth/password", "/api/v1/auth/logout", "/api/v1/auth/reauth":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {

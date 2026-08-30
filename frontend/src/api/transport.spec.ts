@@ -16,12 +16,11 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("document", { cookie: "vc_csrf=csrf-token-123" });
   });
 
-  it("injects the Bearer token, sends credentials and the CSRF header on state changes", async () => {
+  it("sends credentials and the CSRF header on state changes, without Bearer", async () => {
     const fetchMock = fetchOk();
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => "a-token",
       onUnauthorized: vi.fn(),
     });
 
@@ -31,7 +30,6 @@ describe("createAuthenticatedTransport", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer a-token",
         "X-CSRF-Token": "csrf-token-123",
       },
       credentials: "include",
@@ -39,12 +37,12 @@ describe("createAuthenticatedTransport", () => {
     });
   });
 
-  it("omits the Authorization header when there is no token", async () => {
+  it("does not inject the Authorization header", async () => {
     const fetchMock = fetchOk();
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => null,
+      getAccessToken: () => "must-not-be-sent",
       onUnauthorized: vi.fn(),
     });
 
@@ -63,7 +61,6 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => "a-token",
       onUnauthorized: vi.fn(),
     });
 
@@ -85,7 +82,6 @@ describe("createAuthenticatedTransport", () => {
       })),
     );
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => "a-token",
       onUnauthorized: vi.fn(),
     });
     await transport.request("GET", "/api/v1/version");
@@ -99,7 +95,6 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -115,7 +110,6 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -130,7 +124,6 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -149,7 +142,6 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => "expired-token",
       onUnauthorized,
     });
 
@@ -170,7 +162,6 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => "a-token",
       onUnauthorized,
     });
 
@@ -179,87 +170,7 @@ describe("createAuthenticatedTransport", () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
-  it("SESS-REVIVE: replays the request once after a successful silent refresh", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockImplementationOnce(async () => ({
-        ok: false,
-        status: 401,
-        json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
-      }))
-      .mockImplementationOnce(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true }),
-      }));
-    vi.stubGlobal("fetch", fetchMock);
-    const renewAccessToken = vi.fn(async (): Promise<"renewed"> => "renewed");
-    const onUnauthorized = vi.fn();
-
-    const transport = createAuthenticatedTransport({
-      getAccessToken: () => "fresh-token",
-      renewAccessToken,
-      onUnauthorized,
-    });
-
-    const result = await transport.request("GET", "/api/v1/conversations");
-
-    expect(renewAccessToken).toHaveBeenCalledTimes(1);
-    expect(onUnauthorized).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(2); // original 401 + replay
-    expect(result.ok).toBe(true);
-    expect(result.status).toBe(200);
-  });
-
-  it("SESS-REVIVE: a rejected refresh clears and redirects without a replay", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 401,
-      json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    const renewAccessToken = vi.fn(async (): Promise<"rejected"> => "rejected");
-    const onUnauthorized = vi.fn();
-
-    const transport = createAuthenticatedTransport({
-      getAccessToken: () => "expired-token",
-      renewAccessToken,
-      onUnauthorized,
-    });
-
-    const result = await transport.request("GET", "/api/v1/conversations");
-
-    expect(renewAccessToken).toHaveBeenCalledTimes(1);
-    expect(onUnauthorized).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1); // no replay
-    expect(result.ok).toBe(false);
-  });
-
-  it("SESS-REVIVE: an unavailable refresh (network) returns the 401 without kicking the user", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 401,
-      json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    const renewAccessToken = vi.fn(async (): Promise<"unavailable"> => "unavailable");
-    const onUnauthorized = vi.fn();
-
-    const transport = createAuthenticatedTransport({
-      getAccessToken: () => "expired-token",
-      renewAccessToken,
-      onUnauthorized,
-    });
-
-    const result = await transport.request("GET", "/api/v1/conversations");
-
-    expect(renewAccessToken).toHaveBeenCalledTimes(1);
-    expect(onUnauthorized).not.toHaveBeenCalled();
-    expect(result.ok).toBe(false);
-    expect(result.status).toBe(401);
-  });
-
-  it("SESS-REVIVE: never replays the refresh endpoint itself (no recursion)", async () => {
+  it("does not replay or call refresh after a 401", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: false,
       status: 401,
@@ -270,39 +181,15 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => "expired-token",
-      renewAccessToken,
-      onUnauthorized,
-    });
-
-    await transport.request("POST", "/api/v1/auth/refresh");
-
-    expect(renewAccessToken).not.toHaveBeenCalled();
-    expect(onUnauthorized).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("SESS-REVIVE: a replay that 401s again falls through to onUnauthorized exactly once", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 401,
-      json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    const renewAccessToken = vi.fn(async (): Promise<"renewed"> => "renewed");
-    const onUnauthorized = vi.fn();
-
-    const transport = createAuthenticatedTransport({
-      getAccessToken: () => "still-expired",
       renewAccessToken,
       onUnauthorized,
     });
 
     await transport.request("GET", "/api/v1/conversations");
 
-    expect(renewAccessToken).toHaveBeenCalledTimes(1);
+    expect(renewAccessToken).not.toHaveBeenCalled();
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2); // original + one replay, no storm
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("tolerates a non-JSON response body", async () => {
@@ -314,7 +201,6 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
-      getAccessToken: () => null,
       onUnauthorized: vi.fn(),
     });
 

@@ -7,13 +7,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Identity is the credential row used for high-risk current-password checks.
+// Identity is the credential row used for login and current-password checks.
 // The hash never enters logs.
 type Identity struct {
-	AccountID    int64
-	Role         string
-	Status       string
-	PasswordHash string
+	AccountID          int64
+	Role               string
+	Status             string
+	PasswordHash       string
+	Username           string
+	PasswordMustChange bool
 }
 
 func (s *Store) LookupIdentity(ctx context.Context, username string) (Identity, bool, error) {
@@ -25,15 +27,16 @@ func (s *Store) LookupIdentity(ctx context.Context, username string) (Identity, 
 		ctx = context.Background()
 	}
 	row := s.pool.QueryRow(ctx,
-		`SELECT out_account_id, out_role, out_status, out_password_hash
+		`SELECT out_account_id, out_role, out_status, out_password_hash, out_password_must_change
 		   FROM vc.identity_authenticate($1)`, username)
 	var id Identity
-	if err := row.Scan(&id.AccountID, &id.Role, &id.Status, &id.PasswordHash); err != nil {
+	if err := row.Scan(&id.AccountID, &id.Role, &id.Status, &id.PasswordHash, &id.PasswordMustChange); err != nil {
 		if err == pgx.ErrNoRows {
 			return Identity{}, false, nil
 		}
 		return Identity{}, false, mapStoreErr(err)
 	}
+	id.Username = username
 	return id, true, nil
 }
 

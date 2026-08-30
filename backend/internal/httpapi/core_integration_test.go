@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -221,19 +222,15 @@ func TestG7IsolationDoesNotServeWritesInAPIMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ver, err := auth.NewVerifier(testJWTSecret, testIssuer)
-	if err != nil {
-		t.Fatal(err)
-	}
 	s := New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
-		Store: postgres.IsolationStore(),
-		JWT:   ver,
+		Store:    postgres.IsolationStore(),
+		Sessions: postgres.IsolationStore(),
 	})
 	rec := doJSON(t, s, http.MethodPost, "/api/v1/relationships", `{"personaRef":"gentle-listener"}`, 1)
 	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("api-migration write %d", rec.Code)
 	}
-	for _, path := range []string{"/api/v1/consents", "/api/v1/reports", "/api/v1/exports", "/api/v1/auth/account"} {
+	for _, path := range []string{"/api/v1/consents", "/api/v1/reports", "/api/v1/exports", "/api/v1/auth/account", "/api/v1/auth/login"} {
 		got := doJSON(t, s, http.MethodPost, path, `{}`, 1)
 		if got.Code != http.StatusNotFound && got.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("api-migration %s %d", path, got.Code)
@@ -244,6 +241,68 @@ func TestG7IsolationDoesNotServeWritesInAPIMigration(t *testing.T) {
 	}
 }
 
+func TestG9IsolationOpaqueAuth(t *testing.T) {
+	resetIsolation(t)
+	store := postgres.IsolationStore()
+	s := newIsoServer(t, store)
+
+	rec := loginJSON(t, s, "alice", testPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login %d %s", rec.Code, rec.Body.String())
+	}
+	var ident map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &ident); err != nil {
+		t.Fatal(err)
+	}
+	if ident["accessToken"] != nil || ident["accountId"] != "1" {
+		t.Fatalf("login body %+v", ident)
+	}
+	jar := map[string]string{}
+	for _, c := range rec.Result().Cookies() {
+		jar[c.Name] = c.Value
+	}
+	if jar[auth.SessionCookieName] == "" {
+		t.Fatal("vc_session")
+	}
+
+	listed := doJSONCookies(t, s, http.MethodGet, "/api/v1/relationships", "", jar)
+	if listed.Code != http.StatusOK {
+		t.Fatalf("cookie session %d %s", listed.Code, listed.Body.String())
+	}
+
+	reauth := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/reauth", `{"password":"`+testPassword+`"}`, jar)
+	if reauth.Code != http.StatusOK {
+		t.Fatalf("reauth %d %s", reauth.Code, reauth.Body.String())
+	}
+
+	csrfMiss := httptest.NewRequest(http.MethodPost, "/api/v1/relationships", strings.NewReader(`{"personaRef":"gentle-listener"}`))
+	csrfMiss.Header.Set("Content-Type", "application/json")
+	csrfMiss.Header.Set("Origin", "https://vc.test")
+	csrfMiss.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: jar[auth.SessionCookieName]})
+	csrfRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(csrfRec, csrfMiss)
+	if csrfRec.Code != http.StatusForbidden {
+		t.Fatalf("csrf %d", csrfRec.Code)
+	}
+	assertEnvelope(t, csrfRec, "ACCESS_DENIED")
+
+	logout := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", jar)
+	if logout.Code != http.StatusOK {
+		t.Fatalf("logout %d %s", logout.Code, logout.Body.String())
+	}
+	after := doJSONCookies(t, s, http.MethodGet, "/api/v1/relationships", "", jar)
+	if after.Code != http.StatusUnauthorized {
+		t.Fatalf("after logout %d %s", after.Code, after.Body.String())
+	}
+	assertEnvelope(t, after, "AUTHENTICATION_REQUIRED")
+
+	bob := loginJSON(t, s, "bob", "wrong-password")
+	if bob.Code != http.StatusNotFound {
+		t.Fatalf("bob wrong %d", bob.Code)
+	}
+	assertEnvelope(t, bob, "NOT_FOUND_OR_FORBIDDEN")
+}
+
 func newIsoServer(t *testing.T, store *postgres.Store) *Server {
 	t.Helper()
 	cfg, err := config.LoadEnv(func(k string) string {
@@ -252,6 +311,10 @@ func newIsoServer(t *testing.T, store *postgres.Store) *Server {
 			return "full"
 		case "VC_VERSION":
 			return "test-version"
+		case "VC_HTTP_ORIGINS":
+			return "https://vc.test"
+		case "VC_SESSION_COOKIE_SECURE":
+			return "false"
 		default:
 			return ""
 		}
@@ -259,15 +322,13 @@ func newIsoServer(t *testing.T, store *postgres.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ver, err := auth.NewVerifier(testJWTSecret, testIssuer)
-	if err != nil {
-		t.Fatal(err)
-	}
 	pw, err := auth.NewPassword()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{Store: store, JWT: ver, Passwords: pw})
+	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
+		Store: store, Sessions: store, Passwords: pw, Limiter: auth.NewLimiter(),
+	})
 }
 
 func resetIsolation(t *testing.T) {

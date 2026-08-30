@@ -12,8 +12,8 @@ import (
 const DummyPassword = "virtual-companion-timing-equalization"
 
 // Password compares BCrypt hashes compatible with Spring Security's
-// BCryptPasswordEncoder (strength 10, $2a$). Hashing is provided for tests
-// and later login; this package does not issue sessions or JWT.
+// BCryptPasswordEncoder (strength 10, $2a$). Hashing is used by login and
+// password change. This package does not issue JWT.
 type Password struct {
 	dummyHash []byte
 }

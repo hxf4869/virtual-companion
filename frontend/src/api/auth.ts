@@ -26,12 +26,10 @@ export interface AuthTransport {
 }
 
 export interface AuthTokens {
-  accessToken: string;
-  tokenType: string;
-  expiresInSeconds: number;
   accountId: string;
   role: string;
   passwordMustChange: boolean;
+  expiresInSeconds: number;
 }
 
 const AUTH_BASE = "/api/v1/auth";
@@ -44,22 +42,18 @@ function asString(o: Record<string, unknown>, k: string): string | undefined {
 function asTokens(json: unknown): AuthTokens | null {
   if (!json || typeof json !== "object") return null;
   const o = json as Record<string, unknown>;
-  const accessToken = asString(o, "accessToken");
   const accountId = asString(o, "accountId");
   const role = asString(o, "role");
-  const expiresInSeconds = Number(o.expiresInSeconds);
   const passwordMustChange = o.passwordMustChange;
-  if (!accessToken || !accountId || !role || !Number.isFinite(expiresInSeconds)
-      || typeof passwordMustChange !== "boolean") {
+  const expiresInSeconds = Number(o.expiresInSeconds);
+  if (!accountId || !role || typeof passwordMustChange !== "boolean") {
     return null;
   }
   return {
-    accessToken,
-    tokenType: asString(o, "tokenType") ?? "Bearer",
-    expiresInSeconds,
     accountId,
     role,
     passwordMustChange,
+    expiresInSeconds: Number.isFinite(expiresInSeconds) ? expiresInSeconds : 0,
   };
 }
 
@@ -74,13 +68,24 @@ export async function login(
 }
 
 /**
- * Renew a session from the HttpOnly vc_refresh cookie (sent automatically by
- * the transport with credentials:"include"; no body, no token argument).
- * Existence-hidden: non-OK -> null; transport failures propagate.
+ * Restore identity from the opaque session cookie via GET /auth/sessions.
+ * /auth/refresh is RETIRE. Existence-hidden: non-OK -> null.
  */
 export async function refresh(t: AuthTransport): Promise<AuthTokens | null> {
-  const r = await t.request("POST", `${AUTH_BASE}/refresh`);
-  return r.ok ? asTokens(r.json) : null;
+  return restoreSession(t);
+}
+
+export async function restoreSession(t: AuthTransport): Promise<AuthTokens | null> {
+  const sessions = await listAuthSessionsOrNull(t);
+  if (sessions === null) return null;
+  const current = sessions.find((s) => s.current) ?? sessions[0];
+  if (!current?.accountId || !current.role) return null;
+  return {
+    accountId: current.accountId,
+    role: current.role,
+    passwordMustChange: current.passwordMustChange === true,
+    expiresInSeconds: 0,
+  };
 }
 
 /**
@@ -94,27 +99,35 @@ export async function logout(t: AuthTransport): Promise<boolean> {
 
 export interface AuthSession {
   id: string;
-  familyId: string;
+  familyId?: string;
   clientLabel?: string;
   createdAt: string;
-  lastSeenAt: string;
+  lastSeenAt?: string;
   expiresAt: string;
   current: boolean;
+  accountId?: string;
+  role?: string;
+  passwordMustChange?: boolean;
 }
 
 function asAuthSession(json: unknown): AuthSession | null {
   if (!json || typeof json !== "object") return null;
   const o = json as Record<string, unknown>;
   const id = asString(o, "id");
-  const familyId = asString(o, "familyId");
   const createdAt = asString(o, "createdAt");
-  const lastSeenAt = asString(o, "lastSeenAt");
   const expiresAt = asString(o, "expiresAt");
-  if (!id || !familyId || !createdAt || !lastSeenAt || !expiresAt
-      || typeof o.current !== "boolean") return null;
+  if (!id || !createdAt || !expiresAt || typeof o.current !== "boolean") return null;
   return {
-    id, familyId, createdAt, lastSeenAt, expiresAt, current: o.current,
+    id,
+    familyId: asString(o, "familyId"),
+    createdAt,
+    lastSeenAt: asString(o, "lastSeenAt") ?? createdAt,
+    expiresAt,
+    current: o.current,
     clientLabel: asString(o, "clientLabel"),
+    accountId: asString(o, "accountId"),
+    role: asString(o, "role"),
+    passwordMustChange: typeof o.passwordMustChange === "boolean" ? o.passwordMustChange : undefined,
   };
 }
 
@@ -123,6 +136,14 @@ export async function listAuthSessions(t: AuthTransport): Promise<AuthSession[]>
   if (!r.ok || !Array.isArray(r.json)) throw new AuthHttpError(r.status);
   const sessions = r.json.map(asAuthSession);
   if (sessions.some((session) => session === null)) throw new AuthHttpError(r.status);
+  return sessions as AuthSession[];
+}
+
+async function listAuthSessionsOrNull(t: AuthTransport): Promise<AuthSession[] | null> {
+  const r = await t.request("GET", `${AUTH_BASE}/sessions`);
+  if (!r.ok || !Array.isArray(r.json)) return null;
+  const sessions = r.json.map(asAuthSession);
+  if (sessions.some((session) => session === null)) return null;
   return sessions as AuthSession[];
 }
 

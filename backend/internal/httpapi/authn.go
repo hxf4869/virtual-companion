@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	csrfCookie    = "vc_csrf"
-	csrfHeader    = "X-CSRF-Token"
+	csrfCookie    = auth.CSRFCookieName
+	csrfHeader    = auth.CSRFHeader
 	refreshCookie = "vc_refresh"
 )
 
@@ -51,7 +51,7 @@ func cookieValue(r *http.Request, name string) string {
 }
 
 func hasSessionCookie(r *http.Request) bool {
-	return cookieValue(r, refreshCookie) != "" || cookieValue(r, csrfCookie) != ""
+	return auth.CookieToken(r) != "" || cookieValue(r, refreshCookie) != "" || cookieValue(r, csrfCookie) != ""
 }
 
 func csrfMatches(r *http.Request) bool {

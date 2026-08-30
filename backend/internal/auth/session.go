@@ -2,17 +2,34 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // SessionCookieName is the Go v1 opaque session cookie (ADR-0007).
 const SessionCookieName = "vc_session"
 
-const maxSessionCookieBytes = 128
+// CSRFCookieName is the JS-readable double-submit CSRF cookie.
+const CSRFCookieName = "vc_csrf"
+
+// CSRFHeader is the header that must match CSRFCookieName.
+const CSRFHeader = "X-CSRF-Token"
+
+const (
+	sessionTokenBytes     = 32
+	csrfTokenBytes        = 32
+	maxSessionCookieBytes = 128
+	DefaultSessionTTL     = 7 * 24 * time.Hour
+	DefaultReauthWindow   = 15 * time.Minute
+)
 
 // Sessions looks up a process-verified principal from the opaque cookie value.
-// G6 only reads; G9 is the writer. A missing or unknown token returns nil.
+// A missing, revoked, expired or unknown token returns nil.
 type Sessions interface {
 	Lookup(ctx context.Context, token string) (*Principal, error)
 }
@@ -40,4 +57,41 @@ func CookieToken(r *http.Request) string {
 		}
 	}
 	return token
+}
+
+// NewSessionToken returns a ≥256-bit raw cookie value and its SHA-256 hex hash.
+// Only the hash is persisted. The raw value is never logged.
+func NewSessionToken() (raw, hash string, err error) {
+	var b [sessionTokenBytes]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", "", err
+	}
+	raw = base64.RawURLEncoding.EncodeToString(b[:])
+	return raw, TokenHash(raw), nil
+}
+
+// NewCSRFToken returns a 256-bit hex CSRF value for the double-submit cookie.
+func NewCSRFToken() (string, error) {
+	var b [csrfTokenBytes]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
+// TokenHash is the lowercase SHA-256 hex of the raw cookie value.
+func TokenHash(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
+// FreshReauth reports whether principal.ReauthAt is within window of now.
+func FreshReauth(p *Principal, now time.Time, window time.Duration) bool {
+	if p == nil || p.ReauthAt.IsZero() || window <= 0 {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	return !p.ReauthAt.After(now) && now.Sub(p.ReauthAt) <= window
 }

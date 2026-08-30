@@ -60,6 +60,15 @@ type Config struct {
 	Crypto       Crypto
 	Provider     Provider
 	Budget       Budget
+	Session      Session
+}
+
+// Session is the Go v1 opaque cookie lifetime. Actual production cutover
+// stays Phase 5; these defaults serve isolation/full-mode dogfood.
+type Session struct {
+	TTL          time.Duration
+	CookieSecure bool
+	ReauthWindow time.Duration
 }
 
 // Provider is the single OpenAI-compatible Chat Completions adapter.
@@ -234,6 +243,11 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			MaxAttempts:       2,
 			MaxReservedCost:   0,
 		},
+		Session: Session{
+			TTL:          7 * 24 * time.Hour,
+			CookieSecure: true,
+			ReauthWindow: 15 * time.Minute,
+		},
 	}
 	if raw := strings.TrimSpace(getenv("VC_SHUTDOWN_TIMEOUT")); raw != "" {
 		d, err := time.ParseDuration(raw)
@@ -315,10 +329,41 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 	if err := loadBudgetEnv(&cfg, getenv); err != nil {
 		return Config{}, err
 	}
+	if err := loadSessionEnv(&cfg, getenv); err != nil {
+		return Config{}, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func loadSessionEnv(cfg *Config, getenv func(string) string) error {
+	if raw := strings.TrimSpace(getenv("VC_SESSION_TTL")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("VC_SESSION_TTL: %w", err)
+		}
+		cfg.Session.TTL = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_SESSION_COOKIE_SECURE")); raw != "" {
+		switch strings.ToLower(raw) {
+		case "true", "1":
+			cfg.Session.CookieSecure = true
+		case "false", "0":
+			cfg.Session.CookieSecure = false
+		default:
+			return fmt.Errorf("VC_SESSION_COOKIE_SECURE must be true or false")
+		}
+	}
+	if raw := strings.TrimSpace(getenv("VC_SESSION_REAUTH_WINDOW")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("VC_SESSION_REAUTH_WINDOW: %w", err)
+		}
+		cfg.Session.ReauthWindow = d
+	}
+	return nil
 }
 
 func loadBudgetEnv(cfg *Config, getenv func(string) string) error {
@@ -489,6 +534,12 @@ func (c Config) Validate() error {
 		if !strings.HasSuffix(u.EscapedPath(), "/v1/chat/completions") {
 			return fmt.Errorf("VC_PROVIDER_ENDPOINT path must end with /v1/chat/completions")
 		}
+	}
+	if c.Session.TTL < time.Hour || c.Session.TTL > 30*24*time.Hour {
+		return fmt.Errorf("VC_SESSION_TTL must be between 1h and 720h")
+	}
+	if c.Session.ReauthWindow < time.Minute || c.Session.ReauthWindow > time.Hour {
+		return fmt.Errorf("VC_SESSION_REAUTH_WINDOW must be between 1m and 1h")
 	}
 	return c.Budget.validate(c.Provider)
 }

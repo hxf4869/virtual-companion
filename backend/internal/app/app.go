@@ -290,13 +290,6 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 	if r.cfg.Mode != config.ModeFull || r.store == nil {
 		return nil, nil
 	}
-	if r.cfg.JWT.Secret == "" {
-		return nil, nil
-	}
-	ver, err := auth.NewVerifier(r.cfg.JWT.Secret, r.cfg.JWT.Issuer)
-	if err != nil {
-		return nil, fmt.Errorf("jwt verifier: %w", err)
-	}
 	if r.cfg.Crypto.RestKeyBase64 != "" {
 		ciph, err := postgres.NewFieldCipherWithPrevious(
 			r.cfg.Crypto.RestKeyID,
@@ -315,7 +308,12 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 	if err != nil {
 		return nil, fmt.Errorf("password verifier: %w", err)
 	}
-	return &httpapi.Core{Store: r.store, JWT: ver, Passwords: pw}, nil
+	return &httpapi.Core{
+		Store:     r.store,
+		Sessions:  r.store,
+		Passwords: pw,
+		Limiter:   auth.NewLimiter(),
+	}, nil
 }
 
 func (r *Runtime) closeStore() {

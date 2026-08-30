@@ -153,6 +153,29 @@ func TestDatabaseRequiresOwnerBindingSecret(t *testing.T) {
 	}
 }
 
+func TestSessionDefaults(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadEnv(env(map[string]string{"VC_MODE": "full"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Session.TTL != 7*24*time.Hour || !cfg.Session.CookieSecure || cfg.Session.ReauthWindow != 15*time.Minute {
+		t.Fatalf("session %+v", cfg.Session)
+	}
+	cfg, err = LoadEnv(env(map[string]string{
+		"VC_MODE":                   "full",
+		"VC_SESSION_TTL":            "24h",
+		"VC_SESSION_COOKIE_SECURE":  "false",
+		"VC_SESSION_REAUTH_WINDOW":  "10m",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Session.TTL != 24*time.Hour || cfg.Session.CookieSecure || cfg.Session.ReauthWindow != 10*time.Minute {
+		t.Fatalf("override %+v", cfg.Session)
+	}
+}
+
 func TestJWTSecretMustBe256Bits(t *testing.T) {
 	t.Parallel()
 	_, err := LoadEnv(env(map[string]string{

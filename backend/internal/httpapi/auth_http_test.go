@@ -1,0 +1,260 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hxf4869/virtual-companion/internal/auth"
+)
+
+func TestLoginIssuesOpaqueCookieAndNoToken(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	rec := loginJSON(t, s, "alice", testPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login %d %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"accessToken", "refreshToken", "token"} {
+		if _, ok := body[k]; ok {
+			t.Fatalf("must not return %s", k)
+		}
+	}
+	if body["accountId"] != "1" || body["role"] != "USER" {
+		t.Fatalf("identity %+v", body)
+	}
+	if sessionCookie(rec) == "" {
+		t.Fatal("missing vc_session")
+	}
+	if csrfCookieValue(rec) == "" {
+		t.Fatal("missing vc_csrf")
+	}
+	joined := strings.ToLower(strings.Join(rec.Header().Values("Set-Cookie"), " "))
+	if !strings.Contains(joined, "samesite=lax") || !strings.Contains(joined, "httponly") {
+		t.Fatalf("cookie flags %q", rec.Header().Values("Set-Cookie"))
+	}
+}
+
+func TestLoginUnknownAndWrongPasswordAreHidden(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	unknown := loginJSON(t, s, "nobody", testPassword)
+	if unknown.Code != http.StatusNotFound {
+		t.Fatalf("unknown %d", unknown.Code)
+	}
+	assertEnvelope(t, unknown, "NOT_FOUND_OR_FORBIDDEN")
+	wrong := loginJSON(t, s, "alice", "wrong-password")
+	if wrong.Code != http.StatusNotFound {
+		t.Fatalf("wrong %d", wrong.Code)
+	}
+	assertEnvelope(t, wrong, "NOT_FOUND_OR_FORBIDDEN")
+	if strings.Contains(unknown.Body.String(), "nobody") || strings.Contains(wrong.Body.String(), "alice") {
+		t.Fatal("must not echo identity")
+	}
+}
+
+func TestBearerDoesNotAuthenticateWriters(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/relationships", nil)
+	req.Header.Set("Authorization", "Bearer "+mintAccessToken(t, 1))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("bearer %d", rec.Code)
+	}
+}
+
+func TestLogoutRevokeAndNextRequestFails(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	jar := loginCookies(t, s, "alice", testPassword)
+	listed := doJSONCookies(t, s, http.MethodGet, "/api/v1/auth/sessions", "", jar)
+	if listed.Code != http.StatusOK {
+		t.Fatalf("list %d %s", listed.Code, listed.Body.String())
+	}
+	logout := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", jar)
+	if logout.Code != http.StatusOK {
+		t.Fatalf("logout %d %s", logout.Code, logout.Body.String())
+	}
+	again := doJSONCookies(t, s, http.MethodGet, "/api/v1/auth/sessions", "", jar)
+	if again.Code != http.StatusUnauthorized {
+		t.Fatalf("after logout %d %s", again.Code, again.Body.String())
+	}
+	assertEnvelope(t, again, "AUTHENTICATION_REQUIRED")
+}
+
+func TestRevokeSessionAndPasswordChangeInvalidate(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	jar := loginCookies(t, s, "alice", testPassword)
+	listed := doJSONCookies(t, s, http.MethodGet, "/api/v1/auth/sessions", "", jar)
+	var sessions []map[string]any
+	if err := json.Unmarshal(listed.Body.Bytes(), &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0]["current"] != true {
+		t.Fatalf("sessions %v", sessions)
+	}
+	sid := sessions[0]["id"].(string)
+	rev := doJSONCookies(t, s, http.MethodDelete, "/api/v1/auth/sessions/"+sid, "", jar)
+	if rev.Code != http.StatusOK {
+		t.Fatalf("revoke %d %s", rev.Code, rev.Body.String())
+	}
+	if doJSONCookies(t, s, http.MethodGet, "/api/v1/relationships", "", jar).Code != http.StatusUnauthorized {
+		t.Fatal("revoked cookie must fail")
+	}
+
+	jar = loginCookies(t, s, "alice", testPassword)
+	chg := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/password", `{"currentPassword":"`+testPassword+`","newPassword":"test-pass-2"}`, jar)
+	if chg.Code != http.StatusOK {
+		t.Fatalf("password %d %s", chg.Code, chg.Body.String())
+	}
+	if doJSONCookies(t, s, http.MethodGet, "/api/v1/relationships", "", jar).Code != http.StatusUnauthorized {
+		t.Fatal("password change must revoke")
+	}
+	fresh := loginJSON(t, s, "alice", "test-pass-2")
+	if fresh.Code != http.StatusOK {
+		t.Fatalf("relogin %d %s", fresh.Code, fresh.Body.String())
+	}
+}
+
+func TestReauthRecordsFreshness(t *testing.T) {
+	t.Parallel()
+	store := newMemStore()
+	s := newCoreServer(t, "full", store)
+	jar := loginCookies(t, s, "alice", testPassword)
+	rec := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/reauth", `{"password":"`+testPassword+`"}`, jar)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reauth %d %s", rec.Code, rec.Body.String())
+	}
+	token := jar[auth.SessionCookieName]
+	p, err := store.Lookup(t.Context(), token)
+	if err != nil || p == nil {
+		t.Fatalf("lookup %v %v", p, err)
+	}
+	if p.ReauthAt.IsZero() {
+		t.Fatal("reauth_at")
+	}
+	if !auth.FreshReauth(p, p.ReauthAt.Add(time.Minute), auth.DefaultReauthWindow) {
+		t.Fatal("fresh window")
+	}
+}
+
+func TestLoginRequiresExactOrigin(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"alice","password":"`+testPassword+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("origin %d", rec.Code)
+	}
+	assertEnvelope(t, rec, "ACCESS_DENIED")
+}
+
+func TestAuthErrorEnvelopeHasNoDetails(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	rec := loginJSON(t, s, "alice", "nope")
+	var env map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := env["details"]; ok {
+		t.Fatalf("details %v", env)
+	}
+	if env["code"] != "NOT_FOUND_OR_FORBIDDEN" {
+		t.Fatalf("%v", env)
+	}
+}
+
+func TestAPIMigrationDoesNotServeAuthWriters(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "api-migration", newMemStore())
+	rec := loginJSON(t, s, "alice", testPassword)
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("api-migration login %d", rec.Code)
+	}
+}
+
+func loginJSON(t *testing.T, s *Server, username, password string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := `{"username":"` + username + `","password":"` + password + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "https://vc.test")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func loginCookies(t *testing.T, s *Server, username, password string) map[string]string {
+	t.Helper()
+	rec := loginJSON(t, s, username, password)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login %d %s", rec.Code, rec.Body.String())
+	}
+	jar := map[string]string{}
+	for _, c := range rec.Result().Cookies() {
+		jar[c.Name] = c.Value
+	}
+	if jar[auth.SessionCookieName] == "" {
+		t.Fatal("session cookie")
+	}
+	return jar
+}
+
+func doJSONCookies(t *testing.T, s *Server, method, path, body string, jar map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	var rdr *strings.Reader
+	if body != "" {
+		rdr = strings.NewReader(body)
+	}
+	var req *http.Request
+	if rdr != nil {
+		req = httptest.NewRequest(method, path, rdr)
+		req.Header.Set("Content-Type", "application/json")
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	for name, val := range jar {
+		req.AddCookie(&http.Cookie{Name: name, Value: val})
+	}
+	if isStateChanging(method) {
+		req.Header.Set("Origin", "https://vc.test")
+		if csrf := jar[csrfCookie]; csrf != "" {
+			req.Header.Set(csrfHeader, csrf)
+		}
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func sessionCookie(rec *httptest.ResponseRecorder) string {
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.SessionCookieName {
+			return c.Value
+		}
+	}
+	return ""
+}
+
+func csrfCookieValue(rec *httptest.ResponseRecorder) string {
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.CSRFCookieName {
+			return c.Value
+		}
+	}
+	return ""
+}

@@ -22,12 +22,16 @@ function stubFetch(opts?: { deleteStatus?: number; refreshSuccess?: boolean }): 
         return { ok: status === 200, status, json: async () => (status === 200 ? { ok: true } : null) };
       }
       if (url === "/api/v1/auth/sessions" && method === "GET") {
+        if (opts?.refreshSuccess === false) {
+          return { ok: false, status: 401, json: async () => null };
+        }
         return {
           ok: true, status: 200, json: async () => [{
             id: "11", familyId: "family-opaque", clientLabel: "h5",
             createdAt: "2026-08-24T00:00:00Z",
             lastSeenAt: "2026-08-24T01:00:00Z",
             expiresAt: "2026-08-31T00:00:00Z", current: true,
+            accountId: "42", role: "USER", passwordMustChange: false,
           }],
         };
       }
@@ -104,7 +108,7 @@ describe("account page", () => {
   });
 
   it("shows a signed-out notice and hides logout/delete when there is no session", async () => {
-    stubFetch();
+    stubFetch({ refreshSuccess: false });
     const wrapper = mount(AccountPage, { attachTo: document.body });
     await flushPromises();
 

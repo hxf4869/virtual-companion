@@ -33,14 +33,30 @@ function throwTransport(): AuthTransport {
   return { request: vi.fn(async () => Promise.reject(new Error("offline"))) };
 }
 
-function sampleTokens(accessToken = "a", passwordMustChange = false): AuthTokens {
+function sampleTokens(_accessToken = "a", passwordMustChange = false): AuthTokens {
   return {
-    accessToken,
-    tokenType: "Bearer",
     expiresInSeconds: 7200,
     accountId: "7",
     role: "USER",
     passwordMustChange,
+  };
+}
+
+function sessionList(passwordMustChange = false) {
+  return [{
+    id: "1",
+    createdAt: "c",
+    expiresAt: "e",
+    current: true,
+    accountId: "7",
+    role: "USER",
+    passwordMustChange,
+  }];
+}
+
+function restoreTransport(): AuthTransport {
+  return {
+    request: vi.fn(async () => ({ ok: true, status: 200, json: sessionList() })),
   };
 }
 
@@ -81,7 +97,7 @@ describe("useAuthStore", () => {
     expect(ok).toBe(true);
     expect(store.isAuthenticated).toBe(true);
     expect(store.sessionStatus).toBe("authenticated");
-    expect(store.accessToken).toBe("a");
+    expect(store.accessToken).toBe("session");
     expect(store.accountId).toBe("7");
     expect(store.role).toBe("USER");
     // P1-09: XSS-readable storage must never hold credentials.
@@ -118,20 +134,19 @@ describe("useAuthStore", () => {
     expect(store.error).toBe("network-failed");
   });
 
-  it("renews from the HttpOnly cookie with no stored refresh token", async () => {
+  it("restores identity from GET /auth/sessions", async () => {
     const store = useAuthStore();
     await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
 
-    const t = okTransport(sampleTokens("a2"));
+    const t = restoreTransport();
     const renewed = await store.tryRefresh(t);
 
     expect(renewed).toBe(true);
-    expect(store.accessToken).toBe("a2");
-    // The cookie-based refresh sends no body and no token argument.
-    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/refresh");
+    expect(store.accountId).toBe("7");
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/sessions");
   });
 
-  it("coalesces concurrent bootstrap, page and 401 refreshes", async () => {
+  it("coalesces concurrent bootstrap, page and restore calls", async () => {
     const store = useAuthStore();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -139,7 +154,7 @@ describe("useAuthStore", () => {
     });
     const request = vi.fn(async () => {
       await gate;
-      return { ok: true, status: 200, json: sampleTokens("fresh") };
+      return { ok: true, status: 200, json: sessionList() };
     });
     const t: AuthTransport = { request };
 
@@ -154,7 +169,7 @@ describe("useAuthStore", () => {
       true,
       "renewed",
     ]);
-    expect(store.accessToken).toBe("fresh");
+    expect(store.accountId).toBe("7");
     expect(request).toHaveBeenCalledTimes(1);
   });
 
@@ -178,16 +193,16 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(false);
   });
 
-  it("SESS-REVIVE: renewAccessToken reports renewed and rotates the token in place", async () => {
+  it("renewAccessToken reports renewed after GET /auth/sessions", async () => {
     const store = useAuthStore();
     await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
 
-    const t = okTransport(sampleTokens("a2"));
+    const t = restoreTransport();
     const outcome = await store.renewAccessToken(t);
 
     expect(outcome).toBe("renewed");
-    expect(store.accessToken).toBe("a2");
-    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/refresh");
+    expect(store.accountId).toBe("7");
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/sessions");
   });
 
   it("SESS-REVIVE: renewAccessToken reports rejected and clears on a refused cookie", async () => {
@@ -209,7 +224,7 @@ describe("useAuthStore", () => {
     expect(outcome).toBe("unavailable");
     // A network failure never fabricates a session loss.
     expect(store.isAuthenticated).toBe(true);
-    expect(store.accessToken).toBe("a1");
+    expect(store.accountId).toBe("7");
   });
 
   it("logout revokes server-side (cookie) then clears locally, even on transport failure", async () => {

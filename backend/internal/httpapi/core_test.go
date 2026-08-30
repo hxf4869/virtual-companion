@@ -46,6 +46,18 @@ type memStore struct {
 	identities map[string]postgres.Identity
 	deleting   bool
 	deleted    bool
+	sessions   map[int64]memSession
+	byHash     map[string]int64
+}
+
+type memSession struct {
+	ID        int64
+	AccountID int64
+	TokenHash string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt time.Time
+	ReauthAt  time.Time
 }
 
 func newMemStore() *memStore {
@@ -65,9 +77,11 @@ func newMemStore() *memStore {
 		exportBody: map[int64]string{},
 		exportTok:  map[int64]string{},
 		identities: map[string]postgres.Identity{
-			"alice": {AccountID: 1, Role: "USER", Status: "ACTIVE", PasswordHash: hash},
-			"bob":   {AccountID: 2, Role: "USER", Status: "ACTIVE", PasswordHash: hash},
+			"alice": {AccountID: 1, Role: "USER", Status: "ACTIVE", PasswordHash: hash, Username: "alice"},
+			"bob":   {AccountID: 2, Role: "USER", Status: "ACTIVE", PasswordHash: hash, Username: "bob"},
 		},
+		sessions: map[int64]memSession{},
+		byHash:   map[string]int64{},
 	}
 }
 
@@ -282,7 +296,7 @@ func TestAPIMigrationDoesNotRegisterCoreRoutesEvenWithCore(t *testing.T) {
 	}
 }
 
-func TestCoreRequiresBearer(t *testing.T) {
+func TestCoreRequiresSessionCookie(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "full", newMemStore())
 	rec := httptest.NewRecorder()
@@ -354,7 +368,6 @@ func TestCreateListActivateDeactivateDelete(t *testing.T) {
 func TestRetiredAndGenerationRoutesStayUnmapped(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "full", newMemStore())
-	token := mintAccessToken(t, 1)
 	for _, path := range []string{
 		"/api/v1/relationships/1",
 		"/api/v1/relationships/1/reset",
@@ -363,13 +376,14 @@ func TestRetiredAndGenerationRoutesStayUnmapped(t *testing.T) {
 		"/api/v1/conversations/1/summary",
 		"/api/v1/memories/auto-save",
 		"/api/v1/reports/1",
+		"/api/v1/auth/refresh",
 	} {
 		method := http.MethodGet
-		if strings.HasSuffix(path, "/reset") || strings.HasSuffix(path, "/generations") {
+		if strings.HasSuffix(path, "/reset") || strings.HasSuffix(path, "/generations") || strings.HasSuffix(path, "/refresh") {
 			method = http.MethodPost
 		}
 		req := httptest.NewRequest(method, path, strings.NewReader(`{}`))
-		req.Header.Set("Authorization", "Bearer "+token)
+		attachAuth(t, s, req, 1, method != http.MethodGet)
 		rec := httptest.NewRecorder()
 		s.Handler().ServeHTTP(rec, req)
 		if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
@@ -397,8 +411,10 @@ func TestOriginRejectedOnWrite(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "full", newMemStore())
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/relationships", strings.NewReader(`{"personaRef":"gentle-listener"}`))
-	req.Header.Set("Authorization", "Bearer "+mintAccessToken(t, 1))
+	attachAuth(t, s, req, 1, false)
 	req.Header.Set("Origin", "https://evil.example")
+	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})
+	req.Header.Set(csrfHeader, "csrf-token")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
@@ -411,7 +427,8 @@ func TestCSRFRequiredWhenCookiePresent(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "full", newMemStore())
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/relationships", strings.NewReader(`{"personaRef":"gentle-listener"}`))
-	req.Header.Set("Authorization", "Bearer "+mintAccessToken(t, 1))
+	attachAuth(t, s, req, 1, false)
+	req.Header.Set("Origin", "https://vc.test")
 	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -419,9 +436,7 @@ func TestCSRFRequiredWhenCookiePresent(t *testing.T) {
 		t.Fatalf("code %d", rec.Code)
 	}
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/relationships", strings.NewReader(`{"personaRef":"gentle-listener"}`))
-	req.Header.Set("Authorization", "Bearer "+mintAccessToken(t, 1))
-	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})
-	req.Header.Set(csrfHeader, "csrf-token")
+	attachAuth(t, s, req, 1, true)
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -470,6 +485,8 @@ func newCoreServer(t *testing.T, mode string, store CompanionStore) *Server {
 			return "test-version"
 		case "VC_HTTP_ORIGINS":
 			return "https://vc.test"
+		case "VC_SESSION_COOKIE_SECURE":
+			return "false"
 		default:
 			return ""
 		}
@@ -477,15 +494,14 @@ func newCoreServer(t *testing.T, mode string, store CompanionStore) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ver, err := auth.NewVerifier(testJWTSecret, testIssuer)
-	if err != nil {
-		t.Fatal(err)
-	}
 	pw, err := auth.NewPassword()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{Store: store, JWT: ver, Passwords: pw})
+	sessions, _ := store.(auth.Sessions)
+	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
+		Store: store, Sessions: sessions, Passwords: pw, Limiter: auth.NewLimiter(),
+	})
 }
 
 func doJSON(t *testing.T, s *Server, method, path, body string, account int64) *httptest.ResponseRecorder {
@@ -495,13 +511,33 @@ func doJSON(t *testing.T, s *Server, method, path, body string, account int64) *
 		rdr = strings.NewReader(body)
 	}
 	req := httptest.NewRequest(method, path, rdr)
-	req.Header.Set("Authorization", "Bearer "+mintAccessTokenNamed(t, account, usernameFor(account)))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	attachAuth(t, s, req, account, isStateChanging(method))
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
+}
+
+func attachAuth(t *testing.T, s *Server, req *http.Request, account int64, write bool) {
+	t.Helper()
+	if s.core == nil || s.core.Store == nil {
+		return
+	}
+	raw, hash, err := auth.NewSessionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.core.Store.IssueOpaqueSession(req.Context(), account, hash, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: raw})
+	if write {
+		req.Header.Set("Origin", "https://vc.test")
+		req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})
+		req.Header.Set(csrfHeader, "csrf-token")
+	}
 }
 
 func usernameFor(account int64) string {

@@ -32,18 +32,18 @@ func TestMemoryCandidateLifecycle(t *testing.T) {
 		t.Fatalf("%+v", mem)
 	}
 	replay := httptest.NewRequest(http.MethodPost, base+"/candidates", strings.NewReader(`{"scope":"RELATIONSHIP","summary":"fixture-fact"}`))
-	replay.Header.Set("Authorization", "Bearer "+mintAccessToken(t, 1))
 	replay.Header.Set("Content-Type", "application/json")
 	replay.Header.Set("Idempotency-Key", "k1")
+	attachAuth(t, s, replay, 1, true)
 	first := httptest.NewRecorder()
 	s.Handler().ServeHTTP(first, replay)
 	if first.Code != http.StatusOK {
 		t.Fatalf("idempotent first %d %s", first.Code, first.Body.String())
 	}
 	secondReq := httptest.NewRequest(http.MethodPost, base+"/candidates", strings.NewReader(`{"scope":"RELATIONSHIP","summary":"other"}`))
-	secondReq.Header.Set("Authorization", "Bearer "+mintAccessToken(t, 1))
 	secondReq.Header.Set("Content-Type", "application/json")
 	secondReq.Header.Set("Idempotency-Key", "k1")
+	attachAuth(t, s, secondReq, 1, true)
 	second := httptest.NewRecorder()
 	s.Handler().ServeHTTP(second, secondReq)
 	if first.Body.String() != second.Body.String() {

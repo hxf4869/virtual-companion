@@ -15,6 +15,7 @@
 - [x] `G6` RealtimeHub 与 authenticated SSE（fan-out/reconnect/leak；同源 HttpOnly cookie + Origin；无 ticket 兼容层、无业务 CRUD API、无 Memory/Consent、无真实外网 provider）
 - [x] `G7` Relationship/Conversation/Message core API（OpenAPI KEEP 最小面；隔离 PostgreSQL E2E；api-migration 写路由硬禁；不含 generation plane、Memory/Consent、opaque auth 生产切换）
 - [x] `G8` Memory/Consent/Report/Data rights（OpenAPI KEEP 最小面；隔离 PostgreSQL lifecycle/RLS/E2E；无 auto-save/semantic platform；api-migration 写路由硬禁；不含 opaque auth 生产切换、jobs/generation worker）
+- [x] `G9` Opaque Auth + H5 transport 实现和离线验证（session/CSRF/reauth E2E 对隔离 PostgreSQL；api-migration 不启用 opaque 生产切换；不含 JWT/opaque 双 issuer、generation worker、Phase 5 切流）
 
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 

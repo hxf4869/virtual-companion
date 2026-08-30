@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
@@ -330,7 +331,159 @@ func (m *memStore) LookupIdentity(_ context.Context, username string) (postgres.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id, ok := m.identities[strings.ToLower(username)]
+	if ok && id.Username == "" {
+		id.Username = strings.ToLower(username)
+	}
 	return id, ok && !m.deleted, nil
+}
+
+func (m *memStore) Lookup(_ context.Context, token string) (*auth.Principal, error) {
+	return m.LookupOpaqueSession(context.Background(), auth.TokenHash(token))
+}
+
+func (m *memStore) IssueOpaqueSession(_ context.Context, accountID int64, tokenHash string, expires time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id := m.next
+	m.next++
+	now := time.Now().UTC()
+	m.sessions[id] = memSession{ID: id, AccountID: accountID, TokenHash: tokenHash, CreatedAt: now, ExpiresAt: expires.UTC()}
+	m.byHash[tokenHash] = id
+	return id, nil
+}
+
+func (m *memStore) LookupOpaqueSession(_ context.Context, tokenHash string) (*auth.Principal, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sid, ok := m.byHash[tokenHash]
+	if !ok {
+		return nil, nil
+	}
+	sess := m.sessions[sid]
+	if !sess.RevokedAt.IsZero() || !sess.ExpiresAt.After(time.Now()) {
+		return nil, nil
+	}
+	ident, ok := m.identityByAccount(sess.AccountID)
+	if !ok || ident.Status != "ACTIVE" || m.deleted {
+		return nil, nil
+	}
+	return &auth.Principal{
+		AccountID:          ident.AccountID,
+		Role:               ident.Role,
+		Username:           ident.Username,
+		SessionID:          sess.ID,
+		ReauthAt:           sess.ReauthAt,
+		PasswordMustChange: ident.PasswordMustChange,
+	}, nil
+}
+
+func (m *memStore) identityByAccount(accountID int64) (postgres.Identity, bool) {
+	for _, id := range m.identities {
+		if id.AccountID == accountID {
+			if id.Username == "" {
+				if accountID == 2 {
+					id.Username = "bob"
+				} else {
+					id.Username = "alice"
+				}
+			}
+			return id, true
+		}
+	}
+	return postgres.Identity{}, false
+}
+
+func (m *memStore) ListOpaqueSessions(_ context.Context, accountID int64) ([]postgres.OpaqueSession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []postgres.OpaqueSession
+	now := time.Now()
+	for _, sess := range m.sessions {
+		if sess.AccountID != accountID || !sess.RevokedAt.IsZero() || !sess.ExpiresAt.After(now) {
+			continue
+		}
+		out = append(out, postgres.OpaqueSession{ID: sess.ID, CreatedAt: sess.CreatedAt, ExpiresAt: sess.ExpiresAt, ReauthAt: sess.ReauthAt})
+	}
+	return out, nil
+}
+
+func (m *memStore) RevokeOpaqueSession(_ context.Context, accountID, sessionID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sess, ok := m.sessions[sessionID]
+	if !ok || sess.AccountID != accountID || !sess.RevokedAt.IsZero() {
+		return postgres.ErrNotFound
+	}
+	sess.RevokedAt = time.Now()
+	m.sessions[sessionID] = sess
+	return nil
+}
+
+func (m *memStore) RevokeOpaqueSessionHash(_ context.Context, tokenHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sid, ok := m.byHash[tokenHash]
+	if !ok {
+		return nil
+	}
+	sess := m.sessions[sid]
+	if sess.RevokedAt.IsZero() {
+		sess.RevokedAt = time.Now()
+		m.sessions[sid] = sess
+	}
+	return nil
+}
+
+func (m *memStore) RevokeAllOpaqueSessions(_ context.Context, accountID int64) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	now := time.Now()
+	for id, sess := range m.sessions {
+		if sess.AccountID == accountID && sess.RevokedAt.IsZero() {
+			sess.RevokedAt = now
+			m.sessions[id] = sess
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (m *memStore) RecordOpaqueReauth(_ context.Context, accountID, sessionID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sess, ok := m.sessions[sessionID]
+	if !ok || sess.AccountID != accountID || !sess.RevokedAt.IsZero() {
+		return postgres.ErrNotFound
+	}
+	sess.ReauthAt = time.Now()
+	m.sessions[sessionID] = sess
+	return nil
+}
+
+func (m *memStore) ChangePasswordHash(_ context.Context, accountID int64, passwordHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	found := false
+	for user, id := range m.identities {
+		if id.AccountID == accountID {
+			id.PasswordHash = passwordHash
+			id.PasswordMustChange = false
+			m.identities[user] = id
+			found = true
+		}
+	}
+	if !found {
+		return postgres.ErrNotFound
+	}
+	now := time.Now()
+	for id, sess := range m.sessions {
+		if sess.AccountID == accountID && sess.RevokedAt.IsZero() {
+			sess.RevokedAt = now
+			m.sessions[id] = sess
+		}
+	}
+	return nil
 }
 
 func (m *memStore) RequestAccountDeletion(context.Context, int64) error {

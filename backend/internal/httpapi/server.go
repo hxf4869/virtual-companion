@@ -70,8 +70,13 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 		}
 	}
 	// Phase 4: writers stay off in api-migration. Isolation/cutover uses full.
-	if core != nil && core.Store != nil && core.JWT != nil && cfg.AllowsWrites() {
+	// G9 opaque auth is registered only with those writers; production traffic
+	// is not switched here.
+	if core != nil && core.Store != nil && core.Sessions != nil && cfg.AllowsWrites() {
 		s.core = core
+		if s.core.Limiter == nil {
+			s.core.Limiter = auth.NewLimiter()
+		}
 		s.registerCore()
 	}
 	return s
@@ -247,6 +252,18 @@ func operation(path string) string {
 		return "exports"
 	case "/api/v1/auth/account":
 		return "account"
+	case "/api/v1/auth/login":
+		return "auth_login"
+	case "/api/v1/auth/logout":
+		return "auth_logout"
+	case "/api/v1/auth/sessions":
+		return "auth_sessions"
+	case "/api/v1/auth/sessions/revoke-all":
+		return "auth_revoke_all"
+	case "/api/v1/auth/password":
+		return "auth_password"
+	case "/api/v1/auth/reauth":
+		return "auth_reauth"
 	default:
 		if strings.HasPrefix(path, "/api/v1/realtime/streams/") {
 			return "realtime_stream"
@@ -292,6 +309,9 @@ func operation(path string) string {
 		}
 		if strings.HasPrefix(path, "/api/v1/exports/") {
 			return "export"
+		}
+		if strings.HasPrefix(path, "/api/v1/auth/sessions/") {
+			return "auth_session"
 		}
 		return "unmapped"
 	}

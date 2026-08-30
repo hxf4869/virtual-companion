@@ -1,20 +1,8 @@
-// TASK-0034/TASK-0103: Pinia auth store binding the identity API client to the
-// H5 UI.
-//
-// TASK-0103 (P1-09 frontend, Owner decision 2026-08-08): the store is
-// memory-only. NO token or identity field is ever written to localStorage or
-// any other script-readable persistent store: the access token, accountId and
-// role live in refs for the current page lifetime, and the refresh token is
-// never held by the client at all (it lives in the HttpOnly vc_refresh cookie,
-// sent automatically by the transport with credentials:"include"). A reload
-// restores the session by calling tryRefresh(), which renews from the cookie.
-//
-// Failure semantics: a confirmed login is the ONLY thing that establishes an
-// authenticated session; a non-confirmed result (null) or a thrown transport
-// preserves the current state and records an error. A server 401
-// (expired/invalid token) clears the session and redirects to the login page
-// -- the client never retries a failed token into a fabricated session. Tokens
-// are never written into chat drafts, memory content or model context.
+// G9: Pinia auth store for the opaque cookie session. Memory-only.
+// NO token or identity field is ever written to localStorage. The session
+// secret lives only in the HttpOnly vc_session cookie. Reload restores via
+// GET /auth/sessions. /auth/refresh is RETIRE. A server 401 clears the session
+// and redirects.
 
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
@@ -71,15 +59,17 @@ export const useAuthStore = defineStore("h5-auth", () => {
   const settled = ref(false);
   let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
-  const isAuthenticated = computed(() => accessToken.value !== null);
+  const isAuthenticated = computed(
+    () => accountId.value !== null || accessToken.value !== null,
+  );
   const sessionStatus = computed<SessionStatus>(() => {
-    if (accessToken.value) return "authenticated";
+    if (accountId.value || accessToken.value) return "authenticated";
     return settled.value ? "anonymous" : "unknown";
   });
 
   /** Memory-only: never persists tokens to localStorage or any storage. */
   function persist(tokens: AuthTokens): void {
-    accessToken.value = tokens.accessToken;
+    accessToken.value = "session";
     accountId.value = tokens.accountId;
     role.value = tokens.role;
     passwordMustChange.value = tokens.passwordMustChange;
@@ -152,11 +142,8 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   /**
-   * Renew the session from the HttpOnly vc_refresh cookie (the transport sends
-   * it automatically with credentials:"include"; no stored token is used). On
-   * success the tokens are rotated in place. A server rejection (null) means
-   * the refresh session is no longer valid -- the session is cleared; never a
-   * fabricated continuation.
+   * Restore identity from the opaque session cookie (GET /auth/sessions).
+   * A server rejection clears the session; a network failure does not.
    */
   async function tryRefresh(t: AuthTransport): Promise<boolean> {
     error.value = null;
