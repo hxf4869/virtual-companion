@@ -30,6 +30,10 @@ func parseOptionalID(raw string) (id int64, set bool, ok bool) {
 	return n, true, true
 }
 
+func idString(n int64) string {
+	return strconv.FormatInt(n, 10)
+}
+
 func parseOptionalLimit(raw string) (limit int, set bool, ok bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

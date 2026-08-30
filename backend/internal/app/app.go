@@ -311,7 +311,11 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 		}
 		r.store.UseCipher(ciph)
 	}
-	return &httpapi.Core{Store: r.store, JWT: ver}, nil
+	pw, err := auth.NewPassword()
+	if err != nil {
+		return nil, fmt.Errorf("password verifier: %w", err)
+	}
+	return &httpapi.Core{Store: r.store, JWT: ver, Passwords: pw}, nil
 }
 
 func (r *Runtime) closeStore() {

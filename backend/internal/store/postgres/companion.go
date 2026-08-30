@@ -575,6 +575,16 @@ SELECT DISTINCT ON (conversation_id) conversation_id, content
 	return out, rows.Err()
 }
 
+func (s *Store) encryptStored(plain string) (string, error) {
+	if plain == "" {
+		return "", nil
+	}
+	if s == nil || s.cipher == nil {
+		return plain, nil
+	}
+	return s.cipher.Encrypt(plain)
+}
+
 func (s *Store) decryptStored(stored string) (string, error) {
 	if stored == "" {
 		return "", nil

@@ -237,6 +237,16 @@ func operation(path string) string {
 		return "chat_wipe_preview"
 	case "/api/v1/conversations/wipe":
 		return "chat_wipe"
+	case "/api/v1/incognito-pref":
+		return "incognito_pref"
+	case "/api/v1/consents":
+		return "consents"
+	case "/api/v1/reports":
+		return "reports"
+	case "/api/v1/exports":
+		return "exports"
+	case "/api/v1/auth/account":
+		return "account"
 	default:
 		if strings.HasPrefix(path, "/api/v1/realtime/streams/") {
 			return "realtime_stream"
@@ -258,6 +268,30 @@ func operation(path string) string {
 		}
 		if strings.HasPrefix(path, "/api/v1/conversations/") {
 			return "conversation"
+		}
+		if strings.Contains(path, "/memories/candidates") {
+			return "memory_candidate"
+		}
+		if strings.HasSuffix(path, "/memories") {
+			return "memories"
+		}
+		if strings.HasSuffix(path, "/confirm") {
+			return "memory_confirm"
+		}
+		if strings.HasSuffix(path, "/reject") {
+			return "memory_reject"
+		}
+		if strings.HasSuffix(path, "/evidence") {
+			return "memory_evidence"
+		}
+		if strings.HasPrefix(path, "/api/v1/memories/") {
+			return "memory"
+		}
+		if strings.HasSuffix(path, "/download") {
+			return "export_download"
+		}
+		if strings.HasPrefix(path, "/api/v1/exports/") {
+			return "export"
 		}
 		return "unmapped"
 	}

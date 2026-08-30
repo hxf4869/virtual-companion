@@ -20,9 +20,17 @@ import (
 
 const isoRestKey = "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4="
 
+var isoPasswordHash string
+
 func TestMain(m *testing.M) {
+	hash, err := auth.Hash(testPassword)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "g8 isolation password hash: %v\n", err)
+		os.Exit(1)
+	}
+	isoPasswordHash = hash
 	if err := postgres.StartIsolation(); err != nil {
-		fmt.Fprintf(os.Stderr, "g7 isolation harness: %v\n", err)
+		fmt.Fprintf(os.Stderr, "g8 isolation harness: %v\n", err)
 		os.Exit(1)
 	}
 	code := m.Run()
@@ -225,6 +233,12 @@ func TestG7IsolationDoesNotServeWritesInAPIMigration(t *testing.T) {
 	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("api-migration write %d", rec.Code)
 	}
+	for _, path := range []string{"/api/v1/consents", "/api/v1/reports", "/api/v1/exports", "/api/v1/auth/account"} {
+		got := doJSON(t, s, http.MethodPost, path, `{}`, 1)
+		if got.Code != http.StatusNotFound && got.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("api-migration %s %d", path, got.Code)
+		}
+	}
 	if s.metrics.CoreWrites() != 0 {
 		t.Fatalf("production write count %d", s.metrics.CoreWrites())
 	}
@@ -249,16 +263,29 @@ func newIsoServer(t *testing.T, store *postgres.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{Store: store, JWT: ver})
+	pw, err := auth.NewPassword()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{Store: store, JWT: ver, Passwords: pw})
 }
 
 func resetIsolation(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	if err := postgres.IsolationSuperExec(ctx, `TRUNCATE vc.relationship, vc.vc_user CASCADE`); err != nil {
+	if err := postgres.IsolationSuperExec(ctx, `TRUNCATE vc.account_deletion_intent, vc.relationship, vc.vc_user CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	if err := postgres.IsolationSuperExec(ctx, `INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice'), (2, 'bob')`); err != nil {
+		t.Fatal(err)
+	}
+	if isoPasswordHash == "" {
+		t.Fatal("isolation password hash missing")
+	}
+	if err := postgres.IsolationSuperExec(ctx,
+		`INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+		 VALUES (1, 'alice', $1, 'USER', 'ACTIVE', 'alice'),
+		        (2, 'bob', $1, 'USER', 'ACTIVE', 'bob')`, isoPasswordHash); err != nil {
 		t.Fatal(err)
 	}
 }

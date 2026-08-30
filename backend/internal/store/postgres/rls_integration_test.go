@@ -195,7 +195,7 @@ func TestWrongBindingSecretRejectedByDatabase(t *testing.T) {
 func resetFixtures(t *testing.T) {
 	t.Helper()
 	_, err := psqlSuper(`
-TRUNCATE vc.relationship, vc.vc_user CASCADE;
+TRUNCATE vc.account_deletion_intent, vc.relationship, vc.vc_user CASCADE;
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice'), (2, 'bob');
 INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active)
 VALUES (1, 10, 'persona-a', true), (2, 20, 'persona-bob', true);

@@ -75,6 +75,14 @@ func TestAPIMigrationDoesNotServeCoreWriters(t *testing.T) {
 	if post.StatusCode != http.StatusNotFound && post.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("api-migration must not serve relationship writes, got %d", post.StatusCode)
 	}
+	consent, err := http.Post("http://"+rt.Addr()+"/api/v1/consents", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consent.Body.Close()
+	if consent.StatusCode != http.StatusNotFound && consent.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("api-migration must not serve consent writes, got %d", consent.StatusCode)
+	}
 	conv, err := http.Post("http://"+rt.Addr()+"/api/v1/conversations", "application/json", strings.NewReader(`{"relationshipId":1}`))
 	if err != nil {
 		t.Fatal(err)

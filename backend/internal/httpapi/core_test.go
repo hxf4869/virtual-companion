@@ -24,24 +24,50 @@ import (
 const (
 	testJWTSecret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	testIssuer    = "virtual-companion"
+	testPassword  = "test-pass-1"
 )
 
 type memStore struct {
-	mu     sync.Mutex
-	next   int64
-	rels   map[int64]postgres.Relationship
-	convs  map[int64]postgres.Conversation
-	msgs   map[int64]postgres.Message
-	active map[int64]int64
+	mu         sync.Mutex
+	next       int64
+	rels       map[int64]postgres.Relationship
+	convs      map[int64]postgres.Conversation
+	msgs       map[int64]postgres.Message
+	active     map[int64]int64
+	memories   map[int64]postgres.Memory
+	evidence   map[int64][]postgres.MemoryEvidence
+	idem       map[string]int64
+	consents   map[string]postgres.Consent
+	incognito  bool
+	reports    map[int64]postgres.Report
+	exports    map[int64]postgres.Export
+	exportBody map[int64]string
+	exportTok  map[int64]string
+	identities map[string]postgres.Identity
+	deleting   bool
+	deleted    bool
 }
 
 func newMemStore() *memStore {
+	hash, _ := auth.Hash(testPassword)
 	return &memStore{
-		next:   1,
-		rels:   map[int64]postgres.Relationship{},
-		convs:  map[int64]postgres.Conversation{},
-		msgs:   map[int64]postgres.Message{},
-		active: map[int64]int64{},
+		next:       1,
+		rels:       map[int64]postgres.Relationship{},
+		convs:      map[int64]postgres.Conversation{},
+		msgs:       map[int64]postgres.Message{},
+		active:     map[int64]int64{},
+		memories:   map[int64]postgres.Memory{},
+		evidence:   map[int64][]postgres.MemoryEvidence{},
+		idem:       map[string]int64{},
+		consents:   map[string]postgres.Consent{},
+		reports:    map[int64]postgres.Report{},
+		exports:    map[int64]postgres.Export{},
+		exportBody: map[int64]string{},
+		exportTok:  map[int64]string{},
+		identities: map[string]postgres.Identity{
+			"alice": {AccountID: 1, Role: "USER", Status: "ACTIVE", PasswordHash: hash},
+			"bob":   {AccountID: 2, Role: "USER", Status: "ACTIVE", PasswordHash: hash},
+		},
 	}
 }
 
@@ -335,6 +361,8 @@ func TestRetiredAndGenerationRoutesStayUnmapped(t *testing.T) {
 		"/api/v1/relationships/1/clearance-preview",
 		"/api/v1/conversations/1/generations",
 		"/api/v1/conversations/1/summary",
+		"/api/v1/memories/auto-save",
+		"/api/v1/reports/1",
 	} {
 		method := http.MethodGet
 		if strings.HasSuffix(path, "/reset") || strings.HasSuffix(path, "/generations") {
@@ -453,7 +481,11 @@ func newCoreServer(t *testing.T, mode string, store CompanionStore) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{Store: store, JWT: ver})
+	pw, err := auth.NewPassword()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{Store: store, JWT: ver, Passwords: pw})
 }
 
 func doJSON(t *testing.T, s *Server, method, path, body string, account int64) *httptest.ResponseRecorder {
@@ -463,13 +495,20 @@ func doJSON(t *testing.T, s *Server, method, path, body string, account int64) *
 		rdr = strings.NewReader(body)
 	}
 	req := httptest.NewRequest(method, path, rdr)
-	req.Header.Set("Authorization", "Bearer "+mintAccessToken(t, account))
+	req.Header.Set("Authorization", "Bearer "+mintAccessTokenNamed(t, account, usernameFor(account)))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
+}
+
+func usernameFor(account int64) string {
+	if account == 2 {
+		return "bob"
+	}
+	return "alice"
 }
 
 func assertEnvelope(t *testing.T, rec *httptest.ResponseRecorder, code string) {
@@ -491,12 +530,17 @@ func assertEnvelope(t *testing.T, rec *httptest.ResponseRecorder, code string) {
 
 func mintAccessToken(t *testing.T, account int64) string {
 	t.Helper()
+	return mintAccessTokenNamed(t, account, "alice")
+}
+
+func mintAccessTokenNamed(t *testing.T, account int64, username string) string {
+	t.Helper()
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
 	payload, err := json.Marshal(map[string]any{
 		"iss":      testIssuer,
 		"sub":      itoa(account),
 		"role":     "USER",
-		"username": "alice",
+		"username": username,
 		"se":       1,
 		"exp":      time.Now().Add(time.Hour).Unix(),
 	})
