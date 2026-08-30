@@ -16,6 +16,8 @@
 - [x] `G7` Relationship/Conversation/Message core API（OpenAPI KEEP 最小面；隔离 PostgreSQL E2E；api-migration 写路由硬禁；不含 generation plane、Memory/Consent、opaque auth 生产切换）
 - [x] `G8` Memory/Consent/Report/Data rights（OpenAPI KEEP 最小面；隔离 PostgreSQL lifecycle/RLS/E2E；无 auto-save/semantic platform；api-migration 写路由硬禁；不含 opaque auth 生产切换、jobs/generation worker）
 - [x] `G9` Opaque Auth + H5 transport 实现和离线验证（session/CSRF/reauth E2E 对隔离 PostgreSQL；api-migration 不启用 opaque 生产切换；不含 JWT/opaque 双 issuer、generation worker、Phase 5 切流）
+- [x] `G10` Jobs、generation worker、finalize/cancel/provider integration（V117 additive migration + go_* 函数族：intake/claim/attempt outcome/billing reservation/finalize/terminalize/cancel/queue timeout/§16.2.1 恢复协议；loop/scheduler/export handler；隔离 PostgreSQL contract 测试 + httpapi E2E：send→202→claim→fake provider→hub snapshot/delta/completed→durable snapshot、cancel-during-stream、outstanding 429+Retry-After；realtime-events 补 chat.snapshot；send 202/Retry-After 2/配置默认 1·8·5min 对齐 §19.5；jobs claim/recovery 指标；不含 Java/Go dual active、Phase 5 切流、V117 之后 destructive migration）
+- [ ] `G11` Auth/H5 + generation plane 同窗口 maintenance/drain/cutover/rollback rehearsal（synthetic smoke；不写 destructive schema cleanup）
 
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 

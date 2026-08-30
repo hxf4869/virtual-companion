@@ -244,7 +244,8 @@ func (s *Server) writeStoreErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, postgres.ErrConflict):
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 	case errors.Is(err, postgres.ErrRateLimited):
-		w.Header().Set("Retry-After", "1")
+		// §19.5: the outstanding-cap admission rejection carries Retry-After: 2.
+		w.Header().Set("Retry-After", "2")
 		s.writeAPIError(w, http.StatusTooManyRequests, "RATE_LIMITED", "rate limited")
 	case errors.Is(err, postgres.ErrOwnerContextRejected):
 		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")

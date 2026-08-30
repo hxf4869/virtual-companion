@@ -38,11 +38,17 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   以及 G5 Companion Core / Context / Persona / LocalSafetyPolicy / TurnBudget
   （unit 与合成 Golden Set），G6 RealtimeHub 与 authenticated SSE（fan-out /
   reconnect / leak；同源 cookie + Origin；无 ticket 兼容层），G7
-  Relationship/Conversation/Message core API，以及 G8 Memory/Consent/Report/
-  Data rights（full 模式隔离 PostgreSQL 验证；`api-migration` 写路由硬禁；
-  不含 generation send/cancel、opaque auth 生产切换、jobs worker、semantic
-  platform）。G5/G6/G7/G8 均不发起真实 provider 调用。
-  **当前常驻 runtime 仍是 Java**；companiond 不接生产流量、不写当前生产 DB。
+  Relationship/Conversation/Message core API，G8 Memory/Consent/Report/
+  Data rights（full 模式隔离 PostgreSQL 验证；`api-migration` 写路由硬禁），
+  G9 opaque session auth + H5 cookie transport（无 JWT/refresh 链），以及
+  G10 Jobs、generation worker 与 generation plane（V117 additive migration
+  + `go_*` 函数族：intake/claim/attempt outcome/billing reservation/finalize/
+  cancel/queue timeout/§16.2.1 崩溃恢复；隔离 PostgreSQL contract 测试 +
+  httpapi E2E：send→202→claim→fake provider→hub snapshot/delta/completed→
+  durable snapshot、cancel-during-stream、outstanding 429）。
+  G5–G10 均不发起真实 provider 调用。
+  **当前常驻 runtime 仍是 Java**；companiond 不接生产流量、不写当前生产 DB，
+  generation plane 切换与 opaque auth 启用留待 Phase 5（G11）。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
 

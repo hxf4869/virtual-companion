@@ -4,6 +4,7 @@ package com.virtualcompanion.catalog;
 public enum RealtimeEventType {
     CHAT_ACCEPTED("chat.accepted"),
     CHAT_DELTA("chat.delta"),
+    CHAT_SNAPSHOT("chat.snapshot"),
     CHAT_REPLACE("chat.replace"),
     CHAT_COMPLETED("chat.completed"),
     CHAT_CANCELLED("chat.cancelled"),

@@ -97,7 +97,8 @@ func (s *Server) handleSendGeneration(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, generationJSONFrom(view))
+	// §19.5: intake and idempotent replay both answer 202 Accepted.
+	s.writeJSON(w, http.StatusAccepted, generationJSONFrom(view))
 }
 
 func (s *Server) handleCancelGeneration(w http.ResponseWriter, r *http.Request) {

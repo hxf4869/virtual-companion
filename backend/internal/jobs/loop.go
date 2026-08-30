@@ -190,6 +190,19 @@ func (l *Loop) Hub() *realtime.Hub {
 	return l.hub
 }
 
+// Stats is a low-cardinality worker snapshot for the metrics registry.
+type Stats struct {
+	Claims     uint64
+	Recoveries uint64
+}
+
+func (l *Loop) Stats() Stats {
+	if l == nil {
+		return Stats{}
+	}
+	return Stats{Claims: l.claims.Load(), Recoveries: l.recoveries.Load()}
+}
+
 func (l *Loop) Start(ctx context.Context) error {
 	if l == nil {
 		return nil

@@ -175,6 +175,7 @@
     "RealtimeEventType": [
       "chat.accepted",
       "chat.delta",
+      "chat.snapshot",
       "chat.replace",
       "chat.completed",
       "chat.cancelled",
@@ -2793,69 +2794,74 @@
             "order": 1
           },
           {
-            "code": "chat.replace",
+            "code": "chat.snapshot",
             "durable": false,
             "order": 2
           },
           {
-            "code": "chat.completed",
-            "durable": true,
+            "code": "chat.replace",
+            "durable": false,
             "order": 3
           },
           {
-            "code": "chat.cancelled",
+            "code": "chat.completed",
             "durable": true,
             "order": 4
           },
           {
-            "code": "chat.blocked",
+            "code": "chat.cancelled",
             "durable": true,
             "order": 5
           },
           {
-            "code": "chat.failed",
+            "code": "chat.blocked",
             "durable": true,
             "order": 6
           },
           {
-            "code": "safety.notice",
+            "code": "chat.failed",
             "durable": true,
             "order": 7
           },
           {
-            "code": "service.mode.changed",
+            "code": "safety.notice",
             "durable": true,
             "order": 8
           },
           {
-            "code": "memory.candidate.created",
+            "code": "service.mode.changed",
             "durable": true,
             "order": 9
           },
           {
-            "code": "memory.candidate.confirmation_required",
+            "code": "memory.candidate.created",
             "durable": true,
             "order": 10
           },
           {
-            "code": "stream.resume.accepted",
-            "durable": false,
+            "code": "memory.candidate.confirmation_required",
+            "durable": true,
             "order": 11
           },
           {
-            "code": "stream.gap",
+            "code": "stream.resume.accepted",
             "durable": false,
             "order": 12
           },
           {
-            "code": "stream.reset",
+            "code": "stream.gap",
             "durable": false,
             "order": 13
           },
           {
-            "code": "stream.denied",
+            "code": "stream.reset",
             "durable": false,
             "order": 14
+          },
+          {
+            "code": "stream.denied",
+            "durable": false,
+            "order": 15
           }
         ],
         "envelopeRequired": [
@@ -2876,7 +2882,7 @@
         ],
         "schemaVersion": 1
       },
-      "sha256": "be896592a0e482643db0389993b7edad08fbd94637c5c280bd627085535e3042"
+      "sha256": "e191871ff12becd0e5e864b92408c11d6fe53b665aaf092ae8a1503420286a7c"
     },
     "report-reasons.yaml": {
       "document": {

@@ -57,6 +57,25 @@ func TestRealtimeMetrics(t *testing.T) {
 	}
 }
 
+func TestJobsMetrics(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry()
+	reg.SetJobsStatsSource(func() JobsStats { return JobsStats{Claims: 7, Recoveries: 2} })
+	var buf bytes.Buffer
+	if err := reg.WritePrometheus(&buf); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"vc_job_claims_total",
+		"vc_job_recoveries_total",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+}
+
 func TestDBPoolMetrics(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry()

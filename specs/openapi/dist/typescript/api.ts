@@ -811,7 +811,7 @@ export interface VirtualCompanionApiClient {
   deleteConversation(): Promise<ConversationDeletedResponse>
   renameConversation(): Promise<ConversationRenamedResponse>
   endConversation(): Promise<ConversationEndedResponse>
-  sendGeneration(): Promise<Generation>
+  sendGeneration(): Promise<void>
   listMessages(): Promise<void>
   deleteMessage(): Promise<MessageDeletedResponse>
   setMessageNoMemory(): Promise<Message>

@@ -137,6 +137,7 @@ components:
       enum:
       - chat.accepted
       - chat.delta
+      - chat.snapshot
       - chat.replace
       - chat.completed
       - chat.cancelled

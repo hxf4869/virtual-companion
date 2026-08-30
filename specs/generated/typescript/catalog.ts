@@ -42,7 +42,7 @@ export type MemoryEventStatus = typeof MemoryEventStatusValues[number]
 export const PersonaTemplateValues = ["gentle-listener"] as const
 export type PersonaTemplate = typeof PersonaTemplateValues[number]
 
-export const RealtimeEventTypeValues = ["chat.accepted", "chat.delta", "chat.replace", "chat.completed", "chat.cancelled", "chat.blocked", "chat.failed", "safety.notice", "service.mode.changed", "memory.candidate.created", "memory.candidate.confirmation_required", "stream.resume.accepted", "stream.gap", "stream.reset", "stream.denied"] as const
+export const RealtimeEventTypeValues = ["chat.accepted", "chat.delta", "chat.snapshot", "chat.replace", "chat.completed", "chat.cancelled", "chat.blocked", "chat.failed", "safety.notice", "service.mode.changed", "memory.candidate.created", "memory.candidate.confirmation_required", "stream.resume.accepted", "stream.gap", "stream.reset", "stream.denied"] as const
 export type RealtimeEventType = typeof RealtimeEventTypeValues[number]
 
 export const ServiceModeValues = ["FULL_AI", "DEGRADED_AI", "SAFETY_RESTRICTED", "ZERO_LLM", "MAINTENANCE"] as const

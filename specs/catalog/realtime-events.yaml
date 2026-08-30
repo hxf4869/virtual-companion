@@ -15,44 +15,47 @@ entries:
 - code: chat.delta
   order: 1
   durable: false
-- code: chat.replace
+- code: chat.snapshot
   order: 2
   durable: false
-- code: chat.completed
+- code: chat.replace
   order: 3
-  durable: true
-- code: chat.cancelled
+  durable: false
+- code: chat.completed
   order: 4
   durable: true
-- code: chat.blocked
+- code: chat.cancelled
   order: 5
   durable: true
-- code: chat.failed
+- code: chat.blocked
   order: 6
   durable: true
-- code: safety.notice
+- code: chat.failed
   order: 7
   durable: true
-- code: service.mode.changed
+- code: safety.notice
   order: 8
   durable: true
-- code: memory.candidate.created
+- code: service.mode.changed
   order: 9
   durable: true
-- code: memory.candidate.confirmation_required
+- code: memory.candidate.created
   order: 10
   durable: true
-- code: stream.resume.accepted
+- code: memory.candidate.confirmation_required
   order: 11
-  durable: false
-- code: stream.gap
+  durable: true
+- code: stream.resume.accepted
   order: 12
   durable: false
-- code: stream.reset
+- code: stream.gap
   order: 13
   durable: false
-- code: stream.denied
+- code: stream.reset
   order: 14
+  durable: false
+- code: stream.denied
+  order: 15
   durable: false
 resumeDispositions:
 - RESUMED

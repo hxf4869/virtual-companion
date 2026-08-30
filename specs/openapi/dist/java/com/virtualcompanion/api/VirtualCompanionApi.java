@@ -99,7 +99,7 @@ public interface VirtualCompanionApi {
     ConversationEndedResponse endConversation();
 
     /** Idempotently send a Chat turn (create or rejoin a generation). */
-    Generation sendGeneration();
+    Void sendGeneration();
 
     /** Paginated message history for a conversation. */
     Void listMessages();

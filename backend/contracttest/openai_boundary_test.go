@@ -132,7 +132,6 @@ func TestAdapterSourcesHaveNoDefaultEndpointOrCredential(t *testing.T) {
 		}
 	}
 	for _, rel := range []string{
-		filepath.Join("backend", "cmd", "companiond", "main.go"),
 		filepath.Join("backend", "internal", "app", "app.go"),
 	} {
 		raw, err := os.ReadFile(filepath.Join(root, rel))
@@ -140,8 +139,18 @@ func TestAdapterSourcesHaveNoDefaultEndpointOrCredential(t *testing.T) {
 			t.Fatal(err)
 		}
 		if strings.Contains(string(raw), "internal/provider/openai") {
-			t.Fatalf("%s must not wire the provider adapter in G4", rel)
+			t.Fatalf("%s must not wire the provider adapter", rel)
 		}
+	}
+	// Since G10 the composition root wires the adapter, but only behind the
+	// explicit config gate; the adapter itself still carries no default
+	// endpoint or credential (checked above).
+	mainSrc, err := os.ReadFile(filepath.Join(root, "backend", "cmd", "companiond", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mainSrc), "cfg.Provider.Enabled") {
+		t.Fatalf("main.go must wire the provider adapter only behind cfg.Provider.Enabled")
 	}
 }
 

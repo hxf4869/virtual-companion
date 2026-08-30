@@ -21,7 +21,14 @@ type Registry struct {
 	http          map[httpKey]httpStat
 	dbStats       func() DBStats
 	realtimeStats func() RealtimeStats
+	jobsStats     func() JobsStats
 	coreWrites    uint64
+}
+
+// JobsStats is a low-cardinality worker snapshot. No owner or job id.
+type JobsStats struct {
+	Claims     uint64
+	Recoveries uint64
 }
 
 // RealtimeStats is a low-cardinality hub snapshot. No owner or generation id.
@@ -71,6 +78,15 @@ func (r *Registry) SetRealtimeStatsSource(fn func() RealtimeStats) {
 	}
 	r.mu.Lock()
 	r.realtimeStats = fn
+	r.mu.Unlock()
+}
+
+func (r *Registry) SetJobsStatsSource(fn func() JobsStats) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.jobsStats = fn
 	r.mu.Unlock()
 }
 
@@ -176,6 +192,21 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 		writeGauge(&buf, "vc_realtime_subscribers", "Live realtime SSE subscribers.", float64(rt.Subscribers))
 		writeCounter(&buf, "vc_realtime_slow_disconnect_total", "Subscribers dropped for exceeding the live queue bound.", float64(rt.SlowDisconnects))
 		writeCounter(&buf, "vc_realtime_snapshot_resume_total", "SSE opens that used a durable snapshot instead of live fan-out.", float64(rt.SnapshotResumes))
+	}
+	var jobs JobsStats
+	var hasJobs bool
+	if r != nil {
+		r.mu.Lock()
+		fn := r.jobsStats
+		r.mu.Unlock()
+		if fn != nil {
+			jobs = fn()
+			hasJobs = true
+		}
+	}
+	if hasJobs {
+		writeCounter(&buf, "vc_job_claims_total", "Generation/export jobs atomically claimed by the worker loop.", float64(jobs.Claims))
+		writeCounter(&buf, "vc_job_recoveries_total", "Expired generation jobs converged by the recovery scan.", float64(jobs.Recoveries))
 	}
 	var writes uint64
 	if r != nil {

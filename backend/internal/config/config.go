@@ -259,9 +259,12 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			ReauthWindow: 15 * time.Minute,
 		},
 		Concurrency: Concurrency{
-			MaxOutstandingTurns: 4,
-			MaxConcurrentTurns:  4,
-			QueueTimeout:        2 * time.Minute,
+			// §19.5 Owner-only product defaults: serial worker, 8 outstanding,
+			// 5-minute queue timeout. Benchmark profiles override per run and
+			// must be restored afterwards.
+			MaxOutstandingTurns: 8,
+			MaxConcurrentTurns:  1,
+			QueueTimeout:        5 * time.Minute,
 			ClaimLimit:          8,
 			RecoverInterval:     5 * time.Second,
 		},

@@ -960,8 +960,9 @@ paths:
             schema:
               $ref: '#/components/schemas/SendGenerationRequest'
       responses:
-        '200':
-          description: The generation (newly created or rejoined)
+        '202':
+          description: The generation (newly created or rejoined); intake and idempotent replay answer the same accepted envelope
+            (§19.5)
           content:
             application/json:
               schema:
@@ -1182,9 +1183,9 @@ paths:
     get:
       operationId: getGenerationSnapshot
       summary: Read a consistent generation snapshot
-      description: Returns the generation status, the final assistant message id (if any), and the ordered realtime event
-        stream up to a consistent point (vc.read_generation_snapshot). A foreign or absent id never discloses existence. Requires
-        a server-verified authentication context.
+      description: 'Returns the generation status, the final assistant message id (if any), and settled provider usage. Go
+        v1 resumes by snapshot only: no durable event replay exists, and events stays an empty array for wire compatibility
+        with the current H5. A foreign or absent id never discloses existence. Requires a server-verified authentication context.'
       parameters:
       - $ref: '#/components/parameters/GenerationId'
       responses:
@@ -4248,8 +4249,9 @@ components:
           description: Creation timestamp (RFC 3339)
     GenerationSnapshot:
       type: object
-      description: 'A consistent point-in-time read of a generation: status, final assistant message id and the ordered realtime
-        event stream (INV-RT-001). usage is present only after finalize settles the provider usage (USAGE-VIZ).'
+      description: 'A consistent point-in-time read of a generation: status, final assistant message id and settled usage.
+        Go v1 resumes by snapshot only — events is an empty wire-compatibility array, never a delta replay. usage is present
+        only after finalize settles the provider usage (USAGE-VIZ).'
       required:
       - status
       - events

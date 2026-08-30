@@ -326,6 +326,10 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 	if loop, ok := r.deps.Jobs.(*jobs.Loop); ok {
 		core.Cancels = loop.Cancels()
 		core.Hub = loop.Hub()
+		r.metrics.SetJobsStatsSource(func() observability.JobsStats {
+			st := loop.Stats()
+			return observability.JobsStats{Claims: st.Claims, Recoveries: st.Recoveries}
+		})
 	}
 	return core, nil
 }
