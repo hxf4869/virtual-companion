@@ -1303,13 +1303,13 @@ operationId | current H5 caller | Go decision | replacement/user impact
 
 ### 19.1 Phase 0 基准方法
 
-Java 与 Go 必须在同一 Mac、同一 PostgreSQL 数据量、同一 fake provider 行为、同一请求脚本下比较。真实 provider 只做功能 smoke，不用于 CPU/RSS 对比。
+2026-08-30 Owner 已决定 **不在 Owner Mac 重跑 Java 性能基线**。G1 的 Linux Java 数字只保留为历史背景和测量方法参考，不能与本次 Mac Go 数字计算精确倍数、百分比或宣称同机语言收益。G12 的判定依据改为 Owner Mac 上的 Go 绝对资源/容量 gate。Java 只允许在 Go 采样前作为一次性 Flyway migrator 启停，不纳入采样。真实 provider 只做功能 smoke，不用于 CPU/RSS gate。
 
 每次场景必须同时记录三个边界，不能只展示最有利的 Go 进程数字：
 
 ```text
 A. runtime-only
-   Java runtime 或 companiond
+   companiond（历史 Java 样本另列，不混算）
 
 B. retained resident stack
    Caddy + runtime + PostgreSQL + MinIO
@@ -1318,7 +1318,7 @@ C. model provider
    Ollama 或其他本机 provider（若启用），单独列示
 ```
 
-B 是用户为当前服务真实常驻承担的默认口径。Java/Go 对比时 Caddy、PostgreSQL、MinIO 使用同一版本、数据和资源配置；不得在 Go 样本中偷偷停掉 MinIO。若本次配置使用本机 Ollama，除了单列 C 外，还要附加 `B+C` 的端到端总量，但不把模型资源涨跌归因于语言重构。RSS/PSS、CPU time 与采样窗口必须一致，并记录容器/宿主口径，不能混用。
+B 是用户为当前服务真实常驻承担的默认口径。Go retained-stack 样本中 Caddy、PostgreSQL、MinIO 必须使用目标部署版本、数据和资源配置，不得为得到更小数字偷偷停掉 MinIO。若以后 Owner 明确要求恢复同机 Java/Go 对比，两边才按完全相同的版本、数据、行为和采样窗复测；当前 G12 不执行该对比。若本次配置使用本机 Ollama，除了单列 C 外，还要附加 `B+C` 的端到端总量，但不把模型资源涨跌归因于语言重构。RSS/PSS、CPU time 与采样窗口必须一致，并记录容器/宿主口径，不能混用；平台无法提供 PSS 时明确标记 `NOT_AVAILABLE`，不得用 RSS 冒充。
 
 场景：
 
@@ -1349,29 +1349,31 @@ B 是用户为当前服务真实常驻承担的默认口径。Java/Go 对比时 
 - 错误率、queue wait、slow-subscriber disconnect；
 - workload 结束后资源是否回落。
 
-Java 只允许一次有界的公平基线调优：合理 container memory limit 与 JVM RAM 参数。不得把 Phase 0 变成新的 Java 架构优化项目。
+历史 Java 基线若经 Owner 明确要求复核，只允许一次有界的公平调优：合理 container memory limit 与 JVM RAM 参数。不得把 G12 变成新的 Java 架构优化项目；默认不复跑。
 
 ### 19.2 Phase 0 冻结资源门槛的方法
 
-在真实 Java 基线产生前，不用任意百分比假装精确门槛。Phase 0 对每个场景先 warm-up，再至少执行 3 次独立测量，把下表的数值直接补回本文并由 Owner 确认；在该表没有冻结前不得进入大规模 Go handler 实现。
+不用任意百分比假装精确门槛。G12 对每个场景先 warm-up，再至少执行 3 次独立 Go 测量，根据 Owner Mac 的实际预算冻结绝对门槛。实现 Agent 可以根据测量提出候选值，但不得代替 Owner 放宽或宣称已经冻结。
 
-2026-08-29 Linux 样本（方法与完整场景见 `docs/planning/g1-java-resource-baseline.md`）**不是** Owner Mac 数字，**不能**当作已冻结的 Go 硬上限或 Owner 绝对预算。复跑：`bash scripts/measure/g1-java-baseline/run.sh`。
+2026-08-29 Linux 样本（方法与完整场景见 `docs/planning/g1-java-resource-baseline.md`）**不是** Owner Mac 数字，**不能**当作已冻结的 Go 硬上限或 Owner 绝对预算；按上述 Owner 决策默认不复跑。2026-08-30 三次 Owner Mac Go runtime-only 结果与候选值见 `docs/planning/g12-go-capacity-sample.md`。该轮 idle 仅 60 秒且 retained stack 未测，因此只形成 runtime 候选，不构成完整 §19.1 验收。
 
-| 指标 | 调优 Java 中位数 | Java 波动范围 | Go 硬上限 | 选择理由 |
+| 指标 | 历史调优 Java | 三次 Go runtime-only 实测 | Go 硬上限 / 状态 | 选择理由 |
 |---|---:|---:|---:|---|
-| runtime idle RSS/PSS | 372.5 / 369.3 MiB（Linux） | 371.5–373.0 / 368.4–370.0 MiB | Owner 冻结 | 必须明显降低常驻内存 |
-| runtime `4 turn + 8 SSE` peak RSS/PSS | 409.2 / 406.0 MiB（Linux；4gen 窗口） | 采样窗口，见 G1 报告 | Owner 冻结 | 覆盖目标并发 |
-| runtime 同 workload CPU time | 0.67 s（1gen+1sse，Linux） | 0.46–1.15 s | Owner 冻结 | 必须明显降低 CPU |
-| cold start/readiness | 6.22 s（schema 已在，Linux） | 6.20–6.24 s | Owner 冻结 | 防止启动回归 |
-| API app-overhead p95 | 19.17 ms p50；本轮 max 40.71 ms（intake，Linux） | 15.70–40.71 ms | Owner 冻结 | 不能用资源节省换明显延迟 |
-| retained stack idle/peak RSS/PSS | idle 633.7 MiB RSS（Linux；MinIO 进程 RSS 本机 NOT_RUN） | 633.6–634.8 MiB | Owner 的 Mac 绝对预算 | 反映实际常驻成本 |
-| retained stack workload CPU time | idle 窗 runtime 分量 4.71 s / 600 s（Linux） | 3.62–6.35 s | Owner 的 Mac 绝对预算 | 反映实际 CPU 成本 |
-| runtime image size | 432.1 MiB（Linux JRE 镜像） | n/a | Owner 冻结 | 只作发布资源，不凌驾正确性 |
+| runtime idle RSS/PSS | 372.5 / 369.3 MiB（Linux，仅背景） | RSS 18.894–19.631 MiB；PSS `NOT_AVAILABLE`（60 s） | 候选 RSS ≤25 MiB；10 min/PSS 待补测并由 Owner 确认 | 控制常驻内存，不做跨平台倍数宣称 |
+| runtime `4 turn + 8 SSE` peak RSS/PSS | 409.2 / 406.0 MiB（Linux，仅背景） | RSS 22.984–23.359 MiB；PSS `NOT_AVAILABLE` | 候选 RSS ≤30 MiB；待 Owner 确认 | 覆盖目标并发 |
+| runtime `4 turn + 8 SSE` CPU time | Linux 非同口径 | 0.140–0.157 s | 候选 ≤0.25 s；待 Owner 确认 | 固定 workload 的绝对 CPU 预算 |
+| runtime `16 turn + 64 SSE` peak / CPU | `NOT_RUN` | RSS 27.359–27.641 MiB；CPU 0.328–0.365 s | 候选 RSS ≤35 MiB、CPU ≤0.50 s；待 Owner 确认 | 容量画像，非产品承诺 |
+| cold start/readiness | 6.22 s（Linux，仅背景） | 772.1–956.9 ms | 候选 ≤1.5 s；待 Owner 确认 | 防止启动回归 |
+| API app-overhead p95 | max 40.71 ms（Linux intake，仅背景） | s5 13.1–39.9 ms；s10 16.8–23.7 ms | 候选 ≤50 ms；待 Owner 确认 | 不能用资源节省换明显延迟 |
+| 100-turn recovery | `NOT_RUN` | RSS delta +1.231–2.047 MiB；goroutine/fd/DB acquired 均回基线 | 候选 RSS delta ≤+3 MiB 且计数回基线；10 min 待补测 | 阻止持续资源增长 |
+| retained stack idle/peak RSS/PSS | idle 633.7 MiB RSS（Linux；仅背景） | `NOT_RUN` | Owner 的 Mac 绝对预算，待测 | 反映实际常驻成本 |
+| retained stack workload CPU time | idle 窗 runtime 分量 4.71 s / 600 s（Linux；仅背景） | `NOT_RUN` | Owner 的 Mac 绝对预算，待测 | 反映实际 CPU 成本 |
+| runtime image size | 432.1 MiB（Linux JRE 镜像；仅背景） | host binary 16.59 MiB；Go OCI image `NOT_RUN` | 待测后由 Owner 冻结 | binary 不冒充 image；发布资源不凌驾正确性 |
 
 冻结值必须满足这些最低规则：
 
-- runtime idle RSS/PSS 和代表 workload CPU time 都要低于调优 Java，且差值大于 Java 重复测量的自然波动；否则不能宣称语言重构解决了资源问题；
-- fixed fake-provider API p95 不得出现超出基线波动的实质回归；
+- runtime idle RSS/PSS 和代表 workload CPU time 必须达到 Owner 冻结的 Mac 绝对 gate；历史 Linux Java 只提供方向性背景，不能据此宣称精确语言收益；
+- fixed fake-provider API p95 必须达到冻结的绝对 gate；除非恢复同机同口径复测，不作跨平台回归百分比；
 - retained stack 使用绝对预算，不要求 PostgreSQL/MinIO/Caddy 共同达到一个数学上可能不可达的比例；固定组件只要求逐项报告，若出现超出基线波动的回归再定位 Go 查询/连接行为，不顺手优化组件本身；
 - idle 不得 busy-poll，SSE/provider 期间不得持有长 DB transaction；
 - 100 turns 后进入相同 warm-idle 观察窗时，RSS/PSS、DB pool、goroutine 和 fd 必须回到 Phase 0 冻结的稳定波动带，不能持续单调增长；

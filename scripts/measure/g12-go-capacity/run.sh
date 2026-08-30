@@ -6,8 +6,8 @@
 #
 # Reuses the g11-switchover compose for db + go-fake-provider only. Secrets
 # and the opaque session are synthetic and fabricated locally; never a real
-# provider, never real user data. Sample numbers are single-trial; §19.2
-# gates stay Owner-frozen (≥3 trials per the spec before freezing).
+# provider, never real user data. Each invocation is one independent trial;
+# §19.2 gates require at least three trials before Owner confirmation.
 #
 # Usage: bash scripts/measure/g12-go-capacity/run.sh
 set -euo pipefail
@@ -136,8 +136,9 @@ curl -fsS --max-time 2 "http://127.0.0.1:$GO_FAKE_PORT/health" >/dev/null \
 echo "  db healthy"
 
 echo "== migrations via the Java runtime as the Flyway migrator (§21.2) =="
-# The Go side does not run Flyway; the Java runtime applies V1-V117 and
-# provisions roles, then stops. Go waits for the singleton lease afterwards.
+# The Go side does not run Flyway; the Java runtime applies all migrations in
+# the packaged artifact and provisions roles, then stops. Go waits for the
+# singleton lease afterwards.
 "${COMPOSE[@]}" up -d runtime >/dev/null
 JAVA_READY=0
 for _ in $(seq 1 150); do
