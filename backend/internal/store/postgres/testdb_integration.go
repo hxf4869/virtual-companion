@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -30,6 +32,37 @@ var testEnv struct {
 	store       *Store
 	superDSN    string
 	runtimeDSN  string
+}
+
+// StartIsolation starts the synthetic PostgreSQL used by G3/G7 isolation
+// tests. It never connects a provider and never uses a production DSN.
+func StartIsolation() error { return startTestDB() }
+
+// StopIsolation tears down the synthetic PostgreSQL.
+func StopIsolation() { stopTestDB() }
+
+// IsolationStore is the runtime-role owner-bound store.
+func IsolationStore() *Store { return testEnv.store }
+
+// IsolationRuntimeDSN is the least-privilege DSN for the synthetic replica.
+func IsolationRuntimeDSN() string { return testEnv.runtimeDSN }
+
+// IsolationSuperDSN is the superuser DSN for fixture setup only.
+func IsolationSuperDSN() string { return testEnv.superDSN }
+
+// IsolationOwnerBindingSecret is the synthetic HMAC key (not a production secret).
+func IsolationOwnerBindingSecret() string { return testOwnerBindingSecret }
+
+// IsolationSuperExec runs parameterized SQL as the synthetic superuser.
+// Arguments must be synthetic fixture values, never real conversation bodies.
+func IsolationSuperExec(ctx context.Context, sql string, args ...any) error {
+	pool, err := pgxpool.New(ctx, testEnv.superDSN)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	_, err = pool.Exec(ctx, sql, args...)
+	return err
 }
 
 func startTestDB() error {

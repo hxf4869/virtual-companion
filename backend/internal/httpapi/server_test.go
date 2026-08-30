@@ -56,6 +56,7 @@ func TestPrometheusProcessMetrics(t *testing.T) {
 		"go_goroutines",
 		"process_cpu_seconds_total",
 		`vc_http_requests_total{handler="health"`,
+		"vc_core_write_requests_total",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q in:\n%s", want, body)
@@ -121,7 +122,7 @@ func newServer(t *testing.T, probes Probes) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), probes, observability.NewRegistry(), nil)
+	return New(cfg, observability.NewLogger("error", io.Discard), probes, observability.NewRegistry(), nil, nil)
 }
 
 func assertStatus(t *testing.T, s *Server, path string, code int, contains string) {

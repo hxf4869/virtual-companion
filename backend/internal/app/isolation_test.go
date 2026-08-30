@@ -64,6 +64,27 @@ func TestAPIMigrationDoesNotServeRealtimeStream(t *testing.T) {
 	}
 }
 
+func TestAPIMigrationDoesNotServeCoreWriters(t *testing.T) {
+	t.Parallel()
+	rt := startRuntime(t, config.ModeAPIMigration, Deps{})
+	post, err := http.Post("http://"+rt.Addr()+"/api/v1/relationships", "application/json", strings.NewReader(`{"personaRef":"gentle-listener"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer post.Body.Close()
+	if post.StatusCode != http.StatusNotFound && post.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("api-migration must not serve relationship writes, got %d", post.StatusCode)
+	}
+	conv, err := http.Post("http://"+rt.Addr()+"/api/v1/conversations", "application/json", strings.NewReader(`{"relationshipId":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conv.Body.Close()
+	if conv.StatusCode != http.StatusNotFound && conv.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("api-migration must not serve conversation writes, got %d", conv.StatusCode)
+	}
+}
+
 func TestAPIMigrationServesHealthWithoutPlanes(t *testing.T) {
 	t.Parallel()
 	rt := startRuntime(t, config.ModeAPIMigration, Deps{})

@@ -37,8 +37,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   adapter（mock contract；companiond 默认不装配、不发起真实 provider 调用），
   以及 G5 Companion Core / Context / Persona / LocalSafetyPolicy / TurnBudget
   （unit 与合成 Golden Set），G6 RealtimeHub 与 authenticated SSE（fan-out /
-  reconnect / leak；同源 cookie + Origin；无 ticket 兼容层）。G5/G6 均不写
-  业务 CRUD API、不写 memory、不发起真实 provider 调用。
+  reconnect / leak；同源 cookie + Origin；无 ticket 兼容层），G7
+  Relationship/Conversation/Message core API（full 模式隔离 PostgreSQL 验证；
+  `api-migration` 写路由硬禁；不含 generation send/cancel、Memory/Consent）。
+  G5/G6/G7 均不写 memory、不发起真实 provider 调用。
   **当前常驻 runtime 仍是 Java**；companiond 不接生产流量、不写当前生产 DB。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：

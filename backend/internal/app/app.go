@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/httpapi"
 	"github.com/hxf4869/virtual-companion/internal/observability"
@@ -169,7 +170,15 @@ func (r *Runtime) Start(ctx context.Context) error {
 		r.releaseLease(ctx)
 		return err
 	}
-	api := httpapi.New(r.cfg, r.log, r, r.metrics, nil)
+	core, err := r.buildCore()
+	if err != nil {
+		_ = r.stopPprof(ctx)
+		_ = r.stopStarted(ctx)
+		r.closeStore()
+		r.releaseLease(ctx)
+		return err
+	}
+	api := httpapi.New(r.cfg, r.log, r, r.metrics, nil, core)
 	ln, err := net.Listen("tcp", r.cfg.HTTP.Addr)
 	if err != nil {
 		_ = r.stopPprof(ctx)
@@ -275,6 +284,34 @@ func (r *Runtime) openStore(ctx context.Context) error {
 		}
 	})
 	return nil
+}
+
+func (r *Runtime) buildCore() (*httpapi.Core, error) {
+	if r.cfg.Mode != config.ModeFull || r.store == nil {
+		return nil, nil
+	}
+	if r.cfg.JWT.Secret == "" {
+		return nil, nil
+	}
+	ver, err := auth.NewVerifier(r.cfg.JWT.Secret, r.cfg.JWT.Issuer)
+	if err != nil {
+		return nil, fmt.Errorf("jwt verifier: %w", err)
+	}
+	if r.cfg.Crypto.RestKeyBase64 != "" {
+		ciph, err := postgres.NewFieldCipherWithPrevious(
+			r.cfg.Crypto.RestKeyID,
+			r.cfg.Crypto.RestKeyVersion,
+			r.cfg.Crypto.RestKeyBase64,
+			r.cfg.Crypto.PreviousRestKeyID,
+			r.cfg.Crypto.PreviousRestKeyVersion,
+			r.cfg.Crypto.PreviousRestKeyBase64,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("rest cipher: %w", err)
+		}
+		r.store.UseCipher(ciph)
+	}
+	return &httpapi.Core{Store: r.store, JWT: ver}, nil
 }
 
 func (r *Runtime) closeStore() {

@@ -21,6 +21,7 @@ type Registry struct {
 	http          map[httpKey]httpStat
 	dbStats       func() DBStats
 	realtimeStats func() RealtimeStats
+	coreWrites    uint64
 }
 
 // RealtimeStats is a low-cardinality hub snapshot. No owner or generation id.
@@ -71,6 +72,27 @@ func (r *Registry) SetRealtimeStatsSource(fn func() RealtimeStats) {
 	r.mu.Lock()
 	r.realtimeStats = fn
 	r.mu.Unlock()
+}
+
+// ObserveCoreWrite counts a G7 command/writer invocation. api-migration
+// never registers those routes, so production stays at 0.
+func (r *Registry) ObserveCoreWrite() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.coreWrites++
+	r.mu.Unlock()
+}
+
+// CoreWrites is the cumulative G7 writer invocation count.
+func (r *Registry) CoreWrites() uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.coreWrites
 }
 
 func (r *Registry) ObserveHTTP(handler, method string, code int, d time.Duration) {
@@ -155,6 +177,14 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 		writeCounter(&buf, "vc_realtime_slow_disconnect_total", "Subscribers dropped for exceeding the live queue bound.", float64(rt.SlowDisconnects))
 		writeCounter(&buf, "vc_realtime_snapshot_resume_total", "SSE opens that used a durable snapshot instead of live fan-out.", float64(rt.SnapshotResumes))
 	}
+	var writes uint64
+	if r != nil {
+		r.mu.Lock()
+		writes = r.coreWrites
+		r.mu.Unlock()
+	}
+	writeCounter(&buf, "vc_core_write_requests_total", "G7 relationship/conversation/message writer invocations. Production api-migration must stay at 0.", float64(writes))
+
 	buf.WriteString("# HELP vc_http_requests_total HTTP requests handled by companiond.\n")
 	buf.WriteString("# TYPE vc_http_requests_total counter\n")
 	for _, rw := range rows {

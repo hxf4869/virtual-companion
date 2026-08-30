@@ -13,6 +13,7 @@
 - [x] `G4` OpenAI-compatible provider adapter（mock contract；Fake/Failure 仅为测试 fixture；不含 real provider shadow、Companion Core 或真实外网调用）
 - [x] `G5` Companion Core、Context、Persona、Safety、Budget（unit/Golden Set；不含 tools、memory write、RealtimeHub/SSE、业务 HTTP API、真实 provider 外网调用）
 - [x] `G6` RealtimeHub 与 authenticated SSE（fan-out/reconnect/leak；同源 HttpOnly cookie + Origin；无 ticket 兼容层、无业务 CRUD API、无 Memory/Consent、无真实外网 provider）
+- [x] `G7` Relationship/Conversation/Message core API（OpenAPI KEEP 最小面；隔离 PostgreSQL E2E；api-migration 写路由硬禁；不含 generation plane、Memory/Consent、opaque auth 生产切换）
 
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 

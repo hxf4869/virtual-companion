@@ -387,7 +387,7 @@ func newRT(t *testing.T) *rtEnv {
 		Sessions:  memSessions{testCookie: {AccountID: 1}},
 		Snapshots: snaps,
 	}
-	srv := New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), rt)
+	srv := New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), rt, nil)
 	return &rtEnv{srv: srv, hub: hub, snaps: snaps}
 }
 

@@ -36,9 +36,10 @@ type Server struct {
 	metrics  *observability.Registry
 	mux      *http.ServeMux
 	realtime *Realtime
+	core     *Core
 }
 
-func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry, rt *Realtime) *Server {
+func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry, rt *Realtime, core *Core) *Server {
 	if log == nil {
 		log = observability.NewLogger(cfg.Log.Level, nil)
 	}
@@ -67,6 +68,11 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 				}
 			})
 		}
+	}
+	// Phase 4: writers stay off in api-migration. Isolation/cutover uses full.
+	if core != nil && core.Store != nil && core.JWT != nil && cfg.AllowsWrites() {
+		s.core = core
+		s.registerCore()
 	}
 	return s
 }
@@ -223,9 +229,35 @@ func operation(path string) string {
 		return "prometheus"
 	case "/api/v1/version":
 		return "version"
+	case "/api/v1/relationships":
+		return "relationships"
+	case "/api/v1/conversations":
+		return "conversations"
+	case "/api/v1/conversations/wipe-preview":
+		return "chat_wipe_preview"
+	case "/api/v1/conversations/wipe":
+		return "chat_wipe"
 	default:
 		if strings.HasPrefix(path, "/api/v1/realtime/streams/") {
 			return "realtime_stream"
+		}
+		if strings.HasPrefix(path, "/api/v1/relationships/") {
+			if strings.HasSuffix(path, "/deactivate") {
+				return "relationship_deactivate"
+			}
+			return "relationship"
+		}
+		if strings.Contains(path, "/messages/") {
+			return "message"
+		}
+		if strings.HasSuffix(path, "/messages") {
+			return "messages"
+		}
+		if strings.HasSuffix(path, "/end") {
+			return "conversation_end"
+		}
+		if strings.HasPrefix(path, "/api/v1/conversations/") {
+			return "conversation"
 		}
 		return "unmapped"
 	}

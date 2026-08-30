@@ -29,6 +29,7 @@ type Store struct {
 	pool      *pgxpool.Pool
 	secret    []byte
 	txTimeout time.Duration
+	cipher    *FieldCipher
 
 	txCount atomic.Uint64
 	txNanos atomic.Uint64
@@ -81,6 +82,15 @@ func (s *Store) Close() {
 		return
 	}
 	s.pool.Close()
+}
+
+// UseCipher installs the at-rest field cipher for message bodies. Nil
+// leaves stored plaintext readable and refuses to surface enc1/enc2 blobs.
+func (s *Store) UseCipher(c *FieldCipher) {
+	if s == nil {
+		return
+	}
+	s.cipher = c
 }
 
 func (s *Store) Ping(ctx context.Context) error {
