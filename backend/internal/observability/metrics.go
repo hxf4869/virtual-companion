@@ -17,8 +17,19 @@ import (
 // Registry holds low-cardinality process and HTTP metrics. Labels are handler
 // names and status codes only — never owner, id, or error text.
 type Registry struct {
-	mu   sync.Mutex
-	http map[httpKey]httpStat
+	mu      sync.Mutex
+	http    map[httpKey]httpStat
+	dbStats func() DBStats
+}
+
+// DBStats is a low-cardinality pool snapshot. No owner, SQL, or error text.
+type DBStats struct {
+	Acquired     int32
+	Idle         int32
+	Max          int32
+	EmptyAcquire int64
+	TxCount      uint64
+	TxSeconds    float64
 }
 
 type httpKey struct {
@@ -34,6 +45,15 @@ type httpStat struct {
 
 func NewRegistry() *Registry {
 	return &Registry{http: make(map[httpKey]httpStat)}
+}
+
+func (r *Registry) SetDBStatsSource(fn func() DBStats) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.dbStats = fn
+	r.mu.Unlock()
 }
 
 func (r *Registry) ObserveHTTP(handler, method string, code int, d time.Duration) {
@@ -83,6 +103,25 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 		r.mu.Unlock()
 	}
 	sortRows(rows)
+	var db DBStats
+	var hasDB bool
+	if r != nil {
+		r.mu.Lock()
+		fn := r.dbStats
+		r.mu.Unlock()
+		if fn != nil {
+			db = fn()
+			hasDB = true
+		}
+	}
+	if hasDB {
+		writeGauge(&buf, "vc_db_pool_acquired", "Acquired connections in the pgx pool.", float64(db.Acquired))
+		writeGauge(&buf, "vc_db_pool_idle", "Idle connections in the pgx pool.", float64(db.Idle))
+		writeGauge(&buf, "vc_db_pool_max", "Configured pgx pool maximum.", float64(db.Max))
+		writeCounter(&buf, "vc_db_pool_empty_acquire_total", "Times a pgx acquire waited for a free connection.", float64(db.EmptyAcquire))
+		writeCounter(&buf, "vc_db_tx_total", "Short owner-bound transactions opened by companiond.", float64(db.TxCount))
+		writeCounter(&buf, "vc_db_tx_duration_seconds_sum", "Total owner-bound transaction duration in seconds.", db.TxSeconds)
+	}
 	buf.WriteString("# HELP vc_http_requests_total HTTP requests handled by companiond.\n")
 	buf.WriteString("# TYPE vc_http_requests_total counter\n")
 	for _, rw := range rows {

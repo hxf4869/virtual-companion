@@ -73,7 +73,8 @@ func sensitiveKey(key string) bool {
 	switch k {
 	case "password", "token", "secret", "authorization", "cookie", "setcookie",
 		"apikey", "jwt", "session", "prompt", "response", "message", "memory",
-		"summary", "content", "credential", "webhook":
+		"summary", "content", "credential", "webhook", "dsn", "proof", "nonce",
+		"binding":
 		return true
 	default:
 		return false

@@ -9,6 +9,7 @@
 - [x] `G0` ADR/Catalog/OpenAPI scope 与 API consumer matrix（catalog/openapi check；不写 Go 业务代码）
 - [x] `G1` Java 资源/事务基线与 benchmark workload（Linux 可重复报告：`docs/planning/g1-java-resource-baseline.md`；Owner Mac 门槛未冻结）
 - [x] `G2` Go module、config、health、logging、metrics、shutdown、`api-migration/full` 硬隔离（unit/check；migration 模式无法启动 provider/jobs；不含 DB 业务 API）
+- [x] `G3` pgx owner-bound 短事务、RLS/least-privilege、crypto（BCrypt、owner HMAC、enc1/enc2）与 Java JWT migration verifier（DB/golden vectors；不签发 JWT、不写 login/refresh/logout）
 
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 

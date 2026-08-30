@@ -1,9 +1,11 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,16 +43,50 @@ func ForbiddenPlanes() []Plane {
 	}
 }
 
-// Config is the single explicit process configuration. Secrets, when later
-// slices add them, come only from the environment or private files outside
-// the repository.
+// Config is the single explicit process configuration. Secrets come only
+// from the environment or private files outside the repository and are
+// never logged.
 type Config struct {
-	Mode     Mode
-	HTTP     HTTP
-	Log      Log
-	Pprof    Pprof
-	Shutdown Shutdown
-	Version  Version
+	Mode         Mode
+	HTTP         HTTP
+	Log          Log
+	Pprof        Pprof
+	Shutdown     Shutdown
+	Version      Version
+	Database     Database
+	OwnerBinding OwnerBinding
+	JWT          JWT
+	Crypto       Crypto
+}
+
+// Database is the pgx pool. Empty DSN means companiond starts without a
+// pool (G2 tests and processes that do not touch PostgreSQL).
+type Database struct {
+	DSN       string
+	MaxConns  int32
+	TxTimeout time.Duration
+}
+
+// OwnerBinding is the V27 HMAC key material. Required when Database.DSN is set.
+type OwnerBinding struct {
+	Secret string
+}
+
+// JWT is the migration-window HS256 verifier config. Go never issues JWT.
+type JWT struct {
+	Secret string
+	Issuer string
+}
+
+// Crypto is the at-rest field cipher. Go only writes enc2; enc1/plaintext
+// are dual-read until Phase 6 deletes the legacy reader.
+type Crypto struct {
+	RestKeyID              string
+	RestKeyVersion         int
+	RestKeyBase64          string
+	PreviousRestKeyID      string
+	PreviousRestKeyVersion int
+	PreviousRestKeyBase64  string
 }
 
 type HTTP struct {
@@ -117,6 +153,24 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			Version: valueOr(strings.TrimSpace(getenv("VC_VERSION")), "0.1.0-dev"),
 			Commit:  strings.TrimSpace(getenv("VC_COMMIT")),
 		},
+		Database: Database{
+			DSN:       strings.TrimSpace(getenv("VC_DB_DSN")),
+			MaxConns:  8,
+			TxTimeout: 5 * time.Second,
+		},
+		OwnerBinding: OwnerBinding{Secret: getenv("VC_OWNER_BINDING_SECRET")},
+		JWT: JWT{
+			Secret: getenv("VC_JWT_SECRET"),
+			Issuer: valueOr(strings.TrimSpace(getenv("VC_AUTH_ISSUER")), "virtual-companion"),
+		},
+		Crypto: Crypto{
+			RestKeyID:              valueOr(strings.TrimSpace(getenv("VC_CRYPTO_REST_KEY_ID")), "default"),
+			RestKeyVersion:         1,
+			RestKeyBase64:          strings.TrimSpace(getenv("VC_CRYPTO_REST_KEY")),
+			PreviousRestKeyID:      strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY_ID")),
+			PreviousRestKeyVersion: 0,
+			PreviousRestKeyBase64:  strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY")),
+		},
 	}
 	if raw := strings.TrimSpace(getenv("VC_SHUTDOWN_TIMEOUT")); raw != "" {
 		d, err := time.ParseDuration(raw)
@@ -124,6 +178,34 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("VC_SHUTDOWN_TIMEOUT: %w", err)
 		}
 		cfg.Shutdown.Timeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_DB_MAX_CONNS")); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_DB_MAX_CONNS: %w", err)
+		}
+		cfg.Database.MaxConns = int32(n)
+	}
+	if raw := strings.TrimSpace(getenv("VC_DB_TX_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_DB_TX_TIMEOUT: %w", err)
+		}
+		cfg.Database.TxTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_CRYPTO_REST_KEY_VERSION")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_CRYPTO_REST_KEY_VERSION: %w", err)
+		}
+		cfg.Crypto.RestKeyVersion = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY_VERSION")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_CRYPTO_PREVIOUS_REST_KEY_VERSION: %w", err)
+		}
+		cfg.Crypto.PreviousRestKeyVersion = n
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -162,6 +244,49 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Version.Version) == "" {
 		return fmt.Errorf("VC_VERSION must not be empty")
+	}
+	if c.Database.DSN != "" {
+		if c.Database.MaxConns <= 0 {
+			return fmt.Errorf("VC_DB_MAX_CONNS must be > 0")
+		}
+		if c.Database.TxTimeout <= 0 {
+			return fmt.Errorf("VC_DB_TX_TIMEOUT must be > 0")
+		}
+		if len(c.OwnerBinding.Secret) < 32 {
+			return fmt.Errorf("VC_OWNER_BINDING_SECRET must carry at least 32 bytes of key material when VC_DB_DSN is set")
+		}
+	}
+	if c.JWT.Secret != "" {
+		if len(c.JWT.Secret) < 32 {
+			return fmt.Errorf("VC_JWT_SECRET must be at least 256 bits")
+		}
+		if strings.TrimSpace(c.JWT.Issuer) == "" {
+			return fmt.Errorf("VC_AUTH_ISSUER is required when VC_JWT_SECRET is set")
+		}
+	}
+	if c.Crypto.RestKeyBase64 != "" {
+		if err := requireAESKey(c.Crypto.RestKeyBase64); err != nil {
+			return fmt.Errorf("VC_CRYPTO_REST_KEY: %w", err)
+		}
+		if c.Crypto.RestKeyVersion <= 0 {
+			return fmt.Errorf("VC_CRYPTO_REST_KEY_VERSION must be a positive integer")
+		}
+	}
+	if c.Crypto.PreviousRestKeyBase64 != "" {
+		if err := requireAESKey(c.Crypto.PreviousRestKeyBase64); err != nil {
+			return fmt.Errorf("VC_CRYPTO_PREVIOUS_REST_KEY: %w", err)
+		}
+	}
+	return nil
+}
+
+func requireAESKey(b64 string) error {
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return fmt.Errorf("must be standard padded base64")
+	}
+	if len(raw) != 32 {
+		return fmt.Errorf("must be 32 bytes (AES-256)")
 	}
 	return nil
 }

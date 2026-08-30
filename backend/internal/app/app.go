@@ -14,6 +14,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/httpapi"
 	"github.com/hxf4869/virtual-companion/internal/observability"
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 // Plane is a startable production capability. G2 only wires spies in tests;
@@ -58,6 +59,7 @@ type Runtime struct {
 	pprofLn   net.Listener
 	started   []Plane
 	heldLease bool
+	store     *postgres.Store
 }
 
 func New(cfg config.Config, log *slog.Logger, deps Deps) (*Runtime, error) {
@@ -151,13 +153,19 @@ func (r *Runtime) Start(ctx context.Context) error {
 		}
 		r.heldLease = true
 	}
+	if err := r.openStore(ctx); err != nil {
+		r.releaseLease(ctx)
+		return err
+	}
 	if err := r.startPlanes(ctx); err != nil {
 		_ = r.stopStarted(ctx)
+		r.closeStore()
 		r.releaseLease(ctx)
 		return err
 	}
 	if err := r.startPprof(); err != nil {
 		_ = r.stopStarted(ctx)
+		r.closeStore()
 		r.releaseLease(ctx)
 		return err
 	}
@@ -166,6 +174,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 	if err != nil {
 		_ = r.stopPprof(ctx)
 		_ = r.stopStarted(ctx)
+		r.closeStore()
 		r.releaseLease(ctx)
 		return err
 	}
@@ -234,9 +243,46 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	if err := r.stopStarted(ctx); err != nil && first == nil {
 		first = err
 	}
+	r.closeStore()
 	r.releaseLease(ctx)
 	r.live.Store(false)
 	return first
+}
+
+func (r *Runtime) openStore(ctx context.Context) error {
+	if r.cfg.Database.DSN == "" {
+		return nil
+	}
+	store, err := postgres.Open(ctx, postgres.OpenConfig{
+		DSN:                r.cfg.Database.DSN,
+		MaxConns:           r.cfg.Database.MaxConns,
+		TxTimeout:          r.cfg.Database.TxTimeout,
+		OwnerBindingSecret: r.cfg.OwnerBinding.Secret,
+	})
+	if err != nil {
+		return fmt.Errorf("database: %w", err)
+	}
+	r.store = store
+	r.metrics.SetDBStatsSource(func() observability.DBStats {
+		st := store.Stats()
+		return observability.DBStats{
+			Acquired:     st.Acquired,
+			Idle:         st.Idle,
+			Max:          st.Max,
+			EmptyAcquire: st.EmptyAcquire,
+			TxCount:      st.TxCount,
+			TxSeconds:    st.TxSeconds,
+		}
+	})
+	return nil
+}
+
+func (r *Runtime) closeStore() {
+	if r.store == nil {
+		return
+	}
+	r.store.Close()
+	r.store = nil
 }
 
 func (r *Runtime) startPlanes(ctx context.Context) error {

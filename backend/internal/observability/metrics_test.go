@@ -34,3 +34,27 @@ func TestProcessSnapshotAndPrometheus(t *testing.T) {
 		}
 	}
 }
+
+func TestDBPoolMetrics(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry()
+	reg.SetDBStatsSource(func() DBStats {
+		return DBStats{Acquired: 1, Idle: 2, Max: 8, EmptyAcquire: 3, TxCount: 4, TxSeconds: 0.5}
+	})
+	var buf bytes.Buffer
+	if err := reg.WritePrometheus(&buf); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"vc_db_pool_acquired",
+		"vc_db_pool_idle",
+		"vc_db_pool_max",
+		"vc_db_tx_total",
+		"vc_db_tx_duration_seconds_sum",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+}
