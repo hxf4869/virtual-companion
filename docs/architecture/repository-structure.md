@@ -11,7 +11,7 @@ virtual-companion/
 ├── service/
 │   ├── platform/catalog/      生成 Java Catalog 的编译模块
 │   └── apps/runtime/          当前唯一可启动后端（cutover 前）
-├── backend/                   Go companiond（G2 起；G4 含 OpenAI-compatible adapter；cutover 前不接生产流量）
+├── backend/                   Go companiond（G2 起；G4 adapter；G5 companion/turn/safety 离线 core；cutover 前不接生产流量）
 ├── frontend/                  uni-app H5
 ├── scripts/
 │   ├── checks/                秒级仓库检查（catalog/licenses/paid）及其数据文件

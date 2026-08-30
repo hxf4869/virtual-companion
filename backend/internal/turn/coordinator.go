@@ -1,0 +1,290 @@
+package turn
+
+import (
+	"context"
+	"log/slog"
+	"strings"
+
+	"github.com/hxf4869/virtual-companion/internal/companion"
+	"github.com/hxf4869/virtual-companion/internal/safety"
+)
+
+// Coordinator runs one Companion Turn. G5 does not attach a realtime hub;
+// accepted deltas are returned on Result for tests. HTTP APIs are G7.
+type Coordinator struct {
+	Store    Store
+	Provider companion.Provider
+	Policy   *safety.Policy
+	Log      *slog.Logger
+}
+
+// Command starts one turn that already has a seed in Store.
+type Command struct {
+	TurnID string
+	RunID  string
+	Budget companion.TurnBudget
+}
+
+// Result is the process-local turn outcome. Blocked/failed/cancelled never
+// carry persistable assistant text.
+type Result struct {
+	Phase        companion.Phase
+	Public       companion.PublicEvent
+	Published    []string
+	Withdraw     bool
+	Text         string
+	SafetyCode   string
+	Attempt      companion.AttemptOutcome
+	Trace        BuildTrace
+	RetryAllowed bool
+}
+
+func (c *Coordinator) logger() *slog.Logger {
+	if c != nil && c.Log != nil {
+		return c.Log
+	}
+	return slog.New(slog.DiscardHandler)
+}
+
+// Run executes intake-prepare-stream-finalize without a hub or DB session
+// held across the provider call.
+func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	log := c.logger()
+	policy := c.Policy
+	if policy == nil {
+		policy = safety.New()
+	}
+
+	seed, err := c.Store.LoadSeed(ctx, cmd.TurnID)
+	if err != nil {
+		return c.fail(ctx, cmd, "", companion.PhaseFailed, "SEED_MISSING", nil, BuildTrace{})
+	}
+
+	in := policy.ReviewInput(seed.CurrentUserMessage)
+	if !in.Allow {
+		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+			TurnID: cmd.TurnID, Phase: companion.PhaseBlocked, Reason: in.Code(),
+		})
+		log.Info("turn blocked",
+			slog.String("operation", "input_review"),
+			slog.String("outcome", "blocked"),
+			slog.String("event_type", "safety"),
+			slog.String("decision_code", in.Code()),
+			slog.String("run_id", cmd.RunID),
+		)
+		return Result{
+			Phase:      companion.PhaseBlocked,
+			Public:     companion.EventBlocked,
+			SafetyCode: in.Code(),
+			Withdraw:   true,
+		}
+	}
+
+	plan := Build(seed, cmd.Budget)
+	logContext(log, cmd.RunID, plan.Trace)
+	if plan.Blocked {
+		phase := companion.PhaseFailed
+		pub := companion.EventFailed
+		if plan.Reason == DropCategoryDenied {
+			phase = companion.PhaseBlocked
+			pub = companion.EventBlocked
+		}
+		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+			TurnID: cmd.TurnID, Phase: phase, Reason: string(plan.Reason),
+		})
+		return Result{Phase: phase, Public: pub, Trace: plan.Trace, SafetyCode: string(plan.Reason), Withdraw: true}
+	}
+
+	prep, err := c.Store.PrepareAttempt(ctx, PrepareAttempt{
+		TurnID:          cmd.TurnID,
+		Budget:          cmd.Budget,
+		Categories:      plan.Trace.EffectiveCategories,
+		PromptVersion:   plan.Trace.PromptVersion,
+		PersonaVersion:  plan.Trace.PersonaVersion,
+		ConfigVersion:   plan.Trace.ConfigVersion,
+		EstimatedTokens: plan.Trace.EstimatedTokens,
+	})
+	if err != nil {
+		return c.fail(ctx, cmd, "", companion.PhaseFailed, "PREPARE_FAILED", nil, plan.Trace)
+	}
+
+	if ctx.Err() != nil {
+		_ = c.Store.RecordAttemptOutcome(ctx, companion.AttemptOutcome{
+			TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+			Status: companion.AttemptCancelled, Failure: string(companion.CodeCanceled),
+			Delivery: companion.DeliveryNotSent, Billing: companion.BillingNotSent, Budget: prep.Budget,
+		})
+		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+			TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
+			Phase: companion.PhaseCancelled, Reason: string(companion.CodeCanceled),
+		})
+		return Result{
+			Phase: companion.PhaseCancelled, Public: companion.EventCancelled,
+			Withdraw: true, Trace: plan.Trace,
+		}
+	}
+
+	guard := companion.OutputGuard{
+		WindowRunes: policy.WindowRunes(),
+		Review: func(window string) companion.Review {
+			d := policy.ReviewOutput(window)
+			return companion.Review{Allow: d.Allow, Risk: string(d.Risk), Rules: d.Rules}
+		},
+	}
+	var published []string
+	stream := companion.StreamAttempt(ctx, companion.StreamInput{
+		Provider: c.Provider,
+		Request: companion.ModelRequest{
+			Messages: plan.Messages,
+			Stream:   true,
+		},
+		Budget: prep.Budget,
+		Guard:  guard,
+		Emit: func(d companion.OutputDelta) error {
+			published = append(published, d.Text)
+			return nil
+		},
+	})
+
+	outcome := companion.AttemptOutcome{
+		TurnID:     cmd.TurnID,
+		AttemptID:  prep.AttemptID,
+		Status:     stream.Status,
+		Failure:    stream.Failure,
+		Delivery:   stream.Delivery,
+		Billing:    stream.Billing,
+		Finish:     stream.Finish,
+		Usage:      stream.Usage,
+		Budget:     prep.Budget,
+		Categories: categoryStrings(plan.Trace.EffectiveCategories),
+	}
+	if recErr := c.Store.RecordAttemptOutcome(ctx, outcome); recErr != nil {
+		return c.fail(ctx, cmd, prep.AttemptID, companion.PhaseFailed, "OUTCOME_WRITE", &outcome, plan.Trace)
+	}
+
+	retry := companion.AllowNewAttempt(prep.Budget, 1, stream.Status, stream.ProviderErr)
+
+	if stream.Withdraw || !stream.Persistable || !stream.Safety.Allow {
+		phase := companion.PhaseBlocked
+		pub := companion.EventBlocked
+		reason := stream.Safety.Code()
+		if stream.Status == companion.AttemptCancelled && ctx.Err() != nil {
+			phase = companion.PhaseCancelled
+			pub = companion.EventCancelled
+			reason = string(companion.CodeCanceled)
+		} else if !stream.Safety.Allow && len(stream.Safety.Rules) > 0 {
+			phase = companion.PhaseBlocked
+			pub = companion.EventBlocked
+			reason = stream.Safety.Code()
+		} else if stream.ProviderErr != nil || stream.Status == companion.AttemptFailed ||
+			stream.Status == companion.AttemptTimedOut || stream.Status == companion.AttemptOutcomeUnknown {
+			phase = companion.PhaseFailed
+			pub = companion.EventFailed
+			reason = stream.Failure
+			if stream.Status == companion.AttemptCancelled {
+				phase = companion.PhaseCancelled
+				pub = companion.EventCancelled
+			}
+		}
+		if reason == "" {
+			reason = stream.Failure
+		}
+		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+			TurnID: cmd.TurnID, AttemptID: prep.AttemptID, Phase: phase, Reason: reason,
+		})
+		log.Info("turn terminal",
+			slog.String("operation", "finalize"),
+			slog.String("outcome", string(phase)),
+			slog.String("event_type", string(pub)),
+			slog.String("decision_code", reason),
+			slog.String("run_id", cmd.RunID),
+		)
+		return Result{
+			Phase:        phase,
+			Public:       pub,
+			Published:    published,
+			Withdraw:     true,
+			SafetyCode:   reason,
+			Attempt:      outcome,
+			Trace:        plan.Trace,
+			RetryAllowed: retry,
+		}
+	}
+
+	if err := c.Store.FinalizeGeneration(ctx, FinalizeCommand{
+		TurnID: cmd.TurnID, AttemptID: prep.AttemptID, Text: stream.Text,
+	}); err != nil {
+		return c.fail(ctx, cmd, prep.AttemptID, companion.PhaseFailed, "FINALIZE_FAILED", &outcome, plan.Trace)
+	}
+	log.Info("turn completed",
+		slog.String("operation", "finalize"),
+		slog.String("outcome", "completed"),
+		slog.String("event_type", string(companion.EventCompleted)),
+		slog.Int("delta_count", len(published)),
+		slog.Int("estimated_tokens", plan.Trace.EstimatedTokens),
+		slog.String("run_id", cmd.RunID),
+	)
+	return Result{
+		Phase:     companion.PhaseCompleted,
+		Public:    companion.EventCompleted,
+		Published: published,
+		Text:      stream.Text,
+		Attempt:   outcome,
+		Trace:     plan.Trace,
+	}
+}
+
+func (c *Coordinator) fail(ctx context.Context, cmd Command, attemptID string, phase companion.Phase, reason string, outcome *companion.AttemptOutcome, trace BuildTrace) Result {
+	_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+		TurnID: cmd.TurnID, AttemptID: attemptID, Phase: phase, Reason: reason,
+	})
+	res := Result{Phase: phase, Public: companion.EventFailed, Withdraw: true, SafetyCode: reason, Trace: trace}
+	if outcome != nil {
+		res.Attempt = *outcome
+	}
+	return res
+}
+
+func logContext(log *slog.Logger, runID string, tr BuildTrace) {
+	cats := make([]string, len(tr.EffectiveCategories))
+	for i, c := range tr.EffectiveCategories {
+		cats[i] = string(c)
+	}
+	reasons := make([]string, 0, len(tr.Drops))
+	for _, d := range tr.Drops {
+		reasons = append(reasons, string(d.Reason))
+	}
+	log.Info("context planned",
+		slog.String("operation", "context_build"),
+		slog.String("outcome", "ok"),
+		slog.String("event_type", "context"),
+		slog.String("prompt_version", tr.PromptVersion),
+		slog.String("persona_version", tr.PersonaVersion),
+		slog.String("config_version", tr.ConfigVersion),
+		slog.Int("history_blocks", tr.HistoryBlocks),
+		slog.Int("memory_blocks", tr.MemoryBlocks),
+		slog.Int("estimated_tokens", tr.EstimatedTokens),
+		slog.String("effective_categories", strings.Join(cats, ",")),
+		slog.String("drop_reason_codes", strings.Join(reasons, ",")),
+		slog.String("run_id", runID),
+	)
+}
+
+// MapPublicTerminal is the OutputDelta/outcome → Public SSE name mapping.
+// G6 attaches the hub; this function must not emit completed after a safety fail.
+func MapPublicTerminal(phase companion.Phase, persistable bool) companion.PublicEvent {
+	if persistable && phase == companion.PhaseCompleted {
+		return companion.EventCompleted
+	}
+	switch phase {
+	case companion.PhaseBlocked:
+		return companion.EventBlocked
+	case companion.PhaseCancelled:
+		return companion.EventCancelled
+	default:
+		return companion.EventFailed
+	}
+}

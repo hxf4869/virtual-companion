@@ -218,6 +218,62 @@ func TestProviderRejectsHTTPAndIllegalBudgets(t *testing.T) {
 	}
 }
 
+func TestBudgetDefaults(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadEnv(env(map[string]string{"VC_MODE": "full"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := cfg.Budget
+	if b.MaxInputTokens != 8000 || b.MaxOutputTokens != 2048 || b.MaxAttempts != 2 {
+		t.Fatalf("token/attempt defaults %+v", b)
+	}
+	if b.ConnectTimeout != 10*time.Second || b.FirstTokenTimeout != 60*time.Second || b.TotalTimeout != 240*time.Second {
+		t.Fatalf("timeout defaults %+v", b)
+	}
+	if b.MaxResponseBytes != 256<<10 || b.MaxReservedCost != 0 {
+		t.Fatalf("bytes/cost defaults %+v", b)
+	}
+}
+
+func TestBudgetRejectsIllegalAndContradictoryValues(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		env  map[string]string
+		want string
+	}{
+		{map[string]string{"VC_MODE": "full", "VC_BUDGET_MAX_INPUT_TOKENS": "0"}, "VC_BUDGET_MAX_INPUT_TOKENS"},
+		{map[string]string{"VC_MODE": "full", "VC_BUDGET_MAX_OUTPUT_TOKENS": "-1"}, "VC_BUDGET_MAX_OUTPUT_TOKENS"},
+		{map[string]string{"VC_MODE": "full", "VC_BUDGET_MAX_OUTPUT_TOKENS": "8000"}, "smaller than"},
+		{map[string]string{"VC_MODE": "full", "VC_BUDGET_MAX_ATTEMPTS": "3"}, "VC_BUDGET_MAX_ATTEMPTS"},
+		{map[string]string{"VC_MODE": "full", "VC_BUDGET_MAX_RESERVED_COST": "-4"}, "VC_BUDGET_MAX_RESERVED_COST"},
+		{map[string]string{"VC_MODE": "full", "VC_BUDGET_CONNECT_TIMEOUT": "45s", "VC_BUDGET_FIRST_TOKEN_TIMEOUT": "30s"}, "connect <= first-token"},
+		{map[string]string{"VC_MODE": "full", "VC_BUDGET_MAX_RESPONSE_BYTES": "0"}, "VC_BUDGET_MAX_RESPONSE_BYTES"},
+	}
+	for _, tc := range cases {
+		_, err := LoadEnv(env(tc.env))
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("env %#v: want %q, got %v", tc.env, tc.want, err)
+		}
+	}
+}
+
+func TestBudgetCannotExceedEnabledProvider(t *testing.T) {
+	t.Parallel()
+	_, err := LoadEnv(env(map[string]string{
+		"VC_MODE":                     "full",
+		"VC_PROVIDER_ENABLED":         "true",
+		"VC_PROVIDER_ENDPOINT":        "https://models.example/v1/chat/completions",
+		"VC_PROVIDER_TOKEN":           "offline-token-sentinel",
+		"VC_PROVIDER_MODEL":           "offline-model-sentinel",
+		"VC_PROVIDER_MAX_TOKENS":      "1024",
+		"VC_BUDGET_MAX_OUTPUT_TOKENS": "2048",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "must not exceed VC_PROVIDER_MAX_TOKENS") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func env(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }

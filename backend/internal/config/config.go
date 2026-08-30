@@ -59,6 +59,7 @@ type Config struct {
 	JWT          JWT
 	Crypto       Crypto
 	Provider     Provider
+	Budget       Budget
 }
 
 // Provider is the single OpenAI-compatible Chat Completions adapter.
@@ -76,6 +77,19 @@ type Provider struct {
 	FirstTokenTimeout time.Duration
 	TotalTimeout      time.Duration
 	MaxResponseBytes  int64
+}
+
+// Budget is the per-turn freeze applied at intake/prepare (redesign §10.6).
+// Admission/concurrency limits do not belong here. Illegal values fail startup.
+type Budget struct {
+	MaxInputTokens    int
+	MaxOutputTokens   int
+	MaxResponseBytes  int64
+	ConnectTimeout    time.Duration
+	FirstTokenTimeout time.Duration
+	TotalTimeout      time.Duration
+	MaxAttempts       int
+	MaxReservedCost   int64
 }
 
 // Database is the pgx pool. Empty DSN means companiond starts without a
@@ -202,6 +216,16 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			TotalTimeout:      240 * time.Second,
 			MaxResponseBytes:  256 << 10,
 		},
+		Budget: Budget{
+			MaxInputTokens:    8000,
+			MaxOutputTokens:   2048,
+			MaxResponseBytes:  256 << 10,
+			ConnectTimeout:    10 * time.Second,
+			FirstTokenTimeout: 60 * time.Second,
+			TotalTimeout:      240 * time.Second,
+			MaxAttempts:       2,
+			MaxReservedCost:   0,
+		},
 	}
 	if raw := strings.TrimSpace(getenv("VC_SHUTDOWN_TIMEOUT")); raw != "" {
 		d, err := time.ParseDuration(raw)
@@ -280,10 +304,73 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 		}
 		cfg.Provider.MaxResponseBytes = n
 	}
+	if err := loadBudgetEnv(&cfg, getenv); err != nil {
+		return Config{}, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func loadBudgetEnv(cfg *Config, getenv func(string) string) error {
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_MAX_INPUT_TOKENS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_MAX_INPUT_TOKENS: %w", err)
+		}
+		cfg.Budget.MaxInputTokens = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_MAX_OUTPUT_TOKENS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_MAX_OUTPUT_TOKENS: %w", err)
+		}
+		cfg.Budget.MaxOutputTokens = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_MAX_RESPONSE_BYTES")); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_MAX_RESPONSE_BYTES: %w", err)
+		}
+		cfg.Budget.MaxResponseBytes = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_CONNECT_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_CONNECT_TIMEOUT: %w", err)
+		}
+		cfg.Budget.ConnectTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_FIRST_TOKEN_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_FIRST_TOKEN_TIMEOUT: %w", err)
+		}
+		cfg.Budget.FirstTokenTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_TOTAL_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_TOTAL_TIMEOUT: %w", err)
+		}
+		cfg.Budget.TotalTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_MAX_ATTEMPTS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_MAX_ATTEMPTS: %w", err)
+		}
+		cfg.Budget.MaxAttempts = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_BUDGET_MAX_RESERVED_COST")); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("VC_BUDGET_MAX_RESERVED_COST: %w", err)
+		}
+		cfg.Budget.MaxReservedCost = n
+	}
+	return nil
 }
 
 func (c Config) Validate() error {
@@ -390,6 +477,62 @@ func (c Config) Validate() error {
 		}
 		if !strings.HasSuffix(u.EscapedPath(), "/v1/chat/completions") {
 			return fmt.Errorf("VC_PROVIDER_ENDPOINT path must end with /v1/chat/completions")
+		}
+	}
+	return c.Budget.validate(c.Provider)
+}
+
+const (
+	hardMaxInputTokens      = 32000
+	hardMaxOutputTokens     = 8192
+	hardMaxBudgetResponse   = 1 << 20
+	hardMaxBudgetConnect    = 60 * time.Second
+	hardMaxBudgetFirstToken = 5 * time.Minute
+	hardMaxBudgetTotal      = 10 * time.Minute
+	hardMaxAttempts         = 2
+	hardMaxReservedCost     = 1_000_000_000_000
+)
+
+func (b Budget) validate(p Provider) error {
+	if b.MaxInputTokens < 1 || b.MaxInputTokens > hardMaxInputTokens {
+		return fmt.Errorf("VC_BUDGET_MAX_INPUT_TOKENS must be in [1, %d]", hardMaxInputTokens)
+	}
+	if b.MaxOutputTokens < 1 || b.MaxOutputTokens > hardMaxOutputTokens {
+		return fmt.Errorf("VC_BUDGET_MAX_OUTPUT_TOKENS must be in [1, %d]", hardMaxOutputTokens)
+	}
+	if b.MaxOutputTokens >= b.MaxInputTokens {
+		return fmt.Errorf("VC_BUDGET_MAX_OUTPUT_TOKENS must be smaller than VC_BUDGET_MAX_INPUT_TOKENS")
+	}
+	if b.MaxResponseBytes <= 0 || b.MaxResponseBytes > hardMaxBudgetResponse {
+		return fmt.Errorf("VC_BUDGET_MAX_RESPONSE_BYTES must be in (0, %d]", hardMaxBudgetResponse)
+	}
+	if b.ConnectTimeout <= 0 || b.ConnectTimeout > hardMaxBudgetConnect {
+		return fmt.Errorf("VC_BUDGET_CONNECT_TIMEOUT must be in (0, %s]", hardMaxBudgetConnect)
+	}
+	if b.FirstTokenTimeout <= 0 || b.FirstTokenTimeout > hardMaxBudgetFirstToken {
+		return fmt.Errorf("VC_BUDGET_FIRST_TOKEN_TIMEOUT must be in (0, %s]", hardMaxBudgetFirstToken)
+	}
+	if b.TotalTimeout <= 0 || b.TotalTimeout > hardMaxBudgetTotal {
+		return fmt.Errorf("VC_BUDGET_TOTAL_TIMEOUT must be in (0, %s]", hardMaxBudgetTotal)
+	}
+	if b.ConnectTimeout > b.FirstTokenTimeout || b.FirstTokenTimeout > b.TotalTimeout {
+		return fmt.Errorf("VC_BUDGET timeouts must satisfy connect <= first-token <= total")
+	}
+	if b.MaxAttempts < 1 || b.MaxAttempts > hardMaxAttempts {
+		return fmt.Errorf("VC_BUDGET_MAX_ATTEMPTS must be in [1, %d]", hardMaxAttempts)
+	}
+	if b.MaxReservedCost < 0 || b.MaxReservedCost > hardMaxReservedCost {
+		return fmt.Errorf("VC_BUDGET_MAX_RESERVED_COST must be in [0, %d]", hardMaxReservedCost)
+	}
+	if p.Enabled {
+		if b.MaxOutputTokens > p.MaxTokens {
+			return fmt.Errorf("VC_BUDGET_MAX_OUTPUT_TOKENS must not exceed VC_PROVIDER_MAX_TOKENS")
+		}
+		if b.MaxResponseBytes > p.MaxResponseBytes {
+			return fmt.Errorf("VC_BUDGET_MAX_RESPONSE_BYTES must not exceed VC_PROVIDER_MAX_RESPONSE_BYTES")
+		}
+		if b.ConnectTimeout > p.ConnectTimeout || b.FirstTokenTimeout > p.FirstTokenTimeout || b.TotalTimeout > p.TotalTimeout {
+			return fmt.Errorf("VC_BUDGET timeouts must not exceed provider timeouts")
 		}
 	}
 	return nil
