@@ -22,6 +22,8 @@ const config = {
 const stats = {
     requests: 0,
     streamRequests: 0,
+    activeStreamRequests: 0,
+    peakActiveStreamRequests: 0,
     bytesIn: 0,
     startedAt: new Date().toISOString(),
 };
@@ -185,7 +187,16 @@ async function handle(request, response) {
     stats.requests += 1;
     if (body && body.stream === true) {
         stats.streamRequests += 1;
-        await sendStream(response, PROVIDER_REPLY);
+        stats.activeStreamRequests += 1;
+        stats.peakActiveStreamRequests = Math.max(
+            stats.peakActiveStreamRequests,
+            stats.activeStreamRequests,
+        );
+        try {
+            await sendStream(response, PROVIDER_REPLY);
+        } finally {
+            stats.activeStreamRequests -= 1;
+        }
         return;
     }
     await sleep(config.holdMs);

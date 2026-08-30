@@ -54,26 +54,28 @@ type Store interface {
 
 // Policy is per-handler lease and polling. There is no generic heartbeat.
 type Policy struct {
-	GenerationLease time.Duration
-	ExportLease     time.Duration
-	DefaultLease    time.Duration
-	ClaimLimit      int
-	RecoverEvery    time.Duration
-	QueueTimeout    time.Duration
-	PollIdle        time.Duration
-	PollBusy        time.Duration
+	GenerationLease    time.Duration
+	ExportLease        time.Duration
+	DefaultLease       time.Duration
+	MaxConcurrentTurns int
+	ClaimLimit         int
+	RecoverEvery       time.Duration
+	QueueTimeout       time.Duration
+	PollIdle           time.Duration
+	PollBusy           time.Duration
 }
 
 func PolicyFrom(cfg config.Config) Policy {
 	return Policy{
-		GenerationLease: cfg.Budget.TotalTimeout + 30*time.Second,
-		ExportLease:     10 * time.Minute,
-		DefaultLease:    60 * time.Second,
-		ClaimLimit:      cfg.Concurrency.ClaimLimit,
-		RecoverEvery:    cfg.Concurrency.RecoverInterval,
-		QueueTimeout:    cfg.Concurrency.QueueTimeout,
-		PollIdle:        time.Second,
-		PollBusy:        50 * time.Millisecond,
+		GenerationLease:    cfg.Budget.TotalTimeout + 30*time.Second,
+		ExportLease:        10 * time.Minute,
+		DefaultLease:       60 * time.Second,
+		MaxConcurrentTurns: cfg.Concurrency.MaxConcurrentTurns,
+		ClaimLimit:         cfg.Concurrency.ClaimLimit,
+		RecoverEvery:       cfg.Concurrency.RecoverInterval,
+		QueueTimeout:       cfg.Concurrency.QueueTimeout,
+		PollIdle:           time.Second,
+		PollBusy:           50 * time.Millisecond,
 	}
 }
 
@@ -131,8 +133,16 @@ type Loop struct {
 	blobs    BlobStore
 	metrics  *observability.Registry
 
-	claims     atomic.Uint64
-	recoveries atomic.Uint64
+	claimMu         sync.Mutex
+	generationSlots chan struct{}
+	handlers        sync.WaitGroup
+	wake            chan struct{}
+	started         atomic.Bool
+
+	claims            atomic.Uint64
+	recoveries        atomic.Uint64
+	activeGenerations atomic.Int64
+	peakGenerations   atomic.Int64
 
 	stop context.CancelFunc
 	done chan struct{}
@@ -148,12 +158,17 @@ func NewLoop(log *slog.Logger, policy Policy, budget companion.TurnBudget) *Loop
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	if policy.MaxConcurrentTurns < 1 {
+		policy.MaxConcurrentTurns = 1
+	}
 	return &Loop{
-		log:     log,
-		policy:  policy,
-		budget:  budget,
-		cancels: NewCancels(),
-		done:    make(chan struct{}),
+		log:             log,
+		policy:          policy,
+		budget:          budget,
+		cancels:         NewCancels(),
+		generationSlots: make(chan struct{}, policy.MaxConcurrentTurns),
+		wake:            make(chan struct{}, 1),
+		done:            make(chan struct{}),
 	}
 }
 
@@ -192,15 +207,22 @@ func (l *Loop) Hub() *realtime.Hub {
 
 // Stats is a low-cardinality worker snapshot for the metrics registry.
 type Stats struct {
-	Claims     uint64
-	Recoveries uint64
+	Claims            uint64
+	Recoveries        uint64
+	ActiveGenerations int64
+	PeakGenerations   int64
 }
 
 func (l *Loop) Stats() Stats {
 	if l == nil {
 		return Stats{}
 	}
-	return Stats{Claims: l.claims.Load(), Recoveries: l.recoveries.Load()}
+	return Stats{
+		Claims:            l.claims.Load(),
+		Recoveries:        l.recoveries.Load(),
+		ActiveGenerations: l.activeGenerations.Load(),
+		PeakGenerations:   l.peakGenerations.Load(),
+	}
 }
 
 func (l *Loop) Start(ctx context.Context) error {
@@ -209,6 +231,9 @@ func (l *Loop) Start(ctx context.Context) error {
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if !l.started.CompareAndSwap(false, true) {
+		return nil
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	l.stop = cancel
@@ -220,15 +245,32 @@ func (l *Loop) Stop(ctx context.Context) error {
 	if l == nil {
 		return nil
 	}
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+	}
 	if l.stop != nil {
 		l.stop()
 	}
-	select {
-	case <-l.done:
-	case <-ctx.Done():
-	case <-time.After(2 * time.Second):
+	if l.started.Load() {
+		select {
+		case <-l.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	return nil
+	handlersDone := make(chan struct{})
+	go func() {
+		l.handlers.Wait()
+		close(handlersDone)
+	}()
+	select {
+	case <-handlersDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (l *Loop) run(ctx context.Context) {
@@ -266,6 +308,8 @@ func (l *Loop) run(ctx context.Context) {
 		case <-ctx.Done():
 			timer.Stop()
 			return
+		case <-l.wake:
+			timer.Stop()
 		case <-ticker.C:
 			timer.Stop()
 			_ = l.RecoverOnce(ctx)
@@ -278,7 +322,17 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 	if l == nil || l.store == nil {
 		return 0
 	}
-	claims, err := l.store.ClaimJobs(ctx, l.policy.GenerationLease, l.policy.ExportLease, l.policy.DefaultLease, l.policy.ClaimLimit)
+	l.claimMu.Lock()
+	defer l.claimMu.Unlock()
+	available := cap(l.generationSlots) - len(l.generationSlots)
+	if available <= 0 {
+		return 0
+	}
+	limit := l.policy.ClaimLimit
+	if limit < 1 || limit > available {
+		limit = available
+	}
+	claims, err := l.store.ClaimJobs(ctx, l.policy.GenerationLease, l.policy.ExportLease, l.policy.DefaultLease, limit)
 	if err != nil {
 		l.log.Info("job claim",
 			slog.String("operation", "job_claim"),
@@ -289,9 +343,35 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 	}
 	for _, c := range claims {
 		l.claims.Add(1)
+		if c.Kind == KindGeneration {
+			l.generationSlots <- struct{}{}
+			l.handlers.Add(1)
+			go l.dispatchGeneration(ctx, c)
+			continue
+		}
 		l.dispatch(ctx, c)
 	}
 	return len(claims)
+}
+
+func (l *Loop) dispatchGeneration(ctx context.Context, c postgres.JobClaim) {
+	active := l.activeGenerations.Add(1)
+	for {
+		peak := l.peakGenerations.Load()
+		if active <= peak || l.peakGenerations.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+	defer func() {
+		l.activeGenerations.Add(-1)
+		<-l.generationSlots
+		l.handlers.Done()
+		select {
+		case l.wake <- struct{}{}:
+		default:
+		}
+	}()
+	l.dispatch(ctx, c)
 }
 
 func (l *Loop) RecoverOnce(ctx context.Context) error {

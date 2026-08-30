@@ -109,9 +109,11 @@ class Stats:
         with self.lock:
             self.terminal_ms.append(ms)
 
-    def add_stream(self, ms: float):
+    def add_sse_result(self, ok: bool, ms: float):
         with self.lock:
             self.stream_ms.append(ms)
+            if ok:
+                self.sse_ok += 1
 
     def note_error(self, msg: str):
         with self.lock:
@@ -157,21 +159,26 @@ def run_scenario(args, stats: Stats) -> dict:
     gens = args.gens
     sse_per_gen = args.sse_per_gen
     gids: list[str] = []
+    accepted_at: dict[str, float] = {}
+    key_prefix = args.key_prefix or args.scenario
     for i in range(gens):
         t0 = time.monotonic()
-        st, body = client.send(conv_id, f"{args.scenario}-{i}",
+        st, body = client.send(conv_id, f"{key_prefix}-{i}",
                                f"capacity turn {i}")
         stats.add_intake((time.monotonic() - t0) * 1000)
         gid = body.get("generationId")
         if st != 202 or not gid:
             stats.note_error(f"send {st}: {body}")
             continue
-        gids.append(str(gid))
+        gid = str(gid)
+        gids.append(gid)
+        accepted_at[gid] = t0
 
     threads = []
     for gid in gids:
         threads.append(threading.Thread(
-            target=poll_terminal, args=(args, stats, client, gid), daemon=True))
+            target=poll_terminal,
+            args=(args, stats, client, gid, accepted_at[gid]), daemon=True))
         for _ in range(sse_per_gen):
             threads.append(threading.Thread(
                 target=subscribe_one, args=(args, stats, client, gid), daemon=True))
@@ -179,15 +186,18 @@ def run_scenario(args, stats: Stats) -> dict:
         th.start()
     for th in threads:
         th.join(timeout=120)
+    alive = sum(1 for th in threads if th.is_alive())
+    if alive:
+        stats.note_error(f"{alive} workload threads did not finish")
 
     return {"generations": len(gids), "sse_per_generation": sse_per_gen,
+            "expected_sse": len(gids) * sse_per_gen,
             "stats": stats.report()}
 
 
-def poll_terminal(args, stats: Stats, client: Client, gid: str):
-    t0 = time.monotonic()
+def poll_terminal(args, stats: Stats, client: Client, gid: str, accepted_at: float):
     status = "UNKNOWN"
-    while time.monotonic() - t0 < 120:
+    while time.monotonic() - accepted_at < 120:
         try:
             _, status = client.snapshot(gid)
         except Exception as exc:
@@ -197,17 +207,15 @@ def poll_terminal(args, stats: Stats, client: Client, gid: str):
         if status in TERMINAL:
             break
         time.sleep(0.2)
-    stats.add_terminal((time.monotonic() - t0) * 1000)
+    stats.add_terminal((time.monotonic() - accepted_at) * 1000)
     if status not in TERMINAL:
         stats.note_error(f"generation {gid} not terminal (status={status})")
 
 
 def subscribe_one(args, stats: Stats, client: Client, gid: str):
     ok, _, stream_ms, _ = client.sse(gid)
-    stats.add_stream(stream_ms)
-    if ok:
-        stats.sse_ok += 1
-    else:
+    stats.add_sse_result(ok, stream_ms)
+    if not ok:
         stats.note_error(f"sse {gid} no terminal")
 
 
@@ -219,6 +227,7 @@ def main() -> int:
     parser.add_argument("--csrf", required=True)
     parser.add_argument("--gens", type=int, default=0)
     parser.add_argument("--sse-per-gen", type=int, default=0)
+    parser.add_argument("--key-prefix", default="")
     args = parser.parse_args()
 
     if args.gens and args.sse_per_gen:

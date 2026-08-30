@@ -27,8 +27,10 @@ type Registry struct {
 
 // JobsStats is a low-cardinality worker snapshot. No owner or job id.
 type JobsStats struct {
-	Claims     uint64
-	Recoveries uint64
+	Claims            uint64
+	Recoveries        uint64
+	ActiveGenerations int64
+	PeakGenerations   int64
 }
 
 // RealtimeStats is a low-cardinality hub snapshot. No owner or generation id.
@@ -207,6 +209,8 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 	if hasJobs {
 		writeCounter(&buf, "vc_job_claims_total", "Generation/export jobs atomically claimed by the worker loop.", float64(jobs.Claims))
 		writeCounter(&buf, "vc_job_recoveries_total", "Expired generation jobs converged by the recovery scan.", float64(jobs.Recoveries))
+		writeGauge(&buf, "vc_generation_active", "Generation handlers currently executing.", float64(jobs.ActiveGenerations))
+		writeGauge(&buf, "vc_generation_peak", "Peak generation handlers observed since process start.", float64(jobs.PeakGenerations))
 	}
 	var writes uint64
 	if r != nil {

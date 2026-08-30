@@ -103,14 +103,15 @@ func (f *fakeStreamProvider) Stream(ctx context.Context, _ companion.ModelReques
 
 func g10Policy() jobs.Policy {
 	return jobs.Policy{
-		GenerationLease: 5 * time.Minute,
-		ExportLease:     10 * time.Minute,
-		DefaultLease:    60 * time.Second,
-		ClaimLimit:      8,
-		RecoverEvery:    time.Minute,
-		QueueTimeout:    2 * time.Minute,
-		PollIdle:        time.Second,
-		PollBusy:        50 * time.Millisecond,
+		GenerationLease:    5 * time.Minute,
+		ExportLease:        10 * time.Minute,
+		DefaultLease:       60 * time.Second,
+		MaxConcurrentTurns: 8,
+		ClaimLimit:         8,
+		RecoverEvery:       time.Minute,
+		QueueTimeout:       2 * time.Minute,
+		PollIdle:           time.Second,
+		PollBusy:           50 * time.Millisecond,
 	}
 }
 

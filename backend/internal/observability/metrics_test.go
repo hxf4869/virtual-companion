@@ -60,7 +60,9 @@ func TestRealtimeMetrics(t *testing.T) {
 func TestJobsMetrics(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry()
-	reg.SetJobsStatsSource(func() JobsStats { return JobsStats{Claims: 7, Recoveries: 2} })
+	reg.SetJobsStatsSource(func() JobsStats {
+		return JobsStats{Claims: 7, Recoveries: 2, ActiveGenerations: 3, PeakGenerations: 4}
+	})
 	var buf bytes.Buffer
 	if err := reg.WritePrometheus(&buf); err != nil {
 		t.Fatal(err)
@@ -69,6 +71,8 @@ func TestJobsMetrics(t *testing.T) {
 	for _, want := range []string{
 		"vc_job_claims_total",
 		"vc_job_recoveries_total",
+		"vc_generation_active 3",
+		"vc_generation_peak 4",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
