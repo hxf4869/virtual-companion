@@ -169,7 +169,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		r.releaseLease(ctx)
 		return err
 	}
-	api := httpapi.New(r.cfg, r.log, r, r.metrics)
+	api := httpapi.New(r.cfg, r.log, r, r.metrics, nil)
 	ln, err := net.Listen("tcp", r.cfg.HTTP.Addr)
 	if err != nil {
 		_ = r.stopPprof(ctx)

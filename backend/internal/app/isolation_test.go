@@ -46,6 +46,24 @@ func TestAPIMigrationRejectsGenerationPlaneLease(t *testing.T) {
 	}
 }
 
+func TestAPIMigrationDoesNotServeRealtimeStream(t *testing.T) {
+	t.Parallel()
+	rt := startRuntime(t, config.ModeAPIMigration, Deps{})
+	res := get(t, "http://"+rt.Addr()+"/api/v1/realtime/streams/42")
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("api-migration must not serve SSE, got %d", res.StatusCode)
+	}
+	post, err := http.Post("http://"+rt.Addr()+"/api/v1/realtime/tickets", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer post.Body.Close()
+	if post.StatusCode != http.StatusNotFound && post.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("ticket endpoint %d", post.StatusCode)
+	}
+}
+
 func TestAPIMigrationServesHealthWithoutPlanes(t *testing.T) {
 	t.Parallel()
 	rt := startRuntime(t, config.ModeAPIMigration, Deps{})

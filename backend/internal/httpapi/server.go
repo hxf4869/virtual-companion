@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/observability"
+	"github.com/hxf4869/virtual-companion/internal/realtime"
 )
 
 const maxBodyBytes = 1 << 20
@@ -18,30 +21,53 @@ type Probes interface {
 	Ready() bool
 }
 
-type Server struct {
-	cfg     config.Config
-	log     *slog.Logger
-	probes  Probes
-	metrics *observability.Registry
-	mux     *http.ServeMux
+// Realtime is the G6 SSE surface. All three fields are required to register
+// the stream route. companiond leaves this nil until generation cutover.
+type Realtime struct {
+	Hub       *realtime.Hub
+	Sessions  auth.Sessions
+	Snapshots realtime.Snapshots
 }
 
-func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry) *Server {
+type Server struct {
+	cfg      config.Config
+	log      *slog.Logger
+	probes   Probes
+	metrics  *observability.Registry
+	mux      *http.ServeMux
+	realtime *Realtime
+}
+
+func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry, rt *Realtime) *Server {
 	if log == nil {
 		log = observability.NewLogger(cfg.Log.Level, nil)
 	}
 	s := &Server{
-		cfg:     cfg,
-		log:     log,
-		probes:  probes,
-		metrics: metrics,
-		mux:     http.NewServeMux(),
+		cfg:      cfg,
+		log:      log,
+		probes:   probes,
+		metrics:  metrics,
+		mux:      http.NewServeMux(),
+		realtime: rt,
 	}
 	s.mux.HandleFunc("GET /actuator/health", s.handleHealth)
 	s.mux.HandleFunc("GET /actuator/health/liveness", s.handleLiveness)
 	s.mux.HandleFunc("GET /actuator/health/readiness", s.handleReadiness)
 	s.mux.HandleFunc("GET /actuator/prometheus", s.handlePrometheus)
 	s.mux.HandleFunc("GET /api/v1/version", s.handleVersion)
+	if rt != nil && rt.Hub != nil && rt.Sessions != nil && rt.Snapshots != nil {
+		s.mux.HandleFunc("GET /api/v1/realtime/streams/{generationId}", s.handleRealtimeStream)
+		if metrics != nil {
+			metrics.SetRealtimeStatsSource(func() observability.RealtimeStats {
+				st := rt.Hub.Stats()
+				return observability.RealtimeStats{
+					Subscribers:     st.Subscribers,
+					SlowDisconnects: st.SlowDisconnects,
+					SnapshotResumes: st.SnapshotResumes,
+				}
+			})
+		}
+	}
 	return s
 }
 
@@ -137,6 +163,16 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
 func requestIDFrom(r *http.Request) string {
 	incoming := r.Header.Get("X-Request-Id")
 	if validRequestID(incoming) {
@@ -188,6 +224,9 @@ func operation(path string) string {
 	case "/api/v1/version":
 		return "version"
 	default:
+		if strings.HasPrefix(path, "/api/v1/realtime/streams/") {
+			return "realtime_stream"
+		}
 		return "unmapped"
 	}
 }

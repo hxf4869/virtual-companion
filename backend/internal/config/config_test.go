@@ -57,6 +57,27 @@ func TestFullModeAllowsForbiddenPlanes(t *testing.T) {
 	}
 }
 
+func TestHTTPOrigins(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadEnv(env(map[string]string{
+		"VC_MODE":         "api-migration",
+		"VC_HTTP_ORIGINS": "https://vc.test,http://127.0.0.1:5173",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.HTTP.AllowedOrigins) != 2 || cfg.HTTP.AllowedOrigins[0] != "https://vc.test" {
+		t.Fatalf("%q", cfg.HTTP.AllowedOrigins)
+	}
+	_, err = LoadEnv(env(map[string]string{
+		"VC_MODE":         "api-migration",
+		"VC_HTTP_ORIGINS": "https://vc.test/app",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_HTTP_ORIGINS") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestPprofMustBeLoopback(t *testing.T) {
 	t.Parallel()
 	_, err := LoadEnv(env(map[string]string{

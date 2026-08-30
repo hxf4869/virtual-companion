@@ -36,8 +36,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   Java JWT verifier（只验证、不签发），G4 OpenAI Chat Completions compatible
   adapter（mock contract；companiond 默认不装配、不发起真实 provider 调用），
   以及 G5 Companion Core / Context / Persona / LocalSafetyPolicy / TurnBudget
-  （unit 与合成 Golden Set；不接 RealtimeHub、不写业务 HTTP API、不写 memory、
-  不发起真实 provider 调用）。
+  （unit 与合成 Golden Set），G6 RealtimeHub 与 authenticated SSE（fan-out /
+  reconnect / leak；同源 cookie + Origin；无 ticket 兼容层）。G5/G6 均不写
+  业务 CRUD API、不写 memory、不发起真实 provider 调用。
   **当前常驻 runtime 仍是 Java**；companiond 不接生产流量、不写当前生产 DB。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：

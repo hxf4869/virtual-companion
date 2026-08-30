@@ -35,6 +35,28 @@ func TestProcessSnapshotAndPrometheus(t *testing.T) {
 	}
 }
 
+func TestRealtimeMetrics(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry()
+	reg.SetRealtimeStatsSource(func() RealtimeStats {
+		return RealtimeStats{Subscribers: 2, SlowDisconnects: 3, SnapshotResumes: 4}
+	})
+	var buf bytes.Buffer
+	if err := reg.WritePrometheus(&buf); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"vc_realtime_subscribers",
+		"vc_realtime_slow_disconnect_total",
+		"vc_realtime_snapshot_resume_total",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+}
+
 func TestDBPoolMetrics(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry()

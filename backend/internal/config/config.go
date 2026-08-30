@@ -123,7 +123,8 @@ type Crypto struct {
 }
 
 type HTTP struct {
-	Addr string
+	Addr           string
+	AllowedOrigins []string
 }
 
 type Log struct {
@@ -174,9 +175,16 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
+	origins, err := parseHTTPOrigins(getenv("VC_HTTP_ORIGINS"))
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
-		Mode:  Mode(strings.TrimSpace(getenv("VC_MODE"))),
-		HTTP:  HTTP{Addr: valueOr(strings.TrimSpace(getenv("VC_HTTP_ADDR")), "127.0.0.1:8080")},
+		Mode: Mode(strings.TrimSpace(getenv("VC_MODE"))),
+		HTTP: HTTP{
+			Addr:           valueOr(strings.TrimSpace(getenv("VC_HTTP_ADDR")), "127.0.0.1:8080"),
+			AllowedOrigins: origins,
+		},
 		Log:   Log{Level: valueOr(strings.ToLower(strings.TrimSpace(getenv("VC_LOG_LEVEL"))), "info")},
 		Pprof: Pprof{Addr: strings.TrimSpace(getenv("VC_PPROF_ADDR"))},
 		Shutdown: Shutdown{
@@ -384,6 +392,9 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.HTTP.Addr) == "" {
 		return fmt.Errorf("VC_HTTP_ADDR is required")
 	}
+	if err := validateOrigins(c.HTTP.AllowedOrigins); err != nil {
+		return err
+	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":
 	default:
@@ -554,4 +565,50 @@ func valueOr(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func parseHTTPOrigins(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		origin, err := canonicalizeOrigin(part)
+		if err != nil {
+			return nil, fmt.Errorf("VC_HTTP_ORIGINS: %w", err)
+		}
+		out = append(out, origin)
+	}
+	return out, nil
+}
+
+func canonicalizeOrigin(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("must be an absolute http(s) origin")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("must be an absolute http(s) origin")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("must not include user info, query, or fragment")
+	}
+	if u.Path != "" && u.Path != "/" {
+		return "", fmt.Errorf("must not include a path")
+	}
+	return u.Scheme + "://" + u.Host, nil
+}
+
+func validateOrigins(origins []string) error {
+	for _, o := range origins {
+		if _, err := canonicalizeOrigin(o); err != nil {
+			return fmt.Errorf("VC_HTTP_ORIGINS: %w", err)
+		}
+	}
+	return nil
 }

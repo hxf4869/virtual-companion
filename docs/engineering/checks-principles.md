@@ -59,7 +59,7 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 | ├ openapi validate/drift | <1s | `specs/openapi` 合同与生成物漂移 |
 | ├ paid-features | <1s | 依赖/配置中禁止付费运行时前提 |
 | ├ licenses | <1s | Maven/前端直接依赖许可证清单核对 |
-| ├ go-test | <1s | `backend/` 无网络 `go test ./...`（companiond 骨架、crypto/JWT unit、api-migration 硬隔离、G4 provider mock contract、G5 companion/turn/safety unit 与 Golden Set） |
+| ├ go-test | <1s | `backend/` 无网络 `go test ./...`（companiond 骨架、crypto/JWT unit、api-migration 硬隔离、G4 provider mock contract、G5 companion/turn/safety unit 与 Golden Set、G6 RealtimeHub/SSE fan-out reconnect leak） |
 | ├ frontend-test | ~2s | vitest 全量 |
 | └ frontend-type-check | ~2s | vue-tsc |
 | `./mvnw --batch-mode --no-transfer-progress verify` | ~19s | 后端 14 模块编译 + 全部 JUnit（JDK 25） |

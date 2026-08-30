@@ -17,9 +17,17 @@ import (
 // Registry holds low-cardinality process and HTTP metrics. Labels are handler
 // names and status codes only — never owner, id, or error text.
 type Registry struct {
-	mu      sync.Mutex
-	http    map[httpKey]httpStat
-	dbStats func() DBStats
+	mu            sync.Mutex
+	http          map[httpKey]httpStat
+	dbStats       func() DBStats
+	realtimeStats func() RealtimeStats
+}
+
+// RealtimeStats is a low-cardinality hub snapshot. No owner or generation id.
+type RealtimeStats struct {
+	Subscribers     int64
+	SlowDisconnects uint64
+	SnapshotResumes uint64
 }
 
 // DBStats is a low-cardinality pool snapshot. No owner, SQL, or error text.
@@ -53,6 +61,15 @@ func (r *Registry) SetDBStatsSource(fn func() DBStats) {
 	}
 	r.mu.Lock()
 	r.dbStats = fn
+	r.mu.Unlock()
+}
+
+func (r *Registry) SetRealtimeStatsSource(fn func() RealtimeStats) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.realtimeStats = fn
 	r.mu.Unlock()
 }
 
@@ -121,6 +138,22 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 		writeCounter(&buf, "vc_db_pool_empty_acquire_total", "Times a pgx acquire waited for a free connection.", float64(db.EmptyAcquire))
 		writeCounter(&buf, "vc_db_tx_total", "Short owner-bound transactions opened by companiond.", float64(db.TxCount))
 		writeCounter(&buf, "vc_db_tx_duration_seconds_sum", "Total owner-bound transaction duration in seconds.", db.TxSeconds)
+	}
+	var rt RealtimeStats
+	var hasRT bool
+	if r != nil {
+		r.mu.Lock()
+		fn := r.realtimeStats
+		r.mu.Unlock()
+		if fn != nil {
+			rt = fn()
+			hasRT = true
+		}
+	}
+	if hasRT {
+		writeGauge(&buf, "vc_realtime_subscribers", "Live realtime SSE subscribers.", float64(rt.Subscribers))
+		writeCounter(&buf, "vc_realtime_slow_disconnect_total", "Subscribers dropped for exceeding the live queue bound.", float64(rt.SlowDisconnects))
+		writeCounter(&buf, "vc_realtime_snapshot_resume_total", "SSE opens that used a durable snapshot instead of live fan-out.", float64(rt.SnapshotResumes))
 	}
 	buf.WriteString("# HELP vc_http_requests_total HTTP requests handled by companiond.\n")
 	buf.WriteString("# TYPE vc_http_requests_total counter\n")

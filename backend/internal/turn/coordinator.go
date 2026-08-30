@@ -6,16 +6,18 @@ import (
 	"strings"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
+	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/safety"
 )
 
-// Coordinator runs one Companion Turn. G5 does not attach a realtime hub;
-// accepted deltas are returned on Result for tests. HTTP APIs are G7.
+// Coordinator runs one Companion Turn. Hub is the concrete RealtimeHub;
+// nil is allowed so G5 unit tests stay hub-free.
 type Coordinator struct {
 	Store    Store
 	Provider companion.Provider
 	Policy   *safety.Policy
 	Log      *slog.Logger
+	Hub      *realtime.Hub
 }
 
 // Command starts one turn that already has a seed in Store.
@@ -62,12 +64,14 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	if err != nil {
 		return c.fail(ctx, cmd, "", companion.PhaseFailed, "SEED_MISSING", nil, BuildTrace{})
 	}
+	c.hubAccepted(cmd.TurnID)
 
 	in := policy.ReviewInput(seed.CurrentUserMessage)
 	if !in.Allow {
 		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
 			TurnID: cmd.TurnID, Phase: companion.PhaseBlocked, Reason: in.Code(),
 		})
+		c.hubTerminal(cmd.TurnID, companion.EventBlocked)
 		log.Info("turn blocked",
 			slog.String("operation", "input_review"),
 			slog.String("outcome", "blocked"),
@@ -95,6 +99,7 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
 			TurnID: cmd.TurnID, Phase: phase, Reason: string(plan.Reason),
 		})
+		c.hubTerminal(cmd.TurnID, pub)
 		return Result{Phase: phase, Public: pub, Trace: plan.Trace, SafetyCode: string(plan.Reason), Withdraw: true}
 	}
 
@@ -121,6 +126,7 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 			TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
 			Phase: companion.PhaseCancelled, Reason: string(companion.CodeCanceled),
 		})
+		c.hubTerminal(cmd.TurnID, companion.EventCancelled)
 		return Result{
 			Phase: companion.PhaseCancelled, Public: companion.EventCancelled,
 			Withdraw: true, Trace: plan.Trace,
@@ -145,6 +151,7 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		Guard:  guard,
 		Emit: func(d companion.OutputDelta) error {
 			published = append(published, d.Text)
+			c.hubAppend(cmd.TurnID, d.Text)
 			return nil
 		},
 	})
@@ -195,6 +202,7 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
 			TurnID: cmd.TurnID, AttemptID: prep.AttemptID, Phase: phase, Reason: reason,
 		})
+		c.hubTerminal(cmd.TurnID, pub)
 		log.Info("turn terminal",
 			slog.String("operation", "finalize"),
 			slog.String("outcome", string(phase)),
@@ -219,6 +227,7 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	}); err != nil {
 		return c.fail(ctx, cmd, prep.AttemptID, companion.PhaseFailed, "FINALIZE_FAILED", &outcome, plan.Trace)
 	}
+	c.hubTerminal(cmd.TurnID, companion.EventCompleted)
 	log.Info("turn completed",
 		slog.String("operation", "finalize"),
 		slog.String("outcome", "completed"),
@@ -241,11 +250,40 @@ func (c *Coordinator) fail(ctx context.Context, cmd Command, attemptID string, p
 	_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
 		TurnID: cmd.TurnID, AttemptID: attemptID, Phase: phase, Reason: reason,
 	})
+	c.hubTerminal(cmd.TurnID, companion.EventFailed)
 	res := Result{Phase: phase, Public: companion.EventFailed, Withdraw: true, SafetyCode: reason, Trace: trace}
 	if outcome != nil {
 		res.Attempt = *outcome
 	}
 	return res
+}
+
+func (c *Coordinator) hubAccepted(id string) {
+	if c != nil && c.Hub != nil {
+		c.Hub.Accepted(id)
+	}
+}
+
+func (c *Coordinator) hubAppend(id, text string) {
+	if c != nil && c.Hub != nil {
+		c.Hub.Append(id, text)
+	}
+}
+
+func (c *Coordinator) hubTerminal(id string, ev companion.PublicEvent) {
+	if c == nil || c.Hub == nil {
+		return
+	}
+	switch ev {
+	case companion.EventCompleted:
+		c.Hub.Completed(id)
+	case companion.EventBlocked:
+		c.Hub.Blocked(id)
+	case companion.EventCancelled:
+		c.Hub.Cancelled(id)
+	default:
+		c.Hub.Failed(id)
+	}
 }
 
 func logContext(log *slog.Logger, runID string, tr BuildTrace) {

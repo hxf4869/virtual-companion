@@ -252,7 +252,7 @@ func TestCoordinatorDoesNotImportProviderSDK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(src), "openai") || strings.Contains(string(src), "RealtimeHub") {
-		t.Fatal("coordinator must not reference openai or RealtimeHub")
+	if strings.Contains(string(src), "openai") || strings.Contains(string(src), "EventSink") {
+		t.Fatal("coordinator must not reference openai or EventSink")
 	}
 }

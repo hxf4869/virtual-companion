@@ -12,6 +12,7 @@
 - [x] `G3` pgx owner-bound 短事务、RLS/least-privilege、crypto（BCrypt、owner HMAC、enc1/enc2）与 Java JWT migration verifier（DB/golden vectors；不签发 JWT、不写 login/refresh/logout）
 - [x] `G4` OpenAI-compatible provider adapter（mock contract；Fake/Failure 仅为测试 fixture；不含 real provider shadow、Companion Core 或真实外网调用）
 - [x] `G5` Companion Core、Context、Persona、Safety、Budget（unit/Golden Set；不含 tools、memory write、RealtimeHub/SSE、业务 HTTP API、真实 provider 外网调用）
+- [x] `G6` RealtimeHub 与 authenticated SSE（fan-out/reconnect/leak；同源 HttpOnly cookie + Origin；无 ticket 兼容层、无业务 CRUD API、无 Memory/Consent、无真实外网 provider）
 
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 

@@ -97,6 +97,11 @@ func TestUnmappedAndWritesAreNotRegistered(t *testing.T) {
 	if getRec.Code != http.StatusNotFound {
 		t.Fatalf("unmapped GET %d", getRec.Code)
 	}
+	sse := httptest.NewRecorder()
+	s.Handler().ServeHTTP(sse, httptest.NewRequest(http.MethodGet, "/api/v1/realtime/streams/1", nil))
+	if sse.Code != http.StatusNotFound {
+		t.Fatalf("unwired SSE %d", sse.Code)
+	}
 }
 
 func newServer(t *testing.T, probes Probes) *Server {
@@ -116,7 +121,7 @@ func newServer(t *testing.T, probes Probes) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), probes, observability.NewRegistry())
+	return New(cfg, observability.NewLogger("error", io.Discard), probes, observability.NewRegistry(), nil)
 }
 
 func assertStatus(t *testing.T, s *Server, path string, code int, contains string) {
