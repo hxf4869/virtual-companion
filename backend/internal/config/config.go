@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -57,6 +58,24 @@ type Config struct {
 	OwnerBinding OwnerBinding
 	JWT          JWT
 	Crypto       Crypto
+	Provider     Provider
+}
+
+// Provider is the single OpenAI-compatible Chat Completions adapter.
+// Enabled=false (the default) leaves chat unwired; companiond does not
+// construct the adapter in G4. Missing credential/endpoint while Enabled
+// fails startup. Secrets never log.
+type Provider struct {
+	Enabled           bool
+	Endpoint          string
+	BearerToken       string
+	Model             string
+	MaxTokens         int
+	Temperature       float64
+	ConnectTimeout    time.Duration
+	FirstTokenTimeout time.Duration
+	TotalTimeout      time.Duration
+	MaxResponseBytes  int64
 }
 
 // Database is the pgx pool. Empty DSN means companiond starts without a
@@ -171,6 +190,18 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			PreviousRestKeyVersion: 0,
 			PreviousRestKeyBase64:  strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY")),
 		},
+		Provider: Provider{
+			Enabled:           strings.EqualFold(strings.TrimSpace(getenv("VC_PROVIDER_ENABLED")), "true"),
+			Endpoint:          strings.TrimSpace(getenv("VC_PROVIDER_ENDPOINT")),
+			BearerToken:       getenv("VC_PROVIDER_TOKEN"),
+			Model:             strings.TrimSpace(getenv("VC_PROVIDER_MODEL")),
+			MaxTokens:         8192,
+			Temperature:       1.0,
+			ConnectTimeout:    10 * time.Second,
+			FirstTokenTimeout: 60 * time.Second,
+			TotalTimeout:      240 * time.Second,
+			MaxResponseBytes:  256 << 10,
+		},
 	}
 	if raw := strings.TrimSpace(getenv("VC_SHUTDOWN_TIMEOUT")); raw != "" {
 		d, err := time.ParseDuration(raw)
@@ -206,6 +237,48 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("VC_CRYPTO_PREVIOUS_REST_KEY_VERSION: %w", err)
 		}
 		cfg.Crypto.PreviousRestKeyVersion = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_PROVIDER_MAX_TOKENS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_PROVIDER_MAX_TOKENS: %w", err)
+		}
+		cfg.Provider.MaxTokens = n
+	}
+	if raw := strings.TrimSpace(getenv("VC_PROVIDER_TEMPERATURE")); raw != "" {
+		f, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_PROVIDER_TEMPERATURE: %w", err)
+		}
+		cfg.Provider.Temperature = f
+	}
+	if raw := strings.TrimSpace(getenv("VC_PROVIDER_CONNECT_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_PROVIDER_CONNECT_TIMEOUT: %w", err)
+		}
+		cfg.Provider.ConnectTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_PROVIDER_FIRST_TOKEN_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_PROVIDER_FIRST_TOKEN_TIMEOUT: %w", err)
+		}
+		cfg.Provider.FirstTokenTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_PROVIDER_TOTAL_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_PROVIDER_TOTAL_TIMEOUT: %w", err)
+		}
+		cfg.Provider.TotalTimeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_PROVIDER_MAX_RESPONSE_BYTES")); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_PROVIDER_MAX_RESPONSE_BYTES: %w", err)
+		}
+		cfg.Provider.MaxResponseBytes = n
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -275,6 +348,48 @@ func (c Config) Validate() error {
 	if c.Crypto.PreviousRestKeyBase64 != "" {
 		if err := requireAESKey(c.Crypto.PreviousRestKeyBase64); err != nil {
 			return fmt.Errorf("VC_CRYPTO_PREVIOUS_REST_KEY: %w", err)
+		}
+	}
+	if c.Provider.Enabled {
+		if strings.TrimSpace(c.Provider.Endpoint) == "" {
+			return fmt.Errorf("VC_PROVIDER_ENDPOINT is required when VC_PROVIDER_ENABLED=true")
+		}
+		if strings.TrimSpace(c.Provider.BearerToken) == "" {
+			return fmt.Errorf("VC_PROVIDER_TOKEN is required when VC_PROVIDER_ENABLED=true")
+		}
+		if strings.TrimSpace(c.Provider.Model) == "" {
+			return fmt.Errorf("VC_PROVIDER_MODEL is required when VC_PROVIDER_ENABLED=true")
+		}
+		if c.Provider.MaxTokens < 1 || c.Provider.MaxTokens > 8192 {
+			return fmt.Errorf("VC_PROVIDER_MAX_TOKENS must be between 1 and 8192")
+		}
+		if c.Provider.Temperature < 0 || c.Provider.Temperature > 2 {
+			return fmt.Errorf("VC_PROVIDER_TEMPERATURE must be between 0 and 2")
+		}
+		if c.Provider.ConnectTimeout <= 0 {
+			return fmt.Errorf("VC_PROVIDER_CONNECT_TIMEOUT must be > 0")
+		}
+		if c.Provider.FirstTokenTimeout <= 0 {
+			return fmt.Errorf("VC_PROVIDER_FIRST_TOKEN_TIMEOUT must be > 0")
+		}
+		if c.Provider.TotalTimeout <= 0 {
+			return fmt.Errorf("VC_PROVIDER_TOTAL_TIMEOUT must be > 0")
+		}
+		if c.Provider.MaxResponseBytes <= 0 || c.Provider.MaxResponseBytes > 1<<20 {
+			return fmt.Errorf("VC_PROVIDER_MAX_RESPONSE_BYTES must be in (0, 1048576]")
+		}
+		u, err := url.Parse(c.Provider.Endpoint)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("VC_PROVIDER_ENDPOINT must be an absolute URL")
+		}
+		if !strings.EqualFold(u.Scheme, "https") {
+			return fmt.Errorf("VC_PROVIDER_ENDPOINT must use https")
+		}
+		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("VC_PROVIDER_ENDPOINT must not include user info, query, or fragment")
+		}
+		if !strings.HasSuffix(u.EscapedPath(), "/v1/chat/completions") {
+			return fmt.Errorf("VC_PROVIDER_ENDPOINT path must end with /v1/chat/completions")
 		}
 	}
 	return nil

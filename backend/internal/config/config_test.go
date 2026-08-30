@@ -105,18 +105,18 @@ func TestShutdownTimeoutAndVersionDefaults(t *testing.T) {
 func TestDatabaseRequiresOwnerBindingSecret(t *testing.T) {
 	t.Parallel()
 	_, err := LoadEnv(env(map[string]string{
-		"VC_MODE":    "api-migration",
-		"VC_DB_DSN":  "postgres://vc_runtime_login@127.0.0.1:5432/vc",
+		"VC_MODE":   "api-migration",
+		"VC_DB_DSN": "postgres://vc_runtime_login@127.0.0.1:5432/vc",
 	}))
 	if err == nil || !strings.Contains(err.Error(), "VC_OWNER_BINDING_SECRET") {
 		t.Fatalf("expected owner binding error, got %v", err)
 	}
 	cfg, err := LoadEnv(env(map[string]string{
-		"VC_MODE":                   "api-migration",
-		"VC_DB_DSN":                 "postgres://vc_runtime_login@127.0.0.1:5432/vc",
-		"VC_OWNER_BINDING_SECRET":   "0123456789abcdef0123456789abcdef",
-		"VC_JWT_SECRET":             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-		"VC_CRYPTO_REST_KEY":        "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=",
+		"VC_MODE":                 "api-migration",
+		"VC_DB_DSN":               "postgres://vc_runtime_login@127.0.0.1:5432/vc",
+		"VC_OWNER_BINDING_SECRET": "0123456789abcdef0123456789abcdef",
+		"VC_JWT_SECRET":           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		"VC_CRYPTO_REST_KEY":      "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +140,81 @@ func TestJWTSecretMustBe256Bits(t *testing.T) {
 	}))
 	if err == nil || !strings.Contains(err.Error(), "256 bits") {
 		t.Fatalf("expected jwt secret error, got %v", err)
+	}
+}
+
+func TestProviderDisabledByDefault(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadEnv(env(map[string]string{"VC_MODE": "full"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Provider.Enabled {
+		t.Fatal("provider must be disabled unless VC_PROVIDER_ENABLED=true")
+	}
+	if cfg.Provider.ConnectTimeout != 10*time.Second ||
+		cfg.Provider.FirstTokenTimeout != 60*time.Second ||
+		cfg.Provider.TotalTimeout != 240*time.Second ||
+		cfg.Provider.MaxResponseBytes != 256<<10 {
+		t.Fatalf("provider defaults %+v", cfg.Provider)
+	}
+}
+
+func TestProviderEnabledRequiresEndpointTokenModel(t *testing.T) {
+	t.Parallel()
+	_, err := LoadEnv(env(map[string]string{
+		"VC_MODE":             "full",
+		"VC_PROVIDER_ENABLED": "true",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_PROVIDER_ENDPOINT") {
+		t.Fatalf("expected endpoint error, got %v", err)
+	}
+	_, err = LoadEnv(env(map[string]string{
+		"VC_MODE":              "full",
+		"VC_PROVIDER_ENABLED":  "true",
+		"VC_PROVIDER_ENDPOINT": "https://models.example/v1/chat/completions",
+		"VC_PROVIDER_TOKEN":    "offline-token-sentinel",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_PROVIDER_MODEL") {
+		t.Fatalf("expected model error, got %v", err)
+	}
+	cfg, err := LoadEnv(env(map[string]string{
+		"VC_MODE":              "api-migration",
+		"VC_PROVIDER_ENABLED":  "true",
+		"VC_PROVIDER_ENDPOINT": "https://models.example/v1/chat/completions",
+		"VC_PROVIDER_TOKEN":    "offline-token-sentinel",
+		"VC_PROVIDER_MODEL":    "offline-model-sentinel",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Provider.Enabled || cfg.Allows(PlaneProvider) {
+		t.Fatal("api-migration must still hard-disable the provider plane")
+	}
+}
+
+func TestProviderRejectsHTTPAndIllegalBudgets(t *testing.T) {
+	t.Parallel()
+	_, err := LoadEnv(env(map[string]string{
+		"VC_MODE":              "full",
+		"VC_PROVIDER_ENABLED":  "true",
+		"VC_PROVIDER_ENDPOINT": "http://models.example/v1/chat/completions",
+		"VC_PROVIDER_TOKEN":    "offline-token-sentinel",
+		"VC_PROVIDER_MODEL":    "offline-model-sentinel",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "https") {
+		t.Fatalf("expected https error, got %v", err)
+	}
+	_, err = LoadEnv(env(map[string]string{
+		"VC_MODE":                        "full",
+		"VC_PROVIDER_ENABLED":            "true",
+		"VC_PROVIDER_ENDPOINT":           "https://models.example/v1/chat/completions",
+		"VC_PROVIDER_TOKEN":              "offline-token-sentinel",
+		"VC_PROVIDER_MODEL":              "offline-model-sentinel",
+		"VC_PROVIDER_MAX_RESPONSE_BYTES": "0",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_PROVIDER_MAX_RESPONSE_BYTES") {
+		t.Fatalf("expected maxResponseBytes error, got %v", err)
 	}
 }
 
