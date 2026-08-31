@@ -93,11 +93,32 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 	} else {
 		objs, err := store.ListExpiredExportObjects(ctx)
 		if err == nil {
+			if len(objs) > 0 && s.loop.blobs == nil {
+				s.loop.log.Info("export object cleanup",
+					slog.String("operation", "export_object_cleanup"),
+					slog.String("outcome", "error"),
+					slog.String("error_code", "BLOB_STORE_UNAVAILABLE"),
+				)
+			}
 			for _, o := range objs {
-				if s.loop.blobs != nil {
-					_ = s.loop.blobs.Delete(ctx, o.ObjectKey)
+				if s.loop.blobs == nil {
+					continue
 				}
-				_ = store.ClearExportObject(ctx, o.OwnerUserID, o.ExportID, o.ObjectKey)
+				if err := s.loop.blobs.Delete(ctx, o.ObjectKey); err != nil {
+					s.loop.log.Info("export object cleanup",
+						slog.String("operation", "export_object_cleanup"),
+						slog.String("outcome", "error"),
+						slog.String("error_code", "EXPORT_OBJECT_DELETE"),
+					)
+					continue
+				}
+				if err := store.ClearExportObject(ctx, o.OwnerUserID, o.ExportID, o.ObjectKey); err != nil {
+					s.loop.log.Info("export object cleanup",
+						slog.String("operation", "export_object_cleanup"),
+						slog.String("outcome", "error"),
+						slog.String("error_code", "EXPORT_OBJECT_CLEAR"),
+					)
+				}
 			}
 		}
 	}
