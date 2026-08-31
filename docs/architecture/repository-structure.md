@@ -43,7 +43,7 @@ backend/
 ├── internal/provider/         三类模型协议适配
 ├── internal/realtime/         进程内实时分发
 ├── internal/store/postgres/   pgx、短事务与 RLS
-└── internal/migrate/          嵌入式 SQL migrator 与 V1–V119
+└── internal/migrate/          嵌入式顺序迁移，当前版本以目录为真源
 ```
 
 新增能力必须继续遵守 Generation、事务最终化、Worker Lease/Fence/RLS、授权快照和

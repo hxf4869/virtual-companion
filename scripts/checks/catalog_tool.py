@@ -288,6 +288,13 @@ def validate_go_v1_api_scope(root: Path) -> list[str]:
         if not isinstance(callers, list) or any(not isinstance(c, str) or not c for c in callers):
             errors.append(f"go-v1-api-scope.yaml: {oid} currentH5Callers must be a list of strings")
             callers = []
+        for caller in callers:
+            relative = Path(caller)
+            if relative.is_absolute() or ".." in relative.parts or not (root / relative).is_file():
+                errors.append(
+                    f"go-v1-api-scope.yaml: {oid} currentH5Caller must be an existing "
+                    f"repository-relative file: {caller}"
+                )
         impact = entry.get("replacementOrImpact")
         if not isinstance(impact, str) or not impact.strip():
             errors.append(f"go-v1-api-scope.yaml: {oid} replacementOrImpact is required")

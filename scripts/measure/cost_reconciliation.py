@@ -17,6 +17,30 @@ import csv
 import sys
 
 
+def load_costs(path: str, cost_column: str, label: str) -> dict[str, float]:
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        required = {"date", cost_column}
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"{label}: missing required columns: {', '.join(sorted(missing))}")
+        rows: dict[str, float] = {}
+        row_count = 0
+        for line, row in enumerate(reader, start=2):
+            date = (row.get("date") or "").strip()
+            cost = (row.get(cost_column) or "").strip()
+            if not date or not cost:
+                raise ValueError(f"{label}: invalid row {line}: date and {cost_column} are required")
+            try:
+                rows[date] = float(cost)
+            except ValueError as exc:
+                raise ValueError(f"{label}: invalid {cost_column} at row {line}") from exc
+            row_count += 1
+        if row_count == 0:
+            raise ValueError(f"{label}: at least one data row is required")
+        return rows
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--usage", required=True)
@@ -24,12 +48,11 @@ def main() -> None:
     ap.add_argument("--tolerance", type=float, default=0.05)
     args = ap.parse_args()
 
-    with open(args.usage, newline="") as f:
-        usage = {r["date"]: float(r["settled_cost_usd"])
-                 for r in csv.DictReader(f, delimiter="\t")}
-    with open(args.bill, newline="") as f:
-        bill = {r["date"]: float(r["cost_usd"])
-                for r in csv.DictReader(f, delimiter="\t")}
+    try:
+        usage = load_costs(args.usage, "settled_cost_usd", "usage")
+        bill = load_costs(args.bill, "cost_usd", "bill")
+    except (OSError, ValueError) as exc:
+        ap.error(str(exc))
 
     days = sorted(set(usage) | set(bill))
     bad = []

@@ -29,7 +29,7 @@ Owner-only 联调见 [`ops/deploy/DOGFOOD.md`](ops/deploy/DOGFOOD.md)。
   PostgreSQL/RLS store、三类模型协议适配器、generation worker、Realtime SSE、
   Memory/Consent/Report/Export 和管理员 provider/model routing；
 - `frontend/`：uni-app H5，Vue 3 + TypeScript + Pinia；
-- `backend/internal/migrate/sql/`：V1–V119 SQL 迁移真源，由 `companiond migrate` 嵌入执行；
+- `backend/internal/migrate/sql/`：嵌入式顺序迁移真源，当前版本以该目录为准，由 `companiond migrate` 执行；
 - `ops/deploy/`：Go-only Compose、Caddy、数据库/bootstrap 与 MinIO；
 - `specs/`：Catalog、OpenAPI 与关键协议契约；
 - `infra/db/`：迁移、RLS、最小权限与升级验证。

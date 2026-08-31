@@ -40,7 +40,7 @@ BEGIN
 
     -- 1,000 probes: query relationship B for A's work facts (structured +
     -- semantic alternating). Any hit is a cross-relationship leak.
-    FOR i IN 1..500 LOOP
+    FOR i IN 1..1000 LOOP
         BEGIN
             PERFORM vc.set_owner_context(1, 'q' || i, encode(vc.hmac(
                 convert_to('vc-owner-binding-v1|1|' || pg_backend_pid()

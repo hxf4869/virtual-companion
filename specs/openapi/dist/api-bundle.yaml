@@ -2,9 +2,9 @@ openapi: 3.1.0
 info:
   title: Virtual Companion API
   version: 0.1.0
-  description: Contract-first HTTP API (ADR-0002). This document is the single source of truth; the bundled contract and TypeScript
-    client are generated from it and must not be hand-edited or used to back-drive the contract. The ErrorEnvelope shape is
-    uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides resource existence so a missing resource and a forbidden
+  description: Contract-first HTTP API (ADR-0002). This document is the single source of truth; the bundled contract and audit
+    snapshot are generated from it and must not be hand-edited or used to back-drive the contract. The ErrorEnvelope shape
+    is uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides resource existence so a missing resource and a forbidden
     one are indistinguishable to the caller. Go v1 KEEP/SIMPLIFY/DEFER/RETIRE decisions live in specs/catalog/go-v1-api-scope.yaml
     (ADR-0007); RETIRE operations are removed together with H5 callers in a later slice, not left as 410 stubs.
 security:
@@ -14,7 +14,7 @@ paths:
     get:
       operationId: getVersion
       summary: Service version and build identity
-      description: Baseline contract endpoint proving the OpenAPI -> TypeScript client generation pipeline. Public, unauthenticated.
+      description: Baseline contract endpoint proving the OpenAPI bundle and snapshot generation pipeline. Public, unauthenticated.
       security: []
       responses:
         '200':

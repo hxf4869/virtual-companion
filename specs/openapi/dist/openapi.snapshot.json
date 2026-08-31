@@ -1,5 +1,5 @@
 {
-  "generatorVersion": "1.0.0",
+  "generatorVersion": "1.1.0",
   "operations": [
     "getVersion",
     "getServiceMode",
@@ -114,6 +114,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "2a03971dbeafb1382fb18b65275e112530300159a3face50b5475f542889e8f4"
+    "sha256": "59619acf307eaf26407987d87c2333d55b031c2d336dec317d2c7ad612a38f90"
   }
 }

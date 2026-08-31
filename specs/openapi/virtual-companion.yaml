@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: >-
     Contract-first HTTP API (ADR-0002). This document is the single source of
-    truth; the bundled contract and TypeScript client are generated from it and must
+    truth; the bundled contract and audit snapshot are generated from it and must
     not be hand-edited or used to back-drive the contract. The ErrorEnvelope
     shape is uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides
     resource existence so a missing resource and a forbidden one are
@@ -19,7 +19,7 @@ paths:
       operationId: getVersion
       summary: Service version and build identity
       description: >-
-        Baseline contract endpoint proving the OpenAPI -> TypeScript client
+        Baseline contract endpoint proving the OpenAPI bundle and snapshot
         generation pipeline. Public, unauthenticated.
       security: []
       responses:

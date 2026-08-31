@@ -46,9 +46,9 @@ run openapi-validate "${PY[@]}" scripts/dev/openapi_tool.py validate
 run openapi-drift    "${PY[@]}" scripts/dev/openapi_tool.py diff --fail-on-drift
 run paid-features    "${PY[@]}" scripts/checks/check_paid_features.py
 run licenses         "${PY[@]}" scripts/checks/check_licenses.py
-run go-test          bash -c 'command -v go >/dev/null || { echo "需要 Go（backend/go.mod 锁定 go1.26.7）" >&2; exit 1; }; GOPROXY=off go test -C backend -count=1 ./... >&2'
 
 if [ "$QUICK" -eq 0 ]; then
+  run go-test          bash -c 'command -v go >/dev/null || { echo "需要 Go（backend/go.mod 锁定 go1.26.7）" >&2; exit 1; }; GOPROXY=off go test -C backend -count=1 ./... >&2'
   if ! command -v pnpm >/dev/null 2>&1; then
     echo "FAIL  环境：全量检查需要 pnpm（或用 --quick 跳过前端）" >&2
     exit 1

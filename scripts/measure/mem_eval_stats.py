@@ -32,6 +32,10 @@ def main() -> None:
     ap.add_argument("--cross-leak", type=int, dest="cross_leak")
     args = ap.parse_args()
 
+    if not any((args.candidates, args.recall,
+                args.resurrection is not None, args.cross_leak is not None)):
+        ap.error("at least one metric is required")
+
     ok = True
 
     if args.candidates:

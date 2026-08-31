@@ -481,10 +481,9 @@
           }
         ],
         "generatorVersion": "1.0.0",
-        "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "2c6532d6cd77e24124065a50c71e0f694d514177687900f42a49a38619986043"
+      "sha256": "c72c3d64d7fdebe47b26997e8d3a6e4ccb0cb5b524c5e816c69e1001589f5c9b"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -930,7 +929,7 @@
         "operations": [
           {
             "currentH5Callers": [
-              "frontend/src/pages/ops/ops.vue"
+              "frontend/src/api/admin-runtime.ts"
             ],
             "decision": "KEEP",
             "keepBecause": [
@@ -945,7 +944,7 @@
             "currentH5Callers": [
               "frontend/src/stores/chat.ts",
               "frontend/src/stores/data.ts",
-              "frontend/src/pages/ops/ops.vue"
+              "frontend/src/api/admin-runtime.ts"
             ],
             "decision": "KEEP",
             "keepBecause": [
@@ -1010,8 +1009,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/stores/usage-health.ts",
-              "frontend/src/pages/health/health.vue"
+              "frontend/src/stores/usage-health.ts"
             ],
             "decision": "DEFER",
             "h5CallerMustHideInSameSlice": true,
@@ -1022,8 +1020,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/stores/usage-health.ts",
-              "frontend/src/pages/health/health.vue"
+              "frontend/src/stores/usage-health.ts"
             ],
             "decision": "DEFER",
             "h5CallerMustHideInSameSlice": true,
@@ -1046,8 +1043,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/stores/usage-health.ts",
-              "frontend/src/pages/health/health.vue"
+              "frontend/src/stores/usage-health.ts"
             ],
             "decision": "DEFER",
             "h5CallerMustHideInSameSlice": true,
@@ -1634,8 +1630,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/stores/reminder.ts",
-              "frontend/src/pages/reminder/reminder.vue"
+              "frontend/src/stores/reminder.ts"
             ],
             "decision": "DEFER",
             "h5CallerMustHideInSameSlice": true,
@@ -1647,7 +1642,6 @@
           {
             "currentH5Callers": [
               "frontend/src/stores/reminder.ts",
-              "frontend/src/pages/reminder/reminder.vue",
               "frontend/src/stores/data.ts",
               "frontend/src/pages/index/index.vue"
             ],
@@ -1660,8 +1654,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/stores/reminder.ts",
-              "frontend/src/pages/reminder/reminder.vue"
+              "frontend/src/stores/reminder.ts"
             ],
             "decision": "DEFER",
             "h5CallerMustHideInSameSlice": true,
@@ -1672,8 +1665,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/stores/reminder.ts",
-              "frontend/src/pages/reminder/reminder.vue"
+              "frontend/src/stores/reminder.ts"
             ],
             "decision": "DEFER",
             "h5CallerMustHideInSameSlice": true,
@@ -2035,7 +2027,9 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+              "frontend/src/pages/admin-models/admin-models.vue",
+              "frontend/src/pages/admin-routing/admin-routing.vue",
+              "frontend/src/api/admin-runtime.ts"
             ],
             "decision": "KEEP",
             "keepBecause": [
@@ -2049,7 +2043,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+              "frontend/src/pages/admin-models/admin-models.vue"
             ],
             "decision": "KEEP",
             "keepBecause": [
@@ -2063,7 +2057,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+              "frontend/src/pages/admin-models/admin-models.vue"
             ],
             "decision": "KEEP",
             "keepBecause": [
@@ -2077,7 +2071,7 @@
           },
           {
             "currentH5Callers": [
-              "frontend/src/pages/admin/ProviderRoutingPanel.vue"
+              "frontend/src/pages/admin-routing/admin-routing.vue"
             ],
             "decision": "KEEP",
             "keepBecause": [
@@ -2090,11 +2084,8 @@
             "replacementOrImpact": "Keep the complete deterministic global provider/model priority chain."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/health/health.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "RETIRE",
-            "h5CallerMustHideInSameSlice": true,
             "method": "GET",
             "operationId": "getTrialStatus",
             "path": "/api/v1/trial-status",
@@ -2347,7 +2338,7 @@
           }
         ]
       },
-      "sha256": "f851845d0d78bee1312e3f238234b7a15ff5912c9f473b3333cc06f032701478"
+      "sha256": "057e9a9946d56c2cf335811c45ae46b88b0efc35ca2363b8e5db093ecabd7229"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

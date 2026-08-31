@@ -1,7 +1,6 @@
 schemaVersion: 1
 catalogId: catalog-manifest
 generatorVersion: 1.0.0
-packageName: com.virtualcompanion.catalog
 catalogs:
 - file: product-scope.yaml
   kind: config

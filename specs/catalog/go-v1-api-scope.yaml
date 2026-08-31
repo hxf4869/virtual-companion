@@ -18,7 +18,7 @@ operations:
   method: GET
   path: /api/v1/version
   currentH5Callers:
-  - frontend/src/pages/ops/ops.vue
+  - frontend/src/api/admin-runtime.ts
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -30,7 +30,7 @@ operations:
   currentH5Callers:
   - frontend/src/stores/chat.ts
   - frontend/src/stores/data.ts
-  - frontend/src/pages/ops/ops.vue
+  - frontend/src/api/admin-runtime.ts
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -81,7 +81,6 @@ operations:
   path: /api/v1/usage-health
   currentH5Callers:
   - frontend/src/stores/usage-health.ts
-  - frontend/src/pages/health/health.vue
   decision: DEFER
   h5CallerMustHideInSameSlice: true
   replacementOrImpact: Usage-health backend is DEFER. Hide 使用与休息 page APIs in the same slice.
@@ -90,7 +89,6 @@ operations:
   path: /api/v1/usage-health
   currentH5Callers:
   - frontend/src/stores/usage-health.ts
-  - frontend/src/pages/health/health.vue
   decision: DEFER
   h5CallerMustHideInSameSlice: true
   replacementOrImpact: Hide usage-health preference editor in the same slice.
@@ -109,7 +107,6 @@ operations:
   path: /api/v1/usage-health/reminder
   currentH5Callers:
   - frontend/src/stores/usage-health.ts
-  - frontend/src/pages/health/health.vue
   decision: DEFER
   h5CallerMustHideInSameSlice: true
   replacementOrImpact: Hide usage-reminder recording in the same slice.
@@ -540,7 +537,6 @@ operations:
   path: /api/v1/relationships/{relationshipId}/reminders
   currentH5Callers:
   - frontend/src/stores/reminder.ts
-  - frontend/src/pages/reminder/reminder.vue
   decision: DEFER
   h5CallerMustHideInSameSlice: true
   replacementOrImpact: Reminder/proactive follow-up is DEFER. Hide the reminder page in the same slice.
@@ -549,7 +545,6 @@ operations:
   path: /api/v1/relationships/{relationshipId}/reminders
   currentH5Callers:
   - frontend/src/stores/reminder.ts
-  - frontend/src/pages/reminder/reminder.vue
   - frontend/src/stores/data.ts
   - frontend/src/pages/index/index.vue
   decision: DEFER
@@ -560,7 +555,6 @@ operations:
   path: /api/v1/reminders/{reminderId}
   currentH5Callers:
   - frontend/src/stores/reminder.ts
-  - frontend/src/pages/reminder/reminder.vue
   decision: DEFER
   h5CallerMustHideInSameSlice: true
   replacementOrImpact: Hide reminder edit in the same slice.
@@ -569,7 +563,6 @@ operations:
   path: /api/v1/reminders/{reminderId}
   currentH5Callers:
   - frontend/src/stores/reminder.ts
-  - frontend/src/pages/reminder/reminder.vue
   decision: DEFER
   h5CallerMustHideInSameSlice: true
   replacementOrImpact: Hide reminder delete in the same slice.
@@ -838,7 +831,9 @@ operations:
   method: GET
   path: /api/v1/admin/providers
   currentH5Callers:
-  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  - frontend/src/pages/admin-models/admin-models.vue
+  - frontend/src/pages/admin-routing/admin-routing.vue
+  - frontend/src/api/admin-runtime.ts
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -848,7 +843,7 @@ operations:
   method: PUT
   path: /api/v1/admin/providers/{providerId}
   currentH5Callers:
-  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  - frontend/src/pages/admin-models/admin-models.vue
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -858,7 +853,7 @@ operations:
   method: POST
   path: /api/v1/admin/providers/{providerId}/models/discover
   currentH5Callers:
-  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  - frontend/src/pages/admin-models/admin-models.vue
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -868,7 +863,7 @@ operations:
   method: PUT
   path: /api/v1/admin/model-routing-order
   currentH5Callers:
-  - frontend/src/pages/admin/ProviderRoutingPanel.vue
+  - frontend/src/pages/admin-routing/admin-routing.vue
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -877,10 +872,8 @@ operations:
 - operationId: getTrialStatus
   method: GET
   path: /api/v1/trial-status
-  currentH5Callers:
-  - frontend/src/pages/health/health.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
   replacementOrImpact: Hide trial status on the health page in the same slice.
 - operationId: recordSurvey
   method: POST
