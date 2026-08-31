@@ -49,8 +49,12 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
     if (response.status === 401) {
       provider.onUnauthorized();
     }
-    const json: unknown = await response.json().catch(() => null);
-    return { ok: response.ok, status: response.status, json };
+    let parseFailed = false;
+    const json: unknown = await response.json().catch(() => {
+      parseFailed = true;
+      return null;
+    });
+    return { ok: response.ok, status: response.status, json, parseFailed };
   }
 
   return { request };

@@ -227,15 +227,17 @@ export default {
       if (await ensureAccess()) await load();
     }
 
-    async function load(): Promise<void> {
+    async function load(): Promise<boolean> {
       loading.value = true;
       try {
         providers.value = await listModelProviders(transport);
         const next = providerRoutes(providers.value);
         routes.value = next;
         baseline.value = next.map((route) => ({ ...route }));
+        return true;
       } catch {
         setMessage("路由顺序读取失败，请检查系统状态后重试。", "error");
+        return false;
       } finally {
         loading.value = false;
       }
@@ -311,8 +313,12 @@ export default {
           transport,
           routes.value.map(({ providerId, modelId }) => ({ providerId, modelId })),
         );
-        await load();
-        setMessage("全局路由顺序已更新，将从下一轮对话开始生效。", "success");
+        const reloaded = await load();
+        if (reloaded) {
+          setMessage("全局路由顺序已更新，将从下一轮对话开始生效。", "success");
+        } else {
+          setMessage("保存请求成功，但无法读取最新配置，请刷新确认。", "warning");
+        }
       } catch (error) {
         if (error instanceof ProviderHttpError && error.status === 403) {
           reauthConfirmed.value = false;

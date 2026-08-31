@@ -500,6 +500,7 @@ describe("useChatStore", () => {
 
   function cancelAwareTransport(opts: {
     cancelOk: boolean;
+    cancelPending?: boolean;
     order?: string[];
   }): ChatTransport {
     return {
@@ -512,6 +513,9 @@ describe("useChatStore", () => {
         }
         if (path.endsWith("/cancel")) {
           opts.order?.push("cancel-api");
+          if (opts.cancelPending) {
+            return await new Promise<ChatApiResponse>(() => undefined);
+          }
           return opts.cancelOk
             ? {
                 ok: true,
@@ -542,7 +546,7 @@ describe("useChatStore", () => {
     };
   }
 
-  it("cancel() confirms the backend cancel API before aborting the local stream", async () => {
+  it("cancel() starts the backend cancel API before aborting the local stream", async () => {
     const store = useChatStore();
     const order: string[] = [];
     const transport = cancelAwareTransport({ cancelOk: true, order });
@@ -568,7 +572,8 @@ describe("useChatStore", () => {
     await store.cancel();
     await sendPromise;
 
-    // The backend confirmation must precede the local stream teardown.
+    // Starting the best-effort backend request precedes local teardown; its
+    // response is not allowed to hold the stream open.
     expect(order).toEqual(["cancel-api", "abort-event"]);
     expect(store.phase).toBe("cancelled");
   });
@@ -586,6 +591,24 @@ describe("useChatStore", () => {
     await sendPromise;
 
     // Backend unavailable (503) must not block the local teardown.
+    expect(store.phase).toBe("cancelled");
+  });
+
+  it("cancel() immediately aborts when the backend cancel request never settles", async () => {
+    const store = useChatStore();
+    const order: string[] = [];
+    const transport = cancelAwareTransport({ cancelOk: true, cancelPending: true, order });
+    const resumeStart = { started: false };
+    const deps = blockingDeps(resumeStart);
+
+    await store.initConversation(transport, "1");
+    const sendPromise = store.send(transport, deps, "Hello");
+    await vi.waitFor(() => expect(resumeStart.started).toBe(true));
+
+    await store.cancel();
+    await sendPromise;
+
+    expect(order).toEqual(["cancel-api"]);
     expect(store.phase).toBe("cancelled");
   });
 
@@ -668,6 +691,93 @@ describe("useChatStore", () => {
 
     expect(store.phase).toBe("failed");
     expect(store.outcome).toBeNull();
+    expect(store.generationStarting).toBe(false);
+  });
+
+  function deferredGenerationTransport(): {
+    transport: ChatTransport;
+    generationCalls: ReturnType<typeof vi.fn>;
+    resolveGeneration: (response: ChatApiResponse) => void;
+    rejectGeneration: (error: unknown) => void;
+  } {
+    let resolveGeneration!: (response: ChatApiResponse) => void;
+    let rejectGeneration!: (error: unknown) => void;
+    const pending = new Promise<ChatApiResponse>((resolve, reject) => {
+      resolveGeneration = resolve;
+      rejectGeneration = reject;
+    });
+    const generationCalls = vi.fn();
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) {
+          return { ok: true, status: 200, json: [] };
+        }
+        if (method === "POST" && path.endsWith("/generations")) {
+          generationCalls();
+          return pending;
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    return { transport, generationCalls, resolveGeneration, rejectGeneration };
+  }
+
+  const createdGeneration: ChatApiResponse = {
+    ok: true,
+    status: 200,
+    json: {
+      generationId: 42,
+      conversationId: 1,
+      logicalGenerationId: "lg-1",
+      status: "CREATED",
+    },
+  };
+
+  it("single-flights concurrent send calls during generation creation", async () => {
+    const store = useChatStore();
+    const deferred = deferredGenerationTransport();
+    await store.initConversation(deferred.transport, "1");
+
+    const first = store.send(deferred.transport, successDeps(), "Hello");
+    const second = store.send(deferred.transport, successDeps(), "Hello");
+
+    expect(store.generationStarting).toBe(true);
+    expect(deferred.generationCalls).toHaveBeenCalledTimes(1);
+    await second;
+    deferred.resolveGeneration(createdGeneration);
+    await first;
+    expect(store.generationStarting).toBe(false);
+  });
+
+  it("single-flights concurrent regenerate calls during generation creation", async () => {
+    const store = useChatStore();
+    const deferred = deferredGenerationTransport();
+    await store.initConversation(deferred.transport, "1");
+
+    const first = store.regenerate(deferred.transport, successDeps(), "10", "Hello");
+    const second = store.regenerate(deferred.transport, successDeps(), "10", "Hello");
+
+    expect(store.generationStarting).toBe(true);
+    expect(deferred.generationCalls).toHaveBeenCalledTimes(1);
+    await second;
+    deferred.resolveGeneration(createdGeneration);
+    await first;
+    expect(store.generationStarting).toBe(false);
+  });
+
+  it("releases the generation creation guard after a request error", async () => {
+    const store = useChatStore();
+    const deferred = deferredGenerationTransport();
+    await store.initConversation(deferred.transport, "1");
+
+    const first = store.send(deferred.transport, successDeps(), "Hello");
+    deferred.rejectGeneration(new Error("network down"));
+
+    await expect(first).rejects.toThrow("network down");
+    expect(store.generationStarting).toBe(false);
   });
 
   it("CHAT-MODE: send carries the selected mode in the generation body", async () => {

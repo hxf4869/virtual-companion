@@ -214,7 +214,9 @@ const memoryChannel = createChannel();
 const transport: AuthTransport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   renewAccessToken: () => auth.renewAccessToken(transport),
-  onUnauthorized: () => auth.onUnauthorized(),
+  // The home page is public. A missing session becomes anonymous here instead
+  // of redirecting before the public shell can render its login entry.
+  onUnauthorized: () => auth.clear(),
 });
 
 const nextStepHref = computed(() => nextStep.value?.href ?? "/pages/index/index");

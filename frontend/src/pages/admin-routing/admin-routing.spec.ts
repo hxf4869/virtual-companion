@@ -77,6 +77,40 @@ describe("routing change ledger", () => {
     wrapper.unmount();
   });
 
+  it("reports a confirmed routing save whose readback fails without replacing the old baseline", async () => {
+    let providerReads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/admin/providers") {
+        providerReads += 1;
+        return providerReads === 1
+          ? { ok: true, status: 200, json: async () => providerPayload, headers: new Headers() }
+          : { ok: false, status: 500, json: async () => ({}), headers: new Headers() };
+      }
+      if (url === "/api/v1/auth/reauth") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }), headers: new Headers() };
+      }
+      if (url === "/api/v1/admin/model-routing-order" && init?.method === "PUT") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }), headers: new Headers() };
+      }
+      throw new Error(`unexpected request ${init?.method ?? "GET"} ${url}`);
+    }));
+
+    const wrapper = mount(AdminRoutingPage, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.findAll('[aria-label^="下移"]')[0].trigger("click");
+    await wrapper.get('[data-testid="routing-save"]').trigger("click");
+    await wrapper.get('[data-testid="routing-reauth-password"]').setValue("AdminPassword1!");
+    await wrapper.get('[data-testid="routing-reauth"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("保存请求成功，但无法读取最新配置，请刷新确认");
+    expect(wrapper.text()).not.toContain("全局路由顺序已更新，将从下一轮对话开始生效");
+    expect(wrapper.text()).toContain("1 → 2");
+    expect(providerReads).toBe(2);
+    wrapper.unmount();
+  });
+
   it("keeps a staged routing order when cross-page navigation is cancelled", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,

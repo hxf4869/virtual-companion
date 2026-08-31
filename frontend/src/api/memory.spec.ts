@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   confirmMemory,
@@ -15,6 +15,11 @@ import {
   type MemoryApiResponse,
   type MemoryTransport,
 } from "@/api/memory";
+import { createAuthenticatedTransport } from "@/api/transport";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function transportReturning(responsesByPath: Record<string, MemoryApiResponse>): MemoryTransport {
   return {
@@ -236,6 +241,22 @@ describe("api/memory typed error mapping (P2-16)", () => {
     const err = await listMemories(t, "rel-1").then(() => null, (e: unknown) => e);
     expect(err).toBeInstanceOf(MemoryHttpError);
     expect((err as MemoryHttpError).kind).toBe("parse");
+  });
+
+  it("propagates a real transport JSON parse failure instead of returning an empty list", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => Promise.reject(new Error("not json")),
+    })));
+    const t = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+
+    const err = await listMemories(t, "rel-1").then(() => null, (e: unknown) => e);
+
+    expect(err).toBeInstanceOf(MemoryHttpError);
+    expect((err as MemoryHttpError).kind).toBe("parse");
+    expect((err as MemoryHttpError).status).toBe(200);
   });
 
   it("listMemories requests includeDeleted and parses deletedAt", async () => {

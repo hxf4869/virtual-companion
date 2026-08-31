@@ -44,10 +44,17 @@ function stubFetch(options: {
         ? options.authFails()
         : options.authFails;
       if (authFails) throw new TypeError("offline");
+      if (options.authSessions === undefined) {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
+        };
+      }
       return {
         ok: true,
         status: 200,
-        json: async () => options.authSessions ?? {},
+        json: async () => options.authSessions,
       };
     }
     if (/\/relationships\/[^/]+\/memories/.test(url)) {
@@ -106,13 +113,16 @@ describe("首页：匿名与会话未知", () => {
 
   it("匿名访客看到登录主入口，不渲染四入口底栏", async () => {
     stubFetch();
-    // 不注入 token：mount 内 tryRefresh 落定后被拒绝 → anonymous。
+    // 真实契约：匿名 GET /auth/sessions 返回 401，但公开首页不得跳登录。
     const wrapper = mountPage();
     await flushPromises();
 
     expect(wrapper.find('[data-testid="home-hero"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="home-login"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="consumer-tabbar"]').exists()).toBe(false);
+    const redirectTo = (globalThis as { uni?: { redirectTo?: ReturnType<typeof vi.fn> } }).uni
+      ?.redirectTo;
+    expect(redirectTo).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 

@@ -7,6 +7,8 @@ export interface AuthApiResponse {
   ok: boolean;
   status: number;
   json: unknown;
+  /** True when the HTTP body could not be decoded as JSON. */
+  parseFailed?: boolean;
 }
 
 export interface AuthTransport {

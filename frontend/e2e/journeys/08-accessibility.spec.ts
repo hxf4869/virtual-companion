@@ -113,6 +113,26 @@ async function expectTouchTargets(
 
 let authenticatedStorageState: Awaited<ReturnType<BrowserContext["storageState"]>> | null = null;
 
+test("390x844 匿名公开首页在 session 401 后保持可见且不横向溢出", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sessionResponse = page.waitForResponse((response) =>
+    response.request().method() === "GET"
+      && new URL(response.url()).pathname === "/api/v1/auth/sessions",
+  );
+
+  await page.goto("/#/pages/index/index");
+
+  expect((await sessionResponse).status()).toBe(401);
+  await expect(page.getByTestId("home-login")).toBeVisible();
+  expect(new URL(page.url()).hash).not.toContain("/pages/login/login");
+  const sizes = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  expect(sizes.scrollWidth, "public home must not overflow horizontally")
+    .toBeLessThanOrEqual(sizes.viewportWidth);
+});
+
 test("login：axe 全量 + 键盘 Tab 焦点顺序 + Enter 激活", async ({ page }) => {
   test.setTimeout(150_000);
   await page.goto("/#/pages/login/login");

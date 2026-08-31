@@ -379,6 +379,7 @@
                   class="msg-action"
                   data-testid="regenerate"
                   aria-label="重新生成这条回复"
+                  :disabled="generationStarting"
                   @click="onRegenerate(msg)"
                 >
                   重新生成
@@ -473,13 +474,13 @@
               placeholder="输入消息…"
               aria-label="消息输入"
               auto-height
-              :disabled="isStreaming"
+              :disabled="isStreaming || generationStarting"
               @keydown.enter="onEnterKey"
             />
             <button
               data-testid="send"
               class="btn-primary chat-send"
-              :disabled="isStreaming || !canSend || !store.conversationId"
+              :disabled="isStreaming || generationStarting || !canSend || !store.conversationId"
               @click="onSend"
             >
               发送
@@ -493,7 +494,7 @@
             >
               取消
             </button>
-            <button v-if="canRetry" data-testid="retry" class="btn-secondary" @click="onRetry">
+            <button v-if="canRetry" data-testid="retry" class="btn-secondary" :disabled="generationStarting" @click="onRetry">
               重试
             </button>
           </view>
@@ -683,6 +684,7 @@ export default defineComponent({
       return store.serviceMode?.summary || "AI 服务当前以受限模式运行。";
     });
     const isStreaming = computed(() => store.isStreaming);
+    const generationStarting = computed(() => store.generationStarting);
     const canSend = computed(() => inputText.value.trim().length > 0);
     const selectedMode = computed(() => store.selectedMode);
     const hasRelationship = computed(() => relStore.currentRelationshipId !== null);
@@ -800,7 +802,7 @@ export default defineComponent({
     }
 
     async function onRetry(): Promise<void> {
-      if (!canRetry.value) return;
+      if (!canRetry.value || generationStarting.value) return;
       const text = store.pendingUserContent;
       sendError.value = false;
       try {
@@ -816,7 +818,7 @@ export default defineComponent({
 
     async function onSend(): Promise<void> {
       const text = inputText.value.trim();
-      if (!text || store.isStreaming) return;
+      if (!text || store.isStreaming || generationStarting.value) return;
       if (!store.conversationId) {
         sendError.value = true;
         return;
@@ -866,6 +868,7 @@ export default defineComponent({
     }
 
     async function onRegenerate(msg: { messageId: string; content: string }): Promise<void> {
+      if (generationStarting.value) return;
       await guarded(() => store.regenerate(transport, deps, msg.messageId, msg.content));
     }
 
@@ -1278,6 +1281,7 @@ export default defineComponent({
       markdownBlocks,
       usage,
       isStreaming,
+      generationStarting,
       showEmptyHistory,
       showLoadMore,
       canSend,

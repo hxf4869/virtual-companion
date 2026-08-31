@@ -207,5 +207,17 @@ describe("createAuthenticatedTransport", () => {
     const result = await transport.request("GET", "/api/v1/version");
 
     expect(result.json).toBeNull();
+    expect(result.parseFailed).toBe(true);
+  });
+
+  it("marks a valid JSON response as parsed", async () => {
+    const fetchMock = fetchOk();
+    vi.stubGlobal("fetch", fetchMock);
+    const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+
+    const result = await transport.request("GET", "/api/v1/version");
+
+    expect(result.json).toEqual({ ok: true });
+    expect(result.parseFailed).toBe(false);
   });
 });

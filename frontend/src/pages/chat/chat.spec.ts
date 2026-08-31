@@ -382,6 +382,15 @@ describe("chat page glue（纠偏式重写）", () => {
 
     expect((wrapper.find('[data-testid="send"]').element as HTMLButtonElement).disabled).toBe(true);
     expect(wrapper.find('[data-testid="cancel"]').exists()).toBe(true);
+
+    store.phase = "idle";
+    store.generationStarting = false;
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("准备发送");
+    store.generationStarting = true;
+    await wrapper.vm.$nextTick();
+    expect((input.element as HTMLTextAreaElement).disabled).toBe(true);
+    expect((wrapper.find('[data-testid="send"]').element as HTMLButtonElement).disabled).toBe(true);
     wrapper.unmount();
   });
 
@@ -415,6 +424,14 @@ describe("chat page glue（纠偏式重写）", () => {
     const retry = wrapper.find('[data-testid="retry"]');
     expect(retry.exists()).toBe(true);
     const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+    store.generationStarting = true;
+    await wrapper.vm.$nextTick();
+    expect((retry.element as HTMLButtonElement).disabled).toBe(true);
+    await retry.trigger("click");
+    expect(sendSpy).not.toHaveBeenCalled();
+
+    store.generationStarting = false;
+    await wrapper.vm.$nextTick();
     await retry.trigger("click");
     expect(sendSpy).toHaveBeenCalledOnce();
     expect(sendSpy.mock.calls[0]?.[2]).toBe("重试这句话");
@@ -807,6 +824,14 @@ describe("chat page glue（纠偏式重写）", () => {
     const regen = wrapper.find('[data-testid="regenerate"]');
     expect(regen.exists()).toBe(true);
     const spy = vi.spyOn(store, "regenerate").mockResolvedValue();
+    store.generationStarting = true;
+    await wrapper.vm.$nextTick();
+    expect((regen.element as HTMLButtonElement).disabled).toBe(true);
+    await regen.trigger("click");
+    expect(spy).not.toHaveBeenCalled();
+
+    store.generationStarting = false;
+    await wrapper.vm.$nextTick();
     await regen.trigger("click");
     expect(spy).toHaveBeenCalledOnce();
     wrapper.unmount();

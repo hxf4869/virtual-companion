@@ -384,7 +384,7 @@ export default {
       if (await ensureAccess()) await loadProviders();
     }
 
-    async function loadProviders(preferredId = selectedId.value): Promise<void> {
+    async function loadProviders(preferredId = selectedId.value): Promise<boolean> {
       loading.value = true;
       try {
         providers.value = await listModelProviders(transport);
@@ -396,8 +396,10 @@ export default {
           baseline.value = null;
           isCreating.value = false;
         }
+        return true;
       } catch {
         setMessage("模型服务配置读取失败，请检查系统状态后重试。", "error");
+        return false;
       } finally {
         loading.value = false;
       }
@@ -612,8 +614,12 @@ export default {
         });
         pendingAction.value = null;
         showValidation.value = false;
-        await loadProviders(providerId);
-        setMessage("提供方配置已保存；新配置从下一轮对话开始生效。", "success");
+        const reloaded = await loadProviders(providerId);
+        if (reloaded) {
+          setMessage("提供方配置已保存；新配置从下一轮对话开始生效。", "success");
+        } else {
+          setMessage("保存请求成功，但无法读取最新配置，请刷新确认。", "warning");
+        }
       } catch (error) {
         if (error instanceof ProviderHttpError && error.status === 403) {
           reauthConfirmed.value = false;

@@ -40,6 +40,7 @@ import {
   type ChatTransport,
   type ConversationListItem,
   type CreateConversationResponse,
+  type Generation,
   type Message,
   type MessageFeedbackKind,
   type ServiceModeStatus,
@@ -96,10 +97,14 @@ export const useChatStore = defineStore("h5-chat", () => {
   let historyWindowToken = 0;
   // MEM-PROMPT: pending candidate count surfaced after a completed turn.
   const pendingMemoryCount = ref(0);
+  // Only covers the generation-creation POST. The stream keeps using phase;
+  // this small guard prevents a double tap from creating a second durable turn
+  // before run() can transition the phase to streaming.
+  const generationStarting = ref(false);
   let handle: StreamHandle | null = null;
   let runSequence = 0;
-  // CANCEL-A: the transport of the most recent send, so cancel() can confirm the
-  // backend cancellation before tearing down the local stream.
+  // CANCEL-A: the transport of the most recent send, so cancel() can signal the
+  // backend while tearing down the local stream immediately.
   let lastTransport: ChatTransport | null = null;
   // STREAM-ECHO: the content of the in-flight (or last failed) user turn, so the
   // page can echo it as a pending bubble while streaming and offer a one-click
@@ -442,10 +447,10 @@ export const useChatStore = defineStore("h5-chat", () => {
   }
 
   /**
-   * CANCEL-A: confirm the backend cancellation first, then tear down the local
-   * SSE. The database terminal state stays the source of truth; the API call
-   * only signals the in-flight provider session server-side. A backend failure
-   * (offline, already terminal, existence hidden) never blocks the local abort.
+   * CANCEL-A: signal the backend once, but never wait for that HTTP request
+   * before tearing down the local SSE. The request is best-effort because an
+   * offline or permanently pending connection must not trap the UI in a live
+   * stream after the user has cancelled it.
    */
   async function cancel(): Promise<void> {
     const current = handle;
@@ -454,12 +459,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     const transport = lastTransport;
     const id = generationId.value;
     if (transport && id) {
-      try {
-        await cancelGeneration(transport, id);
-      } catch {
-        // Local teardown proceeds regardless; the reducer outcome stays
-        // "cancelled" and the backend terminal state rules.
-      }
+      void cancelGeneration(transport, id).catch(() => null);
     }
     current.abort();
     // S0-20: the user chose to leave this turn — drop the recovery entry.
@@ -806,23 +806,30 @@ export const useChatStore = defineStore("h5-chat", () => {
     deps: RealtimeDeps,
     content: string,
   ): Promise<void> {
-    lastTransport = transport; // CANCEL-A: cancel() confirms through this transport
-    pendingUserContent.value = content; // STREAM-ECHO: echo + retry source
+    if (generationStarting.value) return;
     if (!conversationId.value) {
       phase.value = "failed";
       return;
     }
+    generationStarting.value = true;
+    lastTransport = transport; // CANCEL-A: cancel() confirms through this transport
+    pendingUserContent.value = content; // STREAM-ECHO: echo + retry source
     // round7（P1）：turn 开始时持有窗口令牌；流期间窗口被销毁/切换的话，
     // 终局后的补页不再写回（advanceHistory/loadHistory 内部再校验一次）。
     const ownedToken = historyWindowToken;
-    const idempotencyKey = crypto.randomUUID();
-    const generation = await sendGeneration(
-      transport,
-      conversationId.value,
-      idempotencyKey,
-      content,
-      selectedMode.value,
-    );
+    let generation: Generation | null;
+    try {
+      const idempotencyKey = crypto.randomUUID();
+      generation = await sendGeneration(
+        transport,
+        conversationId.value,
+        idempotencyKey,
+        content,
+        selectedMode.value,
+      );
+    } finally {
+      generationStarting.value = false;
+    }
     if (!generation) {
       phase.value = "failed";
       outcome.value = null;
@@ -846,20 +853,27 @@ export const useChatStore = defineStore("h5-chat", () => {
     sourceUserMessageId: string,
     content: string,
   ): Promise<void> {
-    lastTransport = transport;
-    pendingUserContent.value = content;
+    if (generationStarting.value) return;
     if (!conversationId.value) {
       phase.value = "failed";
       return;
     }
-    const generation = await sendGeneration(
-      transport,
-      conversationId.value,
-      crypto.randomUUID(),
-      content,
-      selectedMode.value,
-      sourceUserMessageId,
-    );
+    generationStarting.value = true;
+    lastTransport = transport;
+    pendingUserContent.value = content;
+    let generation: Generation | null;
+    try {
+      generation = await sendGeneration(
+        transport,
+        conversationId.value,
+        crypto.randomUUID(),
+        content,
+        selectedMode.value,
+        sourceUserMessageId,
+      );
+    } finally {
+      generationStarting.value = false;
+    }
     if (!generation) {
       phase.value = "failed";
       outcome.value = null;
@@ -881,6 +895,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     historyHasMore,
     pendingMemoryCount,
     pendingUserContent,
+    generationStarting,
     regenerate,
     usage,
     selectedMode,

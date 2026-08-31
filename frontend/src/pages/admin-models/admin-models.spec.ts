@@ -88,6 +88,40 @@ describe("model service change ledger", () => {
     wrapper.unmount();
   });
 
+  it("reports a confirmed save whose provider readback fails without replacing the old baseline", async () => {
+    let providerReads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/admin/providers") {
+        providerReads += 1;
+        return providerReads === 1
+          ? { ok: true, status: 200, json: async () => providerPayload, headers: new Headers() }
+          : { ok: false, status: 500, json: async () => ({}), headers: new Headers() };
+      }
+      if (url === "/api/v1/auth/reauth") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }), headers: new Headers() };
+      }
+      if (url === "/api/v1/admin/providers/wechat" && init?.method === "PUT") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }), headers: new Headers() };
+      }
+      throw new Error(`unexpected request ${init?.method ?? "GET"} ${url}`);
+    }));
+
+    const wrapper = mount(AdminModelsPage, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[data-testid="provider-display-name"]').setValue("尚未回读的新名称");
+    await wrapper.get('[data-testid="provider-save"]').trigger("click");
+    await wrapper.get('[data-testid="provider-reauth-password"]').setValue("AdminPassword1!");
+    await wrapper.get('[data-testid="provider-reauth"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("保存请求成功，但无法读取最新配置，请刷新确认");
+    expect(wrapper.text()).not.toContain("提供方配置已保存；新配置从下一轮对话开始生效");
+    expect(wrapper.text()).toContain("修改显示名称");
+    expect(providerReads).toBe(2);
+    wrapper.unmount();
+  });
+
   it("keeps a staged provider draft when cross-page navigation is cancelled", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
