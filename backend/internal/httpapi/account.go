@@ -22,6 +22,14 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
+	cancelSignals := 0
+	if s.core.Cancels != nil {
+		cancelSignals = s.core.Cancels.CancelOwner(p.AccountID)
+	}
+	if err := s.core.Store.RecordAccountDeletionCancelSignals(r.Context(), p.AccountID, cancelSignals); err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
 	pointers, err := s.core.Store.ListOwnerExportObjects(r.Context(), p.AccountID)
 	if err != nil {
 		s.writeStoreErr(w, err)

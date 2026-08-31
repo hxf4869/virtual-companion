@@ -52,9 +52,22 @@ func (s *Store) RequestAccountDeletion(ctx context.Context, owner int64) error {
 		if !ok {
 			return ErrNotFound
 		}
+		return nil
+	})
+	return mapStoreErr(err)
+}
+
+func (s *Store) RecordAccountDeletionCancelSignals(ctx context.Context, owner int64, count int) error {
+	if count < 0 {
+		return ErrInvalid
+	}
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		var recorded bool
-		if err := tx.QueryRow(ctx, `SELECT vc.record_account_deletion_cancel_signals_current($1)`, 0).Scan(&recorded); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT vc.record_account_deletion_cancel_signals_current($1)`, count).Scan(&recorded); err != nil {
 			return err
+		}
+		if !recorded {
+			return ErrNotFound
 		}
 		return nil
 	})

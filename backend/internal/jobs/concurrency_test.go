@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -91,14 +92,16 @@ func (s *concurrencyStore) TerminalizeGeneration(ctx context.Context, cmd turn.T
 
 type concurrencyProvider struct {
 	release   chan struct{}
+	cancelErr chan error
 	active    atomic.Int32
 	peak      atomic.Int32
 	calls     atomic.Int32
+	cancelled atomic.Int32
 	completed atomic.Int32
 }
 
 func newConcurrencyProvider() *concurrencyProvider {
-	return &concurrencyProvider{release: make(chan struct{})}
+	return &concurrencyProvider{release: make(chan struct{}), cancelErr: make(chan error, 8)}
 }
 
 func (p *concurrencyProvider) Stream(ctx context.Context, _ companion.ModelRequest, emit func(companion.OutputDelta) error) (companion.AttemptResult, error) {
@@ -116,6 +119,8 @@ func (p *concurrencyProvider) Stream(ctx context.Context, _ companion.ModelReque
 	}()
 	select {
 	case <-ctx.Done():
+		p.cancelled.Add(1)
+		p.cancelErr <- ctx.Err()
 		return companion.AttemptResult{}, ctx.Err()
 	case <-p.release:
 	}
@@ -126,6 +131,44 @@ func (p *concurrencyProvider) Stream(ctx context.Context, _ companion.ModelReque
 		Finish: companion.FinishStop,
 		Usage:  companion.Usage{InputTokens: 2, OutputTokens: 2, TotalTokens: 4},
 	}, nil
+}
+
+func TestLoopCancelOwnerStopsOnlyMatchingProvider(t *testing.T) {
+	store := newConcurrencyStore(2)
+	store.claims[1].OwnerID = 2
+	provider := newConcurrencyProvider()
+	loop := NewLoop(nil, testLoopPolicy(2), testTurnBudget())
+	loop.Use(store, provider, nil, nil)
+
+	if got := loop.ClaimOnce(context.Background()); got != 2 {
+		t.Fatalf("claim %d want 2", got)
+	}
+	waitFor(t, "two active providers", func() bool { return provider.active.Load() == 2 })
+	if got := loop.Cancels().CancelOwner(1); got != 1 {
+		t.Fatalf("owner 1 cancels %d want 1", got)
+	}
+	waitFor(t, "owner 1 provider cancellation", func() bool {
+		return provider.cancelled.Load() == 1 && provider.active.Load() == 1
+	})
+	select {
+	case err := <-provider.cancelErr:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("provider cancellation error %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("provider did not report cancellation")
+	}
+	if got := loop.Cancels().CancelOwner(1); got != 0 {
+		t.Fatalf("repeated owner 1 cancels %d want 0", got)
+	}
+
+	close(provider.release)
+	waitFor(t, "owner 2 provider completion", func() bool {
+		return provider.completed.Load() == 2 && provider.active.Load() == 0
+	})
+	if got := provider.cancelled.Load(); got != 1 {
+		t.Fatalf("cancelled providers %d want 1", got)
+	}
 }
 
 func testLoopPolicy(maxConcurrent int) Policy {

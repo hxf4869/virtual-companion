@@ -89,20 +89,25 @@ func PolicyFrom(cfg config.Config) Policy {
 // Cancels holds in-process generation cancel funcs. Durable cancel is the DB.
 type Cancels struct {
 	mu sync.Mutex
-	fn map[int64]context.CancelFunc
+	fn map[int64]cancelEntry
+}
+
+type cancelEntry struct {
+	ownerID int64
+	cancel  context.CancelFunc
 }
 
 func NewCancels() *Cancels {
-	return &Cancels{fn: map[int64]context.CancelFunc{}}
+	return &Cancels{fn: map[int64]cancelEntry{}}
 }
 
-func (c *Cancels) Register(id int64, cancel context.CancelFunc) {
-	if c == nil || id <= 0 || cancel == nil {
+func (c *Cancels) Register(ownerID, id int64, cancel context.CancelFunc) {
+	if c == nil || ownerID <= 0 || id <= 0 || cancel == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.fn[id] = cancel
+	c.fn[id] = cancelEntry{ownerID: ownerID, cancel: cancel}
 }
 
 func (c *Cancels) Unregister(id int64) {
@@ -119,13 +124,38 @@ func (c *Cancels) Cancel(id int64) bool {
 		return false
 	}
 	c.mu.Lock()
-	fn := c.fn[id]
+	entry, ok := c.fn[id]
+	if ok {
+		delete(c.fn, id)
+	}
 	c.mu.Unlock()
-	if fn == nil {
+	if !ok {
 		return false
 	}
-	fn()
+	entry.cancel()
 	return true
+}
+
+// CancelOwner removes and cancels only the owner's active in-process calls.
+// The registry is bounded by the worker's configured generation concurrency;
+// durable cancellation remains the database's responsibility.
+func (c *Cancels) CancelOwner(ownerID int64) int {
+	if c == nil || ownerID <= 0 {
+		return 0
+	}
+	c.mu.Lock()
+	toCancel := make([]context.CancelFunc, 0)
+	for id, entry := range c.fn {
+		if entry.ownerID == ownerID {
+			delete(c.fn, id)
+			toCancel = append(toCancel, entry.cancel)
+		}
+	}
+	c.mu.Unlock()
+	for _, cancel := range toCancel {
+		cancel()
+	}
+	return len(toCancel)
 }
 
 // Loop is the single worker claim/dispatch loop (PlaneJobs).

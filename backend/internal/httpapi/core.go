@@ -75,6 +75,7 @@ type CompanionStore interface {
 
 	LookupIdentity(ctx context.Context, username string) (postgres.Identity, bool, error)
 	RequestAccountDeletion(ctx context.Context, owner int64) error
+	RecordAccountDeletionCancelSignals(ctx context.Context, owner int64, count int) error
 	DeletionIntentActive(ctx context.Context, owner int64) (bool, error)
 	DeleteAccount(ctx context.Context, owner int64) error
 

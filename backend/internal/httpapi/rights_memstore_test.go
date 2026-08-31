@@ -496,6 +496,10 @@ func (m *memStore) RequestAccountDeletion(context.Context, int64) error {
 	return nil
 }
 
+func (m *memStore) RecordAccountDeletionCancelSignals(context.Context, int64, int) error {
+	return nil
+}
+
 func (m *memStore) DeletionIntentActive(context.Context, int64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

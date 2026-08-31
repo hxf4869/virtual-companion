@@ -1,12 +1,17 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/hxf4869/virtual-companion/internal/jobs"
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 func TestMemoryCandidateLifecycle(t *testing.T) {
@@ -167,16 +172,135 @@ func TestIncognitoPrefAndReportAndExport(t *testing.T) {
 	assertEnvelope(t, again, "NOT_FOUND_OR_FORBIDDEN")
 }
 
-func TestAccountDeleteRequiresPassword(t *testing.T) {
+type deletionTrackingStore struct {
+	*memStore
+	mu             sync.Mutex
+	events         []string
+	cancelSignals  []int
+	recordErr      error
+	deleteFailures int
+	deleteCalls    int
+}
+
+func (s *deletionTrackingStore) RequestAccountDeletion(ctx context.Context, owner int64) error {
+	s.mu.Lock()
+	s.events = append(s.events, "intent")
+	s.mu.Unlock()
+	return s.memStore.RequestAccountDeletion(ctx, owner)
+}
+
+func (s *deletionTrackingStore) RecordAccountDeletionCancelSignals(_ context.Context, _ int64, count int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, "record")
+	s.cancelSignals = append(s.cancelSignals, count)
+	return s.recordErr
+}
+
+func (s *deletionTrackingStore) event(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, name)
+}
+
+func (s *deletionTrackingStore) DeleteAccount(ctx context.Context, owner int64) error {
+	s.mu.Lock()
+	s.deleteCalls++
+	if s.deleteFailures > 0 {
+		s.deleteFailures--
+		s.mu.Unlock()
+		return postgres.ErrInvalid
+	}
+	s.mu.Unlock()
+	return s.memStore.DeleteAccount(ctx, owner)
+}
+
+func TestAccountDeletePersistsIntentThenCancelsOwner(t *testing.T) {
 	t.Parallel()
-	s := newCoreServer(t, "full", newMemStore())
+	store := &deletionTrackingStore{memStore: newMemStore(), deleteFailures: 1}
+	s := newCoreServer(t, "full", store)
+	cancels := jobs.NewCancels()
+	ownerA1, cancelA1 := context.WithCancel(context.Background())
+	ownerA2, cancelA2 := context.WithCancel(context.Background())
+	ownerB, cancelB := context.WithCancel(context.Background())
+	cancels.Register(1, 11, func() { store.event("cancel-a1"); cancelA1() })
+	cancels.Register(1, 12, func() { store.event("cancel-a2"); cancelA2() })
+	cancels.Register(2, 21, cancelB)
+	s.core.Cancels = cancels
+
 	wrong := doJSON(t, s, http.MethodDelete, "/api/v1/auth/account", `{"currentPassword":"wrong"}`, 1)
 	if wrong.Code != http.StatusNotFound {
 		t.Fatalf("wrong %d", wrong.Code)
 	}
+	first := doJSON(t, s, http.MethodDelete, "/api/v1/auth/account", `{"currentPassword":"`+testPassword+`"}`, 1)
+	if first.Code != http.StatusBadRequest {
+		t.Fatalf("first delete %d %s", first.Code, first.Body.String())
+	}
 	ok := doJSON(t, s, http.MethodDelete, "/api/v1/auth/account", `{"currentPassword":"`+testPassword+`"}`, 1)
 	if ok.Code != http.StatusOK {
-		t.Fatalf("delete %d %s", ok.Code, ok.Body.String())
+		t.Fatalf("retried delete %d %s", ok.Code, ok.Body.String())
+	}
+	for name, ctx := range map[string]context.Context{"owner A generation 1": ownerA1, "owner A generation 2": ownerA2} {
+		select {
+		case <-ctx.Done():
+		default:
+			t.Fatalf("%s was not cancelled", name)
+		}
+	}
+	select {
+	case <-ownerB.Done():
+		t.Fatal("owner B was cancelled")
+	default:
+	}
+	store.mu.Lock()
+	events := append([]string(nil), store.events...)
+	counts := append([]int(nil), store.cancelSignals...)
+	store.mu.Unlock()
+	if len(events) != 6 || events[0] != "intent" || events[3] != "record" || events[4] != "intent" || events[5] != "record" {
+		t.Fatalf("deletion order %v", events)
+	}
+	if len(counts) != 2 || counts[0] != 2 || counts[1] != 0 {
+		t.Fatalf("recorded cancel signals %v want [2 0]", counts)
+	}
+	if got := cancels.CancelOwner(1); got != 0 {
+		t.Fatalf("repeated owner A cancels %d want 0", got)
+	}
+	if got := cancels.CancelOwner(2); got != 1 {
+		t.Fatalf("owner B cancels %d want 1", got)
+	}
+}
+
+func TestAccountDeleteRecordFailureKeepsDurableIntent(t *testing.T) {
+	t.Parallel()
+	store := &deletionTrackingStore{memStore: newMemStore(), recordErr: postgres.ErrInvalid}
+	s := newCoreServer(t, "full", store)
+	cancels := jobs.NewCancels()
+	providerCtx, cancelProvider := context.WithCancel(context.Background())
+	cancels.Register(1, 11, cancelProvider)
+	s.core.Cancels = cancels
+
+	rec := doJSON(t, s, http.MethodDelete, "/api/v1/auth/account", `{"currentPassword":"`+testPassword+`"}`, 1)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("delete %d %s", rec.Code, rec.Body.String())
+	}
+	active, err := store.DeletionIntentActive(context.Background(), 1)
+	if err != nil || !active {
+		t.Fatalf("durable intent active=%v err=%v", active, err)
+	}
+	select {
+	case <-providerCtx.Done():
+	default:
+		t.Fatal("provider was not cancelled before recording")
+	}
+	store.mu.Lock()
+	counts := append([]int(nil), store.cancelSignals...)
+	deleteCalls := store.deleteCalls
+	store.mu.Unlock()
+	if len(counts) != 1 || counts[0] != 1 {
+		t.Fatalf("record attempts %v want [1]", counts)
+	}
+	if deleteCalls != 0 || store.deleted {
+		t.Fatalf("account delete advanced after record failure: calls=%d deleted=%v", deleteCalls, store.deleted)
 	}
 }
 
