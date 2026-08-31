@@ -284,6 +284,19 @@ func operation(path string) string {
 		if strings.HasPrefix(path, "/api/v1/realtime/streams/") {
 			return "realtime_stream"
 		}
+		if strings.HasSuffix(path, "/generations") {
+			return "generation_send"
+		}
+		if strings.HasPrefix(path, "/api/v1/generations/") {
+			switch {
+			case strings.HasSuffix(path, "/cancel"):
+				return "generation_cancel"
+			case strings.HasSuffix(path, "/snapshot"):
+				return "generation_snapshot"
+			case strings.HasSuffix(path, "/feedback"):
+				return "generation_feedback"
+			}
+		}
 		if strings.HasPrefix(path, "/api/v1/relationships/") {
 			if strings.HasSuffix(path, "/deactivate") {
 				return "relationship_deactivate"
@@ -328,15 +341,6 @@ func operation(path string) string {
 		}
 		if strings.HasPrefix(path, "/api/v1/auth/sessions/") {
 			return "auth_session"
-		}
-		if strings.HasSuffix(path, "/generations") {
-			return "generation_send"
-		}
-		if strings.HasSuffix(path, "/cancel") {
-			return "generation_cancel"
-		}
-		if strings.HasSuffix(path, "/snapshot") {
-			return "generation_snapshot"
 		}
 		if strings.HasSuffix(path, "/feedback") {
 			return "generation_feedback"

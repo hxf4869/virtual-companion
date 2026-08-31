@@ -398,7 +398,15 @@
             </view>
 
             <view v-if="sendError" class="chat-block-error" data-testid="chat-send-error" role="alert">
-              <text>消息发送失败，请重试</text>
+              <text>{{ sendErrorText }}</text>
+              <button
+                v-if="sendErrorCode === 'AGE_VERIFICATION_REQUIRED'"
+                class="btn-secondary"
+                data-testid="chat-age-required"
+                @click="goTo('/pages/age/age')"
+              >
+                去完成成年核验
+              </button>
             </view>
             <view v-if="actionError" class="chat-block-error" data-testid="chat-action-error" role="alert">
               <text>操作未成功，请重试</text>
@@ -519,7 +527,7 @@ import { companionHeaderName } from "@/domain/companion-presentation";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import type { RealtimeDeps } from "@/api/realtime";
-import { asFeedbackKind } from "@/api/chat";
+import { asFeedbackKind, ChatHttpError } from "@/api/chat";
 import type { ConversationListItem } from "@/api/chat";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import AppIcon from "@/design-system/AppIcon.vue";
@@ -552,6 +560,7 @@ export default defineComponent({
     const inputText = ref("");
     const initError = ref(false);
     const sendError = ref(false);
+    const sendErrorCode = ref<string | null>(null);
     const actionError = ref(false);
     const relationshipActivateError = ref(false);
     const conversationOpenError = ref(false);
@@ -718,6 +727,11 @@ export default defineComponent({
     const canRetry = computed(
       () => store.phase === "failed" && store.pendingUserContent.trim().length > 0,
     );
+    const sendErrorText = computed(() =>
+      sendErrorCode.value === "AGE_VERIFICATION_REQUIRED"
+        ? "发送前需要先完成成年核验。"
+        : "消息发送失败，请重试",
+    );
 
     function markdownBlocks(content: string) {
       return parseSafeMarkdown(content ?? "");
@@ -805,10 +819,12 @@ export default defineComponent({
       if (!canRetry.value || generationStarting.value) return;
       const text = store.pendingUserContent;
       sendError.value = false;
+      sendErrorCode.value = null;
       try {
         await store.send(transport, deps, text);
-      } catch {
+      } catch (error) {
         sendError.value = true;
+        sendErrorCode.value = error instanceof ChatHttpError ? error.code ?? null : null;
         return;
       }
       if (store.phase === "completed") {
@@ -825,12 +841,14 @@ export default defineComponent({
       }
       inputText.value = "";
       sendError.value = false;
+      sendErrorCode.value = null;
       try {
         await store.send(transport, deps, text);
-      } catch {
+      } catch (error) {
         // 请求未被接受：恢复草稿，给出可重试的显式失败。
         inputText.value = text;
         sendError.value = true;
+        sendErrorCode.value = error instanceof ChatHttpError ? error.code ?? null : null;
         return;
       }
       if (store.phase === "failed" && !store.generationId) {
@@ -1318,6 +1336,8 @@ export default defineComponent({
       serviceHint,
       statusText,
       sendError,
+      sendErrorCode,
+      sendErrorText,
       actionError,
       relationshipActivateError,
       conversationOpenError,

@@ -219,6 +219,22 @@ describe("generation request options", () => {
     expect(result).toBeNull();
   });
 
+  it("preserves the adult-verification gate instead of hiding it as a generic 403", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 403,
+      json: { code: "AGE_VERIFICATION_REQUIRED", message: "adult verification required" },
+    });
+
+    const request = sendGeneration(transport, "7", "key-abc", "Hello");
+
+    await expect(request).rejects.toMatchObject({
+      status: 403,
+      kind: "client",
+      code: "AGE_VERIFICATION_REQUIRED",
+    });
+  });
+
   it("throws on 500", async () => {
     const { transport } = recorder({
       ok: false,

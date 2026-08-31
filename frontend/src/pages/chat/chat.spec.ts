@@ -8,6 +8,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPage from "./chat.vue";
+import { ChatHttpError } from "@/api/chat";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
@@ -408,6 +409,31 @@ describe("chat page glue（纠偏式重写）", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(true);
+    expect((input.element as HTMLInputElement).value).toBe("这条不该丢");
+    wrapper.unmount();
+  });
+
+  it("SEND: explains the adult-verification gate and offers the verification entry", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.conversationId = "1";
+    vi.spyOn(store, "send").mockRejectedValue(
+      new ChatHttpError(403, "client", "AGE_VERIFICATION_REQUIRED"),
+    );
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("这条不该丢");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain(
+      "发送前需要先完成成年核验",
+    );
+    expect(wrapper.find('[data-testid="chat-age-required"]').text()).toContain(
+      "去完成成年核验",
+    );
     expect((input.element as HTMLInputElement).value).toBe("这条不该丢");
     wrapper.unmount();
   });

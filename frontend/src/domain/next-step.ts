@@ -5,6 +5,8 @@ export const REQUIRED_CONSENT_TYPES = [
   "SERVICE_TERMS",
   "PRIVACY_POLICY",
   "AI_CONTENT_NOTICE",
+  "THIRD_PARTY_MODEL_PROCESSING",
+  "SENSITIVE_DATA_PROCESSING",
 ] as const;
 
 export type NextStepKind = "login" | "age" | "consent" | "companion" | "ready";
@@ -49,7 +51,7 @@ export function resolveNextStep(input: NextStepInput): NextStep {
       return {
         kind: "consent",
         href: "/pages/consent/consent",
-        copy: "还需要确认服务协议和隐私说明",
+        copy: "还需要确认服务协议、隐私与模型处理说明",
         action: "去确认",
       };
     }

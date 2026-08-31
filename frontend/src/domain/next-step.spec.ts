@@ -7,7 +7,13 @@ const READY = {
   ageKnown: true,
   ageState: "ADULT_VERIFIED",
   consentKnown: true,
-  grantedTypes: ["SERVICE_TERMS", "PRIVACY_POLICY", "AI_CONTENT_NOTICE"],
+  grantedTypes: [
+    "SERVICE_TERMS",
+    "PRIVACY_POLICY",
+    "AI_CONTENT_NOTICE",
+    "THIRD_PARTY_MODEL_PROCESSING",
+    "SENSITIVE_DATA_PROCESSING",
+  ],
   hasCompanion: true,
 } as const;
 
@@ -48,6 +54,16 @@ describe("resolveNextStep (§8.1 first-run)", () => {
     expect(step.kind).toBe("consent");
     expect(step.href).toBe("/pages/consent/consent");
     expect(step.copy).toContain("协议");
+  });
+
+  it("keeps the consent step until model and sensitive-data processing are granted", () => {
+    const step = resolveNextStep({
+      ...READY,
+      grantedTypes: ["SERVICE_TERMS", "PRIVACY_POLICY", "AI_CONTENT_NOTICE"],
+    });
+
+    expect(step.kind).toBe("consent");
+    expect(step.copy).toContain("模型处理");
   });
 
   it("points to the unified companion creation flow when no companion exists", () => {

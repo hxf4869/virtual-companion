@@ -21,12 +21,14 @@ export type ChatHttpErrorKind = "unauthorized" | "server" | "client" | "parse";
 export class ChatHttpError extends Error {
   readonly status: number;
   readonly kind: ChatHttpErrorKind;
+  readonly code?: string;
 
-  constructor(status: number, kind: ChatHttpErrorKind) {
+  constructor(status: number, kind: ChatHttpErrorKind, code?: string) {
     super(`chat request failed with status ${status} (${kind})`);
     this.name = "ChatHttpError";
     this.status = status;
     this.kind = kind;
+    this.code = code;
   }
 }
 
@@ -143,6 +145,12 @@ function classifyStatus(status: number): ChatHttpErrorKind {
   return "client";
 }
 
+function apiErrorCode(json: unknown): string | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  const code = (json as Record<string, unknown>).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 /**
  * Throw the typed error for a non-OK, non-existence-hidden response.
  * Existence-hidden statuses (403/404) pass through silently.
@@ -151,8 +159,14 @@ function guardResult(r: ChatApiResponse): void {
   if (r.ok) {
     return;
   }
+  const code = apiErrorCode(r.json);
+  // The generation admission gate is an actionable product state, not an
+  // existence-hidden owner miss. Preserve its stable code for the page.
+  if (r.status === 403 && code === "AGE_VERIFICATION_REQUIRED") {
+    throw new ChatHttpError(r.status, classifyStatus(r.status), code);
+  }
   if (!isExistenceHidden(r.status)) {
-    throw new ChatHttpError(r.status, classifyStatus(r.status));
+    throw new ChatHttpError(r.status, classifyStatus(r.status), code);
   }
 }
 

@@ -23,7 +23,13 @@ const AUTHED: GateSnapshot = {
   ageState: "ADULT_VERIFIED",
   consentKnown: true,
   consentLoadFailed: false,
-  grantedTypes: ["SERVICE_TERMS", "PRIVACY_POLICY", "AI_CONTENT_NOTICE"],
+  grantedTypes: [
+    "SERVICE_TERMS",
+    "PRIVACY_POLICY",
+    "AI_CONTENT_NOTICE",
+    "THIRD_PARTY_MODEL_PROCESSING",
+    "SENSITIVE_DATA_PROCESSING",
+  ],
 };
 
 const ANON: GateSnapshot = {

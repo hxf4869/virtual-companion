@@ -85,6 +85,21 @@ func TestRequestIDEchoAndSanitize(t *testing.T) {
 	}
 }
 
+func TestOperationClassifiesGenerationRoutesBeforeConversationRoutes(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"/api/v1/conversations/1/generations": "generation_send",
+		"/api/v1/generations/2/cancel":        "generation_cancel",
+		"/api/v1/generations/2/snapshot":      "generation_snapshot",
+		"/api/v1/generations/2/feedback":      "generation_feedback",
+	}
+	for path, want := range cases {
+		if got := operation(path); got != want {
+			t.Errorf("operation(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestUnmappedAndWritesAreNotRegistered(t *testing.T) {
 	t.Parallel()
 	s := newServer(t, staticProbes{live: true, ready: true})

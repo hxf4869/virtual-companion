@@ -155,6 +155,8 @@ describe("login page glue (P2-19 component test)", () => {
               { consentId: "1", consentType: "SERVICE_TERMS", version: "2026-08", granted: true, grantedAt: "t" },
               { consentId: "2", consentType: "PRIVACY_POLICY", version: "2026-08", granted: true, grantedAt: "t" },
               { consentId: "3", consentType: "AI_CONTENT_NOTICE", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "4", consentType: "THIRD_PARTY_MODEL_PROCESSING", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "5", consentType: "SENSITIVE_DATA_PROCESSING", version: "2026-08", granted: true, grantedAt: "t" },
             ],
           };
         }
