@@ -9,10 +9,8 @@
 # Usage:  bash infra/db/run-upgrade-test.sh
 set -euo pipefail
 
-# Same frozen image as run-rls-tests.sh; referenced by TAG because this
-# host's registry path mangles the digest manifest (verified identical:
-# image id 12a379b47ad6 for both refs).
-IMAGE="pgvector/pgvector:0.8.5-pg18"
+# Same frozen image and digest as run-rls-tests.sh.
+IMAGE="pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0"
 DB_NAME="vc"
 DB_USER="postgres"
 DB_PASSWORD="vc"

@@ -9,7 +9,8 @@
 #      (alice with business rows; dave with the FULL five-class footprint:
 #       account / message / memory / vector / export record),
 #   2. ephemeral MinIO (loopback, random port) with synthetic export objects
-#      under the REAL backend key layout exports/{ownerUserId}/{exportId}.json
+#      under the REAL backend key layout
+#      exports/{ownerUserId}/{exportId}-{16-lowercase-hex}.json
 #      (alice 3, dave 2, carol 2),
 #   3. pre-backup deletion of carol: account tombstoned AND her object prefix
 #      purged from the source bucket (what the production delete flow does),
@@ -70,8 +71,10 @@ LOG_DIR="${VC_DB_LOG_DIR:-$(mktemp -d /tmp/vc-db-logs.XXXXXX)}"
 DRILL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/vc-restore-drill.XXXXXX")"   # lives outside the repo, removed on exit
 BACKUP_DIR="$DRILL_ROOT/backups"
 MANIFEST_DIR="$DRILL_ROOT/manifests"   # != BACKUP_DIR by construction
+MC_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vc-restore-drill-mc.XXXXXX")"
 export DRILL_PASSPHRASE
-mkdir -p "$LOG_DIR" "$BACKUP_DIR" "$MANIFEST_DIR"
+mkdir -p "$LOG_DIR" "$BACKUP_DIR" "$MANIFEST_DIR" "$MC_SECRET_DIR"
+chmod 700 "$MC_SECRET_DIR"
 echo "log dir: $LOG_DIR"
 
 command -v python3 >/dev/null 2>&1 || command -v /usr/bin/python3 >/dev/null 2>&1 \
@@ -98,7 +101,7 @@ cleanup() {
     for c in "$CID_PG" "$CID_MINIO_SRC" "$CID_MINIO_DST"; do
         [ -n "$c" ] && docker rm -f "$c" >/dev/null 2>&1 || true
     done
-    rm -rf "$DRILL_ROOT"
+    rm -rf "$DRILL_ROOT" "$MC_SECRET_DIR"
 }
 trap cleanup EXIT
 
@@ -117,13 +120,27 @@ wait_ready() { # $1 = container
     exit 3
 }
 
-# dockerized mc helper: alias $1 at host port $2, $DRILL_ROOT mounted /drill
+# dockerized mc helper: credentials stay in a 0600 read-only file, never in
+# docker argv or Config.Env. Alias $1 points at host port $2.
 mc_with() { # $1 alias  $2 host port  $3.. mc args
-    local alias="$1" port="$2"; shift 2
-    docker run --rm \
-        -e "MC_HOST_${alias}=http://${MINIO_USER}:${MINIO_PASS}@host.docker.internal:${port}" \
+    local alias="$1" port="$2" secret_file="$MC_SECRET_DIR/$1-$2"; shift 2
+    printf '%s\n%s\n%s\n' \
+        "http://host.docker.internal:${port}" "$MINIO_USER" "$MINIO_PASS" > "$secret_file"
+    chmod 600 "$secret_file"
+    docker run --rm --entrypoint /bin/sh \
+        -v "$secret_file:/run/secrets/vc-mc:ro" \
         -v "$DRILL_ROOT:/drill" \
-        "$MC_IMAGE" "$@"
+        "$MC_IMAGE" -c '
+set -eu
+{
+    IFS= read -r mc_endpoint
+    IFS= read -r mc_access_key
+    IFS= read -r mc_secret_key
+} < /run/secrets/vc-mc
+mc alias set "$1" "$mc_endpoint" "$mc_access_key" "$mc_secret_key" >/dev/null
+shift
+exec mc "$@"
+' vc-restore-mc "$alias" "$@"
 }
 
 wait_minio() { # $1 alias  $2 host port
@@ -237,7 +254,7 @@ DAVE_ID="$(docker exec "$CID_PG" psql -U "$DB_USER" -d "$DB_NAME" -t -A -c \
     "SELECT id FROM vc.identity_account WHERE username = 'dave-bk'")"
 echo "  seeded: alice=$ALICE_ID carol=$CAROL_ID dave=$DAVE_ID (see $LOG_DIR/seed.log)"
 
-echo "== [3/14] synthetic export objects (real layout exports/{ownerUserId}/{exportId}.json) =="
+echo "== [3/14] synthetic export objects (exports/{ownerUserId}/{exportId}-{attempt}.json) =="
 ALICE_EXPORTS=("11111111-1111-4111-8111-111111111111"
                "11111111-1111-4111-8111-111111111112"
                "11111111-1111-4111-8111-111111111113")
@@ -248,17 +265,17 @@ CAROL_EXPORTS=("33333333-3333-4333-8333-333333333331"
 for eid in "${ALICE_EXPORTS[@]}"; do
     mkdir -p "$DRILL_ROOT/objects-src/exports/$ALICE_ID"
     printf 'synthetic export owner=%s export=%s\n' "$ALICE_ID" "$eid" \
-        > "$DRILL_ROOT/objects-src/exports/$ALICE_ID/$eid.json"
+        > "$DRILL_ROOT/objects-src/exports/$ALICE_ID/$eid-1111111111111111.json"
 done
 for eid in "${DAVE_EXPORTS[@]}"; do
     mkdir -p "$DRILL_ROOT/objects-src/exports/$DAVE_ID"
     printf 'synthetic export owner=%s export=%s\n' "$DAVE_ID" "$eid" \
-        > "$DRILL_ROOT/objects-src/exports/$DAVE_ID/$eid.json"
+        > "$DRILL_ROOT/objects-src/exports/$DAVE_ID/$eid-2222222222222222.json"
 done
 for eid in "${CAROL_EXPORTS[@]}"; do
     mkdir -p "$DRILL_ROOT/objects-src/exports/$CAROL_ID"
     printf 'synthetic export owner=%s export=%s\n' "$CAROL_ID" "$eid" \
-        > "$DRILL_ROOT/objects-src/exports/$CAROL_ID/$eid.json"
+        > "$DRILL_ROOT/objects-src/exports/$CAROL_ID/$eid-3333333333333333.json"
 done
 mc_with src "$SRC_PORT" mb "src/$BUCKET" >>"$LOG_DIR/minio.log" 2>&1
 mc_with src "$SRC_PORT" mirror --overwrite /drill/objects-src "src/$BUCKET" >>"$LOG_DIR/minio.log" 2>&1
@@ -291,13 +308,17 @@ echo "  carol account deleted + objects purged (5 objects remain: alice 3 / dave
 
 run_daily_backup() { # $@ extra env assignments (KEY=VAL ...)
     local ep="${VC_DRILL_S3_ENDPOINT:-http://127.0.0.1:$SRC_PORT}"
-    env "$@" \
-        VC_BACKUP_DIR="$BACKUP_DIR" VC_BACKUP_MANIFEST_DIR="$MANIFEST_DIR" \
-        VC_BACKUP_PG_CONTAINER="$CID_PG" VC_BACKUP_PG_USER="$DB_USER" \
-        VC_BACKUP_S3_ENDPOINT="$ep" \
-        VC_BACKUP_S3_ACCESS_KEY="$MINIO_USER" VC_BACKUP_S3_SECRET_KEY="$MINIO_PASS" \
-        VC_BACKUP_S3_BUCKET="$BUCKET" \
-        bash "$BACKUP_SCRIPT"
+    (
+        export VC_BACKUP_DIR="$BACKUP_DIR" VC_BACKUP_MANIFEST_DIR="$MANIFEST_DIR"
+        export VC_BACKUP_PG_CONTAINER="$CID_PG" VC_BACKUP_PG_USER="$DB_USER"
+        export VC_BACKUP_S3_ENDPOINT="$ep"
+        export VC_BACKUP_S3_ACCESS_KEY="$MINIO_USER" VC_BACKUP_S3_SECRET_KEY="$MINIO_PASS"
+        export VC_BACKUP_S3_BUCKET="$BUCKET"
+        for assignment in "$@"; do
+            export "$assignment"
+        done
+        exec bash "$BACKUP_SCRIPT"
+    )
 }
 
 echo "== [5/14] daily backup run #1 (FULL, env passphrase) =="
@@ -391,9 +412,12 @@ if find "$DRILL_ROOT/restore" -name 'deletion-tombstone*' | grep -q .; then
 fi
 # gate D (part 1, scenario a): the archived object set is EXACTLY alice 3 +
 # dave 2 — carol's pre-backup-deleted objects are NOT in the backup at all
-EXPECTED_KEYS="$(printf 'exports/%s/%s.json\n' \
-    "$ALICE_ID" "${ALICE_EXPORTS[0]}" "$ALICE_ID" "${ALICE_EXPORTS[1]}" "$ALICE_ID" "${ALICE_EXPORTS[2]}" \
-    "$DAVE_ID" "${DAVE_EXPORTS[0]}" "$DAVE_ID" "${DAVE_EXPORTS[1]}" | sort)"
+EXPECTED_KEYS="$({
+    printf 'exports/%s/%s-1111111111111111.json\n' \
+        "$ALICE_ID" "${ALICE_EXPORTS[0]}" "$ALICE_ID" "${ALICE_EXPORTS[1]}" "$ALICE_ID" "${ALICE_EXPORTS[2]}"
+    printf 'exports/%s/%s-2222222222222222.json\n' \
+        "$DAVE_ID" "${DAVE_EXPORTS[0]}" "$DAVE_ID" "${DAVE_EXPORTS[1]}"
+} | sort)"
 ARCHIVED_KEYS="$(cd "$DRILL_ROOT/restore/objects" && find . -type f | sed 's#^\./##' | sort)"
 if [ "$ARCHIVED_KEYS" != "$EXPECTED_KEYS" ]; then
     echo "FAIL: archived object set differs from expected (scenario a broken?)" >&2
@@ -513,7 +537,7 @@ while IFS= read -r acc; do
         || echo "  note: prefix exports/$acc/ already absent (account=$acc)"
 done <<<"$TOMBSTONE_ACCOUNTS"
 FINAL_KEYS="$(bucket_keys dst "$DST_PORT")"
-EXPECTED_FINAL="$(printf 'exports/%s/%s.json\n' \
+EXPECTED_FINAL="$(printf 'exports/%s/%s-1111111111111111.json\n' \
     "$ALICE_ID" "${ALICE_EXPORTS[0]}" "$ALICE_ID" "${ALICE_EXPORTS[1]}" "$ALICE_ID" "${ALICE_EXPORTS[2]}" | sort)"
 # gate D (part 2, scenario a) + gate E (scenario b): carol AND dave prefixes
 # gone, alice's 3 exactly remain

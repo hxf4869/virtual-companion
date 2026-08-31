@@ -40,7 +40,7 @@
 #                                      stack (see -p / vars below)
 #   VC_BACKUP_PG_CONTAINER       container name for variant 1
 #   VC_BACKUP_COMPOSE_DIR        default <repo>/ops/deploy
-#   VC_BACKUP_COMPOSE_PROJECT    default vc-local (or -p flag)
+#   VC_BACKUP_COMPOSE_PROJECT    default deploy (or -p flag)
 #   VC_BACKUP_COMPOSE_ENV_FILE   default .env.local (relative to compose dir)
 #   VC_BACKUP_COMPOSE_SERVICE    default db
 #   VC_BACKUP_PG_USER            default vc_migrator (deploy bootstrap superuser;
@@ -84,7 +84,7 @@ MC_IMAGE_DEFAULT="minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf9
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-COMPOSE_PROJECT="${VC_BACKUP_COMPOSE_PROJECT:-vc-local}"
+COMPOSE_PROJECT="${VC_BACKUP_COMPOSE_PROJECT:-deploy}"
 while getopts "p:h" opt; do
     case "$opt" in
         p) COMPOSE_PROJECT="$OPTARG" ;;
@@ -175,7 +175,9 @@ elif [ "$S3_SET" -lt 4 ]; then
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/vc-daily-backup.XXXXXX")"
-cleanup() { rm -rf "$WORK"; }
+MC_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vc-daily-backup-mc.XXXXXX")"
+chmod 700 "$MC_SECRET_DIR"
+cleanup() { rm -rf "$WORK" "$MC_SECRET_DIR"; }
 trap cleanup EXIT
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -206,14 +208,15 @@ if [ "$OBJECT_MODE" = "FULL" ]; then
     # bucket.  Materialize it so the archive and object count still represent
     # an explicit, restorable zero-object snapshot.
     mkdir -p "$WORK/objects"
-    MC_SCHEME="http://"
-    MC_HOSTPART="${S3_ENDPOINT#http://}"
-    MC_SCHEME_BARE="${S3_ENDPOINT%%://*}"
-    if [ "$MC_SCHEME_BARE" = "https" ]; then MC_SCHEME="https://"; MC_HOSTPART="${S3_ENDPOINT#https://}"; fi
-    MC_HOST_URL="${MC_SCHEME}${S3_ACCESS_KEY}:${S3_SECRET_KEY}@${MC_HOSTPART}"
+    MC_ENDPOINT="$S3_ENDPOINT"
     MC_BIN=""
     if command -v mc >/dev/null 2>&1; then MC_BIN="mc"; fi
     if [ -n "$MC_BIN" ]; then
+        MC_SCHEME="http://"
+        MC_HOSTPART="${MC_ENDPOINT#http://}"
+        MC_SCHEME_BARE="${MC_ENDPOINT%%://*}"
+        if [ "$MC_SCHEME_BARE" = "https" ]; then MC_SCHEME="https://"; MC_HOSTPART="${MC_ENDPOINT#https://}"; fi
+        MC_HOST_URL="${MC_SCHEME}${S3_ACCESS_KEY}:${S3_SECRET_KEY}@${MC_HOSTPART}"
         OBJECTS_TARGET="$WORK/objects"              # local mc reaches 127.0.0.1 directly
         mc_run() { env MC_HOST_local="$MC_HOST_URL" "$MC_BIN" "$@"; }
     else
@@ -224,11 +227,32 @@ if [ "$OBJECT_MODE" = "FULL" ]; then
         if [ -n "$S3_DOCKER_NETWORK" ]; then
             MC_DOCKER_ARGS+=(--network "$S3_DOCKER_NETWORK")
         else
-            MC_HOST_URL="$(sed -E 's#@(127\.0\.0\.1|localhost)([:/])#@host.docker.internal\2#' <<<"$MC_HOST_URL")"
+            MC_ENDPOINT="$(sed -E 's#://(127\.0\.0\.1|localhost)([:/])#://host.docker.internal\2#' <<<"$MC_ENDPOINT")"
         fi
+        case "$MC_ENDPOINT$S3_ACCESS_KEY$S3_SECRET_KEY" in
+            *$'\n'*|*$'\r'*)
+                echo "FAIL: MinIO endpoint and credentials must be single-line values" >&2
+                exit 5
+                ;;
+        esac
+        MC_SECRET_FILE="$MC_SECRET_DIR/credentials"
+        printf '%s\n%s\n%s\n' "$MC_ENDPOINT" "$S3_ACCESS_KEY" "$S3_SECRET_KEY" > "$MC_SECRET_FILE"
+        chmod 600 "$MC_SECRET_FILE"
         OBJECTS_TARGET="/work/objects"
-        mc_run() { docker run "${MC_DOCKER_ARGS[@]}" -e MC_HOST_local="$MC_HOST_URL" \
-                    -v "$WORK:/work" "$MC_IMAGE" "$@"; }
+        MC_ENTRYPOINT='set -eu
+{
+    IFS= read -r mc_endpoint
+    IFS= read -r mc_access_key
+    IFS= read -r mc_secret_key
+} < /run/secrets/vc-mc
+mc alias set local "$mc_endpoint" "$mc_access_key" "$mc_secret_key" >/dev/null
+exec mc "$@"'
+        mc_run() {
+            docker run "${MC_DOCKER_ARGS[@]}" --entrypoint /bin/sh \
+                -v "$MC_SECRET_FILE:/run/secrets/vc-mc:ro" \
+                -v "$WORK:/work" "$MC_IMAGE" \
+                -c "$MC_ENTRYPOINT" vc-backup-mc "$@"
+        }
     fi
     # bucket must exist — an explicit hard error, never a silent empty export.
     # The message is deliberately STABLE and SANITIZED: no endpoint URL, no

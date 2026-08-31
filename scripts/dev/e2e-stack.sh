@@ -21,11 +21,19 @@ E2E_RELEASE_MODE="${E2E_RELEASE_MODE:-full}"
 E2E_MIGRATOR_DB_PASSWORD="e2e-only-migrator-password"
 E2E_RUNTIME_DB_PASSWORD="e2e-only-runtime-password"
 E2E_RELEASE_POLICY_VERSION="e2e-synthetic-v1"
+E2E_MINIO_ACCESS_KEY="e2e-minio-access"
+E2E_MINIO_SECRET_KEY="e2e-minio-secret-0123456789"
+E2E_MINIO_BUCKET="vc-e2e-exports"
 PG_IMAGE="pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0"
+MINIO_IMAGE="minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+MC_IMAGE="minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
 PG_CONTAINER="vc-e2e-pg-$$"
+MINIO_CONTAINER="vc-e2e-minio-$$"
 E2E_DOCKER_CONTEXT="${E2E_DOCKER_CONTEXT:-orbstack}"
 DOCKER=(docker --context "$E2E_DOCKER_CONTEXT")
 E2E_STACK_STATE_FILE="${E2E_STACK_STATE_FILE:-/tmp/vc-e2e-stack-$$.json}"
+E2E_SECRET_DIR=""
+MINIO_MC_SECRET_FILE=""
 PROVIDER_LOG="/tmp/vc-e2e-provider-$$.log"
 RUNTIME_LOG="/tmp/vc-e2e-runtime-$$.log"
 H5_LOG="/tmp/vc-e2e-h5-$$.log"
@@ -56,7 +64,7 @@ write_state() {
 
     umask 077
     if ! printf '%s\n' \
-        "{\"version\":2,\"supervisorPid\":$$,\"processGroups\":{\"provider\":${provider_pgid},\"runtime\":${runtime_pgid},\"h5\":${h5_pgid}},\"container\":\"${PG_CONTAINER}\",\"dockerContext\":\"${E2E_DOCKER_CONTEXT}\",\"keep\":${keep},\"releaseMode\":\"${E2E_RELEASE_MODE}\",\"releasePolicyVersion\":\"${E2E_RELEASE_POLICY_VERSION}\"}" \
+        "{\"version\":2,\"supervisorPid\":$$,\"processGroups\":{\"provider\":${provider_pgid},\"runtime\":${runtime_pgid},\"h5\":${h5_pgid}},\"container\":\"${PG_CONTAINER}\",\"containers\":[\"${PG_CONTAINER}\",\"${MINIO_CONTAINER}\"],\"dockerContext\":\"${E2E_DOCKER_CONTEXT}\",\"keep\":${keep},\"releaseMode\":\"${E2E_RELEASE_MODE}\",\"releasePolicyVersion\":\"${E2E_RELEASE_POLICY_VERSION}\"}" \
         >"$state_tmp"; then
         return 1
     fi
@@ -82,14 +90,18 @@ cleanup() {
         terminate_group "${H5_PID:-}"
         terminate_group "${RUNTIME_PID:-}"
         terminate_group "${PROVIDER_PID:-}"
-        "${DOCKER[@]}" rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
+        "${DOCKER[@]}" rm -f "$PG_CONTAINER" "$MINIO_CONTAINER" >/dev/null 2>&1 || true
         rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" "$GO_BINARY"
+        [ -z "$E2E_SECRET_DIR" ] || rm -rf -- "$E2E_SECRET_DIR"
     else
-        echo "keeping stack: pg($PG_CONTAINER) provider(:$E2E_PROVIDER_PORT) runtime(:$E2E_RUNTIME_PORT) h5(:$E2E_H5_PORT)" >&2
+        echo "keeping stack: pg($PG_CONTAINER) minio($MINIO_CONTAINER) provider(:$E2E_PROVIDER_PORT) runtime(:$E2E_RUNTIME_PORT) h5(:$E2E_H5_PORT)" >&2
     fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
+
+E2E_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vc-e2e-secrets.XXXXXX")"
+MINIO_MC_SECRET_FILE="$E2E_SECRET_DIR/minio-mc"
 
 if ! write_state; then
     echo "failed to create the E2E stack state file" >&2
@@ -124,6 +136,56 @@ if [ "$PG_READY" != "1" ]; then
     "${DOCKER[@]}" logs "$PG_CONTAINER" 2>&1 | tail -20 >&2
     exit 5
 fi
+
+echo "== isolated minio =="
+chmod 700 "$E2E_SECRET_DIR"
+printf '%s\n%s\n%s\n' \
+    "http://127.0.0.1:9000" "$E2E_MINIO_ACCESS_KEY" "$E2E_MINIO_SECRET_KEY" \
+    > "$MINIO_MC_SECRET_FILE"
+chmod 600 "$MINIO_MC_SECRET_FILE"
+"${DOCKER[@]}" rm -f "$MINIO_CONTAINER" >/dev/null 2>&1 || true
+"${DOCKER[@]}" run -d --name "$MINIO_CONTAINER" \
+    -p 127.0.0.1::9000 \
+    -e MINIO_ROOT_USER="$E2E_MINIO_ACCESS_KEY" \
+    -e MINIO_ROOT_PASSWORD="$E2E_MINIO_SECRET_KEY" \
+    "$MINIO_IMAGE" server /data >/dev/null
+MINIO_PORT="$("${DOCKER[@]}" port "$MINIO_CONTAINER" 9000/tcp | head -1 | sed 's/.*://')"
+case "$MINIO_PORT" in
+    ''|*[!0-9]*)
+        echo "failed to resolve the isolated MinIO port" >&2
+        exit 5
+        ;;
+esac
+MINIO_READY=0
+for _ in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:${MINIO_PORT}/minio/health/live" >/dev/null 2>&1; then
+        MINIO_READY=1
+        break
+    fi
+    sleep 1
+done
+if [ "$MINIO_READY" != "1" ]; then
+    echo "e2e minio never became ready; container logs:" >&2
+    "${DOCKER[@]}" logs "$MINIO_CONTAINER" 2>&1 | tail -20 >&2
+    exit 5
+fi
+"${DOCKER[@]}" run --rm --entrypoint /bin/sh \
+    --network "container:$MINIO_CONTAINER" \
+    -v "$MINIO_MC_SECRET_FILE:/run/secrets/vc-mc:ro" \
+    "$MC_IMAGE" -c '
+set -eu
+{
+    IFS= read -r mc_endpoint
+    IFS= read -r mc_access_key
+    IFS= read -r mc_secret_key
+} < /run/secrets/vc-mc
+mc alias set local "$mc_endpoint" "$mc_access_key" "$mc_secret_key" >/dev/null
+mc mb --ignore-existing "local/$1" >/dev/null
+' vc-e2e-mc "$E2E_MINIO_BUCKET"
+rm -f -- "$MINIO_MC_SECRET_FILE"
+rmdir "$E2E_SECRET_DIR"
+E2E_SECRET_DIR=""
+MINIO_MC_SECRET_FILE=""
 
 echo "== isolated migrator/runtime database roles =="
 "${DOCKER[@]}" exec -i \
@@ -225,6 +287,11 @@ export VC_HTTP_ORIGINS="http://127.0.0.1:${E2E_H5_PORT}"
 export VC_DB_DSN="postgres://vc_runtime_login:${E2E_RUNTIME_DB_PASSWORD}@127.0.0.1:${E2E_PG_PORT}/vc?sslmode=disable"
 export VC_OWNER_BINDING_SECRET="e2e-only-owner-binding-secret-0123456789abcdef"
 export VC_CRYPTO_REST_KEY="ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4="
+export VC_EXPORT_S3_ENDPOINT="http://127.0.0.1:${MINIO_PORT}"
+export VC_EXPORT_S3_ACCESS_KEY="$E2E_MINIO_ACCESS_KEY"
+export VC_EXPORT_S3_SECRET_KEY="$E2E_MINIO_SECRET_KEY"
+export VC_EXPORT_S3_BUCKET="$E2E_MINIO_BUCKET"
+export VC_HTTP_TRUST_PROXY_HEADERS=false
 export VC_SESSION_COOKIE_SECURE=false
 export VC_PROVIDER_ENABLED=true
 export VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true
@@ -359,7 +426,7 @@ curl -fsS "http://127.0.0.1:${E2E_H5_PORT}/" >/dev/null || {
     exit 4
 }
 
-echo "STACK_READY port_pg=$E2E_PG_PORT port_provider=$E2E_PROVIDER_PORT port_runtime=$E2E_RUNTIME_PORT port_h5=$E2E_H5_PORT pid_provider=$PROVIDER_PID pid_runtime=$RUNTIME_PID pid_h5=$H5_PID"
+echo "STACK_READY port_pg=$E2E_PG_PORT port_minio=$MINIO_PORT port_provider=$E2E_PROVIDER_PORT port_runtime=$E2E_RUNTIME_PORT port_h5=$E2E_H5_PORT pid_provider=$PROVIDER_PID pid_runtime=$RUNTIME_PID pid_h5=$H5_PID"
 while kill -0 "$PROVIDER_PID" 2>/dev/null \
     && kill -0 "$RUNTIME_PID" 2>/dev/null \
     && kill -0 "$H5_PID" 2>/dev/null; do

@@ -95,7 +95,8 @@ tar 内含 `db.dump`、`objects/`（FULL 模式）、`backup-manifest.txt`（时
     回退 `/usr/bin/python3`）。
 - PostgreSQL 走容器路径（deploy compose 的 db 不发布宿主端口）：
   - 默认：`docker compose -p <项目名> --env-file .env.local exec -T db ...`
-    （`VC_BACKUP_COMPOSE_DIR/PROJECT/ENV_FILE/SERVICE` 可调，项目名也可用 `-p` 参数）；
+    （项目名默认 `deploy`；`VC_BACKUP_COMPOSE_DIR/PROJECT/ENV_FILE/SERVICE` 可调，
+    项目名也可用 `-p` 参数）；
   - 或 `VC_BACKUP_PG_CONTAINER=<容器名>` 直接 `docker exec`；
   - `VC_BACKUP_PG_USER` 默认 `vc_migrator`（deploy bootstrap 超级用户；tombstone
     函数已 `REVOKE ... FROM PUBLIC`，只有 migration-owner 角色可执行）。
@@ -103,7 +104,9 @@ tar 内含 `db.dump`、`objects/`（FULL 模式）、`backup-manifest.txt`（时
   的，否则用 pinned digest 的 `minio/mc` 容器（loopback endpoint 自动改写为
   `host.docker.internal`）。MinIO 不发布宿主端口时，设
   `VC_BACKUP_S3_DOCKER_NETWORK=<compose-network>` 并使用容器服务 DNS endpoint
-  （Dogfood 默认：`vc-local_default` + `http://minio:9000`）。
+  （Dogfood 默认：`deploy_default` + `http://minio:9000`）。dockerized `mc` 从
+  0700 临时目录中的 0600 只读文件读取凭据；Docker 参数、容器 Config.Env 和
+  脱敏日志均不包含凭据值。
 
 ### 退出码契约（launchd `LastExitStatus` 判读）
 
@@ -162,7 +165,7 @@ WARNING 只会沉底，`LastExitStatus` 失败是唯一可靠可见的信号，�
 再开放读取」（全部合成数据，不连任何云对象存储）：
 
 1. 临时 PG（全量迁移 + 种子）+ 临时 MinIO；对象用**真实导出 key 布局**
-   `exports/{ownerUserId}/{exportId}.json`（与后端 V109 约定一致）：alice 3、
+   `exports/{ownerUserId}/{exportId}-{16位小写十六进制}.json`：alice 3、
    dave 2、carol 2；
 2. **备份前删除 carol**：账号注销 + 其对象前缀从源桶清除（等价生产删除流的
    对象清除）——备份 #1 由此根本不包含她的对象；

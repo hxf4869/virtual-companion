@@ -113,6 +113,11 @@ services:
       VC_CRYPTO_PREVIOUS_REST_KEY: ${VC_CRYPTO_PREVIOUS_REST_KEY:-}
       VC_CRYPTO_PREVIOUS_REST_KEY_ID: ${VC_CRYPTO_PREVIOUS_REST_KEY_ID:-}
       VC_CRYPTO_PREVIOUS_REST_KEY_VERSION: ${VC_CRYPTO_PREVIOUS_REST_KEY_VERSION:-0}
+      VC_EXPORT_S3_ENDPOINT: http://minio:9000
+      VC_EXPORT_S3_ACCESS_KEY: ${VC_EXPORT_S3_ACCESS_KEY:?set in .env}
+      VC_EXPORT_S3_SECRET_KEY: ${VC_EXPORT_S3_SECRET_KEY:?set in .env}
+      VC_EXPORT_S3_BUCKET: ${VC_EXPORT_S3_BUCKET:-vc-exports}
+      VC_HTTP_TRUST_PROXY_HEADERS: "true"
       # Provider/model credentials and routes are managed by the ADMIN page and
       # stored encrypted in PostgreSQL. The env bootstrap route stays disabled.
       VC_PROVIDER_ENABLED: "false"

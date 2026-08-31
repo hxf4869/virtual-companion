@@ -62,7 +62,7 @@
         <key>VC_BACKUP_MANIFEST_DIR</key>
         <string>/Users/OWNER/.virtualcompanion/deletion-manifests</string>
         <key>VC_BACKUP_COMPOSE_PROJECT</key>
-        <string>vc-local</string>
+        <string>deploy</string>
         <key>VC_BACKUP_COMPOSE_SERVICE</key>
         <string>db</string>
         <key>VC_BACKUP_PG_USER</key>

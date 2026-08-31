@@ -13,6 +13,7 @@ interface StackState {
   supervisorPid: number;
   processGroups: Record<ProcessGroupName, number | null>;
   container: string;
+  containers: string[];
   dockerContext: string;
   keep: boolean;
   releaseMode: "full" | "synthetic-eval";
@@ -48,8 +49,19 @@ function parseState(raw: string): StackState {
       || new Set(groupIds).size !== groupIds.length) {
     throw new Error("E2E stack state process targets are not distinct");
   }
-  if (candidate.container !== `vc-e2e-pg-${candidate.supervisorPid}`) {
+  const pgContainer = `vc-e2e-pg-${candidate.supervisorPid}`;
+  const minioContainer = `vc-e2e-minio-${candidate.supervisorPid}`;
+  if (candidate.container !== pgContainer) {
     throw new Error("E2E stack state container does not match its supervisor");
+  }
+  const containers = candidate.containers ?? [candidate.container];
+  if (!Array.isArray(containers)
+      || containers.length < 1
+      || containers.length > 2
+      || containers[0] !== pgContainer
+      || new Set(containers).size !== containers.length
+      || containers.some((container) => container !== pgContainer && container !== minioContainer)) {
+    throw new Error("E2E stack state has an invalid container list");
   }
   if (typeof candidate.dockerContext !== "string"
       || !/^[A-Za-z0-9_.-]+$/.test(candidate.dockerContext)) {
@@ -66,7 +78,7 @@ function parseState(raw: string): StackState {
       || !/^[A-Za-z0-9_.-]{1,64}$/.test(candidate.releasePolicyVersion)) {
     throw new Error("E2E stack state has an invalid release policy version");
   }
-  return candidate as StackState;
+  return { ...candidate, containers } as StackState;
 }
 
 function isMissing(error: unknown): boolean {
@@ -116,12 +128,14 @@ async function stopProcesses(state: StackState): Promise<void> {
   }
 }
 
-function removeContainer(state: StackState): void {
-  spawnSync(
-    "docker",
-    ["--context", state.dockerContext, "rm", "-f", state.container],
-    { stdio: "ignore" },
-  );
+function removeContainers(state: StackState): void {
+  for (const container of state.containers) {
+    spawnSync(
+      "docker",
+      ["--context", state.dockerContext, "rm", "-f", container],
+      { stdio: "ignore" },
+    );
+  }
 }
 
 function releaseGateSnapshot(state: StackState): string {
@@ -243,7 +257,7 @@ export default async function globalTeardown(): Promise<void> {
 
   if (!state.keep) {
     await stopProcesses(state);
-    removeContainer(state);
+    removeContainers(state);
     try {
       await unlink(stateFile);
     } catch (error) {

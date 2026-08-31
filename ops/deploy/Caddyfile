@@ -24,6 +24,7 @@
 	# API + realtime SSE (flush immediately; SSE must not buffer).
 	handle /api/* {
 		reverse_proxy runtime:8080 {
+			header_up X-Forwarded-For {http.request.remote.host}
 			flush_interval -1
 		}
 	}
@@ -31,7 +32,9 @@
 	# Health probes used by the Go Runtime console — never the wider actuator
 	# surface (for example metrics/prometheus).
 	handle /actuator/health* {
-		reverse_proxy runtime:8080
+		reverse_proxy runtime:8080 {
+			header_up X-Forwarded-For {http.request.remote.host}
+		}
 	}
 
 	# Hashed build assets: cache forever (filename changes on change).
