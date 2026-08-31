@@ -87,28 +87,38 @@ export default defineComponent({
 .vc-shell {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 520px;
   min-height: 100vh;
   min-height: 100dvh;
+  margin: 0 auto;
   background: var(--vc-env);
+  overflow-x: clip;
 }
 
-/* 浅色内容层：页面是一整面浅色内容区，无窗框装饰。 */
+/* 内容是一块连续织面；页面自己决定哪些信息需要升起成近白内容面。 */
 .vc-shell__main {
   flex: 1;
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: var(--vc-space-4) var(--vc-space-4)
-    calc(76px + env(safe-area-inset-bottom, 0px));
+  padding: var(--vc-space-4) clamp(14px, 4vw, 20px)
+    calc(88px + env(safe-area-inset-bottom, 0px));
   background: var(--vc-paper);
   color: var(--vc-ink);
 }
 
 @media (min-width: 768px) {
+  .vc-shell {
+    min-height: 100dvh;
+    border-right: 1px solid var(--vc-border-env);
+    border-left: 1px solid var(--vc-border-env);
+  }
+
   .vc-shell__main {
-    padding: var(--vc-space-6) var(--vc-space-6)
-      calc(84px + env(safe-area-inset-bottom, 0px));
+    padding: var(--vc-space-5) var(--vc-space-5)
+      calc(88px + env(safe-area-inset-bottom, 0px));
   }
 }
 </style>

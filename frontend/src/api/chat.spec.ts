@@ -18,8 +18,6 @@ import {
   renameConversation,
   sendGeneration,
   setMessageNoMemory,
-  listGenerationVersions,
-  selectGenerationVersion,
   wipeAllChats,
   type ChatTransport,
 } from "./chat";
@@ -168,39 +166,7 @@ describe("sendGeneration", () => {
   });
 });
 
-describe("generation versions (GEN-VER)", () => {
-  it("lists versions for a user message", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: [
-        { generationId: "55", selected: false, status: "COMPLETED" },
-        { generationId: "56", selected: true, status: "COMPLETED" },
-      ],
-    });
-
-    const rows = await listGenerationVersions(transport, "9");
-
-    expect(calls).toEqual([
-      { method: "GET", path: "/api/v1/messages/9/generation-versions" },
-    ]);
-    expect(rows).toHaveLength(2);
-    expect(rows[1]?.selected).toBe(true);
-  });
-
-  it("selects a version", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: { generationId: "55", selected: true, status: "COMPLETED" },
-    });
-
-    const row = await selectGenerationVersion(transport, "55");
-
-    expect(calls).toEqual([{ method: "POST", path: "/api/v1/generations/55/select" }]);
-    expect(row?.selected).toBe(true);
-  });
-
+describe("generation request options", () => {
   it("CHAT-MODE: sends an explicit non-AUTO mode in the body", async () => {
     const { transport, calls } = recorder({
       ok: true,

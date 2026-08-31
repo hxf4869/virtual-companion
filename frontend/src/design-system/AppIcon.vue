@@ -45,7 +45,15 @@ export type AppIconName =
   | "gauge"
   | "sparkle"
   | "lock"
-  | "plus";
+  | "plus"
+  | "dashboard"
+  | "server"
+  | "route"
+  | "activity"
+  | "menu"
+  | "logout"
+  | "arrow-up"
+  | "arrow-down";
 
 const ICON_PATHS: Record<AppIconName, string> = {
   // 首页：房屋
@@ -115,6 +123,25 @@ const ICON_PATHS: Record<AppIconName, string> = {
     <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
     <circle cx="12" cy="15" r="0.6" fill="currentColor" stroke="none" />`,
   plus: `<path d="M12 5.5v13M5.5 12h13" />`,
+  dashboard: `<rect x="4" y="4" width="6" height="6" rx="1" />
+    <rect x="14" y="4" width="6" height="6" rx="1" />
+    <rect x="4" y="14" width="6" height="6" rx="1" />
+    <rect x="14" y="14" width="6" height="6" rx="1" />`,
+  server: `<rect x="4" y="4.5" width="16" height="6" rx="1.5" />
+    <rect x="4" y="13.5" width="16" height="6" rx="1.5" />
+    <circle cx="7.5" cy="7.5" r=".7" fill="currentColor" stroke="none" />
+    <circle cx="7.5" cy="16.5" r=".7" fill="currentColor" stroke="none" />
+    <path d="M11 7.5h5.5M11 16.5h5.5" />`,
+  route: `<circle cx="6" cy="6" r="2" />
+    <circle cx="18" cy="18" r="2" />
+    <path d="M8 6h3a3 3 0 0 1 3 3v6a3 3 0 0 0 3 3h-1" />
+    <path d="m11.5 12.5 2.5 2.5 2.5-2.5" />`,
+  activity: `<path d="M3.5 12h4l2-5 4.5 10 2.3-5h4.2" />`,
+  menu: `<path d="M4.5 7h15M4.5 12h15M4.5 17h15" />`,
+  logout: `<path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" />
+    <path d="M13 8l4 4-4 4M17 12H9" />`,
+  "arrow-up": `<path d="m7 11 5-5 5 5M12 6v12" />`,
+  "arrow-down": `<path d="m7 13 5 5 5-5M12 18V6" />`,
 };
 
 export default defineComponent({

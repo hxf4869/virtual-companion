@@ -36,13 +36,6 @@
 			}
 		},
 		{
-			"path": "pages/reminder/reminder",
-			"style": {
-				"navigationBarTitleText": "提醒",
-				"navigationStyle": "custom"
-			}
-		},
-		{
 			"path": "pages/companion/companion",
 			"style": {
 				"navigationBarTitleText": "陪伴设置",
@@ -99,13 +92,6 @@
 			}
 		},
 		{
-			"path": "pages/health/health",
-			"style": {
-				"navigationBarTitleText": "使用与休息",
-				"navigationStyle": "custom"
-			}
-		},
-		{
 			"path": "pages/incognito/incognito",
 			"style": {
 				"navigationBarTitleText": "无痕默认",
@@ -127,16 +113,30 @@
 			}
 		},
 		{
-			"path": "pages/ops/ops",
+			"path": "pages/admin/admin",
 			"style": {
-				"navigationBarTitleText": "运行与合规",
+				"navigationBarTitleText": "运行总览",
 				"navigationStyle": "custom"
 			}
 		},
 		{
-			"path": "pages/admin/admin",
+			"path": "pages/admin-models/admin-models",
 			"style": {
-				"navigationBarTitleText": "内部管理",
+				"navigationBarTitleText": "模型服务",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/admin-routing/admin-routing",
+			"style": {
+				"navigationBarTitleText": "路由策略",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/admin-system/admin-system",
+			"style": {
+				"navigationBarTitleText": "系统状态",
 				"navigationStyle": "custom"
 			}
 		}
@@ -145,7 +145,7 @@
 		"navigationStyle": "custom",
 		"navigationBarTitleText": "虚拟陪伴",
 		"navigationBarTextStyle": "black",
-		"navigationBarBackgroundColor": "#f4f6f8",
-		"backgroundColor": "#f4f6f8"
+		"navigationBarBackgroundColor": "#f1f4f1",
+		"backgroundColor": "#f1f4f1"
 	}
 }

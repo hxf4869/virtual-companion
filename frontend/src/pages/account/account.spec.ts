@@ -7,7 +7,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import AccountPage from "./account.vue";
 import { useAuthStore } from "@/stores/auth";
 
-function stubFetch(opts?: { deleteStatus?: number; refreshSuccess?: boolean }): {
+function stubFetch(opts?: {
+  deleteStatus?: number;
+  refreshSuccess?: boolean;
+  revokeSessionStatus?: number;
+  revokeAllStatus?: number;
+}): {
   calls: { method: string; url: string }[];
 } {
   const calls: { method: string; url: string }[] = [];
@@ -39,10 +44,20 @@ function stubFetch(opts?: { deleteStatus?: number; refreshSuccess?: boolean }): 
         return { ok: true, status: 200, json: async () => ({ ok: true }) };
       }
       if (url === "/api/v1/auth/sessions/revoke-all" && method === "POST") {
-        return { ok: true, status: 200, json: async () => ({ revoked: 1 }) };
+        const status = opts?.revokeAllStatus ?? 200;
+        return {
+          ok: status === 200,
+          status,
+          json: async () => (status === 200 ? { revoked: 1 } : null),
+        };
       }
       if (url.startsWith("/api/v1/auth/sessions/") && method === "DELETE") {
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        const status = opts?.revokeSessionStatus ?? 200;
+        return {
+          ok: status === 200,
+          status,
+          json: async () => (status === 200 ? { ok: true } : null),
+        };
       }
       if (url === "/api/v1/auth/refresh" && method === "POST") {
         if (!opts?.refreshSuccess) {
@@ -83,7 +98,7 @@ describe("account page", () => {
     // P2（round3）：角色码不再直接展示，消费者界面渲染中文标签。
     expect(wrapper.find('[data-testid="account-role"]').text()).toContain("用户");
     expect(wrapper.find('[data-testid="public-computer-hint"]').text()).toContain("公共电脑");
-    expect(wrapper.find('[data-testid="survey-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="survey-card"]').exists()).toBe(false);
     expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
     expect(wrapper.get('[data-testid="session-row"]').text()).toContain("h5（当前）");
     expect(wrapper.text()).not.toContain("family-opaque");
@@ -246,6 +261,56 @@ describe("account page", () => {
     wrapper.unmount();
   });
 
+  it("keeps the current login and session list when revoking one session fails", async () => {
+    const { calls } = stubFetch({ revokeSessionStatus: 503 });
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.accountId = "42";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="session-revoke"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((call) => call.method === "DELETE" && call.url.endsWith("/11"))).toBe(true);
+    expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain(
+      "当前登录和会话列表已保留",
+    );
+    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain("重试");
+    expect(auth.accessToken).toBe("t");
+    expect(navigateTo).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps the current login and session list when revoking all sessions fails", async () => {
+    const { calls } = stubFetch({ revokeAllStatus: 503 });
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.accountId = "42";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="sessions-revoke-all"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((call) => call.method === "POST" && call.url === "/api/v1/auth/sessions/revoke-all")).toBe(true);
+    expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain(
+      "当前登录和会话列表已保留",
+    );
+    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain("重试");
+    expect(auth.accessToken).toBe("t");
+    expect(navigateTo).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   // ---- Phase 5 IA："我的"分组入口 + 操作者内部区 ----
 
   it("renders the me hub with all secondary entries for a USER session", async () => {
@@ -261,8 +326,6 @@ describe("account page", () => {
     expect(hub.attributes("aria-label")).toBe("我的分组入口");
     for (const tid of [
       "me-companion",
-      "me-reminder",
-      "me-health",
       "me-incognito",
       "me-age",
       "me-consent",
@@ -274,9 +337,10 @@ describe("account page", () => {
     ]) {
       expect(wrapper.find(`[data-testid="${tid}"]`).exists(), tid).toBe(true);
     }
+    expect(wrapper.find('[data-testid="me-reminder"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="me-health"]').exists()).toBe(false);
     // 普通用户看不到内部入口与内部数据轮廓。
     expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="me-ops"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="me-admin"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -307,22 +371,19 @@ describe("account page", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(true);
-    await wrapper.find('[data-testid="me-ops"]').trigger("click");
     const navigateTo = (globalThis as { uni?: { navigateTo: ReturnType<typeof vi.fn> } })
       .uni?.navigateTo;
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/ops/ops" });
     await wrapper.find('[data-testid="me-admin"]').trigger("click");
     expect(navigateTo).toHaveBeenLastCalledWith({ url: "/pages/admin/admin" });
     wrapper.unmount();
   });
 
   it("internal entries are route-specific: each operator role sees only what it can enter", async () => {
-    // 与页面真实守卫一致：ops（Runtime 预检）仅 ADMIN；admin 面全操作者可进。
-    const cases: Array<{ role: string; ops: boolean; admin: boolean }> = [
-      { role: "ADMIN", ops: true, admin: true },
-      { role: "SAFETY_REVIEWER", ops: false, admin: true },
-      { role: "PRIVACY_OPERATOR", ops: false, admin: true },
-      { role: "OPS_VIEWER", ops: false, admin: true },
+    const cases: Array<{ role: string; admin: boolean }> = [
+      { role: "ADMIN", admin: true },
+      { role: "SAFETY_REVIEWER", admin: false },
+      { role: "PRIVACY_OPERATOR", admin: false },
+      { role: "OPS_VIEWER", admin: false },
     ];
     for (const c of cases) {
       setActivePinia(createPinia());
@@ -333,8 +394,7 @@ describe("account page", () => {
       const wrapper = mount(AccountPage, { attachTo: document.body });
       await flushPromises();
 
-      expect(wrapper.find('[data-testid="me-internal"]').exists(), c.role).toBe(true);
-      expect(wrapper.find('[data-testid="me-ops"]').exists(), `${c.role} ops`).toBe(c.ops);
+      expect(wrapper.find('[data-testid="me-internal"]').exists(), c.role).toBe(c.admin);
       expect(wrapper.find('[data-testid="me-admin"]').exists(), `${c.role} admin`).toBe(c.admin);
       wrapper.unmount();
     }

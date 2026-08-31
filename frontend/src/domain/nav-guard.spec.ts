@@ -43,7 +43,9 @@ describe("classifyPage", () => {
     expect(classifyPage("/pages/age/age")).toBe("age");
     expect(classifyPage("/pages/consent/consent")).toBe("consent");
     expect(classifyPage("/pages/admin/admin")).toBe("admin");
-    expect(classifyPage("/pages/ops/ops")).toBe("admin");
+    expect(classifyPage("/pages/admin-models/admin-models")).toBe("admin");
+    expect(classifyPage("/pages/admin-routing/admin-routing")).toBe("admin");
+    expect(classifyPage("/pages/admin-system/admin-system")).toBe("admin");
     expect(classifyPage("/pages/chat/chat")).toBe("protected");
     expect(classifyPage("/pages/memory/memory")).toBe("protected");
     expect(classifyPage("/pages/export/export")).toBe("protected");
@@ -158,11 +160,11 @@ describe("applyInterceptorUrl", () => {
     expect(applyInterceptorUrl("/pages/help/help", ANON)).toBe("/pages/help/help");
   });
 
-  it("sends anonymous admin/ops visitors to login with return, but does not redirect an authenticated USER", () => {
+  it("sends anonymous console visitors to login with return, but leaves role denial to the data guard", () => {
     expect(applyInterceptorUrl("/pages/admin/admin", ANON)).toBe(
       buildLoginHref("/pages/admin/admin"),
     );
-    expect(applyInterceptorUrl("/pages/ops/ops", AUTHED)).toBe("/pages/ops/ops");
+    expect(applyInterceptorUrl("/pages/admin-system/admin-system", AUTHED)).toBe("/pages/admin-system/admin-system");
   });
 
   it("forces temporary-password sessions to the account password flow", () => {
@@ -182,20 +184,20 @@ describe("applyInterceptorUrl", () => {
 });
 
 describe("shouldRenderPageData", () => {
-  it("hides admin/ops data from ordinary users and from unresolved sessions", () => {
+  it("hides every console page from non-admin and unresolved sessions", () => {
     expect(shouldRenderPageData("/pages/admin/admin", AUTHED)).toBe(false);
-    expect(shouldRenderPageData("/pages/ops/ops", { ...AUTHED, session: "unknown" })).toBe(
+    expect(shouldRenderPageData("/pages/admin-system/admin-system", { ...AUTHED, session: "unknown" })).toBe(
       false,
     );
     expect(shouldRenderPageData("/pages/admin/admin", { ...AUTHED, role: "ADMIN" })).toBe(
       true,
     );
     expect(
-      shouldRenderPageData("/pages/admin/admin", {
+      shouldRenderPageData("/pages/admin-routing/admin-routing", {
         ...AUTHED,
         role: "SAFETY_REVIEWER",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(OPERATOR_ROLES.has("OPS_VIEWER")).toBe(true);
   });
 });

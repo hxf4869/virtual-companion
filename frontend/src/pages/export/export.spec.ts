@@ -38,14 +38,12 @@ const EXPIRED_JSON = {
 };
 
 const DOCUMENT_JSON = {
-  exportId: "9",
-  generatedAt: "2026-08-17T12:00:05Z",
-  expiresAt: "2026-08-18T12:00:00Z",
-  aiContentNotice: "本导出包含 AI 生成内容",
+  exportedAt: "2026-08-17T12:00:05Z",
+  conversationCount: 1,
+  messageCount: 2,
+  memoryCount: 1,
   conversations: [{ conversationId: "5" }],
   memories: [{ memoryId: "1" }],
-  reminders: [],
-  consents: [],
 };
 
 /**
@@ -119,8 +117,9 @@ describe("export page (FR-DATA-002)", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="export-download-preview"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="export-download-preview"]').text()).toContain("AI 生成内容");
+    expect(wrapper.find('[data-testid="export-download-preview"]').text()).toContain("assistant 为 AI 回复");
     expect(wrapper.find('[data-testid="export-download-preview"]').text()).toContain("会话 1 个");
+    expect(wrapper.find('[data-testid="export-download-preview"]').text()).toContain("消息 2 条");
 
     wrapper.unmount();
   });

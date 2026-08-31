@@ -8,10 +8,6 @@
 *.pfx
 secrets/
 
-# Java / Maven
-**/target/
-.mvn/timing.properties
-
 # Node / uni-app
 frontend/node_modules/
 frontend/dist/
@@ -71,10 +67,20 @@ ops/deploy/.local/
 # Planning-with-files process artifacts (local only, never committed)
 .planning/
 
-# G1 measurement local run (synthetic secrets, docker env, raw snapshots)
-scripts/measure/g1-java-baseline/.run/
+# Local UI review/process artifacts. Curated design specifications and the
+# explicitly approved reference comps remain trackable.
+/.impeccable/review/
+/.impeccable/questions/
+/.impeccable/critique/
+/.impeccable/mocks/admin-console/
+/.impeccable/mocks/decision/admin-language-correction.prompt.txt
+/.impeccable/mocks/decision/admin-resource-explorer.png
+/.impeccable/mocks/decision/admin-state-bands.png
+/frontend/.impeccable/review/
+/frontend/src/static/quiet-loom/*.png.json
+
+# Capacity measurement local run (synthetic secrets, docker env, raw snapshots)
 scripts/measure/g12-go-capacity/.run/
-ops/deploy/g11-switchover/.run/
 
 # Go build artifacts
 backend/companiond

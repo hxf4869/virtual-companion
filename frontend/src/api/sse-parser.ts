@@ -9,9 +9,8 @@
 //     JSON; an optional "event:" line is surfaced as SseFrame.event and an
 //     optional top-level "disposition" field as SseFrame.disposition.
 //   - A final unclosed frame at stream end is flushed (SSE EOF dispatch).
-//   - TASK-0185: a control event frame with an "event:" line but no data: line
-//     (stream.gap / stream.reset / stream.denied, as the 0184 controller emits)
-//     is surfaced as { event, data: null }; only a frame with neither an event
+//   - A control event frame with an "event:" line but no data: line is surfaced
+//     as { event, data: null }; only a frame with neither an event
 //     nor a data line (comment/keepalive, e.g. ": ping") is skipped. A frame
 //     whose data is non-JSON or a non-object payload throws SseParseError -- a
 //     typed failure, never a silent empty stream.
@@ -24,11 +23,8 @@
 
 export interface SseFrame {
   /**
-   * Optional SSE event name (the `event:` field). TASK-0185: the 0184
-   * RealtimeStreamController encodes the resume disposition as the SSE event
-   * name — durable events carry their type (chat.delta, ...), the terminal
-   * snapshot carries "snapshot", and the control events stream.gap /
-   * stream.reset / stream.denied carry no data: line at all.
+   * Optional SSE event name (the `event:` field). Go v1 durable frames use
+   * public names such as chat.snapshot, chat.delta and chat.completed.
    */
   event?: string;
   /** Optional top-level disposition field of the parsed payload (legacy shape). */
@@ -74,9 +70,8 @@ function parseFrame(raw: string): SseFrame {
   const eventName = eventLine ? eventLine.slice(6).replace(/^\s+/, "") : undefined;
 
   if (dataLines.length === 0) {
-    // TASK-0185: a control event frame (event: stream.gap / stream.reset /
-    // stream.denied, as emitted by the 0184 RealtimeStreamController) carries an
-    // SSE event name but no data: line. It is a real event and must be surfaced
+    // A control event frame can carry an SSE event name but no data line. It is
+    // still a real event and must be surfaced
     // so the transport can map it to a resume disposition. Only a frame with
     // neither an event nor a data line (a comment/keepalive, e.g. ": ping")
     // carries no event and is skipped (R1 P3); it materializes as data === SKIP.

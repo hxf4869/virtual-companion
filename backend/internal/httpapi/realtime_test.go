@@ -78,18 +78,28 @@ func TestTicketEndpointNotRegistered(t *testing.T) {
 	}
 }
 
-func TestSSERequiresOriginAndCookie(t *testing.T) {
+func TestSSEAllowsMissingOriginButRequiresCookie(t *testing.T) {
 	t.Parallel()
 	env := newRT(t)
 	h := env.srv.Handler()
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/realtime/streams/"+testGID, nil))
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("missing origin %d", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing cookie %d", rec.Code)
 	}
+	assertEnvelope(t, rec, "AUTHENTICATION_REQUIRED")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/realtime/streams/"+testGID, nil)
+	req.Header.Set("Origin", "https://evil.example")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("foreign origin %d", rec.Code)
+	}
+	assertEnvelope(t, rec, "ACCESS_DENIED")
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/realtime/streams/"+testGID, nil)
 	req.Header.Set("Origin", testOrigin)
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

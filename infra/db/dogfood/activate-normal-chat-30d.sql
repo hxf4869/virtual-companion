@@ -5,7 +5,7 @@
 -- 不批准、也不得连带激活 beta-readiness/08 草案中其余 7 类 DRAFT 周期。
 --
 -- 执行前置条件：
---   1. 全量 Flyway 迁移已应用（至少 V104：data_retention_policy.status 列存在）。
+--   1. 全量 schema 迁移已应用（至少 V104：data_retention_policy.status 列存在）。
 --   2. 以迁移属主/超级用户执行（psql 直连；vc.data_retention_policy 已 REVOKE
 --      所有 runtime 角色，运行时角色无权改策略）。
 --   3. 此刻调度器开关保持仓库默认：VC_RETENTION_PURGE_ENABLED=false、

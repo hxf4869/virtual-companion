@@ -8,8 +8,6 @@ import {
 // S0-23 shared helpers. Every credential and record is synthetic and confined
 // to the isolated local stack.
 
-export const ADMIN_USERNAME = "e2e-admin";
-export const ADMIN_PASSWORD = "E2e-Admin-Pass-1234!";
 export const PROVIDER_REPLY = "I hear you. Take a breath; there's no rush.";
 export const SAFETY_BLOCK_SENTINEL = "[[E2E_SAFETY_BLOCK]]";
 export const PROVIDER_TIMEOUT_SENTINEL = "[[E2E_PROVIDER_TIMEOUT]]";
@@ -22,6 +20,8 @@ const REQUIRED_CONSENTS = [
   "SERVICE_TERMS",
   "PRIVACY_POLICY",
   "AI_CONTENT_NOTICE",
+  "THIRD_PARTY_MODEL_PROCESSING",
+  "SENSITIVE_DATA_PROCESSING",
 ] as const;
 
 export const E2E_USER_SUFFIXES = [
@@ -46,6 +46,7 @@ export const E2E_USER_SUFFIXES = [
   // round6：流式证据/会话切换 journey（09）的独立账号——同轮套跑中与
   // journey-03 的登录次数解耦，避免共享登录限流桶。
   "streaming-evidence",
+  "navigation-smoke",
 ] as const;
 
 export type E2EUserSuffix = (typeof E2E_USER_SUFFIXES)[number];
@@ -56,8 +57,8 @@ export interface E2EUser {
 }
 
 export interface E2ESession {
-  accessToken: string;
   accountId: string;
+  page: Page;
 }
 
 export interface E2EConversation {
@@ -65,85 +66,29 @@ export interface E2EConversation {
   conversationId: string;
 }
 
-let cachedAdminToken: Promise<string> | null = null;
-
 function asId(value: unknown, label: string): string {
   if (typeof value === "string" && value) return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   throw new Error(`${label} was missing from the E2E API response`);
 }
 
-/**
- * Fetch one worker-local admin token with a throwaway stateless API context.
- * Disposing the context also disposes its CSRF/refresh cookies, so later test
- * request fixtures never inherit a mismatched cookie jar.
- */
-export async function adminToken(): Promise<string> {
-  if (!cachedAdminToken) {
-    cachedAdminToken = (async () => {
-      const api = await requestFactory.newContext({ baseURL: API_BASE_URL });
-      try {
-        const res = await api.post("/api/v1/auth/login", {
-          data: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD },
-        });
-        expect(res.ok(), `admin login failed: ${res.status()}`).toBeTruthy();
-        const body = (await res.json()) as { accessToken?: unknown };
-        if (typeof body.accessToken !== "string" || !body.accessToken) {
-          throw new Error("admin login returned no accessToken");
-        }
-        return body.accessToken;
-      } finally {
-        await api.dispose();
-      }
-    })();
-  }
-  return cachedAdminToken;
-}
-
 function userFor(suffix: E2EUserSuffix): E2EUser {
   return {
     username: `e2e-user-${suffix}`,
-    password: `E2e-User-${suffix}-Pass-1234!`,
+    password: "E2e-User-Pass-1234!",
   };
 }
 
 /**
- * Create the fixed synthetic account pool once in Playwright global setup.
- * A failed test may restart its worker process; keeping admin login here avoids
- * turning those restarts into repeated privileged logins that hit the real
- * source limiter and hide the original failure.
+ * Verify the isolated stack once in Playwright global setup. The fixed
+ * synthetic account pool is seeded directly by scripts/dev/e2e-stack.sh
+ * because the production admin account-management API has been retired.
  */
 export async function seedE2EUsers(): Promise<void> {
-  const token = await adminToken();
-  const api = await requestFactory.newContext({
-    baseURL: API_BASE_URL,
-    extraHTTPHeaders: { Authorization: `Bearer ${token}` },
-  });
+  const api = await requestFactory.newContext({ baseURL: API_BASE_URL });
   try {
-    const listed = await api.get("/api/v1/auth/admin/accounts");
-    expect(listed.ok(), `account listing failed: ${listed.status()}`).toBeTruthy();
-    const body = (await listed.json()) as Array<{ username?: unknown }>;
-    const existing = new Set(
-      body
-        .map((row) => row.username)
-        .filter((username): username is string => typeof username === "string"),
-    );
-    for (const suffix of E2E_USER_SUFFIXES) {
-      const user = userFor(suffix);
-      if (existing.has(user.username)) continue;
-      const response = await api.post("/api/v1/auth/admin/accounts", {
-        data: {
-          username: user.username,
-          password: user.password,
-          displayName: `E2E 用户 ${suffix}`,
-          role: "USER",
-        },
-      });
-      expect(
-        response.ok(),
-        `account provisioning failed for ${suffix}: ${response.status()}`,
-      ).toBeTruthy();
-    }
+    const version = await api.get("/api/v1/version");
+    expect(version.ok(), `E2E runtime unavailable: ${version.status()}`).toBeTruthy();
   } finally {
     await api.dispose();
   }
@@ -162,7 +107,7 @@ export async function provisionUser(
   return userFor(suffix);
 }
 
-/** UI login through the real login page; returns only the in-memory API token. */
+/** UI login through the real page; the returned Page owns the opaque cookies. */
 export async function uiLogin(
   page: Page,
   user: E2EUser,
@@ -182,18 +127,14 @@ export async function uiLogin(
   const response = await responsePromise;
   expect(response.ok(), `UI login failed: ${response.status()}`).toBeTruthy();
   const body = (await response.json()) as {
-    accessToken?: unknown;
     accountId?: unknown;
   };
-  if (typeof body.accessToken !== "string" || !body.accessToken) {
-    throw new Error("UI login returned no accessToken");
-  }
   await page.waitForURL((url) => !url.hash.includes("/pages/login/login"), {
     timeout: 20_000,
   });
   return {
-    accessToken: body.accessToken,
     accountId: asId(body.accountId, "accountId"),
+    page,
   };
 }
 
@@ -211,104 +152,160 @@ export async function navigateToPage(page: Page, href: string): Promise<void> {
     }
   }, href);
   const path = href.split("?", 1)[0];
-  await page.waitForURL((url) => url.hash.startsWith(`#${path}`), {
+  await page.waitForURL((url) =>
+    url.hash.startsWith(`#${path}`)
+      || (path === "/pages/index/index" && ["", "#", "#/"].includes(url.hash)), {
     timeout: 20_000,
   });
 }
 
-async function bearerContext(accessToken: string): Promise<APIRequestContext> {
-  return requestFactory.newContext({
-    baseURL: API_BASE_URL,
-    extraHTTPHeaders: { Authorization: `Bearer ${accessToken}` },
+export interface E2EApiResult {
+  ok: boolean;
+  status: number;
+  body: unknown;
+}
+
+/** Execute an API request through the logged-in browser context. Its request
+ * context shares the page's opaque-cookie jar, while reading the CSRF cookie
+ * outside the document avoids racing a just-completed UI navigation. */
+export async function sessionRequest(
+  page: Page,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<E2EApiResult> {
+  const cookies = await page.context().cookies();
+  const csrf = cookies.find((cookie) => cookie.name === "vc_csrf")?.value ?? "";
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Origin: new URL(page.url()).origin,
+  };
+  if (csrf && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    headers["X-CSRF-Token"] = decodeURIComponent(csrf);
+  }
+  const response = await page.context().request.fetch(path, {
+    method,
+    headers,
+    data: body,
   });
+  return {
+    ok: response.ok(),
+    status: response.status(),
+    body: await response.json().catch(() => null),
+  };
+}
+
+/** Wait for a generation to leave the outstanding set before creating the
+ * next synthetic turn. This keeps fixtures below the real per-owner cap and
+ * verifies that the worker, provider and durable snapshot all make progress. */
+export async function waitForGenerationTerminal(
+  page: Page,
+  generationId: string,
+  timeoutMs = 20_000,
+): Promise<E2EApiResult> {
+  const startedAt = Date.now();
+  let latest: E2EApiResult = { ok: false, status: 0, body: null };
+  while (Date.now() - startedAt < timeoutMs) {
+    latest = await sessionRequest(
+      page,
+      "GET",
+      `/api/v1/generations/${encodeURIComponent(generationId)}/snapshot`,
+    );
+    if (latest.ok) {
+      const status = String(
+        (latest.body as { status?: unknown } | null)?.status ?? "",
+      );
+      if ([
+        "COMPLETED",
+        "COMPLETED_FALLBACK",
+        "CANCELLED",
+        "FAILED_FINAL",
+        "INPUT_BLOCKED",
+        "OUTPUT_BLOCKED",
+      ].includes(status)) {
+        return latest;
+      }
+    }
+    await page.waitForTimeout(100);
+  }
+  throw new Error(
+    `generation ${generationId} did not become terminal within ${timeoutMs}ms (last HTTP ${latest.status})`,
+  );
 }
 
 /** Satisfy the synthetic stack's real server-side age/consent gate. */
-export async function prepareGenerationAccess(accessToken: string): Promise<void> {
-  const api = await bearerContext(accessToken);
-  try {
-    const age = await api.post("/api/v1/age/verification");
-    expect(age.ok(), `age verification failed: ${age.status()}`).toBeTruthy();
-    for (const consentType of REQUIRED_CONSENTS) {
-      const consent = await api.put("/api/v1/consents", {
-        data: { consentType, version: "2026-08", granted: true },
-      });
-      expect(
-        consent.ok(),
-        `${consentType} grant failed: ${consent.status()}`,
-      ).toBeTruthy();
-    }
-  } finally {
-    await api.dispose();
+export async function prepareGenerationAccess(page: Page): Promise<void> {
+  const age = await sessionRequest(page, "POST", "/api/v1/age/verification");
+  expect(age.ok, `age verification failed: ${age.status}`).toBeTruthy();
+  for (const consentType of REQUIRED_CONSENTS) {
+    const consent = await sessionRequest(page, "PUT", "/api/v1/consents", {
+      consentType,
+      version: "2026-08",
+      granted: true,
+    });
+    expect(
+      consent.ok,
+      `${consentType} grant failed: ${consent.status}`,
+    ).toBeTruthy();
   }
 }
 
 /** Create real relationship/conversation setup without bypassing ownership. */
 export async function createRelationshipAndConversation(
-  accessToken: string,
+  page: Page,
 ): Promise<E2EConversation> {
-  const api = await bearerContext(accessToken);
-  try {
-    const relationship = await api.post("/api/v1/relationships", {
-      data: { personaRef: "gentle-listener" },
-    });
-    expect(
-      relationship.ok(),
-      `relationship creation failed: ${relationship.status()}`,
-    ).toBeTruthy();
-    const relationshipBody = (await relationship.json()) as {
-      relationshipId?: unknown;
-    };
-    const relationshipId = asId(
-      relationshipBody.relationshipId,
-      "relationshipId",
-    );
+  const relationship = await sessionRequest(page, "POST", "/api/v1/relationships", {
+      personaRef: "gentle-listener",
+  });
+  expect(
+    relationship.ok,
+    `relationship creation failed: ${relationship.status}`,
+  ).toBeTruthy();
+  const relationshipBody = relationship.body as {
+    relationshipId?: unknown;
+  };
+  const relationshipId = asId(
+    relationshipBody.relationshipId,
+    "relationshipId",
+  );
 
-    const conversation = await api.post("/api/v1/conversations", {
-      data: { relationshipId },
-    });
-    expect(
-      conversation.ok(),
-      `conversation creation failed: ${conversation.status()}`,
-    ).toBeTruthy();
-    const conversationBody = (await conversation.json()) as {
-      conversationId?: unknown;
-    };
-    return {
-      relationshipId,
-      conversationId: asId(conversationBody.conversationId, "conversationId"),
-    };
-  } finally {
-    await api.dispose();
-  }
+  const conversation = await sessionRequest(page, "POST", "/api/v1/conversations", {
+    relationshipId,
+  });
+  expect(
+    conversation.ok,
+    `conversation creation failed: ${conversation.status}`,
+  ).toBeTruthy();
+  const conversationBody = conversation.body as {
+    conversationId?: unknown;
+  };
+  return {
+    relationshipId,
+    conversationId: asId(conversationBody.conversationId, "conversationId"),
+  };
 }
 
 /** Create a candidate with a real evidence chain for the memory UI journey. */
 export async function createMemoryCandidate(
-  accessToken: string,
+  page: Page,
   relationshipId: string,
   summary: string,
   evidence: string,
 ): Promise<string> {
-  const api = await bearerContext(accessToken);
-  try {
-    const response = await api.post(
-      `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories/candidates`,
-      {
-        data: {
-          scope: "RELATIONSHIP",
-          summary,
-          evidence: [evidence],
-        },
-      },
-    );
-    expect(
-      response.ok(),
-      `memory candidate creation failed: ${response.status()}`,
-    ).toBeTruthy();
-    const body = (await response.json()) as { memoryId?: unknown };
-    return asId(body.memoryId, "memoryId");
-  } finally {
-    await api.dispose();
-  }
+  const response = await sessionRequest(
+    page,
+    "POST",
+    `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories/candidates`,
+    {
+      scope: "RELATIONSHIP",
+      summary,
+      evidence: [evidence],
+    },
+  );
+  expect(
+    response.ok,
+    `memory candidate creation failed: ${response.status}`,
+  ).toBeTruthy();
+  const body = response.body as { memoryId?: unknown };
+  return asId(body.memoryId, "memoryId");
 }

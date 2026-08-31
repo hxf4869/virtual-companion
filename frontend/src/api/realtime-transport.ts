@@ -1,33 +1,15 @@
-// TASK-0185: browser Fetch-SSE realtime transport aligned to the 0184 resume
-// endpoint contract. RealtimeDeps (resume + fetchSnapshot) is the injected
-// transport surface consumed by the tested streamGeneration orchestrator
-// (api/realtime.ts). This module is the single place that knows the wire shape
-// of POST /api/v1/realtime/tickets + GET /api/v1/realtime/streams/{generationId}
-// + GET /api/v1/generations/{generationId}/snapshot, so the orchestration stays
-// fully mockable and the contract glue is unit-tested in isolation.
-//
-// The 0184 RealtimeStreamController encodes the resume disposition as the SSE
-// event name: durable events carry their type (chat.delta, ...), the terminal
-// snapshot carries "snapshot", and the control events stream.gap / stream.reset
-// / stream.denied carry no data line. This module maps those back onto the
-// ResumeDisposition union the orchestrator consumes, never fabricating deltas
-// (INV-RT-001 lives in the reducer; this module only routes).
-//
-// h5Security (realtime-contract): the ticket secret is a 45s single-use
-// credential carried in the resume query, NOT the long-lived token forbidden
-// there; the long-lived access token stays in the Authorization header attached
-// by the authenticated transport (api/transport.ts). No credential is written to
-// localStorage. A foreign or absent generation, or any ticket-consume failure,
-// fails closed as NOT_FOUND_OR_FORBIDDEN so existence is never disclosed.
+// Go v1 浏览器 Fetch-SSE transport。实时流直接使用同源 HttpOnly opaque
+// session cookie；不再铸造 ticket，也不把 secret、sessionId 或 origin 放进
+// URL。服务端不公开 SSE id/epoch，本模块只在当前浏览器运行期为 reducer
+// 分配连续序号；重连时服务端先发送 chat.snapshot 全量草稿，再继续 delta。
 
 import type {
   RealtimeDeps,
-  ResumeDisposition,
   ResumeRequest,
   ResumeResult,
   SnapshotResult,
+  SnapshotUsage,
 } from "@/api/realtime";
-import type { StreamEvent } from "@/domain/stream-reducer";
 import { parseStreamEvent } from "@/api/realtime-envelope";
 import {
   consumeSseFrames,
@@ -35,27 +17,20 @@ import {
   SseParseError,
   type SseFrame,
 } from "@/api/sse-parser";
-import type { SnapshotUsage } from "@/api/realtime";
+import type { StreamEvent } from "@/domain/stream-reducer";
 
-const TICKETS_ENDPOINT = "/api/v1/realtime/tickets";
 const STREAMS_ENDPOINT = "/api/v1/realtime/streams";
 const GENERATIONS_ENDPOINT = "/api/v1/generations";
-
-/** Control SSE event names emitted by the 0184 controller. */
-const EVENT_SNAPSHOT = "snapshot";
-const EVENT_GAP = "stream.gap";
-const EVENT_RESET = "stream.reset";
-const EVENT_DENIED = "stream.denied";
-
-/** Statuses that must never disclose resource existence. */
 const EXISTENCE_HIDDEN_STATUS = new Set([401, 403, 404]);
-
-export interface BrowserRealtimeContext {
-  /** The caller's realtime session id (bound to the minted ticket). */
-  sessionId: string;
-  /** The origin the SSE resume is opened from (bound to the minted ticket). */
-  origin: string;
-}
+const PUBLIC_EVENTS = new Set([
+  "chat.accepted",
+  "chat.snapshot",
+  "chat.delta",
+  "chat.completed",
+  "chat.blocked",
+  "chat.failed",
+  "chat.cancelled",
+]);
 
 type FetchImpl = typeof fetch;
 
@@ -63,276 +38,117 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Build the {@link RealtimeDeps} that drive the Fetch-SSE resume + snapshot
- * endpoints for production. {@link BrowserRealtimeContext} supplies the
- * per-session sessionId/origin the ticket is bound to; the per-resume cursor
- * (generationId/afterSeq/streamEpoch) comes from each {@link ResumeRequest}.
- *
- * A `fetchImpl` is accepted for testing so the spec can stub the network
- * without global mocking; production leaves it unset to use the ambient fetch.
- */
-export function createBrowserRealtimeDeps(
-  context: BrowserRealtimeContext,
-  fetchImpl?: FetchImpl,
-): RealtimeDeps {
+/** Build production Fetch-SSE and snapshot dependencies. */
+export function createBrowserRealtimeDeps(fetchImpl?: FetchImpl): RealtimeDeps {
   const doFetch = fetchImpl ?? fetch;
   return {
     resume: (request, signal, onDurableEvent) =>
-      resumeWithTicket(doFetch, context, request, signal, onDurableEvent),
-    fetchSnapshot: (generationId, signal) => fetchSnapshot(doFetch, generationId, signal),
+      resumeWithCookie(doFetch, request, signal, onDurableEvent),
+    fetchSnapshot: (generationId, signal) =>
+      fetchSnapshot(doFetch, generationId, signal),
   };
 }
 
-interface MintedTicket {
-  ticketId: string;
-  secret: string;
-}
-
-/**
- * Mint a single-use ticket then open the resume stream. The ticket is bound to
- * the seven-tuple (owner, generation, session, origin, transport, streamEpoch,
- * afterSeq); owner and transport are server-fixed and never sent in the body.
- * Each resume opens a fresh ticket because the ticket is single-use with a 45s
- * TTL, so the orchestrator's reconnect loop mints one per attempt.
- *
- * P1（round6）：连接内流式。每个完整解析的 durable event 帧到达时立即通过
- * {@link onDurableEvent} 派发（同一连接内不等 EOF）；已派发的事件不再进入
- * 返回的 ResumeResult——最终结果只携带 disposition/nextEpoch 与未被流式
- * 派发的内容（snapshot 事件、未提供回调时的整批事件）。
- */
-async function resumeWithTicket(
+async function resumeWithCookie(
   doFetch: FetchImpl,
-  context: BrowserRealtimeContext,
   request: ResumeRequest,
   signal?: AbortSignal,
   onDurableEvent?: (event: StreamEvent) => void,
 ): Promise<ResumeResult> {
-  const ticket = await mintTicket(doFetch, context, request, signal);
-  if (ticket === null) {
-    // Existence hidden at mint time (foreign/absent generation): surface the
-    // typed outcome instead of a thrown transport failure.
-    return { disposition: "NOT_FOUND_OR_FORBIDDEN", events: [] };
-  }
-
-  const params = new URLSearchParams({
-    ticketId: ticket.ticketId,
-    secret: ticket.secret,
-    sessionId: context.sessionId,
-    origin: context.origin,
-    streamEpoch: String(request.streamEpoch),
-  });
-  const url = `${STREAMS_ENDPOINT}/${encodeURIComponent(request.generationId)}?${params}`;
-  const headers: Record<string, string> = {
-    Accept: "text/event-stream",
-    "Last-Event-ID": String(request.afterSeq),
-  };
-  const response = await doFetch(url, { method: "GET", headers, signal });
-
+  const response = await doFetch(
+    `${STREAMS_ENDPOINT}/${encodeURIComponent(request.generationId)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+        // Go v1 当前不把它当持久化游标；保留标准头便于代理诊断，并让
+        // 浏览器本地伪序号在重连时从已有 cursor 继续。
+        "Last-Event-ID": String(request.afterSeq),
+      },
+      credentials: "include",
+      signal,
+    },
+  );
   if (EXISTENCE_HIDDEN_STATUS.has(response.status)) {
-    // Existence is never disclosed.
     return { disposition: "NOT_FOUND_OR_FORBIDDEN", events: [] };
   }
   if (!response.ok) {
-    // 5xx and other failures are typed transport failures (exhausted), never an
-    // empty stream that looks like a disconnect.
     throw new Error(`resume failed with status ${response.status}`);
   }
 
-  const mapper = createFrameMapper(request.streamEpoch, onDurableEvent);
+  let nextSeq = request.afterSeq;
+  const batch: StreamEvent[] = [];
   try {
-    await consumeSseFrames(response.body, signal, mapper.onFrame);
+    await consumeSseFrames(response.body, signal, (frame) => {
+      const parsed = parseRealtimeFrame(frame, request.streamEpoch, nextSeq);
+      if (!parsed) return;
+      nextSeq = parsed.nextSeq;
+      if (onDurableEvent) {
+        onDurableEvent(parsed.event);
+      } else {
+        batch.push(parsed.event);
+      }
+    });
   } catch (error) {
-    if (error instanceof SseAbortedError) {
-      throw error; // cancellation surfaces through the handle
+    if (error instanceof SseAbortedError || error instanceof SseParseError) {
+      throw error;
     }
-    throw error instanceof SseParseError ? error : new SseParseError("resume stream failed");
+    throw new SseParseError("resume stream failed");
   }
-  return mapper.result();
+  return { disposition: "RESUMED", events: onDurableEvent ? [] : batch };
 }
 
-type DurableEventSink = ((event: StreamEvent) => void) | undefined;
-
-interface FrameMapperState {
-  onFrame(frame: SseFrame): void;
-  result(): ResumeResult;
+interface ParsedRealtimeFrame {
+  event: StreamEvent;
+  nextSeq: number;
 }
 
-/**
- * P1（round6）：把 SSE 帧序列状态化地映射为 disposition + 事件交付路径。
- * durable 帧 → parseStreamEvent → 有回调就即时派发（不回填 result.events，
- * 保证最终 ResumeResult 不重复应用）；无回调时保留旧的整批累积语义。
- *
- * round7：提供连接内回调的生产链路里，`event: snapshot` 元数据只是形态标记，
- * 不再切换"整体替换"路径——0184 runtime 在已流式下发前缀后只补发 cursor 后的
- * terminal 尾巴（元数据缺 events 数组），若按旧逻辑用尾巴整体替换草稿会丢掉
- * 已发布的 delta。因此带 sink 时元数据帧是信息性的：其后到达的 durable 帧
- * （以及元数据内联的 events）仍走同一个 pushCandidate → reducer 幂等应用点，
- * 连续同 epoch 去重合并成 [前缀]+[尾巴]。无 sink 的旧批量消费者语义不变：
- * 元数据切 TERMINAL_SNAPSHOT，缺 events 时后续 durable 帧缓冲为快照内容由
- * applyTerminalSnapshot 原子替换；元数据已权威则丢弃同位置内容。control 帧
- * （gap/reset/denied）裁定后仍会流出的 durable 帧不再应用——与批量实现中
- * orchestrator 忽略非 RESUMED 批次事件的语义一致。
- */
-function createFrameMapper(fallbackEpoch: number, sink: DurableEventSink): FrameMapperState {
-  let disposition: ResumeDisposition = "RESUMED";
-  let nextEpoch: number | undefined;
-  let snapshotEvents: StreamEvent[] | null = null;
-  // 仅无 sink 的批量路径使用：EVENT_SNAPSHOT 元数据缺 events 数组时为 true，
-  // 其后到达的 durable 帧就是快照内容（0184 runtime 格式），逐个吸收。
-  let acceptSnapshotFrames = false;
-  // 未提供回调时的旧批量语义：事件累积进 result.events。
-  const batchEvents: StreamEvent[] = [];
+function parseRealtimeFrame(
+  frame: SseFrame,
+  fallbackEpoch: number,
+  previousSeq: number,
+): ParsedRealtimeFrame | null {
+  if (!isRecord(frame.data)) return null;
 
-  function pushCandidate(candidate: unknown): void {
-    const event = parseStreamEvent(candidate, fallbackEpoch);
-    if (!event) return;
-    if (sink) {
-      // 连接内即时派发；不回填 result——最终 ResumeResult 不重复应用。
-      sink(event);
-    } else {
-      batchEvents.push(event);
-    }
+  // 接受带显式序号的通用事件，方便 snapshot 响应和 reducer 单测继续使用
+  // 同一解析器；Go 实时流走下方无序号分支。
+  const sequenced = parseStreamEvent(frame.data, fallbackEpoch);
+  if (sequenced) {
+    return {
+      event: sequenced,
+      nextSeq: Math.max(previousSeq, sequenced.eventSeq),
+    };
   }
 
-  function absorbSnapshotCandidate(candidate: unknown): void {
-    const event = parseStreamEvent(candidate, fallbackEpoch);
-    if (!event) return;
-    if (snapshotEvents === null) snapshotEvents = [];
-    snapshotEvents.push(event);
-  }
+  const payloadEvent =
+    typeof frame.data.event === "string" ? frame.data.event : "";
+  const frameEvent = frame.event ?? "";
+  if (payloadEvent && frameEvent && payloadEvent !== frameEvent) return null;
+  const eventType = payloadEvent || frameEvent;
+  if (!PUBLIC_EVENTS.has(eventType)) return null;
 
-  function handleCandidates(payload: Record<string, unknown>): void {
-    const isEnvelopeList = Array.isArray(payload.events);
-    const candidates = isEnvelopeList ? (payload.events as unknown[]) : [payload];
-    if (disposition === "TERMINAL_SNAPSHOT") {
-      if (!acceptSnapshotFrames) return; // 元数据已权威：丢弃同样位置的内容
-      for (const candidate of candidates) absorbSnapshotCandidate(candidate);
-      return;
-    }
-    if (disposition !== "RESUMED") {
-      // gap/reset/denied 已裁定：durable 流出物不再应用（单一应用不变量），
-      // 与旧批量实现中 orchestrator 忽略非 RESUMED 批次事件一致。
-      return;
-    }
-    for (const candidate of candidates) pushCandidate(candidate);
-  }
-
-  return {
-    onFrame(frame) {
-      const eventName = frame.event;
-      if (eventName === EVENT_GAP) {
-        disposition = "GAP_EXPIRED";
-        return;
-      }
-      if (eventName === EVENT_RESET) {
-        disposition = "RESET_REQUIRED";
-        const data = frame.data;
-        if (data !== null && typeof data === "object" && !Array.isArray(data)) {
-          const next = (data as { nextEpoch?: unknown }).nextEpoch;
-          if (typeof next === "number") nextEpoch = next;
-        }
-        return;
-      }
-      if (eventName === EVENT_DENIED) {
-        disposition = "NOT_FOUND_OR_FORBIDDEN";
-        return;
-      }
-      if (eventName === EVENT_SNAPSHOT) {
-        if (sink) {
-          // round7：流式链路的元数据帧不改变 RESUMED 处理路径；内联 events
-          // 也按同一应用点即时派发，reducer 幂等合并。终局否决仍由 reducer 的
-          // 终态冻结与 epoch 校验承担。
-          if (frame.data !== null && typeof frame.data === "object") {
-            handleCandidates(frame.data as Record<string, unknown>);
-          }
-          return;
-        }
-        disposition = "TERMINAL_SNAPSHOT";
-        snapshotEvents = extractSnapshotEvents(frame.data, fallbackEpoch);
-        acceptSnapshotFrames = snapshotEvents === null;
-        return;
-      }
-      // 无 data 行的控制帧（无载荷）跳过；其余按 durable 处理。
-      if (frame.data === null) return;
-      const payload = frame.data as Record<string, unknown>;
-      if (typeof payload.disposition === "string") {
-        disposition = payload.disposition as ResumeDisposition;
-      }
-      handleCandidates(payload);
-    },
-    result() {
-      if (disposition === "TERMINAL_SNAPSHOT" && snapshotEvents !== null) {
-        return { disposition, events: snapshotEvents };
-      }
-      const result: ResumeResult = { disposition, events: sink ? [] : batchEvents };
-      if (nextEpoch !== undefined) {
-        result.nextEpoch = nextEpoch;
-      }
-      return result;
-    },
-  };
-}
-
-/**
- * Mint a single-use resume ticket. Returns null when the generation is foreign
- * or absent (401/403/404) so existence is never disclosed; throws on any other
- * non-OK status or malformed payload.
- */
-async function mintTicket(
-  doFetch: FetchImpl,
-  context: BrowserRealtimeContext,
-  request: ResumeRequest,
-  signal?: AbortSignal,
-): Promise<MintedTicket | null> {
-  // Owner and transport are server-fixed (server-verified principal +
-  // FETCH_SSE); only the bindable client fields are sent.
-  const body = {
-    generationId: String(request.generationId),
-    sessionId: context.sessionId,
-    origin: context.origin,
-    streamEpoch: String(request.streamEpoch),
-    afterSeq: String(request.afterSeq),
-  };
-  const response = await doFetch(TICKETS_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (EXISTENCE_HIDDEN_STATUS.has(response.status)) {
-    return null;
-  }
-  if (!response.ok) {
-    throw new Error(`ticket mint failed with status ${response.status}`);
-  }
-  const data = (await response.json().catch(() => null)) as unknown;
-  if (
-    !isRecord(data) ||
-    typeof data.ticketId !== "string" ||
-    typeof data.secret !== "string"
+  const eventSeq = previousSeq + 1;
+  let payload: unknown = null;
+  if (eventType === "chat.delta" || eventType === "chat.snapshot") {
+    payload = typeof frame.data.text === "string" ? frame.data.text : "";
+  } else if (
+    (eventType === "chat.failed" || eventType === "chat.blocked") &&
+    typeof frame.data.fault === "string" &&
+    frame.data.fault.trim()
   ) {
-    throw new Error("ticket mint returned an invalid ticket payload");
+    // Only the stable, user-copy mapping key crosses into the reducer. Raw
+    // provider diagnostics and work-item details remain server-side.
+    payload = { fault: frame.data.fault };
   }
-  return { ticketId: data.ticketId, secret: data.secret };
-}
-
-/** Extract a snapshot frame's authoritative `events` array (null when absent). */
-function extractSnapshotEvents(data: unknown, fallbackEpoch: number): StreamEvent[] | null {
-  if (!isRecord(data) || !Array.isArray(data.events)) {
-    // The runtime emits snapshot metadata followed by the ordered durable
-    // event frames. Missing `events` means "use those frames", not an
-    // authoritative empty terminal snapshot.
-    return null;
-  }
-  const events: StreamEvent[] = [];
-  for (const candidate of data.events) {
-    const event = parseStreamEvent(candidate, fallbackEpoch);
-    if (event) {
-      events.push(event);
-    }
-  }
-  return events;
+  return {
+    event: {
+      eventSeq,
+      streamEpoch: fallbackEpoch,
+      eventType,
+      payload,
+    },
+    nextSeq: eventSeq,
+  };
 }
 
 async function fetchSnapshot(
@@ -340,32 +156,37 @@ async function fetchSnapshot(
   generationId: string,
   signal?: AbortSignal,
 ): Promise<SnapshotResult> {
-  const url = `${GENERATIONS_ENDPOINT}/${encodeURIComponent(generationId)}/snapshot`;
-  const response = await doFetch(url, { method: "GET", signal });
+  const response = await doFetch(
+    `${GENERATIONS_ENDPOINT}/${encodeURIComponent(generationId)}/snapshot`,
+    { method: "GET", credentials: "include", signal },
+  );
   if (!response.ok) {
-    // P1-07: a failed snapshot is a typed failure, never a fake terminal.
     return { ok: false, status: response.status, events: [] };
   }
   const data = (await response.json().catch(() => null)) as unknown;
   if (!isRecord(data) || !Array.isArray(data.events)) {
     return { ok: false, status: response.status, events: [] };
   }
-  const epoch = Number((data as { streamEpoch?: unknown }).streamEpoch ?? 1);
+
+  const epoch = Number(data.streamEpoch ?? 1);
+  let nextSeq = 0;
   const events: StreamEvent[] = [];
   for (const candidate of data.events) {
-    const event = parseStreamEvent(candidate, epoch);
-    if (event) {
-      events.push(event);
-    }
+    const parsed = parseRealtimeFrame(
+      { data: candidate },
+      Number.isFinite(epoch) ? epoch : 1,
+      nextSeq,
+    );
+    if (!parsed) continue;
+    nextSeq = parsed.nextSeq;
+    events.push(parsed.event);
   }
-  // USAGE-VIZ: settled provider tokens, present only after finalize.
   const usage = parseUsage(data.usage);
   return usage
     ? { ok: true, status: response.status, events, usage }
     : { ok: true, status: response.status, events };
 }
 
-/** USAGE-VIZ: strict parse of the snapshot usage object (absent → null). */
 function parseUsage(raw: unknown): SnapshotUsage | null {
   if (!isRecord(raw)) return null;
   const inputTokens = Number(raw.inputTokens);

@@ -1,6 +1,11 @@
-# DEPLOY Compose topology: PostgreSQL 18 + pgvector, the runtime jar, and a
-# Caddy edge serving the H5 bundle with TLS. Secrets come exclusively from
-# the deployment .env (cp .env.example .env) — never committed.
+# Go-only topology: PostgreSQL 18 + pgvector, companiond, MinIO, and Caddy.
+# Migrate and bootstrap reuse the same Go image as one-shot startup jobs.
+
+x-companiond-image: &companiond-image
+  image: virtual-companion-runtime:local
+  build:
+    context: ../../backend
+    dockerfile: Dockerfile
 
 services:
   db:
@@ -11,7 +16,6 @@ services:
       VC_MIGRATOR_DB_PASSWORD: ${VC_MIGRATOR_DB_PASSWORD:?set in .env}
       VC_RUNTIME_DB_PASSWORD: ${VC_RUNTIME_DB_PASSWORD:?set in .env}
       POSTGRES_DB: vc
-    # No host port: the database is reachable only inside the compose network.
     volumes:
       - db-data:/var/lib/postgresql
       - ./db-init:/docker-entrypoint-initdb.d:ro
@@ -20,20 +24,42 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    restart: unless-stopped
 
-  # DOGFOOD-02 (ADR-0006 §7.3): local MinIO object storage for data exports.
-  # Private bucket only — no cloud object storage, no anonymous access. The
-  # bucket itself is created once by minio-init; the runtime refuses to start
-  # in object mode unless the bucket already exists (no auto-creation).
+  # Schema ownership is intentionally separate from the steady-state runtime.
+  # The embedded Go migrator exits before bootstrap/runtime start.
+  migrate:
+    <<: *companiond-image
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["migrate"]
+    environment:
+      VC_MIGRATE_DB_DSN: postgres://vc_migrator:${VC_MIGRATOR_DB_PASSWORD:?set in .env}@db:5432/vc?sslmode=disable
+    restart: "no"
+
+  # Initializes/verifies the owner-binding secret and optionally seeds the
+  # first ADMIN. Migrator credentials exist only in this short-lived job.
+  bootstrap:
+    <<: *companiond-image
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["bootstrap"]
+    environment:
+      VC_BOOTSTRAP_DB_DSN: postgres://vc_migrator:${VC_MIGRATOR_DB_PASSWORD:?set in .env}@db:5432/vc?sslmode=disable
+      VC_OWNER_BINDING_SECRET: ${VC_OWNER_BINDING_SECRET:?set in .env}
+      VC_ADMIN_SEED_USERNAME: ${VC_ADMIN_SEED_USERNAME:-}
+      VC_ADMIN_SEED_PASSWORD: ${VC_ADMIN_SEED_PASSWORD:-}
+      VC_ADMIN_SEED_DISPLAY_NAME: ${VC_ADMIN_SEED_DISPLAY_NAME:-管理员}
+    restart: "no"
+
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     environment:
       MINIO_ROOT_USER: ${VC_EXPORT_S3_ACCESS_KEY:?set in .env}
       MINIO_ROOT_PASSWORD: ${VC_EXPORT_S3_SECRET_KEY:?set in .env}
     command: server /data --console-address ":9001"
-    # No host port: MinIO is reachable only inside the compose network; the
-    # runtime serves export downloads server-side, so clients never talk to
-    # MinIO directly.
     volumes:
       - minio-data:/data
     healthcheck:
@@ -43,8 +69,6 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # One-shot bucket provisioning: create the export bucket if missing and
-  # verify it is NOT anonymously readable (private by default).
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
@@ -69,136 +93,55 @@ services:
     restart: "no"
 
   runtime:
-    build:
-      context: ../..
-      dockerfile: ops/deploy/Dockerfile
+    <<: *companiond-image
     depends_on:
-      db:
-        condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
     environment:
-      # Production profile is fail-closed: every switch below must be true and
-      # every secret injected, or startup refuses (see
-      # ProductionFailClosedEnvironmentPostProcessor).
-      SPRING_PROFILES_ACTIVE: production
-      VC_AUTH_ENABLED: "true"
-      VC_AUTH_DATASOURCE_ENABLED: "true"
-      VC_FLYWAY_ENABLED: "true"
-      VC_MIGRATOR_DB_URL: jdbc:postgresql://db:5432/vc
-      VC_MIGRATOR_DB_USERNAME: vc_migrator
-      VC_MIGRATOR_DB_PASSWORD: ${VC_MIGRATOR_DB_PASSWORD}
-      VC_DB_URL: jdbc:postgresql://db:5432/vc
-      VC_DB_USERNAME: vc_runtime_login
-      VC_DB_PASSWORD: ${VC_RUNTIME_DB_PASSWORD}
-      VC_ENFORCE_DB_LEAST_PRIVILEGE: "true"
-      VC_JWT_SECRET: ${VC_JWT_SECRET:?set in .env}
+      VC_MODE: full
+      VC_HTTP_ADDR: 0.0.0.0:8080
+      VC_HTTP_ORIGINS: https://${VC_DOMAIN:?set in .env}
+      VC_DB_DSN: postgres://vc_runtime_login:${VC_RUNTIME_DB_PASSWORD:?set in .env}@db:5432/vc?sslmode=disable
+      VC_DB_MAX_CONNS: ${VC_DB_MAX_CONNS:-8}
+      VC_DB_TX_TIMEOUT: ${VC_DB_TX_TIMEOUT:-5s}
       VC_OWNER_BINDING_SECRET: ${VC_OWNER_BINDING_SECRET:?set in .env}
-      VC_SHARED_RATE_LIMIT_ENABLED: "true"
-      VC_SHARED_RATE_LIMIT_SECRET: ${VC_SHARED_RATE_LIMIT_SECRET:?set in .env}
       VC_CRYPTO_REST_KEY: ${VC_CRYPTO_REST_KEY:?set in .env}
-      VC_CRYPTO_BACKFILL_ENABLED: ${VC_CRYPTO_BACKFILL_ENABLED:-false}
-      VC_ADMIN_SEED_USERNAME: ${VC_ADMIN_SEED_USERNAME:-}
-      VC_ADMIN_SEED_PASSWORD: ${VC_ADMIN_SEED_PASSWORD:-}
-      VC_ALERT_WEBHOOK_URL: ${VC_ALERT_WEBHOOK_URL:-}
-      VC_ALERT_WEBHOOK_PROVIDER: ${VC_ALERT_WEBHOOK_PROVIDER:-generic}
-      VC_ALERT_WEBHOOK_SECRET: ${VC_ALERT_WEBHOOK_SECRET:-}
-      VC_ALERT_WEBHOOK_ALLOWED_HOSTS: ${VC_ALERT_WEBHOOK_ALLOWED_HOSTS:-}
-      VC_ALERT_FEISHU_APP_ID: ${VC_ALERT_FEISHU_APP_ID:-}
-      VC_ALERT_FEISHU_APP_SECRET: ${VC_ALERT_FEISHU_APP_SECRET:-}
-      VC_ALERT_FEISHU_CHAT_ID: ${VC_ALERT_FEISHU_CHAT_ID:-}
-      VC_ALERT_FALLBACK_WEBHOOK_URL: ${VC_ALERT_FALLBACK_WEBHOOK_URL:-}
-      VC_ALERT_FALLBACK_WEBHOOK_SECRET: ${VC_ALERT_FALLBACK_WEBHOOK_SECRET:-}
-      VC_ALERT_FALLBACK_WEBHOOK_ALLOWED_HOSTS: ${VC_ALERT_FALLBACK_WEBHOOK_ALLOWED_HOSTS:-}
-      VC_MODEL_PROVIDERS_ENABLED: ${VC_MODEL_PROVIDERS_ENABLED:-false}
-      VC_ZERO_LLM_ENABLED: ${VC_ZERO_LLM_ENABLED:-false}
-      VC_ZERO_LLM_SOURCE_ID: ${VC_ZERO_LLM_SOURCE_ID:-ZERO_LLM_FALLBACK}
-      # DOGFOOD-STABILIZATION-03: while the GENERATION provider's terms are
-      # unverified (default false) every outbound MESSAGE_TEXT — current turn
-      # and history — must pass the local sensitive-data detector before any
-      # provider HTTP (independent of VC_MODERATION_ENABLED; fail closed).
-      VC_GENERATION_PROVIDER_TERMS_VERIFIED: ${VC_GENERATION_PROVIDER_TERMS_VERIFIED:-false}
-      VC_MODEL_BUDGET_MONTHLY_USD: ${VC_MODEL_BUDGET_MONTHLY_USD:-0}
-      VC_MODEL_BUDGET_RESERVATION_OUTPUT_TOKENS: ${VC_MODEL_BUDGET_RESERVATION_OUTPUT_TOKENS:-8192}
-      VC_MODERATION_ENABLED: ${VC_MODERATION_ENABLED:-false}
-      # DOGFOOD-STABILIZATION-02: dogfood uses chat-completions;
-      # openai-moderations is refused at wiring this round (its client lacks
-      # the egress/DNS/response-size protections chat-completions enforces).
-      VC_MODERATION_MODE: ${VC_MODERATION_MODE:-chat-completions}
-      VC_MODERATION_PROVIDER_REF: ${VC_MODERATION_PROVIDER_REF:-}
-      VC_MODERATION_BASE_URL: ${VC_MODERATION_BASE_URL:-}
-      VC_MODERATION_MODEL: ${VC_MODERATION_MODEL:-}
-      VC_MODERATION_MODEL_VERSION: ${VC_MODERATION_MODEL_VERSION:-}
-      VC_MODERATION_API_KEY: ${VC_MODERATION_API_KEY:-}
-      VC_MODERATION_PROVIDER_TERMS_VERIFIED: ${VC_MODERATION_PROVIDER_TERMS_VERIFIED:-false}
-      VC_MODERATION_ALLOWED_HOSTS: ${VC_MODERATION_ALLOWED_HOSTS:-}
-      # DOGFOOD-05 (ADR-0006 §3.3): provider plan quota facts (missing/expired
-      # shows UNKNOWN on the admin page with a daily P2; never a zero cost).
-      VC_PROVIDER_PLAN_ENABLED: ${VC_PROVIDER_PLAN_ENABLED:-false}
-      VC_PROVIDER_PLAN_NAME: ${VC_PROVIDER_PLAN_NAME:-}
-      VC_PROVIDER_PLAN_VALID_FROM: ${VC_PROVIDER_PLAN_VALID_FROM:-}
-      VC_PROVIDER_PLAN_VALID_UNTIL: ${VC_PROVIDER_PLAN_VALID_UNTIL:-}
-      VC_PROVIDER_PLAN_TOKEN_CAP: ${VC_PROVIDER_PLAN_TOKEN_CAP:-}
-      VC_PROVIDER_PLAN_REQUEST_CAP: ${VC_PROVIDER_PLAN_REQUEST_CAP:-}
-      VC_EMBEDDING_ENABLED: ${VC_EMBEDDING_ENABLED:-false}
-      VC_EMBEDDING_BASE_URL: ${VC_EMBEDDING_BASE_URL:-}
-      VC_EMBEDDING_MODEL: ${VC_EMBEDDING_MODEL:-}
-      VC_EMBEDDING_MODEL_VERSION: ${VC_EMBEDDING_MODEL_VERSION:-}
-      VC_EMBEDDING_DIMENSION: ${VC_EMBEDDING_DIMENSION:-64}
-      VC_EMBEDDING_SPACE_ID: ${VC_EMBEDDING_SPACE_ID:-}
-      VC_EMBEDDING_REEMBED_ENABLED: ${VC_EMBEDDING_REEMBED_ENABLED:-false}
-      VC_EMBEDDING_SOURCE_SPACE_ID: ${VC_EMBEDDING_SOURCE_SPACE_ID:-alpha-hash-64}
-      VC_EMBEDDING_REEMBED_BATCH_SIZE: ${VC_EMBEDDING_REEMBED_BATCH_SIZE:-16}
-      VC_EMBEDDING_API_KEY: ${VC_EMBEDDING_API_KEY:-}
-      VC_AGE_PROVIDER_ENABLED: ${VC_AGE_PROVIDER_ENABLED:-false}
-      VC_AGE_PROVIDER_ENDPOINT: ${VC_AGE_PROVIDER_ENDPOINT:-}
-      VC_AGE_PROVIDER_API_KEY: ${VC_AGE_PROVIDER_API_KEY:-}
-      VC_AGE_PROVIDER_REF: ${VC_AGE_PROVIDER_REF:-}
-      VC_AGE_PROVIDER_VERSION: ${VC_AGE_PROVIDER_VERSION:-}
-      VC_AGE_PROVIDER_SUBJECT_SECRET: ${VC_AGE_PROVIDER_SUBJECT_SECRET:-}
-      VC_AGE_PROVIDER_ALLOWED_HOSTS: ${VC_AGE_PROVIDER_ALLOWED_HOSTS:-}
-      VC_RETENTION_PURGE_ENABLED: ${VC_RETENTION_PURGE_ENABLED:-false}
-      VC_RETENTION_DRY_RUN: ${VC_RETENTION_DRY_RUN:-true}
-      # DOGFOOD-02 (ADR-0006 §7.3): local MinIO object storage for exports.
-      # Default off (inline payload column); the dogfood .env flips it on.
-      # When on, the runtime fail-closes unless the bucket exists (created
-      # by minio-init). Endpoint is compose-internal; clients never reach
-      # MinIO directly — downloads are served by the runtime.
-      VC_EXPORT_S3_ENABLED: ${VC_EXPORT_S3_ENABLED:-false}
-      VC_EXPORT_S3_ENDPOINT: http://minio:9000
-      VC_EXPORT_S3_ACCESS_KEY: ${VC_EXPORT_S3_ACCESS_KEY}
-      VC_EXPORT_S3_SECRET_KEY: ${VC_EXPORT_S3_SECRET_KEY}
-      VC_EXPORT_S3_BUCKET: ${VC_EXPORT_S3_BUCKET:-vc-exports}
-      VC_JOB_DAU_STALE_SECONDS: ${VC_JOB_DAU_STALE_SECONDS:-300}
-      VC_JOB_EXPORT_STALE_SECONDS: ${VC_JOB_EXPORT_STALE_SECONDS:-300}
-      VC_JOB_AUTH_PURGE_STALE_SECONDS: ${VC_JOB_AUTH_PURGE_STALE_SECONDS:-93600}
-      VC_JOB_RETENTION_STALE_SECONDS: ${VC_JOB_RETENTION_STALE_SECONDS:-93600}
-      # S0-24 generation admission switch (application.yaml
-      # virtual-companion.beta.generation-enabled). Default stays false; the
-      # Owner-only dogfood overrides it in the private .env (see DOGFOOD.md).
-      # Even when true, the durable release gate (vc.release_gate_snapshot,
-      # CANARY stage) still restricts generation to the single bound owner.
-      VC_BETA_GENERATION_ENABLED: ${VC_BETA_GENERATION_ENABLED:-false}
+      VC_CRYPTO_REST_KEY_ID: ${VC_CRYPTO_REST_KEY_ID:-default}
+      VC_CRYPTO_REST_KEY_VERSION: ${VC_CRYPTO_REST_KEY_VERSION:-1}
+      VC_CRYPTO_PREVIOUS_REST_KEY: ${VC_CRYPTO_PREVIOUS_REST_KEY:-}
+      VC_CRYPTO_PREVIOUS_REST_KEY_ID: ${VC_CRYPTO_PREVIOUS_REST_KEY_ID:-}
+      VC_CRYPTO_PREVIOUS_REST_KEY_VERSION: ${VC_CRYPTO_PREVIOUS_REST_KEY_VERSION:-0}
+      # Provider/model credentials and routes are managed by the ADMIN page and
+      # stored encrypted in PostgreSQL. The env bootstrap route stays disabled.
+      VC_PROVIDER_ENABLED: "false"
+      VC_PROVIDER_ALLOW_LOOPBACK_HTTP: ${VC_PROVIDER_ALLOW_LOOPBACK_HTTP:-false}
+      VC_PROVIDER_CONNECT_TIMEOUT: ${VC_PROVIDER_CONNECT_TIMEOUT:-10s}
+      VC_PROVIDER_FIRST_TOKEN_TIMEOUT: ${VC_PROVIDER_FIRST_TOKEN_TIMEOUT:-60s}
+      VC_PROVIDER_TOTAL_TIMEOUT: ${VC_PROVIDER_TOTAL_TIMEOUT:-240s}
+      VC_PROVIDER_MAX_RESPONSE_BYTES: ${VC_PROVIDER_MAX_RESPONSE_BYTES:-262144}
+      VC_BUDGET_MAX_INPUT_TOKENS: ${VC_BUDGET_MAX_INPUT_TOKENS:-8000}
+      VC_BUDGET_MAX_OUTPUT_TOKENS: ${VC_BUDGET_MAX_OUTPUT_TOKENS:-2048}
+      VC_BUDGET_MAX_RESPONSE_BYTES: ${VC_BUDGET_MAX_RESPONSE_BYTES:-262144}
+      VC_BUDGET_CONNECT_TIMEOUT: ${VC_BUDGET_CONNECT_TIMEOUT:-10s}
+      VC_BUDGET_FIRST_TOKEN_TIMEOUT: ${VC_BUDGET_FIRST_TOKEN_TIMEOUT:-60s}
+      VC_BUDGET_TOTAL_TIMEOUT: ${VC_BUDGET_TOTAL_TIMEOUT:-240s}
+      VC_BUDGET_MAX_ATTEMPTS: ${VC_BUDGET_MAX_ATTEMPTS:-2}
+      VC_BUDGET_MAX_RESERVED_COST: ${VC_BUDGET_MAX_RESERVED_COST:-0}
+      VC_SESSION_TTL: ${VC_SESSION_TTL:-168h}
+      VC_SESSION_COOKIE_SECURE: "true"
+      VC_SESSION_REAUTH_WINDOW: ${VC_SESSION_REAUTH_WINDOW:-15m}
+      VC_MAX_OUTSTANDING_TURNS: ${VC_MAX_OUTSTANDING_TURNS:-8}
+      VC_MAX_CONCURRENT_TURNS: ${VC_MAX_CONCURRENT_TURNS:-1}
+      VC_QUEUE_TIMEOUT: ${VC_QUEUE_TIMEOUT:-5m}
+      VC_JOB_CLAIM_LIMIT: ${VC_JOB_CLAIM_LIMIT:-8}
+      VC_JOB_RECOVER_INTERVAL: ${VC_JOB_RECOVER_INTERVAL:-5s}
+      VC_SHUTDOWN_TIMEOUT: ${VC_SHUTDOWN_TIMEOUT:-15s}
+      VC_LOG_LEVEL: ${VC_LOG_LEVEL:-info}
+      VC_VERSION: ${VC_VERSION:-0.1.0}
       VC_COMMIT: ${VC_COMMIT:-}
-      # S0-06: H5 and API are same-origin behind Caddy. The Origin allow-list
-      # is the public https origin of VC_DOMAIN so browser POSTs/PUTs are not
-      # rejected by CookieCsrfGuardFilter. Wildcards are refused at startup.
-      VC_CORS_ALLOWED_ORIGINS: https://${VC_DOMAIN}
-      # S0-33 / §12.7 single-replica hard gate: the runtime declares exactly
-      # one replica. Any explicit value other than 1 makes the startup
-      # preflight refuse every instance, so an "intended scale-out" cannot be
-      # published. The hard membership enforcement (a second live instance is
-      # refused via the PostgreSQL advisory-lock lease) lives in the runtime.
-      VC_RUNTIME_REPLICAS: ${VC_RUNTIME_REPLICAS:-1}
-    # No host port: the runtime is reachable only through the Caddy edge.
     restart: unless-stopped
-    # S0-33 / §12.7: deployment topology is pinned to a single runtime
-    # replica until shared Realtime/cancel/quota/breaker state is externalized
-    # (S2-37). Do NOT use `docker compose up --scale runtime=N` and do NOT run
-    # a second stack against the same database: the second instance is refused
-    # at startup by the runtime membership lease (exit 87,
-    # RUNTIME_SINGLETON_REFUSED), but the refusal is the gate — not a design
-    # that works.
     deploy:
       replicas: 1
 
@@ -207,7 +150,8 @@ services:
       context: ../..
       dockerfile: ops/deploy/Dockerfile.web
     depends_on:
-      - runtime
+      runtime:
+        condition: service_healthy
     ports:
       - "${VC_HTTP_PORT:-80}:80"
       - "${VC_HTTPS_PORT:-443}:443"

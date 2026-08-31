@@ -53,6 +53,14 @@
           </button>
           <text v-if="conversations.length === 0" class="sheet-empty">还没有会话</text>
         </view>
+        <view
+          v-if="conversationOpenError"
+          class="chat-block-error"
+          data-testid="conversation-open-error"
+          role="alert"
+        >
+          <text>会话加载失败，请再试一次</text>
+        </view>
         <view class="sheet-row">
           <button
             class="sheet-item"
@@ -141,14 +149,6 @@
           >
             角色设置
           </button>
-          <button
-            class="sheet-item"
-            data-testid="nav-reminder"
-            aria-label="提醒管理"
-            @click="menuOpen = false; goTo(reminderHref())"
-          >
-            提醒管理
-          </button>
         </view>
         <view class="sheet-row">
           <button
@@ -204,6 +204,7 @@
             </button>
           </view>
           <RelationshipSelector
+            v-if="relStore.relationships.length > 0 || relStore.status !== 'ready'"
             :relationships="relStore.relationships"
             :current-id="relStore.currentRelationshipId"
             :status="relStore.status"
@@ -211,6 +212,14 @@
             :show-create="false"
             @activate="onRelActivate"
           />
+          <view
+            v-if="relationshipActivateError"
+            class="chat-block-error"
+            data-testid="relationship-activate-error"
+            role="alert"
+          >
+            <text>切换伙伴失败，请重试</text>
+          </view>
         </view>
 
         <template v-else>
@@ -233,26 +242,6 @@
               <button class="context-hint__close" aria-label="关闭服务状态提示" @click="serviceHintDismissed = true">
                 <AppIcon name="close" :size="14" />
               </button>
-            </view>
-            <view v-if="usageHealth.reminderDue" class="context-hint" data-testid="usage-health-banner">
-              <text>
-                已连续使用 {{ usageHealth.continuousMinutes }} 分钟。休息一下也好——继续使用或结束今天的对话。
-              </text>
-              <view class="context-hint__actions">
-                <button class="hint-btn" data-testid="usage-health-continue" @click="onUsageContinue">
-                  继续使用
-                </button>
-                <button class="hint-btn" data-testid="usage-health-end" @click="onUsageEnd">
-                  结束今天的对话
-                </button>
-              </view>
-            </view>
-            <view v-if="importCount > 0" class="context-hint" data-testid="memory-import-prompt">
-              <text>有 {{ importCount }} 条旧关系的记忆可以导入当前陪伴。默认不自动带上。</text>
-              <view class="context-hint__actions">
-                <button class="hint-btn" @click="onImportMemories">导入这些记忆</button>
-                <button class="hint-btn" @click="onDiscardImport">不要导入</button>
-              </view>
             </view>
             <view v-if="store.activeIncognito" class="context-hint" data-testid="incognito-hint">
               <text>这是无痕会话：内容不会进入长期记忆（无痕 ≠ 无必要安全记录）。</text>
@@ -394,26 +383,6 @@
                 >
                   重新生成
                 </button>
-                <view
-                  v-if="versionsFor(msg).length > 1"
-                  class="version-row"
-                  data-testid="version-row"
-                  role="group"
-                  aria-label="生成版本"
-                >
-                  <button
-                    v-for="(ver, index) in versionsFor(msg)"
-                    :key="ver.generationId"
-                    class="msg-action"
-                    :class="{ 'msg-action--active': ver.selected }"
-                    :data-testid="`version-${index + 1}`"
-                    :aria-pressed="ver.selected"
-                    :disabled="isStreaming"
-                    @click="onSelectVersion(msg, ver.generationId)"
-                  >
-                    版本 {{ index + 1 }}
-                  </button>
-                </view>
               </view>
             </view>
 
@@ -542,6 +511,7 @@
 import { computed, defineComponent, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 
 import { parseSafeMarkdown } from "@/domain/safe-markdown";
+import { goTo } from "@/app/navigate";
 
 import { createAuthedFetch } from "@/api/authed-fetch";
 import { companionHeaderName } from "@/domain/companion-presentation";
@@ -556,19 +526,11 @@ import AppSheet from "@/design-system/AppSheet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
-import { useUsageHealthStore } from "@/stores/usage-health";
 import { useIncognitoStore } from "@/stores/incognito";
-import type { MemoryImportPreview } from "@/api/relationship";
 import { requestIdLabel } from "@/domain/request-id";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { isReadableConversationText, readableConversationTitle } from "@/domain/conversation-display";
 import { installStreamLifecycle } from "@/domain/stream-recovery";
-
-function resolveOrigin(): string {
-  return typeof window !== "undefined" && window.location && window.location.origin
-    ? window.location.origin
-    : "http://localhost:5173";
-}
 
 /** 距底部不超过该值视为"在底部附近"（回到底部即恢复跟随）。 */
 const RESUME_GAP_PX = 48;
@@ -580,9 +542,7 @@ export default defineComponent({
     const store = useChatStore();
     const relStore = useRelationshipStore();
     const auth = useAuthStore();
-    const usageHealth = useUsageHealthStore();
     const incognitoPref = useIncognitoStore();
-    const importPreview = ref<MemoryImportPreview | null>(null);
 
     const headerCompanionName = computed(() =>
       relStore.current ? companionHeaderName(relStore.current) : "",
@@ -592,6 +552,8 @@ export default defineComponent({
     const initError = ref(false);
     const sendError = ref(false);
     const actionError = ref(false);
+    const relationshipActivateError = ref(false);
+    const conversationOpenError = ref(false);
     const initRequestId = ref("");
     const confirmDeactivate = ref(false);
     const confirmDeleteId = ref<string | null>(null);
@@ -623,8 +585,6 @@ export default defineComponent({
       { value: "UNSAFE", label: "不安全" },
     ] as const;
 
-    const sessionId = crypto.randomUUID();
-
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
@@ -634,10 +594,7 @@ export default defineComponent({
       renewAccessToken: () => auth.renewAccessToken(transport),
       onUnauthorized: () => auth.onUnauthorized(),
     });
-    const deps: RealtimeDeps = createBrowserRealtimeDeps(
-      { sessionId, origin: resolveOrigin() },
-      authedFetch,
-    );
+    const deps: RealtimeDeps = createBrowserRealtimeDeps(authedFetch);
 
     // ---- 最小滚动状态：isFollowingLatest + 最多一个待执行 rAF ----
     const historyEl = ref<unknown>(null);
@@ -729,12 +686,6 @@ export default defineComponent({
     const canSend = computed(() => inputText.value.trim().length > 0);
     const selectedMode = computed(() => store.selectedMode);
     const hasRelationship = computed(() => relStore.currentRelationshipId !== null);
-    const importCount = computed(() =>
-      importPreview.value && importPreview.value.acceptedCount > 0 && hasRelationship.value
-        ? importPreview.value.acceptedCount
-        : 0,
-    );
-
     // 新消息、流式草稿与尾部状态行到达时跟随；写入由 rAF 合并。
     // （放在 statusText 声明之后，watch 源立即求值。）
     // 会话切换：取消旧帧、回到跟随态。不手写 scrollTop=0——消息清空/替换
@@ -808,6 +759,12 @@ export default defineComponent({
           if (store.terminalFault) {
             return faultText(store.terminalFault);
           }
+          if (
+            store.stream.terminalEventType === "chat.failed" ||
+            store.lastDisconnect === "terminal"
+          ) {
+            return "模型服务失败，请稍后重试";
+          }
           if (store.lastDisconnect === "network") {
             return "网络中断，未确认的输入仍保留";
           }
@@ -874,13 +831,11 @@ export default defineComponent({
         sendError.value = true;
         return;
       }
-      void usageHealth.heartbeat(transport);
       if (store.phase === "failed" && !store.generationId) {
         inputText.value = text;
       }
       if (store.phase === "completed") {
         await scheduleMemoryPrompt();
-        await refreshVersions();
       }
     }
 
@@ -889,22 +844,6 @@ export default defineComponent({
       if (event.shiftKey) return;
       event.preventDefault();
       void onSend();
-    }
-
-    const onUsageContinue = () => usageHealth.record(transport, "CONTINUED");
-
-    async function onUsageEnd(): Promise<void> {
-      await usageHealth.record(transport, "ENDED");
-      const id = store.conversationId;
-      if (!id) return;
-      const ended = await guarded(() => store.endToday(transport, id));
-      if (ended) {
-        confirmEndToday.value = false;
-        await guarded(async () => {
-          await refreshConversationList();
-          await startConversation();
-        });
-      }
     }
 
     function lastUserMessage(): { messageId: string; content: string } | null {
@@ -926,27 +865,8 @@ export default defineComponent({
       );
     }
 
-    function versionsFor(msg: { role: string; messageId: string }) {
-      if (msg.role !== "user") return [];
-      return store.versionsByUserMessage[msg.messageId] ?? [];
-    }
-
     async function onRegenerate(msg: { messageId: string; content: string }): Promise<void> {
       await guarded(() => store.regenerate(transport, deps, msg.messageId, msg.content));
-    }
-
-    async function onSelectVersion(
-      msg: { messageId: string },
-      generationId: string,
-    ): Promise<void> {
-      await guarded(() => store.selectVersion(transport, generationId, msg.messageId));
-    }
-
-    async function refreshVersions(): Promise<void> {
-      const last = lastUserMessage();
-      if (last) {
-        await store.loadVersions(transport, last.messageId);
-      }
     }
 
     let memoryPollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1078,25 +998,10 @@ export default defineComponent({
       goTo("/pages/login/login");
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // 呈现层导航；绝不影响发送/取消。
-      }
-    }
-
     const knownRelationshipIds = (): string[] =>
       relStore.relationships.map((row) => row.relationshipId);
 
-    function contextHref(page: "memory" | "conversations" | "companion" | "reminder"): string {
+    function contextHref(page: "memory" | "conversations" | "companion"): string {
       return buildContextHref(page, {
         relationshipId: relStore.currentRelationshipId,
         knownRelationshipIds: knownRelationshipIds(),
@@ -1106,7 +1011,6 @@ export default defineComponent({
     const memoryHref = () => contextHref("memory");
     const conversationsHref = () => contextHref("conversations");
     const companionHref = () => contextHref("companion");
-    const reminderHref = () => contextHref("reminder");
     const reportHref = (messageId: string) => buildContextHref("report", { messageId });
 
     function readQueryRelationshipId(): string {
@@ -1152,10 +1056,15 @@ export default defineComponent({
     }
 
     async function onOpenConversation(id: string): Promise<void> {
+      conversationOpenError.value = false;
+      const didOpen = await store.openConversation(transport, id);
+      if (!didOpen) {
+        conversationOpenError.value = true;
+        return;
+      }
       menuOpen.value = false;
-      await store.openConversation(transport, id);
-      const opened = store.conversations.find((c) => c.conversationId === id);
-      incognitoNext.value = opened?.incognito === true;
+      const conversation = store.conversations.find((c) => c.conversationId === id);
+      incognitoNext.value = conversation?.incognito === true;
     }
 
     async function onNewConversation(): Promise<void> {
@@ -1236,49 +1145,20 @@ export default defineComponent({
     const onLoadMore = () => guarded(() => store.loadMoreHistory(transport));
 
     async function onRelActivate(relationshipId: string): Promise<void> {
-      const result = await guarded(() => relStore.activate(transport, relationshipId));
-      if (result) {
+      relationshipActivateError.value = false;
+      try {
+        const result = await relStore.activate(transport, relationshipId);
+        if (!result) {
+          relationshipActivateError.value = true;
+          return;
+        }
         initError.value = false;
         confirmDeactivate.value = false;
         await guarded(async () => {
           await startConversation();
-          await refreshImportPreview();
         });
-      }
-    }
-
-    async function refreshImportPreview(): Promise<void> {
-      const persona = relStore.current?.personaRef;
-      if (!persona) {
-        importPreview.value = null;
-        return;
-      }
-      try {
-        importPreview.value = await relStore.listMemoryImports(transport, persona);
       } catch {
-        importPreview.value = null;
-      }
-    }
-
-    async function onImportMemories(): Promise<void> {
-      const id = relStore.currentRelationshipId;
-      if (!id) return;
-      try {
-        await relStore.importMemories(transport, id);
-        importPreview.value = null;
-      } catch {
-        // 保持提示；不虚构导入成功。
-      }
-    }
-
-    async function onDiscardImport(): Promise<void> {
-      const persona = relStore.current?.personaRef;
-      if (!persona) return;
-      try {
-        await relStore.discardMemoryImport(transport, persona);
-        importPreview.value = null;
-      } catch {
-        // 保持提示。
+        relationshipActivateError.value = true;
       }
     }
 
@@ -1302,24 +1182,7 @@ export default defineComponent({
       return safe.length > 16 ? `${safe.slice(0, 16)}…` : safe;
     }
 
-    watch(
-      () => usageHealth.reminderDue,
-      (due) => {
-        if (due) {
-          void usageHealth.markShown(transport);
-        }
-      },
-    );
-
     let stopLifecycle: (() => void) | undefined;
-    let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
-
-    function scheduleHeartbeat(): void {
-      heartbeatTimer = setTimeout(() => {
-        void usageHealth.heartbeat(transport);
-        scheduleHeartbeat();
-      }, 60_000);
-    }
 
     onMounted(async () => {
       if (typeof document !== "undefined" && typeof window !== "undefined") {
@@ -1342,8 +1205,6 @@ export default defineComponent({
         await auth.tryRefresh(transport);
       }
       if (auth.isAuthenticated) {
-        await usageHealth.heartbeat(transport);
-        scheduleHeartbeat();
         await incognitoPref.load(transport);
         incognitoNext.value = incognitoPref.defaultIncognito;
       }
@@ -1384,8 +1245,6 @@ export default defineComponent({
           transport,
           relStore.currentRelationshipId,
         );
-        await refreshVersions();
-        await refreshImportPreview();
       }
     });
 
@@ -1398,21 +1257,16 @@ export default defineComponent({
         window.visualViewport?.removeEventListener("resize", onViewportChange);
       }
       clearMemoryPoll();
-      if (heartbeatTimer !== undefined) {
-        clearTimeout(heartbeatTimer);
-      }
       if (copyResetTimer !== undefined) {
         globalThis.clearTimeout(copyResetTimer);
       }
       store.detachInFlight();
-      usageHealth.reset();
     });
 
     return {
       relStore,
       store,
       auth,
-      usageHealth,
       historyEl,
       followingLatest,
       onHistoryUserScrollIntent,
@@ -1428,7 +1282,6 @@ export default defineComponent({
       showLoadMore,
       canSend,
       hasRelationship,
-      importCount,
       inputText,
       initError,
       initRequestId,
@@ -1459,18 +1312,16 @@ export default defineComponent({
       showFeedback,
       onFeedback,
       serviceHint,
-      onUsageContinue,
-      onUsageEnd,
       statusText,
       sendError,
       actionError,
+      relationshipActivateError,
+      conversationOpenError,
       canRetry,
       onSend,
       onEnterKey,
       onRegenerate,
-      onSelectVersion,
       canRegenerateMessage,
-      versionsFor,
       onRetry,
       onCancel,
       onLogout,
@@ -1486,11 +1337,8 @@ export default defineComponent({
       memoryHref,
       conversationsHref,
       companionHref,
-      reminderHref,
       reportHref,
       onRelActivate,
-      onImportMemories,
-      onDiscardImport,
       conversationLabel,
     };
   },
@@ -1507,6 +1355,9 @@ export default defineComponent({
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
   overflow: hidden;
   background: var(--vc-env);
 }
@@ -1536,9 +1387,10 @@ export default defineComponent({
   gap: var(--vc-space-2);
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: calc(var(--vc-space-2) + env(safe-area-inset-top, 0px)) var(--vc-space-2);
+  min-height: 52px;
+  padding: calc(var(--vc-space-1) + env(safe-area-inset-top, 0px)) var(--vc-space-2);
   background: var(--vc-env-raised);
   border-bottom: 1px solid var(--vc-border-env);
 }
@@ -1552,7 +1404,7 @@ export default defineComponent({
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: var(--vc-radius-s);
+  border-radius: 50%;
   background: transparent;
   color: var(--vc-on-env);
 }
@@ -1572,16 +1424,15 @@ export default defineComponent({
   overflow: hidden;
   color: var(--vc-on-env);
   font-size: var(--vc-text-md);
-  font-weight: 600;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chat-header__ai {
   flex: 0 0 auto;
-  padding: 1px 8px;
-  border: 1px solid var(--vc-border-env);
-  border-radius: var(--vc-radius-pill);
+  padding: 0;
+  border: 0;
   color: var(--vc-on-env-muted);
   font-size: var(--vc-text-xs);
   white-space: nowrap;
@@ -1719,7 +1570,8 @@ export default defineComponent({
 
 .sheet-conv-item--active {
   background: var(--vc-sunken);
-  font-weight: 600;
+  color: var(--vc-primary);
+  font-weight: 700;
 }
 
 .sheet-conv-incognito {
@@ -1741,10 +1593,11 @@ export default defineComponent({
   align-items: center;
   gap: var(--vc-space-2);
   margin: var(--vc-space-2) 0 0;
-  padding: var(--vc-space-2) var(--vc-space-3);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-card);
+  padding: var(--vc-space-2) 0;
+  border: 0;
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
+  background: transparent;
   color: var(--vc-muted);
   font-size: var(--vc-text-sm);
 }
@@ -1782,8 +1635,9 @@ export default defineComponent({
   gap: var(--vc-space-3);
   margin: var(--vc-space-4) 0;
   padding: var(--vc-space-5);
-  border: 1px dashed var(--vc-border-strong);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
 }
 
@@ -1805,9 +1659,9 @@ export default defineComponent({
   min-height: 96px;
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: 0 var(--vc-space-3) var(--vc-space-3);
+  padding: var(--vc-space-3) var(--vc-space-4) var(--vc-space-4);
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
@@ -1823,7 +1677,7 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: var(--vc-space-2) 0;
+  padding: var(--vc-space-3) 0;
 }
 
 .chat-message.user {
@@ -1831,11 +1685,11 @@ export default defineComponent({
 }
 
 .msg-content {
-  max-width: 86%;
-  padding: var(--vc-space-2) var(--vc-space-3);
-  border-radius: var(--vc-radius-m);
+  max-width: 88%;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border-radius: var(--vc-radius-s) var(--vc-radius-l) var(--vc-radius-l) var(--vc-radius-l);
   background: var(--vc-card);
-  border: 1px solid var(--vc-border);
+  border: 0;
   font-size: var(--vc-text-md);
   line-height: 1.65;
   overflow-wrap: anywhere;
@@ -1843,7 +1697,7 @@ export default defineComponent({
 
 .chat-message.user .msg-content {
   background: var(--vc-primary);
-  border-color: var(--vc-primary);
+  border-radius: var(--vc-radius-l) var(--vc-radius-s) var(--vc-radius-l) var(--vc-radius-l);
   color: var(--vc-on-primary);
 }
 
@@ -1885,6 +1739,7 @@ export default defineComponent({
 .msg-more {
   margin-top: var(--vc-space-1);
   border-radius: var(--vc-radius-s);
+  background: transparent;
 }
 
 .msg-actions {
@@ -1910,13 +1765,6 @@ export default defineComponent({
   background: var(--vc-sunken);
   color: var(--vc-muted);
   font-size: var(--vc-text-xs);
-}
-
-.version-row {
-  flex: 1 1 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vc-space-2);
 }
 
 .history-more {
@@ -1947,9 +1795,10 @@ export default defineComponent({
   flex-wrap: wrap;
   align-items: center;
   gap: var(--vc-space-2);
-  border: 1px solid var(--vc-primary);
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-card);
+  border-top: 1px solid var(--vc-primary);
+  border-bottom: 1px solid var(--vc-primary);
+  border-radius: 0;
+  background: transparent;
   color: var(--vc-ink);
 }
 
@@ -2011,7 +1860,7 @@ export default defineComponent({
   gap: var(--vc-space-2);
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: 520px;
   margin: 0 auto;
   padding: var(--vc-space-2) var(--vc-space-3);
   background: var(--vc-env-raised);
@@ -2037,9 +1886,9 @@ export default defineComponent({
   gap: var(--vc-space-2);
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: var(--vc-space-2)
+  padding: var(--vc-space-3)
     calc(var(--vc-space-3) + env(safe-area-inset-right, 0px))
     calc(var(--vc-space-2) + env(safe-area-inset-bottom, 0px))
     calc(var(--vc-space-3) + env(safe-area-inset-left, 0px));
@@ -2055,7 +1904,7 @@ export default defineComponent({
   max-height: 120px;
   padding: 0;
   border: 1px solid var(--vc-border-strong);
-  border-radius: var(--vc-radius-m);
+  border-radius: var(--vc-radius-s);
   background: var(--vc-card);
   color: var(--vc-ink);
   font-family: var(--vc-font);
@@ -2079,7 +1928,14 @@ export default defineComponent({
 .chat-page > .chat-main > .chat-block-error {
   margin: var(--vc-space-3) auto 0;
   width: calc(100% - var(--vc-space-6));
-  max-width: 720px;
+  max-width: 520px;
+}
+
+@media (min-width: 768px) {
+  .chat-page {
+    border-right: 1px solid var(--vc-border-env);
+    border-left: 1px solid var(--vc-border-env);
+  }
 }
 
 /* 横屏 / 短视口：压缩固定行留白，history 依旧保持真实可用高度。 */

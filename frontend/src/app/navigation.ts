@@ -1,5 +1,5 @@
 // 生产导航模型（前端产品化重构）：Consumer Shell / Internal Shell 的唯一
-// 展示真源。覆盖全部 20 个已发布路由的外壳形态、四入口归属、"我的"分组、
+// 展示真源。覆盖全部已发布路由的外壳形态、四入口归属、"我的"分组、
 // 深链 query 参数与角色可见性。安全权威仍是 domain/nav-guard.ts（服务端
 // Admission Gate + PageClass）；本模型绝不放宽它，只描述页面如何呈现。
 
@@ -25,8 +25,6 @@ export type IaSection =
 export type MeGroup =
   | "account"
   | "companion"
-  | "reminders"
-  | "wellbeing"
   | "privacy"
   | "data"
   | "help";
@@ -49,7 +47,7 @@ export interface RouteSpec {
    * 路由级角色白名单（route-specific）：只有列出角色可见/可进入。
    * 未设置表示不按角色限制。与页面真实守卫一一对应：ops 的 Runtime 预检
    * 面仅 ADMIN；admin 面对全部操作者开放（分区权限在页面内部，不放宽
-   * 后端权限）。
+   * 后端权限）。Go Runtime 控制台的四个页面均为 ADMIN-only。
    */
   readonly allowedRoles?: readonly string[];
 }
@@ -133,24 +131,6 @@ export const ROUTES: readonly RouteSpec[] = [
     allowedQuery: ["relationshipId"],
   },
   {
-    path: "/pages/reminder/reminder",
-    title: "提醒",
-    shell: "consumer-sub",
-    tab: "me",
-    section: "me",
-    meGroup: "reminders",
-    allowedQuery: ["relationshipId"],
-  },
-  {
-    path: "/pages/health/health",
-    title: "使用与休息",
-    shell: "consumer-sub",
-    tab: "me",
-    section: "me",
-    meGroup: "wellbeing",
-    allowedQuery: [],
-  },
-  {
     path: "/pages/incognito/incognito",
     title: "无痕默认",
     shell: "consumer-sub",
@@ -232,8 +212,8 @@ export const ROUTES: readonly RouteSpec[] = [
     allowedQuery: ["return"],
   },
   {
-    path: "/pages/ops/ops",
-    title: "运行与合规",
+    path: "/pages/admin/admin",
+    title: "运行总览",
     shell: "internal",
     tab: null,
     section: "internal",
@@ -242,14 +222,34 @@ export const ROUTES: readonly RouteSpec[] = [
     allowedRoles: ["ADMIN"],
   },
   {
-    path: "/pages/admin/admin",
-    title: "内部管理",
+    path: "/pages/admin-models/admin-models",
+    title: "模型服务",
     shell: "internal",
     tab: null,
     section: "internal",
     meGroup: null,
     allowedQuery: [],
-    allowedRoles: ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER"],
+    allowedRoles: ["ADMIN"],
+  },
+  {
+    path: "/pages/admin-routing/admin-routing",
+    title: "路由策略",
+    shell: "internal",
+    tab: null,
+    section: "internal",
+    meGroup: null,
+    allowedQuery: [],
+    allowedRoles: ["ADMIN"],
+  },
+  {
+    path: "/pages/admin-system/admin-system",
+    title: "系统状态",
+    shell: "internal",
+    tab: null,
+    section: "internal",
+    meGroup: null,
+    allowedQuery: [],
+    allowedRoles: ["ADMIN"],
   },
 ];
 
@@ -297,8 +297,6 @@ export function pageClassOf(spec: RouteSpec): PageClass {
 export const ME_GROUP_ORDER: readonly MeGroup[] = [
   "account",
   "companion",
-  "reminders",
-  "wellbeing",
   "privacy",
   "data",
   "help",

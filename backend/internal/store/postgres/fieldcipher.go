@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// FieldCipher is the Go port of Java RestFieldCipher (CRYPTO-REST / S0-17-B).
+// FieldCipher implements the repository's CRYPTO-REST / S0-17-B envelope contract.
 //
 // Write form (only write path):
 //

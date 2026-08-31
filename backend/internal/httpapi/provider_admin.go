@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -9,6 +10,10 @@ import (
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
+
+type providerRouteResolver interface {
+	ResolveProviderRoutes(context.Context) ([]postgres.ProviderRoute, error)
+}
 
 type providerModelJSON struct {
 	ModelID             string `json:"modelId"`
@@ -45,6 +50,34 @@ type providerDiscoveryJSON struct {
 type discoveredModelJSON struct {
 	ModelID     string `json:"modelId"`
 	DisplayName string `json:"displayName"`
+}
+
+func (s *Server) handleServiceMode(w http.ResponseWriter, r *http.Request) {
+	if s.corePrincipal(w, r, false) == nil {
+		return
+	}
+
+	fullAI := s.cfg.Provider.Enabled
+	if resolver, ok := s.core.Providers.(providerRouteResolver); ok {
+		routes, err := resolver.ResolveProviderRoutes(r.Context())
+		if err != nil {
+			s.writeStoreErr(w, err)
+			return
+		}
+		fullAI = fullAI || len(routes) > 0
+	}
+
+	if fullAI {
+		s.writeJSON(w, http.StatusOK, map[string]string{
+			"mode":    "FULL_AI",
+			"summary": "已配置可用的模型路由，生成式聊天已启用。",
+		})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]string{
+		"mode":    "ZERO_LLM",
+		"summary": "当前没有可用的模型路由，生成式聊天保持关闭。",
+	})
 }
 
 func (s *Server) providerAdminPrincipal(w http.ResponseWriter, r *http.Request, write bool) *auth.Principal {

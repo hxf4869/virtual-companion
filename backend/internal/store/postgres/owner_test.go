@@ -25,7 +25,7 @@ func TestBindingMessageIsDomainSeparated(t *testing.T) {
 	}
 }
 
-func TestOwnerProofMatchesJavaGoldenVector(t *testing.T) {
+func TestOwnerProofMatchesGoldenVector(t *testing.T) {
 	t.Parallel()
 	v := loadCryptoVectors(t)
 	proof := ProofFor(

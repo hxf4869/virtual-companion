@@ -13,8 +13,6 @@ protocolFamilies:
     alphaAllowed: true
 alphaLiveRequirement: at least one admin-enabled provider/model route; deterministic global priority order; at most one safe fallback
 offlineContractRequirement: every live protocol adapter passes local mock-server tests
-javaRuntimeUntilCutover:
-  anthropicMessagesAdapter: java_era_offline_only_go_v1_uses_independent_adapter
 goV1:
   liveProtocols:
     - OPENAI_CHAT_COMPLETIONS
@@ -43,9 +41,6 @@ goV1:
       - session_affinity
       - automatic_circuit_breaker
       - health_score_routing
-javaRuntimeUntilCutoverProviderDisable:
-  consecutiveFailureDurableCircuit: ADR-0006_section_3_4
-
 requiredContractTests:
   - non_stream_success
   - sse_stream_success

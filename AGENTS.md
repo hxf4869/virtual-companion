@@ -1,6 +1,6 @@
 # Repository Agent Rules — Virtual Companion
 
-AI 虚拟陪伴系统单体仓库：Java 25 + Spring Boot 4.1 后端（14 模块）、uni-app + Vue 3 H5 前端、
+AI 虚拟陪伴系统单体仓库：Go 1.26.7 `companiond` 后端、uni-app + Vue 3 H5 前端、
 PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切已接通，现状以 README 为准。
 
 ## 开发约定
@@ -16,9 +16,10 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
   冲突时依次以本文件、相关 Catalog/OpenAPI/contract、migration/RLS、当前代码与测试、README/TODO 为准。
 - `docs/planning/2026-08-22-product-enhancement-roadmap.md` 是候选 Backlog，不是完成状态真源。派发前只读取所选
   ID 及其直接依赖，并先对照当前 `HEAD`、`TODO.md`、契约和调用链，避免重做或按过时现状开发。
-- Go v1 目标 runtime 以 `docs/decisions/0007-go-companion-runtime.md` 与
+- Go v1 runtime 以 `docs/decisions/0007-go-companion-runtime.md` 与
   `docs/planning/2026-08-30-go-companion-runtime-redesign.md` 为准；API 范围为
-  `specs/catalog/go-v1-api-scope.yaml`。当前常驻 runtime 在 cutover 前仍是 Java。
+  `specs/catalog/go-v1-api-scope.yaml`。2026-08-30 起，仓库与默认部署均为 Go-only；
+  SQL 真源位于 `backend/internal/migrate/sql/`，不得恢复已退役的旧后端技术链。
 - 当前 Owner-only 本地 7 天 dogfood 的决策边界只见
   `docs/decisions/0006-owner-only-local-dogfood-boundary.md`，执行顺序只见 `TODO.md` 的
   `DOGFOOD-*` 段；该范围不授权 D0、真实用户 Beta、远端部署或生产发布。
@@ -30,7 +31,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 ## 检查与工具链
 
 - 日常检查唯一入口：`bash scripts/check.sh`（秒级仓库检查 + 前端测试与类型检查，1 分钟内）。
-- 后端（需 JDK 25）：`./mvnw --batch-mode --no-transfer-progress verify`
+- 后端（Go 1.26.7）：`GOPROXY=off go test -C backend -mod=vendor -count=1 ./...`
 - 前端（Node 22 + pnpm 11）：`pnpm --dir frontend test:run && pnpm --dir frontend type-check`
 - 数据库（OrbStack Docker）：`bash infra/db/run-rls-tests.sh`
 - 检查脚本依赖 PyYAML；系统 python3 缺少时 `scripts/check.sh` 自动回退 `uv run --with PyYAML`。

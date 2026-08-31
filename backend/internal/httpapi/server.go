@@ -234,6 +234,12 @@ func operation(path string) string {
 		return "prometheus"
 	case "/api/v1/version":
 		return "version"
+	case "/api/v1/service-mode":
+		return "service_mode"
+	case "/api/v1/age/state":
+		return "age_state"
+	case "/api/v1/age/verification":
+		return "age_verification"
 	case "/api/v1/relationships":
 		return "relationships"
 	case "/api/v1/conversations":

@@ -23,7 +23,7 @@ DB_PASSWORD="vc"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-MIG_DIR="$REPO_ROOT/service/platform/persistence/src/main/resources/db/migration"
+MIG_DIR="$REPO_ROOT/backend/internal/migrate/sql"
 LOG_DIR="${VC_DB_LOG_DIR:-$(mktemp -d /tmp/vc-db-logs.XXXXXX)}"
 REPORT_DIR="${VC_MEASURE_REPORT_DIR:-/tmp/vc-measure-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$LOG_DIR" "$REPORT_DIR"

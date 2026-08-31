@@ -5,6 +5,9 @@
 - 决策范围：Owner-only 本地 Technical Alpha 及其后续单机并发验证的 **Go 目标运行时**
 - 规范：`docs/planning/2026-08-30-go-companion-runtime-redesign.md`（implementation baseline）
 
+> 2026-08-30 更新：Phase 5 已执行，Go 已成为默认常驻 runtime；切流事实与
+> Java 应用下线决策见 ADR-0008。下文的“当前 Java”表述保留为决策形成时背景。
+
 ## 背景
 
 当前生产 runtime 是一个 Spring Boot 进程。Owner 已确认用 Go 重写常驻服务端，并按 Pi

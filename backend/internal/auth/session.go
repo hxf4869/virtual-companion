@@ -28,6 +28,17 @@ const (
 	DefaultReauthWindow   = 15 * time.Minute
 )
 
+// Principal is the server-verified identity bound to an opaque session.
+type Principal struct {
+	AccountID          int64
+	Role               string
+	Username           string
+	SessionEpoch       int64
+	SessionID          int64
+	ReauthAt           time.Time
+	PasswordMustChange bool
+}
+
 // Sessions looks up a process-verified principal from the opaque cookie value.
 // A missing, revoked, expired or unknown token returns nil.
 type Sessions interface {

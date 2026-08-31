@@ -77,8 +77,15 @@ export const useExportStore = defineStore("h5-export", () => {
     downloadFailed.value = false;
     try {
       const document = await downloadExport(transport, downloadUrl);
-      if (!document) return false;
+      if (!document) {
+        // The token may already have been consumed by a 200 response whose
+        // body did not match the Go export envelope. Surface the failure
+        // instead of leaving the page in a silent, unrecoverable state.
+        downloadFailed.value = true;
+        return false;
+      }
       download.value = document;
+      issuedDownloadUrl.value = null;
       return true;
     } catch {
       downloadFailed.value = true;

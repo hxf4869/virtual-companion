@@ -1,8 +1,8 @@
 <!-- DATA-EXPORT (FR-DATA-002): asynchronous data-export page. Enqueues the
 export, polls the status (manual refresh — no auto-polling in Alpha), shows
 the short-lived one-time download link while READY and performs the download
-through the authenticated transport. The document carries the AI-content
-notice and per-message aiGenerated markers. -->
+through the authenticated transport. Go v1 preserves every message role;
+assistant marks the AI reply without inventing a separate payload field. -->
 <template>
   <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
   <ConsumerShell route="/pages/export/export">
@@ -11,8 +11,8 @@ notice and per-message aiGenerated markers. -->
 
     <view class="intro">
       <text>
-        导出为异步生成：文件短期有效，下载链接一次性且需登录后使用；文档含
-        AI 生成内容标识（assistant 消息 aiGenerated=true）。
+        导出为异步生成：文件短期有效，下载链接一次性且需登录后使用；文档会保留
+        每条消息的角色字段，其中 assistant 表示 AI 回复。
       </text>
     </view>
 
@@ -99,12 +99,14 @@ notice and per-message aiGenerated markers. -->
       data-testid="export-download-preview"
     >
       <text class="preview-title">导出内容</text>
-      <text class="preview-notice">{{ store.download.aiContentNotice }}</text>
+      <text class="preview-notice">
+        消息按 role 区分：assistant 为 AI 回复，user 为你的消息。
+      </text>
+      <text class="preview-line">导出时间 {{ formatTime(store.download.exportedAt) }}</text>
       <text class="preview-line">
-        会话 {{ store.download.conversations.length }} 个 · 记忆
-        {{ store.download.memories.length }} 条 · 提醒
-        {{ store.download.reminders.length }} 条 · 同意记录
-        {{ store.download.consents.length }} 条
+        会话 {{ store.download.conversationCount }} 个 · 消息
+        {{ store.download.messageCount }} 条 · 记忆
+        {{ store.download.memoryCount }} 条
       </text>
     </view>
   </ConsumerShell>
@@ -118,6 +120,7 @@ import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { goTo } from "@/app/navigate";
 import { useAuthStore } from "@/stores/auth";
 import { useExportStore } from "@/stores/export";
 import { formatLocalDateTime } from "@/domain/timestamp";
@@ -195,20 +198,6 @@ export default {
       return formatLocalDateTime(instant);
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only navigation.
-      }
-    }
 
     return {
       store,
@@ -235,7 +224,7 @@ export default {
 }
 
 .section {
-  margin-bottom: var(--vc-space-5);
+  margin-bottom: var(--vc-space-7);
 }
 
 .section-title {
@@ -345,8 +334,9 @@ export default {
   gap: var(--vc-space-1);
   margin-bottom: var(--vc-space-4);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
   font-size: var(--vc-text-sm);
 }
@@ -398,8 +388,9 @@ export default {
   align-items: flex-start;
   gap: var(--vc-space-1);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
 }
 
@@ -409,9 +400,9 @@ export default {
 }
 
 .status-meta {
-  color: var(--vc-ink);
-  font-size: var(--vc-text-md);
-  font-weight: 600;
+  color: var(--vc-success);
+  font-size: var(--vc-text-lg);
+  font-weight: 700;
 }
 
 .error-text {
@@ -439,8 +430,9 @@ export default {
 .download-preview {
   margin-top: var(--vc-space-3);
   padding: var(--vc-space-3) var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-sunken);
   font-size: var(--vc-text-xs);
 }

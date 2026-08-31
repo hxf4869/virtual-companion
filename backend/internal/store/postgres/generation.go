@@ -32,6 +32,7 @@ type GenerationSnapshot struct {
 	AssistantContent   string
 	InputTokens        *int64
 	OutputTokens       *int64
+	FailureCode        string
 }
 
 // GenerationFeedback is one recorded (generation, kind) row.
@@ -145,13 +146,13 @@ func (s *Store) loadSnapshot(ctx context.Context, owner, generationID int64) (Ge
 	var found bool
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		var assistant pgtype.Int8
-		var content pgtype.Text
+		var content, failure pgtype.Text
 		var inTok, outTok pgtype.Int8
 		err := tx.QueryRow(ctx,
 			`SELECT out_status, out_assistant_message_id, out_assistant_content,
-			        out_input_tokens, out_output_tokens
-			   FROM vc.go_read_generation_snapshot($1,$2)`, owner, generationID,
-		).Scan(&out.Status, &assistant, &content, &inTok, &outTok)
+			        out_input_tokens, out_output_tokens, out_failure_code
+			   FROM vc.go_read_generation_snapshot_with_failure($1,$2)`, owner, generationID,
+		).Scan(&out.Status, &assistant, &content, &inTok, &outTok, &failure)
 		if err == pgx.ErrNoRows {
 			return nil
 		}
@@ -177,6 +178,9 @@ func (s *Store) loadSnapshot(ctx context.Context, owner, generationID int64) (Ge
 		if outTok.Valid {
 			v := outTok.Int64
 			out.OutputTokens = &v
+		}
+		if failure.Valid {
+			out.FailureCode = failure.String
 		}
 		return nil
 	})

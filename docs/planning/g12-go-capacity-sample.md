@@ -1,9 +1,8 @@
 # G12 Go runtime 容量画像（三次独立测量，Owner Mac，2026-08-30）
 
 本报告记录 `scripts/measure/g12-go-capacity/run.sh` 的三次独立运行结果。
-测量对象是 host 上的 Go `companiond full` 进程；Java 只负责应用 Flyway
-migration，Go 启动和采样前已经停止，**没有重新测量 Java，也不把 Linux Java
-历史数据与本次 Mac 数据计算成语言收益比例**。
+测量对象是 host 上的 Go `companiond full` 进程；同一 Go binary 在采样前完成
+schema migration。旧后端的 Linux 历史数据不与本次 Mac 数据计算成语言收益比例。
 
 本轮覆盖实施规范 §19.1 场景 5（4 concurrent generation + 8 SSE）、场景
 7 的 100-turn soak/recovery，以及场景 10（16 concurrent generation + 64
@@ -36,7 +35,7 @@ retained-stack 测量和 Go-only real-provider dogfood 仍需另行完成。
 每次 trial 的执行顺序如下：
 
 1. 构建 Go binary，启动全新 PostgreSQL 与 fake provider；
-2. Java runtime 只应用 migration，健康后立即停止；
+2. `companiond migrate` 应用全部 schema migration 后退出；
 3. seed 合成 provider、用户和 opaque session，启动 Go `full`；
 4. 运行 1 turn warm-up；
 5. 采集 60 秒 idle RSS；
@@ -117,7 +116,7 @@ G12 仍需在 10 分钟 idle/retained-stack 口径下复核是否持续单调增
   所有 workload error、SSE error 和 429 均为 0。
 - 场景 5 和场景 10 的 provider/worker 实际峰值分别稳定达到 4/4 与 16/16。
 - runtime idle RSS 中位数 19.378 MiB，全程 peak RSS 最大 29.844 MiB；没有
-  使用 Java 同机复跑来制造并不必要的对照数字。
+  使用旧后端同机复跑来制造并不必要的对照数字。
 - s5 intake p95 最差 39.9 ms，s10 最差 23.7 ms；并发提高到 16 时未出现
   intake 排队恶化。
 - 三次 `companiond.log` 均无 `WARN` / `ERROR`。
@@ -142,7 +141,7 @@ G12 仍需在 10 分钟 idle/retained-stack 口径下复核是否持续单调增
 | 场景正确性 | 216/216 SSE，360/360 turns，0 error | 0 error；并发峰值达到场景目标 |
 
 不为未测项目编造上限：PSS、retained-stack RSS/PSS/CPU、10 分钟 idle 和 Go
-OCI image size必须在补测后再冻结。Linux Java G1 数字只作历史背景，不参与
+OCI image size必须在补测后再冻结。旧 G1 数字只作历史背景，不参与
 上述绝对门槛的计算。
 
 ## 5. G12 尚未完成的事项

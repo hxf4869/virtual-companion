@@ -99,6 +99,7 @@ import { computed, onMounted, ref } from "vue";
 import { REPORT_REASONS, type ReportReason, type ReportTransport } from "@/api/report";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { goTo } from "@/app/navigate";
 import { readContextFromLocation } from "@/domain/context-href";
 import { formatLocalDateTime } from "@/domain/timestamp";
 import { REPORT_REASON_LABELS, REPORT_STATUS_LABELS, useReportStore } from "@/stores/report";
@@ -162,21 +163,6 @@ export default {
       await store.load(transport);
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only.
-      }
-    }
-
     return {
       store,
       reason,
@@ -205,14 +191,14 @@ export default {
 }
 
 .section {
-  margin-bottom: var(--vc-space-5);
+  margin-bottom: var(--vc-space-7);
 }
 
 .section-title {
   display: block;
   margin-bottom: var(--vc-space-2);
-  font-size: var(--vc-text-md);
-  font-weight: 600;
+  font-size: var(--vc-text-lg);
+  font-weight: 700;
 }
 
 .section-subtitle {
@@ -315,8 +301,9 @@ export default {
   gap: var(--vc-space-1);
   margin-bottom: var(--vc-space-4);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
   font-size: var(--vc-text-sm);
 }

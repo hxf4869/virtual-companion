@@ -12,8 +12,9 @@ import {
 // Journey 9（round7）——三个证据型测试：
 //
 // 1) synthetic 慢流 + 服务端终态形态（浏览器级生产 transport）：
-//    addInitScript 劫持 window.fetch 仅接管 /realtime/tickets 与
-//    /realtime/streams/*，测试逐帧 enqueue 真实 ReadableStream 字节。
+//    addInitScript 劫持 window.fetch 仅接管 /realtime/streams/*，测试逐帧
+//    enqueue 真实 ReadableStream 字节。Go v1 直接使用 opaque cookie，
+//    不再铸造 realtime ticket。
 //    终态按 0184 runtime 的真实形态发送——`event: snapshot` 元数据帧不含
 //    events，服务端只补发 cursor 后的 terminal 尾巴；预置历史中绝不出现
 //    流式全文，正式回复只有在终态之后才由分页路由放出，因此
@@ -207,7 +208,7 @@ async function loginWithRelationship(
 ): Promise<{ session: E2ESession; relationshipId: string }> {
   const user = await provisionUser(requestFixture, suffix);
   const session = await uiLogin(page, user);
-  await prepareGenerationAccess(session.accessToken);
+  await prepareGenerationAccess(session.page);
 
   await navigateToPage(page, "/pages/companion/companion");
   await page.getByTestId("persona-select").selectOption("gentle-listener");
@@ -277,12 +278,6 @@ test("synthetic slow stream: in-browser transport completes through a snapshot-m
         path = new URL(url, location.origin).pathname;
       } catch {
         path = url;
-      }
-      if (path.endsWith("/realtime/tickets")) {
-        return new Response(JSON.stringify({ ticketId: "t-e2e", secret: "s-e2e" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
       }
       if (path.includes("/realtime/streams/")) {
         const stream = new ReadableStream<Uint8Array>({

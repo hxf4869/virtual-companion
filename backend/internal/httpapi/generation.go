@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
@@ -9,11 +10,11 @@ import (
 )
 
 var feedbackKinds = map[string]struct{}{
-	"TOO_MECHANICAL":    {},
-	"FORGOT_CONTEXT":    {},
-	"CROSSED_BOUNDARY":  {},
-	"FACTUAL_ERROR":     {},
-	"UNSAFE":            {},
+	"TOO_MECHANICAL":   {},
+	"FORGOT_CONTEXT":   {},
+	"CROSSED_BOUNDARY": {},
+	"FACTUAL_ERROR":    {},
+	"UNSAFE":           {},
 }
 
 type generationJSON struct {
@@ -81,6 +82,22 @@ func (s *Server) handleSendGeneration(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
+	// Beta generation is server-gated: the H5 next-step flow is explanatory,
+	// never the authorization authority. Fail closed before StartTurn persists
+	// either the user message or a generation/job row.
+	if s.core.Store == nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return
+	}
+	age, err := s.core.Store.GetAgeState(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	if age.State != postgres.AgeAdultVerified {
+		s.writeAPIError(w, http.StatusForbidden, "AGE_VERIFICATION_REQUIRED", "adult verification required")
+		return
+	}
 	in := postgres.StartTurn{
 		ConversationID: convID,
 		IdempotencyKey: body.IdempotencyKey,
@@ -140,7 +157,7 @@ func (s *Server) handleGenerationSnapshot(w http.ResponseWriter, r *http.Request
 		s.writeStoreErr(w, err)
 		return
 	}
-	out := generationSnapshotJSON{Status: snap.Status, Events: []map[string]any{}}
+	out := generationSnapshotJSON{Status: snap.Status, Events: generationSnapshotEvents(snap)}
 	if snap.AssistantMessageID != nil {
 		s := idString(*snap.AssistantMessageID)
 		out.AssistantMessageID = &s
@@ -150,6 +167,51 @@ func (s *Server) handleGenerationSnapshot(w http.ResponseWriter, r *http.Request
 		out.Usage = &usageJSON{InputTokens: *snap.InputTokens, OutputTokens: *snap.OutputTokens}
 	}
 	s.writeJSON(w, http.StatusOK, out)
+}
+
+func generationSnapshotEvents(snap postgres.GenerationSnapshot) []map[string]any {
+	var terminal string
+	switch snap.Status {
+	case "COMPLETED", "COMPLETED_FALLBACK":
+		terminal = string(companion.EventCompleted)
+	case "INPUT_BLOCKED", "OUTPUT_BLOCKED":
+		terminal = string(companion.EventBlocked)
+	case "CANCELLED":
+		terminal = string(companion.EventCancelled)
+	case "FAILED_FINAL":
+		terminal = string(companion.EventFailed)
+	default:
+		return []map[string]any{}
+	}
+
+	events := make([]map[string]any, 0, 2)
+	if terminal == string(companion.EventCompleted) {
+		events = append(events, map[string]any{
+			"event": string(companion.EventSnapshot),
+			"text":  snap.AssistantContent,
+		})
+	}
+	terminalEvent := map[string]any{"event": terminal}
+	if terminal == string(companion.EventFailed) {
+		if fault := generationFailureFault(snap.FailureCode); fault != "" {
+			terminalEvent["fault"] = fault
+		}
+	}
+	return append(events, terminalEvent)
+}
+
+func generationFailureFault(failureCode string) string {
+	code := strings.TrimSpace(failureCode)
+	if code == "" {
+		return ""
+	}
+	if strings.HasPrefix(code, "TIMEOUT_") || code == "TIMEOUT" {
+		return "external-timed_out"
+	}
+	if code == "PROVIDER_DISABLED" {
+		return "model-providers-disabled"
+	}
+	return "external-failed"
 }
 
 func (s *Server) handleGenerationFeedback(w http.ResponseWriter, r *http.Request) {

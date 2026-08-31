@@ -1,7 +1,8 @@
 <template>
-  <ConsumerShell route="/pages/index/index">
+  <ConsumerShell route="/pages/index/index" title="虚拟陪伴">
     <!-- 匿名：唯一主动作是登录。 -->
     <view v-if="auth.sessionStatus === 'anonymous'" class="home-hero home-hero--entry" data-testid="home-hero">
+      <view class="home-hero__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></view>
       <text class="home-hero__title">虚拟陪伴</text>
       <text class="home-hero__lead">
         这里是一段安静的陪伴关系：文字对话、透明可控的长期记忆。
@@ -13,6 +14,7 @@
         @click="goTo('/pages/login/login')"
       >
         登录后继续
+        <AppIcon class="home-hero__arrow" name="chevron-right" :size="20" />
       </button>
     </view>
 
@@ -21,9 +23,21 @@
       v-else-if="auth.sessionStatus === 'unknown'"
       class="home-pending"
       data-testid="home-pending"
-      role="status"
+      :data-state="auth.error === 'refresh-failed' ? 'error' : 'loading'"
+      :role="auth.error === 'refresh-failed' ? 'alert' : 'status'"
     >
-      <text>正在确认访问条件…</text>
+      <template v-if="auth.error === 'refresh-failed'">
+        <text>暂时无法确认登录状态，请检查网络后重试。</text>
+        <button
+          class="home-link-btn"
+          data-testid="session-retry"
+          :disabled="sessionRetrying"
+          @click="restoreSessionAndHome"
+        >
+          重新检查
+        </button>
+      </template>
+      <text v-else>正在确认访问条件…</text>
     </view>
 
     <template v-else>
@@ -32,10 +46,21 @@
         v-if="admissionGate === 'unknown'"
         class="home-admission"
         data-testid="admission-gate"
-        data-state="unknown"
-        role="status"
+        :data-state="admissionCheckFailed ? 'error' : 'unknown'"
+        :role="admissionCheckFailed ? 'alert' : 'status'"
       >
-        <text>正在确认访问条件，尚未就绪。</text>
+        <template v-if="admissionCheckFailed">
+          <text>成年状态或同意记录读取失败，暂时无法继续。</text>
+          <button
+            class="home-link-btn"
+            data-testid="admission-retry"
+            :disabled="admissionCheckBusy"
+            @click="refreshNextStep"
+          >
+            重新检查
+          </button>
+        </template>
+        <text v-else>正在确认访问条件…</text>
       </view>
 
       <view
@@ -70,6 +95,7 @@
       <template v-else>
         <!-- 首屏：当前陪伴 + 唯一主动作。 -->
         <view class="home-hero" data-testid="home-hero">
+          <view class="home-hero__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></view>
           <text
             v-if="relStore.current"
             class="home-hero__companion"
@@ -86,6 +112,7 @@
             @click="goTo(chatHref())"
           >
             继续聊聊
+            <AppIcon class="home-hero__arrow" name="chevron-right" :size="20" />
           </button>
           <button
             v-else
@@ -94,10 +121,11 @@
             @click="goTo('/pages/companion/companion')"
           >
             开始创建陪伴
+            <AppIcon class="home-hero__arrow" name="chevron-right" :size="20" />
           </button>
         </view>
 
-        <!-- 窄摘要：最近会话 / 待确认记忆 / 提醒。与当前关系相关，不平铺功能。 -->
+        <!-- 窄摘要：最近会话 / 待确认记忆。与当前关系相关，不平铺功能。 -->
         <view class="home-summaries" data-testid="home-summaries">
           <view class="home-row-wrap">
             <button
@@ -111,6 +139,7 @@
               <text class="home-row__value" data-testid="home-latest-conversation">
                 {{ conversationSummary }}
               </text>
+              <AppIcon class="home-row__chevron" name="chevron-right" :size="18" />
             </button>
           </view>
 
@@ -126,21 +155,7 @@
               <text class="home-row__value" data-testid="home-pending-memory">
                 {{ memorySummary }}
               </text>
-            </button>
-          </view>
-
-          <view class="home-row-wrap">
-            <button
-              v-if="relStore.current"
-              class="home-row"
-              data-testid="home-row-reminder"
-              :data-state="reminderChannel.state.value"
-              @click="goTo(reminderHref())"
-            >
-              <text class="home-row__label">提醒</text>
-              <text class="home-row__value" data-testid="home-next-reminder">
-                {{ reminderSummary }}
-              </text>
+              <AppIcon class="home-row__chevron" name="chevron-right" :size="18" />
             </button>
           </view>
         </view>
@@ -157,16 +172,16 @@ import { createAuthenticatedTransport } from "@/api/transport";
 import { listConversations, type ConversationListItem } from "@/api/chat";
 import { goTo } from "@/app/navigate";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import AppIcon from "@/design-system/AppIcon.vue";
 import { buildContextHref } from "@/domain/context-href";
 import { readableConversationTitle } from "@/domain/conversation-display";
+import { companionHeaderName } from "@/domain/companion-presentation";
 import { resolveAdmissionGate, type AdmissionGate } from "@/domain/nav-guard";
 import { resolveNextStep, type NextStep } from "@/domain/next-step";
-import { personaDisplayName } from "@/domain/persona";
 import { useAgeStore } from "@/stores/age";
 import { useAuthStore } from "@/stores/auth";
 import { useConsentStore } from "@/stores/consent";
 import { useMemoryStore } from "@/stores/memory";
-import { useReminderStore } from "@/stores/reminder";
 import { useRelationshipStore } from "@/stores/relationship";
 
 const auth = useAuthStore();
@@ -174,10 +189,10 @@ const relStore = useRelationshipStore();
 const age = useAgeStore();
 const consent = useConsentStore();
 const memoryStore = useMemoryStore();
-const reminderStore = useReminderStore();
 const nextStep = ref<NextStep | null>(null);
 const admissionGate = ref<AdmissionGate>("unknown");
 const conversations = ref<ConversationListItem[]>([]);
+const sessionRetrying = ref(false);
 
 // 三路摘要各自的真实状态：单路失败只标记自己，成功路不受污染；
 // 失败但已有一轮成功数据时显示旧值并标注"较早数据"，不冒充成功空态。
@@ -194,7 +209,6 @@ function createChannel(): SummaryChannel {
 
 const conversationChannel = createChannel();
 const memoryChannel = createChannel();
-const reminderChannel = createChannel();
 
 // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
 const transport: AuthTransport = createAuthenticatedTransport({
@@ -204,12 +218,13 @@ const transport: AuthTransport = createAuthenticatedTransport({
 });
 
 const nextStepHref = computed(() => nextStep.value?.href ?? "/pages/index/index");
+const admissionCheckFailed = computed(() => age.loadFailed || consent.loadFailed);
+const admissionCheckBusy = computed(() => age.busy || consent.busy);
 
 const homeCompanionName = computed(() => {
   const rel = relStore.current;
   if (!rel) return "";
-  const persona = personaDisplayName(rel.personaRef);
-  return rel.companionName?.trim() ? `${rel.companionName} · ${persona}` : persona;
+  return companionHeaderName(rel);
 });
 
 const heroLead = computed(() => {
@@ -275,14 +290,6 @@ const memorySummary = computed(() => {
   );
 });
 
-const reminderSummary = computed(() => {
-  const next = reminderStore.reminders.find((row) => row.status === "ACTIVE");
-  return channelText(
-    reminderChannel,
-    next ? next.text : "没有待处理的提醒（不会主动推送）",
-  );
-});
-
 function knownRelationshipIds(): string[] {
   return relStore.relationships.map((row) => row.relationshipId);
 }
@@ -303,13 +310,6 @@ function conversationsHref(): string {
 
 function memoryHref(): string {
   return buildContextHref("memory", {
-    relationshipId: relStore.currentRelationshipId,
-    knownRelationshipIds: knownRelationshipIds(),
-  });
-}
-
-function reminderHref(): string {
-  return buildContextHref("reminder", {
     relationshipId: relStore.currentRelationshipId,
     knownRelationshipIds: knownRelationshipIds(),
   });
@@ -354,14 +354,13 @@ async function refreshNextStep(): Promise<void> {
   });
 }
 
-/** 关系就绪后并行加载三份摘要；单路失败只标记该路，不拖垮其他路。 */
+/** 关系就绪后并行加载会话与记忆摘要；单路失败只标记该路。 */
 async function loadSummaries(): Promise<void> {
   const relId = relStore.currentRelationshipId;
   if (!relId) return;
 
   conversationChannel.state.value = "loading";
   memoryChannel.state.value = "loading";
-  reminderChannel.state.value = "loading";
 
   const conversationsTask = listConversations(transport, relId, undefined, CONVERSATION_PAGE_LIMIT)
     .then((list) => {
@@ -376,7 +375,7 @@ async function loadSummaries(): Promise<void> {
         : "error";
     });
 
-  // memory/reminder store 内部捕获异常并以状态位暴露，Promise 永不 reject。
+  // memory store 内部捕获异常并以状态位暴露，Promise 永不 reject。
   const memoryTask = memoryStore.load(transport, relId).then(() => {
     const failed = memoryStore.error === "load-failed" || memoryStore.error === "session-expired";
     if (failed) {
@@ -387,28 +386,34 @@ async function loadSummaries(): Promise<void> {
     memoryChannel.loadedOnce.value = true;
   });
 
-  const reminderTask = reminderStore.load(transport, relId).then(() => {
-    if (reminderStore.loadFailed) {
-      reminderChannel.state.value = reminderChannel.loadedOnce.value ? "stale" : "error";
-      return;
-    }
-    reminderChannel.state.value = "ready";
-    reminderChannel.loadedOnce.value = true;
-  });
+  await Promise.all([conversationsTask, memoryTask]);
+}
 
-  await Promise.all([conversationsTask, memoryTask, reminderTask]);
+async function loadAuthenticatedHome(): Promise<void> {
+  if (!auth.isAuthenticated) return;
+  await relStore.load(transport);
+  await refreshNextStep();
+  if (admissionGate.value === "ready") {
+    await loadSummaries();
+  }
+}
+
+async function restoreSessionAndHome(): Promise<void> {
+  if (sessionRetrying.value) return;
+  sessionRetrying.value = true;
+  try {
+    if (!auth.isAuthenticated) {
+      await auth.tryRefresh(transport);
+    }
+    await loadAuthenticatedHome();
+  } finally {
+    sessionRetrying.value = false;
+  }
 }
 
 onMounted(async () => {
   // SESS-REVIVE: restore the session from the HttpOnly refresh cookie first.
-  if (!auth.isAuthenticated) {
-    await auth.tryRefresh(transport);
-  }
-  await relStore.load(transport);
-  await refreshNextStep();
-  if (auth.isAuthenticated && admissionGate.value !== "unknown") {
-    await loadSummaries();
-  }
+  await restoreSessionAndHome();
 });
 
 // 组件测试需要驱动第二轮加载以验证 stale 语义（保留旧数据 + 失败标注）。
@@ -416,44 +421,100 @@ defineExpose({ loadSummaries });
 </script>
 
 <style scoped>
-/* 首屏：当前陪伴 + 唯一主动作；白色卡面，无装饰光效。 */
+/* Stitch「织结平衡版」：关系面板是唯一升起的主内容面。 */
 .home-hero {
+  position: relative;
   display: grid;
-  gap: var(--vc-space-3);
-  padding: var(--vc-space-6);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-5) var(--vc-space-4) var(--vc-space-4);
+  border: 0;
+  border-radius: var(--vc-radius-s);
   background: var(--vc-card);
+  overflow: hidden;
+}
+
+.home-hero::before {
+  position: absolute;
+  inset: 0;
+  background: url("/static/quiet-loom/woven-field.png") repeat;
+  background-size: 512px 512px;
+  content: "";
+  mix-blend-mode: multiply;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.home-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.home-hero__mark {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  margin: 0 0 var(--vc-space-2);
+}
+
+.home-hero__mark i {
+  position: absolute;
+  top: 17px;
+  left: 3px;
+  display: block;
+  width: 30px;
+  height: 1px;
+  background: var(--vc-primary);
+  transform-origin: center;
+}
+
+.home-hero__mark i:nth-child(2) {
+  background: var(--vc-success);
+  transform: rotate(45deg);
+}
+
+.home-hero__mark i:nth-child(3) {
+  background: var(--vc-danger);
+  transform: rotate(90deg);
+}
+
+.home-hero__mark i:nth-child(4) {
+  background: var(--vc-primary);
+  transform: rotate(135deg);
 }
 
 .home-hero__title {
-  font-size: var(--vc-text-2xl);
+  font-size: var(--vc-text-xl);
   font-weight: 700;
   color: var(--vc-ink);
 }
 
 .home-hero__companion {
-  font-size: var(--vc-text-2xl);
+  font-size: var(--vc-text-xl);
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--vc-ink);
   overflow-wrap: anywhere;
 }
 
 .home-hero__lead {
-  max-width: 34em;
+  max-width: 30em;
   color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
+  font-size: var(--vc-text-md);
   line-height: 1.7;
 }
 
 .home-hero__primary {
-  justify-self: start;
-  min-height: 48px;
-  margin: var(--vc-space-2) 0 0;
-  padding: 0 var(--vc-space-7);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  justify-self: stretch;
+  width: 100%;
+  min-height: 50px;
+  margin: var(--vc-space-3) 0 0;
+  padding: 0 var(--vc-space-4);
   border: 0;
-  border-radius: var(--vc-radius-s);
+  border-radius: 0;
   background: var(--vc-primary);
   color: var(--vc-on-primary);
   font: inherit;
@@ -466,12 +527,16 @@ defineExpose({ loadSummaries });
   border: 0;
 }
 
+.home-hero__arrow {
+  flex: 0 0 auto;
+}
+
 .home-hero__primary:not([disabled]):active {
   background: var(--vc-primary-hover);
 }
 
 .home-hero--entry {
-  margin-top: var(--vc-space-7);
+  margin-top: var(--vc-space-5);
   text-align: left;
 }
 
@@ -486,6 +551,13 @@ defineExpose({ loadSummaries });
   border: 1px solid var(--vc-border);
   color: var(--vc-muted);
   font-size: var(--vc-text-sm);
+}
+
+.home-pending[data-state="error"] {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
 }
 
 .home-admission--blocked {
@@ -544,11 +616,24 @@ defineExpose({ loadSummaries });
   border: 0;
 }
 
-/* 摘要行：窄行，不是卡片网格；行内左侧类别、右侧状态。 */
+/* 三条摘要沿一根细缝排列；颜色只是结点，文案仍完整表达状态。 */
 .home-summaries {
+  position: relative;
   display: grid;
-  gap: var(--vc-space-2);
-  margin-top: var(--vc-space-5);
+  gap: 0;
+  margin-top: var(--vc-space-4);
+  padding-left: var(--vc-space-3);
+}
+
+.home-summaries::before {
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  left: 2px;
+  width: 1px;
+  border-left: 1px dashed var(--vc-primary);
+  content: "";
+  opacity: 0.45;
 }
 
 .home-row-wrap {
@@ -556,13 +641,15 @@ defineExpose({ loadSummaries });
 }
 
 .home-row {
+  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: var(--vc-space-3);
-  min-height: 56px;
+  gap: 1px var(--vc-space-3);
+  min-height: 66px;
   margin: 0;
-  padding: var(--vc-space-2) var(--vc-space-4);
+  padding: var(--vc-space-2) var(--vc-space-2) var(--vc-space-2) var(--vc-space-3);
   border: 0;
   border-bottom: 1px solid var(--vc-border);
   background: transparent;
@@ -575,24 +662,51 @@ defineExpose({ loadSummaries });
   border: 0;
 }
 
-.home-row__label {
+.home-row__chevron {
+  grid-row: 1 / 3;
+  grid-column: 2;
   color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
+}
+
+.home-row::before {
+  position: absolute;
+  top: 50%;
+  left: -14px;
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--vc-paper);
+  border-radius: 50%;
+  background: var(--vc-primary);
+  content: "";
+  transform: translateY(-50%);
+}
+
+.home-row-wrap:nth-child(2) .home-row::before {
+  background: var(--vc-danger);
+}
+
+.home-row-wrap:nth-child(3) .home-row::before {
+  background: var(--vc-success);
+}
+
+.home-row__label {
+  grid-row: 1;
+  grid-column: 1;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
   white-space: nowrap;
 }
 
 .home-row__value {
+  grid-row: 2;
+  grid-column: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
-  text-align: right;
+  font-size: var(--vc-text-md);
+  font-weight: 500;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.home-row .home-row__value {
-  grid-column: 3;
 }
 
 .home-row:focus-visible {
@@ -604,7 +718,11 @@ defineExpose({ loadSummaries });
 @media (max-height: 480px) {
   .home-hero {
     gap: var(--vc-space-2);
-    padding: var(--vc-space-4);
+    padding: var(--vc-space-3) var(--vc-space-4);
+  }
+
+  .home-hero__mark {
+    display: none;
   }
 
   .home-hero__companion {

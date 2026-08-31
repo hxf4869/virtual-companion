@@ -1,7 +1,7 @@
 -- 00_owner_binding_secret_seed: TASK-0191 test-harness bootstrap fixture.
 --
 -- The V27 owner-binding key is provisioned at application startup by
--- OwnerBindingSecretBootstrap (migrator principal, bound JDBC parameters) --
+-- OwnerBindingSecretBootstrap (migrator principal, bound database connection parameters) --
 -- never expanded into versioned migration SQL. The ephemeral test container
 -- has no application process, so this superuser fixture seeds a FIXED
 -- test-only key (>= 32 bytes) before the first numbered test runs. The

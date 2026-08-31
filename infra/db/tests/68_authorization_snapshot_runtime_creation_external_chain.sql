@@ -5,7 +5,7 @@
 -- vc.create_authorization_snapshots SECURITY DEFINER 函数（V16 撤销了 vc_api
 -- 对 authorization_snapshot 的 INSERT/UPDATE/DELETE，这是运行期创建双快照的
 -- 唯一合法路径——GenerationWorkItemHandler external 分支经
--- JdbcAuthorizationSnapshotProvider 调用的同一函数），再走完整 external 链：
+-- 旧授权快照 provider 调用的同一函数），再走完整 external 链：
 --   CREATED →(promote) IN_PROGRESS
 --           → create_authorization_snapshots(双 ACTIVE 行)      -- 本卡新增
 --           → record_provider_attempt(SUCCEEDED, reqSnap, execSnap) -- INV-AUTH-001
@@ -101,7 +101,7 @@ BEGIN
         RAISE EXCEPTION 'promote FINAL_REVIEW returned %', v_st;
     END IF;
 
-    -- finalize：真实 token、非空 provider_ref、outbox=false（memory Java 域未接）。
+    -- finalize：真实 token、非空 provider_ref、outbox=false（memory legacy runtime 域未接）。
     SELECT out_finalized INTO v_final
       FROM vc.finalize_generation(
         1, v_gen, v_cand, v_content, 'pa-' || v_attempt,

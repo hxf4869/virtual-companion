@@ -22,8 +22,7 @@ failureDisposition:
   externalDataTransferAllowed: false
   quotaAction: RELEASE
 applicability:
-  javaRuntimeUntilCutover: requested and execution snapshots remain the Java writers
-  goV1EffectiveAt: go_generation_cutover
+  effectiveAt: go_generation_cutover
 goV1:
   dualAuthorizationSnapshots: RETIRE
   outboundUsesCurrentConsentAndCategories: true

@@ -1,0 +1,43 @@
+{
+  "title": "选择全新后台控制台结构",
+  "question": "三种方案都使用同一套 Quiet Loom 后台设计系统，也只呈现 Go Runtime 的真实能力。请选择最适合日常管理模型服务与运行状态的骨架。",
+  "options": [
+    {
+      "id": "change-ledger",
+      "label": "变更账本工作台",
+      "kicker": "THE ROLL",
+      "thesis": "把当前生效配置与本次待提交变更并排，让每次高权限修改都可检查、可撤销、再统一保存。",
+      "palette": ["#f1f4f1", "#ffffff", "#322638", "#6c56c7", "#3f725e"],
+      "materials": ["开放配置账本", "细缝分区", "待提交变更轨道"],
+      "viewport": "左侧持久导航；中间是当前 provider、model 与路由清单；右侧是本次变更摘要和重新认证状态；顶部只显示服务模式与唯一保存动作。",
+      "risk": "如果变更摘要占比过大，纯查看任务会显得偏重。",
+      "comp": ".impeccable/mocks/decision/admin-change-ledger.png"
+    },
+    {
+      "id": "state-bands",
+      "label": "状态带控制室",
+      "thesis": "用 Runtime → Provider → Model → Route 四条状态带解释服务为何可用，并从异常位置直接进入配置。",
+      "palette": ["#f1f4f1", "#ffffff", "#322638", "#6c56c7", "#3f725e"],
+      "materials": ["水平状态带", "可追踪细线", "事实标签"],
+      "viewport": "左侧持久导航；主区首先展示完整服务链和 FULL_AI / ZERO_LLM 结果，下面展开相关 provider 与 route；右侧只在选中节点后出现检查器。",
+      "risk": "因果关系非常清楚，但大量配置编辑需要再进入专门工作区。",
+      "comp": ".impeccable/mocks/decision/admin-state-bands.png"
+    },
+    {
+      "id": "resource-explorer",
+      "label": "资源检查器",
+      "thesis": "像管理代码资源一样浏览 provider 与 model：左边找对象，中间看清单，右边编辑选中项。",
+      "palette": ["#f1f4f1", "#ffffff", "#322638", "#6c56c7", "#3f725e"],
+      "materials": ["三栏资源视图", "开放数据行", "宽检查器"],
+      "viewport": "最左是四项全局导航；次栏为 provider 集合；中间是选中 provider 的模型与路由；右侧固定检查器展示连接、credential 状态、模型目录和保存校验。",
+      "risk": "编辑效率最高，但总览感弱于状态带方案。",
+      "comp": ".impeccable/mocks/decision/admin-resource-explorer.png"
+    }
+  ],
+  "reroll": true,
+  "buildPath": {
+    "value": "comp",
+    "toggle": true
+  },
+  "steer": true
+}

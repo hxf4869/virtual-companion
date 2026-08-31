@@ -3,7 +3,7 @@
 
 The hand-written ``specs/openapi/virtual-companion.yaml`` is the single source
 of truth (ADR-0002). This tool deterministically generates a bundled OpenAPI
-document plus a Java interface and a TypeScript client from it, and fails
+document plus a TypeScript client from it, and fails
 closed when the generated artifacts drift from what is committed. Generation is
 pure and deterministic — the same source always yields byte-identical output
 (LF newlines, stable key order, fixed templates) — so the drift gate is exact.
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import re
 import shutil
 import sys
 import tempfile
@@ -105,9 +104,8 @@ def generate(root: Path, out: Path) -> None:
         shutil.rmtree(out)
     doc = load_yaml(source_path(root))
     schemas = doc.get("components", {}).get("schemas", {})
-    java_dir = out / "java/com/virtualcompanion/api"
     ts_dir = out / "typescript"
-    for d in (java_dir, ts_dir):
+    for d in (ts_dir,):
         d.mkdir(parents=True, exist_ok=True)
 
     # Bundled OpenAPI: the source re-emitted with stable formatting so the drift
@@ -118,77 +116,7 @@ def generate(root: Path, out: Path) -> None:
         yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=120),
     )
 
-    # Java ErrorCode enum.
     error_code_values = schemas["ErrorCode"]["enum"]
-    constants = []
-    for value in error_code_values:
-        constant = re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_").upper()
-        constants.append(f'{constant}("{value}")')
-    write_text_lf(
-        java_dir / "ErrorCode.java",
-        HEADER
-        + "package com.virtualcompanion.api;\n\n"
-        + "public enum ErrorCode {\n    "
-        + ",\n    ".join(constants)
-        + ";\n\n"
-        + "    private final String code;\n\n"
-        + "    ErrorCode(String code) { this.code = code; }\n\n"
-        + "    public String code() { return code; }\n"
-        + "}\n",
-    )
-
-    # Java records for object schemas (deterministic property order = source order).
-    for name, schema in schemas.items():
-        if name == "ErrorCode":
-            continue
-        if not isinstance(schema, dict) or schema.get("type") != "object":
-            continue
-        props = list(schema.get("properties", {}).keys())
-        required = set(schema.get("required", []))
-        fields = []
-        for prop in props:
-            java_type = "String"  # baseline: all properties are strings/JSON blobs
-            fields.append(f"    final {java_type} {prop}")
-        body = HEADER + "package com.virtualcompanion.api;\n\n"
-        body += f"public record {name}(\n" + ",\n".join(fields) + "\n) {\n"
-        body += f"    public {name} {{\n"
-        for prop in props:
-            if prop in required:
-                body += f"        java.util.Objects.requireNonNull({prop}, \"{prop} must not be null\");\n"
-            else:
-                body += f"        // {prop} is nullable\n"
-        body += "    }\n}\n"
-        write_text_lf(java_dir / f"{name}.java", body)
-
-    # Java interface: one method per operation, returning the 200-response record.
-    method_lines = []
-    for path, item in doc.get("paths", {}).items():
-        for method, op in item.items():
-            if method == "parameters" or not isinstance(op, dict):
-                continue
-            op_id = op.get("operationId")
-            responses = op.get("responses", {})
-            ok = responses.get("200", {})
-            ref = (
-                ok.get("content", {})
-                .get("application/json", {})
-                .get("schema", {})
-                .get("$ref", "")
-            )
-            return_type = _record_name(ref.split("/")[-1]) if ref else "Void"
-            method_lines.append(
-                f"    /** {op.get('summary', op_id)}. */\n"
-                f"    {return_type} {op_id}();"
-            )
-    write_text_lf(
-        java_dir / "VirtualCompanionApi.java",
-        HEADER
-        + "package com.virtualcompanion.api;\n\n"
-        + "public interface VirtualCompanionApi {\n"
-        + "\n\n".join(method_lines)
-        + "\n}\n",
-    )
-
     # TypeScript client: stable types + one function per operation.
     ts = [HEADER.rstrip(), ""]
     ts.append(f"export const ErrorCodeValues = {error_code_values} as const")
@@ -212,8 +140,8 @@ def generate(root: Path, out: Path) -> None:
         for method, op in item.items():
             if method == "parameters" or not isinstance(op, dict):
                 continue
-            # Same derivation as the Java interface: the 200-response $ref
-            # names the return record; no JSON 200 body means void.
+            # The 200-response $ref names the return type; no JSON 200 body
+            # means void.
             responses = op.get("responses", {})
             ok = responses.get("200", {})
             ref = (

@@ -195,6 +195,22 @@ describe("independent conversation list page", () => {
     wrapper.unmount();
   });
 
+  it("offers a working create-companion action instead of a disabled empty relationship select", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    stubFetch({ relationships: [], conversations: [] });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="relationship-select"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="empty-relationship-action"]').text()).toContain("创建陪伴");
+    expect(wrapper.get('[data-testid="nav-chat"]').text()).toContain("创建陪伴");
+
+    await wrapper.get('[data-testid="empty-relationship-action"]').trigger("click");
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/companion/companion" });
+    wrapper.unmount();
+  });
+
   it("surfaces a load failure and retries through the same GET", async () => {
     const { calls } = stubFetch({ listStatus: 500 });
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
@@ -245,6 +261,34 @@ describe("independent conversation list page", () => {
       ),
     ).toBe(true);
     expect(wrapper.find('[data-testid="conversation-card"]').text()).toContain("新标题");
+    wrapper.unmount();
+  });
+
+  it("keeps the rename draft and offers a retry when PATCH fails", async () => {
+    const { calls } = stubFetch({ renameStatus: 500 });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await openManage(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.find('[data-testid="conversation-rename-input"]').setValue("暂存标题");
+    await wrapper.find('[data-testid="conversation-rename-save"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conversation-action-error"]').text()).toContain(
+      "改名未完成",
+    );
+    expect(
+      (wrapper.find('[data-testid="conversation-rename-input"]').element as HTMLInputElement).value,
+    ).toBe("暂存标题");
+    expect(wrapper.get('[data-testid="conversation-action-retry"]').text()).toContain("重试改名");
+
+    await wrapper.get('[data-testid="conversation-action-retry"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((c) => c.method === "PATCH" && c.url === "/api/v1/conversations/c1")).toHaveLength(2);
+    expect(
+      (wrapper.find('[data-testid="conversation-rename-input"]').element as HTMLInputElement).value,
+    ).toBe("暂存标题");
     wrapper.unmount();
   });
 
@@ -343,6 +387,29 @@ describe("independent conversation list page", () => {
     wrapper.unmount();
   });
 
+  it("keeps delete confirmation and offers a retry for a 404", async () => {
+    const { calls } = stubFetch({ deleteStatus: 404 });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await openManage(wrapper);
+    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conversation-action-error"]').text()).toContain(
+      "删除未完成",
+    );
+    expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
+    expect(wrapper.get('[data-testid="conversation-action-retry"]').text()).toContain("重试删除");
+
+    await wrapper.get('[data-testid="conversation-action-retry"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((c) => c.method === "DELETE" && c.url === "/api/v1/conversations/c1")).toHaveLength(2);
+    expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
+    wrapper.unmount();
+  });
+
   it("ends today's conversation after two-step confirm and does not drop the row", async () => {
     const { calls } = stubFetch();
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
@@ -359,6 +426,29 @@ describe("independent conversation list page", () => {
       calls.some((c) => c.method === "POST" && c.url === "/api/v1/conversations/c1/end"),
     ).toBe(true);
     expect(wrapper.find('[data-testid="conversation-card"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("keeps end confirmation and offers a retry for a 403", async () => {
+    const { calls } = stubFetch({ endStatus: 403 });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await openManage(wrapper);
+    await wrapper.find('[data-testid="conversation-end"]').trigger("click");
+    await wrapper.find('[data-testid="conversation-end"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conversation-action-error"]').text()).toContain(
+      "结束未完成",
+    );
+    expect(wrapper.find('[data-testid="conversation-end"]').text()).toContain("确认结束");
+    expect(wrapper.get('[data-testid="conversation-action-retry"]').text()).toContain("重试结束");
+
+    await wrapper.get('[data-testid="conversation-action-retry"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((c) => c.method === "POST" && c.url === "/api/v1/conversations/c1/end")).toHaveLength(2);
+    expect(wrapper.find('[data-testid="conversation-end"]').text()).toContain("确认结束");
     wrapper.unmount();
   });
 
@@ -472,7 +562,9 @@ describe("independent conversation list page", () => {
 
     // Nothing destructive is reachable before the preview.
     expect(wrapper.find('[data-testid="chat-wipe-confirm"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-wipe-preview"]').exists()).toBe(false);
 
+    await wrapper.find('[data-testid="chat-wipe-toggle"]').trigger("click");
     await wrapper.find('[data-testid="chat-wipe-preview"]').trigger("click");
     await flushPromises();
 
@@ -506,6 +598,7 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await wrapper.find('[data-testid="chat-wipe-toggle"]').trigger("click");
     await wrapper.find('[data-testid="chat-wipe-preview"]').trigger("click");
     await flushPromises();
     await wrapper.find('[data-testid="chat-wipe-confirm"]').trigger("click");

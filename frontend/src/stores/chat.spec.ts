@@ -12,6 +12,9 @@ function delta(seq: number, epoch = 1, payload = "Hel"): StreamEvent {
 function terminal(seq: number, epoch = 1): StreamEvent {
   return { eventSeq: seq, streamEpoch: epoch, eventType: TERMINAL_EVENT_TYPE, payload: "" };
 }
+function snapshot(seq: number, epoch = 1, payload = ""): StreamEvent {
+  return { eventSeq: seq, streamEpoch: epoch, eventType: "chat.snapshot", payload };
+}
 
 function successDeps(): RealtimeDeps {
   return {
@@ -127,6 +130,28 @@ describe("useChatStore", () => {
     expect(store.draft).toBe("Hello");
   });
 
+  it("replaces the partial draft with the latest Go snapshot before appending deltas", async () => {
+    const store = useChatStore();
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [
+          delta(1, 1, "旧的局部"),
+          snapshot(2, 1, "服务端完整草稿"),
+          delta(3, 1, "，继续"),
+          terminal(4, 1),
+        ],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.run(deps, "g-snapshot", 1);
+
+    expect(store.draft).toBe("服务端完整草稿，继续");
+    expect(store.draft).not.toContain("旧的局部");
+    expect(store.phase).toBe("completed");
+  });
+
   it("marks cancelled when cancel() flips the handle", async () => {
     const store = useChatStore();
     const deps: RealtimeDeps = {
@@ -201,6 +226,7 @@ describe("useChatStore", () => {
   });
 
   it("S0-20: transport exhaustion keeps the refresh recovery binding", async () => {
+    vi.useFakeTimers();
     const rows = new Map<string, string>();
     vi.stubGlobal("sessionStorage", {
       getItem: (key: string) => rows.get(key) ?? null,
@@ -218,11 +244,17 @@ describe("useChatStore", () => {
       fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
     };
 
-    await store.run(deps, "gen-pending", 1);
+    try {
+      const running = store.run(deps, "gen-pending", 1);
+      await vi.runAllTimersAsync();
+      await running;
 
-    expect(store.phase).toBe("failed");
-    expect(store.outcome).toBe("exhausted");
-    expect(rows.get("vc.gen.restore")).toContain('"generationId":"gen-pending"');
+      expect(store.phase).toBe("failed");
+      expect(store.outcome).toBe("exhausted");
+      expect(rows.get("vc.gen.restore")).toContain('"generationId":"gen-pending"');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("S0-20: recoverInFlight uses a terminal snapshot and does not resume a second generation", async () => {
@@ -1220,6 +1252,27 @@ describe("useChatStore", () => {
     await store.openConversation(transport, "6");
 
     expect(store.conversationId).toBe("5");
+  });
+
+  it("openConversation rolls back the visible window when history loading fails", async () => {
+    const store = useChatStore();
+    store.conversationId = "5";
+    store.messages = [
+      { messageId: "old", conversationId: "5", role: "user", content: "原会话" },
+    ];
+    store.historyHasMore = false;
+    store.activeIncognito = true;
+    const failing: ChatTransport = {
+      request: async () => ({ ok: false, status: 503, json: null }),
+    };
+
+    const opened = await store.openConversation(failing, "6");
+
+    expect(opened).toBe(false);
+    expect(store.conversationId).toBe("5");
+    expect(store.messages.map((message) => message.content)).toEqual(["原会话"]);
+    expect(store.historyHasMore).toBe(false);
+    expect(store.activeIncognito).toBe(true);
   });
 
   // ---- round7（P1）：快速切换会话的 stale response 不得串写当前窗口 ----

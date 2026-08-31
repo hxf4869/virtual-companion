@@ -59,18 +59,15 @@ jobs:
         # actions/checkout@v6 -> d23441a48e516b6c34aea4fa41551a30e30af803
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - name: Set up Java
-        # actions/setup-java@v4 -> cf277c60eb25467037889841efdb72551f06f6c3
+      - name: Set up Go
+        # actions/setup-go@v5.5.0 -> d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-      - name: Verify Maven wrapper
-        run: chmod +x mvnw && ./mvnw --version
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
       - name: Build and test
-        run: ./mvnw --batch-mode --no-transfer-progress verify
+        run: GOPROXY=off go test -C backend -mod=vendor -count=1 ./...
 
   database:
     name: Database (PostgreSQL 18 + pgvector) - Linux-only reference platform
@@ -150,7 +147,7 @@ jobs:
         run: pnpm --dir frontend build
 
   supply-chain:
-    name: Supply chain (SBOM + audit)
+    name: Dependency audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -158,29 +155,15 @@ jobs:
         # actions/checkout@v6 -> d23441a48e516b6c34aea4fa41551a30e30af803
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - name: Set up Java
-        # actions/setup-java@v4 -> cf277c60eb25467037889841efdb72551f06f6c3
+      - name: Set up Go
+        # actions/setup-go@v5.5.0 -> d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-      - name: Verify Maven wrapper
-        run: chmod +x mvnw && ./mvnw --version
-      - name: Generate CycloneDX SBOM
-        run: >
-          ./mvnw --batch-mode --no-transfer-progress
-          org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
-          -DoutputName=virtual-companion
-      - name: Upload SBOM artifact
-        # actions/upload-artifact@v4 -> ea165f8d65b6e75b540449e92b4886f43607fa02
-        # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: cyclonedx-sbom
-          path: target/*.json
-          if-no-files-found: error
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Verify vendored Go dependencies
+        run: GOPROXY=off go list -C backend -mod=vendor -m all
       - name: Set up pnpm
         # pnpm/action-setup@v6 -> 0977fd99725f1db4007ccb2928dbb4e90d06cc86
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。

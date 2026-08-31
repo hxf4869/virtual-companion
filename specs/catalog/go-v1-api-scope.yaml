@@ -2,9 +2,9 @@ schemaVersion: 1
 catalogId: go-v1-api-scope
 adr: docs/decisions/0007-go-companion-runtime.md
 sourceOpenApi: specs/openapi/virtual-companion.yaml
-javaRuntimeUntilCutover: Java continues to serve every listed operation until the matching Go slice and
-  Phase 5 cutover.
-note: 'Phase 0 API consumer matrix. KEEP requires core-outcome, current H5 production caller, safety/data-rights,
+runtimeAfterCutover: Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover;
+  DEFER/RETIRE operations are not runtime fallbacks.
+note: 'The API consumer matrix remains the deletion/scope source. KEEP requires core-outcome, current H5 production caller, safety/data-rights,
   or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
@@ -832,7 +832,7 @@ operations:
   - frontend/src/pages/admin/admin.vue
   decision: RETIRE
   h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Legacy Java deployment-registry projection is RETIRE. Go v1 replaces it with
+  replacementOrImpact: The retired deployment-registry projection is replaced with
     the administrator-owned provider/model configuration and global route order below.
 - operationId: listModelProviders
   method: GET
@@ -1029,7 +1029,7 @@ operations:
   h5CallerMustHideInSameSlice: true
   replacementOrImpact: Hide contact revoke. Crisis copy may still show real-world resources without claiming
     notification.
-undeclaredJavaEraOperations:
+undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites
   method: POST
   currentH5Callers:

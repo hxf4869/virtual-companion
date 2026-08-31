@@ -64,7 +64,7 @@ func TestBearerDoesNotAuthenticateWriters(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "full", newMemStore())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/relationships", nil)
-	req.Header.Set("Authorization", "Bearer "+mintAccessToken(t, 1))
+	req.Header.Set("Authorization", "Bearer retired-token")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -175,6 +175,34 @@ func TestAuthErrorEnvelopeHasNoDetails(t *testing.T) {
 	}
 	if env["code"] != "NOT_FOUND_OR_FORBIDDEN" {
 		t.Fatalf("%v", env)
+	}
+}
+
+func TestWriteRateLimitedRoundsRetryAfterUp(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		retry time.Duration
+		want  string
+	}{
+		{name: "fractional second", retry: 1500 * time.Millisecond, want: "2"},
+		{name: "exact second", retry: time.Second, want: "1"},
+		{name: "subsecond", retry: time.Millisecond, want: "1"},
+		{name: "zero", retry: 0, want: "1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			(&Server{}).writeRateLimited(rec, tt.retry)
+			if rec.Code != http.StatusTooManyRequests {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+			}
+			if got := rec.Header().Get("Retry-After"); got != tt.want {
+				t.Fatalf("Retry-After = %q, want %q", got, tt.want)
+			}
+			assertEnvelope(t, rec, "AUTH_RATE_LIMITED")
+		})
 	}
 }
 

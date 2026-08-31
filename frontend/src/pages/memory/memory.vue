@@ -84,35 +84,6 @@ states carry alert/live a11y semantics. -->
       @retry="reload"
     />
 
-    <!-- MEM-AUTO-SAVE (§7.4): the low-sensitivity auto-save switch. Only the
-         fixed whitelist categories (称呼/口味/作息) auto-save; every auto row
-         is marked below and individually deletable; the switch can be turned
-         off at any time (可随时撤销). -->
-    <view class="auto-save-card" data-testid="memory-auto-save">
-      <view class="auto-save-copy">
-        <text class="section-subtitle">低敏记忆自动保存</text>
-        <text class="meta">
-          仅称呼、口味、作息三类短句自动保存；其余仍需你确认。自动保存的条目会标注，可随时删除。
-        </text>
-      </view>
-      <button
-        data-testid="memory-auto-save-toggle"
-        class="nav-index"
-        :disabled="busy || autoSaveFailed"
-        @click="onToggleAutoSave"
-      >
-        {{ autoSaveEnabled ? "已开启（点击关闭）" : "已关闭（点击开启）" }}
-      </button>
-    </view>
-    <view
-      v-if="autoSaveFailed"
-      class="error"
-      data-testid="memory-auto-save-failed"
-      role="alert"
-    >
-      <text>自动保存开关加载失败，请重试。</text>
-    </view>
-
     <view class="section" aria-live="polite">
       <text class="section-title">待确认候选（{{ memory.pendingCount }}）</text>
       <text class="hint">候选未经确认，不作为已保存事实。</text>
@@ -256,11 +227,7 @@ states carry alert/live a11y semantics. -->
             :key="m.memoryId"
             class="card canonical"
           >
-            <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}<text
-                v-if="m.autoSaved"
-                class="auto-badge"
-                :data-testid="`memory-auto-${m.memoryId}`"
-              >自动保存</text></text>
+            <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}</text>
             <view v-else class="edit-row">
               <input
                 v-model="draftSummary"
@@ -324,11 +291,7 @@ states carry alert/live a11y semantics. -->
             :key="m.memoryId"
             class="card canonical"
           >
-            <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}<text
-                v-if="m.autoSaved"
-                class="auto-badge"
-                :data-testid="`memory-auto-${m.memoryId}`"
-              >自动保存</text></text>
+            <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}</text>
             <view v-else class="edit-row">
               <input
                 v-model="draftSummary"
@@ -486,16 +449,16 @@ import { createAuthenticatedTransport } from "@/api/transport";
 import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { goTo } from "@/app/navigate";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
+import { companionHeaderName } from "@/domain/companion-presentation";
 import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
-import { personaDisplayName } from "@/domain/persona";
 import { matchesLooseText } from "@/domain/text-filter";
 import { lastRequestId } from "@/domain/request-id";
 import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 import type { Memory, MemoryEventStatus, MemoryTransport } from "@/api/memory";
-import { getMemoryAutoSave, setMemoryAutoSave } from "@/api/memory";
 import { useMemoryStore, type MemoryErrorCode } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
 
@@ -525,34 +488,9 @@ const eventStatuses = [
 // R44 (§11.11): per-pending-card supersede choice ("" = plain confirm).
 const supersedeChoice = ref<Record<string, string>>({});
 const hasLoaded = ref(false);
-// MEM-AUTO-SAVE (§7.4): the per-owner low-sensitivity switch.
-const autoSaveEnabled = ref(false);
-const autoSaveFailed = ref(false);
 const canAddCandidate = computed(
   () => relationshipId.value.trim().length > 0 && candidateSummary.value.trim().length > 0,
 );
-
-async function loadAutoSave(): Promise<void> {
-  autoSaveFailed.value = false;
-  try {
-    autoSaveEnabled.value = await getMemoryAutoSave(transport);
-  } catch {
-    autoSaveFailed.value = true;
-  }
-}
-
-async function onToggleAutoSave(): Promise<void> {
-  if (busy.value || autoSaveFailed.value) return;
-  busy.value = true;
-  try {
-    const next = await setMemoryAutoSave(transport, !autoSaveEnabled.value);
-    autoSaveEnabled.value = next;
-  } catch {
-    autoSaveFailed.value = true;
-  } finally {
-    busy.value = false;
-  }
-}
 
 const relationshipLabel = computed(() => {
   if (!relationshipId.value.trim()) return "";
@@ -560,8 +498,7 @@ const relationshipLabel = computed(() => {
     (row) => String(row.relationshipId) === relationshipId.value.trim(),
   );
   if (!rel) return "当前关系";
-  const persona = personaDisplayName(rel.personaRef);
-  return rel.companionName?.trim() ? `当前关系：${rel.companionName} · ${persona}` : `当前关系：${persona}`;
+  return `当前关系：${companionHeaderName(rel)}`;
 });
 
 function visibleMemories(list: Memory[]): Memory[] {
@@ -659,7 +596,6 @@ onMounted(async () => {
     await auth.tryRefresh(transport);
   }
   await relStore.load(transport);
-  void loadAutoSave();
   const prefill = readQueryRelationshipId();
   const known = knownRelationshipIds();
   if (prefill && known?.includes(prefill)) {
@@ -810,20 +746,6 @@ function chatHref(): string {
   });
 }
 
-function goTo(url: string): void {
-  try {
-    const uniApi = (globalThis as Record<string, unknown>).uni as
-      | { navigateTo?: (options: { url: string }) => void }
-      | undefined;
-    if (uniApi?.navigateTo) {
-      uniApi.navigateTo({ url });
-    } else if (typeof location !== "undefined") {
-      location.href = url;
-    }
-  } catch {
-    // Presentation-only navigation; never break memory confirm/load.
-  }
-}
 </script>
 
 <style scoped>
@@ -863,14 +785,14 @@ function goTo(url: string): void {
 }
 
 .section {
-  margin-bottom: var(--vc-space-5);
+  margin-bottom: var(--vc-space-7);
 }
 
 .section-title {
   display: block;
   margin-bottom: var(--vc-space-1);
-  font-size: var(--vc-text-md);
-  font-weight: 600;
+  font-size: var(--vc-text-lg);
+  font-weight: 700;
 }
 
 .section-subtitle {
@@ -892,9 +814,10 @@ function goTo(url: string): void {
   color: var(--vc-muted);
   font-size: var(--vc-text-sm);
   display: block;
-  padding: var(--vc-space-3);
-  border: 1px dashed var(--vc-border-strong);
-  border-radius: var(--vc-radius-s);
+  padding: var(--vc-space-3) 0;
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
 }
 
 .current-relationship {
@@ -904,20 +827,37 @@ function goTo(url: string): void {
 }
 
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--vc-space-1);
-  margin-top: var(--vc-space-2);
-  padding: var(--vc-space-3) var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
+  margin-top: 0;
+  padding: var(--vc-space-4) 0 var(--vc-space-4) var(--vc-space-4);
+  border: 0;
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.card::before {
+  position: absolute;
+  top: 24px;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vc-success);
+  content: "";
 }
 
 .card.pending {
-  border-color: var(--vc-primary);
-  background: var(--vc-card);
+  border-color: var(--vc-border);
+  background: transparent;
+}
+
+.card.pending::before {
+  background: var(--vc-danger);
 }
 
 .summary {
@@ -927,16 +867,6 @@ function goTo(url: string): void {
 }
 
 .meta {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-}
-
-.auto-badge {
-  display: inline-block;
-  margin-left: var(--vc-space-2);
-  padding: 0 6px;
-  border: 1px solid var(--vc-border-strong);
-  border-radius: var(--vc-radius-pill);
   color: var(--vc-muted);
   font-size: var(--vc-text-xs);
 }
@@ -1084,45 +1014,6 @@ function goTo(url: string): void {
   color: var(--vc-danger);
   font-size: var(--vc-text-xs);
   line-height: 1.6;
-}
-
-.auto-save-card {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--vc-space-3);
-  margin-bottom: var(--vc-space-4);
-  padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
-}
-
-.auto-save-copy {
-  flex: 1 1 16em;
-  min-width: 0;
-}
-
-.auto-save-card .meta {
-  margin-top: 2px;
-}
-
-.auto-save-card button {
-  min-height: 44px;
-  margin: 0;
-  padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-strong);
-  border-radius: var(--vc-radius-s);
-  background: transparent;
-  color: var(--vc-ink);
-  font: inherit;
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
-}
-
-.auto-save-card button::after {
-  border: 0;
 }
 
 .error {

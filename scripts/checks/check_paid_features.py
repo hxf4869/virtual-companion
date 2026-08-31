@@ -11,11 +11,6 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "scripts/checks/paid-feature-denylist.yaml"
 DEPENDENCY_NAMES = {
-    "pom.xml",
-    "build.gradle",
-    "build.gradle.kts",
-    "settings.gradle",
-    "settings.gradle.kts",
     "package.json",
     "package-lock.json",
     "pnpm-lock.yaml",
@@ -31,19 +26,16 @@ DEPENDENCY_NAMES = {
     "go.sum",
 }
 CONFIG_SUFFIXES = {".properties", ".toml"}
-CONFIG_DIR_PREFIXES = ("deploy/", "src/main/resources/", "service/", "frontend/")
+CONFIG_DIR_PREFIXES = ("backend/", "frontend/", "ops/")
 PRUNED_DIRS = {
     ".git",
-    ".gradle",
     ".idea",
-    ".mvn-cache",
     ".pytest_cache",
     ".venv",
     "__pycache__",
     "build",
     "dist",
     "node_modules",
-    "target",
 }
 
 

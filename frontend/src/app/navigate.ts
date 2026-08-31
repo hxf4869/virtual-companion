@@ -14,6 +14,11 @@ function uniApi(): UniNavigator | undefined {
     | undefined;
 }
 
+/** 将 uni-app 页面路径转换为 H5 hash 路由，避免浏览器请求不存在的实体路径。 */
+export function toH5Href(url: string): string {
+  return url.startsWith("/pages/") ? `/#${url}` : url;
+}
+
 /** 前进导航（压栈）。 */
 export function goTo(url: string): void {
   try {
@@ -21,7 +26,7 @@ export function goTo(url: string): void {
     if (uni?.navigateTo) {
       uni.navigateTo({ url });
     } else if (typeof location !== "undefined") {
-      location.href = url.startsWith("/pages/") ? `/#${url}` : url;
+      location.href = toH5Href(url);
     }
   } catch {
     // Presentation-only navigation; callers never rely on it for correctness.
@@ -35,7 +40,7 @@ export function switchTabTo(url: string): void {
     if (uni?.redirectTo) {
       uni.redirectTo({ url });
     } else if (typeof location !== "undefined") {
-      location.href = url.startsWith("/pages/") ? `/#${url}` : url;
+      location.href = toH5Href(url);
     }
   } catch {
     // Presentation-only navigation.

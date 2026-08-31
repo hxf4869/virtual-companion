@@ -1,0 +1,42 @@
+{
+  "title": "确认静默织室的首页构图",
+  "question": "视觉世界已经锁定，现在只选择首屏的构图骨架。选中的设计将成为首页开发和其他页面节奏的基准。",
+  "options": [
+    {
+      "id": "loom-balanced",
+      "label": "织结平衡版",
+      "lineage": "主面板 + 连续织带节点",
+      "thesis": "主面板先建立陪伴关系，再用一条细织带平稳串起三个摘要。",
+      "palette": ["#F1F4F1", "#322638", "#6C56C7", "#5E927A", "#D96F62"],
+      "materials": ["细密织纹", "连续缝线", "开放摘要"],
+      "viewport": "陪伴面板占上部约三分之一，三条摘要沿左侧织带纵向排列。",
+      "risk": "最均衡但视觉记忆点略弱，织纹和面板形状必须在实现中足够明确。",
+      "comp": "https://lh3.googleusercontent.com/aida/AEtjO1WR6lABOxORBrfG3Y6dDEDHD5NOVQRhsq_euSL6z-NG_yaujFN9nTYbnxN9qaXpKFxyR1MSgHeqwTZDlLkWIDTAqte9N02hzEnsv94fHvf2NzMG6ELbrg3RVapEV7nUMkmjvOl7yhYRGMVWn54nKONnLykksVxKCgab6qOBHuPy1HChmBVsyWatD2blEXVYwM4NXRKC-mhrZ5MtPezWABqxJQNAT4ztdARTCOobQd_MkzPckXtBU3u0vTM"
+    },
+    {
+      "id": "loom-vertical",
+      "label": "纵向织带流",
+      "lineage": "中心织带 + 左右交错节点",
+      "thesis": "一条织带从陪伴名称贯穿到最后一个状态，关系连续性最强。",
+      "palette": ["#F1F4F1", "#322638", "#6C56C7", "#5E927A", "#D96F62"],
+      "materials": ["宽织带", "几何织结", "左右缝入标签"],
+      "viewport": "名称居中，主动作跨过织带；会话、记忆和提醒在中轴两侧交错出现。",
+      "risk": "概念最强，但窄屏上的文字列较短，长中文摘要需要谨慎换行。",
+      "comp": "https://lh3.googleusercontent.com/aida/AEtjO1UR_PO1mItVECceISJ55r8BM-tOqEu7kvGl8Y32Eqo6V862Pdy3-WruGQI7m5bIrEjWKTzuV8l6Fcp_J9DZ2aflMmhwfJ_sI7OOldxIPd0UHkwGCArLLlHYS5PI74MQeVlrjpR7Ih-6yECV2h2YJc8wOvC5oeDekUhBeMAnmVkFwoOeUfSIt_V-HbMy9p-NWWSV0d_poUfzQmTmnRUEXHpDT5zGbwe3R8Y23bhqQPBYcbrYGSgTFf94y3aZ"
+    },
+    {
+      "id": "loom-eccentric",
+      "label": "偏心织物块",
+      "lineage": "大尺度软隔断 + 横向缝线",
+      "thesis": "用一块偏心织物面建立强首屏，再让摘要像缝入同一张布面的目录层层展开。",
+      "palette": ["#F1F4F1", "#322638", "#6C56C7", "#5E927A", "#D96F62"],
+      "materials": ["偏心织物面", "左侧包边", "横向虚线缝迹"],
+      "viewport": "大面板靠左占据首屏上部，下面三条摘要用整宽横向缝线分层。",
+      "risk": "最易扩展到长列表和表单，但摘要节奏处理不当会接近普通设置列表。",
+      "comp": "https://lh3.googleusercontent.com/aida/AEtjO1WjgMq4yDW4ggEqVwLVmnUlMEkXoeuYH50103ZzUiBkxUZ58-7eewxLb6jWwy1ZU3J4ZsXhLjgTcwaRc3YOVAIWJBiYDJ-AE3etUjRj5j_6UXxHYEtA4iH5w-gGkYKbLY7h19HNVgRtjUWJQ-JjskFKWiVyDEeQZpCKJSfJDVwGCJZlfbsRBhzd6zAsqtrzZ2Fe1vxLeQ4JDm_xPeFf50eRFm7DE45CYDfk4PcZKZv6seQV3b1Bnrr7B1ax"
+    }
+  ],
+  "reroll": false,
+  "canon": false,
+  "steer": false
+}

@@ -1,0 +1,40 @@
+# Disposable Go capacity stack: PostgreSQL plus a loopback-only fake provider.
+services:
+  db:
+    image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+    environment:
+      POSTGRES_USER: vc_migrator
+      POSTGRES_PASSWORD: ${VC_MIGRATOR_DB_PASSWORD:?}
+      VC_MIGRATOR_DB_PASSWORD: ${VC_MIGRATOR_DB_PASSWORD:?}
+      VC_RUNTIME_DB_PASSWORD: ${VC_RUNTIME_DB_PASSWORD:?}
+      POSTGRES_DB: vc
+    ports:
+      - "127.0.0.1:${G12_DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ../../../ops/deploy/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vc_migrator -d vc"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  fake-provider:
+    image: node:20-bookworm-slim
+    ports:
+      - "127.0.0.1:${G12_GO_FAKE_PORT:-19091}:19091"
+    working_dir: /app
+    volumes:
+      - ./fake_provider.mjs:/app/fake_provider.mjs:ro
+    environment:
+      E2E_PROVIDER_HOST: "0.0.0.0"
+      E2E_PROVIDER_PORT: "19091"
+      G12_FIRST_TOKEN_MS: "200"
+      G12_DELTA_MS: "50"
+      G12_CHUNKS: "8"
+      G12_HOLD_MS: "${G12_HOLD_MS:-0}"
+    command: ["node", "fake_provider.mjs"]
+    restart: "no"
+
+volumes:
+  db-data:

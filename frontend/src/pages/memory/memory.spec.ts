@@ -406,7 +406,7 @@ describe("memory page glue (P2-19 component test)", () => {
     await flushPromises();
     const empty = wrapper.find('[data-testid="empty-relationships"]');
     expect(empty.exists()).toBe(true);
-    expect(empty.text()).toContain("创建你的陪伴");
+    expect(empty.text()).toContain("先创建一位陪伴角色");
     wrapper.unmount();
   });
 
@@ -536,21 +536,15 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("MEM-AUTO-SAVE: renders the switch, flips it, and marks auto-saved rows (§7.4 界面明示)", async () => {
-    let enabled = true;
+  it("does not expose or call the retired memory auto-save feature", async () => {
+    const calls: string[] = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      vi.fn(async (input: RequestInfo | URL) => {
         const url = typeof input === "string" ? input : input.toString();
+        calls.push(url);
         if (url === "/api/v1/relationships") {
           return { ok: true, status: 200, json: async () => [PICKABLE_RELATIONSHIP] };
-        }
-        if (url === "/api/v1/memories/auto-save" && (init?.method ?? "GET") === "GET") {
-          return { ok: true, status: 200, json: async () => ({ enabled }) };
-        }
-        if (url === "/api/v1/memories/auto-save" && init?.method === "PUT") {
-          enabled = (init.body as string).includes("false");
-          return { ok: true, status: 200, json: async () => ({ enabled }) };
         }
         return { ok: true, status: 200, json: async () => ({}) };
       }),
@@ -563,14 +557,10 @@ describe("memory page glue (P2-19 component test)", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const toggle = wrapper.find('[data-testid="memory-auto-save-toggle"]');
-    expect(toggle.text()).toContain("已开启");
-    expect(wrapper.find('[data-testid="memory-auto-auto-1"]').text()).toContain("自动保存");
+    expect(wrapper.find('[data-testid="memory-auto-save-toggle"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-auto-auto-1"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="memory-auto-manual-1"]').exists()).toBe(false);
-
-    await toggle.trigger("click");
-    await flushPromises();
-    expect(wrapper.find('[data-testid="memory-auto-save-toggle"]').text()).toContain("已关闭");
+    expect(calls).not.toContain("/api/v1/memories/auto-save");
     wrapper.unmount();
   });
 

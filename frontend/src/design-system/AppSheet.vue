@@ -144,7 +144,7 @@ export default defineComponent({
 .vc-sheet__scrim {
   position: absolute;
   inset: 0;
-  background: rgba(28, 36, 48, 0.4);
+  background: var(--vc-scrim);
 }
 
 .vc-sheet__panel {
@@ -162,7 +162,7 @@ export default defineComponent({
   border-radius: var(--vc-radius-l) var(--vc-radius-l) 0 0;
   background: var(--vc-card);
   color: var(--vc-ink);
-  box-shadow: 0 -8px 32px rgba(28, 36, 48, 0.16);
+  box-shadow: var(--vc-shadow-floating);
 }
 
 .vc-sheet__panel:focus-visible {

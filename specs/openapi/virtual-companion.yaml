@@ -4,12 +4,11 @@ info:
   version: 0.1.0
   description: >-
     Contract-first HTTP API (ADR-0002). This document is the single source of
-    truth; Java interfaces and TypeScript clients are generated from it and must
+    truth; the bundled contract and TypeScript client are generated from it and must
     not be hand-edited or used to back-drive the contract. The ErrorEnvelope
     shape is uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides
     resource existence so a missing resource and a forbidden one are
-    indistinguishable to the caller. Paths here remain the Java runtime surface
-    until cutover. Go v1 KEEP/SIMPLIFY/DEFER/RETIRE decisions live in
+    indistinguishable to the caller. Go v1 KEEP/SIMPLIFY/DEFER/RETIRE decisions live in
     specs/catalog/go-v1-api-scope.yaml (ADR-0007); RETIRE operations are removed
     together with H5 callers in a later slice, not left as 410 stubs.
 security:
@@ -20,8 +19,8 @@ paths:
       operationId: getVersion
       summary: Service version and build identity
       description: >-
-        Baseline contract endpoint proving the OpenAPI -> Java interface and
-        TypeScript client generation pipeline. Public, unauthenticated.
+        Baseline contract endpoint proving the OpenAPI -> TypeScript client
+        generation pipeline. Public, unauthenticated.
       security: []
       responses:
         '200':
@@ -1080,6 +1079,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: AGE_VERIFICATION_REQUIRED — only ADULT_VERIFIED accounts may create a generation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Resource absent or not owned by the caller; existence is not disclosed
           content:
@@ -1220,7 +1225,7 @@ paths:
       operationId: selectGenerationVersion
       summary: Make this generation the selected version of its user message
       description: >-
-        Java runtime: marks the generation as the selected version (GEN-VER /
+        Retired runtime behavior: marks the generation as the selected version (GEN-VER /
         FR-CHAT-003). Sibling versions stay stored but disappear from default
         history. Go v1 (ADR-0007): RETIRE; one turn has one final result. Hide
         H5 version-select in the same slice. A foreign or absent id maps to
@@ -1251,7 +1256,7 @@ paths:
       operationId: listGenerationVersions
       summary: List generation versions for a user message
       description: >-
-        Java runtime: returns every generation grouped on this user message,
+        Retired runtime behavior: returns every generation grouped on this user message,
         including unselected versions. Go v1 (ADR-0007): RETIRE with
         selectGenerationVersion; one turn has one final result. Hide H5 version
         UI in the same slice. A foreign or absent message yields an empty list.
@@ -1308,10 +1313,11 @@ paths:
       summary: Read a consistent generation snapshot
       description: >-
         Returns the generation status, the final assistant message id (if any),
-        and settled provider usage. Go v1 resumes by snapshot only: no durable
-        event replay exists, and events stays an empty array for wire
-        compatibility with the current H5. A foreign or absent id never
-        discloses existence. Requires a server-verified authentication context.
+        settled provider usage and the authoritative terminal event once the
+        generation settles. Completed snapshots include the final text before
+        chat.completed; failed, blocked and cancelled snapshots expose only
+        their terminal event. A foreign or absent id never discloses existence.
+        Requires a server-verified authentication context.
       parameters:
         - $ref: '#/components/parameters/GenerationId'
       responses:
@@ -1382,7 +1388,7 @@ paths:
       operationId: createRealtimeTicket
       summary: Mint a single-use Fetch-SSE resume ticket bound to the caller's generation
       description: >-
-        Java runtime until Go cutover: mints a short-lived single-use resume
+        Retired pre-cutover behavior: mints a short-lived single-use resume
         ticket via vc.issue_realtime_ticket, bound to the seven-tuple (owner,
         generation, session, origin, transport, streamEpoch, afterSeq). Go v1
         (ADR-0007): RETIRE this operation; SSE authenticates with the normal
@@ -1429,20 +1435,20 @@ paths:
       operationId: openRealtimeStream
       summary: Open the Fetch-SSE resume stream for a generation
       description: >-
-        Java runtime until Go cutover: opens the Fetch-SSE resume stream bound
+        Retired pre-cutover behavior: opens the Fetch-SSE resume stream bound
         to a single-use ticket from POST /api/v1/realtime/tickets.
         vc.consume_realtime_ticket validates the secret (sha256-only stored),
         the boundTo seven-tuple, single-use and the 45s TTL, failing closed on
         any mismatch. Go v1 (ADR-0007, SIMPLIFY): same path, no ticket; the
         connection uses the opaque session cookie, Origin check and owner
         authorization, then a snapshot reconnect. Ticket query parameters and
-        stream.gap/stream.reset are Java-era only. The owner is taken from the
+        stream.gap/stream.reset belong only to the retired protocol. The owner is taken from the
         server-verified principal and never from the query; transport is fixed
-        to FETCH_SSE. The Java resume cursor afterSeq is carried by the
+        to FETCH_SSE. The retired resume cursor afterSeq is carried by the
         SSE-standard Last-Event-ID header (defaulting to 0 when absent);
         ticketId, secret, sessionId, origin and streamEpoch are bound via query
         parameters — the secret is a short-lived single-use credential, not the
-        long-lived token forbidden in the realtime query (h5Security). Java
+        long-lived token forbidden in the realtime query (h5Security). The retired
         vc.resume_stream returns one of five dispositions, mapped to SSE events:
         RESUMED and TERMINAL_SNAPSHOT emit the ordered durable events (and the
         committed snapshot for a terminal generation) then complete; GAP_EXPIRED
@@ -1795,7 +1801,7 @@ paths:
       summary: The caller's memory auto-save switch (MEM-AUTO-SAVE, §7.4)
       description: >-
         The per-owner deterministic low-sensitivity auto-save switch
-        Java runtime: vc.get_memory_auto_save_pref (V66). Default true — §7.4
+        Retired runtime behavior: vc.get_memory_auto_save_pref (V66). Default true — §7.4
         lists auto-save as the controlled Beta baseline, limited to the fixed
         low-sensitivity whitelist categories; the owner can turn it off at any
         time. Go v1 (ADR-0007): RETIRE auto-save; candidates are Owner-explicit
@@ -1820,7 +1826,7 @@ paths:
       operationId: setMemoryAutoSave
       summary: Flip the memory auto-save switch (MEM-AUTO-SAVE, §7.4)
       description: >-
-        Java runtime: flips the per-owner auto-save switch
+        Retired runtime behavior: flips the per-owner auto-save switch
         (vc.set_memory_auto_save_pref, V66). Turning it off stops every future
         auto-save immediately; already auto-saved rows stay (each is
         individually deletable). Go v1 (ADR-0007): RETIRE this operation with
@@ -2399,7 +2405,7 @@ paths:
       operationId: login
       summary: Log in with internal-account credentials
       description: >-
-        Java runtime until Go cutover: exchanges a username and password for a
+        Retired pre-cutover behavior: exchanges a username and password for a
         JWT access token and a refresh session cookie. Go v1 (ADR-0007, SIMPLIFY):
         the same operation issues a single opaque HttpOnly vc_session cookie and
         MUST NOT return an access token in the body; POST /auth/refresh is
@@ -2422,7 +2428,7 @@ paths:
       responses:
         '200':
           description: >-
-            Java runtime: new access token; the refresh session is delivered only
+            Retired runtime response: new access token; the refresh session is delivered only
             through the HttpOnly vc_refresh cookie. Go v1: opaque session cookie
             only; access token and refresh cookie are retired.
           content:
@@ -2465,13 +2471,13 @@ paths:
       operationId: refresh
       summary: Renew a session from a refresh token
       description: >-
-        Java runtime until Go cutover: validates the presented refresh token
+        Retired pre-cutover behavior: validates the presented refresh token
         server-side (unrevoked, unexpired, ACTIVE account), revokes it and issues
         a new access token and refresh session. Go v1 (ADR-0007): RETIRE this
         operation together with H5 auto-refresh; opaque vc_session has no refresh
         chain. Public. An unknown, revoked, expired or DISABLED-account token
         all map to AUTHENTICATION_REQUIRED; the cause is never disclosed. Before
-        token hashing or session JDBC, a Technical Alpha single-instance admission
+        token hashing or session database access, a Technical Alpha single-instance admission
         guard applies route-source and token rolling windows and the same
         non-blocking concurrency bulkhead. Servlet remoteAddr is authoritative;
         forwarded client-address headers are ignored.
@@ -2487,7 +2493,7 @@ paths:
       responses:
         '200':
           description: >-
-            Java runtime: new access token; the rotated refresh session is
+            Retired runtime response: new access token; the rotated refresh session is
             delivered only through the HttpOnly vc_refresh cookie. Go v1:
             this operation is RETIRE.
           content:
@@ -2962,7 +2968,7 @@ paths:
       operationId: getAdminProviderPlan
       summary: Provider plan status (ADMIN only, DOGFOOD-05)
       description: >-
-        Java runtime until Go cutover (ADR-0006 §3.3): derived state of the
+        Retired pre-cutover behavior (ADR-0006 §3.3): derived state of the
         machine-local private provider plan. VALID means today lies inside the
         configured applicability window; UNKNOWN means the plan is enabled but
         its window is missing, invalid or expired — the single Owner canary
@@ -4120,7 +4126,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >-
-        Java runtime until Go cutover: HS256 JWT access token. Go v1 (ADR-0007,
+        Retired pre-cutover behavior: HS256 JWT access token. Go v1 (ADR-0007,
         Phase 5) replaces this scheme with an opaque HttpOnly vc_session cookie
         in the same H5 transport slice; JWT and opaque issuers must not coexist.
     cookieAuth:
@@ -4806,8 +4812,10 @@ components:
       type: object
       description: >-
         A consistent point-in-time read of a generation: status, final assistant
-        message id and settled usage. Go v1 resumes by snapshot only — events is
-        an empty wire-compatibility array, never a delta replay. usage is
+        message id, terminal convergence events and settled usage. events is
+        empty while work is non-terminal; after settlement it contains the
+        minimal authoritative snapshot/terminal sequence, never a delta replay.
+        A failed event can carry a stable fault key for user-safe copy. usage is
         present only after finalize settles the provider usage (USAGE-VIZ).
       required:
         - status
@@ -4821,7 +4829,7 @@ components:
           description: Final assistant message id once committed, absent otherwise
         events:
           type: array
-          description: Ordered realtime events up to a consistent point
+          description: Minimal authoritative terminal sequence; empty before settlement
           items:
             type: object
             additionalProperties: true
@@ -5824,7 +5832,7 @@ components:
           maxLength: 1024
           x-utf8-max-bytes: 4096
           pattern: '.*\S.*'
-          description: Plaintext password (compared in the JVM, never stored or logged)
+          description: Plaintext password (verified in the Go runtime, never stored or logged)
     AdminCreateAccountRequest:
       type: object
       description: >-
@@ -6949,7 +6957,7 @@ components:
     ProviderPlanStatusItem:
       type: object
       description: >-
-        Java runtime until Go cutover (ADR-0006 §3.3): derived provider-plan
+        Retired pre-cutover behavior (ADR-0006 §3.3): derived provider-plan
         state with operator-supplied plan facts carried verbatim. A cap the
         private configuration does not state stays null (never zero-substituted)
         and under status UNKNOWN no quota, remaining allowance or cost figure

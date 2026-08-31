@@ -43,7 +43,7 @@ BEGIN
             IF h.out_latest_status <> 'STARTED' OR h.out_latest_finished_at IS NOT NULL THEN
                 RAISE EXCEPTION 'in-flight run health shape invalid';
             END IF;
-        ELSIF h.out_job_name = 'RETENTION_PURGE' THEN
+        ELSIF h.out_job_name IN ('RETENTION_PURGE', 'SESSION_CLEANUP') THEN
             IF h.out_latest_status IS NOT NULL OR h.out_last_success_at IS NOT NULL THEN
                 RAISE EXCEPTION 'never-run job must have null freshness';
             END IF;
@@ -51,7 +51,7 @@ BEGIN
             RAISE EXCEPTION 'unexpected job name %', h.out_job_name;
         END IF;
     END LOOP;
-    IF seen <> 4 THEN RAISE EXCEPTION 'expected four fixed jobs, got %', seen; END IF;
+    IF seen <> 5 THEN RAISE EXCEPTION 'expected five fixed jobs, got %', seen; END IF;
 END $$;
 COMMIT;
 RESET ROLE;

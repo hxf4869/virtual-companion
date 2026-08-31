@@ -28,8 +28,9 @@
 		}
 	}
 
-	# Health probe only — never the wider actuator surface.
-	handle /actuator/health {
+	# Health probes used by the Go Runtime console — never the wider actuator
+	# surface (for example metrics/prometheus).
+	handle /actuator/health* {
 		reverse_proxy runtime:8080
 	}
 

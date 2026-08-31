@@ -62,7 +62,7 @@ BUCKET="vc-exports"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-MIG_DIR="$REPO_ROOT/service/platform/persistence/src/main/resources/db/migration"
+MIG_DIR="$REPO_ROOT/backend/internal/migrate/sql"
 RLS_TESTS="$REPO_ROOT/infra/db/tests"
 BACKUP_SCRIPT="$SCRIPT_DIR/run-daily-backup.sh"
 AAEAD_HELPER="$SCRIPT_DIR/vc_aead.py"

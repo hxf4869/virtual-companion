@@ -1,8 +1,8 @@
 -- 56_runtime_role_cannot_migrate: P1-11 separation guarantee. Schema
 -- management (DDL, roles, migration state) belongs exclusively to the
--- migration principal (in-app Flyway / CI runner with privileged creds);
+-- migration principal (one-shot Go migrator / CI runner with privileged creds);
 -- a runtime role (vc_api) must never be able to create or drop schema
--- objects -- including a forged public.flyway_schema_history that could fake
+-- objects -- including a forged public.vc_schema_history that could fake
 -- migration state -- alter roles or destroy the vc schema. The runtime role
 -- keeps executing the narrow SECURITY DEFINER helpers unchanged.
 
@@ -19,11 +19,11 @@ BEGIN
         RAISE EXCEPTION 'regression: vc_api CREATE TABLE in vc schema succeeded';
     EXCEPTION WHEN insufficient_privilege THEN NULL;
     END;
-    -- Forge the Flyway schema-history table in public: migration state must
+    -- Forge the schema-history table in public: migration state must
     -- never be writable (or creatable) by a runtime role.
     BEGIN
-        CREATE TABLE public.flyway_schema_history(version text, success boolean);
-        RAISE EXCEPTION 'regression: vc_api forged flyway_schema_history in public';
+        CREATE TABLE public.vc_schema_history(version bigint, name text);
+        RAISE EXCEPTION 'regression: vc_api forged vc_schema_history in public';
     EXCEPTION WHEN insufficient_privilege THEN NULL;
     END;
     -- CREATE SCHEMA: a runtime role must not extend the catalog.

@@ -29,12 +29,8 @@ alpha:
   modelCandidatesRequireConfirmation: true
   zeroLlmDefaultForFree: false
 technology:
-  javaBaseline: 25-LTS
-  javaFallback: 21-LTS_BY_ADR_ONLY
-  springBootLine: 4.1.x
-  springAiLine: 2.0.x
   goBaseline: '1.26'
-  currentRuntimeUntilCutover: JAVA_SPRING_BOOT
+  currentRuntime: GO_COMPANIOND
   targetRuntime: GO_COMPANIOND
   database: POSTGRESQL_18
   vector: PGVECTOR_0.8.5
@@ -50,7 +46,6 @@ memory:
   - KEYWORD
   - SOURCE
   - RECENCY
-  deterministic64dHash: JAVA_RUNTIME_LIFECYCLE_ONLY
   ollamaEmbedding: SHADOW_EVAL_ONLY
 safety:
   goV1ReviewPaths:

@@ -12,7 +12,6 @@ function stubFetch(opts?: {
   state?: string;
   verifyStatus?: number;
   getStatus?: number;
-  appealStatus?: number;
 }): { calls: { method: string; url: string }[] } {
   const calls: { method: string; url: string }[] = [];
   const state = opts?.state ?? "AGE_UNKNOWN";
@@ -51,25 +50,6 @@ function stubFetch(opts?: {
                 }
               : { code: "INVALID_REQUEST" },
         };
-      }
-      if (url === "/api/v1/age/appeal" && method === "POST") {
-        const status = opts?.appealStatus ?? 200;
-        return {
-          ok: status === 200,
-          status,
-          json: async () =>
-            status === 200
-              ? {
-                  id: 7,
-                  reason: "核验结果有误，我是成年人",
-                  status: "SUBMITTED",
-                  createdAt: "2026-08-19T08:00:00Z",
-                }
-              : { code: "INVALID_REQUEST" },
-        };
-      }
-      if (url === "/api/v1/age/appeals" && method === "GET") {
-        return { ok: true, status: 200, json: async () => [] };
       }
       return { ok: true, status: 200, json: async () => ({}) };
     }),
@@ -137,58 +117,16 @@ describe("age page (FR-AUTH-002)", () => {
     wrapper.unmount();
   });
 
-  it("does not offer verification for a fail-closed minor state but offers the appeal", async () => {
+  it("does not expose verification or deferred appeal actions for a fail-closed state", async () => {
     const { calls } = stubFetch({ state: "MINOR_SUSPECTED" });
     const wrapper = mount(AgePage, { attachTo: document.body });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="age-blocked"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="age-verify"]').exists()).toBe(false);
-    // AGE-APPEAL: an appealable state gets the submission form; the page
-    // never rewrites the verdict itself.
-    expect(wrapper.find('[data-testid="age-appeal-form"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="age-appeal-form"]').exists()).toBe(false);
     expect(calls.some((c) => c.url === "/api/v1/age/verification")).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("AGE-APPEAL: submits an appeal after the user writes the reason and flips to 申诉处理中", async () => {
-    stubFetch({ state: "ADULT_VERIFICATION_REQUIRED" });
-    const wrapper = mount(AgePage, { attachTo: document.body });
-    await flushPromises();
-
-    const submit = wrapper.find('[data-testid="age-appeal-submit"]');
-    expect(submit.exists()).toBe(true);
-    expect((submit.element as HTMLButtonElement).disabled).toBe(true);
-
-    await wrapper.find('[data-testid="age-appeal-reason"]').setValue("核验结果有误，我是成年人");
-    await submit.trigger("click");
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="age-appeal-ok"]').exists()).toBe(true);
-    expect(useAgeStore().ageState).toBe("AGE_APPEAL_PENDING");
-    expect(wrapper.find('[data-testid="age-appeal-pending"]').exists()).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("AGE-APPEAL: a rejected submission keeps the state and never fakes success", async () => {
-    stubFetch({ state: "ADULT_VERIFICATION_REQUIRED" });
-    const wrapper = mount(AgePage, { attachTo: document.body });
-    await flushPromises();
-
-    await wrapper.find('[data-testid="age-appeal-reason"]').setValue("再试一次");
-    // Fail the next POST /age/appeal with 400 (catalog fail-closed).
-    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => ({
-      ok: false,
-      status: 400,
-      json: async () => ({ code: "INVALID_REQUEST" }),
-      url: typeof input === "string" ? input : input.toString(),
-    }));
-    await wrapper.find('[data-testid="age-appeal-submit"]').trigger("click");
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="age-appeal-rejected"]').exists()).toBe(true);
-    expect(useAgeStore().ageState).toBe("ADULT_VERIFICATION_REQUIRED");
+    expect(calls.some((c) => c.url.startsWith("/api/v1/age/appeal"))).toBe(false);
     wrapper.unmount();
   });
 

@@ -206,6 +206,10 @@ func sendGeneration(t *testing.T, s *Server, convID int64, key, content string) 
 // the API, mirroring the dogfood consent screens.
 func grantConsents(t *testing.T, s *Server) {
 	t.Helper()
+	age := doJSON(t, s, http.MethodPost, "/api/v1/age/verification", "", 1)
+	if age.Code != http.StatusOK {
+		t.Fatalf("age verification: %d %s", age.Code, age.Body.String())
+	}
 	for _, typ := range []string{
 		"SERVICE_TERMS", "PRIVACY_POLICY", "AI_CONTENT_NOTICE",
 		"THIRD_PARTY_MODEL_PROCESSING", "SENSITIVE_DATA_PROCESSING",

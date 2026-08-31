@@ -7,7 +7,6 @@ export type ContextPage =
   | "memory-detail"
   | "conversations"
   | "companion"
-  | "reminder"
   | "report";
 
 export interface ContextIds {
@@ -31,7 +30,6 @@ const PAGE_PATH: Record<ContextPage, string> = {
   "memory-detail": "/pages/memory-detail/memory-detail",
   conversations: "/pages/conversations/conversations",
   companion: "/pages/companion/companion",
-  reminder: "/pages/reminder/reminder",
   report: "/pages/report/report",
 };
 

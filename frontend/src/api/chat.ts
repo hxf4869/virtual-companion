@@ -10,8 +10,8 @@
 // still propagates as a throw so the store can surface a failure without faking
 // success. The api layer never swallows 401/5xx failures into empty success.
 //
-// IDs are decimal strings on the wire (OpenAPI type: string). The Java backend
-// serialises long as a JSON number, so asId() accepts both string and number and
+// IDs are decimal strings on the wire (OpenAPI type: string). Historical responses
+// may serialize an ID as a JSON number, so asId() accepts both string and number and
 // normalises to string. owner_user_id is never a request field — the server
 // derives ownership from the authenticated principal.
 
@@ -156,7 +156,7 @@ function guardResult(r: ChatApiResponse): void {
   }
 }
 
-/** Accept string or number and normalise to string (Java long wire format). */
+/** Accept string or historical numeric ID and normalize to string. */
 function asId(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -456,63 +456,6 @@ export async function sendGeneration(
   );
   guardResult(r);
   return asGeneration(r.json);
-}
-
-export interface GenerationVersion {
-  generationId: string;
-  selected: boolean;
-  status: string;
-  createdAt?: string;
-  assistantMessageId?: string | null;
-}
-
-function asGenerationVersion(value: unknown): GenerationVersion | null {
-  if (!value || typeof value !== "object") return null;
-  const o = value as Record<string, unknown>;
-  const generationId = asId(o.generationId);
-  if (!generationId || typeof o.selected !== "boolean" || typeof o.status !== "string") {
-    return null;
-  }
-  return {
-    generationId,
-    selected: o.selected,
-    status: o.status,
-    createdAt: typeof o.createdAt === "string" ? o.createdAt : undefined,
-    assistantMessageId: asId(o.assistantMessageId),
-  };
-}
-
-/** GEN-VER: every saved generation for one user message. */
-export async function listGenerationVersions(
-  t: ChatTransport,
-  messageId: string,
-): Promise<GenerationVersion[]> {
-  const r = await t.request(
-    "GET",
-    `/api/v1/messages/${encodeURIComponent(messageId)}/generation-versions`,
-  );
-  if (!r.ok) {
-    if (isExistenceHidden(r.status)) return [];
-    throw new ChatHttpError(r.status, classifyStatus(r.status));
-  }
-  if (!Array.isArray(r.json)) return [];
-  return r.json.map(asGenerationVersion).filter((row): row is GenerationVersion => row !== null);
-}
-
-/** GEN-VER: make this generation the visible version. */
-export async function selectGenerationVersion(
-  t: ChatTransport,
-  generationId: string,
-): Promise<GenerationVersion | null> {
-  const r = await t.request(
-    "POST",
-    `${GENERATIONS_BASE}/${encodeURIComponent(generationId)}/select`,
-  );
-  if (!r.ok) {
-    if (isExistenceHidden(r.status)) return null;
-    throw new ChatHttpError(r.status, classifyStatus(r.status));
-  }
-  return asGenerationVersion(r.json);
 }
 
 /**

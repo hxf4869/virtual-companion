@@ -1,0 +1,9 @@
+{
+  "prompt": "修正这三张后台设计稿的界面语言，不改变各自的布局结构、颜色、组件比例或信息架构。\n\n所有面向管理员的界面标签、标题、按钮、帮助文本、状态说明、时间说明和空状态必须改成自然、专业的简体中文。不要出现 CAUSAL STATUS CHAIN、Updated、Success、Credential Configured、Provider Settings、Control Room、Enabled、Priority、Context Window、Max Tokens、Streaming Supported、Base URL、API Key 等英文界面文案。\n\n只有以下不可翻译的技术值可以保留英文或代码样式：Go Runtime、FULL_AI、ZERO_LLM、OpenAI Responses、provider ID（例如 example-provider）、model ID（例如 example-chat）、URL、版本号、token、API。技术字段的可见标签仍应使用中文，例如“基础地址（URL）”“API 密钥”“上下文窗口”“最大输出 token”“优先级”“已启用”“凭据已配置”。\n\n左上品牌统一写“静默织室”，副标“Go Runtime 控制台”。全局导航统一为“总览、模型服务、路由策略、系统状态”。保留原有高保真度和 Quiet Loom Control Room 视觉规范。",
+  "approved": true,
+  "approvedAt": "2026-08-31",
+  "decisionSeed": "7b2f35e8",
+  "optionId": "change-ledger",
+  "stitchProjectId": "10664946792483688347",
+  "stitchScreenId": "b31805c99657495eb734781bcf038b3e"
+}

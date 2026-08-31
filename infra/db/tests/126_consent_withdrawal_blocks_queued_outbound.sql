@@ -1,8 +1,8 @@
 -- 126_consent_withdrawal_blocks_queued_outbound: S0-25 让同意撤回立即作用于
 -- 实际执行授权——数据库侧闭环。
 --
--- Java 侧（WithdrawnConsentOutboundBlockTest）已证明：外发前的授权复核读取
--- DB 权威（JdbcAuthorizationSnapshotStore），撤回后执行排队任务 Provider 外发
+-- legacy runtime 侧（WithdrawnConsentOutboundBlockTest）已证明：外发前的授权复核读取
+-- DB 权威（retired authorization snapshot store），撤回后执行排队任务 Provider 外发
 -- 为 0、并发撤回不复活、多实例共享权威。本测试证明该权威的数据库侧事实：
 --
 --   1) 铸造：vc_api 经 V26 create_authorization_snapshots 创建双 ACTIVE 快照；
@@ -88,7 +88,7 @@ BEGIN
         RAISE EXCEPTION 'authoritative read must see zero ACTIVE snapshots (got %)', v_active;
     END IF;
 
-    -- 逐条按 snapshot_id 复核（JdbcAuthorizationSnapshotStore.find 的形态）：
+    -- 逐条按 snapshot_id 复核（retired authorization snapshot store.find 的形态）：
     -- 每一行都必须以 WITHDRAWN 呈现给外发前复核。
     FOR v_row IN
         SELECT snapshot_id FROM vc.authorization_snapshot WHERE owner_user_id = 1

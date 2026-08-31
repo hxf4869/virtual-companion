@@ -1,18 +1,8 @@
 {
   "bcrypt": {
     "goHash": "$2a$10$z5VKqdjqNFIVfjVjdlMaFOlaOo7Z6orlnYop8HFDTi9p9WheX6KQu",
-    "javaHash": "$2a$10$HlerE.h9Hy4dIX6DB9994OtjOWtFBpSni.J/j2rv.sADoJ5NKzjTG",
+    "legacyHash": "$2a$10$HlerE.h9Hy4dIX6DB9994OtjOWtFBpSni.J/j2rv.sADoJ5NKzjTG",
     "password": "test-password-not-a-secret"
-  },
-  "jwt": {
-    "accountId": 1001,
-    "goToken": "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjI0MTg3NjgyOTYsImlhdCI6MTc4ODA0ODI5NiwiaXNzIjoidmlydHVhbC1jb21wYW5pb24iLCJyb2xlIjoiVVNFUiIsInNlIjo0LCJzdWIiOiIxMDAxIiwidXNlcm5hbWUiOiJhbGljZSJ9.pn78Vt9HaZp5ESCiHEU-kfb4riW-aSTHo097aoTrzMI",
-    "issuer": "virtual-companion",
-    "javaToken": "eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJ2aXJ0dWFsLWNvbXBhbmlvbiIsInN1YiI6IjEwMDEiLCJyb2xlIjoiVVNFUiIsInVzZXJuYW1lIjoiYWxpY2UiLCJzZSI6NCwiaWF0IjoxNzg4MDQ4MzM1LCJleHAiOjQ5NDE2NDgzMzV9.VvRMU8eg24uuvixhT3wHGGueXFAyQ9NIEoKiNsbRPNrr1dp6LV0M6IHYkJybVEJM_SBD5ympItmxm-CjVcQsRg",
-    "role": "USER",
-    "secret": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "sessionEpoch": 4,
-    "username": "alice"
   },
   "ownerHMAC": {
     "nonce": "abcdef",
@@ -25,8 +15,8 @@
   "rest": {
     "goEnc1": "enc1:YFfSAwZP67ihKPw/7cvGJWKOhYByRazQdv/+ocxU//58NX1jq39m80tSaN3vTuPxAEZP",
     "goEnc2": "enc2:default:1:YFfSAwZP67ihKPw/7cvGJWKOhYByRazQdv/+ocxU//58NX1jq39m80tSaN3vTuPxAEZP",
-    "javaEnc1": "enc1:Hkl3tPvXYqNnpS1FTq1D1bn/QRKXzq0ExiR7AJ5ifGYhGyfEKnYAwGyBAR9Do/rodJzb",
-    "javaEnc2": "enc2:default:1:KWStV2WpVhD9u35AWTUeS4FcGHpzzi5qfvEpbgE2bjJepzFtkKE1gauwNFGvrmYi6hGR",
+    "legacyEnc1": "enc1:Hkl3tPvXYqNnpS1FTq1D1bn/QRKXzq0ExiR7AJ5ifGYhGyfEKnYAwGyBAR9Do/rodJzb",
+    "legacyEnc2": "enc2:default:1:KWStV2WpVhD9u35AWTUeS4FcGHpzzi5qfvEpbgE2bjJepzFtkKE1gauwNFGvrmYi6hGR",
     "keyBase64": "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=",
     "legacyPlaintext": "pre-encryption row",
     "otherKeyBase64": "MW4ybjNuNHI1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmM=",

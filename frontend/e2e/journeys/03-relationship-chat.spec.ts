@@ -1,14 +1,15 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
-  API_BASE_URL,
   createRelationshipAndConversation,
   navigateToPage,
   prepareGenerationAccess,
   PROVIDER_REPLY,
   PROVIDER_TIMEOUT_SENTINEL,
   provisionUser,
+  sessionRequest,
   uiLogin,
+  waitForGenerationTerminal,
 } from "../helpers";
 
 // Journey 3 — 纠偏式重写：真实链路（真实登录、真实 POST、真实 Fetch-SSE、
@@ -43,26 +44,33 @@ async function expectTurnCompleted(page: Page, replyText = PROVIDER_REPLY): Prom
 
 /** Seed real turns through the runtime (each turn = 1 user row + 1 assistant row). */
 async function seedTurns(
-  request: APIRequestContext,
-  accessToken: string,
+  page: Page,
   conversationId: string,
   turns: number,
 ): Promise<void> {
   for (let i = 0; i < turns; i += 1) {
-    const created = await request.post(
-      `${API_BASE_URL}/api/v1/conversations/${conversationId}/generations`,
+    const created = await sessionRequest(
+      page,
+      "POST",
+      `/api/v1/conversations/${conversationId}/generations`,
       {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        data: {
-          userContent: `种子消息 ${i + 1}：这是一条用来填满消息历史的真实轮次。`,
-          idempotencyKey: `${conversationId}-seed-${i}-${Date.now()}`,
-        },
+        userContent: `种子消息 ${i + 1}：这是一条用来填满消息历史的真实轮次。`,
+        idempotencyKey: `${conversationId}-seed-${i}-${Date.now()}`,
       },
     );
     expect(
-      created.ok(),
-      `seed generation ${i + 1} failed: ${created.status()}`,
+      created.ok,
+      `seed generation ${i + 1} failed: ${created.status}`,
     ).toBeTruthy();
+    const generationId = String(
+      (created.body as { generationId?: unknown })?.generationId ?? "",
+    );
+    expect(generationId, `seed generation ${i + 1} returned no id`).not.toBe("");
+    const terminal = await waitForGenerationTerminal(page, generationId);
+    expect(
+      (terminal.body as { status?: unknown })?.status,
+      `seed generation ${i + 1} did not complete`,
+    ).toBe("COMPLETED");
   }
 }
 
@@ -76,7 +84,7 @@ test("a user can create a relationship and complete a real chat turn", async ({
 }) => {
   const user = await provisionUser(request, "relationship-chat");
   const session = await uiLogin(page, user);
-  await prepareGenerationAccess(session.accessToken);
+  await prepareGenerationAccess(session.page);
 
   // 统一创建流程在陪伴设置页；聊天空态只提供跳转入口。
   await navigateToPage(page, "/pages/companion/companion");
@@ -141,7 +149,7 @@ test("a message report deep link carries messageId into the submit payload", asy
 }) => {
   const user = await provisionUser(request, "relationship-chat");
   const session = await uiLogin(page, user);
-  await prepareGenerationAccess(session.accessToken);
+  await prepareGenerationAccess(session.page);
 
   await navigateToPage(page, "/pages/companion/companion");
   await page.getByTestId("persona-select").selectOption("gentle-listener");
@@ -203,11 +211,11 @@ for (const viewport of [
       viewport.name === "portrait" ? "relationship-viewport" : "relationship-viewport-wide";
     const user = await provisionUser(request, suffix);
     const session = await uiLogin(page, user);
-    await prepareGenerationAccess(session.accessToken);
+    await prepareGenerationAccess(session.page);
     const { relationshipId, conversationId } = await createRelationshipAndConversation(
-      session.accessToken,
+      session.page,
     );
-    await seedTurns(request, session.accessToken, conversationId, 15);
+    await seedTurns(session.page, conversationId, 15);
 
     await navigateToPage(page, `${CHAT_HREF}?relationshipId=${relationshipId}&conversationId=${conversationId}`);
     await expect(page.getByTestId("chat-message").first()).toBeVisible({ timeout: 30_000 });
@@ -271,11 +279,11 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
   test.setTimeout(180_000);
   const user = await provisionUser(request, "relationship-ops");
   const session = await uiLogin(page, user);
-  await prepareGenerationAccess(session.accessToken);
+  await prepareGenerationAccess(session.page);
   const { relationshipId, conversationId } = await createRelationshipAndConversation(
-    session.accessToken,
+    session.page,
   );
-  await seedTurns(request, session.accessToken, conversationId, 15);
+  await seedTurns(session.page, conversationId, 15);
 
   await navigateToPage(page, `${CHAT_HREF}?relationshipId=${relationshipId}&conversationId=${conversationId}`);
   await expect(page.getByTestId("chat-message").first()).toBeVisible({ timeout: 30_000 });

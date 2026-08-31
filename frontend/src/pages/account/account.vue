@@ -12,6 +12,11 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
     </view>
 
     <template v-else>
+      <view class="account-overview">
+        <text class="account-overview__title">你的陪伴空间</text>
+        <text class="account-overview__copy">关系、记忆与数据始终由你决定如何保留。</text>
+      </view>
+
       <!-- "我的"分组导航枢纽：每行一个清楚任务；分组名独立分隔行。 -->
       <nav class="hub" data-testid="me-hub" aria-label="我的分组入口">
         <template v-for="group in groupedHubEntries" :key="group.name">
@@ -27,6 +32,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
               <text class="hub-label">{{ entry.label }}</text>
             </text>
             <text class="hub-note">{{ entry.note }}</text>
+            <AppIcon class="hub-chevron" name="chevron-right" :size="18" />
           </button>
         </template>
       </nav>
@@ -51,26 +57,9 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
             <text class="hub-label">{{ entry.label }}</text>
           </text>
           <text class="hub-note">{{ entry.note }}</text>
+          <AppIcon class="hub-chevron" name="chevron-right" :size="18" />
         </button>
       </nav>
-
-      <view class="card" data-testid="survey-card">
-        <text class="label">本期体验评分</text>
-        <text class="meta">这段对话让你感到「被理解」了吗？1 分完全没被理解，5 分非常被理解。每天可评一次。</text>
-        <view class="actions" data-testid="survey-buttons">
-          <button
-            v-for="s in [1, 2, 3, 4, 5]"
-            :key="s"
-            class="nav-index"
-            :data-testid="'survey-score-' + s"
-            :disabled="busy"
-            @click="onSurvey(s)"
-          >
-            {{ s }}
-          </button>
-        </view>
-        <text v-if="surveyMsg" class="meta" data-testid="survey-msg">{{ surveyMsg }}</text>
-      </view>
 
       <!-- 账号与安全：改密、会话管理、登出；账号编号与角色是次要信息。 -->
       <text class="hub-group" role="presentation">账号与安全</text>
@@ -128,8 +117,15 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
             撤销全部会话
           </button>
         </view>
-        <text v-if="sessionsFailed" class="error" data-testid="sessions-error">会话加载失败，请重试。</text>
-        <text v-else-if="sessions.length === 0" class="meta">暂无有效会话。</text>
+        <text v-if="sessionsFailed" class="error" data-testid="sessions-error" role="alert">
+          会话加载失败，当前列表已保留。请点击“刷新会话”重试。
+        </text>
+        <view v-if="sessionsActionError" class="error" data-testid="sessions-action-error" role="alert">
+          <text>{{ sessionsActionError }}</text>
+        </view>
+        <text v-if="!sessionsFailed && !sessionsActionError && sessions.length === 0" class="meta">
+          暂无有效会话。
+        </text>
         <view v-for="session in sessions" :key="session.id" class="session-row" data-testid="session-row">
           <text>{{ session.clientLabel || "客户端" }}{{ session.current ? "（当前）" : "" }}</text>
           <text class="meta">最近使用：{{ formatLocalDateTime(session.lastSeenAt) }}；到期：{{ formatLocalDateTime(session.expiresAt) }}</text>
@@ -171,7 +167,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         </button>
         <view v-if="deleteOpen" class="card" data-testid="delete-account-confirm">
           <text>
-            注销后：业务数据（聊天、记忆、提醒、同意记录、导出）将立即删除；
+            注销后：业务数据（聊天、记忆、同意记录、导出）将立即删除；
             合规审计日志无法立即清除，将按既定保留期留存；注销后无法恢复登录。
           </text>
           <input
@@ -210,29 +206,28 @@ import {
   changeAuthPassword,
   deleteAccount,
   listAuthSessions,
-  recordSurvey,
   revokeAllAuthSessions,
   revokeAuthSession,
   type AuthSession,
 } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
-import { isOperatorRole, isVisibleToRole, routeSpecOf } from "@/app/navigation";
+import { goTo } from "@/app/navigate";
+import { isVisibleToRole, routeSpecOf } from "@/app/navigation";
+import AppIcon from "@/design-system/AppIcon.vue";
 import { accountRoleLabel } from "@/domain/account-display";
 import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
   name: "AccountPage",
-  components: { ConsumerShell },
+  components: { AppIcon, ConsumerShell },
   setup() {
     // "我的"分组导航（静态 IA 数据；运行时消费导航模型的分组）。
     const HUB_ENTRIES = [
       { group: "陪伴", label: "陪伴设置", note: "称呼、偏好与危险操作", href: "/pages/companion/companion", testid: "companion" },
-      { group: "提醒与休息", label: "提醒", note: "本地列表，不会主动推送", href: "/pages/reminder/reminder", testid: "reminder" },
-      { group: "提醒与休息", label: "使用与休息", note: "连续使用提醒间隔", href: "/pages/health/health", testid: "health" },
       { group: "隐私与 AI", label: "无痕默认", note: "下次新会话是否默认无痕", href: "/pages/incognito/incognito", testid: "incognito" },
-      { group: "隐私与 AI", label: "成年状态", note: "核验结果与申诉", href: "/pages/age/age", testid: "age" },
+      { group: "隐私与 AI", label: "成年状态", note: "查看与运行模拟核验", href: "/pages/age/age", testid: "age" },
       { group: "隐私与 AI", label: "同意管理", note: "版本化同意与撤回", href: "/pages/consent/consent", testid: "consent" },
       { group: "隐私与 AI", label: "AI 说明", note: "模型与 AI 标识", href: "/pages/ai-notice/ai-notice", testid: "ai-notice" },
       { group: "数据", label: "我的数据", note: "账号数据汇总", href: "/pages/data/data", testid: "data" },
@@ -241,10 +236,8 @@ export default {
       { group: "帮助", label: "举报和申诉", note: "人工处理，不编造工单", href: "/pages/report/report", testid: "report" },
     ] as const;
     const INTERNAL_ENTRIES = [
-      { group: "内部", label: "运行与合规", note: "Runtime 与边界状态", href: "/pages/ops/ops", testid: "ops" },
-      { group: "内部", label: "内部管理", note: "账户/审计/队列", href: "/pages/admin/admin", testid: "admin" },
+      { group: "内部", label: "后台控制台", note: "运行状态、模型服务与路由策略", href: "/pages/admin/admin", testid: "admin" },
     ] as const;
-    const operatorVisible = computed(() => isOperatorRole(auth.role));
     // 账号页只显示当前角色真正可进入的内部入口（route-specific allowedRoles）。
     const groupedHubEntries = computed(() => {
       const groups: Array<{ name: string; entries: typeof HUB_ENTRIES[number][] }> = [];
@@ -264,6 +257,7 @@ export default {
         return spec ? isVisibleToRole(spec, auth.role) : false;
       }),
     );
+    const operatorVisible = computed(() => visibleInternalEntries.value.length > 0);
 
     const auth = useAuthStore();
     const deleteOpen = ref(false);
@@ -272,9 +266,9 @@ export default {
     // freshly re-entered CURRENT password; the server verifies it fail-closed.
     const deletePassword = ref("");
     const busy = ref(false);
-    const surveyMsg = ref("");
     const sessions = ref<AuthSession[]>([]);
     const sessionsFailed = ref(false);
+    const sessionsActionError = ref("");
     const currentPassword = ref("");
     const newPassword = ref("");
     const confirmPassword = ref("");
@@ -302,6 +296,7 @@ export default {
 
     async function loadSessions(): Promise<void> {
       sessionsFailed.value = false;
+      sessionsActionError.value = "";
       try {
         sessions.value = await listAuthSessions(transport);
       } catch {
@@ -312,15 +307,48 @@ export default {
     async function onRevokeSession(sessionId: string): Promise<void> {
       if (busy.value) return;
       busy.value = true;
+      sessionsActionError.value = "";
+      const revokedSession = sessions.value.find((session) => session.id === sessionId);
       try {
         const ok = await revokeAuthSession(transport, sessionId);
-        const renewed = ok && await auth.tryRefresh(transport);
-        if (!renewed) {
-          auth.clear();
-          goTo("/pages/login/login");
+        if (!ok) {
+          // A refusal or server error is not proof that the current login is
+          // invalid. Keep both the identity and the last known list so the
+          // user can retry without losing context.
+          if (auth.isAuthenticated) {
+            sessionsActionError.value = "撤销该会话失败，当前登录和会话列表已保留。请再次点击“撤销该会话”重试。";
+          }
           return;
         }
+
+        if (revokedSession?.current) {
+          // Only revoking the browser's current session can invalidate this
+          // page's login. Read the real post-revoke state before deciding
+          // whether to stay or go to login.
+          try {
+            const latestSessions = await listAuthSessions(transport);
+            if (latestSessions.length === 0) {
+              auth.clear();
+              goTo("/pages/login/login");
+              return;
+            }
+            sessions.value = latestSessions;
+            sessionsFailed.value = false;
+          } catch {
+            if (!auth.isAuthenticated) {
+              goTo("/pages/login/login");
+              return;
+            }
+            sessionsActionError.value = "当前会话已撤销，但暂时无法确认剩余会话状态。请点击“刷新会话”重试。";
+          }
+          return;
+        }
+
         await loadSessions();
+      } catch {
+        if (auth.isAuthenticated) {
+          sessionsActionError.value = "撤销该会话失败，当前登录和会话列表已保留。请再次点击“撤销该会话”重试。";
+        }
       } finally {
         busy.value = false;
       }
@@ -329,10 +357,15 @@ export default {
     async function onRevokeAll(): Promise<void> {
       if (busy.value) return;
       busy.value = true;
+      sessionsActionError.value = "";
       try {
         await revokeAllAuthSessions(transport);
         auth.clear();
         goTo("/pages/login/login");
+      } catch {
+        if (auth.isAuthenticated) {
+          sessionsActionError.value = "撤销全部会话失败，当前登录和会话列表已保留。请再次点击“撤销全部会话”重试。";
+        }
       } finally {
         busy.value = false;
       }
@@ -357,21 +390,6 @@ export default {
         goTo("/pages/login/login");
       } catch {
         passwordMessage.value = "修改失败，请重试。";
-      } finally {
-        busy.value = false;
-      }
-    }
-
-    async function onSurvey(score: number): Promise<void> {
-      if (busy.value) return;
-      busy.value = true;
-      try {
-        const accepted = await recordSurvey(transport, score);
-        surveyMsg.value = accepted
-          ? "已记录今天的评分，谢谢你的反馈。"
-          : "今天已经评过分了，明天再来吧。";
-      } catch {
-        surveyMsg.value = "评分提交失败，请稍后重试。";
       } finally {
         busy.value = false;
       }
@@ -422,21 +440,6 @@ export default {
       }
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only.
-      }
-    }
-
     return {
       accountRoleLabel,
       formatLocalDateTime,
@@ -450,9 +453,9 @@ export default {
       deleteError,
       deletePassword,
       busy,
-      surveyMsg,
       sessions,
       sessionsFailed,
+      sessionsActionError,
       currentPassword,
       newPassword,
       confirmPassword,
@@ -462,7 +465,6 @@ export default {
       onRevokeSession,
       onRevokeAll,
       onChangePassword,
-      onSurvey,
       onLogout,
       onConfirmDelete,
       closeDelete,
@@ -626,9 +628,10 @@ export default {
   gap: var(--vc-space-2);
   margin-top: var(--vc-space-6);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
+  border-top: 1px solid var(--vc-danger);
+  border-bottom: 1px solid var(--vc-danger);
+  border-radius: 0;
+  background: transparent;
 }
 
 .danger-title {
@@ -668,14 +671,34 @@ export default {
   width: 100%;
 }
 .hub {
-  margin: var(--vc-space-4) 0;
+  margin: var(--vc-space-5) 0;
 }
 
 .hub .row-link {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--vc-space-3);
+  width: 100%;
+  min-height: 60px;
+  margin: 0;
+  padding: var(--vc-space-3) var(--vc-space-1) var(--vc-space-3) 0;
+  border: 0;
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  text-align: left;
+}
+
+.hub .row-link::after {
+  border: 0;
+}
+
+.hub-chevron {
+  color: var(--vc-muted);
 }
 
 .hub-copy {
@@ -688,7 +711,8 @@ export default {
 
 .hub-group {
   display: block;
-  margin-top: var(--vc-space-4);
+  margin-top: var(--vc-space-6);
+  margin-bottom: var(--vc-space-1);
   color: var(--vc-muted);
   font-size: var(--vc-text-xs);
   font-weight: 600;
@@ -700,7 +724,7 @@ export default {
 
 .hub-label {
   font-size: var(--vc-text-md);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .hub-note {
@@ -710,9 +734,10 @@ export default {
 }
 
 .hub--internal {
-  padding: var(--vc-space-2) var(--vc-space-4);
-  border: 1px dashed var(--vc-border-strong);
-  border-radius: var(--vc-radius-m);
+  padding: var(--vc-space-2) 0;
+  border-top: 1px dashed var(--vc-border-strong);
+  border-bottom: 1px dashed var(--vc-border-strong);
+  border-radius: 0;
 }
 
 .card {
@@ -721,8 +746,9 @@ export default {
   align-items: flex-start;
   gap: var(--vc-space-1);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
 }
 
@@ -745,5 +771,42 @@ export default {
   background: var(--vc-sunken);
   color: var(--vc-muted);
   font-size: var(--vc-text-xs);
+}
+
+.account-overview {
+  position: relative;
+  display: grid;
+  gap: var(--vc-space-1);
+  padding: var(--vc-space-5) var(--vc-space-4);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  overflow: hidden;
+}
+
+.account-overview::before {
+  position: absolute;
+  inset: 0;
+  background: url("/static/quiet-loom/woven-field.png") repeat;
+  background-size: 512px 512px;
+  content: "";
+  mix-blend-mode: multiply;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.account-overview > * {
+  position: relative;
+  z-index: 1;
+}
+
+.account-overview__title {
+  color: var(--vc-ink);
+  font-size: var(--vc-text-xl);
+  font-weight: 700;
+}
+
+.account-overview__copy {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
 }
 </style>

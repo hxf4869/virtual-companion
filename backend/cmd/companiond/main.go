@@ -9,8 +9,10 @@ import (
 	"syscall"
 
 	"github.com/hxf4869/virtual-companion/internal/app"
+	"github.com/hxf4869/virtual-companion/internal/bootstrap"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/jobs"
+	"github.com/hxf4869/virtual-companion/internal/migrate"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/provider/openai"
@@ -19,7 +21,43 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "migrate":
+			runMigrate()
+			return
+		case "bootstrap":
+			runBootstrap()
+			return
+		}
+	}
 	os.Exit(run())
+}
+
+func runMigrate() {
+	cfg, err := migrate.LoadEnv(os.Getenv)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "companiond migrate: %v\n", err)
+		os.Exit(1)
+	}
+	if err := migrate.Run(context.Background(), cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "companiond migrate: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stdout, "companiond migrate complete")
+}
+
+func runBootstrap() {
+	cfg, err := bootstrap.LoadEnv(os.Getenv)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "companiond bootstrap: %v\n", err)
+		os.Exit(1)
+	}
+	if err := bootstrap.Run(context.Background(), cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "companiond bootstrap: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stdout, "companiond bootstrap complete")
 }
 
 func run() int {

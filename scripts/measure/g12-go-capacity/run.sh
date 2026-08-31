@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # G12 Go capacity profile (synthetic): §19.1 场景 5 (4 gen + 8 SSE stable) and
 # 场景 10 (16 gen + 64 SSE capacity profile) against the host Go companiond
-# `full` mode with a loopback fake provider. Java is not measured; it runs only
-# long enough to apply Flyway migrations and is stopped before Go sampling.
+# `full` mode with a loopback fake provider. The same companiond binary applies
+# schema migrations before the measured runtime starts.
 #
-# Reuses the g11-switchover compose for db + go-fake-provider only. Secrets
+# Uses a disposable PostgreSQL + fake-provider stack owned by this harness. Secrets
 # and the opaque session are synthetic and fabricated locally; never a real
 # provider, never real user data. Each invocation is one independent trial;
 # §19.2 gates require at least three trials before Owner confirmation.
@@ -16,7 +16,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 RUN_DIR="${G12_OUTPUT_DIR:-$HERE/.run}"
 ENVFILE="$RUN_DIR/compose.env"
-COMPOSE_FILE="$ROOT/ops/deploy/g11-switchover/compose.yml"
+COMPOSE_FILE="$HERE/compose.yml"
 PROJECT="vc-g12"
 TRIAL_ID="${G12_TRIAL_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 GO_PORT="${G12_GO_PORT:-18082}"
@@ -51,7 +51,7 @@ metric_value() {
 }
 
 provider_stats() {
-  curl -fsS "http://127.0.0.1:$GO_FAKE_PORT/g1/stats"
+  curl -fsS "http://127.0.0.1:$GO_FAKE_PORT/g12/stats"
 }
 
 process_fds() {
@@ -78,46 +78,21 @@ export PATH="$HOME/.local/go/bin:$PATH"
 go build -C "$ROOT/backend" -o "$RUN_DIR/companiond" ./cmd/companiond
 echo "  companiond built"
 
-# The migrator image copies a prebuilt Boot jar. Refresh it only when absent
-# or when a forward migration is newer, so a stale local image cannot silently
-# stop before the schema version required by the Go binary.
-RUNTIME_JAR=$(find "$ROOT/service/apps/runtime/target" -maxdepth 1 -type f \
-  -name 'virtual-companion-runtime-*.jar' ! -name '*.original' -print 2>/dev/null \
-  | head -1 || true)
-if [ -z "$RUNTIME_JAR" ] || [ -n "$(find "$ROOT/service/platform/persistence/src/main/resources/db/migration" \
-    -type f -name 'V*.sql' -newer "$RUNTIME_JAR" -print -quit 2>/dev/null)" ]; then
-  echo "  packaging Java Flyway migrator (migration source is newer than Boot jar)"
-  docker run --rm -v "$ROOT:/src" -v vc-g1-m2:/root/.m2 -w /src \
-    eclipse-temurin:25-jdk \
-    ./mvnw --batch-mode --no-transfer-progress -DskipTests package >/dev/null
-fi
-
 echo "== stack up (db + go-fake-provider) =="
 VC_MIGRATOR_DB_PASSWORD=$(openssl rand -hex 32)
 VC_RUNTIME_DB_PASSWORD=$(openssl rand -hex 32)
 VC_CRYPTO_REST_KEY=$(openssl rand -base64 32 | tr -d '\n')
 VC_OWNER_BINDING_SECRET=$(openssl rand -hex 32)
-VC_JWT_SECRET=$(openssl rand -hex 32)
-VC_SHARED_RATE_LIMIT_SECRET=$(openssl rand -hex 32)
 umask 077
 cat > "$ENVFILE" <<EOF
 VC_MIGRATOR_DB_PASSWORD=$VC_MIGRATOR_DB_PASSWORD
 VC_RUNTIME_DB_PASSWORD=$VC_RUNTIME_DB_PASSWORD
-VC_CRYPTO_REST_KEY=$VC_CRYPTO_REST_KEY
-VC_OWNER_BINDING_SECRET=$VC_OWNER_BINDING_SECRET
-VC_JWT_SECRET=$VC_JWT_SECRET
-VC_SHARED_RATE_LIMIT_SECRET=$VC_SHARED_RATE_LIMIT_SECRET
-VC_ADMIN_USERNAME=g12-admin
-VC_ADMIN_PASSWORD=G12-$(openssl rand -hex 8)!
-VC_MODEL_SECRET_G1_CRED=$(openssl rand -hex 16)
-VC_EXPORT_S3_ACCESS_KEY=$(openssl rand -hex 20)
-VC_EXPORT_S3_SECRET_KEY=$(openssl rand -hex 20)
-G11_HOLD_MS=0
-G11_UPSTREAM=runtime:8080
+G12_DB_PORT=$DB_PORT
+G12_GO_FAKE_PORT=$GO_FAKE_PORT
+G12_HOLD_MS=0
 EOF
 umask 022
-"${COMPOSE[@]}" build runtime >/dev/null
-"${COMPOSE[@]}" up -d db go-fake-provider >/dev/null
+"${COMPOSE[@]}" up -d db fake-provider >/dev/null
 DB_READY=0
 for _ in $(seq 1 60); do
   if [ "$(docker inspect -f '{{.State.Health.Status}}' vc-g12-db-1 2>/dev/null || true)" = "healthy" ]; then
@@ -135,34 +110,22 @@ curl -fsS --max-time 2 "http://127.0.0.1:$GO_FAKE_PORT/health" >/dev/null \
   || die "fake provider did not become healthy"
 echo "  db healthy"
 
-echo "== migrations via the Java runtime as the Flyway migrator (§21.2) =="
-# The Go side does not run Flyway; the Java runtime applies all migrations in
-# the packaged artifact and provisions roles, then stops. Go waits for the
-# singleton lease afterwards.
-"${COMPOSE[@]}" up -d runtime >/dev/null
-JAVA_READY=0
-for _ in $(seq 1 150); do
-  if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:${G12_RUNTIME_SCRAPE_PORT:-18081}/actuator/health" 2>/dev/null; then
-    JAVA_READY=1
-    break
-  fi
-  sleep 2
-done
-[ "$JAVA_READY" = "1" ] || die "Java migrator runtime did not become healthy"
-"${COMPOSE[@]}" stop runtime >/dev/null
-echo "  migrations applied; Java stopped"
+echo "== migrations via companiond =="
+VC_MIGRATE_DB_DSN="postgres://vc_migrator:$VC_MIGRATOR_DB_PASSWORD@127.0.0.1:$DB_PORT/vc?sslmode=disable" \
+  "$RUN_DIR/companiond" migrate
+echo "  migrations applied"
 
 echo "== seed: release gate / provider / user / session =="
 "${COMPOSE[@]}" exec -T db psql -U vc_migrator -d vc -v ON_ERROR_STOP=1 -q <<'SQL'
 SELECT vc.advance_release_gate('BETA', true, 'g12-capacity-v1');
 INSERT INTO vc.provider_deployment(provider_id, protocol, capabilities, admission_state)
-VALUES ('g11-openai', 'OPENAI_CHAT_COMPLETIONS', '{}', 'ADMITTED')
+VALUES ('g12-openai', 'OPENAI_CHAT_COMPLETIONS', '{}', 'ADMITTED')
 ON CONFLICT (provider_id) DO UPDATE
    SET admission_state = 'ADMITTED', protocol = 'OPENAI_CHAT_COMPLETIONS';
 INSERT INTO vc.model_unit_price(
     provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k,
     effective_from, active)
-VALUES ('g11-openai', 'g1-model', 1, 0.001, 0.002, now(), true)
+VALUES ('g12-openai', 'g12-model', 1, 0.001, 0.002, now(), true)
 ON CONFLICT (provider_id, model_id, price_version) DO UPDATE
    SET input_usd_per_1k = EXCLUDED.input_usd_per_1k,
        output_usd_per_1k = EXCLUDED.output_usd_per_1k,
@@ -192,15 +155,14 @@ VC_HTTP_ORIGINS=http://localhost
 VC_DB_DSN=postgres://vc_runtime_login:$VC_RUNTIME_DB_PASSWORD@127.0.0.1:$DB_PORT/vc?sslmode=disable
 VC_CRYPTO_REST_KEY=$VC_CRYPTO_REST_KEY
 VC_OWNER_BINDING_SECRET=$VC_OWNER_BINDING_SECRET
-VC_JWT_SECRET=$VC_JWT_SECRET
 VC_AUTH_ISSUER=virtual-companion
 VC_PROVIDER_ENABLED=true
 VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true
-VC_PROVIDER_ID=g11-openai
-VC_PROVIDER_SUPPLIER_NAME=g11-local-fake
+VC_PROVIDER_ID=g12-openai
+VC_PROVIDER_SUPPLIER_NAME=g12-local-fake
 VC_PROVIDER_ENDPOINT=http://127.0.0.1:$GO_FAKE_PORT/v1/chat/completions
 VC_PROVIDER_TOKEN=g12-fake-token
-VC_PROVIDER_MODEL=g1-model
+VC_PROVIDER_MODEL=g12-model
 VC_MAX_OUTSTANDING_TURNS=$OUTSTANDING
 VC_MAX_CONCURRENT_TURNS=$CONCURRENCY
 VC_LOG_LEVEL=info

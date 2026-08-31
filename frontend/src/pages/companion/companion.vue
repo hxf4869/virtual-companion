@@ -2,8 +2,7 @@
 preferences and presentation. Catalog codes only; names are labels, never a
 free-form prompt. Gender presentation never changes behavior rules; every
 companion stays an adult role; avatars reference only the platform-curated
-asset catalog (no photo upload in v1). Alpha stores the reminder flag but
-does not push. -->
+asset catalog (no photo upload in v1). -->
 <template>
   <ConsumerShell route="/pages/companion/companion">
 
@@ -13,14 +12,14 @@ does not push. -->
       <text>
         这些是结构化配置，会翻译成经过批准的回复偏好，不会把自由文本拼进 Prompt。
         角色一律为成年人设定；性别只是呈现方式，不改变行为规则；形象仅来自平台
-        审核素材，第一版不支持上传照片。「允许提醒」仅表示你愿意创建结构化提醒；
-        当前版本不会主动推送。
+        审核素材，第一版不支持上传照片。
       </text>
     </view>
 
     <!-- 统一创建流程：创建只在这里提供；聊天空态与准入下一步都跳转到
          本页，不复制第二套表单。 -->
     <RelationshipSelector
+      :key="relationshipSelectorRevision"
       :relationships="relStore.relationships"
       :current-id="relStore.currentRelationshipId"
       :status="relStore.status"
@@ -106,25 +105,25 @@ does not push. -->
           </label>
         </view>
         <text class="label">回复长度</text>
-        <select v-model="replyLength" class="select" data-testid="companion-reply-length" :disabled="busy">
+        <select v-model="replyLength" class="select" data-testid="companion-reply-length" aria-label="回复长度" :disabled="busy">
           <option value="SHORT">简短</option>
           <option value="MEDIUM">适中</option>
           <option value="LONG">较长</option>
         </select>
         <text class="label">主动程度</text>
-        <select v-model="initiative" class="select" data-testid="companion-initiative" :disabled="busy">
+        <select v-model="initiative" class="select" data-testid="companion-initiative" aria-label="主动程度" :disabled="busy">
           <option value="LOW">先听你说</option>
           <option value="MEDIUM">偶尔提议</option>
           <option value="HIGH">可以主动开启话题</option>
         </select>
         <text class="label">幽默程度</text>
-        <select v-model="humor" class="select" data-testid="companion-humor" :disabled="busy">
+        <select v-model="humor" class="select" data-testid="companion-humor" aria-label="幽默程度" :disabled="busy">
           <option value="NONE">不开玩笑</option>
           <option value="LIGHT">轻度温暖</option>
           <option value="WARM">温和幽默</option>
         </select>
         <text class="label">建议偏好</text>
-        <select v-model="advicePref" class="select" data-testid="companion-advice" :disabled="busy">
+        <select v-model="advicePref" class="select" data-testid="companion-advice" aria-label="建议偏好" :disabled="busy">
           <option value="ASK_FIRST">建议前先询问</option>
           <option value="DIRECT">可以给直接建议</option>
           <option value="RARE">尽量少给建议</option>
@@ -134,20 +133,12 @@ does not push. -->
           v-model="memoryShareScope"
           class="select"
           data-testid="companion-memory-scope"
+          aria-label="记忆共享范围"
           :disabled="busy"
         >
           <option value="RELATIONSHIP">本关系的长期记忆</option>
           <option value="SESSION">仅当前会话记忆</option>
         </select>
-        <label class="check">
-          <checkbox
-            data-testid="companion-reminders"
-            :checked="remindersAllowed"
-            :disabled="busy"
-            @change="onRemindersChange"
-          />
-          <text>允许创建结构化提醒（Alpha 不推送）</text>
-        </label>
         <text class="label">不希望主动涉及的话题</text>
         <view class="topics">
           <label v-for="topic in AVOID_OPTIONS" :key="topic.code" class="check">
@@ -174,7 +165,7 @@ does not push. -->
       <view class="danger-zone" data-testid="companion-danger">
         <text class="danger-title">清除或删除这个角色</text>
         <text class="danger-lead">
-          重置只清除这个关系下的会话、记忆和提醒，并保留角色及其设置。
+          重置只清除这个关系下的会话和记忆，并保留角色及其设置。
           删除会移除这个角色及上述关系数据。账号级偏好不会被改动。
           退出当前使用不会删除数据。
         </text>
@@ -198,21 +189,11 @@ does not push. -->
         </view>
         <view v-if="dangerKind" class="danger-confirm" data-testid="companion-danger-confirm">
           <text v-if="preview" class="danger-copy" data-testid="companion-clearance-preview">
-            将清除 {{ preview.conversationCount }} 个会话、{{ preview.memoryCount }} 条记忆、{{ preview.reminderCount }} 条提醒。
+            将清除 {{ preview.conversationCount }} 个会话和 {{ preview.memoryCount }} 条记忆。
             <template v-if="dangerKind === 'reset'">重置后会保留这个角色及其设置。</template>
             <template v-else>删除后会移除这个角色。</template>
             同模板新建的角色不会带上这些记忆。账号级偏好不会被改动。
           </text>
-          <label class="retain-row">
-            <input
-              type="checkbox"
-              data-testid="retain-importable"
-              :checked="retainImportable"
-              :disabled="dangerBusy"
-              @change="onRetainChange"
-            />
-            <text>保留一份已确认记忆，之后由我决定是否导入（默认不保留）</text>
-          </label>
           <view class="danger-actions">
             <button
               data-testid="companion-danger-cancel"
@@ -243,22 +224,6 @@ does not push. -->
           </view>
         </view>
       </view>
-      <view
-        v-if="importPreview && importPreview.acceptedCount > 0"
-        class="import-prompt"
-        data-testid="memory-import-prompt"
-        role="status"
-      >
-        <text>有 {{ importPreview.acceptedCount }} 条已确认记忆可导入到当前角色。默认不会自动带上。</text>
-        <view class="danger-actions">
-          <button data-testid="memory-import-confirm" class="nav-index" :disabled="dangerBusy" @click="onImportMemories">
-            导入这些记忆
-          </button>
-          <button data-testid="memory-import-discard" class="nav-index" :disabled="dangerBusy" @click="onDiscardImport">
-            不要导入
-          </button>
-        </view>
-      </view>
     </template>
     <view v-else class="empty" data-testid="companion-no-rel">
       <text>请先选择一个关系。</text>
@@ -279,13 +244,13 @@ import {
   type CompanionInitiative,
   type CompanionMemoryShare,
   type CompanionReplyLength,
-  type MemoryImportPreview,
   type Relationship,
   type RelationshipClearancePreview,
 } from "@/api/relationship";
 import { COMPANION_AVATAR_OPTIONS } from "@/domain/companion-presentation";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { goTo } from "@/app/navigate";
 import { personaDisplayName } from "@/domain/persona";
 import { readContextFromLocation, sanitizeRelationshipId } from "@/domain/context-href";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
@@ -326,7 +291,6 @@ export default {
     const initiative = ref<CompanionInitiative>(DEFAULT_COMPANION_PREFS.initiative);
     const humor = ref<CompanionHumor>(DEFAULT_COMPANION_PREFS.humor);
     const advicePref = ref<CompanionAdvicePref>(DEFAULT_COMPANION_PREFS.advicePref);
-    const remindersAllowed = ref(false);
     const memoryShareScope = ref<CompanionMemoryShare>(DEFAULT_COMPANION_PREFS.memoryShareScope);
     const avoidTopics = ref<CompanionAvoidTopic[]>([]);
     const gender = ref<CompanionGender>(DEFAULT_COMPANION_PREFS.gender);
@@ -334,8 +298,7 @@ export default {
     const dangerKind = ref<"reset" | "delete" | null>(null);
     const preview = ref<RelationshipClearancePreview | null>(null);
     const dangerBusy = ref(false);
-    const retainImportable = ref(false);
-    const importPreview = ref<MemoryImportPreview | null>(null);
+    const relationshipSelectorRevision = ref(0);
 
     function applyRelationship(rel: Relationship | null): void {
       companionName.value = rel?.companionName ?? "";
@@ -344,7 +307,6 @@ export default {
       initiative.value = rel?.initiative ?? DEFAULT_COMPANION_PREFS.initiative;
       humor.value = rel?.humor ?? DEFAULT_COMPANION_PREFS.humor;
       advicePref.value = rel?.advicePref ?? DEFAULT_COMPANION_PREFS.advicePref;
-      remindersAllowed.value = rel?.remindersAllowed === true;
       memoryShareScope.value = rel?.memoryShareScope ?? DEFAULT_COMPANION_PREFS.memoryShareScope;
       avoidTopics.value = [...(rel?.avoidTopics ?? [])];
       gender.value = rel?.gender ?? DEFAULT_COMPANION_PREFS.gender;
@@ -371,9 +333,14 @@ export default {
     async function onPickRelationship(relationshipId: string): Promise<void> {
       actionError.value = null;
       try {
-        await relStore.activate(transport, relationshipId);
+        const activated = await relStore.activate(transport, relationshipId);
+        if (!activated) {
+          actionError.value = "切换伙伴失败，请重试。";
+          relationshipSelectorRevision.value += 1;
+        }
       } catch {
         actionError.value = "切换伙伴失败，请重试。";
+        relationshipSelectorRevision.value += 1;
       }
     }
 
@@ -387,10 +354,6 @@ export default {
       } catch {
         actionError.value = "创建失败，请重试。";
       }
-    }
-
-    function onRemindersChange(event: { detail?: { value?: boolean } }): void {
-      remindersAllowed.value = event.detail?.value === true;
     }
 
     function onTopicChange(
@@ -451,25 +414,6 @@ export default {
     function onCancelDanger(): void {
       dangerKind.value = null;
       preview.value = null;
-      retainImportable.value = false;
-    }
-
-    function onRetainChange(event: Event): void {
-      const target = event.target as HTMLInputElement | null;
-      retainImportable.value = target?.checked === true;
-    }
-
-    async function refreshImportPreview(): Promise<void> {
-      const persona = relStore.current?.personaRef;
-      if (!persona) {
-        importPreview.value = null;
-        return;
-      }
-      try {
-        importPreview.value = await relStore.listMemoryImports(transport, persona);
-      } catch {
-        importPreview.value = null;
-      }
     }
 
     async function onConfirmReset(): Promise<void> {
@@ -478,15 +422,11 @@ export default {
       actionError.value = null;
       dangerBusy.value = true;
       try {
-        const result = await relStore.resetCompanion(transport, id, {
-          retainImportable: retainImportable.value,
-        });
+        const result = await relStore.resetCompanion(transport, id);
         if (result) {
           dangerKind.value = null;
           preview.value = null;
           saved.value = false;
-          await refreshImportPreview();
-          retainImportable.value = false;
         } else {
           actionError.value = "重置失败，请重试。";
         }
@@ -503,49 +443,16 @@ export default {
       actionError.value = null;
       dangerBusy.value = true;
       try {
-        const deleted = await relStore.removeCompanion(transport, id, {
-          retainImportable: retainImportable.value,
-        });
+        const deleted = await relStore.removeCompanion(transport, id);
         if (deleted) {
           dangerKind.value = null;
           preview.value = null;
           saved.value = false;
-          importPreview.value = null;
-          retainImportable.value = false;
         } else {
           actionError.value = "删除失败，请重试。";
         }
       } catch {
         actionError.value = "删除失败，请重试。";
-      } finally {
-        dangerBusy.value = false;
-      }
-    }
-
-    async function onImportMemories(): Promise<void> {
-      const id = relStore.currentRelationshipId;
-      if (!id) return;
-      dangerBusy.value = true;
-      actionError.value = null;
-      try {
-        await relStore.importMemories(transport, id);
-        importPreview.value = null;
-      } catch {
-        actionError.value = "导入失败，请重试。";
-      } finally {
-        dangerBusy.value = false;
-      }
-    }
-
-    async function onDiscardImport(): Promise<void> {
-      const persona = relStore.current?.personaRef;
-      if (!persona) return;
-      dangerBusy.value = true;
-      try {
-        await relStore.discardMemoryImport(transport, persona);
-        importPreview.value = null;
-      } catch {
-        actionError.value = "未能取消导入。";
       } finally {
         dangerBusy.value = false;
       }
@@ -565,7 +472,7 @@ export default {
           initiative: initiative.value,
           humor: humor.value,
           advicePref: advicePref.value,
-          remindersAllowed: remindersAllowed.value,
+          remindersAllowed: false,
           memoryShareScope: memoryShareScope.value,
           avoidTopics: [...avoidTopics.value],
           gender: gender.value,
@@ -582,28 +489,6 @@ export default {
       }
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only navigation.
-      }
-    }
-
-    watch(
-      () => relStore.currentRelationshipId,
-      () => {
-        void refreshImportPreview();
-      },
-    );
-
     onMounted(async () => {
       await relStore.load(transport);
       const known = relStore.relationships.map((row) => row.relationshipId);
@@ -614,7 +499,6 @@ export default {
       if (fromQuery) {
         relStore.currentRelationshipId = fromQuery;
       }
-      await refreshImportPreview();
     });
 
     return {
@@ -626,7 +510,6 @@ export default {
       initiative,
       humor,
       advicePref,
-      remindersAllowed,
       memoryShareScope,
       avoidTopics,
       gender,
@@ -640,18 +523,13 @@ export default {
       dangerKind,
       preview,
       dangerBusy,
-      retainImportable,
-      importPreview,
-      onRetainChange,
-      onImportMemories,
-      onDiscardImport,
+      relationshipSelectorRevision,
       onOpenDanger,
       onCancelDanger,
       onConfirmReset,
       onConfirmDelete,
       onPickRelationship,
       onRelCreate,
-      onRemindersChange,
       onTopicChange,
       onGenderChange,
       onAvatarChange,
@@ -672,7 +550,7 @@ export default {
 }
 
 .section {
-  margin-bottom: var(--vc-space-5);
+  margin-bottom: var(--vc-space-7);
 }
 
 .section-title {
@@ -783,8 +661,9 @@ export default {
   gap: var(--vc-space-1);
   margin-bottom: var(--vc-space-4);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
   font-size: var(--vc-text-sm);
 }
@@ -837,8 +716,9 @@ export default {
   gap: var(--vc-space-2);
   margin-top: var(--vc-space-6);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-danger);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-danger);
+  border-bottom: 1px solid var(--vc-danger);
+  border-radius: 0;
   background: var(--vc-danger-bg);
 }
 
@@ -880,8 +760,9 @@ export default {
 }
 .form {
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
 }
 
@@ -917,6 +798,12 @@ export default {
 }
 
 .avatar-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatars {
   display: flex;
   flex-wrap: wrap;
   gap: var(--vc-space-2);
@@ -974,23 +861,6 @@ export default {
   display: block;
   margin-top: var(--vc-space-2);
   color: var(--vc-success);
-  font-size: var(--vc-text-sm);
-}
-
-.import-prompt {
-  margin: var(--vc-space-3) 0;
-  padding: var(--vc-space-3) var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
-  color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
-}
-
-.retain-row {
-  display: flex;
-  align-items: center;
-  gap: var(--vc-space-2);
   font-size: var(--vc-text-sm);
 }
 

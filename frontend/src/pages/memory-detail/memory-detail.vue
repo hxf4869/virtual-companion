@@ -66,6 +66,7 @@ import { onMounted, ref } from "vue";
 import { getMemory, listMemoryEvidence, type Memory, type MemoryEvidence } from "@/api/memory";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { goTo } from "@/app/navigate";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { formatLocalDateTime } from "@/domain/timestamp";
@@ -151,21 +152,6 @@ export default {
       }
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only.
-      }
-    }
-
     onMounted(async () => {
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
@@ -217,8 +203,9 @@ export default {
   gap: var(--vc-space-1);
   margin-top: var(--vc-space-3);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
 }
 
@@ -228,8 +215,8 @@ export default {
 }
 
 .summary {
-  font-size: var(--vc-text-md);
-  font-weight: 600;
+  font-size: var(--vc-text-lg);
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 

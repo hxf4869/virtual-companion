@@ -2,8 +2,8 @@
 --
 -- Platform-level identity accounts, server-state refresh sessions and the
 -- authentication audit trail. Covers: the idempotent ADMIN bootstrap seed; the
--- credential fetch and BCrypt-hash storage (the hash is opaque here -- Spring
--- Security does the comparison in the runtime); LOGIN_SUCCESS / LOGIN_FAILURE /
+-- credential fetch and BCrypt-hash storage (the hash is opaque here -- the
+-- runtime password verifier does the comparison); LOGIN_SUCCESS / LOGIN_FAILURE /
 -- LOGOUT / ACCOUNT_CREATE audit events; ADMIN-only account creation with no
 -- public registration; refresh-token issue / rotate / logout with revoked,
 -- expired, unknown and DISABLED-account tokens all failing closed; cross-account

@@ -58,11 +58,10 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 | ├ catalog validate/drift | <1s | `specs/catalog` 契约（含 Go v1 API scope 对账 OpenAPI）与 `specs/generated` 漂移 |
 | ├ openapi validate/drift | <1s | `specs/openapi` 合同与生成物漂移 |
 | ├ paid-features | <1s | 依赖/配置中禁止付费运行时前提 |
-| ├ licenses | <1s | Maven/前端直接依赖许可证清单核对 |
-| ├ go-test | <1s | `backend/` 无网络 `go test ./...`（companiond 骨架、crypto/JWT unit、api-migration 硬隔离、G4 provider mock contract、G5 companion/turn/safety unit 与 Golden Set、G6 RealtimeHub/SSE fan-out reconnect leak、G7 Relationship/Conversation/Message HTTP unit） |
+| ├ licenses | <1s | Go/前端直接依赖许可证清单核对 |
+| ├ go-test | <1s | `backend/` vendor 离线 `go test ./...`（runtime、crypto、provider、core、HTTP、jobs、realtime 与迁移） |
 | ├ frontend-test | ~2s | vitest 全量 |
 | └ frontend-type-check | ~2s | vue-tsc |
-| `./mvnw --batch-mode --no-transfer-progress verify` | ~19s | 后端 14 模块编译 + 全部 JUnit（JDK 25） |
 | `bash infra/db/run-rls-tests.sh` | Docker | SQL/RLS/并发测试 |
 | `bash infra/db/run-go-store-tests.sh` | Docker | G3 Go pgx owner tx / RLS / least-privilege 与 G7 Relationship/Conversation/Message 隔离 E2E（`-tags=integration`） |
 | CI（5 个 job） | — | checks / backend / database / frontend / supply-chain |

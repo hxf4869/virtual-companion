@@ -99,7 +99,7 @@ BEGIN
         RAISE EXCEPTION 'promote FINAL_REVIEW returned %', v_st;
     END IF;
 
-    -- finalize：真实 token、非空 provider_ref、outbox=false（memory Java 域未接，避免悬挂 outbox）。
+    -- finalize：真实 token、非空 provider_ref、outbox=false（memory legacy runtime 域未接，避免悬挂 outbox）。
     SELECT out_finalized INTO v_final
       FROM vc.finalize_generation(
         1, v_gen, v_cand, v_content, 'pa-' || v_attempt,

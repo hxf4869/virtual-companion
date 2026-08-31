@@ -30,14 +30,12 @@ const READY: ExportRequest = {
 };
 
 const DOCUMENT: ExportDownload = {
-  exportId: "9",
-  generatedAt: "2026-08-17T12:00:05Z",
-  expiresAt: "2026-08-18T12:00:00Z",
-  aiContentNotice: "本导出包含 AI 生成内容",
+  exportedAt: "2026-08-17T12:00:05Z",
+  conversationCount: 0,
+  messageCount: 0,
+  memoryCount: 0,
   conversations: [],
   memories: [],
-  reminders: [],
-  consents: [],
 };
 
 function mockTransport(opts: {
@@ -114,12 +112,23 @@ describe("useExportStore", () => {
     await store.refresh(mockTransport({ getJson: READY }), "9");
 
     expect(await store.downloadDocument(mockTransport())).toBe(true);
-    expect(store.download?.aiContentNotice).toContain("AI 生成内容");
+    expect(store.download?.exportedAt).toBe("2026-08-17T12:00:05Z");
+    expect(store.canDownload()).toBe(false);
 
     // A failed download (e.g. already consumed) does not fake a document.
     expect(await store.downloadDocument(mockTransport({ downloadOk: false }))).toBe(false);
-    expect(store.downloadFailed).toBe(true);
+    expect(store.downloadFailed).toBe(false);
     expect(store.download).not.toBeNull();
+  });
+
+  it("surfaces a malformed 200 download because its one-time token may be consumed", async () => {
+    const store = useExportStore();
+    await store.create(mockTransport(), "Current-Pass-1!");
+    await store.refresh(mockTransport({ getJson: READY }), "9");
+
+    expect(await store.downloadDocument(mockTransport({ downloadJson: {} }))).toBe(false);
+    expect(store.downloadFailed).toBe(true);
+    expect(store.download).toBeNull();
   });
 
   it("download without an issued URL is a silent no-op", async () => {

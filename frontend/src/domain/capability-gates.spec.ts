@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   CAPABILITY_SOURCE,
-  type BaselineCapabilities,
-} from "@/api/baseline";
-import {
   CAPABILITY_GATE_DEFINITIONS,
+  TECHNICAL_ALPHA_CAPABILITIES,
+  type TechnicalAlphaCapabilities,
   mapCapabilityGates,
 } from "@/domain/capability-gates";
 
-function closedCapabilities(): BaselineCapabilities {
+function closedCapabilities(): TechnicalAlphaCapabilities {
   return {
     source: CAPABILITY_SOURCE,
     publicRegistrationEnabled: false,
@@ -24,7 +23,7 @@ function closedCapabilities(): BaselineCapabilities {
 
 describe("mapCapabilityGates", () => {
   it("maps the seven verified false values to closed cards", () => {
-    const gates = mapCapabilityGates(closedCapabilities());
+    const gates = mapCapabilityGates(TECHNICAL_ALPHA_CAPABILITIES);
 
     expect(gates).toHaveLength(7);
     expect(gates.every((gate) => gate.state === "closed")).toBe(true);

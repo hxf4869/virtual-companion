@@ -16,8 +16,8 @@ const bindingDomain = "vc-owner-binding-v1"
 const nonceBytes = 16
 
 // BindingMessage is the canonical domain-separated message for one
-// (owner, backend pid, transaction id, nonce) tuple. Java OwnerContext and
-// vc._owner_binding_message must produce the same UTF-8 bytes.
+// (owner, backend pid, transaction id, nonce) tuple. It must match
+// vc._owner_binding_message byte-for-byte.
 func BindingMessage(ownerUserID int64, backendPID, xactID, nonce string) string {
 	var b strings.Builder
 	b.Grow(len(bindingDomain) + 64)

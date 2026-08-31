@@ -119,7 +119,7 @@ describe("ConsumerShell", () => {
     stubUni();
     loginAs();
     const wrapper = mount(ConsumerShell, {
-      props: { route: "/pages/reminder/reminder" },
+      props: { route: "/pages/data/data" },
     });
     expect(wrapper.find('[data-testid="page-back"]').exists()).toBe(true);
     expect(
@@ -161,7 +161,7 @@ describe("InternalShell", () => {
     nav.unmount();
 
     const internal = mount(InternalShell, {
-      props: { route: "/pages/ops/ops" },
+      props: { route: "/pages/admin/admin" },
       slots: { default: "<p>ops</p>" },
     });
     expect(internal.find(".vc-internal").classes()).toContain("vc-chrome");
@@ -172,7 +172,7 @@ describe("InternalShell", () => {
     stubUni();
     const { navigateBack } = stubUni();
     const wrapper = mount(InternalShell, {
-      props: { route: "/pages/ops/ops" },
+      props: { route: "/pages/admin/admin" },
       slots: { default: "<p>ops</p>" },
     });
     // eyebrow（kicker 式小字）已按 craft-floor 移除；标题即唯一头部文本。

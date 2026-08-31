@@ -238,23 +238,23 @@ func TestRejectsAADAndURLSafePayload(t *testing.T) {
 	}
 }
 
-func TestGoDecryptsJavaGoldenVectors(t *testing.T) {
+func TestDecryptsLegacyGoldenVectors(t *testing.T) {
 	t.Parallel()
 	v := loadCryptoVectors(t)
 	c, err := NewDefaultFieldCipher(v.Rest.KeyBase64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Rest.JavaEnc2 == "" || v.Rest.JavaEnc1 == "" {
-		t.Fatal("java golden vectors missing")
+	if v.Rest.LegacyEnc2 == "" || v.Rest.LegacyEnc1 == "" {
+		t.Fatal("legacy golden vectors missing")
 	}
-	got, err := c.Decrypt(v.Rest.JavaEnc2)
+	got, err := c.Decrypt(v.Rest.LegacyEnc2)
 	if err != nil || got != v.Rest.Plaintext {
-		t.Fatalf("java enc2: %q %v", got, err)
+		t.Fatalf("legacy enc2: %q %v", got, err)
 	}
-	got, err = c.Decrypt(v.Rest.JavaEnc1)
+	got, err = c.Decrypt(v.Rest.LegacyEnc1)
 	if err != nil || got != v.Rest.Plaintext {
-		t.Fatalf("java enc1: %q %v", got, err)
+		t.Fatalf("legacy enc1: %q %v", got, err)
 	}
 	got, err = c.Decrypt(v.Rest.LegacyPlaintext)
 	if err != nil || got != v.Rest.LegacyPlaintext {
@@ -279,9 +279,9 @@ type cryptoVectors struct {
 		OtherKeyBase64  string `json:"otherKeyBase64"`
 		Plaintext       string `json:"plaintext"`
 		GoEnc2          string `json:"goEnc2"`
-		JavaEnc2        string `json:"javaEnc2"`
+		LegacyEnc2      string `json:"legacyEnc2"`
 		GoEnc1          string `json:"goEnc1"`
-		JavaEnc1        string `json:"javaEnc1"`
+		LegacyEnc1      string `json:"legacyEnc1"`
 		LegacyPlaintext string `json:"legacyPlaintext"`
 	} `json:"rest"`
 	OwnerHMAC struct {
@@ -293,20 +293,10 @@ type cryptoVectors struct {
 		ProofHex string `json:"proofHex"`
 	} `json:"ownerHMAC"`
 	Bcrypt struct {
-		Password string `json:"password"`
-		GoHash   string `json:"goHash"`
-		JavaHash string `json:"javaHash"`
+		Password   string `json:"password"`
+		GoHash     string `json:"goHash"`
+		LegacyHash string `json:"legacyHash"`
 	} `json:"bcrypt"`
-	JWT struct {
-		Secret       string `json:"secret"`
-		Issuer       string `json:"issuer"`
-		AccountID    int64  `json:"accountId"`
-		Role         string `json:"role"`
-		Username     string `json:"username"`
-		SessionEpoch int64  `json:"sessionEpoch"`
-		GoToken      string `json:"goToken"`
-		JavaToken    string `json:"javaToken"`
-	} `json:"jwt"`
 }
 
 func loadCryptoVectors(t *testing.T) cryptoVectors {

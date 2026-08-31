@@ -1,0 +1,30 @@
+{
+  "projectId": "15877074541671025535",
+  "projectTitle": "Virtual Companion H5 — 2026 全量重设计",
+  "direction": "静默织室 / Quiet Loom",
+  "composition": "织结平衡版",
+  "seed": "6207dc80",
+  "designSystemAssetId": "12634571688811473244",
+  "screens": {
+    "/pages/index/index": "e93fa77892f74505958d6646fc081278",
+    "/pages/chat/chat": "cc1de9d76789476d88a775532a047a0f",
+    "/pages/conversations/conversations": "d88dd16813ed4e29bbec3697a24febd7",
+    "/pages/memory/memory": "48c69a59f2874299b1bb319d5ec43e24",
+    "/pages/account/account": "a080fa67ddec4f9881f525cd99194c34",
+    "/pages/memory-detail/memory-detail": "e1cc9c3f6278471ca77d777f4284b70f",
+    "/pages/companion/companion": "50a9481a35e54980a252f5b37c68ac8c",
+    "/pages/reminder/reminder": "bdad34173b54454a992961ee651e57ca",
+    "/pages/health/health": "d59aaca8ae1449a68cf718bf10f1cca7",
+    "/pages/login/login": "768f6221e7004353b7c27e8d349b6cc7",
+    "/pages/age/age": "8c8f5176596d40f7bbf5263154f92d7a",
+    "/pages/consent/consent": "e0263863df904eca845e40a914c91c77",
+    "/pages/incognito/incognito": "a88e741005c6443084a6ec21cff1cda8",
+    "/pages/data/data": "f6fc6437fd594b078927346651d548a9",
+    "/pages/export/export": "65c21e79db4a4997ae39b5a34e09fd0e",
+    "/pages/help/help": "0eab878540ea43f5b372a8ecb44f325f",
+    "/pages/report/report": "c57a314896df49429958a740cca8cbee",
+    "/pages/ai-notice/ai-notice": "7ba7ff26d40d4300bcc433066cf753ea",
+    "/pages/ops/ops": "8492feeed62149c08ed17901b677cf55",
+    "/pages/admin/admin": "11b60269f5ab4d63be82eef6843a4d18"
+  }
+}

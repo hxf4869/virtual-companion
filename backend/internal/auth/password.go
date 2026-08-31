@@ -11,9 +11,8 @@ import (
 // for an unknown account (the caller still treats identity as missing).
 const DummyPassword = "virtual-companion-timing-equalization"
 
-// Password compares BCrypt hashes compatible with Spring Security's
-// BCryptPasswordEncoder (strength 10, $2a$). Hashing is used by login and
-// password change. This package does not issue JWT.
+// Password compares BCrypt hashes at cost 10 using the $2a$ wire form.
+// Hashing is used by login and password change.
 type Password struct {
 	dummyHash []byte
 }
@@ -28,7 +27,7 @@ func NewPassword() (*Password, error) {
 	return &Password{dummyHash: []byte(h)}, nil
 }
 
-// Hash returns a $2a$ BCrypt hash at the Spring default cost (10).
+// Hash returns a $2a$ BCrypt hash at the package default cost (10).
 func Hash(password string) (string, error) {
 	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {

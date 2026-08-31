@@ -4,7 +4,7 @@ set -euo pipefail
 
 IMAGE="pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-MIG_DIR="$ROOT/service/platform/persistence/src/main/resources/db/migration"
+MIG_DIR="$ROOT/backend/internal/migrate/sql"
 INIT_DIR="$ROOT/ops/deploy/db-init"
 MIGRATOR_PASSWORD="role-drill-migrator"
 RUNTIME_PASSWORD="role-drill-runtime"

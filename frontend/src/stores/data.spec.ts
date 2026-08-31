@@ -53,23 +53,6 @@ function mockTransport(): {
             json: [{ memoryId: "3", scope: "RELATIONSHIP", summary: "喜欢安静的晚上", status: "ACCEPTED" }],
           };
         }
-        if (path === "/api/v1/relationships/7/reminders") {
-          return {
-            ok: true,
-            status: 200,
-            json: [
-              {
-                reminderId: 4,
-                relationshipId: 7,
-                text: "晚上十点提醒我休息",
-                remindAt: "2026-08-18T14:00:00Z",
-                recurrence: "NONE",
-                status: "ACTIVE",
-                createdAt: "2026-08-18T00:00:00Z",
-              },
-            ],
-          };
-        }
         return { ok: false, status: 500, json: null };
       },
     },
@@ -91,13 +74,12 @@ describe("useDataStore", () => {
     expect(store.relationships).toHaveLength(1);
     expect(store.conversations[0]?.title).toBe("夜聊");
     expect(store.memories[0]?.summary).toBe("喜欢安静的晚上");
-    expect(store.reminders[0]?.text).toBe("晚上十点提醒我休息");
     expect(store.consents[0]?.consentType).toBe("SERVICE_TERMS");
     expect(store.serviceMode?.mode).toBe("ZERO_LLM");
     expect(paths).toContain("GET /api/v1/relationships");
     expect(paths).toContain("GET /api/v1/conversations");
     expect(paths).toContain("GET /api/v1/relationships/7/memories");
-    expect(paths).toContain("GET /api/v1/relationships/7/reminders");
+    expect(paths).not.toContain("GET /api/v1/relationships/7/reminders");
     expect(paths).toContain("GET /api/v1/consents");
     expect(paths).toContain("GET /api/v1/service-mode");
   });

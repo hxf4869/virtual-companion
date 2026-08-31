@@ -926,8 +926,7 @@
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
-        "javaRuntimeUntilCutover": "Java continues to serve every listed operation until the matching Go slice and Phase 5 cutover.",
-        "note": "Phase 0 API consumer matrix. KEEP requires core-outcome, current H5 production caller, safety/data-rights, or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations are removed with H5 in a later slice, not in G0.",
+        "note": "The API consumer matrix remains the deletion/scope source. KEEP requires core-outcome, current H5 production caller, safety/data-rights, or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations are removed with H5 in a later slice, not in G0.",
         "operations": [
           {
             "currentH5Callers": [
@@ -2032,7 +2031,7 @@
             "method": "GET",
             "operationId": "providerRegistry",
             "path": "/api/v1/auth/admin/provider-registry",
-            "replacementOrImpact": "Legacy Java deployment-registry projection is RETIRE. Go v1 replaces it with the administrator-owned provider/model configuration and global route order below."
+            "replacementOrImpact": "The retired deployment-registry projection is replaced with the administrator-owned provider/model configuration and global route order below."
           },
           {
             "currentH5Callers": [
@@ -2302,9 +2301,10 @@
             "replacementOrImpact": "Hide contact revoke. Crisis copy may still show real-world resources without claiming notification."
           }
         ],
+        "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
         "schemaVersion": 1,
         "sourceOpenApi": "specs/openapi/virtual-companion.yaml",
-        "undeclaredJavaEraOperations": [
+        "undeclaredLegacyOperations": [
           {
             "currentH5Callers": [
               "frontend/src/pages/admin/admin.vue"
@@ -2347,7 +2347,7 @@
           }
         ]
       },
-      "sha256": "9a9d7d8624c0b39f86176c364854dea526833aa9e1a5550a03ceaa7f6a33ab08"
+      "sha256": "f851845d0d78bee1312e3f238234b7a15ff5912c9f473b3333cc06f032701478"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2740,7 +2740,6 @@
         },
         "memory": {
           "autoSaveEnabled": false,
-          "deterministic64dHash": "JAVA_RUNTIME_LIFECYCLE_ONLY",
           "ollamaEmbedding": "SHADOW_EVAL_ONLY",
           "productionRecall": [
             "EXPLICIT_CANDIDATE",
@@ -2759,23 +2758,19 @@
         },
         "schemaVersion": 1,
         "technology": {
-          "currentRuntimeUntilCutover": "JAVA_SPRING_BOOT",
+          "currentRuntime": "GO_COMPANIOND",
           "database": "POSTGRESQL_18",
           "goBaseline": "1.26",
-          "javaBaseline": "25-LTS",
-          "javaFallback": "21-LTS_BY_ADR_ONLY",
           "modelProtocols": [
             "OPENAI_CHAT_COMPLETIONS",
             "OPENAI_RESPONSES",
             "ANTHROPIC_MESSAGES"
           ],
-          "springAiLine": "2.0.x",
-          "springBootLine": "4.1.x",
           "targetRuntime": "GO_COMPANIOND",
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "f1eb963f8f487937167d507870add8b6eef5c53a6e1edc0ddeb7a80cc12d7de7"
+      "sha256": "efc96cde6be963707164e9303645d6de789daf4edf4ea95810314bb74085b342"
     },
     "provider-attempt-statuses.yaml": {
       "document": {

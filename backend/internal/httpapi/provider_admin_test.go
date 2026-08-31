@@ -42,6 +42,25 @@ func (m *providerMemStore) ReorderProviderModels(_ context.Context, _ int64, in 
 	return nil
 }
 
+func (m *providerMemStore) ResolveProviderRoutes(context.Context) ([]postgres.ProviderRoute, error) {
+	for _, provider := range m.configs {
+		if provider.State != postgres.ProviderEnabled || !provider.CredentialConfigured {
+			continue
+		}
+		for _, model := range provider.Models {
+			if model.State == postgres.ProviderEnabled {
+				return []postgres.ProviderRoute{{
+					ProviderID: provider.ProviderID,
+					Protocol:   provider.Protocol,
+					BaseURL:    provider.BaseURL,
+					ModelID:    model.ModelID,
+				}}, nil
+			}
+		}
+	}
+	return []postgres.ProviderRoute{}, nil
+}
+
 func newProviderServer(t *testing.T) (*Server, *providerMemStore) {
 	t.Helper()
 	base := newMemStore()
@@ -120,6 +139,30 @@ func TestProviderAdminListIsSecretFreeAndAdminOnly(t *testing.T) {
 	user := providerRequest(t, server, store, http.MethodGet, "/api/v1/admin/providers", "", 1, false)
 	if user.Code != http.StatusForbidden {
 		t.Fatalf("user list %d", user.Code)
+	}
+}
+
+func TestServiceModeReflectsConfiguredRoutesAndRequiresSession(t *testing.T) {
+	t.Parallel()
+	server, store := newProviderServer(t)
+
+	full := providerRequest(t, server, store, http.MethodGet, "/api/v1/service-mode", "", 9, false)
+	if full.Code != http.StatusOK || !strings.Contains(full.Body.String(), `"mode":"FULL_AI"`) {
+		t.Fatalf("full mode %d %s", full.Code, full.Body.String())
+	}
+
+	server, store = newProviderServer(t)
+	store.configs = nil
+	zero := providerRequest(t, server, store, http.MethodGet, "/api/v1/service-mode", "", 9, false)
+	if zero.Code != http.StatusOK || !strings.Contains(zero.Body.String(), `"mode":"ZERO_LLM"`) {
+		t.Fatalf("zero mode %d %s", zero.Code, zero.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/service-mode", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous mode %d %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -136,7 +136,6 @@ func TestDatabaseRequiresOwnerBindingSecret(t *testing.T) {
 		"VC_MODE":                 "api-migration",
 		"VC_DB_DSN":               "postgres://vc_runtime_login@127.0.0.1:5432/vc",
 		"VC_OWNER_BINDING_SECRET": "0123456789abcdef0123456789abcdef",
-		"VC_JWT_SECRET":           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		"VC_CRYPTO_REST_KEY":      "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=",
 	}))
 	if err != nil {
@@ -144,9 +143,6 @@ func TestDatabaseRequiresOwnerBindingSecret(t *testing.T) {
 	}
 	if cfg.Database.MaxConns != 8 || cfg.Database.TxTimeout != 5*time.Second {
 		t.Fatalf("db defaults %+v", cfg.Database)
-	}
-	if cfg.JWT.Issuer != "virtual-companion" {
-		t.Fatalf("issuer %s", cfg.JWT.Issuer)
 	}
 	if cfg.Crypto.RestKeyID != "default" || cfg.Crypto.RestKeyVersion != 1 {
 		t.Fatalf("crypto %+v", cfg.Crypto)
@@ -173,17 +169,6 @@ func TestSessionDefaults(t *testing.T) {
 	}
 	if cfg.Session.TTL != 24*time.Hour || cfg.Session.CookieSecure || cfg.Session.ReauthWindow != 10*time.Minute {
 		t.Fatalf("override %+v", cfg.Session)
-	}
-}
-
-func TestJWTSecretMustBe256Bits(t *testing.T) {
-	t.Parallel()
-	_, err := LoadEnv(env(map[string]string{
-		"VC_MODE":       "api-migration",
-		"VC_JWT_SECRET": "short-secret",
-	}))
-	if err == nil || !strings.Contains(err.Error(), "256 bits") {
-		t.Fatalf("expected jwt secret error, got %v", err)
 	}
 }
 

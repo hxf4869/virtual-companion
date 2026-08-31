@@ -200,7 +200,7 @@ $$;
 -- Phase 5 (stale WORKER resumes / the independent compensation transaction):
 -- with the intent committed, EVERY pointer write is refused atomically —
 -- complete_export AND the fail_export_with_object fallback, each exercised
--- in its OWN fresh owner transaction (the compensation path the Java worker
+-- in its OWN fresh owner transaction (the compensation path the legacy runtime worker
 -- runs after a rolled-back seal).
 -- ---------------------------------------------------------------------------
 BEGIN;

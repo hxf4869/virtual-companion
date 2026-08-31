@@ -229,7 +229,7 @@ h5CredentialBoundary:
     valueEncoding: UTF-8
     maxValueBytes: 512
     overLimitError: AUTHENTICATION_REQUIRED
-    enforcement: BEFORE_REFRESH_TOKEN_HASH_OR_SESSION_JDBC
+    enforcement: BEFORE_REFRESH_TOKEN_HASH_OR_SESSION_DB
     refreshTokenInResponseBodyForbidden: true
   csrfCookie:
     name: vc_csrf
@@ -327,7 +327,7 @@ authAbuseAdmissionBoundary:
   rejectionBeforeExpensiveOperations:
     - PASSWORD_BCRYPT
     - ACCOUNT_REPOSITORY_AUTHENTICATION
-    - SESSION_JDBC
+    - SESSION_DB
     - REFRESH_SUCCESSOR_GENERATION
     - PER_ATTEMPT_FAILURE_AUDIT
   residualsNotClosed:
@@ -428,9 +428,9 @@ resolvedOwnerDecisions:
     approvedBy: repository-owner
     source: TASK-0102
     resolution: >-
-      仅解析公开路径部分：GET /api/internal/baseline 为公开端点（permitAll，
-      P1-08）；其余 public 路径、http statuses 与 error envelope 语义仍
-      deferred（P2-04 范围）。
+      Go 切换后公开只读运行时标识由 GET /api/v1/version 提供；旧的
+      /api/internal/baseline 已随旧运行时删除。其余 public 路径、http
+      statuses 与 error envelope 语义仍 deferred（P2-04 范围）。
   - decisionId: auth_invalid_request_http_status_and_error_envelope
     resolvedAt: "2026-08-09"
     approvedBy: repository-owner

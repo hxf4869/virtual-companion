@@ -65,10 +65,11 @@ export default defineComponent({
 .vc-internal__main {
   box-sizing: border-box;
   width: 100%;
-  max-width: 1080px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: var(--vc-space-4) var(--vc-space-4)
     calc(var(--vc-space-6) + env(safe-area-inset-bottom, 0px));
+  background: var(--vc-paper);
   color: var(--vc-ink);
   font-size: var(--vc-text-sm);
   line-height: 1.55;

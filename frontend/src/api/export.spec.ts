@@ -22,14 +22,12 @@ const REQUEST_JSON = {
 };
 
 const DOWNLOAD_JSON = {
-  exportId: "9",
-  generatedAt: "2026-08-17T12:00:05Z",
-  expiresAt: "2026-08-18T12:00:00Z",
-  aiContentNotice: "本导出包含 AI 生成内容",
+  exportedAt: "2026-08-17T12:00:05Z",
+  conversationCount: 1,
+  messageCount: 2,
+  memoryCount: 0,
   conversations: [{ conversationId: "5", messages: [] }],
   memories: [],
-  reminders: [],
-  consents: [],
 };
 
 function recorder(
@@ -85,8 +83,28 @@ describe("export api client (FR-DATA-002)", () => {
       method: "GET",
       path: "/api/v1/exports/9/download?token=t",
     });
-    expect(doc?.aiContentNotice).toContain("AI 生成内容");
+    expect(doc?.exportedAt).toBe("2026-08-17T12:00:05Z");
+    expect(doc?.messageCount).toBe(2);
     expect(doc?.conversations).toHaveLength(1);
+  });
+
+  it("rejects the retired Java export envelope instead of silently accepting it", async () => {
+    const { transport } = recorder({
+      ok: true,
+      status: 200,
+      json: {
+        exportId: "9",
+        generatedAt: "2026-08-17T12:00:05Z",
+        expiresAt: "2026-08-18T12:00:00Z",
+        aiContentNotice: "旧结构",
+        conversations: [],
+        memories: [],
+        reminders: [],
+        consents: [],
+      },
+    });
+
+    expect(await downloadExport(transport, "/api/v1/exports/9/download?token=t")).toBeNull();
   });
 
   it("refuses to download a path outside /api/v1/exports", async () => {

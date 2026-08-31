@@ -56,6 +56,16 @@ describe("RelationshipSelector (TASK-0187)", () => {
     expect(wrapper.emitted("activate")).toEqual([["2"]]);
   });
 
+  it("supports an enabled all-relationships option for filtering contexts", async () => {
+    const wrapper = mountSelector({ currentId: "1", allOptionLabel: "全部陪伴" });
+    const select = wrapper.find("select[data-testid='relationship-select']");
+
+    expect(select.findAll("option")[0].attributes("disabled")).toBeUndefined();
+    await select.setValue("");
+
+    expect(wrapper.emitted("activate")).toEqual([[""]]);
+  });
+
   it("disables the create button when no persona template is chosen", () => {
     const wrapper = mountSelector();
     const btn = wrapper.find("button[data-testid='create-relationship']");
@@ -107,8 +117,9 @@ describe("RelationshipSelector (TASK-0187)", () => {
 
     expect(empty.exists()).toBe(true);
     expect(empty.attributes("role")).toBe("status");
-    expect(empty.text()).toContain("还没有关系");
-    expect(empty.text()).toContain("新建");
+    expect(empty.text()).toContain("还没有陪伴关系");
+    expect(empty.text()).toContain("创建");
+    expect(wrapper.find('[data-testid="relationship-select"]').exists()).toBe(false);
   });
 
   it("hides create controls when showCreate is false", () => {
@@ -121,16 +132,20 @@ describe("RelationshipSelector (TASK-0187)", () => {
     wrapper.unmount();
   });
 
-  it("uses a create-free empty message when showCreate is false", () => {
+  it("replaces the disabled empty select with an actionable create entry", async () => {
     const wrapper = mountSelector({
       relationships: [],
       status: "idle",
       showCreate: false,
+      emptyActionLabel: "创建陪伴",
     });
     const empty = wrapper.find('[data-testid="empty-relationships"]');
 
     expect(empty.exists()).toBe(true);
-    expect(empty.text()).toBe("还没有关系。选择一个人设，创建你的陪伴。");
+    expect(wrapper.find('[data-testid="relationship-select"]').exists()).toBe(false);
+    expect(empty.text()).toContain("先创建一位陪伴角色");
+    await wrapper.find('[data-testid="empty-relationship-action"]').trigger("click");
+    expect(wrapper.emitted("request-create")).toHaveLength(1);
     wrapper.unmount();
   });
 

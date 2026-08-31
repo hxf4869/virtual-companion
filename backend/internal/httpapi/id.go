@@ -46,7 +46,7 @@ func parseOptionalLimit(raw string) (limit int, set bool, ok bool) {
 	return n, true, true
 }
 
-// wireID accepts OpenAPI string ids and the current Java numeric wire form.
+// wireID accepts canonical OpenAPI string ids and historical numeric ids.
 type wireID struct {
 	V   int64
 	Set bool

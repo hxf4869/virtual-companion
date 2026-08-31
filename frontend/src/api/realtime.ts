@@ -1,6 +1,6 @@
 // TASK-0026/TASK-0104: Fetch-SSE resume client orchestrating the stream reducer
-// through the realtime contract's five dispositions. The transport (ticket
-// issue + resume + snapshot fetch) is injected so the orchestration is fully
+// through the realtime contract's typed outcomes. The transport (opaque-cookie
+// resume + snapshot fetch) is injected so the orchestration is fully
 // testable with mocks (node vitest environment). The client never fabricates
 // missing deltas: that invariant lives in the reducer; this module only routes
 // dispositions and retry/cancel/snapshot recovery. See
@@ -169,7 +169,6 @@ export async function streamGeneration(
   // 在此立即过 reducer 并发布中间状态；一旦进入 gap / reset / 终态就停止
   // 应用后续事件（与旧"批内 break"语义一致）。返回批里与 cursor 相同的
   // 事件是幂等 no-op，因此注入依赖无论走流式还是批量路径都恰好应用一次。
-  let attemptApplied = false;
   const applyAndPublish = (event: StreamEvent): void => {
     if (
       state.terminal ||
@@ -181,7 +180,6 @@ export async function streamGeneration(
     const prev = state;
     state = applyEvent(state, event);
     if (!Object.is(prev, state)) {
-      attemptApplied = true;
       // round7（P2）：进度订阅者的异常只影响它自己——不得顺着回调链把
       // （尤其已经 terminal 的）流判成传输失败而 exhausted。
       if (options?.onProgress) {
@@ -199,8 +197,6 @@ export async function streamGeneration(
       return { state: cancelStream(state), outcome: "cancelled" };
     }
 
-    // P1（round6）：每个 attempt 重新累计"本连接是否应用过事件"。
-    attemptApplied = false;
     let result: ResumeResult;
     try {
       result = await deps.resume(
@@ -216,9 +212,33 @@ export async function streamGeneration(
       if (isCancel(handle)) {
         return { state: cancelStream(state), outcome: "cancelled" };
       }
-      if (options?.sleep && attempt < MAX_RESUME_ATTEMPTS - 1) {
+      // The HTTP/SSE tail can be lost after the Go worker has already committed
+      // its terminal state (for example, a development/reverse proxy closes a
+      // chunked response between the durable commit and the final frame). The
+      // owner-scoped snapshot is the convergence authority: accept it only when
+      // it contains a genuine terminal event; an empty/non-terminal snapshot
+      // still follows the bounded reconnect path below.
+      const snapshot = await safeSnapshot(deps, generationId, handle);
+      if (snapshot !== null) {
+        const reconciled = applyTerminalSnapshot(state, snapshot);
+        if (reconciled.terminal) {
+          return { state: reconciled, outcome: terminalOutcome(reconciled) };
+        }
+      }
+      if (options?.sleep) {
         await options.sleep(nextResumeDelayMs(attempt, options.random ?? Math.random));
-        continue;
+        // The durable terminal commit can trail the broken SSE by a short
+        // interval. Re-read after the bounded backoff, including the final
+        // connection attempt, so the last retry budget is not spent just
+        // before the authoritative state becomes visible.
+        const afterBackoff = await safeSnapshot(deps, generationId, handle);
+        if (afterBackoff !== null) {
+          const reconciled = applyTerminalSnapshot(state, afterBackoff);
+          if (reconciled.terminal) {
+            return { state: reconciled, outcome: terminalOutcome(reconciled) };
+          }
+        }
+        if (attempt < MAX_RESUME_ATTEMPTS - 1) continue;
       }
       return { state, outcome: "exhausted" };
     }
@@ -254,13 +274,25 @@ export async function streamGeneration(
           state = beginStreaming(state, epoch);
           continue;
         }
-        if (!attemptApplied) {
-          // Empty RESUMED without any applied event: disconnected before
-          // anything arrived. Resume again from the same cursor.
-          continue;
+        if (options?.sleep) {
+          // A newly-created generation can briefly exist in the database
+          // before its live Hub stream is registered. In that window the Go
+          // endpoint truthfully returns a non-terminal snapshot and closes.
+          // Without backoff all eight retries are consumed in a few
+          // milliseconds, long before the worker can publish a terminal
+          // event. Pace both empty and partial RESUMED reconnects. The final
+          // delay is a terminal-snapshot grace window rather than a ninth SSE.
+          await options.sleep(nextResumeDelayMs(attempt, options.random ?? Math.random));
+          const afterBackoff = await safeSnapshot(deps, generationId, handle);
+          if (afterBackoff !== null) {
+            const reconciled = applyTerminalSnapshot(state, afterBackoff);
+            if (reconciled.terminal) {
+              return { state: reconciled, outcome: terminalOutcome(reconciled) };
+            }
+          }
         }
-        // status === "streaming"：连接在无终态事件的情况下结束（逐帧已发布，
-        // 不再重复发布）→ 视为断线，从新 cursor 续传。
+        // Empty or partial RESUMED: the connection ended without a terminal
+        // event. Reopen from the current cursor after the bounded delay.
         continue;
       }
 

@@ -1,7 +1,7 @@
 // H5-HARDEN (§21.7): guards over the static shell. These read the real
 // entry files so a regression (dropped noindex, re-added analytics snippet,
 // dynamic share-card content) fails CI instead of reaching a public page.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +9,14 @@ import { describe, expect, it } from "vitest";
 // 而不是 import.meta.url（在 vitest 管线下不可靠）。
 const html = readFileSync(join(process.cwd(), "index.html"), "utf8");
 const robots = readFileSync(join(process.cwd(), "public", "robots.txt"), "utf8");
+
+function collectVueFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return collectVueFiles(path);
+    return entry.isFile() && entry.name.endsWith(".vue") ? [path] : [];
+  });
+}
 
 describe("H5 上线加固静态壳（§21.7）", () => {
   it("入口 HTML 禁止搜索收录且不外泄 Referer", () => {
@@ -50,6 +58,31 @@ describe("S0-18 统一导航守卫入口", () => {
     const main = readFileSync(join(process.cwd(), "src", "main.ts"), "utf8");
     expect(main).toContain("attachAppNavigationGuards");
     expect(main).toContain("bootstrapAuthSession");
+  });
+
+  it("业务页面不把 uni 页面路径直接交给浏览器实体路由", () => {
+    for (const path of collectVueFiles(join(process.cwd(), "src", "pages"))) {
+      const source = readFileSync(path, "utf8");
+      expect(source, path).not.toMatch(/location\.href\s*=\s*url\s*;/);
+    }
+  });
+
+  it("页面入场动画结束后不保留 transform，固定弹层仍以视口定位", () => {
+    const baseCss = readFileSync(
+      join(process.cwd(), "src", "design-system", "base.css"),
+      "utf8",
+    );
+    expect(baseCss).toContain(
+      "animation: vc-loom-settle var(--vc-motion-base) var(--vc-ease-out) backwards;",
+    );
+    expect(baseCss).not.toContain(
+      "animation: vc-loom-settle var(--vc-motion-base) var(--vc-ease-out) both;",
+    );
+    const settleKeyframes = baseCss.match(
+      /@keyframes vc-loom-settle\s*\{[\s\S]*?\n\}/,
+    )?.[0];
+    expect(settleKeyframes).toBeTruthy();
+    expect(settleKeyframes).not.toContain("opacity");
   });
 });
 

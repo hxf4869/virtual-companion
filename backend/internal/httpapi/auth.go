@@ -243,7 +243,10 @@ func (s *Server) admitAuth(w http.ResponseWriter, r *http.Request, kind, account
 }
 
 func (s *Server) writeRateLimited(w http.ResponseWriter, retry time.Duration) {
-	sec := int(retry.Seconds())
+	sec := int(retry / time.Second)
+	if retry%time.Second != 0 {
+		sec++
+	}
 	if sec < 1 {
 		sec = 1
 	}

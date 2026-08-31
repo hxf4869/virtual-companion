@@ -17,8 +17,7 @@
 // history reload) on top of the existing consumption-only run(). The low-level
 // run() is unchanged so existing stream tests still pass. send() mints a UUID
 // idempotency key, calls sendGeneration, starts the stream, and reloads message
-// history on completion. sessionId is supplied by the page (client-generated
-// UUID per chat session).
+// history on completion. Go v1 SSE 使用浏览器的同源 opaque session cookie。
 
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
@@ -36,14 +35,11 @@ import {
   renameConversation as apiRenameConversation,
   sendGeneration,
   setMessageNoMemory as apiSetMessageNoMemory,
-  listGenerationVersions,
-  selectGenerationVersion,
   asChatMode,
   type ChatMode,
   type ChatTransport,
   type ConversationListItem,
   type CreateConversationResponse,
-  type GenerationVersion,
   type Message,
   type MessageFeedbackKind,
   type ServiceModeStatus,
@@ -109,8 +105,6 @@ export const useChatStore = defineStore("h5-chat", () => {
   // page can echo it as a pending bubble while streaming and offer a one-click
   // retry after a terminal failure.
   const pendingUserContent = ref("");
-  // GEN-VER: versions keyed by source user message id.
-  const versionsByUserMessage = ref<Record<string, GenerationVersion[]>>({});
   // USAGE-VIZ: settled provider token usage of the last completed generation.
   const usage = ref<{ inputTokens: number; outputTokens: number } | null>(null);
   // CHAT-MODE: the turn-level interaction mode for the next send. AUTO keeps
@@ -190,13 +184,21 @@ export const useChatStore = defineStore("h5-chat", () => {
     return false;
   }
 
-  /** The rendered draft: joined delta payloads of the contiguous events only. */
-  const draft = computed(() =>
-    stream.value.events
-      .filter((e) => e.eventType === "chat.delta")
-      .map((e) => String((e as StreamEvent).payload ?? ""))
-      .join(""),
-  );
+  /**
+   * Go v1 重连先发送 chat.snapshot（当前完整草稿），之后才继续 delta。
+   * 每个 snapshot 都替换此前的局部串，避免断线重连后重复拼接。
+   */
+  const draft = computed(() => {
+    let text = "";
+    for (const event of stream.value.events) {
+      if (event.eventType === "chat.snapshot") {
+        text = String((event as StreamEvent).payload ?? "");
+      } else if (event.eventType === "chat.delta") {
+        text += String((event as StreamEvent).payload ?? "");
+      }
+    }
+    return text;
+  });
 
   const isStreaming = computed(() => phase.value === "streaming");
   const isTerminal = computed(() => stream.value.terminal);
@@ -501,7 +503,6 @@ export const useChatStore = defineStore("h5-chat", () => {
     historyWindowToken += 1; // round7（P1）：窗口销毁作废一切在途分页链路
     pendingMemoryCount.value = 0;
     pendingUserContent.value = "";
-    versionsByUserMessage.value = {};
     usage.value = null;
     selectedMode.value = "AUTO";
     feedbackKinds.value = [];
@@ -676,8 +677,16 @@ export const useChatStore = defineStore("h5-chat", () => {
    * the latest messages. Switching mid-stream is refused — the current run
    * must reach its terminal first.
    */
-  async function openConversation(transport: ChatTransport, id: string): Promise<void> {
-    if (isStreaming.value || id === conversationId.value) return;
+  async function openConversation(transport: ChatTransport, id: string): Promise<boolean> {
+    if (isStreaming.value) return false;
+    if (id === conversationId.value) return true;
+    const previous = {
+      conversationId: conversationId.value,
+      messages: messages.value,
+      historyHasMore: historyHasMore.value,
+      feedbackKinds: feedbackKinds.value,
+      activeIncognito: activeIncognito.value,
+    };
     conversationId.value = id;
     messages.value = [];
     historyHasMore.value = true;
@@ -690,8 +699,20 @@ export const useChatStore = defineStore("h5-chat", () => {
     try {
       await advanceHistory(transport, token);
     } catch {
-      // Non-fatal; the user keeps the loaded window.
+      // A failed switch must not masquerade as a valid empty conversation.
+      // Roll back only when this request still owns the active window; a later
+      // user switch has a newer token and remains authoritative.
+      if (token === historyWindowToken) {
+        historyWindowToken += 1;
+        conversationId.value = previous.conversationId;
+        messages.value = previous.messages;
+        historyHasMore.value = previous.historyHasMore;
+        feedbackKinds.value = previous.feedbackKinds;
+        activeIncognito.value = previous.activeIncognito;
+      }
+      return false;
     }
+    return true;
   }
 
   /**
@@ -817,7 +838,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     await advanceHistory(transport, ownedToken);
   }
 
-  /** GEN-VER: regenerate against an existing user message (no second user row). */
+  /** Regenerate the latest reply against its existing user message. Go v1
+   * makes the new result current; retired version-selection UI is not loaded. */
   async function regenerate(
     transport: ChatTransport,
     deps: RealtimeDeps,
@@ -845,31 +867,6 @@ export const useChatStore = defineStore("h5-chat", () => {
     }
     await run(deps, generation.generationId, 1);
     await loadHistory(transport);
-    await loadVersions(transport, sourceUserMessageId);
-  }
-
-  async function loadVersions(transport: ChatTransport, userMessageId: string): Promise<void> {
-    try {
-      const rows = await listGenerationVersions(transport, userMessageId);
-      versionsByUserMessage.value = {
-        ...versionsByUserMessage.value,
-        [userMessageId]: rows,
-      };
-    } catch {
-      // Non-fatal: the selected version is already in history.
-    }
-  }
-
-  async function selectVersion(
-    transport: ChatTransport,
-    generationId: string,
-    userMessageId: string,
-  ): Promise<boolean> {
-    const row = await selectGenerationVersion(transport, generationId);
-    if (!row) return false;
-    await loadHistory(transport);
-    await loadVersions(transport, userMessageId);
-    return true;
   }
 
   return {
@@ -884,10 +881,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     historyHasMore,
     pendingMemoryCount,
     pendingUserContent,
-    versionsByUserMessage,
-    loadVersions,
     regenerate,
-    selectVersion,
     usage,
     selectedMode,
     setMode,

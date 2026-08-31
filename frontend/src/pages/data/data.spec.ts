@@ -42,23 +42,6 @@ function stubFetch(fail = false): { calls: string[] } {
           json: async () => [{ memoryId: "3", scope: "RELATIONSHIP", summary: "喜欢安静的晚上", status: "ACCEPTED" }],
         };
       }
-      if (url === "/api/v1/relationships/7/reminders") {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => [
-            {
-              reminderId: 4,
-              relationshipId: 7,
-              text: "晚上十点提醒我休息",
-              remindAt: "2026-08-18T14:00:00Z",
-              recurrence: "NONE",
-              status: "ACTIVE",
-              createdAt: "2026-08-18T00:00:00Z",
-            },
-          ],
-        };
-      }
       if (url === "/api/v1/consents") {
         return {
           ok: true,
@@ -117,7 +100,7 @@ describe("data page (FR-DATA-001)", () => {
     expect(calls).toContain("/api/v1/relationships");
     expect(calls).toContain("/api/v1/conversations");
     expect(calls).toContain("/api/v1/relationships/7/memories");
-    expect(calls).toContain("/api/v1/relationships/7/reminders");
+    expect(calls).not.toContain("/api/v1/relationships/7/reminders");
     expect(calls).toContain("/api/v1/consents");
     expect(calls).toContain("/api/v1/service-mode");
     const accountSummary = wrapper.find('[data-testid="data-account"]').text();
@@ -128,7 +111,7 @@ describe("data page (FR-DATA-001)", () => {
     expect(wrapper.find('[data-testid="data-relationships"]').text()).toContain("小安");
     expect(wrapper.find('[data-testid="data-conversations"]').text()).toContain("夜聊");
     expect(wrapper.find('[data-testid="data-memories"]').text()).toContain("喜欢安静的晚上");
-    expect(wrapper.find('[data-testid="data-reminders"]').text()).toContain("晚上十点提醒我休息");
+    expect(wrapper.find('[data-testid="data-reminders"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="data-consents"]').text()).toContain("用户服务协议");
     expect(wrapper.find('[data-testid="data-model"]').text()).toContain("无生成模型");
     // P2（round3）：模型模式原值（ZERO_LLM/FULL_AI）不再渲染，只保留可读 summary。
@@ -165,7 +148,6 @@ describe("data page (FR-DATA-001)", () => {
     await wrapper.find('[data-testid="data-open-companion"]').trigger("click");
     await wrapper.find('[data-testid="data-open-conversation"]').trigger("click");
     await wrapper.find('[data-testid="data-open-memory"]').trigger("click");
-    await wrapper.find('[data-testid="data-open-reminder"]').trigger("click");
     await wrapper.find('[data-testid="data-open-consent"]').trigger("click");
     await wrapper.find('[data-testid="data-open-ai-notice"]').trigger("click");
     await wrapper.find('[data-testid="data-open-report"]').trigger("click");
@@ -175,7 +157,6 @@ describe("data page (FR-DATA-001)", () => {
       { url: "/pages/companion/companion?relationshipId=7" },
       { url: "/pages/chat/chat?relationshipId=7&conversationId=11" },
       { url: "/pages/memory-detail/memory-detail?relationshipId=7&memoryId=3" },
-      { url: "/pages/reminder/reminder?relationshipId=7" },
       { url: "/pages/consent/consent" },
       { url: "/pages/ai-notice/ai-notice" },
       { url: "/pages/report/report" },
@@ -209,9 +190,6 @@ describe("data page (FR-DATA-001)", () => {
         }
         if (url === "/api/v1/service-mode") {
           return { ok: true, status: 200, json: async () => ({ mode: "ZERO_LLM", summary: "受限" }) };
-        }
-        if (url === "/api/v1/relationships/7/reminders") {
-          return { ok: true, status: 200, json: async () => [] };
         }
         if (url === "/api/v1/reports") {
           return { ok: true, status: 200, json: async () => [] };

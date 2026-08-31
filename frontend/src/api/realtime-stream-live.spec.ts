@@ -16,8 +16,6 @@ import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import { useChatStore } from "@/stores/chat";
 import type { StreamEvent } from "@/domain/stream-reducer";
 
-const CONTEXT = { sessionId: "sess-live", origin: "http://localhost:5173" };
-
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -100,27 +98,24 @@ class LiveSseConnection {
 interface LiveStack {
   fetchImpl: typeof fetch;
   conn(index?: number): LiveSseConnection | null;
-  mints(): number;
+  streamRequests(): number;
 }
 
 /**
- * 生产形态的本地栈 stub：POST /tickets → JSON；GET /streams/{id} → 返回测试
+ * 生产形态的本地栈 stub：GET /streams/{id} 直接使用 opaque cookie，返回测试
  * 持有的一条新连接；GET snapshot 按 opts 提供。每轮 resume 打开一条独立
  * 连接（与 orchestrator 断线续传语义一致），按序从 conn(0)/conn(1)… 取用。
  */
 function wireLiveStack(opts: { snapshotEvents?: unknown[] } = {}): LiveStack {
   const connections: LiveSseConnection[] = [];
-  let mints = 0;
+  let streamRequests = 0;
   const fetchImpl = (async (
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> => {
     const url = String(input);
-    if (url.includes("/tickets")) {
-      mints += 1;
-      return jsonResponse(200, { ticketId: `t-${mints}`, secret: "s" });
-    }
     if (url.includes("/streams/")) {
+      streamRequests += 1;
       const connection = new LiveSseConnection(init?.signal as AbortSignal | undefined);
       connections.push(connection);
       return new Response(connection.stream, {
@@ -141,7 +136,7 @@ function wireLiveStack(opts: { snapshotEvents?: unknown[] } = {}): LiveStack {
     conn(index = -1): LiveSseConnection | null {
       return connections.at(index) ?? null;
     },
-    mints: () => mints,
+    streamRequests: () => streamRequests,
   };
 }
 
@@ -166,7 +161,7 @@ describe("P1-round6 in-connection streaming (production-shaped)", () => {
     store: ReturnType<typeof useChatStore>;
     pending: Promise<void>;
   } {
-    const deps: RealtimeDeps = createBrowserRealtimeDeps(CONTEXT, stack.fetchImpl);
+    const deps: RealtimeDeps = createBrowserRealtimeDeps(stack.fetchImpl);
     const store = useChatStore();
     return { store, pending: store.run(deps, generationId, 1) };
   }
@@ -189,7 +184,7 @@ describe("P1-round6 in-connection streaming (production-shaped)", () => {
     conn.enqueueSse(delta(2, "第二批"));
     await vi.waitFor(() => expect(store.draft).toBe("第一批第二批"));
     expect(conn.open, "connection still open for the second batch").toBe(true);
-    expect(stack.mints()).toBe(1);
+    expect(stack.streamRequests()).toBe(1);
 
     // 终态帧最后 enqueue，然后才关闭连接（EOF）。
     conn.enqueueSse(delta(3, "收尾"));
@@ -208,7 +203,7 @@ describe("P1-round6 in-connection streaming (production-shaped)", () => {
   it("does not repeat frame-delivered deltas in the final ResumeResult", async () => {
     const stack = wireLiveStack();
     const delivered: StreamEvent[] = [];
-    const pendingResume = createBrowserRealtimeDeps(CONTEXT, stack.fetchImpl).resume(
+    const pendingResume = createBrowserRealtimeDeps(stack.fetchImpl).resume(
       { generationId: "101", afterSeq: 0, streamEpoch: 1 },
       undefined,
       (event) => delivered.push(event),
@@ -366,7 +361,7 @@ describe("P1-round6 in-connection streaming (production-shaped)", () => {
     expect(store.draft).toBe("");
     first.close();
 
-    // RESET_REQUIRED：epoch 升级 + 第二次 mint/resume，从 cursor 0 重开。
+    // RESET_REQUIRED：epoch 升级 + 第二次 resume，从 cursor 0 重开。
     // 注意把"新连接"判定放进轮询：EOF 处理与第二次建连都是异步的。
     const second = await vi.waitFor(() => {
       const latest = stack.conn();
@@ -382,6 +377,6 @@ describe("P1-round6 in-connection streaming (production-shaped)", () => {
     expect(store.stream.epoch).toBe(2);
     expect(store.stream.cursor).toBe(1);
     expect(store.draft).toBe("");
-    expect(stack.mints()).toBeGreaterThanOrEqual(2);
+    expect(stack.streamRequests()).toBeGreaterThanOrEqual(2);
   });
 });

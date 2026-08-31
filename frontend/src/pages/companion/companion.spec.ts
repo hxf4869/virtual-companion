@@ -19,7 +19,10 @@ const ACTIVE = {
   replyLength: "SHORT",
 };
 
-function stubFetch(): { calls: { method: string; url: string; body?: unknown }[] } {
+function stubFetch(options: {
+  relationships?: unknown[];
+  activationResponse?: { ok: boolean; status: number; json: () => Promise<unknown> };
+} = {}): { calls: { method: string; url: string; body?: unknown }[] } {
   const calls: { method: string; url: string; body?: unknown }[] = [];
   let deleted = false;
   let archived = false;
@@ -38,7 +41,18 @@ function stubFetch(): { calls: { method: string; url: string; body?: unknown }[]
       }
       calls.push({ method, url, body });
       if (url === "/api/v1/relationships" && method === "GET") {
-        return { ok: true, status: 200, json: async () => (deleted ? [] : [ACTIVE]) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (deleted ? [] : options.relationships ?? [ACTIVE]),
+        };
+      }
+      if (/^\/api\/v1\/relationships\/[^/]+$/.test(url) && method === "POST") {
+        return options.activationResponse ?? {
+          ok: true,
+          status: 200,
+          json: async () => ACTIVE,
+        };
       }
       if (url === "/api/v1/relationships/7" && method === "PATCH") {
         return {
@@ -112,6 +126,25 @@ describe("companion page (FR-COMP-003 / FR-COMP-002)", () => {
     expect(
       wrapper.find('[data-testid="companion-avatar-AVATAR_NEUTRAL_01"]').attributes("checked"),
     ).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("gives every structured preference select an accessible name", async () => {
+    stubFetch();
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+
+    const fields = [
+      ["companion-reply-length", "回复长度"],
+      ["companion-initiative", "主动程度"],
+      ["companion-humor", "幽默程度"],
+      ["companion-advice", "建议偏好"],
+      ["companion-memory-scope", "记忆共享范围"],
+    ] as const;
+
+    for (const [testId, label] of fields) {
+      expect(wrapper.find(`[data-testid="${testId}"]`).attributes("aria-label")).toBe(label);
+    }
     wrapper.unmount();
   });
 
@@ -189,6 +222,41 @@ describe("companion page (FR-COMP-003 / FR-COMP-002)", () => {
     wrapper.unmount();
   });
 
+  it("keeps the current relationship and allows retry when activation is hidden", async () => {
+    const { calls } = stubFetch({
+      relationships: [
+        ACTIVE,
+        { ...ACTIVE, relationshipId: "8", active: false, companionName: "另一位伙伴" },
+      ],
+      activationResponse: { ok: false, status: 404, json: async () => null },
+    });
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+
+    const relStore = useRelationshipStore();
+    expect(relStore.currentRelationshipId).toBe("7");
+
+    await wrapper.find('[data-testid="relationship-select"]').setValue("8");
+    await flushPromises();
+
+    const activationCalls = () =>
+      calls.filter((call) => call.method === "POST" && call.url === "/api/v1/relationships/8");
+    expect(activationCalls()).toHaveLength(1);
+    expect(relStore.currentRelationshipId).toBe("7");
+    expect(wrapper.find('[data-testid="companion-action-failed"]').text()).toContain(
+      "切换伙伴失败，请重试",
+    );
+    const restoredSelect = wrapper.find('[data-testid="relationship-select"]');
+    expect((restoredSelect.element as HTMLSelectElement).value).toBe("7");
+    expect((restoredSelect.element as HTMLSelectElement).disabled).toBe(false);
+
+    await restoredSelect.setValue("8");
+    await flushPromises();
+    expect(activationCalls()).toHaveLength(2);
+    expect(relStore.currentRelationshipId).toBe("7");
+    wrapper.unmount();
+  });
+
   it("loads a factual preview and does not write until reset is confirmed", async () => {
     const { calls } = stubFetch();
     const wrapper = mount(CompanionPage, { attachTo: document.body });
@@ -198,7 +266,7 @@ describe("companion page (FR-COMP-003 / FR-COMP-002)", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="companion-clearance-preview"]').text()).toContain(
-      "将清除 2 个会话、3 条记忆、1 条提醒",
+      "将清除 2 个会话和 3 条记忆",
     );
     expect(wrapper.text()).toContain("重置后会保留这个角色及其设置");
     expect(wrapper.text()).not.toMatch(/挽留|难过|再考虑|舍不得|求求/);
@@ -238,52 +306,13 @@ describe("companion page (FR-COMP-003 / FR-COMP-002)", () => {
     wrapper.unmount();
   });
 
-  it("MEM-IMPORT: retain stays off by default and reset does not add the flag", async () => {
+  it("does not expose deferred memory import controls or requests", async () => {
     const { calls } = stubFetch();
     const wrapper = mount(CompanionPage, { attachTo: document.body });
     await flushPromises();
-    await wrapper.find('[data-testid="companion-reset-open"]').trigger("click");
-    await flushPromises();
-
-    const retain = wrapper.find('[data-testid="retain-importable"]');
-    expect(retain.exists()).toBe(true);
-    expect((retain.element as HTMLInputElement).checked).toBe(false);
-
-    await wrapper.find('[data-testid="companion-reset-confirm"]').trigger("click");
-    await flushPromises();
-    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/relationships/7/reset")).toBe(
-      true,
-    );
-    expect(calls.some((c) => String(c.url).includes("retainImportable=true"))).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("MEM-IMPORT: checking retain snapshots then offers an explicit import choice", async () => {
-    const { calls } = stubFetch();
-    const wrapper = mount(CompanionPage, { attachTo: document.body });
-    await flushPromises();
-    await wrapper.find('[data-testid="companion-reset-open"]').trigger("click");
-    await flushPromises();
-
-    await wrapper.find('[data-testid="retain-importable"]').setValue(true);
-    await wrapper.find('[data-testid="companion-reset-confirm"]').trigger("click");
-    await flushPromises();
-
-    expect(
-      calls.some(
-        (c) => c.method === "POST" && c.url === "/api/v1/relationships/7/reset?retainImportable=true",
-      ),
-    ).toBe(true);
-    const prompt = wrapper.find('[data-testid="memory-import-prompt"]');
-    expect(prompt.exists()).toBe(true);
-    expect(prompt.text()).toContain("2 条");
-    expect(prompt.text()).not.toMatch(/挽留|舍不得|忘记你/);
-
-    await wrapper.find('[data-testid="memory-import-confirm"]').trigger("click");
-    await flushPromises();
-    expect(
-      calls.some((c) => c.method === "POST" && c.url === "/api/v1/relationships/7/memory-imports"),
-    ).toBe(true);
+    expect(wrapper.find('[data-testid="retain-importable"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-import-prompt"]').exists()).toBe(false);
+    expect(calls.some((c) => c.url.includes("memory-import"))).toBe(false);
     wrapper.unmount();
   });
 });

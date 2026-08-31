@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # S0-23 E2E local stack: one isolated PostgreSQL + a local OpenAI-compatible
-# provider + the runtime jar + the H5 vite dev server. Synthetic data only; no
+# provider + companiond + the H5 vite dev server. Synthetic data only; no
 # production credentials exist anywhere in this path. All children are cleaned
 # up on exit. NOT part of scripts/check.sh (checks-principles R1: browser E2E
 # is an opt-in long check, never the seconds-level daily entry).
@@ -29,6 +29,7 @@ E2E_STACK_STATE_FILE="${E2E_STACK_STATE_FILE:-/tmp/vc-e2e-stack-$$.json}"
 PROVIDER_LOG="/tmp/vc-e2e-provider-$$.log"
 RUNTIME_LOG="/tmp/vc-e2e-runtime-$$.log"
 H5_LOG="/tmp/vc-e2e-h5-$$.log"
+GO_BINARY="/tmp/vc-e2e-companiond-$$"
 
 case "$E2E_DOCKER_CONTEXT" in
     ""|*[!A-Za-z0-9_.-]*)
@@ -62,12 +63,6 @@ write_state() {
     mv -f -- "$state_tmp" "$E2E_STACK_STATE_FILE"
 }
 
-JAR="$(ls -t service/apps/runtime/target/virtual-companion-runtime-*.jar 2>/dev/null | grep -v '\.original' | head -1)"
-if [ -z "$JAR" ]; then
-    echo "runtime jar missing; run ./mvnw --batch-mode verify first" >&2
-    exit 2
-fi
-
 terminate_group() {
     local leader_pid="${1:-}"
     if [ -n "$leader_pid" ] \
@@ -88,7 +83,7 @@ cleanup() {
         terminate_group "${RUNTIME_PID:-}"
         terminate_group "${PROVIDER_PID:-}"
         "${DOCKER[@]}" rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
-        rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$"
+        rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" "$GO_BINARY"
     else
         echo "keeping stack: pg($PG_CONTAINER) provider(:$E2E_PROVIDER_PORT) runtime(:$E2E_RUNTIME_PORT) h5(:$E2E_H5_PORT)" >&2
     fi
@@ -100,6 +95,13 @@ if ! write_state; then
     echo "failed to create the E2E stack state file" >&2
     exit 9
 fi
+
+echo "== build companiond =="
+export PATH="/Users/hxf/.local/go/bin:$PATH"
+go build -C backend -o "$GO_BINARY" ./cmd/companiond || {
+    echo "companiond build failed" >&2
+    exit 2
+}
 
 echo "== isolated postgres :$E2E_PG_PORT =="
 "${DOCKER[@]}" rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
@@ -131,6 +133,57 @@ echo "== isolated migrator/runtime database roles =="
     -e VC_RUNTIME_DB_PASSWORD="$E2E_RUNTIME_DB_PASSWORD" \
     "$PG_CONTAINER" bash -s \
     < ops/deploy/db-init/01-runtime-roles.sh
+
+echo "== migrate + bootstrap =="
+VC_MIGRATE_DB_DSN="postgres://vc_migrator:${E2E_MIGRATOR_DB_PASSWORD}@127.0.0.1:${E2E_PG_PORT}/vc?sslmode=disable" \
+    "$GO_BINARY" migrate
+VC_BOOTSTRAP_DB_DSN="postgres://vc_migrator:${E2E_MIGRATOR_DB_PASSWORD}@127.0.0.1:${E2E_PG_PORT}/vc?sslmode=disable" \
+VC_OWNER_BINDING_SECRET="e2e-only-owner-binding-secret-0123456789abcdef" \
+VC_ADMIN_SEED_USERNAME=e2e-admin \
+VC_ADMIN_SEED_PASSWORD='E2e-Admin-Pass-1234!' \
+VC_ADMIN_SEED_DISPLAY_NAME='E2E Platform Admin' \
+    "$GO_BINARY" bootstrap
+
+echo "== seed isolated E2E owner accounts =="
+# Go v1 intentionally retired the production admin account-management API.
+# Browser journeys still need isolated owners, so seed synthetic-only rows
+# directly inside this disposable database instead of restoring a retired
+# HTTP surface. The fixed BCrypt value belongs only to the password below.
+E2E_USER_PASSWORD_HASH='$2a$10$dduHEOO64z/pmmkp1ZMXieLcGnxQ109z2GTeit189y5vvBMGfcmpe'
+E2E_ADMIN_ID="$("${DOCKER[@]}" exec -i "$PG_CONTAINER" \
+    psql -U postgres -d vc -Atqc \
+    "SELECT id FROM vc.identity_account WHERE username = 'e2e-admin' AND role = 'ADMIN' LIMIT 1")"
+case "$E2E_ADMIN_ID" in
+    ''|*[!0-9]*)
+        echo "failed to resolve the isolated E2E administrator" >&2
+        exit 7
+        ;;
+esac
+for E2E_USER_SUFFIX in \
+    login-return admission-gate relationship-chat relationship-viewport \
+    relationship-viewport-wide relationship-ops realtime-recovery \
+    memory-lifecycle export-lifecycle provider-faults accessibility \
+    streaming-evidence navigation-smoke; do
+    E2E_USERNAME="e2e-user-${E2E_USER_SUFFIX}"
+    "${DOCKER[@]}" exec -i "$PG_CONTAINER" \
+        psql -U postgres -d vc -v ON_ERROR_STOP=1 -q \
+        -v admin_id="$E2E_ADMIN_ID" \
+        -v username="$E2E_USERNAME" \
+        -v password_hash="$E2E_USER_PASSWORD_HASH" \
+        -v display_name="E2E 用户 ${E2E_USER_SUFFIX}" \
+        -f - >/dev/null <<'SQL'
+SELECT vc.identity_account_create(
+    :admin_id,
+    :'username',
+    :'password_hash',
+    'USER',
+    :'display_name'
+)
+WHERE NOT EXISTS (
+    SELECT 1 FROM vc.identity_account WHERE username = :'username'
+);
+SQL
+done
 
 echo "== local OpenAI-compatible provider :$E2E_PROVIDER_PORT =="
 # Briefly enable job control so this background job becomes a process-group
@@ -164,63 +217,33 @@ if [ "$PROVIDER_READY" != "1" ]; then
     exit 6
 fi
 
-echo "== runtime :$E2E_RUNTIME_PORT (jar $([ -n "$JAR" ] && basename "$JAR")) =="
-# The runtime is built for class-file 69 (Java 25); pick that JVM when present.
-JAVA_BIN="${E2E_JAVA:-java}"
-for candidate in \
-    /opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home/bin/java \
-    /usr/lib/jvm/java-25-openjdk/bin/java; do
-    [ -x "$candidate" ] && JAVA_BIN="$candidate" && break
-done
-echo "using java: $JAVA_BIN"
-# Dev-only synthetic secrets; the production profile would reject these.
-export VC_JWT_SECRET="e2e-only-jwt-secret-0123456789abcdef0123456789abcdef"
+echo "== companiond runtime :$E2E_RUNTIME_PORT =="
+# Dev-only synthetic secrets and a loopback provider; no credential leaves this host.
+export VC_MODE=full
+export VC_HTTP_ADDR="127.0.0.1:${E2E_RUNTIME_PORT}"
+export VC_HTTP_ORIGINS="http://127.0.0.1:${E2E_H5_PORT}"
+export VC_DB_DSN="postgres://vc_runtime_login:${E2E_RUNTIME_DB_PASSWORD}@127.0.0.1:${E2E_PG_PORT}/vc?sslmode=disable"
 export VC_OWNER_BINDING_SECRET="e2e-only-owner-binding-secret-0123456789abcdef"
 export VC_CRYPTO_REST_KEY="ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4="
-export VC_AUTH_ENABLED=true
-export VC_AUTH_DATASOURCE_ENABLED=true
-export VC_ENFORCE_DB_LEAST_PRIVILEGE=true
-export VC_SHARED_RATE_LIMIT_ENABLED=true
-export VC_SHARED_RATE_LIMIT_SECRET="e2e-only-shared-rate-secret-0123456789abcdef"
-export VC_FLYWAY_ENABLED=true
-export VC_MIGRATOR_DB_URL="jdbc:postgresql://127.0.0.1:${E2E_PG_PORT}/vc"
-export VC_MIGRATOR_DB_USERNAME=vc_migrator
-export VC_MIGRATOR_DB_PASSWORD="$E2E_MIGRATOR_DB_PASSWORD"
-export VC_DB_URL="$VC_MIGRATOR_DB_URL"
-export VC_DB_USERNAME=vc_runtime_login
-export VC_DB_PASSWORD="$E2E_RUNTIME_DB_PASSWORD"
-export VC_AUTH_COOKIE_SECURE=false
-export VC_CORS_ALLOWED_ORIGINS="http://127.0.0.1:${E2E_H5_PORT}"
-export VC_ADMIN_USERNAME=e2e-admin
-export VC_ADMIN_PASSWORD='E2e-Admin-Pass-1234!'
-export VC_ADMIN_DISPLAY_NAME='E2E Platform Admin'
-# Both modes exercise the authoritative BETA admission seam. Synthetic eval
-# advances only its isolated gate after proving the fail-closed starting state;
-# teardown restores SYNTHETIC/eval=false before the database is destroyed.
-export VC_BETA_GENERATION_ENABLED=true
-export VC_ADMISSION_ENFORCE=true
-export VC_ADMISSION_REQUIRED_CONSENTS='SERVICE_TERMS,PRIVACY_POLICY,AI_CONTENT_NOTICE'
-# Local HTTP/SSE provider: the dummy token never leaves loopback.
-export VC_MODEL_PROVIDERS_ENABLED=true
-export VC_MODEL_BUDGET_MONTHLY_USD=100
-export VC_MODEL_SECRET_E2E_CRED=e2e-loopback-dummy-token
-export VC_EXTERNAL_PROTOCOL=OPENAI_CHAT_COMPLETIONS
-export VC_EXTERNAL_TIMEOUT_CONNECT=1s
-export VC_EXTERNAL_TIMEOUT_FIRST_TOKEN=2s
-export VC_EXTERNAL_TIMEOUT_TOTAL=3s
+export VC_SESSION_COOKIE_SECURE=false
+export VC_PROVIDER_ENABLED=true
+export VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true
+export VC_PROVIDER_ID=e2e-openai
+export VC_PROVIDER_SUPPLIER_NAME=e2e-local-provider
+export VC_PROVIDER_ENDPOINT="http://127.0.0.1:${E2E_PROVIDER_PORT}/v1/chat/completions"
+export VC_PROVIDER_TOKEN=e2e-loopback-dummy-token
+export VC_PROVIDER_MODEL=e2e-model
+export VC_PROVIDER_CONNECT_TIMEOUT=1s
+export VC_PROVIDER_FIRST_TOKEN_TIMEOUT=2s
+export VC_PROVIDER_TOTAL_TIMEOUT=3s
+# 预算超时必须落在供应商超时内；E2E 使用同一组短窗口，既保留超时
+# journey 的速度，也满足 Go 运行时的启动不变量。
+export VC_BUDGET_CONNECT_TIMEOUT=1s
+export VC_BUDGET_FIRST_TOKEN_TIMEOUT=2s
+export VC_BUDGET_TOTAL_TIMEOUT=3s
+export VC_JOB_RECOVER_INTERVAL=1s
 set -m
-"$JAVA_BIN" -jar "$JAR" --server.port="$E2E_RUNTIME_PORT" \
-    --virtual-companion.worker.coordinator-poll-delay-ms=250 \
-    --virtual-companion.model-providers.deployments[0].provider-id=e2e-openai \
-    --virtual-companion.model-providers.deployments[0].protocol=OPENAI_CHAT_COMPLETIONS \
-    --virtual-companion.model-providers.deployments[0].supplier-name=e2e-local-provider \
-    --virtual-companion.model-providers.deployments[0].model=e2e-model \
-    --virtual-companion.model-providers.deployments[0].model-revision=e2e-model-revision-v1 \
-    --virtual-companion.model-providers.deployments[0].config-version=e2e-loopback-config-v1 \
-    --virtual-companion.model-providers.deployments[0].endpoint="http://127.0.0.1:${E2E_PROVIDER_PORT}/v1/chat/completions" \
-    --virtual-companion.model-providers.deployments[0].credential-secret=e2e-cred \
-    --virtual-companion.model-providers.deployments[0].enabled=true \
-    >"$RUNTIME_LOG" 2>&1 &
+"$GO_BINARY" >"$RUNTIME_LOG" 2>&1 &
 RUNTIME_PID=$!
 set +m
 if ! write_state; then
@@ -228,7 +251,7 @@ if ! write_state; then
     exit 9
 fi
 
-echo "== waiting for migrations + health =="
+echo "== waiting for health =="
 READY=0
 for _ in $(seq 1 90); do
     if ! kill -0 "$RUNTIME_PID" 2>/dev/null; then
@@ -311,8 +334,6 @@ set -m
 (
     cd frontend
     export VITE_PROXY_TARGET="http://127.0.0.1:${E2E_RUNTIME_PORT}"
-    # round11（P1-1）：代理断开传播的固定脱敏事件只在 E2E trace 开关下输出。
-    export E2E_PROXY_TRACE=1
     exec pnpm exec uni --host 127.0.0.1 --port "$E2E_H5_PORT" --strictPort
 ) >"$H5_LOG" 2>&1 &
 H5_PID=$!

@@ -20,7 +20,7 @@ LEGACY_VERSION="111"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-MIG_DIR="$REPO_ROOT/service/platform/persistence/src/main/resources/db/migration"
+MIG_DIR="$REPO_ROOT/backend/internal/migrate/sql"
 UPGRADE_DIR="$SCRIPT_DIR/upgrade"
 LOG_DIR="${VC_DB_LOG_DIR:-$(mktemp -d /tmp/vc-db-upgrade.XXXXXX)}"
 mkdir -p "$LOG_DIR"

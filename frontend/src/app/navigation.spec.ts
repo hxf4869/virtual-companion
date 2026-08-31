@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { canEnterAdminPage, canEnterOpsPage, classifyPage } from "@/domain/nav-guard";
+import { canEnterAdminPage, classifyPage } from "@/domain/nav-guard";
 
 import {
   CONSUMER_TABS,
@@ -81,7 +81,12 @@ describe("navigation model vs nav-guard PageClass", () => {
   it("internal routes are visible to operator roles only (route-specific)", () => {
     const internal = ROUTES.filter((spec) => spec.shell === "internal");
     expect(internal.map((spec) => spec.path).sort()).toEqual(
-      ["/pages/admin/admin", "/pages/ops/ops"].sort(),
+      [
+        "/pages/admin/admin",
+        "/pages/admin-models/admin-models",
+        "/pages/admin-routing/admin-routing",
+        "/pages/admin-system/admin-system",
+      ].sort(),
     );
     for (const spec of internal) {
       expect(isVisibleToRole(spec, null)).toBe(false);
@@ -114,7 +119,6 @@ describe("navigation model vs nav-guard PageClass", () => {
     expect(publicPaths.sort()).toEqual(
       [
         "/pages/ai-notice/ai-notice",
-        "/pages/health/health",
         "/pages/help/help",
         "/pages/index/index",
       ].sort(),
@@ -154,8 +158,10 @@ describe("consumer shell IA", () => {
         "/pages/chat/chat",
         "/pages/consent/consent",
         "/pages/login/login",
-        "/pages/ops/ops",
         "/pages/admin/admin",
+        "/pages/admin-models/admin-models",
+        "/pages/admin-routing/admin-routing",
+        "/pages/admin-system/admin-system",
       ].sort(),
     );
   });
@@ -184,8 +190,6 @@ describe("consumer shell IA", () => {
     expect(ME_GROUP_ORDER).toEqual([
       "account",
       "companion",
-      "reminders",
-      "wellbeing",
       "privacy",
       "data",
       "help",
@@ -200,10 +204,8 @@ describe("consumer shell IA", () => {
         "/pages/consent/consent",
         "/pages/data/data",
         "/pages/export/export",
-        "/pages/health/health",
         "/pages/help/help",
         "/pages/incognito/incognito",
-        "/pages/reminder/reminder",
         "/pages/report/report",
       ].sort(),
     );
@@ -221,7 +223,6 @@ describe("deep-link query contract", () => {
       "/pages/memory/memory",
       "/pages/memory-detail/memory-detail",
       "/pages/companion/companion",
-      "/pages/reminder/reminder",
     ]) {
       expect(specOf(path).allowedQuery, path).toContain("relationshipId");
     }
@@ -252,19 +253,13 @@ describe("deep-link query contract", () => {
 });
 
 describe("route-specific allowedRoles (internal entries)", () => {
-  it("ops is ADMIN-only; admin is open to every operator role", () => {
-    const ops = routeSpecOf("/pages/ops/ops")!;
-    const admin = routeSpecOf("/pages/admin/admin")!;
-    const matrix: Record<string, { ops: boolean; admin: boolean }> = {
-      ADMIN: { ops: true, admin: true },
-      SAFETY_REVIEWER: { ops: false, admin: true },
-      PRIVACY_OPERATOR: { ops: false, admin: true },
-      OPS_VIEWER: { ops: false, admin: true },
-      USER: { ops: false, admin: false },
-    };
-    for (const [role, expected] of Object.entries(matrix)) {
-      expect(isVisibleToRole(ops, role), `${role} ops`).toBe(expected.ops);
-      expect(isVisibleToRole(admin, role), `${role} admin`).toBe(expected.admin);
+  it("all Go Runtime console pages are ADMIN-only", () => {
+    const internal = ROUTES.filter((spec) => spec.shell === "internal");
+    for (const spec of internal) {
+      expect(isVisibleToRole(spec, "ADMIN"), spec.path).toBe(true);
+      for (const role of ["SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER", "USER"]) {
+        expect(isVisibleToRole(spec, role), `${spec.path} ${role}`).toBe(false);
+      }
     }
   });
 
@@ -276,10 +271,7 @@ describe("route-specific allowedRoles (internal entries)", () => {
 });
 
 describe("internal entry visibility matches the target page guards", () => {
-  // 交叉对账：入口可见性（navigation.allowedRoles）必须与目标页面自己的
-  // 守卫（ops 仅 ADMIN；admin 全操作者可进，分区权限在页面内部）一致。
-  const ops = routeSpecOf("/pages/ops/ops")!;
-  const admin = routeSpecOf("/pages/admin/admin")!;
+  const internal = ROUTES.filter((spec) => spec.shell === "internal");
   const roles = [
     "ADMIN",
     "SAFETY_REVIEWER",
@@ -290,8 +282,9 @@ describe("internal entry visibility matches the target page guards", () => {
   ];
   for (const role of roles) {
     it(`entry visibility equals page guards for ${role ?? "no role"}`, () => {
-      expect(isVisibleToRole(ops, role)).toBe(canEnterOpsPage(role));
-      expect(isVisibleToRole(admin, role)).toBe(canEnterAdminPage(role));
+      for (const spec of internal) {
+        expect(isVisibleToRole(spec, role), spec.path).toBe(canEnterAdminPage(role));
+      }
     });
   }
 });

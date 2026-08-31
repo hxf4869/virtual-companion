@@ -12,7 +12,7 @@ func TestSinglePromptBundleVersion(t *testing.T) {
 		t.Fatal("versions")
 	}
 	if PromptVersion == "companion-chat-v1" {
-		t.Fatal("Go bundle must not reuse the Java version string")
+		t.Fatal("Go bundle must not reuse the retired version string")
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

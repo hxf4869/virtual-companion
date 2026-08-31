@@ -10,11 +10,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-if [ -z "${JAVA_HOME:-}" ] \
-    && [ -d /opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ]; then
-    export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
-fi
-
 if [ -n "${E2E_BASE_URL:-}" ]; then
     echo "E2E_BASE_URL is forbidden for synthetic eval; the stack must stay on loopback" >&2
     exit 9
@@ -22,12 +17,8 @@ fi
 
 echo "SYNTHETIC_EVAL_START profile=e2e-synthetic-v1 release_gate=SYNTHETIC/eval=false"
 
-./mvnw --batch-mode --no-transfer-progress \
-    -pl service/apps/runtime,service/tests/openai-chat-completions-contract-tests \
-    -am \
-    '-Dtest=MeasureRedTeamCorpusTest,CompositeSafetyClassifierTest,GenerationAdmissionPolicyTest,GenerationAdmissionServiceTest,ReleaseGateTest,OpenAiCompatModerationClientTest,OpenAiChatCompletionsFailureContractTest,OpenAiChatCompletionsTimeoutCancellationContractTest' \
-    -Dsurefire.failIfNoSpecifiedTests=false \
-    package
+export PATH="/Users/hxf/.local/go/bin:$PATH"
+go test -C backend -count=1 ./internal/safety ./internal/provider/... ./internal/companion ./internal/jobs
 
 E2E_RELEASE_MODE=synthetic-eval \
 E2E_REUSE_STACK=0 \

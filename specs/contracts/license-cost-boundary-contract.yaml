@@ -24,5 +24,4 @@ rule: if a required behavior exists only in a commercial edition, implement it i
 goV1:
   unknownPriceOrReservationCeiling: FAIL_CLOSED
   fabricatedDisplayedCostForbidden: true
-  javaRuntimeUntilCutoverUnknownPlanContinue: ADR-0006_section_3_3
   trialEntitlementProductQuota: RETIRE

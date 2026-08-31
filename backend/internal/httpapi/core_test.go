@@ -2,9 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -22,9 +19,7 @@ import (
 )
 
 const (
-	testJWTSecret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	testIssuer    = "virtual-companion"
-	testPassword  = "test-pass-1"
+	testPassword = "test-pass-1"
 )
 
 type memStore struct {
@@ -39,6 +34,7 @@ type memStore struct {
 	idem       map[string]int64
 	consents   map[string]postgres.Consent
 	incognito  bool
+	ages       map[int64]postgres.AgeState
 	reports    map[int64]postgres.Report
 	exports    map[int64]postgres.Export
 	exportBody map[int64]string
@@ -72,6 +68,7 @@ func newMemStore() *memStore {
 		evidence:   map[int64][]postgres.MemoryEvidence{},
 		idem:       map[string]int64{},
 		consents:   map[string]postgres.Consent{},
+		ages:       map[int64]postgres.AgeState{},
 		reports:    map[int64]postgres.Report{},
 		exports:    map[int64]postgres.Export{},
 		exportBody: map[int64]string{},
@@ -176,6 +173,52 @@ func (m *memStore) DeleteRelationship(_ context.Context, _, id int64, _ bool) er
 	}
 	delete(m.rels, id)
 	return nil
+}
+
+func (m *memStore) PreviewRelationshipClearance(_ context.Context, _, id int64) (postgres.RelationshipClearancePreview, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.rels[id]; !ok {
+		return postgres.RelationshipClearancePreview{}, postgres.ErrNotFound
+	}
+	out := postgres.RelationshipClearancePreview{RelationshipID: id}
+	for _, conv := range m.convs {
+		if conv.RelationshipID == id {
+			out.ConversationCount++
+		}
+	}
+	for _, memory := range m.memories {
+		if memory.RelationshipID == id {
+			out.MemoryCount++
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) ResetRelationship(_ context.Context, _, id int64, _ bool) (postgres.Relationship, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rel, ok := m.rels[id]
+	if !ok {
+		return postgres.Relationship{}, postgres.ErrNotFound
+	}
+	for convID, conv := range m.convs {
+		if conv.RelationshipID != id {
+			continue
+		}
+		delete(m.convs, convID)
+		for msgID, msg := range m.msgs {
+			if msg.ConversationID == convID {
+				delete(m.msgs, msgID)
+			}
+		}
+	}
+	for memoryID, memory := range m.memories {
+		if memory.RelationshipID == id {
+			delete(m.memories, memoryID)
+		}
+	}
+	return rel, nil
 }
 
 func (m *memStore) CreateConversation(_ context.Context, _, relationshipID int64, incognito bool) (int64, error) {
@@ -370,8 +413,6 @@ func TestRetiredAndGenerationRoutesStayUnmapped(t *testing.T) {
 	s := newCoreServer(t, "full", newMemStore())
 	for _, path := range []string{
 		"/api/v1/relationships/1",
-		"/api/v1/relationships/1/reset",
-		"/api/v1/relationships/1/clearance-preview",
 		"/api/v1/conversations/1/generations",
 		"/api/v1/conversations/1/summary",
 		"/api/v1/memories/auto-save",
@@ -500,8 +541,9 @@ func newCoreServer(t *testing.T, mode string, store CompanionStore) *Server {
 	}
 	sessions, _ := store.(auth.Sessions)
 	providers, _ := store.(ProviderAdminStore)
+	turns, _ := store.(GenerationAPI)
 	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
-		Store: store, Sessions: sessions, Passwords: pw, Limiter: auth.NewLimiter(), Providers: providers,
+		Store: store, Sessions: sessions, Passwords: pw, Limiter: auth.NewLimiter(), Providers: providers, Turns: turns,
 	})
 }
 
@@ -563,32 +605,6 @@ func assertEnvelope(t *testing.T, rec *httptest.ResponseRecorder, code string) {
 	if env.Message == "" {
 		t.Fatal("empty message")
 	}
-}
-
-func mintAccessToken(t *testing.T, account int64) string {
-	t.Helper()
-	return mintAccessTokenNamed(t, account, "alice")
-}
-
-func mintAccessTokenNamed(t *testing.T, account int64, username string) string {
-	t.Helper()
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
-	payload, err := json.Marshal(map[string]any{
-		"iss":      testIssuer,
-		"sub":      itoa(account),
-		"role":     "USER",
-		"username": username,
-		"se":       1,
-		"exp":      time.Now().Add(time.Hour).Unix(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := base64.RawURLEncoding.EncodeToString(payload)
-	signing := header + "." + body
-	mac := hmac.New(sha256.New, []byte(testJWTSecret))
-	_, _ = mac.Write([]byte(signing))
-	return signing + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func itoa(n int64) string {

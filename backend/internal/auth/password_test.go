@@ -7,7 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func TestBcryptCompatibleWithSpringDefaultCost(t *testing.T) {
+func TestBcryptAcceptsCurrentAndLegacyCost10Hashes(t *testing.T) {
 	t.Parallel()
 	v := loadCryptoVectors(t)
 	if !strings.HasPrefix(v.Bcrypt.GoHash, "$2a$10$") {
@@ -16,14 +16,14 @@ func TestBcryptCompatibleWithSpringDefaultCost(t *testing.T) {
 	if !Compare(v.Bcrypt.Password, v.Bcrypt.GoHash) {
 		t.Fatal("go hash did not verify")
 	}
-	if v.Bcrypt.JavaHash == "" {
-		t.Fatal("java bcrypt golden vector missing")
+	if v.Bcrypt.LegacyHash == "" {
+		t.Fatal("legacy bcrypt golden vector missing")
 	}
-	if !strings.HasPrefix(v.Bcrypt.JavaHash, "$2a$10$") {
-		t.Fatalf("java hash must be $2a$10$")
+	if !strings.HasPrefix(v.Bcrypt.LegacyHash, "$2a$10$") {
+		t.Fatalf("legacy hash must be $2a$10$")
 	}
-	if !Compare(v.Bcrypt.Password, v.Bcrypt.JavaHash) {
-		t.Fatal("java hash did not verify in Go")
+	if !Compare(v.Bcrypt.Password, v.Bcrypt.LegacyHash) {
+		t.Fatal("legacy hash did not verify")
 	}
 	if Compare("wrong-password", v.Bcrypt.GoHash) {
 		t.Fatal("wrong password")

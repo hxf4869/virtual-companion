@@ -33,9 +33,6 @@ describe("buildContextHref", () => {
       buildContextHref("companion", { relationshipId: "7", knownRelationshipIds: ["7"] }),
     ).toBe("/pages/companion/companion?relationshipId=7");
     expect(
-      buildContextHref("reminder", { relationshipId: "7", knownRelationshipIds: ["7"] }),
-    ).toBe("/pages/reminder/reminder?relationshipId=7");
-    expect(
       buildContextHref("memory-detail", {
         relationshipId: "7",
         memoryId: "3",

@@ -25,7 +25,7 @@ test("an export becomes ready after manual refresh and can be downloaded", async
 }) => {
   const user = await provisionUser(request, "export-lifecycle");
   const session = await uiLogin(page, user);
-  await prepareGenerationAccess(session.accessToken);
+  await prepareGenerationAccess(session.page);
   await navigateToPage(page, "/pages/export/export");
 
   // ADR-0006 §7.7: a wrong current password is rejected fail-closed — no
@@ -95,6 +95,6 @@ test("an export becomes ready after manual refresh and can be downloaded", async
 
   const preview = page.getByTestId("export-download-preview");
   await expect(preview).toBeVisible();
-  await expect(preview).toContainText("本导出包含 AI 生成内容");
-  await expect(preview).toContainText("会话");
+  await expect(preview).toContainText("assistant 为 AI 回复");
+  await expect(preview).toContainText(/会话 \d+ 个 · 消息 \d+ 条 · 记忆 \d+ 条/);
 });

@@ -13,6 +13,9 @@ import { TERMINAL_EVENT_TYPE, type StreamEvent } from "@/domain/stream-reducer";
 function delta(seq: number, epoch = 1, payload = "d"): StreamEvent {
   return { eventSeq: seq, streamEpoch: epoch, eventType: "chat.delta", payload };
 }
+function snapshot(seq: number, epoch = 1, payload = ""): StreamEvent {
+  return { eventSeq: seq, streamEpoch: epoch, eventType: "chat.snapshot", payload };
+}
 function terminal(seq: number, epoch = 1): StreamEvent {
   return { eventSeq: seq, streamEpoch: epoch, eventType: TERMINAL_EVENT_TYPE, payload: "done" };
 }
@@ -232,6 +235,33 @@ describe("streamGeneration cancel", () => {
 });
 
 describe("streamGeneration failure", () => {
+  it("converges on a durable failed snapshot when the SSE terminal tail is lost", async () => {
+    const fetchSnapshot = vi.fn(async () => ({
+      ok: true as const,
+      status: 200,
+      events: [
+        {
+          eventSeq: 1,
+          streamEpoch: 1,
+          eventType: "chat.failed",
+          payload: null,
+        },
+      ],
+    }));
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => {
+        throw new Error("terminal SSE tail lost");
+      }),
+      fetchSnapshot,
+    };
+
+    const result = await streamGeneration(deps, "gen-1", 1);
+
+    expect(result.outcome).toBe("failed");
+    expect(result.state.terminalEventType).toBe("chat.failed");
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it("reports not_found_or_forbidden without disclosing existence", async () => {
     const { deps } = depsWith([
       { disposition: "NOT_FOUND_OR_FORBIDDEN", events: [] },
@@ -275,7 +305,7 @@ describe("streamGeneration failure", () => {
     expect(result.outcome).toBe("exhausted");
     expect(result.state.terminal).toBe(false);
     expect(deps.resume).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS);
-    expect(delays).toHaveLength(MAX_RESUME_ATTEMPTS - 1);
+    expect(delays).toHaveLength(MAX_RESUME_ATTEMPTS);
     expect(delays[0]).toBe(250);
   });
 });
@@ -283,15 +313,40 @@ describe("streamGeneration failure", () => {
 describe("streamGeneration bounded retry", () => {
   it("stops after MAX_RESUME_ATTEMPTS non-terminal empty resumes", async () => {
     const empty: ResumeResult = { disposition: "RESUMED", events: [] };
+    const delays: number[] = [];
     const deps: RealtimeDeps = {
       resume: vi.fn(async (): Promise<ResumeResult> => empty),
       fetchSnapshot: vi.fn(async () => ({ ok: false, status: 500, events: [] })),
     };
 
-    const result = await streamGeneration(deps, "gen-1", 1);
+    const result = await streamGeneration(deps, "gen-1", 1, undefined, {
+      sleep: async (ms) => {
+        delays.push(ms);
+      },
+      random: () => 0.5,
+    });
 
     expect(result.outcome).toBe("exhausted");
     expect(deps.resume).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS);
+    expect(delays).toEqual([250, 500, 1000, 2000, 4000, 8000, 8000, 8000]);
+  });
+
+  it("backs off after a non-terminal snapshot before the next resume", async () => {
+    const delays: number[] = [];
+    const { deps } = depsWith([
+      { disposition: "RESUMED", events: [snapshot(1, 1, "")] },
+      { disposition: "RESUMED", events: [snapshot(2, 1, "完成"), terminal(3)] },
+    ]);
+
+    const result = await streamGeneration(deps, "gen-1", 1, undefined, {
+      sleep: async (ms) => {
+        delays.push(ms);
+      },
+      random: () => 0.5,
+    });
+
+    expect(result.outcome).toBe("completed");
+    expect(delays).toEqual([250]);
   });
 });
 

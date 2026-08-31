@@ -17,12 +17,12 @@ test("a memory candidate can be confirmed, inspected and deleted", async ({
 }) => {
   const user = await provisionUser(request, "memory-lifecycle");
   const session = await uiLogin(page, user);
-  await prepareGenerationAccess(session.accessToken);
-  const context = await createRelationshipAndConversation(session.accessToken);
+  await prepareGenerationAccess(session.page);
+  const context = await createRelationshipAndConversation(session.page);
   const summary = "我喜欢在安静的晚上读纸质书";
   const evidence = "message:50005";
   const memoryId = await createMemoryCandidate(
-    session.accessToken,
+    session.page,
     context.relationshipId,
     summary,
     evidence,

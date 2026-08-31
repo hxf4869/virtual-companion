@@ -12,6 +12,3 @@ rules:
   - id: CENTRIFUGO_PRO_REQUIRED
     patterns: [Centrifugo PRO required, centrifugo-pro-only]
     allowedOnlyIn: [docs/decisions, scripts/checks/paid-feature-denylist.yaml]
-  - id: FLYWAY_PAID_REQUIRED
-    patterns: [flyway-enterprise-required, Flyway Undo required, Flyway Drift required]
-    allowedOnlyIn: [docs/decisions, scripts/checks/paid-feature-denylist.yaml]

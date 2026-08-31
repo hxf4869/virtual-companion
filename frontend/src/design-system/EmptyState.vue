@@ -17,9 +17,9 @@ export default defineComponent({
 
 <style scoped>
 .empty-state {
-  padding: var(--vc-space-6) var(--vc-space-4);
-  border: 1px dashed var(--vc-border-strong);
-  border-radius: var(--vc-radius-m);
+  padding: var(--vc-space-6) var(--vc-space-2);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
   color: var(--vc-muted);
   font-size: var(--vc-text-sm);
   text-align: center;

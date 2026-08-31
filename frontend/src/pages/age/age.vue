@@ -1,15 +1,13 @@
 <!-- AGE-UI (FR-AUTH-002): adult-verification status and Alpha simulated
 verify. The page never offers a “I am an adult” checkbox as the gate.
 Technical Alpha uses the simulated port; no identity document is stored.
-AGE-APPEAL: a wrong verdict can be appealed from an appealable state — the
-appeal is recorded and reviewed by a human; the page never rewrites results. -->
+The page only reflects the authoritative state returned by the runtime. -->
 <template>
   <ConsumerShell route="/pages/age/age">
     <view class="intro">
       <text>
         服务默认面向 18 岁以上用户。当前为内部测试，使用模拟核验；只保存核验
-        结果、年龄段与时间，不保存任何身份证件。认为结果有误时，可从本页提交
-        申诉，由人工处理。
+        结果、年龄段与时间，不保存任何身份证件。
       </text>
     </view>
 
@@ -39,62 +37,6 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
         <text>
           当前状态无法完成成年核验。本页只展示状态，不会改写结果。
         </text>
-      </view>
-
-      <!-- AGE-APPEAL: submission is only offered from a catalog-appealable
-           state; the server re-checks the same rule (fail closed). -->
-      <view v-if="store.canAppeal" class="appeal-card" data-testid="age-appeal-form">
-        <text class="label">提交年龄申诉</text>
-        <text class="meta">申诉会交给人工处理。提交后状态变为「申诉处理中」，期间不能重复提交。</text>
-        <textarea
-          v-model="appealReason"
-          class="appeal-input"
-          data-testid="age-appeal-reason"
-          aria-label="申诉理由"
-          :maxlength="500"
-          placeholder="请说明为什么认为核验结果有误（必填，最多 500 字）"
-        />
-        <button
-          data-testid="age-appeal-submit"
-          class="action-btn primary"
-          :disabled="store.busy || !canSubmitAppeal"
-          @click="onSubmitAppeal"
-        >
-          提交申诉
-        </button>
-      </view>
-
-      <!-- The result notices live outside the form card: on success the state
-           flips to AGE_APPEAL_PENDING and the card itself disappears. -->
-      <view v-if="appealResult === 'ok'" class="done" data-testid="age-appeal-ok" role="status">
-        <text>申诉已提交，等待人工处理。</text>
-      </view>
-      <view v-else-if="appealResult === 'rejected'" class="error" data-testid="age-appeal-rejected" role="alert">
-        <text>当前状态不能提交申诉，或理由不符合要求。结果不会被改写。</text>
-      </view>
-      <view v-else-if="appealResult === 'network-error'" class="error" data-testid="age-appeal-network-error" role="alert">
-        <text>网络或服务暂不可用，申诉尚未提交，请稍后重试。</text>
-      </view>
-
-      <view
-        v-if="store.ageState === 'AGE_APPEAL_PENDING'"
-        class="state-card"
-        data-testid="age-appeal-pending"
-        role="status"
-      >
-        <text class="label">申诉处理中</text>
-        <text class="meta">已提交的申诉会由人工处理。处理完成前模拟核验保持关闭。</text>
-      </view>
-
-      <view v-if="store.appealsLoaded && store.appeals.length > 0" class="state-card">
-        <text class="label">我的申诉</text>
-        <view v-for="a in store.appeals" :key="a.id" class="appeal-row" :data-testid="`age-appeal-row-${a.id}`">
-          <text class="meta">
-            {{ a.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }} · {{ formatLocalDateTime(a.createdAt) }}
-          </text>
-          <text class="meta">{{ a.reason }}</text>
-          <text v-if="a.resolutionNote" class="meta">处理说明：{{ a.resolutionNote }}</text>
-        </view>
       </view>
 
       <button
@@ -131,8 +73,6 @@ export default {
     const auth = useAuthStore();
     const store = useAgeStore();
     const actionError = ref("");
-    const appealReason = ref("");
-    const appealResult = ref<"idle" | "ok" | "rejected" | "network-error">("idle");
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -140,7 +80,6 @@ export default {
       onUnauthorized: () => auth.onUnauthorized(),
     });
 
-    const canSubmitAppeal = computed(() => appealReason.value.trim().length > 0);
     const methodLabel = computed(() => publicAgeMethodLabel(store.record.providerRef));
 
     onMounted(async () => {
@@ -148,13 +87,11 @@ export default {
         await auth.tryRefresh(transport);
       }
       await store.load(transport);
-      await store.loadAppeals(transport);
     });
 
     async function onRetry(): Promise<void> {
       actionError.value = "";
       await store.load(transport);
-      await store.loadAppeals(transport);
     }
 
     async function onVerify(): Promise<void> {
@@ -173,35 +110,13 @@ export default {
       }
     }
 
-    async function onSubmitAppeal(): Promise<void> {
-      appealResult.value = "idle";
-      try {
-        const ok = await store.submitAppeal(transport, appealReason.value.trim());
-        appealResult.value = ok ? "ok" : "rejected";
-        if (ok) {
-          appealReason.value = "";
-        }
-      } catch (e) {
-        if (e instanceof AgeHttpError && e.status === 400) {
-          appealResult.value = "rejected";
-        } else {
-          // Transport/5xx: not a content rejection — a retry may succeed.
-          appealResult.value = "network-error";
-        }
-      }
-    }
-
     return {
       store,
       actionError,
-      appealReason,
-      appealResult,
-      canSubmitAppeal,
       methodLabel,
       formatLocalDateTime,
       onRetry,
       onVerify,
-      onSubmitAppeal,
     };
   },
 };
@@ -222,8 +137,9 @@ export default {
   gap: var(--vc-space-1);
   margin-top: var(--vc-space-3);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
 }
 
@@ -233,8 +149,9 @@ export default {
 }
 
 .state {
-  font-size: var(--vc-text-lg);
-  font-weight: 600;
+  color: var(--vc-success);
+  font-size: var(--vc-text-xl);
+  font-weight: 700;
 }
 
 .meta {
@@ -264,38 +181,7 @@ export default {
   border: 0;
   background: var(--vc-primary);
   color: var(--vc-on-primary);
-}
-
-.appeal-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vc-space-2);
-  align-items: flex-start;
-  margin-top: var(--vc-space-3);
-  padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
-}
-
-.appeal-input {
-  width: 100%;
-  min-height: 96px;
-  box-sizing: border-box;
-  padding: var(--vc-space-2);
-  background-color: var(--vc-sunken);
-  color: var(--vc-ink);
-  border: 1px solid var(--vc-border-strong);
-  border-radius: var(--vc-radius-s);
-  font-size: 16px;
-}
-
-.appeal-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--vc-space-2) 0;
-  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
 }
 
 .done {

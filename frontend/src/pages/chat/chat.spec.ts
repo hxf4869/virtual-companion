@@ -11,7 +11,6 @@ import ChatPage from "./chat.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
-import { useUsageHealthStore } from "@/stores/usage-health";
 
 const ACTIVE_RELATIONSHIP = {
   relationshipId: 1,
@@ -202,6 +201,34 @@ describe("chat page glue（纠偏式重写）", () => {
     wrapper.unmount();
   });
 
+  it("does not misreport a durable failed terminal as a network disconnect", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "failed";
+    store.lastDisconnect = "terminal";
+    store.stream = {
+      status: "terminal",
+      epoch: 1,
+      cursor: 1,
+      events: [{
+        eventSeq: 1,
+        streamEpoch: 1,
+        eventType: "chat.failed",
+        payload: null,
+      }],
+      terminal: true,
+      terminalEventType: "chat.failed",
+    };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="status"]').text()).toBe(
+      "模型服务失败，请稍后重试",
+    );
+    wrapper.unmount();
+  });
+
   it("BLOCKED: states the safety refusal and a real-world help line, never a role voice", async () => {
     const wrapper = mountPage();
     await flushPromises();
@@ -270,6 +297,36 @@ describe("chat page glue（纠偏式重写）", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="relationship-selector"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("REL-ACTIVATE: exposes a retryable error and keeps the current relationship when activation is hidden", async () => {
+    stubFetch({
+      relationships: [
+        { ...ACTIVE_RELATIONSHIP, relationshipId: 1, active: false },
+        { ...ACTIVE_RELATIONSHIP, relationshipId: 2, active: false },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate").mockResolvedValue(null);
+    const select = wrapper.find('[data-testid="relationship-select"]');
+
+    await select.setValue("2");
+    await flushPromises();
+
+    expect(activateSpy).toHaveBeenCalledOnce();
+    expect(relStore.currentRelationshipId).toBeNull();
+    expect(wrapper.find('[data-testid="relationship-activate-error"]').text()).toContain(
+      "切换伙伴失败，请重试",
+    );
+    expect((select.element as HTMLSelectElement).disabled).toBe(false);
+
+    await wrapper.find('[data-testid="relationship-select"]').setValue("2");
+    await flushPromises();
+    expect(activateSpy).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 
@@ -774,9 +831,33 @@ describe("chat page glue（纠偏式重写）", () => {
     expect(items[1]?.text()).toContain("无痕");
 
     const store = useChatStore();
-    const openSpy = vi.spyOn(store, "openConversation").mockResolvedValue();
+    const openSpy = vi.spyOn(store, "openConversation").mockResolvedValue(true);
     await items[1]!.trigger("click");
     expect(openSpy).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-testid="conversation-panel"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("MENU: keeps the sheet open and explains when a conversation cannot load", async () => {
+    stubFetch({
+      conversationsJson: [
+        { conversationId: 1, relationshipId: 1, lastMessagePreview: "旧" },
+        { conversationId: 2, relationshipId: 1, lastMessagePreview: "新" },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    await openMenu(wrapper);
+
+    const store = useChatStore();
+    vi.spyOn(store, "openConversation").mockResolvedValue(false);
+    await wrapper.findAll('[data-testid="conversation-item"]')[1]!.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conversation-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="conversation-open-error"]').text()).toContain(
+      "会话加载失败",
+    );
     wrapper.unmount();
   });
 
@@ -910,24 +991,11 @@ describe("chat page glue（纠偏式重写）", () => {
 
   // ---- 上下文提示与恢复 ----
 
-  it("USAGE-HEALTH: shows the system-layer reminder with plain actions", async () => {
+  it("does not expose deferred usage-health controls", async () => {
     const wrapper = mountPage();
     await flushPromises();
-
-    const usage = useUsageHealthStore();
-    usage.status = {
-      reminderAfterMinutes: 120,
-      sessionGapMinutes: 30,
-      continuousMinutes: 130,
-      reminderDue: true,
-      sessionStartedAt: null,
-    };
-    await wrapper.vm.$nextTick();
-
-    const banner = wrapper.find('[data-testid="usage-health-banner"]');
-    expect(banner.exists()).toBe(true);
-    expect(banner.text()).not.toContain("让我");
-    expect(wrapper.find('[data-testid="usage-health-continue"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="usage-health-banner"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="usage-health-continue"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -960,18 +1028,14 @@ describe("chat page glue（纠偏式重写）", () => {
     wrapper.unmount();
   });
 
-  it("MEM-IMPORT: offers the archive import with explicit confirm/discard", async () => {
+  it("does not load or show deferred memory imports", async () => {
     const relStore = useRelationshipStore();
-    vi.spyOn(relStore, "listMemoryImports").mockResolvedValue({
-      personaRef: "gentle-listener",
-      acceptedCount: 4,
-      items: [],
-    } as never);
+    const listSpy = vi.spyOn(relStore, "listMemoryImports");
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="memory-import-prompt"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="memory-import-prompt"]').text()).toContain("4 条");
+    expect(wrapper.find('[data-testid="memory-import-prompt"]').exists()).toBe(false);
+    expect(listSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 

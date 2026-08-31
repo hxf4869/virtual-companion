@@ -27,8 +27,7 @@ postCommitOnly:
   - realtime dispatcher publishes committed chat.completed
   - generic job coordinator materializes opaque work item ids
 applicability:
-  javaRuntimeUntilCutover: candidate set, dual authorization snapshots, memory.extract and conversation.summary outbox remain Java writers
-  goV1EffectiveAt: go_generation_cutover
+  effectiveAt: go_generation_cutover
 goV1:
   selectedGenerationCandidateWrite: RETIRE
   executionAuthorizationSnapshotWrite: RETIRE

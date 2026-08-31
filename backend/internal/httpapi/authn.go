@@ -9,21 +9,9 @@ import (
 )
 
 const (
-	csrfCookie    = auth.CSRFCookieName
-	csrfHeader    = auth.CSRFHeader
-	refreshCookie = "vc_refresh"
+	csrfCookie = auth.CSRFCookieName
+	csrfHeader = auth.CSRFHeader
 )
-
-func bearerToken(r *http.Request) string {
-	h := r.Header.Get("Authorization")
-	if len(h) < 8 {
-		return ""
-	}
-	if !strings.EqualFold(h[:7], "Bearer ") {
-		return ""
-	}
-	return strings.TrimSpace(h[7:])
-}
 
 func isStateChanging(method string) bool {
 	switch strings.ToUpper(method) {
@@ -48,10 +36,6 @@ func cookieValue(r *http.Request, name string) string {
 		return ""
 	}
 	return c.Value
-}
-
-func hasSessionCookie(r *http.Request) bool {
-	return auth.CookieToken(r) != "" || cookieValue(r, refreshCookie) != "" || cookieValue(r, csrfCookie) != ""
 }
 
 func csrfMatches(r *http.Request) bool {

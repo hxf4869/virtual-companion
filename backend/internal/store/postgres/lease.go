@@ -10,9 +10,7 @@ import (
 
 const runtimeSingletonKey = "vc.runtime.singleton"
 
-// PlaneLease is the migration-window generation-plane exclusive lock.
-// It uses the same session advisory key as the Java runtime singleton so
-// Java and Go cannot both be active writers. api-migration must never
+// PlaneLease is the generation-plane exclusive lock. api-migration must never
 // acquire it.
 type PlaneLease struct {
 	dsn  string

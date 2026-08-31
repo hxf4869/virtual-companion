@@ -11,7 +11,12 @@ import (
 )
 
 func (s *Server) handleRealtimeStream(w http.ResponseWriter, r *http.Request) {
-	if !auth.AllowOrigin(r.Header.Get("Origin"), s.cfg.HTTP.AllowedOrigins) {
+	// Browsers omit Origin on a normal same-origin GET. Credentialed
+	// cross-origin fetches include it, so validate every present Origin while
+	// allowing the empty case to continue through opaque-cookie authentication
+	// and the owner-scoped snapshot lookup.
+	origin := r.Header.Get("Origin")
+	if origin != "" && !auth.AllowOrigin(origin, s.cfg.HTTP.AllowedOrigins) {
 		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "origin rejected")
 		return
 	}

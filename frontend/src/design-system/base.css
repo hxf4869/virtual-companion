@@ -1,57 +1,56 @@
 /**
- * 语义 token 与全局基础（前端纠偏式重构，2026-08-29）。
+ * Quiet Loom / 静默织室（Stitch 全量重设计，2026-08-30）。
  *
- * 视觉方向："熟悉、安静、清晰、浅色优先的移动端陪伴产品"。浅色中性背景、
- * 白色内容面、接近黑色的主文字、一种克制低饱和的冷蓝强调。页面只消费
- * 语义 token，不得新增 raw hex、随机圆角或页面私有导航色。
- *
- * 对比度按 WCAG 计算：正文 ≥4.5:1，非文本控件边界 ≥3:1。
- * 变量名保持与迁移前一致（--vc-env 等如今表示浅色 chrome 层），避免一次性
- * 改动全部页面；语义以本注释为准。
+ * 灰绿织面是环境，近白内容面承载事实，紫罗兰只承担当前选择与唯一主动作；
+ * 绿色表示关系仍在延续，珊瑚色只提示需要处理的事项。页面继续消费原有
+ * --vc-* 语义变量，业务组件不持有私有品牌色。
  */
 
 page,
 :root {
-  /* ---- chrome 层：页面底色与导航/页头表面（浅色） ---- */
-  --vc-env: #f4f6f8; /* 页面底色：浅中性灰蓝 */
-  --vc-env-raised: #ffffff; /* chrome 表面：页头/底栏 */
-  --vc-env-hover: #edf0f4; /* chrome 悬停/按压 */
-  --vc-on-env: #1c2430; /* chrome 主文字（15.6:1） */
-  --vc-on-env-muted: #5b6675; /* chrome 次要文字（5.8:1） */
-  --vc-glow: #3d6b99; /* chrome 强调 = 品牌冷蓝（5.5:1） */
-  --vc-border-env: #e3e8ee; /* chrome 装饰细线 */
-  /* chrome 真实控件边界（≥3:1） */
-  --vc-border-env-strong: #76828f;
+  /* 环境与内容面 */
+  --vc-env: #f1f4f1;
+  --vc-env-raised: #ffffff;
+  --vc-env-hover: #eaedeb;
+  --vc-on-env: #322638;
+  --vc-on-env-muted: #665d69;
+  --vc-glow: #6c56c7;
+  --vc-border-env: #d8ded9;
+  --vc-border-env-strong: #756d78;
 
-  /* ---- 内容层：白色内容面 ---- */
-  --vc-paper: #f7f8fa; /* 内容区底色 */
-  --vc-card: #ffffff; /* 卡片与输入底 */
-  --vc-sunken: #eef1f5; /* 沉面：次级面板、用户气泡 */
-  --vc-ink: #1c2430; /* 主文字（15.6:1） */
-  --vc-muted: #5b6675; /* 次要文字（5.8:1） */
-  --vc-border: #e3e8ee; /* 装饰细线 */
-  --vc-border-strong: #76828f; /* 控件边界（3.9:1） */
+  --vc-paper: #f1f4f1;
+  --vc-card: #fefefe;
+  --vc-sunken: #eaedeb;
+  --vc-ink: #322638;
+  --vc-muted: #665d69;
+  --vc-border: #d8ded9;
+  --vc-border-strong: #756d78;
 
-  /* ---- 主动作：品牌冷蓝（白字 5.5:1） ---- */
-  --vc-primary: #3d6b99;
-  --vc-primary-hover: #335c85;
+  /* 动作与状态 */
+  --vc-primary: #6c56c7;
+  --vc-primary-hover: #5842b3;
+  --vc-primary-bg: #eee9ff;
+  --vc-primary-border: #cfc5f8;
   --vc-on-primary: #ffffff;
+  --vc-disabled-surface: #dddfe0;
+  --vc-disabled-ink: #665d69;
+  --vc-success: #3f725e;
+  --vc-success-bg: #dfeee6;
+  --vc-success-border: #b8d8c8;
+  --vc-warning: #785619;
+  --vc-warning-bg: #f3ead5;
+  --vc-warning-on-env: #785619;
+  --vc-danger: #a9433a;
+  --vc-danger-bg: #f7e5e2;
+  --vc-danger-border: #edbbb5;
+  --vc-danger-on-env: #a9433a;
 
-  /* ---- 语义状态（先有事实，再有色；不得仅靠颜色传达） ---- */
-  --vc-success: #2e6b4f;
-  --vc-success-bg: #e7f2ec;
-  --vc-warning: #8a5a00; /* 5.3:1；仅真实警告 */
-  --vc-warning-bg: #f9f0dc;
-  --vc-warning-on-env: #8a5a00;
-  --vc-danger: #b3261e; /* 6.0:1 */
-  --vc-danger-bg: #faeae8;
-  --vc-danger-on-env: #b3261e;
+  --vc-focus: #5940bd;
+  --vc-focus-on-env: #5940bd;
+  --vc-scrim: rgba(50, 38, 56, 0.42);
+  --vc-shadow-floating: 0 18px 48px rgba(50, 38, 56, 0.16);
 
-  /* ---- 焦点 ---- */
-  --vc-focus: #2b5c8f;
-  --vc-focus-on-env: #2b5c8f;
-
-  /* ---- 间距（4px 基） ---- */
+  /* 4px 基准；长留白让信息像织线一样分段，而不是堆成卡片墙。 */
   --vc-space-1: 4px;
   --vc-space-2: 8px;
   --vc-space-3: 12px;
@@ -61,69 +60,101 @@ page,
   --vc-space-7: 32px;
   --vc-space-8: 48px;
 
-  /* ---- 圆角（卡面 12–16px；小控件 8px 或胶囊） ---- */
-  --vc-radius-s: 8px;
-  --vc-radius-m: 12px;
-  --vc-radius-l: 16px;
+  --vc-radius-s: 4px;
+  --vc-radius-m: 8px;
+  --vc-radius-l: 12px;
   --vc-radius-pill: 999px;
 
-  /* ---- 字号 ----
-     正文与输入一律 ≥16px（低于 16px 时 iOS Safari 聚焦自动放大视口）；
-     辅助说明/标签可用 sm/xs。 */
   --vc-text-xs: 12px;
   --vc-text-sm: 14px;
   --vc-text-md: 16px;
-  --vc-text-lg: 17px;
-  --vc-text-xl: 20px;
-  --vc-text-2xl: 24px;
-  --vc-text-3xl: 28px;
+  --vc-text-lg: 18px;
+  --vc-text-xl: 22px;
+  --vc-text-2xl: 28px;
+  --vc-text-3xl: 34px;
 
-  /* ---- 层级 ---- */
   --vc-z-content: 0;
   --vc-z-header: 10;
   --vc-z-nav: 20;
   --vc-z-overlay: 30;
   --vc-z-toast: 40;
 
-  /* ---- 动效（只允许 transform/opacity；reduced-motion 下全部关闭） ---- */
   --vc-motion-fast: 140ms;
-  --vc-motion-base: 220ms;
+  --vc-motion-base: 260ms;
   --vc-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* ---- 字体：中文系统栈（无外部字体） ---- */
+  /* 中文以本机可用的人文无衬线为主；不引入联网字体或新增运行时依赖。 */
   --vc-font:
     "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC",
     "Noto Sans CJK SC", "Microsoft YaHei", system-ui, -apple-system,
     "Segoe UI", sans-serif;
   --vc-font-tabular:
     "PingFang SC", "Hiragino Sans GB", system-ui, ui-monospace, monospace;
-  /* 等宽栈：错误详情/请求 id 等代码样文本。 */
   --vc-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   color-scheme: light;
 }
 
-/* 全局盒模型：所有尺寸含 padding 与 border（修复 390px 下 2px 溢出类缺陷）。 */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
-/* ---- 全局排版 ---- */
-
-page {
+html,
+body,
+#app,
+uni-app,
+uni-page,
+uni-page-wrapper,
+uni-page-body {
   min-height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--vc-env-hover);
+}
+
+page,
+body {
   color: var(--vc-ink);
   background: var(--vc-env);
   font-family: var(--vc-font);
   font-size: var(--vc-text-md);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   text-size-adjust: 100%;
 }
 
-/* ---- 浏览器表面：选区、光标、焦点环与主题一致 ---- */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  caret-color: var(--vc-primary);
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button[disabled],
+input[disabled],
+select[disabled],
+textarea[disabled] {
+  cursor: not-allowed;
+}
 
 ::selection {
   background: var(--vc-primary);
@@ -132,7 +163,7 @@ page {
 
 :focus-visible {
   outline: 2px solid var(--vc-focus);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
 .vc-on-env :focus-visible,
@@ -140,20 +171,15 @@ page {
   outline-color: var(--vc-focus-on-env);
 }
 
-/* ---- 触摸与点击 ---- */
-
-button,
-a,
-[role="button"] {
-  touch-action: manipulation;
+* {
+  scrollbar-color: var(--vc-border-strong) transparent;
+  scrollbar-width: thin;
 }
 
 .vc-tap {
   min-height: 44px;
   min-width: 44px;
 }
-
-/* ---- 安全区 ---- */
 
 .vc-safe-top {
   padding-top: env(safe-area-inset-top, 0px);
@@ -162,8 +188,6 @@ a,
 .vc-safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-
-/* ---- 读屏专用 ---- */
 
 .vc-sr-only {
   position: absolute;
@@ -178,7 +202,23 @@ a,
   white-space: nowrap;
 }
 
-/* ---- 减少动效：动效全部可关，正确性不依赖动画结束 ---- */
+/* 唯一的全局入场：内容只做轻微位移。不要动画 opacity；自动化无障碍
+   检查和快速切页会在过渡中读取颜色，半透明文字会短暂跌破对比度门槛。 */
+@keyframes vc-loom-settle {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.vc-shell__main,
+.vc-internal__main {
+  /* 动画结束后不保留 transform；带 transform 的祖先会成为 fixed 弹层的
+     包含块，长页面上的底部弹层因此会被推到手机视口之外。 */
+  animation: vc-loom-settle var(--vc-motion-base) var(--vc-ease-out) backwards;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

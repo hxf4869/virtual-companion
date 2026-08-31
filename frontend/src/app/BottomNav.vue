@@ -71,12 +71,16 @@ export default defineComponent({
   left: 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  max-width: 720px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: var(--vc-space-1) var(--vc-space-2)
-    calc(var(--vc-space-1) + env(safe-area-inset-bottom, 0px));
+  padding:
+    var(--vc-space-1)
+    calc(var(--vc-space-2) + env(safe-area-inset-right, 0px))
+    calc(var(--vc-space-1) + env(safe-area-inset-bottom, 0px))
+    calc(var(--vc-space-2) + env(safe-area-inset-left, 0px));
   background: var(--vc-env-raised);
   border-top: 1px solid var(--vc-border-env);
+  border-radius: 0;
 }
 
 .vc-bottom-nav__item {
@@ -84,18 +88,20 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  min-height: 52px;
+  gap: 3px;
+  min-height: 56px;
   margin: 0;
   padding: var(--vc-space-1) var(--vc-space-2);
   border: 0;
-  border-radius: var(--vc-radius-s);
+  border-radius: var(--vc-radius-m);
   background: transparent;
   color: var(--vc-on-env-muted);
   font: inherit;
   font-size: var(--vc-text-xs);
   line-height: 1.3;
-  transition: color var(--vc-motion-fast) var(--vc-ease-out);
+  transition:
+    color var(--vc-motion-fast) var(--vc-ease-out),
+    transform var(--vc-motion-fast) var(--vc-ease-out);
 }
 
 .vc-bottom-nav__item::after {
@@ -104,7 +110,7 @@ export default defineComponent({
 
 .vc-bottom-nav__item.is-active {
   color: var(--vc-glow);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .vc-bottom-nav__icon {
@@ -113,13 +119,28 @@ export default defineComponent({
   justify-content: center;
   width: 32px;
   height: 24px;
+  transition: transform var(--vc-motion-fast) var(--vc-ease-out);
 }
 
 .vc-bottom-nav__item.is-active .vc-bottom-nav__icon {
   color: var(--vc-glow);
+  transform: translateY(-1px);
 }
 
 .vc-bottom-nav__label {
   font-size: var(--vc-text-xs);
+}
+
+@media (min-width: 521px) {
+  .vc-bottom-nav {
+    border-right: 1px solid var(--vc-border-env);
+    border-left: 1px solid var(--vc-border-env);
+  }
+}
+
+@media (pointer: coarse) {
+  .vc-bottom-nav__item {
+    min-height: 60px;
+  }
 }
 </style>

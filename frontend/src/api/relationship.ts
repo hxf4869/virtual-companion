@@ -11,8 +11,8 @@
 // failure without faking success. The api layer never swallows 401/5xx
 // failures into empty success.
 //
-// IDs are decimal strings on the wire (OpenAPI type: string). The Java backend
-// serialises long as a JSON number, so asId() accepts both string and number
+// IDs are decimal strings on the wire (OpenAPI type: string). Historical responses
+// may serialize an ID as a JSON number, so asId() accepts both string and number
 // and normalises to string. owner_user_id is never a request field — the
 // server derives ownership from the authenticated principal.
 
@@ -143,7 +143,7 @@ function guardResult(r: RelationshipApiResponse): void {
   }
 }
 
-/** Accept string or number and normalise to string (Java long wire format). */
+/** Accept string or historical numeric ID and normalize to string. */
 function asId(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);

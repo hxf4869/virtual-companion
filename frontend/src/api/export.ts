@@ -31,16 +31,14 @@ export interface ExportRequest {
   downloadUrl?: string;
 }
 
-/** Lightweight view shapes of the export document (full payload in JSON). */
+/** Go v1 one-time export envelope (full conversation/message payload in JSON). */
 export interface ExportDownload {
-  exportId: string;
-  generatedAt: string;
-  expiresAt: string;
-  aiContentNotice: string;
+  exportedAt: string;
+  conversationCount: number;
+  messageCount: number;
+  memoryCount: number;
   conversations: unknown[];
   memories: unknown[];
-  reminders: unknown[];
-  consents: unknown[];
 }
 
 export class ExportHttpError extends Error {
@@ -92,33 +90,34 @@ function asExportRequest(json: unknown): ExportRequest | null {
 function asExportDownload(json: unknown): ExportDownload | null {
   if (!json || typeof json !== "object") return null;
   const o = json as Record<string, unknown>;
-  const exportId = asId(o.exportId);
-  const generatedAt = typeof o.generatedAt === "string" ? o.generatedAt : undefined;
-  const expiresAt = typeof o.expiresAt === "string" ? o.expiresAt : undefined;
-  const aiContentNotice =
-    typeof o.aiContentNotice === "string" ? o.aiContentNotice : undefined;
+  const exportedAt = typeof o.exportedAt === "string" ? o.exportedAt : undefined;
+  const conversationCount = asNonNegativeInteger(o.conversationCount);
+  const messageCount = asNonNegativeInteger(o.messageCount);
+  const memoryCount = asNonNegativeInteger(o.memoryCount);
   if (
-    !exportId ||
-    !generatedAt ||
-    !expiresAt ||
-    !aiContentNotice ||
+    !exportedAt ||
+    conversationCount === undefined ||
+    messageCount === undefined ||
+    memoryCount === undefined ||
     !Array.isArray(o.conversations) ||
-    !Array.isArray(o.memories) ||
-    !Array.isArray(o.reminders) ||
-    !Array.isArray(o.consents)
+    !Array.isArray(o.memories)
   ) {
     return null;
   }
   return {
-    exportId,
-    generatedAt,
-    expiresAt,
-    aiContentNotice,
+    exportedAt,
+    conversationCount,
+    messageCount,
+    memoryCount,
     conversations: o.conversations,
     memories: o.memories,
-    reminders: o.reminders,
-    consents: o.consents,
   };
+}
+
+function asNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
 }
 
 /** The only download paths this client will issue (never an open redirect). */

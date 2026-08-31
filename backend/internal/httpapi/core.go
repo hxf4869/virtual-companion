@@ -27,6 +27,8 @@ type CompanionStore interface {
 	ActivateRelationship(ctx context.Context, owner, id int64) (postgres.Relationship, error)
 	DeactivateRelationship(ctx context.Context, owner, id int64) (postgres.Relationship, error)
 	UpdateRelationshipPrefs(ctx context.Context, owner, id int64, prefs postgres.RelationshipPrefs) (postgres.Relationship, error)
+	PreviewRelationshipClearance(ctx context.Context, owner, id int64) (postgres.RelationshipClearancePreview, error)
+	ResetRelationship(ctx context.Context, owner, id int64, retainImportable bool) (postgres.Relationship, error)
 	DeleteRelationship(ctx context.Context, owner, id int64, retainImportable bool) error
 	CreateConversation(ctx context.Context, owner, relationshipID int64, incognito bool) (int64, error)
 	ListConversations(ctx context.Context, owner int64, relationshipID, after *int64, limit *int) ([]postgres.Conversation, error)
@@ -53,6 +55,8 @@ type CompanionStore interface {
 	GetIncognitoPref(ctx context.Context, owner int64) (bool, error)
 	UpdateIncognitoPref(ctx context.Context, owner int64, defaultIncognito bool) (bool, error)
 	OutboundCheck(ctx context.Context, owner int64) (postgres.OutboundDecision, error)
+	GetAgeState(ctx context.Context, owner int64) (postgres.AgeState, error)
+	VerifyAge(ctx context.Context, owner int64) (postgres.AgeState, error)
 
 	CreateReport(ctx context.Context, owner int64, messageID *int64, reason, note string) (postgres.Report, error)
 	ListReports(ctx context.Context, owner int64, after *int64, limit *int) ([]postgres.Report, error)
@@ -130,6 +134,8 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("PATCH /api/v1/relationships/{relationshipId}", s.handleUpdateRelationshipPrefs)
 	s.mux.HandleFunc("DELETE /api/v1/relationships/{relationshipId}", s.handleDeleteRelationship)
 	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}/deactivate", s.handleDeactivateRelationship)
+	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/clearance-preview", s.handlePreviewRelationshipClearance)
+	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}/reset", s.handleResetRelationship)
 
 	s.mux.HandleFunc("POST /api/v1/conversations", s.handleCreateConversation)
 	s.mux.HandleFunc("GET /api/v1/conversations", s.handleListConversations)
@@ -156,6 +162,8 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("PUT /api/v1/incognito-pref", s.handleUpdateIncognitoPref)
 	s.mux.HandleFunc("GET /api/v1/consents", s.handleListConsents)
 	s.mux.HandleFunc("PUT /api/v1/consents", s.handleRecordConsent)
+	s.mux.HandleFunc("GET /api/v1/age/state", s.handleGetAgeState)
+	s.mux.HandleFunc("POST /api/v1/age/verification", s.handleVerifyAge)
 
 	s.mux.HandleFunc("POST /api/v1/reports", s.handleCreateReport)
 	s.mux.HandleFunc("GET /api/v1/reports", s.handleListReports)
@@ -172,6 +180,7 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/auth/password", s.handleChangePassword)
 	s.mux.HandleFunc("POST /api/v1/auth/reauth", s.handleReauth)
 	s.mux.HandleFunc("DELETE /api/v1/auth/account", s.handleDeleteAccount)
+	s.mux.HandleFunc("GET /api/v1/service-mode", s.handleServiceMode)
 	s.mux.HandleFunc("GET /api/v1/admin/providers", s.handleListProviders)
 	s.mux.HandleFunc("PUT /api/v1/admin/providers/{providerId}", s.handleSaveProvider)
 	s.mux.HandleFunc("POST /api/v1/admin/providers/{providerId}/models/discover", s.handleDiscoverProviderModels)

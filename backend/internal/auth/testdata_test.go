@@ -12,18 +12,8 @@ type cryptoVectors struct {
 	Bcrypt struct {
 		Password string `json:"password"`
 		GoHash   string `json:"goHash"`
-		JavaHash string `json:"javaHash"`
+		LegacyHash string `json:"legacyHash"`
 	} `json:"bcrypt"`
-	JWT struct {
-		Secret       string `json:"secret"`
-		Issuer       string `json:"issuer"`
-		AccountID    int64  `json:"accountId"`
-		Role         string `json:"role"`
-		Username     string `json:"username"`
-		SessionEpoch int64  `json:"sessionEpoch"`
-		GoToken      string `json:"goToken"`
-		JavaToken    string `json:"javaToken"`
-	} `json:"jwt"`
 }
 
 func loadCryptoVectors(t *testing.T) cryptoVectors {

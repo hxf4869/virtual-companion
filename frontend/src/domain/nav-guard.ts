@@ -17,14 +17,9 @@ export const OPERATOR_ROLES: ReadonlySet<string> = new Set([
   "OPS_VIEWER",
 ]);
 
-/** OPS 页真实守卫：Runtime 预检面仅 ADMIN（与 ops 页 isAdminRole 一致）。 */
-export function canEnterOpsPage(role: string | null | undefined): boolean {
-  return role === "ADMIN";
-}
-
-/** ADMIN 页真实守卫：内部管理面对全部操作者开放；分区权限在页面内部。 */
+/** Go Runtime 后台真实守卫：四个控制台页面均只允许 ADMIN。 */
 export function canEnterAdminPage(role: string | null | undefined): boolean {
-  return typeof role === "string" && OPERATOR_ROLES.has(role);
+  return role === "ADMIN";
 }
 
 export interface GateSnapshot {
@@ -45,7 +40,6 @@ const PUBLIC_PATHS = new Set([
   "/pages/index/index",
   "/pages/help/help",
   "/pages/ai-notice/ai-notice",
-  "/pages/health/health",
 ]);
 
 export function classifyPage(href: string): PageClass {
@@ -53,7 +47,10 @@ export function classifyPage(href: string): PageClass {
   if (path === "/pages/login/login") return "login";
   if (path === "/pages/age/age") return "age";
   if (path === "/pages/consent/consent") return "consent";
-  if (path === "/pages/admin/admin" || path === "/pages/ops/ops") return "admin";
+  if (path === "/pages/admin/admin"
+      || path === "/pages/admin-models/admin-models"
+      || path === "/pages/admin-routing/admin-routing"
+      || path === "/pages/admin-system/admin-system") return "admin";
   if (PUBLIC_PATHS.has(path)) return "public";
   return "protected";
 }
@@ -156,7 +153,7 @@ export function shouldRenderPageData(href: string, snapshot: GateSnapshot): bool
   if (snapshot.session !== "authenticated") return false;
   if (snapshot.passwordMustChange && pathOf(href) !== "/pages/account/account") return false;
   if (page === "admin") {
-    return snapshot.role !== null && OPERATOR_ROLES.has(snapshot.role);
+    return canEnterAdminPage(snapshot.role);
   }
   return true;
 }

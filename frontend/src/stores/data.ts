@@ -8,7 +8,6 @@ import { listConversations, getServiceMode, type ConversationListItem, type Serv
 import { listConsents, type ConsentRecord } from "@/api/consent";
 import { listMemories, type Memory } from "@/api/memory";
 import { listRelationships, type Relationship } from "@/api/relationship";
-import { listReminders, type Reminder } from "@/api/reminder";
 import {
   IDLE_ASYNC,
   beginAsync,
@@ -32,7 +31,6 @@ export const useDataStore = defineStore("h5-data", () => {
   const relationships = ref<Relationship[]>([]);
   const conversations = ref<ConversationListItem[]>([]);
   const memories = ref<DataMemory[]>([]);
-  const reminders = ref<Reminder[]>([]);
   const consents = ref<ConsentRecord[]>([]);
   const serviceMode = ref<ServiceModeStatus | null>(null);
   const loadFailed = ref(false);
@@ -44,7 +42,6 @@ export const useDataStore = defineStore("h5-data", () => {
     busy.value = true;
     asyncState.value = beginAsync(asyncState.value);
     const previousMemories = memories.value;
-    const previousReminders = reminders.value;
     try {
       // Ownership data fails the page as a whole; the service mode is
       // advisory (non-fatal by contract) and per-relationship detail pages
@@ -71,22 +68,11 @@ export const useDataStore = defineStore("h5-data", () => {
         }),
       );
       memories.value = memoryPages.flat();
-      const reminderPages = await Promise.all(
-        rels.map(async (rel) => {
-          try {
-            return await listReminders(transport, rel.relationshipId);
-          } catch {
-            failedDomains.push("reminder");
-            return previousReminders.filter((row) => row.relationshipId === rel.relationshipId);
-          }
-        }),
-      );
-      reminders.value = reminderPages.flat();
       const uniqueFailed = [...new Set(failedDomains)];
       if (uniqueFailed.length > 0) {
         asyncState.value = {
           ...markPartial(uniqueFailed),
-          stale: previousMemories.length > 0 || previousReminders.length > 0,
+          stale: previousMemories.length > 0,
         };
       } else {
         asyncState.value = markSuccess();
@@ -107,7 +93,6 @@ export const useDataStore = defineStore("h5-data", () => {
     relationships.value = [];
     conversations.value = [];
     memories.value = [];
-    reminders.value = [];
     consents.value = [];
     serviceMode.value = null;
     loadFailed.value = false;
@@ -119,7 +104,6 @@ export const useDataStore = defineStore("h5-data", () => {
     relationships,
     conversations,
     memories,
-    reminders,
     consents,
     serviceMode,
     loadFailed,

@@ -1,6 +1,33 @@
-import type { BaselineCapabilities } from "@/api/baseline";
+export const CAPABILITY_SOURCE = "specs/catalog/product-scope.yaml";
 
-export type CapabilityGateKey = Exclude<keyof BaselineCapabilities, "source">;
+/**
+ * Technical Alpha product boundaries are build-time policy, not a legacy
+ * runtime-baseline response. Keep this projection aligned with
+ * specs/catalog/product-scope.yaml; scripts/check.sh validates the catalog.
+ */
+export interface TechnicalAlphaCapabilities {
+  source: typeof CAPABILITY_SOURCE;
+  publicRegistrationEnabled: false;
+  paymentEnabled: false;
+  romanceModeEnabled: false;
+  voiceEnabled: false;
+  imageEnabled: false;
+  websocketEnabled: false;
+  betaGenerationEnabledByDefault: false;
+}
+
+export const TECHNICAL_ALPHA_CAPABILITIES: TechnicalAlphaCapabilities = {
+  source: CAPABILITY_SOURCE,
+  publicRegistrationEnabled: false,
+  paymentEnabled: false,
+  romanceModeEnabled: false,
+  voiceEnabled: false,
+  imageEnabled: false,
+  websocketEnabled: false,
+  betaGenerationEnabledByDefault: false,
+};
+
+export type CapabilityGateKey = Exclude<keyof TechnicalAlphaCapabilities, "source">;
 export type CapabilityGateState = "closed" | "unverified";
 
 export interface CapabilityGateDefinition {
@@ -53,7 +80,7 @@ export const CAPABILITY_GATE_DEFINITIONS: readonly CapabilityGateDefinition[] = 
 ];
 
 export function mapCapabilityGates(
-  capabilities: BaselineCapabilities | null,
+  capabilities: TechnicalAlphaCapabilities | null,
 ): CapabilityGateView[] {
   return CAPABILITY_GATE_DEFINITIONS.map((definition) => {
     const isVerifiedClosed =

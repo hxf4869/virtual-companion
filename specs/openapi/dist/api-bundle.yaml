@@ -2,12 +2,11 @@ openapi: 3.1.0
 info:
   title: Virtual Companion API
   version: 0.1.0
-  description: Contract-first HTTP API (ADR-0002). This document is the single source of truth; Java interfaces and TypeScript
-    clients are generated from it and must not be hand-edited or used to back-drive the contract. The ErrorEnvelope shape
-    is uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides resource existence so a missing resource and a forbidden
-    one are indistinguishable to the caller. Paths here remain the Java runtime surface until cutover. Go v1 KEEP/SIMPLIFY/DEFER/RETIRE
-    decisions live in specs/catalog/go-v1-api-scope.yaml (ADR-0007); RETIRE operations are removed together with H5 callers
-    in a later slice, not left as 410 stubs.
+  description: Contract-first HTTP API (ADR-0002). This document is the single source of truth; the bundled contract and TypeScript
+    client are generated from it and must not be hand-edited or used to back-drive the contract. The ErrorEnvelope shape is
+    uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides resource existence so a missing resource and a forbidden
+    one are indistinguishable to the caller. Go v1 KEEP/SIMPLIFY/DEFER/RETIRE decisions live in specs/catalog/go-v1-api-scope.yaml
+    (ADR-0007); RETIRE operations are removed together with H5 callers in a later slice, not left as 410 stubs.
 security:
 - bearerAuth: []
 paths:
@@ -15,8 +14,7 @@ paths:
     get:
       operationId: getVersion
       summary: Service version and build identity
-      description: Baseline contract endpoint proving the OpenAPI -> Java interface and TypeScript client generation pipeline.
-        Public, unauthenticated.
+      description: Baseline contract endpoint proving the OpenAPI -> TypeScript client generation pipeline. Public, unauthenticated.
       security: []
       responses:
         '200':
@@ -973,6 +971,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: AGE_VERIFICATION_REQUIRED — only ADULT_VERIFIED accounts may create a generation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Resource absent or not owned by the caller; existence is not disclosed
           content:
@@ -1103,9 +1107,9 @@ paths:
     post:
       operationId: selectGenerationVersion
       summary: Make this generation the selected version of its user message
-      description: 'Java runtime: marks the generation as the selected version (GEN-VER / FR-CHAT-003). Sibling versions stay
-        stored but disappear from default history. Go v1 (ADR-0007): RETIRE; one turn has one final result. Hide H5 version-select
-        in the same slice. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN.'
+      description: 'Retired runtime behavior: marks the generation as the selected version (GEN-VER / FR-CHAT-003). Sibling
+        versions stay stored but disappear from default history. Go v1 (ADR-0007): RETIRE; one turn has one final result.
+        Hide H5 version-select in the same slice. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN.'
       parameters:
       - $ref: '#/components/parameters/GenerationId'
       responses:
@@ -1131,9 +1135,9 @@ paths:
     get:
       operationId: listGenerationVersions
       summary: List generation versions for a user message
-      description: 'Java runtime: returns every generation grouped on this user message, including unselected versions. Go
-        v1 (ADR-0007): RETIRE with selectGenerationVersion; one turn has one final result. Hide H5 version UI in the same
-        slice. A foreign or absent message yields an empty list.'
+      description: 'Retired runtime behavior: returns every generation grouped on this user message, including unselected
+        versions. Go v1 (ADR-0007): RETIRE with selectGenerationVersion; one turn has one final result. Hide H5 version UI
+        in the same slice. A foreign or absent message yields an empty list.'
       parameters:
       - $ref: '#/components/parameters/MessageId'
       responses:
@@ -1183,9 +1187,10 @@ paths:
     get:
       operationId: getGenerationSnapshot
       summary: Read a consistent generation snapshot
-      description: 'Returns the generation status, the final assistant message id (if any), and settled provider usage. Go
-        v1 resumes by snapshot only: no durable event replay exists, and events stays an empty array for wire compatibility
-        with the current H5. A foreign or absent id never discloses existence. Requires a server-verified authentication context.'
+      description: Returns the generation status, the final assistant message id (if any), settled provider usage and the
+        authoritative terminal event once the generation settles. Completed snapshots include the final text before chat.completed;
+        failed, blocked and cancelled snapshots expose only their terminal event. A foreign or absent id never discloses existence.
+        Requires a server-verified authentication context.
       parameters:
       - $ref: '#/components/parameters/GenerationId'
       responses:
@@ -1252,7 +1257,7 @@ paths:
     post:
       operationId: createRealtimeTicket
       summary: Mint a single-use Fetch-SSE resume ticket bound to the caller's generation
-      description: 'Java runtime until Go cutover: mints a short-lived single-use resume ticket via vc.issue_realtime_ticket,
+      description: 'Retired pre-cutover behavior: mints a short-lived single-use resume ticket via vc.issue_realtime_ticket,
         bound to the seven-tuple (owner, generation, session, origin, transport, streamEpoch, afterSeq). Go v1 (ADR-0007):
         RETIRE this operation; SSE authenticates with the normal session cookie. The owner is taken from the server-verified
         principal and never from the body; transport is fixed to FETCH_SSE (the only Alpha realtime transport) and is also
@@ -1294,19 +1299,19 @@ paths:
     get:
       operationId: openRealtimeStream
       summary: Open the Fetch-SSE resume stream for a generation
-      description: 'Java runtime until Go cutover: opens the Fetch-SSE resume stream bound to a single-use ticket from POST
+      description: 'Retired pre-cutover behavior: opens the Fetch-SSE resume stream bound to a single-use ticket from POST
         /api/v1/realtime/tickets. vc.consume_realtime_ticket validates the secret (sha256-only stored), the boundTo seven-tuple,
         single-use and the 45s TTL, failing closed on any mismatch. Go v1 (ADR-0007, SIMPLIFY): same path, no ticket; the
         connection uses the opaque session cookie, Origin check and owner authorization, then a snapshot reconnect. Ticket
-        query parameters and stream.gap/stream.reset are Java-era only. The owner is taken from the server-verified principal
-        and never from the query; transport is fixed to FETCH_SSE. The Java resume cursor afterSeq is carried by the SSE-standard
-        Last-Event-ID header (defaulting to 0 when absent); ticketId, secret, sessionId, origin and streamEpoch are bound
-        via query parameters — the secret is a short-lived single-use credential, not the long-lived token forbidden in the
-        realtime query (h5Security). Java vc.resume_stream returns one of five dispositions, mapped to SSE events: RESUMED
-        and TERMINAL_SNAPSHOT emit the ordered durable events (and the committed snapshot for a terminal generation) then
-        complete; GAP_EXPIRED emits stream.gap; RESET_REQUIRED emits stream.reset; a foreign or absent generation, or any
-        ticket-consume failure, emits stream.denied so existence is never disclosed. A 400 INVALID_REQUEST is returned only
-        before the stream opens, for a malformed or missing parameter.'
+        query parameters and stream.gap/stream.reset belong only to the retired protocol. The owner is taken from the server-verified
+        principal and never from the query; transport is fixed to FETCH_SSE. The retired resume cursor afterSeq is carried
+        by the SSE-standard Last-Event-ID header (defaulting to 0 when absent); ticketId, secret, sessionId, origin and streamEpoch
+        are bound via query parameters — the secret is a short-lived single-use credential, not the long-lived token forbidden
+        in the realtime query (h5Security). The retired vc.resume_stream returns one of five dispositions, mapped to SSE events:
+        RESUMED and TERMINAL_SNAPSHOT emit the ordered durable events (and the committed snapshot for a terminal generation)
+        then complete; GAP_EXPIRED emits stream.gap; RESET_REQUIRED emits stream.reset; a foreign or absent generation, or
+        any ticket-consume failure, emits stream.denied so existence is never disclosed. A 400 INVALID_REQUEST is returned
+        only before the stream opens, for a malformed or missing parameter.'
       parameters:
       - $ref: '#/components/parameters/GenerationId'
       - name: ticketId
@@ -1628,7 +1633,7 @@ paths:
     get:
       operationId: getMemoryAutoSave
       summary: The caller's memory auto-save switch (MEM-AUTO-SAVE, §7.4)
-      description: 'The per-owner deterministic low-sensitivity auto-save switch Java runtime: vc.get_memory_auto_save_pref
+      description: 'The per-owner deterministic low-sensitivity auto-save switch Retired runtime behavior: vc.get_memory_auto_save_pref
         (V66). Default true — §7.4 lists auto-save as the controlled Beta baseline, limited to the fixed low-sensitivity whitelist
         categories; the owner can turn it off at any time. Go v1 (ADR-0007): RETIRE auto-save; candidates are Owner-explicit
         only. Hide the H5 switch in the same slice. Requires a server-verified authentication context.'
@@ -1650,9 +1655,9 @@ paths:
     put:
       operationId: setMemoryAutoSave
       summary: Flip the memory auto-save switch (MEM-AUTO-SAVE, §7.4)
-      description: 'Java runtime: flips the per-owner auto-save switch (vc.set_memory_auto_save_pref, V66). Turning it off
-        stops every future auto-save immediately; already auto-saved rows stay (each is individually deletable). Go v1 (ADR-0007):
-        RETIRE this operation with getMemoryAutoSave. Requires a server-verified authentication context.'
+      description: 'Retired runtime behavior: flips the per-owner auto-save switch (vc.set_memory_auto_save_pref, V66). Turning
+        it off stops every future auto-save immediately; already auto-saved rows stay (each is individually deletable). Go
+        v1 (ADR-0007): RETIRE this operation with getMemoryAutoSave. Requires a server-verified authentication context.'
       security:
       - bearerAuth: []
       requestBody:
@@ -2183,9 +2188,9 @@ paths:
     post:
       operationId: login
       summary: Log in with internal-account credentials
-      description: 'Java runtime until Go cutover: exchanges a username and password for a JWT access token and a refresh
-        session cookie. Go v1 (ADR-0007, SIMPLIFY): the same operation issues a single opaque HttpOnly vc_session cookie and
-        MUST NOT return an access token in the body; POST /auth/refresh is RETIRE. Public. An unknown user and a wrong password
+      description: 'Retired pre-cutover behavior: exchanges a username and password for a JWT access token and a refresh session
+        cookie. Go v1 (ADR-0007, SIMPLIFY): the same operation issues a single opaque HttpOnly vc_session cookie and MUST
+        NOT return an access token in the body; POST /auth/refresh is RETIRE. Public. An unknown user and a wrong password
         are indistinguishable and both map to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed); a DISABLED account maps
         to AUTHENTICATION_REQUIRED. Credentials are never logged, placed in a URL or stored. Before account lookup or password
         verification, a Technical Alpha single-instance admission guard applies route-source and source-plus-canonical-username
@@ -2201,8 +2206,8 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: 'Java runtime: new access token; the refresh session is delivered only through the HttpOnly vc_refresh
-            cookie. Go v1: opaque session cookie only; access token and refresh cookie are retired.'
+          description: 'Retired runtime response: new access token; the refresh session is delivered only through the HttpOnly
+            vc_refresh cookie. Go v1: opaque session cookie only; access token and refresh cookie are retired.'
           content:
             application/json:
               schema:
@@ -2242,12 +2247,12 @@ paths:
     post:
       operationId: refresh
       summary: Renew a session from a refresh token
-      description: 'Java runtime until Go cutover: validates the presented refresh token server-side (unrevoked, unexpired,
+      description: 'Retired pre-cutover behavior: validates the presented refresh token server-side (unrevoked, unexpired,
         ACTIVE account), revokes it and issues a new access token and refresh session. Go v1 (ADR-0007): RETIRE this operation
         together with H5 auto-refresh; opaque vc_session has no refresh chain. Public. An unknown, revoked, expired or DISABLED-account
-        token all map to AUTHENTICATION_REQUIRED; the cause is never disclosed. Before token hashing or session JDBC, a Technical
-        Alpha single-instance admission guard applies route-source and token rolling windows and the same non-blocking concurrency
-        bulkhead. Servlet remoteAddr is authoritative; forwarded client-address headers are ignored.'
+        token all map to AUTHENTICATION_REQUIRED; the cause is never disclosed. Before token hashing or session database access,
+        a Technical Alpha single-instance admission guard applies route-source and token rolling windows and the same non-blocking
+        concurrency bulkhead. Servlet remoteAddr is authoritative; forwarded client-address headers are ignored.'
       security: []
       parameters:
       - in: cookie
@@ -2259,8 +2264,8 @@ paths:
         description: Required HttpOnly refresh cookie; the raw value is never accepted in a request body.
       responses:
         '200':
-          description: 'Java runtime: new access token; the rotated refresh session is delivered only through the HttpOnly
-            vc_refresh cookie. Go v1: this operation is RETIRE.'
+          description: 'Retired runtime response: new access token; the rotated refresh session is delivered only through
+            the HttpOnly vc_refresh cookie. Go v1: this operation is RETIRE.'
           content:
             application/json:
               schema:
@@ -2702,7 +2707,7 @@ paths:
     get:
       operationId: getAdminProviderPlan
       summary: Provider plan status (ADMIN only, DOGFOOD-05)
-      description: 'Java runtime until Go cutover (ADR-0006 §3.3): derived state of the machine-local private provider plan.
+      description: 'Retired pre-cutover behavior (ADR-0006 §3.3): derived state of the machine-local private provider plan.
         VALID means today lies inside the configured applicability window; UNKNOWN means the plan is enabled but its window
         is missing, invalid or expired — the single Owner canary continues, a P2 PROVIDER_PLAN_UNKNOWN alert fires at most
         once per day, and no zero cost or fabricated remaining allowance is ever returned. Go v1 (ADR-0007): this admin operation
@@ -3790,8 +3795,8 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: 'Java runtime until Go cutover: HS256 JWT access token. Go v1 (ADR-0007, Phase 5) replaces this scheme
-        with an opaque HttpOnly vc_session cookie in the same H5 transport slice; JWT and opaque issuers must not coexist.'
+      description: 'Retired pre-cutover behavior: HS256 JWT access token. Go v1 (ADR-0007, Phase 5) replaces this scheme with
+        an opaque HttpOnly vc_session cookie in the same H5 transport slice; JWT and opaque issuers must not coexist.'
     cookieAuth:
       type: apiKey
       in: cookie
@@ -4450,9 +4455,10 @@ components:
           description: Creation timestamp (RFC 3339)
     GenerationSnapshot:
       type: object
-      description: 'A consistent point-in-time read of a generation: status, final assistant message id and settled usage.
-        Go v1 resumes by snapshot only — events is an empty wire-compatibility array, never a delta replay. usage is present
-        only after finalize settles the provider usage (USAGE-VIZ).'
+      description: 'A consistent point-in-time read of a generation: status, final assistant message id, terminal convergence
+        events and settled usage. events is empty while work is non-terminal; after settlement it contains the minimal authoritative
+        snapshot/terminal sequence, never a delta replay. A failed event can carry a stable fault key for user-safe copy.
+        usage is present only after finalize settles the provider usage (USAGE-VIZ).'
       required:
       - status
       - events
@@ -4465,7 +4471,7 @@ components:
           description: Final assistant message id once committed, absent otherwise
         events:
           type: array
-          description: Ordered realtime events up to a consistent point
+          description: Minimal authoritative terminal sequence; empty before settlement
           items:
             type: object
             additionalProperties: true
@@ -5423,7 +5429,7 @@ components:
           maxLength: 1024
           x-utf8-max-bytes: 4096
           pattern: .*\S.*
-          description: Plaintext password (compared in the JVM, never stored or logged)
+          description: Plaintext password (verified in the Go runtime, never stored or logged)
     AdminCreateAccountRequest:
       type: object
       description: Internal-account creation (ADMIN only). Role defaults to USER when omitted; only ADMIN or USER is accepted.
@@ -6518,7 +6524,7 @@ components:
           description: Settled actual cost that day (USD unless the deployment currency differs)
     ProviderPlanStatusItem:
       type: object
-      description: 'Java runtime until Go cutover (ADR-0006 §3.3): derived provider-plan state with operator-supplied plan
+      description: 'Retired pre-cutover behavior (ADR-0006 §3.3): derived provider-plan state with operator-supplied plan
         facts carried verbatim. A cap the private configuration does not state stays null (never zero-substituted) and under
         status UNKNOWN no quota, remaining allowance or cost figure may be displayed. Go v1 (ADR-0007) retires this admin
         schema; missing price or reservation ceiling fail-closes generation instead of allowing UNKNOWN continue.'

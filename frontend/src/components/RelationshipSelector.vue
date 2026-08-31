@@ -4,17 +4,20 @@
       <text>关系加载失败，请重试</text>
     </view>
 
-    <view class="rel-row">
+    <view v-if="relationships.length > 0" class="rel-row">
+      <text class="rel-label">{{ label }}</text>
       <select
         data-testid="relationship-select"
         class="rel-select"
         :value="currentId ?? ''"
-        :disabled="busy || relationships.length === 0"
+        :disabled="busy"
         :aria-busy="status === 'loading'"
-        aria-label="选择关系"
+        :aria-label="label"
         @change="onSelect"
       >
-        <option value="" disabled>选择关系…</option>
+        <option value="" :disabled="!allOptionLabel">
+          {{ allOptionLabel || "选择关系…" }}
+        </option>
         <option
           v-for="rel in relationships"
           :key="rel.relationshipId"
@@ -70,7 +73,22 @@
       data-testid="empty-relationships"
       role="status"
     >
-      <text>{{ emptyRelationshipsText }}</text>
+      <view class="rel-empty__mark" aria-hidden="true">
+        <AppIcon name="sparkle" :size="24" />
+      </view>
+      <view class="rel-empty__copy">
+        <text class="rel-empty__title">还没有陪伴关系</text>
+        <text class="rel-empty__body">{{ emptyRelationshipsText }}</text>
+      </view>
+      <button
+        v-if="!showCreate && emptyActionLabel"
+        class="rel-empty__action"
+        data-testid="empty-relationship-action"
+        @click="$emit('request-create')"
+      >
+        {{ emptyActionLabel }}
+        <AppIcon name="chevron-right" :size="18" />
+      </button>
     </view>
   </view>
 </template>
@@ -85,11 +103,13 @@
 import { computed, defineComponent, ref, type PropType } from "vue";
 
 import type { Relationship } from "@/api/relationship";
+import AppIcon from "@/design-system/AppIcon.vue";
 import { PERSONA_OPTIONS, personaDisplayName } from "@/domain/persona";
 import type { RelationshipStatus } from "@/stores/relationship";
 
 export default defineComponent({
   name: "RelationshipSelector",
+  components: { AppIcon },
   props: {
     relationships: {
       type: Array as PropType<Relationship[]>,
@@ -111,10 +131,23 @@ export default defineComponent({
       type: Boolean,
       default: true,
     },
+    label: {
+      type: String,
+      default: "选择关系",
+    },
+    allOptionLabel: {
+      type: String,
+      default: "",
+    },
+    emptyActionLabel: {
+      type: String,
+      default: "",
+    },
   },
   emits: {
     activate: (id: string) => typeof id === "string",
     create: (personaRef: string) => typeof personaRef === "string",
+    "request-create": () => true,
   },
   setup(props, { emit }) {
     // PERSONA-WIRE: the selected template id from the catalog directory.
@@ -130,15 +163,13 @@ export default defineComponent({
     );
     const emptyRelationshipsText = computed(() =>
       props.showCreate
-        ? "还没有关系。请先新建一条陪伴关系。"
-        : "还没有关系。选择一个人设，创建你的陪伴。",
+        ? "选择一个人设，创建属于你的陪伴。"
+        : "先创建一位陪伴角色，再开始聊天。",
     );
 
     function onSelect(event: Event): void {
       const value = (event.target as HTMLSelectElement).value;
-      if (value) {
-        emit("activate", value);
-      }
+      emit("activate", value);
     }
 
     function onCreate(): void {
@@ -164,41 +195,57 @@ export default defineComponent({
 
 <style scoped>
 .rel-selector {
-  padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
-  margin-bottom: var(--vc-space-4);
-  background: var(--vc-card);
+  margin-bottom: var(--vc-space-5);
   color: var(--vc-ink);
 }
+
 .rel-error {
   padding: var(--vc-space-3);
+  margin-bottom: var(--vc-space-3);
+  border: 1px solid var(--vc-danger-border);
   background: var(--vc-danger-bg);
   color: var(--vc-danger);
   border-radius: var(--vc-radius-s);
-  margin-bottom: var(--vc-space-3);
 }
+
 .rel-row {
-  margin-bottom: var(--vc-space-3);
+  display: grid;
+  gap: var(--vc-space-2);
+  padding-bottom: var(--vc-space-4);
+  border-bottom: 1px solid var(--vc-border);
 }
+
+.rel-label {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  font-weight: 650;
+}
+
 .rel-select {
   width: 100%;
   min-width: 0;
-  min-height: 44px;
-  padding: var(--vc-space-2) var(--vc-space-3);
+  min-height: 48px;
+  padding: 0 var(--vc-space-3);
   border-radius: var(--vc-radius-s);
   border: 1px solid var(--vc-border-strong);
-  background-color: var(--vc-sunken);
+  background-color: var(--vc-card);
   color: var(--vc-ink);
   font: inherit;
   font-size: 16px;
 }
+
+.rel-select:disabled {
+  opacity: 0.58;
+}
+
 .rel-create {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--vc-space-3);
+  margin-top: var(--vc-space-3);
 }
+
 .rel-input {
   /* min-width:0 让 select 能在窄屏收缩；放不下时按钮换到下一行独占。 */
   flex: 1 1 16em;
@@ -229,13 +276,92 @@ export default defineComponent({
   background-color: var(--vc-primary-hover);
 }
 .rel-status {
-  font-size: var(--vc-text-sm);
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--vc-space-3);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
   color: var(--vc-muted);
-  margin-top: var(--vc-space-3);
+  font-size: var(--vc-text-sm);
 }
+
 .rel-empty {
-  font-size: var(--vc-text-sm);
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--vc-space-3);
+  padding: var(--vc-space-5);
+  border: 1px solid var(--vc-primary-border);
+  border-radius: var(--vc-radius-l);
+  background: var(--vc-primary-bg);
+}
+
+.rel-empty__mark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--vc-primary-border);
+  border-radius: 50%;
+  background: var(--vc-card);
+  color: var(--vc-primary);
+}
+
+.rel-empty__copy,
+.rel-empty__title,
+.rel-empty__body {
+  display: block;
+}
+
+.rel-empty__title {
+  color: var(--vc-ink);
+  font-size: var(--vc-text-lg);
+  font-weight: 720;
+}
+
+.rel-empty__body {
+  margin-top: var(--vc-space-1);
   color: var(--vc-muted);
-  margin-top: var(--vc-space-3);
+  font-size: var(--vc-text-sm);
+  line-height: 1.55;
+}
+
+.rel-empty__action {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vc-space-2);
+  min-height: 48px;
+  margin: var(--vc-space-1) 0 0;
+  padding: 0 var(--vc-space-4);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-weight: 700;
+}
+
+.rel-empty__action::after {
+  border: 0;
+}
+
+.rel-empty__action:active {
+  background: var(--vc-primary-hover);
+}
+
+@media (max-width: 360px) {
+  .rel-empty {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: var(--vc-space-2);
+    padding: var(--vc-space-4);
+  }
+
+  .rel-empty__mark {
+    width: 40px;
+    height: 40px;
+  }
 }
 </style>

@@ -46,6 +46,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
         <text class="section-title">账号与安全</text>
         <button data-testid="data-open-account" class="row row-link" @click="goTo('/pages/account/account')">
           查看账号、安全与登录设置
+          <AppIcon class="row-link__chevron" name="chevron-right" :size="18" />
         </button>
       </view>
 
@@ -59,6 +60,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           @click="goTo(companionHref(rel.relationshipId))"
         >
           {{ rel.companionName || personaDisplayName(rel.personaRef) }} · {{ rel.active ? "当前使用" : "未使用" }}
+          <AppIcon class="row-link__chevron" name="chevron-right" :size="18" />
         </button>
         <text v-if="store.relationships.length === 0" class="empty">没有关系记录。</text>
       </view>
@@ -73,6 +75,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           @click="goTo(conversationHref(item))"
         >
           {{ readableConversationTitle(item) }}
+          <AppIcon class="row-link__chevron" name="chevron-right" :size="18" />
         </button>
         <text v-if="store.conversations.length === 0" class="empty">没有会话记录。</text>
       </view>
@@ -87,27 +90,11 @@ Uses existing list APIs; report/appeal status reads the report intake list
           @click="goTo(memoryHref(item))"
         >
           {{ item.summary }}（{{ publicMemoryStatusLabel(item.status) }}）
+          <AppIcon class="row-link__chevron" name="chevron-right" :size="18" />
         </button>
         <EmptyState
           v-if="store.memories.length === 0 && !store.asyncState.failedDomains.includes('memory')"
           message="没有记忆记录。"
-        />
-      </view>
-
-      <view class="section" data-testid="data-reminders">
-        <text class="section-title">提醒（{{ store.reminders.length }}）</text>
-        <button
-          v-for="item in store.reminders.slice(0, 8)"
-          :key="item.reminderId"
-          class="row row-link"
-          data-testid="data-open-reminder"
-          @click="goTo(reminderHref(item.relationshipId))"
-        >
-          {{ item.text }}
-        </button>
-        <EmptyState
-          v-if="store.reminders.length === 0 && !store.asyncState.failedDomains.includes('reminder')"
-          message="没有提醒记录。"
         />
       </view>
 
@@ -121,6 +108,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           @click="goTo('/pages/consent/consent')"
         >
           {{ consentTypeLabel(item.consentType) }} · {{ item.granted ? "已同意" : "已撤回" }}
+          <AppIcon class="row-link__chevron" name="chevron-right" :size="18" />
         </button>
         <text v-if="store.consents.length === 0" class="empty">没有同意记录。</text>
       </view>
@@ -129,6 +117,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
         <text class="section-title">当前使用的模型说明</text>
         <button data-testid="data-open-ai-notice" class="row row-link" @click="goTo('/pages/ai-notice/ai-notice')">
           {{ store.serviceMode?.summary ?? "服务状态尚未读取。" }}
+          <AppIcon class="row-link__chevron" name="chevron-right" :size="18" />
         </button>
       </view>
 
@@ -143,6 +132,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
         >
           {{ REPORT_REASON_LABELS[r.reason] }} ·
           {{ r.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }}
+          <AppIcon class="row-link__chevron" name="chevron-right" :size="18" />
         </button>
         <text v-if="reportStore.loaded && reportStore.reports.length === 0" class="empty" data-testid="data-report-empty">
           还没有提交过举报。
@@ -157,6 +147,8 @@ import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { goTo } from "@/app/navigate";
+import AppIcon from "@/design-system/AppIcon.vue";
 import EmptyState from "@/design-system/EmptyState.vue";
 import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
@@ -172,7 +164,7 @@ import { REPORT_REASON_LABELS, useReportStore } from "@/stores/report";
 
 export default {
   name: "DataPage",
-  components: { ConsumerShell, EmptyState, ErrorNotice, RetryButton },
+  components: { AppIcon, ConsumerShell, EmptyState, ErrorNotice, RetryButton },
   setup() {
     const auth = useAuthStore();
     const store = useDataStore();
@@ -235,28 +227,6 @@ export default {
       });
     }
 
-    function reminderHref(relationshipId: string): string {
-      return buildContextHref("reminder", {
-        relationshipId,
-        knownRelationshipIds: knownRelationshipIds(),
-      });
-    }
-
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only navigation.
-      }
-    }
-
     return {
       auth,
       store,
@@ -272,7 +242,6 @@ export default {
       companionHref,
       conversationHref,
       memoryHref,
-      reminderHref,
     };
   },
 };
@@ -287,14 +256,14 @@ export default {
 }
 
 .section {
-  margin-bottom: var(--vc-space-5);
+  margin-bottom: var(--vc-space-7);
 }
 
 .section-title {
   display: block;
   margin-bottom: var(--vc-space-2);
-  font-size: var(--vc-text-md);
-  font-weight: 600;
+  font-size: var(--vc-text-lg);
+  font-weight: 700;
 }
 
 .section-subtitle {
@@ -397,8 +366,9 @@ export default {
   gap: var(--vc-space-1);
   margin-bottom: var(--vc-space-4);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
+  border-top: 1px solid var(--vc-border);
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: var(--vc-card);
   font-size: var(--vc-text-sm);
 }
@@ -439,5 +409,10 @@ export default {
 
 .row-link::after {
   border: 0;
+}
+
+.row-link__chevron {
+  flex: 0 0 auto;
+  color: var(--vc-muted);
 }
 </style>

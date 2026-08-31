@@ -35,7 +35,7 @@ END $$;
 COMMIT;
 RESET ROLE;
 
--- BETA positive: stage/policy are captured by the SD function, not supplied by Java.
+-- BETA positive: stage/policy are captured by the SD function, not supplied by legacy runtime.
 UPDATE vc.release_gate SET stage='BETA', eval_passed=true,
     policy_version='policy-beta-145', canary_owner_user_id=NULL WHERE id=1;
 BEGIN;
@@ -93,7 +93,7 @@ END $$;
 COMMIT;
 RESET ROLE;
 
--- A partial Java-supplied bundle is rejected before any row is inserted.
+-- A partial legacy runtime-supplied bundle is rejected before any row is inserted.
 BEGIN;
 SELECT vc.set_owner_context(1, 'b145-partial', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|b145-partial', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id=1), 'UTF8'), 'sha256'), 'hex'));
 SET LOCAL ROLE vc_api;

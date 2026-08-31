@@ -56,7 +56,6 @@ type Config struct {
 	Version      Version
 	Database     Database
 	OwnerBinding OwnerBinding
-	JWT          JWT
 	Crypto       Crypto
 	Provider     Provider
 	Budget       Budget
@@ -129,12 +128,6 @@ type Database struct {
 // OwnerBinding is the V27 HMAC key material. Required when Database.DSN is set.
 type OwnerBinding struct {
 	Secret string
-}
-
-// JWT is the migration-window HS256 verifier config. Go never issues JWT.
-type JWT struct {
-	Secret string
-	Issuer string
 }
 
 // Crypto is the at-rest field cipher. Go only writes enc2; enc1/plaintext
@@ -226,10 +219,6 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			TxTimeout: 5 * time.Second,
 		},
 		OwnerBinding: OwnerBinding{Secret: getenv("VC_OWNER_BINDING_SECRET")},
-		JWT: JWT{
-			Secret: getenv("VC_JWT_SECRET"),
-			Issuer: valueOr(strings.TrimSpace(getenv("VC_AUTH_ISSUER")), "virtual-companion"),
-		},
 		Crypto: Crypto{
 			RestKeyID:              valueOr(strings.TrimSpace(getenv("VC_CRYPTO_REST_KEY_ID")), "default"),
 			RestKeyVersion:         1,
@@ -542,14 +531,6 @@ func (c Config) Validate() error {
 		}
 		if len(c.OwnerBinding.Secret) < 32 {
 			return fmt.Errorf("VC_OWNER_BINDING_SECRET must carry at least 32 bytes of key material when VC_DB_DSN is set")
-		}
-	}
-	if c.JWT.Secret != "" {
-		if len(c.JWT.Secret) < 32 {
-			return fmt.Errorf("VC_JWT_SECRET must be at least 256 bits")
-		}
-		if strings.TrimSpace(c.JWT.Issuer) == "" {
-			return fmt.Errorf("VC_AUTH_ISSUER is required when VC_JWT_SECRET is set")
 		}
 	}
 	if c.Crypto.RestKeyBase64 != "" {

@@ -8,6 +8,7 @@ import {
   provisionUser,
   SAFETY_BLOCK_SENTINEL,
   uiLogin,
+  waitForGenerationTerminal,
 } from "../helpers";
 
 function isGenerationResponse(url: string, method: string): boolean {
@@ -26,8 +27,8 @@ test("provider safety and timeout faults surface as safe terminal states", async
 }) => {
   const user = await provisionUser(request, "provider-faults");
   const session = await uiLogin(page, user);
-  await prepareGenerationAccess(session.accessToken);
-  const context = await createRelationshipAndConversation(session.accessToken);
+  await prepareGenerationAccess(session.page);
+  const context = await createRelationshipAndConversation(session.page);
   await navigateToPage(
     page,
     `/pages/chat/chat?relationshipId=${context.relationshipId}&conversationId=${context.conversationId}`,
@@ -56,6 +57,16 @@ test("provider safety and timeout faults surface as safe terminal states", async
   const timeoutAccepted = await timeoutResponse;
   expect(timeoutAccepted.ok()).toBeTruthy();
   expect(timeoutAccepted.headers()["x-request-id"]).toBeTruthy();
+  const timeoutGeneration = (await timeoutAccepted.json()) as {
+    generationId?: unknown;
+  };
+  const timeoutGenerationId = String(timeoutGeneration.generationId ?? "");
+  expect(timeoutGenerationId, "timeout generation id is present").not.toBe("");
+  const terminal = await waitForGenerationTerminal(page, timeoutGenerationId, 20_000);
+  expect(
+    (terminal.body as { status?: unknown })?.status,
+    "the provider timeout is durably terminal before checking its UI copy",
+  ).toBe("FAILED_FINAL");
 
   await expect(page.getByTestId("status")).toHaveText(
     /模型响应超时|模型服务失败|模型服务多次失败，本轮已放弃/,

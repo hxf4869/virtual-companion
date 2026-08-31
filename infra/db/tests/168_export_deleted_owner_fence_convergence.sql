@@ -109,7 +109,7 @@ BEGIN
                 WHERE object_key = v_key AND holder <> 'RECLAIM') THEN
         RAISE EXCEPTION 'E1: the takeover must leave a RECLAIM holder';
     END IF;
-    -- The scheduler deletes the object (real-MinIO proof lives in the Java
+    -- The scheduler deletes the object (real-MinIO proof lives in the legacy runtime
     -- combination test), then releases; re-arming is idempotent.
     IF vc.clear_export_orphan_reclaim(v_key) <> 1 THEN
         RAISE EXCEPTION 'E1: the audit must release its fence';

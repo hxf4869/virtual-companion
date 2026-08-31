@@ -1,113 +1,15 @@
 schemaVersion: 1
 policyId: NO_PAID_SOFTWARE_RUNTIME_PREREQUISITE
 description: >-
-  预录 license 清单：声明 Maven 直接依赖和 frontend 直接依赖的 license family，
+  预录 license 清单：声明 Go 与 frontend 直接依赖的 license family，
   供 scripts/checks/check_licenses.py 与 scripts/checks/license-policy.yaml allowlist 比对。
-  内部模块（com.virtualcompanion:*）标注 INTERNAL。未知或待审查项标注
-  COMMUNITY_FREE_REVIEW_REQUIRED。传递依赖不在此清单（需 cyclonedx SBOM 覆盖）。
-# Maven 直接依赖（跨所有 pom.xml 的 <dependencies> 去重，不含 dependencyManagement BOM import）
-# 实际 = 18 外部 + 9 内部模块 = 27
-mavenDirectDependencies:
-  # --- Spring Boot starters (Apache-2.0) ---
-  - groupId: org.springframework.boot
-    artifactId: spring-boot-starter-actuator
-    licenseFamily: Apache-2.0
-  - groupId: org.springframework.boot
-    artifactId: spring-boot-starter-jdbc
-    licenseFamily: Apache-2.0
-  - groupId: org.springframework.boot
-    artifactId: spring-boot-starter-security
-    licenseFamily: Apache-2.0
-  - groupId: org.springframework.boot
-    artifactId: spring-boot-starter-flyway
-    licenseFamily: Apache-2.0
-  - groupId: org.springframework.boot
-    artifactId: spring-boot-starter-test
-    licenseFamily: Apache-2.0
-    scope: test
-  - groupId: org.springframework.boot
-    artifactId: spring-boot-starter-validation
-    licenseFamily: Apache-2.0
-  - groupId: org.springframework.boot
-    artifactId: spring-boot-starter-webmvc
-    licenseFamily: Apache-2.0
-  # --- Spring Modulith (Apache-2.0) ---
-  - groupId: org.springframework.modulith
-    artifactId: spring-modulith-starter-test
-    licenseFamily: Apache-2.0
-    scope: test
-  # --- Flyway (Apache-2.0) ---
-  - groupId: org.flywaydb
-    artifactId: flyway-core
-    licenseFamily: Apache-2.0
-  - groupId: org.flywaydb
-    artifactId: flyway-database-postgresql
-    licenseFamily: Apache-2.0
-  # --- PostgreSQL JDBC (BSD-2-Clause) ---
-  - groupId: org.postgresql
-    artifactId: postgresql
-    licenseFamily: BSD-2-Clause
-  # --- JUnit (EPL-2.0) ---
-  - groupId: org.junit.jupiter
-    artifactId: junit-jupiter
-    licenseFamily: EPL-2.0
-    scope: test
-  # --- JJWT (Apache-2.0) ---
-  - groupId: io.jsonwebtoken
-    artifactId: jjwt-api
-    licenseFamily: Apache-2.0
-  - groupId: io.jsonwebtoken
-    artifactId: jjwt-impl
-    licenseFamily: Apache-2.0
-    scope: runtime
-  - groupId: io.jsonwebtoken
-    artifactId: jjwt-jackson
-    licenseFamily: Apache-2.0
-    scope: runtime
-  # --- Jackson (Apache-2.0) ---
-  - groupId: tools.jackson.core
-    artifactId: jackson-databind
-    licenseFamily: Apache-2.0
-  # --- Micrometer (Apache-2.0; METRICS-ALERT Prometheus endpoint) ---
-  - groupId: io.micrometer
-    artifactId: micrometer-registry-prometheus
-    licenseFamily: Apache-2.0
-  # --- Jackson 2 (compile, Spring Boot BOM managed; TASK-0184) ---
-  - groupId: com.fasterxml.jackson.core
-    artifactId: jackson-databind
-    licenseFamily: Apache-2.0
-  # --- MinIO Java SDK (Apache-2.0; DOGFOOD-02 本地对象存储消费者) ---
-  - groupId: io.minio
-    artifactId: minio
-    licenseFamily: Apache-2.0
-  # --- 内部模块（INTERNAL） ---
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-catalog
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-conversation
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-model-anthropic
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-model-failure
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-model-fake
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-model-openai
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-modelruntime
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-persistence
-    licenseFamily: INTERNAL
-  - groupId: com.virtualcompanion
-    artifactId: virtual-companion-safety
-    licenseFamily: INTERNAL
+  传递依赖不在此清单（由 CI SBOM 与依赖审计覆盖）。
+# Go 直接依赖（backend/go.mod，排除 // indirect）
+goDirectDependencies:
+  - module: github.com/jackc/pgx/v5
+    licenseFamily: MIT
+  - module: golang.org/x/crypto
+    licenseFamily: BSD-3-Clause
 # frontend 直接依赖（package.json dependencies + devDependencies 去重）
 # 实际 = 6 dependencies + 15 devDependencies = 21
 frontendDirectDependencies:

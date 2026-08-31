@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # TASK-0015: one-shot PostgreSQL 18 + pgvector container that applies the
-# Flyway migrations and runs the numbered cross-tenant fail-closed SQL tests.
+# schema migrations and runs the numbered cross-tenant fail-closed SQL tests.
 #
 # Image version AND digest are frozen by the task card. The container is
 # anonymous (--rm), binds no host port and mounts no volume: tests run via
@@ -25,7 +25,7 @@ DB_PASSWORD="vc"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-MIG_DIR="$REPO_ROOT/service/platform/persistence/src/main/resources/db/migration"
+MIG_DIR="$REPO_ROOT/backend/internal/migrate/sql"
 TEST_DIR="$SCRIPT_DIR/tests"
 LOG_DIR="${VC_DB_LOG_DIR:-$(mktemp -d /tmp/vc-db-logs.XXXXXX)}"
 mkdir -p "$LOG_DIR"

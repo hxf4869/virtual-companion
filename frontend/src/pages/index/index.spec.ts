@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // 首页（关系首页）行为测试：匿名登录入口、线性准入下一步（成年/同意/创建
-// 陪伴）、当前陪伴呈现与"继续聊聊"深链、窄摘要导航（会话/记忆/提醒携带
+// 陪伴）、当前陪伴呈现与"继续聊聊"深链、窄摘要导航（会话/记忆携带
 // relationshipId）、关系加载失败重试、普通用户不可见内部入口。
 // 旧边界台的 alpha-nav/基线预检断言已随 IA 迁移（预检在 ops，入口在我的）。
 import { flushPromises, mount } from "@vue/test-utils";
@@ -26,22 +26,29 @@ const GRANTED_CONSENTS = [
 ];
 
 function stubFetch(options: {
+  authFails?: boolean | (() => boolean);
+  authSessions?: unknown[];
   relationships?: unknown[];
   ageState?: string;
-  ageFails?: boolean;
+  ageFails?: boolean | (() => boolean);
+  consentFails?: boolean;
   consents?: unknown[];
   conversations?: unknown[];
   memories?: unknown[];
-  reminders?: unknown[];
-  fail?: { conversations?: boolean; memories?: boolean; reminders?: boolean };
+  fail?: { conversations?: boolean; memories?: boolean };
 } = {}): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input.toString() : input.toString();
-    if (/\/relationships\/[^/]+\/reminders$/.test(url)) {
-      if (options.fail?.reminders) {
-        return { ok: false, status: 500, json: async () => ({}) };
-      }
-      return { ok: true, status: 200, json: async () => options.reminders ?? [] };
+    if (url === "/api/v1/auth/sessions") {
+      const authFails = typeof options.authFails === "function"
+        ? options.authFails()
+        : options.authFails;
+      if (authFails) throw new TypeError("offline");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => options.authSessions ?? {},
+      };
     }
     if (/\/relationships\/[^/]+\/memories/.test(url)) {
       if (options.fail?.memories) {
@@ -59,7 +66,10 @@ function stubFetch(options: {
       return { ok: true, status: 200, json: async () => options.relationships ?? [] };
     }
     if (url === "/api/v1/age/state") {
-      if (options.ageFails) return { ok: false, status: 500, json: async () => ({}) };
+      const ageFails = typeof options.ageFails === "function"
+        ? options.ageFails()
+        : options.ageFails;
+      if (ageFails) return { ok: false, status: 500, json: async () => ({}) };
       return {
         ok: true,
         status: 200,
@@ -67,6 +77,9 @@ function stubFetch(options: {
       };
     }
     if (url === "/api/v1/consents") {
+      if (options.consentFails) {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
       return { ok: true, status: 200, json: async () => options.consents ?? GRANTED_CONSENTS };
     }
     return { ok: true, status: 200, json: async () => ({}) };
@@ -110,6 +123,39 @@ describe("首页：匿名与会话未知", () => {
     expect(wrapper.find('[data-testid="home-pending"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="next-step"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="home-login"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("会话恢复失败时结束等待并提供可恢复入口", async () => {
+    let authFails = true;
+    stubFetch({
+      authFails: () => authFails,
+      authSessions: [{
+        id: "session-1",
+        createdAt: "2026-08-31T00:00:00Z",
+        expiresAt: "2026-09-01T00:00:00Z",
+        current: true,
+        accountId: "7",
+        role: "USER",
+        passwordMustChange: false,
+      }],
+      relationships: [ACTIVE_RELATIONSHIP],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const pending = wrapper.find('[data-testid="home-pending"]');
+    expect(pending.attributes("data-state")).toBe("error");
+    expect(pending.attributes("role")).toBe("alert");
+    expect(pending.text()).toContain("暂时无法确认登录状态");
+    expect(wrapper.find('[data-testid="session-retry"]').text()).toBe("重新检查");
+
+    authFails = false;
+    await wrapper.find('[data-testid="session-retry"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-pending"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
     wrapper.unmount();
   });
 });
@@ -166,15 +212,39 @@ describe("首页：线性准入（服务端 next-step 为真源）", () => {
     wrapper.unmount();
   });
 
-  it("age 读数失败时保持 unknown，不显示就绪也不编造下一步", async () => {
-    stubFetch({ ageFails: true, relationships: [ACTIVE_RELATIONSHIP] });
+  it("age 读数失败时显示可恢复错误，重新检查成功后继续", async () => {
+    let ageFails = true;
+    stubFetch({ ageFails: () => ageFails, relationships: [ACTIVE_RELATIONSHIP] });
     login();
     const wrapper = mountPage();
     await flushPromises();
 
     const gate = wrapper.find('[data-testid="admission-gate"]');
     expect(gate.exists()).toBe(true);
-    expect(gate.attributes("data-state")).toBe("unknown");
+    expect(gate.attributes("data-state")).toBe("error");
+    expect(gate.text()).toContain("读取失败");
+    expect(wrapper.find('[data-testid="admission-retry"]').text()).toBe("重新检查");
+    expect(wrapper.find('[data-testid="next-step"]').exists()).toBe(false);
+
+    ageFails = false;
+    await wrapper.find('[data-testid="admission-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="admission-gate"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("同意记录读取失败时同样提供重新检查，不停在无操作等待态", async () => {
+    stubFetch({ consentFails: true, relationships: [ACTIVE_RELATIONSHIP] });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const gate = wrapper.find('[data-testid="admission-gate"]');
+    expect(gate.attributes("data-state")).toBe("error");
+    expect(gate.attributes("role")).toBe("alert");
+    expect(gate.text()).toContain("同意记录读取失败");
+    expect(wrapper.find('[data-testid="admission-retry"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="next-step"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -261,10 +331,7 @@ describe("首页：关系就绪后的主任务与摘要", () => {
     expect(navigateTo()).toHaveBeenLastCalledWith({
       url: "/pages/memory/memory?relationshipId=rel-index-1",
     });
-    await wrapper.find('[data-testid="home-row-reminder"]').trigger("click");
-    expect(navigateTo()).toHaveBeenLastCalledWith({
-      url: "/pages/reminder/reminder?relationshipId=rel-index-1",
-    });
+    expect(wrapper.find('[data-testid="home-row-reminder"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -336,22 +403,13 @@ describe("首页：关系就绪后的主任务与摘要", () => {
     wrapper.unmount();
   });
 
-  it("会话路失败时只标记会话行，记忆与提醒不受污染", async () => {
+  it("会话路失败时只标记会话行，记忆不受污染", async () => {
     stubFetch({
       relationships: [ACTIVE_RELATIONSHIP],
       conversations: [],
       memories: [
         { memoryId: "m1", scope: "RELATIONSHIP", status: "PENDING_CONFIRMATION", summary: "s" },
       ],
-      reminders: [{
-      reminderId: "r1",
-      relationshipId: "rel-index-1",
-      text: "周五提醒我浇水",
-      remindAt: "2026-08-28T09:00:00Z",
-      recurrence: "NONE",
-      status: "ACTIVE",
-      createdAt: "2026-08-20T00:00:00Z",
-    }],
       fail: { conversations: true },
     });
     login();
@@ -367,13 +425,11 @@ describe("首页：关系就绪后的主任务与摘要", () => {
     expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
       "1 条记忆等你确认",
     );
-    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
-      "周五提醒我浇水",
-    );
+    expect(wrapper.find('[data-testid="home-next-reminder"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("记忆路失败时不冒充空成功，会话与提醒照常成功", async () => {
+  it("记忆路失败时不冒充空成功，会话照常成功", async () => {
     stubFetch({
       relationships: [ACTIVE_RELATIONSHIP],
       conversations: [
@@ -398,33 +454,7 @@ describe("首页：关系就绪后的主任务与摘要", () => {
     expect(
       wrapper.find('[data-testid="home-latest-conversation"]').text(),
     ).toContain("上次聊到一半的事");
-    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
-      "没有待处理的提醒",
-    );
-    wrapper.unmount();
-  });
-
-  it("提醒路失败时只标记提醒行，其余摘要成功", async () => {
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      fail: { reminders: true },
-    });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
-      "加载失败，点开可重试",
-    );
-    expect(
-      wrapper.find('[data-testid="home-row-reminder"]').attributes("data-state"),
-    ).toBe("error");
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).toContain("还没有会话");
-    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
-      "没有待确认的记忆",
-    );
+    expect(wrapper.find('[data-testid="home-next-reminder"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -441,15 +471,6 @@ describe("首页：关系就绪后的主任务与摘要", () => {
       memories: [
         { memoryId: "m1", scope: "RELATIONSHIP", status: "PENDING_CONFIRMATION", summary: "s" },
       ],
-      reminders: [{
-      reminderId: "r1",
-      relationshipId: "rel-index-1",
-      text: "周五提醒我浇水",
-      remindAt: "2026-08-28T09:00:00Z",
-      recurrence: "NONE",
-      status: "ACTIVE",
-      createdAt: "2026-08-20T00:00:00Z",
-    }],
     });
     login();
     const wrapper = mountPage();
@@ -458,7 +479,7 @@ describe("首页：关系就绪后的主任务与摘要", () => {
     // 第二轮全部失败：旧值保留并标注"较早数据"，不冒充成功也不误报空。
     stubFetch({
       relationships: [ACTIVE_RELATIONSHIP],
-      fail: { conversations: true, memories: true, reminders: true },
+      fail: { conversations: true, memories: true },
     });
     await (wrapper.vm as unknown as { loadSummaries: () => Promise<void> }).loadSummaries();
     await flushPromises();
@@ -471,9 +492,6 @@ describe("首页：关系就绪后的主任务与摘要", () => {
     ).toBe("stale");
     expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
       "1 条记忆等你确认（较早数据）",
-    );
-    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
-      "周五提醒我浇水（较早数据）",
     );
     wrapper.unmount();
   });
