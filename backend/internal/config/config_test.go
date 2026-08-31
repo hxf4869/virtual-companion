@@ -78,6 +78,34 @@ func TestHTTPOrigins(t *testing.T) {
 	}
 }
 
+func TestHTTPTrustProxyHeaders(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadEnv(env(map[string]string{"VC_MODE": "full"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HTTP.TrustProxyHeaders {
+		t.Fatal("proxy headers must be ignored by default")
+	}
+	cfg, err = LoadEnv(env(map[string]string{
+		"VC_MODE":                     "full",
+		"VC_HTTP_TRUST_PROXY_HEADERS": "true",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.HTTP.TrustProxyHeaders {
+		t.Fatal("trusted proxy setting was not loaded")
+	}
+	_, err = LoadEnv(env(map[string]string{
+		"VC_MODE":                     "full",
+		"VC_HTTP_TRUST_PROXY_HEADERS": "sometimes",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_HTTP_TRUST_PROXY_HEADERS") {
+		t.Fatalf("expected trusted proxy validation error, got %v", err)
+	}
+}
+
 func TestPprofMustBeLoopback(t *testing.T) {
 	t.Parallel()
 	_, err := LoadEnv(env(map[string]string{
@@ -146,6 +174,73 @@ func TestDatabaseRequiresOwnerBindingSecret(t *testing.T) {
 	}
 	if cfg.Crypto.RestKeyID != "default" || cfg.Crypto.RestKeyVersion != 1 {
 		t.Fatalf("crypto %+v", cfg.Crypto)
+	}
+}
+
+func TestFullDatabaseRequiresCryptoAndExportS3(t *testing.T) {
+	t.Parallel()
+	base := map[string]string{
+		"VC_MODE":                 "full",
+		"VC_DB_DSN":               "postgres://vc_runtime_login@127.0.0.1:5432/vc",
+		"VC_OWNER_BINDING_SECRET": "0123456789abcdef0123456789abcdef",
+	}
+	_, err := LoadEnv(env(base))
+	if err == nil || !strings.Contains(err.Error(), "VC_CRYPTO_REST_KEY") {
+		t.Fatalf("expected rest key error, got %v", err)
+	}
+
+	withCrypto := mergeEnv(base, map[string]string{
+		"VC_CRYPTO_REST_KEY": "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=",
+	})
+	for _, missing := range []string{
+		"VC_EXPORT_S3_ENDPOINT",
+		"VC_EXPORT_S3_ACCESS_KEY",
+		"VC_EXPORT_S3_SECRET_KEY",
+		"VC_EXPORT_S3_BUCKET",
+	} {
+		values := mergeEnv(withCrypto, map[string]string{
+			"VC_EXPORT_S3_ENDPOINT":   "http://minio:9000",
+			"VC_EXPORT_S3_ACCESS_KEY": "access-key",
+			"VC_EXPORT_S3_SECRET_KEY": "secret-key",
+			"VC_EXPORT_S3_BUCKET":     "exports",
+		})
+		delete(values, missing)
+		_, err := LoadEnv(env(values))
+		if err == nil || !strings.Contains(err.Error(), missing) {
+			t.Fatalf("missing %s: got %v", missing, err)
+		}
+	}
+
+	valid := mergeEnv(withCrypto, map[string]string{
+		"VC_EXPORT_S3_ENDPOINT":   "http://minio:9000",
+		"VC_EXPORT_S3_ACCESS_KEY": "access-key",
+		"VC_EXPORT_S3_SECRET_KEY": "secret-key",
+		"VC_EXPORT_S3_BUCKET":     "exports",
+	})
+	cfg, err := LoadEnv(env(valid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ExportS3.Endpoint != "http://minio:9000" || cfg.ExportS3.Bucket != "exports" {
+		t.Fatalf("export S3 config %+v", cfg.ExportS3)
+	}
+
+	invalid := mergeEnv(valid, map[string]string{"VC_EXPORT_S3_ENDPOINT": "minio:9000"})
+	_, err = LoadEnv(env(invalid))
+	if err == nil || !strings.Contains(err.Error(), "VC_EXPORT_S3_ENDPOINT") {
+		t.Fatalf("expected endpoint validation error, got %v", err)
+	}
+}
+
+func TestAPIMigrationDatabaseDoesNotRequireRuntimeCryptoOrS3(t *testing.T) {
+	t.Parallel()
+	_, err := LoadEnv(env(map[string]string{
+		"VC_MODE":                 "api-migration",
+		"VC_DB_DSN":               "postgres://vc_runtime_login@127.0.0.1:5432/vc",
+		"VC_OWNER_BINDING_SECRET": "0123456789abcdef0123456789abcdef",
+	}))
+	if err != nil {
+		t.Fatalf("api-migration must not require runtime crypto/S3: %v", err)
 	}
 }
 

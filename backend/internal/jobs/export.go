@@ -76,11 +76,12 @@ func (l *Loop) handleExportWithKey(
 			_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_INTENT")
 			return err
 		}
-		if err := l.blobs.Put(ctx, key, payload); err != nil {
+		storedBytes, err := l.blobs.Put(ctx, key, payload)
+		if err != nil {
 			_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_PUT")
 			return err
 		}
-		if err := l.store.CompleteExportObject(ctx, c.OwnerID, c.RefID, key, int64(len(payload)), expires); err != nil {
+		if err := l.store.CompleteExportObject(ctx, c.OwnerID, c.RefID, key, storedBytes, expires); err != nil {
 			_ = l.blobs.Delete(ctx, key)
 			_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_SEAL")
 			return err

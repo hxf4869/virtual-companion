@@ -158,7 +158,7 @@ type Loop struct {
 
 // BlobStore is the approved export object store. Nil means inline payload.
 type BlobStore interface {
-	Put(ctx context.Context, key string, data []byte) error
+	Put(ctx context.Context, key string, data []byte) (storedBytes int64, err error)
 	Delete(ctx context.Context, key string) error
 }
 

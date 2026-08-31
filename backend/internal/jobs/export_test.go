@@ -13,11 +13,12 @@ import (
 
 type exportTestStore struct {
 	Store
-	mu        sync.Mutex
-	events    []string
-	objectKey string
-	jobStatus string
-	jobReason string
+	mu          sync.Mutex
+	events      []string
+	objectKey   string
+	objectBytes int64
+	jobStatus   string
+	jobReason   string
 }
 
 func (s *exportTestStore) GetExport(context.Context, int64, int64) (postgres.Export, error) {
@@ -40,12 +41,13 @@ func (s *exportTestStore) RecordExportUploadIntent(_ context.Context, _, _ int64
 	return 1, nil
 }
 
-func (s *exportTestStore) CompleteExportObject(_ context.Context, _, _ int64, key string, _ int64, _ time.Time) error {
+func (s *exportTestStore) CompleteExportObject(_ context.Context, _, _ int64, key string, objectBytes int64, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if key != s.objectKey {
 		return errors.New("object key changed before seal")
 	}
+	s.objectBytes = objectBytes
 	s.events = append(s.events, "seal")
 	return nil
 }
@@ -60,17 +62,27 @@ func (s *exportTestStore) CompleteJob(_ context.Context, _ int64, _ int64, _, _,
 }
 
 type exportTestBlob struct {
-	store *exportTestStore
+	store          *exportTestStore
+	storedBytes    int64
+	plaintextBytes int64
+	putErr         error
 }
 
-func (b *exportTestBlob) Put(_ context.Context, key string, _ []byte) error {
+func (b *exportTestBlob) Put(_ context.Context, key string, data []byte) (int64, error) {
 	b.store.mu.Lock()
 	defer b.store.mu.Unlock()
 	if key != b.store.objectKey {
-		return errors.New("put key differs from upload intent")
+		return 0, errors.New("put key differs from upload intent")
 	}
+	b.plaintextBytes = int64(len(data))
 	b.store.events = append(b.store.events, "put")
-	return nil
+	if b.putErr != nil {
+		return 0, b.putErr
+	}
+	if b.storedBytes == 0 {
+		b.storedBytes = b.plaintextBytes
+	}
+	return b.storedBytes, nil
 }
 
 func (*exportTestBlob) Delete(context.Context, string) error { return nil }
@@ -127,8 +139,9 @@ func TestExportRandomFailureFailsJobBeforeIntentOrPut(t *testing.T) {
 
 func TestExportObjectOrderIsIntentPutSeal(t *testing.T) {
 	store := &exportTestStore{}
+	blob := &exportTestBlob{store: store, storedBytes: 777}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, &exportTestBlob{store: store})
+	loop.Use(store, nil, nil, blob)
 	claim := postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindExport, RefID: 9, Token: "token", Fence: "fence"}
 	err := loop.handleExportWithKey(context.Background(), claim, func(int64, int64) (string, error) {
 		return "exports/7/9-0123456789abcdef.json", nil
@@ -146,6 +159,40 @@ func TestExportObjectOrderIsIntentPutSeal(t *testing.T) {
 		if store.events[i] != want[i] {
 			t.Fatalf("events %v, want %v", store.events, want)
 		}
+	}
+	if store.objectBytes != blob.storedBytes {
+		t.Fatalf("sealed object bytes=%d, want stored bytes=%d", store.objectBytes, blob.storedBytes)
+	}
+	if store.objectBytes == blob.plaintextBytes {
+		t.Fatalf("test requires stored bytes (%d) to differ from plaintext bytes", store.objectBytes)
+	}
+}
+
+func TestExportPutFailureDoesNotSeal(t *testing.T) {
+	store := &exportTestStore{}
+	wantErr := errors.New("put failed")
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, nil, nil, &exportTestBlob{store: store, putErr: wantErr})
+	claim := postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindExport, RefID: 9, Token: "token", Fence: "fence"}
+	err := loop.handleExportWithKey(context.Background(), claim, func(int64, int64) (string, error) {
+		return "exports/7/9-0123456789abcdef.json", nil
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error %v, want %v", err, wantErr)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	want := []string{"intent", "put", "job:FAILED"}
+	if len(store.events) != len(want) {
+		t.Fatalf("events %v, want %v", store.events, want)
+	}
+	for i := range want {
+		if store.events[i] != want[i] {
+			t.Fatalf("events %v, want %v", store.events, want)
+		}
+	}
+	if store.jobReason != "EXPORT_PUT" || store.objectBytes != 0 {
+		t.Fatalf("reason=%q sealed bytes=%d", store.jobReason, store.objectBytes)
 	}
 }
 

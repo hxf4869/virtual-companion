@@ -57,10 +57,20 @@ type Config struct {
 	Database     Database
 	OwnerBinding OwnerBinding
 	Crypto       Crypto
+	ExportS3     ExportS3
 	Provider     Provider
 	Budget       Budget
 	Session      Session
 	Concurrency  Concurrency
+}
+
+// ExportS3 is the one supported export object store. Runtime access is
+// deliberately narrower than a general S3 configuration surface.
+type ExportS3 struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
 }
 
 // Concurrency is runtime admission, not a per-turn budget (§10.6).
@@ -142,8 +152,9 @@ type Crypto struct {
 }
 
 type HTTP struct {
-	Addr           string
-	AllowedOrigins []string
+	Addr              string
+	AllowedOrigins    []string
+	TrustProxyHeaders bool
 }
 
 type Log struct {
@@ -201,8 +212,9 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Mode: Mode(strings.TrimSpace(getenv("VC_MODE"))),
 		HTTP: HTTP{
-			Addr:           valueOr(strings.TrimSpace(getenv("VC_HTTP_ADDR")), "127.0.0.1:8080"),
-			AllowedOrigins: origins,
+			Addr:              valueOr(strings.TrimSpace(getenv("VC_HTTP_ADDR")), "127.0.0.1:8080"),
+			AllowedOrigins:    origins,
+			TrustProxyHeaders: false,
 		},
 		Log:   Log{Level: valueOr(strings.ToLower(strings.TrimSpace(getenv("VC_LOG_LEVEL"))), "info")},
 		Pprof: Pprof{Addr: strings.TrimSpace(getenv("VC_PPROF_ADDR"))},
@@ -226,6 +238,12 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			PreviousRestKeyID:      strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY_ID")),
 			PreviousRestKeyVersion: 0,
 			PreviousRestKeyBase64:  strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY")),
+		},
+		ExportS3: ExportS3{
+			Endpoint:  strings.TrimSpace(getenv("VC_EXPORT_S3_ENDPOINT")),
+			AccessKey: strings.TrimSpace(getenv("VC_EXPORT_S3_ACCESS_KEY")),
+			SecretKey: getenv("VC_EXPORT_S3_SECRET_KEY"),
+			Bucket:    strings.TrimSpace(getenv("VC_EXPORT_S3_BUCKET")),
 		},
 		Provider: Provider{
 			ID:                valueOr(strings.TrimSpace(getenv("VC_PROVIDER_ID")), "openai-compatible"),
@@ -267,6 +285,16 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			ClaimLimit:          8,
 			RecoverInterval:     5 * time.Second,
 		},
+	}
+	if raw := strings.TrimSpace(getenv("VC_HTTP_TRUST_PROXY_HEADERS")); raw != "" {
+		switch strings.ToLower(raw) {
+		case "true", "1":
+			cfg.HTTP.TrustProxyHeaders = true
+		case "false", "0":
+			cfg.HTTP.TrustProxyHeaders = false
+		default:
+			return Config{}, fmt.Errorf("VC_HTTP_TRUST_PROXY_HEADERS must be true or false")
+		}
 	}
 	if raw := strings.TrimSpace(getenv("VC_SHUTDOWN_TIMEOUT")); raw != "" {
 		d, err := time.ParseDuration(raw)
@@ -533,6 +561,17 @@ func (c Config) Validate() error {
 			return fmt.Errorf("VC_OWNER_BINDING_SECRET must carry at least 32 bytes of key material when VC_DB_DSN is set")
 		}
 	}
+	if c.Mode == ModeFull && c.Database.DSN != "" {
+		if strings.TrimSpace(c.Crypto.RestKeyBase64) == "" {
+			return fmt.Errorf("VC_CRYPTO_REST_KEY is required when VC_MODE=full and VC_DB_DSN is set")
+		}
+		if c.Crypto.RestKeyVersion <= 0 {
+			return fmt.Errorf("VC_CRYPTO_REST_KEY_VERSION must be a positive integer")
+		}
+		if err := c.ExportS3.validate(); err != nil {
+			return err
+		}
+	}
 	if c.Crypto.RestKeyBase64 != "" {
 		if err := requireAESKey(c.Crypto.RestKeyBase64); err != nil {
 			return fmt.Errorf("VC_CRYPTO_REST_KEY: %w", err)
@@ -617,6 +656,31 @@ func (c Config) Validate() error {
 		return fmt.Errorf("VC_JOB_RECOVER_INTERVAL must be between 1s and 1m")
 	}
 	return c.Budget.validate(c.Provider)
+}
+
+func (s ExportS3) validate() error {
+	required := []struct {
+		name  string
+		value string
+	}{
+		{"VC_EXPORT_S3_ENDPOINT", s.Endpoint},
+		{"VC_EXPORT_S3_ACCESS_KEY", s.AccessKey},
+		{"VC_EXPORT_S3_SECRET_KEY", s.SecretKey},
+		{"VC_EXPORT_S3_BUCKET", s.Bucket},
+	}
+	for _, item := range required {
+		if strings.TrimSpace(item.value) == "" {
+			return fmt.Errorf("%s is required when VC_MODE=full and VC_DB_DSN is set", item.name)
+		}
+	}
+	u, err := url.Parse(s.Endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("VC_EXPORT_S3_ENDPOINT must be an absolute http(s) URL")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return fmt.Errorf("VC_EXPORT_S3_ENDPOINT must not include user info, path, query, or fragment")
+	}
+	return nil
 }
 
 const (

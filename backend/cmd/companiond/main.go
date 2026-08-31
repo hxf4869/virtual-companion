@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/app"
+	"github.com/hxf4869/virtual-companion/internal/blobstore"
 	"github.com/hxf4869/virtual-companion/internal/bootstrap"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/jobs"
@@ -112,9 +114,31 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 	if cfg.Mode != config.ModeFull || cfg.Database.DSN == "" {
 		return app.Deps{}, nil
 	}
+	cipher, err := postgres.NewFieldCipherWithPrevious(
+		cfg.Crypto.RestKeyID,
+		cfg.Crypto.RestKeyVersion,
+		cfg.Crypto.RestKeyBase64,
+		cfg.Crypto.PreviousRestKeyID,
+		cfg.Crypto.PreviousRestKeyVersion,
+		cfg.Crypto.PreviousRestKeyBase64,
+	)
+	if err != nil {
+		return app.Deps{}, fmt.Errorf("rest cipher: %w", err)
+	}
+	checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	blobs, err := blobstore.New(checkCtx, blobstore.Config{
+		Endpoint:  cfg.ExportS3.Endpoint,
+		AccessKey: cfg.ExportS3.AccessKey,
+		SecretKey: cfg.ExportS3.SecretKey,
+		Bucket:    cfg.ExportS3.Bucket,
+	}, cipher)
+	if err != nil {
+		return app.Deps{}, err
+	}
 	hub := realtime.New()
 	loop := jobs.NewLoop(log, jobs.PolicyFrom(cfg), app.TurnBudget(cfg))
-	loop.Use(nil, nil, hub, nil)
+	loop.Use(nil, nil, hub, blobs)
 	factory := modelprovider.Factory{
 		ConnectTimeout:    cfg.Provider.ConnectTimeout,
 		FirstTokenTimeout: cfg.Provider.FirstTokenTimeout,
@@ -140,7 +164,7 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 		if err != nil {
 			return app.Deps{}, err
 		}
-		loop.Use(nil, ad, hub, nil)
+		loop.Use(nil, ad, hub, blobs)
 	}
 	return app.Deps{
 		Lease:            postgres.NewPlaneLease(cfg.Database.DSN),
@@ -149,5 +173,7 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 		Provider:         jobs.ProviderPlane(),
 		Realtime:         jobs.RealtimePlane(),
 		GenerationWorker: jobs.GenerationWorkerPlane(),
+		Cipher:           cipher,
+		Blobs:            blobs,
 	}, nil
 }

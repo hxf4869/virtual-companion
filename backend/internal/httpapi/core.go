@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -86,11 +88,9 @@ type CompanionStore interface {
 	ChangePasswordHash(ctx context.Context, accountID int64, passwordHash string) error
 }
 
-// BlobStore is the isolation object store for export envelopes. Production
-// G8 leaves this nil; G10 wires approved export storage. Isolation tests
-// use an in-memory fake that never reaches MinIO or a provider.
+// BlobStore is the HTTP read/delete surface of the configured export object
+// store. Isolation tests use an in-memory fake that never reaches MinIO.
 type BlobStore interface {
-	Put(ctx context.Context, key string, data []byte) error
 	Get(ctx context.Context, key string) ([]byte, error)
 	Delete(ctx context.Context, key string) error
 }
@@ -232,6 +232,49 @@ func passwordChangeAllowed(path string) bool {
 	default:
 		return false
 	}
+}
+
+// authRequestSource returns the direct peer unless this runtime is explicitly
+// behind the one trusted reverse proxy configured by deployment. Proxy chains
+// are intentionally unsupported: only one header value containing one IP is
+// accepted.
+func (s *Server) authRequestSource(r *http.Request) string {
+	trust := s != nil && s.cfg.HTTP.TrustProxyHeaders
+	return requestSourceFrom(r, trust)
+}
+
+func requestSourceFrom(r *http.Request, trustProxyHeaders bool) string {
+	if r == nil {
+		return ""
+	}
+	direct := remoteHost(r.RemoteAddr)
+	if !trustProxyHeaders {
+		return direct
+	}
+	values := r.Header.Values("X-Forwarded-For")
+	if len(values) != 1 {
+		return direct
+	}
+	raw := strings.TrimSpace(values[0])
+	if raw == "" || strings.Contains(raw, ",") {
+		return direct
+	}
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return direct
+	}
+	return ip.String()
+}
+
+func remoteHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
 }
 
 func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {

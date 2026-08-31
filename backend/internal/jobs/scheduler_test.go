@@ -67,7 +67,9 @@ type schedulerTestBlob struct {
 	deleteErr   error
 }
 
-func (*schedulerTestBlob) Put(context.Context, string, []byte) error { return nil }
+func (*schedulerTestBlob) Put(_ context.Context, _ string, data []byte) (int64, error) {
+	return int64(len(data)), nil
+}
 
 func (b *schedulerTestBlob) Delete(context.Context, string) error {
 	b.mu.Lock()

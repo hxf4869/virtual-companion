@@ -8,6 +8,8 @@ description: >-
 goDirectDependencies:
   - module: github.com/jackc/pgx/v5
     licenseFamily: MIT
+  - module: github.com/minio/minio-go/v7
+    licenseFamily: Apache-2.0
   - module: golang.org/x/crypto
     licenseFamily: BSD-3-Clause
 # frontend 直接依赖（package.json dependencies + devDependencies 去重）

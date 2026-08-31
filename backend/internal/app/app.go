@@ -42,6 +42,12 @@ type Lease interface {
 	Release(ctx context.Context) error
 }
 
+// BlobStore is the single concrete export store shared by jobs and HTTP.
+type BlobStore interface {
+	jobs.BlobStore
+	httpapi.BlobStore
+}
+
 // Deps is the explicit composition root. No DI container.
 type Deps struct {
 	Provider         Plane
@@ -50,6 +56,8 @@ type Deps struct {
 	Scheduler        Plane
 	GenerationWorker Plane
 	Lease            Lease
+	Cipher           *postgres.FieldCipher
+	Blobs            BlobStore
 }
 
 type Runtime struct {
@@ -79,6 +87,14 @@ func New(cfg config.Config, log *slog.Logger, deps Deps) (*Runtime, error) {
 	}
 	if err := requireLeaseForPlanes(cfg, deps); err != nil {
 		return nil, err
+	}
+	if cfg.Mode == config.ModeFull && cfg.Database.DSN != "" {
+		if deps.Cipher == nil {
+			return nil, fmt.Errorf("full database runtime requires the configured rest cipher")
+		}
+		if deps.Blobs == nil {
+			return nil, fmt.Errorf("full database runtime requires the configured export object store")
+		}
 	}
 	if log == nil {
 		log = observability.NewLogger(cfg.Log.Level, nil)
@@ -279,20 +295,8 @@ func (r *Runtime) openStore(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
-	if r.cfg.Crypto.RestKeyBase64 != "" {
-		ciph, err := postgres.NewFieldCipherWithPrevious(
-			r.cfg.Crypto.RestKeyID,
-			r.cfg.Crypto.RestKeyVersion,
-			r.cfg.Crypto.RestKeyBase64,
-			r.cfg.Crypto.PreviousRestKeyID,
-			r.cfg.Crypto.PreviousRestKeyVersion,
-			r.cfg.Crypto.PreviousRestKeyBase64,
-		)
-		if err != nil {
-			store.Close()
-			return fmt.Errorf("rest cipher: %w", err)
-		}
-		store.UseCipher(ciph)
+	if r.deps.Cipher != nil {
+		store.UseCipher(r.deps.Cipher)
 	}
 	r.store = store
 	r.metrics.SetDBStatsSource(func() observability.DBStats {
@@ -324,6 +328,7 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 		Limiter:   auth.NewLimiter(),
 		Turns:     r.store,
 		Providers: r.store,
+		Blobs:     r.deps.Blobs,
 	}
 	if loop, ok := r.deps.Jobs.(*jobs.Loop); ok {
 		core.Cancels = loop.Cancels()

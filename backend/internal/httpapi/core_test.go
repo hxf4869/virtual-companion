@@ -408,6 +408,37 @@ func TestCreateListActivateDeactivateDelete(t *testing.T) {
 	}
 }
 
+func TestRequestSourceFromTrustedProxy(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		trust      bool
+		headers    []string
+		remoteAddr string
+		want       string
+	}{
+		{name: "disabled ignores spoofed header", headers: []string{"203.0.113.9"}, remoteAddr: "127.0.0.1:43120", want: "127.0.0.1"},
+		{name: "enabled accepts one IPv4", trust: true, headers: []string{"203.0.113.9"}, remoteAddr: "127.0.0.1:43120", want: "203.0.113.9"},
+		{name: "enabled accepts one IPv6", trust: true, headers: []string{"2001:db8::7"}, remoteAddr: "[::1]:43120", want: "2001:db8::7"},
+		{name: "missing falls back", trust: true, remoteAddr: "127.0.0.1:43120", want: "127.0.0.1"},
+		{name: "invalid falls back", trust: true, headers: []string{"not-an-ip"}, remoteAddr: "127.0.0.1:43120", want: "127.0.0.1"},
+		{name: "comma chain falls back", trust: true, headers: []string{"203.0.113.9, 127.0.0.1"}, remoteAddr: "127.0.0.1:43120", want: "127.0.0.1"},
+		{name: "multiple fields fall back", trust: true, headers: []string{"203.0.113.9", "198.51.100.8"}, remoteAddr: "127.0.0.1:43120", want: "127.0.0.1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+			r.RemoteAddr = tt.remoteAddr
+			for _, value := range tt.headers {
+				r.Header.Add("X-Forwarded-For", value)
+			}
+			if got := requestSourceFrom(r, tt.trust); got != tt.want {
+				t.Fatalf("source %q want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRetiredAndGenerationRoutesStayUnmapped(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "full", newMemStore())
