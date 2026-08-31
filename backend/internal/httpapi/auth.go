@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,11 +56,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	if known && ident.Status != "ACTIVE" {
-		_ = s.core.Passwords.MatchStored(password, ident.PasswordHash, true)
-		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
-		return
-	}
 	match := known && ident.Status == "ACTIVE"
 	if !s.core.Passwords.MatchStored(password, ident.PasswordHash, match) {
 		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
@@ -92,7 +86,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := auth.CookieToken(r)
-	_ = s.core.Store.RevokeOpaqueSessionHash(r.Context(), auth.TokenHash(token))
+	if err := s.core.Store.RevokeOpaqueSessionHash(r.Context(), auth.TokenHash(token)); err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
 	s.clearSessionCookies(w)
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -235,7 +232,7 @@ func (s *Server) admitAuth(w http.ResponseWriter, r *http.Request, kind, account
 	if s.core == nil || s.core.Limiter == nil {
 		return true
 	}
-	if retry, ok := s.core.Limiter.Allow(kind, requestSource(r), account); !ok {
+	if retry, ok := s.core.Limiter.Allow(kind, s.authRequestSource(r), account); !ok {
 		s.writeRateLimited(w, retry)
 		return false
 	}
@@ -309,17 +306,6 @@ func (s *Server) sessionTTL() time.Duration {
 		return s.cfg.Session.TTL
 	}
 	return auth.DefaultSessionTTL
-}
-
-func requestSource(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 func validUsername(username string) bool {

@@ -142,21 +142,16 @@ func (s *Store) RecordOpaqueReauth(ctx context.Context, accountID, sessionID int
 }
 
 func (s *Store) ChangePasswordHash(ctx context.Context, accountID int64, passwordHash string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	var ok bool
-	err := s.pool.QueryRow(ctx, `SELECT vc.identity_change_password($1, $2)`, accountID, passwordHash).Scan(&ok)
-	if err != nil {
-		return mapStoreErr(err)
-	}
-	if !ok {
-		return ErrNotFound
-	}
-	if _, err := s.RevokeAllOpaqueSessions(ctx, accountID); err != nil {
-		return err
-	}
-	return nil
+	return s.WithOwner(ctx, accountID, func(ctx context.Context, tx pgx.Tx) error {
+		var ok bool
+		if err := tx.QueryRow(ctx, `SELECT vc.identity_change_current_password($1)`, passwordHash).Scan(&ok); err != nil {
+			return mapStoreErr(err)
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 func (s *Store) boolQuery(ctx context.Context, sql string, args ...any) (bool, error) {

@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,7 +47,14 @@ func TestLoginIssuesOpaqueCookieAndNoToken(t *testing.T) {
 
 func TestLoginUnknownAndWrongPasswordAreHidden(t *testing.T) {
 	t.Parallel()
-	s := newCoreServer(t, "full", newMemStore())
+	store := newMemStore()
+	store.identities["disabled"] = store.identities["alice"]
+	disabled := store.identities["disabled"]
+	disabled.AccountID = 3
+	disabled.Username = "disabled"
+	disabled.Status = "DISABLED"
+	store.identities["disabled"] = disabled
+	s := newCoreServer(t, "full", store)
 	unknown := loginJSON(t, s, "nobody", testPassword)
 	if unknown.Code != http.StatusNotFound {
 		t.Fatalf("unknown %d", unknown.Code)
@@ -55,7 +65,16 @@ func TestLoginUnknownAndWrongPasswordAreHidden(t *testing.T) {
 		t.Fatalf("wrong %d", wrong.Code)
 	}
 	assertEnvelope(t, wrong, "NOT_FOUND_OR_FORBIDDEN")
-	if strings.Contains(unknown.Body.String(), "nobody") || strings.Contains(wrong.Body.String(), "alice") {
+	inactive := loginJSON(t, s, "disabled", testPassword)
+	if inactive.Code != http.StatusNotFound {
+		t.Fatalf("inactive %d", inactive.Code)
+	}
+	assertEnvelope(t, inactive, "NOT_FOUND_OR_FORBIDDEN")
+	if unknown.Body.String() != wrong.Body.String() || wrong.Body.String() != inactive.Body.String() {
+		t.Fatalf("authentication failures differ: unknown=%q wrong=%q inactive=%q",
+			unknown.Body.String(), wrong.Body.String(), inactive.Body.String())
+	}
+	if strings.Contains(unknown.Body.String(), "nobody") || strings.Contains(wrong.Body.String(), "alice") || strings.Contains(inactive.Body.String(), "disabled") {
 		t.Fatal("must not echo identity")
 	}
 }
@@ -89,6 +108,26 @@ func TestLogoutRevokeAndNextRequestFails(t *testing.T) {
 		t.Fatalf("after logout %d %s", again.Code, again.Body.String())
 	}
 	assertEnvelope(t, again, "AUTHENTICATION_REQUIRED")
+}
+
+func TestLogoutRevokeFailureKeepsCookiesAndSession(t *testing.T) {
+	t.Parallel()
+	store := &logoutRevokeErrorStore{memStore: newMemStore()}
+	s := newCoreServer(t, "full", store)
+	jar := loginCookies(t, s, "alice", testPassword)
+
+	logout := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", jar)
+	if logout.Code != http.StatusServiceUnavailable {
+		t.Fatalf("logout %d %s", logout.Code, logout.Body.String())
+	}
+	assertEnvelope(t, logout, "INVALID_REQUEST")
+	if cookies := logout.Result().Cookies(); len(cookies) != 0 {
+		t.Fatalf("failed logout must not clear cookies: %+v", cookies)
+	}
+	stillValid := doJSONCookies(t, s, http.MethodGet, "/api/v1/auth/sessions", "", jar)
+	if stillValid.Code != http.StatusOK {
+		t.Fatalf("session after failed logout %d %s", stillValid.Code, stillValid.Body.String())
+	}
 }
 
 func TestRevokeSessionAndPasswordChangeInvalidate(t *testing.T) {
@@ -206,6 +245,38 @@ func TestWriteRateLimitedRoundsRetryAfterUp(t *testing.T) {
 	}
 }
 
+func TestAdmitAuthUsesConfiguredRequestSource(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		trustProxy  bool
+		wantAllowed int
+	}{
+		{name: "direct peer remains one source", trustProxy: false, wantAllowed: 10},
+		{name: "trusted forwarded peers are distinct sources", trustProxy: true, wantAllowed: 11},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newCoreServer(t, "full", newMemStore())
+			s.cfg.HTTP.TrustProxyHeaders = tt.trustProxy
+			allowed := 0
+			for i := 0; i < 11; i++ {
+				req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+				req.RemoteAddr = "10.0.0.10:1234"
+				req.Header.Set("X-Forwarded-For", fmt.Sprintf("192.0.2.%d", i+1))
+				rec := httptest.NewRecorder()
+				if s.admitAuth(rec, req, "login", fmt.Sprintf("account-%d", i)) {
+					allowed++
+				}
+			}
+			if allowed != tt.wantAllowed {
+				t.Fatalf("allowed=%d want=%d", allowed, tt.wantAllowed)
+			}
+		})
+	}
+}
+
 func TestAPIMigrationDoesNotServeAuthWriters(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "api-migration", newMemStore())
@@ -285,4 +356,12 @@ func csrfCookieValue(rec *httptest.ResponseRecorder) string {
 		}
 	}
 	return ""
+}
+
+type logoutRevokeErrorStore struct {
+	*memStore
+}
+
+func (s *logoutRevokeErrorStore) RevokeOpaqueSessionHash(context.Context, string) error {
+	return errors.New("synthetic revoke failure")
 }

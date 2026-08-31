@@ -164,6 +164,124 @@ func TestShortTransactionsDoNotWrapCaller(t *testing.T) {
 	}
 }
 
+func TestChangePasswordRevokesAllOpaqueSessionsAtomically(t *testing.T) {
+	resetFixtures(t)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, testEnv.superDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	if _, err := pool.Exec(ctx, `
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (1, 'alice', 'old-hash', 'USER', 'ACTIVE', 'alice')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO vc.identity_opaque_session(account_id, token_hash, expires_at)
+VALUES (1, $1, now() + interval '1 hour'),
+       (1, $2, now() + interval '1 hour')`, strings.Repeat("a", 64), strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := testEnv.store.ChangePasswordHash(ctx, 1, "new-hash"); err != nil {
+		t.Fatal(err)
+	}
+	var passwordHash string
+	var liveSessions int
+	if err := pool.QueryRow(ctx, `
+SELECT a.password_hash,
+       (SELECT count(*) FROM vc.identity_opaque_session s
+         WHERE s.account_id = a.id AND s.revoked_at IS NULL)
+  FROM vc.identity_account a
+ WHERE a.id = 1`).Scan(&passwordHash, &liveSessions); err != nil {
+		t.Fatal(err)
+	}
+	if passwordHash != "new-hash" || liveSessions != 0 {
+		t.Fatalf("password=%q live_sessions=%d", passwordHash, liveSessions)
+	}
+}
+
+func TestChangePasswordRollsBackWhenOpaqueRevokeFails(t *testing.T) {
+	resetFixtures(t)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, testEnv.superDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	if _, err := pool.Exec(ctx, `
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+	VALUES (1, 'alice', 'old-hash', 'USER', 'ACTIVE', 'alice')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO vc.identity_opaque_session(account_id, token_hash, expires_at)
+VALUES (1, $1, now() + interval '1 hour'),
+       (1, $2, now() + interval '1 hour')`, strings.Repeat("c", 64), strings.Repeat("d", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+CREATE FUNCTION vc.test_reject_opaque_revoke()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'synthetic opaque revoke failure';
+END;
+$$;
+CREATE TRIGGER test_reject_opaque_revoke
+BEFORE UPDATE ON vc.identity_opaque_session
+FOR EACH STATEMENT EXECUTE FUNCTION vc.test_reject_opaque_revoke()`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `
+DROP TRIGGER IF EXISTS test_reject_opaque_revoke ON vc.identity_opaque_session;
+DROP FUNCTION IF EXISTS vc.test_reject_opaque_revoke()`)
+	})
+
+	if err := testEnv.store.ChangePasswordHash(ctx, 1, "new-hash"); err == nil {
+		t.Fatal("password change must fail when session revocation fails")
+	}
+	var passwordHash string
+	var liveSessions int
+	if err := pool.QueryRow(ctx, `
+SELECT a.password_hash,
+       (SELECT count(*) FROM vc.identity_opaque_session s
+         WHERE s.account_id = a.id AND s.revoked_at IS NULL)
+  FROM vc.identity_account a
+ WHERE a.id = 1`).Scan(&passwordHash, &liveSessions); err != nil {
+		t.Fatal(err)
+	}
+	if passwordHash != "old-hash" || liveSessions != 2 {
+		t.Fatalf("password=%q live_sessions=%d", passwordHash, liveSessions)
+	}
+}
+
+func TestRuntimeCannotCallActorParameterizedPasswordChange(t *testing.T) {
+	resetFixtures(t)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, testEnv.superDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if _, err := pool.Exec(ctx, `
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (1, 'alice', 'old-hash', 'USER', 'ACTIVE', 'alice')`); err != nil {
+		t.Fatal(err)
+	}
+
+	err = testEnv.store.WithOwner(ctx, 2, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `SELECT vc.identity_change_password(1, 'forged-hash')`)
+		return err
+	})
+	if err == nil || !isPrivilegeDenied(err) {
+		t.Fatalf("actor-parameterized password change must be denied, got %v", err)
+	}
+}
+
 func TestOpenRejectsMissingBindingSecret(t *testing.T) {
 	ctx := context.Background()
 	_, err := Open(ctx, OpenConfig{DSN: testEnv.runtimeDSN, OwnerBindingSecret: "short"})
