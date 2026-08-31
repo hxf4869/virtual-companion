@@ -146,6 +146,81 @@ jobs:
       - name: Build H5
         run: pnpm --dir frontend build
 
+  browser-e2e:
+    name: Browser E2E (Linux reference platform)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        # actions/checkout@v6 -> d23441a48e516b6c34aea4fa41551a30e30af803
+        # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Set up Go
+        # actions/setup-go@v5.5.0 -> d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Set up pnpm
+        # pnpm/action-setup@v6 -> 0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.9.0
+          install: false
+      - name: Set up Node.js
+        # actions/setup-node@v6 -> 249970729cb0ef3589644e2896645e5dc5ba9c38
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+      - name: Install browser engines
+        run: pnpm --dir frontend exec playwright install --with-deps chromium webkit
+      - name: Run all browser E2E projects
+        env:
+          E2E_DOCKER_CONTEXT: default
+          E2E_STACK_STATE_FILE: ${{ runner.temp }}/vc-e2e-stack.json
+        run: >-
+          pnpm --dir frontend exec playwright test
+          --project=chromium
+          --project=webkit-iphone
+          --project=chromium-android
+      - name: Finalize and verify browser E2E cleanup
+        if: always()
+        env:
+          E2E_DOCKER_CONTEXT: default
+          E2E_STACK_STATE_FILE: ${{ runner.temp }}/vc-e2e-stack.json
+        run: |
+          cleanup_status=0
+          node -e "import('./frontend/e2e/global-teardown.ts').then((module) => module.default())" || cleanup_status=$?
+          leftovers="$(docker --context "$E2E_DOCKER_CONTEXT" ps -a --format '{{.Names}}' | grep '^vc-e2e-' || true)"
+          if [ -n "$leftovers" ]; then
+            echo "E2E containers remain after teardown:" >&2
+            echo "$leftovers" >&2
+            cleanup_status=1
+          fi
+          orphan_pids="$(pgrep -f 'scripts/dev/e2e-stack\.sh|scripts/dev/e2e-provider\.mjs|/tmp/vc-e2e-companiond-|uni .*--host 127\.0\.0\.1.*--port 5173' || true)"
+          if [ -n "$orphan_pids" ]; then
+            echo "E2E processes remain after teardown: $orphan_pids" >&2
+            cleanup_status=1
+          fi
+          exit "$cleanup_status"
+      - name: Upload browser E2E evidence on failure
+        if: failure()
+        # actions/upload-artifact@v4 -> ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-e2e-failure
+          path: |
+            frontend/test-results/**
+            frontend/playwright-report/**
+            /tmp/vc-e2e-provider-*.log
+            /tmp/vc-e2e-runtime-*.log
+            /tmp/vc-e2e-h5-*.log
+          if-no-files-found: ignore
+
   supply-chain:
     name: Dependency audit
     runs-on: ubuntu-latest
@@ -155,6 +230,13 @@ jobs:
         # actions/checkout@v6 -> d23441a48e516b6c34aea4fa41551a30e30af803
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Set up Python
+        # actions/setup-python@v6 -> ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - name: Install audit checker dependencies
+        run: python -m pip install PyYAML==6.0.3
       - name: Set up Go
         # actions/setup-go@v5.5.0 -> d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
@@ -181,9 +263,13 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install frontend dependencies
         run: pnpm --dir frontend install --frozen-lockfile
-      # 软门禁（有意为之）：已知未修复项（如 uni-app 精确锁定的 vite 5.2.8）
-      # 登记在 docs/dependency-audit-exceptions.yaml 并带到期复审日；
-      # 改为硬门禁前必须先清空台账。
       - name: Audit frontend dependencies
-        run: pnpm --dir frontend audit --audit-level=high
-        continue-on-error: true
+        run: |
+          audit_json="$RUNNER_TEMP/pnpm-audit.json"
+          set +e
+          pnpm --dir frontend audit --json > "$audit_json"
+          audit_exit=$?
+          set -e
+          python scripts/checks/check_dependency_audit.py \
+            --audit-json "$audit_json" \
+            --audit-exit-code "$audit_exit"
