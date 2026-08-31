@@ -198,9 +198,10 @@ func TestG7IsolationLifecycle(t *testing.T) {
 	}
 
 	gen := doJSON(t, s, http.MethodPost, "/api/v1/conversations/1/generations", `{"idempotencyKey":"k"}`, 1)
-	if gen.Code != http.StatusNotFound && gen.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("generation must stay unmapped, got %d", gen.Code)
+	if gen.Code != http.StatusForbidden {
+		t.Fatalf("generation admission %d %s", gen.Code, gen.Body.String())
 	}
+	assertEnvelope(t, gen, "AGE_VERIFICATION_REQUIRED")
 
 	st := store.Stats()
 	if st.Acquired != 0 {

@@ -165,7 +165,7 @@ func applyMigrations() error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(root, "service", "platform", "persistence", "src", "main", "resources", "db", "migration")
+	dir := filepath.Join(root, "backend", "internal", "migrate", "sql")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -277,7 +277,7 @@ func findRepoRoot() (string, error) {
 	}
 	dir := wd
 	for i := 0; i < 8; i++ {
-		if _, err := os.Stat(filepath.Join(dir, "service", "platform", "persistence", "src", "main", "resources", "db", "migration")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "backend", "internal", "migrate", "sql")); err == nil {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)
