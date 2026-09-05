@@ -258,11 +258,13 @@ export default async function globalTeardown(): Promise<void> {
   if (!state.keep) {
     await stopProcesses(state);
     removeContainers(state);
-    try {
-      await unlink(stateFile);
-    } catch (error) {
-      if (!isMissing(error)) {
-        throw error;
+    for (const localStateFile of [stateFile, `${stateFile}.auth.json`]) {
+      try {
+        await unlink(localStateFile);
+      } catch (error) {
+        if (!isMissing(error)) {
+          throw error;
+        }
       }
     }
   }

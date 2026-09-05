@@ -4,57 +4,98 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "@/stores/auth";
-import AdminOverviewPage from "./admin.vue";
 
-const providers = [{
-  providerId: "wechat",
-  displayName: "微信 Coding Plan",
-  protocol: "OPENAI_CHAT_COMPLETIONS",
-  baseUrl: "https://chatapi.weixin.qq.com/openai/v1",
-  credentialConfigured: true,
-  state: "ENABLED",
-  models: [{
-    modelId: "Deepseek-v4-flash",
-    displayName: "DeepSeek V4 Flash",
-    maxOutputTokens: 48000,
-    priority: 1,
-    state: "ENABLED",
-  }],
-}];
+import AdminReviewPage from "./admin.vue";
 
-describe("Go Runtime admin overview", () => {
+const pendingAccount = {
+  accountId: "7",
+  email: "new@example.com",
+  username: "new-user",
+  displayName: "新用户",
+  role: "USER",
+  status: "PENDING_REVIEW",
+  emailVerified: true,
+  authenticatorEnabled: false,
+  createdAt: "2026-09-01T00:00:00Z",
+};
+
+function loginAdmin() {
+  const auth = useAuthStore();
+  auth.accountId = "1";
+  auth.accessToken = "session";
+  auth.role = "ADMIN";
+}
+
+describe("registration review page", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    const auth = useAuthStore();
-    auth.accountId = "1";
-    auth.accessToken = "session";
-    auth.role = "ADMIN";
+    loginAdmin();
   });
 
-  it("aggregates only live Go endpoints into the effective-config ledger", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      const json = url === "/api/v1/admin/providers"
-        ? providers
-        : url === "/api/v1/service-mode"
-          ? { mode: "FULL_AI", summary: "已配置可用的模型路由，生成式聊天已启用。" }
-          : url === "/api/v1/version"
-            ? { version: "go-1.0.0", commit: "abcdef123456" }
-            : { status: "UP" };
-      return { ok: true, status: 200, json: async () => json, headers: new Headers() };
-    }));
-
-    const wrapper = mount(AdminOverviewPage, { attachTo: document.body });
+  it("renders a factual queue and explains the post-approval authenticator step", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => response(200, [pendingAccount])));
+    const wrapper = mount(AdminReviewPage);
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="admin-overview"]').text()).toContain("FULL_AI");
-    expect(wrapper.text()).toContain("wechat → Deepseek-v4-flash");
-    expect(wrapper.text()).toContain("go-1.0.0");
-    expect(wrapper.find('[data-testid="overview-clear"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="overview-refresh"]').attributes("aria-label"))
-      .toBe("刷新运行状态");
-    expect(wrapper.text()).not.toContain("账户管理");
-    expect(wrapper.text()).not.toContain("审计队列");
+    expect(wrapper.get('[data-testid="admin-review"]').text()).toContain("new@example.com");
+    expect(wrapper.text()).toContain("邮箱已验证");
+    expect(wrapper.text()).toContain("首次登录仍需绑定身份验证器");
+    expect(wrapper.text()).not.toContain("风险分");
+    expect(wrapper.text()).not.toContain("审核时限");
+    wrapper.unmount();
+  });
+
+  it("reauthenticates and approves one selected application", async () => {
+    const calls: Array<{ method: string; url: string; body?: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url, body: typeof init?.body === "string" ? init.body : undefined });
+      if (url === "/api/v1/admin/accounts" && method === "GET") return response(200, [pendingAccount]);
+      if (url === "/api/v1/auth/reauth") return response(200, { ok: true });
+      if (url === "/api/v1/admin/accounts/7/review") return response(200, { ok: true, status: "ACTIVE" });
+      return response(404, null);
+    }));
+    const wrapper = mount(AdminReviewPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="review-approve"]').trigger("click");
+    await wrapper.get('[data-testid="review-password"]').setValue("Admin-Pass-1!");
+    await wrapper.get('[data-testid="review-confirm-submit"]').trigger("click");
+    await flushPromises();
+
+    expect(calls).toContainEqual(expect.objectContaining({ method: "POST", url: "/api/v1/auth/reauth" }));
+    expect(calls).toContainEqual(expect.objectContaining({
+      method: "POST",
+      url: "/api/v1/admin/accounts/7/review",
+      body: JSON.stringify({ decision: "APPROVE" }),
+    }));
+    expect(wrapper.find('[data-testid="review-empty"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("shows an honest empty state when registration has no pending applications", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => response(200, [])));
+    const wrapper = mount(AdminReviewPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="review-empty"]').text()).toContain("暂时没有待审核申请");
+    wrapper.unmount();
+  });
+
+  it("does not enable approval when email verification is incomplete", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => response(200, [{ ...pendingAccount, emailVerified: false }])));
+    const wrapper = mount(AdminReviewPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="review-approve"]').attributes()).toHaveProperty("disabled");
     wrapper.unmount();
   });
 });
+
+function response(status: number, json: unknown) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => json,
+    headers: new Headers(),
+  };
+}

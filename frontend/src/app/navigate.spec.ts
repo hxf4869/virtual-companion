@@ -8,8 +8,8 @@ afterEach(() => {
 
 describe("shared page navigation", () => {
   it("converts uni-app pages to root hash routes and preserves query strings", () => {
-    expect(toH5Href("/pages/companion/companion")).toBe(
-      "/#/pages/companion/companion",
+    expect(toH5Href("/pages/conversations/conversations")).toBe(
+      "/#/pages/conversations/conversations",
     );
     expect(toH5Href("/pages/chat/chat?relationshipId=rel-1")).toBe(
       "/#/pages/chat/chat?relationshipId=rel-1",
@@ -23,10 +23,10 @@ describe("shared page navigation", () => {
     const navigateTo = vi.fn();
     vi.stubGlobal("uni", { navigateTo });
 
-    goTo("/pages/companion/companion");
+    goTo("/pages/conversations/conversations");
 
     expect(navigateTo).toHaveBeenCalledWith({
-      url: "/pages/companion/companion",
+      url: "/pages/conversations/conversations",
     });
   });
 

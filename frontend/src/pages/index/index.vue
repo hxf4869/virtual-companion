@@ -1,304 +1,202 @@
 <template>
-  <ConsumerShell route="/pages/index/index" title="虚拟陪伴">
-    <!-- 匿名：唯一主动作是登录。 -->
-    <view v-if="auth.sessionStatus === 'anonymous'" class="home-hero home-hero--entry" data-testid="home-hero">
-      <view class="home-hero__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></view>
-      <text class="home-hero__title">虚拟陪伴</text>
-      <text class="home-hero__lead">
-        这里是一段安静的陪伴关系：文字对话、透明可控的长期记忆。
-        AI 陪伴 · 非真人。
-      </text>
-      <button
-        class="home-hero__primary"
-        data-testid="home-login"
-        @click="goTo('/pages/login/login')"
-      >
-        登录后继续
-        <AppIcon class="home-hero__arrow" name="chevron-right" :size="20" />
-      </button>
-    </view>
+  <!-- Direction contract: Warm Familiarity + Stitch 58a3b21f. The home page
+       exists to resume a real conversation, not to expose product internals. -->
+  <ConsumerShell route="/pages/index/index" :show-header="false">
+    <view class="home-page">
+      <view class="home-topbar" role="banner">
+        <text class="home-topbar__greeting">
+          {{ auth.sessionStatus === "authenticated" ? "回来啦" : "虚拟陪伴" }}
+        </text>
+        <view class="home-brand" aria-label="虚拟陪伴">
+          <view class="home-brand__ring" aria-hidden="true">
+            <view class="home-brand__dot" />
+          </view>
+        </view>
+      </view>
 
-    <!-- 会话未知：不编造任何状态。 -->
-    <view
-      v-else-if="auth.sessionStatus === 'unknown'"
-      class="home-pending"
-      data-testid="home-pending"
-      :data-state="auth.error === 'refresh-failed' ? 'error' : 'loading'"
-      :role="auth.error === 'refresh-failed' ? 'alert' : 'status'"
-    >
-      <template v-if="auth.error === 'refresh-failed'">
-        <text>暂时无法确认登录状态，请检查网络后重试。</text>
-        <button
-          class="home-link-btn"
-          data-testid="session-retry"
-          :disabled="sessionRetrying"
-          @click="restoreSessionAndHome"
-        >
-          重新检查
-        </button>
-      </template>
-      <text v-else>正在确认访问条件…</text>
-    </view>
-
-    <template v-else>
-      <!-- 准入未就绪：线性准入（登录 → 成年 → 同意 → 建立陪伴）。 -->
       <view
-        v-if="admissionGate === 'unknown'"
-        class="home-admission"
-        data-testid="admission-gate"
-        :data-state="admissionCheckFailed ? 'error' : 'unknown'"
-        :role="admissionCheckFailed ? 'alert' : 'status'"
+        v-if="auth.sessionStatus === 'unknown'"
+        class="home-status home-status--loading"
+        data-testid="home-pending"
+        :data-state="auth.error === 'refresh-failed' ? 'error' : 'loading'"
+        :role="auth.error === 'refresh-failed' ? 'alert' : 'status'"
       >
-        <template v-if="admissionCheckFailed">
-          <text>成年状态或同意记录读取失败，暂时无法继续。</text>
+        <template v-if="auth.error === 'refresh-failed'">
+          <text class="home-status__title" role="heading" aria-level="1">
+            暂时没能打开首页
+          </text>
+          <text class="home-status__copy">检查网络后再试一次。</text>
           <button
-            class="home-link-btn"
-            data-testid="admission-retry"
-            :disabled="admissionCheckBusy"
-            @click="refreshNextStep"
+            class="home-secondary-action"
+            data-testid="session-retry"
+            :disabled="busy"
+            @click="restoreSessionAndHome"
           >
-            重新检查
+            重新加载
           </button>
         </template>
-        <text v-else>正在确认访问条件…</text>
+        <template v-else>
+          <text class="vc-sr-only" role="heading" aria-level="1">首页</text>
+          <view class="home-skeleton__avatar" aria-hidden="true" />
+          <view class="home-skeleton__line home-skeleton__line--short" aria-hidden="true" />
+          <view class="home-skeleton__line" aria-hidden="true" />
+          <text class="vc-sr-only">正在打开首页</text>
+        </template>
       </view>
 
       <view
-        v-else-if="admissionGate === 'blocked' && nextStep"
-        class="home-admission home-admission--blocked"
-        data-testid="next-step"
-        role="status"
+        v-else-if="auth.sessionStatus === 'anonymous'"
+        class="home-public"
+        data-testid="home-hero"
       >
-        <text class="home-admission__copy">{{ nextStep.copy }}</text>
+        <text class="home-public__title" role="heading" aria-level="1">
+          有些话，可以慢慢说
+        </text>
+        <text class="home-public__copy">
+          登录后继续与同一个 AI 陪伴者对话。AI 陪伴者 · 非真人。
+        </text>
         <button
-          class="home-admission__go"
-          data-testid="next-step-go"
-          :aria-label="nextStep.action"
-          @click="goTo(nextStepHref)"
+          class="home-primary-action"
+          data-testid="home-login"
+          @click="goTo('/pages/login/login')"
         >
-          {{ nextStep.action }}
+          登录后继续
         </button>
       </view>
 
       <view
-        v-else-if="relStore.status === 'error'"
-        class="home-load-error"
-        data-testid="relationship-load-error"
+        v-else-if="homeState === 'loading'"
+        class="home-status home-status--loading"
+        data-testid="home-loading"
         role="status"
       >
-        <text>关系列表加载失败。</text>
-        <button class="home-link-btn" data-testid="relationship-retry" @click="reloadRelationships">
-          重试
+        <text class="vc-sr-only" role="heading" aria-level="1">首页</text>
+        <view class="home-skeleton__avatar" aria-hidden="true" />
+        <view class="home-skeleton__line home-skeleton__line--short" aria-hidden="true" />
+        <view class="home-skeleton__line" aria-hidden="true" />
+        <text class="vc-sr-only">正在加载最近对话</text>
+      </view>
+
+      <view
+        v-else-if="homeState === 'error' || homeState === 'missing'"
+        class="home-status home-status--error"
+        data-testid="home-load-error"
+        role="alert"
+      >
+        <text class="home-status__title" role="heading" aria-level="1">
+          {{ homeState === "missing" ? "你的陪伴还没准备好" : "最近对话没有加载出来" }}
+        </text>
+        <text class="home-status__copy">
+          {{ homeState === "missing" ? "请重新加载，我们会继续为你准备。" : "已经登录，可以直接重试。" }}
+        </text>
+        <button
+          class="home-secondary-action"
+          data-testid="home-retry"
+          :disabled="busy"
+          @click="loadHome"
+        >
+          重新加载
         </button>
       </view>
 
-      <template v-else>
-        <!-- 首屏：当前陪伴 + 唯一主动作。 -->
-        <view class="home-hero" data-testid="home-hero">
-          <view class="home-hero__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></view>
-          <text
-            v-if="relStore.current"
-            class="home-hero__companion"
-            data-testid="current-relationship"
-          >
-            {{ homeCompanionName }}
-          </text>
-          <text v-else class="home-hero__companion">还没有陪伴</text>
-          <text class="home-hero__lead">{{ heroLead }}</text>
-          <button
-            v-if="relStore.current"
-            class="home-hero__primary"
-            data-testid="home-continue-chat"
-            @click="goTo(chatHref())"
-          >
-            继续聊聊
-            <AppIcon class="home-hero__arrow" name="chevron-right" :size="20" />
-          </button>
-          <button
-            v-else
-            class="home-hero__primary"
-            data-testid="home-create-companion"
-            @click="goTo('/pages/companion/companion')"
-          >
-            开始创建陪伴
-            <AppIcon class="home-hero__arrow" name="chevron-right" :size="20" />
-          </button>
-        </view>
+      <template v-else-if="relStore.current">
+        <VcHomeHero
+          :companion-name="companionName"
+          :conversation-copy="heroConversationCopy"
+          :activity-time="latestActivityTime"
+          :has-conversation="Boolean(latestConversation)"
+          @primary="openPrimaryConversation"
+        />
 
-        <!-- 窄摘要：最近会话 / 待确认记忆。与当前关系相关，不平铺功能。 -->
-        <view class="home-summaries" data-testid="home-summaries">
-          <view class="home-row-wrap">
+        <view
+          v-if="conversations.length > 0"
+          class="home-recent"
+          role="region"
+          aria-labelledby="recent-title"
+        >
+          <view class="home-section-heading">
+            <text id="recent-title" class="home-section-heading__title">最近对话</text>
             <button
-              v-if="relStore.current"
-              class="home-row"
-              data-testid="home-row-conversations"
-              :data-state="conversationChannel.state.value"
+              class="home-section-heading__action"
+              type="button"
+              data-testid="home-view-all"
               @click="goTo(conversationsHref())"
             >
-              <text class="home-row__label">会话</text>
-              <text class="home-row__value" data-testid="home-latest-conversation">
-                {{ conversationSummary }}
-              </text>
-              <AppIcon class="home-row__chevron" name="chevron-right" :size="18" />
+              查看全部
             </button>
           </view>
 
-          <view class="home-row-wrap">
-            <button
-              v-if="relStore.current"
-              class="home-row"
-              data-testid="home-row-memory"
-              :data-state="memoryChannel.state.value"
-              @click="goTo(memoryHref())"
-            >
-              <text class="home-row__label">待确认记忆</text>
-              <text class="home-row__value" data-testid="home-pending-memory">
-                {{ memorySummary }}
-              </text>
-              <AppIcon class="home-row__chevron" name="chevron-right" :size="18" />
-            </button>
+          <view class="home-session-list" data-testid="home-recent-conversations">
+            <VcSessionPreview
+              v-for="conversation in conversations"
+              :key="conversation.conversationId"
+              :title="conversationTitle(conversation)"
+              :preview="conversationPreview(conversation)"
+              :time="conversationTime(conversation)"
+              @open="openConversation(conversation)"
+            />
           </view>
         </view>
       </template>
-    </template>
+    </view>
   </ConsumerShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, type Ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import type { AuthTransport } from "@/api/auth";
-import { createAuthenticatedTransport } from "@/api/transport";
 import { listConversations, type ConversationListItem } from "@/api/chat";
+import { createAuthenticatedTransport } from "@/api/transport";
 import { goTo } from "@/app/navigate";
 import ConsumerShell from "@/app/ConsumerShell.vue";
-import AppIcon from "@/design-system/AppIcon.vue";
+import VcHomeHero from "@/components/home/VcHomeHero.vue";
+import VcSessionPreview from "@/components/home/VcSessionPreview.vue";
 import { buildContextHref } from "@/domain/context-href";
-import { readableConversationTitle } from "@/domain/conversation-display";
 import { companionHeaderName } from "@/domain/companion-presentation";
-import { resolveAdmissionGate, type AdmissionGate } from "@/domain/nav-guard";
-import { resolveNextStep, type NextStep } from "@/domain/next-step";
-import { useAgeStore } from "@/stores/age";
+import {
+  readableConversationPreview,
+  readableConversationTitle,
+} from "@/domain/conversation-display";
+import { formatConversationActivity } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
-import { useConsentStore } from "@/stores/consent";
-import { useMemoryStore } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
+
+type HomeState = "loading" | "ready" | "error" | "missing";
 
 const auth = useAuthStore();
 const relStore = useRelationshipStore();
-const age = useAgeStore();
-const consent = useConsentStore();
-const memoryStore = useMemoryStore();
-const nextStep = ref<NextStep | null>(null);
-const admissionGate = ref<AdmissionGate>("unknown");
+const homeState = ref<HomeState>("loading");
 const conversations = ref<ConversationListItem[]>([]);
-const sessionRetrying = ref(false);
+const busy = ref(false);
 
-// 三路摘要各自的真实状态：单路失败只标记自己，成功路不受污染；
-// 失败但已有一轮成功数据时显示旧值并标注"较早数据"，不冒充成功空态。
-type SummaryState = "idle" | "loading" | "ready" | "stale" | "error";
-
-interface SummaryChannel {
-  state: Ref<SummaryState>;
-  loadedOnce: Ref<boolean>;
-}
-
-function createChannel(): SummaryChannel {
-  return { state: ref<SummaryState>("idle"), loadedOnce: ref(false) };
-}
-
-const conversationChannel = createChannel();
-const memoryChannel = createChannel();
-
-// SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
 const transport: AuthTransport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
-  renewAccessToken: () => auth.renewAccessToken(transport),
-  // The home page is public. A missing session becomes anonymous here instead
-  // of redirecting before the public shell can render its login entry.
   onUnauthorized: () => auth.clear(),
 });
 
-const nextStepHref = computed(() => nextStep.value?.href ?? "/pages/index/index");
-const admissionCheckFailed = computed(() => age.loadFailed || consent.loadFailed);
-const admissionCheckBusy = computed(() => age.busy || consent.busy);
-
-const homeCompanionName = computed(() => {
-  const rel = relStore.current;
-  if (!rel) return "";
-  return companionHeaderName(rel);
+const companionName = computed(() => (
+  relStore.current ? companionHeaderName(relStore.current) : ""
+));
+const latestConversation = computed(() => conversations.value[0] ?? null);
+const heroConversationCopy = computed(() => {
+  const latest = latestConversation.value;
+  if (!latest) return "想说什么都可以，我们从这里开始。";
+  const preview = readableConversationPreview(latest) ?? readableConversationTitle(latest);
+  return `上次我们聊到：${preview}`;
 });
-
-const heroLead = computed(() => {
-  if (!relStore.current) {
-    return "创建一段陪伴关系，随时可以开始对话。";
-  }
-  return conversations.value.length > 0
-    ? "上次聊到的事，随时可以接着说。"
-    : "第一次对话随时可以开始。";
-});
-
-// CONV-HIST：列表按 id 升序整页返回（默认页 50）。未满页即该关系全部
-// 会话，可取最大 id 为最新；满页无法断言最新，退化为计数，不误称"最近"。
-const CONVERSATION_PAGE_LIMIT = 50;
-
-const STALE_SUFFIX = "（较早数据）";
-
-function channelText(channel: SummaryChannel, readyText: string): string {
-  if (channel.state.value === "loading" || channel.state.value === "idle") {
-    return "正在加载…";
-  }
-  if (channel.state.value === "error") return "加载失败，点开可重试";
-  if (channel.state.value === "stale") return `${readyText}${STALE_SUFFIX}`;
-  return readyText;
-}
-
-function latestConversation(): ConversationListItem | null {
-  const list = conversations.value;
-  if (list.length === 0) return null;
-  if (list.length >= CONVERSATION_PAGE_LIMIT) return null;
-  const sorted = [...list].sort((a, b) => compareConversationId(b, a));
-  return sorted[0] ?? null;
-}
-
-function compareConversationId(a: ConversationListItem, b: ConversationListItem): number {
-  const na = Number(a.conversationId);
-  const nb = Number(b.conversationId);
-  if (Number.isSafeInteger(na) && Number.isSafeInteger(nb)) return na - nb;
-  return a.conversationId.localeCompare(b.conversationId);
-}
-
-const conversationSummary = computed(() => {
-  const latest = latestConversation();
-  if (!latest) {
-    if (conversations.value.length >= CONVERSATION_PAGE_LIMIT) {
-      return channelText(conversationChannel, `${conversations.value.length}+ 个会话`);
-    }
-    return channelText(conversationChannel, "还没有会话");
-  }
-  // P1-5：enc2 密文/空值不直接展示，统一走用户可读标题 helper。
-  const base =
-    readableConversationTitle(latest) === "未命名会话"
-      ? "未发送消息的会话"
-      : readableConversationTitle(latest);
-  return channelText(conversationChannel, latest.incognito ? `无痕 · ${base}` : base);
-});
-
-const memorySummary = computed(() => {
-  const count = memoryStore.pendingCount;
-  return channelText(
-    memoryChannel,
-    count > 0 ? `${count} 条记忆等你确认` : "没有待确认的记忆",
-  );
-});
+const latestActivityTime = computed(() => (
+  latestConversation.value ? conversationTime(latestConversation.value) : ""
+));
 
 function knownRelationshipIds(): string[] {
-  return relStore.relationships.map((row) => row.relationshipId);
+  return relStore.relationships.map((relationship) => relationship.relationshipId);
 }
 
-function chatHref(): string {
+function chatHref(conversationId?: string): string {
   return buildContextHref("chat", {
     relationshipId: relStore.currentRelationshipId,
+    conversationId,
     knownRelationshipIds: knownRelationshipIds(),
   });
 }
@@ -310,451 +208,267 @@ function conversationsHref(): string {
   });
 }
 
-function memoryHref(): string {
-  return buildContextHref("memory", {
-    relationshipId: relStore.currentRelationshipId,
-    knownRelationshipIds: knownRelationshipIds(),
-  });
+function conversationTitle(conversation: ConversationListItem): string {
+  const title = readableConversationTitle(conversation);
+  return title === "未命名会话" ? "一段还没开始的对话" : title;
 }
 
-async function reloadRelationships(): Promise<void> {
-  await relStore.load(transport);
+function conversationPreview(conversation: ConversationListItem): string | null {
+  const preview = readableConversationPreview(conversation);
+  return preview === conversationTitle(conversation) ? null : preview;
 }
 
-async function refreshNextStep(): Promise<void> {
-  if (!auth.isAuthenticated) {
-    nextStep.value = null;
-    admissionGate.value =
-      auth.sessionStatus === "anonymous" ? "blocked" : "unknown";
-    return;
-  }
-  await Promise.all([age.load(transport), consent.load(transport)]);
-  const grantedTypes = consent.records
-    .filter((row) => row.granted)
-    .map((row) => row.consentType);
-  admissionGate.value = resolveAdmissionGate({
-    session: "authenticated",
-    role: auth.role,
-    ageKnown: !age.loadFailed,
-    ageLoadFailed: age.loadFailed,
-    ageState: age.ageState,
-    consentKnown: !consent.loadFailed,
-    consentLoadFailed: consent.loadFailed,
-    grantedTypes,
-  });
-  if (admissionGate.value === "unknown") {
-    nextStep.value = null;
-    return;
-  }
-  nextStep.value = resolveNextStep({
-    authenticated: true,
-    ageKnown: !age.loadFailed,
-    ageState: age.ageState,
-    consentKnown: !consent.loadFailed,
-    grantedTypes,
-    hasCompanion: relStore.relationships.length > 0,
-  });
+function conversationTime(conversation: ConversationListItem): string {
+  return formatConversationActivity(conversation.lastActivityAt ?? conversation.createdAt);
 }
 
-/** 关系就绪后并行加载会话与记忆摘要；单路失败只标记该路。 */
-async function loadSummaries(): Promise<void> {
-  const relId = relStore.currentRelationshipId;
-  if (!relId) return;
+function openPrimaryConversation(): void {
+  goTo(chatHref(latestConversation.value?.conversationId));
+}
 
-  conversationChannel.state.value = "loading";
-  memoryChannel.state.value = "loading";
+function openConversation(conversation: ConversationListItem): void {
+  goTo(chatHref(conversation.conversationId));
+}
 
-  const conversationsTask = listConversations(transport, relId, undefined, CONVERSATION_PAGE_LIMIT)
-    .then((list) => {
-      conversations.value = list;
-      conversationChannel.state.value = "ready";
-      conversationChannel.loadedOnce.value = true;
-    })
-    .catch(() => {
-      // 失败保留旧列表，仅在曾成功过时以 stale 展示旧值。
-      conversationChannel.state.value = conversationChannel.loadedOnce.value
-        ? "stale"
-        : "error";
-    });
-
-  // memory store 内部捕获异常并以状态位暴露，Promise 永不 reject。
-  const memoryTask = memoryStore.load(transport, relId).then(() => {
-    const failed = memoryStore.error === "load-failed" || memoryStore.error === "session-expired";
-    if (failed) {
-      memoryChannel.state.value = memoryChannel.loadedOnce.value ? "stale" : "error";
+async function loadHome(): Promise<void> {
+  if (!auth.isAuthenticated || busy.value) return;
+  busy.value = true;
+  homeState.value = "loading";
+  try {
+    await relStore.load(transport);
+    if (relStore.status === "error") {
+      homeState.value = "error";
       return;
     }
-    memoryChannel.state.value = "ready";
-    memoryChannel.loadedOnce.value = true;
-  });
-
-  await Promise.all([conversationsTask, memoryTask]);
-}
-
-async function loadAuthenticatedHome(): Promise<void> {
-  if (!auth.isAuthenticated) return;
-  await relStore.load(transport);
-  await refreshNextStep();
-  if (admissionGate.value === "ready") {
-    await loadSummaries();
+    if (!relStore.currentRelationshipId) {
+      homeState.value = "missing";
+      return;
+    }
+    conversations.value = await listConversations(
+      transport,
+      relStore.currentRelationshipId,
+      undefined,
+      3,
+    );
+    homeState.value = "ready";
+  } catch {
+    homeState.value = "error";
+  } finally {
+    busy.value = false;
   }
 }
 
 async function restoreSessionAndHome(): Promise<void> {
-  if (sessionRetrying.value) return;
-  sessionRetrying.value = true;
-  try {
-    if (!auth.isAuthenticated) {
-      await auth.tryRefresh(transport);
-    }
-    await loadAuthenticatedHome();
-  } finally {
-    sessionRetrying.value = false;
+  if (busy.value) return;
+  if (!auth.isAuthenticated) {
+    busy.value = true;
+    await auth.tryRefresh(transport);
+    busy.value = false;
   }
+  if (auth.isAuthenticated) await loadHome();
 }
 
-onMounted(async () => {
-  // SESS-REVIVE: restore the session from the HttpOnly refresh cookie first.
-  await restoreSessionAndHome();
+onMounted(() => {
+  void restoreSessionAndHome();
 });
-
-// 组件测试需要驱动第二轮加载以验证 stale 语义（保留旧数据 + 失败标注）。
-defineExpose({ loadSummaries });
 </script>
 
 <style scoped>
-/* Stitch「织结平衡版」：关系面板是唯一升起的主内容面。 */
-.home-hero {
-  position: relative;
+.home-page {
   display: grid;
-  gap: var(--vc-space-2);
-  padding: var(--vc-space-5) var(--vc-space-4) var(--vc-space-4);
-  border: 0;
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-card);
-  overflow: hidden;
+  gap: var(--vc-space-5);
+  min-width: 0;
 }
 
-.home-hero::before {
-  position: absolute;
-  inset: 0;
-  background: url("/static/quiet-loom/woven-field.png") repeat;
-  background-size: 512px 512px;
-  content: "";
-  mix-blend-mode: multiply;
-  opacity: 0.08;
-  pointer-events: none;
+.home-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 36px;
 }
 
-.home-hero > * {
-  position: relative;
-  z-index: 1;
+.home-topbar__greeting {
+  color: var(--vc-color-ink-muted);
+  font-size: 14px;
+  line-height: 22px;
 }
 
-.home-hero__mark {
-  position: relative;
+.home-brand {
+  display: grid;
+  place-items: center;
   width: 36px;
   height: 36px;
-  margin: 0 0 var(--vc-space-2);
 }
 
-.home-hero__mark i {
-  position: absolute;
-  top: 17px;
-  left: 3px;
-  display: block;
+.home-brand__ring {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
   width: 30px;
-  height: 1px;
-  background: var(--vc-primary);
-  transform-origin: center;
+  height: 30px;
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-full);
+  background: var(--vc-color-surface);
 }
 
-.home-hero__mark i:nth-child(2) {
-  background: var(--vc-success);
-  transform: rotate(45deg);
+.home-brand__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--vc-radius-full);
+  background: var(--vc-color-primary);
+  box-shadow: var(--vc-shadow-brand-mark);
 }
 
-.home-hero__mark i:nth-child(3) {
-  background: var(--vc-danger);
-  transform: rotate(90deg);
+.home-public,
+.home-status {
+  display: grid;
+  justify-items: start;
+  gap: var(--vc-space-4);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--vc-space-7) var(--vc-space-5);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-hero);
+  background: var(--vc-color-surface);
 }
 
-.home-hero__mark i:nth-child(4) {
-  background: var(--vc-primary);
-  transform: rotate(135deg);
+.home-public__title,
+.home-status__title {
+  color: var(--vc-color-ink);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
 }
 
-.home-hero__title {
-  font-size: var(--vc-text-xl);
-  font-weight: 700;
-  color: var(--vc-ink);
-}
-
-.home-hero__companion {
-  font-size: var(--vc-text-xl);
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  color: var(--vc-ink);
-  overflow-wrap: anywhere;
-}
-
-.home-hero__lead {
+.home-public__copy,
+.home-status__copy {
   max-width: 30em;
-  color: var(--vc-muted);
-  font-size: var(--vc-text-md);
-  line-height: 1.7;
+  color: var(--vc-color-ink-muted);
+  font-size: 16px;
+  line-height: 26px;
 }
 
-.home-hero__primary {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  justify-self: stretch;
-  width: 100%;
-  min-height: 50px;
-  margin: var(--vc-space-3) 0 0;
-  padding: 0 var(--vc-space-4);
-  border: 0;
-  border-radius: 0;
-  background: var(--vc-primary);
-  color: var(--vc-on-primary);
-  font: inherit;
-  font-size: var(--vc-text-md);
-  font-weight: 600;
-  transition: background-color var(--vc-motion-fast) var(--vc-ease-out);
-}
-
-.home-hero__primary::after {
-  border: 0;
-}
-
-.home-hero__arrow {
-  flex: 0 0 auto;
-}
-
-.home-hero__primary:not([disabled]):active {
-  background: var(--vc-primary-hover);
-}
-
-.home-hero--entry {
-  margin-top: var(--vc-space-5);
-  text-align: left;
-}
-
-.home-pending,
-.home-admission {
-  display: flex;
-  align-items: center;
-  gap: var(--vc-space-3);
-  padding: var(--vc-space-4);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
-  border: 1px solid var(--vc-border);
-  color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
-}
-
-.home-pending[data-state="error"] {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  background: var(--vc-danger-bg);
-  color: var(--vc-danger);
-}
-
-.home-admission--blocked {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  color: var(--vc-ink);
-}
-
-.home-admission__copy {
-  flex: 1 1 16em;
-  min-width: 0;
-}
-
-.home-admission__go {
-  min-height: 44px;
-  margin: 0;
+.home-primary-action,
+.home-secondary-action {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-height: 48px;
+  margin: var(--vc-space-2) 0 0;
   padding: 0 var(--vc-space-5);
-  border: 0;
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-primary);
-  color: var(--vc-on-primary);
+  border-radius: var(--vc-radius-control);
   font: inherit;
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 500;
 }
 
-.home-admission__go::after {
+.home-primary-action {
+  width: 100%;
+  border: 0;
+  color: var(--vc-color-surface);
+  background: var(--vc-color-primary);
+}
+
+.home-secondary-action {
+  border: 1px solid var(--vc-color-primary);
+  color: var(--vc-color-primary);
+  background: transparent;
+}
+
+.home-primary-action::after,
+.home-secondary-action::after,
+.home-section-heading__action::after {
   border: 0;
 }
 
-.home-load-error {
+.home-primary-action:active {
+  background: var(--vc-color-primary-pressed);
+}
+
+.home-secondary-action:active,
+.home-section-heading__action:active {
+  background: var(--vc-color-surface-soft);
+}
+
+.home-status--loading {
+  justify-items: center;
+  min-height: 280px;
+  align-content: center;
+}
+
+.home-status--error {
+  align-content: center;
+  min-height: 260px;
+}
+
+.home-skeleton__avatar,
+.home-skeleton__line {
+  background: var(--vc-color-surface-soft);
+}
+
+.home-skeleton__avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--vc-radius-full);
+}
+
+.home-skeleton__line {
+  width: min(100%, 260px);
+  height: 14px;
+  border-radius: var(--vc-radius-full);
+}
+
+.home-skeleton__line--short {
+  width: 112px;
+}
+
+.home-recent {
+  min-width: 0;
+}
+
+.home-section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--vc-space-3);
-  padding: var(--vc-space-4);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-danger-bg);
-  color: var(--vc-danger);
-  font-size: var(--vc-text-sm);
+  gap: var(--vc-space-4);
+  min-height: 44px;
 }
 
-.home-link-btn {
+.home-section-heading__title {
+  color: var(--vc-color-ink);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.home-section-heading__action {
+  min-width: 72px;
   min-height: 44px;
   margin: 0;
-  padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-strong);
-  border-radius: var(--vc-radius-s);
+  padding: 0 var(--vc-space-3);
+  border: 0;
+  border-radius: var(--vc-radius-control);
+  color: var(--vc-color-secondary);
   background: transparent;
-  color: inherit;
   font: inherit;
-  font-size: var(--vc-text-sm);
+  font-size: 12px;
+  line-height: 18px;
 }
 
-.home-link-btn::after {
-  border: 0;
-}
-
-/* 三条摘要沿一根细缝排列；颜色只是结点，文案仍完整表达状态。 */
-.home-summaries {
-  position: relative;
+.home-session-list {
   display: grid;
-  gap: 0;
-  margin-top: var(--vc-space-4);
-  padding-left: var(--vc-space-3);
-}
-
-.home-summaries::before {
-  position: absolute;
-  top: 18px;
-  bottom: 18px;
-  left: 2px;
-  width: 1px;
-  border-left: 1px dashed var(--vc-primary);
-  content: "";
-  opacity: 0.45;
-}
-
-.home-row-wrap {
-  display: grid;
-}
-
-.home-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  align-items: center;
-  gap: 1px var(--vc-space-3);
-  min-height: 66px;
-  margin: 0;
-  padding: var(--vc-space-2) var(--vc-space-2) var(--vc-space-2) var(--vc-space-3);
-  border: 0;
-  border-bottom: 1px solid var(--vc-border);
-  background: transparent;
-  color: var(--vc-ink);
-  font: inherit;
-  text-align: left;
-}
-
-.home-row::after {
-  border: 0;
-}
-
-.home-row__chevron {
-  grid-row: 1 / 3;
-  grid-column: 2;
-  color: var(--vc-muted);
-}
-
-.home-row::before {
-  position: absolute;
-  top: 50%;
-  left: -14px;
-  width: 7px;
-  height: 7px;
-  border: 2px solid var(--vc-paper);
-  border-radius: 50%;
-  background: var(--vc-primary);
-  content: "";
-  transform: translateY(-50%);
-}
-
-.home-row-wrap:nth-child(2) .home-row::before {
-  background: var(--vc-danger);
-}
-
-.home-row-wrap:nth-child(3) .home-row::before {
-  background: var(--vc-success);
-}
-
-.home-row__label {
-  grid-row: 1;
-  grid-column: 1;
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-  white-space: nowrap;
-}
-
-.home-row__value {
-  grid-row: 2;
-  grid-column: 1;
   min-width: 0;
-  overflow: hidden;
-  font-size: var(--vc-text-md);
-  font-weight: 500;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.home-row:focus-visible {
-  outline-offset: -2px;
-}
-
-/* LANDSCAPE / 短视口：压缩首屏信息优先级——伴侣名与主动作保留，
-   摘要行收窄，保证四入口底栏之上能看到完整主动作与至少一行摘要。 */
-@media (max-height: 480px) {
-  .home-hero {
-    gap: var(--vc-space-2);
-    padding: var(--vc-space-3) var(--vc-space-4);
+@media (max-width: 359px) {
+  .home-page {
+    gap: var(--vc-space-4);
   }
 
-  .home-hero__mark {
-    display: none;
-  }
-
-  .home-hero__companion {
-    font-size: var(--vc-text-xl);
-  }
-
-  .home-hero__lead {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
-    overflow: hidden;
-  }
-
-  .home-hero__primary {
-    min-height: 44px;
-    margin-top: var(--vc-space-1);
-  }
-
-  .home-hero--entry {
-    margin-top: var(--vc-space-4);
-  }
-
-  .home-summaries {
-    gap: var(--vc-space-1);
-    margin-top: var(--vc-space-3);
-  }
-
-  .home-row {
-    min-height: 44px;
-    padding: var(--vc-space-1) var(--vc-space-3);
+  .home-public,
+  .home-status {
+    padding: var(--vc-space-6) var(--vc-space-4);
   }
 }
 </style>

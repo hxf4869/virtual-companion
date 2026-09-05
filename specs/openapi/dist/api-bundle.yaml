@@ -734,8 +734,9 @@ paths:
       operationId: listConversations
       summary: List the caller's conversations with a last-message preview
       description: Keyset-paginated conversations owned by the caller (vc.list_conversations), optionally scoped to one relationship.
-        The after cursor is the last conversation id seen; ordering is stable by (owner, id). A foreign or absent relationship
-        yields no rows and never discloses existence. Requires a server-verified authentication context.
+        The after cursor is the last conversation id seen; the server resolves it to the same (lastActivityAt, conversationId)
+        tuple used by the recent-first ordering. A foreign or absent relationship yields no rows and never discloses existence.
+        Requires a server-verified authentication context.
       parameters:
       - name: relationshipId
         in: query
@@ -748,7 +749,7 @@ paths:
         required: false
         schema:
           type: string
-        description: Opaque cursor (the last conversation id seen); omit to start from the beginning.
+        description: The last conversation id seen; omit to start from the most recently active conversation.
       - name: limit
         in: query
         required: false
@@ -757,7 +758,7 @@ paths:
         description: Page size, clamped to a safe band by the server.
       responses:
         '200':
-          description: A page of conversations, ordered oldest-first within the page
+          description: A page of conversations, ordered by most recent activity first
           content:
             application/json:
               schema:
@@ -2184,18 +2185,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/registration-status:
+    get:
+      operationId: getRegistrationStatus
+      summary: Read whether public registration is open
+      description: Public. The launch default is enabled=false. The frontend must not show a registration entry while this
+        server-owned flag is false.
+      security: []
+      responses:
+        '200':
+          description: Current public-registration availability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationStatusResponse'
+  /api/v1/auth/register:
+    post:
+      operationId: register
+      summary: Submit a public registration when enabled
+      description: Public registration is closed for launch and this operation currently fails with ACCESS_DENIED before accepting
+        an account. It must not claim that email was sent until a real mail provider is connected.
+      security: []
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '403':
+          description: Public registration is closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/login:
     post:
       operationId: login
-      summary: Log in with internal-account credentials
-      description: 'Retired pre-cutover behavior: exchanges a username and password for a JWT access token and a refresh session
-        cookie. Go v1 (ADR-0007, SIMPLIFY): the same operation issues a single opaque HttpOnly vc_session cookie and MUST
-        NOT return an access token in the body; POST /auth/refresh is RETIRE. Public. An unknown user and a wrong password
-        are indistinguishable and both map to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed); a DISABLED account maps
-        to AUTHENTICATION_REQUIRED. Credentials are never logged, placed in a URL or stored. Before account lookup or password
-        verification, a Technical Alpha single-instance admission guard applies route-source and source-plus-canonical-username
-        rolling windows and a non-blocking shared concurrency bulkhead. Servlet remoteAddr is authoritative; forwarded client-address
-        headers are ignored.'
+      summary: Verify an account identifier and password and return the server-selected next step
+      description: Public first step. A correct password never creates a session by itself. An ACTIVE account with a valid
+        vc_trusted_device cookie receives an opaque vc_session immediately; otherwise the response is a five-minute, one-use
+        challenge for first authenticator setup or daily TOTP. Accounts awaiting email verification or review receive only
+        nextStep. The account identifier may be a username or email address. Unknown accounts and wrong passwords are indistinguishable.
+        No JWT or raw token is returned in a response body, and the password remains required even on a trusted device.
       security: []
       requestBody:
         required: true
@@ -2206,26 +2239,185 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: 'Retired runtime response: new access token; the refresh session is delivered only through the HttpOnly
-            vc_refresh cookie. Go v1: opaque session cookie only; access token and refresh cookie are retired.'
+          description: ACTIVE; a valid trusted device skipped only the TOTP step and vc_session was set
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthTokenResponse'
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '202':
+          description: Another authentication or admission step is required; no session was created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/AuthChallengeResponse'
+                - $ref: '#/components/schemas/AuthAccountStateResponse'
         '400':
           description: Missing, unreadable or invalid request body
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-        '401':
-          description: DISABLED account (cause is not disclosed)
+        '403':
+          description: Correct credentials for a DISABLED or REJECTED account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthAccountStateResponse'
+        '404':
+          description: Unknown email or wrong password; existence is not disclosed
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Authentication is temporarily rate limited
+          headers:
+            Retry-After:
+              description: Positive integer seconds before another attempt
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/session:
+    get:
+      operationId: getAuthSession
+      summary: Restore the current authenticated account state
+      description: Returns ACTIVE only for a live opaque vc_session. This is the sole page refresh source for account, role
+        and authenticator state; clients must not infer admission from local storage.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Current authenticated account state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '401':
+          description: No live opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/challenges/{challengeId}/authenticator-setup:
+    post:
+      operationId: getAuthenticatorSetup
+      summary: Get stable provisioning data for a first-use authenticator challenge
+      description: Creates one encrypted pending TOTP secret on first use and returns the same secret for repeated reads of
+        the same live enrollment challenge. It does not enable the authenticator or create a session.
+      security: []
+      parameters:
+      - $ref: '#/components/parameters/AuthChallengeId'
+      responses:
+        '200':
+          description: QR data, manual key and otpauth provisioning URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticatorSetupResponse'
         '404':
-          description: Unknown username or wrong password; existence is not disclosed
+          description: Challenge invalid, expired, consumed or locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/challenges/{challengeId}/authenticator-confirm:
+    post:
+      operationId: confirmAuthenticator
+      summary: Verify the first TOTP and enable the authenticator
+      description: Atomically enables the authenticator, creates the single default companion relationship, issues an opaque
+        session and returns ten one-time recovery codes. Optionally issues a fixed 90-day trusted-device cookie; the checkbox
+        is a client choice and defaults to false.
+      security: []
+      parameters:
+      - $ref: '#/components/parameters/AuthChallengeId'
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthChallengeCompleteRequest'
+      responses:
+        '200':
+          description: Authenticator enabled and session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthChallengeCompleteResponse'
+        '404':
+          description: Code or challenge invalid, expired, consumed or locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Authentication is temporarily rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/challenges/{challengeId}/totp:
+    post:
+      operationId: verifyAuthenticatorCode
+      summary: Complete daily login with a six-digit authenticator code
+      security: []
+      parameters:
+      - $ref: '#/components/parameters/AuthChallengeId'
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthChallengeCompleteRequest'
+      responses:
+        '200':
+          description: Code accepted and opaque session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthChallengeCompleteResponse'
+        '404':
+          description: Code or challenge invalid, expired, consumed or locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Authentication is temporarily rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/challenges/{challengeId}/recovery-code:
+    post:
+      operationId: verifyRecoveryCode
+      summary: Complete daily login with one recovery code
+      description: A successful recovery code is consumed atomically and cannot be reused.
+      security: []
+      parameters:
+      - $ref: '#/components/parameters/AuthChallengeId'
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthChallengeCompleteRequest'
+      responses:
+        '200':
+          description: Recovery code consumed and opaque session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthChallengeCompleteResponse'
+        '404':
+          description: Code or challenge invalid, expired, consumed or locked
           content:
             application/json:
               schema:
@@ -2292,20 +2484,14 @@ paths:
   /api/v1/auth/logout:
     post:
       operationId: logout
-      summary: Revoke a refresh session
-      description: 'Revokes the caller''s presented refresh session. Idempotent: a second logout or a foreign/unknown token
-        is still reported as success so existence is never disclosed. Requires a valid Bearer access token.'
-      parameters:
-      - in: cookie
-        name: vc_refresh
-        required: true
-        schema:
-          type: string
-          x-utf8-max-bytes: 512
-        description: Required HttpOnly refresh cookie; the raw value is never accepted in a request body.
+      summary: Revoke the current opaque session
+      description: Revokes and clears vc_session plus its CSRF cookie. Ordinary logout deliberately preserves vc_trusted_device,
+        so the user must still enter email and password next time but may skip TOTP on this device.
+      security:
+      - cookieAuth: []
       responses:
         '200':
-          description: The refresh session was revoked (idempotent)
+          description: Current opaque session revoked
           content:
             application/json:
               schema:
@@ -2319,16 +2505,11 @@ paths:
   /api/v1/auth/sessions:
     get:
       operationId: listAuthSessions
-      summary: List live refresh sessions for the caller
-      description: Returns the caller's live (unrevoked, unexpired) refresh families. Never includes token hashes, IP addresses,
-        or device fingerprints. The current cookie, when present, is marked current=true.
-      parameters:
-      - in: cookie
-        name: vc_refresh
-        required: false
-        schema:
-          type: string
-          x-utf8-max-bytes: 512
+      summary: List live opaque sessions for the caller
+      description: Returns live, unexpired opaque sessions and marks the current cookie. Token hashes and trusted-device credentials
+        are never returned.
+      security:
+      - cookieAuth: []
       responses:
         '200':
           description: Live sessions (empty list when none)
@@ -2347,9 +2528,11 @@ paths:
   /api/v1/auth/sessions/{sessionId}:
     delete:
       operationId: revokeAuthSession
-      summary: Revoke one refresh family
-      description: Revokes the named live session and its rotation family. Foreign or unknown ids fail closed without disclosing
-        existence. Idempotent.
+      summary: Revoke one opaque session
+      description: Revokes one owner-scoped opaque session. Revoking the current session clears vc_session but does not revoke
+        the independent trusted device.
+      security:
+      - cookieAuth: []
       parameters:
       - in: path
         name: sessionId
@@ -2372,9 +2555,11 @@ paths:
   /api/v1/auth/sessions/revoke-all:
     post:
       operationId: revokeAllAuthSessions
-      summary: Revoke every live refresh session for the caller
-      description: Revokes all live refresh families for the authenticated account and bumps session epoch. Does not send
-        mail or SMS.
+      summary: Log out every session and trusted device for the caller
+      description: Atomically revokes all live opaque sessions and all trusted-device TOTP bypass credentials, then clears
+        every authentication cookie.
+      security:
+      - cookieAuth: []
       responses:
         '200':
           description: Count of revoked live rows
@@ -2388,12 +2573,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/trusted-devices:
+    get:
+      operationId: listTrustedDevices
+      summary: List active trusted devices for the current account
+      description: Returns only user-visible display name and timestamps. No token, hash, IP address or fingerprint is exposed.
+        Expiry is fixed at issue time and is not extended by use.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Active, unexpired trusted devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrustedDevice'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/trusted-devices/{deviceId}:
+    delete:
+      operationId: revokeTrustedDevice
+      summary: Revoke one trusted device
+      description: Revokes only the named owner-scoped TOTP bypass credential.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/TrustedDeviceId'
+      responses:
+        '200':
+          description: Trusted device revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Device absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/password:
     post:
       operationId: changeAuthPassword
       summary: Change the caller's password
-      description: Verifies the current password, stores a new BCrypt hash, revokes every refresh family, and bumps session
-        epoch. Never claims a message was sent.
+      description: Verifies the current password, stores a new BCrypt hash, and atomically revokes every opaque session and
+        trusted device. Never claims a message was sent.
+      security:
+      - cookieAuth: []
       requestBody:
         required: true
         x-raw-max-bytes: 16384
@@ -2403,7 +2641,7 @@ paths:
               $ref: '#/components/schemas/ChangePasswordRequest'
       responses:
         '200':
-          description: Password changed; refresh cookie is cleared
+          description: Password changed; all authentication cookies are cleared
           content:
             application/json:
               schema:
@@ -2426,6 +2664,8 @@ paths:
       summary: Confirm the caller's password for a short admin window
       description: Re-checks the password and, on success, opens a 15-minute re-auth window required for admin password reset.
         Does not send mail or SMS.
+      security:
+      - cookieAuth: []
       requestBody:
         required: true
         x-raw-max-bytes: 16384
@@ -2442,6 +2682,107 @@ paths:
                 $ref: '#/components/schemas/ReauthResponse'
         '401':
           description: Password rejected or no session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/accounts/{accountId}/authenticator-reset:
+    post:
+      operationId: adminResetAuthenticator
+      summary: Clear one account's authenticator and require setup again
+      description: ADMIN only and requires reauthentication within the configured fresh window. Clears the TOTP secret and
+        recovery codes and revokes every session, challenge and trusted device belonging to the target account.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Authenticator state cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '403':
+          description: Caller is not ADMIN or recent reauthentication is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Account absent; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/accounts:
+    get:
+      operationId: listAdminAccounts
+      summary: List account and admission facts for the management UI
+      description: ADMIN-only secret-free account registry used by registration review and account security management. Password
+        hashes, authenticator secrets, recovery codes and trusted-device credentials are never returned.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Accounts ordered by newest creation time
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminAccount'
+        '401':
+          description: No live opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Caller is not ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/accounts/{accountId}/review:
+    post:
+      operationId: reviewAdminAccount
+      summary: Approve or reject one pending registration
+      description: ADMIN only and requires reauthentication within the configured fresh window. Approval is accepted only
+        for a PENDING_REVIEW account whose email is already verified. Approval changes the account to ACTIVE; rejection changes
+        it to REJECTED.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminAccountReviewRequest'
+      responses:
+        '200':
+          description: Review decision applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccountReviewResponse'
+        '400':
+          description: Invalid decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Caller is not ADMIN or recent reauthentication is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Account is absent, no longer pending, or cannot be approved
           content:
             application/json:
               schema:
@@ -4716,6 +5057,7 @@ components:
       - conversationId
       - relationshipId
       - createdAt
+      - lastActivityAt
       properties:
         conversationId:
           type: string
@@ -4736,6 +5078,10 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (RFC 3339)
+        lastActivityAt:
+          type: string
+          format: date-time
+          description: Timestamp of the latest message, or createdAt when the conversation is empty
         title:
           type: string
           description: User-renamed conversation title (CONV-MGMT), absent until renamed
@@ -5411,18 +5757,18 @@ components:
           description: Creation timestamp (RFC 3339)
     LoginRequest:
       type: object
-      description: Internal-account login credentials.
+      description: Account-and-password first login step. Account accepts a username or email address.
       required:
-      - username
+      - account
       - password
       properties:
-        username:
+        account:
           type: string
           minLength: 1
-          maxLength: 128
-          x-utf8-max-bytes: 512
+          maxLength: 320
+          x-utf8-max-bytes: 320
           pattern: .*\S.*
-          description: Internal account username; surrounding whitespace is removed and the value is lowercased
+          description: Username or account email; surrounding whitespace is removed and the value is lowercased
         password:
           type: string
           minLength: 1
@@ -5430,6 +5776,232 @@ components:
           x-utf8-max-bytes: 4096
           pattern: .*\S.*
           description: Plaintext password (verified in the Go runtime, never stored or logged)
+    RegisterRequest:
+      type: object
+      description: Future public-registration input; launch servers reject it while registration is closed.
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          minLength: 8
+          maxLength: 1024
+    RegistrationStatusResponse:
+      type: object
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Server-owned public-registration switch; false for launch
+    AuthChallengeResponse:
+      type: object
+      required:
+      - nextStep
+      - challengeId
+      - expiresAt
+      properties:
+        nextStep:
+          type: string
+          enum:
+          - TOTP_REQUIRED
+          - AUTHENTICATOR_SETUP_REQUIRED
+        challengeId:
+          type: string
+          minLength: 43
+          maxLength: 43
+        expiresAt:
+          type: string
+          format: date-time
+    AuthAccountStateResponse:
+      type: object
+      required:
+      - nextStep
+      properties:
+        nextStep:
+          type: string
+          enum:
+          - EMAIL_VERIFICATION_REQUIRED
+          - REVIEW_PENDING
+          - DISABLED
+          - REJECTED
+    AuthSessionResponse:
+      type: object
+      required:
+      - nextStep
+      - accountId
+      - role
+      - passwordMustChange
+      - authenticatorEnabled
+      - expiresInSeconds
+      properties:
+        nextStep:
+          type: string
+          const: ACTIVE
+        accountId:
+          type: string
+        email:
+          type: string
+          format: email
+          description: User-facing login email when the account has one; omitted for legacy or internal accounts
+        role:
+          type: string
+          enum:
+          - USER
+          - ADMIN
+        passwordMustChange:
+          type: boolean
+        authenticatorEnabled:
+          type: boolean
+        expiresInSeconds:
+          type: integer
+          format: int64
+          minimum: 1
+    AuthenticatorSetupResponse:
+      type: object
+      required:
+      - manualKey
+      - provisioningUri
+      - qrCodeDataUrl
+      properties:
+        manualKey:
+          type: string
+          description: Base32 TOTP key for manual entry; visible only during the live setup challenge
+        provisioningUri:
+          type: string
+          pattern: ^otpauth://totp/
+        qrCodeDataUrl:
+          type: string
+          pattern: ^data:image/png;base64,
+    AuthChallengeCompleteRequest:
+      type: object
+      required:
+      - code
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Six-digit TOTP or one recovery code, according to the endpoint
+        trustDevice:
+          type: boolean
+          default: false
+          description: When true, issue a fixed 90-day TOTP bypass cookie for this device
+        deviceName:
+          type: string
+          maxLength: 120
+          description: User-visible device label; never used as a fingerprint
+    AuthChallengeCompleteResponse:
+      allOf:
+      - $ref: '#/components/schemas/AuthSessionResponse'
+      - type: object
+        properties:
+          recoveryCodes:
+            type: array
+            minItems: 10
+            maxItems: 10
+            items:
+              type: string
+            description: Returned once, only after first authenticator confirmation
+    TrustedDevice:
+      type: object
+      required:
+      - id
+      - displayName
+      - createdAt
+      - lastUsedAt
+      - expiresAt
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    AdminAccount:
+      type: object
+      additionalProperties: false
+      required:
+      - accountId
+      - username
+      - displayName
+      - role
+      - status
+      - emailVerified
+      - authenticatorEnabled
+      - createdAt
+      properties:
+        accountId:
+          type: string
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          description: Legacy or internal login name; consumers prefer email when present
+        displayName:
+          type: string
+        role:
+          type: string
+          enum:
+          - USER
+          - ADMIN
+        status:
+          type: string
+          enum:
+          - EMAIL_UNVERIFIED
+          - PENDING_REVIEW
+          - ACTIVE
+          - DISABLED
+          - REJECTED
+        emailVerified:
+          type: boolean
+        authenticatorEnabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+    AdminAccountReviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - APPROVE
+          - REJECT
+    AdminAccountReviewResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - ok
+      - status
+      properties:
+        ok:
+          type: boolean
+          const: true
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - REJECTED
     AdminCreateAccountRequest:
       type: object
       description: Internal-account creation (ADMIN only). Role defaults to USER when omitted; only ADMIN or USER is accepted.
@@ -5501,29 +6073,34 @@ components:
             other request answers 403 PASSWORD_CHANGE_REQUIRED.
     AuthSession:
       type: object
-      description: One live refresh family. Never includes token hash, IP, or fingerprint.
+      description: One live opaque session. Never includes token hash, IP, or fingerprint.
       required:
       - id
-      - familyId
       - createdAt
-      - lastSeenAt
       - expiresAt
       - current
+      - accountId
+      - role
+      - passwordMustChange
       properties:
         id:
           type: string
-        familyId:
-          type: string
-        clientLabel:
-          type: string
-          description: Coarse client label such as h5; never a device fingerprint
         createdAt:
           type: string
-        lastSeenAt:
-          type: string
+          format: date-time
         expiresAt:
           type: string
+          format: date-time
         current:
+          type: boolean
+        accountId:
+          type: string
+        role:
+          type: string
+          enum:
+          - USER
+          - ADMIN
+        passwordMustChange:
           type: boolean
     RevokeAllSessionsResponse:
       type: object
@@ -6616,6 +7193,23 @@ components:
       schema:
         type: string
       description: The target internal account id
+    AuthChallengeId:
+      name: challengeId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
+        pattern: ^[A-Za-z0-9_-]{43}$
+      description: Five-minute, one-use opaque authentication challenge
+    TrustedDeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped trusted-device identifier
     RelationshipId:
       name: relationshipId
       in: path

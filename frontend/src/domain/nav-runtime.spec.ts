@@ -23,7 +23,7 @@ describe("enforceAppRoute", () => {
     })));
   }
 
-  it("keeps a public hash route after anonymous session discovery returns 401", async () => {
+  it("redirects the initial home route to login after anonymous discovery", async () => {
     rejectAnonymousSession();
     const locationStub = {
       pathname: "/",
@@ -36,7 +36,9 @@ describe("enforceAppRoute", () => {
     bootstrapAuthSession();
 
     await vi.waitFor(() => expect(useAuthStore().sessionStatus).toBe("anonymous"));
-    expect(locationStub.href).toBe("http://localhost/#/pages/index/index");
+    expect(locationStub.href).toBe(
+      "/#/pages/login/login?return=%2Fpages%2Findex%2Findex",
+    );
   });
 
   it("keeps the full protected hash href when the location fallback redirects", async () => {
@@ -44,8 +46,8 @@ describe("enforceAppRoute", () => {
     const locationStub = {
       pathname: "/",
       search: "",
-      hash: "#/pages/memory/memory?relationshipId=7",
-      href: "http://localhost/#/pages/memory/memory?relationshipId=7",
+      hash: "#/pages/chat/chat?relationshipId=7&conversationId=11",
+      href: "http://localhost/#/pages/chat/chat?relationshipId=7&conversationId=11",
     };
     vi.stubGlobal("location", locationStub);
 
@@ -53,7 +55,7 @@ describe("enforceAppRoute", () => {
 
     await vi.waitFor(() => {
       expect(locationStub.href).toBe(
-        "/#/pages/login/login?return=%2Fpages%2Fmemory%2Fmemory%3FrelationshipId%3D7",
+        "/#/pages/login/login?return=%2Fpages%2Fchat%2Fchat%3FrelationshipId%3D7%26conversationId%3D11",
       );
     });
   });

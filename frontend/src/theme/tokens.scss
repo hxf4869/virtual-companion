@@ -1,0 +1,103 @@
+:root,
+page,
+.wd-root-portal {
+  color-scheme: light;
+  --vc-color-canvas: #f7f3ec;
+  --vc-color-surface: #ffffff;
+  --vc-color-surface-soft: #efe8dc;
+  --vc-color-ink: #25231f;
+  --vc-color-ink-muted: #6e6a63;
+  --vc-color-hairline: #ddd5c8;
+  --vc-color-primary: #8a3621;
+  --vc-color-primary-pressed: #6f2818;
+  --vc-color-secondary: #58766f;
+  --vc-color-success: #39765b;
+  --vc-color-warning: #99621d;
+  --vc-color-error: #b43b3b;
+  --vc-color-focus-ring: rgb(138 54 33 / 14%);
+
+  --vc-space-1: 4px;
+  --vc-space-2: 8px;
+  --vc-space-3: 12px;
+  --vc-space-4: 16px;
+  --vc-space-5: 20px;
+  --vc-space-6: 24px;
+  --vc-space-7: 32px;
+  --vc-space-8: 40px;
+  --vc-space-9: 48px;
+
+  --vc-radius-control: 10px;
+  --vc-radius-card: 12px;
+  --vc-radius-hero: 16px;
+  --vc-radius-full: 999px;
+  --vc-shadow-floating: 0 8px 24px rgb(37 35 31 / 10%);
+  --vc-shadow-brand-mark: 0 1px 4px rgb(37 35 31 / 18%);
+
+  --vc-disabled-surface: #e2ddd4;
+  --vc-disabled-ink: #5f5b55;
+  --vc-success-bg: #e4f0e9;
+  --vc-success-border: #b9d5c5;
+  --vc-warning-bg: #f7ead4;
+  --vc-warning-on-env: #6f4a12;
+  --vc-danger-bg: #f8e7e4;
+  --vc-danger-border: #e8bdb7;
+  --vc-danger-on-env: var(--vc-color-error);
+  --vc-scrim: rgb(37 35 31 / 38%);
+  --vc-glow: var(--vc-color-primary);
+
+  --vc-font:
+    "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    system-ui, -apple-system, "Segoe UI", sans-serif;
+  --vc-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --vc-font-tabular:
+    "Noto Sans SC", "PingFang SC", system-ui, ui-monospace, monospace;
+
+  --vc-text-xs: 12px;
+  --vc-text-sm: 14px;
+  --vc-text-md: 16px;
+  --vc-text-lg: 18px;
+  --vc-text-xl: 22px;
+  --vc-text-2xl: 28px;
+  --vc-text-3xl: 34px;
+
+  --vc-z-content: 0;
+  --vc-z-header: 10;
+  --vc-z-nav: 20;
+  --vc-z-overlay: 30;
+  --vc-z-toast: 40;
+
+  --vc-motion-fast: 140ms;
+  --vc-motion-base: 260ms;
+  --vc-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Shared semantic aliases used by the cross-platform components and the
+     H5-only admin console. Product surfaces still derive from this token set. */
+  --vc-env: var(--vc-color-canvas);
+  --vc-env-raised: var(--vc-color-surface);
+  --vc-env-hover: var(--vc-color-surface-soft);
+  --vc-on-env: var(--vc-color-ink);
+  --vc-on-env-muted: var(--vc-color-ink-muted);
+  --vc-paper: var(--vc-color-canvas);
+  --vc-card: var(--vc-color-surface);
+  --vc-sunken: var(--vc-color-surface-soft);
+  --vc-ink: var(--vc-color-ink);
+  --vc-muted: var(--vc-color-ink-muted);
+  --vc-border: var(--vc-color-hairline);
+  --vc-border-env: var(--vc-color-hairline);
+  --vc-border-strong: var(--vc-color-ink-muted);
+  --vc-border-env-strong: var(--vc-color-ink-muted);
+  --vc-primary: var(--vc-color-primary);
+  --vc-primary-hover: var(--vc-color-primary-pressed);
+  --vc-primary-bg: var(--vc-color-surface-soft);
+  --vc-primary-border: var(--vc-color-primary);
+  --vc-on-primary: var(--vc-color-surface);
+  --vc-success: var(--vc-color-success);
+  --vc-warning: var(--vc-color-warning);
+  --vc-danger: var(--vc-color-error);
+  --vc-focus: var(--vc-color-primary);
+  --vc-focus-on-env: var(--vc-color-primary);
+  --vc-radius-s: var(--vc-radius-control);
+  --vc-radius-m: var(--vc-radius-control);
+  --vc-radius-l: var(--vc-radius-card);
+  --vc-radius-pill: var(--vc-radius-full);
+}

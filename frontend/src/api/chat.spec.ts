@@ -1,761 +1,194 @@
-// TASK-0186: Chat / Generation / History API client unit tests. The transport
-// is mocked so every wire shape (method, path, body, query) and response-parsing
-// / existence-hidden / typed-error path is exercised in isolation.
 import { describe, expect, it } from "vitest";
 
 import {
   cancelGeneration,
-  chatWipePreview,
   ChatHttpError,
   createConversation,
-  deleteConversation,
-  endConversation,
-  deleteMessage,
   getServiceMode,
   listConversations,
   listMessages,
-  recordFeedback,
-  renameConversation,
   sendGeneration,
-  setMessageNoMemory,
-  wipeAllChats,
   type ChatTransport,
 } from "./chat";
 
-/** Build a transport that returns a fixed response and records all calls. */
-function recorder(
-  response: { ok: boolean; status: number; json: unknown },
-): { transport: ChatTransport; calls: { method: string; path: string; body?: unknown }[] } {
-  const calls: { method: string; path: string; body?: unknown }[] = [];
+function recorder(response: { ok: boolean; status: number; json: unknown }) {
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
   const transport: ChatTransport = {
-    request: async (method: string, path: string, body?: unknown) => {
+    request: async (method, path, body) => {
       calls.push({ method, path, body });
-      return { ...response };
+      return response;
     },
   };
   return { transport, calls };
 }
 
-const GENERATION_JSON = {
+const generation = {
   generationId: 42,
   conversationId: 7,
-  logicalGenerationId: "gen-logical-1",
+  logicalGenerationId: "logical-1",
   status: "CREATED",
   createdAt: "2026-08-13T01:00:00Z",
 };
 
-const MESSAGE_JSON = {
-  messageId: 99,
-  conversationId: 7,
-  role: "user",
-  content: "Hello",
-  createdAt: "2026-08-13T01:00:00Z",
-};
-
 describe("createConversation", () => {
-  it("POSTs to /api/v1/conversations with relationshipId body", async () => {
+  it("creates a conversation for the current relationship", async () => {
     const { transport, calls } = recorder({
       ok: true,
       status: 200,
       json: { conversationId: 123 },
     });
 
-    const result = await createConversation(transport, "1");
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("POST");
-    expect(calls[0].path).toBe("/api/v1/conversations");
-    expect(calls[0].body).toEqual({ relationshipId: "1" });
-    expect(result).toEqual({ conversationId: "123" });
+    await expect(createConversation(transport, "1")).resolves.toEqual({ conversationId: "123" });
+    expect(calls).toEqual([
+      { method: "POST", path: "/api/v1/conversations", body: { relationshipId: "1" } },
+    ]);
   });
 
-  it("normalises numeric conversationId to string", async () => {
-    const { transport } = recorder({
-      ok: true,
-      status: 200,
-      json: { conversationId: 456 },
-    });
+  it("hides a missing relationship and preserves real auth failures", async () => {
+    const hidden = recorder({ ok: false, status: 404, json: null }).transport;
+    await expect(createConversation(hidden, "999")).resolves.toBeNull();
 
-    const result = await createConversation(transport, "1");
-
-    expect(result).toEqual({ conversationId: "456" });
-  });
-
-  it("returns null on 404 (existence hidden)", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 404,
-      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
-    });
-
-    const result = await createConversation(transport, "999");
-
-    expect(result).toBeNull();
-  });
-
-  it("throws ChatHttpError on 401 (unauthorized)", async () => {
-    const { transport } = recorder({
-      ok: false,
+    const unauthorized = recorder({ ok: false, status: 401, json: null }).transport;
+    await expect(createConversation(unauthorized, "1")).rejects.toMatchObject({
       status: 401,
-      json: { code: "AUTH_REQUIRED", message: "no session" },
+      kind: "unauthorized",
     });
-
-    await expect(createConversation(transport, "1")).rejects.toThrow(ChatHttpError);
-  });
-
-  it("throws ChatHttpError on 500 (server)", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 503,
-      json: null,
-    });
-
-    await expect(createConversation(transport, "1")).rejects.toThrow(ChatHttpError);
   });
 });
 
 describe("sendGeneration", () => {
-  it("POSTs to conversations/{id}/generations with idempotencyKey + userContent", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: GENERATION_JSON,
-    });
+  it("sends only the content required by the chat experience", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: generation });
 
-    const result = await sendGeneration(transport, "7", "key-abc", "Hello");
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("POST");
-    expect(calls[0].path).toBe("/api/v1/conversations/7/generations");
-    expect(calls[0].body).toEqual({ idempotencyKey: "key-abc", userContent: "Hello" });
-    expect(result).toEqual({
+    await expect(sendGeneration(transport, "7", "key-1", "你好")).resolves.toEqual({
       generationId: "42",
       conversationId: "7",
-      logicalGenerationId: "gen-logical-1",
+      logicalGenerationId: "logical-1",
       status: "CREATED",
       createdAt: "2026-08-13T01:00:00Z",
     });
+    expect(calls).toEqual([
+      {
+        method: "POST",
+        path: "/api/v1/conversations/7/generations",
+        body: { idempotencyKey: "key-1", userContent: "你好" },
+      },
+    ]);
   });
 
-  it("omits userContent from body when undefined", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: GENERATION_JSON,
-    });
-
-    await sendGeneration(transport, "7", "key-abc");
-
-    expect(calls[0].body).toEqual({ idempotencyKey: "key-abc" });
-  });
-
-  it("GEN-VER: includes sourceUserMessageId when regenerating", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: GENERATION_JSON,
-    });
-
-    await sendGeneration(transport, "7", "key-abc", "Hello", "AUTO", "9");
-
-    expect(calls[0].body).toEqual({
-      idempotencyKey: "key-abc",
-      userContent: "Hello",
-      sourceUserMessageId: "9",
-    });
-  });
-});
-
-describe("generation request options", () => {
-  it("CHAT-MODE: sends an explicit non-AUTO mode in the body", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: GENERATION_JSON,
-    });
-
-    await sendGeneration(transport, "7", "key-abc", "Hello", "DISCUSS");
-
-    expect(calls[0].body).toEqual({
-      idempotencyKey: "key-abc",
-      userContent: "Hello",
-      mode: "DISCUSS",
-    });
-  });
-
-  it("CHAT-MODE: omits AUTO mode from the body (persona default)", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: GENERATION_JSON,
-    });
-
-    await sendGeneration(transport, "7", "key-abc", "Hello", "AUTO");
-
-    expect(calls[0].body).toEqual({ idempotencyKey: "key-abc", userContent: "Hello" });
-  });
-
-  it("CHAT-MODE: parses the echoed generation mode", async () => {
-    const { transport } = recorder({
-      ok: true,
-      status: 200,
-      json: { ...GENERATION_JSON, mode: "LISTEN" },
-    });
-
-    const result = await sendGeneration(transport, "7", "key-abc", "Hello");
-
-    expect(result?.mode).toBe("LISTEN");
-  });
-
-  it("returns null on 404 (foreign conversation, existence hidden)", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 404,
-      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
-    });
-
-    const result = await sendGeneration(transport, "999", "key");
-
-    expect(result).toBeNull();
-  });
-
-  it("preserves the adult-verification gate instead of hiding it as a generic 403", async () => {
-    const { transport } = recorder({
+  it("keeps the age gate actionable while hiding an owner miss", async () => {
+    const gated = recorder({
       ok: false,
       status: 403,
-      json: { code: "AGE_VERIFICATION_REQUIRED", message: "adult verification required" },
-    });
-
-    const request = sendGeneration(transport, "7", "key-abc", "Hello");
-
-    await expect(request).rejects.toMatchObject({
+      json: { code: "AGE_VERIFICATION_REQUIRED" },
+    }).transport;
+    await expect(sendGeneration(gated, "7", "key-1", "你好")).rejects.toMatchObject({
       status: 403,
-      kind: "client",
       code: "AGE_VERIFICATION_REQUIRED",
     });
-  });
 
-  it("throws on 500", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 500,
-      json: null,
-    });
-
-    await expect(sendGeneration(transport, "7", "key")).rejects.toThrow(ChatHttpError);
+    const hidden = recorder({ ok: false, status: 404, json: null }).transport;
+    await expect(sendGeneration(hidden, "999", "key-1")).resolves.toBeNull();
   });
 });
 
-describe("listMessages", () => {
-  it("GETs conversations/{id}/messages with after + limit query", async () => {
+describe("conversation history", () => {
+  it("loads conversation summaries with their product title", async () => {
     const { transport, calls } = recorder({
       ok: true,
       status: 200,
-      json: [MESSAGE_JSON],
+      json: [
+        {
+          conversationId: 100,
+          relationshipId: 7,
+          title: "周二的夜聊",
+          lastMessagePreview: "我在听",
+          lastActivityAt: "2026-08-16T09:00:00Z",
+        },
+      ],
     });
 
-    const result = await listMessages(transport, "7", "50", 20);
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("GET");
-    expect(calls[0].path).toBe("/api/v1/conversations/7/messages?after=50&limit=20");
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
-      messageId: "99",
-      conversationId: "7",
-      role: "user",
-      content: "Hello",
-      createdAt: "2026-08-13T01:00:00Z",
-    });
+    await expect(listConversations(transport, "7", "50", 20)).resolves.toEqual([
+      {
+        conversationId: "100",
+        relationshipId: "7",
+        title: "周二的夜聊",
+        lastMessageRole: undefined,
+        lastMessagePreview: "我在听",
+        createdAt: undefined,
+        lastActivityAt: "2026-08-16T09:00:00Z",
+      },
+    ]);
+    expect(calls[0]?.path).toBe(
+      "/api/v1/conversations?relationshipId=7&after=50&limit=20",
+    );
   });
 
-  it("omits query when no after or limit", async () => {
+  it("loads messages and drops malformed rows", async () => {
     const { transport, calls } = recorder({
       ok: true,
       status: 200,
-      json: [],
+      json: [
+        { messageId: 9, conversationId: 7, role: "user", content: "你好" },
+        { messageId: 10, conversationId: 7, role: "assistant" },
+      ],
     });
 
-    await listMessages(transport, "7");
-
-    expect(calls[0].path).toBe("/api/v1/conversations/7/messages");
+    await expect(listMessages(transport, "7", "8", 50)).resolves.toEqual([
+      {
+        messageId: "9",
+        conversationId: "7",
+        role: "user",
+        content: "你好",
+        createdAt: undefined,
+      },
+    ]);
+    expect(calls[0]?.path).toBe("/api/v1/conversations/7/messages?after=8&limit=50");
   });
 
-  it("returns empty array for foreign conversation (200 empty, no disclosure)", async () => {
-    const { transport } = recorder({
-      ok: true,
-      status: 200,
-      json: [],
-    });
-
-    const result = await listMessages(transport, "999");
-
-    expect(result).toEqual([]);
-  });
-
-  it("returns empty array on 404 (existence hidden, no throw)", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 404,
-      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
-    });
-
-    const result = await listMessages(transport, "999");
-
-    expect(result).toEqual([]);
-  });
-
-  it("throws ChatHttpError on 401", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 401,
-      json: null,
-    });
-
-    await expect(listMessages(transport, "7")).rejects.toThrow(ChatHttpError);
+  it("does not turn a server failure into an empty successful history", async () => {
+    const transport = recorder({ ok: false, status: 503, json: null }).transport;
+    await expect(listMessages(transport, "7")).rejects.toBeInstanceOf(ChatHttpError);
   });
 });
 
 describe("cancelGeneration", () => {
-  it("POSTs to generations/{id}/cancel", async () => {
+  it("cancels the active generation", async () => {
     const { transport, calls } = recorder({
       ok: true,
       status: 200,
-      json: { ...GENERATION_JSON, status: "CANCELLED" },
+      json: { ...generation, status: "CANCELLED" },
     });
 
-    const result = await cancelGeneration(transport, "42");
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("POST");
-    expect(calls[0].path).toBe("/api/v1/generations/42/cancel");
-    expect(result?.status).toBe("CANCELLED");
-  });
-
-  it("returns null on 404 (existence hidden)", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 404,
-      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
-    });
-
-    const result = await cancelGeneration(transport, "999");
-
-    expect(result).toBeNull();
-  });
-
-  it("throws on 500", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 500,
-      json: null,
-    });
-
-    await expect(cancelGeneration(transport, "42")).rejects.toThrow(ChatHttpError);
-  });
-});
-
-describe("recordFeedback (FEEDBACK)", () => {
-  const FEEDBACK_JSON = {
-    generationId: 42,
-    kind: "FACTUAL_ERROR",
-    note: "数字不对",
-    createdAt: "2026-08-16T10:00:00Z",
-  };
-
-  it("POSTs to generations/{id}/feedback with kind + note", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: FEEDBACK_JSON,
-    });
-
-    const result = await recordFeedback(transport, "42", "FACTUAL_ERROR", "数字不对");
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("POST");
-    expect(calls[0].path).toBe("/api/v1/generations/42/feedback");
-    expect(calls[0].body).toEqual({ kind: "FACTUAL_ERROR", note: "数字不对" });
-    expect(result).toEqual({
+    await expect(cancelGeneration(transport, "42")).resolves.toMatchObject({
       generationId: "42",
-      kind: "FACTUAL_ERROR",
-      note: "数字不对",
-      createdAt: "2026-08-16T10:00:00Z",
+      status: "CANCELLED",
     });
-  });
-
-  it("omits the note from the body when undefined", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: FEEDBACK_JSON,
-    });
-
-    await recordFeedback(transport, "42", "UNSAFE");
-
-    expect(calls[0].body).toEqual({ kind: "UNSAFE" });
-  });
-
-  it("returns null on 404 (existence hidden)", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 404,
-      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
-    });
-
-    expect(await recordFeedback(transport, "999", "UNSAFE")).toBeNull();
-  });
-
-  it("throws on 500", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 500,
-      json: null,
-    });
-
-    await expect(recordFeedback(transport, "42", "UNSAFE")).rejects.toThrow(ChatHttpError);
+    expect(calls[0]?.path).toBe("/api/v1/generations/42/cancel");
   });
 });
 
-describe("endConversation (END-TODAY)", () => {
-  it("POSTs /conversations/{id}/end", async () => {
+describe("getServiceMode", () => {
+  it("reads the H5 administration status", async () => {
     const { transport, calls } = recorder({
       ok: true,
       status: 200,
-      json: { ok: true, incognitoCleared: true },
+      json: { mode: "FULL_AI", summary: "服务正常" },
     });
 
-    expect(await endConversation(transport, "100")).toEqual({
-      ok: true,
-      incognitoCleared: true,
+    await expect(getServiceMode(transport)).resolves.toEqual({
+      mode: "FULL_AI",
+      summary: "服务正常",
     });
-    expect(calls).toEqual([{ method: "POST", path: "/api/v1/conversations/100/end", body: undefined }]);
+    expect(calls[0]?.path).toBe("/api/v1/service-mode");
   });
 
-  it("maps 404 to false", async () => {
-    const { transport } = recorder({ ok: false, status: 404, json: null });
-    expect(await endConversation(transport, "100")).toBe(false);
-  });
-
-  it("throws on 500", async () => {
-    const { transport } = recorder({ ok: false, status: 500, json: null });
-    await expect(endConversation(transport, "100")).rejects.toBeInstanceOf(ChatHttpError);
-  });
-});
-
-describe("deleteConversation/renameConversation (CONV-MGMT)", () => {
-  it("DELETE returns true on OK", async () => {
-    const { transport, calls } = recorder({ ok: true, status: 200, json: { ok: true } });
-
-    expect(await deleteConversation(transport, "100")).toBe(true);
-    expect(calls).toEqual([{ method: "DELETE", path: "/api/v1/conversations/100", body: undefined }]);
-  });
-
-  it("DELETE maps 403/404 to false (existence never disclosed)", async () => {
-    const t404 = recorder({ ok: false, status: 404, json: null }).transport;
-    expect(await deleteConversation(t404, "100")).toBe(false);
-
-    const t403 = recorder({ ok: false, status: 403, json: null }).transport;
-    expect(await deleteConversation(t403, "100")).toBe(false);
-  });
-
-  it("DELETE throws a typed error on 5xx", async () => {
-    const { transport } = recorder({ ok: false, status: 500, json: null });
-
-    await expect(deleteConversation(transport, "100")).rejects.toBeInstanceOf(ChatHttpError);
-  });
-
-  it("PATCH sends the title and returns the applied title", async () => {
-    const { transport, calls } = recorder({
+  it("does not invent an unknown service mode", async () => {
+    const transport = recorder({
       ok: true,
       status: 200,
-      json: { conversationId: 100, title: "周二的夜聊" },
-    });
-
-    expect(await renameConversation(transport, "100", "周二的夜聊")).toBe("周二的夜聊");    expect(calls).toEqual([
-      { method: "PATCH", path: "/api/v1/conversations/100", body: { title: "周二的夜聊" } },
-    ]);
-  });
-
-  it("PATCH maps 403/404 to null", async () => {
-    const { transport } = recorder({ ok: false, status: 404, json: null });
-
-    expect(await renameConversation(transport, "100", "x")).toBeNull();
-  });
-
-  it("parses the title into the conversation list item", async () => {
-    const { transport } = recorder({
-      ok: true,
-      status: 200,
-      json: [
-        {
-          conversationId: "100",
-          relationshipId: "7",
-          createdAt: "2026-08-16T08:00:00Z",
-          title: "周二的夜聊",
-        },
-      ],
-    });
-
-    const list = await listConversations(transport);
-    expect(list[0]?.title).toBe("周二的夜聊");
-  });
-});
-
-describe("deleteMessage (MSG-DELETE)", () => {
-  it("DELETEs conversations/{id}/messages/{messageId} and reports true on OK", async () => {
-    const { transport, calls } = recorder({ ok: true, status: 200, json: { ok: true } });
-
-    expect(await deleteMessage(transport, "100", "7")).toBe(true);
-    expect(calls).toEqual([
-      { method: "DELETE", path: "/api/v1/conversations/100/messages/7", body: undefined },
-    ]);
-  });
-
-  it("maps 403/404 to false (existence never disclosed)", async () => {
-    const t404 = recorder({ ok: false, status: 404, json: null }).transport;
-    expect(await deleteMessage(t404, "100", "999")).toBe(false);
-
-    const t403 = recorder({ ok: false, status: 403, json: null }).transport;
-    expect(await deleteMessage(t403, "100", "999")).toBe(false);
-  });
-
-  it("throws a typed error on 5xx", async () => {
-    const { transport } = recorder({ ok: false, status: 500, json: null });
-
-    await expect(deleteMessage(transport, "100", "7")).rejects.toBeInstanceOf(ChatHttpError);
-  });
-});
-
-describe("setMessageNoMemory (MEM-NEG)", () => {
-  const UPDATED = {
-    messageId: 7,
-    conversationId: 100,
-    role: "user",
-    content: "这条不要记住",
-    noMemory: true,
-  };
-
-  it("PATCHes the marker and parses the updated message", async () => {
-    const { transport, calls } = recorder({ ok: true, status: 200, json: UPDATED });
-
-    const updated = await setMessageNoMemory(transport, "100", "7", true);
-
-    expect(calls).toEqual([
-      {
-        method: "PATCH",
-        path: "/api/v1/conversations/100/messages/7",
-        body: { noMemory: true },
-      },
-    ]);
-    expect(updated?.messageId).toBe("7");
-    expect(updated?.noMemory).toBe(true);
-  });
-
-  it("maps 403/404 to null (existence never disclosed)", async () => {
-    const t404 = recorder({ ok: false, status: 404, json: null }).transport;
-    expect(await setMessageNoMemory(t404, "100", "999", true)).toBeNull();
-  });
-
-  it("throws a typed error on 5xx", async () => {
-    const { transport } = recorder({ ok: false, status: 500, json: null });
-
-    await expect(setMessageNoMemory(transport, "100", "7", true)).rejects.toBeInstanceOf(
-      ChatHttpError,
-    );
-  });
-});
-
-describe("listConversations (CONV-HIST)", () => {
-  const CONVERSATION_JSON = {
-    conversationId: 100,
-    relationshipId: 7,
-    lastMessageRole: "assistant",
-    lastMessagePreview: "好的，我在听",
-    createdAt: "2026-08-16T08:00:00Z",
-  };
-
-  it("GETs /api/v1/conversations with relationshipId + after + limit query", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: [CONVERSATION_JSON],
-    });
-
-    const result = await listConversations(transport, "7", "50", 20);
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("GET");
-    expect(calls[0].path).toBe("/api/v1/conversations?relationshipId=7&after=50&limit=20");
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
-      conversationId: "100",
-      relationshipId: "7",
-      lastMessageRole: "assistant",
-      lastMessagePreview: "好的，我在听",
-      createdAt: "2026-08-16T08:00:00Z",
-      incognito: false,
-    });
-  });
-
-  it("omits query when no parameters", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: [],
-    });
-
-    await listConversations(transport);
-
-    expect(calls[0].path).toBe("/api/v1/conversations");
-  });
-
-  it("maps a conversation without messages to undefined preview fields", async () => {
-    const { transport } = recorder({
-      ok: true,
-      status: 200,
-      json: [{ conversationId: 101, relationshipId: 7, createdAt: "2026-08-16T08:00:00Z" }],
-    });
-
-    const result = await listConversations(transport);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].lastMessageRole).toBeUndefined();
-    expect(result[0].lastMessagePreview).toBeUndefined();
-  });
-
-  it("drops rows missing required ids instead of faking entries", async () => {
-    const { transport } = recorder({
-      ok: true,
-      status: 200,
-      json: [{ conversationId: 102 }],
-    });
-
-    expect(await listConversations(transport)).toEqual([]);
-  });
-
-  it("returns empty array for a foreign relationship (404, existence hidden)", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 404,
-      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
-    });
-
-    expect(await listConversations(transport, "999")).toEqual([]);
-  });
-
-  it("INC-MODE: parses the incognito flag into the list item", async () => {
-    const { transport } = recorder({
-      ok: true,
-      status: 200,
-      json: [
-        {
-          conversationId: "100",
-          relationshipId: "7",
-          createdAt: "2026-08-16T08:00:00Z",
-          incognito: true,
-        },
-      ],
-    });
-
-    const list = await listConversations(transport);
-    expect(list[0]?.incognito).toBe(true);
-  });
-
-  it("INC-MODE: createConversation sends the incognito flag only when true", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: { conversationId: 200 },
-    });
-
-    await createConversation(transport, "7", true);
-    expect(calls[0].body).toEqual({ relationshipId: "7", incognito: true });
-
-    await createConversation(transport, "7", false);
-    expect(calls[1].body).toEqual({ relationshipId: "7" });
-  });
-
-  it("throws ChatHttpError on 401", async () => {
-    const { transport } = recorder({
-      ok: false,
-      status: 401,
-      json: null,
-    });
-
-    await expect(listConversations(transport)).rejects.toThrow(ChatHttpError);
-  });
-});
-
-describe("getServiceMode (SVC-MODE)", () => {
-  it("GETs /api/v1/service-mode and parses the status", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: { mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" },
-    });
-
-    const status = await getServiceMode(transport);
-
-    expect(calls).toEqual([{ method: "GET", path: "/api/v1/service-mode", body: undefined }]);
-    expect(status).toEqual({ mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" });
-  });
-
-  it("returns null for an unapproved or malformed mode", async () => {
-    const unapproved = recorder({
-      ok: true,
-      status: 200,
-      json: { mode: "MAINTENANCE", summary: "维护中" },
+      json: { mode: "UNKNOWN", summary: "?" },
     }).transport;
-    expect(await getServiceMode(unapproved)).toBeNull();
-
-    const malformed = recorder({ ok: true, status: 200, json: {} }).transport;
-    expect(await getServiceMode(malformed)).toBeNull();
-  });
-
-  it("throws a typed error on a non-OK read", async () => {
-    const { transport } = recorder({ ok: false, status: 401, json: null });
-
-    await expect(getServiceMode(transport)).rejects.toThrow(ChatHttpError);
-  });
-});
-
-describe("CHAT-WIPE api client", () => {
-  it("GETs the wipe preview and parses the counts", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: { conversationCount: 2, messageCount: 9, inFlightCount: 1 },
-    });
-
-    const preview = await chatWipePreview(transport);
-
-    expect(calls).toEqual([{ method: "GET", path: "/api/v1/conversations/wipe-preview" }]);
-    expect(preview).toEqual({ conversationCount: 2, messageCount: 9, inFlightCount: 1 });
-  });
-
-  it("rejects a malformed preview body with a typed error", async () => {
-    const { transport } = recorder({ ok: true, status: 200, json: { conversationCount: "many" } });
-
-    await expect(chatWipePreview(transport)).rejects.toThrow(ChatHttpError);
-  });
-
-  it("POSTs the wipe and parses the result", async () => {
-    const { transport, calls } = recorder({
-      ok: true,
-      status: 200,
-      json: { conversationsDeleted: 2, messagesDeleted: 9, workItemsCancelled: 1 },
-    });
-
-    const result = await wipeAllChats(transport);
-
-    expect(calls).toEqual([{ method: "POST", path: "/api/v1/conversations/wipe" }]);
-    expect(result).toEqual({ conversationsDeleted: 2, messagesDeleted: 9, workItemsCancelled: 1 });
-  });
-
-  it("throws a typed error when the wipe fails", async () => {
-    const { transport } = recorder({ ok: false, status: 500, json: null });
-
-    await expect(wipeAllChats(transport)).rejects.toThrow(ChatHttpError);
+    await expect(getServiceMode(transport)).resolves.toBeNull();
   });
 });

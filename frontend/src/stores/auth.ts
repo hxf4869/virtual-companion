@@ -1,17 +1,25 @@
-// G9: Pinia auth store for the opaque cookie session. Memory-only.
-// NO token or identity field is ever written to localStorage. The session
-// secret lives only in the HttpOnly vc_session cookie. Reload restores via
-// GET /auth/sessions. /auth/refresh is RETIRE. A server 401 clears the session
-// and redirects.
+// Cookie-session authentication state.
+// NO token or identity field is ever written to localStorage.
+// Account identity, auth challenges and first-use recovery codes are memory-only.
 
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 import {
+  AuthHttpError,
+  confirmAuthenticator as apiConfirmAuthenticator,
+  getAuthenticatorSetup as apiGetAuthenticatorSetup,
+  getRegistrationStatus as apiGetRegistrationStatus,
   login as apiLogin,
   logout as apiLogout,
   refresh as apiRefresh,
-  type AuthTokens,
+  verifyAuthenticatorCode as apiVerifyAuthenticatorCode,
+  verifyRecoveryCode as apiVerifyRecoveryCode,
+  type AuthChallengeComplete,
+  type AuthLoginResult,
+  type AuthNextStep,
+  type AuthSessionIdentity,
+  type AuthenticatorSetup,
   type AuthTransport,
 } from "@/api/auth";
 import { buildLoginHref, hrefFromLocation } from "@/domain/nav-guard";
@@ -19,21 +27,19 @@ import { clearLocalSessionCaches } from "@/domain/session-cleanup";
 
 export type AuthErrorCode =
   | "invalid-credentials"
+  | "invalid-code"
+  | "challenge-unavailable"
+  | "rate-limited"
   | "network-failed"
+  | "service-unavailable"
   | "refresh-failed";
 
 export type SessionStatus = "unknown" | "anonymous" | "authenticated";
+export type AuthFlowStep = "LOGIN" | AuthNextStep;
 type RefreshOutcome = "renewed" | "rejected" | "unavailable";
 
 function redirectToLogin(): void {
-  const current =
-    typeof location !== "undefined"
-      ? hrefFromLocation(location)
-      : "";
-  // S0-18 review-fix (E2E finding): when the login page itself triggers a
-  // session-invalidated redirect, a bare re-navigation would REPLACE the
-  // already-present ?return=... target with nothing. Stay put instead —
-  // the pending return href must survive until the user actually logs in.
+  const current = typeof location !== "undefined" ? hrefFromLocation(location) : "";
   if (current.startsWith("/pages/login/login")) return;
   const url = buildLoginHref(current);
   try {
@@ -46,69 +52,97 @@ function redirectToLogin(): void {
       location.href = url.startsWith("/pages/") ? `/#${url}` : url;
     }
   } catch {
-    // Never let the redirect machinery break an auth transition.
+    // Navigation must never break an auth transition.
   }
 }
 
 export const useAuthStore = defineStore("h5-auth", () => {
+  // accessToken remains as a compatibility signal for transports that have not
+  // yet been rewritten. It is always the literal "session", never a secret.
   const accessToken = ref<string | null>(null);
   const accountId = ref<string | null>(null);
+  const email = ref<string | null>(null);
   const role = ref<string | null>(null);
   const passwordMustChange = ref(false);
+  const authenticatorEnabled = ref(false);
   const error = ref<AuthErrorCode | null>(null);
   const settled = ref(false);
+
+  const nextStep = ref<AuthFlowStep>("LOGIN");
+  const challengeId = ref<string | null>(null);
+  const challengeExpiresAt = ref<string | null>(null);
+  const authenticatorSetup = ref<AuthenticatorSetup | null>(null);
+  const recoveryCodes = ref<string[]>([]);
+  const registrationEnabled = ref(false);
   let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
-  const isAuthenticated = computed(
-    () => accountId.value !== null || accessToken.value !== null,
-  );
+  const isAuthenticated = computed(() => accountId.value !== null);
   const sessionStatus = computed<SessionStatus>(() => {
-    if (accountId.value || accessToken.value) return "authenticated";
+    if (accountId.value) return "authenticated";
     return settled.value ? "anonymous" : "unknown";
   });
 
-  /** Memory-only: never persists tokens to localStorage or any storage. */
-  function persist(tokens: AuthTokens): void {
+  function persist(identity: AuthSessionIdentity): void {
     accessToken.value = "session";
-    accountId.value = tokens.accountId;
-    role.value = tokens.role;
-    passwordMustChange.value = tokens.passwordMustChange;
+    accountId.value = identity.accountId;
+    email.value = identity.email ?? null;
+    role.value = identity.role;
+    passwordMustChange.value = identity.passwordMustChange;
+    authenticatorEnabled.value = identity.authenticatorEnabled;
+    nextStep.value = "ACTIVE";
+    challengeId.value = null;
+    challengeExpiresAt.value = null;
+    authenticatorSetup.value = null;
     settled.value = true;
+  }
+
+  function resetLoginFlow(): void {
+    nextStep.value = "LOGIN";
+    challengeId.value = null;
+    challengeExpiresAt.value = null;
+    authenticatorSetup.value = null;
+    recoveryCodes.value = [];
+    error.value = null;
   }
 
   function clear(): void {
-    const hadSession = accessToken.value !== null;
+    const hadSession = accountId.value !== null || accessToken.value !== null;
     accessToken.value = null;
     accountId.value = null;
+    email.value = null;
     role.value = null;
     passwordMustChange.value = false;
-    error.value = null;
+    authenticatorEnabled.value = false;
     settled.value = true;
-    if (hadSession) {
-      clearLocalSessionCaches();
-    }
+    resetLoginFlow();
+    if (hadSession) clearLocalSessionCaches();
   }
 
-  /**
-   * Coalesce bootstrap, page-mount and 401-replay refreshes. The refresh
-   * cookie rotates on every successful request, so concurrent calls can make
-   * a perfectly valid session look rejected and clear its local caches.
-   */
+  async function loadRegistrationStatus(t: AuthTransport): Promise<boolean> {
+    try {
+      registrationEnabled.value = await apiGetRegistrationStatus(t);
+    } catch {
+      registrationEnabled.value = false;
+    }
+    return registrationEnabled.value;
+  }
+
   async function refreshOnce(t: AuthTransport): Promise<RefreshOutcome> {
     if (refreshInFlight) return refreshInFlight;
 
     refreshInFlight = (async () => {
-      let tokens: AuthTokens | null;
+      let identity: AuthSessionIdentity | null;
       try {
-        tokens = await apiRefresh(t);
+        identity = await apiRefresh(t);
       } catch {
         return "unavailable";
       }
-      if (!tokens) {
+      if (!identity) {
         clear();
         return "rejected";
       }
-      persist(tokens);
+      persist(identity);
+      recoveryCodes.value = [];
       return "renewed";
     })();
 
@@ -119,32 +153,122 @@ export const useAuthStore = defineStore("h5-auth", () => {
     }
   }
 
-  /** Log in. true only on a confirmed server login; never fakes success. */
+  /** Submit the first login step and retain only the server-selected route. */
   async function login(
     t: AuthTransport,
-    username: string,
+    account: string,
     password: string,
+  ): Promise<AuthFlowStep | null> {
+    resetLoginFlow();
+    let result: AuthLoginResult | null;
+    try {
+      result = await apiLogin(t, account.trim().toLowerCase(), password);
+    } catch (caught) {
+      error.value = mapRequestError(caught);
+      return null;
+    }
+    if (!result) {
+      error.value = "invalid-credentials";
+      return null;
+    }
+    applyLoginResult(result);
+    return nextStep.value;
+  }
+
+  function applyLoginResult(result: AuthLoginResult): void {
+    nextStep.value = result.nextStep;
+    error.value = null;
+    recoveryCodes.value = [];
+    if (result.nextStep === "ACTIVE") {
+      persist(result);
+      return;
+    }
+    if (result.nextStep === "TOTP_REQUIRED" || result.nextStep === "AUTHENTICATOR_SETUP_REQUIRED") {
+      challengeId.value = result.challengeId;
+      challengeExpiresAt.value = result.expiresAt;
+    }
+  }
+
+  async function loadAuthenticatorSetup(t: AuthTransport): Promise<boolean> {
+    error.value = null;
+    const id = challengeId.value;
+    if (nextStep.value !== "AUTHENTICATOR_SETUP_REQUIRED" || !id) {
+      error.value = "challenge-unavailable";
+      return false;
+    }
+    try {
+      const setup = await apiGetAuthenticatorSetup(t, id);
+      if (!setup) {
+        error.value = "challenge-unavailable";
+        return false;
+      }
+      authenticatorSetup.value = setup;
+      return true;
+    } catch (caught) {
+      error.value = mapRequestError(caught);
+      return false;
+    }
+  }
+
+  async function confirmAuthenticator(
+    t: AuthTransport,
+    code: string,
+    trustDevice: boolean,
+  ): Promise<boolean> {
+    return completeChallenge(t, "AUTHENTICATOR_SETUP_REQUIRED", code, trustDevice, apiConfirmAuthenticator);
+  }
+
+  async function verifyAuthenticatorCode(
+    t: AuthTransport,
+    code: string,
+    trustDevice: boolean,
+  ): Promise<boolean> {
+    return completeChallenge(t, "TOTP_REQUIRED", code, trustDevice, apiVerifyAuthenticatorCode);
+  }
+
+  async function verifyRecoveryCode(
+    t: AuthTransport,
+    code: string,
+    trustDevice: boolean,
+  ): Promise<boolean> {
+    return completeChallenge(t, "TOTP_REQUIRED", code, trustDevice, apiVerifyRecoveryCode);
+  }
+
+  async function completeChallenge(
+    t: AuthTransport,
+    requiredStep: "TOTP_REQUIRED" | "AUTHENTICATOR_SETUP_REQUIRED",
+    code: string,
+    trustDevice: boolean,
+    request: (
+      transport: AuthTransport,
+      challenge: string,
+      value: string,
+      trusted: boolean,
+    ) => Promise<AuthChallengeComplete | null>,
   ): Promise<boolean> {
     error.value = null;
-    let tokens: AuthTokens | null;
+    const id = challengeId.value;
+    if (nextStep.value !== requiredStep || !id) {
+      error.value = "challenge-unavailable";
+      return false;
+    }
+    let completed: AuthChallengeComplete | null;
     try {
-      tokens = await apiLogin(t, username, password);
-    } catch {
-      error.value = "network-failed";
+      completed = await request(t, id, code.trim(), trustDevice);
+    } catch (caught) {
+      error.value = mapRequestError(caught);
       return false;
     }
-    if (!tokens) {
-      error.value = "invalid-credentials";
+    if (!completed) {
+      error.value = "invalid-code";
       return false;
     }
-    persist(tokens);
+    const codes = completed.recoveryCodes;
+    persist(completed);
+    recoveryCodes.value = codes;
     return true;
   }
 
-  /**
-   * Restore identity from the opaque session cookie (GET /auth/sessions).
-   * A server rejection clears the session; a network failure does not.
-   */
   async function tryRefresh(t: AuthTransport): Promise<boolean> {
     error.value = null;
     const outcome = await refreshOnce(t);
@@ -155,30 +279,21 @@ export const useAuthStore = defineStore("h5-auth", () => {
     return outcome === "renewed";
   }
 
-  /**
-   * SESS-REVIVE: one silent renewal for the transport's 401 replay path,
-   * three-state so the transport can distinguish a rejected cookie (kick to
-   * login) from a network failure (surface session-expired, stay put).
-   */
-  async function renewAccessToken(
-    t: AuthTransport,
-  ): Promise<RefreshOutcome> {
+  async function renewAccessToken(t: AuthTransport): Promise<RefreshOutcome> {
     return refreshOnce(t);
   }
 
-  /** Revoke the session server-side (best effort) and clear locally. */
+  /** Ordinary logout preserves the independent 90-day trusted-device cookie. */
   async function logout(t: AuthTransport): Promise<void> {
     error.value = null;
     try {
       await apiLogout(t);
     } catch {
-      // The local session is cleared regardless; a failed revoke is surfaced
-      // nowhere (idempotent logout contract).
+      // Best effort: local identity still clears when the network is unavailable.
     }
     clear();
   }
 
-  /** Clear the session and redirect to the login page (server 401). */
   function onUnauthorized(): void {
     clear();
     redirectToLogin();
@@ -187,12 +302,26 @@ export const useAuthStore = defineStore("h5-auth", () => {
   return {
     accessToken,
     accountId,
+    email,
     role,
     passwordMustChange,
+    authenticatorEnabled,
     error,
     isAuthenticated,
     sessionStatus,
+    nextStep,
+    challengeId,
+    challengeExpiresAt,
+    authenticatorSetup,
+    recoveryCodes,
+    registrationEnabled,
+    loadRegistrationStatus,
     login,
+    loadAuthenticatorSetup,
+    confirmAuthenticator,
+    verifyAuthenticatorCode,
+    verifyRecoveryCode,
+    resetLoginFlow,
     tryRefresh,
     renewAccessToken,
     logout,
@@ -200,3 +329,9 @@ export const useAuthStore = defineStore("h5-auth", () => {
     clear,
   };
 });
+
+function mapRequestError(caught: unknown): AuthErrorCode {
+  if (!(caught instanceof AuthHttpError)) return "network-failed";
+  if (caught.status === 429) return "rate-limited";
+  return "service-unavailable";
+}

@@ -17,6 +17,10 @@ const SessionCookieName = "vc_session"
 // CSRFCookieName is the JS-readable double-submit CSRF cookie.
 const CSRFCookieName = "vc_csrf"
 
+// TrustedDeviceCookieName carries the optional 90-day TOTP bypass credential.
+// The password is still required for every new login.
+const TrustedDeviceCookieName = "vc_trusted_device"
+
 // CSRFHeader is the header that must match CSRFCookieName.
 const CSRFHeader = "X-CSRF-Token"
 
@@ -47,10 +51,19 @@ type Sessions interface {
 
 // CookieToken returns the vc_session value or empty. The value is never logged.
 func CookieToken(r *http.Request) string {
+	return requestToken(r, SessionCookieName)
+}
+
+// TrustedDeviceToken returns the optional trusted-device credential or empty.
+func TrustedDeviceToken(r *http.Request) string {
+	return requestToken(r, TrustedDeviceCookieName)
+}
+
+func requestToken(r *http.Request, name string) string {
 	if r == nil {
 		return ""
 	}
-	c, err := r.Cookie(SessionCookieName)
+	c, err := r.Cookie(name)
 	if err != nil || c == nil {
 		return ""
 	}

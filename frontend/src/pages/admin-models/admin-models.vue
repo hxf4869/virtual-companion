@@ -1,13 +1,17 @@
 <template>
   <AdminConsoleShell
     active="models"
-    title="模型服务"
+    title="模型与路由"
     subtitle="当前生效配置与本次变更并排核对"
     :access-state="accessState"
     :has-pending-changes="hasChanges"
     @retry-access="retryAccess"
   >
     <template #actions>
+      <button class="ac-button" data-testid="model-routing-open" :disabled="busy" @click="openRouting">
+        <AppIcon name="route" :size="18" />
+        <text class="ac-button__label">路由顺序</text>
+      </button>
       <button class="ac-button" aria-label="刷新模型服务配置" :disabled="busy" @click="refreshProviders">
         <AppIcon name="refresh" :size="18" :spin="loading" />
         <text class="ac-button__label">刷新</text>
@@ -346,7 +350,7 @@ export default {
   name: "AdminModelsPage",
   components: { AdminConsoleShell, AppIcon },
   setup() {
-    const { accessState, transport, ensureAccess } = useAdminConsoleAccess();
+    const { accessState, transport, ensureAccess, goTo } = useAdminConsoleAccess();
     const providers = ref<ModelProvider[]>([]);
     const selectedId = ref("");
     const draft = ref<ProviderDraft | null>(null);
@@ -412,6 +416,14 @@ export default {
         return;
       }
       await loadProviders();
+    }
+
+    function openRouting(): void {
+      if (hasChanges.value) {
+        setMessage("当前有未保存变更；请先保存或放弃，再查看路由顺序。", "warning");
+        return;
+      }
+      goTo("/pages/admin-routing/admin-routing");
     }
 
     function selectProvider(providerId: string): void {
@@ -676,6 +688,7 @@ export default {
       hasChanges,
       retryAccess,
       refreshProviders,
+      openRouting,
       selectProvider,
       openCreate,
       addModel,
@@ -870,7 +883,7 @@ function comparableModels(models: ModelDraft[]): string {
 .model-toolbar__title, .model-toolbar__copy { display: block; }
 .model-toolbar__title { font-weight: 680; }
 .model-toolbar__copy { margin-top: var(--vc-space-1); color: var(--vc-muted); font-size: var(--vc-text-xs); }
-.model-row { margin-top: var(--vc-space-4); padding: var(--vc-space-4); border: 1px solid var(--vc-border); background: #fbfcfb; }
+.model-row { margin-top: var(--vc-space-4); padding: var(--vc-space-4); border: 1px solid var(--vc-border); background: var(--vc-env); }
 .model-row__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--vc-space-3); font-size: var(--vc-text-sm); font-weight: 700; }
 .model-remove { display: grid; width: 44px; height: 44px; margin: -10px -10px -10px 0; padding: 0; place-items: center; border: 0; background: transparent; color: var(--vc-danger); }
 .model-change { position: sticky; top: 89px; padding: var(--vc-space-5); }
@@ -891,7 +904,9 @@ function comparableModels(models: ModelDraft[]): string {
 .model-change__actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: var(--vc-space-2); margin-top: var(--vc-space-5); }
 .model-change__note { display: block; margin-top: var(--vc-space-3); color: var(--vc-muted); font-size: var(--vc-text-xs); text-align: center; }
 .model-mobile-bar { display: none; }
-@media (max-width: 1180px) {
+/* The fixed 232px admin rail reduces the usable stage width. Collapse the
+   third ledger before its 320px minimum can push the document horizontally. */
+@media (max-width: 1399px) {
   .models-layout { grid-template-columns: 200px minmax(0, 1fr); }
   .model-change { position: static; grid-column: 1 / -1; min-height: 0; }
   .model-change__actions { max-width: 480px; }
@@ -910,7 +925,7 @@ function comparableModels(models: ModelDraft[]): string {
   .model-toolbar .ac-actions { justify-content: flex-start; flex-wrap: wrap; }
   .model-change { margin: var(--vc-space-5) calc(-1 * var(--vc-space-4)) 0; padding: var(--vc-space-5) var(--vc-space-4) 110px; }
   .model-change__actions { display: none; }
-  .model-mobile-bar { position: fixed; inset: auto 0 0 0; z-index: var(--vc-z-nav); display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-3); padding: var(--vc-space-3) var(--vc-space-4) calc(var(--vc-space-3) + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--vc-border); background: rgba(255,255,255,.97); }
+  .model-mobile-bar { position: fixed; inset: auto 0 0 0; z-index: var(--vc-z-nav); display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-3); padding: var(--vc-space-3) var(--vc-space-4) calc(var(--vc-space-3) + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--vc-border); background: var(--vc-card); }
   .model-mobile-summary { min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--vc-primary); font-size: var(--vc-text-sm); }
 }
 </style>

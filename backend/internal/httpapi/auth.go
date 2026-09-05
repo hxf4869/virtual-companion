@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -10,39 +11,43 @@ import (
 	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 const (
-	maxAuthBodyBytes  = 16 << 10
-	minPasswordRunes  = 8
-	maxUsernameRunes  = 128
-	maxPasswordField  = 1024
-	sessionCookiePath = "/"
+	maxAuthBodyBytes   = 16 << 10
+	minPasswordRunes   = 8
+	maxLoginIDRunes    = 320
+	maxEmailRunes      = 320
+	maxPasswordField   = 1024
+	sessionCookiePath  = "/"
+	authChallengeTTL   = 5 * time.Minute
+	trustedDeviceTTL   = 90 * 24 * time.Hour
+	maxDeviceNameRunes = 120
+	defaultPersonaRef  = "gentle-listener"
 )
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	s.metrics.ObserveCoreWrite()
-	if !auth.AllowOrigin(r.Header.Get("Origin"), s.cfg.HTTP.AllowedOrigins) {
-		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "origin rejected")
+	if !s.beginUnauthenticatedAuthWrite(w, r) {
 		return
 	}
 	var body struct {
-		Username string `json:"username"`
+		Account  string `json:"account"`
 		Password string `json:"password"`
 	}
 	if !s.decodeAuthJSON(w, r, &body) {
 		return
 	}
-	username := strings.ToLower(strings.TrimSpace(body.Username))
+	account := strings.ToLower(strings.TrimSpace(body.Account))
 	password := body.Password
-	if !validUsername(username) || !validPasswordInput(password) {
+	if !validLoginIdentifier(account) || !validPasswordInput(password) {
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
-	if !s.admitAuth(w, r, "login", username) {
+	if !s.admitAuth(w, r, "login", account) {
 		return
 	}
-	if s.core.Passwords == nil {
+	if s.core == nil || s.core.Passwords == nil || s.core.AuthFlow == nil {
 		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
 		return
 	}
@@ -51,33 +56,350 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.core.Limiter.Leave()
-	ident, known, err := s.core.Store.LookupIdentity(r.Context(), username)
+	ident, known, err := s.core.Store.LookupIdentity(r.Context(), account)
 	if err != nil {
 		s.writeStoreErr(w, err)
 		return
 	}
-	match := known && ident.Status == "ACTIVE"
-	if !s.core.Passwords.MatchStored(password, ident.PasswordHash, match) {
+	if !s.core.Passwords.MatchStored(password, ident.PasswordHash, known) {
 		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
 		return
 	}
-	raw, hash, err := auth.NewSessionToken()
-	if err != nil {
-		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+	switch ident.Status {
+	case "EMAIL_UNVERIFIED":
+		s.writeJSON(w, http.StatusAccepted, authNextStepJSON{NextStep: "EMAIL_VERIFICATION_REQUIRED"})
+		return
+	case "PENDING_REVIEW":
+		s.writeJSON(w, http.StatusAccepted, authNextStepJSON{NextStep: "REVIEW_PENDING"})
+		return
+	case "DISABLED", "REJECTED":
+		s.writeJSON(w, http.StatusForbidden, authNextStepJSON{NextStep: ident.Status})
+		return
+	case "ACTIVE":
+	default:
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
 		return
 	}
-	expires := time.Now().Add(s.sessionTTL())
-	if _, err := s.core.Store.IssueOpaqueSession(r.Context(), ident.AccountID, hash, expires); err != nil {
+	if ident.Role == "USER" {
+		if _, err := s.core.AuthFlow.EnsureDefaultRelationship(
+			r.Context(), ident.AccountID, defaultPersonaRef,
+		); err != nil {
+			s.writeStoreErr(w, err)
+			return
+		}
+	}
+
+	now := time.Now().UTC()
+	if trustedToken := auth.TrustedDeviceToken(r); trustedToken != "" {
+		session, ok, err := s.core.AuthFlow.LoginWithTrustedDevice(
+			r.Context(), ident.AccountID, trustedToken, now, now.Add(s.sessionTTL()))
+		if err != nil {
+			s.writeStoreErr(w, err)
+			return
+		}
+		if ok {
+			s.writeAuthenticatedSession(w, session.SessionToken, ident.AccountID, ident.Username, ident.Role, ident.PasswordMustChange, true)
+			return
+		}
+		s.clearTrustedDeviceCookie(w)
+	}
+
+	enabled, err := s.core.AuthFlow.AuthenticatorEnabled(r.Context(), ident.AccountID)
+	if err != nil {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.setSessionCookies(w, raw)
-	s.writeJSON(w, http.StatusOK, sessionIdentityJSON{
-		AccountID:          strconv.FormatInt(ident.AccountID, 10),
-		Role:               ident.Role,
-		PasswordMustChange: ident.PasswordMustChange,
-		ExpiresInSeconds:   int64(s.sessionTTL().Seconds()),
+	mode := postgres.AuthChallengeTOTPEnroll
+	nextStep := "AUTHENTICATOR_SETUP_REQUIRED"
+	if enabled {
+		mode = postgres.AuthChallengeTOTPVerify
+		nextStep = "TOTP_REQUIRED"
+	}
+	challenge, err := s.core.AuthFlow.CreateAuthChallenge(r.Context(), ident.AccountID, mode, now.Add(authChallengeTTL))
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusAccepted, authNextStepJSON{
+		NextStep:    nextStep,
+		ChallengeID: challenge.ID,
+		ExpiresAt:   rfc3339(challenge.ExpiresAt),
 	})
+}
+
+func (s *Server) handleRegistrationStatus(w http.ResponseWriter, _ *http.Request) {
+	s.writeJSON(w, http.StatusOK, map[string]bool{"enabled": false})
+}
+
+func (s *Server) handleRegistrationClosed(w http.ResponseWriter, r *http.Request) {
+	if !s.beginUnauthenticatedAuthWrite(w, r) {
+		return
+	}
+	s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "registration is closed")
+}
+
+func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, false)
+	if p == nil {
+		return
+	}
+	if s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return
+	}
+	enabled, err := s.core.AuthFlow.AuthenticatorEnabled(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, sessionIdentityJSON{
+		NextStep:             "ACTIVE",
+		AccountID:            strconv.FormatInt(p.AccountID, 10),
+		Email:                accountEmail(p.Username),
+		Role:                 p.Role,
+		PasswordMustChange:   p.PasswordMustChange,
+		AuthenticatorEnabled: enabled,
+		ExpiresInSeconds:     int64(s.sessionTTL().Seconds()),
+	})
+}
+
+func (s *Server) handleAuthenticatorSetup(w http.ResponseWriter, r *http.Request) {
+	if !s.beginUnauthenticatedAuthWrite(w, r) {
+		return
+	}
+	challengeID := r.PathValue("challengeId")
+	if !validChallengeID(challengeID) || s.core == nil || s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	setup, err := s.core.AuthFlow.AuthenticatorSetup(r.Context(), challengeID, time.Now().UTC())
+	if err != nil {
+		s.writeChallengeErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, setup)
+}
+
+func (s *Server) handleAuthenticatorConfirm(w http.ResponseWriter, r *http.Request) {
+	s.handleAuthChallengeComplete(w, r, postgres.AuthChallengeTOTPEnroll, postgres.AuthMethodTOTP)
+}
+
+func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request) {
+	s.handleAuthChallengeComplete(w, r, postgres.AuthChallengeTOTPVerify, postgres.AuthMethodTOTP)
+}
+
+func (s *Server) handleRecoveryCodeVerify(w http.ResponseWriter, r *http.Request) {
+	s.handleAuthChallengeComplete(w, r, postgres.AuthChallengeTOTPVerify, postgres.AuthMethodRecoveryCode)
+}
+
+func (s *Server) handleAuthChallengeComplete(w http.ResponseWriter, r *http.Request, mode, method string) {
+	if !s.beginUnauthenticatedAuthWrite(w, r) {
+		return
+	}
+	challengeID := r.PathValue("challengeId")
+	if !validChallengeID(challengeID) || s.core == nil || s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	var body struct {
+		Code        string `json:"code"`
+		TrustDevice bool   `json:"trustDevice"`
+		DeviceName  string `json:"deviceName"`
+	}
+	if !s.decodeAuthJSON(w, r, &body) {
+		return
+	}
+	code := strings.TrimSpace(body.Code)
+	if code == "" || len(code) > 128 || utf8.RuneCountInString(body.DeviceName) > maxDeviceNameRunes {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	if !s.admitAuth(w, r, "authenticator", "") {
+		return
+	}
+	now := time.Now().UTC()
+	session, valid, err := s.core.AuthFlow.CompleteAuthChallenge(r.Context(), postgres.AuthCompleteInput{
+		ChallengeID:            challengeID,
+		Mode:                   mode,
+		Method:                 method,
+		Code:                   code,
+		TrustDevice:            body.TrustDevice,
+		DeviceName:             body.DeviceName,
+		Now:                    now,
+		SessionExpiresAt:       now.Add(s.sessionTTL()),
+		TrustedDeviceExpiresAt: now.Add(trustedDeviceTTL),
+	})
+	if err != nil {
+		s.writeChallengeErr(w, err)
+		return
+	}
+	if !valid {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	if session.TrustedDeviceToken != "" {
+		s.setTrustedDeviceCookie(w, session.TrustedDeviceToken)
+	}
+	s.setSessionCookies(w, session.SessionToken)
+	s.writeJSON(w, http.StatusOK, authCompleteJSON{
+		NextStep:             "ACTIVE",
+		AccountID:            strconv.FormatInt(session.AccountID, 10),
+		Email:                accountEmail(session.AccountName),
+		Role:                 session.Role,
+		PasswordMustChange:   session.PasswordMustChange,
+		AuthenticatorEnabled: true,
+		ExpiresInSeconds:     int64(s.sessionTTL().Seconds()),
+		RecoveryCodes:        session.RecoveryCodes,
+	})
+}
+
+func (s *Server) handleListTrustedDevices(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, false)
+	if p == nil {
+		return
+	}
+	if s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return
+	}
+	rows, err := s.core.AuthFlow.ListTrustedDevices(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	out := make([]trustedDeviceJSON, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, trustedDeviceJSON{
+			ID: strconv.FormatInt(row.ID, 10), DisplayName: row.DisplayName,
+			CreatedAt: rfc3339(row.CreatedAt), LastUsedAt: rfc3339(row.LastUsedAt), ExpiresAt: rfc3339(row.ExpiresAt),
+		})
+	}
+	s.writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleRevokeTrustedDevice(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	deviceID, ok := parsePathID(r.PathValue("deviceId"))
+	if !ok || s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	if err := s.core.AuthFlow.RevokeTrustedDevice(r.Context(), p.AccountID, deviceID); err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleListAdminAccounts(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, false)
+	if p == nil {
+		return
+	}
+	if p.Role != "ADMIN" {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "access denied")
+		return
+	}
+	if s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return
+	}
+	rows, err := s.core.AuthFlow.ListAdminAccounts(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	out := make([]adminAccountJSON, 0, len(rows))
+	for _, row := range rows {
+		item := adminAccountJSON{
+			AccountID:            strconv.FormatInt(row.ID, 10),
+			Username:             row.Username,
+			DisplayName:          row.DisplayName,
+			Role:                 row.Role,
+			Status:               row.Status,
+			EmailVerified:        row.EmailVerified,
+			AuthenticatorEnabled: row.AuthenticatorEnabled,
+			CreatedAt:            rfc3339(row.CreatedAt),
+		}
+		if row.Email != nil {
+			item.Email = *row.Email
+		}
+		if row.ReviewedAt != nil {
+			item.ReviewedAt = rfc3339(*row.ReviewedAt)
+		}
+		out = append(out, item)
+	}
+	s.writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleReviewAdminAccount(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	if p.Role != "ADMIN" {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "access denied")
+		return
+	}
+	if !auth.FreshReauth(p, time.Now(), s.cfg.Session.ReauthWindow) {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "recent reauthentication required")
+		return
+	}
+	targetAccountID, ok := parsePathID(r.PathValue("accountId"))
+	if !ok || s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	var body struct {
+		Decision string `json:"decision"`
+	}
+	if !s.decodeAuthJSON(w, r, &body) {
+		return
+	}
+	decision := strings.ToUpper(strings.TrimSpace(body.Decision))
+	if decision != "APPROVE" && decision != "REJECT" {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	if err := s.core.AuthFlow.ReviewAccount(
+		r.Context(), p.AccountID, targetAccountID, decision, time.Now().UTC(),
+	); err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	status := "ACTIVE"
+	if decision == "REJECT" {
+		status = "REJECTED"
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": status})
+}
+
+func (s *Server) handleAdminResetAuthenticator(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	if p.Role != "ADMIN" {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "access denied")
+		return
+	}
+	if !auth.FreshReauth(p, time.Now(), s.cfg.Session.ReauthWindow) {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "recent reauthentication required")
+		return
+	}
+	targetAccountID, ok := parsePathID(r.PathValue("accountId"))
+	if !ok || s.core.AuthFlow == nil {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	if err := s.core.AuthFlow.ResetAuthenticator(r.Context(), p.AccountID, targetAccountID); err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +472,7 @@ func (s *Server) handleRevokeAllSessions(w http.ResponseWriter, r *http.Request)
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.clearSessionCookies(w)
+	s.clearAllAuthCookies(w)
 	s.writeJSON(w, http.StatusOK, map[string]int{"revoked": n})
 }
 
@@ -185,7 +507,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.clearSessionCookies(w)
+	s.clearAllAuthCookies(w)
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -251,6 +573,44 @@ func (s *Server) writeRateLimited(w http.ResponseWriter, retry time.Duration) {
 	s.writeAPIError(w, http.StatusTooManyRequests, "AUTH_RATE_LIMITED", "temporarily rate limited")
 }
 
+func (s *Server) beginUnauthenticatedAuthWrite(w http.ResponseWriter, r *http.Request) bool {
+	s.metrics.ObserveCoreWrite()
+	if !auth.AllowOrigin(r.Header.Get("Origin"), s.cfg.HTTP.AllowedOrigins) {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "origin rejected")
+		return false
+	}
+	return true
+}
+
+func (s *Server) writeChallengeErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, postgres.ErrNotFound) || errors.Is(err, postgres.ErrInvalid) {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	s.writeStoreErr(w, err)
+}
+
+func (s *Server) writeAuthenticatedSession(
+	w http.ResponseWriter,
+	raw string,
+	accountID int64,
+	accountName string,
+	role string,
+	passwordMustChange bool,
+	authenticatorEnabled bool,
+) {
+	s.setSessionCookies(w, raw)
+	s.writeJSON(w, http.StatusOK, sessionIdentityJSON{
+		NextStep:             "ACTIVE",
+		AccountID:            strconv.FormatInt(accountID, 10),
+		Email:                accountEmail(accountName),
+		Role:                 role,
+		PasswordMustChange:   passwordMustChange,
+		AuthenticatorEnabled: authenticatorEnabled,
+		ExpiresInSeconds:     int64(s.sessionTTL().Seconds()),
+	})
+}
+
 func (s *Server) setSessionCookies(w http.ResponseWriter, raw string) {
 	ttl := s.sessionTTL()
 	maxAge := int(ttl.Seconds())
@@ -301,6 +661,38 @@ func (s *Server) clearSessionCookies(w http.ResponseWriter) {
 	})
 }
 
+func (s *Server) setTrustedDeviceCookie(w http.ResponseWriter, raw string) {
+	secure := s.cfg.Session.CookieSecure
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.TrustedDeviceCookieName,
+		Value:    raw,
+		Path:     sessionCookiePath,
+		MaxAge:   int(trustedDeviceTTL.Seconds()),
+		Expires:  time.Now().UTC().Add(trustedDeviceTTL),
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (s *Server) clearTrustedDeviceCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.TrustedDeviceCookieName,
+		Value:    "",
+		Path:     sessionCookiePath,
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0).UTC(),
+		HttpOnly: true,
+		Secure:   s.cfg.Session.CookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (s *Server) clearAllAuthCookies(w http.ResponseWriter) {
+	s.clearSessionCookies(w)
+	s.clearTrustedDeviceCookie(w)
+}
+
 func (s *Server) sessionTTL() time.Duration {
 	if s.cfg.Session.TTL > 0 {
 		return s.cfg.Session.TTL
@@ -308,11 +700,24 @@ func (s *Server) sessionTTL() time.Duration {
 	return auth.DefaultSessionTTL
 }
 
-func validUsername(username string) bool {
-	if username == "" || utf8.RuneCountInString(username) > maxUsernameRunes || len(username) > maxUsernameRunes {
+func validEmailInput(email string) bool {
+	if email == "" || utf8.RuneCountInString(email) > maxEmailRunes || len(email) > maxEmailRunes {
 		return false
 	}
-	return true
+	at := strings.LastIndexByte(email, '@')
+	return at > 0 && at < len(email)-1
+}
+
+func validLoginIdentifier(account string) bool {
+	return account != "" && utf8.RuneCountInString(account) <= maxLoginIDRunes && len(account) <= maxLoginIDRunes
+}
+
+func accountEmail(accountName string) string {
+	email := strings.ToLower(strings.TrimSpace(accountName))
+	if !validEmailInput(email) {
+		return ""
+	}
+	return email
 }
 
 func validPasswordInput(password string) bool {
@@ -323,10 +728,65 @@ func validPasswordInput(password string) bool {
 }
 
 type sessionIdentityJSON struct {
-	AccountID          string `json:"accountId"`
-	Role               string `json:"role"`
-	PasswordMustChange bool   `json:"passwordMustChange"`
-	ExpiresInSeconds   int64  `json:"expiresInSeconds"`
+	NextStep             string `json:"nextStep"`
+	AccountID            string `json:"accountId"`
+	Email                string `json:"email,omitempty"`
+	Role                 string `json:"role"`
+	PasswordMustChange   bool   `json:"passwordMustChange"`
+	AuthenticatorEnabled bool   `json:"authenticatorEnabled"`
+	ExpiresInSeconds     int64  `json:"expiresInSeconds"`
+}
+
+type authNextStepJSON struct {
+	NextStep    string `json:"nextStep"`
+	ChallengeID string `json:"challengeId,omitempty"`
+	ExpiresAt   string `json:"expiresAt,omitempty"`
+}
+
+type authCompleteJSON struct {
+	NextStep             string   `json:"nextStep"`
+	AccountID            string   `json:"accountId"`
+	Email                string   `json:"email,omitempty"`
+	Role                 string   `json:"role"`
+	PasswordMustChange   bool     `json:"passwordMustChange"`
+	AuthenticatorEnabled bool     `json:"authenticatorEnabled"`
+	ExpiresInSeconds     int64    `json:"expiresInSeconds"`
+	RecoveryCodes        []string `json:"recoveryCodes,omitempty"`
+}
+
+type trustedDeviceJSON struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	CreatedAt   string `json:"createdAt"`
+	LastUsedAt  string `json:"lastUsedAt"`
+	ExpiresAt   string `json:"expiresAt"`
+}
+
+type adminAccountJSON struct {
+	AccountID            string `json:"accountId"`
+	Email                string `json:"email,omitempty"`
+	Username             string `json:"username"`
+	DisplayName          string `json:"displayName"`
+	Role                 string `json:"role"`
+	Status               string `json:"status"`
+	EmailVerified        bool   `json:"emailVerified"`
+	AuthenticatorEnabled bool   `json:"authenticatorEnabled"`
+	CreatedAt            string `json:"createdAt"`
+	ReviewedAt           string `json:"reviewedAt,omitempty"`
+}
+
+func validChallengeID(value string) bool {
+	if len(value) != 43 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		b := value[i]
+		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-' || b == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 type sessionJSON struct {

@@ -2,8 +2,11 @@ import {
   type APIRequestContext,
   expect,
   type Page,
+  type Response,
   request as requestFactory,
 } from "@playwright/test";
+import { createHmac } from "node:crypto";
+import { readFile, rename, writeFile } from "node:fs/promises";
 
 // S0-23 shared helpers. Every credential and record is synthetic and confined
 // to the isolated local stack.
@@ -26,33 +29,18 @@ const REQUIRED_CONSENTS = [
 
 export const E2E_USER_SUFFIXES = [
   "login-return",
-  "admission-gate",
+  "auth-trusted-device",
   "relationship-chat",
-  // round11：03 的视口/状态矩阵测试与 130 条种子流测试拆分账号——后端
-  // SSE 租约按用户计（上限 3，滞留至 130s TTL，见 Journey04 的
-  // READY_FOR_OWNER），同账号内新增的真实发送会把后续测试的流挤成
-  // 第 4 条而必然 429。
-  "relationship-viewport",
-  "relationship-viewport-wide",
-  // 纠偏重写：03 的操作与边界测试独立账号，避免与 smoke/举报共享登录限流桶。
-  "relationship-ops",
   "realtime-recovery",
-  "memory-lifecycle",
-  "export-lifecycle",
   "provider-faults",
-  // DOGFOOD-09：可访问性 journey（08）的独立账号，避免与其他 journey 的
-  // 关系/记忆状态互相污染。
   "accessibility",
-  // round6：流式证据/会话切换 journey（09）的独立账号——同轮套跑中与
-  // journey-03 的登录次数解耦，避免共享登录限流桶。
-  "streaming-evidence",
   "navigation-smoke",
 ] as const;
 
 export type E2EUserSuffix = (typeof E2E_USER_SUFFIXES)[number];
 
 export interface E2EUser {
-  username: string;
+  email: string;
   password: string;
 }
 
@@ -74,9 +62,68 @@ function asId(value: unknown, label: string): string {
 
 function userFor(suffix: E2EUserSuffix): E2EUser {
   return {
-    username: `e2e-user-${suffix}`,
+    email: `e2e-user-${suffix}@example.test`,
     password: "E2e-User-Pass-1234!",
   };
+}
+
+function authMaterialPath(): string {
+  const stateFile = process.env.E2E_STACK_STATE_FILE;
+  if (!stateFile) throw new Error("E2E_STACK_STATE_FILE is required for authenticator setup");
+  return `${stateFile}.auth.json`;
+}
+
+async function readAuthenticatorSecrets(): Promise<Record<string, string>> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(authMaterialPath(), "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("E2E authenticator material must be an object");
+    }
+    const result: Record<string, string> = {};
+    for (const [email, secret] of Object.entries(parsed)) {
+      if (typeof secret !== "string" || !/^[A-Z2-7]+$/.test(secret)) {
+        throw new Error(`E2E authenticator material is invalid for ${email}`);
+      }
+      result[email] = secret;
+    }
+    return result;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return {};
+    throw error;
+  }
+}
+
+async function saveAuthenticatorSecret(email: string, secret: string): Promise<void> {
+  const path = authMaterialPath();
+  const next = { ...await readAuthenticatorSecrets(), [email]: secret };
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(next)}\n`, { encoding: "utf8", mode: 0o600 });
+  await rename(temporary, path);
+}
+
+function decodeBase32(secret: string): Buffer {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const character of secret.toUpperCase().replace(/=+$/u, "")) {
+    const value = alphabet.indexOf(character);
+    if (value < 0) throw new Error("invalid E2E TOTP secret");
+    bits += value.toString(2).padStart(5, "0");
+  }
+  const bytes: number[] = [];
+  for (let offset = 0; offset + 8 <= bits.length; offset += 8) {
+    bytes.push(Number.parseInt(bits.slice(offset, offset + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function currentTOTP(secret: string, now = Date.now()): string {
+  const counter = BigInt(Math.floor(now / 30_000));
+  const message = Buffer.alloc(8);
+  message.writeBigUInt64BE(counter);
+  const digest = createHmac("sha1", decodeBase32(secret)).update(message).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const value = (digest.readUInt32BE(offset) & 0x7fff_ffff) % 1_000_000;
+  return String(value).padStart(6, "0");
 }
 
 /**
@@ -111,7 +158,7 @@ export async function provisionUser(
 export async function uiLogin(
   page: Page,
   user: E2EUser,
-  options: { openPage?: boolean } = {},
+  options: { openPage?: boolean; trustDevice?: boolean } = {},
 ): Promise<E2ESession> {
   if (options.openPage !== false) {
     await page.goto("/#/pages/login/login");
@@ -121,19 +168,79 @@ export async function uiLogin(
       response.request().method() === "POST" &&
       new URL(response.url()).pathname === "/api/v1/auth/login",
   );
-  await page.locator('[data-testid="username"] input').fill(user.username);
+  await page.locator('[data-testid="account"] input').fill(user.email);
   await page.locator('[data-testid="password"] input').fill(user.password);
   await page.getByTestId("submit").click();
   const response = await responsePromise;
+  return completeLoginChallenge(page, user, response, options);
+}
+
+/** Complete the server-selected second step after credentials were submitted. */
+export async function completeLoginChallenge(
+  page: Page,
+  user: E2EUser,
+  response: Response,
+  options: { trustDevice?: boolean } = {},
+): Promise<E2ESession> {
   expect(response.ok(), `UI login failed: ${response.status()}`).toBeTruthy();
   const body = (await response.json()) as {
+    nextStep?: unknown;
+    challengeId?: unknown;
     accountId?: unknown;
   };
+  let accountId: unknown = body.accountId;
+
+  if (body.nextStep === "AUTHENTICATOR_SETUP_REQUIRED") {
+    const codeInput = page.locator('[data-testid="setup-code"] input');
+    await expect(codeInput).toBeVisible();
+    const secret = (await page.locator(".vc-authenticator-setup__manual-key").textContent())
+      ?.replace(/\s/gu, "");
+    if (!secret || !/^[A-Z2-7]+$/.test(secret)) {
+      throw new Error("authenticator setup did not expose a valid manual key");
+    }
+    const confirmPromise = page.waitForResponse(
+      (candidate) => candidate.request().method() === "POST"
+        && new URL(candidate.url()).pathname.endsWith("/authenticator-confirm"),
+    );
+    await codeInput.fill(currentTOTP(secret));
+    if (options.trustDevice) {
+      await page.getByText("信任此设备 90 天", { exact: true }).click();
+    }
+    await page.getByTestId("setup-submit").click();
+    const confirmed = await confirmPromise;
+    expect(confirmed.ok(), `authenticator setup failed: ${confirmed.status()}`).toBeTruthy();
+    accountId = ((await confirmed.json()) as { accountId?: unknown }).accountId;
+    await saveAuthenticatorSecret(user.email, secret);
+    await expect(page.getByTestId("recovery-continue")).toBeVisible();
+    await page.getByTestId("recovery-continue").click();
+  } else if (body.nextStep === "TOTP_REQUIRED") {
+    const secret = (await readAuthenticatorSecrets())[user.email];
+    if (!secret) {
+      throw new Error(`no E2E authenticator material is available for ${user.email}`);
+    }
+    const verifyPromise = page.waitForResponse(
+      (candidate) => candidate.request().method() === "POST"
+        && new URL(candidate.url()).pathname.endsWith("/totp"),
+    );
+    const codeInput = page.locator('[data-testid="totp-code"] input');
+    await expect(codeInput).toBeVisible();
+    await codeInput.fill(currentTOTP(secret));
+    if (options.trustDevice) {
+      await page.getByText("信任此设备 90 天", { exact: true }).click();
+    }
+    await page.getByTestId("totp-submit").click();
+    const verified = await verifyPromise;
+    expect(verified.ok(), `TOTP verification failed: ${verified.status()}`).toBeTruthy();
+    accountId = ((await verified.json()) as { accountId?: unknown }).accountId;
+  } else if (body.nextStep !== "ACTIVE") {
+    throw new Error(`UI login stopped at unsupported next step: ${String(body.nextStep)}`);
+  }
+
   await page.waitForURL((url) => !url.hash.includes("/pages/login/login"), {
     timeout: 20_000,
   });
   return {
-    accountId: asId(body.accountId, "accountId"),
+    accountId: asId(accountId, "accountId"),
     page,
   };
 }
@@ -250,22 +357,22 @@ export async function prepareGenerationAccess(page: Page): Promise<void> {
   }
 }
 
-/** Create real relationship/conversation setup without bypassing ownership. */
+/** Use the product-created default relationship and create one real conversation. */
 export async function createRelationshipAndConversation(
   page: Page,
 ): Promise<E2EConversation> {
-  const relationship = await sessionRequest(page, "POST", "/api/v1/relationships", {
-      personaRef: "gentle-listener",
-  });
+  const relationship = await sessionRequest(page, "GET", "/api/v1/relationships");
   expect(
     relationship.ok,
-    `relationship creation failed: ${relationship.status}`,
+    `default relationship lookup failed: ${relationship.status}`,
   ).toBeTruthy();
-  const relationshipBody = relationship.body as {
-    relationshipId?: unknown;
-  };
+  const rows = Array.isArray(relationship.body)
+    ? relationship.body as Array<{ relationshipId?: unknown; active?: unknown }>
+    : [];
+  const relationshipBody = rows.find((row) => row.active === true) ?? rows[0];
+  expect(relationshipBody, "active default relationship is present").toBeTruthy();
   const relationshipId = asId(
-    relationshipBody.relationshipId,
+    relationshipBody?.relationshipId,
     "relationshipId",
   );
 
@@ -285,27 +392,19 @@ export async function createRelationshipAndConversation(
   };
 }
 
-/** Create a candidate with a real evidence chain for the memory UI journey. */
-export async function createMemoryCandidate(
-  page: Page,
-  relationshipId: string,
-  summary: string,
-  evidence: string,
-): Promise<string> {
-  const response = await sessionRequest(
-    page,
-    "POST",
-    `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories/candidates`,
-    {
-      scope: "RELATIONSHIP",
-      summary,
-      evidence: [evidence],
-    },
-  );
-  expect(
-    response.ok,
-    `memory candidate creation failed: ${response.status}`,
-  ).toBeTruthy();
-  const body = response.body as { memoryId?: unknown };
-  return asId(body.memoryId, "memoryId");
+/** Read the product-created default relationship without creating another one. */
+export async function getDefaultRelationshipId(page: Page): Promise<string> {
+  const response = await sessionRequest(page, "GET", "/api/v1/relationships");
+  expect(response.ok, `default relationship lookup failed: ${response.status}`).toBeTruthy();
+  const rows = Array.isArray(response.body)
+    ? response.body as Array<{ relationshipId?: unknown; active?: unknown }>
+    : [];
+  const row = rows.find((candidate) => candidate.active === true) ?? rows[0];
+  return asId(row?.relationshipId, "relationshipId");
 }
+
+/*
+ * The old memory-candidate helper intentionally disappeared with the memory
+ * center. Server-side memory and governance APIs remain covered by backend
+ * tests; the current consumer E2E suite only drives visible product journeys.
+ */

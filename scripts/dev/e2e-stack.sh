@@ -32,6 +32,7 @@ MINIO_CONTAINER="vc-e2e-minio-$$"
 E2E_DOCKER_CONTEXT="${E2E_DOCKER_CONTEXT:-orbstack}"
 DOCKER=(docker --context "$E2E_DOCKER_CONTEXT")
 E2E_STACK_STATE_FILE="${E2E_STACK_STATE_FILE:-/tmp/vc-e2e-stack-$$.json}"
+E2E_AUTH_MATERIAL_FILE="${E2E_STACK_STATE_FILE}.auth.json"
 E2E_SECRET_DIR=""
 MINIO_MC_SECRET_FILE=""
 PROVIDER_LOG="/tmp/vc-e2e-provider-$$.log"
@@ -91,7 +92,8 @@ cleanup() {
         terminate_group "${RUNTIME_PID:-}"
         terminate_group "${PROVIDER_PID:-}"
         "${DOCKER[@]}" rm -f "$PG_CONTAINER" "$MINIO_CONTAINER" >/dev/null 2>&1 || true
-        rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" "$GO_BINARY"
+        rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" \
+            "$E2E_AUTH_MATERIAL_FILE" "$GO_BINARY"
         [ -z "$E2E_SECRET_DIR" ] || rm -rf -- "$E2E_SECRET_DIR"
     else
         echo "keeping stack: pg($PG_CONTAINER) minio($MINIO_CONTAINER) provider(:$E2E_PROVIDER_PORT) runtime(:$E2E_RUNTIME_PORT) h5(:$E2E_H5_PORT)" >&2
@@ -221,16 +223,26 @@ case "$E2E_ADMIN_ID" in
         exit 7
         ;;
 esac
+"${DOCKER[@]}" exec -i "$PG_CONTAINER" \
+    psql -U postgres -d vc -v ON_ERROR_STOP=1 -q \
+    -v admin_id="$E2E_ADMIN_ID" \
+    -v email="e2e-admin@example.test" \
+    -f - >/dev/null <<'SQL'
+UPDATE vc.identity_account
+   SET email = :'email',
+       email_verified_at = COALESCE(email_verified_at, now())
+ WHERE id = :admin_id;
+SQL
 for E2E_USER_SUFFIX in \
-    login-return admission-gate relationship-chat relationship-viewport \
-    relationship-viewport-wide relationship-ops realtime-recovery \
-    memory-lifecycle export-lifecycle provider-faults accessibility \
-    streaming-evidence navigation-smoke; do
+    login-return auth-trusted-device relationship-chat realtime-recovery \
+    provider-faults accessibility navigation-smoke; do
     E2E_USERNAME="e2e-user-${E2E_USER_SUFFIX}"
+    E2E_EMAIL="${E2E_USERNAME}@example.test"
     "${DOCKER[@]}" exec -i "$PG_CONTAINER" \
         psql -U postgres -d vc -v ON_ERROR_STOP=1 -q \
         -v admin_id="$E2E_ADMIN_ID" \
         -v username="$E2E_USERNAME" \
+        -v email="$E2E_EMAIL" \
         -v password_hash="$E2E_USER_PASSWORD_HASH" \
         -v display_name="E2E 用户 ${E2E_USER_SUFFIX}" \
         -f - >/dev/null <<'SQL'
@@ -244,6 +256,11 @@ SELECT vc.identity_account_create(
 WHERE NOT EXISTS (
     SELECT 1 FROM vc.identity_account WHERE username = :'username'
 );
+UPDATE vc.identity_account
+   SET email = :'email',
+       email_verified_at = COALESCE(email_verified_at, now()),
+       status = 'ACTIVE'
+ WHERE username = :'username';
 SQL
 done
 

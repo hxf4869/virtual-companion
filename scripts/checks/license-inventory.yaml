@@ -10,10 +10,12 @@ goDirectDependencies:
     licenseFamily: MIT
   - module: github.com/minio/minio-go/v7
     licenseFamily: Apache-2.0
+  - module: github.com/pquerna/otp
+    licenseFamily: Apache-2.0
   - module: golang.org/x/crypto
     licenseFamily: BSD-3-Clause
 # frontend 直接依赖（package.json dependencies + devDependencies 去重）
-# 实际 = 6 dependencies + 15 devDependencies = 21
+# 实际 = 7 dependencies + 16 devDependencies = 23
 frontendDirectDependencies:
   # --- @dcloudio (uni-app, Apache-2.0) ---
   - name: "@dcloudio/uni-app"
@@ -22,6 +24,9 @@ frontendDirectDependencies:
     licenseFamily: Apache-2.0
   - name: "@dcloudio/uni-h5"
     licenseFamily: Apache-2.0
+  # --- Wot UI v2（MIT） ---
+  - name: "@wot-ui/ui"
+    licenseFamily: MIT
   - name: "@dcloudio/types"
     licenseFamily: Apache-2.0
     scope: dev
@@ -74,6 +79,10 @@ frontendDirectDependencies:
     scope: dev
   # --- happy-dom (MIT) ---
   - name: happy-dom
+    licenseFamily: MIT
+    scope: dev
+  # --- Sass（MIT；Wot UI 样式编译） ---
+  - name: sass
     licenseFamily: MIT
     scope: dev
   # --- Playwright browser E2E (Apache-2.0) ---

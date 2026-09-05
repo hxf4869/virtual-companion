@@ -1,5 +1,11 @@
 # 前端纠偏式重构——删除过度设计，重建可用的移动端产品（唯一长线计划）
 
+> **SUPERSEDED（2026-09-01）**
+> 本计划已被
+> [`2026-09-01-frontend-redo-implementation-plan.md`](./2026-09-01-frontend-redo-implementation-plan.md)
+> 取代，仅保留为历史记录。本文的“纠偏式重构”、20 路由兼容、四项底部导航、禁止修改接口与
+> 禁止新增依赖等要求，均不再是实施约束。
+
 - 日期：2026-08-29
 - 执行者：zcode（本任务唯一前端写入 Owner）
 - 分支：`codex/frontend-simplification-redesign`（自 `db8815e4` 创建）

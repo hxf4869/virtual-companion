@@ -25,27 +25,15 @@ import { computed, ref } from "vue";
 import {
   cancelGeneration,
   createConversation,
-  deleteConversation as apiDeleteConversation,
-  endConversation as apiEndConversation,
-  deleteMessage as apiDeleteMessage,
-  getServiceMode,
   listConversations,
   listMessages,
-  recordFeedback,
-  renameConversation as apiRenameConversation,
   sendGeneration,
-  setMessageNoMemory as apiSetMessageNoMemory,
-  asChatMode,
-  type ChatMode,
   type ChatTransport,
   type ConversationListItem,
   type CreateConversationResponse,
   type Generation,
   type Message,
-  type MessageFeedbackKind,
-  type ServiceModeStatus,
 } from "@/api/chat";
-import { listMemories } from "@/api/memory";
 import {
   createStreamHandle,
   streamGeneration,
@@ -95,8 +83,6 @@ export const useChatStore = defineStore("h5-chat", () => {
   // 结束当前会话）递增；在途分页链路提交前必须持有与当前一致的令牌，晚到的
   // 旧会话响应一律丢弃，禁止把 B 会话的页面串写进已切换到 A 的窗口。
   let historyWindowToken = 0;
-  // MEM-PROMPT: pending candidate count surfaced after a completed turn.
-  const pendingMemoryCount = ref(0);
   // Only covers the generation-creation POST. The stream keeps using phase;
   // this small guard prevents a double tap from creating a second durable turn
   // before run() can transition the phase to streaming.
@@ -110,20 +96,6 @@ export const useChatStore = defineStore("h5-chat", () => {
   // page can echo it as a pending bubble while streaming and offer a one-click
   // retry after a terminal failure.
   const pendingUserContent = ref("");
-  // USAGE-VIZ: settled provider token usage of the last completed generation.
-  const usage = ref<{ inputTokens: number; outputTokens: number } | null>(null);
-  // CHAT-MODE: the turn-level interaction mode for the next send. AUTO keeps
-  // the persona default; LISTEN/DISCUSS override it for the turn. Sticky for
-  // the page session (the page's mode chips write it via setMode).
-  const selectedMode = ref<ChatMode>("AUTO");
-  // FEEDBACK (FR-CHAT-003): kinds already submitted for the current generation
-  // (per-kind idempotent in the UI; the server no-ops repeats anyway).
-  const feedbackKinds = ref<MessageFeedbackKind[]>([]);
-  // SVC-MODE (FR-RES-005): the current generation-service mode (null until
-  // loaded; a failed read keeps null so the UI never invents a mode).
-  const serviceMode = ref<ServiceModeStatus | null>(null);
-  // INC-MODE (FR-CHAT-005): whether the OPEN conversation is incognito.
-  const activeIncognito = ref(false);
   // S0-20 review-fix: owner/relationship binding for the refresh-recovery
   // entry. Ids only — the page binds them after auth; an empty accountId
   // disables saving entirely (no owner, no restore).
@@ -145,48 +117,6 @@ export const useChatStore = defineStore("h5-chat", () => {
       generationId: generationId.value,
       savedAtEpochMs: Date.now(),
     });
-  }
-
-  /** SVC-MODE: load the current service mode (non-fatal). */
-  async function loadServiceMode(transport: ChatTransport): Promise<void> {
-    try {
-      serviceMode.value = await getServiceMode(transport);
-    } catch {
-      // Keep the previous value (usually null); the UI shows no mode.
-    }
-  }
-
-  /** CHAT-MODE: narrow arbitrary chip input to an approved mode (no-op otherwise). */
-  function setMode(mode: unknown): void {
-    const narrowed = asChatMode(mode);
-    if (narrowed) {
-      selectedMode.value = narrowed;
-    }
-  }
-
-  /**
-   * FEEDBACK: submit one feedback kind for the current generation. Repeated
-   * submissions of the same kind are no-ops; an existence-hidden failure (the
-   * generation is gone) is ignored so the UI never fakes success or discloses
-   * anything. Returns true only when this call recorded the kind; a repeat
-   * of an already-recorded kind is a no-op and returns false.
-   */
-  async function sendFeedback(
-    transport: ChatTransport,
-    kind: MessageFeedbackKind,
-  ): Promise<boolean> {
-    const id = generationId.value;
-    if (!id || feedbackKinds.value.includes(kind)) return false;
-    try {
-      const recorded = await recordFeedback(transport, id, kind);
-      if (recorded) {
-        feedbackKinds.value = [...feedbackKinds.value, kind];
-        return true;
-      }
-    } catch {
-      // Non-fatal: keep the previous state; the user can tap again.
-    }
-    return false;
   }
 
   /**
@@ -276,7 +206,6 @@ export const useChatStore = defineStore("h5-chat", () => {
     saveRestorable();
     if (!opts?.resumeFrom) {
       stream.value = initialState(initialEpoch);
-      feedbackKinds.value = []; // FEEDBACK: fresh generation, fresh feedback state
     } else {
       stream.value = opts.resumeFrom;
     }
@@ -306,9 +235,6 @@ export const useChatStore = defineStore("h5-chat", () => {
     if (result.outcome === "completed") {
       phase.value = "completed";
       pendingUserContent.value = "";
-      // USAGE-VIZ: the usage row settles in the same transaction as the
-      // terminal event, so it is already visible in the snapshot endpoint.
-      await refreshUsage(deps);
     } else if (result.outcome === "cancelled") {
       phase.value = "cancelled";
       pendingUserContent.value = "";
@@ -395,7 +321,6 @@ export const useChatStore = defineStore("h5-chat", () => {
       if (mapped === "completed") {
         phase.value = "completed";
         pendingUserContent.value = "";
-        await refreshUsage(deps);
       } else if (mapped === "cancelled") {
         phase.value = "cancelled";
         pendingUserContent.value = "";
@@ -501,14 +426,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages.value = [];
     historyHasMore.value = false;
     historyWindowToken += 1; // round7（P1）：窗口销毁作废一切在途分页链路
-    pendingMemoryCount.value = 0;
     pendingUserContent.value = "";
-    usage.value = null;
-    selectedMode.value = "AUTO";
-    feedbackKinds.value = [];
-    activeIncognito.value = false;
-    // SVC-MODE: the service mode is a session-level ops fact — reset() is also
-    // called by startConversation() and must NOT clear it.
     handle = null;
     lastTransport = null;
     // S0-20: logout / conversation teardown drops the recovery entry and its
@@ -519,36 +437,16 @@ export const useChatStore = defineStore("h5-chat", () => {
   }
 
   /**
-   * USAGE-VIZ: pull the settled usage of the completed generation from the
-   * snapshot endpoint (the same one snapshot recovery uses). Non-fatal — a
-   * failed read keeps the previous usage.
-   */
-  async function refreshUsage(deps: RealtimeDeps): Promise<void> {
-    if (!generationId.value) return;
-    try {
-      const snapshot = await deps.fetchSnapshot(generationId.value);
-      if (snapshot.ok && snapshot.usage) {
-        usage.value = snapshot.usage;
-      }
-    } catch {
-      // Keep the previous usage.
-    }
-  }
-
-  /**
    * Create a conversation under a relationship and load its message history.
    * The page calls this on mount to establish the chat context.
    */
   async function initConversation(
     transport: ChatTransport,
     relationshipId: string,
-    incognito?: boolean,
   ): Promise<CreateConversationResponse | null> {
-    const result = await createConversation(transport, relationshipId, incognito);
+    const result = await createConversation(transport, relationshipId);
     if (result) {
       conversationId.value = result.conversationId;
-      // INC-MODE: the frozen creation-time flag becomes the active state.
-      activeIncognito.value = incognito === true;
       await loadHistory(transport);
     }
     return result;
@@ -575,99 +473,13 @@ export const useChatStore = defineStore("h5-chat", () => {
   async function loadConversations(
     transport: ChatTransport,
     relationshipId?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       conversations.value = await listConversations(transport, relationshipId);
+      return true;
     } catch {
       // Non-fatal: keep the current list; the page can retry on next visit.
-    }
-  }
-
-  /**
-   * CONV-MGMT: delete one conversation. On a confirmed delete the list entry
-   * is dropped; when the deleted conversation was the open one, the message
-   * window is cleared so the page can open (or create) a fresh conversation.
-   */
-  /**
-   * END-TODAY: end the open conversation. Cancels the local stream, then
-   * calls the shipped end API. The conversation row stays in the list;
-   * only the local input/stream state is torn down when it was the open one.
-   */
-  async function endToday(transport: ChatTransport, id: string): Promise<boolean> {
-    if (handle) {
-      handle.cancelled = true;
-      handle.abort();
-    }
-    const result = await apiEndConversation(transport, id);
-    if (!result) return false;
-    if (conversationId.value === id) {
-      phase.value = "idle";
-      generationId.value = "";
-      stream.value = initialState(0);
-      outcome.value = null;
-      conversationId.value = "";
-      messages.value = [];
-      historyHasMore.value = false;
-      historyWindowToken += 1; // round7（P1）：窗口销毁作废在途分页
-      pendingUserContent.value = "";
-      usage.value = null;
-      feedbackKinds.value = [];
-      activeIncognito.value = false;
-    }
-    conversations.value = conversations.value.map((c) =>
-      c.conversationId === id && result.incognitoCleared
-        ? { ...c, lastMessagePreview: "" }
-        : c,
-    );
-    return true;
-  }
-
-  async function removeConversation(transport: ChatTransport, id: string): Promise<boolean> {
-    const ok = await apiDeleteConversation(transport, id);
-    if (!ok) return false;
-    conversations.value = conversations.value.filter((c) => c.conversationId !== id);
-    if (conversationId.value === id) {
-      conversationId.value = "";
-      messages.value = [];
-      historyHasMore.value = false;
-      historyWindowToken += 1; // round7（P1）：窗口销毁作废在途分页
-    }
-    return true;
-  }
-
-  /**
-   * CONV-MGMT: rename one conversation. Only a confirmed API result updates
-   * the list entry (a blank title clears the rename server-side).
-   */
-  async function renameConversation(
-    transport: ChatTransport,
-    id: string,
-    title: string,
-  ): Promise<boolean> {
-    const applied = await apiRenameConversation(transport, id, title);
-    if (applied === null) return false;
-    conversations.value = conversations.value.map((c) =>
-      c.conversationId === id ? { ...c, title: applied } : c,
-    );
-    return true;
-  }
-
-  /**
-   * MEM-PROMPT: count the relationship's PENDING_CONFIRMATION candidates so
-   * the chat page can prompt the user to confirm. Non-fatal — a failure keeps
-   * the previous count (the memory page remains the authoritative surface).
-   */
-  async function refreshPendingMemoryCount(
-    transport: ChatTransport,
-    relationshipId: string,
-  ): Promise<void> {
-    try {
-      const memories = await listMemories(transport, relationshipId);
-      pendingMemoryCount.value = memories.filter(
-        (m) => m.status === "PENDING_CONFIRMATION",
-      ).length;
-    } catch {
-      // Keep the previous count.
+      return false;
     }
   }
 
@@ -684,18 +496,12 @@ export const useChatStore = defineStore("h5-chat", () => {
       conversationId: conversationId.value,
       messages: messages.value,
       historyHasMore: historyHasMore.value,
-      feedbackKinds: feedbackKinds.value,
-      activeIncognito: activeIncognito.value,
     };
     conversationId.value = id;
     messages.value = [];
     historyHasMore.value = true;
     // round7（P1）：切窗即作废旧令牌；本链路此后持有自己的快照继续分页。
     const token = ++historyWindowToken;
-    feedbackKinds.value = []; // FEEDBACK: feedback tracks the active generation
-    // INC-MODE: mirror the opened conversation's frozen flag.
-    activeIncognito.value =
-      conversations.value.find((c) => c.conversationId === id)?.incognito === true;
     try {
       await advanceHistory(transport, token);
     } catch {
@@ -707,54 +513,10 @@ export const useChatStore = defineStore("h5-chat", () => {
         conversationId.value = previous.conversationId;
         messages.value = previous.messages;
         historyHasMore.value = previous.historyHasMore;
-        feedbackKinds.value = previous.feedbackKinds;
-        activeIncognito.value = previous.activeIncognito;
       }
       return false;
     }
     return true;
-  }
-
-  /**
-   * MSG-DELETE (FR-CHAT-004): delete one message of the open conversation.
-   * Only a confirmed server delete drops the local row; an existence-hidden
-   * false keeps it (the server may already have removed it elsewhere).
-   */
-  async function removeMessage(
-    transport: ChatTransport,
-    messageId: string,
-  ): Promise<boolean> {
-    if (!conversationId.value) return false;
-    const deleted = await apiDeleteMessage(transport, conversationId.value, messageId);
-    if (deleted) {
-      messages.value = messages.value.filter((m) => m.messageId !== messageId);
-    }
-    return deleted;
-  }
-
-  /**
-   * MEM-NEG (V44): flip the 不记住 marker of one message of the open
-   * conversation. Only a confirmed server response updates the local row;
-   * an existence-hidden null keeps it unchanged.
-   */
-  async function setMessageNoMemory(
-    transport: ChatTransport,
-    messageId: string,
-    noMemory: boolean,
-  ): Promise<boolean> {
-    if (!conversationId.value) return false;
-    const updated = await apiSetMessageNoMemory(
-      transport,
-      conversationId.value,
-      messageId,
-      noMemory,
-    );
-    if (updated) {
-      messages.value = messages.value.map((m) =>
-        m.messageId === messageId ? { ...m, noMemory: updated.noMemory } : m,
-      );
-    }
-    return !!updated;
   }
 
   /**
@@ -825,7 +587,6 @@ export const useChatStore = defineStore("h5-chat", () => {
         conversationId.value,
         idempotencyKey,
         content,
-        selectedMode.value,
       );
     } finally {
       generationStarting.value = false;
@@ -845,44 +606,6 @@ export const useChatStore = defineStore("h5-chat", () => {
     await advanceHistory(transport, ownedToken);
   }
 
-  /** Regenerate the latest reply against its existing user message. Go v1
-   * makes the new result current; retired version-selection UI is not loaded. */
-  async function regenerate(
-    transport: ChatTransport,
-    deps: RealtimeDeps,
-    sourceUserMessageId: string,
-    content: string,
-  ): Promise<void> {
-    if (generationStarting.value) return;
-    if (!conversationId.value) {
-      phase.value = "failed";
-      return;
-    }
-    generationStarting.value = true;
-    lastTransport = transport;
-    pendingUserContent.value = content;
-    let generation: Generation | null;
-    try {
-      generation = await sendGeneration(
-        transport,
-        conversationId.value,
-        crypto.randomUUID(),
-        content,
-        selectedMode.value,
-        sourceUserMessageId,
-      );
-    } finally {
-      generationStarting.value = false;
-    }
-    if (!generation) {
-      phase.value = "failed";
-      outcome.value = null;
-      return;
-    }
-    await run(deps, generation.generationId, 1);
-    await loadHistory(transport);
-  }
-
   return {
     phase,
     generationId,
@@ -893,18 +616,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages,
     conversations,
     historyHasMore,
-    pendingMemoryCount,
     pendingUserContent,
     generationStarting,
-    regenerate,
-    usage,
-    selectedMode,
-    setMode,
-    feedbackKinds,
-    sendFeedback,
-    serviceMode,
-    loadServiceMode,
-    activeIncognito,
     draft,
     isStreaming,
     isTerminal,
@@ -923,11 +636,5 @@ export const useChatStore = defineStore("h5-chat", () => {
     loadConversations,
     openConversation,
     loadMoreHistory,
-    removeMessage,
-    setMessageNoMemory,
-    refreshPendingMemoryCount,
-    endToday,
-    removeConversation,
-    renameConversation,
   };
 });

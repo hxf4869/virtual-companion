@@ -73,13 +73,13 @@ describe("S0-18 统一导航守卫入口", () => {
       "utf8",
     );
     expect(baseCss).toContain(
-      "animation: vc-loom-settle var(--vc-motion-base) var(--vc-ease-out) backwards;",
+      "animation: vc-page-settle var(--vc-motion-base) var(--vc-ease-out) backwards;",
     );
     expect(baseCss).not.toContain(
-      "animation: vc-loom-settle var(--vc-motion-base) var(--vc-ease-out) both;",
+      "animation: vc-page-settle var(--vc-motion-base) var(--vc-ease-out) both;",
     );
     const settleKeyframes = baseCss.match(
-      /@keyframes vc-loom-settle\s*\{[\s\S]*?\n\}/,
+      /@keyframes vc-page-settle\s*\{[\s\S]*?\n\}/,
     )?.[0];
     expect(settleKeyframes).toBeTruthy();
     expect(settleKeyframes).not.toContain("opacity");

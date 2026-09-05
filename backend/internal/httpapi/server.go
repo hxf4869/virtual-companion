@@ -260,6 +260,12 @@ func operation(path string) string {
 		return "account"
 	case "/api/v1/auth/login":
 		return "auth_login"
+	case "/api/v1/auth/register":
+		return "auth_register"
+	case "/api/v1/auth/registration-status":
+		return "auth_registration_status"
+	case "/api/v1/auth/session":
+		return "auth_session"
 	case "/api/v1/auth/logout":
 		return "auth_logout"
 	case "/api/v1/auth/sessions":
@@ -270,11 +276,22 @@ func operation(path string) string {
 		return "auth_password"
 	case "/api/v1/auth/reauth":
 		return "auth_reauth"
+	case "/api/v1/auth/trusted-devices":
+		return "auth_trusted_devices"
 	case "/api/v1/admin/providers":
 		return "admin_providers"
 	case "/api/v1/admin/model-routing-order":
 		return "admin_model_routing_order"
 	default:
+		if strings.HasPrefix(path, "/api/v1/auth/challenges/") {
+			return "auth_challenge"
+		}
+		if strings.HasPrefix(path, "/api/v1/auth/trusted-devices/") {
+			return "auth_trusted_device"
+		}
+		if strings.HasPrefix(path, "/api/v1/admin/accounts/") && strings.HasSuffix(path, "/authenticator-reset") {
+			return "admin_authenticator_reset"
+		}
 		if strings.HasPrefix(path, "/api/v1/admin/providers/") {
 			if strings.HasSuffix(path, "/models/discover") {
 				return "admin_provider_model_discovery"

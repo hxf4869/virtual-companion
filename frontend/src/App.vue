@@ -12,7 +12,11 @@ export default {
 };
 </script>
 
-<style>
+<style lang="scss">
+@use "@wot-ui/ui/styles/theme/index.scss" as *;
+@use "./theme/tokens.scss" as *;
+@use "./theme/wot-adapter.scss" as *;
+
 /* 设计系统全局 token 与基础排版在 design-system/base.css。 */
 
 /* DOGFOOD-09: uni-h5 内建 uni-button[disabled] 文字色在浅底上对比度不足；

@@ -330,9 +330,20 @@ func (m *memStore) ClearExportObject(context.Context, int64, int64, string) erro
 func (m *memStore) LookupIdentity(_ context.Context, username string) (postgres.Identity, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	id, ok := m.identities[strings.ToLower(username)]
-	if ok && id.Username == "" {
-		id.Username = strings.ToLower(username)
+	identifier := strings.ToLower(username)
+	id, ok := m.identities[identifier]
+	if !ok {
+		for _, candidate := range m.identities {
+			if strings.EqualFold(candidate.Username, identifier) {
+				id, ok = candidate, true
+				break
+			}
+		}
+	}
+	if ok {
+		// Production identity_authenticate retains the caller's normalized
+		// identifier so email login remains available on the session principal.
+		id.Username = identifier
 	}
 	return id, ok && !m.deleted, nil
 }
@@ -378,9 +389,11 @@ func (m *memStore) LookupOpaqueSession(_ context.Context, tokenHash string) (*au
 }
 
 func (m *memStore) identityByAccount(accountID int64) (postgres.Identity, bool) {
-	for _, id := range m.identities {
+	for identifier, id := range m.identities {
 		if id.AccountID == accountID {
-			if id.Username == "" {
+			if strings.Contains(identifier, "@") {
+				id.Username = identifier
+			} else if id.Username == "" {
 				if accountID == 2 {
 					id.Username = "bob"
 				} else {
@@ -446,6 +459,12 @@ func (m *memStore) RevokeAllOpaqueSessions(_ context.Context, accountID int64) (
 			n++
 		}
 	}
+	for id, device := range m.trustedDevices {
+		if device.AccountID == accountID && !device.Revoked {
+			device.Revoked = true
+			m.trustedDevices[id] = device
+		}
+	}
 	return n, nil
 }
 
@@ -481,6 +500,12 @@ func (m *memStore) ChangePasswordHash(_ context.Context, accountID int64, passwo
 		if sess.AccountID == accountID && sess.RevokedAt.IsZero() {
 			sess.RevokedAt = now
 			m.sessions[id] = sess
+		}
+	}
+	for id, device := range m.trustedDevices {
+		if device.AccountID == accountID && !device.Revoked {
+			device.Revoked = true
+			m.trustedDevices[id] = device
 		}
 	}
 	return nil

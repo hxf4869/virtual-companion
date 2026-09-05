@@ -3,34 +3,22 @@
 
 export type ContextPage =
   | "chat"
-  | "memory"
-  | "memory-detail"
-  | "conversations"
-  | "companion"
-  | "report";
+  | "conversations";
 
 export interface ContextIds {
   relationshipId: string | null;
   conversationId: string | null;
-  memoryId: string | null;
-  messageId: string | null;
 }
 
 export interface ContextHrefInput {
   relationshipId?: string | null;
   conversationId?: string | null;
-  memoryId?: string | null;
-  messageId?: string | null;
   knownRelationshipIds?: ReadonlyArray<string>;
 }
 
 const PAGE_PATH: Record<ContextPage, string> = {
   chat: "/pages/chat/chat",
-  memory: "/pages/memory/memory",
-  "memory-detail": "/pages/memory-detail/memory-detail",
   conversations: "/pages/conversations/conversations",
-  companion: "/pages/companion/companion",
-  report: "/pages/report/report",
 };
 
 export function sanitizeRelationshipId(
@@ -53,16 +41,8 @@ export function buildContextHref(page: ContextPage, ctx: ContextHrefInput = {}):
   const relationshipId = sanitizeRelationshipId(ctx.relationshipId, ctx.knownRelationshipIds);
   if (relationshipId) params.set("relationshipId", relationshipId);
   const conversationId = trimId(ctx.conversationId);
-  if (conversationId && (page === "chat" || page === "conversations")) {
+  if (conversationId && page === "chat") {
     params.set("conversationId", conversationId);
-  }
-  const memoryId = trimId(ctx.memoryId);
-  if (memoryId && (page === "memory-detail" || page === "memory")) {
-    params.set("memoryId", memoryId);
-  }
-  const messageId = trimId(ctx.messageId);
-  if (messageId && page === "report") {
-    params.set("messageId", messageId);
   }
   const query = params.toString();
   return query ? `${PAGE_PATH[page]}?${query}` : PAGE_PATH[page];
@@ -75,8 +55,6 @@ export function parseContextQuery(hrefOrSearch: string): ContextIds {
   return {
     relationshipId: sanitizeRelationshipId(query.get("relationshipId")),
     conversationId: trimId(query.get("conversationId")),
-    memoryId: trimId(query.get("memoryId")),
-    messageId: trimId(query.get("messageId")),
   };
 }
 
@@ -86,7 +64,7 @@ export function readContextFromLocation(loc?: {
   hash?: string;
 }): ContextIds {
   if (!loc) {
-    return { relationshipId: null, conversationId: null, memoryId: null, messageId: null };
+    return { relationshipId: null, conversationId: null };
   }
   if (loc.hash && loc.hash.includes("?")) {
     return parseContextQuery(loc.hash);

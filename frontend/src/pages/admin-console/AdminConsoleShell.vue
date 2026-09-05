@@ -7,11 +7,11 @@
       @click="menuOpen = false"
     />
     <aside class="ac-rail" :class="{ 'ac-rail--open': menuOpen }" aria-label="后台控制台导航">
-      <button class="ac-brand" aria-label="前往运行总览" @click="navigate('/pages/admin/admin')">
-        <text class="ac-brand__mark">织</text>
+      <button class="ac-brand" aria-label="前往注册审核" @click="navigate('/pages/admin/admin')">
+        <text class="ac-brand__mark">伴</text>
         <text class="ac-brand__copy">
-          <text class="ac-brand__name">静默织室</text>
-          <text class="ac-brand__caption">Go Runtime 控制台</text>
+          <text class="ac-brand__name">虚拟陪伴</text>
+          <text class="ac-brand__caption">管理后台</text>
         </text>
       </button>
 
@@ -64,12 +64,12 @@
         <view v-if="accessState === 'checking'" class="ac-state" role="status">
           <AppIcon name="refresh" :size="24" spin />
           <text class="ac-state__title">正在确认后台会话</text>
-          <text class="ac-state__copy">会话确认完成后再读取运行数据。</text>
+          <text class="ac-state__copy">会话确认完成后再读取后台数据。</text>
         </view>
         <view v-else-if="accessState === 'unavailable'" class="ac-state" role="alert">
           <AppIcon name="warning" :size="24" />
           <text class="ac-state__title">暂时无法确认会话</text>
-          <text class="ac-state__copy">服务或网络不可用。当前不会展示缓存数据，也不会假装已登录。</text>
+          <text class="ac-state__copy">服务或网络暂时不可用，请稍后重试。</text>
           <button class="ac-button" data-testid="admin-access-retry" @click="$emit('retry-access')">
             <AppIcon name="refresh" :size="18" />
             重新检查
@@ -78,7 +78,7 @@
         <view v-else-if="accessState === 'forbidden'" class="ac-state" role="alert">
           <AppIcon name="lock" :size="24" />
           <text class="ac-state__title">当前账号不能进入后台</text>
-          <text class="ac-state__copy">Go Runtime 的配置接口只接受 ADMIN 角色。</text>
+          <text class="ac-state__copy">请使用管理员账号登录后再进入。</text>
           <button class="ac-button ac-button--quiet" @click="navigate('/pages/account/account', false)">
             返回我的账号
           </button>
@@ -98,7 +98,7 @@ import { useAuthStore } from "@/stores/auth";
 
 import type { AdminAccessState } from "./useAdminConsole";
 
-export type AdminSection = "overview" | "models" | "routing" | "system";
+export type AdminSection = "review" | "accounts" | "models" | "system";
 
 interface NavItem {
   id: AdminSection;
@@ -108,10 +108,10 @@ interface NavItem {
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
-  { id: "overview", label: "总览", href: "/pages/admin/admin", icon: "dashboard" },
-  { id: "models", label: "模型服务", href: "/pages/admin-models/admin-models", icon: "server" },
-  { id: "routing", label: "路由策略", href: "/pages/admin-routing/admin-routing", icon: "route" },
-  { id: "system", label: "系统状态", href: "/pages/admin-system/admin-system", icon: "activity" },
+  { id: "review", label: "注册审核", href: "/pages/admin/admin", icon: "document" },
+  { id: "accounts", label: "账号", href: "/pages/admin-accounts/admin-accounts", icon: "me" },
+  { id: "models", label: "模型与路由", href: "/pages/admin-models/admin-models", icon: "route" },
+  { id: "system", label: "运行状态", href: "/pages/admin-system/admin-system", icon: "activity" },
 ];
 
 export default defineComponent({
@@ -136,9 +136,6 @@ export default defineComponent({
       typeof location !== "undefined" && /^(127\.0\.0\.1|localhost)$/.test(location.hostname)
         ? "本地环境"
         : "当前环境",
-    );
-    const currentAdminHref = computed(
-      () => NAV_ITEMS.find((item) => item.id === props.active)?.href ?? "",
     );
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -191,7 +188,7 @@ export default defineComponent({
 
     async function navigate(url: string, replace = true, skipGuard = false): Promise<void> {
       menuOpen.value = false;
-      if (url === currentAdminHref.value) return;
+      if (currentPageHref() === url) return;
       if (!skipGuard && !(await confirmDiscardChanges())) return;
       try {
         const uniApi = (globalThis as Record<string, unknown>).uni as
@@ -206,6 +203,15 @@ export default defineComponent({
       } catch {
         // Presentation-only navigation fallback.
       }
+    }
+
+    function currentPageHref(): string {
+      if (typeof location === "undefined") return "";
+      if (location.hash.startsWith("#/pages/")) {
+        return location.hash.slice(1).split("?", 1)[0];
+      }
+      const index = location.pathname.indexOf("/pages/");
+      return index >= 0 ? location.pathname.slice(index) : "";
     }
 
     async function logout(): Promise<void> {

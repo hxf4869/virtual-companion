@@ -1,332 +1,592 @@
 <template>
-  <!-- 线性准入流程只保留 Go Runtime 已实现的内部账号登录。 -->
-  <view class="login-page" role="main">
-    <view class="login-window">
-      <view class="login-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></view>
-      <text class="login-title" role="heading" aria-level="1">登录</text>
-      <text class="login-lead">
-        虚拟陪伴 · Technical Alpha 内部账号。AI 陪伴，非真人。
-      </text>
+  <!-- Direction contract: Warm Familiarity, Stitch-approved single-column auth,
+       one terracotta primary action, no legacy card/nav/technical surface. -->
+  <VcAuthShell
+    :show-brand="screen === 'credentials'"
+    :show-back="screen !== 'credentials' && screen !== 'recovery-codes'"
+    @back="onBack"
+  >
+    <view v-if="screen === 'credentials'" class="auth-screen">
+      <view class="auth-heading">
+        <text class="auth-title" role="heading" aria-level="1">登录</text>
+        <text class="auth-lead">登录后，继续和 AI 陪伴者的对话。AI 陪伴者 · 非真人。</text>
+      </view>
 
-      <view class="login-form">
-        <!-- 持久可见标签：不依赖 placeholder/aria-label 承载字段语义。 -->
-        <view class="login-field">
-          <text class="login-label" data-testid="login-label-username">用户名</text>
-          <input
-            class="login-input"
-            data-testid="username"
-            v-model="username"
-            placeholder="输入内部用户名"
-            aria-label="用户名"
-            autocomplete="username"
-          />
+      <view class="auth-form">
+        <VcAuthField
+          v-model="account"
+          field-id="login-account"
+          label="账号"
+          kind="text"
+          autocomplete="username"
+          placeholder="输入用户名或邮箱"
+          :disabled="submitting"
+          test-id="account"
+        />
+        <VcAuthField
+          v-model="password"
+          field-id="login-password"
+          label="密码"
+          kind="password"
+          autocomplete="current-password"
+          placeholder="输入密码"
+          :maxlength="1024"
+          :disabled="submitting"
+          :error="passwordError"
+          test-id="password"
+          @submit="submitCredentials"
+        />
+
+        <view v-if="message" class="auth-error" role="alert" data-testid="error">
+          {{ message }}
         </view>
-        <view class="login-field">
-          <text class="login-label" data-testid="login-label-password">密码</text>
-          <input
-            class="login-input"
-            data-testid="password"
-            v-model="password"
-            password
-            placeholder="输入密码"
-            aria-label="密码"
-            autocomplete="current-password"
-            @keydown.enter="onSubmit"
-          />
-        </view>
-        <button
-          class="login-submit"
+
+        <wd-button
+          block
+          size="large"
+          :loading="submitting"
+          :disabled="!canSubmitCredentials || submitting"
           data-testid="submit"
-          :disabled="!canSubmit || submitting"
-          :aria-busy="submitting"
-          @click="onSubmit"
+          :aria-busy="submitting ? 'true' : 'false'"
+          @click="submitCredentials"
         >
-          {{ submitting ? "登录中…" : "登录" }}
-        </button>
-        <view
-          v-if="message"
-          class="login-error"
-          data-testid="error"
-          role="alert"
-        >
-          <text>{{ message }}</text>
-          <text v-if="requestIdCopy" data-testid="login-request-id">{{ requestIdCopy }}</text>
-        </view>
-        <view class="login-hint">
-          <text>内部账号登录 · 凭据经批准渠道注入，不落仓库</text>
-        </view>
-
+          继续
+        </wd-button>
       </view>
     </view>
-  </view>
+
+    <view v-else-if="screen === 'totp'" class="auth-screen">
+      <view class="auth-heading">
+        <text class="auth-title" role="heading" aria-level="1">验证登录</text>
+        <text class="auth-lead">
+          打开你的身份验证器，输入 6 位验证码。
+          <text v-if="maskedAccount" class="auth-account">当前账号：{{ maskedAccount }}</text>
+        </text>
+      </view>
+
+      <view class="auth-form auth-form--verify">
+        <VcTotpCodeInput
+          v-model="totpCode"
+          :error="message"
+          :disabled="submitting"
+          @submit="submitTotp"
+        />
+        <view class="auth-trust">
+          <VcTrustDevice v-model="trustDevice" :disabled="submitting" />
+          <text class="auth-trust__hint">下次仍需输入账号和密码。</text>
+        </view>
+        <wd-button
+          block
+          size="large"
+          :loading="submitting"
+          :disabled="totpCode.length !== 6 || submitting"
+          data-testid="totp-submit"
+          @click="submitTotp"
+        >
+          验证并登录
+        </wd-button>
+        <button
+          class="auth-secondary-action"
+          type="button"
+          :disabled="submitting"
+          data-testid="use-recovery-code"
+          @click="openRecoveryCode"
+        >
+          使用恢复码
+        </button>
+      </view>
+    </view>
+
+    <view v-else-if="screen === 'recovery'" class="auth-screen">
+      <view class="auth-heading">
+        <text class="auth-title" role="heading" aria-level="1">使用恢复码</text>
+        <text class="auth-lead">输入你保存的一次性恢复码，完成本次登录。</text>
+      </view>
+
+      <view class="auth-form">
+        <VcAuthField
+          v-model="recoveryCode"
+          field-id="recovery-code"
+          label="恢复码"
+          kind="text"
+          autocomplete="one-time-code"
+          placeholder="例如 ABCD-EFGH-IJKL-MNOP"
+          :maxlength="32"
+          :disabled="submitting"
+          test-id="recovery-code"
+          @submit="submitRecoveryCode"
+        />
+        <view v-if="message" class="auth-error" role="alert">{{ message }}</view>
+        <view class="auth-trust">
+          <VcTrustDevice v-model="trustDevice" :disabled="submitting" />
+          <text class="auth-trust__hint">下次仍需输入账号和密码。</text>
+        </view>
+        <wd-button
+          block
+          size="large"
+          :loading="submitting"
+          :disabled="recoveryCode.trim().length === 0 || submitting"
+          data-testid="recovery-submit"
+          @click="submitRecoveryCode"
+        >
+          使用恢复码登录
+        </wd-button>
+      </view>
+    </view>
+
+    <view v-else-if="screen === 'setup-loading'" class="auth-loading" role="status">
+      <text class="auth-title" role="heading" aria-level="1">设置身份验证器</text>
+      <text class="auth-lead">正在准备二维码…</text>
+    </view>
+
+    <VcAuthenticatorSetup
+      v-else-if="screen === 'setup' && auth.authenticatorSetup"
+      :setup="auth.authenticatorSetup"
+      :code="totpCode"
+      :trust-device="trustDevice"
+      :submitting="submitting"
+      :error="message"
+      :copy-message="copyMessage"
+      @update:code="totpCode = $event"
+      @update:trust-device="trustDevice = $event"
+      @copy-key="copyAuthenticatorKey"
+      @confirm="submitAuthenticatorSetup"
+    />
+
+    <VcRecoveryCodeCard
+      v-else-if="screen === 'recovery-codes'"
+      :codes="auth.recoveryCodes"
+      :copy-message="copyMessage"
+      @copy="copyRecoveryCodes"
+      @continue="finishRecoveryCodes"
+    />
+
+    <view v-else-if="screen === 'admission'" class="auth-status">
+      <view class="auth-status__mark" aria-hidden="true" />
+      <text class="auth-title" role="heading" aria-level="1">{{ admission.title }}</text>
+      <text class="auth-lead">{{ admission.description }}</text>
+      <wd-button block size="large" variant="plain" @click="resetToLogin">
+        返回登录
+      </wd-button>
+    </view>
+
+    <view v-else class="auth-status">
+      <text class="auth-title" role="heading" aria-level="1">本次登录已结束</text>
+      <text class="auth-lead">登录验证已超时，请重新输入账号和密码。</text>
+      <wd-button block size="large" @click="resetToLogin">重新登录</wd-button>
+    </view>
+
+    <template v-if="screen === 'credentials' && !auth.registrationEnabled" #footer>
+      <text>注册暂未开放。</text>
+    </template>
+  </VcAuthShell>
 </template>
 
-<script lang="ts">
-// TASK-0034: minimal H5 login page. Presentation only: the fail-closed rules
-// live in the tested auth store and identity API client. On a confirmed login
-// the user is sent to the Alpha boundary page; on a server rejection the page
-// shows a generic message and never discloses whether the account exists.
-// TASK-0105 (P3-04): stable aria-labels, alert semantics on the error region,
-// aria-busy while submitting, and focus returns to the username field after a
-// failed attempt so keyboard/screen-reader users can correct and resubmit.
-import { computed, defineComponent, ref } from "vue";
+<script setup lang="ts">
+import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
-import { hrefFromLocation, PASSWORD_CHANGE_HREF, resolvePostLoginHref } from "@/domain/nav-guard";
-import { resolveNextStep } from "@/domain/next-step";
-import { requestIdLabel } from "@/domain/request-id";
-import { useAgeStore } from "@/stores/age";
-import { useAuthStore } from "@/stores/auth";
-import { useConsentStore } from "@/stores/consent";
-import { useRelationshipStore } from "@/stores/relationship";
+import VcAuthenticatorSetup from "@/components/auth/VcAuthenticatorSetup.vue";
+import VcAuthField from "@/components/auth/VcAuthField.vue";
+import VcAuthShell from "@/components/auth/VcAuthShell.vue";
+import VcRecoveryCodeCard from "@/components/auth/VcRecoveryCodeCard.vue";
+import VcTotpCodeInput from "@/components/auth/VcTotpCodeInput.vue";
+import VcTrustDevice from "@/components/auth/VcTrustDevice.vue";
+import {
+  hrefFromLocation,
+  PASSWORD_CHANGE_HREF,
+  resolvePostLoginHref,
+} from "@/domain/nav-guard";
+import { useAuthStore, type AuthErrorCode } from "@/stores/auth";
 
-export default defineComponent({
-  name: "LoginPage",
-  setup() {
-    const store = useAuthStore();
-    const age = useAgeStore();
-    const consent = useConsentStore();
-    const relStore = useRelationshipStore();
-    const username = ref("");
-    const password = ref("");
-    const submitting = ref(false);
-    const message = ref("");
-    const requestIdCopy = ref("");
-    const canSubmit = computed(
-      () => username.value.trim().length > 0 && password.value.length > 0,
-    );
-    const transport = createAuthenticatedTransport({
-      getAccessToken: () => store.accessToken,
-      onUnauthorized: () => store.onUnauthorized(),
-    });
+type AuthScreen =
+  | "credentials"
+  | "totp"
+  | "recovery"
+  | "setup-loading"
+  | "setup"
+  | "recovery-codes"
+  | "admission"
+  | "expired";
 
-    function redirectHome(url = "/pages/index/index"): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { redirectTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.redirectTo) {
-          uniApi.redirectTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url.startsWith("/pages/") ? `/#${url}` : url;
-        }
-      } catch {
-        // Never let navigation break a successful login transition.
-      }
-    }
+const auth = useAuthStore();
+const screen = ref<AuthScreen>("credentials");
+const account = ref("");
+const password = ref("");
+const totpCode = ref("");
+const recoveryCode = ref("");
+const trustDevice = ref(false);
+const submitting = ref(false);
+const message = ref("");
+const passwordError = ref("");
+const copyMessage = ref("");
 
-    async function destinationAfterLogin(): Promise<string> {
-      await Promise.all([age.load(transport), consent.load(transport), relStore.load(transport)]);
-      const step = resolveNextStep({
-        authenticated: true,
-        ageKnown: !age.loadFailed,
-        ageState: age.ageState,
-        consentKnown: !consent.loadFailed,
-        grantedTypes: consent.records.filter((row) => row.granted).map((row) => row.consentType),
-        hasCompanion: relStore.relationships.length > 0,
-      });
-      return step.kind === "ready" ? "/pages/index/index" : step.href;
-    }
-
-    /** Move focus back to the username field after a failed attempt (a11y). */
-    function focusUsername(): void {
-      try {
-        if (typeof document !== "undefined") {
-          // uni h5 renders <uni-input data-testid="username"> wrapping the
-          // native input — focus must land on the real, focusable element
-          // (E2E finding: focusing the wrapper is a silent no-op).
-          const field =
-            document.querySelector<HTMLInputElement>(
-              '[data-testid="username"] input',
-            ) ??
-            document.querySelector<HTMLInputElement>(
-              '[data-testid="username"]',
-            );
-          field?.focus();
-        }
-      } catch {
-        // Best-effort a11y; never break the login flow.
-      }
-    }
-
-    async function onSubmit(): Promise<void> {
-      if (submitting.value || !canSubmit.value) {
-        return;
-      }
-      submitting.value = true;
-      message.value = "";
-      requestIdCopy.value = "";
-      const ok = await store.login(transport, username.value, password.value);
-      submitting.value = false;
-      if (ok) {
-        if (store.passwordMustChange) {
-          redirectHome(PASSWORD_CHANGE_HREF);
-          return;
-        }
-        const current =
-          typeof location !== "undefined" ? hrefFromLocation(location) : "/pages/login/login";
-        const returned = resolvePostLoginHref(current, { fallback: "" });
-        redirectHome(returned || (await destinationAfterLogin()));
-      } else {
-        message.value =
-          store.error === "network-failed"
-            ? "网络错误，请重试"
-            : "用户名或密码错误";
-        requestIdCopy.value = requestIdLabel();
-        focusUsername();
-      }
-    }
-
-    return {
-      username,
-      password,
-      submitting,
-      canSubmit,
-      message,
-      requestIdCopy,
-      onSubmit,
-    };
-  },
+const transport = createAuthenticatedTransport({
+  getAccessToken: () => auth.accessToken,
+  onUnauthorized: () => auth.onUnauthorized(),
 });
+
+const canSubmitCredentials = computed(
+  () => account.value.trim().length > 0 && password.value.length > 0,
+);
+const maskedAccount = computed(() => maskAccount(account.value));
+const admission = computed(() => {
+  switch (auth.nextStep) {
+    case "EMAIL_VERIFICATION_REQUIRED":
+      return {
+        title: "请验证邮箱",
+        description: "打开注册邮箱中的验证邮件，完成验证后再回来登录。",
+      };
+    case "REVIEW_PENDING":
+      return {
+        title: "账号正在审核",
+        description: "邮箱已验证。审核通过后才能聊天，请稍后再回来登录。",
+      };
+    case "DISABLED":
+      return {
+        title: "账号暂时不可用",
+        description: "这个账号当前无法登录。如有疑问，请联系管理员。",
+      };
+    case "REJECTED":
+      return {
+        title: "申请未通过",
+        description: "这个账号目前不能使用。如需了解原因，请联系管理员。",
+      };
+    default:
+      return {
+        title: "无法继续登录",
+        description: "请返回登录后重试。",
+      };
+  }
+});
+
+onMounted(() => {
+  void auth.loadRegistrationStatus(transport);
+});
+
+async function submitCredentials(): Promise<void> {
+  if (submitting.value || !canSubmitCredentials.value) return;
+  message.value = "";
+  passwordError.value = "";
+
+  const normalizedAccount = account.value.trim().toLowerCase();
+  if (password.value.length === 0) {
+    passwordError.value = "请输入密码。";
+    return;
+  }
+
+  submitting.value = true;
+  const next = await auth.login(transport, normalizedAccount, password.value);
+  submitting.value = false;
+  if (!next) {
+    message.value = auth.error === "invalid-credentials"
+      ? "账号或密码不正确，请重新输入。"
+      : messageForError(auth.error);
+    if (auth.error === "invalid-credentials") await focusField("account");
+    return;
+  }
+
+  account.value = normalizedAccount;
+  if (next === "ACTIVE") {
+    navigateAfterLogin();
+    return;
+  }
+  password.value = "";
+  totpCode.value = "";
+  recoveryCode.value = "";
+  trustDevice.value = false;
+  copyMessage.value = "";
+
+  if (next === "TOTP_REQUIRED") {
+    screen.value = "totp";
+    return;
+  }
+  if (next === "AUTHENTICATOR_SETUP_REQUIRED") {
+    screen.value = "setup-loading";
+    const loaded = await auth.loadAuthenticatorSetup(transport);
+    screen.value = loaded ? "setup" : "expired";
+    return;
+  }
+  screen.value = "admission";
+}
+
+async function submitTotp(): Promise<void> {
+  if (submitting.value || totpCode.value.length !== 6) return;
+  message.value = "";
+  submitting.value = true;
+  const ok = await auth.verifyAuthenticatorCode(transport, totpCode.value, trustDevice.value);
+  submitting.value = false;
+  if (ok) {
+    navigateAfterLogin();
+    return;
+  }
+  message.value = messageForError(auth.error);
+}
+
+async function submitRecoveryCode(): Promise<void> {
+  if (submitting.value || recoveryCode.value.trim().length === 0) return;
+  message.value = "";
+  submitting.value = true;
+  const ok = await auth.verifyRecoveryCode(transport, recoveryCode.value, trustDevice.value);
+  submitting.value = false;
+  if (ok) {
+    navigateAfterLogin();
+    return;
+  }
+  message.value = auth.error === "invalid-code"
+    ? "恢复码不正确或已经使用，请检查后重试。"
+    : messageForError(auth.error);
+}
+
+async function submitAuthenticatorSetup(): Promise<void> {
+  if (submitting.value || totpCode.value.length !== 6) return;
+  message.value = "";
+  submitting.value = true;
+  const ok = await auth.confirmAuthenticator(transport, totpCode.value, trustDevice.value);
+  submitting.value = false;
+  if (!ok) {
+    message.value = messageForError(auth.error);
+    return;
+  }
+  copyMessage.value = "";
+  screen.value = "recovery-codes";
+}
+
+function openRecoveryCode(): void {
+  message.value = "";
+  recoveryCode.value = "";
+  screen.value = "recovery";
+}
+
+function onBack(): void {
+  if (screen.value === "recovery") {
+    message.value = "";
+    screen.value = "totp";
+    return;
+  }
+  resetToLogin();
+}
+
+function resetToLogin(): void {
+  auth.resetLoginFlow();
+  screen.value = "credentials";
+  password.value = "";
+  totpCode.value = "";
+  recoveryCode.value = "";
+  trustDevice.value = false;
+  submitting.value = false;
+  message.value = "";
+  passwordError.value = "";
+  copyMessage.value = "";
+}
+
+function finishRecoveryCodes(): void {
+  navigateAfterLogin();
+}
+
+function navigateAfterLogin(): void {
+  if (auth.passwordMustChange) {
+    redirectTo(PASSWORD_CHANGE_HREF);
+    return;
+  }
+  const current = typeof location !== "undefined"
+    ? hrefFromLocation(location)
+    : "/pages/login/login";
+  const returned = resolvePostLoginHref(current, { fallback: "" });
+  redirectTo(returned || "/pages/index/index");
+}
+
+function redirectTo(url: string): void {
+  try {
+    const uniApi = (globalThis as Record<string, unknown>).uni as
+      | { redirectTo?: (options: { url: string }) => void }
+      | undefined;
+    if (uniApi?.redirectTo) {
+      uniApi.redirectTo({ url });
+    } else if (typeof location !== "undefined") {
+      location.href = url.startsWith("/pages/") ? `/#${url}` : url;
+    }
+  } catch {
+    // A confirmed session remains valid even when this navigation attempt fails.
+  }
+}
+
+function copyAuthenticatorKey(): void {
+  const key = auth.authenticatorSetup?.manualKey;
+  if (!key) return;
+  void copyText(key, "密钥已复制");
+}
+
+function copyRecoveryCodes(): void {
+  if (auth.recoveryCodes.length === 0) return;
+  void copyText(auth.recoveryCodes.join("\n"), "恢复码已复制");
+}
+
+async function copyText(value: string, successMessage: string): Promise<void> {
+  copyMessage.value = "";
+  try {
+    const uniApi = (globalThis as Record<string, unknown>).uni as
+      | { setClipboardData?: (options: { data: string; success?: () => void; fail?: () => void }) => void }
+      | undefined;
+    if (uniApi?.setClipboardData) {
+      await new Promise<void>((resolve, reject) => {
+        uniApi.setClipboardData?.({ data: value, success: resolve, fail: reject });
+      });
+    } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      throw new Error("clipboard unavailable");
+    }
+    copyMessage.value = successMessage;
+  } catch {
+    copyMessage.value = "复制失败，请长按内容复制";
+  }
+}
+
+function messageForError(code: AuthErrorCode | null): string {
+  switch (code) {
+    case "invalid-code":
+      return "验证码不正确，请重新输入。";
+    case "challenge-unavailable":
+      return "本次登录已超时，请返回后重新登录。";
+    case "rate-limited":
+      return "尝试次数较多，请稍后再试。";
+    case "network-failed":
+    case "refresh-failed":
+      return "网络连接不稳定，请检查网络后重试。";
+    default:
+      return "暂时无法完成登录，请稍后再试。";
+  }
+}
+
+function maskAccount(value: string): string {
+  const normalized = value.trim();
+  const at = normalized.lastIndexOf("@");
+  if (at <= 0) return normalized;
+  return `${normalized.slice(0, 1)}***${normalized.slice(at)}`;
+}
+
+async function focusField(testId: string): Promise<void> {
+  await nextTick();
+  try {
+    if (typeof document === "undefined") return;
+    const field = document.querySelector<HTMLInputElement>(
+      `[data-testid="${testId}"] input, input[data-testid="${testId}"]`,
+    );
+    field?.focus();
+  } catch {
+    // Best effort only; errors still remain visible next to the form.
+  }
+}
 </script>
 
 <style scoped>
-/* 线性准入视觉：浅色卡片式登录窗。窄屏不出现横向溢出。 */
-.login-page {
-  display: flex;
-  justify-content: center;
-  box-sizing: border-box;
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: calc(var(--vc-space-8) + env(safe-area-inset-top, 0px))
-    var(--vc-space-4)
-    calc(var(--vc-space-7) + env(safe-area-inset-bottom, 0px));
-  background: var(--vc-env);
-}
-
-.login-window {
-  position: relative;
+.auth-screen,
+.auth-status,
+.auth-loading {
   display: grid;
-  gap: var(--vc-space-3);
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 400px;
-  align-self: start;
-  padding: var(--vc-space-7) var(--vc-space-5);
-  border: 0;
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-card);
-  color: var(--vc-ink);
-  overflow: hidden;
+  gap: var(--vc-space-6);
+  min-width: 0;
 }
 
-.login-window::before {
-  position: absolute;
-  inset: 0;
-  background: url("/static/quiet-loom/woven-field.png") repeat;
-  background-size: 512px 512px;
-  content: "";
-  mix-blend-mode: multiply;
-  opacity: 0.08;
-  pointer-events: none;
+.auth-heading {
+  display: grid;
+  gap: var(--vc-space-2);
 }
 
-.login-window > * {
-  position: relative;
-  z-index: 1;
-}
-
-.login-title {
-  font-size: var(--vc-text-3xl);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
-
-.login-mark {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  margin-bottom: var(--vc-space-2);
-}
-
-.login-mark i {
-  position: absolute;
-  top: 19px;
-  left: 4px;
-  width: 32px;
-  height: 1px;
-  background: var(--vc-primary);
-  transform-origin: center;
-}
-
-.login-mark i:nth-child(2) { background: var(--vc-success); transform: rotate(45deg); }
-.login-mark i:nth-child(3) { background: var(--vc-danger); transform: rotate(90deg); }
-.login-mark i:nth-child(4) { transform: rotate(135deg); }
-
-.login-lead {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
-  line-height: 1.7;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vc-space-3);
-}
-
-.login-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vc-space-1);
-}
-
-.login-label {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
+.auth-title {
+  color: var(--vc-color-ink);
+  font-size: 28px;
   font-weight: 600;
+  line-height: 36px;
 }
 
-.login-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 48px;
-  padding: 0 var(--vc-space-3);
-  background-color: var(--vc-sunken);
-  border: 1px solid var(--vc-border-strong);
-  border-radius: 0;
-  color: var(--vc-ink);
-  font-size: 16px;
+.auth-lead {
+  color: var(--vc-color-ink-muted);
+  font-size: 15px;
+  line-height: 24px;
 }
 
-.login-submit {
-  min-height: 48px;
-  margin: var(--vc-space-1) 0 0;
-  border: 0;
-  border-radius: 0;
-  background-color: var(--vc-primary);
-  color: var(--vc-on-primary);
-  font-weight: 600;
-  font-size: var(--vc-text-md);
-}
-
-.login-submit::after {
-  border: 0;
-}
-
-.login-submit:not([disabled]):active {
-  background-color: var(--vc-primary-hover);
-}
-
-.login-error {
-  color: var(--vc-danger);
-  font-size: var(--vc-text-sm);
+.auth-account {
+  display: block;
+  margin-top: var(--vc-space-1);
+  color: var(--vc-color-ink-muted);
   overflow-wrap: anywhere;
 }
 
-.login-hint {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
+.auth-form {
+  display: grid;
+  gap: var(--vc-space-4);
+  min-width: 0;
 }
 
+.auth-form--verify {
+  gap: var(--vc-space-3);
+}
+
+.auth-error {
+  color: var(--vc-color-error);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.auth-secondary-action {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 0;
+  border-radius: var(--vc-radius-control);
+  color: var(--vc-color-primary);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.auth-secondary-action::after {
+  border: 0;
+}
+
+.auth-secondary-action:not([disabled]):active {
+  background: var(--vc-color-surface-soft);
+}
+
+.auth-trust {
+  display: grid;
+  gap: 0;
+}
+
+.auth-trust__hint {
+  margin-top: calc(-1 * var(--vc-space-1));
+  padding-left: 30px;
+  color: var(--vc-color-ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.auth-status {
+  align-content: start;
+  padding-top: var(--vc-space-4);
+}
+
+.auth-status__mark {
+  width: 28px;
+  height: 4px;
+  border-radius: var(--vc-radius-full);
+  background: var(--vc-color-secondary);
+}
+
+.auth-loading {
+  align-content: start;
+  padding-top: var(--vc-space-4);
+}
+
+@media (min-width: 600px) {
+  .auth-screen,
+  .auth-status,
+  .auth-loading {
+    padding-top: var(--vc-space-4);
+  }
+}
 </style>

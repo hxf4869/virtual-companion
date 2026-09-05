@@ -10,13 +10,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/pquerna/otp/totp"
 )
 
 const isoRestKey = "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4="
@@ -245,11 +248,39 @@ func TestG7IsolationDoesNotServeWritesInAPIMigration(t *testing.T) {
 func TestG9IsolationOpaqueAuth(t *testing.T) {
 	resetIsolation(t)
 	store := postgres.IsolationStore()
+	ciph, err := postgres.NewDefaultFieldCipher(isoRestKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.UseCipher(ciph)
 	s := newIsoServer(t, store)
 
-	rec := loginJSON(t, s, "alice", testPassword)
+	passwordStep := loginJSON(t, s, "alice", testPassword)
+	if passwordStep.Code != http.StatusAccepted {
+		t.Fatalf("password step %d %s", passwordStep.Code, passwordStep.Body.String())
+	}
+	var next authNextStepJSON
+	if err := json.Unmarshal(passwordStep.Body.Bytes(), &next); err != nil {
+		t.Fatal(err)
+	}
+	setupRec := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-setup", "", nil)
+	if setupRec.Code != http.StatusOK {
+		t.Fatalf("setup %d %s", setupRec.Code, setupRec.Body.String())
+	}
+	var setup auth.TOTPProvisioning
+	if err := json.Unmarshal(setupRec.Body.Bytes(), &setup); err != nil {
+		t.Fatal(err)
+	}
+	code, err := totp.GenerateCode(setup.ManualKey, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-confirm",
+		`{"code":"`+code+`","trustDevice":true,"deviceName":"integration"}`, nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("login %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("confirm %d %s", rec.Code, rec.Body.String())
 	}
 	var ident map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &ident); err != nil {
@@ -258,13 +289,22 @@ func TestG9IsolationOpaqueAuth(t *testing.T) {
 	if ident["accessToken"] != nil || ident["accountId"] != "1" {
 		t.Fatalf("login body %+v", ident)
 	}
-	jar := map[string]string{}
-	for _, c := range rec.Result().Cookies() {
-		jar[c.Name] = c.Value
+	var completed authCompleteJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &completed); err != nil {
+		t.Fatal(err)
 	}
-	if jar[auth.SessionCookieName] == "" {
-		t.Fatal("vc_session")
+	if len(completed.RecoveryCodes) != auth.RecoveryCodeCount {
+		t.Fatalf("recovery codes %d", len(completed.RecoveryCodes))
 	}
+	jar := responseCookieJar(rec)
+	if jar[auth.SessionCookieName] == "" || jar[auth.TrustedDeviceCookieName] == "" {
+		t.Fatal("session and trusted-device cookies are required")
+	}
+	devices, err := store.ListTrustedDevices(t.Context(), 1)
+	if err != nil || len(devices) != 1 {
+		t.Fatalf("trusted devices %v %v", devices, err)
+	}
+	fixedExpiry := devices[0].ExpiresAt
 
 	listed := doJSONCookies(t, s, http.MethodGet, "/api/v1/relationships", "", jar)
 	if listed.Code != http.StatusOK {
@@ -296,6 +336,62 @@ func TestG9IsolationOpaqueAuth(t *testing.T) {
 		t.Fatalf("after logout %d %s", after.Code, after.Body.String())
 	}
 	assertEnvelope(t, after, "AUTHENTICATION_REQUIRED")
+	delete(jar, auth.SessionCookieName)
+	delete(jar, auth.CSRFCookieName)
+
+	trustedLogin := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/login",
+		`{"account":"alice@example.com","password":"`+testPassword+`"}`, jar)
+	if trustedLogin.Code != http.StatusOK || sessionCookie(trustedLogin) == "" {
+		t.Fatalf("trusted login %d %s", trustedLogin.Code, trustedLogin.Body.String())
+	}
+	for name, value := range responseCookieJar(trustedLogin) {
+		jar[name] = value
+	}
+	devices, err = store.ListTrustedDevices(t.Context(), 1)
+	if err != nil || len(devices) != 1 || !devices[0].ExpiresAt.Equal(fixedExpiry) {
+		t.Fatalf("trusted-device fixed expiry %v %v", devices, err)
+	}
+	revoke := doJSONCookies(t, s, http.MethodDelete,
+		"/api/v1/auth/trusted-devices/"+strconv.FormatInt(devices[0].ID, 10), "", jar)
+	if revoke.Code != http.StatusOK {
+		t.Fatalf("revoke trusted device %d %s", revoke.Code, revoke.Body.String())
+	}
+	logout = doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", jar)
+	if logout.Code != http.StatusOK {
+		t.Fatalf("second logout %d %s", logout.Code, logout.Body.String())
+	}
+	delete(jar, auth.SessionCookieName)
+	delete(jar, auth.CSRFCookieName)
+	afterRevoke := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/login",
+		`{"account":"alice@example.com","password":"`+testPassword+`"}`, jar)
+	if afterRevoke.Code != http.StatusAccepted {
+		t.Fatalf("after revoke %d %s", afterRevoke.Code, afterRevoke.Body.String())
+	}
+	if err := json.Unmarshal(afterRevoke.Body.Bytes(), &next); err != nil || next.NextStep != "TOTP_REQUIRED" {
+		t.Fatalf("after revoke next step %v %+v", err, next)
+	}
+	recovery := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/recovery-code",
+		`{"code":"`+completed.RecoveryCodes[0]+`","trustDevice":false}`, nil)
+	if recovery.Code != http.StatusOK {
+		t.Fatalf("recovery login %d %s", recovery.Code, recovery.Body.String())
+	}
+	recoveryJar := responseCookieJar(recovery)
+	logout = doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", recoveryJar)
+	if logout.Code != http.StatusOK {
+		t.Fatalf("recovery logout %d %s", logout.Code, logout.Body.String())
+	}
+	delete(jar, auth.TrustedDeviceCookieName)
+	retryStep := loginJSON(t, s, "alice", testPassword)
+	if err := json.Unmarshal(retryStep.Body.Bytes(), &next); err != nil || next.NextStep != "TOTP_REQUIRED" {
+		t.Fatalf("recovery retry step %v %+v", err, next)
+	}
+	reused := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/recovery-code",
+		`{"code":"`+completed.RecoveryCodes[0]+`","trustDevice":false}`, nil)
+	if reused.Code != http.StatusNotFound {
+		t.Fatalf("reused recovery code %d %s", reused.Code, reused.Body.String())
+	}
 
 	bob := loginJSON(t, s, "bob", "wrong-password")
 	if bob.Code != http.StatusNotFound {
@@ -328,7 +424,7 @@ func newIsoServer(t *testing.T, store *postgres.Store) *Server {
 		t.Fatal(err)
 	}
 	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
-		Store: store, Sessions: store, Passwords: pw, Limiter: auth.NewLimiter(), Turns: store,
+		Store: store, Sessions: store, Passwords: pw, Limiter: auth.NewLimiter(), Turns: store, AuthFlow: store,
 	})
 }
 
@@ -352,9 +448,9 @@ func resetIsolation(t *testing.T) {
 		t.Fatal("isolation password hash missing")
 	}
 	if err := postgres.IsolationSuperExec(ctx,
-		`INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
-		 VALUES (1, 'alice', $1, 'USER', 'ACTIVE', 'alice'),
-		        (2, 'bob', $1, 'USER', 'ACTIVE', 'bob')`, isoPasswordHash); err != nil {
+		`INSERT INTO vc.identity_account(id, username, email, email_verified_at, reviewed_at, password_hash, role, status, display_name)
+		 VALUES (1, 'alice', 'alice@example.com', now(), now(), $1, 'USER', 'ACTIVE', 'alice'),
+		        (2, 'bob', 'bob@example.com', now(), now(), $1, 'USER', 'ACTIVE', 'bob')`, isoPasswordHash); err != nil {
 		t.Fatal(err)
 	}
 }

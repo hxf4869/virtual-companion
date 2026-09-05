@@ -1,4 +1,10 @@
 {
+	"easycom": {
+		"autoscan": true,
+		"custom": {
+			"^wd-(.*)": "@wot-ui/ui/components/wd-$1/wd-$1.vue"
+		}
+	},
 	"pages": [
 		{
 			"path": "pages/index/index",
@@ -10,91 +16,14 @@
 		{
 			"path": "pages/chat/chat",
 			"style": {
-				"navigationBarTitleText": "对话",
+				"navigationBarTitleText": "聊天",
 				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/conversations/conversations",
 			"style": {
-				"navigationBarTitleText": "对话",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/memory/memory",
-			"style": {
-				"navigationBarTitleText": "记忆",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/memory-detail/memory-detail",
-			"style": {
-				"navigationBarTitleText": "记忆详情",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/companion/companion",
-			"style": {
-				"navigationBarTitleText": "陪伴设置",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/consent/consent",
-			"style": {
-				"navigationBarTitleText": "同意管理",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/age/age",
-			"style": {
-				"navigationBarTitleText": "成年状态",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/export/export",
-			"style": {
-				"navigationBarTitleText": "数据导出",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/data/data",
-			"style": {
-				"navigationBarTitleText": "我的数据",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/help/help",
-			"style": {
-				"navigationBarTitleText": "帮助与反馈",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/report/report",
-			"style": {
-				"navigationBarTitleText": "举报和申诉",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/ai-notice/ai-notice",
-			"style": {
-				"navigationBarTitleText": "AI 说明",
-				"navigationStyle": "custom"
-			}
-		},
-		{
-			"path": "pages/incognito/incognito",
-			"style": {
-				"navigationBarTitleText": "无痕默认",
+				"navigationBarTitleText": "全部会话",
 				"navigationStyle": "custom"
 			}
 		},
@@ -115,14 +44,21 @@
 		{
 			"path": "pages/admin/admin",
 			"style": {
-				"navigationBarTitleText": "运行总览",
+				"navigationBarTitleText": "注册审核",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/admin-accounts/admin-accounts",
+			"style": {
+				"navigationBarTitleText": "账号",
 				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/admin-models/admin-models",
 			"style": {
-				"navigationBarTitleText": "模型服务",
+				"navigationBarTitleText": "模型与路由",
 				"navigationStyle": "custom"
 			}
 		},
@@ -136,7 +72,7 @@
 		{
 			"path": "pages/admin-system/admin-system",
 			"style": {
-				"navigationBarTitleText": "系统状态",
+				"navigationBarTitleText": "运行状态",
 				"navigationStyle": "custom"
 			}
 		}
@@ -145,7 +81,7 @@
 		"navigationStyle": "custom",
 		"navigationBarTitleText": "虚拟陪伴",
 		"navigationBarTextStyle": "black",
-		"navigationBarBackgroundColor": "#f1f4f1",
-		"backgroundColor": "#f1f4f1"
+		"navigationBarBackgroundColor": "#f7f3ec",
+		"backgroundColor": "#f7f3ec"
 	}
 }

@@ -1,99 +1,4 @@
-/**
- * Quiet Loom / 静默织室（Stitch 全量重设计，2026-08-30）。
- *
- * 灰绿织面是环境，近白内容面承载事实，紫罗兰只承担当前选择与唯一主动作；
- * 绿色表示关系仍在延续，珊瑚色只提示需要处理的事项。页面继续消费原有
- * --vc-* 语义变量，业务组件不持有私有品牌色。
- */
-
-page,
-:root {
-  /* 环境与内容面 */
-  --vc-env: #f1f4f1;
-  --vc-env-raised: #ffffff;
-  --vc-env-hover: #eaedeb;
-  --vc-on-env: #322638;
-  --vc-on-env-muted: #665d69;
-  --vc-glow: #6c56c7;
-  --vc-border-env: #d8ded9;
-  --vc-border-env-strong: #756d78;
-
-  --vc-paper: #f1f4f1;
-  --vc-card: #fefefe;
-  --vc-sunken: #eaedeb;
-  --vc-ink: #322638;
-  --vc-muted: #665d69;
-  --vc-border: #d8ded9;
-  --vc-border-strong: #756d78;
-
-  /* 动作与状态 */
-  --vc-primary: #6c56c7;
-  --vc-primary-hover: #5842b3;
-  --vc-primary-bg: #eee9ff;
-  --vc-primary-border: #cfc5f8;
-  --vc-on-primary: #ffffff;
-  --vc-disabled-surface: #dddfe0;
-  --vc-disabled-ink: #665d69;
-  --vc-success: #3f725e;
-  --vc-success-bg: #dfeee6;
-  --vc-success-border: #b8d8c8;
-  --vc-warning: #785619;
-  --vc-warning-bg: #f3ead5;
-  --vc-warning-on-env: #785619;
-  --vc-danger: #a9433a;
-  --vc-danger-bg: #f7e5e2;
-  --vc-danger-border: #edbbb5;
-  --vc-danger-on-env: #a9433a;
-
-  --vc-focus: #5940bd;
-  --vc-focus-on-env: #5940bd;
-  --vc-scrim: rgba(50, 38, 56, 0.42);
-  --vc-shadow-floating: 0 18px 48px rgba(50, 38, 56, 0.16);
-
-  /* 4px 基准；长留白让信息像织线一样分段，而不是堆成卡片墙。 */
-  --vc-space-1: 4px;
-  --vc-space-2: 8px;
-  --vc-space-3: 12px;
-  --vc-space-4: 16px;
-  --vc-space-5: 20px;
-  --vc-space-6: 24px;
-  --vc-space-7: 32px;
-  --vc-space-8: 48px;
-
-  --vc-radius-s: 4px;
-  --vc-radius-m: 8px;
-  --vc-radius-l: 12px;
-  --vc-radius-pill: 999px;
-
-  --vc-text-xs: 12px;
-  --vc-text-sm: 14px;
-  --vc-text-md: 16px;
-  --vc-text-lg: 18px;
-  --vc-text-xl: 22px;
-  --vc-text-2xl: 28px;
-  --vc-text-3xl: 34px;
-
-  --vc-z-content: 0;
-  --vc-z-header: 10;
-  --vc-z-nav: 20;
-  --vc-z-overlay: 30;
-  --vc-z-toast: 40;
-
-  --vc-motion-fast: 140ms;
-  --vc-motion-base: 260ms;
-  --vc-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-
-  /* 中文以本机可用的人文无衬线为主；不引入联网字体或新增运行时依赖。 */
-  --vc-font:
-    "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC",
-    "Noto Sans CJK SC", "Microsoft YaHei", system-ui, -apple-system,
-    "Segoe UI", sans-serif;
-  --vc-font-tabular:
-    "PingFang SC", "Hiragino Sans GB", system-ui, ui-monospace, monospace;
-  --vc-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-
-  color-scheme: light;
-}
+/* 全局复位与可访问性基础。所有视觉令牌由 theme/tokens.scss 统一定义。 */
 
 *,
 *::before,
@@ -204,7 +109,7 @@ textarea[disabled] {
 
 /* 唯一的全局入场：内容只做轻微位移。不要动画 opacity；自动化无障碍
    检查和快速切页会在过渡中读取颜色，半透明文字会短暂跌破对比度门槛。 */
-@keyframes vc-loom-settle {
+@keyframes vc-page-settle {
   from {
     transform: translateY(6px);
   }
@@ -217,7 +122,7 @@ textarea[disabled] {
 .vc-internal__main {
   /* 动画结束后不保留 transform；带 transform 的祖先会成为 fixed 弹层的
      包含块，长页面上的底部弹层因此会被推到手机视口之外。 */
-  animation: vc-loom-settle var(--vc-motion-base) var(--vc-ease-out) backwards;
+  animation: vc-page-settle var(--vc-motion-base) var(--vc-ease-out) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

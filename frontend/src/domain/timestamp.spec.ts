@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { formatLocalDateTime, formatTimestamp } from "./timestamp";
+import {
+  formatConversationActivity,
+  formatLocalDateTime,
+  formatTimestamp,
+} from "./timestamp";
 
 describe("formatTimestamp", () => {
   it("keeps the calendar day of an ISO instant", () => {
@@ -38,5 +42,28 @@ describe("formatLocalDateTime", () => {
   it("returns empty for a missing value and keeps non-dates as-is", () => {
     expect(formatLocalDateTime(undefined)).toBe("");
     expect(formatLocalDateTime("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("formatConversationActivity", () => {
+  const now = new Date(2026, 8, 1, 12, 0).getTime();
+
+  it("uses time for today and a natural label for yesterday", () => {
+    expect(formatConversationActivity(new Date(2026, 8, 1, 9, 7).toISOString(), now))
+      .toBe("09:07");
+    expect(formatConversationActivity(new Date(2026, 7, 31, 22, 18).toISOString(), now))
+      .toBe("昨天 22:18");
+  });
+
+  it("uses a compact calendar date for older activity", () => {
+    expect(formatConversationActivity(new Date(2026, 7, 29, 8, 0).toISOString(), now))
+      .toBe("8 月 29 日");
+    expect(formatConversationActivity(new Date(2025, 11, 30, 8, 0).toISOString(), now))
+      .toBe("2025 年 12 月 30 日");
+  });
+
+  it("keeps missing or malformed values out of the interface", () => {
+    expect(formatConversationActivity(undefined, now)).toBe("");
+    expect(formatConversationActivity("not-a-date", now)).toBe("");
   });
 });

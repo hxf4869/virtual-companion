@@ -12,31 +12,18 @@
         '<meta name="viewport" content="width=device-width, initial-scale=1.0' +
         (coverSupport ? ', viewport-fit=cover' : '') + '" />')
     </script>
-    <title>虚拟陪伴 · 内部测试版</title>
-    <!-- H5-HARDEN (§21.7)：Technical Alpha 不对公众开放——禁止搜索收录；
-         Referer 不随外链外泄；分享卡片只用静态文案，绝不含聊天内容。 -->
+    <title>虚拟陪伴</title>
+    <!-- 上线前不开放搜索收录；Referer 不随外链外泄；
+         分享卡片只使用静态文案，不包含聊天内容。 -->
     <meta name="robots" content="noindex, nofollow" />
     <meta name="referrer" content="no-referrer" />
-    <meta property="og:title" content="虚拟陪伴 · 内部测试版" />
-    <meta property="og:description" content="受控测试中的 AI 陪伴服务，不对公众开放注册。" />
+    <meta property="og:title" content="虚拟陪伴" />
+    <meta property="og:description" content="与同一个 AI 陪伴者，继续一段自然的文字对话。" />
     <meta property="og:type" content="website" />
     <!--preload-links-->
     <!--app-context-->
   </head>
   <body>
-    <!--
-THESIS: 「静默织室」是一处克制、可信、带轻微织物触感的私人陪伴空间；它让关系延续可见，但从不假装真人。
-OWN-WORLD: 灰绿织面承托近白内容面，紫罗兰只连接当前选择与唯一主动作；鼠尾草绿表达关系延续，珊瑚色只标示待处理事实。布局以细缝、结点和开放列表形成连续感，不复制通用卡片墙。
-STORY: 用户回来先看见当前陪伴和继续对话，再沿同一条关系织线查看最近会话、待确认记忆与提醒；二级页保持来源、状态和用户控制清楚可见。
-FIRST VIEWPORT: 移动端首屏上三分之一是当前关系面板与唯一实心紫色动作；下方三条开放摘要通过一条细缝相连，固定四入口底栏保持可达。
-FORM: 静默织室 / Quiet Loom；用户从 Impeccable 方向板选择第 2 个方向，并在三种 Stitch 构图中选择「织结平衡版」；方向种子 6207dc80。
-ADMIN THESIS: 后台同时呈现当前生效配置与待应用修改，拒绝长锚点页、卡片墙和模态表单。
-ADMIN OWN-WORLD: Quiet Loom Control Room 使用固定侧栏、开放账本、细分隔线和持续可见的变更轨道；紫罗兰只承担当前选择与唯一保存动作。
-ADMIN STORY: 管理员先确认 Go Runtime 事实，再检查 provider、模型和路由，暂存修改、校验、重新认证并应用。
-ADMIN FIRST VIEWPORT: 232px 侧栏；主账本约占三分之二；右侧 320px 变更轨道；移动端收为底部保存条。
-ADMIN FORM: 变更账本工作台；用户选择方案 1（候选 5）；方向种子 7b2f35e8。
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
-    -->
     <div id="app"><!--app-html--></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

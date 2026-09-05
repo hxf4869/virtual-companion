@@ -1,812 +1,879 @@
-<!-- ACCT-PAGE: account identity, logout, and self-service deletion.
-Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
 <template>
-  <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
-  <ConsumerShell route="/pages/account/account">
-
-
-
-    <view v-if="!auth.isAuthenticated" class="notice" data-testid="account-signed-out" role="status">
-      <text>当前未登录。登录后再查看账号或注销。</text>
-      <button data-testid="nav-login" class="nav-index" @click="goTo('/pages/login/login')">登录</button>
-    </view>
-
-    <template v-else>
-      <view class="account-overview">
-        <text class="account-overview__title">你的陪伴空间</text>
-        <text class="account-overview__copy">关系、记忆与数据始终由你决定如何保留。</text>
+  <ConsumerShell route="/pages/account/account" :show-header="false">
+    <view class="profile-page">
+      <view class="profile-topbar">
+        <text class="profile-topbar__title" role="heading" aria-level="1">我的</text>
+        <view class="profile-mark" aria-hidden="true">@</view>
       </view>
 
-      <!-- "我的"分组导航枢纽：每行一个清楚任务；分组名独立分隔行。 -->
-      <nav class="hub" data-testid="me-hub" aria-label="我的分组入口">
-        <template v-for="group in groupedHubEntries" :key="group.name">
-          <text class="hub-group" role="presentation">{{ group.name }}</text>
-          <button
-            v-for="entry in group.entries"
-            :key="entry.href"
-            class="row-link"
-            :data-testid="`me-${entry.testid}`"
-            @click="goTo(entry.href)"
-          >
-            <text class="hub-copy">
-              <text class="hub-label">{{ entry.label }}</text>
-            </text>
-            <text class="hub-note">{{ entry.note }}</text>
-            <AppIcon class="hub-chevron" name="chevron-right" :size="18" />
+      <view
+        v-if="auth.sessionStatus === 'unknown'"
+        class="profile-state"
+        :role="auth.error === 'refresh-failed' ? 'alert' : 'status'"
+        data-testid="account-loading"
+      >
+        <template v-if="auth.error === 'refresh-failed'">
+          <text class="profile-state__title">暂时没能打开账号信息</text>
+          <text class="profile-state__copy">检查网络后再试一次。</text>
+          <button class="secondary-action" data-testid="account-retry" @click="restoreAccount">
+            重新加载
           </button>
         </template>
-      </nav>
+        <template v-else>
+          <view class="profile-skeleton profile-skeleton--short" aria-hidden="true" />
+          <view class="profile-skeleton" aria-hidden="true" />
+          <text class="vc-sr-only">正在加载账号信息</text>
+        </template>
+      </view>
 
-      <!-- Internal Shell 入口：仅操作者角色可见；普通用户看不到入口与
-           内部数据轮廓。 -->
-      <nav
-        v-if="operatorVisible"
-        class="hub hub--internal"
-        data-testid="me-internal"
-        aria-label="内部入口"
+      <view
+        v-else-if="!auth.isAuthenticated"
+        class="profile-state"
+        data-testid="account-signed-out"
       >
-        <text class="hub-group" role="presentation">内部</text>
-        <button
-          v-for="entry in visibleInternalEntries"
-          :key="entry.href"
-          class="row-link"
-          :data-testid="`me-${entry.testid}`"
-          @click="goTo(entry.href)"
-        >
-          <text class="hub-copy">
-            <text class="hub-label">{{ entry.label }}</text>
-          </text>
-          <text class="hub-note">{{ entry.note }}</text>
-          <AppIcon class="hub-chevron" name="chevron-right" :size="18" />
+        <text class="profile-state__title">登录后查看账号与安全设置</text>
+        <text class="profile-state__copy">你的设置会跟随账号保存。</text>
+        <button class="primary-action" data-testid="nav-login" @click="goTo('/pages/login/login')">
+          登录
         </button>
-      </nav>
-
-      <!-- 账号与安全：改密、会话管理、登出；账号编号与角色是次要信息。 -->
-      <text class="hub-group" role="presentation">账号与安全</text>
-      <view class="card" data-testid="password-card">
-        <text class="label">修改密码</text>
-        <text v-if="auth.passwordMustChange" class="error" data-testid="password-required">
-          管理员设置了临时密码。完成修改前只能修改密码、刷新或登出。
-        </text>
-        <input
-          v-model="currentPassword"
-          data-testid="current-password"
-          class="account-input"
-          type="password"
-          autocomplete="current-password"
-          placeholder="当前密码"
-          aria-label="当前密码"
-        />
-        <input
-          v-model="newPassword"
-          data-testid="new-password"
-          class="account-input"
-          type="password"
-          autocomplete="new-password"
-          placeholder="新密码"
-          aria-label="新密码"
-        />
-        <input
-          v-model="confirmPassword"
-          data-testid="confirm-password"
-          class="account-input"
-          type="password"
-          autocomplete="new-password"
-          placeholder="再次输入新密码"
-          aria-label="确认新密码"
-        />
-        <button
-          data-testid="change-password"
-          class="nav-index"
-          :disabled="busy || !canChangePassword"
-          @click="onChangePassword"
-        >
-          修改并撤销全部旧会话
-        </button>
-        <text v-if="passwordMessage" class="meta" data-testid="password-message">
-          {{ passwordMessage }}
-        </text>
       </view>
 
-      <view v-if="!auth.passwordMustChange" class="card" data-testid="sessions-card">
-        <view class="actions">
-          <button class="nav-index" data-testid="sessions-refresh" :disabled="busy" @click="loadSessions">
-            刷新会话
-          </button>
-          <button class="nav-index danger-btn" data-testid="sessions-revoke-all" :disabled="busy" @click="onRevokeAll">
-            撤销全部会话
-          </button>
-        </view>
-        <text v-if="sessionsFailed" class="error" data-testid="sessions-error" role="alert">
-          会话加载失败，当前列表已保留。请点击“刷新会话”重试。
-        </text>
-        <view v-if="sessionsActionError" class="error" data-testid="sessions-action-error" role="alert">
-          <text>{{ sessionsActionError }}</text>
-        </view>
-        <text v-if="!sessionsFailed && !sessionsActionError && sessions.length === 0" class="meta">
-          暂无有效会话。
-        </text>
-        <view v-for="session in sessions" :key="session.id" class="session-row" data-testid="session-row">
-          <text>{{ session.clientLabel || "客户端" }}{{ session.current ? "（当前）" : "" }}</text>
-          <text class="meta">最近使用：{{ formatLocalDateTime(session.lastSeenAt) }}；到期：{{ formatLocalDateTime(session.expiresAt) }}</text>
-          <button
-            class="nav-index"
-            data-testid="session-revoke"
-            :disabled="busy"
-            @click="onRevokeSession(session.id)"
-          >
-            撤销该会话
-          </button>
-        </view>
-      </view>
-
-      <button data-testid="account-logout" class="nav-index" :disabled="busy" @click="onLogout">
-        登出
-      </button>
-
-      <view class="card" data-testid="public-computer-hint">
-        <text class="label">公共电脑提示</text>
-        <text class="meta">在公共或共用电脑上使用后，请「登出」并关闭页面；建议使用浏览器无痕模式。登出会清除本机缓存的会话数据。</text>
-      </view>
-
-      <view class="account-meta" data-testid="account-card">
-        <text class="meta">账号编号 <text data-testid="account-id">{{ auth.accountId ?? "未知" }}</text></text>
-        <text class="meta">角色 <text data-testid="account-role">{{ accountRoleLabel(auth.role) }}</text></text>
-      </view>
-
-      <view class="danger">
-        <text class="label">注销账号</text>
-        <text class="meta">注销会删除本账号的业务数据，且无法恢复登录。合规审计日志按既定保留期留存。</text>
-        <button
-          data-testid="delete-account-open"
-          class="nav-index danger-btn"
-          :disabled="busy"
-          @click="deleteOpen = true"
-        >
-          注销账号
-        </button>
-        <view v-if="deleteOpen" class="card" data-testid="delete-account-confirm">
-          <text>
-            注销后：业务数据（聊天、记忆、同意记录、导出）将立即删除；
-            合规审计日志无法立即清除，将按既定保留期留存；注销后无法恢复登录。
-          </text>
-          <input
-            v-model="deletePassword"
-            data-testid="delete-account-password"
-            class="account-input"
-            type="password"
-            autocomplete="current-password"
-            placeholder="当前密码（注销前需重新输入）"
-            aria-label="注销确认当前密码"
-          />
-          <view class="actions">
-            <button data-testid="delete-account-cancel" class="nav-index" :disabled="busy" @click="closeDelete">
-              取消
-            </button>
-            <button
-              data-testid="delete-account-confirm-btn"
-              class="nav-index danger-btn"
-              :disabled="busy"
-              @click="onConfirmDelete"
-            >
-              {{ busy ? "注销中…" : "确认注销" }}
-            </button>
+      <template v-else>
+        <view class="profile-identity" data-testid="account-identity">
+          <view class="profile-avatar" aria-hidden="true">{{ accountMark }}</view>
+          <view class="profile-identity__copy">
+            <text class="profile-identity__label">当前账号</text>
+            <text class="profile-identity__email" data-testid="account-email">
+              {{ auth.email || "已登录账号" }}
+            </text>
           </view>
-          <text v-if="deleteError" class="error" data-testid="delete-account-error">{{ deleteError }}</text>
         </view>
-      </view>
-    </template>
+
+        <view
+          v-if="auth.passwordMustChange"
+          class="required-notice"
+          data-testid="password-required"
+          role="alert"
+        >
+          <AppIcon name="lock" :size="18" />
+          <text>请先设置一个新密码，再继续使用其他功能。</text>
+        </view>
+
+        <section class="settings-section" aria-labelledby="account-section-title">
+          <text id="account-section-title" class="settings-section__title">账号</text>
+          <view class="settings-list">
+            <button
+              type="button"
+              class="settings-row"
+              data-testid="password-toggle"
+              :aria-expanded="passwordOpen"
+              @click="passwordOpen = !passwordOpen"
+            >
+              <span class="settings-row__copy">
+                <text class="settings-row__label">修改密码</text>
+                <text class="settings-row__note">修改后需要重新登录</text>
+              </span>
+              <AppIcon :name="passwordOpen ? 'arrow-up' : 'chevron-right'" :size="18" />
+            </button>
+
+            <view v-if="passwordOpen" class="inline-form" data-testid="password-form">
+              <text class="form-label">当前密码</text>
+              <input
+                v-model="currentPassword"
+                class="form-input"
+                data-testid="current-password"
+                type="password"
+                autocomplete="current-password"
+                aria-label="当前密码"
+              />
+              <text class="form-label">新密码</text>
+              <input
+                v-model="newPassword"
+                class="form-input"
+                data-testid="new-password"
+                type="password"
+                autocomplete="new-password"
+                aria-label="新密码"
+              />
+              <text class="form-hint">至少 8 个字符</text>
+              <text class="form-label">再次输入新密码</text>
+              <input
+                v-model="confirmPassword"
+                class="form-input"
+                data-testid="confirm-password"
+                type="password"
+                autocomplete="new-password"
+                aria-label="再次输入新密码"
+              />
+              <text
+                v-if="passwordMessage"
+                class="form-message"
+                data-testid="password-message"
+                role="alert"
+              >
+                {{ passwordMessage }}
+              </text>
+              <button
+                type="button"
+                class="primary-action primary-action--compact"
+                data-testid="change-password"
+                :disabled="busy || !canChangePassword"
+                @click="onChangePassword"
+              >
+                {{ busy === "password" ? "修改中…" : "确认修改" }}
+              </button>
+            </view>
+          </view>
+        </section>
+
+        <section class="settings-section" aria-labelledby="security-section-title">
+          <text id="security-section-title" class="settings-section__title">安全</text>
+          <view class="settings-list">
+            <view class="security-fact" data-testid="authenticator-status">
+              <view
+                class="security-fact__icon"
+                :class="{ 'security-fact__icon--warning': !auth.authenticatorEnabled }"
+                aria-hidden="true"
+              >
+                <AppIcon name="shield" :size="20" />
+              </view>
+              <view class="settings-row__copy">
+                <text class="settings-row__label">身份验证器</text>
+                <text class="settings-row__note">
+                  {{ auth.authenticatorEnabled ? "已开启" : "需要设置" }}
+                </text>
+              </view>
+            </view>
+
+            <view class="trusted-devices" data-testid="trusted-devices">
+              <view class="trusted-devices__heading">
+                <view class="settings-row__copy">
+                  <text class="settings-row__label">信任的设备</text>
+                  <text class="settings-row__note">登录仍需密码，可免验证身份验证器</text>
+                </view>
+                <button
+                  v-if="deviceState === 'error'"
+                  type="button"
+                  class="text-action"
+                  data-testid="trusted-devices-retry"
+                  @click="loadTrustedDevices"
+                >
+                  重试
+                </button>
+              </view>
+
+              <text v-if="deviceState === 'loading'" class="device-state" role="status">
+                正在加载设备…
+              </text>
+              <text
+                v-else-if="deviceState === 'error'"
+                class="device-state device-state--error"
+                data-testid="trusted-devices-error"
+                role="alert"
+              >
+                设备没有加载出来。
+              </text>
+              <text v-else-if="trustedDevices.length === 0" class="device-state">
+                暂无信任的设备。
+              </text>
+
+              <view
+                v-for="device in trustedDevices"
+                :key="device.id"
+                class="device-row"
+                data-testid="trusted-device-row"
+              >
+                <view class="device-row__copy">
+                  <text class="device-row__name">{{ device.displayName }}</text>
+                  <text class="device-row__meta">
+                    最近使用 {{ formatLocalDateTime(device.lastUsedAt) }}
+                  </text>
+                  <text class="device-row__meta">
+                    {{ formatLocalDateTime(device.expiresAt) }} 到期
+                  </text>
+                </view>
+                <button
+                  type="button"
+                  class="device-row__revoke"
+                  data-testid="trusted-device-revoke"
+                  :disabled="busy !== null"
+                  @click="onRevokeTrustedDevice(device.id)"
+                >
+                  {{ busy === `device:${device.id}` ? "撤销中…" : "撤销" }}
+                </button>
+              </view>
+
+              <text
+                v-if="deviceActionError"
+                class="device-state device-state--error"
+                data-testid="trusted-device-action-error"
+                role="alert"
+              >
+                {{ deviceActionError }}
+              </text>
+            </view>
+          </view>
+        </section>
+
+        <section class="settings-section" aria-labelledby="about-section-title">
+          <text id="about-section-title" class="settings-section__title">关于</text>
+          <view class="settings-list">
+            <view class="security-fact" data-testid="ai-identity-note">
+              <view class="security-fact__icon" aria-hidden="true">
+                <AppIcon name="info" :size="20" />
+              </view>
+              <view class="settings-row__copy">
+                <text class="settings-row__label">AI 陪伴者</text>
+                <text class="settings-row__note">回复由 AI 生成，并非真人。</text>
+              </view>
+            </view>
+          </view>
+        </section>
+
+        <button
+          v-if="auth.role === 'ADMIN'"
+          type="button"
+          class="admin-entry"
+          data-testid="me-admin"
+          @click="goTo('/pages/admin/admin')"
+        >
+          <span>进入管理后台</span>
+          <AppIcon name="chevron-right" :size="18" />
+        </button>
+
+        <button
+          type="button"
+          class="logout-action"
+          data-testid="account-logout"
+          :disabled="busy !== null"
+          @click="onLogout"
+        >
+          <AppIcon name="logout" :size="18" />
+          <text>{{ busy === "logout" ? "正在退出…" : "退出登录" }}</text>
+        </button>
+
+        <view class="danger-zone">
+          <button
+            type="button"
+            class="danger-zone__toggle"
+            data-testid="delete-account-open"
+            :aria-expanded="deleteOpen"
+            :disabled="busy !== null"
+            @click="deleteOpen = !deleteOpen"
+          >
+            注销账号
+          </button>
+          <view v-if="deleteOpen" class="danger-zone__confirm" data-testid="delete-account-confirm">
+            <text class="danger-zone__title">注销后无法恢复</text>
+            <text class="danger-zone__copy">
+              聊天等账号数据会被删除；依法需要保留的审计记录会按期限留存。
+            </text>
+            <text class="form-label">输入当前密码确认</text>
+            <input
+              v-model="deletePassword"
+              class="form-input"
+              data-testid="delete-account-password"
+              type="password"
+              autocomplete="current-password"
+              aria-label="注销确认当前密码"
+            />
+            <text
+              v-if="deleteError"
+              class="form-message"
+              data-testid="delete-account-error"
+              role="alert"
+            >
+              {{ deleteError }}
+            </text>
+            <view class="danger-zone__actions">
+              <button type="button" class="secondary-action" data-testid="delete-account-cancel" @click="closeDelete">
+                取消
+              </button>
+              <button
+                type="button"
+                class="danger-action"
+                data-testid="delete-account-confirm-btn"
+                :disabled="busy !== null"
+                @click="onConfirmDelete"
+              >
+                {{ busy === "delete" ? "注销中…" : "确认注销" }}
+              </button>
+            </view>
+          </view>
+        </view>
+      </template>
+    </view>
   </ConsumerShell>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
 import {
   changeAuthPassword,
   deleteAccount,
-  listAuthSessions,
-  revokeAllAuthSessions,
-  revokeAuthSession,
-  type AuthSession,
+  listTrustedDevices,
+  revokeTrustedDevice,
+  type TrustedDevice,
 } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
-import ConsumerShell from "@/app/ConsumerShell.vue";
 import { goTo } from "@/app/navigate";
-import { isVisibleToRole, routeSpecOf } from "@/app/navigation";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import AppIcon from "@/design-system/AppIcon.vue";
-import { accountRoleLabel } from "@/domain/account-display";
 import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 
-export default {
-  name: "AccountPage",
-  components: { AppIcon, ConsumerShell },
-  setup() {
-    // "我的"分组导航（静态 IA 数据；运行时消费导航模型的分组）。
-    const HUB_ENTRIES = [
-      { group: "陪伴", label: "陪伴设置", note: "称呼、偏好与危险操作", href: "/pages/companion/companion", testid: "companion" },
-      { group: "隐私与 AI", label: "无痕默认", note: "下次新会话是否默认无痕", href: "/pages/incognito/incognito", testid: "incognito" },
-      { group: "隐私与 AI", label: "成年状态", note: "查看与运行模拟核验", href: "/pages/age/age", testid: "age" },
-      { group: "隐私与 AI", label: "同意管理", note: "版本化同意与撤回", href: "/pages/consent/consent", testid: "consent" },
-      { group: "隐私与 AI", label: "AI 说明", note: "模型与 AI 标识", href: "/pages/ai-notice/ai-notice", testid: "ai-notice" },
-      { group: "数据", label: "我的数据", note: "账号数据汇总", href: "/pages/data/data", testid: "data" },
-      { group: "数据", label: "数据导出", note: "二次认证后异步导出", href: "/pages/export/export", testid: "export" },
-      { group: "帮助", label: "帮助与反馈", note: "边界说明与支持", href: "/pages/help/help", testid: "help" },
-      { group: "帮助", label: "举报和申诉", note: "人工处理，不编造工单", href: "/pages/report/report", testid: "report" },
-    ] as const;
-    const INTERNAL_ENTRIES = [
-      { group: "内部", label: "后台控制台", note: "运行状态、模型服务与路由策略", href: "/pages/admin/admin", testid: "admin" },
-    ] as const;
-    // 账号页只显示当前角色真正可进入的内部入口（route-specific allowedRoles）。
-    const groupedHubEntries = computed(() => {
-      const groups: Array<{ name: string; entries: typeof HUB_ENTRIES[number][] }> = [];
-      for (const entry of HUB_ENTRIES) {
-        const last = groups[groups.length - 1];
-        if (last && last.name === entry.group) {
-          last.entries.push(entry);
-        } else {
-          groups.push({ name: entry.group, entries: [entry] });
-        }
-      }
-      return groups;
-    });
-    const visibleInternalEntries = computed(() =>
-      INTERNAL_ENTRIES.filter((entry) => {
-        const spec = routeSpecOf(entry.href);
-        return spec ? isVisibleToRole(spec, auth.role) : false;
-      }),
+type DeviceState = "idle" | "loading" | "ready" | "error";
+type BusyAction = "password" | "logout" | "delete" | `device:${string}`;
+
+const auth = useAuthStore();
+const passwordOpen = ref(auth.passwordMustChange);
+const currentPassword = ref("");
+const newPassword = ref("");
+const confirmPassword = ref("");
+const passwordMessage = ref("");
+const trustedDevices = ref<TrustedDevice[]>([]);
+const deviceState = ref<DeviceState>("idle");
+const deviceActionError = ref("");
+const deleteOpen = ref(false);
+const deletePassword = ref("");
+const deleteError = ref("");
+const busy = ref<BusyAction | null>(null);
+
+const transport = createAuthenticatedTransport({
+  getAccessToken: () => auth.accessToken,
+  onUnauthorized: () => auth.onUnauthorized(),
+});
+
+const accountMark = computed(() => {
+  const value = auth.email?.trim();
+  return value ? value.slice(0, 1).toUpperCase() : "我";
+});
+
+const canChangePassword = computed(() => (
+  currentPassword.value.length > 0
+  && newPassword.value.length >= 8
+  && newPassword.value === confirmPassword.value
+));
+
+onMounted(restoreAccount);
+
+async function restoreAccount(): Promise<void> {
+  if (!auth.isAuthenticated) {
+    await auth.tryRefresh(transport);
+  }
+  if (!auth.isAuthenticated) return;
+  if (auth.passwordMustChange) passwordOpen.value = true;
+  await loadTrustedDevices();
+}
+
+async function loadTrustedDevices(): Promise<void> {
+  deviceState.value = "loading";
+  deviceActionError.value = "";
+  try {
+    trustedDevices.value = await listTrustedDevices(transport);
+    deviceState.value = "ready";
+  } catch {
+    deviceState.value = "error";
+  }
+}
+
+async function onRevokeTrustedDevice(deviceId: string): Promise<void> {
+  if (busy.value) return;
+  busy.value = `device:${deviceId}`;
+  deviceActionError.value = "";
+  try {
+    if (!await revokeTrustedDevice(transport, deviceId)) {
+      deviceActionError.value = "没有撤销成功，请再试一次。";
+      return;
+    }
+    trustedDevices.value = trustedDevices.value.filter((device) => device.id !== deviceId);
+  } catch {
+    deviceActionError.value = "没有撤销成功，请再试一次。";
+  } finally {
+    busy.value = null;
+  }
+}
+
+async function onChangePassword(): Promise<void> {
+  if (busy.value || !canChangePassword.value) return;
+  busy.value = "password";
+  passwordMessage.value = "";
+  try {
+    const changed = await changeAuthPassword(
+      transport,
+      currentPassword.value,
+      newPassword.value,
     );
-    const operatorVisible = computed(() => visibleInternalEntries.value.length > 0);
-
-    const auth = useAuthStore();
-    const deleteOpen = ref(false);
-    const deleteError = ref("");
-    // ADR-0006 §7.7 (DOGFOOD-08): the destructive deletion requires the
-    // freshly re-entered CURRENT password; the server verifies it fail-closed.
-    const deletePassword = ref("");
-    const busy = ref(false);
-    const sessions = ref<AuthSession[]>([]);
-    const sessionsFailed = ref(false);
-    const sessionsActionError = ref("");
-    const currentPassword = ref("");
-    const newPassword = ref("");
-    const confirmPassword = ref("");
-    const passwordMessage = ref("");
-    const canChangePassword = computed(() =>
-      currentPassword.value.length > 0
-      && newPassword.value.length >= 12
-      && newPassword.value === confirmPassword.value);
-
-    const transport = createAuthenticatedTransport({
-      getAccessToken: () => auth.accessToken,
-      renewAccessToken: () => auth.renewAccessToken(transport),
-      onUnauthorized: () => auth.onUnauthorized(),
-    });
-
-    onMounted(async () => {
-      if (!auth.isAuthenticated) {
-        await auth.tryRefresh(transport);
-      }
-      if (auth.isAuthenticated && !auth.passwordMustChange) {
-        await loadSessions();
-      }
-    });
-
-
-    async function loadSessions(): Promise<void> {
-      sessionsFailed.value = false;
-      sessionsActionError.value = "";
-      try {
-        sessions.value = await listAuthSessions(transport);
-      } catch {
-        sessionsFailed.value = true;
-      }
+    if (!changed) {
+      passwordMessage.value = "没有修改成功，请检查当前密码。";
+      return;
     }
+    auth.clear();
+    goTo("/pages/login/login");
+  } catch {
+    passwordMessage.value = "没有修改成功，请稍后再试。";
+  } finally {
+    busy.value = null;
+  }
+}
 
-    async function onRevokeSession(sessionId: string): Promise<void> {
-      if (busy.value) return;
-      busy.value = true;
-      sessionsActionError.value = "";
-      const revokedSession = sessions.value.find((session) => session.id === sessionId);
-      try {
-        const ok = await revokeAuthSession(transport, sessionId);
-        if (!ok) {
-          // A refusal or server error is not proof that the current login is
-          // invalid. Keep both the identity and the last known list so the
-          // user can retry without losing context.
-          if (auth.isAuthenticated) {
-            sessionsActionError.value = "撤销该会话失败，当前登录和会话列表已保留。请再次点击“撤销该会话”重试。";
-          }
-          return;
-        }
+async function onLogout(): Promise<void> {
+  if (busy.value) return;
+  busy.value = "logout";
+  try {
+    await auth.logout(transport);
+    goTo("/pages/login/login");
+  } finally {
+    busy.value = null;
+  }
+}
 
-        if (revokedSession?.current) {
-          // Only revoking the browser's current session can invalidate this
-          // page's login. Read the real post-revoke state before deciding
-          // whether to stay or go to login.
-          try {
-            const latestSessions = await listAuthSessions(transport);
-            if (latestSessions.length === 0) {
-              auth.clear();
-              goTo("/pages/login/login");
-              return;
-            }
-            sessions.value = latestSessions;
-            sessionsFailed.value = false;
-          } catch {
-            if (!auth.isAuthenticated) {
-              goTo("/pages/login/login");
-              return;
-            }
-            sessionsActionError.value = "当前会话已撤销，但暂时无法确认剩余会话状态。请点击“刷新会话”重试。";
-          }
-          return;
-        }
+function closeDelete(): void {
+  deleteOpen.value = false;
+  deletePassword.value = "";
+  deleteError.value = "";
+}
 
-        await loadSessions();
-      } catch {
-        if (auth.isAuthenticated) {
-          sessionsActionError.value = "撤销该会话失败，当前登录和会话列表已保留。请再次点击“撤销该会话”重试。";
-        }
-      } finally {
-        busy.value = false;
-      }
+async function onConfirmDelete(): Promise<void> {
+  if (busy.value) return;
+  if (!deletePassword.value) {
+    deleteError.value = "请输入当前密码。";
+    return;
+  }
+  busy.value = "delete";
+  deleteError.value = "";
+  try {
+    if (!await deleteAccount(transport, deletePassword.value)) {
+      deleteError.value = "当前密码不正确，账号没有注销。";
+      return;
     }
-
-    async function onRevokeAll(): Promise<void> {
-      if (busy.value) return;
-      busy.value = true;
-      sessionsActionError.value = "";
-      try {
-        await revokeAllAuthSessions(transport);
-        auth.clear();
-        goTo("/pages/login/login");
-      } catch {
-        if (auth.isAuthenticated) {
-          sessionsActionError.value = "撤销全部会话失败，当前登录和会话列表已保留。请再次点击“撤销全部会话”重试。";
-        }
-      } finally {
-        busy.value = false;
-      }
-    }
-
-    async function onChangePassword(): Promise<void> {
-      if (busy.value || !canChangePassword.value) return;
-      busy.value = true;
-      passwordMessage.value = "";
-      try {
-        const ok = await changeAuthPassword(
-          transport, currentPassword.value, newPassword.value,
-        );
-        if (!ok) {
-          passwordMessage.value = "修改失败：请检查当前密码和新密码要求。";
-          return;
-        }
-        currentPassword.value = "";
-        newPassword.value = "";
-        confirmPassword.value = "";
-        auth.clear();
-        goTo("/pages/login/login");
-      } catch {
-        passwordMessage.value = "修改失败，请重试。";
-      } finally {
-        busy.value = false;
-      }
-    }
-
-    async function onLogout(): Promise<void> {
-      if (busy.value) return;
-      busy.value = true;
-      try {
-        await auth.logout(transport);
-        goTo("/pages/login/login");
-      } finally {
-        busy.value = false;
-      }
-    }
-
-    function closeDelete(): void {
-      deleteOpen.value = false;
-      deleteError.value = "";
-      deletePassword.value = "";
-    }
-
-    async function onConfirmDelete(): Promise<void> {
-      if (busy.value) return;
-      // Empty re-entry never leaves the page: no request, keep the form.
-      if (!deletePassword.value) {
-        deleteError.value = "请输入当前密码以确认注销。";
-        return;
-      }
-      busy.value = true;
-      deleteError.value = "";
-      try {
-        const ok = await deleteAccount(transport, deletePassword.value);
-        if (!ok) {
-          // Wrong password (or server refusal): keep the form + input so the
-          // caller can retry; the session stays alive.
-          deleteError.value = "当前密码不正确，注销未执行。";
-          return;
-        }
-        auth.clear();
-        deleteOpen.value = false;
-        deletePassword.value = "";
-        goTo("/pages/login/login");
-      } catch {
-        deleteError.value = "注销失败，请重试。";
-      } finally {
-        busy.value = false;
-      }
-    }
-
-    return {
-      accountRoleLabel,
-      formatLocalDateTime,
-      HUB_ENTRIES,
-      INTERNAL_ENTRIES,
-      operatorVisible,
-      groupedHubEntries,
-      visibleInternalEntries,
-      auth,
-      deleteOpen,
-      deleteError,
-      deletePassword,
-      busy,
-      sessions,
-      sessionsFailed,
-      sessionsActionError,
-      currentPassword,
-      newPassword,
-      confirmPassword,
-      passwordMessage,
-      canChangePassword,
-      loadSessions,
-      onRevokeSession,
-      onRevokeAll,
-      onChangePassword,
-      onLogout,
-      onConfirmDelete,
-      closeDelete,
-      goTo,
-    };
-  },
-};
+    auth.clear();
+    goTo("/pages/login/login");
+  } catch {
+    deleteError.value = "暂时无法注销，请稍后再试。";
+  } finally {
+    busy.value = null;
+  }
+}
 </script>
 
 <style scoped>
-.intro {
-  margin: 0 0 var(--vc-space-4);
-  color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
-  line-height: 1.75;
+.profile-page {
+  width: 100%;
+  padding-bottom: var(--vc-space-4);
 }
 
-.section {
+.profile-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
   margin-bottom: var(--vc-space-5);
 }
 
-.section-title {
-  display: block;
-  margin-bottom: var(--vc-space-2);
-  font-size: var(--vc-text-md);
-  font-weight: 600;
-}
-
-.section-subtitle {
-  display: block;
-  margin: var(--vc-space-2) 0 var(--vc-space-1);
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
-  color: var(--vc-muted);
-}
-
-.label {
-  display: block;
-  margin: var(--vc-space-3) 0 var(--vc-space-1);
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-  font-weight: 600;
-}
-
-.meta {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-}
-
-.row {
-  display: block;
-  margin-bottom: var(--vc-space-2);
-  font-size: var(--vc-text-sm);
-  line-height: 1.7;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vc-space-2);
-  margin-top: var(--vc-space-3);
-}
-
-.nav-index {
-  min-height: 44px;
-  margin: 0;
-  padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-strong);
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-card);
-  color: var(--vc-ink);
-  font: inherit;
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
-}
-
-.nav-index::after {
-  border: 0;
-}
-
-.page-act {
-  min-height: 44px;
-  margin: 0;
-  padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-env-strong);
-  border-radius: var(--vc-radius-s);
-  background: transparent;
-  color: var(--vc-on-env);
-  font: inherit;
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
-}
-
-.page-act::after {
-  border: 0;
-}
-
-.error {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--vc-space-2);
-  margin: var(--vc-space-3) 0;
-  padding: var(--vc-space-3) var(--vc-space-4);
-  border: 1px solid var(--vc-danger);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-danger-bg);
-  color: var(--vc-danger);
-  font-size: var(--vc-text-sm);
-}
-
-.empty {
-  display: block;
-  margin: var(--vc-space-3) 0;
-  padding: var(--vc-space-4);
-  border: 1px dashed var(--vc-border-strong);
-  border-radius: var(--vc-radius-m);
-  color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
-}
-
-.state-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--vc-space-1);
-  margin-bottom: var(--vc-space-4);
-  padding: var(--vc-space-4);
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
-  font-size: var(--vc-text-sm);
-}
-
-.input,
-.reminder-input,
-.export-input,
-.account-input,
-.note-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 var(--vc-space-3);
-  border: 1px solid var(--vc-border-strong);
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-sunken);
-  color: var(--vc-ink);
-  font-size: 16px;
-}
-.account-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vc-space-3);
-  margin: var(--vc-space-4) 0 0;
-}
-
-.danger {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--vc-space-2);
-  margin-top: var(--vc-space-6);
-  padding: var(--vc-space-4);
-  border-top: 1px solid var(--vc-danger);
-  border-bottom: 1px solid var(--vc-danger);
-  border-radius: 0;
-  background: transparent;
-}
-
-.danger-title {
-  color: var(--vc-danger);
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
-}
-
-.danger-lead,
-.danger-copy {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-  line-height: 1.7;
-}
-
-.danger-btn {
-  min-height: 44px;
-  margin: 0;
-  padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-danger);
-  border-radius: var(--vc-radius-s);
-  background: transparent;
-  color: var(--vc-danger);
-  font: inherit;
-  font-size: var(--vc-text-sm);
-  font-weight: 600;
-}
-
-.danger-btn::after {
-  border: 0;
-}
-
-.danger-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vc-space-2);
-  width: 100%;
-}
-.hub {
-  margin: var(--vc-space-5) 0;
-}
-
-.hub .row-link {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--vc-space-3);
-  width: 100%;
-  min-height: 60px;
-  margin: 0;
-  padding: var(--vc-space-3) var(--vc-space-1) var(--vc-space-3) 0;
-  border: 0;
-  border-bottom: 1px solid var(--vc-border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--vc-ink);
-  font: inherit;
-  text-align: left;
-}
-
-.hub .row-link::after {
-  border: 0;
-}
-
-.hub-chevron {
-  color: var(--vc-muted);
-}
-
-.hub-copy {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-width: 0;
-}
-
-.hub-group {
-  display: block;
-  margin-top: var(--vc-space-6);
-  margin-bottom: var(--vc-space-1);
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-  font-weight: 600;
-}
-
-.hub-group:first-child {
-  margin-top: 0;
-}
-
-.hub-label {
-  font-size: var(--vc-text-md);
+.profile-topbar__title {
+  font-size: 24px;
   font-weight: 650;
+  line-height: 32px;
 }
 
-.hub-note {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-  text-align: right;
-}
-
-.hub--internal {
-  padding: var(--vc-space-2) 0;
-  border-top: 1px dashed var(--vc-border-strong);
-  border-bottom: 1px dashed var(--vc-border-strong);
-  border-radius: 0;
-}
-
-.card {
+.profile-mark {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--vc-space-1);
-  padding: var(--vc-space-4);
-  border-top: 1px solid var(--vc-border);
-  border-bottom: 1px solid var(--vc-border);
-  border-radius: 0;
-  background: var(--vc-card);
-}
-
-.session-row {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--vc-space-2);
-  padding: var(--vc-space-2) 0;
-  border-bottom: 1px solid var(--vc-border);
-  font-size: var(--vc-text-sm);
-}
-
-.notice {
-  display: block;
-  margin: var(--vc-space-2) 0;
-  padding: var(--vc-space-2) var(--vc-space-3);
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-sunken);
-  color: var(--vc-muted);
-  font-size: var(--vc-text-xs);
-}
-
-.account-overview {
-  position: relative;
-  display: grid;
-  gap: var(--vc-space-1);
-  padding: var(--vc-space-5) var(--vc-space-4);
-  border-radius: var(--vc-radius-s);
-  background: var(--vc-card);
-  overflow: hidden;
-}
-
-.account-overview::before {
-  position: absolute;
-  inset: 0;
-  background: url("/static/quiet-loom/woven-field.png") repeat;
-  background-size: 512px 512px;
-  content: "";
-  mix-blend-mode: multiply;
-  opacity: 0.08;
-  pointer-events: none;
-}
-
-.account-overview > * {
-  position: relative;
-  z-index: 1;
-}
-
-.account-overview__title {
-  color: var(--vc-ink);
-  font-size: var(--vc-text-xl);
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-full);
+  background: var(--vc-color-surface);
+  color: var(--vc-color-primary);
+  font-size: 15px;
   font-weight: 700;
 }
 
-.account-overview__copy {
-  color: var(--vc-muted);
-  font-size: var(--vc-text-sm);
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-3);
+  min-width: 0;
+  margin-bottom: var(--vc-space-6);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-hero);
+  background: var(--vc-color-surface);
+}
+
+.profile-avatar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--vc-radius-full);
+  background: var(--vc-color-surface-soft);
+  color: var(--vc-color-primary);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.profile-identity__copy,
+.settings-row__copy,
+.device-row__copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  text-align: left;
+}
+
+.profile-identity__label,
+.settings-row__note,
+.device-row__meta,
+.form-hint,
+.profile-state__copy,
+.danger-zone__copy {
+  color: var(--vc-color-ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.profile-identity__email {
+  overflow-wrap: anywhere;
+  color: var(--vc-color-ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.required-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vc-space-2);
+  margin-bottom: var(--vc-space-5);
+  padding: var(--vc-space-3);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-control);
+  background: var(--vc-color-surface-soft);
+  color: var(--vc-color-primary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.settings-section {
+  display: block;
+  margin-bottom: var(--vc-space-5);
+}
+
+.settings-section__title {
+  display: block;
+  margin: 0 0 var(--vc-space-2) var(--vc-space-1);
+  color: var(--vc-color-ink-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.settings-list {
+  overflow: hidden;
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-card);
+  background: var(--vc-color-surface);
+}
+
+.settings-row,
+.security-fact,
+.trusted-devices {
+  width: 100%;
+  margin: 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vc-color-ink);
+  font: inherit;
+}
+
+.settings-row,
+.security-fact {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-3);
+  min-height: 64px;
+}
+
+.settings-row + .settings-row,
+.settings-row + .inline-form,
+.security-fact + .trusted-devices {
+  border-top: 1px solid var(--vc-color-hairline);
+}
+
+.settings-row::after,
+.primary-action::after,
+.secondary-action::after,
+.text-action::after,
+.device-row__revoke::after,
+.admin-entry::after,
+.logout-action::after,
+.danger-zone__toggle::after,
+.danger-action::after {
+  border: 0;
+}
+
+.settings-row:active,
+.admin-entry:active {
+  background: var(--vc-color-surface-soft);
+}
+
+.settings-row__label,
+.device-row__name {
+  color: var(--vc-color-ink);
+  font-size: 15px;
+  font-weight: 550;
+  line-height: 22px;
+}
+
+.security-fact__icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--vc-radius-full);
+  background: var(--vc-color-surface-soft);
+  color: var(--vc-color-success);
+}
+
+.security-fact__icon--warning {
+  color: var(--vc-color-warning);
+}
+
+.trusted-devices {
+  display: block;
+}
+
+.trusted-devices__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vc-space-2);
+}
+
+.device-state {
+  display: block;
+  padding: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-color-ink-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.device-state--error,
+.form-message {
+  color: var(--vc-color-error);
+}
+
+.device-row {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-3);
+  margin-top: var(--vc-space-3);
+  padding-top: var(--vc-space-3);
+  border-top: 1px solid var(--vc-color-hairline);
+}
+
+.device-row__revoke,
+.text-action,
+.danger-zone__toggle {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-2);
+  border: 0;
+  background: transparent;
+  color: var(--vc-color-error);
+  font: inherit;
+  font-size: 13px;
+}
+
+.text-action {
+  color: var(--vc-color-primary);
+}
+
+.inline-form {
+  padding: var(--vc-space-4);
+  background: var(--vc-color-surface-soft);
+}
+
+.form-label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-color-ink);
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 20px;
+}
+
+.form-label:first-child {
+  margin-top: 0;
+}
+
+.form-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px var(--vc-space-3);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-control);
+  background: var(--vc-color-surface);
+  color: var(--vc-color-ink);
+  font-size: 16px;
+}
+
+.form-message {
+  display: block;
+  margin-top: var(--vc-space-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.primary-action,
+.secondary-action,
+.danger-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: var(--vc-space-4) 0 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--vc-radius-control);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.primary-action {
+  width: 100%;
+  background: var(--vc-color-primary);
+  color: var(--vc-color-surface);
+}
+
+.primary-action--compact {
+  margin-top: var(--vc-space-4);
+}
+
+.secondary-action {
+  background: var(--vc-color-surface);
+  border-color: var(--vc-color-hairline);
+  color: var(--vc-color-ink);
+}
+
+.danger-action {
+  background: var(--vc-color-error);
+  color: var(--vc-color-surface);
+}
+
+.admin-entry,
+.logout-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-2);
+  width: 100%;
+  min-height: 48px;
+  margin: 0 0 var(--vc-space-4);
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-control);
+  background: var(--vc-color-surface);
+  color: var(--vc-color-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.logout-action {
+  justify-content: center;
+  color: var(--vc-color-primary);
+  font-weight: 600;
+}
+
+.danger-zone {
+  padding-top: var(--vc-space-2);
+  border-top: 1px solid var(--vc-color-hairline);
+  text-align: center;
+}
+
+.danger-zone__toggle {
+  color: var(--vc-color-ink-muted);
+}
+
+.danger-zone__confirm {
+  margin-top: var(--vc-space-2);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-card);
+  background: var(--vc-color-surface);
+  text-align: left;
+}
+
+.danger-zone__title,
+.danger-zone__copy {
+  display: block;
+}
+
+.danger-zone__title {
+  color: var(--vc-color-error);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.danger-zone__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--vc-space-2);
+}
+
+.profile-state {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 320px;
+  padding: var(--vc-space-5);
+  text-align: center;
+}
+
+.profile-state__title {
+  color: var(--vc-color-ink);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 28px;
+}
+
+.profile-state__copy {
+  margin-top: var(--vc-space-2);
+}
+
+.profile-skeleton {
+  width: 100%;
+  height: 18px;
+  margin: var(--vc-space-2) 0;
+  border-radius: var(--vc-radius-full);
+  background: var(--vc-color-surface-soft);
+}
+
+.profile-skeleton--short {
+  width: 42%;
+}
+
+@media (max-width: 340px) {
+  .profile-identity,
+  .settings-row,
+  .security-fact,
+  .trusted-devices,
+  .inline-form,
+  .danger-zone__confirm {
+    padding-right: var(--vc-space-3);
+    padding-left: var(--vc-space-3);
+  }
 }
 </style>

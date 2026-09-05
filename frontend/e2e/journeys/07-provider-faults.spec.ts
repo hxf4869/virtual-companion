@@ -18,9 +18,8 @@ function isGenerationResponse(url: string, method: string): boolean {
   );
 }
 
-// Journey 7 — the local OpenAI-compatible provider injects one unsafe output
-// and one timeout. The product must block the first before persistence and end
-// the second as an honest provider failure, never as a completed reply.
+// The local provider injects one unsafe output and one timeout. The consumer
+// sees only useful product copy; provider and protocol details stay hidden.
 test("provider safety and timeout faults surface as safe terminal states", async ({
   page,
   request,
@@ -45,7 +44,7 @@ test("provider safety and timeout faults surface as safe terminal states", async
   expect(blockedAccepted.ok()).toBeTruthy();
   expect(blockedAccepted.headers()["x-request-id"]).toBeTruthy();
 
-  await expect(page.getByTestId("status")).toContainText("没有通过安全审查");
+  await expect(page.getByTestId("status")).toContainText("这句话暂时无法回应");
   await expect(page.getByTestId("assistant-md")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("别听医生的");
 
@@ -68,10 +67,9 @@ test("provider safety and timeout faults surface as safe terminal states", async
     "the provider timeout is durably terminal before checking its UI copy",
   ).toBe("FAILED_FINAL");
 
-  await expect(page.getByTestId("status")).toHaveText(
-    /模型响应超时|模型服务失败|模型服务多次失败，本轮已放弃/,
-    { timeout: 60_000 },
-  );
-  await expect(page.getByTestId("status")).not.toContainText("已完成");
+  await expect(page.getByTestId("chat-send-error")).toContainText("没发出，点此重试", {
+    timeout: 60_000,
+  });
+  await expect(page.locator("body")).not.toContainText(/Provider|SSE|FAILED_FINAL|模型响应超时/);
   await expect(page.getByTestId("assistant-md")).toHaveCount(0);
 });

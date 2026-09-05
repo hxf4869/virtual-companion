@@ -1,402 +1,306 @@
 // @vitest-environment happy-dom
-// ACCT-PAGE: dedicated account + logout + self-service deletion page.
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import AccountPage from "./account.vue";
 import { useAuthStore } from "@/stores/auth";
 
-function stubFetch(opts?: {
+import AccountPage from "./account.vue";
+
+interface FetchOptions {
+  devices?: unknown[];
+  deviceGetStatuses?: number[];
+  revokeDeviceStatus?: number;
+  passwordStatus?: number;
   deleteStatus?: number;
-  refreshSuccess?: boolean;
-  revokeSessionStatus?: number;
-  revokeAllStatus?: number;
-}): {
-  calls: { method: string; url: string }[];
-} {
-  const calls: { method: string; url: string }[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      const method = (init?.method ?? "GET").toUpperCase();
-      calls.push({ method, url });
-      if (url === "/api/v1/auth/account" && method === "DELETE") {
-        const status = opts?.deleteStatus ?? 200;
-        return { ok: status === 200, status, json: async () => (status === 200 ? { ok: true } : null) };
-      }
-      if (url === "/api/v1/auth/sessions" && method === "GET") {
-        if (opts?.refreshSuccess === false) {
-          return { ok: false, status: 401, json: async () => null };
-        }
-        return {
-          ok: true, status: 200, json: async () => [{
-            id: "11", familyId: "family-opaque", clientLabel: "h5",
-            createdAt: "2026-08-24T00:00:00Z",
-            lastSeenAt: "2026-08-24T01:00:00Z",
-            expiresAt: "2026-08-31T00:00:00Z", current: true,
-            accountId: "42", role: "USER", passwordMustChange: false,
-          }],
-        };
-      }
-      if (url === "/api/v1/auth/password" && method === "POST") {
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
-      }
-      if (url === "/api/v1/auth/sessions/revoke-all" && method === "POST") {
-        const status = opts?.revokeAllStatus ?? 200;
-        return {
-          ok: status === 200,
-          status,
-          json: async () => (status === 200 ? { revoked: 1 } : null),
-        };
-      }
-      if (url.startsWith("/api/v1/auth/sessions/") && method === "DELETE") {
-        const status = opts?.revokeSessionStatus ?? 200;
-        return {
-          ok: status === 200,
-          status,
-          json: async () => (status === 200 ? { ok: true } : null),
-        };
-      }
-      if (url === "/api/v1/auth/refresh" && method === "POST") {
-        if (!opts?.refreshSuccess) {
-          return { ok: false, status: 401, json: async () => null };
-        }
-        return {
-          ok: true, status: 200, json: async () => ({
-            accessToken: "renewed", tokenType: "Bearer", expiresInSeconds: 7200,
-            accountId: "42", role: "USER", passwordMustChange: false,
-          }),
-        };
-      }
-      if (url === "/api/v1/auth/logout" && method === "POST") {
-        return { ok: true, status: 200, json: async () => ({}) };
-      }
-      return { ok: true, status: 200, json: async () => ({}) };
-    }),
-  );
+}
+
+function stubFetch(options: FetchOptions = {}) {
+  const calls: Array<{ method: string; url: string; body?: string }> = [];
+  const deviceGetStatuses = [...(options.deviceGetStatuses ?? [200])];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = (init?.method ?? "GET").toUpperCase();
+    calls.push({ method, url, body: typeof init?.body === "string" ? init.body : undefined });
+
+    if (url === "/api/v1/auth/session" && method === "GET") {
+      return response(401, null);
+    }
+    if (url === "/api/v1/auth/trusted-devices" && method === "GET") {
+      const status = deviceGetStatuses.shift() ?? 200;
+      return response(status, status === 200 ? (options.devices ?? []) : null);
+    }
+    if (url.startsWith("/api/v1/auth/trusted-devices/") && method === "DELETE") {
+      const status = options.revokeDeviceStatus ?? 200;
+      return response(status, status === 200 ? { ok: true } : null);
+    }
+    if (url === "/api/v1/auth/password" && method === "POST") {
+      const status = options.passwordStatus ?? 200;
+      return response(status, status === 200 ? { ok: true } : null);
+    }
+    if (url === "/api/v1/auth/logout" && method === "POST") {
+      return response(200, { ok: true });
+    }
+    if (url === "/api/v1/auth/account" && method === "DELETE") {
+      const status = options.deleteStatus ?? 200;
+      return response(status, status === 200 ? { ok: true } : null);
+    }
+    return response(200, {});
+  }));
   return { calls };
+}
+
+function response(status: number, json: unknown) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => json,
+  };
+}
+
+function loginAs(role = "USER", email: string | null = "alice@example.com") {
+  const auth = useAuthStore();
+  auth.accessToken = "session";
+  auth.accountId = "42";
+  auth.email = email;
+  auth.role = role;
+  auth.authenticatorEnabled = true;
+  return auth;
 }
 
 describe("account page", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    vi.stubGlobal("uni", { navigateTo: vi.fn() });
+    vi.stubGlobal("uni", {
+      navigateTo: vi.fn(),
+      redirectTo: vi.fn(),
+    });
   });
 
-  it("shows the signed-in account id and role", async () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a recognizable email and only the three product groups", async () => {
     stubFetch();
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "USER";
+    loginAs();
     const wrapper = mount(AccountPage, { attachTo: document.body });
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="account-id"]').text()).toContain("42");
-    // P2（round3）：角色码不再直接展示，消费者界面渲染中文标签。
-    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("用户");
-    expect(wrapper.find('[data-testid="public-computer-hint"]').text()).toContain("公共电脑");
-    expect(wrapper.find('[data-testid="survey-card"]').exists()).toBe(false);
-    expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
-    expect(wrapper.get('[data-testid="session-row"]').text()).toContain("h5（当前）");
-    expect(wrapper.text()).not.toContain("family-opaque");
-    expect(wrapper.find('[data-testid="account-signed-out"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  // P2（round4）：OPS_VIEWER 等内部角色同样必须渲染中文标签（真实渲染，
-  // 不只测 helper）。
-  it("renders the OPS_VIEWER role as a Chinese label", async () => {
-    stubFetch();
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "OPS_VIEWER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("运维观察员");
-    expect(wrapper.find('[data-testid="account-role"]').text()).not.toContain("OPS_VIEWER");
-    wrapper.unmount();
-  });
-
-  it("shows a signed-out notice and hides logout/delete when there is no session", async () => {
-    stubFetch({ refreshSuccess: false });
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="account-signed-out"]').text()).toContain("未登录");
-    expect(wrapper.find('[data-testid="public-computer-hint"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="account-logout"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="delete-account-open"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("forces an admin-reset session through password change only", async () => {
-    const { calls } = stubFetch();
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "temporary-access";
-    auth.accountId = "42";
-    auth.role = "USER";
-    auth.passwordMustChange = true;
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    expect(wrapper.get('[data-testid="password-required"]').text()).toContain("临时密码");
-    expect(wrapper.find('[data-testid="sessions-card"]').exists()).toBe(false);
-    await wrapper.get('[data-testid="current-password"]').setValue("TempPass1!");
-    await wrapper.get('[data-testid="new-password"]').setValue("NewPassword1!");
-    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPassword1!");
-    await wrapper.get('[data-testid="change-password"]').trigger("click");
-    await flushPromises();
-
-    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/auth/password"))
-      .toBe(true);
-    expect(auth.accessToken).toBeNull();
-    expect(auth.passwordMustChange).toBe(false);
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
-    wrapper.unmount();
-  });
-
-  it("logs out through the shipped logout path and goes to login", async () => {
-    const { calls } = stubFetch();
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    await wrapper.find('[data-testid="account-logout"]').trigger("click");
-    await flushPromises();
-
-    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/auth/logout")).toBe(true);
-    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
-    expect(auth.accessToken).toBeNull();
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
-    wrapper.unmount();
-  });
-
-  it("deletes the account only after the two-step confirm with the current password", async () => {
-    const { calls } = stubFetch();
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
-    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').text()).toContain(
-      "合规审计日志无法立即清除",
-    );
-    // The password re-entry gate is present before any request.
-    expect(wrapper.find('[data-testid="delete-account-password"]').exists()).toBe(true);
-    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
-
-    await wrapper.find('[data-testid="delete-account-password"]').setValue("Current-Pass-1!");
-    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
-    await flushPromises();
-
-    expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/v1/auth/account")).toBe(true);
-    expect(auth.accessToken).toBeNull();
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
-    wrapper.unmount();
-  });
-
-  it("never sends the deletion without a password re-entry", async () => {
-    const { calls } = stubFetch();
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
-    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
-    await flushPromises();
-
-    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
-    expect(wrapper.find('[data-testid="delete-account-error"]').text()).toContain("当前密码");
-    expect(auth.accessToken).toBe("t");
-    wrapper.unmount();
-  });
-
-  it("keeps the form and session when the server rejects the password", async () => {
-    stubFetch({ deleteStatus: 404 });
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
-    await wrapper.find('[data-testid="delete-account-password"]').setValue("wrong");
-    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="delete-account-error"]').text()).toContain(
-      "当前密码不正确",
-    );
-    // Fail-closed: the form stays open, the input is not cleared, and the
-    // session survives so the caller can retry.
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
-    expect((wrapper.find('[data-testid="delete-account-password"]').element as HTMLInputElement)
-      .value).toBe("wrong");
-    expect(auth.accessToken).toBe("t");
-    expect(navigateTo).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("keeps the current login and session list when revoking one session fails", async () => {
-    const { calls } = stubFetch({ revokeSessionStatus: 503 });
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    await wrapper.get('[data-testid="session-revoke"]').trigger("click");
-    await flushPromises();
-
-    expect(calls.some((call) => call.method === "DELETE" && call.url.endsWith("/11"))).toBe(true);
-    expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
-    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain(
-      "当前登录和会话列表已保留",
-    );
-    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain("重试");
-    expect(auth.accessToken).toBe("t");
-    expect(navigateTo).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("keeps the current login and session list when revoking all sessions fails", async () => {
-    const { calls } = stubFetch({ revokeAllStatus: 503 });
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.accountId = "42";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    await wrapper.get('[data-testid="sessions-revoke-all"]').trigger("click");
-    await flushPromises();
-
-    expect(calls.some((call) => call.method === "POST" && call.url === "/api/v1/auth/sessions/revoke-all")).toBe(true);
-    expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
-    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain(
-      "当前登录和会话列表已保留",
-    );
-    expect(wrapper.find('[data-testid="sessions-action-error"]').text()).toContain("重试");
-    expect(auth.accessToken).toBe("t");
-    expect(navigateTo).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  // ---- Phase 5 IA："我的"分组入口 + 操作者内部区 ----
-
-  it("renders the me hub with all secondary entries for a USER session", async () => {
-    stubFetch();
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
-    await flushPromises();
-
-    const hub = wrapper.find('[data-testid="me-hub"]');
-    expect(hub.exists()).toBe(true);
-    expect(hub.attributes("aria-label")).toBe("我的分组入口");
-    for (const tid of [
-      "me-companion",
-      "me-incognito",
-      "me-age",
-      "me-consent",
-      "me-ai-notice",
-      "me-data",
-      "me-export",
-      "me-help",
-      "me-report",
-    ]) {
-      expect(wrapper.find(`[data-testid="${tid}"]`).exists(), tid).toBe(true);
+    expect(wrapper.get('[data-testid="account-email"]').text()).toBe("alice@example.com");
+    expect(wrapper.findAll(".settings-section__title").map((node) => node.text())).toEqual([
+      "账号",
+      "安全",
+      "关于",
+    ]);
+    expect(wrapper.text()).not.toContain("账号编号");
+    expect(wrapper.text()).not.toContain("USER");
+    for (const removed of ["成年状态", "同意管理", "无痕默认", "数据导出", "运行探针"]) {
+      expect(wrapper.text()).not.toContain(removed);
     }
-    expect(wrapper.find('[data-testid="me-reminder"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="me-health"]').exists()).toBe(false);
-    // 普通用户看不到内部入口与内部数据轮廓。
-    expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="me-admin"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("navigates to a hub entry without calling any account API", async () => {
-    const { calls } = stubFetch();
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.role = "USER";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
+  it("falls back to a plain signed-in label for legacy accounts without email", async () => {
+    stubFetch();
+    loginAs("USER", null);
+    const wrapper = mount(AccountPage);
     await flushPromises();
-
-    await wrapper.find('[data-testid="me-companion"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/companion/companion" });
-    expect(calls.some((call) => String(call).includes("/auth/account"))).toBe(false);
+    expect(wrapper.get('[data-testid="account-email"]').text()).toBe("已登录账号");
     wrapper.unmount();
   });
 
-  it("shows the internal section only for operator roles", async () => {
+  it("keeps the AI identity boundary inline without restoring old feature routes", async () => {
+    stubFetch();
+    loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="ai-identity-note"]').text()).toContain(
+      "回复由 AI 生成，并非真人",
+    );
+    expect(wrapper.find('[data-testid="me-data"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="me-ai-notice"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="me-help"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the authenticator fact and trusted-device dates", async () => {
+    stubFetch({
+      devices: [{
+        id: "3",
+        displayName: "MacBook",
+        createdAt: "2026-08-01T00:00:00Z",
+        lastUsedAt: "2026-08-31T09:30:00Z",
+        expiresAt: "2026-11-29T09:30:00Z",
+      }],
+    });
+    loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="authenticator-status"]').text()).toContain("已开启");
+    const device = wrapper.get('[data-testid="trusted-device-row"]');
+    expect(device.text()).toContain("MacBook");
+    expect(device.text()).toContain("最近使用");
+    expect(device.text()).toContain("到期");
+    expect(device.text()).not.toContain("token");
+    wrapper.unmount();
+  });
+
+  it("states when the authenticator still needs setup", async () => {
+    stubFetch();
+    const auth = loginAs();
+    auth.authenticatorEnabled = false;
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="authenticator-status"]').text()).toContain("需要设置");
+    wrapper.unmount();
+  });
+
+  it("revokes one trusted device and removes only that row", async () => {
+    const { calls } = stubFetch({
+      devices: [
+        { id: "3", displayName: "MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" },
+        { id: "4", displayName: "iPad", createdAt: "c", lastUsedAt: "l", expiresAt: "e" },
+      ],
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.findAll('[data-testid="trusted-device-revoke"]')[0].trigger("click");
+    await flushPromises();
+    expect(calls).toContainEqual(expect.objectContaining({
+      method: "DELETE",
+      url: "/api/v1/auth/trusted-devices/3",
+    }));
+    expect(wrapper.findAll('[data-testid="trusted-device-row"]')).toHaveLength(1);
+    expect(wrapper.text()).toContain("iPad");
+    expect(auth.isAuthenticated).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("keeps the device and offers a useful retry after revoke failure", async () => {
+    stubFetch({
+      revokeDeviceStatus: 503,
+      devices: [{ id: "3", displayName: "MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" }],
+    });
+    loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="trusted-device-revoke"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="trusted-device-row"]')).toHaveLength(1);
+    expect(wrapper.get('[data-testid="trusted-device-action-error"]').text()).toContain("再试一次");
+    wrapper.unmount();
+  });
+
+  it("retries the trusted-device list in place", async () => {
+    stubFetch({ deviceGetStatuses: [503, 200] });
+    loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-devices-error"]').text()).toContain("没有加载出来");
+
+    await wrapper.get('[data-testid="trusted-devices-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="trusted-devices-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="trusted-devices"]').text()).toContain("暂无信任的设备");
+    wrapper.unmount();
+  });
+
+  it("keeps password fields collapsed until requested and logs out after success", async () => {
+    const { calls } = stubFetch();
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="password-form"]').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+
+    expect(calls).toContainEqual(expect.objectContaining({ method: "POST", url: "/api/v1/auth/password" }));
+    expect(auth.isAuthenticated).toBe(false);
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("opens password change immediately for a required-password session", async () => {
+    stubFetch();
+    const auth = loginAs();
+    auth.passwordMustChange = true;
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="password-required"]').text()).toContain("先设置一个新密码");
+    expect(wrapper.find('[data-testid="password-form"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("logs out through the shipped endpoint", async () => {
+    const { calls } = stubFetch();
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="account-logout"]').trigger("click");
+    await flushPromises();
+    expect(calls).toContainEqual(expect.objectContaining({ method: "POST", url: "/api/v1/auth/logout" }));
+    expect(auth.isAuthenticated).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("requires the current password before account deletion", async () => {
+    const { calls } = stubFetch();
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    expect(wrapper.get('[data-testid="delete-account-error"]').text()).toContain("当前密码");
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("Current-Pass-1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+    expect(calls).toContainEqual(expect.objectContaining({ method: "DELETE", url: "/api/v1/auth/account" }));
+    expect(auth.isAuthenticated).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the admin entry only to an administrator", async () => {
+    stubFetch();
+    loginAs("ADMIN");
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="me-admin"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="me-admin"]').trigger("click");
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/admin/admin" });
+    wrapper.unmount();
+  });
+
+  it("renders a signed-out state without account actions", async () => {
     stubFetch();
     const auth = useAuthStore();
-    auth.accessToken = "t";
-    auth.role = "ADMIN";
-    const wrapper = mount(AccountPage, { attachTo: document.body });
+    auth.clear();
+    const wrapper = mount(AccountPage);
     await flushPromises();
-
-    expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(true);
-    const navigateTo = (globalThis as { uni?: { navigateTo: ReturnType<typeof vi.fn> } })
-      .uni?.navigateTo;
-    await wrapper.find('[data-testid="me-admin"]').trigger("click");
-    expect(navigateTo).toHaveBeenLastCalledWith({ url: "/pages/admin/admin" });
+    expect(wrapper.get('[data-testid="account-signed-out"]').text()).toContain("登录后");
+    expect(wrapper.find('[data-testid="account-logout"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="delete-account-open"]').exists()).toBe(false);
     wrapper.unmount();
-  });
-
-  it("internal entries are route-specific: each operator role sees only what it can enter", async () => {
-    const cases: Array<{ role: string; admin: boolean }> = [
-      { role: "ADMIN", admin: true },
-      { role: "SAFETY_REVIEWER", admin: false },
-      { role: "PRIVACY_OPERATOR", admin: false },
-      { role: "OPS_VIEWER", admin: false },
-    ];
-    for (const c of cases) {
-      setActivePinia(createPinia());
-      stubFetch();
-      const auth = useAuthStore();
-      auth.accessToken = "t";
-      auth.role = c.role;
-      const wrapper = mount(AccountPage, { attachTo: document.body });
-      await flushPromises();
-
-      expect(wrapper.find('[data-testid="me-internal"]').exists(), c.role).toBe(c.admin);
-      expect(wrapper.find('[data-testid="me-admin"]').exists(), `${c.role} admin`).toBe(c.admin);
-      wrapper.unmount();
-    }
   });
 });

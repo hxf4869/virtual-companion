@@ -88,10 +88,13 @@ func TestRequestIDEchoAndSanitize(t *testing.T) {
 func TestOperationClassifiesGenerationRoutesBeforeConversationRoutes(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"/api/v1/conversations/1/generations": "generation_send",
-		"/api/v1/generations/2/cancel":        "generation_cancel",
-		"/api/v1/generations/2/snapshot":      "generation_snapshot",
-		"/api/v1/generations/2/feedback":      "generation_feedback",
+		"/api/v1/conversations/1/generations":          "generation_send",
+		"/api/v1/generations/2/cancel":                 "generation_cancel",
+		"/api/v1/generations/2/snapshot":               "generation_snapshot",
+		"/api/v1/generations/2/feedback":               "generation_feedback",
+		"/api/v1/auth/challenges/token/totp":           "auth_challenge",
+		"/api/v1/auth/trusted-devices/2":               "auth_trusted_device",
+		"/api/v1/admin/accounts/2/authenticator-reset": "admin_authenticator_reset",
 	}
 	for path, want := range cases {
 		if got := operation(path); got != want {

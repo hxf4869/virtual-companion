@@ -82,3 +82,28 @@ func TestCompanionCreateListActivateCrossOwner(t *testing.T) {
 		t.Fatalf("held connections %d", testEnv.store.Stats().Acquired)
 	}
 }
+
+func TestEnsureDefaultRelationshipReusesExisting(t *testing.T) {
+	resetFixtures(t)
+	ctx := context.Background()
+
+	first, err := testEnv.store.EnsureDefaultRelationship(ctx, 1, "gentle-listener")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := testEnv.store.EnsureDefaultRelationship(ctx, 1, "gentle-listener")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != second.ID || !second.Active {
+		t.Fatalf("default relationship changed: first=%d second=%d active=%t", first.ID, second.ID, second.Active)
+	}
+
+	list, err := testEnv.store.ListRelationships(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].PersonaRef != "gentle-listener" {
+		t.Fatalf("default relationship list = %+v", list)
+	}
+}

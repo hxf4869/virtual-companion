@@ -56,10 +56,38 @@ type Conversation struct {
 	ID                 int64
 	RelationshipID     int64
 	CreatedAt          time.Time
+	LastActivityAt     time.Time
 	LastMessageRole    *string
 	LastMessagePreview *string
 	Title              *string
 	Incognito          bool
+}
+
+// EnsureDefaultRelationship returns the active relationship, reactivates the
+// most recent existing one, or creates the single product-default relationship.
+func (s *Store) EnsureDefaultRelationship(ctx context.Context, owner int64, personaRef string) (Relationship, error) {
+	var out Relationship
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		var id int64
+		if err := tx.QueryRow(ctx,
+			`SELECT vc.ensure_default_relationship($1, $2)`, owner, personaRef,
+		).Scan(&id); err != nil {
+			return err
+		}
+		rel, ok, err := scanRelationship(ctx, tx, owner, id)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errStore
+		}
+		out = rel
+		return nil
+	})
+	if err != nil {
+		return Relationship{}, mapStoreErr(err)
+	}
+	return out, nil
 }
 
 // Message is one history row with decrypted content.
@@ -269,7 +297,8 @@ func (s *Store) ListConversations(ctx context.Context, owner int64, relationship
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
 			`SELECT out_id, out_relationship_id, out_created_at,
-			        out_last_message_role, out_last_message_preview, out_title, out_incognito
+			        out_last_message_role, out_last_message_preview, out_title, out_incognito,
+			        out_last_activity_at
 			   FROM vc.list_conversations($1, $2, $3, $4)`,
 			owner, relationshipID, after, limit)
 		if err != nil {
@@ -280,7 +309,8 @@ func (s *Store) ListConversations(ctx context.Context, owner int64, relationship
 		for rows.Next() {
 			var c Conversation
 			if err := rows.Scan(&c.ID, &c.RelationshipID, &c.CreatedAt,
-				&c.LastMessageRole, &c.LastMessagePreview, &c.Title, &c.Incognito); err != nil {
+				&c.LastMessageRole, &c.LastMessagePreview, &c.Title, &c.Incognito,
+				&c.LastActivityAt); err != nil {
 				return err
 			}
 			out = append(out, c)

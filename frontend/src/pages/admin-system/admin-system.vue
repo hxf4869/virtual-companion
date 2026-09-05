@@ -1,7 +1,7 @@
 <template>
   <AdminConsoleShell
     active="system"
-    title="系统状态"
+    title="运行状态"
     subtitle="读取 Go Runtime 与同源服务的当前事实"
     :access-state="accessState"
     @retry-access="retryAccess"

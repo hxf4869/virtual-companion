@@ -1,7 +1,7 @@
 <template>
   <AdminConsoleShell
-    active="routing"
-    title="路由策略"
+    active="models"
+    title="模型与路由 · 路由顺序"
     subtitle="按优先级、提供方 ID、模型 ID 确定性选择；修改只影响下一轮请求"
     :access-state="accessState"
     :has-pending-changes="dirty"

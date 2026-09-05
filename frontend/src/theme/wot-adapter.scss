@@ -1,0 +1,36 @@
+:root,
+page,
+.wot-theme-light,
+.wot-theme-light .wd-root-portal,
+.wd-root-portal {
+  --wot-primary-1: var(--vc-color-surface-soft);
+  --wot-primary-2: var(--vc-color-surface-soft);
+  --wot-primary-3: var(--vc-color-primary);
+  --wot-primary-4: var(--vc-color-primary);
+  --wot-primary-5: var(--vc-color-primary);
+  --wot-primary-6: var(--vc-color-primary);
+  --wot-primary-7: var(--vc-color-primary-pressed);
+  --wot-primary-8: var(--vc-color-primary-pressed);
+  --wot-primary-9: var(--vc-color-primary-pressed);
+  --wot-primary-10: var(--vc-color-primary-pressed);
+
+  --wot-button-primary-bg: var(--vc-color-primary);
+  --wot-button-primary-bg-active: var(--vc-color-primary-pressed);
+  --wot-button-primary-color: var(--vc-color-primary);
+  --wot-button-primary-color-active: var(--vc-color-primary-pressed);
+  --wot-button-primary-plain-bg: var(--vc-color-surface);
+  --wot-button-primary-plain-bg-active: var(--vc-color-surface-soft);
+  --wot-button-primary-plain-border: var(--vc-color-primary);
+  --wot-button-primary-plain-border-active: var(--vc-color-primary-pressed);
+  --wot-button-main-color: var(--vc-color-surface);
+  --wot-button-height-large: 48px;
+  --wot-button-radius-main: var(--vc-radius-control);
+  --wot-button-font-size-large: 16px;
+  --wot-button-disabled: 1;
+
+  --wot-checkbox-color-checked: var(--vc-color-primary);
+  --wot-checkbox-unchecked-color: var(--vc-color-ink-muted);
+  --wot-checkbox-label-color: var(--vc-color-ink);
+  --wot-checkbox-label-font-size: 14px;
+  --wot-checkbox-label-line-height: 22px;
+}

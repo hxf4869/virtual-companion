@@ -16,12 +16,6 @@ export function currentAuthSnapshot(): GateSnapshot {
     session: auth.sessionStatus,
     role: auth.role,
     passwordMustChange: auth.passwordMustChange,
-    ageKnown: false,
-    ageLoadFailed: false,
-    ageState: null,
-    consentKnown: false,
-    consentLoadFailed: false,
-    grantedTypes: [],
   };
 }
 

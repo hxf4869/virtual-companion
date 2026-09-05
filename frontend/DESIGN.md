@@ -1,283 +1,328 @@
 ---
-name: Virtual Companion — Quiet Loom / 静默织室
-description: 温灰绿织面、近白事实表面与克制紫色主动作组成的中文陪伴与 Go Runtime 后台工作台。
+name: Virtual Companion — Warm Familiarity / 熟悉的温度
+description: 面向普通用户的暖色、安静、对话优先的跨端设计系统，以及同品牌的功能型 H5 管理后台。
+status: 2026-09-01 frontend-redesign-baseline
+platforms:
+  consumer: [uni-app-h5, future-mp-weixin]
+  admin: [uni-app-h5-only]
+component-foundation: Wot UI v2
+color-mode: light
 colors:
-  env: "#f1f4f1"
-  env-raised: "#ffffff"
-  env-hover: "#eaedeb"
-  on-env: "#322638"
-  on-env-muted: "#665d69"
-  glow: "#6c56c7"
-  border-env: "#d8ded9"
-  border-env-strong: "#756d78"
-  paper: "#f1f4f1"
-  card: "#fefefe"
-  sunken: "#eaedeb"
-  ink: "#322638"
-  muted: "#665d69"
-  border: "#d8ded9"
-  border-strong: "#756d78"
-  primary: "#6c56c7"
-  primary-hover: "#5842b3"
-  primary-bg: "#eee9ff"
-  primary-border: "#cfc5f8"
-  on-primary: "#ffffff"
-  disabled-surface: "#dddfe0"
-  disabled-ink: "#665d69"
-  success: "#3f725e"
-  success-bg: "#dfeee6"
-  success-border: "#b8d8c8"
-  warning: "#785619"
-  warning-bg: "#f3ead5"
-  warning-on-env: "#785619"
-  danger: "#a9433a"
-  danger-bg: "#f7e5e2"
-  danger-border: "#edbbb5"
-  danger-on-env: "#a9433a"
-  focus: "#5940bd"
-  focus-on-env: "#5940bd"
-  scrim: "rgba(50, 38, 56, 0.42)"
-typography:
-  display: {fontFamily: '"PingFang SC", "Hiragino Sans GB", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif', fontSize: "34px", fontWeight: 700}
-  headline: {fontSize: "28px", fontWeight: 700}
-  relationship: {fontSize: "22px", fontWeight: 700}
-  title: {fontSize: "18px", fontWeight: 700}
-  console-title: {fontSize: "clamp(24px, 2.2vw, 32px)", fontWeight: 780, lineHeight: 1.15, letterSpacing: "-0.025em"}
-  body: {fontFamily: '"PingFang SC", "Hiragino Sans GB", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif', fontSize: "16px", fontWeight: 400, lineHeight: 1.6}
-  body-sm: {fontSize: "14px"}
-  admin-control: {fontSize: "14px", fontWeight: 680}
-  label: {fontSize: "12px", fontWeight: 500}
-  input: {fontSize: "16px"}
-  mono: {fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace'}
-  icon: {fontSize: "24px"}
-rounded: {s: "4px", m: "8px", l: "12px", pill: "999px"}
-spacing: {1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "20px", 6: "24px", 7: "32px", 8: "48px"}
-components:
-  button-primary: {backgroundColor: "{colors.primary}", textColor: "{colors.on-primary}", rounded: "0", height: "44px"}
-  button-secondary: {backgroundColor: "{colors.card}", textColor: "{colors.ink}", rounded: "{rounded.s}", height: "44px"}
-  relationship-panel: {backgroundColor: "{colors.card}", textColor: "{colors.ink}", rounded: "{rounded.s}", padding: "{spacing.4}"}
-  open-list-row: {backgroundColor: "transparent", textColor: "{colors.ink}", rounded: "0", height: "66px"}
-  input: {backgroundColor: "{colors.sunken}", textColor: "{colors.ink}", rounded: "{rounded.s}", height: "44px"}
-  nav-item-active: {backgroundColor: "transparent", textColor: "{colors.primary}", rounded: "{rounded.m}", height: "52px"}
-  admin-button: {backgroundColor: "{colors.card}", textColor: "{colors.ink}", rounded: "0", height: "44px"}
-  admin-button-primary: {backgroundColor: "{colors.primary}", textColor: "{colors.on-primary}", rounded: "0", height: "44px"}
-  admin-nav-active: {backgroundColor: "{colors.card}", textColor: "{colors.primary}", rounded: "0", height: "44px"}
-  admin-change-ledger: {backgroundColor: "{colors.card}", textColor: "{colors.ink}", rounded: "0", padding: "{spacing.5}"}
+  canvas: "#F7F3EC"
+  surface: "#FFFFFF"
+  surface-soft: "#EFE8DC"
+  ink: "#25231F"
+  ink-muted: "#6E6A63"
+  hairline: "#DDD5C8"
+  primary: "#8A3621"
+  primary-pressed: "#6F2818"
+  secondary: "#58766F"
+  success: "#39765B"
+  warning: "#99621D"
+  error: "#B43B3B"
+rounded:
+  control: "10px"
+  card: "12px"
+  hero: "16px"
+  full: "999px"
+spacing:
+  1: "4px"
+  2: "8px"
+  3: "12px"
+  4: "16px"
+  5: "20px"
+  6: "24px"
+  7: "32px"
+  8: "40px"
+  9: "48px"
 ---
 
-# Design System: Virtual Companion — Quiet Loom / 静默织室
+# Design System：熟悉的温度
 
-## Overview
+## 1. 设计北极星
 
-**Creative North Star: "静默织室 / Quiet Loom"**
+产品应像回到一处熟悉、安静、有人在等你的空间。暖象牙底色降低工具感，炭黑文字保证阅读，陶土色只
+强调当前最重要的动作，鼠尾草绿提供克制的辅助层级。页面有温度，但不扮演真人，也不使用典型的
+“AI 紫色渐变、霓虹光、玻璃卡片”来证明自己是 AI 产品。
 
-这是 Operate 模式的中文移动 H5：一段低压力、可持续且不冒充真人的陪伴关系。温灰绿环境
-像安静织面，近白事实表面承载真实内容，墨紫正文保持阅读稳定；克制紫色只标记当前选择
-与唯一主动作，绿色表示关系延续，红色/珊瑚色只标示需要处理的事实。
+消费者端借鉴 Claude 的温暖编辑感与 Airbnb 的清楚层级、自然留白和单一阴影层级；只吸收原则，不复制
+页面或品牌资产。管理后台沿用相同的颜色与文字气质，收束为高密度、任务优先的 **Warm Control Room**。
 
-同一套静默织室语言在授权后台收束为 **Quiet Loom Control Room / 变更账本工作台**：固定
-侧栏、开放式账本、细分隔线和近白工作面，让当前生效配置与本次待应用变更同时可核对。
-后台只呈现 Go Runtime 公开的模型提供方、模型、路由和运行探针事实，不用假指标、缓存结果
-或未实现的管理域填充界面。
+参考来源：
 
-**Key Characteristics:**
+- [awesome-design-md / Claude](https://github.com/voltagent/awesome-design-md/blob/main/design-md/claude/DESIGN.md)
+- [awesome-design-md / Airbnb](https://github.com/voltagent/awesome-design-md/blob/main/design-md/airbnb/DESIGN.md)
+- [Design.md 约定](https://github.com/VoltAgent/design-md/blob/main/README.md)
 
-- 温灰绿环境与近白事实面做轻微层级；后台工作面以 1px 细缝组织内容。
-- 紫色只承担当前选择和每屏唯一填充主动作；绿/红/黄状态始终配事实文字。
-- 后台以固定 rail、事实账本、开放列表和右侧变更轨迹表达可追溯性，不做卡片海。
-- 4px 间距基；后台按钮与导航保持直角，字段使用小圆角，关键触达至少 44px。
-- 低透明度材质只辅助环境；动效只用 opacity/transform 并服从 reduced-motion。
+## 2. 设计权威
 
-## Colors
+实现页面前必须依次读取：
 
-温灰绿环境、近白事实表面、墨紫正文和克制紫色主动作构成安静底色；语义绿/珊瑚红/谨慎黄
-只服务可验证的运行与保存状态。
+1. `PRODUCT.md`：产品范围和行为边界。
+2. `docs/product/frontend-redesign.md`：页面职责、流程与状态。
+3. 本文件：视觉、组件、响应式和工程约束。
+4. `docs/design/stitch-reference.md`：已验收页面的构图参考。
 
-### Primary
+旧页面、旧 CSS、历史截图和 Stitch 自动生成代码都不是新版设计权威。Stitch 参考图如果违反本文的
+安全区、可访问性、真实数据或跨端规则，以本文为准并修正后再实现。
 
-- **静默紫**（primary/glow）：用于继续、发送、检查并保存/应用、当前后台导航与选中提供方；
-  按压态使用 primary-hover。后台每个视口保持一个填充主动作层级。
+## 3. 体验原则
 
-### Neutral
+### 必须
 
-- **温灰绿织面**（env/paper）承托页面和后台 rail；**白色 chrome**（env-raised）承托页头与
-  移动固定操作条；**近白事实面**（card）承托账本、表单和状态面板；**沉面**（env-hover/
-  sunken）用于输入和次级环境层。
-- **墨紫正文**（on-env/ink）用于事实与标题；**静紫辅助文字**（on-env-muted/muted）用于
-  meta、帮助和诊断说明；border-env/border 是默认细缝，border-env-strong/border-strong 是
-  表单控件边界。
+- 每屏一个主要任务、一个最突出动作。
+- 先展示用户能理解的结果，再按需提供低频设置。
+- 使用自然简体中文，持续可见的字段标签不能由占位符替代。
+- 列表优先于卡片墙，分隔线优先于层层阴影。
+- 状态靠文字和结构表达，颜色只做辅助。
+- 真实能力才有入口；空状态不使用假数据填满页面。
 
-### Semantic states
+### 禁止
 
-- **关系延续绿**（success/success-bg/success-border）表示正常、已启用、已确认或保存成功。
-- **待处理珊瑚红**（danger/danger-bg/danger-border）表示不可用、校验阻断或保存失败；
-  **谨慎提示**（warning/warning-bg）表示需要先处理的未保存、重新认证或能力边界。
-- disabled 使用 disabled-surface/disabled-ink；焦点使用 focus/focus-on-env；移动导航抽屉
-  使用 scrim。任何语义色都必须和文字事实一起出现。
+- 紫蓝渐变、霓虹、玻璃拟态、发光边框、背景噪点和装饰性 3D。
+- 每段内容一个卡片、卡片嵌套卡片、首页功能宫格和后台 KPI 卡片墙。
+- 超大营销标题、无意义英文眉题、全大写标签或为了“高级感”降低正文对比度。
+- 在消费者页面展示模型、Token、Prompt、路由、Provider、内部 ID、状态码或原始错误。
+- 为尚未开放的功能保留灰色入口、锁图标或“即将推出”。
+- 用 Emoji、图标字体、Material Symbols 连字名称或单独英文单词充当产品图标。
 
-### Named Rules
+## 4. 设计令牌
 
-**The One Purple Action Rule.** 每屏至多一个填充紫色主动作；活动导航、当前选择和固定移动
-操作条是其有限的非按钮用法。
+代码中的产品令牌统一以 `--vc-*` 命名。组件和页面只能引用语义令牌，不能散落十六进制颜色。
 
-**The Fact-Before-Color Rule.** 先写清运行、保存或阻断事实，再用绿/红/黄辅助识别；颜色不能
-独立传达状态。
+### 4.1 颜色
 
-## Typography
+| 语义 | CSS 令牌 | 值 | 用途 |
+| --- | --- | --- | --- |
+| 页面底色 | `--vc-color-canvas` | `#F7F3EC` | 消费者页面背景 |
+| 主表面 | `--vc-color-surface` | `#FFFFFF` | 输入、浮层、必要卡片 |
+| 柔和表面 | `--vc-color-surface-soft` | `#EFE8DC` | 用户消息、选中区、低强调区 |
+| 正文 | `--vc-color-ink` | `#25231F` | 标题与正文 |
+| 次要文字 | `--vc-color-ink-muted` | `#6E6A63` | 时间、说明、辅助信息 |
+| 分隔线 | `--vc-color-hairline` | `#DDD5C8` | 1px 边界与列表分隔 |
+| 主色 | `--vc-color-primary` | `#8A3621` | 每屏唯一主动作、当前导航 |
+| 主色按下 | `--vc-color-primary-pressed` | `#6F2818` | pressed 状态 |
+| 辅助色 | `--vc-color-secondary` | `#58766F` | 次级状态与克制点缀 |
+| 成功 | `--vc-color-success` | `#39765B` | 成功事实 |
+| 警告 | `--vc-color-warning` | `#99621D` | 需要注意但可继续 |
+| 错误 | `--vc-color-error` | `#B43B3B` | 错误与危险动作 |
 
-**Display/Body/Label Font:** PingFang SC、Hiragino Sans GB、Source Han Sans SC、Noto Sans
-CJK SC、Microsoft YaHei、system-ui、-apple-system、Segoe UI、sans-serif。代码、provider/model
-ID、版本和诊断值使用 ui-monospace、SF Mono、Menlo、Consolas、monospace；不引入外部字体。
+管理后台覆盖 `--vc-color-canvas: #F3EFE8`、`--vc-color-surface-soft: #F8F5F0`、
+`--vc-color-hairline: #D9D1C5`；其余品牌色保持一致。
 
-**Character:** 中文阅读优先，靠字号和字重建立稳定层级；后台命令密度较高，但不缩小关键事实和
-输入文字。
+正文与交互文字必须达到 WCAG AA 对比度。浅色标签不能承载唯一状态文字；成功、警告、错误都要配
+简体中文。
 
-### Hierarchy
+### 4.2 字体
 
-- **Display**（700，34px）：登录准入页主标题。
-- **Headline**（700，28px）：较强层级标题；后台页头使用 24–32px 的 console-title（780，
-  1.15 行高，略收紧字距）。
-- **Relationship**（700，22px）：消费首页当前陪伴名；后台状态标题可使用同级视觉重量。
-- **Title**（700，18px）：页头、分组和账本标题。
-- **Body**（400，16px，1.6）：对话、表单、密码输入和关键运行事实；Body-sm（14px）用于
-  辅助说明。后台命令标签按实现使用 admin-control（14px/680），但触达不低于 44px。
-- **Label**（500，12px）：字段标签、状态 meta 和时间；Mono 仅用于代码样值。
-- **AppIcon** 默认 24px，由 size prop 覆盖；图标不是文字字形。
+统一字体栈：
 
-### Named Rules
+```css
+font-family: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB",
+  "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+```
 
-**The 16px Reading Rule.** 关键正文、字段/密码输入和可读运行事实不低于 16px；14px 只用于
-后台命令标签与辅助说明，交互触达仍至少 44px。
+| 层级 | 字号 / 行高 | 字重 | 用途 |
+| --- | --- | --- | --- |
+| 页面标题 | 28 / 36px | 600 | 首页问候、登录主标题 |
+| 普通页标题 | 24 / 32px | 600 | 全部会话、我的 |
+| 区块标题 | 18 / 26px | 600 | 最近对话、设置分组 |
+| 正文 | 16 / 26px | 400 | 消费者正文、消息 |
+| 控件 | 16 / 24px | 500 | 按钮、输入 |
+| 辅助 | 14 / 22px | 400 | 时间、说明 |
+| 注释 | 12 / 18px | 400 | 非关键元信息 |
+| 后台正文 | 14 / 22px | 400 | 表格与详情 |
 
-## Layout
+中文标题不使用负字距。正文最小 14px；关键流程、输入和聊天正文使用 16px。文本允许自然换行，禁止用
+固定窄列把中文逐字挤成竖排。
 
-消费层继续移动优先单列：ConsumerShell、PageHeader、BottomNav 内容最大 520px 并居中；
-消费主区移动端内边距 16px，768px 以上为 20px，固定底栏处理 safe-area。间距取 4px 基准
-（4/8/12/16/20/24/32/48px），关系面板、细缝和开放列表表达连续关系。
+### 4.3 间距、圆角与深度
 
-后台由 `AdminConsoleShell` 统一包裹四个当前路由：
+- 4px 基准：`4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48px`。
+- 消费者页面左右 gutter：20px；紧凑小屏可以降到 16px。
+- 控件圆角 10px，内容卡 12px，首页主视觉 16px，状态胶囊使用全圆角。
+- 管理后台控件和面板使用 8px 圆角。
+- 只允许一档浮层阴影：`0 8px 24px rgb(37 35 31 / 10%)`，用于弹窗、抽屉和浮动菜单。
+- 普通卡片、列表、底部导航和后台面板使用底色或 1px 分隔线，不叠加阴影。
 
-- `/pages/admin/admin` — **运行总览**：Go Runtime 生效状态、提供方/模型/主路由与需要关注。
-- `/pages/admin-models/admin-models` — **模型服务**：提供方索引、连接/凭据状态、模型目录和
-  本次变更。
-- `/pages/admin-routing/admin-routing` — **路由策略**：全部启用路由的确定性优先级、影响说明
-  与本次变更。
-- `/pages/admin-system/admin-system` — **系统状态**：存活/就绪探针、服务模式、构建版本和
-  本次检查时间线。
+## 5. 组件策略
 
-桌面后台使用 232px 固定左 rail；stage 为剩余视口，顶部 sticky chrome 高 88px，主工作面
-最大宽度 1560px，内边距为 `clamp(24px, 3vw, 48px)`。总览与系统状态是主事实区 + 右侧
-关注/检查栏；路由是顺序表 + 340px 变更栏；模型服务是 220px 提供方索引 + 表单工作区 +
-320px 变更栏。变更栏桌面 sticky，1180px 左右降为主内容下方的整行。
+### 5.1 基础层：Wot UI v2
 
-`820px` 以下 rail 变为最大 `min(84vw, 300px)` 的抽屉，主区无左边距；页头变为 72px，菜单
-按钮和 scrim 控制抽屉，页头隐藏副标题。模型提供方索引变为横向滚动行，字段与路由/系统事实
-堆叠；模型和路由将保存动作放入带 safe-area 的底部固定操作条。总览与系统右栏改为纵向段落，
-不以横向压缩换取完整信息。
+当前 uni-app Vue 3 工程保留，实施时引入 `@wot-ui/ui` 的 Wot UI v2 兼容版本。Wot UI 提供跨端基础
+行为，不定义产品页面长相。
 
-后台变更语法是“当前生效配置”对照“本次变更”：模型页表单编辑会列出字段/模型差异，路由页
-列出位置变化；刷新、切换、添加或离开前有未保存变更时阻止覆盖草稿。保存失败继续保留草稿，
-只有成功重新读取远端配置后才重置基线。
+实现时以 [Wot UI 官方文档](https://wot-ui.cn/)、[自定义主题](https://wot-ui.cn/guide/custom-theme.html)
+和 [v2 迁移说明](https://wot-ui.cn/guide/migration-v2.html) 为准，不从旧页面猜测组件 API。
 
-## Elevation & Depth
+适合直接作为基础层的能力包括：Button、Input、Form、Popup、Dialog、Toast、Loading、Tabs、Switch、
+Picker 等。所有跨页面产品语义通过自有组件封装，页面不复制长串 Wot 属性和样式覆盖。
 
-默认平面分层靠温灰绿、近白和 1px 细缝，不靠普通阴影。后台 rail、topbar、事实面、表单工作区
-和变更栏均以色调、边界与留白分层；topbar 的半透明白色与 12px blur 只属于 sticky chrome，
-不扩展为玻璃表面。移动抽屉用 scrim 表达遮挡；唯一浮层环境影仍是 AppSheet 的
-`vc-shadow-floating`（`0 18px 48px rgba(50, 38, 56, 0.16)`）。
+Wot UI 接入规则：
 
-### Named Rules
+- 产品令牌在 `theme/tokens.scss` 定义；只在 `theme/wot-adapter.scss` 映射到当前安装版本的
+  `--wot-*` 变量。
+- `App.vue` 根部使用 ConfigProvider；`page` 与 `.wd-root-portal` 同步基础主题和字体。
+- 需要 Toast、MessageBox 等宿主的页面显式声明宿主，兼容 H5 与微信小程序生命周期。
+- 禁止在业务页面使用 `:deep(.wd-*)`、全局覆盖 Wot 内部类或靠 `!important` 修组件。
+- 禁止引入另一套全量 UI 库来补后台；确有缺失时先做最小 `admin-*` 组件。
 
-**The Hairline Depth Rule.** 普通后台容器无阴影；优先用 1px border、背景色差和留白表达层级，
-只有真实浮层可以使用环境影。
+### 5.2 产品组件层
 
-## Shapes
+组件名前缀统一为 `vc-`。组件接受业务状态和语义属性，不接受页面随意注入整块 CSS。
 
-消费关系面板和常规控件使用小圆角（s=4px、m=8px、l=12px、pill=999px）；后台工作台进一步
-收紧为方正账本：rail、按钮、导航项、表格行和变更栏保持 0px，字段与少量状态面使用 4px，
-状态时间线节点保持圆形。列表与表格以底部细线分隔，选中提供方用紫色底面/内嵌线，非装饰性
-圆点仅用于有文字伴随的状态或时间线节点。
+| 领域 | 组件 |
+| --- | --- |
+| 认证 | `vc-auth-shell`、`vc-auth-field`、`vc-email-code-field`、`vc-totp-code-input`、`vc-authenticator-setup`、`vc-recovery-code-card`、`vc-approval-pending` |
+| 首页 | `vc-home-hero`、`vc-continue-conversation-card`、`vc-home-section`、`vc-session-preview`、`vc-bottom-navigation` |
+| 会话 | `vc-session-list`、`vc-session-row`、`vc-session-summary`、`vc-session-actions` |
+| 聊天 | `vc-chat-shell`、`vc-message-list`、`vc-message-bubble`、`vc-chat-composer`、`vc-context-prompt` |
+| 我的 | `vc-profile-header`、`vc-settings-section`、`vc-security-summary`、`vc-authenticator-status` |
 
-## Components
+约束：
 
-### Buttons
+- 首页主卡是自有组件，不能用通用 `wd-card` 拼出产品身份。
+- TOTP 验证码必须由真实 input 支撑粘贴、自动填充和键盘访问，不能使用支付密码键盘模拟。
+- 会话默认用开放列表，不默认加入滑动操作。
+- 导航和核心动作图标由 `vc-icon` 渲染仓库内的内联 SVG；不依赖网络字体或图标字体。
 
-- **Primary:** `--vc-primary` 填充、白字、直角，后台最小高 44px；“检查并保存/应用”是每页
-  唯一填充主动作，按压/悬停使用 primary-hover。
-- **Secondary:** card 或透明表面、墨紫文字和可见控件边界；用于刷新、发现模型、撤销、返回等
-  次级操作。
-- **Danger / quiet:** 危险操作用 danger 边界/文字；放弃变更与返回保持 quiet，不和主保存动作
-  争夺填充层级。
-- **Focus / disabled:** 全局 2px focus 环、outline-offset 3px；disabled 使用实际 disabled
-  token。所有图标按钮仍保持至少 44px。
+### 5.3 管理后台组件层
 
-### Cards / Containers
+后台使用 `admin-` 前缀的自有骨架：`admin-shell`、`admin-sidebar`、`admin-header`、
+`admin-queue`、`admin-data-table`、`admin-detail-panel`、`admin-status-row`。表单、按钮、弹窗等基础交互
+仍复用 Wot UI。
 
-- **事实账本：** card 近白表面、1px border 或细缝、无阴影；总览用纵向事实链，系统状态用
-  检查时间线。
-- **后台工作区：** 模型表单按“基础连接/模型目录”分组，单个模型行使用淡中性底与边界；
-  不把每个字段或每条表格行包成圆角卡片。
-- **变更账本：** 桌面位于右侧并保持可见，列出差异/位置变化、验证问题、重新认证状态、消息
-  和保存动作；移动端下移，并由固定操作条提供主要提交入口。
+## 6. 消费者端布局
 
-### Inputs / Fields
+### 6.1 应用骨架
 
-- 字段有可见 label 和帮助文字；provider/model ID、URL、版本等代码样值使用 mono。
-- 输入/选择控件最小高 44–46px、16px 字号、card 或 sunken 背景、border-strong 边界和 4px
-  圆角；聚焦时使用 primary 边界 + 全局 focus 环。
-- 密钥是 password 输入；新建时必填，编辑时留空表示保留现有密钥。保存后只显示“已配置”，
-  不回显明文或片段。
+- 设计基准宽度为 390px；H5 在宽屏上居中，内容最大宽度 520px。
+- 页面使用 `min-height: 100dvh`；不写死设备高度。
+- 页面只有一个纵向滚动所有者。固定头部、底部导航和聊天输入区不能再创建互相竞争的页面滚动。
+- 所有 flex/grid 子项默认 `min-width: 0`；所有元素使用 `box-sizing: border-box`。
+- 横向滚动只能出现在明确的横向内容组件，整个页面绝不能出现横向滚动条。
 
-### Navigation
+### 6.2 底部导航——强制规范
 
-- **AdminConsoleShell rail：** 232px 固定侧栏，品牌标记“织 / 静默织室 / Go Runtime 控制台”，
-  四个入口按“总览 → 模型服务 → 路由策略 → 系统状态”排列；当前项用近白底、紫色文字、字重和
-  菱形标记，并配 `aria-current="page"`。
-- **Topbar：** sticky 白色 chrome、底部细线、页名 + 简体中文副标题；右侧放刷新或本页唯一主动作。
-  820px 以下只保留页名和 44px 菜单按钮。
-- **Admin footer：** rail 底部显示管理员与当前/本地环境，并提供“返回应用”“退出登录”；退出
-  同样经过未保存变更确认。
+底部导航固定三项“首页 / 聊天 / 我的”，任何页面不得增减或改变顺序。
 
-### Status, Messages & Re-authentication
+- 容器宽度始终等于应用视口宽度，H5 宽屏时与最大 520px 的应用壳对齐。
+- 使用 `display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));`。
+- 可见导航层高度 52px；真实设备只在其下方动态增加 `env(safe-area-inset-bottom, 0px)`，不再附加固定安全区或额外白色空条。
+- 导航层和安全区均使用 `--vc-color-canvas`，顶部使用 1px `--vc-color-hairline`，不做纯白大底座。
+- 每项 `width: 100%; min-width: 0; height: 52px`，图标 20px，标签 12/16px，图标与标签间距 1–2px。
+- 激活态只使用主色和 600 字重；焦点环和点击反馈必须留在自己的三等分单元内。禁止下划线、放大、负 margin 或绝对定位越界。
+- 页面滚动内容底部留白至少为 `64px + safe-area-inset-bottom`，即 52px 导航与 12px 呼吸空间。
+- 不允许通过 `overflow: hidden` 掩盖错误；图标、文字、焦点环本身必须完整位于画布内。
 
-- 状态行以文字 + 8px 色点或边界 badge 表示；正常/启用/已确认用 success，不可用/校验/失败用
-  danger，需要先处理或重新认证用 warning。加载使用真实 refresh 图标和 `role="status"`，
-  错误/无权限使用 `role="alert"`，不展示缓存事实或假成功。
-- 访问后台先处于“正在确认后台会话”；服务不可用时明确“不会展示缓存数据”，非 ADMIN 时明确
-  拒绝原因并返回账号。总览和系统只读取真实运行探针、服务模式、版本与当前配置。
-- 模型保存、模型发现和路由应用属于敏感写操作：提交前进入“重新认证”，使用当前管理员密码，
-  成功后本次会话 15 分钟内可执行敏感写操作；失败保留编辑内容和认证面板，403 会清除认证状态
-  并要求重新认证。凭据永不进入页面回显。
-- 模型保存成功提示“新配置从下一轮对话开始生效”；路由保存成功提示“从下一轮开始生效”，
-  不暗示正在进行的对话被中断。系统检查明确“不保存检查历史”。
+以下任一情况都视为阻断缺陷：图标被截、标签超出画布、第三项变窄、激活态跨单元、内容被导航遮住。
 
-### Unsaved Changes
+### 6.3 聊天底部区域
 
-- 模型页和路由页把基线与草稿对照，提交前可检查、验证、重新认证；“放弃变更/撤销全部调整”
-  明确恢复基线。
-- 刷新、切换提供方、添加提供方、后台导航、返回应用、退出登录和浏览器离开均不静默丢弃草稿。
-  应用内使用“放弃并离开 / 继续编辑”确认；浏览器离开使用 `beforeunload` 原生提示。
-- 未保存变更时刷新远端数据会被阻止并给出下一步；保存失败保留本地草稿，成功保存后重新载入
-  生效配置并清空差异轨迹。
+- 底部导航仍占 `52px + safe-area`。
+- 输入区固定在导航上方，最小高度 64px，可随多行输入自然增高，但应设置合理最大高度后内部滚动。
+- 消息列表底部留白等于“输入区当前高度 + 底部导航高度 + 16px”。
+- 键盘出现时依赖 uni-app 提供的视口/键盘能力更新布局，不使用猜测设备型号的固定像素补丁。
+- 发送按钮、语义标签、加载态和失败重试不能移出输入区边界。
 
-## Do's and Don'ts
+### 6.4 中文与图标防错
 
-### Do:
+- 文本容器必须有真实可用宽度；flex 子项设置 `min-width: 0`。
+- 正文使用自然换行，长邮箱和不可分割字符串才使用 `overflow-wrap: anywhere`。
+- 页面不得渲染 `format_quote`、`home`、`person` 等图标字体连字文本。
+- 核心图标使用有明确 `viewBox` 的本地 SVG，并提供可访问名称；纯装饰图标从辅助技术中隐藏。
 
-- **Do** 只消费 `design-system/base.css` 的 `--vc-*` 语义 token；后台专属中性层保持在现有
-  灰绿/近白材质内，不新增品牌色。
-- **Do** 把“当前生效”与“本次变更”并排/相邻展示，让操作者能先核对事实再提交。
-- **Do** 用真实 Go Runtime 返回、文字状态、`role="status"`/`role="alert"`、可见 label、
-  `fieldset/legend`、表格语义和 `aria-current` 支撑操作与读屏。
-- **Do** 保持 44px 触达、关键正文/输入 16px、safe-area、键盘焦点和 `prefers-reduced-motion`
-  行为；默认动效只用 opacity/transform。
-- **Do** 让错误、无权限、空状态、加载、重新认证、保存成功/失败和未保存离页都有如实的下一步。
+## 7. 代表页面构图
 
-### Don't:
+### 首页
 
-- **Don't** 把后台做成 KPI 仪表盘、卡片墙、长锚点页、模态表单或多层圆角容器；账本和开放列表
-  必须保留可扫描的细缝结构。
-- **Don't** 伪造运行指标、缓存状态、自动恢复或联系人处置；不把读取失败写成正常。
-- **Don't** 展示 API 密钥、密钥片段或诊断中的敏感值；不把密码写入草稿、日志或设计示例。
-- **Don't** 让紫色泛滥、让状态只依靠颜色、让控件小于 44px，或把关键正文/输入缩到 16px 以下。
-- **Don't** 引入渐变、玻璃拟态、emoji/头像/机器人拟人暗示、外部字体或未实现的后台能力。
+- 顶部问候与陪伴者身份。
+- 一个主要的“继续上次对话”区域。
+- “最近对话”采用紧凑列表，不重复堆叠大卡。
+- “全部会话”为清楚的文本入口。
+- 空状态将主动作替换为“开始第一次对话”。
+
+### 登录与验证
+
+- 单列窄表单，字段标签持续可见。
+- 登录字段使用“账号”，接受用户名或邮箱；不要在客户端用邮箱格式校验拦截合法用户名。
+- 主按钮占满内容宽度；说明文字与表单保持 16–24px 间距。
+- 登录步骤不显示底部导航。
+- 6 位验证码的视觉分格不破坏真实 input、粘贴和自动填充。
+- “信任此设备 90 天”使用紧凑的单行复选控件，默认未选中；不为它增加大卡片、弹窗或技术说明。
+
+### 聊天
+
+- 陪伴者消息开放排版，用户消息使用柔和燕麦色气泡。
+- 时间和状态降低权重；正文对比度不降低。
+- 不用大头像墙、消息卡片套卡片或背景插画干扰长文本阅读。
+
+### 我的
+
+- 使用分组列表，不使用功能宫格。
+- 安全状态采用文字事实和次级颜色，不展示风险分数。
+- 可信设备作为安全分组内的普通列表展示，提供到期事实和撤销动作，不建立新的顶级导航。
+
+## 8. 管理后台布局
+
+- 目标桌面视口：1280px 及以上；设计验收主视口为 1440 × 900。
+- 固定 232px 左侧栏，固定 72px 顶栏，内容区 24–32px 内边距。
+- 导航固定四项：“注册审核 / 账号 / 模型与路由 / 运行状态”。全部使用简体中文。
+- 审核页采用队列 + 详情双栏；表格行高约 48px，操作留在详情区。
+- 面板使用白色或柔和表面与 1px 分隔，不使用装饰性阴影。
+- 900px 以下侧栏变为抽屉，双栏改为列表进入详情；后台仍不为手机小程序设计。
+- 后台可以使用真实专业术语，但不能中英文随意混排，也不能暴露与操作无关的内部实现。
+- 禁止假 KPI、假趋势图、假风险分数和没有真实探针的数据。
+
+## 9. 交互与动效
+
+- 点击反馈 120–160ms，页面内显隐和抽屉 180–220ms。
+- 只动画 `opacity` 与 `transform`；不动画大面积模糊、阴影或布局尺寸。
+- 系统启用 `prefers-reduced-motion` 时移除非必要位移。
+- 所有触摸目标至少 44 × 44px；主要按钮建议 48px 高。
+- 键盘焦点使用 2px 高对比焦点环，不能被圆角容器或 `overflow` 截断。
+- 错误提示与字段建立语义关联；状态不能只靠 Toast，也不能只靠颜色。
+
+## 10. AI 开发协议
+
+AI 实现任何页面时必须遵守以下顺序：
+
+1. 先写出该页面在产品文档中的唯一任务、主动作和允许状态。
+2. 对照 Stitch 参考确认构图，但不复制其生成 HTML/CSS。
+3. 先选择 Wot UI 基础能力，再选择现有 `vc-*` / `admin-*` 组件；没有消费者时不新增通用抽象。
+4. 页面只能使用本文件令牌；禁止临时发明颜色、圆角、阴影和第二套导航。
+5. 不继承旧页面信息架构，不顺手保留旧入口，不增加未来功能占位。
+6. 实现加载、空内容、失败、正常内容；只为真实可达状态增加分支。
+7. 完成后进行截图和交互验收，再进入下一页。
+
+AI 不得自行决定以下事项：新增顶级页面、改变三项底部导航、开放注册、增加认证方式、引入另一套 UI 库、
+改变品牌主色、加入深色模式、让后台进入微信小程序。确需改变时先更新产品/设计决策并取得确认。
+
+## 11. 截图与构建验收
+
+### 消费者 H5
+
+每个核心页面至少检查 320 × 568、390 × 844、430 × 932：
+
+- 无横向滚动、逐字竖排、截字或焦点环裁切。
+- 三项底部导航等宽，图标和标签全部在画布内。
+- 页面内容不被安全区、导航、聊天输入区或键盘遮挡。
+- 浏览器字体加载失败时仍不会出现图标名称文本。
+
+### 管理后台 H5
+
+至少检查 1280 × 800 和 1440 × 900：侧栏、表格、详情和操作区均完整；简体中文不截断；没有整页横向
+滚动。窄于 900px 时检查抽屉与单栏详情。
+
+### 微信小程序（启用目标后）
+
+- 消费者端可以构建并完成登录、首页、聊天冒烟。
+- 管理后台路由、样式、DOM API 和 H5 专用依赖不进入产物。
+- Wot UI 主题、反馈宿主、SVG 图标和安全区行为与 H5 保持一致。
+
+## 12. 当前非目标
+
+- 深色模式、主题切换、品牌插画库和复杂动效。
+- 为所有理论屏幕宽度建立独立布局。
+- 为尚未启用的微信能力或未知平台预建抽象层。
+- 把设计文档变成组件属性百科；组件 API 只在实现并存在真实调用者时落到代码附近。

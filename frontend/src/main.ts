@@ -16,13 +16,8 @@ export function createApp() {
   // 键盘可达 / uni-page-head landmark）在应用启动时一次性安装。
   installH5A11yShims();
 
-  // TASK-0034: eagerly create the auth store so a persisted session is restored
-  // at startup and the server-401 clear+redirect hook is live before any page
-  // mounts. New pages obtain their authenticated transport from the auth store
-  // via createAuthenticatedTransport({ getAccessToken, onUnauthorized });
-  // existing chat/memory transports adopt it in a later task (their pages are
-  // frozen). Tokens are never written into chat drafts, memory content or any
-  // model-bound context.
+  // Eagerly create the auth store so the cookie-backed session is restored and
+  // the global 401 clear-and-redirect hook is live before any page mounts.
   void useAuthStore(pinia);
   attachAppNavigationGuards();
   bootstrapAuthSession();

@@ -33,7 +33,7 @@ export function goTo(url: string): void {
   }
 }
 
-/** 顶层切换（替换当前页）：四入口底栏专用，避免返回栈无界增长。 */
+/** 顶层切换（替换当前页）：三入口底栏专用，避免返回栈无界增长。 */
 export function switchTabTo(url: string): void {
   try {
     const uni = uniApi();

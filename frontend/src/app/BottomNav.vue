@@ -5,7 +5,7 @@
     aria-label="主导航"
     data-testid="consumer-tabbar"
   >
-    <!-- 四入口 Consumer Shell 底栏：自定义 H5 底栏（非 pages.json 原生
+    <!-- 三入口 Consumer Shell 底栏：自定义 H5 底栏（非 pages.json 原生
          tabBar），保留 query、深链、返回栈与 uni 导航守卫。活动 tab 用品牌
          色图标与文字强调（不只靠颜色：aria-current + 字重）。触摸目标 ≥48px。 -->
     <button
@@ -19,7 +19,7 @@
       @click="onTabClick(tab)"
     >
       <span class="vc-bottom-nav__icon" aria-hidden="true">
-        <AppIcon :name="TAB_ICONS[tab.key]" :size="22" />
+        <AppIcon :name="TAB_ICONS[tab.key]" :size="20" />
       </span>
       <text class="vc-bottom-nav__label">{{ tab.label }}</text>
     </button>
@@ -37,7 +37,6 @@ import { CONSUMER_TABS, type TabDef, type TabKey } from "./navigation";
 const TAB_ICONS: Record<TabKey, AppIconName> = {
   home: "home",
   chats: "chats",
-  memory: "memory",
   me: "me",
 };
 
@@ -70,16 +69,18 @@ export default defineComponent({
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  box-sizing: border-box;
+  width: 100%;
   max-width: 520px;
   margin: 0 auto;
   padding:
-    var(--vc-space-1)
-    calc(var(--vc-space-2) + env(safe-area-inset-right, 0px))
-    calc(var(--vc-space-1) + env(safe-area-inset-bottom, 0px))
-    calc(var(--vc-space-2) + env(safe-area-inset-left, 0px));
-  background: var(--vc-env-raised);
-  border-top: 1px solid var(--vc-border-env);
+    0
+    env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+  background: var(--vc-color-canvas);
+  border-top: 1px solid var(--vc-color-hairline);
   border-radius: 0;
 }
 
@@ -88,20 +89,24 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  min-height: 56px;
+  gap: 2px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  min-height: 52px;
   margin: 0;
-  padding: var(--vc-space-1) var(--vc-space-2);
+  padding: 3px var(--vc-space-1) 2px;
   border: 0;
-  border-radius: var(--vc-radius-m);
+  border-radius: 0;
   background: transparent;
-  color: var(--vc-on-env-muted);
+  color: var(--vc-color-ink-muted);
   font: inherit;
   font-size: var(--vc-text-xs);
   line-height: 1.3;
   transition:
     color var(--vc-motion-fast) var(--vc-ease-out),
-    transform var(--vc-motion-fast) var(--vc-ease-out);
+    background-color var(--vc-motion-fast) var(--vc-ease-out);
 }
 
 .vc-bottom-nav__item::after {
@@ -109,26 +114,34 @@ export default defineComponent({
 }
 
 .vc-bottom-nav__item.is-active {
-  color: var(--vc-glow);
-  font-weight: 700;
+  color: var(--vc-color-primary);
+  font-weight: 600;
 }
 
 .vc-bottom-nav__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 24px;
-  transition: transform var(--vc-motion-fast) var(--vc-ease-out);
+  width: 20px;
+  height: 20px;
 }
 
 .vc-bottom-nav__item.is-active .vc-bottom-nav__icon {
-  color: var(--vc-glow);
-  transform: translateY(-1px);
+  color: var(--vc-color-primary);
 }
 
 .vc-bottom-nav__label {
-  font-size: var(--vc-text-xs);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.vc-bottom-nav__item:not([disabled]):active {
+  background: var(--vc-color-surface-soft);
+}
+
+.vc-bottom-nav__item:focus-visible {
+  outline: 2px solid var(--vc-color-primary);
+  outline-offset: -3px;
 }
 
 @media (min-width: 521px) {
@@ -138,9 +151,4 @@ export default defineComponent({
   }
 }
 
-@media (pointer: coarse) {
-  .vc-bottom-nav__item {
-    min-height: 60px;
-  }
-}
 </style>

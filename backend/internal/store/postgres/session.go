@@ -119,15 +119,11 @@ func (s *Store) RevokeOpaqueSessionHash(ctx context.Context, tokenHash string) e
 }
 
 func (s *Store) RevokeAllOpaqueSessions(ctx context.Context, accountID int64) (int, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT vc.identity_opaque_session_revoke_all($1)`, accountID).Scan(&n)
-	if err != nil {
-		return 0, mapStoreErr(err)
-	}
-	return n, nil
+	err := s.WithOwner(ctx, accountID, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT vc.identity_logout_all_current()`).Scan(&n)
+	})
+	return n, mapStoreErr(err)
 }
 
 func (s *Store) RecordOpaqueReauth(ctx context.Context, accountID, sessionID int64) error {

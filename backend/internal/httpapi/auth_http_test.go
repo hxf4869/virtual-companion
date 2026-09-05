@@ -16,10 +16,35 @@ import (
 
 func TestLoginIssuesOpaqueCookieAndNoToken(t *testing.T) {
 	t.Parallel()
-	s := newCoreServer(t, "full", newMemStore())
-	rec := loginJSON(t, s, "alice", testPassword)
+	store := newMemStore()
+	s := newCoreServer(t, "full", store)
+	challenge := loginJSON(t, s, "alice", testPassword)
+	if challenge.Code != http.StatusAccepted || sessionCookie(challenge) != "" {
+		t.Fatalf("password step %d %s", challenge.Code, challenge.Body.String())
+	}
+	var next authNextStepJSON
+	if err := json.Unmarshal(challenge.Body.Bytes(), &next); err != nil {
+		t.Fatal(err)
+	}
+	if next.NextStep != "AUTHENTICATOR_SETUP_REQUIRED" || !validChallengeID(next.ChallengeID) {
+		t.Fatalf("next step %+v", next)
+	}
+	store.mu.Lock()
+	defaultRelationship := store.rels[store.active[1]]
+	store.mu.Unlock()
+	if defaultRelationship.PersonaRef != defaultPersonaRef || !defaultRelationship.Active {
+		t.Fatalf("default relationship %+v", defaultRelationship)
+	}
+	setup := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-setup", "", nil)
+	if setup.Code != http.StatusOK || !strings.Contains(setup.Body.String(), "qrCodeDataUrl") {
+		t.Fatalf("setup %d %s", setup.Code, setup.Body.String())
+	}
+	rec := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-confirm",
+		`{"code":"123456","trustDevice":false}`, nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("login %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("confirm %d %s", rec.Code, rec.Body.String())
 	}
 	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -30,7 +55,7 @@ func TestLoginIssuesOpaqueCookieAndNoToken(t *testing.T) {
 			t.Fatalf("must not return %s", k)
 		}
 	}
-	if body["accountId"] != "1" || body["role"] != "USER" {
+	if body["nextStep"] != "ACTIVE" || body["accountId"] != "1" || body["role"] != "USER" || body["email"] != "alice@example.com" {
 		t.Fatalf("identity %+v", body)
 	}
 	if sessionCookie(rec) == "" {
@@ -45,15 +70,144 @@ func TestLoginIssuesOpaqueCookieAndNoToken(t *testing.T) {
 	}
 }
 
-func TestLoginUnknownAndWrongPasswordAreHidden(t *testing.T) {
+func TestRegistrationIsClosedByServer(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	status := doJSONCookies(t, s, http.MethodGet, "/api/v1/auth/registration-status", "", nil)
+	if status.Code != http.StatusOK || strings.TrimSpace(status.Body.String()) != `{"enabled":false}` {
+		t.Fatalf("status %d %s", status.Code, status.Body.String())
+	}
+	register := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/register",
+		`{"email":"new@example.com","password":"not-used"}`, nil)
+	if register.Code != http.StatusForbidden {
+		t.Fatalf("register %d %s", register.Code, register.Body.String())
+	}
+	assertEnvelope(t, register, "ACCESS_DENIED")
+}
+
+func TestTrustedDeviceSkipsOnlyTOTPAndKeepsFixedExpiry(t *testing.T) {
 	t.Parallel()
 	store := newMemStore()
-	store.identities["disabled"] = store.identities["alice"]
-	disabled := store.identities["disabled"]
+	s := newCoreServer(t, "full", store)
+	challenge := loginJSON(t, s, "alice", testPassword)
+	var next authNextStepJSON
+	if err := json.Unmarshal(challenge.Body.Bytes(), &next); err != nil {
+		t.Fatal(err)
+	}
+	setup := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-setup", "", nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup %d %s", setup.Code, setup.Body.String())
+	}
+	confirmed := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-confirm",
+		`{"code":"123456","trustDevice":true,"deviceName":"MacBook"}`, nil)
+	if confirmed.Code != http.StatusOK {
+		t.Fatalf("confirm %d %s", confirmed.Code, confirmed.Body.String())
+	}
+	jar := responseCookieJar(confirmed)
+	if jar[auth.TrustedDeviceCookieName] == "" {
+		t.Fatal("trusted-device cookie")
+	}
+	store.mu.Lock()
+	originalExpiry := store.trustedDevices[1].ExpiresAt
+	store.mu.Unlock()
+
+	logout := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", jar)
+	if logout.Code != http.StatusOK {
+		t.Fatalf("logout %d %s", logout.Code, logout.Body.String())
+	}
+	delete(jar, auth.SessionCookieName)
+	delete(jar, auth.CSRFCookieName)
+	trustedLogin := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/login",
+		`{"account":"alice@example.com","password":"`+testPassword+`"}`, jar)
+	if trustedLogin.Code != http.StatusOK || sessionCookie(trustedLogin) == "" {
+		t.Fatalf("trusted login %d %s", trustedLogin.Code, trustedLogin.Body.String())
+	}
+	store.mu.Lock()
+	if got := store.trustedDevices[1].ExpiresAt; !got.Equal(originalExpiry) {
+		store.mu.Unlock()
+		t.Fatalf("trusted-device expiry slid from %s to %s", originalExpiry, got)
+	}
+	store.mu.Unlock()
+	for name, value := range responseCookieJar(trustedLogin) {
+		jar[name] = value
+	}
+	listed := doJSONCookies(t, s, http.MethodGet, "/api/v1/auth/trusted-devices", "", jar)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), "MacBook") {
+		t.Fatalf("devices %d %s", listed.Code, listed.Body.String())
+	}
+	revoked := doJSONCookies(t, s, http.MethodDelete, "/api/v1/auth/trusted-devices/1", "", jar)
+	if revoked.Code != http.StatusOK {
+		t.Fatalf("revoke %d %s", revoked.Code, revoked.Body.String())
+	}
+	logout = doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", jar)
+	if logout.Code != http.StatusOK {
+		t.Fatalf("second logout %d %s", logout.Code, logout.Body.String())
+	}
+	delete(jar, auth.SessionCookieName)
+	delete(jar, auth.CSRFCookieName)
+	afterRevoke := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/login",
+		`{"account":"alice@example.com","password":"`+testPassword+`"}`, jar)
+	if afterRevoke.Code != http.StatusAccepted {
+		t.Fatalf("after revoke %d %s", afterRevoke.Code, afterRevoke.Body.String())
+	}
+	if err := json.Unmarshal(afterRevoke.Body.Bytes(), &next); err != nil || next.NextStep != "TOTP_REQUIRED" {
+		t.Fatalf("next %v %+v", err, next)
+	}
+}
+
+func TestAdminListsAndReviewsPendingAccountsAfterFreshReauth(t *testing.T) {
+	t.Parallel()
+	store := newMemStore()
+	admin := store.identities["alice@example.com"]
+	admin.Role = "ADMIN"
+	store.identities["alice@example.com"] = admin
+	pending := store.identities["bob@example.com"]
+	pending.Status = "PENDING_REVIEW"
+	store.identities["bob@example.com"] = pending
+	s := newCoreServer(t, "full", store)
+	jar := loginCookies(t, s, "alice", testPassword)
+
+	listed := doJSONCookies(t, s, http.MethodGet, "/api/v1/admin/accounts", "", jar)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), "bob@example.com") || !strings.Contains(listed.Body.String(), "PENDING_REVIEW") {
+		t.Fatalf("accounts %d %s", listed.Code, listed.Body.String())
+	}
+
+	withoutReauth := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/admin/accounts/2/review", `{"decision":"APPROVE"}`, jar)
+	if withoutReauth.Code != http.StatusForbidden {
+		t.Fatalf("review without reauth %d %s", withoutReauth.Code, withoutReauth.Body.String())
+	}
+
+	reauth := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/reauth",
+		`{"password":"`+testPassword+`"}`, jar)
+	if reauth.Code != http.StatusOK {
+		t.Fatalf("reauth %d %s", reauth.Code, reauth.Body.String())
+	}
+	reviewed := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/admin/accounts/2/review", `{"decision":"APPROVE"}`, jar)
+	if reviewed.Code != http.StatusOK || !strings.Contains(reviewed.Body.String(), `"status":"ACTIVE"`) {
+		t.Fatalf("review %d %s", reviewed.Code, reviewed.Body.String())
+	}
+
+	store.mu.Lock()
+	status := store.identities["bob@example.com"].Status
+	store.mu.Unlock()
+	if status != "ACTIVE" {
+		t.Fatalf("reviewed status %q", status)
+	}
+}
+
+func TestLoginFailuresAndInactiveState(t *testing.T) {
+	t.Parallel()
+	store := newMemStore()
+	store.identities["disabled@example.com"] = store.identities["alice@example.com"]
+	disabled := store.identities["disabled@example.com"]
 	disabled.AccountID = 3
 	disabled.Username = "disabled"
 	disabled.Status = "DISABLED"
-	store.identities["disabled"] = disabled
+	store.identities["disabled@example.com"] = disabled
 	s := newCoreServer(t, "full", store)
 	unknown := loginJSON(t, s, "nobody", testPassword)
 	if unknown.Code != http.StatusNotFound {
@@ -66,15 +220,17 @@ func TestLoginUnknownAndWrongPasswordAreHidden(t *testing.T) {
 	}
 	assertEnvelope(t, wrong, "NOT_FOUND_OR_FORBIDDEN")
 	inactive := loginJSON(t, s, "disabled", testPassword)
-	if inactive.Code != http.StatusNotFound {
+	if inactive.Code != http.StatusForbidden {
 		t.Fatalf("inactive %d", inactive.Code)
 	}
-	assertEnvelope(t, inactive, "NOT_FOUND_OR_FORBIDDEN")
-	if unknown.Body.String() != wrong.Body.String() || wrong.Body.String() != inactive.Body.String() {
-		t.Fatalf("authentication failures differ: unknown=%q wrong=%q inactive=%q",
-			unknown.Body.String(), wrong.Body.String(), inactive.Body.String())
+	var state authNextStepJSON
+	if err := json.Unmarshal(inactive.Body.Bytes(), &state); err != nil || state.NextStep != "DISABLED" {
+		t.Fatalf("inactive state %v %+v", err, state)
 	}
-	if strings.Contains(unknown.Body.String(), "nobody") || strings.Contains(wrong.Body.String(), "alice") || strings.Contains(inactive.Body.String(), "disabled") {
+	if unknown.Body.String() != wrong.Body.String() {
+		t.Fatalf("password failures differ: unknown=%q wrong=%q", unknown.Body.String(), wrong.Body.String())
+	}
+	if strings.Contains(unknown.Body.String(), "nobody") || strings.Contains(wrong.Body.String(), "alice") {
 		t.Fatal("must not echo identity")
 	}
 }
@@ -159,10 +315,7 @@ func TestRevokeSessionAndPasswordChangeInvalidate(t *testing.T) {
 	if doJSONCookies(t, s, http.MethodGet, "/api/v1/relationships", "", jar).Code != http.StatusUnauthorized {
 		t.Fatal("password change must revoke")
 	}
-	fresh := loginJSON(t, s, "alice", "test-pass-2")
-	if fresh.Code != http.StatusOK {
-		t.Fatalf("relogin %d %s", fresh.Code, fresh.Body.String())
-	}
+	_ = loginCookies(t, s, "alice", "test-pass-2")
 }
 
 func TestReauthRecordsFreshness(t *testing.T) {
@@ -190,7 +343,7 @@ func TestReauthRecordsFreshness(t *testing.T) {
 func TestLoginRequiresExactOrigin(t *testing.T) {
 	t.Parallel()
 	s := newCoreServer(t, "full", newMemStore())
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"alice","password":"`+testPassword+`"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"account":"alice@example.com","password":"`+testPassword+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "https://evil.example")
 	rec := httptest.NewRecorder()
@@ -214,6 +367,23 @@ func TestAuthErrorEnvelopeHasNoDetails(t *testing.T) {
 	}
 	if env["code"] != "NOT_FOUND_OR_FORBIDDEN" {
 		t.Fatalf("%v", env)
+	}
+}
+
+func TestLoginAcceptsUsernameAccount(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	rec := doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/login",
+		`{"account":"alice","password":"`+testPassword+`"}`, nil)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("username login %d %s", rec.Code, rec.Body.String())
+	}
+	var next authNextStepJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &next); err != nil {
+		t.Fatal(err)
+	}
+	if next.NextStep != "AUTHENTICATOR_SETUP_REQUIRED" || !validChallengeID(next.ChallengeID) {
+		t.Fatalf("username login next step %+v", next)
 	}
 }
 
@@ -288,7 +458,11 @@ func TestAPIMigrationDoesNotServeAuthWriters(t *testing.T) {
 
 func loginJSON(t *testing.T, s *Server, username, password string) *httptest.ResponseRecorder {
 	t.Helper()
-	body := `{"username":"` + username + `","password":"` + password + `"}`
+	email := username
+	if !strings.Contains(email, "@") {
+		email += "@example.com"
+	}
+	body := `{"account":"` + email + `","password":"` + password + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "https://vc.test")
@@ -300,8 +474,25 @@ func loginJSON(t *testing.T, s *Server, username, password string) *httptest.Res
 func loginCookies(t *testing.T, s *Server, username, password string) map[string]string {
 	t.Helper()
 	rec := loginJSON(t, s, username, password)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("password step %d %s", rec.Code, rec.Body.String())
+	}
+	var next authNextStepJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &next); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/auth/challenges/" + next.ChallengeID + "/totp"
+	if next.NextStep == "AUTHENTICATOR_SETUP_REQUIRED" {
+		setup := doJSONCookies(t, s, http.MethodPost,
+			"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-setup", "", nil)
+		if setup.Code != http.StatusOK {
+			t.Fatalf("setup %d %s", setup.Code, setup.Body.String())
+		}
+		path = "/api/v1/auth/challenges/" + next.ChallengeID + "/authenticator-confirm"
+	}
+	rec = doJSONCookies(t, s, http.MethodPost, path, `{"code":"123456","trustDevice":false}`, nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("login %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("authenticator %d %s", rec.Code, rec.Body.String())
 	}
 	jar := map[string]string{}
 	for _, c := range rec.Result().Cookies() {
@@ -356,6 +547,16 @@ func csrfCookieValue(rec *httptest.ResponseRecorder) string {
 		}
 	}
 	return ""
+}
+
+func responseCookieJar(rec *httptest.ResponseRecorder) map[string]string {
+	jar := map[string]string{}
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.MaxAge >= 0 && cookie.Value != "" {
+			jar[cookie.Name] = cookie.Value
+		}
+	}
+	return jar
 }
 
 type logoutRevokeErrorStore struct {

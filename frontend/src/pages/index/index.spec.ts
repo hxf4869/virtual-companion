@@ -1,97 +1,110 @@
 // @vitest-environment happy-dom
-// 首页（关系首页）行为测试：匿名登录入口、线性准入下一步（成年/同意/创建
-// 陪伴）、当前陪伴呈现与"继续聊聊"深链、窄摘要导航（会话/记忆携带
-// relationshipId）、关系加载失败重试、普通用户不可见内部入口。
-// 旧边界台的 alpha-nav/基线预检断言已随 IA 迁移（预检在 ops，入口在我的）。
+// 首页只负责一件事：让用户回到最近一次真实对话。这里固定公开态、恢复态、
+// 有/无历史、加载失败和三入口底栏，防止旧准入步骤或专业术语重新进入首页。
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "@/stores/auth";
-import { useRelationshipStore } from "@/stores/relationship";
 
 import IndexPage from "./index.vue";
 
 const ACTIVE_RELATIONSHIP = {
   relationshipId: "rel-index-1",
   personaRef: "gentle-listener",
+  companionName: "林夏",
   active: true,
   createdAt: "2026-08-15T00:00:00Z",
 };
 
-const GRANTED_CONSENTS = [
-  { consentId: "1", consentType: "SERVICE_TERMS", version: "2026-08", granted: true, grantedAt: "t" },
-  { consentId: "2", consentType: "PRIVACY_POLICY", version: "2026-08", granted: true, grantedAt: "t" },
-  { consentId: "3", consentType: "AI_CONTENT_NOTICE", version: "2026-08", granted: true, grantedAt: "t" },
-  { consentId: "4", consentType: "THIRD_PARTY_MODEL_PROCESSING", version: "2026-08", granted: true, grantedAt: "t" },
-  { consentId: "5", consentType: "SENSITIVE_DATA_PROCESSING", version: "2026-08", granted: true, grantedAt: "t" },
+const RECENT_CONVERSATIONS = [
+  {
+    conversationId: "conv-3",
+    relationshipId: "rel-index-1",
+    title: "昨晚的那件小事",
+    lastMessagePreview: "那我们就从你真正想说的地方开始。",
+    createdAt: "2026-08-31T14:00:00Z",
+    lastActivityAt: "2026-08-31T14:18:00Z",
+  },
+  {
+    conversationId: "conv-2",
+    relationshipId: "rel-index-1",
+    title: "周末想去走走",
+    lastMessagePreview: "不用马上决定，可以先想想喜欢怎样的节奏。",
+    createdAt: "2026-08-29T08:00:00Z",
+    lastActivityAt: "2026-08-29T08:42:00Z",
+  },
+  {
+    conversationId: "conv-1",
+    relationshipId: "rel-index-1",
+    title: "第一次见面",
+    lastMessagePreview: "很高兴认识你。",
+    createdAt: "2026-08-26T10:00:00Z",
+    lastActivityAt: "2026-08-26T10:20:00Z",
+  },
 ];
 
-function stubFetch(options: {
-  authFails?: boolean | (() => boolean);
-  authSessions?: unknown[];
-  relationships?: unknown[];
-  ageState?: string;
-  ageFails?: boolean | (() => boolean);
-  consentFails?: boolean;
-  consents?: unknown[];
-  conversations?: unknown[];
-  memories?: unknown[];
-  fail?: { conversations?: boolean; memories?: boolean };
-} = {}): ReturnType<typeof vi.fn> {
+interface FetchOptions {
+  session?: "anonymous" | "active" | "network-error" | (() => "anonymous" | "active" | "network-error");
+  relationships?: unknown[] | (() => unknown[]);
+  relationshipFails?: boolean | (() => boolean);
+  conversations?: unknown[] | (() => unknown[]);
+  conversationFails?: boolean | (() => boolean);
+}
+
+function resolveOption<T>(value: T | (() => T) | undefined, fallback: T): T {
+  if (typeof value === "function") return (value as () => T)();
+  return value ?? fallback;
+}
+
+function response(ok: boolean, status: number, json: unknown) {
+  return {
+    ok,
+    status,
+    json: async () => json,
+    headers: { get: () => null },
+  };
+}
+
+function stubFetch(options: FetchOptions = {}): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = typeof input === "string" ? input.toString() : input.toString();
-    if (url === "/api/v1/auth/sessions") {
-      const authFails = typeof options.authFails === "function"
-        ? options.authFails()
-        : options.authFails;
-      if (authFails) throw new TypeError("offline");
-      if (options.authSessions === undefined) {
-        return {
-          ok: false,
-          status: 401,
-          json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
-        };
+    const url = input.toString();
+    if (url === "/api/v1/auth/session") {
+      const state = resolveOption(options.session, "anonymous");
+      if (state === "network-error") throw new TypeError("offline");
+      if (state === "anonymous") {
+        return response(false, 401, { code: "AUTHENTICATION_REQUIRED" });
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => options.authSessions,
-      };
-    }
-    if (/\/relationships\/[^/]+\/memories/.test(url)) {
-      if (options.fail?.memories) {
-        return { ok: false, status: 500, json: async () => ({}) };
-      }
-      return { ok: true, status: 200, json: async () => options.memories ?? [] };
-    }
-    if (url.startsWith("/api/v1/conversations")) {
-      if (options.fail?.conversations) {
-        throw new TypeError("offline");
-      }
-      return { ok: true, status: 200, json: async () => options.conversations ?? [] };
+      return response(true, 200, {
+        nextStep: "ACTIVE",
+        accountId: "7",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      });
     }
     if (url === "/api/v1/relationships") {
-      return { ok: true, status: 200, json: async () => options.relationships ?? [] };
-    }
-    if (url === "/api/v1/age/state") {
-      const ageFails = typeof options.ageFails === "function"
-        ? options.ageFails()
-        : options.ageFails;
-      if (ageFails) return { ok: false, status: 500, json: async () => ({}) };
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ ageState: options.ageState ?? "ADULT_VERIFIED" }),
-      };
-    }
-    if (url === "/api/v1/consents") {
-      if (options.consentFails) {
-        return { ok: false, status: 500, json: async () => ({}) };
+      if (resolveOption(options.relationshipFails, false)) {
+        return response(false, 500, { code: "INTERNAL_ERROR" });
       }
-      return { ok: true, status: 200, json: async () => options.consents ?? GRANTED_CONSENTS };
+      return response(
+        true,
+        200,
+        resolveOption(options.relationships, [ACTIVE_RELATIONSHIP]),
+      );
     }
-    return { ok: true, status: 200, json: async () => ({}) };
+    if (url.startsWith("/api/v1/conversations")) {
+      if (resolveOption(options.conversationFails, false)) {
+        throw new TypeError("offline");
+      }
+      return response(
+        true,
+        200,
+        resolveOption(options.conversations, RECENT_CONVERSATIONS),
+      );
+    }
+    return response(true, 200, {});
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -101,68 +114,64 @@ function mountPage() {
   return mount(IndexPage, { attachTo: document.body });
 }
 
-function navigateTo(): ReturnType<typeof vi.fn> {
-  const nav = (globalThis as { uni?: { navigateTo?: ReturnType<typeof vi.fn> } }).uni
-    ?.navigateTo;
-  return nav ?? vi.fn();
+function login(): void {
+  const auth = useAuthStore();
+  auth.accessToken = "session";
+  auth.accountId = "7";
+  auth.role = "USER";
 }
 
-describe("首页：匿名与会话未知", () => {
+function navigateTo(): ReturnType<typeof vi.fn> {
+  return (globalThis as unknown as { uni: { navigateTo: ReturnType<typeof vi.fn> } }).uni.navigateTo;
+}
+
+describe("首页产品骨架", () => {
   beforeEach(() => {
+    document.body.innerHTML = "";
     setActivePinia(createPinia());
     vi.stubGlobal("uni", { navigateTo: vi.fn(), redirectTo: vi.fn() });
   });
 
-  it("匿名访客看到登录主入口，不渲染四入口底栏", async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("会话状态未确定时只显示加载反馈，不抢先显示登录或产品内容", () => {
     stubFetch();
-    // 真实契约：匿名 GET /auth/sessions 返回 401，但公开首页不得跳登录。
+    const wrapper = mountPage();
+
+    expect(wrapper.find('[data-testid="home-pending"]').attributes("data-state")).toBe("loading");
+    expect(wrapper.find('[data-testid="home-login"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("匿名访客看到清楚的登录入口，不显示受保护的底栏", async () => {
+    stubFetch({ session: "anonymous" });
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="home-hero"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="home-login"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="home-login"]').text()).toBe("登录后继续");
+    expect(wrapper.text()).toContain("AI 陪伴者 · 非真人");
     expect(wrapper.find('[data-testid="consumer-tabbar"]').exists()).toBe(false);
-    const redirectTo = (globalThis as { uni?: { redirectTo?: ReturnType<typeof vi.fn> } }).uni
-      ?.redirectTo;
-    expect(redirectTo).not.toHaveBeenCalled();
+
+    await wrapper.find('[data-testid="home-login"]').trigger("click");
+    expect(navigateTo()).toHaveBeenCalledWith({ url: "/pages/login/login" });
     wrapper.unmount();
   });
 
-  it("会话未知时如实等待，不显示任何准入结论", () => {
-    stubFetch();
-    const wrapper = mountPage();
-    // tryRefresh 尚未落定（settled=false）：unknown 分支必须可见且无结论。
-    expect(wrapper.find('[data-testid="home-pending"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="next-step"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="home-login"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("会话恢复失败时结束等待并提供可恢复入口", async () => {
-    let authFails = true;
-    stubFetch({
-      authFails: () => authFails,
-      authSessions: [{
-        id: "session-1",
-        createdAt: "2026-08-31T00:00:00Z",
-        expiresAt: "2026-09-01T00:00:00Z",
-        current: true,
-        accountId: "7",
-        role: "USER",
-        passwordMustChange: false,
-      }],
-      relationships: [ACTIVE_RELATIONSHIP],
-    });
+  it("会话恢复失败时提供单一重试，恢复后直接进入真实首页", async () => {
+    let session: "network-error" | "active" = "network-error";
+    stubFetch({ session: () => session });
     const wrapper = mountPage();
     await flushPromises();
 
     const pending = wrapper.find('[data-testid="home-pending"]');
     expect(pending.attributes("data-state")).toBe("error");
     expect(pending.attributes("role")).toBe("alert");
-    expect(pending.text()).toContain("暂时无法确认登录状态");
-    expect(wrapper.find('[data-testid="session-retry"]').text()).toBe("重新检查");
+    expect(wrapper.find('[data-testid="session-retry"]').text()).toBe("重新加载");
 
-    authFails = false;
+    session = "active";
     await wrapper.find('[data-testid="session-retry"]').trigger("click");
     await flushPromises();
 
@@ -170,395 +179,119 @@ describe("首页：匿名与会话未知", () => {
     expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
     wrapper.unmount();
   });
-});
 
-describe("首页：线性准入（服务端 next-step 为真源）", () => {
-  beforeEach(() => {
-    setActivePinia(createPinia());
-    vi.stubGlobal("uni", { navigateTo: vi.fn(), redirectTo: vi.fn() });
-  });
-
-  function login() {
-    const auth = useAuthStore();
-    auth.accessToken = "a-token";
-    auth.role = "USER";
-  }
-
-  it("未成年核验先于一切，去核验指向成年状态页", async () => {
-    stubFetch({ ageState: "AGE_UNKNOWN", consents: [], relationships: [] });
+  it("把最近一次对话作为唯一主任务，并渲染三项紧凑底栏", async () => {
+    stubFetch();
     login();
     const wrapper = mountPage();
     await flushPromises();
 
-    const step = wrapper.find('[data-testid="next-step"]');
-    expect(step.exists()).toBe(true);
-    expect(step.text()).toContain("成年核验");
-    await wrapper.find('[data-testid="next-step-go"]').trigger("click");
-    expect(navigateTo()).toHaveBeenCalledWith({ url: "/pages/age/age" });
-    wrapper.unmount();
-  });
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("林夏");
+    expect(wrapper.text()).toContain("上次我们聊到：那我们就从你真正想说的地方开始。");
+    expect(wrapper.text()).toContain("AI 陪伴者 · 非真人");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
 
-  it("缺必要同意时去确认，指向同意管理页", async () => {
-    stubFetch({ consents: [], relationships: [] });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
+    const tabs = wrapper.findAll('[data-testid^="tab-"]');
+    expect(tabs.map((tab) => tab.text())).toEqual(["首页", "聊天", "我的"]);
+    expect(wrapper.find('[data-testid="tab-home"]').attributes("aria-current")).toBe("page");
 
-    expect(wrapper.find('[data-testid="next-step"]').text()).toContain("协议");
-    await wrapper.find('[data-testid="next-step-go"]').trigger("click");
-    expect(navigateTo()).toHaveBeenCalledWith({ url: "/pages/consent/consent" });
-    wrapper.unmount();
-  });
-
-  it("准入通过但没有陪伴时，主动作进入统一创建流程（陪伴设置页）", async () => {
-    stubFetch({ relationships: [] });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="home-hero"]').text()).toContain("还没有陪伴");
-    await wrapper.find('[data-testid="home-create-companion"]').trigger("click");
+    await wrapper.find('[data-testid="home-continue-chat"]').trigger("click");
     expect(navigateTo()).toHaveBeenCalledWith({
-      url: "/pages/companion/companion",
+      url: "/pages/chat/chat?relationshipId=rel-index-1&conversationId=conv-3",
     });
     wrapper.unmount();
   });
 
-  it("age 读数失败时显示可恢复错误，重新检查成功后继续", async () => {
-    let ageFails = true;
-    stubFetch({ ageFails: () => ageFails, relationships: [ACTIVE_RELATIONSHIP] });
+  it("最近对话行和查看全部都保留明确的关系上下文", async () => {
+    stubFetch();
     login();
     const wrapper = mountPage();
     await flushPromises();
 
-    const gate = wrapper.find('[data-testid="admission-gate"]');
-    expect(gate.exists()).toBe(true);
-    expect(gate.attributes("data-state")).toBe("error");
-    expect(gate.text()).toContain("读取失败");
-    expect(wrapper.find('[data-testid="admission-retry"]').text()).toBe("重新检查");
-    expect(wrapper.find('[data-testid="next-step"]').exists()).toBe(false);
+    await wrapper.findAll('[data-testid="session-preview"]')[1].trigger("click");
+    expect(navigateTo()).toHaveBeenLastCalledWith({
+      url: "/pages/chat/chat?relationshipId=rel-index-1&conversationId=conv-2",
+    });
 
-    ageFails = false;
-    await wrapper.find('[data-testid="admission-retry"]').trigger("click");
-    await flushPromises();
-    expect(wrapper.find('[data-testid="admission-gate"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="home-view-all"]').trigger("click");
+    expect(navigateTo()).toHaveBeenLastCalledWith({
+      url: "/pages/conversations/conversations?relationshipId=rel-index-1",
+    });
     wrapper.unmount();
   });
 
-  it("同意记录读取失败时同样提供重新检查，不停在无操作等待态", async () => {
-    stubFetch({ consentFails: true, relationships: [ACTIVE_RELATIONSHIP] });
+  it("没有历史时不造假数据，只提供开始第一次对话", async () => {
+    stubFetch({ conversations: [] });
     login();
     const wrapper = mountPage();
     await flushPromises();
 
-    const gate = wrapper.find('[data-testid="admission-gate"]');
-    expect(gate.attributes("data-state")).toBe("error");
-    expect(gate.attributes("role")).toBe("alert");
-    expect(gate.text()).toContain("同意记录读取失败");
-    expect(wrapper.find('[data-testid="admission-retry"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="next-step"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-});
+    expect(wrapper.find('[data-testid="home-start-chat"]').text()).toBe("开始第一次对话");
+    expect(wrapper.text()).toContain("想说什么都可以，我们从这里开始。");
+    expect(wrapper.find('[data-testid="home-recent-conversations"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-view-all"]').exists()).toBe(false);
 
-describe("首页：关系就绪后的主任务与摘要", () => {
-  beforeEach(() => {
-    setActivePinia(createPinia());
-    vi.stubGlobal("uni", { navigateTo: vi.fn(), redirectTo: vi.fn() });
-  });
-
-  function login() {
-    const auth = useAuthStore();
-    auth.accessToken = "a-token";
-    auth.role = "USER";
-  }
-
-  it("展示当前陪伴，继续聊聊携带 relationshipId 打开聊天", async () => {
-    stubFetch({ relationships: [ACTIVE_RELATIONSHIP] });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const hero = wrapper.find('[data-testid="current-relationship"]');
-    expect(hero.exists()).toBe(true);
-    expect(hero.text()).toContain("温和倾听者");
-    await wrapper.find('[data-testid="home-continue-chat"]').trigger("click");
+    await wrapper.find('[data-testid="home-start-chat"]').trigger("click");
     expect(navigateTo()).toHaveBeenCalledWith({
       url: "/pages/chat/chat?relationshipId=rel-index-1",
     });
     wrapper.unmount();
   });
 
-  it("全局 uni 导航不可用时仍进入 H5 hash 路由", async () => {
-    stubFetch({ relationships: [ACTIVE_RELATIONSHIP] });
-    login();
-    vi.stubGlobal("uni", undefined);
-    const locationStub = { href: "" };
-    vi.stubGlobal("location", locationStub);
-    const wrapper = mountPage();
-    await flushPromises();
-
-    await wrapper.find('[data-testid="home-continue-chat"]').trigger("click");
-
-    expect(locationStub.href).toBe("/#/pages/chat/chat?relationshipId=rel-index-1");
-    wrapper.unmount();
-  });
-
-  it("摘要行导航到会话/记忆/提醒并携带 relationshipId", async () => {
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      conversations: [
-        {
-          conversationId: "conv-9",
-          relationshipId: "rel-index-1",
-          lastMessagePreview: "上次聊到一半的事",
-        },
-      ],
-      memories: [
-        {
-          memoryId: "m1",
-          scope: "RELATIONSHIP",
-          status: "PENDING_CONFIRMATION",
-          summary: "s",
-        },
-      ],
-    });
+  it("关系列表失败后可在原位重试", async () => {
+    let relationshipFails = true;
+    stubFetch({ relationshipFails: () => relationshipFails });
     login();
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).toContain("上次聊到一半的事");
-    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
-      "1 条记忆等你确认",
-    );
-
-    await wrapper.find('[data-testid="home-row-conversations"]').trigger("click");
-    expect(navigateTo()).toHaveBeenLastCalledWith({
-      url: "/pages/conversations/conversations?relationshipId=rel-index-1",
-    });
-    await wrapper.find('[data-testid="home-row-memory"]').trigger("click");
-    expect(navigateTo()).toHaveBeenLastCalledWith({
-      url: "/pages/memory/memory?relationshipId=rel-index-1",
-    });
-    expect(wrapper.find('[data-testid="home-row-reminder"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("已登录会话渲染四入口底栏且首页 tab 高亮", async () => {
-    stubFetch({ relationships: [ACTIVE_RELATIONSHIP] });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="consumer-tabbar"]').exists()).toBe(true);
-    expect(
-      wrapper.find('[data-testid="tab-home"]').attributes("aria-current"),
-    ).toBe("page");
-    wrapper.unmount();
-  });
-
-  it("普通用户与 ADMIN 都看不到内部入口（ops/admin 已移出首页）", async () => {
-    stubFetch({ relationships: [ACTIVE_RELATIONSHIP] });
-    const auth = useAuthStore();
-    auth.accessToken = "a-token";
-    auth.role = "ADMIN";
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="nav-admin"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="nav-ops"]').exists()).toBe(false);
-    expect(wrapper.text()).not.toContain("内部管理");
-    expect(wrapper.text()).not.toContain("运行与合规");
-    wrapper.unmount();
-  });
-
-  it("关系列表加载失败时给出重试，不激活任何主动作", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url === "/api/v1/relationships") {
-        return { ok: false, status: 500, json: async () => ({}) };
-      }
-      if (url === "/api/v1/age/state") {
-        return { ok: true, status: 200, json: async () => ({ ageState: "ADULT_VERIFIED" }) };
-      }
-      if (url === "/api/v1/consents") {
-        return { ok: true, status: 200, json: async () => GRANTED_CONSENTS };
-      }
-      return { ok: true, status: 200, json: async () => [] };
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const auth = useAuthStore();
-    auth.accessToken = "a-token";
-    auth.role = "USER";
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const err = wrapper.find('[data-testid="relationship-load-error"]');
-    expect(err.exists()).toBe(true);
-    expect(err.text()).toContain("关系列表加载失败。");
+    expect(wrapper.find('[data-testid="home-load-error"]').text()).toContain("最近对话没有加载出来");
     expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(false);
 
-    // 重试成功后进入正常首屏。
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url === "/api/v1/relationships") {
-        return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
-      }
-      return { ok: true, status: 200, json: async () => [] };
-    });
-    await wrapper.find('[data-testid="relationship-retry"]').trigger("click");
+    relationshipFails = false;
+    await wrapper.find('[data-testid="home-retry"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
-  it("会话路失败时只标记会话行，记忆不受污染", async () => {
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      conversations: [],
-      memories: [
-        { memoryId: "m1", scope: "RELATIONSHIP", status: "PENDING_CONFIRMATION", summary: "s" },
-      ],
-      fail: { conversations: true },
-    });
+  it("最近对话失败后可在原位重试", async () => {
+    let conversationFails = true;
+    stubFetch({ conversationFails: () => conversationFails });
     login();
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).toContain("加载失败，点开可重试");
-    expect(
-      wrapper.find('[data-testid="home-row-conversations"]').attributes("data-state"),
-    ).toBe("error");
-    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
-      "1 条记忆等你确认",
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(true);
+    conversationFails = false;
+    await wrapper.find('[data-testid="home-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+    wrapper.unmount();
+  });
+
+  it("异常缺少默认陪伴时只说明未准备好，不把创建或旧准入流程暴露给用户", async () => {
+    stubFetch({ relationships: [] });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-load-error"]').text()).toContain("你的陪伴还没准备好");
+    expect(wrapper.find('[data-testid="home-create-companion"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toMatch(/成年核验|同意管理|待确认记忆|内部管理|运行与合规/);
+    wrapper.unmount();
+  });
+
+  it("首页只请求最多三条最近对话", async () => {
+    const fetchMock = stubFetch();
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/conversations?relationshipId=rel-index-1&limit=3",
+      expect.objectContaining({ method: "GET", credentials: "include" }),
     );
-    expect(wrapper.find('[data-testid="home-next-reminder"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("记忆路失败时不冒充空成功，会话照常成功", async () => {
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      conversations: [
-        {
-          conversationId: "conv-9",
-          relationshipId: "rel-index-1",
-          lastMessagePreview: "上次聊到一半的事",
-        },
-      ],
-      fail: { memories: true },
-    });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
-      "加载失败，点开可重试",
-    );
-    expect(
-      wrapper.find('[data-testid="home-row-memory"]').attributes("data-state"),
-    ).toBe("error");
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).toContain("上次聊到一半的事");
-    expect(wrapper.find('[data-testid="home-next-reminder"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("失败但保留旧数据时显示旧值并标注较早数据（stale）", async () => {
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      conversations: [
-        {
-          conversationId: "conv-9",
-          relationshipId: "rel-index-1",
-          lastMessagePreview: "上次聊到一半的事",
-        },
-      ],
-      memories: [
-        { memoryId: "m1", scope: "RELATIONSHIP", status: "PENDING_CONFIRMATION", summary: "s" },
-      ],
-    });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    // 第二轮全部失败：旧值保留并标注"较早数据"，不冒充成功也不误报空。
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      fail: { conversations: true, memories: true },
-    });
-    await (wrapper.vm as unknown as { loadSummaries: () => Promise<void> }).loadSummaries();
-    await flushPromises();
-
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).toContain("上次聊到一半的事（较早数据）");
-    expect(
-      wrapper.find('[data-testid="home-row-conversations"]').attributes("data-state"),
-    ).toBe("stale");
-    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
-      "1 条记忆等你确认（较早数据）",
-    );
-    wrapper.unmount();
-  });
-
-  it("会话摘要取整页中最大 id 为最新，不取升序第一条", async () => {
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      conversations: [
-        {
-          conversationId: "101",
-          relationshipId: "rel-index-1",
-          lastMessagePreview: "很早的一次对话",
-        },
-        {
-          conversationId: "37",
-          relationshipId: "rel-index-1",
-          lastMessagePreview: "中间的一次对话",
-        },
-        {
-          conversationId: "205",
-          relationshipId: "rel-index-1",
-          lastMessagePreview: "最新一次对话",
-        },
-      ],
-    });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).toContain("最新一次对话");
-    wrapper.unmount();
-  });
-
-  it("会话整页未取尽时不误称最近，退化为计数", async () => {
-    const fullPage = Array.from({ length: 50 }, (_, i) => ({
-      conversationId: String(i + 1),
-      relationshipId: "rel-index-1",
-      lastMessagePreview: `第 ${i + 1} 个会话`,
-    }));
-    stubFetch({
-      relationships: [ACTIVE_RELATIONSHIP],
-      conversations: fullPage,
-    });
-    login();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).toContain("50+ 个会话");
-    expect(
-      wrapper.find('[data-testid="home-latest-conversation"]').text(),
-    ).not.toContain("第 50 个会话");
     wrapper.unmount();
   });
 });

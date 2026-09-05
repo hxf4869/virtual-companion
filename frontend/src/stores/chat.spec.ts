@@ -40,21 +40,9 @@ function mockChatTransport(opts: {
   messagesJson?: unknown;
   conversationsJson?: unknown;
   conversationOk?: boolean;
-  /** CHAT-MODE: capture every generation request body (in call order). */
-  generationBodies?: unknown[];
-  /** FEEDBACK: response for POST /generations/{id}/feedback. */
-  feedbackStatus?: number;
-  feedbackJson?: unknown;
-  /** MSG-DELETE: response for DELETE /conversations/{id}/messages/{id}. */
-  messageDeleteOk?: boolean;
-  /** SVC-MODE: response for GET /api/v1/service-mode. */
-  serviceModeJson?: unknown;
 }): ChatTransport {
   return {
     async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
-      if (path === "/api/v1/service-mode") {
-        return { ok: true, status: 200, json: opts.serviceModeJson ?? { mode: "FULL_AI", summary: "正常模型服务" } };
-      }
       if (path === "/api/v1/conversations") {
         if (method === "GET") {
           return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
@@ -65,27 +53,7 @@ function mockChatTransport(opts: {
       if (path.startsWith("/api/v1/conversations?")) {
         return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
       }
-      if (method === "DELETE" && /\/messages\/[^/]+$/.test(path)) {
-        const ok = opts.messageDeleteOk ?? true;
-        return { ok, status: ok ? 200 : 404, json: ok ? { ok: true } : null };
-      }
-      if (path.endsWith("/end") && method === "POST") {
-        return { ok: true, status: 200, json: { ok: true, incognitoCleared: true } };
-      }
-      if (path.includes("/feedback")) {
-        const status = opts.feedbackStatus ?? 200;
-        return {
-          ok: status === 200,
-          status,
-          json: status === 200 ? (opts.feedbackJson ?? {
-            generationId: 42,
-            kind: "UNSAFE",
-            createdAt: "2026-08-16T10:00:00Z",
-          }) : null,
-        };
-      }
       if (path.includes("/generations")) {
-        opts.generationBodies?.push(body);
         const status = opts.generationStatus ?? 200;
         return {
           ok: status === 200,
@@ -630,27 +598,6 @@ describe("useChatStore", () => {
     expect(store.messages[0].content).toBe("old");
   });
 
-  it("endToday clears the open conversation without deleting the list row", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({
-      conversationsJson: [
-        { conversationId: 1, relationshipId: 7, createdAt: "2026-08-18T00:00:00Z", lastMessagePreview: "无痕秘密", incognito: true },
-      ],
-      messagesJson: [{ messageId: 10, conversationId: 1, role: "user", content: "无痕秘密" }],
-    });
-    await store.loadConversations(transport, "7");
-    await store.openConversation(transport, "1");
-    expect(store.messages[0].content).toBe("无痕秘密");
-
-    const ok = await store.endToday(transport, "1");
-
-    expect(ok).toBe(true);
-    expect(store.conversationId).toBe("");
-    expect(store.messages).toEqual([]);
-    expect(store.conversations).toHaveLength(1);
-    expect(store.conversations[0].lastMessagePreview).toBe("");
-  });
-
   it("send mints idempotency key, creates generation, streams, reloads history", async () => {
     const store = useChatStore();
     const messages: Array<Record<string, unknown>> = [];
@@ -752,22 +699,6 @@ describe("useChatStore", () => {
     expect(store.generationStarting).toBe(false);
   });
 
-  it("single-flights concurrent regenerate calls during generation creation", async () => {
-    const store = useChatStore();
-    const deferred = deferredGenerationTransport();
-    await store.initConversation(deferred.transport, "1");
-
-    const first = store.regenerate(deferred.transport, successDeps(), "10", "Hello");
-    const second = store.regenerate(deferred.transport, successDeps(), "10", "Hello");
-
-    expect(store.generationStarting).toBe(true);
-    expect(deferred.generationCalls).toHaveBeenCalledTimes(1);
-    await second;
-    deferred.resolveGeneration(createdGeneration);
-    await first;
-    expect(store.generationStarting).toBe(false);
-  });
-
   it("releases the generation creation guard after a request error", async () => {
     const store = useChatStore();
     const deferred = deferredGenerationTransport();
@@ -778,158 +709,6 @@ describe("useChatStore", () => {
 
     await expect(first).rejects.toThrow("network down");
     expect(store.generationStarting).toBe(false);
-  });
-
-  it("CHAT-MODE: send carries the selected mode in the generation body", async () => {
-    const store = useChatStore();
-    const bodies: unknown[] = [];
-    const transport = mockChatTransport({
-      generationBodies: bodies,
-      messagesJson: [
-        { messageId: 10, conversationId: 1, role: "user", content: "Hello" },
-        { messageId: 11, conversationId: 1, role: "assistant", content: "Hi" },
-      ],
-    });
-
-    await store.initConversation(transport, "1");
-    store.setMode("DISCUSS");
-    await store.send(transport, successDeps(), "Hello");
-
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0]).toMatchObject({
-      idempotencyKey: expect.any(String),
-      userContent: "Hello",
-      mode: "DISCUSS",
-    });
-  });
-
-  it("CHAT-MODE: AUTO is the default and setMode narrows unapproved input", async () => {
-    const store = useChatStore();
-    expect(store.selectedMode).toBe("AUTO");
-
-    store.setMode("LISTEN");
-    expect(store.selectedMode).toBe("LISTEN");
-
-    store.setMode("CASUAL");
-    expect(store.selectedMode).toBe("CASUAL");
-
-    // Unapproved values are ignored, never applied.
-    store.setMode("YELL");
-    expect(store.selectedMode).toBe("CASUAL");
-  });
-
-  it("FEEDBACK: sendFeedback records a kind once and marks it in state", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({
-      feedbackJson: {
-        generationId: 42,
-        kind: "UNSAFE",
-        createdAt: "2026-08-16T10:00:00Z",
-      },
-    });
-
-    store.generationId = "42";
-    expect(await store.sendFeedback(transport, "UNSAFE")).toBe(true);
-    expect(store.feedbackKinds).toEqual(["UNSAFE"]);
-
-    // Repeating the same kind is a no-op (server is idempotent too).
-    expect(await store.sendFeedback(transport, "UNSAFE")).toBe(false);
-    expect(store.feedbackKinds).toEqual(["UNSAFE"]);
-
-    // A different kind records a second entry.
-    expect(await store.sendFeedback(transport, "FACTUAL_ERROR")).toBe(true);
-    expect(store.feedbackKinds).toEqual(["UNSAFE", "FACTUAL_ERROR"]);
-  });
-
-  it("FEEDBACK: sendFeedback without a generation is a silent no-op", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({});
-
-    expect(await store.sendFeedback(transport, "UNSAFE")).toBe(false);
-    expect(store.feedbackKinds).toEqual([]);
-  });
-
-  it("MSG-DELETE: removeMessage drops the row only on a confirmed delete", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({
-      messageDeleteOk: true,
-      messagesJson: [
-        { messageId: 10, conversationId: 1, role: "user", content: "A" },
-        { messageId: 11, conversationId: 1, role: "assistant", content: "B" },
-      ],
-    });
-
-    await store.initConversation(transport, "1");
-    expect(store.messages).toHaveLength(2);
-
-    expect(await store.removeMessage(transport, "10")).toBe(true);
-    expect(store.messages.map((m) => m.messageId)).toEqual(["11"]);
-  });
-
-  it("MSG-DELETE: an existence-hidden false keeps the row", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({
-      messageDeleteOk: false,
-      messagesJson: [
-        { messageId: 10, conversationId: 1, role: "user", content: "A" },
-      ],
-    });
-
-    await store.initConversation(transport, "1");
-    expect(await store.removeMessage(transport, "10")).toBe(false);
-    expect(store.messages).toHaveLength(1);
-  });
-
-  it("SVC-MODE: loadServiceMode stores the current status and survives reset()", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({
-      serviceModeJson: { mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" },
-    });
-
-    expect(store.serviceMode).toBeNull();
-    await store.loadServiceMode(transport);
-    expect(store.serviceMode).toEqual({
-      mode: "ZERO_LLM",
-      summary: "当前为无生成模型的受限服务",
-    });
-
-    // reset() is also called by startConversation(); the ops fact survives it.
-    store.reset();
-    expect(store.serviceMode?.mode).toBe("ZERO_LLM");
-  });
-
-  it("INC-MODE: initConversation carries the flag and marks the open conversation", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({});
-
-    await store.initConversation(transport, "1", true);
-    expect(store.activeIncognito).toBe(true);
-    expect(store.conversationId).toBe("1");
-
-    // A fresh non-incognito conversation flips the flag back.
-    await store.initConversation(transport, "1", false);
-    expect(store.activeIncognito).toBe(false);
-  });
-
-  it("INC-MODE: openConversation mirrors the opened conversation's flag", async () => {
-    const store = useChatStore();
-    const transport = mockChatTransport({
-      conversationsJson: [
-        {
-          conversationId: "5",
-          relationshipId: "1",
-          createdAt: "2026-08-16T08:00:00Z",
-          incognito: true,
-        },
-      ],
-      messagesJson: [
-        { messageId: 10, conversationId: 5, role: "user", content: "hi" },
-      ],
-    });
-
-    await store.loadConversations(transport, "1");
-    await store.openConversation(transport, "5");
-    expect(store.activeIncognito).toBe(true);
   });
 
   it("send without conversationId transitions to failed", async () => {
@@ -996,7 +775,6 @@ describe("useChatStore", () => {
     expect(store.messages).toEqual([]);
     expect(store.phase).toBe("idle");
     expect(store.historyHasMore).toBe(false);
-    expect(store.pendingMemoryCount).toBe(0);
     expect(store.pendingUserContent).toBe("");
   });
 
@@ -1103,80 +881,6 @@ describe("useChatStore", () => {
     expect(store.pendingUserContent).toBe("Hello");
   });
 
-  // ---- CONV-MGMT: remove + rename ----
-
-  it("removeConversation drops the entry and clears the open window", async () => {
-    const store = useChatStore();
-    store.conversations = [
-      { conversationId: "3", relationshipId: "1", title: "A" },
-      { conversationId: "4", relationshipId: "1" },
-    ];
-    store.conversationId = "3";
-    store.messages = [
-      { messageId: "1", conversationId: "3", role: "user", content: "hi" },
-    ];
-    const transport = mockChatTransport({});
-    vi.spyOn(transport, "request").mockImplementation(
-      async (method: string, path: string) => {
-        if (path === "/api/v1/conversations/3" && method === "DELETE") {
-          return { ok: true, status: 200, json: { ok: true } };
-        }
-        return { ok: true, status: 200, json: {} };
-      },
-    );
-
-    const removed = await store.removeConversation(transport, "3");
-
-    expect(removed).toBe(true);
-    expect(store.conversations.map((c) => c.conversationId)).toEqual(["4"]);
-    expect(store.conversationId).toBe("");
-    expect(store.messages).toEqual([]);
-  });
-
-  it("removeConversation keeps state on a non-confirmed delete", async () => {
-    const store = useChatStore();
-    store.conversations = [{ conversationId: "3", relationshipId: "1" }];
-    store.conversationId = "3";
-    const transport = mockChatTransport({});
-    vi.spyOn(transport, "request").mockImplementation(
-      async () => ({ ok: false, status: 404, json: null }),
-    );
-
-    const removed = await store.removeConversation(transport, "3");
-
-    expect(removed).toBe(false);
-    expect(store.conversations).toHaveLength(1);
-    expect(store.conversationId).toBe("3");
-  });
-
-  it("renameConversation updates the list entry only on a confirmed result", async () => {
-    const store = useChatStore();
-    store.conversations = [{ conversationId: "3", relationshipId: "1" }];
-    const transport = mockChatTransport({});
-    vi.spyOn(transport, "request").mockImplementation(
-      async () => ({ ok: true, status: 200, json: { conversationId: 3, title: "新标题" } }),
-    );
-
-    const renamed = await store.renameConversation(transport, "3", "新标题");
-
-    expect(renamed).toBe(true);
-    expect(store.conversations[0]?.title).toBe("新标题");
-  });
-
-  it("renameConversation keeps the entry untouched on a non-confirmed result", async () => {
-    const store = useChatStore();
-    store.conversations = [{ conversationId: "3", relationshipId: "1" }];
-    const transport = mockChatTransport({});
-    vi.spyOn(transport, "request").mockImplementation(
-      async () => ({ ok: false, status: 404, json: null }),
-    );
-
-    const renamed = await store.renameConversation(transport, "3", "x");
-
-    expect(renamed).toBe(false);
-    expect(store.conversations[0]?.title).toBeUndefined();
-  });
-
   // ---- FAIL-REASON: terminal fault surfaced for friendly copy ----
 
   it("terminalFault exposes the fault of a chat.failed terminal event", async () => {
@@ -1231,56 +935,6 @@ describe("useChatStore", () => {
 
     expect(store.phase).toBe("failed");
     expect(store.terminalFault).toBeNull();
-  });
-
-  // ---- USAGE-VIZ: settled usage surfaced after a completed run ----
-
-  it("run pulls the settled usage from the snapshot endpoint after completion", async () => {
-    const store = useChatStore();
-    const deps: RealtimeDeps = {
-      resume: vi.fn(async (): Promise<ResumeResult> => ({
-        disposition: "RESUMED",
-        events: [delta(1, 1, "Hel"), terminal(2, 1)],
-      })),
-      fetchSnapshot: vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        events: [],
-        usage: { inputTokens: 42, outputTokens: 58 },
-      })),
-    };
-
-    await store.run(deps, "gen-1", 1);
-
-    expect(store.phase).toBe("completed");
-    expect(store.usage).toEqual({ inputTokens: 42, outputTokens: 58 });
-  });
-
-  it("keeps usage null when the snapshot carries none", async () => {
-    const store = useChatStore();
-    const deps: RealtimeDeps = {
-      resume: vi.fn(async (): Promise<ResumeResult> => ({
-        disposition: "RESUMED",
-        events: [delta(1, 1, "Hel"), terminal(2, 1)],
-      })),
-      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
-    };
-
-    await store.run(deps, "gen-1", 1);
-
-    expect(store.phase).toBe("completed");
-    expect(store.usage).toBeNull();
-  });
-
-  it("reset clears the usage", async () => {
-    const store = useChatStore();
-    store.usage = { inputTokens: 1, outputTokens: 2 };
-    store.generationId = "gen-1";
-
-    store.reset();
-
-    expect(store.usage).toBeNull();
-    expect(store.generationId).toBe("");
   });
 
   // ---- CONV-HIST: conversation list + history pagination ----
@@ -1371,7 +1025,6 @@ describe("useChatStore", () => {
       { messageId: "old", conversationId: "5", role: "user", content: "原会话" },
     ];
     store.historyHasMore = false;
-    store.activeIncognito = true;
     const failing: ChatTransport = {
       request: async () => ({ ok: false, status: 503, json: null }),
     };
@@ -1382,7 +1035,6 @@ describe("useChatStore", () => {
     expect(store.conversationId).toBe("5");
     expect(store.messages.map((message) => message.content)).toEqual(["原会话"]);
     expect(store.historyHasMore).toBe(false);
-    expect(store.activeIncognito).toBe(true);
   });
 
   // ---- round7（P1）：快速切换会话的 stale response 不得串写当前窗口 ----
@@ -1455,8 +1107,8 @@ describe("useChatStore", () => {
   it("drops every late A page once the user switched away mid-flight (B->A ordering, A resolves first)", async () => {
     const store = useChatStore();
     store.conversations = [
-      { conversationId: "11", relationshipId: "1", incognito: true, lastMessagePreview: "" },
-      { conversationId: "22", relationshipId: "1", incognito: false, lastMessagePreview: "" },
+      { conversationId: "11", relationshipId: "1", lastMessagePreview: "" },
+      { conversationId: "22", relationshipId: "1", lastMessagePreview: "" },
     ];
     const { transport, answer } = gatedMessagesTransport();
 
@@ -1465,7 +1117,6 @@ describe("useChatStore", () => {
     // A 的页面挂在半途；用户立刻切到 22。
     const pending22 = store.openConversation(transport, "22");
     expect(store.conversationId).toBe("22");
-    expect(store.activeIncognito).toBe(false);
 
     // A（11）先返回：令牌过期 ⇒ 整页丢弃，窗口归属与分页标志原样保留。
     expect(answer("11", pageOf("11", 101, PAGE_ROWS))).toBe(true);
@@ -1486,15 +1137,13 @@ describe("useChatStore", () => {
     expect(store.messages).toHaveLength(PAGE_ROWS + PAGE_ROWS - 1);
     expect(store.messages.every((m) => m.conversationId === "22")).toBe(true);
     expect(store.historyHasMore).toBe(false);
-    // INC 镜像没有被迟到的旧会话改写。
-    expect(store.activeIncognito).toBe(false);
   });
 
   it("keeps the switched-to window intact when the old conversation lands afterwards (reverse order)", async () => {
     const store = useChatStore();
     store.conversations = [
-      { conversationId: "31", relationshipId: "1", incognito: false, lastMessagePreview: "" },
-      { conversationId: "42", relationshipId: "1", incognito: true, lastMessagePreview: "" },
+      { conversationId: "31", relationshipId: "1", lastMessagePreview: "" },
+      { conversationId: "42", relationshipId: "1", lastMessagePreview: "" },
     ];
     const { transport, answer } = gatedMessagesTransport();
 
@@ -1519,40 +1168,7 @@ describe("useChatStore", () => {
 
     expect(store.messages.length).toBe(settledLength);
     expect(store.messages.some((m) => m.conversationId !== "42")).toBe(false);
-    expect(store.activeIncognito).toBe(true);
     void pending31;
   });
 
-  // ---- MEM-PROMPT: pending candidate count ----
-
-  it("refreshPendingMemoryCount counts only pending candidates", async () => {
-    const store = useChatStore();
-    const transport: ChatTransport = {
-      request: async () => ({
-        ok: true,
-        status: 200,
-        json: [
-          { memoryId: "1", scope: "RELATIONSHIP", summary: "a", status: "PENDING_CONFIRMATION" },
-          { memoryId: "2", scope: "RELATIONSHIP", summary: "b", status: "ACCEPTED" },
-          { memoryId: "3", scope: "RELATIONSHIP", summary: "c", status: "PENDING_CONFIRMATION" },
-        ],
-      }),
-    };
-
-    await store.refreshPendingMemoryCount(transport, "1");
-
-    expect(store.pendingMemoryCount).toBe(2);
-  });
-
-  it("refreshPendingMemoryCount keeps the previous count on failure", async () => {
-    const store = useChatStore();
-    store.pendingMemoryCount = 3;
-    const failing: ChatTransport = {
-      request: async () => ({ ok: false, status: 500, json: null }),
-    };
-
-    await store.refreshPendingMemoryCount(failing, "1");
-
-    expect(store.pendingMemoryCount).toBe(3);
-  });
 });

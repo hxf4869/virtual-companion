@@ -1,14 +1,9 @@
-// S0-18: unified H5 navigation guard. Server Admission Gate remains the
-// security source; this module only restores the intended page after login
-// and keeps frontend gate copy honest (unknown/blocked/ready).
+// H5 navigation guard. Authentication and role checks only decide which page
+// may render; age and consent remain server-side chat safety requirements.
 
-import { REQUIRED_CONSENT_TYPES } from "./next-step";
-
-export type PageClass = "public" | "login" | "age" | "consent" | "admin" | "protected";
+export type PageClass = "login" | "admin" | "protected";
 
 export type SessionStatus = "unknown" | "anonymous" | "authenticated";
-
-export type AdmissionGate = "unknown" | "blocked" | "ready";
 
 export const OPERATOR_ROLES: ReadonlySet<string> = new Set([
   "ADMIN",
@@ -26,32 +21,18 @@ export interface GateSnapshot {
   session: SessionStatus;
   role: string | null;
   passwordMustChange?: boolean;
-  ageKnown: boolean;
-  ageLoadFailed: boolean;
-  ageState: string | null;
-  consentKnown: boolean;
-  consentLoadFailed: boolean;
-  grantedTypes: ReadonlyArray<string>;
 }
 
 export const PASSWORD_CHANGE_HREF = "/pages/account/account?passwordChange=required";
 
-const PUBLIC_PATHS = new Set([
-  "/pages/index/index",
-  "/pages/help/help",
-  "/pages/ai-notice/ai-notice",
-]);
-
 export function classifyPage(href: string): PageClass {
   const path = pathOf(href);
   if (path === "/pages/login/login") return "login";
-  if (path === "/pages/age/age") return "age";
-  if (path === "/pages/consent/consent") return "consent";
   if (path === "/pages/admin/admin"
+      || path === "/pages/admin-accounts/admin-accounts"
       || path === "/pages/admin-models/admin-models"
       || path === "/pages/admin-routing/admin-routing"
       || path === "/pages/admin-system/admin-system") return "admin";
-  if (PUBLIC_PATHS.has(path)) return "public";
   return "protected";
 }
 
@@ -95,7 +76,6 @@ export function normalizeInternalHref(raw: string | null | undefined): string | 
 export function buildLoginHref(fromHref: string): string {
   const internal = normalizeInternalHref(fromHref);
   if (!internal) return "/pages/login/login";
-  if (classifyPage(internal) === "public") return "/pages/login/login";
   return `/pages/login/login?return=${encodeURIComponent(internal)}`;
 }
 
@@ -122,17 +102,6 @@ export function resolvePostLoginHref(
   return parseReturnHref(loginHref) ?? options.fallback;
 }
 
-export function resolveAdmissionGate(snapshot: GateSnapshot): AdmissionGate {
-  if (snapshot.session === "unknown") return "unknown";
-  if (snapshot.session === "anonymous") return "blocked";
-  if (snapshot.ageLoadFailed || snapshot.consentLoadFailed) return "unknown";
-  if (!snapshot.ageKnown || !snapshot.consentKnown) return "unknown";
-  if (snapshot.ageState !== "ADULT_VERIFIED") return "blocked";
-  const granted = new Set(snapshot.grantedTypes);
-  if (REQUIRED_CONSENT_TYPES.some((type) => !granted.has(type))) return "blocked";
-  return "ready";
-}
-
 export function applyInterceptorUrl(targetHref: string, snapshot: GateSnapshot): string {
   const href = targetHref.startsWith("/pages/") ? targetHref : normalizeInternalHref(targetHref) ?? targetHref;
   if (snapshot.session === "unknown") return href;
@@ -141,7 +110,7 @@ export function applyInterceptorUrl(targetHref: string, snapshot: GateSnapshot):
     return PASSWORD_CHANGE_HREF;
   }
   const page = classifyPage(href);
-  if (page === "public" || page === "login") return href;
+  if (page === "login") return href;
   if (snapshot.session === "anonymous") {
     return buildLoginHref(href);
   }

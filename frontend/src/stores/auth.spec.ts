@@ -1,19 +1,12 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AuthTokens, AuthTransport } from "@/api/auth";
+import type { AuthSessionIdentity, AuthTransport } from "@/api/auth";
 import { useAuthStore } from "@/stores/auth";
-import { useAgeStore } from "@/stores/age";
 import { useChatStore } from "@/stores/chat";
-import { useConsentStore } from "@/stores/consent";
-import { useDataStore } from "@/stores/data";
-import { useExportStore } from "@/stores/export";
-import { useIncognitoStore } from "@/stores/incognito";
-import { useMemoryStore } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
-import { useReminderStore } from "@/stores/reminder";
 
-function okTransport(tokens: AuthTokens): AuthTransport {
+function okTransport(tokens: AuthSessionIdentity): AuthTransport {
   return {
     request: vi.fn(async () => ({ ok: true, status: 200, json: tokens })),
   };
@@ -33,30 +26,21 @@ function throwTransport(): AuthTransport {
   return { request: vi.fn(async () => Promise.reject(new Error("offline"))) };
 }
 
-function sampleTokens(_accessToken = "a", passwordMustChange = false): AuthTokens {
+function sampleTokens(_accessToken = "a", passwordMustChange = false): AuthSessionIdentity {
   return {
+    nextStep: "ACTIVE",
     expiresInSeconds: 7200,
     accountId: "7",
+    email: "alice@example.com",
     role: "USER",
     passwordMustChange,
+    authenticatorEnabled: true,
   };
-}
-
-function sessionList(passwordMustChange = false) {
-  return [{
-    id: "1",
-    createdAt: "c",
-    expiresAt: "e",
-    current: true,
-    accountId: "7",
-    role: "USER",
-    passwordMustChange,
-  }];
 }
 
 function restoreTransport(): AuthTransport {
   return {
-    request: vi.fn(async () => ({ ok: true, status: 200, json: sessionList() })),
+    request: vi.fn(async () => ({ ok: true, status: 200, json: sampleTokens() })),
   };
 }
 
@@ -94,11 +78,12 @@ describe("useAuthStore", () => {
 
     const ok = await store.login(okTransport(sampleTokens("a")), "root", "pw");
 
-    expect(ok).toBe(true);
+    expect(ok).toBe("ACTIVE");
     expect(store.isAuthenticated).toBe(true);
     expect(store.sessionStatus).toBe("authenticated");
     expect(store.accessToken).toBe("session");
     expect(store.accountId).toBe("7");
+    expect(store.email).toBe("alice@example.com");
     expect(store.role).toBe("USER");
     // P1-09: XSS-readable storage must never hold credentials.
     expect(storage.setItem).not.toHaveBeenCalled();
@@ -112,14 +97,15 @@ describe("useAuthStore", () => {
     expect(store.passwordMustChange).toBe(true);
     store.clear();
     expect(store.passwordMustChange).toBe(false);
+    expect(store.email).toBeNull();
   });
 
   it("does not authenticate on a server rejection (existence hidden)", async () => {
     const store = useAuthStore();
 
-    const ok = await store.login(failTransport(), "root", "wrong");
+    const ok = await store.login(failTransport(404), "root", "wrong");
 
-    expect(ok).toBe(false);
+    expect(ok).toBeNull();
     expect(store.isAuthenticated).toBe(false);
     expect(store.error).toBe("invalid-credentials");
   });
@@ -129,12 +115,100 @@ describe("useAuthStore", () => {
 
     const ok = await store.login(throwTransport(), "root", "pw");
 
-    expect(ok).toBe(false);
+    expect(ok).toBeNull();
     expect(store.isAuthenticated).toBe(false);
     expect(store.error).toBe("network-failed");
   });
 
-  it("restores identity from GET /auth/sessions", async () => {
+  it("keeps a TOTP challenge in memory without fabricating a session", async () => {
+    const store = useAuthStore();
+    const storage = localStorage as unknown as ReturnType<typeof makeStorage>;
+    const challengeId = "a".repeat(43);
+    const transport: AuthTransport = {
+      request: vi.fn(async () => ({
+        ok: true,
+        status: 202,
+        json: {
+          nextStep: "TOTP_REQUIRED",
+          challengeId,
+          expiresAt: "2030-01-01T00:00:00Z",
+        },
+      })),
+    };
+
+    await expect(store.login(transport, "alice@example.com", "pw"))
+      .resolves.toBe("TOTP_REQUIRED");
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.challengeId).toBe(challengeId);
+    expect(store.nextStep).toBe("TOTP_REQUIRED");
+    expect(storage.setItem).not.toHaveBeenCalled();
+  });
+
+  it("loads first-use setup, confirms TOTP and retains one-time recovery codes", async () => {
+    const store = useAuthStore();
+    const challengeId = "b".repeat(43);
+    const recoveryCodes = Array.from({ length: 10 }, (_, index) => `CODE-${index}`);
+    const request = vi.fn(async (_method: string, path: string) => {
+      if (path === "/api/v1/auth/login") {
+        return {
+          ok: true,
+          status: 202,
+          json: {
+            nextStep: "AUTHENTICATOR_SETUP_REQUIRED",
+            challengeId,
+            expiresAt: "2030-01-01T00:00:00Z",
+          },
+        };
+      }
+      if (path.endsWith("/authenticator-setup")) {
+        return {
+          ok: true,
+          status: 200,
+          json: {
+            manualKey: "ABCDEFGHIJKLMNOP",
+            provisioningUri: "otpauth://totp/Virtual%20Companion:alice",
+            qrCodeDataUrl: "data:image/png;base64,abc",
+          },
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: { ...sampleTokens(), recoveryCodes },
+      };
+    });
+    const transport: AuthTransport = { request };
+
+    await expect(store.login(transport, "alice@example.com", "pw"))
+      .resolves.toBe("AUTHENTICATOR_SETUP_REQUIRED");
+    await expect(store.loadAuthenticatorSetup(transport)).resolves.toBe(true);
+    await expect(store.confirmAuthenticator(transport, "123456", true)).resolves.toBe(true);
+
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.recoveryCodes).toEqual(recoveryCodes);
+    expect(request).toHaveBeenLastCalledWith(
+      "POST",
+      `/api/v1/auth/challenges/${challengeId}/authenticator-confirm`,
+      { code: "123456", trustDevice: true },
+    );
+  });
+
+  it("preserves a server-selected pending or disabled admission state", async () => {
+    const pending = useAuthStore();
+    const transport: AuthTransport = {
+      request: vi.fn(async () => ({
+        ok: true,
+        status: 202,
+        json: { nextStep: "REVIEW_PENDING" },
+      })),
+    };
+    await expect(pending.login(transport, "alice@example.com", "pw"))
+      .resolves.toBe("REVIEW_PENDING");
+    expect(pending.isAuthenticated).toBe(false);
+    expect(pending.nextStep).toBe("REVIEW_PENDING");
+  });
+
+  it("restores identity from GET /auth/session", async () => {
     const store = useAuthStore();
     await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
 
@@ -143,7 +217,7 @@ describe("useAuthStore", () => {
 
     expect(renewed).toBe(true);
     expect(store.accountId).toBe("7");
-    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/sessions");
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/session");
   });
 
   it("coalesces concurrent bootstrap, page and restore calls", async () => {
@@ -154,7 +228,7 @@ describe("useAuthStore", () => {
     });
     const request = vi.fn(async () => {
       await gate;
-      return { ok: true, status: 200, json: sessionList() };
+      return { ok: true, status: 200, json: sampleTokens() };
     });
     const t: AuthTransport = { request };
 
@@ -193,7 +267,7 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(false);
   });
 
-  it("renewAccessToken reports renewed after GET /auth/sessions", async () => {
+  it("renewAccessToken reports renewed after GET /auth/session", async () => {
     const store = useAuthStore();
     await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
 
@@ -202,7 +276,7 @@ describe("useAuthStore", () => {
 
     expect(outcome).toBe("renewed");
     expect(store.accountId).toBe("7");
-    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/sessions");
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/session");
   });
 
   it("SESS-REVIVE: renewAccessToken reports rejected and clears on a refused cookie", async () => {
@@ -245,18 +319,14 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(false);
   });
 
-  it("LOGOUT-CLEAR: logout drops in-memory chat, memory, and relationship caches", async () => {
+  it("LOGOUT-CLEAR: logout drops in-memory chat and relationship caches", async () => {
     const auth = useAuthStore();
     await auth.login(okTransport(sampleTokens("a")), "alice", "pw");
     const chat = useChatStore();
-    const memory = useMemoryStore();
     const rel = useRelationshipStore();
     chat.conversationId = "99";
     chat.messages = [
       { messageId: "m1", conversationId: "99", role: "user", content: "secret" },
-    ];
-    memory.canonical = [
-      { memoryId: "mem-1", scope: "RELATIONSHIP", summary: "不该留给下一账号", status: "ACCEPTED" },
     ];
     rel.relationships = [
       {
@@ -271,59 +341,22 @@ describe("useAuthStore", () => {
 
     expect(chat.conversationId).toBe("");
     expect(chat.messages).toEqual([]);
-    expect(memory.canonical).toEqual([]);
     expect(rel.relationships).toEqual([]);
     expect(rel.currentRelationshipId).toBeNull();
   });
 
-  it("LOGOUT-CLEAR: logout also drops consent, data, export, reminder, age and incognito caches", async () => {
-    const auth = useAuthStore();
-    await auth.login(okTransport(sampleTokens("a")), "alice", "pw");
-    const consent = useConsentStore();
-    const data = useDataStore();
-    const exported = useExportStore();
-    const reminder = useReminderStore();
-    const age = useAgeStore();
-    const incognito = useIncognitoStore();
-    consent.records = [
-      {
-        consentId: "c1",
-        consentType: "SERVICE_TERMS",
-        version: "2026-08",
-        granted: true,
-        grantedAt: "t",
-      },
-    ];
-    data.conversations = [
-      { conversationId: "9", relationshipId: "1", lastMessagePreview: "secret" },
-    ];
-    exported.request = { exportId: "e1", status: "READY" } as never;
-    reminder.reminders = [{ reminderId: "r1", relationshipId: "1", text: "secret", remindAt: "t", recurrence: "NONE", status: "ACTIVE", createdAt: "t" }];
-    age.record = { ageState: "ADULT_VERIFIED", providerRef: "x", verifiedAt: "t" };
-    incognito.defaultIncognito = true;
-
-    await auth.logout(okTransport(sampleTokens()));
-
-    expect(consent.records).toEqual([]);
-    expect(data.conversations).toEqual([]);
-    expect(exported.request).toBeNull();
-    expect(reminder.reminders).toEqual([]);
-    expect(age.ageState).toBe("AGE_UNKNOWN");
-    expect(incognito.defaultIncognito).toBe(false);
-  });
-
   it("LOGOUT-CLEAR: a failed refresh without an existing session does not wipe caches", async () => {
-    const memory = useMemoryStore();
-    memory.canonical = [
-      { memoryId: "mem-1", scope: "RELATIONSHIP", summary: "预置", status: "ACCEPTED" },
+    const chat = useChatStore();
+    chat.conversations = [
+      { conversationId: "9", relationshipId: "1", title: "预置" },
     ];
     const auth = useAuthStore();
     expect(auth.isAuthenticated).toBe(false);
 
     await auth.tryRefresh(failTransport(401));
 
-    expect(memory.canonical).toHaveLength(1);
-    expect(memory.canonical[0]?.memoryId).toBe("mem-1");
+    expect(chat.conversations).toHaveLength(1);
+    expect(chat.conversations[0]?.conversationId).toBe("9");
   });
 
   it("onUnauthorized clears the session and redirects to login (server 401)", async () => {
@@ -367,8 +400,8 @@ describe("useAuthStore", () => {
     vi.stubGlobal("location", {
       pathname: "/",
       search: "",
-      hash: "#/pages/login/login?return=%2Fpages%2Fmemory%2Fmemory%3FrelationshipId%3D7",
-      href: "http://localhost/#/pages/login/login?return=%2Fpages%2Fmemory%2Fmemory%3FrelationshipId%3D7",
+      hash: "#/pages/login/login?return=%2Fpages%2Fchat%2Fchat%3FrelationshipId%3D7",
+      href: "http://localhost/#/pages/login/login?return=%2Fpages%2Fchat%2Fchat%3FrelationshipId%3D7",
     });
     await store.login(okTransport(sampleTokens("a")), "alice", "pw");
 

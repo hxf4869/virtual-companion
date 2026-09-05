@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 50
+  KEEP: 62
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -28,20 +28,16 @@ operations:
   method: GET
   path: /api/v1/service-mode
   currentH5Callers:
-  - frontend/src/stores/chat.ts
-  - frontend/src/stores/data.ts
   - frontend/src/api/admin-runtime.ts
   decision: KEEP
   keepBecause:
   - h5-caller
-  replacementOrImpact: Keep user-visible generation availability. Go v1 may project this as the single
-    provider enabled/disabled plus ZERO_LLM/fake test modes.
+  replacementOrImpact: Keep generation availability in the H5 administration console. Consumer pages
+    use friendly availability states and do not expose service-mode terminology.
 - operationId: getAgeState
   method: GET
   path: /api/v1/age/state
-  currentH5Callers:
-  - frontend/src/stores/age.ts
-  - frontend/src/pages/age/age.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -49,9 +45,7 @@ operations:
 - operationId: verifyAge
   method: POST
   path: /api/v1/age/verification
-  currentH5Callers:
-  - frontend/src/stores/age.ts
-  - frontend/src/pages/age/age.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -59,100 +53,75 @@ operations:
 - operationId: submitAgeAppeal
   method: POST
   path: /api/v1/age/appeal
-  currentH5Callers:
-  - frontend/src/stores/age.ts
-  - frontend/src/pages/age/age.vue
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Remote age appeal is DEFER. Hide the age-page appeal form in the same slice that
-    drops this operation.
+  replacementOrImpact: Remote age appeal is DEFER and has no current frontend entry.
 - operationId: listAgeAppeals
   method: GET
   path: /api/v1/age/appeals
-  currentH5Callers:
-  - frontend/src/stores/age.ts
-  - frontend/src/pages/age/age.vue
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide appeal history on the age page in the same slice. Owner simulated adult state
+  replacementOrImpact: Appeal history is DEFER and has no current frontend entry. Simulated adult state
     remains on getAgeState.
 - operationId: getUsageHealth
   method: GET
   path: /api/v1/usage-health
-  currentH5Callers:
-  - frontend/src/stores/usage-health.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Usage-health backend is DEFER. Hide 使用与休息 page APIs in the same slice.
+  replacementOrImpact: Usage-health is DEFER and has no current frontend entry.
 - operationId: updateUsageHealthPrefs
   method: PUT
   path: /api/v1/usage-health
-  currentH5Callers:
-  - frontend/src/stores/usage-health.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide usage-health preference editor in the same slice.
+  replacementOrImpact: Usage-health preferences are DEFER and have no current frontend entry.
 - operationId: usageHealthHeartbeat
   method: POST
   path: /api/v1/usage-health/heartbeat
-  currentH5Callers:
-  - frontend/src/stores/usage-health.ts
-  - frontend/src/pages/chat/chat.vue
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Remove chat-page heartbeat in the same slice. Chat send/stream must not depend
-    on it.
+  replacementOrImpact: The current chat send/stream does not depend on a usage-health heartbeat.
 - operationId: recordUsageReminder
   method: POST
   path: /api/v1/usage-health/reminder
-  currentH5Callers:
-  - frontend/src/stores/usage-health.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide usage-reminder recording in the same slice.
+  replacementOrImpact: Usage reminders are DEFER and have no current frontend entry.
 - operationId: getIncognitoPref
   method: GET
   path: /api/v1/incognito-pref
-  currentH5Callers:
-  - frontend/src/stores/incognito.ts
-  - frontend/src/pages/incognito/incognito.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep incognito default. Outbound must read current state.
+  replacementOrImpact: Keep the server-side incognito default. The current frontend has no settings entry.
 - operationId: updateIncognitoPref
   method: PUT
   path: /api/v1/incognito-pref
-  currentH5Callers:
-  - frontend/src/stores/incognito.ts
-  - frontend/src/pages/incognito/incognito.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep the ability to change the incognito default.
+  replacementOrImpact: Keep the server capability without exposing a current frontend entry.
 - operationId: createRelationship
   method: POST
   path: /api/v1/relationships
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
-  - frontend/src/pages/companion/companion.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep creating the unique active companion.
+  replacementOrImpact: The server creates the unique default companion during first authenticator setup;
+    the current frontend does not expose manual creation.
 - operationId: listRelationships
   method: GET
   path: /api/v1/relationships
   currentH5Callers:
   - frontend/src/stores/relationship.ts
-  - frontend/src/stores/data.ts
   decision: KEEP
   keepBecause:
   - h5-caller
-  replacementOrImpact: Keep list because current H5 selector and data page call it. Alpha still has activeCompanionLimit=1.
+  replacementOrImpact: Keep list because Home, Chat and All Conversations resolve the server-created
+    default relationship through the relationship store.
 - operationId: getRelationship
   method: GET
   path: /api/v1/relationships/{relationshipId}
@@ -163,86 +132,69 @@ operations:
 - operationId: activateRelationship
   method: POST
   path: /api/v1/relationships/{relationshipId}
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
-  - h5-caller
-  replacementOrImpact: Keep because the relationship store activates the unique companion.
+  - core-outcome
+  replacementOrImpact: Retain the server lifecycle operation; the current frontend does not expose a switcher.
 - operationId: deleteRelationship
   method: DELETE
   path: /api/v1/relationships/{relationshipId}
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep deleting the unique companion.
+  replacementOrImpact: Retain server-side relationship deletion without a current frontend entry.
 - operationId: updateRelationshipPrefs
   method: PATCH
   path: /api/v1/relationships/{relationshipId}
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
-  - frontend/src/pages/companion/companion.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep viewing/modifying companion preferences.
+  replacementOrImpact: Retain server-side companion preferences without the retired settings page.
 - operationId: deactivateRelationship
   method: POST
   path: /api/v1/relationships/{relationshipId}/deactivate
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
-  - h5-caller
-  replacementOrImpact: Keep because current H5 deactivates companions through this operation.
+  - core-outcome
+  replacementOrImpact: Retain the server lifecycle operation; the current frontend keeps one active default.
 - operationId: previewRelationshipClearance
   method: GET
   path: /api/v1/relationships/{relationshipId}/clearance-preview
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - safety-or-data-rights
-  - h5-caller
-  replacementOrImpact: Keep clearance preview before companion data deletion.
+  replacementOrImpact: Keep clearance preview as a data-rights backend capability.
 - operationId: resetRelationship
   method: POST
   path: /api/v1/relationships/{relationshipId}/reset
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - safety-or-data-rights
-  - h5-caller
-  replacementOrImpact: Keep companion data reset as a data-rights operation.
+  replacementOrImpact: Keep companion data reset as a data-rights backend capability.
 - operationId: listMemoryImports
   method: GET
   path: /api/v1/memory-imports
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Memory import is DEFER. Hide companion import UI in the same slice.
+  replacementOrImpact: Memory import is DEFER and has no current frontend entry.
 - operationId: discardMemoryImport
   method: DELETE
   path: /api/v1/memory-imports
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide discard-import in the same slice as list/import.
+  replacementOrImpact: Discard import is DEFER and has no current frontend entry.
 - operationId: importMemories
   method: POST
   path: /api/v1/relationships/{relationshipId}/memory-imports
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide import action in the same slice. Canonical memory stays confirm/edit/delete.
+  replacementOrImpact: Import is DEFER and has no current frontend entry.
 - operationId: createConversation
   method: POST
   path: /api/v1/conversations
@@ -258,14 +210,15 @@ operations:
   path: /api/v1/conversations
   currentH5Callers:
   - frontend/src/stores/chat.ts
-  - frontend/src/stores/data.ts
   - frontend/src/pages/index/index.vue
   - frontend/src/pages/conversations/conversations.vue
   decision: KEEP
   keepBecause:
   - core-outcome
   - h5-caller
-  replacementOrImpact: Keep conversation list/history.
+  replacementOrImpact: Keep the Home / All Conversations summary source. Go v1 returns newest activity
+    first, exposes lastActivityAt, and resolves the after conversation id to the same activity tuple for
+    keyset pagination.
 - operationId: getConversationSummary
   method: GET
   path: /api/v1/conversations/{conversationId}/summary
@@ -276,55 +229,43 @@ operations:
 - operationId: previewChatWipe
   method: GET
   path: /api/v1/conversations/wipe-preview
-  currentH5Callers:
-  - frontend/src/pages/conversations/conversations.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - safety-or-data-rights
-  - h5-caller
-  replacementOrImpact: Keep wipe preview before deleting all chats.
+  replacementOrImpact: Keep wipe preview as a data-rights backend capability.
 - operationId: wipeAllChats
   method: POST
   path: /api/v1/conversations/wipe
-  currentH5Callers:
-  - frontend/src/pages/conversations/conversations.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - safety-or-data-rights
-  - h5-caller
-  replacementOrImpact: Keep deleting all chats as a data-rights operation.
+  replacementOrImpact: Keep deleting all chats as a data-rights backend capability.
 - operationId: deleteConversation
   method: DELETE
   path: /api/v1/conversations/{conversationId}
-  currentH5Callers:
-  - frontend/src/pages/conversations/conversations.vue
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep deleting one conversation.
+  replacementOrImpact: Retain conversation deletion without exposing a current frontend management entry.
 - operationId: renameConversation
   method: PATCH
   path: /api/v1/conversations/{conversationId}
-  currentH5Callers:
-  - frontend/src/pages/conversations/conversations.vue
-  - frontend/src/stores/chat.ts
-  decision: KEEP
-  keepBecause:
-  - h5-caller
-  replacementOrImpact: Keep rename because current conversations UI calls it.
-- operationId: endConversation
-  method: POST
-  path: /api/v1/conversations/{conversationId}/end
-  currentH5Callers:
-  - frontend/src/pages/conversations/conversations.vue
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep ending a conversation.
+  replacementOrImpact: Retain server-side title management; the current conversations page is read-only.
+- operationId: endConversation
+  method: POST
+  path: /api/v1/conversations/{conversationId}/end
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: Retain the server conversation lifecycle without a current frontend entry.
 - operationId: sendGeneration
   method: POST
   path: /api/v1/conversations/{conversationId}/generations
@@ -348,41 +289,31 @@ operations:
 - operationId: deleteMessage
   method: DELETE
   path: /api/v1/conversations/{conversationId}/messages/{messageId}
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
-  - h5-caller
   - safety-or-data-rights
-  replacementOrImpact: Keep single-message delete because current chat UI and data rights use it.
+  replacementOrImpact: Keep single-message deletion as a data-rights backend capability.
 - operationId: setMessageNoMemory
   method: PATCH
   path: /api/v1/conversations/{conversationId}/messages/{messageId}
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep no-memory on a message. Outbound and extraction must honour current state.
+  replacementOrImpact: Keep the server-side no-memory invariant. The current chat UI has no per-message switch.
 - operationId: selectGenerationVersion
   method: POST
   path: /api/v1/generations/{generationId}/select
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
-  - frontend/src/pages/chat/chat.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: One turn, one final result. Hide version-select UI in the same slice.
+  replacementOrImpact: One turn has one final result; the current frontend has no version selector.
 - operationId: listGenerationVersions
   method: GET
   path: /api/v1/messages/{messageId}/generation-versions
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
-  - frontend/src/pages/chat/chat.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide version list in the same slice as selectGenerationVersion.
+  replacementOrImpact: The current frontend has no generation-version list.
 - operationId: cancelGeneration
   method: POST
   path: /api/v1/generations/{generationId}/cancel
@@ -407,22 +338,17 @@ operations:
 - operationId: recordGenerationFeedback
   method: POST
   path: /api/v1/generations/{generationId}/feedback
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
-  - frontend/src/pages/chat/chat.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
-  - h5-caller
-  replacementOrImpact: Keep because the chat page records feedback. Not a second generation plane.
+  - safety-or-data-rights
+  replacementOrImpact: Retain feedback as a backend safety capability without a current chat entry.
 - operationId: createRealtimeTicket
   method: POST
   path: /api/v1/realtime/tickets
-  currentH5Callers:
-  - frontend/src/api/realtime-transport.ts
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Delete ticket mint. SSE uses the opaque session cookie after auth cutover. Remove
-    H5 ticket helper in the same slice.
+  replacementOrImpact: SSE now uses the opaque session cookie; the H5 ticket helper has been removed.
 - operationId: openRealtimeStream
   method: GET
   path: /api/v1/realtime/streams/{generationId}
@@ -435,158 +361,120 @@ operations:
 - operationId: createMemoryCandidate
   method: POST
   path: /api/v1/relationships/{relationshipId}/memories/candidates
-  currentH5Callers:
-  - frontend/src/stores/memory.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep explicit Owner candidate create. No auto-save and no MEMORY_EXTRACT job in
     Go v1.
 - operationId: listMemories
   method: GET
   path: /api/v1/relationships/{relationshipId}/memories
-  currentH5Callers:
-  - frontend/src/stores/memory.ts
-  - frontend/src/stores/data.ts
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep listing canonical and pending memory.
 - operationId: getMemory
   method: GET
   path: /api/v1/memories/{memoryId}
-  currentH5Callers:
-  - frontend/src/pages/memory-detail/memory-detail.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep memory detail.
+  replacementOrImpact: Keep the memory detail backend capability without a current frontend entry.
 - operationId: updateMemory
   method: PATCH
   path: /api/v1/memories/{memoryId}
-  currentH5Callers:
-  - frontend/src/stores/memory.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep Owner edit of canonical memory.
 - operationId: deleteMemory
   method: DELETE
   path: /api/v1/memories/{memoryId}
-  currentH5Callers:
-  - frontend/src/stores/memory.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep delete/tombstone. Restore must not resurrect.
 - operationId: confirmMemoryCandidate
   method: POST
   path: /api/v1/memories/{memoryId}/confirm
-  currentH5Callers:
-  - frontend/src/stores/memory.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep explicit confirm. Unconfirmed candidates are not Prompt facts.
 - operationId: rejectMemoryCandidate
   method: POST
   path: /api/v1/memories/{memoryId}/reject
-  currentH5Callers:
-  - frontend/src/stores/memory.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep explicit reject.
 - operationId: listMemoryEvidence
   method: GET
   path: /api/v1/memories/{memoryId}/evidence
-  currentH5Callers:
-  - frontend/src/pages/memory-detail/memory-detail.vue
-  - frontend/src/stores/memory.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
-  - h5-caller
   - safety-or-data-rights
-  replacementOrImpact: Keep evidence list because memory-detail renders it and memory must remain attributable.
+  replacementOrImpact: Keep evidence because server-side memory must remain attributable.
 - operationId: getMemoryAutoSave
   method: GET
   path: /api/v1/memories/auto-save
-  currentH5Callers:
-  - frontend/src/pages/memory/memory.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Go v1 has no auto-save. Hide the memory-page switch in the same slice.
+  replacementOrImpact: Go v1 has no auto-save and the current frontend has no memory switch.
 - operationId: setMemoryAutoSave
   method: PUT
   path: /api/v1/memories/auto-save
-  currentH5Callers:
-  - frontend/src/pages/memory/memory.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide auto-save toggle in the same slice. Candidates are Owner-explicit only.
+  replacementOrImpact: The current frontend has no auto-save toggle; candidates remain explicit only.
 - operationId: createReminder
   method: POST
   path: /api/v1/relationships/{relationshipId}/reminders
-  currentH5Callers:
-  - frontend/src/stores/reminder.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Reminder/proactive follow-up is DEFER. Hide the reminder page in the same slice.
+  replacementOrImpact: Reminder and proactive follow-up are DEFER with no current frontend entry.
 - operationId: listReminders
   method: GET
   path: /api/v1/relationships/{relationshipId}/reminders
-  currentH5Callers:
-  - frontend/src/stores/reminder.ts
-  - frontend/src/stores/data.ts
-  - frontend/src/pages/index/index.vue
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide reminder list on home/data/reminder pages in the same slice.
+  replacementOrImpact: The redesigned Home does not expose reminders.
 - operationId: updateReminder
   method: PATCH
   path: /api/v1/reminders/{reminderId}
-  currentH5Callers:
-  - frontend/src/stores/reminder.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide reminder edit in the same slice.
+  replacementOrImpact: Reminder editing is DEFER with no current frontend entry.
 - operationId: deleteReminder
   method: DELETE
   path: /api/v1/reminders/{reminderId}
-  currentH5Callers:
-  - frontend/src/stores/reminder.ts
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide reminder delete in the same slice.
+  replacementOrImpact: Reminder deletion is DEFER with no current frontend entry.
 - operationId: createReport
   method: POST
   path: /api/v1/reports
-  currentH5Callers:
-  - frontend/src/stores/report.ts
-  - frontend/src/pages/report/report.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
-  - h5-caller
   - safety-or-data-rights
-  replacementOrImpact: Keep Owner safety report create. H5 report page is a current caller.
+  replacementOrImpact: Keep safety report creation as a backend capability without a current frontend entry.
 - operationId: listReports
   method: GET
   path: /api/v1/reports
-  currentH5Callers:
-  - frontend/src/stores/report.ts
-  - frontend/src/pages/report/report.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
-  - h5-caller
-  replacementOrImpact: Keep the caller-visible report list. Admin/Beta report queues stay RETIRE.
+  - safety-or-data-rights
+  replacementOrImpact: Keep report history as a safety backend capability; no current frontend entry exists.
 - operationId: getReport
   method: GET
   path: /api/v1/reports/{reportId}
@@ -596,75 +484,56 @@ operations:
 - operationId: assignServiceClass
   method: POST
   path: /api/v1/auth/admin/service-class
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Service class is RETIRE. Hide admin assignment in the same slice.
+  replacementOrImpact: Service class is RETIRE and is absent from the redesigned admin console.
 - operationId: listServiceClassAssignments
   method: GET
   path: /api/v1/auth/admin/service-classes
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin service-class list in the same slice.
+  replacementOrImpact: The redesigned admin console has no service-class list.
 - operationId: recordConsent
   method: PUT
   path: /api/v1/consents
-  currentH5Callers:
-  - frontend/src/stores/consent.ts
-  - frontend/src/pages/consent/consent.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep record/withdraw. Outbound uses current consent, not a stale snapshot.
 - operationId: listConsents
   method: GET
   path: /api/v1/consents
-  currentH5Callers:
-  - frontend/src/stores/consent.ts
-  - frontend/src/stores/data.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   replacementOrImpact: Keep listing consent state.
 - operationId: createExport
   method: POST
   path: /api/v1/exports
-  currentH5Callers:
-  - frontend/src/stores/export.ts
-  - frontend/src/pages/export/export.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   - safety-or-data-rights
   replacementOrImpact: Keep export create. MinIO/object lifecycle stays until a later dedicated slice.
 - operationId: getExportStatus
   method: GET
   path: /api/v1/exports/{exportId}
-  currentH5Callers:
-  - frontend/src/stores/export.ts
-  - frontend/src/pages/export/export.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   - safety-or-data-rights
   replacementOrImpact: Keep export status.
 - operationId: downloadExport
   method: GET
   path: /api/v1/exports/{exportId}/download
-  currentH5Callers:
-  - frontend/src/stores/export.ts
-  - frontend/src/pages/export/export.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
-  - h5-caller
   - safety-or-data-rights
   replacementOrImpact: Keep one-time application download. No reusable presigned URL.
 - operationId: login
@@ -674,45 +543,134 @@ operations:
   - frontend/src/stores/auth.ts
   - frontend/src/pages/login/login.vue
   decision: SIMPLIFY
-  replacementOrImpact: Keep password login. Go cutover issues opaque vc_session cookie and no JWT in the
-    body. Owner re-logins; no dual issuer.
+  replacementOrImpact: Keep account/password as step one; account accepts username or email. It returns
+    a five-minute TOTP/setup challenge, or issues opaque vc_session only when a valid trusted-device cookie
+    skips TOTP. No JWT login.
+- operationId: getRegistrationStatus
+  method: GET
+  path: /api/v1/auth/registration-status
+  currentH5Callers:
+  - frontend/src/stores/auth.ts
+  - frontend/src/pages/login/login.vue
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: Server owns the registration switch. Launch value is false and the frontend must
+    not invent a registration entry.
+- operationId: register
+  method: POST
+  path: /api/v1/auth/register
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: Keep a fail-closed launch endpoint. It accepts no account while email delivery is
+    unconfigured and registration remains closed.
+- operationId: getAuthSession
+  method: GET
+  path: /api/v1/auth/session
+  currentH5Callers:
+  - frontend/src/stores/auth.ts
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  - owner-instruction
+  replacementOrImpact: Page refresh restores ACTIVE account state from the opaque cookie; H5 must not infer
+    admission from local storage.
+- operationId: getAuthenticatorSetup
+  method: POST
+  path: /api/v1/auth/challenges/{challengeId}/authenticator-setup
+  currentH5Callers:
+  - frontend/src/stores/auth.ts
+  - frontend/src/pages/login/login.vue
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: Return one stable encrypted pending TOTP setup for the live first-login challenge.
+- operationId: confirmAuthenticator
+  method: POST
+  path: /api/v1/auth/challenges/{challengeId}/authenticator-confirm
+  currentH5Callers:
+  - frontend/src/stores/auth.ts
+  - frontend/src/pages/login/login.vue
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  - owner-instruction
+  replacementOrImpact: First valid TOTP atomically enables the factor, returns ten one-time recovery codes,
+    creates the default relationship, and issues the session.
+- operationId: verifyAuthenticatorCode
+  method: POST
+  path: /api/v1/auth/challenges/{challengeId}/totp
+  currentH5Callers:
+  - frontend/src/stores/auth.ts
+  - frontend/src/pages/login/login.vue
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  - owner-instruction
+  replacementOrImpact: Daily second factor. An optional default-off choice issues a fixed 90-day trusted device.
+- operationId: verifyRecoveryCode
+  method: POST
+  path: /api/v1/auth/challenges/{challengeId}/recovery-code
+  currentH5Callers:
+  - frontend/src/stores/auth.ts
+  - frontend/src/pages/login/login.vue
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  - owner-instruction
+  replacementOrImpact: Keep one-time recovery login; the code is consumed atomically and plaintext is never stored.
 - operationId: refresh
   method: POST
   path: /api/v1/auth/refresh
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Delete refresh rotation. Remove H5 auto-refresh in the same slice as opaque session
-    cutover.
+  replacementOrImpact: Refresh rotation is retired. H5 restores the opaque cookie through getAuthSession.
 - operationId: logout
   method: POST
   path: /api/v1/auth/logout
   currentH5Callers:
   - frontend/src/stores/auth.ts
   decision: SIMPLIFY
-  replacementOrImpact: Keep logout. Cookie becomes vc_session; next request must fail after revoke.
+  replacementOrImpact: Revoke only current vc_session. Ordinary logout preserves the independent trusted-device
+    TOTP bypass, while email and password remain mandatory next time.
 - operationId: listAuthSessions
   method: GET
   path: /api/v1/auth/sessions
-  currentH5Callers:
-  - frontend/src/pages/account/account.vue
+  currentH5Callers: []
   decision: SIMPLIFY
-  replacementOrImpact: Keep listing live sessions. Rows become opaque sessions, not refresh families.
+  replacementOrImpact: Retain the opaque-session backend operation; the current My page lists trusted devices only.
 - operationId: revokeAuthSession
   method: DELETE
   path: /api/v1/auth/sessions/{sessionId}
-  currentH5Callers:
-  - frontend/src/pages/account/account.vue
+  currentH5Callers: []
   decision: SIMPLIFY
-  replacementOrImpact: Keep revoking one session. Next request must fail.
+  replacementOrImpact: Retain single-session revocation without a current frontend entry.
 - operationId: revokeAllAuthSessions
   method: POST
   path: /api/v1/auth/sessions/revoke-all
+  currentH5Callers: []
+  decision: SIMPLIFY
+  replacementOrImpact: Retain revoke-all as a backend security capability without a current frontend entry.
+- operationId: listTrustedDevices
+  method: GET
+  path: /api/v1/auth/trusted-devices
   currentH5Callers:
   - frontend/src/pages/account/account.vue
-  decision: SIMPLIFY
-  replacementOrImpact: Keep revoke-all. Password change continues to invalidate sessions.
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: Account security lists active device labels and timestamps without tokens or fingerprints.
+- operationId: revokeTrustedDevice
+  method: DELETE
+  path: /api/v1/auth/trusted-devices/{deviceId}
+  currentH5Callers:
+  - frontend/src/pages/account/account.vue
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: Revoke one owner-scoped trusted-device TOTP bypass.
 - operationId: changeAuthPassword
   method: POST
   path: /api/v1/auth/password
@@ -728,19 +686,52 @@ operations:
   path: /api/v1/auth/reauth
   currentH5Callers:
   - frontend/src/pages/admin/admin.vue
+  - frontend/src/pages/admin-accounts/admin-accounts.vue
+  - frontend/src/pages/admin-models/admin-models.vue
+  - frontend/src/pages/admin-routing/admin-routing.vue
   decision: KEEP
   keepBecause:
   - core-outcome
   replacementOrImpact: Keep fresh reauth for high-risk operations. Admin reset is not the Go consumer;
     account delete/export already require current password.
+- operationId: adminResetAuthenticator
+  method: POST
+  path: /api/v1/admin/accounts/{accountId}/authenticator-reset
+  currentH5Callers:
+  - frontend/src/pages/admin-accounts/admin-accounts.vue
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: A recently reauthenticated ADMIN clears TOTP and recovery codes and revokes the target's
+    sessions, challenges and trusted devices so next login must set up again.
+- operationId: listAdminAccounts
+  method: GET
+  path: /api/v1/admin/accounts
+  currentH5Callers:
+  - frontend/src/pages/admin/admin.vue
+  - frontend/src/pages/admin-accounts/admin-accounts.vue
+  decision: KEEP
+  keepBecause:
+  - h5-caller
+  - owner-instruction
+  replacementOrImpact: Secret-free account facts support the real registration-review and account-security pages.
+- operationId: reviewAdminAccount
+  method: POST
+  path: /api/v1/admin/accounts/{accountId}/review
+  currentH5Callers:
+  - frontend/src/pages/admin/admin.vue
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  - h5-caller
+  - owner-instruction
+  replacementOrImpact: A freshly reauthenticated ADMIN approves or rejects an email-verified pending account.
 - operationId: adminResetPassword
   method: POST
   path: /api/v1/auth/admin/accounts/{accountId}/reset-password
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin password reset with the admin page. Unique Owner self-service uses changeAuthPassword.
+  replacementOrImpact: The redesigned admin console does not expose password reset. My uses changeAuthPassword.
 - operationId: deleteAccount
   method: DELETE
   path: /api/v1/auth/account
@@ -755,76 +746,56 @@ operations:
 - operationId: createInternalAccount
   method: POST
   path: /api/v1/auth/admin/accounts
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: No public registration. Go v1 uses the seeded Owner account. Hide admin create
-    in the same slice.
+  replacementOrImpact: Registration remains server-controlled; the redesigned admin console has no account creator.
 - operationId: listInternalAccounts
   method: GET
   path: /api/v1/auth/admin/accounts
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin account list. E2E helpers are not a production H5 caller for KEEP.
+  replacementOrImpact: Replaced by listAdminAccounts; E2E helpers are not a production H5 caller.
 - operationId: disableInternalAccount
   method: POST
   path: /api/v1/auth/admin/accounts/{accountId}/disable
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin disable. Owner-only has one account.
+  replacementOrImpact: The redesigned admin console has no disable entry.
 - operationId: listAdminAuditEvents
   method: GET
   path: /api/v1/auth/admin/audit
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin audit view with the operator console.
+  replacementOrImpact: The redesigned admin console has no audit-event view.
 - operationId: getAdminUsageSummary
   method: GET
   path: /api/v1/auth/admin/usage
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin usage summary. Go v1 keeps usage internally for the monthly hard cap.
+  replacementOrImpact: The redesigned admin console has no usage summary. Go v1 keeps internal limits.
 - operationId: getAdminProviderPlan
   method: GET
   path: /api/v1/auth/admin/provider-plan
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide provider-plan admin. Go generation fail-closes when price or reservation ceiling
-    is missing; no fabricated cost.
+  replacementOrImpact: Provider-plan projection is absent from the redesigned console; no cost is fabricated.
 - operationId: grantTrial
   method: POST
   path: /api/v1/auth/admin/trial-grants
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Trial/entitlement is RETIRE. Hide admin grant in the same slice.
+  replacementOrImpact: Trial and entitlement are RETIRE with no current frontend entry.
 - operationId: quotaReconciliation
   method: GET
   path: /api/v1/auth/admin/quota-reconciliation
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Product quota reconciliation is RETIRE.
+  replacementOrImpact: Product quota reconciliation is RETIRE with no current frontend entry.
 - operationId: providerRegistry
   method: GET
   path: /api/v1/auth/admin/provider-registry
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
   replacementOrImpact: The retired deployment-registry projection is replaced with
     the administrator-owned provider/model configuration and global route order below.
 - operationId: listModelProviders
@@ -878,11 +849,9 @@ operations:
 - operationId: recordSurvey
   method: POST
   path: /api/v1/survey
-  currentH5Callers:
-  - frontend/src/pages/account/account.vue
+  currentH5Callers: []
   decision: DEFER
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Survey is DEFER. Hide the account-page score card in the same slice.
+  replacementOrImpact: Survey is DEFER and the redesigned My page has no score card.
 - operationId: listMySurveys
   method: GET
   path: /api/v1/survey
@@ -892,43 +861,33 @@ operations:
 - operationId: listSafetyEvents
   method: GET
   path: /api/v1/auth/admin/safety-events
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin safety-event queue. Owner report create/list remain.
+  replacementOrImpact: The redesigned admin console has no safety-event queue.
 - operationId: listOpsCases
   method: GET
   path: /api/v1/auth/admin/ops-cases
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Beta operator console is DEFER/RETIRE. Hide ops-case list.
+  replacementOrImpact: Beta operator cases are RETIRE and absent from the redesigned console.
 - operationId: transitionOpsCase
   method: POST
   path: /api/v1/auth/admin/ops-cases/{caseId}/actions
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide ops-case transitions with the admin page.
+  replacementOrImpact: The redesigned admin console has no ops-case transitions.
 - operationId: updateOpsCaseNote
   method: PUT
   path: /api/v1/auth/admin/ops-cases/{caseId}/notes
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide ops-case notes.
+  replacementOrImpact: The redesigned admin console has no ops-case notes.
 - operationId: readOpsCaseInternalNote
   method: GET
   path: /api/v1/auth/admin/ops-cases/{caseId}/internal-note
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide internal notes.
+  replacementOrImpact: The redesigned admin console has no internal-note view.
 - operationId: setRetentionLegalHold
   method: POST
   path: /api/v1/auth/admin/retention-holds
@@ -944,111 +903,82 @@ operations:
 - operationId: listBetaReports
   method: GET
   path: /api/v1/auth/admin/reports
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide Beta admin report queue.
+  replacementOrImpact: The redesigned admin console has no Beta report queue.
 - operationId: listBetaAgeAppeals
   method: GET
   path: /api/v1/auth/admin/age-appeals
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide Beta age-appeal queue. Remote appeal remains DEFER.
+  replacementOrImpact: The redesigned admin console has no age-appeal queue. Remote appeal remains DEFER.
 - operationId: resolveAgeAppeal
   method: POST
   path: /api/v1/auth/admin/age-appeals/{appealId}/resolve
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin appeal resolution.
+  replacementOrImpact: The redesigned admin console has no appeal-resolution entry.
 - operationId: listBetaExportTasks
   method: GET
   path: /api/v1/auth/admin/export-tasks
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide Beta export-task admin. Owner export create/status/download remain.
+  replacementOrImpact: The redesigned admin console has no Beta export-task queue.
 - operationId: listBetaMemorySampling
   method: GET
   path: /api/v1/auth/admin/memory-sampling
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide memory sampling admin.
+  replacementOrImpact: The redesigned admin console has no memory-sampling view.
 - operationId: getEmergencyContact
   method: GET
   path: /api/v1/emergency-contact
-  currentH5Callers:
-  - frontend/src/pages/consent/consent.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Emergency contact stays closed. Hide the consent-page contact UI in the same slice.
+  replacementOrImpact: Emergency contact stays closed with no current frontend entry.
 - operationId: saveEmergencyContact
   method: PUT
   path: /api/v1/emergency-contact
-  currentH5Callers:
-  - frontend/src/pages/consent/consent.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide save-contact in the same slice.
+  replacementOrImpact: Emergency-contact save has no current frontend entry.
 - operationId: startEmergencyContactVerification
   method: POST
   path: /api/v1/emergency-contact/verify-start
-  currentH5Callers:
-  - frontend/src/pages/consent/consent.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide contact verification start.
+  replacementOrImpact: Contact verification has no current frontend entry.
 - operationId: confirmEmergencyContactVerification
   method: POST
   path: /api/v1/emergency-contact/verify-confirm
-  currentH5Callers:
-  - frontend/src/pages/consent/consent.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide contact verification confirm.
+  replacementOrImpact: Contact verification has no current frontend entry.
 - operationId: revokeEmergencyContact
   method: POST
   path: /api/v1/emergency-contact/revoke
-  currentH5Callers:
-  - frontend/src/pages/consent/consent.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide contact revoke. Crisis copy may still show real-world resources without claiming
+  replacementOrImpact: Contact revoke has no current frontend entry. Crisis copy may show real-world resources without claiming
     notification.
 undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites
   method: POST
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Invite mint is not in OpenAPI and is not ported. Hide admin invite UI.
+  replacementOrImpact: Invite mint is not in OpenAPI and has no current admin entry.
 - path: /api/v1/auth/admin/invites
   method: GET
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin invite list.
+  replacementOrImpact: The redesigned admin console has no invite list.
 - path: /api/v1/auth/admin/invites/disable
   method: POST
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Hide admin invite disable.
+  replacementOrImpact: The redesigned admin console has no invite-disable action.
 - path: /api/v1/auth/invite-register
   method: POST
-  currentH5Callers:
-  - frontend/src/pages/login/login.vue
+  currentH5Callers: []
   decision: RETIRE
-  h5CallerMustHideInSameSlice: true
-  replacementOrImpact: Public/invite registration stays closed. Hide login invite-register in the same
-    slice.
+  replacementOrImpact: Public and invite registration stay closed with no current login entry.

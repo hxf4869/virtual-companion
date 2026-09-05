@@ -328,6 +328,7 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 		Limiter:   auth.NewLimiter(),
 		Turns:     r.store,
 		Providers: r.store,
+		AuthFlow:  r.store,
 		Blobs:     r.deps.Blobs,
 	}
 	if loop, ok := r.deps.Jobs.(*jobs.Loop); ok {

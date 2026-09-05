@@ -113,6 +113,23 @@ type ProviderAdminStore interface {
 	ReorderProviderModels(ctx context.Context, actingAccountID int64, order []postgres.RouteRef) error
 }
 
+// AuthFlowStore owns the short-lived login challenge, authenticator and
+// trusted-device transitions. It is separate from CompanionStore so the
+// authentication state machine does not expand the business-data interface.
+type AuthFlowStore interface {
+	EnsureDefaultRelationship(ctx context.Context, accountID int64, personaRef string) (postgres.Relationship, error)
+	AuthenticatorEnabled(ctx context.Context, accountID int64) (bool, error)
+	CreateAuthChallenge(ctx context.Context, accountID int64, mode string, expiresAt time.Time) (postgres.AuthChallenge, error)
+	AuthenticatorSetup(ctx context.Context, challengeID string, now time.Time) (auth.TOTPProvisioning, error)
+	CompleteAuthChallenge(ctx context.Context, in postgres.AuthCompleteInput) (postgres.AuthenticatedSession, bool, error)
+	LoginWithTrustedDevice(ctx context.Context, accountID int64, deviceToken string, now, sessionExpiresAt time.Time) (postgres.AuthenticatedSession, bool, error)
+	ListTrustedDevices(ctx context.Context, accountID int64) ([]postgres.TrustedDevice, error)
+	RevokeTrustedDevice(ctx context.Context, accountID, deviceID int64) error
+	ResetAuthenticator(ctx context.Context, actingAccountID, targetAccountID int64) error
+	ListAdminAccounts(ctx context.Context, actingAccountID int64) ([]postgres.AdminAccount, error)
+	ReviewAccount(ctx context.Context, actingAccountID, targetAccountID int64, decision string, now time.Time) error
+}
+
 // Core is the G7/G9/G10 command surface. companiond wires it only in full mode
 // against an isolation or cutover database. api-migration never registers
 // these routes (Phase 4 write hard-ban).
@@ -124,6 +141,7 @@ type Core struct {
 	Limiter   *auth.Limiter
 	Turns     GenerationAPI
 	Providers ProviderAdminStore
+	AuthFlow  AuthFlowStore
 	Cancels   *jobs.Cancels
 	Hub       *realtime.Hub
 }
@@ -174,15 +192,27 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("GET /api/v1/exports/{exportId}/download", s.handleDownloadExport)
 
 	s.mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	s.mux.HandleFunc("GET /api/v1/auth/registration-status", s.handleRegistrationStatus)
+	s.mux.HandleFunc("POST /api/v1/auth/register", s.handleRegistrationClosed)
+	s.mux.HandleFunc("GET /api/v1/auth/session", s.handleSession)
+	s.mux.HandleFunc("POST /api/v1/auth/challenges/{challengeId}/authenticator-setup", s.handleAuthenticatorSetup)
+	s.mux.HandleFunc("POST /api/v1/auth/challenges/{challengeId}/authenticator-confirm", s.handleAuthenticatorConfirm)
+	s.mux.HandleFunc("POST /api/v1/auth/challenges/{challengeId}/totp", s.handleTOTPVerify)
+	s.mux.HandleFunc("POST /api/v1/auth/challenges/{challengeId}/recovery-code", s.handleRecoveryCodeVerify)
 	s.mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
 	s.mux.HandleFunc("GET /api/v1/auth/sessions", s.handleListSessions)
 	s.mux.HandleFunc("DELETE /api/v1/auth/sessions/{sessionId}", s.handleRevokeSession)
 	s.mux.HandleFunc("POST /api/v1/auth/sessions/revoke-all", s.handleRevokeAllSessions)
+	s.mux.HandleFunc("GET /api/v1/auth/trusted-devices", s.handleListTrustedDevices)
+	s.mux.HandleFunc("DELETE /api/v1/auth/trusted-devices/{deviceId}", s.handleRevokeTrustedDevice)
 	s.mux.HandleFunc("POST /api/v1/auth/password", s.handleChangePassword)
 	s.mux.HandleFunc("POST /api/v1/auth/reauth", s.handleReauth)
 	s.mux.HandleFunc("DELETE /api/v1/auth/account", s.handleDeleteAccount)
 	s.mux.HandleFunc("GET /api/v1/service-mode", s.handleServiceMode)
 	s.mux.HandleFunc("GET /api/v1/admin/providers", s.handleListProviders)
+	s.mux.HandleFunc("GET /api/v1/admin/accounts", s.handleListAdminAccounts)
+	s.mux.HandleFunc("POST /api/v1/admin/accounts/{accountId}/review", s.handleReviewAdminAccount)
+	s.mux.HandleFunc("POST /api/v1/admin/accounts/{accountId}/authenticator-reset", s.handleAdminResetAuthenticator)
 	s.mux.HandleFunc("PUT /api/v1/admin/providers/{providerId}", s.handleSaveProvider)
 	s.mux.HandleFunc("POST /api/v1/admin/providers/{providerId}/models/discover", s.handleDiscoverProviderModels)
 	s.mux.HandleFunc("PUT /api/v1/admin/model-routing-order", s.handleReorderProviderModels)

@@ -13,6 +13,7 @@ type conversationListJSON struct {
 	LastMessageRole    *string `json:"lastMessageRole,omitempty"`
 	LastMessagePreview *string `json:"lastMessagePreview,omitempty"`
 	CreatedAt          string  `json:"createdAt"`
+	LastActivityAt     string  `json:"lastActivityAt"`
 	Title              *string `json:"title,omitempty"`
 	Incognito          bool    `json:"incognito"`
 }
@@ -86,12 +87,17 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 }
 
 func conversationJSONFrom(c postgres.Conversation) conversationListJSON {
+	lastActivityAt := c.LastActivityAt
+	if lastActivityAt.IsZero() {
+		lastActivityAt = c.CreatedAt
+	}
 	return conversationListJSON{
 		ConversationID:     c.ID,
 		RelationshipID:     c.RelationshipID,
 		LastMessageRole:    c.LastMessageRole,
 		LastMessagePreview: c.LastMessagePreview,
 		CreatedAt:          rfc3339(c.CreatedAt),
+		LastActivityAt:     rfc3339(lastActivityAt),
 		Title:              c.Title,
 		Incognito:          c.Incognito,
 	}

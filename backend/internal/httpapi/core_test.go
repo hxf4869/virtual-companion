@@ -23,27 +23,31 @@ const (
 )
 
 type memStore struct {
-	mu         sync.Mutex
-	next       int64
-	rels       map[int64]postgres.Relationship
-	convs      map[int64]postgres.Conversation
-	msgs       map[int64]postgres.Message
-	active     map[int64]int64
-	memories   map[int64]postgres.Memory
-	evidence   map[int64][]postgres.MemoryEvidence
-	idem       map[string]int64
-	consents   map[string]postgres.Consent
-	incognito  bool
-	ages       map[int64]postgres.AgeState
-	reports    map[int64]postgres.Report
-	exports    map[int64]postgres.Export
-	exportBody map[int64]string
-	exportTok  map[int64]string
-	identities map[string]postgres.Identity
-	deleting   bool
-	deleted    bool
-	sessions   map[int64]memSession
-	byHash     map[string]int64
+	mu             sync.Mutex
+	next           int64
+	rels           map[int64]postgres.Relationship
+	convs          map[int64]postgres.Conversation
+	msgs           map[int64]postgres.Message
+	active         map[int64]int64
+	memories       map[int64]postgres.Memory
+	evidence       map[int64][]postgres.MemoryEvidence
+	idem           map[string]int64
+	consents       map[string]postgres.Consent
+	incognito      bool
+	ages           map[int64]postgres.AgeState
+	reports        map[int64]postgres.Report
+	exports        map[int64]postgres.Export
+	exportBody     map[int64]string
+	exportTok      map[int64]string
+	identities     map[string]postgres.Identity
+	deleting       bool
+	deleted        bool
+	sessions       map[int64]memSession
+	byHash         map[string]int64
+	authenticators map[int64]bool
+	authChallenges map[string]memAuthChallenge
+	trustedDevices map[int64]memTrustedDevice
+	nextTrustedID  int64
 }
 
 type memSession struct {
@@ -54,6 +58,25 @@ type memSession struct {
 	ExpiresAt time.Time
 	RevokedAt time.Time
 	ReauthAt  time.Time
+}
+
+type memAuthChallenge struct {
+	AccountID int64
+	Mode      string
+	ExpiresAt time.Time
+	Secret    string
+	Consumed  bool
+}
+
+type memTrustedDevice struct {
+	ID          int64
+	AccountID   int64
+	TokenHash   string
+	DisplayName string
+	CreatedAt   time.Time
+	LastUsedAt  time.Time
+	ExpiresAt   time.Time
+	Revoked     bool
 }
 
 func newMemStore() *memStore {
@@ -74,11 +97,15 @@ func newMemStore() *memStore {
 		exportBody: map[int64]string{},
 		exportTok:  map[int64]string{},
 		identities: map[string]postgres.Identity{
-			"alice": {AccountID: 1, Role: "USER", Status: "ACTIVE", PasswordHash: hash, Username: "alice"},
-			"bob":   {AccountID: 2, Role: "USER", Status: "ACTIVE", PasswordHash: hash, Username: "bob"},
+			"alice@example.com": {AccountID: 1, Role: "USER", Status: "ACTIVE", PasswordHash: hash, Username: "alice"},
+			"bob@example.com":   {AccountID: 2, Role: "USER", Status: "ACTIVE", PasswordHash: hash, Username: "bob"},
 		},
-		sessions: map[int64]memSession{},
-		byHash:   map[string]int64{},
+		sessions:       map[int64]memSession{},
+		byHash:         map[string]int64{},
+		authenticators: map[int64]bool{},
+		authChallenges: map[string]memAuthChallenge{},
+		trustedDevices: map[int64]memTrustedDevice{},
+		nextTrustedID:  1,
 	}
 }
 
@@ -573,8 +600,10 @@ func newCoreServer(t *testing.T, mode string, store CompanionStore) *Server {
 	sessions, _ := store.(auth.Sessions)
 	providers, _ := store.(ProviderAdminStore)
 	turns, _ := store.(GenerationAPI)
+	authFlow, _ := store.(AuthFlowStore)
 	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
 		Store: store, Sessions: sessions, Passwords: pw, Limiter: auth.NewLimiter(), Providers: providers, Turns: turns,
+		AuthFlow: authFlow,
 	})
 }
 

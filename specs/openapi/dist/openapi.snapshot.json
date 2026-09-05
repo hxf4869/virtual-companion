@@ -68,14 +68,26 @@
     "createExport",
     "getExportStatus",
     "downloadExport",
+    "getRegistrationStatus",
+    "register",
     "login",
+    "getAuthSession",
+    "getAuthenticatorSetup",
+    "confirmAuthenticator",
+    "verifyAuthenticatorCode",
+    "verifyRecoveryCode",
     "refresh",
     "logout",
     "listAuthSessions",
     "revokeAuthSession",
     "revokeAllAuthSessions",
+    "listTrustedDevices",
+    "revokeTrustedDevice",
     "changeAuthPassword",
     "reauthAuth",
+    "adminResetAuthenticator",
+    "listAdminAccounts",
+    "reviewAdminAccount",
     "adminResetPassword",
     "deleteAccount",
     "createInternalAccount",
@@ -114,6 +126,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "59619acf307eaf26407987d87c2333d55b031c2d336dec317d2c7ad612a38f90"
+    "sha256": "f6e9aa3f2887bde5f81c67ed929cd7334599d19f331e3876ce0e68bf1de85eb6"
   }
 }

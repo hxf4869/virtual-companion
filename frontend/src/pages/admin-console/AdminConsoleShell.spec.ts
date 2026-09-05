@@ -13,8 +13,8 @@ describe("admin console shell", () => {
   it("offers an explicit retry when access cannot be checked", async () => {
     const wrapper = mount(AdminConsoleShell, {
       props: {
-        active: "overview",
-        title: "运行总览",
+        active: "review",
+        title: "注册审核",
         accessState: "unavailable",
       },
     });
@@ -22,6 +22,23 @@ describe("admin console shell", () => {
     await wrapper.get('[data-testid="admin-access-retry"]').trigger("click");
 
     expect(wrapper.emitted("retry-access")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("renders exactly the four product admin sections", () => {
+    const wrapper = mount(AdminConsoleShell, {
+      props: {
+        active: "review",
+        title: "注册审核",
+        accessState: "ready",
+      },
+    });
+    expect(wrapper.findAll(".ac-nav__item").map((item) => item.text())).toEqual([
+      "注册审核",
+      "账号",
+      "模型与路由",
+      "运行状态",
+    ]);
     wrapper.unmount();
   });
 

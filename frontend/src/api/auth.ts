@@ -1,7 +1,5 @@
-// Go Runtime identity client. The browser keeps only an opaque HttpOnly
-// session cookie; no token, password or provider credential is persisted by
-// this module. Retired admin, invite, quota and queue APIs are not
-// represented here.
+// Go Runtime identity client. Authentication is cookie based: no password,
+// challenge, recovery code or session secret is persisted by this module.
 
 export interface AuthApiResponse {
   ok: boolean;
@@ -15,11 +13,49 @@ export interface AuthTransport {
   request(method: string, path: string, body?: unknown): Promise<AuthApiResponse>;
 }
 
-export interface AuthTokens {
+export type AuthNextStep =
+  | "ACTIVE"
+  | "TOTP_REQUIRED"
+  | "AUTHENTICATOR_SETUP_REQUIRED"
+  | "EMAIL_VERIFICATION_REQUIRED"
+  | "REVIEW_PENDING"
+  | "DISABLED"
+  | "REJECTED";
+
+export interface AuthSessionIdentity {
+  nextStep: "ACTIVE";
   accountId: string;
+  email?: string;
   role: string;
   passwordMustChange: boolean;
+  authenticatorEnabled: boolean;
   expiresInSeconds: number;
+}
+
+export interface AuthChallenge {
+  nextStep: "TOTP_REQUIRED" | "AUTHENTICATOR_SETUP_REQUIRED";
+  challengeId: string;
+  expiresAt: string;
+}
+
+export interface AuthAdmissionState {
+  nextStep:
+    | "EMAIL_VERIFICATION_REQUIRED"
+    | "REVIEW_PENDING"
+    | "DISABLED"
+    | "REJECTED";
+}
+
+export type AuthLoginResult = AuthSessionIdentity | AuthChallenge | AuthAdmissionState;
+
+export interface AuthChallengeComplete extends AuthSessionIdentity {
+  recoveryCodes: string[];
+}
+
+export interface AuthenticatorSetup {
+  manualKey: string;
+  provisioningUri: string;
+  qrCodeDataUrl: string;
 }
 
 export interface AuthSession {
@@ -35,6 +71,14 @@ export interface AuthSession {
   passwordMustChange?: boolean;
 }
 
+export interface TrustedDevice {
+  id: string;
+  displayName: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+}
+
 export class AuthHttpError extends Error {
   readonly status: number;
 
@@ -47,32 +91,85 @@ export class AuthHttpError extends Error {
 
 const AUTH_BASE = "/api/v1/auth";
 
-/** Existence-hidden login: any server rejection maps to null. */
+/** Safe default is closed when the availability response cannot be read. */
+export async function getRegistrationStatus(t: AuthTransport): Promise<boolean> {
+  const response = await t.request("GET", `${AUTH_BASE}/registration-status`);
+  if (!response.ok || !response.json || typeof response.json !== "object") return false;
+  return (response.json as Record<string, unknown>).enabled === true;
+}
+
+/**
+ * Verify the account/password first step. The account may be a username or
+ * email address. A correct password returns only the
+ * server-selected next step unless a live trusted-device cookie also exists.
+ */
 export async function login(
   t: AuthTransport,
-  username: string,
+  account: string,
   password: string,
-): Promise<AuthTokens | null> {
-  const response = await t.request("POST", `${AUTH_BASE}/login`, { username, password });
-  return response.ok ? asTokens(response.json) : null;
+): Promise<AuthLoginResult | null> {
+  const response = await t.request("POST", `${AUTH_BASE}/login`, { account, password });
+  if (response.status === 404) return null;
+  const result = asAuthLoginResult(response.json);
+  if ((response.ok || response.status === 403) && result) return result;
+  throw new AuthHttpError(response.status);
 }
 
-/** Restore identity from the opaque session registry; /auth/refresh is retired. */
-export async function refresh(t: AuthTransport): Promise<AuthTokens | null> {
-  return restoreSession(t);
+/** Restore identity from the single server-owned auth-session endpoint. */
+export async function getAuthSession(t: AuthTransport): Promise<AuthSessionIdentity | null> {
+  const response = await t.request("GET", `${AUTH_BASE}/session`);
+  return response.ok ? asSessionIdentity(response.json) : null;
 }
 
-export async function restoreSession(t: AuthTransport): Promise<AuthTokens | null> {
-  const sessions = await listAuthSessionsOrNull(t);
-  if (sessions === null) return null;
-  const current = sessions.find((session) => session.current) ?? sessions[0];
-  if (!current?.accountId || !current.role) return null;
-  return {
-    accountId: current.accountId,
-    role: current.role,
-    passwordMustChange: current.passwordMustChange === true,
-    expiresInSeconds: 0,
-  };
+/** Compatibility name used by the current navigation bootstrap. */
+export async function refresh(t: AuthTransport): Promise<AuthSessionIdentity | null> {
+  return getAuthSession(t);
+}
+
+export async function restoreSession(t: AuthTransport): Promise<AuthSessionIdentity | null> {
+  return getAuthSession(t);
+}
+
+export async function getAuthenticatorSetup(
+  t: AuthTransport,
+  challengeId: string,
+): Promise<AuthenticatorSetup | null> {
+  const response = await t.request(
+    "POST",
+    `${AUTH_BASE}/challenges/${encodeURIComponent(challengeId)}/authenticator-setup`,
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new AuthHttpError(response.status);
+  const setup = asAuthenticatorSetup(response.json);
+  if (!setup) throw new AuthHttpError(response.status);
+  return setup;
+}
+
+export async function confirmAuthenticator(
+  t: AuthTransport,
+  challengeId: string,
+  code: string,
+  trustDevice = false,
+): Promise<AuthChallengeComplete | null> {
+  return completeChallenge(t, challengeId, "authenticator-confirm", code, trustDevice);
+}
+
+export async function verifyAuthenticatorCode(
+  t: AuthTransport,
+  challengeId: string,
+  code: string,
+  trustDevice = false,
+): Promise<AuthChallengeComplete | null> {
+  return completeChallenge(t, challengeId, "totp", code, trustDevice);
+}
+
+export async function verifyRecoveryCode(
+  t: AuthTransport,
+  challengeId: string,
+  code: string,
+  trustDevice = false,
+): Promise<AuthChallengeComplete | null> {
+  return completeChallenge(t, challengeId, "recovery-code", code, trustDevice);
 }
 
 export async function logout(t: AuthTransport): Promise<boolean> {
@@ -113,6 +210,29 @@ export async function revokeAllAuthSessions(t: AuthTransport): Promise<number> {
     throw new AuthHttpError(response.status);
   }
   return revoked;
+}
+
+export async function listTrustedDevices(t: AuthTransport): Promise<TrustedDevice[]> {
+  const response = await t.request("GET", `${AUTH_BASE}/trusted-devices`);
+  if (!response.ok || !Array.isArray(response.json)) {
+    throw new AuthHttpError(response.status);
+  }
+  const devices = response.json.map(asTrustedDevice);
+  if (devices.some((device) => device === null)) {
+    throw new AuthHttpError(response.status);
+  }
+  return devices as TrustedDevice[];
+}
+
+export async function revokeTrustedDevice(
+  t: AuthTransport,
+  deviceId: string,
+): Promise<boolean> {
+  const response = await t.request(
+    "DELETE",
+    `${AUTH_BASE}/trusted-devices/${encodeURIComponent(deviceId)}`,
+  );
+  return response.ok;
 }
 
 export async function changeAuthPassword(
@@ -159,19 +279,95 @@ export async function recordSurvey(
   return (response.json as Record<string, unknown>).accepted === true;
 }
 
-function asTokens(json: unknown): AuthTokens | null {
+async function completeChallenge(
+  t: AuthTransport,
+  challengeId: string,
+  endpoint: "authenticator-confirm" | "totp" | "recovery-code",
+  code: string,
+  trustDevice: boolean,
+): Promise<AuthChallengeComplete | null> {
+  const response = await t.request(
+    "POST",
+    `${AUTH_BASE}/challenges/${encodeURIComponent(challengeId)}/${endpoint}`,
+    { code, trustDevice },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new AuthHttpError(response.status);
+  const completed = asChallengeComplete(response.json);
+  if (!completed) throw new AuthHttpError(response.status);
+  return completed;
+}
+
+function asAuthLoginResult(json: unknown): AuthLoginResult | null {
+  if (!json || typeof json !== "object") return null;
+  const value = json as Record<string, unknown>;
+  switch (value.nextStep) {
+    case "ACTIVE":
+      return asSessionIdentity(value);
+    case "TOTP_REQUIRED":
+    case "AUTHENTICATOR_SETUP_REQUIRED": {
+      const challengeId = stringValue(value.challengeId);
+      const expiresAt = stringValue(value.expiresAt);
+      if (!challengeId || !expiresAt) return null;
+      return { nextStep: value.nextStep, challengeId, expiresAt };
+    }
+    case "EMAIL_VERIFICATION_REQUIRED":
+    case "REVIEW_PENDING":
+    case "DISABLED":
+    case "REJECTED":
+      return { nextStep: value.nextStep };
+    default:
+      return null;
+  }
+}
+
+function asSessionIdentity(json: unknown): AuthSessionIdentity | null {
   if (!json || typeof json !== "object") return null;
   const value = json as Record<string, unknown>;
   const accountId = stringValue(value.accountId);
   const role = stringValue(value.role);
   const expiresInSeconds = Number(value.expiresInSeconds);
-  if (!accountId || !role || typeof value.passwordMustChange !== "boolean") return null;
+  if (
+    value.nextStep !== "ACTIVE" ||
+    !accountId ||
+    !role ||
+    typeof value.passwordMustChange !== "boolean" ||
+    typeof value.authenticatorEnabled !== "boolean" ||
+    !Number.isFinite(expiresInSeconds)
+  ) {
+    return null;
+  }
   return {
+    nextStep: "ACTIVE",
     accountId,
+    email: stringValue(value.email) ?? undefined,
     role,
     passwordMustChange: value.passwordMustChange,
-    expiresInSeconds: Number.isFinite(expiresInSeconds) ? expiresInSeconds : 0,
+    authenticatorEnabled: value.authenticatorEnabled,
+    expiresInSeconds,
   };
+}
+
+function asChallengeComplete(json: unknown): AuthChallengeComplete | null {
+  const identity = asSessionIdentity(json);
+  if (!identity || !json || typeof json !== "object") return null;
+  const rawCodes = (json as Record<string, unknown>).recoveryCodes;
+  if (rawCodes !== undefined && !Array.isArray(rawCodes)) return null;
+  const recoveryCodes = Array.isArray(rawCodes)
+    ? rawCodes.filter((code): code is string => typeof code === "string" && code.length > 0)
+    : [];
+  if (Array.isArray(rawCodes) && recoveryCodes.length !== rawCodes.length) return null;
+  return { ...identity, recoveryCodes };
+}
+
+function asAuthenticatorSetup(json: unknown): AuthenticatorSetup | null {
+  if (!json || typeof json !== "object") return null;
+  const value = json as Record<string, unknown>;
+  const manualKey = stringValue(value.manualKey);
+  const provisioningUri = stringValue(value.provisioningUri);
+  const qrCodeDataUrl = stringValue(value.qrCodeDataUrl);
+  if (!manualKey || !provisioningUri || !qrCodeDataUrl) return null;
+  return { manualKey, provisioningUri, qrCodeDataUrl };
 }
 
 function asAuthSession(json: unknown): AuthSession | null {
@@ -197,12 +393,16 @@ function asAuthSession(json: unknown): AuthSession | null {
   };
 }
 
-async function listAuthSessionsOrNull(t: AuthTransport): Promise<AuthSession[] | null> {
-  const response = await t.request("GET", `${AUTH_BASE}/sessions`);
-  if (!response.ok || !Array.isArray(response.json)) return null;
-  const sessions = response.json.map(asAuthSession);
-  if (sessions.some((session) => session === null)) return null;
-  return sessions as AuthSession[];
+function asTrustedDevice(json: unknown): TrustedDevice | null {
+  if (!json || typeof json !== "object") return null;
+  const value = json as Record<string, unknown>;
+  const id = stringValue(value.id);
+  const displayName = stringValue(value.displayName);
+  const createdAt = stringValue(value.createdAt);
+  const lastUsedAt = stringValue(value.lastUsedAt);
+  const expiresAt = stringValue(value.expiresAt);
+  if (!id || !displayName || !createdAt || !lastUsedAt || !expiresAt) return null;
+  return { id, displayName, createdAt, lastUsedAt, expiresAt };
 }
 
 function stringValue(value: unknown): string | null {

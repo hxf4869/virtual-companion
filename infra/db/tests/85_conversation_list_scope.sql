@@ -1,5 +1,6 @@
 -- 85_conversation_list_scope: list_conversations returns the caller's
--- conversations keyset-paginated by (owner_user_id, id) with a clamped
+-- conversations recent-first and keyset-paginated by
+-- (last_activity_at, conversation_id), with a clamped
 -- last-message preview. The optional relationship filter never discloses a
 -- foreign relationship's existence (no rows, indistinguishable from empty);
 -- an empty conversation carries NULL role and NULL preview; the preview is the
@@ -18,17 +19,21 @@ INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active) VALUES (1, 1
 INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active) VALUES (1, 11, 'persona-a2', false);
 INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active) VALUES (2, 20, 'persona-bob', true);
 -- Owner 1: 100 (rel 10, messages), 101 (rel 11, EMPTY), 102 (rel 10, messages).
-INSERT INTO vc.conversation(owner_user_id, id, relationship_id, title) VALUES
-    (1, 100, 10, 'a1'), (1, 101, 11, 'a2'), (1, 102, 10, 'a3');
-INSERT INTO vc.conversation(owner_user_id, id, relationship_id, title) VALUES (2, 200, 20, 'b1');
+INSERT INTO vc.conversation(owner_user_id, id, relationship_id, title, created_at) VALUES
+    (1, 100, 10, 'a1', '2026-01-01T00:00:00Z'),
+    (1, 101, 11, 'a2', '2026-01-02T00:00:00Z'),
+    (1, 102, 10, 'a3', '2026-01-03T00:00:00Z');
+INSERT INTO vc.conversation(owner_user_id, id, relationship_id, title, created_at)
+VALUES (2, 200, 20, 'b1', '2026-01-01T00:00:00Z');
 -- Conversation 100: first message short, LAST message is the long assistant one.
-INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content) VALUES
-    (1, 1, 100, 'user', 'first'),
-    (1, 2, 100, 'assistant', repeat('x', 300));
-INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content) VALUES
-    (1, 3, 102, 'user', 'u1'), (1, 4, 102, 'assistant', 'a1');
-INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content) VALUES
-    (2, 1, 200, 'user', 'bob-m1');
+INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content, created_at) VALUES
+    (1, 1, 100, 'user', 'first', '2026-01-04T00:00:00Z'),
+    (1, 2, 100, 'assistant', repeat('x', 300), '2026-01-05T00:00:00Z');
+INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content, created_at) VALUES
+    (1, 3, 102, 'user', 'u1', '2026-01-05T12:00:00Z'),
+    (1, 4, 102, 'assistant', 'a1', '2026-01-06T00:00:00Z');
+INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content, created_at) VALUES
+    (2, 1, 200, 'user', 'bob-m1', '2026-01-02T00:00:00Z');
 
 -- Owner 1: full list, relationship filter, keyset, clamps, empty preview.
 BEGIN;
@@ -37,15 +42,19 @@ SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     n int;
-    first_id bigint;
+    listed_ids bigint[];
     v_role text;
     v_preview text;
+    v_activity timestamptz;
 BEGIN
-    -- Unfiltered list: 3 rows ascending by id.
+    -- Unfiltered list: most recently active first (102, 100, then empty 101).
     SELECT count(*) INTO n FROM vc.list_conversations(1, NULL, 0, 50);
     IF n <> 3 THEN RAISE EXCEPTION 'owner 1 must list 3 conversations, got %', n; END IF;
-    SELECT out_id INTO first_id FROM vc.list_conversations(1, NULL, 0, 50) ORDER BY out_id LIMIT 1;
-    IF first_id <> 100 THEN RAISE EXCEPTION 'list must start at 100, got %', first_id; END IF;
+    SELECT array_agg(out_id ORDER BY out_last_activity_at DESC, out_id DESC)
+      INTO listed_ids FROM vc.list_conversations(1, NULL, 0, 50);
+    IF listed_ids IS DISTINCT FROM ARRAY[102,100,101]::bigint[] THEN
+        RAISE EXCEPTION 'recent order mismatch: %', listed_ids;
+    END IF;
 
     -- Preview is the LAST message (assistant, clamped to 200 chars).
     SELECT out_last_message_role, out_last_message_preview
@@ -57,6 +66,12 @@ BEGIN
     IF v_preview IS NULL OR length(v_preview) <> 200
        OR v_preview <> left(repeat('x', 300), 200) THEN
         RAISE EXCEPTION 'conversation 100 preview must be the 200-char clamp of the last message';
+    END IF;
+    SELECT out_last_activity_at INTO v_activity
+      FROM vc.list_conversations(1, NULL, 0, 50)
+     WHERE out_id = 100;
+    IF v_activity IS DISTINCT FROM '2026-01-05T00:00:00Z'::timestamptz THEN
+        RAISE EXCEPTION 'conversation 100 activity mismatch: %', v_activity;
     END IF;
 
     -- Empty conversation: NULL role and NULL preview.
@@ -76,11 +91,17 @@ BEGIN
     SELECT count(*) INTO n FROM vc.list_conversations(1, 20, 0, 50);
     IF n <> 0 THEN RAISE EXCEPTION 'foreign relationship filter must yield no rows, got %', n; END IF;
 
-    -- Keyset: after 100 -> 101,102; after 102 -> empty.
+    -- Keyset cursor is still supplied as a conversation id but follows the
+    -- same recent-activity tuple: after 102 -> 100,101; after 100 -> 101.
+    SELECT array_agg(out_id ORDER BY out_last_activity_at DESC, out_id DESC) INTO listed_ids
+      FROM vc.list_conversations(1, NULL, 102, 50);
+    IF listed_ids IS DISTINCT FROM ARRAY[100,101]::bigint[] THEN
+        RAISE EXCEPTION 'page after 102 mismatch: %', listed_ids;
+    END IF;
     SELECT count(*) INTO n FROM vc.list_conversations(1, NULL, 100, 50);
-    IF n <> 2 THEN RAISE EXCEPTION 'page after 100 must have 2 rows, got %', n; END IF;
-    SELECT count(*) INTO n FROM vc.list_conversations(1, NULL, 102, 50);
-    IF n <> 0 THEN RAISE EXCEPTION 'page after 102 must be empty, got %', n; END IF;
+    IF n <> 1 THEN RAISE EXCEPTION 'page after 100 must have 1 row, got %', n; END IF;
+    SELECT count(*) INTO n FROM vc.list_conversations(1, NULL, 101, 50);
+    IF n <> 0 THEN RAISE EXCEPTION 'page after 101 must be empty, got %', n; END IF;
 
     -- Limit band: limit 1 -> 1 row; huge limit -> clamped (all 3 rows).
     SELECT count(*) INTO n FROM vc.list_conversations(1, NULL, 0, 1);
