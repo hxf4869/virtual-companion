@@ -19,6 +19,8 @@
     </view>
 
     <view class="vc-chat-composer__field">
+      <!-- WP-D（缺口2）：生成中不禁用 textarea，用户可以继续写下一条草稿；
+           发送按钮保持 busy 禁用 / 流式期间切换为停止语义。 -->
       <textarea
         :value="modelValue"
         class="vc-chat-composer__input"
@@ -27,7 +29,7 @@
         aria-label="消息输入"
         auto-height
         :maxlength="4000"
-        :disabled="busy || streaming || disabled"
+        :disabled="disabled"
         @input="onInput"
         @keydown.enter="onEnter"
       />

@@ -6,12 +6,11 @@ import {
 import {
   createRelationshipAndConversation,
   navigateToPage,
+  openSharedSession,
   prepareGenerationAccess,
   PROVIDER_REPLY,
   PROVIDER_TIMEOUT_SENTINEL,
-  provisionUser,
   sessionRequest,
-  uiLogin,
   waitForGenerationTerminal,
 } from "../helpers";
 
@@ -20,10 +19,8 @@ import {
 // a second time.
 test("reload recovers after the first SSE connection is interrupted", async ({
   page,
-  request,
 }) => {
-  const user = await provisionUser(request, "realtime-recovery");
-  const session = await uiLogin(page, user);
+  const session = await openSharedSession(page, "chat");
   await prepareGenerationAccess(session.page);
   const context = await createRelationshipAndConversation(session.page);
 
@@ -78,21 +75,24 @@ test("reload recovers after the first SSE connection is interrupted", async ({
   expect((await restoredSnapshot).ok()).toBeTruthy();
 
   await expect(page.getByTestId("assistant-md")).toContainText(PROVIDER_REPLY);
+  // VcMessageBubble tags roles with the vc-message--user / vc-message--assistant classes.
   await expect(
-    page.locator('[data-testid="chat-message"].user').filter({ hasText: prompt }),
+    page
+      .locator('[data-testid="chat-message"].vc-message--user')
+      .filter({ hasText: prompt }),
   ).toHaveCount(1);
-  await expect(page.locator('[data-testid="chat-message"].assistant')).toHaveCount(1);
+  await expect(
+    page.locator('[data-testid="chat-message"].vc-message--assistant'),
+  ).toHaveCount(1);
   expect(streamAttempts).toBeGreaterThanOrEqual(1);
   expect(generationPosts).toBe(1);
 });
 
 test("a browser can abort a proxied SSE subscription and continue using generation recovery", async ({
   page,
-  request,
 }) => {
   test.setTimeout(150_000);
-  const user = await provisionUser(request, "realtime-recovery");
-  const session = await uiLogin(page, user);
+  const session = await openSharedSession(page, "chat");
   await prepareGenerationAccess(session.page);
   const context = await createRelationshipAndConversation(session.page);
   // 登录后的落地页已经位于 Vite 源；同源 fetch 会走真实代理链路。

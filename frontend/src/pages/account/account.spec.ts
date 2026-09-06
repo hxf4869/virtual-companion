@@ -82,7 +82,7 @@ describe("account page", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows a recognizable email and only the three product groups", async () => {
+  it("shows a recognizable email and only the four product groups", async () => {
     stubFetch();
     loginAs();
     const wrapper = mount(AccountPage, { attachTo: document.body });
@@ -90,6 +90,7 @@ describe("account page", () => {
 
     expect(wrapper.get('[data-testid="account-email"]').text()).toBe("alice@example.com");
     expect(wrapper.findAll(".settings-section__title").map((node) => node.text())).toEqual([
+      "陪伴",
       "账号",
       "安全",
       "关于",
@@ -100,6 +101,26 @@ describe("account page", () => {
       expect(wrapper.text()).not.toContain(removed);
     }
     expect(wrapper.find('[data-testid="me-admin"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("navigates to the companion settings and memory pages from the companion group", async () => {
+    stubFetch();
+    loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="me-companion"]').trigger("click");
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/companion/companion" });
+
+    await wrapper.get('[data-testid="me-memory"]').trigger("click");
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/memory/memory" });
     wrapper.unmount();
   });
 

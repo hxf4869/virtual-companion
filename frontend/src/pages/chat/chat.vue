@@ -43,7 +43,9 @@
         :busy="generationBusy"
         :status-text="statusText"
         :status-tone="statusTone"
+        :status-action="statusAction"
         @load-more="onLoadMore"
+        @status-action="onStatusAction"
         @user-intent="onHistoryUserScrollIntent"
       />
 
@@ -153,8 +155,10 @@ const pageState = ref<PageState>("loading");
 const inputText = ref("");
 const menuOpen = ref(false);
 const directSendError = ref(false);
-const historyLoadError = ref(false);
 const initBusy = ref(false);
+// WP-D（缺口1）：覆盖"建会话（如需要）+ 发送"的页面级提交互斥——任何
+// await 之前同步置位，await ensureConversation 期间第二次 onSend 无法穿过。
+let submitInFlight = false;
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -191,7 +195,10 @@ const sendErrorText = computed(() => (
     : ""
 ));
 const statusText = computed(() => {
-  if (historyLoadError.value) return "更早的消息没有加载出来，可以再试一次。";
+  if (store.historyLoadFailed) return "更早的消息没有加载出来，可以再试一次。";
+  if (store.cancelUnconfirmed && store.phase === "cancelled") {
+    return "已停止显示这条回复，生成状态待确认。";
+  }
   switch (store.phase) {
     case "streaming":
       return "正在回复…";
@@ -203,8 +210,11 @@ const statusText = computed(() => {
       return "";
   }
 });
+const statusAction = computed(() => (
+  store.cancelUnconfirmed && store.phase === "cancelled" ? "核对生成状态" : ""
+));
 const statusTone = computed<StatusTone>(() => {
-  if (historyLoadError.value) return "error";
+  if (store.historyLoadFailed) return "error";
   if (store.phase === "streaming") return "progress";
   return "muted";
 });
@@ -253,7 +263,7 @@ async function initPage(): Promise<void> {
   initBusy.value = true;
   pageState.value = "loading";
   directSendError.value = false;
-  historyLoadError.value = false;
+  store.historyLoadFailed = false;
   try {
     if (!auth.isAuthenticated) await auth.tryRefresh(transport);
     if (!auth.isAuthenticated) {
@@ -323,59 +333,85 @@ async function ensureConversation(): Promise<boolean> {
   return true;
 }
 
-async function sendText(text: string): Promise<void> {
-  const ready = await ensureConversation();
-  if (!ready) throw new Error("conversation unavailable");
-  await store.send(transport, deps, text);
-  if (store.phase === "completed" && relStore.currentRelationshipId) {
-    void store.loadConversations(transport, relStore.currentRelationshipId);
+/**
+ * WP-D（缺口1+2）：提交路径。互斥在任何 await 之前同步置位，覆盖
+ * "建会话（如需要）+ 发送"整体；返回 false 表示正被上一笔提交占用。
+ * 输入框草稿与提交快照分离：只在"当前输入内容 === 提交快照"时清空；
+ * 失败恢复同样绝不触碰用户后来输入的新草稿。
+ */
+async function sendText(text: string): Promise<boolean> {
+  if (submitInFlight || store.isStreaming || generationBusy.value) return false;
+  submitInFlight = true;
+  directSendError.value = false;
+  if (inputText.value.trim() === text) inputText.value = "";
+  // 缺陷6：提交归属锚点。建会话成功后锚点更新为提交时的会话；失败回调
+  // 只在提交身份仍是当前上下文时回填输入/错误文案——用户在 await 期间
+  // 切换会话后，晚到的失败响应静默丢弃，不覆盖新会话的输入与 UI。
+  const anchorBeforeEnsure = store.conversationId;
+  let submittedConversationId: string | null = null;
+  try {
+    const ready = await ensureConversation();
+    if (!ready) throw new Error("conversation unavailable");
+    submittedConversationId = store.conversationId;
+    await store.send(transport, deps, text);
+    if (store.phase === "completed" && relStore.currentRelationshipId) {
+      void store.loadConversations(transport, relStore.currentRelationshipId);
+    }
+    return true;
+  } catch {
+    const expectedConversationId = submittedConversationId ?? anchorBeforeEnsure;
+    if (store.conversationId !== expectedConversationId) return false;
+    if (inputText.value.trim() === "") inputText.value = text;
+    directSendError.value = true;
+    return true;
+  } finally {
+    submitInFlight = false;
   }
 }
 
 async function onSend(): Promise<void> {
   const text = inputText.value.trim();
   if (!text || store.isStreaming || generationBusy.value) return;
-  directSendError.value = false;
-  try {
-    await ensureConversation();
-    inputText.value = "";
-    await store.send(transport, deps, text);
-    if (store.phase === "completed" && relStore.currentRelationshipId) {
-      void store.loadConversations(transport, relStore.currentRelationshipId);
-    }
-  } catch {
-    inputText.value = text;
-    directSendError.value = true;
-  }
+  await sendText(text);
 }
 
-async function onRetry(): Promise<void> {
+function onRetry(): void {
   if (!canRetry.value) return;
   const text = directSendError.value
     ? inputText.value.trim()
     : store.pendingUserContent.trim();
   if (!text) return;
-
-  directSendError.value = false;
-  if (inputText.value.trim() === text) inputText.value = "";
-  try {
-    await sendText(text);
-  } catch {
-    inputText.value = text;
-    directSendError.value = true;
-  }
+  void sendText(text);
 }
 
 function onCancel(): void {
   void store.cancel();
 }
 
+function onStatusAction(): void {
+  // WP-D（缺口3）：手动核对"已停止待确认"的生成，快照为权威。
+  void store.recoverInFlight(deps);
+}
+
+/**
+ * WP-D（缺口6）：手动加载更早消息，prepend 后做阅读锚点补偿——记录插入
+ * 前的 scrollTop/scrollHeight，插入渲染后按高度差补偿，视口内容不跳动。
+ */
 async function onLoadMore(): Promise<void> {
-  historyLoadError.value = false;
+  store.historyLoadFailed = false;
+  const node = historyNode();
+  const anchor = node ? { top: node.scrollTop, height: node.scrollHeight } : null;
   try {
     await store.loadMoreHistory(transport);
   } catch {
-    historyLoadError.value = true;
+    store.historyLoadFailed = true;
+    return;
+  }
+  await nextTick();
+  if (!anchor) return;
+  const after = historyNode();
+  if (after) {
+    after.scrollTop = anchor.top + Math.max(0, after.scrollHeight - anchor.height);
   }
 }
 
@@ -386,7 +422,7 @@ function startNewConversation(): void {
   bindGenerationContext();
   inputText.value = "";
   directSendError.value = false;
-  historyLoadError.value = false;
+  store.historyLoadFailed = false;
   followingLatest.value = true;
 }
 

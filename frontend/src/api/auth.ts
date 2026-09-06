@@ -1,6 +1,8 @@
 // Go Runtime identity client. Authentication is cookie based: no password,
 // challenge, recovery code or session secret is persisted by this module.
 
+import type { TransportRequestOptions } from "@/api/transport";
+
 export interface AuthApiResponse {
   ok: boolean;
   status: number;
@@ -10,7 +12,12 @@ export interface AuthApiResponse {
 }
 
 export interface AuthTransport {
-  request(method: string, path: string, body?: unknown): Promise<AuthApiResponse>;
+  request(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts?: TransportRequestOptions,
+  ): Promise<AuthApiResponse>;
 }
 
 export type AuthNextStep =

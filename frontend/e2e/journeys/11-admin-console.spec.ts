@@ -1,18 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { navigateToPage, uiLogin } from "../helpers";
-
-const ADMIN = {
-  email: "e2e-admin@example.test",
-  password: "E2e-Admin-Pass-1234!",
-};
+import { navigateToPage, openSharedSession } from "../helpers";
 
 async function openMenu(page: Page): Promise<void> {
   await page.getByRole("button", { name: "打开后台导航" }).click();
 }
 
 test("ADMIN can navigate the four honest management sections without writes", async ({ page }) => {
-  await uiLogin(page, ADMIN);
+  const session = await openSharedSession(page, "admin");
 
   const adminWrites: string[] = [];
   page.on("request", (request) => {
@@ -59,7 +54,7 @@ test("ADMIN can navigate the four honest management sections without writes", as
   await openMenu(page);
   await page.getByRole("button", { name: "返回应用" }).click();
   await page.waitForURL((url) => url.hash.startsWith("#/pages/account/account"));
-  await expect(page.getByTestId("account-email")).toHaveText(ADMIN.email);
+  await expect(page.getByTestId("account-email")).toHaveText(session.email);
   await expect(page.getByTestId("me-admin")).toBeVisible();
 
   expect(adminWrites).toEqual([]);

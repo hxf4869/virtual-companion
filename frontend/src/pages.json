@@ -42,6 +42,20 @@
 			}
 		},
 		{
+			"path": "pages/companion/companion",
+			"style": {
+				"navigationBarTitleText": "陪伴设置",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/memory/memory",
+			"style": {
+				"navigationBarTitleText": "记忆管理",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/admin/admin",
 			"style": {
 				"navigationBarTitleText": "注册审核",

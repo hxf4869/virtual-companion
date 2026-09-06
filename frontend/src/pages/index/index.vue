@@ -3,7 +3,9 @@
        exists to resume a real conversation, not to expose product internals. -->
   <ConsumerShell route="/pages/index/index" :show-header="false">
     <view class="home-page">
-      <view class="home-topbar" role="banner">
+      <!-- No banner role here: the shell already owns top-level landmarks and
+           a nested banner is an axe landmark-banner-is-top-level violation. -->
+      <view class="home-topbar">
         <text class="home-topbar__greeting">
           {{ auth.sessionStatus === "authenticated" ? "回来啦" : "虚拟陪伴" }}
         </text>

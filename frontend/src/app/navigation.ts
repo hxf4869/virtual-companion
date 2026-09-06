@@ -87,6 +87,22 @@ export const ROUTES: readonly RouteSpec[] = [
     allowedQuery: ["passwordChange"],
   },
   {
+    path: "/pages/companion/companion",
+    title: "陪伴设置",
+    shell: "consumer-sub",
+    tab: "me",
+    section: "me",
+    allowedQuery: [],
+  },
+  {
+    path: "/pages/memory/memory",
+    title: "记忆管理",
+    shell: "consumer-sub",
+    tab: "me",
+    section: "me",
+    allowedQuery: [],
+  },
+  {
     path: "/pages/login/login",
     title: "登录",
     shell: "admission",

@@ -94,6 +94,7 @@ cleanup() {
         "${DOCKER[@]}" rm -f "$PG_CONTAINER" "$MINIO_CONTAINER" >/dev/null 2>&1 || true
         rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" \
             "$E2E_AUTH_MATERIAL_FILE" "$GO_BINARY"
+        rm -f -- "${E2E_STACK_STATE_FILE}".shared-*.json
         [ -z "$E2E_SECRET_DIR" ] || rm -rf -- "$E2E_SECRET_DIR"
     else
         echo "keeping stack: pg($PG_CONTAINER) minio($MINIO_CONTAINER) provider(:$E2E_PROVIDER_PORT) runtime(:$E2E_RUNTIME_PORT) h5(:$E2E_H5_PORT)" >&2
@@ -235,7 +236,7 @@ UPDATE vc.identity_account
 SQL
 for E2E_USER_SUFFIX in \
     login-return auth-trusted-device relationship-chat realtime-recovery \
-    provider-faults accessibility navigation-smoke; do
+    provider-faults accessibility navigation-smoke companion-memory; do
     E2E_USERNAME="e2e-user-${E2E_USER_SUFFIX}"
     E2E_EMAIL="${E2E_USERNAME}@example.test"
     "${DOCKER[@]}" exec -i "$PG_CONTAINER" \

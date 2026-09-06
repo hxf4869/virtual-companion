@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { navigateToPage, provisionUser, uiLogin } from "../helpers";
+import { navigateToPage, openSharedSession } from "../helpers";
 
 async function expectFit(page: Page, label: string): Promise<void> {
   const sizes = await page.evaluate(() => ({
@@ -12,10 +12,8 @@ async function expectFit(page: Page, label: string): Promise<void> {
 
 test("the product exposes only home, chat and me as top-level navigation", async ({
   page,
-  request,
 }) => {
-  const user = await provisionUser(request, "navigation-smoke");
-  await uiLogin(page, user);
+  const session = await openSharedSession(page, "chat");
   await navigateToPage(page, "/pages/index/index");
 
   const navItems = page.getByTestId("consumer-tabbar").getByRole("button");
@@ -35,15 +33,24 @@ test("the product exposes only home, chat and me as top-level navigation", async
   await expectFit(page, "all conversations");
 
   await navigateToPage(page, "/pages/account/account");
-  await expect(page.getByTestId("account-email")).toHaveText(user.email);
-  await expect(page.locator(".settings-section__title")).toHaveText(["账号", "安全", "关于"]);
+  await expect(page.getByTestId("account-email")).toHaveText(session.email);
+  await expect(page.locator(".settings-section__title")).toHaveText([
+    "陪伴",
+    "账号",
+    "安全",
+    "关于",
+  ]);
   await expect(page.getByTestId("ai-identity-note")).toContainText("并非真人");
   await expect(page.getByTestId("me-admin")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText(/Provider|Token|Runtime|记忆中心|数据控制台/);
   await expectFit(page, "account");
 
   await page.getByTestId("tab-home").click();
-  await page.waitForURL((url) => url.hash.startsWith("#/pages/index/index"));
+  // 首页是入口页：uni-app H5 可能把首页 hash 规范化为 #/ 而不带完整路径，
+  // 与 helpers.navigateToPage 的首页判定保持同一语义。
+  await page.waitForURL((url) =>
+    url.hash.startsWith("#/pages/index/index") || ["", "#", "#/"].includes(url.hash),
+  );
   await expect(page.getByTestId("home-hero")).toBeVisible();
   await expectFit(page, "home");
 });

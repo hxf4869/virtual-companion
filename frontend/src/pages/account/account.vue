@@ -59,6 +59,37 @@
           <text>请先设置一个新密码，再继续使用其他功能。</text>
         </view>
 
+        <section class="settings-section" aria-labelledby="companion-section-title">
+          <text id="companion-section-title" class="settings-section__title">陪伴</text>
+          <view class="settings-list">
+            <button
+              type="button"
+              class="settings-row"
+              data-testid="me-companion"
+              @click="goTo('/pages/companion/companion')"
+            >
+              <span class="settings-row__copy">
+                <text class="settings-row__label">陪伴设置</text>
+                <text class="settings-row__note">称呼、回复长度和聊天偏好</text>
+              </span>
+              <AppIcon name="chevron-right" :size="18" />
+            </button>
+
+            <button
+              type="button"
+              class="settings-row"
+              data-testid="me-memory"
+              @click="goTo('/pages/memory/memory')"
+            >
+              <span class="settings-row__copy">
+                <text class="settings-row__label">记忆管理</text>
+                <text class="settings-row__note">查看、编辑或删除陪伴记住的内容</text>
+              </span>
+              <AppIcon name="chevron-right" :size="18" />
+            </button>
+          </view>
+        </section>
+
         <section class="settings-section" aria-labelledby="account-section-title">
           <text id="account-section-title" class="settings-section__title">账号</text>
           <view class="settings-list">

@@ -30,8 +30,8 @@ function specOf(path: string): RouteSpec {
 }
 
 describe("navigation model coverage", () => {
-  it("contains exactly the ten current product routes", () => {
-    expect(PAGE_PATHS).toHaveLength(10);
+  it("contains exactly the twelve current product routes", () => {
+    expect(PAGE_PATHS).toHaveLength(12);
     expect(new Set(PAGE_PATHS).size).toBe(PAGE_PATHS.length);
     expect(ROUTES.map((spec) => spec.path).sort()).toEqual([...PAGE_PATHS].sort());
   });
@@ -46,7 +46,22 @@ describe("navigation model coverage", () => {
     expect(routeSpecOf("/pages/chat/chat?conversationId=42")?.path).toBe(
       "/pages/chat/chat",
     );
-    expect(routeSpecOf("/pages/memory/memory")).toBeNull();
+    expect(routeSpecOf("/pages/me-data/me-data")).toBeNull();
+  });
+
+  it("keeps the companion and memory pages as me-section subpages", () => {
+    expect(specOf("/pages/companion/companion")).toMatchObject({
+      shell: "consumer-sub",
+      tab: "me",
+      section: "me",
+    });
+    expect(specOf("/pages/memory/memory")).toMatchObject({
+      shell: "consumer-sub",
+      tab: "me",
+      section: "me",
+    });
+    expect(hasBottomNav(specOf("/pages/companion/companion"))).toBe(false);
+    expect(hasBottomNav(specOf("/pages/memory/memory"))).toBe(false);
   });
 });
 
@@ -80,9 +95,11 @@ describe("consumer information architecture", () => {
     });
   });
 
-  it("keeps only the account root in the me section", () => {
+  it("keeps the account root plus its two subpages in the me section", () => {
     expect(ROUTES.filter((spec) => spec.section === "me").map((spec) => spec.path)).toEqual([
       "/pages/account/account",
+      "/pages/companion/companion",
+      "/pages/memory/memory",
     ]);
   });
 });

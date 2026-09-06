@@ -23,6 +23,11 @@ test("a trusted device skips only TOTP on the next password login", async ({
   const response = await loginResponse;
   expect(response.ok()).toBeTruthy();
   await expect(response.json()).resolves.toMatchObject({ nextStep: "ACTIVE" });
-  await page.waitForURL((url) => url.hash.startsWith("#/pages/index/index"));
+  // uni-app H5 normalizes the pages.json home route to the bare "#/" hash
+  // (the product lands there via uni.redirectTo); accept it exactly like
+  // helpers.navigateToPage does for /pages/index/index.
+  await page.waitForURL((url) =>
+    url.hash.startsWith("#/pages/index/index") || ["", "#", "#/"].includes(url.hash),
+  );
   await expect(page.getByText("验证登录", { exact: true })).toHaveCount(0);
 });

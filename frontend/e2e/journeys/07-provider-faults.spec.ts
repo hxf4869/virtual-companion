@@ -3,11 +3,10 @@ import { expect, test } from "@playwright/test";
 import {
   createRelationshipAndConversation,
   navigateToPage,
+  openSharedSession,
   prepareGenerationAccess,
   PROVIDER_TIMEOUT_SENTINEL,
-  provisionUser,
   SAFETY_BLOCK_SENTINEL,
-  uiLogin,
   waitForGenerationTerminal,
 } from "../helpers";
 
@@ -22,10 +21,8 @@ function isGenerationResponse(url: string, method: string): boolean {
 // sees only useful product copy; provider and protocol details stay hidden.
 test("provider safety and timeout faults surface as safe terminal states", async ({
   page,
-  request,
 }) => {
-  const user = await provisionUser(request, "provider-faults");
-  const session = await uiLogin(page, user);
+  const session = await openSharedSession(page, "chat");
   await prepareGenerationAccess(session.page);
   const context = await createRelationshipAndConversation(session.page);
   await navigateToPage(
@@ -67,9 +64,11 @@ test("provider safety and timeout faults surface as safe terminal states", async
     "the provider timeout is durably terminal before checking its UI copy",
   ).toBe("FAILED_FINAL");
 
-  await expect(page.getByTestId("chat-send-error")).toContainText("没发出，点此重试", {
+  // The composer renders the copy plus a standalone "点此重试" action button.
+  await expect(page.getByTestId("chat-send-error")).toContainText("没发出去，点此重试", {
     timeout: 60_000,
   });
+  await expect(page.getByTestId("retry")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/Provider|SSE|FAILED_FINAL|模型响应超时/);
   await expect(page.getByTestId("assistant-md")).toHaveCount(0);
 });

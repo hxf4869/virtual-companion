@@ -18,6 +18,15 @@
     >
       查看更早消息
     </button>
+    <!-- WP-D（缺口6）：历史向上取尽后的确定终态文案。 -->
+    <view
+      v-else-if="messages.length > 0"
+      class="vc-message-list__end"
+      data-testid="history-end"
+      role="status"
+    >
+      <text>没有更早的消息</text>
+    </view>
 
     <view
       v-if="empty"
@@ -52,6 +61,16 @@
           <i />
         </view>
         <text>{{ statusText }}</text>
+        <!-- WP-D（缺口3）：手动核对入口（如"已停止显示，生成状态待确认"）。 -->
+        <button
+          v-if="statusAction"
+          type="button"
+          class="vc-message-list__status-action"
+          data-testid="status-action"
+          @click="$emit('status-action')"
+        >
+          {{ statusAction }}
+        </button>
       </view>
     </view>
   </view>
@@ -70,10 +89,12 @@ defineProps<{
   busy: boolean;
   statusText?: string;
   statusTone?: "progress" | "muted" | "error";
+  statusAction?: string;
 }>();
 
 defineEmits<{
   (event: "load-more"): void;
+  (event: "status-action"): void;
   (event: "user-intent", value: Event): void;
 }>();
 </script>
@@ -118,6 +139,39 @@ defineEmits<{
 
 .vc-message-list__older:active {
   background: var(--vc-color-surface-soft);
+}
+
+.vc-message-list__end {
+  display: grid;
+  place-items: center;
+  min-height: 32px;
+  margin: 0 auto var(--vc-space-5);
+  color: var(--vc-color-ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.vc-message-list__status-action {
+  flex: 0 0 auto;
+  min-height: 36px;
+  margin: -6px 0;
+  padding: 0 var(--vc-space-2);
+  border: 0;
+  border-radius: var(--vc-radius-control);
+  color: var(--vc-color-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.vc-message-list__status-action::after {
+  border: 0;
+}
+
+.vc-message-list__status-action:focus-visible {
+  outline: 2px solid var(--vc-color-primary);
+  outline-offset: 2px;
 }
 
 .vc-message-list__messages {

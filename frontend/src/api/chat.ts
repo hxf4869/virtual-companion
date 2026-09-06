@@ -1,5 +1,7 @@
 /** Chat, generation and history API client used by the consumer experience. */
 
+import type { TransportRequestOptions } from "@/api/transport";
+
 export type ChatHttpErrorKind = "unauthorized" | "server" | "client";
 
 export class ChatHttpError extends Error {
@@ -13,6 +15,21 @@ export class ChatHttpError extends Error {
     this.status = status;
     this.kind = kind;
     this.code = code;
+  }
+}
+
+/**
+ * A 2xx response whose body could not be parsed (or did not carry the required
+ * shape). This is a PROTOCOL error, never an empty result: for writes the
+ * server may have committed, so callers must treat it as an unknown outcome.
+ */
+export class ChatProtocolError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`chat response was not valid protocol JSON (status ${status})`);
+    this.name = "ChatProtocolError";
+    this.status = status;
   }
 }
 
@@ -57,14 +74,29 @@ export interface ChatApiResponse {
   ok: boolean;
   status: number;
   json: unknown;
+  /** True when the HTTP body could not be decoded as JSON. */
+  parseFailed?: boolean;
 }
 
 export interface ChatTransport {
-  request(method: string, path: string, body?: unknown): Promise<ChatApiResponse>;
+  request(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts?: TransportRequestOptions,
+  ): Promise<ChatApiResponse>;
 }
 
 const CONVERSATIONS_BASE = "/api/v1/conversations";
 const GENERATIONS_BASE = "/api/v1/generations";
+/**
+ * WP-D：普通请求 15s、取消请求 5s 量级的有界超时。SSE 流走 realtime
+ * transport，绝不适用总时长限制；普通读超时是"结果未知"，与确定失败分开。
+ */
+const READ_TIMEOUT_MS = 15_000;
+const CANCEL_TIMEOUT_MS = 5_000;
+
+const readOpts: TransportRequestOptions = { timeoutMs: READ_TIMEOUT_MS };
 
 function isExistenceHidden(status: number): boolean {
   return status === 403 || status === 404;
@@ -175,11 +207,22 @@ export async function createConversation(
   transport: ChatTransport,
   relationshipId: string,
 ): Promise<CreateConversationResponse | null> {
-  const response = await transport.request("POST", CONVERSATIONS_BASE, { relationshipId });
+  const response = await transport.request(
+    "POST",
+    CONVERSATIONS_BASE,
+    { relationshipId },
+    readOpts,
+  );
   guardResult(response);
-  if (!response.ok || !response.json || typeof response.json !== "object") return null;
+  // Existence-hidden failures stay null; everything else must be ok + valid.
+  if (!response.ok) return null;
+  if (response.parseFailed) throw new ChatProtocolError(response.status);
+  if (!response.json || typeof response.json !== "object") {
+    throw new ChatProtocolError(response.status);
+  }
   const conversationId = asId((response.json as Record<string, unknown>).conversationId);
-  return conversationId ? { conversationId } : null;
+  if (!conversationId) throw new ChatProtocolError(response.status);
+  return { conversationId };
 }
 
 export async function listConversations(
@@ -195,10 +238,13 @@ export async function listConversations(
   if (after !== undefined) params.push(`after=${encodeURIComponent(after)}`);
   if (limit !== undefined) params.push(`limit=${limit}`);
   const query = params.length > 0 ? `?${params.join("&")}` : "";
-  const response = await transport.request("GET", `${CONVERSATIONS_BASE}${query}`);
+  const response = await transport.request("GET", `${CONVERSATIONS_BASE}${query}`, undefined, readOpts);
   if (!response.ok) {
     if (isExistenceHidden(response.status)) return [];
     throw new ChatHttpError(response.status, classifyStatus(response.status));
+  }
+  if (response.parseFailed || !Array.isArray(response.json)) {
+    throw new ChatProtocolError(response.status);
   }
   return asConversationList(response.json);
 }
@@ -215,9 +261,45 @@ export async function sendGeneration(
     "POST",
     `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}/generations`,
     body,
+    readOpts,
   );
   guardResult(response);
-  return asGeneration(response.json);
+  if (!response.ok) return null; // existence-hidden
+  if (response.parseFailed) throw new ChatProtocolError(response.status);
+  const generation = asGeneration(response.json);
+  if (!generation) throw new ChatProtocolError(response.status);
+  return generation;
+}
+
+/**
+ * listMessages/listRecentMessages 的公共实现：同一端点、同一错误语义，
+ * 仅游标参数名不同（after 向后翻页 / before 向上翻页）。
+ */
+async function listMessagesPage(
+  transport: ChatTransport,
+  conversationId: string,
+  cursorKey: "after" | "before",
+  cursor?: string,
+  limit?: number,
+): Promise<Message[]> {
+  const params: string[] = [];
+  if (cursor !== undefined) params.push(`${cursorKey}=${encodeURIComponent(cursor)}`);
+  if (limit !== undefined) params.push(`limit=${limit}`);
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const response = await transport.request(
+    "GET",
+    `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}/messages${query}`,
+    undefined,
+    readOpts,
+  );
+  if (!response.ok) {
+    if (isExistenceHidden(response.status)) return [];
+    throw new ChatHttpError(response.status, classifyStatus(response.status));
+  }
+  if (response.parseFailed || !Array.isArray(response.json)) {
+    throw new ChatProtocolError(response.status);
+  }
+  return asMessageArray(response.json);
 }
 
 export async function listMessages(
@@ -226,19 +308,20 @@ export async function listMessages(
   after?: string,
   limit?: number,
 ): Promise<Message[]> {
-  const params: string[] = [];
-  if (after !== undefined) params.push(`after=${encodeURIComponent(after)}`);
-  if (limit !== undefined) params.push(`limit=${limit}`);
-  const query = params.length > 0 ? `?${params.join("&")}` : "";
-  const response = await transport.request(
-    "GET",
-    `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}/messages${query}`,
-  );
-  if (!response.ok) {
-    if (isExistenceHidden(response.status)) return [];
-    throw new ChatHttpError(response.status, classifyStatus(response.status));
-  }
-  return asMessageArray(response.json);
+  return listMessagesPage(transport, conversationId, "after", after, limit);
+}
+
+/**
+ * WP-D：最近窗口/向上分页读取（后端契约：before 为空返回会话最后 limit 条，
+ * 传 before 返回比它更早的一页；响应内一律按 id 升序；与 after 互斥）。
+ */
+export async function listRecentMessages(
+  transport: ChatTransport,
+  conversationId: string,
+  before?: string,
+  limit?: number,
+): Promise<Message[]> {
+  return listMessagesPage(transport, conversationId, "before", before, limit);
 }
 
 export async function cancelGeneration(
@@ -248,19 +331,26 @@ export async function cancelGeneration(
   const response = await transport.request(
     "POST",
     `${GENERATIONS_BASE}/${encodeURIComponent(generationId)}/cancel`,
+    undefined,
+    { timeoutMs: CANCEL_TIMEOUT_MS },
   );
   guardResult(response);
-  return asGeneration(response.json);
+  if (!response.ok) return null; // existence-hidden
+  if (response.parseFailed) throw new ChatProtocolError(response.status);
+  const generation = asGeneration(response.json);
+  if (!generation) throw new ChatProtocolError(response.status);
+  return generation;
 }
 
 /** Runtime service status used only by the H5 administration console. */
 export async function getServiceMode(
   transport: ChatTransport,
 ): Promise<ServiceModeStatus | null> {
-  const response = await transport.request("GET", "/api/v1/service-mode");
+  const response = await transport.request("GET", "/api/v1/service-mode", undefined, readOpts);
   if (!response.ok) {
     throw new ChatHttpError(response.status, classifyStatus(response.status));
   }
+  if (response.parseFailed) throw new ChatProtocolError(response.status);
   if (!response.json || typeof response.json !== "object") return null;
   const object = response.json as Record<string, unknown>;
   const mode = object.mode;

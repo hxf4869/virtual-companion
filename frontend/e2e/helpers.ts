@@ -35,6 +35,7 @@ export const E2E_USER_SUFFIXES = [
   "provider-faults",
   "accessibility",
   "navigation-smoke",
+  "companion-memory",
 ] as const;
 
 export type E2EUserSuffix = (typeof E2E_USER_SUFFIXES)[number];
@@ -46,7 +47,45 @@ export interface E2EUser {
 
 export interface E2ESession {
   accountId: string;
+  /** Account email owning this session; used for on-page identity assertions. */
+  email: string;
   page: Page;
+}
+
+/** One already-authenticated account shared by journeys that exercise product
+ * behavior rather than the login flow itself. Sharing a single server-side
+ * session keeps each full run inside the backend's real authenticator
+ * rate-limit budget (5 challenge completions per 15 minutes, shared across
+ * every account). */
+export type SharedSessionKind = "chat" | "memory" | "admin";
+
+const SHARED_SESSION_ACCOUNTS: Record<SharedSessionKind, E2EUser> = {
+  chat: userFor("relationship-chat"),
+  memory: userFor("companion-memory"),
+  admin: { email: "e2e-admin@example.test", password: "E2e-Admin-Pass-1234!" },
+};
+
+interface SharedSessionCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "Strict" | "Lax" | "None";
+}
+
+interface SharedSessionFile {
+  cookies: SharedSessionCookie[];
+  accountId: string;
+  email: string;
+}
+
+function sharedSessionPath(kind: SharedSessionKind): string {
+  const stateFile = process.env.E2E_STACK_STATE_FILE;
+  if (!stateFile) throw new Error("E2E_STACK_STATE_FILE is required for shared sessions");
+  return `${stateFile}.shared-${kind}.json`;
 }
 
 export interface E2EConversation {
@@ -241,8 +280,138 @@ export async function completeLoginChallenge(
   });
   return {
     accountId: asId(accountId, "accountId"),
+    email: user.email,
     page,
   };
+}
+
+/**
+ * Enroll each shared account once through the real API so the journeys using
+ * it never spend the backend's shared authenticator rate-limit budget on
+ * logins. Runs in global setup, before any browser test. The opaque session
+ * cookies are persisted per kind and replayed by openSharedSession.
+ */
+export async function bootstrapSharedSessions(): Promise<void> {
+  for (const kind of ["chat", "memory", "admin"] as const) {
+    await bootstrapSharedSession(kind);
+  }
+}
+
+async function bootstrapSharedSession(kind: SharedSessionKind): Promise<void> {
+  const account = SHARED_SESSION_ACCOUNTS[kind];
+  const api = await requestFactory.newContext({ baseURL: API_BASE_URL });
+  const origin = new URL(API_BASE_URL).origin;
+  const jsonHeaders = { "Content-Type": "application/json", Origin: origin };
+  try {
+    const login = await api.post("/api/v1/auth/login", {
+      headers: jsonHeaders,
+      data: { account: account.email, password: account.password },
+    });
+    expect(login.ok(), `shared ${kind} login failed: ${login.status()}`).toBeTruthy();
+    const loginBody = (await login.json()) as {
+      nextStep?: unknown;
+      challengeId?: unknown;
+    };
+    const challengeId = String(loginBody.challengeId ?? "");
+    expect(challengeId, `shared ${kind} login returned no challenge`).not.toBe("");
+
+    // Idempotent across cold and kept (E2E_STACK_KEEP) stacks: a fresh
+    // account enrolls its authenticator here; an account that already
+    // enrolled on a previous run completes the seeded-secret TOTP challenge
+    // instead, so re-running global setup never hard-fails on reuse.
+    let accountId: unknown;
+    if (loginBody.nextStep === "TOTP_REQUIRED") {
+      const secret = (await readAuthenticatorSecrets())[account.email];
+      if (!secret) {
+        throw new Error(
+          `shared ${kind} account is enrolled but no E2E authenticator material is available for ${account.email}`,
+        );
+      }
+      const verified = await api.post(
+        `/api/v1/auth/challenges/${encodeURIComponent(challengeId)}/totp`,
+        {
+          headers: jsonHeaders,
+          data: { code: currentTOTP(secret), trustDevice: true },
+        },
+      );
+      expect(verified.ok(), `shared ${kind} TOTP verification failed: ${verified.status()}`)
+        .toBeTruthy();
+      accountId = ((await verified.json()) as { accountId?: unknown }).accountId;
+    } else {
+      expect(
+        loginBody.nextStep,
+        `shared ${kind} login stopped at an unexpected step`,
+      ).toBe("AUTHENTICATOR_SETUP_REQUIRED");
+      const enrollment = await enrollSharedAuthenticator(api, jsonHeaders, kind, challengeId);
+      accountId = enrollment.accountId;
+      // The manual key is the account's permanent seed; persist it only on
+      // the enrollment path (the TOTP path reuses the stored secret).
+      await saveAuthenticatorSecret(account.email, enrollment.manualKey);
+    }
+
+    const state = await api.storageState();
+    const shared: SharedSessionFile = {
+      cookies: state.cookies as SharedSessionCookie[],
+      accountId: asId(accountId, "accountId"),
+      email: account.email,
+    };
+    await writeFile(sharedSessionPath(kind), `${JSON.stringify(shared)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  } finally {
+    await api.dispose();
+  }
+}
+
+/** Enroll a fresh account's authenticator on its pending login challenge. */
+async function enrollSharedAuthenticator(
+  api: APIRequestContext,
+  jsonHeaders: Record<string, string>,
+  kind: SharedSessionKind,
+  challengeId: string,
+): Promise<{ accountId: unknown; manualKey: string }> {
+  const setup = await api.post(
+    `/api/v1/auth/challenges/${encodeURIComponent(challengeId)}/authenticator-setup`,
+    { headers: jsonHeaders },
+  );
+  expect(setup.ok(), `shared ${kind} authenticator setup failed: ${setup.status()}`)
+    .toBeTruthy();
+  const manualKey = ((await setup.json()) as { manualKey?: unknown }).manualKey;
+  if (typeof manualKey !== "string" || !/^[A-Z2-7]+$/.test(manualKey)) {
+    throw new Error(`shared ${kind} setup did not expose a valid manual key`);
+  }
+
+  const confirm = await api.post(
+    `/api/v1/auth/challenges/${encodeURIComponent(challengeId)}/authenticator-confirm`,
+    {
+      headers: jsonHeaders,
+      data: { code: currentTOTP(manualKey), trustDevice: true },
+    },
+  );
+  expect(confirm.ok(), `shared ${kind} authenticator confirm failed: ${confirm.status()}`)
+    .toBeTruthy();
+  const accountId = ((await confirm.json()) as { accountId?: unknown }).accountId;
+  return { accountId, manualKey };
+}
+
+/** Resume the shared authenticated session inside this test's browser context
+ * instead of driving the login form. The journeys keep their per-user server
+ * state (relationships, conversations, consents) on the shared account. */
+export async function openSharedSession(
+  page: Page,
+  kind: SharedSessionKind = "chat",
+): Promise<E2ESession> {
+  const shared = JSON.parse(
+    await readFile(sharedSessionPath(kind), "utf8"),
+  ) as SharedSessionFile;
+  await page.context().addCookies(shared.cookies);
+  await page.goto("/#/pages/index/index");
+  await expect(
+    page.getByTestId("consumer-tabbar"),
+    `shared ${kind} session (${shared.email}) is not authenticated`,
+  ).toBeVisible();
+  return { accountId: shared.accountId, email: shared.email, page };
 }
 
 /** Navigate inside uni-app without a full reload (and therefore without an

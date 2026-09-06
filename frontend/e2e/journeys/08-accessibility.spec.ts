@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { navigateToPage, provisionUser, uiLogin } from "../helpers";
+import { navigateToPage, openSharedSession, provisionUser } from "../helpers";
 
 type AxeViolations = Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"];
 
@@ -24,13 +24,19 @@ async function expectAccessibleAndFit(page: Page, label: string): Promise<void> 
 test("login and the current mobile product pages remain accessible", async ({ page, request }) => {
   await page.goto("/#/pages/index/index");
   await page.waitForURL((url) => url.hash.startsWith("#/pages/login/login"));
+  // The uni hash redirect can win the race against the Vue page mount (seen on
+  // webkit); audit only after the login screen content actually rendered.
+  await expect(page.getByRole("heading", { name: "登录", level: 1 })).toBeVisible();
   await expectAccessibleAndFit(page, "login-disabled-submit");
 
   const user = await provisionUser(request, "accessibility");
   await page.locator('[data-testid="account"] input').fill(user.email);
   await page.locator('[data-testid="password"] input').fill(user.password);
   await expectAccessibleAndFit(page, "login-ready-submit");
-  await uiLogin(page, user, { openPage: false });
+  // The a11y journey audits pages, not the login flow (01/02 own that); the
+  // product pages are entered through the shared session so the full run
+  // stays inside the backend's real authenticator rate-limit budget.
+  await openSharedSession(page, "chat");
 
   const pages = [
     ["/pages/index/index", "home"],

@@ -2,15 +2,13 @@ import { expect, test } from "@playwright/test";
 
 import {
   navigateToPage,
+  openSharedSession,
   prepareGenerationAccess,
   PROVIDER_REPLY,
-  provisionUser,
-  uiLogin,
 } from "../helpers";
 
-test("home starts the first conversation and later resumes it", async ({ page, request }) => {
-  const user = await provisionUser(request, "relationship-chat");
-  const session = await uiLogin(page, user);
+test("home starts the first conversation and later resumes it", async ({ page }) => {
+  const session = await openSharedSession(page, "chat");
   await prepareGenerationAccess(session.page);
 
   await navigateToPage(page, "/pages/index/index");

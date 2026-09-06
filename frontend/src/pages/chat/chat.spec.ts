@@ -59,6 +59,7 @@ interface FetchOptions {
   conversationListFails?: boolean | (() => boolean);
   messages?: Record<string, unknown[]>;
   createdConversationId?: string;
+  deferConversationCreate?: boolean;
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -74,8 +75,14 @@ function response(ok: boolean, status: number, json: unknown) {
   };
 }
 
+type StubResponse = ReturnType<typeof response>;
+
 function stubFetch(options: FetchOptions = {}) {
   const calls: Array<{ method: string; url: string; body?: string }> = [];
+  let resolveCreate!: (value: StubResponse) => void;
+  const deferredCreate = new Promise<StubResponse>((resolve) => {
+    resolveCreate = resolve;
+  });
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
     const method = (init?.method ?? "GET").toUpperCase();
@@ -102,9 +109,26 @@ function stubFetch(options: FetchOptions = {}) {
       const id = decodeURIComponent(messageMatch[1]);
       const rows = options.messages?.[id]
         ?? (id === "conv-new" ? MESSAGES : []);
-      return response(true, 200, rows);
+      // 与后端契约一致：after 向前、before 向上、缺省 = 最近窗口（升序）。
+      const params = new URLSearchParams(url.split("?")[1] ?? "");
+      const after = params.get("after");
+      const before = params.get("before");
+      const limit = Number(params.get("limit") ?? 50);
+      const numeric = (row: unknown) => Number((row as { messageId: unknown }).messageId);
+      let out: unknown[];
+      if (after !== null) {
+        out = rows.filter((row) => numeric(row) > Number(after)).slice(0, limit);
+      } else if (before !== null) {
+        out = rows.filter((row) => numeric(row) < Number(before)).slice(-limit);
+      } else {
+        out = rows.slice(-limit);
+      }
+      return response(true, 200, out);
     }
     if (method === "POST" && url === "/api/v1/conversations") {
+      if (options.deferConversationCreate) {
+        return deferredCreate;
+      }
       return response(true, 200, {
         conversationId: options.createdConversationId ?? "conv-created",
       });
@@ -112,7 +136,7 @@ function stubFetch(options: FetchOptions = {}) {
     return response(true, 200, {});
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { calls, fetchMock };
+  return { calls, fetchMock, resolveCreate };
 }
 
 function login(): void {
@@ -429,6 +453,236 @@ describe("聊天产品页", () => {
     await wrapper.find('[data-testid="back-to-latest"]').trigger("click");
     expect(history.scrollTop).toBe(1200);
     expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // ---- WP-D（缺口1）：提交互斥覆盖建会话 + 发送 ----
+
+  it("连点 10 次发送只在首次建会话时发一次 POST", async () => {
+    const { calls, resolveCreate } = stubFetch({ conversations: [], deferConversationCreate: true });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("只发一次");
+    const sendButton = wrapper.find('[data-testid="send"]');
+    await Promise.all(Array.from({ length: 10 }, () => sendButton.trigger("click")));
+
+    const createPosts = calls.filter(
+      (call) => call.method === "POST" && call.url === "/api/v1/conversations",
+    );
+    expect(createPosts).toHaveLength(1);
+    expect(sendSpy).not.toHaveBeenCalled(); // 仍在等待会话创建落地
+
+    resolveCreate(response(true, 200, { conversationId: "conv-created" }));
+    await flushPromises();
+
+    expect(createPosts).toHaveLength(1);
+    expect(sendSpy).toHaveBeenCalledOnce();
+    expect(sendSpy.mock.calls[0]?.[2]).toBe("只发一次");
+    wrapper.unmount();
+  });
+
+  it("建会话等待期间的新输入不会被并发提交吞掉或丢失", async () => {
+    const { calls, resolveCreate } = stubFetch({ conversations: [], deferConversationCreate: true });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("第一句");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+
+    // 会话创建在途时，用户写下一条草稿并再次点击：提交互斥拒绝第二次，
+    // 新草稿既不丢失也不被重复提交。
+    await input.setValue("等待期间又写的");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+
+    resolveCreate(response(true, 200, { conversationId: "conv-created" }));
+    await flushPromises();
+
+    expect(calls.filter((call) => call.method === "POST" && call.url === "/api/v1/conversations")).toHaveLength(1);
+    expect(sendSpy).toHaveBeenCalledOnce();
+    expect(sendSpy.mock.calls[0]?.[2]).toBe("第一句");
+    expect((input.element as HTMLTextAreaElement).value).toBe("等待期间又写的");
+    wrapper.unmount();
+  });
+
+  it("Enter 与点击并发触发发送时只提交一次", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("一句");
+    const press = input.trigger("keydown", { key: "Enter" });
+    const click = wrapper.find('[data-testid="send"]').trigger("click");
+    await Promise.all([press, click]);
+    await flushPromises();
+
+    expect(sendSpy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  // ---- WP-D（缺口2）：提交快照与新草稿分离 ----
+
+  it("发送失败恢复只回填旧快照，绝不覆盖在途输入的新草稿", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    let rejectSend!: (error: unknown) => void;
+    vi.spyOn(store, "send").mockImplementation(
+      () => new Promise((_resolve, reject) => {
+        rejectSend = reject;
+      }),
+    );
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("原始消息");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    // 输入框已清空（内容 === 提交快照），此时用户开始写下一条草稿。
+    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    await input.setValue("新草稿");
+
+    rejectSend(new Error("offline"));
+    await flushPromises();
+
+    expect((input.element as HTMLTextAreaElement).value).toBe("新草稿");
+    expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- 缺陷6：提交失败响应晚到且已切换会话时不串扰新会话 UI ----
+
+  it("提交失败响应晚到且已切换会话时不回填输入、不出现重试文案", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    let rejectSend!: (error: unknown) => void;
+    vi.spyOn(store, "send").mockImplementation(
+      () => new Promise((_resolve, reject) => {
+        rejectSend = reject;
+      }),
+    );
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("A 会话的消息");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    expect((input.element as HTMLTextAreaElement).value).toBe("");
+
+    // 提交在途时用户切换到另一会话（真实 openConversation：窗口令牌递增）。
+    const switchTransport = {
+      request: async () => ({ ok: true, status: 200, json: [] }),
+    };
+    expect(await store.openConversation(switchTransport, "conv-old")).toBe(true);
+    expect(store.conversationId).toBe("conv-old");
+
+    // A 的失败响应晚到：新会话的输入与错误文案不受影响。
+    rejectSend(new Error("offline"));
+    await flushPromises();
+
+    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(false);
+    expect(store.phase).not.toBe("failed");
+    wrapper.unmount();
+  });
+
+  it("生成中输入框保持可编辑，用户可继续写下一条草稿", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "streaming";
+    store.pendingUserContent = "在吗";
+    store.stream = {
+      status: "streaming",
+      epoch: 1,
+      cursor: 1,
+      events: [
+        { eventSeq: 1, streamEpoch: 1, eventType: "chat.delta", payload: "我在听。" },
+      ],
+      terminal: false,
+      terminalEventType: null,
+    };
+    await wrapper.vm.$nextTick();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    expect(input.attributes("disabled")).toBeUndefined();
+    await input.setValue("下一条草稿");
+    expect((input.element as HTMLTextAreaElement).value).toBe("下一条草稿");
+    expect(wrapper.find('[data-testid="cancel"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- WP-D（缺口3）：停止后生成状态待确认 + 手动核对 ----
+
+  it("停止显示但服务端终态未知时给出待确认文案和手动核对入口", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "cancelled";
+    store.cancelUnconfirmed = true;
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("生成状态待确认");
+    const recheck = vi.spyOn(store, "recoverInFlight").mockResolvedValue();
+    await wrapper.find('[data-testid="status-action"]').trigger("click");
+    expect(recheck).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  // ---- WP-D（缺口6）：最近窗口 + 向上加载 + 阅读锚点 ----
+
+  it("首次打开只拉最近窗口，历史不足一页时显示没有更早的消息", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(calls.filter((call) => call.url.includes("/messages")).every((call) => call.url.endsWith("messages?limit=50"))).toBe(true);
+    expect(wrapper.find('[data-testid="load-more"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="history-end"]').text()).toContain("没有更早的消息");
+    wrapper.unmount();
+  });
+
+  it("向上加载更早消息后保持阅读锚点，视口不跳动", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    stubFetch({ messages: { "conv-new": rows } });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.messages).toHaveLength(50);
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    Object.defineProperty(history, "scrollHeight", {
+      configurable: true,
+      get: () => 5000 + store.messages.length * 10,
+    });
+    Object.defineProperty(history, "clientHeight", { configurable: true, value: 400 });
+    history.scrollTop = 0;
+    // 停掉回底部的待定帧并标记用户已离底，避免锚点被自动滚动覆盖。
+    history.dispatchEvent(new Event("wheel"));
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="load-more"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="load-more"]').trigger("click");
+    await flushPromises();
+
+    expect(store.messages).toHaveLength(100);
+    expect(Number(store.messages[0].messageId)).toBe(21);
+    // 插入前 scrollTop=0、高度 5500；插入后高度 6000 → 补偿 500。
+    expect(history.scrollTop).toBe(500);
     wrapper.unmount();
   });
 });

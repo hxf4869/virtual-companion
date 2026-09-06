@@ -3,15 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   cancelGeneration,
   ChatHttpError,
+  ChatProtocolError,
   createConversation,
   getServiceMode,
   listConversations,
   listMessages,
+  listRecentMessages,
   sendGeneration,
   type ChatTransport,
 } from "./chat";
 
-function recorder(response: { ok: boolean; status: number; json: unknown }) {
+function recorder(response: { ok: boolean; status: number; json: unknown; parseFailed?: boolean }) {
   const calls: Array<{ method: string; path: string; body?: unknown }> = [];
   const transport: ChatTransport = {
     request: async (method, path, body) => {
@@ -149,6 +151,70 @@ describe("conversation history", () => {
   it("does not turn a server failure into an empty successful history", async () => {
     const transport = recorder({ ok: false, status: 503, json: null }).transport;
     await expect(listMessages(transport, "7")).rejects.toBeInstanceOf(ChatHttpError);
+  });
+
+  it("rejects a 2xx body that failed to parse instead of an empty list", async () => {
+    const transport = recorder({ ok: true, status: 200, json: null, parseFailed: true }).transport;
+    await expect(listMessages(transport, "7")).rejects.toBeInstanceOf(ChatProtocolError);
+  });
+
+  it("keeps a 200 empty array as a valid empty page", async () => {
+    const transport = recorder({ ok: true, status: 200, json: [] }).transport;
+    await expect(listMessages(transport, "7")).resolves.toEqual([]);
+  });
+});
+
+describe("listRecentMessages (WP-D 最近窗口/向上分页)", () => {
+  it("requests the recent window without before and parses ascending rows", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: [{ messageId: 9, conversationId: 7, role: "user", content: "你好" }],
+    });
+
+    await expect(listRecentMessages(transport, "7", undefined, 50)).resolves.toHaveLength(1);
+    expect(calls[0]?.path).toBe("/api/v1/conversations/7/messages?limit=50");
+  });
+
+  it("pages upward with before as the oldest loaded id", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: [] });
+
+    await expect(listRecentMessages(transport, "7", "9", 50)).resolves.toEqual([]);
+    expect(calls[0]?.path).toBe("/api/v1/conversations/7/messages?before=9&limit=50");
+  });
+
+  it("treats a 2xx parse failure as a protocol error, never an empty page", async () => {
+    const transport = recorder({ ok: true, status: 200, json: null, parseFailed: true }).transport;
+    await expect(listRecentMessages(transport, "7")).rejects.toBeInstanceOf(ChatProtocolError);
+  });
+
+  it("keeps a 200 empty array as a valid empty window", async () => {
+    const transport = recorder({ ok: true, status: 200, json: [] }).transport;
+    await expect(listRecentMessages(transport, "7")).resolves.toEqual([]);
+  });
+});
+
+describe("WP-D 缺口5：2xx 协议错误不再当空数据", () => {
+  it("createConversation rejects on a 2xx parse failure", async () => {
+    const transport = recorder({ ok: true, status: 200, json: null, parseFailed: true }).transport;
+    await expect(createConversation(transport, "1")).rejects.toBeInstanceOf(ChatProtocolError);
+  });
+
+  it("sendGeneration rejects on a 2xx parse failure (unknown outcome)", async () => {
+    const transport = recorder({ ok: true, status: 200, json: null, parseFailed: true }).transport;
+    await expect(sendGeneration(transport, "7", "key-1", "你好")).rejects.toBeInstanceOf(
+      ChatProtocolError,
+    );
+  });
+
+  it("listConversations rejects on a 2xx parse failure", async () => {
+    const transport = recorder({ ok: true, status: 200, json: null, parseFailed: true }).transport;
+    await expect(listConversations(transport, "7")).rejects.toBeInstanceOf(ChatProtocolError);
+  });
+
+  it("cancelGeneration rejects on a 2xx parse failure", async () => {
+    const transport = recorder({ ok: true, status: 200, json: null, parseFailed: true }).transport;
+    await expect(cancelGeneration(transport, "42")).rejects.toBeInstanceOf(ChatProtocolError);
   });
 });
 

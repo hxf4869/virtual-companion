@@ -10,7 +10,9 @@ page,
   --vc-color-hairline: #ddd5c8;
   --vc-color-primary: #8a3621;
   --vc-color-primary-pressed: #6f2818;
-  --vc-color-secondary: #58766f;
+  // #57746d keeps WCAG AA (>= 4.5:1) against --vc-color-canvas #f7f3ec;
+  // the previous #58766f measured 4.48:1 (axe color-contrast violation).
+  --vc-color-secondary: #57746d;
   --vc-color-success: #39765b;
   --vc-color-warning: #99621d;
   --vc-color-error: #b43b3b;
