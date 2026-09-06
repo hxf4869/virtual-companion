@@ -352,6 +352,46 @@ func (s *Store) ListConversations(ctx context.Context, owner int64, relationship
 	return out, nil
 }
 
+// ListExportConversations pages the owner's conversations for the data
+// export worker over the V130 stable id keyset: rows come back in descending
+// id order and after is the exclusive smallest id already loaded, so a
+// conversation whose derived last-activity timestamp changes mid-export can
+// no longer skip or repeat pages (unlike the frontend vc.list_conversations
+// cursor, which stays untouched). Rows are NOT preview-decrypted: the export
+// payload consumes id/relationship/incognito only.
+func (s *Store) ListExportConversations(ctx context.Context, owner int64, after *int64, limit *int) ([]Conversation, error) {
+	var out []Conversation
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT out_id, out_relationship_id, out_created_at,
+			        out_last_message_role, out_last_message_preview, out_title, out_incognito,
+			        out_last_activity_at
+			   FROM vc.go_list_export_conversations($1, $2, $3)`,
+			owner, after, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c Conversation
+			if err := rows.Scan(&c.ID, &c.RelationshipID, &c.CreatedAt,
+				&c.LastMessageRole, &c.LastMessagePreview, &c.Title, &c.Incognito,
+				&c.LastActivityAt); err != nil {
+				return err
+			}
+			out = append(out, c)
+		}
+		if out == nil {
+			out = []Conversation{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
+}
+
 func (s *Store) DeleteConversation(ctx context.Context, owner, id int64) error {
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		var deleted bool
@@ -448,6 +488,50 @@ func (s *Store) ListMessages(ctx context.Context, owner, conversationID int64, a
 			`SELECT out_id, out_role, out_content, out_created_at, out_no_memory
 			   FROM vc.list_messages($1, $2, $3, $4)`,
 			owner, conversationID, after, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m Message
+			var stored string
+			if err := rows.Scan(&m.ID, &m.Role, &stored, &m.CreatedAt, &m.NoMemory); err != nil {
+				return err
+			}
+			plain, err := s.decryptStored(stored)
+			if err != nil {
+				return errStore
+			}
+			m.ConversationID = conversationID
+			m.Content = plain
+			out = append(out, m)
+		}
+		if out == nil {
+			out = []Message{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// ListRecentMessages reads the most recent message window for backward
+// pagination. before is the exclusive oldest already-loaded message id
+// (nil = conversation tail). Rows are always returned in ascending id order.
+// limit <= 0 uses the server default (50); the server caps the window at 100.
+func (s *Store) ListRecentMessages(ctx context.Context, owner, conversationID int64, before *int64, limit int) ([]Message, error) {
+	var limitPtr *int
+	if limit > 0 {
+		limitPtr = &limit
+	}
+	var out []Message
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT out_id, out_role, out_content, out_created_at, out_no_memory
+			   FROM vc.go_list_recent_messages($1, $2, $3, $4)`,
+			owner, conversationID, before, limitPtr)
 		if err != nil {
 			return err
 		}

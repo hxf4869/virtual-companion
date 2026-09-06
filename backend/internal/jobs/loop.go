@@ -20,18 +20,21 @@ import (
 )
 
 const (
-	KindGeneration = "GENERATION"
-	KindExport     = "DATA_EXPORT"
+	KindGeneration    = "GENERATION"
+	KindExport        = "DATA_EXPORT"
+	KindMemoryExtract = "MEMORY_EXTRACT"
 )
 
 // Store is the durable jobs/generation surface used by the worker.
 type Store interface {
 	turn.Store
-	ClaimJobs(ctx context.Context, generationLease, exportLease, defaultLease time.Duration, limit int) ([]postgres.JobClaim, error)
+	ClaimJobs(ctx context.Context, generationLease, exportLease, defaultLease time.Duration, limit, generationLimit, extractLimit int) ([]postgres.JobClaim, error)
 	PromoteClaimedGeneration(ctx context.Context, owner, generationID, jobID int64, token, fence string) (string, error)
 	CompleteJob(ctx context.Context, owner, jobID int64, token, fence, status, reason string) error
 	ListExpiredGenerationJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)
 	RecoverExpiredGeneration(ctx context.Context, owner, jobID int64) (string, error)
+	ListExpiredMemoryExtractJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)
+	RecoverExpiredMemoryExtract(ctx context.Context, owner, jobID int64) (string, error)
 	ExpireQueuedGenerations(ctx context.Context, timeout time.Duration) (int, error)
 	PurgeExpiredOpaqueSessions(ctx context.Context) (int, error)
 	ExpireStaleExports(ctx context.Context) (int, error)
@@ -44,9 +47,15 @@ type Store interface {
 	GenerationSnapshot(ctx context.Context, owner, generationID int64) (postgres.GenerationSnapshot, error)
 	OutboundCheck(ctx context.Context, owner int64) (postgres.OutboundDecision, error)
 	ListConversations(ctx context.Context, owner int64, relationshipID, after *int64, limit *int) ([]postgres.Conversation, error)
+	ListExportConversations(ctx context.Context, owner int64, after *int64, limit *int) ([]postgres.Conversation, error)
 	ListMessages(ctx context.Context, owner, conversationID int64, after *int64, limit *int) ([]postgres.Message, error)
 	ListMemories(ctx context.Context, owner, relationshipID int64, includeDeleted bool) ([]postgres.Memory, error)
 	ListRelationships(ctx context.Context, owner int64) ([]postgres.Relationship, error)
+	GetMemoryAutoSavePref(ctx context.Context, owner int64) (bool, error)
+	ReadMemoryExtractInput(ctx context.Context, owner, generationID int64) (postgres.MemoryExtractInput, error)
+	EnqueueMemoryExtract(ctx context.Context, owner, generationID int64) (int64, error)
+	CreateAutoSavedMemory(ctx context.Context, owner int64, in postgres.AutoSavedMemoryCreate) (postgres.Memory, error)
+	RetryMemoryExtract(ctx context.Context, owner, jobID int64, token, fence string) (string, error)
 	CompleteExport(ctx context.Context, owner, exportID int64, payload string, expiresAt time.Time) error
 	CompleteExportObject(ctx context.Context, owner, exportID int64, objectKey string, objectBytes int64, expiresAt time.Time) error
 	RecordExportUploadIntent(ctx context.Context, owner, exportID int64, objectKey string, leaseSeconds int) (int64, error)
@@ -62,27 +71,33 @@ type Policy struct {
 	SupplierName       string
 	ModelID            string
 	MaxConcurrentTurns int
-	ClaimLimit         int
-	RecoverEvery       time.Duration
-	QueueTimeout       time.Duration
-	PollIdle           time.Duration
-	PollBusy           time.Duration
+	// MaxConcurrentExtracts bounds the in-flight extraction model calls
+	// independently of the generation slots (default 1 when unset).
+	MaxConcurrentExtracts int
+	ClaimLimit            int
+	RecoverEvery          time.Duration
+	QueueTimeout          time.Duration
+	PollIdle              time.Duration
+	PollBusy              time.Duration
 }
 
 func PolicyFrom(cfg config.Config) Policy {
 	return Policy{
-		GenerationLease:    cfg.Budget.TotalTimeout + 30*time.Second,
-		ExportLease:        10 * time.Minute,
-		DefaultLease:       60 * time.Second,
-		ProviderID:         cfg.Provider.ID,
-		SupplierName:       cfg.Provider.SupplierName,
-		ModelID:            cfg.Provider.Model,
-		MaxConcurrentTurns: cfg.Concurrency.MaxConcurrentTurns,
-		ClaimLimit:         cfg.Concurrency.ClaimLimit,
-		RecoverEvery:       cfg.Concurrency.RecoverInterval,
-		QueueTimeout:       cfg.Concurrency.QueueTimeout,
-		PollIdle:           time.Second,
-		PollBusy:           50 * time.Millisecond,
+		GenerationLease: cfg.Budget.TotalTimeout + 30*time.Second,
+		ExportLease:     10 * time.Minute,
+		// MEMORY_EXTRACT claims run on the default lease; it must always cover
+		// the bounded extraction call (20s) plus finalization margin.
+		DefaultLease:          max(60*time.Second, extractTotalTimeout+10*time.Second),
+		ProviderID:            cfg.Provider.ID,
+		SupplierName:          cfg.Provider.SupplierName,
+		ModelID:               cfg.Provider.Model,
+		MaxConcurrentTurns:    cfg.Concurrency.MaxConcurrentTurns,
+		MaxConcurrentExtracts: 1,
+		ClaimLimit:            cfg.Concurrency.ClaimLimit,
+		RecoverEvery:          cfg.Concurrency.RecoverInterval,
+		QueueTimeout:          cfg.Concurrency.QueueTimeout,
+		PollIdle:              time.Second,
+		PollBusy:              50 * time.Millisecond,
 	}
 }
 
@@ -173,6 +188,7 @@ type Loop struct {
 
 	claimMu         sync.Mutex
 	generationSlots chan struct{}
+	extractSlots    chan struct{}
 	handlers        sync.WaitGroup
 	wake            chan struct{}
 	started         atomic.Bool
@@ -199,6 +215,9 @@ func NewLoop(log *slog.Logger, policy Policy, budget companion.TurnBudget) *Loop
 	if policy.MaxConcurrentTurns < 1 {
 		policy.MaxConcurrentTurns = 1
 	}
+	if policy.MaxConcurrentExtracts < 1 {
+		policy.MaxConcurrentExtracts = 1
+	}
 	if policy.ProviderID == "" {
 		policy.ProviderID = "openai-compatible"
 	}
@@ -211,6 +230,7 @@ func NewLoop(log *slog.Logger, policy Policy, budget companion.TurnBudget) *Loop
 		budget:          budget,
 		cancels:         NewCancels(),
 		generationSlots: make(chan struct{}, policy.MaxConcurrentTurns),
+		extractSlots:    make(chan struct{}, policy.MaxConcurrentExtracts),
 		wake:            make(chan struct{}, 1),
 		done:            make(chan struct{}),
 	}
@@ -376,15 +396,23 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 	}
 	l.claimMu.Lock()
 	defer l.claimMu.Unlock()
-	available := cap(l.generationSlots) - len(l.generationSlots)
-	if available <= 0 {
-		return 0
-	}
+	// Per-kind capacity: GENERATION and MEMORY_EXTRACT are claimed only while
+	// they have a free slot, and the slot is taken while the claim is still
+	// held under claimMu (slots are released by handlers, never stolen, so the
+	// send below cannot block). A claimed job is therefore always inside
+	// capacity — claimed per kind per round never exceeds that kind's slots,
+	// claimed-but-waiting goroutines cannot pile up, and a full pool of one
+	// kind never blocks the other. DATA_EXPORT has no dedicated slots: the
+	// V129 claim contract caps it by the overall batch limit only, so claims
+	// still flow when both kind pools are full (audit L2) — the per-kind
+	// limits are then simply 0.
+	generationFree := cap(l.generationSlots) - len(l.generationSlots)
+	extractFree := cap(l.extractSlots) - len(l.extractSlots)
 	limit := l.policy.ClaimLimit
-	if limit < 1 || limit > available {
-		limit = available
+	if limit < 1 {
+		limit = 8
 	}
-	claims, err := l.store.ClaimJobs(ctx, l.policy.GenerationLease, l.policy.ExportLease, l.policy.DefaultLease, limit)
+	claims, err := l.store.ClaimJobs(ctx, l.policy.GenerationLease, l.policy.ExportLease, l.policy.DefaultLease, limit, generationFree, extractFree)
 	if err != nil {
 		l.log.Info("job claim",
 			slog.String("operation", "job_claim"),
@@ -395,17 +423,35 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 	}
 	for _, c := range claims {
 		l.claims.Add(1)
-		if c.Kind == KindGeneration {
-			l.generationSlots <- struct{}{}
-			l.handlers.Add(1)
-			go l.dispatchGeneration(ctx, c)
-			continue
+		switch c.Kind {
+		case KindGeneration:
+			select {
+			case l.generationSlots <- struct{}{}:
+				l.handlers.Add(1)
+				go l.dispatchGeneration(ctx, c)
+			case <-ctx.Done():
+				// Shutdown raced the slot handoff; the abandoned claim is
+				// left to lease-expiry recovery.
+			}
+		case KindMemoryExtract:
+			select {
+			case l.extractSlots <- struct{}{}:
+				l.handlers.Add(1)
+				go l.dispatchExtract(ctx, c)
+			case <-ctx.Done():
+				// Shutdown raced the slot handoff; the abandoned claim is
+				// left to lease-expiry recovery.
+			}
+		default:
+			l.dispatch(ctx, c)
 		}
-		l.dispatch(ctx, c)
 	}
 	return len(claims)
 }
 
+// dispatchGeneration runs one claimed generation inside its pool slot. The
+// slot is held for the whole handler: a claim that never starts executing
+// (aborted run) stays bounded by the claim lease and lease-expiry recovery.
 func (l *Loop) dispatchGeneration(ctx context.Context, c postgres.JobClaim) {
 	active := l.activeGenerations.Add(1)
 	for {
@@ -417,6 +463,18 @@ func (l *Loop) dispatchGeneration(ctx context.Context, c postgres.JobClaim) {
 	defer func() {
 		l.activeGenerations.Add(-1)
 		<-l.generationSlots
+		l.handlers.Done()
+		select {
+		case l.wake <- struct{}{}:
+		default:
+		}
+	}()
+	l.dispatch(ctx, c)
+}
+
+func (l *Loop) dispatchExtract(ctx context.Context, c postgres.JobClaim) {
+	defer func() {
+		<-l.extractSlots
 		l.handlers.Done()
 		select {
 		case l.wake <- struct{}{}:
@@ -451,6 +509,29 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 			slog.String("event_type", action),
 		)
 	}
+	// Expired CLAIMED extractions (crashed worker mid-call) requeue through
+	// the same guarded recovery; retries stay bounded and dead-letter.
+	expiredExtracts, err := l.store.ListExpiredMemoryExtractJobs(ctx, l.policy.ClaimLimit)
+	if err != nil {
+		return err
+	}
+	for _, c := range expiredExtracts {
+		action, recErr := l.store.RecoverExpiredMemoryExtract(ctx, c.OwnerID, c.JobID)
+		if recErr != nil {
+			l.log.Info("memory extract recover",
+				slog.String("operation", "memory_extract_recover"),
+				slog.String("outcome", "error"),
+				slog.String("error_code", "RECOVER_FAILED"),
+			)
+			continue
+		}
+		l.recoveries.Add(1)
+		l.log.Info("memory extract recover",
+			slog.String("operation", "memory_extract_recover"),
+			slog.String("outcome", "ok"),
+			slog.String("event_type", action),
+		)
+	}
 	return nil
 }
 
@@ -463,6 +544,8 @@ func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {
 		err = l.handleGeneration(ctx, c, runID)
 	case KindExport:
 		err = l.handleExport(ctx, c)
+	case KindMemoryExtract:
+		err = l.handleMemoryExtract(ctx, c)
 	default:
 		log.Info("job skipped",
 			slog.String("operation", "job_dispatch"),

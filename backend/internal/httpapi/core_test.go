@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,6 +49,9 @@ type memStore struct {
 	authChallenges map[string]memAuthChallenge
 	trustedDevices map[int64]memTrustedDevice
 	nextTrustedID  int64
+	// memoryAutoSave holds explicit per-owner overrides; a missing owner
+	// reads as enabled, matching the V66 SQL default.
+	memoryAutoSave map[int64]bool
 }
 
 type memSession struct {
@@ -106,6 +110,7 @@ func newMemStore() *memStore {
 		authChallenges: map[string]memAuthChallenge{},
 		trustedDevices: map[int64]memTrustedDevice{},
 		nextTrustedID:  1,
+		memoryAutoSave: map[int64]bool{},
 	}
 }
 
@@ -326,6 +331,32 @@ func (m *memStore) ListMessages(_ context.Context, _, conversationID int64, _ *i
 	}
 	if out == nil {
 		out = []postgres.Message{}
+	}
+	return out, nil
+}
+
+func (m *memStore) ListRecentMessages(_ context.Context, _, conversationID int64, before *int64, limit int) ([]postgres.Message, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []postgres.Message{}
+	for _, msg := range m.msgs {
+		if msg.ConversationID != conversationID {
+			continue
+		}
+		if before != nil && msg.ID >= *before {
+			continue
+		}
+		out = append(out, msg)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if len(out) > limit {
+		out = out[len(out)-limit:]
 	}
 	return out, nil
 }

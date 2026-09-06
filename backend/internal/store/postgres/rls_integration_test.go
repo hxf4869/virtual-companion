@@ -321,6 +321,10 @@ INSERT INTO vc.provider_deployment(provider_id, protocol, capabilities, admissio
 VALUES ('openai-compatible', 'OPENAI_CHAT_COMPLETIONS', '{}', 'ADMITTED')
 ON CONFLICT (provider_id) DO UPDATE
    SET protocol = EXCLUDED.protocol, admission_state = EXCLUDED.admission_state;
+-- The literal fixture ids above bypass nextval; keep the sequence ahead of
+-- them so the suite's next create does not collide with a fixture row.
+SELECT setval('vc.relationship_id_seq',
+              GREATEST((SELECT max(id) FROM vc.relationship), 1));
 `)
 	if err != nil {
 		t.Fatal(err)

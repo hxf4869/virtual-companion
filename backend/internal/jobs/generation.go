@@ -132,6 +132,11 @@ func (l *Loop) handleGeneration(ctx context.Context, c postgres.JobClaim, runID 
 	if last.RetryAllowed {
 		return l.terminalAttempt(ctx, c, last)
 	}
+	if last.Phase == companion.PhaseCompleted {
+		// Fire-and-forget trigger: extraction enqueue failures must never
+		// affect the completed chat reply.
+		l.enqueueMemoryExtract(ctx, c.OwnerID, c.RefID)
+	}
 	return nil
 }
 
@@ -163,57 +168,127 @@ func (l *Loop) retryFinalize(ctx context.Context, c postgres.JobClaim, last turn
 			Text:       last.Text,
 		})
 		if err == nil {
-			if l.hub != nil {
-				l.hub.Completed(fmtInt(c.RefID))
-			}
+			l.publishTerminal(fmtInt(c.RefID), companion.EventCompleted)
+			l.enqueueMemoryExtract(ctx, c.OwnerID, c.RefID)
 			return nil
 		}
 	}
-	_ = l.store.TerminalizeGeneration(ctx, turn.TerminalCommand{
+	status, termErr := l.store.TerminalizeGeneration(ctx, turn.TerminalCommand{
 		OwnerID: c.OwnerID, TurnID: fmtInt(c.RefID), AttemptID: last.Attempt.AttemptID,
 		JobID: c.JobID, ClaimToken: c.Token, ClaimFence: c.Fence,
 		Phase: companion.PhaseFailed, Reason: "FINALIZE_FAILED",
 	})
-	if l.hub != nil {
-		l.hub.Failed(fmtInt(c.RefID))
+	if termErr != nil {
+		// The failed terminal state is unconfirmed; broadcast only when the
+		// snapshot already shows it, otherwise recovery owns the outcome.
+		l.publishTerminal(fmtInt(c.RefID), l.confirmedTerminal(ctx, c, companion.PhaseFailed))
+		return err
+	}
+	if ev := persistedTerminalEvent(status); ev != "" {
+		l.publishTerminal(fmtInt(c.RefID), ev)
+	} else {
+		l.publishTerminal(fmtInt(c.RefID), l.confirmedTerminal(ctx, c, companion.PhaseFailed))
 	}
 	return err
 }
 
+// persistedTerminalEvent maps the durable terminal status actually stored (the
+// value returned by TerminalizeGeneration) to its public hub event. When a
+// concurrent path won the race this is the winner's status, so the broadcast
+// always matches the persisted state. An empty result means no terminal status
+// was confirmed by the persist call and callers reconcile via the snapshot.
+func persistedTerminalEvent(status string) companion.PublicEvent {
+	switch status {
+	case "CANCELLED":
+		return companion.EventCancelled
+	case "INPUT_BLOCKED", "OUTPUT_BLOCKED":
+		return companion.EventBlocked
+	case "FAILED_FINAL":
+		return companion.EventFailed
+	}
+	return ""
+}
+
+
+// publishTerminal fans a confirmed terminal event out to the hub. An empty
+// event means the terminal state is unconfirmed and nothing is published.
+func (l *Loop) publishTerminal(turnID string, ev companion.PublicEvent) {
+	if l.hub == nil || ev == "" {
+		return
+	}
+	switch ev {
+	case companion.EventCancelled:
+		l.hub.Cancelled(turnID)
+	case companion.EventBlocked:
+		l.hub.Blocked(turnID)
+	case companion.EventCompleted:
+		l.hub.Completed(turnID)
+	default:
+		l.hub.Failed(turnID)
+	}
+}
+
+// snapshotTerminalEvent reports the public event for a durable snapshot status,
+// but only when the snapshot already shows the terminal phase the caller tried
+// to persist. Any other durable state (non-terminal, or a different terminal
+// won by a concurrent path) yields "" so no event is published here.
+func snapshotTerminalEvent(status string, phase companion.Phase) companion.PublicEvent {
+	switch {
+	case phase == companion.PhaseFailed && status == "FAILED_FINAL":
+		return companion.EventFailed
+	case phase == companion.PhaseBlocked && (status == "INPUT_BLOCKED" || status == "OUTPUT_BLOCKED"):
+		return companion.EventBlocked
+	case phase == companion.PhaseCancelled && status == "CANCELLED":
+		return companion.EventCancelled
+	}
+	return ""
+}
+
+// confirmedTerminal reads the authoritative snapshot after a failed persist and
+// returns the event to publish, or "" when the terminal state is unconfirmed
+// and the existing recovery path stays responsible for the outcome.
+func (l *Loop) confirmedTerminal(ctx context.Context, c postgres.JobClaim, phase companion.Phase) companion.PublicEvent {
+	snap, err := l.store.GenerationSnapshot(ctx, c.OwnerID, c.RefID)
+	if err != nil {
+		return ""
+	}
+	return snapshotTerminalEvent(snap.Status, phase)
+}
+
 func (l *Loop) terminal(ctx context.Context, c postgres.JobClaim, phase companion.Phase, reason string) error {
-	err := l.store.TerminalizeGeneration(ctx, turn.TerminalCommand{
+	status, err := l.store.TerminalizeGeneration(ctx, turn.TerminalCommand{
 		OwnerID: c.OwnerID, TurnID: fmtInt(c.RefID),
 		JobID: c.JobID, ClaimToken: c.Token, ClaimFence: c.Fence,
 		Phase: phase, Reason: reason,
 	})
-	if l.hub != nil {
-		switch phase {
-		case companion.PhaseCancelled:
-			l.hub.Cancelled(fmtInt(c.RefID))
-		case companion.PhaseBlocked:
-			l.hub.Blocked(fmtInt(c.RefID))
-		default:
-			l.hub.Failed(fmtInt(c.RefID))
-		}
+	if err != nil {
+		l.publishTerminal(fmtInt(c.RefID), l.confirmedTerminal(ctx, c, phase))
+		return err
 	}
-	return err
+	if ev := persistedTerminalEvent(status); ev != "" {
+		l.publishTerminal(fmtInt(c.RefID), ev)
+		return nil
+	}
+	// Persist succeeded but confirmed no terminal status; reconcile against
+	// the snapshot so a state won by a concurrent path still reaches the hub.
+	l.publishTerminal(fmtInt(c.RefID), l.confirmedTerminal(ctx, c, phase))
+	return nil
 }
 
 func (l *Loop) terminalAttempt(ctx context.Context, c postgres.JobClaim, last turn.Result) error {
-	err := l.store.TerminalizeGeneration(ctx, turn.TerminalCommand{
+	status, err := l.store.TerminalizeGeneration(ctx, turn.TerminalCommand{
 		OwnerID: c.OwnerID, TurnID: fmtInt(c.RefID), AttemptID: last.Attempt.AttemptID,
 		JobID: c.JobID, ClaimToken: c.Token, ClaimFence: c.Fence,
 		Phase: last.Phase, Reason: last.SafetyCode,
 	})
-	if l.hub != nil {
-		switch last.Public {
-		case companion.EventCancelled:
-			l.hub.Cancelled(fmtInt(c.RefID))
-		case companion.EventBlocked:
-			l.hub.Blocked(fmtInt(c.RefID))
-		default:
-			l.hub.Failed(fmtInt(c.RefID))
-		}
+	if err != nil {
+		l.publishTerminal(fmtInt(c.RefID), l.confirmedTerminal(ctx, c, last.Phase))
+		return err
 	}
-	return err
+	if ev := persistedTerminalEvent(status); ev != "" {
+		l.publishTerminal(fmtInt(c.RefID), ev)
+		return nil
+	}
+	l.publishTerminal(fmtInt(c.RefID), l.confirmedTerminal(ctx, c, last.Phase))
+	return nil
 }

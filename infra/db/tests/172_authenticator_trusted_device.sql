@@ -66,9 +66,11 @@ END $$;
 COMMIT;
 RESET ROLE;
 
+-- These assertions read vc.identity_account and other catalog tables
+-- directly; vc_api intentionally holds no table-level grants (the app
+-- reaches those rows only through owner-scoped functions), so this block
+-- runs as the privileged test role instead of SET LOCAL ROLE vc_api.
 BEGIN;
-SELECT vc.set_owner_context(9, 'auth-admin-review', encode(vc.hmac(convert_to('vc-owner-binding-v1|9|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'auth-admin-review', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
-SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     n integer;
@@ -89,6 +91,7 @@ BEGIN
         RAISE EXCEPTION 'default relationship count %', n;
     END IF;
 END $$;
+COMMIT;
 
 -- A different owner cannot see or revoke Alice's trusted device.
 BEGIN;
@@ -171,6 +174,11 @@ END $$;
 COMMIT;
 RESET ROLE;
 
+-- The _current admin functions verify role = 'ADMIN' against
+-- vc.current_owner_id(), so the seeded admin context is bound first.
+BEGIN;
+SELECT vc.set_owner_context(9, 'auth-admin-review', encode(vc.hmac(convert_to('vc-owner-binding-v1|9|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'auth-admin-review', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     pending_count integer;

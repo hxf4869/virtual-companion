@@ -15,6 +15,9 @@ const (
 	memoryRejected  = "REJECTED"
 	maxSummaryRunes = 2000
 	sourceDirect    = "USER_DIRECT"
+	// memoryExtractMaxAttempts bounds extraction job retries via the V29
+	// requeue path: 1 initial run + 2 retries, then DEAD_LETTERED.
+	memoryExtractMaxAttempts = 3
 )
 
 // Memory is one candidate or canonical row after decrypt.
@@ -308,6 +311,323 @@ func (s *Store) RejectMemory(ctx context.Context, owner, memoryID int64) (Memory
 		return Memory{}, mapStoreErr(err)
 	}
 	return out, nil
+}
+
+// MemoryAutoSavePrefStore is the per-owner auto-save kill switch surface
+// (V66). The HTTP layer binds it through a local interface; the extraction
+// job reads the same pref.
+type AutoSavedMemoryCreate struct {
+	RelationshipID int64
+	ConversationID int64
+	Summary        string
+	// Evidence entries use the V57 "message:<id>" shape so deleting the
+	// memory flips the exact source messages to no_memory.
+	Evidence       []string
+	IdempotencyKey string
+}
+
+// GetMemoryAutoSavePref returns the owner's auto-memory preference (V66,
+// default ON).
+func (s *Store) GetMemoryAutoSavePref(ctx context.Context, owner int64) (bool, error) {
+	var enabled bool
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.get_memory_auto_save_pref($1)`, owner,
+		).Scan(&enabled)
+	})
+	if err != nil {
+		return false, mapStoreErr(err)
+	}
+	return enabled, nil
+}
+
+// UpdateMemoryAutoSavePref persists the owner's auto-memory preference.
+func (s *Store) UpdateMemoryAutoSavePref(ctx context.Context, owner int64, enabled bool) (bool, error) {
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.set_memory_auto_save_pref($1,$2)`, owner, enabled,
+		).Scan(&enabled)
+	})
+	if err != nil {
+		return false, mapStoreErr(err)
+	}
+	return enabled, nil
+}
+
+// CreateAutoSavedMemory stores one auto-extracted memory as ACCEPTED with
+// auto_saved=true, encrypting the summary with the same stored-field cipher
+// as the manual candidate path. The Go side re-checks the same source guards
+// the tombstone flip relies on (conversation incognito, per-message no_memory)
+// before the keyed insert, so a deleted memory's sources can never re-extract.
+// The insert transaction also re-reads the owner's auto-save pref and the
+// outbound authorization gate: the extraction handler checks both before the
+// provider call, and the owner may flip either while that call is in flight,
+// so the write phase is the binding check. V128 makes that binding check
+// race-free: the transaction takes the per-owner memory_write_barrier before
+// the guard reads (the same lock the pref and consent writers take), and the
+// per-message guard read pins the source rows FOR SHARE against the V57
+// tombstone flip. Every refusal is ErrInvalid, which
+// the extraction job maps to the no-retry MEMORY_SOURCE_GUARDED close.
+func (s *Store) CreateAutoSavedMemory(ctx context.Context, owner int64, in AutoSavedMemoryCreate) (Memory, error) {
+	if in.RelationshipID <= 0 || in.ConversationID <= 0 {
+		return Memory{}, ErrInvalid
+	}
+	if in.Summary == "" || utf8.RuneCountInString(in.Summary) > maxSummaryRunes {
+		return Memory{}, ErrInvalid
+	}
+	if in.IdempotencyKey != "" && !validIdempotencyKey(in.IdempotencyKey) {
+		return Memory{}, ErrInvalid
+	}
+	var out Memory
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		// V128: take the per-owner write barrier before any guard read. The
+		// pref/consent writers (vc.set_memory_auto_save_pref and
+		// vc.record_consent) take the same transactional advisory lock before
+		// their updates, so a kill-switch flip or consent withdrawal either
+		// commits first (the re-reads below then refuse) or waits until this
+		// transaction ends: a close that has returned can never race a paused
+		// write past the guards anymore.
+		if _, err := tx.Exec(ctx, `SELECT vc.memory_write_barrier($1)`, owner); err != nil {
+			return err
+		}
+		_, ok, err := scanRelationship(ctx, tx, owner, in.RelationshipID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		var incognito bool
+		err = tx.QueryRow(ctx,
+			`SELECT incognito FROM vc.conversation WHERE owner_user_id = $1 AND id = $2`,
+			owner, in.ConversationID).Scan(&incognito)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return ErrNotFound
+			}
+			return err
+		}
+		if incognito {
+			return ErrInvalid
+		}
+		for _, ref := range in.Evidence {
+			msgID, ok := messageRefID(ref)
+			if !ok {
+				return ErrInvalid
+			}
+			var noMemory, sourceIncognito bool
+			// V128: the pinned guard read (SELECT ... FOR SHARE OF m) lives in
+			// the vc.guard_auto_save_source SECURITY DEFINER helper because
+			// row-lock modes need privileges the runtime roles deliberately
+			// do not hold on vc.message. The SHARE lock is held until this
+			// transaction ends, so the V57 tombstone flip must wait for the
+			// guard window; a guard starting after the flip always reads
+			// no_memory=true.
+			err := tx.QueryRow(ctx, `
+			SELECT out_no_memory, out_incognito
+			  FROM vc.guard_auto_save_source($1, $2)`, owner, msgID).Scan(&noMemory, &sourceIncognito)
+			if err != nil {
+				if err == pgx.ErrNoRows {
+					return ErrNotFound
+				}
+				return err
+			}
+			if noMemory || sourceIncognito {
+				return ErrInvalid
+			}
+		}
+		// Owner-level write-phase guards sit after the source guards so
+		// foreign ids keep their ErrNotFound semantics; they still run in
+		// the same transaction as the insert, which is the ordering that
+		// matters: a pref flip or consent withdrawal during the provider
+		// call always refuses the write.
+		var enabled bool
+		if err := tx.QueryRow(ctx,
+			`SELECT vc.get_memory_auto_save_pref($1)`, owner,
+		).Scan(&enabled); err != nil {
+			return err
+		}
+		if !enabled {
+			return ErrInvalid
+		}
+		allowed, err := outboundAllowInTx(ctx, tx, owner)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return ErrInvalid
+		}
+		stored, err := s.encryptStored(in.Summary)
+		if err != nil {
+			return errStore
+		}
+		var id int64
+		// RELATIONSHIP scope: the auto-extracted preference must recall into
+		// later conversations of the same relationship (conversation binding
+		// and the relationship FK keep it isolated everywhere else). The
+		// source conversation_id is kept as provenance; the SQL function only
+		// requires it for SESSION scope.
+		if err := tx.QueryRow(ctx,
+			`SELECT vc.create_auto_saved_memory($1,$2,'RELATIONSHIP',$3,$4,$5,$6)`,
+			owner, in.RelationshipID, stored, in.ConversationID,
+			in.Evidence, nullIfBlank(in.IdempotencyKey),
+		).Scan(&id); err != nil {
+			return err
+		}
+		mem, ok, err := s.scanMemoryGet(ctx, tx, owner, id)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errStore
+		}
+		out = mem
+		return nil
+	})
+	if err != nil {
+		return Memory{}, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// outboundAllowInTx re-reads the current outbound authorization inside an
+// already-open owner transaction. It uses the same SQL entry points as the
+// OutboundCheck handler gate plus the shared DecideOutbound policy; the
+// auto-save insert needs it because a handler-phase decision is stale by the
+// time the write lands.
+func outboundAllowInTx(ctx context.Context, tx pgx.Tx, owner int64) (bool, error) {
+	var deleting bool
+	if err := tx.QueryRow(ctx, `SELECT vc.account_deletion_intent_active_current()`).Scan(&deleting); err != nil {
+		return false, err
+	}
+	var consents []Consent
+	rows, err := tx.Query(ctx,
+		`SELECT out_id, out_consent_type, out_version, out_granted, out_granted_at, out_revoked_at
+		   FROM vc.list_consents($1)`, owner)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c Consent
+		var revoked pgtype.Timestamptz
+		if err := rows.Scan(&c.ID, &c.Type, &c.Version, &c.Granted, &c.GrantedAt, &revoked); err != nil {
+			return false, err
+		}
+		consents = append(consents, c)
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return DecideOutbound(consents, deleting).Allow, nil
+}
+
+// MemoryExtractInput is the durable read of one finished turn for extraction.
+type MemoryExtractInput struct {
+	RelationshipID     int64
+	ConversationID     int64
+	Status             string
+	SourceMessageID    *int64
+	AssistantMessageID *int64
+	Incognito          bool
+	UserContent        string
+	UserNoMemory       bool
+	AssistantContent   string
+	AssistantNoMemory  bool
+}
+
+func (s *Store) ReadMemoryExtractInput(ctx context.Context, owner, generationID int64) (MemoryExtractInput, error) {
+	var out MemoryExtractInput
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		var src, assistant pgtype.Int8
+		var userContent, assistantContent pgtype.Text
+		err := tx.QueryRow(ctx,
+			`SELECT out_relationship_id, out_conversation_id, out_status,
+			        out_source_message_id, out_assistant_message_id,
+			        out_incognito, out_user_content, out_user_no_memory,
+			        out_assistant_content, out_assistant_no_memory
+			   FROM vc.go_read_memory_extract_input($1,$2)`, owner, generationID,
+		).Scan(&out.RelationshipID, &out.ConversationID, &out.Status,
+			&src, &assistant, &out.Incognito,
+			&userContent, &out.UserNoMemory,
+			&assistantContent, &out.AssistantNoMemory)
+		if err == pgx.ErrNoRows {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		out.SourceMessageID = int8Ptr(src)
+		out.AssistantMessageID = int8Ptr(assistant)
+		plainUser, err := s.decryptStored(userContent.String)
+		if err != nil {
+			return errStore
+		}
+		plainAssistant, err := s.decryptStored(assistantContent.String)
+		if err != nil {
+			return errStore
+		}
+		out.UserContent = plainUser
+		out.AssistantContent = plainAssistant
+		return nil
+	})
+	if err != nil {
+		return MemoryExtractInput{}, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// EnqueueMemoryExtract creates the at-most-one extraction job for a completed
+// generation. A suppressed turn (pref off, incognito, no_memory) returns 0
+// with no error; only transport/SQL failures return errors.
+func (s *Store) EnqueueMemoryExtract(ctx context.Context, owner, generationID int64) (int64, error) {
+	var jobID int64
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		// A suppressed turn returns SQL NULL: that is a normal outcome (job 0),
+		// not a scan failure, so it is scanned nullable like the other
+		// nullable bigint columns in this file.
+		var job pgtype.Int8
+		if err := tx.QueryRow(ctx,
+			`SELECT vc.enqueue_memory_extract($1,$2)`, owner, generationID,
+		).Scan(&job); err != nil {
+			return err
+		}
+		if job.Valid {
+			jobID = job.Int64
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, mapStoreErr(err)
+	}
+	return jobID, nil
+}
+
+// RetryMemoryExtract requeues a failed extraction claim via the V29 guarded
+// bounded-retry path; it returns "RETRY_SCHEDULED" or "DEAD_LETTERED".
+func (s *Store) RetryMemoryExtract(ctx context.Context, owner, jobID int64, token, fence string) (string, error) {
+	var action string
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.requeue_retryable_failure($1,$2,$3,$4,$5)`,
+			owner, jobID, token, fence, memoryExtractMaxAttempts,
+		).Scan(&action)
+	})
+	if err != nil {
+		return "", mapStoreErr(err)
+	}
+	return action, nil
+}
+
+// messageRefID parses the evidence refs the auto-save path stores. Unlike
+// parseMessageRef (owner-supplied plain ids) it accepts only the strict
+// "message:<id>" shape the V57 tombstone flip depends on.
+func messageRefID(ref string) (int64, bool) {
+	const prefix = "message:"
+	if len(ref) <= len(prefix) || ref[:len(prefix)] != prefix {
+		return 0, false
+	}
+	return parseMessageRef(ref[len(prefix):])
 }
 
 func (s *Store) ListMemoryEvidence(ctx context.Context, owner, memoryID int64) ([]MemoryEvidence, error) {

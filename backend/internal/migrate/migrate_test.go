@@ -13,8 +13,8 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 123 {
-		t.Fatalf("migration count = %d, want 123", len(items))
+	if len(items) != 130 {
+		t.Fatalf("migration count = %d, want 130", len(items))
 	}
 	for i, item := range items {
 		want := int64(i + 1)
@@ -22,7 +22,7 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, item.Version, want)
 		}
 	}
-	if items[len(items)-1].File != "V123__authenticator_trusted_device.sql" {
+	if items[len(items)-1].File != "V130__go_list_export_conversations.sql" {
 		t.Fatalf("latest migration = %q", items[len(items)-1].File)
 	}
 }

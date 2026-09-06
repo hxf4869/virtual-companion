@@ -20,7 +20,11 @@ type Store interface {
 	PrepareAttempt(ctx context.Context, cmd PrepareAttempt) (PreparedAttempt, error)
 	RecordAttemptOutcome(ctx context.Context, outcome companion.AttemptOutcome) error
 	FinalizeGeneration(ctx context.Context, cmd FinalizeCommand) error
-	TerminalizeGeneration(ctx context.Context, cmd TerminalCommand) error
+	// TerminalizeGeneration persists a terminal phase and returns the durable
+	// terminal status actually stored. vc.go_terminalize_generation is
+	// idempotent: when a concurrent path already persisted a terminal state it
+	// returns that state instead of the requested phase.
+	TerminalizeGeneration(ctx context.Context, cmd TerminalCommand) (string, error)
 }
 
 // TurnKey identifies one generation for an already-authenticated owner.

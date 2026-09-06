@@ -262,7 +262,18 @@ func (s *Store) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSee
 	seed.UserPersona = view.persona
 	seed.ConfigVersion = "go-v1"
 
-	msgs, err := s.ListMessages(ctx, key.OwnerID, view.conversationID, nil, intPtr(64))
+	// The seed history ends at the current turn: read the recent window BEFORE
+	// the generation's source user message (exclusive) instead of the earliest
+	// window, so long conversations still see the latest history. Rows come
+	// back in ascending id order. Legacy generations without a source message
+	// keep the historical forward read.
+	var msgs []Message
+	if view.sourceID != 0 {
+		before := view.sourceID
+		msgs, err = s.ListRecentMessages(ctx, key.OwnerID, view.conversationID, &before, 64)
+	} else {
+		msgs, err = s.ListMessages(ctx, key.OwnerID, view.conversationID, nil, intPtr(64))
+	}
 	if err != nil {
 		return turn.ContextSeed{}, err
 	}
@@ -282,6 +293,11 @@ func (s *Store) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSee
 		}
 		for _, mem := range mems {
 			if mem.Status != "ACCEPTED" || mem.DeletedAt != nil {
+				continue
+			}
+			// SESSION-scoped memory is bound to its conversation; SESSION
+			// memories from other conversations must not leak into this turn.
+			if mem.Scope == "SESSION" && (mem.ConversationID == nil || *mem.ConversationID != view.conversationID) {
 				continue
 			}
 			seed.EligibleMemories = append(seed.EligibleMemories, turn.MemoryCandidate{
@@ -486,28 +502,43 @@ func (s *Store) FinalizeGeneration(ctx context.Context, cmd turn.FinalizeCommand
 	return mapStoreErr(err)
 }
 
-func (s *Store) TerminalizeGeneration(ctx context.Context, cmd turn.TerminalCommand) error {
+// TerminalizeGeneration persists a terminal phase and returns the durable
+// terminal status actually stored. vc.go_terminalize_generation is idempotent:
+// when a concurrent path already persisted a terminal state it returns that
+// state, which may differ from the requested phase. An empty result means no
+// status came back and callers must reconcile against the snapshot.
+func (s *Store) TerminalizeGeneration(ctx context.Context, cmd turn.TerminalCommand) (string, error) {
 	if cmd.OwnerID <= 0 {
-		return ErrInvalid
+		return "", ErrInvalid
 	}
 	genID, err := parseTurnID(cmd.TurnID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	phase := string(cmd.Phase)
+	var status string
 	err = s.WithOwner(ctx, cmd.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
 		var token, fence *string
 		if cmd.ClaimToken != "" {
 			token = &cmd.ClaimToken
 			fence = &cmd.ClaimFence
 		}
-		var status string
-		return tx.QueryRow(ctx,
+		var scanned *string
+		if err := tx.QueryRow(ctx,
 			`SELECT vc.go_terminalize_generation($1,$2,$3,$4,$5,$6,$7)`,
 			cmd.OwnerID, genID, cmd.JobID, token, fence, phase, cmd.Reason,
-		).Scan(&status)
+		).Scan(&scanned); err != nil {
+			return err
+		}
+		if scanned != nil {
+			status = *scanned
+		}
+		return nil
 	})
-	return mapStoreErr(err)
+	if err != nil {
+		return "", mapStoreErr(err)
+	}
+	return status, nil
 }
 
 func mapLogicalStatus(s companion.AttemptStatus) string {

@@ -117,7 +117,21 @@ func (m *MemStore) FinalizeGeneration(_ context.Context, cmd FinalizeCommand) er
 	return nil
 }
 
-func (m *MemStore) TerminalizeGeneration(_ context.Context, cmd TerminalCommand) error {
+// TerminalStatusFor mirrors vc.go_terminalize_generation's durable target:
+// the status a successful terminalize lands on for the requested phase.
+// MemStore has no cancel_requested race, so the requested phase always wins.
+func TerminalStatusFor(phase companion.Phase) string {
+	switch phase {
+	case companion.PhaseCancelled:
+		return "CANCELLED"
+	case companion.PhaseBlocked:
+		return "OUTPUT_BLOCKED"
+	default:
+		return "FAILED_FINAL"
+	}
+}
+
+func (m *MemStore) TerminalizeGeneration(_ context.Context, cmd TerminalCommand) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if cmd.AttemptID != "" {
@@ -130,7 +144,7 @@ func (m *MemStore) TerminalizeGeneration(_ context.Context, cmd TerminalCommand)
 	m.phase[cmd.TurnID] = cmd.Phase
 	m.reason[cmd.TurnID] = cmd.Reason
 	delete(m.final, cmd.TurnID)
-	return nil
+	return TerminalStatusFor(cmd.Phase), nil
 }
 
 func (m *MemStore) Phase(turnID string) companion.Phase {

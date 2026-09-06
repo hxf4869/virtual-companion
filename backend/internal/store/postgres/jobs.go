@@ -20,7 +20,12 @@ type JobClaim struct {
 	LeaseSeconds int
 }
 
-func (s *Store) ClaimJobs(ctx context.Context, generationLease, exportLease, defaultLease time.Duration, limit int) ([]JobClaim, error) {
+// ClaimJobs claims PENDING work items with per-kind capacity: at most
+// generationLimit GENERATION and extractLimit MEMORY_EXTRACT items are picked
+// (the worker passes its free slots per kind, so a claim always fits its
+// pool); DATA_EXPORT follows the overall limit. A negative per-kind limit
+// claims none; the SQL treats NULL as uncapped for non-Go callers.
+func (s *Store) ClaimJobs(ctx context.Context, generationLease, exportLease, defaultLease time.Duration, limit, generationLimit, extractLimit int) ([]JobClaim, error) {
 	if generationLease < 5*time.Second || exportLease < 5*time.Second || defaultLease < 5*time.Second {
 		return nil, ErrInvalid
 	}
@@ -32,9 +37,9 @@ func (s *Store) ClaimJobs(ctx context.Context, generationLease, exportLease, def
 		rows, err := tx.Query(ctx,
 			`SELECT out_owner_user_id, out_job_id, out_kind, out_ref_id,
 			        out_claim_token, out_claim_fence, out_lease_seconds
-			   FROM vc.go_claim_jobs($1,$2,$3,$4)`,
+			   FROM vc.go_claim_jobs($1,$2,$3,$4,$5,$6)`,
 			int(generationLease.Seconds()), int(exportLease.Seconds()),
-			int(defaultLease.Seconds()), limit)
+			int(defaultLease.Seconds()), limit, generationLimit, extractLimit)
 		if err != nil {
 			return err
 		}
@@ -232,4 +237,51 @@ func (s *Store) GetGeneration(ctx context.Context, owner, generationID int64) (G
 		return GenerationView{}, mapStoreErr(err)
 	}
 	return out, nil
+}
+
+// ListExpiredMemoryExtractJobs returns claimed MEMORY_EXTRACT work items whose
+// lease elapsed without completion (a crashed worker mid-call). The loop hands
+// each to RecoverExpiredMemoryExtract (V127).
+func (s *Store) ListExpiredMemoryExtractJobs(ctx context.Context, limit int) ([]JobClaim, error) {
+	var out []JobClaim
+	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT out_owner_user_id, out_job_id FROM vc.go_list_expired_memory_extract_jobs($1)`, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c JobClaim
+			if err := rows.Scan(&c.OwnerID, &c.JobID); err != nil {
+				return err
+			}
+			c.Kind = "MEMORY_EXTRACT"
+			out = append(out, c)
+		}
+		if out == nil {
+			out = []JobClaim{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// RecoverExpiredMemoryExtract requeues an expired MEMORY_EXTRACT claim through
+// the V127 guarded recovery. Requeues stay bounded by the same V29 retry
+// budget as handler-scheduled retries; an exhausted job dead-letters.
+func (s *Store) RecoverExpiredMemoryExtract(ctx context.Context, owner, jobID int64) (string, error) {
+	var action string
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.go_recover_expired_memory_extract($1,$2,$3)`,
+			owner, jobID, memoryExtractMaxAttempts,
+		).Scan(&action)
+	})
+	if err != nil {
+		return "", mapStoreErr(err)
+	}
+	return action, nil
 }

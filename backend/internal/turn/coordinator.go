@@ -82,12 +82,15 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 
 	in := policy.ReviewInput(seed.CurrentUserMessage)
 	if !in.Allow {
-		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+		phase, ev := c.terminalize(ctx, TerminalCommand{
 			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, JobID: cmd.JobID,
 			ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Phase: companion.PhaseBlocked, Reason: in.Code(),
 		})
-		c.hubTerminal(cmd.TurnID, companion.EventBlocked)
+		c.hubTerminal(cmd.TurnID, ev)
+		if ev == "" {
+			ev = companion.EventBlocked
+		}
 		log.Info("turn blocked",
 			slog.String("operation", "input_review"),
 			slog.String("outcome", "blocked"),
@@ -96,8 +99,8 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 			slog.String("run_id", cmd.RunID),
 		)
 		return Result{
-			Phase:      companion.PhaseBlocked,
-			Public:     companion.EventBlocked,
+			Phase:      phase,
+			Public:     ev,
 			SafetyCode: in.Code(),
 			Withdraw:   true,
 		}
@@ -112,13 +115,16 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 			phase = companion.PhaseBlocked
 			pub = companion.EventBlocked
 		}
-		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+		phase, ev := c.terminalize(ctx, TerminalCommand{
 			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, JobID: cmd.JobID,
 			ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Phase: phase, Reason: string(plan.Reason),
 		})
-		c.hubTerminal(cmd.TurnID, pub)
-		return Result{Phase: phase, Public: pub, Trace: plan.Trace, SafetyCode: string(plan.Reason), Withdraw: true}
+		c.hubTerminal(cmd.TurnID, ev)
+		if ev == "" {
+			ev = pub
+		}
+		return Result{Phase: phase, Public: ev, Trace: plan.Trace, SafetyCode: string(plan.Reason), Withdraw: true}
 	}
 
 	prep, err := c.Store.PrepareAttempt(ctx, PrepareAttempt{
@@ -143,14 +149,17 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	})
 	if err != nil {
 		if errors.Is(err, ErrOutboundDenied) {
-			_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+			phase, ev := c.terminalize(ctx, TerminalCommand{
 				OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, JobID: cmd.JobID,
 				ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 				Phase: companion.PhaseBlocked, Reason: "OUTBOUND_DENIED",
 			})
-			c.hubTerminal(cmd.TurnID, companion.EventBlocked)
+			c.hubTerminal(cmd.TurnID, ev)
+			if ev == "" {
+				ev = companion.EventBlocked
+			}
 			return Result{
-				Phase: companion.PhaseBlocked, Public: companion.EventBlocked,
+				Phase: phase, Public: ev,
 				SafetyCode: "OUTBOUND_DENIED", Withdraw: true, Trace: plan.Trace,
 			}
 		}
@@ -164,14 +173,17 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 			Status: companion.AttemptCancelled, Failure: string(companion.CodeCanceled),
 			Delivery: companion.DeliveryNotSent, Billing: companion.BillingNotSent, Budget: prep.Budget,
 		})
-		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+		phase, ev := c.terminalize(ctx, TerminalCommand{
 			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
 			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Phase: companion.PhaseCancelled, Reason: string(companion.CodeCanceled),
 		})
-		c.hubTerminal(cmd.TurnID, companion.EventCancelled)
+		c.hubTerminal(cmd.TurnID, ev)
+		if ev == "" {
+			ev = companion.EventCancelled
+		}
 		return Result{
-			Phase: companion.PhaseCancelled, Public: companion.EventCancelled,
+			Phase: phase, Public: ev,
 			Withdraw: true, Trace: plan.Trace,
 		}
 	}
@@ -263,22 +275,25 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 				RetryAllowed: true,
 			}
 		}
-		_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+		phase, ev := c.terminalize(ctx, TerminalCommand{
 			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
 			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Phase: phase, Reason: reason,
 		})
-		c.hubTerminal(cmd.TurnID, pub)
+		c.hubTerminal(cmd.TurnID, ev)
 		log.Info("turn terminal",
 			slog.String("operation", "finalize"),
 			slog.String("outcome", string(phase)),
-			slog.String("event_type", string(pub)),
+			slog.String("event_type", string(ev)),
 			slog.String("decision_code", reason),
 			slog.String("run_id", cmd.RunID),
 		)
+		if ev == "" {
+			ev = pub
+		}
 		return Result{
 			Phase:        phase,
-			Public:       pub,
+			Public:       ev,
 			Published:    published,
 			Withdraw:     true,
 			SafetyCode:   reason,
@@ -323,14 +338,52 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	}
 }
 
+// persistedTerminal maps the durable terminal status actually stored (the
+// string TerminalizeGeneration returns) to the logical phase and public hub
+// event, mirroring the jobs layer's persistedTerminalEvent. ok is false for
+// any other value — empty, or a completed status won by a concurrent path —
+// because no non-completed terminal state was confirmed by the persist call.
+func persistedTerminal(status string) (companion.Phase, companion.PublicEvent, bool) {
+	switch status {
+	case "CANCELLED":
+		return companion.PhaseCancelled, companion.EventCancelled, true
+	case "INPUT_BLOCKED", "OUTPUT_BLOCKED":
+		return companion.PhaseBlocked, companion.EventBlocked, true
+	case "FAILED_FINAL":
+		return companion.PhaseFailed, companion.EventFailed, true
+	}
+	return "", "", false
+}
+
+// terminalize persists a terminal phase and resolves the (phase, event) pair
+// the caller reports. On persist success the pair follows the status the store
+// actually stored, so a terminal state won by a concurrent path wins the
+// broadcast too. On a persist error, or when no non-completed terminal status
+// was confirmed (empty or completed return), the event is "": the turn Store
+// has no snapshot read to reconcile against, so nothing is broadcast and the
+// existing recovery path owns the durable outcome, while the caller keeps its
+// observed process-local phase.
+func (c *Coordinator) terminalize(ctx context.Context, cmd TerminalCommand) (companion.Phase, companion.PublicEvent) {
+	status, err := c.Store.TerminalizeGeneration(ctx, cmd)
+	if err == nil {
+		if phase, ev, ok := persistedTerminal(status); ok {
+			return phase, ev
+		}
+	}
+	return cmd.Phase, ""
+}
+
 func (c *Coordinator) fail(ctx context.Context, cmd Command, attemptID string, phase companion.Phase, reason string, outcome *companion.AttemptOutcome, trace BuildTrace) Result {
-	_ = c.Store.TerminalizeGeneration(ctx, TerminalCommand{
+	phase, ev := c.terminalize(ctx, TerminalCommand{
 		OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: attemptID,
 		JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 		Phase: phase, Reason: reason,
 	})
-	c.hubTerminal(cmd.TurnID, companion.EventFailed)
-	res := Result{Phase: phase, Public: companion.EventFailed, Withdraw: true, SafetyCode: reason, Trace: trace}
+	c.hubTerminal(cmd.TurnID, ev)
+	if ev == "" {
+		ev = MapPublicTerminal(phase, false)
+	}
+	res := Result{Phase: phase, Public: ev, Withdraw: true, SafetyCode: reason, Trace: trace}
 	if outcome != nil {
 		res.Attempt = *outcome
 	}
@@ -350,7 +403,9 @@ func (c *Coordinator) hubAppend(id, text string) {
 }
 
 func (c *Coordinator) hubTerminal(id string, ev companion.PublicEvent) {
-	if c == nil || c.Hub == nil {
+	// An empty event means the durable terminal state is unconfirmed; nothing
+	// is published and recovery stays responsible for the outcome.
+	if c == nil || c.Hub == nil || ev == "" {
 		return
 	}
 	switch ev {

@@ -40,6 +40,7 @@ type CompanionStore interface {
 	PreviewChatWipe(ctx context.Context, owner int64) (postgres.ChatWipePreview, error)
 	WipeAllChats(ctx context.Context, owner int64) (postgres.ChatWipeResult, error)
 	ListMessages(ctx context.Context, owner, conversationID int64, after *int64, limit *int) ([]postgres.Message, error)
+	ListRecentMessages(ctx context.Context, owner, conversationID int64, before *int64, limit int) ([]postgres.Message, error)
 	DeleteMessage(ctx context.Context, owner, conversationID, messageID int64) error
 	SetMessageNoMemory(ctx context.Context, owner, conversationID, messageID int64, noMemory bool) (postgres.Message, error)
 
@@ -179,6 +180,8 @@ func (s *Server) registerCore() {
 
 	s.mux.HandleFunc("GET /api/v1/incognito-pref", s.handleGetIncognitoPref)
 	s.mux.HandleFunc("PUT /api/v1/incognito-pref", s.handleUpdateIncognitoPref)
+	s.mux.HandleFunc("GET /api/v1/memory-auto-save-pref", s.handleGetMemoryAutoSavePref)
+	s.mux.HandleFunc("PUT /api/v1/memory-auto-save-pref", s.handleUpdateMemoryAutoSavePref)
 	s.mux.HandleFunc("GET /api/v1/consents", s.handleListConsents)
 	s.mux.HandleFunc("PUT /api/v1/consents", s.handleRecordConsent)
 	s.mux.HandleFunc("GET /api/v1/age/state", s.handleGetAgeState)

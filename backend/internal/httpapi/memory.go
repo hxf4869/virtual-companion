@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -272,6 +273,75 @@ func (s *Server) handleListMemoryEvidence(w http.ResponseWriter, r *http.Request
 		})
 	}
 	s.writeJSON(w, http.StatusOK, out)
+}
+
+// memoryAutoSavePrefStore is the per-owner auto-memory kill-switch surface
+// (V66). The handler binds it by type assertion, mirroring the jobs package
+// routeStore pattern, so the shared CompanionStore interface stays unchanged.
+type memoryAutoSavePrefStore interface {
+	GetMemoryAutoSavePref(ctx context.Context, owner int64) (bool, error)
+	UpdateMemoryAutoSavePref(ctx context.Context, owner int64, enabled bool) (bool, error)
+}
+
+type memoryAutoSavePrefJSON struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (s *Server) memoryAutoSaveStore(w http.ResponseWriter) memoryAutoSavePrefStore {
+	if s.core == nil || s.core.Store == nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return nil
+	}
+	st, ok := s.core.Store.(memoryAutoSavePrefStore)
+	if !ok {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return nil
+	}
+	return st
+}
+
+func (s *Server) handleGetMemoryAutoSavePref(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, false)
+	if p == nil {
+		return
+	}
+	st := s.memoryAutoSaveStore(w)
+	if st == nil {
+		return
+	}
+	v, err := st.GetMemoryAutoSavePref(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, memoryAutoSavePrefJSON{Enabled: v})
+}
+
+func (s *Server) handleUpdateMemoryAutoSavePref(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	st := s.memoryAutoSaveStore(w)
+	if st == nil {
+		return
+	}
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !s.decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Enabled == nil {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	v, err := st.UpdateMemoryAutoSavePref(r.Context(), p.AccountID, *body.Enabled)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, memoryAutoSavePrefJSON{Enabled: v})
 }
 
 func parseEventTimes(eventAt, eventExpires *string) (*time.Time, *time.Time, bool) {

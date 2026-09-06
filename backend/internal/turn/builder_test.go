@@ -1,11 +1,13 @@
 package turn
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
+	"github.com/hxf4869/virtual-companion/internal/provider/modelhttp"
 )
 
 func budget() companion.TurnBudget {
@@ -230,6 +232,51 @@ func TestBuildIsDeterministic(t *testing.T) {
 		if a.Messages[i] != b.Messages[i] {
 			t.Fatalf("msg %d", i)
 		}
+	}
+}
+
+func TestHistoryTrimmedToProviderMessageLimit(t *testing.T) {
+	t.Parallel()
+	seed := baseSeed()
+	seed.AllowedCategories = []DataCategory{CategoryMessage, CategoryAccount, CategoryMemory}
+	seed.UserPersona = UserPersona{CompanionName: "小南"}
+	seed.Summary = Summary{Text: "上周聊过加班。", Valid: true}
+	seed.EligibleMemories = []MemoryCandidate{{Summary: "用户喜欢绿茶", Confirmed: true, Relevance: 90}}
+	seed.RecentMessages = make([]HistoryMessage, 0, 200)
+	for i := 0; i < 200; i++ {
+		role := companion.RoleUser
+		if i%2 == 1 {
+			role = companion.RoleAssistant
+		}
+		seed.RecentMessages = append(seed.RecentMessages, HistoryMessage{Role: role, Content: fmt.Sprintf("历史消息%03d", i)})
+	}
+	p := Build(seed, budget())
+	if p.Blocked {
+		t.Fatalf("blocked: %v", p.Trace.Drops)
+	}
+	if n := len(p.Messages); n < 1 || n > modelhttp.MaxMessages {
+		t.Fatalf("outbound messages %d must be within (0, %d]", n, modelhttp.MaxMessages)
+	}
+	// policy + persona + summary + memory + 当前轮用户消息 = 5 条非历史消息占用名额。
+	if p.Trace.HistoryBlocks != modelhttp.MaxMessages-5 {
+		t.Fatalf("history blocks %d, want %d", p.Trace.HistoryBlocks, modelhttp.MaxMessages-5)
+	}
+	last := p.Messages[len(p.Messages)-1]
+	if last.Role != companion.RoleUser || last.Content != "今天好累。" {
+		t.Fatalf("current user message must stay last: %#v", last)
+	}
+	if !strings.Contains(p.Messages[len(p.Messages)-2].Content, "历史消息199") {
+		t.Fatal("most recent history must be kept")
+	}
+	joined := strings.Join(contents(p), "\n")
+	if !strings.Contains(joined, "历史消息141") {
+		t.Fatal("oldest kept history missing")
+	}
+	if strings.Contains(joined, "历史消息140") || strings.Contains(joined, "历史消息000") {
+		t.Fatal("oldest history must be trimmed first")
+	}
+	if !p.containsKind(KindMemory) {
+		t.Fatal("memory block missing")
 	}
 }
 

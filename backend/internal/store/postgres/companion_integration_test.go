@@ -87,9 +87,14 @@ func TestEnsureDefaultRelationshipReusesExisting(t *testing.T) {
 	resetFixtures(t)
 	ctx := context.Background()
 
+	// V122 contract: an existing active relationship is reused as-is, even
+	// when the caller passes the default persona ref.
 	first, err := testEnv.store.EnsureDefaultRelationship(ctx, 1, "gentle-listener")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !first.Active || first.PersonaRef != "persona-a" {
+		t.Fatalf("active relationship not reused: %+v", first)
 	}
 	second, err := testEnv.store.EnsureDefaultRelationship(ctx, 1, "gentle-listener")
 	if err != nil {
@@ -103,7 +108,35 @@ func TestEnsureDefaultRelationshipReusesExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 || list[0].PersonaRef != "gentle-listener" {
+	if len(list) != 1 || list[0].PersonaRef != "persona-a" || !list[0].Active {
 		t.Fatalf("default relationship list = %+v", list)
+	}
+
+	// With no relationship at all the owner receives the product's default
+	// persona. Drop only owner 1's rows; resetFixtures truncates the shared
+	// fixtures before every test.
+	if _, err := psqlSuper(`DELETE FROM vc.relationship WHERE owner_user_id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	created, err := testEnv.store.EnsureDefaultRelationship(ctx, 1, "gentle-listener")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Active || created.PersonaRef != "gentle-listener" {
+		t.Fatalf("default persona not created: %+v", created)
+	}
+	again, err := testEnv.store.EnsureDefaultRelationship(ctx, 1, "gentle-listener")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.ID != again.ID || !again.Active {
+		t.Fatalf("created default changed: created=%d again=%d active=%t", created.ID, again.ID, again.Active)
+	}
+	list, err = testEnv.store.ListRelationships(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].PersonaRef != "gentle-listener" || !list[0].Active {
+		t.Fatalf("created default list = %+v", list)
 	}
 }

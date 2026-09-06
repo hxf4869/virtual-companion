@@ -58,7 +58,7 @@ func TestG10AttemptIntentOutcomeFinalizeAndRecovery(t *testing.T) {
 		t.Fatalf("cross-owner start %v %+v", err, foreign)
 	}
 
-	claims, err := store.ClaimJobs(ctx, 30*time.Second, 60*time.Second, 30*time.Second, 8)
+	claims, err := store.ClaimJobs(ctx, 30*time.Second, 60*time.Second, 30*time.Second, 8, 8, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestG10CancelBeforeClaim(t *testing.T) {
 	if err != nil || got.Status != "CANCELLED" {
 		t.Fatalf("%+v %v", got, err)
 	}
-	claims, err := store.ClaimJobs(ctx, 30*time.Second, 60*time.Second, 30*time.Second, 8)
+	claims, err := store.ClaimJobs(ctx, 30*time.Second, 60*time.Second, 30*time.Second, 8, 8, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func mustStart(t *testing.T, store *Store, conv int64, key string) GenerationVie
 
 func mustClaimOne(t *testing.T, store *Store, genID int64) JobClaim {
 	t.Helper()
-	claims, err := store.ClaimJobs(context.Background(), 30*time.Second, 60*time.Second, 30*time.Second, 16)
+	claims, err := store.ClaimJobs(context.Background(), 30*time.Second, 60*time.Second, 30*time.Second, 16, 16, 16)
 	if err != nil {
 		t.Fatal(err)
 	}

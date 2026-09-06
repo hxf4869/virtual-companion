@@ -12,10 +12,16 @@ import (
 
 type schedulerTestStore struct {
 	Store
-	mu            sync.Mutex
-	objects       []postgres.ExportObject
-	clearCalls    int
-	clearFailures int
+	mu                sync.Mutex
+	objects           []postgres.ExportObject
+	clearCalls        int
+	clearFailures     int
+	expiredExtracts   []postgres.JobClaim
+	extractListErr    error
+	recoverAction     string
+	recoverErr        error
+	recoverFailures   int
+	recoveredExtracts []int64
 }
 
 func (s *schedulerTestStore) PurgeExpiredOpaqueSessions(context.Context) (int, error) {
@@ -55,6 +61,26 @@ func (*schedulerTestStore) RunRetentionCategory(context.Context, string, bool) e
 
 func (*schedulerTestStore) ListExpiredGenerationJobs(context.Context, int) ([]postgres.JobClaim, error) {
 	return []postgres.JobClaim{}, nil
+}
+
+func (s *schedulerTestStore) ListExpiredMemoryExtractJobs(context.Context, int) ([]postgres.JobClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.extractListErr != nil {
+		return nil, s.extractListErr
+	}
+	return append([]postgres.JobClaim(nil), s.expiredExtracts...), nil
+}
+
+func (s *schedulerTestStore) RecoverExpiredMemoryExtract(_ context.Context, _, jobID int64) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recoverFailures > 0 {
+		s.recoverFailures--
+		return "", s.recoverErr
+	}
+	s.recoveredExtracts = append(s.recoveredExtracts, jobID)
+	return s.recoverAction, nil
 }
 
 func (*schedulerTestStore) ExpireQueuedGenerations(context.Context, time.Duration) (int, error) {
@@ -152,5 +178,62 @@ func TestSchedulerRetriesAfterClearFailure(t *testing.T) {
 	defer blob.mu.Unlock()
 	if blob.deleteCalls != 2 {
 		t.Fatalf("delete calls=%d", blob.deleteCalls)
+	}
+}
+
+// TestRecoverOnceRequeuesExpiredMemoryExtractJobs pins defect 9: the loop
+// recovery pass must list expired CLAIMED MEMORY_EXTRACT jobs and hand each
+// to the guarded bounded-requeue recovery (DEAD_LETTERED included).
+func TestRecoverOnceRequeuesExpiredMemoryExtractJobs(t *testing.T) {
+	t.Parallel()
+	store := newSchedulerTestStore()
+	store.expiredExtracts = []postgres.JobClaim{
+		{OwnerID: 1, JobID: 77, Kind: KindMemoryExtract},
+		{OwnerID: 2, JobID: 78, Kind: KindMemoryExtract},
+	}
+	store.recoverAction = "REQUEUED"
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, nil, nil, nil)
+
+	if err := loop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.recoveredExtracts) != 2 || store.recoveredExtracts[0] != 77 || store.recoveredExtracts[1] != 78 {
+		t.Fatalf("recovered %+v", store.recoveredExtracts)
+	}
+	if got := loop.Stats().Recoveries; got != 2 {
+		t.Fatalf("recoveries %d want 2", got)
+	}
+}
+
+// TestRecoverOnceDeadLettersExpiredMemoryExtractJobs pins the bounded-retry
+// terminal and the failure isolation: a per-job recover error must not abort
+// the pass nor count as a recovery.
+func TestRecoverOnceDeadLettersExpiredMemoryExtractJobs(t *testing.T) {
+	t.Parallel()
+	store := newSchedulerTestStore()
+	store.expiredExtracts = []postgres.JobClaim{
+		{OwnerID: 1, JobID: 79, Kind: KindMemoryExtract},
+		{OwnerID: 1, JobID: 80, Kind: KindMemoryExtract},
+	}
+	store.recoverAction = "DEAD_LETTERED"
+	store.recoverErr = errors.New("guarded")
+	// The first recover fails, then the store heals for the second.
+	store.recoverFailures = 1
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, nil, nil, nil)
+
+	if err := loop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.recoveredExtracts) != 1 || store.recoveredExtracts[0] != 80 {
+		t.Fatalf("recovered %+v, want only job 80", store.recoveredExtracts)
+	}
+	if got := loop.Stats().Recoveries; got != 1 {
+		t.Fatalf("recoveries %d want 1", got)
 	}
 }

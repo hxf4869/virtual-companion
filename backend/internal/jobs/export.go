@@ -93,6 +93,58 @@ func (l *Loop) handleExportWithKey(
 	return l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "DONE", "")
 }
 
+// listAllConversations pages the owner's conversations with an explicit page
+// size until the store returns a short page. The V130 cursor is the previous
+// page's smallest conversation id over the stable id-keyset listing
+// (go_list_export_conversations): id never changes, so concurrent activity
+// during a long export cannot skip or repeat whole pages the way the
+// mutable last_activity_at frontend cursor could. The cursor must advance
+// strictly, so a stalled cursor fails the export instead of silently
+// truncating the payload.
+func (l *Loop) listAllConversations(ctx context.Context, owner int64) ([]postgres.Conversation, error) {
+	limit := exportPageSize
+	var after *int64
+	var all []postgres.Conversation
+	for {
+		convs, err := l.store.ListExportConversations(ctx, owner, after, &limit)
+		if err != nil {
+			return nil, err
+		}
+		if after != nil && len(convs) > 0 && convs[len(convs)-1].ID >= *after {
+			return nil, fmt.Errorf("export: conversation cursor did not advance past %d", *after)
+		}
+		all = append(all, convs...)
+		if len(convs) < exportPageSize {
+			return all, nil
+		}
+		next := convs[len(convs)-1].ID
+		after = &next
+	}
+}
+
+// listAllMessages pages one conversation's history the same way; the cursor is
+// the previous page's last message id and must advance strictly.
+func (l *Loop) listAllMessages(ctx context.Context, owner, conversationID int64) ([]postgres.Message, error) {
+	limit := exportPageSize
+	var after *int64
+	var all []postgres.Message
+	for {
+		msgs, err := l.store.ListMessages(ctx, owner, conversationID, after, &limit)
+		if err != nil {
+			return nil, err
+		}
+		if after != nil && len(msgs) > 0 && msgs[len(msgs)-1].ID <= *after {
+			return nil, fmt.Errorf("export: message cursor did not advance past %d in conversation %d", *after, conversationID)
+		}
+		all = append(all, msgs...)
+		if len(msgs) < exportPageSize {
+			return all, nil
+		}
+		next := msgs[len(msgs)-1].ID
+		after = &next
+	}
+}
+
 func newExportObjectKey(owner, exportID int64) (string, error) {
 	return newExportObjectKeyWithRead(owner, exportID, rand.Read)
 }
@@ -108,12 +160,16 @@ func newExportObjectKeyWithRead(
 	return fmt.Sprintf("exports/%d/%d-%s.json", owner, exportID, hex.EncodeToString(attempt[:])), nil
 }
 
+// exportPageSize is the explicit page size for export listing. The store
+// functions clamp p_limit to this cap (vc.list_conversations / vc.list_messages).
+const exportPageSize = 100
+
 func (l *Loop) buildExport(ctx context.Context, owner int64) ([]byte, error) {
-	convs, err := l.store.ListConversations(ctx, owner, nil, nil, nil)
+	env := exportEnvelope{ExportedAt: time.Now().UTC().Format(time.RFC3339)}
+	convs, err := l.listAllConversations(ctx, owner)
 	if err != nil {
 		return nil, err
 	}
-	env := exportEnvelope{ExportedAt: time.Now().UTC().Format(time.RFC3339)}
 	for _, conv := range convs {
 		row := exportConversation{
 			ConversationID: conv.ID,
@@ -121,7 +177,7 @@ func (l *Loop) buildExport(ctx context.Context, owner int64) ([]byte, error) {
 			Incognito:      conv.Incognito,
 			Messages:       []exportMessage{},
 		}
-		msgs, err := l.store.ListMessages(ctx, owner, conv.ID, nil, nil)
+		msgs, err := l.listAllMessages(ctx, owner, conv.ID)
 		if err != nil {
 			return nil, err
 		}

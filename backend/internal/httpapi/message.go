@@ -41,20 +41,47 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
+	before, beforeSet, ok := parseOptionalID(r.URL.Query().Get("before"))
+	if !ok {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	if afterSet && beforeSet {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "after and before are mutually exclusive")
+		return
+	}
 	limit, limitSet, ok := parseOptionalLimit(r.URL.Query().Get("limit"))
 	if !ok {
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
 	var afterPtr *int64
+	var beforePtr *int64
 	var limitPtr *int
 	if afterSet {
 		afterPtr = &after
 	}
+	if beforeSet {
+		beforePtr = &before
+	}
 	if limitSet {
 		limitPtr = &limit
 	}
-	list, err := s.core.Store.ListMessages(r.Context(), p.AccountID, conversationID, afterPtr, limitPtr)
+	var list []postgres.Message
+	var err error
+	// after: forward cursor paging (send-completion catch-up). Any request
+	// without after — first load (limit only) or backward paging (before) —
+	// reads the recent window, so the first page of a long conversation is
+	// its newest messages, not its oldest.
+	if afterSet {
+		list, err = s.core.Store.ListMessages(r.Context(), p.AccountID, conversationID, afterPtr, limitPtr)
+	} else {
+		limitArg := 0
+		if limitSet {
+			limitArg = limit
+		}
+		list, err = s.core.Store.ListRecentMessages(r.Context(), p.AccountID, conversationID, beforePtr, limitArg)
+	}
 	if err != nil {
 		s.writeStoreErr(w, err)
 		return
