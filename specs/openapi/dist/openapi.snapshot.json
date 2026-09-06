@@ -13,6 +13,8 @@
     "recordUsageReminder",
     "getIncognitoPref",
     "updateIncognitoPref",
+    "getMemoryAutoSavePref",
+    "updateMemoryAutoSavePref",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -126,6 +128,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "f6e9aa3f2887bde5f81c67ed929cd7334599d19f331e3876ce0e68bf1de85eb6"
+    "sha256": "167345c9ff06a70a762190217a3c74ff95e044be87417d80549c52d53966cd06"
   }
 }

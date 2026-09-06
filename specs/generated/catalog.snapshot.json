@@ -921,7 +921,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 62,
+          "KEEP": 64,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1044,6 +1044,28 @@
             "operationId": "updateIncognitoPref",
             "path": "/api/v1/incognito-pref",
             "replacementOrImpact": "Keep the server capability without exposing a current frontend entry."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getMemoryAutoSavePref",
+            "path": "/api/v1/memory-auto-save-pref",
+            "replacementOrImpact": "Per-owner auto-memory extraction kill switch (V66, default on). Envelope follows incognito-pref with a single \"enabled\" boolean."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "PUT",
+            "operationId": "updateMemoryAutoSavePref",
+            "path": "/api/v1/memory-auto-save-pref",
+            "replacementOrImpact": "Turn auto-memory extraction on/off per owner. Existing memories keep participating in chat context; only new extraction stops. No current frontend entry."
           },
           {
             "currentH5Callers": [],
@@ -1286,7 +1308,7 @@
             "method": "GET",
             "operationId": "listMessages",
             "path": "/api/v1/conversations/{conversationId}/messages",
-            "replacementOrImpact": "Keep message history."
+            "replacementOrImpact": "Keep message history. Query paging is cursor-based and directional. after=<messageId> pages forward (id > after, ascending). Requests without after read the recent window. With before=<messageId> they page backward through it (id < before, exclusive, newest-first selection, rows still emitted ascending). Without before the window is the conversation tail, so the first page is the last limit rows in ascending order. after and before are mutually exclusive (400 INVALID_REQUEST when both present). limit defaults to 50 and is capped at 100; response shape is unchanged."
           },
           {
             "currentH5Callers": [],
@@ -1394,7 +1416,7 @@
             "method": "POST",
             "operationId": "createMemoryCandidate",
             "path": "/api/v1/relationships/{relationshipId}/memories/candidates",
-            "replacementOrImpact": "Keep explicit Owner candidate create. No auto-save and no MEMORY_EXTRACT job in Go v1."
+            "replacementOrImpact": "Keep explicit Owner candidate create. Auto-save is the separate MEMORY_EXTRACT job (memory-recall-contract goV1), not this endpoint."
           },
           {
             "currentH5Callers": [],
@@ -1479,7 +1501,7 @@
             "method": "GET",
             "operationId": "getMemoryAutoSave",
             "path": "/api/v1/memories/auto-save",
-            "replacementOrImpact": "Go v1 has no auto-save and the current frontend has no memory switch."
+            "replacementOrImpact": "Superseded by /api/v1/memory-auto-save-pref (V66, default on); the current frontend has no memory switch."
           },
           {
             "currentH5Callers": [],
@@ -1487,7 +1509,7 @@
             "method": "PUT",
             "operationId": "setMemoryAutoSave",
             "path": "/api/v1/memories/auto-save",
-            "replacementOrImpact": "The current frontend has no auto-save toggle; candidates remain explicit only."
+            "replacementOrImpact": "Superseded by /api/v1/memory-auto-save-pref; the current frontend has no auto-save toggle yet."
           },
           {
             "currentH5Callers": [],
@@ -2223,7 +2245,7 @@
           }
         ]
       },
-      "sha256": "7b193bec931dede59334fdf2a8be409b4f57ad24ea6623c3f3a7c986ca793623"
+      "sha256": "8350f04c34f89de2f6fbcbd8e8c474f9126eb6e1e356377a9b2044d7b2cf8369"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2253,13 +2275,13 @@
           }
         ],
         "goV1": {
-          "autoSave": false,
-          "modelAutoExtractionJob": false,
+          "autoSave": true,
+          "modelAutoExtractionJob": true,
           "productionSemanticRecallClaimed": false
         },
         "schemaVersion": 1
       },
-      "sha256": "a8040e03897061b7994fd47e38c98b3642a28dbfe797a9a6f166886633d41e89"
+      "sha256": "dc4256df316073f1debdca3c7cf22066072abe025b3a59c3c42aee9cccb724fd"
     },
     "memory-event-statuses.yaml": {
       "document": {
@@ -2615,7 +2637,7 @@
           "primaryAudience": "evening-office-workers-25-35"
         },
         "memory": {
-          "autoSaveEnabled": false,
+          "autoSaveEnabled": true,
           "ollamaEmbedding": "SHADOW_EVAL_ONLY",
           "productionRecall": [
             "EXPLICIT_CANDIDATE",
@@ -2646,7 +2668,7 @@
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "efc96cde6be963707164e9303645d6de789daf4edf4ea95810314bb74085b342"
+      "sha256": "bd7bb7481e1cd901d2aff3fb265b3a3165fbfdfb5b9428542f77e8e8b026c85c"
     },
     "provider-attempt-statuses.yaml": {
       "document": {

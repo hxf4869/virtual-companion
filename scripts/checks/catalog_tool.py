@@ -180,8 +180,8 @@ def validate(root: Path) -> list[str]:
             f"{live_model_protocols}"
         )
     memory_scope = product.get("memory", {})
-    if memory_scope.get("autoSaveEnabled") is not False:
-        errors.append("product-scope.yaml: memory.autoSaveEnabled must be false")
+    if memory_scope.get("autoSaveEnabled") is not True:
+        errors.append("product-scope.yaml: memory.autoSaveEnabled must be true")
     if memory_scope.get("productionSemanticRecallClaimed") is not False:
         errors.append("product-scope.yaml: memory.productionSemanticRecallClaimed must be false")
     if product.get("safety", {}).get("remoteClassifier") != "DEFER":
@@ -191,8 +191,10 @@ def validate(root: Path) -> list[str]:
     for protocol in live_model_protocols:
         if by_protocol.get(protocol, {}).get("alphaAllowed") is not True:
             errors.append(f"model-protocols.yaml: {protocol} alphaAllowed must be true")
-    if candidate.get("goV1", {}).get("autoSave") is not False:
-        errors.append("memory-candidate-statuses.yaml: goV1.autoSave must be false")
+    if candidate.get("goV1", {}).get("autoSave") is not True:
+        errors.append("memory-candidate-statuses.yaml: goV1.autoSave must be true")
+    if candidate.get("goV1", {}).get("modelAutoExtractionJob") is not True:
+        errors.append("memory-candidate-statuses.yaml: goV1.modelAutoExtractionJob must be true")
     if candidate.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
         errors.append("memory-candidate-statuses.yaml: goV1.productionSemanticRecallClaimed must be false")
     safety_contract = load_yaml(root / "specs/contracts/safety-fail-closed-contract.yaml")
@@ -212,8 +214,23 @@ def validate(root: Path) -> list[str]:
     memory_contract = load_yaml(root / "specs/contracts/memory-recall-contract.yaml")
     if memory_contract.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
         errors.append("memory-recall-contract.yaml: goV1.productionSemanticRecallClaimed must be false")
-    if memory_contract.get("goV1", {}).get("autoSave") is not False:
-        errors.append("memory-recall-contract.yaml: goV1.autoSave must be false")
+    # Auto-save via the MEMORY_EXTRACT job is a delivered capability (owner
+    # decision 2026-09-05). The contract must declare it with its guardrails,
+    # and the per-owner pref endpoints must stay KEEP in the API scope.
+    go_memory = memory_contract.get("goV1", {})
+    if go_memory.get("autoSave") is not True or go_memory.get("modelAutoExtractionJob") is not True:
+        errors.append(
+            "memory-recall-contract.yaml: goV1.autoSave and goV1.modelAutoExtractionJob "
+            "must be true (auto-save via MEMORY_EXTRACT is delivered)")
+    auto_save_expect = {
+        "autoSavePrefDefaultOn": True,
+        "autoSaveMaxItemsPerTurn": 3,
+        "autoSavedMarking": "auto_saved_true",
+        "autoSaveIdempotency": "idempotency_key",
+    }
+    for key, expected_value in auto_save_expect.items():
+        if go_memory.get(key) != expected_value:
+            errors.append(f"memory-recall-contract.yaml: goV1.{key} must be {expected_value!r}")
     errors.extend(validate_go_v1_api_scope(root))
     return errors
 
@@ -324,6 +341,15 @@ def validate_go_v1_api_scope(root: Path) -> list[str]:
     for key, value in counts.items():
         if declared.get(key) != value:
             errors.append(f"go-v1-api-scope.yaml: counts.{key} must be {value}")
+    # The per-owner auto-save pref endpoints back memory-recall-contract
+    # goV1.autoSave; dropping them or demoting them from KEEP is a contract break.
+    by_operation_id = {str(e.get("operationId")): e for e in operations if isinstance(e, dict)}
+    for oid in ("getMemoryAutoSavePref", "updateMemoryAutoSavePref"):
+        entry = by_operation_id.get(oid)
+        if entry is None or entry.get("decision") != "KEEP":
+            errors.append(
+                f"go-v1-api-scope.yaml: {oid} must exist with decision KEEP "
+                "(auto-save pref endpoints back memory-recall-contract goV1.autoSave)")
     undeclared = scope.get("undeclaredLegacyOperations")
     if not isinstance(undeclared, list) or not undeclared:
         errors.append("go-v1-api-scope.yaml: undeclaredLegacyOperations must list invite paths")

@@ -367,6 +367,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/memory-auto-save-pref:
+    get:
+      operationId: getMemoryAutoSavePref
+      summary: Whether automatic memory extraction is enabled for this owner
+      description: >-
+        Reads the per-owner auto-memory preference (V66). Missing prefs read
+        as enabled. When enabled, each completed chat turn may deterministically
+        extract ordinary user-stated preferences and explicit facts and store
+        them as accepted auto-saved memories. Requires a server-verified
+        authentication context.
+      responses:
+        '200':
+          description: Current preference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryAutoSavePref'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: updateMemoryAutoSavePref
+      summary: Enable or disable automatic memory extraction for this owner
+      description: >-
+        Replaces the per-owner auto-memory preference. Turning it off stops
+        new extraction only; existing memories keep participating in chat
+        context and stay individually deletable. Requires a server-verified
+        authentication context.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryAutoSavePref'
+      responses:
+        '200':
+          description: Preference after the update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryAutoSavePref'
+        '400':
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -1108,12 +1164,21 @@ paths:
   /api/v1/conversations/{conversationId}/messages:
     get:
       operationId: listMessages
-      summary: Paginated message history for a conversation
+      summary: Directional (forward or recent-window) message history for a conversation
       description: >-
-        Keyset-paginated history of messages in a conversation (vc.list_messages).
-        The after cursor is the last message id seen; ordering is stable by
-        (owner, id). A foreign or absent conversation yields no rows and never
-        discloses existence. Requires a server-verified authentication context.
+        Directional keyset pagination over a conversation's messages. With
+        after present the request pages forward from the beginning of the
+        conversation (vc.list_messages; rows with id > after). Without after —
+        omitted entirely, sent with limit only, or sent with before — the
+        request reads the recent window (vc.go_list_recent_messages): with no
+        before this is the conversation's LAST limit messages, and with
+        before=<oldestLoadedId> it is the newest limit messages strictly older
+        than that exclusive cursor, so a client can page backward by passing
+        its oldest loaded id. Rows are always emitted in ascending id order
+        within the response. after and before are mutually exclusive; sending
+        both is 400 INVALID_REQUEST. A foreign or absent conversation yields
+        no rows and never discloses existence. Requires a server-verified
+        authentication context.
       parameters:
         - $ref: '#/components/parameters/ConversationId'
         - name: after
@@ -1121,22 +1186,39 @@ paths:
           required: false
           schema:
             type: string
-          description: Opaque cursor (the last message id seen); omit to start from the beginning.
+          description: Forward cursor (rows with id > after); mutually exclusive with before.
+        - name: before
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Exclusive backward cursor (rows with id < before); pass the oldest
+            already-loaded message id to fetch the next older page. Omit it to
+            read the conversation tail. Mutually exclusive with after.
         - name: limit
           in: query
           required: false
           schema:
             type: integer
-          description: Page size, clamped to a safe band by the server.
+          description: Page size; defaults to 50 and is clamped to at most 100.
       responses:
         '200':
-          description: A page of messages, ordered oldest-first within the page
+          description: >-
+            A page of messages; the recent window is selected newest-first but
+            rows are emitted oldest-first (ascending id) within the response
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Message'
+        '400':
+          description: after and before were both sent, or a query parameter is malformed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -4891,6 +4973,14 @@ components:
         - defaultIncognito
       properties:
         defaultIncognito:
+          type: boolean
+    MemoryAutoSavePref:
+      type: object
+      description: Per-owner auto-memory extraction preference (missing reads as enabled).
+      required:
+        - enabled
+      properties:
+        enabled:
           type: boolean
     UsageReminderRequest:
       type: object

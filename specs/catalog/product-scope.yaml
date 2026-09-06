@@ -39,7 +39,7 @@ technology:
   - OPENAI_RESPONSES
   - ANTHROPIC_MESSAGES
 memory:
-  autoSaveEnabled: false
+  autoSaveEnabled: true
   productionSemanticRecallClaimed: false
   productionRecall:
   - EXPLICIT_CANDIDATE

@@ -14,6 +14,6 @@ entries:
 alphaModelCandidateInitialStatus: PENDING_CONFIRMATION
 alphaModelCandidatesRequireConfirmation: true
 goV1:
-  autoSave: false
-  modelAutoExtractionJob: false
+  autoSave: true
+  modelAutoExtractionJob: true
   productionSemanticRecallClaimed: false

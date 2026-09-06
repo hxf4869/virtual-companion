@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 62
+  KEEP: 64
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -103,6 +103,24 @@ operations:
   keepBecause:
   - core-outcome
   replacementOrImpact: Keep the server capability without exposing a current frontend entry.
+- operationId: getMemoryAutoSavePref
+  method: GET
+  path: /api/v1/memory-auto-save-pref
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: Per-owner auto-memory extraction kill switch (V66, default on).
+    Envelope follows incognito-pref with a single "enabled" boolean.
+- operationId: updateMemoryAutoSavePref
+  method: PUT
+  path: /api/v1/memory-auto-save-pref
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: Turn auto-memory extraction on/off per owner. Existing memories
+    keep participating in chat context; only new extraction stops. No current frontend entry.
 - operationId: createRelationship
   method: POST
   path: /api/v1/relationships
@@ -285,7 +303,15 @@ operations:
   keepBecause:
   - core-outcome
   - h5-caller
-  replacementOrImpact: Keep message history.
+  replacementOrImpact: Keep message history. Query paging is cursor-based and
+    directional. after=<messageId> pages forward (id > after, ascending).
+    Requests without after read the recent window. With before=<messageId>
+    they page backward through it (id < before, exclusive, newest-first
+    selection, rows still emitted ascending). Without before the window is
+    the conversation tail, so the first page is the last limit rows in
+    ascending order. after and before are mutually
+    exclusive (400 INVALID_REQUEST when both present). limit defaults to 50 and
+    is capped at 100; response shape is unchanged.
 - operationId: deleteMessage
   method: DELETE
   path: /api/v1/conversations/{conversationId}/messages/{messageId}
@@ -365,8 +391,8 @@ operations:
   decision: KEEP
   keepBecause:
   - core-outcome
-  replacementOrImpact: Keep explicit Owner candidate create. No auto-save and no MEMORY_EXTRACT job in
-    Go v1.
+  replacementOrImpact: Keep explicit Owner candidate create. Auto-save is the separate
+    MEMORY_EXTRACT job (memory-recall-contract goV1), not this endpoint.
 - operationId: listMemories
   method: GET
   path: /api/v1/relationships/{relationshipId}/memories
@@ -428,13 +454,15 @@ operations:
   path: /api/v1/memories/auto-save
   currentH5Callers: []
   decision: RETIRE
-  replacementOrImpact: Go v1 has no auto-save and the current frontend has no memory switch.
+  replacementOrImpact: Superseded by /api/v1/memory-auto-save-pref (V66, default on);
+    the current frontend has no memory switch.
 - operationId: setMemoryAutoSave
   method: PUT
   path: /api/v1/memories/auto-save
   currentH5Callers: []
   decision: RETIRE
-  replacementOrImpact: The current frontend has no auto-save toggle; candidates remain explicit only.
+  replacementOrImpact: Superseded by /api/v1/memory-auto-save-pref; the current frontend
+    has no auto-save toggle yet.
 - operationId: createReminder
   method: POST
   path: /api/v1/relationships/{relationshipId}/reminders

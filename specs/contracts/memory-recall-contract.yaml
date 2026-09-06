@@ -4,15 +4,23 @@ applicability:
   effectiveAt: go_memory_writer_recall_cutover
 canonicalInvariants:
   - canonical memory belongs to one owner and one relationship
-  - a candidate is not a Prompt fact until the owner explicitly confirms it
-  - auto-save is forbidden in Go v1
+  - a manually created candidate is not a Prompt fact until the owner explicitly confirms it
+  - auto-save is performed only by the MEMORY_EXTRACT job and lands directly as ACCEPTED with auto_saved=true; it never enters the candidate confirmation flow
+  - auto-save is consent-gated by the per-owner pref (V66, default on) and honours the incognito and no_memory boundaries
+  - one turn yields at most 3 auto-saved memories, deduplicated by idempotency key
+  - an auto-saved memory stays owner-editable and owner-deletable; a deleted one must not resurrect
+  - auto-saved memories are stored with RELATIONSHIP scope so they recall into later conversations of the same relationship; the relationship binding keeps them isolated across relationships and accounts
   - incognito and no-memory messages are not long-term extraction sources
   - delete, supersede and consent withdrawal make the item immediately unrecallable
   - restore-before-read must honour tombstones
   - provider or agent sessions are not a second canonical memory
 goV1:
-  autoSave: false
-  modelAutoExtractionJob: false
+  autoSave: true
+  modelAutoExtractionJob: true
+  autoSavePrefDefaultOn: true
+  autoSaveMaxItemsPerTurn: 3
+  autoSavedMarking: auto_saved_true
+  autoSaveIdempotency: idempotency_key
   productionSemanticRecallClaimed: false
   productionRecall:
     - EXPLICIT_CANDIDATE
