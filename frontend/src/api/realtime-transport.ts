@@ -182,9 +182,23 @@ async function fetchSnapshot(
     events.push(parsed.event);
   }
   const usage = parseUsage(data.usage);
-  return usage
+  // N-06: 保留服务端完成快照的 assistantMessageId（合法空正文也是有效正文，
+  // 不得按 truthiness 丢弃该字段本身）。
+  const assistantMessageId =
+    typeof data.assistantMessageId === "string" && data.assistantMessageId.trim()
+      ? data.assistantMessageId
+      : null;
+  // N-06: 本轮 source 用户消息 ID——终态失败后的显式再尝试用它复用原消息。
+  const sourceUserMessageId =
+    typeof data.sourceUserMessageId === "string" && data.sourceUserMessageId.trim()
+      ? data.sourceUserMessageId
+      : null;
+  const result: SnapshotResult = usage
     ? { ok: true, status: response.status, events, usage }
     : { ok: true, status: response.status, events };
+  result.assistantMessageId = assistantMessageId;
+  result.sourceUserMessageId = sourceUserMessageId;
+  return result;
 }
 
 function parseUsage(raw: unknown): SnapshotUsage | null {

@@ -31,6 +31,22 @@ export class MemoryProtocolError extends Error {
   }
 }
 
+/**
+ * 写请求（自动开关/编辑/删除/候选处理）抛错后的结果分类。正常返回即确认成功。
+ * - rejected：服务端明确拒绝（4xx，含 401/403/409），为确定失败；
+ * - unknown：5xx、协议错误、超时、网络异常及其他程序错误——无法证明请求
+ *   未发送或未落库，调用方不得宣布确定失败，只能进入"结果未知/核对"流程。
+ * 这是 api 层错误类的局部判断函数，不是通用请求框架。
+ */
+export type MemoryWriteOutcome = "rejected" | "unknown";
+
+export function classifyMemoryWriteError(caught: unknown): MemoryWriteOutcome {
+  if (caught instanceof MemoryHttpError) {
+    return caught.kind === "server" ? "unknown" : "rejected";
+  }
+  return "unknown";
+}
+
 export type MemoryStatus = "PENDING_CONFIRMATION" | "ACCEPTED" | "REJECTED";
 
 export interface MemoryItem {
@@ -149,12 +165,22 @@ function asEvidence(json: unknown): MemoryEvidence {
   };
 }
 
-/** 列出该关系下未删除的记忆（含待确认与已拒绝；无分页，一次加载）。 */
-export async function listMemories(
+export interface MemoryListResult {
+  items: MemoryItem[];
+  /**
+   * True when 403/404 hid the list. The empty result then only means "not
+   * available to you": it does not prove the list is really empty, nor that a
+   * pending write landed. Callers must not treat it as authoritative.
+   */
+  existenceHidden: boolean;
+}
+
+/** 列出该关系下未删除的记忆，并保留存在性隐藏信息（空结果是否可信由调用方判断）。 */
+export async function listMemoriesChecked(
   transport: MemoryTransport,
   relationshipId: string,
   includeDeleted = false,
-): Promise<MemoryItem[]> {
+): Promise<MemoryListResult> {
   const query = includeDeleted ? "?includeDeleted=true" : "";
   const response = await transport.request(
     "GET",
@@ -163,13 +189,13 @@ export async function listMemories(
     readOpts,
   );
   if (!response.ok) {
-    if (isExistenceHidden(response.status)) return [];
+    if (isExistenceHidden(response.status)) return { items: [], existenceHidden: true };
     throw new MemoryHttpError(response.status, classifyStatus(response.status));
   }
   if (response.parseFailed || !Array.isArray(response.json)) {
     throw new MemoryProtocolError(response.status);
   }
-  return asMemoryArray(response.json);
+  return { items: asMemoryArray(response.json), existenceHidden: false };
 }
 
 /** 编辑记忆摘要；2xx 但响应不可解析时抛 MemoryProtocolError（结果未知）。 */
@@ -193,11 +219,22 @@ export async function updateMemory(
   return updated;
 }
 
-/** 删除（软删除）一条记忆。 */
+/**
+ * 删除（软删除）一条记忆。
+ * - 2xx 且响应可解析为条目：{ kind: "deleted", item }，删除已确认；
+ * - 存在性隐藏（403/404）：{ kind: "unavailable" }，只表示当前不可用，
+ *   不能作为删除完成的证明，调用方不得据此移除条目；
+ * - 2xx 但响应不含条目、其他 4xx/5xx、协议错误、超时、网络异常：抛错，
+ *   由 classifyMemoryWriteError 归类为确定拒绝或结果未知。
+ */
+export type MemoryDeleteResult =
+  | { kind: "deleted"; item: MemoryItem }
+  | { kind: "unavailable" };
+
 export async function deleteMemory(
   transport: MemoryTransport,
   memoryId: string,
-): Promise<MemoryItem | null> {
+): Promise<MemoryDeleteResult> {
   const response = await transport.request(
     "DELETE",
     `/api/v1/memories/${encodeURIComponent(memoryId)}`,
@@ -205,11 +242,13 @@ export async function deleteMemory(
     readOpts,
   );
   if (!response.ok) {
-    if (isExistenceHidden(response.status)) return null;
+    if (isExistenceHidden(response.status)) return { kind: "unavailable" };
     throw new MemoryHttpError(response.status, classifyStatus(response.status));
   }
   if (response.parseFailed) throw new MemoryProtocolError(response.status);
-  return asMemoryItem(response.json);
+  const item = asMemoryItem(response.json);
+  if (!item) throw new MemoryProtocolError(response.status);
+  return { kind: "deleted", item };
 }
 
 /** 确认一条待确认候选（空请求体）。 */

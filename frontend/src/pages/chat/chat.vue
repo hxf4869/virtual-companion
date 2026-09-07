@@ -189,12 +189,56 @@ const canRetry = computed(() => (
   ((directSendError.value && inputText.value.trim().length > 0) ||
     (store.phase === "failed" && store.pendingUserContent.trim().length > 0))
 ));
-const sendErrorText = computed(() => (
-  directSendError.value || store.phase === "failed"
-    ? "没发出去，点此重试"
-    : ""
+/**
+ * N-05：发送结果未确认——directSendError（POST 结果未知抛错）或 POST 失败
+ * 轮（phase 失败且本轮未确认持有 generation，存在性隐藏 403/404 的 null
+ * 返回也落在这里）。文案与重试动作的第一分流：原请求结局未知，只做同键
+ * 普通重发，不取快照 source。
+ */
+const sendUnconfirmed = computed(() => (
+  directSendError.value || (store.phase === "failed" && !store.turnHasGeneration)
 ));
+/**
+ * N-05（第 5 节状态矩阵）：失败文案按事实分流——已接受的请求不能说成
+ * "没发出去"；仅输出未确认（exhausted/断网）时动作是重新连接原流；
+ * 服务端明确终态失败才是"这次回复没有完成"。
+ *
+ * 分流以当前提交意图为准：发送结果未确认先走 sendUnconfirmed；重连场景
+ * 只剩"本轮已确认持有 generation"的失败轮——POST 失败轮不持有 generation，
+ * 旧轮的 exhausted 残留不得劫持当前重试。
+ */
+const reconnectFailed = computed(() => (
+  !sendUnconfirmed.value &&
+  store.phase === "failed" &&
+  store.turnHasGeneration &&
+  (store.outcome === "exhausted" ||
+    store.lastDisconnect === "network" ||
+    store.lastDisconnect === "service")
+));
+/**
+ * N-05：not_found_or_forbidden 不等于服务端明确生成失败，也不等于可重连
+ * 的输出未确认——反复重连只会反复 404，直接新键发送会复制用户消息。保留
+ * 草稿，提供一次有界核对入口。
+ */
+const turnUnverifiable = computed(() => (
+  !sendUnconfirmed.value &&
+  store.phase === "failed" &&
+  store.outcome === "not_found_or_forbidden"
+));
+const sendErrorText = computed(() => {
+  if (sendUnconfirmed.value) return "没有确认发送结果，点此重试";
+  if (store.phase !== "failed") return "";
+  if (turnUnverifiable.value) return "这条回复暂时无法访问，点此核对";
+  if (reconnectFailed.value) return "回复连接中断，点此重新连接";
+  return "这次回复没有完成，点此重新尝试";
+});
 const statusText = computed(() => {
+  // N-06：仅完成结果使用"回复已完成"文案（finalSyncFailed 只在完成路径
+  // 置位，新一轮 send 开始即清除；phase 不符时不抢占其他文案位）。
+  if (store.finalSyncFailed && store.phase === "completed") {
+    return "回复已完成，记录同步暂未成功。";
+  }
+  if (store.recentLoadFailed) return "最近的记录没有同步完整，可以重新加载。";
   if (store.historyLoadFailed) return "更早的消息没有加载出来，可以再试一次。";
   if (store.cancelUnconfirmed && store.phase === "cancelled") {
     return "已停止显示这条回复，生成状态待确认。";
@@ -210,11 +254,20 @@ const statusText = computed(() => {
       return "";
   }
 });
-const statusAction = computed(() => (
-  store.cancelUnconfirmed && store.phase === "cancelled" ? "核对生成状态" : ""
-));
+const statusAction = computed(() => {
+  if (store.finalSyncFailed && store.phase === "completed") return "同步记录";
+  if (store.recentLoadFailed) return "重新加载";
+  if (store.cancelUnconfirmed && store.phase === "cancelled") return "核对生成状态";
+  return "";
+});
 const statusTone = computed<StatusTone>(() => {
-  if (store.historyLoadFailed) return "error";
+  if (
+    store.historyLoadFailed ||
+    store.recentLoadFailed ||
+    (store.finalSyncFailed && store.phase === "completed")
+  ) {
+    return "error";
+  }
   if (store.phase === "streaming") return "progress";
   return "muted";
 });
@@ -339,7 +392,7 @@ async function ensureConversation(): Promise<boolean> {
  * 输入框草稿与提交快照分离：只在"当前输入内容 === 提交快照"时清空；
  * 失败恢复同样绝不触碰用户后来输入的新草稿。
  */
-async function sendText(text: string): Promise<boolean> {
+async function sendText(text: string, sourceUserMessageId?: string): Promise<boolean> {
   if (submitInFlight || store.isStreaming || generationBusy.value) return false;
   submitInFlight = true;
   directSendError.value = false;
@@ -353,7 +406,7 @@ async function sendText(text: string): Promise<boolean> {
     const ready = await ensureConversation();
     if (!ready) throw new Error("conversation unavailable");
     submittedConversationId = store.conversationId;
-    await store.send(transport, deps, text);
+    await store.send(transport, deps, text, { sourceUserMessageId });
     if (store.phase === "completed" && relStore.currentRelationshipId) {
       void store.loadConversations(transport, relStore.currentRelationshipId);
     }
@@ -375,13 +428,37 @@ async function onSend(): Promise<void> {
   await sendText(text);
 }
 
-function onRetry(): void {
+async function onRetry(): Promise<void> {
   if (!canRetry.value) return;
-  const text = directSendError.value
-    ? inputText.value.trim()
-    : store.pendingUserContent.trim();
+  // N-05：按事实分流。已确认 generation、仅输出未确认（exhausted/断网）时，
+  // 重试＝重新连接原流/快照，绝不新建 generation、不重复用户消息；
+  // not_found_or_forbidden 不重连循环也不新键发送——一次有界核对，草稿保留。
+  if (reconnectFailed.value || turnUnverifiable.value) {
+    void store.recoverInFlight(deps);
+    return;
+  }
+  // N-05：发送结果未确认＝普通同键重发：不调用 resolveTurnSource、不传
+  // sourceUserMessageId——原请求结局未知，复制用户消息或按旧 generation
+  // 的快照重发都可能造成重复。
+  if (sendUnconfirmed.value) {
+    const text = directSendError.value
+      ? inputText.value.trim()
+      : store.pendingUserContent.trim();
+    if (!text) return;
+    await sendText(text);
+    return;
+  }
+  // 该分支仅在发送结果已确认时可达（sendUnconfirmed 为 false ⇒
+  // directSendError 恒为 false）：即已确认 generation 的明确终态失败重试，
+  // 文本一律取 store 的待重发内容。
+  // N-06：服务端明确终态失败后的显式再尝试，复用已持久化的原用户消息。
+  // lastTurnSource 为空时先有界取一次快照拿权威 source；拿不到就不重发，
+  // 保留核对入口——绝不退回普通发送复制用户消息。
+  const text = store.pendingUserContent.trim();
   if (!text) return;
-  void sendText(text);
+  const sourceId = await store.resolveTurnSource(deps);
+  if (!sourceId) return;
+  await sendText(text, sourceId);
 }
 
 function onCancel(): void {
@@ -389,7 +466,16 @@ function onCancel(): void {
 }
 
 function onStatusAction(): void {
-  // WP-D（缺口3）：手动核对"已停止待确认"的生成，快照为权威。
+  // N-06：按待处理事实分流——记录同步失败先补页；最近窗口不完整重发
+  // 最近窗口请求；否则手动核对"已停止待确认"的生成，快照为权威。
+  if (store.finalSyncFailed) {
+    void store.retryFinalSync(transport);
+    return;
+  }
+  if (store.recentLoadFailed) {
+    void store.loadHistory(transport);
+    return;
+  }
   void store.recoverInFlight(deps);
 }
 

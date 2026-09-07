@@ -218,6 +218,17 @@ func (s *concurrencyStore) GetMemoryAutoSavePref(context.Context, int64) (bool, 
 	return true, nil
 }
 
+// PrepareMemoryExtractAttempt stands in for the V133 pre-flight transaction:
+// the loop tests only need the extractable path so the handler reaches the
+// provider call.
+func (s *concurrencyStore) PrepareMemoryExtractAttempt(context.Context, int64, int64, int64, string, string, string, string, string) (postgres.MemoryExtractPreparation, error) {
+	return postgres.MemoryExtractPreparation{AttemptID: 1, AttemptNo: 1, Decision: "EXTRACTABLE"}, nil
+}
+
+func (s *concurrencyStore) RecordMemoryExtractOutcome(context.Context, int64, int64, int64, postgres.MemoryExtractOutcome) (int64, error) {
+	return 1, nil
+}
+
 func (s *concurrencyStore) CreateAutoSavedMemory(_ context.Context, _ int64, in postgres.AutoSavedMemoryCreate) (postgres.Memory, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -298,8 +309,12 @@ func armExtractInput(s *concurrencyStore) {
 		Status:             "COMPLETED",
 		SourceMessageID:    &src,
 		AssistantMessageID: &asst,
-		UserContent:        "用户喜欢安静",
-		AssistantContent:   "合成助手回复",
+		// First-person statement: the synthetic model output "用户喜欢安静"
+		// stays grounded on the "喜欢安静" span whose left boundary is the
+		// explicit 我 (the N-03 subject rule).
+		UserContent:      "我喜欢安静",
+		AssistantContent: "合成助手回复",
+		ModelEligible:    true,
 	}
 }
 
@@ -622,6 +637,43 @@ func TestLoopStopCancelsInFlightExtract(t *testing.T) {
 	}
 	if len(store.extractSaved) != 0 {
 		t.Fatalf("saved after cancelled extract %+v", store.extractSaved)
+	}
+}
+
+// TestLoopCancelOwnerStopsInFlightExtract pins the T-23 cancel half: the
+// extraction registers its bounded call under (owner, job) in the shared
+// cancel registry, so the owner-scoped signal — account deletion today —
+// unwinds exactly that owner's in-flight call. The cancelled run requeues
+// (no save, no close) and the durable barriers keep guarding either way.
+func TestLoopCancelOwnerStopsInFlightExtract(t *testing.T) {
+	store := newConcurrencyStore(0)
+	armExtractInput(store)
+	store.claims = []postgres.JobClaim{extractClaim(904, 504)}
+
+	extract := &blockingExtractProvider{release: make(chan struct{})}
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, extract, nil, nil)
+
+	if got := loop.ClaimOnce(context.Background()); got != 1 {
+		t.Fatalf("claim %d want 1", got)
+	}
+	waitFor(t, "active extraction", func() bool { return extract.active.Load() == 1 })
+
+	// The owner-scoped cancel reaches the in-flight extraction call only.
+	if got := loop.Cancels().CancelOwner(1); got != 1 {
+		t.Fatalf("owner 1 cancels %d want 1", got)
+	}
+	if got := loop.Cancels().CancelOwner(1); got != 0 {
+		t.Fatalf("repeated owner 1 cancels %d want 0 (registry cleaned)", got)
+	}
+	waitFor(t, "cancelled extraction drained", func() bool { return extract.done.Load() == 1 })
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.retryCalls != 1 {
+		t.Fatalf("retry calls %d, want 1 (cancelled claim requeued)", store.retryCalls)
+	}
+	if len(store.extractSaved) != 0 {
+		t.Fatalf("saved after owner cancel %+v", store.extractSaved)
 	}
 }
 

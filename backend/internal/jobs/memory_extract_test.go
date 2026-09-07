@@ -3,15 +3,21 @@ package jobs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
+	"github.com/hxf4869/virtual-companion/internal/provider/openai"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
@@ -34,11 +40,53 @@ type extractTestStore struct {
 	retryErr    error
 	completeErr error
 	closes      []extractClose
+
+	// V133 attempt surface. prepareDecision defaults to EXTRACTABLE; the
+	// prior payload replays through the parser without a second model call.
+	prepareDecision string
+	prepareErr      error
+	priorPayload    string
+	prepareCalls    int
+	prepared        []postgres.JobClaim
+	outcomes        []postgres.MemoryExtractOutcome
+	outcomeErr      error
 }
 
 type extractClose struct {
 	status string
 	reason string
+}
+
+func (s *extractTestStore) PrepareMemoryExtractAttempt(_ context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string) (postgres.MemoryExtractPreparation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.prepareCalls++
+	s.prepared = append(s.prepared, postgres.JobClaim{OwnerID: owner, JobID: jobID, RefID: generationID, Token: token, Fence: fence})
+	if s.prepareErr != nil {
+		return postgres.MemoryExtractPreparation{}, s.prepareErr
+	}
+	decision := s.prepareDecision
+	if decision == "" {
+		decision = "EXTRACTABLE"
+	}
+	prep := postgres.MemoryExtractPreparation{Decision: decision, PriorPayload: s.priorPayload}
+	// 8a: a replay-only run (prior payload hit) registers no new attempt —
+	// the Go side returns attemptID 0 and must not record an outcome.
+	if decision == "EXTRACTABLE" && s.priorPayload == "" {
+		prep.AttemptID = int64(s.prepareCalls)
+		prep.AttemptNo = s.prepareCalls
+	}
+	return prep, nil
+}
+
+func (s *extractTestStore) RecordMemoryExtractOutcome(_ context.Context, _, _, _ int64, out postgres.MemoryExtractOutcome) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.outcomeErr != nil {
+		return 0, s.outcomeErr
+	}
+	s.outcomes = append(s.outcomes, out)
+	return 1, nil
 }
 
 func (s *extractTestStore) ResolveProviderRoutes(context.Context) ([]postgres.ProviderRoute, error) {
@@ -190,13 +238,14 @@ func extractTestInput() postgres.MemoryExtractInput {
 		ConversationID: 4,
 		Status:         "COMPLETED",
 		// Anchored spans available for synthetic summaries: "合成测试" at the
-		// message start, "喜欢安静的地方"/"喜欢安静" after 我, "喜欢清晨散步"/
-		// "住在杭州" after clause breaks. "测试轮次回复" only exists in the
-		// assistant content.
+		// message start, "喜欢安静的地方"/"喜欢清晨散步"/"住在杭州" each right
+		// after a first-person 我. "测试轮次回复" only exists in the assistant
+		// content.
 		SourceMessageID:    &src,
 		AssistantMessageID: &asst,
-		UserContent:        "合成测试轮次：我喜欢安静的地方。喜欢清晨散步。住在杭州。",
+		UserContent:        "合成测试轮次：我喜欢安静的地方。我喜欢清晨散步。我住在杭州。",
 		AssistantContent:   "合成测试轮次回复",
+		ModelEligible:      true,
 	}
 }
 
@@ -213,8 +262,9 @@ func TestMemoryExtractSavesWhitelistedItems(t *testing.T) {
 		pref:  true,
 		gate:  postgres.OutboundDecision{Allow: true, Code: "OK"},
 	}
-	// Every surviving item must carry evidence quoted from the user message.
-	provider := &extractTestProvider{text: `[{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"合成测试"},{"summary":"用户住在杭州","category":"FACT","evidence":"测试轮次"}]`}
+	// Every surviving item must carry evidence quoted from the user message
+	// and covering the same statement the summary lands on.
+	provider := &extractTestProvider{text: `[{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"我喜欢安静的地方"},{"summary":"用户住在杭州","category":"FACT","evidence":"住在杭州"}]`}
 	loop := newExtractTestLoop(store, provider)
 	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
 		t.Fatal(err)
@@ -222,7 +272,10 @@ func TestMemoryExtractSavesWhitelistedItems(t *testing.T) {
 	if got := len(store.saved); got != 2 {
 		t.Fatalf("saved %d, want 2", got)
 	}
-	wantEvidence := []string{"message:101", "message:102"}
+	// The evidence refs bind the user source message only: the assistant
+	// message is not an extraction source, and the V57 tombstone flip on the
+	// user message is what re-suppresses a deleted memory's source.
+	wantEvidence := []string{"message:101"}
 	for i, in := range store.saved {
 		if in.RelationshipID != 3 || in.ConversationID != 4 {
 			t.Fatalf("item %d binding %+v", i, in)
@@ -231,7 +284,7 @@ func TestMemoryExtractSavesWhitelistedItems(t *testing.T) {
 		if in.IdempotencyKey != wantKey {
 			t.Fatalf("item %d key %q, want %q", i, in.IdempotencyKey, wantKey)
 		}
-		if len(in.Evidence) != 2 || in.Evidence[0] != wantEvidence[0] || in.Evidence[1] != wantEvidence[1] {
+		if len(in.Evidence) != 1 || in.Evidence[0] != wantEvidence[0] {
 			t.Fatalf("item %d evidence %v", i, in.Evidence)
 		}
 	}
@@ -246,6 +299,14 @@ func TestMemoryExtractSavesWhitelistedItems(t *testing.T) {
 	}
 	if len(provider.last.Messages) != 2 {
 		t.Fatalf("messages %d, want 2 (system + turn)", len(provider.last.Messages))
+	}
+	// N-04 outbound boundary: only the authorized user message goes out. The
+	// assistant reply is not an extraction source and must not be in the payload.
+	if got := provider.last.Messages[1].Content; got != extractUserPrompt("合成测试轮次：我喜欢安静的地方。我喜欢清晨散步。我住在杭州。") {
+		t.Fatalf("outbound user message %q", got)
+	}
+	if strings.Contains(provider.last.Messages[1].Content, "合成测试轮次回复") {
+		t.Fatalf("outbound payload leaked the assistant reply: %q", provider.last.Messages[1].Content)
 	}
 	if provider.last.Timeouts.Total != extractTotalTimeout {
 		t.Fatalf("total timeout %s, want %s", provider.last.Timeouts.Total, extractTotalTimeout)
@@ -263,10 +324,10 @@ func TestMemoryExtractTruncatesToThree(t *testing.T) {
 	// survive the per-turn cap.
 	provider := &extractTestProvider{text: `[
 		{"summary":"用户合成测试","category":"FACT","evidence":"合成测试"},
-		{"summary":"用户喜欢安静的地方","category":"FACT","evidence":"测试轮次"},
-		{"summary":"用户喜欢清晨散步","category":"FACT","evidence":"清晨散步"},
+		{"summary":"用户喜欢安静的地方","category":"FACT","evidence":"喜欢安静的地方"},
+		{"summary":"用户喜欢清晨散步","category":"FACT","evidence":"我喜欢清晨散步"},
 		{"summary":"用户住在杭州","category":"PREFERENCE","evidence":"住在杭州"},
-		{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"合成测试"}]`}
+		{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`}
 	loop := newExtractTestLoop(store, provider)
 	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
 		t.Fatal(err)
@@ -290,7 +351,7 @@ func TestMemoryExtractDropsInvalidItemsAndRetriesMalformedPayload(t *testing.T) 
 	provider := &extractTestProvider{text: `[
 		{"summary":"","category":"PREFERENCE"},
 		{"summary":"健康陈述","category":"HEALTH"},
-		{"summary":"用户喜欢清晨散步","category":"PREFERENCE","evidence":"合成测试"},
+		{"summary":"用户喜欢清晨散步","category":"PREFERENCE","evidence":"我喜欢清晨散步"},
 		{"summary":"无依据陈述","category":"FACT"},
 		{"summary":"` + long + `","category":"FACT","evidence":"合成测试"}]`}
 	loop := newExtractTestLoop(store, provider)
@@ -376,7 +437,7 @@ func TestMemoryExtractDeletedMemoryDoesNotResurrect(t *testing.T) {
 			gate:    postgres.OutboundDecision{Allow: true},
 			saveErr: postgres.ErrInvalid,
 		}
-		provider := &extractTestProvider{text: `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"合成测试"}]`}
+		provider := &extractTestProvider{text: `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`}
 		loop := newExtractTestLoop(store, provider)
 		if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
 			t.Fatal(err)
@@ -400,8 +461,9 @@ func TestMemoryExtractSkipsSuppressedTurns(t *testing.T) {
 		{"pref off", func(s *extractTestStore, _ *postgres.MemoryExtractInput) { s.pref = false }, "AUTO_SAVE_OFF"},
 		{"incognito", func(_ *extractTestStore, in *postgres.MemoryExtractInput) { in.Incognito = true }, "MEMORY_SOURCE_SUPPRESSED"},
 		{"user no_memory", func(_ *extractTestStore, in *postgres.MemoryExtractInput) { in.UserNoMemory = true }, "MEMORY_SOURCE_SUPPRESSED"},
+		{"model ineligible source", func(_ *extractTestStore, in *postgres.MemoryExtractInput) { in.ModelEligible = false }, "SOURCE_NOT_MODEL_ELIGIBLE"},
 		{"consent withdrawn", func(s *extractTestStore, _ *postgres.MemoryExtractInput) {
-			s.gate = postgres.OutboundDecision{Allow: false, Code: "CONSENT_WITHDRAWN"}
+			s.prepareDecision = "CONSENT_WITHDRAWN"
 		}, "CONSENT_WITHDRAWN"},
 		{"not completed", func(_ *extractTestStore, in *postgres.MemoryExtractInput) { in.Status = "FAILED_FINAL" }, "TURN_NOT_EXTRACTABLE"},
 		{"missing assistant", func(_ *extractTestStore, in *postgres.MemoryExtractInput) { in.AssistantMessageID = nil }, "TURN_NOT_EXTRACTABLE"},
@@ -566,6 +628,205 @@ func TestParseExtractOutput(t *testing.T) {
 	}
 }
 
+// TestParseExtractOutputRefusesThirdPartyAndConditional pins the audit
+// counterexamples: a summary whose subject the model cannot bind to an
+// explicit first-person statement of the user never auto-saves. Reported
+// speech ("同事说，...") and conditionals ("如果以后搬家，...") are the
+// canonical refusals; the summary must name the subject (用户/我 prefix) and
+// land on a verbatim span whose context anchors it to the user.
+func TestParseExtractOutputRefusesThirdPartyAndConditional(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		user    string
+		payload string
+	}{
+		{"reported speech", "同事说，喜欢喝咖啡。",
+			`[{"summary":"用户喜欢喝咖啡","category":"PREFERENCE","evidence":"喜欢喝咖啡"}]`},
+		{"reported speech as FACT", "同事说，喜欢喝咖啡。",
+			`[{"summary":"用户喜欢喝咖啡","category":"FACT","evidence":"喜欢喝咖啡"}]`},
+		{"conditional", "如果以后搬家，想去成都生活。",
+			`[{"summary":"用户想去成都生活","category":"FACT","evidence":"想去成都生活"}]`},
+		{"conditional with 我", "如果我以后搬家，想去成都生活。",
+			`[{"summary":"用户想去成都生活","category":"FACT","evidence":"想去成都生活"}]`},
+		{"third-person subject named in summary", "同事说，喜欢喝咖啡。",
+			`[{"summary":"用户同事说喜欢喝咖啡","category":"FACT","evidence":"同事说喜欢喝咖啡"}]`},
+		{"question about the other person", "你喜欢喝茶吗？",
+			`[{"summary":"用户喜欢喝茶","category":"PREFERENCE","evidence":"喜欢喝茶"}]`},
+		// Audit round-A counterexamples the immediate-"我" anchor used to wave
+		// through: the anchored span's own clause is a conditional, embedded
+		// reported speech, or a negated restatement.
+		{"conditional first-person span", "如果我喜欢喝咖啡，就会买咖啡机。",
+			`[{"summary":"用户喜欢喝咖啡","category":"PREFERENCE","evidence":"喜欢喝咖啡"}]`},
+		{"embedded reported speech", "妈妈说我应该早睡。",
+			`[{"summary":"用户应该早睡","category":"FACT","evidence":"我应该早睡"}]`},
+		// Audit gap: 建议/推荐 carry third-person attribution just like 说,
+		// so an advice span must not borrow the earlier 我 as its subject.
+		{"advice reported speech", "我朋友建议我早睡。",
+			`[{"summary":"用户早睡","category":"PREFERENCE","evidence":"早睡"}]`},
+		{"recommendation reported speech", "我朋友推荐我早睡。",
+			`[{"summary":"用户早睡","category":"PREFERENCE","evidence":"早睡"}]`},
+		// Cross-clause negation: the second clause opens with 不是, so the span
+		// asserts what the user denied.
+		{"negated clause-open span", "我讨厌辣，不是喜欢喝茶。",
+			`[{"summary":"用户不是喜欢喝茶","category":"PREFERENCE","evidence":"不是喜欢喝茶"}]`},
+		// Same message, plain span: the negation right in front of it must
+		// refuse the item at the subject check, not by anchor accident.
+		{"span directly behind the negation", "我讨厌辣，不是喜欢喝茶。",
+			`[{"summary":"用户喜欢喝茶","category":"PREFERENCE","evidence":"喜欢喝茶"}]`},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := parseExtractOutput(tc.payload, extractMaxItems, tc.user)
+			if !ok {
+				t.Fatalf("array payload reported malformed")
+			}
+			if len(got) != 0 {
+				t.Fatalf("saved %d items %+v, want 0", len(got), got)
+			}
+		})
+	}
+}
+
+// TestParseExtractOutputEvidenceBindsSummary pins the evidence-source rule:
+// the evidence quote must come from the current source user message AND be the
+// same statement the summary lands on. Two unrelated fragments of the user
+// message (or an assistant-only quote) are not corroboration.
+func TestParseExtractOutputEvidenceBindsSummary(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		user    string
+		payload string
+	}{
+		{"evidence only in assistant reply", "我喜欢喝茶。",
+			`[{"summary":"用户喜欢喝茶","category":"PREFERENCE","evidence":"仅供参考"}]`},
+		{"evidence is an unrelated user fragment", "我喜欢喝茶。我住在杭州。",
+			`[{"summary":"用户住在杭州","category":"FACT","evidence":"我喜欢喝茶"}]`},
+		{"evidence from another clause", "合成测试轮次：我喜欢安静的地方。",
+			`[{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"合成测试"}]`},
+		{"evidence misses the summary span", "我喜欢喝茶。",
+			`[{"summary":"用户喜欢喝茶","category":"PREFERENCE","evidence":"我喜欢喝"}]`},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := parseExtractOutput(tc.payload, extractMaxItems, tc.user)
+			if !ok {
+				t.Fatalf("array payload reported malformed")
+			}
+			if len(got) != 0 {
+				t.Fatalf("saved %d items %+v, want 0", len(got), got)
+			}
+		})
+	}
+}
+
+// TestParseExtractOutputRefusesIdentifiers pins the identifier denial: a
+// summary or evidence carrying a synthetic email address, phone number or
+// national id number must never pass as FACT/PREFERENCE, with or without a
+// keyword like 邮箱 in the text.
+func TestParseExtractOutputRefusesIdentifiers(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		user    string
+		payload string
+	}{
+		{"email with keyword", "我的邮箱是 heping@example.com。",
+			`[{"summary":"用户的邮箱是heping@example.com","category":"FACT","evidence":"heping@example.com"}]`},
+		{"email without keyword", "我常用 heping@example.com。",
+			`[{"summary":"用户常用heping@example.com","category":"FACT","evidence":"heping@example.com"}]`},
+		{"mobile number", "我的手机号是 13812345678。",
+			`[{"summary":"用户的手机号是13812345678","category":"FACT","evidence":"13812345678"}]`},
+		{"bare phone number", "我的号码是 13812345678。",
+			`[{"summary":"用户的号码是13812345678","category":"FACT","evidence":"13812345678"}]`},
+		{"id card number", "我的证件号是 11010119900307851X。",
+			`[{"summary":"用户的证件号是11010119900307851X","category":"FACT","evidence":"11010119900307851X"}]`},
+		{"identifier only in evidence", "我住在杭州。",
+			`[{"summary":"用户住在杭州","category":"FACT","evidence":"住在杭州 13812345678"}]`},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := parseExtractOutput(tc.payload, extractMaxItems, tc.user)
+			if !ok {
+				t.Fatalf("array payload reported malformed")
+			}
+			if len(got) != 0 {
+				t.Fatalf("saved %d items %+v, want 0", len(got), got)
+			}
+		})
+	}
+}
+
+// TestParseExtractOutputKeepsPlainSelfFacts pins the T-13 positive: the
+// narrowing must not become "save nothing". Ordinary explicit first-person
+// preferences and self-stated facts still pass.
+func TestParseExtractOutputKeepsPlainSelfFacts(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		user      string
+		payload   string
+		wantCount int
+		wantFirst string
+	}{
+		{"preference with detail", "我喜欢喝不加糖的咖啡。",
+			`[{"summary":"用户喜欢喝不加糖的咖啡","category":"PREFERENCE","evidence":"喜欢喝不加糖的咖啡"}]`,
+			1, "用户喜欢喝不加糖的咖啡"},
+		{"self fact", "我住在杭州，喜欢清晨散步。",
+			`[{"summary":"用户住在杭州","category":"FACT","evidence":"我住在杭州"}]`,
+			1, "用户住在杭州"},
+		{"message start fact", "今天降温了，我穿了外套。",
+			`[{"summary":"用户今天降温了","category":"FACT","evidence":"今天降温了"}]`,
+			1, "用户今天降温了"},
+		// A plain negative preference stays extractable: 不 alone is not one of
+		// the refusal negation markers, and the anchored clause carries none.
+		{"negative preference stays allowed", "我不喜欢熬夜，每天十一点睡。",
+			`[{"summary":"用户不喜欢熬夜","category":"PREFERENCE","evidence":"不喜欢熬夜"}]`,
+			1, "用户不喜欢熬夜"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := parseExtractOutput(tc.payload, extractMaxItems, tc.user)
+			if !ok {
+				t.Fatalf("array payload reported malformed")
+			}
+			if len(got) != tc.wantCount {
+				t.Fatalf("saved %d items %+v, want %d", len(got), got, tc.wantCount)
+			}
+			if tc.wantCount > 0 && got[0].Summary != tc.wantFirst {
+				t.Fatalf("summary %q, want %q", got[0].Summary, tc.wantFirst)
+			}
+		})
+	}
+}
+
+// TestParseExtractOutputProtocolEdges pins the payload-protocol boundary:
+// `[]` is a legitimate empty result; JSON null (which Go decodes into a nil
+// slice without error), a non-array object and broken JSON are protocol
+// errors, not "nothing to extract".
+func TestParseExtractOutputProtocolEdges(t *testing.T) {
+	t.Parallel()
+	user := "我喜欢喝茶。"
+	if got, ok := parseExtractOutput("[]", 3, user); !ok || len(got) != 0 {
+		t.Fatalf("empty array ok=%v %+v", ok, got)
+	}
+	if got, ok := parseExtractOutput("null", 3, user); ok || got != nil {
+		t.Fatalf("null payload ok=%v %+v, want protocol error", ok, got)
+	}
+	if got, ok := parseExtractOutput("```json\nnull\n```", 3, user); ok || got != nil {
+		t.Fatalf("fenced null ok=%v %+v, want protocol error", ok, got)
+	}
+}
+
 // TestParseExtractOutputStripsMarkdownFence pins audit M1: real providers
 // wrap the JSON array in a Markdown code fence. One paired fence (with or
 // without a language tag) is stripped before parsing; unpaired fences, pure
@@ -680,7 +941,7 @@ func TestMemoryExtractUsesDatabaseRouteWhenEnvProviderDisabled(t *testing.T) {
 			Credential: "key-a", ModelID: "model-a", MaxOutputTokens: 256, Priority: 1,
 		}},
 	}
-	routed := &routeCaptureProvider{text: `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"合成测试"}]`}
+	routed := &routeCaptureProvider{text: `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
 	loop.Use(store, nil, nil, nil) // env provider disabled
 	var gotRoute modelprovider.Route
@@ -762,11 +1023,11 @@ func TestMemoryExtractBatchValidation(t *testing.T) {
 		gate:  postgres.OutboundDecision{Allow: true, Code: "OK"},
 	}
 	provider := &extractTestProvider{text: `[
-		{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"合成测试"},
-		{"summary":"用户有抑郁症病史","category":"FACT","evidence":"合成测试"},
+		{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"喜欢安静的地方"},
+		{"summary":"用户有抑郁症病史","category":"FACT","evidence":"喜欢安静的地方"},
 		{"summary":"用户住在火星","category":"FACT","evidence":"住在火星"},
 		{"summary":"助手复述用户环游世界","category":"FACT","evidence":"测试轮次回复"},
-		{"summary":"可能喜欢爬山","category":"FACT","evidence":"合成测试"}]`}
+		{"summary":"可能喜欢爬山","category":"FACT","evidence":"喜欢安静的地方"}]`}
 	loop := newExtractTestLoop(store, provider)
 	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
 		t.Fatal(err)
@@ -776,5 +1037,262 @@ func TestMemoryExtractBatchValidation(t *testing.T) {
 	}
 	if closes := store.closeCalls(); len(closes) != 1 || closes[0].status != "DONE" {
 		t.Fatalf("closes %+v", closes)
+	}
+}
+
+// TestMemoryExtractSaveFailureReplaysStoredPayload pins the T-26 contract: a
+// transient local save failure after a successful model call retries WITHOUT a
+// second model call — the prepared attempt's stored payload replays through
+// the parser, the retry saves exactly the same single row and no new outcome
+// is written for the replayed run. The stored payload is the minimal accepted
+// entries (8c), and the replay registers no new attempt (8a, attemptID 0).
+func TestMemoryExtractSaveFailureReplaysStoredPayload(t *testing.T) {
+	t.Parallel()
+	store := &extractTestStore{
+		input:       extractTestInput(),
+		pref:        true,
+		gate:        postgres.OutboundDecision{Allow: true},
+		retryAction: "RETRY_SCHEDULED",
+		saveErr:     errors.New("save temporarily unavailable"),
+	}
+	provider := &extractTestProvider{text: `[{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"我喜欢安静的地方"},
+		{"summary":"可能喜欢爬山","category":"FACT","evidence":"喜欢安静的地方"}]`}
+	loop := newExtractTestLoop(store, provider)
+	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("model calls %d, want 1", provider.callCount())
+	}
+	if store.retryCalls != 1 || len(store.saved) != 0 {
+		t.Fatalf("retry %d saved %+v, want requeued with nothing saved", store.retryCalls, store.saved)
+	}
+	// 8c: only the accepted entry persists — the dropped speculative item and
+	// the raw model formatting never do.
+	wantPayload := `[{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"我喜欢安静的地方"}]`
+	if len(store.outcomes) != 1 || store.outcomes[0].Status != "SUCCEEDED" || store.outcomes[0].OutputPayload != wantPayload {
+		t.Fatalf("outcomes %+v, want one settled SUCCEEDED minimal payload %q", store.outcomes, wantPayload)
+	}
+
+	// The retry replays the stored payload through the parser.
+	store.saveErr = nil
+	store.priorPayload = store.outcomes[0].OutputPayload
+	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("model calls after replay %d, want 1 (no second model call)", provider.callCount())
+	}
+	if len(store.saved) != 1 || store.saved[0].Summary != "用户喜欢安静的地方" {
+		t.Fatalf("saved %+v, want the replayed single row", store.saved)
+	}
+	if len(store.outcomes) != 1 {
+		t.Fatalf("outcomes %+v, want no second outcome for the replay", store.outcomes)
+	}
+	if closes := store.closeCalls(); len(closes) != 1 || closes[0].status != "DONE" {
+		t.Fatalf("closes %+v, want one DONE close", closes)
+	}
+}
+
+// TestMemoryExtractStoresMinimalAcceptedPayload pins defect 8c at the handler
+// level: the replayable attempt payload is the minimal JSON of exactly the
+// entries that passed every server-side check — the raw model output (Markdown
+// fence, sensitive-filtered items, unknown model fields) is never persisted.
+func TestMemoryExtractStoresMinimalAcceptedPayload(t *testing.T) {
+	t.Parallel()
+	store := &extractTestStore{
+		input: extractTestInput(),
+		pref:  true,
+		gate:  postgres.OutboundDecision{Allow: true, Code: "OK"},
+	}
+	provider := &extractTestProvider{text: "```json\n[" +
+		`{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"我喜欢安静的地方","confidence":0.9},` +
+		`{"summary":"用户有焦虑","category":"FACT","evidence":"我喜欢安静的地方"},` +
+		`{"summary":"用户喜欢清晨散步","category":"PREFERENCE","evidence":"我喜欢清晨散步"}` +
+		"]\n```"}
+	loop := newExtractTestLoop(store, provider)
+	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.saved) != 2 {
+		t.Fatalf("saved %+v, want the two valid items", store.saved)
+	}
+	want := `[{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"我喜欢安静的地方"},` +
+		`{"summary":"用户喜欢清晨散步","category":"PREFERENCE","evidence":"我喜欢清晨散步"}]`
+	if len(store.outcomes) != 1 || store.outcomes[0].Status != "SUCCEEDED" {
+		t.Fatalf("outcomes %+v, want one settled SUCCEEDED outcome", store.outcomes)
+	}
+	if got := store.outcomes[0].OutputPayload; got != want {
+		t.Fatalf("stored payload %q, want the minimal accepted entries %q", got, want)
+	}
+}
+
+// TestMemoryExtractMalformedPayloadSettlesWithoutReplay pins the T-19/T-26
+// split: a non-JSON payload settles the usage it produced, but is not stored
+// as the replayable output — a retry must make a fresh model call instead of
+// replaying the same broken payload forever.
+func TestMemoryExtractMalformedPayloadSettlesWithoutReplay(t *testing.T) {
+	t.Parallel()
+	store := &extractTestStore{
+		input:       extractTestInput(),
+		pref:        true,
+		gate:        postgres.OutboundDecision{Allow: true},
+		retryAction: "RETRY_SCHEDULED",
+	}
+	provider := &extractTestProvider{text: "这不是 JSON"}
+	loop := newExtractTestLoop(store, provider)
+	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if store.retryCalls != 1 {
+		t.Fatalf("retry calls %d, want 1", store.retryCalls)
+	}
+	if len(store.outcomes) != 1 || store.outcomes[0].Status != "SUCCEEDED" || store.outcomes[0].OutputPayload != "" {
+		t.Fatalf("outcomes %+v, want SUCCEEDED without a replayable payload", store.outcomes)
+	}
+}
+
+// TestMemoryExtractClaimLostStopsWithoutOutbound pins the T-22 claim half: a
+// pre-flight CLAIM_LOST decision fences the holder out with no provider call,
+// no save and no retry burn.
+func TestMemoryExtractClaimLostStopsWithoutOutbound(t *testing.T) {
+	t.Parallel()
+	store := &extractTestStore{
+		input:           extractTestInput(),
+		pref:            true,
+		gate:            postgres.OutboundDecision{Allow: true},
+		prepareDecision: "CLAIM_LOST",
+	}
+	provider := &extractTestProvider{text: `[{"summary":"用户喜欢安静的地方","category":"PREFERENCE","evidence":"我喜欢安静的地方"}]`}
+	loop := newExtractTestLoop(store, provider)
+	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if provider.callCount() != 0 || len(store.saved) != 0 {
+		t.Fatalf("calls %d saved %+v, want no outbound and no save", provider.callCount(), store.saved)
+	}
+	if store.retryCalls != 0 {
+		t.Fatalf("retry calls %d, want 0 (a lost claim never burns a retry)", store.retryCalls)
+	}
+	if closes := store.closeCalls(); len(closes) != 1 || closes[0].status != "FAILED" || closes[0].reason != "EXTRACT_CLAIM_LOST" {
+		t.Fatalf("closes %+v, want one FAILED EXTRACT_CLAIM_LOST close", closes)
+	}
+}
+
+// TestExtractOutcomeUsageMapping pins the T-24 rule: provider-reported tokens
+// are recorded real; missing usage decodes to nil pointers (the SQL then
+// settles UNKNOWN, never zero), a provider error is FAILED with its failure
+// class and a cancelled call is CANCELLED.
+func TestExtractOutcomeUsageMapping(t *testing.T) {
+	t.Parallel()
+	usage := companion.AttemptResult{Usage: companion.Usage{InputTokens: 11, OutputTokens: 7, TotalTokens: 18}}
+	out := extractOutcome(usage, nil, "[]")
+	if out.Status != "SUCCEEDED" || out.InputTokens == nil || *out.InputTokens != 11 || out.OutputTokens == nil || *out.OutputTokens != 7 {
+		t.Fatalf("reported usage %+v", out)
+	}
+	out = extractOutcome(companion.AttemptResult{}, nil, "")
+	if out.Status != "SUCCEEDED" || out.InputTokens != nil || out.OutputTokens != nil {
+		t.Fatalf("missing usage %+v, want nil tokens (UNKNOWN disposition)", out)
+	}
+	out = extractOutcome(companion.AttemptResult{}, companion.UpstreamUnavailable(), "")
+	if out.Status != "FAILED" || out.FailureCode != "HTTP_5XX" || out.OutputPayload != "" {
+		t.Fatalf("failed outcome %+v", out)
+	}
+	out = extractOutcome(companion.AttemptResult{}, context.Canceled, "")
+	if out.Status != "CANCELLED" {
+		t.Fatalf("cancelled outcome %+v", out)
+	}
+}
+
+// TestMemoryExtractRealAdapterResponseCapSettlesTooLarge pins defect 3 against
+// the real OpenAI adapter: the adapter classifies a sink error via
+// classifyEmit/classifyParse into a companion error and drops the inner
+// sentinel, so the handler must judge the cap from its own sink state after
+// the call returns. An oversized completion from a local fake HTTP service
+// (> extractMaxResponseBytes) must settle the attempt FAILED RESPONSE_TOO_LARGE
+// with UNKNOWN usage (the aborted stream reports none), save nothing and burn
+// exactly one bounded retry — never DISCONNECTED.
+func TestMemoryExtractRealAdapterResponseCapSettlesTooLarge(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "chat.completion",
+			"choices": []any{map[string]any{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": strings.Repeat("x", extractMaxResponseBytes+1)},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 5, "completion_tokens": 900, "total_tokens": 905},
+		})
+	}))
+	defer srv.Close()
+	adapter, err := openai.New(openai.Config{
+		Endpoint:    strings.TrimSuffix(srv.URL, "/") + "/v1/chat/completions",
+		BearerToken: "offline-token-sentinel", Model: "offline-model-sentinel",
+		ConnectTimeout: time.Second, FirstTokenTimeout: time.Second, TotalTimeout: 5 * time.Second,
+		// Wider than the extraction sink cap: the adapter must pass the payload
+		// through so the handler-owned buffer cap is what fires.
+		MaxResponseBytes: 1 << 20, AllowLoopbackHTTP: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adapter.Close()
+	store := &extractTestStore{
+		input:       extractTestInput(),
+		pref:        true,
+		gate:        postgres.OutboundDecision{Allow: true},
+		retryAction: "RETRY_SCHEDULED",
+	}
+	loop := newExtractTestLoop(store, adapter)
+	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("provider calls %d, want exactly 1 bounded call", got)
+	}
+	if len(store.saved) != 0 || store.retryCalls != 1 {
+		t.Fatalf("saved %+v retry %d, want nothing saved and one requeue", store.saved, store.retryCalls)
+	}
+	if len(store.outcomes) != 1 ||
+		store.outcomes[0].Status != "FAILED" ||
+		store.outcomes[0].FailureCode != "RESPONSE_TOO_LARGE" ||
+		store.outcomes[0].InputTokens != nil || store.outcomes[0].OutputTokens != nil {
+		t.Fatalf("outcomes %+v, want FAILED RESPONSE_TOO_LARGE with UNKNOWN usage", store.outcomes)
+	}
+}
+
+// TestMemoryExtractResponseCapSettlesAndRetries pins the fixed extraction
+// buffer cap: a payload exceeding extractMaxResponseBytes fails the call at
+// the sink, the attempt settles FAILED RESPONSE_TOO_LARGE with no tokens (the
+// aborted stream reports no usage — UNKNOWN, never zero), nothing is saved
+// and the bounded retry applies without a second in-run model call.
+func TestMemoryExtractResponseCapSettlesAndRetries(t *testing.T) {
+	t.Parallel()
+	store := &extractTestStore{
+		input:       extractTestInput(),
+		pref:        true,
+		gate:        postgres.OutboundDecision{Allow: true},
+		retryAction: "RETRY_SCHEDULED",
+	}
+	provider := &extractTestProvider{text: strings.Repeat("x", extractMaxResponseBytes+1)}
+	loop := newExtractTestLoop(store, provider)
+	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.callCount(); got != 1 {
+		t.Fatalf("model calls %d, want 1 (the cap is one bounded call)", got)
+	}
+	if len(store.saved) != 0 || store.retryCalls != 1 {
+		t.Fatalf("saved %+v retry %d, want nothing saved and one requeue", store.saved, store.retryCalls)
+	}
+	if len(store.outcomes) != 1 ||
+		store.outcomes[0].Status != "FAILED" ||
+		store.outcomes[0].FailureCode != "RESPONSE_TOO_LARGE" ||
+		store.outcomes[0].InputTokens != nil || store.outcomes[0].OutputTokens != nil {
+		t.Fatalf("outcomes %+v, want FAILED RESPONSE_TOO_LARGE with UNKNOWN usage", store.outcomes)
 	}
 }

@@ -60,6 +60,8 @@ interface FetchOptions {
   messages?: Record<string, unknown[]>;
   createdConversationId?: string;
   deferConversationCreate?: boolean;
+  /** POST /generations 的按序行为："reject"＝网络失败（结果未知），数字＝该状态码（403/404 为存在性隐藏）。 */
+  generations?: Array<"reject" | number>;
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -132,6 +134,19 @@ function stubFetch(options: FetchOptions = {}) {
       return response(true, 200, {
         conversationId: options.createdConversationId ?? "conv-created",
       });
+    }
+    if (method === "POST" && /^\/api\/v1\/conversations\/[^/]+\/generations$/.test(url)) {
+      const step = options.generations?.shift() ?? 200;
+      if (step === "reject") throw new TypeError("fetch failed");
+      if (step === 200) {
+        return response(true, 200, {
+          generationId: "gen-new",
+          conversationId: "conv-new",
+          logicalGenerationId: "lg-new",
+          status: "CREATED",
+        });
+      }
+      return response(false, step, null);
     }
     return response(true, 200, {});
   });
@@ -279,7 +294,8 @@ describe("聊天产品页", () => {
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没发出去，点此重试");
+    // N-05：结果未知的 POST 不得宣称"没发出去"。
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
     expect((input.element as HTMLTextAreaElement).value).toBe("这句话不能丢");
 
     await wrapper.find('[data-testid="retry"]').trigger("click");
@@ -343,15 +359,188 @@ describe("聊天产品页", () => {
 
     const store = useChatStore();
     store.phase = "failed";
+    store.generationId = "42";
+    // 明确终态失败轮已确认持有 generation（sendUnconfirmed 分流的前提）。
+    store.turnHasGeneration = true;
     store.pendingUserContent = "请再试一次";
     await wrapper.vm.$nextTick();
 
     const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
-    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没发出去，点此重试");
+    // N-06：重试前会先有界取一次快照拿权威 source；这里直接给定。
+    vi.spyOn(store, "resolveTurnSource").mockResolvedValue("77");
+    // N-05：明确终态失败如实呈现"回复没有完成"，不再说"没发出去"。
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("这次回复没有完成，点此重新尝试");
     await wrapper.find('[data-testid="retry"]').trigger("click");
     await flushPromises();
     expect(sendSpy).toHaveBeenCalledOnce();
     expect(sendSpy.mock.calls[0]?.[2]).toBe("请再试一次");
+    expect(sendSpy.mock.calls[0]?.[3]).toEqual({ sourceUserMessageId: "77" });
+    wrapper.unmount();
+  });
+
+  // ---- N-05：重试分流以当前提交意图为准 ----
+
+  it("旧轮 exhausted 残留 + 新 POST 失败时，重试重发当前输入而不被旧轮劫持", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    // 旧轮重连残留：已确认 generation、输出未确认。
+    store.phase = "failed";
+    store.outcome = "exhausted";
+    store.generationId = "42";
+    store.turnHasGeneration = true;
+    store.pendingUserContent = "旧问题";
+    await wrapper.vm.$nextTick();
+
+    const sendSpy = vi.spyOn(store, "send")
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce();
+    const recoverSpy = vi.spyOn(store, "recoverInFlight").mockResolvedValue();
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("新消息");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    // 新 POST 失败＝本次提交未确认，不是旧轮的"连接中断"。
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+
+    expect(recoverSpy).not.toHaveBeenCalled();
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy.mock.calls[1]?.[2]).toBe("新消息");
+    wrapper.unmount();
+  });
+
+  it("未知 POST 后存在性隐藏 403：文案与动作一致、草稿保留、同键重发且不取旧快照", async () => {
+    const { calls } = stubFetch({ generations: ["reject", 403, 403] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    // 上一轮正常完成的残留：generationId 为旧值，重试分流不得劫持本轮。
+    store.generationId = "gen-old";
+    await wrapper.vm.$nextTick();
+
+    const generationPosts = () =>
+      calls.filter((call) => call.method === "POST" && /\/generations$/.test(call.url));
+
+    // ① 发送新文本，POST 结果未知（网络失败）：未确认文案 + 草稿回填。
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("新文本");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    expect(generationPosts()).toHaveLength(1);
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+
+    // ② 同键重试得存在性隐藏 403（真实 sendGeneration 返回 null）：文案仍
+    // 是"没有确认发送结果"——原请求结局未知，不得改称"回复没有完成"。
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    expect(generationPosts()).toHaveLength(2);
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).not.toContain("这次回复没有完成");
+    expect(wrapper.find('[data-testid="retry"]').exists()).toBe(true);
+    expect(store.pendingUserContent).toBe("新文本");
+
+    // ③ 再次重试：第三次 POST 与第一次同键、不携带 sourceUserMessageId，
+    // 且从未以旧 generationId 取快照（重试不读上一轮残留 generation）。
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    const posts = generationPosts();
+    expect(posts).toHaveLength(3);
+    const keys = posts.map(
+      (post) => (JSON.parse(post.body ?? "{}") as { idempotencyKey?: string }).idempotencyKey,
+    );
+    expect(keys[2]).toBe(keys[0]);
+    expect(keys.every((key) => typeof key === "string" && key.length > 0)).toBe(true);
+    expect(posts.every((post) => !(post.body ?? "").includes("sourceUserMessageId"))).toBe(true);
+    expect(calls.some((call) => call.url.includes("/api/v1/generations/gen-old/snapshot"))).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("回复暂时无法访问时提供核对入口：草稿保留、核对一次、不发新键", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "failed";
+    store.outcome = "not_found_or_forbidden";
+    store.generationId = "42";
+    // not_found_or_forbidden 只能来自已确认持有 generation 的轮次。
+    store.turnHasGeneration = true;
+    store.pendingUserContent = "被隐藏的原文";
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("这条回复暂时无法访问，点此核对");
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+    const recoverSpy = vi.spyOn(store, "recoverInFlight").mockResolvedValue();
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+
+    expect(recoverSpy).toHaveBeenCalledOnce();
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(store.pendingUserContent).toBe("被隐藏的原文");
+    wrapper.unmount();
+  });
+
+  // ---- N-06：终态失败重试先取快照权威 source ----
+
+  it("终态失败重试先有界取快照 source：拿到才重发，拿不到保留核对入口", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "failed";
+    // 终态失败轮已确认持有 generation（否则走 sendUnconfirmed 分流）。
+    store.turnHasGeneration = true;
+    store.pendingUserContent = "原文";
+    store.lastTurnSource = "";
+    await wrapper.vm.$nextTick();
+
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+    const resolveSpy = vi.spyOn(store, "resolveTurnSource");
+
+    // 快照拿不到 source：不重发（不能退回普通发送复制用户消息）。
+    resolveSpy.mockResolvedValue("");
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    expect(resolveSpy).toHaveBeenCalledOnce();
+    expect(sendSpy).not.toHaveBeenCalled();
+
+    // 快照提供权威 source：复用原用户消息重发。
+    resolveSpy.mockClear();
+    sendSpy.mockClear();
+    resolveSpy.mockResolvedValue("90");
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    expect(resolveSpy).toHaveBeenCalledOnce();
+    expect(sendSpy).toHaveBeenCalledOnce();
+    expect(sendSpy.mock.calls[0]?.[3]).toEqual({ sourceUserMessageId: "90" });
+    wrapper.unmount();
+  });
+
+  // ---- N-06：回复已完成的同步失败文案与入口 ----
+
+  it("回复已完成的同步失败文案与同步入口仅在完成结果出现", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "completed";
+    store.finalSyncFailed = true;
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("回复已完成，记录同步暂未成功");
+    const retrySync = vi.spyOn(store, "retryFinalSync").mockResolvedValue();
+    await wrapper.find('[data-testid="status-action"]').trigger("click");
+    expect(retrySync).toHaveBeenCalledOnce();
+
+    // 非完成结果不得使用"回复已完成"文案。
+    store.phase = "failed";
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="status"]').text()).not.toContain("回复已完成");
     wrapper.unmount();
   });
 

@@ -54,7 +54,7 @@ BEGIN
       FROM vc.identity_auth_challenge_complete_current(
           challenge_id, 'TOTP_ENROLL', repeat('1', 64), now() + interval '7 days',
           NULL, recovery_hashes, repeat('2', 64), 'Alice Mac',
-          now() + interval '90 days', now());
+          now() + interval '90 days', now(), NULL);
     IF session_id IS NULL OR device_id IS NULL THEN
         RAISE EXCEPTION 'enrollment did not issue credentials';
     END IF;
@@ -145,7 +145,7 @@ BEGIN
     END IF;
     PERFORM * FROM vc.identity_auth_challenge_complete_current(
         repeat('B', 43), 'TOTP_VERIFY', repeat('4', 64), now() + interval '7 days',
-        recovery_id, NULL, NULL, NULL, NULL, now());
+        recovery_id, NULL, NULL, NULL, NULL, now(), NULL);
     IF vc.identity_auth_recovery_code_lock_current(lpad(to_hex(1), 64, '0')) IS NOT NULL THEN
         RAISE EXCEPTION 'recovery code was reusable';
     END IF;
@@ -215,7 +215,7 @@ BEGIN
         RAISE EXCEPTION 'admin reset kept recovery codes';
     END IF;
     IF has_function_privilege('public',
-            'vc.identity_auth_challenge_complete_current(text,text,text,timestamptz,bigint,text[],text,text,timestamptz,timestamptz)',
+            'vc.identity_auth_challenge_complete_current(text,text,text,timestamptz,bigint,text[],text,text,timestamptz,timestamptz,bigint)',
             'EXECUTE') THEN
         RAISE EXCEPTION 'PUBLIC unexpectedly executes auth completion';
     END IF;

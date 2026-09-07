@@ -65,6 +65,18 @@ export interface SnapshotResult {
   /** HTTP status when known, null for network/parse failures. */
   status: number | null;
   events: StreamEvent[];
+  /**
+   * N-06: the durable assistant message id the server snapshot returns for a
+   * completed generation; the final text itself rides in the chat.snapshot
+   * event payload. Absent when the protocol did not return it.
+   */
+  assistantMessageId?: string | null;
+  /**
+   * N-06: the persisted user message id this generation was sourced from.
+   * The explicit retry after a confirmed terminal failure reuses it instead of
+   * duplicating the user message; null when the protocol did not return one.
+   */
+  sourceUserMessageId?: string | null;
   /** Settled provider usage; absent before finalize or on failed snapshots. */
   usage?: SnapshotUsage | null;
 }

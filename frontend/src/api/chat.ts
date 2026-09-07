@@ -254,9 +254,13 @@ export async function sendGeneration(
   conversationId: string,
   idempotencyKey: string,
   userContent?: string,
+  sourceUserMessageId?: string,
 ): Promise<Generation | null> {
   const body: Record<string, unknown> = { idempotencyKey };
   if (userContent !== undefined) body.userContent = userContent;
+  // N-05（5.3）：明确终态失败后的显式再尝试复用已持久化的原用户消息，
+  // 不创建第二条相同用户消息；无可靠 source ID 时调用方不传该参数。
+  if (sourceUserMessageId !== undefined) body.sourceUserMessageId = sourceUserMessageId;
   const response = await transport.request(
     "POST",
     `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}/generations`,

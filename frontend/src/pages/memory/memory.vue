@@ -50,12 +50,12 @@
               type="button"
               class="autosave-toggle"
               role="switch"
-              :aria-checked="memory.autoSaveEnabled"
+              :aria-checked="autoSaveChecked"
               data-testid="autosave-toggle"
-              :disabled="memory.autoSaveState === 'saving' || memory.autoSaveState === 'loading'"
+              :disabled="autoSaveToggleDisabled"
               @click="onToggleAutoSave"
             >
-              {{ memory.autoSaveEnabled ? "已开启" : "已关闭" }}
+              {{ autoSaveToggleLabel }}
             </button>
           </view>
 
@@ -69,7 +69,7 @@
           </text>
           <template v-else-if="memory.autoSaveState === 'error'">
             <text class="autosave-card__note autosave-card__note--error" data-testid="autosave-error" role="alert">
-              开关状态没有加载出来。
+              {{ autoSaveNotice || "开关状态没有加载出来，暂时无法确认是否开启。" }}
             </text>
             <button
               type="button"
@@ -77,7 +77,7 @@
               data-testid="autosave-retry"
               @click="retryAutoSave"
             >
-              重试
+              重新读取
             </button>
           </template>
           <template v-else-if="memory.autoSaveState === 'unknown'">
@@ -92,6 +92,11 @@
             >
               重新读取
             </button>
+          </template>
+          <template v-else-if="autoSaveNotice">
+            <text class="autosave-card__note autosave-card__note--error" data-testid="autosave-rejected" role="alert">
+              {{ autoSaveNotice }}
+            </text>
           </template>
           <text v-else class="autosave-card__note" data-testid="autosave-note">
             开启时，陪伴会自动从聊天里提取并保存值得记住的内容。关闭后，将停止新的自动提取与保存；已保存的记忆仍会继续用于聊天，除非你在这里逐条删除。
@@ -109,9 +114,40 @@
             重新加载
           </button>
         </view>
+        <view
+          v-else-if="listInconclusiveNotice"
+          class="memory-list-inconclusive"
+          data-testid="memory-list-inconclusive-notice"
+          role="status"
+        >
+          <text>最新内容没有读出来，下方可能不是当前列表。</text>
+          <button type="button" class="text-action" data-testid="memory-inconclusive-retry" @click="retryList">
+            重新读取
+          </button>
+        </view>
 
         <view
-          v-if="listEmpty"
+          v-if="listUnconfirmedEmpty"
+          class="memory-state memory-state--center"
+          data-testid="memory-list-inconclusive"
+          role="status"
+        >
+          <text class="memory-state__title">暂时无法确认这里的记忆</text>
+          <text class="memory-state__copy">
+            现在没有读出已保存的内容，也可能这里暂时不可访问；稍后再试一次。
+          </text>
+          <button
+            type="button"
+            class="secondary-action"
+            data-testid="memory-inconclusive-retry"
+            @click="retryList"
+          >
+            重新读取
+          </button>
+        </view>
+
+        <view
+          v-else-if="listEmpty"
           class="memory-state memory-state--center"
           data-testid="memory-empty"
           role="status"
@@ -157,6 +193,23 @@
                     </text>
                   </view>
                 </view>
+
+                <text
+                  v-if="verifyingDeleteId === item.memoryId"
+                  class="memory-row__error"
+                  data-testid="memory-verifying"
+                  role="status"
+                >
+                  删除结果核对中，暂时不能确认这条记忆是否已删除。
+                </text>
+                <text
+                  v-else-if="unavailableDeleteIds.includes(item.memoryId)"
+                  class="memory-row__error"
+                  data-testid="memory-unavailable"
+                  role="status"
+                >
+                  这条记忆当前不可用，暂时不能确认删除是否完成。
+                </text>
 
                 <view v-if="editingId === item.memoryId" class="memory-edit" data-testid="memory-edit-box">
                   <textarea
@@ -221,7 +274,7 @@
                   data-testid="memory-delete-box"
                 >
                   <text class="memory-confirm__title">删除这条记忆？</text>
-                  <text class="memory-confirm__copy">删除后，陪伴不再把这条内容用于聊天。</text>
+                  <text class="memory-confirm__copy">这条长期记忆将不再用于后续回复；原聊天记录不会一并删除。</text>
                   <text
                     v-if="deleteError"
                     class="memory-row__error"
@@ -363,6 +416,14 @@
             刷新核对
           </button>
         </view>
+        <view
+          v-else-if="rejectedNotice"
+          class="memory-unknown"
+          data-testid="memory-rejected"
+          role="alert"
+        >
+          <text>{{ rejectedNotice }}</text>
+        </view>
       </template>
     </view>
   </ConsumerShell>
@@ -372,18 +433,16 @@
 import { computed, onMounted, ref } from "vue";
 
 import {
+  classifyMemoryWriteError,
   confirmMemory,
   deleteMemory,
   rejectMemory,
   updateMemory,
-  MemoryProtocolError,
   type MemoryItem,
+  type MemoryStatus,
   type MemoryTransport,
 } from "@/api/memory";
-import {
-  TransportTimeoutError,
-  createAuthenticatedTransport,
-} from "@/api/transport";
+import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import AppIcon from "@/design-system/AppIcon.vue";
 import { formatLocalDateTime } from "@/domain/timestamp";
@@ -393,6 +452,12 @@ import { useRelationshipStore } from "@/stores/relationship";
 
 type RelState = "loading" | "ready" | "error" | "missing";
 
+/** 未确认写结果：刷新核对时按预期结果验证，不能确认则保留提示。 */
+type UnknownWriteAction =
+  | { kind: "edit"; memoryId: string; expectedSummary: string }
+  | { kind: "delete"; memoryId: string }
+  | { kind: "candidate"; memoryId: string; expectedStatus: MemoryStatus };
+
 const auth = useAuthStore();
 const relStore = useRelationshipStore();
 const memory = useMemoryStore();
@@ -400,7 +465,18 @@ const memory = useMemoryStore();
 const relState = ref<RelState>("loading");
 const relationshipId = ref("");
 const busy = ref(false);
-const unknownAction = ref(false);
+const unknownAction = ref<UnknownWriteAction | null>(null);
+const rejectedNotice = ref("");
+const autoSaveTarget = ref<boolean | null>(null);
+const autoSaveNotice = ref("");
+/**
+ * 最近一次列表读取结果不确定（存在性隐藏/响应作废）：空窗口不得显示
+ * 确定空态，有数据时给出轻量提示。由 initialLoad/retryList 消费 load()
+ * 的三态返回值维护；failed 走既有错误态，不进这里。
+ */
+const listInconclusive = ref(false);
+/** 存在性隐藏（403/404）的删除：条目保留并标注"当前不可用"。 */
+const unavailableDeleteIds = ref<string[]>([]);
 
 const editingId = ref<string | null>(null);
 const editDraft = ref("");
@@ -420,25 +496,89 @@ const transport = createAuthenticatedTransport({
   onUnauthorized: () => auth.onUnauthorized(),
 });
 
+/** 服务端开关值已确认（读取过或写回回显过）且没有处于未知写入中。 */
+const autoSaveKnown = computed(
+  () => memory.autoSaveValueKnown && memory.autoSaveState !== "unknown",
+);
+
+const autoSaveToggleLabel = computed(() => {
+  if (!autoSaveKnown.value) return "状态待确认";
+  return memory.autoSaveEnabled ? "已开启" : "已关闭";
+});
+
+const autoSaveChecked = computed(() =>
+  autoSaveKnown.value ? String(memory.autoSaveEnabled) : "mixed",
+);
+
+const autoSaveToggleDisabled = computed(
+  () =>
+    memory.autoSaveState === "saving"
+    || memory.autoSaveState === "loading"
+    || !autoSaveKnown.value,
+);
+
+const verifyingDeleteId = computed(() =>
+  unknownAction.value?.kind === "delete" ? unknownAction.value.memoryId : null,
+);
+
 const firstListLoading = computed(() =>
   relState.value === "ready" && memory.listStatus === "loading" && memory.items.length === 0,
 );
 
-const listEmpty = computed(() =>
+/** 当前窗口没有任何条目（列表状态为 ready）。 */
+const listWindowEmpty = computed(() =>
   relState.value === "ready"
   && memory.listStatus === "ready"
   && memory.acceptedItems.length === 0
   && memory.pendingItems.length === 0,
 );
 
-function isUnknownOutcome(caught: unknown): boolean {
-  return caught instanceof MemoryProtocolError || caught instanceof TransportTimeoutError;
+const listEmpty = computed(() => listWindowEmpty.value && !listInconclusive.value);
+
+/** 读取结果不确定且窗口为空：显示"暂时无法确认"，不显示确定空态。 */
+const listUnconfirmedEmpty = computed(() => listWindowEmpty.value && listInconclusive.value);
+
+/** 读取结果不确定但已有内容：保留旧数据并给轻量不确定提示。 */
+const listInconclusiveNotice = computed(() =>
+  listInconclusive.value
+  && memory.listStatus === "ready"
+  && !listWindowEmpty.value,
+);
+
+function setUnknownAction(action: UnknownWriteAction): void {
+  unknownAction.value = action;
+  rejectedNotice.value = "";
+}
+
+function setRejectedNotice(message: string): void {
+  unknownAction.value = null;
+  rejectedNotice.value = message;
+}
+
+/**
+ * 判等两个未知写结果是否仍是同一 action（含期望值字段）。unknownAction
+ * 的每次写入都是整对象替换、从不原地变更，按值判等即可识别"还是不是
+ * 当初捕获的那次待核对结果"。
+ */
+function isSameUnknownAction(
+  a: UnknownWriteAction,
+  b: UnknownWriteAction,
+): boolean {
+  if (a.kind !== b.kind || a.memoryId !== b.memoryId) return false;
+  if (a.kind === "edit" && b.kind === "edit") {
+    return a.expectedSummary === b.expectedSummary;
+  }
+  if (a.kind === "candidate" && b.kind === "candidate") {
+    return a.expectedStatus === b.expectedStatus;
+  }
+  return true;
 }
 
 async function initialLoad(): Promise<void> {
   if (busy.value) return;
   busy.value = true;
-  unknownAction.value = false;
+  unknownAction.value = null;
+  rejectedNotice.value = "";
   relState.value = "loading";
   try {
     if (!auth.isAuthenticated) {
@@ -460,10 +600,11 @@ async function initialLoad(): Promise<void> {
     }
     relationshipId.value = relId;
     relState.value = "ready";
-    await Promise.all([
+    const [listOutcome] = await Promise.all([
       memory.load(transport, relId),
       memory.loadAutoSave(transport),
     ]);
+    listInconclusive.value = listOutcome === "inconclusive";
   } finally {
     busy.value = false;
   }
@@ -471,21 +612,90 @@ async function initialLoad(): Promise<void> {
 
 async function retryList(): Promise<void> {
   if (!relationshipId.value) return;
-  await memory.load(transport, relationshipId.value);
+  const outcome = await memory.load(transport, relationshipId.value);
+  listInconclusive.value = outcome === "inconclusive";
 }
 
+/**
+ * 核对未确定的写结果：只有读到权威列表且能对上预期结果时才清除提示；
+ * 读取失败、响应作废或存在性隐藏（空列表不可信）时保留未知提示、
+ * 旧数据与再次核对入口——空值不能证明删除成功或编辑完成。
+ */
 async function refreshList(): Promise<void> {
-  await retryList();
-  unknownAction.value = false;
+  if (!relationshipId.value) return;
+  const pending = unknownAction.value;
+  if (!pending) {
+    await retryList();
+    return;
+  }
+  const requestEpoch = memory.ownerEpoch;
+  const outcome = await memory.load(transport, relationshipId.value);
+  if (memory.ownerEpoch !== requestEpoch) return;
+  // 挂起的读取期间可能有更新的写入：saveEdit 会改写同一条目未知结果的
+  // 期望值，也可能产生另一条目的新未知结果。捕获的 pending 已不代表
+  // 当前待核对状态时不得再按它清除或改写——否则会把已生效的写入误报
+  // 为"没有生效"，或清掉更新后的未知提示。直接返回，UI 留给更新后的
+  // action 状态，等待下一次核对。
+  const current = unknownAction.value;
+  if (current === null || !isSameUnknownAction(pending, current)) return;
+  if (outcome !== "ok") return;
+  const target = memory.items.find((item) => item.memoryId === pending.memoryId) ?? null;
+  if (pending.kind === "delete") {
+    if (target) {
+      // 权威列表里条目仍在：删除确定未生效。
+      setRejectedNotice("删除没有生效，这条记忆还在列表中，可以再试一次。");
+    } else {
+      unknownAction.value = null;
+      rejectedNotice.value = "";
+    }
+    return;
+  }
+  if (!target) return;
+  if (pending.kind === "edit") {
+    if (target.summary === pending.expectedSummary) {
+      unknownAction.value = null;
+      rejectedNotice.value = "";
+      // 核对确认后才退出编辑；用户已切到另一条时不关它的编辑框。
+      if (editingId.value === pending.memoryId) cancelEdit();
+    } else {
+      setRejectedNotice("上一次的修改没有生效，可以再试一次。");
+    }
+    return;
+  }
+  if (target.status === pending.expectedStatus) {
+    unknownAction.value = null;
+    rejectedNotice.value = "";
+  } else {
+    rowErrorId.value = pending.memoryId;
+    rowErrorMessage.value = "上一次的操作没有生效，可以再试一次。";
+    unknownAction.value = null;
+    rejectedNotice.value = "";
+  }
 }
 
 async function retryAutoSave(): Promise<void> {
   await memory.loadAutoSave(transport);
+  if (memory.autoSaveState !== "ready") return;
+  const target = autoSaveTarget.value;
+  autoSaveTarget.value = null;
+  if (target !== null && memory.autoSaveEnabled !== target) {
+    // 服务端权威值与写入目标不一致：修改确定未生效。
+    autoSaveNotice.value = "上一次的修改没有生效。";
+  } else {
+    autoSaveNotice.value = "";
+  }
 }
 
+/** 显式发送目标值（不做本地翻转）；未知结果先核对，不重复 toggle。 */
 async function onToggleAutoSave(): Promise<void> {
-  if (memory.autoSaveState === "saving" || memory.autoSaveState === "loading") return;
-  await memory.setAutoSave(transport, !memory.autoSaveEnabled);
+  if (autoSaveToggleDisabled.value) return;
+  autoSaveNotice.value = "";
+  const target = !memory.autoSaveEnabled;
+  const outcome = await memory.setAutoSave(transport, target);
+  autoSaveTarget.value = outcome === "unknown" ? target : null;
+  if (outcome === "rejected") {
+    autoSaveNotice.value = "开关没有更新成功，请重新读取确认当前状态。";
+  }
 }
 
 function startEdit(item: MemoryItem): void {
@@ -501,7 +711,11 @@ function cancelEdit(): void {
   editError.value = "";
 }
 
-/** 编辑失败不退出编辑（保留草稿）；结果未知时交给顶部核对入口。 */
+/**
+ * 编辑失败（确定拒绝）不退出编辑（保留草稿）；结果未知同样保留编辑框与
+ * 草稿，交给顶部核对入口，核对确认后才退出。晚到响应不得关闭用户已切换
+ * 到另一条的编辑框。
+ */
 async function saveEdit(item: MemoryItem): Promise<void> {
   if (editBusy.value) return;
   const summary = editDraft.value.trim();
@@ -517,12 +731,20 @@ async function saveEdit(item: MemoryItem): Promise<void> {
     // 退出/换号后旧账号的晚到响应不得写入新会话状态。
     if (memory.ownerEpoch !== requestEpoch) return;
     memory.replaceItem(updated);
-    cancelEdit();
+    // 同一条目在前一未知结果核对完成前再次保存且成功：写入按目标串行，
+    // 最新已确认结果即该条目的核对期望，避免用旧期望把已生效的写入
+    // 误报为"上一次的修改没有生效"。
+    const pendingUnknown = unknownAction.value;
+    if (pendingUnknown?.kind === "edit" && pendingUnknown.memoryId === item.memoryId) {
+      unknownAction.value = { ...pendingUnknown, expectedSummary: updated.summary };
+    }
+    // 该编辑的晚到响应不得关闭已切换到另一条的编辑框。
+    if (editingId.value === item.memoryId) cancelEdit();
   } catch (caught) {
     if (memory.ownerEpoch !== requestEpoch) return;
-    if (isUnknownOutcome(caught)) {
-      cancelEdit();
-      unknownAction.value = true;
+    if (classifyMemoryWriteError(caught) === "unknown") {
+      // 结果未知（5xx/协议/超时/网络中断）：不宣布失败，草稿保留等待核对。
+      setUnknownAction({ kind: "edit", memoryId: item.memoryId, expectedSummary: summary });
     } else {
       editError.value = "没有保存成功，请再试一次。";
     }
@@ -541,25 +763,35 @@ function closeDelete(): void {
   deleteError.value = "";
 }
 
-/** 删除失败保留原条目并可重试；结果未知时交给顶部核对入口。 */
+/**
+ * 删除确定拒绝（4xx）保留原条目并可重试；结果未知或存在性隐藏都不移除
+ * 条目：未知时标注"核对中"，403/404 只表示当前不可用，都不是删除完成的
+ * 证明，也不写"这条记忆还在"的确定断言。
+ */
 async function doDelete(item: MemoryItem): Promise<void> {
   if (deleteBusy.value) return;
   const requestEpoch = memory.ownerEpoch;
   deleteBusy.value = true;
   deleteError.value = "";
   try {
-    // 存在性隐藏（403/404）与确认删除都按已删除处理。
-    await deleteMemory(transport, item.memoryId);
+    const result = await deleteMemory(transport, item.memoryId);
     if (memory.ownerEpoch !== requestEpoch) return;
-    memory.removeItem(item.memoryId);
-    closeDelete();
+    if (result.kind === "deleted") {
+      memory.removeItem(item.memoryId);
+      closeDelete();
+    } else {
+      closeDelete();
+      if (!unavailableDeleteIds.value.includes(item.memoryId)) {
+        unavailableDeleteIds.value = [...unavailableDeleteIds.value, item.memoryId];
+      }
+    }
   } catch (caught) {
     if (memory.ownerEpoch !== requestEpoch) return;
-    if (isUnknownOutcome(caught)) {
+    if (classifyMemoryWriteError(caught) === "unknown") {
       closeDelete();
-      unknownAction.value = true;
+      setUnknownAction({ kind: "delete", memoryId: item.memoryId });
     } else {
-      deleteError.value = "没有删除成功，这条记忆还在，请再试一次。";
+      deleteError.value = "没有删除成功，请再试一次。";
     }
   } finally {
     deleteBusy.value = false;
@@ -567,16 +799,17 @@ async function doDelete(item: MemoryItem): Promise<void> {
 }
 
 async function confirmCandidate(item: MemoryItem): Promise<void> {
-  await actOnCandidate(item, confirmMemory, "没有确认成功，请再试一次。");
+  await actOnCandidate(item, confirmMemory, "ACCEPTED", "没有确认成功，请再试一次。");
 }
 
 async function rejectCandidate(item: MemoryItem): Promise<void> {
-  await actOnCandidate(item, rejectMemory, "没有拒绝成功，请再试一次。");
+  await actOnCandidate(item, rejectMemory, "REJECTED", "没有拒绝成功，请再试一次。");
 }
 
 async function actOnCandidate(
   item: MemoryItem,
   action: (transport: MemoryTransport, memoryId: string) => Promise<MemoryItem>,
+  expectedStatus: MemoryStatus,
   failureCopy: string,
 ): Promise<void> {
   if (pendingBusyId.value) return;
@@ -589,8 +822,8 @@ async function actOnCandidate(
     memory.replaceItem(updated);
   } catch (caught) {
     if (memory.ownerEpoch !== requestEpoch) return;
-    if (isUnknownOutcome(caught)) {
-      unknownAction.value = true;
+    if (classifyMemoryWriteError(caught) === "unknown") {
+      setUnknownAction({ kind: "candidate", memoryId: item.memoryId, expectedStatus });
     } else {
       rowErrorId.value = item.memoryId;
       rowErrorMessage.value = failureCopy;
@@ -736,6 +969,17 @@ onMounted(() => {
   border-radius: var(--vc-radius-control);
   background: var(--vc-color-surface-soft);
   color: var(--vc-color-error);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.memory-list-inconclusive {
+  display: grid;
+  gap: var(--vc-space-1);
+  padding: var(--vc-space-3);
+  border-radius: var(--vc-radius-control);
+  background: var(--vc-color-surface-soft);
+  color: var(--vc-color-ink-muted);
   font-size: 13px;
   line-height: 20px;
 }

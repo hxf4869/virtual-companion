@@ -534,6 +534,10 @@ type MemoryExtractInput struct {
 	UserNoMemory       bool
 	AssistantContent   string
 	AssistantNoMemory  bool
+	// ModelEligible is the persisted egress fact (V112): a source message
+	// marked ineligible (blocked/cancelled turn) never enters a provider
+	// request, extraction included.
+	ModelEligible bool
 }
 
 func (s *Store) ReadMemoryExtractInput(ctx context.Context, owner, generationID int64) (MemoryExtractInput, error) {
@@ -545,12 +549,14 @@ func (s *Store) ReadMemoryExtractInput(ctx context.Context, owner, generationID 
 			`SELECT out_relationship_id, out_conversation_id, out_status,
 			        out_source_message_id, out_assistant_message_id,
 			        out_incognito, out_user_content, out_user_no_memory,
-			        out_assistant_content, out_assistant_no_memory
+			        out_assistant_content, out_assistant_no_memory,
+			        out_model_eligible
 			   FROM vc.go_read_memory_extract_input($1,$2)`, owner, generationID,
 		).Scan(&out.RelationshipID, &out.ConversationID, &out.Status,
 			&src, &assistant, &out.Incognito,
 			&userContent, &out.UserNoMemory,
-			&assistantContent, &out.AssistantNoMemory)
+			&assistantContent, &out.AssistantNoMemory,
+			&out.ModelEligible)
 		if err == pgx.ErrNoRows {
 			return ErrNotFound
 		}
@@ -617,6 +623,125 @@ func (s *Store) RetryMemoryExtract(ctx context.Context, owner, jobID int64, toke
 		return "", mapStoreErr(err)
 	}
 	return action, nil
+}
+
+// MemoryExtractPreparation is the short-transaction result of the pre-flight
+// re-check (V133) the extraction handler runs immediately before its one
+// bounded provider call. Decision "EXTRACTABLE" carries the registered attempt
+// identity (zero for a replay-only run: the stored payload of the attempt that
+// made the call is reused, so no new attempt is registered and no outcome may
+// be recorded); any other decision is a normal refusal (closed DONE by the
+// handler), except "CLAIM_LOST" which fences the holder out without a retry.
+type MemoryExtractPreparation struct {
+	AttemptID int64
+	AttemptNo int
+	Decision  string
+	// PriorPayload is the stored output of an earlier successful call for the
+	// same job: a retry whose local save failed replays it through the parser
+	// instead of calling the model again. The SQL layer treats it as opaque
+	// text; it is encrypted at rest and decrypted here.
+	PriorPayload string
+}
+
+// MemoryExtractOutcome is the write-once attempt outcome (V133). Nil tokens
+// mean the provider reported no usage: the disposition records UNKNOWN, never
+// zero. FailureCode uses the closed attempt failure vocabulary (empty for a
+// success or when nothing more specific is known). OutputPayload — the minimal
+// accepted entries of a successful call — is persisted encrypted at rest like
+// every other stored message field.
+type MemoryExtractOutcome struct {
+	Status        string // SUCCEEDED, FAILED, CANCELLED
+	InputTokens   *int64
+	OutputTokens  *int64
+	FailureCode   string
+	OutputPayload string
+}
+
+// PrepareMemoryExtractAttempt runs the claim-fenced pre-flight transaction:
+// live claim, auto-save pref, deletion intent, required consents plus the
+// actual outbound category (MESSAGE_TEXT), turn extractability incl. the
+// no_memory markers and model_eligible, route admission, and the attempt
+// registration (stale CREATED attempts of earlier holders are abandoned).
+func (s *Store) PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string) (MemoryExtractPreparation, error) {
+	if owner <= 0 || jobID <= 0 || generationID <= 0 || token == "" || fence == "" ||
+		providerID == "" || supplierName == "" || modelID == "" {
+		return MemoryExtractPreparation{}, ErrInvalid
+	}
+	var out MemoryExtractPreparation
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		var attempt, no pgtype.Int8
+		var decision, payload pgtype.Text
+		err := tx.QueryRow(ctx,
+			`SELECT out_attempt_id, out_attempt_no, out_decision, out_prior_payload
+			   FROM vc.go_prepare_memory_extract_attempt($1,$2,$3,$4,$5,$6,$7,$8)`,
+			owner, jobID, generationID, token, fence, providerID, supplierName, modelID,
+		).Scan(&attempt, &no, &decision, &payload)
+		if err != nil {
+			return err
+		}
+		if attempt.Valid {
+			out.AttemptID = attempt.Int64
+		}
+		if no.Valid {
+			out.AttemptNo = int(no.Int64)
+		}
+		out.Decision = decision.String
+		// The replay payload is stored encrypted at rest (same stored-field
+		// cipher as every message field); the handler receives plaintext.
+		plain, err := s.decryptStored(payload.String)
+		if err != nil {
+			return errStore
+		}
+		out.PriorPayload = plain
+		return nil
+	})
+	if err != nil {
+		return MemoryExtractPreparation{}, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// RecordMemoryExtractOutcome closes the attempt row write-once. A losing
+// (stale holder) write matches zero rows and is not an error: the row already
+// has a terminal outcome from the path that owns the claim now.
+func (s *Store) RecordMemoryExtractOutcome(ctx context.Context, owner, jobID, attemptID int64, out MemoryExtractOutcome) (int64, error) {
+	if owner <= 0 || jobID <= 0 || attemptID <= 0 {
+		return 0, ErrInvalid
+	}
+	switch out.Status {
+	case "SUCCEEDED", "FAILED", "CANCELLED":
+	default:
+		return 0, ErrInvalid
+	}
+	var tokensIn, tokensOut any
+	if out.InputTokens != nil && out.OutputTokens != nil {
+		tokensIn, tokensOut = *out.InputTokens, *out.OutputTokens
+	}
+	var failure any
+	if out.FailureCode != "" {
+		failure = out.FailureCode
+	}
+	var payload any
+	if out.OutputPayload != "" {
+		// The replayable payload persists encrypted at rest, like every other
+		// stored message field; the SQL layer treats it as opaque text.
+		stored, err := s.encryptStored(out.OutputPayload)
+		if err != nil {
+			return 0, errStore
+		}
+		payload = stored
+	}
+	var rows int64
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.go_record_memory_extract_outcome($1,$2,$3,$4,$5,$6,$7,$8)`,
+			owner, jobID, attemptID, out.Status, tokensIn, tokensOut, failure, payload,
+		).Scan(&rows)
+	})
+	if err != nil {
+		return 0, mapStoreErr(err)
+	}
+	return rows, nil
 }
 
 // messageRefID parses the evidence refs the auto-save path stores. Unlike

@@ -197,6 +197,26 @@ describe("generation snapshot", () => {
     expect(result.usage).toEqual({ inputTokens: 42, outputTokens: 58 });
   });
 
+  it("N-06: 解析 sourceUserMessageId 并在协议缺失时保留为 null", async () => {
+    const withSource = recorder(() =>
+      jsonResponse(200, {
+        status: "FAILED_FINAL",
+        sourceUserMessageId: "90",
+        events: [{ event: "chat.failed" }],
+      }),
+    );
+    await expect(
+      createBrowserRealtimeDeps(withSource.fn).fetchSnapshot("101"),
+    ).resolves.toMatchObject({ ok: true, sourceUserMessageId: "90" });
+
+    const withoutSource = recorder(() =>
+      jsonResponse(200, { status: "RUNNING", events: [] }),
+    );
+    await expect(
+      createBrowserRealtimeDeps(withoutSource.fn).fetchSnapshot("101"),
+    ).resolves.toMatchObject({ ok: true, sourceUserMessageId: null });
+  });
+
   it("accepts the Go v1 empty event list without fabricating a terminal", async () => {
     const { fn } = recorder(() =>
       jsonResponse(200, { status: "RUNNING", events: [] }),

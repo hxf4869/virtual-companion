@@ -223,9 +223,9 @@ func TestAccountDeletePersistsIntentThenCancelsOwner(t *testing.T) {
 	ownerA1, cancelA1 := context.WithCancel(context.Background())
 	ownerA2, cancelA2 := context.WithCancel(context.Background())
 	ownerB, cancelB := context.WithCancel(context.Background())
-	cancels.Register(1, 11, func() { store.event("cancel-a1"); cancelA1() })
-	cancels.Register(1, 12, func() { store.event("cancel-a2"); cancelA2() })
-	cancels.Register(2, 21, cancelB)
+	cancels.Register(jobs.KindGeneration, 1, 11, func() { store.event("cancel-a1"); cancelA1() })
+	cancels.Register(jobs.KindGeneration, 1, 12, func() { store.event("cancel-a2"); cancelA2() })
+	cancels.Register(jobs.KindGeneration, 2, 21, cancelB)
 	s.core.Cancels = cancels
 
 	wrong := doJSON(t, s, http.MethodDelete, "/api/v1/auth/account", `{"currentPassword":"wrong"}`, 1)
@@ -276,7 +276,7 @@ func TestAccountDeleteRecordFailureKeepsDurableIntent(t *testing.T) {
 	s := newCoreServer(t, "full", store)
 	cancels := jobs.NewCancels()
 	providerCtx, cancelProvider := context.WithCancel(context.Background())
-	cancels.Register(1, 11, cancelProvider)
+	cancels.Register(jobs.KindGeneration, 1, 11, cancelProvider)
 	s.core.Cancels = cancels
 
 	rec := doJSON(t, s, http.MethodDelete, "/api/v1/auth/account", `{"currentPassword":"`+testPassword+`"}`, 1)

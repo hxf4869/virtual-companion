@@ -95,10 +95,28 @@ function terminalPhaseOf(
   return "failed";
 }
 
+/** N-06：已确认服务端终态的 phase 集合——本地 cancelled 提交不得覆盖。 */
+const CONFIRMED_TERMINAL_PHASES: readonly ChatPhase[] = [
+  "completed",
+  "cancelled",
+  "blocked",
+  "failed",
+];
+
 /** S0-20：快照终态事件类型 → outcome；null/集合外的未知类型按 exhausted 兜底。 */
 function snapshotTerminalOutcomeOf(eventType: string | null): StreamOutcome {
   if (eventType && TERMINAL_EVENT_TYPES.has(eventType)) return terminalPhaseOf(eventType);
   return "exhausted";
+}
+
+/** N-06：快照事件里最后一条 chat.snapshot 携带的权威正文（可为空串）。 */
+function lastSnapshotTextOf(events: readonly StreamEvent[]): string {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    if (events[i].eventType === "chat.snapshot") {
+      return String(events[i].payload ?? "");
+    }
+  }
+  return "";
 }
 
 export const useChatStore = defineStore("h5-chat", () => {
@@ -115,6 +133,9 @@ export const useChatStore = defineStore("h5-chat", () => {
   // WP-D（缺口4）：历史加载失败如实呈现——保留已加载内容并置错误态，页面
   // 用既有文案位展示 + 提供重试入口，不再静默吞掉。
   const historyLoadFailed = ref(false);
+  // N-06（缺口5）：初始/最近窗口刷新失败与"加载更早消息"失败分开——重试
+  // 最近窗口必须重发最近窗口请求，不得错误调用 before 游标只取更旧消息。
+  const recentLoadFailed = ref(false);
   // WP-D（缺口3）：用户已停止本地显示、但服务端终态未经确认时为 true——
   // 保留恢复标识，页面显示"生成状态待确认"并提供手动核对入口。
   const cancelUnconfirmed = ref(false);
@@ -149,6 +170,26 @@ export const useChatStore = defineStore("h5-chat", () => {
   // page can echo it as a pending bubble while streaming and offer a one-click
   // retry after a terminal failure.
   const pendingUserContent = ref("");
+  // N-06：服务端已确认的最终正文（正常完成/快照恢复/停止核对共用）。与真实
+  // generation 绑定，messageId 可空（SSE 完成事件不带消息 ID）；持久消息到达
+  // （历史同步）后按 ID（或内容）去重清除。被阻断/取消的草稿绝不进入这里。
+  const finalAssistant = ref<{
+    generationId: string;
+    messageId: string | null;
+    content: string;
+  } | null>(null);
+  // N-06（缺口4）：回复已完成但历史同步失败——如实提示"记录同步暂未成功"，
+  // 保留已确认内容与重试入口，不得改成发送失败。
+  const finalSyncFailed = ref(false);
+  // N-05（5.3）：本轮已持久化的用户消息 ID。唯一权威来源是服务端快照的
+  // sourceUserMessageId（recoverInFlight/取消核对/显式再尝试前的有界核对）；
+  // 不再用"窗口最后一条 user 行"猜测——多端插话会指错，补页失败清空又会
+  // 让重试退回复制发送。拿不到就不传。
+  const lastTurnSource = ref<string>("");
+  // N-05：本轮是否已确认服务端接受了 generation。POST 失败轮为 false——
+  // 页面的重连分流据此区分"当前轮已确认 generation 的输出未确认"与
+  // "上一轮残留"，旧轮的 exhausted 不得劫持新 POST 失败的重试。
+  const turnHasGeneration = ref(false);
   // S0-20 review-fix: owner/relationship binding for the refresh-recovery
   // entry. Ids only — the page binds them after auth; an empty accountId
   // disables saving entirely (no owner, no restore).
@@ -161,13 +202,14 @@ export const useChatStore = defineStore("h5-chat", () => {
     boundRelationshipId.value = relationshipId ?? "";
   }
 
-  function saveRestorable(): void {
-    if (!generationId.value || !conversationId.value) return;
+  function saveRestorable(overrides?: { generationId?: string }): void {
+    const genId = overrides?.generationId ?? generationId.value;
+    if (!genId || !conversationId.value) return;
     saveRestorableGeneration(safeSessionStorage(), {
       accountId: boundAccountId.value,
       relationshipId: boundRelationshipId.value,
       conversationId: conversationId.value,
-      generationId: generationId.value,
+      generationId: genId,
       savedAtEpochMs: Date.now(),
     });
   }
@@ -176,17 +218,19 @@ export const useChatStore = defineStore("h5-chat", () => {
    * Go v1 重连先发送 chat.snapshot（当前完整草稿），之后才继续 delta。
    * 每个 snapshot 都替换此前的局部串，避免断线重连后重复拼接。
    */
-  const draft = computed(() => {
+  function draftTextOf(state: StreamState): string {
     let text = "";
-    for (const event of stream.value.events) {
+    for (const event of state.events) {
       if (event.eventType === "chat.snapshot") {
-        text = String((event as StreamEvent).payload ?? "");
+        text = String(event.payload ?? "");
       } else if (event.eventType === "chat.delta") {
-        text += String((event as StreamEvent).payload ?? "");
+        text += String(event.payload ?? "");
       }
     }
     return text;
-  });
+  }
+
+  const draft = computed(() => draftTextOf(stream.value));
 
   const isStreaming = computed(() => phase.value === "streaming");
   const isTerminal = computed(() => stream.value.terminal);
@@ -235,8 +279,38 @@ export const useChatStore = defineStore("h5-chat", () => {
         content: draft.value,
       });
     }
+    // N-06：已确认的最终正文作为当前轮过渡显示；获得真实 messageId 后由
+    // pruneFinalAssistant 全窗按 ID 去重清除。ID 未知（SSE 完成事件不带消息
+    // ID、快照也未确认身份）时不做任何正文比对，过渡行始终显示——此时若
+    // 历史同步成功可能出现重复显示，属可接受边界。
+    const finalRow = finalAssistant.value;
+    if (finalRow && !isStreaming.value && !finalRowKnownIn(msgs, finalRow)) {
+      msgs.push({
+        messageId: finalRow.messageId ?? `__final_${finalRow.generationId}__`,
+        conversationId: conversationId.value,
+        role: "assistant",
+        content: finalRow.content,
+      });
+    }
     return msgs;
   });
+
+  /**
+   * N-06：过渡最终正文是否已被窗口中的权威行覆盖。只按真实 messageId 全窗
+   * 比对；messageId=null 一律视为未覆盖——正文（含窗口尾部正文）比对会在
+   * 补页失败时让旧轮次的同正文行吞掉本轮回复，绝不采用。
+   */
+  function finalRowKnownIn(rows: Message[], finalRow: NonNullable<typeof finalAssistant.value>): boolean {
+    if (finalRow.messageId === null) return false;
+    return rows.some((m) => m.messageId === finalRow.messageId);
+  }
+
+  /** N-06：持久消息到达后清除已被权威历史覆盖的过渡最终正文。 */
+  function pruneFinalAssistant(): void {
+    const finalRow = finalAssistant.value;
+    if (!finalRow) return;
+    if (finalRowKnownIn(messages.value, finalRow)) finalAssistant.value = null;
+  }
 
   async function run(
     deps: RealtimeDeps,
@@ -252,6 +326,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     }
     lastDeps = deps; // WP-D（缺口3）：取消核对需要 deps.fetchSnapshot
     generationId.value = id;
+    // N-05：run 只被"POST 已确认 generation 的 send"或快照恢复调用——从这里
+    // 起本轮持有已确认的 generation。
+    turnHasGeneration.value = true;
     phase.value = "streaming";
     outcome.value = null;
     lastDisconnect.value = null;
@@ -283,12 +360,29 @@ export const useChatStore = defineStore("h5-chat", () => {
       return;
     }
     handle = null;
+    // N-06（T-40）：本地中断产生的 cancelled 只是传输事实。取消核对已确认
+    // 任一服务端终态（completed/cancelled/failed/blocked）且非待确认时，
+    // 不得用本地 cancelled 伪造覆盖已确认状态。phase 在上方 await 期间可能
+    // 已被取消核对改写，显式按 ChatPhase 读取，避开 TS 对同步赋值的字面量
+    // 收窄。
+    const phaseAtCommit = phase.value as ChatPhase;
+    const confirmGuard =
+      result.outcome === "cancelled" &&
+      CONFIRMED_TERMINAL_PHASES.includes(phaseAtCommit) &&
+      !cancelUnconfirmed.value;
+    if (confirmGuard) {
+      return;
+    }
     stream.value = result.state;
     outcome.value = result.outcome;
 
     if (result.outcome === "completed") {
       phase.value = "completed";
       pendingUserContent.value = "";
+      // N-06：流式完成事件不带消息 ID——正文以过渡形式绑定真实 generation，
+      // 历史同步（补页/刷新）把权威行带来后去重清除。空串也是合法正文。
+      finalAssistant.value = { generationId: id, messageId: null, content: draftTextOf(result.state) };
+      finalSyncFailed.value = false;
     } else if (result.outcome === "cancelled") {
       phase.value = "cancelled";
       pendingUserContent.value = "";
@@ -365,6 +459,11 @@ export const useChatStore = defineStore("h5-chat", () => {
       return;
     }
     cancelUnconfirmed.value = false;
+    // N-06：快照是本轮 source 用户消息的权威来源（多端插话下窗口启发式会
+    // 指错）。
+    if (snapshot.sourceUserMessageId) {
+      lastTurnSource.value = snapshot.sourceUserMessageId;
+    }
     // A freshly-created generation can legitimately have an empty snapshot.
     // A reloaded store starts at the idle sentinel epoch 0, which is not a
     // valid realtime cursor and would make ticket minting fail with 400. Use
@@ -384,12 +483,22 @@ export const useChatStore = defineStore("h5-chat", () => {
       if (mapped === "completed") {
         phase.value = "completed";
         pendingUserContent.value = "";
+        // N-06：完成快照带权威正文与 assistantMessageId——按真实 ID 合并；
+        // 空串是合法正文，协议缺失 ID 时以 null 过渡并等待历史同步。
+        finalAssistant.value = {
+          generationId: id,
+          messageId: snapshot.assistantMessageId ?? null,
+          content: lastSnapshotTextOf(snapshot.events),
+        };
+        finalSyncFailed.value = false;
       } else if (mapped === "cancelled") {
         phase.value = "cancelled";
         pendingUserContent.value = "";
+        finalAssistant.value = null;
       } else if (mapped === "blocked") {
         phase.value = "blocked";
         pendingUserContent.value = "";
+        finalAssistant.value = null;
       } else {
         phase.value = "failed";
       }
@@ -437,11 +546,24 @@ export const useChatStore = defineStore("h5-chat", () => {
   /**
    * WP-D（缺口3）：把取消响应/快照里的服务端终态落成对应 phase，并清恢复
    * 标识。仅在有界等待内拿到确定终态时调用；未知结果绝不伪造成终态。
+   * N-06：完成终态可携带权威正文与消息 ID（快照核对路径），立即合并显示；
+   * 仅状态确认（取消响应）时正文为 null，由历史同步补齐。
    */
-  function applyConfirmedTerminal(eventType: string): void {
+  function applyConfirmedTerminal(
+    eventType: string,
+    final?: { messageId: string | null; content: string | null },
+  ): void {
     const mapped = terminalPhaseOf(eventType);
     outcome.value = mapped;
     phase.value = mapped;
+    if (mapped === "completed" && final && final.content !== null) {
+      finalAssistant.value = {
+        generationId: generationId.value,
+        messageId: final.messageId,
+        content: final.content,
+      };
+      finalSyncFailed.value = false;
+    }
     if (mapped !== "failed") pendingUserContent.value = "";
     cancelUnconfirmed.value = false;
     clearRestorableGeneration(safeSessionStorage());
@@ -486,12 +608,20 @@ export const useChatStore = defineStore("h5-chat", () => {
     // M2：核对归属校验——turn 序号已变（新一轮提交开始/窗口重建）时结果作废。
     if (!stillCurrent()) return true;
     if (!snapshot || !snapshot.ok) return false;
+    // N-06：取消核对拿到的快照同样是本轮 source 的权威来源。
+    if (snapshot.sourceUserMessageId) {
+      lastTurnSource.value = snapshot.sourceUserMessageId;
+    }
     const ordered = [...snapshot.events].sort((a, b) => a.eventSeq - b.eventSeq);
     const terminalEvent = [...ordered]
       .reverse()
       .find((event) => TERMINAL_EVENT_TYPES.has(event.eventType));
     if (!terminalEvent) return false; // 服务端仍在生成：保持待确认
-    applyConfirmedTerminal(terminalEvent.eventType);
+    applyConfirmedTerminal(terminalEvent.eventType, {
+      messageId: snapshot.assistantMessageId ?? null,
+      content:
+        terminalEvent.eventType === "chat.completed" ? lastSnapshotTextOf(ordered) : null,
+    });
     return true;
   }
 
@@ -543,6 +673,11 @@ export const useChatStore = defineStore("h5-chat", () => {
         if (!cancelVerifyStillCurrent()) return;
         if (generation && TERMINAL_GENERATION_STATUSES.has(generation.status)) {
           applyConfirmedTerminal(terminalEventOf(generation.status));
+          // N-06（T-40）：取消响应只确认状态、不带正文——服务端实际完成时，
+          // 用一次有界补页把权威行带回；失败置 finalSyncFailed 如实提示。
+          if (generation.status === "COMPLETED") {
+            void syncFinalFromHistory(transport, seqAtCancel, id);
+          }
           return;
         }
         // 取消请求丢失/超时/不可解析/状态非终态：用快照核对一次。
@@ -555,10 +690,127 @@ export const useChatStore = defineStore("h5-chat", () => {
   }
 
   /**
+   * N-06：仅状态确认（取消响应 COMPLETED）后的历史补读——把已完成的权威
+   * 消息行带入窗口；失败不改成发送失败，置 finalSyncFailed 保留重试入口。
+   * 晚到失败不得影响新会话：置位前校验发起时的会话/turn 归属。
+   */
+  async function syncFinalFromHistory(
+    transport: ChatTransport,
+    seqAtCancel: number,
+    id: string,
+  ): Promise<void> {
+    const conversationAtStart = conversationId.value;
+    try {
+      await appendNewMessages(transport, historyWindowToken);
+    } catch {
+      if (
+        turnSeq === seqAtCancel &&
+        generationId.value === id &&
+        conversationId.value === conversationAtStart
+      ) {
+        finalSyncFailed.value = true;
+      }
+    }
+  }
+
+  /** N-06：手动重试"回复已完成、记录同步暂未成功"的补页。 */
+  async function retryFinalSync(transport: ChatTransport): Promise<void> {
+    if (!finalSyncFailed.value) return;
+    finalSyncFailed.value = false;
+    // 晚到失败不得影响新会话：置位前校验发起时的会话/turn 归属。
+    const seqAtRetry = turnSeq;
+    const conversationAtStart = conversationId.value;
+    try {
+      await appendNewMessages(transport, historyWindowToken);
+    } catch {
+      if (
+        turnSeq === seqAtRetry &&
+        conversationId.value === conversationAtStart
+      ) {
+        finalSyncFailed.value = true;
+      }
+    }
+  }
+
+  /**
+   * N-06：终态失败后的显式再尝试前的有界快照核对——从服务端快照拿本轮
+   * source 用户消息 ID。拿到才允许重发（复用已持久化的原消息）；拿不到
+   * 返回空串，页面据此保留核对入口而不是退回普通发送复制用户消息。
+   */
+  async function resolveTurnSource(deps: RealtimeDeps): Promise<string> {
+    if (lastTurnSource.value) return lastTurnSource.value;
+    // 本轮未确认持有 generation（POST 失败/未知轮）时，generationId 只是
+    // 上一轮残留旧值，不得作为本轮 source 的依据——直接返回空串，由页面
+    // 保留核对入口，而不是按旧 generation 的快照重新生成旧消息。
+    if (!turnHasGeneration.value) return "";
+    const id = generationId.value;
+    if (!id) return "";
+    // M2：核对发起时捕获 turn 归属——新一轮提交（send 同步段）或离页都会
+    // 递增 turnSeq；await 快照期间归属已变时，旧 generation 的快照 source
+    // 不得写入新轮的 lastTurnSource（否则新轮失败重试会短路复用跨轮错误
+    // 归属）。仅凭 generationId 校验不够：新轮 POST 在途时它仍是旧值。
+    const seqAtResolve = turnSeq;
+    let snapshot;
+    try {
+      snapshot = await withTimeout(deps.fetchSnapshot(id), CANCEL_VERIFY_TIMEOUT_MS);
+    } catch {
+      return "";
+    }
+    // await 期间归属已变（新一轮提交/窗口重建）时结果作废。
+    if (!snapshot || !snapshot.ok || generationId.value !== id || turnSeq !== seqAtResolve) {
+      return "";
+    }
+    const source = snapshot.sourceUserMessageId ?? "";
+    if (source) lastTurnSource.value = source;
+    return source;
+  }
+
+  /**
+   * N-06：SSE 直完成的 turn 用一次有界快照确认本轮持久行身份——与终局补页
+   * 并行发起，拿到 assistantMessageId 才附加到过渡行并允许按真实 ID 去重；
+   * 快照失败/超时/拿不到 ID 时保留 null-ID 过渡显示，绝不退回正文比对。
+   * await 期间归属失守（新一轮提交/切窗）时结果整体作废，静默跳过。
+   */
+  async function confirmFinalIdentity(
+    deps: RealtimeDeps,
+    id: string,
+    seqAtSubmit: number,
+  ): Promise<void> {
+    const conversationAtStart = conversationId.value;
+    let snapshot;
+    try {
+      snapshot = await withTimeout(deps.fetchSnapshot(id), CANCEL_VERIFY_TIMEOUT_MS);
+    } catch {
+      return;
+    }
+    if (
+      turnSeq !== seqAtSubmit ||
+      generationId.value !== id ||
+      conversationId.value !== conversationAtStart
+    ) {
+      return;
+    }
+    if (!snapshot || !snapshot.ok) return;
+    // 快照同样是本轮 source 用户消息的权威来源。
+    if (snapshot.sourceUserMessageId) {
+      lastTurnSource.value = snapshot.sourceUserMessageId;
+    }
+    const row = finalAssistant.value;
+    if (!row || row.generationId !== id || row.messageId !== null) return;
+    if (!snapshot.assistantMessageId) return;
+    finalAssistant.value = { ...row, messageId: snapshot.assistantMessageId };
+    pruneFinalAssistant();
+  }
+
+  /**
    * S0-20: detach the page from a live stream without cancelling the durable
    * generation. A route change or full reload destroys the current fetch, but
    * the privacy-safe recovery entry must survive so the next page instance can
    * re-anchor from the server snapshot.
+   *
+   * N-05（T-43）：同时作废在途提交与取消/核对回调的 turn 归属——离页后晚到
+   * 的 POST 成功响应不得重新建立订阅（见 send 的丢弃分支：接受结果仅保留
+   * 恢复标识，不重启流）。
    */
   function detachInFlight(): void {
     if (handle) {
@@ -566,6 +818,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       handle.abort();
     }
     runSequence += 1; // the aborted run must not commit "cancelled" and clear recovery
+    turnSeq += 1; // N-05：在途提交/核对回调一律作废，晚到响应只保留恢复标识
     handle = null;
     lastTransport = null;
     if (phase.value === "streaming") {
@@ -590,7 +843,12 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages.value = [];
     historyHasMore.value = false;
     historyLoadFailed.value = false;
+    recentLoadFailed.value = false;
     cancelUnconfirmed.value = false;
+    finalAssistant.value = null;
+    finalSyncFailed.value = false;
+    lastTurnSource.value = "";
+    turnHasGeneration.value = false;
     lastSendKey = null;
     historyWindowToken += 1; // round7（P1）：窗口销毁作废一切在途分页链路
     pendingUserContent.value = "";
@@ -633,11 +891,14 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 窗口重建即认领新令牌：任何更早的在途分页链路就此作废。
     const token = ++historyWindowToken;
     historyLoadFailed.value = false;
+    recentLoadFailed.value = false;
     try {
       await loadRecentWindow(transport, token);
     } catch {
       if (token !== historyWindowToken) return;
-      historyLoadFailed.value = true;
+      // N-06：这是"最近窗口"失败——重试必须重发最近窗口请求，不进入
+      // load-more 的 before 游标链路。
+      recentLoadFailed.value = true;
       // 已有内容时保留一个可重试的手动加载入口；空窗口由下一次发送自愈。
       historyHasMore.value = messages.value.length > 0;
     }
@@ -669,6 +930,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     if (token !== historyWindowToken || conversationId.value !== target) return;
     messages.value = page;
     historyHasMore.value = page.length >= HISTORY_PAGE_SIZE;
+    pruneFinalAssistant();
   }
 
   /**
@@ -689,6 +951,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages.value = [];
     historyHasMore.value = true;
     historyLoadFailed.value = false;
+    recentLoadFailed.value = false;
     // round7（P1）：切窗即作废旧令牌；本链路此后持有自己的快照继续分页。
     const token = ++historyWindowToken;
     // 缺陷（Codex 二轮问题5）：窗口请求在途期间用户可能已切到其他会话并发起
@@ -721,6 +984,10 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 归属校验丢弃。owner 绑定的恢复标识按设计保留（切回原会话仍可恢复）。
     pendingUserContent.value = "";
     cancelUnconfirmed.value = false;
+    finalAssistant.value = null;
+    finalSyncFailed.value = false;
+    lastTurnSource.value = "";
+    turnHasGeneration.value = false;
     outcome.value = null;
     lastDisconnect.value = null;
     generationId.value = "";
@@ -761,8 +1028,12 @@ export const useChatStore = defineStore("h5-chat", () => {
       const fresh = buffered.filter((message) => !known.has(message.messageId));
       messages.value = [...messages.value, ...fresh];
       pages += 1;
-      if (buffered.length < HISTORY_PAGE_SIZE) return;
+      if (buffered.length < HISTORY_PAGE_SIZE) {
+        pruneFinalAssistant();
+        return;
+      }
     }
+    pruneFinalAssistant();
   }
 
   /**
@@ -781,6 +1052,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     transport: ChatTransport,
     deps: RealtimeDeps,
     content: string,
+    opts?: { sourceUserMessageId?: string },
   ): Promise<void> {
     if (generationStarting.value || isStreaming.value) return;
     if (!conversationId.value) {
@@ -791,7 +1063,14 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 回调，并结束旧 turn 的"取消待确认"状态（其终态由旧回调在作废前确认，
     // 或用户切回该会话时经快照恢复）。
     turnSeq += 1;
+    const submitSeq = turnSeq;
     cancelUnconfirmed.value = false;
+    // N-06（缺口4）：上一轮遗留的"记录同步暂未成功"随新一轮提交结束。
+    finalSyncFailed.value = false;
+    // N-05：本轮 source 由快照核对重新捕获；新提交开始即作废旧值。
+    lastTurnSource.value = "";
+    // N-05：POST 尚未确认——本轮暂不持有 generation（旧轮残留不劫持重试）。
+    turnHasGeneration.value = false;
     generationStarting.value = true;
     lastTransport = transport; // CANCEL-A: cancel() confirms through this transport
     lastDeps = deps; // WP-D（缺口3）: cancel() verifies through fetchSnapshot
@@ -802,19 +1081,29 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 缺陷6：发起时同步捕获完整归属身份。POST /generations 返回（成功与
     // 失败两条路径）后、启动 SSE 或写任何 turn 状态之前校验身份未变；
     // 用户在 await 期间切换/重建窗口时，晚到的旧会话响应一律静默丢弃。
+    // N-05：恢复标识的账号/关系/会话配对同样取发起时快照，晚到保存不得
+    // 用当前 ref 拼出错误配对。
     const submission = {
+      accountId: boundAccountId.value,
+      relationshipId: boundRelationshipId.value,
       conversationId: conversationId.value,
       windowToken: ownedToken,
     };
     const submissionStillCurrent = (): boolean =>
       conversationId.value === submission.conversationId &&
       historyWindowToken === submission.windowToken;
-    const idempotencyKey =
+    // N-05：提交身份包含 turn 序号——离页（detachInFlight）或新一轮提交都会
+    // 递增 turnSeq，晚到的 POST 成功响应不得重启流（T-43）。
+    const submissionUnsuperseded = (): boolean =>
+      submissionStillCurrent() && turnSeq === submitSeq;
+    // N-05（T-34）：本次提交是否复用了既有未知请求的键。复用键的重试得到
+    // 4xx 只证明本次重试被拒，不得清除仍待核对的上一请求。
+    const reusedPendingKey = Boolean(
       lastSendKey &&
-      lastSendKey.conversationId === submission.conversationId &&
-      lastSendKey.content === content
-        ? lastSendKey.key
-        : crypto.randomUUID();
+        lastSendKey.conversationId === submission.conversationId &&
+        lastSendKey.content === content,
+    );
+    const idempotencyKey = reusedPendingKey ? lastSendKey!.key : crypto.randomUUID();
     let generation: Generation | null;
     try {
       generation = await sendGeneration(
@@ -822,31 +1111,57 @@ export const useChatStore = defineStore("h5-chat", () => {
         submission.conversationId,
         idempotencyKey,
         content,
+        opts?.sourceUserMessageId,
       );
     } catch (error) {
       // 结果未知（网络/超时/协议失败，以及服务端持久化后才失败的 5xx）：保留
       // 同键供重试（绑定提交会话，换会话不复用），由后端幂等去重；确定失败
-      // （4xx 响应确认）只清本次提交的键，不动其他会话在途提交写入的键。
+      // （4xx 响应确认）只清本次"新铸造"的键——复用键的重试被 4xx 拒绝时，
+      // 被代表的此前未知请求仍待核对，键必须保留。
       const unknownOutcome = !(error instanceof ChatHttpError && error.status < 500);
       if (unknownOutcome) {
         lastSendKey = { conversationId: submission.conversationId, content, key: idempotencyKey };
-      } else if (lastSendKey?.key === idempotencyKey) {
+      } else if (!reusedPendingKey && lastSendKey?.key === idempotencyKey) {
         lastSendKey = null;
       }
       throw error;
     } finally {
       generationStarting.value = false;
     }
-    // 缺陷6：成功响应晚到且归属已变时静默丢弃——不启动流、不写
-    // phase/stream/恢复标识/lastSendKey；服务端已落库的 generation 由用户切
-    // 回该会话时经最近窗口自然读取。仅记录调试日志，不触发重试 UI。
-    if (!submissionStillCurrent()) {
+    // 缺陷6 + N-05：成功响应晚到且归属已变时静默丢弃——不启动流、不写
+    // phase/stream/lastSendKey。恢复标识仅在发起时捕获的账号/关系绑定仍未
+    // 变（注销/换号后的旧响应不得恢复旧身份）且无既有条目时，按发起时的
+    // 会话配对保存；已有更新条目（更新轮次）不覆盖。
+    if (!submissionUnsuperseded()) {
       console.debug(
-        "[chat] dropped a late generation response: submission no longer owns the window",
+        "[chat] dropped a late generation response: submission no longer owns the turn",
       );
+      if (
+        generation?.generationId &&
+        submission.accountId &&
+        submission.accountId === boundAccountId.value &&
+        submission.relationshipId === boundRelationshipId.value &&
+        !loadRestorableGeneration(safeSessionStorage())
+      ) {
+        saveRestorableGeneration(safeSessionStorage(), {
+          accountId: submission.accountId,
+          relationshipId: submission.relationshipId,
+          conversationId: submission.conversationId,
+          generationId: generation.generationId,
+          savedAtEpochMs: Date.now(),
+        });
+      }
       return;
     }
-    lastSendKey = null; // 服务端已确认（含存在性隐藏的确定 4xx）
+    // 键的确定清除只在服务端已确认时发生：成功（拿到 generation）无条件清；
+    // 存在性隐藏（403/404→null）只证明本次请求被拒，不证明此前未知请求的
+    // 结局——复用键的重试不得清除原键，仅本次新铸且确属本次的键才清，与
+    // catch 分支的确定失败清键守卫完全镜像。
+    if (generation) {
+      lastSendKey = null;
+    } else if (!reusedPendingKey && lastSendKey?.key === idempotencyKey) {
+      lastSendKey = null;
+    }
     if (!generation) {
       phase.value = "failed";
       outcome.value = null;
@@ -854,13 +1169,25 @@ export const useChatStore = defineStore("h5-chat", () => {
     }
     await run(deps, generation.generationId, 1);
     // WP-D：只向前追加本 turn 之后的新行，长对话中用户已翻出的更早窗口
-    // 保持完整；补页失败置历史错误态，不得把已完成的消息误报为发送失败。
+    // 保持完整；补页失败不再误报"更早的消息"错误态——改置 finalSyncFailed
+    // （回复已完成、记录同步暂未成功），保留同步重试入口。N-05：本轮
+    // source 不再用窗口最后一条 user 行猜测，由快照路径权威捕获。
     if (ownedToken !== historyWindowToken || !conversationId.value) return;
+    // N-06：SSE 完成事件不带消息 ID——补页的同时并行发起一次有界快照核对
+    // 确认本轮持久行身份（不增加串行等待）。仅本轮确已完成且过渡行仍无
+    // 真实 ID 时进行；取消核对/快照恢复路径自带的 ID 不在此重复核对。
+    const finalVerify =
+      phase.value === "completed" && finalAssistant.value?.messageId === null
+        ? confirmFinalIdentity(deps, generation.generationId, submitSeq)
+        : Promise.resolve();
     try {
       await appendNewMessages(transport, ownedToken);
     } catch {
-      if (ownedToken === historyWindowToken) historyLoadFailed.value = true;
+      if (ownedToken === historyWindowToken) {
+        finalSyncFailed.value = true;
+      }
     }
+    await finalVerify;
   }
 
   return {
@@ -874,7 +1201,12 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversations,
     historyHasMore,
     historyLoadFailed,
+    recentLoadFailed,
     cancelUnconfirmed,
+    finalAssistant,
+    finalSyncFailed,
+    lastTurnSource,
+    turnHasGeneration,
     pendingUserContent,
     generationStarting,
     draft,
@@ -888,6 +1220,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     bindGenerationContext,
     cancel,
     detachInFlight,
+    retryFinalSync,
+    resolveTurnSource,
     reset,
     initConversation,
     send,

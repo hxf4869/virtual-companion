@@ -25,10 +25,10 @@ func (l *Loop) handleGeneration(ctx context.Context, c postgres.JobClaim, runID 
 	}
 
 	callCtx, cancel := context.WithCancel(ctx)
-	l.cancels.Register(c.OwnerID, c.RefID, cancel)
+	l.cancels.Register(KindGeneration, c.OwnerID, c.RefID, cancel)
 	defer func() {
 		cancel()
-		l.cancels.Unregister(c.RefID)
+		l.cancels.Unregister(KindGeneration, c.RefID)
 	}()
 
 	gate, err := l.store.OutboundCheck(ctx, c.OwnerID)

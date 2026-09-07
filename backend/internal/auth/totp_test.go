@@ -30,8 +30,40 @@ func TestTOTPProvisioningRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ValidateTOTP(created.ManualKey, code, now) || ValidateTOTP(created.ManualKey, "000000", now) {
-		t.Fatal("TOTP validation mismatch")
+	valid, step := ValidateTOTPStep(created.ManualKey, code, now)
+	if !valid || step != now.Unix()/30 {
+		t.Fatalf("TOTP validation = %v step %d, want step %d", valid, step, now.Unix()/30)
+	}
+	if valid, _ := ValidateTOTPStep(created.ManualKey, "000000", now); valid {
+		t.Fatal("invalid code accepted")
+	}
+}
+
+func TestValidateTOTPStepMatchesAdjacentDrift(t *testing.T) {
+	t.Parallel()
+	created, err := NewTOTP("bob@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0).UTC()
+	for _, delta := range []time.Duration{-30 * time.Second, 0, 30 * time.Second} {
+		at := now.Add(delta)
+		code, err := totp.GenerateCode(created.ManualKey, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		valid, step := ValidateTOTPStep(created.ManualKey, code, now)
+		if !valid || step != at.Unix()/30 {
+			t.Fatalf("drift %v: valid=%v step=%d, want %d", delta, valid, step, at.Unix()/30)
+		}
+	}
+	// Two steps away from the server clock stays outside the drift window.
+	far, err := totp.GenerateCode(created.ManualKey, now.Add(60*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid, _ := ValidateTOTPStep(created.ManualKey, far, now); valid {
+		t.Fatal("two-step-away code accepted")
 	}
 }
 

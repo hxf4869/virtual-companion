@@ -62,9 +62,11 @@ interface FetchOptions {
   relationships?: unknown[];
   memories?: unknown[] | (() => unknown[]);
   memoriesStatus?: number | (() => number);
-  prefEnabled?: boolean;
-  prefStatus?: number;
+  prefEnabled?: boolean | (() => boolean);
+  prefStatus?: number | (() => number);
   putParseFailed?: boolean;
+  /** PUT 时模拟网络中断（fetch 抛 TypeError）：结果未知。 */
+  putNetworkError?: boolean;
   patchStatus?: number | ((memoryId: string) => number);
   patchParseFailed?: boolean;
   patchEcho?: Record<string, unknown>;
@@ -111,10 +113,16 @@ function stubFetch(options: FetchOptions = {}) {
     }
     if (url === "/api/v1/memory-auto-save-pref") {
       if (method === "GET") {
-        const status = options.prefStatus ?? 200;
-        return response(status, status === 200 ? { enabled: options.prefEnabled ?? true } : null);
+        const status = typeof options.prefStatus === "function"
+          ? options.prefStatus()
+          : options.prefStatus ?? 200;
+        const enabled = typeof options.prefEnabled === "function"
+          ? options.prefEnabled()
+          : options.prefEnabled ?? true;
+        return response(status, status === 200 ? { enabled } : null);
       }
       if (method === "PUT") {
+        if (options.putNetworkError) throw new TypeError("Failed to fetch");
         if (options.putParseFailed) return response(200, null, true);
         const request = JSON.parse(
           typeof init?.body === "string" ? init.body : "{}",
@@ -141,7 +149,8 @@ function stubFetch(options: FetchOptions = {}) {
       }
       if (method === "DELETE") {
         if (options.deleteGate) return options.deleteGate.promise as never;
-        return response(options.deleteStatus ?? 200, options.deleteStatus === 200
+        const status = options.deleteStatus ?? 200;
+        return response(status, status === 200
           ? memoryRow({ memoryId, deletedAt: "2026-09-04T00:00:00Z" })
           : null);
       }
@@ -285,8 +294,8 @@ describe("记忆管理页", () => {
     wrapper.unmount();
   });
 
-  it("编辑失败不退出编辑、取消不产生写入", async () => {
-    const { calls } = stubFetch({ patchStatus: () => 500 });
+  it("编辑确定失败（4xx）不退出编辑、取消不产生写入", async () => {
+    const { calls } = stubFetch({ patchStatus: () => 400 });
     const wrapper = mountPage();
     await flushPromises();
 
@@ -307,8 +316,14 @@ describe("记忆管理页", () => {
     wrapper.unmount();
   });
 
-  it("操作结果未知时提供刷新核对入口", async () => {
-    const { calls } = stubFetch({ patchParseFailed: true });
+  it("操作结果未知时提供刷新核对入口，核对确认后退出编辑", async () => {
+    let edited = false;
+    const { calls } = stubFetch({
+      patchParseFailed: true,
+      memories: () => edited
+        ? [memoryRow({ summary: "结果未知的内容。", autoSaved: false }), ...DEFAULT_MEMORIES.slice(1)]
+        : DEFAULT_MEMORIES,
+    });
     const wrapper = mountPage();
     await flushPromises();
 
@@ -317,18 +332,23 @@ describe("记忆管理页", () => {
     await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
     await flushPromises();
 
+    // 结果未知：编辑框与草稿保留，等待核对。
     expect(wrapper.get('[data-testid="memory-unknown"]').text()).toContain("未能确认结果");
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
 
+    edited = true;
     await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
     await flushPromises();
     expect(calls.filter((call) => call.url.includes("/memories") && call.method === "GET"))
       .toHaveLength(2);
     expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    // 核对确认编辑已生效后才退出编辑。
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("删除需要一次确认，失败保留原条目", async () => {
-    const { calls } = stubFetch({ deleteStatus: 503 });
+  it("删除需要一次确认，确定失败（4xx）保留原条目", async () => {
+    const { calls } = stubFetch({ deleteStatus: 400 });
     const wrapper = mountPage();
     await flushPromises();
 
@@ -346,7 +366,8 @@ describe("记忆管理页", () => {
       method: "DELETE",
       url: "/api/v1/memories/m1",
     }));
-    expect(wrapper.get('[data-testid="memory-delete-error"]').text()).toContain("还在");
+    expect(wrapper.get('[data-testid="memory-delete-error"]').text()).toContain("没有删除成功");
+    expect(wrapper.get('[data-testid="memory-delete-box"]').text()).toContain("原聊天记录不会一并删除");
     expect(memoryRows(wrapper)).toHaveLength(2);
 
     wrapper.unmount();
@@ -418,8 +439,8 @@ describe("记忆管理页", () => {
     wrapper.unmount();
   });
 
-  it("候选拒绝失败保留原条并可重试", async () => {
-    const rejectStatuses = [503, 200];
+  it("候选拒绝确定失败（4xx）保留原条并可重试", async () => {
+    const rejectStatuses = [400, 200];
     stubFetch({
       rejectStatus: () => rejectStatuses.shift() ?? 200,
     });
@@ -457,6 +478,8 @@ describe("记忆管理页", () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="memory-list-error"]').text()).toContain("没有加载出来");
+    // 核对刷新失败：未知提示与旧数据保留。
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
     expect(memoryRows(wrapper)).toHaveLength(2);
 
     failing = false;
@@ -609,6 +632,460 @@ describe("记忆管理页", () => {
 
     expect(useMemoryStore().items).toEqual([]);
     expect(memoryRows(wrapper)).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  // ---- N-07 / F-07：写操作未知结果与开关状态确认 ----
+
+  it("T-54 开关首次读取失败：显示状态待确认，不按默认值操作", async () => {
+    let failing = true;
+    const { calls } = stubFetch({ prefStatus: () => (failing ? 500 : 200) });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const toggle = wrapper.get('[data-testid="autosave-toggle"]');
+    expect(toggle.text()).toBe("状态待确认");
+    expect(toggle.attributes("aria-checked")).toBe("mixed");
+    expect(toggle.attributes("disabled")).toBeDefined();
+
+    // 不按 false 默认值误开启：点击不产生写入。
+    await toggle.trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "PUT")).toHaveLength(0);
+
+    failing = false;
+    await wrapper.get('[data-testid="autosave-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="autosave-toggle"]').text()).toBe("已开启");
+    expect(wrapper.get('[data-testid="autosave-toggle"]').attributes("aria-checked")).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("T-55 开关写入网络中断：结果未知，重新读取确认且不重复写", async () => {
+    // PUT 实际已在服务端生效（enabled=false），但响应因网络中断丢失。
+    let serverEnabled = true;
+    const { calls } = stubFetch({ putNetworkError: true, prefEnabled: () => serverEnabled });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="autosave-toggle"]').text()).toBe("已开启");
+
+    await wrapper.get('[data-testid="autosave-toggle"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="autosave-unknown"]').text()).toContain("未能确认");
+    expect(wrapper.get('[data-testid="autosave-toggle"]').attributes("disabled")).toBeDefined();
+
+    // 未知状态下先核对：再次点击不产生第二次 PUT（不重复 toggle、不误开）。
+    await wrapper.get('[data-testid="autosave-toggle"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "PUT")).toHaveLength(1);
+
+    // 重新读取：服务端确认 enabled=false（写入已生效），不自动反转重试。
+    serverEnabled = false;
+    await wrapper.get('[data-testid="autosave-reload"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="autosave-unknown"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="autosave-rejected"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="autosave-toggle"]').text()).toBe("已关闭");
+    expect(calls.filter((call) => call.method === "PUT")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("T-55 重新读取发现写入未生效时给出确定提示", async () => {
+    stubFetch({ putNetworkError: true, prefEnabled: true });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="autosave-toggle"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="autosave-unknown"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="autosave-reload"]').trigger("click");
+    await flushPromises();
+
+    // 权威值仍为 true，目标 false：修改确定未生效，不静默清除。
+    expect(wrapper.get('[data-testid="autosave-rejected"]').text()).toContain("没有生效");
+    expect(wrapper.get('[data-testid="autosave-toggle"]').text()).toBe("已开启");
+    wrapper.unmount();
+  });
+
+  it("T-56 编辑 5xx 结果未知：不宣布失败，保留草稿等待核对", async () => {
+    stubFetch({ patchStatus: () => 500 });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("改到一半的内容。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-edit-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("改到一半的内容。");
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("T-56 删除 5xx 结果未知：保留条目并标注核对中，不写\"还在\"断言", async () => {
+    stubFetch({ deleteStatus: 500 });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="memory-delete"]').trigger("click");
+    await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-delete-error"]').exists()).toBe(false);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.get('[data-testid="memory-verifying"]').text()).toContain("核对中");
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("T-56 删除未知结果经核对确认后移除条目", async () => {
+    let deleted = false;
+    stubFetch({
+      deleteStatus: 500,
+      memories: () => (deleted ? DEFAULT_MEMORIES.slice(1) : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="memory-delete"]').trigger("click");
+    await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-verifying"]').exists()).toBe(true);
+
+    deleted = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-verifying"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("T-56 删除未知结果经核对发现未生效时提示并保留条目", async () => {
+    stubFetch({ deleteStatus: 500 });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="memory-delete"]').trigger("click");
+    await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
+    await flushPromises();
+
+    // 列表仍返回该条目：删除确定未生效（权威数据）。
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="memory-rejected"]').text()).toContain("没有生效");
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.find('[data-testid="memory-verifying"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("T-57 存在性隐藏被适配为空列表时未知提示与条目保留", async () => {
+    let hidden = false;
+    stubFetch({
+      deleteStatus: 500,
+      memoriesStatus: () => (hidden ? 404 : 200),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="memory-delete"]').trigger("click");
+    await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-verifying"]').exists()).toBe(true);
+
+    hidden = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+
+    // 404 被适配为空列表：空值不证明删除成功，未知提示与条目都保留。
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.find('[data-testid="memory-verifying"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("T-58 编辑 A 在途时切到编辑 B：A 成功回调不关闭也不覆盖 B 的草稿", async () => {
+    const patchGate = gate();
+    let gateArmed = false;
+    stubFetch({
+      get patchGate() {
+        return gateArmed ? patchGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    gateArmed = true;
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("A 的编辑。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeDefined();
+
+    // A 的编辑框仍开着；切到第二条（B）编辑。
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    const input = wrapper.get('[data-testid="memory-edit-input"]');
+    expect((input.element as HTMLTextAreaElement).value).toBe("用户的生日在三月。");
+    await input.setValue("B 的草稿。");
+
+    // A 的成功响应晚到：不得关闭 B 的编辑框或覆盖 B 的草稿。
+    gateArmed = false;
+    patchGate.resolve(response(200, memoryRow({ memoryId: "m1", summary: "A 的编辑。", autoSaved: false })));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const inputAfter = wrapper.get('[data-testid="memory-edit-input"]');
+    expect((inputAfter.element as HTMLTextAreaElement).value).toBe("B 的草稿。");
+    expect(wrapper.text()).toContain("A 的编辑。");
+    wrapper.unmount();
+  });
+
+  it("首载存在性隐藏（404）不伪装成确定空态：提示暂时无法确认并可重读", async () => {
+    let hidden = true;
+    stubFetch({
+      memoriesStatus: () => (hidden ? 404 : 200),
+      memories: [],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 存在性隐藏被适配为空列表：空值不可信，不得显示确定空态。
+    expect(wrapper.find('[data-testid="memory-empty"]').exists()).toBe(false);
+    const inconclusive = wrapper.get('[data-testid="memory-list-inconclusive"]');
+    expect(inconclusive.text()).toContain("暂时无法确认");
+    expect(wrapper.get('[data-testid="memory-inconclusive-retry"]').text()).toContain("重新读取");
+
+    // 重读拿到权威数据（这里为权威空列表）后恢复确定视图。
+    hidden = false;
+    await wrapper.get('[data-testid="memory-inconclusive-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-list-inconclusive"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="memory-empty"]').text()).toContain("这里还什么都没存");
+    wrapper.unmount();
+  });
+
+  it("读取结果不确定但已有内容：保留旧数据并给出轻量不确定提示", async () => {
+    let hidden = false;
+    stubFetch({ memoriesStatus: () => (hidden ? 404 : 200) });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(memoryRows(wrapper)).toHaveLength(2);
+
+    // 同一会话内重新进入页面（store 共享），这次存在性隐藏。
+    wrapper.unmount();
+    hidden = true;
+    const remounted = mountPage();
+    await flushPromises();
+
+    expect(memoryRows(remounted)).toHaveLength(2);
+    expect(remounted.find('[data-testid="memory-empty"]').exists()).toBe(false);
+    expect(remounted.get('[data-testid="memory-list-inconclusive-notice"]').text())
+      .toContain("可能不是当前列表");
+    remounted.unmount();
+  });
+
+  it("同一条目前次保存未知、再次保存成功后核对不误报\"没有生效\"", async () => {
+    let patchCount = 0;
+    let edited = false;
+    stubFetch({
+      patchStatus: () => (patchCount++ === 0 ? 500 : 200),
+      memories: () => edited
+        ? [memoryRow({ summary: "第二次的修改。", autoSaved: false }), ...DEFAULT_MEMORIES.slice(1)]
+        : DEFAULT_MEMORIES,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 第一次保存结果未知：进入核对流程。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("第一次的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-unknown"]').text()).toContain("未能确认结果");
+
+    // 不退出编辑，继续修改并保存成功：服务端已确认第二次的修改。
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("第二次的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("第二次的修改。");
+
+    // 核对读到权威列表（第二次的修改）：不得用旧期望误报"没有生效"。
+    edited = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-rejected"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("没有生效");
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("同一条目连续两次保存未知：保留单一未知提示并按最新期望核对", async () => {
+    let editedTwice = false;
+    stubFetch({
+      patchStatus: () => 500,
+      memories: () => editedTwice
+        ? [memoryRow({ summary: "第二次的修改。", autoSaved: false }), ...DEFAULT_MEMORIES.slice(1)]
+        : DEFAULT_MEMORIES,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("第一次的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-unknown"]').text()).toContain("未能确认结果");
+
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("第二次的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+
+    // 单一未知提示，不叠加、不误报失败；草稿保留等待核对。
+    expect(wrapper.findAll('[data-testid="memory-unknown"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="memory-rejected"]').exists()).toBe(false);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("第二次的修改。");
+
+    // 服务端已有第二次的修改（最新期望值）：核对通过后提示清除。
+    editedTwice = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("核对读取在途时同条目再次保存又未知：旧期望失效，不误报\"没有生效\"", async () => {
+    const listGate = gate();
+    let gateArmed = false;
+    let applied = false;
+    stubFetch({
+      patchParseFailed: true,
+      memories: () => applied
+        ? [memoryRow({ summary: "第二次的修改。", autoSaved: false }), ...DEFAULT_MEMORIES.slice(1)]
+        : DEFAULT_MEMORIES,
+      get memoriesGate() {
+        return gateArmed ? listGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 第一次保存结果未知：进入核对流程（期望＝第一次的修改）。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("第一次的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-unknown"]').text()).toContain("未能确认结果");
+
+    // 核对读取挂起期间，用户对同一条目再次保存，同样结果未知：
+    // saveEdit 已把未知结果的期望更新为"第二次的修改"（旧期望失效）。
+    gateArmed = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("第二次的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+
+    // 读取返回权威列表（服务端已生效第二次的修改）：不得用挂起前的旧
+    // 期望把已生效的写入误报为"没有生效"，也不得清掉更新后的未知状态。
+    gateArmed = false;
+    listGate.resolve(response(200, [
+      memoryRow({ summary: "第二次的修改。", autoSaved: false }),
+      ...DEFAULT_MEMORIES.slice(1),
+    ]));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-rejected"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("没有生效");
+    // 更新后的未知状态（期望＝第二次的修改）保留，仍可正常核对清除。
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    applied = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("核对读取在途时另一条目产生新未知结果：读取返回不误清新未知提示", async () => {
+    const listGate = gate();
+    let gateArmed = false;
+    stubFetch({
+      patchParseFailed: true,
+      get memoriesGate() {
+        return gateArmed ? listGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // M1 编辑保存结果未知：进入核对流程。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("第一次的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-unknown"]').text()).toContain("未能确认结果");
+
+    // 核对读取挂起期间，用户切到 M2 编辑保存，同样结果未知：
+    // unknownAction 已被 M2 的未知结果取代。
+    gateArmed = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    // M1 的编辑框因未知结果保留，剩余的编辑按钮属于 M2。
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("M2 的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+
+    // 读取返回：M1 与挂起前的期望一致（写入实际已生效）。不得据此清掉
+    // M2 的"未能确认结果"提示。
+    gateArmed = false;
+    listGate.resolve(response(200, [
+      memoryRow({ summary: "第一次的修改。" }),
+      ...DEFAULT_MEMORIES.slice(1),
+    ]));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="memory-rejected"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("T-58 编辑 A 的未知结果晚到时不影响已切换到 B 的编辑", async () => {
+    const patchGate = gate();
+    let gateArmed = false;
+    stubFetch({
+      get patchGate() {
+        return gateArmed ? patchGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    gateArmed = true;
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("A 的编辑。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+
+    // A 的编辑框仍开着；切到第二条（B）编辑。
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("B 的草稿。");
+
+    // A 的响应不可解析（结果未知）且晚到：不触碰 B 的编辑框与草稿。
+    gateArmed = false;
+    patchGate.resolve(response(200, null, true));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("B 的草稿。");
     wrapper.unmount();
   });
 });

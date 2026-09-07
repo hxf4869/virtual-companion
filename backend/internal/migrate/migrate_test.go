@@ -13,16 +13,16 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 130 {
-		t.Fatalf("migration count = %d, want 130", len(items))
+	if len(items) != 134 {
+		t.Fatalf("migration count = %d, want 134", len(items))
 	}
-	for i, item := range items {
-		want := int64(i + 1)
-		if item.Version != want {
-			t.Fatalf("migration[%d].Version = %d, want %d", i, item.Version, want)
+	// Versions must be strictly ascending.
+	for i := 1; i < len(items); i++ {
+		if items[i].Version <= items[i-1].Version {
+			t.Fatalf("migration[%d].Version = %d not after %d", i, items[i].Version, items[i-1].Version)
 		}
 	}
-	if items[len(items)-1].File != "V130__go_list_export_conversations.sql" {
+	if items[len(items)-1].File != "V134__totp_consumed_step.sql" {
 		t.Fatalf("latest migration = %q", items[len(items)-1].File)
 	}
 }

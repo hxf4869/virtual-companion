@@ -82,16 +82,27 @@ func provisioningFromKey(key *otp.Key) (TOTPProvisioning, error) {
 	}, nil
 }
 
-// ValidateTOTP accepts the current 30-second code and one adjacent step for
-// ordinary clock drift.
-func ValidateTOTP(secret, code string, now time.Time) bool {
-	valid, err := totp.ValidateCustom(code, secret, now, totp.ValidateOpts{
-		Period:    30,
-		Skew:      1,
-		Digits:    otp.DigitsSix,
-		Algorithm: otp.AlgorithmSHA1,
-	})
-	return err == nil && valid
+// ValidateTOTPStep accepts the current 30-second code and one adjacent step
+// for ordinary clock drift, and reports the actually matched timestep
+// (unix time / 30) so the caller can enforce account-level one-time use
+// (RFC 6238 §5.2). An invalid code reports step 0.
+func ValidateTOTPStep(secret, code string, now time.Time) (bool, int64) {
+	// Exactly one window can match a code; probing the three candidates with
+	// zero skew pins the matched step instead of approximating it with the
+	// server's current step.
+	for _, delta := range []time.Duration{0, -30 * time.Second, 30 * time.Second} {
+		at := now.Add(delta)
+		ok, err := totp.ValidateCustom(code, secret, at, totp.ValidateOpts{
+			Period:    30,
+			Skew:      0,
+			Digits:    otp.DigitsSix,
+			Algorithm: otp.AlgorithmSHA1,
+		})
+		if err == nil && ok {
+			return true, at.Unix() / 30
+		}
+	}
+	return false, 0
 }
 
 // NewRecoveryCodes returns user-visible one-time codes and their persisted hashes.

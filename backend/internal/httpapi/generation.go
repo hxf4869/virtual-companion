@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
+	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
@@ -29,6 +30,7 @@ type generationJSON struct {
 type generationSnapshotJSON struct {
 	Status             string           `json:"status"`
 	AssistantMessageID *string          `json:"assistantMessageId,omitempty"`
+	SourceMessageID    *string          `json:"sourceUserMessageId,omitempty"`
 	Events             []map[string]any `json:"events"`
 	Usage              *usageJSON       `json:"usage,omitempty"`
 }
@@ -134,7 +136,7 @@ func (s *Server) handleCancelGeneration(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if s.core.Cancels != nil {
-		s.core.Cancels.Cancel(id)
+		s.core.Cancels.Cancel(jobs.KindGeneration, id)
 	}
 	if s.core.Hub != nil {
 		s.core.Hub.Cancelled(idString(id))
@@ -157,16 +159,28 @@ func (s *Server) handleGenerationSnapshot(w http.ResponseWriter, r *http.Request
 		s.writeStoreErr(w, err)
 		return
 	}
+	out := generationSnapshotJSONFrom(snap)
+	s.writeJSON(w, http.StatusOK, out)
+}
+
+// generationSnapshotJSONFrom maps the store snapshot to the wire shape. The
+// source user message id rides along (N-06) so a retried turn after an
+// explicit terminal failure can reuse its persisted input message.
+func generationSnapshotJSONFrom(snap postgres.GenerationSnapshot) generationSnapshotJSON {
 	out := generationSnapshotJSON{Status: snap.Status, Events: generationSnapshotEvents(snap)}
 	if snap.AssistantMessageID != nil {
 		s := idString(*snap.AssistantMessageID)
 		out.AssistantMessageID = &s
 	}
+	if snap.SourceMessageID != nil {
+		s := idString(*snap.SourceMessageID)
+		out.SourceMessageID = &s
+	}
 	if snap.InputTokens != nil && snap.OutputTokens != nil &&
 		(snap.Status == "COMPLETED" || snap.Status == "COMPLETED_FALLBACK") {
 		out.Usage = &usageJSON{InputTokens: *snap.InputTokens, OutputTokens: *snap.OutputTokens}
 	}
-	s.writeJSON(w, http.StatusOK, out)
+	return out
 }
 
 func generationSnapshotEvents(snap postgres.GenerationSnapshot) []map[string]any {

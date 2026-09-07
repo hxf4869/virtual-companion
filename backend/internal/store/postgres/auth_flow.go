@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
 )
@@ -144,15 +145,20 @@ func (s *Store) CompleteAuthChallenge(ctx context.Context, in AuthCompleteInput)
 	now := in.Now.UTC()
 	var result AuthenticatedSession
 	valid := false
+	// The matched TOTP step to consume atomically with session creation; nil
+	// for recovery-code completions and failed validations.
+	var consumedStep *int64
 	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var currentCipher, pendingCipher *string
+		var lastConsumed pgtype.Int8
 		if err := tx.QueryRow(ctx,
 			`SELECT out_account_id, out_role, out_account_name, out_password_must_change,
-			        out_current_totp_ciphertext, out_pending_totp_ciphertext
+			        out_current_totp_ciphertext, out_pending_totp_ciphertext,
+			        out_totp_last_consumed_step
 			   FROM vc.identity_auth_challenge_lock($1, $2, $3)`,
 			in.ChallengeID, in.Mode, now).Scan(
 			&result.AccountID, &result.Role, &result.AccountName, &result.PasswordMustChange,
-			&currentCipher, &pendingCipher); err != nil {
+			&currentCipher, &pendingCipher, &lastConsumed); err != nil {
 			if err == pgx.ErrNoRows {
 				return nil
 			}
@@ -169,13 +175,30 @@ func (s *Store) CompleteAuthChallenge(ctx context.Context, in AuthCompleteInput)
 			if err != nil {
 				return err
 			}
-			valid = auth.ValidateTOTP(secret, in.Code, now)
+			var step int64
+			valid, step = auth.ValidateTOTPStep(secret, in.Code, now)
+			if valid {
+				// First consumption of the freshly enrolled key replaces any
+				// record left by the previous key.
+				consumedStep = &step
+			}
 		case in.Mode == AuthChallengeTOTPVerify && in.Method == AuthMethodTOTP && currentCipher != nil:
 			secret, err := s.cipher.Decrypt(*currentCipher)
 			if err != nil {
 				return err
 			}
-			valid = auth.ValidateTOTP(secret, in.Code, now)
+			var step int64
+			valid, step = auth.ValidateTOTPStep(secret, in.Code, now)
+			// RFC 6238 §5.2: a step this account's current key already
+			// consumed is a replay, not a fresh acceptance. It lands in the
+			// bounded fail-attempt path like any wrong code; the next code
+			// stays valid.
+			if valid && lastConsumed.Valid && step <= lastConsumed.Int64 {
+				valid = false
+			}
+			if valid {
+				consumedStep = &step
+			}
 		case in.Mode == AuthChallengeTOTPVerify && in.Method == AuthMethodRecoveryCode:
 			if err := tx.QueryRow(ctx,
 				`SELECT vc.identity_auth_recovery_code_lock_current($1)`,
@@ -227,9 +250,9 @@ func (s *Store) CompleteAuthChallenge(ctx context.Context, in AuthCompleteInput)
 		return tx.QueryRow(ctx,
 			`SELECT out_session_id, out_trusted_device_id
 			   FROM vc.identity_auth_challenge_complete_current(
-			       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 			in.ChallengeID, in.Mode, sessionHash, in.SessionExpiresAt.UTC(), recoveryID,
-			recoveryHashes, deviceHash, deviceName, deviceExpires, now).Scan(
+			recoveryHashes, deviceHash, deviceName, deviceExpires, now, consumedStep).Scan(
 			&result.SessionID, &result.TrustedDeviceID)
 	})
 	if err != nil {

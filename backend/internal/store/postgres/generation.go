@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -11,6 +12,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+// seedMemoryWindow is the model-context history window and the recall
+// selection cap. It must stay >= the builder's context entry budget so the
+// SQL-side cut never changes which rows the builder would pick from a full
+// read.
+const seedWindow = 64
 
 // GenerationView is the KEEP send/cancel response.
 type GenerationView struct {
@@ -33,6 +40,9 @@ type GenerationSnapshot struct {
 	InputTokens        *int64
 	OutputTokens       *int64
 	FailureCode        string
+	// SourceMessageID is the persisted user message this generation was
+	// sourced from (N-06); nil for legacy turns without one.
+	SourceMessageID *int64
 }
 
 // GenerationFeedback is one recorded (generation, kind) row.
@@ -182,6 +192,19 @@ func (s *Store) loadSnapshot(ctx context.Context, owner, generationID int64) (Ge
 		if failure.Valid {
 			out.FailureCode = failure.String
 		}
+		// N-06: reuse the existing owner-scoped generation read inside the same
+		// WithOwner transaction for the source message id; no SQL change. A
+		// missing row (inconsistent race) just leaves the field nil.
+		var src pgtype.Int8
+		srcErr := tx.QueryRow(ctx,
+			`SELECT out_source_message_id FROM vc.go_get_generation($1,$2)`, owner, generationID,
+		).Scan(&src)
+		if srcErr == nil && src.Valid {
+			id := src.Int64
+			out.SourceMessageID = &id
+		} else if srcErr != nil && srcErr != pgx.ErrNoRows {
+			return srcErr
+		}
 		return nil
 	})
 	if err != nil {
@@ -265,14 +288,26 @@ func (s *Store) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSee
 	// The seed history ends at the current turn: read the recent window BEFORE
 	// the generation's source user message (exclusive) instead of the earliest
 	// window, so long conversations still see the latest history. Rows come
-	// back in ascending id order. Legacy generations without a source message
-	// keep the historical forward read.
+	// back in ascending id order. Model-facing reads filter on the persisted
+	// vc.message.model_eligible fact (V112) before the LIMIT; the user-facing
+	// reads behind history and export keep seeing every row. A retried turn
+	// re-checks its own source message before re-sending it as current input.
+	// Legacy generations without a source message keep the historical forward
+	// read, equally eligibility-filtered.
 	var msgs []Message
 	if view.sourceID != 0 {
+		eligible, err := s.MessageModelEligible(ctx, key.OwnerID, view.sourceID)
+		if err != nil {
+			return turn.ContextSeed{}, err
+		}
+		if !eligible {
+			return turn.ContextSeed{}, fmt.Errorf(
+				"generation source message %d lost model eligibility", view.sourceID)
+		}
 		before := view.sourceID
-		msgs, err = s.ListRecentMessages(ctx, key.OwnerID, view.conversationID, &before, 64)
+		msgs, err = s.ListRecentModelMessages(ctx, key.OwnerID, view.conversationID, &before, seedWindow)
 	} else {
-		msgs, err = s.ListMessages(ctx, key.OwnerID, view.conversationID, nil, intPtr(64))
+		msgs, err = s.ListModelHistoryMessages(ctx, key.OwnerID, view.conversationID, nil, seedWindow)
 	}
 	if err != nil {
 		return turn.ContextSeed{}, err
@@ -287,19 +322,19 @@ func (s *Store) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSee
 		})
 	}
 	if !view.incognito && !view.noMemory {
-		mems, err := s.ListMemories(ctx, key.OwnerID, view.relationshipID, false)
+		// Effective-memory selection (N-02): ACCEPTED, not deleted, not
+		// superseded, not expired, scope-filtered in SQL before truncation.
+		// Auto-save stays RELATIONSHIP; only the read side honours the
+		// relationship's memoryShareScope read convention.
+		shareScope := view.persona.MemoryShareScope
+		if shareScope == "" {
+			shareScope = "RELATIONSHIP"
+		}
+		mems, err := s.SelectRecallMemories(ctx, key.OwnerID, view.relationshipID, view.conversationID, shareScope)
 		if err != nil {
 			return turn.ContextSeed{}, err
 		}
 		for _, mem := range mems {
-			if mem.Status != "ACCEPTED" || mem.DeletedAt != nil {
-				continue
-			}
-			// SESSION-scoped memory is bound to its conversation; SESSION
-			// memories from other conversations must not leak into this turn.
-			if mem.Scope == "SESSION" && (mem.ConversationID == nil || *mem.ConversationID != view.conversationID) {
-				continue
-			}
 			seed.EligibleMemories = append(seed.EligibleMemories, turn.MemoryCandidate{
 				SourceID:  strconv.FormatInt(mem.ID, 10),
 				Summary:   mem.Summary,
@@ -317,6 +352,156 @@ func (s *Store) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSee
 	}
 	seed.TurnID = key.TurnID
 	return seed, nil
+}
+
+// ListRecentModelMessages reads the most recent MODEL-ELIGIBLE message window
+// for the turn context (V131). before is the exclusive oldest already-counted
+// message id (nil = conversation tail). Rows are returned in ascending id
+// order and eligibility filters before the LIMIT, so an ineligible recent
+// page cannot shorten the eligible window. This is a model-facing read only:
+// the user-facing go_list_recent_messages keeps seeing every row.
+func (s *Store) ListRecentModelMessages(ctx context.Context, owner, conversationID int64, before *int64, limit int) ([]Message, error) {
+	var limitPtr *int
+	if limit > 0 {
+		limitPtr = &limit
+	}
+	var out []Message
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT out_id, out_role, out_content, out_created_at, out_no_memory
+			   FROM vc.go_list_model_recent_messages($1, $2, $3, $4)`,
+			owner, conversationID, before, limitPtr)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m Message
+			var stored string
+			if err := rows.Scan(&m.ID, &m.Role, &stored, &m.CreatedAt, &m.NoMemory); err != nil {
+				return err
+			}
+			plain, err := s.decryptStored(stored)
+			if err != nil {
+				return errStore
+			}
+			m.ConversationID = conversationID
+			m.Content = plain
+			out = append(out, m)
+		}
+		if out == nil {
+			out = []Message{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// ListModelHistoryMessages is the model-facing forward read for legacy seed
+// turns without a source message (V131): the earliest eligible window,
+// ascending, with the same eligibility predicate as the recent-window read.
+func (s *Store) ListModelHistoryMessages(ctx context.Context, owner, conversationID int64, after *int64, limit int) ([]Message, error) {
+	var limitPtr *int
+	if limit > 0 {
+		limitPtr = &limit
+	}
+	var out []Message
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT out_id, out_role, out_content, out_created_at, out_no_memory
+			   FROM vc.go_list_model_history_messages($1, $2, $3, $4)`,
+			owner, conversationID, after, limitPtr)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m Message
+			var stored string
+			if err := rows.Scan(&m.ID, &m.Role, &stored, &m.CreatedAt, &m.NoMemory); err != nil {
+				return err
+			}
+			plain, err := s.decryptStored(stored)
+			if err != nil {
+				return errStore
+			}
+			m.ConversationID = conversationID
+			m.Content = plain
+			out = append(out, m)
+		}
+		if out == nil {
+			out = []Message{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// MessageModelEligible reports the persisted egress fact (V112) for one
+// message, so a retried turn re-checks its own source before re-sending it.
+func (s *Store) MessageModelEligible(ctx context.Context, owner, messageID int64) (bool, error) {
+	if messageID <= 0 {
+		return false, ErrInvalid
+	}
+	var eligible bool
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.go_message_model_eligible($1, $2)`,
+			owner, messageID).Scan(&eligible)
+	})
+	if err != nil {
+		return false, mapStoreErr(err)
+	}
+	return eligible, nil
+}
+
+// SelectRecallMemories reads the effective recall set for one turn (V132):
+// ACCEPTED, not deleted, not superseded, due events lazily expired, scope
+// filtered by the relationship's memoryShareScope read convention, cut and
+// ordered in SQL. The management read vc.list_memory stays untouched.
+func (s *Store) SelectRecallMemories(ctx context.Context, owner, relationshipID, conversationID int64, shareScope string) ([]Memory, error) {
+	if shareScope == "" {
+		shareScope = "RELATIONSHIP"
+	}
+	var out []Memory
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT out_id, out_scope, out_summary, out_conversation_id
+			   FROM vc.go_select_recall_memories($1, $2, $3, $4, $5)`,
+			owner, relationshipID, conversationID, shareScope, seedWindow)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var mem Memory
+			var stored string
+			if err := rows.Scan(&mem.ID, &mem.Scope, &stored, &mem.ConversationID); err != nil {
+				return err
+			}
+			plain, err := s.decryptStored(stored)
+			if err != nil {
+				return errStore
+			}
+			mem.Summary = plain
+			mem.RelationshipID = relationshipID
+			out = append(out, mem)
+		}
+		if out == nil {
+			out = []Memory{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
 }
 
 type generationMeta struct {
@@ -562,8 +747,6 @@ func deref(s *string) string {
 	}
 	return *s
 }
-
-func intPtr(n int) *int { return &n }
 
 var _ turn.Store = (*Store)(nil)
 var _ realtime.Snapshots = (*Store)(nil)

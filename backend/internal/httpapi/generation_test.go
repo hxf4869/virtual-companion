@@ -7,6 +7,25 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
+// N-06: 快照 JSON 必须暴露本轮 source 用户消息 ID（终态失败后的显式再尝试
+// 用它复用已持久化的原消息），协议缺失时不出现该字段。
+func TestGenerationSnapshotJSONExposesSourceMessageID(t *testing.T) {
+	t.Parallel()
+	src := int64(90)
+	got := generationSnapshotJSONFrom(postgres.GenerationSnapshot{
+		Status:          "FAILED_FINAL",
+		SourceMessageID: &src,
+	})
+	if got.SourceMessageID == nil || *got.SourceMessageID != "90" {
+		t.Fatalf("sourceUserMessageId = %v, want 90", got.SourceMessageID)
+	}
+
+	plain := generationSnapshotJSONFrom(postgres.GenerationSnapshot{Status: "QUEUED"})
+	if plain.SourceMessageID != nil {
+		t.Fatalf("sourceUserMessageId = %v, want nil", plain.SourceMessageID)
+	}
+}
+
 func TestGenerationSnapshotEventsExposeDurableTerminal(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -5274,6 +5274,12 @@ components:
         assistantMessageId:
           type: string
           description: Final assistant message id once committed, absent otherwise
+        sourceUserMessageId:
+          type: string
+          description: >-
+            Id of the persisted user message this generation was sourced from;
+            absent for legacy turns created without one. A retried turn reuses
+            it instead of duplicating the user message.
         events:
           type: array
           description: Minimal authoritative terminal sequence; empty before settlement

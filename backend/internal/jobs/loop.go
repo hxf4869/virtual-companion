@@ -101,10 +101,19 @@ func PolicyFrom(cfg config.Config) Policy {
 	}
 }
 
-// Cancels holds in-process generation cancel funcs. Durable cancel is the DB.
+// Cancels holds in-process cancel funcs for GENERATION and MEMORY_EXTRACT
+// calls. Durable cancel is the DB. Entries are keyed by job kind plus numeric
+// id: generation ids (RefID) and extract job ids (JobID) are independent
+// bigint sequences, so a bare numeric key would let one kind overwrite or
+// cancel the other's entry.
 type Cancels struct {
 	mu sync.Mutex
-	fn map[int64]cancelEntry
+	fn map[cancelKey]cancelEntry
+}
+
+type cancelKey struct {
+	kind string
+	id   int64
 }
 
 type cancelEntry struct {
@@ -113,35 +122,36 @@ type cancelEntry struct {
 }
 
 func NewCancels() *Cancels {
-	return &Cancels{fn: map[int64]cancelEntry{}}
+	return &Cancels{fn: map[cancelKey]cancelEntry{}}
 }
 
-func (c *Cancels) Register(ownerID, id int64, cancel context.CancelFunc) {
-	if c == nil || ownerID <= 0 || id <= 0 || cancel == nil {
+func (c *Cancels) Register(kind string, ownerID, id int64, cancel context.CancelFunc) {
+	if c == nil || kind == "" || ownerID <= 0 || id <= 0 || cancel == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.fn[id] = cancelEntry{ownerID: ownerID, cancel: cancel}
+	c.fn[cancelKey{kind: kind, id: id}] = cancelEntry{ownerID: ownerID, cancel: cancel}
 }
 
-func (c *Cancels) Unregister(id int64) {
+func (c *Cancels) Unregister(kind string, id int64) {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.fn, id)
+	delete(c.fn, cancelKey{kind: kind, id: id})
 }
 
-func (c *Cancels) Cancel(id int64) bool {
+func (c *Cancels) Cancel(kind string, id int64) bool {
 	if c == nil {
 		return false
 	}
+	key := cancelKey{kind: kind, id: id}
 	c.mu.Lock()
-	entry, ok := c.fn[id]
+	entry, ok := c.fn[key]
 	if ok {
-		delete(c.fn, id)
+		delete(c.fn, key)
 	}
 	c.mu.Unlock()
 	if !ok {

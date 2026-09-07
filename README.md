@@ -5,6 +5,16 @@ AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前后端运行时为
 pgvector。Generation、Realtime、Memory、数据权利与管理员模型配置已接入 Go
 runtime；项目尚未达到真实用户或公开生产发布条件。
 
+## 2026-09-06 修复轮状态
+
+当前工作分支 `codex/audit-remediation`，基线 HEAD
+`02c1fe91367b015443ec059264fd4d5273691ca0`。本轮授权批次为 N-00～N-08
+（对应评审发现 F-01～F-08），逐项完成情况以后续提交与对账记录为准。
+验证以本地入口为准：`bash scripts/check.sh`、`infra/db/` 隔离脚本、定向
+Vitest。CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
+新版产品范围以 `PRODUCT.md` 与 `frontend/DESIGN.md` 为准；历史文档中的
+Owner-only 描述是时序差异，不代表新版产品范围。
+
 ## 快速开始
 
 ```bash

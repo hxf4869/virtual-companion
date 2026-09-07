@@ -1,5 +1,14 @@
 # TODO
 
+## 2026-09-06 修复轮状态
+
+当前工作分支 `codex/audit-remediation`，基线 HEAD
+`02c1fe91367b015443ec059264fd4d5273691ca0`。本轮授权批次 N-00～N-08
+（对应评审发现 F-01～F-08）为在途修复，逐项状态与验收以对账记录为准，
+本文件其余条目维持原状。验证以本地入口为准（`bash scripts/check.sh`、
+`infra/db/` 隔离脚本、定向 Vitest）；CI 远端运行 NOT_RUN（CI 仅由 `main`
+触发；工作分支已推送但不触发 CI）。
+
 产品待办（现状声明见 README）：
 
 ## Go companion runtime（ADR-0007，2026-08-30 起）

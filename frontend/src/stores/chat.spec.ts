@@ -7,7 +7,7 @@ import {
   TERMINAL_EVENT_TYPE,
   type StreamEvent,
 } from "@/domain/stream-reducer";
-import type { RealtimeDeps, ResumeResult } from "@/api/realtime";
+import type { RealtimeDeps, ResumeResult, SnapshotResult } from "@/api/realtime";
 import type { ChatTransport, ChatApiResponse } from "@/api/chat";
 
 function delta(seq: number, epoch = 1, payload = "Hel"): StreamEvent {
@@ -2055,7 +2055,9 @@ describe("useChatStore", () => {
     };
     await store.loadHistory(failing);
 
-    expect(store.historyLoadFailed).toBe(true);
+    // N-06：最近窗口失败与 load-more 失败分离，重试走最近窗口请求。
+    expect(store.recentLoadFailed).toBe(true);
+    expect(store.historyLoadFailed).toBe(false);
     expect(store.messages.map((m) => m.content)).toEqual(["A", "B"]);
     expect(store.historyHasMore).toBe(true); // 保留重试入口
 
@@ -2064,7 +2066,7 @@ describe("useChatStore", () => {
     expect(store.historyHasMore).toBe(false);
   });
 
-  it("send stays completed and flags the history error when the tail reload fails", async () => {
+  it("send stays completed and flags the final-sync error when the tail reload fails", async () => {
     const store = useChatStore();
     const failingMessages: ChatTransport = {
       async request(method, path) {
@@ -2093,8 +2095,1075 @@ describe("useChatStore", () => {
     await store.initConversation(failingMessages, "1");
     await store.send(failingMessages, successDeps(), "Hello");
 
+    // N-06（缺口4）：回复已完成，补页失败只报"记录同步暂未成功"，
+    // 不再误报语义相反的"更早的消息"历史错误。
     expect(store.phase).toBe("completed");
-    expect(store.historyLoadFailed).toBe(true);
+    expect(store.finalSyncFailed).toBe(true);
+    expect(store.historyLoadFailed).toBe(false);
   });
 
+});
+
+// ---- N-05/N-06：重试分流、晚到提交、终态合并 ----
+
+describe("useChatStore N-05/N-06", () => {
+  const storageRows = new Map<string, string>();
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    storageRows.clear();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => storageRows.get(key) ?? null,
+      setItem: (key: string, value: string) => storageRows.set(key, value),
+      removeItem: (key: string) => storageRows.delete(key),
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("T-43: detach 后晚到的 POST 成功响应不重启流，仅保留恢复标识", async () => {
+    const store = useChatStore();
+    const gate = deferred<ChatApiResponse>();
+    let postCount = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/generations")) {
+          postCount += 1;
+          return gate.promise;
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const deps = successDeps();
+    await store.initConversation(transport, "1");
+    store.bindGenerationContext("account-1", "rel-1");
+    const sending = store.send(transport, deps, "晚到测试");
+    await vi.waitFor(() => expect(postCount).toBe(1));
+    store.detachInFlight();
+    gate.resolve({
+      ok: true,
+      status: 200,
+      json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+    });
+    await sending;
+    expect(deps.resume).not.toHaveBeenCalled(); // 离页后不得重建订阅
+    expect(store.phase).not.toBe("streaming");
+    const stored = storageRows.get("vc.gen.restore");
+    expect(stored).toBeTruthy();
+    expect(JSON.parse(stored as string).generationId).toBe("42");
+  });
+
+  it("T-34: 未知请求后同键重试得 4xx，原键保留不开放新键", async () => {
+    const store = useChatStore();
+    const keys: string[] = [];
+    let attempt = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
+        if (path.includes("/generations")) {
+          attempt += 1;
+          keys.push(String((body as { idempotencyKey: string }).idempotencyKey));
+          if (attempt === 1) throw new Error("network lost"); // 结果未知
+          return { ok: false, status: 400, json: null }; // 同键重试被拒
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    await expect(store.send(transport, successDeps(), "同键语义")).rejects.toThrow();
+    await expect(store.send(transport, successDeps(), "同键语义")).rejects.toThrow();
+    // 两次尝试使用同一键；4xx 拒绝不得清除仍待核对的未知请求键。
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(keys[1]);
+  });
+
+  it.each([403, 404])(
+    "存在性隐藏 %d 后保留未知请求的幂等键（null 返回分支与 T-34 catch 镜像）",
+    async (hiddenStatus) => {
+      const store = useChatStore();
+      const keys: string[] = [];
+      const bodies: Array<Record<string, unknown>> = [];
+      let attempt = 0;
+      const transport: ChatTransport = {
+        async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
+          if (path.includes("/generations") && method === "POST") {
+            attempt += 1;
+            bodies.push({ ...(body as Record<string, unknown>) });
+            keys.push(String((body as { idempotencyKey: string }).idempotencyKey));
+            if (attempt === 1) throw new Error("network lost"); // 结果未知
+            // 存在性隐藏 4xx：真实 sendGeneration 不抛错、返回 null。
+            return { ok: false, status: hiddenStatus, json: null };
+          }
+          if (path === "/api/v1/conversations" && method === "POST") {
+            return { ok: true, status: 200, json: { conversationId: 1 } };
+          }
+          if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+          return { ok: true, status: 200, json: {} };
+        },
+      };
+      await store.initConversation(transport, "1");
+
+      // ① 首次 POST 结果未知：send 抛错，键保留。
+      await expect(store.send(transport, successDeps(), "同键语义")).rejects.toThrow();
+      // ② 同键重试得存在性隐藏 4xx：send 正常返回（不抛），turn 进入失败态。
+      await store.send(transport, successDeps(), "同键语义");
+      expect(store.phase).toBe("failed");
+      expect(store.pendingUserContent).toBe("同键语义");
+      // ③ 再次同意图重试：仍用原键且不携带 sourceUserMessageId——
+      // 存在性隐藏只证明本次重试被拒，不证明此前未知请求的结局。
+      await store.send(transport, successDeps(), "同键语义");
+      expect(keys).toHaveLength(3);
+      expect(keys[0]).toBe(keys[1]);
+      expect(keys[1]).toBe(keys[2]);
+      expect(bodies.every((entry) => entry.sourceUserMessageId === undefined)).toBe(true);
+    },
+  );
+
+  it("T-37: 完成快照按真实 assistantMessageId 合并权威正文，历史到达后去重", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      messagesJson: [{ messageId: 77, conversationId: 1, role: "assistant", content: "最终回复" }],
+    });
+    await store.initConversation(transport, "1");
+    const deps: RealtimeDeps = {
+      resume: vi.fn(),
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        assistantMessageId: "77",
+        events: [snapshot(1, 1, "最终回复"), terminal(2, 1)],
+      })),
+    };
+    store.generationId = "42";
+    store.conversationId = "1";
+    await store.recoverInFlight(deps);
+    expect(store.phase).toBe("completed");
+    expect(store.finalAssistant).toEqual({ generationId: "42", messageId: "77", content: "最终回复" });
+    const rendered = store.displayMessages.filter(
+      (m) => m.role === "assistant" && m.content === "最终回复",
+    );
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0].messageId).toBe("77");
+
+    // 持久消息到达（最近窗口刷新）后过渡显示被去重清除。
+    await store.loadHistory(transport);
+    expect(store.messages.some((m) => m.messageId === "77")).toBe(true);
+    expect(store.finalAssistant).toBeNull();
+    expect(store.displayMessages.filter((m) => m.messageId === "77")).toHaveLength(1);
+  });
+
+  it("T-37b: 完成快照的合法空正文同样按 ID 合并", async () => {
+    const store = useChatStore();
+    await store.initConversation(mockChatTransport({ messagesJson: [] }), "1");
+    const deps: RealtimeDeps = {
+      resume: vi.fn(),
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        assistantMessageId: "78",
+        events: [snapshot(1, 1, ""), terminal(2, 1)],
+      })),
+    };
+    store.generationId = "42";
+    store.conversationId = "1";
+    await store.recoverInFlight(deps);
+    expect(store.phase).toBe("completed");
+    expect(store.finalAssistant).toEqual({ generationId: "42", messageId: "78", content: "" });
+    expect(store.displayMessages.some((m) => m.messageId === "78")).toBe(true);
+  });
+
+  it("T-40: 停止时服务端已完成，取消响应确认后补页带回权威行，不伪造 CANCELLED", async () => {
+    const store = useChatStore();
+    const release = deferred<void>();
+    let messagesCalls = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        // 取消端点必须先于 /generations 判断（路径同样包含 generations）。
+        if (path.includes("/cancel")) {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "COMPLETED" },
+          };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) {
+          // 第一次是初始最近窗口（直接返回空）；此后的终局补页等待取消
+          // 核对先落地，返回本轮持久行。
+          messagesCalls += 1;
+          if (messagesCalls === 1) return { ok: true, status: 200, json: [] };
+          await release.promise;
+          return {
+            ok: true,
+            status: 200,
+            json: [
+              { messageId: 90, conversationId: 1, role: "user", content: "停止竞争" },
+              { messageId: 91, conversationId: 1, role: "assistant", content: "已完成" },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    // 流挂起直到取消触发 abort。
+    const deps: RealtimeDeps = {
+      resume: vi.fn(
+        (_request, signal?: AbortSignal) =>
+          new Promise<ResumeResult>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          }),
+      ),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: null, events: [] })),
+    };
+    await store.initConversation(transport, "1");
+    const sending = store.send(transport, deps, "停止竞争");
+    await vi.waitFor(() => expect(deps.resume).toHaveBeenCalled());
+    await store.cancel();
+    release.resolve();
+    await sending;
+    await vi.waitFor(() => expect(store.phase).toBe("completed"));
+    expect(store.messages.some((m) => m.messageId === "91" && m.content === "已完成")).toBe(true);
+    expect(store.cancelUnconfirmed).toBe(false);
+  });
+
+  it("N-06: 快照路径记录权威 lastTurnSource（recoverInFlight）", async () => {
+    const store = useChatStore();
+    await store.initConversation(mockChatTransport({ messagesJson: [] }), "1");
+    const deps: RealtimeDeps = {
+      resume: vi.fn(),
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        sourceUserMessageId: "90",
+        events: [
+          { eventSeq: 1, streamEpoch: 1, eventType: "chat.failed", payload: { fault: "PROVIDER" } },
+        ],
+      })),
+    };
+    store.generationId = "42";
+    store.conversationId = "1";
+    await store.recoverInFlight(deps);
+    expect(store.phase).toBe("failed");
+    expect(store.lastTurnSource).toBe("90");
+  });
+
+  it("N-06: 快照拿不到 source 时 resolveTurnSource 返回空（不退回复制发送）", async () => {
+    const store = useChatStore();
+    await store.initConversation(mockChatTransport({ messagesJson: [] }), "1");
+    // 本轮已确认持有 generation（终态失败轮的真实前置状态）。
+    store.generationId = "42";
+    store.turnHasGeneration = true;
+    store.conversationId = "1";
+    const deps: RealtimeDeps = {
+      resume: vi.fn(),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: 500, events: [] })),
+    };
+    expect(await store.resolveTurnSource(deps)).toBe("");
+    expect(store.lastTurnSource).toBe("");
+  });
+
+  it("N-05: resolveTurnSource 快照在途期间新一轮 send 提交，旧快照不得污染新轮归属", async () => {
+    const store = useChatStore();
+    const snapshotGate = deferred<SnapshotResult>();
+    const postGate = deferred<ChatApiResponse>();
+    let turn = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          turn += 1;
+          if (turn === 1) {
+            return {
+              ok: true,
+              status: 200,
+              json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+            };
+          }
+          return postGate.promise; // 新一轮 POST 挂起：generationId 仍是旧值
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const failedEvent = { eventSeq: 1, streamEpoch: 1, eventType: "chat.failed", payload: { fault: "PROVIDER" } };
+    const failingDeps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [failedEvent],
+      })),
+      fetchSnapshot: vi.fn(async () => snapshotGate.promise),
+    };
+    await store.initConversation(transport, "1");
+    // 第一轮真实走完：服务端终态失败（turnHasGeneration=true、generationId=旧值）。
+    await store.send(transport, failingDeps, "第一轮");
+    expect(store.phase).toBe("failed");
+    expect(store.generationId).toBe("42");
+    expect(store.turnHasGeneration).toBe(true);
+    expect(store.lastTurnSource).toBe("");
+
+    // 显式重试发起有界核对（快照在途，不 await）；期间用户发起新一轮 send：
+    // 同步段 turnSeq+1、lastTurnSource 清空、turnHasGeneration=false，
+    // POST 在途（generationId 仍指向旧 generation）。
+    const sourcePromise = store.resolveTurnSource(failingDeps);
+    const secondSend = store.send(transport, failingDeps, "新一轮");
+    expect(store.generationStarting).toBe(true);
+    expect(store.turnHasGeneration).toBe(false);
+    expect(store.lastTurnSource).toBe("");
+
+    // 旧 generation 的快照此刻返回 ok 且带 source：不得写入新轮的 lastTurnSource，
+    // 否则新轮终态失败后的重试会短路复用跨轮错误归属。
+    snapshotGate.resolve({ ok: true, status: 200, sourceUserMessageId: "90", events: [] });
+    expect(await sourcePromise).toBe("");
+    expect(store.lastTurnSource).toBe("");
+
+    // 收尾：放行第二轮 POST（存在性隐藏 → 本轮 failed），不留悬挂请求。
+    postGate.resolve({ ok: false, status: 404, json: null });
+    await secondSend;
+    expect(store.phase).toBe("failed");
+  });
+
+  it("N-05: POST 失败轮的 resolveTurnSource 不读上一轮残留 generation", async () => {
+    const store = useChatStore();
+    let failPost = false;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/generations") && method === "POST") {
+          if (failPost) throw new Error("network lost");
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    // 上一轮真实完成：generationId 是上一轮的旧值。
+    await store.send(transport, successDeps(), "上一轮");
+    expect(store.generationId).toBe("42");
+
+    // 新一轮 POST 结果未知：本轮未确认持有 generation，generationId 残留旧值。
+    failPost = true;
+    await expect(store.send(transport, successDeps(), "新一轮")).rejects.toThrow();
+    expect(store.turnHasGeneration).toBe(false);
+    expect(store.lastTurnSource).toBe("");
+
+    // 旧 gen 的快照即使能返回 source，也不得充当本轮 source——本轮未确认
+    // 持有 generation，按旧快照重发会让页面重新生成旧消息。
+    const fetchSnapshot = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      sourceUserMessageId: "90",
+      events: [],
+    }));
+    const deps: RealtimeDeps = { resume: vi.fn(), fetchSnapshot };
+
+    expect(await store.resolveTurnSource(deps)).toBe("");
+    expect(fetchSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("N-06: 取消核对的快照确认同样记录 lastTurnSource", async () => {
+    const store = useChatStore();
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/cancel")) throw new Error("cancel lost");
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const deps: RealtimeDeps = {
+      resume: vi.fn(
+        (_request, signal?: AbortSignal) =>
+          new Promise<ResumeResult>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          }),
+      ),
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        sourceUserMessageId: "90",
+        events: [{ eventSeq: 1, streamEpoch: 1, eventType: "chat.cancelled", payload: null }],
+      })),
+    };
+    await store.initConversation(transport, "1");
+    const sending = store.send(transport, deps, "停止取源");
+    await vi.waitFor(() => expect(deps.resume).toHaveBeenCalled());
+    await store.cancel();
+    await sending;
+    expect(store.phase).toBe("cancelled");
+    expect(store.lastTurnSource).toBe("90");
+  });
+
+  it("N-06: null-ID 最终正文不做任何正文去重，真实 ID 按全窗比对去重", async () => {
+    const store = useChatStore();
+    store.conversationId = "1";
+    // ID 未知时过渡行始终显示：更早轮次的同正文行不抑制当前轮。
+    store.messages = [
+      { messageId: "80", conversationId: "1", role: "assistant", content: "同文" },
+      { messageId: "81", conversationId: "1", role: "user", content: "问" },
+    ];
+    store.finalAssistant = { generationId: "42", messageId: null, content: "同文" };
+    expect(store.displayMessages.some((m) => m.messageId === "__final_42__")).toBe(true);
+
+    // 补页失败时窗口尾部的同正文 assistant 行（旧轮次）同样不得吞掉本轮过渡行。
+    store.messages = [
+      { messageId: "80", conversationId: "1", role: "assistant", content: "同文" },
+      { messageId: "81", conversationId: "1", role: "user", content: "问" },
+      { messageId: "82", conversationId: "1", role: "assistant", content: "同文" },
+    ];
+    expect(store.displayMessages.some((m) => m.messageId === "__final_42__")).toBe(true);
+
+    // 获得真实 ID 后按 ID 全窗去重：持久行在窗即清除过渡行。
+    store.finalAssistant = { generationId: "42", messageId: "82", content: "同文" };
+    const transport = mockChatTransport({
+      messagesJson: [
+        { messageId: 81, conversationId: 1, role: "user", content: "问" },
+        { messageId: 82, conversationId: 1, role: "assistant", content: "同文" },
+      ],
+    });
+    await store.loadHistory(transport);
+    expect(store.finalAssistant).toBeNull();
+    expect(store.displayMessages.some((m) => m.messageId === "__final_42__")).toBe(false);
+    expect(store.displayMessages.filter((m) => m.content === "同文")).toHaveLength(1);
+  });
+
+  /**
+   * N-06 最终消息去重夹具：初始最近窗口带上一轮尾部 assistant 行（与本轮
+   * 回复同正文"好的"），SSE 直完成不带消息 ID；本轮补页与完成后的快照核对
+   * 按场景配置，走真实 send 路径。
+   */
+  function finalDedupeFixture(opts: {
+    tailSyncOk: boolean;
+    tailRows?: Array<Record<string, unknown>>;
+    snapshotReject?: boolean;
+    snapshotAssistantMessageId?: string;
+    snapshotSourceUserMessageId?: string;
+  }): { transport: ChatTransport; deps: RealtimeDeps; fetchSnapshot: ReturnType<typeof vi.fn> } {
+    let messagesCalls = 0;
+    const transport: ChatTransport = {
+      async request(method, path): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) {
+          messagesCalls += 1;
+          if (messagesCalls === 1) {
+            return {
+              ok: true,
+              status: 200,
+              json: [{ messageId: 10, conversationId: 1, role: "assistant", content: "好的" }],
+            };
+          }
+          if (!opts.tailSyncOk) throw new Error("tail sync lost");
+          return { ok: true, status: 200, json: opts.tailRows ?? [] };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const fetchSnapshot = vi.fn(async () => {
+      if (opts.snapshotReject) throw new Error("snapshot lost");
+      return {
+        ok: true,
+        status: 200,
+        assistantMessageId: opts.snapshotAssistantMessageId,
+        sourceUserMessageId: opts.snapshotSourceUserMessageId,
+        events: [],
+      };
+    });
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [delta(1, 1, "好的"), terminal(2, 1)],
+      })),
+      fetchSnapshot,
+    };
+    return { transport, deps, fetchSnapshot };
+  }
+
+  it("N-06: 补页失败时 ID 未知的本轮最终回复不被旧尾部同正文行吞掉", async () => {
+    const store = useChatStore();
+    const { transport, deps } = finalDedupeFixture({ tailSyncOk: false });
+    await store.initConversation(transport, "1");
+    await store.send(transport, deps, "问");
+
+    expect(store.phase).toBe("completed");
+    expect(store.finalSyncFailed).toBe(true);
+    // 旧尾部行与本轮过渡行都在：本轮回复没有被同正文旧行吞掉。
+    const rendered = store.displayMessages.filter(
+      (m) => m.role === "assistant" && m.content === "好的",
+    );
+    expect(rendered).toHaveLength(2);
+    expect(rendered.map((m) => m.messageId)).toContain("10");
+    expect(rendered.map((m) => m.messageId)).toContain("__final_42__");
+  });
+
+  it("N-06: 完成后有界快照确认真实 ID，历史补页后按 ID 合并去重", async () => {
+    const store = useChatStore();
+    const { transport, deps, fetchSnapshot } = finalDedupeFixture({
+      tailSyncOk: true,
+      tailRows: [
+        { messageId: 90, conversationId: 1, role: "user", content: "问" },
+        { messageId: 91, conversationId: 1, role: "assistant", content: "好的" },
+      ],
+      snapshotAssistantMessageId: "91",
+      snapshotSourceUserMessageId: "90",
+    });
+    await store.initConversation(transport, "1");
+    await store.send(transport, deps, "问");
+
+    // 完成后用一次有界快照核对确认身份并捕获权威 source。
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+    expect(store.lastTurnSource).toBe("90");
+    // 真实行 91 在窗后过渡行按 ID 清除：上一轮尾部"好的" + 本轮真实行共两条。
+    expect(store.finalAssistant).toBeNull();
+    const rendered = store.displayMessages.filter(
+      (m) => m.role === "assistant" && m.content === "好的",
+    );
+    expect(rendered.map((m) => m.messageId)).toEqual(["10", "91"]);
+    expect(store.displayMessages.some((m) => m.messageId === "__final_42__")).toBe(false);
+  });
+
+  it("N-06: 快照拿不到 ID 时过渡行保留显示，不因尾部同正文被清除", async () => {
+    const store = useChatStore();
+    const { transport, deps, fetchSnapshot } = finalDedupeFixture({
+      tailSyncOk: false,
+      snapshotReject: true,
+    });
+    await store.initConversation(transport, "1");
+    await store.send(transport, deps, "问");
+
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+    expect(store.finalAssistant).toEqual({ generationId: "42", messageId: null, content: "好的" });
+    const rendered = store.displayMessages.filter(
+      (m) => m.role === "assistant" && m.content === "好的",
+    );
+    expect(rendered).toHaveLength(2);
+    expect(rendered.map((m) => m.messageId)).toContain("__final_42__");
+  });
+
+  it("N-05: turnHasGeneration 区分当前轮持有 generation 与 POST 失败轮", async () => {
+    const store = useChatStore();
+    let failPost = true;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/generations") && method === "POST") {
+          if (failPost) throw new Error("network lost");
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    await expect(store.send(transport, successDeps(), "失败轮")).rejects.toThrow();
+    expect(store.turnHasGeneration).toBe(false); // POST 失败轮不持有 generation
+
+    failPost = false;
+    await store.send(transport, successDeps(), "成功轮");
+    expect(store.turnHasGeneration).toBe(true);
+
+    store.reset();
+    expect(store.turnHasGeneration).toBe(false);
+  });
+
+  it("N-05: POST 在途切会话后晚到成功，恢复标识为发起时会话的配对", async () => {
+    const store = useChatStore();
+    const gate = deferred<ChatApiResponse>();
+    let postCount = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/generations") && method === "POST") {
+          postCount += 1;
+          return gate.promise;
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    store.bindGenerationContext("account-1", "rel-1");
+    const sending = store.send(transport, successDeps(), "在途");
+    await vi.waitFor(() => expect(postCount).toBe(1));
+    await store.openConversation(transport, "2");
+    gate.resolve({
+      ok: true,
+      status: 200,
+      json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+    });
+    await sending;
+    const stored = JSON.parse(storageRows.get("vc.gen.restore") as string);
+    expect(stored.generationId).toBe("42");
+    expect(String(stored.conversationId)).toBe("1"); // 发起时会话，不是切换后的 "2"
+    expect(stored.accountId).toBe("account-1");
+  });
+
+  it("N-05: 绑定已变（换号）后晚到成功不写恢复标识", async () => {
+    const store = useChatStore();
+    const gate = deferred<ChatApiResponse>();
+    let postCount = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/generations") && method === "POST") {
+          postCount += 1;
+          return gate.promise;
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    store.bindGenerationContext("account-1", "rel-1");
+    const sending = store.send(transport, successDeps(), "换号");
+    await vi.waitFor(() => expect(postCount).toBe(1));
+    store.bindGenerationContext("account-2", "rel-1"); // 换号重绑
+    gate.resolve({
+      ok: true,
+      status: 200,
+      json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+    });
+    await sending;
+    expect(storageRows.get("vc.gen.restore")).toBeUndefined();
+  });
+
+  it("N-05: reset（注销/换号清空绑定）后晚到成功不写恢复标识", async () => {
+    const store = useChatStore();
+    const gate = deferred<ChatApiResponse>();
+    let postCount = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/generations") && method === "POST") {
+          postCount += 1;
+          return gate.promise;
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    store.bindGenerationContext("account-1", "rel-1");
+    const sending = store.send(transport, successDeps(), "注销在途");
+    await vi.waitFor(() => expect(postCount).toBe(1));
+    store.reset(); // 清空绑定与窗口
+    gate.resolve({
+      ok: true,
+      status: 200,
+      json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+    });
+    await sending;
+    expect(storageRows.get("vc.gen.restore")).toBeUndefined();
+    expect(store.turnHasGeneration).toBe(false);
+  });
+
+  it("N-05: 已有更新轮次的恢复条目不被晚到旧响应覆盖", async () => {
+    const store = useChatStore();
+    storageRows.set(
+      "vc.gen.restore",
+      JSON.stringify({
+        accountId: "account-1",
+        relationshipId: "rel-1",
+        conversationId: "1",
+        generationId: "99",
+        savedAtEpochMs: Date.now(),
+      }),
+    );
+    const gate = deferred<ChatApiResponse>();
+    let postCount = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/generations") && method === "POST") {
+          postCount += 1;
+          return gate.promise;
+        }
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    store.bindGenerationContext("account-1", "rel-1");
+    const sending = store.send(transport, successDeps(), "旧响应");
+    await vi.waitFor(() => expect(postCount).toBe(1));
+    store.detachInFlight();
+    gate.resolve({
+      ok: true,
+      status: 200,
+      json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+    });
+    await sending;
+    const stored = JSON.parse(storageRows.get("vc.gen.restore") as string);
+    expect(stored.generationId).toBe("99"); // 更新的条目胜出
+  });
+
+  it("N-06: 正常完成后的补页失败置 finalSyncFailed，不再误报历史错误", async () => {
+    const store = useChatStore();
+    let messagesCalls = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) {
+          messagesCalls += 1;
+          if (messagesCalls === 1) return { ok: true, status: 200, json: [] };
+          throw new Error("tail sync lost");
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    await store.send(transport, successDeps(), "你好");
+    expect(store.phase).toBe("completed");
+    expect(store.finalSyncFailed).toBe(true);
+    expect(store.historyLoadFailed).toBe(false);
+
+    // 手动重试再次失败：如实重置标记。
+    const badTransport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path.includes("/messages")) throw new Error("sync lost again");
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.retryFinalSync(badTransport);
+    expect(store.finalSyncFailed).toBe(true);
+
+    // 手动重试成功：清除标记并带回权威行。
+    const goodTransport = mockChatTransport({
+      messagesJson: [
+        { messageId: 90, conversationId: 1, role: "user", content: "你好" },
+        { messageId: 91, conversationId: 1, role: "assistant", content: "回复" },
+      ],
+    });
+    await store.retryFinalSync(goodTransport);
+    expect(store.finalSyncFailed).toBe(false);
+    expect(store.messages.some((m) => m.messageId === "91")).toBe(true);
+  });
+
+  it("N-06: retryFinalSync 在途切会话后失败不污染新会话", async () => {
+    const store = useChatStore();
+    let tailCalls = 0;
+    const gate = deferred<ChatApiResponse>();
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/conversations/1/messages")) {
+          tailCalls += 1;
+          if (tailCalls === 1) return { ok: true, status: 200, json: [] }; // 初始窗口
+          if (tailCalls === 2) throw new Error("tail sync lost"); // 完成补页失败
+          return gate.promise; // 手动重试挂起
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] }; // 会话 2 窗口
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    await store.send(transport, successDeps(), "慢同步");
+    expect(store.finalSyncFailed).toBe(true);
+    void store.retryFinalSync(transport);
+    await vi.waitFor(() => expect(tailCalls).toBe(3)); // 初始窗口 + 完成补页 + 手动重试
+    await store.openConversation(transport, "2");
+    gate.reject(new Error("late sync lost"));
+    await vi.waitFor(() => expect(store.conversationId).toBe("2"));
+    expect(store.finalSyncFailed).toBe(false); // 晚到的失败不得写进新会话
+  });
+
+  it("N-06: 新一轮 send 开始时清 finalSyncFailed", async () => {
+    const store = useChatStore();
+    const gate = deferred<ChatApiResponse>();
+    let postCalls = 0;
+    let messagesCalls = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          postCalls += 1;
+          if (postCalls === 1) {
+            return {
+              ok: true,
+              status: 200,
+              json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+            };
+          }
+          return gate.promise;
+        }
+        if (path.includes("/messages")) {
+          messagesCalls += 1;
+          if (messagesCalls === 1) return { ok: true, status: 200, json: [] };
+          throw new Error("tail sync lost");
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    await store.initConversation(transport, "1");
+    await store.send(transport, successDeps(), "第一轮");
+    expect(store.finalSyncFailed).toBe(true);
+
+    gate.resolve({
+      ok: true,
+      status: 200,
+      json: { generationId: 43, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+    });
+    const sending = store.send(transport, successDeps(), "第二轮");
+    expect(store.finalSyncFailed).toBe(false); // 同步段立即清除
+    await sending;
+  });
+
+  it("N-06: 取消核对确认 FAILED 后，被中止 run 的 cancelled 不覆盖终态", async () => {
+    const store = useChatStore();
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/cancel")) {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "FAILED" },
+          };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] };
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    // 确定性竞态顺序：取消核对先确认 FAILED，被中止 run 的 cancelled 提交
+    // 晚于核对落地（传输中断处理慢于取消响应是真实时序）。
+    const deps: RealtimeDeps = {
+      resume: vi.fn(
+        (_request, signal?: AbortSignal) =>
+          new Promise<ResumeResult>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => {
+              setTimeout(() => reject(new DOMException("aborted", "AbortError")), 0);
+            });
+          }),
+      ),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: null, events: [] })),
+    };
+    await store.initConversation(transport, "1");
+    const sending = store.send(transport, deps, "停止失败轮");
+    await vi.waitFor(() => expect(deps.resume).toHaveBeenCalled());
+    await store.cancel();
+    await sending;
+    expect(store.phase).toBe("failed");
+    expect(store.outcome).toBe("failed"); // 本地 cancelled 不得覆盖已确认的 FAILED
+  });
+
+  it("T-40b: 取消核对确认完成后的补页失败置 finalSyncFailed，晚到失败不污染新会话", async () => {
+    const store = useChatStore();
+    const release = deferred<void>();
+    const tailGate = deferred<ChatApiResponse>();
+    let tailCalls = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/cancel")) {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "COMPLETED" },
+          };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/conversations/1/messages")) {
+          tailCalls += 1;
+          if (tailCalls === 1) return { ok: true, status: 200, json: [] }; // 初始窗口
+          return tailGate.promise; // 取消核对后的终局补页
+        }
+        if (path.includes("/messages")) return { ok: true, status: 200, json: [] }; // 会话 2 窗口
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const deps: RealtimeDeps = {
+      resume: vi.fn(
+        (_request, signal?: AbortSignal) =>
+          new Promise<ResumeResult>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          }),
+      ),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: null, events: [] })),
+    };
+    await store.initConversation(transport, "1");
+    const sending = store.send(transport, deps, "停止竞争");
+    await vi.waitFor(() => expect(deps.resume).toHaveBeenCalled());
+    await store.cancel();
+    release.resolve();
+    await vi.waitFor(() => expect(store.phase).toBe("completed"));
+    // 取消核对确认完成后的终局补页已在途（send 补页 + 核对补页）。
+    await vi.waitFor(() => expect(tailCalls).toBe(3));
+    expect(store.finalSyncFailed).toBe(false); // 补页在途，尚未失败
+
+    // 补页失败置 finalSyncFailed（回复已完成、记录同步暂未成功）。
+    tailGate.reject(new Error("tail sync lost"));
+    await sending;
+    expect(store.finalSyncFailed).toBe(true);
+    expect(store.cancelUnconfirmed).toBe(false);
+
+    // 手动重试成功带回权威行。
+    const goodTransport = mockChatTransport({
+      messagesJson: [
+        { messageId: 90, conversationId: 1, role: "user", content: "停止竞争" },
+        { messageId: 91, conversationId: 1, role: "assistant", content: "已完成" },
+      ],
+    });
+    await store.retryFinalSync(goodTransport);
+    expect(store.finalSyncFailed).toBe(false);
+    expect(store.messages.some((m) => m.messageId === "91")).toBe(true);
+  });
+
+  it("5.3: 明确终态失败后的显式再尝试按快照权威 source 复用原用户消息", async () => {
+    const store = useChatStore();
+    const postBodies: Array<Record<string, unknown>> = [];
+    let turn = 0;
+    const transport: ChatTransport = {
+      async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          turn += 1;
+          postBodies.push(body as Record<string, unknown>);
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 40 + turn, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) {
+          return {
+            ok: true,
+            status: 200,
+            json: turn === 1 ? [{ messageId: 90, conversationId: 1, role: "user", content: "再来一次" }] : [],
+          };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const failedEvent = { eventSeq: 1, streamEpoch: 1, eventType: "chat.failed", payload: { fault: "PROVIDER" } };
+    // 第一轮：流终态失败（FAILED_FINAL）；流内失败不经快照，无窗口启发式。
+    const failingDeps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [failedEvent],
+      })),
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        sourceUserMessageId: "90",
+        events: [failedEvent],
+      })),
+    };
+    await store.initConversation(transport, "1");
+    await store.send(transport, failingDeps, "再来一次");
+    expect(store.phase).toBe("failed");
+    expect(store.lastTurnSource).toBe(""); // 窗口启发式已废除
+
+    // 显式再尝试前的有界核对：从快照拿权威 source。
+    const source = await store.resolveTurnSource(failingDeps);
+    expect(source).toBe("90");
+    expect(store.lastTurnSource).toBe("90");
+
+    await store.send(transport, failingDeps, "再来一次", { sourceUserMessageId: source });
+    expect(postBodies[1]?.sourceUserMessageId).toBe("90");
+    expect(postBodies[1]?.idempotencyKey).not.toBe(postBodies[0]?.idempotencyKey);
+  });
 });
