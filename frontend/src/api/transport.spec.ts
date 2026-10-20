@@ -152,6 +152,62 @@ describe("createAuthenticatedTransport", () => {
     expect(result.status).toBe(401);
   });
 
+  it("skips onUnauthorized for a 401 when the caller owns the unauthorized result", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "AUTHENTICATION_REQUIRED", message: "expired" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({ onUnauthorized });
+
+    const result = await transport.request("GET", "/api/v1/auth/session", undefined, {
+      callerHandlesUnauthorized: true,
+    });
+
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+
+    // The option does not change non-401 behavior: a 200 still parses normally.
+    vi.stubGlobal("fetch", fetchOk());
+    const okResult = await transport.request("GET", "/api/v1/version", undefined, {
+      callerHandlesUnauthorized: true,
+    });
+    expect(okResult).toEqual({ ok: true, status: 200, json: { ok: true }, parseFailed: false });
+  });
+
+  it("skips onUnauthorized for a 401 on the timeoutMs path when the caller owns it", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "AUTHENTICATION_REQUIRED", message: "expired" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({ onUnauthorized });
+
+    const result = await transport.request("GET", "/api/v1/auth/session", undefined, {
+      timeoutMs: 15_000,
+      callerHandlesUnauthorized: true,
+    });
+
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+
+    // The option does not change non-401 behavior on this path either.
+    vi.stubGlobal("fetch", fetchOk());
+    const okResult = await transport.request("GET", "/api/v1/version", undefined, {
+      timeoutMs: 15_000,
+      callerHandlesUnauthorized: true,
+    });
+    expect(okResult).toEqual({ ok: true, status: 200, json: { ok: true }, parseFailed: false });
+  });
+
   it("does not call onUnauthorized for a 404 (existence hidden, not a session failure)", async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
       ok: false,

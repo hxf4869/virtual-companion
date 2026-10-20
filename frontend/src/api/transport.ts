@@ -16,6 +16,9 @@ export type RenewResult = "renewed" | "rejected" | "unavailable";
 export interface TransportRequestOptions {
   /** Abort the request after this many ms; the result is then UNKNOWN. */
   timeoutMs?: number;
+  /** When true, a 401 response does not invoke provider.onUnauthorized;
+   * the caller owns interpreting the unauthorized result. */
+  callerHandlesUnauthorized?: boolean;
 }
 
 /** A request that exceeded its per-request timeout; the server outcome is unknown. */
@@ -101,7 +104,7 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
           throw error;
         }
         rememberRequestIdFromResponse(response);
-        if (response.status === 401) {
+        if (response.status === 401 && opts?.callerHandlesUnauthorized !== true) {
           provider.onUnauthorized();
         }
         // 正文读取与超时竞争：超时触发（gate 唤醒）或超时中止导致 json()
@@ -137,7 +140,7 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
       });
     }
     rememberRequestIdFromResponse(response);
-    if (response.status === 401) {
+    if (response.status === 401 && opts?.callerHandlesUnauthorized !== true) {
       provider.onUnauthorized();
     }
     let parseFailed = false;

@@ -1,7 +1,8 @@
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AuthSessionIdentity, AuthTransport } from "@/api/auth";
+import type { AuthApiResponse, AuthSessionIdentity, AuthTransport } from "@/api/auth";
+import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
@@ -60,6 +61,44 @@ function challengeRejectTransport(status: number, code: string): AuthTransport {
   };
 }
 
+/** VC-R08: a second, distinguishable identity for stale/new-generation contrasts. */
+function identityB(): AuthSessionIdentity {
+  return {
+    nextStep: "ACTIVE",
+    expiresInSeconds: 3600,
+    accountId: "8",
+    email: "bob@example.com",
+    role: "ADMIN",
+    passwordMustChange: true,
+    authenticatorEnabled: false,
+  };
+}
+
+/** VC-R08: transport whose responses settle only when the test releases them. */
+function deferredAuthTransport() {
+  const resolvers: Array<(response: AuthApiResponse) => void> = [];
+  const request = vi.fn(
+    async (): Promise<AuthApiResponse> =>
+      new Promise<AuthApiResponse>((resolve) => {
+        resolvers.push(resolve);
+      }),
+  );
+  return {
+    transport: { request } as AuthTransport,
+    requestMock: request,
+    settle(index: number, response: AuthApiResponse): void {
+      resolvers[index]?.(response);
+    },
+  };
+}
+
+/** Minimal Response shape consumed by createAuthenticatedTransport in the node env. */
+interface StubFetchResponse {
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+}
+
 function makeStorage(): Storage {
   const map = new Map<string, string>();
   return {
@@ -78,6 +117,10 @@ describe("useAuthStore", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("localStorage", makeStorage());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("starts unauthenticated and empty", () => {
@@ -261,7 +304,12 @@ describe("useAuthStore", () => {
 
     expect(renewed).toBe(true);
     expect(store.accountId).toBe("7");
-    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/session");
+    expect(t.request).toHaveBeenCalledWith(
+      "GET",
+      "/api/v1/auth/session",
+      undefined,
+      { callerHandlesUnauthorized: true },
+    );
   });
 
   it("coalesces concurrent bootstrap, page and restore calls", async () => {
@@ -320,7 +368,12 @@ describe("useAuthStore", () => {
 
     expect(outcome).toBe("renewed");
     expect(store.accountId).toBe("7");
-    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/session");
+    expect(t.request).toHaveBeenCalledWith(
+      "GET",
+      "/api/v1/auth/session",
+      undefined,
+      { callerHandlesUnauthorized: true },
+    );
   });
 
   it("SESS-REVIVE: renewAccessToken reports rejected and clears on a refused cookie", async () => {
@@ -343,6 +396,226 @@ describe("useAuthStore", () => {
     // A network failure never fabricates a session loss.
     expect(store.isAuthenticated).toBe(true);
     expect(store.accountId).toBe("7");
+  });
+
+  it("VC-R08: a late refresh 200 cannot revive a logged-out identity or its caches", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
+    const chat = useChatStore();
+    const rel = useRelationshipStore();
+    chat.conversationId = "99";
+    chat.messages = [
+      { messageId: "m1", conversationId: "99", role: "user", content: "secret" },
+    ];
+    rel.relationships = [
+      { relationshipId: "rel-1", personaRef: "gentle-listener", active: true },
+    ];
+    rel.currentRelationshipId = "rel-1";
+
+    const deferred = deferredAuthTransport();
+    const revive = store.renewAccessToken(deferred.transport);
+
+    await store.logout(okTransport(sampleTokens()));
+
+    deferred.settle(0, { ok: true, status: 200, json: sampleTokens("a1", true) });
+    await expect(revive).resolves.toBe("unavailable");
+
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.accountId).toBeNull();
+    expect(store.role).toBeNull();
+    expect(store.passwordMustChange).toBe(false);
+    expect(store.nextStep).toBe("LOGIN");
+    expect(store.recoveryCodes).toEqual([]);
+    // Caches dropped by logout must not come back with the stale identity.
+    expect(chat.conversationId).toBe("");
+    expect(chat.messages).toEqual([]);
+    expect(rel.relationships).toEqual([]);
+    expect(rel.currentRelationshipId).toBeNull();
+  });
+
+  it("VC-R08: a late refresh 200 crossing a new login does not overwrite the newer identity", async () => {
+    const store = useAuthStore();
+    const deferred = deferredAuthTransport();
+    const stale = store.renewAccessToken(deferred.transport);
+
+    await store.login(okTransport(identityB()), "bob", "pw");
+
+    deferred.settle(0, { ok: true, status: 200, json: sampleTokens("a1") });
+    await expect(stale).resolves.toBe("unavailable");
+
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accountId).toBe("8");
+    expect(store.role).toBe("ADMIN");
+    expect(store.passwordMustChange).toBe(true);
+    expect(store.nextStep).toBe("ACTIVE");
+  });
+
+  it("VC-R08: a late refresh 401 crossing a new login does not clear the newer identity", async () => {
+    const store = useAuthStore();
+    const deferred = deferredAuthTransport();
+    const stale = store.renewAccessToken(deferred.transport);
+
+    await store.login(okTransport(identityB()), "bob", "pw");
+
+    deferred.settle(0, { ok: false, status: 401, json: { code: "AUTHENTICATION_REQUIRED" } });
+    await expect(stale).resolves.toBe("unavailable");
+
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accountId).toBe("8");
+    expect(store.role).toBe("ADMIN");
+    expect(store.nextStep).toBe("ACTIVE");
+  });
+
+  it("VC-R08: a late refresh 200 cannot turn a fresh TOTP challenge into the old session", async () => {
+    const store = useAuthStore();
+    const deferred = deferredAuthTransport();
+    const stale = store.renewAccessToken(deferred.transport);
+
+    const challengeId = "c".repeat(43);
+    await expect(store.login(totpChallengeTransport(challengeId), "carol", "pw"))
+      .resolves.toBe("TOTP_REQUIRED");
+
+    deferred.settle(0, { ok: true, status: 200, json: sampleTokens("a1") });
+    await expect(stale).resolves.toBe("unavailable");
+
+    expect(store.nextStep).toBe("TOTP_REQUIRED");
+    expect(store.challengeId).toBe(challengeId);
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.accountId).toBeNull();
+  });
+
+  it("VC-R08: a 503 refresh maps to unavailable and never logs out a valid session", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
+
+    const outcome = await store.renewAccessToken(failTransport(503));
+
+    expect(outcome).toBe("unavailable");
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accountId).toBe("7");
+    expect(store.sessionStatus).toBe("authenticated");
+  });
+
+  it("VC-R08: an invalidated refresh never blocks a new one and a stale finally keeps the new in-flight", async () => {
+    const store = useAuthStore();
+    const deferred = deferredAuthTransport();
+
+    const stale = store.renewAccessToken(deferred.transport);
+    expect(deferred.requestMock).toHaveBeenCalledTimes(1);
+    expect(deferred.requestMock).toHaveBeenNthCalledWith(
+      1,
+      "GET",
+      "/api/v1/auth/session",
+      undefined,
+      { callerHandlesUnauthorized: true },
+    );
+
+    store.clear();
+    const fresh = store.tryRefresh(deferred.transport);
+    // The invalidated generation must not absorb the new request.
+    expect(deferred.requestMock).toHaveBeenCalledTimes(2);
+    expect(deferred.requestMock).toHaveBeenNthCalledWith(
+      2,
+      "GET",
+      "/api/v1/auth/session",
+      undefined,
+      { callerHandlesUnauthorized: true },
+    );
+
+    deferred.settle(0, { ok: true, status: 200, json: sampleTokens("a1") });
+    await expect(stale).resolves.toBe("unavailable");
+    expect(store.isAuthenticated).toBe(false);
+
+    // The stale finally must not drop the new in-flight: a third caller joins
+    // the second request instead of dispatching a third one.
+    const joined = store.renewAccessToken(deferred.transport);
+    expect(deferred.requestMock).toHaveBeenCalledTimes(2);
+
+    deferred.settle(1, { ok: true, status: 200, json: identityB() });
+    await expect(fresh).resolves.toBe(true);
+    await expect(joined).resolves.toBe("renewed");
+    expect(store.accountId).toBe("8");
+  });
+
+  it("VC-R08 wiring: a stale session 401 crossing a fresh login keeps B and never redirects", async () => {
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    let releaseSession!: (response: StubFetchResponse) => void;
+    const sessionGate = new Promise<StubFetchResponse>((resolve) => {
+      releaseSession = resolve;
+    });
+    const fetchMock = vi.fn(async (input: unknown): Promise<StubFetchResponse> => {
+      const url = String(input);
+      if (url === "/api/v1/auth/session") return sessionGate;
+      if (url === "/api/v1/auth/login") {
+        return { ok: true, status: 200, json: async () => identityB() };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const auth = useAuthStore();
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      renewAccessToken: () => auth.renewAccessToken(transport),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+
+    const staleProbe = auth.tryRefresh(transport);
+    await expect(auth.login(transport, "bob@example.com", "pw")).resolves.toBe("ACTIVE");
+
+    releaseSession({ ok: false, status: 401, json: async () => ({ code: "AUTHENTICATION_REQUIRED" }) });
+    await expect(staleProbe).resolves.toBe(false);
+
+    expect(auth.isAuthenticated).toBe(true);
+    expect(auth.accountId).toBe("8");
+    expect(auth.role).toBe("ADMIN");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The page-style onUnauthorized must not be preempted by the transport.
+    expect(redirectTo).not.toHaveBeenCalled();
+  });
+
+  it("VC-R08 wiring: a same-generation session 401 still clears identity and local caches", async () => {
+    const fetchMock = vi.fn(async (input: unknown): Promise<StubFetchResponse> => {
+      const url = String(input);
+      if (url === "/api/v1/auth/login") {
+        return { ok: true, status: 200, json: async () => identityB() };
+      }
+      if (url === "/api/v1/auth/session") {
+        return { ok: false, status: 401, json: async () => ({ code: "AUTHENTICATION_REQUIRED" }) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const auth = useAuthStore();
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      renewAccessToken: () => auth.renewAccessToken(transport),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+
+    await expect(auth.login(transport, "bob@example.com", "pw")).resolves.toBe("ACTIVE");
+    const chat = useChatStore();
+    const rel = useRelationshipStore();
+    chat.conversationId = "99";
+    chat.messages = [
+      { messageId: "m1", conversationId: "99", role: "user", content: "secret" },
+    ];
+    rel.relationships = [
+      { relationshipId: "rel-1", personaRef: "gentle-listener", active: true },
+    ];
+    rel.currentRelationshipId = "rel-1";
+
+    await expect(auth.tryRefresh(transport)).resolves.toBe(false);
+
+    expect(auth.isAuthenticated).toBe(false);
+    expect(auth.sessionStatus).toBe("anonymous");
+    expect(auth.accountId).toBeNull();
+    expect(chat.conversationId).toBe("");
+    expect(chat.messages).toEqual([]);
+    expect(rel.relationships).toEqual([]);
+    expect(rel.currentRelationshipId).toBeNull();
   });
 
   it("logout revokes server-side (cookie) then clears locally, even on transport failure", async () => {

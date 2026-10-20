@@ -14,6 +14,7 @@ import {
   reauthAuth,
   recordSurvey,
   refresh,
+  restoreSession,
   revokeAllAuthSessions,
   revokeAuthSession,
   revokeTrustedDevice,
@@ -118,12 +119,63 @@ describe("Go Runtime auth client", () => {
 
   it("restores identity only through GET /auth/session", async () => {
     const transport = transportFor({ ok: true, status: 200, json: activeIdentity() });
-    await expect(getAuthSession(transport)).resolves.toMatchObject({ accountId: "7" });
-    expect(transport.request).toHaveBeenCalledWith("GET", "/api/v1/auth/session");
+    await expect(getAuthSession(transport)).resolves.toEqual({
+      status: "authenticated",
+      identity: activeIdentity(),
+    });
+    expect(transport.request).toHaveBeenCalledWith(
+      "GET",
+      "/api/v1/auth/session",
+      undefined,
+      { callerHandlesUnauthorized: true },
+    );
 
     const compatibility = transportFor({ ok: true, status: 200, json: activeIdentity() });
-    await expect(refresh(compatibility)).resolves.toMatchObject({ nextStep: "ACTIVE" });
-    expect(compatibility.request).toHaveBeenCalledWith("GET", "/api/v1/auth/session");
+    await expect(refresh(compatibility)).resolves.toEqual({
+      status: "authenticated",
+      identity: activeIdentity(),
+    });
+    expect(compatibility.request).toHaveBeenCalledWith(
+      "GET",
+      "/api/v1/auth/session",
+      undefined,
+      { callerHandlesUnauthorized: true },
+    );
+  });
+
+  it("maps GET /auth/session to a three-state probe that never fakes a logout", async () => {
+    // 401 is the only canonical "no valid session" result.
+    await expect(getAuthSession(transportFor({
+      ok: false,
+      status: 401,
+      json: { code: "AUTHENTICATION_REQUIRED" },
+    }))).resolves.toEqual({ status: "anonymous" });
+
+    // Temporary unavailability (5xx) must not masquerade as a logout.
+    await expect(getAuthSession(transportFor({
+      ok: false,
+      status: 503,
+      json: null,
+    }))).resolves.toEqual({ status: "unavailable" });
+
+    // A 200 with a bad protocol shape is also unavailable, not anonymous.
+    await expect(getAuthSession(transportFor({
+      ok: true,
+      status: 200,
+      json: {
+        nextStep: "ACTIVE",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: false,
+        expiresInSeconds: 600,
+      },
+    }))).resolves.toEqual({ status: "unavailable" });
+
+    // refresh / restoreSession aliases surface the same probe shape.
+    await expect(refresh(transportFor({ ok: false, status: 401, json: null })))
+      .resolves.toEqual({ status: "anonymous" });
+    await expect(restoreSession(transportFor({ ok: true, status: 200, json: activeIdentity() })))
+      .resolves.toEqual({ status: "authenticated", identity: activeIdentity() });
   });
 
   it("loads first-use setup and completes every supported challenge method", async () => {

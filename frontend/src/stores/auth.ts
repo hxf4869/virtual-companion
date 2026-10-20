@@ -19,6 +19,7 @@ import {
   type AuthLoginResult,
   type AuthNextStep,
   type AuthSessionIdentity,
+  type AuthSessionProbe,
   type AuthenticatorSetup,
   type AuthTransport,
 } from "@/api/auth";
@@ -74,7 +75,10 @@ export const useAuthStore = defineStore("h5-auth", () => {
   const authenticatorSetup = ref<AuthenticatorSetup | null>(null);
   const recoveryCodes = ref<string[]>([]);
   const registrationEnabled = ref(false);
-  let refreshInFlight: Promise<RefreshOutcome> | null = null;
+  // VC-R08: every clear()/login() bumps the generation so a stale refresh
+  // result can never assert anything about the newer session state.
+  let refreshEpoch = 0;
+  let refreshInFlight: { epoch: number; promise: Promise<RefreshOutcome> } | null = null;
 
   const isAuthenticated = computed(() => accountId.value !== null);
   const sessionStatus = computed<SessionStatus>(() => {
@@ -106,6 +110,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   function clear(): void {
+    refreshEpoch++;
     const hadSession = accountId.value !== null || accessToken.value !== null;
     accessToken.value = null;
     accountId.value = null;
@@ -128,28 +133,42 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   async function refreshOnce(t: AuthTransport): Promise<RefreshOutcome> {
-    if (refreshInFlight) return refreshInFlight;
+    if (refreshInFlight && refreshInFlight.epoch === refreshEpoch) {
+      return refreshInFlight.promise;
+    }
 
-    refreshInFlight = (async () => {
-      let identity: AuthSessionIdentity | null;
+    const epoch = refreshEpoch;
+    const promise = (async (): Promise<RefreshOutcome> => {
+      let probe: AuthSessionProbe;
       try {
-        identity = await apiRefresh(t);
+        probe = await apiRefresh(t);
       } catch {
         return "unavailable";
       }
-      if (!identity) {
+      // A result from an invalidated generation says nothing about the current
+      // session: never persist, clear or otherwise touch state with it.
+      if (epoch !== refreshEpoch) return "unavailable";
+      if (probe.status === "authenticated") {
+        persist(probe.identity);
+        recoveryCodes.value = [];
+        return "renewed";
+      }
+      if (probe.status === "anonymous") {
         clear();
         return "rejected";
       }
-      persist(identity);
-      recoveryCodes.value = [];
-      return "renewed";
+      return "unavailable";
     })();
 
+    refreshInFlight = { epoch, promise };
     try {
-      return await refreshInFlight;
+      return await promise;
     } finally {
-      refreshInFlight = null;
+      // Only the owning request may drop the in-flight slot; a stale finally
+      // must not erase a newer generation's request.
+      if (refreshInFlight?.promise === promise) {
+        refreshInFlight = null;
+      }
     }
   }
 
@@ -159,6 +178,9 @@ export const useAuthStore = defineStore("h5-auth", () => {
     account: string,
     password: string,
   ): Promise<AuthFlowStep | null> {
+    // A new login attempt invalidates any in-flight session recovery, whether
+    // it ends ACTIVE or in a challenge.
+    refreshEpoch++;
     resetLoginFlow();
     let result: AuthLoginResult | null;
     try {

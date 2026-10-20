@@ -39,6 +39,11 @@ export interface AuthSessionIdentity {
   expiresInSeconds: number;
 }
 
+export type AuthSessionProbe =
+  | { status: "authenticated"; identity: AuthSessionIdentity }
+  | { status: "anonymous" }
+  | { status: "unavailable" };
+
 export interface AuthChallenge {
   nextStep: "TOTP_REQUIRED" | "AUTHENTICATOR_SETUP_REQUIRED";
   challengeId: string;
@@ -125,18 +130,27 @@ export async function login(
   throw new AuthHttpError(response.status);
 }
 
-/** Restore identity from the single server-owned auth-session endpoint. */
-export async function getAuthSession(t: AuthTransport): Promise<AuthSessionIdentity | null> {
-  const response = await t.request("GET", `${AUTH_BASE}/session`);
-  return response.ok ? asSessionIdentity(response.json) : null;
+/**
+ * Restore identity from the single server-owned auth-session endpoint. 401 is
+ * the only canonical "no valid session" result; other non-committing outcomes
+ * (5xx / bad protocol shape) become unavailable and must not fake a logout.
+ */
+export async function getAuthSession(t: AuthTransport): Promise<AuthSessionProbe> {
+  const response = await t.request("GET", `${AUTH_BASE}/session`, undefined, {
+    callerHandlesUnauthorized: true,
+  });
+  if (response.status === 401) return { status: "anonymous" };
+  if (!response.ok) return { status: "unavailable" };
+  const identity = asSessionIdentity(response.json);
+  return identity ? { status: "authenticated", identity } : { status: "unavailable" };
 }
 
 /** Compatibility name used by the current navigation bootstrap. */
-export async function refresh(t: AuthTransport): Promise<AuthSessionIdentity | null> {
+export async function refresh(t: AuthTransport): Promise<AuthSessionProbe> {
   return getAuthSession(t);
 }
 
-export async function restoreSession(t: AuthTransport): Promise<AuthSessionIdentity | null> {
+export async function restoreSession(t: AuthTransport): Promise<AuthSessionProbe> {
   return getAuthSession(t);
 }
 
