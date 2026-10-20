@@ -173,6 +173,35 @@ func (s *Store) CompleteExportObject(ctx context.Context, owner, exportID int64,
 	return mapStoreErr(err)
 }
 
+// FailExportJob closes a failed export attempt atomically under the caller's
+// live job claim: vc.go_complete_job first asserts and terminalizes the claim
+// (a missing, expired or overtaken claim rolls the whole transaction back),
+// then vc.fail_export moves a still-PENDING export to FAILED. fail_export
+// affecting 0 rows (export already terminal or absent) is not an error — the
+// work item still closes and terminal exports are never regressed.
+func (s *Store) FailExportJob(ctx context.Context, owner, jobID, exportID int64, token, fence, errorCode string) error {
+	if token == "" || fence == "" || errorCode == "" {
+		return ErrInvalid
+	}
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		var closed int
+		if err := tx.QueryRow(ctx, `SELECT vc.go_complete_job($1,$2,$3,$4,'FAILED',$5)`,
+			owner, jobID, token, fence, errorCode).Scan(&closed); err != nil {
+			return err
+		}
+		if closed != 1 {
+			return ErrConflict
+		}
+		var failed int
+		if err := tx.QueryRow(ctx, `SELECT vc.fail_export($1,$2,$3)`,
+			owner, exportID, errorCode).Scan(&failed); err != nil {
+			return err
+		}
+		return nil
+	})
+	return mapStoreErr(err)
+}
+
 func (s *Store) FailExportWithObject(ctx context.Context, owner, exportID int64, objectKey string, objectBytes int64, errMsg string) error {
 	if objectKey == "" {
 		return ErrInvalid

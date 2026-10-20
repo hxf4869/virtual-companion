@@ -14,12 +14,14 @@ import (
 
 type exportTestStore struct {
 	Store
-	mu          sync.Mutex
-	events      []string
-	objectKey   string
-	objectBytes int64
-	jobStatus   string
-	jobReason   string
+	mu           sync.Mutex
+	events       []string
+	objectKey    string
+	objectBytes  int64
+	jobStatus    string
+	jobReason    string
+	exportStatus string
+	exportReason string
 
 	// pagination fixtures. convs is the full conversation list in ascending
 	// id order; msgs maps conversation id to its full message list in id
@@ -150,6 +152,21 @@ func (s *exportTestStore) CompleteJob(_ context.Context, _ int64, _ int64, _, _,
 	return nil
 }
 
+// FailExportJob mirrors the atomic failure close: the work item and the
+// export terminalize together. The distinct "failjob:FAILED" event pins that
+// export failure paths never fall back to a bare CompleteJob, which would
+// strand the export row in PENDING forever.
+func (s *exportTestStore) FailExportJob(_ context.Context, _, _, _ int64, _, _, errorCode string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jobStatus = "FAILED"
+	s.jobReason = errorCode
+	s.exportStatus = "FAILED"
+	s.exportReason = errorCode
+	s.events = append(s.events, "failjob:FAILED")
+	return nil
+}
+
 type exportTestBlob struct {
 	store          *exportTestStore
 	storedBytes    int64
@@ -221,7 +238,10 @@ func TestExportRandomFailureFailsJobBeforeIntentOrPut(t *testing.T) {
 	if store.jobStatus != "FAILED" || store.jobReason != "EXPORT_KEY" {
 		t.Fatalf("job status=%q reason=%q", store.jobStatus, store.jobReason)
 	}
-	if len(store.events) != 1 || store.events[0] != "job:FAILED" {
+	if store.exportStatus != "FAILED" || store.exportReason != "EXPORT_KEY" {
+		t.Fatalf("export status=%q reason=%q", store.exportStatus, store.exportReason)
+	}
+	if len(store.events) != 1 || store.events[0] != "failjob:FAILED" {
 		t.Fatalf("events after random failure: %v", store.events)
 	}
 }
@@ -271,9 +291,9 @@ func TestExportPutFailureDoesNotSeal(t *testing.T) {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	want := []string{"intent", "put", "job:FAILED"}
+	want := []string{"intent", "put", "failjob:FAILED"}
 	if len(store.events) != len(want) {
-		t.Fatalf("events %v, want %v", store.events, want)
+		t.Fatalf("events %v", store.events)
 	}
 	for i := range want {
 		if store.events[i] != want[i] {
@@ -282,6 +302,9 @@ func TestExportPutFailureDoesNotSeal(t *testing.T) {
 	}
 	if store.jobReason != "EXPORT_PUT" || store.objectBytes != 0 {
 		t.Fatalf("reason=%q sealed bytes=%d", store.jobReason, store.objectBytes)
+	}
+	if store.exportStatus != "FAILED" || store.exportReason != "EXPORT_PUT" {
+		t.Fatalf("export status=%q reason=%q", store.exportStatus, store.exportReason)
 	}
 }
 
@@ -483,10 +506,13 @@ func TestExportConversationCursorStallFailsWithoutSealing(t *testing.T) {
 	if store.jobStatus != "FAILED" || store.jobReason != "EXPORT_BUILD" {
 		t.Fatalf("job status=%q reason=%q", store.jobStatus, store.jobReason)
 	}
-	for _, ev := range store.events {
-		if ev == "intent" || ev == "put" || ev == "seal" {
-			t.Fatalf("stalled export must not upload, events %v", store.events)
-		}
+	if store.exportStatus != "FAILED" || store.exportReason != "EXPORT_BUILD" {
+		t.Fatalf("export status=%q reason=%q", store.exportStatus, store.exportReason)
+	}
+	// The stalled build must close through the atomic FailExportJob path only:
+	// no upload events and no bare CompleteJob close.
+	if len(store.events) != 1 || store.events[0] != "failjob:FAILED" {
+		t.Fatalf("stalled export close events %v, want [failjob:FAILED]", store.events)
 	}
 	if store.objectBytes != 0 {
 		t.Fatalf("stalled export sealed %d bytes", store.objectBytes)
@@ -521,10 +547,13 @@ func TestExportMessageCursorStallFailsWithoutSealing(t *testing.T) {
 	if store.jobStatus != "FAILED" || store.jobReason != "EXPORT_BUILD" {
 		t.Fatalf("job status=%q reason=%q", store.jobStatus, store.jobReason)
 	}
-	for _, ev := range store.events {
-		if ev == "intent" || ev == "put" || ev == "seal" {
-			t.Fatalf("stalled export must not upload, events %v", store.events)
-		}
+	if store.exportStatus != "FAILED" || store.exportReason != "EXPORT_BUILD" {
+		t.Fatalf("export status=%q reason=%q", store.exportStatus, store.exportReason)
+	}
+	// The stalled build must close through the atomic FailExportJob path only:
+	// no upload events and no bare CompleteJob close.
+	if len(store.events) != 1 || store.events[0] != "failjob:FAILED" {
+		t.Fatalf("stalled export close events %v, want [failjob:FAILED]", store.events)
 	}
 	if store.objectBytes != 0 {
 		t.Fatalf("stalled export sealed %d bytes", store.objectBytes)

@@ -31,6 +31,9 @@ type Store interface {
 	ClaimJobs(ctx context.Context, generationLease, exportLease, defaultLease time.Duration, limit, generationLimit, extractLimit int) ([]postgres.JobClaim, error)
 	PromoteClaimedGeneration(ctx context.Context, owner, generationID, jobID int64, token, fence string) (string, error)
 	CompleteJob(ctx context.Context, owner, jobID int64, token, fence, status, reason string) error
+	// FailExportJob closes a failed DATA_EXPORT claim and its still-PENDING
+	// export in one transaction; a stale claim rolls both back.
+	FailExportJob(ctx context.Context, owner, jobID, exportID int64, token, fence, errorCode string) error
 	ListExpiredGenerationJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)
 	RecoverExpiredGeneration(ctx context.Context, owner, jobID int64) (string, error)
 	ListExpiredMemoryExtractJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)

@@ -53,7 +53,7 @@ func (l *Loop) handleExportWithKey(
 ) error {
 	exp, err := l.store.GetExport(ctx, c.OwnerID, c.RefID)
 	if err != nil {
-		_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_MISSING")
+		_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_MISSING")
 		return err
 	}
 	if exp.Status != "PENDING" {
@@ -62,32 +62,32 @@ func (l *Loop) handleExportWithKey(
 	}
 	payload, err := l.buildExport(ctx, c.OwnerID)
 	if err != nil {
-		_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_BUILD")
+		_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_BUILD")
 		return err
 	}
 	expires := time.Now().UTC().Add(24 * time.Hour)
 	if l.blobs != nil {
 		key, err := keyFor(c.OwnerID, c.RefID)
 		if err != nil {
-			_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_KEY")
+			_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_KEY")
 			return err
 		}
 		if _, err := l.store.RecordExportUploadIntent(ctx, c.OwnerID, c.RefID, key, int(l.policy.ExportLease.Seconds())); err != nil {
-			_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_INTENT")
+			_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_INTENT")
 			return err
 		}
 		storedBytes, err := l.blobs.Put(ctx, key, payload)
 		if err != nil {
-			_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_PUT")
+			_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_PUT")
 			return err
 		}
 		if err := l.store.CompleteExportObject(ctx, c.OwnerID, c.RefID, key, storedBytes, expires); err != nil {
 			_ = l.blobs.Delete(ctx, key)
-			_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_SEAL")
+			_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_SEAL")
 			return err
 		}
 	} else if err := l.store.CompleteExport(ctx, c.OwnerID, c.RefID, string(payload), expires); err != nil {
-		_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", "EXPORT_SEAL")
+		_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_SEAL")
 		return err
 	}
 	return l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "DONE", "")
