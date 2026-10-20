@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { listTrustedDevices } from "@/api/auth";
 import type { AuthApiResponse, AuthSessionIdentity, AuthTransport } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
@@ -695,6 +696,82 @@ describe("useAuthStore", () => {
     expect(chat.messages).toEqual([]);
     expect(rel.relationships).toEqual([]);
     expect(rel.currentRelationshipId).toBeNull();
+  });
+
+  it("VC-R10 wiring: a stale normal-endpoint 401 crossing a new login keeps B and never redirects", async () => {
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    let releaseDevices!: (response: StubFetchResponse) => void;
+    const devicesGate = new Promise<StubFetchResponse>((resolve) => {
+      releaseDevices = resolve;
+    });
+    const fetchMock = vi.fn(async (input: unknown): Promise<StubFetchResponse> => {
+      const url = String(input);
+      if (url === "/api/v1/auth/trusted-devices") return devicesGate;
+      if (url === "/api/v1/auth/login") {
+        return { ok: true, status: 200, json: async () => identityB() };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const auth = useAuthStore();
+    const provider = {
+      getAccessToken: () => auth.accessToken,
+      renewAccessToken: () => auth.renewAccessToken(transport),
+      onUnauthorized: () => auth.onUnauthorized(),
+      getSessionRevision: () => auth.getSessionRevision(),
+    };
+    const transport = createAuthenticatedTransport(provider);
+
+    // A's ordinary trusted-device listing is in flight (no caller-owned 401).
+    const devices = listTrustedDevices(transport);
+
+    await expect(auth.login(transport, "bob@example.com", "pw")).resolves.toBe("ACTIVE");
+
+    releaseDevices({ ok: false, status: 401, json: async () => ({ code: "AUTHENTICATION_REQUIRED" }) });
+    await expect(devices).rejects.toThrow();
+
+    // The stale request's 401 describes A's dead session; B stays logged in.
+    expect(auth.isAuthenticated).toBe(true);
+    expect(auth.accountId).toBe("8");
+    expect(auth.role).toBe("ADMIN");
+    expect(auth.nextStep).toBe("ACTIVE");
+    expect(redirectTo).not.toHaveBeenCalled();
+  });
+
+  it("VC-R10 wiring: a same-generation normal-endpoint 401 still signs out and redirects", async () => {
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    const fetchMock = vi.fn(async (input: unknown): Promise<StubFetchResponse> => {
+      const url = String(input);
+      if (url === "/api/v1/auth/trusted-devices") {
+        return { ok: false, status: 401, json: async () => ({ code: "AUTHENTICATION_REQUIRED" }) };
+      }
+      if (url === "/api/v1/auth/login") {
+        return { ok: true, status: 200, json: async () => identityB() };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const auth = useAuthStore();
+    const provider = {
+      getAccessToken: () => auth.accessToken,
+      renewAccessToken: () => auth.renewAccessToken(transport),
+      onUnauthorized: () => auth.onUnauthorized(),
+      getSessionRevision: () => auth.getSessionRevision(),
+    };
+    const transport = createAuthenticatedTransport(provider);
+
+    await expect(auth.login(transport, "bob@example.com", "pw")).resolves.toBe("ACTIVE");
+
+    await expect(listTrustedDevices(transport)).rejects.toThrow();
+
+    expect(auth.isAuthenticated).toBe(false);
+    expect(auth.sessionStatus).toBe("anonymous");
+    expect(auth.accountId).toBeNull();
+    expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
   });
 
   it("VC-R09: a session probe handing over to a different known account drops A's shared caches", async () => {

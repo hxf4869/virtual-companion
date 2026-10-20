@@ -409,4 +409,155 @@ describe("createAuthenticatedTransport", () => {
 
     expect(fetchMock.mock.calls[0]![1]!.signal).toBeUndefined();
   });
+
+  // ---- 旧请求 401 跨代误登出（会话代次归属判定） ----
+
+  function authRequired401() {
+    return {
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "AUTHENTICATION_REQUIRED", message: "expired" }),
+    };
+  }
+
+  function deferredFetch() {
+    const resolvers: Array<(response: unknown) => void> = [];
+    const fetchMock = vi.fn(
+      (_url: string, _init?: RequestInit) =>
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    return { fetchMock, resolvers };
+  }
+
+  it("suppresses onUnauthorized for a stale-generation 401 on the plain path (session replaced mid-flight)", async () => {
+    let revision = 1;
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getSessionRevision: () => revision,
+      onUnauthorized,
+    });
+
+    const pending = transport.request("GET", "/api/v1/conversations");
+    // 在途期间会话换代（B 新登录 / 清会话），旧请求的 401 属于上一代。
+    revision = 2;
+    resolvers[0]!(authRequired401());
+
+    const result = await pending;
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+  });
+
+  it("still calls onUnauthorized for a same-generation 401 on the plain path when getSessionRevision is provided", async () => {
+    let revision = 1;
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getSessionRevision: () => revision,
+      onUnauthorized,
+    });
+
+    const pending = transport.request("GET", "/api/v1/conversations");
+    resolvers[0]!(authRequired401());
+
+    const result = await pending;
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+  });
+
+  it("suppresses onUnauthorized for a stale-generation 401 on the timeoutMs path", async () => {
+    let revision = 1;
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getSessionRevision: () => revision,
+      onUnauthorized,
+    });
+
+    const pending = transport.request("GET", "/api/v1/conversations", undefined, {
+      timeoutMs: 15_000,
+    });
+    revision = 2;
+    resolvers[0]!(authRequired401());
+
+    const result = await pending;
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+  });
+
+  it("still calls onUnauthorized for a same-generation 401 on the timeoutMs path when getSessionRevision is provided", async () => {
+    let revision = 1;
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getSessionRevision: () => revision,
+      onUnauthorized,
+    });
+
+    const pending = transport.request("GET", "/api/v1/conversations", undefined, {
+      timeoutMs: 15_000,
+    });
+    resolvers[0]!(authRequired401());
+
+    const result = await pending;
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+  });
+
+  it("re-reads the revision per request on the same factory: a fresh-generation 401 still fires after a stale one was suppressed", async () => {
+    let revision = 1;
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getSessionRevision: () => revision,
+      onUnauthorized,
+    });
+
+    const stalePending = transport.request("GET", "/api/v1/conversations");
+    revision = 2;
+    resolvers[0]!(authRequired401());
+    await stalePending;
+    expect(onUnauthorized).not.toHaveBeenCalled();
+
+    // 同一 factory 再次发起（新代下）：401 仍必须触发登出，证明代次捕获
+    // 发生在每次 request() 调用而非工厂创建时。
+    const freshPending = transport.request("GET", "/api/v1/conversations");
+    resolvers[1]!(authRequired401());
+    await freshPending;
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps calling onUnauthorized unconditionally for a 401 when the provider has no getSessionRevision", async () => {
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      onUnauthorized,
+    });
+
+    const pending = transport.request("GET", "/api/v1/conversations");
+    resolvers[0]!(authRequired401());
+
+    const result = await pending;
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+  });
 });

@@ -332,6 +332,17 @@ export const useAuthStore = defineStore("h5-auth", () => {
     redirectToLogin();
   }
 
+  /**
+   * VC-R10: read-only session generation, for request ownership only. A 401
+   * from a request that started in an older generation describes a session
+   * this store no longer holds and must not sign the newer one out. It is a
+   * plain counter, never a secret, never persisted, and never appears in the
+   * UI, a URL, a header or a log.
+   */
+  function getSessionRevision(): number {
+    return refreshEpoch;
+  }
+
   return {
     accessToken,
     accountId,
@@ -359,6 +370,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     renewAccessToken,
     logout,
     onUnauthorized,
+    getSessionRevision,
     clear,
   };
 });

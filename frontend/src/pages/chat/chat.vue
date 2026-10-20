@@ -227,10 +227,12 @@ onDeactivated(() => {
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   renewAccessToken: () => auth.renewAccessToken(transport),
+  getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
 });
 const authedFetch = createAuthedFetch(() => auth.accessToken, {
   renewAccessToken: () => auth.renewAccessToken(transport),
+  getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
 });
 const deps: RealtimeDeps = createBrowserRealtimeDeps(authedFetch);

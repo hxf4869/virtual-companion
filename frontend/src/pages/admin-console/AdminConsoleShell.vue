@@ -140,6 +140,7 @@ export default defineComponent({
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
+      getSessionRevision: () => auth.getSessionRevision(),
       onUnauthorized: () => auth.onUnauthorized(),
     });
 

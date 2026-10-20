@@ -51,4 +51,88 @@ describe("createAuthedFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  it("calls onUnauthorized for a 401 when the session revision is unchanged", async () => {
+    const gate = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => gate.promise));
+    const onUnauthorized = vi.fn();
+    const authed = createAuthedFetch(() => "a-token", {
+      onUnauthorized,
+      getSessionRevision: () => 7,
+    });
+
+    const pending = authed("/api/v1/generations/10/snapshot");
+    gate.resolve(response(401));
+    const result = await pending;
+
+    expect(result.status).toBe(401);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a 401 from an older session revision and still returns the response", async () => {
+    const gate = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => gate.promise));
+    const onUnauthorized = vi.fn();
+    let revision = 1;
+    const authed = createAuthedFetch(() => "a-token", {
+      onUnauthorized,
+      getSessionRevision: () => revision,
+    });
+
+    const pending = authed("/api/v1/account/export");
+    revision = 2; // a new login landed while the old request was in flight
+    gate.resolve(response(401));
+    const result = await pending;
+
+    expect(result.status).toBe(401);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it("re-captures the revision on each call of the same factory", async () => {
+    const firstGate = deferred<Response>();
+    const secondGate = deferred<Response>();
+    const gates = [firstGate, secondGate];
+    vi.stubGlobal("fetch", vi.fn(() => gates.shift()!.promise));
+    const onUnauthorized = vi.fn();
+    let revision = 1;
+    const authed = createAuthedFetch(() => "a-token", {
+      onUnauthorized,
+      getSessionRevision: () => revision,
+    });
+
+    const firstCall = authed("/api/v1/account/export");
+    revision = 2; // new session generation while the old request is in flight
+    firstGate.resolve(response(401));
+    await firstCall;
+    expect(onUnauthorized).not.toHaveBeenCalled();
+
+    const secondCall = authed("/api/v1/account/export"); // same factory, new generation
+    secondGate.resolve(response(401));
+    const result = await secondCall;
+
+    expect(result.status).toBe(401);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("still calls onUnauthorized on a 401 when the session provides no revision reader", async () => {
+    const gate = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => gate.promise));
+    const onUnauthorized = vi.fn();
+    const authed = createAuthedFetch(() => "a-token", { onUnauthorized });
+
+    const pending = authed("/api/v1/realtime/streams/1");
+    gate.resolve(response(401));
+    const result = await pending;
+
+    expect(result.status).toBe(401);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
 });

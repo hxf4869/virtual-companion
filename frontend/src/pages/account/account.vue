@@ -384,11 +384,13 @@ const busy = ref<BusyAction | null>(null);
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
 });
 
 // 副本下载与 transport 同源同一 auth store：cookie 会话 + CSRF + 401 登出。
 const authedFetch = createAuthedFetch(() => auth.accessToken, {
+  getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
 });
 

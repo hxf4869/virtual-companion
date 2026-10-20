@@ -174,6 +174,7 @@ const busy = ref(false);
 
 const transport: AuthTransport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.clear(),
 });
 

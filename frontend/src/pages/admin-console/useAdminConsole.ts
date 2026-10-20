@@ -19,6 +19,7 @@ export function useAdminConsoleAccess(): AdminConsoleAccess {
   const transport = createAuthenticatedTransport({
     getAccessToken: () => auth.accessToken,
     renewAccessToken: () => auth.renewAccessToken(transport),
+    getSessionRevision: () => auth.getSessionRevision(),
     onUnauthorized: () => auth.onUnauthorized(),
   });
 

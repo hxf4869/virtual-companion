@@ -10,6 +10,8 @@ const CSRF_HEADER = "X-CSRF-Token";
 
 export interface AuthedFetchSession {
   renewAccessToken?(): Promise<RenewResult>;
+  // Session generation counter; used only for request ownership (401 attribution).
+  getSessionRevision?(): number;
   onUnauthorized(): void;
 }
 
@@ -35,6 +37,9 @@ export function createAuthedFetch(
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> {
+    // Capture the session revision per call so a 401 from a stale request
+    // (issued before a later login) is not attributed to the new session.
+    const revision = session?.getSessionRevision?.();
     const headers = new Headers(init?.headers);
     const method = (init?.method ?? "GET").toUpperCase();
     if (STATE_CHANGING_METHODS.has(method)) {
@@ -46,7 +51,9 @@ export function createAuthedFetch(
     const response = await fetch(input, { ...init, headers, credentials: "include" });
     rememberRequestIdFromResponse(response);
     if (response.status === 401) {
-      session?.onUnauthorized();
+      if (revision === undefined || session?.getSessionRevision?.() === revision) {
+        session?.onUnauthorized();
+      }
     }
     return response;
   };

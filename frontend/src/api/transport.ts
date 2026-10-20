@@ -35,6 +35,8 @@ export class TransportTimeoutError extends Error {
 export interface AuthTokenProvider {
   getAccessToken?(): string | null;
   renewAccessToken?(): Promise<RenewResult>;
+  /** Current session revision; used only for 401 ownership attribution. */
+  getSessionRevision?(): number;
   onUnauthorized(): void;
 }
 
@@ -61,6 +63,9 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
     body?: unknown,
     opts?: TransportRequestOptions,
   ): Promise<AuthApiResponse> {
+    // 请求所有权（401 归属）：在每次调用发起时捕获会话代次，而不是在工厂
+    // 创建时捕获。A 的在途请求遇 B 新登录后，旧 A 的 401 不得清掉 B 的会话。
+    const revision = provider.getSessionRevision?.();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (STATE_CHANGING_METHODS.has(method)) {
       const csrf = readCsrfCookie();
@@ -104,7 +109,11 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
           throw error;
         }
         rememberRequestIdFromResponse(response);
-        if (response.status === 401 && opts?.callerHandlesUnauthorized !== true) {
+        if (
+          response.status === 401 &&
+          opts?.callerHandlesUnauthorized !== true &&
+          (revision === undefined || provider.getSessionRevision?.() === revision)
+        ) {
           provider.onUnauthorized();
         }
         // 正文读取与超时竞争：超时触发（gate 唤醒）或超时中止导致 json()
@@ -140,7 +149,11 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
       });
     }
     rememberRequestIdFromResponse(response);
-    if (response.status === 401 && opts?.callerHandlesUnauthorized !== true) {
+    if (
+      response.status === 401 &&
+      opts?.callerHandlesUnauthorized !== true &&
+      (revision === undefined || provider.getSessionRevision?.() === revision)
+    ) {
       provider.onUnauthorized();
     }
     let parseFailed = false;
