@@ -22,10 +22,14 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
   TestTOTP|TestAuthChallenge 全部 PASS，含 setup 共 74.312s）。
 
 2026-10-21 聊天会话归属与恢复收口（VC-R04）：复现并修复 H5 同页 hash 深链/
-参数变更下「URL 已切会话、页面仍显示旧会话流」（VC-R02 观察形态）；恢复
-核对增加会话归属约束（等待页不核对、不接管，与监听注册顺序无关）与 turn
-身份单飞；会话窗口切换在途时作废旧 run 终局。605 项前端测试与 type-check
-通过。真机中文 IME 验证另立 `DOGFOOD-11`（见 [`TODO.md`](TODO.md)）。
+参数变更下「URL 已切会话、页面仍显示旧会话流」（VC-R02 观察形态）；hash
+编辑转等待后浏览器返回原会话不再卡在等待态（去重基准改为最近 init 目标）；
+uni H5 经 KeepAlive 缓存离场页面，被停用的隐藏缓存页不再响应别的页面的
+hash 变化（活动实例约束；getCurrentPages 实测缓存栈内隐藏实例会对一次
+hashchange 双重 initPage，修复后收敛为单实例响应）；恢复核对增加会话归属
+约束（等待页不核对、不接管，与监听注册顺序无关）与 turn 身份单飞；会话
+窗口切换在途时作废旧 run 终局。607 项前端测试与 type-check 通过。真机
+中文 IME 验证另立 `DOGFOOD-11`（见 [`TODO.md`](TODO.md)）。
 
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。

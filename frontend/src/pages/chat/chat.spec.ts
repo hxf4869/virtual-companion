@@ -1337,6 +1337,100 @@ describe("聊天产品页", () => {
     wrapper.unmount();
   });
 
+  it("hash 编辑转等待后浏览器返回原会话：重开自己的流，不卡在等待态", async () => {
+    stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
+    seedLiveStreamState();
+    // A 实例（conv-new）显示自己的活跃流。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+
+    // 直接编辑 hash 到 conv-old：流式占用，本页转入等待（VC-R02 修复语义）。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-old",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(true);
+
+    // 浏览器返回 conv-new：目标会话与本页最近等待的目标不同——必须重开
+    // 自己的会话并继续显示流，而不是停留在等待态。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-new",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在回复…");
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-live");
+    wrapper.unmount();
+  });
+
+  it("KeepAlive 停用的隐藏页不响应别的页面的 hash 变化；重新激活后返回原会话仍显示自己的流", async () => {
+    const { calls } = stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
+    seedLiveStreamState();
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+
+    // 模拟 uni H5 KeepAlive 停用：本实例转入后台缓存（getCurrentPages 栈内
+    // 隐藏存活，window 监听仍在，onUnmounted 不会运行）。
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    const fetchCountBefore = calls.length;
+
+    // 隐藏期间前台页面把 hash 切到 conv-old：本实例不得重初始化——无新
+    // 请求、不进等待态，保持自己的流式窗口。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-old",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+    expect(calls.length).toBe(fetchCountBefore);
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+
+    // 重新激活并返回原会话（浏览器后退落回本页）：目标与本页最近 init 目标
+    // 一致，无需重开——缓存窗口继续显示自己的流。
+    internal.a?.forEach((hook) => hook());
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-new",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+    expect(calls.length).toBe(fetchCountBefore);
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在回复…");
+    wrapper.unmount();
+  });
+
   it("hash 指向同一目标会话或离开 chat 路径时不重开窗口", async () => {
     const { calls } = stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
     vi.stubGlobal("location", {

@@ -158,6 +158,8 @@ let chatPageInstanceSeq = 0;
 import {
   computed,
   nextTick,
+  onActivated,
+  onDeactivated,
   onMounted,
   onUnmounted,
   ref,
@@ -204,6 +206,23 @@ let submitInFlight = false;
 // 恢复核对按会话归属介入：等待页（目标 ≠ 当前流所属会话）不核对、不接管，
 // 与 online/visibility 监听的注册顺序无关。
 let owningConversationId = "";
+// VC-R04：本实例最近一次 initPage 读到的 URL 目标会话（含未落地的等待
+// 目标）。hashchange 去重以此为基准——busy 等待期间 owningConversationId
+// 保持旧值，浏览器返回原会话时必须能据此重开，否则页面会卡在等待态。
+// null ＝ 尚未跑过 initPage。
+let lastInitTargetConversationId: string | null = null;
+// VC-R04：uni H5 的 RouterView 用 KeepAlive 缓存离场页面——getCurrentPages
+// 栈中的隐藏实例仍存活，window 监听不随卸载移除（实测一次返回可触发两个
+// 实例同时 initPage）。hashchange 只由当前活动实例响应：被停用的隐藏页
+// 不响应别的页面的 hash 变化；恢复核对（online/visibility）不受此限，
+// 合法所属页在后台恢复仍是设计行为。
+let instanceActive = true;
+onActivated(() => {
+  instanceActive = true;
+});
+onDeactivated(() => {
+  instanceActive = false;
+});
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -376,6 +395,8 @@ async function initPage(): Promise<void> {
     }
 
     const query = queryContext();
+    // VC-R04：记录本次 init 的 URL 目标（含等待未落地），供 hashchange 去重。
+    lastInitTargetConversationId = query.conversationId;
     if (query.relationshipId && knownRelationshipIds().includes(query.relationshipId)) {
       relStore.currentRelationshipId = query.relationshipId;
     }
@@ -664,15 +685,20 @@ let stopLifecycle: (() => void) | undefined;
  * VC-R04（疑点1 复核）：H5 直接编辑 location.hash（同页面路径、不同会话
  * 参数）时，uni 路由不重建本页实例——页面停留在旧窗口，URL 已指向 conv-b
  * 却仍显示 conv-a 的流式草稿（VC-R02 观察到的形态）。页面自行监听
- * hashchange：hash 仍指向 chat 页且目标会话变化时重走完整 initPage（打开/
- * 等待/守卫语义不变）；同目标或指向其他页面时不动作。
+ * hashchange：hash 仍指向 chat 页且目标会话与最近一次 init 的 URL 目标不同
+ * 时重走完整 initPage（打开/等待/守卫语义不变）。去重基准是 init 尝试过的
+ * 目标而非已落地会话：busy 等待期间浏览器返回原会话也要能重开，否则页面
+ * 会卡在等待态。同目标或指向其他页面时不动作；仅当前活动实例响应
+ * （KeepAlive 停用的隐藏缓存页不响应别的页面的 hash 变化）。
  */
 function onLocationHashChange(): void {
+  // KeepAlive 停用的隐藏页不响应——只有当前活动实例可以重开窗口。
+  if (!instanceActive) return;
   if (initBusy.value || pageState.value === "loading") return;
   if (typeof location === "undefined") return;
   if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
   if (!/^#\/pages\/chat\/chat(\?|$)/.test(location.hash)) return;
-  if (queryContext().conversationId === owningConversationId) return;
+  if (queryContext().conversationId === lastInitTargetConversationId) return;
   void initPage();
 }
 
