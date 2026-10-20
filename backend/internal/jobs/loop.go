@@ -38,6 +38,8 @@ type Store interface {
 	RecoverExpiredGeneration(ctx context.Context, owner, jobID int64) (string, error)
 	ListExpiredMemoryExtractJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)
 	RecoverExpiredMemoryExtract(ctx context.Context, owner, jobID int64) (string, error)
+	ListExpiredExportJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)
+	RecoverExpiredExport(ctx context.Context, owner, jobID int64) (string, error)
 	ExpireQueuedGenerations(ctx context.Context, timeout time.Duration) (int, error)
 	PurgeExpiredOpaqueSessions(ctx context.Context) (int, error)
 	ExpireStaleExports(ctx context.Context) (int, error)
@@ -541,6 +543,30 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 		l.recoveries.Add(1)
 		l.log.Info("memory extract recover",
 			slog.String("operation", "memory_extract_recover"),
+			slog.String("outcome", "ok"),
+			slog.String("event_type", action),
+		)
+	}
+	// Expired CLAIMED exports (crashed worker mid-build) do not requeue: the
+	// claim and the still-PENDING export fail terminally with
+	// EXPORT_LEASE_EXPIRED, unblocking the owner's next export request.
+	expiredExports, err := l.store.ListExpiredExportJobs(ctx, l.policy.ClaimLimit)
+	if err != nil {
+		return err
+	}
+	for _, c := range expiredExports {
+		action, recErr := l.store.RecoverExpiredExport(ctx, c.OwnerID, c.JobID)
+		if recErr != nil {
+			l.log.Info("export recover",
+				slog.String("operation", "export_recover"),
+				slog.String("outcome", "error"),
+				slog.String("error_code", "RECOVER_FAILED"),
+			)
+			continue
+		}
+		l.recoveries.Add(1)
+		l.log.Info("export recover",
+			slog.String("operation", "export_recover"),
 			slog.String("outcome", "ok"),
 			slog.String("event_type", action),
 		)

@@ -1017,6 +1017,39 @@ func (s *leaseClaimStore) RecoverExpiredGeneration(_ context.Context, _, jobID i
 	return "REQUEUE_NO_INTENT", nil
 }
 
+func (s *leaseClaimStore) ListExpiredExportJobs(_ context.Context, limit int) ([]postgres.JobClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []postgres.JobClaim
+	for id, st := range s.claims {
+		if st.kind == KindExport && st.status == "CLAIMED" && !st.leaseEnd.After(s.now) && len(out) < limit {
+			out = append(out, postgres.JobClaim{OwnerID: st.pending.OwnerID, JobID: id, Kind: KindExport})
+		}
+	}
+	return out, nil
+}
+
+// RecoverExpiredExport mirrors the V135 terminal close: an expired export
+// claim fails with EXPORT_LEASE_EXPIRED and never rejoins the queue.
+func (s *leaseClaimStore) RecoverExpiredExport(_ context.Context, _, jobID int64) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.claims[jobID]
+	if !ok || st.kind != KindExport {
+		return "", postgres.ErrNotFound
+	}
+	if st.status != "CLAIMED" {
+		return "IDEMPOTENT_NON_CLAIMED", nil
+	}
+	if st.leaseEnd.After(s.now) {
+		return "LEASE_ACTIVE", nil
+	}
+	st.status = "FAILED"
+	st.token, st.fence = "", ""
+	s.recoveries++
+	return "FAILED", nil
+}
+
 // TestLoopExpiredExtractRequeueFencesOldHolder pins the expiry coordination:
 // an extraction whose claim lease elapsed mid-provider-call is requeued by
 // recovery; the old holder may finish its already-started call but its save

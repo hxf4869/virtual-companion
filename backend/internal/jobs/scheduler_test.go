@@ -22,6 +22,8 @@ type schedulerTestStore struct {
 	recoverErr        error
 	recoverFailures   int
 	recoveredExtracts []int64
+	expiredExports    []postgres.JobClaim
+	recoveredExports  []int64
 }
 
 func (s *schedulerTestStore) PurgeExpiredOpaqueSessions(context.Context) (int, error) {
@@ -80,6 +82,23 @@ func (s *schedulerTestStore) RecoverExpiredMemoryExtract(_ context.Context, _, j
 		return "", s.recoverErr
 	}
 	s.recoveredExtracts = append(s.recoveredExtracts, jobID)
+	return s.recoverAction, nil
+}
+
+func (s *schedulerTestStore) ListExpiredExportJobs(context.Context, int) ([]postgres.JobClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]postgres.JobClaim(nil), s.expiredExports...), nil
+}
+
+func (s *schedulerTestStore) RecoverExpiredExport(_ context.Context, _, jobID int64) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recoverFailures > 0 {
+		s.recoverFailures--
+		return "", s.recoverErr
+	}
+	s.recoveredExports = append(s.recoveredExports, jobID)
 	return s.recoverAction, nil
 }
 
@@ -234,6 +253,59 @@ func TestRecoverOnceDeadLettersExpiredMemoryExtractJobs(t *testing.T) {
 		t.Fatalf("recovered %+v, want only job 80", store.recoveredExtracts)
 	}
 	if got := loop.Stats().Recoveries; got != 1 {
+		t.Fatalf("recoveries %d want 1", got)
+	}
+}
+
+// TestRecoverOnceFailsExpiredExportJobs pins VC-R06: the loop recovery pass
+// must list expired CLAIMED DATA_EXPORT jobs and hand each to the terminal
+// recovery (FAILED, never requeued), with per-job failures isolated.
+func TestRecoverOnceFailsExpiredExportJobs(t *testing.T) {
+	t.Parallel()
+	store := newSchedulerTestStore()
+	store.expiredExports = []postgres.JobClaim{
+		{OwnerID: 1, JobID: 81, Kind: KindExport},
+		{OwnerID: 2, JobID: 82, Kind: KindExport},
+	}
+	store.recoverAction = "FAILED"
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, nil, nil, nil)
+
+	if err := loop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	if len(store.recoveredExports) != 2 || store.recoveredExports[0] != 81 || store.recoveredExports[1] != 82 {
+		store.mu.Unlock()
+		t.Fatalf("recovered %+v", store.recoveredExports)
+	}
+	store.mu.Unlock()
+	if got := loop.Stats().Recoveries; got != 2 {
+		t.Fatalf("recoveries %d want 2", got)
+	}
+
+	// Failure isolation: the first recover fails, the second still runs, and
+	// only the success counts as a recovery.
+	isolated := newSchedulerTestStore()
+	isolated.expiredExports = []postgres.JobClaim{
+		{OwnerID: 1, JobID: 83, Kind: KindExport},
+		{OwnerID: 1, JobID: 84, Kind: KindExport},
+	}
+	isolated.recoverAction = "FAILED"
+	isolated.recoverErr = errors.New("guarded")
+	isolated.recoverFailures = 1
+	failing := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	failing.Use(isolated, nil, nil, nil)
+
+	if err := failing.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	isolated.mu.Lock()
+	defer isolated.mu.Unlock()
+	if len(isolated.recoveredExports) != 1 || isolated.recoveredExports[0] != 84 {
+		t.Fatalf("recovered %+v, want only job 84", isolated.recoveredExports)
+	}
+	if got := failing.Stats().Recoveries; got != 1 {
 		t.Fatalf("recoveries %d want 1", got)
 	}
 }

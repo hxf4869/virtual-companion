@@ -285,3 +285,52 @@ func (s *Store) RecoverExpiredMemoryExtract(ctx context.Context, owner, jobID in
 	}
 	return action, nil
 }
+
+// ListExpiredExportJobs returns claimed DATA_EXPORT work items whose lease
+// elapsed without completion (a crashed worker mid-build). The loop hands
+// each to RecoverExpiredExport (V135).
+func (s *Store) ListExpiredExportJobs(ctx context.Context, limit int) ([]JobClaim, error) {
+	var out []JobClaim
+	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT out_owner_user_id, out_job_id FROM vc.go_list_expired_export_jobs($1)`, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c JobClaim
+			if err := rows.Scan(&c.OwnerID, &c.JobID); err != nil {
+				return err
+			}
+			c.Kind = "DATA_EXPORT"
+			out = append(out, c)
+		}
+		if out == nil {
+			out = []JobClaim{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// RecoverExpiredExport fails an expired DATA_EXPORT claim terminally through
+// the V135 recovery: the work item closes FAILED with EXPORT_LEASE_EXPIRED
+// and a still-PENDING export fails in the same transaction. There is no
+// requeue — the owner can request a new export once unblocked; an already
+// terminal export never regresses.
+func (s *Store) RecoverExpiredExport(ctx context.Context, owner, jobID int64) (string, error) {
+	var action string
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.go_recover_expired_export($1,$2)`,
+			owner, jobID,
+		).Scan(&action)
+	})
+	if err != nil {
+		return "", mapStoreErr(err)
+	}
+	return action, nil
+}
