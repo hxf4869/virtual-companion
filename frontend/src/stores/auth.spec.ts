@@ -570,9 +570,79 @@ describe("useAuthStore", () => {
     expect(auth.isAuthenticated).toBe(true);
     expect(auth.accountId).toBe("8");
     expect(auth.role).toBe("ADMIN");
+    // The stale recovery owns neither the identity nor the error surface.
+    expect(auth.error).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // The page-style onUnauthorized must not be preempted by the transport.
     expect(redirectTo).not.toHaveBeenCalled();
+  });
+
+  it("VC-R08F: a late probe keeps the newer login failure as the only visible error", async () => {
+    const store = useAuthStore();
+    const deferred = deferredAuthTransport();
+    const stale = store.tryRefresh(deferred.transport);
+
+    await expect(store.login(failTransport(404), "bob@example.com", "wrong")).resolves.toBeNull();
+    expect(store.error).toBe("invalid-credentials");
+
+    deferred.settle(0, { ok: false, status: 401, json: { code: "AUTHENTICATION_REQUIRED" } });
+    await expect(stale).resolves.toBe(false);
+
+    // The stale recovery must neither overwrite nor clear the newer flow's error.
+    expect(store.error).toBe("invalid-credentials");
+    expect(store.isAuthenticated).toBe(false);
+  });
+
+  it("VC-R08F: completing a TOTP challenge invalidates an in-flight probe instead of rolling back B", async () => {
+    const store = useAuthStore();
+    const challengeId = "d".repeat(43);
+    const recoveryCodes = ["RC-1", "RC-2", "RC-3"];
+    const sessionProbes: Array<(response: AuthApiResponse) => void> = [];
+    const request = vi.fn(async (_method: string, path: string): Promise<AuthApiResponse> => {
+      if (path === "/api/v1/auth/session") {
+        return new Promise<AuthApiResponse>((resolve) => {
+          sessionProbes.push(resolve);
+        });
+      }
+      if (path === "/api/v1/auth/login") {
+        return {
+          ok: true,
+          status: 202,
+          json: {
+            nextStep: "TOTP_REQUIRED",
+            challengeId,
+            expiresAt: "2030-01-01T00:00:00Z",
+          },
+        };
+      }
+      if (path === `/api/v1/auth/challenges/${challengeId}/totp`) {
+        return { ok: true, status: 200, json: { ...identityB(), recoveryCodes } };
+      }
+      throw new Error(`unexpected auth request ${path}`);
+    });
+    const transport: AuthTransport = { request };
+
+    await expect(store.login(transport, "bob@example.com", "pw"))
+      .resolves.toBe("TOTP_REQUIRED");
+
+    // Another page or recovery path probes GET /session while the challenge is
+    // pending and login.vue is not waiting for any bootstrap.
+    const probe = store.tryRefresh(transport);
+
+    await expect(store.verifyAuthenticatorCode(transport, "123456", false))
+      .resolves.toBe(true);
+
+    // The earlier probe settles afterwards with the pre-challenge anonymous view.
+    sessionProbes[0]?.({ ok: false, status: 401, json: { code: "AUTHENTICATION_REQUIRED" } });
+    await expect(probe).resolves.toBe(false);
+
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accountId).toBe("8");
+    expect(store.nextStep).toBe("ACTIVE");
+    expect(store.recoveryCodes).toEqual(recoveryCodes);
+    expect(store.error).toBeNull();
+    // Invalidating the in-flight probe must not dispatch a replacement GET.
+    expect(request).toHaveBeenCalledTimes(3);
   });
 
   it("VC-R08 wiring: a same-generation session 401 still clears identity and local caches", async () => {

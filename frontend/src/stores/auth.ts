@@ -87,6 +87,9 @@ export const useAuthStore = defineStore("h5-auth", () => {
   });
 
   function persist(identity: AuthSessionIdentity): void {
+    // Committing an identity is itself a generation boundary: any probe already
+    // in flight describes the previous session and must not roll this one back.
+    refreshEpoch++;
     accessToken.value = "session";
     accountId.value = identity.accountId;
     email.value = identity.email ?? null;
@@ -293,12 +296,15 @@ export const useAuthStore = defineStore("h5-auth", () => {
 
   async function tryRefresh(t: AuthTransport): Promise<boolean> {
     error.value = null;
+    const epoch = refreshEpoch;
     const outcome = await refreshOnce(t);
-    if (outcome === "unavailable") {
+    // A renewal is this caller's own success even when a later transition has
+    // already moved the generation on; only the error commit stays gated.
+    if (outcome === "renewed") return true;
+    if (outcome === "unavailable" && epoch === refreshEpoch) {
       error.value = "refresh-failed";
-      return false;
     }
-    return outcome === "renewed";
+    return false;
   }
 
   async function renewAccessToken(t: AuthTransport): Promise<RefreshOutcome> {
