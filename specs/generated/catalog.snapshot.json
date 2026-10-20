@@ -1617,7 +1617,10 @@
             "replacementOrImpact": "Keep listing consent state."
           },
           {
-            "currentH5Callers": [],
+            "currentH5Callers": [
+              "frontend/src/api/data-export.ts",
+              "frontend/src/components/account/DataExportPanel.vue"
+            ],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1629,7 +1632,10 @@
             "replacementOrImpact": "Keep export create. MinIO/object lifecycle stays until a later dedicated slice."
           },
           {
-            "currentH5Callers": [],
+            "currentH5Callers": [
+              "frontend/src/api/data-export.ts",
+              "frontend/src/components/account/DataExportPanel.vue"
+            ],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1641,7 +1647,10 @@
             "replacementOrImpact": "Keep export status."
           },
           {
-            "currentH5Callers": [],
+            "currentH5Callers": [
+              "frontend/src/api/data-export.ts",
+              "frontend/src/components/account/DataExportPanel.vue"
+            ],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2250,7 +2259,7 @@
           }
         ]
       },
-      "sha256": "8350f04c34f89de2f6fbcbd8e8c474f9126eb6e1e356377a9b2044d7b2cf8369"
+      "sha256": "cca8b316271b9d649c0578914964f455598dfac3d1e08a479cb935eb9a34c570"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

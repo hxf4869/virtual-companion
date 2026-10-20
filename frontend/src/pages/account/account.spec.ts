@@ -7,12 +7,52 @@ import { useAuthStore } from "@/stores/auth";
 
 import AccountPage from "./account.vue";
 
+// 副本下载文档的原始 JSON 文本常量：含超过 Number.MAX_SAFE_INTEGER 的
+// int64 ID，必须以字符串字面量比对，不得 JSON.parse/stringify 重构。
+const EXPORT_JSON_TEXT = '{"format":"vc-export-v1","requestedAt":"2026-10-20T09:05:00Z",'
+  + '"messages":[{"messageId":9007199254740993,"role":"user","content":"晚上好"}],'
+  + '"memories":[{"memoryId":9007199254740995,"summary":"用户喜欢在晚上散步。"}]}';
+const EXPORT_CREATED_BODY = {
+  exportId: "exp-1",
+  status: "PENDING",
+  requestedAt: "2026-10-20T09:05:00Z",
+  downloadUrl: "/api/v1/exports/exp-1/download?token=one-time",
+};
+const EXPORT_READY_BODY = {
+  exportId: "exp-1",
+  status: "READY",
+  requestedAt: "2026-10-20T09:05:00Z",
+  completedAt: "2026-10-20T09:06:00Z",
+  expiresAt: "2026-10-27T09:05:00Z",
+};
+
+interface Gate {
+  promise: Promise<unknown>;
+  resolve: (value: unknown) => void;
+}
+
 interface FetchOptions {
   devices?: unknown[];
   deviceGetStatuses?: number[];
   revokeDeviceStatus?: number;
   passwordStatus?: number;
   deleteStatus?: number;
+  exportCreateStatus?: number;
+  exportCreateBody?: unknown;
+  exportStatusStatus?: number;
+  exportStatusBody?: unknown;
+  exportDownloadStatus?: number;
+  exportDownloadText?: string;
+  /** 提供时，创建副本的 POST 挂起直到手动 resolve（用于账号切换场景）。 */
+  exportCreateGate?: Gate;
+}
+
+function makeGate(): Gate {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise<unknown>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 function stubFetch(options: FetchOptions = {}) {
@@ -45,6 +85,23 @@ function stubFetch(options: FetchOptions = {}) {
       const status = options.deleteStatus ?? 200;
       return response(status, status === 200 ? { ok: true } : null);
     }
+    if (url === "/api/v1/exports" && method === "POST") {
+      const status = options.exportCreateStatus ?? 200;
+      const json = status === 200 ? (options.exportCreateBody ?? EXPORT_CREATED_BODY) : null;
+      if (options.exportCreateGate) {
+        return options.exportCreateGate.promise.then(() => response(status, json));
+      }
+      return response(status, json);
+    }
+    if (url.startsWith("/api/v1/exports/") && url.includes("/download")) {
+      const status = options.exportDownloadStatus ?? 200;
+      if (status !== 200) return response(status, null);
+      return rawResponse(options.exportDownloadText ?? EXPORT_JSON_TEXT);
+    }
+    if (url.startsWith("/api/v1/exports/") && method === "GET") {
+      const status = options.exportStatusStatus ?? 200;
+      return response(status, status === 200 ? (options.exportStatusBody ?? EXPORT_READY_BODY) : null);
+    }
     return response(200, {});
   }));
   return { calls };
@@ -55,6 +112,18 @@ function response(status: number, json: unknown) {
     ok: status >= 200 && status < 300,
     status,
     json: async () => json,
+  };
+}
+
+/** 一次性下载响应：以服务器原始 JSON 文本返回（Blob/text 同源字节）。 */
+function rawResponse(text: string) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => "application/json" },
+    blob: async () => new Blob([text], { type: "application/json" }),
+    text: async () => text,
+    json: async () => JSON.parse(text),
   };
 }
 
@@ -264,6 +333,7 @@ describe("account page", () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="password-required"]').text()).toContain("先设置一个新密码");
     expect(wrapper.find('[data-testid="password-form"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="data-copy-toggle"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -322,6 +392,110 @@ describe("account page", () => {
     expect(wrapper.get('[data-testid="account-signed-out"]').text()).toContain("登录后");
     expect(wrapper.find('[data-testid="account-logout"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="delete-account-open"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the copy entry inside the account group and keeps it collapsed until toggled", async () => {
+    stubFetch();
+    loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    const toggle = wrapper.get('[data-testid="data-copy-toggle"]');
+    expect(toggle.text()).toContain("聊天与记忆副本");
+    const accountSection = wrapper.findAll("section")[1];
+    expect(accountSection.element.contains(toggle.element)).toBe(true);
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    expect(wrapper.find('[data-testid="data-copy-panel"]').isVisible()).toBe(false);
+
+    await toggle.trigger("click");
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+    expect(wrapper.find('[data-testid="data-copy-panel"]').isVisible()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("runs the copy flow end to end with byte-exact server bytes", async () => {
+    const { calls } = stubFetch();
+    loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:export-1");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const clickedAnchors: HTMLAnchorElement[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function handleClick(this: HTMLAnchorElement) {
+        clickedAnchors.push(this);
+      },
+    );
+
+    await wrapper.get('[data-testid="data-copy-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("Current-Pass-1!");
+    await wrapper.get('[data-testid="data-copy-create"]').trigger("click");
+    await flushPromises();
+    expect(calls).toContainEqual(expect.objectContaining({
+      method: "POST",
+      url: "/api/v1/exports",
+      body: '{"currentPassword":"Current-Pass-1!"}',
+    }));
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text()).toContain("正在整理你的副本。");
+
+    await wrapper.get('[data-testid="data-copy-progress"]').trigger("click");
+    await flushPromises();
+    expect(calls).toContainEqual(expect.objectContaining({ method: "GET", url: "/api/v1/exports/exp-1" }));
+
+    await wrapper.get('[data-testid="data-copy-download"]').trigger("click");
+    await flushPromises();
+    expect(calls).toContainEqual(expect.objectContaining({
+      method: "GET",
+      url: "/api/v1/exports/exp-1/download?token=one-time",
+    }));
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    expect(await blob.text()).toBe(EXPORT_JSON_TEXT);
+    expect(clickedAnchors).toHaveLength(1);
+    expect(clickedAnchors[0].getAttribute("download")).toContain("聊天与记忆副本-");
+    expect(clickedAnchors[0].getAttribute("href")).toBe("blob:export-1");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:export-1");
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text()).toContain("已交给浏览器下载");
+    wrapper.unmount();
+  });
+
+  it("rebuilds a clean panel for the next account and drops the in-flight copy request", async () => {
+    const gate = makeGate();
+    const { calls } = stubFetch({ exportCreateGate: gate });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="data-copy-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("Current-Pass-1!");
+    await wrapper.get('[data-testid="data-copy-create"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/exports")).toHaveLength(1);
+
+    // 同次更新内切换账号：v-else 分支不销毁，靠 :key 强制重建面板。
+    auth.accountId = "43";
+    await flushPromises();
+    expect(auth.isAuthenticated).toBe(true);
+    expect(wrapper.get('[data-testid="data-copy-toggle"]').attributes("aria-expanded")).toBe("false");
+
+    await wrapper.get('[data-testid="data-copy-toggle"]').trigger("click");
+    const panel = wrapper.get('[data-testid="data-copy-panel"]');
+    expect(panel.text()).toContain("申请副本");
+    expect(panel.text()).not.toContain("正在整理你的副本。");
+    expect(wrapper.find('[data-testid="data-copy-progress"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="data-copy-download"]').exists()).toBe(false);
+    const input = wrapper.get('[data-testid="data-copy-password"]').element as HTMLInputElement;
+    expect(input.value).toBe("");
+
+    // 旧账号的迟到创建响应到达：不回填新实例，也不再发起新请求。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text()).toContain("申请副本");
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text()).not.toContain("正在整理你的副本。");
+    expect(wrapper.find('[data-testid="data-copy-download"]').exists()).toBe(false);
+    expect(calls.filter((call) => call.url === "/api/v1/exports")).toHaveLength(1);
     wrapper.unmount();
   });
 });

@@ -154,6 +154,15 @@
                 {{ busy === "password" ? "修改中…" : "确认修改" }}
               </button>
             </view>
+
+            <!-- :key 绑定账号：切换账号即重建面板，旧副本状态随 unmount 清空、
+                 迟到回调被存活守卫丢弃；必须改密的会话先改密再出现入口。 -->
+            <DataExportPanel
+              v-if="!auth.passwordMustChange"
+              :key="auth.accountId ?? undefined"
+              :transport="transport"
+              :download-fetch="authedFetch"
+            />
           </view>
         </section>
 
@@ -347,9 +356,11 @@ import {
   revokeTrustedDevice,
   type TrustedDevice,
 } from "@/api/auth";
+import { createAuthedFetch } from "@/api/authed-fetch";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { goTo } from "@/app/navigate";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import DataExportPanel from "@/components/account/DataExportPanel.vue";
 import AppIcon from "@/design-system/AppIcon.vue";
 import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
@@ -373,6 +384,11 @@ const busy = ref<BusyAction | null>(null);
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  onUnauthorized: () => auth.onUnauthorized(),
+});
+
+// 副本下载与 transport 同源同一 auth store：cookie 会话 + CSRF + 401 登出。
+const authedFetch = createAuthedFetch(() => auth.accessToken, {
   onUnauthorized: () => auth.onUnauthorized(),
 });
 

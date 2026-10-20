@@ -19,7 +19,12 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 - `480a2c79` 验证码失效与错码区分、失效挑战三路径统一引导重新登录，TOTP
   合成 cipher 夹具独立初始化（594 项前端测试与 type-check 通过；
   `bash scripts/check.sh` 14s PASS；隔离 PostgreSQL 下 6 项
-  TestTOTP|TestAuthChallenge 全部 PASS，含 setup 共 74.312s）。
+  TestTOTP|TestAuthChallenge 全部 PASS，含 setup 共 74.312s）；
+- `04f2d0cf`（VC-R05，backend）数据导出失败单事务闭环，陈旧 claim 不击落
+  导出并解除申请阻塞（已推送，验证细节见该提交）；
+- `47f9590a`（VC-R06，backend）导出 worker 中断后过期 claim 终态恢复，
+  解除 PENDING 申请重复阻塞（V135 恢复函数 + DATA_EXPORT 恢复块；单测、
+  TestExportLeaseRecovery 与隔离 PostgreSQL RLS 测试 PASS，已推送）。
 
 2026-10-21 聊天会话归属与恢复收口（VC-R04）：复现并修复 H5 同页 hash 深链/
 参数变更下「URL 已切会话、页面仍显示旧会话流」（VC-R02 观察形态）；hash
@@ -30,6 +35,17 @@ hashchange 双重 initPage，修复后收敛为单实例响应）；恢复核对
 约束（等待页不核对、不接管，与监听注册顺序无关）与 turn 身份单飞；会话
 窗口切换在途时作废旧 run 终局。607 项前端测试与 type-check 通过。真机
 中文 IME 验证另立 `DOGFOOD-11`（见 [`TODO.md`](TODO.md)）。
+
+2026-10-21 数据副本前端（VC-R07）：My 账号分组内联「聊天与记忆副本」面板，
+当前密码申请、PENDING 手动查进度、READY 一次性下载、失败/过期可重申；三
+KEEP 导出 API 接入既有 auth transport，下载走 `createAuthedFetch` 原始
+`blob()`，超过 JS 安全整数的消息编号保真；成功消费清一次性 URL 后主动作
+回到重新申请；账号切换重建面板清副本、必须改密的会话不出现入口。Catalog
+snapshot 随 API scope 更新重新生成（`scripts/check.sh` 13s PASS）；全前端
+641 项测试与 type-check 通过，终稿文案后 panel/account 定向 35/35 复核；
+本机浏览器 390x844 实测申请/进度/下载事件齐全，下载 JSON 与预期原始字节
+一致；320x568 表单几何截图无横溢。真实手机系统浏览器上完成副本下载与
+保存未验收，仍为 Owner 人工项（见 [`TODO.md`](TODO.md)）。
 
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。

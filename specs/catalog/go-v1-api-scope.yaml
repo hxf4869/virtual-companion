@@ -540,7 +540,9 @@ operations:
 - operationId: createExport
   method: POST
   path: /api/v1/exports
-  currentH5Callers: []
+  currentH5Callers:
+  - frontend/src/api/data-export.ts
+  - frontend/src/components/account/DataExportPanel.vue
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -549,7 +551,9 @@ operations:
 - operationId: getExportStatus
   method: GET
   path: /api/v1/exports/{exportId}
-  currentH5Callers: []
+  currentH5Callers:
+  - frontend/src/api/data-export.ts
+  - frontend/src/components/account/DataExportPanel.vue
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -558,7 +562,9 @@ operations:
 - operationId: downloadExport
   method: GET
   path: /api/v1/exports/{exportId}/download
-  currentH5Callers: []
+  currentH5Callers:
+  - frontend/src/api/data-export.ts
+  - frontend/src/components/account/DataExportPanel.vue
   decision: KEEP
   keepBecause:
   - core-outcome
