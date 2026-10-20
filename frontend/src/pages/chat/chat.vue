@@ -200,6 +200,10 @@ const initBusy = ref(false);
 // WP-D（缺口1）：覆盖"建会话（如需要）+ 发送"的页面级提交互斥——任何
 // await 之前同步置位，await ensureConversation 期间第二次 onSend 无法穿过。
 let submitInFlight = false;
+// VC-R04：本实例实际落地的目标会话（initPage/建会话/开始新对话时同步）。
+// 恢复核对按会话归属介入：等待页（目标 ≠ 当前流所属会话）不核对、不接管，
+// 与 online/visibility 监听的注册顺序无关。
+let owningConversationId = "";
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -409,6 +413,9 @@ async function initPage(): Promise<void> {
       store.reset();
     }
 
+    // VC-R04：记录本实例的目标会话归属（含空会话——等待态在上方已返回，
+    // 不会走到这里）。此后本实例的恢复核对都以此为准。
+    owningConversationId = store.conversationId;
     bindGenerationContext();
     if (store.conversationId) {
       const restored = await store.tryRestoreAfterReload(
@@ -434,6 +441,9 @@ async function ensureConversation(): Promise<boolean> {
   if (!relationshipId) return false;
   const created = await store.initConversation(transport, relationshipId);
   if (!created) return false;
+  // VC-R04：本实例首次建会话成功——归属随之更新（窗口令牌守卫保证
+  // await 期间未被其他实例切换时才会走到这里）。
+  owningConversationId = store.conversationId;
   bindGenerationContext();
   void store.loadConversations(transport, relationshipId);
   return true;
@@ -490,7 +500,7 @@ async function onRetry(): Promise<void> {
   // 重试＝重新连接原流/快照，绝不新建 generation、不重复用户消息；
   // not_found_or_forbidden 不重连循环也不新键发送——一次有界核对，草稿保留。
   if (reconnectFailed.value || turnUnverifiable.value) {
-    void store.recoverInFlight(deps, instanceToken);
+    void store.recoverInFlight(deps, instanceToken, owningConversationId);
     return;
   }
   // N-05：发送结果未确认＝普通同键重发：不调用 resolveTurnSource、不传
@@ -532,7 +542,7 @@ function onStatusAction(): void {
     void store.loadHistory(transport);
     return;
   }
-  void store.recoverInFlight(deps, instanceToken);
+  void store.recoverInFlight(deps, instanceToken, owningConversationId);
 }
 
 /**
@@ -561,6 +571,7 @@ function startNewConversation(): void {
   if (store.isStreaming || generationBusy.value) return;
   menuOpen.value = false;
   store.reset();
+  owningConversationId = ""; // VC-R04：本实例转入空会话，归属同步清空。
   bindGenerationContext();
   inputText.value = "";
   directSendError.value = false;
@@ -649,6 +660,22 @@ watch(
 
 let stopLifecycle: (() => void) | undefined;
 
+/**
+ * VC-R04（疑点1 复核）：H5 直接编辑 location.hash（同页面路径、不同会话
+ * 参数）时，uni 路由不重建本页实例——页面停留在旧窗口，URL 已指向 conv-b
+ * 却仍显示 conv-a 的流式草稿（VC-R02 观察到的形态）。页面自行监听
+ * hashchange：hash 仍指向 chat 页且目标会话变化时重走完整 initPage（打开/
+ * 等待/守卫语义不变）；同目标或指向其他页面时不动作。
+ */
+function onLocationHashChange(): void {
+  if (initBusy.value || pageState.value === "loading") return;
+  if (typeof location === "undefined") return;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  if (!/^#\/pages\/chat\/chat(\?|$)/.test(location.hash)) return;
+  if (queryContext().conversationId === owningConversationId) return;
+  void initPage();
+}
+
 onMounted(() => {
   if (typeof document !== "undefined" && typeof window !== "undefined") {
     stopLifecycle = installStreamLifecycle({
@@ -656,11 +683,12 @@ onMounted(() => {
       removeEventListener: (name, handler) => window.removeEventListener(name, handler),
       getVisibility: () => document.visibilityState,
       onRecover: () => {
-        void store.recoverInFlight(deps, instanceToken);
+        void store.recoverInFlight(deps, instanceToken, owningConversationId);
       },
     });
     document.addEventListener("scroll", onHistoryScroll, { capture: true, passive: true });
     window.addEventListener("resize", onViewportChange);
+    window.addEventListener("hashchange", onLocationHashChange);
     window.visualViewport?.addEventListener("resize", onViewportChange);
   }
   void initPage();
@@ -672,6 +700,7 @@ onUnmounted(() => {
   if (typeof document !== "undefined" && typeof window !== "undefined") {
     document.removeEventListener("scroll", onHistoryScroll, true);
     window.removeEventListener("resize", onViewportChange);
+    window.removeEventListener("hashchange", onLocationHashChange);
     window.visualViewport?.removeEventListener("resize", onViewportChange);
   }
   // VC-R02：只有登记了流归属的本实例才 detach——等待页/纯展示页离开时

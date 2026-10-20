@@ -64,6 +64,12 @@ interface FetchOptions {
   generations?: Array<"reject" | number>;
   /** VC-R02：GET /realtime/streams/:id 永不返回——复现"本实例发起的流仍在进行"。 */
   hangStream?: boolean;
+  /** VC-R04：POST /generations 挂起，由测试放行（时机 a：POST 在途时切换会话）。 */
+  deferGeneration?: boolean;
+  /** VC-R04：GET /generations/:id/snapshot 挂起，由测试放行（恢复核对 deferred 夹具）。 */
+  deferSnapshot?: boolean;
+  /** VC-R04：GET /realtime/streams/:id 返回可控 SSE 流，帧由测试推送/关闭。 */
+  liveStream?: boolean;
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -87,6 +93,28 @@ function stubFetch(options: FetchOptions = {}) {
   const deferredCreate = new Promise<StubResponse>((resolve) => {
     resolveCreate = resolve;
   });
+  let resolveGenerationPost!: (value: StubResponse) => void;
+  const deferredGenerationPost = new Promise<StubResponse>((resolve) => {
+    resolveGenerationPost = resolve;
+  });
+  let resolveSnapshot!: (value: StubResponse) => void;
+  const deferredSnapshot = new Promise<StubResponse>((resolve) => {
+    resolveSnapshot = resolve;
+  });
+  // VC-R04：可控 SSE body——测试按需推送帧并关闭（EOF）。
+  const encoder = new TextEncoder();
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const liveBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+    },
+  });
+  const pushFrame = (frame: string): void => {
+    streamController?.enqueue(encoder.encode(frame));
+  };
+  const endStream = (): void => {
+    streamController?.close();
+  };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
     const method = (init?.method ?? "GET").toUpperCase();
@@ -138,6 +166,7 @@ function stubFetch(options: FetchOptions = {}) {
       });
     }
     if (method === "POST" && /^\/api\/v1\/conversations\/[^/]+\/generations$/.test(url)) {
+      if (options.deferGeneration) return deferredGenerationPost;
       const step = options.generations?.shift() ?? 200;
       if (step === "reject") throw new TypeError("fetch failed");
       if (step === 200) {
@@ -150,15 +179,30 @@ function stubFetch(options: FetchOptions = {}) {
       }
       return response(false, step, null);
     }
+    if (method === "GET" && /^\/api\/v1\/generations\/[^/]+\/snapshot$/.test(url)) {
+      if (options.deferSnapshot) return deferredSnapshot;
+      return response(true, 200, { events: [] });
+    }
     if (method === "GET" && url.startsWith("/api/v1/realtime/streams/")) {
       // VC-R02：挂起的 Fetch-SSE 连接——resume 永不落地，流保持在 streaming。
       if (options.hangStream) return new Promise<StubResponse>(() => undefined);
+      if (options.liveStream) {
+        return { ...response(true, 200, {}), body: liveBody };
+      }
       return response(true, 200, {});
     }
     return response(true, 200, {});
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { calls, fetchMock, resolveCreate };
+  return {
+    calls,
+    fetchMock,
+    resolveCreate,
+    resolveGenerationPost,
+    resolveSnapshot,
+    pushFrame,
+    endStream,
+  };
 }
 
 function login(): void {
@@ -201,6 +245,10 @@ function navigateTo(): ReturnType<typeof vi.fn> {
 describe("聊天产品页", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    // VC-R04：happy-dom 的 sessionStorage 跨测试存活；真实 run 会写入
+    // vc.gen.restore（conv-new 配对），不清理会让后续 conv-new 深链挂载走进
+    // 上一轮的快照恢复（页面停在 loading，属测试间污染而非产品行为）。
+    sessionStorage.clear();
     setActivePinia(createPinia());
     vi.stubGlobal("uni", {
       navigateTo: vi.fn(),
@@ -958,6 +1006,375 @@ describe("聊天产品页", () => {
     expect(store.phase).toBe("streaming");
     expect(store.generationId).toBe("gen-live");
     expect(store.pendingUserContent).toBe("在吗");
+    wrapper.unmount();
+  });
+
+  // ---- VC-R04：会话切换归属（真实按钮路径）与多实例恢复竞争 ----
+
+  const CONV_OLD_MESSAGES = [
+    {
+      messageId: "o1",
+      conversationId: "conv-old",
+      role: "assistant",
+      content: "这是 B 会话自己的消息。",
+      createdAt: "2026-08-29T08:42:00Z",
+    },
+  ];
+
+  /**
+   * 模拟"另一个会话的流断连耗尽"：真实 exhaust 要走 8 次退避重连（约 30s
+   * 真实定时器），组件测试按下述终态直种（与 seedLiveStreamState 同一先例，
+   * 竞争本身由真实 online 事件 + 真实 recoverInFlight/fetch 驱动）。
+   */
+  function seedExhaustedStreamState(): void {
+    const store = useChatStore();
+    store.conversationId = "conv-new";
+    store.generationId = "gen-live";
+    store.phase = "failed";
+    store.outcome = "exhausted";
+    store.turnHasGeneration = true;
+    store.pendingUserContent = "在吗";
+    store.stream = {
+      status: "streaming",
+      epoch: 1,
+      cursor: 1,
+      events: [
+        { eventSeq: 1, streamEpoch: 1, eventType: "chat.delta", payload: "我在听。" },
+      ],
+      terminal: false,
+      terminalEventType: null,
+    };
+  }
+
+  it("断连后 online：等待页离开不得中断归属页正在恢复的流（deferred 快照）", async () => {
+    const { resolveSnapshot } = stubFetch({ hangStream: true, deferSnapshot: true });
+    seedLiveStreamState();
+    // 页面实例 A：conv-new（流归属页，先挂载——真实路径中流由它发起）。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapperA = mountPage();
+    await flushPromises();
+    expect(wrapperA.find('[data-testid="draft"]').text()).toContain("我在听。");
+
+    // 页面实例 B：conv-old 等待页（A 的流仍在进行）。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapperB = mountPage();
+    await flushPromises();
+    expect(wrapperB.find('[data-testid="chat-waiting"]').exists()).toBe(true);
+
+    // 断连耗尽落地（真实路径终态直种，见 seedExhaustedStreamState 注释）。
+    seedExhaustedStreamState();
+    await wrapperA.vm.$nextTick();
+
+    // 网络恢复：两个实例的 online 监听先后触发核对（快照响应延迟中）。
+    window.dispatchEvent(new Event("online"));
+
+    // 快照（非终态）落地：A 的回复重新进入流式、局部草稿可见。
+    resolveSnapshot(response(true, 200, { events: [] }));
+    await flushPromises();
+    const store = useChatStore();
+    expect(store.phase).toBe("streaming");
+    expect(wrapperA.find('[data-testid="draft"]').text()).toContain("我在听。");
+    expect(wrapperA.find('[data-testid="status"]').text()).toContain("正在回复…");
+
+    // 等待页 B 离开（浏览器返回弹出该实例）：不得中断 A 的恢复。
+    wrapperB.unmount();
+    await wrapperA.vm.$nextTick();
+    expect(store.phase).toBe("streaming");
+    expect(store.lastDisconnect).not.toBe("network");
+    expect(wrapperA.find('[data-testid="draft"]').text()).toContain("我在听。");
+    expect(wrapperA.find('[data-testid="status"]').text()).toContain("正在回复…");
+    wrapperA.unmount();
+  });
+
+  it("等待页先收到 online 也不核对/不接管，归属页进入后仍可正常恢复", async () => {
+    const { calls, resolveSnapshot } = stubFetch({ hangStream: true, deferSnapshot: true });
+    seedLiveStreamState();
+    // 仅挂载等待页 B（conv-old）——H5 返回栈/缓存页下监听注册顺序不可假设，
+    // B 可能是唯一/最先收到 online 的实例。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapperB = mountPage();
+    await flushPromises();
+    expect(wrapperB.find('[data-testid="chat-waiting"]').exists()).toBe(true);
+
+    // 断连耗尽落地后 online 到达等待页：不核对（无快照请求）、不接管。
+    seedExhaustedStreamState();
+    window.dispatchEvent(new Event("online"));
+    await flushPromises();
+    const store = useChatStore();
+    expect(store.phase).toBe("failed");
+    expect(calls.some((call) => call.url.includes("/api/v1/generations/gen-live/snapshot"))).toBe(false);
+
+    // 归属页 A（conv-new）此刻进入：显示重连入口而非等待/错误。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapperA = mountPage();
+    await flushPromises();
+    expect(wrapperA.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapperA.find('[data-testid="chat-send-error"]').text()).toContain("回复连接中断，点此重新连接");
+
+    // 真实按钮重连：归属页正常恢复，流回到 streaming、草稿可见。
+    await wrapperA.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    expect(calls.some((call) => call.url.includes("/api/v1/generations/gen-live/snapshot"))).toBe(true);
+    resolveSnapshot(response(true, 200, { events: [] }));
+    await flushPromises();
+    expect(store.phase).toBe("streaming");
+    expect(wrapperA.find('[data-testid="draft"]').text()).toContain("我在听。");
+    expect(wrapperA.find('[data-testid="status"]').text()).toContain("正在回复…");
+
+    // 等待页此刻离开：归属未转移，A 的恢复不受影响。
+    wrapperB.unmount();
+    await wrapperA.vm.$nextTick();
+    expect(store.phase).toBe("streaming");
+    expect(wrapperA.find('[data-testid="draft"]').text()).toContain("我在听。");
+    wrapperA.unmount();
+  });
+
+  it("时机a：POST 在途时经真实入口进入 B——B 干净落地，晚到的 A 响应不串扰", async () => {
+    const { calls, resolveGenerationPost } = stubFetch({
+      deferGeneration: true,
+      messages: { "conv-old": CONV_OLD_MESSAGES },
+    });
+    // A 会话（conv-new）真实发送：POST /generations 挂起。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapperA = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const inputA = wrapperA.find('[data-testid="message-input"]');
+    await inputA.setValue("A 会话的消息");
+    await wrapperA.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    expect(store.generationStarting).toBe(true);
+    expect(store.pendingUserContent).toBe("A 会话的消息");
+
+    // 真实入口：打开全部会话列表（进入 conversations 页）。
+    await wrapperA.find('[data-testid="chat-context-open"]').trigger("click");
+    await wrapperA.find('[data-testid="chat-open-all-conversations"]').trigger("click");
+    expect(navigateTo()).toHaveBeenCalledWith({
+      url: "/pages/conversations/conversations?relationshipId=rel-1",
+    });
+
+    // 从会话列表进入 B（conv-old 深链；A 页实例仍存活于页面栈）。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapperB = mountPage();
+    await flushPromises();
+
+    // B 已 ready 且只显示 B 自己的窗口：无 A 的草稿/待发文本、无错误文案。
+    expect(store.conversationId).toBe("conv-old");
+    expect(wrapperB.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapperB.find('[data-testid="chat-init-error"]').exists()).toBe(false);
+    expect(wrapperB.findAll('[data-testid="chat-message"]')).toHaveLength(1);
+    expect(wrapperB.text()).toContain("这是 B 会话自己的消息。");
+    expect(wrapperB.text()).not.toContain("A 会话的消息");
+    expect(wrapperB.find('[data-testid="chat-send-error"]').exists()).toBe(false);
+    expect(store.pendingUserContent).toBe("");
+
+    // A 的 POST 此刻才成功返回：静默丢弃——不启动 A 的流、不写 turn 状态。
+    resolveGenerationPost(response(true, 200, {
+      generationId: "gen-new",
+      conversationId: "conv-new",
+      logicalGenerationId: "lg-new",
+      status: "CREATED",
+    }));
+    await flushPromises();
+
+    expect(calls.some((call) => call.url.startsWith("/api/v1/realtime/streams/"))).toBe(false);
+    expect(store.phase).toBe("idle");
+    expect(store.generationId).toBe("");
+    expect(store.conversationId).toBe("conv-old");
+    expect(wrapperB.text()).toContain("这是 B 会话自己的消息。");
+    expect(wrapperB.find('[data-testid="chat-send-error"]').exists()).toBe(false);
+    wrapperB.unmount();
+    wrapperA.unmount();
+  });
+
+  it("时机b：A 流式等待中经真实入口进入 B——等待不打断流，结束后 B 不显示 A 的草稿", async () => {
+    const { pushFrame, endStream } = stubFetch({
+      liveStream: true,
+      messages: { "conv-old": CONV_OLD_MESSAGES },
+    });
+    // A 会话（conv-new）真实发送：SSE 先推一条 delta，流保持打开。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapperA = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const inputA = wrapperA.find('[data-testid="message-input"]');
+    await inputA.setValue("在吗");
+    await wrapperA.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    pushFrame('event: chat.delta\ndata: {"text":"A 的草稿"}\n\n');
+    await flushPromises();
+    expect(store.phase).toBe("streaming");
+    expect(wrapperA.find('[data-testid="draft"]').text()).toContain("A 的草稿");
+
+    // 真实入口进入 B（conv-old）：A 的流仍在等待——B 显示等待而非接管。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapperB = mountPage();
+    await flushPromises();
+    expect(wrapperB.find('[data-testid="chat-waiting"]').exists()).toBe(true);
+    expect(wrapperB.text()).toContain("上一段回复还在生成");
+    // 等待期间 store 未被 B 清空或中断；B 未拉取自己的窗口。
+    expect(store.conversationId).toBe("conv-new");
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-new");
+    expect(store.pendingUserContent).toBe("在吗");
+    expect(wrapperB.text()).not.toContain("B 会话自己的消息");
+
+    // A 的流走完（终帧 + EOF）：正常完成，草稿成为已确认正文。
+    pushFrame('event: chat.completed\ndata: {}\n\n');
+    endStream();
+    await flushPromises();
+    expect(store.phase).toBe("completed");
+    expect(store.outcome).toBe("completed");
+    expect(store.finalAssistant?.content).toBe("A 的草稿");
+
+    // 等待页解禁后经真实按钮打开 B：B 只显示 B 的窗口，不显示 A 的草稿。
+    expect(wrapperB.find('[data-testid="chat-waiting-open"]').attributes("disabled")).toBeUndefined();
+    await wrapperB.find('[data-testid="chat-waiting-open"]').trigger("click");
+    await flushPromises();
+
+    expect(store.conversationId).toBe("conv-old");
+    expect(wrapperB.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapperB.findAll('[data-testid="chat-message"]')).toHaveLength(1);
+    expect(wrapperB.text()).toContain("这是 B 会话自己的消息。");
+    expect(wrapperB.text()).not.toContain("A 的草稿");
+    expect(wrapperB.find('[data-testid="draft"]').exists()).toBe(false);
+    expect(store.pendingUserContent).toBe("");
+    expect(store.finalAssistant).toBeNull();
+    wrapperB.unmount();
+    wrapperA.unmount();
+  });
+
+  // ---- VC-R04（疑点1 复核）：同页 hash 深链切换（H5 直接编辑 URL） ----
+
+  it("直接编辑 hash 指向另一会话时页面重开目标窗口，不再停留旧会话内容", async () => {
+    stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+
+    // 模拟 H5 直接把 URL hash 改成 conv-b 的深链（uni 路由不重建本页实例）。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-old",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+
+    expect(store.conversationId).toBe("conv-old");
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="chat-message"]')).toHaveLength(1);
+    expect(wrapper.text()).toContain("这是 B 会话自己的消息。");
+    wrapper.unmount();
+  });
+
+  it("流式期间直接编辑 hash 进入 B：显示等待而非把 A 的草稿留在 B 的 URL 下", async () => {
+    stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
+    // A 的流活跃（VC-R02 复现形态的起点）。
+    seedLiveStreamState();
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+
+    // URL hash 直接改成 conv-b：页面必须转入等待，不得继续显示 A 的草稿。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-old",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="draft"]').exists()).toBe(false);
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-live");
+    wrapper.unmount();
+  });
+
+  it("hash 指向同一目标会话或离开 chat 路径时不重开窗口", async () => {
+    const { calls } = stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const windowCallsBefore = calls.filter(
+      (call) => call.method === "GET" && call.url.includes("/messages"),
+    ).length;
+
+    // 同一目标会话：不动作。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-new",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+    expect(store.conversationId).toBe("conv-new");
+    expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(false);
+
+    // 指向其他页面（如全部会话列表）：本页不动作，交给路由。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/conversations/conversations?relationshipId=rel-1",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+    expect(store.conversationId).toBe("conv-new");
+    const windowCallsAfter = calls.filter(
+      (call) => call.method === "GET" && call.url.includes("/messages"),
+    ).length;
+    expect(windowCallsAfter).toBe(windowCallsBefore);
     wrapper.unmount();
   });
 

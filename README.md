@@ -5,15 +5,40 @@ AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前后端运行时为
 pgvector。Generation、Realtime、Memory、数据权利与管理员模型配置已接入 Go
 runtime；项目尚未达到真实用户或公开生产发布条件。
 
-## 2026-09-06 修复轮状态
+## 当前状态（2026-10-21）
 
-当前工作分支 `codex/audit-remediation`，基线 HEAD
-`02c1fe91367b015443ec059264fd4d5273691ca0`。本轮授权批次为 N-00～N-08
-（对应评审发现 F-01～F-08），逐项完成情况以后续提交与对账记录为准。
-验证以本地入口为准：`bash scripts/check.sh`、`infra/db/` 隔离脚本、定向
-Vitest。CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
-新版产品范围以 `PRODUCT.md` 与 `frontend/DESIGN.md` 为准；历史文档中的
-Owner-only 描述是时序差异，不代表新版产品范围。
+当前工作分支 `codex/audit-remediation`。2026-09-06 基线 `02c1fe91` 之后已
+落地并推送的返修提交（验证证据见各提交与对账记录）：
+
+- `d77e77c6` 登录验证码限流按 challenge 维度隔离，独立挑战不再互相挤占额度
+  （httpapi 测试通过）；
+- `aa6b14c2` 输入法回车误发送守卫（Enter/229 composition）、流式会话导航
+  等待态与页面 owner 收口（587 项前端测试与 type-check 通过；320x568、
+  390x844、430x932 三视口实测无横向滚动，早期 `*-390.png` 为 1200x823
+  桌面窗口截图，不构成移动端证据）；
+- `480a2c79` 验证码失效与错码区分、失效挑战三路径统一引导重新登录，TOTP
+  合成 cipher 夹具独立初始化（594 项前端测试与 type-check 通过；
+  `bash scripts/check.sh` 14s PASS；隔离 PostgreSQL 下 6 项
+  TestTOTP|TestAuthChallenge 全部 PASS，含 setup 共 74.312s）。
+
+2026-10-21 聊天会话归属与恢复收口（VC-R04）：复现并修复 H5 同页 hash 深链/
+参数变更下「URL 已切会话、页面仍显示旧会话流」（VC-R02 观察形态）；恢复
+核对增加会话归属约束（等待页不核对、不接管，与监听注册顺序无关）与 turn
+身份单飞；会话窗口切换在途时作废旧 run 终局。605 项前端测试与 type-check
+通过。真机中文 IME 验证另立 `DOGFOOD-11`（见 [`TODO.md`](TODO.md)）。
+
+项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
+Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
+CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
+新版产品范围以 `PRODUCT.md` 与 `frontend/DESIGN.md` 为准。
+
+## 2026-09-06 修复轮状态（历史快照）
+
+当时基线 HEAD `02c1fe91367b015443ec059264fd4d5273691ca0`，授权批次 N-00～N-08
+（对应评审发现 F-01～F-08），逐项完成情况以后续提交与对账记录为准，不按提交
+名回溯勾选。验证以本地入口为准：`bash scripts/check.sh`、`infra/db/` 隔离
+脚本、定向 Vitest。历史文档中的 Owner-only 描述是时序差异，不代表新版产品
+范围。
 
 ## 快速开始
 

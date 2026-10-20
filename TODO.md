@@ -1,13 +1,36 @@
 # TODO
 
-## 2026-09-06 修复轮状态
+## 当前状态（2026-10-21）
 
-当前工作分支 `codex/audit-remediation`，基线 HEAD
-`02c1fe91367b015443ec059264fd4d5273691ca0`。本轮授权批次 N-00～N-08
-（对应评审发现 F-01～F-08）为在途修复，逐项状态与验收以对账记录为准，
+当前工作分支 `codex/audit-remediation`，本轮（VC-R04）起点 `480a2c79`。
+2026-09-06 基线之后已完成批次包含：
+
+- `d77e77c6` challenge 维度验证码限流隔离（httpapi 测试通过）；
+- `aa6b14c2` 输入法回车守卫与流式导航等待态/页面 owner（前端测试与
+  type-check 通过）；
+- `480a2c79` 验证失效与错码区分、三路径重新登录及 TOTP 合成 cipher 夹具
+  （前端测试与 type-check、`scripts/check.sh`、隔离 PostgreSQL 定向测试通过）；
+- `04f2d0cf`（VC-R05，backend）数据导出失败单事务闭环，陈旧 claim 不击落
+  导出并解除申请阻塞（push 已由 Owner 核实；验证细节见该提交）。
+
+2026-10-21 本轮（VC-R04）已落地聊天会话归属与恢复收口：hash 深链复现修复、
+恢复核对会话归属 + turn 身份单飞（等待页先/后触发均不核对、不接管）、
+会话窗口切换在途作废旧 run 终局；605 项前端测试与 type-check 通过。真机
+中文 IME 验证见 `DOGFOOD-11`，仍为 Owner 人工项。
+
+验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
+验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
+provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
+Owner 人工项见下文对应条目（DOGFOOD/`READY_FOR_OWNER` 均保持原状）。
+CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
 本文件其余条目维持原状。验证以本地入口为准（`bash scripts/check.sh`、
-`infra/db/` 隔离脚本、定向 Vitest）；CI 远端运行 NOT_RUN（CI 仅由 `main`
-触发；工作分支已推送但不触发 CI）。
+`infra/db/` 隔离脚本、定向 Vitest）。
+
+## 2026-09-06 修复轮状态（历史快照）
+
+当时基线 HEAD `02c1fe91367b015443ec059264fd4d5273691ca0`。授权批次
+N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与验收以对账
+记录为准。
 
 产品待办（现状声明见 README）：
 
@@ -128,6 +151,11 @@
       每日体验入口/健康观察/脱敏反馈方式/双端手工清单已备好
       （`ops/deploy/DOGFOOD.md` §12+附录 A）。不设通过阈值，最终只提交脱敏问题摘要、
       严重程度和建议顺序，不形成 `GO/PIVOT/STOP` 或 Beta 放行结论。
+- [ ] `DOGFOOD-11` `READY_FOR_OWNER`（代码侧 IME Enter/229 composition 守卫与
+      流式导航等待态已落地，合成 composition 事件与桌面模拟验证不代替真机）：
+      真机中文输入法验证——候选词确认路径不误触发送、Enter 语义符合预期、
+      软键盘弹起不遮挡聊天输入区与最新消息；未经 Owner 真机实测不得标记
+      完成。
 - [ ] `OWNER-INPUT-PROVIDER-TERMS`：Owner 提供登录后条款/隐私页面截图或可核验 URL。
       在地区、保留、训练使用与删除机制确认前，只允许通过本地敏感检查的
       `MESSAGE_TEXT`，账号元数据、记忆片段与敏感内容外发保持关闭；该阻塞不得阻止

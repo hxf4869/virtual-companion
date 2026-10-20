@@ -2179,11 +2179,268 @@ describe("useChatStore", () => {
     await store.initConversation(failingMessages, "1");
     await store.send(failingMessages, successDeps(), "Hello");
 
-    // N-06（缺口4）：回复已完成，补页失败只报"记录同步暂未成功"，
+    // N-06：回复已完成，补页失败只报"记录同步暂未成功"，
     // 不再误报语义相反的"更早的消息"历史错误。
     expect(store.phase).toBe("completed");
     expect(store.finalSyncFailed).toBe(true);
     expect(store.historyLoadFailed).toBe(false);
+  });
+
+  // ---- VC-R04：多实例共享 store 的恢复核对竞争与会话切换归属 ----
+
+  function defer<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  /**
+   * 走真实 send/run 路径把一轮回复推到"断连耗尽"终态（phase=failed、
+   * outcome=exhausted、handle=null，已应用的局部草稿保留在 stream 状态里）
+   * ——多实例恢复竞争的起点状态。
+   */
+  async function exhaustTurn(
+    store: ReturnType<typeof useChatStore>,
+    transport: ChatTransport,
+    ownerToken: number,
+  ): Promise<void> {
+    await store.initConversation(transport, "1");
+    vi.useFakeTimers();
+    try {
+      let resumeCalls = 0;
+      const deps: RealtimeDeps = {
+        resume: vi.fn(async (): Promise<ResumeResult> => {
+          resumeCalls += 1;
+          // 首批带来局部草稿，此后连接空转直至重连预算耗尽（exhausted）。
+          if (resumeCalls === 1) {
+            return { disposition: "RESUMED", events: [delta(1, 1, "A 草稿")] };
+          }
+          return { disposition: "RESUMED", events: [] };
+        }),
+        fetchSnapshot: vi.fn(async () => ({ ok: false, status: 500, events: [] })),
+      };
+      const sending = store.send(transport, deps, "A 的提问", { ownerToken });
+      await vi.runAllTimersAsync();
+      await sending;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  /** exhaustTurn 用的 transport：会话 conv-a 建档；conv-b 的最近窗口可被测试挂起。 */
+  function switchRaceTransport(generationId = "gen-a"): {
+    transport: ChatTransport;
+    convBWindow: { promise: Promise<unknown[]>; resolve: (rows: unknown[]) => void };
+  } {
+    const convBWindow = defer<unknown[]>();
+    const transport: ChatTransport = {
+      async request(method, path) {
+        if (path === "/api/v1/conversations") {
+          return { ok: true, status: 200, json: { conversationId: "conv-a" } };
+        }
+        if (path.includes("/messages")) {
+          const id = path.match(/conversations\/([^/]+)\/messages/)![1];
+          if (id === "conv-b") {
+            return { ok: true, status: 200, json: await convBWindow.promise };
+          }
+          return { ok: true, status: 200, json: [] };
+        }
+        if (method === "POST" && path.includes("/generations")) {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId, conversationId: "conv-a", logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    return { transport, convBWindow };
+  }
+
+  it("VC-R04: 归属页先触发的并行核对——等待页不核对、不抢归属、离开不中断恢复", async () => {
+    stubRestoreStorage();
+    const store = useChatStore();
+    const { transport } = switchRaceTransport();
+    await exhaustTurn(store, transport, 1); // A 页（令牌 1）发起，已断连耗尽
+    expect(store.phase).toBe("failed");
+    expect(store.outcome).toBe("exhausted");
+
+    const snapshotGate = defer<SnapshotResult>();
+    const resumeGate = defer<ResumeResult>();
+    let resumeCalls = 0;
+    const deps: RealtimeDeps = {
+      resume: vi.fn(() => {
+        resumeCalls += 1;
+        return resumeGate.promise;
+      }),
+      fetchSnapshot: vi.fn(() => snapshotGate.promise),
+    };
+
+    // online 事件到达两个实例：归属页（目标 conv-a）先核对，等待页（目标
+    // conv-b）随后——后者按会话归属被拒，不发起第二次快照核对。
+    const ownerRecover = store.recoverInFlight(deps, 1, "conv-a");
+    const waitingRecover = store.recoverInFlight(deps, 2, "conv-b");
+    await waitingRecover;
+    expect(deps.fetchSnapshot).toHaveBeenCalledTimes(1);
+
+    // 快照返回非终态：恢复介入，A 的回复重新进入流式、草稿可见。
+    snapshotGate.resolve({ ok: true, status: 200, events: [delta(1, 1, "A 草稿")] });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.phase).toBe("streaming");
+    expect(store.draft).toBe("A 草稿");
+
+    // 等待页离开（浏览器返回弹出该实例）：不得抢走归属、不得中断 A 的恢复。
+    store.detachInFlight(2);
+    expect(store.phase).toBe("streaming");
+    expect(store.lastDisconnect).not.toBe("network");
+
+    // 归属页的恢复照常走完，草稿完整，未重启第二条流。
+    resumeGate.resolve({ disposition: "RESUMED", events: [delta(2, 1, "！"), terminal(3, 1)] });
+    await ownerRecover;
+
+    expect(store.phase).toBe("completed");
+    expect(store.draft).toBe("A 草稿！");
+    expect(resumeCalls).toBe(1);
+  });
+
+  it("VC-R04: 等待页先触发 online 也不核对/不接管，归属页随后仍可正常恢复", async () => {
+    stubRestoreStorage();
+    const store = useChatStore();
+    const { transport } = switchRaceTransport();
+    await exhaustTurn(store, transport, 1);
+
+    const snapshotGate = defer<SnapshotResult>();
+    const resumeGate = defer<ResumeResult>();
+    const deps: RealtimeDeps = {
+      resume: vi.fn(() => resumeGate.promise),
+      fetchSnapshot: vi.fn(() => snapshotGate.promise),
+    };
+
+    // H5 缓存页/返回栈下监听注册顺序不可假设：等待页（目标 conv-b）先收到
+    // online——会话归属守卫在任何状态写入前拒绝，不 fetchSnapshot、不改 owner。
+    const waitingFirst = store.recoverInFlight(deps, 2, "conv-b");
+    await waitingFirst;
+    expect(deps.fetchSnapshot).not.toHaveBeenCalled();
+    expect(store.phase).toBe("failed"); // 未被等待页碰过
+
+    // 归属页随后触发：正常介入并恢复。
+    const ownerRecover = store.recoverInFlight(deps, 1, "conv-a");
+    expect(deps.fetchSnapshot).toHaveBeenCalledTimes(1);
+    snapshotGate.resolve({ ok: true, status: 200, events: [delta(1, 1, "A 草稿")] });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.phase).toBe("streaming");
+
+    // 等待页此刻离开：归属未转移，恢复不受影响，照常走完。
+    store.detachInFlight(2);
+    expect(store.phase).toBe("streaming");
+    resumeGate.resolve({ disposition: "RESUMED", events: [delta(2, 1, "！"), terminal(3, 1)] });
+    await ownerRecover;
+    expect(store.phase).toBe("completed");
+    expect(store.draft).toBe("A 草稿！");
+  });
+
+  it("VC-R04: 旧核对在途跨新 turn——不阻塞新轮恢复，晚到结果不写状态、不清新轮核对标识", async () => {
+    stubRestoreStorage();
+    const store = useChatStore();
+    const { transport } = switchRaceTransport();
+    await exhaustTurn(store, transport, 1); // turn 1（gen-a）断连耗尽
+
+    // ① 旧核对在途：快照迟迟不返回（deferred）。
+    const oldGate = defer<SnapshotResult>();
+    const oldDeps: RealtimeDeps = {
+      resume: vi.fn(),
+      fetchSnapshot: vi.fn(() => oldGate.promise),
+    };
+    const oldRecover = store.recoverInFlight(oldDeps, 1, "conv-a");
+    expect(oldDeps.fetchSnapshot).toHaveBeenCalledTimes(1);
+
+    // ② 同一会话新一轮真实提交并再次断连耗尽（gen-b、turnSeq 已递增）。
+    await exhaustTurn(store, switchRaceTransport("gen-b").transport, 1);
+    expect(store.generationId).toBe("gen-b");
+    expect(store.phase).toBe("failed");
+
+    // ③ 新轮核对必须能立即介入：旧核对在途不得跨 turn 阻塞。
+    const newGate = defer<SnapshotResult>();
+    const newDeps: RealtimeDeps = {
+      resume: vi.fn(),
+      fetchSnapshot: vi.fn(() => newGate.promise),
+    };
+    const newRecover = store.recoverInFlight(newDeps, 1, "conv-a");
+    expect(newDeps.fetchSnapshot).toHaveBeenCalledTimes(1);
+
+    // ④ 新轮在途期间的重复触发仍按同 turn 去重。
+    await store.recoverInFlight(newDeps, 1, "conv-a");
+    expect(newDeps.fetchSnapshot).toHaveBeenCalledTimes(1);
+
+    // ⑤ 旧快照此刻才返回终态：结果作废（不写 turn 2 的状态），其 finally
+    // 也不清新轮的核对标识——重复触发依旧去重。
+    oldGate.resolve({
+      ok: true,
+      status: 200,
+      events: [{ eventSeq: 1, streamEpoch: 1, eventType: "chat.cancelled", payload: "" }],
+    });
+    await oldRecover;
+    expect(store.phase).toBe("failed"); // 旧轮 cancelled 不得写进 turn 2
+    await store.recoverInFlight(newDeps, 1, "conv-a");
+    expect(newDeps.fetchSnapshot).toHaveBeenCalledTimes(1);
+
+    // ⑥ 新轮快照返回完成终态：正常落成，旧核对彻底退场。
+    newGate.resolve({
+      ok: true,
+      status: 200,
+      events: [snapshot(1, 1, "新轮回复"), terminal(2, 1)],
+    });
+    await newRecover;
+    expect(store.phase).toBe("completed");
+    expect(store.finalAssistant?.content).toBe("新轮回复");
+  });
+
+  it("VC-R04: 窗口切换在途时介入的恢复不得把旧会话终局提交进新会话窗口", async () => {
+    stubRestoreStorage();
+    const store = useChatStore();
+    const { transport, convBWindow } = switchRaceTransport();
+    await exhaustTurn(store, transport, 1);
+
+    // ① 归属页先发起核对（快照在途）。
+    const snapshotGate = defer<SnapshotResult>();
+    const resumeGate = defer<ResumeResult>();
+    const deps: RealtimeDeps = {
+      resume: vi.fn(() => resumeGate.promise),
+      fetchSnapshot: vi.fn(() => snapshotGate.promise),
+    };
+    const recovering = store.recoverInFlight(deps, 1, "conv-a");
+
+    // ② 等待页打开 conv-b：最近窗口请求在途（conversationId 已同步指向
+    // conv-b，但旧 turn 状态尚未清理）。
+    const opening = store.openConversation(transport, "conv-b");
+    expect(store.conversationId).toBe("conv-b");
+
+    // ③ 快照恰在窗口在途回来（非终态）：恢复启动旧会话的流。
+    snapshotGate.resolve({ ok: true, status: 200, events: [delta(1, 1, "A 草稿")] });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.phase).toBe("streaming");
+
+    // ④ conv-b 的最近窗口此刻才落地：新窗口必须干净落地。
+    convBWindow.resolve([{ messageId: 1, conversationId: "conv-b", role: "user", content: "B 的消息" }]);
+    expect(await opening).toBe("opened");
+    expect(store.conversationId).toBe("conv-b");
+
+    // ⑤ 旧会话的流此刻才走到终态：A 的草稿/终局不得提交进 conv-b 的窗口。
+    resumeGate.resolve({ disposition: "RESUMED", events: [delta(2, 1, "！"), terminal(3, 1)] });
+    await recovering;
+
+    expect(store.phase).toBe("idle");
+    expect(store.draft).toBe("");
+    expect(store.finalAssistant).toBeNull();
+    expect(store.displayMessages.map((m) => m.content)).toEqual(["B 的消息"]);
   });
 
 });

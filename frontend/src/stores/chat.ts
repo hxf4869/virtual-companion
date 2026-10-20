@@ -178,6 +178,17 @@ export const useChatStore = defineStore("h5-chat", () => {
   let lastSendKey: { conversationId: string; content: string; key: string } | null = null;
   // WP-D（缺口3）：取消核对单飞——连续点击停止不产生并发取消请求风暴。
   let cancelVerifyInFlight = false;
+  // VC-R04：恢复核对的介入资格与单飞标识。
+  // - 介入资格（会话归属）：共享 store 的多个 chat 页实例都装了 online/
+  //   visibility 监听，断连后同一事件会让它们先后进入 recoverInFlight，且
+  //   此刻 handle 为空、phase 守卫放行。等待页（页面实际落地的目标会话 ≠
+  //   当前流所属会话）无论先触发还是后触发都不得核对/接管——页面把自己
+  //   的目标会话传入，与会话不符直接返回（不 fetchSnapshot、不改 owner），
+  //   与监听注册顺序无关。未传（store 级调用/tryRestore 内部）不受此限。
+  // - 单飞（turn 身份）：同一 turn/generation 的并发触发只核对一次；跨
+  //   turn/generation 的旧核对不阻塞新轮介入，旧核对的 finally 按身份比较，
+  //   不会清掉新一轮的核对标识。
+  let recoverCheckOwner: { turn: number; generation: string } | null = null;
   // STREAM-ECHO: the content of the in-flight (or last failed) user turn, so the
   // page can echo it as a pending bubble while streaming and offer a one-click
   // retry after a terminal failure.
@@ -440,9 +451,17 @@ export const useChatStore = defineStore("h5-chat", () => {
    * Never creates a second generation; pending user input stays until a true
    * terminal snapshot or a resumed stream completes.
    */
-  async function recoverInFlight(deps: RealtimeDeps, ownerToken?: number): Promise<void> {
+  async function recoverInFlight(
+    deps: RealtimeDeps,
+    ownerToken?: number,
+    pageConversationId?: string,
+  ): Promise<void> {
     const id = generationId.value;
     if (!id) return;
+    // VC-R04：会话归属守卫——等待页（目标会话 ≠ 当前流所属会话）无权核对/
+    // 接管当前 turn；返回发生在任何状态写入（owner 登记/快照请求）之前，
+    // 先触发也一样被拒。
+    if (pageConversationId !== undefined && pageConversationId !== conversationId.value) return;
     // M2：核对发起时捕获 turn 归属；await 快照期间新一轮提交开始（send 递增
     // turnSeq）时，旧核对不得写任何状态——包括 404 分支删除恢复标识。
     const seqAtRecover = turnSeq;
@@ -457,79 +476,95 @@ export const useChatStore = defineStore("h5-chat", () => {
       return;
     }
     if (handle && !handle.cancelled) return;
-    // VC-R02：守卫全部通过、恢复真正介入时才登记页面归属——活跃流上的
-    // no-op 核对（等待页生命周期触发）不得转移归属。
-    if (ownerToken !== undefined) streamOwnerToken.value = ownerToken;
-
-    let snapshot;
+    // VC-R04：按 turn 身份单飞（见 recoverCheckOwner 声明处）。同一 turn 的
+    // 并发触发（含归属页与同会话实例的重复事件）只核对一次；跨 turn 的旧
+    // 核对在途不阻塞新轮介入，其 finally 也不清新轮的标识。
+    const checkIdentity = { turn: seqAtRecover, generation: id };
+    if (
+      recoverCheckOwner &&
+      recoverCheckOwner.turn === checkIdentity.turn &&
+      recoverCheckOwner.generation === checkIdentity.generation
+    ) {
+      return;
+    }
+    recoverCheckOwner = checkIdentity;
     try {
-      snapshot = await deps.fetchSnapshot(id);
-    } catch {
-      if (recoverStillCurrent()) lastDisconnect.value = "network";
-      return;
-    }
-    if (!recoverStillCurrent()) return;
-    if (!snapshot.ok) {
-      // S0-20: a gone generation (404) means the stored id is stale — drop
-      // it instead of re-finding a dead turn on every reload.
-      if (snapshot.status === 404) {
+      // VC-R02：守卫全部通过、恢复真正介入时才登记页面归属——活跃流上的
+      // no-op 核对（等待页生命周期触发）不得转移归属。
+      if (ownerToken !== undefined) streamOwnerToken.value = ownerToken;
+
+      let snapshot;
+      try {
+        snapshot = await deps.fetchSnapshot(id);
+      } catch {
+        if (recoverStillCurrent()) lastDisconnect.value = "network";
+        return;
+      }
+      if (!recoverStillCurrent()) return;
+      if (!snapshot.ok) {
+        // S0-20: a gone generation (404) means the stored id is stale — drop
+        // it instead of re-finding a dead turn on every reload.
+        if (snapshot.status === 404) {
+          clearRestorableGeneration(safeSessionStorage());
+        }
+        lastDisconnect.value = classifyDisconnect({
+          resumeStatus: snapshot.status,
+          outcome: outcome.value,
+        });
+        return;
+      }
+      cancelUnconfirmed.value = false;
+      // N-06：快照是本轮 source 用户消息的权威来源（多端插话下窗口启发式会
+      // 指错）。
+      if (snapshot.sourceUserMessageId) {
+        lastTurnSource.value = snapshot.sourceUserMessageId;
+      }
+      // A freshly-created generation can legitimately have an empty snapshot.
+      // A reloaded store starts at the idle sentinel epoch 0, which is not a
+      // valid realtime cursor and would make ticket minting fail with 400. Use
+      // the protocol's initial positive epoch; if the server has already reset
+      // to a later epoch, the resume response will authoritatively redirect us.
+      const current = stream.value.epoch > 0 ? stream.value : initialState(1);
+      const snapshotEpoch = snapshot.events[0]?.streamEpoch ?? current.epoch;
+      const base =
+        current.epoch === snapshotEpoch || snapshot.events.length === 0
+          ? current
+          : initialState(snapshotEpoch);
+      const next = applyTerminalSnapshot(base, snapshot.events);
+      stream.value = next;
+      if (next.terminal) {
+        const mapped = snapshotTerminalOutcomeOf(next.terminalEventType);
+        outcome.value = mapped;
+        if (mapped === "completed") {
+          phase.value = "completed";
+          pendingUserContent.value = "";
+          // N-06：完成快照带权威正文与 assistantMessageId——按真实 ID 合并；
+          // 空串是合法正文，协议缺失 ID 时以 null 过渡并等待历史同步。
+          finalAssistant.value = {
+            generationId: id,
+            messageId: snapshot.assistantMessageId ?? null,
+            content: lastSnapshotTextOf(snapshot.events),
+          };
+          finalSyncFailed.value = false;
+        } else if (mapped === "cancelled") {
+          phase.value = "cancelled";
+          pendingUserContent.value = "";
+          finalAssistant.value = null;
+        } else if (mapped === "blocked") {
+          phase.value = "blocked";
+          pendingUserContent.value = "";
+          finalAssistant.value = null;
+        } else {
+          phase.value = "failed";
+        }
+        lastDisconnect.value = "terminal";
         clearRestorableGeneration(safeSessionStorage());
+        return;
       }
-      lastDisconnect.value = classifyDisconnect({
-        resumeStatus: snapshot.status,
-        outcome: outcome.value,
-      });
-      return;
+      await run(deps, id, next.epoch, { resumeFrom: next, ownerToken });
+    } finally {
+      if (recoverCheckOwner === checkIdentity) recoverCheckOwner = null;
     }
-    cancelUnconfirmed.value = false;
-    // N-06：快照是本轮 source 用户消息的权威来源（多端插话下窗口启发式会
-    // 指错）。
-    if (snapshot.sourceUserMessageId) {
-      lastTurnSource.value = snapshot.sourceUserMessageId;
-    }
-    // A freshly-created generation can legitimately have an empty snapshot.
-    // A reloaded store starts at the idle sentinel epoch 0, which is not a
-    // valid realtime cursor and would make ticket minting fail with 400. Use
-    // the protocol's initial positive epoch; if the server has already reset
-    // to a later epoch, the resume response will authoritatively redirect us.
-    const current = stream.value.epoch > 0 ? stream.value : initialState(1);
-    const snapshotEpoch = snapshot.events[0]?.streamEpoch ?? current.epoch;
-    const base =
-      current.epoch === snapshotEpoch || snapshot.events.length === 0
-        ? current
-        : initialState(snapshotEpoch);
-    const next = applyTerminalSnapshot(base, snapshot.events);
-    stream.value = next;
-    if (next.terminal) {
-      const mapped = snapshotTerminalOutcomeOf(next.terminalEventType);
-      outcome.value = mapped;
-      if (mapped === "completed") {
-        phase.value = "completed";
-        pendingUserContent.value = "";
-        // N-06：完成快照带权威正文与 assistantMessageId——按真实 ID 合并；
-        // 空串是合法正文，协议缺失 ID 时以 null 过渡并等待历史同步。
-        finalAssistant.value = {
-          generationId: id,
-          messageId: snapshot.assistantMessageId ?? null,
-          content: lastSnapshotTextOf(snapshot.events),
-        };
-        finalSyncFailed.value = false;
-      } else if (mapped === "cancelled") {
-        phase.value = "cancelled";
-        pendingUserContent.value = "";
-        finalAssistant.value = null;
-      } else if (mapped === "blocked") {
-        phase.value = "blocked";
-        pendingUserContent.value = "";
-        finalAssistant.value = null;
-      } else {
-        phase.value = "failed";
-      }
-      lastDisconnect.value = "terminal";
-      clearRestorableGeneration(safeSessionStorage());
-      return;
-    }
-    await run(deps, id, next.epoch, { resumeFrom: next, ownerToken });
   }
 
   /**
@@ -563,7 +598,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       return false;
     }
     generationId.value = stored.generationId;
-    await recoverInFlight(deps, ownerToken);
+    await recoverInFlight(deps, ownerToken, conversationId.value);
     return true;
   }
 
@@ -1023,6 +1058,17 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 缺陷6：窗口真正落地时，上一会话遗留的 turn 状态（重试文案、待确认
     // 标志、失败态、旧流草稿）随窗口销毁；此后在途提交的晚到响应由 send 的
     // 归属校验丢弃。owner 绑定的恢复标识按设计保留（切回原会话仍可恢复）。
+    // VC-R04：窗口在途期间介入的恢复流（核对通过后启动的 run，此刻
+    // phase 已非入口检查时的状态）同样随窗口销毁作废——其晚到的终局提交
+    // （completed/旧会话草稿）不得落进新会话窗口。正常入口的 isStreaming
+    // 检查保证到达此处时本无合法在途流，能被杀掉的只有这条竞争流。
+    if (handle) {
+      handle.cancelled = true;
+      handle.abort();
+      handle = null;
+    }
+    runSequence += 1; // 在途 run 的晚到提交一律丢弃
+    turnSeq += 1; // 窗口在途期间发起的取消/核对回调一并作废
     pendingUserContent.value = "";
     cancelUnconfirmed.value = false;
     finalAssistant.value = null;
