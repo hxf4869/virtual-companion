@@ -68,6 +68,18 @@ export type ChatPhase =
   | "failed";
 
 /**
+ * VC-R02：openConversation 的结果形态（页面据此区分正常占用与真实错误）。
+ * - "opened"：窗口已切换；或流式中重进"当前会话"——正常占用，不动任何
+ *   窗口/流状态，页面直接进入 ready，进行中的流照常继续。
+ * - "busy-streaming"：其他会话的回复正在流式生成——占用而非错误。保留
+ *   当前生成、不取消、不清窗口；页面显示等待状态，本地流结束（终态或
+ *   断开）后重试即可切换。
+ * - "failed"：窗口请求失败（保留原窗口与回滚语义），或本链路被更新的
+ *   切换接管（晚到落地作废）。
+ */
+export type OpenConversationOutcome = "opened" | "busy-streaming" | "failed";
+
+/**
  * WP-D：最近窗口/向上分页页大小。首次打开会话只拉"最后 50 条"，更早内容
  * 由列表顶部的手动加载入口按页向前取；不再自动串行翻页。
  */
@@ -195,6 +207,12 @@ export const useChatStore = defineStore("h5-chat", () => {
   // disables saving entirely (no owner, no restore).
   const boundAccountId = ref("");
   const boundRelationshipId = ref("");
+  // VC-R02：当前流的页面归属令牌（store 内部状态，不对外导出）。uni-app H5
+  // 页面栈可同时存活多个 chat 页实例并共享本 store；发起/附着流的实例把自
+  // 己的令牌随 send/recover/restore 调用传入，store 在提交/真正介入时登记。
+  // detachInFlight 以归属比较生效——等待页/纯展示页离开不得把其他实例正在
+  // 进行的活跃流打成 failed/network。0＝尚无归属页面。
+  const streamOwnerToken = ref(0);
 
   /** S0-20: bind the recovery entry to the live account + relationship. */
   function bindGenerationContext(accountId: string, relationshipId: string): void {
@@ -316,9 +334,11 @@ export const useChatStore = defineStore("h5-chat", () => {
     deps: RealtimeDeps,
     id: string,
     initialEpoch: number,
-    opts?: { resumeFrom?: StreamState },
+    opts?: { resumeFrom?: StreamState; ownerToken?: number },
   ): Promise<void> {
     const sequence = ++runSequence;
+    // VC-R02：新 run 启动即登记发起页面的归属令牌。
+    if (opts?.ownerToken !== undefined) streamOwnerToken.value = opts.ownerToken;
     // A new run cancels any in-flight predecessor (P2-14).
     if (handle) {
       handle.cancelled = true;
@@ -420,7 +440,7 @@ export const useChatStore = defineStore("h5-chat", () => {
    * Never creates a second generation; pending user input stays until a true
    * terminal snapshot or a resumed stream completes.
    */
-  async function recoverInFlight(deps: RealtimeDeps): Promise<void> {
+  async function recoverInFlight(deps: RealtimeDeps, ownerToken?: number): Promise<void> {
     const id = generationId.value;
     if (!id) return;
     // M2：核对发起时捕获 turn 归属；await 快照期间新一轮提交开始（send 递增
@@ -437,6 +457,9 @@ export const useChatStore = defineStore("h5-chat", () => {
       return;
     }
     if (handle && !handle.cancelled) return;
+    // VC-R02：守卫全部通过、恢复真正介入时才登记页面归属——活跃流上的
+    // no-op 核对（等待页生命周期触发）不得转移归属。
+    if (ownerToken !== undefined) streamOwnerToken.value = ownerToken;
 
     let snapshot;
     try {
@@ -506,7 +529,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       clearRestorableGeneration(safeSessionStorage());
       return;
     }
-    await run(deps, id, next.epoch, { resumeFrom: next });
+    await run(deps, id, next.epoch, { resumeFrom: next, ownerToken });
   }
 
   /**
@@ -520,6 +543,7 @@ export const useChatStore = defineStore("h5-chat", () => {
   async function tryRestoreAfterReload(
     deps: RealtimeDeps,
     ctx: { accountId: string; relationshipId: string },
+    ownerToken?: number,
   ): Promise<boolean> {
     if (!conversationId.value) return false; // no open conversation to attach to
     if (phase.value === "streaming") return false; // live stream owns the turn
@@ -539,7 +563,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       return false;
     }
     generationId.value = stored.generationId;
-    await recoverInFlight(deps);
+    await recoverInFlight(deps, ownerToken);
     return true;
   }
 
@@ -812,7 +836,12 @@ export const useChatStore = defineStore("h5-chat", () => {
    * 的 POST 成功响应不得重新建立订阅（见 send 的丢弃分支：接受结果仅保留
    * 恢复标识，不重启流）。
    */
-  function detachInFlight(): void {
+  function detachInFlight(ownerToken: number = 0): void {
+    // VC-R02：始终做归属比较——0＝无页面归属。流本身未被任何页面认领
+    // （owner 为 0）时，无参调用（等效 0）匹配归属、可正常 detach，覆盖纯
+    // store fixture 的用法；流被页面认领后，无参/错令牌一律 no-op，共享
+    // store 的其他 chat 页实例（等待页/纯展示页）离开不得误伤活跃流。
+    if (ownerToken !== streamOwnerToken.value) return;
     if (handle) {
       handle.cancelled = true;
       handle.abort();
@@ -935,12 +964,24 @@ export const useChatStore = defineStore("h5-chat", () => {
 
   /**
    * Switch to an existing conversation: one recent-window request lands the
-   * user on the latest messages. Switching mid-stream is refused — the current
-   * run must reach its terminal first.
+   * user on the latest messages. VC-R02：流式期间不再笼统拒绝——重进"当前
+   * 会话"视为成功（不打断进行中的流），切换其他会话返回明确的占用信号
+   * （"busy-streaming"），由页面呈现等待状态并在流终态后重试。结果语义见
+   * {@link OpenConversationOutcome}。
    */
-  async function openConversation(transport: ChatTransport, id: string): Promise<boolean> {
-    if (isStreaming.value) return false;
-    if (id === conversationId.value) return true;
+  async function openConversation(
+    transport: ChatTransport,
+    id: string,
+  ): Promise<OpenConversationOutcome> {
+    if (isStreaming.value) {
+      // VC-R02：流式中重进"当前会话"是正常占用——成功返回且不动窗口令牌、
+      // 不清消息、不打断流；页面直接进入 ready（tryRestoreAfterReload 对
+      // streaming 的既有短路保持不变）。
+      if (id === conversationId.value) return "opened";
+      // 其他会话：明确的占用信号——保留当前生成，不取消、不清窗口。
+      return "busy-streaming";
+    }
+    if (id === conversationId.value) return "opened";
     const previous = {
       conversationId: conversationId.value,
       messages: messages.value,
@@ -973,11 +1014,11 @@ export const useChatStore = defineStore("h5-chat", () => {
         historyHasMore.value = previous.historyHasMore;
         historyLoadFailed.value = previous.historyLoadFailed;
       }
-      return false;
+      return "failed";
     }
     if (!stillOwnsWindow()) {
       // 晚到落地的旧窗口：仅作废自身，不触发清理、不改返回前的任何状态。
-      return false;
+      return "failed";
     }
     // 缺陷6：窗口真正落地时，上一会话遗留的 turn 状态（重试文案、待确认
     // 标志、失败态、旧流草稿）随窗口销毁；此后在途提交的晚到响应由 send 的
@@ -993,7 +1034,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     generationId.value = "";
     stream.value = initialState(0);
     phase.value = "idle";
-    return true;
+    return "opened";
   }
 
   /**
@@ -1052,7 +1093,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     transport: ChatTransport,
     deps: RealtimeDeps,
     content: string,
-    opts?: { sourceUserMessageId?: string },
+    opts?: { sourceUserMessageId?: string; ownerToken?: number },
   ): Promise<void> {
     if (generationStarting.value || isStreaming.value) return;
     if (!conversationId.value) {
@@ -1063,6 +1104,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 回调，并结束旧 turn 的"取消待确认"状态（其终态由旧回调在作废前确认，
     // 或用户切回该会话时经快照恢复）。
     turnSeq += 1;
+    // VC-R02：提交即登记归属——POST 在途期间发起页离开也要保持既有 detach
+    // 语义（作废在途提交，见 T-43）。
+    if (opts?.ownerToken !== undefined) streamOwnerToken.value = opts.ownerToken;
     const submitSeq = turnSeq;
     cancelUnconfirmed.value = false;
     // N-06（缺口4）：上一轮遗留的"记录同步暂未成功"随新一轮提交结束。
@@ -1167,7 +1211,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       outcome.value = null;
       return;
     }
-    await run(deps, generation.generationId, 1);
+    await run(deps, generation.generationId, 1, { ownerToken: opts?.ownerToken });
     // WP-D：只向前追加本 turn 之后的新行，长对话中用户已翻出的更早窗口
     // 保持完整；补页失败不再误报"更早的消息"错误态——改置 finalSyncFailed
     // （回复已完成、记录同步暂未成功），保留同步重试入口。N-05：本轮

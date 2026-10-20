@@ -88,6 +88,9 @@ function onInput(event: Event | { detail?: { value?: string } }): void {
 
 function onEnter(event: KeyboardEvent): void {
   if (event.shiftKey) return;
+  // 中文等输入法组合期间的 Enter 是选词确认，不得发送（keyCode 229 兼容
+  // isComposing 缺失的遗留浏览器与部分 uni-app H5 环境）。
+  if (event.isComposing || event.keyCode === 229) return;
   event.preventDefault();
   emit("send");
 }

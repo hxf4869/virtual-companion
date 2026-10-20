@@ -62,6 +62,8 @@ interface FetchOptions {
   deferConversationCreate?: boolean;
   /** POST /generations 的按序行为："reject"＝网络失败（结果未知），数字＝该状态码（403/404 为存在性隐藏）。 */
   generations?: Array<"reject" | number>;
+  /** VC-R02：GET /realtime/streams/:id 永不返回——复现"本实例发起的流仍在进行"。 */
+  hangStream?: boolean;
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -148,6 +150,11 @@ function stubFetch(options: FetchOptions = {}) {
       }
       return response(false, step, null);
     }
+    if (method === "GET" && url.startsWith("/api/v1/realtime/streams/")) {
+      // VC-R02：挂起的 Fetch-SSE 连接——resume 永不落地，流保持在 streaming。
+      if (options.hangStream) return new Promise<StubResponse>(() => undefined);
+      return response(true, 200, {});
+    }
     return response(true, 200, {});
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -163,6 +170,28 @@ function login(): void {
 
 function mountPage() {
   return mount(ChatPage, { attachTo: document.body });
+}
+
+/**
+ * VC-R02：模拟"另一个页面实例"在 conv-new 中进行中的流式回复（共享同一
+ * store）。与既有测试一致，直接注入 phase/stream/pendingUserContent。
+ */
+function seedLiveStreamState(): void {
+  const store = useChatStore();
+  store.conversationId = "conv-new";
+  store.generationId = "gen-live";
+  store.phase = "streaming";
+  store.pendingUserContent = "在吗";
+  store.stream = {
+    status: "streaming",
+    epoch: 1,
+    cursor: 1,
+    events: [
+      { eventSeq: 1, streamEpoch: 1, eventType: "chat.delta", payload: "我在听。" },
+    ],
+    terminal: false,
+    terminalEventType: null,
+  };
 }
 
 function navigateTo(): ReturnType<typeof vi.fn> {
@@ -374,7 +403,7 @@ describe("聊天产品页", () => {
     await flushPromises();
     expect(sendSpy).toHaveBeenCalledOnce();
     expect(sendSpy.mock.calls[0]?.[2]).toBe("请再试一次");
-    expect(sendSpy.mock.calls[0]?.[3]).toEqual({ sourceUserMessageId: "77" });
+    expect(sendSpy.mock.calls[0]?.[3]).toMatchObject({ sourceUserMessageId: "77" });
     wrapper.unmount();
   });
 
@@ -517,7 +546,7 @@ describe("聊天产品页", () => {
     await flushPromises();
     expect(resolveSpy).toHaveBeenCalledOnce();
     expect(sendSpy).toHaveBeenCalledOnce();
-    expect(sendSpy.mock.calls[0]?.[3]).toEqual({ sourceUserMessageId: "90" });
+    expect(sendSpy.mock.calls[0]?.[3]).toMatchObject({ sourceUserMessageId: "90" });
     wrapper.unmount();
   });
 
@@ -767,7 +796,7 @@ describe("聊天产品页", () => {
     const switchTransport = {
       request: async () => ({ ok: true, status: 200, json: [] }),
     };
-    expect(await store.openConversation(switchTransport, "conv-old")).toBe(true);
+    expect(await store.openConversation(switchTransport, "conv-old")).toBe("opened");
     expect(store.conversationId).toBe("conv-old");
 
     // A 的失败响应晚到：新会话的输入与错误文案不受影响。
@@ -804,6 +833,131 @@ describe("聊天产品页", () => {
     await input.setValue("下一条草稿");
     expect((input.element as HTMLTextAreaElement).value).toBe("下一条草稿");
     expect(wrapper.find('[data-testid="cancel"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R02：流式期间的会话导航 ----
+
+  it("流式中进入其他会话显示等待状态而非错误，且不打断进行中的回复", async () => {
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    seedLiveStreamState();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const waiting = wrapper.find('[data-testid="chat-waiting"]');
+    expect(waiting.exists()).toBe(true);
+    expect(waiting.attributes("role")).toBe("status");
+    expect(waiting.text()).toContain("上一段回复还在生成");
+    expect(wrapper.find('[data-testid="chat-init-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-retry-init"]').exists()).toBe(false);
+    // 等待期间 store 未被等待页清空或中断。
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-live");
+    expect(store.pendingUserContent).toBe("在吗");
+    // 流终态前"打开所选会话"保持禁用；"返回"入口可用。
+    expect(wrapper.find('[data-testid="chat-waiting-open"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.find('[data-testid="chat-waiting-back"]').attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("等待页离开不误 detach 其他实例的活跃流", async () => {
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    seedLiveStreamState();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(true);
+
+    // 等待页从未发起/附着流：离开不得把活跃流打成 failed/network。
+    wrapper.unmount();
+
+    const store = useChatStore();
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-live");
+    expect(store.lastDisconnect).not.toBe("network");
+  });
+
+  it("真正发起流的页面离开时仍正常 detach 活跃流", async () => {
+    stubFetch({ hangStream: true });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("别丢下我");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    // 本实例真实发起的流正在进行（POST 落地、SSE 挂起）。
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-new");
+
+    wrapper.unmount();
+
+    // 归属实例离开：保持既有 detach 语义。
+    expect(store.phase).toBe("failed");
+    expect(store.lastDisconnect).toBe("network");
+  });
+
+  it("回复结束后等待页可打开所选会话", async () => {
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    seedLiveStreamState();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(true);
+
+    // 本地流结束（store.isStreaming 变 false）：可打开状态使用中性文案，
+    // 不声称服务端回复已经结束，也不再出现"还在生成"的流中声称。
+    const store = useChatStore();
+    store.phase = "completed";
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="chat-waiting"]').text()).toContain("可以打开所选对话了");
+    expect(wrapper.find('[data-testid="chat-waiting"]').text()).not.toContain("回复已经结束");
+    expect(wrapper.text()).not.toContain("还在生成");
+    expect(wrapper.find('[data-testid="chat-waiting-open"]').attributes("disabled")).toBeUndefined();
+
+    // 入口解禁后可成功打开目标会话。
+    await wrapper.find('[data-testid="chat-waiting-open"]').trigger("click");
+    await flushPromises();
+
+    expect(store.conversationId).toBe("conv-old");
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="history"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("流式中重进当前会话直接进入聊天并保持流式展示", async () => {
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    seedLiveStreamState();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-init-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在回复…");
+    // 未被打断、未清空。
+    const store = useChatStore();
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-live");
+    expect(store.pendingUserContent).toBe("在吗");
     wrapper.unmount();
   });
 

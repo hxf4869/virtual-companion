@@ -33,6 +33,37 @@
       </button>
     </view>
 
+    <view
+      v-else-if="pageState === 'waiting'"
+      class="chat-page-state chat-page-state--message"
+      data-testid="chat-waiting"
+      role="status"
+    >
+      <text class="chat-page-state__title">
+        {{ store.isStreaming ? "上一段回复还在生成" : "可以打开所选对话了" }}
+      </text>
+      <text class="chat-page-state__copy">
+        {{
+          store.isStreaming
+            ? "等这段回复结束，就可以继续打开对话。"
+            : "现在可以打开所选对话，也可以先返回。"
+        }}
+      </text>
+      <view class="chat-page-state__actions">
+        <button
+          class="chat-page-primary"
+          data-testid="chat-waiting-open"
+          :disabled="store.isStreaming"
+          @click="initPage"
+        >
+          打开所选会话
+        </button>
+        <button class="chat-page-secondary" data-testid="chat-waiting-back" @click="onBack">
+          返回
+        </button>
+      </view>
+    </view>
+
     <view v-else class="chat-history-frame">
       <VcMessageList
         ref="historyEl"
@@ -116,6 +147,13 @@
   </VcChatShell>
 </template>
 
+<script lang="ts">
+// VC-R02：chat 页实例的单调令牌。uni-app H5 页面栈可同时存活多个 chat 页
+// 实例并共享同一 chat store；实例在真正发起/附着流（发送、重连、恢复）时
+// 把令牌传入 store，离开页面时只有归属实例才能 detach 活跃流。
+let chatPageInstanceSeq = 0;
+</script>
+
 <script setup lang="ts">
 import {
   computed,
@@ -143,10 +181,13 @@ import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 
-type PageState = "loading" | "ready" | "error" | "missing";
+type PageState = "loading" | "ready" | "waiting" | "error" | "missing";
 type StatusTone = "progress" | "muted" | "error";
 
 const RESUME_GAP_PX = 48;
+
+// VC-R02：本实例的流归属令牌（模块级单调递增，页面实例间唯一）。
+const instanceToken = ++chatPageInstanceSeq;
 
 const store = useChatStore();
 const relStore = useRelationshipStore();
@@ -349,20 +390,32 @@ async function initPage(): Promise<void> {
     const targetConversationId = query.conversationId || store.conversations[0]?.conversationId || "";
     if (targetConversationId) {
       const opened = await store.openConversation(transport, targetConversationId);
-      if (!opened) {
+      if (opened === "busy-streaming") {
+        // VC-R02：其他会话的回复仍在生成——正常等待状态，不是网络错误；
+        // 等待期间不清空/中断 store 里进行中的流。
+        pageState.value = "waiting";
+        return;
+      }
+      if (opened !== "opened") {
         pageState.value = "error";
         return;
       }
     } else if (store.conversationId) {
+      if (store.isStreaming) {
+        // VC-R02：无目标会话但另一实例的流仍在生成——同样不清空窗口。
+        pageState.value = "waiting";
+        return;
+      }
       store.reset();
     }
 
     bindGenerationContext();
     if (store.conversationId) {
-      const restored = await store.tryRestoreAfterReload(deps, {
-        accountId: auth.accountId ?? "",
-        relationshipId,
-      });
+      const restored = await store.tryRestoreAfterReload(
+        deps,
+        { accountId: auth.accountId ?? "", relationshipId },
+        instanceToken,
+      );
       if (restored) await store.loadHistory(transport);
     }
     pageState.value = "ready";
@@ -406,7 +459,10 @@ async function sendText(text: string, sourceUserMessageId?: string): Promise<boo
     const ready = await ensureConversation();
     if (!ready) throw new Error("conversation unavailable");
     submittedConversationId = store.conversationId;
-    await store.send(transport, deps, text, { sourceUserMessageId });
+    await store.send(transport, deps, text, {
+      sourceUserMessageId,
+      ownerToken: instanceToken,
+    });
     if (store.phase === "completed" && relStore.currentRelationshipId) {
       void store.loadConversations(transport, relStore.currentRelationshipId);
     }
@@ -434,7 +490,7 @@ async function onRetry(): Promise<void> {
   // 重试＝重新连接原流/快照，绝不新建 generation、不重复用户消息；
   // not_found_or_forbidden 不重连循环也不新键发送——一次有界核对，草稿保留。
   if (reconnectFailed.value || turnUnverifiable.value) {
-    void store.recoverInFlight(deps);
+    void store.recoverInFlight(deps, instanceToken);
     return;
   }
   // N-05：发送结果未确认＝普通同键重发：不调用 resolveTurnSource、不传
@@ -476,7 +532,7 @@ function onStatusAction(): void {
     void store.loadHistory(transport);
     return;
   }
-  void store.recoverInFlight(deps);
+  void store.recoverInFlight(deps, instanceToken);
 }
 
 /**
@@ -600,7 +656,7 @@ onMounted(() => {
       removeEventListener: (name, handler) => window.removeEventListener(name, handler),
       getVisibility: () => document.visibilityState,
       onRecover: () => {
-        void store.recoverInFlight(deps);
+        void store.recoverInFlight(deps, instanceToken);
       },
     });
     document.addEventListener("scroll", onHistoryScroll, { capture: true, passive: true });
@@ -618,7 +674,9 @@ onUnmounted(() => {
     window.removeEventListener("resize", onViewportChange);
     window.visualViewport?.removeEventListener("resize", onViewportChange);
   }
-  store.detachInFlight();
+  // VC-R02：只有登记了流归属的本实例才 detach——等待页/纯展示页离开时
+  // 不得把其他页面实例正在进行的活跃流打成 failed/network。
+  store.detachInFlight(instanceToken);
 });
 </script>
 
@@ -671,6 +729,43 @@ onUnmounted(() => {
   color: var(--vc-color-ink-muted);
   font-size: 14px;
   line-height: 22px;
+}
+
+.chat-page-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--vc-space-3);
+  margin: var(--vc-space-2) 0 0;
+}
+
+.chat-page-state__actions .chat-page-secondary {
+  margin: 0;
+}
+
+.chat-page-primary {
+  min-height: 48px;
+  margin: 0;
+  padding: 0 var(--vc-space-6);
+  border: 0;
+  border-radius: var(--vc-radius-control);
+  color: var(--vc-color-surface);
+  background: var(--vc-color-primary);
+  font: inherit;
+  font-weight: 500;
+}
+
+.chat-page-primary::after {
+  border: 0;
+}
+
+.chat-page-primary:not([disabled]):active {
+  background: var(--vc-color-primary-pressed);
+}
+
+.chat-page-primary:disabled {
+  color: var(--vc-color-ink-muted);
+  background: var(--vc-color-surface-soft);
 }
 
 .chat-page-secondary {

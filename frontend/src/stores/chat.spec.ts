@@ -1046,7 +1046,7 @@ describe("useChatStore", () => {
     expect(new Set(ids).size).toBe(120);
   });
 
-  it("openConversation refuses to switch mid-stream", async () => {
+  it("openConversation refuses to switch mid-stream and returns the busy signal", async () => {
     const store = useChatStore();
     const transport = mockChatTransport({
       messagesJson: [{ messageId: 1, conversationId: "5", role: "user", content: "A" }],
@@ -1055,7 +1055,7 @@ describe("useChatStore", () => {
     expect(store.conversationId).toBe("5");
 
     store.phase = "streaming";
-    await store.openConversation(transport, "6");
+    expect(await store.openConversation(transport, "6")).toBe("busy-streaming");
 
     expect(store.conversationId).toBe("5");
   });
@@ -1073,7 +1073,7 @@ describe("useChatStore", () => {
 
     const opened = await store.openConversation(failing, "6");
 
-    expect(opened).toBe(false);
+    expect(opened).toBe("failed");
     expect(store.conversationId).toBe("5");
     expect(store.messages.map((message) => message.content)).toEqual(["原会话"]);
     expect(store.historyHasMore).toBe(false);
@@ -1297,7 +1297,7 @@ describe("useChatStore", () => {
     const pending22 = store.openConversation(transport, "22");
     expect(answer("22", pageOf("22", 201, PAGE_ROWS))).toBe(true);
     await flushStore();
-    expect(await pending22).toBe(true);
+    expect(await pending22).toBe("opened");
     store.bindGenerationContext("acc-1", "rel-1");
     const { release } = startLiveStream(store, "gen-22");
     store.pendingUserContent = "B 的待发文本";
@@ -1321,7 +1321,7 @@ describe("useChatStore", () => {
     expect(store.messages).toHaveLength(PAGE_ROWS);
     expect(store.messages.every((m) => m.conversationId === "22")).toBe(true);
     expect(rows.get("vc.gen.restore")).toContain('"generationId":"gen-22"');
-    expect(await pending11).toBe(false); // 本链路已被更新的切换接管
+    expect(await pending11).toBe("failed"); // 本链路已被更新的切换接管
 
     // 收尾：放行挂起的流，确认恢复正常终局。
     await release("！");
@@ -1352,7 +1352,7 @@ describe("useChatStore", () => {
     const pending11 = store.openConversation(transport, "11");
     const pending22 = store.openConversation(transport, "22");
     await flushStore();
-    expect(await pending22).toBe(true);
+    expect(await pending22).toBe("opened");
     store.bindGenerationContext("acc-1", "rel-1");
     const { release } = startLiveStream(store, "gen-22");
     store.pendingUserContent = "B 的待发文本";
@@ -1361,7 +1361,7 @@ describe("useChatStore", () => {
     // 2) 11 的窗口请求此刻才以失败告终。
     reject11(new Error("late window failure"));
     await flushStore();
-    expect(await pending11).toBe(false);
+    expect(await pending11).toBe("failed");
 
     // 3) B 的进行中回复完好。
     expect(store.conversationId).toBe("22");
@@ -1390,7 +1390,7 @@ describe("useChatStore", () => {
     store.outcome = "failed";
     store.lastDisconnect = "network";
 
-    expect(await store.openConversation(transport, "6")).toBe(true);
+    expect(await store.openConversation(transport, "6")).toBe("opened");
 
     expect(store.conversationId).toBe("6");
     expect(store.messages.map((m) => m.content)).toEqual(["B 消息"]);
@@ -1401,6 +1401,90 @@ describe("useChatStore", () => {
     expect(store.outcome).toBeNull();
     expect(store.lastDisconnect).toBeNull();
     expect(store.stream).toEqual(initialState(0));
+  });
+
+  // ---- VC-R02：流式期间的会话导航与页面归属 ----
+
+  it("VC-R02: 流式中重进当前会话成功返回，不清窗口、不打断进行中的流", async () => {
+    const store = useChatStore();
+    let messagesCalls = 0;
+    const base = mockChatTransport({ messagesJson: pageOf("22", 201, PAGE_ROWS) });
+    const transport: ChatTransport = {
+      async request(method, path, body) {
+        if (path.includes("/messages")) messagesCalls += 1;
+        return base.request(method, path, body);
+      },
+    };
+
+    expect(await store.openConversation(transport, "22")).toBe("opened");
+    expect(store.messages).toHaveLength(PAGE_ROWS);
+    store.bindGenerationContext("acc-1", "rel-1");
+    const { release } = startLiveStream(store, "gen-22");
+    store.pendingUserContent = "B 的待发文本";
+    await vi.waitFor(() => expect(store.draft).toBe("B 草稿"));
+    const callsBefore = messagesCalls;
+
+    // 流式中重进"当前会话"：成功返回且不动任何窗口/流状态。
+    expect(await store.openConversation(transport, "22")).toBe("opened");
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-22");
+    expect(store.messages).toHaveLength(PAGE_ROWS);
+    expect(store.pendingUserContent).toBe("B 的待发文本");
+    expect(messagesCalls).toBe(callsBefore); // 未重拉窗口
+
+    // 流未被作废/打断：照常落至终态并保留完整草稿。
+    await release("！");
+    expect(store.phase).toBe("completed");
+    expect(store.draft).toBe("B 草稿！");
+  });
+
+  it("VC-R02: 流式中切换其他会话返回明确占用信号，流终态后同一入口可成功切换", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({ messagesJson: pageOf("22", 201, PAGE_ROWS) });
+
+    expect(await store.openConversation(transport, "22")).toBe("opened");
+    store.bindGenerationContext("acc-1", "rel-1");
+    const { release } = startLiveStream(store, "gen-22");
+    store.pendingUserContent = "B 的待发文本";
+    await vi.waitFor(() => expect(store.draft).toBe("B 草稿"));
+
+    // 占用而非错误：当前窗口与进行中的流原样保留。
+    expect(await store.openConversation(transport, "33")).toBe("busy-streaming");
+    expect(store.conversationId).toBe("22");
+    expect(store.phase).toBe("streaming");
+    expect(store.outcome).toBeNull();
+    expect(store.messages).toHaveLength(PAGE_ROWS);
+    expect(store.messages.every((m) => m.conversationId === "22")).toBe(true);
+    expect(store.pendingUserContent).toBe("B 的待发文本");
+
+    // 流终态后重试即可切换。
+    await release("！");
+    expect(store.phase).toBe("completed");
+    expect(await store.openConversation(transport, "33")).toBe("opened");
+    expect(store.conversationId).toBe("33");
+    expect(store.phase).toBe("idle");
+  });
+
+  it("VC-R02: detachInFlight 带非归属令牌时不误伤活跃流，归属实例保持既有语义", async () => {
+    const store = useChatStore();
+    const resumeStart = { started: false };
+    const running = store.run(blockingDeps(resumeStart), "gen-live", 1, { ownerToken: 7 });
+    await vi.waitFor(() => expect(resumeStart.started).toBe(true));
+
+    // 等待页/纯展示页（从未发起/附着流）离开：不 abort、不打断。
+    store.detachInFlight(8);
+    expect(store.phase).toBe("streaming");
+    expect(store.lastDisconnect).toBeNull();
+
+    // 流已被页面认领后，无参调用（等效无页面归属）不再有绕过分支。
+    store.detachInFlight();
+    expect(store.phase).toBe("streaming");
+
+    // 归属实例离开：保持既有 detach 语义。
+    store.detachInFlight(7);
+    expect(store.phase).toBe("failed");
+    expect(store.lastDisconnect).toBe("network");
+    await running;
   });
 
   // ---- WP-D（缺口1）：幂等键生命周期 ----
@@ -1558,7 +1642,7 @@ describe("useChatStore", () => {
     await store.initConversation(transport, "1");
     const sendPromise = store.send(transport, deps, "Hello"); // A 的 POST 挂起
     // POST 在途（未进入流式）时切到 B：窗口落地并清零 turn 状态。
-    expect(await store.openConversation(transport, "2")).toBe(true);
+    expect(await store.openConversation(transport, "2")).toBe("opened");
     expect(store.conversationId).toBe("2");
     expect(store.phase).toBe("idle");
     expect(store.pendingUserContent).toBe("");
@@ -1584,7 +1668,7 @@ describe("useChatStore", () => {
 
     await store.initConversation(transport, "1");
     const sendPromise = store.send(transport, successDeps(), "Hello");
-    expect(await store.openConversation(transport, "2")).toBe(true);
+    expect(await store.openConversation(transport, "2")).toBe("opened");
     const phaseBefore = store.phase;
     const pendingBefore = store.pendingUserContent;
 
@@ -1634,7 +1718,7 @@ describe("useChatStore", () => {
 
     await store.initConversation(transport, "1");
     const firstSend = store.send(transport, successDeps(), "Hello"); // A 的 POST 挂起
-    expect(await store.openConversation(transport, "2")).toBe(true);
+    expect(await store.openConversation(transport, "2")).toBe("opened");
     rejectGeneration(new TypeError("fetch failed")); // A 的失败响应晚到
     await expect(firstSend).rejects.toThrow("fetch failed");
 
@@ -1667,7 +1751,7 @@ describe("useChatStore", () => {
 
     const pendingInit = store.initConversation(transport, "1"); // 建会话挂起
     // 用户在 await 期间切换窗口：令牌递增。
-    expect(await store.openConversation(transport, "other")).toBe(true);
+    expect(await store.openConversation(transport, "other")).toBe("opened");
     const callsAtSwitch = messagesCalls;
 
     resolveCreate({ ok: true, status: 200, json: { conversationId: 99 } });
