@@ -214,7 +214,7 @@ func (s *Server) handleAuthChallengeComplete(w http.ResponseWriter, r *http.Requ
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
-	if !s.admitAuth(w, r, "authenticator", "") {
+	if !s.admitAuth(w, r, "authenticator", challengeID) {
 		return
 	}
 	now := time.Now().UTC()
