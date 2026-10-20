@@ -972,6 +972,79 @@ describe("useChatStore", () => {
     expect(store.conversations).toEqual([]);
   });
 
+  // VC-R09：列表读取按请求顺序 settle 的 deferred transport（参考
+  // auth.spec.ts 的 deferredAuthTransport；会话列表 GET /api/v1/conversations
+  // 由 listConversations 解析）。
+  function deferredConversationsTransport(): {
+    transport: ChatTransport;
+    settle: (index: number, response: ChatApiResponse) => void;
+  } {
+    const resolvers: Array<(response: ChatApiResponse) => void> = [];
+    const transport: ChatTransport = {
+      request: async (): Promise<ChatApiResponse> =>
+        new Promise<ChatApiResponse>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    };
+    return {
+      transport,
+      settle(index: number, response: ChatApiResponse): void {
+        resolvers[index]?.(response);
+      },
+    };
+  }
+
+  // VC-R09：换号（reset）后，旧账号在途的列表读取晚到成功——不得复活旧账号
+  // 的列表；新账号的列表保持权威，旧读取返回 false。
+  it("loadConversations drops a stale account's late success after reset", async () => {
+    const store = useChatStore();
+    const deferred = deferredConversationsTransport();
+    // 旧账号 A 的列表读取在途（尚未返回）。
+    const staleLoad = store.loadConversations(deferred.transport, "1");
+    // 换号：clearLocalSessionCaches 调 reset() 后旧账号在途读取全部作废。
+    store.reset();
+    // 新账号 B 的列表读取落地（列表为 B 内容、返回 true）。
+    const freshLoad = store.loadConversations(deferred.transport, "2");
+    deferred.settle(1, {
+      ok: true,
+      status: 200,
+      json: [{ conversationId: 7, relationshipId: "2", lastMessagePreview: "B 的最新" }],
+    });
+    await expect(freshLoad).resolves.toBe(true);
+    expect(store.conversations.map((c) => c.conversationId)).toEqual(["7"]);
+    // 旧 A 的成功响应最后才到：列表保持 B，返回 false，A 不复活。
+    deferred.settle(0, {
+      ok: true,
+      status: 200,
+      json: [{ conversationId: 3, relationshipId: "1", lastMessagePreview: "A 的残留" }],
+    });
+    await expect(staleLoad).resolves.toBe(false);
+    expect(store.conversations.map((c) => c.conversationId)).toEqual(["7"]);
+    expect(store.conversations[0].relationshipId).toBe("2");
+  });
+
+  // VC-R09：旧纪元的失败（非 2xx）晚到同样作废——返回 false、列表保持新账号
+  // 内容，且不落任何其他状态变化（reset 后的干净状态不被旧失败破坏）。
+  it("loadConversations drops a stale account's late failure after reset", async () => {
+    const store = useChatStore();
+    const deferred = deferredConversationsTransport();
+    const staleLoad = store.loadConversations(deferred.transport, "1");
+    store.reset();
+    const freshLoad = store.loadConversations(deferred.transport, "2");
+    deferred.settle(1, {
+      ok: true,
+      status: 200,
+      json: [{ conversationId: 7, relationshipId: "2", lastMessagePreview: "B 的最新" }],
+    });
+    await expect(freshLoad).resolves.toBe(true);
+    // 旧 A 的失败响应最后才到：列表保持 B、reset 后的状态不被破坏。
+    deferred.settle(0, { ok: false, status: 500, json: null });
+    await expect(staleLoad).resolves.toBe(false);
+    expect(store.conversations.map((c) => c.conversationId)).toEqual(["7"]);
+    expect(store.phase).toBe("idle");
+    expect(store.messages).toEqual([]);
+  });
+
   it("openConversation loads the recent window (last 50, ascending)", async () => {
     const store = useChatStore();
     const manyMessages = Array.from({ length: 120 }, (_, i) => ({

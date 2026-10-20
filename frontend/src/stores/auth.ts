@@ -90,6 +90,11 @@ export const useAuthStore = defineStore("h5-auth", () => {
     // Committing an identity is itself a generation boundary: any probe already
     // in flight describes the previous session and must not roll this one back.
     refreshEpoch++;
+    // VC-R09: a handover between two different known accounts must drop the
+    // previous account's shared caches; a same-account recovery keeps them.
+    if (accountId.value !== null && accountId.value !== identity.accountId) {
+      clearLocalSessionCaches();
+    }
     accessToken.value = "session";
     accountId.value = identity.accountId;
     email.value = identity.email ?? null;

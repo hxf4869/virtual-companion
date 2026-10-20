@@ -5,6 +5,7 @@ import type { AuthApiResponse, AuthSessionIdentity, AuthTransport } from "@/api/
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
+import { useMemoryStore } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
 
 function okTransport(tokens: AuthSessionIdentity): AuthTransport {
@@ -298,12 +299,20 @@ describe("useAuthStore", () => {
   it("restores identity from GET /auth/session", async () => {
     const store = useAuthStore();
     await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
+    const chat = useChatStore();
+    chat.conversationId = "42";
+    chat.messages = [
+      { messageId: "m1", conversationId: "42", role: "user", content: "same-account" },
+    ];
 
     const t = restoreTransport();
     const renewed = await store.tryRefresh(t);
 
     expect(renewed).toBe(true);
     expect(store.accountId).toBe("7");
+    // VC-R09: a same-account recovery is not a handover; the live chat stays.
+    expect(chat.conversationId).toBe("42");
+    expect(chat.messages).toHaveLength(1);
     expect(t.request).toHaveBeenCalledWith(
       "GET",
       "/api/v1/auth/session",
@@ -686,6 +695,46 @@ describe("useAuthStore", () => {
     expect(chat.messages).toEqual([]);
     expect(rel.relationships).toEqual([]);
     expect(rel.currentRelationshipId).toBeNull();
+  });
+
+  it("VC-R09: a session probe handing over to a different known account drops A's shared caches", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
+    const chat = useChatStore();
+    const rel = useRelationshipStore();
+    const memory = useMemoryStore();
+    chat.conversationId = "99";
+    chat.messages = [
+      { messageId: "m1", conversationId: "99", role: "user", content: "A-secret" },
+    ];
+    chat.conversations = [
+      { conversationId: "9", relationshipId: "1", title: "A-预置" },
+    ];
+    rel.relationships = [
+      { relationshipId: "rel-1", personaRef: "gentle-listener", active: true },
+    ];
+    rel.currentRelationshipId = "rel-1";
+    memory.items = [
+      { memoryId: "m-a1", scope: "user_profile", summary: "A 的私事", status: "ACCEPTED", autoSaved: false },
+    ];
+
+    // Another tab logged in as B: this page's GET /auth/session legally answers B.
+    const deferred = deferredAuthTransport();
+    const probe = store.renewAccessToken(deferred.transport);
+    deferred.settle(0, { ok: true, status: 200, json: identityB() });
+    await expect(probe).resolves.toBe("renewed");
+
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accountId).toBe("8");
+    expect(store.email).toBe("bob@example.com");
+    // The previous account's shared caches must not survive the handover.
+    expect(chat.conversationId).toBe("");
+    expect(chat.messages).toEqual([]);
+    expect(chat.conversations).toEqual([]);
+    expect(rel.relationships).toEqual([]);
+    expect(rel.currentRelationshipId).toBeNull();
+    expect(memory.items).toEqual([]);
+    expect(memory.listStatus).toBe("idle");
   });
 
   it("logout revokes server-side (cookie) then clears locally, even on transport failure", async () => {

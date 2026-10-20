@@ -155,6 +155,12 @@ export const useChatStore = defineStore("h5-chat", () => {
   // 结束当前会话）递增；在途分页链路提交前必须持有与当前一致的令牌，晚到的
   // 旧会话响应一律丢弃，禁止把 B 会话的页面串写进已切换到 A 的窗口。
   let historyWindowToken = 0;
+  // VC-R09：会话列表读取的账号/窗口归属纪元。reset()（换号/登出清空会话
+  // 缓存）递增；loadConversations 在 await 前捕获，提交前校验仍匹配——旧
+  // 账号在途的列表读取晚到（成功或失败）不重填新账号的列表、不落任何状态。
+  // 私有计数器，不随 store 返回对象导出（写法同 runSequence/
+  // historyWindowToken）。
+  let conversationsLoadEpoch = 0;
   // Only covers the generation-creation POST. The stream keeps using phase;
   // this small guard prevents a double tap from creating a second durable turn
   // before run() can transition the phase to streaming.
@@ -915,6 +921,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     turnHasGeneration.value = false;
     lastSendKey = null;
     historyWindowToken += 1; // round7（P1）：窗口销毁作废一切在途分页链路
+    conversationsLoadEpoch += 1; // VC-R09：换号作废一切在途会话列表读取
     pendingUserContent.value = "";
     handle = null;
     lastTransport = null;
@@ -975,10 +982,16 @@ export const useChatStore = defineStore("h5-chat", () => {
     transport: ChatTransport,
     relationshipId?: string,
   ): Promise<boolean> {
+    // VC-R09：await 前捕获归属纪元；reset（换号）后旧纪元的读取晚到时
+    // 整体作废——成功不重填列表、失败不落任何状态变化。
+    const epochAtStart = conversationsLoadEpoch;
     try {
-      conversations.value = await listConversations(transport, relationshipId);
+      const page = await listConversations(transport, relationshipId);
+      if (epochAtStart !== conversationsLoadEpoch) return false;
+      conversations.value = page;
       return true;
     } catch {
+      if (epochAtStart !== conversationsLoadEpoch) return false;
       // Non-fatal: keep the current list; the page can retry on next visit.
       return false;
     }
