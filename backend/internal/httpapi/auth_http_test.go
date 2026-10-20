@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 func TestLoginIssuesOpaqueCookieAndNoToken(t *testing.T) {
@@ -384,6 +385,104 @@ func TestLoginAcceptsUsernameAccount(t *testing.T) {
 	}
 	if next.NextStep != "AUTHENTICATOR_SETUP_REQUIRED" || !validChallengeID(next.ChallengeID) {
 		t.Fatalf("username login next step %+v", next)
+	}
+}
+
+// VC-R03: a wrong code on a live challenge is a plain mismatch; the same
+// challenge still accepts the correct code afterwards.
+func TestAuthChallengeWrongCodeThenCorrectCodeSucceeds(t *testing.T) {
+	t.Parallel()
+	store := newMemStore()
+	s := newCoreServer(t, "full", store)
+	challenge := loginJSON(t, s, "alice", testPassword)
+	var next authNextStepJSON
+	if err := json.Unmarshal(challenge.Body.Bytes(), &next); err != nil {
+		t.Fatal(err)
+	}
+	setup := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-setup", "", nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup %d %s", setup.Code, setup.Body.String())
+	}
+	wrong := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-confirm",
+		`{"code":"000000","trustDevice":false}`, nil)
+	if wrong.Code != http.StatusNotFound {
+		t.Fatalf("wrong code %d %s", wrong.Code, wrong.Body.String())
+	}
+	assertEnvelope(t, wrong, "NOT_FOUND_OR_FORBIDDEN")
+	right := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-confirm",
+		`{"code":"123456","trustDevice":false}`, nil)
+	if right.Code != http.StatusOK || sessionCookie(right) == "" {
+		t.Fatalf("retry with correct code %d %s", right.Code, right.Body.String())
+	}
+}
+
+// VC-R03: an unknown challenge id is unavailable, distinct from a wrong code.
+func TestAuthChallengeUnknownIDReportsUnavailable(t *testing.T) {
+	t.Parallel()
+	s := newCoreServer(t, "full", newMemStore())
+	unknown, _, err := auth.NewSessionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+unknown+"/authenticator-confirm",
+		`{"code":"123456","trustDevice":false}`, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown challenge %d %s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "AUTH_CHALLENGE_UNAVAILABLE")
+}
+
+// VC-R03: an expired challenge is unavailable and never counts a failure.
+func TestAuthChallengeExpiredReportsUnavailable(t *testing.T) {
+	t.Parallel()
+	store := newMemStore()
+	s := newCoreServer(t, "full", store)
+	expired, err := store.CreateAuthChallenge(
+		context.Background(), 1, postgres.AuthChallengeTOTPEnroll, time.Now().Add(-time.Minute),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := doJSONCookies(t, s, http.MethodPost,
+		"/api/v1/auth/challenges/"+expired.ID+"/authenticator-confirm",
+		`{"code":"123456","trustDevice":false}`, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expired challenge %d %s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "AUTH_CHALLENGE_UNAVAILABLE")
+}
+
+// VC-R03: the fifth wrong code exhausts the challenge; from then on it is
+// unavailable and no session cookie is ever set.
+func TestAuthChallengeFifthWrongCodeExhaustsChallenge(t *testing.T) {
+	t.Parallel()
+	store := newMemStore()
+	s := newCoreServer(t, "full", store)
+	id := seedAuthChallenges(t, store, 1)[0]
+	for i := 1; i <= 4; i++ {
+		rec := postWrongAuthenticatorCode(t, s, id)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("attempt %d code %d body %s", i, rec.Code, rec.Body.String())
+		}
+		assertEnvelope(t, rec, "NOT_FOUND_OR_FORBIDDEN")
+	}
+	fifth := postWrongAuthenticatorCode(t, s, id)
+	if fifth.Code != http.StatusNotFound {
+		t.Fatalf("attempt 5 code %d body %s", fifth.Code, fifth.Body.String())
+	}
+	assertEnvelope(t, fifth, "AUTH_CHALLENGE_UNAVAILABLE")
+	if sessionCookie(fifth) != "" {
+		t.Fatal("exhausted challenge must not set a session cookie")
+	}
+	store.mu.Lock()
+	consumed := store.authChallenges[id].Consumed
+	store.mu.Unlock()
+	if !consumed {
+		t.Fatal("challenge not consumed after five failures")
 	}
 }
 

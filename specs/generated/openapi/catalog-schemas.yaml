@@ -202,6 +202,7 @@ components:
       - SCHEMA_UNAVAILABLE
       - PASSWORD_CHANGE_REQUIRED
       - RATE_LIMITED
+      - AUTH_CHALLENGE_UNAVAILABLE
     MessageFeedbackKind:
       type: string
       enum:

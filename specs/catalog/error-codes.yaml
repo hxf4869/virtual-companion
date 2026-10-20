@@ -43,3 +43,5 @@ entries:
   order: 19
 - code: RATE_LIMITED
   order: 20
+- code: AUTH_CHALLENGE_UNAVAILABLE
+  order: 21

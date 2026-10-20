@@ -172,7 +172,7 @@
 
     <view v-else class="auth-status">
       <text class="auth-title" role="heading" aria-level="1">本次登录已结束</text>
-      <text class="auth-lead">登录验证已超时，请重新输入账号和密码。</text>
+      <text class="auth-lead">本次登录验证已失效，请重新输入账号和密码。</text>
       <wd-button block size="large" @click="resetToLogin">重新登录</wd-button>
     </view>
 
@@ -320,6 +320,11 @@ async function submitTotp(): Promise<void> {
     navigateAfterLogin();
     return;
   }
+  if (auth.error === "challenge-unavailable") {
+    message.value = "";
+    screen.value = "expired";
+    return;
+  }
   message.value = messageForError(auth.error);
 }
 
@@ -331,6 +336,11 @@ async function submitRecoveryCode(): Promise<void> {
   submitting.value = false;
   if (ok) {
     navigateAfterLogin();
+    return;
+  }
+  if (auth.error === "challenge-unavailable") {
+    message.value = "";
+    screen.value = "expired";
     return;
   }
   message.value = auth.error === "invalid-code"
@@ -345,6 +355,11 @@ async function submitAuthenticatorSetup(): Promise<void> {
   const ok = await auth.confirmAuthenticator(transport, totpCode.value, trustDevice.value);
   submitting.value = false;
   if (!ok) {
+    if (auth.error === "challenge-unavailable") {
+      message.value = "";
+      screen.value = "expired";
+      return;
+    }
     message.value = messageForError(auth.error);
     return;
   }
@@ -448,7 +463,7 @@ function messageForError(code: AuthErrorCode | null): string {
     case "invalid-code":
       return "验证码不正确，请重新输入。";
     case "challenge-unavailable":
-      return "本次登录已超时，请返回后重新登录。";
+      return "本次登录验证已失效，请返回后重新登录。";
     case "rate-limited":
       return "尝试次数较多，请稍后再试。";
     case "network-failed":

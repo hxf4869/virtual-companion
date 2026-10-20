@@ -2662,7 +2662,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthChallengeCompleteResponse'
         '404':
-          description: Code or challenge invalid, expired, consumed or locked
+          description: 'NOT_FOUND_OR_FORBIDDEN for a wrong code;
+            AUTH_CHALLENGE_UNAVAILABLE when the challenge is unknown, expired,
+            consumed or attempt-exhausted'
           content:
             application/json:
               schema:
@@ -2695,7 +2697,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthChallengeCompleteResponse'
         '404':
-          description: Code or challenge invalid, expired, consumed or locked
+          description: 'NOT_FOUND_OR_FORBIDDEN for a wrong code;
+            AUTH_CHALLENGE_UNAVAILABLE when the challenge is unknown, expired,
+            consumed or attempt-exhausted'
           content:
             application/json:
               schema:
@@ -2729,7 +2733,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthChallengeCompleteResponse'
         '404':
-          description: Code or challenge invalid, expired, consumed or locked
+          description: 'NOT_FOUND_OR_FORBIDDEN for a wrong code;
+            AUTH_CHALLENGE_UNAVAILABLE when the challenge is unknown, expired,
+            consumed or attempt-exhausted'
           content:
             application/json:
               schema:

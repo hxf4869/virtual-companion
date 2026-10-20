@@ -180,6 +180,134 @@ describe("redesigned authentication entry", () => {
     wrapper.unmount();
   });
 
+  it("VC-R03: moves TOTP failure to the expired view when the challenge is unusable", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "TOTP_REQUIRED";
+      store.challengeId = "a".repeat(43);
+      return "TOTP_REQUIRED";
+    });
+    vi.spyOn(store, "verifyAuthenticatorCode").mockImplementation(async () => {
+      store.error = "challenge-unavailable";
+      return false;
+    });
+    const wrapper = mountPage();
+    await fillCredentials(wrapper);
+    await wrapper.find('[data-testid="submit"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('input[aria-label="6 位身份验证器验证码"]').setValue("123456");
+    await wrapper.find('[data-testid="totp-submit"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("本次登录已结束");
+    expect(wrapper.text()).toContain("本次登录验证已失效，请重新输入账号和密码。");
+    expect(wrapper.text()).toContain("重新登录");
+    expect(wrapper.text()).not.toContain("请返回后重新登录");
+    wrapper.unmount();
+  });
+
+  it("VC-R03: keeps an inline wrong-code message on the TOTP view", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "TOTP_REQUIRED";
+      store.challengeId = "a".repeat(43);
+      return "TOTP_REQUIRED";
+    });
+    vi.spyOn(store, "verifyAuthenticatorCode").mockImplementation(async () => {
+      store.error = "invalid-code";
+      return false;
+    });
+    const wrapper = mountPage();
+    await fillCredentials(wrapper);
+    await wrapper.find('[data-testid="submit"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('input[aria-label="6 位身份验证器验证码"]').setValue("123456");
+    await wrapper.find('[data-testid="totp-submit"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("验证登录");
+    expect(wrapper.text()).toContain("验证码不正确，请重新输入。");
+    expect(wrapper.text()).not.toContain("本次登录已结束");
+    wrapper.unmount();
+  });
+
+  it("VC-R03: keeps the network copy inline instead of ending the login session", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "TOTP_REQUIRED";
+      store.challengeId = "a".repeat(43);
+      return "TOTP_REQUIRED";
+    });
+    vi.spyOn(store, "verifyAuthenticatorCode").mockImplementation(async () => {
+      store.error = "network-failed";
+      return false;
+    });
+    const wrapper = mountPage();
+    await fillCredentials(wrapper);
+    await wrapper.find('[data-testid="submit"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('input[aria-label="6 位身份验证器验证码"]').setValue("123456");
+    await wrapper.find('[data-testid="totp-submit"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("网络连接不稳定，请检查网络后重试。");
+    expect(wrapper.text()).not.toContain("本次登录已结束");
+    wrapper.unmount();
+  });
+
+  it("VC-R03: moves a recovery-code failure to the expired view when the challenge is unusable", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockResolvedValue("TOTP_REQUIRED");
+    vi.spyOn(store, "verifyRecoveryCode").mockImplementation(async () => {
+      store.error = "challenge-unavailable";
+      return false;
+    });
+    const wrapper = mountPage();
+    await fillCredentials(wrapper);
+    await wrapper.find('[data-testid="submit"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="use-recovery-code"]').trigger("click");
+    await wrapper.find('input[aria-label="恢复码"]').setValue("ABCD-EFGH-IJKL-MNOP");
+    await wrapper.find('[data-testid="recovery-submit"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("本次登录已结束");
+    expect(wrapper.text()).toContain("本次登录验证已失效，请重新输入账号和密码。");
+    expect(wrapper.text()).toContain("重新登录");
+    expect(wrapper.text()).not.toContain("请返回后重新登录");
+    wrapper.unmount();
+  });
+
+  it("VC-R03: moves first-setup confirmation to the expired view when the challenge is unusable", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockResolvedValue("AUTHENTICATOR_SETUP_REQUIRED");
+    vi.spyOn(store, "loadAuthenticatorSetup").mockImplementation(async () => {
+      store.authenticatorSetup = {
+        manualKey: "ABCDEFGHIJKLMNOP",
+        provisioningUri: "otpauth://totp/Virtual%20Companion:alice",
+        qrCodeDataUrl: "data:image/png;base64,abc",
+      };
+      return true;
+    });
+    vi.spyOn(store, "confirmAuthenticator").mockImplementation(async () => {
+      store.error = "challenge-unavailable";
+      return false;
+    });
+    const wrapper = mountPage();
+    await fillCredentials(wrapper);
+    await wrapper.find('[data-testid="submit"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('input[aria-label="6 位身份验证器验证码"]').setValue("654321");
+    await wrapper.find('[data-testid="setup-submit"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("本次登录已结束");
+    expect(wrapper.text()).toContain("本次登录验证已失效，请重新输入账号和密码。");
+    expect(wrapper.text()).toContain("重新登录");
+    expect(wrapper.text()).not.toContain("请返回后重新登录");
+    wrapper.unmount();
+  });
+
   it("uses a recovery code as the secondary daily-login path", async () => {
     const store = useAuthStore();
     vi.spyOn(store, "login").mockResolvedValue("TOTP_REQUIRED");

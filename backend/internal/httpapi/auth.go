@@ -230,6 +230,10 @@ func (s *Server) handleAuthChallengeComplete(w http.ResponseWriter, r *http.Requ
 		TrustedDeviceExpiresAt: now.Add(trustedDeviceTTL),
 	})
 	if err != nil {
+		if errors.Is(err, postgres.ErrAuthChallengeUnavailable) {
+			s.writeAPIError(w, http.StatusNotFound, "AUTH_CHALLENGE_UNAVAILABLE", "auth challenge unavailable")
+			return
+		}
 		s.writeChallengeErr(w, err)
 		return
 	}

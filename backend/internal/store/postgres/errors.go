@@ -21,6 +21,10 @@ var ErrConflict = errors.New("conflict")
 // ErrRateLimited is an admission rejection. HTTP maps it to 429.
 var ErrRateLimited = errors.New("rate limited")
 
+// ErrAuthChallengeUnavailable is an unknown, expired, consumed or
+// attempt-exhausted login challenge. HTTP maps it to 404 AUTH_CHALLENGE_UNAVAILABLE.
+var ErrAuthChallengeUnavailable = errors.New("auth challenge unavailable")
+
 // errStore is the opaque persistence failure. Callers must not wrap it
 // with SQL, ids, or body text.
 var errStore = errors.New("store operation failed")
@@ -31,6 +35,7 @@ func mapStoreErr(err error) error {
 	}
 	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) ||
 		errors.Is(err, ErrConflict) || errors.Is(err, ErrRateLimited) ||
+		errors.Is(err, ErrAuthChallengeUnavailable) ||
 		errors.Is(err, ErrOwnerContextRejected) || errors.Is(err, turn.ErrOutboundDenied) ||
 		errors.Is(err, errStore) {
 		return err

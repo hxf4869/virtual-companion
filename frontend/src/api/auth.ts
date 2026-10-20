@@ -88,11 +88,14 @@ export interface TrustedDevice {
 
 export class AuthHttpError extends Error {
   readonly status: number;
+  /** Flat ErrorEnvelope code carried by the failing response, when readable. */
+  readonly serverCode?: string;
 
-  constructor(status: number) {
+  constructor(status: number, serverCode?: string) {
     super(`auth request failed with status ${status}`);
     this.name = "AuthHttpError";
     this.status = status;
+    this.serverCode = serverCode;
   }
 }
 
@@ -298,7 +301,20 @@ async function completeChallenge(
     `${AUTH_BASE}/challenges/${encodeURIComponent(challengeId)}/${endpoint}`,
     { code, trustDevice },
   );
-  if (response.status === 404) return null;
+  if (response.status === 404) {
+    // Split the 404 family: AUTH_CHALLENGE_UNAVAILABLE means the challenge can
+    // no longer be completed (unknown/expired/consumed/exhausted); anything
+    // else — including an unreadable body — keeps the wrong-code null contract.
+    const body = response.json;
+    if (
+      body &&
+      typeof body === "object" &&
+      (body as Record<string, unknown>).code === "AUTH_CHALLENGE_UNAVAILABLE"
+    ) {
+      throw new AuthHttpError(404, "AUTH_CHALLENGE_UNAVAILABLE");
+    }
+    return null;
+  }
   if (!response.ok) throw new AuthHttpError(response.status);
   const completed = asChallengeComplete(response.json);
   if (!completed) throw new AuthHttpError(response.status);

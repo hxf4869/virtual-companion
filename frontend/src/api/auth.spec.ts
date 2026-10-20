@@ -166,6 +166,34 @@ describe("Go Runtime auth client", () => {
     }
   });
 
+  it("splits challenge-complete 404s between unavailable and wrong code", async () => {
+    const challenge = "b".repeat(43);
+    for (const request of [confirmAuthenticator, verifyAuthenticatorCode, verifyRecoveryCode]) {
+      await expect(request(transportFor({
+        ok: false,
+        status: 404,
+        json: { code: "AUTH_CHALLENGE_UNAVAILABLE", message: "challenge no longer usable" },
+      }), challenge, "123456", false)).rejects.toMatchObject({
+        name: "AuthHttpError",
+        status: 404,
+        serverCode: "AUTH_CHALLENGE_UNAVAILABLE",
+      });
+
+      await expect(request(transportFor({
+        ok: false,
+        status: 404,
+        json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "no" },
+      }), challenge, "123456", false)).resolves.toBeNull();
+
+      await expect(request(transportFor({
+        ok: false,
+        status: 404,
+        json: null,
+        parseFailed: true,
+      }), challenge, "123456", false)).resolves.toBeNull();
+    }
+  });
+
   it("lists and revokes opaque sessions and trusted devices", async () => {
     const sessions = transportFor({
       ok: true,

@@ -44,6 +44,22 @@ function restoreTransport(): AuthTransport {
   };
 }
 
+function totpChallengeTransport(challengeId: string): AuthTransport {
+  return {
+    request: vi.fn(async () => ({
+      ok: true,
+      status: 202,
+      json: { nextStep: "TOTP_REQUIRED", challengeId, expiresAt: "2030-01-01T00:00:00Z" },
+    })),
+  };
+}
+
+function challengeRejectTransport(status: number, code: string): AuthTransport {
+  return {
+    request: vi.fn(async () => ({ ok: false, status, json: { code, message: "no" } })),
+  };
+}
+
 function makeStorage(): Storage {
   const map = new Map<string, string>();
   return {
@@ -142,6 +158,34 @@ describe("useAuthStore", () => {
     expect(store.challengeId).toBe(challengeId);
     expect(store.nextStep).toBe("TOTP_REQUIRED");
     expect(storage.setItem).not.toHaveBeenCalled();
+  });
+
+  it("VC-R03: maps an unusable challenge to challenge-unavailable instead of a wrong code", async () => {
+    const store = useAuthStore();
+    const challengeId = "a".repeat(43);
+    await store.login(totpChallengeTransport(challengeId), "alice@example.com", "pw");
+
+    await expect(store.verifyAuthenticatorCode(
+      challengeRejectTransport(404, "AUTH_CHALLENGE_UNAVAILABLE"),
+      "123456",
+      false,
+    )).resolves.toBe(false);
+    expect(store.error).toBe("challenge-unavailable");
+    expect(store.isAuthenticated).toBe(false);
+
+    await expect(store.verifyAuthenticatorCode(
+      challengeRejectTransport(404, "NOT_FOUND_OR_FORBIDDEN"),
+      "123456",
+      false,
+    )).resolves.toBe(false);
+    expect(store.error).toBe("invalid-code");
+
+    await expect(store.verifyAuthenticatorCode(
+      challengeRejectTransport(429, "RATE_LIMITED"),
+      "123456",
+      false,
+    )).resolves.toBe(false);
+    expect(store.error).toBe("rate-limited");
   });
 
   it("loads first-use setup, confirms TOTP and retains one-time recovery codes", async () => {

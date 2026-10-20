@@ -65,11 +65,12 @@ type memSession struct {
 }
 
 type memAuthChallenge struct {
-	AccountID int64
-	Mode      string
-	ExpiresAt time.Time
-	Secret    string
-	Consumed  bool
+	AccountID      int64
+	Mode           string
+	ExpiresAt      time.Time
+	Secret         string
+	Consumed       bool
+	FailedAttempts int
 }
 
 type memTrustedDevice struct {

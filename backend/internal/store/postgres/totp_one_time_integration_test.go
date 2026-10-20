@@ -4,7 +4,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,10 +20,23 @@ import (
 // any real credential.
 const totpFixtureSecret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 
+// installSyntheticCipher arms the shared isolation store explicitly: the
+// harness TestMain opens the store without a field cipher, so relying on a
+// different test having called UseCipher would depend on execution order.
+func installSyntheticCipher(t *testing.T) {
+	t.Helper()
+	ciph, err := NewDefaultFieldCipher(isoRestKeyForStore())
+	if err != nil {
+		t.Fatal(err)
+	}
+	testEnv.store.UseCipher(ciph)
+}
+
 // armTOTPAccount inserts an ACTIVE identity account for the fixture vc_user
 // and binds the fixture TOTP key to it.
 func armTOTPAccount(t *testing.T, accountID int64, username string) {
 	t.Helper()
+	installSyntheticCipher(t)
 	if err := IsolationSuperExec(context.Background(),
 		`INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
 		 VALUES ($1, $2, 'fixture-not-a-password', 'USER', 'ACTIVE', $2)`, accountID, username); err != nil {
@@ -124,6 +139,100 @@ func TestTOTPStepConsumedOncePerAccount(t *testing.T) {
 	}
 }
 
+// VC-R03: the fifth wrong code exhausts the challenge. The fail counter must
+// commit with its transaction — surfacing the sentinel inside the closure
+// would roll the count back — so no session row appears and the exhausted
+// challenge stays unavailable for any later submission.
+func TestAuthChallengeFifthFailureCommitsExhaustion(t *testing.T) {
+	resetFixtures(t)
+	armTOTPAccount(t, 1, "alice")
+	store := testEnv.store
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	challenge, err := store.CreateAuthChallenge(context.Background(), 1, AuthChallengeTOTPVerify, now.Add(5*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A code from far outside the validation window is deterministically wrong.
+	wrongCode, err := totp.GenerateCode(totpFixtureSecret, now.Add(30*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := func() (AuthenticatedSession, bool, error) {
+		return store.CompleteAuthChallenge(context.Background(), AuthCompleteInput{
+			ChallengeID:      challenge.ID,
+			Mode:             AuthChallengeTOTPVerify,
+			Method:           AuthMethodTOTP,
+			Code:             wrongCode,
+			Now:              now,
+			SessionExpiresAt: now.Add(time.Hour),
+		})
+	}
+	for i := 1; i <= 4; i++ {
+		if _, ok, err := complete(); err != nil || ok {
+			t.Fatalf("attempt %d ok=%v err=%v", i, ok, err)
+		}
+	}
+	if _, ok, err := complete(); !errors.Is(err, ErrAuthChallengeUnavailable) || ok {
+		t.Fatalf("fifth attempt ok=%v err=%v", ok, err)
+	}
+	// The committed row proves the counter survived the unavailable result.
+	state, err := psqlSuper(
+		"SELECT failed_attempts::text || '/' || COALESCE(consumed_at::text, 'NULL') FROM vc.identity_auth_challenge WHERE id = '" +
+			challenge.ID + "'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.SplitN(state, "/", 2)
+	if len(fields) != 2 || fields[0] != "5" || fields[1] == "NULL" {
+		t.Fatalf("challenge state %q, want failed_attempts=5 and consumed_at set", state)
+	}
+	if n := accountSessionCount(t, 1); n != 0 {
+		t.Fatalf("session count %d, want 0", n)
+	}
+	if _, ok, err := complete(); !errors.Is(err, ErrAuthChallengeUnavailable) || ok {
+		t.Fatalf("submission after exhaustion ok=%v err=%v", ok, err)
+	}
+}
+
+// VC-R03: completing past expires_at reports the challenge as unavailable and
+// the rejected lock leaves the fail counter untouched.
+func TestAuthChallengeExpiredReportsUnavailable(t *testing.T) {
+	resetFixtures(t)
+	armTOTPAccount(t, 1, "alice")
+	store := testEnv.store
+	issued := time.Unix(1_800_000_000, 0).UTC()
+
+	challenge, err := store.CreateAuthChallenge(context.Background(), 1, AuthChallengeTOTPVerify, issued.Add(5*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	late := issued.Add(6 * time.Minute)
+	code, err := totp.GenerateCode(totpFixtureSecret, late)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ok, err := store.CompleteAuthChallenge(context.Background(), AuthCompleteInput{
+		ChallengeID:      challenge.ID,
+		Mode:             AuthChallengeTOTPVerify,
+		Method:           AuthMethodTOTP,
+		Code:             code,
+		Now:              late,
+		SessionExpiresAt: late.Add(time.Hour),
+	})
+	if !errors.Is(err, ErrAuthChallengeUnavailable) || ok {
+		t.Fatalf("expired completion ok=%v err=%v", ok, err)
+	}
+	attempts, err := psqlSuper(
+		"SELECT failed_attempts::text FROM vc.identity_auth_challenge WHERE id = '" + challenge.ID + "'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(attempts) != "0" {
+		t.Fatalf("failed_attempts %q, want 0", attempts)
+	}
+}
+
 // T-62: concurrent completions of the same step serialize on the account row
 // lock and at most one session is created.
 func TestTOTPConcurrentVerificationSingleWinner(t *testing.T) {
@@ -221,6 +330,7 @@ func TestTOTPFailedCompletionDoesNotConsumeStep(t *testing.T) {
 // key's record can neither block the new key nor survive its enrollment.
 func TestTOTPEnrollConsumesStepAndReplacesRecord(t *testing.T) {
 	resetFixtures(t)
+	installSyntheticCipher(t)
 	if err := IsolationSuperExec(context.Background(),
 		`INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
 		 VALUES (1, 'alice', 'fixture-not-a-password', 'USER', 'ACTIVE', 'alice')`); err != nil {

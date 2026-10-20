@@ -146,6 +146,7 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','SCHEMA_UNAVAILABLE',18) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','PASSWORD_CHANGE_REQUIRED',19) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','RATE_LIMITED',20) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','AUTH_CHALLENGE_UNAVAILABLE',21) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','TOO_MECHANICAL',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','FORGOT_CONTEXT',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','CROSSED_BOUNDARY',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;

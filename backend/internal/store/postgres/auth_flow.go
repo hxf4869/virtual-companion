@@ -145,6 +145,10 @@ func (s *Store) CompleteAuthChallenge(ctx context.Context, in AuthCompleteInput)
 	now := in.Now.UTC()
 	var result AuthenticatedSession
 	valid := false
+	// The lock rejected the challenge (unknown, expired, consumed or
+	// attempt-exhausted) or the fail counter just reached its cap. Both are
+	// unavailable, not a plain wrong code.
+	unavailable := false
 	// The matched TOTP step to consume atomically with session creation; nil
 	// for recovery-code completions and failed validations.
 	var consumedStep *int64
@@ -160,6 +164,7 @@ func (s *Store) CompleteAuthChallenge(ctx context.Context, in AuthCompleteInput)
 			&result.AccountID, &result.Role, &result.AccountName, &result.PasswordMustChange,
 			&currentCipher, &pendingCipher, &lastConsumed); err != nil {
 			if err == pgx.ErrNoRows {
+				unavailable = true
 				return nil
 			}
 			return err
@@ -214,6 +219,11 @@ func (s *Store) CompleteAuthChallenge(ctx context.Context, in AuthCompleteInput)
 				in.ChallengeID, now).Scan(&attempts); err != nil {
 				return err
 			}
+			// The fail counter must commit, so exhaustion is signalled after
+			// the transaction instead of failing inside it.
+			if attempts != nil && *attempts >= 5 {
+				unavailable = true
+			}
 			return nil
 		}
 
@@ -257,6 +267,9 @@ func (s *Store) CompleteAuthChallenge(ctx context.Context, in AuthCompleteInput)
 	})
 	if err != nil {
 		return AuthenticatedSession{}, false, mapStoreErr(err)
+	}
+	if unavailable {
+		return AuthenticatedSession{}, false, ErrAuthChallengeUnavailable
 	}
 	if !valid {
 		return AuthenticatedSession{}, false, nil

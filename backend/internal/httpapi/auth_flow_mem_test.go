@@ -74,7 +74,7 @@ func (m *memStore) CompleteAuthChallenge(_ context.Context, in postgres.AuthComp
 	defer m.mu.Unlock()
 	challenge, ok := m.authChallenges[in.ChallengeID]
 	if !ok || challenge.Mode != in.Mode || challenge.Consumed || !challenge.ExpiresAt.After(in.Now) {
-		return postgres.AuthenticatedSession{}, false, nil
+		return postgres.AuthenticatedSession{}, false, postgres.ErrAuthChallengeUnavailable
 	}
 	valid := in.Code == "123456" && in.Method == postgres.AuthMethodTOTP
 	if in.Mode == postgres.AuthChallengeTOTPEnroll && challenge.Secret == "" {
@@ -84,6 +84,13 @@ func (m *memStore) CompleteAuthChallenge(_ context.Context, in postgres.AuthComp
 		valid = strings.EqualFold(strings.ReplaceAll(in.Code, "-", ""), "RECOVERYCODE")
 	}
 	if !valid {
+		challenge.FailedAttempts++
+		if challenge.FailedAttempts >= 5 {
+			challenge.Consumed = true
+			m.authChallenges[in.ChallengeID] = challenge
+			return postgres.AuthenticatedSession{}, false, postgres.ErrAuthChallengeUnavailable
+		}
+		m.authChallenges[in.ChallengeID] = challenge
 		return postgres.AuthenticatedSession{}, false, nil
 	}
 	ident, ok := m.identityByAccount(challenge.AccountID)

@@ -58,12 +58,20 @@ func TestAuthChallengeRateLimitSameChallengeStillCapped(t *testing.T) {
 	store := newMemStore()
 	s := newCoreServer(t, "full", store)
 	id := seedAuthChallenges(t, store, 1)[0]
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 4; i++ {
 		rec := postWrongAuthenticatorCode(t, s, id)
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("attempt %d code %d body %s", i+1, rec.Code, rec.Body.String())
 		}
+		assertEnvelope(t, rec, "NOT_FOUND_OR_FORBIDDEN")
 	}
+	// The fifth failure exhausts the challenge itself; the limiter cap on the
+	// sixth request still applies on top of the unavailable challenge.
+	fifth := postWrongAuthenticatorCode(t, s, id)
+	if fifth.Code != http.StatusNotFound {
+		t.Fatalf("attempt 5 code %d body %s", fifth.Code, fifth.Body.String())
+	}
+	assertEnvelope(t, fifth, "AUTH_CHALLENGE_UNAVAILABLE")
 	rec := postWrongAuthenticatorCode(t, s, id)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("attempt 6 code %d body %s", rec.Code, rec.Body.String())

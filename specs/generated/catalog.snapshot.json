@@ -89,7 +89,8 @@
       "INTERNAL_ERROR",
       "SCHEMA_UNAVAILABLE",
       "PASSWORD_CHANGE_REQUIRED",
-      "RATE_LIMITED"
+      "RATE_LIMITED",
+      "AUTH_CHALLENGE_UNAVAILABLE"
     ],
     "GenerationState": [
       "CREATED",
@@ -762,11 +763,15 @@
           {
             "code": "RATE_LIMITED",
             "order": 20
+          },
+          {
+            "code": "AUTH_CHALLENGE_UNAVAILABLE",
+            "order": 21
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "25ca55c3522ce9d8c0e7a24f6c5670b9ae504272f7bde5cbff1b30f357a0dee6"
+      "sha256": "fc722d76cb6dc5211a4784f01b51ae2012fd645127339c6cf20d042c9284b69b"
     },
     "generation-states.yaml": {
       "document": {

@@ -332,6 +332,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
 
 function mapRequestError(caught: unknown): AuthErrorCode {
   if (!(caught instanceof AuthHttpError)) return "network-failed";
+  if (caught.serverCode === "AUTH_CHALLENGE_UNAVAILABLE") return "challenge-unavailable";
   if (caught.status === 429) return "rate-limited";
   return "service-unavailable";
 }
