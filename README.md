@@ -223,6 +223,18 @@ loopback）1 passed 0 failed rc=0，栈清理核验通过；`scripts/check.sh
 归档/生产存储选型仍为 Owner 统一处理项；其他旅程与引擎未跑，
 Owner/Beta/CI/真 provider 现状不变、不勾选。
 
+2026-10-21 断线与刷新后的真实聊天恢复（VC-R22）：04-realtime-recovery
+首跑暴露恢复链路缺陷并修复——reload 时生成仍在途，recoverInFlight 经
+SSE 回放直完成，过渡行无真实消息 ID，历史到达后按 ID 去重失效，页面
+持久渲染两条相同 assistant 气泡。修复复用既有有界 confirmFinalIdentity
+核对真实 assistantMessageId（与 send() 对称），保留 null-ID 过渡
+fallback、不做正文去重，新增 chat.spec T-37c 回归。验证（OrbStack
+linux/arm64、chromium/390×844）：初轮 1 FAIL 1 PASS rc=1 → 修复后
+2 PASS rc=0（38.6s）；user/assistant 各 1 与 generation POST 恰 1 为
+GREEN 时实测；frontend 710/710 + type-check PASS；栈清理核验通过。
+客户端 abort 与 FAILED_FINAL 不据此证明服务端 upstream 资源已释放；
+其他旅程与引擎未跑，Owner/Beta/CI/真 provider 现状不变、不勾选。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

@@ -200,6 +200,19 @@ quick/bash -n/git diff --check 均 PASS；amd64 stage 存在但本轮未构建/
 存储选型仍为 Owner 待统一处理；其余旅程未跑，不勾 Owner/Beta/CI/真
 provider。
 
+2026-10-21 断线与刷新后的真实聊天恢复（VC-R22）：04-realtime-recovery
+两条旅程落地并修复首跑暴露的恢复链路缺陷——reload 时生成仍在途，
+recoverInFlight 经 SSE 回放直完成，过渡行无真实消息 ID，历史到达后按
+ID 去重失效，持久显示两条相同 assistant 气泡。修复复用既有有界
+confirmFinalIdentity（快照核对真实 assistantMessageId，与 send() 对称），
+保留 null-ID 过渡边界、不做正文比对，新增 chat.spec T-37c 回归。验证
+（OrbStack linux/arm64、chromium/390×844）：初轮 1 FAIL 1 PASS rc=1
+（失败证据保留 /tmp/vcr22）→ 修复后 2 PASS rc=0（38.6s）；user/assistant
+各 1 与 generation POST 恰 1 为 GREEN 时实测；710/710 + type-check
+PASS；栈清理核验通过（端口释放、本轮容器 0）。客户端 abort 与
+FAILED_FINAL 不据此证明服务端 upstream 资源已释放；其他旅程与引擎未跑，
+不勾 Owner/Beta/CI/真 provider。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

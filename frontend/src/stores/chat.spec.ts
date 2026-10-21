@@ -2683,6 +2683,46 @@ describe("useChatStore N-05/N-06", () => {
     expect(store.displayMessages.filter((m) => m.messageId === "77")).toHaveLength(1);
   });
 
+  it("T-37c: 恢复经 SSE 回放完成后核对持久行身份，历史到达后去重（reload 不重复显示）", async () => {
+    const store = useChatStore();
+    await store.initConversation(mockChatTransport({ messagesJson: [] }), "1");
+    // reload 恢复时生成仍在途：首个快照非终态 → 经 SSE 回放直完成。
+    const resume = vi.fn(async (): Promise<ResumeResult> => ({
+      disposition: "RESUMED",
+      events: [snapshot(1, 1, "恢复完成"), terminal(2, 1)],
+    }));
+    const fetchSnapshot = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, events: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        assistantMessageId: "77",
+        events: [terminal(2, 1)],
+      });
+    store.generationId = "42";
+    store.phase = "failed";
+    store.outcome = "exhausted";
+
+    await store.recoverInFlight({ resume, fetchSnapshot });
+
+    expect(store.phase).toBe("completed");
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+    expect(store.finalAssistant).toEqual({ generationId: "42", messageId: "77", content: "恢复完成" });
+
+    // reload 页面在恢复返回后拉取最近窗口：权威行到达后过渡行按 ID 去重。
+    const refreshed = mockChatTransport({
+      messagesJson: [
+        { messageId: 76, conversationId: 1, role: "user", content: "重连一下" },
+        { messageId: 77, conversationId: 1, role: "assistant", content: "恢复完成" },
+      ],
+    });
+    await store.loadHistory(refreshed);
+    expect(store.messages.some((m) => m.messageId === "77")).toBe(true);
+    expect(store.finalAssistant).toBeNull();
+    expect(store.displayMessages.filter((m) => m.content === "恢复完成")).toHaveLength(1);
+  });
+
   it("T-37b: 完成快照的合法空正文同样按 ID 合并", async () => {
     const store = useChatStore();
     await store.initConversation(mockChatTransport({ messagesJson: [] }), "1");

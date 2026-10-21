@@ -568,6 +568,12 @@ export const useChatStore = defineStore("h5-chat", () => {
         return;
       }
       await run(deps, id, next.epoch, { resumeFrom: next, ownerToken });
+      // N-06：恢复路径同样可能经 SSE 直完成——与 send() 对称补一次有界快照
+      // 核对，拿到真实 assistantMessageId 才能让历史同步后的按 ID 去重生效；
+      // 快照拿不到 ID 时保持 null-ID 过渡显示的既有边界。
+      if (phase.value === "completed" && finalAssistant.value?.messageId === null) {
+        await confirmFinalIdentity(deps, id, seqAtRecover);
+      }
     } finally {
       if (recoverCheckOwner === checkIdentity) recoverCheckOwner = null;
     }
