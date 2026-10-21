@@ -304,7 +304,17 @@ done
 SAMPLER=$!
 
 echo "== measured idle (${IDLE_SECONDS}s) =="
+# §19.1 idle CPU: process_cpu_seconds_total delta across the measured-idle
+# sleep. The window is the sampling interval and includes sampling overhead;
+# it is a record, not a gate.
+IDLE_CPU_BEFORE=$(metric_value process_cpu_seconds_total)
 sleep "$IDLE_SECONDS"
+IDLE_CPU_AFTER=$(metric_value process_cpu_seconds_total)
+IDLE_CPU_SECONDS=$(python3 - "$IDLE_CPU_BEFORE" "$IDLE_CPU_AFTER" <<'PY'
+import sys
+print(round(float(sys.argv[2]) - float(sys.argv[1]), 6))
+PY
+)
 IDLE_RSS_MIB=$(awk -F, 'BEGIN{sum=0;n=0} {sum+=$2;n++} END{if(n<1) exit 1; printf "%.3f", sum/n/1024}' "$RUN_DIR/sample.csv")
 echo "  idle RSS mean = $IDLE_RSS_MIB MiB"
 
@@ -488,6 +498,11 @@ for name in ("vc_generation_active", "vc_realtime_subscribers", "vc_db_pool_acqu
 summary = {
     "turns": turns,
     "cpu_seconds": round(float(cpu_after) - float(cpu_before), 6),
+    # Recovery-window CPU (§19.1): from cpu_after, sampled right after the
+    # last soak batch, to the post-idle prom scrape. The window is the
+    # sampling interval around the recovery sleep and includes sampling
+    # overhead; it is kept apart from cpu_seconds (load-only).
+    "recovery_cpu_seconds": round(after["process_cpu_seconds_total"] - float(cpu_after), 6),
     "warm_idle_rss_before_after_mib": [float(pre_rss), float(post_rss)],
     "goroutines_before_after": [before.get("go_goroutines"), after.get("go_goroutines")],
     "fds_before_after": [int(pre_fds), int(post_fds)],
@@ -506,7 +521,7 @@ fi
 
 PEAK_RSS_MIB=$(awk -F, 'BEGIN{peak=0} {if($2>peak)peak=$2} END{printf "%.3f", peak/1024}' "$RUN_DIR/sample.csv")
 cat > "$RUN_DIR/trial.summary.json" <<EOF
-{"trial_id":"$TRIAL_ID","cold_start_ms":$COLD_START_MS,"binary_bytes":$BINARY_BYTES,"idle_rss_mib":$IDLE_RSS_MIB,"peak_rss_mib":$PEAK_RSS_MIB,"s5":$(cat "$RUN_DIR/s5.summary.json"),"s10":$(cat "$RUN_DIR/s10.summary.json"),"soak":$(cat "$RUN_DIR/soak.summary.json")}
+{"trial_id":"$TRIAL_ID","cold_start_ms":$COLD_START_MS,"binary_bytes":$BINARY_BYTES,"idle_rss_mib":$IDLE_RSS_MIB,"idle_cpu_seconds":$IDLE_CPU_SECONDS,"peak_rss_mib":$PEAK_RSS_MIB,"s5":$(cat "$RUN_DIR/s5.summary.json"),"s10":$(cat "$RUN_DIR/s10.summary.json"),"soak":$(cat "$RUN_DIR/soak.summary.json")}
 EOF
 kill "$SAMPLER" 2>/dev/null || true
 wait "$SAMPLER" 2>/dev/null || true
