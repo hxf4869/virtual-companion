@@ -1,13 +1,29 @@
 // @vitest-environment happy-dom
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createAuthenticatedTransport } from "@/api/transport";
+import { useAuthStore } from "@/stores/auth";
 
 import AdminConsoleShell from "./AdminConsoleShell.vue";
+
+function loginAsAdmin() {
+  const auth = useAuthStore();
+  auth.accessToken = "session";
+  auth.accountId = "7";
+  auth.email = "admin@example.com";
+  auth.role = "ADMIN";
+  return auth;
+}
 
 describe("admin console shell", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("offers an explicit retry when access cannot be checked", async () => {
@@ -56,6 +72,100 @@ describe("admin console shell", () => {
     window.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("logs out and returns to the login page when it owns the local clear", async () => {
+    const calls: Array<{ method: string; url: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url });
+      if (url === "/api/v1/auth/logout" && method === "POST") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }));
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo, navigateTo: vi.fn() });
+    const auth = loginAsAdmin();
+    const wrapper = mount(AdminConsoleShell, {
+      props: { active: "review", title: "注册审核", accessState: "ready" },
+    });
+
+    const logoutButton = wrapper
+      .findAll(".ac-footer-action")
+      .find((button) => button.text().includes("退出登录"));
+    expect(logoutButton).toBeDefined();
+    await logoutButton!.trigger("click");
+    await flushPromises();
+
+    expect(calls).toContainEqual({ method: "POST", url: "/api/v1/auth/logout" });
+    expect(auth.isAuthenticated).toBe(false);
+    expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R12: 迟到的旧登出不得清掉换号后的身份，也不得导航回登录页", async () => {
+    let releaseLogout!: (value: unknown) => void;
+    const logoutGate = new Promise<unknown>((resolve) => {
+      releaseLogout = resolve;
+    });
+    const calls: Array<{ method: string; url: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url });
+      if (url === "/api/v1/auth/logout" && method === "POST") {
+        return logoutGate.then(() => ({ ok: true, status: 200, json: async () => ({ ok: true }) }));
+      }
+      if (url === "/api/v1/auth/login" && method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            nextStep: "ACTIVE",
+            accountId: "43",
+            email: "b@example.com",
+            role: "USER",
+            passwordMustChange: false,
+            authenticatorEnabled: true,
+            expiresInSeconds: 7200,
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }));
+    const redirectTo = vi.fn();
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo, navigateTo });
+    const auth = loginAsAdmin();
+    const wrapper = mount(AdminConsoleShell, {
+      props: { active: "review", title: "注册审核", accessState: "ready" },
+    });
+
+    const logoutButton = wrapper
+      .findAll(".ac-footer-action")
+      .find((button) => button.text().includes("退出登录"));
+    await logoutButton!.trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/logout")).toHaveLength(1);
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+
+    // 旧登出迟到返回 ok:true：B 的本地身份保留，后台不被拽回登录页。
+    releaseLogout(undefined);
+    await flushPromises();
+    expect(auth.accountId).toBe("43");
+    expect(auth.isAuthenticated).toBe(true);
+    expect(redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    expect(navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
     wrapper.unmount();
   });
 });

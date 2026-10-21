@@ -667,8 +667,9 @@ operations:
   currentH5Callers:
   - frontend/src/stores/auth.ts
   decision: SIMPLIFY
-  replacementOrImpact: Revoke only current vc_session. Ordinary logout preserves the independent trusted-device
-    TOTP bypass, while email and password remain mandatory next time.
+  replacementOrImpact: Revoke only current vc_session; the response sets no cookies so a delayed logout
+    cannot expire a newer login's vc_session/vc_csrf (VC-R12). Ordinary logout preserves the independent
+    trusted-device TOTP bypass, while email and password remain mandatory next time.
 - operationId: listAuthSessions
   method: GET
   path: /api/v1/auth/sessions

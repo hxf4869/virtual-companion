@@ -554,8 +554,10 @@ async function onLogout(): Promise<void> {
   busy.value = "logout";
   const mySeq = ++actionSeq;
   try {
-    await auth.logout(transport);
-    goTo("/pages/login/login");
+    // VC-R12: 只有本地清理归属本次调用、且此刻没有较新已认证身份才导航；
+    // 让位给较新登录的迟到登出不得清掉新身份，也不得把页面拽回登录页。
+    const owned = await auth.logout(transport);
+    if (owned && !auth.isAuthenticated) goTo("/pages/login/login");
   } finally {
     if (mySeq === actionSeq) {
       busy.value = null;

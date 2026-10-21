@@ -416,7 +416,11 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.clearSessionCookies(w)
+	// VC-R12: the server-side revocation above is the logout contract. The
+	// response sets no cookies: an expiring Set-Cookie is addressed by name and
+	// path only, so a delayed logout response would delete whatever session a
+	// newer login has just installed. The revoked cookie left in the browser is
+	// inert and is overwritten by the next login.
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

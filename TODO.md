@@ -41,13 +41,31 @@ transport/authedFetch 按会话代次门控 onUnauthorized（`d2737bb9`）。
 
 2026-10-21 缓存页面换号收口（VC-R11）：首页/全部会话/我的三页本地私有状态
 （会话预览、密码/注销表单输入、设备列表、错误与忙态）在身份交接时清空，
-页面私有请求代次丢弃旧账号迟到回调（含改密/删号迟到失败），KeepAlive
+页面私有的列表读取与动作失败 UI 回调按代次丢弃旧账号迟到结果（含改密/删号
+迟到失败；不含认证写成功返回的排序），KeepAlive
 重新激活按账号归属重载、隐藏页清理不抢发请求；同账号重新认证不把在途
 加载判死（定向审计修复）。682 项前端测试与 type-check 通过；本机浏览器
 390x844 合成 mock 缓存返回链（HomeA→会话A→ChatA→My→登出→登录B→返回
 My/列表/Home）与受控延迟旧设备读取不回填实测通过。认证写请求跨新登录的
-Cookie/Store.logout 响应排序为源码候选待代码核验（本轮未处理、未声称
-解决）；真机浏览器换号验证为 Owner 人工项（不对应任何已勾选条目，不改变
+Cookie/Store.logout 响应排序当时为源码候选（普通登出一项已由 VC-R12 收口）；
+真机浏览器换号验证为 Owner 人工项（不对应任何已勾选条目，不改变
+DOGFOOD/Beta/CI 现状）。
+
+2026-10-21 普通登出迟到不破坏新登录（VC-R12）：logout 响应不再携带任何
+Set-Cookie（服务端撤销仍是登出契约），迟到的普通登出不再删除较新登录的
+vc_session/vc_csrf（Go httptest+真实 cookiejar 闸门复现红→绿；旧 token 服务
+端 401、正常登出、撤销失败不清 Cookie、90 天 trusted-device 语义保持，0 条
+Set-Cookie 回归护栏）；store.logout 以身份归属代次（credentialEpoch）门控本地
+clear 并返回归属布尔——只有已提交新凭据（ACTIVE 登录/挑战完成，含同 ID 重
+登）或不同账号交接才推进，登出挂起期间失败登录（仅意图）与同会话 probe 读回
+ACTIVE（仅读取）都不阻止正常退出（两项定向审计修正均有先红后绿回归锁定），
+account 与 AdminConsoleShell 仅在「归属本次调用且此刻无较新已认证身份」时
+导航回登录页。689 项前端测试与 type-check、httpapi 定向 4/4 与整包、
+`scripts/check.sh` 14s PASS；OpenAPI/catalog 契约文案与 dist/snapshot 同步再生成。
+遗留候选（未声称解决）：revoke-session 自撤销/revoke-all/改密响应同类
+Set-Cookie 竞态、logout 请求晚于新登录发出时服务端撤销新会话的请求侧排序。
+未跑浏览器端到端（Cookie 证明走真实 Go httptest，不冒充 mock 为真实服务），
+真机浏览器验证仍为 Owner 人工项（不对应任何已勾选条目，不改变
 DOGFOOD/Beta/CI 现状）。
 
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与

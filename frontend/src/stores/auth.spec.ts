@@ -94,6 +94,56 @@ function deferredAuthTransport() {
   };
 }
 
+/** VC-R12: 合成账号身份，accountId 由场景指定，凭据全部为测试合成值。 */
+function accountIdentity(accountId: string, email: string): AuthSessionIdentity {
+  return {
+    nextStep: "ACTIVE",
+    expiresInSeconds: 7200,
+    accountId,
+    email,
+    role: "USER",
+    passwordMustChange: false,
+    authenticatorEnabled: false,
+  };
+}
+
+/**
+ * VC-R12: POST /auth/logout 挂起（由测试手动 resolve）、POST /auth/login 立即
+ * 返回指定响应（成功身份或 404 失败）的可控 transport，用于构造「旧 logout
+ * 迟到返回」竞态。可选提供 GET /auth/session 响应以覆盖同会话读回交错。
+ */
+function pendingLogoutTransport(
+  loginResponse: AuthApiResponse,
+  sessionResponse?: AuthApiResponse,
+): {
+  transport: AuthTransport;
+  settleLogout: (response: AuthApiResponse) => void;
+} {
+  const logoutPending: Array<(response: AuthApiResponse) => void> = [];
+  const transport: AuthTransport = {
+    request: vi.fn(async (_method: string, path: string): Promise<AuthApiResponse> => {
+      if (path === "/api/v1/auth/logout") {
+        return new Promise<AuthApiResponse>((resolve) => {
+          logoutPending.push(resolve);
+        });
+      }
+      if (path === "/api/v1/auth/login") {
+        return loginResponse;
+      }
+      if (path === "/api/v1/auth/session" && sessionResponse) {
+        return sessionResponse;
+      }
+      throw new Error(`unexpected auth request ${path}`);
+    }),
+  };
+  return {
+    transport,
+    settleLogout(response) {
+      logoutPending[0]?.(response);
+    },
+  };
+}
+
 /** Minimal Response shape consumed by createAuthenticatedTransport in the node env. */
 interface StubFetchResponse {
   ok: boolean;
@@ -820,7 +870,8 @@ describe("useAuthStore", () => {
     await store.login(t, "alice", "pw");
 
     const logoutT = okTransport(sampleTokens());
-    await store.logout(logoutT);
+    // 正常路径：代次未变，本次调用拥有本地清理并已执行，返回 true。
+    await expect(store.logout(logoutT)).resolves.toBe(true);
 
     expect(logoutT.request).toHaveBeenCalledWith("POST", "/api/v1/auth/logout");
     expect(store.isAuthenticated).toBe(false);
@@ -828,8 +879,139 @@ describe("useAuthStore", () => {
 
     // Transport failure still clears the local session (best effort revoke).
     await store.login(okTransport(sampleTokens("a2")), "alice", "pw");
-    await store.logout(throwTransport());
+    // 网络失败但代次未变：best-effort 清理仍归属本次调用，返回 true。
+    await expect(store.logout(throwTransport())).resolves.toBe(true);
     expect(store.isAuthenticated).toBe(false);
+  });
+
+  it("VC-R12: 迟到的旧 logout 成功响应不得清掉另一账号的新登录", async () => {
+    const store = useAuthStore();
+    await expect(
+      store.login(
+        okTransport(accountIdentity("1", "vc-r12-a@example.com")),
+        "vc-r12-a@example.com",
+        "pw-a",
+      ),
+    ).resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("1");
+
+    const identityB = accountIdentity("2", "vc-r12-b@example.com");
+    const { transport, settleLogout } = pendingLogoutTransport({
+      ok: true,
+      status: 200,
+      json: identityB,
+    });
+    const loggingOut = store.logout(transport);
+
+    // 旧账号 A 的 POST /auth/logout 仍在途：同一 store + transport 完成账号 B 登录。
+    await expect(store.login(transport, "vc-r12-b@example.com", "pw-b"))
+      .resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("2");
+
+    // 账号 A 的 logout 响应此刻才迟到成功。
+    settleLogout({ ok: true, status: 204, json: null });
+    // 本次旧登出已让位给较新登录代次：不清状态，并如实返回 false。
+    await expect(loggingOut).resolves.toBe(false);
+
+    expect(store.accountId).toBe("2");
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.sessionStatus).toBe("authenticated");
+    expect(store.nextStep).toBe("ACTIVE");
+  });
+
+  it("VC-R12: 迟到的旧 logout 成功响应不得清掉同一账号的重新登录（credential 代次）", async () => {
+    const store = useAuthStore();
+    const identityA = accountIdentity("1", "vc-r12-a@example.com");
+    const { transport, settleLogout } = pendingLogoutTransport({
+      ok: true,
+      status: 200,
+      json: identityA,
+    });
+    await expect(store.login(transport, "vc-r12-a@example.com", "pw-old"))
+      .resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("1");
+
+    const loggingOut = store.logout(transport);
+
+    // 同一 accountId 用新 credential 重新登录：任何以「账号是否变化」为判据的
+    // 修复方案都区分不了这次代次，必须依赖会话代次而非账号比较。
+    await expect(store.login(transport, "vc-r12-a@example.com", "pw-new"))
+      .resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("1");
+
+    settleLogout({ ok: true, status: 204, json: null });
+    // 判据是代次而非账号比较：同 ID 重新登录同样让旧登出返回 false。
+    await expect(loggingOut).resolves.toBe(false);
+
+    expect(store.accountId).toBe("1");
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.sessionStatus).toBe("authenticated");
+    expect(store.nextStep).toBe("ACTIVE");
+  });
+
+  it("VC-R12: 登出挂起期间一次失败登录不得让旧登出让位（仍正常退出）", async () => {
+    const store = useAuthStore();
+    await expect(
+      store.login(
+        okTransport(accountIdentity("1", "vc-r12-a@example.com")),
+        "vc-r12-a@example.com",
+        "pw-a",
+      ),
+    ).resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("1");
+
+    // 旧登出挂起；该次登录明确失败（404 → invalid-credentials），没有新身份提交。
+    const { transport, settleLogout } = pendingLogoutTransport({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "no" },
+    });
+    const loggingOut = store.logout(transport);
+
+    await expect(store.login(transport, "vc-r12-a@example.com", "wrong"))
+      .resolves.toBeNull();
+    expect(store.error).toBe("invalid-credentials");
+    expect(store.accountId).toBe("1");
+
+    settleLogout({ ok: true, status: 204, json: null });
+    // 失败登录只是登录「意图」，没有确立新会话：本次登出仍拥有本地清理，返回 true。
+    await expect(loggingOut).resolves.toBe(true);
+
+    expect(store.accountId).toBeNull();
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.sessionStatus).toBe("anonymous");
+  });
+
+  it("VC-R12: 登出挂起期间同会话 session 读回不得让旧登出让位（仍正常退出）", async () => {
+    const store = useAuthStore();
+    await expect(
+      store.login(
+        okTransport(accountIdentity("1", "vc-r12-a@example.com")),
+        "vc-r12-a@example.com",
+        "pw-a",
+      ),
+    ).resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("1");
+
+    // 旧登出挂起；同会话 GET /auth/session 读回同一身份（accountId 不变），
+    // 没有新登录、没有 Cookie 换发，只是一次读回。
+    const identityA = accountIdentity("1", "vc-r12-a@example.com");
+    const { transport, settleLogout } = pendingLogoutTransport(
+      { ok: false, status: 404, json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "no" } },
+      { ok: true, status: 200, json: identityA },
+    );
+    const loggingOut = store.logout(transport);
+
+    await expect(store.tryRefresh(transport)).resolves.toBe(true);
+    expect(store.accountId).toBe("1");
+
+    settleLogout({ ok: true, status: 204, json: null });
+    // 同会话读回不构成新凭据：本次登出仍拥有本地清理，返回 true。
+    await expect(loggingOut).resolves.toBe(true);
+
+    expect(store.accountId).toBeNull();
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.sessionStatus).toBe("anonymous");
   });
 
   it("LOGOUT-CLEAR: logout drops in-memory chat and relationship caches", async () => {

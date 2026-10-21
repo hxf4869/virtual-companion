@@ -2557,8 +2557,10 @@ paths:
     post:
       operationId: logout
       summary: Revoke the current opaque session
-      description: Revokes and clears vc_session plus its CSRF cookie. Ordinary logout deliberately preserves vc_trusted_device,
-        so the user must still enter email and password next time but may skip TOTP on this device.
+      description: 'Revokes the current opaque session. The response sets no cookies: an expiring Set-Cookie cannot distinguish
+        old from new values, so a delayed logout response must not delete the vc_session and vc_csrf a newer login has just
+        installed; the revoked cookie left in the browser is inert until the next login overwrites it. Ordinary logout deliberately
+        preserves vc_trusted_device, so the user must still enter email and password next time but may skip TOTP on this device.'
       security:
       - cookieAuth: []
       responses:

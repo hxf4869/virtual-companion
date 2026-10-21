@@ -51,6 +51,8 @@ interface FetchOptions {
   gatedDevices?: unknown[];
   /** 提供时，改密 POST 挂起直到手动 resolve，随后以 {ok:false} 应答（迟到失败场景）。 */
   passwordGate?: Gate;
+  /** 提供时，登出 POST 挂起直到手动 resolve（迟到登出场景）。 */
+  logoutGate?: Gate;
   /** 提供时，撤销设备的 DELETE 挂起直到手动 resolve。 */
   revokeGate?: Gate;
   /** 登录 POST 返回的身份：默认切到 B（"43"）；同账号重认证场景传 "42"。 */
@@ -115,6 +117,9 @@ function stubFetch(options: FetchOptions = {}) {
       return response(status, status === 200 ? { ok: true } : null);
     }
     if (url === "/api/v1/auth/logout" && method === "POST") {
+      if (options.logoutGate) {
+        return options.logoutGate.promise.then(() => response(200, { ok: true }));
+      }
       return response(200, { ok: true });
     }
     if (url === "/api/v1/auth/account" && method === "DELETE") {
@@ -383,6 +388,42 @@ describe("account page", () => {
     await flushPromises();
     expect(calls).toContainEqual(expect.objectContaining({ method: "POST", url: "/api/v1/auth/logout" }));
     expect(auth.isAuthenticated).toBe(false);
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R12: 迟到的旧登出不得清掉换号后的身份，也不得导航回登录页", async () => {
+    const gate = makeGate();
+    const { calls } = stubFetch({ logoutGate: gate });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="account-logout"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/logout")).toHaveLength(1);
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+
+    // 旧登出迟到返回 ok:true：B 的本地身份保留，页面不被拽回登录页。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.accountId).toBe("43");
+    expect(auth.isAuthenticated).toBe(true);
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    expect(uni.redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
     wrapper.unmount();
   });
 

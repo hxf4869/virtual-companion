@@ -220,8 +220,12 @@ export default defineComponent({
       if (!(await confirmDiscardChanges())) return;
       loggingOut.value = true;
       try {
-        await auth.logout(transport);
-        await navigate("/pages/login/login", true, true);
+        // VC-R12: 只有本地清理归属本次调用、且此刻没有较新已认证身份才回
+        // 登录页；让位给较新登录的迟到登出不得清掉新身份或导航。
+        const owned = await auth.logout(transport);
+        if (owned && !auth.isAuthenticated) {
+          await navigate("/pages/login/login", true, true);
+        }
       } finally {
         loggingOut.value = false;
       }

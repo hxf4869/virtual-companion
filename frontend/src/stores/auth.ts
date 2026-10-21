@@ -78,6 +78,12 @@ export const useAuthStore = defineStore("h5-auth", () => {
   // VC-R08: every clear()/login() bumps the generation so a stale refresh
   // result can never assert anything about the newer session state.
   let refreshEpoch = 0;
+  // VC-R12: 身份归属代次，由新凭据提交（登录/挑战完成的 persist）、不同已知
+  // 账号交接的 session 读回（R09 缓存清理同款条件）与 clear() 推进。login()
+  // 入口对 refreshEpoch 的推进只是登录「意图」（作废在途恢复探测），同一会话
+  // 的 GET /auth/session 读回也只是读取——两者都不构成新凭据；logout 只让位
+  // 给已确立的较新会话，故以本代次为判据。
+  let credentialEpoch = 0;
   let refreshInFlight: { epoch: number; promise: Promise<RefreshOutcome> } | null = null;
 
   const isAuthenticated = computed(() => accountId.value !== null);
@@ -86,10 +92,16 @@ export const useAuthStore = defineStore("h5-auth", () => {
     return settled.value ? "anonymous" : "unknown";
   });
 
-  function persist(identity: AuthSessionIdentity): void {
+  function persist(identity: AuthSessionIdentity, newCredential = false): void {
     // Committing an identity is itself a generation boundary: any probe already
     // in flight describes the previous session and must not roll this one back.
     refreshEpoch++;
+    // VC-R12: 只有新登录/挑战完成（newCredential）或不同已知账号交接（与下方
+    // R09 缓存清理同款条件）才推进身份归属代次；对当前同一会话的读回
+    // （accountId 不变）不构成新凭据，不得让挂起的旧登出让位。
+    if (newCredential || (accountId.value !== null && accountId.value !== identity.accountId)) {
+      credentialEpoch++;
+    }
     // VC-R09: a handover between two different known accounts must drop the
     // previous account's shared caches; a same-account recovery keeps them.
     if (accountId.value !== null && accountId.value !== identity.accountId) {
@@ -119,6 +131,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
 
   function clear(): void {
     refreshEpoch++;
+    credentialEpoch++;
     const hadSession = accountId.value !== null || accessToken.value !== null;
     accessToken.value = null;
     accountId.value = null;
@@ -210,7 +223,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     error.value = null;
     recoveryCodes.value = [];
     if (result.nextStep === "ACTIVE") {
-      persist(result);
+      persist(result, true);
       return;
     }
     if (result.nextStep === "TOTP_REQUIRED" || result.nextStep === "AUTHENTICATOR_SETUP_REQUIRED") {
@@ -294,7 +307,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
       return false;
     }
     const codes = completed.recoveryCodes;
-    persist(completed);
+    persist(completed, true);
     recoveryCodes.value = codes;
     return true;
   }
@@ -317,14 +330,26 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   /** Ordinary logout preserves the independent 90-day trusted-device cookie. */
-  async function logout(t: AuthTransport): Promise<void> {
+  async function logout(t: AuthTransport): Promise<boolean> {
     error.value = null;
+    const epoch = credentialEpoch;
     try {
       await apiLogout(t);
     } catch {
       // Best effort: local identity still clears when the network is unavailable.
     }
+    // VC-R12: 迟到的旧登出只让位给已确立的较新会话。判据用身份归属代次
+    // （credentialEpoch）：login() 入口的代次推进只是登录「意图」，登出挂起
+    // 期间一次失败登录（未 persist）不算新凭据；同会话 GET /auth/session 读回
+    // （accountId 不变）同样只是读取——两者都不得让旧登出跳过本地清理，否则
+    // 已登录用户退不出去。只有新登录/挑战完成的 persist、不同已知账号交接的
+    // 读回与 clear() 推进该代次；同 ID 重新登录经 persist 推进，因此判据也
+    // 覆盖账号相同的 credential 代次切换，无需账号比较。返回 true 表示本次
+    // 调用拥有本地清理并已执行（含网络失败但代次未变的 best-effort 路径）；
+    // false 表示已让位给较新会话，未触碰任何状态。
+    if (epoch !== credentialEpoch) return false;
     clear();
+    return true;
   }
 
   function onUnauthorized(): void {

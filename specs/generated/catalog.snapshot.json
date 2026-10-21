@@ -1786,7 +1786,7 @@
             "method": "POST",
             "operationId": "logout",
             "path": "/api/v1/auth/logout",
-            "replacementOrImpact": "Revoke only current vc_session. Ordinary logout preserves the independent trusted-device TOTP bypass, while email and password remain mandatory next time."
+            "replacementOrImpact": "Revoke only current vc_session; the response sets no cookies so a delayed logout cannot expire a newer login's vc_session/vc_csrf (VC-R12). Ordinary logout preserves the independent trusted-device TOTP bypass, while email and password remain mandatory next time."
           },
           {
             "currentH5Callers": [],
@@ -2259,7 +2259,7 @@
           }
         ]
       },
-      "sha256": "cca8b316271b9d649c0578914964f455598dfac3d1e08a479cb935eb9a34c570"
+      "sha256": "ec0ef053314a4e33bd04974398d89e6258ed441bea57595171248c2f0ee652ea"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

@@ -54,14 +54,35 @@ snapshot 随 API scope 更新重新生成（`scripts/check.sh` 13s PASS）；全
 
 2026-10-21 缓存页面换号收口（VC-R11）：首页/全部会话/我的三个 KeepAlive
 缓存页在身份交接时清空旧账号本地内容（会话预览、密码/注销表单输入、设备
-列表、错误与忙态），页面私有请求代次丢弃旧账号迟到回调（成功/失败/finally
-均不回填、不解除新账号忙态），重新激活按账号归属加载新内容，隐藏页清理不
+列表、错误与忙态），页面私有的列表读取与动作失败 UI 回调按代次丢弃旧账号
+迟到结果（成功/失败/finally均不回填、不解除新账号忙态；不含认证写成功返回
+的排序），重新激活按账号归属加载新内容，隐藏页清理不
 抢发请求；同账号重新认证不把在途加载判死（定向审计修复，含改密/删号迟到
 失败文案不回填）。682 项前端测试与 type-check 通过；本机浏览器 390x844
 合成 mock 实测缓存返回链（HomeA→全部会话A→ChatA→底栏My→登出→登录B→
 浏览器返回 My/列表/Home）全程无旧账号内容，受控延迟的旧设备读取释放后不
-回填。认证写请求跨新登录的 Cookie/Store.logout 响应排序仍为源码候选待
-代码核验，本轮未处理；真机浏览器上的换号验证仍为 Owner 人工项。
+回填。认证写成功返回的排序不在其范围：当时仍为源码候选（普通登出一项
+已由 VC-R12 收口）；真机浏览器上的换号验证仍为 Owner 人工项。
+
+2026-10-21 普通登出迟到不破坏新登录（VC-R12）：普通 logout 的服务端契约收口
+为撤销当前 session，响应不再携带任何 Set-Cookie——按名+路径寻址的过期 Cookie
+无法区分新旧值，迟到的登出响应会把较新登录刚装好的 vc_session/vc_csrf 从
+浏览器一并删除；以 Go httptest 真实 HTTP+标准 cookiejar 加响应闸门先复现该
+竞态（红：延迟 logout 后新登录 GET /auth/session 401），修复后同一断言转绿，
+旧 token 服务端确已撤销（401）；正常登出、撤销失败不清 Cookie、90 天
+trusted-device 保留语义不变，「logout 响应 0 条 Set-Cookie」为回归护栏。前端
+store.logout 以身份归属代次（credentialEpoch）门控本地 clear 并返回归属布尔：
+只有已提交新凭据（ACTIVE 登录/挑战完成，含同 ID 重登）或不同账号交接才推进
+该代次——登出挂起期间一次失败登录（仅意图）或同会话 probe 读回 ACTIVE（仅
+读取）都不算新凭据，旧登出仍正常本地退出（两项定向审计修正均有先红后绿的
+回归测试锁定）；account 与 AdminConsoleShell 两个直接消费者页面仅在「归属
+本次调用且此刻无较新已认证身份」时导航回登录页。OpenAPI/catalog 契约文案
+与 dist、snapshot 同步再生成。689 项前端测试与 type-check、httpapi 定向 4/4
+与整包、`scripts/check.sh` 14s PASS（本轮无浏览器端到端：Cookie 证明走真实 Go
+httptest，合成 mock 不冒充真实服务，页面行为由组件测试覆盖）。遗留候选未
+声称解决：revoke-session 自撤销/revoke-all/改密响应的同类 Set-Cookie 竞态、
+logout 请求晚于新登录发出时服务端会撤销新会话的请求侧排序；真机浏览器验证
+仍为 Owner 人工项。
 
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
