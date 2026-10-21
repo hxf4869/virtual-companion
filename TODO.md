@@ -260,6 +260,18 @@ Provider/SSE 等内部细节；首轮失败点后断言未到达不计入首轮�
 安全认证。端口释放、本轮容器 0 核验通过；不勾 Owner/Beta/CI/真机/
 真 provider。
 
+2026-10-21 双引擎移动端可访问性与页面适配（VC-R28）：08-accessibility
+按 webkit-iphone、chromium-android 两 project 顺序实际执行（共 2 次）
+首轮 2 passed 0 failed rc=0（42.0s）；Root 发现验收时机缺口（role=main
+加载态即渲染，Axe 可能审到骨架），仅测试侧补每页成功内容等待
+（home-hero、message-input、conversations-list/empty、account-email=
+session.email 且 trusted-devices 出列表或明确空态；未新增生产
+testid/sleep、未扩 helper），复跑 2 passed 0 failed rc=0（48.6s）；
+前端 710 单测+type-check PASS，产品代码零改。属 Playwright 设备仿真
+（iPhone 13/Pixel 5 viewport 的双引擎），非真机 VoiceOver/IME 或生产
+验收。两轮栈清理核验通过（state/auth 无残留、4 端口释放、本轮容器
+0）；不勾 Owner/Beta/CI/真机。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

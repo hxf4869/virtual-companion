@@ -21,6 +21,36 @@ async function expectAccessibleAndFit(page: Page, label: string): Promise<void> 
   expect(width.document, `${label} must not scroll horizontally`).toBeLessThanOrEqual(width.viewport);
 }
 
+// navigateToPage only waits for the uni hash and ConsumerShell renders
+// role="main" while page data is still loading, so Axe would otherwise
+// audit skeletons. Each page is audited only after its own success
+// content (existing selectors; loading/error render different testids)
+// has actually rendered.
+async function expectContentLoaded(page: Page, label: string, email: string): Promise<void> {
+  if (label === "home") {
+    // Authenticated sessions render VcHomeHero; the anonymous hero branch
+    // is unreachable inside the shared session.
+    await expect(page.getByTestId("home-hero")).toBeVisible();
+  } else if (label === "chat") {
+    // VcChatComposer only renders in the ready page state.
+    await expect(page.getByTestId("message-input")).toBeVisible();
+  } else if (label === "conversations") {
+    // The skeleton/error branches own different testids; list and empty
+    // are the mutually exclusive success states.
+    await expect(
+      page.getByTestId("conversations-list").or(page.getByTestId("conversations-empty")),
+    ).toBeVisible();
+  } else if (label === "account") {
+    await expect(page.getByTestId("account-email")).toHaveText(email);
+    // Trusted devices load asynchronously: ready only once loading/error
+    // are gone and either the real list or the explicit empty state shows.
+    const devices = page.getByTestId("trusted-devices");
+    await expect(devices).not.toContainText("正在加载设备…");
+    await expect(page.getByTestId("trusted-devices-error")).toHaveCount(0);
+    await expect(devices).toContainText(/暂无信任的设备。|最近使用/);
+  }
+}
+
 test("login and the current mobile product pages remain accessible", async ({ page, request }) => {
   await page.goto("/#/pages/index/index");
   await page.waitForURL((url) => url.hash.startsWith("#/pages/login/login"));
@@ -36,7 +66,7 @@ test("login and the current mobile product pages remain accessible", async ({ pa
   // The a11y journey audits pages, not the login flow (01/02 own that); the
   // product pages are entered through the shared session so the full run
   // stays inside the backend's real authenticator rate-limit budget.
-  await openSharedSession(page, "chat");
+  const session = await openSharedSession(page, "chat");
 
   const pages = [
     ["/pages/index/index", "home"],
@@ -47,6 +77,7 @@ test("login and the current mobile product pages remain accessible", async ({ pa
   for (const [href, label] of pages) {
     await navigateToPage(page, href);
     await expect(page.locator('[role="main"]').first()).toBeVisible();
+    await expectContentLoaded(page, label, session.email);
     await expectAccessibleAndFit(page, label);
   }
 

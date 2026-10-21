@@ -290,6 +290,25 @@ FAILED_FINAL，错误文案与 retry 按钮可见、无 Provider/SSE/FAILED_FINA
 仅验证本机合成故障路径，不声称真实供应商可用性或临床/安全认证。
 端口释放与本轮容器 0 核验通过；不勾 Owner/Beta/CI/真机/真 provider。
 
+2026-10-21 双引擎移动端可访问性与页面适配（VC-R28）：08-accessibility
+既有旅程在 webkit-iphone 与 chromium-android 两个已配置 project
+（workers=1 顺序执行，共 2 次实际运行）首轮 2 passed 0 failed
+rc=0（42.0s）。Root 复核发现验收时机缺口：navigateToPage 只等
+hash、ConsumerShell 的 role=main 在加载态即渲染，Axe 可能审到
+骨架内容。仅测试侧修复：08 保留 role=main 原检查，在每页 Axe 前
+等待该页现有成功内容（home-hero、message-input、conversations-
+list/empty 互斥成功态、account-email=session.email 且 trusted-
+devices 脱离 loading/error 后出现列表或明确空态；未新增生产
+testid 或任意 sleep，未扩 helper 机制）。修复后受影响复跑 2
+passed 0 failed rc=0（48.6s；webkit-iphone 4.0s、chromium-
+android 1.6s），登录禁用/可提交态、四页 Axe 零违规且无横向溢出、
+Home 底栏 52–54px 不超视口底全部通过；前端 710 单测+type-check
+PASS，产品代码零改。该验收为 Playwright 设备仿真（iPhone 13
+viewport 390×664、Pixel 5 viewport 393×727 的 webkit/chromium
+双引擎），非真机 VoiceOver/输入法或生产环境验收。两轮栈自动清理
+核验：state/auth 临时材料无残留、5197/18087/18437/19097 四端口
+释放、本轮容器 0；不勾 Owner/Beta/CI/真机。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
