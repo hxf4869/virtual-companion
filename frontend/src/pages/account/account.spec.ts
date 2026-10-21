@@ -49,8 +49,14 @@ interface FetchOptions {
   /** 提供时，第一个 trusted-devices GET 挂起直到手动 resolve，用 gatedDevices 应答。 */
   deviceGetGate?: Gate;
   gatedDevices?: unknown[];
-  /** 提供时，改密 POST 挂起直到手动 resolve，随后以 {ok:false} 应答（迟到失败场景）。 */
+  /** 提供时，改密 POST 挂起直到手动 resolve，随后按 passwordGateOk 应答。 */
   passwordGate?: Gate;
+  /** 改密挂起释放后的应答体：默认 {ok:false}（迟到失败）；true 为 {ok:true}（迟到成功）。 */
+  passwordGateOk?: boolean;
+  /** 提供时，GET /auth/session 以 200 返回该身份（同会话读回场景）。 */
+  sessionIdentity?: unknown;
+  /** 提供时，POST /auth/login 以 404 拒绝（失败登录意图场景）。 */
+  loginRejected?: boolean;
   /** 提供时，登出 POST 挂起直到手动 resolve（迟到登出场景）。 */
   logoutGate?: Gate;
   /** 提供时，撤销设备的 DELETE 挂起直到手动 resolve。 */
@@ -78,9 +84,13 @@ function stubFetch(options: FetchOptions = {}) {
     calls.push({ method, url, body: typeof init?.body === "string" ? init.body : undefined });
 
     if (url === "/api/v1/auth/session" && method === "GET") {
+      if (options.sessionIdentity) return response(200, options.sessionIdentity);
       return response(401, null);
     }
     if (url === "/api/v1/auth/login" && method === "POST") {
+      if (options.loginRejected) {
+        return response(404, { code: "NOT_FOUND_OR_FORBIDDEN", message: "no" });
+      }
       // 真实换号或同账号重认证：登录页同款 ACTIVE 响应，经 store.login 推进代次。
       return response(200, {
         nextStep: "ACTIVE",
@@ -111,7 +121,9 @@ function stubFetch(options: FetchOptions = {}) {
     }
     if (url === "/api/v1/auth/password" && method === "POST") {
       if (options.passwordGate) {
-        return options.passwordGate.promise.then(() => response(200, { ok: false }));
+        return options.passwordGate.promise.then(
+          () => response(200, options.passwordGateOk ? { ok: true } : { ok: false }),
+        );
       }
       const status = options.passwordStatus ?? 200;
       return response(status, status === 200 ? { ok: true } : null);
@@ -784,6 +796,177 @@ describe("account page", () => {
     expect(wrapper.find('[data-testid="trusted-device-row"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="trusted-device-action-error"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("VC-R15: 迟到的旧改密成功不得清掉换号后的新身份，也不得导航回登录页", async () => {
+    const gate = makeGate();
+    const { calls } = stubFetch({ passwordGate: gate, passwordGateOk: true });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // A 提交改密：POST 挂起（稍后以真实 200 {ok:true} 迟到释放）。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/password")).toHaveLength(1);
+
+    // 挂起期间前台真实换号 B（登录页同款流程，经 store.login 以新凭据 persist）。
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+
+    // A 的迟到改密成功到达：B 的本地身份保留，页面不被拽回登录页。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.accountId).toBe("43");
+    expect(auth.isAuthenticated).toBe(true);
+    expect(auth.sessionStatus).toBe("authenticated");
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    expect(uni.redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R15: 迟到的旧改密成功同样让位给同一账号的重新登录", async () => {
+    const gate = makeGate();
+    stubFetch({
+      passwordGate: gate,
+      passwordGateOk: true,
+      loginAccountId: "42",
+      loginEmail: "alice@example.com",
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // A 提交改密：POST 挂起（稍后以成功释放）。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+
+    // 挂起期间同一账号用新凭据重新登录：accountId 不变，任何以「账号是否
+    // 变化」为判据的方案都识别不了这次代次切换。
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "alice@example.com", "pw-new");
+    await flushPromises();
+    expect(auth.accountId).toBe("42");
+
+    // A 的迟到改密成功到达：同账号的新登录代次同样受保护。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.accountId).toBe("42");
+    expect(auth.isAuthenticated).toBe(true);
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    expect(uni.redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    // 让位后动作锁正常复位：同账号的表单不会永久停在「修改中…」。
+    expect(wrapper.get('[data-testid="change-password"]').attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("VC-R15: 挂起期间的同会话 session 读回不让位：改密成功仍正常退出", async () => {
+    const gate = makeGate();
+    stubFetch({
+      passwordGate: gate,
+      passwordGateOk: true,
+      sessionIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "42",
+        email: "alice@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // A 提交改密：POST 挂起（稍后以成功释放）。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+
+    // 挂起期间另一入口同会话 GET /auth/session 读回同一身份：只是读取，
+    // 不构成新凭据，不得让旧改密成功让位。
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await expect(auth.tryRefresh(transport)).resolves.toBe(true);
+    expect(auth.accountId).toBe("42");
+
+    // 迟到成功到达：服务端已撤销全部会话，必须本地退出并去登录页。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.isAuthenticated).toBe(false);
+    expect(auth.sessionStatus).toBe("anonymous");
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R15: 挂起期间的失败登录意图不让位：改密成功仍正常退出", async () => {
+    const gate = makeGate();
+    stubFetch({ passwordGate: gate, passwordGateOk: true, loginRejected: true });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // A 提交改密：POST 挂起（稍后以成功释放）。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+
+    // 挂起期间一次真实失败登录（404）：只是登录「意图」，没有提交新凭据。
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await expect(auth.login(transport, "alice@example.com", "wrong")).resolves.toBeNull();
+    expect(auth.error).toBe("invalid-credentials");
+    expect(auth.accountId).toBe("42");
+
+    // 迟到成功到达：正常退出仍要发生，否则用户改完密退不出去。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.isAuthenticated).toBe(false);
+    expect(auth.sessionStatus).toBe("anonymous");
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/login/login" });
     wrapper.unmount();
   });
 });

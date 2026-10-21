@@ -368,6 +368,19 @@ export const useAuthStore = defineStore("h5-auth", () => {
     return refreshEpoch;
   }
 
+  /**
+   * VC-R15: read-only credential-ownership epoch, for stale-success yield
+   * checks only (e.g. a late password-change 200). It advances only when a
+   * genuinely newer credential is committed — a login/challenge persist with
+   * newCredential, a known-account handover readback — or on clear(); a failed
+   * login attempt (login entry) and a same-session readback never advance it.
+   * Like getSessionRevision it is a plain ownership counter: never a secret,
+   * never persisted, and never exposed to the UI, a URL, a header or a log.
+   */
+  function getCredentialEpoch(): number {
+    return credentialEpoch;
+  }
+
   return {
     accessToken,
     accountId,
@@ -396,6 +409,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     logout,
     onUnauthorized,
     getSessionRevision,
+    getCredentialEpoch,
     clear,
   };
 });

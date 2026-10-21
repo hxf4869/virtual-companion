@@ -2967,7 +2967,11 @@ paths:
       description: >-
         Verifies the current password, stores a new BCrypt hash, and atomically
         revokes every opaque session and trusted device. Never claims a message
-        was sent.
+        was sent. The response sets no cookies: an expiring Set-Cookie is
+        addressed by name and path only, so a delayed success response must not
+        delete the vc_session, vc_csrf or vc_trusted_device a newer login has
+        just installed; the revoked cookies left in the browser are inert until
+        the next login overwrites them.
       security:
         - cookieAuth: []
       requestBody:
@@ -2979,7 +2983,9 @@ paths:
               $ref: '#/components/schemas/ChangePasswordRequest'
       responses:
         '200':
-          description: Password changed; all authentication cookies are cleared
+          description: >-
+            Password changed; every opaque session and trusted device is
+            revoked server-side; the response sets no cookies
           content:
             application/json:
               schema:

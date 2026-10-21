@@ -515,7 +515,13 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.clearAllAuthCookies(w)
+	// VC-R15: the server-side revocation above (every opaque session and
+	// trusted device of this account) is the change-password contract. The
+	// response sets no cookies: an expiring Set-Cookie is addressed by name
+	// and path only, so a delayed success response would delete whatever
+	// vc_session/vc_csrf/vc_trusted_device a newer login has just installed.
+	// The revoked cookies left in the browser are inert until the next login
+	// overwrites them.
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

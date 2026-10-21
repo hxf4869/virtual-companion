@@ -115,6 +115,26 @@ RED（原地整页重载、栈 1 不动、零报错），修复后 companion/mem
 （redirectTo 进入栈 1、返回回退首页）不回归。699 项前端测试与
 type-check 通过。真机浏览器验证仍为 Owner 人工项。
 
+2026-10-21 改密迟到成功不破坏较新登录（VC-R15）：「我的」改密的服务端契约
+（ChangePasswordHash 原子撤销该账号全部 opaque session 与 trusted device）不变，
+成功响应不再携带任何 Set-Cookie——按名+路径寻址的过期 Cookie 无法区分新旧值，
+迟到的改密 200 会把较新登录刚装好的 vc_session/vc_csrf/vc_trusted_device 从
+浏览器一并删除。Go httptest 真实 HTTP+标准 cookiejar 加响应闸门先复现（红：
+改密服务端撤销完成后 B 同 jar 新登录，放行旧 200，B GET /auth/session 401、
+新 vc_trusted_device 被删），修复后同断言转绿；旧 token 显式重放 401、旧密码
+404、旧可信设备显式重放回 TOTP、新密码重登成功的撤销语义正向用例保持。前端
+account.onChangePassword 成功路径按身份归属代次（credentialEpoch，store 新增
+只读 getCredentialEpoch 出口，推进规则不变）让位：迟到成功遇较新登录（含同 ID
+重登）不清新身份、不回登录页；失败登录意图与同会话 probe 读回不让位，正常
+改密退出保留（4 项回归覆盖较新登录让位与正常退出对照——两项让位用例基线红，
+两项对照用例锚定不误让位——定向 66/66 通过）。浏览器 390x844 合成 mock
+实测（session vcr15，/api/v1 fail-closed、外部请求零发出）：A 改密挂起→底栏
+tab-chats→受保护读取 401→真实登录 UI 完成 B ACTIVE→释放 A 旧成功（真实 200
+送达、无 requestfailed），修复前 B 被清+拽回登录页（红），修复后停留 B 页面、
+底栏保持、无登录表单（绿）。OpenAPI 契约文案与 dist/snapshot 同步再生成；
+前端测试与 type-check 经 scripts/check.sh 14s 全 PASS。真机浏览器验证仍为
+Owner 人工项。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

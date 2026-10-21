@@ -523,6 +523,14 @@ async function onChangePassword(): Promise<void> {
   // VC-R11-C: 迟到的失败文案与 busy 复位按动作代次丢弃。成功路径自身
   // clear() 即身份交接：清理 watch 会 bump actionSeq 并把 busy 置 null，
   // finally 因此跳过复位也不会卡死，成功完成不受影响。
+  // VC-R15: 提交前捕获身份归属代次。迟到的旧改密成功只让位给已确立的
+  // 较新凭据（新登录/挑战完成的 persist、不同已知账号交接的读回推进
+  // credentialEpoch）：不清新身份、不导航登录页、不触碰新账号在途动作的
+  // busy（actionSeq 门控不变）。login() 入口的代次推进只是登录「意图」，
+  // 同会话 GET /auth/session 读回只是读取，都不让位——没有较新凭据时成功
+  // 仍 clear()+去登录页（服务端已撤销全部会话）。判据落在全局 store 上，
+  // 页面被卸载或 KeepAlive 隐藏同样成立，与 logout 的让位判据同源。
+  const credentialAtSubmit = auth.getCredentialEpoch();
   const mySeq = ++actionSeq;
   try {
     const changed = await changeAuthPassword(
@@ -536,6 +544,7 @@ async function onChangePassword(): Promise<void> {
       }
       return;
     }
+    if (auth.getCredentialEpoch() !== credentialAtSubmit) return;
     auth.clear();
     goTo("/pages/login/login");
   } catch {

@@ -99,6 +99,20 @@ companion/memory 点击返回先 RED（原地整页重载、栈 1 不动、零�
 回退首页）不回归。真机浏览器验证仍为 Owner 人工项（不对应任何已勾选
 条目，不改变 DOGFOOD/Beta/CI 现状）。
 
+2026-10-21 改密迟到成功不破坏较新登录（VC-R15）：改密 200 响应不再携带任何
+Set-Cookie（服务端原子撤销全部 session 与 trusted device 仍是改密契约），迟到
+的旧成功不再删除较新登录的 vc_session/vc_csrf/vc_trusted_device（Go
+httptest+真实 cookiejar 闸门复现红→绿；旧 token 401、旧密码 404、旧可信设备
+回 TOTP、新密码重登的撤销语义正向用例保持）。前端 onChangePassword 成功路径
+以身份归属代次（credentialEpoch，新增只读出口、推进规则不变）门控：迟到成功
+遇较新登录（含同 ID 重登）不清新身份、不导航登录页，失败登录意图与同会话
+probe 读回不让位、正常改密退出保留（4 项回归覆盖较新登录让位与正常退出对照
+——两项让位用例基线红、两项对照用例锚定不误让位，定向 66/66 通过）。浏览器
+390x844 合成 mock（session vcr15，fail-closed）实测同链路先红后绿。OpenAPI
+契约文案与 dist/snapshot 同步再生成；`scripts/check.sh` 14s PASS（含前端全量
+与 type-check）。真机浏览器验证仍为 Owner 人工项（不对应任何已勾选条目，
+不改变 DOGFOOD/Beta/CI 现状）。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
