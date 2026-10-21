@@ -153,6 +153,20 @@ cookieAuth 描述补真实写请求要求（X-CSRF-Token 匹配 vc_csrf；Origin
 未动，legacy 不代表现有 runtime。dist/snapshot 工具再生成；内联映射
 验证与 `scripts/check.sh --quick` PASS；Owner 待办保持原状。
 
+2026-10-21 真实本地首轮聊天旅程验收受阻（VC-R19）：以既有入口
+`frontend/e2e/journeys/03-home-chat.spec.ts`（chromium、workers 1、retries 0、
+trace off、专用端口 5197/18087/18437/19097、独立 /tmp/vcr19 state file）执行，
+基础设施准备失败、测试层 NOT_RUN，无任何应用断言执行：MinIO/MC 两个
+pinned digest 镜像经 canonical 与显式 registry-1.docker.io 前缀 pull 均真实
+rc=1 拿不到；匿名 token 对两仓库未授予 pull（对照 library/hello-world 授予），
+身份授权/上游分发/镜像链路原因待区分、不归因定论，解锁不预设必须改全局
+daemon。测试依赖可复现性（含官方源码构建）后续可继续研究。上游
+github.com/minio/minio（2026-04-25）与 github.com/minio/mc（2026-07-14）已
+归档（源码分发；dl.min.io 旧 RELEASE 端点 410 仅证该端点不可用），MinIO
+未来支持与生产存储选型为 Owner 待统一处理项，不擅自更换存储/发行版/版本
+或接受 AIStor 条款。产品与测试零改动；专用端口与本轮容器清理复核通过。
+真实旅程、Owner 人工、真 provider/Beta/CI 现状不变、不勾选。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
