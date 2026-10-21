@@ -53,6 +53,8 @@ paths:
         Technical Alpha and are never reported. The mode is an ops fact, never
         role-played content — clients must show it plainly (FR-RES-005).
         Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: The current service mode and a plain-language summary
@@ -76,6 +78,8 @@ paths:
         only the result, the age band, the verification time and the provider
         reference — never an identity document. Requires a server-verified
         authentication context.
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: The effective age state
@@ -104,6 +108,8 @@ paths:
         ADULT_VERIFIED (minor, appeal-pending, suspended) maps to
         INVALID_REQUEST (fail closed). Requires a server-verified
         authentication context.
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: The new effective age state (ADULT_VERIFIED)
@@ -322,6 +328,8 @@ paths:
         incognito (FR-CHAT-005). Existing conversations keep their frozen
         flag. Missing prefs read as false. Requires a server-verified
         authentication context.
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: Current default
@@ -342,6 +350,8 @@ paths:
         Sets whether the next newly created conversation should start
         incognito. Does not flip existing conversations. Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -377,6 +387,8 @@ paths:
         extract ordinary user-stated preferences and explicit facts and store
         them as accepted auto-saved memories. Requires a server-verified
         authentication context.
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: Current preference
@@ -398,6 +410,8 @@ paths:
         new extraction only; existing memories keep participating in chat
         context and stay individually deletable. Requires a server-verified
         authentication context.
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -434,6 +448,8 @@ paths:
         holds. Requires a server-verified authentication context; the caller's
         identity is the owner, never a request field. Concurrent creates for the
         same owner can never produce two active Companions.
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -460,6 +476,8 @@ paths:
         Returns every relationship owned by the caller (the active Companion and
         any dormant ones). Requires a server-verified authentication context;
         other owners' relationships are never disclosed.
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: Relationships owned by the caller (active and dormant)
@@ -511,6 +529,8 @@ paths:
         Promotes the target relationship to the caller's single active Companion,
         atomically deactivating any other active relationship. A foreign or
         absent id maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
       responses:
@@ -545,6 +565,8 @@ paths:
         that only leaves the active slot. A foreign or absent id maps to
         NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
         - name: retainImportable
@@ -591,6 +613,8 @@ paths:
         (FR-COMP-002). A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN;
         existence is never disclosed. Requires a server-verified authentication
         context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
       requestBody:
@@ -632,6 +656,8 @@ paths:
         Sets the caller's relationship inactive. Alpha permits zero active
         Companions. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN;
         existence is never disclosed.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
       responses:
@@ -665,6 +691,8 @@ paths:
         a retention appeal. A foreign or absent id maps to
         NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
       responses:
@@ -700,6 +728,8 @@ paths:
         memories. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN;
         existence is never disclosed. Requires a server-verified
         authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
         - name: retainImportable
@@ -842,7 +872,7 @@ paths:
         maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
         server-verified authentication context.
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -879,6 +909,8 @@ paths:
         recent-first ordering. A foreign or absent relationship yields no rows
         and never discloses existence. Requires a server-verified authentication
         context.
+      security:
+        - cookieAuth: []
       parameters:
         - name: relationshipId
           in: query
@@ -965,7 +997,7 @@ paths:
         account-level rows are not part of a chat wipe and never appear in
         these counts. Requires a server-verified authentication context.
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       responses:
         '200':
           description: Current counts a wipe would clear
@@ -992,7 +1024,7 @@ paths:
         a repeat wipe is a no-op returning zeroes. Requires a server-verified
         authentication context.
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       responses:
         '200':
           description: What the wipe cleared
@@ -1016,6 +1048,8 @@ paths:
         inside the SD function. A foreign or absent id maps to
         NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
       responses:
@@ -1044,6 +1078,8 @@ paths:
         Writes the conversation title (a blank title clears the rename). A
         foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN (existence is never
         disclosed). Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
       requestBody:
@@ -1085,6 +1121,8 @@ paths:
         statutory records are not removed. A foreign or absent id maps to
         NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
       responses:
@@ -1116,6 +1154,8 @@ paths:
         identity is the owner; owner_user_id is never a request field. Requires a
         server-verified authentication context. Cross-conversation or cross-owner
         references never disclose existence.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
       requestBody:
@@ -1179,6 +1219,8 @@ paths:
         both is 400 INVALID_REQUEST. A foreign or absent conversation yields
         no rows and never discloses existence. Requires a server-verified
         authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
         - name: after
@@ -1238,6 +1280,8 @@ paths:
         the owning generation is cleared (ON DELETE SET NULL). A foreign or
         absent message maps to NOT_FOUND_OR_FORBIDDEN; existence is never
         disclosed. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
         - $ref: '#/components/parameters/MessageId'
@@ -1270,6 +1314,8 @@ paths:
         the V0.3 spec). The marker is reversible: false restores extraction.
         A foreign or absent message maps to NOT_FOUND_OR_FORBIDDEN; existence
         is never disclosed. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ConversationId'
         - $ref: '#/components/parameters/MessageId'
@@ -1370,6 +1416,8 @@ paths:
         (vc.cancel_generation via the catalog double-hop CANCEL_REQUESTED then
         CANCELLED). Terminal states and COMMITTING are not cancellable. A foreign
         or absent id maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/GenerationId'
       responses:
@@ -1402,6 +1450,8 @@ paths:
         chat.completed; failed, blocked and cancelled snapshots expose only
         their terminal event. A foreign or absent id never discloses existence.
         Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/GenerationId'
       responses:
@@ -1434,6 +1484,8 @@ paths:
         kind follows the message-feedback-kinds catalog. A foreign or absent
         generation maps to NOT_FOUND_OR_FORBIDDEN; existence is never
         disclosed. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/GenerationId'
       requestBody:
@@ -1540,6 +1592,8 @@ paths:
         generation, or any ticket-consume failure, emits stream.denied so
         existence is never disclosed. A 400 INVALID_REQUEST is returned only
         before the stream opens, for a malformed or missing parameter.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/GenerationId'
         - name: ticketId
@@ -1621,6 +1675,8 @@ paths:
         or RELATIONSHIP; SESSION additionally requires a conversation binding. The
         caller identity is the owner. Requires a server-verified authentication
         context; a foreign relationship maps to NOT_FOUND_OR_FORBIDDEN.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
       requestBody:
@@ -1658,6 +1714,8 @@ paths:
         includeDeleted is set. Another relationship's memory is never disclosed;
         a foreign relationship yields no rows and never discloses existence.
         Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
         - name: includeDeleted
@@ -1689,6 +1747,8 @@ paths:
         Returns a non-deleted memory owned by the caller (vc.get_memory). A
         foreign, absent or deleted id maps to NOT_FOUND_OR_FORBIDDEN; existence is
         never disclosed. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/MemoryId'
       responses:
@@ -1720,6 +1780,8 @@ paths:
         canonical record. Idempotent: applying the same summary twice succeeds
         both times. A foreign, absent, deleted or dead-end id maps to
         NOT_FOUND_OR_FORBIDDEN. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/MemoryId'
       requestBody:
@@ -1755,6 +1817,8 @@ paths:
         deleted rows: a duplicate delete of the caller's own memory returns
         success. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN; existence
         is never disclosed. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/MemoryId'
       responses:
@@ -1789,6 +1853,8 @@ paths:
         referenced active canonical memory SUPERSEDED in the same transaction —
         an explicit user choice, never automatic conflict detection. Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/MemoryId'
       requestBody:
@@ -1831,6 +1897,8 @@ paths:
         a pending candidate can be rejected; rejecting an already-transitioned
         memory is rejected and maps to NOT_FOUND_OR_FORBIDDEN. Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/MemoryId'
       responses:
@@ -1862,6 +1930,8 @@ paths:
         indistinguishable from a real memory that carries no evidence, so
         existence is never disclosed. Requires a server-verified authentication
         context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/MemoryId'
       responses:
@@ -2096,7 +2166,7 @@ paths:
         message anchor maps to NOT_FOUND_OR_FORBIDDEN; existence is never
         disclosed. Requires a server-verified authentication context.
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -2149,7 +2219,7 @@ paths:
         reflects the intake lifecycle only (SUBMITTED until a human resolves
         it). Requires a server-verified authentication context.
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - name: after
           in: query
@@ -2306,6 +2376,8 @@ paths:
         the caller's CURRENT password (verified synchronously, fail-closed,
         no time window); a grant (granted=true) is low-risk and never asks
         for one. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -2344,6 +2416,8 @@ paths:
         The LATEST consent record per type via vc.list_consents (the effective
         grant/revoke state; the append-only history stays in the database).
         Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       responses:
         '200':
           description: Effective consent records, one per type
@@ -2376,6 +2450,8 @@ paths:
         one-time download token EXACTLY ONCE (only its sha256 digest is
         stored, V76); save downloadUrl immediately — status polls never
         carry it again. Requires a server-verified authentication context.
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         x-raw-max-bytes: 16384
@@ -2430,6 +2506,8 @@ paths:
         once in the create response, V76); a foreign or absent id maps to
         NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ExportId'
       responses:
@@ -2462,6 +2540,8 @@ paths:
         expired, consumed, foreign or absent exports map to
         NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a
         server-verified authentication context.
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/ExportId'
         - $ref: '#/components/parameters/ExportToken'
@@ -4616,7 +4696,12 @@ components:
       type: apiKey
       in: cookie
       name: vc_session
-      description: Go v1 opaque HttpOnly session cookie. State-changing requests also require the existing CSRF double-submit header.
+      description: >-
+        Go v1 opaque HttpOnly vc_session cookie (ADR-0007; no JWT/Bearer).
+        State-changing requests must additionally send an X-CSRF-Token header
+        matching the vc_csrf cookie (constant-time double-submit) and an Origin
+        header that exactly matches the deployment allowlist; a missing Origin
+        or any mismatch is rejected.
   schemas:
     ErrorEnvelope:
       type: object

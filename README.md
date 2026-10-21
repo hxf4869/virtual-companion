@@ -181,6 +181,15 @@ currentH5Callers=[]，dist/snapshot 与 catalog.snapshot.json 工具再生成。
 PASS（含新增 2 项护栏）。请求侧排序与其余 API Cookie 竞态留待后续模块
 核查；真机浏览器验证仍为 Owner 人工项。
 
+2026-10-21 认证契约元数据对齐（VC-R18）：当前 Go 注册 70 个 /api/v1
+operation 中 45 个有效 bearerAuth（5 显式+40 继承根）修正为唯一
+cookieAuth，注册面现为 62 cookieAuth + 8 public、零有效 Bearer；运行时
+本就只认 vc_session Cookie，未恢复 JWT/Bearer。cookieAuth 描述补真实写
+请求要求（X-CSRF-Token 匹配 vc_csrf；Origin 须精确命中允许列表、缺失
+即拒）。54 个未注册 DEFER/RETIRE、根级 security 与其他 scheme 未动，
+legacy 不代表现有 runtime。内联映射验证（70 路由=scope 集合、45→0、124
+operation 与其余字段不变）与 `scripts/check.sh --quick` 均 PASS。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

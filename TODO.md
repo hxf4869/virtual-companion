@@ -144,6 +144,15 @@ scope 两项仍 SIMPLIFY 且 currentH5Callers=[]、无 H5 入口，生成物工�
 竞态留待后续模块核查；真机浏览器验证仍为 Owner 人工项（不对应任何已勾选
 条目，不改变 DOGFOOD/Beta/CI 现状）。
 
+2026-10-21 认证契约元数据对齐（VC-R18）：OpenAPI 中当前 Go 注册 70 个
+operation 的 45 个有效 bearerAuth（5 显式+40 继承根）改为 operation 级
+唯一 cookieAuth，注册面现为 62 cookieAuth + 8 public、零有效 Bearer；
+Go/前端零改动（运行时本就只认 vc_session Cookie），未恢复 JWT/Bearer。
+cookieAuth 描述补真实写请求要求（X-CSRF-Token 匹配 vc_csrf；Origin 须
+精确命中允许列表、缺失即拒）。54 个未注册 DEFER/RETIRE 与根级 security
+未动，legacy 不代表现有 runtime。dist/snapshot 工具再生成；内联映射
+验证与 `scripts/check.sh --quick` PASS；Owner 待办保持原状。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
