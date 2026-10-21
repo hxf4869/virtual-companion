@@ -31,6 +31,10 @@ export function useCompanionPrefs() {
   /** 在途保存请求（请求 id + 提交快照）；非 null 即保存中，禁止重复提交。 */
   let saveInFlight: { id: number; snapshot: CompanionPrefs } | null = null;
   let saveSeq = 0;
+  // VC-R13：页面私有读取代次。只在「发起新读取」与「换号清理（reset）」时
+  // 递增，作废旧账号的在途读取；同账号的重认证不经过 reset，在途读取
+  // 照常落地收尾（不用 auth 会话代次：它每次认证都变，会误杀同账号恢复）。
+  let loadSeq = 0;
 
   const dirty = computed(() => {
     if (!baseline.value || !draft.value) return false;
@@ -38,9 +42,13 @@ export function useCompanionPrefs() {
   });
 
   async function load(transport: RelationshipTransport): Promise<void> {
+    // VC-R13：进入即捕获读取代次；await 之后的全部状态写入以其门控——
+    // 换号清理或更新的读取已接管时静默丢弃，不回填旧账号内容。
+    const seq = ++loadSeq;
     loadState.value = "loading";
     try {
       const list = await listRelationships(transport);
+      if (seq !== loadSeq) return;
       const active = list.find((row) => row.active) ?? null;
       if (!active) {
         relationship.value = null;
@@ -61,6 +69,7 @@ export function useCompanionPrefs() {
       saveState.value = "idle";
       loadState.value = "ready";
     } catch {
+      if (seq !== loadSeq) return;
       loadState.value = "error";
     }
   }
@@ -92,6 +101,9 @@ export function useCompanionPrefs() {
         relationship.value.relationshipId,
         payload,
       );
+      // VC-R13：换号清理已作废本次保存（saveSeq 被推进）时静默丢弃，
+      // 不写新账号的基线/草稿/保存状态。
+      if (id !== saveSeq) return;
       const saved = prefsOfRelationship(updated);
       if (!saved) {
         // 服务端已提交但回读体不完整：与不可解析同属"结果未知"。
@@ -106,14 +118,35 @@ export function useCompanionPrefs() {
       }
       saveState.value = "saved";
     } catch (caught) {
+      if (id !== saveSeq) return;
       // 失败/结果未知：草稿保留，可重试。
       saveState.value =
         caught instanceof RelationshipProtocolError || caught instanceof TransportTimeoutError
           ? "unknown"
           : "error";
     } finally {
+      // 只有仍持有本次保存才释放保存位；换号清理已把保存位让给新账号
+      // （置空或新保存），迟到收尾不得动它。
       if (saveInFlight?.id === id) saveInFlight = null;
     }
+  }
+
+  /**
+   * VC-R13：换号身份交接的本地重置（「已知账号 → 不同账号/退出」时由页面
+   * 调用）。清空旧账号私有内容（关系/基线/草稿/状态机）并回到加载态；
+   * 同时作废在途读取与保存（各自代次递增、保存位释放）：迟到的成功/失败/
+   * 收尾按代次静默丢弃，不写新账号状态，也不占住新账号的保存。
+   * 只清本地，不发起新请求。
+   */
+  function reset(): void {
+    loadSeq++;
+    saveSeq++;
+    saveInFlight = null;
+    relationship.value = null;
+    baseline.value = null;
+    draft.value = null;
+    loadState.value = "loading";
+    saveState.value = "idle";
   }
 
   return {
@@ -125,6 +158,7 @@ export function useCompanionPrefs() {
     load,
     edit,
     save,
+    reset,
   };
 }
 

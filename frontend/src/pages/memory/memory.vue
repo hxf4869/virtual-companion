@@ -430,7 +430,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 
 import {
   classifyMemoryWriteError,
@@ -495,6 +495,46 @@ const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+});
+
+// VC-R13：本页本地内容归属的账号（初始加载发起时同步确立，惯例同
+// conversations 页）。null 表示当前没有归属任何账号的内容；KeepAlive
+// 重新激活时以此为基准决定是否重走首屏加载。
+let loadedForAccountId: string | null = null;
+// VC-R13：页面私有请求代次（在途初始加载的收尾归属凭据）。不用 auth 会话
+// 代次做归属——同账号的重新登录/续期也会推进它，会把合法的在途加载判过期
+// 并永久挂住 busy。只在「发起新的初始加载」与「换号清理」时递增。
+let loadSeq = 0;
+
+// VC-R13：换号身份交接（已知账号 A → 不同账号或退出）。KeepAlive 缓存的
+// 隐藏记忆页不得保留旧账号的草稿、未知/错误提示与忙态，也不得被旧账号的
+// 在途请求回填。null → X（初次恢复、匿名后登录）不清理、不当作过期。清理
+// 只重置本地状态并作废在途请求（loadSeq++），不发起新读取——重载交给
+// onActivated。共享 memory store 由真实清理链路（auth.persist/clear →
+// clearLocalSessionCaches）reset，页面不重复处理。
+watch(() => auth.accountId, (next, prev) => {
+  if (prev === null || next === prev) return;
+  loadSeq++;
+  relState.value = "loading";
+  relationshipId.value = "";
+  busy.value = false;
+  unknownAction.value = null;
+  rejectedNotice.value = "";
+  autoSaveTarget.value = null;
+  autoSaveNotice.value = "";
+  listInconclusive.value = false;
+  unavailableDeleteIds.value = [];
+  editingId.value = null;
+  editDraft.value = "";
+  editBusy.value = false;
+  editError.value = "";
+  confirmDeleteId.value = null;
+  deleteBusy.value = false;
+  deleteError.value = "";
+  pendingBusyId.value = null;
+  rowErrorId.value = null;
+  rowErrorMessage.value = "";
+  loadedForAccountId = null;
 });
 
 /** 服务端开关值已确认（读取过或写回回显过）且没有处于未知写入中。 */
@@ -581,15 +621,24 @@ async function initialLoad(): Promise<void> {
   unknownAction.value = null;
   rejectedNotice.value = "";
   relState.value = "loading";
+  // VC-R13：函数进入即捕获本页私有代次；此后每次 await 之后与 finally 的
+  // busy 复位一律以 mySeq === loadSeq 门控——换号清理或更新的加载已接管时
+  // 静默丢弃（不回填旧账号内容，也不动新请求的 busy）；同账号重新登录不
+  // 递增代次，在途加载照常落地收尾。
+  const mySeq = ++loadSeq;
+  const isStale = () => mySeq !== loadSeq;
   try {
     if (!auth.isAuthenticated) {
       await auth.tryRefresh(transport);
+      if (isStale()) return;
     }
     if (!auth.isAuthenticated) {
       relState.value = "error";
       return;
     }
+    loadedForAccountId = auth.accountId;
     await relStore.load(transport);
+    if (isStale()) return;
     if (relStore.status === "error") {
       relState.value = "error";
       return;
@@ -605,15 +654,20 @@ async function initialLoad(): Promise<void> {
       memory.load(transport, relId),
       memory.loadAutoSave(transport),
     ]);
+    if (isStale()) return;
     listInconclusive.value = listOutcome === "inconclusive";
   } finally {
-    busy.value = false;
+    if (!isStale()) busy.value = false;
   }
 }
 
 async function retryList(): Promise<void> {
   if (!relationshipId.value) return;
+  // VC-R13：本地不确定标记按发起时的账号归属写入；换号后晚到的读取结果
+  // 不得改写新账号的页面状态（store 侧已按 ownerEpoch 丢弃数据本身）。
+  const requestEpoch = memory.ownerEpoch;
   const outcome = await memory.load(transport, relationshipId.value);
+  if (memory.ownerEpoch !== requestEpoch) return;
   listInconclusive.value = outcome === "inconclusive";
 }
 
@@ -675,7 +729,10 @@ async function refreshList(): Promise<void> {
 }
 
 async function retryAutoSave(): Promise<void> {
+  // VC-R13：本地目标值与提示按发起时的账号归属写入，晚到结果不回填。
+  const requestEpoch = memory.ownerEpoch;
   await memory.loadAutoSave(transport);
+  if (memory.ownerEpoch !== requestEpoch) return;
   if (memory.autoSaveState !== "ready") return;
   const target = autoSaveTarget.value;
   autoSaveTarget.value = null;
@@ -692,7 +749,10 @@ async function onToggleAutoSave(): Promise<void> {
   if (autoSaveToggleDisabled.value) return;
   autoSaveNotice.value = "";
   const target = !memory.autoSaveEnabled;
+  // VC-R13：写入结果按发起时的账号归属落地；换号后晚到的结果不写本地。
+  const requestEpoch = memory.ownerEpoch;
   const outcome = await memory.setAutoSave(transport, target);
+  if (memory.ownerEpoch !== requestEpoch) return;
   autoSaveTarget.value = outcome === "unknown" ? target : null;
   if (outcome === "rejected") {
     autoSaveNotice.value = "开关没有更新成功，请重新读取确认当前状态。";
@@ -750,7 +810,9 @@ async function saveEdit(item: MemoryItem): Promise<void> {
       editError.value = "没有保存成功，请再试一次。";
     }
   } finally {
-    editBusy.value = false;
+    // VC-R13：晚到收尾按账号归属门控——换号后不得解除新账号动作的忙态
+    //（清理 watch 已复位本动作的忙态）。
+    if (memory.ownerEpoch === requestEpoch) editBusy.value = false;
   }
 }
 
@@ -795,7 +857,8 @@ async function doDelete(item: MemoryItem): Promise<void> {
       deleteError.value = "没有删除成功，请再试一次。";
     }
   } finally {
-    deleteBusy.value = false;
+    // VC-R13：晚到收尾按账号归属门控，同 saveEdit。
+    if (memory.ownerEpoch === requestEpoch) deleteBusy.value = false;
   }
 }
 
@@ -830,11 +893,21 @@ async function actOnCandidate(
       rowErrorMessage.value = failureCopy;
     }
   } finally {
-    pendingBusyId.value = null;
+    // VC-R13：晚到收尾按账号归属门控，同 saveEdit。
+    if (memory.ownerEpoch === requestEpoch) pendingBusyId.value = null;
   }
 }
 
 onMounted(() => {
+  void initialLoad();
+});
+
+// VC-R13：KeepAlive 缓存页重新激活时，仅当已认证且当前内容不属于本账号
+// 才重走首屏加载；同账号返回缓存页不重载、不丢草稿。与 onMounted 首次
+// 同时触发由 initialLoad 同步置位的 busy 去重（在途加载不重复发起）。
+onActivated(() => {
+  if (!auth.isAuthenticated || busy.value) return;
+  if (loadedForAccountId === auth.accountId) return;
   void initialLoad();
 });
 </script>

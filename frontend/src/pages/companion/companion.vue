@@ -248,7 +248,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 
 import type { AvoidTopic } from "@/api/relationship";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -276,7 +276,19 @@ const {
   load,
   edit,
   save,
+  reset,
 } = useCompanionPrefs();
+
+// VC-R13：本页内容归属的账号（加载发起时同步确立，惯例同 R11 的三个
+// KeepAlive 缓存页）。KeepAlive 返回缓存页时按它判断是否需要为新账号
+// 重载；换号清理会把它置空。
+let loadedForAccountId: string | null = null;
+// VC-R13：页面私有加载代次（在途 reload 的收尾归属凭据，护住 busy）。
+// 只在「发起新 reload」与「换号清理」时递增；同账号的重认证不推进——
+// 账号归属由 watch 与 loadedForAccountId 承担，不用 auth 会话代次
+// （它每次认证都变，会把同账号恢复误判过期并永久挂住 busy）。
+let loadSeq = 0;
+const busy = ref(false);
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -311,15 +323,41 @@ function toggleTopic(topic: AvoidTopic): void {
   });
 }
 
+// VC-R13：换号身份交接。KeepAlive 缓存的隐藏页不得保留旧账号的偏好与
+// 草稿，也不得被旧账号的在途读取/保存回填或占住保存位。仅在「已知账号 →
+// 不同账号/退出」时清理；null → X（初次恢复、匿名后登录）不清理、不当作
+// 过期。清理只重置本地并作废在途请求，不发起新读取——隐藏缓存页不抢跑，
+// 重载交给 onActivated。
+watch(() => auth.accountId, (next, prev) => {
+  if (prev === null || next === prev) return;
+  reset();
+  loadedForAccountId = null;
+  loadSeq++;
+  busy.value = false;
+});
+
 async function reload(): Promise<void> {
-  if (!auth.isAuthenticated) {
-    await auth.tryRefresh(transport);
+  if (busy.value) return;
+  busy.value = true;
+  // VC-R13：本次加载的代次。每次 await 之后与 finally 的收尾都以
+  // mySeq === loadSeq 为门控：换号清理或更新的加载已接管时静默丢弃，
+  // 不写状态、不动新请求的 busy。
+  const mySeq = ++loadSeq;
+  const isStale = () => mySeq !== loadSeq;
+  try {
+    if (!auth.isAuthenticated) {
+      await auth.tryRefresh(transport);
+      if (isStale()) return;
+    }
+    if (!auth.isAuthenticated) {
+      loadState.value = "error";
+      return;
+    }
+    loadedForAccountId = auth.accountId;
+    await load(transport);
+  } finally {
+    if (!isStale()) busy.value = false;
   }
-  if (!auth.isAuthenticated) {
-    loadState.value = "error";
-    return;
-  }
-  await load(transport);
 }
 
 async function onSave(): Promise<void> {
@@ -328,6 +366,15 @@ async function onSave(): Promise<void> {
 }
 
 onMounted(() => {
+  void reload();
+});
+
+// VC-R13：KeepAlive 缓存页重新激活时，仅当已认证且当前内容不属于本账号
+// 才重新加载；同账号返回（归属一致）不重载、不重复请求，未保存草稿保留。
+// 与 onMounted 首次同时触发由 reload 同步置位的 busy 去重。
+onActivated(() => {
+  if (!auth.isAuthenticated || busy.value) return;
+  if (loadedForAccountId === auth.accountId) return;
   void reload();
 });
 </script>

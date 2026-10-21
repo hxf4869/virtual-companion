@@ -84,6 +84,25 @@ httptest，合成 mock 不冒充真实服务，页面行为由组件测试覆盖
 logout 请求晚于新登录发出时服务端会撤销新会话的请求侧排序；真机浏览器验证
 仍为 Owner 人工项。
 
+2026-10-21 陪伴设置/记忆页账号归属（VC-R13）：两页补齐与 R11 同型的身份
+交接收口——watch auth.accountId 仅「已知账号→不同/退出」时清本地（草稿/
+关系/错误/忙态，不发请求），页面私有请求代次与既有 memory.ownerEpoch 门控
+作废旧账号迟到回调（load/save/编辑/删除/候选的 finally 不回填、不解除新
+账号忙态），KeepAlive 重新激活按内容归属账号重载、同账号返回不重复请求；
+未保存草稿、保存中继续编辑、服务端回读基线、超时 unknown 语义保持
+（共享 stores/memory.ts 未改）。701 项前端测试与 type-check 通过（较 R12
++12）。浏览器 390x844 合成 mock 实测：唯一真实存活链为「空关系陪伴设置→
+去聊天（navigateTo 压栈隐藏，companion 实例保留）→chat 401 redirectTo
+login→登录 B→浏览器回退」，同一 Vue 实例（$vm.$.uid 不变）复活后显示 B
+表单无 A 残留，同账号返回不重复请求；独立只读核验（VC-R13P，$vm.$.uid 级）
+另证二级页 headerBack/重进/hash 回祖先/hash 到非祖先 index/historyBack
+均为全新实例——常规返回无缓存。记忆页无产品压栈出口、上述全部路径均不可
+达，其换号防护为组件级验证（KeepAlive 钩子模拟）；onActivated 首触去重有
+真实消费（mount 恰好 3 条请求无双发，chat 页生产同款依赖）。记忆页
+inconclusive 语义浏览器复核：非数组响应触发核对提示而非成功空态。撤销
+记忆页防护需删测试（按红线需用户授权），本轮保留为机制一致性防御。真机
+浏览器换号验证仍为 Owner 人工项。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
