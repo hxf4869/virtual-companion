@@ -254,6 +254,17 @@ chromium/390×844）：1 passed 0 failed rc=0（38.6s），端口释放与本轮
 容器 0 核验通过；其他旅程与引擎未跑，Owner/Beta/CI/真 provider
 现状不变、不勾选。
 
+2026-10-21 陪伴偏好与记忆开关真实保存（VC-R25）：
+12-companion-memory-pages
+既有旅程首跑即通过、零代码改动——陪伴者名“小白”、SHORT 回复长度、
+MEDIUM 主动程度保存（useCompanionPrefs 以服务端返回更新 baseline）
+后离页到 account 再返回，值与选择仍正确；memory 自动记忆默认 enabled、
+关闭后离页回读 false 且空态、可恢复 true。仅验证偏好与开关持久化/
+可见状态，不声称记忆提取质量或完整记忆生命周期。验证（OrbStack
+linux/arm64、chromium/390×844）：2 passed 0 failed rc=0（37.6s），
+端口释放与本轮容器 0 核验通过；其他旅程与引擎未跑，Owner/Beta/CI/
+真 provider 现状不变、不勾选。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

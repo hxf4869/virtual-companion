@@ -230,6 +230,15 @@ nextStep=ACTIVE→首页且“验证登录”0 个；仅声明该观测，不外
 1 passed 0 failed rc=0（38.6s）；端口释放、本轮容器 0 核验通过；
 无公开注册/单 Owner 边界不变，不勾 Owner/Beta/CI/真机/真 provider。
 
+2026-10-21 陪伴偏好与记忆开关真实保存（VC-R25）：
+12-companion-memory-pages
+既有旅程首跑即通过、零代码改动——陪伴者名/回复长度/主动程度保存后
+离页到 account 返回仍正确；memory 自动记忆默认 enabled、关闭后离页
+回读 false 且空态、恢复 true。仅验证偏好与开关持久化/可见状态，
+不声称记忆提取质量或完整记忆生命周期。验证（OrbStack linux/arm64、
+chromium/390×844）：2 passed 0 failed rc=0（37.6s）；端口释放、本轮
+容器 0 核验通过；不勾 Owner/Beta/CI/真机/真 provider。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
