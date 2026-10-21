@@ -334,8 +334,10 @@ project（playwright.config 的双引擎正则改为两个明确 spec，base chr
 含真实 downloadUrl/token（布尔断言），download 路径 GET 恰 1 次且 UI
 收敛「重新申请」。首轮 13 两例 FAIL 均为测试侧 fixture 问题（uni-input
 外层 testid 定位、等待被 READY 移除的进度按钮），中断的旧 run2 记
-NOT_COMPLETE；修正（含 READY 有效期内隐私检查）后本轮 08×2 PASS
-（2.3m 轮）+ 13×2 PASS（run2，1.0m，08 输入未变未复跑），前端 710
+NOT_COMPLETE；修正（含 READY 有效期内隐私检查）后 13×2 PASS（run2
+1.0m）；收口前再加固（敏感值仅类型+长度布尔断言、下载后同查本次实
+际 URL/token 的 DOM/storage）终版 13×2 PASS（run3 1.1m）。四例有效
+覆盖＝08 首轮×2（2.3m）+ 13 终版×2，08 其后输入未变未复跑；前端 710
 单测+type-check rc0，产品代码零改。属本地合成数据与 Playwright 设备
 仿真，非真机/跨账号全审/生产/临床验收。栈清理核验：state/auth/shared/
 iid 无残留、5197/18087/18437/19097 四端口释放、本轮容器 0；不勾

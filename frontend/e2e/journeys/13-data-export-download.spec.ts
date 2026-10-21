@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   createRelationshipAndConversation,
@@ -22,6 +22,34 @@ import {
 
 const EXPORTS_PATH = "/api/v1/exports";
 const READY_WAIT_MS = 60_000;
+
+/** 仅服务本旅程两处泄漏断言（READY 有效期内与下载后）：DOM 与 Web 存储
+ *  是否含本次真实一次性 URL/token。只做布尔断言，敏感值绝不进 expect
+ *  实际/期望或日志；不扩展通用框架、不新建文件。 */
+async function assertPrivateLinkHidden(
+  page: Page,
+  url: string,
+  token: string,
+  when: string,
+): Promise<void> {
+  const html = await page.content();
+  expect(html.includes(url), `DOM leaked the export link ${when}`).toBe(false);
+  expect(html.includes(token), `DOM leaked the export token ${when}`).toBe(false);
+  const storageLeaked = await page.evaluate(
+    ({ url, token }) => {
+      const leaked = (store: Storage) => {
+        for (let index = 0; index < store.length; index += 1) {
+          const value = store.getItem(store.key(index) ?? "") ?? "";
+          if (value.includes(url) || value.includes(token)) return true;
+        }
+        return false;
+      };
+      return leaked(localStorage) || leaked(sessionStorage);
+    },
+    { url, token },
+  );
+  expect(storageLeaked, `storage leaked the export link ${when}`).toBe(false);
+}
 
 test("我的→聊天与记忆副本：错密码被拒后真实申请并经浏览器下载一次性JSON", async ({ page }) => {
   const user = await provisionUser(undefined, "relationship-chat");
@@ -97,12 +125,20 @@ test("我的→聊天与记忆副本：错密码被拒后真实申请并经浏�
     downloadUrl?: unknown;
     downloadToken?: unknown;
   };
+  // 敏感值绝不作为 expect 的实际/期望：仅用类型+长度布尔断言作闸门，
+  // URL/token 本体只落测试内存供两处泄漏断言使用。
+  expect(
+    typeof createdBody.downloadUrl === "string" && createdBody.downloadUrl.length > 0,
+    "create response carried no usable downloadUrl",
+  ).toBe(true);
+  expect(
+    typeof createdBody.downloadToken === "string" && createdBody.downloadToken.length > 0,
+    "create response carried no usable downloadToken",
+  ).toBe(true);
   const privateUrl = typeof createdBody.downloadUrl === "string" ? createdBody.downloadUrl : "";
   const privateToken = typeof createdBody.downloadToken === "string"
     ? createdBody.downloadToken
     : "";
-  expect(privateUrl, "create response carried no downloadUrl").not.toBe("");
-  expect(privateToken, "create response carried no downloadToken").not.toBe("");
   await expect(page.getByTestId("data-copy-progress")).toBeVisible();
 
   // 等真实 worker 把 PENDING 变 READY：面板无自动轮询，仅在按钮仍存在且
@@ -127,25 +163,8 @@ test("我的→聊天与记忆副本：错密码被拒后真实申请并经浏�
     expect(status.ok(), `progress check failed: HTTP ${status.status()}`).toBeTruthy();
   }
 
-  // READY 有效期内（一次性链接尚未消费）：DOM 与 Web 存储都不得出现真实
-  // URL/token（布尔 includes 断言，敏感值绝不进 expect 实际/期望或日志）。
-  const readyHtml = await page.content();
-  expect(readyHtml.includes(privateUrl)).toBe(false);
-  expect(readyHtml.includes(privateToken)).toBe(false);
-  const readyStorageLeaked = await page.evaluate(
-    ({ url, token }) => {
-      const leaked = (store: Storage) => {
-        for (let index = 0; index < store.length; index += 1) {
-          const value = store.getItem(store.key(index) ?? "") ?? "";
-          if (value.includes(url) || value.includes(token)) return true;
-        }
-        return false;
-      };
-      return leaked(localStorage) || leaked(sessionStorage);
-    },
-    { url: privateUrl, token: privateToken },
-  );
-  expect(readyStorageLeaked, "storage held the live export link while READY").toBe(false);
+  // READY 有效期内（一次性链接尚未消费）：DOM 与 Web 存储都不得出现真实 URL/token。
+  await assertPrivateLinkHidden(page, privateUrl, privateToken, "while READY");
 
   // 只计 download 路径的真实 GET（一次性链接必须恰好消费一次）。
   let downloadGets = 0;
@@ -206,4 +225,6 @@ test("我的→聊天与记忆副本：错密码被拒后真实申请并经浏�
     return hasExportPath(localStorage) || hasExportPath(sessionStorage);
   });
   expect(storageLeaked).toBe(false);
+  // 通用路径标记之外，本次实际消费过的 URL/token 同样不得残留。
+  await assertPrivateLinkHidden(page, privateUrl, privateToken, "after download");
 });

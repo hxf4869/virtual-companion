@@ -293,8 +293,10 @@ base chromium 照旧忽略）。chat 共享会话+既有合成当前密码真实
 锚点与结构计数；READY 有效期内及下载后 DOM/storage 不含真实
 downloadUrl/token（布尔断言），download GET 恰 1 次且 UI 收敛「重新
 申请」。首轮 13×2 FAIL 为测试侧 fixture（uni-input 定位、READY 移除
-进度按钮竞态），旧 run2 中断记 NOT_COMPLETE；修正后本轮 08×2 PASS
-（2.3m）+ 13×2 PASS（run2 1.0m，08 未复跑），710 单测+type-check
+进度按钮竞态），旧 run2 中断记 NOT_COMPLETE；修正后 13×2 PASS（run2
+1.0m）；收口前再加固（敏感值仅类型+长度布尔断言、下载后同查本次实际
+URL/token）终版 13×2 PASS（run3 1.1m）。四例有效覆盖＝08 首轮×2
+（2.3m）+ 13 终版×2，08 其后输入未变未复跑；710 单测+type-check
 rc0，产品代码零改。本地合成数据+设备仿真，非真机/跨账号全审/生产/
 临床验收。栈清理核验通过（state/auth/shared/iid 无残留、4 端口释放、
 本轮容器 0）；不勾 Owner/Beta/CI/真机。
