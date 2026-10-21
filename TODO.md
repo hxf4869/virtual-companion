@@ -250,6 +250,16 @@ schema 恰 1 次；safe_load 前后严格相等；dist 再生成 api-bundle 语�
 PASS。不改自动记忆默认值/接受语义/RETIRE；Go/前端零改动，不勾
 Owner/Beta/CI/真 provider。
 
+2026-10-21 供应商故障的真实产品反馈（VC-R27）：07-provider-faults
+既有两阶段旅程首轮因过时文案期望 FAIL，对齐当前真实提示（仅一行
+E2E 断言、产品代码零改）后 1 passed 0 failed rc=0（38.9s）：注入轮
+“这句话暂时无法回应”、无正文、不泄露注入片段；timeout 轮 durable
+FAILED_FINAL、错误文案与 retry 可见（仅断言可见，未实际点击）、无
+Provider/SSE 等内部细节；首轮失败点后断言未到达不计入首轮。前端
+710 用例+type-check PASS；仅本机合成故障路径，非真实供应商/临床
+安全认证。端口释放、本轮容器 0 核验通过；不勾 Owner/Beta/CI/真机/
+真 provider。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

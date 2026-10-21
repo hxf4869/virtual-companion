@@ -65,7 +65,7 @@ test("provider safety and timeout faults surface as safe terminal states", async
   ).toBe("FAILED_FINAL");
 
   // The composer renders the copy plus a standalone "点此重试" action button.
-  await expect(page.getByTestId("chat-send-error")).toContainText("没发出去，点此重试", {
+  await expect(page.getByTestId("chat-send-error")).toContainText("这次回复没有完成，点此重新尝试", {
     timeout: 60_000,
   });
   await expect(page.getByTestId("retry")).toBeVisible();

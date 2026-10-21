@@ -278,6 +278,18 @@ safe_load 前后全树严格相等；dist 工具再生成后 api-bundle 与 HEAD
 位置移至真实后位置，块内容逐字不变），snapshot 仅 source.sha256
 变；`scripts/check.sh --quick` 与 `git diff --check` PASS。
 
+2026-10-21 供应商故障的真实产品反馈（VC-R27）：07-provider-faults
+既有安全注入与 timeout 两阶段旅程首轮因过时文案期望 FAIL（产品现行
+文案为“这次回复没有完成，点此重新尝试”，见 N-05 状态矩阵），仅同步
+该一行 E2E 期望后复跑 1 passed 0 failed rc=0（38.9s），两阶段断言
+全过：注入轮状态“这句话暂时无法回应”、无 assistant 正文、不泄露注入
+片段；timeout 轮 POST 接受带 x-request-id、generation durable
+FAILED_FINAL，错误文案与 retry 按钮可见、无 Provider/SSE/FAILED_FINAL
+内部细节。首轮失败点之后的断言当时未到达，不计入首轮结果；retry 仅
+断言可见，未实际点击。前端 710 用例与 type-check PASS，产品代码零改。
+仅验证本机合成故障路径，不声称真实供应商可用性或临床/安全认证。
+端口释放与本轮容器 0 核验通过；不勾 Owner/Beta/CI/真机/真 provider。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
