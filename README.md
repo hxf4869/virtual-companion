@@ -235,6 +235,16 @@ GREEN 时实测；frontend 710/710 + type-check PASS；栈清理核验通过。
 客户端 abort 与 FAILED_FINAL 不据此证明服务端 upstream 资源已释放；
 其他旅程与引擎未跑，Owner/Beta/CI/真 provider 现状不变、不勾选。
 
+2026-10-21 真实登录与受保护深链返回（VC-R23）：01-login-return
+既有旅程首跑即通过、零代码改动——未登录访问 conversations 深链被
+守卫重定向到登录页并保留 return，未知合成账号错误凭据真实 POST
+/api/v1/auth/login 得 404、错误文案与账号焦点回位，provisionUser/
+uiLogin 走真实 UI 登录（authenticator 挑战）后返回原深链见
+“全部会话”（03/04 的 shared 会话不能替代该覆盖）。验证（OrbStack
+linux/arm64、chromium/390×844）：1 passed 0 failed rc=0（52.6s），
+端口释放与本轮容器 0 核验通过；其他旅程与引擎未跑，Owner/Beta/CI/
+真 provider 现状不变、不勾选。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

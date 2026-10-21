@@ -213,6 +213,15 @@ PASS；栈清理核验通过（端口释放、本轮容器 0）。客户端 abor
 FAILED_FINAL 不据此证明服务端 upstream 资源已释放；其他旅程与引擎未跑，
 不勾 Owner/Beta/CI/真 provider。
 
+2026-10-21 真实登录与受保护深链返回（VC-R23）：01-login-return
+既有旅程首跑即通过、零代码改动——覆盖真实 UI 登录而非 shared 会话
+（03/04 不能相互替代）：未登录深链→登录页保留 return→未知合成账号
+错误凭据 POST 404+错误文案+账号焦点回位→uiLogin 真实登录
+（authenticator 挑战）→回原深链见“全部会话”。验证（OrbStack
+linux/arm64、chromium/390×844）：1 passed 0 failed rc=0（52.6s）；
+端口释放、本轮容器 0 核验通过；无公开注册/单 Owner 边界不变，
+不勾 Owner/Beta/CI/真机/真 provider。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
