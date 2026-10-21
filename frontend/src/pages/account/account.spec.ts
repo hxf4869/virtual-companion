@@ -38,6 +38,10 @@ interface FetchOptions {
   revokeDeviceStatus?: number;
   passwordStatus?: number;
   deleteStatus?: number;
+  /** 提供时，注销 DELETE 挂起直到手动 resolve，随后以 200 {ok:true} 应答（迟到成功场景）。 */
+  deleteGate?: Gate;
+  /** 提供时，注销 DELETE 直接以网络错误拒绝（结果未知的失败场景）。 */
+  deleteNetworkFail?: boolean;
   exportCreateStatus?: number;
   exportCreateBody?: unknown;
   exportStatusStatus?: number;
@@ -135,6 +139,12 @@ function stubFetch(options: FetchOptions = {}) {
       return response(200, { ok: true });
     }
     if (url === "/api/v1/auth/account" && method === "DELETE") {
+      if (options.deleteNetworkFail) {
+        throw new TypeError("network down");
+      }
+      if (options.deleteGate) {
+        return options.deleteGate.promise.then(() => response(200, { ok: true }));
+      }
       const status = options.deleteStatus ?? 200;
       return response(status, status === 200 ? { ok: true } : null);
     }
@@ -967,6 +977,182 @@ describe("account page", () => {
       uni: { navigateTo: ReturnType<typeof vi.fn> };
     }).uni.navigateTo)
       .toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R16: 迟到的注销成功不得清掉换号后的新身份，也不得导航回登录页", async () => {
+    const gate = makeGate();
+    const { calls } = stubFetch({ deleteGate: gate });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // A 提交注销：DELETE 挂起（服务端已受理，稍后以真实 200 迟到释放）。
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/account")).toHaveLength(1);
+
+    // 挂起期间前台真实换号 B（登录页同款流程，经 store.login 以新凭据 persist）。
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+
+    // A 的迟到注销成功到达：B 的本地身份保留，页面不被拽回登录页。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.accountId).toBe("43");
+    expect(auth.isAuthenticated).toBe(true);
+    expect(auth.sessionStatus).toBe("authenticated");
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    expect(uni.redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R16: 已变匿名时迟到的注销成功不得重置新的登录流程，也不得导航", async () => {
+    const gate = makeGate();
+    stubFetch({ deleteGate: gate });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // A 提交注销：DELETE 挂起。
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    // 挂起期间会话已被清掉（匿名），用户正走在新的登录挑战流程里。
+    auth.clear();
+    auth.nextStep = "TOTP_REQUIRED";
+    auth.challengeId = "ch-late";
+    await flushPromises();
+
+    // A 的迟到注销成功到达：不清（进行中的登录流程原样保留）、不导航。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.sessionStatus).toBe("anonymous");
+    expect(auth.nextStep).toBe("TOTP_REQUIRED");
+    expect(auth.challengeId).toBe("ch-late");
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    expect(uni.redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R16: 同账号在注销完成前重新登录：迟到成功仍本地退出并去登录页", async () => {
+    const gate = makeGate();
+    stubFetch({
+      deleteGate: gate,
+      loginAccountId: "42",
+      loginEmail: "alice@example.com",
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // A 提交注销：DELETE 挂起。
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    // 注销是账号级后置条件：同账号在 DELETE 完成前重登（accountId 不变），
+    // 不是 R15 那种凭据级让位场景。
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "alice@example.com", "pw-new");
+    await flushPromises();
+    expect(auth.accountId).toBe("42");
+
+    // 迟到 200 到达：账号已在服务端删除，仍必须本地退出并去登录页。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(auth.isAuthenticated).toBe(false);
+    expect(auth.sessionStatus).toBe("anonymous");
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R16: 非 ok 的注销结果不再绝对断言密码错误或未注销", async () => {
+    stubFetch({ deleteStatus: 503 });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("Wrong-Pass-1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    // 非 ok 覆盖 404/503（intent 可能已持久化后失败、404 还隐藏存在性；401
+    // 由 transport 的 onUnauthorized 先清会话，不走该文案）：结果无法确认，
+    // 只能建议核对密码，不得断言未注销。
+    const message = wrapper.get('[data-testid="delete-account-error"]').text();
+    expect(message).toContain("无法确认");
+    expect(message).toContain("核对当前密码");
+    expect(message).not.toContain("密码不正确");
+    expect(message).not.toContain("没有注销");
+    expect(auth.isAuthenticated).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("VC-R16: 网络断连的注销失败不得谎称未注销", async () => {
+    stubFetch({ deleteNetworkFail: true });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    // 断连时服务端可能已受理注销：文案只能承认结果无法确认。
+    const message = wrapper.get('[data-testid="delete-account-error"]').text();
+    expect(message).toContain("无法确认注销结果");
+    expect(message).not.toContain("没有注销");
+    expect(auth.isAuthenticated).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("VC-R16: 注销 busy 期间禁用取消按钮，提交前取消仍可收起面板", async () => {
+    const gate = makeGate();
+    stubFetch({ deleteGate: gate });
+    loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+
+    // 提交前取消保留：面板收起、不发起请求。
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-cancel"]').trigger("click");
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
+
+    // busy=delete：服务端 intent 已提交，按钮不得再自称可「取消」。
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="delete-account-cancel"]').attributes("disabled")).toBeDefined();
+
+    gate.resolve(undefined);
+    await flushPromises();
     wrapper.unmount();
   });
 });

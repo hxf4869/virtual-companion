@@ -3191,7 +3191,14 @@ paths:
         containing only account id plus username digest survive; the deleted
         username cannot be recreated. An already-deleted or disabled account
         maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed).
-        Requires a valid Bearer access token.
+        The response sets no cookies: an expiring Set-Cookie is addressed
+        by name and path only, so a delayed success response must not delete
+        the vc_session or vc_csrf a newer login has just installed; the
+        deleted account's cookies left in the browser are inert (the cascade
+        removed every session server-side) until the next login overwrites
+        them.
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         x-raw-max-bytes: 16384
@@ -3201,7 +3208,9 @@ paths:
               $ref: '#/components/schemas/DeleteAccountRequest'
       responses:
         '200':
-          description: The account was deleted
+          description: >-
+            Account deleted; the vc_user cascade removed every session
+            server-side; the response sets no cookies
           content:
             application/json:
               schema:

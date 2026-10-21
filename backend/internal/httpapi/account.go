@@ -61,6 +61,11 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.clearSessionCookies(w)
+	// VC-R16: the server-side cascade above (the account and every session
+	// it owned) is the deletion contract. The response sets no cookies: an
+	// expiring Set-Cookie is addressed by name and path only, so a delayed
+	// success response would delete whatever vc_session/vc_csrf a newer
+	// login has just installed. The deleted account's cookies left in the
+	// browser are inert until the next login overwrites them.
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

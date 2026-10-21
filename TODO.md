@@ -113,6 +113,23 @@ probe 读回不让位、正常改密退出保留（4 项回归覆盖较新登录
 与 type-check）。真机浏览器验证仍为 Owner 人工项（不对应任何已勾选条目，
 不改变 DOGFOOD/Beta/CI 现状）。
 
+2026-10-21 账号注销的归属与反馈收口（VC-R16）：注销 200 响应不再携带任何
+Set-Cookie（当前密码校验、intent/cancel/cascade 等服务端契约不变），迟到的
+旧成功不再删除较新登录的 vc_session/vc_csrf（Go httptest+真实 cookiejar
+闸门红→绿；旧 token 401、已删账号登录 404、错误密码会话保留对照保持，
+owner-aware fixture 只模拟认证侧注销、不冒充 SQL cascade 验证）。前端
+onConfirmDelete 按提交时账号归属门控：注销是账号级后置条件（区别于 R15
+credentialEpoch 凭据级），同账号 DELETE 完成前重登仍退出，换号 B/已匿名
+静默让位不清不导航；非 ok/断连文案改「无法确认」（404 隐藏存在性、503
+intent 可能已持久化、401 由 transport 处理不走该文案），busy=delete 期间
+「取消」禁用、提交前取消保留（新增 6 用例：初跑 5 失败，其一初以 401
+fixture 构造后按真实语义改 503；同账号锚定用例基线即绿）。OpenAPI
+/api/v1/auth/account 补 cookieAuth 覆盖与 200 无 Cookie 语义并再生成。
+浏览器 390x844 合成 mock（session vcr16，fail-closed）实测同链路先红后绿。
+`scripts/check.sh` 14s PASS（含前端全量 709 项与 type-check）。请求侧排序、其余 API Cookie 竞态、全局 Bearer
+契约留待后续模块核查；真机浏览器验证仍为 Owner 人工项（不对应任何已勾选
+条目，不改变 DOGFOOD/Beta/CI 现状）。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

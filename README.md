@@ -135,6 +135,32 @@ tab-chats→受保护读取 401→真实登录 UI 完成 B ACTIVE→释放 A 旧
 前端测试与 type-check 经 scripts/check.sh 14s 全 PASS。真机浏览器验证仍为
 Owner 人工项。
 
+2026-10-21 账号注销的归属与反馈收口（VC-R16）：注销的服务端契约（当前密码
+校验、owner-bound intent、cancel 信号、vc_user cascade）不变，成功响应不再
+携带任何 Set-Cookie——与 VC-R15 同型竞态：迟到的注销 200 携带的过期 Cookie
+按名+路径寻址，会把较新登录刚装好的 vc_session/vc_csrf 从浏览器删掉。Go
+httptest 真实 HTTP+标准 cookiejar 加响应闸门先复现（红：注销服务端完成后 B
+同 jar 新登录，放行旧 200，B GET /auth/session 401、迟到响应携带 2 条过期
+Set-Cookie），修复后同断言转绿；旧 token 显式重放 401、已删账号密码登录 404、
+错误密码原会话保留对照保持（owner-aware fixture 只模拟注销的认证侧效果，
+不冒充 SQL cascade 验证）。OpenAPI /api/v1/auth/account 修正 Bearer 描述为
+cookieAuth 覆盖与 200 无 Cookie 语义（该端点实际只认 Cookie 会话+CSRF），
+dist/snapshot 再生成。前端 onConfirmDelete 按提交时账号归属门控：注销是
+账号级后置条件（不同于 R15 改密的 credentialEpoch 凭据级让位），迟到成功仅
+在当前身份仍为提交账号时本地退出+去登录页——同账号 DELETE 完成前重登仍退出；
+换号 B 或已匿名静默让位不清新身份、不重置新登录流程、不导航。非 ok/断连
+文案改为「无法确认」表述（404 隐藏存在性、503 可能 intent 已持久化；401 由
+transport 清会话不走该文案），busy=delete 期间「取消」禁用（intent 已提交
+不可撤回）、提交前取消保留（新增 6 项用例：初跑 5 失败，其中 false 文案用例
+初以 401 fixture 构造、后按 401 会被 transport 拦截的真实语义改 503；同账号
+锚定用例基线即绿）。浏览器 390x844 合成 mock 实测（session vcr16，/api/v1
+fail-closed、外部请求零发出）：A 注销挂起→底栏 tab-chats→受保护读取 401→
+真实登录 UI 完成 B→释放 A 旧成功（真实 200 送达、无 requestfailed），修复前
+B 被清+拽回登录页（红），修复后停留 B 聊天页（既有「聊天还没准备好」状态，
+仅验证认证/导航归属）、底栏保持、无登录表单（绿）。scripts/check.sh 14s 全
+PASS（含前端全量 709 项与 type-check）。请求侧排序、其余 API Cookie 竞态与全局 Bearer 契约留待后续模块核查；
+真机浏览器验证仍为 Owner 人工项。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

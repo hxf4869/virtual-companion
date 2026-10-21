@@ -326,7 +326,15 @@
               {{ deleteError }}
             </text>
             <view class="danger-zone__actions">
-              <button type="button" class="secondary-action" data-testid="delete-account-cancel" @click="closeDelete">
+              <!-- VC-R16: busy=delete 期间注销 intent 已提交服务器，「取消」不再
+                   诚实（closeDelete 并不撤销请求），仅此状态禁用；提交前取消保留。 -->
+              <button
+                type="button"
+                class="secondary-action"
+                data-testid="delete-account-cancel"
+                :disabled="busy === 'delete'"
+                @click="closeDelete"
+              >
                 取消
               </button>
               <button
@@ -589,19 +597,31 @@ async function onConfirmDelete(): Promise<void> {
   busy.value = "delete";
   deleteError.value = "";
   // VC-R11-C: 与改密同款动作代次门控；成功路径自身 clear() 的复位豁免同上。
+  // VC-R16: 提交前捕获账号归属。注销是「账号级」后置条件，判据与 R15 改密的
+  // credentialEpoch（凭据级）不同：迟到成功只有在当前身份仍等于提交时的
+  // accountId 时才本地退出——同账号 A 在 DELETE 完成前重登（accountId 不变）
+  // 也必须退出（账号已在服务端删除）；换号 B 或已变匿名（null）则静默让位，
+  // 不清新身份、不重置新的登录流程、不导航。
+  const accountAtSubmit = auth.accountId;
   const mySeq = ++actionSeq;
   try {
     if (!await deleteAccount(transport, deletePassword.value)) {
       if (mySeq === actionSeq) {
-        deleteError.value = "当前密码不正确，账号没有注销。";
+        // 非 ok 覆盖 404/503（intent 可能已持久化后失败、404 还隐藏存在性；
+        // 401 由 transport 的 onUnauthorized 先清会话，不走该文案）：
+        // 结果无法确认，不得绝对断言密码不正确或未注销。
+        deleteError.value = "注销结果无法确认，请核对当前密码后重试。";
       }
       return;
     }
-    auth.clear();
-    goTo("/pages/login/login");
+    if (auth.accountId === accountAtSubmit) {
+      auth.clear();
+      goTo("/pages/login/login");
+    }
   } catch {
     if (mySeq === actionSeq) {
-      deleteError.value = "暂时无法注销，请稍后再试。";
+      // 网络断连：服务端可能已受理注销，同样不得谎称未注销。
+      deleteError.value = "暂时无法确认注销结果，请检查网络后重试。";
     }
   } finally {
     if (mySeq === actionSeq) {
