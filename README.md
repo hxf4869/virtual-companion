@@ -403,6 +403,19 @@ send/stop 共享按钮与 field 末列 40→44px（DESIGN §9 触摸目标下限
 chat 复核；仍属视口仿真非真机。栈清理核验同 R33 口径全过（容器 0、4
 端口释放、state/auth/shared/secrets/iid 无残留）。
 
+2026-10-22 G12 十分钟 ready-idle 三次补测（VC-R35）：业务代码基线
+HEAD `1ff0c3bc`，带本轮驱动 fixture 工作区改动用既有 g12 runner 串行
+完成三次独立 600s idle runtime-only 测量，全部
+PASS：idle RSS（600s 均值）21.022–22.168 MiB、全程 peak RSS ≤ 29.688 MiB、
+cold start 150.3–156.5 ms；4gen+8SSE 与 16gen+64SSE 实际并发峰值 4/4、
+16/16，SSE 与 100-turn soak 零错误（结构化日志全 INFO、WARN/ERROR 0）。
+驱动仅补当前协议必要 fixture（项目内 loopback MinIO、owner-binding
+bootstrap、成年核验 API 调用；裸 HEAD runner 不含这些、不能直接跑通），
+测量逻辑与断言未改，三轮期间冻结不变。与 2026-08-30 的 60s
+属不同观测窗，不跨窗计算收益；PSS、retained-stack、10 分钟 recovery、
+real-provider 与 Owner gate 冻结仍开放。数字与口径见
+[`docs/planning/g12-go-capacity-sample.md`](docs/planning/g12-go-capacity-sample.md) §7。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

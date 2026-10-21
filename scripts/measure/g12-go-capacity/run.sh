@@ -4,10 +4,13 @@
 # `full` mode with a loopback fake provider. The same companiond binary applies
 # schema migrations before the measured runtime starts.
 #
-# Uses a disposable PostgreSQL + fake-provider stack owned by this harness. Secrets
-# and the opaque session are synthetic and fabricated locally; never a real
-# provider, never real user data. Each invocation is one independent trial;
-# §19.2 gates require at least three trials before Owner confirmation.
+# Uses a disposable PostgreSQL + fake-provider + MinIO stack owned by this
+# harness. The loopback MinIO serves the VC_EXPORT_S3_* tuple that `full` mode
+# requires; it runs the same pinned-binary image built from
+# scripts/dev/Dockerfile.e2e-minio-tools that scripts/dev/e2e-stack.sh uses.
+# Secrets and the opaque session are synthetic and fabricated locally; never a
+# real provider, never real user data. Each invocation is one independent
+# trial; §19.2 gates require at least three trials before Owner confirmation.
 #
 # Usage: bash scripts/measure/g12-go-capacity/run.sh
 set -euo pipefail
@@ -23,6 +26,10 @@ GO_PORT="${G12_GO_PORT:-18082}"
 GO_BASE="http://127.0.0.1:$GO_PORT"
 GO_FAKE_PORT="${G12_GO_FAKE_PORT:-19091}"
 DB_PORT="${G12_DB_PORT:-5432}"
+MINIO_PORT="${G12_MINIO_PORT:-19099}"
+MINIO_BUCKET="${G12_MINIO_BUCKET:-g12-exports}"
+MINIO_TOOLS_DOCKERFILE="$HERE/../../dev/Dockerfile.e2e-minio-tools"
+MINIO_IMAGE="vc-g12-minio-tools:local"
 GENS_S5="${G12_GENS_S5:-4}"
 SSE_S5="${G12_SSE_S5:-2}"
 GENS_S10="${G12_GENS_S10:-16}"
@@ -64,8 +71,13 @@ cleanup() {
     kill "$(cat "$RUN_DIR/companiond.pid")" 2>/dev/null || true
     rm -f "$RUN_DIR/companiond.pid"
   fi
+  rm -f "$RUN_DIR/mc-config.json"
   if [ "${G12_KEEP:-0}" != "1" ]; then
     "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+    # The disposable stack is gone, so the synthetic-secret env files are no
+    # longer needed (compose down reads compose.env first); G12_KEEP=1 keeps
+    # these private env files for debugging.
+    rm -f "$ENVFILE" "$RUN_DIR/go.env"
   fi
 }
 trap cleanup EXIT
@@ -78,21 +90,28 @@ export PATH="$HOME/.local/go/bin:$PATH"
 go build -C "$ROOT/backend" -o "$RUN_DIR/companiond" ./cmd/companiond
 echo "  companiond built"
 
-echo "== stack up (db + go-fake-provider) =="
+echo "== stack up (db + go-fake-provider + minio) =="
 VC_MIGRATOR_DB_PASSWORD=$(openssl rand -hex 32)
 VC_RUNTIME_DB_PASSWORD=$(openssl rand -hex 32)
 VC_CRYPTO_REST_KEY=$(openssl rand -base64 32 | tr -d '\n')
 VC_OWNER_BINDING_SECRET=$(openssl rand -hex 32)
+MINIO_ACCESS_KEY=$(openssl rand -hex 8)
+MINIO_SECRET_KEY=$(openssl rand -hex 24)
 umask 077
 cat > "$ENVFILE" <<EOF
 VC_MIGRATOR_DB_PASSWORD=$VC_MIGRATOR_DB_PASSWORD
 VC_RUNTIME_DB_PASSWORD=$VC_RUNTIME_DB_PASSWORD
 G12_DB_PORT=$DB_PORT
 G12_GO_FAKE_PORT=$GO_FAKE_PORT
+G12_MINIO_PORT=$MINIO_PORT
+G12_MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
+G12_MINIO_SECRET_KEY=$MINIO_SECRET_KEY
 G12_HOLD_MS=0
 EOF
 umask 022
-"${COMPOSE[@]}" up -d db fake-provider >/dev/null
+docker build -t "$MINIO_IMAGE" - < "$MINIO_TOOLS_DOCKERFILE" >/dev/null \
+  || die "minio tools image build failed"
+"${COMPOSE[@]}" up -d db fake-provider minio >/dev/null
 DB_READY=0
 for _ in $(seq 1 60); do
   if [ "$(docker inspect -f '{{.State.Health.Status}}' vc-g12-db-1 2>/dev/null || true)" = "healthy" ]; then
@@ -108,12 +127,56 @@ for _ in $(seq 1 60); do
 done
 curl -fsS --max-time 2 "http://127.0.0.1:$GO_FAKE_PORT/health" >/dev/null \
   || die "fake provider did not become healthy"
-echo "  db healthy"
+MINIO_READY=0
+for _ in $(seq 1 60); do
+  if curl -fsS --max-time 2 "http://127.0.0.1:$MINIO_PORT/minio/health/live" >/dev/null 2>&1; then
+    MINIO_READY=1
+    break
+  fi
+  sleep 1
+done
+[ "$MINIO_READY" = "1" ] || die "minio did not become healthy"
+# Same read-only mc config bind and container-network bootstrap as
+# scripts/dev/e2e-stack.sh; credentials stay out of argv and logs.
+MC_CONFIG="$RUN_DIR/mc-config.json"
+printf '%s\n' \
+    '{' \
+    '  "version": "10",' \
+    '  "aliases": {' \
+    '    "g12": {' \
+    '      "url": "http://127.0.0.1:9000",' \
+    "      \"accessKey\": \"$MINIO_ACCESS_KEY\"," \
+    "      \"secretKey\": \"$MINIO_SECRET_KEY\"," \
+    '      "api": "S3v4",' \
+    '      "path": "auto"' \
+    '    }' \
+    '  }' \
+    '}' > "$MC_CONFIG"
+chmod 600 "$MC_CONFIG"
+if ! docker run --rm --entrypoint /bin/mc --network "container:vc-g12-minio-1" \
+    -e MC_UPDATE=off -e MINIO_UPDATE=off \
+    -v "$MC_CONFIG:/mc-config/config.json:ro" \
+    "$MINIO_IMAGE" --config-dir /mc-config mb --ignore-existing "g12/$MINIO_BUCKET" >/dev/null; then
+  rm -f "$MC_CONFIG"
+  die "minio bucket bootstrap failed"
+fi
+rm -f "$MC_CONFIG"
+echo "  db healthy; minio healthy with bucket $MINIO_BUCKET"
 
 echo "== migrations via companiond =="
 VC_MIGRATE_DB_DSN="postgres://vc_migrator:$VC_MIGRATOR_DB_PASSWORD@127.0.0.1:$DB_PORT/vc?sslmode=disable" \
   "$RUN_DIR/companiond" migrate
 echo "  migrations applied"
+
+echo "== owner binding bootstrap via companiond =="
+# Since the 2026-08-31 Go-only cutover, full mode rejects every owner-scoped
+# write (set_owner_context HMAC) until the database stores the runtime's
+# owner-binding secret. Same bootstrap step as scripts/dev/e2e-stack.sh; the
+# optional admin seed stays off because this harness seeds its own user below.
+VC_BOOTSTRAP_DB_DSN="postgres://vc_migrator:$VC_MIGRATOR_DB_PASSWORD@127.0.0.1:$DB_PORT/vc?sslmode=disable" \
+VC_OWNER_BINDING_SECRET="$VC_OWNER_BINDING_SECRET" \
+  "$RUN_DIR/companiond" bootstrap
+echo "  owner binding initialized"
 
 echo "== seed: release gate / provider / user / session =="
 "${COMPOSE[@]}" exec -T db psql -U vc_migrator -d vc -v ON_ERROR_STOP=1 -q <<'SQL'
@@ -163,6 +226,10 @@ VC_PROVIDER_SUPPLIER_NAME=g12-local-fake
 VC_PROVIDER_ENDPOINT=http://127.0.0.1:$GO_FAKE_PORT/v1/chat/completions
 VC_PROVIDER_TOKEN=g12-fake-token
 VC_PROVIDER_MODEL=g12-model
+VC_EXPORT_S3_ENDPOINT=http://127.0.0.1:$MINIO_PORT
+VC_EXPORT_S3_ACCESS_KEY=$MINIO_ACCESS_KEY
+VC_EXPORT_S3_SECRET_KEY=$MINIO_SECRET_KEY
+VC_EXPORT_S3_BUCKET=$MINIO_BUCKET
 VC_MAX_OUTSTANDING_TURNS=$OUTSTANDING
 VC_MAX_CONCURRENT_TURNS=$CONCURRENCY
 VC_LOG_LEVEL=info
@@ -192,6 +259,27 @@ else
   BINARY_BYTES=$(stat -c '%s' "$RUN_DIR/companiond")
 fi
 echo "  companiond healthy on :$GO_PORT"
+
+echo "== fixture: Technical Alpha simulated adult verification =="
+# Generation intake fails closed with AGE_VERIFICATION_REQUIRED until the owner
+# is ADULT_VERIFIED (httpapi/generation.go). vc.record_age_verification only
+# accepts the server-bound owner context, so the synthetic owner takes the same
+# POST /api/v1/age/verification path the H5 flow uses; the gate stays intact.
+G12_BASE="$GO_BASE" G12_SESSION="$RAW" G12_CSRF="$CSRF" python3 - <<'PY' \
+  || die "adult verification fixture failed"
+import json, os, urllib.request
+base, session, csrf = os.environ["G12_BASE"], os.environ["G12_SESSION"], os.environ["G12_CSRF"]
+req = urllib.request.Request(base + "/api/v1/age/verification", method="POST", headers={
+    "Origin": "http://localhost",
+    "Cookie": f"vc_session={session}; vc_csrf={csrf}",
+    "X-CSRF-Token": csrf,
+})
+with urllib.request.urlopen(req, timeout=30) as resp:
+    state = json.loads(resp.read()).get("ageState")
+if state != "ADULT_VERIFIED":
+    raise SystemExit(f"ageState={state}")
+print(f"  ageState={state}")
+PY
 
 # Warm-up uses a unique key prefix; it must not replay the first measured turn.
 echo "== warm-up =="

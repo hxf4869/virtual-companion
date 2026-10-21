@@ -179,3 +179,72 @@ OCI image size必须在补测后再冻结。旧 G1 数字只作历史背景，�
   DB/MinIO/TLS 部署验收；上文 2026-08-30 三 trial 记录与当时的 `NOT_RUN`
   表述按当时事实保留不变。10 分钟 idle、retained-stack、PSS、real-provider
   dogfood 与 Owner gate 冻结仍开放，G12 仍不据此标记完成。
+
+## 7. 2026-10-22 补充：600 秒 ready-idle 三次测量（VC-R35）
+
+补 §19.1 场景 2「ready 后 idle 10 分钟」：业务代码基线为 HEAD `1ff0c3bc`，
+测量在其上带本轮驱动工作区改动（下述 MinIO/bootstrap/成年 fixture 补齐）
+用同一 `scripts/measure/g12-go-capacity/run.sh` 串行完成三次独立
+runtime-only trial（measured idle 600 s / warm-idle 10 s / recovery 60 s，
+其余场景与 §1 相同）；裸 HEAD 的 runner 不含这些 fixture，不能直接复现。
+为在当前协议下启动，驱动补齐了必要 fixture：compose 项目内
+loopback MinIO（同 `scripts/dev/Dockerfile.e2e-minio-tools` 钉二进制镜像）
+提供 `VC_EXPORT_S3_*` 四元组、migrate 后 `companiond bootstrap` 初始化
+owner-binding secret、合成 owner 走真实 `POST /api/v1/age/verification`；
+测量逻辑、场景与断言未改。三次采样期间业务代码 HEAD 与上述驱动工作区均
+保持不变。KEEP=0 退出
+时删除 `go.env`/`compose.env` 的清理分支在三次测量之后加入，仅通过
+syntax/diff 验证，未重跑测量。
+
+| 环境 | 值 |
+|---|---|
+| 主机 | Apple M4，34359738368 bytes = 32 GiB，arm64 |
+| 操作系统 | macOS 27.0.1 |
+| Go | go1.26.7 darwin/arm64 |
+| 栈 | OrbStack Docker；每 trial 新建 PostgreSQL 18、loopback fake provider、loopback MinIO |
+| companiond | host `full` 进程；host binary 21,208,018 bytes（未 strip，同 §2.1 口径；与当时 16.59 MiB 属不同代码时点，不作对比） |
+
+### 三次结果
+
+| 指标 | Trial 1 | Trial 2 | Trial 3 |
+|---|---:|---:|---:|
+| trial wall | 728.9 s | 725.8 s | 727.6 s |
+| cold start → readiness | 156.5 ms | 150.3 ms | 156.1 ms |
+| idle RSS（600 s 均值） | 22.168 MiB | 21.022 MiB | 21.535 MiB |
+| trial 全程 peak RSS | 29.688 MiB | 29.359 MiB | 29.500 MiB |
+| sample.csv | 1265 行 / 688.5 s | 1265 行 / 687.2 s | 1263 行 / 687.6 s |
+
+三次全部 PASS：SSE 与 workload error、429 均为 0；结构化日志 1652/1555/1594
+行全部 INFO、WARN/ERROR 0。
+
+- s5（4 gen + 8 SSE）：provider/worker 峰值 4/4；intake p50/p95 =
+  18.0/24.9、18.8/127.9、18.0/26.6 ms；SSE stream p95 = 709.8、691.2、
+  663.3 ms。
+- s10（16 gen + 64 SSE）：provider/worker 峰值 16/16；intake p50/p95 =
+  23.2/66.3、29.6/68.9、21.4/80.2 ms；stream p95 = 676.1、660.7、703.6 ms。
+- 100-turn soak + 60 s recovery：CPU delta = 1.622、1.379、1.260 s；
+  warm-idle RSS before→after = 28.124→29.637、27.635→29.330、
+  28.297→29.451 MiB；goroutine 9→11、fd 19→20 为记录值、无归基线断言；
+  DB acquired 0→0 的终态归 0 有脚本断言——脚本断言为 provider delta ==
+  100 与 `vc_generation_active`/`vc_realtime_subscribers`/
+  `vc_db_pool_acquired` 归 0。
+
+### 口径与未完成
+
+- 600 s 窗与 2026-08-30 的 60 s 窗是不同观测窗，本文不跨窗计算性能收益；
+  §4 的候选 gate（含 intake ≤50 ms）从未冻结，本次 trial2 s5 p95 =
+  127.9 ms 如实保留，不作为通过或回退门槛。
+- 本节仍为 §19.1 边界 A runtime-only：测量期存活的项目内 MinIO 是 full
+模式必需 fixture，不构成 retained-stack（B）逐组件测量；PSS 未采样（`NOT_AVAILABLE`），RSS 不冒充 PSS。
+- 10 分钟 recovery 窗、retained-stack、real-provider dogfood 与 Owner gate
+  冻结仍开放，G12 不据此标记完成。
+
+复跑一次独立 trial（与本次三轮同参数；端口按当时占用情况替换）：
+
+```bash
+DOCKER_CONTEXT=orbstack GOPROXY=off GOFLAGS=-mod=vendor GOTOOLCHAIN=local \
+G12_OUTPUT_DIR=/tmp/vcr35/retry3/trial4 G12_TRIAL_ID=vcr35-retry3-trial4 \
+G12_GO_PORT=18088 G12_GO_FAKE_PORT=19098 G12_DB_PORT=18438 G12_MINIO_PORT=19099 \
+G12_IDLE_SECONDS=600 G12_WARM_IDLE_SECONDS=10 G12_POST_IDLE_SECONDS=60 \
+G12_KEEP=0 bash scripts/measure/g12-go-capacity/run.sh
+```
