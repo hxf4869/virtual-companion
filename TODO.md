@@ -86,6 +86,18 @@ hash 回祖先/hash 到非祖先 index 及其 historyBack）均为全新实例�
 浏览器换号验证仍为 Owner 人工项（不对应任何已勾选条目，不改变
 DOGFOOD/Beta/CI 现状）。
 
+2026-10-21 二级页直接入口返回闭环（VC-R14）：navigate.ts 的 goBack 在
+uni-h5 页面栈仅剩当前页（直接打开/刷新二级页）时不再走 navigateBack
+（安装版会钳 delta=0 → history.go(0) 原地整页重载、不进 fail），改走
+所属 tab 根 redirectTo；getCurrentPages 取 uni 成员或全局函数（uni-h5
+实为全局函数）。新增 navigate.spec 3 用例（栈 1 走回退／栈 2 照常弹
+栈／栈不可观测保持委托），699 项前端测试与 type-check 通过。浏览器
+390x844 合成 mock（session vcr14，/api/v1 fail-closed 拦截）：直接入口
+companion/memory 点击返回先 RED（原地整页重载、栈 1 不动、零报错），
+修复后均回「我的」；栈 2 正常返回与 chat（redirectTo 进入栈 1、返回
+回退首页）不回归。真机浏览器验证仍为 Owner 人工项（不对应任何已勾选
+条目，不改变 DOGFOOD/Beta/CI 现状）。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

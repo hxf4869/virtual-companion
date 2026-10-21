@@ -6,6 +6,7 @@ type UniNavigator = {
   navigateTo?: (options: { url: string }) => void;
   redirectTo?: (options: { url: string }) => void;
   navigateBack?: (options?: { delta?: number }) => void;
+  getCurrentPages?: () => unknown[];
 };
 
 function uniApi(): UniNavigator | undefined {
@@ -52,6 +53,18 @@ export function goBack(fallbackHref?: string): void {
   try {
     const uni = uniApi();
     if (uni?.navigateBack) {
+      // H5 直接打开二级页（或刷新后）页面栈只剩当前页：uni-h5 会把 delta
+      // 钳成 0 并 history.go(0) 原地整页重载，不进 fail、无任何报错，
+      // 返回按钮因此失效。栈内无父页时改走回退目标。getCurrentPages
+      // 在 uni-h5 是全局函数而非 uni 成员，两处都要能取到。
+      const getPages =
+        uni.getCurrentPages ??
+        (globalThis as Record<string, unknown>).getCurrentPages;
+      const pages = typeof getPages === "function" ? getPages() : undefined;
+      if (pages && pages.length <= 1 && fallbackHref) {
+        switchTabTo(fallbackHref);
+        return;
+      }
       uni.navigateBack({ delta: 1 });
       return;
     }

@@ -93,7 +93,7 @@ logout 请求晚于新登录发出时服务端会撤销新会话的请求侧排�
 （最终范围较 R12 +7：换号清理/激活重载/迟到回调/同账号返回/首触去重与
 锁定空态起点的换号用例，换号全走真实 AuthStore login/clear）。浏览器
 390x844 合成 mock 实测唯一真实存活链（空态→去聊天 navigateTo 压栈隐藏，
-chat 实例为父→chat 401 redirectTo login→登录 B→浏览器回退）：同一 Vue
+陪伴设置实例为父→chat 401 redirectTo login→登录 B→浏览器回退）：同一 Vue
 实例（$vm.$.uid 不变）复活后显示 B 表单（沈屿）无 A 残留，同账号返回
 零新请求、表单保留；原始实证为空态返回重载，正常 headerBack/重进/hash
 回祖先/hash 到非祖先 index 及 historyBack（VC-R13P 只读核验，$vm.$.uid
@@ -101,6 +101,19 @@ chat 实例为父→chat 401 redirectTo login→登录 B→浏览器回退）：
 （无产品压栈出口，六类路径均移除旧实例），本轮 NOT_REPRODUCED：模拟
 生命周期的防护与测试不提交，两文件保持基线；迟到读/保存的覆盖以组件
 测试为界。真机浏览器换号验证仍为 Owner 人工项。
+
+2026-10-21 二级页直接入口返回闭环（VC-R14）：安装版 uni-h5 的
+navigateBack 在页面栈仅剩当前页时把 delta 钳成 0 并 history.go(0) 原地
+整页重载（不进 fail、无任何报错；浏览器 history.length 与 app 页面栈
+无关），直接打开 /#/pages/companion/companion 或 /#/pages/memory/memory
+时 [data-testid=page-back] 因此失效。navigate.ts 的 goBack 现于页面栈
+可得且长 ≤1 时改走所属 tab 根回退（getCurrentPages 取 uni 成员或全局
+函数——uni-h5 实为全局函数而非 uni 成员）。浏览器 390x844 合成 mock
+实测（session vcr14，/api/v1 全拦截 fail-closed）：直接入口点击返回先
+RED（原地整页重载、栈 1 不动、零报错），修复后 companion/memory 均回
+「我的」（SPA 替换无重载）；正常 我的→陪伴设置 栈 2 返回与 chat
+（redirectTo 进入栈 1、返回回退首页）不回归。699 项前端测试与
+type-check 通过。真机浏览器验证仍为 Owner 人工项。
 
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。

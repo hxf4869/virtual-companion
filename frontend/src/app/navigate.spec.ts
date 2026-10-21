@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { goTo, switchTabTo, toH5Href } from "./navigate";
+import { goBack, goTo, switchTabTo, toH5Href } from "./navigate";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,5 +39,50 @@ describe("shared page navigation", () => {
     expect(redirectTo).toHaveBeenCalledWith({
       url: "/pages/conversations/conversations",
     });
+  });
+
+  it("goes to the fallback page when the uni stack has no parent to pop", () => {
+    const navigateBack = vi.fn();
+    const redirectTo = vi.fn();
+    // uni-h5 真实形态：getCurrentPages 是全局函数，不在 uni 对象上。
+    vi.stubGlobal("uni", { navigateBack, redirectTo });
+    vi.stubGlobal(
+      "getCurrentPages",
+      () => [{ route: "pages/companion/companion" }],
+    );
+
+    goBack("/pages/account/account");
+
+    expect(navigateBack).not.toHaveBeenCalled();
+    expect(redirectTo).toHaveBeenCalledWith({
+      url: "/pages/account/account",
+    });
+  });
+
+  it("pops the uni stack with navigateBack when a parent page exists", () => {
+    const navigateBack = vi.fn();
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", {
+      navigateBack,
+      redirectTo,
+      getCurrentPages: () => [
+        { route: "pages/account/account" },
+        { route: "pages/companion/companion" },
+      ],
+    });
+
+    goBack("/pages/account/account");
+
+    expect(navigateBack).toHaveBeenCalledWith({ delta: 1 });
+    expect(redirectTo).not.toHaveBeenCalled();
+  });
+
+  it("still delegates back navigation when the page stack is unobservable", () => {
+    const navigateBack = vi.fn();
+    vi.stubGlobal("uni", { navigateBack, redirectTo: vi.fn() });
+
+    goBack("/pages/account/account");
+
+    expect(navigateBack).toHaveBeenCalledWith({ delta: 1 });
   });
 });
