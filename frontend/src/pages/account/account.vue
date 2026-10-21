@@ -347,7 +347,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 
 import {
   changeAuthPassword,
@@ -382,6 +382,20 @@ const deletePassword = ref("");
 const deleteError = ref("");
 const busy = ref<BusyAction | null>(null);
 
+// VC-R11: 当前设备内容归属的账号。普通局部变量，只用于重新激活时的重载
+// 判定，不参与渲染。
+let devicesForAccountId: string | null = null;
+
+// VC-R11-C: 页面私有两个代次，替代对 auth.getSessionRevision() 的捕获比较。
+// store 的代次在「同账号重新认证」（login/tryRefresh 的 persist 不改
+// accountId）时同样推进，会把正常在途结果误判过期：设备读取被丢后无人再
+// 写 ready/error，设备区会永久停在 loading。页面只关心两种归属：
+// deviceLoadSeq 跟设备列表读取，actionSeq 跟所有置 busy 的动作收尾；身份
+// 交接清理时两者同步 bump 作废在途请求。撤销只占 actionSeq，不作废在途
+// 设备读取。
+let deviceLoadSeq = 0;
+let actionSeq = 0;
+
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   getSessionRevision: () => auth.getSessionRevision(),
@@ -406,23 +420,70 @@ const canChangePassword = computed(() => (
 ));
 
 onMounted(restoreAccount);
+onActivated(reloadStaleAccountSecurity);
+
+// VC-R11: 身份交接清理（A→B 换号或 A→退出）。KeepAlive 缓存的隐藏页跟随
+// store 感知换号，同步清空旧账号私有内容；null→X 是初次恢复，不算交接，
+// 不得清掉刚恢复出来的状态。清理只动本地副本，绝不发起请求——隐藏页不
+// 抢跑，重载交给重新激活时的 onActivated。
+watch(() => auth.accountId, (next, prev) => {
+  if (prev === null || next === prev) return;
+  currentPassword.value = "";
+  newPassword.value = "";
+  confirmPassword.value = "";
+  passwordMessage.value = "";
+  passwordOpen.value = auth.passwordMustChange;
+  deleteOpen.value = false;
+  deletePassword.value = "";
+  deleteError.value = "";
+  trustedDevices.value = [];
+  deviceState.value = "idle";
+  deviceActionError.value = "";
+  busy.value = null;
+  devicesForAccountId = null;
+  // 作废在途请求的收尾：watch 只清「此刻」的字段，迟到的错误文案、列表
+  // 写入与 busy 复位必须靠代次比对整段静默丢弃。
+  deviceLoadSeq++;
+  actionSeq++;
+});
 
 async function restoreAccount(): Promise<void> {
   if (!auth.isAuthenticated) {
     await auth.tryRefresh(transport);
   }
+  await loadAccountSecurity();
+}
+
+/** 认证确立后的安全区加载：初次恢复与 KeepAlive 重新激活共用。 */
+async function loadAccountSecurity(): Promise<void> {
   if (!auth.isAuthenticated) return;
   if (auth.passwordMustChange) passwordOpen.value = true;
   await loadTrustedDevices();
 }
 
+/** VC-R11: 重新激活（浏览器后退落回缓存页）。设备内容不属于当前账号且
+ * 不在加载中才重载；首次 mount 与 activate 同触时要么已在加载、要么尚未
+ * 认证，都被拦下，不会重复请求。 */
+function reloadStaleAccountSecurity(): void {
+  if (!auth.isAuthenticated) return;
+  if (devicesForAccountId === auth.accountId || deviceState.value === "loading") return;
+  void loadAccountSecurity();
+}
+
 async function loadTrustedDevices(): Promise<void> {
   deviceState.value = "loading";
   deviceActionError.value = "";
+  devicesForAccountId = auth.accountId;
+  // VC-R11-C: 只判页面私有代次。换号（清理 watch bump）后迟到的成功或失败
+  // 静默丢弃；同账号重新认证不 bump，在途结果正常落地，设备区不会挂死。
+  const mySeq = ++deviceLoadSeq;
   try {
-    trustedDevices.value = await listTrustedDevices(transport);
+    const devices = await listTrustedDevices(transport);
+    if (mySeq !== deviceLoadSeq) return;
+    trustedDevices.value = devices;
     deviceState.value = "ready";
   } catch {
+    if (mySeq !== deviceLoadSeq) return;
     deviceState.value = "error";
   }
 }
@@ -431,16 +492,27 @@ async function onRevokeTrustedDevice(deviceId: string): Promise<void> {
   if (busy.value) return;
   busy.value = `device:${deviceId}`;
   deviceActionError.value = "";
+  // VC-R11-C: 撤销只占 actionSeq，不影响在途设备读取。换号后迟到的错误
+  // 文案、列表写入与 busy 复位整段丢弃，不得碰新账号正进行的动作。
+  const mySeq = ++actionSeq;
   try {
     if (!await revokeTrustedDevice(transport, deviceId)) {
-      deviceActionError.value = "没有撤销成功，请再试一次。";
+      if (mySeq === actionSeq) {
+        deviceActionError.value = "没有撤销成功，请再试一次。";
+      }
       return;
     }
-    trustedDevices.value = trustedDevices.value.filter((device) => device.id !== deviceId);
+    if (mySeq === actionSeq) {
+      trustedDevices.value = trustedDevices.value.filter((device) => device.id !== deviceId);
+    }
   } catch {
-    deviceActionError.value = "没有撤销成功，请再试一次。";
+    if (mySeq === actionSeq) {
+      deviceActionError.value = "没有撤销成功，请再试一次。";
+    }
   } finally {
-    busy.value = null;
+    if (mySeq === actionSeq) {
+      busy.value = null;
+    }
   }
 }
 
@@ -448,6 +520,10 @@ async function onChangePassword(): Promise<void> {
   if (busy.value || !canChangePassword.value) return;
   busy.value = "password";
   passwordMessage.value = "";
+  // VC-R11-C: 迟到的失败文案与 busy 复位按动作代次丢弃。成功路径自身
+  // clear() 即身份交接：清理 watch 会 bump actionSeq 并把 busy 置 null，
+  // finally 因此跳过复位也不会卡死，成功完成不受影响。
+  const mySeq = ++actionSeq;
   try {
     const changed = await changeAuthPassword(
       transport,
@@ -455,26 +531,35 @@ async function onChangePassword(): Promise<void> {
       newPassword.value,
     );
     if (!changed) {
-      passwordMessage.value = "没有修改成功，请检查当前密码。";
+      if (mySeq === actionSeq) {
+        passwordMessage.value = "没有修改成功，请检查当前密码。";
+      }
       return;
     }
     auth.clear();
     goTo("/pages/login/login");
   } catch {
-    passwordMessage.value = "没有修改成功，请稍后再试。";
+    if (mySeq === actionSeq) {
+      passwordMessage.value = "没有修改成功，请稍后再试。";
+    }
   } finally {
-    busy.value = null;
+    if (mySeq === actionSeq) {
+      busy.value = null;
+    }
   }
 }
 
 async function onLogout(): Promise<void> {
   if (busy.value) return;
   busy.value = "logout";
+  const mySeq = ++actionSeq;
   try {
     await auth.logout(transport);
     goTo("/pages/login/login");
   } finally {
-    busy.value = null;
+    if (mySeq === actionSeq) {
+      busy.value = null;
+    }
   }
 }
 
@@ -492,17 +577,25 @@ async function onConfirmDelete(): Promise<void> {
   }
   busy.value = "delete";
   deleteError.value = "";
+  // VC-R11-C: 与改密同款动作代次门控；成功路径自身 clear() 的复位豁免同上。
+  const mySeq = ++actionSeq;
   try {
     if (!await deleteAccount(transport, deletePassword.value)) {
-      deleteError.value = "当前密码不正确，账号没有注销。";
+      if (mySeq === actionSeq) {
+        deleteError.value = "当前密码不正确，账号没有注销。";
+      }
       return;
     }
     auth.clear();
     goTo("/pages/login/login");
   } catch {
-    deleteError.value = "暂时无法注销，请稍后再试。";
+    if (mySeq === actionSeq) {
+      deleteError.value = "暂时无法注销，请稍后再试。";
+    }
   } finally {
-    busy.value = null;
+    if (mySeq === actionSeq) {
+      busy.value = null;
+    }
   }
 }
 </script>

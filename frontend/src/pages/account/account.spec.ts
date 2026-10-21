@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 
 import AccountPage from "./account.vue";
@@ -45,6 +46,16 @@ interface FetchOptions {
   exportDownloadText?: string;
   /** 提供时，创建副本的 POST 挂起直到手动 resolve（用于账号切换场景）。 */
   exportCreateGate?: Gate;
+  /** 提供时，第一个 trusted-devices GET 挂起直到手动 resolve，用 gatedDevices 应答。 */
+  deviceGetGate?: Gate;
+  gatedDevices?: unknown[];
+  /** 提供时，改密 POST 挂起直到手动 resolve，随后以 {ok:false} 应答（迟到失败场景）。 */
+  passwordGate?: Gate;
+  /** 提供时，撤销设备的 DELETE 挂起直到手动 resolve。 */
+  revokeGate?: Gate;
+  /** 登录 POST 返回的身份：默认切到 B（"43"）；同账号重认证场景传 "42"。 */
+  loginAccountId?: string;
+  loginEmail?: string;
 }
 
 function makeGate(): Gate {
@@ -58,6 +69,7 @@ function makeGate(): Gate {
 function stubFetch(options: FetchOptions = {}) {
   const calls: Array<{ method: string; url: string; body?: string }> = [];
   const deviceGetStatuses = [...(options.deviceGetStatuses ?? [200])];
+  let deviceGetGateUsed = false;
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const method = (init?.method ?? "GET").toUpperCase();
@@ -66,15 +78,39 @@ function stubFetch(options: FetchOptions = {}) {
     if (url === "/api/v1/auth/session" && method === "GET") {
       return response(401, null);
     }
+    if (url === "/api/v1/auth/login" && method === "POST") {
+      // 真实换号或同账号重认证：登录页同款 ACTIVE 响应，经 store.login 推进代次。
+      return response(200, {
+        nextStep: "ACTIVE",
+        accountId: options.loginAccountId ?? "43",
+        email: options.loginEmail ?? "b@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      });
+    }
     if (url === "/api/v1/auth/trusted-devices" && method === "GET") {
       const status = deviceGetStatuses.shift() ?? 200;
+      if (options.deviceGetGate && !deviceGetGateUsed) {
+        deviceGetGateUsed = true;
+        return options.deviceGetGate.promise.then(
+          () => response(status, status === 200 ? (options.gatedDevices ?? []) : null),
+        );
+      }
       return response(status, status === 200 ? (options.devices ?? []) : null);
     }
     if (url.startsWith("/api/v1/auth/trusted-devices/") && method === "DELETE") {
+      if (options.revokeGate) {
+        return options.revokeGate.promise.then(() => response(200, { ok: true }));
+      }
       const status = options.revokeDeviceStatus ?? 200;
       return response(status, status === 200 ? { ok: true } : null);
     }
     if (url === "/api/v1/auth/password" && method === "POST") {
+      if (options.passwordGate) {
+        return options.passwordGate.promise.then(() => response(200, { ok: false }));
+      }
       const status = options.passwordStatus ?? 200;
       return response(status, status === 200 ? { ok: true } : null);
     }
@@ -496,6 +532,217 @@ describe("account page", () => {
     expect(wrapper.get('[data-testid="data-copy-panel"]').text()).not.toContain("正在整理你的副本。");
     expect(wrapper.find('[data-testid="data-copy-download"]').exists()).toBe(false);
     expect(calls.filter((call) => call.url === "/api/v1/exports")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("clears the cached private forms and device rows on a hidden account switch, then reloads for the new account", async () => {
+    const deviceA = { id: "3", displayName: "A-MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const deviceB = { id: "9", displayName: "B-Phone", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const mockOptions: FetchOptions = { devices: [deviceA] };
+    const { calls } = stubFetch(mockOptions);
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("A-MacBook");
+
+    // 留下 A 期间的私有输入：密码表单与注销确认。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("A-Delete-Pw-1!");
+
+    // 模拟 uni H5 KeepAlive 停用：本页转入后台缓存，onUnmounted 不运行。
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+
+    // 隐藏期间前台真实切到 B（登录页同款流程，直接推进会话代次）。
+    mockOptions.devices = [deviceB];
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+
+    // 隐藏页不抢跑：无新设备请求；旧账号的输入、表单与设备行全部清空。
+    expect(calls.filter((call) => call.url === "/api/v1/auth/trusted-devices")).toHaveLength(1);
+    expect(wrapper.get('[data-testid="account-email"]').text()).toBe("b@example.com");
+    expect(wrapper.findAll('[data-testid="trusted-device-row"]')).toHaveLength(0);
+    expect(wrapper.text()).not.toContain("A-MacBook");
+    expect(wrapper.find('[data-testid="password-form"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    expect((wrapper.get('[data-testid="current-password"]').element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get('[data-testid="new-password"]').element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get('[data-testid="confirm-password"]').element as HTMLInputElement).value).toBe("");
+
+    // 重新激活（浏览器后退落回缓存页）：按 B 账号重载设备。
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("B-Phone");
+    expect(wrapper.text()).not.toContain("A-MacBook");
+    expect(calls.filter((call) => call.url === "/api/v1/auth/trusted-devices")).toHaveLength(2);
+    wrapper.unmount();
+  });
+
+  it("drops a late trusted-device response that started before the account switch", async () => {
+    const gate = makeGate();
+    const deviceA = { id: "3", displayName: "A-MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const deviceB = { id: "9", displayName: "B-Phone", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const { calls } = stubFetch({
+      deviceGetGate: gate,
+      gatedDevices: [deviceA],
+      devices: [deviceB],
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/trusted-devices")).toHaveLength(1);
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+
+    // 重新激活后按 B 账号完成加载。
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("B-Phone");
+
+    // A 的迟到 200 到达：不回填、不覆盖 B，也不把设备区打回加载或错误态。
+    gate.resolve(undefined);
+    await flushPromises();
+    const rows = wrapper.findAll('[data-testid="trusted-device-row"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].text()).toContain("B-Phone");
+    expect(wrapper.text()).not.toContain("A-MacBook");
+    expect(wrapper.get('[data-testid="trusted-devices"]').text()).not.toContain("正在加载设备");
+    expect(wrapper.find('[data-testid="trusted-devices-error"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("recovers the device list when the same account re-authenticates while the GET is pending", async () => {
+    const gate = makeGate();
+    const deviceA = { id: "3", displayName: "A-MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const { calls } = stubFetch({
+      deviceGetGate: gate,
+      gatedDevices: [deviceA],
+      loginAccountId: "42",
+      loginEmail: "alice@example.com",
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/trusted-devices")).toHaveLength(1);
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+
+    // 隐藏期间同账号重新认证：accountId 不变（"42"→"42"），store 的 persist
+    // 仍推进会话代次，但这不是身份交接，不得作废在途设备读取。
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "alice@example.com", "pw-a");
+    await flushPromises();
+    expect(auth.accountId).toBe("42");
+
+    // 重新激活：设备归属仍是本账号，不重发请求，靠在途结果落地。
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/trusted-devices")).toHaveLength(1);
+
+    // 在途 GET 此刻才返回：必须正常显示，不能永久停在「正在加载设备…」。
+    gate.resolve(undefined);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("A-MacBook");
+    expect(wrapper.get('[data-testid="trusted-devices"]').text()).not.toContain("正在加载设备");
+    wrapper.unmount();
+  });
+
+  it("drops a late password-change failure after the switch and keeps the new account's busy action locked", async () => {
+    const passwordGate = makeGate();
+    const revokeGate = makeGate();
+    const deviceA = { id: "3", displayName: "A-MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const deviceB = { id: "9", displayName: "B-Phone", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const mockOptions: FetchOptions = { devices: [deviceA], passwordGate, revokeGate };
+    const { calls } = stubFetch(mockOptions);
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("A-MacBook");
+
+    // A 提交改密：POST 挂起（稍后以失败释放）。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/password")).toHaveLength(1);
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+
+    // 隐藏期间真实切 B，激活后 B 的设备就位。
+    mockOptions.devices = [deviceB];
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("B-Phone");
+
+    // B 撤销自己的设备：DELETE 挂起，busy 锁定在 device:9。
+    await wrapper.get('[data-testid="trusted-device-revoke"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/trusted-devices/9")).toHaveLength(1);
+    expect(wrapper.get('[data-testid="trusted-device-revoke"]').text()).toContain("撤销中…");
+
+    // B 展开自己的空密码表单：A 的迟到失败文案不得回填到这里。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    expect(wrapper.find('[data-testid="password-message"]').exists()).toBe(false);
+
+    // A 的迟到改密失败到达：不回填旧账号错误文案，也不解锁 B 的撤销。
+    passwordGate.resolve(undefined);
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("没有修改成功");
+    expect(wrapper.find('[data-testid="password-message"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="trusted-device-revoke"]').text()).toContain("撤销中…");
+
+    // B 的撤销完成：行移除、busy 正常复位。
+    revokeGate.resolve(undefined);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="trusted-device-row"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="trusted-device-action-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeUndefined();
     wrapper.unmount();
   });
 });

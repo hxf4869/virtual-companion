@@ -98,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onActivated, onMounted, ref, watch } from "vue";
 
 import { listConversations, type ConversationListItem } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -126,11 +126,37 @@ const items = ref<ConversationListItem[]>([]);
 const hasMore = ref(false);
 const loadMoreFailed = ref(false);
 const busy = ref(false);
+// VC-R11：本实例列表内容当前所属的账号（加载确立时同步写入，惯例同
+// chat.vue 的 owningConversationId）。null 表示当前没有归属任何账号的
+// 内容；KeepAlive 重新激活时以此为基准决定是否重走首屏加载。
+let loadedForAccountId: string | null = null;
+// VC-R11：页面私有请求代次（在途请求的收尾归属凭据）。加载流程进入时
+// 递增；身份清理 watch 同步递增以作废在途请求。同账号的真实重认证
+// （login/tryRefresh 推进 store 代次但 accountId 不变）不推进本代次——
+// 它只区分「本页发起的哪个请求」，账号数据归属由 watch 与
+// loadedForAccountId 承担，因此同账号在途请求照常落地收尾。
+let loadSeq = 0;
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+});
+
+// VC-R11：身份交接清理。只有「已知账号 A → 不同账号（B 或 null）」才是
+// 换号/退出：清空旧账号私有内容并回到加载态，并作废在途请求。null → X
+// （初次恢复、匿名后登录）不清理、不当作过期。清理绝不发请求——KeepAlive
+// 隐藏缓存页不得抢跑，重载交给 onActivated。
+watch(() => auth.accountId, (next, prev) => {
+  if (prev === null || next === prev) return;
+  loadSeq++;
+  items.value = [];
+  relationshipId.value = "";
+  hasMore.value = false;
+  loadMoreFailed.value = false;
+  pageState.value = "loading";
+  busy.value = false;
+  loadedForAccountId = null;
 });
 
 function knownRelationshipIds(): string[] {
@@ -187,14 +213,20 @@ async function loadInitial(): Promise<void> {
   busy.value = true;
   pageState.value = "loading";
   loadMoreFailed.value = false;
+  // VC-R11：函数进入即捕获本页私有代次；此后每次 await 之后与 finally 的
+  // busy 复位一律以 mySeq === loadSeq 门控——只有更新的加载流程或身份清理
+  // watch 接管时才静默丢弃，旧账号的迟到结果不得回填本页状态。
+  const mySeq = ++loadSeq;
   try {
     if (!auth.isAuthenticated) await auth.tryRefresh(transport);
+    if (mySeq !== loadSeq) return;
     if (!auth.isAuthenticated) {
       pageState.value = "error";
       return;
     }
 
     await relStore.load(transport);
+    if (mySeq !== loadSeq) return;
     if (relStore.status === "error") {
       pageState.value = "error";
       return;
@@ -205,6 +237,7 @@ async function loadInitial(): Promise<void> {
       items.value = [];
       hasMore.value = false;
       pageState.value = "missing";
+      loadedForAccountId = auth.accountId;
       return;
     }
 
@@ -214,13 +247,16 @@ async function loadInitial(): Promise<void> {
       undefined,
       PAGE_SIZE,
     );
+    if (mySeq !== loadSeq) return;
     items.value = page;
     hasMore.value = page.length === PAGE_SIZE;
     pageState.value = "ready";
+    loadedForAccountId = auth.accountId;
   } catch {
+    if (mySeq !== loadSeq) return;
     pageState.value = "error";
   } finally {
-    busy.value = false;
+    if (mySeq === loadSeq) busy.value = false;
   }
 }
 
@@ -231,6 +267,9 @@ async function loadMore(): Promise<void> {
 
   busy.value = true;
   loadMoreFailed.value = false;
+  // VC-R11：分页 append 同样以本页私有代次门控，身份清理或新流程接管后
+  // 静默丢弃；同账号重认证不受影响。
+  const mySeq = ++loadSeq;
   try {
     const page = await listConversations(
       transport,
@@ -238,14 +277,24 @@ async function loadMore(): Promise<void> {
       after,
       PAGE_SIZE,
     );
+    if (mySeq !== loadSeq) return;
     items.value = [...items.value, ...page];
     hasMore.value = page.length === PAGE_SIZE;
   } catch {
-    loadMoreFailed.value = true;
+    if (mySeq === loadSeq) loadMoreFailed.value = true;
   } finally {
-    busy.value = false;
+    if (mySeq === loadSeq) busy.value = false;
   }
 }
+
+// VC-R11：KeepAlive 缓存页重新激活时，仅当已认证且当前内容不属于本账号
+// 才重走首屏加载；同账号返回缓存页不重载、不重复请求。与 onMounted 首次
+// 同时触发由 loadInitial 同步置位的 busy 去重（在途加载不重复发起）。
+onActivated(() => {
+  if (!auth.isAuthenticated) return;
+  if (loadedForAccountId === auth.accountId) return;
+  void loadInitial();
+});
 
 onMounted(() => {
   void loadInitial();
