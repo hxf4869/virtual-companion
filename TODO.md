@@ -222,6 +222,14 @@ linux/arm64、chromium/390×844）：1 passed 0 failed rc=0（52.6s）；
 端口释放、本轮容器 0 核验通过；无公开注册/单 Owner 边界不变，
 不勾 Owner/Beta/CI/真机/真 provider。
 
+2026-10-21 可信设备再次密码登录（VC-R24）：02-auth-trusted-device
+既有旅程首跑即通过、零代码改动——首次 UI 登录勾“信任此设备 90 天”→
+account 页退出→再次正确密码实际 POST /api/v1/auth/login ok、
+nextStep=ACTIVE→首页且“验证登录”0 个；仅声明该观测，不外推未测
+安全场景。验证（OrbStack linux/arm64、chromium/390×844）：
+1 passed 0 failed rc=0（38.6s）；端口释放、本轮容器 0 核验通过；
+无公开注册/单 Owner 边界不变，不勾 Owner/Beta/CI/真机/真 provider。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

@@ -245,6 +245,15 @@ linux/arm64、chromium/390×844）：1 passed 0 failed rc=0（52.6s），
 端口释放与本轮容器 0 核验通过；其他旅程与引擎未跑，Owner/Beta/CI/
 真 provider 现状不变、不勾选。
 
+2026-10-21 可信设备再次密码登录（VC-R24）：02-auth-trusted-device
+既有旅程首跑即通过、零代码改动——合成用户首次真实 UI 登录勾“信任此
+设备 90 天”，account 页退出后再次输入正确密码，实际 POST
+/api/v1/auth/login ok 且 nextStep=ACTIVE，直达首页且“验证登录”挑战
+0 个；仅声明该观测，不外推未测安全场景。验证（OrbStack linux/arm64、
+chromium/390×844）：1 passed 0 failed rc=0（38.6s），端口释放与本轮
+容器 0 核验通过；其他旅程与引擎未跑，Owner/Beta/CI/真 provider
+现状不变、不勾选。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
