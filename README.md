@@ -309,6 +309,19 @@ viewport 390×664、Pixel 5 viewport 393×727 的 webkit/chromium
 核验：state/auth 临时材料无残留、5197/18087/18437/19097 四端口
 释放、本轮容器 0；不勾 Owner/Beta/CI/真机。
 
+2026-10-21 消费者与管理端导航旅程（VC-R29）：10-navigation-smoke
+与 11-admin-console 两旅程在全新隔离栈一次通过（2 passed 0 failed
+rc=0，40.0s）。10 覆盖三入口底栏精确顺序「首页/聊天/我的」、聊天
+上下文进入全部会话二级页（底栏不重复出现）、我的页四设置区
+（陪伴/账号/安全/关于）与「并非真人」标识、普通账号无管理入口、
+页面无 Provider/Token/Runtime 等内部术语且无横向溢出、返回 Home；
+11 以合成 admin 共享 session 依次走四管理区（注册审核/账号/模型
+与路由/运行状态）、路由顺序页并返回应用，旅程内 /api/v1/admin
+写请求 0。产品代码与测试零改动；11 的零写仅覆盖旅程内导航，不
+声称全库零写或权限全审，管理端为本地合成账号，非生产验收。栈
+清理核验：state/auth 无残留、5197/18087/18437/19097 四端口释放、
+本轮容器 0；不勾 Owner/Beta/CI/真机/真 provider。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
