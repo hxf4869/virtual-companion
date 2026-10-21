@@ -355,23 +355,23 @@ healthcheck healthy、非 root。属当前 package 启动验证，非 full DB/Mi
 +页面「自动保存」徽标）；真实 PUT 200 关闭开关后同一关系新会话发偏好
 B，从既有 provider 请求日志断言 A 恰好出现一次且仅在专属
 [VC_MEMORY_DATA] 记忆块内实际召回（新会话无历史，非回显）；停新增负例
-以 runtime 现有 /actuator/prometheus 建立因果 barrier——单调累计的
-vc_job_claims_total 相对发 B 前基线增加证 B 的 GENERATION handler 确实
-进入（vc_generation_peak 是并发高水位、串行旅程下不动，不可用作进入
-证据），vc_generation_active 归零证 handler 连同其同步 enqueue 决策已
-返回（终态快照/父 job DONE 在 SQL 里先于 enqueue 发生，不构成证据）；
-barrier 后读自有 PG，无行＝`vc.enqueue_memory_extract`（V125）开关关闭
-时的有意不入队（或行态 DONE|AUTO_SAVE_OFF＝入队后才关闭），页面/API
-复核 A 仍在、B 未新增，结束恢复默认开启。观测迭代如实：run1 第三例
-FAIL（等待语义按 handler 关闭等待）、修正后 run2 PASS；根审指出假因果
-后 run3/run4 FAIL（依次为 snapshot≠enqueue 完成、peak 高水位误用，诊断
-值 peak=1=baseline 定位），改用 claims+active barrier 后 run5 PASS
-（6.8s）；前两例 run1 PASS 后输入未变未复跑。产品代码零改，全程为测试
-观测修正非产品修复，不声称任何未观测到的 pending job 曾存在；前端
-710/type-check 沿用 R30（src 输入未变）；PG 只读查询仅经 stack-state
-公共元数据访问本轮自有隔离容器。属本地合成数据，非真机/跨账号/生产
-验收。栈清理核验：state/auth/shared/iid 无残留、5197/18087/18437/19097
-四端口释放、本轮容器 0。
+以 runtime 现有 /actuator/prometheus 建立最小因果 barrier——B 的
+COMPLETED 快照已证其 dispatchGeneration 进入（终态只证进入），串行独占
+runtime 下读到确实存在且解析成功的 vc_generation_active===0 证 B 整个
+handler 连同其同步 enqueue 决策已返回（终态快照/父 job DONE 在 SQL 里
+先于 enqueue 发生，不构成退出证据）；barrier 后断言 `vc.enqueue_memory_extract`
+（V125）在开关已关闭时必须不建 MEMORY_EXTRACT 行（无兼容分支），页面/
+API 复核 A 仍在、B 未新增，结束恢复默认开启。观测迭代如实：run1 第三
+例 FAIL（等待语义按 handler 关闭等待）、修正后 run2 PASS；run3 假阴性
+源于 vc_generation_peak 只记录历史最大并发数（active<=peak 即不更新），
+串行 A/B 峰值均为 1，peak>baseline 恒假（run4 诊断 rc=1、peak=1=
+baseline 佐证，非 handler 未跑）；中间 claim 计数版经根审收窄为上述
+active-only 最小版后 run6 PASS（5.3s）；前两例 run1 PASS 后输入未变未
+复跑。产品代码零改，全程为测试观测修正非产品修复，不声称任何未观测
+到的 pending job 曾存在；前端 710/type-check 沿用 R30（src 输入未变）；
+PG 只读查询仅经 stack-state 公共元数据访问本轮自有隔离容器。属本地
+合成数据，非真机/跨账号/生产验收。栈清理核验：state/auth/shared/iid
+无残留、5197/18087/18437/19097 四端口释放、本轮容器 0。
 
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。

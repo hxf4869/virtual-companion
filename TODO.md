@@ -313,19 +313,21 @@ healthcheck healthy、非 root。属当前 package 启动验证，非 full DB/Mi
 +页面「自动保存」徽标）；真实 PUT 200 关闭开关后同一关系新会话发偏好
 B，从既有 provider 请求日志断言 A 恰好一次且仅在专属 [VC_MEMORY_DATA]
 记忆块内实际召回（新会话无历史，非回显）；停新增负例以 runtime 现有
-/actuator/prometheus 建立因果 barrier（单调累计 vc_job_claims_total 增
-加证 B 的 handler 进入——peak 是并发高水位串行下不动；vc_generation_active
-归零证 handler 连同同步 enqueue 决策已返回——终态快照/父 job DONE 先于
-enqueue 不构成证据），barrier 后读自有 PG：无行＝V125 开关关闭时有意
-不入队（或 DONE|AUTO_SAVE_OFF＝入队后才关闭），页面/API 复核 A 仍在、
-B 未新增，结束恢复默认开启。观测迭代如实：run1 第三例 FAIL（等待语义
-按 handler 关闭）、run2 PASS；根审指出假因果后 run3/run4 FAIL（snapshot
-≠enqueue 完成、peak 高水位误用，诊断值 peak=1=baseline 定位），改用
-claims+active barrier 后 run5 PASS（6.8s）；前两例 run1 PASS 后输入未变
-未复跑。产品代码零改，全程测试观测修正非产品修复，不声称任何未观测
-到的 pending job 曾存在；710/type-check 沿用 R30（src 输入未变）。本地
-合成数据，非真机/跨账号/生产验收。栈清理核验通过（state/auth/shared/
-iid 无残留、4 端口释放、本轮容器 0）；不勾 Owner/Beta/CI/真机。
+/actuator/prometheus 建立最小因果 barrier（B 的 COMPLETED 快照已证
+handler 进入——终态只证进入；串行独占 runtime 下读到确实存在且解析
+成功的 vc_generation_active===0 证整个 handler 连同同步 enqueue 决策
+已返回——终态快照/父 job DONE 先于 enqueue 不构成退出证据），barrier
+后断言 V125 开关已关闭时必须不建 MEMORY_EXTRACT 行（无兼容分支），页面
+/API 复核 A 仍在、B 未新增，结束恢复默认开启。观测迭代如实：run1 第三
+例 FAIL（等待语义按 handler 关闭）、run2 PASS；run3 假阴性源于
+vc_generation_peak 只记录历史最大并发数（串行 A/B 峰值均 1，peak>
+baseline 恒假；run4 诊断 rc=1、peak=1=baseline 佐证）；中间 claim 计数
+版经根审收窄为 active-only 最小版后 run6 PASS（5.3s）；前两例 run1
+PASS 后输入未变未复跑。产品代码零改，全程测试观测修正非产品修复，
+不声称任何未观测到的 pending job 曾存在；710/type-check 沿用 R30
+（src 输入未变）。本地合成数据，非真机/跨账号/生产验收。栈清理核验
+通过（state/auth/shared/iid 无残留、4 端口释放、本轮容器 0）；不勾
+Owner/Beta/CI/真机。
 
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
