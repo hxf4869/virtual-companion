@@ -462,6 +462,36 @@ describe("陪伴设置页", () => {
     wrapper.unmount();
   });
 
+  it("空态起点换号：A 无关系的空态页隐藏后换 B，激活加载 B 表单而非停留旧空态", async () => {
+    // 对应真实浏览器存活链的起点：A 空 relationships 的 companion-empty
+    // （去聊天压栈隐藏→401 换号→返回本页），而非已就绪表单实例。
+    let switched = false;
+    const { calls } = stubFetch({
+      relationships: () => (switched ? [SWITCHED_RELATIONSHIP] : []),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-empty"]').exists()).toBe(true);
+
+    const page = keepAliveHooksOf(wrapper);
+    page.deactivate();
+    const getsBeforeSwitch = relationshipGets(calls);
+    switched = true;
+    await loginViaAuth();
+    await flushPromises();
+    expect(useAuthStore().accountId).toBe("9");
+
+    // 隐藏清理不发起新读取；激活后按 B 重载表单，不停留在 A 的旧空态。
+    expect(relationshipGets(calls)).toBe(getsBeforeSwitch);
+    page.activate();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("沈屿");
+    expect(wrapper.find('[data-testid="companion-empty"]').exists()).toBe(false);
+    expect(relationshipGets(calls)).toBe(getsBeforeSwitch + 1);
+    wrapper.unmount();
+  });
+
   it("旧账号在途的偏好读取迟到成功不得回填新账号表单", async () => {
     let releaseHeldRelationships: () => void = () => {};
     const heldRelationships = new Promise<void>((resolve) => {

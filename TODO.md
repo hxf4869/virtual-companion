@@ -68,23 +68,23 @@ Set-Cookie 竞态、logout 请求晚于新登录发出时服务端撤销新会�
 真机浏览器验证仍为 Owner 人工项（不对应任何已勾选条目，不改变
 DOGFOOD/Beta/CI 现状）。
 
-2026-10-21 陪伴设置/记忆页账号归属（VC-R13）：两页补齐 watch
-auth.accountId 身份交接清理（仅已知账号→不同/退出，null→X 不清）、页面
-私有请求代次与既有 memory.ownerEpoch 门控（迟到成功/失败/finally 不回填、
-不解除新账号忙态）、KeepAlive 激活按账号归属重载（同账号返回不重复请求、
-首触去重）；未保存草稿/保存中编辑/回读基线/超时 unknown/inconclusive 语义
-保持，stores/memory.ts 未改。701 项前端测试与 type-check 通过（+12）。
-浏览器 390x844 合成 mock：真实存活链实测（空关系陪伴设置→去聊天压栈
-隐藏→chat 401 redirectTo login→登录 B→浏览器回退，同一 $vm.$.uid 实例
-复活显示 B 表单沈屿、无 A 残留；同账号返回零新请求、表单保留）；独立
-VC-R13P 只读核验六类常规/hash 路径（headerBack/重进/hash 回祖先/hash 到
-非祖先 index 及其 historyBack）均为全新实例。记忆页无产品压栈出口、六类
-路径均不可达，换号防护为组件级验证（KeepAlive 钩子模拟）；onActivated
-首触去重有真实消费（mount 恰好 3 条请求无双发）。inconclusive 非数组
-响应浏览器复核正确（核对提示而非成功空态）。残余：撤销记忆页换号防护需
-删测试（按红线需用户授权），本轮保留为机制一致性防御；真机浏览器换号
-验证仍为 Owner 人工项（不对应任何已勾选条目，不改变 DOGFOOD/Beta/CI
-现状）。
+2026-10-21 陪伴设置页账号归属（VC-R13）：陪伴设置页补齐 watch
+auth.accountId 身份交接清理（仅已知账号→不同/退出，null→X 不清）、
+页面私有 load/save 代次独立门控（迟到成功/失败/finally 不回填、不解除
+新账号忙态；同账号重新认证不作废在途流程）、KeepAlive 激活按内容归属
+账号重载（busy 去重兼首触去重），同账号返回不重复请求、未保存草稿
+保留；超时 unknown 语义保持。696 项前端测试与 type-check 通过（较
+R12 +7，换号全走真实 AuthStore login/clear，含锁定空态起点的换号
+用例）。浏览器 390x844 合成 mock：真实存活链实测（空关系陪伴设置→
+去聊天压栈隐藏→chat 401 redirectTo login→登录 B→浏览器回退，同一
+$vm.$.uid 实例复活显示 B 表单沈屿、无 A 残留；同账号返回零新请求、
+表单保留）；VC-R13P 只读核验六类常规/hash 路径（headerBack/重进/
+hash 回祖先/hash 到非祖先 index 及其 historyBack）均为全新实例，原始
+实证为空态返回重载，不宣称常规返回缓存。记忆页无产品压栈出口、六类
+路径均移除旧实例，本轮 NOT_REPRODUCED：模拟生命周期的防护与测试不
+提交，两文件保持基线，迟到读/保存覆盖以组件测试为界。残余：真机
+浏览器换号验证仍为 Owner 人工项（不对应任何已勾选条目，不改变
+DOGFOOD/Beta/CI 现状）。
 
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
