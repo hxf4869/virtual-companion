@@ -29,10 +29,10 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
   验证，结果记录在对应提交与 [`TODO.md`](TODO.md)，历史全量结果只按
   当时输入范围有效，不升级为当前整仓保证；
 - 前端全量测试（711 项）与 type-check 随 VC-R39 改动验证；
-- 真实隔离栈 E2E 为多轮定向旅程（[`frontend/e2e/journeys/`](frontend/e2e/journeys/)）：
-  08 可访问性与三档（320/390/430）视口布局、13 副本下载为 webkit+
-  chromium 双引擎设备仿真，其余已验证旅程为 chromium 手机视口，结果按
-  各旅程记录，不构成一次全套同绿；
+- 真实隔离栈 E2E（[`frontend/e2e/journeys/`](frontend/e2e/journeys/)）：
+  2026-10-22 VC-R41 无过滤一次跑完现有核心 18 实例（3 projects/10 files）
+  18/18 PASS；其中 08 可访问性与三档（320/390/430）视口布局两例、13 副本
+  下载为 webkit+chromium 双引擎设备仿真，其余旅程为 chromium 手机视口；
 - G12 runtime-only 容量采样：三次独立 600s ready-idle 全部 PASS（idle
   RSS 均值 21.022–22.168 MiB），Go 镜像 OCI 事实（packed resources
   ≈8.97 MiB、非 root）为既有 package 启动验证，两者口径见

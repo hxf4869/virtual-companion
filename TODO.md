@@ -366,6 +366,19 @@ state/auth/shared/secrets/iid 无残留）。只收口确认前这一窗口：�
 credentialEpoch 仍不能感知另一标签页登录，其余请求侧 Cookie 时序未闭合；
 视口仿真非真机；不勾 Owner/Beta/CI/真机，G12 维持未完成。
 
+2026-10-22 完整现有核心 E2E 一次同绿（VC-R41）：无 file/project/grep
+过滤，`--list` Total 18 tests in 10 files（LIST_RC 0）后一次跑完 18/18
+PASS（18 passed/0 failed/0 flaky/0 skipped/0 not run；run.log 1.1m，
+RUN_RC=0、ELAPSED=65s 含栈启动），3 projects＝chromium 12 + webkit-iphone
+3 + chromium-android 3；配置 workers 1/retries 0/test 90s/expect 15s，CLI
+trace off、output 指向 tmp。源输入 8c58a438（R40 17e8bd35 仅改独立 G12
+driver，未改 app/E2E）；全程 E2E_RELEASE_MODE=full、OrbStack loopback
+PG/MinIO 与 fake provider，本地合成数据与设备仿真，非真机/真实 provider/
+生产验收。原始产物 /tmp/vcr41。栈清理核验通过（vc-e2e 命名容器/卷精确
+查询 count 0、4 端口释放、owned 进程/state/auth/shared/secrets/iid/binary
+无残留，42 份历史日志未动）；不勾 Owner/Beta/CI/真机，G12 维持未完成
+（10 分钟 recovery/retained-stack/PSS 未补）。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
