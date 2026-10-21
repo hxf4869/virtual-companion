@@ -28,7 +28,7 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
   type-check），SQL/RLS 隔离脚本在 `infra/db/`；各轮改动按影响范围定向
   验证，结果记录在对应提交与 [`TODO.md`](TODO.md)，历史全量结果只按
   当时输入范围有效，不升级为当前整仓保证；
-- 前端全量测试（710 项）与 type-check 在 R34 基线 `1ff0c3bc` 验证；
+- 前端全量测试（711 项）与 type-check 随 VC-R39 改动验证；
 - 真实隔离栈 E2E 为多轮定向旅程（[`frontend/e2e/journeys/`](frontend/e2e/journeys/)）：
   08 可访问性与三档（320/390/430）视口布局、13 副本下载为 webkit+
   chromium 双引擎设备仿真，其余已验证旅程为 chromium 手机视口，结果按
@@ -44,10 +44,13 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 
 - 认证写请求的请求侧排序与其余 API Cookie 竞态边界仍开放（R12/R15/
   R16/R17 收口的是响应侧，不覆盖请求侧）；
-- 本地 credentialEpoch 不能感知另一标签页登录：桌面 1280x800 基线已
-  真实复现旧确认撤销同账号新会话（B GET 200 → logout 200 → B GET 401）；
-  手机 390x844 原视口复验因 modal 与导航同层遮挡未达 logout，R38 正修
-  共享 mobile 层级后重验——桌面复现不替代手机验证，auth 修复仍待收口；
+- 本地 credentialEpoch 仍不能感知另一标签页登录。VC-R39 只收口 Admin
+  退出确认窗这一个窗口：手机 390x844 原视口下旧遮挡实为底栏
+  model-mobile-bar 与导航同层（非 modal），抽屉改用既有 overlay 层级后
+  已真实点通并复现 auth 红（B GET 200 → 旧确认 logout 200 → B GET 401）；
+  壳层以确认前后 CSRF cookie 变化撤销旧意图并提示重新确认，11 旅程两例
+  2 passed（撤销段 logout 0 次且 B 保持 200，同页二次确认正常退出只撤
+  S1）；其余请求侧浏览器 Cookie 时序仍未闭合；
 - G12 工程收尾：10 分钟 recovery、retained-stack 与 PSS 补测未完成，
   不可用 60s recovery 或 600s ready-idle 冒充（观测窗不同，口径见
   [`docs/planning/g12-go-capacity-sample.md`](docs/planning/g12-go-capacity-sample.md) §7）。

@@ -39,6 +39,9 @@
           <AppIcon name="back" :size="18" />
           <text>返回应用</text>
         </button>
+        <view v-if="logoutNotice" class="ac-message ac-message--warning" role="status">
+          {{ logoutNotice }}
+        </view>
         <button class="ac-footer-action" :disabled="loggingOut" @click="logout">
           <AppIcon name="logout" :size="18" />
           <text>{{ loggingOut ? "退出中…" : "退出登录" }}</text>
@@ -92,7 +95,7 @@
 <script lang="ts">
 import { computed, defineComponent, onBeforeUnmount, onMounted, ref, type PropType } from "vue";
 
-import { createAuthenticatedTransport } from "@/api/transport";
+import { createAuthenticatedTransport, readCsrfCookie } from "@/api/transport";
 import AppIcon, { type AppIconName } from "@/design-system/AppIcon.vue";
 import { useAuthStore } from "@/stores/auth";
 
@@ -132,6 +135,7 @@ export default defineComponent({
     const auth = useAuthStore();
     const menuOpen = ref(false);
     const loggingOut = ref(false);
+    const logoutNotice = ref("");
     const environmentLabel = computed(() =>
       typeof location !== "undefined" && /^(127\.0\.0\.1|localhost)$/.test(location.hostname)
         ? "本地环境"
@@ -217,7 +221,17 @@ export default defineComponent({
 
     async function logout(): Promise<void> {
       if (loggingOut.value) return;
+      logoutNotice.value = "";
+      // VC-R39: 确认窗等待期间，同一浏览器的另一标签页可能已重新登录换装新
+      // 会话；cookie jar 共享而本地 credentialEpoch 感知不到。以确认前后可见
+      // 的 CSRF cookie 是否变化为判据：已变则本次确认对应的凭据已不是当前
+      // 凭据，撤销旧意图——不发 logout、不清本地身份、不导航，只提示重新确认。
+      const csrfBeforeConfirm = readCsrfCookie();
       if (!(await confirmDiscardChanges())) return;
+      if (readCsrfCookie() !== csrfBeforeConfirm) {
+        logoutNotice.value = "登录状态已更新，请重新确认退出";
+        return;
+      }
       loggingOut.value = true;
       try {
         // VC-R12: 只有本地清理归属本次调用、且此刻没有较新已认证身份才回
@@ -235,6 +249,7 @@ export default defineComponent({
       navItems: NAV_ITEMS,
       menuOpen,
       loggingOut,
+      logoutNotice,
       environmentLabel,
       navigate,
       logout,

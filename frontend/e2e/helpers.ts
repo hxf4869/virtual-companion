@@ -54,9 +54,9 @@ export interface E2ESession {
 
 /** One already-authenticated account shared by journeys that exercise product
  * behavior rather than the login flow itself. Sharing a single server-side
- * session keeps each full run inside the backend's real authenticator
- * rate-limit budget (5 challenge completions per 15 minutes, shared across
- * every account). */
+ * session keeps each full run inside the backend's real login rate limits:
+ * 5 attempts per 15 minutes keyed by account email, plus 10 per minute per
+ * source for each request kind (backend internal/auth/limiter.go). */
 export type SharedSessionKind = "chat" | "memory" | "admin";
 
 const SHARED_SESSION_ACCOUNTS: Record<SharedSessionKind, E2EUser> = {
@@ -64,6 +64,10 @@ const SHARED_SESSION_ACCOUNTS: Record<SharedSessionKind, E2EUser> = {
   memory: userFor("companion-memory"),
   admin: { email: "e2e-admin@example.test", password: "E2e-Admin-Pass-1234!" },
 };
+
+/** The shared ADMIN account itself, for journeys that re-login the same
+ * account through the real UI (VC-R38 cross-tab logout). */
+export const SHARED_ADMIN_ACCOUNT: E2EUser = SHARED_SESSION_ACCOUNTS.admin;
 
 interface SharedSessionCookie {
   name: string;

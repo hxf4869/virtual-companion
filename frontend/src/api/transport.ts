@@ -44,7 +44,14 @@ const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_COOKIE = "vc_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
 
-function readCsrfCookie(): string | null {
+/**
+ * Current double-submit CSRF cookie, or null when there is none. Exported
+ * only so a caller can compare the value before and after an awaited user
+ * confirmation (VC-R39): the opaque session cookie is HttpOnly, so this is
+ * the one credential the page can see rotate when another tab logs in. The
+ * value must be held in memory only and never persisted, logged or shown.
+ */
+export function readCsrfCookie(): string | null {
   try {
     if (typeof document === "undefined") {
       return null;

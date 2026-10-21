@@ -351,6 +351,21 @@ passed/type-check rc=0；08 layout --list 2 例后 2 passed 43.6s，30 截图
 留 /tmp/vcr34；视口仿真非真机。栈清理核验通过（容器 0、4 端口释放、
 state/auth/shared/secrets/iid 无残留）；不勾 Owner/Beta/CI/真机。
 
+2026-10-22 Admin 旧退出确认的会话归属（VC-R39）：手机 390x844 原视口下
+11 旅程先真实复现 R38 基线红——旧遮挡实为底栏 model-mobile-bar 与导航同层
+（非 modal），抽屉改用既有 overlay/scrim 层级后点通，B GET 200 → 旧确认
+logout 200 → B GET 401。AdminConsoleShell 在 confirmDiscardChanges 前捕获
+transport 导出的 readCsrfCookie()（仅内存比较，不持久化/不打印），确认
+返回后 CSRF 已变即撤销旧意图（不发 logout、不清本地身份、不导航）并以
+role=status 提示「登录状态已更新，请重新确认退出」；同页二次确认正常退出
+只撤 S1。前端 711 passed/type-check rc=0；11 --list 2 例后 2 passed 37.5s
+（2.5s/1.3s）：撤销段 logout 请求 0 次且 B 保持 200，控制段 logout 200 →
+A 回登录页 → B 401，磁盘共享 S0 不动；抽屉展开完成态 PNG（animations:
+disabled）留 /tmp/vcr39。栈清理核验通过（容器 0、4 端口释放、
+state/auth/shared/secrets/iid 无残留）。只收口确认前这一窗口：本地
+credentialEpoch 仍不能感知另一标签页登录，其余请求侧 Cookie 时序未闭合；
+视口仿真非真机；不勾 Owner/Beta/CI/真机，G12 维持未完成。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

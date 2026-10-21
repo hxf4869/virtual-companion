@@ -336,10 +336,13 @@
 }
 
 @media (max-width: 900px) {
+  /* 手机抽屉必须盖过页面内的 fixed 移动条（model-mobile-bar 等，
+     --vc-z-nav=20 且 DOM 靠后），否则抽屉页脚的退出/返回按钮被遮挡。 */
   .ac-rail {
     width: min(84vw, 300px);
     transform: translateX(-102%);
     transition: transform var(--vc-motion-base) var(--vc-ease-out);
+    z-index: var(--vc-z-overlay);
   }
 
   .ac-rail--open {
@@ -349,7 +352,7 @@
   .ac-scrim {
     position: fixed;
     inset: 0;
-    z-index: calc(var(--vc-z-nav) - 1);
+    z-index: calc(var(--vc-z-overlay) - 1);
     display: block;
     width: 100%;
     height: 100%;

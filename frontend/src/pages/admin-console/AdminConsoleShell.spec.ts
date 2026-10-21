@@ -168,4 +168,51 @@ describe("admin console shell", () => {
     expect(navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
     wrapper.unmount();
   });
+
+  it("VC-R39: 确认窗等待期间凭据已被另一标签页换装时，确认旧退出草稿只提示重新确认", async () => {
+    const calls: Array<{ method: string; url: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        method: (init?.method ?? "GET").toUpperCase(),
+        url: typeof input === "string" ? input : input.toString(),
+      });
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    }));
+    const redirectTo = vi.fn();
+    const navigateTo = vi.fn();
+    let discardModal!: { success: (result: { confirm?: boolean }) => void };
+    vi.stubGlobal("uni", {
+      redirectTo,
+      navigateTo,
+      showModal: (options: typeof discardModal) => {
+        discardModal = options;
+      },
+    });
+    document.cookie = "vc_csrf=synthetic-before-confirm";
+    const auth = loginAsAdmin();
+    const wrapper = mount(AdminConsoleShell, {
+      props: { active: "models", title: "模型服务", accessState: "ready", hasPendingChanges: true },
+    });
+
+    const logoutButton = wrapper
+      .findAll(".ac-footer-action")
+      .find((button) => button.text().includes("退出登录"));
+    await logoutButton!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+
+    // 确认窗仍开着时，另一标签页登录换装了共享 cookie jar 里的 CSRF。
+    document.cookie = "vc_csrf=synthetic-after-other-tab-login";
+    discardModal.success({ confirm: true });
+    await flushPromises();
+
+    expect(calls.filter((call) => call.url === "/api/v1/auth/logout")).toHaveLength(0);
+    expect(auth.isAuthenticated).toBe(true);
+    expect(redirectTo).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="status"]').text()).toBe("登录状态已更新，请重新确认退出");
+
+    document.cookie = "vc_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    wrapper.unmount();
+  });
 });
