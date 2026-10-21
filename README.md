@@ -380,7 +380,7 @@ setViewportSize 显式设置并断言 innerWidth/innerHeight 实际到位；匿�
 无 cookie context 先审 login 三档，随后仅一次 chat 共享 cookie 会话
 （零新增登录/challenge）走 home/chat/conversations/account × 三档，
 每档复用 expectContentLoaded 成功态门。针对 ConsumerShell
-overflow-x:clip 与 VcChatShell overflow:hidden 使 scrollWidth 恒过的
+overflow-x:clip 与 VcChatShell overflow:hidden 可能掩盖越界的
 盲区，几何断言改读元素包围盒：可见 main 左右入画布（不断言长页底边）、
 底栏三项（按 .vc-bottom-nav__item 计数——uni-h5 渲染 uni-button，非
 HTML button）等宽 ±1px、图标/标签在自身格子与画布内、nav 底边贴合
@@ -393,6 +393,15 @@ R30（src 输入未变）。属 Playwright 视口+UA/touch 仿真（重置 CSS
 viewport），非真机键盘/安全区/屏幕圆角验收，数据为本地合成。栈清理
 核验：state/auth/shared 无残留、5197/18087/18437/19097 四端口释放、
 本轮容器 0；不勾 Owner/Beta/CI/真机。
+
+2026-10-22 聊天触摸尺寸与 AI 标识可读性修正（VC-R34）：VcChatComposer
+send/stop 共享按钮与 field 末列 40→44px（DESIGN §9 触摸目标下限，自然
+布局容纳、不加高度补丁），VcChatShell 头部 disclosure 10/14px→注释层
+12/18px（DESIGN §4.2，复用 --vc-text-xs），文案与信息架构不变。前端
+710 passed（52 文件）与 type-check rc=0；08 layout 两例 --list 恰 2 例
+后 2 passed 0 failed 43.6s rc=0，30 张截图留 /tmp/vcr34 供 320/390/430
+chat 复核；仍属视口仿真非真机。栈清理核验同 R33 口径全过（容器 0、4
+端口释放、state/auth/shared/secrets/iid 无残留）。
 
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。

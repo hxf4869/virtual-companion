@@ -145,7 +145,7 @@ function onEnter(event: KeyboardEvent): void {
 
 .vc-chat-composer__field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px;
+  grid-template-columns: minmax(0, 1fr) 44px;
   align-items: end;
   gap: var(--vc-space-2);
   box-sizing: border-box;
@@ -193,8 +193,8 @@ function onEnter(event: KeyboardEvent): void {
 .vc-chat-composer__send {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border: 0;

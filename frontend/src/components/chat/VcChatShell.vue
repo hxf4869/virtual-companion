@@ -181,8 +181,8 @@ const initial = computed(() => props.companionName.trim().slice(0, 1) || "伴");
 
 .vc-chat-shell__disclosure {
   color: var(--vc-color-ink-muted);
-  font-size: 10px;
-  line-height: 14px;
+  font-size: var(--vc-text-xs);
+  line-height: 18px;
 }
 
 .vc-chat-shell__main {

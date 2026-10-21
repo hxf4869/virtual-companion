@@ -333,7 +333,7 @@ Owner/Beta/CI/真机。
 case（原 a11y case 逐字保留）。三档 320×568/390×844/430×932 显式
 setViewportSize 且断言 innerWidth/innerHeight 到位；匿名 login 三档后
 仅一次 chat 共享 cookie 会话走四页 × 三档，复用 expectContentLoaded
-成功态门，零新增登录。针对 shell 层 overflow clip 使 scrollWidth 恒过
+成功态门，零新增登录。针对 shell 层 overflow clip 可能掩盖越界
 的盲区改用元素包围盒：可见 main 左右入画布、底栏 .vc-bottom-nav__item
 计数 3（uni-h5 渲染 uni-button）等宽 ±1px、图标/标签在格子与画布内、
 nav 底边贴视口、composer/input/send 不越界不盖 nav、conversations
@@ -343,6 +343,13 @@ webkit 2.2s、chromium 2.4s）。前端 710/type-check 沿用 R30（src 未变�
 局限：Playwright 视口+UA/touch 仿真非真机键盘/安全区，本地合成数据。
 栈清理核验通过（state/auth/shared 无残留、4 端口释放、本轮容器 0）；
 不勾 Owner/Beta/CI/真机。
+
+2026-10-22 聊天触摸尺寸与 AI 标识可读性修正（VC-R34）：composer
+send/stop 按钮与末列 40→44px（DESIGN §9），头部 disclosure 10/14px→
+12/18px 注释层（DESIGN §4.2 复用 --vc-text-xs），文案不变。前端 710
+passed/type-check rc=0；08 layout --list 2 例后 2 passed 43.6s，30 截图
+留 /tmp/vcr34；视口仿真非真机。栈清理核验通过（容器 0、4 端口释放、
+state/auth/shared/secrets/iid 无残留）；不勾 Owner/Beta/CI/真机。
 
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
