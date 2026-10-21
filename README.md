@@ -322,6 +322,25 @@ rc=0，40.0s）。10 覆盖三入口底栏精确顺序「首页/聊天/我的」
 清理核验：state/auth 无残留、5197/18087/18437/19097 四端口释放、
 本轮容器 0；不勾 Owner/Beta/CI/真机/真 provider。
 
+2026-10-21 聊天与记忆副本真实下载链（VC-R30）：新增 13-data-export-
+download 旅程，08/13 共用既有 webkit-iphone/chromium-android 双引擎
+project（playwright.config 的双引擎正则改为两个明确 spec，base chromium
+照旧忽略，--list 恰 4 例）。旅程以 chat 共享会话与既有合成当前密码走
+真实 UI：错密码 POST /exports 实际 404 与诚实文案（只声明被拒与可纠正
+再申请，不断言零副作用）；正确申请 200→真实 worker（隔离 MinIO 对象
+模式）PENDING→READY→浏览器 download 事件，下载按原始字节校验文件名
+格式、int64 conversationId/messageId 字段+数字边界匹配、唯一合成消息
+锚点与结构计数；READY 有效期内与下载后 DOM/local/sessionStorage 均不
+含真实 downloadUrl/token（布尔断言），download 路径 GET 恰 1 次且 UI
+收敛「重新申请」。首轮 13 两例 FAIL 均为测试侧 fixture 问题（uni-input
+外层 testid 定位、等待被 READY 移除的进度按钮），中断的旧 run2 记
+NOT_COMPLETE；修正（含 READY 有效期内隐私检查）后本轮 08×2 PASS
+（2.3m 轮）+ 13×2 PASS（run2，1.0m，08 输入未变未复跑），前端 710
+单测+type-check rc0，产品代码零改。属本地合成数据与 Playwright 设备
+仿真，非真机/跨账号全审/生产/临床验收。栈清理核验：state/auth/shared/
+iid 无残留、5197/18087/18437/19097 四端口释放、本轮容器 0；不勾
+Owner/Beta/CI/真机。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

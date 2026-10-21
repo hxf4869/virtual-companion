@@ -284,6 +284,21 @@ AI 非真人标识、普通账号无管理入口且无内部术语泄漏、页�
 无残留、4 端口释放、本轮容器 0）；不勾 Owner/Beta/CI/真机/真
 provider。
 
+2026-10-21 聊天与记忆副本真实下载链（VC-R30）：新增 13-data-export-
+download 旅程并入既有双引擎 project（08/13 两 spec，--list 恰 4 例；
+base chromium 照旧忽略）。chat 共享会话+既有合成当前密码真实 UI：
+错密码 POST /exports 404 与诚实文案（仅声明被拒与可纠正再申请）、
+正确申请 200→真实 worker（隔离 MinIO）PENDING→READY→浏览器 download
+事件；原始字节校验文件名格式、int64 ID 字段+数字边界、唯一合成消息
+锚点与结构计数；READY 有效期内及下载后 DOM/storage 不含真实
+downloadUrl/token（布尔断言），download GET 恰 1 次且 UI 收敛「重新
+申请」。首轮 13×2 FAIL 为测试侧 fixture（uni-input 定位、READY 移除
+进度按钮竞态），旧 run2 中断记 NOT_COMPLETE；修正后本轮 08×2 PASS
+（2.3m）+ 13×2 PASS（run2 1.0m，08 未复跑），710 单测+type-check
+rc0，产品代码零改。本地合成数据+设备仿真，非真机/跨账号全审/生产/
+临床验收。栈清理核验通过（state/auth/shared/iid 无残留、4 端口释放、
+本轮容器 0）；不勾 Owner/Beta/CI/真机。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
