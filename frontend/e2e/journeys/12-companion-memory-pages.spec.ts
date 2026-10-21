@@ -223,39 +223,97 @@ async function queryMemoryExtractJob(
   return stdout.trim();
 }
 
-/** The disabled turn must not merely "not show a new memory yet": it needs a
- * real terminal outcome on the extraction side. vc.enqueue_memory_extract
- * (V125) returns early without creating a job row when the pref is already
- * off — that deliberate suppression is the primary path and shows up as no
- * row at all. A row only exists when the switch was flipped after enqueue;
- * it must then close as DONE|AUTO_SAVE_OFF. The turn's terminal snapshot was
- * already confirmed before this wait, so enqueue has run by the time the row
- * stays absent through the confirmation window. */
-async function waitForMemoryExtractClosed(
+interface GenerationGauges {
+  active: number | null;
+  claimsTotal: number | null;
+}
+
+function readPrometheusGauge(text: string, name: string): number | null {
+  for (const line of text.split("\n")) {
+    if (line.startsWith(`${name} `)) {
+      const value = Number.parseFloat(line.slice(name.length + 1).trim());
+      return Number.isFinite(value) ? value : null;
+    }
+  }
+  return null;
+}
+
+/** Read the runtime's own generation gauges from the existing
+ * /actuator/prometheus endpoint. A null gauge means the metric or endpoint
+ * was not observable and is never treated as zero. */
+async function readGenerationGauges(): Promise<GenerationGauges> {
+  const port = process.env.E2E_RUNTIME_PORT ?? "18080";
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/actuator/prometheus`);
+    if (!response.ok) return { active: null, claimsTotal: null };
+    const text = await response.text();
+    return {
+      active: readPrometheusGauge(text, "vc_generation_active"),
+      claimsTotal: readPrometheusGauge(text, "vc_job_claims_total"),
+    };
+  } catch {
+    return { active: null, claimsTotal: null };
+  }
+}
+
+/** The journeys run serially, so before turn B starts every earlier handler
+ * must have returned. Returns the claim counter as the baseline. */
+async function waitForGenerationIdle(page: Page, timeoutMs = 20_000): Promise<number> {
+  const startedAt = Date.now();
+  let last: GenerationGauges = { active: null, claimsTotal: null };
+  while (Date.now() - startedAt < timeoutMs) {
+    last = await readGenerationGauges();
+    if (last.active === 0 && last.claimsTotal !== null) return last.claimsTotal;
+    await page.waitForTimeout(100);
+  }
+  throw new Error(
+    `vc_generation_active did not settle at 0 before the disabled turn (last observed active=${last.active} claims=${last.claimsTotal})`,
+  );
+}
+
+/** Causal barrier for "the turn's whole generation handler has returned".
+ *
+ * Entry proof uses the monotonic claim counter: jobs/loop.go ClaimOnce
+ * increments vc_job_claims_total for every successfully claimed job and then
+ * synchronously launches dispatchGeneration for a GENERATION claim, and on
+ * this serial journey turn B's GENERATION job is the only job that can be
+ * claimed after the baseline — so claims > baseline proves turn B's handler
+ * really entered. (vc_generation_peak cannot prove this: it is a concurrency
+ * high-water mark that only moves when active exceeds the historical peak,
+ * so serial turns after the first never move it.)
+ *
+ * Exit proof uses vc_generation_active: dispatchGeneration increments it on
+ * handler entry and decrements it only when the handler returns, and
+ * enqueue_memory_extract is a synchronous call inside that handler — so an
+ * observable 0 proves the enqueue decision has executed. Neither the
+ * terminal snapshot nor the parent job row implies this:
+ * go_finalize_generation closes the GENERATION job in SQL before the Go
+ * handler reaches its enqueue call. */
+async function waitForGenerationHandlerReturned(
   page: Page,
-  state: StackState,
-  owner: string,
-  generationId: string,
+  baselineClaims: number,
   timeoutMs = 20_000,
 ): Promise<void> {
   const startedAt = Date.now();
-  const absentWindow = 6;
-  let absentStreak = 0;
-  let last = "";
+  let last: GenerationGauges = { active: null, claimsTotal: null };
   while (Date.now() - startedAt < timeoutMs) {
-    last = await queryMemoryExtractJob(state, owner, generationId);
-    if (last === "DONE|AUTO_SAVE_OFF") return;
-    if (last.startsWith("FAILED") || last.startsWith("DONE|")) break;
-    if (last === "") {
-      absentStreak += 1;
-      if (absentStreak >= absentWindow) return;
-    } else {
-      absentStreak = 0;
-    }
-    await page.waitForTimeout(250);
+    last = await readGenerationGauges();
+    if (last.active === 0 && last.claimsTotal !== null && last.claimsTotal > baselineClaims) return;
+    await page.waitForTimeout(100);
   }
   throw new Error(
-    `memory-extract outcome for the disabled turn is neither the deliberate no-job path nor DONE|AUTO_SAVE_OFF (last: ${last || "no row yet"})`,
+    `generation handler for the disabled turn did not observably return (last observed active=${last.active} claims=${last.claimsTotal} baselineClaims=${baselineClaims})`,
+  );
+}
+
+/** Read after the handler-return barrier: the enqueue decision has executed,
+ * so with the pref already off, vc.enqueue_memory_extract (V125) creating no
+ * job row is the deliberate suppression path. A row only exists when the
+ * switch was flipped after enqueue; it must then be DONE|AUTO_SAVE_OFF. */
+function assertMemoryExtractOutcome(row: string): void {
+  if (row === "" || row === "DONE|AUTO_SAVE_OFF") return;
+  throw new Error(
+    `memory-extract outcome for the disabled turn is neither the deliberate no-job path nor DONE|AUTO_SAVE_OFF (row: ${row})`,
   );
 }
 
@@ -296,8 +354,15 @@ test("autosave saves a stated preference, recalls it in a later turn, and stops 
   await expect(savedRow.getByTestId("memory-summary")).toHaveText(AUTOSAVE_SUMMARY_A);
   await expect(savedRow.getByTestId("memory-badge")).toHaveText("自动保存");
 
-  // —— Disable through the real toggle; disabling stops new saves only. ——
+  // —— Disable through the real toggle: wait for the actual 200 PUT, and the
+  // pref stays off until the no-new-save evidence is fully collected. ——
+  const prefDisable = page.waitForResponse(
+    (response) => response.request().method() === "PUT"
+      && new URL(response.url()).pathname === "/api/v1/memory-auto-save-pref",
+  );
   await page.getByTestId("autosave-toggle").click();
+  const prefResponse = await prefDisable;
+  expect(prefResponse.ok(), `memory autosave pref disable failed: ${prefResponse.status}`).toBeTruthy();
   await expect(page.getByTestId("autosave-toggle")).toHaveAttribute("aria-checked", "false");
 
   // —— Recall: a different new conversation of the same relationship states
@@ -309,6 +374,10 @@ test("autosave saves a stated preference, recalls it in a later turn, and stops 
   await page.getByTestId("new-conversation").click();
   await expect(page.getByTestId("empty-history")).toContainText("从这里开始");
 
+  // Baseline before turn B: serial journeys mean an idle gauge here, and the
+  // claim-counter baseline lets the barrier below attribute one handler
+  // entry to B.
+  const baselineClaims = await waitForGenerationIdle(page);
   const turnB = await sendChatTurn(page, AUTOSAVE_FACT_B);
   const terminalB = await waitForGenerationTerminal(page, turnB);
   expect(
@@ -336,11 +405,13 @@ test("autosave saves a stated preference, recalls it in a later turn, and stops 
     "turn B's request carries the saved memory exactly once, inside the dedicated memory block",
   ).toBe(true);
 
-  // —— Stop: B's extraction job must close with the real AUTO_SAVE_OFF
-  // reason, then both the API and the page confirm A stays and B never lands.
-  // ——
+  // —— Stop: the causal barrier first (B's whole generation handler, including
+  // its synchronous enqueue decision, has observably returned), then read the
+  // extraction side once; the API and the page confirm A stays and B never
+  // lands. ——
+  await waitForGenerationHandlerReturned(page, baselineClaims);
   const stackState = await readStackState();
-  await waitForMemoryExtractClosed(page, stackState, session.accountId, turnB);
+  assertMemoryExtractOutcome(await queryMemoryExtractJob(stackState, session.accountId, turnB));
 
   const afterList = await sessionRequest(
     page,
