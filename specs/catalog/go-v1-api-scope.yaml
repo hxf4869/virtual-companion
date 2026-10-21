@@ -681,13 +681,17 @@ operations:
   path: /api/v1/auth/sessions/{sessionId}
   currentH5Callers: []
   decision: SIMPLIFY
-  replacementOrImpact: Retain single-session revocation without a current frontend entry.
+  replacementOrImpact: Retain single-session revocation without a current frontend entry. The success
+    response sets no cookies (revocation stays server-side), so a delayed response cannot expire a newer
+    login's vc_session/vc_csrf (VC-R17).
 - operationId: revokeAllAuthSessions
   method: POST
   path: /api/v1/auth/sessions/revoke-all
   currentH5Callers: []
   decision: SIMPLIFY
   replacementOrImpact: Retain revoke-all as a backend security capability without a current frontend entry.
+    The success response sets no cookies (revocation stays server-side), so a delayed response cannot expire
+    a newer login's vc_session/vc_csrf (VC-R17).
 - operationId: listTrustedDevices
   method: GET
   path: /api/v1/auth/trusted-devices

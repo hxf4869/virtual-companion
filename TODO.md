@@ -130,6 +130,20 @@ fixture 构造后按真实语义改 503；同账号锚定用例基线即绿）�
 契约留待后续模块核查；真机浏览器验证仍为 Owner 人工项（不对应任何已勾选
 条目，不改变 DOGFOOD/Beta/CI 现状）。
 
+2026-10-21 会话撤销响应归属收口（VC-R17）：DELETE /api/v1/auth/sessions/
+{sessionId} 与 POST /api/v1/auth/sessions/revoke-all 成功响应不再携带任何
+Set-Cookie（single 只撤 owner 指定会话、独立 trusted-device 不动；all 原子
+撤销发起账号全部 opaque sessions 与 trusted-device；V116/V123 SQL 未动），
+迟到的旧成功不再删除较新登录的 vc_session/vc_csrf（及 trusted）。Go
+httptest+真实 cookiejar 闸门红→绿（single 2 条/all 3 条过期 Set-Cookie 的
+红证据；旧 token 401、非目标会话 200、trusted 可用性对照保持，不冒充
+SQL/RLS 集成验收）。OpenAPI 两 operation 补无 Cookie 语义并按真实
+owner-404 契约纠正 single 200 描述（store ErrNotFound→404，新增 404 条目），
+scope 两项仍 SIMPLIFY 且 currentH5Callers=[]、无 H5 入口，生成物工具再
+生成；前端本轮零改动。`scripts/check.sh --quick` PASS、`GOPROXY=off go test -C backend -mod=vendor -count=1 ./internal/httpapi` PASS（含新增 2 项护栏）。请求侧排序与其余 API Cookie
+竞态留待后续模块核查；真机浏览器验证仍为 Owner 人工项（不对应任何已勾选
+条目，不改变 DOGFOOD/Beta/CI 现状）。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

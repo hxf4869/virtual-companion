@@ -464,9 +464,12 @@ func (s *Server) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	if sid == p.SessionID {
-		s.clearSessionCookies(w)
-	}
+	// VC-R17: the store revoke above is the whole contract, even when the
+	// caller revoked its own session. The response sets no cookies: an
+	// expiring Set-Cookie is addressed by name and path only, so a delayed
+	// success response would delete whatever vc_session/vc_csrf a newer
+	// login has just installed. The revoked session's cookies left in the
+	// browser are inert until the next login overwrites them.
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -480,7 +483,13 @@ func (s *Server) handleRevokeAllSessions(w http.ResponseWriter, r *http.Request)
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.clearAllAuthCookies(w)
+	// VC-R17: every live opaque session and the trusted-device credential
+	// of the calling account were revoked server-side above. The response
+	// sets no cookies: an expiring Set-Cookie is addressed by name and
+	// path only, so a delayed success response would delete whatever
+	// vc_session/vc_csrf/vc_trusted_device a newer login has just
+	// installed. The revoked credentials left in the browser are inert
+	// until the next login overwrites them.
 	s.writeJSON(w, http.StatusOK, map[string]int{"revoked": n})
 }
 

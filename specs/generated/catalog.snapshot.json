@@ -1802,7 +1802,7 @@
             "method": "DELETE",
             "operationId": "revokeAuthSession",
             "path": "/api/v1/auth/sessions/{sessionId}",
-            "replacementOrImpact": "Retain single-session revocation without a current frontend entry."
+            "replacementOrImpact": "Retain single-session revocation without a current frontend entry. The success response sets no cookies (revocation stays server-side), so a delayed response cannot expire a newer login's vc_session/vc_csrf (VC-R17)."
           },
           {
             "currentH5Callers": [],
@@ -1810,7 +1810,7 @@
             "method": "POST",
             "operationId": "revokeAllAuthSessions",
             "path": "/api/v1/auth/sessions/revoke-all",
-            "replacementOrImpact": "Retain revoke-all as a backend security capability without a current frontend entry."
+            "replacementOrImpact": "Retain revoke-all as a backend security capability without a current frontend entry. The success response sets no cookies (revocation stays server-side), so a delayed response cannot expire a newer login's vc_session/vc_csrf (VC-R17)."
           },
           {
             "currentH5Callers": [
@@ -2259,7 +2259,7 @@
           }
         ]
       },
-      "sha256": "ec0ef053314a4e33bd04974398d89e6258ed441bea57595171248c2f0ee652ea"
+      "sha256": "970f29c4f108dd5378a3d0d27124347aad9e5779e2215979d8e16c876c8e9005"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

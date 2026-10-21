@@ -161,6 +161,26 @@ B 被清+拽回登录页（红），修复后停留 B 聊天页（既有「聊�
 PASS（含前端全量 709 项与 type-check）。请求侧排序、其余 API Cookie 竞态与全局 Bearer 契约留待后续模块核查；
 真机浏览器验证仍为 Owner 人工项。
 
+2026-10-21 会话撤销响应归属收口（VC-R17）：两个 Catalog SIMPLIFY 保留、
+无 H5 入口的后端安全接口（DELETE /api/v1/auth/sessions/{sessionId}、POST
+/api/v1/auth/sessions/revoke-all，前端本轮零改动）成功响应不再携带任何
+Set-Cookie——与 R12/R15/R16 同型竞态：single 自撤销原清 2 条、revoke-all
+原清 3 条过期 Cookie，按名+路径寻址会把较新登录刚装好的凭据从浏览器删掉。
+服务端撤销语义不变：single 只撤销 owner 指定会话（独立 trusted-device
+不动），all 原子撤销发起账号全部 opaque sessions 与 trusted-device
+（V116/V123 既有 SQL 未动）。Go httptest+真实 cookiejar 响应闸门先红
+（single：迟到 200 携带 2 条过期 Set-Cookie、B 新登录 GET /auth/session
+401；all：3 条且 B 的 vc_trusted_device 亦被删）后绿；对照保持：旧 token
+显式重放 401，single 后非目标另一会话仍 200、独立 trusted 仍免 TOTP，
+all 后两个旧会话均 401、旧 trusted 回 TOTP_REQUIRED（不冒充 SQL/RLS 集成
+验收）。OpenAPI 两 operation 补 200 无 Cookie 语义，single 200 的「or
+already absent」按真实 store ErrNotFound→404 NOT_FOUND_OR_FORBIDDEN 契约
+纠正并新增 404 条目（不扩大全局 Bearer）；scope 两项仍 SIMPLIFY 且
+currentH5Callers=[]，dist/snapshot 与 catalog.snapshot.json 工具再生成。
+验证：scripts/check.sh --quick PASS；GOPROXY=off go test -C backend -mod=vendor -count=1 ./internal/httpapi
+PASS（含新增 2 项护栏）。请求侧排序与其余 API Cookie 竞态留待后续模块
+核查；真机浏览器验证仍为 Owner 人工项。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

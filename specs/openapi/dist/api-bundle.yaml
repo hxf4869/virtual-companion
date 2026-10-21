@@ -2603,8 +2603,11 @@ paths:
     delete:
       operationId: revokeAuthSession
       summary: Revoke one opaque session
-      description: Revokes one owner-scoped opaque session. Revoking the current session clears vc_session but does not revoke
-        the independent trusted device.
+      description: 'Revokes exactly one owner-scoped opaque session; revoking the current session still revokes only that
+        session and never the independent trusted-device credential. The response sets no cookies: revocation stays server-side,
+        so a delayed success response must not delete the vc_session or vc_csrf a newer login has just installed; the revoked
+        cookie left in the browser is inert until the next login overwrites it. A foreign, absent or already-revoked session
+        id maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.'
       security:
       - cookieAuth: []
       parameters:
@@ -2615,7 +2618,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Revoked (or already absent)
+          description: Session revoked server-side; the response sets no cookies
           content:
             application/json:
               schema:
@@ -2626,17 +2629,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Session absent, already revoked or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/sessions/revoke-all:
     post:
       operationId: revokeAllAuthSessions
       summary: Log out every session and trusted device for the caller
-      description: Atomically revokes all live opaque sessions and all trusted-device TOTP bypass credentials, then clears
-        every authentication cookie.
+      description: 'Atomically revokes every live opaque session of the calling account and all trusted-device TOTP bypass
+        credentials. The response sets no cookies: revocation stays server-side, so a delayed success response must not delete
+        the vc_session, vc_csrf or vc_trusted_device a newer login has just installed; the revoked cookies left in the browser
+        are inert until the next login overwrites them.'
       security:
       - cookieAuth: []
       responses:
         '200':
-          description: Count of revoked live rows
+          description: Count of revoked live rows; revocation stays server-side and the response sets no cookies
           content:
             application/json:
               schema:
