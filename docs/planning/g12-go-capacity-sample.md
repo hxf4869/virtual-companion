@@ -174,8 +174,8 @@ OCI image size必须在补测后再冻结。旧 G1 数字只作历史背景，�
   已 `rm -f` 并确认不存在；镜像与构建缓存保留供复核。
 - 口径：本轮只补上 §5 第 3 项「测量实际 Go OCI runtime image」的镜像事实；
   镜像内 binary 为 strip 构建，与本文 16.59 MiB 未 strip host binary 属不同
-  口径，不计算比例。api-migration 空依赖 health 仅证明进程与 HTTP 存活，
-  不等同 full DB/MinIO/TLS 部署验收；上文 2026-08-30 三 trial 记录与当时的
-  `NOT_RUN` 表述按当时事实保留不变。unpacked rootfs 实际占用、10 分钟 idle、
-  retained-stack、PSS、real-provider dogfood 与 Owner gate 冻结仍开放，
-  G12 仍不据此标记完成。
+  口径，不计算比例。本轮未测 unpacked rootfs，未对该口径作结论。
+  api-migration 空依赖 health 仅证明进程与 HTTP 存活，不等同 full
+  DB/MinIO/TLS 部署验收；上文 2026-08-30 三 trial 记录与当时的 `NOT_RUN`
+  表述按当时事实保留不变。10 分钟 idle、retained-stack、PSS、real-provider
+  dogfood 与 Owner gate 冻结仍开放，G12 仍不据此标记完成。
