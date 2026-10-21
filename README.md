@@ -265,6 +265,19 @@ linux/arm64、chromium/390×844）：2 passed 0 failed rc=0（37.6s），
 端口释放与本轮容器 0 核验通过；其他旅程与引擎未跑，Owner/Beta/CI/
 真 provider 现状不变、不勾选。
 
+2026-10-21 消除 OpenAPI 同名 Schema 覆盖（VC-R26）：canonical
+`specs/openapi/virtual-companion.yaml` 的
+`components.schemas.MemoryAutoSavePref` 曾重复定义 2 次（仅
+description 不同），普通 PyYAML safe_load 静默取后者，违反
+YAML 1.2.2 §3.2.1.1 mapping 键唯一要求。删除前面被覆盖的 8 行定义、
+保留现生效后定义（V66 §7.4），未改自动记忆默认值/接受语义/RETIRE/
+其他 description，Go/前端零代码改动。验证：内联 yaml.compose 确认
+修复前全文档重复键仅此一组、修复后 0 组且该 schema 恰 1 次；
+safe_load 前后全树严格相等；dist 工具再生成后 api-bundle 与 HEAD
+语义严格相等（该 schema 块因 PyYAML 重复键保留首现插入顺序，从首现
+位置移至真实后位置，块内容逐字不变），snapshot 仅 source.sha256
+变；`scripts/check.sh --quick` 与 `git diff --check` PASS。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

@@ -239,6 +239,17 @@ nextStep=ACTIVE→首页且“验证登录”0 个；仅声明该观测，不外
 chromium/390×844）：2 passed 0 failed rc=0（37.6s）；端口释放、本轮
 容器 0 核验通过；不勾 Owner/Beta/CI/真机/真 provider。
 
+2026-10-21 消除 OpenAPI 同名 Schema 覆盖（VC-R26）：canonical 源
+`components.schemas.MemoryAutoSavePref` 重复定义 2 次（仅 description
+不同，safe_load 静默取后者，违反 YAML 1.2.2 §3.2.1.1 键唯一）；
+删除被覆盖的前 8 行定义、保留现生效后定义，safe_load 全树语义不变。
+验证：yaml.compose 全文档重复键修复前仅此一组/修复后 0 组、该
+schema 恰 1 次；safe_load 前后严格相等；dist 再生成 api-bundle 语义
+严格相等（仅该块位置随源键唯一化移动、块内容逐字不变），snapshot
+仅源 sha256 变；`scripts/check.sh --quick` 与 `git diff --check`
+PASS。不改自动记忆默认值/接受语义/RETIRE；Go/前端零改动，不勾
+Owner/Beta/CI/真 provider。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

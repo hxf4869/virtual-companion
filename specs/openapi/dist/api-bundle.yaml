@@ -4727,15 +4727,6 @@ components:
       properties:
         defaultIncognito:
           type: boolean
-    MemoryAutoSavePref:
-      type: object
-      description: The per-owner memory auto-save switch state (V66, §7.4).
-      required:
-      - enabled
-      properties:
-        enabled:
-          type: boolean
-          description: Whether the deterministic low-sensitivity auto-save rule is active for the owner.
     UsageReminderRequest:
       type: object
       description: Outcome of a continuous-use reminder.
@@ -5853,6 +5844,15 @@ components:
           type: string
           format: date-time
           description: Event expiry; once passed, reads lazily move the row to EXPIRED (§11.12 Event 到期, V61-style lazy sweep).
+    MemoryAutoSavePref:
+      type: object
+      description: The per-owner memory auto-save switch state (V66, §7.4).
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the deterministic low-sensitivity auto-save rule is active for the owner.
     MemoryAutoSaveRequest:
       type: object
       description: Body for flipping the memory auto-save switch.

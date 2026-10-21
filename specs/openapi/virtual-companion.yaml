@@ -5124,14 +5124,6 @@ components:
       properties:
         defaultIncognito:
           type: boolean
-    MemoryAutoSavePref:
-      type: object
-      description: Per-owner auto-memory extraction preference (missing reads as enabled).
-      required:
-        - enabled
-      properties:
-        enabled:
-          type: boolean
     UsageReminderRequest:
       type: object
       description: Outcome of a continuous-use reminder.
