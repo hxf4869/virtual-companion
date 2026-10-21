@@ -190,6 +190,21 @@ cookieAuth，注册面现为 62 cookieAuth + 8 public、零有效 Bearer；运�
 legacy 不代表现有 runtime。内联映射验证（70 路由=scope 集合、45→0、124
 operation 与其余字段不变）与 `scripts/check.sh --quick` 均 PASS。
 
+2026-10-21 SSE 机器契约与真实帧对齐（VC-R20）：GET /api/v1/realtime/
+streams/{generationId}（openRealtimeStream）按 Go v1 现状改写——删除 5 个
+退役 required ticket query 绑定（ticketId/secret/sessionId/origin/
+streamEpoch），保留 GenerationId；Last-Event-ID 为 optional header 且 Go
+忽略（本地伪序号，非持久游标）；Origin 明确为 optional header（缺失允许、
+有值须命中 allowlist 否则 403）。响应补真实 403/404/503，429 纠正为
+INVALID_REQUEST + 每代 8 个 live 订阅上限 + Retry-After 固定 1s。
+RealtimeStreamEvent 由 event/id/data 对象改为表示 SSE 文本流的 string
+schema（七事件名、{event,text}/{event} 两种 data JSON、无 id/epoch/seq、
+不按 Last-Event-ID 重放），200 媒体 example 给真实三帧（含空行）。退役
+POST tickets 与其两个 schema、其余 operation/security（R18 cookieAuth）
+未动；Go/前端零代码改动。dist 工具再生成；结构化 diff 确认全树仅此
+operation 与该 schema 变化，`scripts/check.sh --quick` 与
+`git diff --check` PASS。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

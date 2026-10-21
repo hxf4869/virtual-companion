@@ -167,6 +167,21 @@ github.com/minio/minio（2026-04-25）与 github.com/minio/mc（2026-07-14）已
 或接受 AIStor 条款。产品与测试零改动；专用端口与本轮容器清理复核通过。
 真实旅程、Owner 人工、真 provider/Beta/CI 现状不变、不勾选。
 
+2026-10-21 SSE 机器契约与真实帧对齐（VC-R20）：openRealtimeStream 的
+OpenAPI 契约按 Go v1 真实现对齐——删 5 个退役 required ticket query 绑定
+（ticketId/secret/sessionId/origin/streamEpoch）、保留 GenerationId，
+Last-Event-ID optional 且 Go 忽略（前端本地伪序号），Origin optional
+header（缺失允许、有值校验）；响应补 403/404/503，429 纠正为
+INVALID_REQUEST（每代 8 live 订阅上限、Retry-After 固定 1s）；
+RealtimeStreamEvent 改为 string 型 SSE 文本流 schema（七事件、两种 data
+JSON 形状、无 id/epoch/seq 重放），200 example 给真实三帧。退役 POST
+tickets 与其 schema、其余 operation/security 未动；Go/前端零代码改动
+（前端只读核查确认仅发 generationId+cookie、不解析 SSE id: 行、七事件
+白名单、无退役协议生产残余）。dist 工具再生成；结构化 diff 确认仅该
+operation 与该 schema 变化，`scripts/check.sh --quick` 与
+`git diff --check` PASS；R19 旅程 NOT_RUN 现状不变，不勾选任何
+Owner/Beta/CI 条目。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

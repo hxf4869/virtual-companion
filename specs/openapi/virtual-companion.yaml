@@ -1569,78 +1569,73 @@ paths:
   /api/v1/realtime/streams/{generationId}:
     get:
       operationId: openRealtimeStream
-      summary: Open the Fetch-SSE resume stream for a generation
+      summary: Open the authenticated Fetch-SSE stream for a generation
       description: >-
-        Retired pre-cutover behavior: opens the Fetch-SSE resume stream bound
-        to a single-use ticket from POST /api/v1/realtime/tickets.
-        vc.consume_realtime_ticket validates the secret (sha256-only stored),
-        the boundTo seven-tuple, single-use and the 45s TTL, failing closed on
-        any mismatch. Go v1 (ADR-0007, SIMPLIFY): same path, no ticket; the
-        connection uses the opaque session cookie, Origin check and owner
-        authorization, then a snapshot reconnect. Ticket query parameters and
-        stream.gap/stream.reset belong only to the retired protocol. The owner is taken from the
-        server-verified principal and never from the query; transport is fixed
-        to FETCH_SSE. The retired resume cursor afterSeq is carried by the
-        SSE-standard Last-Event-ID header (defaulting to 0 when absent);
-        ticketId, secret, sessionId, origin and streamEpoch are bound via query
-        parameters — the secret is a short-lived single-use credential, not the
-        long-lived token forbidden in the realtime query (h5Security). The retired
-        vc.resume_stream returns one of five dispositions, mapped to SSE events:
-        RESUMED and TERMINAL_SNAPSHOT emit the ordered durable events (and the
-        committed snapshot for a terminal generation) then complete; GAP_EXPIRED
-        emits stream.gap; RESET_REQUIRED emits stream.reset; a foreign or absent
-        generation, or any ticket-consume failure, emits stream.denied so
-        existence is never disclosed. A 400 INVALID_REQUEST is returned only
-        before the stream opens, for a malformed or missing parameter.
+        Go v1 (ADR-0007, catalog SIMPLIFY): authenticated SSE with snapshot
+        reconnect — same path, no ticket. Authentication is the opaque session
+        cookie; the owner is the server-verified principal, never a request
+        field; transport is fixed to FETCH_SSE. On open, a generation with a
+        live hub entry sends the in-memory snapshot catch-up first and then
+        live deltas; a generation with no live entry replays the durable
+        snapshot, plus its terminal event when the generation already ended.
+        On a live terminal the server re-reads the committed snapshot and,
+        only when that read succeeds, replays it before the single terminal
+        event. Reconnect by re-issuing this GET and
+        consuming the snapshot again; there is no durable resume cursor and no
+        guaranteed frame set — a stream opened mid-generation may never carry
+        chat.accepted, and a dropped connection ends without a terminal event.
+        Errors are returned only before the stream opens; afterwards the
+        connection simply ends. Retired pre-cutover: single-use tickets
+        (POST /api/v1/realtime/tickets) with ticket query binding and
+        stream.gap/stream.reset/stream.denied events.
       security:
         - cookieAuth: []
       parameters:
         - $ref: '#/components/parameters/GenerationId'
-        - name: ticketId
-          in: query
-          required: true
-          schema:
-            type: string
-          description: The server-assigned id of the resume ticket to consume
-        - name: secret
-          in: query
-          required: true
-          schema:
-            type: string
-          description: One-time plaintext ticket secret (sha256-only persisted)
-        - name: sessionId
-          in: query
-          required: true
-          schema:
-            type: string
-          description: The caller's realtime session id (must match the ticket binding)
-        - name: origin
-          in: query
-          required: true
-          schema:
-            type: string
-          description: The origin the SSE resume is opened from (must match the ticket binding)
-        - name: streamEpoch
-          in: query
-          required: true
-          schema:
-            type: string
-          description: The stream epoch the caller last observed (must match the ticket binding)
         - name: Last-Event-ID
           in: header
           required: false
           schema:
             type: string
-          description: The last contiguous eventSeq the caller advanced to (defaults to 0)
+          description: >-
+            Accepted for SSE-standard compatibility but ignored by the Go
+            runtime; it is not a durable resume cursor. Clients use it only
+            for local pseudo-sequencing and diagnostics. Reconnect by
+            re-issuing this GET and consuming the snapshot frames.
+        - name: Origin
+          in: header
+          required: false
+          schema:
+            type: string
+          description: >-
+            The standard Origin header, not a query parameter. Browsers omit
+            it on same-origin GETs, so absence is allowed; when present it
+            must match the configured allowlist exactly or the request is
+            rejected with 403 ACCESS_DENIED before the stream opens.
       responses:
         '200':
-          description: The Fetch-SSE resume stream opened (text/event-stream)
+          description: >-
+            The stream opened (text/event-stream; Cache-Control: no-store).
+            The body is the SSE frame sequence described by
+            RealtimeStreamEvent.
           content:
             text/event-stream:
               schema:
                 $ref: '#/components/schemas/RealtimeStreamEvent'
+              example: |+
+                event: chat.snapshot
+                data: {"event":"chat.snapshot","text":"Hello"}
+
+                event: chat.delta
+                data: {"event":"chat.delta","text":" there"}
+
+                event: chat.completed
+                data: {"event":"chat.completed"}
+
         '400':
-          description: Malformed or missing parameter before the stream opened
+          description: >-
+            INVALID_REQUEST — malformed generationId, rejected before the
+            stream opened
           content:
             application/json:
               schema:
@@ -1651,14 +1646,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            ACCESS_DENIED — Origin header present but not in the configured
+            allowlist, rejected before the stream opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '429':
-          description: RATE_LIMITED — shared per-owner concurrent SSE lease limit reached
+          description: >-
+            INVALID_REQUEST — this generation already holds its cap of 8 live
+            subscribers (per-generation, not per-owner). Retry after the
+            Retry-After interval, fixed at 1 second.
           headers:
             Retry-After:
-              description: Seconds until the caller should retry
+              description: Fixed 1-second retry delay before re-issuing this GET
               schema:
                 type: integer
                 minimum: 1
+                maximum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: >-
+            INVALID_REQUEST — session lookup, snapshot store or the live hub
+            temporarily unavailable, rejected before the stream opened
           content:
             application/json:
               schema:
@@ -5480,29 +5501,21 @@ components:
           type: string
           description: One-time plaintext secret (sha256-only persisted)
     RealtimeStreamEvent:
-      type: object
+      type: string
       description: >-
-        A single Server-Sent Event on the resume stream (text/event-stream).
-        event is one of the durable realtime event types (chat.accepted,
-        safety.notice, ...), snapshot for a terminal generation, or the control
-        events stream.gap, stream.reset and stream.denied. id carries the
-        eventSeq for a durable event so the client advances only the last
-        contiguous sequence (INV-RT-001); the data payload is the envelope
-        object produced by vc.resume_stream. stream.denied never discloses
-        whether the cause was a ticket failure or a foreign/absent generation.
-      required:
-        - event
-      properties:
-        event:
-          type: string
-          description: The SSE event name (durable event type, snapshot, or stream.gap/reset/denied)
-        id:
-          type: string
-          description: The eventSeq for a durable event (the Last-Event-ID cursor)
-        data:
-          type: object
-          additionalProperties: true
-          description: The event payload (envelope-encoded) or the snapshot object
+        The text/event-stream response body of openRealtimeStream — a
+        concatenated sequence of SSE frames, not a JSON envelope. Each frame
+        is "event: NAME\ndata: <single-line JSON>\n\n" with a blank line
+        terminating the frame; the event name inside the data JSON always
+        matches the SSE event line. Seven public event names exist:
+        chat.accepted, chat.snapshot, chat.delta, chat.completed,
+        chat.blocked, chat.failed and chat.cancelled. chat.snapshot and
+        chat.delta carry the data JSON {"event":NAME,"text":"..."}; the other
+        five carry {"event":NAME} with no text field. The Go runtime writes
+        no SSE id, epoch or seq and does not replay from Last-Event-ID —
+        reconnection re-attaches via the snapshot. Long text is split at
+        UTF-8 boundaries into frames of at most 16 KiB each; a split
+        snapshot continues as chat.delta frames.
     Message:
       type: object
       description: A chat message owned by exactly one user within a conversation.
