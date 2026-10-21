@@ -205,6 +205,24 @@ POST tickets 与其两个 schema、其余 operation/security（R18 cookieAuth）
 operation 与该 schema 变化，`scripts/check.sh --quick` 与
 `git diff --check` PASS。
 
+2026-10-21 恢复可复现本地 E2E 验收环境（VC-R21）：R19 证实的 MinIO/mc
+pinned OCI 镜像不可得，按改获取路径处理——新增 E2E 专用
+`scripts/dev/Dockerfile.e2e-minio-tools`（scratch、arm64/amd64 双消费者
+stage、`ADD --checksum` 固定官方 GitHub Release 静态二进制：minio
+RELEASE.2025-09-07T16-13-09Z、mc RELEASE.2025-08-13T08-35-41Z；非重建
+原 OCI digest），`scripts/dev/e2e-stack.sh` 改为 stdin Dockerfile 空
+context 构建并经 --iidfile 把同一不可变 id 共享给 MinIO 与 mc（PG 镜像
+不动）；scratch 无 shell，mc 改用标准 config v10 私有 JSON（0600 单文件
+只读 bind + --config-dir、MC_UPDATE/MINIO_UPDATE=off），凭据不进
+argv/日志/镜像层，bucket 初始化 rc 受检。验证（本机 linux/arm64，amd64
+stage 存在但本轮未构建/执行）：两二进制 --version 与
+pin 一致；隔离冒烟 health/mb/ls 通过；真实旅程 03-home-chat（chromium、
+workers 1、trace off、专用端口 5197/18087/18437/19097、MinIO 随机
+loopback）1 passed 0 failed rc=0，栈清理核验通过；`scripts/check.sh
+--quick` 与 `git diff --check` PASS。R19 NOT_RUN 历史保留；MinIO 上游
+归档/生产存储选型仍为 Owner 统一处理项；其他旅程与引擎未跑，
+Owner/Beta/CI/真 provider 现状不变、不勾选。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

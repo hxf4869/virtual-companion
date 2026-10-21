@@ -182,6 +182,24 @@ operation 与该 schema 变化，`scripts/check.sh --quick` 与
 `git diff --check` PASS；R19 旅程 NOT_RUN 现状不变，不勾选任何
 Owner/Beta/CI 条目。
 
+2026-10-21 恢复可复现本地聊天验收环境（VC-R21）：修复 R19 确证的 E2E
+准备故障，默认入口恢复可用。pinned OCI 镜像不可得属获取路径改变：新增
+E2E-only `scripts/dev/Dockerfile.e2e-minio-tools`（scratch、arm64/amd64
+双消费者 stage、`ADD --checksum` 固定官方 GitHub Release 同版本静态
+二进制 minio RELEASE.2025-09-07T16-13-09Z 与 mc
+RELEASE.2025-08-13T08-35-41Z、按 TARGETARCH 选 stage，非重建原 OCI
+digest）；`scripts/dev/e2e-stack.sh` 以 stdin 空 context 构建并经
+--iidfile 共享真实 image id（trap 清理），MinIO/mc 同镜像、PG 固定镜像
+不动；mc 改只读私有 config v10（0600/0700）+ --config-dir、禁更新检查，
+凭据不进 argv/日志/镜像层，bucket 初始化 rc 受检。验证均在本机
+linux/arm64：两二进制 --version 与官方固定版本一致；隔离冒烟
+health/mb/ls 与真实旅程 03-home-chat（chromium、专用端口
+5197/18087/18437/19097）rc=0、1 passed 0 failed，栈清理核验通过；
+quick/bash -n/git diff --check 均 PASS；amd64 stage 存在但本轮未构建/
+执行，不等于两架构验证通过。R19 NOT_RUN 保留；MinIO 上游归档与生产
+存储选型仍为 Owner 待统一处理；其余旅程未跑，不勾 Owner/Beta/CI/真
+provider。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

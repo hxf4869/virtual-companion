@@ -25,8 +25,7 @@ E2E_MINIO_ACCESS_KEY="e2e-minio-access"
 E2E_MINIO_SECRET_KEY="e2e-minio-secret-0123456789"
 E2E_MINIO_BUCKET="vc-e2e-exports"
 PG_IMAGE="pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0"
-MINIO_IMAGE="minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
-MC_IMAGE="minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+E2E_MINIO_TOOLS_DOCKERFILE="scripts/dev/Dockerfile.e2e-minio-tools"
 PG_CONTAINER="vc-e2e-pg-$$"
 MINIO_CONTAINER="vc-e2e-minio-$$"
 E2E_DOCKER_CONTEXT="${E2E_DOCKER_CONTEXT:-orbstack}"
@@ -34,7 +33,8 @@ DOCKER=(docker --context "$E2E_DOCKER_CONTEXT")
 E2E_STACK_STATE_FILE="${E2E_STACK_STATE_FILE:-/tmp/vc-e2e-stack-$$.json}"
 E2E_AUTH_MATERIAL_FILE="${E2E_STACK_STATE_FILE}.auth.json"
 E2E_SECRET_DIR=""
-MINIO_MC_SECRET_FILE=""
+MINIO_MC_CONFIG_FILE=""
+E2E_MINIO_TOOLS_IIDFILE=""
 PROVIDER_LOG="/tmp/vc-e2e-provider-$$.log"
 RUNTIME_LOG="/tmp/vc-e2e-runtime-$$.log"
 H5_LOG="/tmp/vc-e2e-h5-$$.log"
@@ -95,6 +95,7 @@ cleanup() {
         rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" \
             "$E2E_AUTH_MATERIAL_FILE" "$GO_BINARY"
         rm -f -- "${E2E_STACK_STATE_FILE}".shared-*.json
+        [ -z "$E2E_MINIO_TOOLS_IIDFILE" ] || rm -f -- "$E2E_MINIO_TOOLS_IIDFILE"
         [ -z "$E2E_SECRET_DIR" ] || rm -rf -- "$E2E_SECRET_DIR"
     else
         echo "keeping stack: pg($PG_CONTAINER) minio($MINIO_CONTAINER) provider(:$E2E_PROVIDER_PORT) runtime(:$E2E_RUNTIME_PORT) h5(:$E2E_H5_PORT)" >&2
@@ -104,7 +105,7 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 E2E_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vc-e2e-secrets.XXXXXX")"
-MINIO_MC_SECRET_FILE="$E2E_SECRET_DIR/minio-mc"
+MINIO_MC_CONFIG_FILE="$E2E_SECRET_DIR/config.json"
 
 if ! write_state; then
     echo "failed to create the E2E stack state file" >&2
@@ -140,12 +141,49 @@ if [ "$PG_READY" != "1" ]; then
     exit 5
 fi
 
+echo "== build e2e minio tools image =="
+# The pinned upstream MinIO/mc OCI images became unobtainable (VC-R19).
+# Build the E2E-only scratch image from the same official sha256-pinned
+# release binaries and share the resulting immutable image id between the
+# MinIO server and the mc bootstrap container. Rebuilds hit the
+# content-addressed build cache. The empty stdin context keeps this
+# repository and the secret dir out of the build.
+E2E_MINIO_TOOLS_IIDFILE="${TMPDIR:-/tmp}/vc-e2e-minio-tools-$$.iid"
+if ! "${DOCKER[@]}" build \
+    --iidfile "$E2E_MINIO_TOOLS_IIDFILE" \
+    - <"$E2E_MINIO_TOOLS_DOCKERFILE" >/dev/null; then
+    echo "e2e minio tools image build failed" >&2
+    exit 5
+fi
+MINIO_IMAGE="$(cat "$E2E_MINIO_TOOLS_IIDFILE" 2>/dev/null || true)"
+MC_IMAGE="$MINIO_IMAGE"
+if [ -z "$MINIO_IMAGE" ]; then
+    echo "e2e minio tools image build produced no image id" >&2
+    exit 5
+fi
+
 echo "== isolated minio =="
 chmod 700 "$E2E_SECRET_DIR"
-printf '%s\n%s\n%s\n' \
-    "http://127.0.0.1:9000" "$E2E_MINIO_ACCESS_KEY" "$E2E_MINIO_SECRET_KEY" \
-    > "$MINIO_MC_SECRET_FILE"
-chmod 600 "$MINIO_MC_SECRET_FILE"
+# Standard mc config (version 10) for the pinned mc release. The scratch
+# image has no shell, so mc consumes this read-only bind instead of the old
+# `alias set` script; credentials stay out of argv, logs and image layers.
+# Only config.json is bind-mounted: mc also creates auxiliary dirs (share/)
+# under its config dir, which land in the ephemeral container layer.
+printf '%s\n' \
+    '{' \
+    '  "version": "10",' \
+    '  "aliases": {' \
+    '    "e2e": {' \
+    '      "url": "http://127.0.0.1:9000",' \
+    "      \"accessKey\": \"$E2E_MINIO_ACCESS_KEY\"," \
+    "      \"secretKey\": \"$E2E_MINIO_SECRET_KEY\"," \
+    '      "api": "S3v4",' \
+    '      "path": "auto"' \
+    '    }' \
+    '  }' \
+    '}' \
+    > "$MINIO_MC_CONFIG_FILE"
+chmod 600 "$MINIO_MC_CONFIG_FILE"
 "${DOCKER[@]}" rm -f "$MINIO_CONTAINER" >/dev/null 2>&1 || true
 "${DOCKER[@]}" run -d --name "$MINIO_CONTAINER" \
     -p 127.0.0.1::9000 \
@@ -172,23 +210,20 @@ if [ "$MINIO_READY" != "1" ]; then
     "${DOCKER[@]}" logs "$MINIO_CONTAINER" 2>&1 | tail -20 >&2
     exit 5
 fi
-"${DOCKER[@]}" run --rm --entrypoint /bin/sh \
+if ! "${DOCKER[@]}" run --rm --entrypoint /bin/mc \
     --network "container:$MINIO_CONTAINER" \
-    -v "$MINIO_MC_SECRET_FILE:/run/secrets/vc-mc:ro" \
-    "$MC_IMAGE" -c '
-set -eu
-{
-    IFS= read -r mc_endpoint
-    IFS= read -r mc_access_key
-    IFS= read -r mc_secret_key
-} < /run/secrets/vc-mc
-mc alias set local "$mc_endpoint" "$mc_access_key" "$mc_secret_key" >/dev/null
-mc mb --ignore-existing "local/$1" >/dev/null
-' vc-e2e-mc "$E2E_MINIO_BUCKET"
-rm -f -- "$MINIO_MC_SECRET_FILE"
+    -e MC_UPDATE=off \
+    -e MINIO_UPDATE=off \
+    -v "$MINIO_MC_CONFIG_FILE:/mc-config/config.json:ro" \
+    "$MC_IMAGE" --config-dir /mc-config \
+    mb --ignore-existing "e2e/$E2E_MINIO_BUCKET" >/dev/null; then
+    echo "e2e minio bucket bootstrap failed" >&2
+    exit 5
+fi
+rm -f -- "$MINIO_MC_CONFIG_FILE"
 rmdir "$E2E_SECRET_DIR"
 E2E_SECRET_DIR=""
-MINIO_MC_SECRET_FILE=""
+MINIO_MC_CONFIG_FILE=""
 
 echo "== isolated migrator/runtime database roles =="
 "${DOCKER[@]}" exec -i \
