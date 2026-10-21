@@ -373,6 +373,27 @@ PG 只读查询仅经 stack-state 公共元数据访问本轮自有隔离容器�
 合成数据，非真机/跨账号/生产验收。栈清理核验：state/auth/shared/iid
 无残留、5197/18087/18437/19097 四端口释放、本轮容器 0。
 
+2026-10-22 核心页三档视口布局验收（VC-R33）：08-accessibility 新增独立
+"current product fits required viewports" case（原 a11y case、Axe 与
+成功态等待逐字保留）。DESIGN §11 三档 320×568/390×844/430×932 经
+setViewportSize 显式设置并断言 innerWidth/innerHeight 实际到位；匿名
+无 cookie context 先审 login 三档，随后仅一次 chat 共享 cookie 会话
+（零新增登录/challenge）走 home/chat/conversations/account × 三档，
+每档复用 expectContentLoaded 成功态门。针对 ConsumerShell
+overflow-x:clip 与 VcChatShell overflow:hidden 使 scrollWidth 恒过的
+盲区，几何断言改读元素包围盒：可见 main 左右入画布（不断言长页底边）、
+底栏三项（按 .vc-bottom-nav__item 计数——uni-h5 渲染 uni-button，非
+HTML button）等宽 ±1px、图标/标签在自身格子与画布内、nav 底边贴合
+视口、chat composer/input/send 入画布且不盖 nav；conversations 为
+二级页断言底栏不重复出现。30 张截图（15/引擎）先于断言留证于 run
+输出目录（--output 重定向 repo 外）。一次通过：--list 恰 4 例（原
+Axe 2+新 layout 2）后正式 run 4 passed 0 failed rc=0（47.5s 含栈冷
+启动；新 case webkit 2.2s、chromium 2.4s）。前端 710/type-check 沿用
+R30（src 输入未变）。属 Playwright 视口+UA/touch 仿真（重置 CSS
+viewport），非真机键盘/安全区/屏幕圆角验收，数据为本地合成。栈清理
+核验：state/auth/shared 无残留、5197/18087/18437/19097 四端口释放、
+本轮容器 0；不勾 Owner/Beta/CI/真机。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。
