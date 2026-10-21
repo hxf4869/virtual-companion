@@ -89,9 +89,10 @@ DOGFOOD/Beta/CI 现状）。
 2026-10-21 二级页直接入口返回闭环（VC-R14）：navigate.ts 的 goBack 在
 uni-h5 页面栈仅剩当前页（直接打开/刷新二级页）时不再走 navigateBack
 （安装版会钳 delta=0 → history.go(0) 原地整页重载、不进 fail），改走
-所属 tab 根 redirectTo；getCurrentPages 取 uni 成员或全局函数（uni-h5
-实为全局函数）。新增 navigate.spec 3 用例（栈 1 走回退／栈 2 照常弹
-栈／栈不可观测保持委托），699 项前端测试与 type-check 通过。浏览器
+所属 tab 根 redirectTo；只读 uni-h5 实际提供的全局 getCurrentPages
+（缺席时保持原委托）。新增 navigate.spec 3 用例（栈 1 走回退／栈 2 照常
+弹栈／栈不可观测保持委托，均 stub 真实全局形态），699 项前端测试与
+type-check 通过。浏览器
 390x844 合成 mock（session vcr14，/api/v1 fail-closed 拦截）：直接入口
 companion/memory 点击返回先 RED（原地整页重载、栈 1 不动、零报错），
 修复后均回「我的」；栈 2 正常返回与 chat（redirectTo 进入栈 1、返回

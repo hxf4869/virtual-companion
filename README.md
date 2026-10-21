@@ -107,8 +107,8 @@ navigateBack 在页面栈仅剩当前页时把 delta 钳成 0 并 history.go(0) 
 整页重载（不进 fail、无任何报错；浏览器 history.length 与 app 页面栈
 无关），直接打开 /#/pages/companion/companion 或 /#/pages/memory/memory
 时 [data-testid=page-back] 因此失效。navigate.ts 的 goBack 现于页面栈
-可得且长 ≤1 时改走所属 tab 根回退（getCurrentPages 取 uni 成员或全局
-函数——uni-h5 实为全局函数而非 uni 成员）。浏览器 390x844 合成 mock
+可得且长 ≤1 时改走所属 tab 根回退（只读 uni-h5 实际提供的全局
+getCurrentPages，缺席时保持原 navigateBack 委托）。浏览器 390x844 合成 mock
 实测（session vcr14，/api/v1 全拦截 fail-closed）：直接入口点击返回先
 RED（原地整页重载、栈 1 不动、零报错），修复后 companion/memory 均回
 「我的」（SPA 替换无重载）；正常 我的→陪伴设置 栈 2 返回与 chat

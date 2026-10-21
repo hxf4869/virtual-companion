@@ -62,14 +62,11 @@ describe("shared page navigation", () => {
   it("pops the uni stack with navigateBack when a parent page exists", () => {
     const navigateBack = vi.fn();
     const redirectTo = vi.fn();
-    vi.stubGlobal("uni", {
-      navigateBack,
-      redirectTo,
-      getCurrentPages: () => [
-        { route: "pages/account/account" },
-        { route: "pages/companion/companion" },
-      ],
-    });
+    vi.stubGlobal("uni", { navigateBack, redirectTo });
+    vi.stubGlobal("getCurrentPages", () => [
+      { route: "pages/account/account" },
+      { route: "pages/companion/companion" },
+    ]);
 
     goBack("/pages/account/account");
 
