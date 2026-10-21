@@ -343,6 +343,12 @@ NOT_COMPLETE；修正（含 READY 有效期内隐私检查）后 13×2 PASS（ru
 iid 无残留、5197/18087/18437/19097 四端口释放、本轮容器 0；不勾
 Owner/Beta/CI/真机。
 
+2026-10-21 Go 镜像实测（VC-R31）：`backend/Dockerfile` 按 OrbStack linux/arm64
+真实构建 rc=0，inspect.Size（packed resources）9,401,540 bytes ≈ 8.97 MiB、
+USER vc；api-migration 空依赖 `--network none` 隔离容器 health 200/UP、
+healthcheck healthy、非 root。属当前 package 启动验证，非 full DB/MinIO/TLS
+部署验收；事实与口径见 [`docs/planning/g12-go-capacity-sample.md`](docs/planning/g12-go-capacity-sample.md) §6。
+
 项目仍未达到公开生产可发布条件；provider 条款/revision/费用外发、真实用户
 Beta 前置、真机 IME 与无障碍等 Owner 人工项仍开放，见 [`TODO.md`](TODO.md)。
 CI 远端运行 NOT_RUN（CI 仅由 `main` 触发；工作分支已推送但不触发 CI）。

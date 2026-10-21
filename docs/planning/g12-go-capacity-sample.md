@@ -152,3 +152,30 @@ OCI image size必须在补测后再冻结。旧 G1 数字只作历史背景，�
 3. 测量实际 Go OCI runtime image，而不是用 host binary 冒充；
 4. 在获得真实 provider 凭据与费用授权后执行 Go-only dogfood；
 5. 结合完整核心旅程与以上 gate 决定 G12 验收，届时才可推进破坏性的 G13。
+
+## 6. 2026-10-21 补充：实际 Go OCI 镜像构建与隔离探活（VC-R31）
+
+- `backend/Dockerfile` 在 OrbStack Docker 29.4.0（linux/arm64）按现状实际构建
+  成功（`docker --context orbstack build --platform=linux/arm64`，未加 tag，
+  未覆盖 `virtual-companion-runtime:local`），rc=0；镜像
+  `sha256:9326d87870b0bd954edff4e9798fab1a3e8d0598b0c414f36aafcf45c97440e7`，
+  `Os=linux`、`Architecture=arm64`、`Size=9,401,540 bytes ≈ 8.97 MiB`
+  （当前 Docker 29.4.0 / containerd 后端 `inspect.Size` 的打包资源大小
+  packed resources，选中 linux/arm64，含描述符/清单/配置/压缩层的该 API
+  口径；依据固定版本 GitCommit `daa0cb7f` 官方源码
+  <https://github.com/moby/moby/blob/daa0cb7f/daemon/containerd/image_inspect.go#L45>
+  与同文件 L174-198），不是未压缩 rootfs、实际网络下载流量或多架构
+  manifest 总量，`Config.User=vc`。
+- 隔离探活：短命容器 `-d --network none --pull=never -e VC_MODE=api-migration`
+  （其余默认、DSN 空、provider 默认 disabled，无 `-p`/`-v`），容器内 wget
+  `http://127.0.0.1:8080/actuator/health` 实际返回 `HTTP/1.1 200 OK` 与
+  `{"status":"UP"}`，镜像内置 healthcheck 达到 `healthy`；确认
+  `NetworkMode=none`、`PortBindings={}`、`id -u=100`（非 root）。探活容器
+  已 `rm -f` 并确认不存在；镜像与构建缓存保留供复核。
+- 口径：本轮只补上 §5 第 3 项「测量实际 Go OCI runtime image」的镜像事实；
+  镜像内 binary 为 strip 构建，与本文 16.59 MiB 未 strip host binary 属不同
+  口径，不计算比例。api-migration 空依赖 health 仅证明进程与 HTTP 存活，
+  不等同 full DB/MinIO/TLS 部署验收；上文 2026-08-30 三 trial 记录与当时的
+  `NOT_RUN` 表述按当时事实保留不变。unpacked rootfs 实际占用、10 分钟 idle、
+  retained-stack、PSS、real-provider dogfood 与 Owner gate 冻结仍开放，
+  G12 仍不据此标记完成。
