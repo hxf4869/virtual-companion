@@ -1,11 +1,25 @@
+import { execFile as execFileCallback } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
+
 import { expect, test, type Page } from "@playwright/test";
 
-import { navigateToPage, openSharedSession } from "../helpers";
+import {
+  getDefaultRelationshipId,
+  navigateToPage,
+  openSharedSession,
+  prepareGenerationAccess,
+  PROVIDER_REPLY,
+  sessionRequest,
+  waitForGenerationTerminal,
+} from "../helpers";
 
 /**
  * DOGFOOD-xx companion + memory settings journeys: the two pages added with
- * the audit-remediation round. They drive only visible product UI against the
- * isolated synthetic stack — no provider calls are involved.
+ * the audit-remediation round. The first two journeys drive only visible
+ * product UI with no provider calls; the autosave journey additionally sends
+ * two real synthetic chat turns through the loopback provider to verify the
+ * saved, later-recalled and disabled behaviours end to end.
  */
 
 /** uni-app renders <input> as a wrapper custom element; fill whichever level
@@ -80,6 +94,269 @@ test("memory page autosave toggle round-trips through the server", async ({ page
 
   // A fresh user has no memories yet: the empty state renders.
   await expect(page.getByTestId("memory-empty")).toBeVisible();
+
+  // Restore the default so the shared seeded user keeps its baseline state.
+  await page.getByTestId("autosave-toggle").click();
+  await expect(page.getByTestId("autosave-toggle")).toHaveAttribute("aria-checked", "true");
+});
+
+// The loopback provider derives the extraction item from the user's own first
+// clause containing the trigger keyword; the server then requires the summary
+// to be the「用户」prefix plus that verbatim span.
+const AUTOSAVE_FACT_A = "我喜欢周末去户外徒步，人少的时候最舒服";
+const AUTOSAVE_SUMMARY_A = "用户我喜欢周末去户外徒步";
+const AUTOSAVE_FACT_B = "我最近迷上了户外骑行，绕湖最舒服";
+const AUTOSAVE_SUMMARY_B = "用户我最近迷上了户外骑行";
+
+const MEMORY_BLOCK_BEGIN = "[VC_MEMORY_DATA_BEGIN]";
+const MEMORY_BLOCK_END = "[VC_MEMORY_DATA_END]";
+
+interface ProviderLogEntry {
+  kind?: unknown;
+  messages?: unknown;
+}
+
+function entryMessages(entry: ProviderLogEntry | undefined): Array<{ content?: unknown }> {
+  if (!entry || !Array.isArray(entry.messages)) return [];
+  return entry.messages as Array<{ content?: unknown }>;
+}
+
+function messageText(message: { content?: unknown }): string {
+  return typeof message.content === "string" ? message.content : "";
+}
+
+/** The dedicated memory block is its own system message fenced by the
+ * VC_MEMORY_DATA markers; only text inside the fence counts as recall. */
+function memoryBlockFence(content: string): string {
+  const begin = content.indexOf(MEMORY_BLOCK_BEGIN);
+  const end = content.indexOf(MEMORY_BLOCK_END);
+  if (begin < 0 || end < begin) return "";
+  return content.slice(begin + MEMORY_BLOCK_BEGIN.length, end);
+}
+
+/** Send one synthetic turn through the real chat UI and return the server's
+ * generation id (an opaque id string, never a rounded number). */
+async function sendChatTurn(page: Page, text: string): Promise<string> {
+  const accepted = page.waitForResponse(
+    (response) => response.request().method() === "POST"
+      && /\/api\/v1\/conversations\/\d+\/generations$/.test(new URL(response.url()).pathname),
+  );
+  await page.locator('[data-testid="message-input"] textarea').fill(text);
+  await page.getByTestId("send").click();
+  const response = await accepted;
+  expect(response.ok(), `generation create failed: ${response.status()}`).toBeTruthy();
+  const generationId = String(
+    ((await response.json()) as { generationId?: unknown })?.generationId ?? "",
+  );
+  expect(generationId, "generation create returned no id").not.toBe("");
+  return generationId;
+}
+
+function generationStatus(body: unknown): string {
+  return String((body as { status?: unknown } | null)?.status ?? "");
+}
+
+/** Extraction runs as its own job after the turn completes; wait for the
+ * saved row through the product memories API before asserting the page. */
+async function waitForAutoSavedMemory(
+  page: Page,
+  relationshipId: string,
+  summary: string,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 20_000) {
+    const list = await sessionRequest(
+      page,
+      "GET",
+      `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories`,
+    );
+    if (list.ok && Array.isArray(list.body)) {
+      const found = (list.body as Array<{ summary?: unknown; status?: unknown; autoSaved?: unknown }>)
+        .some((item) => item.summary === summary && item.status === "ACCEPTED" && item.autoSaved === true);
+      if (found) return;
+    }
+    await page.waitForTimeout(250);
+  }
+  throw new Error(`auto-saved memory did not appear via the memories API within 20s`);
+}
+
+interface StackState {
+  container: string;
+  dockerContext: string;
+}
+
+async function readStackState(): Promise<StackState> {
+  const stateFile = process.env.E2E_STACK_STATE_FILE;
+  if (!stateFile) throw new Error("E2E_STACK_STATE_FILE is required to locate the stack PG");
+  const state = JSON.parse(await readFile(stateFile, "utf8")) as {
+    container?: unknown;
+    dockerContext?: unknown;
+  };
+  const container = String(state.container ?? "");
+  const dockerContext = String(state.dockerContext ?? "");
+  if (!container || !dockerContext) throw new Error("stack state lacks PG container metadata");
+  return { container, dockerContext };
+}
+
+/** One read-only status|close_reason row for the turn's MEMORY_EXTRACT job,
+ * straight from this stack's own isolated PG container. */
+async function queryMemoryExtractJob(
+  state: StackState,
+  owner: string,
+  generationId: string,
+): Promise<string> {
+  if (!/^\d+$/.test(owner) || !/^\d+$/.test(generationId)) {
+    throw new Error("memory-extract job query requires numeric ids");
+  }
+  const execFile = promisify(execFileCallback);
+  const { stdout } = await execFile(
+    "docker",
+    [
+      "--context", state.dockerContext,
+      "exec", state.container,
+      "psql", "-U", "postgres", "-d", "vc", "-tAc",
+      "SELECT status || '|' || coalesce(last_error_code, '') FROM vc.work_item"
+        + ` WHERE owner_user_id = ${owner} AND kind = 'MEMORY_EXTRACT' AND ref_id = ${generationId}`,
+    ],
+    { timeout: 5_000 },
+  );
+  return stdout.trim();
+}
+
+/** The disabled turn must not merely "not show a new memory yet": it needs a
+ * real terminal outcome on the extraction side. vc.enqueue_memory_extract
+ * (V125) returns early without creating a job row when the pref is already
+ * off — that deliberate suppression is the primary path and shows up as no
+ * row at all. A row only exists when the switch was flipped after enqueue;
+ * it must then close as DONE|AUTO_SAVE_OFF. The turn's terminal snapshot was
+ * already confirmed before this wait, so enqueue has run by the time the row
+ * stays absent through the confirmation window. */
+async function waitForMemoryExtractClosed(
+  page: Page,
+  state: StackState,
+  owner: string,
+  generationId: string,
+  timeoutMs = 20_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  const absentWindow = 6;
+  let absentStreak = 0;
+  let last = "";
+  while (Date.now() - startedAt < timeoutMs) {
+    last = await queryMemoryExtractJob(state, owner, generationId);
+    if (last === "DONE|AUTO_SAVE_OFF") return;
+    if (last.startsWith("FAILED") || last.startsWith("DONE|")) break;
+    if (last === "") {
+      absentStreak += 1;
+      if (absentStreak >= absentWindow) return;
+    } else {
+      absentStreak = 0;
+    }
+    await page.waitForTimeout(250);
+  }
+  throw new Error(
+    `memory-extract outcome for the disabled turn is neither the deliberate no-job path nor DONE|AUTO_SAVE_OFF (last: ${last || "no row yet"})`,
+  );
+}
+
+async function readProviderRequestLog(): Promise<ProviderLogEntry[]> {
+  const port = process.env.E2E_PROVIDER_PORT ?? "19090";
+  const path = process.env.E2E_PROVIDER_REQUEST_LOG
+    ?? `/tmp/vc-e2e-provider-requests-${port}.log`;
+  const raw = await readFile(path, "utf8");
+  return raw.trim().split("\n").filter(Boolean)
+    .map((line) => JSON.parse(line) as ProviderLogEntry);
+}
+
+test("autosave saves a stated preference, recalls it in a later turn, and stops saving when off", async ({ page }) => {
+  const session = await openSharedSession(page, "memory");
+  await prepareGenerationAccess(session.page);
+  const relationshipId = await getDefaultRelationshipId(session.page);
+
+  // —— Save: a plain low-sensitivity preference stated in the user's own
+  // words must land as an auto-saved ACCEPTED memory. ——
+  await navigateToPage(page, "/pages/index/index");
+  await page.getByTestId("home-start-chat").click();
+  await page.waitForURL((url) => url.hash.startsWith("#/pages/chat/chat"));
+  await expect(page.getByTestId("empty-history")).toContainText("从这里开始");
+
+  const turnA = await sendChatTurn(page, AUTOSAVE_FACT_A);
+  const terminalA = await waitForGenerationTerminal(page, turnA);
+  expect(
+    generationStatus(terminalA.body),
+    `turn A ended as ${generationStatus(terminalA.body)}; only COMPLETED turns feed extraction`,
+  ).toBe("COMPLETED");
+  await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY })).toBeVisible();
+
+  await waitForAutoSavedMemory(page, relationshipId, AUTOSAVE_SUMMARY_A);
+  await navigateToPage(page, "/pages/memory/memory");
+  await expect(page.getByTestId("autosave-note")).toBeVisible();
+  const savedRow = page.getByTestId("memory-row").filter({ hasText: AUTOSAVE_SUMMARY_A });
+  await expect(savedRow).toHaveCount(1);
+  await expect(savedRow.getByTestId("memory-summary")).toHaveText(AUTOSAVE_SUMMARY_A);
+  await expect(savedRow.getByTestId("memory-badge")).toHaveText("自动保存");
+
+  // —— Disable through the real toggle; disabling stops new saves only. ——
+  await page.getByTestId("autosave-toggle").click();
+  await expect(page.getByTestId("autosave-toggle")).toHaveAttribute("aria-checked", "false");
+
+  // —— Recall: a different new conversation of the same relationship states
+  // preference B. A must appear in B's request inside the dedicated memory
+  // block (not as history echo: the new conversation has no history and B's
+  // own text never contains A's span). ——
+  await navigateToPage(page, "/pages/chat/chat");
+  await page.getByTestId("chat-context-open").click();
+  await page.getByTestId("new-conversation").click();
+  await expect(page.getByTestId("empty-history")).toContainText("从这里开始");
+
+  const turnB = await sendChatTurn(page, AUTOSAVE_FACT_B);
+  const terminalB = await waitForGenerationTerminal(page, turnB);
+  expect(
+    generationStatus(terminalB.body),
+    `turn B ended as ${generationStatus(terminalB.body)}; the off toggle must not block the chat itself`,
+  ).toBe("COMPLETED");
+
+  const entries = await readProviderRequestLog();
+  const requestB = entries
+    .filter((entry) => entry.kind === "chat")
+    .filter((entry) => entryMessages(entry).some((message) => messageText(message).includes(AUTOSAVE_FACT_B)))
+    .pop();
+  if (!requestB) {
+    throw new Error("turn B's generation request is missing from the provider request log");
+  }
+  const messagesB = entryMessages(requestB);
+  const withSummaryA = messagesB.filter((message) => messageText(message).includes(AUTOSAVE_SUMMARY_A));
+  const blockMessage = withSummaryA.find((message) => messageText(message).includes(MEMORY_BLOCK_BEGIN));
+  const block = blockMessage ? memoryBlockFence(messageText(blockMessage)) : "";
+  expect(
+    withSummaryA.length === 1
+      && blockMessage !== undefined
+      && block.includes(`- ${AUTOSAVE_SUMMARY_A}`)
+      && !block.includes(AUTOSAVE_SUMMARY_B),
+    "turn B's request carries the saved memory exactly once, inside the dedicated memory block",
+  ).toBe(true);
+
+  // —— Stop: B's extraction job must close with the real AUTO_SAVE_OFF
+  // reason, then both the API and the page confirm A stays and B never lands.
+  // ——
+  const stackState = await readStackState();
+  await waitForMemoryExtractClosed(page, stackState, session.accountId, turnB);
+
+  const afterList = await sessionRequest(
+    page,
+    "GET",
+    `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories`,
+  );
+  expect(afterList.ok, `memories re-read failed: ${afterList.status}`).toBeTruthy();
+  const summaries = (Array.isArray(afterList.body) ? afterList.body : []) as Array<{ summary?: unknown }>;
+  expect(summaries.some((item) => item.summary === AUTOSAVE_SUMMARY_A)).toBe(true);
+  expect(summaries.some((item) => item.summary === AUTOSAVE_SUMMARY_B)).toBe(false);
+
+  await navigateToPage(page, "/pages/account/account");
+  await navigateToPage(page, "/pages/memory/memory");
+  await expect(page.getByTestId("autosave-note")).toBeVisible();
+  await expect(page.getByTestId("memory-row").filter({ hasText: AUTOSAVE_SUMMARY_A })).toHaveCount(1);
+  await expect(page.getByTestId("memory-row").filter({ hasText: AUTOSAVE_SUMMARY_B })).toHaveCount(0);
 
   // Restore the default so the shared seeded user keeps its baseline state.
   await page.getByTestId("autosave-toggle").click();

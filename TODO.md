@@ -307,6 +307,21 @@ USER vc；api-migration 空依赖 `--network none` 隔离容器 health 200/UP、
 healthcheck healthy、非 root。属当前 package 启动验证，非 full DB/MinIO/TLS
 部署验收；G12 条目与口径见 `docs/planning/g12-go-capacity-sample.md` §6。
 
+2026-10-21 自动记忆真实进程旅程（VC-R32）：12 旅程新增第三例（原两例
+保留不变）。memory 共享会话+loopback provider 真实 UI 三段验证：低敏
+「户外」偏好 A 经真实聊天落为自动保存 ACCEPTED 记忆（memories API 轮询
++页面「自动保存」徽标）；关闭开关后同一关系新会话发偏好 B，从既有
+provider 请求日志断言 A 恰好一次且仅在专属 [VC_MEMORY_DATA] 记忆块内
+实际召回（新会话无历史，非回显）；停新增负例按现有实现接受
+`vc.enqueue_memory_extract`（V125）开关关闭时的有意不入队（终态快照后
+持续无行）或 job `DONE|AUTO_SAVE_OFF`，页面/API 复核 A 仍在、B 未新增，
+结束恢复默认开启。首轮第三例 FAIL 为测试侧等待语义（按 handler 关闭
+等待，实际主路径是 SQL 侧抑制不入队）；修正后 run2 该例 PASS（7.4s），
+前两例 run1 PASS 后输入未变未复跑。产品代码零改；710/type-check 沿用
+R30（src 输入未变）。本地合成数据，非真机/跨账号/生产验收。栈清理核验
+通过（state/auth/shared/iid 无残留、4 端口释放、本轮容器 0）；不勾
+Owner/Beta/CI/真机。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
