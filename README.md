@@ -1,6 +1,6 @@
 # Virtual Companion
 
-AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前后端运行时为 Go 1.26.7
+AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前后端运行时为 Go 1.26.10
 `companiond`，前端为 uni-app + Vue 3 + TypeScript，数据层为 PostgreSQL 18 +
 pgvector。Generation、Realtime、Memory、数据权利与管理员模型配置已接入 Go
 runtime；项目尚未达到真实用户或公开生产发布条件。

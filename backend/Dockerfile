@@ -1,6 +1,6 @@
 # Go-only application image. The same binary handles one-shot migration and
 # bootstrap commands before starting the steady-state runtime.
-FROM golang:1.26.7-alpine3.23@sha256:b17af760035fc2f338eed92d448a6c67f2d45438844fc6c60678fa5f99e44b57 AS build
+FROM golang:1.26.10-alpine3.23@sha256:0525c952defebc693cdaf62cdf43afa32be5a7f377e99260642ea19c240c708e AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./

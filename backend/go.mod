@@ -1,6 +1,6 @@
 module github.com/hxf4869/virtual-companion
 
-go 1.26.7
+go 1.26.10
 
 require (
 	github.com/jackc/pgx/v5 v5.9.2
