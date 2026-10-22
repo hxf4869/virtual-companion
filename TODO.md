@@ -443,8 +443,12 @@ GO_BASE、expected-account=X-VC-Expected-Account-ID core.go:29）与全部结果
 待补，G12 维持未完成、不冻结 Owner 门槛。fixture 事故如实记录：首轮渲染仅改顶层
 project 致 4 个 volume 名仍为 deploy_*，被 Root 停止隔离，旧 7 容器按已捕获确切 CID
 rm（rm rc0/验证 rc1）、旧 CID 探针结果一律 FIXTURE_INVALID；渲染修复为 volume/network
-名称递归收窄本轮作用域后全探针重跑；4 枚 deploy_* 命名卷（label project=vcr57-probe）
-归属核清前保留未删、本轮不删。修正后 fixture down -v 并精确核验容器/四卷/网络
+名称递归收窄本轮作用域后全探针重跑；4 枚 deploy_* 命名卷经 Root 以 up.log/up2.log 逐条
+Creating/Created 与当前对象 label project=vcr57-probe、CreatedAt 12:11:32 双重证据核清
+为本轮创建（非仅时间/前缀推断，非复用既有卷），随后由本轮 cleanup owner 逐卷复核
+label/CreatedAt 同一与 daemon 引用 0 后按精确名称删除（四卷 rm rc0/inspect rc1/
+ls count0）；R55 三枚未知归属卷仍独立为 UNVERIFIED，不与这 4 卷混称，亦不据此宣称
+所有基线绝对未动。修正后 fixture down -v 并精确核验容器/四卷/网络
 count0、三唯一镜像 tag 已删、端口释放、/tmp/vcr57 已删；纯文档改动仅
 `git diff --check`，未跑无关 Go/前端/E2E。
 

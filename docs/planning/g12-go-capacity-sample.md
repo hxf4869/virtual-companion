@@ -282,7 +282,10 @@ config 冻结的 4 个 volume 名仍是 `deploy_db-data` 等（网络名已在 u
 `FIXTURE_INVALID`、不作任何 PSS/CPU 结论；渲染脚本改为将每个 volume 与 network 的
 name 递归重写/校验为本轮 project 作用域（禁 external 与非本轮 name）后重建，
 Mounts 全部指向 `vcr57-probe_*` 卷、网络唯一 `vcr57-probe_default`。4 枚 `deploy_*`
-命名卷（label project=vcr57-probe、CreatedAt 本轮 12:11:32）归属核清前保留未删。
+命名卷（label project=vcr57-probe、CreatedAt 本轮 12:11:32）经 Root 以 up.log/up2.log
+逐条 Creating/Created 与当前对象标签/时间双重证据核清为本轮创建（非复用既有卷），
+随后逐卷复核同一性与 daemon 引用 0 后按精确名称删除（rm rc0/inspect rc1/ls count0）；
+R55 三枚未知归属卷仍独立为 UNVERIFIED，不与这 4 卷混称。
 修正后 fixture 上重跑全部探针，以下结论均来自修正后 fixture。
 
 ### PSS：进程 smaps_rollup 可用（Linux 容器口径）
