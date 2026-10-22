@@ -470,16 +470,21 @@ secret 侧只参与签名不受此限）；helper/README/脚本头文案已按�
 只承诺凭据不进 process argv（传输载体即调用方环境），不再声称对一切 ps/
 环境读取形态不可见。清理（按实际查清范围）：本轮全部命名前缀容器精确查询
 count 0、唯一镜像 tag 已删、私有明文（dump/object/mc 配置/passphrase/临时
-native CLI）已清、留存日志无凭据子串；卷侧如实更正——命名卷 grep 与创建
-窗口悬空匹配仅精确删除 3 枚本轮窗口内悬空匿名卷，未能覆盖 drill PG 匿名卷：
-Root 以 daemon events（rc0，256 事件窗）关联已销毁 vc-restore-pg-23858 的
-CID→volume unmount，证明其匿名卷 be29bf3e3e23b800f9816e69237035111c9f6e
-798e6af6dec27ff0ccdf4d04f1 仍存在（精确 volume 查询 rc0/count1、无 destroy），
-随后引用查询 count0→volume rm rc0→复查 count0 精确清除；据此 drill cleanup
-的 `docker rm -f` 最小补 `-v`（R53 同源真实现象：`--rm` 与手动 rm 竞态仍留
-PG 匿名卷），并以最小真实消费者探针验证（真实创建同镜像 --rm PG→inspect
+native CLI）已清、留存日志无凭据子串；卷侧如实更正并留未决记录——我在
+92d45fa7 提交前 84s 曾以「CreatedAt 当日窗口 + dangling 过滤」为据删除 3 枚
+匿名卷（3a04b4ed…/8c187f52…/17de74f9…，destroy 事件与 rm 命令吻合），但该
+依据不构成归属证据：本轮三枚 PG 容器卷经 Root daemon events 与子任务
+fixture.log Mounts 记录分别证明为 be29bf3e…（drill PG23858，Root 精确删除）、
+b80…（native PG29375）、fce8b775…（native PG31658），均不属于我删的 3 枚；
+我删的 3 枚 create/mount 事件已滚出 256 事件环、无容器关联可证，归属记
+**UNVERIFIED**（不可恢复、不伪造归属、不再按时间窗口/悬空状态删除任何卷）；
+Root 侧另证 drill PG 匿名卷 be29 曾在 `--rm`+手动 `rm -f` 竞态下残留
+（引用查询 count0→volume rm rc0→复查 count0 由 Root 精确清除），据此 drill
+cleanup 的 `docker rm -f` 最小补 `-v`（R53 同源真实现象），并以最小真实消费者
+探针验证（真实创建同镜像 --rm PG→inspect
 Mounts 捕获真实匿名卷→执行补丁后同一清理语义→容器 count0 且捕获卷精确查询
-不存在，直接 rc=0）；未全局 prune、未动基线卷。范围外事实：amd64 侧本轮
+不存在，直接 rc=0）；b80/fce8 当前精确查询均不存在；未全局 prune、未动
+基线卷。范围外事实：amd64 侧本轮
 未重跑；本机无全局 mc，生产本机分支需 Owner
 安装 mc 或走 Docker 分支；launchd 装载仍由 Owner 手工执行。
 

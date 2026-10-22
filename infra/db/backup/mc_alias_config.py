@@ -10,8 +10,8 @@ permissions keep them private on disk. The JSON encoding is lossless for
 quote, backslash, newline and carriage-return bytes (an environment value
 cannot carry NUL, the only excluded byte); whether a credential is USABLE is
 a separate S3/HTTP constraint — e.g. a SigV4 access key cannot carry CR/LF
-because it is embedded verbatim in the Authorization header, which RFC 7230
-restricts to visible ASCII. The target directory is
+because it is embedded verbatim in the Authorization header, and CR/LF
+cannot appear in an HTTP header value. The target directory is
 created 0700 with a 0600 config.json, lives outside the backup working tree,
 and is removed by the callers on exit. mc consumes it via
 `mc --config-dir DIR`, so no `mc alias set` invocation and no userinfo
