@@ -422,3 +422,95 @@ child）独立复现。口径澄清：`dd` 自报 `copied, 11.542797 seconds` �
   峰值证明保留），新增 B 侧记录；本轮未运行默认档。
 - B+C 总量、Go OCI image 启动时间口径、真实 provider dogfood、三次独立 trial 与
   Owner 门槛冻结仍开放；probe 不作为资源验收或产品完成。
+
+## 10. 2026-10-22 补充：夹具所有权收口与 CPU 采样窗口有效性（VC-R59，非采样）
+
+### 所有权改为 create receipt（nonce），不再是前后差集
+
+R58 的"预检空 → up 后按 project label 收养"被 Root 复核否决（同 label 外来者会
+被误删）。R59 改为：每次调用生成一次性 nonce（`openssl rand -hex 16`），
+`render_stack.py` 把它注入渲染后 compose 的**每个** service/volume/network label
+（双重渲染校验强制存在），trial tag 亦带 nonce 前缀（`<project>-<nonce8>`，显式
+共享 project 的两次调用互不覆盖 tag）。启动拆为
+`compose create --build --no-recreate`（只创建不启动、不碰既有容器）→ 立即记录
+nonce receipt（8 容器 CID/服务/Mounts/网络、4 卷 driver+CreatedAt+nonce、网络
+不可变 Id、已 build 镜像实际 Id，create 中途失败也已记录）→ **启动门**
+`verify-start`：对照最终渲染配置，全部服务（含 migrate/bootstrap/minio-init/
+fake-provider）、全部声明卷/网络、receipt 容器实际挂载的每个卷都必须有本轮
+nonce 收据，缺失/inspect 不可读/预期名被外来者占用即拒绝 start →
+`compose up -d --no-build --no-recreate` 只启动已证容器（compose 依赖/健康语义
+保留）。外来者出现在 creation 窗口内（同 project label 无 nonce）不会进入清单，
+也不会被启动/替换，仅被只读检测器报告；同名同 project 的替代卷/网（CreatedAt/
+不可变 Id 不符）一律保留不删。消失证明只认 rc0 查询 count 0，daemon 查询失败
+不判"不在"；`record_built` 用 rc0 listing 区分"未 build"与"未知"，未知即失败。
+清理消费且仅消费本轮记录：collector CID（`collector.py` 的
+`create_helper_container` 现在 docker run 拿到 CID 后**先持久化再 inspect**，
+inspect 失败也保留准确 CID）→ 栈容器逐 CID stop/rm → 卷/网按记录身份校验后删
+→ trial tag 仅在 identity 仍匹配时 untag；EXIT trap cleanup 显式 `exit` 传播
+失败（`return` 不会覆盖主流程成功码），失败时保留 CAPTURE/BUILT_IMAGES/
+COLLECTORS/leftovers 供恢复，不删归属清单。输出目录原子独占（默认
+`.run/<trial>` 由本次调用 `mkdir`，已存在/非空/已被 claim 即拒绝，拒绝发生在
+注册 cleanup 前=零 Docker 写入）；`G12_KEEP=1` 保留资源供检查但绝不授权下一轮
+回收。单元回归 `test_resources.py` 27 例覆盖上述负例（bracket 内 intruder、
+占预期 migrate 名、占 DB 卷、替代者保留、daemon 错误不报 gone、rc 传播、旧目录
+拒绝零 Docker 调用），`test_collector.py` 增至 27 例（含 helper CID 收据先行）。
+
+### CPU 采样窗口有效性（子交付，消费者已接）
+
+`collector.py` 每 component 每帧记录 epoch（Engine inspect `State.StartedAt`，
+失败记 null 不伪造）与 `sampled_at`（stats 响应接收时刻——非 Engine `stats.read`
+时刻，窗口 bounds 按此口径，不称纳秒精确同步）。分析层给出显式 status：
+**VALID**（≥2 样本、epoch 齐全且全程同一、counter 单调、窗口内无缺帧）/
+**PARTIAL**（端点连续但有缺帧或样本缺 epoch，delta 附带条件，不再无条件完整值）/
+**INVALID**（样本不足、counter 下降 reset、epoch 更换——含同 CID 重启后新
+counter 已超过旧值的上升型，delta 为 null，不 clamp）。同 CID epoch 变化且
+counter 上升、两有效端点夹缺失帧、缺 epoch、正常单调、reset 五类均有单测。
+run.sh 的 scenario/probe/idle/soak 消费者改为按 `status` 断言：INVALID 报错、
+PARTIAL 显式呈现（`b_cpu_status` 字段与输出行），不新增无人读的 metadata。
+
+### 最终 --probe 实测（FUNCTIONAL_ONLY）
+
+一轮完整新流程真实 probe（project `vcg12c-vcr59-final`，输出 `/tmp/vcr59/probe2`
+700/600，端口 18448）PASS，direct rc=0，104.2 s：create→receipt（8 容器/4 卷/1
+网络全带 nonce）→启动门通过→仅启动已证容器；one-shot 全 exit 0；TLS readiness
+（6670.5 ms）；36/36 帧结构完整、A 归属 32/32（db 早期 2 帧 NOT_AVAILABLE 为
+reader 启动期，PARTIAL 0）；一次真实 1gen+1SSE 全链路成功，provider 差分 1、
+worker 峰值 1；四组件 CPU 窗口全 VALID（db 178.5/runtime 99.3/minio 62.8/
+caddy 51.0 ms，接口可用性证据）；errors []。退出清理后独立 daemon 查询：project
+label 对象 0、nonce 对象 0、卷 0、网络 0、trial tag 0，`cleanup.leftovers.json`
+为 `{}`。此前一轮中间验证（`vcr59-probe1`，旧 up 流程）同样 PASS rc=0 且独立
+核清 count 0。两轮均为功能接线验证，无数值性能结论、不构成 §19.2 样本。
+
+### 维持开放（R59 后不变的部分）
+
+- 十场景缺口、默认档全负载、600 s 窗、三次独立采样、Owner 冻结与真实 provider
+  dogfood 均不变；R55 三个未知归属匿名卷维持"已删除、未恢复、无法证明归属"。
+- `record_built` 在 daemon 故障（listing rc!=0）时归属清单可能不完整，此时按
+  失败处理并保留记录；trial tag 已带每次调用的 nonce 前缀，下一轮调用 tag 必然
+  不同，**旧未知 tag 不能靠下轮同名拒绝被发现**——只能如实记录 unverified 残留
+  并保留 nonce/tag 线索（记录文件与 creating/config 不删）供人工核查。cleanup
+  的 required 回执（capture/built）缺失/不可读/坏 JSON 同理记 unverified 非 0
+  （collectors 未启动时缺失可选、存在但读坏同样升级）；显式有效空记录与未知
+  状态严格区分（`_load_state` 三态）。
+
+### 终审复核修正（Root 终审后补）
+
+- 启动门不再按 name 集合放行：每条卷 receipt 必须有完整 driver+CreatedAt 且
+  nonce==capture.nonce，网络 receipt 必须有不可变 Id 且 nonce 匹配，容器 receipt
+  同样校验 nonce；`{name, identity:None}`（inspect 失败分支）或 nonce 不符一律
+  拒绝 start。以 probe2 真实 created-resources + render.summary 字段重放：完整
+  receipt 正例 []，卷/网任一换成 identity:None 均拒绝。
+- capture 修复 list→inspect 窗口内同名替换：nonce listing 命中后若详情
+  nonce/Id 已是外来者的，记为 `unverified`（保留已确认的本轮 receipt），绝不把
+  替换者身份提升为本轮 receipt；cleanup 的持久化输入边界同样拒绝 nonce 不符
+  记录，替换者保留仅报告。新增替换（卷/网）与不可读 identity 负例各覆盖。
+- `reader_frames.sh`/`observer.sh` 写帧前 `umask 077`，frames/*.jsonl 不再依赖
+  宿主 umask（probe2 遗留 0644 文件属旧行为）；探针控制器 SIGKILL 后改
+  `wait(timeout=30)` 有界 reap，超时如实记 `reap_timeout`。
+- cleanup 的 required 回执状态三态化（`_load_state`：missing/unknown/ok）：坏
+  JSON 的 built 记录 + 合法空 capture 不再折成"空成功 rc0"——direct rc=1、
+  unverified 落 leftovers、creating/capture/built（含坏文件本身）与 config 全部
+  保留；已确认 receipt 仍按精确 identity 清理，collectors 缺失可选、存在但读坏
+  升级。负例以纯 stub（零真实 Docker 调用）覆盖 direct rc 与恢复记录保留。
+  本批仅收紧非法/未知回执与权限，正常创建/启动/采集协议未变，按 Root 授权
+  未重跑第 3 次 probe。

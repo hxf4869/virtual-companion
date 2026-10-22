@@ -468,6 +468,34 @@ cgroup 不计 B）；缺进程记 PARTIAL、计数 reset/单端点记 invalid，
 缺、S6 半缺、S1/S2/S7 待补，G12 维持未完成、不冻结 Owner 门槛；细节见
 `docs/planning/g12-go-capacity-sample.md` §9。
 
+2026-10-22 G12 夹具所有权收口与 CPU 采样窗口有效性（VC-R59，非采样）：R58 的
+"预检空→up 后按 project label 收养"被复核否决，改为一次性 nonce 注入渲染 compose
+全部 service/volume/network label 的 create receipt 所有权：`compose create
+--build --no-recreate` 只创建不启动→立即记录 nonce 收据（容器/卷 driver+CreatedAt/
+网络不可变 Id/已 build 镜像 Id，中途失败也记录）→启动门对照最终渲染配置核全量
+服务（含 one-shot 与 fake-provider）、卷网与实际 Mounts 均有本轮收据（预期名被
+外来者占用即拒绝 start）→`up -d --no-build --no-recreate` 只启动已证容器。清理
+仅消费本轮记录、逐项身份校验（同名替代者保留）、消失证明只认 rc0 查询 count 0
+（daemon 错误不判 gone、镜像"未 build"与"未知"区分）、EXIT trap 显式 exit 传播
+清理失败并保留归属清单；输出目录原子独占拒绝重用/并发接管，tag 带 nonce 前缀
+防共享 project 互覆；collector helper 改为 docker run 取 CID 后先持久化再
+inspect。CPU 分析层交付显式 VALID/PARTIAL/INVALID（epoch=State.StartedAt 判同
+CID 重启含 counter 上升型、缺帧/缺 epoch 至多 PARTIAL、sampled_at 为响应接收
+时刻非 Engine read 时刻），scenario/probe/idle/soak 消费者按 status 断言与呈现。
+单元 test_resources.py 27 例+test_collector.py 27 例全绿；最终单次真实 `--probe`
+（vcg12c-vcr59-final、18448、FUNCTIONAL_ONLY）PASS rc=0：36/36 帧、1gen+1SSE、
+provider 差分 1、CPU 四组件全 VALID，清理后独立 daemon 查询 project/nonce 对象、
+卷、网、tag 全 count 0；另有中间验证 probe1 同 PASS 且核清。Root 终审后同范围
+补齐三处：启动门拒绝 `{name, identity:None}`/nonce 不符的卷网 receipt（以 probe2
+真实 receipt 重放验证）、capture 对 list→inspect 窗口内同名替换者记 unverified
+不提升且 cleanup 输入边界拒绝 nonce 不符记录、reader/observer 写帧前 umask 077
+（frames 不再 0644）、cleanup 的 required 回执缺失/不可读/坏 JSON 三态化记
+unverified 非 0（已确认部分仍按 identity 清、原记录与 config 保留、显式空记录
+与未知区分，纯 stub 负例验证 direct rc 与恢复记录保留）；单元增至
+test_resources 40+test_collector 27 全绿，正常
+协议未变故未重跑 probe。G12 维持未完成、不冻结 Owner 门槛；细节见
+`docs/planning/g12-go-capacity-sample.md` §10。
+
 2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
 最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
 Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于

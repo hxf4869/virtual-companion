@@ -11,6 +11,9 @@
 # Usage: observer.sh <interval-seconds>
 # Appends one JSON line per interval to /frames/observer.jsonl.
 set -u
+# Frame files land in a bind-mounted dir: force 0600 at creation here rather
+# than trusting the container/host umask.
+umask 077
 interval="${1:-1}"
 out="/frames/observer.jsonl"
 metrics_url="http://127.0.0.1:8080/actuator/prometheus"

@@ -23,8 +23,13 @@
 #
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
-# project, images, and data (render_stack.py validation gates resource naming
-# before anything is created).
+# project, images, output directory, and data. Ownership is receipt-based
+# (VC-R59): a fresh per-invocation nonce is stamped onto every rendered
+# service/volume/network label, the stack is created with `compose create`
+# (nothing started), the exact created identities are recorded, and only
+# then is the stack started — so cleanup removes only what this run's own
+# create action provably produced, and a failed cleanup keeps the records
+# for recovery instead of discarding them.
 #
 # Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe]
 set -euo pipefail
@@ -38,13 +43,23 @@ elif [ $# -gt 0 ]; then
   exit 2
 fi
 
-HERE="$(cd "$(dirname "$0")" && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-RUN_DIR="${G12_OUTPUT_DIR:-$HERE/.run}"
-# Lowercase so the default project name satisfies compose naming rules.
 TRIAL_ID="$(printf '%s' "${G12_TRIAL_ID:-$(date -u +%Y%m%dT%H%M%SZ)}" | tr 'A-Z' 'a-z')"
+# Per-trial output directory (default): every run starts from an empty
+# ownership state, so a later run can never adopt a previous run's records.
+RUN_DIR="${G12_OUTPUT_DIR:-$HERE/.run/$TRIAL_ID}"
+# Per-invocation creation receipt (VC-R59): render_stack.py stamps it onto
+# every service/volume/network label and resources.py requires it — only
+# this invocation ever generates the value, so an object carrying it is
+# provably this run's own creation. The shared compose project label and
+# resource names are never used as creator proofs.
+NONCE="$(openssl rand -hex 16)"
 PROJECT="${G12_PROJECT:-vcg12c-$TRIAL_ID}"
-TRIAL_TAG="$PROJECT"
+# Image tags are scoped per invocation (project + nonce prefix): two callers
+# explicitly sharing one project can never build or overwrite each other's
+# trial tags.
+TRIAL_TAG="$PROJECT-${NONCE:0:8}"
 HTTPS_PORT="${G12_HTTPS_PORT:-18447}"
 FAKE_PORT="${G12_FAKE_PROVIDER_PORT:-19091}"
 MINIO_IMAGE="virtual-companion-minio:$TRIAL_TAG"
@@ -60,9 +75,10 @@ CAPTURE="$RUN_DIR/created-resources.json"
 COLLECTORS="$RUN_DIR/collectors.json"
 FRAMES="$RUN_DIR/frames.jsonl"
 STOP_FILE="$RUN_DIR/collector.stop"
-# Written only after every pre-existence check has passed, right before the
-# one `up`: its absence makes cleanup perform ZERO docker writes, so a failed
-# preflight can never touch resources named by a stale config.
+# Written right before the one `up`. Cleanup performs docker writes only
+# while it exists; because the per-trial RUN_DIR was proven free of
+# prior-run ownership state before cleanup was registered, its presence can
+# only mean THIS run attempted creation.
 CREATING="$RUN_DIR/.stack-creating"
 BUILT_IMAGES="$RUN_DIR/built-images.json"
 GO_BASE="https://localhost:$HTTPS_PORT"
@@ -94,11 +110,32 @@ COMPOSE=(docker compose --env-file "$ENVFILE" -f "$STACK_COMPOSE" -p "$PROJECT")
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 die() { printf 'G12 FAIL: %s\n' "$*" >&2; exit 1; }
 
-mkdir -p "$RUN_DIR" "$FRAMES_DIR"
-chmod 700 "$RUN_DIR" "$FRAMES_DIR"
 # Everything below runs under a private umask: the rendered compose and env
-# files interpolate synthetic secrets and must stay 0600.
+# files interpolate synthetic secrets and must stay 0600, and the output
+# directory is private from the moment it is created.
 umask 077
+
+# Exclusive output ownership, atomically. The default per-trial directory is
+# created by THIS invocation (plain mkdir fails if anything exists); an
+# explicit G12_OUTPUT_DIR must be absent or an empty directory, claimed with
+# an atomic marker mkdir. Neither a previous run's directory nor a
+# concurrent invocation can be taken over — and refusal happens before
+# cleanup is registered, so it performs zero docker writes.
+RUN_PARENT="$(dirname "$RUN_DIR")"
+mkdir -p "$RUN_PARENT" || die "cannot create output parent $RUN_PARENT"
+if [ -e "$RUN_DIR" ]; then
+  if [ -z "${G12_OUTPUT_DIR:-}" ] || [ ! -d "$RUN_DIR" ] \
+     || [ -n "$(ls -A "$RUN_DIR" 2>/dev/null)" ]; then
+    die "refusing to reuse existing output directory $RUN_DIR (prior-run state or concurrent invocation); use a fresh directory"
+  fi
+else
+  mkdir "$RUN_DIR" 2>/dev/null \
+    || die "output directory $RUN_DIR was taken by a concurrent invocation"
+fi
+mkdir "$RUN_DIR/.g12-owner" 2>/dev/null \
+  || die "output directory $RUN_DIR is already claimed by another invocation"
+mkdir -p "$FRAMES_DIR"
+chmod 700 "$RUN_DIR" "$FRAMES_DIR"
 
 cleanup() {
   local rc=$?
@@ -112,113 +149,43 @@ cleanup() {
     kill -KILL "$SAMPLER_PID" 2>/dev/null || true
     wait "$SAMPLER_PID" 2>/dev/null || true
   fi
-  if [ "${G12_KEEP:-0}" != "1" ]; then
-    # Reader/observer containers: stop, explicitly rm, then confirm absence
-    # with a daemon query (rc!=0 AND `ps -a --filter id=` count 0). A single
-    # nonzero inspect right after stop is NOT sufficient — --rm removal is
-    # asynchronous. Only CIDs recorded at creation time are ever touched.
-    if [ -s "$COLLECTORS" ]; then
-      if ! python3 - "$COLLECTORS" <<'PY'
-import json, subprocess, sys, time
-with open(sys.argv[1]) as fh:
-    started = json.load(fh)
-leftover = []
-for c in started.get("containers", []):
-    subprocess.run(["docker", "stop", "-t", "5", c["cid"]], capture_output=True)
-    subprocess.run(["docker", "rm", "-f", c["cid"]], capture_output=True)
-    gone = None
-    for _ in range(20):
-        gone = subprocess.run(["docker", "inspect", c["cid"]], capture_output=True)
-        listing = subprocess.run(
-            ["docker", "ps", "-aq", "--filter", f"id={c['cid']}"],
-            capture_output=True, text=True)
-        if gone.returncode != 0 and not listing.stdout.strip():
-            break
-        time.sleep(0.5)
-    ok = gone is not None and gone.returncode != 0
-    print(f"collector {c['kind']} {c['cid'][:12]} inspect_rc="
-          f"{gone.returncode if gone else '?'}")
-    if not ok:
-        leftover.append(c["cid"])
-if leftover:
-    raise SystemExit(f"collector containers still present: {leftover}")
-PY
-      then
-        log "cleanup: collector container leftover detected"; rc=1
-      fi
+  if [ "${G12_KEEP:-0}" != "1" ] && [ -f "$CREATING" ]; then
+    local keep_records=0
+    # One actual exit path for everything this run created: collector CIDs,
+    # the nonce-receipted stack inventory, and this run's trial image tags —
+    # each identity-checked before removal, absence proven only by rc0/count0
+    # daemon queries, leftovers persisted to cleanup.leftovers.json. Note
+    # an EXIT-trap `return` would NOT override a successful main flow, so a
+    # cleanup failure must be propagated with an explicit exit.
+    if ! python3 "$HERE/resources.py" cleanup \
+        --capture "$CAPTURE" --built "$BUILT_IMAGES" \
+        --collectors "$COLLECTORS" --leftovers-out "$RUN_DIR/cleanup.leftovers.json" \
+        --project "$PROJECT"; then
+      log "cleanup: leftover or unverified resources (see $RUN_DIR/cleanup.leftovers.json)"
+      rc=1
+      keep_records=1
     fi
-    if [ -f "$CREATING" ]; then
-      "${COMPOSE[@]}" down -v > "$RUN_DIR/down.log" 2>&1 || true
-      # Fallback for containers compose down may skip (e.g. the netns-sharing
-      # fake-provider): the preflight proved the project label was empty
-      # before this run created anything, so containers carrying THIS exact
-      # label now are this trial's own — remove them by CID, never by
-      # prefix/time heuristics and never with --remove-orphans.
-      local leftover_cid
-      while IFS= read -r leftover_cid; do
-        [ -n "$leftover_cid" ] || continue
-        log "cleanup: removing project-labelled leftover $leftover_cid"
-        docker rm -f "$leftover_cid" >/dev/null 2>&1 || true
-      done < <(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")
-      if ! verify_absent; then
-        log "cleanup: compose resource leftover detected"; rc=1
-      fi
-      # Untag only images this run actually built: the pre-up baseline
-      # recorded what each tag pointed to before `up --build`; a tag that now
-      # resolves to a different (or new) identity was created by this run,
-      # while a pre-existing identity is never removed.
-      if [ -s "$BUILT_IMAGES" ]; then
-        if ! python3 - "$BUILT_IMAGES" <<'PY'
-import json, subprocess, sys
-baseline = json.load(open(sys.argv[1]))
-for ref, pre_id in baseline.items():
-    cur = subprocess.run(["docker", "image", "inspect", ref],
-                         capture_output=True, text=True)
-    if cur.returncode != 0:
-        continue
-    cur_id = json.loads(cur.stdout)[0]["Id"]
-    if pre_id is not None and cur_id == pre_id:
-        print(f"skip untag {ref}: pre-existing image, not created by this run")
-        continue
-    subprocess.run(["docker", "rmi", ref], capture_output=True)
-PY
-        then
-          log "cleanup: image untag step failed"; rc=1
-        fi
-      fi
+    if [ "$keep_records" = "0" ]; then
       rm -f "$ENVFILE" "$RUNTIME_ENVFILE" "$CA_FILE" "$STACK_COMPOSE" \
         "$CREATING" "$BUILT_IMAGES"
+    else
+      # The ownership records stay for manual recovery — deleting them on a
+      # failed cleanup would lose the only evidence of what to recover.
+      # Everything remains inside this private (0700) run directory.
+      log "cleanup: kept ownership records for recovery: $CAPTURE $BUILT_IMAGES $COLLECTORS $RUN_DIR/cleanup.leftovers.json"
     fi
   fi
-  return "$rc"
+  exit "$rc"
 }
-trap cleanup EXIT
 
-verify_absent() {
-  # Daemon-checked absence of this trial's exact resources (compose objects
-  # and collector containers). Returns nonzero if anything survived.
-  local missing=0 name
-  for name in $(python3 -c '
-import json, sys
-try:
-    stack = json.load(open(sys.argv[1]))
-except Exception:
-    sys.exit(0)
-print("\n".join(v["name"] for v in stack.get("volumes", {}).values()))
-print("\n".join(v["name"] for v in stack.get("networks", {}).values()))
-' "$STACK_COMPOSE" 2>/dev/null); do
-    if docker volume ls --format '{{.Name}}' | grep -Fxq "$name"; then
-      log "volume still exists: $name"; missing=1
-    fi
-    if docker network ls --format '{{.Name}}' | grep -Fxq "$name"; then
-      log "network still exists: $name"; missing=1
-    fi
-  done
-  if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]; then
-    log "containers still exist for project $PROJECT"; missing=1
-  fi
-  return "$missing"
-}
+# Test seam AFTER cleanup() is defined: unit tests source this script and
+# drive the real cleanup() with a stubbed docker (asserting the function
+# exists, so a missing-command 127 can never pose as a negative pass);
+# nothing below runs in that mode.
+if [ "${G12_SOURCE_ONLY:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+trap cleanup EXIT
 
 metric_value() {
   local name="$1" out
@@ -256,23 +223,25 @@ psql_q() { "${COMPOSE[@]}" exec -T db psql -U vc_migrator -d vc -tAc "$1"; }
 echo "== G12 preflight ($MODE) =="
 docker info >/dev/null 2>&1 || die "docker unreachable"
 [ "$(docker context show)" = "orbstack" ] || die "docker context must be orbstack"
+
+# Resource-safety pre-check, all proofs rc0-based (a failed query is not
+# "absent"): this invocation's nonce must not exist anywhere yet, the three
+# project-label queries must succeed and come back empty, each
+# expected-absent name must be absent from successful listings, and no trial
+# image tag may pre-exist — the build must never overwrite an existing tag
+# (VC-R59).
+if ! python3 "$HERE/resources.py" require-absent --project "$PROJECT" \
+    --nonce "$NONCE" \
+    --name "${PROJECT}_db-data" --name "${PROJECT}_minio-data" \
+    --name "${PROJECT}_caddy-data" --name "${PROJECT}_caddy-config" \
+    --name "${PROJECT}_default" --name "$PROJECT-reader-db" \
+    --name "$PROJECT-reader-runtime" --name "$PROJECT-reader-minio" \
+    --name "$PROJECT-reader-caddy" --name "$PROJECT-observer" \
+    --tag "$MINIO_IMAGE" --tag "$RUNTIME_IMAGE" --tag "$CADDY_IMAGE"; then
+  die "expected-absent resources exist (or absence could not be proven); refusing"
+fi
 echo "  frontend bundle for the production Caddy image"
 pnpm --dir "$ROOT/frontend" build >/dev/null || die "frontend build failed"
-
-# Resource-safety pre-check: nothing under this trial's names may exist.
-if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]; then
-  die "project $PROJECT already has containers; refusing to reuse"
-fi
-for name in "${PROJECT}_db-data" "${PROJECT}_minio-data" \
-            "${PROJECT}_caddy-data" "${PROJECT}_caddy-config" \
-            "${PROJECT}_default" "$PROJECT-reader-db" "$PROJECT-reader-runtime" \
-            "$PROJECT-reader-minio" "$PROJECT-reader-caddy" "$PROJECT-observer"; do
-  if docker volume ls --format '{{.Name}}' | grep -Fxq "$name" \
-     || docker network ls --format '{{.Name}}' | grep -Fxq "$name" \
-     || docker ps -aq --filter "name=^/$name$" | grep -q .; then
-    die "expected-absent resource exists: $name"
-  fi
-done
 
 VC_MIGRATOR_DB_PASSWORD=$(openssl rand -hex 32)
 VC_RUNTIME_DB_PASSWORD=$(openssl rand -hex 32)
@@ -307,33 +276,57 @@ echo "== render trial stack from ops/deploy =="
 python3 "$HERE/render_stack.py" --project "$PROJECT" --env-file "$ENVFILE" \
   --out "$STACK_COMPOSE" --repo-root "$ROOT" --tag "$TRIAL_TAG" \
   --https-port "$HTTPS_PORT" --fake-provider-port "$FAKE_PORT" \
-  --runtime-env "$RUNTIME_ENVFILE" > "$RUN_DIR/render.summary.json" \
+  --runtime-env "$RUNTIME_ENVFILE" --nonce "$NONCE" \
+  > "$RUN_DIR/render.summary.json" \
   || die "stack render/validation failed"
 cat "$RUN_DIR/render.summary.json"
 chmod 600 "$RUN_DIR/render.summary.json"
 
-# Every preflight and render check has passed. Snapshot what the trial image
-# tags pointed to BEFORE this run builds them (usually absent): cleanup only
-# untags a tag whose identity differs from this baseline, i.e. one this run
-# actually created. Then mark the run as creating — cleanup() only performs
-# docker writes while that marker exists.
-python3 - "$RUNTIME_IMAGE" "$MINIO_IMAGE" "$CADDY_IMAGE" "$BUILT_IMAGES" <<'PY'
-import json, subprocess, sys
-refs, out = sys.argv[1:4], sys.argv[4]
-baseline = {}
-for ref in refs:
-    info = subprocess.run(["docker", "image", "inspect", ref],
-                          capture_output=True, text=True)
-    baseline[ref] = (json.loads(info.stdout)[0]["Id"]
-                     if info.returncode == 0 else None)
-json.dump(baseline, open(out, "w"), indent=1)
-PY
+# Every preflight and render check has passed. Mark the run as creating —
+# cleanup() only performs docker writes while this marker exists.
 touch "$CREATING"
 
-echo "== build + start resident stack (db, migrate, bootstrap, minio, runtime, caddy) =="
-if ! "${COMPOSE[@]}" up -d --build > "$RUN_DIR/up.log" 2>&1; then
+echo "== build + create resident stack (db, migrate, bootstrap, minio, runtime, caddy; nothing started) =="
+CREATE_STATUS=0
+# --no-recreate: create must never touch (replace/stop) a pre-existing
+# container — foreign objects are refused later at the start gate, not
+# silently adopted or replaced before receipts exist.
+"${COMPOSE[@]}" create --build --no-recreate > "$RUN_DIR/create.log" 2>&1 || CREATE_STATUS=1
+# Creation receipts BEFORE anything starts: record the exact identities this
+# run's create action produced — every object carrying this invocation's
+# nonce (CIDs/mounts/networks, volume driver/CreatedAt, network immutable
+# id) plus the actual identities of any trial tags the build produced —
+# partial creates included. Cleanup consumes only these records; another
+# creator on the same project label cannot appear in them.
+python3 "$HERE/resources.py" capture --project "$PROJECT" --nonce "$NONCE" \
+  --out "$CAPTURE" || die "created-inventory capture failed"
+python3 "$HERE/resources.py" record-built --out "$BUILT_IMAGES" \
+  "$MINIO_IMAGE" "$RUNTIME_IMAGE" "$CADDY_IMAGE" \
+  || die "built-image identity recording failed"
+if [ "$CREATE_STATUS" -ne 0 ]; then
+  tail -40 "$RUN_DIR/create.log" >&2 || true
+  die "stack create/build failed"
+fi
+
+# Pre-start completeness gate against the final rendered config: every
+# service (one-shots and fake-provider included), every declared volume and
+# network, and every volume a receipted container actually mounts must
+# carry this run's nonce receipt. A foreign object holding an expected name
+# leaves that service unreceipted -> start is forbidden; cleanup (via the
+# EXIT trap) then removes only what this run provably created.
+if ! python3 "$HERE/resources.py" verify-start \
+    --compose "$STACK_COMPOSE" --capture "$CAPTURE"; then
+  die "start refused: rendered resources are not all proven created by this run"
+fi
+
+echo "== start resident stack (verified existing containers only) =="
+# --no-build/--no-recreate: the start path may only start the verified,
+# already-created containers — never rebuild, re-create, or create anything
+# new after the receipts were taken (compose still applies the production
+# dependency/health ordering when starting them).
+if ! "${COMPOSE[@]}" up -d --no-build --no-recreate > "$RUN_DIR/up.log" 2>&1; then
   tail -40 "$RUN_DIR/up.log" >&2 || true
-  die "stack up/build failed"
+  die "stack start failed"
 fi
 DB_READY=0
 for _ in $(seq 1 90); do
@@ -352,39 +345,15 @@ for svc in migrate bootstrap minio-init; do
 done
 echo "  db healthy; migrate/bootstrap/minio-init exited 0"
 
-# Capture the exact created inventory (CIDs + full mounts/networks) before
-# any measurement; cleanup and absence checks use only this list.
-python3 - "$PROJECT" "$CAPTURE" <<'PY'
-import json, os, subprocess, sys
-project = sys.argv[1]
-cids = subprocess.run(["docker", "ps", "-aq", "--filter",
-                       f"label=com.docker.compose.project={project}"],
-                      capture_output=True, text=True, check=True).stdout.split()
-capture = []
-for cid in cids:
-    info = json.loads(subprocess.run(["docker", "inspect", cid],
-                                     capture_output=True, text=True,
-                                     check=True).stdout)[0]
-    capture.append({
-        "cid": info["Id"], "name": info["Name"].lstrip("/"),
-        "service": info["Config"]["Labels"].get("com.docker.compose.service"),
-        "mounts": info.get("Mounts", []),
-        "networks": sorted((info["NetworkSettings"]["Networks"] or {}).keys()),
-        "image": info["Config"]["Image"],
-    })
-with open(sys.argv[2], "w") as fh:
-    json.dump(capture, fh, indent=1)
-print(f"  captured {len(capture)} created containers -> {sys.argv[2]}", file=sys.stderr)
-PY
-
-# Measurement manifest for the collector (measured components only).
+# Measurement manifest for the collector (measured components only); the
+# created inventory in $CAPTURE was recorded immediately after the up.
 python3 - "$PROJECT" "$CAPTURE" "$MANIFEST" "$FRAMES_DIR" <<'PY'
 import json, sys
 project, capture_path, manifest_path, frames_dir = sys.argv[1:5]
 capture = json.load(open(capture_path))
 # Map by the authoritative compose service label, not by name heuristics.
 by_service = {}
-for c in capture:
+for c in capture["containers"]:
     by_service[c["service"]] = c
 containers = {}
 for comp in ("db", "runtime", "minio", "caddy"):
@@ -547,6 +516,9 @@ if peak:
           f"{peak['b_pss_mean_kb']} kB over {peak['complete_frames']} complete frames")
 else:
     print("  idle B same-frame: NO complete frames (all partial)")
+cpu_status = {c: k["status"] for c, k in a["b"]["components"].items()}
+nonvalid = {c: s for c, s in cpu_status.items() if s != "VALID"}
+print(f"  idle B CPU windows = {'all VALID' if not nonvalid else nonvalid}")
 PY
 
 run_workload() {
@@ -613,7 +585,9 @@ if int(float(worker_active)) != 0:
 if int(float(worker_peak)) < expected_active:
     errors.append(f"worker peak {worker_peak} want at least {expected_active}")
 # A-side frames must cover the scenario window (RSS peak from the same
-# companiond process the traffic hit).
+# companiond process the traffic hit). A B-side CPU window is only a valid
+# measurement when the engine-counter analysis says VALID; PARTIAL keeps a
+# qualified delta (surfaced, never treated as unconditional), INVALID fails.
 a = analysis["a"]
 if not a["frames_with_pid1"]:
     errors.append("no A frames with runtime PID 1 in the scenario window")
@@ -621,11 +595,9 @@ peak = analysis["b"]["same_frame_peak"]
 if peak is None or peak["complete_frames"] < 1:
     errors.append("no complete same-frame B sum in the scenario window")
 for comp, cpu in analysis["b"]["components"].items():
-    if cpu["counter_reset"]:
-        errors.append(f"{comp} CPU counter reset inside the window; delta invalid")
-    elif cpu["cpu_delta_ns"] is None:
-        errors.append(f"{comp} CPU delta unavailable in the window "
-                      f"({cpu.get('reason')}); not a valid measurement")
+    if cpu["status"] == "INVALID":
+        errors.append(f"{comp} CPU window invalid ({cpu.get('reason')}); "
+                      "not a valid measurement")
 summary = {
     "scenario": r["scenario"],
     "generations": gens,
@@ -640,6 +612,10 @@ summary = {
     "b_peak_pss_mib": round(peak["b_pss_peak_kb"] / 1024, 3) if peak else None,
     "b_complete_frames": peak["complete_frames"] if peak else 0,
     "b_component_status_frames": analysis["component_status_frames"],
+    "b_cpu_status": {c: {"status": cpu["status"], "reason": cpu.get("reason"),
+                         "stats_missing_frames": cpu["stats_missing_frames"],
+                         "epoch_changed": cpu["epoch_changed"]}
+                     for c, cpu in analysis["b"]["components"].items()},
     "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
                            for c, cpu in analysis["b"]["components"].items()},
     "provider_peak": after["peakActiveStreamRequests"],
@@ -664,6 +640,9 @@ print(f"  stream p50/p95 = {r['stream_ms']['p50']}/{r['stream_ms']['p95']} ms")
 print(f"  A CPU = {r['cpu_seconds']} s; A peak RSS/PSS = {r['peak_rss_mib']}/{r['peak_pss_mib']} MiB")
 print(f"  B same-frame peak RSS/PSS = {r['b_peak_rss_mib']}/{r['b_peak_pss_mib']} MiB "
       f"({r['b_complete_frames']} complete frames)")
+cpu = r["b_cpu_status"]
+nonvalid = {c: s for c, s in cpu.items() if s["status"] != "VALID"}
+print(f"  B CPU windows = {'all VALID' if not nonvalid else nonvalid}")
 print(f"  provider/worker peak = {r['provider_peak']}/{r['worker_peak']}; errors = 0")
 PY
 }
@@ -751,11 +730,9 @@ if runtime_pid1_uid100 < 5:
 if reader_self_leak:
     errors.append(f"reader self PID appeared in target pid lists {reader_self_leak} times")
 for comp, cpu in analysis["b"]["components"].items():
-    if cpu["counter_reset"]:
-        errors.append(f"{comp} CPU counter reset during probe; deltas invalid")
-    if cpu["cpu_delta_ns"] is None:
-        errors.append(f"{comp} CPU delta unavailable during probe "
-                      f"({cpu.get('reason')})")
+    if cpu["status"] == "INVALID":
+        errors.append(f"{comp} CPU window invalid during probe "
+                      f"({cpu.get('reason')}); deltas not usable")
 peak = analysis["b"]["same_frame_peak"]
 if peak is None or peak["complete_frames"] < 1:
     errors.append("no complete same-frame B sum during probe")
@@ -780,6 +757,11 @@ summary = {
         "db_partial_frames": partial_db_frames,
         "component_status_frames": analysis["component_status_frames"],
         "b_same_frame": peak,
+        "b_cpu_status": {c: {"status": cpu["status"],
+                             "reason": cpu.get("reason"),
+                             "stats_missing_frames": cpu["stats_missing_frames"],
+                             "epoch_changed": cpu["epoch_changed"]}
+                         for c, cpu in analysis["b"]["components"].items()},
         "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
                                for c, cpu in analysis["b"]["components"].items()},
         "a": analysis["a"],
@@ -872,10 +854,8 @@ for name in ("vc_generation_active", "vc_realtime_subscribers", "vc_db_pool_acqu
     if after.get(name) != 0:
         errors.append(f"{name} after idle = {after.get(name)}")
 for comp, cpu in post_w["b"]["components"].items():
-    if cpu["counter_reset"]:
-        errors.append(f"{comp} CPU counter reset in the recovery window")
-    elif cpu["cpu_delta_ns"] is None:
-        errors.append(f"{comp} recovery CPU delta unavailable "
+    if cpu["status"] == "INVALID":
+        errors.append(f"{comp} recovery CPU window invalid "
                       f"({cpu.get('reason')})")
 
 def idle_summary(w):
@@ -904,6 +884,10 @@ summary = {
     "fds_before_after": [pre_w["a"]["a_fds_first_last"][0] if pre_w["a"]["a_fds_first_last"] else None,
                          post_w["a"]["a_fds_first_last"][-1] if post_w["a"]["a_fds_first_last"] else None],
     "db_acquired_before_after": [before.get("vc_db_pool_acquired"), after.get("vc_db_pool_acquired")],
+    "b_cpu_status": {c: {"status": cpu["status"], "reason": cpu.get("reason"),
+                         "stats_missing_frames": cpu["stats_missing_frames"],
+                         "epoch_changed": cpu["epoch_changed"]}
+                     for c, cpu in post_w["b"]["components"].items()},
     "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
                            for c, cpu in post_w["b"]["components"].items()},
     "idle_windows": {"pre": idle_summary(pre_w), "post": idle_summary(post_w)},

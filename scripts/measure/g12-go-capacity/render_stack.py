@@ -23,6 +23,8 @@ import re
 import subprocess
 import sys
 
+from resources import NONCE_LABEL
+
 PRODUCTION_COMPOSE = "ops/deploy/docker-compose.yml"
 MEASURED_COMPONENTS = ("db", "runtime", "minio", "caddy")
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -30,6 +32,22 @@ LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 # Privilege/host escapes the measurement fixture must never add (the resident
 # stack is measured with default container capabilities, like production).
 FORBIDDEN_SERVICE_KEYS = ("privileged", "cap_add", "devices", "ipc", "pid")
+
+
+def _with_nonce_label(labels, nonce):
+    """Merge the per-invocation nonce into a label mapping (compose dict
+    form, or the list form normalized to a dict)."""
+    if isinstance(labels, dict):
+        out = dict(labels)
+    elif labels:
+        out = {}
+        for item in labels:
+            key, _, value = str(item).partition("=")
+            out[key] = value
+    else:
+        out = {}
+    out[NONCE_LABEL] = nonce
+    return out
 
 
 def canonicalize(production_compose: str, env_file: str, project: str) -> dict:
@@ -43,7 +61,7 @@ def canonicalize(production_compose: str, env_file: str, project: str) -> dict:
     return json.loads(proc.stdout)
 
 
-def fake_provider_service(repo_root: str, fake_port: int) -> dict:
+def fake_provider_service(repo_root: str, fake_port: int, nonce=None) -> dict:
     """Fixture-only fake OpenAI provider sharing the runtime network namespace.
 
     It binds 127.0.0.1 inside the runtime's netns because the backend bounds
@@ -53,7 +71,7 @@ def fake_provider_service(repo_root: str, fake_port: int) -> dict:
     B components; /g12/stats is reached through the observer container that
     shares the same netns, so nothing is published.
     """
-    return {
+    service = {
         "image": "node:20-bookworm-slim",
         "pull_policy": "missing",
         "network_mode": "service:runtime",
@@ -76,10 +94,14 @@ def fake_provider_service(repo_root: str, fake_port: int) -> dict:
         "command": ["node", "fake_provider.mjs"],
         "restart": "no",
     }
+    if nonce:
+        service["labels"] = _with_nonce_label(service.get("labels"), nonce)
+    return service
 
 
 def apply_overrides(canonical: dict, *, project: str, tag: str, https_port: int,
-                    repo_root: str, fake_port: int, runtime_env: dict) -> dict:
+                    repo_root: str, fake_port: int, runtime_env: dict,
+                    nonce: str = None) -> dict:
     """Rewrite the canonical production config into the trial fixture (pure)."""
     out = json.loads(json.dumps(canonical))
     out["name"] = project
@@ -94,6 +116,8 @@ def apply_overrides(canonical: dict, *, project: str, tag: str, https_port: int,
             service["image"] = images[image]
         # Trial-unique tag for the built edge image (production builds it
         # without an explicit image name).
+        if nonce:
+            service["labels"] = _with_nonce_label(service.get("labels"), nonce)
     if "caddy" in out["services"] and "build" in out["services"]["caddy"]:
         out["services"]["caddy"]["image"] = f"virtual-companion-caddy:{tag}"
 
@@ -113,27 +137,35 @@ def apply_overrides(canonical: dict, *, project: str, tag: str, https_port: int,
     env.update({k: str(v) for k, v in runtime_env.items()})
     runtime["environment"] = env
 
-    # Recursively pin every volume/network name to this trial's project scope.
+    # Recursively pin every volume/network name to this trial's project scope
+    # and stamp the per-invocation nonce: the nonce label is the creation
+    # receipt cleanup relies on (see resources.py).
     prefix = f"{project}_"
     for key, vol in out.get("volumes", {}).items():
         vol.pop("external", None)
         vol["name"] = f"{prefix}{key}"
+        if nonce:
+            vol["labels"] = _with_nonce_label(vol.get("labels"), nonce)
     for key, net in out.get("networks", {}).items():
         net.pop("external", None)
         net["name"] = f"{prefix}{key}"
+        if nonce:
+            net["labels"] = _with_nonce_label(net.get("labels"), nonce)
 
-    out["services"]["fake-provider"] = fake_provider_service(repo_root, fake_port)
+    out["services"]["fake-provider"] = fake_provider_service(
+        repo_root, fake_port, nonce=nonce)
     return out
 
 
 def validate_render(rendered: dict, *, project: str, repo_root: str,
-                    https_port: int) -> list:
+                    https_port: int, nonce: str = None) -> list:
     """Return human-readable violations; empty list means safe to create.
 
     Guards the VC-R57 incident class: every created resource name must be
     project-scoped, nothing external may be reused, only the loopback Caddy
     TLS port may be published, every bind must be an absolute repo path, and
-    no service may escalate privileges.
+    no service may escalate privileges. With a nonce, every service, volume,
+    and network must also carry it — the creation receipt cleanup relies on.
     """
     errors = []
     if not PROJECT_RE.match(project):
@@ -151,6 +183,8 @@ def validate_render(rendered: dict, *, project: str, repo_root: str,
             if (spec or {}).get("external"):
                 errors.append(f"{kind}[{key}] is external; the fixture must create "
                               "its own resources")
+            if nonce and (spec or {}).get("labels", {}).get(NONCE_LABEL) != nonce:
+                errors.append(f"{kind}[{key}] missing the nonce creation receipt")
 
     for svc, service in rendered.get("services", {}).items():
         for key in FORBIDDEN_SERVICE_KEYS:
@@ -158,6 +192,8 @@ def validate_render(rendered: dict, *, project: str, repo_root: str,
                 errors.append(f"service {svc} sets {key}; forbidden in the fixture")
         if service.get("security_opt"):
             errors.append(f"service {svc} sets security_opt; forbidden in the fixture")
+        if nonce and (service.get("labels") or {}).get(NONCE_LABEL) != nonce:
+            errors.append(f"service {svc} missing the nonce creation receipt")
         for vol in service.get("volumes", []):
             if vol.get("type") == "volume":
                 if vol.get("source") not in (rendered.get("volumes") or {}):
@@ -234,6 +270,9 @@ def main() -> int:
     ap.add_argument("--fake-provider-port", type=int, default=19091)
     ap.add_argument("--runtime-env", default="",
                     help="path to KEY=VALUE lines merged into the runtime env")
+    ap.add_argument("--nonce", default="",
+                    help="per-invocation creation receipt stamped on every "
+                         "service/volume/network label")
     args = ap.parse_args()
 
     repo_root = args.repo_root.rstrip("/")
@@ -248,13 +287,15 @@ def main() -> int:
 
     canonical = canonicalize(f"{repo_root}/{PRODUCTION_COMPOSE}",
                              args.env_file, args.project)
+    nonce = args.nonce or None
     rendered = apply_overrides(
         canonical, project=args.project, tag=args.tag,
         https_port=args.https_port, repo_root=repo_root,
-        fake_port=args.fake_provider_port, runtime_env=runtime_env)
+        fake_port=args.fake_provider_port, runtime_env=runtime_env,
+        nonce=nonce)
 
     errors = validate_render(rendered, project=args.project, repo_root=repo_root,
-                             https_port=args.https_port)
+                             https_port=args.https_port, nonce=nonce)
     if errors:
         for e in errors:
             print(f"render validation FAILED: {e}", file=sys.stderr)
@@ -273,7 +314,7 @@ def main() -> int:
         print(f"render round-trip FAILED: {exc}", file=sys.stderr)
         return 1
     errors = validate_render(reparsed, project=args.project, repo_root=repo_root,
-                             https_port=args.https_port)
+                             https_port=args.https_port, nonce=nonce)
     if errors:
         for e in errors:
             print(f"round-trip validation FAILED: {e}", file=sys.stderr)

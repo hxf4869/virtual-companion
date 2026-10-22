@@ -17,6 +17,9 @@
 # Usage: reader_frames.sh <component> <interval-seconds>
 # Appends one JSON line per interval to /frames/<component>.jsonl.
 set -u
+# Frame files land in a bind-mounted dir: force 0600 at creation here rather
+# than trusting the container/host umask.
+umask 077
 comp="${1:?component name required}"
 interval="${2:-1}"
 out="/frames/${comp}.jsonl"

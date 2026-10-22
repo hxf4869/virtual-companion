@@ -7,11 +7,15 @@ The render cases are the direct regression for the VC-R57 fixture incident:
 canonical config whose volume/network names stayed frozen as deploy_* under a
 renamed project must be rejected before anything is created. The aggregation
 cases pin the honesty rules: missing processes make a component PARTIAL (never
-zeroed), B peaks come only from same-frame complete sums, and a decreasing
-Engine CPU counter is a reset, not a clamp-to-zero delta.
+zeroed), B peaks come only from same-frame complete sums, and the CPU window
+cases pin the explicit VALID/PARTIAL/INVALID contract — stats gaps between
+valid endpoints and samples with an unreadable epoch are PARTIAL (qualified,
+never VALID), while counter decreases and same-CID epoch changes (even with a
+rising counter) are INVALID with no delta at all.
 """
 
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -191,7 +195,8 @@ class ApplyOverridesTest(unittest.TestCase):
 
 
 def frame(statuses=("OK", "OK", "OK", "OK"), ts=1.0, cpu=1_000_000,
-          missing=(), pid1_rss=1000):
+          missing=(), pid1_rss=1000, epoch="2026-10-22T00:00:00Z",
+          sampled_at=None):
     comps, cpus = {}, {}
     rss_by = {"db": 500, "runtime": pid1_rss, "minio": 800, "caddy": 400}
     for comp, status in zip(collector.COMPONENTS, statuses):
@@ -201,8 +206,11 @@ def frame(statuses=("OK", "OK", "OK", "OK"), ts=1.0, cpu=1_000_000,
         comps[comp] = {"status": status, "rss_kb": rss_by[comp] if pids else None,
                        "pss_kb": rss_by[comp] if pids else None, "n_pids": len(pids),
                        "pids": pids, "missing": list(missing) if comp == "db" else []}
+        # Collection-side CPU entry shape: epoch is State.StartedAt (None when
+        # the inspect failed), sampled_at the actual capture moment.
         cpus[comp] = {"total_usage_ns": cpu, "system_usage_ns": 2, "online_cpus": 10,
-                      "memory_usage_bytes": 1}
+                      "memory_usage_bytes": 1, "epoch": epoch,
+                      "sampled_at": ts if sampled_at is None else sampled_at}
     return {"ts": ts, "components": comps, "cpu": cpus}
 
 
@@ -250,12 +258,66 @@ class AggregationTest(unittest.TestCase):
 
 
 class CounterLifecycleTest(unittest.TestCase):
-    def test_monotonic_counter_delta(self):
-        frames = [frame(ts=1.0, cpu=10**9), frame(ts=2.0, cpu=3 * 10**9)]
+    # The five CPU-window validity classes. Frames carry the collection-side
+    # entry contract: epoch (State.StartedAt, None when inspect failed) and
+    # sampled_at (the actual counter capture moment, not the loop frame ts).
+
+    def test_monotonic_same_epoch_is_valid(self):
+        frames = [frame(ts=1.0, cpu=10**9, sampled_at=1.25),
+                  frame(ts=2.0, cpu=3 * 10**9, sampled_at=2.25)]
         out = collector.cpu_component_window(frames, "runtime")
+        self.assertEqual(out["status"], "VALID")
+        self.assertIsNone(out["reason"])
         self.assertEqual(out["cpu_delta_ns"], 2 * 10**9)
         self.assertFalse(out["counter_reset"])
-        self.assertEqual(out["cpu_window"], [1.0, 2.0])
+        self.assertFalse(out["epoch_changed"])
+        # The window spans the actual capture moments, never the frame ts.
+        self.assertEqual(out["cpu_window"], [1.25, 2.25])
+
+    def test_missing_frame_between_valid_endpoints_is_partial(self):
+        frames = [frame(ts=1.0, cpu=10**9), frame(ts=2.0, cpu=2 * 10**9),
+                  frame(ts=3.0, cpu=3 * 10**9)]
+        frames[1]["cpu"]["db"] = None
+        out = collector.cpu_component_window(frames, "db")
+        self.assertEqual(out["status"], "PARTIAL")
+        self.assertEqual(out["reason"], "stats_missing_frames")
+        self.assertEqual(out["samples"], 2)
+        self.assertEqual(out["stats_missing_frames"], 1)
+        # Cumulative counters still yield the endpoint delta, but consumers
+        # must only read it together with the PARTIAL status and the count.
+        self.assertEqual(out["cpu_delta_ns"], 2 * 10**9)
+
+    def test_sample_missing_epoch_is_partial_not_valid(self):
+        # The inspect failed for one sample: continuity is unprovable, so the
+        # window can never be VALID even though the counter looks monotonic.
+        frames = [frame(ts=1.0, cpu=10**9, epoch=None),
+                  frame(ts=2.0, cpu=3 * 10**9)]
+        out = collector.cpu_component_window(frames, "runtime")
+        self.assertEqual(out["status"], "PARTIAL")
+        self.assertEqual(out["reason"], "epoch_missing")
+        self.assertEqual(out["cpu_delta_ns"], 2 * 10**9)
+        self.assertIn(None, out["epochs"])
+        self.assertFalse(out["epoch_changed"])
+
+    def test_same_cid_epoch_change_with_rising_counter_is_invalid(self):
+        # A same-CID restart whose new counter already exceeds the old value
+        # is only detectable via the StartedAt epoch; a counter-only check
+        # would call it monotonic and overcount.
+        frames = [frame(ts=1.0, cpu=10**9, epoch="2026-10-22T00:00:00Z"),
+                  frame(ts=2.0, cpu=5 * 10**9, epoch="2026-10-22T00:01:00Z")]
+        out = collector.cpu_component_window(frames, "db")
+        self.assertEqual(out["status"], "INVALID")
+        self.assertEqual(out["reason"], "epoch_changed")
+        self.assertTrue(out["epoch_changed"])
+        self.assertFalse(out["counter_reset"])
+        self.assertIsNone(out["cpu_delta_ns"])
+
+    def test_counter_decrease_reset_is_invalid_not_clamped(self):
+        frames = [frame(ts=1.0, cpu=3 * 10**9), frame(ts=2.0, cpu=5 * 10**8)]
+        out = collector.cpu_component_window(frames, "db")
+        self.assertEqual(out["status"], "INVALID")
+        self.assertTrue(out["counter_reset"])
+        self.assertIsNone(out["cpu_delta_ns"])
 
     def test_single_sample_is_not_a_valid_zero_delta(self):
         # One valid endpoint cannot bound an interval; it must surface as an
@@ -263,29 +325,28 @@ class CounterLifecycleTest(unittest.TestCase):
         # exited container must never look like "zero CPU measured").
         frames = [frame(ts=1.0, cpu=10**9)]
         out = collector.cpu_component_window(frames, "runtime")
+        self.assertEqual(out["status"], "INVALID")
         self.assertIsNone(out["cpu_delta_ns"])
         self.assertEqual(out["reason"], "insufficient_samples")
         self.assertEqual(out["samples"], 1)
 
     def test_missing_stats_frames_counted(self):
+        # Missing frames also shrink the endpoint count: one survivor cannot
+        # bound an interval, and the missing frames stay visible.
         frames = [frame(ts=1.0, cpu=10**9), frame(ts=2.0, cpu=2 * 10**9)]
         frames[1]["cpu"]["db"] = None
         out = collector.cpu_component_window(frames, "db")
         self.assertEqual(out["stats_missing_frames"], 1)
+        self.assertEqual(out["status"], "INVALID")
         self.assertIsNone(out["cpu_delta_ns"])
         self.assertEqual(out["reason"], "insufficient_samples")
-
-    def test_counter_reset_invalid_not_clamped(self):
-        frames = [frame(ts=1.0, cpu=3 * 10**9), frame(ts=2.0, cpu=5 * 10**8)]
-        out = collector.cpu_component_window(frames, "db")
-        self.assertTrue(out["counter_reset"])
-        self.assertIsNone(out["cpu_delta_ns"])
 
     def test_missing_samples_reported(self):
         frames = [frame(ts=1.0)]
         frames[0]["cpu"]["caddy"] = None
         out = collector.cpu_component_window(frames, "caddy")
         self.assertEqual(out["samples"], 0)
+        self.assertEqual(out["status"], "INVALID")
         self.assertIsNone(out["cpu_delta_ns"])
 
 
@@ -303,8 +364,62 @@ class AWindowTest(unittest.TestCase):
         self.assertEqual(out["frames_in_window"], 2)
         self.assertEqual(out["complete_b_frames"], 2)
         self.assertEqual(out["component_status_frames"]["db"]["PARTIAL"], 0)
+        self.assertEqual(out["b"]["components"]["runtime"]["status"], "VALID")
         self.assertEqual(out["b"]["components"]["runtime"]["cpu_delta_ns"], 0)
         self.assertEqual(out["b"]["same_frame_peak"]["b_rss_peak_kb"], 2700)
+
+
+class HelperReceiptTest(unittest.TestCase):
+    """The collector helper create must persist the docker-run CID receipt
+    BEFORE any follow-up query: an inspect failure may lose the mounts
+    metadata but never the CID cleanup needs (VC-R59)."""
+
+    def _cli(self, run_stdout, inspect_rc, inspect_stdout=""):
+        def fake_cli(*argv, check=True, capture=True):
+            if argv[0] == "run":
+                return subprocess.CompletedProcess(
+                    args=list(argv), returncode=0, stdout=run_stdout,
+                    stderr="")
+            return subprocess.CompletedProcess(
+                args=list(argv), returncode=inspect_rc, stdout=inspect_stdout,
+                stderr="simulated inspect failure")
+
+        return fake_cli
+
+    def test_inspect_failure_keeps_the_cid_receipt(self):
+        persisted = []
+        orig = collector.docker_cli
+        collector.docker_cli = self._cli("cid-helper-0001\n", 1)
+        try:
+            cid = collector.create_helper_container(
+                "img:tag", "h1", ["--network", "none"], ["/x.sh"],
+                "observer", persisted.append)
+        finally:
+            collector.docker_cli = orig
+        self.assertEqual(cid, "cid-helper-0001")
+        self.assertEqual(persisted, [{"name": "h1", "cid": "cid-helper-0001",
+                                      "kind": "observer", "mounts": None}])
+
+    def test_metadata_enrichment_replaces_not_duplicates(self):
+        persisted = []
+        inspect_payload = json.dumps([{"Mounts": [{"Type": "bind"}]}])
+        orig = collector.docker_cli
+        collector.docker_cli = self._cli("cid-helper-0002\n", 0,
+                                         inspect_payload)
+        try:
+            collector.create_helper_container(
+                "img:tag", "h1", [], ["/x.sh"], "reader-db",
+                lambda entry: persisted.append(dict(entry)))
+        finally:
+            collector.docker_cli = orig
+        # first receipt persisted immediately (mounts still unknown), then
+        # the same entry is enriched and re-persisted
+        self.assertEqual(len(persisted), 2)
+        self.assertEqual(persisted[0],
+                         {"name": "h1", "cid": "cid-helper-0002",
+                          "kind": "reader-db", "mounts": None})
+        self.assertEqual(persisted[-1]["mounts"], [{"Type": "bind"}])
+        self.assertEqual(persisted[-1]["cid"], "cid-helper-0002")
 
 
 if __name__ == "__main__":

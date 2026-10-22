@@ -14,7 +14,12 @@ lands in B — but a component whose reader could not read every cgroup process
 (e.g. the UID-0 pg_isready healthcheck exec as seen by the UID-999 db reader)
 is PARTIAL for that frame, never silently zeroed. Second, the Engine CPU
 counter is cumulative: a decrease means a counter reset/restart, which marks
-the window invalid instead of being clamped to zero.
+the window invalid instead of being clamped to zero. Sample continuity is
+proven by an explicit container-start epoch (State.StartedAt via Engine
+inspect): a same-CID restart — even one whose new counter already exceeds the
+old value — changes the epoch and invalidates the window. A window with
+stats gaps or samples whose epoch could not be read is PARTIAL, never
+silently VALID.
 
 Pure functions are unit-tested in test_collector.py; run.sh is the only
 production caller.
@@ -181,37 +186,70 @@ def a_window(frames):
 def cpu_component_window(frames, comp):
     """Cumulative-counter delta for one component across the window frames.
 
-    At least two valid endpoints are required — a single sample cannot bound
-    an interval and must not surface as a valid delta of 0. Frames where the
-    Engine query failed are counted, not skipped silently. A decrease between
-    consecutive samples is a counter reset/restart: the delta is reported
-    invalid, never clamped to zero.
+    Returns an explicit status so consumers never mistake a degraded window
+    for a complete one:
+      VALID   — at least two counter samples, every sample carries a non-null
+                epoch and all share one epoch (no same-CID restart, including
+                restarts whose new counter already exceeds the old value),
+                the counter never decreases between consecutive samples, and
+                no window frame is missing stats.
+      PARTIAL — the endpoints are otherwise continuous (≥2 samples, monotonic,
+                no epoch change) but the window has stats-missing frames
+                and/or at least one sample whose epoch could not be read
+                (inspect failed). The cumulative counter still yields
+                last-minus-first, but only as a PARTIAL value qualified by
+                stats_missing_frames and epochs.
+      INVALID — fewer than two samples (a single sample cannot bound an
+                interval and must not surface as a delta of 0), any counter
+                decrease (reset/restart), or an epoch change. cpu_delta_ns
+                stays None; nothing is clamped or partially summed.
+
+    cpu_window holds the actual capture moments (entry sampled_at, recorded
+    immediately after the Engine responds; falls back to the frame ts only
+    for entries written before that field existed).
     """
-    values = []
+    samples = []
     missing = 0
     for f in frames:
         entry = (f.get("cpu", {}) or {}).get(comp)
         v = (entry or {}).get("total_usage_ns")
         if v is not None:
-            values.append((f["ts"], v))
+            sampled_at = (entry or {}).get("sampled_at")
+            samples.append((f["ts"] if sampled_at is None else sampled_at,
+                            v, (entry or {}).get("epoch")))
         else:
             missing += 1
-    out = {"samples": len(values), "stats_missing_frames": missing,
-           "counter_reset": False, "cpu_delta_ns": None,
-           "cpu_window": [values[0][0], values[-1][0]] if values else None}
-    if not values:
-        out["reason"] = "no_engine_samples"
+    epochs = []
+    for _, _, epoch in samples:
+        if epoch not in epochs:
+            epochs.append(epoch)
+    out = {"samples": len(samples), "stats_missing_frames": missing,
+           "counter_reset": False,
+           "epoch_changed": len([e for e in epochs if e is not None]) > 1,
+           "epochs": epochs, "cpu_delta_ns": None,
+           "cpu_window": [samples[0][0], samples[-1][0]] if samples else None}
+    if not samples:
+        out["status"], out["reason"] = "INVALID", "no_engine_samples"
         return out
-    if len(values) < 2:
-        out["reason"] = "insufficient_samples"
+    if len(samples) < 2:
+        out["status"], out["reason"] = "INVALID", "insufficient_samples"
         return out
-    for (_, prev), (_, cur) in zip(values, values[1:]):
+    for (_, prev, _), (_, cur, _) in zip(samples, samples[1:]):
         if cur < prev:
             out["counter_reset"] = True
     if out["counter_reset"]:
-        out["reason"] = "counter_reset"
+        out["status"], out["reason"] = "INVALID", "counter_reset"
+        return out
+    if out["epoch_changed"]:
+        out["status"], out["reason"] = "INVALID", "epoch_changed"
+        return out
+    if any(epoch is None for _, _, epoch in samples):
+        out["status"], out["reason"] = "PARTIAL", "epoch_missing"
+    elif missing:
+        out["status"], out["reason"] = "PARTIAL", "stats_missing_frames"
     else:
-        out["cpu_delta_ns"] = values[-1][1] - values[0][1]
+        out["status"], out["reason"] = "VALID", None
+    out["cpu_delta_ns"] = samples[-1][1] - samples[0][1]
     return out
 
 
@@ -272,6 +310,10 @@ class Tailer:
 
 def component_stats(api: DockerUDS, cid: str) -> dict:
     stats = api.get(f"/containers/{cid}/stats?stream=false&one-shot=true")
+    # Actual capture moment of the cumulative counter, taken immediately
+    # after the Engine responds — not the sampling loop's frame ts, which the
+    # analysis window must never reuse as the sample time.
+    sampled_at = time.time()
     cpu = stats.get("cpu_stats", {}) or {}
     usage = (cpu.get("cpu_usage") or {}).get("total_usage")
     return {
@@ -281,7 +323,31 @@ def component_stats(api: DockerUDS, cid: str) -> dict:
         # cgroup accounting including page cache; recorded raw, never used as
         # RSS/PSS (the readers provide process-level smaps numbers).
         "memory_usage_bytes": (stats.get("memory_stats") or {}).get("usage"),
+        "sampled_at": sampled_at,
     }
+
+
+def create_helper_container(image, name, extra, cmd_argv, kind, persist):
+    """docker run one collector helper with a receipt-first contract.
+
+    The create receipt (the exact CID docker run returned) is persisted
+    BEFORE any follow-up query, so an inspect failure can never lose the CID
+    of a container this run created — cleanup still receives it. Mount
+    metadata is best-effort enrichment on top of the same entry.
+    """
+    proc = docker_cli("run", "-d", "--rm", "--name", name, *extra,
+                      image, *cmd_argv)
+    cid = proc.stdout.strip()
+    entry = {"name": name, "cid": cid, "kind": kind, "mounts": None}
+    persist(entry)
+    info = docker_cli("inspect", cid, check=False)
+    if info.returncode == 0:
+        try:
+            entry["mounts"] = json.loads(info.stdout)[0].get("Mounts", [])
+            persist(entry)
+        except (json.JSONDecodeError, IndexError, KeyError):
+            pass
+    return cid
 
 
 def cmd_launch(args):
@@ -300,15 +366,15 @@ def cmd_launch(args):
             fh.write("\n")
 
     def run_detach(name, extra, cmd_argv, kind):
-        proc = docker_cli("run", "-d", "--rm", "--name", name, *extra,
-                          args.image, *cmd_argv)
-        cid = proc.stdout.strip()
-        info = json.loads(docker_cli("inspect", cid).stdout)[0]
-        entry = {"name": name, "cid": cid, "kind": kind,
-                 "mounts": info.get("Mounts", [])}
-        started["containers"].append(entry)
-        persist()
-        return cid
+        def persist_entry(entry):
+            # replace-by-cid: metadata enrichment re-persists the same entry
+            started["containers"] = [c for c in started["containers"]
+                                     if c["cid"] != entry["cid"]]
+            started["containers"].append(entry)
+            persist()
+
+        return create_helper_container(args.image, name, extra, cmd_argv,
+                                       kind, persist_entry)
 
     # Readers: one per measured component, in the target's PID namespace and
     # cgroup-matching user, own cgroup/network none/read-only.
@@ -382,7 +448,8 @@ def cmd_sample(args):
         "server_arch": version.get("Arch"),
     }
     source = {
-        "cpu": "docker-engine-stats/one-shot/total_usage_ns (cumulative)",
+        "cpu": "docker-engine-stats/one-shot/total_usage_ns (cumulative; "
+               "epoch=State.StartedAt via inspect, sampled_at=capture time)",
         "memory": "proc smaps_rollup per cgroup-matched process (readers)",
         "a_cpu": "runtime /actuator/prometheus via netns observer",
         "boundary": "reader/observer/collector live outside the measured cgroups",
@@ -424,8 +491,22 @@ def cmd_sample(args):
                     "missing": (rec or {}).get("missing", []),
                     "reader_self_pid": (rec or {}).get("self_pid"),
                 }
+                cid = manifest["containers"][comp]["cid"]
                 try:
-                    frame["cpu"][comp] = component_stats(api, manifest["containers"][comp]["cid"])
+                    entry = component_stats(api, cid)
+                    # Container-start epoch for sample continuity: stats carry
+                    # no StartedAt, so a same-CID restart is only detectable
+                    # via a separate inspect. A failed inspect leaves epoch
+                    # None (never fabricated); such a sample can never count
+                    # as VALID in the analysis.
+                    try:
+                        state = api.get(f"/containers/{cid}/json").get("State") or {}
+                        entry["epoch"] = state.get("StartedAt")
+                    except Exception as exc:
+                        print(f"engine inspect error for {comp}: {exc}",
+                              file=sys.stderr)
+                        entry["epoch"] = None
+                    frame["cpu"][comp] = entry
                     frame["integrity"]["engine_stats"][comp] = "ok"
                 except Exception as exc:  # surface per component, never fabricate
                     print(f"engine stats error for {comp}: {exc}", file=sys.stderr)
