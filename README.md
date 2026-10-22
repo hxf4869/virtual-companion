@@ -158,6 +158,9 @@ pnpm --dir frontend test:run
 pnpm --dir frontend type-check
 pnpm --dir frontend build
 
+# 默认 HTTP 全旅程（可选长检查；Go 1.26.10+ 在 PATH、Node 22、pnpm 11、OrbStack）
+pnpm --dir frontend test:e2e
+
 # 真实 TLS 全旅程（可选长检查；Node 22、pnpm 11、OrbStack）
 E2E_STACK_KIND=tls E2E_RELEASE_MODE=full pnpm --dir frontend test:e2e
 
@@ -169,6 +172,13 @@ bash infra/db/run-go-store-tests.sh
 cd ops/deploy
 docker compose --env-file .env.local config --quiet
 ```
+
+默认 HTTP E2E 使用当前 PATH 的 Go，在独立测试数据卷和容器上运行；宿主
+provider、runtime 与 Vite 进程记录 OS 启动时间，Docker 资源按本轮实际创建
+收据回收。日志 HTTP_STACK_STATE/STACK_READY 给出状态文件和私有运行目录。
+HTTP 状态使用 v4；旧记录缺少归属信息时显式失败并保留。E2E_STACK_KEEP=1
+用于保留调试现场；synthetic-eval 只有核验恢复 SYNTHETIC/eval=false 后才解除
+保留义务，恢复失败时即使启动器停止也保留本轮进程、容器和恢复记录。
 
 TLS E2E 每轮从当前源码重建 H5 与生产派生镜像，在
 `https://localhost:18457` 启动独立合成栈；可用 `E2E_TLS_PORT` 改端口。

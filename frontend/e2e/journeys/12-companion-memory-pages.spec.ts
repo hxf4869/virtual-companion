@@ -183,7 +183,7 @@ async function waitForAutoSavedMemory(
 /** VC-R79：v2（HTTP 栈，宿主侧 pg 容器）与 v3（TLS 栈，compose 服务
  * 容器 ID + 容器内只读探测）两种 state 形态。 */
 type StackState =
-  | { kind: "http"; container: string; dockerContext: string }
+  | { kind: "http"; container: string; dockerContext: string; providerLogPath: string }
   | {
       kind: "tls";
       dockerContext: string;
@@ -227,10 +227,12 @@ async function readStackState(): Promise<StackState> {
       providerLogPath,
     };
   }
+  if (state.version !== 4) throw new Error("HTTP stack requires v4 ownership state; legacy state is preserved");
   const container = String(state.container ?? "");
   const dockerContext = String(state.dockerContext ?? "");
-  if (!container || !dockerContext) throw new Error("stack state lacks PG container metadata");
-  return { kind: "http", container, dockerContext };
+  const providerLogPath = String(state.providerLogPath ?? "");
+  if (!container || dockerContext !== "orbstack" || !providerLogPath) throw new Error("HTTP stack lacks owned PG/provider metadata");
+  return { kind: "http", container, dockerContext, providerLogPath };
 }
 
 /** One read-only status|close_reason row for the turn's MEMORY_EXTRACT job,
@@ -343,10 +345,7 @@ async function readProviderRequestLog(state: StackState): Promise<ProviderLogEnt
     );
     return parseProviderLogLines(stdout);
   }
-  const port = process.env.E2E_PROVIDER_PORT ?? "19090";
-  const path = process.env.E2E_PROVIDER_REQUEST_LOG
-    ?? `/tmp/vc-e2e-provider-requests-${port}.log`;
-  const raw = await readFile(path, "utf8");
+  const raw = await readFile(state.providerLogPath, "utf8");
   return parseProviderLogLines(raw);
 }
 

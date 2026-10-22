@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFile, stat, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const STATE_VERSION = 2;
+const STATE_VERSION = 4;
 const MAX_STATE_BYTES = 4096;
 const TERM_GRACE_MS = 5_000;
 const POLL_MS = 100;
@@ -16,17 +16,22 @@ const TLS_CLEANUP_TIMEOUT_MS = 105_000;
 
 type ProcessGroupName = "provider" | "runtime" | "h5";
 
-interface StackState {
-  version: 2;
-  supervisorPid: number;
+interface StackState extends OwnedStackState {
+  version: 4;
+  stackKind: "http";
   processGroups: Record<ProcessGroupName, number | null>;
-  container: string;
+  processStarts: Record<ProcessGroupName, string | null>;
+  runDir: string;
+  nonce: string;
+  container: string | null;
   containers: string[];
-  dockerContext: string;
   keep: boolean;
+  creating: boolean;
   releaseMode: "full" | "synthetic-eval";
   releasePolicyVersion: string;
+  providerLogPath: string;
 }
+export type HttpStackState = StackState;
 
 /** VC-R79 TLS 真实栈的 state 契约（version 3，由
  * scripts/dev/e2e-tls-stack.sh 写入）。containers 是 compose 各服务的
@@ -62,6 +67,13 @@ export interface TlsStackState {
   };
   caCert: string;
 }
+
+// Both real launcher modes use the same receipt cleanup and OS supervisor
+// check. Their state parsers and process shapes remain explicit.
+type OwnedStackState = Pick<TlsStackState,
+  "supervisorPid" | "supervisorStartedAt" | "dockerContext" | "project"> & {
+  receipts: Omit<TlsStackState["receipts"], "compose">;
+};
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -200,61 +212,56 @@ function positivePid(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 1;
 }
 
-function parseState(raw: string): StackState {
+export function parseHttpStackState(raw: string): HttpStackState {
   const value: unknown = JSON.parse(raw);
-  if (typeof value !== "object" || value === null) {
-    throw new Error("E2E stack state must be an object");
+  if (typeof value !== "object" || value === null) throw new Error("HTTP E2E state must be an object");
+  const c = value as Record<string, unknown>;
+  if (c.version !== STATE_VERSION || c.stackKind !== "http") {
+    throw new Error("HTTP E2E requires state v4 ownership records; legacy state is preserved without automatic cleanup");
   }
-  const candidate = value as Partial<StackState>;
-  if (candidate.version !== STATE_VERSION || !positivePid(candidate.supervisorPid)) {
-    throw new Error("E2E stack state has an unsupported version or supervisor PID");
+  if (!positivePid(c.supervisorPid) || c.supervisorPid === process.pid
+      || !nonEmptyString(c.supervisorStartedAt)) throw new Error("HTTP E2E supervisor identity is invalid");
+  if (!nonEmptyString(c.runDir) || !c.runDir.startsWith("/")
+      || typeof c.nonce !== "string" || !/^[a-f0-9]{32}$/u.test(c.nonce)
+      || !nonEmptyString(c.project)) throw new Error("HTTP E2E run ownership is invalid");
+  if (c.dockerContext !== "orbstack") throw new Error("HTTP E2E requires the orbstack Docker context");
+  if (typeof c.keep !== "boolean" || typeof c.creating !== "boolean") throw new Error("HTTP E2E lifecycle flags are invalid");
+  if (c.releaseMode !== "full" && c.releaseMode !== "synthetic-eval") throw new Error("HTTP E2E release mode is invalid");
+  if (typeof c.releasePolicyVersion !== "string" || !/^[A-Za-z0-9_.-]{1,64}$/u.test(c.releasePolicyVersion)) {
+    throw new Error("HTTP E2E release policy is invalid");
   }
-  const groups = candidate.processGroups;
-  if (typeof groups !== "object" || groups === null) {
-    throw new Error("E2E stack state has no process-group list");
+  const isCid = (x: unknown): x is string => typeof x === "string" && /^[a-f0-9]{64}$/u.test(x);
+  if (!Array.isArray(c.containers) || c.containers.length > 3 || !c.containers.every(isCid)
+      || new Set(c.containers).size !== c.containers.length
+      || (c.container !== null && (!isCid(c.container) || !c.containers.includes(c.container)))) {
+    throw new Error("HTTP E2E requires actual container IDs from this run");
   }
+  if (!nonEmptyString(c.providerLogPath) || !c.providerLogPath.startsWith("/")) throw new Error("HTTP E2E provider log path is invalid");
+  const groups = c.processGroups;
+  const starts = c.processStarts;
+  if (typeof groups !== "object" || groups === null || typeof starts !== "object" || starts === null) {
+    throw new Error("HTTP E2E process ownership records are missing");
+  }
+  const g = groups as Record<string, unknown>;
+  const t = starts as Record<string, unknown>;
   for (const name of ["provider", "runtime", "h5"] as const) {
-    const pgid = groups[name];
-    if (pgid !== null && !positivePid(pgid)) {
-      throw new Error(`E2E stack state has an invalid ${name} process group`);
+    if (!(name in g) || !(name in t)
+        || (g[name] === null ? t[name] !== null : !positivePid(g[name]) || !nonEmptyString(t[name]))) {
+      throw new Error("HTTP E2E process identity is invalid: " + name);
     }
   }
-  const groupIds = Object.values(groups).filter((pgid): pgid is number => pgid !== null);
-  if (candidate.supervisorPid === process.pid
-      || groupIds.includes(candidate.supervisorPid)
-      || new Set(groupIds).size !== groupIds.length) {
-    throw new Error("E2E stack state process targets are not distinct");
+  const ids = Object.values(g).filter((x): x is number => x !== null) as number[];
+  if (ids.includes(c.supervisorPid) || ids.includes(process.pid) || new Set(ids).size !== ids.length) {
+    throw new Error("HTTP E2E process targets must be distinct");
   }
-  const pgContainer = `vc-e2e-pg-${candidate.supervisorPid}`;
-  const minioContainer = `vc-e2e-minio-${candidate.supervisorPid}`;
-  if (candidate.container !== pgContainer) {
-    throw new Error("E2E stack state container does not match its supervisor");
+  const receipts = c.receipts;
+  if (typeof receipts !== "object" || receipts === null) throw new Error("HTTP E2E receipts are missing");
+  const r = receipts as Record<string, unknown>;
+  for (const key of ["capture", "built", "collectors", "leftoversOut", "resourcesPy"]) {
+    const path = r[key];
+    if (!nonEmptyString(path) || !path.startsWith("/")) throw new Error("HTTP E2E receipt path is invalid: " + key);
   }
-  const containers = candidate.containers ?? [candidate.container];
-  if (!Array.isArray(containers)
-      || containers.length < 1
-      || containers.length > 2
-      || containers[0] !== pgContainer
-      || new Set(containers).size !== containers.length
-      || containers.some((container) => container !== pgContainer && container !== minioContainer)) {
-    throw new Error("E2E stack state has an invalid container list");
-  }
-  if (typeof candidate.dockerContext !== "string"
-      || !/^[A-Za-z0-9_.-]+$/.test(candidate.dockerContext)) {
-    throw new Error("E2E stack state has an invalid Docker context");
-  }
-  if (typeof candidate.keep !== "boolean") {
-    throw new Error("E2E stack state has an invalid keep flag");
-  }
-  if (candidate.releaseMode !== "full"
-      && candidate.releaseMode !== "synthetic-eval") {
-    throw new Error("E2E stack state has an invalid release mode");
-  }
-  if (typeof candidate.releasePolicyVersion !== "string"
-      || !/^[A-Za-z0-9_.-]{1,64}$/.test(candidate.releasePolicyVersion)) {
-    throw new Error("E2E stack state has an invalid release policy version");
-  }
-  return { ...candidate, containers } as StackState;
+  return c as unknown as HttpStackState;
 }
 
 function isMissing(error: unknown): boolean {
@@ -285,40 +292,32 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 async function stopProcesses(state: StackState): Promise<void> {
-  const groups = Object.values(state.processGroups)
-    .filter((pgid): pgid is number => pgid !== null)
-    .map((pgid) => -pgid);
-  const targets = [state.supervisorPid, ...groups];
-
-  for (const target of targets) {
-    signal(target, "SIGTERM");
-  }
-  const deadline = Date.now() + TERM_GRACE_MS;
-  while (Date.now() < deadline && targets.some(targetAlive)) {
-    await delay(POLL_MS);
-  }
-  for (const target of targets) {
-    if (targetAlive(target)) {
-      signal(target, "SIGKILL");
+  await stopOwnedSupervisor(state);
+  for (const name of ["h5", "runtime", "provider"] as const) {
+    const pid = state.processGroups[name];
+    if (pid === null || !targetAlive(-pid)) continue;
+    const matches = () => {
+      if (processLstart(pid) !== state.processStarts[name]) return false;
+      const r = spawnSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8", timeout: 5_000 });
+      return r.status === 0 && r.stdout.trim() === String(pid);
+    };
+    if (!matches()) throw new Error("HTTP process group ownership is unverified; no signal sent: " + name);
+    signal(-pid, "SIGTERM");
+    const deadline = Date.now() + TERM_GRACE_MS;
+    while (Date.now() < deadline && targetAlive(-pid)) await delay(POLL_MS);
+    if (targetAlive(-pid)) {
+      if (!matches()) throw new Error("HTTP process group identity changed; no escalation: " + name);
+      signal(-pid, "SIGKILL");
+      const killDeadline = Date.now() + TERM_GRACE_MS;
+      while (Date.now() < killDeadline && targetAlive(-pid)) await delay(POLL_MS);
+      if (targetAlive(-pid)) throw new Error("HTTP owned process group remains alive: " + name);
     }
   }
 }
 
-function removeContainers(state: StackState): void {
-  for (const container of state.containers) {
-    // -v removes the container's anonymous volumes; the pinned PG image's
-    // data volume would otherwise outlive every E2E run.
-    spawnSync(
-      "docker",
-      ["--context", state.dockerContext, "rm", "-f", "-v", container],
-      { stdio: "ignore" },
-    );
-  }
-}
-
 function releaseGateSnapshot(state: StackState): string {
-  if (state.releaseMode !== "synthetic-eval") {
-    throw new Error("release-gate snapshot is only valid for synthetic eval");
+  if (state.releaseMode !== "synthetic-eval" || state.container === null) {
+    throw new Error("release-gate snapshot requires the synthetic-eval database CID");
   }
   const result = spawnSync(
     "docker",
@@ -353,6 +352,7 @@ function assertSyntheticReleaseGate(state: StackState, expected: string): void {
 }
 
 function restoreSyntheticReleaseGate(state: StackState): void {
+  if (state.container === null) throw new Error("synthetic-eval database CID is unavailable");
   const result = spawnSync(
     "docker",
     [
@@ -389,14 +389,13 @@ function stateVersionOf(raw: string): unknown {
   return undefined;
 }
 
-/** version 3 走 TLS 契约；其余（含非法版本号）仍交给 v2 parseState 抛出
- * 既有错误，保持 HTTP 模式行为不变。 */
+/** TLS 使用 v3，HTTP 使用 v4；旧版缺少归属记录时显式失败并保留现场。 */
 function parseStackStateFile(raw: string): StackState | TlsStackState {
-  return stateVersionOf(raw) === 3 ? parseTlsStackState(raw) : parseState(raw);
+  return stateVersionOf(raw) === 3 ? parseTlsStackState(raw) : parseHttpStackState(raw);
 }
 
 /** 读 supervisor 的 ps lstart 启动时间；ps 失败或输出为空返回 null。 */
-function supervisorLstart(pid: number): string | null {
+function processLstart(pid: number): string | null {
   const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
     encoding: "utf8",
     timeout: 5_000,
@@ -406,39 +405,49 @@ function supervisorLstart(pid: number): string | null {
   return startedAt || null;
 }
 
-async function stopTlsSupervisor(state: TlsStackState): Promise<void> {
+async function stopOwnedSupervisor(state: OwnedStackState): Promise<void> {
+  // kill(pid, 0) also succeeds for an exited but unreaped child. Kernel Z
+  // state is terminal: no supervisor cleanup can still be running there.
+  const active = () => {
+    if (!targetAlive(state.supervisorPid)) return false;
+    const status = spawnSync("ps", ["-o", "stat=", "-p", String(state.supervisorPid)], {
+      encoding: "utf8", timeout: 5_000,
+    });
+    // A failed observation never proves exit.
+    return status.status !== 0 || !status.stdout.trim().startsWith("Z");
+  };
   // 进程所有权：仅当 pid 存活且 ps 读到的 lstart 与 state 记录逐字一致
   // 才发 SIGTERM。ps 失败、pid 已死或时间不一致（陈旧 state / PID 复用）
   // 绝不向其它进程发信号，直接落到收据兜底清理。
-  if (!targetAlive(state.supervisorPid)) return;
-  const startedAt = supervisorLstart(state.supervisorPid);
+  if (!active()) return;
+  const startedAt = processLstart(state.supervisorPid);
   if (startedAt === null || startedAt !== state.supervisorStartedAt) return;
   signal(state.supervisorPid, "SIGTERM");
   // 110s 有界等待（> 引擎 90s 时限、< Playwright gracefulShutdown 120s）；
   // 其 SIGTERM trap 同步执行一轮有界收据清理，ESRCH 视为已退出。
   const deadline = Date.now() + TLS_TERM_GRACE_MS;
-  while (Date.now() < deadline && targetAlive(state.supervisorPid)) {
+  while (Date.now() < deadline && active()) {
     await delay(TLS_POLL_MS);
   }
-  if (targetAlive(state.supervisorPid)) {
+  if (active()) {
     // supervisor 的同一轮清理仍在进行：不得并发再开兜底清理。抛错并
     // 保留全部记录（state、收据、leftovers），可见失败。
     throw new Error(
-      `TLS stack supervisor (pid ${state.supervisorPid}) is still alive `
+      `E2E stack supervisor (pid ${state.supervisorPid}) is still alive `
         + `${TLS_TERM_GRACE_MS}ms after SIGTERM; refusing to run a concurrent receipt cleanup (all records preserved)`,
     );
   }
 }
 
 /** <repo>/scripts/measure/g12-go-capacity/resources.py → <repo> */
-function tlsRepoRoot(state: TlsStackState): string {
+function ownedRepoRoot(state: OwnedStackState): string {
   return resolve(state.receipts.resourcesPy, "..", "..", "..", "..");
 }
 
 /** resources.py 是唯一清理引擎；supervisor 的 trap 已先清过一轮，这里
  * 无论其是否如期退出都做幂等兜底（creating!==true 表示从未尝试 compose
  * create，不做任何 docker 写）。rc!==0 直接抛错：可见失败并保留收据记录。 */
-function cleanupTlsReceipts(state: TlsStackState): void {
+function cleanupOwnedReceipts(state: OwnedStackState): void {
   const result = spawnSync(
     "python3",
     [
@@ -454,7 +463,7 @@ function cleanupTlsReceipts(state: TlsStackState): void {
       "--deadline-seconds", "90",
     ],
     {
-      cwd: tlsRepoRoot(state),
+      cwd: ownedRepoRoot(state),
       encoding: "utf8",
       timeout: TLS_CLEANUP_TIMEOUT_MS,
       // 仅本子进程注入 DOCKER_CONTEXT，不改全局设置。
@@ -466,7 +475,7 @@ function cleanupTlsReceipts(state: TlsStackState): void {
       ? String(result.error)
       : result.stderr.trim().split("\n").slice(-5).join("; ");
     throw new Error(
-      `TLS stack receipt cleanup failed (rc=${String(result.status)}): ${detail}`,
+      `E2E stack receipt cleanup failed (rc=${String(result.status)}): ${detail}`,
     );
   }
 }
@@ -481,9 +490,9 @@ export async function teardownTlsStack(state: TlsStackState, stateFile: string):
     return;
   }
   try {
-    await stopTlsSupervisor(state);
+    await stopOwnedSupervisor(state);
     if (state.creating) {
-      cleanupTlsReceipts(state);
+      cleanupOwnedReceipts(state);
     }
     try {
       await unlink(stateFile);
@@ -520,6 +529,41 @@ function combineErrors(primary: unknown, secondary: unknown): Error {
   );
 }
 
+export async function teardownHttpStack(state: HttpStackState, stateFile: string): Promise<void> {
+  let validationError: unknown;
+  let restorationError: unknown;
+  if (state.releaseMode === "synthetic-eval") {
+    const expectedBeta = "BETA|true|" + state.releasePolicyVersion;
+    try { assertSyntheticReleaseGate(state, expectedBeta); } catch (e) { validationError = e; }
+    try {
+      restoreSyntheticReleaseGate(state);
+      // The launcher preserves a pending synthetic-eval run on EXIT. Only
+      // successful, verified restoration discharges that obligation.
+      try { await unlink(resolve(state.runDir, ".preserve-stack")); }
+      catch (e) { if (!isMissing(e)) throw e; }
+    } catch (e) { restorationError = e; }
+  }
+  if (restorationError) throw validationError ? combineErrors(validationError, restorationError) : restorationError;
+  if (!state.keep) {
+    try {
+      await stopProcesses(state);
+      if (state.creating) cleanupOwnedReceipts(state);
+      // A dead or KEEP supervisor can leave these known per-run outputs.
+      // Remove only exact files after the owned processes/resources are gone.
+      for (const name of ["companiond", "minio-tools.iid", ".stack-creating"]) {
+        try { await unlink(resolve(state.runDir, name)); }
+        catch (e) { if (!isMissing(e)) throw e; }
+      }
+      try { await unlink(stateFile); } catch (e) { if (!isMissing(e)) throw e; }
+    } finally {
+      for (const suffix of [".auth.json", ".shared-chat.json", ".shared-memory.json", ".shared-admin.json"]) {
+        try { await unlink(stateFile + suffix); } catch (e) { if (!isMissing(e)) throw e; }
+      }
+    }
+  }
+  if (validationError) throw validationError;
+}
+
 export default async function globalTeardown(): Promise<void> {
   const stateFile = process.env.E2E_STACK_STATE_FILE;
   if (!stateFile) {
@@ -545,50 +589,5 @@ export default async function globalTeardown(): Promise<void> {
     return;
   }
 
-  let validationError: unknown;
-  let restorationError: unknown;
-  if (state.releaseMode === "synthetic-eval") {
-    const expectedBeta = `BETA|true|${state.releasePolicyVersion}`;
-    try {
-      assertSyntheticReleaseGate(state, expectedBeta);
-    } catch (error) {
-      validationError = error;
-    }
-    try {
-      // Restore even when the pre-destroy BETA assertion failed. If restore or
-      // its terminal check fails, leave the stack intact for investigation.
-      restoreSyntheticReleaseGate(state);
-    } catch (error) {
-      restorationError = error;
-    }
-  }
-
-  if (restorationError) {
-    throw validationError ? combineErrors(validationError, restorationError) : restorationError;
-  }
-
-  if (!state.keep) {
-    await stopProcesses(state);
-    removeContainers(state);
-    const localStateFiles = [
-      stateFile,
-      `${stateFile}.auth.json`,
-      `${stateFile}.shared-chat.json`,
-      `${stateFile}.shared-memory.json`,
-      `${stateFile}.shared-admin.json`,
-    ];
-    for (const localStateFile of localStateFiles) {
-      try {
-        await unlink(localStateFile);
-      } catch (error) {
-        if (!isMissing(error)) {
-          throw error;
-        }
-      }
-    }
-  }
-
-  if (validationError) {
-    throw validationError;
-  }
+  await teardownHttpStack(state, stateFile);
 }

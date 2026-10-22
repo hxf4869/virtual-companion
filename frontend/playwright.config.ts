@@ -104,11 +104,13 @@ export default defineConfig({
     // Replace Playwright's command shell with the supervisor so termination
     // reaches its EXIT trap (and therefore every child group + container).
     command: "exec bash ../scripts/dev/e2e-stack.sh",
-    // Even full mode may only target a local loopback server.
-    url: RESOLVED_BASE_URL,
+    // A new run waits for its state and all process identities to settle.
+    // Explicit reuse still checks the existing loopback server by URL.
+    ...(RELEASE_MODE !== "synthetic-eval" && process.env.E2E_REUSE_STACK === "1"
+      ? { url: RESOLVED_BASE_URL, reuseExistingServer: true }
+      : { wait: { stdout: /STACK_READY\b/ }, reuseExistingServer: false }),
     timeout: 180_000,
-    reuseExistingServer:
-      RELEASE_MODE !== "synthetic-eval" && process.env.E2E_REUSE_STACK === "1",
+    gracefulShutdown: { signal: "SIGTERM", timeout: 120_000 },
     env: {
       E2E_STACK_STATE_FILE: STACK_STATE_FILE,
       E2E_RELEASE_MODE: RELEASE_MODE,

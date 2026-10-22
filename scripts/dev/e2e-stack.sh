@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
-# S0-23 E2E local stack: one isolated PostgreSQL + a local OpenAI-compatible
-# provider + companiond + the H5 vite dev server. Synthetic data only; no
-# production credentials exist anywhere in this path. All children are cleaned
-# up on exit. NOT part of scripts/check.sh (checks-principles R1: browser E2E
-# is an opt-in long check, never the seconds-level daily entry).
-#
-# Usage:  bash scripts/dev/e2e-stack.sh          # foreground supervisor
-#         E2E_STACK_KEEP=1 bash ...              # keep containers for debugging
-#         E2E_RELEASE_MODE=synthetic-eval bash ... # exercise isolated BETA, then restore
+# Isolated HTTP fixture: host companiond/provider/Vite, disposable PG/MinIO.
+# Docker lifecycle uses the existing resources.py creation-receipt engine.
+# State v4 records actual CIDs and OS process identities; no name-based rm.
+# KEEP and synthetic-eval retain their existing public behavior.
 set -uo pipefail
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
-
+die() { echo "HTTP E2E FAIL: $*" >&2; exit 1; }
+E2E_DOCKER_CONTEXT="${E2E_DOCKER_CONTEXT:-orbstack}"
+[ "$E2E_DOCKER_CONTEXT" = orbstack ] || die "only the orbstack context is authorized"
+E2E_RELEASE_MODE="${E2E_RELEASE_MODE:-full}"
+case "$E2E_RELEASE_MODE" in full|synthetic-eval) ;; *) die "unsupported release mode" ;; esac
+while IFS= read -r inherited_runtime_name; do
+    case "$inherited_runtime_name" in VC_*) unset "$inherited_runtime_name" || die "cannot isolate inherited runtime settings" ;; esac
+done < <(compgen -e)
+unset inherited_runtime_name
 E2E_PG_PORT="${E2E_PG_PORT:-18433}"
 E2E_RUNTIME_PORT="${E2E_RUNTIME_PORT:-18080}"
 E2E_H5_PORT="${E2E_H5_PORT:-5173}"
 E2E_PROVIDER_PORT="${E2E_PROVIDER_PORT:-19090}"
-E2E_RELEASE_MODE="${E2E_RELEASE_MODE:-full}"
 E2E_MIGRATOR_DB_PASSWORD="e2e-only-migrator-password"
 E2E_RUNTIME_DB_PASSWORD="e2e-only-runtime-password"
 E2E_RELEASE_POLICY_VERSION="e2e-synthetic-v1"
@@ -26,108 +27,205 @@ E2E_MINIO_SECRET_KEY="e2e-minio-secret-0123456789"
 E2E_MINIO_BUCKET="vc-e2e-exports"
 PG_IMAGE="pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0"
 E2E_MINIO_TOOLS_DOCKERFILE="scripts/dev/Dockerfile.e2e-minio-tools"
-PG_CONTAINER="vc-e2e-pg-$$"
-MINIO_CONTAINER="vc-e2e-minio-$$"
-E2E_DOCKER_CONTEXT="${E2E_DOCKER_CONTEXT:-orbstack}"
 DOCKER=(docker --context "$E2E_DOCKER_CONTEXT")
-E2E_STACK_STATE_FILE="${E2E_STACK_STATE_FILE:-/tmp/vc-e2e-stack-$$.json}"
+export DOCKER_CONTEXT="$E2E_DOCKER_CONTEXT"
+umask 077
+RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vc-e2e-http.XXXXXX")" || die "private run directory failed"
+NONCE="$(openssl rand -hex 16)" || die "nonce generation failed"
+PROJECT="vce2ehttp-$NONCE"
+PG_NAME="$PROJECT-pg"
+MINIO_NAME="$PROJECT-minio"
+MC_NAME="$PROJECT-minio-init"
+PG_VOLUME="${PROJECT}_db-data"
+TOOLS_TAG="virtual-companion-e2e-minio:$NONCE"
+PG_CONTAINER=""
+MINIO_CONTAINER=""
+MC_CONTAINER=""
+E2E_STACK_STATE_FILE="${E2E_STACK_STATE_FILE:-$RUN_DIR/state.json}"
 E2E_AUTH_MATERIAL_FILE="${E2E_STACK_STATE_FILE}.auth.json"
-E2E_SECRET_DIR=""
-MINIO_MC_CONFIG_FILE=""
-E2E_MINIO_TOOLS_IIDFILE=""
-PROVIDER_LOG="/tmp/vc-e2e-provider-$$.log"
-RUNTIME_LOG="/tmp/vc-e2e-runtime-$$.log"
-H5_LOG="/tmp/vc-e2e-h5-$$.log"
-GO_BINARY="/tmp/vc-e2e-companiond-$$"
-
-case "$E2E_DOCKER_CONTEXT" in
-    ""|*[!A-Za-z0-9_.-]*)
-        echo "E2E_DOCKER_CONTEXT contains unsupported characters" >&2
-        exit 9
-        ;;
-esac
-
-case "$E2E_RELEASE_MODE" in
-    full|synthetic-eval) ;;
-    *)
-        echo "E2E_RELEASE_MODE must be full or synthetic-eval" >&2
-        exit 9
-        ;;
-esac
-
+E2E_SECRET_DIR="$RUN_DIR/mc-config"
+MINIO_MC_CONFIG_FILE="$E2E_SECRET_DIR/config.json"
+E2E_MINIO_TOOLS_IIDFILE="$RUN_DIR/minio-tools.iid"
+PROVIDER_LOG="$RUN_DIR/provider.log"
+PROVIDER_REQUEST_LOG="$RUN_DIR/provider-requests.jsonl"
+RUNTIME_LOG="$RUN_DIR/runtime.log"
+H5_LOG="$RUN_DIR/h5.log"
+GO_BINARY="$RUN_DIR/companiond"
+RESOURCES="$ROOT/scripts/measure/g12-go-capacity/resources.py"
+CAPTURE="$RUN_DIR/created-resources.json"
+BUILT_IMAGES="$RUN_DIR/built-images.json"
+LEFTOVERS="$RUN_DIR/cleanup.leftovers.json"
+COLLECTORS="$RUN_DIR/collectors.json"
+CREATING="$RUN_DIR/.stack-creating"
+PROVIDER_PID=""; RUNTIME_PID=""; H5_PID=""
+PROVIDER_STARTED_AT=""; RUNTIME_STARTED_AT=""; H5_STARTED_AT=""
+process_start() { ps -o lstart= -p "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+SUPERVISOR_STARTED_AT="$(process_start $$)"
+[ -n "$SUPERVISOR_STARTED_AT" ] || die "supervisor OS start time unavailable"
+STATE_OWNED=0
 write_state() {
-    local state_tmp="${E2E_STACK_STATE_FILE}.tmp.$$"
-    local provider_pgid="${PROVIDER_PID:-null}"
-    local runtime_pgid="${RUNTIME_PID:-null}"
-    local h5_pgid="${H5_PID:-null}"
-    local keep=false
-    [ "${E2E_STACK_KEEP:-0}" = "1" ] && keep=true
-
-    umask 077
-    if ! printf '%s\n' \
-        "{\"version\":2,\"supervisorPid\":$$,\"processGroups\":{\"provider\":${provider_pgid},\"runtime\":${runtime_pgid},\"h5\":${h5_pgid}},\"container\":\"${PG_CONTAINER}\",\"containers\":[\"${PG_CONTAINER}\",\"${MINIO_CONTAINER}\"],\"dockerContext\":\"${E2E_DOCKER_CONTEXT}\",\"keep\":${keep},\"releaseMode\":\"${E2E_RELEASE_MODE}\",\"releasePolicyVersion\":\"${E2E_RELEASE_POLICY_VERSION}\"}" \
-        >"$state_tmp"; then
+    E2E_META_STATE_OWNED="$STATE_OWNED" E2E_META_PID="$$" E2E_META_START="$SUPERVISOR_STARTED_AT" E2E_META_RUN="$RUN_DIR" \
+    E2E_META_NONCE="$NONCE" E2E_META_PROJECT="$PROJECT" E2E_META_CONTEXT="$E2E_DOCKER_CONTEXT" \
+    E2E_META_KEEP="${E2E_STACK_KEEP:-0}" E2E_META_MODE="$E2E_RELEASE_MODE" \
+    E2E_META_PG="$PG_CONTAINER" E2E_META_MINIO="$MINIO_CONTAINER" E2E_META_MC="$MC_CONTAINER" \
+    E2E_META_PROVIDER="$PROVIDER_PID" E2E_META_PROVIDER_START="$PROVIDER_STARTED_AT" \
+    E2E_META_RUNTIME="$RUNTIME_PID" E2E_META_RUNTIME_START="$RUNTIME_STARTED_AT" \
+    E2E_META_H5="$H5_PID" E2E_META_H5_START="$H5_STARTED_AT" \
+    E2E_META_REQUEST_LOG="$PROVIDER_REQUEST_LOG" E2E_META_RESOURCES="$RESOURCES" \
+    python3 - "$E2E_STACK_STATE_FILE" <<'PY_STATE'
+import json,os,sys,tempfile
+from pathlib import Path
+e=os.environ;r=Path(e['E2E_META_RUN'])
+def nullable(name):return e[name] or None
+def pid(name):return int(e[name]) if e[name] else None
+state={'version':4,'stackKind':'http','supervisorPid':int(e['E2E_META_PID']),
+ 'supervisorStartedAt':e['E2E_META_START'],'runDir':str(r),'nonce':e['E2E_META_NONCE'],
+ 'project':e['E2E_META_PROJECT'],'dockerContext':e['E2E_META_CONTEXT'],
+ 'keep':e['E2E_META_KEEP']=='1','creating':(r/'.stack-creating').exists(),
+ 'container':nullable('E2E_META_PG'),
+ 'containers':[e[k] for k in ('E2E_META_PG','E2E_META_MINIO','E2E_META_MC') if e[k]],
+ 'processGroups':{k:pid('E2E_META_'+k.upper()) for k in ('provider','runtime','h5')},
+ 'processStarts':{k:nullable('E2E_META_'+k.upper()+'_START') for k in ('provider','runtime','h5')},
+ 'releaseMode':e['E2E_META_MODE'],'releasePolicyVersion':'e2e-synthetic-v1',
+ 'providerLogPath':e['E2E_META_REQUEST_LOG'],
+ 'receipts':{'capture':str(r/'created-resources.json'),'built':str(r/'built-images.json'),
+ 'leftoversOut':str(r/'cleanup.leftovers.json'),'collectors':str(r/'collectors.json'),
+ 'resourcesPy':e['E2E_META_RESOURCES']}}
+p=Path(sys.argv[1]);fd,name=tempfile.mkstemp(prefix='.'+p.name+'.',dir=p.parent)
+t=Path(name)
+try:
+ with os.fdopen(fd,'w') as f:json.dump(state,f,separators=(',',':'))
+ if e['E2E_META_STATE_OWNED']=='1':t.replace(p)
+ else:os.link(t,p)
+finally:
+ try:t.unlink()
+ except FileNotFoundError:pass
+PY_STATE
+    local state_rc=$?
+    [ "$state_rc" = 0 ] || return "$state_rc"
+    STATE_OWNED=1
+}
+capture_current() {
+    python3 "$RESOURCES" capture --project "$PROJECT" --nonce "$NONCE" --out "$CAPTURE" >>"$RUN_DIR/receipt.log" 2>&1 || return 1
+    python3 "$RESOURCES" record-built --out "$BUILT_IMAGES" "$TOOLS_TAG" >>"$RUN_DIR/receipt.log" 2>&1
+}
+create_container() {
+    local service="$1" cid rc
+    shift
+    cid="$("${DOCKER[@]}" create --label "vc.g12.nonce=$NONCE" \
+        --label "com.docker.compose.project=$PROJECT" --label "com.docker.compose.service=$service" \
+        "$@" 2>"$RUN_DIR/create-$service.log")"
+    rc=$?
+    capture_current || return 1
+    [ "$rc" = 0 ] || return "$rc"
+    case "$cid" in ''|*[!a-f0-9]*) return 1 ;; esac
+    [ "${#cid}" = 64 ] || return 1
+    printf '%s' "$cid"
+}
+start_owned() {
+    local cid="$1" service="$2"
+    python3 - "$RESOURCES" "$CAPTURE" "$cid" "$service" "$PG_VOLUME" <<'PY_START'
+import importlib.util,json,sys
+s=importlib.util.spec_from_file_location('http_receipts',sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+c=json.load(open(sys.argv[2]));entries=c['containers']
+if not any(e.get('cid')==sys.argv[3] and e.get('service')==sys.argv[4] and e.get('nonce')==c['nonce'] for e in entries):raise SystemExit('container is not in this run creation receipts')
+# Components are created sequentially. Reuse the existing validator for
+# all components created so far, including every actual mounted volume.
+cfg={'services':{e.get('service'):{} for e in entries},'volumes':{'db-data':{'name':sys.argv[5]}},'networks':{}}
+problems=m.verify_start_readiness(cfg,c)
+if problems:raise SystemExit('; '.join(problems))
+PY_START
+    [ $? = 0 ] || return 1
+    if [ "${3:-}" = attach ]; then "${DOCKER[@]}" start -a "$cid"; else "${DOCKER[@]}" start "$cid" >/dev/null; fi
+}
+terminate_group() {
+    local leader_pid="${1:-}" expected_start="${2:-}" current_start pgid
+    [ -n "$leader_pid" ] || return 0
+    if ! kill -0 "$leader_pid" 2>/dev/null; then
+        if kill -0 -- "-$leader_pid" 2>/dev/null; then
+            echo "process group leader absent; preserving unverifiable group" >&2
+            return 1
+        fi
+        return 0
+    fi
+    current_start="$(process_start "$leader_pid")"
+    pgid="$(ps -o pgid= -p "$leader_pid" | tr -d '[:space:]')"
+    if [ -z "$expected_start" ] || [ "$current_start" != "$expected_start" ] || [ "$pgid" != "$leader_pid" ]; then
+        echo "process identity differs; no signal sent, records preserved" >&2
         return 1
     fi
-    mv -f -- "$state_tmp" "$E2E_STACK_STATE_FILE"
-}
-
-terminate_group() {
-    local leader_pid="${1:-}"
-    if [ -n "$leader_pid" ] \
-        && { kill -0 -- "-$leader_pid" 2>/dev/null || kill -0 "$leader_pid" 2>/dev/null; }; then
-        kill -TERM -- "-$leader_pid" 2>/dev/null || kill -TERM "$leader_pid" 2>/dev/null || true
-        for _ in $(seq 1 50); do
-            kill -0 -- "-$leader_pid" 2>/dev/null || break
-            sleep 0.1
-        done
-        kill -KILL -- "-$leader_pid" 2>/dev/null || true
-        wait "$leader_pid" 2>/dev/null || true
+    kill -TERM -- "-$leader_pid" 2>/dev/null || return 1
+    for _ in $(seq 1 50); do
+        kill -0 -- "-$leader_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    if kill -0 -- "-$leader_pid" 2>/dev/null; then
+        [ "$(process_start "$leader_pid")" = "$expected_start" ] || return 1
+        [ "$(ps -o pgid= -p "$leader_pid" | tr -d '[:space:]')" = "$leader_pid" ] || return 1
+        kill -KILL -- "-$leader_pid" 2>/dev/null || return 1
     fi
+    wait "$leader_pid" 2>/dev/null || true
+    ! kill -0 -- "-$leader_pid" 2>/dev/null
 }
-
 cleanup() {
-    if [ "${E2E_STACK_KEEP:-0}" != "1" ]; then
-        terminate_group "${H5_PID:-}"
-        terminate_group "${RUNTIME_PID:-}"
-        terminate_group "${PROVIDER_PID:-}"
-        # -v: the pinned PG image declares an anonymous VOLUME; without it the
-        # data volume outlives every E2E run.
-        "${DOCKER[@]}" rm -fv "$PG_CONTAINER" "$MINIO_CONTAINER" >/dev/null 2>&1 || true
-        rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" \
-            "$E2E_AUTH_MATERIAL_FILE" "$GO_BINARY"
-        rm -f -- "${E2E_STACK_STATE_FILE}".shared-*.json
-        [ -z "$E2E_MINIO_TOOLS_IIDFILE" ] || rm -f -- "$E2E_MINIO_TOOLS_IIDFILE"
-        [ -z "$E2E_SECRET_DIR" ] || rm -rf -- "$E2E_SECRET_DIR"
-    else
-        echo "keeping stack: pg($PG_CONTAINER) minio($MINIO_CONTAINER) provider(:$E2E_PROVIDER_PORT) runtime(:$E2E_RUNTIME_PORT) h5(:$E2E_H5_PORT)" >&2
+    local rc=$? failed=0
+    if [ "${E2E_STACK_KEEP:-0}" = 1 ] || [ -f "$RUN_DIR/.preserve-stack" ]; then
+        echo "keeping HTTP stack: project=$PROJECT run_dir=$RUN_DIR" >&2
+        return "$rc"
     fi
+    terminate_group "$H5_PID" "$H5_STARTED_AT" || failed=1
+    terminate_group "$RUNTIME_PID" "$RUNTIME_STARTED_AT" || failed=1
+    terminate_group "$PROVIDER_PID" "$PROVIDER_STARTED_AT" || failed=1
+    if [ "$failed" = 0 ] && [ -f "$CREATING" ]; then
+        if ! capture_current || ! python3 "$RESOURCES" cleanup --capture "$CAPTURE" \
+            --built "$BUILT_IMAGES" --collectors "$COLLECTORS" --collectors-required no \
+            --leftovers-out "$LEFTOVERS" --project "$PROJECT" --deadline-seconds 90; then failed=1; fi
+    fi
+    if [ "$STATE_OWNED" = 1 ]; then
+        rm -f -- "$E2E_AUTH_MATERIAL_FILE" "${E2E_STACK_STATE_FILE}.shared-chat.json" \
+            "${E2E_STACK_STATE_FILE}.shared-memory.json" "${E2E_STACK_STATE_FILE}.shared-admin.json"
+    fi
+    if [ "$failed" = 0 ]; then
+        if [ "$STATE_OWNED" = 1 ]; then rm -f -- "$E2E_STACK_STATE_FILE"; fi
+        rm -f -- "$GO_BINARY" "$E2E_MINIO_TOOLS_IIDFILE" "$MINIO_MC_CONFIG_FILE" "$CREATING"
+        [ -z "$E2E_SECRET_DIR" ] || rmdir "$E2E_SECRET_DIR" 2>/dev/null || true
+    else
+        echo "HTTP cleanup failed; state and receipts kept in $RUN_DIR" >&2
+        rc=1
+    fi
+    exit "$rc"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
-
-E2E_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vc-e2e-secrets.XXXXXX")"
-MINIO_MC_CONFIG_FILE="$E2E_SECRET_DIR/config.json"
-
-if ! write_state; then
-    echo "failed to create the E2E stack state file" >&2
-    exit 9
-fi
+if [ "${E2E_HTTP_SOURCE_ONLY:-0}" = 1 ]; then return 0 2>/dev/null || exit 0; fi
+mkdir -m 700 "$E2E_SECRET_DIR" || die "private mc config directory failed"
+write_state || die "state file creation failed"
+echo "HTTP_STACK_STATE state_file=$E2E_STACK_STATE_FILE run_dir=$RUN_DIR project=$PROJECT"
+"${DOCKER[@]}" info >/dev/null 2>&1 || die "Docker unreachable"
+python3 "$RESOURCES" require-absent --project "$PROJECT" --nonce "$NONCE" \
+    --name "$PG_NAME" --name "$MINIO_NAME" --name "$MC_NAME" --name "$PG_VOLUME" --tag "$TOOLS_TAG" \
+    || die "expected-absent resource exists or absence was not proven"
 
 echo "== build companiond =="
-export PATH="/Users/hxf/.local/go/bin:$PATH"
-go build -C backend -o "$GO_BINARY" ./cmd/companiond || {
+GOPROXY=off GOTOOLCHAIN=local go build -C backend -mod=vendor -o "$GO_BINARY" ./cmd/companiond || {
     echo "companiond build failed" >&2
     exit 2
 }
 
 echo "== isolated postgres :$E2E_PG_PORT =="
-"${DOCKER[@]}" rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
-"${DOCKER[@]}" run -d --name "$PG_CONTAINER" \
-    -p "127.0.0.1:${E2E_PG_PORT}:5432" \
-    -e POSTGRES_PASSWORD=vc-e2e-synthetic \
-    -e POSTGRES_DB=vc \
-    "$PG_IMAGE" >/dev/null
+touch "$CREATING" || die "creation marker failed"
+write_state || die "creation state failed"
+"${DOCKER[@]}" volume create --label "vc.g12.nonce=$NONCE" \
+    --label "com.docker.compose.project=$PROJECT" "$PG_VOLUME" >"$RUN_DIR/volume-create.log" 2>&1
+VOLUME_RC=$?
+capture_current || die "volume receipt capture failed"
+[ "$VOLUME_RC" = 0 ] || die "database volume creation failed"
+PG_CONTAINER="$(create_container pg --name "$PG_NAME" \
+    -p "127.0.0.1:${E2E_PG_PORT}:5432" -e POSTGRES_PASSWORD=vc-e2e-synthetic -e POSTGRES_DB=vc \
+    --mount "type=volume,source=$PG_VOLUME,target=/var/lib/postgresql" "$PG_IMAGE")" \
+    || die "database create failed; no existing container was replaced"
+write_state || die "database state failed"
+start_owned "$PG_CONTAINER" pg || die "database start refused"
 
 PG_READY=0
 for _ in $(seq 1 90); do
@@ -150,13 +248,11 @@ echo "== build e2e minio tools image =="
 # MinIO server and the mc bootstrap container. Rebuilds hit the
 # content-addressed build cache. The empty stdin context keeps this
 # repository and the secret dir out of the build.
-E2E_MINIO_TOOLS_IIDFILE="${TMPDIR:-/tmp}/vc-e2e-minio-tools-$$.iid"
-if ! "${DOCKER[@]}" build \
-    --iidfile "$E2E_MINIO_TOOLS_IIDFILE" \
-    - <"$E2E_MINIO_TOOLS_DOCKERFILE" >/dev/null; then
-    echo "e2e minio tools image build failed" >&2
-    exit 5
-fi
+"${DOCKER[@]}" build --tag "$TOOLS_TAG" --iidfile "$E2E_MINIO_TOOLS_IIDFILE" \
+    - <"$E2E_MINIO_TOOLS_DOCKERFILE" >"$RUN_DIR/minio-build.log" 2>&1
+TOOLS_BUILD_RC=$?
+capture_current || die "built-image receipt capture failed"
+[ "$TOOLS_BUILD_RC" = 0 ] || die "MinIO tools build failed; see $RUN_DIR/minio-build.log"
 MINIO_IMAGE="$(cat "$E2E_MINIO_TOOLS_IIDFILE" 2>/dev/null || true)"
 MC_IMAGE="$MINIO_IMAGE"
 if [ -z "$MINIO_IMAGE" ]; then
@@ -186,12 +282,12 @@ printf '%s\n' \
     '}' \
     > "$MINIO_MC_CONFIG_FILE"
 chmod 600 "$MINIO_MC_CONFIG_FILE"
-"${DOCKER[@]}" rm -f "$MINIO_CONTAINER" >/dev/null 2>&1 || true
-"${DOCKER[@]}" run -d --name "$MINIO_CONTAINER" \
-    -p 127.0.0.1::9000 \
-    -e MINIO_ROOT_USER="$E2E_MINIO_ACCESS_KEY" \
-    -e MINIO_ROOT_PASSWORD="$E2E_MINIO_SECRET_KEY" \
-    "$MINIO_IMAGE" server /data >/dev/null
+MINIO_CONTAINER="$(create_container minio --name "$MINIO_NAME" \
+    -p 127.0.0.1::9000 -e MINIO_ROOT_USER="$E2E_MINIO_ACCESS_KEY" \
+    -e MINIO_ROOT_PASSWORD="$E2E_MINIO_SECRET_KEY" "$MINIO_IMAGE" server /data)" \
+    || die "MinIO create failed; no existing container was replaced"
+write_state || die "MinIO state failed"
+start_owned "$MINIO_CONTAINER" minio || die "MinIO start refused"
 MINIO_PORT="$("${DOCKER[@]}" port "$MINIO_CONTAINER" 9000/tcp | head -1 | sed 's/.*://')"
 case "$MINIO_PORT" in
     ''|*[!0-9]*)
@@ -212,16 +308,13 @@ if [ "$MINIO_READY" != "1" ]; then
     "${DOCKER[@]}" logs "$MINIO_CONTAINER" 2>&1 | tail -20 >&2
     exit 5
 fi
-if ! "${DOCKER[@]}" run --rm --entrypoint /bin/mc \
-    --network "container:$MINIO_CONTAINER" \
-    -e MC_UPDATE=off \
-    -e MINIO_UPDATE=off \
+MC_CONTAINER="$(create_container minio-init --name "$MC_NAME" --entrypoint /bin/mc \
+    --network "container:$MINIO_CONTAINER" -e MC_UPDATE=off -e MINIO_UPDATE=off \
     -v "$MINIO_MC_CONFIG_FILE:/mc-config/config.json:ro" \
-    "$MC_IMAGE" --config-dir /mc-config \
-    mb --ignore-existing "e2e/$E2E_MINIO_BUCKET" >/dev/null; then
-    echo "e2e minio bucket bootstrap failed" >&2
-    exit 5
-fi
+    "$MC_IMAGE" --config-dir /mc-config mb --ignore-existing "e2e/$E2E_MINIO_BUCKET")" \
+    || die "MinIO bootstrap container create failed"
+write_state || die "MinIO bootstrap state failed"
+start_owned "$MC_CONTAINER" minio-init attach >/dev/null || die "MinIO bucket bootstrap failed"
 rm -f -- "$MINIO_MC_CONFIG_FILE"
 rmdir "$E2E_SECRET_DIR"
 E2E_SECRET_DIR=""
@@ -307,10 +400,12 @@ echo "== local OpenAI-compatible provider :$E2E_PROVIDER_PORT =="
 # leader. Disable it immediately afterward so Ctrl-C still reaches the
 # foreground supervisor during readiness checks.
 set -m
-E2E_PROVIDER_PORT="$E2E_PROVIDER_PORT" node scripts/dev/e2e-provider.mjs \
+E2E_PROVIDER_HOST=127.0.0.1 E2E_PROVIDER_REQUEST_LOG="$PROVIDER_REQUEST_LOG" E2E_PROVIDER_PORT="$E2E_PROVIDER_PORT" node scripts/dev/e2e-provider.mjs \
     >"$PROVIDER_LOG" 2>&1 &
 PROVIDER_PID=$!
 set +m
+PROVIDER_STARTED_AT="$(process_start "$PROVIDER_PID")"
+[ -n "$PROVIDER_STARTED_AT" ] || die "provider OS start time unavailable"
 if ! write_state; then
     echo "failed to update the E2E stack state for provider" >&2
     exit 9
@@ -368,6 +463,8 @@ set -m
 "$GO_BINARY" >"$RUNTIME_LOG" 2>&1 &
 RUNTIME_PID=$!
 set +m
+RUNTIME_STARTED_AT="$(process_start "$RUNTIME_PID")"
+[ -n "$RUNTIME_STARTED_AT" ] || die "runtime OS start time unavailable"
 if ! write_state; then
     echo "failed to update the E2E stack state for runtime" >&2
     exit 9
@@ -396,6 +493,7 @@ fi
 
 echo "== configuring $E2E_RELEASE_MODE release gate + local provider =="
 if [ "$E2E_RELEASE_MODE" = "synthetic-eval" ]; then
+    : > "$RUN_DIR/.preserve-stack" || die "cannot record pending synthetic-eval restoration"
     "${DOCKER[@]}" exec -i "$PG_CONTAINER" psql -U postgres -d vc -v ON_ERROR_STOP=1 -q <<'SQL'
 SELECT vc.advance_release_gate('SYNTHETIC', false, 'e2e-synthetic-v1');
 SQL
@@ -460,6 +558,8 @@ set -m
 ) >"$H5_LOG" 2>&1 &
 H5_PID=$!
 set +m
+H5_STARTED_AT="$(process_start "$H5_PID")"
+[ -n "$H5_STARTED_AT" ] || die "h5 OS start time unavailable"
 if ! write_state; then
     echo "failed to update the E2E stack state for H5" >&2
     exit 9
@@ -481,7 +581,7 @@ curl -fsS "http://127.0.0.1:${E2E_H5_PORT}/" >/dev/null || {
     exit 4
 }
 
-echo "STACK_READY port_pg=$E2E_PG_PORT port_minio=$MINIO_PORT port_provider=$E2E_PROVIDER_PORT port_runtime=$E2E_RUNTIME_PORT port_h5=$E2E_H5_PORT pid_provider=$PROVIDER_PID pid_runtime=$RUNTIME_PID pid_h5=$H5_PID"
+echo "STACK_READY port_pg=$E2E_PG_PORT port_minio=$MINIO_PORT port_provider=$E2E_PROVIDER_PORT port_runtime=$E2E_RUNTIME_PORT port_h5=$E2E_H5_PORT pid_provider=$PROVIDER_PID pid_runtime=$RUNTIME_PID pid_h5=$H5_PID state_file=$E2E_STACK_STATE_FILE run_dir=$RUN_DIR project=$PROJECT"
 while kill -0 "$PROVIDER_PID" 2>/dev/null \
     && kill -0 "$RUNTIME_PID" 2>/dev/null \
     && kill -0 "$H5_PID" 2>/dev/null; do
