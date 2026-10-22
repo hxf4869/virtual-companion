@@ -425,6 +425,30 @@ E2E（未改）。范围外事实：`infra/db/backup/run-restore-drill.sh` 与
 `run-daily-backup.sh` 仍引用同一批不可得 minio/mc digest，未改、待单独处理；
 amd64 生产部署未运行；MinIO 上游归档后维护与存储选型仍为 Owner 待决。
 
+2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
+最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
+Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于
+基线」，其余历史实测保留。R55 已证 `--rm`+手动 `rm -f` 竞态会残留 PG 匿名卷且
+run-restore-drill.sh 已修，本轮收口最后一个同源消费者 `run-backup-drill.sh`：
+cleanup 两处 `docker rm -f` 最小补 `-v`（R53/R55 同源真实现象），阶段、断言与
+退出码语义不变。验证：bash -n + git diff --check 后，以直接子进程父控制器
+（/tmp/vcr56 0700、产物日志 0600、VC_DB_LOG_DIR/TMPDIR 显式其下、
+DOCKER_CONTEXT=orbstack 不改全局、start_new_session 记录真实 PID/PGID=53446、
+单调计时、900s 观察窗口仅超时才对本轮独立进程组 TERM→有界 KILL/reap）一次
+真实跑完整现有两阶段入口（直接 rc=0、178.7s 自然结束，未触发窗口）：Phase A
+全 135 迁移+种子→pg_dump -Fc 1033608B→备份后 dave 删除 digest-only manifest→
+drop/recreate→pg_restore→墓碑 dry-run/apply 双命中→五类业务断言+RLS 01/02/70
+对恢复库全 PASS；Phase B pg_basebackup 55113216B+5 个 WAL→全新容器
+recovery.signal 回放归档 WAL→post-basebackup marker 行断言 PASS（ALL BACKUP
+DRILL PHASES PASS）。自然 EXIT 清理验证：本轮实际两容器 3b4a64930bfd
+（drill）/d9103d72d106（pitr）与各自匿名卷 30e8247f…/3feab618…（运行中
+inspect Mounts 实录）在脚本自身 cleanup 后经 daemon 精确查询——容器
+`ps -aq --filter id=` 与卷 `volume ls -q --filter name=` 均 rc0 且 count0、
+inspect rc1——确认不存在，无需兜底 rm（自然清理 PASS）；未动任何既有卷/容器、
+未 prune、未跑无关 Go/前端/E2E（两阶段通过后仅复核脚本语法+diff）。
+范围外事实：amd64 未跑；WAL 归档生产落位与加密方式、RPO/RTO 复核仍为 Owner
+待办。
+
 2026-10-22 备份/恢复链 MinIO 客户端与凭据传输修复（VC-R55，R54 范围外事实
 收口）：`run-daily-backup.sh` 的 MC_IMAGE_DEFAULT 与 `run-restore-drill.sh` 的
 MINIO_IMAGE/MC_IMAGE 仍指 R19 已证不可取的旧 minio/mc digest；daily 本机分支用
@@ -477,14 +501,14 @@ native CLI）已清、留存日志无凭据子串；卷侧如实更正并留未�
 fixture.log Mounts 记录分别证明为 be29bf3e…（drill PG23858，Root 精确删除）、
 b80…（native PG29375）、fce8b775…（native PG31658），均不属于我删的 3 枚；
 我删的 3 枚 create/mount 事件已滚出 256 事件环、无容器关联可证，归属记
-**UNVERIFIED**（不可恢复、不伪造归属、不再按时间窗口/悬空状态删除任何卷）；
+**UNVERIFIED**（已删除、未恢复、不伪造归属、不再按时间窗口/悬空状态删除任何卷）；
 Root 侧另证 drill PG 匿名卷 be29 曾在 `--rm`+手动 `rm -f` 竞态下残留
 （引用查询 count0→volume rm rc0→复查 count0 由 Root 精确清除），据此 drill
 cleanup 的 `docker rm -f` 最小补 `-v`（R53 同源真实现象），并以最小真实消费者
 探针验证（真实创建同镜像 --rm PG→inspect
 Mounts 捕获真实匿名卷→执行补丁后同一清理语义→容器 count0 且捕获卷精确查询
-不存在，直接 rc=0）；b80/fce8 当前精确查询均不存在；未全局 prune、未动
-基线卷。范围外事实：amd64 侧本轮
+不存在，直接 rc=0）；b80/fce8 当前精确查询均不存在；未全局 prune、无法证明
+上述 3 卷是否属于基线。范围外事实：amd64 侧本轮
 未重跑；本机无全局 mc，生产本机分支需 Owner
 安装 mc 或走 Docker 分支；launchd 装载仍由 Owner 手工执行。
 

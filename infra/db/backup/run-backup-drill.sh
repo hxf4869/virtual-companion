@@ -37,8 +37,8 @@ echo "log dir: $LOG_DIR"
 CID=""
 CID_PITR=""
 cleanup() {
-    if [ -n "$CID" ]; then docker rm -f "$CID" >/dev/null 2>&1 || true; fi
-    if [ -n "$CID_PITR" ]; then docker rm -f "$CID_PITR" >/dev/null 2>&1 || true; fi
+    if [ -n "$CID" ]; then docker rm -fv "$CID" >/dev/null 2>&1 || true; fi
+    if [ -n "$CID_PITR" ]; then docker rm -fv "$CID_PITR" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
 
