@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { navigateToPage, openSharedSession } from "../helpers";
+import { navigateToPage, openSharedSession, STACK_KIND } from "../helpers";
 
 async function expectFit(page: Page, label: string): Promise<void> {
   const sizes = await page.evaluate(() => ({
@@ -10,9 +10,59 @@ async function expectFit(page: Page, label: string): Promise<void> {
   expect(sizes.scrollWidth, `${label} must not overflow`).toBeLessThanOrEqual(sizes.viewportWidth);
 }
 
+/** VC-R79（Root 修正）：静态 gzip 与安全头的真实断言对象是 /assets/ 下
+ * 的 hashed JS/CSS——真实构建产物在此（uni-app vite build），由 Caddy
+ * 的 /assets/* 与 /static/* 静态路由按原路径提供并设置 immutable。
+ * /static/ 的 PNG 不在 Caddy 默认压缩范围内，不能拿它代替文本资源。
+ * SPA shell（/ 文档）另断言 cache-control: no-cache。 */
+async function assertTlsStaticDelivery(page: Page, assetRequests: string[]): Promise<void> {
+  expect(
+    assetRequests.length,
+    "the page loaded no /assets/ JS/CSS asset to assert delivery on",
+  ).toBeGreaterThan(0);
+  const asset = await page.context().request.get(assetRequests[assetRequests.length - 1], {
+    headers: { "Accept-Encoding": "gzip" },
+  });
+  expect(asset.ok(), `hashed asset fetch failed: HTTP ${asset.status()}`).toBeTruthy();
+  const assetHeaders = asset.headers();
+  const contentType = assetHeaders["content-type"] ?? "";
+  // 防 SPA HTML fallback 假通过：必须真的是 JS/CSS，而不是 index.html。
+  expect(
+    /javascript|css/i.test(contentType),
+    `hashed asset content-type must be JavaScript/CSS (got ${contentType})`,
+  ).toBe(true);
+  expect(contentType.includes("text/html")).toBe(false);
+  expect(assetHeaders["content-encoding"], "hashed asset must be served gzip-compressed")
+    .toContain("gzip");
+  expect(assetHeaders["strict-transport-security"]).toContain("max-age=31536000");
+  expect(assetHeaders["x-content-type-options"]).toBe("nosniff");
+  expect(assetHeaders["x-frame-options"]).toBe("DENY");
+  expect(assetHeaders["referrer-policy"]).toBe("no-referrer");
+  expect(
+    assetHeaders["cache-control"],
+    "hashed asset must be immutable-cacheable",
+  ).toContain("immutable");
+
+  const shell = await page.context().request.get(`${new URL(page.url()).origin}/`);
+  expect(shell.ok(), `SPA shell fetch failed: HTTP ${shell.status()}`).toBeTruthy();
+  expect(shell.headers()["cache-control"], "SPA shell must be no-cache").toContain("no-cache");
+}
+
 test("the product exposes only home, chat and me as top-level navigation", async ({
   page,
 }) => {
+  // TLS 模式收集页面实际发起的 /assets/ 文本资源请求，供旅程末尾的
+  // gzip/安全头真实断言使用；HTTP 模式不收集、不断言（行为不变）。
+  const assetRequests: string[] = [];
+  if (STACK_KIND === "tls") {
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.startsWith("/assets/")
+          && (pathname.endsWith(".js") || pathname.endsWith(".css"))) {
+        assetRequests.push(request.url());
+      }
+    });
+  }
   const session = await openSharedSession(page, "chat");
   await navigateToPage(page, "/pages/index/index");
 
@@ -53,4 +103,8 @@ test("the product exposes only home, chat and me as top-level navigation", async
   );
   await expect(page.getByTestId("home-hero")).toBeVisible();
   await expectFit(page, "home");
+
+  if (STACK_KIND === "tls") {
+    await assertTlsStaticDelivery(page, assetRequests);
+  }
 });

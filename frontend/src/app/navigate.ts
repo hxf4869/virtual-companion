@@ -1,3 +1,5 @@
+import { getUniApi } from "../platform/uni-api";
+
 // Shell/组件统一导航入口：包装 uni 导航 API 的缺席（组件单测 happy-dom
 // 环境）与异常。uni 导航守卫（nav-guard.ts 安装的拦截器）仍然生效——
 // 这里只是安全壳，不是第二套路由守卫。
@@ -9,7 +11,7 @@ type UniNavigator = {
 };
 
 function uniApi(): UniNavigator | undefined {
-  return (globalThis as Record<string, unknown>).uni as
+  return getUniApi() as
     | UniNavigator
     | undefined;
 }

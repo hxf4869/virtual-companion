@@ -2,6 +2,7 @@
 // NO token or identity field is ever written to localStorage.
 // Account identity, auth challenges and first-use recovery codes are memory-only.
 
+import { getUniApi } from "@/platform/uni-api";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
@@ -44,7 +45,7 @@ function redirectToLogin(): void {
   if (current.startsWith("/pages/login/login")) return;
   const url = buildLoginHref(current);
   try {
-    const uniApi = (globalThis as Record<string, unknown>).uni as
+    const uniApi = getUniApi() as
       | { redirectTo?: (options: { url: string }) => void }
       | undefined;
     if (uniApi?.redirectTo) {

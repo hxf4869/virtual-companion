@@ -15,6 +15,7 @@ rising counter) are INVALID with no delta at all.
 """
 
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -192,6 +193,81 @@ class ApplyOverridesTest(unittest.TestCase):
         self.assertEqual(fp["network_mode"], "service:runtime")
         self.assertEqual(fp["volumes"][0]["source"],
                          f"{REPO}/scripts/measure/g12-go-capacity/fake_provider.mjs")
+
+
+class ProviderParameterizationTest(unittest.TestCase):
+    """VC-R79: scripts/dev/e2e-tls-stack.sh substitutes the journey-dialect
+    provider script and env through the same fake-provider service; the G12
+    default render (fixture script + timing knobs) stays pinned, and the
+    substituted bind must live inside the repo like every other bind."""
+
+    def test_default_provider_fixture_unchanged(self):
+        fp = render_stack.fake_provider_service(REPO, 19091)
+        self.assertEqual(fp["volumes"][0]["source"],
+                         f"{REPO}/scripts/measure/g12-go-capacity/fake_provider.mjs")
+        self.assertEqual(fp["volumes"][0]["target"], "/app/fake_provider.mjs")
+        self.assertEqual(fp["command"], ["node", "fake_provider.mjs"])
+        self.assertEqual(fp["environment"]["E2E_PROVIDER_HOST"], "127.0.0.1")
+        self.assertEqual(fp["environment"]["E2E_PROVIDER_PORT"], "19091")
+        self.assertEqual(fp["environment"]["G12_FIRST_TOKEN_MS"], "200")
+
+    def test_custom_provider_script_and_env(self):
+        rendered = render_stack.apply_overrides(
+            canonical_fixture(), project=TRIAL, tag="t1", https_port=18457,
+            repo_root=REPO, fake_port=19090,
+            runtime_env={"VC_PROVIDER_ENABLED": "true"},
+            provider_script="scripts/dev/e2e-provider.mjs",
+            provider_env={"E2E_PROVIDER_REQUEST_LOG":
+                          "/tmp/vc-e2e-provider-requests-19090.log"})
+        fp = rendered["services"]["fake-provider"]
+        self.assertEqual(fp["volumes"][0]["source"],
+                         f"{REPO}/scripts/dev/e2e-provider.mjs")
+        self.assertEqual(fp["volumes"][0]["target"], "/app/e2e-provider.mjs")
+        self.assertEqual(fp["command"], ["node", "e2e-provider.mjs"])
+        self.assertNotIn("G12_FIRST_TOKEN_MS", fp["environment"])
+        self.assertEqual(fp["environment"]["E2E_PROVIDER_PORT"], "19090")
+        self.assertEqual(fp["environment"]["E2E_PROVIDER_REQUEST_LOG"],
+                         "/tmp/vc-e2e-provider-requests-19090.log")
+        self.assertEqual(fp["network_mode"], "service:runtime")
+        # The substituted fixture still passes every ownership guard.
+        self.assertEqual(
+            render_stack.validate_render(rendered, project=TRIAL,
+                                         repo_root=REPO, https_port=18457), [])
+
+    def test_provider_script_escaping_repo_rejected(self):
+        # A provider script whose bind path normalizes outside the repo must
+        # be refused before anything is created (ownership guard, not a
+        # name heuristic).
+        rendered = render_stack.apply_overrides(
+            canonical_fixture(), project=TRIAL, tag="t1", https_port=18457,
+            repo_root=REPO, fake_port=19090, runtime_env={},
+            provider_script="scripts/../../../outside.mjs")
+        errors = render_stack.validate_render(rendered, project=TRIAL,
+                                              repo_root=REPO, https_port=18457)
+        self.assertTrue(any("binds outside the repo" in e for e in errors))
+
+    def test_provider_script_symlink_escape_rejected(self):
+        # A provider script that IS inside the repo but is a symlink whose
+        # target lives outside must be refused on the RESOLVED path — the
+        # public --provider-script input makes this reachable, so the bind
+        # boundary is judged after realpath (VC-R79 Root audit).
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = os.path.join(tmp, "outside.mjs")
+            Path(outside).write_text("#!/usr/bin/env node\n")
+            fake_repo = os.path.join(tmp, "repo")
+            os.makedirs(os.path.join(fake_repo, "scripts"))
+            os.symlink(outside, os.path.join(fake_repo, "scripts", "linked.mjs"))
+            rendered = render_stack.apply_overrides(
+                canonical_fixture(), project=TRIAL, tag="t1", https_port=18457,
+                repo_root=fake_repo, fake_port=19090, runtime_env={},
+                provider_script="scripts/linked.mjs")
+            errors = render_stack.validate_render(rendered, project=TRIAL,
+                                                  repo_root=fake_repo,
+                                                  https_port=18457)
+            self.assertTrue(
+                any("binds outside the repo" in e for e in errors),
+                f"symlink escape not rejected: {errors}")
 
 
 def frame(statuses=("OK", "OK", "OK", "OK"), ts=1.0, cpu=1_000_000,

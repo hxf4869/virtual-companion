@@ -28,6 +28,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -658,6 +659,74 @@ class ReceiptStateCliTest(unittest.TestCase):
             self.assertEqual(proc.returncode, 1)
             self.assertTrue(any("capture receipt record missing" in m
                                 for m in leftovers["unverified"]))
+
+
+class DeadlineTest(unittest.TestCase):
+    """--deadline-seconds (VC-R79): a visible wall-clock bound for the TLS
+    cleanup path inside the SAME engine. The default (0) keeps the G12
+    callers' unbounded behavior; expiry raises TimeoutError so the CLI exits
+    nonzero and the caller keeps the records — never a silent hang."""
+
+    def test_default_deadline_passes_no_subprocess_timeout(self):
+        captured = {}
+
+        def fake_run(*args, **kwargs):
+            captured.update(kwargs)
+            return _ok("")
+        with mock.patch.object(resources.subprocess, "run", fake_run):
+            resources.docker_cli(["ps"])
+        self.assertIsNone(resources._DEADLINE_MONO)
+        self.assertIsNone(captured.get("timeout"))
+
+    def test_expired_deadline_raises_before_any_docker_call(self):
+        with mock.patch.object(resources, "_DEADLINE_MONO",
+                               time.monotonic() - 1):
+            with mock.patch.object(
+                    resources.subprocess, "run",
+                    lambda *a, **k: self.fail("docker subprocess ran")):
+                with self.assertRaises(TimeoutError):
+                    resources.docker_cli(["ps"])
+
+    def test_subprocess_timeout_becomes_timeout_error(self):
+        seen = {}
+
+        def fake_run(*args, **kwargs):
+            seen["timeout"] = kwargs.get("timeout")
+            raise subprocess.TimeoutExpired(cmd="docker", timeout=0.01)
+        with mock.patch.object(resources, "_DEADLINE_MONO",
+                               time.monotonic() + 60):
+            with mock.patch.object(resources.subprocess, "run", fake_run):
+                with self.assertRaises(TimeoutError):
+                    resources.docker_cli(["stop", "abc"])
+        self.assertIsNotNone(seen["timeout"])
+
+    def test_cli_deadline_expiry_exits_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            stub_bin = tmp / "bin"
+            stub_bin.mkdir()
+            stub = stub_bin / "docker"
+            stub.write_text("#!/bin/sh\nsleep 0.3\nexit 0\n")
+            stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            capture = tmp / "capture.json"
+            capture.write_text(json.dumps({
+                "project": "p1", "nonce": "n0",
+                "containers": [{"cid": "aaaaaaaaaaaaaaaa", "name": "p1-db-1"}],
+                "volumes": [], "networks": []}))
+            built = tmp / "built.json"
+            built.write_text("{}")
+            proc = subprocess.run(
+                ["python3", str(HERE / "resources.py"), "cleanup",
+                 "--capture", str(capture), "--built", str(built),
+                 "--collectors", str(tmp / "collectors.json"),
+                 "--leftovers-out", str(tmp / "leftovers.json"),
+                 "--project", "p1", "--deadline-seconds", "0.02"],
+                capture_output=True, text=True,
+                env=dict(os.environ, PATH=f"{stub_bin}:{os.environ['PATH']}"))
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("TimeoutError", proc.stderr)
+            # The caller-side contract on expiry: records stay on disk.
+            self.assertTrue(capture.exists() and built.exists())
 
 
 class RunShStubTest(unittest.TestCase):

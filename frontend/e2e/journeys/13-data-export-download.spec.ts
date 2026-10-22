@@ -17,6 +17,7 @@ import {
   prepareGenerationAccess,
   provisionUser,
   sessionRequest,
+  STANDALONE_API_REQUEST_OPTIONS,
   uiLogin,
   waitForGenerationTerminal,
 } from "../helpers";
@@ -331,10 +332,13 @@ test.describe("VC-R48 cross-tab data copy ownership", () => {
       // 先用它确认 /auth/session 确为 B，之后 owner GET 只走这条冻结凭证。
       const bOrigin = new URL(pageB.url()).origin;
       const bHeaders = { "Content-Type": "application/json", Origin: bOrigin };
+      // 独立 requestFactory.newContext 不继承浏览器 context 的
+      // ignoreHTTPSErrors，TLS 栈必须显式带（HTTP 模式为空对象，不变）。
       const frozenBContext = await requestFactory.newContext({
         baseURL: bOrigin,
         userAgent: await pageB.evaluate(() => navigator.userAgent),
         storageState: await pageB.context().storageState(),
+        ...STANDALONE_API_REQUEST_OPTIONS,
       });
       frozenB = frozenBContext;
       const frozenSession = await frozenBContext.get("/api/v1/auth/session", { headers: bHeaders });

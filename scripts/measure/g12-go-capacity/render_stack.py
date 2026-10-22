@@ -13,7 +13,10 @@ volume names frozen as `deploy_*`, so a "renamed" project silently kept the
 production names. validate_render() additionally rejects any non-project
 volume/network name, external resources, non-loopback published ports,
 relative binds, and privilege escalations. Both pure functions are unit
-tested in test_collector.py; run.sh is the only production caller.
+tested in test_collector.py. Two production callers share this renderer:
+run.sh (G12 measurement) and scripts/dev/e2e-tls-stack.sh (VC-R79 TLS E2E),
+which only substitutes the fake-provider fixture script and env — every
+ownership/safety guard is identical for both.
 """
 
 import argparse
@@ -61,7 +64,8 @@ def canonicalize(production_compose: str, env_file: str, project: str) -> dict:
     return json.loads(proc.stdout)
 
 
-def fake_provider_service(repo_root: str, fake_port: int, nonce=None) -> dict:
+def fake_provider_service(repo_root: str, fake_port: int, nonce=None, *,
+                          script: str = None, extra_env: dict = None) -> dict:
     """Fixture-only fake OpenAI provider sharing the runtime network namespace.
 
     It binds 127.0.0.1 inside the runtime's netns because the backend bounds
@@ -70,7 +74,28 @@ def fake_provider_service(repo_root: str, fake_port: int, nonce=None) -> dict:
     provider is its own container/cgroup and is not one of the four measured
     B components; /g12/stats is reached through the observer container that
     shares the same netns, so nothing is published.
+
+    script/extra_env serve the TLS E2E launcher (VC-R79): it swaps in the
+    journey-dialect scripts/dev/e2e-provider.mjs and its request-log env while
+    keeping the same netns/isolation shape. The G12 timing knobs stay on the
+    default fake_provider.mjs fixture only.
     """
+    default_fixture = script is None
+    script = script or "scripts/measure/g12-go-capacity/fake_provider.mjs"
+    script_name = script.rsplit("/", 1)[-1]
+    environment = {
+        "E2E_PROVIDER_HOST": "127.0.0.1",
+        "E2E_PROVIDER_PORT": str(fake_port),
+    }
+    if default_fixture:
+        environment.update({
+            "G12_FIRST_TOKEN_MS": "200",
+            "G12_DELTA_MS": "50",
+            "G12_CHUNKS": "8",
+            "G12_HOLD_MS": "0",
+        })
+    if extra_env:
+        environment.update({k: str(v) for k, v in extra_env.items()})
     service = {
         "image": "node:20-bookworm-slim",
         "pull_policy": "missing",
@@ -79,19 +104,12 @@ def fake_provider_service(repo_root: str, fake_port: int, nonce=None) -> dict:
         "working_dir": "/app",
         "volumes": [{
             "type": "bind",
-            "source": f"{repo_root}/scripts/measure/g12-go-capacity/fake_provider.mjs",
-            "target": "/app/fake_provider.mjs",
+            "source": f"{repo_root}/{script}",
+            "target": f"/app/{script_name}",
             "read_only": True,
         }],
-        "environment": {
-            "E2E_PROVIDER_HOST": "127.0.0.1",
-            "E2E_PROVIDER_PORT": str(fake_port),
-            "G12_FIRST_TOKEN_MS": "200",
-            "G12_DELTA_MS": "50",
-            "G12_CHUNKS": "8",
-            "G12_HOLD_MS": "0",
-        },
-        "command": ["node", "fake_provider.mjs"],
+        "environment": environment,
+        "command": ["node", script_name],
         "restart": "no",
     }
     if nonce:
@@ -101,7 +119,8 @@ def fake_provider_service(repo_root: str, fake_port: int, nonce=None) -> dict:
 
 def apply_overrides(canonical: dict, *, project: str, tag: str, https_port: int,
                     repo_root: str, fake_port: int, runtime_env: dict,
-                    nonce: str = None) -> dict:
+                    nonce: str = None, provider_script: str = None,
+                    provider_env: dict = None) -> dict:
     """Rewrite the canonical production config into the trial fixture (pure)."""
     out = json.loads(json.dumps(canonical))
     out["name"] = project
@@ -153,7 +172,8 @@ def apply_overrides(canonical: dict, *, project: str, tag: str, https_port: int,
             net["labels"] = _with_nonce_label(net.get("labels"), nonce)
 
     out["services"]["fake-provider"] = fake_provider_service(
-        repo_root, fake_port, nonce=nonce)
+        repo_root, fake_port, nonce=nonce, script=provider_script,
+        extra_env=provider_env)
     return out
 
 
@@ -172,6 +192,10 @@ def validate_render(rendered: dict, *, project: str, repo_root: str,
         errors.append(f"project name {project!r} is not a valid compose project")
     if rendered.get("name") != project:
         errors.append(f"rendered name {rendered.get('name')!r} != project {project!r}")
+    # Bind boundaries are judged on RESOLVED paths: a bind inside the repo
+    # whose target is a symlink escaping it (reachable through the public
+    # --provider-script input) is outside, exactly like a `..` escape.
+    repo_real = os.path.realpath(repo_root)
 
     prefix = f"{project}_"
     for kind in ("volumes", "networks"):
@@ -200,11 +224,14 @@ def validate_render(rendered: dict, *, project: str, repo_root: str,
                     errors.append(f"service {svc} mounts undeclared volume "
                                   f"{vol.get('source')!r}")
             elif vol.get("type") == "bind":
-                src = vol.get("source", "")
-                if not src.startswith("/"):
-                    errors.append(f"service {svc} has relative bind {src!r}")
-                elif not (src.startswith(repo_root + "/") or src == repo_root):
-                    errors.append(f"service {svc} binds outside the repo: {src!r}")
+                raw_src = vol.get("source", "")
+                if not raw_src.startswith("/"):
+                    errors.append(f"service {svc} has relative bind {raw_src!r}")
+                else:
+                    src = os.path.realpath(raw_src)
+                    if not (src.startswith(repo_real + "/") or src == repo_real):
+                        errors.append(f"service {svc} binds outside the repo: "
+                                      f"{raw_src!r}")
         ports = service.get("ports") or []
         for p in ports:
             host_ip = p.get("host_ip")
@@ -259,6 +286,18 @@ def reparse_rendered(out_path: str, env_file: str, project: str) -> dict:
     return json.loads(proc.stdout)
 
 
+def _env_file_dict(path: str) -> dict:
+    """KEY=VALUE lines (comments/blank lines skipped) -> dict."""
+    env = {}
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                env[key] = value
+    return env
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--project", required=True)
@@ -270,20 +309,22 @@ def main() -> int:
     ap.add_argument("--fake-provider-port", type=int, default=19091)
     ap.add_argument("--runtime-env", default="",
                     help="path to KEY=VALUE lines merged into the runtime env")
+    ap.add_argument("--provider-script", default="",
+                    help="repository-relative provider script for the "
+                         "fake-provider service (default: the G12 "
+                         "fake_provider.mjs fixture)")
+    ap.add_argument("--provider-env", default="",
+                    help="path to KEY=VALUE lines merged into the provider "
+                         "env (serves the TLS E2E launcher; VC-R79)")
     ap.add_argument("--nonce", default="",
                     help="per-invocation creation receipt stamped on every "
                          "service/volume/network label")
     args = ap.parse_args()
 
     repo_root = args.repo_root.rstrip("/")
-    runtime_env = {}
-    if args.runtime_env:
-        with open(args.runtime_env) as fh:
-            for line in fh:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    runtime_env[k] = v
+    runtime_env = _env_file_dict(args.runtime_env) if args.runtime_env else {}
+    provider_env = _env_file_dict(args.provider_env) if args.provider_env else None
+    provider_script = args.provider_script or None
 
     canonical = canonicalize(f"{repo_root}/{PRODUCTION_COMPOSE}",
                              args.env_file, args.project)
@@ -292,7 +333,8 @@ def main() -> int:
         canonical, project=args.project, tag=args.tag,
         https_port=args.https_port, repo_root=repo_root,
         fake_port=args.fake_provider_port, runtime_env=runtime_env,
-        nonce=nonce)
+        nonce=nonce, provider_script=provider_script,
+        provider_env=provider_env)
 
     errors = validate_render(rendered, project=args.project, repo_root=repo_root,
                              https_port=args.https_port, nonce=nonce)

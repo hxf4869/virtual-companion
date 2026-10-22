@@ -93,6 +93,7 @@
 </template>
 
 <script lang="ts">
+import { getUniApi } from "@/platform/uni-api";
 import { computed, defineComponent, onBeforeUnmount, onMounted, ref, type PropType } from "vue";
 
 import { createAuthenticatedTransport, readCsrfCookie } from "@/api/transport";
@@ -170,7 +171,7 @@ export default defineComponent({
     async function confirmDiscardChanges(): Promise<boolean> {
       if (!props.hasPendingChanges) return true;
       const message = "离开此页面会丢弃“本次变更”中的未保存草稿。";
-      const uniApi = (globalThis as Record<string, unknown>).uni as
+      const uniApi = getUniApi() as
         | {
           showModal?: (options: {
             title: string;
@@ -202,7 +203,7 @@ export default defineComponent({
       if (currentPageHref() === url) return;
       if (!skipGuard && !(await confirmDiscardChanges())) return;
       try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
+        const uniApi = getUniApi() as
           | {
             redirectTo?: (options: { url: string }) => void;
             navigateTo?: (options: { url: string }) => void;

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { provisionUser, uiLogin } from "../helpers";
+import { provisionUser, STACK_KIND, uiLogin } from "../helpers";
 
 test("login preserves a current protected deep link", async ({ page, request }) => {
   const target = "/pages/conversations/conversations";
@@ -25,4 +25,21 @@ test("login preserves a current protected deep link", async ({ page, request }) 
 
   await page.waitForURL((url) => url.hash === `#${target}`, { timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "全部会话" })).toBeVisible();
+
+  // VC-R79 TLS 栈（VC_SESSION_COOKIE_SECURE=true 的承诺属性）：真实 UI 登录
+  // 完成后，浏览器 context 中的 vc_session / vc_csrf 必须带 Secure。只做
+  // 布尔存在性/属性断言；cookie 对象与值绝不进入 expect 实际/期望或日志。
+  // HTTP 模式不断言。
+  if (STACK_KIND === "tls") {
+    const cookies = await page.context().cookies();
+    for (const name of ["vc_session", "vc_csrf"]) {
+      const cookie = cookies.find((candidate) => candidate.name === name);
+      const present = cookie !== undefined;
+      expect(present, `${name} must be present after a real UI login`).toBe(true);
+      expect(
+        cookie?.secure === true,
+        `${name} must carry the Secure attribute`,
+      ).toBe(true);
+    }
+  }
 });

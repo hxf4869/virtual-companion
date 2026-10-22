@@ -15,9 +15,98 @@ export const PROVIDER_REPLY = "I hear you. Take a breath; there's no rush.";
 export const SAFETY_BLOCK_SENTINEL = "[[E2E_SAFETY_BLOCK]]";
 export const PROVIDER_TIMEOUT_SENTINEL = "[[E2E_PROVIDER_TIMEOUT]]";
 
-export const API_BASE_URL =
-  process.env.E2E_BASE_URL ??
-  `http://127.0.0.1:${process.env.E2E_H5_PORT ?? "5173"}`;
+// VC-R79 栈模式：默认 http（scripts/dev/e2e-stack.sh）；tls 为
+// scripts/dev/e2e-tls-stack.sh 的 TLS 真实栈（Caddy 自签 + 生产镜像）。
+export type E2EStackKind = "http" | "tls";
+
+/** E2E_STACK_KIND 只接受 http（未设置时的默认）与 tls；其它值立即报错，
+ * 绝不静默落回 HTTP 模式。纯函数，供 config/helpers/vitest 共用。 */
+export function parseE2EStackKind(value: string | undefined): E2EStackKind {
+  if (value === undefined) return "http";
+  if (value === "http" || value === "tls") return value;
+  throw new Error(`E2E_STACK_KIND must be "http" or "tls", got: ${value}`);
+}
+
+export const STACK_KIND: E2EStackKind = parseE2EStackKind(process.env.E2E_STACK_KIND);
+
+/** TLS 栈的默认 BASE_URL（E2E_BASE_URL 未提供时）。 */
+export function tlsBaseUrl(tlsPort: string | undefined): string {
+  return `https://localhost:${tlsPort ?? "18457"}`;
+}
+
+/** API base 与 config BASE_URL 共用同一派生：显式 E2E_BASE_URL 优先，
+ * 其次按栈模式取 TLS https 或 H5 dev server 的 loopback http。 */
+export function resolveE2EApiBaseUrl(env: {
+  [name: string]: string | undefined;
+}): string {
+  if (env.E2E_BASE_URL) return env.E2E_BASE_URL;
+  return parseE2EStackKind(env.E2E_STACK_KIND) === "tls"
+    ? tlsBaseUrl(env.E2E_TLS_PORT)
+    : `http://127.0.0.1:${env.E2E_H5_PORT ?? "5173"}`;
+}
+
+export const API_BASE_URL = resolveE2EApiBaseUrl(process.env);
+
+/** 独立 requestFactory.newContext 不继承浏览器 context 的
+ * ignoreHTTPSErrors（Playwright 1.62 GlobalAPIRequestContext 只读自身
+ * options）。TLS 栈的自签 Caddy local CA 必须在每个独立 context 上显式
+ * 放行；HTTP 模式返回空对象，行为不变。此选项只服务本轮合成栈，真实
+ * TLS 校验由启动器 curl --cacert 完成。 */
+export function standaloneRequestOptions(
+  kind: E2EStackKind,
+): { ignoreHTTPSErrors?: boolean } {
+  return kind === "tls" ? { ignoreHTTPSErrors: true } : {};
+}
+
+export const STANDALONE_API_REQUEST_OPTIONS = standaloneRequestOptions(STACK_KIND);
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** full 模式 HTTP 栈的 E2E_BASE_URL 校验（既有语义逐字保留）：loopback
+ * http、无 userinfo。返回 null 表示合法，否则返回错误消息。 */
+export function httpBaseUrlProblem(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return "full E2E_BASE_URL must be a loopback HTTP URL";
+  }
+  if (parsed.protocol !== "http:"
+      || !LOOPBACK_HOSTS.has(parsed.hostname)
+      || parsed.username !== ""
+      || parsed.password !== "") {
+    return "full E2E_BASE_URL must be a loopback HTTP URL";
+  }
+  return null;
+}
+
+/** TLS 栈的 E2E_BASE_URL 校验：夹具固定 VC_DOMAIN=localhost、Origin
+ * allowlist 与 CA 也只验 localhost（https://127.0.0.1 会 403 / Cookie 域
+ * 不一致），故 hostname 必须恰为 localhost；端口比较用 URL.origin 的规范
+ * 形式（https 默认 443 在 origin 中省略），确保被接受的 URL 与后端
+ * allowlist 永不漂移。返回 null 表示合法，否则返回带具体原因的错误。 */
+export function tlsBaseUrlProblem(raw: string, tlsPort: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return "TLS E2E_BASE_URL must be a loopback HTTPS URL: failed to parse";
+  }
+  if (parsed.protocol !== "https:") {
+    return `TLS E2E_BASE_URL must be https (got ${parsed.protocol}//)`;
+  }
+  if (parsed.hostname !== "localhost") {
+    return `TLS E2E_BASE_URL hostname must be exactly localhost (got ${parsed.hostname}); the TLS stack and its CA/Origin allowlist only serve localhost`;
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    return "TLS E2E_BASE_URL must not carry userinfo";
+  }
+  const derivedOrigin = new URL(tlsBaseUrl(tlsPort)).origin;
+  if (parsed.origin !== derivedOrigin) {
+    return `TLS E2E_BASE_URL must equal the TLS stack origin ${derivedOrigin} (got ${parsed.origin})`;
+  }
+  return null;
+}
 
 const REQUIRED_CONSENTS = [
   "SERVICE_TERMS",
@@ -175,7 +264,10 @@ function currentTOTP(secret: string, now = Date.now()): string {
  * because the production admin account-management API has been retired.
  */
 export async function seedE2EUsers(): Promise<void> {
-  const api = await requestFactory.newContext({ baseURL: API_BASE_URL });
+  const api = await requestFactory.newContext({
+    baseURL: API_BASE_URL,
+    ...STANDALONE_API_REQUEST_OPTIONS,
+  });
   try {
     const version = await api.get("/api/v1/version");
     expect(version.ok(), `E2E runtime unavailable: ${version.status()}`).toBeTruthy();
@@ -303,7 +395,10 @@ export async function bootstrapSharedSessions(): Promise<void> {
 
 async function bootstrapSharedSession(kind: SharedSessionKind): Promise<void> {
   const account = SHARED_SESSION_ACCOUNTS[kind];
-  const api = await requestFactory.newContext({ baseURL: API_BASE_URL });
+  const api = await requestFactory.newContext({
+    baseURL: API_BASE_URL,
+    ...STANDALONE_API_REQUEST_OPTIONS,
+  });
   const origin = new URL(API_BASE_URL).origin;
   const jsonHeaders = { "Content-Type": "application/json", Origin: origin };
   try {
@@ -410,7 +505,10 @@ export async function openSharedSession(
     await readFile(sharedSessionPath(kind), "utf8"),
   ) as SharedSessionFile;
   await page.context().addCookies(shared.cookies);
-  await page.goto("/#/pages/index/index");
+  const documentResponse = await page.goto("/#/pages/index/index");
+  // A hash-only navigation keeps the previous anonymous auth store alive.
+  // Discover the newly installed cookies from a fresh document exactly once.
+  if (documentResponse === null) await page.reload();
   await expect(
     page.getByTestId("consumer-tabbar"),
     `shared ${kind} session (${shared.email}) is not authenticated`,

@@ -3,6 +3,7 @@ allowBuilds:
   vue-demi: true
   core-js: false
   core-js-pure: false
+  '@parcel/watcher': false
 
 overrides:
   '@intlify/core-base@9.1.9': 9.14.5

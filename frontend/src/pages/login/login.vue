@@ -183,6 +183,7 @@
 </template>
 
 <script setup lang="ts">
+import { getUniApi } from "@/platform/uni-api";
 import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -419,7 +420,7 @@ function navigateAfterLogin(): void {
 
 function redirectTo(url: string): void {
   try {
-    const uniApi = (globalThis as Record<string, unknown>).uni as
+    const uniApi = getUniApi() as
       | { redirectTo?: (options: { url: string }) => void }
       | undefined;
     if (uniApi?.redirectTo) {
@@ -446,7 +447,7 @@ function copyRecoveryCodes(): void {
 async function copyText(value: string, successMessage: string): Promise<void> {
   copyMessage.value = "";
   try {
-    const uniApi = (globalThis as Record<string, unknown>).uni as
+    const uniApi = getUniApi() as
       | { setClipboardData?: (options: { data: string; success?: () => void; fail?: () => void }) => void }
       | undefined;
     if (uniApi?.setClipboardData) {

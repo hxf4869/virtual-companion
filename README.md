@@ -158,6 +158,9 @@ pnpm --dir frontend test:run
 pnpm --dir frontend type-check
 pnpm --dir frontend build
 
+# 真实 TLS 全旅程（可选长检查；Node 22、pnpm 11、OrbStack）
+E2E_STACK_KIND=tls E2E_RELEASE_MODE=full pnpm --dir frontend test:e2e
+
 # PostgreSQL 18 + pgvector / RLS
 bash infra/db/run-rls-tests.sh
 bash infra/db/run-go-store-tests.sh
@@ -166,6 +169,12 @@ bash infra/db/run-go-store-tests.sh
 cd ops/deploy
 docker compose --env-file .env.local config --quiet
 ```
+
+TLS E2E 每轮从当前源码重建 H5 与生产派生镜像，在
+`https://localhost:18457` 启动独立合成栈；可用 `E2E_TLS_PORT` 改端口。
+启动器先用本轮 CA 验证证书链、主机名与实际 HTTP/2，再执行全部浏览器旅程。
+它不读取部署 `.env`，也不继承 `VC_*` 生产配置；退出按本轮资源收据清理，
+清理失败时保留日志给出的 state 与收据供恢复。这不是容量或真实 provider 验收。
 
 ## 当前边界
 

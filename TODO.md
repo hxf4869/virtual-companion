@@ -788,6 +788,23 @@ recovery CPU 未采（R51 F2）；R46 trial2 维持 HOLD/NOT_RUN。真机浏览�
 验证仍为 Owner 人工项；同账号重登的请求侧 Cookie 时序未闭合（R12/R15-R17
 原范围，R52 只覆盖跨账号场景）。
 
+2026-10-23 生产派生 TLS 全旅程（VC-R79～R84）：复用既有 20 条浏览器实例，
+新增显式 E2E_STACK_KIND=tls 入口；每轮重建 H5、由生产 Compose 渲染独立合成
+Go/PostgreSQL/MinIO/Caddy/provider 栈，按本轮 nonce、实际 CID 与挂载收据
+启动和清理。先验证本轮 CA 证书链、localhost 主机名及实际 ALPN h2，再放行
+浏览器；保留 Secure Cookie、真实 hash JS/CSS 的 MIME/gzip/immutable/安全头
+与 SPA shell no-cache 断言。Caddy 静态路由修复实际 /assets/ 构建资源缓存；
+生产 uni-h5 不注入 globalThis.uni，六个现有调用模块改取可被编译器识别的
+六项 uni API，恢复导航、可信设备重登与后台未保存草稿确认窗；共享测试会话
+在 hash-only 导航时才重新加载文档，避免沿用匿名 Store。启动器拒绝继承
+VC_* 生产配置，pnpm 明确禁止可选 watcher 的安装脚本，依赖锁文件未变。
+验证：首轮 TLS 15/20 定位上述生产差异，修后相同矩阵无过滤、无 skip、
+retries=0 全部 20/20（chromium 12 / webkit-iphone 4 / chromium-android 4，
+2.5m）；前端 746 项单测与 type-check、资源所有权 53 项、栈渲染 31 项、
+TLS 启动器 6 项、仓库 quick 与界面机械扫描均通过。退出后的独立资源缺失
+核验 rc=0、空清单，临时会话/合成配置/CA 清除、所有权收据保留。
+仅本地合成数据；NO_PERF、真实 provider、Owner/Beta/真机/CI 门槛保持未验收。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

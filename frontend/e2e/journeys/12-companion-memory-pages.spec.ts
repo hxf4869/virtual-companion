@@ -1,4 +1,4 @@
-import { execFile as execFileCallback } from "node:child_process";
+import { execFile as execFileCallback, spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
@@ -180,26 +180,62 @@ async function waitForAutoSavedMemory(
   throw new Error(`auto-saved memory did not appear via the memories API within 20s`);
 }
 
-interface StackState {
-  container: string;
-  dockerContext: string;
-}
+/** VC-R79：v2（HTTP 栈，宿主侧 pg 容器）与 v3（TLS 栈，compose 服务
+ * 容器 ID + 容器内只读探测）两种 state 形态。 */
+type StackState =
+  | { kind: "http"; container: string; dockerContext: string }
+  | {
+      kind: "tls";
+      dockerContext: string;
+      dbContainer: string;
+      runtimeContainer: string;
+      providerContainer: string;
+      providerLogPath: string;
+    };
 
 async function readStackState(): Promise<StackState> {
   const stateFile = process.env.E2E_STACK_STATE_FILE;
   if (!stateFile) throw new Error("E2E_STACK_STATE_FILE is required to locate the stack PG");
   const state = JSON.parse(await readFile(stateFile, "utf8")) as {
+    version?: unknown;
     container?: unknown;
+    containers?: Record<string, unknown> | undefined;
     dockerContext?: unknown;
+    providerLogPath?: unknown;
   };
+  if (state.version === 3) {
+    // TLS 栈不发布宿主端口：等价读取全部经 docker --context exec 进容器。
+    // 任一所需容器缺失即抛错——断言绝不能因此静默弱化成 0 或跳过。
+    const need = (name: string): string => {
+      const value = state.containers?.[name];
+      if (typeof value !== "string" || !value) {
+        throw new Error(`TLS stack state lacks the ${name} container id`);
+      }
+      return value;
+    };
+    const dockerContext = String(state.dockerContext ?? "");
+    const providerLogPath = String(state.providerLogPath ?? "");
+    if (!dockerContext || !providerLogPath) {
+      throw new Error("TLS stack state lacks docker context or provider log metadata");
+    }
+    return {
+      kind: "tls",
+      dockerContext,
+      dbContainer: need("db"),
+      runtimeContainer: need("runtime"),
+      providerContainer: need("provider"),
+      providerLogPath,
+    };
+  }
   const container = String(state.container ?? "");
   const dockerContext = String(state.dockerContext ?? "");
   if (!container || !dockerContext) throw new Error("stack state lacks PG container metadata");
-  return { container, dockerContext };
+  return { kind: "http", container, dockerContext };
 }
 
 /** One read-only status|close_reason row for the turn's MEMORY_EXTRACT job,
- * straight from this stack's own isolated PG container. */
+ * straight from this stack's own isolated PG container. TLS 栈用 compose db
+ * 服务容器与 vc_migrator 角色；HTTP 栈保持宿主侧 pg 容器 + postgres。 */
 async function queryMemoryExtractJob(
   state: StackState,
   owner: string,
@@ -208,18 +244,15 @@ async function queryMemoryExtractJob(
   if (!/^\d+$/.test(owner) || !/^\d+$/.test(generationId)) {
     throw new Error("memory-extract job query requires numeric ids");
   }
+  const sql = "SELECT status || '|' || coalesce(last_error_code, '') FROM vc.work_item"
+    + ` WHERE owner_user_id = ${owner} AND kind = 'MEMORY_EXTRACT' AND ref_id = ${generationId}`;
+  const psqlArgs = state.kind === "tls"
+    ? ["--context", state.dockerContext, "exec", state.dbContainer,
+      "psql", "-U", "vc_migrator", "-d", "vc", "-tAc", sql]
+    : ["--context", state.dockerContext, "exec", state.container,
+      "psql", "-U", "postgres", "-d", "vc", "-tAc", sql];
   const execFile = promisify(execFileCallback);
-  const { stdout } = await execFile(
-    "docker",
-    [
-      "--context", state.dockerContext,
-      "exec", state.container,
-      "psql", "-U", "postgres", "-d", "vc", "-tAc",
-      "SELECT status || '|' || coalesce(last_error_code, '') FROM vc.work_item"
-        + ` WHERE owner_user_id = ${owner} AND kind = 'MEMORY_EXTRACT' AND ref_id = ${generationId}`,
-    ],
-    { timeout: 5_000 },
-  );
+  const { stdout } = await execFile("docker", psqlArgs, { timeout: 5_000 });
   return stdout.trim();
 }
 
@@ -235,8 +268,22 @@ function readPrometheusGauge(text: string, name: string): number | null {
 
 /** Read the runtime's own vc_generation_active gauge from the existing
  * /actuator/prometheus endpoint. A null return means the endpoint, metric or
- * value was not observable and is never treated as zero. */
-async function readGenerationActive(): Promise<number | null> {
+ * value was not observable and is never treated as zero. TLS 栈的 runtime 不
+ * 发布宿主端口：经容器内 busybox wget 读取同一 gauge，失败同样返回 null。 */
+async function readGenerationActive(state: StackState): Promise<number | null> {
+  if (state.kind === "tls") {
+    const result = spawnSync(
+      "docker",
+      [
+        "--context", state.dockerContext,
+        "exec", state.runtimeContainer,
+        "wget", "-q", "-O", "-", "http://127.0.0.1:8080/actuator/prometheus",
+      ],
+      { encoding: "utf8", timeout: 5_000 },
+    );
+    if (result.status !== 0) return null;
+    return readPrometheusGauge(result.stdout, "vc_generation_active");
+  }
   const port = process.env.E2E_RUNTIME_PORT ?? "18080";
   try {
     const response = await fetch(`http://127.0.0.1:${port}/actuator/prometheus`);
@@ -260,12 +307,13 @@ async function readGenerationActive(): Promise<number | null> {
  * before the Go handler reaches its enqueue call. */
 async function waitForGenerationHandlerReturned(
   page: Page,
+  state: StackState,
   timeoutMs = 20_000,
 ): Promise<void> {
   const startedAt = Date.now();
   let last: number | null = null;
   while (Date.now() - startedAt < timeoutMs) {
-    last = await readGenerationActive();
+    last = await readGenerationActive(state);
     if (last === 0) return;
     await page.waitForTimeout(100);
   }
@@ -274,13 +322,32 @@ async function waitForGenerationHandlerReturned(
   );
 }
 
-async function readProviderRequestLog(): Promise<ProviderLogEntry[]> {
+function parseProviderLogLines(raw: string): ProviderLogEntry[] {
+  return raw.trim().split("\n").filter(Boolean)
+    .map((line) => JSON.parse(line) as ProviderLogEntry);
+}
+
+async function readProviderRequestLog(state: StackState): Promise<ProviderLogEntry[]> {
+  if (state.kind === "tls") {
+    // provider 跑在 runtime 网络命名空间的 node 容器里，宿主不可达：
+    // 日志经 docker exec cat 读取，行解析与 HTTP 模式完全一致。
+    const execFile = promisify(execFileCallback);
+    const { stdout } = await execFile(
+      "docker",
+      [
+        "--context", state.dockerContext,
+        "exec", state.providerContainer,
+        "cat", state.providerLogPath,
+      ],
+      { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    return parseProviderLogLines(stdout);
+  }
   const port = process.env.E2E_PROVIDER_PORT ?? "19090";
   const path = process.env.E2E_PROVIDER_REQUEST_LOG
     ?? `/tmp/vc-e2e-provider-requests-${port}.log`;
   const raw = await readFile(path, "utf8");
-  return raw.trim().split("\n").filter(Boolean)
-    .map((line) => JSON.parse(line) as ProviderLogEntry);
+  return parseProviderLogLines(raw);
 }
 
 test("autosave saves a stated preference, recalls it in a later turn, and stops saving when off", async ({ page }) => {
@@ -338,7 +405,8 @@ test("autosave saves a stated preference, recalls it in a later turn, and stops 
     `turn B ended as ${generationStatus(terminalB.body)}; the off toggle must not block the chat itself`,
   ).toBe("COMPLETED");
 
-  const entries = await readProviderRequestLog();
+  const stackState = await readStackState();
+  const entries = await readProviderRequestLog(stackState);
   const requestB = entries
     .filter((entry) => entry.kind === "chat")
     .filter((entry) => entryMessages(entry).some((message) => messageText(message).includes(AUTOSAVE_FACT_B)))
@@ -362,8 +430,7 @@ test("autosave saves a stated preference, recalls it in a later turn, and stops 
   // its synchronous enqueue decision, has observably returned), then the
   // extraction side must show the deliberate no-row suppression; the API and
   // the page confirm A stays and B never lands. ——
-  await waitForGenerationHandlerReturned(page);
-  const stackState = await readStackState();
+  await waitForGenerationHandlerReturned(page, stackState);
   expect(
     await queryMemoryExtractJob(stackState, session.accountId, turnB),
     "the disabled turn must leave no MEMORY_EXTRACT job row (V125 suppresses enqueue while the pref is off)",

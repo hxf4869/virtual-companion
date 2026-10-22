@@ -42,13 +42,32 @@ ABSENCE_POLLS = 20
 ABSENCE_SLEEP_S = 0.5
 RM_RETRIES = 3
 
+# Optional wall-clock deadline covering every docker call of THIS process
+# (VC-R79 TLS teardown): when set, each call gets the remaining time as its
+# subprocess timeout and expiry raises TimeoutError — the CLI exits nonzero
+# with the records kept, and subprocess.run kills/reaps the docker child so
+# no cleanup CLI process is left behind. None (the default) preserves the
+# G12 callers' original unbounded behavior.
+_DEADLINE_MONO = None
+
 
 def docker_cli(args):
     """One docker CLI invocation; rc is the caller's to interpret."""
     env = dict(os.environ)
     env.setdefault("DOCKER_CONTEXT", "orbstack")
-    return subprocess.run(["docker", *args], capture_output=True, text=True,
-                          env=env)
+    timeout = None
+    if _DEADLINE_MONO is not None:
+        remaining = _DEADLINE_MONO - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("cleanup deadline exceeded before the docker "
+                               f"call: docker {' '.join(args[:3])}")
+        timeout = remaining
+    try:
+        return subprocess.run(["docker", *args], capture_output=True, text=True,
+                              env=env, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(f"docker {' '.join(args[:3])} exceeded the "
+                           "cleanup deadline") from exc
 
 
 def _inspect_first(args):
@@ -644,8 +663,15 @@ def main() -> int:
                         "a missing (not just unreadable) collectors record "
                         "is unverified — helpers created before the record "
                         "was lost must never fold into an empty success")
+    p.add_argument("--deadline-seconds", type=float, default=0,
+                   help="wall-clock bound for every docker call in THIS "
+                        "cleanup (0 = unbounded, the G12 default); expiry "
+                        "exits nonzero so the caller keeps the records")
 
     args = ap.parse_args()
+    global _DEADLINE_MONO
+    if args.cmd == "cleanup" and args.deadline_seconds > 0:
+        _DEADLINE_MONO = time.monotonic() + args.deadline_seconds
     if args.cmd == "require-absent":
         problems = require_absent(args.project, args.nonce, args.name, args.tag)
         for problem in problems:

@@ -1,6 +1,7 @@
 // S0-18 runtime wiring: uni interceptors + first-load enforce after session
 // resolution. Pure routing rules live in nav-guard.ts.
 
+import { getUniApi } from "@/platform/uni-api";
 import { createAuthenticatedTransport } from "@/api/transport";
 import {
   applyInterceptorUrl,
@@ -21,7 +22,7 @@ export function currentAuthSnapshot(): GateSnapshot {
 
 function redirectTo(url: string): void {
   try {
-    const uniApi = (globalThis as Record<string, unknown>).uni as
+    const uniApi = getUniApi() as
       | { redirectTo?: (options: { url: string }) => void }
       | undefined;
     if (uniApi?.redirectTo) {
@@ -49,7 +50,7 @@ export function enforceAppRoute(): void {
 }
 
 export function attachAppNavigationGuards(): void {
-  const uniApi = (globalThis as Record<string, unknown>).uni as
+  const uniApi = getUniApi() as
     | {
         addInterceptor?: (
           name: string,

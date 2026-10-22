@@ -1,3 +1,4 @@
+import { getUniApi } from "@/platform/uni-api";
 import { ref, type Ref } from "vue";
 
 import type { AuthTransport } from "@/api/auth";
@@ -46,7 +47,7 @@ export function useAdminConsoleAccess(): AdminConsoleAccess {
 
   function goTo(url: string, replace = true): void {
     try {
-      const uniApi = (globalThis as Record<string, unknown>).uni as
+      const uniApi = getUniApi() as
         | {
           redirectTo?: (options: { url: string }) => void;
           navigateTo?: (options: { url: string }) => void;
