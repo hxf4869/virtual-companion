@@ -518,3 +518,82 @@ label 对象 0、nonce 对象 0、卷 0、网络 0、trial tag 0，`cleanup.left
   → rc=0）。负例以纯 stub（零真实 Docker 调用）覆盖 direct rc 与恢复记录保留。
   本批仅收紧非法/未知回执与权限，正常创建/启动/采集协议未变，按 Root 授权
   未重跑第 3 次 probe。
+
+## 11. 2026-10-22 补充：S4 独立场景与真实首 delta 流式计时（VC-R60，非采样）
+
+### 交付
+
+- `workload.py` `Client.sse` 重写：弃用 `resp.read()` 等全流结束再整串
+  `text.find("event:")` 的无量纲字节占比（该返回值既不是时间也不被消费），改为
+  `read1(65536)` 有界增量解析——帧按空行切分、跨块重组、`:` 注释行（心跳位）不产出
+  事件；时间戳是事件所在 socket chunk 的接收时刻（`time.monotonic()`），同一 chunk
+  内多事件共享同一时刻。订阅/重试全程一个绝对 deadline：逐块检查、每次阻塞
+  read1 前把连接 socket 的 timeout 重设为剩余预算（只在连接时设一次会让每次读
+  重跑全额预算），deadline 后收到的 chunk 整块丢弃不解析——过期终态不得算成功
+  （Root 复核以两例实测旧缺陷后修复：0.4s budget 下 0.30s burst 后静默实测
+  0.710s 才返回、0.55s 终态实测 0.562s 以 ok=True 被接受），响应经上下文管理器
+  在所有退出路径关闭。
+- live delta 规则按后端真实契约（`internal/realtime/hub.go`，本轮只读研究证据）：
+  每次 live 订阅先收一枚 catch-up `chat.snapshot`（首个 delta 前加入时 text 为空），
+  之后是 live `chat.delta`，终态前另有落库回放 snapshot（>16KiB 时带 `chat.delta`
+  切片）。终态已到、或第 2 枚 snapshot 已现（终态在线上丢失）时，最后 snapshot 之后
+  的 delta 判为回放切片不计 live；无此二者的中断尝试，其 delta 全部保留（否则会把
+  中途断线的真实样本误判为回放丢弃）。`chat.accepted` 在该后端对订阅者不可见
+  （hub 条目创建与 fan-out 同锁），解析器仍支持该事件名。
+- 三基线显式分离：`from_send`（POST /generations 发出时刻）、`from_accept`（202
+  返回时刻）、`from_subscribe`（SSE 尝试起点）。无有效 delta 时输出原因计数
+  （failed / replay_only / terminal_without_delta / no_terminal / connect_failed），
+  percentile 保持 `None`，不伪造 0、不 clamp 负值。
+- 独立 `s4` scenario（§19.1 场景 4：恰 1 generation + 1 SSE），`--probe` 真实改走
+  s4 分支（此前借 s5 名义）。默认档新增 s4 于 s5 之前，trial.summary 纳入；
+  S5/S10/100turn/峰值/反重放/600s 断言未削弱，未新增其他 scenario。
+- `s4.summary.json` 记录：fake provider 已知延迟（`holdMs+firstTokenMs`，取自
+  `/g12/stats` 现成 config 字段，`fake_provider.mjs` 零改动）扣除后的 qualified
+  `adjusted_from_send/accept`——provider 侧从收到**它自己的**请求起算，外部不可观测，
+  故 adjusted 仍含 intake/claim/provider HTTP/SSE 订阅偏移，明确标注**不是纯服务
+  处理时间**；不断言任何 ms 门槛（§19.2 仍 Owner 冻结）。coverage 以 catch-up
+  snapshot 文本长度为证：0=订阅先于首个 delta（收到的首 delta 即该代首 delta），
+  >0=中途加入（from_send/accept 为上界）。
+- 新增 `test_workload.py` 26 例（脚本化假响应+假时钟+真实 127.0.0.1 socket 三类）：
+  真实 hub 序列、回放切片、分段跨块重组、同 chunk 多事件共享时刻、心跳/纯注释不误计、
+  终态即返不等 EOF、纯注释 drip 绝对 deadline、EOF 重试与连接失败区分、中断尝试
+  delta 保留、每次 read 的剩余预算重设（记录 settimeout 序列）、deadline 后交付的
+  chunk 丢弃（脚本化确定性）与 Root 两例真实 socket 回归（burst 后静默有界于
+  deadline 而非 0.70s；0.55s 过期终态不算成功）、Stats 桶与 None 语义等。
+
+### 验证（定向，非采样）
+
+- `test_workload.py` 26 例全绿、直接 rc=0（含 Root 复核修正后的 deadline 回归）；
+  `test_collector.py` 27、`test_resources.py` 42 复跑全绿；`bash -n`/`py_compile`/
+  `git diff --check` 过。未跑完整 Go/前端/E2E（零改动）。
+- deadline 修正未重跑 Caddy 真实 probe（Root 指示不重启）；明文 socket 已由真实
+  回归覆盖，Root 以自有 HTTPS 分段 fixture（临时私有证书+显式 CA，未改 OS 信任）
+  验证了新 socket 路径：正常首 delta+终态 ok=True，同两反例均 0.402s 退出、
+  ok=False、terminal=None。S4 汇总消费逻辑离线重放（保存的 probe.workload/
+  observer/analysis 为输入）errors=[]、complete_stream、known-delay 扣除与原
+  字段吻合——属汇总重放，非完整 profile 或新性能样本。
+- 最终单次真实 `--probe`（project `vcg12c-vcr60-probe1`、port 18448、独立 OS
+  控制器记录真实 Popen rc）：**rc=0、99.4 s、未触 1200 s deadline**。首次控制器
+  尝试因误预建输出目录被 run.sh 独占门拒绝（发生在任何 Docker 命令之前、零写入），
+  修正后重试成功。链路：1gen+1SSE、provider 差分 1、37/37 帧结构完整、runtime
+  PID1 归属 37/37、四组件 CPU 窗口全 VALID、errors=[]。
+- 首 delta 接线（FUNCTIONAL_ONLY，**不是性能结论**）：from_send/from_accept/
+  from_subscribe = 1022.3/1004.5/222.1 ms；live_deltas_max=8 与 provider
+  chunks=8 一致；joined_before_first_delta=1（订阅先于首 delta）；absent_reasons
+  空。from_send−from_subscribe≈800 ms 与订阅重试等待一致，from_subscribe≈222 ms
+  与 firstTokenMs=200 同量级——量级自洽，仍不作任何达标宣称。
+- 清理核清：project label 容器、nonce 容器/卷/网、三个 trial tag、18448 监听全部
+  rc0 且 count 0；`cleanup.leftovers.json` 为空 `{}`（resources.py 每次 cleanup 都写
+  该文件，空对象=零 unverified），归属记录（compose.env/stack.compose.json/
+  built-images.json/.stack-creating）已按成功路径删除。R55 三未知匿名卷口径不变。
+
+### 维持开放
+
+- 未跑完整 profile（S5/S10/100turn/600s 三次采样）——NO_PERF 本轮约束；s4 的
+  ms 数值仅接线证明，无任何 §19.2 门槛被提出或冻结。
+- 场景缺口推进：S4 已接入；S3（idle SSE）、S6（cancel/reconnect/slow subscriber）、
+  S8（worker 三点异常退出）、S9（session revoke 并发）仍缺；S1/S2/S7 与 retained
+  stack、10 分钟 idle/recovery、三次独立测量仍待补。G12 维持未完成。
+- adjusted 值的"纯服务处理时间"不可达：provider 侧计时起点在本进程内，工作负载侧
+  只能给出含订阅偏移的 qualified 值；除非 provider 协议回传服务端时间戳，该界限
+  不因补字段而消除。

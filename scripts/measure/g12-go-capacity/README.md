@@ -48,18 +48,43 @@ configured generation concurrency, or cleanup verification finds leftover
 resources. Warm-up keys are disjoint from measured keys, so idempotent replay
 cannot make a sample look faster.
 
+Scenario 4 (§19.1: exactly 1 generation + 1 SSE) measures the first live
+`chat.delta` with an incremental SSE parser (chunk-by-chunk `read1`, frames
+split on blank lines, comment/heartbeat lines ignored). Timing bases are
+explicit: from_send (POST issued), from_accept (202 received), from_subscribe
+(SSE attempt start); timestamps are the receipt time of the socket chunk
+carrying the event. A delta counts as live unless it sits after the last
+`chat.snapshot` preceding the terminal (the committed-text replay burst);
+the catch-up snapshot every live subscription starts with is coverage
+evidence — empty text means the subscriber predates every delta, so the
+first received delta is the generation's first delta. The whole
+subscribe/retry loop runs against one absolute deadline: every blocking
+read re-caps the connection socket to the remaining budget before it is
+issued (a timeout fixed at connect time would re-run the full budget on
+each read), and a chunk received after the deadline is dropped unparsed,
+so neither a silent stall nor a late terminal can extend the call or
+become a success. The adjusted value subtracts the fake provider's known
+`holdMs+firstTokenMs` window (measured from when that process received its
+request, externally unobservable), so it still contains backend
+intake/claim, the provider HTTP round-trip and SSE subscribe offset — it is
+never reported as pure service processing time, no ms threshold is asserted
+(§19.2 gates stay Owner-frozen), and a missing delta fails with its reason
+instead of a fabricated zero.
+
 ```bash
-bash scripts/measure/g12-go-capacity/run.sh            # full profile
-bash scripts/measure/g12-go-capacity/run.sh --probe    # FUNCTIONAL_ONLY wiring proof
+bash scripts/measure/g12-go-capacity/run.sh            # full profile (s4, s5, s10, soak)
+bash scripts/measure/g12-go-capacity/run.sh --probe    # FUNCTIONAL_ONLY wiring proof (s4 branch)
 python3 scripts/measure/g12-go-capacity/test_collector.py  # render/collect/aggregation units
 python3 scripts/measure/g12-go-capacity/test_resources.py  # resource-ownership units (stubbed docker)
+python3 scripts/measure/g12-go-capacity/test_workload.py   # SSE parser/first-delta timing units
 ```
 
 `--probe` is short and bounded: it proves stack boot (migrate/bootstrap/
 minio-init exit 0), Caddy TLS readiness via the private CA, collector field
 completeness/attribution/observer exclusion/aggregation, and at most one real
-1-generation + 1-SSE chain with fake-provider counting. It draws **no**
-performance or capacity conclusions and satisfies no §19.2 gate.
+1-generation + 1-SSE chain (the scenario 4 branch) with fake-provider
+counting and first-delta timing wiring. It draws **no** performance or
+capacity conclusions and satisfies no §19.2 gate.
 
 Optional env:
 
@@ -77,7 +102,9 @@ Optional env:
 | `G12_KEEP` | 0 | keep the stack and images up on exit |
 
 Output: `trial.summary.json` (probe: `probe.summary.json`, marked
-`FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON, idle windows,
+`FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's summary
+carries the first-delta block with its baselines, provider-known-delay
+subtraction, coverage evidence and definition), idle windows,
 100-turn batch and recovery summaries, `frames.jsonl` (same-window A/B frames:
 timestamp / platform / source / integrity / 4-component data), scrape
 snapshots, `created-resources.json` (this run's nonce-receipted inventory:

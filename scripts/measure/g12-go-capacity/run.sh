@@ -12,14 +12,20 @@
 # (warm-up with disjoint idempotency keys, measured idle, scenario 5
 # 4 gen + 8 SSE, scenario 10 16 gen + 64 SSE, 100-turn soak, post-idle
 # recovery, provider/worker peak proofs), now with the §19.1 600 s
-# idle/recovery windows as defaults and B-side per-component frames recorded
-# next to the A-side process numbers.
+# idle/recovery windows as defaults, B-side per-component frames recorded
+# next to the A-side process numbers, and §19.1 scenario 4 (exactly
+# 1 generation + 1 SSE) first: its incremental SSE parser records the
+# first live chat.delta against explicit send/accept/subscribe baselines
+# and subtracts the fake provider's known hold+firstToken window into a
+# qualified adjusted value (never presented as pure service time; no ms
+# threshold is asserted — §19.2 gates stay Owner-frozen).
 #
 # --probe is FUNCTIONAL_ONLY: a short, bounded run proving the stack boots
 # (migrate/bootstrap/minio-init exit 0), Caddy TLS readiness via the private
 # CA, collector field completeness/attribution/observer exclusion/aggregation,
-# and at most one real 1-gen + 1-SSE chain with fake-provider counting. It
-# draws no performance or capacity conclusions and satisfies no §19.2 gate.
+# and at most one real 1-gen + 1-SSE chain (scenario 4 branch) with
+# fake-provider counting and first-delta timing wiring. It draws no
+# performance or capacity conclusions and satisfies no §19.2 gate.
 #
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
@@ -659,13 +665,200 @@ print(f"  provider/worker peak = {r['provider_peak']}/{r['worker_peak']}; errors
 PY
 }
 
+run_scenario_s4() {
+  # §19.1 场景 4: exactly 1 generation + 1 SSE, first-delta timing against
+  # the fixture's known provider delay. Assertions stay wiring-level (counts,
+  # peaks, frames, one live delta observed); no ms threshold is asserted —
+  # §19.2 gates stay Owner-frozen. The adjusted values subtract the fake
+  # provider's own holdMs+firstTokenMs window (measured from when THAT
+  # process received the request, not observable from outside), so they still
+  # contain backend intake/claim/provider-HTTP/SSE-subscribe time and are
+  # never presented as pure service processing time.
+  local name="s4" gens=1 sse=1
+  local result="$RUN_DIR/$name.json" summary="$RUN_DIR/$name.summary.json"
+  local provider_before provider_after cpu_before cpu_after worker_active worker_peak
+  local started ended analysis
+  echo "== scenario s4: 1 generation + 1 SSE, first-delta timing =="
+  provider_before=$(provider_stats)
+  cpu_before=$(metric_value process_cpu_seconds_total)
+  started=$(python3 -c 'import time; print(time.time())')
+  if ! run_workload --scenario "$name" --gens "$gens" --sse-per-gen "$sse" \
+      --key-prefix "$TRIAL_ID-$name" > "$result"; then
+    [ -s "$result" ] && cat "$result" >&2
+    die "$name workload failed"
+  fi
+  ended=$(python3 -c 'import time; print(time.time())')
+  cpu_after=$(metric_value process_cpu_seconds_total)
+  worker_active=$(metric_value vc_generation_active)
+  worker_peak=$(metric_value vc_generation_peak)
+  provider_after=$(provider_stats)
+  analysis=$(analyze_window "$started" "$ended")
+  echo "$analysis" > "$RUN_DIR/$name.analysis.json"
+  if ! python3 - "$result" "$provider_before" "$provider_after" \
+      "$cpu_before" "$cpu_after" "$worker_active" "$worker_peak" "$analysis" \
+      > "$summary" <<'PY'
+import json, sys
+
+(path, provider_before, provider_after, cpu_before, cpu_after,
+ worker_active, worker_peak, analysis_s) = sys.argv[1:]
+analysis = json.loads(analysis_s)
+r = json.load(open(path))
+before, after = json.loads(provider_before), json.loads(provider_after)
+s = r["stats"]
+fd = s["first_delta"]
+errors = []
+if r.get("generations") != 1 or r.get("expected_sse") != 1:
+    errors.append(f"accepted {r.get('generations')} gen / "
+                  f"{r.get('expected_sse')} expected SSE want 1/1")
+if s.get("sse_total") != 1 or s.get("sse_ok") != 1:
+    errors.append(f"SSE {s.get('sse_ok')}/{s.get('sse_total')} want 1/1")
+if s.get("error_count") != 0:
+    errors.append(f"workload errors: {s.get('errors')}")
+provider_delta = after["streamRequests"] - before["streamRequests"]
+if provider_delta != 1:
+    errors.append(f"provider requests {provider_delta} want 1")
+if after["activeStreamRequests"] != 0:
+    errors.append(f"provider active after scenario {after['activeStreamRequests']}")
+if int(float(worker_active)) != 0:
+    errors.append(f"worker active after scenario {worker_active}")
+if int(float(worker_peak)) < 1:
+    errors.append(f"worker peak {worker_peak} want >= 1")
+# One live delta must have been observed; a missing one is an explicit
+# failure carrying its reason (never a fabricated zero).
+if fd.get("observed") != 1:
+    errors.append(f"first delta not observed: {fd.get('absent_reasons')}")
+a = analysis["a"]
+if not a["frames_with_pid1"]:
+    errors.append("no A frames with runtime PID 1 in the scenario window")
+peak = analysis["b"]["same_frame_peak"]
+if peak is None or peak["complete_frames"] < 1:
+    errors.append("no complete same-frame B sum in the scenario window")
+for comp, cpu in analysis["b"]["components"].items():
+    if cpu["status"] == "INVALID":
+        errors.append(f"{comp} CPU window invalid ({cpu.get('reason')}); "
+                      "not a valid measurement")
+
+# Known provider delay (fixture-side): holdMs + firstTokenMs measured from
+# when the fake provider received the completion request — not observable
+# from outside, so the subtraction stays qualified, never "pure service".
+config = after.get("config") or {}
+hold = config.get("holdMs")
+first_token = config.get("firstTokenMs")
+chunks = config.get("chunks")
+known_ms = (hold + first_token) if isinstance(hold, (int, float)) \
+    and isinstance(first_token, (int, float)) else None
+from_send = fd.get("from_send_ms", {}).get("p50")
+from_accept = fd.get("from_accept_ms", {}).get("p50")
+adjusted_send = from_send - known_ms \
+    if known_ms is not None and from_send is not None else None
+adjusted_accept = from_accept - known_ms \
+    if known_ms is not None and from_accept is not None else None
+live = fd.get("live_deltas_max")
+cov = fd.get("coverage") or {}
+# Catch-up-snapshot evidence is exact: 0 chars at subscribe means the
+# subscriber predates every delta, so the received first delta IS the
+# generation's first delta. A provider-chunk mismatch would only be
+# reachable when a >16 KiB catch-up/replay burst mixes splits into the
+# live count — surfaced, never clamped.
+if live is not None and isinstance(chunks, (int, float)) and live > chunks:
+    coverage = f"unexpected_delta_count:{live}vs{int(chunks)}"
+elif cov.get("joined_before_first_delta", 0) >= 1:
+    coverage = "complete_stream"
+elif cov.get("joined_mid_stream", 0) >= 1:
+    coverage = "joined_mid_stream"
+else:
+    coverage = "unknown"
+
+summary = {
+    "scenario": "s4",
+    "generations": 1,
+    "sse": 1,
+    "intake_ms": s["intake_ms"],
+    "terminal_ms": s["terminal_ms"],
+    "stream_ms": s["stream_ms"],
+    "first_delta": {
+        **fd,
+        "provider_known_delay_ms": {"holdMs": hold, "firstTokenMs": first_token,
+                                    "sum": known_ms, "chunks": chunks},
+        "adjusted_from_send_ms": adjusted_send,
+        "adjusted_from_accept_ms": adjusted_accept,
+        "coverage_evidence": cov,
+        "coverage": coverage,
+        "definition": (
+            "first_delta_at = receipt time of the socket chunk carrying the "
+            "first live chat.delta. Live rule: a chat.delta is live unless "
+            "it arrives after the last chat.snapshot preceding the terminal "
+            "event (the committed-text replay burst); every live "
+            "subscription starts with a catch-up chat.snapshot, and deltas "
+            "before the final snapshot are live tokens. Bases: from_send = "
+            "POST /generations issue time; from_accept = 202 receipt time; "
+            "from_subscribe = SSE attempt start. adjusted = from_* minus "
+            "the fake provider's own holdMs+firstTokenMs window, which the "
+            "provider measures from receiving ITS request — externally "
+            "unobservable — so adjusted still contains backend "
+            "intake/claim, provider HTTP round-trip and SSE subscribe "
+            "offset; it is not pure service processing time. coverage: "
+            "empty catch-up text = subscribed before the first delta, so "
+            "the received first delta is the generation's first delta; "
+            "non-empty = joined mid-stream, so from_send/from_accept are "
+            "upper bounds. No threshold is asserted (Owner-frozen §19.2)."),
+    },
+    "cpu_seconds": round(float(cpu_after) - float(cpu_before), 6),
+    "peak_rss_mib": round(a["a_rss_peak_kb"] / 1024, 3) if a["a_rss_peak_kb"] else None,
+    "peak_pss_mib": round(a["a_pss_peak_kb"] / 1024, 3) if a["a_pss_peak_kb"] else None,
+    "b_peak_rss_mib": round(peak["b_rss_peak_kb"] / 1024, 3) if peak else None,
+    "b_peak_pss_mib": round(peak["b_pss_peak_kb"] / 1024, 3) if peak else None,
+    "b_complete_frames": peak["complete_frames"] if peak else 0,
+    "b_component_status_frames": analysis["component_status_frames"],
+    "b_cpu_status": {c: {"status": cpu["status"], "reason": cpu.get("reason"),
+                         "stats_missing_frames": cpu["stats_missing_frames"],
+                         "epoch_changed": cpu["epoch_changed"]}
+                     for c, cpu in analysis["b"]["components"].items()},
+    "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
+                           for c, cpu in analysis["b"]["components"].items()},
+    "provider_peak": after["peakActiveStreamRequests"],
+    "worker_peak": int(float(worker_peak)),
+    "errors": errors,
+}
+print(json.dumps(summary, ensure_ascii=False))
+if errors:
+    for error in errors:
+        print(f"G12 assertion failed: {error}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  then
+    die "$name capacity assertions failed"
+  fi
+  python3 - "$summary" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+fd = r["first_delta"]
+print(f"  intake p50 = {r['intake_ms']['p50']} ms; "
+      f"terminal p50 = {r['terminal_ms']['p50']} ms; "
+      f"stream p50 = {r['stream_ms']['p50']} ms")
+print(f"  first delta from send/accept/subscribe = "
+      f"{fd['from_send_ms']['p50']}/{fd['from_accept_ms']['p50']}/"
+      f"{fd['from_subscribe_ms']['p50']} ms "
+      f"(adjusted send/accept = {fd['adjusted_from_send_ms']}/"
+      f"{fd['adjusted_from_accept_ms']} ms, provider known "
+      f"{fd['provider_known_delay_ms']['sum']} ms, coverage {fd['coverage']})")
+print(f"  A CPU = {r['cpu_seconds']} s; A peak RSS/PSS = "
+      f"{r['peak_rss_mib']}/{r['peak_pss_mib']} MiB; "
+      f"B same-frame peak RSS/PSS = {r['b_peak_rss_mib']}/"
+      f"{r['b_peak_pss_mib']} MiB ({r['b_complete_frames']} frames)")
+cpu = r["b_cpu_status"]
+nonvalid = {c: s for c, s in cpu.items() if s["status"] != "VALID"}
+print(f"  B CPU windows = {'all VALID' if not nonvalid else nonvalid}; errors = 0")
+PY
+}
+
 if [ "$PROBE" = "1" ]; then
   echo "== probe functional chain: 1 generation + 1 SSE through caddy TLS =="
   PROBE_RESULT="$RUN_DIR/probe.workload.json"
   provider_before=$(provider_stats)
   cpu_before=$(metric_value process_cpu_seconds_total)
   worker_peak_before=$(metric_value vc_generation_peak)
-  if ! run_workload --scenario s5 --gens 1 --sse-per-gen 1 \
+  if ! run_workload --scenario s4 --gens 1 --sse-per-gen 1 \
       --key-prefix "$TRIAL_ID-probe" > "$PROBE_RESULT"; then
     [ -s "$PROBE_RESULT" ] && cat "$PROBE_RESULT" >&2
     die "probe workload failed"
@@ -698,6 +891,16 @@ checks = []
 if r.get("generations") != 1 or s.get("sse_ok") != 1 or s.get("error_count") != 0:
     errors.append(f"functional chain: {r.get('generations')} gen, "
                   f"{s.get('sse_ok')}/1 SSE, errors {s.get('errors')}")
+# First-delta timing wiring (FUNCTIONAL_ONLY: the incremental parser and
+# its baselines produced a live measurement; no number here is a perf
+# conclusion or any §19.2 gate).
+fd = s.get("first_delta") or {}
+if fd.get("observed") != 1:
+    errors.append(f"first-delta wiring: observed {fd.get('observed')} want 1 "
+                  f"({fd.get('absent_reasons')})")
+fd_send = (fd.get("from_send_ms") or {}).get("p50")
+fd_accept = (fd.get("from_accept_ms") or {}).get("p50")
+fd_sub = (fd.get("from_subscribe_ms") or {}).get("p50")
 provider_delta = after["streamRequests"] - before["streamRequests"]
 checks.append(f"provider delta {provider_delta}")
 if provider_delta != 1:
@@ -761,6 +964,13 @@ summary = {
     "functional_chain": {
         "generations": r.get("generations"), "sse_ok": s.get("sse_ok"),
         "provider_delta": provider_delta, "worker_peak": int(float(worker_peak)),
+        "first_delta": {
+            "from_send_ms": fd_send, "from_accept_ms": fd_accept,
+            "from_subscribe_ms": fd_sub,
+            "live_deltas_max": fd.get("live_deltas_max"),
+            "coverage": fd.get("coverage"),
+            "note": "timing wiring proof only, not a performance number",
+        },
         "checks": checks,
     },
     "frames": {
@@ -794,6 +1004,7 @@ PY
   exit 0
 fi
 
+run_scenario_s4
 run_scenario s5 "$GENS_S5" "$SSE_S5"
 run_scenario s10 "$GENS_S10" "$SSE_S10"
 
@@ -927,12 +1138,13 @@ print(json.dumps(out))
 PY
 )
 python3 - "$TRIAL_ID" "$MODE" "$PROJECT" "$COLD_START_MS" "$IDLE_CPU_SECONDS" \
-  "$IDLE_ANALYSIS" "$IMAGE_BYTES" "$RUN_DIR/s5.summary.json" \
+  "$IDLE_ANALYSIS" "$IMAGE_BYTES" "$RUN_DIR/s4.summary.json" \
+  "$RUN_DIR/s5.summary.json" \
   "$RUN_DIR/s10.summary.json" "$RUN_DIR/soak.summary.json" \
   > "$RUN_DIR/trial.summary.json" <<'PY'
 import json, sys
 (trial_id, mode, project, cold_ms, idle_cpu, idle_analysis_s, image_bytes_s,
- s5_path, s10_path, soak_path) = sys.argv[1:11]
+ s4_path, s5_path, s10_path, soak_path) = sys.argv[1:12]
 idle = json.loads(idle_analysis_s)
 summary = {
     "trial_id": trial_id, "mode": mode,
@@ -943,6 +1155,7 @@ summary = {
     "idle_cpu_seconds": float(idle_cpu),
     "idle_a": idle["a"],
     "idle_b_same_frame": idle["b"]["same_frame_peak"],
+    "s4": json.load(open(s4_path)),
     "s5": json.load(open(s5_path)),
     "s10": json.load(open(s10_path)),
     "soak": json.load(open(soak_path)),

@@ -498,6 +498,42 @@ test_resources 42+test_collector 27 全绿，正常
 协议未变故未重跑 probe。G12 维持未完成、不冻结 Owner 门槛；细节见
 `docs/planning/g12-go-capacity-sample.md` §10。
 
+2026-10-22 S4 独立场景与真实首 delta 流式计时（VC-R60，G12 §19.1 场景4，非采样）：
+`workload.py` Client.sse 弃用 resp.read() 全量读+字节占比伪指标，改为有界增量解析
+（read1 逐块、帧按空行切分、注释/心跳行不产出事件、跨块重组），时间戳为事件所在
+socket chunk 的接收时刻；live delta 规则按 realtime/hub.go 真实契约（订阅先收 catch-up
+snapshot、终态前另有落库回放 snapshot+>16KiB 切片）：终态已到或第 2 枚 snapshot 已现时，
+最后 snapshot 之后的 delta 为回放切片不计；中断尝试的 delta 保留。三基线显式：
+from_send（POST 发出）/from_accept（202 返回）/from_subscribe（SSE 尝试起点），无
+delta 留原因（failed/replay_only/terminal_without_delta/no_terminal/connect_failed）
+不伪造 0；订阅/重试全程一个绝对 deadline：逐块检查、每次阻塞 read1 前把连接
+socket timeout 重设为剩余预算（Root 复核实测旧缺陷：0.4s budget 下 burst 后静默
+0.710s 才返回，因 read1 沿用连接时旧 timeout）、deadline 后收到的 chunk 整块
+丢弃不解析（0.55s 过期终态旧实测 0.562s ok=True，修复后 ok=False），响应必关。
+s4=1gen+1SSE 独立
+scenario，probe 真实走 s4 分支；s4.summary 记录 fake provider 已知
+holdMs+firstTokenMs 的 qualified adjusted 值（含 intake/claim/HTTP/SSE 订阅偏移，
+非纯服务处理时间，不断言任何 ms 门槛，§19.2 仍 Owner 冻结）；coverage 以
+catch-up snapshot 文本长度为证（0=先于首 delta 加入）。S5/S10/100turn/峰值/
+反重放/600s 断言未削弱，未新增其他 scenario；Go/frontend/SQL/生产 compose 零改动，
+fake_provider.mjs 零改动（stats 已含 config）。新增 test_workload.py 26 例
+（脚本化流+假时钟+真实 socket 三类，含 Root 两例真实 deadline 回归与脚本化
+过期 chunk 丢弃/settimeout 序列断言），deadline 修正后直接 rc=0 全绿；
+test_collector 27+
+test_resources 42 复跑全绿、bash -n/py_compile/git diff --check 过。deadline
+修正的 TLS 路径未随本轮重跑 probe（Root 指示不重启；TLS/明文同为 sock.makefile
+结构，下次真实运行自然覆盖）。最终单次真实
+`--probe`（vcg12c-vcr60-probe1、18448、独立 OS 控制器 Popen rc=0/99.4s 未触
+1200s deadline；首次尝试因控制器误预建输出目录被 run.sh 独占门拒绝，Docker 零
+写入后修正重试）PASS rc=0：1gen+1SSE、provider 差分 1、37/37 帧完整、四组件
+CPU 全 VALID、first_delta 三基线有效（from_send/accept/subscribe =
+1022.3/1004.5/222.1 ms，live_deltas=8=chunks、joined_before_first_delta=1），
+FUNCTIONAL_ONLY 不作性能结论。清理核清：project/nonce 容器卷网、trial tag、
+18448 端口全部 rc0 count0，leftovers 空 `{}`、归属记录已删；控制器日志/记录
+0600（写前 umask 077，Root 复核指出 0644 后修）。仍缺 S1/S2/S3/S6/
+S7/S8/S9 与真实采样，G12 维持未完成、不冻结 Owner 门槛；细节见
+`docs/planning/g12-go-capacity-sample.md` §11。
+
 2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
 最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
 Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于
