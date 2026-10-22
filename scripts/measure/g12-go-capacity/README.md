@@ -33,7 +33,9 @@ labels/names never serve as creator proofs, and there is no prune /
 `--remove-orphans` / prefix or time-window adoption. Missing, unreadable, or
 corrupt receipt records surface as `unverified` leftovers — never as an
 empty success — while the confirmed receipts are still cleaned by their
-exact identities. A failed cleanup keeps
+exact identities; a missing collectors record is optional only while the
+collector launch was never attempted (run.sh marks the attempt, after which
+missing counts as unverified too). A failed cleanup keeps
 the ownership records (and exits nonzero through the EXIT trap); a previous
 run's or concurrently claimed output directory is refused outright, so a
 run that created nothing performs zero Docker writes. `G12_KEEP=1` preserves

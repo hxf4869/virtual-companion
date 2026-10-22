@@ -638,6 +638,12 @@ def main() -> int:
     p.add_argument("--project", default="",
                    help="project for the read-only detector when no capture "
                         "record could be written")
+    p.add_argument("--collectors-required", choices=("yes", "no"),
+                   default="no",
+                   help="yes = the collector launch was attempted this run: "
+                        "a missing (not just unreadable) collectors record "
+                        "is unverified — helpers created before the record "
+                        "was lost must never fold into an empty success")
 
     args = ap.parse_args()
     if args.cmd == "require-absent":
@@ -678,6 +684,11 @@ def main() -> int:
                        f"({states['collectors'][1]}); helper containers "
                        "recorded before the corruption are not proven "
                        "cleaned")
+    elif (args.collectors_required == "yes"
+          and states["collectors"][0] == "missing"):
+        unknown.append("collectors receipt record missing although the "
+                       "launch was attempted this run; helpers created "
+                       "before the record was lost are not proven cleaned")
     return 1 if cleanup_recorded(
         states["capture"][1] if states["capture"][0] == "ok" else None,
         states["built"][1] if states["built"][0] == "ok" else None,

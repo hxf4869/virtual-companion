@@ -511,6 +511,10 @@ label 对象 0、nonce 对象 0、卷 0、网络 0、trial tag 0，`cleanup.left
   JSON 的 built 记录 + 合法空 capture 不再折成"空成功 rc0"——direct rc=1、
   unverified 落 leftovers、creating/capture/built（含坏文件本身）与 config 全部
   保留；已确认 receipt 仍按精确 identity 清理，collectors 缺失可选、存在但读坏
-  升级。负例以纯 stub（零真实 Docker 调用）覆盖 direct rc 与恢复记录保留。
+  升级。collectors"缺失可选"仅适用 launch 未尝试：run.sh 在调用 collector
+  launch 前落 `.collectors-launched` 标记并传 `--collectors-required`，此后
+  missing/不可读均 unverified 非 0（纯 stub 反例：已尝试+记录丢失+helper 仍活
+  → rc=1、标记与记录保留、helper 不被触碰；未尝试+缺失+合法空 capture/built
+  → rc=0）。负例以纯 stub（零真实 Docker 调用）覆盖 direct rc 与恢复记录保留。
   本批仅收紧非法/未知回执与权限，正常创建/启动/采集协议未变，按 Root 授权
   未重跑第 3 次 probe。

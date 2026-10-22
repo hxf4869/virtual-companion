@@ -81,6 +81,11 @@ STOP_FILE="$RUN_DIR/collector.stop"
 # only mean THIS run attempted creation.
 CREATING="$RUN_DIR/.stack-creating"
 BUILT_IMAGES="$RUN_DIR/built-images.json"
+# Marks that THIS run attempted the collector launch: cleanup then REQUIRES
+# the collectors receipt — after helpers may have been created, a missing
+# record is unverified, never "not launched". Touched before the launch
+# call and only removed by a cleanup that proved everything gone.
+COLLECTORS_LAUNCHED="$RUN_DIR/.collectors-launched"
 GO_BASE="https://localhost:$HTTPS_PORT"
 GENS_S5="${G12_GENS_S5:-4}"
 SSE_S5="${G12_SSE_S5:-2}"
@@ -154,20 +159,23 @@ cleanup() {
     # One actual exit path for everything this run created: collector CIDs,
     # the nonce-receipted stack inventory, and this run's trial image tags —
     # each identity-checked before removal, absence proven only by rc0/count0
-    # daemon queries, leftovers persisted to cleanup.leftovers.json. Note
-    # an EXIT-trap `return` would NOT override a successful main flow, so a
-    # cleanup failure must be propagated with an explicit exit.
+    # daemon queries, leftovers persisted to cleanup.leftovers.json. The
+    # collectors record is required exactly when this run attempted the
+    # collector launch (marker file); an EXIT-trap `return` would NOT
+    # override a successful main flow, so a cleanup failure must be
+    # propagated with an explicit exit.
     if ! python3 "$HERE/resources.py" cleanup \
         --capture "$CAPTURE" --built "$BUILT_IMAGES" \
         --collectors "$COLLECTORS" --leftovers-out "$RUN_DIR/cleanup.leftovers.json" \
-        --project "$PROJECT"; then
+        --project "$PROJECT" \
+        --collectors-required "$([ -f "$COLLECTORS_LAUNCHED" ] && echo yes || echo no)"; then
       log "cleanup: leftover or unverified resources (see $RUN_DIR/cleanup.leftovers.json)"
       rc=1
       keep_records=1
     fi
     if [ "$keep_records" = "0" ]; then
       rm -f "$ENVFILE" "$RUNTIME_ENVFILE" "$CA_FILE" "$STACK_COMPOSE" \
-        "$CREATING" "$BUILT_IMAGES"
+        "$CREATING" "$BUILT_IMAGES" "$COLLECTORS_LAUNCHED"
     else
       # The ownership records stay for manual recovery — deleting them on a
       # failed cleanup would lose the only evidence of what to recover.
@@ -465,6 +473,10 @@ print(f"  ageState={state}")
 PY
 
 echo "== start collectors (readers + observer + same-window frame loop) =="
+# Mark launch-attempted BEFORE the launch call: once helpers may exist, the
+# collectors receipt is required evidence for cleanup (missing/unreadable
+# => unverified), never an optional "not launched".
+touch "$COLLECTORS_LAUNCHED"
 python3 "$HERE/collector.py" launch --manifest "$MANIFEST" --image "$MINIO_IMAGE" \
   --harness-dir "$HERE" --interval "$READER_INTERVAL" --out "$COLLECTORS" \
   || die "collector launch failed"

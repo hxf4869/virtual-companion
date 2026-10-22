@@ -716,7 +716,8 @@ class RunShStubTest(unittest.TestCase):
             self.assertEqual(calls, [])
 
     def drive_cleanup(self, tmp, docker_state, collectors_doc=None,
-                      capture_doc=None, built_doc=None, skip_collectors=False):
+                      capture_doc=None, built_doc=None, skip_collectors=False,
+                      launch_attempted=False):
         """Source run.sh for real and invoke its cleanup() with the stub."""
         state_path = tmp / "state.json"
         state_path.write_text(json.dumps(docker_state))
@@ -747,9 +748,12 @@ class RunShStubTest(unittest.TestCase):
                 lines.append("printf '%%s' '%s' > %s"
                              % (doc.replace("'", "'\\''"),
                                 shlex.quote(str(out / name))))
-        lines += ["touch %s" % shlex.quote(str(out / ".stack-creating")),
-                  "true",
-                  "cleanup"]
+        lines += ["touch %s" % shlex.quote(str(out / ".stack-creating"))]
+        if launch_attempted:
+            # run.sh touches this marker right before the collector launch
+            lines.append("touch %s"
+                         % shlex.quote(str(out / ".collectors-launched")))
+        lines += ["true", "cleanup"]
         driver = tmp / "drive.sh"
         driver.write_text("\n".join(lines) + "\n")
         stub_bin = tmp / "bin"
@@ -831,6 +835,52 @@ class RunShStubTest(unittest.TestCase):
             calls = [json.loads(line) for line
                      in (Path(tmp) / "calls.log").read_text().splitlines() if line]
             self.assertFalse(any(c[:1] == ["rmi"] for c in calls))
+
+    def test_attempted_launch_missing_receipt_is_unverified(self):
+        # Root's deterministic counter-example: launch was attempted (the
+        # run touched the marker), the record was lost, and a helper this
+        # run created is still alive in the daemon. Cleanup must exit
+        # nonzero, keep the marker/records, list the unknown, and never
+        # touch the unrecorded helper (no scan, no adoption, no prefix rm).
+        with tempfile.TemporaryDirectory() as tmp:
+            state = fresh_state()
+            state["containers"]["cidobs0000001"] = {
+                "name": "vcg12c-stubtrial-observer", "labels": {}}
+            proc, out = self.drive_cleanup(
+                Path(tmp), state, skip_collectors=True, launch_attempted=True)
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("launch was attempted", proc.stderr)
+            leftovers = json.loads(
+                (out / "cleanup.leftovers.json").read_text())
+            self.assertTrue(any("launch was attempted" in m
+                                for m in leftovers["unverified"]))
+            self.assertTrue((out / ".stack-creating").exists())
+            self.assertTrue((out / ".collectors-launched").exists())
+            self.assertTrue((out / "created-resources.json").exists())
+            calls = [json.loads(line) for line
+                     in (Path(tmp) / "calls.log").read_text().splitlines() if line]
+            self.assertFalse(any(c[:1] == ["stop"] or c[:2] == ["rm", "-f"]
+                                 for c in calls))  # helper untouched
+            state_now = json.loads((Path(tmp) / "state.json").read_text())
+            self.assertIn("cidobs0000001", state_now["containers"])
+
+    def test_unattempted_launch_missing_receipt_stays_clean(self):
+        # Launch never attempted: a missing collectors record is optional —
+        # valid empty capture/built stay a clean rc 0, and an unrelated
+        # same-named helper (not ours, no record) is neither touched nor
+        # able to turn the run dirty.
+        with tempfile.TemporaryDirectory() as tmp:
+            state = fresh_state()
+            state["containers"]["cidobs0000001"] = {
+                "name": "vcg12c-stubtrial-observer", "labels": {}}
+            proc, out = self.drive_cleanup(Path(tmp), state,
+                                           skip_collectors=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertFalse((out / ".stack-creating").exists())
+            state_now = json.loads((Path(tmp) / "state.json").read_text())
+            self.assertIn("cidobs0000001", state_now["containers"])
+            self.assertEqual(json.loads(
+                (out / "cleanup.leftovers.json").read_text()), {})
 
 
 def stub_main(args):

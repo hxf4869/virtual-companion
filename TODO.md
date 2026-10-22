@@ -491,8 +491,10 @@ provider 差分 1、CPU 四组件全 VALID，清理后独立 daemon 查询 proje
 不提升且 cleanup 输入边界拒绝 nonce 不符记录、reader/observer 写帧前 umask 077
 （frames 不再 0644）、cleanup 的 required 回执缺失/不可读/坏 JSON 三态化记
 unverified 非 0（已确认部分仍按 identity 清、原记录与 config 保留、显式空记录
-与未知区分，纯 stub 负例验证 direct rc 与恢复记录保留）；单元增至
-test_resources 40+test_collector 27 全绿，正常
+与未知区分，纯 stub 负例验证 direct rc 与恢复记录保留；collectors 缺失可选仅
+限 launch 未尝试，run.sh 调 launch 前落标记并传 --collectors-required，此后
+missing 同样 unverified）；单元增至
+test_resources 42+test_collector 27 全绿，正常
 协议未变故未重跑 probe。G12 维持未完成、不冻结 Owner 门槛；细节见
 `docs/planning/g12-go-capacity-sample.md` §10。
 
