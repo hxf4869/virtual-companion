@@ -64,6 +64,18 @@ init→Go runtime→Caddy，HTTPS 经 Caddy 本地 CA 真实证书链验证）�
 启动顺序固定为：数据库健康 → SQL 迁移 → owner/admin bootstrap → MinIO bucket
 初始化 → `companiond` 健康 → Caddy。任一步失败都会阻止后续服务启动。
 
+## Caddy 边缘镜像重编
+
+`ops/deploy/Dockerfile.web` 不直接使用上游 runtime 基底镜像内的 Caddy 二进制：
+build 阶段以 digest 固定的 `golang:1.26.10-alpine3.23`，按官方 xcaddy 无插件
+模板（`ops/deploy/caddy-build`：Caddy v2.11.7 标准模块 + `time/tzdata`）重编
+`/usr/bin/caddy`（`CGO_ENABLED=0`、`-trimpath`、`-tags=nobadger,nomysql,nopgx`），
+并把 `golang.org/x/net` 固定到 `v0.60.0`——这是相对 Caddy v2.11.7 自身
+go.mod（v0.59.0）的唯一依赖版本变化，其余版本不变。final 阶段仍基于已验证
+digest 的 `caddy:2.11.7` 基底，只替换该二进制，并用基底自带的 `setcap` 恢复
+原有 `cap_net_bind_service=+ep`。首次构建需要访问 Go module proxy 下载依赖
+并通过 go.sum 校验，之后可复用 BuildKit 缓存。
+
 ## 验证
 
 ```bash
