@@ -91,7 +91,9 @@ cleanup() {
         terminate_group "${H5_PID:-}"
         terminate_group "${RUNTIME_PID:-}"
         terminate_group "${PROVIDER_PID:-}"
-        "${DOCKER[@]}" rm -f "$PG_CONTAINER" "$MINIO_CONTAINER" >/dev/null 2>&1 || true
+        # -v: the pinned PG image declares an anonymous VOLUME; without it the
+        # data volume outlives every E2E run.
+        "${DOCKER[@]}" rm -fv "$PG_CONTAINER" "$MINIO_CONTAINER" >/dev/null 2>&1 || true
         rm -f -- "$E2E_STACK_STATE_FILE" "${E2E_STACK_STATE_FILE}.tmp.$$" \
             "$E2E_AUTH_MATERIAL_FILE" "$GO_BINARY"
         rm -f -- "${E2E_STACK_STATE_FILE}".shared-*.json

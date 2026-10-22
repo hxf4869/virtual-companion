@@ -130,9 +130,11 @@ async function stopProcesses(state: StackState): Promise<void> {
 
 function removeContainers(state: StackState): void {
   for (const container of state.containers) {
+    // -v removes the container's anonymous volumes; the pinned PG image's
+    // data volume would otherwise outlive every E2E run.
     spawnSync(
       "docker",
-      ["--context", state.dockerContext, "rm", "-f", container],
+      ["--context", state.dockerContext, "rm", "-f", "-v", container],
       { stdio: "ignore" },
     );
   }

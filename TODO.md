@@ -379,6 +379,24 @@ PG/MinIO 与 fake provider，本地合成数据与设备仿真，非真机/真�
 无残留，42 份历史日志未动）；不勾 Owner/Beta/CI/真机，G12 维持未完成
 （10 分钟 recovery/retained-stack/PSS 未补）。
 
+2026-10-22 本地 E2E 清理补删匿名卷（VC-R53）：PG18 镜像自带匿名 VOLUME，
+`docker rm -f` 不带 `-v` 时数据卷在每次 E2E 后残留累积（R52 收尾后 Root 以
+Docker events 定位并已精确清除本轮遗留的那枚卷）。两条既有、supervisor PID
+严格约束的删除路径改为 `docker rm -fv`：`scripts/dev/e2e-stack.sh` cleanup()
+与 `frontend/e2e/global-teardown.ts` removeContainers()；KEEP/synthetic-eval
+限制、进程归属校验与 secret 清理语义不变，MinIO scratch 镜像无 VOLUME，
+`-v` 为无害 no-op。验证按真实消费者（非参数镜像单测）：主探针真实启动
+e2e-stack.sh（隔离端口 18438/18088/55198/19098、私有 STATE 路径、full、
+KEEP0、orbstack），PG 容器实际创建并捕获确切匿名卷后立即 TERM，
+supervisor rc=130，容器/该卷/进程组/4 端口/state/auth/shared/secret/iid/
+binary 按实际启动范围全清、`volume ls` 前后无新增残留（探针日志
+/tmp/vcr53）；验证子以本机缓存同 digest 镜像 `docker create`（network
+none、未启动）得到真实匿名卷、自有 sleep holder 为合法 supervisor PID，
+node 22 直调真实 global-teardown 默认导出（rc=0、0.55s），holder 退出、
+容器与确切卷删除、state 派生五文件清空。R52 20/20 历史按当时输入保留；
+前端 vitest/vue-tsc 仅覆盖 `src/**`（不含 e2e/），该文件以真实入口探针为
+准。不勾 Owner/Beta/CI/真机，G12 维持未完成（R46 trial2 HOLD/NOT_RUN）。
+
 2026-10-22 跨 Tab 错账号操作收口（VC-R52，R51 审计 F1 选定修复落地）：
 服务端 core 入口强制期望账号前置条件——认证核心写在任何业务 effects 前必须
 携带 `X-VC-Expected-Account-ID` 且等于 cookie principal 账号（读带该头时比对；
