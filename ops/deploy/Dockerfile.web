@@ -1,5 +1,5 @@
 # DEPLOY edge image: Caddy + the built H5 bundle + the edge Caddyfile.
 # Build AFTER `pnpm --dir frontend build` so frontend/dist exists.
-FROM caddy:2
+FROM caddy:2.11.7@sha256:3095ad245c353e3bdb27a38f22a095c1cfa9e295ab21c0214c3e72b0e2960525
 COPY ops/deploy/Caddyfile /etc/caddy/Caddyfile
 COPY frontend/dist/build/h5/ /srv/h5
