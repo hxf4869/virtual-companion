@@ -1,35 +1,71 @@
 #!/usr/bin/env bash
-# G12 Go capacity profile (synthetic): §19.1 场景 5 (4 gen + 8 SSE stable) and
-# 场景 10 (16 gen + 64 SSE capacity profile) against the host Go companiond
-# `full` mode with a loopback fake provider. The same companiond binary applies
-# schema migrations before the measured runtime starts.
+# G12 Go capacity profile on the production-derived resident stack (VC-R58).
 #
-# Uses a disposable PostgreSQL + fake-provider + MinIO stack owned by this
-# harness. The loopback MinIO serves the VC_EXPORT_S3_* tuple that `full` mode
-# requires; it runs the same pinned-binary image built from
-# scripts/dev/Dockerfile.e2e-minio-tools that scripts/dev/e2e-stack.sh uses.
-# Secrets and the opaque session are synthetic and fabricated locally; never a
-# real provider, never real user data. Each invocation is one independent
-# trial; §19.2 gates require at least three trials before Owner confirmation.
+# Same-window A/B collection against the §19.1 B boundary: the stack is
+# rendered privately from ops/deploy (production Go/MinIO/Caddy Dockerfiles,
+# PG18+pgvector digest-pinned, per-trial project/image tags), traffic enters
+# through Caddy's loopback TLS port, so A — the companiond process the traffic
+# actually hits (runtime PID 1) — and B — each component's whole container
+# cgroup (db/runtime/minio/caddy) — are measured over the same windows.
 #
-# Usage: bash scripts/measure/g12-go-capacity/run.sh
+# Default mode keeps the full profile and every pre-existing assertion
+# (warm-up with disjoint idempotency keys, measured idle, scenario 5
+# 4 gen + 8 SSE, scenario 10 16 gen + 64 SSE, 100-turn soak, post-idle
+# recovery, provider/worker peak proofs), now with the §19.1 600 s
+# idle/recovery windows as defaults and B-side per-component frames recorded
+# next to the A-side process numbers.
+#
+# --probe is FUNCTIONAL_ONLY: a short, bounded run proving the stack boots
+# (migrate/bootstrap/minio-init exit 0), Caddy TLS readiness via the private
+# CA, collector field completeness/attribution/observer exclusion/aggregation,
+# and at most one real 1-gen + 1-SSE chain with fake-provider counting. It
+# draws no performance or capacity conclusions and satisfies no §19.2 gate.
+#
+# Secrets are synthetic and fabricated locally; never a real provider, never
+# real user data. Each invocation is one independent trial with its own
+# project, images, and data (render_stack.py validation gates resource naming
+# before anything is created).
+#
+# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe]
 set -euo pipefail
+export DOCKER_CONTEXT=orbstack
+
+PROBE=0
+if [ "${1:-}" = "--probe" ]; then
+  PROBE=1
+elif [ $# -gt 0 ]; then
+  echo "usage: run.sh [--probe]" >&2
+  exit 2
+fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 RUN_DIR="${G12_OUTPUT_DIR:-$HERE/.run}"
+# Lowercase so the default project name satisfies compose naming rules.
+TRIAL_ID="$(printf '%s' "${G12_TRIAL_ID:-$(date -u +%Y%m%dT%H%M%SZ)}" | tr 'A-Z' 'a-z')"
+PROJECT="${G12_PROJECT:-vcg12c-$TRIAL_ID}"
+TRIAL_TAG="$PROJECT"
+HTTPS_PORT="${G12_HTTPS_PORT:-18447}"
+FAKE_PORT="${G12_FAKE_PROVIDER_PORT:-19091}"
+MINIO_IMAGE="virtual-companion-minio:$TRIAL_TAG"
+RUNTIME_IMAGE="virtual-companion-runtime:$TRIAL_TAG"
+CADDY_IMAGE="virtual-companion-caddy:$TRIAL_TAG"
+STACK_COMPOSE="$RUN_DIR/stack.compose.json"
 ENVFILE="$RUN_DIR/compose.env"
-COMPOSE_FILE="$HERE/compose.yml"
-PROJECT="vc-g12"
-TRIAL_ID="${G12_TRIAL_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-GO_PORT="${G12_GO_PORT:-18082}"
-GO_BASE="http://127.0.0.1:$GO_PORT"
-GO_FAKE_PORT="${G12_GO_FAKE_PORT:-19091}"
-DB_PORT="${G12_DB_PORT:-5432}"
-MINIO_PORT="${G12_MINIO_PORT:-19099}"
-MINIO_BUCKET="${G12_MINIO_BUCKET:-g12-exports}"
-MINIO_TOOLS_DOCKERFILE="$HERE/../../dev/Dockerfile.e2e-minio-tools"
-MINIO_IMAGE="vc-g12-minio-tools:local"
+RUNTIME_ENVFILE="$RUN_DIR/runtime.env"
+CA_FILE="$RUN_DIR/caddy-local-ca.crt"
+FRAMES_DIR="$RUN_DIR/frames"
+MANIFEST="$RUN_DIR/manifest.json"
+CAPTURE="$RUN_DIR/created-resources.json"
+COLLECTORS="$RUN_DIR/collectors.json"
+FRAMES="$RUN_DIR/frames.jsonl"
+STOP_FILE="$RUN_DIR/collector.stop"
+# Written only after every pre-existence check has passed, right before the
+# one `up`: its absence makes cleanup perform ZERO docker writes, so a failed
+# preflight can never touch resources named by a stale config.
+CREATING="$RUN_DIR/.stack-creating"
+BUILT_IMAGES="$RUN_DIR/built-images.json"
+GO_BASE="https://localhost:$HTTPS_PORT"
 GENS_S5="${G12_GENS_S5:-4}"
 SSE_S5="${G12_SSE_S5:-2}"
 GENS_S10="${G12_GENS_S10:-16}"
@@ -39,144 +75,367 @@ OUTSTANDING="${G12_OUTSTANDING:-16}"
 WARMUP="${G12_WARMUP:-1}"
 SOAK_TURNS="${G12_SOAK_TURNS:-100}"
 SOAK_BATCH="${G12_SOAK_BATCH:-10}"
-IDLE_SECONDS="${G12_IDLE_SECONDS:-60}"
+SAMPLE_INTERVAL="${G12_SAMPLE_INTERVAL:-0.5}"
+READER_INTERVAL="${G12_READER_INTERVAL:-1}"
+# §19.1 idle/recovery windows: the spec calls for 10 minutes. Probe shrinks
+# these to a bounded functional window and never reports performance numbers.
+IDLE_SECONDS="${G12_IDLE_SECONDS:-600}"
 WARM_IDLE_SECONDS="${G12_WARM_IDLE_SECONDS:-10}"
-POST_IDLE_SECONDS="${G12_POST_IDLE_SECONDS:-60}"
+POST_IDLE_SECONDS="${G12_POST_IDLE_SECONDS:-600}"
+if [ "$PROBE" = "1" ]; then
+  IDLE_SECONDS="${G12_PROBE_IDLE_SECONDS:-6}"
+  POST_IDLE_SECONDS="${G12_PROBE_POST_IDLE_SECONDS:-6}"
+  WARMUP=0
+fi
+MODE=$([ "$PROBE" = "1" ] && echo PROBE || echo PROFILE)
 
-mkdir -p "$RUN_DIR"
-chmod 700 "$RUN_DIR"
-
-COMPOSE=(docker compose --env-file "$ENVFILE" -f "$COMPOSE_FILE" -p "$PROJECT")
+COMPOSE=(docker compose --env-file "$ENVFILE" -f "$STACK_COMPOSE" -p "$PROJECT")
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 die() { printf 'G12 FAIL: %s\n' "$*" >&2; exit 1; }
 
-metric_value() {
-  local name="$1"
-  curl -fsS "$GO_BASE/actuator/prometheus" \
-    | awk -v metric="$name" '$1 == metric { value=$2; found=1 } END { if (found) print value; else exit 1 }'
-}
-
-provider_stats() {
-  curl -fsS "http://127.0.0.1:$GO_FAKE_PORT/g12/stats"
-}
-
-process_fds() {
-  lsof -n -P -p "$(cat "$RUN_DIR/companiond.pid")" 2>/dev/null \
-    | awk 'NR > 1 { count++ } END { print count + 0 }'
-}
+mkdir -p "$RUN_DIR" "$FRAMES_DIR"
+chmod 700 "$RUN_DIR" "$FRAMES_DIR"
+# Everything below runs under a private umask: the rendered compose and env
+# files interpolate synthetic secrets and must stay 0600.
+umask 077
 
 cleanup() {
-  if [ -f "$RUN_DIR/companiond.pid" ]; then
-    kill "$(cat "$RUN_DIR/companiond.pid")" 2>/dev/null || true
-    rm -f "$RUN_DIR/companiond.pid"
+  local rc=$?
+  if [ -n "${SAMPLER_PID:-}" ]; then
+    kill -TERM "$SAMPLER_PID" 2>/dev/null || true
+    touch "$STOP_FILE" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      kill -0 "$SAMPLER_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "$SAMPLER_PID" 2>/dev/null || true
+    wait "$SAMPLER_PID" 2>/dev/null || true
   fi
-  rm -f "$RUN_DIR/mc-config.json"
   if [ "${G12_KEEP:-0}" != "1" ]; then
-    "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
-    # The disposable stack is gone, so the synthetic-secret env files are no
-    # longer needed (compose down reads compose.env first); G12_KEEP=1 keeps
-    # these private env files for debugging.
-    rm -f "$ENVFILE" "$RUN_DIR/go.env"
+    # Reader/observer containers: stop, explicitly rm, then confirm absence
+    # with a daemon query (rc!=0 AND `ps -a --filter id=` count 0). A single
+    # nonzero inspect right after stop is NOT sufficient — --rm removal is
+    # asynchronous. Only CIDs recorded at creation time are ever touched.
+    if [ -s "$COLLECTORS" ]; then
+      if ! python3 - "$COLLECTORS" <<'PY'
+import json, subprocess, sys, time
+with open(sys.argv[1]) as fh:
+    started = json.load(fh)
+leftover = []
+for c in started.get("containers", []):
+    subprocess.run(["docker", "stop", "-t", "5", c["cid"]], capture_output=True)
+    subprocess.run(["docker", "rm", "-f", c["cid"]], capture_output=True)
+    gone = None
+    for _ in range(20):
+        gone = subprocess.run(["docker", "inspect", c["cid"]], capture_output=True)
+        listing = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", f"id={c['cid']}"],
+            capture_output=True, text=True)
+        if gone.returncode != 0 and not listing.stdout.strip():
+            break
+        time.sleep(0.5)
+    ok = gone is not None and gone.returncode != 0
+    print(f"collector {c['kind']} {c['cid'][:12]} inspect_rc="
+          f"{gone.returncode if gone else '?'}")
+    if not ok:
+        leftover.append(c["cid"])
+if leftover:
+    raise SystemExit(f"collector containers still present: {leftover}")
+PY
+      then
+        log "cleanup: collector container leftover detected"; rc=1
+      fi
+    fi
+    if [ -f "$CREATING" ]; then
+      "${COMPOSE[@]}" down -v > "$RUN_DIR/down.log" 2>&1 || true
+      # Fallback for containers compose down may skip (e.g. the netns-sharing
+      # fake-provider): the preflight proved the project label was empty
+      # before this run created anything, so containers carrying THIS exact
+      # label now are this trial's own — remove them by CID, never by
+      # prefix/time heuristics and never with --remove-orphans.
+      local leftover_cid
+      while IFS= read -r leftover_cid; do
+        [ -n "$leftover_cid" ] || continue
+        log "cleanup: removing project-labelled leftover $leftover_cid"
+        docker rm -f "$leftover_cid" >/dev/null 2>&1 || true
+      done < <(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")
+      if ! verify_absent; then
+        log "cleanup: compose resource leftover detected"; rc=1
+      fi
+      # Untag only images this run actually built: the pre-up baseline
+      # recorded what each tag pointed to before `up --build`; a tag that now
+      # resolves to a different (or new) identity was created by this run,
+      # while a pre-existing identity is never removed.
+      if [ -s "$BUILT_IMAGES" ]; then
+        if ! python3 - "$BUILT_IMAGES" <<'PY'
+import json, subprocess, sys
+baseline = json.load(open(sys.argv[1]))
+for ref, pre_id in baseline.items():
+    cur = subprocess.run(["docker", "image", "inspect", ref],
+                         capture_output=True, text=True)
+    if cur.returncode != 0:
+        continue
+    cur_id = json.loads(cur.stdout)[0]["Id"]
+    if pre_id is not None and cur_id == pre_id:
+        print(f"skip untag {ref}: pre-existing image, not created by this run")
+        continue
+    subprocess.run(["docker", "rmi", ref], capture_output=True)
+PY
+        then
+          log "cleanup: image untag step failed"; rc=1
+        fi
+      fi
+      rm -f "$ENVFILE" "$RUNTIME_ENVFILE" "$CA_FILE" "$STACK_COMPOSE" \
+        "$CREATING" "$BUILT_IMAGES"
+    fi
   fi
+  return "$rc"
 }
 trap cleanup EXIT
 
+verify_absent() {
+  # Daemon-checked absence of this trial's exact resources (compose objects
+  # and collector containers). Returns nonzero if anything survived.
+  local missing=0 name
+  for name in $(python3 -c '
+import json, sys
+try:
+    stack = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print("\n".join(v["name"] for v in stack.get("volumes", {}).values()))
+print("\n".join(v["name"] for v in stack.get("networks", {}).values()))
+' "$STACK_COMPOSE" 2>/dev/null); do
+    if docker volume ls --format '{{.Name}}' | grep -Fxq "$name"; then
+      log "volume still exists: $name"; missing=1
+    fi
+    if docker network ls --format '{{.Name}}' | grep -Fxq "$name"; then
+      log "network still exists: $name"; missing=1
+    fi
+  done
+  if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]; then
+    log "containers still exist for project $PROJECT"; missing=1
+  fi
+  return "$missing"
+}
+
+metric_value() {
+  local name="$1" out
+  out=$(python3 "$HERE/collector.py" scrape --manifest "$MANIFEST" \
+    --image "$MINIO_IMAGE" --metrics "$name") || return 1
+  python3 - "$out" "$name" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+v = d["metrics"].get(sys.argv[2])
+if v is None:
+    raise SystemExit(f"metric {sys.argv[2]} missing from scrape")
+print(v)
+PY
+}
+
+provider_stats() {
+  python3 "$HERE/collector.py" scrape --manifest "$MANIFEST" \
+    --image "$MINIO_IMAGE" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+p = d.get("provider")
+if p is None:
+    raise SystemExit("fake provider stats unreachable")
+print(json.dumps(p))
+'
+}
+
+analyze_window() {
+  python3 "$HERE/collector.py" analyze --frames "$FRAMES" \
+    --started "$1" --ended "$2"
+}
+
 psql_q() { "${COMPOSE[@]}" exec -T db psql -U vc_migrator -d vc -tAc "$1"; }
 
-echo "== G12 preflight =="
-docker info >/dev/null 2>&1 || { echo "docker unreachable" >&2; exit 1; }
-export PATH="$HOME/.local/go/bin:$PATH"
-go build -C "$ROOT/backend" -o "$RUN_DIR/companiond" ./cmd/companiond
-echo "  companiond built"
+echo "== G12 preflight ($MODE) =="
+docker info >/dev/null 2>&1 || die "docker unreachable"
+[ "$(docker context show)" = "orbstack" ] || die "docker context must be orbstack"
+echo "  frontend bundle for the production Caddy image"
+pnpm --dir "$ROOT/frontend" build >/dev/null || die "frontend build failed"
 
-echo "== stack up (db + go-fake-provider + minio) =="
+# Resource-safety pre-check: nothing under this trial's names may exist.
+if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]; then
+  die "project $PROJECT already has containers; refusing to reuse"
+fi
+for name in "${PROJECT}_db-data" "${PROJECT}_minio-data" \
+            "${PROJECT}_caddy-data" "${PROJECT}_caddy-config" \
+            "${PROJECT}_default" "$PROJECT-reader-db" "$PROJECT-reader-runtime" \
+            "$PROJECT-reader-minio" "$PROJECT-reader-caddy" "$PROJECT-observer"; do
+  if docker volume ls --format '{{.Name}}' | grep -Fxq "$name" \
+     || docker network ls --format '{{.Name}}' | grep -Fxq "$name" \
+     || docker ps -aq --filter "name=^/$name$" | grep -q .; then
+    die "expected-absent resource exists: $name"
+  fi
+done
+
 VC_MIGRATOR_DB_PASSWORD=$(openssl rand -hex 32)
 VC_RUNTIME_DB_PASSWORD=$(openssl rand -hex 32)
 VC_CRYPTO_REST_KEY=$(openssl rand -base64 32 | tr -d '\n')
 VC_OWNER_BINDING_SECRET=$(openssl rand -hex 32)
 MINIO_ACCESS_KEY=$(openssl rand -hex 8)
 MINIO_SECRET_KEY=$(openssl rand -hex 24)
-umask 077
 cat > "$ENVFILE" <<EOF
 VC_MIGRATOR_DB_PASSWORD=$VC_MIGRATOR_DB_PASSWORD
 VC_RUNTIME_DB_PASSWORD=$VC_RUNTIME_DB_PASSWORD
-G12_DB_PORT=$DB_PORT
-G12_GO_FAKE_PORT=$GO_FAKE_PORT
-G12_MINIO_PORT=$MINIO_PORT
-G12_MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
-G12_MINIO_SECRET_KEY=$MINIO_SECRET_KEY
-G12_HOLD_MS=0
+VC_OWNER_BINDING_SECRET=$VC_OWNER_BINDING_SECRET
+VC_CRYPTO_REST_KEY=$VC_CRYPTO_REST_KEY
+VC_DOMAIN=localhost
+VC_EXPORT_S3_ACCESS_KEY=$MINIO_ACCESS_KEY
+VC_EXPORT_S3_SECRET_KEY=$MINIO_SECRET_KEY
+VC_EXPORT_S3_BUCKET=g12-exports
 EOF
-umask 022
-docker build -t "$MINIO_IMAGE" - < "$MINIO_TOOLS_DOCKERFILE" >/dev/null \
-  || die "minio tools image build failed"
-"${COMPOSE[@]}" up -d db fake-provider minio >/dev/null
+cat > "$RUNTIME_ENVFILE" <<EOF
+VC_PROVIDER_ENABLED=true
+VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true
+VC_PROVIDER_ID=g12-openai
+VC_PROVIDER_SUPPLIER_NAME=g12-local-fake
+VC_PROVIDER_ENDPOINT=http://127.0.0.1:$FAKE_PORT/v1/chat/completions
+VC_PROVIDER_TOKEN=g12-fake-token
+VC_PROVIDER_MODEL=g12-model
+VC_MAX_OUTSTANDING_TURNS=$OUTSTANDING
+VC_MAX_CONCURRENT_TURNS=$CONCURRENCY
+EOF
+chmod 600 "$ENVFILE" "$RUNTIME_ENVFILE"
+
+echo "== render trial stack from ops/deploy =="
+python3 "$HERE/render_stack.py" --project "$PROJECT" --env-file "$ENVFILE" \
+  --out "$STACK_COMPOSE" --repo-root "$ROOT" --tag "$TRIAL_TAG" \
+  --https-port "$HTTPS_PORT" --fake-provider-port "$FAKE_PORT" \
+  --runtime-env "$RUNTIME_ENVFILE" > "$RUN_DIR/render.summary.json" \
+  || die "stack render/validation failed"
+cat "$RUN_DIR/render.summary.json"
+chmod 600 "$RUN_DIR/render.summary.json"
+
+# Every preflight and render check has passed. Snapshot what the trial image
+# tags pointed to BEFORE this run builds them (usually absent): cleanup only
+# untags a tag whose identity differs from this baseline, i.e. one this run
+# actually created. Then mark the run as creating — cleanup() only performs
+# docker writes while that marker exists.
+python3 - "$RUNTIME_IMAGE" "$MINIO_IMAGE" "$CADDY_IMAGE" "$BUILT_IMAGES" <<'PY'
+import json, subprocess, sys
+refs, out = sys.argv[1:4], sys.argv[4]
+baseline = {}
+for ref in refs:
+    info = subprocess.run(["docker", "image", "inspect", ref],
+                          capture_output=True, text=True)
+    baseline[ref] = (json.loads(info.stdout)[0]["Id"]
+                     if info.returncode == 0 else None)
+json.dump(baseline, open(out, "w"), indent=1)
+PY
+touch "$CREATING"
+
+echo "== build + start resident stack (db, migrate, bootstrap, minio, runtime, caddy) =="
+if ! "${COMPOSE[@]}" up -d --build > "$RUN_DIR/up.log" 2>&1; then
+  tail -40 "$RUN_DIR/up.log" >&2 || true
+  die "stack up/build failed"
+fi
 DB_READY=0
-for _ in $(seq 1 60); do
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' vc-g12-db-1 2>/dev/null || true)" = "healthy" ]; then
+for _ in $(seq 1 90); do
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' \
+      "$("${COMPOSE[@]}" ps -aq db)" 2>/dev/null || true)" = "healthy" ]; then
     DB_READY=1
     break
   fi
   sleep 2
 done
 [ "$DB_READY" = "1" ] || die "database did not become healthy"
-for _ in $(seq 1 60); do
-  curl -fsS --max-time 2 "http://127.0.0.1:$GO_FAKE_PORT/health" >/dev/null && break
-  sleep 1
+for svc in migrate bootstrap minio-init; do
+  SVC_CID="$("${COMPOSE[@]}" ps -aq "$svc")"
+  SVC_STATE="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' "$SVC_CID")"
+  [ "$SVC_STATE" = "exited 0" ] || die "$svc state: $SVC_STATE (want exited 0)"
 done
-curl -fsS --max-time 2 "http://127.0.0.1:$GO_FAKE_PORT/health" >/dev/null \
-  || die "fake provider did not become healthy"
-MINIO_READY=0
-for _ in $(seq 1 60); do
-  if curl -fsS --max-time 2 "http://127.0.0.1:$MINIO_PORT/minio/health/live" >/dev/null 2>&1; then
-    MINIO_READY=1
+echo "  db healthy; migrate/bootstrap/minio-init exited 0"
+
+# Capture the exact created inventory (CIDs + full mounts/networks) before
+# any measurement; cleanup and absence checks use only this list.
+python3 - "$PROJECT" "$CAPTURE" <<'PY'
+import json, os, subprocess, sys
+project = sys.argv[1]
+cids = subprocess.run(["docker", "ps", "-aq", "--filter",
+                       f"label=com.docker.compose.project={project}"],
+                      capture_output=True, text=True, check=True).stdout.split()
+capture = []
+for cid in cids:
+    info = json.loads(subprocess.run(["docker", "inspect", cid],
+                                     capture_output=True, text=True,
+                                     check=True).stdout)[0]
+    capture.append({
+        "cid": info["Id"], "name": info["Name"].lstrip("/"),
+        "service": info["Config"]["Labels"].get("com.docker.compose.service"),
+        "mounts": info.get("Mounts", []),
+        "networks": sorted((info["NetworkSettings"]["Networks"] or {}).keys()),
+        "image": info["Config"]["Image"],
+    })
+with open(sys.argv[2], "w") as fh:
+    json.dump(capture, fh, indent=1)
+print(f"  captured {len(capture)} created containers -> {sys.argv[2]}", file=sys.stderr)
+PY
+
+# Measurement manifest for the collector (measured components only).
+python3 - "$PROJECT" "$CAPTURE" "$MANIFEST" "$FRAMES_DIR" <<'PY'
+import json, sys
+project, capture_path, manifest_path, frames_dir = sys.argv[1:5]
+capture = json.load(open(capture_path))
+# Map by the authoritative compose service label, not by name heuristics.
+by_service = {}
+for c in capture:
+    by_service[c["service"]] = c
+containers = {}
+for comp in ("db", "runtime", "minio", "caddy"):
+    if comp not in by_service:
+        raise SystemExit(f"missing measured container for service {comp}")
+    containers[comp] = {"cid": by_service[comp]["cid"]}
+json.dump({"project": project, "frames_dir": frames_dir,
+           "containers": containers}, open(manifest_path, "w"), indent=1)
+PY
+
+RUNTIME_STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' \
+  "$("${COMPOSE[@]}" ps -aq runtime)")
+RUNTIME_START_EPOCH=$(python3 - "$RUNTIME_STARTED_AT" <<'PY'
+import datetime, sys
+print(datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")).timestamp())
+PY
+)
+
+# Caddy local CA: fetched from the caddy-data volume through the container,
+# used only as an explicit --cacert (never installed into OS trust).
+CA_READY=0
+for _ in $(seq 1 30); do
+  if docker exec "$("${COMPOSE[@]}" ps -aq caddy)" \
+      cat /data/caddy/pki/authorities/local/root.crt > "$CA_FILE" 2>/dev/null \
+      && [ -s "$CA_FILE" ]; then
+    CA_READY=1
     break
   fi
   sleep 1
 done
-[ "$MINIO_READY" = "1" ] || die "minio did not become healthy"
-# Same read-only mc config bind and container-network bootstrap as
-# scripts/dev/e2e-stack.sh; credentials stay out of argv and logs.
-MC_CONFIG="$RUN_DIR/mc-config.json"
-printf '%s\n' \
-    '{' \
-    '  "version": "10",' \
-    '  "aliases": {' \
-    '    "g12": {' \
-    '      "url": "http://127.0.0.1:9000",' \
-    "      \"accessKey\": \"$MINIO_ACCESS_KEY\"," \
-    "      \"secretKey\": \"$MINIO_SECRET_KEY\"," \
-    '      "api": "S3v4",' \
-    '      "path": "auto"' \
-    '    }' \
-    '  }' \
-    '}' > "$MC_CONFIG"
-chmod 600 "$MC_CONFIG"
-if ! docker run --rm --entrypoint /bin/mc --network "container:vc-g12-minio-1" \
-    -e MC_UPDATE=off -e MINIO_UPDATE=off \
-    -v "$MC_CONFIG:/mc-config/config.json:ro" \
-    "$MINIO_IMAGE" --config-dir /mc-config mb --ignore-existing "g12/$MINIO_BUCKET" >/dev/null; then
-  rm -f "$MC_CONFIG"
-  die "minio bucket bootstrap failed"
-fi
-rm -f "$MC_CONFIG"
-echo "  db healthy; minio healthy with bucket $MINIO_BUCKET"
-
-echo "== migrations via companiond =="
-VC_MIGRATE_DB_DSN="postgres://vc_migrator:$VC_MIGRATOR_DB_PASSWORD@127.0.0.1:$DB_PORT/vc?sslmode=disable" \
-  "$RUN_DIR/companiond" migrate
-echo "  migrations applied"
-
-echo "== owner binding bootstrap via companiond =="
-# Since the 2026-08-31 Go-only cutover, full mode rejects every owner-scoped
-# write (set_owner_context HMAC) until the database stores the runtime's
-# owner-binding secret. Same bootstrap step as scripts/dev/e2e-stack.sh; the
-# optional admin seed stays off because this harness seeds its own user below.
-VC_BOOTSTRAP_DB_DSN="postgres://vc_migrator:$VC_MIGRATOR_DB_PASSWORD@127.0.0.1:$DB_PORT/vc?sslmode=disable" \
-VC_OWNER_BINDING_SECRET="$VC_OWNER_BINDING_SECRET" \
-  "$RUN_DIR/companiond" bootstrap
-echo "  owner binding initialized"
+[ "$CA_READY" = "1" ] || die "could not read the Caddy local CA"
+chmod 600 "$CA_FILE"
+TLS_READY=0
+for _ in $(seq 1 120); do
+  if curl -fsS --cacert "$CA_FILE" --max-time 2 \
+      "$GO_BASE/actuator/health/readiness" 2>/dev/null | grep -q '"UP"'; then
+    TLS_READY=1
+    break
+  fi
+  sleep 0.5
+done
+[ "$TLS_READY" = "1" ] || die "caddy TLS readiness did not come up"
+READY_EPOCH=$(python3 -c 'import time; print(time.time())')
+COLD_START_MS=$(python3 - "$RUNTIME_START_EPOCH" "$READY_EPOCH" <<'PY'
+import sys
+print(round((float(sys.argv[2]) - float(sys.argv[1])) * 1000, 1))
+PY
+)
+curl -fsS --cacert "$CA_FILE" "$GO_BASE/actuator/health" | grep -q '"UP"' \
+  || die "health endpoint not UP through caddy"
+echo "  stack ready via caddy TLS on 127.0.0.1:$HTTPS_PORT (readiness ${COLD_START_MS} ms)"
 
 echo "== seed: release gate / provider / user / session =="
 "${COMPOSE[@]}" exec -T db psql -U vc_migrator -d vc -v ON_ERROR_STOP=1 -q <<'SQL'
@@ -207,134 +466,106 @@ PY
 )
 HASH=$(printf '%s' "$RAW" | shasum -a 256 | cut -d' ' -f1)
 CSRF=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-# The fabricated session belongs to the seeded account above; every client
-# binds this id once (VC-R52 expected-account precondition) instead of
-# re-deriving an identity from the cookie jar mid-run.
 G12_ACCOUNT_ID=2000001
 psql_q "SELECT vc.identity_opaque_session_issue(2000001, '$HASH', now() + interval '12 hours')" >/dev/null
+# The session/CSRF travel by named environment variables only (workload.py),
+# never through argv or logs.
+export G12_SESSION="$RAW" G12_CSRF="$CSRF" G12_ACCOUNT="$G12_ACCOUNT_ID"
 echo "  session fabricated"
-
-echo "== start companiond (full, loopback fake provider) =="
-cat > "$RUN_DIR/go.env" <<EOF
-VC_MODE=full
-VC_HTTP_ADDR=127.0.0.1:$GO_PORT
-VC_HTTP_ORIGINS=http://localhost
-VC_DB_DSN=postgres://vc_runtime_login:$VC_RUNTIME_DB_PASSWORD@127.0.0.1:$DB_PORT/vc?sslmode=disable
-VC_CRYPTO_REST_KEY=$VC_CRYPTO_REST_KEY
-VC_OWNER_BINDING_SECRET=$VC_OWNER_BINDING_SECRET
-VC_AUTH_ISSUER=virtual-companion
-VC_PROVIDER_ENABLED=true
-VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true
-VC_PROVIDER_ID=g12-openai
-VC_PROVIDER_SUPPLIER_NAME=g12-local-fake
-VC_PROVIDER_ENDPOINT=http://127.0.0.1:$GO_FAKE_PORT/v1/chat/completions
-VC_PROVIDER_TOKEN=g12-fake-token
-VC_PROVIDER_MODEL=g12-model
-VC_EXPORT_S3_ENDPOINT=http://127.0.0.1:$MINIO_PORT
-VC_EXPORT_S3_ACCESS_KEY=$MINIO_ACCESS_KEY
-VC_EXPORT_S3_SECRET_KEY=$MINIO_SECRET_KEY
-VC_EXPORT_S3_BUCKET=$MINIO_BUCKET
-VC_MAX_OUTSTANDING_TURNS=$OUTSTANDING
-VC_MAX_CONCURRENT_TURNS=$CONCURRENCY
-VC_LOG_LEVEL=info
-EOF
-chmod 600 "$RUN_DIR/go.env"
-START_NS=$(python3 -c 'import time; print(time.monotonic_ns())')
-env $(cat "$RUN_DIR/go.env") "$RUN_DIR/companiond" > "$RUN_DIR/companiond.log" 2>&1 &
-echo $! > "$RUN_DIR/companiond.pid"
-GO_READY=0
-for _ in $(seq 1 60); do
-  if curl -fsS -o /dev/null --max-time 2 "$GO_BASE/actuator/health" 2>/dev/null; then
-    GO_READY=1
-    break
-  fi
-  sleep 0.05
-done
-[ "$GO_READY" = "1" ] || die "companiond did not become healthy"
-READY_NS=$(python3 -c 'import time; print(time.monotonic_ns())')
-COLD_START_MS=$(python3 - "$START_NS" "$READY_NS" <<'PY'
-import sys
-print(round((int(sys.argv[2]) - int(sys.argv[1])) / 1_000_000, 1))
-PY
-)
-if BINARY_BYTES=$(stat -f '%z' "$RUN_DIR/companiond" 2>/dev/null); then
-  :
-else
-  BINARY_BYTES=$(stat -c '%s' "$RUN_DIR/companiond")
-fi
-echo "  companiond healthy on :$GO_PORT"
 
 echo "== fixture: Technical Alpha simulated adult verification =="
 # Generation intake fails closed with AGE_VERIFICATION_REQUIRED until the owner
-# is ADULT_VERIFIED (httpapi/generation.go). vc.record_age_verification only
-# accepts the server-bound owner context, so the synthetic owner takes the same
-# POST /api/v1/age/verification path the H5 flow uses; the gate stays intact.
-G12_BASE="$GO_BASE" G12_SESSION="$RAW" G12_CSRF="$CSRF" G12_ACCOUNT="$G12_ACCOUNT_ID" python3 - <<'PY' \
+# is ADULT_VERIFIED; the synthetic owner takes the same POST path the H5 flow
+# uses, through Caddy TLS with the private CA.
+G12_BASE="$GO_BASE" G12_CA="$CA_FILE" python3 - <<'PY' \
   || die "adult verification fixture failed"
-import json, os, urllib.request
-base, session, csrf = os.environ["G12_BASE"], os.environ["G12_SESSION"], os.environ["G12_CSRF"]
+import json, os, ssl, urllib.request
+base = os.environ["G12_BASE"]
+ctx = ssl.create_default_context(cafile=os.environ["G12_CA"])
 req = urllib.request.Request(base + "/api/v1/age/verification", method="POST", headers={
-    "Origin": "http://localhost",
-    "Cookie": f"vc_session={session}; vc_csrf={csrf}",
-    "X-CSRF-Token": csrf,
+    "Origin": "https://localhost",
+    "Cookie": f"vc_session={os.environ['G12_SESSION']}; vc_csrf={os.environ['G12_CSRF']}",
+    "X-CSRF-Token": os.environ["G12_CSRF"],
     "X-VC-Expected-Account-ID": os.environ["G12_ACCOUNT"],
 })
-with urllib.request.urlopen(req, timeout=30) as resp:
+with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
     state = json.loads(resp.read()).get("ageState")
 if state != "ADULT_VERIFIED":
     raise SystemExit(f"ageState={state}")
 print(f"  ageState={state}")
 PY
 
-# Warm-up uses a unique key prefix; it must not replay the first measured turn.
-echo "== warm-up =="
-for i in $(seq 1 "$WARMUP"); do
-  python3 "$HERE/workload.py" --base "$GO_BASE" --scenario s5 \
-    --gens 1 --sse-per-gen 1 --key-prefix "$TRIAL_ID-warmup-$i" \
-    --session "$RAW" --csrf "$CSRF" --account "$G12_ACCOUNT_ID" >/dev/null \
-    || die "warm-up workload failed"
+echo "== start collectors (readers + observer + same-window frame loop) =="
+python3 "$HERE/collector.py" launch --manifest "$MANIFEST" --image "$MINIO_IMAGE" \
+  --harness-dir "$HERE" --interval "$READER_INTERVAL" --out "$COLLECTORS" \
+  || die "collector launch failed"
+rm -f "$STOP_FILE"
+python3 "$HERE/collector.py" sample --manifest "$MANIFEST" \
+  --interval "$SAMPLE_INTERVAL" --out "$FRAMES" --stop-file "$STOP_FILE" \
+  > "$RUN_DIR/sample.out" 2>&1 &
+SAMPLER_PID=$!
+COLLECTOR_READY=0
+for _ in $(seq 1 30); do
+  if [ -s "$FRAMES" ]; then COLLECTOR_READY=1; break; fi
+  sleep 1
 done
+[ "$COLLECTOR_READY" = "1" ] || die "frame sampler produced no frames"
 
-# RSS/CPU sampler (macOS ps: rss in KB, %cpu is a point sample, time is
-# cumulative). Scenario CPU deltas come from companiond's process metric.
-: > "$RUN_DIR/sample.csv"
-(
-  while [ -f "$RUN_DIR/companiond.pid" ]; do
-    ps -o rss=,%cpu=,time= -p "$(cat "$RUN_DIR/companiond.pid")" 2>/dev/null \
-      | awk -v t="$(python3 -c 'import time; print(time.time())')" \
-          '{print t "," $1 "," $2 "," $3}' >> "$RUN_DIR/sample.csv"
-    sleep 0.5
+# Warm-up keys stay disjoint from measured keys, so idempotent replay cannot
+# make a sample look faster.
+if [ "$WARMUP" -gt 0 ]; then
+  echo "== warm-up =="
+  for i in $(seq 1 "$WARMUP"); do
+    python3 "$HERE/workload.py" --base "$GO_BASE" --scenario s5 \
+      --gens 1 --sse-per-gen 1 --key-prefix "$TRIAL_ID-warmup-$i" \
+      --cacert "$CA_FILE" >/dev/null || die "warm-up workload failed"
   done
-) &
-SAMPLER=$!
+fi
 
 echo "== measured idle (${IDLE_SECONDS}s) =="
-# §19.1 idle CPU: process_cpu_seconds_total delta across the measured-idle
-# sleep. The window is the sampling interval and includes sampling overhead;
-# it is a record, not a gate.
 IDLE_CPU_BEFORE=$(metric_value process_cpu_seconds_total)
+IDLE_STARTED=$(python3 -c 'import time; print(time.time())')
 sleep "$IDLE_SECONDS"
+IDLE_ENDED=$(python3 -c 'import time; print(time.time())')
 IDLE_CPU_AFTER=$(metric_value process_cpu_seconds_total)
+IDLE_ANALYSIS=$(analyze_window "$IDLE_STARTED" "$IDLE_ENDED")
 IDLE_CPU_SECONDS=$(python3 - "$IDLE_CPU_BEFORE" "$IDLE_CPU_AFTER" <<'PY'
 import sys
 print(round(float(sys.argv[2]) - float(sys.argv[1]), 6))
 PY
 )
-IDLE_RSS_MIB=$(awk -F, 'BEGIN{sum=0;n=0} {sum+=$2;n++} END{if(n<1) exit 1; printf "%.3f", sum/n/1024}' "$RUN_DIR/sample.csv")
-echo "  idle RSS mean = $IDLE_RSS_MIB MiB"
+echo "$IDLE_ANALYSIS" > "$RUN_DIR/idle.analysis.json"
+python3 - "$IDLE_ANALYSIS" "$IDLE_CPU_SECONDS" <<'PY'
+import json, sys
+a = json.loads(sys.argv[1])
+idle = a["a"]
+print(f"  idle A RSS/PSS mean = {idle['a_rss_mean_kb']}/{idle['a_pss_mean_kb']} kB; "
+      f"A CPU = {sys.argv[2]} s")
+peak = a["b"]["same_frame_peak"]
+if peak:
+    print(f"  idle B same-frame RSS/PSS mean = {peak['b_rss_mean_kb']}/"
+          f"{peak['b_pss_mean_kb']} kB over {peak['complete_frames']} complete frames")
+else:
+    print("  idle B same-frame: NO complete frames (all partial)")
+PY
+
+run_workload() {
+  # Shared workload invocation: session/CSRF via environment only.
+  python3 "$HERE/workload.py" --base "$GO_BASE" --cacert "$CA_FILE" "$@"
+}
 
 run_scenario() {
   local name="$1" gens="$2" sse="$3"
   local result="$RUN_DIR/$name.json" summary="$RUN_DIR/$name.summary.json"
   local provider_before provider_after cpu_before cpu_after worker_active worker_peak
-  local started ended
+  local started ended analysis
   echo "== scenario $name: $gens generation + $((gens * sse)) SSE =="
   provider_before=$(provider_stats)
   cpu_before=$(metric_value process_cpu_seconds_total)
   started=$(python3 -c 'import time; print(time.time())')
-  if ! python3 "$HERE/workload.py" --base "$GO_BASE" --scenario "$name" \
+  if ! run_workload --scenario "$name" \
       --gens "$gens" --sse-per-gen "$sse" --key-prefix "$TRIAL_ID-$name" \
-      --session "$RAW" --csrf "$CSRF" --account "$G12_ACCOUNT_ID" > "$result"; then
+      > "$result"; then
     [ -s "$result" ] && cat "$result" >&2
     die "$name workload failed"
   fi
@@ -343,16 +574,18 @@ run_scenario() {
   worker_active=$(metric_value vc_generation_active)
   worker_peak=$(metric_value vc_generation_peak)
   provider_after=$(provider_stats)
+  analysis=$(analyze_window "$started" "$ended")
+  echo "$analysis" > "$RUN_DIR/$name.analysis.json"
   if ! python3 - "$result" "$gens" "$sse" "$CONCURRENCY" \
       "$provider_before" "$provider_after" "$cpu_before" "$cpu_after" \
-      "$worker_active" "$worker_peak" "$started" "$ended" "$RUN_DIR/sample.csv" \
+      "$worker_active" "$worker_peak" "$analysis" \
       > "$summary" <<'PY'
 import json, sys
 
 (path, gens, sse, concurrency, provider_before, provider_after, cpu_before,
- cpu_after, worker_active, worker_peak, started, ended, samples) = sys.argv[1:]
+ cpu_after, worker_active, worker_peak, analysis_s) = sys.argv[1:]
 gens, sse, concurrency = int(gens), int(sse), int(concurrency)
-started, ended = float(started), float(ended)
+analysis = json.loads(analysis_s)
 r = json.load(open(path))
 before, after = json.loads(provider_before), json.loads(provider_after)
 s = r["stats"]
@@ -379,12 +612,20 @@ if int(float(worker_active)) != 0:
     errors.append(f"worker active after scenario {worker_active}")
 if int(float(worker_peak)) < expected_active:
     errors.append(f"worker peak {worker_peak} want at least {expected_active}")
-rss = []
-with open(samples) as fh:
-    for line in fh:
-        fields = line.strip().split(",")
-        if len(fields) >= 2 and started <= float(fields[0]) <= ended:
-            rss.append(float(fields[1]) / 1024)
+# A-side frames must cover the scenario window (RSS peak from the same
+# companiond process the traffic hit).
+a = analysis["a"]
+if not a["frames_with_pid1"]:
+    errors.append("no A frames with runtime PID 1 in the scenario window")
+peak = analysis["b"]["same_frame_peak"]
+if peak is None or peak["complete_frames"] < 1:
+    errors.append("no complete same-frame B sum in the scenario window")
+for comp, cpu in analysis["b"]["components"].items():
+    if cpu["counter_reset"]:
+        errors.append(f"{comp} CPU counter reset inside the window; delta invalid")
+    elif cpu["cpu_delta_ns"] is None:
+        errors.append(f"{comp} CPU delta unavailable in the window "
+                      f"({cpu.get('reason')}); not a valid measurement")
 summary = {
     "scenario": r["scenario"],
     "generations": gens,
@@ -393,7 +634,14 @@ summary = {
     "terminal_ms": s["terminal_ms"],
     "stream_ms": s["stream_ms"],
     "cpu_seconds": round(float(cpu_after) - float(cpu_before), 6),
-    "peak_rss_mib": round(max(rss), 3) if rss else None,
+    "peak_rss_mib": round(a["a_rss_peak_kb"] / 1024, 3) if a["a_rss_peak_kb"] else None,
+    "peak_pss_mib": round(a["a_pss_peak_kb"] / 1024, 3) if a["a_pss_peak_kb"] else None,
+    "b_peak_rss_mib": round(peak["b_rss_peak_kb"] / 1024, 3) if peak else None,
+    "b_peak_pss_mib": round(peak["b_pss_peak_kb"] / 1024, 3) if peak else None,
+    "b_complete_frames": peak["complete_frames"] if peak else 0,
+    "b_component_status_frames": analysis["component_status_frames"],
+    "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
+                           for c, cpu in analysis["b"]["components"].items()},
     "provider_peak": after["peakActiveStreamRequests"],
     "worker_peak": int(float(worker_peak)),
     "errors": errors,
@@ -413,10 +661,144 @@ r = json.load(open(sys.argv[1]))
 print(f"  intake p50/p95 = {r['intake_ms']['p50']}/{r['intake_ms']['p95']} ms")
 print(f"  terminal p50/p95 = {r['terminal_ms']['p50']}/{r['terminal_ms']['p95']} ms")
 print(f"  stream p50/p95 = {r['stream_ms']['p50']}/{r['stream_ms']['p95']} ms")
-print(f"  CPU = {r['cpu_seconds']} s; peak RSS = {r['peak_rss_mib']} MiB")
+print(f"  A CPU = {r['cpu_seconds']} s; A peak RSS/PSS = {r['peak_rss_mib']}/{r['peak_pss_mib']} MiB")
+print(f"  B same-frame peak RSS/PSS = {r['b_peak_rss_mib']}/{r['b_peak_pss_mib']} MiB "
+      f"({r['b_complete_frames']} complete frames)")
 print(f"  provider/worker peak = {r['provider_peak']}/{r['worker_peak']}; errors = 0")
 PY
 }
+
+if [ "$PROBE" = "1" ]; then
+  echo "== probe functional chain: 1 generation + 1 SSE through caddy TLS =="
+  PROBE_RESULT="$RUN_DIR/probe.workload.json"
+  provider_before=$(provider_stats)
+  cpu_before=$(metric_value process_cpu_seconds_total)
+  worker_peak_before=$(metric_value vc_generation_peak)
+  if ! run_workload --scenario s5 --gens 1 --sse-per-gen 1 \
+      --key-prefix "$TRIAL_ID-probe" > "$PROBE_RESULT"; then
+    [ -s "$PROBE_RESULT" ] && cat "$PROBE_RESULT" >&2
+    die "probe workload failed"
+  fi
+  cpu_after=$(metric_value process_cpu_seconds_total)
+  worker_active=$(metric_value vc_generation_active)
+  worker_peak=$(metric_value vc_generation_peak)
+  provider_after=$(provider_stats)
+  PROBE_STARTED_AT=$(python3 -c 'import time; print(time.time())')
+  sleep 3   # bounded settle window so post-chain frames exist
+  PROBE_ENDED_AT=$(python3 -c 'import time; print(time.time())')
+  echo "== probe window analysis =="
+  ANALYSIS=$(analyze_window "$IDLE_STARTED" "$PROBE_ENDED_AT")
+  echo "$ANALYSIS" > "$RUN_DIR/probe.analysis.json"
+  if ! python3 - "$PROBE_RESULT" "$provider_before" "$provider_after" \
+      "$cpu_before" "$cpu_after" "$worker_active" "$worker_peak" \
+      "$worker_peak_before" "$ANALYSIS" "$FRAMES" \
+      > "$RUN_DIR/probe.summary.json" <<'PY'
+import json, sys
+
+(workload_path, provider_before, provider_after, cpu_before, cpu_after,
+ worker_active, worker_peak, worker_peak_before, analysis_s, frames_path) = sys.argv[1:]
+analysis = json.loads(analysis_s)
+r = json.load(open(workload_path))
+before, after = json.loads(provider_before), json.loads(provider_after)
+frames = [json.loads(line) for line in open(frames_path) if line.strip()]
+s = r["stats"]
+errors = []
+checks = []
+if r.get("generations") != 1 or s.get("sse_ok") != 1 or s.get("error_count") != 0:
+    errors.append(f"functional chain: {r.get('generations')} gen, "
+                  f"{s.get('sse_ok')}/1 SSE, errors {s.get('errors')}")
+provider_delta = after["streamRequests"] - before["streamRequests"]
+checks.append(f"provider delta {provider_delta}")
+if provider_delta != 1:
+    errors.append(f"provider requests {provider_delta} want 1")
+if after["activeStreamRequests"] != 0:
+    errors.append(f"provider active after chain {after['activeStreamRequests']}")
+if int(float(worker_peak)) < 1:
+    errors.append(f"worker peak {worker_peak} want >= 1")
+if int(float(worker_active)) != 0:
+    errors.append(f"worker active after chain {worker_active}")
+checks.append(f"A CPU during probe {round(float(cpu_after) - float(cpu_before), 6)} s")
+
+# Frame completeness: schema, measured components, A attribution, reader
+# self-exclusion, honest PARTIAL handling, CPU counter lifecycle.
+structural_ok = 0
+runtime_pid1_uid100 = 0
+reader_self_leak = 0
+partial_db_frames = 0
+for f in frames:
+    if not all(k in f for k in ("ts", "platform", "source", "integrity",
+                                "components", "cpu", "a")):
+        continue
+    if set(f["components"]) == {"db", "runtime", "minio", "caddy"}:
+        structural_ok += 1
+    rt = f["components"].get("runtime", {})
+    pid1 = next((p for p in rt.get("pids", []) if p.get("pid") == 1), None)
+    if pid1 and pid1.get("uid") == 100 and pid1.get("comm") == "companiond":
+        runtime_pid1_uid100 += 1
+    for comp, c in f["components"].items():
+        if c.get("reader_self_pid") is not None and any(
+                p.get("pid") == c["reader_self_pid"] for p in c.get("pids", [])):
+            reader_self_leak += 1
+    if f["components"].get("db", {}).get("status") == "PARTIAL":
+        partial_db_frames += 1
+        if not f["components"]["db"].get("missing"):
+            errors.append("db PARTIAL frame without missing-process list")
+if structural_ok < 5:
+    errors.append(f"only {structural_ok} structurally complete frames")
+if runtime_pid1_uid100 < 5:
+    errors.append(f"A attribution: only {runtime_pid1_uid100} frames carry "
+                  "runtime PID 1 (uid 100, companiond)")
+if reader_self_leak:
+    errors.append(f"reader self PID appeared in target pid lists {reader_self_leak} times")
+for comp, cpu in analysis["b"]["components"].items():
+    if cpu["counter_reset"]:
+        errors.append(f"{comp} CPU counter reset during probe; deltas invalid")
+    if cpu["cpu_delta_ns"] is None:
+        errors.append(f"{comp} CPU delta unavailable during probe "
+                      f"({cpu.get('reason')})")
+peak = analysis["b"]["same_frame_peak"]
+if peak is None or peak["complete_frames"] < 1:
+    errors.append("no complete same-frame B sum during probe")
+if analysis["a"].get("frames_with_pid1", 0) < 5:
+    errors.append("A-side frames missing PID 1")
+
+summary = {
+    "mode": "FUNCTIONAL_ONLY",
+    "performance_conclusions": "NONE",
+    "note": "functional wiring proof only: stack boot, TLS readiness, collector "
+            "fields/attribution/exclusion/aggregation, one 1-gen+1-SSE chain, "
+            "fake-provider counting; not a capacity/perf trial and not any §19.2 gate",
+    "oneshots": "migrate/bootstrap/minio-init exited 0",
+    "functional_chain": {
+        "generations": r.get("generations"), "sse_ok": s.get("sse_ok"),
+        "provider_delta": provider_delta, "worker_peak": int(float(worker_peak)),
+        "checks": checks,
+    },
+    "frames": {
+        "total": len(frames), "structural_ok": structural_ok,
+        "runtime_pid1_uid100": runtime_pid1_uid100,
+        "db_partial_frames": partial_db_frames,
+        "component_status_frames": analysis["component_status_frames"],
+        "b_same_frame": peak,
+        "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
+                               for c, cpu in analysis["b"]["components"].items()},
+        "a": analysis["a"],
+    },
+    "errors": errors,
+}
+print(json.dumps(summary, ensure_ascii=False))
+if errors:
+    for e in errors:
+        print(f"G12 probe assertion failed: {e}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  then
+    die "probe assertions failed"
+  fi
+  echo "== G12 probe PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+  cat "$RUN_DIR/probe.summary.json"
+  exit 0
+fi
 
 run_scenario s5 "$GENS_S5" "$SSE_S5"
 run_scenario s10 "$GENS_S10" "$SSE_S10"
@@ -424,13 +806,12 @@ run_scenario s10 "$GENS_S10" "$SSE_S10"
 echo "== 100-turn soak and post-idle recovery =="
 PRE_SOAK_IDLE_STARTED=$(python3 -c 'import time; print(time.time())')
 sleep "$WARM_IDLE_SECONDS"
-PRE_SOAK_RSS_MIB=$(awk -F, -v start="$PRE_SOAK_IDLE_STARTED" \
-  'BEGIN{sum=0;n=0} $1>=start {sum+=$2;n++} END{if(n<1) exit 1; printf "%.3f", sum/n/1024}' \
-  "$RUN_DIR/sample.csv")
-curl -fsS "$GO_BASE/actuator/prometheus" > "$RUN_DIR/metrics.pre-soak.prom"
-PRE_SOAK_FDS=$(process_fds)
+PRE_SOAK_WINDOW=$(analyze_window "$PRE_SOAK_IDLE_STARTED" \
+  "$(python3 -c 'import time; print(time.time())')")
 SOAK_PROVIDER_BEFORE=$(provider_stats)
 SOAK_CPU_BEFORE=$(metric_value process_cpu_seconds_total)
+python3 "$HERE/collector.py" scrape --manifest "$MANIFEST" --image "$MINIO_IMAGE" \
+  > "$RUN_DIR/metrics.pre-soak.json"
 SOAK_DONE=0
 SOAK_INDEX=0
 while [ "$SOAK_DONE" -lt "$SOAK_TURNS" ]; do
@@ -440,10 +821,9 @@ while [ "$SOAK_DONE" -lt "$SOAK_TURNS" ]; do
     CURRENT_BATCH=$((SOAK_TURNS - SOAK_DONE))
   fi
   SOAK_FILE=$(printf '%s/soak-%03d.json' "$RUN_DIR" "$SOAK_INDEX")
-  if ! python3 "$HERE/workload.py" --base "$GO_BASE" --scenario s10 \
+  if ! run_workload --scenario s10 \
       --gens "$CURRENT_BATCH" --sse-per-gen 1 \
-      --key-prefix "$TRIAL_ID-soak-$SOAK_INDEX" \
-      --session "$RAW" --csrf "$CSRF" --account "$G12_ACCOUNT_ID" > "$SOAK_FILE"; then
+      --key-prefix "$TRIAL_ID-soak-$SOAK_INDEX" > "$SOAK_FILE"; then
     [ -s "$SOAK_FILE" ] && cat "$SOAK_FILE" >&2
     die "soak batch $SOAK_INDEX failed"
   fi
@@ -463,35 +843,26 @@ SOAK_CPU_AFTER=$(metric_value process_cpu_seconds_total)
 echo "  completed $SOAK_DONE turns; waiting ${POST_IDLE_SECONDS}s for recovery"
 POST_IDLE_STARTED=$(python3 -c 'import time; print(time.time())')
 sleep "$POST_IDLE_SECONDS"
-curl -fsS "$GO_BASE/actuator/prometheus" > "$RUN_DIR/metrics.post-idle.prom"
-POST_IDLE_RSS_MIB=$(awk -F, -v start="$POST_IDLE_STARTED" \
-  'BEGIN{sum=0;n=0} $1>=start {sum+=$2;n++} END{if(n<1) exit 1; printf "%.3f", sum/n/1024}' \
-  "$RUN_DIR/sample.csv")
-POST_IDLE_FDS=$(process_fds)
-if ! python3 - "$RUN_DIR/metrics.pre-soak.prom" "$RUN_DIR/metrics.post-idle.prom" \
-    "$SOAK_PROVIDER_BEFORE" "$SOAK_PROVIDER_AFTER" "$SOAK_TURNS" \
-    "$SOAK_CPU_BEFORE" "$SOAK_CPU_AFTER" "$PRE_SOAK_RSS_MIB" "$POST_IDLE_RSS_MIB" \
-    "$PRE_SOAK_FDS" "$POST_IDLE_FDS" \
-    > "$RUN_DIR/soak.summary.json" <<'PY'
+POST_IDLE_ENDED=$(python3 -c 'import time; print(time.time())')
+python3 "$HERE/collector.py" scrape --manifest "$MANIFEST" --image "$MINIO_IMAGE" \
+  > "$RUN_DIR/metrics.post-idle.json"
+POST_SOAK_WINDOW=$(analyze_window "$POST_IDLE_STARTED" "$POST_IDLE_ENDED")
+if ! python3 - "$RUN_DIR/metrics.pre-soak.json" "$RUN_DIR/metrics.post-idle.json" \
+      "$SOAK_PROVIDER_BEFORE" "$SOAK_PROVIDER_AFTER" "$SOAK_TURNS" \
+      "$SOAK_CPU_BEFORE" "$SOAK_CPU_AFTER" \
+      "$PRE_SOAK_WINDOW" "$POST_SOAK_WINDOW" \
+      > "$RUN_DIR/soak.summary.json" <<'PY'
 import json, sys
 
 (before_path, after_path, provider_before, provider_after, turns, cpu_before,
- cpu_after, pre_rss, post_rss, pre_fds, post_fds) = sys.argv[1:]
+ cpu_after, pre_window_s, post_window_s) = sys.argv[1:]
 turns = int(turns)
-def metrics(path):
-    out = {}
-    with open(path) as fh:
-        for line in fh:
-            if line.startswith("#"):
-                continue
-            fields = line.split()
-            if len(fields) == 2 and "{" not in fields[0]:
-                try:
-                    out[fields[0]] = float(fields[1])
-                except ValueError:
-                    pass
-    return out
-before, after = metrics(before_path), metrics(after_path)
+def num(v):
+    return float(v) if v is not None else None
+before = {k: num(v) for k, v in json.load(open(before_path))["metrics"].items()}
+after = {k: num(v) for k, v in json.load(open(after_path))["metrics"].items()}
+pre_w = json.loads(pre_window_s)
+post_w = json.loads(post_window_s)
 pb, pa = json.loads(provider_before), json.loads(provider_after)
 errors = []
 provider_delta = pa["streamRequests"] - pb["streamRequests"]
@@ -500,18 +871,42 @@ if provider_delta != turns:
 for name in ("vc_generation_active", "vc_realtime_subscribers", "vc_db_pool_acquired"):
     if after.get(name) != 0:
         errors.append(f"{name} after idle = {after.get(name)}")
+for comp, cpu in post_w["b"]["components"].items():
+    if cpu["counter_reset"]:
+        errors.append(f"{comp} CPU counter reset in the recovery window")
+    elif cpu["cpu_delta_ns"] is None:
+        errors.append(f"{comp} recovery CPU delta unavailable "
+                      f"({cpu.get('reason')})")
+
+def idle_summary(w):
+    a, peak = w["a"], (w["b"]["same_frame_peak"] or {})
+    return {
+        "a_rss_mean_kb": a["a_rss_mean_kb"], "a_pss_mean_kb": a["a_pss_mean_kb"],
+        "b_rss_mean_kb": peak.get("b_rss_mean_kb"), "b_pss_mean_kb": peak.get("b_pss_mean_kb"),
+        "b_complete_frames": peak.get("complete_frames", 0),
+    }
+
 summary = {
     "turns": turns,
     "cpu_seconds": round(float(cpu_after) - float(cpu_before), 6),
-    # Recovery-window CPU (§19.1): from cpu_after, sampled right after the
-    # last soak batch, to the post-idle prom scrape. The window is the
-    # sampling interval around the recovery sleep and includes sampling
-    # overhead; it is kept apart from cpu_seconds (load-only).
-    "recovery_cpu_seconds": round(after["process_cpu_seconds_total"] - float(cpu_after), 6),
-    "warm_idle_rss_before_after_mib": [float(pre_rss), float(post_rss)],
+    # Recovery-window CPU (§19.1): from cpu_after, scraped right after the
+    # last soak batch, to the post-idle scrape.
+    "recovery_cpu_seconds": round(float(after["process_cpu_seconds_total"]) - float(cpu_after), 6),
+    "warm_idle_rss_before_after_mib": [
+        round(pre_w["a"]["a_rss_mean_kb"] / 1024, 3) if pre_w["a"]["a_rss_mean_kb"] else None,
+        round(post_w["a"]["a_rss_mean_kb"] / 1024, 3) if post_w["a"]["a_rss_mean_kb"] else None],
+    "b_idle_rss_before_after_mib": [
+        round(pre_w["b"]["same_frame_peak"]["b_rss_mean_kb"] / 1024, 3)
+        if pre_w["b"]["same_frame_peak"] else None,
+        round(post_w["b"]["same_frame_peak"]["b_rss_mean_kb"] / 1024, 3)
+        if post_w["b"]["same_frame_peak"] else None],
     "goroutines_before_after": [before.get("go_goroutines"), after.get("go_goroutines")],
-    "fds_before_after": [int(pre_fds), int(post_fds)],
+    "fds_before_after": [pre_w["a"]["a_fds_first_last"][0] if pre_w["a"]["a_fds_first_last"] else None,
+                         post_w["a"]["a_fds_first_last"][-1] if post_w["a"]["a_fds_first_last"] else None],
     "db_acquired_before_after": [before.get("vc_db_pool_acquired"), after.get("vc_db_pool_acquired")],
+    "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
+                           for c, cpu in post_w["b"]["components"].items()},
+    "idle_windows": {"pre": idle_summary(pre_w), "post": idle_summary(post_w)},
     "errors": errors,
 }
 print(json.dumps(summary, ensure_ascii=False))
@@ -524,11 +919,44 @@ then
   die "100-turn recovery assertions failed"
 fi
 
-PEAK_RSS_MIB=$(awk -F, 'BEGIN{peak=0} {if($2>peak)peak=$2} END{printf "%.3f", peak/1024}' "$RUN_DIR/sample.csv")
-cat > "$RUN_DIR/trial.summary.json" <<EOF
-{"trial_id":"$TRIAL_ID","cold_start_ms":$COLD_START_MS,"binary_bytes":$BINARY_BYTES,"idle_rss_mib":$IDLE_RSS_MIB,"idle_cpu_seconds":$IDLE_CPU_SECONDS,"peak_rss_mib":$PEAK_RSS_MIB,"s5":$(cat "$RUN_DIR/s5.summary.json"),"s10":$(cat "$RUN_DIR/s10.summary.json"),"soak":$(cat "$RUN_DIR/soak.summary.json")}
-EOF
-kill "$SAMPLER" 2>/dev/null || true
-wait "$SAMPLER" 2>/dev/null || true
+IMAGE_BYTES=$(python3 - "$RUNTIME_IMAGE" "$MINIO_IMAGE" "$CADDY_IMAGE" <<'PY'
+import json, subprocess, sys
+out = {}
+for ref in sys.argv[1:]:
+    info = json.loads(subprocess.run(["docker", "image", "inspect", ref],
+                                     capture_output=True, text=True,
+                                     check=True).stdout)[0]
+    out[ref.split(":")[0].removeprefix("virtual-companion-")] = info["Size"]
+print(json.dumps(out))
+PY
+)
+python3 - "$TRIAL_ID" "$MODE" "$PROJECT" "$COLD_START_MS" "$IDLE_CPU_SECONDS" \
+  "$IDLE_ANALYSIS" "$IMAGE_BYTES" "$RUN_DIR/s5.summary.json" \
+  "$RUN_DIR/s10.summary.json" "$RUN_DIR/soak.summary.json" \
+  > "$RUN_DIR/trial.summary.json" <<'PY'
+import json, sys
+(trial_id, mode, project, cold_ms, idle_cpu, idle_analysis_s, image_bytes_s,
+ s5_path, s10_path, soak_path) = sys.argv[1:11]
+idle = json.loads(idle_analysis_s)
+summary = {
+    "trial_id": trial_id, "mode": mode,
+    "stack": {"project": project, "derived_from": "ops/deploy",
+              "components": ["db", "runtime", "minio", "caddy"],
+              "images_bytes": json.loads(image_bytes_s)},
+    "cold_start_ms": float(cold_ms),
+    "idle_cpu_seconds": float(idle_cpu),
+    "idle_a": idle["a"],
+    "idle_b_same_frame": idle["b"]["same_frame_peak"],
+    "s5": json.load(open(s5_path)),
+    "s10": json.load(open(s10_path)),
+    "soak": json.load(open(soak_path)),
+}
+print(json.dumps(summary, ensure_ascii=False))
+PY
+
+kill -TERM "$SAMPLER_PID" 2>/dev/null || true
+touch "$STOP_FILE"
+wait "$SAMPLER_PID" 2>/dev/null || true
+SAMPLER_PID=""
 echo "== G12 trial PASS (artifacts in $RUN_DIR) =="
 cat "$RUN_DIR/trial.summary.json"

@@ -14,10 +14,13 @@ record the stream duration.
 
 import argparse
 import json
+import os
+import ssl
 import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 TERMINAL = {"COMPLETED", "COMPLETED_FALLBACK", "CANCELLED", "INPUT_BLOCKED",
@@ -25,15 +28,28 @@ TERMINAL = {"COMPLETED", "COMPLETED_FALLBACK", "CANCELLED", "INPUT_BLOCKED",
 
 
 class Client:
-    def __init__(self, base: str, session: str, csrf: str, account: str):
+    def __init__(self, base: str, session: str, csrf: str, account: str,
+                 origin: str | None = None, cafile: str | None = None):
         self.base = base.rstrip("/")
         self.session = session
         self.csrf = csrf
         self.account = account
+        if origin is None:
+            # The trial configures VC_HTTP_ORIGINS=https://localhost and the
+            # backend matches origins exactly (auth.AllowOrigin), so the
+            # default derives scheme+hostname only: the Caddy port on the
+            # client URL is transport addressing, not part of the origin.
+            parts = urllib.parse.urlparse(self.base)
+            origin = f"{parts.scheme}://{parts.hostname}"
+        self.origin = origin
+        # The private Caddy local-CA certificate is passed explicitly and only
+        # here (--cacert); it never enters the OS trust store and no library
+        # is put into an unverified mode.
+        self.ssl_context = ssl.create_default_context(cafile=cafile) if cafile else None
 
     def _headers(self, content: bool = False) -> dict:
         h = {
-            "Origin": "http://localhost",
+            "Origin": self.origin,
             "Cookie": f"vc_session={self.session}; vc_csrf={self.csrf}",
             # VC-R52: authenticated writes must carry the seeded account id the
             # session belongs to; binding it here (not re-read from cookies)
@@ -50,7 +66,8 @@ class Client:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data,
                                      method=method, headers=self._headers(data is not None))
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout,
+                                    context=self.ssl_context) as resp:
             raw = resp.read()
             return resp.status, json.loads(raw) if raw else {}
 
@@ -73,10 +90,11 @@ class Client:
             t0 = time.monotonic()
             req = urllib.request.Request(
                 self.base + f"/api/v1/realtime/streams/{gid}",
-                headers={"Origin": "http://localhost",
+                headers={"Origin": self.origin,
                          "Cookie": f"vc_session={self.session}"})
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                with urllib.request.urlopen(req, timeout=timeout,
+                                            context=self.ssl_context) as resp:
                     data = resp.read()
             except Exception:
                 if time.monotonic() >= deadline:
@@ -144,7 +162,8 @@ class Stats:
 
 
 def run_scenario(args, stats: Stats) -> dict:
-    client = Client(args.base, args.session, args.csrf, args.account)
+    client = Client(args.base, args.session, args.csrf, args.account,
+                    origin=args.origin, cafile=args.cacert)
     st, body = client.json("PUT", "/api/v1/consents",
                            {"consentType": "SERVICE_TERMS", "version": "2026-08",
                             "granted": True})
@@ -228,14 +247,35 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:18082")
     parser.add_argument("--scenario", choices=["s5", "s10"], required=True)
-    parser.add_argument("--session", required=True)
-    parser.add_argument("--csrf", required=True)
-    parser.add_argument("--account", required=True,
-                        help="seeded account id bound to the fabricated session")
+    parser.add_argument("--session", default=None,
+                        help="defaults to $G12_SESSION (env keeps the opaque "
+                             "session out of argv and logs)")
+    parser.add_argument("--csrf", default=None,
+                        help="defaults to $G12_CSRF")
+    parser.add_argument("--account", default=None,
+                        help="seeded account id bound to the fabricated "
+                             "session; defaults to $G12_ACCOUNT")
+    parser.add_argument("--origin", default=None,
+                        help="Origin header; default is derived from --base")
+    parser.add_argument("--cacert", default=None,
+                        help="PEM CA file for the private Caddy local CA "
+                             "(explicit SSLContext only, never OS trust)")
     parser.add_argument("--gens", type=int, default=0)
     parser.add_argument("--sse-per-gen", type=int, default=0)
     parser.add_argument("--key-prefix", default="")
     args = parser.parse_args()
+
+    # Session/CSRF/account resolve from the environment unless given
+    # explicitly; the opaque session never appears in argv or logs.
+    missing = [name for name, var in (("session", "G12_SESSION"),
+                                       ("csrf", "G12_CSRF"),
+                                       ("account", "G12_ACCOUNT"))
+               if getattr(args, name) is None and not os.environ.get(var)]
+    if missing:
+        parser.error(f"missing --{','.join(missing)} (or their G12_* env vars)")
+    args.session = args.session or os.environ["G12_SESSION"]
+    args.csrf = args.csrf or os.environ["G12_CSRF"]
+    args.account = args.account or os.environ["G12_ACCOUNT"]
 
     if args.gens and args.sse_per_gen:
         pass

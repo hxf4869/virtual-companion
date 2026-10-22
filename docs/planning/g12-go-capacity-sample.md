@@ -326,8 +326,11 @@ PSS `NOT_AVAILABLE` 是 host-Mac 口径限制；B 边界容器口径不受该限
   smaps_rollup reader PSS），场景窗口复用 `run_scenario` 的 started/ended
   （`run.sh:334/341`）。
 - 流量入口：`GO_BASE` 指向 Caddy 一处改动（`run.sh:26`）；G12 compose 需引入目标
-  部署 runtime/caddy 服务并把 DSN/endpoint 改服务名（当前仅 db/fake-provider/minio，
-  且其 minio 为 E2E scratch 镜像，与目标部署本地封装不同源）。
+  部署 runtime/caddy 服务并把 DSN/endpoint 改服务名（当前仅 db/fake-provider/minio；
+  其 minio 用的是 `scripts/dev/Dockerfile.e2e-minio-tools` 的 scratch 封装——与目标部署
+  本地封装下载同一组 4 个官方 release asset 且 sha256 校验完全一致，差异只在封装基座
+  scratch 与 Alpine（VC-R58 时点经 Root 对两个 Dockerfile 逐条核实），并非不同的 MinIO
+  程序）。
 - 十场景缺口：S3（idle SSE）、S4（1+1 独立场景与 first-delta 时间测量）、S8（三点
   故障注入）、S9（login/revoke 并发）完全缺失；S6 半缺（cancel 端点与
   slow-subscriber 未用）；S1 readiness 语义（当前等 `/actuator/health` 为 liveness，
@@ -337,3 +340,85 @@ PSS `NOT_AVAILABLE` 是 host-Mac 口径限制；B 边界容器口径不受该限
 - 未测项（完整 G12 才做）：全部十场景负载、10 分钟 idle/recovery、100-turn、S5/S10
   容器口径、容量/峰值/候选 gate、B+C 总量、Go OCI image size 与启动时间、真实
   provider dogfood、Owner 门槛冻结。
+
+## 9. 2026-10-22 补充：常驻栈同窗 A/B 采集接入与 --probe 功能验证（VC-R58）
+
+本轮把 `scripts/measure/g12-go-capacity/run.sh` 的测量对象从 host companiond 进程
+（host `ps` RSS + 直连 metrics）改为 **ops/deploy 生产派生常驻栈上的同窗 A/B**，并以
+`--probe` 功能入口实际验证生产者/消费者链路接通。NO_PERF 约束下本轮**未运行任何性能
+档**（无 S5/S10、100-turn、600s idle/recovery、完整 profile），下列全部数值只是
+接口可用性与功能链证据，不构成性能或容量结论；不冻结 Owner 门槛，G12 不据此标记
+完成。
+
+### 交付与接入点
+
+- 渲染：`render_stack.py` 以 `docker compose config -p <trial>` 渲染 ops/deploy
+  canonical 配置（这是 R57 事故的直接回归——不带 `-p` 时卷名冻结为 `deploy_*`），
+  递归收窄卷/网络名为本轮 project 作用域、唯一 trial 镜像 tag、唯一发布口
+  `127.0.0.1:18447→443`、runtime 环境覆盖（fake provider、并发上限），并双重校验
+  （自有 validate + 用 `docker compose config` 真实重解析最终文件后再校验）；渲染文件
+  含合成凭据，全程 umask 077/0600。
+- 流量与 A/B 同一性：workload 经 Caddy TLS（`https://localhost:18447`，私有 CA 仅显式
+  `--cacert`）进入 runtime 容器；A=runtime PID1 companiond（observer 容器共享其网络
+  命名空间读 `/actuator/prometheus`，Caddy 不代理 metrics；RSS/PSS/fd 来自目标 cgroup
+  内 PID1 的 smaps_rollup），B=db/runtime/minio/caddy 四组件容器 cgroup（Engine
+  one-shot stats 累计 CPU + 逐进程 smaps_rollup 求和）。reader/observer 独立 cgroup，
+  采集成本不进 B；fake provider 与 runtime 共享网络命名空间（后端把
+  `VC_PROVIDER_ALLOW_LOOPBACK_HTTP` 限定在 loopback 字面量端点，service 名不合法），
+  独立容器不计 B/C。
+- 帧口径：每帧含 ts/platform（Engine 版本与 API）/source/integrity（逐组件
+  engine_stats 状态、逐 reader 源时间与年龄、observer 状态）/四组件进程级数据与
+  A/B 同帧聚合。B 同帧和仅取四组件全 OK 的帧，峰值是同帧和的峰值；每帧记录
+  max_reader_age_s（本轮实测最大 1.923 s）显式暴露源时偏差。组件进程缺失（如 UID999
+  reader 读不到的 UID0 `pg_isready` healthcheck exec）记 PARTIAL 并保留 missing 清单，
+  绝不当 0 充当完整 B；reader 目标 cgroup 解析失败或进程全失记 NOT_AVAILABLE；Engine
+  CPU 计数少于两个有效端点、或出现回落（reset/restart）时该窗 CPU 记 invalid
+  （reason），不 clamp 成 0 或缩短窗口冒充有效。
+- 资源安全（R55/R57 真实回归条件）：预检（project label/卷/网络/容器名预期不存在）
+  失败时零 Docker 写入（实测以 `G12_PROJECT` 指向既有 project 被拒，目标资源零触碰）；
+  `up` 前落创建标志与镜像 tag 基线 identity，up 后立即捕获全部容器确切 CID+完整
+  Mounts/网络/compose service label；清理只用实际创建清单（collector 助手逐 CID
+  stop/rm 并以 daemon 查询确认消失，compose 资源 down 后逐名核验 count 0），镜像仅
+  untag 与基线 identity 不同的本轮 tag，禁 `--remove-orphans`、禁按前缀/时间收养。
+  `test_collector.py` 22 例单元回归覆盖 R57 冻结名拒绝、external/非 loopback 端口/
+  相对 bind/特权拒绝、PARTIAL/空进程集处理、单样本 CPU invalid、counter reset 不
+  clamp。
+
+### --probe 实测（FUNCTIONAL_ONLY）
+
+一轮真实 `run.sh --probe`（project `vcg12c-vcr58-probe1`，输出 `/tmp/vcr58/probe1`）
+PASS：migrate/bootstrap/minio-init 全部 exit 0；经 Caddy 内部 CA readiness 200
+（栈就绪 6935.0 ms，含 caddy 门控量化，非旧 host 进程冷启动口径）；37/37 帧结构
+完整，A 归属 37/37（runtime PID1、uid 100、comm companiond），33 帧四组件全 OK
+（db 0 PARTIAL——本轮窗口未撞见 healthcheck exec 帧），reader 自身 PID 0 泄漏；
+同帧 B RSS/PSS 均值 327569.8/209502.2 kB；四组件累计 CPU 差分 db 185.2 /
+runtime 95.9 / minio 46.4 / caddy 50.8 ms（接口可用性证据）；一次真实 1 generation +
+1 SSE 经 Caddy TLS 全链路成功，fake provider streamRequests 差分 1、worker 峰值 1、
+退出后 active 0；清理后本轮容器/卷/网络/镜像 daemon 查询全部 count 0。
+
+### CPU 累计计数对已退出 worker 的语义（独立子任务实测：RETAINED）
+
+独立子任务（仓库只读，私有产物 `/tmp/vcr58/cpu-exit`）用固定基座
+`alpine:3.23.3`（digest 固定、无 VOLUME、不装包）短命 CPU fixture（无服务、
+`--network none`）实测 Docker Engine one-shot stats 累计计数是否保留已退出 child 的
+CPU：run2 中 child（busybox `dd`，`/dev/zero→/dev/null`）存活期内由 PID 共享
+reader 读 `/proc/<pid>/stat`，得 utime+stime 下界 931 ticks；`CLK_TCK=100`，即
+≥9.31 CPU 秒。child 退出经 PID 命名空间两次枚举确认（无该 pid、主进程存活、
+`DD_RC=0`）后，19 次 one-shot 采样 `total_usage` 恒为 11,555,394,000 ns（18.2 秒内
+零回落），与 T0 静默基线 21,302,000 ns 之差 11,534,092,000 ns ≥ 下界
+9.31e9 ns，故 **RETAINED**：退出 child 的 CPU 保留在容器累计计数中。run1（更短
+child）独立复现。口径澄清：`dd` 自报 `copied, 11.542797 seconds` 是 wall elapsed，
+不是 CPU 计时器；本实验未用 wait4 获取完整 child CPU，931 ticks 是存活期观测下界；
+观测到的 ns/tick 经验比值仅作一致性参考，不作单位校准。落点：B 侧 CPU 用 Engine
+累计计数差分即可覆盖"已退出 PG worker"语义（不必按存活 PID 求和）；counter 回落
+仍按 reset 处理。本实验是计数语义验证，不是性能样本。
+
+### 维持开放
+
+- 十场景缺口不变：S3/S4/S8/S9 缺失、S6 半缺、S1 十分钟场景未做（本轮仅把栈就绪
+  等待改用 readiness 端点）、S2/S7 的 600 s 窗未跑（默认档 `G12_IDLE_SECONDS`/
+  `G12_POST_IDLE_SECONDS` 已改 600 默认面向规范）。
+- 默认档既有断言未减弱（4gen8SSE、16gen64SSE、100-turn、反 replay、provider/worker
+  峰值证明保留），新增 B 侧记录；本轮未运行默认档。
+- B+C 总量、Go OCI image 启动时间口径、真实 provider dogfood、三次独立 trial 与
+  Owner 门槛冻结仍开放；probe 不作为资源验收或产品完成。

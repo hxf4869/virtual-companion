@@ -452,6 +452,22 @@ ls count0）；R55 三枚未知归属卷仍独立为 UNVERIFIED，不与这 4 �
 count0、三唯一镜像 tag 已删、端口释放、/tmp/vcr57 已删；纯文档改动仅
 `git diff --check`，未跑无关 Go/前端/E2E。
 
+2026-10-22 常驻栈同窗 A/B 采集接入与 --probe 功能验证（VC-R58，G12 §19.1，非采样）：
+`scripts/measure/g12-go-capacity/run.sh` 测量对象改为 ops/deploy 生产派生常驻栈
+（渲染 `-p` 收窄资源名+双重校验、唯一 trial tag、唯一 127.0.0.1:18447→443 TLS 口），
+流量经 Caddy TLS，A=runtime PID1（observer 共享 netns 读 metrics + smaps_rollup）、
+B=四组件容器 cgroup（Engine 累计 CPU + 逐进程 smaps 求和，reader/observer 独立
+cgroup 不计 B）；缺进程记 PARTIAL、计数 reset/单端点记 invalid，不 clamp 成 0。
+`--probe` 实测 PASS（FUNCTIONAL_ONLY：one-shot 全 exit0、TLS readiness、37 帧字段/
+归属/排除/聚合、1gen+1SSE 全链路、provider 差分 1），无数值性能结论。独立子任务
+实测 Engine 累计 CPU 对已退出 child **RETAINED**（CLK_TCK=100、下界 931 ticks、
+退出后 19 采样恒 11,555,394,000 ns 零回落），B 侧 CPU 差分即覆盖退出 PG worker
+语义。资源安全回归落实（R57 冻结名拒绝测试、预检失败零 Docker 写入实测、create
+后即时清单、镜像 identity 基线比对 untag、禁 remove-orphans、down 后逐名 count0）。
+默认档断言未减弱且 idle/recovery 默认改 600 s；NO_PERF 本轮未跑性能档，S3/S4/S8/S9
+缺、S6 半缺、S1/S2/S7 待补，G12 维持未完成、不冻结 Owner 门槛；细节见
+`docs/planning/g12-go-capacity-sample.md` §9。
+
 2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
 最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
 Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于
