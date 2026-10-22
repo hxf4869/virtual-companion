@@ -425,6 +425,29 @@ E2E（未改）。范围外事实：`infra/db/backup/run-restore-drill.sh` 与
 `run-daily-backup.sh` 仍引用同一批不可得 minio/mc digest，未改、待单独处理；
 amd64 生产部署未运行；MinIO 上游归档后维护与存储选型仍为 Owner 待决。
 
+2026-10-22 常驻栈资源采集能力功能预检（VC-R57，G12 §19.1 B 边界，非采样）：以
+ops/deploy 生产 Dockerfile/compose/Caddyfile 渲染私有 compose（project vcr57-probe、
+合成凭据全新 DB、仅 Caddy 一枚 127.0.0.1:18446→443 TLS、init/migrate/bootstrap/runtime
+同镜像），目标部署版本四组件（PG 0.8.5-pg18 digest、companiond、MinIO RELEASE.2025-09-07
+本地封装、Caddy v2.11.7）up 全 healthy；init 三 one-shot exit 0，经 Caddy 内部 CA
+（仅显式 --cacert）health/readiness 200 UP。PSS 探针：同版本镜像短命只读 reader
+（--pid=container、--read-only、--network none、目标同实际 UID/GID、不同 cgroup、按
+PID1 进程树过滤并排除 reader），4/4 组件 smaps_rollup 全可读 0 失败（db 12 进程
+PSS 55082 kB vs RSS 173664 kB），默认权限即可（reader 无 SYS_PTRACE 亦成功）；
+CPU 探针（子代理经 ~/.orbstack/run/docker.sock 只读 GET）：/version 200，
+4 组件 stats one-shot 全 rc=200，total_usage 为容器启动以来累计纳秒，percpu 缺失
+系 cgroup v2 规格，one-shot 无 precpu 差分，memory usage≠RSS/PSS，已退出 worker
+是否计入属官方文档空白。十场景缺口与 A/B 同窗最小接入点（run.sh:300-308/334/341、
+GO_BASE、expected-account=X-VC-Expected-Account-ID core.go:29）与全部结果见
+`docs/planning/g12-go-capacity-sample.md` §8；S3/S4/S8/S9 缺失、S6 半缺、10 分钟窗
+待补，G12 维持未完成、不冻结 Owner 门槛。fixture 事故如实记录：首轮渲染仅改顶层
+project 致 4 个 volume 名仍为 deploy_*，被 Root 停止隔离，旧 7 容器按已捕获确切 CID
+rm（rm rc0/验证 rc1）、旧 CID 探针结果一律 FIXTURE_INVALID；渲染修复为 volume/network
+名称递归收窄本轮作用域后全探针重跑；4 枚 deploy_* 命名卷（label project=vcr57-probe）
+归属核清前保留未删、本轮不删。修正后 fixture down -v 并精确核验容器/四卷/网络
+count0、三唯一镜像 tag 已删、端口释放、/tmp/vcr57 已删；纯文档改动仅
+`git diff --check`，未跑无关 Go/前端/E2E。
+
 2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
 最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
 Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于

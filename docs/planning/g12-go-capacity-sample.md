@@ -251,3 +251,86 @@ G12_GO_PORT=18088 G12_GO_FAKE_PORT=19098 G12_DB_PORT=18438 G12_MINIO_PORT=19099 
 G12_IDLE_SECONDS=600 G12_WARM_IDLE_SECONDS=10 G12_POST_IDLE_SECONDS=60 \
 G12_KEEP=0 bash scripts/measure/g12-go-capacity/run.sh
 ```
+
+## 8. 2026-10-22 补充：常驻栈资源采集能力功能预检（VC-R57，非采样）
+
+本轮只验证 §19.1 B 边界（Caddy + runtime + PostgreSQL + MinIO）在 Linux 容器口径下的
+采集接口、权限、归属与计数单位可用性：不跑任何场景负载、10 分钟 idle/recovery、
+100-turn、S5/S10 或容量/峰值/gate；所有数值仅是接口可用性证据，不构成性能或容量结论；
+不改写 §2/§4/§7 历史实测，不冻结任何 Owner 门槛，G12 不据此标记完成。
+
+### fixture（目标部署版本，合成数据）
+
+- 以 `ops/deploy` 生产 Dockerfile/compose/Caddyfile 从绝对路径渲染私有 compose：
+  合成凭据 + 全新 DB 卷（不读真实 `.env`/旧备份/既有卷），project `vcr57-probe`，
+  仅 Caddy 一枚 `127.0.0.1:18446→443` TLS 口（db/runtime/MinIO 无宿主端口），
+  migrate/bootstrap/runtime 共用同一本轮唯一镜像 tag。
+- 组件版本即目标部署：PostgreSQL `pgvector/pgvector:0.8.5-pg18`（digest 固定）、
+  companiond（`golang:1.26.7-alpine3.23` 构建，镜像 USER `vc`）、MinIO 本地封装
+  `RELEASE.2025-09-07T16-13-09Z`（VC-R54 同源 sha256 固定）、Caddy v2.11.7。
+- 功能验证：migrate/bootstrap/minio-init 三个 one-shot 均 exit 0；经 Caddy 内部 CA
+  （仅显式 `--cacert`，不进 OS 信任）`GET /actuator/health` 与
+  `/actuator/health/readiness` 均 200 `UP`。
+- 平台口径：宿主 macOS arm64，容器侧 OrbStack Docker 29.4.0 / API 1.54 /
+  linux arm64（Kernel 7.0.11-orbstack，online_cpus=10）。旧 R35/R43 host-Mac 结果
+  保持历史，不与本轮容器口径混算比值。
+
+**fixture 事故与处置（如实记录）**：第一次私有渲染只改了顶层 project，canonical
+config 冻结的 4 个 volume 名仍是 `deploy_db-data` 等（网络名已在 up 后发现并修正重建）。
+该 fixture 被 Root 停止隔离：7 个容器按已捕获确切 CID 以 `docker rm` 处置
+（全部 rm rc0、事后 inspect rc1），对旧 CID 的一切探针/stats 结果一律记
+`FIXTURE_INVALID`、不作任何 PSS/CPU 结论；渲染脚本改为将每个 volume 与 network 的
+name 递归重写/校验为本轮 project 作用域（禁 external 与非本轮 name）后重建，
+Mounts 全部指向 `vcr57-probe_*` 卷、网络唯一 `vcr57-probe_default`。4 枚 `deploy_*`
+命名卷（label project=vcr57-probe、CreatedAt 本轮 12:11:32）归属核清前保留未删。
+修正后 fixture 上重跑全部探针，以下结论均来自修正后 fixture。
+
+### PSS：进程 smaps_rollup 可用（Linux 容器口径）
+
+方法：短命只读 reader（同版本生产 MinIO 封装镜像；`--pid=container:<CID>`、
+`--read-only`、`--network none`，与目标不同 cgroup），按目标 PID1 进程树过滤并显式
+排除 reader 自身（reader PPid=0 不在树内；reader cgroup `0::/` vs 目标
+`0::/../<cid>`）；逐进程读一次 `/proc/<pid>/smaps_rollup`（线程归进程统计，不逐
+task 重复加总）。reader 以目标实际 UID/GID 运行：runtime 100:101、db 999:999
+（两者 CapEff=0）、caddy/minio root（默认 CapEff=0xa80425fb，其中不含 SYS_PTRACE）。
+
+结果 4/4 组件全可读、0 失败：runtime 1 进程（8 线程）Rss 15768 / Pss 15764 kB；
+caddy 1 进程 Rss 50820 / Pss 50816 kB；db 12 进程（postmaster+worker）
+Rss 合计 173664 / Pss 合计 55082 kB（共享页差异即 PSS 必要性）；minio 1 进程
+Rss 124868 / Pss 124864 kB。结论：容器口径 PSS 采集可用，前提是 reader 与目标同
+实际 UID/GID；默认权限即可，无需 SYS_PTRACE/CAP_PERFMON/privileged。§19.2 表中
+PSS `NOT_AVAILABLE` 是 host-Mac 口径限制；B 边界容器口径不受该限制。
+
+### CPU：Docker Engine API 累计口径可用
+
+子代理经 `~/.orbstack/run/docker.sock` 直连（Python stdlib，只读 GET）：
+`/version` 200；对 4 组件 `GET /containers/{id}/stats?stream=false&one-shot=true`
+全部 rc=200。`cpu_stats.cpu_usage.total_usage` 存在且为容器启动以来累计纳秒计数
+（kernel+user 分量齐全；本轮读数 0.14–2.52 s 量级，仅证非零可用，非样本）；
+`system_cpu_usage` 与 `online_cpus=10` 可用；`percpu_usage` 4/4 缺失（与官方
+"cgroup v2 下省略"一致，非缺陷）；one-shot 下 `precpu_stats` 为零值，单次调用不能
+得速率百分比（需两次采样差分，且 CLI 百分比是区间速率、≠累计 CPU time）；
+`memory_stats.usage` 为含 page cache 的 cgroup 计数，≠进程 RSS、更非 PSS（该 API
+不暴露进程级 RSS/PSS）。已退出 PG worker 是否计入该累计：官方文档（Engine v1.54
+规格与 kernel cgroup v2 `cpu.stat`）均未逐字说明，记为文档空白；口径按
+"aggregated since container inception" 记，将来 G12 若以此覆盖退出 worker 语义，
+需另行实测验证。
+
+### 将来同窗 A/B 的最小接入点与十场景真实缺口（源码定位）
+
+- 同窗采样：现有 host sampler 只采 host companiond RSS（`run.sh:300-308`）；B 边界
+  最小接入是在同一循环并列追加 4 容器列（Engine API 两次采样差分 CPU + 容器内
+  smaps_rollup reader PSS），场景窗口复用 `run_scenario` 的 started/ended
+  （`run.sh:334/341`）。
+- 流量入口：`GO_BASE` 指向 Caddy 一处改动（`run.sh:26`）；G12 compose 需引入目标
+  部署 runtime/caddy 服务并把 DSN/endpoint 改服务名（当前仅 db/fake-provider/minio，
+  且其 minio 为 E2E scratch 镜像，与目标部署本地封装不同源）。
+- 十场景缺口：S3（idle SSE）、S4（1+1 独立场景与 first-delta 时间测量）、S8（三点
+  故障注入）、S9（login/revoke 并发）完全缺失；S6 半缺（cancel 端点与
+  slow-subscriber 未用）；S1 readiness 语义（当前等 `/actuator/health` 为 liveness，
+  readiness 端点未消费）；S2/S7 的 10 分钟窗待补。expected-account 机制：
+  `X-VC-Expected-Account-ID`（`backend/internal/httpapi/core.go:29`；write 必带且须
+  匹配 cookie principal，SSE 端点不要求）。
+- 未测项（完整 G12 才做）：全部十场景负载、10 分钟 idle/recovery、100-turn、S5/S10
+  容器口径、容量/峰值/候选 gate、B+C 总量、Go OCI image size 与启动时间、真实
+  provider dogfood、Owner 门槛冻结。
