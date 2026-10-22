@@ -1,18 +1,30 @@
 #!/usr/bin/env python3
 """G12 Go capacity workload (synthetic; loopback fake provider; no real outbound).
 
-Scenarios mirror §19.1 场景 4 (1 generation + 1 SSE, first-delta timing),
-场景 5 (4 concurrent generation + 8 SSE) and 场景 10 (16 generation + 64 SSE
-capacity profile). One opaque session cookie drives every request (the
-session is fabricated by run.sh against the same DB). Consents/relationship/
-conversation are created once per scenario.
+Scenarios mirror §19.1 场景 3 (1 generation waiting on a bounded fake-provider
+hold + 3 established silent SSE subscribers — the real product binds SSE to a
+generation, so "idle SSE" is only reachable as subscriptions to one in-flight
+generation, never as zero-generation idle), 场景 4 (1 generation + 1 SSE,
+first-delta timing), 场景 5 (4 concurrent generation + 8 SSE) and 场景 10
+(16 generation + 64 SSE capacity profile). One opaque session cookie drives
+every request (the session is fabricated by run.sh against the same DB).
+Consents/relationship/conversation are created once per scenario.
 
 Per generation: a snapshot poller records intake→terminal latency; N SSE
 subscribers retry-subscribe until their stream carries a terminal event
 (covers subscribe-before-claim / mid-stream / after-terminal races) and
 record the stream duration plus, for §19.1 场景 4, the arrival time of the
 first live chat.delta relative to several explicit baselines (send start,
-202 receipt, subscribe attempt start).
+202 receipt, subscribe attempt start). For 场景 3 the subscribers themselves
+prove only the full lifecycle (3/3 terminal); the silent-window proof lives
+in run.sh via observer_quiet_runs() over the collected frames: the quiet
+sample unit is one deduplicated observer record (the frame sampler's Tailer
+reuses the latest observer record across frames, so frame-ts growth is not
+fresh evidence), every sample must keep vc_realtime_subscribers == 3,
+vc_generation_active == 1, provider activeStreamRequests == 1 and the
+provider contentChunkWrites counter equal to its pre-send baseline, and any
+missing/stale/non-qualifying observation BREAKS the candidate window — bad
+samples are never filtered out to stitch two ends together.
 
 SSE timing basis: time.monotonic() taken when the socket chunk carrying an
 event is received, so events that share one chunk share one timestamp.
@@ -486,6 +498,127 @@ class Stats:
                     "errors": self.errors[:10], "error_count": len(self.errors)}
 
 
+def observer_quiet_runs(frames, baseline_chunks: int, *,
+                        want_subscribers: int = 3,
+                        want_gen_active: int = 1,
+                        want_provider_active: int = 1,
+                        min_samples: int = 2) -> dict:
+    """Quiet-window analysis over collected frames (§19.1 场景 3).
+
+    The sample unit is one OBSERVER RECORD, not one frame: collector.py's
+    frame sampler reuses the latest observer record across frames, so
+    several frames can carry the same metrics/provider snapshot — frame-ts
+    growth is never fresh evidence. A STILL-VALID record repeated across
+    frames is deduplicated by integrity.observer.observer_ts
+    (== a.metrics_ts); an invalid/missing observation BREAKS the window even
+    when it repeats the previous record's ts — the Tailer-reused record
+    aging past the staleness window (ok=false, metrics/provider null) is a
+    real collector state and must not be dropped by dedupe. A deduplicated
+    sequence must be strictly increasing, and each sample must come from an
+    ok, non-stale observation carrying both backend metrics and provider
+    stats. A sample qualifies only when subscribers/generation/provider
+    active match the wanted shape AND the provider contentChunkWrites
+    counter still equals baseline_chunks (the value scraped before this
+    generation was sent — anything above it means content already started;
+    the hold only delays the FIRST token). Any missing, stale or
+    non-qualifying observation BREAKS the candidate run: runs are maximal
+    contiguous qualifying stretches, never re-joined across a bad sample,
+    and a non-monotonic observer ts splits the run too. The chosen run is
+    the first one with at least min_samples distinct samples; span_s is
+    the observer-ts span of that run (never padded with repeated records).
+    """
+    observations: list[dict] = []
+    last_valid_ts = object()  # last ts of a VALID record already recorded
+    last_break_ts = object()  # last ts of an already-recorded break sample
+    for f in frames:
+        integrity = ((f.get("integrity") or {}).get("observer") or {})
+        obs_ts = integrity.get("observer_ts")
+        ok = integrity.get("ok")
+        metrics = (f.get("a") or {}).get("metrics")
+        provider = f.get("provider")
+        if obs_ts is None or not ok or metrics is None or provider is None:
+            # Invalid/missing observation: breaks the window even when it
+            # repeats the previous record's ts (that same cached record can
+            # have aged past the staleness window — a real collector
+            # state); only the first frame of such a repeat is recorded.
+            if obs_ts is not None and obs_ts == last_break_ts:
+                continue
+            last_break_ts = obs_ts if obs_ts is not None else object()
+            observations.append({"ts": obs_ts, "ok": bool(ok),
+                                 "reason": "observer_stale"})
+            continue
+        if obs_ts == last_valid_ts:
+            # Same still-valid observer record reused by the sampler's
+            # Tailer: not a fresh observation, must not lengthen any window.
+            continue
+        last_valid_ts = obs_ts
+        last_break_ts = object()
+        obs = {"ts": obs_ts, "ok": True, "reason": None}
+        try:
+            subs = int(float(metrics["vc_realtime_subscribers"]))
+            gen = int(float(metrics["vc_generation_active"]))
+            pactive = int(provider["activeStreamRequests"])
+            chunks = int(provider["contentChunkWrites"])
+        except (KeyError, TypeError, ValueError):
+            obs["reason"] = "observation_unparseable"
+        else:
+            obs.update(subscribers=subs, generation_active=gen,
+                       provider_active=pactive, content_chunks=chunks)
+            if subs != want_subscribers:
+                obs["reason"] = f"subscribers={subs}"
+            elif gen != want_gen_active:
+                obs["reason"] = f"generation_active={gen}"
+            elif pactive != want_provider_active:
+                obs["reason"] = f"provider_active={pactive}"
+            elif chunks != baseline_chunks:
+                obs["reason"] = ("content_started"
+                                 if chunks > baseline_chunks
+                                 else f"content_chunks={chunks}")
+        observations.append(obs)
+
+    runs: list[dict] = []
+    cur: dict | None = None
+
+    def close(reason):
+        nonlocal cur
+        if cur is not None:
+            cur["break_reason"] = reason
+            cur["span_s"] = round(cur["end_ts"] - cur["start_ts"], 3)
+            cur["max_content_chunks"] = max(
+                o["content_chunks"] for o in cur["samples"])
+            cur["sample_count"] = len(cur["samples"])
+            cur["sample_ts"] = [o["ts"] for o in cur["samples"]]
+            cur["samples"] = cur["sample_ts"]
+            runs.append(cur)
+            cur = None
+
+    for obs in observations:
+        if obs["reason"] is not None:
+            close(obs["reason"])
+            continue
+        if cur is not None and obs["ts"] <= cur["end_ts"]:
+            close("non_monotonic_observer_ts")
+        if cur is None:
+            cur = {"start_ts": obs["ts"], "end_ts": obs["ts"],
+                   "samples": [obs], "break_reason": None}
+        else:
+            cur["end_ts"] = obs["ts"]
+            cur["samples"].append(obs)
+    close(None)  # a run still open when frames ended: break_reason None
+
+    chosen = next((r for r in runs if r["sample_count"] >= min_samples),
+                  None)
+    return {"baseline_content_chunks": baseline_chunks,
+            "want": {"subscribers": want_subscribers,
+                     "generation_active": want_gen_active,
+                     "provider_active": want_provider_active},
+            "min_samples": min_samples,
+            "observations_total": len(observations),
+            "observations": observations,
+            "runs": runs,
+            "chosen": chosen}
+
+
 def run_scenario(args, stats: Stats) -> dict:
     client = Client(args.base, args.session, args.csrf, args.account,
                     origin=args.origin, cafile=args.cacert)
@@ -568,17 +701,35 @@ def poll_terminal(args, stats: Stats, client: Client, gid: str, accepted_at: flo
 def subscribe_one(args, stats: Stats, client: Client, gid: str,
                   send_started_at: float | None = None,
                   accept_returned_at: float | None = None):
-    result = client.sse(gid)
+    result = client.sse(gid, timeout=args.sse_timeout)
     stats.add_sse_result(result, send_started_at=send_started_at,
                          accept_returned_at=accept_returned_at)
     if not result.ok:
         stats.note_error(f"sse {gid} no terminal")
 
 
+def resolve_shape(scenario: str, gens: int, sse_per_gen: int) -> tuple[int, int]:
+    """Scenario default shape; explicit --gens/--sse-per-gen win."""
+    if gens and sse_per_gen:
+        return gens, sse_per_gen
+    defaults = {
+        # §19.1 场景 3: one generation held by the fake provider (bounded
+        # holdMs set by run.sh) + 3 silent subscribers; the quiet-window
+        # proof itself lives in run.sh/observer_quiet_runs.
+        "s3": (1, 3),
+        # §19.1 场景 4: 1 generation + 1 SSE, first-delta timing.
+        "s4": (1, 1),
+        "s5": (4, 2),
+        "s10": (16, 4),
+    }
+    return defaults[scenario]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:18082")
-    parser.add_argument("--scenario", choices=["s4", "s5", "s10"], required=True)
+    parser.add_argument("--scenario", choices=["s3", "s4", "s5", "s10"],
+                        required=True)
     parser.add_argument("--session", default=None,
                         help="defaults to $G12_SESSION (env keeps the opaque "
                              "session out of argv and logs)")
@@ -594,6 +745,11 @@ def main() -> int:
                              "(explicit SSLContext only, never OS trust)")
     parser.add_argument("--gens", type=int, default=0)
     parser.add_argument("--sse-per-gen", type=int, default=0)
+    parser.add_argument("--sse-timeout", type=float, default=30.0,
+                        help="absolute deadline (seconds) for each SSE "
+                             "subscribe/retry loop; run.sh sizes it from the "
+                             "scenario's provider hold so a held stream can "
+                             "never outlive its budget")
     parser.add_argument("--key-prefix", default="")
     args = parser.parse_args()
 
@@ -609,15 +765,8 @@ def main() -> int:
     args.csrf = args.csrf or os.environ["G12_CSRF"]
     args.account = args.account or os.environ["G12_ACCOUNT"]
 
-    if args.gens and args.sse_per_gen:
-        pass
-    elif args.scenario == "s4":
-        # §19.1 场景 4: 1 generation + 1 SSE, first-delta timing.
-        args.gens, args.sse_per_gen = 1, 1
-    elif args.scenario == "s5":
-        args.gens, args.sse_per_gen = 4, 2
-    else:
-        args.gens, args.sse_per_gen = 16, 4
+    args.gens, args.sse_per_gen = resolve_shape(
+        args.scenario, args.gens, args.sse_per_gen)
 
     stats = Stats()
     result = run_scenario(args, stats)

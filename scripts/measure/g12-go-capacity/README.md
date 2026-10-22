@@ -71,12 +71,42 @@ never reported as pure service processing time, no ms threshold is asserted
 (§19.2 gates stay Owner-frozen), and a missing delta fails with its reason
 instead of a fabricated zero.
 
+Scenario 3 (§19.1: 3 silent SSE subscriptions, VC-R61) is measured against
+the real product shape: SSE is bound to a generation, so silent
+subscriptions exist only on ONE in-flight generation — the scenario is a
+single generation whose fake-provider completion is held by a bounded
+`holdMs` (`PUT /g12/config` via `compose exec` inside the nonce-receipted
+fake-provider container) plus 3 subscribers, never a zero-generation idle
+and no product API is changed. The original holdMs is registered as
+pending BEFORE the first PUT (a PUT whose response was lost may still have
+been applied server-side) and restored right after the scenario on success
+and failure paths alike; a successful restore clears the pending state,
+and cleanup()'s EXIT path makes exactly one further bounded restore
+attempt for anything still pending — including under `G12_KEEP=1`, where
+the stack survives the run — keeping the exit nonzero and recorded when
+that fails, and never restoring twice successfully. The quiet window is
+proven from real state per DEDUPLICATED observer record (the frame sampler
+reuses the latest observer record between observer polls, so frame-ts
+growth is not a fresh sample; a still-valid record repeated across frames
+counts once, while an invalid/stale observation — including the same
+cached record aged past the staleness window — breaks the window): each
+sample must show `vc_realtime_subscribers=3`, `vc_generation_active=1`,
+provider `activeStreamRequests=1` and the provider's `contentChunkWrites`
+counter equal to its pre-send baseline, strictly increasing in observer
+time; bad samples are never filtered away to stitch two ends together, and
+one boundary-exact scrape is taken inside the window. The recording budget
+is explicitly bounded and coordinated with the workload's SSE absolute
+deadline (`--sse-timeout` = hold + 20 s). The workload runs as a directly
+launched python child whose exact PID is reaped by cleanup on every exit
+path.
+
 ```bash
-bash scripts/measure/g12-go-capacity/run.sh            # full profile (s4, s5, s10, soak)
-bash scripts/measure/g12-go-capacity/run.sh --probe    # FUNCTIONAL_ONLY wiring proof (s4 branch)
-python3 scripts/measure/g12-go-capacity/test_collector.py  # render/collect/aggregation units
-python3 scripts/measure/g12-go-capacity/test_resources.py  # resource-ownership units (stubbed docker)
-python3 scripts/measure/g12-go-capacity/test_workload.py   # SSE parser/first-delta timing units
+bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s5, s10, soak)
+bash scripts/measure/g12-go-capacity/run.sh --probe         # FUNCTIONAL_ONLY wiring proof (s4 branch)
+bash scripts/measure/g12-go-capacity/run.sh --probe-s3      # FUNCTIONAL_ONLY wiring proof (s3 branch)
+python3 scripts/measure/g12-go-capacity/test_collector.py   # render/collect/aggregation units
+python3 scripts/measure/g12-go-capacity/test_resources.py   # resource-ownership units (stubbed docker)
+python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window units
 ```
 
 `--probe` is short and bounded: it proves stack boot (migrate/bootstrap/
@@ -84,7 +114,10 @@ minio-init exit 0), Caddy TLS readiness via the private CA, collector field
 completeness/attribution/observer exclusion/aggregation, and at most one real
 1-generation + 1-SSE chain (the scenario 4 branch) with fake-provider
 counting and first-delta timing wiring. It draws **no** performance or
-capacity conclusions and satisfies no §19.2 gate.
+capacity conclusions and satisfies no §19.2 gate. `--probe-s3` shares the
+same bound for the scenario 3 chain only (one held generation + 3 silent
+subscribers with the quiet-window proof above); it runs no S4 chain and no
+full profile.
 
 Optional env:
 
@@ -92,6 +125,7 @@ Optional env:
 |---|---|---|
 | `G12_GENS_S5` / `G12_SSE_S5` | 4 / 2 | scenario 5 shape |
 | `G12_GENS_S10` / `G12_SSE_S10` | 16 / 4 | scenario 10 shape (SSE cap 8/gen) |
+| `G12_S3_HOLD_MS` / `G12_S3_QUIET_MS` | 8000 / 3000 | scenario 3 provider hold and quiet-window budget (probe-s3 uses `G12_PROBE_S3_HOLD_MS` / `G12_PROBE_S3_QUIET_MS`, default 6000 / 2000) |
 | `G12_CONCURRENCY` / `G12_OUTSTANDING` | 16 / 16 | §19.5 overrides (config caps at 16) |
 | `G12_SOAK_TURNS` / `G12_SOAK_BATCH` | 100 / 10 | recovery workload and batch size |
 | `G12_IDLE_SECONDS` / `G12_WARM_IDLE_SECONDS` / `G12_POST_IDLE_SECONDS` | 600 / 10 / 600 | §19.1 idle and recovery windows (probe uses 6 s) |
@@ -101,10 +135,14 @@ Optional env:
 | `G12_FAKE_PROVIDER_PORT` | 19091 | fake provider port inside the runtime netns (never published) |
 | `G12_KEEP` | 0 | keep the stack and images up on exit |
 
-Output: `trial.summary.json` (probe: `probe.summary.json`, marked
-`FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's summary
-carries the first-delta block with its baselines, provider-known-delay
-subtraction, coverage evidence and definition), idle windows,
+Output: `trial.summary.json` (probe: `probe.summary.json`; probe-s3:
+`probe-s3.summary.json` — both marked `FUNCTIONAL_ONLY`), scenario
+result/summary and B-analysis JSON (s4's summary carries the first-delta
+block with its baselines, provider-known-delay subtraction, coverage
+evidence and definition; s3's summary carries the quiet-window record:
+deduplicated observer samples, break/end reasons, boundary-exact window
+scrape, hold/restore values, SSE deadline and the same-window A/B analysis
+over the quiet bounds), idle windows,
 100-turn batch and recovery summaries, `frames.jsonl` (same-window A/B frames:
 timestamp / platform / source / integrity / 4-component data), scrape
 snapshots, `created-resources.json` (this run's nonce-receipted inventory:

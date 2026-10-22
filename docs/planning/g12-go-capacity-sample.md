@@ -597,3 +597,102 @@ label 对象 0、nonce 对象 0、卷 0、网络 0、trial tag 0，`cleanup.left
 - adjusted 值的"纯服务处理时间"不可达：provider 侧计时起点在本进程内，工作负载侧
   只能给出含订阅偏移的 qualified 值；除非 provider 协议回传服务端时间戳，该界限
   不因补字段而消除。
+
+## 12. 2026-10-22 补充：S3 场景接入与三路静默 SSE 真实状态证明（VC-R61，非采样）
+
+### 场景语义（写入方法，替代蓝图字面"3 路 idle SSE"）
+
+产品 SSE 绑定 generation（claim 前订阅收空 snapshot 后 EOF、终态后快照+终态并关流），
+因此"静默 SSE 订阅"在真实产品里只能作为**同一个等待 fake provider 的 generation 的
+3 路已建立订阅**存在：本轮 S3 按 §19.1 场景 3 定义为"1 个等待中的 generation
+（fake provider 有界 holdMs 挂起）+ 3 路已建立且静默的 SSE 订阅"，属于 A/B 资源
+上下文的一部分；**不是**零 generation idle，也不改任何产品 API 制造闲置连接。
+该 generation 在窗口内必须同时满足 generation_active=1、provider_active=1、
+subscribers=3 且无新增内容 delta；场景结束后 1 个 generation 正常终态、3 路 SSE
+全部收束、provider/worker/subscribers 回基线。
+
+### 交付
+
+- `fake_provider.mjs`：stats 最小新增 `contentChunkWrites`（sendStream parts 循环内
+  实际写出的内容 chunk 计数；finish/usage 帧不是内容），随现有 GET /g12/stats 与
+  observer 记录自然流入 frames，无通用观测框架、无生产字段。
+- `workload.py`：新增 `s3` scenario（1 gen + 3 SSE）与 `--sse-timeout`（绝对
+  deadline 显式传入，run.sh 按 hold+20s 协调）；新增纯函数
+  `observer_quiet_runs(frames, baseline_chunks)`——静默窗口分析。采样单位是
+  **去重后的 observer 记录**而非 frame：collector.py 的 Tailer 会在多个 frame 中
+  复用最后一条 observer 记录（外层 frame.ts 增长不能证明新鲜采样），仍有效的重复
+  记录按 `integrity.observer.observer_ts` 去重且不增长时长；**失效/缺失观测先断窗**
+  ——同一缓存记录逐渐过期变 ok=false 是 collector 真实可达状态（Root 负例证实的
+  修正点：原实现去重先于 ok 检查，会把中间失效帧整个丢掉、把两端拼成假窗口），
+  只有仍有效的重复记录可去重。合格采样须同时满足 subscribers=3、generation_active=1、
+  provider_active=1、contentChunkWrites==发起前基线；任何缺失/失效/不满足的观测
+  **中断**候选窗口（不筛掉坏帧拼两端），observer ts 非严格递增同样断窗；
+  `span_s` 为 observer 时间跨度。SSE 生命周期证明仍由 R60 Client.sse（绝对
+  deadline/重试/live 区分）承担。
+- `run.sh`：`provider_config_put` 以 `compose exec -T fake-provider node` 在本次
+  trial 已验证归属（nonce receipt）的 fake-provider 服务容器内执行 PUT（有界 5s
+  超时、timeout destroy、任何失败非零退出），**不新增**任何无 CID/receipt/EXIT
+  回收保障的 helper 容器（Root 修正点：初版 `docker run --rm` 临时容器在 CLI 被
+  中断时不可作为归属与回收证据）。holdMs 恢复闭环（Root 复验二轮修正）：原值在
+  **首次 PUT 之前**登记为待恢复状态（PUT 响应丢失/超时时服务端可能已应用、外部
+  无法证明未应用），正常路径恢复成功后清除；首 PUT 失败/watchdog 超时/正常路径
+  都有界尝试恢复；cleanup EXIT 对仍 pending 的状态再做**恰一次**有界恢复
+  （G12_KEEP=1 栈存活时同样执行），成功即清除故不重复成功恢复，失败保留非零
+  rc 并显式记录——改动过的 holdMs 不可能静默存续。`run_scenario_s3`：发起前
+  边界精确 scrape
+  取 contentChunkWrites 基线与原 holdMs → PUT hold → **直接后台启动 python3**
+  （不经包装函数，`$!` 即 python 进程本身，cleanup 对记录的准确 PID 做
+  TERM→有界等待→KILL→reap，不会只杀父 shell 留下 Python 子进程）→ 静默观察器
+  tail frames.jsonl 去重分析，窗口确立后立即在窗口内做一次边界精确 scrape →
+  断窗/预算上限/工作负载退出时收束 → watchdog 有界等待 workload → 恢复配置 →
+  断言汇总。默认 profile 在 s4 后接入 s3（S4/S5/S10/100turn/600s/反重放断言全部
+  保留），trial.summary 纳入 s3；新增 `--probe-s3` 短功能入口（只跑 S3 链，
+  不顺带 S4 真实生成或完整 profile），既有 `--probe` 维持 S4 1gen1SSE 不变。
+- 测试：`test_workload.py` +9 例（resolve_shape、--sse-timeout 传递、去重不涨时长、
+  坏样本断窗不拼接、同 ts 失效帧先断窗（Root 准确负例）、stale/缺失断窗、
+  content counter 超基线断窗、非单调 ts 断窗、谓词失配原因记录），共 35 例；
+  `test_resources.py` +4 例（cleanup 按记录 PID 收割残留 s3 workload 且不打扰
+  零 rc 清理；**holdMs 恢复闭环三态**：首 PUT 不可达精确替身（PUT 恒败→set/
+  函数内恢复/EXIT 恢复三次尝试、整体 rc=1 且 FAILED 记录）、首 PUT 响应丢失但
+  provider 可达（set 失败→函数内恢复成功→pending 清除→EXIT 不再恢复、恰两次
+  PUT body、无 FAILED）、pending EXIT 成功恢复恰一次 + 正常路径清除后 EXIT 零
+  恢复；驱动以 run.sh 文本提取真实 run_scenario_s3（bash -n 校验完整后 source）+
+  `trap cleanup EXIT` 主 shell 传播 pending 状态），共 46 例；test_collector 27
+  例不变。collector.py/resources.py/render_stack.py/observer.sh 零改动（冻结遵守）。
+
+### 验证（FUNCTIONAL_ONLY，非采样）
+
+- `bash -n`/`py_compile`（含 run.sh 内全部 20 个 python heredoc 提取编译）/
+  `node --check`（fake_provider.mjs 与内联 node 脚本）通过；三个单测套件
+  35+46+27 全绿（Root 三项修正——断窗去重次序、compose exec 替换、首 PUT 失败
+  恢复闭环——分别在其直接影响套件重跑；第三轮仅重跑 bash -n/heredoc 编译/
+  test_resources 46 例）。
+- 单次真实 `--probe-s3`（project `vcg12c-vcr61-probe1`、port 18448、独立 OS
+  控制器 umask 077/独立进程组/真实 Popen rc/1200s deadline）：**rc=0、122.7 s、
+  未触 deadline**。静默窗口：5 个去重独立 observer 采样、observer 跨度 4.0 s、
+  全程 contentChunkWrites==发起前基线 0；窗口内边界精确 scrape 同时证明
+  subscribers=3/generation_active=1/provider_active=1/内容写出 0；断言零妥协
+  （3/3 SSE 收束、first delta observed=3 且 coverage joined_before_first_delta=3
+  ——三路都在首 delta 前静默建立、provider 差分 1、内容 chunk 差分 8==chunks
+  配置、结束后 active generation/provider/subscribers 全回 0、A/B 同窗采集
+  A PID1 帧+8 完整同帧+四组件 CPU 全 VALID、errors=[]）。
+- 量级自洽（不作性能结论）：stream p50 6707 ms ≈ hold 6000+firstToken 200+8×50；
+  from_subscribe p50 6245.5 ms ≈ 静默中订阅、hold 释放后首 delta 到达；
+  CPU 0.085 s 为场景全程接线值。probe 窗口参数（hold 6000/quiet 2000）与完整
+  方法参数（hold 8000/quiet 3000，均可经 `G12_S3_*`/`G12_PROBE_S3_*` 覆盖）均
+  记录在 s3 summary 的 method 块。
+- 清理核清：run.sh 成功路径 cleanup 后，独立 daemon 查询 project label 容器/卷/网、
+  nonce（vc.g12.nonce）容器/卷/网、三个 trial tag、18448 监听全部 rc0 且 count 0；
+  `cleanup.leftovers.json` 空 `{}`；config-set holdMs=6000 与 config-restore
+  holdMs=0 均有记录且 restore 无 stderr；无残留 workload 进程。R55 三未知卷口径
+  不变。时序说明：该真实 probe 运行于首 PUT 失败恢复修正之前；该修正后仅重跑
+  受影响本地测试/语法检查与 Root 准确负例，没有再次跑实栈。
+
+### 维持开放
+
+- 完整 profile（含 s3 的 S5/S10/100turn/600s 三次采样）本轮未跑——NO_PERF 约束；
+  probe-s3 的数值仅功能接线证明，无任何 §19.2 门槛被提出或冻结。
+- 场景缺口推进：S3、S4 已接入；S6（cancel/reconnect/slow subscriber）、S8（worker
+  三点异常退出）、S9（session revoke 并发）仍缺；S1/S2/S7 与 retained stack、
+  10 分钟 idle/recovery、三次独立测量仍待补。G12 整体维持未完成、不冻结 Owner
+  门槛；Owner gate/真实 provider/dogfood 均未涉及。

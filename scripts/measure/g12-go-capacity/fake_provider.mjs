@@ -24,6 +24,10 @@ const stats = {
     streamRequests: 0,
     activeStreamRequests: 0,
     peakActiveStreamRequests: 0,
+    // Content chunks actually written on the wire (the parts loop only;
+    // finish/usage frames are not content). Monotonic per process, consumed
+    // by the G12 S3 quiet-window proof as the "no new content delta" counter.
+    contentChunkWrites: 0,
     bytesIn: 0,
     startedAt: new Date().toISOString(),
 };
@@ -128,6 +132,7 @@ async function sendStream(response, content) {
     const parts = splitReply(content, config.chunks);
     for (const part of parts) {
         response.write(`data: ${JSON.stringify(choiceChunk(part, null))}\n\n`);
+        stats.contentChunkWrites += 1;
         await sleep(config.deltaMs);
     }
     response.write(`data: ${JSON.stringify(choiceChunk(null, "stop"))}\n\n`);

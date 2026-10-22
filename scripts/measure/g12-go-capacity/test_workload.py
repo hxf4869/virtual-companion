@@ -898,5 +898,166 @@ class StatsTest(unittest.TestCase):
                           "joined_mid_stream": 1})
 
 
+class ScenarioShapeTest(unittest.TestCase):
+    """VC-R61: s3 scenario shape and the SSE deadline plumbing."""
+
+    def test_resolve_shape_defaults(self):
+        self.assertEqual(workload.resolve_shape("s3", 0, 0), (1, 3))
+        self.assertEqual(workload.resolve_shape("s4", 0, 0), (1, 1))
+        self.assertEqual(workload.resolve_shape("s5", 0, 0), (4, 2))
+        self.assertEqual(workload.resolve_shape("s10", 0, 0), (16, 4))
+        # explicit shape wins over the scenario default
+        self.assertEqual(workload.resolve_shape("s3", 2, 5), (2, 5))
+
+    def test_subscribe_one_passes_sse_timeout(self):
+        class Args:
+            sse_timeout = 12.5
+
+        class Client:
+            def __init__(self):
+                self.calls = []
+                self.gid = None
+
+            def sse(self, gid, timeout=30.0):
+                self.calls.append((gid, timeout))
+                self.gid = gid
+                return sse_result(ok=True)
+
+        client = Client()
+        stats = workload.Stats()
+        workload.subscribe_one(Args(), stats, client, "gen-1")
+        self.assertEqual(client.calls, [("gen-1", 12.5)])
+        self.assertEqual(stats.report()["sse_ok"], 1)
+
+
+def quiet_frame(observer_ts, *, subs=3, gen=1, pactive=1, chunks=7,
+                ok=True, ts=0.0, provider=None):
+    """One collected frame in the collector.py shape (VC-R61)."""
+    if provider is None and ok:
+        provider = {"activeStreamRequests": pactive,
+                    "contentChunkWrites": chunks, "streamRequests": 5}
+    metrics = (None if not ok else
+               {"vc_realtime_subscribers": str(subs),
+                "vc_generation_active": str(gen)})
+    return {"ts": ts,
+            "integrity": {"observer": {"ok": ok,
+                                       "observer_ts": observer_ts}},
+            "a": {"metrics": metrics, "metrics_ts": observer_ts},
+            "provider": provider}
+
+
+class ObserverQuietWindowTest(unittest.TestCase):
+    """VC-R61: deduplicated observer-record quiet-window rules.
+
+    The frame sampler's Tailer reuses the latest observer record across
+    frames, so frame-ts growth is not a fresh sample; the sample unit is
+    the deduplicated observer record, strictly increasing, and any
+    missing/stale/non-qualifying observation BREAKS the run — bad samples
+    are never filtered away to stitch two ends together.
+    """
+
+    BASE = 7
+
+    def test_reused_observer_records_are_deduplicated(self):
+        # frame ts advances (10.0..12.5) while the observer record only
+        # changes at 10/11/12; the reused records must not lengthen the
+        # window or add samples.
+        frames = [
+            quiet_frame(10.0, ts=10.0), quiet_frame(10.0, ts=10.5),
+            quiet_frame(11.0, ts=11.0), quiet_frame(11.0, ts=11.5),
+            quiet_frame(12.0, ts=12.0), quiet_frame(12.0, ts=12.4),
+            quiet_frame(13.0, chunks=8, ts=12.6), quiet_frame(13.0, ts=13.0),
+        ]
+        rec = workload.observer_quiet_runs(frames, self.BASE)
+        self.assertEqual(rec["observations_total"], 4)
+        chosen = rec["chosen"]
+        self.assertEqual(chosen["sample_count"], 3)
+        self.assertEqual(chosen["sample_ts"], [10.0, 11.0, 12.0])
+        self.assertEqual(chosen["span_s"], 2.0)
+        self.assertEqual(chosen["break_reason"], "content_started")
+        self.assertEqual(chosen["max_content_chunks"], self.BASE)
+
+    def test_bad_sample_breaks_window_without_stitching(self):
+        frames = [quiet_frame(10.0, ts=10.0), quiet_frame(11.0, ts=11.0),
+                  quiet_frame(12.0, subs=2, ts=12.0),
+                  quiet_frame(13.0, ts=13.0), quiet_frame(14.0, ts=14.0)]
+        rec = workload.observer_quiet_runs(frames, self.BASE)
+        self.assertEqual(len(rec["runs"]), 2)
+        chosen = rec["chosen"]
+        self.assertEqual(chosen["start_ts"], 10.0)
+        self.assertEqual(chosen["sample_count"], 2)
+        self.assertEqual(chosen["break_reason"], "subscribers=2")
+        second = rec["runs"][1]
+        self.assertEqual(second["sample_count"], 2)
+        self.assertIsNone(second["break_reason"])
+
+    def test_stale_or_missing_observer_breaks_window(self):
+        frames = [quiet_frame(10.0, ts=10.0), quiet_frame(11.0, ts=11.0),
+                  # stale observation: frame sampler marked it not-ok, so
+                  # metrics and provider are absent on the reused record
+                  quiet_frame(12.0, ok=False, ts=12.0),
+                  quiet_frame(13.0, ts=13.0), quiet_frame(14.0, ts=14.0)]
+        rec = workload.observer_quiet_runs(frames, self.BASE)
+        self.assertEqual(rec["observations"][2]["reason"], "observer_stale")
+        self.assertEqual(rec["chosen"]["sample_count"], 2)
+        self.assertEqual(rec["chosen"]["break_reason"], "observer_stale")
+        # a frame whose observer record could not be read at all
+        frames2 = [quiet_frame(10.0, ts=10.0), quiet_frame(None, ts=10.5),
+                   quiet_frame(11.0, ts=11.0), quiet_frame(12.0, ts=12.0)]
+        rec2 = workload.observer_quiet_runs(frames2, self.BASE)
+        self.assertEqual(rec2["observations"][1]["reason"],
+                         "observer_stale")
+        self.assertEqual(rec2["chosen"]["start_ts"], 11.0)
+
+    def test_stale_reuse_of_same_record_breaks_not_deduped(self):
+        # Root's exact negative: the frame sampler reuses one cached
+        # observer record while it ages past the staleness window — frame
+        # ts grows, observer_ts stays 100 and the record turns ok=false.
+        # The stale repeat must BREAK the window (it is real evidence the
+        # observation was lost), never be dropped by dedupe, so the two
+        # valid sides must not be stitched into one span-10/2-sample run.
+        frames = [quiet_frame(100.0, ts=100.0),
+                  quiet_frame(100.0, ok=False, ts=105.0),
+                  quiet_frame(110.0, ts=110.0)]
+        rec = workload.observer_quiet_runs(frames, self.BASE)
+        self.assertEqual([o["reason"] for o in rec["observations"]],
+                         [None, "observer_stale", None])
+        self.assertEqual(len(rec["runs"]), 2)
+        self.assertEqual(rec["runs"][0]["sample_ts"], [100.0])
+        self.assertEqual(rec["runs"][0]["break_reason"], "observer_stale")
+        self.assertEqual(rec["runs"][1]["sample_ts"], [110.0])
+        self.assertIsNone(rec["runs"][1]["break_reason"])
+        # neither 1-sample run reaches the floor: no window may be claimed
+        self.assertIsNone(rec["chosen"])
+
+    def test_content_counter_above_baseline_breaks_window(self):
+        frames = [quiet_frame(10.0, ts=10.0), quiet_frame(11.0, ts=11.0),
+                  quiet_frame(12.0, chunks=self.BASE + 1, ts=12.0)]
+        rec = workload.observer_quiet_runs(frames, self.BASE)
+        self.assertEqual(rec["observations"][2]["reason"], "content_started")
+        self.assertEqual(rec["chosen"]["sample_count"], 2)
+
+    def test_non_monotonic_observer_ts_splits_run(self):
+        frames = [quiet_frame(10.0, ts=10.0), quiet_frame(11.0, ts=11.0),
+                  quiet_frame(10.5, ts=11.5), quiet_frame(11.5, ts=12.0)]
+        rec = workload.observer_quiet_runs(frames, self.BASE)
+        self.assertEqual(len(rec["runs"]), 2)
+        self.assertEqual(rec["runs"][0]["break_reason"],
+                         "non_monotonic_observer_ts")
+        self.assertEqual(rec["chosen"]["sample_ts"], [10.0, 11.0])
+
+    def test_predicate_and_shape_mismatches_record_reasons(self):
+        frames = [
+            quiet_frame(10.0, gen=0, ts=10.0),
+            quiet_frame(11.0, pactive=0, ts=11.0),
+            quiet_frame(12.0, ok=True, provider={}, ts=12.0),
+        ]
+        rec = workload.observer_quiet_runs(frames, self.BASE)
+        self.assertEqual([o["reason"] for o in rec["observations"]],
+                         ["generation_active=0", "provider_active=0",
+                          "observation_unparseable"])
+        self.assertIsNone(rec["chosen"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

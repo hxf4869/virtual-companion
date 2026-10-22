@@ -534,6 +534,40 @@ FUNCTIONAL_ONLY 不作性能结论。清理核清：project/nonce 容器卷网�
 S7/S8/S9 与真实采样，G12 维持未完成、不冻结 Owner 门槛；细节见
 `docs/planning/g12-go-capacity-sample.md` §11。
 
+2026-10-22 S3 三路静默 SSE 场景接入与真实状态证明（VC-R61，G12 §19.1 场景3，非采样）：
+场景语义按产品真实约束重定义并写入报告方法——SSE 绑定 generation，静默订阅只能是
+**同一个等待 fake provider 的 generation 的 3 路已建立订阅**，非零 generation idle、
+不改产品 API。`fake_provider.mjs` stats 最小新增 contentChunkWrites（实际写出内容
+chunk 计数）；`workload.py` 新增 s3 场景（1gen+3SSE）、--sse-timeout 显式绝对
+deadline（hold+20s 协调）与纯函数 observer_quiet_runs：静默采样单位为去重 observer
+记录（Tailer 复用使 frame.ts 增长不是新鲜证据），仍有效重复记录去重不涨时长，
+失效/缺失观测先断窗（Root 负例证实并修正：原实现去重先于 ok 检查会丢中间失效帧
+拼假窗口；collector 真实可产生同 ts 缓存记录过期 ok=false）、坏样本不筛除不拼接、
+ts 非严格递增同断窗、span 为 observer 跨度。`run.sh` provider_config_put 改
+`compose exec -T fake-provider node`（归属已证容器内执行、有界 5s 超时、失败非零
+退出，替代 Root 指出的无 receipt `docker run --rm` helper），holdMs 恢复闭环（Root
+复验二轮修正）：原值在首次 PUT 前登记为待恢复状态（PUT 响应丢失/超时时服务端
+可能已应用），正常路径恢复成功后清除，首 PUT 失败/watchdog/正常路径均有界尝试
+恢复，cleanup EXIT 对仍 pending 的状态恰再做一次有界恢复（G12_KEEP=1 亦执行），
+成功即清除不重复、失败保留非零并记录；run_scenario_s3 直接后台启动 python3（$! 即 python
+进程，cleanup 按准确 PID TERM→有界→KILL→reap，不留孤儿），发起前边界 scrape 取
+基线、窗口确立后窗口内边界 scrape、断窗/预算/退出三收束；默认 profile 于 s4 后
+接入 s3 且既有断言全保留，新增 --probe-s3 短入口（仅 S3 链）。测试：test_workload
++9（含 Root 准确负例）共35、test_resources +4（cleanup 收割残留 workload；首 PUT
+不可达替身三次恢复尝试 rc=1、首 PUT 响应丢失恢复恰一次不重复、pending EXIT 成功
+一次+正常清除后零恢复——以 run.sh 文本提取真实函数经 bash -n 后驱动）共46、
+test_collector 27 不变；bash -n/py_compile（run.sh 全部 heredoc 提取编译）/
+node --check 过。单次真实 `--probe-s3`（vcg12c-vcr61-probe1、18448、独立控制器
+umask077/独立进程组/真实 rc/1200s 未触）：rc=0、122.7s，静默窗口 5 个去重独立
+observer 采样/跨度4.0s/内容写出全程==基线0，窗口内边界 scrape 证 subscribers=3/
+gen=1/provider=1，3/3 SSE 收束、first delta 3 且全部先于首 delta 加入、provider
+差分1、内容 chunk 差分8==配置、结束后 active/subscribers 全回0、A/B 同窗 A PID1
+帧+8完整帧+四组件 CPU 全 VALID、errors=[]；量级自洽（stream 6707ms≈hold6000+
+200+8×50）但 FUNCTIONAL_ONLY 不作性能结论。核清：project/nonce 容器卷网、三个
+trial tag、18448、残留进程全 count0，leftovers 空{}，config set6000/restore0 有
+记录。仍缺 S1/S2/S6/S7/S8/S9 与真实采样，G12 维持未完成、不冻结 Owner 门槛；
+细节见 `docs/planning/g12-go-capacity-sample.md` §12。
+
 2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
 最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
 Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于

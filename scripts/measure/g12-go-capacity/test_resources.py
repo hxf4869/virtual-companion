@@ -19,6 +19,7 @@ one dispatcher. No real Docker daemon is touched.
 
 import json
 import os
+import re
 import shlex
 import stat
 import subprocess
@@ -717,7 +718,7 @@ class RunShStubTest(unittest.TestCase):
 
     def drive_cleanup(self, tmp, docker_state, collectors_doc=None,
                       capture_doc=None, built_doc=None, skip_collectors=False,
-                      launch_attempted=False):
+                      launch_attempted=False, env_extra=None):
         """Source run.sh for real and invoke its cleanup() with the stub."""
         state_path = tmp / "state.json"
         state_path.write_text(json.dumps(docker_state))
@@ -768,6 +769,8 @@ class RunShStubTest(unittest.TestCase):
                    PATH=f"{stub_bin}:{os.environ['PATH']}",
                    STUB_STATE=str(tmp),
                    STUB_CALLS=str(tmp / "calls.log"))
+        if env_extra:
+            env.update(env_extra)
         return subprocess.run(["bash", str(driver)], capture_output=True,
                               text=True, env=env, cwd=str(HERE)), out
 
@@ -806,6 +809,177 @@ class RunShStubTest(unittest.TestCase):
             calls = [json.loads(line) for line
                      in (Path(tmp) / "calls.log").read_text().splitlines() if line]
             self.assertTrue(any(c[:2] == ["rm", "-f"] for c in calls))
+
+    def test_cleanup_reaps_leftover_s3_workload(self):
+        # VC-R61: an EXIT-path cleanup must TERM/KILL/reap the scenario-3
+        # workload by its exact recorded PID — a still-running python child
+        # can never survive the run that launched it. The docker flow stays
+        # clean, so the reap must not disturb the zero-rc cleanup outcome.
+        with tempfile.TemporaryDirectory() as tmp:
+            leftover = subprocess.Popen(["sleep", "60"])
+            state = fresh_state()
+            state["containers"]["cidobs0000001"] = {
+                "name": "vcg12c-stubtrial-observer", "labels": {}}
+            proc, out = self.drive_cleanup(
+                Path(tmp), state, env_extra={"S3_WORKLOAD_PID": str(leftover.pid)})
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            try:
+                rc = leftover.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.fail("cleanup left the recorded S3 workload pid alive")
+            self.assertLess(rc, 0)  # terminated by signal, not exited on its own
+
+    BASELINE_PROVIDER = (
+        '{"requests":0,"streamRequests":0,"activeStreamRequests":0,'
+        '"peakActiveStreamRequests":0,"contentChunkWrites":0,"bytesIn":0,'
+        '"config":{"firstTokenMs":200,"deltaMs":50,"chunks":8,"holdMs":0}}')
+
+    def run_s3_driver(self, tmp, *, keep, put_stub, pending=None,
+                      scenario=False, docker_state=None):
+        """Source run.sh for real and drive its scenario-3 restore contract.
+
+        cleanup/die/log come from sourcing run.sh (G12_SOURCE_ONLY returns
+        before the scenario functions, exactly like the other sourcing
+        tests); the REAL run_scenario_s3 is extracted verbatim from the
+        run.sh text (bash -n checked before sourcing — same extraction the
+        Root review used) because its definition lives below the seam.
+        provider_stats/metric_value/provider_config_put are stubbed (the
+        PUT stub records every body); with scenario=True run_scenario_s3
+        runs in the main shell under `trap cleanup EXIT`, so the
+        pending-restore registration/clearing propagates to the EXIT
+        cleanup exactly like a real run.
+        """
+        tmp = Path(tmp)
+        out = tmp / "out"
+        out.mkdir()
+        state_path = tmp / "state.json"
+        state_path.write_text(json.dumps(
+            docker_state if docker_state is not None else fresh_state()))
+        func_path = tmp / "s3func.sh"
+        src = RUN_SH.read_text()
+        # Anchor the extraction at the next top-level statement (the probe
+        # branch) rather than the first column-0 "}": the function's inline
+        # python heredocs legitimately contain column-0 closing braces.
+        # bash -n below still fails the test if the slice is ever wrong.
+        m = re.search(
+            r'^run_scenario_s3\(\) \{.*?(?=^if \[ "\$PROBE" = "1" \]; then)',
+            src, re.DOTALL | re.MULTILINE)
+        assert m, "run_scenario_s3 not found in run.sh"
+        func_path.write_text(m.group(0).rstrip() + "\n")
+        lines = [
+            "set -euo pipefail",
+            "export G12_SOURCE_ONLY=1 G12_OUTPUT_DIR=%s G12_KEEP=%d "
+            "G12_TRIAL_ID=stubtrial" % (shlex.quote(str(out)), keep),
+            "PUTLOG=%s" % shlex.quote(str(tmp / "puts.log")),
+            "export PUTLOG",
+            "source %s" % shlex.quote(str(RUN_SH)),
+            "provider_stats() { cat <<'PJSON'\n%s\nPJSON\n}"
+            % self.BASELINE_PROVIDER,
+            "metric_value() { echo 0; }",
+            "analyze_window() { echo '{}'; }",
+            "provider_config_put() { %s; }" % put_stub,
+            "bash -n %s || exit 9" % shlex.quote(str(func_path)),
+            "source %s" % shlex.quote(str(func_path)),
+            "type run_scenario_s3 >/dev/null 2>&1 || { "
+            "echo 'run_scenario_s3 not extracted'; exit 9; }",
+            "printf '%%s' '{\"project\":\"vcg12c-stubtrial\",\"nonce\":\"n0\","
+            "\"containers\":[],\"volumes\":[],\"networks\":[]}' > %s"
+            % shlex.quote(str(out / "created-resources.json")),
+            "printf '%%s' '{\"project\":\"vcg12c-stubtrial\",\"containers\":[]}' > %s"
+            % shlex.quote(str(out / "collectors.json")),
+            "printf '%%s' '{}' > %s" % shlex.quote(str(out / "built-images.json")),
+            "touch %s" % shlex.quote(str(out / ".stack-creating")),
+        ]
+        if pending is not None:
+            lines.append("S3_PENDING_RESTORE_HOLD=%d" % pending)
+        if scenario:
+            lines += ["trap cleanup EXIT",
+                      "run_scenario_s3 s3stub 6000 2000"]
+        else:
+            lines.append("cleanup")
+        driver = tmp / "s3drive.sh"
+        driver.write_text("\n".join(lines) + "\n")
+        env = dict(os.environ, STUB_STATE=str(tmp),
+                   STUB_CALLS=str(tmp / "calls.log"))
+        if keep == 0:
+            stub_bin = tmp / "bin"
+            stub_bin.mkdir(exist_ok=True)
+            stub = stub_bin / "docker"
+            if not stub.exists():
+                stub.write_text(
+                    "#!/bin/sh\nexec python3 '%s' __docker_stub__ \"$@\"\n"
+                    % str(Path(__file__).resolve()))
+                stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            env["PATH"] = f"{stub_bin}:{os.environ['PATH']}"
+        proc = subprocess.run(["bash", str(driver)], capture_output=True,
+                              text=True, env=env, cwd=str(HERE))
+        puts = []
+        puts_path = tmp / "puts.log"
+        if puts_path.exists():
+            puts = puts_path.read_text().splitlines()
+        return proc, puts
+
+    def test_s3_first_put_unreachable_fails_through_exit_restore(self):
+        # Root's exact negative (provider unreachable end-to-end): the first
+        # holdMs PUT may have been applied server-side while its response
+        # was lost, so every path must still try restoring the original
+        # value — the scenario dies nonzero, the EXIT cleanup makes one
+        # further bounded attempt, and the overall exit stays nonzero with
+        # the failure recorded (G12_KEEP=1 keeps the stack, so a silent
+        # leftover config would persist).
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, puts = self.run_s3_driver(
+                tmp, keep=1,
+                put_stub="printf '%s\\n' \"$1\" >> \"$PUTLOG\"; return 1",
+                scenario=True)
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("provider holdMs PUT failed AND restore failed",
+                          proc.stderr)
+            self.assertIn("holdMs restore FAILED", proc.stderr)
+            self.assertEqual(puts, ['{"holdMs":6000}', '{"holdMs":0}',
+                                    '{"holdMs":0}'])
+
+    def test_s3_first_put_lost_response_restores_once_no_duplicate(self):
+        # The precise reachable case behind the fix: the SET put fails
+        # (response lost) but the provider is reachable, so the in-function
+        # restore succeeds, clears the pending state, and the EXIT cleanup
+        # must NOT restore a second time.
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, puts = self.run_s3_driver(
+                tmp, keep=1,
+                put_stub="printf '%s\\n' \"$1\" >> \"$PUTLOG\"; "
+                         "[ \"$1\" = '{\"holdMs\":6000}' ] && return 1; "
+                         "return 0",
+                scenario=True)
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("provider holdMs PUT failed (original holdMs "
+                          "restored)", proc.stderr)
+            self.assertNotIn("holdMs restore FAILED", proc.stderr)
+            self.assertEqual(puts, ['{"holdMs":6000}', '{"holdMs":0}'])
+
+    def test_s3_pending_exit_restore_and_cleared_normal_path(self):
+        # EXIT-path restore for anything still pending (one bounded
+        # attempt, rc 0 on success), and the cleared-pending state — the
+        # normal path's outcome after a successful restore — must make
+        # cleanup touch the provider config zero times.
+        state = fresh_state()
+        state["containers"]["cidobs0000001"] = {
+            "name": "vcg12c-stubtrial-observer", "labels": {}}
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, puts = self.run_s3_driver(
+                tmp, keep=0, pending=0,
+                put_stub="printf '%s\\n' \"$1\" >> \"$PUTLOG\"; return 0",
+                docker_state=state)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(puts, ['{"holdMs":0}'])
+            self.assertIn("restored fake-provider holdMs", proc.stderr)
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, puts = self.run_s3_driver(
+                tmp, keep=0,
+                put_stub="printf '%s\\n' \"$1\" >> \"$PUTLOG\"; return 0",
+                docker_state=state)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(puts, [])
 
     def test_unreadable_built_record_never_reports_clean(self):
         # Root's no-docker stub replay: a partial build already produced

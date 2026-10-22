@@ -27,6 +27,26 @@
 # fake-provider counting and first-delta timing wiring. It draws no
 # performance or capacity conclusions and satisfies no §19.2 gate.
 #
+# --probe-s3 (VC-R61) is the same FUNCTIONAL_ONLY bound for scenario 3 only:
+# one generation whose fake-provider completion is held by a bounded holdMs
+# (PUT /g12/config, with the original value registered as pending before the
+# first PUT and restored after the scenario — plus one bounded EXIT-path
+# attempt in cleanup for anything still pending, e.g. a first PUT whose
+# response was lost after the server applied it) plus
+# 3 established silent SSE subscribers. The product binds SSE to a
+# generation, so "idle SSE" is only reachable as subscriptions to one
+# in-flight generation — never as zero-generation idle, and no product API
+# is changed to fabricate one. The quiet window is proven from real state
+# per DEDUPLICATED observer record (the frame sampler's Tailer reuses the
+# latest observer record, so frame-ts growth is not a fresh sample): every
+# sample must keep vc_realtime_subscribers=3, vc_generation_active=1,
+# provider activeStreamRequests=1 and the provider's contentChunkWrites
+# counter equal to its pre-send baseline, strictly increasing in observer
+# time, and any missing/stale/non-qualifying record BREAKS the window —
+# bad samples are never filtered away to stitch two ends together. One
+# boundary-exact scrape is taken inside the window. It runs no S4 chain
+# and no full profile.
+#
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
 # project, images, output directory, and data. Ownership is receipt-based
@@ -37,17 +57,18 @@
 # create action provably produced, and a failed cleanup keeps the records
 # for recovery instead of discarding them.
 #
-# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe]
+# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3]
 set -euo pipefail
 export DOCKER_CONTEXT=orbstack
 
 PROBE=0
-if [ "${1:-}" = "--probe" ]; then
-  PROBE=1
-elif [ $# -gt 0 ]; then
-  echo "usage: run.sh [--probe]" >&2
-  exit 2
-fi
+PROBE_S3=0
+case "${1:-}" in
+  --probe) PROBE=1 ;;
+  --probe-s3) PROBE=1; PROBE_S3=1 ;;
+  "") ;;
+  *) echo "usage: run.sh [--probe | --probe-s3]" >&2; exit 2 ;;
+esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -104,6 +125,12 @@ SOAK_TURNS="${G12_SOAK_TURNS:-100}"
 SOAK_BATCH="${G12_SOAK_BATCH:-10}"
 SAMPLE_INTERVAL="${G12_SAMPLE_INTERVAL:-0.5}"
 READER_INTERVAL="${G12_READER_INTERVAL:-1}"
+# §19.1 scenario 3 (VC-R61): bounded fake-provider hold for the waiting
+# generation and the quiet-window recording budget. Both windows are
+# explicitly bounded and coordinated with the SSE absolute deadline the
+# workload passes (--sse-timeout = hold_s + 20).
+S3_HOLD_MS="${G12_S3_HOLD_MS:-8000}"
+S3_QUIET_MS="${G12_S3_QUIET_MS:-3000}"
 # §19.1 idle/recovery windows: the spec calls for 10 minutes. Probe shrinks
 # these to a bounded functional window and never reports performance numbers.
 IDLE_SECONDS="${G12_IDLE_SECONDS:-600}"
@@ -113,8 +140,11 @@ if [ "$PROBE" = "1" ]; then
   IDLE_SECONDS="${G12_PROBE_IDLE_SECONDS:-6}"
   POST_IDLE_SECONDS="${G12_PROBE_POST_IDLE_SECONDS:-6}"
   WARMUP=0
+  S3_HOLD_MS="${G12_PROBE_S3_HOLD_MS:-6000}"
+  S3_QUIET_MS="${G12_PROBE_S3_QUIET_MS:-2000}"
 fi
-MODE=$([ "$PROBE" = "1" ] && echo PROBE || echo PROFILE)
+MODE=$([ "$PROBE_S3" = "1" ] && echo PROBE_S3 \
+       || { [ "$PROBE" = "1" ] && echo PROBE || echo PROFILE; })
 
 COMPOSE=(docker compose --env-file "$ENVFILE" -f "$STACK_COMPOSE" -p "$PROJECT")
 
@@ -159,6 +189,39 @@ cleanup() {
     done
     kill -KILL "$SAMPLER_PID" 2>/dev/null || true
     wait "$SAMPLER_PID" 2>/dev/null || true
+  fi
+  # The scenario-3 workload is launched directly (no wrapping subshell), so
+  # its recorded PID is the python process itself: TERM → bounded wait →
+  # KILL → reap can never strand a python child behind a dead parent shell.
+  if [ -n "${S3_WORKLOAD_PID:-}" ]; then
+    kill -TERM "$S3_WORKLOAD_PID" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      kill -0 "$S3_WORKLOAD_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "$S3_WORKLOAD_PID" 2>/dev/null || true
+    wait "$S3_WORKLOAD_PID" 2>/dev/null || true
+  fi
+  # Scenario-3 provider config: when a holdMs PUT was applied — or MAY have
+  # been applied, because a PUT whose response was lost or timed out cannot
+  # be proven skipped by the server — and the normal path never restored the
+  # original value, make exactly one bounded restore attempt here while the
+  # stack is still up (also under G12_KEEP=1, where the stack survives this
+  # run). Success clears the pending state, so a restore is never repeated;
+  # failure keeps the exit nonzero and records the attempt — a modified
+  # holdMs can never outlive the run silently.
+  if [ -n "${S3_PENDING_RESTORE_HOLD:-}" ] && [ -f "$CREATING" ]; then
+    if provider_config_put "{\"holdMs\":$S3_PENDING_RESTORE_HOLD}" \
+        "$RUN_DIR/s3-hold.exit-restore.json"; then
+      S3_PENDING_RESTORE_HOLD=""
+      log "cleanup: restored fake-provider holdMs to the original value"
+    else
+      log "cleanup: fake-provider holdMs restore FAILED; the provider may retain the scenario hold (see $RUN_DIR/s3-hold.exit-restore.json.err)"
+      rc=1
+    fi
+  elif [ -n "${S3_PENDING_RESTORE_HOLD:-}" ]; then
+    log "cleanup: fake-provider holdMs restore not attempted (no creating marker)"
+    rc=1
   fi
   if [ "${G12_KEEP:-0}" != "1" ] && [ -f "$CREATING" ]; then
     local keep_records=0
@@ -225,6 +288,28 @@ if p is None:
     raise SystemExit("fake provider stats unreachable")
 print(json.dumps(p))
 '
+}
+
+provider_config_put() {
+  # PUT /g12/config by exec'ing node INSIDE the fake-provider service
+  # container — the service is part of this trial's nonce-receipted compose
+  # project and already shares the runtime network namespace, so no extra
+  # helper container (no CID/receipt/EXIT-recovery gap) is created. The
+  # request carries a bounded timeout and destroys its socket on expiry;
+  # any failure exits nonzero and prints nothing to stdout.
+  local body="$1" out="$2"
+  "${COMPOSE[@]}" exec -T fake-provider node \
+    -e 'const http=require("http");
+const port=Number(process.argv[1]);
+const body=process.argv[2];
+const req=http.request({host:"127.0.0.1",port,path:"/g12/config",method:"PUT",timeout:5000,
+  headers:{"content-type":"application/json","content-length":Buffer.byteLength(body)}},
+  res=>{let d="";res.on("data",c=>d+=c);
+    res.on("end",()=>{process.stdout.write(d);process.exit(res.statusCode===200?0:1);});});
+req.on("timeout",()=>{req.destroy(new Error("g12 config PUT timeout"));});
+req.on("error",e=>{process.stderr.write(e.message+"\n");process.exit(1);});
+req.end(body);' \
+    "$FAKE_PORT" "$body" > "$out" 2> "$out.err"
 }
 
 analyze_window() {
@@ -852,7 +937,492 @@ print(f"  B CPU windows = {'all VALID' if not nonvalid else nonvalid}; errors = 
 PY
 }
 
+run_scenario_s3() {
+  # §19.1 场景 3 (VC-R61): ONE generation held by a bounded fake-provider
+  # holdMs + 3 established silent SSE subscribers. The product binds SSE to
+  # a generation, so silent subscriptions are only reachable on one
+  # in-flight generation — this is NOT a zero-generation idle scenario and
+  # no product API is changed. The silent window is proven from real state:
+  # deduplicated observer records (the frame sampler reuses the last
+  # observer record, so frame-ts growth is not a fresh sample) must each
+  # show vc_realtime_subscribers=3, vc_generation_active=1, provider
+  # activeStreamRequests=1 and contentChunkWrites equal to the pre-send
+  # baseline; any missing/stale/non-qualifying record BREAKS the window
+  # (bad samples are never filtered away to stitch two ends together), and
+  # one boundary-exact scrape is taken inside the window. The original
+  # provider holdMs is registered as pending BEFORE the first PUT (a PUT
+  # whose response was lost may still have been applied server-side) and is
+  # restored right after the workload on success and failure paths alike;
+  # a successful restore clears the pending state, and cleanup()'s EXIT
+  # path makes exactly one further bounded attempt for anything still
+  # pending, keeping the exit nonzero and recorded when that fails. No ms
+  # threshold is asserted (§19.2 stays Owner-frozen).
+  local name="$1" hold_ms="$2" quiet_ms="$3"
+  local result="$RUN_DIR/$name.json" quiet="$RUN_DIR/$name.quiet.json"
+  local summary="$RUN_DIR/$name.summary.json"
+  local hold_s sse_timeout watchdog_s
+  hold_s=$((hold_ms / 1000))
+  sse_timeout=$((hold_s + 20))
+  watchdog_s=$((sse_timeout + 60))
+  echo "== scenario $name: 1 held generation (${hold_ms} ms provider hold) + 3 silent SSE =="
+  local provider_before provider_after cpu_before cpu_after
+  local worker_active worker_peak subscribers_after
+  provider_before=$(provider_stats) || die "provider stats unreachable"
+  cpu_before=$(metric_value process_cpu_seconds_total)
+  local baseline_line baseline_chunks baseline_hold chunks_cfg baseline_streams
+  baseline_line=$(python3 - "$provider_before" <<'PY'
+import json, sys
+p = json.loads(sys.argv[1])
+cfg = p.get("config") or {}
+print(p.get("contentChunkWrites", "NA"), cfg.get("holdMs", "NA"),
+      cfg.get("chunks", "NA"), p.get("streamRequests", "NA"))
+PY
+)
+  read -r baseline_chunks baseline_hold chunks_cfg baseline_streams \
+    <<< "$baseline_line"
+  local v
+  for v in "$baseline_chunks" "$baseline_hold" "$chunks_cfg" "$baseline_streams"; do
+    case "$v" in '' | *[!0-9]*) die "provider baseline unparseable ($v)" ;; esac
+  done
+  # Pending-restore registration BEFORE the first PUT: a PUT whose response
+  # is lost or times out may still have been applied server-side, so the
+  # original value stays pending until a successful restore clears it (the
+  # normal path below, or the one bounded EXIT attempt in cleanup()).
+  S3_PENDING_RESTORE_HOLD=$baseline_hold
+  if ! provider_config_put "{\"holdMs\":$hold_ms}" "$RUN_DIR/$name.config-set.json"; then
+    if provider_config_put "{\"holdMs\":$S3_PENDING_RESTORE_HOLD}" \
+        "$RUN_DIR/$name.config-restore.json"; then
+      S3_PENDING_RESTORE_HOLD=""
+      die "provider holdMs PUT failed (original holdMs restored)"
+    fi
+    die "provider holdMs PUT failed AND restore failed (holdMs possibly left at $hold_ms)"
+  fi
+
+  local started ended
+  started=$(python3 -c 'import time; print(time.time())')
+  # Direct python3 background launch (NOT via a wrapper function): $! is the
+  # python process itself, so cleanup's TERM/KILL/reap can never strand it
+  # behind a subshell.
+  python3 "$HERE/workload.py" --base "$GO_BASE" --cacert "$CA_FILE" \
+    --scenario s3 --gens 1 --sse-per-gen 3 --sse-timeout "$sse_timeout" \
+    --key-prefix "$TRIAL_ID-$name" > "$result" 2> "$result.err" &
+  S3_WORKLOAD_PID=$!
+
+  # Quiet-window watcher: tail frames.jsonl, dedupe observer records via
+  # workload.observer_quiet_runs, boundary-scrape once inside the chosen
+  # window, and close on window break / quiet-budget cap / workload exit.
+  # Bounded by its own absolute deadline.
+  local watch_rc=0
+  python3 - "$FRAMES" "$MANIFEST" "$MINIO_IMAGE" "$baseline_chunks" \
+    "$quiet_ms" "$((hold_s + 45))" "$S3_WORKLOAD_PID" "$HERE" "$quiet" \
+    <<'PY' || watch_rc=$?
+import json, os, subprocess, sys, time
+
+frames_path, manifest, image = sys.argv[1:4]
+baseline_chunks = int(sys.argv[4])
+quiet_ms = int(sys.argv[5])
+deadline_s = float(sys.argv[6])
+workload_pid = int(sys.argv[7])
+here, out_path = sys.argv[8:10]
+sys.path.insert(0, here)
+import workload  # noqa: E402
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+def scrape():
+    cmd = [sys.executable, os.path.join(here, "collector.py"), "scrape",
+           "--manifest", manifest, "--image", image,
+           "--metrics", "vc_realtime_subscribers,vc_generation_active"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
+    except Exception as exc:
+        return {"error": f"scrape failed: {exc}"}
+    if proc.returncode != 0:
+        return {"error": f"scrape rc={proc.returncode}: "
+                         f"{proc.stderr.strip()[-300:]}"}
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return {"error": "scrape output unparseable"}
+
+frames = []
+buf = ""
+fh = open(frames_path)
+chosen_start = None
+endpoint = None
+end_reason = None
+cap_deadline = None
+settle_until = None
+deadline = time.time() + deadline_s
+
+def consume_frames():
+    global buf
+    chunk = fh.read()
+    if not chunk:
+        return
+    buf += chunk
+    parts = buf.split("\n")
+    buf = parts[-1]
+    for line in parts[:-1]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            frames.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+
+while True:
+    consume_frames()
+    rec = workload.observer_quiet_runs(frames, baseline_chunks)
+    if chosen_start is None and rec["chosen"] is not None:
+        chosen_start = rec["chosen"]["start_ts"]
+        # Boundary-exact sample inside the window, taken immediately.
+        endpoint = scrape()
+        cap_deadline = time.time() + quiet_ms / 1000.0
+    wl_alive = alive(workload_pid)
+    if not wl_alive and settle_until is None:
+        settle_until = time.time() + 3  # let the last observer records land
+    if chosen_start is not None:
+        run_now = next((r for r in rec["runs"]
+                        if r["start_ts"] == chosen_start), None)
+        if run_now is not None and run_now.get("break_reason") is not None:
+            end_reason = f"break:{run_now['break_reason']}"
+            break
+        if cap_deadline is not None and time.time() >= cap_deadline:
+            end_reason = "quiet_budget_cap"
+            break
+        if settle_until is not None and time.time() >= settle_until:
+            end_reason = "workload_exited"
+            break
+    else:
+        if settle_until is not None and time.time() >= settle_until:
+            end_reason = "workload_exited_no_window"
+            break
+        if time.time() >= deadline:
+            end_reason = "deadline_no_window"
+            break
+    if time.time() >= deadline:
+        end_reason = end_reason or "deadline"
+        break
+    time.sleep(0.25)
+
+consume_frames()
+final = workload.observer_quiet_runs(frames, baseline_chunks)
+chosen = next((r for r in final["runs"] if r["start_ts"] == chosen_start),
+              None) if chosen_start is not None else None
+record = {
+    "frames_seen": len(frames),
+    "baseline_content_chunks": baseline_chunks,
+    "quiet_budget_ms": quiet_ms,
+    "end_reason": end_reason,
+    "endpoint_start": endpoint,
+    "observations_total": final["observations_total"],
+    "runs": final["runs"],
+    "chosen": chosen,
+}
+with open(out_path, "w") as out:
+    json.dump(record, out, indent=1)
+sys.exit(0 if chosen is not None else 3)
+PY
+
+  # Bounded workload wait: the SSE absolute deadline already bounds the
+  # workload; this watchdog only guarantees run.sh never hangs past it.
+  local wdeadline=$(( $(date +%s) + watchdog_s )) wrc=0
+  while kill -0 "$S3_WORKLOAD_PID" 2>/dev/null \
+        && [ "$(date +%s)" -lt "$wdeadline" ]; do
+    sleep 0.5
+  done
+  if kill -0 "$S3_WORKLOAD_PID" 2>/dev/null; then
+    kill -TERM "$S3_WORKLOAD_PID" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      kill -0 "$S3_WORKLOAD_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "$S3_WORKLOAD_PID" 2>/dev/null || true
+    wait "$S3_WORKLOAD_PID" 2>/dev/null || true
+    S3_WORKLOAD_PID=""
+    if provider_config_put "{\"holdMs\":$baseline_hold}" \
+        "$RUN_DIR/$name.config-restore.json"; then
+      S3_PENDING_RESTORE_HOLD=""
+    fi
+    die "$name workload exceeded its bounded budget (${watchdog_s}s)"
+  fi
+  wait "$S3_WORKLOAD_PID" || wrc=$?
+  S3_WORKLOAD_PID=""
+  ended=$(python3 -c 'import time; print(time.time())')
+  # Original provider config restored right after the scenario, whatever the
+  # workload outcome; a failed restore leaves the pending state for the one
+  # bounded EXIT retry in cleanup().
+  if provider_config_put "{\"holdMs\":$baseline_hold}" \
+      "$RUN_DIR/$name.config-restore.json"; then
+    S3_PENDING_RESTORE_HOLD=""
+  else
+    die "provider holdMs restore failed (one bounded EXIT retry follows)"
+  fi
+  cpu_after=$(metric_value process_cpu_seconds_total)
+  worker_active=$(metric_value vc_generation_active)
+  worker_peak=$(metric_value vc_generation_peak)
+  subscribers_after=$(metric_value vc_realtime_subscribers)
+  provider_after=$(provider_stats)
+  if [ "$wrc" -ne 0 ]; then
+    [ -s "$result" ] && cat "$result" >&2
+    die "$name workload failed (rc=$wrc)"
+  fi
+  if [ "$watch_rc" -ne 0 ]; then
+    [ -s "$quiet" ] && cat "$quiet" >&2
+    die "$name quiet window not observed"
+  fi
+  local qstart qend
+  read -r qstart qend <<< "$(python3 - "$quiet" <<'PY'
+import json, sys
+chosen = (json.load(open(sys.argv[1])).get("chosen") or {})
+print(chosen.get("start_ts", "NA"), chosen.get("end_ts", "NA"))
+PY
+)"
+  python3 -c 'import sys; float(sys.argv[1]); float(sys.argv[2])' \
+    "$qstart" "$qend" 2>/dev/null || die "$name quiet window bounds missing"
+  analysis=$(analyze_window "$qstart" "$qend")
+  echo "$analysis" > "$RUN_DIR/$name.quiet.analysis.json"
+  if ! python3 - "$result" "$quiet" "$provider_before" "$provider_after" \
+    "$cpu_before" "$cpu_after" "$worker_active" "$worker_peak" \
+    "$subscribers_after" "$analysis" "$name" "$hold_ms" "$quiet_ms" \
+    "$sse_timeout" "$READER_INTERVAL" "$baseline_chunks" "$baseline_hold" \
+    "$chunks_cfg" "$baseline_streams" > "$summary" <<'PY'
+import json, sys
+
+(result_path, quiet_path, provider_before, provider_after, cpu_before,
+ cpu_after, worker_active, worker_peak, subscribers_after, analysis_s,
+ name, hold_ms, quiet_ms, sse_timeout, reader_interval, baseline_chunks,
+ baseline_hold, chunks_cfg, baseline_streams) = sys.argv[1:20]
+hold_ms, quiet_ms = int(hold_ms), int(quiet_ms)
+sse_timeout, reader_interval = float(sse_timeout), float(reader_interval)
+baseline_chunks, baseline_hold = int(baseline_chunks), int(baseline_hold)
+chunks_cfg, baseline_streams = int(chunks_cfg), int(baseline_streams)
+analysis = json.loads(analysis_s)
+r = json.load(open(result_path))
+q = json.load(open(quiet_path))
+before, after = json.loads(provider_before), json.loads(provider_after)
+s = r["stats"]
+fd = s["first_delta"]
+chosen = q.get("chosen") or {}
+endpoint = q.get("endpoint_start") or {}
+errors = []
+functional = name == "probe-s3"
+
+# Workload lifecycle: exactly one generation, all three subscribers closed
+# with a non-failed terminal.
+if r.get("generations") != 1 or r.get("expected_sse") != 3:
+    errors.append(f"accepted {r.get('generations')} gen / "
+                  f"{r.get('expected_sse')} expected SSE want 1/3")
+if s.get("sse_total") != 3 or s.get("sse_ok") != 3:
+    errors.append(f"SSE {s.get('sse_ok')}/{s.get('sse_total')} want 3/3")
+if s.get("error_count") != 0:
+    errors.append(f"workload errors: {s.get('errors')}")
+if fd.get("observed") != 3:
+    errors.append(f"first delta observed {fd.get('observed')} want 3 "
+                  f"({fd.get('absent_reasons')})")
+
+# Quiet window: distinct deduplicated observer samples, all with the
+# content counter frozen at the pre-send baseline; span is the observer-ts
+# span (reused Tailer records never lengthen it).
+if not chosen:
+    errors.append("quiet window missing from watcher record")
+else:
+    if chosen.get("sample_count", 0) < 2:
+        errors.append(f"quiet window has {chosen.get('sample_count')} "
+                      "distinct observer samples, want >= 2")
+    if chosen.get("max_content_chunks") != baseline_chunks:
+        errors.append(f"quiet window max content chunks "
+                      f"{chosen.get('max_content_chunks')} != baseline "
+                      f"{baseline_chunks}")
+
+# Boundary-exact sample inside the window: same real-state shape.
+if endpoint.get("error"):
+    errors.append(f"window-start scrape failed: {endpoint.get('error')}")
+else:
+    ep_provider = endpoint.get("provider") or {}
+    ep_metrics = endpoint.get("metrics") or {}
+    if ep_provider.get("contentChunkWrites") != baseline_chunks:
+        errors.append(f"window-start content chunks "
+                      f"{ep_provider.get('contentChunkWrites')} != baseline "
+                      f"{baseline_chunks}")
+    if ep_provider.get("activeStreamRequests") != 1:
+        errors.append(f"window-start provider active "
+                      f"{ep_provider.get('activeStreamRequests')} want 1")
+    try:
+        ep_subs = int(float(ep_metrics["vc_realtime_subscribers"]))
+        ep_gen = int(float(ep_metrics["vc_generation_active"]))
+    except (KeyError, TypeError, ValueError):
+        errors.append("window-start gauges missing/unparseable")
+    else:
+        if ep_subs != 3:
+            errors.append(f"window-start subscribers {ep_subs} want 3")
+        if ep_gen != 1:
+            errors.append(f"window-start generation_active {ep_gen} want 1")
+
+# Provider deltas: exactly one held completion, its content actually
+# written once the hold expired, and the provider back to idle.
+stream_delta = after["streamRequests"] - baseline_streams
+chunk_delta = after["contentChunkWrites"] - baseline_chunks
+if stream_delta != 1:
+    errors.append(f"provider requests {stream_delta} want 1")
+if chunk_delta != chunks_cfg:
+    errors.append(f"provider content chunks {chunk_delta} want {chunks_cfg}")
+if after["activeStreamRequests"] != 0:
+    errors.append(f"provider active after scenario "
+                  f"{after['activeStreamRequests']}")
+if int(float(worker_active)) != 0:
+    errors.append(f"worker active after scenario {worker_active}")
+if int(float(worker_peak)) < 1:
+    errors.append(f"worker peak {worker_peak} want >= 1")
+if int(float(subscribers_after)) != 0:
+    errors.append(f"subscribers after scenario {subscribers_after}")
+
+# Same-window A/B collection over the quiet window bounds.
+a = analysis["a"]
+if a["frames_with_pid1"] < 1:
+    errors.append("no A frames with runtime PID 1 in the quiet window")
+peak = analysis["b"]["same_frame_peak"]
+if peak is None or peak["complete_frames"] < 1:
+    errors.append("no complete same-frame B sum in the quiet window")
+for comp, cpu in analysis["b"]["components"].items():
+    if cpu["status"] == "INVALID":
+        errors.append(f"{comp} CPU window invalid ({cpu.get('reason')}); "
+                      "not a valid measurement")
+
+summary = {
+    "scenario": name,
+    "mode": "FUNCTIONAL_ONLY" if functional else "PROFILE",
+    "semantics": (
+        "one generation waiting on the fake provider (bounded holdMs) with 3 "
+        "established silent SSE subscriptions: the product binds SSE to a "
+        "generation, so silent subscriptions exist only on an in-flight "
+        "generation — NOT a zero-generation idle scenario and no product API "
+        "was changed to fabricate one"),
+    "method": {
+        "provider_hold_ms": hold_ms,
+        "provider_hold_restored_to_ms": baseline_hold,
+        "quiet_budget_ms": quiet_ms,
+        "sse_deadline_s": sse_timeout,
+        "observer_interval_s": reader_interval,
+        "sampling": (
+            "observer.sh order per record: ts first, then "
+            "/actuator/prometheus, then /g12/stats (sequential wgets), so "
+            "cross-source instants align at observer-cadence resolution, "
+            "not ns-exact; the frame sampler reuses the latest observer "
+            "record between observer polls"),
+        "quiet_sample": (
+            "one deduplicated observer record (integrity.observer."
+            "observer_ts), strictly increasing; each must keep "
+            "vc_realtime_subscribers=3, vc_generation_active=1, provider "
+            "activeStreamRequests=1 and contentChunkWrites equal to the "
+            "pre-send baseline; any missing/stale/non-qualifying record "
+            "breaks the window — bad samples are never filtered away to "
+            "stitch two ends; span_s is the observer-ts span"),
+    },
+    "quiet_window": {
+        "start_ts": chosen.get("start_ts"),
+        "end_ts": chosen.get("end_ts"),
+        "span_s": chosen.get("span_s"),
+        "distinct_observer_samples": chosen.get("sample_count"),
+        "sample_ts": chosen.get("sample_ts"),
+        "break_reason": chosen.get("break_reason"),
+        "end_reason": q.get("end_reason"),
+        "max_content_chunks": chosen.get("max_content_chunks"),
+        "runs_total": len(q.get("runs") or []),
+        "observations_total": q.get("observations_total"),
+    },
+    "endpoint_start": endpoint,
+    "workload": {
+        "generations": r.get("generations"), "sse_ok": s.get("sse_ok"),
+        "stream_ms": s["stream_ms"],
+        "first_delta": {
+            "observed": fd.get("observed"),
+            "from_subscribe_ms": fd.get("from_subscribe_ms"),
+            "coverage": fd.get("coverage"),
+        },
+    },
+    "provider": {
+        "stream_requests_delta": stream_delta,
+        "content_chunk_writes_delta": chunk_delta,
+        "chunks_config": chunks_cfg,
+        "active_after": after["activeStreamRequests"],
+        "baseline_hold_ms": baseline_hold,
+    },
+    "worker_active_after": int(float(worker_active)),
+    "worker_peak": int(float(worker_peak)),
+    "subscribers_after": int(float(subscribers_after)),
+    "cpu_seconds": round(float(cpu_after) - float(cpu_before), 6),
+    "quiet_ab": {
+        "a_rss_peak_kb": a["a_rss_peak_kb"],
+        "a_pss_peak_kb": a["a_pss_peak_kb"],
+        "b_peak_rss_mib": round(peak["b_rss_peak_kb"] / 1024, 3) if peak else None,
+        "b_peak_pss_mib": round(peak["b_pss_peak_kb"] / 1024, 3) if peak else None,
+        "b_complete_frames": peak["complete_frames"] if peak else 0,
+        "b_cpu_status": {c: {"status": cpu["status"], "reason": cpu.get("reason")}
+                         for c, cpu in analysis["b"]["components"].items()},
+        "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
+                               for c, cpu in analysis["b"]["components"].items()},
+    },
+    "errors": errors,
+}
+if functional:
+    summary["performance_conclusions"] = "NONE"
+    summary["note"] = ("functional wiring proof only: one held generation, "
+                       "3 silent subscribers, quiet-window real-state proof "
+                       "and cleanup wiring; no capacity/perf conclusion and "
+                       "no §19.2 gate")
+print(json.dumps(summary, ensure_ascii=False))
+if errors:
+    for error in errors:
+        print(f"G12 assertion failed: {error}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  then
+    die "$name quiet-window assertions failed"
+  fi
+  python3 - "$summary" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+q = r["quiet_window"]
+print(f"  quiet window: {q['distinct_observer_samples']} distinct observer "
+      f"samples over {q['span_s']} s "
+      f"(end: {q['end_reason']}; break: {q['break_reason']}); "
+      f"max content chunks {q['max_content_chunks']} == baseline")
+fd = r["workload"]["first_delta"]
+print(f"  SSE 3/3 closed, first delta observed {fd['observed']}; "
+      f"provider delta {r['provider']['stream_requests_delta']} / "
+      f"content chunks {r['provider']['content_chunk_writes_delta']}; "
+      f"workers/subscribers after = {r['worker_active_after']}/"
+      f"{r['subscribers_after']}")
+ab = r["quiet_ab"]
+print(f"  quiet-window A peak RSS/PSS = {ab['a_rss_peak_kb']}/"
+      f"{ab['a_pss_peak_kb']} kB; B same-frame peak RSS/PSS = "
+      f"{ab['b_peak_rss_mib']}/{ab['b_peak_pss_mib']} MiB "
+      f"({ab['b_complete_frames']} frames)")
+cpu = ab["b_cpu_status"]
+nonvalid = {c: s for c, s in cpu.items() if s["status"] != "VALID"}
+print(f"  B CPU windows = {'all VALID' if not nonvalid else nonvalid}; "
+      f"errors = 0")
+PY
+}
+
 if [ "$PROBE" = "1" ]; then
+  if [ "$PROBE_S3" = "1" ]; then
+    echo "== probe-s3 functional chain: 1 held generation + 3 silent SSE =="
+    run_scenario_s3 probe-s3 "$S3_HOLD_MS" "$S3_QUIET_MS"
+    echo "== G12 probe-s3 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+    cat "$RUN_DIR/probe-s3.summary.json"
+    exit 0
+  fi
   echo "== probe functional chain: 1 generation + 1 SSE through caddy TLS =="
   PROBE_RESULT="$RUN_DIR/probe.workload.json"
   provider_before=$(provider_stats)
@@ -1005,6 +1575,7 @@ PY
 fi
 
 run_scenario_s4
+run_scenario_s3 s3 "$S3_HOLD_MS" "$S3_QUIET_MS"
 run_scenario s5 "$GENS_S5" "$SSE_S5"
 run_scenario s10 "$GENS_S10" "$SSE_S10"
 
@@ -1139,12 +1710,13 @@ PY
 )
 python3 - "$TRIAL_ID" "$MODE" "$PROJECT" "$COLD_START_MS" "$IDLE_CPU_SECONDS" \
   "$IDLE_ANALYSIS" "$IMAGE_BYTES" "$RUN_DIR/s4.summary.json" \
+  "$RUN_DIR/s3.summary.json" \
   "$RUN_DIR/s5.summary.json" \
   "$RUN_DIR/s10.summary.json" "$RUN_DIR/soak.summary.json" \
   > "$RUN_DIR/trial.summary.json" <<'PY'
 import json, sys
 (trial_id, mode, project, cold_ms, idle_cpu, idle_analysis_s, image_bytes_s,
- s4_path, s5_path, s10_path, soak_path) = sys.argv[1:12]
+ s4_path, s3_path, s5_path, s10_path, soak_path) = sys.argv[1:13]
 idle = json.loads(idle_analysis_s)
 summary = {
     "trial_id": trial_id, "mode": mode,
@@ -1156,6 +1728,7 @@ summary = {
     "idle_a": idle["a"],
     "idle_b_same_frame": idle["b"]["same_frame_peak"],
     "s4": json.load(open(s4_path)),
+    "s3": json.load(open(s3_path)),
     "s5": json.load(open(s5_path)),
     "s10": json.load(open(s10_path)),
     "soak": json.load(open(soak_path)),
