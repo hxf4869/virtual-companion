@@ -379,6 +379,52 @@ PG/MinIO 与 fake provider，本地合成数据与设备仿真，非真机/真�
 无残留，42 份历史日志未动）；不勾 Owner/Beta/CI/真机，G12 维持未完成
 （10 分钟 recovery/retained-stack/PSS 未补）。
 
+2026-10-22 修复生产 MinIO 镜像获取失败（VC-R54，R50 只读决策落地）：
+R19 确证 `ops/deploy/docker-compose.yml` 的 minio/minio 与 minio/mc 固定
+tag@digest 在两个 registry 均实际不可取。新增生产封装 `ops/deploy/minio/`
+（窄 context）：以 backend/Dockerfile 同一固定 `alpine:3.23.3@sha256` 为基座，
+`ADD --checksum` 从 GitHub Release 固定获取与 R21 E2E scratch 镜像完全相同的
+四份官方静态二进制校验值（minio RELEASE.2025-09-07T16-13-09Z、mc
+RELEASE.2025-08-13T08-35-41Z，arm64/amd64 按 TARGETARCH 选 stage），入口分发
+脚本让同一镜像服务 `minio`（server）与 `minio-init`；相同二进制新封装，不是
+旧 OCI digest 复现，不换 vendor/版本/许可证。compose：两服务共用
+`virtual-companion-minio:local` build 锚点，保留服务名/depends_on/命名卷/
+credentials 变量/桶默认值；healthcheck 由缺失的 curl 改为 BusyBox wget 同
+live 端点；minio-init 不再 `mc alias set`（root secret 曾在 argv），改为
+镜像内 `minio-init.sh` 从环境读凭据、BusyBox awk 经 ENVIRON 做完整 JSON
+转义（引号/反斜杠/换行/全部 C0 控制符）写入 compose tmpfs
+`MC_CONFIG_DIR=/mc-config` 的 mc config v10（目录 0700、config.json 0600，
+`MC_UPDATE=off`），桶创建与禁匿名校验语义不变；沿用旧官方 root 默认、不做
+UID 迁移、不声明 VOLUME。验证（OrbStack linux/arm64）：新镜像真实构建
+rc=0（11s），`minio --version`/`mc --version` 与既定版本一致；真实脚本函数在
+镜像 BusyBox awk 下对含引号/反斜杠/CRLF/控制符/多字节值的转义经 python
+JSON 解码往返一致；amd64 同 Dockerfile 真实构建 rc=0（20s）并在 Rosetta 下
+两份 `--version` rc=0 版本一致。父以唯一 tag（vcr54-minio/companiond/caddy）
+私有渲染 compose（127.0.0.1:18443→443 替换整份 ports、VC_HTTP_ORIGINS 含该
+端口、绝对 build/db-init 路径）、私有 env 合成凭据、全新项目卷实际启动全链
+DB→migrate→bootstrap→MinIO init→runtime healthy→Caddy，一次性任务 rc 全 0，
+minio-init 仅输出 bucket created、secret 在 minio/minio-init 日志 0 命中、
+Cmd=["minio-init"]；以本轮 Caddy 本地 CA 文件做真实证书链+hostname 验证
+（无 -k）：/actuator/health 200 `{"status":"UP"}`、/api/v1/version 200、H5 壳
+200 HTTP/2 no-cache；当前 Go 与当前 H5 产物按真实脚本构建。fixture 期间两处
+非产品问题：合成 VC_CRYPTO_REST_KEY 须标准带填充 base64、渲染副本相对
+`./db-init` 需绝对化（否则 runtime 角色缺失），均属 fixture 修正。独立只读
+验证子（私有 project vcr54-credcheck、同镜像）7 项 PASS：含双引号+反斜杠
+与含内嵌换行+制表符+单引号两组 secret（及含引号/反斜杠 access key，MinIO
+实际接受）的新 init exit 0、桶 anonymous get 为 private、S3 put/cat 全字节一致、
+Cmd/Entrypoint 与两容器日志凭据子串 0 命中、`HostConfig.Tmpfs` 含 /mc-config
+且探针 stat 目录 700/配置 600、alias local 仅存在于私有配置；Root 追加的
+防假绿见证——running 容器 `inspect --format '{{json .Config.Env}}'` 管道进
+内存比较器，与按名传递的原始输入逐字节比对——ENV_EXACT_MATCH/USER/
+PASSWORD 全 True（凭据与 base64 形态均不进 argv；首次执行因父提前删镜像
+rc=125 阻塞，父同 Dockerfile 重建后完成）。两侧栈 down -v
+后按 project label 核验容器/卷/网络 0、端口释放，四个本轮镜像 tag 已删，
+留存日志（/tmp/vcr54/{smoke,credcheck}，600）凭据子串 0 命中。
+`scripts/check.sh --quick` 与 `git diff --check` PASS；未重跑 Go/前端单测与
+E2E（未改）。范围外事实：`infra/db/backup/run-restore-drill.sh` 与
+`run-daily-backup.sh` 仍引用同一批不可得 minio/mc digest，未改、待单独处理；
+amd64 生产部署未运行；MinIO 上游归档后维护与存储选型仍为 Owner 待决。
+
 2026-10-22 本地 E2E 清理补删匿名卷（VC-R53）：PG18 镜像自带匿名 VOLUME，
 `docker rm -f` 不带 `-v` 时数据卷在每次 E2E 后残留累积（R52 收尾后 Root 以
 Docker events 定位并已精确清除本轮遗留的那枚卷）。两条既有、supervisor PID

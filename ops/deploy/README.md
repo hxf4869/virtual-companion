@@ -24,6 +24,43 @@ docker compose --env-file .env.local up -d --build
 docker compose --env-file .env.local ps
 ```
 
+`up --build` 会同时构建三个本地镜像：`companiond`（backend/Dockerfile）、
+Caddy 边缘镜像（ops/deploy/Dockerfile.web）与 MinIO 镜像（ops/deploy/minio）。
+
+## MinIO 生产镜像（VC-R54）
+
+上游 `minio/minio` / `minio/mc` 固定 tag 的 OCI 镜像已无法从 registry 拉取
+（VC-R19），生产改用 `ops/deploy/minio/Dockerfile` 本地封装：以与
+backend/Dockerfile 相同的固定 `alpine:3.23.3` 为基座，从 GitHub Release 资产
+按 sha256 固定获取同版本官方静态二进制（minio `RELEASE.2025-09-07T16-13-09Z`、
+mc `RELEASE.2025-08-13T08-35-41Z`，arm64/amd64 各两份校验值，与 E2E 用的
+`scripts/dev/Dockerfile.e2e-minio-tools` 完全一致）。同一镜像通过入口分发脚本
+同时充当 `minio` server 与 `minio-init` 初始化容器；`docker compose build minio`
+即可单独重建。
+
+与旧上游镜像的差异与保留项：
+
+- 相同二进制的新封装，**不是**旧 OCI digest 的复现；镜像内容改为 alpine +
+  官方二进制 + 两个入口脚本。
+- 沿用旧官方镜像的默认 root 运行，避免既有 `minio-data` 卷发生 UID 迁移；
+  数据卷仍由 compose 显式挂载，镜像内不声明 VOLUME。
+- 基座无 curl，minio 健康检查改用 BusyBox `wget` 探测同一
+  `/minio/health/live` 端点，语义不变。
+- `minio-init` 不再用 `mc alias set`（root secret 曾出现在 argv）：凭据从
+  环境读取，经 BusyBox awk 正确转义（引号、反斜杠、换行等控制字符）写入
+  compose 挂载的私有 tmpfs（`MC_CONFIG_DIR=/mc-config`，目录 0700、
+  config.json 0600）中的 mc config v10 JSON，不出现在 argv、镜像层或日志；
+  桶创建与"禁止匿名访问"校验语义保持不变。
+- 构建时需要能访问 github.com 下载两份二进制；构建后离线可用。
+
+2026-10-22 实际验证范围：linux/arm64 本机真实构建、`minio/mc --version`
+核对既定版本、全新隔离 fixture 全链启动（DB→migrate→bootstrap→MinIO
+init→Go runtime→Caddy，HTTPS 经 Caddy 本地 CA 真实证书链验证）；linux/amd64
+同 Dockerfile 真实构建并在 OrbStack Rosetta 下执行两份 `--version`。未运行
+的场景：amd64 生产部署、多节点与真实外部存储。MinIO 上游归档后的维护与
+长期存储选型仍为 Owner 待决事项，不因本封装自动关闭。
+
+
 启动顺序固定为：数据库健康 → SQL 迁移 → owner/admin bootstrap → MinIO bucket
 初始化 → `companiond` 健康 → Caddy。任一步失败都会阻止后续服务启动。
 
