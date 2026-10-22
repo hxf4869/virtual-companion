@@ -4,11 +4,86 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
 )
+
+// sseWriter bounds every socket write of one SSE stream. A subscriber that
+// stops draining blocks its handler inside the kernel write path; the hub
+// queue overflow only removes the subscriber from fan-out and cannot release
+// that blocked write. arming a fresh write deadline per frame does: the write
+// fails, the handler returns, and the response finish path also fails so the
+// connection is closed. The deadline is cleared again before the handler goes
+// back to waiting for events, so provider idle gaps never inherit a stale
+// deadline, and each connection's handler is independent, so one stalled
+// stream cannot limit another.
+type sseWriter struct {
+	w       http.ResponseWriter
+	rc      *http.ResponseController
+	timeout time.Duration
+}
+
+func (s *Server) newSSEWriter(w http.ResponseWriter) (*sseWriter, error) {
+	sw := &sseWriter{
+		w:       w,
+		rc:      http.NewResponseController(w),
+		timeout: s.cfg.HTTP.SSEWriteTimeout,
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	if err := sw.arm(); err != nil {
+		return nil, err
+	}
+	w.WriteHeader(http.StatusOK)
+	if err := sw.rc.Flush(); err != nil {
+		return nil, err
+	}
+	return sw, nil
+}
+
+func (sw *sseWriter) arm() error {
+	return sw.rc.SetWriteDeadline(time.Now().Add(sw.timeout))
+}
+
+// disarm lifts the write deadline while the handler waits for the next event.
+func (sw *sseWriter) disarm() {
+	_ = sw.rc.SetWriteDeadline(time.Time{})
+}
+
+// finish re-arms the deadline for the response close path (terminal chunk,
+// buffered trailer) so a subscriber that stops reading right after the last
+// frame cannot pin the connection goroutine either.
+func (sw *sseWriter) finish() {
+	_ = sw.arm()
+}
+
+func (sw *sseWriter) write(ev realtime.Event) error {
+	if err := sw.arm(); err != nil {
+		return err
+	}
+	if err := realtime.Write(sw.w, ev); err != nil {
+		return err
+	}
+	err := sw.rc.Flush()
+	if err == nil {
+		sw.disarm()
+	}
+	return err
+}
+
+func (sw *sseWriter) writeAll(evs []realtime.Event) error {
+	for _, ev := range evs {
+		if err := sw.write(ev); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func (s *Server) handleRealtimeStream(w http.ResponseWriter, r *http.Request) {
 	// Browsers omit Origin on a normal same-origin GET. Credentialed
@@ -68,7 +143,11 @@ func (s *Server) handleRealtimeStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sub.Close()
 
-	flusher := writeSSEHeaders(w)
+	sw, err := s.newSSEWriter(w)
+	if err != nil {
+		return
+	}
+	defer sw.finish()
 	var terminal companion.PublicEvent
 	for {
 		ev, ok := sub.Recv(r.Context())
@@ -79,54 +158,33 @@ func (s *Server) handleRealtimeStream(w http.ResponseWriter, r *http.Request) {
 			terminal = ev.Name
 			break
 		}
-		if err := realtime.Write(w, ev); err != nil {
+		if sw.write(ev) != nil {
 			return
 		}
-		flush(flusher)
 	}
 	if terminal == "" {
 		return
 	}
 	committed, found, loadErr := s.realtime.Snapshots.Load(r.Context(), principal.AccountID, gid)
 	if loadErr == nil && found {
-		writeEvents(w, flusher, realtime.SnapshotEvents(committed.Text))
+		if sw.writeAll(realtime.SnapshotEvents(committed.Text)) != nil {
+			return
+		}
 	}
-	_ = realtime.Write(w, realtime.Named(terminal))
-	flush(flusher)
+	_ = sw.write(realtime.Named(terminal))
 }
 
 func (s *Server) writeSnapshotStream(w http.ResponseWriter, snap realtime.Snapshot) {
-	flusher := writeSSEHeaders(w)
-	writeEvents(w, flusher, realtime.SnapshotEvents(snap.Text))
+	sw, err := s.newSSEWriter(w)
+	if err != nil {
+		return
+	}
+	defer sw.finish()
+	if sw.writeAll(realtime.SnapshotEvents(snap.Text)) != nil {
+		return
+	}
 	if snap.Terminal != "" {
-		_ = realtime.Write(w, realtime.Named(snap.Terminal))
-		flush(flusher)
-	}
-}
-
-func writeSSEHeaders(w http.ResponseWriter) http.Flusher {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	flusher, _ := w.(http.Flusher)
-	flush(flusher)
-	return flusher
-}
-
-func writeEvents(w http.ResponseWriter, flusher http.Flusher, evs []realtime.Event) {
-	for _, ev := range evs {
-		if err := realtime.Write(w, ev); err != nil {
-			return
-		}
-		flush(flusher)
-	}
-}
-
-func flush(f http.Flusher) {
-	if f != nil {
-		f.Flush()
+		_ = sw.write(realtime.Named(snap.Terminal))
 	}
 }
 

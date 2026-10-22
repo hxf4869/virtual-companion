@@ -137,25 +137,45 @@ func splitNamed(first companion.PublicEvent, text string) []Event {
 	return out
 }
 
+// fit returns the longest valid UTF-8 prefix of text whose encoded event
+// stays within max bytes. Encoded length grows monotonically with the prefix
+// length, so a bounded binary search over encodes finds it; the previous
+// one-byte-per-re-encode loop was quadratic exactly on escaped payloads
+// (json.Marshal writes `<` as \u003c), which the terminal snapshot replay
+// sends for real. Candidates must be clamped on the full string: clamping an
+// already-sliced prefix cannot repair a rune cut at its end.
 func fit(name companion.PublicEvent, text string, max int) string {
 	if text == "" {
 		return ""
 	}
-	chunk := companion.ClampUTF8(text, max)
-	for chunk != "" && encodedLen(Event{Name: name, Text: chunk}) > max {
-		next := companion.ClampUTF8(chunk, len(chunk)-1)
-		if next == chunk {
-			if len(chunk) <= 1 {
-				return ""
-			}
-			next = companion.ClampUTF8(chunk, len(chunk)-1)
-			if next == chunk {
-				return ""
-			}
-		}
-		chunk = next
+	// encodedLen is at least the raw byte length, so a prefix longer than
+	// max can never fit.
+	hi := len(text)
+	if max < hi {
+		hi = max
 	}
-	return chunk
+	best := ""
+	lo := 1
+	for lo <= hi {
+		mid := lo + (hi-lo)/2
+		chunk := companion.ClampUTF8(text, mid)
+		if chunk == "" {
+			// The first rune has not fully arrived within mid bytes; only
+			// a longer prefix can produce a non-empty candidate. Shrinking
+			// left here dropped short single-rune texts entirely.
+			lo = mid + 1
+			continue
+		}
+		if encodedLen(Event{Name: name, Text: chunk}) <= max {
+			best = chunk
+			// Advance on mid, not on the clamped length: successive mid
+			// values can land on the same multi-byte rune step.
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	return best
 }
 
 func hasSSEID(b []byte) bool {

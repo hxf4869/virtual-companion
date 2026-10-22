@@ -180,6 +180,14 @@ func (s *statusRecorder) Flush() {
 	}
 }
 
+// FlushError flushes the underlying writer and reports its flush error.
+// http.ResponseController resolves FlushError before Flusher, so without this
+// method the void Flush above would make controller flushes swallow
+// transport errors (e.g. a write deadline hit by a stalled SSE subscriber).
+func (s *statusRecorder) FlushError() error {
+	return http.NewResponseController(s.ResponseWriter).Flush()
+}
+
 func (s *statusRecorder) Unwrap() http.ResponseWriter {
 	return s.ResponseWriter
 }

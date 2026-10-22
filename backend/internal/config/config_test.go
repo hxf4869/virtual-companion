@@ -151,6 +151,34 @@ func TestShutdownTimeoutAndVersionDefaults(t *testing.T) {
 	}
 }
 
+func TestSSEWriteTimeoutEnv(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadEnv(env(map[string]string{
+		"VC_MODE":                   "full",
+		"VC_HTTP_SSE_WRITE_TIMEOUT": "150ms",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HTTP.SSEWriteTimeout != 150*time.Millisecond {
+		t.Fatalf("sse write timeout %s", cfg.HTTP.SSEWriteTimeout)
+	}
+	_, err = LoadEnv(env(map[string]string{
+		"VC_MODE":                   "full",
+		"VC_HTTP_SSE_WRITE_TIMEOUT": "0s",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_HTTP_SSE_WRITE_TIMEOUT") {
+		t.Fatalf("expected sse timeout validation error, got %v", err)
+	}
+	_, err = LoadEnv(env(map[string]string{
+		"VC_MODE":                   "full",
+		"VC_HTTP_SSE_WRITE_TIMEOUT": "not-a-duration",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_HTTP_SSE_WRITE_TIMEOUT") {
+		t.Fatalf("expected sse timeout parse error, got %v", err)
+	}
+}
+
 func TestDatabaseRequiresOwnerBindingSecret(t *testing.T) {
 	t.Parallel()
 	_, err := LoadEnv(env(map[string]string{

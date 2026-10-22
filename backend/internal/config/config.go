@@ -155,6 +155,10 @@ type HTTP struct {
 	Addr              string
 	AllowedOrigins    []string
 	TrustProxyHeaders bool
+	// SSEWriteTimeout bounds each SSE write+flush to one realtime subscriber
+	// so a stalled reader is disconnected instead of pinning its handler. It
+	// is reset before every write and never limits stream lifetime.
+	SSEWriteTimeout time.Duration
 }
 
 type Log struct {
@@ -215,6 +219,7 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			Addr:              valueOr(strings.TrimSpace(getenv("VC_HTTP_ADDR")), "127.0.0.1:8080"),
 			AllowedOrigins:    origins,
 			TrustProxyHeaders: false,
+			SSEWriteTimeout:   10 * time.Second,
 		},
 		Log:   Log{Level: valueOr(strings.ToLower(strings.TrimSpace(getenv("VC_LOG_LEVEL"))), "info")},
 		Pprof: Pprof{Addr: strings.TrimSpace(getenv("VC_PPROF_ADDR"))},
@@ -302,6 +307,13 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("VC_SHUTDOWN_TIMEOUT: %w", err)
 		}
 		cfg.Shutdown.Timeout = d
+	}
+	if raw := strings.TrimSpace(getenv("VC_HTTP_SSE_WRITE_TIMEOUT")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("VC_HTTP_SSE_WRITE_TIMEOUT: %w", err)
+		}
+		cfg.HTTP.SSEWriteTimeout = d
 	}
 	if raw := strings.TrimSpace(getenv("VC_DB_MAX_CONNS")); raw != "" {
 		n, err := strconv.ParseInt(raw, 10, 32)
@@ -536,6 +548,9 @@ func (c Config) Validate() error {
 	}
 	if c.Shutdown.Timeout <= 0 {
 		return fmt.Errorf("VC_SHUTDOWN_TIMEOUT must be > 0")
+	}
+	if c.HTTP.SSEWriteTimeout <= 0 {
+		return fmt.Errorf("VC_HTTP_SSE_WRITE_TIMEOUT must be > 0")
 	}
 	if c.Pprof.Addr != "" {
 		host, _, err := net.SplitHostPort(c.Pprof.Addr)

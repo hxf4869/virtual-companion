@@ -628,6 +628,33 @@ preclaim 重试/首 delta 锁定回放、config.deltaMs 解析、空 JSON cancel
 expected account 均通过；probe1/2 各 21 项 exact 查询 rc0/count0、leftovers={}。
 细节见 `docs/planning/g12-go-capacity-sample.md` §13。
 
+2026-10-22 真实 HTTP 慢订阅者隔离与退出 + UTF8 事件切分修复（VC-R63，Go httpapi/
+realtime 层功能回归，非采样、非实栈）：行为——SSE 每次写与 Flush 前设 per-write
+deadline（config.HTTP.SSEWriteTimeout 默认 10s，VC_HTTP_SSE_WRITE_TIMEOUT，>0 校验），
+写成功后清除（provider 静默等待不继承过期期限），handler 退出前再设以保护收尾写；写与
+Flush 错误经 statusRecorder 新增 FlushError 透传（ResponseController.Flush 否则命中
+void Flush 吞错），错误即退出且 snapshot 失败不继续 terminal，覆盖 header/event/
+committed snapshot/terminal/durable fallback 全部写路径。realtime/event.go fit() 由
+逐字节重编码（转义文本 O(n²)）改为完整原串上 ClampUTF8+精确 encodedLen 判定的有界
+二分（空前缀向右、超限向左、hi=min(len,max)）：单中文/emoji/é 不丢不乱码（Root 三轮
+direct 回归：长 `<`、`🙂`×5000、短值三例均在坏候选红后修复绿），逐帧 UTF8 有效、JSON
+解码重建全文一致、每帧≤16KiB、snapshot 首帧/delta 后续语义保持。真实 TCP 回归
+TestRealHTTPSlowSubscriberIsolatedAndExits：慢客户端走 Server.Handler() 全链
+（SO_RCVBUF 4096、包装既有 listener SetWriteBuffer 8KiB 失败直报）只读响应头，`<`
+负载 6 倍线上放大（逻辑 200KiB<256KiB、单帧~6KiB<16KiB，不放宽生产上限）制造真实内核
+回压，发布按 fast 实际帧进度步进；正常 live 流（hub 队列~126KiB 线上低于内核吸收点）
+断言隔离与有界退出、可结束为 keep-alive Idle；真实受阻的 catch-up/durable 单流
+~1.2MiB 必须由服务端关闭（严格 StateClosed），drain 仅认 EOF/ECONNRESET；健康流全文+
+唯一 terminal 完整收束、subscriber 计数归零。有效红：HEAD HTTP 两文件（realtime.go/
+server.go）Go -overlay 自然失败 2.62s rc1（观察仅支持有界窗口内未退出/连接未关）；
+此前 throttledConn 人工 Write 等待被 SIGQUIT 强制的 173.5s 不算有效红。验证（
+go1.27.1 darwin/arm64，go.mod 声明 1.26.7）：realtime/httpapi/config 三包与 race
+最新 rc0（Root 冻结 overlay 七类实际输入×snapshot/delta 14 路径全过；16KiB 诊断
+ASCII 356µs、`<` 文本 2.362ms，非性能采样/门槛）。边界：完成/commit 由测试 fixture
+代行（非真实 provider/DB）；Caddy/H5 仅只读配置与代码事实（/api/* flush_interval -1
+无第二层缓冲、10s deadline 无反证、H5 断开按普通重连由 chat.snapshot 替换语义收敛），
+不构成实栈性能结论；G12 §19.1 S6 slow 实栈、G12 整体验收与 Owner gate 仍开放。
+
 2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
 最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
 Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于
