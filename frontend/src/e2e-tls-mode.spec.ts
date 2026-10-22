@@ -23,7 +23,7 @@ import {
 // 生命周期回归需要 mock 子进程/文件系统；纯函数部分不触碰它们。
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
 vi.mock("node:fs/promises", () => ({
-  readFile: vi.fn(),
+  readFile: vi.fn(), realpath: vi.fn(),
   rename: vi.fn(),
   writeFile: vi.fn(),
   stat: vi.fn(),

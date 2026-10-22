@@ -3,7 +3,7 @@ import { unlink } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseHttpStackState, teardownHttpStack, type HttpStackState } from "../e2e/global-teardown";
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
-vi.mock("node:fs/promises", () => ({ readFile: vi.fn(), stat: vi.fn(), unlink: vi.fn() }));
+vi.mock("node:fs/promises", () => ({ readFile: vi.fn(), realpath: vi.fn(), stat: vi.fn(), unlink: vi.fn() }));
 const START = "Fri Oct 23 06:00:00 2026";
 const FILE = "/tmp/http-owned/state.json";
 function fixture(overrides: Record<string, unknown> = {}): HttpStackState {

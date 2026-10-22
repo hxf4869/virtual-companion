@@ -180,6 +180,17 @@ HTTP 状态使用 v4；旧记录缺少归属信息时显式失败并保留。E2E
 用于保留调试现场；synthetic-eval 只有核验恢复 SYNTHETIC/eval=false 后才解除
 保留义务，恢复失败时即使启动器停止也保留本轮进程、容器和恢复记录。
 
+显式关闭完整的 HTTP v4 保留栈（Node 22，使用日志中该轮的绝对状态文件路径）：
+
+```bash
+node --experimental-strip-types scripts/dev/close-http-e2e-stack.mjs --state /absolute/path/to/state.json
+```
+
+命令核对本轮收据、实际容器归属与运行目录后关闭进程及 Docker 资源；
+synthetic-eval 若仍为该轮 BETA 会先恢复并核验，若已回到 SYNTHETIC 则直接
+关闭，无需重新激活 BETA。恢复或归属核验失败时保留现场并返回非零；旧版、
+不完整或缺失的记录不会自动关闭。关闭成功不改变原有 E2E 的验收结果。
+
 TLS E2E 每轮从当前源码重建 H5 与生产派生镜像，在
 `https://localhost:18457` 启动独立合成栈；可用 `E2E_TLS_PORT` 改端口。
 启动器先用本轮 CA 验证证书链、主机名与实际 HTTP/2，再执行全部浏览器旅程。

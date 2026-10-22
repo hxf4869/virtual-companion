@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { readFile, stat, unlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, realpath, stat, unlink } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const STATE_VERSION = 4;
 const MAX_STATE_BYTES = 4096;
@@ -529,39 +530,159 @@ function combineErrors(primary: unknown, secondary: unknown): Error {
   );
 }
 
+async function dischargeHttpRestoreObligation(state: HttpStackState): Promise<void> {
+  try { await unlink(resolve(state.runDir, ".preserve-stack")); }
+  catch (e) { if (!isMissing(e)) throw e; }
+}
+
+async function restoreHttpReleaseGate(state: HttpStackState): Promise<void> {
+  restoreSyntheticReleaseGate(state);
+  await dischargeHttpRestoreObligation(state);
+}
+
+async function destroyHttpStack(state: HttpStackState, stateFile: string): Promise<void> {
+  try {
+    await stopProcesses(state);
+    if (state.creating) cleanupOwnedReceipts(state);
+    for (const name of ["companiond", "minio-tools.iid", ".stack-creating"]) {
+      try { await unlink(resolve(state.runDir, name)); }
+      catch (e) { if (!isMissing(e)) throw e; }
+    }
+    try { await unlink(stateFile); } catch (e) { if (!isMissing(e)) throw e; }
+  } finally {
+    for (const suffix of [".auth.json", ".shared-chat.json", ".shared-memory.json", ".shared-admin.json"]) {
+      try { await unlink(stateFile + suffix); } catch (e) { if (!isMissing(e)) throw e; }
+    }
+  }
+}
+
 export async function teardownHttpStack(state: HttpStackState, stateFile: string): Promise<void> {
   let validationError: unknown;
   let restorationError: unknown;
   if (state.releaseMode === "synthetic-eval") {
-    const expectedBeta = "BETA|true|" + state.releasePolicyVersion;
-    try { assertSyntheticReleaseGate(state, expectedBeta); } catch (e) { validationError = e; }
-    try {
-      restoreSyntheticReleaseGate(state);
-      // The launcher preserves a pending synthetic-eval run on EXIT. Only
-      // successful, verified restoration discharges that obligation.
-      try { await unlink(resolve(state.runDir, ".preserve-stack")); }
-      catch (e) { if (!isMissing(e)) throw e; }
-    } catch (e) { restorationError = e; }
+    try { assertSyntheticReleaseGate(state, "BETA|true|" + state.releasePolicyVersion); }
+    catch (e) { validationError = e; }
+    try { await restoreHttpReleaseGate(state); } catch (e) { restorationError = e; }
   }
   if (restorationError) throw validationError ? combineErrors(validationError, restorationError) : restorationError;
-  if (!state.keep) {
+  if (!state.keep) await destroyHttpStack(state, stateFile);
+  if (validationError) throw validationError;
+}
+
+type CloseReceipt = Record<string, unknown>;
+async function readCloseReceipt(path: string, runDir: string): Promise<CloseReceipt> {
+  const actual = await realpath(path);
+  const metadata = await stat(actual);
+  if (dirname(actual) !== runDir || !metadata.isFile() || metadata.size > 65_536) {
+    throw new Error("HTTP close receipt must be a bounded file in this run directory");
+  }
+  let value: unknown;
+  try { value = JSON.parse(await readFile(actual, "utf8")); }
+  catch { throw new Error("HTTP close receipt is not valid JSON"); }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("HTTP close receipt must be an object");
+  return value as CloseReceipt;
+}
+
+async function httpCloseState(state: HttpStackState): Promise<HttpStackState> {
+  if (!state.creating || state.container === null || state.containers.length !== 3
+      || state.project !== "vce2ehttp-" + state.nonce) {
+    throw new Error("HTTP close requires a complete v4 creation record; incomplete state is preserved");
+  }
+  const runDir = await realpath(state.runDir);
+  const receiptPaths = [state.receipts.capture, state.receipts.built, state.receipts.collectors, state.receipts.leftoversOut];
+  if (new Set(receiptPaths.map((p) => resolve(p))).size !== receiptPaths.length) throw new Error("HTTP close receipt paths must be distinct");
+  for (const path of receiptPaths) {
+    if (await realpath(dirname(path)) !== runDir) throw new Error("HTTP close receipt path leaves this run directory");
+  }
+  try {
+    await stat(state.receipts.collectors);
+    throw new Error("HTTP close found an unexpected collector record; preserved");
+  } catch (e) { if (!isMissing(e)) throw e; }
+  try {
+    if (dirname(await realpath(state.receipts.leftoversOut)) !== runDir) throw new Error("HTTP close output path leaves this run directory");
+  } catch (e) { if (!isMissing(e)) throw e; }
+  const capture = await readCloseReceipt(state.receipts.capture, runDir);
+  const built = await readCloseReceipt(state.receipts.built, runDir);
+  const ownRef = "virtual-companion-e2e-minio:" + state.nonce;
+  const imageId = built[ownRef];
+  if (Object.keys(built).length !== 1 || typeof imageId !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(imageId)) {
+    throw new Error("HTTP close tools-image receipt does not match this run");
+  }
+  if (capture.nonce !== state.nonce || capture.project !== state.project
+      || !Array.isArray(capture.containers) || capture.containers.length !== 3
+      || !Array.isArray(capture.volumes) || capture.volumes.length !== 1
+      || !Array.isArray(capture.networks) || capture.networks.length !== 0) {
+    throw new Error("HTTP close creation receipt does not match this run");
+  }
+  const entries = capture.containers as CloseReceipt[];
+  const wanted = new Set(state.containers);
+  const services = new Set(["pg", "minio", "minio-init"]);
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null || typeof entry.cid !== "string"
+        || !wanted.has(entry.cid) || entry.nonce !== state.nonce || typeof entry.service !== "string"
+        || !services.delete(entry.service) || seen.has(entry.cid)) {
+      throw new Error("HTTP close container receipt is incomplete or mismatched");
+    }
+    seen.add(entry.cid);
+    const live = spawnSync("docker", ["--context", "orbstack", "inspect", "--format",
+      "{{json .Config.Labels}}\n{{json .Mounts}}", entry.cid], { encoding: "utf8", timeout: 10_000 });
+    if (live.status !== 0) throw new Error("HTTP close cannot confirm a recorded container; preserved");
+    let labels: CloseReceipt;
+    let mounts: CloseReceipt[];
     try {
-      await stopProcesses(state);
-      if (state.creating) cleanupOwnedReceipts(state);
-      // A dead or KEEP supervisor can leave these known per-run outputs.
-      // Remove only exact files after the owned processes/resources are gone.
-      for (const name of ["companiond", "minio-tools.iid", ".stack-creating"]) {
-        try { await unlink(resolve(state.runDir, name)); }
-        catch (e) { if (!isMissing(e)) throw e; }
-      }
-      try { await unlink(stateFile); } catch (e) { if (!isMissing(e)) throw e; }
-    } finally {
-      for (const suffix of [".auth.json", ".shared-chat.json", ".shared-memory.json", ".shared-admin.json"]) {
-        try { await unlink(stateFile + suffix); } catch (e) { if (!isMissing(e)) throw e; }
+      const lines = live.stdout.trim().split("\n");
+      labels = JSON.parse(lines[0]) as CloseReceipt;
+      mounts = JSON.parse(lines[1]) as CloseReceipt[];
+    } catch { throw new Error("HTTP close container identity response is invalid"); }
+    if (!labels || labels["vc.g12.nonce"] !== state.nonce || labels["com.docker.compose.project"] !== state.project
+        || labels["com.docker.compose.service"] !== entry.service || !Array.isArray(mounts)) {
+      throw new Error("HTTP close live container ownership differs; no shutdown performed");
+    }
+    if (entry.service === "pg" && entry.cid !== state.container) throw new Error("HTTP close database CID differs from the creation receipt");
+    if (entry.service === "minio-init") {
+      const config = mounts.find((m) => m.Type === "bind" && m.Destination === "/mc-config/config.json" && m.RW === false);
+      if (!config || typeof config.Source !== "string" || await realpath(resolve(config.Source, "..", "..")) !== runDir) {
+        throw new Error("HTTP close run directory is not the original fixture bind directory");
       }
     }
   }
-  if (validationError) throw validationError;
+  if (services.size !== 0) throw new Error("HTTP close service creation records are incomplete");
+  const volume = capture.volumes[0] as CloseReceipt;
+  if (!volume || volume.name !== state.project + "_db-data" || volume.nonce !== state.nonce) {
+    throw new Error("HTTP close database-volume receipt does not match this run");
+  }
+  // Public CLI input never chooses the Python program to execute. Reuse the
+  // current repository's existing cleanup engine with the verified receipts.
+  return { ...state, receipts: { ...state.receipts, resourcesPy:
+    fileURLToPath(new URL("../../scripts/measure/g12-go-capacity/resources.py", import.meta.url)) } };
+}
+
+/** Explicit resource closure is separate from the evaluation's BETA check. */
+export async function closeHttpStack(state: HttpStackState, stateFile: string): Promise<void> {
+  const owned = await httpCloseState(state);
+  if (owned.releaseMode === "synthetic-eval") {
+    const snapshot = releaseGateSnapshot(owned);
+    if (snapshot === "SYNTHETIC|false|" + owned.releasePolicyVersion) {
+      await dischargeHttpRestoreObligation(owned);
+    } else if (snapshot === "BETA|true|" + owned.releasePolicyVersion) {
+      await restoreHttpReleaseGate(owned);
+    } else {
+      throw new Error("HTTP close release gate differs from this run policy; preserved");
+    }
+  }
+  await destroyHttpStack(owned, stateFile);
+}
+
+export async function readStackStateFile(stateFile: string): Promise<HttpStackState | TlsStackState> {
+  const metadata = await stat(stateFile);
+  if (!metadata.isFile() || metadata.size > MAX_STATE_BYTES) throw new Error("E2E stack state file is not a small regular file");
+  const raw = await readFile(stateFile, "utf8");
+  try { return parseStackStateFile(raw); }
+  catch (e) {
+    if (e instanceof SyntaxError) throw new Error("E2E stack state is not valid JSON");
+    throw e;
+  }
 }
 
 export default async function globalTeardown(): Promise<void> {
@@ -572,11 +693,7 @@ export default async function globalTeardown(): Promise<void> {
 
   let state: StackState | TlsStackState;
   try {
-    const metadata = await stat(stateFile);
-    if (!metadata.isFile() || metadata.size > MAX_STATE_BYTES) {
-      throw new Error("E2E stack state file is not a small regular file");
-    }
-    state = parseStackStateFile(await readFile(stateFile, "utf8"));
+    state = await readStackStateFile(stateFile);
   } catch (error) {
     if (isMissing(error)) {
       return;
