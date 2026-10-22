@@ -102,12 +102,16 @@ tar 内含 `db.dump`、`objects/`（FULL 模式）、`backup-manifest.txt`（时
     函数已 `REVOKE ... FROM PUBLIC`，只有 migration-owner 角色可执行）。
 - MinIO：`VC_BACKUP_S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET`；本机有 `mc` 就用本机
   的，否则用容器化 `mc`（loopback endpoint 自动改写为 `host.docker.internal`）。
-  凭据允许包含引号/反斜杠/换行/回车：两个分支都只经「按名环境变量 →
-  `mc_alias_config.py` → 私有 mc config v10」传递（0700 临时目录 / 0600
-  config.json，位于归档工作树之外、退出即删），`mc` 经 `--config-dir` 读取；
-  不构造带 userinfo 的 `MC_HOST` URL、不执行 `mc alias set`，并主动丢弃继承的
-  `MC_HOST_local`/`MC_CONFIG_DIR`，`MC_UPDATE`/`MINIO_UPDATE` 显式 off。凭据
-  不出现在任何 argv、Docker 参数、容器 Config.Env、日志或 tar 归档。
+  凭据传输是无损的：两个分支都只经「按名环境变量 → `mc_alias_config.py` →
+  私有 mc config v10」传递（JSON 逐字节保留引号/反斜杠/CR/LF，不做单行拒收；
+  0700 临时目录 / 0600 config.json，位于归档工作树之外、退出即删），`mc` 经
+  `--config-dir` 读取；不构造带 userinfo 的 `MC_HOST` URL、不执行
+  `mc alias set`，并主动丢弃继承的 `MC_HOST_local`/`MC_CONFIG_DIR`，
+  `MC_UPDATE`/`MINIO_UPDATE` 显式 off。凭据不出现在任何 argv、Docker 参数、
+  容器 Config.Env、日志或 tar 归档（传输载体即调用方环境，能读该环境者不在
+  本接口防御范围）。注意「无损传输」≠「任意凭据可用」：access key 含 CR/LF
+  时无法通过 SigV4 Authorization 头认证（RFC 7230 头值约束），将 fail-closed
+  退出 4；secret key 侧无此限制（只参与签名）。
 - mc 客户端镜像：默认 `virtual-companion-minio:local`（VC-R54 `ops/deploy/minio`
   本地封装，需先 `docker compose build minio`；上游 `minio/mc` 固定 digest 已
   不可取，见 VC-R19/R54）。默认镜像只使用本地已存在的，缺失即退出 4 并提示

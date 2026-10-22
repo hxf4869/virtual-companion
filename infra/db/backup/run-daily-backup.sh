@@ -50,10 +50,15 @@
 #   MinIO object export (FULL mode):
 #   VC_BACKUP_S3_ENDPOINT       e.g. http://127.0.0.1:9000
 #   VC_BACKUP_S3_ACCESS_KEY     / VC_BACKUP_S3_SECRET_KEY / VC_BACKUP_S3_BUCKET
-#                                values may contain quotes / backslashes /
-#                                newlines: they travel via environment into a
-#                                private mc config v10 (see below), never via
-#                                argv or a userinfo MC_HOST URL
+#                                values travel via environment into a private
+#                                mc config v10 (see below) with LOSSLESS JSON
+#                                encoding — quotes / backslashes / CR / LF are
+#                                preserved verbatim (no single-line rejection).
+#                                Whether a credential then WORKS is still an
+#                                S3/HTTP constraint: an access key carrying
+#                                CR/LF cannot authenticate (SigV4 embeds it in
+#                                the Authorization header) and fails closed
+#                                with the sanitized exit-4 message.
 #   VC_BACKUP_S3_DOCKER_NETWORK optional network for the mc container; use the
 #                                Compose network with a service-DNS endpoint
 #                                when MinIO has no published host port

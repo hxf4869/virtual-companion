@@ -448,21 +448,39 @@ reconcile-before-read 与两场景防复活不变；`infra/db/backup/README.md` 
 mc 探针——config-v10-only alias 携含 quote/backslash/LF/CR 的 secret 完成
 ready/mb/cp/cat 且内容逐字节一致，mc 自身初始化的 config v10 字段布局与 helper
 一致（首次探针容器内误用 127.0.0.1 endpoint 且无单次超时，记 FIXTURE_INVALID，
-不作产品结论）；主以直接子进程父控制器（900s 上界）在稳定候选上一次通过完整
+不作产品结论）；主以直接子进程父控制器在稳定候选上一次通过完整
 `run-restore-drill.sh` 14 阶段（直接 rc=0、实测 81s：全迁移+五类种子、两次
 daily FULL（env passphrase/0600 keyfile）、三个 MAC 篡改/错密负例解密前拒绝、
 drop→gate A dave 五类复活、manifest reconcile gate B 五类归零+COMPLETED 墓碑、
 对象 gate C/C2/D/E 含 sha256 逐字节比对与墓碑前缀过滤、不可达 endpoint 退出 4
-脱敏且备份目录不变、恢复后业务断言+RLS 01/02/70 全绿）；独立子以官方同版
+脱敏且备份目录不变、恢复后业务断言+RLS 01/02/70 全绿；父控制器为直接子进程
+取真实 rc/耗时，但 900s 仅为轮询观察窗口（超窗只 TERM、无 KILL/reap，非硬
+上限；该次 81s 自然结束未触发），后续长验证需实现真正进程组 TERM+KILL/reap）；
+独立子以官方同版
 Darwin mc（GitHub release 单二进制官方 sha256 核验，私有目录临时使用，不全局
-安装）验证本机分支：复杂凭据（SK 含 quote/backslash/LF/CR）FULL 备份直接
-rc=0、解封解密展开后对象逐字节一致、tar 无任何 mc 配置、日志与 ps 采样秘密
-not-found、TMPDIR 无残留、自有容器清理 count 0；AK 含 LF/CR 属 SigV4
-Authorization 头真实协议约束（Go net/http 拒绝 header 值含 CTL，R54 已证
-MinIO 端接受、secret 侧不受限），该夹具记 FIXTURE_INVALID，备份侧对不可用
-凭据 fail-closed 退出 4。清理：本轮两命名前缀容器/卷精确查询 count 0、唯一
-镜像 tag 已删、私有明文（dump/object/mc 配置/passphrase/临时 native CLI）
-已清。范围外事实：amd64 侧本轮未重跑；本机无全局 mc，生产本机分支需 Owner
+安装）验证本机分支，两轮结论按凭据格式区分：attempt A（AK 含 CR/LF）是
+该格式下的真实被拒——宿主 mc mb/cp/ls/stat 全 rc=1（Go net/http 拒绝含 CTL
+的 SigV4 Authorization 头值）、daily 真实 fail-closed 退出 4，属真实负例证据
+而非产品缺陷；attempt B（AK 仅 quote/backslash、SK 含 quote/backslash/LF/CR
+的有效复杂凭据）mc 全 rc=0、FULL 备份直接 rc=0、解封解密展开后对象逐字节
+一致、tar 无任何 mc 配置、日志与 ps 采样秘密 not-found、TMPDIR 无残留、自有
+容器清理 count 0。明确口径：「JSON 能无损编码 CR/LF」≠「AK 可用于 HTTP
+认证」——AK 字符范围受 S3 有效凭据/SigV4 头约束（R54 已证 MinIO 端接受、
+secret 侧只参与签名不受此限）；helper/README/脚本头文案已按此收窄，helper
+只承诺凭据不进 process argv（传输载体即调用方环境），不再声称对一切 ps/
+环境读取形态不可见。清理（按实际查清范围）：本轮全部命名前缀容器精确查询
+count 0、唯一镜像 tag 已删、私有明文（dump/object/mc 配置/passphrase/临时
+native CLI）已清、留存日志无凭据子串；卷侧如实更正——命名卷 grep 与创建
+窗口悬空匹配仅精确删除 3 枚本轮窗口内悬空匿名卷，未能覆盖 drill PG 匿名卷：
+Root 以 daemon events（rc0，256 事件窗）关联已销毁 vc-restore-pg-23858 的
+CID→volume unmount，证明其匿名卷 be29bf3e3e23b800f9816e69237035111c9f6e
+798e6af6dec27ff0ccdf4d04f1 仍存在（精确 volume 查询 rc0/count1、无 destroy），
+随后引用查询 count0→volume rm rc0→复查 count0 精确清除；据此 drill cleanup
+的 `docker rm -f` 最小补 `-v`（R53 同源真实现象：`--rm` 与手动 rm 竞态仍留
+PG 匿名卷），并以最小真实消费者探针验证（真实创建同镜像 --rm PG→inspect
+Mounts 捕获真实匿名卷→执行补丁后同一清理语义→容器 count0 且捕获卷精确查询
+不存在，直接 rc=0）；未全局 prune、未动基线卷。范围外事实：amd64 侧本轮
+未重跑；本机无全局 mc，生产本机分支需 Owner
 安装 mc 或走 Docker 分支；launchd 装载仍由 Owner 手工执行。
 
 2026-10-22 本地 E2E 清理补删匿名卷（VC-R53）：PG18 镜像自带匿名 VOLUME，

@@ -125,8 +125,14 @@ CID_PG=""
 CID_MINIO_SRC=""
 CID_MINIO_DST=""
 cleanup() {
+    # -v matters for the PG container: the image declares an anonymous
+    # VOLUME, and with `docker run --rm` a manual `docker rm -f` can race
+    # past --rm volume reaping and leave the anonymous volume behind (same
+    # real phenomenon VC-R53 fixed in the E2E paths; verified live here after
+    # the 2026-10-22 drill left exactly one orphan volume). The MinIO images
+    # declare no VOLUME, so -v is a harmless no-op for them.
     for c in "$CID_PG" "$CID_MINIO_SRC" "$CID_MINIO_DST"; do
-        [ -n "$c" ] && docker rm -f "$c" >/dev/null 2>&1 || true
+        [ -n "$c" ] && docker rm -f -v "$c" >/dev/null 2>&1 || true
     done
     rm -rf "$DRILL_ROOT" "$MC_SECRET_DIR"
 }

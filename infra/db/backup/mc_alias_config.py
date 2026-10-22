@@ -2,10 +2,16 @@
 """Write a private mc (MinIO client) config v10 for exactly one alias.
 
 Shared by run-daily-backup.sh and run-restore-drill.sh (VC-R55). The three
-credential values are read from the environment BY NAME, so they never appear
-in any argv, ps output, or log line; the JSON encoding keeps quote, backslash,
-newline and carriage-return secrets verbatim (an environment value cannot
-carry NUL, which stays the only excluded byte). The target directory is
+credential values are read from the environment BY NAME, so they never enter
+any process argv; the transport IS the caller's environment, so anything that
+can already read that environment can read the values — this helper only
+keeps them out of argv/ps-command-lines, logs, and the generated file's
+permissions keep them private on disk. The JSON encoding is lossless for
+quote, backslash, newline and carriage-return bytes (an environment value
+cannot carry NUL, the only excluded byte); whether a credential is USABLE is
+a separate S3/HTTP constraint — e.g. a SigV4 access key cannot carry CR/LF
+because it is embedded verbatim in the Authorization header, which RFC 7230
+restricts to visible ASCII. The target directory is
 created 0700 with a 0600 config.json, lives outside the backup working tree,
 and is removed by the callers on exit. mc consumes it via
 `mc --config-dir DIR`, so no `mc alias set` invocation and no userinfo
