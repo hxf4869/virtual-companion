@@ -101,12 +101,20 @@ tar 内含 `db.dump`、`objects/`（FULL 模式）、`backup-manifest.txt`（时
   - `VC_BACKUP_PG_USER` 默认 `vc_migrator`（deploy bootstrap 超级用户；tombstone
     函数已 `REVOKE ... FROM PUBLIC`，只有 migration-owner 角色可执行）。
 - MinIO：`VC_BACKUP_S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET`；本机有 `mc` 就用本机
-  的，否则用 pinned digest 的 `minio/mc` 容器（loopback endpoint 自动改写为
-  `host.docker.internal`）。MinIO 不发布宿主端口时，设
-  `VC_BACKUP_S3_DOCKER_NETWORK=<compose-network>` 并使用容器服务 DNS endpoint
-  （Dogfood 默认：`deploy_default` + `http://minio:9000`）。dockerized `mc` 从
-  0700 临时目录中的 0600 只读文件读取凭据；Docker 参数、容器 Config.Env 和
-  脱敏日志均不包含凭据值。
+  的，否则用容器化 `mc`（loopback endpoint 自动改写为 `host.docker.internal`）。
+  凭据允许包含引号/反斜杠/换行/回车：两个分支都只经「按名环境变量 →
+  `mc_alias_config.py` → 私有 mc config v10」传递（0700 临时目录 / 0600
+  config.json，位于归档工作树之外、退出即删），`mc` 经 `--config-dir` 读取；
+  不构造带 userinfo 的 `MC_HOST` URL、不执行 `mc alias set`，并主动丢弃继承的
+  `MC_HOST_local`/`MC_CONFIG_DIR`，`MC_UPDATE`/`MINIO_UPDATE` 显式 off。凭据
+  不出现在任何 argv、Docker 参数、容器 Config.Env、日志或 tar 归档。
+- mc 客户端镜像：默认 `virtual-companion-minio:local`（VC-R54 `ops/deploy/minio`
+  本地封装，需先 `docker compose build minio`；上游 `minio/mc` 固定 digest 已
+  不可取，见 VC-R19/R54）。默认镜像只使用本地已存在的，缺失即退出 4 并提示
+  先构建，绝不自动 pull/升级；`VC_BACKUP_MC_IMAGE` 覆盖保留原语义，客户端统一
+  经 `--entrypoint mc` 调用（标准 `minio/mc` 镜像与本地封装都兼容）。MinIO 不
+  发布宿主端口时，设 `VC_BACKUP_S3_DOCKER_NETWORK=<compose-network>` 并使用容器
+  服务 DNS endpoint（Dogfood 默认：`deploy_default` + `http://minio:9000`）。
 
 ### 退出码契约（launchd `LastExitStatus` 判读）
 
@@ -114,7 +122,7 @@ tar 内含 `db.dump`、`objects/`（FULL 模式）、`backup-manifest.txt`（时
 |---|---|
 | 0 | FULL 备份成功（DB + 对象） |
 | 2 | DB-only 归档：四个 `VC_BACKUP_S3_*` **全部未配置**（SKIP 已打印；非零是为了让 launchd 可见） |
-| 4 | MinIO endpoint/bucket **不可达**、凭据被拒或 mirror 中途失败——错误信息**稳定且脱敏**（不含 endpoint URL、凭据、原始 mc 输出） |
+| 4 | MinIO endpoint/bucket **不可达**、凭据被拒、mirror 中途失败，或默认客户端镜像本地缺失（不自动 pull）——错误信息**稳定且脱敏**（不含 endpoint URL、凭据、原始 mc 输出） |
 | 5 | `VC_BACKUP_S3_*` **配置了一部分**（视为笔误，硬失败） |
 | 6 | 归档自校验失败（MAC/解密/tar；产物已删除） |
 | 7 | 墓碑 manifest 自校验失败（产物已删除） |
@@ -160,6 +168,14 @@ WARNING 只会沉底，`LastExitStatus` 失败是唯一可靠可见的信号，�
    - 卸载：`launchctl bootout gui/$(id -u)/com.virtualcompanion.daily-backup`
 
 ## 端到端恢复演练（run-restore-drill.sh）
+
+镜像前置：演练的临时 MinIO server 与 mc 客户端默认都用
+`virtual-companion-minio:local`（VC-R54 `ops/deploy/minio` 本地封装；缺失即
+退出 7 并提示先 `docker compose build minio`，绝不自动 pull）。覆盖入口：
+`VC_RESTORE_DRILL_MINIO_IMAGE`（演练 server）与 `VC_BACKUP_MC_IMAGE`（mc 客户端，
+与每日备份同一契约，经 `--entrypoint mc` 调用）；显式覆盖保留普通
+`docker run` 语义。演练内 `mc_with` 同样走私有 mc config v10（凭据不进 argv/
+Config.Env/`mc alias set`）。
 
 证明每日备份产物可恢复，且顺序符合 ADR-0006 §7.4「恢复后先 reconcile、
 再开放读取」（全部合成数据，不连任何云对象存储）：

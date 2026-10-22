@@ -425,6 +425,46 @@ E2E（未改）。范围外事实：`infra/db/backup/run-restore-drill.sh` 与
 `run-daily-backup.sh` 仍引用同一批不可得 minio/mc digest，未改、待单独处理；
 amd64 生产部署未运行；MinIO 上游归档后维护与存储选型仍为 Owner 待决。
 
+2026-10-22 备份/恢复链 MinIO 客户端与凭据传输修复（VC-R55，R54 范围外事实
+收口）：`run-daily-backup.sh` 的 MC_IMAGE_DEFAULT 与 `run-restore-drill.sh` 的
+MINIO_IMAGE/MC_IMAGE 仍指 R19 已证不可取的旧 minio/mc digest；daily 本机分支用
+`MC_HOST_local=<userinfo URL>`（secret 进 env 工具 argv 且保留字符未编码）、
+Docker 分支与 restore `mc_with` 三行凭据文件 + 容器内 `mc alias set`（secret 进
+mc 进程 argv），且拒收含 LF/CR 的有效凭据。修复：两脚本默认改用 R54
+`virtual-companion-minio:local` 本地封装（restore 新增 `VC_RESTORE_DRILL_MINIO_IMAGE`
+server 覆盖；`VC_BACKUP_MC_IMAGE` client 覆盖保留原语义，Docker 客户端统一
+`--entrypoint mc`，标准 minio/mc 覆盖镜像与本地封装都兼容；server 仍走镜像
+dispatcher `server /data`）；默认镜像本地缺失即 fail-fast 提示先
+`docker compose build minio`（daily 退出 4 / drill 退出 7），绝不自动 pull/升级。
+凭据传输改为新增共享 helper `mc_alias_config.py`（python3 标准库）：按名环境
+变量读原值 → 私有单 alias mc config v10（0700 目录/0600 config.json，位于归档
+工作树之外、退出即删），mc 经 `--config-dir` 读取；不再构造 userinfo URL、不再
+`mc alias set`，本机分支 `env -u MC_HOST_local -u MC_CONFIG_DIR` 防继承覆盖，
+`MC_UPDATE`/`MINIO_UPDATE` 显式 off；移除 LF/CR 单行拒收（JSON 转义保留原值）。
+VCBAE1 加密格式、SQL 生产模型、退出码语义、7 天保留、MAC 先验后解、
+reconcile-before-read 与两场景防复活不变；`infra/db/backup/README.md` 同步
+（镜像前置/私有配置/退出 4 含默认镜像缺失）。验证（OrbStack，本轮唯一 tag
+`vcr55-minio:local` 自 ops/deploy/minio 实构，minio/mc 版本与 R54 一致）：真实
+mc 探针——config-v10-only alias 携含 quote/backslash/LF/CR 的 secret 完成
+ready/mb/cp/cat 且内容逐字节一致，mc 自身初始化的 config v10 字段布局与 helper
+一致（首次探针容器内误用 127.0.0.1 endpoint 且无单次超时，记 FIXTURE_INVALID，
+不作产品结论）；主以直接子进程父控制器（900s 上界）在稳定候选上一次通过完整
+`run-restore-drill.sh` 14 阶段（直接 rc=0、实测 81s：全迁移+五类种子、两次
+daily FULL（env passphrase/0600 keyfile）、三个 MAC 篡改/错密负例解密前拒绝、
+drop→gate A dave 五类复活、manifest reconcile gate B 五类归零+COMPLETED 墓碑、
+对象 gate C/C2/D/E 含 sha256 逐字节比对与墓碑前缀过滤、不可达 endpoint 退出 4
+脱敏且备份目录不变、恢复后业务断言+RLS 01/02/70 全绿）；独立子以官方同版
+Darwin mc（GitHub release 单二进制官方 sha256 核验，私有目录临时使用，不全局
+安装）验证本机分支：复杂凭据（SK 含 quote/backslash/LF/CR）FULL 备份直接
+rc=0、解封解密展开后对象逐字节一致、tar 无任何 mc 配置、日志与 ps 采样秘密
+not-found、TMPDIR 无残留、自有容器清理 count 0；AK 含 LF/CR 属 SigV4
+Authorization 头真实协议约束（Go net/http 拒绝 header 值含 CTL，R54 已证
+MinIO 端接受、secret 侧不受限），该夹具记 FIXTURE_INVALID，备份侧对不可用
+凭据 fail-closed 退出 4。清理：本轮两命名前缀容器/卷精确查询 count 0、唯一
+镜像 tag 已删、私有明文（dump/object/mc 配置/passphrase/临时 native CLI）
+已清。范围外事实：amd64 侧本轮未重跑；本机无全局 mc，生产本机分支需 Owner
+安装 mc 或走 Docker 分支；launchd 装载仍由 Owner 手工执行。
+
 2026-10-22 本地 E2E 清理补删匿名卷（VC-R53）：PG18 镜像自带匿名 VOLUME，
 `docker rm -f` 不带 `-v` 时数据卷在每次 E2E 后残留累积（R52 收尾后 Root 以
 Docker events 定位并已精确清除本轮遗留的那枚卷）。两条既有、supervisor PID
