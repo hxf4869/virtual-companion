@@ -568,6 +568,66 @@ trial tag、18448、残留进程全 count0，leftovers 空{}，config set6000/re
 记录。仍缺 S1/S2/S6/S7/S8/S9 与真实采样，G12 维持未完成、不冻结 Owner 门槛；
 细节见 `docs/planning/g12-go-capacity-sample.md` §12。
 
+2026-10-22 S6 取消与断线重连功能验证（VC-R62，G12 §19.1 S6 cancel/reconnect 两
+子场景，非采样）：slow subscriber 仍明确未完成（现有 realtime 测试慢读者直连
+hub，不证明 HTTP 慢读者，未用普通重连冒充）。`fake_provider.mjs` 按Root补充
+增加客户端断开感知（close+writableEnded 区分、断开即停写该次 content chunks、
+abortedStreamRequests/completedStreamRequests 分开计数，普通 close 永不算 abort；
+本地实测 RST 与纯 FIN 均检测）。`workload.py` 提取 stream_events 共享帧读取
+（bytes 精确计数保留、ended 结束原因；break 提前退出不设 ended 即主动关闭证据），
+新增 subscribe_until_live_delta（首 live delta 后主动断开）、
+subscribe_snapshot_terminal（终态后订阅持进程内全文）、
+subscribe_cancel_after_first_delta（Root 复核修正：claim 前空流+EOF 同 deadline
+重试、首 live delta 后 response 锁定、EOF/error 无取消终态即败不重连冒充；回调
+异常 callback_error 上报不被吞；回调 snapshot/cancel 共享流 deadline 按剩余预算
+设 timeout）、cancel 空 body 携带 CSRF（后端写路径强制 CSRF——probe1 实栈 403
+暴露）与 run_scenario_s6（全文内存比较仅出布尔/长度）。`run.sh` run_scenario_s6
+（deltaMs 临时加宽、S6_PENDING_RESTORE_DELTA 首次 PUT 前登记全路径恢复+cleanup
+EXIT 恰一次有界重试；基线只读 config.deltaMs——Root 指出顶层双读必 NA 已修并
+以真实 stats 形状验证解析/恢复值路径；断言 abort/completed 差分恰 1/1、chunks∈
+(chunks,2*chunks)、请求差分恰2、worker/provider/subscribers 回 0、A/B 同窗帧与
+四组件 CPU 有效性）；--probe-s6 短入口；default profile 于 s3 后接入 s6 且既有
+断言全保留。测试：test_workload +12 共47（含 Root 精确 2-response claim 前竞态
+正例、锁定流 EOF 不重连负例、回调异常上报、同长不同文本全文比较负例、stub 消费
+真实 dict 形状与回调剩余预算断言）、新增 test_fake_provider.py 2 例（自然完成
+计 completed、中途断开计 abort 且停写；须先 resp.close() 释放 buffered reader
+fd 引用否则连接半开 fixture 正确地看不见）、test_resources 46/test_collector 27
+不变；bash -n/23 heredoc 编译/node --check 过。首次实栈 probe-s6（vcr62-probe1）
+rc=1 如实暴露 B 的 CSRF 403 被吞缺陷（A 全过），修复后其资源经 EXIT cleanup 完整
+回收；单次成功实栈 `--probe-s6`（vcg12c-vcr62-probe2、18448、独立控制器 umask077/
+独立进程组/真实 rc/1200s 未触）rc=0/95.8s：A 断线重订阅 chat.completed+7 live
+delta、终态后 44 字符 snapshot 全文==唯一 assistant 消息、assistant=1；B 原连接
+chat.cancelled 且 eof 收束、cancel 200/CANCELLED、前置 IN_PROGRESS、终态
+CANCELLED、assistant=0；provider 请求差分2（aborted1/completed1、chunks9∈(8,16)
+被取消流未写完）、worker/subscribers/provider active 全回0、deltaMs 400→50
+set/restore 有记录、A/B 同窗 A PID1+10完整帧+四组件 CPU 全 VALID、errors=[]。
+核清：project/nonce 容器卷网、三个 trial tag、18448、残留进程全 count0（两次
+probe 均然）、leftovers 空{}；vc-g3、DT 18380/18581/18590/18591、KB 及他人项目
+未触碰。S6 其余子场景（slow subscriber）、S1/S2/S7/S8/S9 与真实采样仍缺，G12
+维持未完成、不冻结 Owner 门槛。Root 恢复验收后三项收尾（成功 probe 之后、未再
+跑实栈）：回基线改有界真实状态等待（wait_s6_baseline 单一 monotonic 共享预算、
+每次恰用同一次 collector scrape 取三值、每次调用 timeout=恰为剩余预算不放宽、
+采样返回先判过期再接受零状态、慢 scrape 按本 Popen PGID 连同派生 docker CLI
+整组 kill+有界收割、ended 移至 settle 确认后、30s 预算超时显式失败；两轮 Root
+复核修正均落地：过期成功 1.27s 复现后重写、max(0.5,·) 放宽与生产 seam 否决后
+收敛为无旁路单入口，测试以 run.sh 文本提取真实函数并把 $HERE 指向临时 stub
+collector.py，覆盖延迟收束/永不收束/慢 scrape 被组杀且 pid 有界消失三路径）；test_fake_provider 去 SkipTest 改 Node 缺失明确
+AssertionError；/tmp/vcr62 控制器超时路径改以整组收束为
+清理条件（实际 PGID 探测判组存活、循环先 reap leader 防 zombie 占组，leader
+被 reap 绝不代替组结束）：进程组 TERM（15s 有界等组）→组仍存活则组 KILL（10s
+有界复核），leader_rc/group_cleared/unreaped 如实记录，真实调用显式携带
+G12_TRIAL_ID/G12_HTTPS_PORT（vcr62-probe2/18448）不落默认；两个自测负例实测
+（deadline 0.5s、TERM/KILL 各 0.3s）：leader-honors（Root 实跑负例——父响应
+TERM 先退 rc=-15、同组子忽略 TERM 存活）TERM 后组仍存活→组 KILL→
+group_cleared=True 无残留，all-ignore（全组忽略 TERM）TERM 无效→组 KILL→
+rc=-9 组清无残留；成功 probe 未触超时不算已验证，两路径现均经实测、未重跑
+实栈。收尾后仅重跑受影响检查：bash -n/24 heredoc 编译、
+test_resources 49（46+3）、test_fake_provider 2；test_workload 47/test_collector
+27 输入未变未重跑。Root 独立证据：回调预算 30→28→25 耗尽不发 cancel 且失败、
+preclaim 重试/首 delta 锁定回放、config.deltaMs 解析、空 JSON cancel 携 CSRF 与
+expected account 均通过；probe1/2 各 21 项 exact 查询 rc0/count0、leftovers={}。
+细节见 `docs/planning/g12-go-capacity-sample.md` §13。
+
 2026-10-22 物理备份/PITR 演练验证与清理收口（VC-R56）：前置完成 R55 记录两处
 最小事实纠正——UNVERIFIED 三卷口径「不可恢复」改「已删除、未恢复」（未核验
 Owner 备份/快照，不绝对化）、末尾「未动基线卷」改「无法证明上述 3 卷是否属于

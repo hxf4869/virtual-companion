@@ -696,3 +696,142 @@ subscribers=3 且无新增内容 delta；场景结束后 1 个 generation 正常
   三点异常退出）、S9（session revoke 并发）仍缺；S1/S2/S7 与 retained stack、
   10 分钟 idle/recovery、三次独立测量仍待补。G12 整体维持未完成、不冻结 Owner
   门槛；Owner gate/真实 provider/dogfood 均未涉及。
+
+## 13. 2026-10-22 补充：S6 取消与断线重连两子场景接入与实栈功能验证（VC-R62，非采样）
+
+### 场景语义（S6 部分完成：cancel + disconnect-reconnect；slow subscriber 仍明确开放）
+
+两个**独立** generation 走真实公共 HTTP 链路（Caddy TLS→companiond→runtime 内
+fake provider），全部前置条件用真实状态（收到 live `chat.delta`、非终态 snapshot
+状态），不依赖固定 sleep 或"线程已启动"推断：
+
+- **A 断线重连**：订阅者在收到首个 live delta 后**主动关闭** SSE 连接；断开不得
+  取消该 generation、不得重发 generation——按 snapshot-only 契约重订阅仍以
+  COMPLETED 收束且收到后续 live delta；终态后再订阅得到持久化 snapshot+终态事件，
+  且**全文**（内存内比较，仅输出布尔与长度）与唯一已提交 assistant 消息一致；
+  assistant 消息恰 1 条。
+- **B cancel**：携带首个 live delta 的那条 SSE response **保持打开**，cancel POST
+  在该 response 存活期间发出（回调的 snapshot/cancel 两次阻塞 HTTP 与流共享同一
+  monotonic deadline，各自按剩余预算设 timeout）；证明是**原连接**收到
+  `chat.cancelled` 广播且被服务端关闭（`original_stream_cancelled`，EOF 收束）；
+  cancel 响应 200/status=CANCELLED，snapshot 终态 CANCELLED，无已提交 assistant
+  消息。
+- **slow subscriber 子场景本轮明确不做**：现有 realtime 测试把慢读者直接接 hub，
+  不能宣称已证明 HTTP 慢读者；未用普通重连冒充慢消费者验证。
+
+### 交付
+
+- `fake_provider.mjs`（Root 补充要求）：`sendStream` 感知客户端断开——
+  `response.on("close")` 且 `writableEnded` 区分正常完成；断开后 parts 循环立即
+  停止、不再写该次 content chunks、销毁 response；新增
+  `abortedStreamRequests`（中途断开）/`completedStreamRequests`（写满+[DONE]，
+  普通 close 永不算 abort）两个计数，`/g12/stats` 顶层暴露。本地实测两种断开
+  （RST 与纯 FIN）均被检测并中止。
+- `workload.py`：提取 `stream_events` 增量帧读取生成器（`counter["bytes"]` 保持
+  原字节精确计数，`counter["ended"]` 记录 eof/deadline/error 结束原因；调用方
+  break 提前退出时不设 ended——本身就是客户端主动关闭的证据），`Client.sse` 改
+  用该生成器（既有 35 例回归全绿）；新增 `subscribe_until_live_delta`（首 live
+  delta 后立即主动关闭）、`subscribe_snapshot_terminal`（终态后订阅，携带进程内
+  全文）、`subscribe_cancel_after_first_delta`（claim 前空流+EOF 在同一绝对
+  deadline 内重试——R60/R61 语义；首 live delta 后 response **锁定**，EOF/error/
+  无取消终态即失败、绝不重订阅冒充 original_stream_cancelled；回调异常以
+  `callback_error` 显式上报不被流读取异常处理器吞掉）、`Client.cancel`（空 JSON
+  body 使其成为携带 CSRF 的内容写——后端写路径强制 CSRF）与 `run_scenario_s6`。
+- `run.sh`：`run_scenario_s6`（deltaMs 临时加宽、S6_PENDING_RESTORE_DELTA 在首次
+  PUT 前登记、成功/失败/workdog/EXIT 全路径恢复、cleanup EXIT 恰一次有界重试，
+  与 S3 holdMs 同契约）；基线解析**只读 `config.deltaMs`**（真实 stats 形状验证：
+  顶层无 deltaMs，Root 指出的双读必然 NA 失败已修）；断言块含 fixture abort/
+  completed 差分（恰 1/1）、content chunks ∈ (chunks, 2*chunks)（B 中止未写完）、
+  请求差分恰 2、worker/provider active/subscribers 回 0、A/B 同窗帧与四组件 CPU
+  有效性；`--probe-s6` 短入口（仅 S6 两链）；default profile 于 s3 后接入 s6 且
+  既有 s4/s3/s5/s10/soak 断言全保留；trial.summary 增加 s6 块。
+- 文档：模块 README 场景/用法/env/输出说明更新。
+
+### 验证（FUNCTIONAL_ONLY，非采样）
+
+- 本地：test_workload 47 例（+12：S6 三方法 scripted 语义含 Root 精确 2-response
+  claim 前竞态正例、锁定流 EOF 无终态不得重连负例、回调异常上报、同长不同文本
+  全文比较负例、run_scenario_s6 stub 两例覆盖真实 dict 形状消费与回调剩余预算
+  断言）、test_fake_provider.py 新套件 2 例（自然完成计 completed 不计 abort、
+  中途断开计 abort 且停写 chunks 且计数终态稳定；须先 `resp.close()` 释放
+  buffered reader 的 fd 引用——`conn.close()` 单独调用会留下半开连接）、
+  test_resources 46 / test_collector 27 不变；`bash -n`、23 个 python heredoc
+  提取编译、`node --check`、真实 stats 形状驱动 baseline 解析/恢复值路径均过。
+- 首次实栈 `--probe-s6`（vcr62-probe1）**失败（rc=1）并如实暴露缺陷**：A 子场景
+  全过；B 的 cancel POST 被后端 403（无 body 的 POST 不携带 X-CSRF-Token）且异常
+  被流读取处理器吞掉、只剩 deadline 故事。修复（cancel 空 body 写 + 回调异常
+  上报 + 对应单测）后 probe1 资源经其 EXIT cleanup 完整回收（无 leftovers、
+  nonce/project 查询 count 0）。
+- 单次成功实栈 `--probe-s6`（project `vcg12c-vcr62-probe2`、port 18448、独立 OS
+  控制器 umask 077/独立进程组/真实 Popen rc/1200s 未触）：**rc=0、95.8 s**。
+  A：断开后重订阅 `chat.completed` + 7 个 live delta、catchup 非空、终态后订阅
+  44 字符 snapshot 全文==唯一 assistant 消息、assistant=1、（订阅先于首 delta：
+  catchup=0）。B：原连接 `chat.cancelled` 且 eof 收束、cancel 200/CANCELLED、
+  前置 status=IN_PROGRESS（非终态）、终态 snapshot CANCELLED、assistant=0。
+  provider：请求差分恰 2（aborted 1 / completed 1，chunks 9 ∈ (8,16)——被取消流
+  未写完、断线流自然完成，fixture 计数区分两者）；worker/subscribers/provider
+  active 全回 0；deltaMs 400→50 set/restore 均有记录；A/B 同窗 A PID1 帧 + 10
+  完整同帧 + 四组件 CPU 全 VALID；errors=[]。数值仅功能接线证据，无任何 §19.2
+  门槛提出或冻结。
+- 清理核清：成功路径 cleanup 后独立 daemon 精确查询 project 容器/卷/网、nonce
+  （vc.g12.nonce）容器/卷/网、三个 trial tag 全部 count 0；`cleanup.leftovers.json`
+  空 `{}`；18448 空闲；无残留进程。vc-g3、DT 18380/18581/18590/18591、KB 及他人
+  compose 项目未触碰。
+
+### 维持开放
+
+- S6 的 slow-subscriber 子场景仍缺（HTTP 慢读者未证明，本轮未展开）；S1/S2/S7/
+  S8/S9 与真实采样（完整 profile 含 S6 的三路采样）、10 分钟 idle/recovery、
+  retained stack 仍待补。G12 整体维持未完成、不冻结 Owner 门槛；Owner gate/
+  真实 provider/dogfood 均未涉及。
+
+### Root 恢复验收后的三项收尾（成功 probe 之后、候选稳定前）
+
+**时序声明：上文单次成功实栈 `--probe-s6`（vcg12c-vcr62-probe2、rc=0/95.8s）发生
+在以下收尾修改之前；收尾未再运行任何实栈 probe。**
+
+1. **回基线改为有界真实状态等待**：Root 以真实 fake provider loopback 实测——读
+   首 chunk 后关闭 response/连接，立即 stats 为 active1/abort0/chunks1，需有界
+   轮询后才 active0/abort1/chunks1（fixture sleep 带来可达延迟），证明原
+   "Bounded return to baseline" 单次读取会被 Docker 命令耗时偶然掩盖。最终
+   `wait_s6_baseline`：单一 monotonic deadline 共享预算，每次恰用**同一次**
+   collector scrape（一次输出同时含 metrics 与 provider 块）取
+   vc_generation_active/vc_realtime_subscribers/activeStreamRequests 三值，每
+   次调用 timeout=**恰为剩余预算**（不放宽），采样返回后先判过期再接受零状态
+   （过期成功永不成立）；慢 scrape 连同其**整个进程组**（collector 自身会派生
+   docker CLI 子进程，父进程退出不等于组清空）按本 Popen PGID 组杀并在有界窗口
+   内收割、失败如实记录；场景 `ended` 时间戳移到 settle 确认之后记录，30s 预算
+   超时携带最后观测值显式失败。两轮 Root 复核修正均有记录：第一版"成功判定在
+   deadline 之前+date 整秒+三次无界 scrape"被 Root 复现 1.27s 过期成功后重写；
+   第二版 max(0.5, remaining) 放宽与生产旁路 seam（G12_S6_SCRAPE_CMD）被 Root
+   否决后收敛为 timeout=remaining+组清理+无 seam。生产分支只有真实 scrape 单
+   入口；测试以 run.sh 文本提取真实函数（bash -n 后驱动，R61 同模式）并把
+   $HERE 指向临时 stub collector.py。三条直接路径：延迟收束（前两轮非零、第三
+   轮新鲜 scrape 全零 SETTLED，计数=3 证明真实重查）、fast 永不收束（恒 1 → 2s
+   预算内 NOT_SETTLED 且报告最后值）、慢 scrape 超出剩余预算（stub 第二次调用
+   记录自身 pid 后长睡——必被组杀：NOT_SETTLED、计数=2、该 pid 在有界窗口内
+   消失证明派生链收割；timeout=remaining 下"未杀晚归全零"不可达，被杀即明确
+   失败）。不增通用框架。
+2. **test_fake_provider.py 去除未授权 SkipTest**：Node 缺失改为 setUpClass
+   明确 AssertionError（缺失必须响亮失败而非静默跳过），docstring 同步；本机
+   有 Node、不安装依赖。
+3. **控制器超时路径修复并最小验证**：/tmp/vcr62/probe_s6_controller.py 原实现
+   仅 terminate/kill 父进程且最后 wait 无界；最终形态以**整组收束**为清理完成
+   条件——组存活判定用实际 PGID 探测（os.killpg(pgid,0)，循环内先 reap leader
+   防 zombie 占组），leader 被 reap 绝不代替组结束：进程组 TERM（15s 有界等组）
+   → 组仍存活则组 KILL（10s 有界复核），leader_rc/group_cleared/unreaped 如实
+   记录，只信号本 Popen 组；真实调用显式携带 G12_TRIAL_ID/G12_HTTPS_PORT
+   （vcr62-probe2/18448），绝不静默落默认目标。两个自测场景实测
+   （deadline 0.5s、TERM/KILL 等待各 0.3s）：**leader-honors**（Root 实跑的
+   负例——外层 bash 响应 TERM 先退 rc=-15、同组内层 bash 忽略 TERM 存活）：
+   TERM 后组仍存活被如实判定 → 组 KILL → group_cleared=True、无残留；
+   **all-ignore**（全组忽略 TERM）：TERM 无效 → 组 KILL → leader_rc=-9、组清、
+   无残留。超时路径此前未被成功 probe 触发、不能宣称已验证，现经两个负例实测；
+   成功路径（95.8s 未触 deadline）不变，未重跑任何实栈。
+
+收尾后仅重跑受影响检查：`bash -n`/24 heredoc 编译、test_resources 全套 **49**
+（46+3 新路径）、test_fake_provider 2（去 skip 后）；test_workload 47 与
+test_collector 27 输入未变未重跑。Root 独立复核证据同时确认：S6 回调预算
+30→28→25 耗尽不发 cancel 且失败、preclaim 重试/首 delta 锁定两响应回放、
+config.deltaMs 解析、空 JSON cancel 携 CSRF 与 expected account 均通过；
+probe1/2 各 21 项 exact daemon 查询均 rc0/count0、leftovers={}。

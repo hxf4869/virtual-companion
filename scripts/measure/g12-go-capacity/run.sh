@@ -34,7 +34,7 @@
 # attempt in cleanup for anything still pending, e.g. a first PUT whose
 # response was lost after the server applied it) plus
 # 3 established silent SSE subscribers. The product binds SSE to a
-# generation, so "idle SSE" is only reachable as subscriptions to one
+# generation, so "idle SSE" is only reachable as subscriptions on one
 # in-flight generation — never as zero-generation idle, and no product API
 # is changed to fabricate one. The quiet window is proven from real state
 # per DEDUPLICATED observer record (the frame sampler's Tailer reuses the
@@ -47,6 +47,28 @@
 # boundary-exact scrape is taken inside the window. It runs no S4 chain
 # and no full profile.
 #
+# --probe-s6 (VC-R62) is the same FUNCTIONAL_ONLY bound for the two §19.1
+# S6 sub-scenarios only (cancel / disconnect-reconnect; the slow-subscriber
+# sub-scenario stays explicitly open — the existing realtime tests wire a
+# slow reader straight to the hub and do NOT prove an HTTP slow reader):
+# (A) one generation where the subscriber closes the SSE connection right
+# after a received live delta — the disconnect must neither cancel the
+# generation nor re-POST it, the snapshot-only re-subscription still ends
+# COMPLETED with further live deltas, a subscription after the terminal
+# returns the persisted snapshot + terminal, exactly one assistant message
+# is committed, and the provider saw exactly one stream request that
+# completed normally; (B) an INDEPENDENT generation cancelled only after a
+# live delta and a non-terminal snapshot status proved it active — cancel
+# responds 200/CANCELLED, the SSE terminal is chat.cancelled, the snapshot
+# status is CANCELLED, no assistant message is committed, and the fake
+# provider's own stream for it was ABORTED mid-reply by the backend's
+# disconnect (fixture counters: exactly one abort and one completion across
+# the two generations; a natural finish is counted separately and can
+# never pose as an abort). The provider deltaMs is widened for the probe
+# window (registered as pending BEFORE the first PUT and restored on every
+# exit path, exactly like the scenario-3 holdMs). No ms threshold is
+# asserted; it runs no other chain and no full profile.
+#
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
 # project, images, output directory, and data. Ownership is receipt-based
@@ -57,17 +79,19 @@
 # create action provably produced, and a failed cleanup keeps the records
 # for recovery instead of discarding them.
 #
-# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3]
+# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6]
 set -euo pipefail
 export DOCKER_CONTEXT=orbstack
 
 PROBE=0
 PROBE_S3=0
+PROBE_S6=0
 case "${1:-}" in
   --probe) PROBE=1 ;;
   --probe-s3) PROBE=1; PROBE_S3=1 ;;
+  --probe-s6) PROBE=1; PROBE_S6=1 ;;
   "") ;;
-  *) echo "usage: run.sh [--probe | --probe-s3]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6]" >&2; exit 2 ;;
 esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -131,6 +155,11 @@ READER_INTERVAL="${G12_READER_INTERVAL:-1}"
 # workload passes (--sse-timeout = hold_s + 20).
 S3_HOLD_MS="${G12_S3_HOLD_MS:-8000}"
 S3_QUIET_MS="${G12_S3_QUIET_MS:-3000}"
+# §19.1 scenario 6 (VC-R62): the provider deltaMs is widened for the S6
+# window so the reconnect/cancel chain has a stream still in flight after
+# the first live delta; the SSE deadline covers the whole widened stream
+# (firstTokenMs + chunks*deltaMs) with the same +20 s headroom pattern.
+S6_DELTA_MS="${G12_S6_DELTA_MS:-400}"
 # §19.1 idle/recovery windows: the spec calls for 10 minutes. Probe shrinks
 # these to a bounded functional window and never reports performance numbers.
 IDLE_SECONDS="${G12_IDLE_SECONDS:-600}"
@@ -142,8 +171,10 @@ if [ "$PROBE" = "1" ]; then
   WARMUP=0
   S3_HOLD_MS="${G12_PROBE_S3_HOLD_MS:-6000}"
   S3_QUIET_MS="${G12_PROBE_S3_QUIET_MS:-2000}"
+  S6_DELTA_MS="${G12_PROBE_S6_DELTA_MS:-400}"
 fi
-MODE=$([ "$PROBE_S3" = "1" ] && echo PROBE_S3 \
+MODE=$( { [ "$PROBE_S3" = "1" ] && echo PROBE_S3; } \
+       || { [ "$PROBE_S6" = "1" ] && echo PROBE_S6; } \
        || { [ "$PROBE" = "1" ] && echo PROBE || echo PROFILE; })
 
 COMPOSE=(docker compose --env-file "$ENVFILE" -f "$STACK_COMPOSE" -p "$PROJECT")
@@ -221,6 +252,23 @@ cleanup() {
     fi
   elif [ -n "${S3_PENDING_RESTORE_HOLD:-}" ]; then
     log "cleanup: fake-provider holdMs restore not attempted (no creating marker)"
+    rc=1
+  fi
+  # Scenario-6 provider config: same pending-restore contract for the
+  # widened deltaMs (registered before the first PUT, one bounded EXIT-path
+  # attempt for anything still pending — a lost PUT response may still have
+  # been applied server-side).
+  if [ -n "${S6_PENDING_RESTORE_DELTA:-}" ] && [ -f "$CREATING" ]; then
+    if provider_config_put "{\"deltaMs\":$S6_PENDING_RESTORE_DELTA}" \
+        "$RUN_DIR/s6-delta.exit-restore.json"; then
+      S6_PENDING_RESTORE_DELTA=""
+      log "cleanup: restored fake-provider deltaMs to the original value"
+    else
+      log "cleanup: fake-provider deltaMs restore FAILED; the provider may retain the scenario delta (see $RUN_DIR/s6-delta.exit-restore.json.err)"
+      rc=1
+    fi
+  elif [ -n "${S6_PENDING_RESTORE_DELTA:-}" ]; then
+    log "cleanup: fake-provider deltaMs restore not attempted (no creating marker)"
     rc=1
   fi
   if [ "${G12_KEEP:-0}" != "1" ] && [ -f "$CREATING" ]; then
@@ -1415,12 +1463,447 @@ print(f"  B CPU windows = {'all VALID' if not nonvalid else nonvalid}; "
 PY
 }
 
+wait_s6_baseline() {
+  # Bounded REAL-STATE wait (VC-R62 closeout): the fake provider's own
+  # sleeps make the post-cancel/post-completion return to baseline
+  # reachable but DELAYED — a single scrape right after the workload can
+  # catch the transition (worker still 1 / provider stream still active /
+  # abort counter not yet landed), and Docker-command latency must never
+  # be the reason a one-shot read happened to pass. The three values are
+  # re-scraped — from ONE scrape call (its output carries both the
+  # metrics and the provider block) — until they are genuinely zero or
+  # the budget expires as an explicit failure; never a fixed sleep
+  # masquerading as a recovery proof. The budget is a single monotonic
+  # deadline shared with every scrape call: each call is capped at
+  # EXACTLY the remaining time (never more), a slow scrape is killed
+  # together with its whole process group (the collector itself spawns
+  # docker CLI children — the parent's death alone never clears the
+  # group) and reaped within a bounded window, and a sample is accepted
+  # only AFTER it is checked against the deadline — an expired success is
+  # never a success.
+  local timeout_s="$1"
+  python3 - "$HERE" "$MANIFEST" "$MINIO_IMAGE" "$timeout_s" <<'PY'
+import json, os, signal, subprocess, sys, time
+
+here, manifest, image, timeout_s = sys.argv[1:5]
+deadline = time.monotonic() + float(timeout_s)
+last = {}
+
+
+def scrape(remaining):
+    cmd = [sys.executable, f"{here}/collector.py", "scrape",
+           "--manifest", manifest, "--image", image]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL,
+                                start_new_session=True)
+    except OSError:
+        return None
+    try:
+        out, _ = proc.communicate(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        # The scrape (and any docker CLI it spawned) outlived its share of
+        # the budget: kill the WHOLE process group THIS Popen created and
+        # reap it within a bounded window — recorded, never silent.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            print(f"s6 scrape process group {proc.pid} not reaped "
+                  "within 5s", file=sys.stderr)
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        d = json.loads(out)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    return d.get("metrics") or {}, d.get("provider") or {}
+
+
+while True:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        break
+    sample = scrape(remaining)
+    # Expiry is judged AFTER the sample returns: values read past the
+    # shared budget are never accepted as a settle, even all-zero ones.
+    if sample is not None and time.monotonic() < deadline:
+        metrics, provider = sample
+        try:
+            values = (int(float(metrics["vc_generation_active"])),
+                      int(float(metrics["vc_realtime_subscribers"])),
+                      int(provider["activeStreamRequests"]))
+        except (KeyError, TypeError, ValueError):
+            values = None
+        if values is not None:
+            last = dict(zip(("worker", "subscribers", "provider_active"),
+                            values))
+            if values == (0, 0, 0):
+                print("SETTLED")
+                sys.exit(0)
+    time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+print("s6 baseline NOT reached within %ss (worker=%s subscribers=%s "
+      "provider_active=%s)" % (timeout_s, last.get("worker", "?"),
+                               last.get("subscribers", "?"),
+                               last.get("provider_active", "?")),
+      file=sys.stderr)
+sys.exit(1)
+PY
+}
+
+run_scenario_s6() {
+  # §19.1 场景 6 (VC-R62): cancel + disconnect-reconnect on the real public
+  # HTTP chain — TWO independent generations, each gated on a live delta
+  # actually received (never a sleep). (A) the subscriber closes its SSE
+  # connection right after the first live delta: the disconnect must not
+  # cancel the generation nor re-POST it (snapshot-only re-subscription
+  # still ends COMPLETED with further live deltas; a subscription after
+  # the terminal returns the persisted snapshot + terminal whose full text
+  # equals the single committed assistant message, compared in-process,
+  # only booleans/lengths reported). (B) the SSE response carrying the
+  # first live delta stays OPEN while the cancel POST fires, and the proof
+  # is the ORIGINAL stream receiving the chat.cancelled broadcast and
+  # being closed by the server; no assistant message is committed. The
+  # fake provider's deltaMs is widened for the window (pending-registered
+  # before the first PUT, restored on every exit path like the scenario-3
+  # holdMs) so a stream is still in flight after the first delta. The
+  # fixture counters prove the provider-side truth of the cancel: exactly
+  # one ABORTED stream (the backend disconnected mid-reply — chunks stop
+  # being written) and one COMPLETED stream (A's natural finish can never
+  # pose as an abort). No ms threshold is asserted (§19.2 stays
+  # Owner-frozen).
+  local name="$1" delta_ms="$2"
+  local result="$RUN_DIR/$name.json" summary="$RUN_DIR/$name.summary.json"
+  local sse_timeout=20
+  echo "== scenario $name: disconnect/reconnect + cancel (deltaMs=${delta_ms} ms) =="
+  local provider_before provider_after cpu_before cpu_after
+  local worker_active worker_peak subscribers_after
+  provider_before=$(provider_stats) || die "provider stats unreachable"
+  cpu_before=$(metric_value process_cpu_seconds_total)
+  local baseline_line baseline_delta chunks_cfg baseline_streams \
+        baseline_aborted baseline_completed baseline_chunks
+  # /g12/stats carries the stream counters at the top level and the
+  # timing knobs only under config — deltaMs exists solely as
+  # config.deltaMs (verified against the producer's stats shape).
+  baseline_line=$(python3 - "$provider_before" <<'PY'
+import json, sys
+p = json.loads(sys.argv[1])
+cfg = p.get("config") or {}
+print(cfg.get("deltaMs", "NA"), cfg.get("chunks", "NA"),
+      p.get("streamRequests", "NA"), p.get("abortedStreamRequests", "NA"),
+      p.get("completedStreamRequests", "NA"),
+      p.get("contentChunkWrites", "NA"))
+PY
+)
+  read -r baseline_delta chunks_cfg baseline_streams baseline_aborted \
+        baseline_completed baseline_chunks <<< "$baseline_line"
+  local v
+  for v in "$baseline_delta" "$chunks_cfg" "$baseline_streams" \
+           "$baseline_aborted" "$baseline_completed" "$baseline_chunks"; do
+    case "$v" in '' | *[!0-9]*) die "provider baseline unparseable ($v)" ;; esac
+  done
+  # Pending-restore registration BEFORE the first PUT: a PUT whose response
+  # is lost or times out may still have been applied server-side (same
+  # contract as the scenario-3 holdMs).
+  S6_PENDING_RESTORE_DELTA=$baseline_delta
+  if ! provider_config_put "{\"deltaMs\":$delta_ms}" \
+      "$RUN_DIR/$name.config-set.json"; then
+    if provider_config_put "{\"deltaMs\":$S6_PENDING_RESTORE_DELTA}" \
+        "$RUN_DIR/$name.config-restore.json"; then
+      S6_PENDING_RESTORE_DELTA=""
+      die "provider deltaMs PUT failed (original deltaMs restored)"
+    fi
+    die "provider deltaMs PUT failed AND restore failed (deltaMs possibly left at $delta_ms)"
+  fi
+
+  local started ended analysis
+  started=$(python3 -c 'import time; print(time.time())')
+  if ! run_workload --scenario s6 --sse-timeout "$sse_timeout" \
+      --key-prefix "$TRIAL_ID-$name" > "$result"; then
+    [ -s "$result" ] && cat "$result" >&2
+    provider_config_put "{\"deltaMs\":$baseline_delta}" \
+      "$RUN_DIR/$name.config-restore.json" \
+      && S6_PENDING_RESTORE_DELTA="" || true
+    die "$name workload failed"
+  fi
+  # Original provider config restored right after the scenario, whatever
+  # the workload outcome; a failed restore leaves the pending state for the
+  # one bounded EXIT retry in cleanup().
+  if provider_config_put "{\"deltaMs\":$baseline_delta}" \
+      "$RUN_DIR/$name.config-restore.json"; then
+    S6_PENDING_RESTORE_DELTA=""
+  else
+    die "provider deltaMs restore failed (one bounded EXIT retry follows)"
+  fi
+  # Bounded real-state settle BEFORE the scenario window ends: only a
+  # confirmed baseline (worker/subscribers/provider-active all zero from
+  # fresh scrapes) closes the window — ended is recorded here, not at
+  # workload exit, so a never-settling run fails on real state.
+  if ! wait_s6_baseline 30; then
+    die "$name did not return to baseline within the bounded budget"
+  fi
+  ended=$(python3 -c 'import time; print(time.time())')
+  cpu_after=$(metric_value process_cpu_seconds_total)
+  worker_active=$(metric_value vc_generation_active)
+  worker_peak=$(metric_value vc_generation_peak)
+  subscribers_after=$(metric_value vc_realtime_subscribers)
+  provider_after=$(provider_stats)
+  analysis=$(analyze_window "$started" "$ended")
+  echo "$analysis" > "$RUN_DIR/$name.analysis.json"
+  if ! python3 - "$result" "$provider_before" "$provider_after" \
+    "$cpu_before" "$cpu_after" "$worker_active" "$worker_peak" \
+    "$subscribers_after" "$analysis" "$name" "$delta_ms" "$sse_timeout" \
+    "$chunks_cfg" "$baseline_delta" "$baseline_chunks" > "$summary" <<'PY'
+import json, sys
+
+(result_path, provider_before, provider_after, cpu_before, cpu_after,
+ worker_active, worker_peak, subscribers_after, analysis_s, name, delta_ms,
+ sse_timeout, chunks_cfg, baseline_delta, baseline_chunks) = sys.argv[1:16]
+delta_ms = int(delta_ms)
+chunks_cfg = int(chunks_cfg)
+baseline_delta, baseline_chunks = int(baseline_delta), int(baseline_chunks)
+analysis = json.loads(analysis_s)
+r = json.load(open(result_path))
+before, after = json.loads(provider_before), json.loads(provider_after)
+reconnect = r.get("reconnect") or {}
+cancel = r.get("cancel") or {}
+errors = []
+functional = name == "probe-s6"
+
+# (A) disconnect ≠ cancel / re-POST: re-subscription per the snapshot-only
+# contract ends COMPLETED with further live deltas, the terminal-time
+# subscription returns the persisted snapshot + terminal with the full text
+# equal to the single committed assistant message, and exactly one
+# assistant message exists.
+if reconnect.get("precondition_live_delta") is not True:
+    errors.append(f"A precondition: live delta before disconnect "
+                  f"{reconnect.get('precondition_live_delta')} "
+                  f"({reconnect.get('precondition_reason')})")
+if reconnect.get("reconnect_terminal") != "chat.completed":
+    errors.append(f"A reconnect terminal "
+                  f"{reconnect.get('reconnect_terminal')} want chat.completed")
+if reconnect.get("reconnect_live_deltas", 0) < 1:
+    errors.append(f"A live deltas after reconnect "
+                  f"{reconnect.get('reconnect_live_deltas')} want >= 1")
+if reconnect.get("reconnect_catchup_nonempty") is not True:
+    errors.append("A reconnect catch-up snapshot empty (disconnect landed "
+                  "before any content?)")
+if reconnect.get("post_terminal_terminal") != "chat.completed":
+    errors.append(f"A post-terminal event "
+                  f"{reconnect.get('post_terminal_terminal')}")
+if reconnect.get("post_terminal_snapshot_matches_assistant") is not True:
+    errors.append("A post-terminal persisted snapshot differs from the "
+                  "committed assistant message")
+if reconnect.get("assistant_messages") != 1:
+    errors.append(f"A assistant messages "
+                  f"{reconnect.get('assistant_messages')} want exactly 1")
+
+# (B) cancel on the original, still-open stream: 200/CANCELLED response,
+# chat.cancelled broadcast reaches THAT consumer, the server closes the
+# connection, no assistant message committed, snapshot CANCELLED.
+if cancel.get("precondition_live_delta") is not True:
+    errors.append(f"B precondition: live delta on original stream "
+                  f"{cancel.get('precondition_live_delta')} "
+                  f"({cancel.get('precondition_reason')})")
+if cancel.get("callback_called") is not True:
+    errors.append("B cancel never fired on the open stream")
+if cancel.get("callback_error") is not None:
+    errors.append(f"B cancel callback raised "
+                  f"{cancel.get('callback_error')} (e.g. CSRF/403 — the "
+                  "cancel POST must be a content write)")
+if cancel.get("callback_budget_exhausted") is True:
+    errors.append("B callback budget exhausted before the cancel POST")
+if cancel.get("status_before_nonterminal") is not True:
+    errors.append(f"B status before cancel "
+                  f"{cancel.get('status_before_cancel')} (terminal?)")
+if cancel.get("cancel_http_status") != 200:
+    errors.append(f"B cancel http {cancel.get('cancel_http_status')} want 200")
+if cancel.get("cancel_status_field") != "CANCELLED":
+    errors.append(f"B cancel status field "
+                  f"{cancel.get('cancel_status_field')} want CANCELLED")
+if cancel.get("original_stream_cancelled") is not True:
+    errors.append(f"B original stream: terminal "
+                  f"{cancel.get('original_stream_terminal')}, ended by "
+                  f"{cancel.get('original_stream_ended_by')} "
+                  "(want chat.cancelled + server eof)")
+if cancel.get("status_after_cancel") != "CANCELLED":
+    errors.append(f"B status after cancel "
+                  f"{cancel.get('status_after_cancel')}")
+if cancel.get("assistant_messages") != 0:
+    errors.append(f"B assistant messages "
+                  f"{cancel.get('assistant_messages')} want 0")
+
+if r.get("error_count") != 0:
+    errors.append(f"workload errors: {r.get('errors')}")
+
+# Provider truth (fixture counters): exactly TWO stream requests (one per
+# generation), exactly one ABORTED mid-reply by the backend's disconnect
+# (the cancel) and one COMPLETED naturally (the reconnect generation), and
+# the aborted one stopped before writing all its content chunks (A wrote
+# all chunks, so the total stays strictly between chunks and 2*chunks).
+stream_delta = after["streamRequests"] - before["streamRequests"]
+aborted_delta = after["abortedStreamRequests"] - before["abortedStreamRequests"]
+completed_delta = (after["completedStreamRequests"]
+                   - before["completedStreamRequests"])
+chunk_delta = after["contentChunkWrites"] - before["contentChunkWrites"]
+if stream_delta != 2:
+    errors.append(f"provider requests {stream_delta} want 2")
+if aborted_delta != 1:
+    errors.append(f"provider aborted streams {aborted_delta} want 1 "
+                  "(the cancel must abort the backend's provider stream "
+                  "mid-reply; a natural finish cannot pose as an abort)")
+if completed_delta != 1:
+    errors.append(f"provider completed streams {completed_delta} want 1 "
+                  "(the disconnect generation must finish naturally)")
+if not (chunks_cfg < chunk_delta < 2 * chunks_cfg):
+    errors.append(f"provider content chunks {chunk_delta} want strictly "
+                  f"between {chunks_cfg} (reconnect gen wrote all) and "
+                  f"{2 * chunks_cfg} (cancelled gen stopped early)")
+
+# Bounded return to baseline: worker, provider active, subscribers.
+if after["activeStreamRequests"] != 0:
+    errors.append(f"provider active after scenario "
+                  f"{after['activeStreamRequests']}")
+if int(float(worker_active)) != 0:
+    errors.append(f"worker active after scenario {worker_active}")
+if int(float(worker_peak)) < 1:
+    errors.append(f"worker peak {worker_peak} want >= 1")
+if int(float(subscribers_after)) != 0:
+    errors.append(f"subscribers after scenario {subscribers_after}")
+
+# Same-window A/B collection over the scenario bounds.
+a = analysis["a"]
+if a.get("frames_with_pid1", 0) < 1:
+    errors.append("no A frames with runtime PID 1 in the scenario window")
+peak = analysis["b"]["same_frame_peak"]
+if peak is None or peak["complete_frames"] < 1:
+    errors.append("no complete same-frame B sum in the scenario window")
+for comp, cpu in analysis["b"]["components"].items():
+    if cpu["status"] == "INVALID":
+        errors.append(f"{comp} CPU window invalid ({cpu.get('reason')}); "
+                      "not a valid measurement")
+
+summary = {
+    "scenario": name,
+    "mode": "FUNCTIONAL_ONLY" if functional else "PROFILE",
+    "semantics": (
+        "two independent generations on the real public chain: (A) the "
+        "subscriber deliberately closes its SSE connection right after a "
+        "received live delta — disconnect must not cancel or re-POST the "
+        "generation; (B) the SSE response carrying the first live delta "
+        "stays open while cancel fires, proving the chat.cancelled "
+        "broadcast and server-side connection close on the ORIGINAL "
+        "stream. The slow-subscriber sub-scenario of §19.1 S6 remains "
+        "open (existing realtime tests wire a slow reader straight to the "
+        "hub and do not prove an HTTP slow reader)"),
+    "method": {
+        "provider_delta_ms": delta_ms,
+        "provider_delta_restored_to_ms": baseline_delta,
+        "sse_deadline_s": sse_timeout,
+        "preconditions": (
+            "each sub-scenario proceeds only after a live chat.delta was "
+            "actually received on the wire (B additionally checks a "
+            "non-terminal snapshot status while its stream is open) — "
+            "never a fixed sleep or a thread-start inference"),
+        "snapshot_comparison": (
+            "the terminal-time persisted snapshot's full text is compared "
+            "in memory against the single committed assistant message; "
+            "only the boolean and lengths are reported"),
+    },
+    "reconnect": reconnect,
+    "cancel": cancel,
+    "provider": {
+        "stream_requests_delta": stream_delta,
+        "aborted_streams_delta": aborted_delta,
+        "completed_streams_delta": completed_delta,
+        "content_chunk_writes_delta": chunk_delta,
+        "chunks_config": chunks_cfg,
+        "active_after": after["activeStreamRequests"],
+        "baseline_delta_ms": baseline_delta,
+    },
+    "worker_active_after": int(float(worker_active)),
+    "worker_peak": int(float(worker_peak)),
+    "subscribers_after": int(float(subscribers_after)),
+    "cpu_seconds": round(float(cpu_after) - float(cpu_before), 6),
+    "window_ab": {
+        "a_rss_peak_kb": a["a_rss_peak_kb"],
+        "a_pss_peak_kb": a["a_pss_peak_kb"],
+        "b_peak_rss_mib": round(peak["b_rss_peak_kb"] / 1024, 3) if peak else None,
+        "b_peak_pss_mib": round(peak["b_pss_peak_kb"] / 1024, 3) if peak else None,
+        "b_complete_frames": peak["complete_frames"] if peak else 0,
+        "b_cpu_status": {c: {"status": cpu["status"], "reason": cpu.get("reason")}
+                         for c, cpu in analysis["b"]["components"].items()},
+        "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
+                               for c, cpu in analysis["b"]["components"].items()},
+    },
+    "errors": errors,
+}
+if functional:
+    summary["performance_conclusions"] = "NONE"
+    summary["note"] = ("functional wiring proof only: cancel + "
+                       "disconnect-reconnect chains with fixture-side "
+                       "abort/completion accounting; no capacity/perf "
+                       "conclusion and no §19.2 gate")
+print(json.dumps(summary, ensure_ascii=False))
+if errors:
+    for error in errors:
+        print(f"G12 assertion failed: {error}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  then
+    die "$name cancel/reconnect assertions failed"
+  fi
+  python3 - "$summary" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+a = r["reconnect"]
+b = r["cancel"]
+p = r["provider"]
+print(f"  A: reconnect -> {a.get('reconnect_terminal')} with "
+      f"{a.get('reconnect_live_deltas')} live deltas; post-terminal "
+      f"snapshot == assistant message "
+      f"({a.get('post_terminal_snapshot_matches_assistant')}, "
+      f"{a.get('post_terminal_snapshot_chars')} chars); assistant "
+      f"messages {a.get('assistant_messages')}")
+print(f"  B: original stream {b.get('original_stream_terminal')} ended by "
+      f"{b.get('original_stream_ended_by')}; cancel "
+      f"{b.get('cancel_http_status')}/{b.get('cancel_status_field')}; "
+      f"assistant messages {b.get('assistant_messages')}")
+print(f"  provider: requests {p['stream_requests_delta']} "
+      f"(aborted {p['aborted_streams_delta']} / completed "
+      f"{p['completed_streams_delta']}), content chunks "
+      f"{p['content_chunk_writes_delta']} in ({p['chunks_config']}, "
+      f"{2 * p['chunks_config']}); worker/subscribers after = "
+      f"{r['worker_active_after']}/{r['subscribers_after']}")
+ab = r["window_ab"]
+nonvalid = {c: s for c, s in
+            ((k, v["status"]) for k, v in ab["b_cpu_status"].items())
+            if s != "VALID"}
+print(f"  A peak RSS/PSS = {ab['a_rss_peak_kb']}/{ab['a_pss_peak_kb']} kB; "
+      f"B same-frame peak RSS/PSS = {ab['b_peak_rss_mib']}/"
+      f"{ab['b_peak_pss_mib']} MiB ({ab['b_complete_frames']} frames); "
+      f"B CPU windows = {'all VALID' if not nonvalid else nonvalid}; "
+      f"errors = 0")
+PY
+}
+
 if [ "$PROBE" = "1" ]; then
   if [ "$PROBE_S3" = "1" ]; then
     echo "== probe-s3 functional chain: 1 held generation + 3 silent SSE =="
     run_scenario_s3 probe-s3 "$S3_HOLD_MS" "$S3_QUIET_MS"
     echo "== G12 probe-s3 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
     cat "$RUN_DIR/probe-s3.summary.json"
+    exit 0
+  fi
+  if [ "$PROBE_S6" = "1" ]; then
+    echo "== probe-s6 functional chain: disconnect/reconnect + cancel =="
+    run_scenario_s6 probe-s6 "$S6_DELTA_MS"
+    echo "== G12 probe-s6 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+    cat "$RUN_DIR/probe-s6.summary.json"
     exit 0
   fi
   echo "== probe functional chain: 1 generation + 1 SSE through caddy TLS =="
@@ -1576,6 +2059,7 @@ fi
 
 run_scenario_s4
 run_scenario_s3 s3 "$S3_HOLD_MS" "$S3_QUIET_MS"
+run_scenario_s6 s6 "$S6_DELTA_MS"
 run_scenario s5 "$GENS_S5" "$SSE_S5"
 run_scenario s10 "$GENS_S10" "$SSE_S10"
 
@@ -1711,12 +2195,13 @@ PY
 python3 - "$TRIAL_ID" "$MODE" "$PROJECT" "$COLD_START_MS" "$IDLE_CPU_SECONDS" \
   "$IDLE_ANALYSIS" "$IMAGE_BYTES" "$RUN_DIR/s4.summary.json" \
   "$RUN_DIR/s3.summary.json" \
+  "$RUN_DIR/s6.summary.json" \
   "$RUN_DIR/s5.summary.json" \
   "$RUN_DIR/s10.summary.json" "$RUN_DIR/soak.summary.json" \
   > "$RUN_DIR/trial.summary.json" <<'PY'
 import json, sys
 (trial_id, mode, project, cold_ms, idle_cpu, idle_analysis_s, image_bytes_s,
- s4_path, s3_path, s5_path, s10_path, soak_path) = sys.argv[1:13]
+ s4_path, s3_path, s6_path, s5_path, s10_path, soak_path) = sys.argv[1:14]
 idle = json.loads(idle_analysis_s)
 summary = {
     "trial_id": trial_id, "mode": mode,
@@ -1729,6 +2214,7 @@ summary = {
     "idle_b_same_frame": idle["b"]["same_frame_peak"],
     "s4": json.load(open(s4_path)),
     "s3": json.load(open(s3_path)),
+    "s6": json.load(open(s6_path)),
     "s5": json.load(open(s5_path)),
     "s10": json.load(open(s10_path)),
     "soak": json.load(open(soak_path)),

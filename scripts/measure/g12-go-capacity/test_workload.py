@@ -565,6 +565,422 @@ class SSEClientScriptedTest(unittest.TestCase):
         self.assertLessEqual(resp.sock.timeouts[-1], 0.1)
 
 
+class S6ProbeScriptedTest(unittest.TestCase):
+    """§19.1 S6 (VC-R62) probe semantics against scripted responses +
+    fake clock: subscribe_until_live_delta (deliberate disconnect right
+    after the first live delta), subscribe_snapshot_terminal (persisted
+    snapshot + terminal, full text kept in-process) and
+    subscribe_cancel_after_first_delta (cancel fires while the ORIGINAL
+    response is alive, then the same stream carries chat.cancelled and
+    ends with the server's eof)."""
+
+    def setUp(self):
+        self.clock = FakeClock(T0)
+        self._real_time = workload.time
+        workload.time = self.clock
+        self.addCleanup(setattr, workload, "time", self._real_time)
+        self.client = workload.Client("http://127.0.0.1:1", "sess",
+                                      "csrf", "acct")
+
+    def install_urlopen(self, script):
+        calls = []
+        real = urllib.request.urlopen
+
+        def scripted_urlopen(req, timeout=None, context=None):
+            calls.append({"timeout": timeout, "url": req.full_url})
+            item = script[len(calls) - 1] if len(calls) <= len(script) \
+                else script[-1]
+            if callable(item):
+                item = item()
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        urllib.request.urlopen = scripted_urlopen
+        self.addCleanup(setattr, urllib.request, "urlopen", real)
+        return calls
+
+    def test_first_live_delta_closes_connection_immediately(self):
+        # The probe must stop reading right after the delta chunk and close
+        # the connection — the terminal chunk is never consumed (the
+        # deliberate S6-A disconnect).
+        resp = FakeResponse(
+            [snapshot_frame(""),                       # chunk 1
+             frame("chat.delta", '{"t": 1}'),           # chunk 2 -> close
+             frame("chat.delta", '{"t": 2}'),
+             frame("chat.completed")],
+            clock=self.clock, step=STEP)
+        self.install_urlopen([resp])
+        r = self.client.subscribe_until_live_delta("g20", timeout=30.0)
+        self.assertTrue(r["got_delta"])
+        self.assertEqual(r["deltas_seen"], 1)
+        self.assertEqual(r["catchup_chars"], 0)
+        self.assertIsNone(r["reason"])
+        self.assertEqual(r["attempts"], 1)
+        self.assertTrue(resp.closed)
+        self.assertEqual(resp.i, 2)   # never read past the delta chunk
+
+    def test_no_delta_until_deadline_reports_reason(self):
+        # Heartbeat-only streams keep retrying (fresh response per attempt)
+        # until the absolute deadline; the absence is explained, not zero.
+        self.install_urlopen(
+            [lambda: FakeResponse([HEARTBEAT, HEARTBEAT, HEARTBEAT],
+                                  clock=self.clock, step=STEP)])
+        r = self.client.subscribe_until_live_delta("g21", timeout=0.4)
+        self.assertFalse(r["got_delta"])
+        self.assertEqual(r["reason"], "deadline_no_delta")
+        self.assertGreaterEqual(r["attempts"], 2)
+
+    def test_terminal_before_delta_reports_terminal_reason(self):
+        # A stream that ends (terminal event) before any delta does not
+        # retry past that fact: the terminal is the reason.
+        self.install_urlopen(
+            [FakeResponse([frame("chat.cancelled")],
+                          clock=self.clock, step=STEP)])
+        r = self.client.subscribe_until_live_delta("g22", timeout=30.0)
+        self.assertFalse(r["got_delta"])
+        self.assertEqual(r["reason"], "terminal:chat.cancelled")
+        self.assertEqual(r["attempts"], 1)
+
+    def test_snapshot_terminal_carries_full_text_in_process(self):
+        resp = FakeResponse([snapshot_frame("Hello, capacity world!"),
+                             frame("chat.completed")],
+                            clock=self.clock, step=STEP)
+        self.install_urlopen([resp])
+        r = self.client.subscribe_snapshot_terminal("g23", timeout=30.0)
+        self.assertEqual(r["first_snapshot_text"], "Hello, capacity world!")
+        self.assertEqual(r["first_snapshot_chars"],
+                         len("Hello, capacity world!"))
+        self.assertEqual(r["terminal"], "chat.completed")
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["attempts"], 1)
+        self.assertTrue(resp.closed)
+
+    def test_snapshot_terminal_retries_connect_failures(self):
+        self.install_urlopen(
+            [OSError("connect refused"),
+             FakeResponse([snapshot_frame("done"), frame("chat.completed")],
+                          clock=self.clock, step=STEP)])
+        r = self.client.subscribe_snapshot_terminal("g24", timeout=30.0)
+        self.assertEqual(r["terminal"], "chat.completed")
+        self.assertEqual(r["attempts"], 2)
+
+    def test_cancel_fires_while_original_stream_open(self):
+        # The cancel callback must run while the SAME response that carried
+        # the first delta is still open, and the ORIGINAL stream must then
+        # deliver chat.cancelled and end with the server's eof (the
+        # generator exhausts at the scripted EOF).
+        resp = FakeResponse(
+            [snapshot_frame(""),
+             frame("chat.delta", '{"t": 1}'),
+             snapshot_frame(""),
+             frame("chat.cancelled")],
+            clock=self.clock, step=STEP)
+        self.install_urlopen([resp])
+        seen = {}
+
+        def cancel_now():
+            seen["entered"] = resp.entered
+            seen["closed"] = resp.closed
+
+        r = self.client.subscribe_cancel_after_first_delta(
+            "g25", cancel_now, timeout=30.0)
+        self.assertTrue(seen["entered"])
+        self.assertFalse(seen["closed"])   # cancel fired on the live stream
+        self.assertTrue(r["callback_called"])
+        self.assertTrue(r["got_delta"])
+        self.assertEqual(r["deltas_seen"], 1)
+        self.assertEqual(r["terminal"], "chat.cancelled")
+        self.assertEqual(r["stream_ended_by"], "eof")
+        self.assertIsNone(r["reason"])
+
+    def test_pre_claim_empty_stream_retries_until_live_delta(self):
+        # Root's exact 2-response pre-claim race: response 1 is the real
+        # claim-before-worker shape (empty catch-up snapshot + immediate
+        # EOF, no terminal), response 2 is the genuinely live stream
+        # (snapshot + live delta + chat.cancelled + server EOF). The probe
+        # must retry within the SAME absolute deadline and prove the cancel
+        # on the second, actually-live stream — not give up at the first
+        # EOF with callback 0 / got_delta false.
+        resp1 = FakeResponse([snapshot_frame("")], clock=self.clock,
+                             step=STEP)
+        resp2 = FakeResponse(
+            [snapshot_frame(""),
+             frame("chat.delta", '{"t": 1}'),
+             frame("chat.cancelled")],
+            clock=self.clock, step=STEP)
+        calls = self.install_urlopen([resp1, resp2])
+        seen = {}
+
+        def cancel_now():
+            seen["closed"] = resp2.closed
+
+        r = self.client.subscribe_cancel_after_first_delta(
+            "g25b", cancel_now, timeout=30.0)
+        self.assertEqual(len(calls), 2)     # the pre-claim EOF retried once
+        self.assertTrue(seen["closed"] is False)  # cancel on the LIVE stream
+        self.assertTrue(r["got_delta"])
+        self.assertEqual(r["attempts"], 2)
+        self.assertTrue(r["callback_called"])
+        self.assertEqual(r["terminal"], "chat.cancelled")
+        self.assertEqual(r["stream_ended_by"], "eof")
+        self.assertIsNone(r["reason"])
+
+    def test_locked_stream_eof_without_terminal_never_resubscribes(self):
+        # Once the first live delta arrived, the response is LOCKED: an EOF
+        # (or error) without the cancel terminal is a FAILURE — a fresh
+        # subscription must never be opened to fake
+        # original_stream_cancelled. A second scripted response proves the
+        # retry never happened.
+        resp1 = FakeResponse(
+            [snapshot_frame(""),
+             frame("chat.delta", '{"t": 1}')],   # then EOF, no terminal
+            clock=self.clock, step=STEP)
+        resp2 = FakeResponse(
+            [snapshot_frame(""), frame("chat.cancelled")],
+            clock=self.clock, step=STEP)
+        calls = self.install_urlopen([resp1, resp2])
+        r = self.client.subscribe_cancel_after_first_delta(
+            "g25c", lambda: None, timeout=30.0)
+        self.assertEqual(len(calls), 1)     # locked: no second subscription
+        self.assertFalse(resp2.entered)
+        self.assertTrue(r["got_delta"])
+        self.assertTrue(r["callback_called"])
+        self.assertIsNone(r["terminal"])
+        self.assertEqual(r["stream_ended_by"], "eof")
+        self.assertEqual(r["reason"], "eof_after_delta_without_terminal")
+
+    def test_callback_exception_is_reported_not_swallowed(self):
+        # A failing cancel callback (e.g. the real-stack CSRF 403 the first
+        # probe run exposed) must surface as callback_error + reason — the
+        # stream-read exception handler may never swallow it into a bare
+        # deadline story.
+        resp = FakeResponse(
+            [snapshot_frame(""), frame("chat.delta", '{"t": 1}')],
+            clock=self.clock, step=STEP)
+        self.install_urlopen([resp])
+
+        def boom():
+            raise OSError("csrf rejected")
+
+        r = self.client.subscribe_cancel_after_first_delta(
+            "g27", boom, timeout=30.0)
+        self.assertTrue(r["callback_called"])
+        self.assertEqual(r["callback_error"], "OSError")
+        self.assertEqual(r["reason"], "callback_error:OSError")
+        self.assertIsNone(r["terminal"])
+        self.assertIsNone(r["stream_ended_by"])
+
+    def test_cancel_stream_error_after_terminal_is_not_server_eof(self):
+        # A read error after the terminal event is NOT the server's clean
+        # close: stream_ended_by must say so (original_stream_cancelled
+        # would be False — the assertion needs the eof proof).
+        resp = FakeResponse(
+            [snapshot_frame("") + frame("chat.delta", '{"t": 1}'),
+             frame("chat.cancelled"),
+             socket.timeout("read died")],
+            clock=self.clock, step=STEP)
+        self.install_urlopen([resp])
+        r = self.client.subscribe_cancel_after_first_delta(
+            "g26", lambda: None, timeout=30.0)
+        self.assertEqual(r["terminal"], "chat.cancelled")
+        self.assertEqual(r["stream_ended_by"], "error")
+
+
+class RunScenarioS6StubTest(unittest.TestCase):
+    """run_scenario_s6 orchestration against a stubbed Client: the result
+    dict must consume the probe methods' real dict shapes (no attribute
+    access on dicts), report only booleans/counts/statuses/event names
+    (never message text), and fail the full-content comparison when the
+    persisted snapshot differs from the committed assistant message even
+    at identical length (Root's same-length-different-text negative)."""
+
+    def setUp(self):
+        self._real_client = workload.Client
+
+    def install(self, stub):
+        workload.Client = stub
+        self.addCleanup(setattr, workload, "Client", self._real_client)
+
+    @staticmethod
+    def args():
+        import argparse
+        return argparse.Namespace(
+            base="http://127.0.0.1:1", session="s", csrf="c", account="a",
+            origin=None, cacert=None, scenario="s6", key_prefix="t",
+            sse_timeout=30.0, gens=0, sse_per_gen=0)
+
+    def test_happy_path_shapes_and_no_payload_text(self):
+        SNAP = COMMIT = "I hear you. Take a breath; there is no rush."
+        instances = []
+
+        class Stub:
+            def __init__(self, *a, **k):
+                instances.append(self)
+                self.snapshots = ["GENERATING", "CANCELLED"]
+                self.budgets = []
+                self.conv_seq = 0
+
+            def json(self, method, path, body=None, timeout=30.0):
+                if path == "/api/v1/consents":
+                    return 200, {}
+                if path == "/api/v1/relationships":
+                    return 200, {"relationshipId": "rel"}
+                if path == "/api/v1/conversations":
+                    self.conv_seq += 1
+                    return 200, {"conversationId": f"conv{self.conv_seq}"}
+                raise AssertionError(path)
+
+            def snapshot(self, gid, timeout=30.0):
+                # runs inside the cancel callback: the timeout handed over
+                # is the callback's remaining absolute budget
+                self.budgets.append(timeout)
+                return 200, self.snapshots.pop(0)
+
+            def cancel(self, gid, timeout=30.0):
+                self.budgets.append(timeout)
+                return 200, {"status": "CANCELLED"}
+
+            def send(self, conv, key, text):
+                return 202, {"generationId": "42"}
+
+            def messages(self, conv):
+                if conv == "conv1":    # A's conversation: one assistant
+                    return 200, [{"role": "user", "content": "u"},
+                                 {"role": "assistant", "content": COMMIT}]
+                return 200, [{"role": "user", "content": "u"}]
+
+            def subscribe_until_live_delta(self, gid, timeout=30.0):
+                return {"got_delta": True, "catchup_chars": 0,
+                        "deltas_seen": 1, "attempts": 1, "reason": None}
+
+            def sse(self, gid, timeout=30.0):
+                return sse_result(live_deltas=3, catchup_text_chars=7)
+
+            def subscribe_snapshot_terminal(self, gid, timeout=30.0):
+                return {"first_snapshot_text": SNAP,
+                        "first_snapshot_chars": len(SNAP),
+                        "terminal": "chat.completed", "ok": True,
+                        "attempts": 1}
+
+            def subscribe_cancel_after_first_delta(self, gid, cb,
+                                                   timeout=30.0):
+                cb()
+                return {"got_delta": True, "deltas_seen": 1,
+                        "catchup_chars": 0, "terminal": "chat.cancelled",
+                        "stream_ended_by": "eof", "callback_called": True,
+                        "callback_error": None, "attempts": 1,
+                        "reason": None}
+
+        stub_cls = Stub
+        self.install(stub_cls)
+        stats = workload.Stats()
+        result = workload.run_scenario_s6(self.args(), stats)
+        self.assertEqual(stats.errors, [])
+        a = result["reconnect"]
+        self.assertTrue(a["precondition_live_delta"])
+        self.assertEqual(a["reconnect_terminal"], "chat.completed")
+        self.assertGreaterEqual(a["reconnect_live_deltas"], 1)
+        self.assertTrue(a["reconnect_catchup_nonempty"])
+        self.assertEqual(a["post_terminal_terminal"], "chat.completed")
+        self.assertTrue(a["post_terminal_snapshot_matches_assistant"])
+        self.assertEqual(a["assistant_messages"], 1)
+        b = result["cancel"]
+        self.assertTrue(b["original_stream_cancelled"])
+        self.assertEqual(b["original_stream_ended_by"], "eof")
+        self.assertFalse(b["callback_budget_exhausted"])
+        self.assertEqual(b["cancel_http_status"], 200)
+        self.assertEqual(b["cancel_status_field"], "CANCELLED")
+        self.assertEqual(b["status_after_cancel"], "CANCELLED")
+        self.assertEqual(b["assistant_messages"], 0)
+        self.assertEqual(result["generations"], 2)
+        # No payload text ever leaves the scenario: the serialized result
+        # carries only booleans/counts/statuses/event names.
+        blob = json.dumps(result, ensure_ascii=False)
+        self.assertNotIn(SNAP, blob)
+        # The callback's two blocking calls were each capped at the
+        # remaining budget of the SHARED deadline — strictly below the
+        # 30.0 s default the post-cancel main-flow snapshot still uses
+        # (recorded third): neither blocking call can outlive the stream's
+        # absolute budget.
+        self.assertEqual(len(instances), 1)   # one client drives both subs
+        budgets = instances[-1].budgets
+        self.assertEqual(len(budgets), 3)     # callback snapshot+cancel, then status_after
+        for t in budgets[:2]:
+            self.assertGreater(t, 0)
+            self.assertLess(t, 30.0)
+        self.assertEqual(budgets[2], 30.0)
+
+    def test_same_length_different_text_fails_full_comparison(self):
+        # Root negative: snapshot "aaaaa" vs committed "bbbbb" — identical
+        # lengths, different content. The length-only comparison would
+        # PASS; the full in-memory comparison must FAIL and record it.
+        SNAP, COMMIT = "aaaaa", "bbbbb"
+
+        class Stub:
+            def __init__(self, *a, **k):
+                self.snapshots = ["GENERATING", "CANCELLED"]
+                self.conv_seq = 0
+
+            def json(self, method, path, body=None, timeout=30.0):
+                if path == "/api/v1/consents":
+                    return 200, {}
+                if path == "/api/v1/relationships":
+                    return 200, {"relationshipId": "rel"}
+                if path == "/api/v1/conversations":
+                    self.conv_seq += 1
+                    return 200, {"conversationId": f"conv{self.conv_seq}"}
+                raise AssertionError(path)
+
+            def snapshot(self, gid, timeout=30.0):
+                return 200, self.snapshots.pop(0)
+
+            def cancel(self, gid, timeout=30.0):
+                return 200, {"status": "CANCELLED"}
+
+            def send(self, conv, key, text):
+                return 202, {"generationId": "42"}
+
+            def messages(self, conv):
+                if conv == "conv1":    # A's conversation: one assistant
+                    return 200, [{"role": "assistant", "content": COMMIT}]
+                return 200, [{"role": "user", "content": "u"}]
+
+            def subscribe_until_live_delta(self, gid, timeout=30.0):
+                return {"got_delta": True, "catchup_chars": 0,
+                        "deltas_seen": 1, "attempts": 1, "reason": None}
+
+            def sse(self, gid, timeout=30.0):
+                return sse_result(live_deltas=2, catchup_text_chars=5)
+
+            def subscribe_snapshot_terminal(self, gid, timeout=30.0):
+                return {"first_snapshot_text": SNAP,
+                        "first_snapshot_chars": len(SNAP),
+                        "terminal": "chat.completed", "ok": True,
+                        "attempts": 1}
+
+            def subscribe_cancel_after_first_delta(self, gid, cb,
+                                                   timeout=30.0):
+                cb()
+                return {"got_delta": True, "deltas_seen": 1,
+                        "catchup_chars": 0, "terminal": "chat.cancelled",
+                        "stream_ended_by": "eof", "callback_called": True,
+                        "callback_error": None, "attempts": 1,
+                        "reason": None}
+
+        self.install(Stub)
+        stats = workload.Stats()
+        result = workload.run_scenario_s6(self.args(), stats)
+        a = result["reconnect"]
+        self.assertFalse(a["post_terminal_snapshot_matches_assistant"])
+        # same lengths, so the failure is genuinely the content mismatch
+        self.assertEqual(a["post_terminal_snapshot_chars"], len(COMMIT))
+        self.assertTrue(any("differs" in e for e in stats.errors))
+        blob = json.dumps(result, ensure_ascii=False)
+        self.assertNotIn(SNAP, blob)
+        self.assertNotIn(COMMIT, blob)
+
+
 class IncrementalHandler(http.server.BaseHTTPRequestHandler):
     """Flushes one REAL_SEQUENCE frame every `delay` seconds; after the
     terminal frame the socket stays open, so a correct client must return

@@ -100,13 +100,54 @@ deadline (`--sse-timeout` = hold + 20 s). The workload runs as a directly
 launched python child whose exact PID is reaped by cleanup on every exit
 path.
 
+Scenario 6 (§19.1: cancel / disconnect-reconnect, VC-R62) proves the two
+S6 cancel/reconnect sub-scenarios on the real public chain with TWO
+independent generations, each gated on a live `chat.delta` actually
+received (never a sleep or a thread-start inference). (A) The subscriber
+closes its SSE connection right after the first live delta: the
+disconnect must neither cancel the generation nor re-POST it — the
+snapshot-only re-subscription still ends COMPLETED with further live
+deltas, a subscription after the terminal returns the persisted snapshot +
+terminal whose FULL text equals the single committed assistant message
+(compared in memory; only booleans/lengths are reported), and exactly one
+assistant message exists. (B) The SSE response carrying the first live
+delta stays OPEN while the cancel POST fires (the callback's two blocking
+HTTP calls share the stream's monotonic deadline — each is capped at the
+remaining budget before it is issued), and the proof is the ORIGINAL
+stream receiving the `chat.cancelled` broadcast and being closed by the
+server (`original_stream_cancelled`); a pre-claim empty-snapshot+EOF
+stream retries within the same deadline, but once the first live delta
+arrives the response is LOCKED — a later EOF/error without the cancel
+terminal fails and can never be re-subscribed around. The provider
+deltaMs is widened for the window (pending-registered before the first
+PUT, restored on every exit path exactly like the scenario-3 holdMs). The
+fixture proves the provider-side truth: the fake provider counts
+`abortedStreamRequests` (client disconnected mid-reply — the parts loop
+stops immediately, no further content chunks are written) separately from
+`completedStreamRequests` (full reply + [DONE]; a normal close after
+`response.end()` is a completion, never an abort), and the scenario
+asserts exactly one abort (the cancelled generation, which stopped before
+writing all its content chunks) and one completion (the disconnect
+generation's natural finish) across exactly two provider requests, with
+worker/subscribers/provider-active settling back to baseline confirmed
+by a BOUNDED real-state wait (fresh scrapes re-read until all three are
+genuinely zero — the fixture's own sleeps make the settle reachable but
+delayed, so neither a single post-workload scrape nor a fixed sleep is
+accepted as proof, and the scenario window ends only after the settle is
+confirmed). The
+slow-subscriber sub-scenario of S6 remains explicitly open: the existing
+realtime tests wire a slow reader straight to the hub and do not prove an
+HTTP slow reader.
+
 ```bash
-bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s5, s10, soak)
+bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s6, s5, s10, soak)
 bash scripts/measure/g12-go-capacity/run.sh --probe         # FUNCTIONAL_ONLY wiring proof (s4 branch)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s3      # FUNCTIONAL_ONLY wiring proof (s3 branch)
+bash scripts/measure/g12-go-capacity/run.sh --probe-s6      # FUNCTIONAL_ONLY wiring proof (s6 branch)
 python3 scripts/measure/g12-go-capacity/test_collector.py   # render/collect/aggregation units
 python3 scripts/measure/g12-go-capacity/test_resources.py   # resource-ownership units (stubbed docker)
-python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window units
+python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window/s6 units
+python3 scripts/measure/g12-go-capacity/test_fake_provider.py  # fixture abort/completion counters (node)
 ```
 
 `--probe` is short and bounded: it proves stack boot (migrate/bootstrap/
@@ -117,7 +158,10 @@ counting and first-delta timing wiring. It draws **no** performance or
 capacity conclusions and satisfies no §19.2 gate. `--probe-s3` shares the
 same bound for the scenario 3 chain only (one held generation + 3 silent
 subscribers with the quiet-window proof above); it runs no S4 chain and no
-full profile.
+full profile. `--probe-s6` shares the same bound for the two S6
+cancel/reconnect chains only (one deliberate-disconnect generation and one
+cancelled generation, with the fixture-side abort/completion accounting
+above); it runs no other chain and no full profile.
 
 Optional env:
 
@@ -126,6 +170,7 @@ Optional env:
 | `G12_GENS_S5` / `G12_SSE_S5` | 4 / 2 | scenario 5 shape |
 | `G12_GENS_S10` / `G12_SSE_S10` | 16 / 4 | scenario 10 shape (SSE cap 8/gen) |
 | `G12_S3_HOLD_MS` / `G12_S3_QUIET_MS` | 8000 / 3000 | scenario 3 provider hold and quiet-window budget (probe-s3 uses `G12_PROBE_S3_HOLD_MS` / `G12_PROBE_S3_QUIET_MS`, default 6000 / 2000) |
+| `G12_S6_DELTA_MS` | 400 | scenario 6 widened provider deltaMs so a stream is still in flight after the first live delta (probe-s6 uses `G12_PROBE_S6_DELTA_MS`, default 400; restored to the original value on every exit path) |
 | `G12_CONCURRENCY` / `G12_OUTSTANDING` | 16 / 16 | §19.5 overrides (config caps at 16) |
 | `G12_SOAK_TURNS` / `G12_SOAK_BATCH` | 100 / 10 | recovery workload and batch size |
 | `G12_IDLE_SECONDS` / `G12_WARM_IDLE_SECONDS` / `G12_POST_IDLE_SECONDS` | 600 / 10 / 600 | §19.1 idle and recovery windows (probe uses 6 s) |
@@ -136,13 +181,16 @@ Optional env:
 | `G12_KEEP` | 0 | keep the stack and images up on exit |
 
 Output: `trial.summary.json` (probe: `probe.summary.json`; probe-s3:
-`probe-s3.summary.json` — both marked `FUNCTIONAL_ONLY`), scenario
-result/summary and B-analysis JSON (s4's summary carries the first-delta
-block with its baselines, provider-known-delay subtraction, coverage
-evidence and definition; s3's summary carries the quiet-window record:
-deduplicated observer samples, break/end reasons, boundary-exact window
-scrape, hold/restore values, SSE deadline and the same-window A/B analysis
-over the quiet bounds), idle windows,
+`probe-s3.summary.json`; probe-s6: `probe-s6.summary.json` — all marked
+`FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's
+summary carries the first-delta block with its baselines,
+provider-known-delay subtraction, coverage evidence and definition; s3's
+summary carries the quiet-window record: deduplicated observer samples,
+break/end reasons, boundary-exact window scrape, hold/restore values, SSE
+deadline and the same-window A/B analysis over the quiet bounds; s6's
+summary carries the reconnect/cancel evidence — booleans, counts, event
+names, the fixture abort/completion deltas and the deltaMs set/restore
+values, never message text), idle windows,
 100-turn batch and recovery summaries, `frames.jsonl` (same-window A/B frames:
 timestamp / platform / source / integrity / 4-component data), scrape
 snapshots, `created-resources.json` (this run's nonce-receipted inventory:

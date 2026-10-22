@@ -5,10 +5,13 @@ Scenarios mirror §19.1 场景 3 (1 generation waiting on a bounded fake-provide
 hold + 3 established silent SSE subscribers — the real product binds SSE to a
 generation, so "idle SSE" is only reachable as subscriptions to one in-flight
 generation, never as zero-generation idle), 场景 4 (1 generation + 1 SSE,
-first-delta timing), 场景 5 (4 concurrent generation + 8 SSE) and 场景 10
-(16 generation + 64 SSE capacity profile). One opaque session cookie drives
-every request (the session is fabricated by run.sh against the same DB).
-Consents/relationship/conversation are created once per scenario.
+first-delta timing), 场景 5 (4 concurrent generation + 8 SSE), 场景 10
+(16 generation + 64 SSE capacity profile) and 场景 6 (two INDEPENDENT
+generations: one where the subscriber deliberately disconnects right after a
+live delta and re-subscribes per the snapshot-only contract, and one that is
+cancelled only after a live delta proved it active). One opaque session
+cookie drives every request (the session is fabricated by run.sh against the
+same DB). Consents/relationship/conversation are created once per scenario.
 
 Per generation: a snapshot poller records intake→terminal latency; N SSE
 subscribers retry-subscribe until their stream carries a terminal event
@@ -66,6 +69,8 @@ SSE_ACCEPTED = "chat.accepted"
 SSE_DELTA = "chat.delta"
 SSE_SNAPSHOT = "chat.snapshot"
 SSE_FAILED = "chat.failed"
+SSE_COMPLETED = "chat.completed"
+SSE_CANCELLED = "chat.cancelled"
 SSE_TERMINAL_EVENTS = ("chat.completed", "chat.cancelled", "chat.blocked",
                        SSE_FAILED)
 
@@ -124,11 +129,11 @@ def sse_event_name(frame: bytes) -> str | None:
     return name
 
 
-def snapshot_text_chars(frame: bytes) -> int | None:
-    """Text length of a chat.snapshot frame's data payload, None if unknown.
+def snapshot_text(frame: bytes) -> str | None:
+    """Text of a chat.snapshot frame's data payload, None if unknown.
 
-    The backend sends {"event":"chat.snapshot","text":...} as the single
-    data line; anything else on the wire yields None rather than a guess.
+    The text itself stays in-process (S6 compares snapshot vs committed
+    message content in memory); only lengths ever reach reports.
     """
     for line in frame.split(b"\n"):
         if line.startswith(b"data:"):
@@ -137,9 +142,14 @@ def snapshot_text_chars(frame: bytes) -> int | None:
             except Exception:
                 return None
             if isinstance(payload, dict) and isinstance(payload.get("text"), str):
-                return len(payload["text"])
+                return payload["text"]
             return None
     return None
+
+
+def snapshot_text_chars(frame: bytes) -> int | None:
+    text = snapshot_text(frame)
+    return None if text is None else len(text)
 
 
 def bound_socket_timeout(resp, seconds: float) -> None:
@@ -153,6 +163,61 @@ def bound_socket_timeout(resp, seconds: float) -> None:
     instead of only the remaining slice.
     """
     resp.fp.raw._sock.settimeout(seconds)
+
+
+def stream_events(resp, deadline: float, counter: dict | None = None):
+    """Incremental SSE frame reader shared by Client.sse and the S6
+    first-live-delta probe (§19.1 S6, VC-R62).
+
+    Yields (received_at, event_name, frame) per complete frame as soon as
+    the chunk carrying it arrives (nothing waits for stream EOF). The whole
+    iteration runs against the caller's absolute deadline: every blocking
+    read1 re-caps the connection socket's timeout to the remaining budget
+    before it is issued, and a chunk received after the deadline is dropped
+    unparsed. The response itself is owned — and closed — by the caller's
+    `with`. When a dict is passed as counter, it receives the raw consumed
+    byte count under counter["bytes"] (every chunk contributes, EOF-partial
+    buffers included) and, once the iteration ENDS on its own (the caller
+    did not break out), why it ended under counter["ended"]: "eof" (the
+    server closed the stream), "deadline", or "error" — a caller that
+    breaks early leaves "ended" unset, which is itself the evidence of a
+    deliberate client-side close.
+    """
+    if counter is None:
+        counter = {}
+    counter["bytes"] = 0
+    buf = b""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            counter["ended"] = "deadline"
+            return
+        bound_socket_timeout(resp, remaining)
+        try:
+            chunk = resp.read1(65536)
+        except Exception:
+            counter["ended"] = "error"
+            return
+        if not chunk:
+            counter["ended"] = "eof"
+            return
+        received_at = time.monotonic()
+        if received_at >= deadline:
+            # Late chunk: past the absolute deadline. Its events are
+            # dropped unparsed — a terminal delivered after the budget can
+            # never become a success.
+            return
+        counter["bytes"] += len(chunk)
+        buf += chunk
+        while True:
+            frame, sep, rest = buf.partition(b"\n\n")
+            if not sep:
+                break
+            buf = rest
+            name = sse_event_name(frame)
+            if name is None:
+                continue
+            yield received_at, name, frame
 
 
 class Client:
@@ -204,9 +269,232 @@ class Client:
                              {"idempotencyKey": key, "userContent": text})
         return st, body
 
-    def snapshot(self, gid: str):
-        st, body = self.json("GET", f"/api/v1/generations/{gid}/snapshot")
+    def snapshot(self, gid: str, timeout: float = 30.0):
+        st, body = self.json("GET", f"/api/v1/generations/{gid}/snapshot",
+                             timeout=timeout)
         return st, body.get("status", "UNKNOWN")
+
+    def cancel(self, gid: str, timeout: float = 30.0):
+        # The empty JSON body only exists so json() treats this as a
+        # content write and carries Content-Type + X-CSRF-Token — the
+        # backend's write path enforces CSRF (403 otherwise) and the
+        # handler does not decode the body.
+        st, body = self.json("POST", f"/api/v1/generations/{gid}/cancel",
+                             body={}, timeout=timeout)
+        return st, body
+
+    def messages(self, conv: str):
+        st, body = self.json("GET", f"/api/v1/conversations/{conv}/messages")
+        return st, body if isinstance(body, list) else []
+
+    def subscribe_until_live_delta(self, gid: str,
+                                   timeout: float = 30.0) -> dict:
+        """S6 precondition probe (§19.1 S6): subscribe and ACTIVELY close
+        the connection right after the first chat.delta arrives on the
+        wire — a real-state precondition (the generation is streaming), not
+        a sleep. Re-subscribes only while no delta has been observed yet
+        (bounded by the same absolute deadline); once a live delta arrives
+        the connection is closed on purpose (S6-A disconnect / S6-B cancel
+        precondition) and no further frames are read. Message text is
+        compared/kept in-process only: the result carries booleans, counts
+        and event names, never payload content.
+        """
+        deadline = time.monotonic() + timeout
+        attempts = 0
+        got_delta = False
+        catchup_chars = None
+        deltas_seen = 0
+        reason = None
+        while not got_delta:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                reason = reason or "deadline_no_delta"
+                break
+            attempts += 1
+            req = urllib.request.Request(
+                self.base + f"/api/v1/realtime/streams/{gid}",
+                headers={"Origin": self.origin,
+                         "Cookie": f"vc_session={self.session}"})
+            try:
+                with urllib.request.urlopen(
+                        req, timeout=remaining,
+                        context=self.ssl_context) as resp:
+                    catchup_seen = False
+                    for _, name, frame in stream_events(resp, deadline):
+                        if name == SSE_SNAPSHOT and not catchup_seen:
+                            catchup_seen = True
+                            catchup_chars = snapshot_text_chars(frame)
+                        elif name == SSE_DELTA:
+                            # First delta on this fresh subscription: live
+                            # streaming evidence — close the connection NOW
+                            # (the `with` exit is the deliberate disconnect).
+                            deltas_seen += 1
+                            got_delta = True
+                            break
+                        elif name in SSE_TERMINAL_EVENTS:
+                            reason = f"terminal:{name}"
+                            break
+            except Exception:
+                pass
+            if got_delta or reason:
+                break
+        return {"got_delta": got_delta, "catchup_chars": catchup_chars,
+                "deltas_seen": deltas_seen, "attempts": attempts,
+                "reason": reason}
+
+    def subscribe_snapshot_terminal(self, gid: str,
+                                    timeout: float = 30.0) -> dict:
+        """S6-A terminal re-subscription: records the first chat.snapshot
+        text (kept in-process for the caller's full-content comparison; only
+        booleans/counts/event names ever leave this method) and the terminal
+        event of the snapshot-only stream a FINISHED generation serves
+        (persisted snapshot + terminal, then the connection closes). Retries
+        only connect-level failures against the same absolute deadline.
+        """
+        deadline = time.monotonic() + timeout
+        attempts = 0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            attempts += 1
+            req = urllib.request.Request(
+                self.base + f"/api/v1/realtime/streams/{gid}",
+                headers={"Origin": self.origin,
+                         "Cookie": f"vc_session={self.session}"})
+            first_snapshot_text = None
+            terminal = None
+            try:
+                with urllib.request.urlopen(
+                        req, timeout=remaining,
+                        context=self.ssl_context) as resp:
+                    for _, name, frame in stream_events(resp, deadline):
+                        if name == SSE_SNAPSHOT \
+                                and first_snapshot_text is None:
+                            first_snapshot_text = snapshot_text(frame)
+                        elif name in SSE_TERMINAL_EVENTS:
+                            terminal = name
+                            break
+            except Exception:
+                pass
+            if terminal is not None:
+                break
+        return {"first_snapshot_text": first_snapshot_text,
+                "first_snapshot_chars": (len(first_snapshot_text)
+                                         if isinstance(first_snapshot_text,
+                                                       str) else None),
+                "terminal": terminal,
+                "ok": terminal is not None and terminal != SSE_FAILED,
+                "attempts": attempts}
+
+    def subscribe_cancel_after_first_delta(self, gid: str,
+                                           on_first_delta,
+                                           timeout: float = 30.0) -> dict:
+        """S6-B cancel proof on the ORIGINAL stream: subscribes, and when
+        the first chat.delta arrives on this still-open response, calls
+        on_first_delta() synchronously (the caller issues the cancel POST
+        there — bounded, no thread needed) and keeps reading the SAME
+        response afterwards. The pass shape is: the cancel broadcast
+        reaches this live consumer as chat.cancelled, the server then
+        closes the connection (iteration ends with counter["ended"] ==
+        "eof"). Retry semantics match the sse() claim-before-subscribe
+        reality: BEFORE any live delta is observed (and with no terminal),
+        an empty snapshot+EOF stream or a connect failure is retried
+        within the same absolute deadline — subscribing before the worker
+        claim genuinely produces such short-lived streams. Once the first
+        live delta arrives the response is LOCKED: a later EOF, read
+        error, or deadline without the cancel terminal fails the proof —
+        re-subscribing another stream can never pose as
+        original_stream_cancelled. The caller reports
+        booleans/counts/event names only.
+        """
+        deadline = time.monotonic() + timeout
+        attempts = 0
+        got_delta = False
+        deltas_seen = 0
+        catchup_chars = None
+        terminal = None
+        stream_ended_by = None
+        reason = None
+        callback_called = False
+        callback_error = None
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                reason = reason or ("deadline_no_delta" if not got_delta
+                                    else "deadline_no_terminal")
+                break
+            attempts += 1
+            req = urllib.request.Request(
+                self.base + f"/api/v1/realtime/streams/{gid}",
+                headers={"Origin": self.origin,
+                         "Cookie": f"vc_session={self.session}"})
+            counter = {}
+            catchup_seen = False
+            attempt_terminal = None
+            try:
+                with urllib.request.urlopen(
+                        req, timeout=remaining,
+                        context=self.ssl_context) as resp:
+                    for _, name, frame in stream_events(resp, deadline,
+                                                        counter):
+                        if name == SSE_SNAPSHOT and not catchup_seen:
+                            catchup_seen = True
+                            catchup_chars = snapshot_text_chars(frame)
+                        elif name == SSE_DELTA:
+                            deltas_seen += 1
+                            if not got_delta:
+                                got_delta = True
+                                # Fire the cancel while THIS response is
+                                # alive: what follows on the same wire is
+                                # the broadcast + connection close proof.
+                                # A callback failure is a sub-scenario
+                                # failure with its own reason — it must
+                                # never be swallowed by the stream-read
+                                # exception handler below.
+                                callback_called = True
+                                try:
+                                    on_first_delta()
+                                except Exception as exc:
+                                    callback_error = type(exc).__name__
+                                    reason = f"callback_error:{callback_error}"
+                                    break
+                        elif name in SSE_TERMINAL_EVENTS:
+                            attempt_terminal = name
+                            # Keep reading (no break): the pass shape ends
+                            # with the server closing this connection,
+                            # which the exhausted iterator records as "eof".
+                            continue
+                    if callback_error is not None:
+                        break
+            except Exception:
+                pass
+            if callback_error is not None:
+                break
+            ended = counter.get("ended")
+            if attempt_terminal is not None:
+                terminal = attempt_terminal
+                stream_ended_by = ended  # "eof" is the close proof; a
+                # deadline (None) or "error" after the terminal fails the
+                # original_stream_cancelled assertion downstream.
+                break
+            if got_delta:
+                # Response already LOCKED by its live delta: whatever ended
+                # this attempt (eof/error/deadline), it did so without the
+                # cancel terminal — a failure, never a retry.
+                stream_ended_by = ended
+                reason = f"{ended or 'deadline'}_after_delta_without_terminal"
+                break
+            # No delta and no terminal yet: the pre-claim shape (empty
+            # snapshot + EOF) or a connect-level failure — retry within
+            # the SAME absolute deadline.
+            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+        return {"got_delta": got_delta, "deltas_seen": deltas_seen,
+                "catchup_chars": catchup_chars, "terminal": terminal,
+                "stream_ended_by": stream_ended_by,
+                "callback_called": callback_called,
+                "callback_error": callback_error, "attempts": attempts,
+                "reason": reason}
 
     def sse(self, gid: str, timeout: float = 30.0) -> SSEResult:
         """Retry-subscribe until a terminal event, parsing incrementally.
@@ -261,58 +549,33 @@ class Client:
                 with urllib.request.urlopen(
                         req, timeout=remaining, context=self.ssl_context) as resp:
                     opened_stream = True
-                    buf = b""
                     first_event_seen = False
-                    while attempt["terminal"] is None:
-                        remaining = deadline - time.monotonic()
-                        if remaining <= 0:
+                    counter = {}
+                    for received_at, name, frame in stream_events(
+                            resp, deadline, counter):
+                        attempt["seq"] += 1
+                        seq = attempt["seq"]
+                        if not first_event_seen:
+                            first_event_seen = True
+                            attempt["accepted_first"] = name == SSE_ACCEPTED
+                        if name == SSE_DELTA:
+                            attempt["deltas"] += 1
+                            attempt["deltas_since_snapshot"] += 1
+                            if attempt["first_delta_at"] is None:
+                                attempt["first_delta_at"] = received_at
+                                attempt["first_delta_seq"] = seq
+                        elif name == SSE_SNAPSHOT:
+                            if attempt["snapshots"] == 0:
+                                attempt["catchup_chars"] = \
+                                    snapshot_text_chars(frame)
+                            attempt["snapshots"] += 1
+                            attempt["last_snapshot_seq"] = seq
+                            attempt["deltas_since_snapshot"] = 0
+                        elif name in SSE_TERMINAL_EVENTS:
+                            attempt["terminal"] = name
+                            attempt["terminal_at"] = received_at
                             break
-                        bound_socket_timeout(resp, remaining)
-                        try:
-                            chunk = resp.read1(65536)
-                        except Exception:
-                            break
-                        if not chunk:
-                            break
-                        received_at = time.monotonic()
-                        if received_at >= deadline:
-                            # Late chunk: past the absolute deadline. Its
-                            # events are dropped unparsed — a terminal
-                            # delivered after the budget can never become
-                            # a success.
-                            break
-                        attempt["bytes"] += len(chunk)
-                        buf += chunk
-                        while True:
-                            frame, sep, rest = buf.partition(b"\n\n")
-                            if not sep:
-                                break
-                            buf = rest
-                            name = sse_event_name(frame)
-                            if name is None:
-                                continue
-                            attempt["seq"] += 1
-                            seq = attempt["seq"]
-                            if not first_event_seen:
-                                first_event_seen = True
-                                attempt["accepted_first"] = name == SSE_ACCEPTED
-                            if name == SSE_DELTA:
-                                attempt["deltas"] += 1
-                                attempt["deltas_since_snapshot"] += 1
-                                if attempt["first_delta_at"] is None:
-                                    attempt["first_delta_at"] = received_at
-                                    attempt["first_delta_seq"] = seq
-                            elif name == SSE_SNAPSHOT:
-                                if attempt["snapshots"] == 0:
-                                    attempt["catchup_chars"] = \
-                                        snapshot_text_chars(frame)
-                                attempt["snapshots"] += 1
-                                attempt["last_snapshot_seq"] = seq
-                                attempt["deltas_since_snapshot"] = 0
-                            elif name in SSE_TERMINAL_EVENTS:
-                                attempt["terminal"] = name
-                                attempt["terminal_at"] = received_at
-                                break
+                    attempt["bytes"] = counter["bytes"]
             except Exception:
                 pass
             # Replay split separation, decided once the attempt is over.
@@ -681,6 +944,221 @@ def run_scenario(args, stats: Stats) -> dict:
             "stats": stats.report()}
 
 
+def assistant_messages(history) -> int:
+    return sum(1 for m in history if isinstance(m, dict)
+               and m.get("role") == "assistant")
+
+
+def run_scenario_s6(args, stats: Stats) -> dict:
+    """§19.1 S6 (VC-R62): disconnect/reconnect + cancel on the real public
+    HTTP chain. Two INDEPENDENT generations, each gated on real state (a
+    live chat.delta actually received — never a sleep or a thread-start
+    inference):
+
+    - reconnect (A): after the first live delta the SSE connection is closed
+      deliberately; the disconnect must neither cancel the generation nor
+      re-POST it, so the re-subscription (snapshot-only contract: catch-up
+      snapshot + new deltas + terminal) still ends COMPLETED with further
+      live deltas, a subscription AFTER the terminal returns the persisted
+      snapshot + terminal whose full text equals the single committed
+      assistant message (compared in memory; only booleans/lengths are
+      reported), and run.sh proves the provider saw exactly one stream
+      request for it that completed normally.
+    - cancel (B): a fresh generation keeps the SSE response that carried
+      its first live delta OPEN; the cancel POST fires while that response
+      is alive, and the proof is the ORIGINAL stream receiving the
+      chat.cancelled broadcast and being closed by the server
+      (original_stream_cancelled). A non-terminal snapshot status is
+      checked before the cancel, the cancel response must carry
+      status=CANCELLED, the snapshot status is CANCELLED afterwards, no
+      assistant message is committed, and run.sh proves the backend's
+      provider stream was ABORTED mid-reply by the fixture counters (a
+      natural finish is counted separately and can never pose as an
+      abort).
+    """
+    client = Client(args.base, args.session, args.csrf, args.account,
+                    origin=args.origin, cafile=args.cacert)
+    st, _ = client.json("PUT", "/api/v1/consents",
+                        {"consentType": "SERVICE_TERMS", "version": "2026-08",
+                         "granted": True})
+    if st != 200:
+        stats.note_error(f"consent {st}")
+    for t in ("PRIVACY_POLICY", "AI_CONTENT_NOTICE", "THIRD_PARTY_MODEL_PROCESSING",
+              "SENSITIVE_DATA_PROCESSING"):
+        client.json("PUT", "/api/v1/consents",
+                    {"consentType": t, "version": "2026-08", "granted": True})
+    key_prefix = args.key_prefix or args.scenario
+
+    # ---- sub-scenario A: deliberate disconnect + snapshot-only reconnect
+    reconnect: dict = {"precondition_live_delta": False}
+    st, rel = client.json("POST", "/api/v1/relationships",
+                          {"personaRef": "gentle-listener"})
+    st, conv = client.json("POST", "/api/v1/conversations",
+                           {"relationshipId": rel.get("relationshipId")})
+    conv_a = conv.get("conversationId")
+    gid_a = None
+    if conv_a:
+        st, body = client.send(conv_a, f"{key_prefix}-a", "s6 reconnect turn")
+        gid_a = str(body.get("generationId")) if st == 202 else None
+    if not gid_a:
+        stats.note_error(f"s6a send {st}: no generation")
+    else:
+        probe = client.subscribe_until_live_delta(
+            gid_a, timeout=args.sse_timeout)
+        reconnect.update(
+            precondition_live_delta=probe["got_delta"],
+            precondition_catchup_chars=probe["catchup_chars"],
+            precondition_reason=probe["reason"])
+        if not probe["got_delta"]:
+            stats.note_error(f"s6a no live delta before disconnect "
+                             f"({probe['reason']})")
+        else:
+            # The deliberate disconnect already happened (the probe closed
+            # its own connection right after the live delta). Re-subscribe
+            # per the snapshot-only contract until the terminal event.
+            r2 = client.sse(gid_a, timeout=args.sse_timeout)
+            # Subscription AFTER the terminal: persisted snapshot + terminal.
+            r3 = client.subscribe_snapshot_terminal(
+                gid_a, timeout=args.sse_timeout)
+            _, history = client.messages(conv_a)
+            assistant = [m for m in history if isinstance(m, dict)
+                         and m.get("role") == "assistant"]
+            committed = (assistant[0].get("content")
+                         if len(assistant) == 1
+                         and isinstance(assistant[0].get("content"), str)
+                         else None)
+            # Full-content comparison in memory (never reported as text):
+            # the terminal-time persisted snapshot must EQUAL the single
+            # committed assistant message — same length alone proves
+            # nothing.
+            snapshot_matches = (
+                r3["first_snapshot_text"] is not None
+                and committed is not None
+                and r3["first_snapshot_text"] == committed)
+            reconnect.update(
+                reconnect_terminal=r2.terminal,
+                reconnect_ok=r2.ok,
+                reconnect_live_deltas=r2.live_deltas,
+                reconnect_catchup_nonempty=bool(r2.catchup_text_chars),
+                post_terminal_terminal=r3["terminal"],
+                post_terminal_ok=r3["ok"],
+                post_terminal_snapshot_chars=r3["first_snapshot_chars"],
+                post_terminal_snapshot_matches_assistant=snapshot_matches,
+                assistant_messages=len(assistant))
+            if r2.terminal != SSE_COMPLETED:
+                stats.note_error(f"s6a reconnect terminal {r2.terminal}")
+            if not r2.live_deltas:
+                stats.note_error("s6a no live delta after reconnect")
+            if r3["terminal"] != SSE_COMPLETED:
+                stats.note_error(f"s6a post-terminal event {r3['terminal']}")
+            if not snapshot_matches:
+                stats.note_error(
+                    "s6a post-terminal snapshot differs from the committed "
+                    "assistant message")
+            if len(assistant) != 1:
+                stats.note_error(f"s6a assistant messages {len(assistant)}")
+
+    # ---- sub-scenario B: cancel on the original, still-open SSE stream
+    cancel: dict = {"precondition_live_delta": False}
+    st, rel = client.json("POST", "/api/v1/relationships",
+                          {"personaRef": "gentle-listener"})
+    st, conv = client.json("POST", "/api/v1/conversations",
+                           {"relationshipId": rel.get("relationshipId")})
+    conv_b = conv.get("conversationId")
+    gid_b = None
+    if conv_b:
+        st, body = client.send(conv_b, f"{key_prefix}-b", "s6 cancel turn")
+        gid_b = str(body.get("generationId")) if st == 202 else None
+    if not gid_b:
+        stats.note_error(f"s6b send {st}: no generation")
+    else:
+        observed: dict = {}
+        # The callback's two blocking HTTP calls share the SAME monotonic
+        # deadline as the SSE subscription itself: each request is capped at
+        # the remaining budget before it is issued, so neither can outlive
+        # the stream's absolute budget (exhaustion fails the sub-scenario
+        # instead of blocking past it).
+        cancel_deadline = time.monotonic() + args.sse_timeout
+
+        def cancel_while_streaming():
+            # Runs while the original SSE response is alive, right after
+            # its first live delta: real-state precondition (non-terminal
+            # snapshot status) first, then the cancel POST itself.
+            budget = cancel_deadline - time.monotonic()
+            if budget <= 0:
+                observed["budget_exhausted_before"] = True
+                return
+            _, status_before = client.snapshot(gid_b, timeout=budget)
+            observed["status_before"] = status_before
+            budget = cancel_deadline - time.monotonic()
+            if budget <= 0:
+                observed["budget_exhausted_before"] = True
+                return
+            st_c, body_c = client.cancel(gid_b, timeout=budget)
+            observed["cancel_http_status"] = st_c
+            observed["cancel_status_field"] = (body_c.get("status")
+                                               if isinstance(body_c, dict)
+                                               else None)
+
+        stream = client.subscribe_cancel_after_first_delta(
+            gid_b, cancel_while_streaming, timeout=args.sse_timeout)
+        # The cancel broadcast must reach THIS original consumer and the
+        # server must close the connection after the terminal event.
+        original_cancelled = (stream["terminal"] == SSE_CANCELLED
+                              and stream["stream_ended_by"] == "eof")
+        _, status_after = client.snapshot(gid_b)
+        _, history_b = client.messages(conv_b)
+        cancel.update(
+            precondition_live_delta=stream["got_delta"],
+            precondition_reason=stream["reason"],
+            callback_called=stream["callback_called"],
+            callback_error=stream["callback_error"],
+            callback_budget_exhausted=observed.get("budget_exhausted_before",
+                                                   False),
+            status_before_cancel=observed.get("status_before"),
+            status_before_nonterminal=(observed.get("status_before")
+                                       not in TERMINAL),
+            cancel_http_status=observed.get("cancel_http_status"),
+            cancel_status_field=observed.get("cancel_status_field"),
+            original_stream_terminal=stream["terminal"],
+            original_stream_ended_by=stream["stream_ended_by"],
+            original_stream_cancelled=original_cancelled,
+            status_after_cancel=status_after,
+            assistant_messages=assistant_messages(history_b))
+        if not stream["got_delta"]:
+            stats.note_error(f"s6b no live delta on original stream "
+                             f"({stream['reason']})")
+        if stream["callback_error"] is not None:
+            stats.note_error(f"s6b cancel callback raised "
+                             f"{stream['callback_error']}")
+        if observed.get("budget_exhausted_before"):
+            stats.note_error("s6b callback budget exhausted before cancel")
+        if observed.get("status_before") in TERMINAL:
+            stats.note_error(f"s6b status before cancel "
+                             f"{observed.get('status_before')}")
+        if observed.get("cancel_http_status") != 200:
+            stats.note_error(f"s6b cancel http "
+                             f"{observed.get('cancel_http_status')}")
+        if observed.get("cancel_status_field") != "CANCELLED":
+            stats.note_error(f"s6b cancel status "
+                             f"{observed.get('cancel_status_field')}")
+        if stream["terminal"] != SSE_CANCELLED:
+            stats.note_error(f"s6b original stream terminal "
+                             f"{stream['terminal']} ({stream['reason']})")
+        if stream["stream_ended_by"] != "eof":
+            stats.note_error(f"s6b original stream ended by "
+                             f"{stream['stream_ended_by']} (want server eof)")
+        if status_after != "CANCELLED":
+            stats.note_error(f"s6b status after cancel {status_after}")
+        if assistant_messages(history_b) != 0:
+            stats.note_error("s6b assistant message committed")
+
+    return {"scenario": "s6",
+            "generations": sum(1 for g in (gid_a, gid_b) if g),
+            "reconnect": reconnect, "cancel": cancel,
+            "errors": stats.errors[:10], "error_count": len(stats.errors)}
+
+
 def poll_terminal(args, stats: Stats, client: Client, gid: str, accepted_at: float):
     status = "UNKNOWN"
     while time.monotonic() - accepted_at < 120:
@@ -728,7 +1206,7 @@ def resolve_shape(scenario: str, gens: int, sse_per_gen: int) -> tuple[int, int]
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:18082")
-    parser.add_argument("--scenario", choices=["s3", "s4", "s5", "s10"],
+    parser.add_argument("--scenario", choices=["s3", "s4", "s5", "s6", "s10"],
                         required=True)
     parser.add_argument("--session", default=None,
                         help="defaults to $G12_SESSION (env keeps the opaque "
@@ -765,11 +1243,16 @@ def main() -> int:
     args.csrf = args.csrf or os.environ["G12_CSRF"]
     args.account = args.account or os.environ["G12_ACCOUNT"]
 
-    args.gens, args.sse_per_gen = resolve_shape(
-        args.scenario, args.gens, args.sse_per_gen)
-
     stats = Stats()
-    result = run_scenario(args, stats)
+    if args.scenario == "s6":
+        # §19.1 S6 runs its own two independent generations (disconnect/
+        # reconnect + cancel); the generic shape/percentile machinery does
+        # not apply to it.
+        result = run_scenario_s6(args, stats)
+    else:
+        args.gens, args.sse_per_gen = resolve_shape(
+            args.scenario, args.gens, args.sse_per_gen)
+        result = run_scenario(args, stats)
     print(json.dumps({"scenario": args.scenario, **result}, ensure_ascii=False))
     return 0 if len(stats.errors) == 0 else 2
 

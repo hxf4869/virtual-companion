@@ -28,6 +28,16 @@ const stats = {
     // finish/usage frames are not content). Monotonic per process, consumed
     // by the G12 S3 quiet-window proof as the "no new content delta" counter.
     contentChunkWrites: 0,
+    // S6 (VC-R62) stream outcomes, so a cancel is distinguishable from a
+    // natural finish: abortedStreamRequests counts streams whose client
+    // (the backend) disconnected before the reply was fully written — the
+    // parts loop stops immediately and writes no further chunks — while
+    // completedStreamRequests counts streams that wrote their full reply
+    // and [DONE]. A normal close after response.end() is a completion,
+    // never an abort. Together with streamRequests they bound the per-run
+    // accounting: every stream ends up in exactly one of the two counters.
+    abortedStreamRequests: 0,
+    completedStreamRequests: 0,
     bytesIn: 0,
     startedAt: new Date().toISOString(),
 };
@@ -127,17 +137,46 @@ async function sendStream(response, content) {
         "cache-control": "no-store",
         connection: "close",
     });
+    // Mid-stream client disconnects (the backend aborts its provider request
+    // on generation cancel) must stop the parts loop instead of silently
+    // writing the whole reply to a dead socket. Node also emits "close" after
+    // a normal response.end(), so writableEnded separates a real abort from
+    // our own completion.
+    let clientGone = false;
+    response.on("close", () => {
+        if (!response.writableEnded) {
+            clientGone = true;
+        }
+    });
+    const clientDisconnected = () => clientGone || response.destroyed;
+    const abortStream = () => {
+        stats.abortedStreamRequests += 1;
+        response.destroy();
+    };
     await sleep(config.holdMs);
+    if (clientDisconnected()) {
+        return abortStream();
+    }
     await sleep(config.firstTokenMs);
+    if (clientDisconnected()) {
+        return abortStream();
+    }
     const parts = splitReply(content, config.chunks);
     for (const part of parts) {
+        if (clientDisconnected()) {
+            return abortStream();
+        }
         response.write(`data: ${JSON.stringify(choiceChunk(part, null))}\n\n`);
         stats.contentChunkWrites += 1;
         await sleep(config.deltaMs);
     }
+    if (clientDisconnected()) {
+        return abortStream();
+    }
     response.write(`data: ${JSON.stringify(choiceChunk(null, "stop"))}\n\n`);
     response.write(`data: ${JSON.stringify(usageChunk())}\n\n`);
     response.end("data: [DONE]\n\n");
+    stats.completedStreamRequests += 1;
 }
 
 function applyConfig(body) {

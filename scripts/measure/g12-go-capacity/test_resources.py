@@ -25,6 +25,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -1073,6 +1074,141 @@ def stub_main(args):
     if result.stderr:
         print(result.stderr, file=sys.stderr)
     return result.returncode
+
+class S6BaselineWaitTest(unittest.TestCase):
+    """VC-R62 closeout: wait_s6_baseline (extracted verbatim from run.sh,
+    bash -n checked before sourcing) must settle on REAL re-scraped state
+    under one monotonic shared budget: every scrape is capped at EXACTLY
+    the remaining time, a slow scrape is killed with its whole process
+    group and reaped within a bounded window, and a sample is accepted
+    only after the expiry check. The production branch has exactly one
+    scrape entry (collector.py): the tests point the extracted function's
+    HERE at a temporary stub collector instead of adding any seam."""
+
+    STUB_COLLECTOR = """
+import json, os, sys, time
+mode = os.environ["STUB_MODE"]
+cnt = os.environ["STUB_CNT"]
+n = 0
+if os.path.exists(cnt):
+    n = int(open(cnt).read())
+open(cnt, "w").write(str(n + 1))
+def emit(vals):
+    print(json.dumps({"metrics": {"vc_generation_active": vals[0],
+                                  "vc_realtime_subscribers": vals[1]},
+                      "provider": {"activeStreamRequests": vals[2]}}))
+if mode == "never":
+    emit((1, 1, 1))
+elif mode == "delayed":
+    emit((1, 1, 1) if n < 2 else (0, 0, 0))
+elif mode == "slowkill":
+    if n == 0:
+        emit((1, 1, 1))
+    else:
+        open(cnt + ".pid", "w").write(str(os.getpid()))
+        time.sleep(30)   # outlives any remaining budget: must be killed
+"""
+
+    def drive(self, tmp, *, mode, timeout):
+        tmp = Path(tmp)
+        out = tmp / "out"          # run.sh claims an EMPTY output dir
+        out.mkdir()
+        stub_here = tmp / "stubhere"
+        stub_here.mkdir()
+        (stub_here / "collector.py").write_text(self.STUB_COLLECTOR)
+        src = RUN_SH.read_text()
+        m = re.search(r'^wait_s6_baseline\(\) \{.*?(?=^run_scenario_s6\(\) \{)',
+                      src, re.DOTALL | re.MULTILINE)
+        assert m, "wait_s6_baseline not found in run.sh"
+        func_path = tmp / "s6wait.sh"
+        func_path.write_text(m.group(0).rstrip() + "\n")
+        counter = tmp / "scrapes"
+        lines = [
+            "set -euo pipefail",
+            "export G12_SOURCE_ONLY=1 G12_OUTPUT_DIR=%s G12_TRIAL_ID=stubtrial"
+            % shlex.quote(str(out)),
+            "export STUB_MODE=%s STUB_CNT=%s"
+            % (shlex.quote(mode), shlex.quote(str(counter))),
+            "source %s" % shlex.quote(str(RUN_SH)),
+            # The extracted function builds its scrape command from $HERE:
+            # pointing it at the stub directory keeps the production branch
+            # single-entry (no seam in run.sh itself).
+            "HERE=%s" % shlex.quote(str(stub_here)),
+            "bash -n %s || exit 9" % shlex.quote(str(func_path)),
+            "source %s" % shlex.quote(str(func_path)),
+            "type wait_s6_baseline >/dev/null 2>&1 || "
+            "{ echo 'wait_s6_baseline not extracted'; exit 9; }",
+            "if wait_s6_baseline %s; then echo SETTLED; "
+            "else echo NOT_SETTLED; fi" % timeout,
+        ]
+        driver = tmp / "s6waitdrive.sh"
+        driver.write_text("\n".join(lines) + "\n")
+        proc = subprocess.run(["bash", str(driver)], capture_output=True,
+                              text=True, cwd=str(HERE))
+        return proc, counter
+
+    def test_delayed_settle_polls_fresh_scrapes_until_zero(self):
+        # First two scrapes still see worker/subscribers/provider active
+        # (the fixture-sleep transition); the third FRESH scrape is all
+        # zero within the budget, so the wait settles — proving it
+        # re-queries real state instead of trusting the first read or a
+        # fixed sleep.
+        with tempfile.TemporaryDirectory() as tmp:
+            started = time.monotonic()
+            proc, counter = self.drive(tmp, mode="delayed", timeout="8")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("SETTLED\n", proc.stdout)
+            self.assertEqual(counter.read_text().strip(), "3")
+            self.assertLess(time.monotonic() - started, 8)
+
+    def test_fast_never_zero_fails_bounded_with_last_values(self):
+        # Every scrape stays non-zero: the wait fails within its budget,
+        # reporting the last observed values (real-state failure, never a
+        # pass and never an unbounded hang).
+        with tempfile.TemporaryDirectory() as tmp:
+            started = time.monotonic()
+            proc, counter = self.drive(tmp, mode="never", timeout="2")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("NOT_SETTLED\n", proc.stdout)
+            self.assertIn("NOT reached within 2s "
+                          "(worker=1 subscribers=1 provider_active=1)",
+                          proc.stderr)
+            self.assertGreater(int(counter.read_text().strip()), 1)
+            self.assertLess(time.monotonic() - started, 5)
+
+    def test_slow_scrape_past_budget_is_group_killed_and_reaped(self):
+        # Root's slow-call path under the no-widened-cap rule (every call
+        # is capped at EXACTLY its remaining budget): a second scrape that
+        # outlives its share can never return — it must be killed WITH ITS
+        # WHOLE PROCESS GROUP (the collector may spawn docker CLI children;
+        # the parent's death alone never clears the group) and reaped
+        # within a bounded window. The settle never happens; the failure
+        # reports the last accepted values; no stub process survives.
+        with tempfile.TemporaryDirectory() as tmp:
+            started = time.monotonic()
+            proc, counter = self.drive(tmp, mode="slowkill", timeout="4")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("NOT_SETTLED\n", proc.stdout)
+            self.assertIn("NOT reached within 4s "
+                          "(worker=1 subscribers=1 provider_active=1)",
+                          proc.stderr)
+            self.assertEqual(counter.read_text().strip(), "2")
+            pid = int(Path(str(counter) + ".pid").read_text())
+            deadline = time.monotonic() + 5
+            alive = True
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    alive = False
+                    break
+                time.sleep(0.1)
+            self.assertFalse(alive, f"stub scrape pid {pid} survived the "
+                                    "group kill")
+            elapsed = time.monotonic() - started
+            self.assertGreaterEqual(elapsed, 4.0)   # did not succeed early
+            self.assertLess(elapsed, 15)            # bounded incl. cleanup
+
 
 
 if __name__ == "__main__":
