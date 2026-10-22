@@ -19,6 +19,12 @@ export interface TransportRequestOptions {
   /** When true, a 401 response does not invoke provider.onUnauthorized;
    * the caller owns interpreting the unauthorized result. */
   callerHandlesUnauthorized?: boolean;
+  /** VC-R52: when true the request omits X-VC-Expected-Account-ID even when
+   * the page knows an account. Reserved for identity discovery
+   * (GET /api/v1/auth/session): it must read the current cookie identity
+   * without the expected-account precondition, otherwise a page holding a
+   * stale account could never discover the newer cookie account (409 loop). */
+  omitExpectedAccount?: boolean;
 }
 
 /** A request that exceeded its per-request timeout; the server outcome is unknown. */
@@ -37,12 +43,33 @@ export interface AuthTokenProvider {
   renewAccessToken?(): Promise<RenewResult>;
   /** Current session revision; used only for 401 ownership attribution. */
   getSessionRevision?(): number;
+  /** VC-R52: account the page currently believes is signed in. Captured once
+   * per request entry (with the revision) as the expected-account
+   * precondition; never re-read mid-flight and never derived from cookies. */
+  getAccountId?(): string | null;
   onUnauthorized(): void;
+  /** VC-R52: the server rejected the request because the cookie identity no
+   * longer matches the page's expected account (precise 409 + body code
+   * ACCOUNT_CONTEXT_CHANGED) while the request still owns the current session
+   * revision. The response is still returned to the caller unchanged. */
+  onAccountContextChanged?(): void;
 }
 
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_COOKIE = "vc_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
+const EXPECTED_ACCOUNT_HEADER = "X-VC-Expected-Account-ID";
+const ACCOUNT_CONTEXT_CHANGED_CODE = "ACCOUNT_CONTEXT_CHANGED";
+
+/** 精确的服务端拒绝形态：HTTP 409 + 错误信封 code === ACCOUNT_CONTEXT_CHANGED。 */
+function isAccountContextChangedStatus(status: number, json: unknown): boolean {
+  return status === 409
+    && Boolean(
+      json
+        && typeof json === "object"
+        && (json as Record<string, unknown>).code === ACCOUNT_CONTEXT_CHANGED_CODE,
+    );
+}
 
 /**
  * Current double-submit CSRF cookie, or null when there is none. Exported
@@ -73,7 +100,26 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
     // 请求所有权（401 归属）：在每次调用发起时捕获会话代次，而不是在工厂
     // 创建时捕获。A 的在途请求遇 B 新登录后，旧 A 的 401 不得清掉 B 的会话。
     const revision = provider.getSessionRevision?.();
+    // VC-R52 期望账号前置条件：与 revision 同一处入口同步捕获一次。绝不
+    // 临发前读取当前 Cookie 账号——旧意图必须原样到达服务器，由服务器判定
+    // 身份是否已经变化；omitExpectedAccount 只保留给身份发现入口。
+    const expectedAccount = opts?.omitExpectedAccount === true
+      ? null
+      : (provider.getAccountId?.() ?? null);
+    // 归属成立的期望账号失配拒绝才上报：迟到旧意图（代次已推进）的 409
+    // 不得触碰已确立的较新会话。复用 401 的归属判定形态。
+    const reportAccountContextChange = (status: number, json: unknown): void => {
+      if (
+        isAccountContextChangedStatus(status, json)
+        && (revision === undefined || provider.getSessionRevision?.() === revision)
+      ) {
+        provider.onAccountContextChanged?.();
+      }
+    };
     const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (expectedAccount !== null) {
+      headers[EXPECTED_ACCOUNT_HEADER] = expectedAccount;
+    }
     if (STATE_CHANGING_METHODS.has(method)) {
       const csrf = readCsrfCookie();
       if (csrf) {
@@ -137,6 +183,8 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
           // timedOut 只能由上方 timer 回调置位。
           throw new TransportTimeoutError(timeoutMs);
         }
+        // 响应照常返回给调用方；钩子只负责页面侧的身份 reconcile。
+        reportAccountContextChange(response.status, settled.value);
         return {
           ok: response.ok,
           status: response.status,
@@ -168,6 +216,8 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
       parseFailed = true;
       return null;
     });
+    // 响应照常返回给调用方；钩子只负责页面侧的身份 reconcile。
+    reportAccountContextChange(response.status, json);
     return { ok: response.ok, status: response.status, json, parseFailed };
   }
 

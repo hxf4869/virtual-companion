@@ -25,15 +25,20 @@ TERMINAL = {"COMPLETED", "COMPLETED_FALLBACK", "CANCELLED", "INPUT_BLOCKED",
 
 
 class Client:
-    def __init__(self, base: str, session: str, csrf: str):
+    def __init__(self, base: str, session: str, csrf: str, account: str):
         self.base = base.rstrip("/")
         self.session = session
         self.csrf = csrf
+        self.account = account
 
     def _headers(self, content: bool = False) -> dict:
         h = {
             "Origin": "http://localhost",
             "Cookie": f"vc_session={self.session}; vc_csrf={self.csrf}",
+            # VC-R52: authenticated writes must carry the seeded account id the
+            # session belongs to; binding it here (not re-read from cookies)
+            # keeps the workload's intent pinned for its whole run.
+            "X-VC-Expected-Account-ID": self.account,
         }
         if content:
             h["Content-Type"] = "application/json"
@@ -139,7 +144,7 @@ class Stats:
 
 
 def run_scenario(args, stats: Stats) -> dict:
-    client = Client(args.base, args.session, args.csrf)
+    client = Client(args.base, args.session, args.csrf, args.account)
     st, body = client.json("PUT", "/api/v1/consents",
                            {"consentType": "SERVICE_TERMS", "version": "2026-08",
                             "granted": True})
@@ -225,6 +230,8 @@ def main() -> int:
     parser.add_argument("--scenario", choices=["s5", "s10"], required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--csrf", required=True)
+    parser.add_argument("--account", required=True,
+                        help="seeded account id bound to the fabricated session")
     parser.add_argument("--gens", type=int, default=0)
     parser.add_argument("--sse-per-gen", type=int, default=0)
     parser.add_argument("--key-prefix", default="")

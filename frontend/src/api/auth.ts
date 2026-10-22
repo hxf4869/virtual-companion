@@ -138,6 +138,9 @@ export async function login(
 export async function getAuthSession(t: AuthTransport): Promise<AuthSessionProbe> {
   const response = await t.request("GET", `${AUTH_BASE}/session`, undefined, {
     callerHandlesUnauthorized: true,
+    // VC-R52 身份发现显式不带期望账号前置：页面身份与 Cookie 身份不同时，
+    // 发现流必须能读到当前 Cookie 账号，否则永远撞 409 死循环。
+    omitExpectedAccount: true,
   });
   if (response.status === 401) return { status: "anonymous" };
   if (!response.ok) return { status: "unavailable" };

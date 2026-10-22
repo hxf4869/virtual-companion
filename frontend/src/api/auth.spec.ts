@@ -123,11 +123,13 @@ describe("Go Runtime auth client", () => {
       status: "authenticated",
       identity: activeIdentity(),
     });
+    // VC-R52：身份发现显式不带期望账号头（omitExpectedAccount），否则页面
+    // 身份与 Cookie 身份不同时发现流会永远撞 409 死循环。
     expect(transport.request).toHaveBeenCalledWith(
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true },
+      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
     );
 
     const compatibility = transportFor({ ok: true, status: 200, json: activeIdentity() });
@@ -139,7 +141,20 @@ describe("Go Runtime auth client", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true },
+      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+    );
+
+    // restoreSession 走同一条发现路径，同样显式 omit。
+    const restore = transportFor({ ok: true, status: 200, json: activeIdentity() });
+    await expect(restoreSession(restore)).resolves.toEqual({
+      status: "authenticated",
+      identity: activeIdentity(),
+    });
+    expect(restore.request).toHaveBeenCalledWith(
+      "GET",
+      "/api/v1/auth/session",
+      undefined,
+      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
     );
   });
 

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,6 +21,12 @@ import (
 const maxPasswordRunes = 128
 
 const maxCoreBodyBytes = 64 << 10
+
+// expectedAccountHeader carries the account id the page believes it is acting
+// for (auth.accountId as a decimal string). It is a precondition only: the
+// principal, roles, RLS and current-password checks keep using the cookie
+// principal as the sole authority; the header never selects an owner.
+const expectedAccountHeader = "X-VC-Expected-Account-ID"
 
 // CompanionStore is the G7/G8 owner-scoped persistence surface. The production
 // implementation is *postgres.Store; tests may substitute a fake.
@@ -252,6 +259,14 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 		s.writeAPIError(w, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "authentication required")
 		return nil
 	}
+	// Shared-cookie stale-tab guard: a page rendered for another account must
+	// not run business effects under this cookie principal. Checked after the
+	// cookie principal is resolved and before any handler effects (including
+	// the password-change gate, so a context mismatch wins over it).
+	if !expectedAccountMatches(r, p.AccountID, write) {
+		s.writeAPIError(w, http.StatusConflict, "ACCOUNT_CONTEXT_CHANGED", "account context changed")
+		return nil
+	}
 	if write && p.PasswordMustChange && !passwordChangeAllowed(r.URL.Path) {
 		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "password change required")
 		return nil
@@ -266,6 +281,20 @@ func passwordChangeAllowed(path string) bool {
 	default:
 		return false
 	}
+}
+
+// expectedAccountMatches enforces the page-known account precondition on
+// corePrincipal-authenticated requests. Writes must carry the header and it
+// must equal the cookie principal's account id; reads keep working without
+// the header (identity discovery and resource-id/token readers) but, when a
+// value is present, it must match. A mismatch means the shared-browser cookie
+// now belongs to a different account than the page issuing the request.
+func expectedAccountMatches(r *http.Request, accountID int64, write bool) bool {
+	expected := strings.TrimSpace(r.Header.Get(expectedAccountHeader))
+	if expected == "" {
+		return !write
+	}
+	return expected == strconv.FormatInt(accountID, 10)
 }
 
 // authRequestSource returns the direct peer unless this runtime is explicitly

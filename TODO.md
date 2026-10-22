@@ -379,6 +379,34 @@ PG/MinIO 与 fake provider，本地合成数据与设备仿真，非真机/真�
 无残留，42 份历史日志未动）；不勾 Owner/Beta/CI/真机，G12 维持未完成
 （10 分钟 recovery/retained-stack/PSS 未补）。
 
+2026-10-22 跨 Tab 错账号操作收口（VC-R52，R51 审计 F1 选定修复落地）：
+服务端 core 入口强制期望账号前置条件——认证核心写在任何业务 effects 前必须
+携带 `X-VC-Expected-Account-ID` 且等于 cookie principal 账号（读带该头时比对；
+身份发现 GET /auth/session 显式省略，公共登录/挑战流不要求该前置条件），缺失/
+失配 409 + 新 catalog
+错误码 `ACCOUNT_CONTEXT_CHANGED`，无业务 effects、无 Set-Cookie、不撤销新会话；
+principal/RLS/current-password 仍以 cookie 为权限真源，头绝不选择 owner。前端
+transport/authedFetch 在请求入口一次性捕获页面已知账号带头，精确 409 且代次
+归属成立后先本地 `clear()` 作废旧身份探测与旧动作收尾、再以 omit 头发现当前
+Cookie 身份（共享 `reconcileAccountContext` 入口接入全部 provider 站点），账号页
+清旧表单并给出 role=status「登录状态已更新，请重新确认操作」、恢复后按真实
+账号重载安全区，不 logout、不自动重放；E2E helpers 写请求同步绑定会话账号。
+R49 的陈旧 A 提交不再创建 B 副本（E2E13 R48 用例由基线红转绿，并补齐拒收→
+恢复到 B→用户重新确认成功的正向路径），B 服务端会话保持有效。既有消费者
+（Go 测试 fixture、强制改密流程、无头资源读）按新契约更新，未在服务端放行
+缺头写。验证：backend `go test ./...` 20 包 ok（含 4 个新回归：失配/缺头写拒
++store 见证、password/delete 预 effects 拒、强制改密流程保留、读三态）；前端
+735 项测试与 type-check（含旧 A 探测不被恢复复用、旧 logout 不作废 B 恢复、
+password/delete 不误显错密码、B 安全区重载且旧列表不回流等定向竞态回归）；
+`scripts/check.sh` 14s PASS；无过滤核心 E2E `--list` 20 tests in 10 files 后
+20/20 通过（1.9m；验收依据 Playwright 原始报告 20 passed 与
+test-results/.last-run.json passed，Root 独立核对；R48 用例 webkit-iphone
+19.9s / chromium-android 24.9s），R41 历史 18/18 记录按当时输入保留。G12 采样客户端固定绑定种子账号
+（2000001，workload/run.sh），文档 §7 三次 CPU 数值改标 soak 负载窗并注明
+recovery CPU 未采（R51 F2）；R46 trial2 维持 HOLD/NOT_RUN。真机浏览器跨 Tab
+验证仍为 Owner 人工项；同账号重登的请求侧 Cookie 时序未闭合（R12/R15-R17
+原范围，R52 只覆盖跨账号场景）。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

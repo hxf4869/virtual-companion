@@ -4722,7 +4722,14 @@ components:
         State-changing requests must additionally send an X-CSRF-Token header
         matching the vc_csrf cookie (constant-time double-submit) and an Origin
         header that exactly matches the deployment allowlist; a missing Origin
-        or any mismatch is rejected.
+        or any mismatch is rejected. Core endpoints additionally enforce the
+        expected-account precondition (VC-R52): requests carry
+        X-VC-Expected-Account-ID with the account id the page committed to;
+        authenticated writes are rejected with 409 ACCOUNT_CONTEXT_CHANGED
+        when it is missing or does not equal the cookie principal's account
+        id, and reads compare it when present. The header is a precondition
+        only — the cookie principal remains the sole authorization source.
+        Identity discovery (GET /api/v1/auth/session) never sends it.
   schemas:
     ErrorEnvelope:
       type: object
@@ -4763,6 +4770,7 @@ components:
         - BETA_OPERATIONS_NOT_READY
         - INVALID_REQUEST
         - AUTH_RATE_LIMITED
+        - ACCOUNT_CONTEXT_CHANGED
     ServiceModeStatus:
       type: object
       description: Current generation-service mode (FR-RES-005).

@@ -668,6 +668,8 @@ func attachAuth(t *testing.T, s *Server, req *http.Request, account int64, write
 		t.Fatal(err)
 	}
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: raw})
+	// The fixture page knows the account it acts for and always states it.
+	req.Header.Set(expectedAccountHeader, strconv.FormatInt(account, 10))
 	if write {
 		req.Header.Set("Origin", "https://vc.test")
 		req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})

@@ -285,7 +285,7 @@ async function readProviderRequestLog(): Promise<ProviderLogEntry[]> {
 
 test("autosave saves a stated preference, recalls it in a later turn, and stops saving when off", async ({ page }) => {
   const session = await openSharedSession(page, "memory");
-  await prepareGenerationAccess(session.page);
+  await prepareGenerationAccess(session);
   const relationshipId = await getDefaultRelationshipId(session.page);
 
   // —— Save: a plain low-sensitivity preference stated in the user's own

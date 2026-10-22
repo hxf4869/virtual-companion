@@ -222,9 +222,12 @@ syntax/diff 验证，未重跑测量。
   663.3 ms。
 - s10（16 gen + 64 SSE）：provider/worker 峰值 16/16；intake p50/p95 =
   23.2/66.3、29.6/68.9、21.4/80.2 ms；stream p95 = 676.1、660.7、703.6 ms。
-- 100-turn soak + 60 s recovery：CPU delta = 1.622、1.379、1.260 s；
-  warm-idle RSS before→after = 28.124→29.637、27.635→29.330、
-  28.297→29.451 MiB；goroutine 9→11、fd 19→20 为记录值、无归基线断言；
+- 100-turn soak CPU delta（load-only）：1.622、1.379、1.260 s——采样点在
+  recovery 等待之前（run.sh 的 SOAK_CPU_AFTER 先于 `sleep POST_IDLE_SECONDS`），
+  三次 trial 的该值只覆盖 soak 负载窗；recovery 窗 CPU 自 VC-R40 起由
+  recovery_cpu_seconds 另记，本三次未采。warm-idle RSS before→after（before
+  为 soak 前均值，after 为 60 s recovery 窗内的采样均值）= 28.124→29.637、
+  27.635→29.330、28.297→29.451 MiB；goroutine 9→11、fd 19→20 为记录值、无归基线断言；
   DB acquired 0→0 的终态归 0 有脚本断言——脚本断言为 provider delta ==
   100 与 `vc_generation_active`/`vc_realtime_subscribers`/
   `vc_db_pool_acquired` 归 0。

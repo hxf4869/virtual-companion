@@ -493,8 +493,14 @@ const rowErrorMessage = ref("");
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，
+  // 不自动重放动作（共享入口见 stores/auth.ts reconcileAccountContext）。
+  onAccountContextChanged: () => {
+    void auth.reconcileAccountContext(transport);
+  },
 });
 
 /** 服务端开关值已确认（读取过或写回回显过）且没有处于未知写入中。 */

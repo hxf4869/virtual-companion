@@ -28,7 +28,6 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -206,11 +205,7 @@ func TestVC16LateAccountDeletionResponseDropsNewerLoginCookies(t *testing.T) {
 	t.Cleanup(ts.Close)
 	t.Cleanup(gate.letThrough)
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("创建 cookiejar 失败: %v", err)
-	}
-	client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
+	client := newRealBrowserClient(t)
 
 	// 1) alice 完整登录并信任设备，真实 jar 持有 A 的
 	//    vc_session/vc_csrf/vc_trusted_device。
@@ -317,11 +312,7 @@ func TestVC16WrongPasswordDeleteKeepsSessionAlive(t *testing.T) {
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("创建 cookiejar 失败: %v", err)
-	}
-	client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
+	client := newRealBrowserClient(t)
 
 	realFullLogin(t, client, ts.URL, "alice", false)
 	if realCookieValue(client, ts.URL, auth.SessionCookieName) == "" {

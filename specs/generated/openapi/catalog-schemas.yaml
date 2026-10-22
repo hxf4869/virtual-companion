@@ -203,6 +203,7 @@ components:
       - PASSWORD_CHANGE_REQUIRED
       - RATE_LIMITED
       - AUTH_CHALLENGE_UNAVAILABLE
+      - ACCOUNT_CONTEXT_CHANGED
     MessageFeedbackKind:
       type: string
       enum:

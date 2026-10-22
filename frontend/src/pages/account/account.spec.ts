@@ -44,6 +44,8 @@ interface FetchOptions {
   deleteNetworkFail?: boolean;
   exportCreateStatus?: number;
   exportCreateBody?: unknown;
+  /** 非 200 的创建 POST 以该信封应答（VC-R52：409 + ACCOUNT_CONTEXT_CHANGED）。 */
+  exportCreateErrorBody?: unknown;
   exportStatusStatus?: number;
   exportStatusBody?: unknown;
   exportDownloadStatus?: number;
@@ -59,6 +61,17 @@ interface FetchOptions {
   passwordGateOk?: boolean;
   /** 提供时，GET /auth/session 以 200 返回该身份（同会话读回场景）。 */
   sessionIdentity?: unknown;
+  /** 提供时，第一条 GET /auth/session 挂起直到手动 resolve（在途旧探测场景）。 */
+  sessionGetGate?: Gate;
+  /** 挂起的第一条 session GET 释放后的应答身份（默认用 sessionIdentity）。 */
+  sessionGateIdentity?: unknown;
+  /** 提供 409 时，logout POST 以该状态与 logoutErrorBody 应答（失配场景）。 */
+  logoutStatus?: number;
+  logoutErrorBody?: unknown;
+  /** 非 200 的改密 POST 以该信封应答（失配场景）。 */
+  passwordErrorBody?: unknown;
+  /** 非 200 的注销 DELETE 以该信封应答（失配场景）。 */
+  deleteErrorBody?: unknown;
   /** 提供时，POST /auth/login 以 404 拒绝（失败登录意图场景）。 */
   loginRejected?: boolean;
   /** 提供时，登出 POST 挂起直到手动 resolve（迟到登出场景）。 */
@@ -79,15 +92,26 @@ function makeGate(): Gate {
 }
 
 function stubFetch(options: FetchOptions = {}) {
-  const calls: Array<{ method: string; url: string; body?: string }> = [];
+  const calls: Array<{ method: string; url: string; body?: string; headers?: unknown }> = [];
   const deviceGetStatuses = [...(options.deviceGetStatuses ?? [200])];
   let deviceGetGateUsed = false;
+  let sessionGetGateUsed = false;
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const method = (init?.method ?? "GET").toUpperCase();
-    calls.push({ method, url, body: typeof init?.body === "string" ? init.body : undefined });
+    calls.push({
+      method,
+      url,
+      body: typeof init?.body === "string" ? init.body : undefined,
+      headers: init?.headers,
+    });
 
     if (url === "/api/v1/auth/session" && method === "GET") {
+      if (options.sessionGetGate && !sessionGetGateUsed) {
+        sessionGetGateUsed = true;
+        const gatedIdentity = options.sessionGateIdentity ?? options.sessionIdentity;
+        return options.sessionGetGate.promise.then(() => response(200, gatedIdentity));
+      }
       if (options.sessionIdentity) return response(200, options.sessionIdentity);
       return response(401, null);
     }
@@ -130,13 +154,14 @@ function stubFetch(options: FetchOptions = {}) {
         );
       }
       const status = options.passwordStatus ?? 200;
-      return response(status, status === 200 ? { ok: true } : null);
+      return response(status, status === 200 ? { ok: true } : (options.passwordErrorBody ?? null));
     }
     if (url === "/api/v1/auth/logout" && method === "POST") {
       if (options.logoutGate) {
         return options.logoutGate.promise.then(() => response(200, { ok: true }));
       }
-      return response(200, { ok: true });
+      const status = options.logoutStatus ?? 200;
+      return response(status, status === 200 ? { ok: true } : (options.logoutErrorBody ?? null));
     }
     if (url === "/api/v1/auth/account" && method === "DELETE") {
       if (options.deleteNetworkFail) {
@@ -146,11 +171,13 @@ function stubFetch(options: FetchOptions = {}) {
         return options.deleteGate.promise.then(() => response(200, { ok: true }));
       }
       const status = options.deleteStatus ?? 200;
-      return response(status, status === 200 ? { ok: true } : null);
+      return response(status, status === 200 ? { ok: true } : (options.deleteErrorBody ?? null));
     }
     if (url === "/api/v1/exports" && method === "POST") {
       const status = options.exportCreateStatus ?? 200;
-      const json = status === 200 ? (options.exportCreateBody ?? EXPORT_CREATED_BODY) : null;
+      const json = status === 200
+        ? (options.exportCreateBody ?? EXPORT_CREATED_BODY)
+        : (options.exportCreateErrorBody ?? null);
       if (options.exportCreateGate) {
         return options.exportCreateGate.promise.then(() => response(status, json));
       }
@@ -1129,6 +1156,326 @@ describe("account page", () => {
     expect(message).toContain("无法确认注销结果");
     expect(message).not.toContain("没有注销");
     expect(auth.isAuthenticated).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("VC-R52: 期望账号失配 409 清旧意图、reconcile 到新账号并给出页面级反馈，不自动重放", async () => {
+    const { calls } = stubFetch({
+      exportCreateStatus: 409,
+      exportCreateErrorBody: { code: "ACCOUNT_CONTEXT_CHANGED", message: "expected account mismatch" },
+      sessionIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "43",
+        email: "b@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    // 旧账号 A 的私有意图：改密表单、注销确认与副本密码。
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("A-Delete-Pw-1!");
+    await wrapper.get('[data-testid="data-copy-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("A-Copy-Pw-1!");
+    await wrapper.get('[data-testid="data-copy-create"]').trigger("click");
+    await flushPromises();
+
+    // 页面级反馈：role=status 的「登录状态已更新」在账号页层级可见（面板
+    // 重建后仍在），不是面板内部的错误文案。
+    const notice = wrapper.get('[data-testid="account-context-notice"]');
+    expect(notice.attributes("role")).toBe("status");
+    expect(notice.text()).toContain("登录状态已更新，请重新确认操作");
+
+    // 身份发现（GET /auth/session，显式 omit 期望账号头）恢复当前 Cookie
+    // 身份：A→B 交接（persist + R09 缓存清理由 store 负责）。
+    expect(auth.accountId).toBe("43");
+    expect(wrapper.get('[data-testid="account-email"]').text()).toBe("b@example.com");
+    expect(calls.some((call) => call.method === "GET" && call.url === "/api/v1/auth/session")).toBe(true);
+    // 头契约：陈旧 POST 带入口捕获的 A 账号头；恢复的 session GET 不带
+    // 期望账号头（否则发现流会 409 死循环）。
+    const exportPost = calls.find((call) => call.url === "/api/v1/exports" && call.method === "POST");
+    expect((exportPost?.headers as Record<string, string>)["X-VC-Expected-Account-ID"]).toBe("42");
+    const sessionGet = calls.find((call) => call.url === "/api/v1/auth/session" && call.method === "GET");
+    expect((sessionGet?.headers as Record<string, string>)["X-VC-Expected-Account-ID"]).toBeUndefined();
+    // 不调用 logout：绝不触碰 B 的服务端会话。
+    expect(calls.some((call) => call.method === "POST" && call.url === "/api/v1/auth/logout")).toBe(false);
+
+    // 旧意图清理：改密/注销表单复位，副本面板重建为空密码的初始表单。
+    expect(wrapper.find('[data-testid="password-form"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text()).toContain("申请副本");
+    const copyInput = wrapper.get('[data-testid="data-copy-password"]').element as HTMLInputElement;
+    expect(copyInput.value).toBe("");
+    // 期望账号失配不得映射成密码错误（或结果未知）文案。
+    expect(wrapper.text()).not.toContain("当前密码不正确");
+    expect(wrapper.find('[data-testid="data-copy-error"]').exists()).toBe(false);
+
+    // 不自动重放：POST /exports 只有陈旧的那一次，没有重试。
+    expect(calls.filter((call) => call.url === "/api/v1/exports" && call.method === "POST")).toHaveLength(1);
+    // 会话保持已认证，也不被拽回登录页。
+    expect(auth.isAuthenticated).toBe(true);
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalled();
+    expect(uni.redirectTo).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("VC-R52: 失配 reconcile 即使身份发现暂时失败也已清空旧意图并保留反馈", async () => {
+    // sessionIdentity 缺省时 stub 对 GET /auth/session 回 401（规范的「无有效
+    // 会话」）：本地转匿名，但不发 logout、不导航登录页；旧意图已被清掉，
+    // 页面级反馈保持可见。
+    const { calls } = stubFetch({
+      exportCreateStatus: 409,
+      exportCreateErrorBody: { code: "ACCOUNT_CONTEXT_CHANGED" },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="data-copy-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("A-Copy-Pw-1!");
+    await wrapper.get('[data-testid="data-copy-create"]').trigger("click");
+    await flushPromises();
+
+    // 401 的 session 读回是规范的「无有效会话」：本地转匿名但不发 logout、
+    // 不导航；旧意图与旧身份都已被清掉，反馈保持可见。
+    expect(wrapper.get('[data-testid="account-context-notice"]').text())
+      .toContain("登录状态已更新，请重新确认操作");
+    expect(auth.isAuthenticated).toBe(false);
+    expect(calls.some((call) => call.method === "POST" && call.url === "/api/v1/auth/logout")).toBe(false);
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalled();
+    expect(uni.redirectTo).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("VC-R52: 失配前已在途的旧身份探测不得被恢复复用，新探测读到 B", async () => {
+    const gate = makeGate();
+    const { calls } = stubFetch({
+      exportCreateStatus: 409,
+      exportCreateErrorBody: { code: "ACCOUNT_CONTEXT_CHANGED", message: "mismatch" },
+      sessionGetGate: gate,
+      // 挂起的旧探测释放时读到的是 A；失配后的新发现必须读到 B。
+      sessionGateIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "42",
+        email: "alice@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+      sessionIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "43",
+        email: "b@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    // 换 Cookie 前已有一条在途的身份探测（读到旧 A，尚未返回）。
+    const probeTransport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getAccountId: () => auth.accountId,
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    const staleProbe = auth.tryRefresh(probeTransport);
+    expect(calls.filter((call) => call.url === "/api/v1/auth/session")).toHaveLength(1);
+
+    // 陈旧副本提交被 409：恢复先 clear() 作废在途旧探测（代次推进），再发
+    // 起全新的发现请求。
+    await wrapper.get('[data-testid="data-copy-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("A-Copy-Pw-1!");
+    await wrapper.get('[data-testid="data-copy-create"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.url === "/api/v1/auth/session")).toHaveLength(2);
+    expect(auth.accountId).toBe("43");
+
+    // 迟到的旧 A 探测此刻才返回：按既有代次判据被丢弃，不得覆盖 B，也不得
+    // 被 409 后的恢复合并复用。
+    gate.resolve(undefined);
+    await expect(staleProbe).resolves.toBe(false);
+    await flushPromises();
+    expect(auth.accountId).toBe("43");
+    expect(wrapper.get('[data-testid="account-email"]').text()).toBe("b@example.com");
+    expect(wrapper.get('[data-testid="account-context-notice"]').text())
+      .toContain("登录状态已更新，请重新确认操作");
+    wrapper.unmount();
+  });
+
+  it("VC-R52: 注销提交撞上失配 409：恢复到 B 不被作废，不导航登出，也不再发 logout", async () => {
+    const { calls } = stubFetch({
+      logoutStatus: 409,
+      logoutErrorBody: { code: "ACCOUNT_CONTEXT_CHANGED", message: "mismatch" },
+      sessionIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "43",
+        email: "b@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="account-logout"]').trigger("click");
+    await flushPromises();
+
+    // 只有用户点击的那一次 logout POST：恢复绝不重发 logout（B 的服务端
+    // 会话不被触碰），也不被本地清理/导航拽回登录页。
+    expect(calls.filter((call) => call.url === "/api/v1/auth/logout")).toHaveLength(1);
+    expect(auth.accountId).toBe("43");
+    expect(auth.isAuthenticated).toBe(true);
+    expect(wrapper.get('[data-testid="account-context-notice"]').text())
+      .toContain("登录状态已更新，请重新确认操作");
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalled();
+    expect(uni.redirectTo).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("VC-R52: 改密提交撞上失配 409：不显示成改密失败，恢复到 B", async () => {
+    const { calls } = stubFetch({
+      passwordStatus: 409,
+      passwordErrorBody: { code: "ACCOUNT_CONTEXT_CHANGED", message: "mismatch" },
+      sessionIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "43",
+        email: "b@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+
+    // 失配 409 不得写成改密失败文案；页面给出失配反馈并恢复到 B。
+    expect(calls.filter((call) => call.url === "/api/v1/auth/password")).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("没有修改成功");
+    expect(wrapper.find('[data-testid="password-message"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="account-context-notice"]').text())
+      .toContain("登录状态已更新，请重新确认操作");
+    expect(auth.accountId).toBe("43");
+    wrapper.unmount();
+  });
+
+  it("VC-R52: 注销账号提交撞上失配 409：不写成注销失败文案，恢复到 B", async () => {
+    const { calls } = stubFetch({
+      deleteStatus: 409,
+      deleteErrorBody: { code: "ACCOUNT_CONTEXT_CHANGED", message: "mismatch" },
+      sessionIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "43",
+        email: "b@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.get('[data-testid="delete-account-password"]').setValue("A-Delete-Pw-1!");
+    await wrapper.get('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    // 失配 409 不得写成「注销结果无法确认」，也不得触发本地退出/导航。
+    expect(calls.filter((call) => call.url === "/api/v1/auth/account" && call.method === "DELETE")).toHaveLength(1);
+    expect(wrapper.find('[data-testid="delete-account-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="account-context-notice"]').text())
+      .toContain("登录状态已更新，请重新确认操作");
+    expect(auth.accountId).toBe("43");
+    expect(auth.isAuthenticated).toBe(true);
+    const uni = (globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+    }).uni;
+    expect(uni.navigateTo).not.toHaveBeenCalled();
+    expect(uni.redirectTo).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("VC-R52: B 身份恢复后安全区按 B 重载，旧 A 设备列表不回流", async () => {
+    const gate = makeGate();
+    const deviceA = { id: "3", displayName: "A-MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const deviceB = { id: "9", displayName: "B-Phone", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const mockOptions: FetchOptions = {
+      devices: [deviceA],
+      exportCreateStatus: 409,
+      exportCreateErrorBody: { code: "ACCOUNT_CONTEXT_CHANGED", message: "mismatch" },
+      sessionGetGate: gate,
+      sessionIdentity: {
+        nextStep: "ACTIVE",
+        accountId: "43",
+        email: "b@example.com",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 7200,
+      },
+    };
+    const { calls } = stubFetch(mockOptions);
+    const auth = loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("A-MacBook");
+
+    // 旧 A 的副本提交被 409：恢复的 session GET 挂起期间把设备应答切到 B。
+    await wrapper.get('[data-testid="data-copy-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("A-Copy-Pw-1!");
+    await wrapper.get('[data-testid="data-copy-create"]').trigger("click");
+    await flushPromises();
+    mockOptions.devices = [deviceB];
+    gate.resolve(undefined);
+    await flushPromises();
+
+    // B 恢复后安全区按 B 重载（恢复路径不经 onActivated，null→B 的 watch
+    // 直接返回，必须由恢复完成回调触发只读重载）：B 的非空列表可见，
+    // A 的行不回流，且只有两次设备 GET（A 初载 + B 重载）。
+    expect(auth.accountId).toBe("43");
+    expect(wrapper.get('[data-testid="account-email"]').text()).toBe("b@example.com");
+    expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("B-Phone");
+    expect(wrapper.text()).not.toContain("A-MacBook");
+    expect(wrapper.get('[data-testid="trusted-devices"]').text()).not.toContain("暂无信任的设备");
+    expect(calls.filter((call) => call.url === "/api/v1/auth/trusted-devices")).toHaveLength(2);
+    // 只读重载：不重放任何写动作。
+    expect(calls.filter((call) => call.url === "/api/v1/exports" && call.method === "POST")).toHaveLength(1);
+    expect(calls.some((call) => call.method === "POST" && call.url === "/api/v1/auth/logout")).toBe(false);
     wrapper.unmount();
   });
 

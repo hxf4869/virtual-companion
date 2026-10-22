@@ -368,7 +368,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true },
+      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
     );
   });
 
@@ -432,7 +432,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true },
+      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
     );
   });
 
@@ -567,7 +567,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true },
+      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
     );
 
     store.clear();
@@ -579,7 +579,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true },
+      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
     );
 
     deferred.settle(0, { ok: true, status: 200, json: sampleTokens("a1") });

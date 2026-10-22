@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -625,9 +626,30 @@ func doJSONCookies(t *testing.T, s *Server, method, path, body string, jar map[s
 			req.Header.Set(csrfHeader, csrf)
 		}
 	}
+	// The fixture page states the account behind its session cookie; without
+	// this header every authenticated core write would be rejected.
+	if id := jarSessionAccountID(t, s, jar); id != "" {
+		req.Header.Set(expectedAccountHeader, id)
+	}
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	return rec
+}
+
+// jarSessionAccountID resolves the account behind the jar's session cookie so
+// recorder-based clients mirror a page that knows its account id. An empty
+// result (no session, or an unknown/revoked token) simply omits the header.
+func jarSessionAccountID(t *testing.T, s *Server, jar map[string]string) string {
+	t.Helper()
+	token := jar[auth.SessionCookieName]
+	if token == "" || s == nil || s.core == nil || s.core.Sessions == nil {
+		return ""
+	}
+	p, err := s.core.Sessions.Lookup(context.Background(), token)
+	if err != nil || p == nil || p.AccountID <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(p.AccountID, 10)
 }
 
 func sessionCookie(rec *httptest.ResponseRecorder) string {

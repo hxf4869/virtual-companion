@@ -227,13 +227,23 @@ onDeactivated(() => {
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   renewAccessToken: () => auth.renewAccessToken(transport),
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，不自动
+  // 重放聊天动作（共享入口见 stores/auth.ts reconcileAccountContext）。
+  onAccountContextChanged: () => {
+    void auth.reconcileAccountContext(transport);
+  },
 });
 const authedFetch = createAuthedFetch(() => auth.accessToken, {
   renewAccessToken: () => auth.renewAccessToken(transport),
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  onAccountContextChanged: () => {
+    void auth.reconcileAccountContext(transport);
+  },
 });
 const deps: RealtimeDeps = createBrowserRealtimeDeps(authedFetch);
 

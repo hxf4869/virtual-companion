@@ -9,7 +9,7 @@ import {
 
 test("home starts the first conversation and later resumes it", async ({ page }) => {
   const session = await openSharedSession(page, "chat");
-  await prepareGenerationAccess(session.page);
+  await prepareGenerationAccess(session);
 
   await navigateToPage(page, "/pages/index/index");
   await expect(page.getByTestId("current-relationship")).toBeVisible();

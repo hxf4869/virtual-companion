@@ -128,6 +128,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "efde8dbdaf26b4dc82b40d8e9fd9cb6bedcbc1464a1d23978eaaf26c7625ff72"
+    "sha256": "8eeb1216bf622e54b943d6196f7459b79159045269dcf67b87e98c6fec11cb95"
   }
 }

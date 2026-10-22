@@ -182,8 +182,14 @@ let loadSeq = 0;
 
 const transport: AuthTransport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.clear(),
+  // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，
+  // 不自动重放动作（共享入口见 stores/auth.ts reconcileAccountContext）。
+  onAccountContextChanged: () => {
+    void auth.reconcileAccountContext(transport);
+  },
 });
 
 const companionName = computed(() => (

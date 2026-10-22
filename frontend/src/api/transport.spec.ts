@@ -560,4 +560,189 @@ describe("createAuthenticatedTransport", () => {
     expect(result.ok).toBe(false);
     expect(result.status).toBe(401);
   });
+
+  // ---- VC-R52：期望账号前置条件（X-VC-Expected-Account-ID） ----
+
+  it("sends the expected-account header on every method when the account is known (reads included)", async () => {
+    const fetchMock = fetchOk();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+    });
+
+    await transport.request("GET", "/api/v1/conversations");
+    await transport.request("POST", "/api/v1/exports", { currentPassword: "x" });
+
+    expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
+      "X-VC-Expected-Account-ID": "42",
+    });
+    expect(fetchMock.mock.calls[1]![1]!.headers).toMatchObject({
+      "X-VC-Expected-Account-ID": "42",
+    });
+  });
+
+  it("omits the expected-account header when no account is known", async () => {
+    const fetchMock = fetchOk();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => null,
+      onUnauthorized: vi.fn(),
+    });
+
+    await transport.request("POST", "/api/v1/exports", { currentPassword: "x" });
+
+    expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty("X-VC-Expected-Account-ID");
+  });
+
+  it("omits the expected-account header when the caller opts out (identity discovery)", async () => {
+    const fetchMock = fetchOk();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+    });
+
+    await transport.request("GET", "/api/v1/auth/session", undefined, {
+      omitExpectedAccount: true,
+    });
+
+    expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty("X-VC-Expected-Account-ID");
+  });
+
+  it("captures the expected account once at request entry and never re-reads it mid-flight", async () => {
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    let account = "42";
+    const getAccountId = vi.fn(() => account);
+
+    const transport = createAuthenticatedTransport({
+      getAccountId,
+      onUnauthorized: vi.fn(),
+    });
+
+    const pending = transport.request("POST", "/api/v1/exports", { currentPassword: "x" });
+    // 在途期间换号：已捕获的旧意图不得被改写成新账号。
+    account = "43";
+    resolvers[0]!({ ok: true, status: 200, json: async () => ({ ok: true }) });
+
+    await pending;
+    expect(getAccountId).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
+      "X-VC-Expected-Account-ID": "42",
+    });
+  });
+
+  // ---- VC-R52：期望账号失配拒绝（精确 409 + ACCOUNT_CONTEXT_CHANGED） ----
+
+  function accountContextChanged409() {
+    return {
+      ok: false,
+      status: 409,
+      json: async () => ({ code: "ACCOUNT_CONTEXT_CHANGED", message: "expected account mismatch" }),
+    };
+  }
+
+  it("routes a precise 409 + ACCOUNT_CONTEXT_CHANGED to onAccountContextChanged and still returns the result", async () => {
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onAccountContextChanged = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged,
+    });
+
+    const pending = transport.request("POST", "/api/v1/exports", { currentPassword: "x" });
+    resolvers[0]!(accountContextChanged409());
+
+    const result = await pending;
+    expect(onAccountContextChanged).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(409);
+    expect(result.json).toEqual({ code: "ACCOUNT_CONTEXT_CHANGED", message: "expected account mismatch" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("detects the precise 409 on the timeoutMs path too", async () => {
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onAccountContextChanged = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged,
+    });
+
+    const pending = transport.request(
+      "POST",
+      "/api/v1/exports",
+      { currentPassword: "x" },
+      { timeoutMs: 15_000 },
+    );
+    resolvers[0]!(accountContextChanged409());
+
+    const result = await pending;
+    expect(onAccountContextChanged).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe(409);
+  });
+
+  it("only reacts to the exact code: other 409 bodies and same-code non-409 stay silent", async () => {
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onAccountContextChanged = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged,
+    });
+
+    const cases: Array<() => { ok: boolean; status: number; json: () => Promise<unknown> }> = [
+      // 409 但 code 不同。
+      () => ({ ok: false, status: 409, json: async () => ({ code: "EXPORT_CONFLICT" }) }),
+      // 409 但正文无 code。
+      () => ({ ok: false, status: 409, json: async () => ({ message: "conflict" }) }),
+      // 409 且正文不可解析。
+      () => ({ ok: false, status: 409, json: async () => Promise.reject(new Error("not json")) }),
+      // code 相同但状态不是 409。
+      () => ({ ok: false, status: 400, json: async () => ({ code: "ACCOUNT_CONTEXT_CHANGED" }) }),
+    ];
+    for (const makeResponse of cases) {
+      const pending = transport.request("POST", "/api/v1/exports", { currentPassword: "x" });
+      // request() 同步发起 fetch：最后一个 resolver 就是本次调用的应答闸门。
+      resolvers[resolvers.length - 1]!(makeResponse());
+      await pending;
+    }
+    expect(onAccountContextChanged).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(cases.length);
+  });
+
+  it("suppresses onAccountContextChanged for a stale-generation 409 (session replaced mid-flight)", async () => {
+    let revision = 1;
+    const { fetchMock, resolvers } = deferredFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const onAccountContextChanged = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => "42",
+      getSessionRevision: () => revision,
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged,
+    });
+
+    const pending = transport.request("POST", "/api/v1/exports", { currentPassword: "x" });
+    // 在途期间页面已 reconcile（代次推进）：迟到的旧意图 409 不得触碰较新会话。
+    revision = 2;
+    resolvers[0]!(accountContextChanged409());
+
+    const result = await pending;
+    expect(onAccountContextChanged).not.toHaveBeenCalled();
+    expect(result.status).toBe(409);
+  });
 });

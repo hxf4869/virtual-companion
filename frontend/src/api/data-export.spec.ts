@@ -31,7 +31,13 @@ function exportRow(overrides: Record<string, unknown> = {}) {
 
 function downloadResponse(status: number, blob: Blob): Response {
   const ok = status >= 200 && status < 300;
-  return { ok, status, blob: async () => blob } as unknown as Response;
+  // 失败响应同样携带 JSON 错误信封（VC-R52 起下载路径读取它做精确分类）。
+  return {
+    ok,
+    status,
+    blob: async () => blob,
+    json: async () => ({ code: ok ? "OK" : "NOT_FOUND_OR_FORBIDDEN" }),
+  } as unknown as Response;
 }
 
 async function expectHttpError(

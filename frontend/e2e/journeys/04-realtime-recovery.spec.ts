@@ -21,8 +21,8 @@ test("reload recovers after the first SSE connection is interrupted", async ({
   page,
 }) => {
   const session = await openSharedSession(page, "chat");
-  await prepareGenerationAccess(session.page);
-  const context = await createRelationshipAndConversation(session.page);
+  await prepareGenerationAccess(session);
+  const context = await createRelationshipAndConversation(session);
 
   let generationPosts = 0;
   let streamAttempts = 0;
@@ -93,8 +93,8 @@ test("a browser can abort a proxied SSE subscription and continue using generati
 }) => {
   test.setTimeout(150_000);
   const session = await openSharedSession(page, "chat");
-  await prepareGenerationAccess(session.page);
-  const context = await createRelationshipAndConversation(session.page);
+  await prepareGenerationAccess(session);
+  const context = await createRelationshipAndConversation(session);
   // 登录后的落地页已经位于 Vite 源；同源 fetch 会走真实代理链路。
 
   const created = await sessionRequest(
@@ -108,6 +108,7 @@ test("a browser can abort a proxied SSE subscription and continue using generati
       // normal EOF rather than client-disconnect propagation.
       userContent: `用于验证代理断开传播的一次生成。${PROVIDER_TIMEOUT_SENTINEL}`,
     },
+    { accountId: session.accountId },
   );
   expect(created.ok, `generation create failed: ${created.status}`).toBeTruthy();
   const generationId = String(

@@ -28,7 +28,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -99,11 +98,7 @@ func (g *revokeGate) letThrough() {
 // newRealCookieClient 返回使用独立真实 cookiejar 的 client。
 func newRealCookieClient(t *testing.T) *http.Client {
 	t.Helper()
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("创建 cookiejar 失败: %v", err)
-	}
-	return &http.Client{Jar: jar, Timeout: 10 * time.Second}
+	return newRealBrowserClient(t)
 }
 
 // realSubsequentLogin 用真实 client 完成「已 enrollment 账号」的后续登录：
@@ -134,7 +129,7 @@ func realSubsequentLogin(t *testing.T, client *http.Client, base, username strin
 	if trustDevice {
 		trust = "true"
 	}
-	code, _, err = realJSON(client, base, http.MethodPost,
+	code, body, err = realJSON(client, base, http.MethodPost,
 		"/api/v1/auth/challenges/"+next.ChallengeID+"/totp",
 		`{"code":"123456","trustDevice":`+trust+`}`)
 	if err != nil {
@@ -143,6 +138,8 @@ func realSubsequentLogin(t *testing.T, client *http.Client, base, username strin
 	if code != http.StatusOK {
 		t.Fatalf("后续登录 totp 状态码 = %d, 期望 200", code)
 	}
+	// 登录完成：页面已知账号更新为响应中的 accountId。
+	realNoteLoginAccount(client, body)
 }
 
 // realCurrentSessionID 返回 client 当前会话在 GET /api/v1/auth/sessions

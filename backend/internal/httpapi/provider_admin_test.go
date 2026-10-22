@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +110,8 @@ func providerRequest(t *testing.T, server *Server, store *providerMemStore, meth
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// The fixture page states the account it acts for.
+	req.Header.Set(expectedAccountHeader, strconv.FormatInt(account, 10))
 	if isStateChanging(method) {
 		req.Header.Set("Origin", "https://vc.test")
 		req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})

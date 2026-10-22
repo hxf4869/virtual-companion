@@ -7,6 +7,9 @@
  *   PENDING 申请（ErrConflict 的映射），调用方不得断言精确原因；404 是错密码/
  *   存在性隐藏的 fail-closed 映射；401 由既有 auth 流程处理（transport 已
  *   触发 onUnauthorized）。
+ * - VC-R52：期望账号前置条件被拒时是精确 409 + 信封 code
+ *   ACCOUNT_CONTEXT_CHANGED（见 isAccountContextChangedError）。它属于页面级
+ *   身份 reconcile 信号，不是密码错误，也不是结果未知。
  * - GET /api/v1/exports/{id} 只读状态（PENDING/READY/FAILED/EXPIRED），状态
  *   响应不再携带 downloadUrl。
  * - downloadUrl 一次性返回 JSON 文档。文档内含 Go int64 ID
@@ -28,13 +31,27 @@ export type DataExportHttpErrorKind = "unauthorized" | "server" | "client";
 export class DataExportHttpError extends Error {
   readonly status: number;
   readonly kind: DataExportHttpErrorKind;
+  /** Flat error-envelope code carried by the failing response, when readable. */
+  readonly serverCode?: string;
 
-  constructor(status: number, kind: DataExportHttpErrorKind) {
+  constructor(status: number, kind: DataExportHttpErrorKind, serverCode?: string) {
     super(`data export request failed with status ${status} (${kind})`);
     this.name = "DataExportHttpError";
     this.status = status;
     this.kind = kind;
+    this.serverCode = serverCode;
   }
+}
+
+/**
+ * VC-R52 期望账号前置条件的精确拒绝形态：HTTP 409 + 信封 code
+ * ACCOUNT_CONTEXT_CHANGED。这是页面级身份 reconcile 信号，不是密码错误或
+ * 结果未知，调用方不得映射成 wrong-password / 网络 UNKNOWN 文案。
+ */
+export function isAccountContextChangedError(caught: unknown): boolean {
+  return caught instanceof DataExportHttpError
+    && caught.status === 409
+    && caught.serverCode === "ACCOUNT_CONTEXT_CHANGED";
 }
 
 /**
@@ -111,6 +128,13 @@ function classifyStatus(status: number): DataExportHttpErrorKind {
   return "client";
 }
 
+/** Flat error-envelope code from a failing JSON body, when present. */
+function envelopeCode(json: unknown): string | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  const code = (json as Record<string, unknown>).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 function asString(object: Record<string, unknown>, key: string): string | undefined {
   const value = object[key];
   return typeof value === "string" ? value : undefined;
@@ -149,7 +173,11 @@ export async function createDataExport(
     requestOpts,
   );
   if (!response.ok) {
-    throw new DataExportHttpError(response.status, classifyStatus(response.status));
+    throw new DataExportHttpError(
+      response.status,
+      classifyStatus(response.status),
+      envelopeCode(response.json),
+    );
   }
   if (response.parseFailed) throw new DataExportProtocolError(response.status);
   const view = asRequestView(response.json);
@@ -173,7 +201,11 @@ export async function getDataExportStatus(
     requestOpts,
   );
   if (!response.ok) {
-    throw new DataExportHttpError(response.status, classifyStatus(response.status));
+    throw new DataExportHttpError(
+      response.status,
+      classifyStatus(response.status),
+      envelopeCode(response.json),
+    );
   }
   if (response.parseFailed) throw new DataExportProtocolError(response.status);
   const view = asRequestView(response.json);
@@ -218,8 +250,10 @@ export async function downloadDataExport(
       throw error;
     }
     if (!response.ok) {
-      // 404 为确定不可用（已用过/过期/未 READY）；≥500 为 server。
-      throw new DataExportHttpError(response.status, classifyStatus(response.status));
+      // 404 为确定不可用（已用过/过期/未 READY）；≥500 为 server。失败响应的
+      // 小 JSON 信封可以安全读取，只取 code 供精确分类。
+      const code = await response.json().then(envelopeCode, () => undefined);
+      throw new DataExportHttpError(response.status, classifyStatus(response.status), code);
     }
     // 正文读取与超时竞争：超时触发（gate 唤醒）或超时中止导致 blob()
     // reject 时按结果未知处理；非超时的读取异常保持原样抛出。

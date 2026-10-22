@@ -23,8 +23,8 @@ test("provider safety and timeout faults surface as safe terminal states", async
   page,
 }) => {
   const session = await openSharedSession(page, "chat");
-  await prepareGenerationAccess(session.page);
-  const context = await createRelationshipAndConversation(session.page);
+  await prepareGenerationAccess(session);
+  const context = await createRelationshipAndConversation(session);
   await navigateToPage(
     page,
     `/pages/chat/chat?relationshipId=${context.relationshipId}&conversationId=${context.conversationId}`,

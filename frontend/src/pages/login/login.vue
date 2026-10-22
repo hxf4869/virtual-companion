@@ -223,8 +223,13 @@ const copyMessage = ref("");
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  // 未确立身份时 auth.accountId 为 null：不带期望账号头，登录请求原样发出。
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  onAccountContextChanged: () => {
+    void auth.reconcileAccountContext(transport);
+  },
 });
 
 const canSubmitCredentials = computed(

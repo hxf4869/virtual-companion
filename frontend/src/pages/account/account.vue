@@ -6,6 +6,18 @@
         <view class="profile-mark" aria-hidden="true">@</view>
       </view>
 
+      <!-- VC-R52：期望账号失配后的页面级反馈。放在认证分支之外：reconcile
+           后无论落在哪个身份状态，反馈都保持可见（role=status 即 polite
+           live region，与仓库既有可访问反馈模式一致）。 -->
+      <view
+        v-if="accountContextNotice"
+        class="context-notice"
+        data-testid="account-context-notice"
+        role="status"
+      >
+        <text>{{ accountContextNotice }}</text>
+      </view>
+
       <view
         v-if="auth.sessionStatus === 'unknown'"
         class="profile-state"
@@ -155,8 +167,9 @@
               </button>
             </view>
 
-            <!-- :key 绑定账号：切换账号即重建面板，旧副本状态随 unmount 清空、
-                 迟到回调被存活守卫丢弃；必须改密的会话先改密再出现入口。 -->
+            <!-- :key 绑定账号：切换账号（含失配恢复 clear() 经 null 的往返）
+                 即重建面板，旧副本状态（含已填密码）随 unmount 清空、迟到回调
+                 被存活守卫丢弃；必须改密的会话先改密再出现入口。 -->
             <DataExportPanel
               v-if="!auth.passwordMustChange"
               :key="auth.accountId ?? undefined"
@@ -389,6 +402,9 @@ const deleteOpen = ref(false);
 const deletePassword = ref("");
 const deleteError = ref("");
 const busy = ref<BusyAction | null>(null);
+// VC-R52：期望账号失配（服务端 409 + ACCOUNT_CONTEXT_CHANGED）后的页面级
+// 反馈。放账号页层级而不是会被 :key 重建的面板内部，旧面板重建后仍可见。
+const accountContextNotice = ref("");
 
 // VC-R11: 当前设备内容归属的账号。普通局部变量，只用于重新激活时的重载
 // 判定，不参与渲染。
@@ -406,14 +422,18 @@ let actionSeq = 0;
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  onAccountContextChanged: handleAccountContextChanged,
 });
 
 // 副本下载与 transport 同源同一 auth store：cookie 会话 + CSRF + 401 登出。
 const authedFetch = createAuthedFetch(() => auth.accessToken, {
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  onAccountContextChanged: handleAccountContextChanged,
 });
 
 const accountMark = computed(() => {
@@ -436,6 +456,12 @@ onActivated(reloadStaleAccountSecurity);
 // 抢跑，重载交给重新激活时的 onActivated。
 watch(() => auth.accountId, (next, prev) => {
   if (prev === null || next === prev) return;
+  clearPrivateAccountState();
+});
+
+/** 清掉旧账号的私有表单/列表状态，并作废在途请求的收尾：清理只清「此刻」
+ * 的字段，迟到的错误文案、列表写入与 busy 复位靠代次比对整段静默丢弃。 */
+function clearPrivateAccountState(): void {
   currentPassword.value = "";
   newPassword.value = "";
   confirmPassword.value = "";
@@ -449,11 +475,33 @@ watch(() => auth.accountId, (next, prev) => {
   deviceActionError.value = "";
   busy.value = null;
   devicesForAccountId = null;
-  // 作废在途请求的收尾：watch 只清「此刻」的字段，迟到的错误文案、列表
-  // 写入与 busy 复位必须靠代次比对整段静默丢弃。
   deviceLoadSeq++;
   actionSeq++;
-});
+}
+
+/**
+ * VC-R52 期望账号失配恢复（transport/authedFetch 归属成立的精确 409 +
+ * ACCOUNT_CONTEXT_CHANGED，典型场景是共享 cookie jar 下另一 Tab 换号后本
+ * Tab 的陈旧提交）。同步顺序：先置页面级反馈并清掉旧意图/私有表单状态
+ * （作废页面动作代次，迟到收尾静默丢弃），再走 store 的
+ * reconcileAccountContext——它先同步 clear()（仅本地：作废在途旧探测与旧
+ * 动作归属、清共享私有缓存，accountId→null 使既有 v-else/:key 机制卸载旧
+ * 面板），随后以 omit 头的 GET /auth/session 发现当前 Cookie 身份。绝不
+ * logout、不触碰新账号的服务端会话，也绝不自动重放被拒操作：用户重新
+ * 确认（重填密码）后才再次提交。去重由 clear() 推进的代次承担：旧代次的
+ * 其余在途 409 被 transport 的归属判定挡下，无需本地标志。
+ * 恢复完成后复用 reloadStaleAccountSecurity 按当前真实已认证账号重载安全
+ * 区（只读设备列表，不重放写动作）：恢复路径不经 onActivated，null→B 的
+ * watch 又按约定直接返回，安全区会停在「暂无信任的设备」。该入口自带的
+ * account/seq 归属守卫也拦掉迟到的旧恢复对较新已确立身份的清扰。
+ */
+function handleAccountContextChanged(): void {
+  accountContextNotice.value = "登录状态已更新，请重新确认操作";
+  clearPrivateAccountState();
+  void auth.reconcileAccountContext(transport).then(() => {
+    reloadStaleAccountSecurity();
+  });
+}
 
 async function restoreAccount(): Promise<void> {
   if (!auth.isAuthenticated) {
@@ -730,6 +778,17 @@ async function onConfirmDelete(): Promise<void> {
   border-radius: var(--vc-radius-control);
   background: var(--vc-color-surface-soft);
   color: var(--vc-color-primary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.context-notice {
+  margin-bottom: var(--vc-space-5);
+  padding: var(--vc-space-3);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-control);
+  background: var(--vc-color-surface-soft);
+  color: var(--vc-color-ink);
   font-size: 13px;
   line-height: 20px;
 }

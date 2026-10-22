@@ -139,8 +139,14 @@ let loadSeq = 0;
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  getAccountId: () => auth.accountId,
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，
+  // 不自动重放动作（共享入口见 stores/auth.ts reconcileAccountContext）。
+  onAccountContextChanged: () => {
+    void auth.reconcileAccountContext(transport);
+  },
 });
 
 // VC-R11：身份交接清理。只有「已知账号 A → 不同账号（B 或 null）」才是

@@ -135,4 +135,136 @@ describe("createAuthedFetch", () => {
     expect(result.status).toBe(401);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
+
+  // ---- VC-R52：期望账号前置条件头与失配 409 归属 ----
+
+  function cloneableResponse(status: number, json: unknown) {
+    const body = { json: async () => json };
+    return {
+      ok: status < 400,
+      status,
+      json: async () => json,
+      clone: () => ({ ...body, json: async () => json }),
+    } as unknown as Response;
+  }
+
+  function contextChanged409() {
+    return cloneableResponse(409, { code: "ACCOUNT_CONTEXT_CHANGED", message: "mismatch" });
+  }
+
+  it("sends the expected-account header when the session knows the account", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      cloneableResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const authed = createAuthedFetch(() => null, {
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+    });
+    await authed("/api/v1/exports/1/download?token=one-time", { method: "GET" });
+
+    const headers = fetchMock.mock.calls[0][1]?.headers as Headers;
+    expect(headers.get("X-VC-Expected-Account-ID")).toBe("42");
+  });
+
+  it("omits the expected-account header when the session has no known account", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      cloneableResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const authed = createAuthedFetch(() => null, {
+      getAccountId: () => null,
+      onUnauthorized: vi.fn(),
+    });
+    await authed("/api/v1/exports/1/download?token=one-time", { method: "GET" });
+
+    const headers = fetchMock.mock.calls[0][1]?.headers as Headers;
+    expect(headers.get("X-VC-Expected-Account-ID")).toBeNull();
+  });
+
+  it("routes a precise 409 + ACCOUNT_CONTEXT_CHANGED to onAccountContextChanged and returns the response unchanged", async () => {
+    const gate = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => gate.promise));
+    const onAccountContextChanged = vi.fn();
+
+    const authed = createAuthedFetch(() => null, {
+      getAccountId: () => "42",
+      getSessionRevision: () => 7,
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged,
+    });
+
+    const pending = authed("/api/v1/exports/1/download?token=one-time", { method: "GET" });
+    gate.resolve(contextChanged409());
+    const result = await pending;
+
+    expect(onAccountContextChanged).toHaveBeenCalledTimes(1);
+    // 调用方拿到的原始响应未被消费：正文仍可读，状态原样。
+    expect(result.status).toBe(409);
+    await expect(result.json()).resolves.toEqual({ code: "ACCOUNT_CONTEXT_CHANGED", message: "mismatch" });
+  });
+
+  it("ignores a context-changed 409 from an older session revision", async () => {
+    const gate = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => gate.promise));
+    const onAccountContextChanged = vi.fn();
+    let revision = 1;
+
+    const authed = createAuthedFetch(() => null, {
+      getAccountId: () => "42",
+      getSessionRevision: () => revision,
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged,
+    });
+
+    const pending = authed("/api/v1/exports/1/download?token=one-time", { method: "GET" });
+    revision = 2; // reconcile/新登录已推进代次：旧意图迟到不得触碰较新会话。
+    gate.resolve(contextChanged409());
+    const result = await pending;
+
+    expect(onAccountContextChanged).not.toHaveBeenCalled();
+    expect(result.status).toBe(409);
+  });
+
+  it("only reacts to the exact code: other 409 bodies stay silent", async () => {
+    const gate = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => gate.promise));
+    const onAccountContextChanged = vi.fn();
+
+    const authed = createAuthedFetch(() => null, {
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged,
+    });
+
+    const pending = authed("/api/v1/exports/1/download?token=one-time", { method: "GET" });
+    gate.resolve(cloneableResponse(409, { code: "EXPORT_CONFLICT" }));
+    await pending;
+
+    expect(onAccountContextChanged).not.toHaveBeenCalled();
+  });
+
+  it("never clones a successful response (stream bodies stay untouched)", async () => {
+    const clone = vi.fn();
+    const success = {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+      clone,
+    } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn(async () => success));
+
+    const authed = createAuthedFetch(() => null, {
+      getAccountId: () => "42",
+      onUnauthorized: vi.fn(),
+      onAccountContextChanged: vi.fn(),
+    });
+    const result = await authed("/api/v1/realtime/streams/12", {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+    });
+
+    expect(result.status).toBe(200);
+    expect(clone).not.toHaveBeenCalled();
+  });
 });

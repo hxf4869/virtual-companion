@@ -137,6 +137,7 @@ import {
   createDataExport,
   downloadDataExport,
   getDataExportStatus,
+  isAccountContextChangedError,
   type DataExportDownloadFetch,
   type DataExportRequestView,
   type DataExportTransport,
@@ -190,7 +191,14 @@ function isUnauthorized(error: unknown): boolean {
   return error instanceof DataExportHttpError && error.kind === "unauthorized";
 }
 
-/** classify 归为 rejected 时才可能走到这里；401 已在调用方排除。 */
+/** VC-R52：期望账号失配的精确 409 由页面级身份 reconcile 接管（transport 已
+ * 触发 onAccountContextChanged，账号页给出可见反馈并重建面板）。面板侧静默
+ * 收场：不得映射成密码错误或结果未知文案，也不自动重放。 */
+function isReconciledByPage(error: unknown): boolean {
+  return isUnauthorized(error) || isAccountContextChangedError(error);
+}
+
+/** classify 归为 rejected 时才可能走到这里；401 与期望账号失配 409 已在调用方排除。 */
 function describeCreateError(error: unknown): string {
   if (classifyDataExportCreateError(error) === "rejected") {
     if (error instanceof DataExportHttpError && error.status === 404) {
@@ -215,7 +223,7 @@ async function onCreate(): Promise<void> {
     downloadUrl = created.downloadUrl;
     applyStatus(created.status);
   } catch (error) {
-    if (!alive || isUnauthorized(error)) return;
+    if (!alive || isReconciledByPage(error)) return;
     errorMessage.value = describeCreateError(error);
   } finally {
     if (alive) {
@@ -235,7 +243,7 @@ async function onCheckProgress(): Promise<void> {
     request.value = view;
     applyStatus(view.status);
   } catch (error) {
-    if (!alive || isUnauthorized(error)) return;
+    if (!alive || isReconciledByPage(error)) return;
     errorMessage.value = "进度暂时没有查到，请再试一次。";
   } finally {
     if (alive) busy.value = null;
@@ -256,7 +264,7 @@ async function onDownload(): Promise<void> {
     handoffDone.value = true;
     infoMessage.value = "已交给浏览器下载，请在本设备的下载内容中查看。";
   } catch (error) {
-    if (!alive || isUnauthorized(error)) return;
+    if (!alive || isReconciledByPage(error)) return;
     if (error instanceof DataExportHttpError && error.status === 404) {
       linkGone.value = true;
       errorMessage.value = "下载链接已失效，可以重新申请。";

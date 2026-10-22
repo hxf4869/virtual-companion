@@ -207,6 +207,10 @@ PY
 )
 HASH=$(printf '%s' "$RAW" | shasum -a 256 | cut -d' ' -f1)
 CSRF=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+# The fabricated session belongs to the seeded account above; every client
+# binds this id once (VC-R52 expected-account precondition) instead of
+# re-deriving an identity from the cookie jar mid-run.
+G12_ACCOUNT_ID=2000001
 psql_q "SELECT vc.identity_opaque_session_issue(2000001, '$HASH', now() + interval '12 hours')" >/dev/null
 echo "  session fabricated"
 
@@ -265,7 +269,7 @@ echo "== fixture: Technical Alpha simulated adult verification =="
 # is ADULT_VERIFIED (httpapi/generation.go). vc.record_age_verification only
 # accepts the server-bound owner context, so the synthetic owner takes the same
 # POST /api/v1/age/verification path the H5 flow uses; the gate stays intact.
-G12_BASE="$GO_BASE" G12_SESSION="$RAW" G12_CSRF="$CSRF" python3 - <<'PY' \
+G12_BASE="$GO_BASE" G12_SESSION="$RAW" G12_CSRF="$CSRF" G12_ACCOUNT="$G12_ACCOUNT_ID" python3 - <<'PY' \
   || die "adult verification fixture failed"
 import json, os, urllib.request
 base, session, csrf = os.environ["G12_BASE"], os.environ["G12_SESSION"], os.environ["G12_CSRF"]
@@ -273,6 +277,7 @@ req = urllib.request.Request(base + "/api/v1/age/verification", method="POST", h
     "Origin": "http://localhost",
     "Cookie": f"vc_session={session}; vc_csrf={csrf}",
     "X-CSRF-Token": csrf,
+    "X-VC-Expected-Account-ID": os.environ["G12_ACCOUNT"],
 })
 with urllib.request.urlopen(req, timeout=30) as resp:
     state = json.loads(resp.read()).get("ageState")
@@ -286,7 +291,7 @@ echo "== warm-up =="
 for i in $(seq 1 "$WARMUP"); do
   python3 "$HERE/workload.py" --base "$GO_BASE" --scenario s5 \
     --gens 1 --sse-per-gen 1 --key-prefix "$TRIAL_ID-warmup-$i" \
-    --session "$RAW" --csrf "$CSRF" >/dev/null \
+    --session "$RAW" --csrf "$CSRF" --account "$G12_ACCOUNT_ID" >/dev/null \
     || die "warm-up workload failed"
 done
 
@@ -329,7 +334,7 @@ run_scenario() {
   started=$(python3 -c 'import time; print(time.time())')
   if ! python3 "$HERE/workload.py" --base "$GO_BASE" --scenario "$name" \
       --gens "$gens" --sse-per-gen "$sse" --key-prefix "$TRIAL_ID-$name" \
-      --session "$RAW" --csrf "$CSRF" > "$result"; then
+      --session "$RAW" --csrf "$CSRF" --account "$G12_ACCOUNT_ID" > "$result"; then
     [ -s "$result" ] && cat "$result" >&2
     die "$name workload failed"
   fi
@@ -438,7 +443,7 @@ while [ "$SOAK_DONE" -lt "$SOAK_TURNS" ]; do
   if ! python3 "$HERE/workload.py" --base "$GO_BASE" --scenario s10 \
       --gens "$CURRENT_BATCH" --sse-per-gen 1 \
       --key-prefix "$TRIAL_ID-soak-$SOAK_INDEX" \
-      --session "$RAW" --csrf "$CSRF" > "$SOAK_FILE"; then
+      --session "$RAW" --csrf "$CSRF" --account "$G12_ACCOUNT_ID" > "$SOAK_FILE"; then
     [ -s "$SOAK_FILE" ] && cat "$SOAK_FILE" >&2
     die "soak batch $SOAK_INDEX failed"
   fi

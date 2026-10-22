@@ -87,6 +87,64 @@ func (g *logoutGate) letThrough() {
 	g.once.Do(func() { close(g.release) })
 }
 
+// pageAccountTransport 模拟「页面已知账号」的前置条件头：真实浏览器中页面
+// 知道自己渲染的 auth.accountId，并在请求上携带 X-VC-Expected-Account-ID；
+// 完成一次新登录后，页面已知账号随之更新。Cookie 仍由真实 cookiejar 维护，
+// transport 只负责在请求发出前附加当前已知账号的头。
+type pageAccountTransport struct {
+	mu   sync.Mutex
+	id   string
+	base http.RoundTripper
+}
+
+func (t *pageAccountTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	id := t.id
+	base := t.base
+	t.mu.Unlock()
+	if id != "" && req.Header.Get(expectedAccountHeader) == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set(expectedAccountHeader, id)
+	}
+	return base.RoundTrip(req)
+}
+
+// setAccount 记录页面当前已知账号（登录 200 响应中的 accountId）。
+func (t *pageAccountTransport) setAccount(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.id = id
+}
+
+// newRealBrowserClient 返回使用独立真实 cookiejar、并带 page-account
+// transport 的真实 client；页面已知账号在登录完成处由
+// realNoteLoginAccount 更新。
+func newRealBrowserClient(t *testing.T) *http.Client {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("创建 cookiejar 失败: %v", err)
+	}
+	return &http.Client{
+		Jar:     jar,
+		Timeout: 10 * time.Second,
+		Transport: &pageAccountTransport{
+			base: http.DefaultTransport,
+		},
+	}
+}
+
+// realNoteLoginAccount 从登录完成的 200 响应体解析 accountId 并更新页面
+// 已知账号；client 未使用 page-account transport 时为空操作。
+func realNoteLoginAccount(client *http.Client, body string) {
+	if pt, ok := client.Transport.(*pageAccountTransport); ok {
+		var identity sessionIdentityJSON
+		if err := json.Unmarshal([]byte(body), &identity); err == nil && identity.AccountID != "" {
+			pt.setAccount(identity.AccountID)
+		}
+	}
+}
+
 // newRealAuthServer 用真实 TCP 服务器包住核心 handler（Server.Handler()
 // 返回标准 http.Handler），并返回一个使用独立 cookiejar 的真实 client。
 func newRealAuthServer(t *testing.T) (*httptest.Server, *http.Client) {
@@ -94,13 +152,7 @@ func newRealAuthServer(t *testing.T) (*httptest.Server, *http.Client) {
 	s := newCoreServer(t, "full", newMemStore())
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		ts.Close()
-		t.Fatalf("创建 cookiejar 失败: %v", err)
-	}
-	client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
-	return ts, client
+	return ts, newRealBrowserClient(t)
 }
 
 // realHTTPResult 是 realJSON 的完整返回形态；setCookies 只统计响应携带的
@@ -199,7 +251,7 @@ func realFullLogin(t *testing.T, client *http.Client, base, username string, tru
 	if trustDevice {
 		trust = "true"
 	}
-	code, _, err = realJSON(client, base, http.MethodPost,
+	code, body, err = realJSON(client, base, http.MethodPost,
 		"/api/v1/auth/challenges/"+next.ChallengeID+"/authenticator-confirm",
 		`{"code":"123456","trustDevice":`+trust+`}`)
 	if err != nil {
@@ -208,6 +260,8 @@ func realFullLogin(t *testing.T, client *http.Client, base, username string, tru
 	if code != http.StatusOK {
 		t.Fatalf("authenticator-confirm 状态码 = %d, 期望 200", code)
 	}
+	// 登录完成：页面已知账号更新为响应中的 accountId。
+	realNoteLoginAccount(client, body)
 }
 
 // realCookieValue 读取真实 cookiejar 中指定名称的 Cookie 值（只用于
@@ -258,11 +312,7 @@ func TestVC12LateLogoutResponseDropsNewerSessionCookie(t *testing.T) {
 	t.Cleanup(ts.Close)
 	t.Cleanup(gate.letThrough)
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("创建 cookiejar 失败: %v", err)
-	}
-	client := &http.Client{Jar: jar, Timeout: 10 * time.Second}
+	client := newRealBrowserClient(t)
 
 	// 1) alice 完整登录，真实 jar 持有 A 的 vc_session/vc_csrf。
 	realFullLogin(t, client, ts.URL, "alice", false)

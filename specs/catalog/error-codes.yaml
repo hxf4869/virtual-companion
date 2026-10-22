@@ -45,3 +45,5 @@ entries:
   order: 20
 - code: AUTH_CHALLENGE_UNAVAILABLE
   order: 21
+- code: ACCOUNT_CONTEXT_CHANGED
+  order: 22

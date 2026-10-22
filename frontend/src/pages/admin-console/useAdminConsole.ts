@@ -19,8 +19,14 @@ export function useAdminConsoleAccess(): AdminConsoleAccess {
   const transport = createAuthenticatedTransport({
     getAccessToken: () => auth.accessToken,
     renewAccessToken: () => auth.renewAccessToken(transport),
+    getAccountId: () => auth.accountId,
     getSessionRevision: () => auth.getSessionRevision(),
     onUnauthorized: () => auth.onUnauthorized(),
+    // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，不
+    // 自动重放动作（共享入口见 stores/auth.ts reconcileAccountContext）。
+    onAccountContextChanged: () => {
+      void auth.reconcileAccountContext(transport);
+    },
   });
 
   async function ensureAccess(): Promise<boolean> {

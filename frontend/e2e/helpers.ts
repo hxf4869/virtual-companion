@@ -445,6 +445,17 @@ export interface E2EApiResult {
   body: unknown;
 }
 
+/** VC-R52 server expected-account precondition: state-changing requests must
+ * declare the account the session belongs to (X-VC-Expected-Account-ID), taken
+ * from the E2ESession's known accountId. Reads keep the header-less shape. */
+const EXPECTED_ACCOUNT_HEADER = "X-VC-Expected-Account-ID";
+const STATE_CHANGING_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
+export interface SessionRequestOptions {
+  /** Known accountId from E2ESession (openSharedSession / uiLogin). */
+  accountId?: string;
+}
+
 /** Execute an API request through the logged-in browser context. Its request
  * context shares the page's opaque-cookie jar, while reading the CSRF cookie
  * outside the document avoids racing a just-completed UI navigation. */
@@ -453,6 +464,7 @@ export async function sessionRequest(
   method: string,
   path: string,
   body?: unknown,
+  options: SessionRequestOptions = {},
 ): Promise<E2EApiResult> {
   const cookies = await page.context().cookies();
   const csrf = cookies.find((cookie) => cookie.name === "vc_csrf")?.value ?? "";
@@ -460,8 +472,11 @@ export async function sessionRequest(
     "Content-Type": "application/json",
     Origin: new URL(page.url()).origin,
   };
-  if (csrf && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+  if (csrf && STATE_CHANGING_METHODS.includes(method)) {
     headers["X-CSRF-Token"] = decodeURIComponent(csrf);
+  }
+  if (options.accountId && STATE_CHANGING_METHODS.includes(method)) {
+    headers[EXPECTED_ACCOUNT_HEADER] = options.accountId;
   }
   const response = await page.context().request.fetch(path, {
     method,
@@ -514,15 +529,19 @@ export async function waitForGenerationTerminal(
 }
 
 /** Satisfy the synthetic stack's real server-side age/consent gate. */
-export async function prepareGenerationAccess(page: Page): Promise<void> {
-  const age = await sessionRequest(page, "POST", "/api/v1/age/verification");
+export async function prepareGenerationAccess(session: E2ESession): Promise<void> {
+  const page = session.page;
+  const { accountId } = session;
+  const age = await sessionRequest(page, "POST", "/api/v1/age/verification", undefined, {
+    accountId,
+  });
   expect(age.ok, `age verification failed: ${age.status}`).toBeTruthy();
   for (const consentType of REQUIRED_CONSENTS) {
     const consent = await sessionRequest(page, "PUT", "/api/v1/consents", {
       consentType,
       version: "2026-08",
       granted: true,
-    });
+    }, { accountId });
     expect(
       consent.ok,
       `${consentType} grant failed: ${consent.status}`,
@@ -532,8 +551,9 @@ export async function prepareGenerationAccess(page: Page): Promise<void> {
 
 /** Use the product-created default relationship and create one real conversation. */
 export async function createRelationshipAndConversation(
-  page: Page,
+  session: E2ESession,
 ): Promise<E2EConversation> {
+  const page = session.page;
   const relationship = await sessionRequest(page, "GET", "/api/v1/relationships");
   expect(
     relationship.ok,
@@ -551,7 +571,7 @@ export async function createRelationshipAndConversation(
 
   const conversation = await sessionRequest(page, "POST", "/api/v1/conversations", {
     relationshipId,
-  });
+  }, { accountId: session.accountId });
   expect(
     conversation.ok,
     `conversation creation failed: ${conversation.status}`,

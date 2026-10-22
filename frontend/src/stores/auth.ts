@@ -325,6 +325,21 @@ export const useAuthStore = defineStore("h5-auth", () => {
     return false;
   }
 
+  /**
+   * VC-R52 期望账号失配恢复：transport 归属成立的精确 409 +
+   * ACCOUNT_CONTEXT_CHANGED 后调用（共享 cookie jar 下另一 Tab 换号，本 Tab
+   * 的本地身份已不可信）。先【同步】clear()——仅本地：推进
+   * refreshEpoch/credentialEpoch，作废换 Cookie 前已在途的身份探测（迟到旧
+   * 探测结果按既有代次判据丢弃，tryRefresh 不会被它合并而恢复不到新账号）
+   * 与旧动作的迟到收尾归属，并清共享私有缓存；绝不调用服务端 logout，不
+   * 撤销任何会话。随后以 omit 头的 GET /auth/session 读取当前 Cookie 身份：
+   * clear 已推进代次，tryRefresh 必然开启全新的 in-flight 探测。
+   */
+  async function reconcileAccountContext(t: AuthTransport): Promise<boolean> {
+    clear();
+    return tryRefresh(t);
+  }
+
   async function renewAccessToken(t: AuthTransport): Promise<RefreshOutcome> {
     return refreshOnce(t);
   }
@@ -405,6 +420,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     verifyRecoveryCode,
     resetLoginFlow,
     tryRefresh,
+    reconcileAccountContext,
     renewAccessToken,
     logout,
     onUnauthorized,

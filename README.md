@@ -28,10 +28,12 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
   type-check），SQL/RLS 隔离脚本在 `infra/db/`；各轮改动按影响范围定向
   验证，结果记录在对应提交与 [`TODO.md`](TODO.md)，历史全量结果只按
   当时输入范围有效，不升级为当前整仓保证；
-- 前端全量测试（711 项）与 type-check 随 VC-R39 改动验证；
+- 前端全量测试（735 项）与 type-check 随 VC-R52 改动验证；
 - 真实隔离栈 E2E（[`frontend/e2e/journeys/`](frontend/e2e/journeys/)）：
-  2026-10-22 VC-R41 无过滤一次跑完现有核心 18 实例（3 projects/10 files）
-  18/18 PASS；其中 08 可访问性与三档（320/390/430）视口布局两例、13 副本
+  2026-10-22 VC-R41 无过滤一次跑完当时核心 18 实例（3 projects/10 files）
+  18/18 PASS（历史记录按当时输入保留）；同日 VC-R52 落地跨 Tab 错账号修复后
+  同入口复跑 20 实例（18 + 新 R48 跨 Tab 用例双引擎）20/20 通过（1.9m）。
+  其中 08 可访问性与三档（320/390/430）视口布局两例、13 副本
   下载为 webkit+chromium 双引擎设备仿真，其余旅程为 chromium 手机视口；
 - G12 runtime-only 容量采样：三次独立 600s ready-idle 全部 PASS（idle
   RSS 均值 21.022–22.168 MiB），Go 镜像 OCI 事实（packed resources
@@ -43,7 +45,9 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 ### 工程待核（代码侧，未完成或未修复）
 
 - 认证写请求的请求侧排序与其余 API Cookie 竞态边界仍开放（R12/R15/
-  R16/R17 收口的是响应侧，不覆盖请求侧）；
+  R16/R17 收口的是响应侧，不覆盖请求侧；VC-R52 已覆盖跨账号场景：core
+  写强制 `X-VC-Expected-Account-ID` 前置条件，陈旧页面的写被服务端 409
+  拒绝且客户端恢复当前 Cookie 身份，同账号重登的请求侧时序仍未闭合）；
 - 本地 credentialEpoch 仍不能感知另一标签页登录。VC-R39 只收口 Admin
   退出确认窗这一个窗口：手机 390x844 原视口下旧遮挡实为底栏
   model-mobile-bar 与导航同层（非 modal），抽屉改用既有 overlay 层级后

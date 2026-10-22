@@ -90,7 +90,8 @@
       "SCHEMA_UNAVAILABLE",
       "PASSWORD_CHANGE_REQUIRED",
       "RATE_LIMITED",
-      "AUTH_CHALLENGE_UNAVAILABLE"
+      "AUTH_CHALLENGE_UNAVAILABLE",
+      "ACCOUNT_CONTEXT_CHANGED"
     ],
     "GenerationState": [
       "CREATED",
@@ -767,11 +768,15 @@
           {
             "code": "AUTH_CHALLENGE_UNAVAILABLE",
             "order": 21
+          },
+          {
+            "code": "ACCOUNT_CONTEXT_CHANGED",
+            "order": 22
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "fc722d76cb6dc5211a4784f01b51ae2012fd645127339c6cf20d042c9284b69b"
+      "sha256": "a44e55fcf5d6c00377b22ea6eddcd53a14f59750fd11724a44c0eda89beb2530"
     },
     "generation-states.yaml": {
       "document": {

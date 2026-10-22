@@ -22,11 +22,17 @@ vi.mock("@/api/data-export", () => {
   class DataExportHttpError extends Error {
     readonly status: number;
     readonly kind: "unauthorized" | "server" | "client";
-    constructor(status: number, kind: "unauthorized" | "server" | "client") {
+    readonly serverCode?: string;
+    constructor(
+      status: number,
+      kind: "unauthorized" | "server" | "client",
+      serverCode?: string,
+    ) {
       super(`HTTP ${status}`);
       this.name = "DataExportHttpError";
       this.status = status;
       this.kind = kind;
+      this.serverCode = serverCode;
     }
   }
   class DataExportProtocolError extends Error {
@@ -42,6 +48,11 @@ vi.mock("@/api/data-export", () => {
     DataExportProtocolError,
     classifyDataExportCreateError: (caught: unknown): "rejected" | "unknown" => (
       caught instanceof DataExportHttpError && caught.kind === "client" ? "rejected" : "unknown"
+    ),
+    isAccountContextChangedError: (caught: unknown): boolean => (
+      caught instanceof DataExportHttpError
+      && caught.status === 409
+      && caught.serverCode === "ACCOUNT_CONTEXT_CHANGED"
     ),
     createDataExport: vi.fn(),
     getDataExportStatus: vi.fn(),
@@ -288,6 +299,57 @@ describe("DataExportPanel", () => {
 
     expect(wrapper.find('[data-testid="data-copy-error"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="data-copy-create"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R52：期望账号失配的精确 409 由页面级 reconcile 接管 ----
+
+  it("treats a precise context-changed 409 as page-owned: no error copy, no wrong-password, no resend", async () => {
+    createDataExportMock.mockRejectedValue(
+      new DataExportHttpError(409, "client", "ACCOUNT_CONTEXT_CHANGED"),
+    );
+    const wrapper = mountPanel();
+    await openPanel(wrapper);
+    await submitCreate(wrapper);
+    await flushPromises();
+
+    // 面板静默收场：不显示任何错误文案（尤其不得映射成密码错误或结果
+    // 未知），也不自动重放；密码即用即清，等待页面重建。
+    expect(wrapper.find('[data-testid="data-copy-error"]').exists()).toBe(false);
+    const text = wrapper.get('[data-testid="data-copy-panel"]').text();
+    expect(text).not.toContain("当前密码不正确");
+    expect(text).not.toContain("结果不确定");
+    expect(text).not.toContain("没有整理成功");
+    expect(createDataExportMock).toHaveBeenCalledTimes(1);
+    const input = wrapper.get('[data-testid="data-copy-password"]').element as HTMLInputElement;
+    expect(input.value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("treats a plain 409 without the exact code as an ordinary honest rejection", async () => {
+    createDataExportMock.mockRejectedValue(new DataExportHttpError(409, "client"));
+    const wrapper = mountPanel();
+    await openPanel(wrapper);
+    await submitCreate(wrapper);
+
+    expect(wrapper.get('[data-testid="data-copy-error"]').text())
+      .toContain("这次申请没有被接受");
+    wrapper.unmount();
+  });
+
+  it("adds no download copy on a context-changed 409 (page reconcile owns it)", async () => {
+    const wrapper = mountPanel();
+    await driveToReady(wrapper);
+    downloadDataExportMock.mockRejectedValue(
+      new DataExportHttpError(409, "client", "ACCOUNT_CONTEXT_CHANGED"),
+    );
+
+    await wrapper.get('[data-testid="data-copy-download"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="data-copy-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text())
+      .not.toContain("结果不确定");
+    expect(downloadDataExportMock).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
