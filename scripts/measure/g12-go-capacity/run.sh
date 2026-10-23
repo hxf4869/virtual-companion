@@ -69,6 +69,21 @@
 # exit path, exactly like the scenario-3 holdMs). No ms threshold is
 # asserted; it runs no other chain and no full profile.
 #
+# --probe-s9 (VC-R128) is the same FUNCTIONAL_ONLY bound for §19.1 scenario 9
+# only (real login + session-revocation concurrency on the real public auth
+# chain): two freshly seeded synthetic accounts (committed e2e-pool BCrypt
+# password, env-only, never argv/logs/results) walk the Root-audited
+# sequence — full TOTP enrollment with a trusted device (A), trusted-device
+# password login, cross-account DELETE owner isolation (404 with the target
+# left valid), a barrier-synchronized password login racing an
+# explicit-session DELETE (per-client cookie jars; overlap proven from the
+# actual request windows, never thread starts), revoke-all (exactly 2
+# revoked, no Set-Cookie), and the SAME trusted-device cookie landing back
+# at 202/TOTP_REQUIRED. A final read-only probe with the harness's original
+# fabricated session proves nothing downstream broke. It makes no
+# generation/provider call, never touches provider config, and draws no
+# performance conclusion in any mode.
+#
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
 # project, images, output directory, and data. Ownership is receipt-based
@@ -79,19 +94,21 @@
 # create action provably produced, and a failed cleanup keeps the records
 # for recovery instead of discarding them.
 #
-# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6]
+# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9]
 set -euo pipefail
 export DOCKER_CONTEXT=orbstack
 
 PROBE=0
 PROBE_S3=0
 PROBE_S6=0
+PROBE_S9=0
 case "${1:-}" in
   --probe) PROBE=1 ;;
   --probe-s3) PROBE=1; PROBE_S3=1 ;;
   --probe-s6) PROBE=1; PROBE_S6=1 ;;
+  --probe-s9) PROBE=1; PROBE_S9=1 ;;
   "") ;;
-  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9]" >&2; exit 2 ;;
 esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -160,6 +177,11 @@ S3_QUIET_MS="${G12_S3_QUIET_MS:-3000}"
 # the first live delta; the SSE deadline covers the whole widened stream
 # (firstTokenMs + chunks*deltaMs) with the same +20 s headroom pattern.
 S6_DELTA_MS="${G12_S6_DELTA_MS:-400}"
+# §19.1 scenario 9 (VC-R128): one bounded wall-clock budget for the whole
+# S9 functional chain — the workload derives a single monotonic deadline
+# from it, caps every public call's timeout at the remaining budget, and
+# never counts a result returned after expiry as a success.
+S9_BUDGET_SECONDS="${G12_S9_BUDGET_SECONDS:-60}"
 # §19.1 idle/recovery windows: the spec calls for 10 minutes. Probe shrinks
 # these to a bounded functional window and never reports performance numbers.
 IDLE_SECONDS="${G12_IDLE_SECONDS:-600}"
@@ -175,6 +197,7 @@ if [ "$PROBE" = "1" ]; then
 fi
 MODE=$( { [ "$PROBE_S3" = "1" ] && echo PROBE_S3; } \
        || { [ "$PROBE_S6" = "1" ] && echo PROBE_S6; } \
+       || { [ "$PROBE_S9" = "1" ] && echo PROBE_S9; } \
        || { [ "$PROBE" = "1" ] && echo PROBE || echo PROFILE; })
 
 COMPOSE=(docker compose --env-file "$ENVFILE" -f "$STACK_COMPOSE" -p "$PROJECT")
@@ -588,6 +611,32 @@ psql_q "SELECT vc.identity_opaque_session_issue(2000001, '$HASH', now() + interv
 # never through argv or logs.
 export G12_SESSION="$RAW" G12_CSRF="$CSRF" G12_ACCOUNT="$G12_ACCOUNT_ID"
 echo "  session fabricated"
+
+# §19.1 S9 (VC-R128): two dedicated login-only synthetic accounts with a
+# REAL BCrypt password — the same committed synthetic pool credential as
+# scripts/dev/e2e-stack.sh / frontend/e2e/helpers.ts (fixed cost-10 hash;
+# never a real secret). Seeded only when S9 will actually run. The
+# per-trial database is always fresh, so the accounts carry no prior
+# TOTP/trusted-device/session or login-rate-limit state. The password
+# travels to workload.py by environment only, never argv or logs, and
+# never appears in any result file.
+if [ "$PROBE_S9" = "1" ] || [ "$PROBE" = "0" ]; then
+  echo "== seed: S9 real-login accounts (synthetic pool password) =="
+  "${COMPOSE[@]}" exec -T db psql -U vc_migrator -d vc -v ON_ERROR_STOP=1 -q \
+      -v s9_hash='$2a$10$dduHEOO64z/pmmkp1ZMXieLcGnxQ109z2GTeit189y5vvBMGfcmpe' <<'SQL'
+INSERT INTO vc.vc_user(id, display_name)
+VALUES (2000002, 'G12 S9 user A'), (2000003, 'G12 S9 user B')
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (2000002, 'g12-s9-a', :'s9_hash', 'USER', 'ACTIVE', 'G12 S9 user A'),
+       (2000003, 'g12-s9-b', :'s9_hash', 'USER', 'ACTIVE', 'G12 S9 user B')
+ON CONFLICT (id) DO NOTHING;
+SQL
+  export G12_S9_LOGIN_A="g12-s9-a" G12_S9_LOGIN_B="g12-s9-b" \
+         G12_S9_PASSWORD_A='E2e-User-Pass-1234!' \
+         G12_S9_PASSWORD_B='E2e-User-Pass-1234!'
+  echo "  s9 accounts seeded"
+fi
 
 echo "== fixture: Technical Alpha simulated adult verification =="
 # Generation intake fails closed with AGE_VERIFICATION_REQUIRED until the owner
@@ -1891,6 +1940,256 @@ print(f"  A peak RSS/PSS = {ab['a_rss_peak_kb']}/{ab['a_pss_peak_kb']} kB; "
 PY
 }
 
+run_scenario_s9() {
+  # §19.1 场景 9 (VC-R128): real login + session-revocation concurrency on
+  # the real public auth chain — no generation, no provider call, and no
+  # provider config is ever set or restored. Two freshly seeded synthetic
+  # accounts walk the Root-audited contract: (1) full TOTP enrollment with
+  # trustDevice (S_a0), a trusted-device password login (S_target), and B's
+  # independent enrollment (S_b); (2) cross-account owner isolation — B's
+  # DELETE of A's target sid must 404 and leave the target valid; (3) a
+  # barrier-synchronized pair — A's trusted-device password login racing
+  # S_a0's explicit DELETE of the target sid, per-client cookie jars, the
+  # overlap proven from the ACTUAL request windows (boolean + margin ms,
+  # never thread starts): DELETE 200, target next GET 401, and the new
+  # session, S_a0, S_b all still 200; (4) revoke-all from the new session:
+  # exactly 2 revoked (a0 + new; the target is already gone), a0/new next
+  # GET 401, B untouched, no Set-Cookie on any revoke response; (5) the
+  # SAME trusted-device cookie on a correct-password login must land at
+  # 202/TOTP_REQUIRED with no session cookie — the device itself was
+  # revoked by the all-revoke; (6) one read-only probe with the harness's
+  # original fabricated session must stay 200. All assertions are status
+  # codes / booleans / exact counts; no ms threshold is asserted (§19.2
+  # gates stay Owner-frozen).
+  local name="$1"
+  local result="$RUN_DIR/$name.json" summary="$RUN_DIR/$name.summary.json"
+  echo "== scenario $name: real login + session revoke concurrency (budget ${S9_BUDGET_SECONDS}s) =="
+  local provider_before provider_after cpu_before cpu_after
+  local worker_active worker_peak subscribers_after
+  local started ended analysis
+  provider_before=$(provider_stats) || die "provider stats unreachable"
+  cpu_before=$(metric_value process_cpu_seconds_total)
+  started=$(python3 -c 'import time; print(time.time())')
+  export G12_S9_BUDGET_SECONDS="$S9_BUDGET_SECONDS"
+  if ! run_workload --scenario s9 > "$result"; then
+    [ -s "$result" ] && cat "$result" >&2
+    die "$name workload failed"
+  fi
+  # S9 makes no generation/provider call, so the baseline must already be
+  # zero — proven from fresh re-scraped real state with the same bounded
+  # wait as S6, never a single scrape or a fixed sleep.
+  if ! wait_s6_baseline 30; then
+    die "$name did not return to baseline within the bounded budget"
+  fi
+  ended=$(python3 -c 'import time; print(time.time())')
+  cpu_after=$(metric_value process_cpu_seconds_total)
+  worker_active=$(metric_value vc_generation_active)
+  worker_peak=$(metric_value vc_generation_peak)
+  subscribers_after=$(metric_value vc_realtime_subscribers)
+  provider_after=$(provider_stats)
+  analysis=$(analyze_window "$started" "$ended")
+  echo "$analysis" > "$RUN_DIR/$name.analysis.json"
+  if ! python3 - "$result" "$provider_before" "$provider_after" \
+    "$cpu_before" "$cpu_after" "$worker_active" "$worker_peak" \
+    "$subscribers_after" "$analysis" "$name" > "$summary" <<'PY'
+import json, sys
+
+(result_path, provider_before, provider_after, cpu_before, cpu_after,
+ worker_active, worker_peak, subscribers_after, analysis_s, name) = sys.argv[1:11]
+analysis = json.loads(analysis_s)
+r = json.load(open(result_path))
+before, after = json.loads(provider_before), json.loads(provider_after)
+errors = []
+checks = []
+
+# Strict consumption: a missing field is itself a failure — an absent
+# check can never produce a vacuous green.
+s9 = r.get("s9")
+if not isinstance(s9, dict):
+    s9 = {}
+    errors.append("s9 result object missing from workload result")
+for field in ("deadline_seconds", "budget_expired", "public_calls"):
+    if field not in s9:
+        errors.append(f"s9.{field} missing from workload result")
+
+STEP_FIELDS = {
+    "a_enroll": ("login_status", "setup_status", "totp_status",
+                 "totp_trusted", "session_active"),
+    "a_login2": ("status", "trusted_cookie_present", "session_active"),
+    "b_enroll": ("login_status", "setup_status", "totp_status",
+                 "session_active"),
+    "owner_isolation": ("b_delete_status", "target_get_status"),
+    "concurrent": ("overlap", "overlap_margin_ms", "login_status",
+                   "delete_status", "target_after_status", "new_active",
+                   "a0_active", "b_active", "delete_no_set_cookie"),
+    "revoke_all": ("status", "revoked", "a0_after_status",
+                   "new_after_status", "b_active", "no_set_cookie"),
+    "trusted_revoked": ("login_status", "next_step",
+                        "session_cookie_absent"),
+    "g12_probe": ("status",),
+}
+steps = {}
+for step_name, fields in STEP_FIELDS.items():
+    step = s9.get(step_name)
+    if not isinstance(step, dict):
+        errors.append(f"s9.{step_name} missing from workload result")
+        step = {}
+    steps[step_name] = step
+    for field in fields:
+        if field not in step:
+            errors.append(f"s9.{step_name}.{field} missing from workload "
+                          "result")
+
+def get(step_name, field):
+    return steps[step_name].get(field)
+
+def want(step_name, field, expected):
+    value = get(step_name, field)
+    if value != expected:
+        errors.append(f"{step_name}.{field} = {value!r} want {expected!r}")
+
+# 1) full enroll chains on the real public login surface
+want("a_enroll", "login_status", 202)
+want("a_enroll", "setup_status", 200)
+want("a_enroll", "totp_status", 200)
+want("a_enroll", "totp_trusted", True)
+want("a_enroll", "session_active", True)
+want("a_login2", "status", 200)
+want("a_login2", "trusted_cookie_present", True)
+want("a_login2", "session_active", True)
+want("b_enroll", "login_status", 202)
+want("b_enroll", "setup_status", 200)
+want("b_enroll", "totp_status", 200)
+want("b_enroll", "session_active", True)
+# 2) owner isolation: exactly 404, and the target still valid afterwards
+want("owner_isolation", "b_delete_status", 404)
+want("owner_isolation", "target_get_status", 200)
+# 3) the concurrent pair: overlap proven on the real request windows
+want("concurrent", "overlap", True)
+want("concurrent", "login_status", 200)
+want("concurrent", "delete_status", 200)
+want("concurrent", "target_after_status", 401)
+want("concurrent", "new_active", True)
+want("concurrent", "a0_active", True)
+want("concurrent", "b_active", True)
+want("concurrent", "delete_no_set_cookie", True)
+margin = get("concurrent", "overlap_margin_ms")
+if not isinstance(margin, (int, float)) or isinstance(margin, bool):
+    errors.append(f"concurrent.overlap_margin_ms = {margin!r} want a number")
+else:
+    checks.append(f"concurrent request-window overlap margin {margin} ms")
+# 4) revoke-all causality
+want("revoke_all", "status", 200)
+want("revoke_all", "revoked", 2)
+want("revoke_all", "a0_after_status", 401)
+want("revoke_all", "new_after_status", 401)
+want("revoke_all", "b_active", True)
+want("revoke_all", "no_set_cookie", True)
+# 5) the trusted device itself was revoked
+want("trusted_revoked", "login_status", 202)
+want("trusted_revoked", "next_step", "TOTP_REQUIRED")
+want("trusted_revoked", "session_cookie_absent", True)
+# 6) the harness's own fabricated session survives S9 untouched
+want("g12_probe", "status", 200)
+
+budget_expired = s9.get("budget_expired")
+if budget_expired is True:
+    errors.append("S9 deadline expired — no result may count as a success")
+elif budget_expired is not False:
+    errors.append(f"s9.budget_expired = {budget_expired!r} want a boolean")
+public_calls = s9.get("public_calls")
+if not isinstance(public_calls, int) or isinstance(public_calls, bool):
+    errors.append(f"s9.public_calls = {public_calls!r} want an integer")
+else:
+    checks.append(f"public calls {public_calls} (budget 25)")
+    if public_calls > 25:
+        errors.append(f"public calls {public_calls} exceed the 25 budget")
+
+provider_delta = after["streamRequests"] - before["streamRequests"]
+checks.append(f"provider stream requests delta {provider_delta}")
+if provider_delta != 0:
+    errors.append(f"S9 must make no provider stream request (delta "
+                  f"{provider_delta})")
+if after["activeStreamRequests"] != 0:
+    errors.append(f"provider active after S9 {after['activeStreamRequests']}")
+if int(float(worker_active)) != 0:
+    errors.append(f"worker active after S9 {worker_active}")
+if int(float(subscribers_after)) != 0:
+    errors.append(f"subscribers after S9 {subscribers_after}")
+
+a, peak = analysis["a"], analysis["b"]["same_frame_peak"]
+summary = {
+    "scenario": name,
+    "mode": "FUNCTIONAL_ONLY",
+    "performance_conclusions": "NONE",
+    "semantics": (
+        "real login + session-revocation concurrency on the real public "
+        "auth chain: trusted-device login, cross-account owner isolation, "
+        "barrier-synchronized login-vs-explicit-revoke (overlap proven on "
+        "the actual request windows), revoke-all causality, and the "
+        "revoked trusted device returning to TOTP_REQUIRED — status codes, "
+        "booleans and exact counts only; no ms threshold and no §19.2 gate"),
+    "method": {
+        "budget_seconds": s9.get("deadline_seconds"),
+        "accounts": "two fresh per-trial synthetic accounts; password "
+                    "env-only (committed synthetic pool credential)",
+        "overlap_proof": "max(start) < min(end) over the two concurrent "
+                         "clients' actual request windows, never thread "
+                         "starts",
+    },
+    "steps": steps,
+    "public_calls": public_calls,
+    "budget_expired": budget_expired,
+    "provider": {"stream_requests_delta": provider_delta,
+                 "active_after": after["activeStreamRequests"]},
+    "worker_active_after": int(float(worker_active)),
+    "worker_peak": int(float(worker_peak)),
+    "subscribers_after": int(float(subscribers_after)),
+    "cpu_seconds": round(float(cpu_after) - float(cpu_before), 6),
+    "window_ab": {
+        "a_rss_peak_kb": a["a_rss_peak_kb"],
+        "a_pss_peak_kb": a["a_pss_peak_kb"],
+        "b_peak_rss_mib": round(peak["b_rss_peak_kb"] / 1024, 3) if peak else None,
+        "b_peak_pss_mib": round(peak["b_pss_peak_kb"] / 1024, 3) if peak else None,
+        "b_complete_frames": peak["complete_frames"] if peak else 0,
+        "b_cpu_status": {c: {"status": cpu["status"], "reason": cpu.get("reason")}
+                         for c, cpu in analysis["b"]["components"].items()},
+        "b_cpu_component_ns": {c: cpu["cpu_delta_ns"]
+                               for c, cpu in analysis["b"]["components"].items()},
+    },
+    "checks": checks,
+    "errors": errors,
+}
+print(json.dumps(summary, ensure_ascii=False))
+if errors:
+    for error in errors:
+        print(f"G12 assertion failed: {error}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  then
+    die "$name login/revoke assertions failed"
+  fi
+  python3 - "$summary" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+c, rv = r["steps"]["concurrent"], r["steps"]["revoke_all"]
+print(f"  concurrent: overlap {c.get('overlap')} "
+      f"(margin {c.get('overlap_margin_ms')} ms); DELETE "
+      f"{c.get('delete_status')} then target GET "
+      f"{c.get('target_after_status')}; new/a0/b active = "
+      f"{c.get('new_active')}/{c.get('a0_active')}/{c.get('b_active')}")
+print(f"  revoke-all: {rv.get('status')} revoked={rv.get('revoked')}; "
+      f"a0/new next GET {rv.get('a0_after_status')}/"
+      f"{rv.get('new_after_status')}; B active {rv.get('b_active')}")
+tr = r["steps"]["trusted_revoked"]
+print(f"  trusted device: login {tr.get('login_status')} "
+      f"{tr.get('next_step')} (session cookie absent: "
+      f"{tr.get('session_cookie_absent')}); g12 probe "
+      f"{r['steps']['g12_probe'].get('status')}; public calls "
+      f"{r.get('public_calls')}")
+PY
+}
+
 if [ "$PROBE" = "1" ]; then
   if [ "$PROBE_S3" = "1" ]; then
     echo "== probe-s3 functional chain: 1 held generation + 3 silent SSE =="
@@ -1904,6 +2203,13 @@ if [ "$PROBE" = "1" ]; then
     run_scenario_s6 probe-s6 "$S6_DELTA_MS"
     echo "== G12 probe-s6 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
     cat "$RUN_DIR/probe-s6.summary.json"
+    exit 0
+  fi
+  if [ "$PROBE_S9" = "1" ]; then
+    echo "== probe-s9 functional chain: real login + session revoke concurrency =="
+    run_scenario_s9 probe-s9
+    echo "== G12 probe-s9 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+    cat "$RUN_DIR/probe-s9.summary.json"
     exit 0
   fi
   echo "== probe functional chain: 1 generation + 1 SSE through caddy TLS =="
@@ -2060,6 +2366,7 @@ fi
 run_scenario_s4
 run_scenario_s3 s3 "$S3_HOLD_MS" "$S3_QUIET_MS"
 run_scenario_s6 s6 "$S6_DELTA_MS"
+run_scenario_s9 s9
 run_scenario s5 "$GENS_S5" "$SSE_S5"
 run_scenario s10 "$GENS_S10" "$SSE_S10"
 
@@ -2196,12 +2503,13 @@ python3 - "$TRIAL_ID" "$MODE" "$PROJECT" "$COLD_START_MS" "$IDLE_CPU_SECONDS" \
   "$IDLE_ANALYSIS" "$IMAGE_BYTES" "$RUN_DIR/s4.summary.json" \
   "$RUN_DIR/s3.summary.json" \
   "$RUN_DIR/s6.summary.json" \
+  "$RUN_DIR/s9.summary.json" \
   "$RUN_DIR/s5.summary.json" \
   "$RUN_DIR/s10.summary.json" "$RUN_DIR/soak.summary.json" \
   > "$RUN_DIR/trial.summary.json" <<'PY'
 import json, sys
 (trial_id, mode, project, cold_ms, idle_cpu, idle_analysis_s, image_bytes_s,
- s4_path, s3_path, s6_path, s5_path, s10_path, soak_path) = sys.argv[1:14]
+ s4_path, s3_path, s6_path, s9_path, s5_path, s10_path, soak_path) = sys.argv[1:15]
 idle = json.loads(idle_analysis_s)
 summary = {
     "trial_id": trial_id, "mode": mode,
@@ -2215,6 +2523,7 @@ summary = {
     "s4": json.load(open(s4_path)),
     "s3": json.load(open(s3_path)),
     "s6": json.load(open(s6_path)),
+    "s9": json.load(open(s9_path)),
     "s5": json.load(open(s5_path)),
     "s10": json.load(open(s10_path)),
     "soak": json.load(open(soak_path)),

@@ -835,3 +835,39 @@ test_collector 27 输入未变未重跑。Root 独立复核证据同时确认：
 30→28→25 耗尽不发 cancel 且失败、preclaim 重试/首 delta 锁定两响应回放、
 config.deltaMs 解析、空 JSON cancel 携 CSRF 与 expected account 均通过；
 probe1/2 各 21 项 exact daemon 查询均 rc0/count0、leftovers={}。
+
+
+## 14. 2026-10-23 补充：S9 真实登录与会话撤销并发功能探针（VC-R127～R130）
+
+既有 G12 harness 增加 `--probe-s9`，完整 profile 顺序加入 S9：
+S4 / S3 / S6 / S9 / S5 / S10 / soak。只扩展既有 runner、workload 和相关
+单测；未修改 Go 服务、数据库结构、公开契约或生产依赖。S9 使用独立合成
+账号和 Cookie jar，经公开 password → authenticator setup/confirm 建立
+真实会话及可信设备，再验证会话撤销边界；默认共享 60s 单调时钟预算，
+请求使用剩余时间，过期返回不能计为成功。
+
+真实 OrbStack / TLS / PostgreSQL 探针运行退出码 **0**，耗时 **98.2s**，
+共 **22 次公开调用**。A 的可信设备登录与删除指定旧会话的客户端请求区间
+确有重叠（22.053ms；不据此推断服务端处理区间或纯服务耗时）。删除返回
+200，目标下一次请求 401，新会话、发起会话及 B 账号仍为 200；B 越权删除
+返回 404 且目标仍有效。随后因果有序地 revoke-all 返回 revoked=2，A 两个
+剩余会话下一次请求均 401，B 不受影响，撤销响应未写会话 Cookie。
+
+可信设备撤销使用**同一个此前被接受的旧 Cookie**再次登录验证：返回
+202 / TOTP_REQUIRED，未签发新 vc_session。未携带旧 Cookie 的普通 TOTP
+挑战不能替代这项证明。原测量会话仍可用；provider 请求增量为 0，结束时
+provider-active / worker / subscribers 均回到 0。S9 不断言已建立 SSE
+连接立即断开，只验证被撤销会话下一次请求失败。
+
+稳定候选验证：workload **58** 项、资源所有权 **53** 项通过，`bash -n`
+及 **26 个 Python heredoc** 编译通过。窗口有 2 个完整同窗 B 观测，
+DB/runtime/minio/caddy 的 CPU 状态均为 VALID，仅证明采集接线可用；本次
+为 **FUNCTIONAL_ONLY**，不产出容量或性能结论，不满足 §19.2 门槛。
+
+原 harness 运行及清理成功；后续独立只读核清确认本轮 **8 个业务容器、
+5 个采集器、全部实际收据中的卷/网络及 3 个构建镜像标签**均不存在，
+cleanup leftovers={}，私有合成配置已删除。核清遵循成功清理会删除临时
+构建收据的现有生命周期，原外层观察错误记录保持原样。
+
+G12 整体仍未完成：S6 HTTP 慢读者、S8、完整 profile 三次与长窗口、
+性能口径及 Owner 门槛等未由此关闭；真实 provider、Beta 和真机验收保持待办。

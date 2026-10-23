@@ -139,14 +139,28 @@ slow-subscriber sub-scenario of S6 remains explicitly open: the existing
 realtime tests wire a slow reader straight to the hub and do not prove an
 HTTP slow reader.
 
+Scenario 9 uses two isolated synthetic accounts and the public password,
+authenticator setup/confirm, and session APIs. It overlaps a trusted-device
+login with deletion of an explicit existing session: only the target must
+fail its next request, while the new session and the other account remain
+active. A subsequent revoke-all must invalidate both remaining own sessions
+and the SAME previously accepted trusted-device cookie; sending that cookie
+again must require TOTP without issuing a new session. A cross-account
+session deletion must return 404 without revoking the target, and the original
+measurement session must remain usable. The shared admission/result deadline
+is 60 seconds by default; expired or late responses fail. This is a bounded
+FUNCTIONAL_ONLY chain with no generation or provider traffic, not a capacity
+or latency acceptance.
+
 ```bash
-bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s6, s5, s10, soak)
+bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s6, s9, s5, s10, soak)
 bash scripts/measure/g12-go-capacity/run.sh --probe         # FUNCTIONAL_ONLY wiring proof (s4 branch)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s3      # FUNCTIONAL_ONLY wiring proof (s3 branch)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s6      # FUNCTIONAL_ONLY wiring proof (s6 branch)
+bash scripts/measure/g12-go-capacity/run.sh --probe-s9      # FUNCTIONAL_ONLY public auth/session concurrency
 python3 scripts/measure/g12-go-capacity/test_collector.py   # render/collect/aggregation units
 python3 scripts/measure/g12-go-capacity/test_resources.py   # resource-ownership units (stubbed docker)
-python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window/s6 units
+python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window/s6/s9 units
 python3 scripts/measure/g12-go-capacity/test_fake_provider.py  # fixture abort/completion counters (node)
 ```
 
@@ -161,7 +175,9 @@ subscribers with the quiet-window proof above); it runs no S4 chain and no
 full profile. `--probe-s6` shares the same bound for the two S6
 cancel/reconnect chains only (one deliberate-disconnect generation and one
 cancelled generation, with the fixture-side abort/completion accounting
-above); it runs no other chain and no full profile.
+above); it runs no other chain and no full profile. `--probe-s9` runs only the S9
+authentication/session chain described above, with the same stack, TLS,
+collection, and ownership cleanup; it runs no other scenario or full profile.
 
 Optional env:
 
@@ -171,6 +187,7 @@ Optional env:
 | `G12_GENS_S10` / `G12_SSE_S10` | 16 / 4 | scenario 10 shape (SSE cap 8/gen) |
 | `G12_S3_HOLD_MS` / `G12_S3_QUIET_MS` | 8000 / 3000 | scenario 3 provider hold and quiet-window budget (probe-s3 uses `G12_PROBE_S3_HOLD_MS` / `G12_PROBE_S3_QUIET_MS`, default 6000 / 2000) |
 | `G12_S6_DELTA_MS` | 400 | scenario 6 widened provider deltaMs so a stream is still in flight after the first live delta (probe-s6 uses `G12_PROBE_S6_DELTA_MS`, default 400; restored to the original value on every exit path) |
+| `G12_S9_BUDGET_SECONDS` | 60 | scenario 9 shared monotonic deadline; each request uses the remaining budget, and late responses fail |
 | `G12_CONCURRENCY` / `G12_OUTSTANDING` | 16 / 16 | §19.5 overrides (config caps at 16) |
 | `G12_SOAK_TURNS` / `G12_SOAK_BATCH` | 100 / 10 | recovery workload and batch size |
 | `G12_IDLE_SECONDS` / `G12_WARM_IDLE_SECONDS` / `G12_POST_IDLE_SECONDS` | 600 / 10 / 600 | §19.1 idle and recovery windows (probe uses 6 s) |
@@ -181,7 +198,8 @@ Optional env:
 | `G12_KEEP` | 0 | keep the stack and images up on exit |
 
 Output: `trial.summary.json` (probe: `probe.summary.json`; probe-s3:
-`probe-s3.summary.json`; probe-s6: `probe-s6.summary.json` — all marked
+`probe-s3.summary.json`; probe-s6: `probe-s6.summary.json`; probe-s9:
+`probe-s9.summary.json` — all marked
 `FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's
 summary carries the first-delta block with its baselines,
 provider-known-delay subtraction, coverage evidence and definition; s3's
@@ -190,7 +208,9 @@ break/end reasons, boundary-exact window scrape, hold/restore values, SSE
 deadline and the same-window A/B analysis over the quiet bounds; s6's
 summary carries the reconnect/cancel evidence — booleans, counts, event
 names, the fixture abort/completion deltas and the deltaMs set/restore
-values, never message text), idle windows,
+values, never message text; s9 records HTTP statuses, isolation/revocation
+booleans, call counts and client-observed request-interval overlap, never
+passwords, TOTP material or cookie values), idle windows,
 100-turn batch and recovery summaries, `frames.jsonl` (same-window A/B frames:
 timestamp / platform / source / integrity / 4-component data), scrape
 snapshots, `created-resources.json` (this run's nonce-receipted inventory:

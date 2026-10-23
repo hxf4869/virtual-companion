@@ -9,28 +9,45 @@ attribution under the hub catch-up contract — every live subscription sees
 a catch-up chat.snapshot first, deltas after the LAST snapshot preceding
 the terminal are replay splits — chunk-boundary frame reassembly, absolute
 deadline, EOF-retry / connect-failure outcomes, mid-read timeouts keeping
-earlier observations, catchup_text_chars coverage evidence) and the Stats
+earlier observations, catchup_text_chars coverage evidence), the Stats
 first-delta reporting contract (percentiles stay None — never a fabricated
 0 — when no live delta was observed, absent ones count by reason, coverage
-counts joined-before-first-delta vs joined-mid-stream).
+counts joined-before-first-delta vs joined-mid-stream), and the §19.1 S9
+(VC-R128) real-login scenario: the hand-written RFC 6238 TOTP, Set-Cookie
+capture/clearing semantics, the S9Client wire contract (per-client cookie
+isolation, CSRF/Origin/expected-account write headers), and the full
+run_scenario_s9 orchestration against a stateful fake auth backend
+(owner isolation, barrier concurrency with a deterministic rendezvous,
+revoke-all causal effects, trusted-cookie fallback, budget exhaustion and
+transport failures as explicit errors, no credentials in serialized
+output).
 
 Determinism: urllib.request.urlopen is swapped for scripted responses and
 workload.time for a fake clock, so deadline and timing assertions never
 depend on machine speed. Two cases use a real loopback http.server on
 127.0.0.1 (ephemeral port, dedicated thread, shut down per test) to prove
-chunk-by-chunk flush behavior with loose lower bounds only. No Docker, no
-external network, no real provider.
+chunk-by-chunk flush behavior with loose lower bounds only. The S9
+orchestration runs real threads on the real monotonic clock with the two
+concurrent-phase requests rendezvousing inside the fake backend, so the
+overlap proof is deterministic. No Docker, no external network, no real
+provider.
 """
 
+import contextlib
 import http.server
+import io
 import json
+import os
 import socket
 import sys
 import threading
 import time
 import unittest
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -1473,6 +1490,720 @@ class ObserverQuietWindowTest(unittest.TestCase):
                          ["generation_active=0", "provider_active=0",
                           "observation_unparseable"])
         self.assertIsNone(rec["chosen"])
+
+
+# ---- §19.1 S9 (VC-R128): real login vs session-revocation concurrency ---
+
+S9A = "s9a"
+S9B = "s9b"
+S9_PASSWORD = "S9-e2e-password-do-not-print"
+S9_TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+
+
+class TOTPCodeTest(unittest.TestCase):
+    """RFC 6238 SHA-1 / 30 s / 6-digit vectors for the hand-written TOTP."""
+
+    def test_rfc6238_sha1_vectors_and_step_edges(self):
+        # 6-digit truncations of the RFC's 8-digit SHA-1 vectors
+        self.assertEqual(workload.s9_totp_code(S9_TOTP_SECRET, 59.0),
+                         "287082")
+        self.assertEqual(workload.s9_totp_code(S9_TOTP_SECRET, 1111111109.0),
+                         "081804")
+        self.assertEqual(workload.s9_totp_code(S9_TOTP_SECRET, 1234567890.0),
+                         "005924")
+        self.assertEqual(workload.s9_totp_code(S9_TOTP_SECRET, 2000000000.0),
+                         "279037")
+        # base32 case and padding are normalized
+        self.assertEqual(
+            workload.s9_totp_code(S9_TOTP_SECRET.lower() + "=", 59.0),
+            "287082")
+        # the code changes exactly at 30 s step boundaries
+        self.assertEqual(workload.s9_totp_code(S9_TOTP_SECRET, 29.999),
+                         workload.s9_totp_code(S9_TOTP_SECRET, 0.0))
+        self.assertNotEqual(workload.s9_totp_code(S9_TOTP_SECRET, 29.999),
+                            workload.s9_totp_code(S9_TOTP_SECRET, 30.0))
+
+
+class S9CookieTest(unittest.TestCase):
+    """Set-Cookie capture: multi-header capture, clearing via empty value
+    or non-positive Max-Age (the backend's revoke-all shape), names-only
+    extraction."""
+
+    def test_apply_set_cookies_captures_and_clears(self):
+        jar = {}
+        workload.s9_apply_set_cookies([
+            "vc_session=abc; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=Lax",
+            "vc_csrf=def; Path=/; Max-Age=3600; SameSite=Lax",
+        ], jar)
+        self.assertEqual(jar, {"vc_session": "abc", "vc_csrf": "def"})
+        # a trusted cookie joins via a third header of the same response
+        workload.s9_apply_set_cookies(
+            ["vc_trusted_device=tok; Path=/; Max-Age=7776000; HttpOnly"], jar)
+        self.assertEqual(jar["vc_trusted_device"], "tok")
+        # values containing '=' survive (partition splits on the first only)
+        workload.s9_apply_set_cookies(["vc_session=a=b=; Path=/"], jar)
+        self.assertEqual(jar["vc_session"], "a=b=")
+        # revoke-all's clearing shape (auth.go clearTrustedDeviceCookie)
+        workload.s9_apply_set_cookies(
+            ["vc_trusted_device=; Path=/; Max-Age=-1;"
+             " Expires=Thu, 01 Jan 1970 00:00:01 GMT"], jar)
+        self.assertNotIn("vc_trusted_device", jar)
+        # empty value clears too; an unrelated cookie survives
+        workload.s9_apply_set_cookies(["vc_session="], jar)
+        self.assertEqual(jar, {"vc_csrf": "def", })
+
+    def test_cookie_names_reports_names_only(self):
+        self.assertEqual(
+            workload.s9_cookie_names(["vc_session=x; Path=/",
+                                      "vc_csrf=y; Path=/"]),
+            ["vc_session", "vc_csrf"])
+        self.assertEqual(workload.s9_cookie_names([]), [])
+        self.assertEqual(workload.s9_cookie_names(None), [])
+
+
+class FakeHeaders:
+    """Minimal stand-in for the http.client header object: get_all only."""
+
+    def __init__(self, values):
+        self.values = {k.lower(): list(v) for k, v in values.items()}
+
+    def get_all(self, name, default=None):
+        return self.values.get(name.lower(), default)
+
+
+class FakeJSONResponse:
+    """Scripted JSON HTTP response: context manager + one-shot read."""
+
+    def __init__(self, status, body, set_cookies=()):
+        self.status = status
+        self._raw = json.dumps(body).encode() if body is not None else b""
+        self.headers = FakeHeaders({"content-type": ["application/json"],
+                                    "set-cookie": list(set_cookies)})
+        self.closed = False
+
+    def read(self):
+        return self._raw
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.closed = True
+        return False
+
+
+class S9ClientScriptedTest(unittest.TestCase):
+    """S9Client wire contract against scripted urlopen responses: the
+    cookie header is built from the client's OWN jar only, authenticated
+    writes carry CSRF double-submit + expected-account + Content-Type,
+    reads carry neither, multiple Set-Cookie headers are surfaced whole,
+    HTTPError statuses are returned rather than raised, and a response
+    never mutates the issuing client's jar (session identities stay
+    isolated)."""
+
+    def install(self, script):
+        calls = []
+        real = urllib.request.urlopen
+
+        def scripted(req, timeout=None, context=None):
+            calls.append({"req": req, "timeout": timeout})
+            item = script[len(calls) - 1] if len(calls) <= len(script) \
+                else script[-1]
+            if callable(item):
+                item = item()
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        urllib.request.urlopen = scripted
+        self.addCleanup(setattr, urllib.request, "urlopen", real)
+        return calls
+
+    @staticmethod
+    def hget(req, name):
+        for k, v in req.headers.items():
+            if k.lower() == name.lower():
+                return v
+        return None
+
+    def test_write_headers_multi_set_cookie_and_jar_isolation(self):
+        client = workload.S9Client(
+            "http://127.0.0.1:1", cookies={"vc_session": "s1",
+                                          "vc_csrf": "c1"}, account_id="42")
+        resp = FakeJSONResponse(
+            200, {"ok": True},
+            ["vc_session=s2; Path=/; Max-Age=3600",
+             "vc_csrf=c2; Path=/; Max-Age=3600"])
+        calls = self.install([resp])
+        status, body, sc = client.request(
+            "DELETE", "/api/v1/auth/sessions/9", {}, write=True)
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {"ok": True})
+        self.assertEqual(sc, ["vc_session=s2; Path=/; Max-Age=3600",
+                              "vc_csrf=c2; Path=/; Max-Age=3600"])
+        req = calls[0]["req"]
+        self.assertEqual(req.get_method(), "DELETE")
+        self.assertEqual(self.hget(req, "cookie"),
+                         "vc_session=s1; vc_csrf=c1")
+        self.assertEqual(self.hget(req, "x-csrf-token"), "c1")
+        self.assertEqual(self.hget(req, "x-vc-expected-account-id"), "42")
+        self.assertEqual(self.hget(req, "content-type"), "application/json")
+        self.assertEqual(self.hget(req, "origin"), "http://127.0.0.1")
+        # the jar is caller-owned: a response never rewrites it, and other
+        # clients' jars are untouched (one login cannot clobber another)
+        self.assertEqual(client.cookies, {"vc_session": "s1", "vc_csrf": "c1"})
+        other = workload.S9Client("http://127.0.0.1:1",
+                                  cookies={"vc_session": "z"})
+        self.assertEqual(other.cookies, {"vc_session": "z"})
+
+    def test_http_error_surfaced_and_read_carries_no_csrf(self):
+        client = workload.S9Client("https://127.0.0.1:18443/x/",
+                                   cookies={"vc_session": "s1"},
+                                   account_id="42")
+        err = urllib.error.HTTPError(
+            "url", 401, "Unauthorized", FakeHeaders({}),
+            io.BytesIO(b'{"code":"AUTHENTICATION_REQUIRED"}'))
+        calls = self.install([err])
+        status, body, sc = client.request("GET", "/api/v1/auth/sessions")
+        self.assertEqual(status, 401)
+        self.assertEqual(body, {"code": "AUTHENTICATION_REQUIRED"})
+        self.assertEqual(sc, [])
+        req = calls[0]["req"]
+        # origin derives scheme+hostname only (the Client convention)
+        self.assertEqual(self.hget(req, "origin"), "https://127.0.0.1")
+        self.assertEqual(self.hget(req, "cookie"), "vc_session=s1")
+        # a read carries neither CSRF nor Content-Type nor account header
+        self.assertIsNone(self.hget(req, "x-csrf-token"))
+        self.assertIsNone(self.hget(req, "content-type"))
+        self.assertIsNone(self.hget(req, "x-vc-expected-account-id"))
+
+
+class FakeS9Backend:
+    """Stateful stand-in for the real auth endpoints the S9 scenario uses.
+
+    Reproduces the auth.go semantics the scenario depends on: 202 challenge
+    on first login, direct 200 via a valid trusted cookie (the token is
+    never rotated), authenticator-setup / authenticator-confirm (ENROLL
+    mode, strict TOTP against the shared s9_totp_code window), session
+    list with current flags, owner-scoped DELETE (404 cross-account) and
+    revoke-all with a count — neither sets cookies. Strict about the wire
+    contract (Origin on unauthenticated writes; Origin + CSRF
+    double-submit + expected-account on authenticated writes) so header
+    bugs fail loudly. The two concurrent-phase requests rendezvous on a
+    REAL barrier inside the backend, so the overlap measurement has
+    deterministic truth on the real monotonic clock.
+    """
+
+    def __init__(self, *, keep_trusted_after_revoke=False,
+                 lenient_totp=False):
+        self.lock = threading.Lock()
+        self.keep_trusted_after_revoke = keep_trusted_after_revoke
+        self.lenient_totp = lenient_totp
+        self.requests = []      # {"method","path","headers","cookies","body"}
+        self.account_ids = {S9A: "9000002", S9B: "9000003",
+                            "harness": "9000001"}
+        self.next_row = 900100
+        self.sessions = {}      # token -> {"account","row","live"}
+        self.by_account = {}    # account -> [(token, csrf, row), ...]
+        self.challenges = {}    # cid -> account
+        self.next_cid = 0
+        self.trusted = {}       # token -> {"account","live"}
+        self.enrolled = set()
+        self.trusted_logins = 0
+        self.a0_token = None
+        self.concurrent_barrier = threading.Barrier(2, timeout=5.0)
+        # the harness's fabricated session (run.sh) must keep working
+        self.sessions["HARNESS-SESS"] = {"account": "harness",
+                                         "row": "900099", "live": True}
+
+    # -- plumbing ------------------------------------------------------
+
+    def __call__(self, req, timeout=None, context=None):
+        method = req.get_method()
+        path = urllib.parse.urlparse(req.full_url).path
+        headers = {k.lower(): v for k, v in req.headers.items()}
+        cookies = {}
+        for part in headers.get("cookie", "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name:
+                cookies[name] = value
+        body = json.loads(req.data.decode()) if req.data else None
+        with self.lock:
+            self.requests.append({"method": method, "path": path,
+                                  "headers": headers, "cookies": cookies,
+                                  "body": body})
+        if method == "POST" and path == "/api/v1/auth/login":
+            return self._login(headers, cookies, body or {})
+        if method == "POST" and path.endswith("/authenticator-setup"):
+            return self._setup(headers, path)
+        if method == "POST" and path.endswith("/authenticator-confirm"):
+            return self._confirm(headers, path, body or {})
+        if method == "GET" and path == "/api/v1/auth/sessions":
+            return self._list(cookies)
+        if method == "DELETE" and path.startswith("/api/v1/auth/sessions/"):
+            return self._delete(headers, cookies, path)
+        if method == "POST" and path == "/api/v1/auth/sessions/revoke-all":
+            return self._revoke_all(headers, cookies)
+        raise AssertionError(f"unexpected request {method} {path}")
+
+    @staticmethod
+    def _error(status, code):
+        return urllib.error.HTTPError(
+            "http://backend", status, code, FakeHeaders({}),
+            io.BytesIO(json.dumps({"code": code}).encode()))
+
+    def _issue(self, account):
+        row = str(self.next_row)
+        self.next_row += 1
+        token = f"SESS-{account}-{row}"
+        csrf = f"CSRF-{account}-{row}"
+        self.sessions[token] = {"account": account, "row": row,
+                                "live": True}
+        self.by_account.setdefault(account, []).append((token, csrf, row))
+        if account == S9A and self.a0_token is None:
+            self.a0_token = token
+        return token, csrf, row
+
+    @staticmethod
+    def _session_cookies(token, csrf):
+        return [f"vc_session={token}; Path=/; Max-Age=3600; HttpOnly;"
+                f" SameSite=Lax",
+                f"vc_csrf={csrf}; Path=/; Max-Age=3600; SameSite=Lax"]
+
+    def _rendezvous(self):
+        try:
+            self.concurrent_barrier.wait()
+        except Exception:
+            pass  # a scenario that never sends the peer still gets a
+            # bounded (5 s) response; the failure then shows up in the
+            # scenario's own assertions instead of hanging the test
+
+    def _write_principal(self, headers, cookies):
+        """(session-or-None, error-response-or-None): Origin + CSRF
+        double-submit + expected-account + live session, as core.go's
+        corePrincipal(write=true) demands."""
+        if not headers.get("origin"):
+            return None, self._error(403, "ACCESS_DENIED")
+        if not headers.get("x-csrf-token") \
+                or headers.get("x-csrf-token") != cookies.get("vc_csrf"):
+            return None, self._error(403, "ACCESS_DENIED")
+        session = self.sessions.get(cookies.get("vc_session"))
+        if not session or not session["live"]:
+            return None, self._error(401, "AUTHENTICATION_REQUIRED")
+        if headers.get("x-vc-expected-account-id") \
+                != self.account_ids[session["account"]]:
+            return None, self._error(409, "ACCOUNT_CONTEXT_CHANGED")
+        return session, None
+
+    # -- endpoints ------------------------------------------------------
+
+    def _login(self, headers, cookies, body):
+        if not headers.get("origin"):
+            return self._error(403, "ACCESS_DENIED")
+        account = body.get("account")
+        if account not in self.account_ids or \
+                body.get("password") != S9_PASSWORD:
+            return self._error(404, "NOT_FOUND_OR_FORBIDDEN")
+        token = cookies.get("vc_trusted_device")
+        trusted = self.trusted.get(token) if token else None
+        if token and trusted and trusted["live"]:
+            self.trusted_logins += 1
+            if self.trusted_logins == 2:   # login#3: the concurrent one
+                self._rendezvous()
+            new, csrf, _ = self._issue(account)
+            return FakeJSONResponse(
+                200, {"nextStep": "ACTIVE",
+                      "accountId": self.account_ids[account]},
+                self._session_cookies(new, csrf))
+        clear = []
+        if token and (trusted is None or not trusted["live"]):
+            if not self.keep_trusted_after_revoke:
+                clear = ["vc_trusted_device=; Path=/; Max-Age=-1;"
+                         " Expires=Thu, 01 Jan 1970 00:00:01 GMT"]
+            else:
+                # negative mode: the revoked credential is still accepted
+                new, csrf, _ = self._issue(account)
+                return FakeJSONResponse(
+                    200, {"nextStep": "ACTIVE",
+                          "accountId": self.account_ids[account]},
+                    self._session_cookies(new, csrf))
+        with self.lock:
+            self.next_cid += 1
+            cid = f"CHAL-{self.next_cid}"
+            self.challenges[cid] = account
+        step = "TOTP_REQUIRED" if account in self.enrolled \
+            else "AUTHENTICATOR_SETUP_REQUIRED"
+        return FakeJSONResponse(
+            202, {"nextStep": step, "challengeId": cid,
+                  "expiresAt": "2026-10-23T00:00:00Z"}, clear)
+
+    def _setup(self, headers, path):
+        if not headers.get("origin"):
+            return self._error(403, "ACCESS_DENIED")
+        cid = path.split("/")[-2]
+        if cid not in self.challenges:
+            return self._error(404, "NOT_FOUND_OR_FORBIDDEN")
+        return FakeJSONResponse(200, {"manualKey": S9_TOTP_SECRET,
+                                      "provisioningUri": "otpauth://totp/x",
+                                      "qrCodeDataUrl": "data:,"})
+
+    def _confirm(self, headers, path, body):
+        if not headers.get("origin"):
+            return self._error(403, "ACCESS_DENIED")
+        cid = path.split("/")[-2]
+        account = self.challenges.get(cid)
+        if account is None:
+            return self._error(404, "AUTH_CHALLENGE_UNAVAILABLE")
+        if not self.lenient_totp:
+            now = time.time()
+            window = {workload.s9_totp_code(S9_TOTP_SECRET, now + delta)
+                      for delta in (0, -30, 30)}
+            if body.get("code") not in window:
+                return self._error(404, "NOT_FOUND_OR_FORBIDDEN")
+        with self.lock:
+            del self.challenges[cid]
+            self.enrolled.add(account)
+            token, csrf, row = self._issue(account)
+        set_cookies = self._session_cookies(token, csrf)
+        if body.get("trustDevice"):
+            trusted = f"TRUST-{account}-{row}"
+            self.trusted[trusted] = {"account": account, "live": True}
+            set_cookies.append(
+                f"vc_trusted_device={trusted}; Path=/; Max-Age=7776000;"
+                f" HttpOnly; SameSite=Lax")
+        return FakeJSONResponse(
+            200, {"nextStep": "ACTIVE",
+                  "accountId": self.account_ids[account],
+                  "recoveryCodes": ["rc-do-not-print"]}, set_cookies)
+
+    def _list(self, cookies):
+        session = self.sessions.get(cookies.get("vc_session"))
+        if not session or not session["live"]:
+            return self._error(401, "AUTHENTICATION_REQUIRED")
+        rows = [{"id": rec["row"], "createdAt": "2026-10-23T00:00:00Z",
+                 "expiresAt": "2026-10-30T00:00:00Z",
+                 "current": rec["row"] == session["row"],
+                 "accountId": self.account_ids[rec["account"]],
+                 "role": "USER", "passwordMustChange": False}
+                for rec in self.sessions.values()
+                if rec["live"] and rec["account"] == session["account"]]
+        return FakeJSONResponse(200, rows)
+
+    def _delete(self, headers, cookies, path):
+        session, err = self._write_principal(headers, cookies)
+        if err is not None:
+            return err
+        if cookies.get("vc_session") == self.a0_token:
+            self._rendezvous()   # the concurrent DELETE (S_a0's browser)
+        sid = path.rsplit("/", 1)[1]
+        target = next((rec for rec in self.sessions.values()
+                       if rec["live"] and rec["row"] == sid
+                       and rec["account"] == session["account"]), None)
+        if target is None:
+            return self._error(404, "NOT_FOUND_OR_FORBIDDEN")
+        target["live"] = False
+        return FakeJSONResponse(200, {"ok": True})
+
+    def _revoke_all(self, headers, cookies):
+        session, err = self._write_principal(headers, cookies)
+        if err is not None:
+            return err
+        with self.lock:
+            count = 0
+            for rec in self.sessions.values():
+                if rec["live"] and rec["account"] == session["account"]:
+                    rec["live"] = False
+                    count += 1
+            if not self.keep_trusted_after_revoke:
+                for trusted in self.trusted.values():
+                    if trusted["account"] == session["account"]:
+                        trusted["live"] = False
+        return FakeJSONResponse(200, {"revoked": count})
+
+
+class FakeS9Clock:
+    """time.monotonic stand-in advanced by the test per fake-backend call,
+    plus a FIXED wall clock (time.time) so TOTP stays deterministic."""
+
+    def __init__(self, start=1000.0, wall=1_700_000_000.0, step=1.0):
+        self.now = start
+        self.wall = wall
+        self.step = step
+
+    def monotonic(self):
+        return self.now
+
+    def time(self):
+        return self.wall
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class S9ScenarioOrchestrationTest(unittest.TestCase):
+    """run_scenario_s9 end-to-end against the fake auth backend: the full
+    §19.1 场景 9 sequence with real threads and a deterministic concurrent
+    rendezvous, plus the explicit-failure paths."""
+
+    def setUp(self):
+        self.backend = FakeS9Backend()
+        real = urllib.request.urlopen
+
+        def routed(req, timeout=None, context=None):
+            return self.backend(req, timeout, context)
+
+        urllib.request.urlopen = routed
+        self.addCleanup(setattr, urllib.request, "urlopen", real)
+
+    @staticmethod
+    def args(budget=60.0):
+        import argparse
+        return argparse.Namespace(
+            base="http://backend", origin=None, cacert=None,
+            session="HARNESS-SESS", csrf="HARNESS-CSRF", account="9000001",
+            s9_login_a=S9A, s9_login_b=S9B,
+            s9_password_a=S9_PASSWORD, s9_password_b=S9_PASSWORD,
+            s9_budget_seconds=budget)
+
+    def assert_schema_complete(self, s9):
+        self.assertEqual(set(s9),
+                         {"deadline_seconds", "budget_expired",
+                          "public_calls", "a_enroll", "a_login2", "b_enroll",
+                          "owner_isolation", "concurrent", "revoke_all",
+                          "trusted_revoked", "g12_probe", "errors",
+                          "error_count"})
+        self.assertEqual(set(s9["a_enroll"]),
+                         {"login_status", "setup_status", "totp_status",
+                          "totp_trusted", "session_active"})
+        self.assertEqual(set(s9["a_login2"]),
+                         {"status", "trusted_cookie_present",
+                          "session_active"})
+        self.assertEqual(set(s9["b_enroll"]),
+                         {"login_status", "setup_status", "totp_status",
+                          "session_active"})
+        self.assertEqual(set(s9["owner_isolation"]),
+                         {"b_delete_status", "target_get_status"})
+        self.assertEqual(set(s9["concurrent"]),
+                         {"overlap", "overlap_margin_ms", "login_status",
+                          "delete_status", "target_after_status",
+                          "new_active", "a0_active", "b_active",
+                          "delete_no_set_cookie"})
+        self.assertEqual(set(s9["revoke_all"]),
+                         {"status", "revoked", "a0_after_status",
+                          "new_after_status", "b_active", "no_set_cookie"})
+        self.assertEqual(set(s9["trusted_revoked"]),
+                         {"login_status", "next_step",
+                          "session_cookie_absent"})
+        self.assertEqual(set(s9["g12_probe"]), {"status"})
+
+    def test_happy_path_full_schema_and_wire(self):
+        stats = workload.Stats()
+        result = workload.run_scenario_s9(self.args(), stats)
+        self.assert_schema_complete(result)
+        self.assertEqual(stats.errors, [])
+        self.assertEqual(result["public_calls"], 22)
+        self.assertFalse(result["budget_expired"])
+        self.assertEqual(result["a_enroll"],
+                         {"login_status": 202, "setup_status": 200,
+                          "totp_status": 200, "totp_trusted": True,
+                          "session_active": True})
+        self.assertEqual(result["a_login2"],
+                         {"status": 200, "trusted_cookie_present": True,
+                          "session_active": True})
+        self.assertEqual(result["b_enroll"],
+                         {"login_status": 202, "setup_status": 200,
+                          "totp_status": 200, "session_active": True})
+        self.assertEqual(result["owner_isolation"],
+                         {"b_delete_status": 404, "target_get_status": 200})
+        concurrent = result["concurrent"]
+        self.assertTrue(concurrent["overlap"])
+        self.assertGreater(concurrent["overlap_margin_ms"], 0.0)
+        self.assertEqual(concurrent["login_status"], 200)
+        self.assertEqual(concurrent["delete_status"], 200)
+        self.assertEqual(concurrent["target_after_status"], 401)
+        self.assertTrue(concurrent["new_active"])
+        self.assertTrue(concurrent["a0_active"])
+        self.assertTrue(concurrent["b_active"])
+        self.assertTrue(concurrent["delete_no_set_cookie"])
+        revoke = result["revoke_all"]
+        self.assertEqual(revoke["status"], 200)
+        self.assertEqual(revoke["revoked"], 2)
+        self.assertEqual(revoke["a0_after_status"], 401)
+        self.assertEqual(revoke["new_after_status"], 401)
+        self.assertTrue(revoke["b_active"])
+        self.assertTrue(revoke["no_set_cookie"])
+        self.assertEqual(result["trusted_revoked"],
+                         {"login_status": 202, "next_step": "TOTP_REQUIRED",
+                          "session_cookie_absent": True})
+        self.assertEqual(result["g12_probe"]["status"], 200)
+
+        # wire evidence: exactly the expected 22 public calls
+        requests = self.backend.requests
+        self.assertEqual(len(requests), 22)
+        rows_a = [row for _, _, row in self.backend.by_account[S9A]]
+        target_row = rows_a[1]            # a0, target, new in issue order
+        b_token, b_csrf, _ = self.backend.by_account[S9B][0]
+        # login#2 (index 3): the trusted-device browser carried ONLY the
+        # trusted cookie — no session cookie of any other client
+        self.assertEqual(requests[3]["cookies"].keys(),
+                         {"vc_trusted_device"})
+        trusted_value = requests[3]["cookies"]["vc_trusted_device"]
+        # B's cross-account DELETE (index 8) carried B's own CSRF +
+        # expected-account and targeted A's session row
+        b_delete = requests[8]
+        self.assertEqual(b_delete["method"], "DELETE")
+        self.assertEqual(b_delete["path"],
+                         f"/api/v1/auth/sessions/{target_row}")
+        self.assertEqual(b_delete["cookies"]["vc_session"], b_token)
+        self.assertEqual(b_delete["headers"]["x-csrf-token"], b_csrf)
+        self.assertEqual(b_delete["headers"]["x-vc-expected-account-id"],
+                         "9000003")
+        # the concurrent pair (indexes 10/11 in either order): trusted
+        # login #3 and S_a0's DELETE of the target row
+        pair = {requests[10]["path"], requests[11]["path"]}
+        self.assertEqual(pair, {"/api/v1/auth/login",
+                                f"/api/v1/auth/sessions/{target_row}"})
+        # login#4 (index 20) reused the SAME trusted cookie value
+        self.assertEqual(requests[20]["path"], "/api/v1/auth/login")
+        self.assertEqual(requests[20]["cookies"].get("vc_trusted_device"),
+                         trusted_value)
+        # no credentials anywhere in the serialized output or errors
+        blob = json.dumps(result, ensure_ascii=False) \
+            + json.dumps(stats.errors, ensure_ascii=False)
+        for secret in (S9_PASSWORD, S9_TOTP_SECRET, "SESS-", "CSRF-",
+                       "TRUST-", "CHAL-", "rc-do-not-print", target_row):
+            self.assertNotIn(secret, blob)
+
+    def test_trusted_cookie_surviving_revoke_all_fails_login4(self):
+        # Root negative: if revoke-all left the trusted credential valid,
+        # login#4 returns 200 (not 202 TOTP_REQUIRED) — that MUST be an
+        # explicit error, never a green run.
+        self.backend = FakeS9Backend(keep_trusted_after_revoke=True)
+        real = urllib.request.urlopen
+
+        def routed(req, timeout=None, context=None):
+            return self.backend(req, timeout, context)
+
+        urllib.request.urlopen = routed
+        stats = workload.Stats()
+        result = workload.run_scenario_s9(self.args(), stats)
+        tr = result["trusted_revoked"]
+        self.assertEqual(tr["login_status"], 200)
+        self.assertFalse(tr["session_cookie_absent"])
+        self.assertTrue(any("a_login4" in e for e in stats.errors))
+        # the rest of the chain still ran and still passed its own checks
+        self.assertEqual(result["public_calls"], 22)
+        self.assertEqual(result["revoke_all"]["revoked"], 2)
+        self.assertTrue(result["revoke_all"]["b_active"])
+
+    def test_budget_exhaustion_is_explicit_failure(self):
+        # A late/expired result is never a success: after the deadline the
+        # run records budget_expired and fails, with the full schema still
+        # present (no vacuous green, no crash).
+        self.backend.lenient_totp = True
+        clock = FakeS9Clock(step=1.0)
+        real_time = workload.time
+        inner = urllib.request.urlopen
+
+        def advancing(req, timeout=None, context=None):
+            resp = inner(req, timeout, context)
+            clock.advance(1.0)
+            return resp
+
+        urllib.request.urlopen = advancing
+        workload.time = clock
+        self.addCleanup(setattr, workload, "time", real_time)
+        stats = workload.Stats()
+        result = workload.run_scenario_s9(self.args(budget=3.5), stats)
+        self.assert_schema_complete(result)
+        self.assertTrue(result["budget_expired"])
+        # calls issued: a-login, a-setup, a-confirm (t<=1003), a-login2
+        # issued at 1003 (0.5 left) and returns at 1004 — past the 1003.5
+        # deadline: its 200 must NOT count as session_active
+        self.assertEqual(result["public_calls"], 4)
+        self.assertEqual(result["a_enroll"]["session_active"], True)
+        self.assertEqual(result["a_login2"]["status"], 200)
+        self.assertFalse(result["a_login2"]["session_active"])
+        self.assertIsNone(result["b_enroll"]["login_status"])
+        self.assertTrue(any("budget" in e for e in stats.errors))
+        blob = json.dumps(result, ensure_ascii=False)
+        self.assertIn("budget_expired", blob)
+
+    def test_transport_failure_is_explicit_not_vacuous(self):
+        real = urllib.request.urlopen
+
+        def dead(req, timeout=None, context=None):
+            raise OSError("connection refused (simulated)")
+
+        urllib.request.urlopen = dead
+        stats = workload.Stats()
+        result = workload.run_scenario_s9(self.args(), stats)
+        self.assert_schema_complete(result)
+        self.assertTrue(any("OSError" in e for e in stats.errors))
+        # only the three logins and the probe were issued; every dependent
+        # step is skipped with its own error
+        self.assertEqual(result["public_calls"], 4)
+        self.assertIsNone(result["a_enroll"]["login_status"])
+        self.assertIsNone(result["owner_isolation"]["b_delete_status"])
+        self.assertIsNone(result["g12_probe"]["status"])
+        self.assertFalse(result["concurrent"]["overlap"])
+        self.assertFalse(result["budget_expired"])
+
+
+class S9CLITest(unittest.TestCase):
+    """main() plumbing for --scenario s9: required env is enforced with the
+    existing parser.error style, and a full run prints the one-line
+    {"scenario":"s9","s9":{...}} contract."""
+
+    def setUp(self):
+        self.backend = FakeS9Backend()
+        real = urllib.request.urlopen
+
+        def routed(req, timeout=None, context=None):
+            return self.backend(req, timeout, context)
+
+        urllib.request.urlopen = routed
+        self.addCleanup(setattr, urllib.request, "urlopen", real)
+
+    def test_missing_s9_env_is_an_explicit_parser_error(self):
+        env = {"G12_SESSION": "s", "G12_CSRF": "c", "G12_ACCOUNT": "a",
+               "G12_S9_LOGIN_A": S9A}   # LOGIN_B + both passwords missing
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch("sys.argv",
+                           ["workload.py", "--scenario", "s9"]), \
+                contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as caught:
+                workload.main()
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("G12_S9_LOGIN_B", err.getvalue())
+        self.assertIn("G12_S9_PASSWORD_A", err.getvalue())
+        self.assertIn("G12_S9_PASSWORD_B", err.getvalue())
+
+    def test_main_dispatch_prints_s9_shape(self):
+        env = {"G12_SESSION": "HARNESS-SESS", "G12_CSRF": "HARNESS-CSRF",
+               "G12_ACCOUNT": "9000001", "G12_S9_LOGIN_A": S9A,
+               "G12_S9_LOGIN_B": S9B, "G12_S9_PASSWORD_A": S9_PASSWORD,
+               "G12_S9_PASSWORD_B": S9_PASSWORD,
+               "G12_S9_BUDGET_SECONDS": "30"}
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch("sys.argv",
+                           ["workload.py", "--scenario", "s9",
+                            "--base", "http://backend"]), \
+                contextlib.redirect_stdout(out):
+            rc = workload.main()
+        self.assertEqual(rc, 0)
+        doc = json.loads(out.getvalue())
+        self.assertEqual(set(doc), {"scenario", "s9"})
+        self.assertEqual(doc["scenario"], "s9")
+        self.assertEqual(doc["s9"]["public_calls"], 22)
+        self.assertEqual(doc["s9"]["g12_probe"]["status"], 200)
+        self.assertEqual(doc["s9"]["trusted_revoked"]["next_step"],
+                         "TOTP_REQUIRED")
 
 
 if __name__ == "__main__":

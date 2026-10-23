@@ -9,7 +9,9 @@ first-delta timing), 场景 5 (4 concurrent generation + 8 SSE), 场景 10
 (16 generation + 64 SSE capacity profile) and 场景 6 (two INDEPENDENT
 generations: one where the subscriber deliberately disconnects right after a
 live delta and re-subscribes per the snapshot-only contract, and one that is
-cancelled only after a live delta proved it active). One opaque session
+cancelled only after a live delta proved it active), and 场景 9 (two real
+password+TOTP logins whose sessions and trusted-device credential race a
+session revocation — VC-R128; run_scenario_s9). One opaque session
 cookie drives every request (the session is fabricated by run.sh against the
 same DB). Consents/relationship/conversation are created once per scenario.
 
@@ -50,9 +52,13 @@ success.
 """
 
 import argparse
+import base64
+import hashlib
+import hmac
 import json
 import os
 import ssl
+import struct
 import sys
 import threading
 import time
@@ -1159,6 +1165,598 @@ def run_scenario_s6(args, stats: Stats) -> dict:
             "errors": stats.errors[:10], "error_count": len(stats.errors)}
 
 
+# ---- §19.1 场景 9 (VC-R128): real login vs session-revocation concurrency.
+# Backend contract this section is written against (backend/internal/httpapi
+# auth.go + store/postgres auth_flow.go/session.go):
+#   POST /api/v1/auth/login                       Origin only (no CSRF);
+#     fresh account           -> 202 AUTHENTICATOR_SETUP_REQUIRED + challengeId
+#     valid vc_trusted_device -> 200 ACTIVE + Set-Cookie vc_session/vc_csrf
+#                                (the trusted token itself is NEVER rotated
+#                                on this path, so one captured value serves
+#                                logins #2/#3/#4)
+#     trusted revoked         -> clearing Set-Cookie for vc_trusted_device,
+#                                then 202 TOTP_REQUIRED + challengeId
+#   POST .../challenges/{cid}/authenticator-setup  -> 200 {manualKey,...}
+#   POST .../challenges/{cid}/authenticator-confirm-> 200 ACTIVE + session
+#     cookies (+ vc_trusted_device when trustDevice) — the ENROLL challenge
+#     completes HERE; .../totp is only for TOTP_VERIFY challenges
+#   GET  /api/v1/auth/sessions                    cookie auth; 200 list with
+#     per-row current flags; 401 once revoked
+#   DELETE /api/v1/auth/sessions/{rowId}          write path: Origin +
+#     X-CSRF-Token(== vc_csrf) + X-VC-Expected-Account-ID; 200 {ok:true}
+#     with NO Set-Cookie; another owner's row -> 404
+#   POST /api/v1/auth/sessions/revoke-all         same write headers;
+#     200 {revoked:n} with NO Set-Cookie; also revokes the trusted device
+
+S9_SESSION_COOKIE = "vc_session"
+S9_CSRF_COOKIE = "vc_csrf"
+S9_TRUSTED_COOKIE = "vc_trusted_device"
+S9_STEP_SETUP = "AUTHENTICATOR_SETUP_REQUIRED"
+S9_STEP_TOTP = "TOTP_REQUIRED"
+S9_STEP_ACTIVE = "ACTIVE"
+S9_LOGIN_PATH = "/api/v1/auth/login"
+S9_SESSIONS_PATH = "/api/v1/auth/sessions"
+S9_REVOKE_ALL_PATH = "/api/v1/auth/sessions/revoke-all"
+S9_DEVICE_NAME = "g12-s9"
+
+
+def s9_totp_code(secret_b32: str, at: float) -> str:
+    """RFC 6238 code (SHA-1, 30 s step, 6 digits) for a base32 manualKey.
+
+    The backend validates the current step plus one adjacent step
+    (internal/auth ValidateTOTPStep) and this workload runs on the same
+    host as the backend, so the current wall-clock step is always in
+    window. Standard library only.
+    """
+    normalized = secret_b32.strip().upper().rstrip("=")
+    normalized += "=" * (-len(normalized) % 8)
+    key = base64.b32decode(normalized)
+    counter = int(at // 30) & 0xFFFFFFFFFFFFFFFF
+    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return f"{code % 1_000_000:06d}"
+
+
+def s9_apply_set_cookies(headers, jar: dict) -> None:
+    """Apply Set-Cookie headers to a jar with browser semantics.
+
+    Each header is one cookie; an empty value or a non-positive Max-Age
+    removes it (the backend clears vc_trusted_device exactly this way
+    after a revoke-all). Values stay in the in-memory jar only.
+    """
+    for header in headers or []:
+        first, *attrs = header.split(";")
+        name, _, value = first.strip().partition("=")
+        if not name:
+            continue
+        max_age = None
+        for attr in attrs:
+            key, _, raw = attr.strip().partition("=")
+            if key.strip().lower() == "max-age":
+                try:
+                    max_age = int(raw.strip())
+                except ValueError:
+                    max_age = None
+        if value == "" or (max_age is not None and max_age <= 0):
+            jar.pop(name, None)
+        else:
+            jar[name] = value
+
+
+def s9_cookie_names(set_cookie_headers) -> list[str]:
+    """Cookie NAMES a response sets (values never leave the response)."""
+    names = []
+    for header in set_cookie_headers or []:
+        name = header.split(";", 1)[0].strip().partition("=")[0]
+        if name:
+            names.append(name)
+    return names
+
+
+def s9_json_body(raw: bytes):
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
+class S9Client:
+    """One isolated cookie container for the S9 real-login scenario.
+
+    Unlike Client (a fabricated immutable harness session), an S9Client
+    owns exactly the cookies real Set-Cookie responses installed: each
+    session identity (S_a0, the trusted-device browser, S_target, S_new,
+    S_b) gets its own instance, so one login can never rewrite another
+    client's cookies. Authenticated writes carry the CSRF double-submit
+    header and the seeded-account header the backend's core write path
+    enforces; unauthenticated auth writes (login/challenges) carry Origin
+    only. Cookie values never leave the object.
+    """
+
+    def __init__(self, base: str, cookies: dict | None = None,
+                 origin: str | None = None, cafile: str | None = None,
+                 account_id: str | None = None):
+        self.base = base.rstrip("/")
+        if origin is None:
+            parts = urllib.parse.urlparse(self.base)
+            origin = f"{parts.scheme}://{parts.hostname}"
+        self.origin = origin
+        self.ssl_context = (ssl.create_default_context(cafile=cafile)
+                            if cafile else None)
+        self.cookies = dict(cookies or {})
+        self.account_id = account_id
+
+    def _headers(self, content: bool, write: bool) -> dict:
+        h = {"Origin": self.origin}
+        if self.cookies:
+            h["Cookie"] = "; ".join(f"{n}={v}"
+                                    for n, v in self.cookies.items())
+        if content:
+            h["Content-Type"] = "application/json"
+        if write:
+            h["X-CSRF-Token"] = self.cookies.get(S9_CSRF_COOKIE, "")
+            h["X-VC-Expected-Account-ID"] = self.account_id or ""
+        return h
+
+    def request(self, method: str, path: str, body: dict | None = None,
+                *, write: bool = False, timeout: float = 30.0):
+        """Issue one request -> (status, parsed_body, set_cookie_headers).
+
+        HTTPError responses (401/404/429/...) are returned, not raised —
+        their statuses are first-class scenario outcomes. Any other
+        transport failure propagates to the caller's bounded handler.
+        """
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(
+            self.base + path, data=data, method=method,
+            headers=self._headers(data is not None, write))
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout,
+                                          context=self.ssl_context)
+        except urllib.error.HTTPError as err:
+            with err:
+                return (err.code, s9_json_body(err.read()),
+                        err.headers.get_all("Set-Cookie") or [])
+        with resp:
+            return (resp.status, s9_json_body(resp.read()),
+                    resp.headers.get_all("Set-Cookie") or [])
+
+
+def run_scenario_s9(args, stats: Stats) -> dict:
+    """§19.1 场景 9 (VC-R128): real logins racing session revocation.
+
+    A enrolls a real TOTP authenticator (login 202 -> authenticator-setup
+    200 -> authenticator-confirm 200) and lands S_a0 plus a
+    trusted-device cookie; that cookie then password-logins S_target and
+    S_new directly (200 ACTIVE, no second factor — the backend never
+    rotates the trusted token on this path). B repeats the enroll chain
+    without trust. The proofs: B's DELETE of A's session row is 404
+    (owner isolation) while S_target still reads 200; a barrier-synchronized
+    S_new login and S_a0 DELETE of the target overlap in real request
+    time and leave exactly the required state (target 401, new/a0/b still
+    200, DELETE without Set-Cookie); revoke-all from S_new returns
+    revoked==2 and kills a0/new AND the trusted credential — login #4 with
+    the SAME trusted cookie must fall back to 202 TOTP_REQUIRED with no
+    new vc_session. One monotonic deadline bounds every public call, and
+    results past it never count as success; credentials (passwords,
+    manualKey, cookie values, session/challenge ids) never reach the
+    output — error strings carry labels, statuses and exception type
+    names only.
+    """
+    deadline = time.monotonic() + float(args.s9_budget_seconds)
+    lock = threading.Lock()
+    counter = {"public": 0}
+
+    result: dict = {
+        "deadline_seconds": float(args.s9_budget_seconds),
+        "budget_expired": False,
+        "public_calls": 0,
+        "a_enroll": {"login_status": None, "setup_status": None,
+                     "totp_status": None, "totp_trusted": False,
+                     "session_active": False},
+        "a_login2": {"status": None, "trusted_cookie_present": False,
+                     "session_active": False},
+        "b_enroll": {"login_status": None, "setup_status": None,
+                     "totp_status": None, "session_active": False},
+        "owner_isolation": {"b_delete_status": None,
+                            "target_get_status": None},
+        "concurrent": {"overlap": False, "overlap_margin_ms": 0.0,
+                       "login_status": None, "delete_status": None,
+                       "target_after_status": None, "new_active": False,
+                       "a0_active": False, "b_active": False,
+                       "delete_no_set_cookie": False},
+        "revoke_all": {"status": None, "revoked": None,
+                       "a0_after_status": None, "new_after_status": None,
+                       "b_active": False, "no_set_cookie": False},
+        "trusted_revoked": {"login_status": None, "next_step": None,
+                            "session_cookie_absent": False},
+        "g12_probe": {"status": None},
+        "errors": [], "error_count": 0,
+    }
+
+    def call(client, method, path, body=None, *, write=False, label="",
+             into=None):
+        """One public call bounded by the shared S9 deadline (thread-safe).
+
+        Fills/returns a record {status, body, set_cookies, late, exc,
+        started_at, ended_at}: status None + exc set means the call never
+        completed (budget exhausted before issue, or a transport failure —
+        only the exception TYPE is kept, str(exc) could echo credential-
+        bearing URLs or bodies). A response that arrived after the
+        deadline keeps its status but is marked late, and late results
+        never count as success. 429 and timeouts are explicit failures;
+        there is no retry anywhere in S9.
+        """
+        rec = into if into is not None else {}
+        rec.update(status=None, body={}, set_cookies=[], late=False,
+                   exc=None, started_at=None, ended_at=None)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            rec["exc"] = "budget_exhausted"
+            stats.note_error(f"s9 {label}: budget exhausted before call")
+            return rec
+        # only requests actually issued count toward the public-call budget
+        with lock:
+            counter["public"] += 1
+        rec["started_at"] = time.monotonic()
+        try:
+            status, body_out, set_cookies = client.request(
+                method, path, body, write=write, timeout=remaining)
+        except Exception as exc:
+            rec["ended_at"] = time.monotonic()
+            rec["exc"] = type(exc).__name__
+            stats.note_error(f"s9 {label}: {rec['exc']}")
+            return rec
+        rec["status"] = status
+        rec["body"] = body_out
+        rec["set_cookies"] = set_cookies
+        rec["ended_at"] = time.monotonic()
+        rec["late"] = time.monotonic() > deadline
+        if status == 429:
+            stats.note_error(f"s9 {label}: 429 rate limited")
+        elif rec["late"]:
+            stats.note_error(f"s9 {label}: result arrived after budget")
+        return rec
+
+    def step_error(label, want, rec):
+        if rec.get("late"):
+            return  # the late-result failure was already recorded by call()
+        stats.note_error(f"s9 {label} expected {want}, "
+                         f"got {rec.get('status')}")
+
+    def enroll(login, password, label, trust):
+        """login -> authenticator-setup -> authenticator-confirm chain.
+
+        Returns (client-or-None, trusted_cookie-or-None). manualKey and
+        TOTP codes stay in local memory; the client's jar is exactly what
+        the confirm response installed.
+        """
+        anon = S9Client(args.base, origin=args.origin, cafile=args.cacert)
+        rec = call(anon, "POST", S9_LOGIN_PATH,
+                   {"account": login, "password": password},
+                   label=f"{label}_login")
+        result[f"{label}_enroll"]["login_status"] = rec["status"]
+        body = rec["body"] if isinstance(rec["body"], dict) else {}
+        challenge = body.get("challengeId")
+        if (rec["status"] != 202
+                or body.get("nextStep") != S9_STEP_SETUP or not challenge):
+            stats.note_error(f"s9 {label}_login status {rec['status']} "
+                             f"next {body.get('nextStep')}")
+            return None, None
+        rec = call(anon, "POST",
+                   f"/api/v1/auth/challenges/{challenge}/authenticator-setup",
+                   {}, label=f"{label}_setup")
+        result[f"{label}_enroll"]["setup_status"] = rec["status"]
+        manual_key = (rec["body"].get("manualKey")
+                      if isinstance(rec["body"], dict) else None)
+        if rec["status"] != 200 or not manual_key:
+            stats.note_error(f"s9 {label}_setup status {rec['status']}")
+            return None, None
+        rec = call(anon, "POST",
+                   f"/api/v1/auth/challenges/{challenge}/authenticator-confirm",
+                   {"code": s9_totp_code(manual_key, time.time()),
+                    "trustDevice": trust, "deviceName": S9_DEVICE_NAME},
+                   label=f"{label}_confirm")
+        result[f"{label}_enroll"]["totp_status"] = rec["status"]
+        jar: dict = {}
+        s9_apply_set_cookies(rec["set_cookies"], jar)
+        body = rec["body"] if isinstance(rec["body"], dict) else {}
+        active = (rec["status"] == 200
+                  and body.get("nextStep") == S9_STEP_ACTIVE
+                  and S9_SESSION_COOKIE in jar and S9_CSRF_COOKIE in jar
+                  and not rec["late"])
+        result[f"{label}_enroll"]["session_active"] = active
+        if trust:
+            result[f"{label}_enroll"]["totp_trusted"] = \
+                S9_TRUSTED_COOKIE in jar
+        if not active:
+            if not rec["late"]:
+                stats.note_error(f"s9 {label}_confirm status "
+                                 f"{rec['status']} active False")
+            return None, None
+        client = S9Client(args.base, cookies=jar, origin=args.origin,
+                          cafile=args.cacert,
+                          account_id=body.get("accountId"))
+        return client, jar.get(S9_TRUSTED_COOKIE)
+
+    # ---- 1) A full enroll chain: S_a0 (+ trusted-device cookie)
+    cli_a0, trusted_cookie = enroll(args.s9_login_a, args.s9_password_a,
+                                    "a", trust=True)
+
+    # ---- 2) trusted-cookie password login #2 -> S_target
+    cli_trusted = S9Client(
+        args.base,
+        cookies={S9_TRUSTED_COOKIE: trusted_cookie} if trusted_cookie else None,
+        origin=args.origin, cafile=args.cacert)
+    rec = call(cli_trusted, "POST", S9_LOGIN_PATH,
+               {"account": args.s9_login_a, "password": args.s9_password_a},
+               label="a_login2")
+    result["a_login2"]["status"] = rec["status"]
+    result["a_login2"]["trusted_cookie_present"] = trusted_cookie is not None
+    target_jar: dict = {}
+    s9_apply_set_cookies(rec["set_cookies"], target_jar)
+    body = rec["body"] if isinstance(rec["body"], dict) else {}
+    a2_active = (rec["status"] == 200 and body.get("nextStep") == S9_STEP_ACTIVE
+                 and S9_SESSION_COOKIE in target_jar
+                 and S9_CSRF_COOKIE in target_jar and not rec["late"])
+    result["a_login2"]["session_active"] = a2_active
+    if not a2_active and not rec["late"]:
+        stats.note_error(f"s9 a_login2 status {rec['status']} "
+                         f"next {body.get('nextStep')}")
+    cli_target = (S9Client(args.base, cookies=target_jar, origin=args.origin,
+                           cafile=args.cacert,
+                           account_id=body.get("accountId"))
+                  if a2_active else None)
+
+    # ---- B's own enroll chain (no trusted device): S_b
+    cli_b, _ = enroll(args.s9_login_b, args.s9_password_b, "b", trust=False)
+
+    # ---- owner isolation: S_a0 lists A's sessions (current flags mark
+    # S_a0 itself; the one non-current row is S_target's row id, kept in
+    # memory only), B tries to delete it, S_target must survive.
+    target_sid = None
+    if cli_a0 is None:
+        stats.note_error("s9 a0_sessions skipped: no S_a0 session")
+    else:
+        rec = call(cli_a0, "GET", S9_SESSIONS_PATH, label="a0_sessions")
+        sessions = rec["body"] if isinstance(rec["body"], list) else None
+        if rec["status"] == 200 and sessions is not None and not rec["late"]:
+            non_current = [s for s in sessions
+                           if isinstance(s, dict) and not s.get("current")]
+            if len(non_current) == 1 and non_current[0].get("id"):
+                target_sid = str(non_current[0]["id"])
+            else:
+                stats.note_error("s9 a0 sessions: expected exactly one "
+                                 f"non-current session, got {len(non_current)}")
+        else:
+            step_error("a0_sessions", 200, rec)
+    if cli_b is not None and target_sid:
+        rec = call(cli_b, "DELETE", f"{S9_SESSIONS_PATH}/{target_sid}", {},
+                   write=True, label="b_delete")
+        result["owner_isolation"]["b_delete_status"] = rec["status"]
+        if rec["status"] != 404:
+            step_error("b_delete", 404, rec)
+    else:
+        stats.note_error("s9 b_delete skipped: missing S_b or target sid")
+    if cli_target is not None:
+        rec = call(cli_target, "GET", S9_SESSIONS_PATH, label="target_get")
+        result["owner_isolation"]["target_get_status"] = rec["status"]
+        if rec["status"] != 200:
+            step_error("target_get", 200, rec)
+    else:
+        stats.note_error("s9 target_get skipped: no S_target")
+
+    # ---- 3) barrier concurrency: A password login #3 (same trusted
+    # cookie -> S_new) races S_a0's DELETE of the target session. The two
+    # threads record their real request intervals; overlap is computed
+    # from those, never from thread start times.
+    concurrent = result["concurrent"]
+    login_rec: dict = {}
+    delete_rec: dict = {}
+    cli_new = None
+    if cli_a0 is not None and target_sid and trusted_cookie:
+        barrier = threading.Barrier(2)
+
+        def barrier_gate(rec, label):
+            try:
+                wait = deadline - time.monotonic()
+                if wait <= 0:
+                    raise TimeoutError
+                barrier.wait(timeout=wait)
+            except Exception as exc:
+                rec["exc"] = "barrier:" + type(exc).__name__
+                stats.note_error(f"s9 {label} barrier {type(exc).__name__}")
+                return False
+            return True
+
+        def login3():
+            if not barrier_gate(login_rec, "a_login3"):
+                return
+            call(cli_trusted, "POST", S9_LOGIN_PATH,
+                 {"account": args.s9_login_a,
+                  "password": args.s9_password_a},
+                 label="a_login3", into=login_rec)
+
+        def delete_target():
+            if not barrier_gate(delete_rec, "concurrent_delete"):
+                return
+            call(cli_a0, "DELETE", f"{S9_SESSIONS_PATH}/{target_sid}", {},
+                 write=True, label="concurrent_delete", into=delete_rec)
+
+        threads = [threading.Thread(target=login3, daemon=True),
+                   threading.Thread(target=delete_target, daemon=True)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(timeout=max(0.0, deadline - time.monotonic()))
+        for name, th, rec in (("a_login3", threads[0], login_rec),
+                              ("concurrent_delete", threads[1], delete_rec)):
+            if th.is_alive():
+                stats.note_error(f"s9 {name} thread unfinished in budget")
+                # An unfinished thread may still mutate its record; its
+                # interval and status must not pose as evidence.
+                rec.update(status=None, started_at=None, ended_at=None,
+                           late=False, exc="thread_unfinished",
+                           set_cookies=[], body={})
+        concurrent["login_status"] = login_rec.get("status")
+        concurrent["delete_status"] = delete_rec.get("status")
+        jar_new: dict = {}
+        s9_apply_set_cookies(login_rec.get("set_cookies") or [], jar_new)
+        body = (login_rec.get("body")
+                if isinstance(login_rec.get("body"), dict) else {})
+        login3_active = (login_rec.get("status") == 200
+                         and body.get("nextStep") == S9_STEP_ACTIVE
+                         and S9_SESSION_COOKIE in jar_new
+                         and S9_CSRF_COOKIE in jar_new
+                         and not login_rec.get("late"))
+        if not login3_active:
+            if not login_rec.get("late"):
+                stats.note_error(f"s9 a_login3 status "
+                                 f"{login_rec.get('status')} "
+                                 f"next {body.get('nextStep')}")
+        else:
+            cli_new = S9Client(args.base, cookies=jar_new, origin=args.origin,
+                               cafile=args.cacert,
+                               account_id=body.get("accountId"))
+        concurrent["delete_no_set_cookie"] = not delete_rec.get("set_cookies")
+        if delete_rec.get("status") != 200:
+            step_error("concurrent_delete", 200, delete_rec)
+        elif delete_rec.get("set_cookies"):
+            stats.note_error("s9 concurrent_delete response carried Set-Cookie")
+        starts = [login_rec.get("started_at"), delete_rec.get("started_at")]
+        ends = [login_rec.get("ended_at"), delete_rec.get("ended_at")]
+        if all(s is not None for s in starts) and all(e is not None
+                                                      for e in ends):
+            latest_start = max(starts)
+            earliest_end = min(ends)
+            concurrent["overlap"] = latest_start < earliest_end
+            concurrent["overlap_margin_ms"] = round(
+                (earliest_end - latest_start) * 1000, 3)
+        if cli_target is not None:
+            rec = call(cli_target, "GET", S9_SESSIONS_PATH,
+                       label="target_after")
+            concurrent["target_after_status"] = rec["status"]
+            if rec["status"] != 401:
+                step_error("target_after", 401, rec)
+        if cli_new is not None:
+            rec = call(cli_new, "GET", S9_SESSIONS_PATH, label="new_probe")
+            concurrent["new_active"] = rec["status"] == 200 \
+                and not rec["late"]
+            if not concurrent["new_active"]:
+                step_error("new_probe", 200, rec)
+        else:
+            stats.note_error("s9 new_probe skipped: no S_new")
+        rec = call(cli_a0, "GET", S9_SESSIONS_PATH, label="a0_probe")
+        concurrent["a0_active"] = rec["status"] == 200 and not rec["late"]
+        if not concurrent["a0_active"]:
+            step_error("a0_probe", 200, rec)
+        if cli_b is not None:
+            rec = call(cli_b, "GET", S9_SESSIONS_PATH, label="b_probe")
+            concurrent["b_active"] = rec["status"] == 200 \
+                and not rec["late"]
+            if not concurrent["b_active"]:
+                step_error("b_probe", 200, rec)
+    else:
+        stats.note_error("s9 concurrent phase skipped: missing preconditions")
+
+    # ---- 4) causal revoke-all from S_new: kills S_a0 + S_new and the
+    # trusted credential; B must be untouched.
+    revoke = result["revoke_all"]
+    if cli_new is not None:
+        rec = call(cli_new, "POST", S9_REVOKE_ALL_PATH, {}, write=True,
+                   label="revoke_all")
+        revoke["status"] = rec["status"]
+        revoked = (rec["body"].get("revoked")
+                   if isinstance(rec["body"], dict) else None)
+        revoke["revoked"] = revoked if isinstance(revoked, int) else None
+        revoke["no_set_cookie"] = not rec["set_cookies"]
+        if rec["status"] != 200:
+            step_error("revoke_all", 200, rec)
+        elif rec["set_cookies"]:
+            stats.note_error("s9 revoke_all response carried Set-Cookie")
+        if revoke["revoked"] != 2:
+            stats.note_error(f"s9 revoke_all revoked {revoke['revoked']} "
+                             f"(want 2)")
+        if cli_a0 is not None:
+            rec = call(cli_a0, "GET", S9_SESSIONS_PATH, label="a0_after")
+            revoke["a0_after_status"] = rec["status"]
+            if rec["status"] != 401:
+                step_error("a0_after", 401, rec)
+        rec = call(cli_new, "GET", S9_SESSIONS_PATH, label="new_after")
+        revoke["new_after_status"] = rec["status"]
+        if rec["status"] != 401:
+            step_error("new_after", 401, rec)
+    else:
+        stats.note_error("s9 revoke_all skipped: no S_new")
+    if cli_b is not None:
+        rec = call(cli_b, "GET", S9_SESSIONS_PATH, label="b_after")
+        revoke["b_active"] = rec["status"] == 200 and not rec["late"]
+        if not revoke["b_active"]:
+            step_error("b_after", 200, rec)
+    else:
+        stats.note_error("s9 b_after skipped: no S_b")
+
+    # ---- 5) login #4 reuses the SAME trusted cookie (never deleted
+    # client-side): the revoke-all above must have invalidated it, so the
+    # password login falls back to 202 TOTP_REQUIRED and installs no new
+    # vc_session. The response legitimately carries a CLEARING Set-Cookie
+    # for vc_trusted_device (auth.go clearTrustedDeviceCookie).
+    tr = result["trusted_revoked"]
+    if trusted_cookie:
+        rec = call(cli_trusted, "POST", S9_LOGIN_PATH,
+                   {"account": args.s9_login_a,
+                    "password": args.s9_password_a},
+                   label="a_login4")
+        tr["login_status"] = rec["status"]
+        body = rec["body"] if isinstance(rec["body"], dict) else {}
+        next_step = body.get("nextStep")
+        tr["next_step"] = next_step if isinstance(next_step, str) else None
+        tr["session_cookie_absent"] = (S9_SESSION_COOKIE
+                                       not in s9_cookie_names(
+                                           rec["set_cookies"]))
+        if rec["status"] != 202 or tr["next_step"] != S9_STEP_TOTP:
+            if not rec["late"]:
+                stats.note_error(f"s9 a_login4 status {rec['status']} next "
+                                 f"{tr['next_step']} (trusted device should "
+                                 f"be revoked)")
+        if not tr["session_cookie_absent"]:
+            stats.note_error("s9 a_login4 installed a new session cookie")
+    else:
+        stats.note_error("s9 a_login4 skipped: no trusted cookie")
+
+    # ---- 6) the harness's own fabricated session still works (S9 must
+    # not disturb it); this read is the last public call.
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        stats.note_error("s9 g12_probe budget exhausted before call")
+    else:
+        probe = Client(args.base, args.session, args.csrf, args.account,
+                       origin=args.origin, cafile=args.cacert)
+        with lock:
+            counter["public"] += 1
+        try:
+            st, _ = probe.json("GET", S9_SESSIONS_PATH, timeout=remaining)
+        except Exception as exc:
+            st = None
+            stats.note_error(f"s9 g12_probe {type(exc).__name__}")
+        result["g12_probe"]["status"] = st
+        if st != 200:
+            step_error("g12_probe", 200, {"status": st})
+        elif time.monotonic() > deadline:
+            stats.note_error("s9 g12_probe result arrived after budget")
+
+    result["public_calls"] = counter["public"]
+    result["budget_expired"] = time.monotonic() > deadline
+    if result["budget_expired"]:
+        stats.note_error("s9 budget expired before completion")
+    result["errors"] = stats.errors[:10]
+    result["error_count"] = len(stats.errors)
+    return result
+
+
 def poll_terminal(args, stats: Stats, client: Client, gid: str, accepted_at: float):
     status = "UNKNOWN"
     while time.monotonic() - accepted_at < 120:
@@ -1206,7 +1804,8 @@ def resolve_shape(scenario: str, gens: int, sse_per_gen: int) -> tuple[int, int]
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:18082")
-    parser.add_argument("--scenario", choices=["s3", "s4", "s5", "s6", "s10"],
+    parser.add_argument("--scenario",
+                        choices=["s3", "s4", "s5", "s6", "s9", "s10"],
                         required=True)
     parser.add_argument("--session", default=None,
                         help="defaults to $G12_SESSION (env keeps the opaque "
@@ -1243,12 +1842,39 @@ def main() -> int:
     args.csrf = args.csrf or os.environ["G12_CSRF"]
     args.account = args.account or os.environ["G12_ACCOUNT"]
 
+    if args.scenario == "s9":
+        # §19.1 S9 (VC-R128) real-login credentials travel by environment
+        # only, like the session vars: never argv, logs, results or
+        # exception text. The whole scenario runs against one monotonic
+        # deadline derived from the budget.
+        missing_s9 = [var for var in ("G12_S9_LOGIN_A", "G12_S9_LOGIN_B",
+                                      "G12_S9_PASSWORD_A",
+                                      "G12_S9_PASSWORD_B")
+                      if not os.environ.get(var)]
+        if missing_s9:
+            parser.error(f"missing s9 env: {','.join(missing_s9)}")
+        try:
+            budget = float(os.environ.get("G12_S9_BUDGET_SECONDS", "60"))
+        except ValueError:
+            parser.error("G12_S9_BUDGET_SECONDS must be a number")
+        if budget <= 0:
+            parser.error("G12_S9_BUDGET_SECONDS must be positive")
+        args.s9_login_a = os.environ["G12_S9_LOGIN_A"]
+        args.s9_login_b = os.environ["G12_S9_LOGIN_B"]
+        args.s9_password_a = os.environ["G12_S9_PASSWORD_A"]
+        args.s9_password_b = os.environ["G12_S9_PASSWORD_B"]
+        args.s9_budget_seconds = budget
+
     stats = Stats()
     if args.scenario == "s6":
         # §19.1 S6 runs its own two independent generations (disconnect/
         # reconnect + cancel); the generic shape/percentile machinery does
         # not apply to it.
         result = run_scenario_s6(args, stats)
+    elif args.scenario == "s9":
+        # §19.1 S9 drives real password+TOTP logins and revocation races;
+        # it has its own result shape and no --gens/--sse-per-gen.
+        result = {"s9": run_scenario_s9(args, stats)}
     else:
         args.gens, args.sse_per_gen = resolve_shape(
             args.scenario, args.gens, args.sse_per_gen)
