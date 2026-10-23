@@ -100,6 +100,7 @@
         :disabled="!relStore.currentRelationshipId"
         :error-text="sendErrorText"
         :can-retry="canRetry"
+        :retry-label="sendUnconfirmed ? '重试原消息' : undefined"
         @send="onSend"
         @cancel="onCancel"
         @retry="onRetry"
@@ -197,7 +198,11 @@ const auth = useAuthStore();
 const pageState = ref<PageState>("loading");
 const inputText = ref("");
 const menuOpen = ref(false);
-const directSendError = ref(false);
+// VC-R115：结果未确认的原提交快照。失败时记录原始提交内容，重试永远
+// 针对它——输入框里后来写下/编辑的下一条草稿不是重试目标，清空输入框
+// 也不移除重试入口。清空点与旧 directSendError 生命周期一致：新提交
+// 开始、initPage、开始新对话。
+const unconfirmedSendText = ref("");
 const initBusy = ref(false);
 // WP-D（缺口1）：覆盖"建会话（如需要）+ 发送"的页面级提交互斥——任何
 // await 之前同步置位，await ensureConversation 期间第二次 onSend 无法穿过。
@@ -262,17 +267,19 @@ const showLoadMore = computed(() => (
 ));
 const canRetry = computed(() => (
   !generationBusy.value &&
-  ((directSendError.value && inputText.value.trim().length > 0) ||
+  (unconfirmedSendText.value !== "" ||
     (store.phase === "failed" && store.pendingUserContent.trim().length > 0))
 ));
 /**
- * N-05：发送结果未确认——directSendError（POST 结果未知抛错）或 POST 失败
- * 轮（phase 失败且本轮未确认持有 generation，存在性隐藏 403/404 的 null
- * 返回也落在这里）。文案与重试动作的第一分流：原请求结局未知，只做同键
- * 普通重发，不取快照 source。
+ * N-05：发送结果未确认——页面快照（POST 结果未知抛错，含建会话失败）或
+ * POST 失败轮（phase 失败且本轮未确认持有 generation，存在性隐藏 403/404
+ * 的 null 返回也落在这里）。文案与重试动作的第一分流：原请求结局未知，
+ * 只做同键普通重发，不取快照 source。VC-R115：该分支的重试按钮明确为
+ * "重试原消息"，与发送当前草稿区分。
  */
 const sendUnconfirmed = computed(() => (
-  directSendError.value || (store.phase === "failed" && !store.turnHasGeneration)
+  unconfirmedSendText.value !== "" ||
+  (store.phase === "failed" && !store.turnHasGeneration)
 ));
 /**
  * N-05（第 5 节状态矩阵）：失败文案按事实分流——已接受的请求不能说成
@@ -391,7 +398,7 @@ async function initPage(): Promise<void> {
   if (initBusy.value) return;
   initBusy.value = true;
   pageState.value = "loading";
-  directSendError.value = false;
+  unconfirmedSendText.value = "";
   store.historyLoadFailed = false;
   try {
     if (!auth.isAuthenticated) await auth.tryRefresh(transport);
@@ -486,12 +493,13 @@ async function ensureConversation(): Promise<boolean> {
  * WP-D（缺口1+2）：提交路径。互斥在任何 await 之前同步置位，覆盖
  * "建会话（如需要）+ 发送"整体；返回 false 表示正被上一笔提交占用。
  * 输入框草稿与提交快照分离：只在"当前输入内容 === 提交快照"时清空；
- * 失败恢复同样绝不触碰用户后来输入的新草稿。
+ * 失败恢复同样绝不触碰用户后来输入的新草稿。VC-R115：失败时把原始提交
+ * 记为未确认快照，重试据此针对原提交，与输入框里的下一条草稿无关。
  */
 async function sendText(text: string, sourceUserMessageId?: string): Promise<boolean> {
   if (submitInFlight || store.isStreaming || generationBusy.value) return false;
   submitInFlight = true;
-  directSendError.value = false;
+  unconfirmedSendText.value = "";
   if (inputText.value.trim() === text) inputText.value = "";
   // 缺陷6：提交归属锚点。建会话成功后锚点更新为提交时的会话；失败回调
   // 只在提交身份仍是当前上下文时回填输入/错误文案——用户在 await 期间
@@ -514,7 +522,7 @@ async function sendText(text: string, sourceUserMessageId?: string): Promise<boo
     const expectedConversationId = submittedConversationId ?? anchorBeforeEnsure;
     if (store.conversationId !== expectedConversationId) return false;
     if (inputText.value.trim() === "") inputText.value = text;
-    directSendError.value = true;
+    unconfirmedSendText.value = text;
     return true;
   } finally {
     submitInFlight = false;
@@ -539,16 +547,18 @@ async function onRetry(): Promise<void> {
   // N-05：发送结果未确认＝普通同键重发：不调用 resolveTurnSource、不传
   // sourceUserMessageId——原请求结局未知，复制用户消息或按旧 generation
   // 的快照重发都可能造成重复。
+  // VC-R115：重试目标＝失败时记录的原提交快照——输入框里后来写下/编辑的
+  // 下一条草稿不得被当作原提交重发；建会话失败（store.send 未执行）时
+  // 也不取 store 里更早一轮的 pending 内容。快照为空的 store 相位分支
+  // （存在性隐藏 403/404→null）仍取本轮 pendingUserContent。
   if (sendUnconfirmed.value) {
-    const text = directSendError.value
-      ? inputText.value.trim()
-      : store.pendingUserContent.trim();
+    const text = unconfirmedSendText.value || store.pendingUserContent.trim();
     if (!text) return;
     await sendText(text);
     return;
   }
   // 该分支仅在发送结果已确认时可达（sendUnconfirmed 为 false ⇒
-  // directSendError 恒为 false）：即已确认 generation 的明确终态失败重试，
+  // unconfirmedSendText 恒为空）：即已确认 generation 的明确终态失败重试，
   // 文本一律取 store 的待重发内容。
   // N-06：服务端明确终态失败后的显式再尝试，复用已持久化的原用户消息。
   // lastTurnSource 为空时先有界取一次快照拿权威 source；拿不到就不重发，
@@ -607,7 +617,7 @@ function startNewConversation(): void {
   owningConversationId = ""; // VC-R04：本实例转入空会话，归属同步清空。
   bindGenerationContext();
   inputText.value = "";
-  directSendError.value = false;
+  unconfirmedSendText.value = "";
   store.historyLoadFailed = false;
   followingLatest.value = true;
 }

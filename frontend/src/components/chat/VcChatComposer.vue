@@ -14,7 +14,7 @@
         :disabled="busy"
         @click="$emit('retry')"
       >
-        点此重试
+        {{ retryLabel ?? "点此重试" }}
       </button>
     </view>
 
@@ -69,6 +69,8 @@ defineProps<{
   disabled?: boolean;
   errorText?: string;
   canRetry?: boolean;
+  /** VC-R115：未确认发送分支传"重试原消息"，与发送当前草稿区分；缺省保持通用文案。 */
+  retryLabel?: string;
 }>();
 
 const emit = defineEmits<{

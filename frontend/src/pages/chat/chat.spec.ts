@@ -64,8 +64,10 @@ interface FetchOptions {
   generations?: Array<"reject" | number>;
   /** VC-R02：GET /realtime/streams/:id 永不返回——复现"本实例发起的流仍在进行"。 */
   hangStream?: boolean;
-  /** VC-R04：POST /generations 挂起，由测试放行（时机 a：POST 在途时切换会话）。 */
+  /** VC-R04：首个 POST /generations 挂起，由测试放行/拒绝（时机 a 与 VC-R115）。 */
   deferGeneration?: boolean;
+  /** VC-R115：POST /api/v1/conversations 可控失败（仿 relationshipFails 的函数开关）。 */
+  conversationCreateFails?: boolean | (() => boolean);
   /** VC-R04：GET /generations/:id/snapshot 挂起，由测试放行（恢复核对 deferred 夹具）。 */
   deferSnapshot?: boolean;
   /** VC-R04：GET /realtime/streams/:id 返回可控 SSE 流，帧由测试推送/关闭。 */
@@ -94,13 +96,17 @@ function stubFetch(options: FetchOptions = {}) {
     resolveCreate = resolve;
   });
   let resolveGenerationPost!: (value: StubResponse) => void;
-  const deferredGenerationPost = new Promise<StubResponse>((resolve) => {
+  let rejectGenerationPost!: (reason?: unknown) => void;
+  const deferredGenerationPost = new Promise<StubResponse>((resolve, reject) => {
     resolveGenerationPost = resolve;
+    rejectGenerationPost = reject;
   });
   let resolveSnapshot!: (value: StubResponse) => void;
   const deferredSnapshot = new Promise<StubResponse>((resolve) => {
     resolveSnapshot = resolve;
   });
+  // VC-R115：deferGeneration 只作用于首个 POST /generations 的闭包级标记。
+  let generationDeferralUsed = false;
   // VC-R04：可控 SSE body——测试按需推送帧并关闭（EOF）。
   const encoder = new TextEncoder();
   let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -158,6 +164,9 @@ function stubFetch(options: FetchOptions = {}) {
       return response(true, 200, out);
     }
     if (method === "POST" && url === "/api/v1/conversations") {
+      if (resolveBool(options.conversationCreateFails)) {
+        return response(false, 500, { code: "INTERNAL_ERROR" });
+      }
       if (options.deferConversationCreate) {
         return deferredCreate;
       }
@@ -166,7 +175,11 @@ function stubFetch(options: FetchOptions = {}) {
       });
     }
     if (method === "POST" && /^\/api\/v1\/conversations\/[^/]+\/generations$/.test(url)) {
-      if (options.deferGeneration) return deferredGenerationPost;
+      // VC-R115：deferGeneration 只挂起首个 POST，后续 POST 走 generations 脚本。
+      if (options.deferGeneration && !generationDeferralUsed) {
+        generationDeferralUsed = true;
+        return deferredGenerationPost;
+      }
       const step = options.generations?.shift() ?? 200;
       if (step === "reject") throw new TypeError("fetch failed");
       if (step === 200) {
@@ -199,6 +212,7 @@ function stubFetch(options: FetchOptions = {}) {
     fetchMock,
     resolveCreate,
     resolveGenerationPost,
+    rejectGenerationPost,
     resolveSnapshot,
     pushFrame,
     endStream,
@@ -240,6 +254,13 @@ function seedLiveStreamState(): void {
 
 function navigateTo(): ReturnType<typeof vi.fn> {
   return (globalThis as unknown as { uni: { navigateTo: ReturnType<typeof vi.fn> } }).uni.navigateTo;
+}
+
+/** VC-R115：解析 POST /generations 请求体（userContent + idempotencyKey）。 */
+function generationPostBodies(calls: Array<{ method: string; url: string; body?: string }>) {
+  return calls
+    .filter((call) => call.method === "POST" && /\/generations$/.test(call.url))
+    .map((call) => JSON.parse(call.body ?? "{}") as { userContent?: string; idempotencyKey?: string });
 }
 
 describe("聊天产品页", () => {
@@ -1537,6 +1558,156 @@ describe("聊天产品页", () => {
     expect(Number(store.messages[0].messageId)).toBe(21);
     // 插入前 scrollTop=0、高度 5500；插入后高度 6000 → 补偿 500。
     expect(history.scrollTop).toBe(500);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R115：聊天未确认发送重试与下一条草稿分离 ----
+  // 缺陷：POST 在途时用户写下的草稿 B 会被旧重试逻辑误当作重发文本——
+  // 发 B 换新幂等键等于新发一条消息，而原提交 A 的结局仍未知。契约：
+  // 页面持有「未确认原提交快照」，重试永远针对快照 A（同键）；草稿 B
+  // 不替换、不清空；显式点发送提交 B 才是新意图、新键。
+
+  it("VC-R115：未确认失败后重试只针对原提交 A（同键），草稿 B 保留且显式发送 B 是新键", async () => {
+    const { calls, rejectGenerationPost } = stubFetch({
+      deferGeneration: true,
+      generations: ["reject", "reject"],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("原提交 A");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    // 首个 POST /generations 在途：提交文本同步清空输入框。
+    expect(generationPostBodies(calls)).toHaveLength(1);
+    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    // 在途期间用户写下一条草稿 B（textarea 不禁用）。
+    await input.setValue("草稿 B");
+
+    // 首个 POST 网络失败（结果未知）：未确认错误出现，草稿 B 保留。
+    rejectGenerationPost(new TypeError("fetch failed"));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect((input.element as HTMLTextAreaElement).value).toBe("草稿 B");
+
+    // 重试：针对原提交 A、复用同一幂等键；草稿 B 不被吞、不被清空。
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    let posts = generationPostBodies(calls);
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.userContent).toBe("原提交 A");
+    expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
+    expect((input.element as HTMLTextAreaElement).value).toBe("草稿 B");
+    expect(wrapper.find('[data-testid="retry"]').text()).toBe("重试原消息");
+
+    // 用户显式点发送提交草稿 B：新意图、新键，不复用 A 的键。
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    posts = generationPostBodies(calls);
+    expect(posts).toHaveLength(3);
+    expect(posts[2]?.userContent).toBe("草稿 B");
+    expect(posts[2]?.idempotencyKey).not.toBe(posts[0]?.idempotencyKey);
+    wrapper.unmount();
+  });
+
+  it("VC-R115：建会话失败的未确认提交重试原快照 A，不取残留 pending 也不吞草稿 B", async () => {
+    let createFails = true;
+    const { calls } = stubFetch({
+      conversations: [],
+      conversationCreateFails: () => createFails,
+      generations: ["reject"],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // store 里更早一轮的残留待发内容——重试不得误取（直种先例见
+    // seedLiveStreamState；store.send 从未执行，残留不会被本轮覆盖）。
+    const store = useChatStore();
+    store.pendingUserContent = "更早一轮的残留";
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("原提交 A");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    // 建会话失败：从未发起 POST /generations；未确认错误出现，输入框回填 A。
+    expect(generationPostBodies(calls)).toHaveLength(0);
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect((input.element as HTMLTextAreaElement).value).toBe("原提交 A");
+
+    // 用户把输入框改成新草稿 B；随后建会话恢复可用，再点重试。
+    await input.setValue("草稿 B");
+    createFails = false;
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+
+    // 重试：先建会话，再以原提交 A 发送（不是残留 pending，也不是草稿 B）。
+    const createIndex = calls.findIndex(
+      (call) => call.method === "POST" && call.url === "/api/v1/conversations",
+    );
+    const sendIndex = calls.findIndex(
+      (call) => call.method === "POST" && /\/generations$/.test(call.url),
+    );
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(sendIndex).toBeGreaterThan(createIndex);
+    const posts = generationPostBodies(calls);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.userContent).toBe("原提交 A");
+    expect((input.element as HTMLTextAreaElement).value).toBe("草稿 B");
+    wrapper.unmount();
+  });
+
+  it("VC-R115：清空输入框不丢原提交的重试入口与内容", async () => {
+    const { calls } = stubFetch({ generations: ["reject", "reject"] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("原提交 A");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect((input.element as HTMLTextAreaElement).value).toBe("原提交 A");
+
+    // 用户清空输入框：原提交 A 的重试入口不得随之消失。
+    await input.setValue("");
+    expect(wrapper.find('[data-testid="retry"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    const posts = generationPostBodies(calls);
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.userContent).toBe("原提交 A");
+    wrapper.unmount();
+  });
+
+  it("VC-R115：开始新对话清理旧提交——无错误无重试，旧 A 不可复活", async () => {
+    const { calls } = stubFetch({ generations: ["reject", "reject"] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("原提交 A");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(true);
+
+    // 开始新对话：清空点必须同时清掉未确认提交快照。
+    await wrapper.find('[data-testid="chat-context-open"]').trigger("click");
+    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="retry"]').exists()).toBe(false);
+
+    // 新窗口的新草稿走全新提交：旧 A 不再被任何入口复活。
+    await input.setValue("新窗口的新草稿");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    const posts = generationPostBodies(calls);
+    expect(posts).toHaveLength(2);
+    expect(posts.map((post) => post.userContent)).toEqual(["原提交 A", "新窗口的新草稿"]);
+    expect(posts[1]?.idempotencyKey).not.toBe(posts[0]?.idempotencyKey);
     wrapper.unmount();
   });
 });

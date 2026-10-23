@@ -19,11 +19,11 @@ import {
 // 默认 https://localhost:18457)。HTTP 模式（默认）行为与项目结构不变。
 
 // DOGFOOD-09（ADR-0006 §1.4）：核心 journeys 保持单一 chromium 桌面引擎 +
-// 手机尺寸视口不变；可访问性 journey（08）、副本下载 journey（13）与返回导航（14）额外以
-// 真实设备仿真双引擎运行（iPhone 13 → webkit + isMobile + touch；
+// 手机尺寸视口不变；可访问性（08）、副本下载（13）、返回导航（14）与
+// 发送重试（15）额外以真实设备仿真双引擎运行（iPhone 13 → webkit + isMobile + touch；
 // Pixel 5 → chromium + isMobile + touch）。webServer 仍是单实例，
 // workers: 1 串行防止种子状态竞争。
-const DUAL_ENGINE_SPECS = /(?:08-accessibility|13-data-export-download|14-back-navigation)\.spec\.ts$/;
+const DUAL_ENGINE_SPECS = /(?:08-accessibility|13-data-export-download|14-back-navigation|15-send-retry-draft)\.spec\.ts$/;
 
 const STACK_KIND = parseE2EStackKind(process.env.E2E_STACK_KIND);
 const TLS_PORT = process.env.E2E_TLS_PORT ?? "18457";
@@ -128,7 +128,7 @@ export default defineConfig({
     {
       name: "chromium",
       // 其余 journey 的行为原样保留：桌面 chromium + 手机尺寸视口
-      // （08/13/14 仅由下方双引擎设备仿真项目运行）。
+      // （08/13/14/15 仅由下方双引擎设备仿真项目运行）。
       testIgnore: DUAL_ENGINE_SPECS,
       use: {
         // Mobile-class viewport: the H5 is a phone-format product.

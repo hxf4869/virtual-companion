@@ -83,3 +83,40 @@ describe("VcChatComposer IME Enter 防护", () => {
     wrapper.unmount();
   });
 });
+
+// ---- VC-R115：错误重试按钮的可选文案 ----
+
+function mountComposerWithError(props: { retryLabel?: string } = {}) {
+  return mount(VcChatComposer, {
+    props: {
+      modelValue: "下一条草稿",
+      busy: false,
+      streaming: false,
+      errorText: "没有确认发送结果，点此重试",
+      canRetry: true,
+      ...props,
+    },
+  });
+}
+
+describe("VcChatComposer 重试文案", () => {
+  it("不传 retryLabel 时按钮默认文案为「点此重试」，点击仍 emit retry", async () => {
+    const wrapper = mountComposerWithError();
+    const retry = wrapper.find('[data-testid="retry"]');
+
+    expect(retry.text()).toBe("点此重试");
+    await retry.trigger("click");
+    expect(wrapper.emitted("retry")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("传 retryLabel 时按钮渲染该文案，点击仍 emit retry", async () => {
+    const wrapper = mountComposerWithError({ retryLabel: "重试原消息" });
+    const retry = wrapper.find('[data-testid="retry"]');
+
+    expect(retry.text()).toBe("重试原消息");
+    await retry.trigger("click");
+    expect(wrapper.emitted("retry")).toHaveLength(1);
+    wrapper.unmount();
+  });
+});
