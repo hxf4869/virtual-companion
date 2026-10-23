@@ -1025,8 +1025,10 @@ vcr154-20261023T134323Z，HTTPS 18463，exit 1/233.2s）：生产预算未改，
 （same_response/same_socket/still_suspended/frames_unchanged 全真），
 同 gid 健康读者空 catchup、3.754s 首 delta、29.24s 恰一次
 chat.completed，live/replay/post-terminal 三份 8192 文本与唯一
-committed assistant 全相等；provider 总 requests 3、stream/completed
-各 1、abort/active 0、chunks 2048，worker/subscribers 回 baseline 0。
+committed assistant 全相等；provider 总 requests 3（含 2 次非流式
+调用），其中 stream/completed 各 1、abort/active 0、chunks 2048，
+worker/subscribers 回 baseline 0；健康读者 29.24s 完成，慢连接保持
+停读至约 110s 观测窗结束。
 95 份有效样本 `vc_realtime_slow_disconnect_total` 原值全 0.000000000
 （实际增量 0，判定 NOT_TRIGGERED；汇总 metrics_diff=null 是私有 int
 解析小数字符串的展示缺陷，非缺采）；缓冲吸收仅为解释假设，无各层

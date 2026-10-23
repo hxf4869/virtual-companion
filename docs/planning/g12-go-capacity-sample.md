@@ -1098,8 +1098,8 @@ FUNCTIONAL_ONLY，无容量/性能结论，不满足 §19.2 门槛；G12 维持�
 ## 19. 2026-10-23 补充：S6 部署链慢读背压预检（VC-R151～R155）
 
 R151 的问题：不改生产参数/代码/契约的本机部署链（Caddy TLS +
-companiond + PG + 私有 fake provider）上，符合 2048 输出 token /
-256 KiB provider 响应预算的最大合法多分片回复，能否使真正停读的
+companiond + PG + 私有 fake provider）上，符合默认 2048 输出 token /
+256 KiB provider 响应预算的一个多分片回复形状，能否使真正停读的
 客户端触发背压保护，且同 gid 正常读者完整完成。冻结候选：回复
 8192 个 `<`（`ceil(utf8/4)` 恰为 2048 token）、2048 片×4 字节、
 firstToken 3000ms、delta 10ms、content 帧紧凑合法形状，provider 总
@@ -1125,9 +1125,10 @@ same_response/same_socket/still_suspended/frames_unchanged 四布尔全真；
 同 gid 健康读者空 catch-up、3.754s 首 delta、29.24s 恰一次
 `chat.completed`，live/replay/post-terminal 三段全量重组 8192 字符均与
 单一 committed assistant（8192 字符）全等，snapshot COMPLETED、
-assistant 消息数 1；provider 总 requests 3、stream/completed 各 1、
-aborted/active 0、chunks 2048（一流自然完成，无 cancel），
-worker/subscribers 回 baseline 0。观测 95 份有效样本（0 无效，双表
+assistant 消息数 1；provider 总 requests 3（含 2 次非流式调用），
+其中 stream/completed 各 1、aborted/active 0、chunks 2048（一流自然
+完成，无 cancel），worker/subscribers 回 baseline 0。健康读者 29.24s
+完成，慢连接保持停读至约 110s 观测窗结束。观测 95 份有效样本（0 无效，双表
 读取成功为硬要求），`vc_realtime_slow_disconnect_total` 原值全部
 `0.000000000`，实际增量 0。
 
