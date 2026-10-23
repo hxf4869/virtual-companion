@@ -248,8 +248,9 @@ FAILED_FINAL. The deltaMs widen/pending-restore, receipt-based ownership
 and cleanup contracts are exactly the probe-s8 ones; the mid-stream and
 claim-before-intent crash points stay outside this probe.
 
-`--probe-s8-before-attempt` (VC-R148) proves the THIRD S8 crash point
-(claim-before-intent) on the same bound: the runtime container is killed
+`--probe-s8-before-attempt` (VC-R148) is the third implemented standalone
+S8 probe entry, covering the claim-before-intent crash point, on the
+same bound: the runtime container is killed
 after the work item is CLAIMED but BEFORE any attempt intent row exists,
 while the worker's prepare INSERT is blocked on a control table lock.
 The same one-process helper (`s8_finalize_crash.py --crash-point
@@ -277,9 +278,10 @@ epoch never saw the request; after the DEFAULT lease expires,
 attempt runs on the new epoch and the ORIGINAL gid recovers to COMPLETED
 (not FAILED_FINAL); the recovered DB state is fixed read-only first
 (exactly one SUCCEEDED attempt, generation COMPLETED with the assistant
-message committed, work item DONE, no PENDING/CLAIMED) together with the
-new-epoch provider settled at exactly the one recovery request BEFORE
-the health control; `s8-verify --s8-expect completed` then re-checks the
+message committed, work_item DONE, no PENDING/CLAIMED) together with the
+new-epoch provider settled at exactly one recovery STREAM request
+(two total requests, including the non-streaming call) BEFORE the
+health control; `s8-verify --s8-expect completed` then re-checks the
 public view (the original gid's own snapshot COMPLETED, post-terminal
 `chat.completed`, exactly one assistant message before the control) and
 ONE independent health-control generation must complete while the

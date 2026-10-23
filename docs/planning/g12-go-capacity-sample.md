@@ -1018,9 +1018,10 @@ HEAD（3a3adb5a）均未变，protected_unchanged=true。
 
 ### 交付
 
-既有 G12 harness 增加 `--probe-s8-before-attempt`：§19.1 S8 第三崩溃点
-（claim-before-intent，下称 A 点）的 standalone FUNCTIONAL_ONLY 入口，
-复用 S8 生命周期并在 collectors/sampler/idle/warm-up 启动前分支，默认
+既有 G12 harness 增加 `--probe-s8-before-attempt`：第三个实现的独立
+S8 探针入口，覆盖 §19.1 claim-before-intent 崩溃点（下称 A 点），
+standalone FUNCTIONAL_ONLY 入口，复用 S8 生命周期并在 collectors/
+sampler/idle/warm-up 启动前分支，默认
 profile 不含 S8。崩溃窗口由同一 helper `s8_finalize_crash.py
 --crash-point before-attempt` 单进程承担：经真实 workload Client 准备
 公开会话后，先在控制 psql 会话 `LOCK TABLE vc.attempt_intent IN SHARE
@@ -1070,7 +1071,8 @@ stream/completed 1、abort 0/active 0/chunks 8、总请求 2（含 1 次非流�
 
 ### 验证与清理核清
 
-Root 最终本地验证（修复后候选）：helper 单测 **29** 项 PASS（C 点原
+R148 ZCode 实施会话最终本地验证（修复后候选；Root 已审阅接受，
+未另行重跑这些单测）：helper 单测 **29** 项 PASS（C 点原
 17 项 + A 点新增 12 项）；workload **72** 项 PASS（历史基线 67，此处
 按实际 72 如实报告，不拆写新增数）；resources **57** 项 PASS；
 `bash -n`、5 个相关 Python 源码 py_compile 与全部 **43** 个 run.sh

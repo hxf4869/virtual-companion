@@ -979,8 +979,8 @@ vcr149-mvkwdc27，HTTPS 18460）：真实 OrbStack/TLS/PG 探针退出码 0、
 assistant、attempts=[]、job CLAIMED 租约在效，唯一 worker（PID 109）
 被控制 backend（PID 146）阻塞、query_start 同为
 2026-10-23T11:51:03.491795UTC；kill 窗按 max(query_age,xact_age) 加
-读前 monotonic 往返、取首/末读较早者截止（3.5s 保守窗、DB 事务
-超时 5s 不变），kill 返回时事务年龄上界 0.473305s 且先于 ROLLBACK，
+读前 monotonic 往返、取首/末读较早者截止（3.5s 保守窗、DB 语句超时
+5s 不变），kill 返回时事务年龄上界 0.473305s 且先于 ROLLBACK，
 exact nonce 收据 CID exited 137/PID 0，2 条真实 psql（host 70421/
 70424）reap exit 0、控制 backend 消失；helper 总 1.36122s、
 lock→gate 0.51977s、hit→kill 0.42198s（仅门控事实，不作性能结论）；
