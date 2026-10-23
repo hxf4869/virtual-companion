@@ -1013,6 +1013,29 @@ slow-reader、完整长窗三次容量与 Owner/Beta/真机/真实 provider 仍
 开放，G12 不勾选、不冻结 Owner 门槛。详见
 `docs/planning/g12-go-capacity-sample.md` §18。
 
+2026-10-23 G12 S6 部署链慢读预检与文档收口（VC-R151～R155）：R151/R152
+两轮 INCONCLUSIVE 保留（R151 观测只读 `/proc/net/tcp` 漏 IPv4-mapped
+tcp6；R152 双表修正后"唯一连接才启动"假设被 Caddy keepalive 池连接
+否定）；R153 改为慢客户端在同一条 SSE 上直接读取首个真实 live delta
+后停读（拒绝终态 snapshot 续片冒充 live、live 后不换连接；定向 12 项
+与双栈解析 15 项小例分别通过）。R154 以冻结候选单次实跑（trial
+vcr154-20261023T134323Z，HTTPS 18463，exit 1/233.2s）：生产预算未改，
+8192 逻辑字符=2048 输出 token 估算、2048 片×10ms、provider wire
+254274B≤256KiB；慢订阅 3.752s 取得自身首 live 后停读
+（same_response/same_socket/still_suspended/frames_unchanged 全真），
+同 gid 健康读者空 catchup、3.754s 首 delta、29.24s 恰一次
+chat.completed，live/replay/post-terminal 三份 8192 文本与唯一
+committed assistant 全相等；provider 总 requests 3、stream/completed
+各 1、abort/active 0、chunks 2048，worker/subscribers 回 baseline 0。
+95 份有效样本 `vc_realtime_slow_disconnect_total` 原值全 0.000000000
+（实际增量 0，判定 NOT_TRIGGERED；汇总 metrics_diff=null 是私有 int
+解析小数字符串的展示缺陷，非缺采）；缓冲吸收仅为解释假设，无各层
+buffer 实测；handler 退出 UNPROVEN。清理核清 8 容器/4 卷/1 网络/3
+构建标签 absent、leftovers {}、敏感 env/CA/compose 已删、子进程/端口
+释放、9 输入原字节与 HEAD（a4762556）未变。三次长窗容量授权待人类
+回复；G12、S6 保护触发/handler、Owner/Beta/真机/真实 provider 仍开放
+不勾。详见 `docs/planning/g12-go-capacity-sample.md` §19。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

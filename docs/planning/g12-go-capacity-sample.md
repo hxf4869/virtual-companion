@@ -1095,3 +1095,54 @@ run.sh/helper/workload 运行输入字节和 HEAD（6d4beedc）均未变。
 口径、Owner gate、真机、真实 provider 与 Beta 前置均未由此关闭。
 FUNCTIONAL_ONLY，无容量/性能结论，不满足 §19.2 门槛；G12 维持未完成、
 不冻结 Owner 门槛。
+## 19. 2026-10-23 补充：S6 部署链慢读背压预检（VC-R151～R155）
+
+R151 的问题：不改生产参数/代码/契约的本机部署链（Caddy TLS +
+companiond + PG + 私有 fake provider）上，符合 2048 输出 token /
+256 KiB provider 响应预算的最大合法多分片回复，能否使真正停读的
+客户端触发背压保护，且同 gid 正常读者完整完成。冻结候选：回复
+8192 个 `<`（`ceil(utf8/4)` 恰为 2048 token）、2048 片×4 字节、
+firstToken 3000ms、delta 10ms、content 帧紧凑合法形状，provider 总
+wire 254274B ≤ 262144；不放宽任何预算/队列/事件/SSE 写超时。
+
+两轮 INCONCLUSIVE 保留：R151 观测只读 `/proc/net/tcp`，漏掉双栈监听
+记入 `/proc/net/tcp6` 的 IPv4-mapped 连接；R152 按内核逐 32 位小端
+word + `ipv4_mapped` 修正双表解析后看到真实 Caddy 连接，但"符合条件的
+连接必须唯一"的启动假设被 Caddy 对 runtime 的 idle keepalive 池连接
+否定（活跃窗恒两条）。R153 起慢客户端活跃证明改为直接事实：在同一条
+SSE 响应上（标准 `http.client.HTTPResponse` 处理 chunked，复用
+`workload.stream_events` 解码）读取首个真实 live `chat.delta`——首个
+catch-up snapshot 必须为空且该 delta 早于任何第二个 snapshot/terminal，
+终态重放续片不冒充 live；取得首 live 后生成器挂起、停止一切后续读取
+且不换连接，wrap-up 只比对停读完整性（同响应/socket 对象、挂起保持、
+帧数不变），不恢复读取。连接归属有意不实现（集合差不能证明归属），
+handler 退出保持 UNPROVEN，不以连接数作启动门。
+
+R154 单次短预检（trial `vcr154-20261023T134323Z`，loopback HTTPS
+18463，exit 1 / 233.2s）实测：慢客户端第 1 次连接为 preclaim 空流
+重试，第 2 次 t_rel=3.752s 取得自身首 live 后停读（恰 2 帧），
+same_response/same_socket/still_suspended/frames_unchanged 四布尔全真；
+同 gid 健康读者空 catch-up、3.754s 首 delta、29.24s 恰一次
+`chat.completed`，live/replay/post-terminal 三段全量重组 8192 字符均与
+单一 committed assistant（8192 字符）全等，snapshot COMPLETED、
+assistant 消息数 1；provider 总 requests 3、stream/completed 各 1、
+aborted/active 0、chunks 2048（一流自然完成，无 cancel），
+worker/subscribers 回 baseline 0。观测 95 份有效样本（0 无效，双表
+读取成功为硬要求），`vc_realtime_slow_disconnect_total` 原值全部
+`0.000000000`，实际增量 0。
+
+判定 NOT_TRIGGERED：该预算形状下真实停读订阅未观察到 drop，未满足
+S6 保护触发门。`metrics_diff.slow_disconnect_total=null` 是私有汇总用
+`int()` 解析 Prometheus 小数字符串失败的展示缺陷，非采样缺失（95 份
+原始样本直接支持 0），旧 JSON 保留未改。"链路缓冲吸收该量级流量"仅为
+量级上的解释假设，未实测任何一层 buffer 容量/占用，不构成因果；
+handler 退出 UNPROVEN，不据此宣称 S6 保护全通过或完整 G12 通过。
+
+清理与验证：按 nonce 收据核清 8 容器（nonce/project 双路）/4 卷/
+1 网络/3 构建标签均 absent，leftovers={}，私有 env/CA/compose 已删，
+子进程/端口（18463/19091）释放；5 个用户保护文件与候选输入原字节及
+HEAD（a4762556）未变。定向小例：R153 直接 live 停读 12 项（真实
+TLS/chunked、停读保持、preclaim 重试但 live 后不换、终态续片拒绝）与
+tcp6 双栈解析 15 项分别通过，未合并成统一套件或写成完整检查重跑。
+三次完整长窗容量测量待人类授权；G12、S6 保护触发/handler 退出、
+Owner gate、Beta 前置、真机与真实 provider 均维持开放。

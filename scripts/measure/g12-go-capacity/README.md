@@ -147,6 +147,17 @@ public deployment path at its production defaults; `--probe-s6` still
 covers only cancel and disconnect/reconnect. A client that merely stops
 reading is not proof that server-side slow-subscriber protection fired.
 
+VC-R154 measured this boundary once on the deployed chain at the frozen
+budget shape (8192 logical chars = 2048 output tokens, 254274 provider
+wire bytes, 2048 chunks × 10 ms): a truly stopped same-gid subscriber
+(proven by its own first live delta, then no further read and no
+connection swap) stayed in fan-out with zero
+`vc_realtime_slow_disconnect_total` across 95 valid samples while the
+healthy subscriber completed exactly once with full 8192-char text —
+NOT_TRIGGERED for this shape; handler exit stays UNPROVEN and buffer
+absorption is an untested explanation only. Facts and limits:
+`docs/planning/g12-go-capacity-sample.md` §19.
+
 Scenario 9 uses two isolated synthetic accounts and the public password,
 authenticator setup/confirm, and session APIs. It overlaps a trusted-device
 login with deletion of an explicit existing session: only the target must
