@@ -94,7 +94,8 @@
     <template #composer>
       <VcChatComposer
         v-if="pageState === 'ready'"
-        v-model="inputText"
+        :model-value="inputText"
+        @update:model-value="onDraftInput"
         :busy="generationBusy"
         :streaming="store.isStreaming"
         :disabled="!relStore.currentRelationshipId"
@@ -203,6 +204,11 @@ const menuOpen = ref(false);
 // 也不移除重试入口。清空点与旧 directSendError 生命周期一致：新提交
 // 开始、initPage、开始新对话。
 const unconfirmedSendText = ref("");
+// VC-R121：输入框当前内容是否仍是失败后自动回填的原提交。正文相等不能
+// 推断草稿归属（用户可能重新输入与原提交完全相同的下一条草稿），因此回填
+// 时记录归属；用户随后的任何编辑、新一轮提交、initPage 或开始新对话都
+// 解除归属。重试清空输入框只依据归属，不经正文比较。
+let inputRefilledFromFailure = false;
 const initBusy = ref(false);
 // WP-D（缺口1）：覆盖"建会话（如需要）+ 发送"的页面级提交互斥——任何
 // await 之前同步置位，await ensureConversation 期间第二次 onSend 无法穿过。
@@ -399,6 +405,7 @@ async function initPage(): Promise<void> {
   initBusy.value = true;
   pageState.value = "loading";
   unconfirmedSendText.value = "";
+  inputRefilledFromFailure = false;
   store.historyLoadFailed = false;
   try {
     if (!auth.isAuthenticated) await auth.tryRefresh(transport);
@@ -492,15 +499,26 @@ async function ensureConversation(): Promise<boolean> {
 /**
  * WP-D（缺口1+2）：提交路径。互斥在任何 await 之前同步置位，覆盖
  * "建会话（如需要）+ 发送"整体；返回 false 表示正被上一笔提交占用。
- * 输入框草稿与提交快照分离：只在"当前输入内容 === 提交快照"时清空；
- * 失败恢复同样绝不触碰用户后来输入的新草稿。VC-R115：失败时把原始提交
- * 记为未确认快照，重试据此针对原提交，与输入框里的下一条草稿无关。
+ * VC-R121：输入框草稿与提交快照分离——清空只按草稿归属（本次提交的就是
+ * 输入框内容，或输入框仍持有本次提交的失败自动回填且用户未编辑），不用
+ * 正文相等推断，用户重新输入的同文草稿是独立意图。失败恢复同样绝不触碰
+ * 用户后来输入的新草稿。VC-R115：失败时把原始提交记为未确认快照，重试
+ * 据此针对原提交，与输入框里的下一条草稿无关。
  */
-async function sendText(text: string, sourceUserMessageId?: string): Promise<boolean> {
+async function sendText(
+  text: string,
+  sourceUserMessageId?: string,
+  fromDraft = false,
+): Promise<boolean> {
   if (submitInFlight || store.isStreaming || generationBusy.value) return false;
   submitInFlight = true;
   unconfirmedSendText.value = "";
-  if (inputText.value.trim() === text) inputText.value = "";
+  if (fromDraft) {
+    if (inputText.value.trim() === text) inputText.value = "";
+  } else if (inputRefilledFromFailure) {
+    inputText.value = "";
+  }
+  inputRefilledFromFailure = false;
   // 缺陷6：提交归属锚点。建会话成功后锚点更新为提交时的会话；失败回调
   // 只在提交身份仍是当前上下文时回填输入/错误文案——用户在 await 期间
   // 切换会话后，晚到的失败响应静默丢弃，不覆盖新会话的输入与 UI。
@@ -521,7 +539,10 @@ async function sendText(text: string, sourceUserMessageId?: string): Promise<boo
   } catch {
     const expectedConversationId = submittedConversationId ?? anchorBeforeEnsure;
     if (store.conversationId !== expectedConversationId) return false;
-    if (inputText.value.trim() === "") inputText.value = text;
+    if (inputText.value.trim() === "") {
+      inputText.value = text;
+      inputRefilledFromFailure = true;
+    }
     unconfirmedSendText.value = text;
     return true;
   } finally {
@@ -532,7 +553,13 @@ async function sendText(text: string, sourceUserMessageId?: string): Promise<boo
 async function onSend(): Promise<void> {
   const text = inputText.value.trim();
   if (!text || store.isStreaming || generationBusy.value) return;
-  await sendText(text);
+  await sendText(text, undefined, true);
+}
+
+/** VC-R121：用户对输入框的每次输入都是新草稿——解除失败回填的归属。 */
+function onDraftInput(value: string): void {
+  inputText.value = value;
+  inputRefilledFromFailure = false;
 }
 
 async function onRetry(): Promise<void> {
@@ -618,6 +645,7 @@ function startNewConversation(): void {
   bindGenerationContext();
   inputText.value = "";
   unconfirmedSendText.value = "";
+  inputRefilledFromFailure = false;
   store.historyLoadFailed = false;
   followingLatest.value = true;
 }

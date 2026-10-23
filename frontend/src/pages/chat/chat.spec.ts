@@ -1710,4 +1710,63 @@ describe("聊天产品页", () => {
     expect(posts[1]?.idempotencyKey).not.toBe(posts[0]?.idempotencyKey);
     wrapper.unmount();
   });
+
+  // ---- VC-R121：同文新草稿不得被原消息重试清空 ----
+  // 缺陷：sendText 以「输入框正文 === 提交正文」推断草稿归属。原提交 A="好"
+  // 在途时用户重新输入同文草稿 B="好"，重试 A 的一刻 B 被清空；若重试再失败，
+  // 回填的 A 与 B 同文，丢失被最终字符串掩盖。契约：B 是独立意图——与 A 正文
+  // 完全相同也不得被重试清空；未经用户编辑的自动回填 A 成功重试后仍清空（既有
+  // 用例已覆盖）。清空只看草稿归属，不看正文相等。
+
+  it("VC-R121：与原提交同文的在途草稿 B 不被重试清空，成功重试后 B 保留且显式发送 B 才是新键", async () => {
+    const { calls, rejectGenerationPost, pushFrame, endStream } = stubFetch({
+      deferGeneration: true,
+      liveStream: true,
+      generations: [200],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    // A 与 B 完全同文：正文相等从现在起不能再作为归属依据。
+    await input.setValue("好");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    expect(generationPostBodies(calls)).toHaveLength(1);
+    // 首 POST 在途：提交文本同步清空输入框（既有行为）。
+    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    // 在途期间用户重新输入与 A 完全相同的下一条草稿 B。
+    await input.setValue("好");
+
+    // 首 POST 网络失败（结果未知）：未确认文案出现，同文 B 保留。
+    rejectGenerationPost(new TypeError("fetch failed"));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect((input.element as HTMLTextAreaElement).value).toBe("好");
+
+    // 重试原消息 A：同键、同原文；重试 2xx 成功后草稿 B 仍在（RED 点：
+    // 当前实现把同文 B 误当提交正文清空）。
+    await wrapper.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    const posts = generationPostBodies(calls);
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.userContent).toBe("好");
+    expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
+    expect((input.element as HTMLTextAreaElement).value).toBe("好");
+    expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(false);
+
+    // 流走完后显式发送 B：新意图、新键，发送自己的草稿才清空输入框。
+    pushFrame('event: chat.delta\ndata: {"text":"回复"}\n\n');
+    pushFrame('event: chat.completed\ndata: {}\n\n');
+    endStream();
+    await flushPromises();
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    const after = generationPostBodies(calls);
+    expect(after).toHaveLength(3);
+    expect(after[2]?.userContent).toBe("好");
+    expect(after[2]?.idempotencyKey).not.toBe(after[0]?.idempotencyKey);
+    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    wrapper.unmount();
+  });
 });
