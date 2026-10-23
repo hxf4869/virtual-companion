@@ -131,21 +131,52 @@ SUPERVISOR_STARTED_AT="$(ps -o lstart= -p $$ | sed 's/^[[:space:]]*//;s/[[:space
 
 # State contract version 3 (consumed by frontend/e2e/global-teardown.ts and
 # journeys/12): atomic writes, 0600, updated at every ownership transition —
-# startup failures still leave the receipts received so far.
+# startup failures still leave the receipts received so far. The FIRST write
+# acquires the path exclusively (hard-link create refuses any existing
+# regular file, symlink, or directory — a previous run's recovery record is
+# never overwritten); only after that acquisition may later writes replace
+# the file atomically and cleanup remove it (STATE_OWNED, the same
+# discipline as scripts/dev/e2e-stack.sh's HTTP v4 state).
 json_or_null() { if [ -n "$1" ]; then printf '"%s"' "$1"; else printf 'null'; fi; }
 write_state() {
-    local state_tmp="${E2E_STACK_STATE_FILE}.tmp.$$"
     local keep=false creating=false started=false
     [ "${E2E_STACK_KEEP:-0}" = "1" ] && keep=true
     [ -f "$CREATING" ] && creating=true
     [ "$STACK_STARTED" = "1" ] && started=true
-    umask 077
-    printf '%s\n' \
-        "{\"version\":3,\"stackKind\":\"tls\",\"supervisorPid\":$$,\"supervisorStartedAt\":\"${SUPERVISOR_STARTED_AT}\",\"runDir\":\"${RUN_DIR}\",\"nonce\":\"${NONCE}\",\"project\":\"${PROJECT}\",\"httpsPort\":${E2E_TLS_PORT},\"domain\":\"localhost\",\"dockerContext\":\"${E2E_DOCKER_CONTEXT}\",\"keep\":${keep},\"creating\":${creating},\"started\":${started},\"releaseMode\":\"full\",\"releasePolicyVersion\":\"${E2E_RELEASE_POLICY_VERSION}\",\"containers\":{\"db\":$(json_or_null "$DB_CID"),\"runtime\":$(json_or_null "$RUNTIME_CID"),\"caddy\":$(json_or_null "$CADDY_CID"),\"provider\":$(json_or_null "$PROVIDER_CID")},\"providerLogPath\":\"${PROVIDER_LOG_PATH}\",\"receipts\":{\"capture\":\"${CAPTURE}\",\"built\":\"${BUILT_IMAGES}\",\"compose\":\"${STACK_COMPOSE}\",\"leftoversOut\":\"${LEFTOVERS}\",\"collectors\":\"${COLLECTORS}\",\"resourcesPy\":\"${RESOURCES}\"},\"caCert\":\"${CA_FILE}\"}" \
-        >"$state_tmp" || return 1
-    mv -f -- "$state_tmp" "$E2E_STACK_STATE_FILE"
+    E2E_TLS_STATE_OWNED="$STATE_OWNED" \
+    E2E_TLS_STATE_PAYLOAD="{\"version\":3,\"stackKind\":\"tls\",\"supervisorPid\":$$,\"supervisorStartedAt\":\"${SUPERVISOR_STARTED_AT}\",\"runDir\":\"${RUN_DIR}\",\"nonce\":\"${NONCE}\",\"project\":\"${PROJECT}\",\"httpsPort\":${E2E_TLS_PORT},\"domain\":\"localhost\",\"dockerContext\":\"${E2E_DOCKER_CONTEXT}\",\"keep\":${keep},\"creating\":${creating},\"started\":${started},\"releaseMode\":\"full\",\"releasePolicyVersion\":\"${E2E_RELEASE_POLICY_VERSION}\",\"containers\":{\"db\":$(json_or_null "$DB_CID"),\"runtime\":$(json_or_null "$RUNTIME_CID"),\"caddy\":$(json_or_null "$CADDY_CID"),\"provider\":$(json_or_null "$PROVIDER_CID")},\"providerLogPath\":\"${PROVIDER_LOG_PATH}\",\"receipts\":{\"capture\":\"${CAPTURE}\",\"built\":\"${BUILT_IMAGES}\",\"compose\":\"${STACK_COMPOSE}\",\"leftoversOut\":\"${LEFTOVERS}\",\"collectors\":\"${COLLECTORS}\",\"resourcesPy\":\"${RESOURCES}\"},\"caCert\":\"${CA_FILE}\"}" \
+    python3 - "$E2E_STACK_STATE_FILE" <<'PY_STATE'
+import os,sys,tempfile
+from pathlib import Path
+p=Path(sys.argv[1])
+fd,name=tempfile.mkstemp(prefix='.'+p.name+'.',dir=p.parent)
+t=Path(name)
+def refuse():
+    sys.stderr.write("TLS E2E FAIL: state file already exists; refusing to"
+                     " overwrite a previous run's record: %s\n"%p)
+    sys.exit(1)
+try:
+    with os.fdopen(fd,'w') as f:
+        f.write(os.environ['E2E_TLS_STATE_PAYLOAD']+'\n')
+    if os.environ['E2E_TLS_STATE_OWNED']=='1':
+        t.replace(p)
+    elif p.is_symlink() or p.exists():
+        refuse()
+    else:
+        try:
+            os.link(t,p)
+        except FileExistsError:
+            refuse()
+finally:
+    try:t.unlink()
+    except FileNotFoundError:pass
+PY_STATE
+    local state_rc=$?
+    [ "$state_rc" = 0 ] || return "$state_rc"
+    STATE_OWNED=1
 }
 STACK_STARTED=0
+STATE_OWNED=0
 
 cleanup() {
     local rc=$?
@@ -177,13 +208,20 @@ cleanup() {
         fi
     fi
     # Session material never outlives the run — removed even when cleanup
-    # failed (the state/receipt records themselves stay for recovery).
-    rm -f -- "${E2E_STACK_STATE_FILE}.auth.json" \
-        "${E2E_STACK_STATE_FILE}.shared-chat.json" \
-        "${E2E_STACK_STATE_FILE}.shared-memory.json" \
-        "${E2E_STACK_STATE_FILE}.shared-admin.json"
+    # failed (the state/receipt records themselves stay for recovery). Only
+    # the state family THIS run acquired exclusively (STATE_OWNED) is ever
+    # touched: a refusal-path exit must leave a pre-existing record and its
+    # companion files exactly as they were.
+    if [ "$STATE_OWNED" = 1 ]; then
+        rm -f -- "${E2E_STACK_STATE_FILE}.auth.json" \
+            "${E2E_STACK_STATE_FILE}.shared-chat.json" \
+            "${E2E_STACK_STATE_FILE}.shared-memory.json" \
+            "${E2E_STACK_STATE_FILE}.shared-admin.json"
+    fi
     if [ "$cleanup_failed" = "0" ]; then
-        rm -f -- "$E2E_STACK_STATE_FILE" "$E2E_STACK_STATE_FILE.tmp.$$"
+        if [ "$STATE_OWNED" = 1 ]; then
+            rm -f -- "$E2E_STACK_STATE_FILE"
+        fi
     else
         rc=1
     fi

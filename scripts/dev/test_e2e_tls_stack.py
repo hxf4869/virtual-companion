@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""Lifecycle regression for scripts/dev/e2e-tls-stack.sh cleanup() (VC-R79).
+"""Lifecycle regression for scripts/dev/e2e-tls-stack.sh (VC-R79, VC-R111).
 
 The launcher is SOURCED with E2E_TLS_SOURCE_ONLY=1 (the seam returns right
 after cleanup()/traps are defined — the same pattern run.sh's
 G12_SOURCE_ONLY seam gives the G12 tests) and the real cleanup() is driven
 with a stubbed cleanup engine, asserting the actual file/exit-code contract:
 
+- this round's state ownership is established by the launcher's own REAL
+  first write_state (atomic exclusive acquisition), never by faking
+  STATE_OWNED;
 - engine success: secrets/CA/compose/creating marker/state file removed,
   the shared session material removed, the ownership receipts (capture/
   built — the teardown's idempotent fallback needs them) KEPT, and the
   incoming exit status preserved;
 - engine failure: exit forced to 1, the state file and receipts kept as the
   recovery entry, session material still removed;
-- E2E_STACK_KEEP=1: nothing removed, no engine call, rc preserved.
+- E2E_STACK_KEEP=1: nothing removed, no engine call, rc preserved;
+- a pre-existing state object (regular file, symlink, or directory) makes
+  the FULL launcher run refuse visibly BEFORE any docker/pnpm request,
+  preserving that object and the four auth/shared files byte-for-byte.
 
 The engine stub also records its argv, pinning the receipt paths and the
 --deadline-seconds bound. No docker daemon is ever touched.
@@ -35,11 +41,14 @@ export E2E_STACK_KIND=tls
 export E2E_DOCKER_CONTEXT=orbstack
 export E2E_STACK_STATE_FILE="$STATE_FILE"
 source "{launcher}"
-if [ "[object Object]" = "1" ]; then
+if [ "$EXPECT_ISOLATED_VC" = "1" ]; then
   for name in VC_DOMAIN VC_PROVIDER_ENDPOINT VC_CRYPTO_REST_KEY; do
     if printenv "$name" >/dev/null; then exit 91; fi
   done
 fi
+# This round's ownership comes from the launcher's own real first
+# write_state (atomic exclusive acquisition) — STATE_OWNED is never faked.
+write_state || exit 90
 python3() {{
   printf '%s\n' "$*" >> "$ENGINE_CALLS"
   return {engine_rc}
@@ -70,7 +79,10 @@ class CleanupLifecycleTest(unittest.TestCase):
         state_file = os.path.join(work, "state.json")
         engine_calls = os.path.join(tmp.name, "engine-calls.log")
         paths_out = os.path.join(tmp.name, "paths.log")
-        for name in ("state.json", "state.json.auth.json",
+        # The state file itself is NOT pre-created: the driver below must
+        # establish this round's ownership through the launcher's real
+        # write_state. The four companion files are consumer material.
+        for name in ("state.json.auth.json",
                      "state.json.shared-chat.json",
                      "state.json.shared-memory.json",
                      "state.json.shared-admin.json"):
@@ -156,11 +168,99 @@ class CleanupLifecycleTest(unittest.TestCase):
         for key in ("state", "auth", "shared", "creating", "envfile",
                     "capture", "built"):
             self.assertTrue(os.path.exists(paths[key]), key)
+        # The kept state file is the launcher's own real write_state output.
+        with open(paths["state"]) as fh:
+            state = json.load(fh)
+        self.assertEqual(state["version"], 3)
+        self.assertEqual(state["stackKind"], "tls")
+        self.assertEqual(state["runDir"], paths["run_dir"])
+        self.assertTrue(state["keep"])
 
 
     def test_inherited_production_settings_cannot_enter_the_synthetic_stack(self):
         proc, _, _ = self.run_cleanup(inherited_config=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_existing_state_refusal_preserves_old_records_before_any_daemon_request(self):
+        # Full launcher run (not the SOURCE_ONLY seam): a pre-existing state
+        # object must be refused visibly BEFORE any docker/pnpm request, with
+        # that object and the four auth/shared companion files preserved
+        # byte-for-byte — never overwritten, never cleaned up by the EXIT
+        # trap of the refusing run.
+        sentinel = b'{"version":3,"sentinel":"old-tls-recovery-record"}\n'
+        for kind in ("regular-file", "symlink", "directory"):
+            with self.subTest(object_kind=kind):
+                tmp = tempfile.TemporaryDirectory()
+                self.addCleanup(tmp.cleanup)
+                work = os.path.join(tmp.name, "work")
+                os.makedirs(work)
+                state_file = os.path.join(work, "state.json")
+                if kind == "regular-file":
+                    with open(state_file, "wb") as fh:
+                        fh.write(sentinel)
+                elif kind == "symlink":
+                    real = os.path.join(work, "real-old-state.json")
+                    with open(real, "wb") as fh:
+                        fh.write(sentinel)
+                    os.symlink(real, state_file)
+                else:
+                    os.mkdir(state_file)
+                    with open(os.path.join(state_file, "inner.txt"), "wb") as fh:
+                        fh.write(sentinel)
+                companions = {}
+                for suffix in (".auth.json", ".shared-chat.json",
+                               ".shared-memory.json", ".shared-admin.json"):
+                    path = state_file + suffix
+                    data = ("old-tls-session" + suffix + "\n").encode()
+                    with open(path, "wb") as fh:
+                        fh.write(data)
+                    companions[path] = data
+                # Stub daemon/build clients: any invocation is recorded, so
+                # "no request happened" is provable, not assumed.
+                bin_dir = os.path.join(tmp.name, "bin")
+                os.makedirs(bin_dir)
+                daemon_calls = os.path.join(tmp.name, "daemon-calls.log")
+                for tool in ("docker", "pnpm"):
+                    stub = os.path.join(bin_dir, tool)
+                    with open(stub, "w") as fh:
+                        fh.write('#!/bin/sh\n'
+                                 'printf \'%s\\n\' "$*" >> "$DAEMON_CALLS"\n'
+                                 'exit 97\n')
+                    os.chmod(stub, 0o700)
+                env = {k: v for k, v in os.environ.items()
+                       if not k.startswith(("VC_", "E2E_"))}
+                env.update(
+                    PATH=bin_dir + os.pathsep + env["PATH"],
+                    TMPDIR=tmp.name,
+                    DAEMON_CALLS=daemon_calls,
+                    E2E_STACK_KIND="tls",
+                    E2E_RELEASE_MODE="full",
+                    E2E_DOCKER_CONTEXT="orbstack",
+                    E2E_TLS_PORT="18457",
+                    E2E_STACK_STATE_FILE=state_file,
+                )
+                proc = subprocess.run(
+                    ["bash", LAUNCHER], capture_output=True, text=True,
+                    env=env, timeout=60)
+                self.assertEqual(proc.returncode, 1, proc.stderr)
+                self.assertIn("TLS E2E FAIL", proc.stderr)
+                self.assertIn("already exists", proc.stderr)
+                if kind == "regular-file":
+                    with open(state_file, "rb") as fh:
+                        self.assertEqual(fh.read(), sentinel)
+                elif kind == "symlink":
+                    self.assertTrue(os.path.islink(state_file))
+                    with open(state_file, "rb") as fh:
+                        self.assertEqual(fh.read(), sentinel)
+                else:
+                    self.assertTrue(os.path.isdir(state_file)
+                                    and not os.path.islink(state_file))
+                    with open(os.path.join(state_file, "inner.txt"), "rb") as fh:
+                        self.assertEqual(fh.read(), sentinel)
+                for path, data in companions.items():
+                    with open(path, "rb") as fh:
+                        self.assertEqual(fh.read(), data)
+                self.assertFalse(os.path.exists(daemon_calls))
 
     def test_origin_uses_the_actual_canonical_https_port(self):
         for raw_port, expected_origin, expected_port in (
