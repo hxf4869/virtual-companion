@@ -1823,29 +1823,44 @@ def run_scenario_s8_verify(args, stats: Stats) -> dict:
     """S8 probe verify (VC-R140): take the prepare ids and prove the
     default-lease crash recovery on the real public chain, then that the
     service keeps serving. Phase 1 polls ONLY the original generation id's
-    snapshot (never cancel, never re-POST, never a DB write) until
-    FAILED_FINAL inside one absolute deadline — a poll issued or answered
-    past the budget never counts. The public failure view is checked where
-    it actually lives: the snapshot's events must carry the chat.failed
-    terminal with the fault bucket external-failed (the wire never
-    exposes the precise code; run.sh asserts PROVIDER_OUTCOME_UNKNOWN
-    read-only from work_item.last_error_code). A post-terminal
-    subscription must serve chat.failed and the conversation must hold no
-    assistant message for the crashed turn. Phase 2 then sends ONE
-    independent health-control generation (same conversation, fresh
-    idempotency key) and requires chat.completed plus exactly one
-    assistant message afterwards — while the original gid must STILL read
-    FAILED_FINAL, so the control can never mask the recovered failure.
-    Phase 2 runs only when phase 1 is clean (fail closed: no extra writes
-    into an unrecovered state).
+    snapshot (never cancel, never re-POST, never a DB write) until the
+    expected terminal inside one absolute deadline — a poll issued or
+    answered past the budget never counts. The expected terminal is
+    selected by --s8-expect: `failed` (the B/C mid-stream and
+    SUCCEEDED-before-finalize crash points) requires FAILED_FINAL and
+    checks the public failure view where it actually lives — the
+    snapshot's events must carry the chat.failed terminal with the fault
+    bucket external-failed (the wire never exposes the precise code;
+    run.sh asserts the work_item error code read-only) — while
+    `completed` (the A claim-before-intent crash point, whose
+    go_reconcile_generation recovery path is REQUEUE_NO_INTENT into a
+    FRESH successful attempt) requires the original gid itself to reach
+    COMPLETED with its own assistant message already committed, so the
+    health control can never pose as the original's success. A
+    post-terminal subscription must serve the matching terminal
+    (chat.failed / chat.completed) and the conversation must hold exactly
+    the expected assistant-message count for the crashed turn (0 failed /
+    1 completed). Phase 2 then sends ONE independent health-control
+    generation (same conversation, fresh idempotency key) and requires
+    chat.completed plus exactly one MORE assistant message afterwards —
+    while the original gid must STILL read its expected terminal, so the
+    control can never mask the recovered state. Phase 2 runs only when
+    phase 1 is clean (fail closed: no extra writes into an unrecovered
+    state).
     """
     client = Client(args.base, args.session, args.csrf, args.account,
                     origin=args.origin, cafile=args.cacert)
     gid = str(args.s8_generation_id)
     conv = str(args.s8_conversation_id)
+    expect_completed = getattr(args, "s8_expect", "failed") == "completed"
+    want_status = "COMPLETED" if expect_completed else "FAILED_FINAL"
+    want_terminal = SSE_COMPLETED if expect_completed else SSE_FAILED
+    want_before = 1 if expect_completed else 0
+    want_after = 2 if expect_completed else 1
     result: dict = {
         "scenario": "s8-verify",
-        "original": {"generation_id": gid, "status": None,
+        "original": {"generation_id": gid, "expect": want_status,
+                     "status": None,
                      "failed_fault": None, "failed_fault_ok": False,
                      "post_terminal": None, "assistant_messages": None,
                      "status_after_health": None},
@@ -1889,40 +1904,41 @@ def run_scenario_s8_verify(args, stats: Stats) -> dict:
             break
         time.sleep(min(0.5, remaining))
     original["status"] = status
-    if status != "FAILED_FINAL":
+    if status != want_status:
         stats.note_error(f"s8 original generation status {status} "
-                         f"(want FAILED_FINAL within the recovery budget)")
+                         f"(want {want_status} within the recovery budget)")
         result["errors"] = stats.errors[:10]
         result["error_count"] = len(stats.errors)
         # Fail closed: without the recovered terminal nothing downstream
         # (fault view, post-terminal stream, health control) is evidence.
         return result
 
-    events = snap.get("events") if isinstance(snap, dict) else None
-    fault = None
-    if isinstance(events, list):
-        for ev in events:
-            if isinstance(ev, dict) and ev.get("event") == SSE_FAILED:
-                fault = ev.get("fault")
-                break
-    original["failed_fault"] = fault
-    original["failed_fault_ok"] = fault == "external-failed"
-    if fault != "external-failed":
-        stats.note_error(f"s8 snapshot chat.failed fault {fault!r} "
-                         f"(want external-failed)")
+    if not expect_completed:
+        events = snap.get("events") if isinstance(snap, dict) else None
+        fault = None
+        if isinstance(events, list):
+            for ev in events:
+                if isinstance(ev, dict) and ev.get("event") == SSE_FAILED:
+                    fault = ev.get("fault")
+                    break
+        original["failed_fault"] = fault
+        original["failed_fault_ok"] = fault == "external-failed"
+        if fault != "external-failed":
+            stats.note_error(f"s8 snapshot chat.failed fault {fault!r} "
+                             f"(want external-failed)")
 
     post = client.subscribe_snapshot_terminal(gid, timeout=args.sse_timeout)
     original["post_terminal"] = post.get("terminal")
-    if post.get("terminal") != SSE_FAILED:
+    if post.get("terminal") != want_terminal:
         stats.note_error(f"s8 post-terminal event {post.get('terminal')} "
-                         f"(want {SSE_FAILED})")
+                         f"(want {want_terminal})")
 
     _, history = client.messages(conv)
     before = assistant_messages(history)
     original["assistant_messages"] = before
-    if before != 0:
+    if before != want_before:
         stats.note_error(f"s8 assistant messages before the health control "
-                         f"{before} (want 0)")
+                         f"{before} (want {want_before})")
 
     if stats.errors:
         result["errors"] = stats.errors[:10]
@@ -1967,15 +1983,15 @@ def run_scenario_s8_verify(args, stats: Stats) -> dict:
     original["status_after_health"] = (snap_after.get("status")
                                        if isinstance(snap_after, dict)
                                        else None)
-    if original["status_after_health"] != "FAILED_FINAL":
-        stats.note_error("s8 original generation no longer FAILED_FINAL "
+    if original["status_after_health"] != want_status:
+        stats.note_error(f"s8 original generation no longer {want_status} "
                          "after the health control (masked?)")
     _, history_after = client.messages(conv)
     after = assistant_messages(history_after)
     health["assistant_messages"] = after
-    if after != 1:
+    if after != want_after:
         stats.note_error(f"s8 assistant messages after the health control "
-                         f"{after} (want exactly 1 — the control's own)")
+                         f"{after} (want exactly {want_after})")
 
     result["errors"] = stats.errors[:10]
     result["error_count"] = len(stats.errors)
@@ -2058,6 +2074,13 @@ def main() -> int:
                         help="s8-verify: the prepare phase's generation id")
     parser.add_argument("--s8-conversation-id", default="",
                         help="s8-verify: the prepare phase's conversation id")
+    parser.add_argument("--s8-expect", choices=["failed", "completed"],
+                        default="failed",
+                        help="s8-verify expected recovery for the original "
+                             "gid: failed (B/C crash points → FAILED_FINAL "
+                             "with the external-failed bucket) or completed "
+                             "(A claim-before-intent → the original itself "
+                             "recovers COMPLETED via REQUEUE_NO_INTENT)")
     parser.add_argument("--s8-recovery-timeout", type=float, default=360.0,
                         help="s8-verify: absolute budget (seconds) for "
                              "waiting out the default claim lease; the "

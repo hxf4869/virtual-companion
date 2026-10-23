@@ -963,6 +963,56 @@ collector/provider 或全量 check，亦不把早期 54 项 resource 基线或�
 容量与 Owner/Beta/真机/真实 provider 仍开放，G12 不勾选、不冻结 Owner
 门槛。详见 `docs/planning/g12-go-capacity-sample.md` §17。
 
+2026-10-23 G12 S8 claim-before-intent 崩溃恢复探针（VC-R148～R150）：
+既有 runner 接入 `--probe-s8-before-attempt`（FUNCTIONAL_ONLY 独立
+入口，默认 profile 不含 S8，复用 S8 生命周期并在 collector 启动前
+分支），由同一 crash helper（`s8_finalize_crash.py --crash-point
+before-attempt`）在公开会话准备后、唯一公开 generation POST 前取得
+`vc.attempt_intent` SHARE 表锁（pg_locks granted 实证），把唯一
+companiond worker 的 prepare INSERT 钉在 RowExclusiveLock 未获准；
+A 点不加宽 deltaMs、不注册 pending restore，恢复只用生产默认参数
+（claim 租约 270s、恢复 tick 5s），run.sh 只读 DB 轮询等待默认租约
+过期后重放并先固定恢复后状态，`s8-verify --s8-expect completed`
+复核公开视图。R149 由 Root 经本项目 ZCode 终端实跑一次（trial
+vcr149-mvkwdc27，HTTPS 18460）：真实 OrbStack/TLS/PG 探针退出码 0、
+346.89s。崩溃门两次真实 SQL 均为原 gid/conv IN_PROGRESS、无
+assistant、attempts=[]、job CLAIMED 租约在效，唯一 worker（PID 109）
+被控制 backend（PID 146）阻塞、query_start 同为
+2026-10-23T11:51:03.491795UTC；kill 窗按 max(query_age,xact_age) 加
+读前 monotonic 往返、取首/末读较早者截止（3.5s 保守窗、DB 事务
+超时 5s 不变），kill 返回时事务年龄上界 0.473305s 且先于 ROLLBACK，
+exact nonce 收据 CID exited 137/PID 0，2 条真实 psql（host 70421/
+70424）reap exit 0、控制 backend 消失；helper 总 1.36122s、
+lock→gate 0.51977s、hit→kill 0.42198s（仅门控事实，不作性能结论）；
+deltaMs 全程 50 未加宽（delta_ms_set=null），旧 epoch baseline/门处/
+事后 requests/stream/completed/abort/active/chunks 全 0。同 CID
+runtime/provider 重启（PID 1318499→1319108/1318564→1319457），真实
+/proc/1/ns/net 由 net:[4026533613] 变为 net:[4026533713] 并重新一致，
+新 epoch 初始计数全 0。默认租约恢复后只读断言通过：原 gid 恰 1 个
+SUCCEEDED attempt、generation COMPLETED 且 assistant 非空、work_item
+DONE、无 PENDING/CLAIMED 残留；公开视图 original COMPLETED（事后 SSE
+chat.completed、assistant 1），独立健康对照消息自身 COMPLETED、
+assistant 2，health 之后 original 仍 COMPLETED；新 epoch health 前
+stream/completed 1、abort 0/active 0/chunks 8、总请求 2（含非流式
+调用），health 后 stream/completed 2、abort 0/active 0/chunks 16、
+总请求 4，无重复模型流式调用。清理后按收据独立核清本轮 8 容器/
+4 卷/1 网络/3 构建镜像标签均不存在（verify_absent=[]）、
+cleanup_leftovers={}、private_files_remaining=[]、collectors 0（从未
+启动）；Root 另确认 controller 69996/probe 70001/两条 psql 进程全不
+在、own shell 无子进程、18460 无 listener，5 个用户保护文件与
+run.sh/helper/workload 运行输入字节和 HEAD（6d4beedc）均未变。最终
+本地验证：helper 29 项 PASS（C 点原 17 + A 点新增 12）、workload
+72 项 PASS、resources 57 项 PASS、`bash -n`、5 个相关 Python 源码与
+全部 43 个 run.sh Python heredoc 编译、`git diff --check` 通过；
+run.sh Python 式裸字符串续行 Bash 错误已修复，RunShStubTest 增加
+真实 Bash A/B/C 元数据三分支执行，向临时副本注入旧坏写法后回归以
+rc127 command-not-found 失败证明可抓原缺陷，未删/skip 或放宽原 B/C
+失败断言。本轮只关闭 A 点（claim-before-intent）功能缺口，单次 A
+运行不构成整套 S8 矩阵、完整资源容量或 G12 验收通过；S6 部署链
+slow-reader、完整长窗三次容量与 Owner/Beta/真机/真实 provider 仍
+开放，G12 不勾选、不冻结 Owner 门槛。详见
+`docs/planning/g12-go-capacity-sample.md` §18。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

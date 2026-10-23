@@ -213,7 +213,7 @@ finalize transaction is blocked on the generation row. The whole
 crash window lives in one helper process (`s8_finalize_crash.py`, launched
 and reaped by run.sh): it opens a control `compose exec -T db psql`
 session, locks THIS run's generation row FOR UPDATE while the unique
-attempt is still CREATED (the R144 preflight-proven shape), observes the
+attempt is still CREATED (the R144-preflight-proven shape), observes the
 real gates read-only — SUCCEEDED committed and fresh, generation
 IN_PROGRESS with no assistant, work item CLAIMED on an unexpired lease,
 exactly one companiond backend (`usename='vc_runtime_login' AND
@@ -248,6 +248,53 @@ FAILED_FINAL. The deltaMs widen/pending-restore, receipt-based ownership
 and cleanup contracts are exactly the probe-s8 ones; the mid-stream and
 claim-before-intent crash points stay outside this probe.
 
+`--probe-s8-before-attempt` (VC-R148) proves the THIRD S8 crash point
+(claim-before-intent) on the same bound: the runtime container is killed
+after the work item is CLAIMED but BEFORE any attempt intent row exists,
+while the worker's prepare INSERT is blocked on a control table lock.
+The same one-process helper (`s8_finalize_crash.py --crash-point
+before-attempt`) owns the whole window: it prepares the public session
+(consents, relationship, conversation) through the real workload Client,
+takes `LOCK TABLE vc.attempt_intent IN SHARE MODE` on the control psql
+session (grant proven in `pg_locks`), and only then sends exactly ONE
+public generation POST (202 → gid; no live delta is waited for — none
+can exist under the lock). The read-only crash gates are the shared
+shape: attempts strictly empty, generation IN_PROGRESS with no assistant,
+work item CLAIMED on an unexpired lease, exactly one companiond backend
+blocked in `go_prepare_model_attempt` with its `attempt_intent`
+RowExclusiveLock NOT granted and the control pid in `pg_blocking_pids`,
+the same pinned `query_start` across two reads, and the old-epoch
+provider untouched relative to the baseline (no stream, no completion,
+no abort, nothing active, no content chunk — raw stats including the
+total request counter are recorded as-is, never conflated with stream
+counts). The kill window math (max(query_age, xact_age) basis here),
+kill/137/ROLLBACK/reap contracts and 16 s shell grace are the shared
+helper ones. The provider deltaMs is NOT widened for this point and no
+pending restore is registered. Downstream, the shared
+restart/netns/lease machinery runs with A-point expectations: the old
+epoch never saw the request; after the DEFAULT lease expires,
+`go_reconcile_generation` takes its `REQUEUE_NO_INTENT` branch, a FRESH
+attempt runs on the new epoch and the ORIGINAL gid recovers to COMPLETED
+(not FAILED_FINAL); the recovered DB state is fixed read-only first
+(exactly one SUCCEEDED attempt, generation COMPLETED with the assistant
+message committed, work item DONE, no PENDING/CLAIMED) together with the
+new-epoch provider settled at exactly the one recovery request BEFORE
+the health control; `s8-verify --s8-expect completed` then re-checks the
+public view (the original gid's own snapshot COMPLETED, post-terminal
+`chat.completed`, exactly one assistant message before the control) and
+ONE independent health-control generation must complete while the
+original STILL reads COMPLETED (assistant 1 → 2); the new-epoch provider
+ends at exactly 2 streams / 2 completed / 0 aborted / 0 active. The
+mid-stream and SUCCEEDED-before-finalize crash points stay outside this
+probe. The single Root-approved real run of this A-point chain has since
+completed on the production-derived TLS stack (VC-R149, trial
+vcr149-mvkwdc27, HTTPS 18460, rc 0, 346.89 s): the crash gates held
+exactly as specified, the default-lease recovery took the
+REQUEUE_NO_INTENT branch and the ORIGINAL gid recovered to COMPLETED
+through one fresh SUCCEEDED attempt, and the receipts/cleanup contract
+verified — recorded in `docs/planning/g12-go-capacity-sample.md` §18
+(FUNCTIONAL_ONLY, no performance conclusion).
+
 ```bash
 bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s6, s9, s5, s10, soak)
 bash scripts/measure/g12-go-capacity/run.sh --probe         # FUNCTIONAL_ONLY wiring proof (s4 branch)
@@ -256,10 +303,11 @@ bash scripts/measure/g12-go-capacity/run.sh --probe-s6      # FUNCTIONAL_ONLY wi
 bash scripts/measure/g12-go-capacity/run.sh --probe-s9      # FUNCTIONAL_ONLY public auth/session concurrency
 bash scripts/measure/g12-go-capacity/run.sh --probe-s8      # FUNCTIONAL_ONLY worker-crash mid-stream recovery (VC-R140)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s8-before-finalize  # FUNCTIONAL_ONLY SUCCEEDED-before-finalize crash recovery (VC-R145)
+bash scripts/measure/g12-go-capacity/run.sh --probe-s8-before-attempt   # FUNCTIONAL_ONLY claim-before-intent crash recovery (VC-R148; one real run completed, VC-R149)
 python3 scripts/measure/g12-go-capacity/test_collector.py   # render/collect/aggregation units
 python3 scripts/measure/g12-go-capacity/test_resources.py   # resource-ownership units (stubbed docker)
 python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window/s6/s9 units
-python3 scripts/measure/g12-go-capacity/test_s8_finalize_crash.py  # before-finalize crash helper units (faked docker/psql)
+python3 scripts/measure/g12-go-capacity/test_s8_finalize_crash.py  # before-finalize/before-attempt crash helper units (faked docker/psql)
 python3 scripts/measure/g12-go-capacity/test_fake_provider.py  # fixture abort/completion counters (node)
 ```
 
@@ -283,7 +331,11 @@ preflight, TLS, seeding and ownership cleanup; it runs no other scenario
 and no full profile. `--probe-s8-before-finalize` runs only the second S8
 single-crash-point chain described above under the same bound (the same
 skips, preflight, TLS, seeding and ownership cleanup; `G12_PROBE_S8_*`
-knobs shared with `--probe-s8`).
+knobs shared with `--probe-s8`). `--probe-s8-before-attempt` runs only
+the third S8 single-crash-point chain described above under the same
+bound (the same skips, preflight, TLS, seeding and ownership cleanup;
+`G12_PROBE_S8_RECOVERY_TIMEOUT` shared, but the deltaMs widen knob is
+unused — the A point never widens deltaMs).
 
 Optional env:
 
@@ -293,7 +345,7 @@ Optional env:
 | `G12_GENS_S10` / `G12_SSE_S10` | 16 / 4 | scenario 10 shape (SSE cap 8/gen) |
 | `G12_S3_HOLD_MS` / `G12_S3_QUIET_MS` | 8000 / 3000 | scenario 3 provider hold and quiet-window budget (probe-s3 uses `G12_PROBE_S3_HOLD_MS` / `G12_PROBE_S3_QUIET_MS`, default 6000 / 2000) |
 | `G12_S6_DELTA_MS` | 400 | scenario 6 widened provider deltaMs so a stream is still in flight after the first live delta (probe-s6 uses `G12_PROBE_S6_DELTA_MS`, default 400; restored to the original value on every exit path) |
-| `G12_PROBE_S8_DELTA_MS` / `G12_PROBE_S8_RECOVERY_TIMEOUT` | 3000 / 360 | probe-s8 / probe-s8-before-finalize widened provider deltaMs (default 8 chunks × 3 s keeps the stream — and its CREATED attempt — in flight well past the serial kill-window gates, including the helper's acquire-while-CREATED lock; set via the existing bounded `PUT /g12/config` deltaMs knob, restored to the original value on every exit path) and the verify phase's absolute recovery budget in seconds — sized for the DEFAULT claim lease (270 s) plus the recovery tick; never a shortened lease or DB clock |
+| `G12_PROBE_S8_DELTA_MS` / `G12_PROBE_S8_RECOVERY_TIMEOUT` | 3000 / 360 | probe-s8 / probe-s8-before-finalize widened provider deltaMs (default 8 chunks × 3 s keeps the stream — and its CREATED attempt — in flight well past the serial kill-window gates, including the helper's acquire-while-CREATED lock; set via the existing bounded `PUT /g12/config` deltaMs knob, restored to the original value on every exit path) and the verify phase's absolute recovery budget in seconds — sized for the DEFAULT claim lease (270 s) plus the recovery tick; never a shortened lease or DB clock. probe-s8-before-attempt shares the recovery budget knob but never applies the deltaMs widen (the crash happens before any provider call) |
 | `G12_S9_BUDGET_SECONDS` | 60 | scenario 9 shared monotonic deadline; each request uses the remaining budget, and late responses fail |
 | `G12_CONCURRENCY` / `G12_OUTSTANDING` | 16 / 16 | §19.5 overrides (config caps at 16) |
 | `G12_SOAK_TURNS` / `G12_SOAK_BATCH` | 100 / 10 | recovery workload and batch size |
@@ -307,7 +359,8 @@ Optional env:
 Output: `trial.summary.json` (probe: `probe.summary.json`; probe-s3:
 `probe-s3.summary.json`; probe-s6: `probe-s6.summary.json`; probe-s9:
 `probe-s9.summary.json`; probe-s8: `probe-s8.summary.json`;
-probe-s8-before-finalize: `probe-s8-before-finalize.summary.json` — all
+probe-s8-before-finalize: `probe-s8-before-finalize.summary.json`;
+probe-s8-before-attempt: `probe-s8-before-attempt.summary.json` — all
 marked `FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's
 summary carries the first-delta block with its baselines,
 provider-known-delay subtraction, coverage evidence and definition; s3's

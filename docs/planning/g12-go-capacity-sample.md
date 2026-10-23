@@ -1012,3 +1012,84 @@ HEAD（3a3adb5a）均未变，protected_unchanged=true。
 三次长窗采样与性能口径、Owner gate、真机、真实 provider 与 Beta 前置均
 未由此关闭。FUNCTIONAL_ONLY，无容量/性能结论，不满足 §19.2 门槛；G12
 维持未完成、不冻结 Owner 门槛。
+
+
+## 18. 2026-10-23 补充：S8 claim-before-intent 崩溃恢复功能探针（VC-R148～R150）
+
+### 交付
+
+既有 G12 harness 增加 `--probe-s8-before-attempt`：§19.1 S8 第三崩溃点
+（claim-before-intent，下称 A 点）的 standalone FUNCTIONAL_ONLY 入口，
+复用 S8 生命周期并在 collectors/sampler/idle/warm-up 启动前分支，默认
+profile 不含 S8。崩溃窗口由同一 helper `s8_finalize_crash.py
+--crash-point before-attempt` 单进程承担：经真实 workload Client 准备
+公开会话后，先在控制 psql 会话 `LOCK TABLE vc.attempt_intent IN SHARE
+MODE`（pg_locks 中 granted 实证），再发唯一一次公开 generation POST
+（202 → gid；锁下不存在可等待的 live delta）。崩溃门为共享形状的 A 点
+变体：attempts 严格为空、generation IN_PROGRESS 无 assistant、work item
+CLAIMED 且租约在效、唯一 companiond worker 以 attempt_intent
+RowExclusiveLock 未获准阻塞在 go_prepare_model_attempt 且控制 PID 出现
+在 pg_blocking_pids、两次读同一 query_start、旧 epoch provider 相对
+baseline 全 0（含总请求计数，不与流式计数混写）。kill 窗算法、
+kill/137/ROLLBACK/reap 与 16s shell 宽限沿用共享 helper 契约。A 点
+不加宽 deltaMs、不注册 pending restore；恢复只用生产默认参数（claim
+租约 270s、恢复 tick 5s），run.sh 只读 DB 轮询等待默认租约过期后的
+重放，先固定恢复后 DB 状态与新 epoch provider 采样、再做 health 控制，
+`s8-verify --s8-expect completed` 复核公开视图。只扩展 runner、helper、
+单测与 README，未修改 Go 服务、SQL、公开契约、生产参数或依赖。
+
+### 实测（FUNCTIONAL_ONLY，单次完整运行）
+
+R149 由 Root 经本项目 ZCode 自有终端实跑一次（trial vcr149-mvkwdc27，
+project vcg12a-vcr149-mvkwdc27，HTTPS 18460），真实 OrbStack/TLS/
+PostgreSQL 退出码 **0**、耗时 **346.89s**。崩溃门：控制会话
+attempt_intent SHARE 表锁 granted（backend 146）；两次真实 SQL 均为原
+gid/conv IN_PROGRESS、assistant NULL、attempts=[]、job CLAIMED 租约在
+效；唯一 companiond worker（PID 109，kind prepare）被 146 阻塞、
+attempt_insert_lock 未获准、query_start 两读同为
+2026-10-23T11:51:03.491795UTC。kill 返回时事务年龄上界 0.4733s、先于
+ROLLBACK 确认，exact nonce 收据 CID exited 137/PID 0；两条真实 psql
+（host 70421/70424）均 reap exit 0、控制 backend 消失。helper 总
+1.36122s、lock→gate 0.51977s、hit→kill 0.42198s，仅作门控事实、不作
+性能结论。deltaMs 全程 50 未加宽（delta_ms_set=null）；旧 epoch
+baseline/门处/事后 requests/stream/completed/abort/active/chunks 全 0。
+
+显式重启同 CID 后 runtime/provider 镜像摘要不变、新 StartedAt/PID
+（runtime 1318499→1319108、provider 1318564→1319457），真实
+/proc/1/ns/net 由 net:[4026533613] 变为 net:[4026533713] 且 runtime 与
+provider 重新一致，新 epoch 初始计数全 0、config.deltaMs 50。恢复收敛
+（默认租约过期后 `go_reconcile_generation` 走 REQUEUE_NO_INTENT 分支）：
+原 gid 恰 1 个 SUCCEEDED attempt、generation COMPLETED 且 assistant
+非空、work_item DONE，无 PENDING/CLAIMED 残留。公开视图：original
+snapshot COMPLETED、事后 SSE chat.completed、assistant 1；独立健康对照
+消息自身 COMPLETED/chat.completed、assistant 2，且 health 之后
+original 仍 COMPLETED。provider epoch 不跨重启差分：新 epoch health 前
+stream/completed 1、abort 0/active 0/chunks 8、总请求 2（含 1 次非流式
+调用，不写作总请求 1）；health 后 stream/completed 2、abort 0/active
+0/chunks 16、总请求 4，无重复模型流式调用。
+
+### 验证与清理核清
+
+Root 最终本地验证（修复后候选）：helper 单测 **29** 项 PASS（C 点原
+17 项 + A 点新增 12 项）；workload **72** 项 PASS（历史基线 67，此处
+按实际 72 如实报告，不拆写新增数）；resources **57** 项 PASS；
+`bash -n`、5 个相关 Python 源码 py_compile 与全部 **43** 个 run.sh
+Python heredoc 编译、`git diff --check` 均 PASS。R148 期间 Root 发现
+run.sh 存在 Python 式裸字符串续行 Bash 错误并要求修正：已改为合法
+写法，现有 RunShStubTest 增加真实 Bash A/B/C 元数据三分支执行，向
+临时副本注入旧坏写法后回归以 rc127 command-not-found 失败，证明能
+抓住原缺陷；未删/skip 或放宽原 B/C 失败断言。清理后按收据独立核清：
+本轮 8 容器/4 卷/1 网络/3 个构建镜像标签均不存在（verify_absent=[]），
+cleanup_leftovers={}、private_files_remaining=[]、collectors 0（从未
+启动）；Root 另只读确认 controller 69996、probe 70001、两条 psql 进程
+全不在、own shell 无子进程、18460 无 listener，5 个用户保护文件与
+run.sh/helper/workload 运行输入字节和 HEAD（6d4beedc）均未变。
+
+### 维持开放
+
+本轮只关闭 A 点功能缺口；单次 A 运行不构成整套 S8 矩阵、完整资源
+容量或 G12 验收通过（S8 第一崩溃点 attempt-CREATED 见 §16、C 点见
+§17）。S6 Caddy/TLS 部署链慢读者、完整 profile 三次长窗采样与性能
+口径、Owner gate、真机、真实 provider 与 Beta 前置均未由此关闭。
+FUNCTIONAL_ONLY，无容量/性能结论，不满足 §19.2 门槛；G12 维持未完成、
+不冻结 Owner 门槛。

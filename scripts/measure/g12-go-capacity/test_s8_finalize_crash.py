@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""Unit regression for the VC-R145 S8 before-finalize crash helper.
+"""Unit regression for the S8 crash helper (VC-R145 C point + VC-R148
+A point).
 
 Run: python3 scripts/measure/g12-go-capacity/test_s8_finalize_crash.py
 
 Behavior tests over the REAL run_probe flow with faked docker/psql seams
 (never a real container): the only path that kills is every-gate-green —
-acquire the row lock while the attempt is still CREATED, observe the
-SUCCEEDED outcome plus exactly one fresh finalize backend blocked by the
-control pid with an UNCHANGED query_start, a fully settled old-epoch
-provider, and a binding nonce/running identity check on the exact CID —
-and the kill must land (exit 137 proven) BEFORE the control transaction
-is released. Every failure path (wrong owner, lock too late, gate
-budget expiry, worker retry, unsettled provider, identity mismatch,
-kill state not 137, mid-flow exceptions) must release the lock, reap
-both sessions and exit nonzero. Failures before issuing the kill cannot
-kill; an issued kill that is late or unproven never passes.
+for C, acquire the row lock while the attempt is still CREATED, observe
+the SUCCEEDED outcome plus exactly one fresh finalize backend blocked by
+the control pid with an UNCHANGED query_start, a fully settled old-epoch
+provider, and a binding nonce/running identity check on the exact CID;
+for A, prepare the public session first, hold the attempt_intent SHARE
+lock (grant proven), send exactly ONE public POST, then observe attempts
+strictly empty with exactly one prepare backend blocked on its NOT-
+granted RowExclusiveLock and the provider untouched relative to the
+baseline — and the kill must land (exit 137 proven) BEFORE the control
+transaction is released. Every failure path (wrong owner, lock too late,
+missing share grant, public-send failure, gate budget expiry, worker
+retry, unsettled/touched provider, identity mismatch, kill state not
+137, mid-flow exceptions) must release the lock, reap both sessions and
+exit nonzero. Failures before issuing the kill cannot kill; an issued
+kill that is late or unproven never passes.
 """
 
 import argparse
@@ -33,6 +39,8 @@ from s8_finalize_crash import (KILL_WINDOW_S, ProbeError, SQLSession,
 
 CONTROL_PID = 4242
 GID = 501
+A_GID = "601"
+A_CONV = "7"
 OWNER = 2000001
 Q_START_1 = "2026-10-23 10:00:24.1"
 Q_START_2 = "2026-10-23 10:00:26.9"
@@ -48,10 +56,29 @@ def blocked_finalizer(query_start: str = Q_START_1, query_age: float = 0.3,
             "kind": "finalize", "attempt_insert_lock": False}
 
 
+def blocked_preparer(query_start: str = Q_START_1, query_age: float = 0.3,
+                     control_pid: int = CONTROL_PID,
+                     xact_age: Optional[float] = None,
+                     attempt_insert_lock: bool = True) -> Dict[str, Any]:
+    return {"pid": 888, "query_start": query_start, "query_age": query_age,
+            "xact_age": query_age if xact_age is None else xact_age,
+            "wait_event_type": "Lock",
+            "wait_event": "relation", "blockers": [control_pid],
+            "kind": "prepare",
+            "attempt_insert_lock": attempt_insert_lock}
+
+
 def created_state() -> Dict[str, Any]:
     return {"generation_status": "IN_PROGRESS", "assistant_null": True,
             "attempts": ["CREATED"], "outcome_age": None,
             "job_status": "CLAIMED", "lease_live": True, "blocked": []}
+
+
+def a_preclaim_state() -> Dict[str, Any]:
+    """A-point transient: POST accepted, the worker has not claimed yet."""
+    return {"generation_status": "QUEUED", "assistant_null": True,
+            "attempts": [], "outcome_age": None,
+            "job_status": "PENDING", "lease_live": False, "blocked": []}
 
 
 def good_state(query_start: str = Q_START_1, query_age: float = 0.3,
@@ -65,9 +92,28 @@ def good_state(query_start: str = Q_START_1, query_age: float = 0.3,
                                           xact_age=xact_age)]}
 
 
+def a_state(query_start: str = Q_START_1, query_age: float = 0.3,
+            xact_age: Optional[float] = None,
+            attempt_insert_lock: bool = True) -> Dict[str, Any]:
+    return {"generation_status": "IN_PROGRESS", "assistant_null": True,
+            "attempts": [], "outcome_age": None,
+            "job_status": "CLAIMED", "lease_live": True,
+            "blocked": [blocked_preparer(query_start=query_start,
+                                         query_age=query_age,
+                                         xact_age=xact_age,
+                                         attempt_insert_lock=attempt_insert_lock)]}
+
+
 def settled_provider() -> Dict[str, Any]:
     return {"streamRequests": 1, "completedStreamRequests": 1,
             "abortedStreamRequests": 0, "activeStreamRequests": 0}
+
+
+def idle_provider() -> Dict[str, Any]:
+    """A-point untouched provider: totals recorded, streams all zero."""
+    return {"requests": 0, "streamRequests": 0,
+            "completedStreamRequests": 0, "abortedStreamRequests": 0,
+            "activeStreamRequests": 0, "contentChunkWrites": 0}
 
 
 def ok_identity() -> Dict[str, str]:
@@ -125,7 +171,12 @@ class FakeIO:
                  clock: Optional[FakeClock] = None,
                  identity_advances: Optional[List[float]] = None,
                  kill_return_advance: float = 0.0,
-                 state_advances: Optional[List[float]] = None):
+                 state_advances: Optional[List[float]] = None,
+                 share_locked: Any = True,
+                 share_granted: bool = True,
+                 public_error: Optional[Exception] = None,
+                 public_send_error: Optional[Exception] = None,
+                 public_gid: str = A_GID):
         self.events: List[tuple] = []
         self.sessions: List[FakeSession] = []
         self._states = list(states)
@@ -139,19 +190,44 @@ class FakeIO:
         self._identity_advances = list(identity_advances or [])
         self._kill_return_advance = kill_return_advance
         self._state_advances = list(state_advances or [])
+        self._share_locked = share_locked
+        self._share_granted = share_granted
+        self._public_error = public_error
+        self._public_send_error = public_send_error
+        self._public_gid = public_gid
         self.kills: List[str] = []
         self.budgets: List[float] = []
 
     def open_session(self, name: str) -> FakeSession:
         if "control" in name:
+            # The A lock statement carries "SHARE MODE" (never "FOR
+            # UPDATE"); the C one carries "FOR UPDATE" (never "SHARE
+            # MODE") — one response list serves both points.
             responses = [("FOR UPDATE", {"locked": self._locked}),
+                         ("SHARE MODE", {"locked": self._share_locked}),
                          ("ROLLBACK; SELECT", {"released": True})]
         else:
+            # state_sql itself contains "granted" (the NOT l.granted probe
+            # inside attempt_insert_lock), so the state needle must match
+            # FIRST; the share-grant query never contains it.
             responses = [("generation_status", self._next_state),
+                         ("granted", {"granted": self._share_granted}),
                          ("absent", {"absent": True})]
         session = FakeSession(name, self.events, responses)
         self.sessions.append(session)
         return session
+
+    def public_prepare_session(self) -> str:
+        self.events.append(("public_prepare",))
+        if self._public_error is not None:
+            raise self._public_error
+        return A_CONV
+
+    def public_send(self, conv: str, key: str) -> str:
+        self.events.append(("public_send", conv, key))
+        if self._public_send_error is not None:
+            raise self._public_send_error
+        return self._public_gid
 
     def _next_state(self) -> Dict[str, Any]:
         if self._state_advances and self._clock is not None:
@@ -207,6 +283,31 @@ def success_flow(out: Path, **io_kwargs) -> tuple:
                 provider=settled_provider(),
                 identities=[ok_identity(), ok_identity()], **io_kwargs)
     args = make_args(out)
+    clock = FakeClock([0.0, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1.0, 1.5])
+    report = run_probe(args, io, clock=clock)
+    return report, io
+
+
+def make_a_args(out: Path, gate_budget: float = 30.0) -> argparse.Namespace:
+    return argparse.Namespace(
+        crash_point="before-attempt",
+        compose_envfile="compose.env", compose_file="stack.compose.json",
+        project="vcg12c-test", provider_port=19091, owner=OWNER,
+        generation_id=None, base="https://localhost:18447", cacert="ca.pem",
+        key_prefix="t", runtime_cid="cidRT", nonce="n0",
+        baseline_streams=0, baseline_aborted=0, baseline_completed=0,
+        baseline_chunks=0, gate_budget=gate_budget, out=str(out))
+
+
+def a_success_flow(out: Path, **io_kwargs) -> tuple:
+    """A-point green wiring: public session first, share lock proven,
+    ONE public POST, matching observations with the SAME query_start,
+    untouched provider, binding identity, kill inside the window bound.
+    Same clock call order as the C flow (the public fakes read no clock)."""
+    io = FakeIO(states=[a_state(), a_state()],
+                provider=idle_provider(),
+                identities=[ok_identity(), ok_identity()], **io_kwargs)
+    args = make_a_args(out)
     clock = FakeClock([0.0, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1.0, 1.5])
     report = run_probe(args, io, clock=clock)
     return report, io
@@ -523,6 +624,210 @@ class NoKillFailurePathTests(unittest.TestCase):
                     all(c["reaped"] for c in report["connections"]))
 
 
+class APointSuccessPathTests(unittest.TestCase):
+    def test_a_kills_only_after_share_lock_post_and_gates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "report.json"
+            report, io = a_success_flow(out)
+            self.assertEqual(report["status"], "KILLED")
+            self.assertIsNone(report["reason"])
+            self.assertTrue(report["kill_issued"])
+            self.assertEqual(report["crash_point"], "claim_before_intent")
+            # the ids the helper itself produced (no prepare phase)
+            self.assertEqual(report["generation_id"], A_GID)
+            self.assertEqual(report["conversation_id"], A_CONV)
+            self.assertEqual(report["control_lock"], {"granted": True})
+            # exactly ONE public POST, AFTER the proven share grant and
+            # BEFORE the first gate observation
+            sends = [e for e in io.events if e[0] == "public_send"]
+            self.assertEqual(sends, [("public_send", A_CONV, "t-orig")])
+            grant_at = io.events.index(
+                ("sql", "r148-ba-observe:granted"))
+            send_at = io.events.index(("public_send", A_CONV, "t-orig"))
+            first_gate_at = io.events.index(
+                ("sql", "r148-ba-observe:generation_status"))
+            self.assertLess(grant_at, send_at)
+            self.assertLess(send_at, first_gate_at)
+            # the A lock is the SHARE MODE table lock, never FOR UPDATE
+            self.assertIn(("sql", "r148-ba-control:SHARE MODE"), io.events)
+            self.assertNotIn(("sql", "r148-ba-control:FOR UPDATE"),
+                             io.events)
+            # A-point gate evidence: attempts strictly empty, the prepare
+            # backend blocked on its NOT-granted RowExclusiveLock
+            gate = report["gate_observation"]
+            self.assertEqual(gate["attempts"], [])
+            self.assertEqual(gate["blocked"][0]["kind"], "prepare")
+            self.assertTrue(gate["blocked"][0]["attempt_insert_lock"])
+            self.assertEqual(report["reobserve"]["blocked"][0]
+                             ["query_start"], Q_START_1)
+            self.assertEqual(report["provider_at_gate"], idle_provider())
+            # exactly one kill of the receipt CID, 137 proven, kill BEFORE
+            # the ROLLBACK, absence check after it, budget within the window
+            self.assertEqual(io.kills, ["cidRT"])
+            self.assertEqual(len(io.budgets), 1)
+            self.assertGreater(io.budgets[0], 0.0)
+            self.assertLessEqual(io.budgets[0], KILL_WINDOW_S)
+            self.assertEqual(report["killed"]["state"], "exited 137 0")
+            kill_at = io.events.index(("kill", "cidRT"))
+            release_at = io.events.index(
+                ("sql", "r148-ba-control:ROLLBACK; SELECT"))
+            absent_at = io.events.index(("sql", "r148-ba-observe:absent"))
+            self.assertLess(kill_at, release_at)
+            self.assertLess(release_at, absent_at)
+            self.assertTrue(report["control_backend_absent"])
+            # A-point timing keys (blocked_*), never the C finalize_* names
+            timings = report["timings"]
+            self.assertEqual(timings["blocked_window_s"], KILL_WINDOW_S)
+            self.assertEqual(timings["blocked_age_basis_first_read_s"], 0.3)
+            self.assertEqual(timings["blocked_age_basis_final_read_s"], 0.3)
+            for key in ("blocked_age_upper_at_gate_s",
+                        "blocked_age_upper_at_kill_issued_s",
+                        "blocked_age_upper_at_kill_returned_s"):
+                self.assertIn(key, timings)
+                self.assertLessEqual(timings[key], KILL_WINDOW_S)
+            for legacy in ("finalize_window_s", "finalize_age_basis_first_read_s"):
+                self.assertNotIn(legacy, timings)
+            # both direct children reaped, A session names, report persisted
+            self.assertTrue(all(c["reaped"] for c in report["connections"]))
+            self.assertEqual([c["name"] for c in report["connections"]],
+                             ["r148-ba-control", "r148-ba-observe"])
+            self.assertEqual(json.loads(out.read_text()), report)
+
+
+class APointNoKillFailurePathTests(unittest.TestCase):
+    def run_flow(self, io: FakeIO, out: Path,
+                 clock: Optional[FakeClock] = None,
+                 **args_kwargs) -> Dict[str, Any]:
+        return run_probe(make_a_args(out, **args_kwargs), io,
+                         clock=clock or FakeClock(
+                             [0.0, 0.5, 0.6, 0.7, 0.7, 0.7, 0.7, 0.7,
+                              0.7, 0.7]))
+
+    def assert_aborted(self, report: Dict[str, Any], io: FakeIO,
+                       reason: str):
+        self.assertEqual(report["status"], "ABORTED")
+        self.assertEqual(report["reason"], reason)
+        self.assertEqual(io.kills, [])
+        self.assertFalse(report["kill_issued"])
+
+    def test_a_missing_share_grant_never_posts_or_kills(self):
+        # Without the proven ShareLock grant there must be NO public POST
+        # at all — the generation would run unblocked and the crash point
+        # would be faked, not proven. (The pre-lock session SETUP having
+        # run is fine; it sends no generation.)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            io = FakeIO(states=[], provider=idle_provider(),
+                        identities=[ok_identity()], share_granted=False)
+            report = self.run_flow(io, out)
+            self.assert_aborted(report, io, "CONTROL_SHARE_MISSING")
+            self.assertEqual(
+                [e for e in io.events if e[0] == "public_send"], [])
+            self.assertTrue(all(s.closed for s in io.sessions))
+
+    def test_a_share_lock_statement_failed_never_posts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            io = FakeIO(states=[], provider=idle_provider(),
+                        identities=[ok_identity()],
+                        share_locked={"locked": False})
+            report = self.run_flow(io, out)
+            self.assert_aborted(report, io, "SHARE_LOCK_FAILED")
+            self.assertEqual(
+                [e for e in io.events if e[0] == "public_send"], [])
+            self.assertTrue(all(s.closed for s in io.sessions))
+
+    def test_a_public_send_failure_releases_without_kill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            io = FakeIO(states=[], provider=idle_provider(),
+                        identities=[ok_identity()],
+                        public_send_error=ProbeError("PUBLIC_SEND_STATUS"))
+            report = self.run_flow(io, out)
+            self.assert_aborted(report, io, "PUBLIC_SEND_STATUS")
+            self.assertIn(("public_prepare",), io.events)
+            self.assertIn(("close", "r148-ba-control"), io.events)
+            self.assertTrue(all(s.closed for s in io.sessions))
+
+    def test_a_gate_budget_expiry_never_kills(self):
+        # The worker never blocks correctly (still unclaimed): the budget
+        # must abort the flow, not spin and not kill.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            io = FakeIO(states=[a_preclaim_state(), a_preclaim_state()],
+                        provider=idle_provider(),
+                        identities=[ok_identity()])
+            clock = FakeClock([0.0, 0.0, 1.0, 1.0, 1.0, 3.0])
+            report = self.run_flow(io, out, clock=clock, gate_budget=2.0)
+            self.assert_aborted(report, io, "GATE_BUDGET")
+
+    def test_a_worker_retry_never_kills(self):
+        # The prepare INSERT timed out and the worker retried between the
+        # two observations: a different query_start must fail the gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            io = FakeIO(states=[a_state(), a_state(query_start=Q_START_2)],
+                        provider=idle_provider(),
+                        identities=[ok_identity(), ok_identity()])
+            report = self.run_flow(io, out)
+            self.assert_aborted(report, io, "GATE_LOST_worker_retried")
+
+    def test_a_provider_touched_never_kills(self):
+        # Any provider activity before the kill means the crash point is
+        # NOT claim-before-intent — the stream already left.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            stats = dict(idle_provider(), requests=1, streamRequests=1,
+                         completedStreamRequests=1)
+            io = FakeIO(states=[a_state(), a_state()], provider=stats,
+                        identities=[ok_identity(), ok_identity()])
+            report = self.run_flow(io, out)
+            self.assert_aborted(report, io, "provider_touched")
+
+    def test_a_attempt_already_present_never_kills(self):
+        # An attempt row (or its outcome age) while the "prepare" backend
+        # is blocked means the intent INSERT already committed elsewhere —
+        # the A window is gone.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            io = FakeIO(states=[a_state(), good_state()],
+                        provider=idle_provider(),
+                        identities=[ok_identity(), ok_identity()])
+            report = self.run_flow(io, out)
+            self.assert_aborted(report, io, "GATE_LOST_attempt_present")
+
+    def test_a_binding_identity_mismatch_never_kills(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            io = FakeIO(states=[a_state(), a_state()],
+                        provider=idle_provider(),
+                        identities=[ok_identity(),
+                                    {"id": "cidRT", "running": "true",
+                                     "nonce": "OTHER"}])
+            report = self.run_flow(io, out)
+            self.assert_aborted(report, io, "IDENTITY")
+
+    def test_a_kill_returned_past_window_is_not_a_pass(self):
+        # The kill WAS issued inside the window but returned after the
+        # conservative bound: the first-window crash point can no longer
+        # be proven — ABORTED, not KILLED.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "r.json"
+            clock = FakeClock([0.0, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9,
+                               0.95, 0.95])
+            io = FakeIO(states=[a_state(), a_state()],
+                        provider=idle_provider(),
+                        identities=[ok_identity(), ok_identity()],
+                        clock=clock, kill_return_advance=4.0)
+            report = self.run_flow(io, out, clock=clock)
+            self.assertEqual(io.kills, ["cidRT"])
+            self.assertTrue(report["kill_issued"])
+            self.assertEqual(report["status"], "ABORTED")
+            self.assertEqual(report["reason"], "KILL_RETURNED_LATE")
+            self.assertIn(("close", "r148-ba-control"), io.events)
+            self.assertTrue(all(s.closed for s in io.sessions))
+
+
 # A minimal local stand-in for the in-container psql: same controlled-stdin
 # discipline (one JSON line per SELECT, ROLLBACK no-op, \q quits). Only the
 # COMMAND is routed — the real pipes, selector reads and child reaping run
@@ -611,6 +916,41 @@ class GateEvaluatorTests(unittest.TestCase):
         foreign["blocked"][0]["blockers"] = [9999]
         self.assertEqual(gate_reason(foreign, CONTROL_PID, 1.5), "blockers")
 
+    def test_every_gate_dimension_is_enforced_a(self):
+        base = a_state()
+        self.assertIsNone(gate_reason(base, CONTROL_PID, 1.5, point="A"))
+        cases = [
+            ("generation_status", {**base, "generation_status": "COMPLETED"}),
+            ("assistant_present", {**base, "assistant_null": False}),
+            ("attempt_present", {**base, "attempts": ["CREATED"]}),
+            ("attempt_present", {**base, "attempts": ["SUCCEEDED"]}),
+            ("lease", {**base, "job_status": "PENDING"}),
+            ("lease", {**base, "lease_live": False}),
+            ("blocked_count", {**base, "blocked": []}),
+            ("wait_event_type", {**base, "blocked": [
+                {**blocked_preparer(), "wait_event_type": "IO"}]}),
+            ("kind", {**base, "blocked": [
+                {**blocked_preparer(), "kind": "finalize"}]}),
+            # the RowExclusiveLock being GRANTED means the INSERT already
+            # passed the control lock — the A window is gone
+            ("attempt_insert_lock", {**base, "blocked": [
+                blocked_preparer(attempt_insert_lock=False)]}),
+            ("query_age", {**base, "blocked": [
+                blocked_preparer(query_age=9.9)]}),
+        ]
+        for expected, state in cases:
+            with self.subTest(gate=expected):
+                self.assertEqual(
+                    gate_reason(state, CONTROL_PID, 1.5, point="A"), expected)
+        with self.subTest(gate="worker_retried"):
+            self.assertEqual(
+                gate_reason(base, CONTROL_PID, 1.5, Q_START_2, point="A"),
+                "worker_retried")
+        foreign = a_state()
+        foreign["blocked"][0]["blockers"] = [9999]
+        self.assertEqual(
+            gate_reason(foreign, CONTROL_PID, 1.5, point="A"), "blockers")
+
     def test_provider_gate_dimensions(self):
         self.assertIsNone(provider_gate_reason(settled_provider(), 0, 0, 0))
         base = {"streamRequests": 2, "completedStreamRequests": 2,
@@ -624,6 +964,34 @@ class GateEvaluatorTests(unittest.TestCase):
             "provider_not_settled")
         self.assertEqual(provider_gate_reason({}, 1, 1, 1),
                          "provider_stats_unparseable")
+
+    def test_provider_gate_dimensions_a(self):
+        # The A gate: everything equal to the baseline, content chunks
+        # included; any movement is provider_touched. A nonzero TOTAL
+        # request counter with zero streams still fails on the stream
+        # dimensions — totals are recorded, never gated as streams.
+        self.assertIsNone(
+            provider_gate_reason(idle_provider(), 0, 0, 0, point="A",
+                                 base_chunks=0))
+        self.assertEqual(
+            provider_gate_reason(
+                dict(idle_provider(), streamRequests=1,
+                     completedStreamRequests=1, requests=1), 0, 0, 0,
+                point="A", base_chunks=0),
+            "provider_touched")
+        self.assertEqual(
+            provider_gate_reason(
+                dict(idle_provider(), contentChunkWrites=3), 0, 0, 0,
+                point="A", base_chunks=0),
+            "provider_touched")
+        self.assertEqual(
+            provider_gate_reason({}, 0, 0, 0, point="A", base_chunks=0),
+            "provider_stats_unparseable")
+        # baseline-relative, not absolute zero
+        moved = dict(idle_provider(), streamRequests=5,
+                     completedStreamRequests=5, contentChunkWrites=8)
+        self.assertIsNone(
+            provider_gate_reason(moved, 5, 0, 5, point="A", base_chunks=8))
 
 
 if __name__ == "__main__":

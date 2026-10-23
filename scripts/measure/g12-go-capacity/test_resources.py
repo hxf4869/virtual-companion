@@ -786,6 +786,125 @@ class RunShStubTest(unittest.TestCase):
             self.assertIn("refusing to reuse", proc.stderr)
             self.assertEqual(calls, [])
 
+    def test_probe_s8_before_attempt_dispatch_sets_mode(self):
+        # VC-R148: sourcing run.sh with the new flag must be ACCEPTED by
+        # the case dispatch (an unknown flag exits 2 with the usage line)
+        # and compute the PROBE_S8_BEFORE_ATTEMPT mode, returning at the
+        # G12_SOURCE_ONLY seam before any docker invocation.
+        with tempfile.TemporaryDirectory() as temp:
+            tmp = Path(temp)
+            out = tmp / "out"
+            out.mkdir()
+            driver = tmp / "drive.sh"
+            driver.write_text(
+                "set -euo pipefail\n"
+                "export G12_SOURCE_ONLY=1 G12_OUTPUT_DIR=%s\n"
+                "source %s --probe-s8-before-attempt\n"
+                '[ "$PROBE_S8_BEFORE_ATTEMPT" = 1 ] '
+                "|| { echo missing flag; exit 9; }\n"
+                '[ "$PROBE_S8_BEFORE_FINALIZE" = 0 ] '
+                "|| { echo wrong flag; exit 9; }\n"
+                '[ "$PROBE_S8" = 1 ] || { echo missing s8; exit 9; }\n'
+                '[ "$MODE" = PROBE_S8_BEFORE_ATTEMPT ] '
+                '|| { echo bad mode "$MODE"; exit 9; }\n'
+                % (shlex.quote(str(out)), shlex.quote(str(RUN_SH))))
+            stub_bin = tmp / "bin"
+            stub_bin.mkdir()
+            stub = stub_bin / "docker"
+            stub.write_text(
+                "#!/bin/sh\nexec python3 '%s' __docker_stub__ \"$@\"\n"
+                % str(Path(__file__).resolve()))
+            stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            (tmp / "state.json").write_text(json.dumps(
+                {"docker": {}, "fresh_state": True}))
+            env = dict(os.environ,
+                       PATH=f"{stub_bin}:{os.environ['PATH']}",
+                       STUB_STATE=str(tmp),
+                       STUB_CALLS=str(tmp / "calls.log"))
+            proc = subprocess.run(["bash", str(driver)], capture_output=True,
+                                  text=True, env=env, cwd=str(HERE))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertFalse((tmp / "calls.log").exists())
+
+    def test_probe_s8_summary_metadata_branches_execute_cleanly(self):
+        # VC-R148: the three summary-metadata branches (A/B/C) are plain
+        # shell assignments right before the summary heredoc. A regression
+        # once wrote them as Python-style adjacent string literals, which
+        # bash -n accepts but real execution rejects with "command not
+        # found" under set -e — killing every S8 mode just before the
+        # summary. Extract the ACTUAL assignment section verbatim from
+        # run.sh and execute it under real bash -eu for each branch,
+        # requiring the metadata non-empty and the expected per-point
+        # values (error_code is legitimately empty only on A).
+        src = RUN_SH.read_text()
+        m = re.search(
+            r'^  local covered_text not_covered_csv attempt_status '
+            r'error_code helper_file=""\n.*?\n'
+            r'(?=  python3 - "\$RUN_DIR" "\$name" "\$gid")',
+            src, re.DOTALL | re.MULTILINE)
+        assert m, "summary metadata assignment section not found in run.sh"
+        block = m.group(0)
+        print_line = (
+            "printf 'COVERED=%s\\nPHASES=%s\\nRECOVERY=%s\\nATTEMPT=%s\\n"
+            "ERROR=%s\\nHELPER=%s\\nDELTA=%s\\nNOTCOV=%s\\n' "
+            '"$covered_text" "$phases_text" "$recovery_text" '
+            '"$attempt_status" "$error_code" "$helper_file" '
+            '"$delta_set" "$not_covered_csv"')
+        cases = [
+            (1, 0, "probe-s8-before-finalize",
+             {"ATTEMPT": "SUCCEEDED",
+              "ERROR": "CANDIDATE_LOST_AFTER_ATTEMPT",
+              "HELPER": "probe-s8-before-finalize.finalize-crash.json",
+              "DELTA": "3000"}),
+            (0, 1, "probe-s8-before-attempt",
+             {"ATTEMPT": "SUCCEEDED",
+              "ERROR": "",
+              "HELPER": "probe-s8-before-attempt.attempt-crash.json",
+              "DELTA": "none"}),
+            (0, 0, "probe-s8",
+             {"ATTEMPT": "ABANDONED_LATE",
+              "ERROR": "PROVIDER_OUTCOME_UNKNOWN",
+              "HELPER": "",
+              "DELTA": "3000"}),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            tmp = Path(temp)
+            block_path = tmp / "s8meta.sh"
+            block_path.write_text(block)
+            for bf, ba, name, expected in cases:
+                with self.subTest(point=name):
+                    driver = tmp / f"drive-{name}.sh"
+                    driver.write_text("\n".join(
+                        ["set -euo pipefail",
+                         "bash -n %s" % shlex.quote(str(block_path)),
+                         "meta_branch() {",
+                         block.rstrip(),
+                         print_line,
+                         "}",
+                         "bf=%d" % bf,
+                         "ba=%d" % ba,
+                         "name=%s" % shlex.quote(name),
+                         "S8_DELTA_MS=3000",
+                         "meta_branch"]) + "\n")
+                    proc = subprocess.run(["bash", str(driver)],
+                                          capture_output=True, text=True,
+                                          cwd=str(HERE))
+                    self.assertEqual(proc.returncode, 0, proc.stderr)
+                    self.assertNotIn("command not found", proc.stderr)
+                    self.assertNotIn("not found", proc.stderr)
+                    values = dict(line.split("=", 1)
+                                  for line in proc.stdout.splitlines())
+                    for key in ("COVERED", "PHASES", "RECOVERY", "ATTEMPT",
+                                "NOTCOV", "DELTA"):
+                        self.assertTrue(values.get(key),
+                                        f"{key} empty for {name}")
+                    # real sentences, not a truncated first fragment
+                    self.assertGreater(len(values["PHASES"]), 60)
+                    self.assertGreater(len(values["RECOVERY"]), 100)
+                    for key, want in expected.items():
+                        self.assertEqual(values.get(key), want,
+                                         f"{key} wrong for {name}")
+
     def drive_cleanup(self, tmp, docker_state, collectors_doc=None,
                       capture_doc=None, built_doc=None, skip_collectors=False,
                       launch_attempted=False, env_extra=None,

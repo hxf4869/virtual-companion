@@ -2234,7 +2234,8 @@ class RunScenarioS8StubTest(unittest.TestCase):
             base="http://127.0.0.1:1", session="s", csrf="c", account="a",
             origin=None, cacert=None, scenario="s8-prepare",
             key_prefix="t", sse_timeout=30.0, s8_generation_id="",
-            s8_conversation_id="", s8_recovery_timeout=5.0)
+            s8_conversation_id="", s8_expect="failed",
+            s8_recovery_timeout=5.0)
         base.update(overrides)
         return argparse.Namespace(**base)
 
@@ -2458,6 +2459,117 @@ class RunScenarioS8StubTest(unittest.TestCase):
                          "COMPLETED")
         self.assertEqual(result["error_count"], 1)
         self.assertIn("mask", result["errors"][0])
+
+    def test_verify_completed_expect_recovery_and_single_health_send(self):
+        # A point (VC-R148): the ORIGINAL gid itself must recover
+        # COMPLETED (REQUEUE_NO_INTENT) with its own assistant message
+        # already committed; only then ONE health control, whose success
+        # must not pose as the original's (assistant 1 -> 2, original
+        # still COMPLETED).
+        stub_cls, instances = self.make_stub(
+            snapshots={"42": [{"status": "COMPLETED", "events": []}],
+                       "43": [{"status": "COMPLETED", "events": []}]},
+            histories=[[{"role": "assistant", "content": "recovered"}],
+                       [{"role": "assistant", "content": "recovered"},
+                        {"role": "assistant", "content": "done"}]],
+            post_terminal="chat.completed")
+        self.install(stub_cls)
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7", s8_expect="completed"),
+            workload.Stats())
+        original, health = result["original"], result["health"]
+        self.assertEqual(result["error_count"], 0)
+        self.assertEqual(original["expect"], "COMPLETED")
+        self.assertEqual(original["status"], "COMPLETED")
+        self.assertEqual(original["post_terminal"], "chat.completed")
+        self.assertEqual(original["assistant_messages"], 1)
+        self.assertEqual(original["status_after_health"], "COMPLETED")
+        self.assertEqual(health["terminal"], "chat.completed")
+        self.assertTrue(health["completed_ok"])
+        self.assertEqual(health["snapshot_status"], "COMPLETED")
+        self.assertEqual(health["assistant_messages"], 2)
+        # Exactly ONE send ever — the health control; the original
+        # generation is never cancelled or re-POSTed.
+        self.assertEqual(instances[0].sends, ["t-health"])
+
+    def test_verify_completed_expect_rejects_a_failed_original(self):
+        # A run that lands FAILED_FINAL cannot satisfy the completed
+        # expectation, and no health-control write may follow.
+        stub_cls, instances = self.make_stub(
+            snapshots={"42": [{"status": "FAILED_FINAL",
+                               "events": [{"event": "chat.failed",
+                                           "fault": "external-failed"}]}]})
+        self.install(stub_cls)
+        stats = workload.Stats()
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7", s8_expect="completed"),
+            stats)
+        self.assertEqual(result["original"]["status"], "FAILED_FINAL")
+        self.assertEqual(result["error_count"], 1)
+        self.assertIn("want COMPLETED", stats.errors[0])
+        self.assertEqual(instances[0].sends, [])
+
+    def test_verify_completed_expect_wrong_post_terminal_fails_closed(self):
+        # A post-terminal view that is not chat.completed means the
+        # original's completion is not publicly provable: no health write.
+        stub_cls, instances = self.make_stub(
+            snapshots={"42": [{"status": "COMPLETED", "events": []}]},
+            histories=[[{"role": "assistant", "content": "recovered"}]],
+            post_terminal="chat.failed")
+        self.install(stub_cls)
+        stats = workload.Stats()
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7", s8_expect="completed"),
+            stats)
+        self.assertEqual(result["original"]["post_terminal"], "chat.failed")
+        self.assertEqual(result["error_count"], 1)
+        self.assertIn("chat.completed", stats.errors[0])
+        self.assertEqual(instances[0].sends, [])
+
+    def test_verify_completed_expect_wrong_assistant_before_fails_closed(self):
+        # The recovered turn must have committed exactly ONE assistant
+        # message before the control; zero means the completion view is
+        # not backed by the persisted message — no health write.
+        stub_cls, instances = self.make_stub(
+            snapshots={"42": [{"status": "COMPLETED", "events": []}]},
+            histories=[[]],
+            post_terminal="chat.completed")
+        self.install(stub_cls)
+        stats = workload.Stats()
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7", s8_expect="completed"),
+            stats)
+        self.assertEqual(result["original"]["assistant_messages"], 0)
+        self.assertEqual(result["error_count"], 1)
+        self.assertEqual(instances[0].sends, [])
+
+    def test_verify_completed_expect_health_cannot_mask_original(self):
+        # After the control, the original must STILL read COMPLETED and
+        # the conversation must hold exactly 2 assistant messages; either
+        # drift is recorded even though the control itself succeeded.
+        stub_cls, _ = self.make_stub(
+            snapshots={"42": [{"status": "COMPLETED", "events": []},
+                              {"status": "FAILED_FINAL", "events": []}],
+                       "43": [{"status": "COMPLETED", "events": []}]},
+            histories=[[{"role": "assistant", "content": "recovered"}],
+                       [{"role": "assistant", "content": "recovered"}]],
+            post_terminal="chat.completed")
+        self.install(stub_cls)
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7", s8_expect="completed"),
+            workload.Stats())
+        self.assertTrue(result["health"]["completed_ok"])
+        self.assertEqual(result["original"]["status_after_health"],
+                         "FAILED_FINAL")
+        self.assertEqual(result["health"]["assistant_messages"], 1)
+        self.assertEqual(result["error_count"], 2)
+        self.assertIn("mask", result["errors"][0])
+        self.assertIn("want exactly 2", result["errors"][1])
 
     def test_verify_requires_prepare_ids(self):
         err = io.StringIO()

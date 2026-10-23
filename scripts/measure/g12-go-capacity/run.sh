@@ -179,6 +179,52 @@
 # scopes itself to the single covered crash point (the mid-stream point
 # stays uncovered here).
 #
+# --probe-s8-before-attempt (VC-R148) proves the THIRD S8 crash point on
+# the same FUNCTIONAL_ONLY bound: the runtime container is killed (docker
+# kill → exit 137) after the work item is CLAIMED but BEFORE any attempt
+# intent row exists, while the worker's prepare INSERT is blocked on a
+# control table lock — never the mid-stream or SUCCEEDED-before-finalize
+# points, and no full-profile scenario. The same one-process helper
+# (s8_finalize_crash.py, --crash-point before-attempt) owns the whole
+# window: through the real public Client it first prepares the session
+# (consents, relationship, conversation), then the control `compose exec
+# -T db psql` session BEGINs and takes LOCK TABLE vc.attempt_intent IN
+# SHARE MODE (grant proven in pg_locks), and only then sends exactly ONE
+# public generation POST (202 → gid; no live delta is waited for — none
+# can exist under the lock). The read-only crash gates then run exactly
+# like the C point's: attempts strictly empty, generation IN_PROGRESS
+# with no assistant, work item CLAIMED on an unexpired lease, exactly one
+# companiond backend blocked in go_prepare_model_attempt with its
+# attempt_intent RowExclusiveLock NOT granted and the control pid in
+# pg_blocking_pids, the same pinned query_start across two reads, and the
+# old-epoch provider untouched relative to the baseline (no stream, no
+# completion, no abort, nothing active, no content chunk — the raw stats
+# including the total request counter are recorded as-is, never conflated
+# with stream counts). The kill window math, kill/137/ROLLBACK/reap
+# contracts and the 16 s shell grace are the shared helper ones (the age
+# basis is max(query_age, xact_age): no attempt exists, so there is no
+# outcome age). The provider deltaMs is NOT widened for this point (the
+# crash happens before any provider call; the original config is kept and
+# read back), so no pending restore is registered. Downstream, the shared
+# restart/netns/lease machinery runs with A-point expectations: the old
+# epoch never saw the request, the DEFAULT lease expires and
+# go_reconcile_generation takes its REQUEUE_NO_INTENT branch — the work
+# item is requeued with no intent, a FRESH attempt runs on the new epoch
+# and the ORIGINAL gid recovers to COMPLETED (not FAILED_FINAL) — with
+# the recovered DB state fixed read-only (exactly one SUCCEEDED attempt,
+# generation COMPLETED with the assistant message committed, work item
+# DONE, no PENDING/CLAIMED) and the new-epoch provider settled at exactly
+# the one recovery request BEFORE the health control; s8-verify runs with
+# --s8-expect completed (the original gid's own snapshot COMPLETED,
+# post-terminal chat.completed, exactly one assistant message before the
+# control) and the ONE independent health-control generation must then
+# complete while the original STILL reads COMPLETED (assistant 1 → 2);
+# the new-epoch provider ends at exactly 2 streams / 2 completed / 0
+# aborted / 0 active. The receipt-based ownership and cleanup contracts
+# are exactly the other probe-s8 ones; collectors, sampler, idle windows
+# and warm-up stay skipped and the summary scopes itself to this single
+# crash point.
+#
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
 # project, images, output directory, and data. Ownership is receipt-based
@@ -189,7 +235,7 @@
 # create action provably produced, and a failed cleanup keeps the records
 # for recovery instead of discarding them.
 #
-# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8 | --probe-s8-before-finalize]
+# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8 | --probe-s8-before-finalize | --probe-s8-before-attempt]
 set -euo pipefail
 export DOCKER_CONTEXT=orbstack
 
@@ -199,6 +245,7 @@ PROBE_S6=0
 PROBE_S9=0
 PROBE_S8=0
 PROBE_S8_BEFORE_FINALIZE=0
+PROBE_S8_BEFORE_ATTEMPT=0
 case "${1:-}" in
   --probe) PROBE=1 ;;
   --probe-s3) PROBE=1; PROBE_S3=1 ;;
@@ -206,8 +253,9 @@ case "${1:-}" in
   --probe-s9) PROBE=1; PROBE_S9=1 ;;
   --probe-s8) PROBE=1; PROBE_S8=1 ;;
   --probe-s8-before-finalize) PROBE=1; PROBE_S8=1; PROBE_S8_BEFORE_FINALIZE=1 ;;
+  --probe-s8-before-attempt) PROBE=1; PROBE_S8=1; PROBE_S8_BEFORE_ATTEMPT=1 ;;
   "") ;;
-  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8 | --probe-s8-before-finalize]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8 | --probe-s8-before-finalize | --probe-s8-before-attempt]" >&2; exit 2 ;;
 esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -293,15 +341,17 @@ if [ "$PROBE" = "1" ]; then
   S3_HOLD_MS="${G12_PROBE_S3_HOLD_MS:-6000}"
   S3_QUIET_MS="${G12_PROBE_S3_QUIET_MS:-2000}"
   S6_DELTA_MS="${G12_PROBE_S6_DELTA_MS:-400}"
-  # §19.1 scenario 8 (VC-R140/R145, probe-s8 modes): the widened deltaMs
-  # keeps the prepared stream in flight well past the serial kill-window
-  # gates (mid-stream: pre-kill assertions; before-finalize: the helper's
-  # acquire-while-CREATED lock — default 8 chunks × 3 s ≈ 21 s of CREATED
-  # window after the first live delta); set via the existing bounded
-  # PUT /g12/config deltaMs knob — no new fixture knob, no product timeout
-  # change. The verify recovery budget waits out the DEFAULT claim lease
-  # (270 s) plus the recovery tick — never a shortened lease, timeout or
-  # DB clock.
+  # §19.1 scenario 8 (VC-R140/R145/R148, probe-s8 modes): the widened
+  # deltaMs keeps the prepared stream in flight well past the serial
+  # kill-window gates (mid-stream: pre-kill assertions; before-finalize:
+  # the helper's acquire-while-CREATED lock — default 8 chunks × 3 s ≈ 21 s
+  # of CREATED window after the first live delta); set via the existing
+  # bounded PUT /g12/config deltaMs knob — no new fixture knob, no product
+  # timeout change. The before-attempt point never widens deltaMs (the
+  # crash happens before any provider call; the original config is kept
+  # and read back) and registers no pending restore. The verify recovery
+  # budget waits out the DEFAULT claim lease (270 s) plus the recovery
+  # tick — never a shortened lease, timeout or DB clock.
   S8_DELTA_MS="${G12_PROBE_S8_DELTA_MS:-3000}"
   S8_RECOVERY_TIMEOUT="${G12_PROBE_S8_RECOVERY_TIMEOUT:-360}"
 fi
@@ -309,6 +359,7 @@ MODE=$( { [ "$PROBE_S3" = "1" ] && echo PROBE_S3; } \
        || { [ "$PROBE_S6" = "1" ] && echo PROBE_S6; } \
        || { [ "$PROBE_S9" = "1" ] && echo PROBE_S9; } \
        || { [ "$PROBE_S8_BEFORE_FINALIZE" = "1" ] && echo PROBE_S8_BEFORE_FINALIZE; } \
+       || { [ "$PROBE_S8_BEFORE_ATTEMPT" = "1" ] && echo PROBE_S8_BEFORE_ATTEMPT; } \
        || { [ "$PROBE_S8" = "1" ] && echo PROBE_S8; } \
        || { [ "$PROBE" = "1" ] && echo PROBE || echo PROFILE; })
 
@@ -368,16 +419,16 @@ cleanup() {
     kill -KILL "$S3_WORKLOAD_PID" 2>/dev/null || true
     wait "$S3_WORKLOAD_PID" 2>/dev/null || true
   fi
-  # The probe-s8-before-finalize crash helper is also a directly launched
-  # python child (recorded PID = the python process itself): TERM →
-  # bounded wait → KILL → reap on every exit path. Its SIGTERM handler
-  # releases the control lock and reaps its two psql children, and that
-  # cooperative shutdown is itself bounded (SQLSession.close worst case
-  # 3 + 2 + 2 s per session, two sessions = 14 s), so the TERM grace here
-  # is 16 s (80 × 0.2) — never KILL it while its finally is still inside
-  # that bound. Past TERM (KILLed), its psql stdin pipes close, the
-  # backends disconnect and the row lock rolls back on its own — nothing
-  # survives this shell either way.
+  # The probe-s8-before-finalize / probe-s8-before-attempt crash helper is
+  # also a directly launched python child (recorded PID = the python process
+  # itself): TERM → bounded wait → KILL → reap on every exit path. Its
+  # SIGTERM handler releases the control lock and reaps its two psql
+  # children, and that cooperative shutdown is itself bounded
+  # (SQLSession.close worst case 3 + 2 + 2 s per session, two sessions =
+  # 14 s), so the TERM grace here is 16 s (80 × 0.2) — never KILL it while
+  # its finally is still inside that bound. Past TERM (KILLed), its psql
+  # stdin pipes close, the backends disconnect and the row/table lock rolls
+  # back on its own — nothing survives this shell either way.
   if [ -n "${S8_HELPER_PID:-}" ]; then
     kill -TERM "$S8_HELPER_PID" 2>/dev/null || true
     for _ in $(seq 1 80); do
@@ -875,13 +926,16 @@ s8_assert_db() {
 }
 
 run_probe_s8() {
-  # One S8 FUNCTIONAL_ONLY chain for BOTH crash-point probes: name is the
-  # artifact prefix (probe-s8 / probe-s8-before-finalize); PROBE_S8_BEFORE_
-  # FINALIZE=1 selects the before-finalize crash point (VC-R145), where
-  # the pre-kill window is owned by the s8_finalize_crash.py helper.
+  # One S8 FUNCTIONAL_ONLY chain for the crash-point probes: name is the
+  # artifact prefix (probe-s8 / probe-s8-before-finalize /
+  # probe-s8-before-attempt); PROBE_S8_BEFORE_FINALIZE=1 selects the
+  # before-finalize crash point (VC-R145) and PROBE_S8_BEFORE_ATTEMPT=1
+  # the claim-before-intent crash point (VC-R148) — in both, the whole
+  # pre-kill window is owned by the s8_finalize_crash.py helper.
   local name="${1:?run_probe_s8 needs its artifact name}"
-  local bf=0
+  local bf=0 ba=0
   if [ "${PROBE_S8_BEFORE_FINALIZE:-0}" = "1" ]; then bf=1; fi
+  if [ "${PROBE_S8_BEFORE_ATTEMPT:-0}" = "1" ]; then ba=1; fi
   local runtime_cid provider_cid
   # CIDs come from THIS run's creation receipt (never from names or the
   # compose project label), then re-verified against the daemon together
@@ -908,7 +962,11 @@ PY
       || die "s8: container $cid is not this run's nonce-receipted creation; refusing to kill"
   done
 
-  echo "== probe-s8: old-epoch provider baseline (deltaMs widen, pending-registered) =="
+  if [ "$ba" = "1" ]; then
+    echo "== probe-s8: old-epoch provider baseline (A point: config kept, no widen) =="
+  else
+    echo "== probe-s8: old-epoch provider baseline (deltaMs widen, pending-registered) =="
+  fi
   local baseline_file="$RUN_DIR/$name.provider-oldepoch-baseline.json"
   provider_stats_exec "$baseline_file" \
     || die "s8: provider stats (old epoch) unreachable"
@@ -937,58 +995,88 @@ PY
     || die "s8: provider already has $baseline_active active stream(s) at baseline"
   # Pending-restore registration BEFORE the first PUT (a PUT whose response
   # was lost may still have been applied server-side — same contract as the
-  # S3/S6 knobs; cleanup's EXIT path retries once for anything left).
-  S8_PENDING_RESTORE_DELTA=$baseline_delta
-  if ! provider_config_put "{\"deltaMs\":$S8_DELTA_MS}" \
-      "$RUN_DIR/$name.config-set.json"; then
-    if provider_config_put "{\"deltaMs\":$S8_PENDING_RESTORE_DELTA}" \
-        "$RUN_DIR/$name.config-restore.json"; then
-      S8_PENDING_RESTORE_DELTA=""
-      die "s8: provider deltaMs PUT failed (original deltaMs restored)"
+  # S3/S6 knobs; cleanup's EXIT path retries once for anything left). The
+  # A point never widens deltaMs — the crash happens before any provider
+  # call — so it registers nothing and only reads the baseline config back.
+  if [ "$ba" != "1" ]; then
+    S8_PENDING_RESTORE_DELTA=$baseline_delta
+    if ! provider_config_put "{\"deltaMs\":$S8_DELTA_MS}" \
+        "$RUN_DIR/$name.config-set.json"; then
+      if provider_config_put "{\"deltaMs\":$S8_PENDING_RESTORE_DELTA}" \
+          "$RUN_DIR/$name.config-restore.json"; then
+        S8_PENDING_RESTORE_DELTA=""
+        die "s8: provider deltaMs PUT failed (original deltaMs restored)"
+      fi
+      die "s8: provider deltaMs PUT failed AND restore failed (deltaMs possibly left at $S8_DELTA_MS)"
     fi
-    die "s8: provider deltaMs PUT failed AND restore failed (deltaMs possibly left at $S8_DELTA_MS)"
   fi
 
-  echo "== probe-s8: identities captured; prepare — one generation, first live delta =="
+  if [ "$ba" = "1" ]; then
+    echo "== probe-s8: identities captured; the A-point helper owns the single public POST =="
+  else
+    echo "== probe-s8: identities captured; prepare — one generation, first live delta =="
+  fi
   s8_capture_identity "$runtime_cid" > "$RUN_DIR/s8-runtime-before.txt" \
     || die "s8: runtime identity inspect failed"
   s8_capture_identity "$provider_cid" > "$RUN_DIR/s8-provider-before.txt" \
     || die "s8: provider identity inspect failed"
-  if ! run_workload --scenario s8-prepare --key-prefix "$TRIAL_ID-$name" \
-      > "$RUN_DIR/$name.prepare.json"; then
-    [ -s "$RUN_DIR/$name.prepare.json" ] && cat "$RUN_DIR/$name.prepare.json" >&2
-    die "s8 prepare failed (no live delta — the kill gate stays closed)"
-  fi
-  local gid conv
-  read -r gid conv <<< "$(python3 - "$RUN_DIR/$name.prepare.json" <<'PY'
+  local gid="" conv=""
+  if [ "$ba" != "1" ]; then
+    if ! run_workload --scenario s8-prepare --key-prefix "$TRIAL_ID-$name" \
+        > "$RUN_DIR/$name.prepare.json"; then
+      [ -s "$RUN_DIR/$name.prepare.json" ] && cat "$RUN_DIR/$name.prepare.json" >&2
+      die "s8 prepare failed (no live delta — the kill gate stays closed)"
+    fi
+    read -r gid conv <<< "$(python3 - "$RUN_DIR/$name.prepare.json" <<'PY'
 import json, sys
 r = json.load(open(sys.argv[1]))
 print(r.get("generation_id") or "", r.get("conversation_id") or "")
 PY
 )"
-  case "$gid" in '' | *[!0-9]*) die "s8: prepare produced no usable generation id ($gid)" ;; esac
-  case "$conv" in '' | *[!0-9]*) die "s8: prepare produced no usable conversation id ($conv)" ;; esac
+    case "$gid" in '' | *[!0-9]*) die "s8: prepare produced no usable generation id ($gid)" ;; esac
+    case "$conv" in '' | *[!0-9]*) die "s8: prepare produced no usable conversation id ($conv)" ;; esac
+  fi
 
   local owner="$G12_ACCOUNT_ID"
-  if [ "$bf" = "1" ]; then
-    echo "== probe-s8-before-finalize: crash gates, kill, lock release (single helper) =="
-    # The WHOLE C-point window — control row lock, crash-gate observation,
-    # provider settle check, identity re-verification, the kill itself and
-    # the lock release — runs inside the helper; nothing is delegated back
-    # here while the ~5 s finalize tx window is open.
+  local hl="s8"
+  if [ "$bf" = "1" ]; then hl="s8-before-finalize"; fi
+  if [ "$ba" = "1" ]; then hl="s8-before-attempt"; fi
+  if [ "$bf" = "1" ] || [ "$ba" = "1" ]; then
+    echo "== $hl: crash gates, kill, lock release (single helper) =="
+    # The WHOLE crash window — control lock, crash-gate observation,
+    # provider check, identity re-verification, the kill itself and the
+    # lock release — runs inside the helper; nothing is delegated back
+    # here while the ~5 s blocked-tx window is open. The A point also
+    # prepares the public session and sends its single generation POST
+    # inside the same helper process.
     local helper_out="$RUN_DIR/$name.finalize-crash.json"
+    local helper_stdout="$RUN_DIR/$name.finalize-crash.stdout"
+    local helper_err="$RUN_DIR/$name.finalize-crash.err"
+    if [ "$ba" = "1" ]; then
+      helper_out="$RUN_DIR/$name.attempt-crash.json"
+      helper_stdout="$RUN_DIR/$name.attempt-crash.stdout"
+      helper_err="$RUN_DIR/$name.attempt-crash.err"
+    fi
     local helper_rc=0 n hdeadline
-    python3 "$HERE/s8_finalize_crash.py" \
-      --compose-envfile "$ENVFILE" --compose-file "$STACK_COMPOSE" \
-      --project "$PROJECT" --provider-port "$FAKE_PORT" \
-      --owner "$owner" --generation-id "$gid" \
-      --runtime-cid "$runtime_cid" --nonce "$NONCE" \
-      --baseline-streams "$baseline_streams" \
-      --baseline-aborted "$baseline_aborted" \
-      --baseline-completed "$baseline_completed" \
-      --gate-budget 60 --out "$helper_out" \
-      > "$RUN_DIR/$name.finalize-crash.stdout" \
-      2> "$RUN_DIR/$name.finalize-crash.err" &
+    local helper_args=(--compose-envfile "$ENVFILE"
+      --compose-file "$STACK_COMPOSE" --project "$PROJECT"
+      --provider-port "$FAKE_PORT" --owner "$owner"
+      --runtime-cid "$runtime_cid" --nonce "$NONCE"
+      --baseline-streams "$baseline_streams"
+      --baseline-aborted "$baseline_aborted"
+      --baseline-completed "$baseline_completed" --out "$helper_out")
+    if [ "$ba" = "1" ]; then
+      # A: the helper owns the public session and the single POST; its
+      # gate budget stays below the control session's 45 s idle timeout.
+      helper_args+=(--crash-point before-attempt --base "$GO_BASE"
+        --cacert "$CA_FILE" --key-prefix "$TRIAL_ID-$name"
+        --baseline-chunks "$baseline_chunks" --gate-budget 30)
+    else
+      helper_args+=(--crash-point before-finalize --generation-id "$gid"
+        --gate-budget 60)
+    fi
+    python3 "$HERE/s8_finalize_crash.py" "${helper_args[@]}" \
+      > "$helper_stdout" 2> "$helper_err" &
     S8_HELPER_PID=$!
     hdeadline=$(( $(date +%s) + 120 ))
     while kill -0 "$S8_HELPER_PID" 2>/dev/null && [ "$(date +%s)" -lt "$hdeadline" ]; do
@@ -1006,7 +1094,7 @@ PY
       kill -KILL "$S8_HELPER_PID" 2>/dev/null || true
       wait "$S8_HELPER_PID" 2>/dev/null || true
       S8_HELPER_PID=""
-      die "s8-before-finalize: helper exceeded its bounded budget (120s); no kill can be proven"
+      die "$hl: helper exceeded its bounded budget (120s); no kill can be proven"
     fi
     wait "$S8_HELPER_PID" || helper_rc=$?
     S8_HELPER_PID=""
@@ -1023,21 +1111,23 @@ PY
 )" || issued="unknown"
       case "$issued" in
         True)
-          die "s8-before-finalize: the kill WAS issued but the crash window could not be proven (ABORTED, not covered, no PASS); see $RUN_DIR/$name.finalize-crash.err"
+          die "$hl: the kill WAS issued but the crash window could not be proven (ABORTED, not covered, no PASS); see $helper_err"
           ;;
         False)
-          die "s8-before-finalize: helper aborted BEFORE the kill was issued; nothing was killed; see $RUN_DIR/$name.finalize-crash.err"
+          die "$hl: helper aborted BEFORE the kill was issued; nothing was killed; see $helper_err"
           ;;
         *)
-          die "s8-before-finalize: helper outcome unknown (no kill proof); see $RUN_DIR/$name.finalize-crash.err"
+          die "$hl: helper outcome unknown (no kill proof); see $helper_err"
           ;;
       esac
     fi
     # The helper proved status KILLED on the exact receipt CID with exit
-    # 137, the control lock released and both psql children reaped; keep
-    # the kill state line for the shared summary/identity evidence.
-    python3 - "$helper_out" "$runtime_cid" > "$RUN_DIR/s8-runtime-killed.txt" <<'PY' \
-      || die "s8-before-finalize: helper report does not prove the C-point kill"
+    # 137, the control lock released and both psql children reaped (the A
+    # report additionally carries this run's gid/conversation); keep the
+    # kill state line for the shared summary/identity evidence.
+    python3 - "$helper_out" "$runtime_cid" "$ba" \
+      > "$RUN_DIR/s8-runtime-killed.txt" <<'PY' \
+      || die "$hl: helper report does not prove the crash-point kill"
 import json, sys
 r = json.load(open(sys.argv[1]))
 killed = r.get("killed") or {}
@@ -1046,10 +1136,23 @@ ok = (r.get("status") == "KILLED"
       and killed.get("state") == "exited 137 0"
       and r.get("control_backend_absent") is True
       and all(c.get("reaped") for c in r.get("connections") or []))
+if sys.argv[3] == "1":
+    ok = ok and str(r.get("generation_id") or "").isdigit() \
+         and str(r.get("conversation_id") or "").isdigit()
 if ok:
     print(killed["state"])
 raise SystemExit(0 if ok else 1)
 PY
+    if [ "$ba" = "1" ]; then
+      read -r gid conv <<< "$(python3 - "$helper_out" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+print(r.get("generation_id") or "", r.get("conversation_id") or "")
+PY
+)"
+      case "$gid" in '' | *[!0-9]*) die "$hl: helper report produced no usable generation id ($gid)" ;; esac
+      case "$conv" in '' | *[!0-9]*) die "$hl: helper report produced no usable conversation id ($conv)" ;; esac
+    fi
   else
     echo "== probe-s8: pre-kill assertions (DB read-only + old-epoch provider) =="
     s8_assert_db 1 \
@@ -1107,24 +1210,30 @@ PY
   # must record abort +1 / completed +0 / active 0. Before-finalize: the
   # provider had FULLY finished before the kill (helper gate), so the old
   # epoch must show completion WITHOUT any abort — the runtime kill left
-  # it untouched.
+  # it untouched. Before-attempt: the provider NEVER saw the request, so
+  # every stream counter stays exactly at its baseline.
   local oldefinal="$RUN_DIR/$name.provider-oldepoch-final.json"
   local settled=0 n
   for n in $(seq 1 30); do
     if provider_stats_exec "$oldefinal" \
         && python3 - "$oldefinal" "$baseline_aborted" "$baseline_completed" \
-           "$baseline_streams" "$bf" <<'PY'
+           "$baseline_streams" "$bf" "$ba" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
-ba, bc, bs, bf = (int(x) for x in sys.argv[2:6])
-if bf:
-    ok = (int(p["abortedStreamRequests"]) == ba
-          and int(p["completedStreamRequests"]) == bc + 1
-          and int(p["streamRequests"]) == bs + 1
+b_ab, b_cp, b_st, is_bf, is_ba = (int(x) for x in sys.argv[2:7])
+if is_bf:
+    ok = (int(p["abortedStreamRequests"]) == b_ab
+          and int(p["completedStreamRequests"]) == b_cp + 1
+          and int(p["streamRequests"]) == b_st + 1
+          and int(p["activeStreamRequests"]) == 0)
+elif is_ba:
+    ok = (int(p["abortedStreamRequests"]) == b_ab
+          and int(p["completedStreamRequests"]) == b_cp
+          and int(p["streamRequests"]) == b_st
           and int(p["activeStreamRequests"]) == 0)
 else:
-    ok = (int(p["abortedStreamRequests"]) == ba + 1
-          and int(p["completedStreamRequests"]) == bc
+    ok = (int(p["abortedStreamRequests"]) == b_ab + 1
+          and int(p["completedStreamRequests"]) == b_cp
           and int(p["activeStreamRequests"]) == 0)
 raise SystemExit(0 if ok else 1)
 PY
@@ -1197,9 +1306,10 @@ PY
   done
   [ "$rejoined" = "1" ] \
     || die "s8: provider did not rejoin the restarted runtime's network namespace"
-  # Fixed zero-sample BEFORE any new traffic: the new epoch starts at
-  # initial counters — the restart proof, and the pre-health-control fact
-  # that the recovery window itself issues no provider request. The same
+  # Fixed initial sample right after the restart: the new epoch starts at
+  # zero counters — the restart proof, taken BEFORE the claim lease expires
+  # so no recovery traffic exists yet on any crash point (the A point's
+  # REQUEUE_NO_INTENT replay comes later, after the lease). The same
   # read-back confirms the restarted provider re-derived its config from
   # the initial env (deltaMs back at the original value) BEFORE the probe
   # continues; a mismatch dies here and leaves the pending restore for
@@ -1231,7 +1341,12 @@ PY
   echo "== probe-s8: wait out the DEFAULT claim lease (read-only DB poll) =="
   # The recovery wait itself: only the default lease and the runtime's own
   # recovery tick, observed via read-only SELECTs — never a shortened
-  # lease, a tampered clock, or a DB write.
+  # lease, a tampered clock, or a DB write. The target terminal is
+  # FAILED_FINAL for the B/C crash points; the A point's
+  # go_reconcile_generation recovery takes the REQUEUE_NO_INTENT branch,
+  # so the ORIGINAL gid must come back COMPLETED through a fresh attempt.
+  local want_gen_status="FAILED_FINAL"
+  if [ "$ba" = "1" ]; then want_gen_status="COMPLETED"; fi
   local recovered=0
   local dbdeadline=$(( $(date +%s) + S8_RECOVERY_TIMEOUT ))
   local dbstatus
@@ -1239,13 +1354,13 @@ PY
     dbstatus="$(psql_q "SELECT status FROM vc.generation WHERE id=$gid AND owner_user_id=$owner")" \
       || die "s8: recovery DB poll query failed (read-only)"
     # A result returned past the budget is never adopted — even a late
-    # FAILED_FINAL — and only the known non-terminal states may keep the
+    # terminal — and only the known non-terminal states may keep the
     # loop going: an empty or unknown status fails instead of posing as
     # success.
     [ "$(date +%s)" -lt "$dbdeadline" ] \
       || die "s8: recovery DB poll result arrived after the budget"
     case "$dbstatus" in
-      FAILED_FINAL)
+      "$want_gen_status")
         recovered=1
         break
         ;;
@@ -1258,55 +1373,81 @@ PY
     esac
   done
   [ "$recovered" = "1" ] \
-    || die "s8: generation did not reach FAILED_FINAL within the recovery budget (${S8_RECOVERY_TIMEOUT}s read-only DB poll)"
+    || die "s8: generation did not reach $want_gen_status within the recovery budget (${S8_RECOVERY_TIMEOUT}s read-only DB poll)"
 
   echo "== probe-s8: recovered-state DB assertions (read-only, BEFORE any health traffic) =="
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
-    "still exactly one attempt (no new attempt)"
-  if [ "$bf" = "1" ]; then
-    # Before-finalize: the SUCCEEDED outcome committed independently
-    # BEFORE the crash and must survive it untouched.
+  if [ "$ba" = "1" ]; then
+    # A: the crash left NO attempt intent; the REQUEUE_NO_INTENT recovery
+    # requeued the work item and exactly ONE fresh attempt must exist —
+    # SUCCEEDED, with the original gid finalized COMPLETED and its
+    # assistant message committed, the job DONE and nothing still
+    # PENDING/CLAIMED.
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
+      "exactly one attempt (the fresh post-requeue one)"
     s8_assert_db 1 \
       "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='SUCCEEDED'")" \
-      "attempt SUCCEEDED (committed independently before the crash)"
+      "attempt SUCCEEDED (the recovered fresh attempt)"
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND status='COMPLETED' AND assistant_message_id IS NOT NULL")" \
+      "generation COMPLETED with the assistant message committed"
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='DONE'")" \
+      "work item DONE"
   else
     s8_assert_db 1 \
-      "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='ABANDONED_LATE'")" \
-      "attempt ABANDONED_LATE"
-  fi
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND status='FAILED_FINAL' AND assistant_message_id IS NULL")" \
-    "generation FAILED_FINAL with no assistant message"
-  if [ "$bf" = "1" ]; then
+      "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
+      "still exactly one attempt (no new attempt)"
+    if [ "$bf" = "1" ]; then
+      # Before-finalize: the SUCCEEDED outcome committed independently
+      # BEFORE the crash and must survive it untouched.
+      s8_assert_db 1 \
+        "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='SUCCEEDED'")" \
+        "attempt SUCCEEDED (committed independently before the crash)"
+    else
+      s8_assert_db 1 \
+        "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='ABANDONED_LATE'")" \
+        "attempt ABANDONED_LATE"
+    fi
     s8_assert_db 1 \
-      "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='CANDIDATE_LOST_AFTER_ATTEMPT'")" \
-      "work item FAILED with CANDIDATE_LOST_AFTER_ATTEMPT"
-  else
-    s8_assert_db 1 \
-      "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='PROVIDER_OUTCOME_UNKNOWN'")" \
-      "work item FAILED with PROVIDER_OUTCOME_UNKNOWN"
+      "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND status='FAILED_FINAL' AND assistant_message_id IS NULL")" \
+      "generation FAILED_FINAL with no assistant message"
+    if [ "$bf" = "1" ]; then
+      s8_assert_db 1 \
+        "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='CANDIDATE_LOST_AFTER_ATTEMPT'")" \
+        "work item FAILED with CANDIDATE_LOST_AFTER_ATTEMPT"
+    else
+      s8_assert_db 1 \
+        "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='PROVIDER_OUTCOME_UNKNOWN'")" \
+        "work item FAILED with PROVIDER_OUTCOME_UNKNOWN"
+    fi
   fi
   s8_assert_db 0 \
     "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status IN ('PENDING','CLAIMED')")" \
-    "work item never requeued"
+    "no PENDING/CLAIMED work item remains"
 
-  echo "== probe-s8: fixed new-epoch zero-sample BEFORE the health control =="
-  # Forward evidence, not an inference: the recovery window (crash -> this
-  # point) issued no provider request, sampled after the DB state above is
-  # fixed and before verify sends the one health-control generation.
+  echo "== probe-s8: fixed new-epoch provider sample BEFORE the health control =="
+  # Forward evidence, not an inference, sampled after the DB state above is
+  # fixed and before verify sends the one health-control generation. B/C:
+  # the recovery window (crash -> this point) issued no provider request
+  # (all counters zero, content chunks included). A: the REQUEUE_NO_INTENT
+  # recovery replays the turn BY DESIGN, so the new epoch must have
+  # settled at exactly that one recovery request (1 stream, 1 completed,
+  # no abort, nothing active) before the health control adds its own.
   local newzero="$RUN_DIR/$name.provider-newepoch-before-health.json"
   local prezero=0
   for n in $(seq 1 30); do
     if provider_stats_exec "$newzero" \
-        && python3 - "$newzero" <<'PY'
+        && python3 - "$newzero" "$ba" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
-ok = (int(p["streamRequests"]) == 0
+want = 1 if sys.argv[2] == "1" else 0
+ok = (int(p["streamRequests"]) == want
       and int(p["activeStreamRequests"]) == 0
-      and int(p["contentChunkWrites"]) == 0
       and int(p["abortedStreamRequests"]) == 0
-      and int(p["completedStreamRequests"]) == 0)
+      and int(p["completedStreamRequests"]) == want)
+if want == 0:
+    ok = ok and int(p["contentChunkWrites"]) == 0
 raise SystemExit(0 if ok else 1)
 PY
     then
@@ -1316,14 +1457,17 @@ PY
     sleep 0.5
   done
   [ "$prezero" = "1" ] \
-    || die "s8: new-epoch provider did not stay at zero requests through the recovery window"
+    || die "s8: new-epoch provider did not hold the expected pre-health request count through the recovery window (A: exactly the one recovery request; B/C: zero)"
 
-  echo "== probe-s8: verify — public recovered-failure view + health control =="
+  echo "== probe-s8: verify — public recovered view + health control =="
+  local verify_expect=""
+  if [ "$ba" = "1" ]; then verify_expect="--s8-expect completed"; fi
   local verify_rc=0
   local watchdog=$((S8_RECOVERY_TIMEOUT + 120))
   python3 "$HERE/workload.py" --base "$GO_BASE" --cacert "$CA_FILE" \
     --scenario s8-verify --key-prefix "$TRIAL_ID-$name" \
     --s8-generation-id "$gid" --s8-conversation-id "$conv" \
+    $verify_expect \
     --s8-recovery-timeout "$S8_RECOVERY_TIMEOUT" --sse-timeout 30 \
     > "$RUN_DIR/$name.verify.json" 2> "$RUN_DIR/$name.verify.err" &
   S8_VERIFY_PID=$!
@@ -1349,48 +1493,69 @@ PY
     die "s8 verify failed (rc=$verify_rc)"
   fi
 
-  echo "== probe-s8: new-epoch provider accounting (exactly the health request) =="
+  echo "== probe-s8: new-epoch provider accounting (recovery + health requests) =="
   local newfinal="$RUN_DIR/$name.provider-newepoch-final.json"
   provider_stats_exec "$newfinal" \
     || die "s8: provider stats unreachable (new epoch)"
-  python3 - "$newfinal" <<'PY' \
-    || die "s8: new-epoch provider accounting wrong (want 1 stream / 1 completed / 0 aborted / 0 active)"
+  python3 - "$newfinal" "$ba" <<'PY' \
+    || die "s8: new-epoch provider accounting wrong (A: 2 stream / 2 completed; B/C: 1 stream / 1 completed; both 0 aborted / 0 active)"
 import json, sys
 p = json.load(open(sys.argv[1]))
-ok = (int(p["streamRequests"]) == 1
-      and int(p["completedStreamRequests"]) == 1
+want = 2 if sys.argv[2] == "1" else 1
+ok = (int(p["streamRequests"]) == want
+      and int(p["completedStreamRequests"]) == want
       and int(p["abortedStreamRequests"]) == 0
       and int(p["activeStreamRequests"]) == 0)
 raise SystemExit(0 if ok else 1)
 PY
 
-  if provider_config_put "{\"deltaMs\":$S8_PENDING_RESTORE_DELTA}" \
-      "$RUN_DIR/$name.config-restore.json"; then
-    S8_PENDING_RESTORE_DELTA=""
-  else
-    die "s8: provider deltaMs restore failed (one bounded EXIT retry follows)"
+  if [ -n "${S8_PENDING_RESTORE_DELTA:-}" ]; then
+    if provider_config_put "{\"deltaMs\":$S8_PENDING_RESTORE_DELTA}" \
+        "$RUN_DIR/$name.config-restore.json"; then
+      S8_PENDING_RESTORE_DELTA=""
+    else
+      die "s8: provider deltaMs restore failed (one bounded EXIT retry follows)"
+    fi
   fi
 
   local covered_text not_covered_csv attempt_status error_code helper_file=""
+  local phases_text recovery_text delta_set
   if [ "$bf" = "1" ]; then
     covered_text="runtime worker killed after the provider completed the stream and the SUCCEEDED attempt outcome was committed independently, while the worker's finalize transaction waited on the generation row lock (docker kill, exit 137)"
     not_covered_csv="claim_before_intent,mid_stream_attempt_created"
     attempt_status="SUCCEEDED"
     error_code="CANDIDATE_LOST_AFTER_ATTEMPT"
     helper_file="$name.finalize-crash.json"
+    phases_text="sequential two-phase client (s8-prepare returns after the first live chat.delta; s8-verify polls only the original generation id), no long-lived controller"
+    recovery_text="default claim lease + recovery tick only; run.sh waits via a read-only DB poll and fixes the recovered DB state plus a zero-request provider sample BEFORE the health control; verify re-checks the public view; no timeout, lease or DB-clock tampering, no DB writes"
+    delta_set="$S8_DELTA_MS"
+  elif [ "$ba" = "1" ]; then
+    covered_text="runtime worker killed after the work item was CLAIMED but before any attempt intent row existed, while the worker's prepare INSERT waited on the control session's attempt_intent SHARE lock (docker kill, exit 137); the default lease recovery requeued with no intent (REQUEUE_NO_INTENT) and the original generation completed through a fresh successful attempt"
+    not_covered_csv="mid_stream_attempt_created,SUCCEEDED_before_finalize"
+    attempt_status="SUCCEEDED"
+    error_code=""
+    helper_file="$name.attempt-crash.json"
+    phases_text="single helper process (s8_finalize_crash.py --crash-point before-attempt) prepares the public session, holds the attempt_intent SHARE lock and sends exactly one generation POST; s8-verify then polls only the original generation id"
+    recovery_text="default claim lease + recovery tick only; run.sh waits via a read-only DB poll (the REQUEUE_NO_INTENT recovery replays the turn by design) and fixes the recovered DB state plus the settled one-recovery-request provider sample BEFORE the health control; verify re-checks the public view; no timeout, lease or DB-clock tampering, no DB writes"
+    delta_set="none"
   else
     covered_text="runtime worker killed mid-stream while the unique attempt is CREATED (docker kill, exit 137)"
     not_covered_csv="claim_before_intent,SUCCEEDED_before_finalize"
     attempt_status="ABANDONED_LATE"
     error_code="PROVIDER_OUTCOME_UNKNOWN"
+    phases_text="sequential two-phase client (s8-prepare returns after the first live chat.delta; s8-verify polls only the original generation id), no long-lived controller"
+    recovery_text="default claim lease + recovery tick only; run.sh waits via a read-only DB poll and fixes the recovered DB state plus a zero-request provider sample BEFORE the health control; verify re-checks the public view; no timeout, lease or DB-clock tampering, no DB writes"
+    delta_set="$S8_DELTA_MS"
   fi
-  python3 - "$RUN_DIR" "$name" "$gid" "$S8_DELTA_MS" "$baseline_delta" \
+  python3 - "$RUN_DIR" "$name" "$gid" "$delta_set" "$baseline_delta" \
     "$S8_RECOVERY_TIMEOUT" "$covered_text" "$not_covered_csv" \
     "$attempt_status" "$error_code" "$helper_file" \
+    "$phases_text" "$recovery_text" \
     > "$RUN_DIR/$name.summary.json" <<'PY'
 import json, os, sys
 run_dir, name, gid, delta_ms, baseline_delta, recovery_s, covered, \
-    not_covered_csv, attempt_status, error_code, helper_file = sys.argv[1:12]
+    not_covered_csv, attempt_status, error_code, helper_file, \
+    phases, recovery = sys.argv[1:14]
 
 def load(fn):
     try:
@@ -1421,17 +1586,11 @@ summary = {
                 "capacity/perf conclusion and not any §19.2/G12 gate",
     },
     "method": {
-        "phases": "sequential two-phase client (s8-prepare returns after "
-                  "the first live chat.delta; s8-verify polls only the "
-                  "original generation id), no long-lived controller",
-        "recovery": "default claim lease + recovery tick only; run.sh waits "
-                    "via a read-only DB poll and fixes the recovered DB "
-                    "state plus a zero-request provider sample BEFORE the "
-                    "health control; verify re-checks the public view; no "
-                    "timeout, lease or DB-clock tampering, no DB writes",
+        "phases": phases,
+        "recovery": recovery,
         "provider_epochs": "old/new epoch counters recorded separately, "
                            "never subtracted across the restart",
-        "delta_ms_set": int(delta_ms),
+        "delta_ms_set": None if delta_ms == "none" else int(delta_ms),
         "delta_ms_restored_to": int(baseline_delta),
         "recovery_budget_s": float(recovery_s),
     },
@@ -1472,6 +1631,11 @@ if [ "$PROBE_S8" = "1" ]; then
     run_probe_s8 probe-s8-before-finalize
     echo "== G12 probe-s8-before-finalize PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
     cat "$RUN_DIR/probe-s8-before-finalize.summary.json"
+  elif [ "$PROBE_S8_BEFORE_ATTEMPT" = "1" ]; then
+    echo "== probe-s8-before-attempt functional chain: claim-before-intent crash recovery =="
+    run_probe_s8 probe-s8-before-attempt
+    echo "== G12 probe-s8-before-attempt PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+    cat "$RUN_DIR/probe-s8-before-attempt.summary.json"
   else
     echo "== probe-s8 functional chain: worker-crash mid-stream recovery =="
     run_probe_s8 probe-s8
