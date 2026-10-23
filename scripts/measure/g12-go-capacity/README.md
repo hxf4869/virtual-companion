@@ -134,10 +134,18 @@ by a BOUNDED real-state wait (fresh scrapes re-read until all three are
 genuinely zero — the fixture's own sleeps make the settle reachable but
 delayed, so neither a single post-workload scrape nor a fixed sleep is
 accepted as proof, and the scenario window ends only after the settle is
-confirmed). The
-slow-subscriber sub-scenario of S6 remains explicitly open: the existing
-realtime tests wire a slow reader straight to the hub and do not prove an
-HTTP slow reader.
+confirmed).
+
+The slow-subscriber sub-scenario of S6 remains open for the deployed chain
+(Caddy + TLS + the real companiond process). The existing
+`backend/internal/httpapi/realtime_test.go` regression
+`TestRealHTTPSlowSubscriberIsolatedAndExits` already covers real TCP
+backpressure through the Go handler, with controlled socket buffers and a
+test write timeout: slow-handler exit, healthy-reader isolation, catch-up
+and snapshot paths, and subscriber cleanup. This is separate from the
+public deployment path at its production defaults; `--probe-s6` still
+covers only cancel and disconnect/reconnect. A client that merely stops
+reading is not proof that server-side slow-subscriber protection fired.
 
 Scenario 9 uses two isolated synthetic accounts and the public password,
 authenticator setup/confirm, and session APIs. It overlaps a trusted-device

@@ -869,5 +869,20 @@ DB/runtime/minio/caddy 的 CPU 状态均为 VALID，仅证明采集接线可用�
 cleanup leftovers={}，私有合成配置已删除。核清遵循成功清理会删除临时
 构建收据的现有生命周期，原外层观察错误记录保持原样。
 
-G12 整体仍未完成：S6 HTTP 慢读者、S8、完整 profile 三次与长窗口、
+G12 整体仍未完成：S6 Caddy/TLS 部署链慢读者、S8、完整 profile 三次与长窗口、
 性能口径及 Owner 门槛等未由此关闭；真实 provider、Beta 和真机验收保持待办。
+
+
+## 15. 2026-10-23 补充：S6 慢读者证据边界校正（VC-R133）
+
+Go 层已有 `TestRealHTTPSlowSubscriberIsolatedAndExits`：真实 TCP 与
+内核背压、完整 HTTP handler、可控测试缓冲和写超时，覆盖慢连接退出、
+正常订阅者不受影响、catch-up/snapshot 和退订。旧文档“只直连 hub、未证明
+HTTP 慢读者”的当前口径过时，README 与 runner 输出说明已校正。
+
+缺口保持为 Caddy + TLS + 真实 companiond 的公开部署链实测，既有
+`--probe-s6` 仍只覆盖取消与断线重连。本次未改变生产逻辑或测试参数，
+未重跑实栈、未新增测试矩阵。4MiB 假回复方案未实施：默认 provider wire
+上限 256KiB，且引擎在每个 delta 进入 hub 前执行输出预算。文本大小本身
+不能推出 SSE 帧数和全部编码字节上限，因此也不据此断言部署链触发绝不可能；
+当前仅确认尚无验证过的触发方法，G12 与 Owner 验收保持未关闭。

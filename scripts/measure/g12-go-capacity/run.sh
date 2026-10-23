@@ -49,8 +49,8 @@
 #
 # --probe-s6 (VC-R62) is the same FUNCTIONAL_ONLY bound for the two §19.1
 # S6 sub-scenarios only (cancel / disconnect-reconnect; the slow-subscriber
-# sub-scenario stays explicitly open — the existing realtime tests wire a
-# slow reader straight to the hub and do NOT prove an HTTP slow reader):
+# sub-scenario stays open for Caddy/TLS/companiond — the Go handler already
+# has a real-TCP backpressure regression with controlled test buffers):
 # (A) one generation where the subscriber closes the SSE connection right
 # after a received live delta — the disconnect must neither cancel the
 # generation nor re-POST it, the snapshot-only re-subscription still ends
@@ -1847,8 +1847,9 @@ summary = {
         "stays open while cancel fires, proving the chat.cancelled "
         "broadcast and server-side connection close on the ORIGINAL "
         "stream. The slow-subscriber sub-scenario of §19.1 S6 remains "
-        "open (existing realtime tests wire a slow reader straight to the "
-        "hub and do not prove an HTTP slow reader)"),
+        "open for the Caddy/TLS/companiond deployment chain (the Go "
+        "handler already has real-TCP backpressure regression coverage "
+        "with controlled test buffers and a test write timeout)"),
     "method": {
         "provider_delta_ms": delta_ms,
         "provider_delta_restored_to_ms": baseline_delta,
