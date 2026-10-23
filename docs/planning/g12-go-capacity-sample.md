@@ -939,3 +939,76 @@ SUCCEEDED-before-finalize 两个崩溃点仍在探针之外。默认 profile 不
 S6 Caddy/TLS 部署链慢读者、完整 profile 三次长窗采样与性能口径、Owner
 gate、真机、真实 provider 与 Beta 前置均未由此关闭。FUNCTIONAL_ONLY，
 无容量/性能结论，不满足 §19.2 门槛。
+
+
+## 17. 2026-10-23 补充：S8 成功落库后崩溃恢复功能探针（VC-R145～R147）
+
+### 交付
+
+既有 G12 harness 增加 `--probe-s8-before-finalize`：§19.1 S8 第二崩溃点
+（SUCCEEDED-before-finalize，下称 C 点）的 standalone FUNCTIONAL_ONLY
+入口，复用 S8 生命周期并在 collectors/sampler/idle/warm-up 启动前分支，
+默认 profile 不含 S8。方法沿用两段式客户端（s8-prepare 在首个 live
+chat.delta 后返回，s8-verify 只轮询原 generation id），无长驻控制器；
+恢复只用生产默认参数（claim 租约 270s、恢复 tick 5s，未改短），run.sh
+经只读 DB 轮询等待恢复，先固定恢复后 DB 状态与零请求 provider 采样、
+再做 health 控制；provider deltaMs 经既有有界 `PUT /g12/config` 临时
+加宽（默认 3000ms）并在所有退出路径恢复 50。崩溃由独立 helper
+`s8_finalize_crash.py` 完成：控制会话持有 generation 行锁把 worker 钉在
+CREATED 阶段，等 finalize 事务在行锁上排队、唯一 attempt outcome
+SUCCEEDED 独立提交后 `docker kill` runtime。新增 helper 单测
+`test_s8_finalize_crash.py` 与 run.sh 真实清理集成 `RunShStubTest`；
+只扩展 runner、helper、单测与 README，未修改 Go 服务、SQL、公开契约、
+生产参数或依赖。
+
+### 实测（FUNCTIONAL_ONLY，单次完整运行）
+
+真实 OrbStack/TLS/PostgreSQL 探针（trial vcr146-mvkrh1pa，HTTPS 18459）
+退出码 **0**、耗时 **344.59s**。崩溃门实测：控制行锁持有期间 generation
+保持 IN_PROGRESS、assistant NULL、job CLAIMED 且租约在效（attempts 初读
+CREATED）；观察窗内唯一 attempt 变为 SUCCEEDED（outcome 首读年龄
+0.047s），同一 finalize worker（PID 109，query_start 不变）以
+Lock/transactionid 阻塞在控制 backend（PID 146）上，provider 旧 epoch
+stream 1/completed 1/abort 0/active 0/chunks 8，即流已完成且未被中止。
+身份核对在末次 SQL 前：以 max(query/xact/outcome age) 加 monotonic 往返
+计时、取首/末读较早者截止，3.5s 保守窗且默认 DB 语句超时 5s 不变；本次
+kill 发出/返回时 outcome 年龄上界分别为 0.2138s/0.4543s，均在窗内，且
+kill 返回先于控制锁释放（lock→gate 23.81s、hit→kill 0.40s）；kill 后
+runtime exited 137，2 条真实 psql 子进程 reap exit 0，控制 backend 已
+消失。
+
+显式重启同 CID 后 runtime/provider 镜像摘要不变、新 StartedAt/PID，真实
+/proc/1/ns/net 由 net:[4026533613] 变为 net:[4026533713] 且 runtime 与
+provider 重新一致。恢复收敛：attempt 仍恰 1 个且 SUCCEEDED（不重放、不
+新增），generation FAILED_FINAL 且 assistant NULL，work_item FAILED/
+CANDIDATE_LOST_AFTER_ATTEMPT，无 Pending/Claimed 残留。公开视图：原 gid
+FAILED_FINAL（fault external-failed、事后 SSE chat.failed、assistant 0），
+且 health 对照请求之后仍保持 FAILED_FINAL；同会话独立健康对照消息
+chat.completed、自身 snapshot COMPLETED、assistant 恰 1。provider epoch
+不跨重启差分：旧 epoch 终态 stream 1/completed 1/abort 0/active 0；新
+epoch 初始及 health 前计数全 0，health 后 stream 1/completed 1/abort 0/
+active 0、总请求 2（含 1 次非流式调用，不写作总请求 1）。
+
+### 验证与清理核清
+
+Root 最终本地验证（修复后候选）：helper 单测 **17** 项 PASS（真实本机
+Popen 管道/selector/os.read/reap；覆盖身份读取慢、kill 晚到、max 3 年龄
+及首读 deadline 不被重置）；run.sh 清理集成 RunShStubTest **13** 项 PASS
+（真实 shell 直系 helper 合作退出 6s 及 grandchild 回收，TERM 宽限
+16s）；`bash -n`、3 个 Python 源码与全部 **42** 个 run.sh Python
+heredoc 编译（含续行与尾部 `||` header）、`git diff --check` 均 PASS。
+首轮 helper 单测曾因假时钟在建模 I/O 处未推进失败 2 例，修复后全部
+通过；早期 54 项 resource stub 基线与 workload/collector/provider 未
+重跑，不把 17+13 或早期基线写成当前完整 55 例全跑。清理后按收据独立
+确认：本轮 8 容器/4 卷/1 网络/3 个构建镜像标签均不存在，
+cleanup_leftovers={}、private_files_remaining=[]、collectors 0（从未
+启动）、resource_absence=[]，5 个用户保护文件字节与测试运行代码输入/
+HEAD（3a3adb5a）均未变，protected_unchanged=true。
+
+### 维持开放
+
+本轮只关闭 C 点功能缺口：A 点 claim-before-intent 仍在探针之外（S8 第一
+崩溃点 attempt-CREATED 见 §16）；S6 Caddy/TLS 部署链慢读者、完整 profile
+三次长窗采样与性能口径、Owner gate、真机、真实 provider 与 Beta 前置均
+未由此关闭。FUNCTIONAL_ONLY，无容量/性能结论，不满足 §19.2 门槛；G12
+维持未完成、不冻结 Owner 门槛。

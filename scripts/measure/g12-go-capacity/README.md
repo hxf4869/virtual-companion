@@ -205,6 +205,49 @@ conclusion. This covers only the attempt-CREATED crash point — the
 claim-before-intent and SUCCEEDED-before-finalize crash points stay
 outside the probe.
 
+`--probe-s8-before-finalize` (VC-R145) proves the SECOND S8 crash point on
+the same bound: the runtime container is killed (docker kill, exit 137)
+only AFTER the provider has fully completed the stream and the SUCCEEDED
+attempt outcome has been committed independently, while the worker's
+finalize transaction is blocked on the generation row. The whole
+crash window lives in one helper process (`s8_finalize_crash.py`, launched
+and reaped by run.sh): it opens a control `compose exec -T db psql`
+session, locks THIS run's generation row FOR UPDATE while the unique
+attempt is still CREATED (the R144 preflight-proven shape), observes the
+real gates read-only — SUCCEEDED committed and fresh, generation
+IN_PROGRESS with no assistant, work item CLAIMED on an unexpired lease,
+exactly one companiond backend (`usename='vc_runtime_login' AND
+application_name='companiond'`) blocked in `go_finalize_generation` with
+`pg_blocking_pids` naming the control pid, fresh ages, and the SAME
+worker `query_start` across two consecutive reads (a changed one means
+the finalize tx timed out and retried) — plus the old-epoch provider
+fully settled (completed +1, streams +1, abort unchanged, active 0).
+The exact receipt CID (nonce label + running, never a name/label search)
+is re-verified BEFORE the last real SQL gate. Each first/last read uses
+`max(query_age, xact_age, outcome_age)` plus monotonic elapsed time from
+before that SQL request; the earlier of the two deadlines binds the
+3.5 s window, leaving margin below the unchanged 5 s transaction timeout.
+The kill is issued only with time remaining, its wait budget cannot exceed
+that remainder, and a late return is ABORTED rather than covered/PASS.
+Only a kill confirmed as `exited 137 0` within that bound is followed by
+ROLLBACK and reaping both psql children. Every failure releases and reaps:
+a failure before issuance killed nothing; after issuance the result may
+be unproven and cannot pass. The shell gives cooperative cleanup 16 s,
+covering both SQL sessions' bounded shutdown. The control session's own
+`SET LOCAL` idle timeout bounds only itself (DB tx 5 s, claim lease
+270 s and recovery tick untouched). Downstream, the shared restart/lease-wait machinery runs
+with C-point expectations: old epoch shows completion WITHOUT any abort,
+the recovered DB state reads attempt SUCCEEDED (still exactly one),
+generation FAILED_FINAL with no assistant, work item FAILED with
+`CANDIDATE_LOST_AFTER_ATTEMPT` and no requeue, the new-epoch provider
+stays at zero through recovery (no replay), and the same `s8-verify`
+re-checks the public failure view (`external-failed` bucket,
+`chat.failed`, zero assistant messages) before the one independent
+health-control generation must complete while the original STILL reads
+FAILED_FINAL. The deltaMs widen/pending-restore, receipt-based ownership
+and cleanup contracts are exactly the probe-s8 ones; the mid-stream and
+claim-before-intent crash points stay outside this probe.
+
 ```bash
 bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s6, s9, s5, s10, soak)
 bash scripts/measure/g12-go-capacity/run.sh --probe         # FUNCTIONAL_ONLY wiring proof (s4 branch)
@@ -212,9 +255,11 @@ bash scripts/measure/g12-go-capacity/run.sh --probe-s3      # FUNCTIONAL_ONLY wi
 bash scripts/measure/g12-go-capacity/run.sh --probe-s6      # FUNCTIONAL_ONLY wiring proof (s6 branch)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s9      # FUNCTIONAL_ONLY public auth/session concurrency
 bash scripts/measure/g12-go-capacity/run.sh --probe-s8      # FUNCTIONAL_ONLY worker-crash mid-stream recovery (VC-R140)
+bash scripts/measure/g12-go-capacity/run.sh --probe-s8-before-finalize  # FUNCTIONAL_ONLY SUCCEEDED-before-finalize crash recovery (VC-R145)
 python3 scripts/measure/g12-go-capacity/test_collector.py   # render/collect/aggregation units
 python3 scripts/measure/g12-go-capacity/test_resources.py   # resource-ownership units (stubbed docker)
 python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window/s6/s9 units
+python3 scripts/measure/g12-go-capacity/test_s8_finalize_crash.py  # before-finalize crash helper units (faked docker/psql)
 python3 scripts/measure/g12-go-capacity/test_fake_provider.py  # fixture abort/completion counters (node)
 ```
 
@@ -235,7 +280,10 @@ collection, and ownership cleanup; it runs no other scenario or full profile.
 `--probe-s8` runs only the S8 single-crash-point chain described above
 (collectors/sampler/idle/warm-up skipped before launch) with the same
 preflight, TLS, seeding and ownership cleanup; it runs no other scenario
-and no full profile.
+and no full profile. `--probe-s8-before-finalize` runs only the second S8
+single-crash-point chain described above under the same bound (the same
+skips, preflight, TLS, seeding and ownership cleanup; `G12_PROBE_S8_*`
+knobs shared with `--probe-s8`).
 
 Optional env:
 
@@ -245,7 +293,7 @@ Optional env:
 | `G12_GENS_S10` / `G12_SSE_S10` | 16 / 4 | scenario 10 shape (SSE cap 8/gen) |
 | `G12_S3_HOLD_MS` / `G12_S3_QUIET_MS` | 8000 / 3000 | scenario 3 provider hold and quiet-window budget (probe-s3 uses `G12_PROBE_S3_HOLD_MS` / `G12_PROBE_S3_QUIET_MS`, default 6000 / 2000) |
 | `G12_S6_DELTA_MS` | 400 | scenario 6 widened provider deltaMs so a stream is still in flight after the first live delta (probe-s6 uses `G12_PROBE_S6_DELTA_MS`, default 400; restored to the original value on every exit path) |
-| `G12_PROBE_S8_DELTA_MS` / `G12_PROBE_S8_RECOVERY_TIMEOUT` | 3000 / 360 | probe-s8 widened provider deltaMs (default 8 chunks × 3 s keeps the stream — and its CREATED attempt — in flight well past the serial pre-kill gates; set via the existing bounded `PUT /g12/config` deltaMs knob, restored to the original value on every exit path) and the verify phase's absolute recovery budget in seconds — sized for the DEFAULT claim lease (270 s) plus the recovery tick; never a shortened lease or DB clock |
+| `G12_PROBE_S8_DELTA_MS` / `G12_PROBE_S8_RECOVERY_TIMEOUT` | 3000 / 360 | probe-s8 / probe-s8-before-finalize widened provider deltaMs (default 8 chunks × 3 s keeps the stream — and its CREATED attempt — in flight well past the serial kill-window gates, including the helper's acquire-while-CREATED lock; set via the existing bounded `PUT /g12/config` deltaMs knob, restored to the original value on every exit path) and the verify phase's absolute recovery budget in seconds — sized for the DEFAULT claim lease (270 s) plus the recovery tick; never a shortened lease or DB clock |
 | `G12_S9_BUDGET_SECONDS` | 60 | scenario 9 shared monotonic deadline; each request uses the remaining budget, and late responses fail |
 | `G12_CONCURRENCY` / `G12_OUTSTANDING` | 16 / 16 | §19.5 overrides (config caps at 16) |
 | `G12_SOAK_TURNS` / `G12_SOAK_BATCH` | 100 / 10 | recovery workload and batch size |
@@ -258,8 +306,9 @@ Optional env:
 
 Output: `trial.summary.json` (probe: `probe.summary.json`; probe-s3:
 `probe-s3.summary.json`; probe-s6: `probe-s6.summary.json`; probe-s9:
-`probe-s9.summary.json`; probe-s8: `probe-s8.summary.json` — all marked
-`FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's
+`probe-s9.summary.json`; probe-s8: `probe-s8.summary.json`;
+probe-s8-before-finalize: `probe-s8-before-finalize.summary.json` — all
+marked `FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's
 summary carries the first-delta block with its baselines,
 provider-known-delay subtraction, coverage evidence and definition; s3's
 summary carries the quiet-window record: deduplicated observer samples,

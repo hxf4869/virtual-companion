@@ -928,6 +928,41 @@ S6 部署链慢读者、完整三次长窗容量与 Owner/Beta/真机/真实 pro
 均未关闭。详见 `docs/planning/g12-go-capacity-sample.md` §16，未修改
 后端、契约、生产参数或依赖。
 
+2026-10-23 G12 S8 成功落库后崩溃恢复探针（VC-R145～R147）：既有 runner
+接入 `--probe-s8-before-finalize`（FUNCTIONAL_ONLY 独立入口，默认 profile
+不含 S8，复用 S8 生命周期并在 collector 启动前分支），由独立 crash helper
+控制 generation 行锁把 worker 钉在 CREATED 阶段，实测观察到唯一 attempt
+SUCCEEDED 独立提交、generation 仍 IN_PROGRESS 且 assistant NULL、job
+CLAIMED 租约在效、同一 finalize worker 事务被控制 PID 行锁阻塞，provider
+旧 epoch 已完成 1 流且 abort 0，此时 docker kill runtime（exit 137）。
+身份核对在末次 SQL 前，以 max(query/xact/outcome age) 加 monotonic 往返
+计时并取首/末读较早者截止，3.5s 保守窗且默认 DB 语句超时 5s 不变；本次
+kill 返回时 outcome 年龄上界 0.454307s、未越窗，且先于控制锁释放完成；
+2 条真实 psql 子进程 reap exit 0，控制 backend 已消失。恢复后 attempt 仍
+恰 1 个且 SUCCEEDED，generation FAILED_FINAL 无 assistant，work_item
+FAILED/CANDIDATE_LOST_AFTER_ATTEMPT 且无 Pending/Claimed；公开视图
+original=FAILED_FINAL（fault external-failed、事后 SSE chat.failed、
+assistant 0），同会话独立健康对照 chat.completed/COMPLETED/assistant 1，
+且健康请求后 original 仍 FAILED_FINAL。旧 epoch stream 1/completed 1/
+abort 0/active 0；同 CID runtime/provider 重启，真实 /proc/1/ns/net 由
+net:[4026533613] 变为 net:[4026533713] 并重新一致，新 epoch 初始及
+health 前计数全 0，health 后 stream 1/completed 1/abort 0/active 0、
+总请求 2（含非流式调用，不写作总请求 1）；deltaMs 恢复 50。R146 真实
+OrbStack/TLS/PG 探针退出码 0、344.59s；清理后按收据独立确认本轮 8 容器/
+4 卷/1 网络/3 构建镜像标签全无，cleanup_leftovers={}、
+private_files_remaining=[]、collector 从未启动，5 个用户保护文件字节与
+测试运行代码输入/HEAD 均未变。最终本地验证：helper 单测 17 项 PASS
+（真实本机 Popen 管道/selector/os.read/reap，覆盖身份慢、kill 晚、
+max 3 年龄及首读 deadline 不被重置）、run.sh 清理集成 RunShStubTest
+13 项 PASS（真实 shell 直系 helper 合作退出 6s 及 grandchild 回收，
+TERM 宽限 16s）、`bash -n`、3 个 Python 源码与全部 42 个 run.sh Python
+heredoc 编译、`git diff --check` 均 PASS；未重跑无关的 workload/
+collector/provider 或全量 check，亦不把早期 54 项 resource 基线或本轮
+17+13 写成当前完整 55 例全跑。本轮只关闭 C 点（SUCCEEDED-before-finalize）
+功能缺口；A 点 claim-before-intent、S6 部署链 slow-reader、完整长窗三次
+容量与 Owner/Beta/真机/真实 provider 仍开放，G12 不勾选、不冻结 Owner
+门槛。详见 `docs/planning/g12-go-capacity-sample.md` §17。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

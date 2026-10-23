@@ -788,7 +788,8 @@ class RunShStubTest(unittest.TestCase):
 
     def drive_cleanup(self, tmp, docker_state, collectors_doc=None,
                       capture_doc=None, built_doc=None, skip_collectors=False,
-                      launch_attempted=False, env_extra=None):
+                      launch_attempted=False, env_extra=None,
+                      setup_lines=None):
         """Source run.sh for real and invoke its cleanup() with the stub."""
         state_path = tmp / "state.json"
         state_path.write_text(json.dumps(docker_state))
@@ -824,6 +825,8 @@ class RunShStubTest(unittest.TestCase):
             # run.sh touches this marker right before the collector launch
             lines.append("touch %s"
                          % shlex.quote(str(out / ".collectors-launched")))
+        if setup_lines:
+            lines.extend(setup_lines)
         lines += ["true", "cleanup"]
         driver = tmp / "drive.sh"
         driver.write_text("\n".join(lines) + "\n")
@@ -898,6 +901,93 @@ class RunShStubTest(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 self.fail("cleanup left the recorded S3 workload pid alive")
             self.assertLess(rc, 0)  # terminated by signal, not exited on its own
+
+    def test_cleanup_reaps_leftover_s8_finalize_crash_helper(self):
+        # VC-R145: same contract for the probe-s8-before-finalize helper's
+        # recorded PID (S8_HELPER_PID): the EXIT path must TERM/KILL/reap
+        # the real python child. Its own SIGTERM handler releases the
+        # control lock and reaps its psql children; this shell-level reap
+        # guarantees the helper itself never outlives the run.
+        with tempfile.TemporaryDirectory() as tmp:
+            leftover = subprocess.Popen([sys.executable, "-c",
+                                         "import time; time.sleep(60)"])
+            state = fresh_state()
+            state["containers"]["cidobs0000001"] = {
+                "name": "vcg12c-stubtrial-observer", "labels": {}}
+            proc, out = self.drive_cleanup(
+                Path(tmp), state,
+                env_extra={"S8_HELPER_PID": str(leftover.pid)})
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            try:
+                rc = leftover.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.fail("cleanup left the recorded S8 helper pid alive")
+            self.assertLess(rc, 0)  # terminated by signal, not exited on its own
+
+    def test_cleanup_waits_for_cooperative_s8_helper_and_child_reap(self):
+        # A real direct child of the cleanup shell needs six seconds to
+        # roll back/reap. The old four-second grace killed it too early.
+        with tempfile.TemporaryDirectory() as temp:
+            tmp = Path(temp)
+            helper = tmp / "cooperative_helper.py"
+            ready, done = tmp / "ready.json", tmp / "done.json"
+            helper.write_text(r"""
+import json, os, signal, subprocess, sys, time
+from pathlib import Path
+ready, done = map(Path, sys.argv[1:])
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def stop(signum, frame):
+    time.sleep(6)
+    child.terminate()
+    code = child.wait(timeout=3)
+    done.write_text(json.dumps({"child_reaped": True, "child_exit": code}))
+    raise SystemExit(0)
+signal.signal(signal.SIGTERM, stop)
+ready.write_text(json.dumps({"helper_pid": os.getpid(), "child_pid": child.pid}))
+try:
+    while True:
+        signal.pause()
+finally:
+    if child.poll() is None:
+        child.kill()
+    child.wait(timeout=3)
+""")
+            setup = [
+                "%s %s %s %s &" % tuple(shlex.quote(str(p)) for p in
+                                          (sys.executable, helper, ready, done)),
+                "S8_HELPER_PID=$!",
+                "for _ in $(seq 1 250); do [ -s %s ] && break; sleep 0.02; done"
+                % shlex.quote(str(ready)),
+                '[ -s %s ] || { kill -KILL "$S8_HELPER_PID" 2>/dev/null || true; '
+                'wait "$S8_HELPER_PID" 2>/dev/null || true; exit 9; }'
+                % shlex.quote(str(ready)),
+            ]
+            state = fresh_state()
+            state["containers"]["cidobs0000001"] = {
+                "name": "vcg12c-stubtrial-observer", "labels": {}}
+            identities = {}
+            try:
+                proc, _ = self.drive_cleanup(tmp, state, setup_lines=setup)
+                if ready.exists():
+                    identities = json.loads(ready.read_text())
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertTrue(done.exists(), "helper was killed before child reap")
+                result = json.loads(done.read_text())
+                self.assertTrue(result["child_reaped"])
+                self.assertLess(result["child_exit"], 0)
+                self.assertEqual(set(identities), {"helper_pid", "child_pid"})
+                for pid in identities.values():
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(pid, 0)
+            finally:
+                if not identities and ready.exists():
+                    identities = json.loads(ready.read_text())
+                for pid in identities.values():
+                    try:
+                        os.kill(pid, 9)
+                    except ProcessLookupError:
+                        pass
 
     BASELINE_PROVIDER = (
         '{"requests":0,"streamRequests":0,"activeStreamRequests":0,'

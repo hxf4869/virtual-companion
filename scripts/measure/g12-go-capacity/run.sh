@@ -130,6 +130,55 @@
 # cross-restart CPU/RSS analysis, no performance conclusion and no §19.2
 # gate) and the summary scopes itself to the single covered crash point.
 #
+# --probe-s8-before-finalize (VC-R145) proves the SECOND S8 crash point on
+# the same FUNCTIONAL_ONLY bound: the runtime container is killed (docker
+# kill → exit 137) AFTER the provider has fully completed the stream and
+# the SUCCEEDED attempt outcome has been committed independently, while
+# the worker's finalize transaction is blocked on the generation row —
+# never the claim-before-intent or mid-stream/attempt-CREATED points, and
+# no full-profile scenario. The whole C-point window lives in ONE helper
+# process (s8_finalize_crash.py, run as a direct child): it opens one
+# control `compose exec -T db psql` session, BEGINs and locks THIS run's
+# generation row FOR UPDATE while the unique attempt is still CREATED
+# (the R144-preflight-proven acquire-early shape), then on a second
+# read-only session compactly observes the real crash gates — SUCCEEDED
+# committed and fresh, generation IN_PROGRESS with no assistant, work
+# item CLAIMED on an unexpired lease, exactly ONE companiond backend
+# (usename='vc_runtime_login' AND application_name='companiond') blocked
+# in go_finalize_generation with pg_blocking_pids naming the control pid,
+# fresh ages and the SAME query_start across two consecutive reads (a
+# changed one means the finalize tx timed out and retried) — plus the
+# old-epoch provider fully settled (completed +1, streams +1, abort
+# unchanged, active 0). The exact receipt CID is re-verified (nonce label
+# + running) BEFORE the last real SQL gate; the kill is then ISSUED only
+# while a conservative upper bound from max(query_age, xact_age,
+# outcome_age), including each SQL round-trip, is within 3.5 s. The
+# earlier first/last-read deadline binds the untouched ~5 s DEFAULT
+# transaction window, with a docker
+# wait budget capped by the remaining window; if that bound is already
+# exceeded when the kill returns, the helper reports ABORTED (kill
+# issued, crash point NOT proven) and the probe fails — never a PASS.
+# Only a kill confirmed `exited 137 0` inside the bound is followed by
+# ROLLBACK and the reaping of both psql children. Failure copy is
+# explicit about the two cases: a failure BEFORE the kill was issued
+# killed nothing; a failure AFTER it was issued could not prove the
+# window. The control session's own SET LOCAL idle timeout bounds only
+# itself (DB tx 5 s, claim lease 270 s and recovery tick untouched).
+# After the kill the shared restart/lease-wait/recovery machinery runs
+# with C-point expectations: the old epoch shows completion WITHOUT any
+# abort, the recovered DB state reads attempt SUCCEEDED (still exactly
+# one), generation FAILED_FINAL with no assistant, work item FAILED with
+# CANDIDATE_LOST_AFTER_ATTEMPT and no requeue, the new-epoch provider
+# stays at zero through recovery (no replay), and s8-verify re-checks
+# the public failure view (external-failed bucket, chat.failed, zero
+# assistant messages) before ONE independent health-control generation
+# must complete while the original STILL reads FAILED_FINAL. The deltaMs
+# widen/pending-restore, receipt-based ownership and cleanup contracts
+# are exactly the probe-s8 ones; collectors, sampler, idle windows and
+# warm-up are skipped BEFORE any helper would be created and the summary
+# scopes itself to the single covered crash point (the mid-stream point
+# stays uncovered here).
+#
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
 # project, images, output directory, and data. Ownership is receipt-based
@@ -140,7 +189,7 @@
 # create action provably produced, and a failed cleanup keeps the records
 # for recovery instead of discarding them.
 #
-# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8]
+# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8 | --probe-s8-before-finalize]
 set -euo pipefail
 export DOCKER_CONTEXT=orbstack
 
@@ -149,14 +198,16 @@ PROBE_S3=0
 PROBE_S6=0
 PROBE_S9=0
 PROBE_S8=0
+PROBE_S8_BEFORE_FINALIZE=0
 case "${1:-}" in
   --probe) PROBE=1 ;;
   --probe-s3) PROBE=1; PROBE_S3=1 ;;
   --probe-s6) PROBE=1; PROBE_S6=1 ;;
   --probe-s9) PROBE=1; PROBE_S9=1 ;;
   --probe-s8) PROBE=1; PROBE_S8=1 ;;
+  --probe-s8-before-finalize) PROBE=1; PROBE_S8=1; PROBE_S8_BEFORE_FINALIZE=1 ;;
   "") ;;
-  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8 | --probe-s8-before-finalize]" >&2; exit 2 ;;
 esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -242,19 +293,22 @@ if [ "$PROBE" = "1" ]; then
   S3_HOLD_MS="${G12_PROBE_S3_HOLD_MS:-6000}"
   S3_QUIET_MS="${G12_PROBE_S3_QUIET_MS:-2000}"
   S6_DELTA_MS="${G12_PROBE_S6_DELTA_MS:-400}"
-  # §19.1 scenario 8 (VC-R140, probe-s8 only): the widened deltaMs keeps
-  # the prepared stream in flight well past the serial pre-kill gates
-  # (default 8 chunks × 3 s ≈ 21 s of CREATED window after the first live
-  # delta); set via the existing bounded PUT /g12/config deltaMs knob — no
-  # new fixture knob, no product timeout change. The verify recovery
-  # budget waits out the DEFAULT claim lease (270 s) plus the recovery
-  # tick — never a shortened lease, timeout or DB clock.
+  # §19.1 scenario 8 (VC-R140/R145, probe-s8 modes): the widened deltaMs
+  # keeps the prepared stream in flight well past the serial kill-window
+  # gates (mid-stream: pre-kill assertions; before-finalize: the helper's
+  # acquire-while-CREATED lock — default 8 chunks × 3 s ≈ 21 s of CREATED
+  # window after the first live delta); set via the existing bounded
+  # PUT /g12/config deltaMs knob — no new fixture knob, no product timeout
+  # change. The verify recovery budget waits out the DEFAULT claim lease
+  # (270 s) plus the recovery tick — never a shortened lease, timeout or
+  # DB clock.
   S8_DELTA_MS="${G12_PROBE_S8_DELTA_MS:-3000}"
   S8_RECOVERY_TIMEOUT="${G12_PROBE_S8_RECOVERY_TIMEOUT:-360}"
 fi
 MODE=$( { [ "$PROBE_S3" = "1" ] && echo PROBE_S3; } \
        || { [ "$PROBE_S6" = "1" ] && echo PROBE_S6; } \
        || { [ "$PROBE_S9" = "1" ] && echo PROBE_S9; } \
+       || { [ "$PROBE_S8_BEFORE_FINALIZE" = "1" ] && echo PROBE_S8_BEFORE_FINALIZE; } \
        || { [ "$PROBE_S8" = "1" ] && echo PROBE_S8; } \
        || { [ "$PROBE" = "1" ] && echo PROBE || echo PROFILE; })
 
@@ -313,6 +367,25 @@ cleanup() {
     done
     kill -KILL "$S3_WORKLOAD_PID" 2>/dev/null || true
     wait "$S3_WORKLOAD_PID" 2>/dev/null || true
+  fi
+  # The probe-s8-before-finalize crash helper is also a directly launched
+  # python child (recorded PID = the python process itself): TERM →
+  # bounded wait → KILL → reap on every exit path. Its SIGTERM handler
+  # releases the control lock and reaps its two psql children, and that
+  # cooperative shutdown is itself bounded (SQLSession.close worst case
+  # 3 + 2 + 2 s per session, two sessions = 14 s), so the TERM grace here
+  # is 16 s (80 × 0.2) — never KILL it while its finally is still inside
+  # that bound. Past TERM (KILLed), its psql stdin pipes close, the
+  # backends disconnect and the row lock rolls back on its own — nothing
+  # survives this shell either way.
+  if [ -n "${S8_HELPER_PID:-}" ]; then
+    kill -TERM "$S8_HELPER_PID" 2>/dev/null || true
+    for _ in $(seq 1 80); do
+      kill -0 "$S8_HELPER_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "$S8_HELPER_PID" 2>/dev/null || true
+    wait "$S8_HELPER_PID" 2>/dev/null || true
   fi
   # The probe-s8 verify workload is also a directly launched python child
   # (recorded PID = the python process itself): same TERM → bounded wait →
@@ -802,7 +875,13 @@ s8_assert_db() {
 }
 
 run_probe_s8() {
-  local name="probe-s8"
+  # One S8 FUNCTIONAL_ONLY chain for BOTH crash-point probes: name is the
+  # artifact prefix (probe-s8 / probe-s8-before-finalize); PROBE_S8_BEFORE_
+  # FINALIZE=1 selects the before-finalize crash point (VC-R145), where
+  # the pre-kill window is owned by the s8_finalize_crash.py helper.
+  local name="${1:?run_probe_s8 needs its artifact name}"
+  local bf=0
+  if [ "${PROBE_S8_BEFORE_FINALIZE:-0}" = "1" ]; then bf=1; fi
   local runtime_cid provider_cid
   # CIDs come from THIS run's creation receipt (never from names or the
   # compose project label), then re-verified against the daemon together
@@ -890,28 +969,109 @@ PY
   case "$gid" in '' | *[!0-9]*) die "s8: prepare produced no usable generation id ($gid)" ;; esac
   case "$conv" in '' | *[!0-9]*) die "s8: prepare produced no usable conversation id ($conv)" ;; esac
 
-  echo "== probe-s8: pre-kill assertions (DB read-only + old-epoch provider) =="
   local owner="$G12_ACCOUNT_ID"
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner")" \
-    "generation belongs to the seeded owner"
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='CLAIMED' AND wi.lease_expires_at > clock_timestamp()")" \
-    "work item CLAIMED with an unexpired lease"
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
-    "exactly one attempt intent"
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='CREATED'")" \
-    "attempt intent CREATED"
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND assistant_message_id IS NULL")" \
-    "no assistant commit for the generation"
-  local prekill="$RUN_DIR/$name.provider-prekill.json"
-  provider_stats_exec "$prekill" || die "s8: provider stats unreachable pre-kill"
-  python3 - "$prekill" "$baseline_streams" "$baseline_aborted" \
-    "$baseline_completed" "$baseline_chunks" <<'PY' \
-    || die "s8: provider state does not prove one live mid-stream request; refusing to kill"
+  if [ "$bf" = "1" ]; then
+    echo "== probe-s8-before-finalize: crash gates, kill, lock release (single helper) =="
+    # The WHOLE C-point window — control row lock, crash-gate observation,
+    # provider settle check, identity re-verification, the kill itself and
+    # the lock release — runs inside the helper; nothing is delegated back
+    # here while the ~5 s finalize tx window is open.
+    local helper_out="$RUN_DIR/$name.finalize-crash.json"
+    local helper_rc=0 n hdeadline
+    python3 "$HERE/s8_finalize_crash.py" \
+      --compose-envfile "$ENVFILE" --compose-file "$STACK_COMPOSE" \
+      --project "$PROJECT" --provider-port "$FAKE_PORT" \
+      --owner "$owner" --generation-id "$gid" \
+      --runtime-cid "$runtime_cid" --nonce "$NONCE" \
+      --baseline-streams "$baseline_streams" \
+      --baseline-aborted "$baseline_aborted" \
+      --baseline-completed "$baseline_completed" \
+      --gate-budget 60 --out "$helper_out" \
+      > "$RUN_DIR/$name.finalize-crash.stdout" \
+      2> "$RUN_DIR/$name.finalize-crash.err" &
+    S8_HELPER_PID=$!
+    hdeadline=$(( $(date +%s) + 120 ))
+    while kill -0 "$S8_HELPER_PID" 2>/dev/null && [ "$(date +%s)" -lt "$hdeadline" ]; do
+      sleep 1
+    done
+    if kill -0 "$S8_HELPER_PID" 2>/dev/null; then
+      # Same 16 s cooperative-shutdown grace as the EXIT cleanup below:
+      # the helper's SIGTERM path rolls back and reaps within its own
+      # 14 s bounded worst case.
+      kill -TERM "$S8_HELPER_PID" 2>/dev/null || true
+      for n in $(seq 1 80); do
+        kill -0 "$S8_HELPER_PID" 2>/dev/null || break
+        sleep 0.2
+      done
+      kill -KILL "$S8_HELPER_PID" 2>/dev/null || true
+      wait "$S8_HELPER_PID" 2>/dev/null || true
+      S8_HELPER_PID=""
+      die "s8-before-finalize: helper exceeded its bounded budget (120s); no kill can be proven"
+    fi
+    wait "$S8_HELPER_PID" || helper_rc=$?
+    S8_HELPER_PID=""
+    if [ "$helper_rc" -ne 0 ]; then
+      [ -s "$helper_out" ] && cat "$helper_out" >&2
+      local issued
+      issued="$(python3 - "$helper_out" <<'PY'
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get("kill_issued"))
+except Exception:
+    print("unknown")
+PY
+)" || issued="unknown"
+      case "$issued" in
+        True)
+          die "s8-before-finalize: the kill WAS issued but the crash window could not be proven (ABORTED, not covered, no PASS); see $RUN_DIR/$name.finalize-crash.err"
+          ;;
+        False)
+          die "s8-before-finalize: helper aborted BEFORE the kill was issued; nothing was killed; see $RUN_DIR/$name.finalize-crash.err"
+          ;;
+        *)
+          die "s8-before-finalize: helper outcome unknown (no kill proof); see $RUN_DIR/$name.finalize-crash.err"
+          ;;
+      esac
+    fi
+    # The helper proved status KILLED on the exact receipt CID with exit
+    # 137, the control lock released and both psql children reaped; keep
+    # the kill state line for the shared summary/identity evidence.
+    python3 - "$helper_out" "$runtime_cid" > "$RUN_DIR/s8-runtime-killed.txt" <<'PY' \
+      || die "s8-before-finalize: helper report does not prove the C-point kill"
+import json, sys
+r = json.load(open(sys.argv[1]))
+killed = r.get("killed") or {}
+ok = (r.get("status") == "KILLED"
+      and killed.get("cid") == sys.argv[2]
+      and killed.get("state") == "exited 137 0"
+      and r.get("control_backend_absent") is True
+      and all(c.get("reaped") for c in r.get("connections") or []))
+if ok:
+    print(killed["state"])
+raise SystemExit(0 if ok else 1)
+PY
+  else
+    echo "== probe-s8: pre-kill assertions (DB read-only + old-epoch provider) =="
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner")" \
+      "generation belongs to the seeded owner"
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='CLAIMED' AND wi.lease_expires_at > clock_timestamp()")" \
+      "work item CLAIMED with an unexpired lease"
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
+      "exactly one attempt intent"
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='CREATED'")" \
+      "attempt intent CREATED"
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND assistant_message_id IS NULL")" \
+      "no assistant commit for the generation"
+    local prekill="$RUN_DIR/$name.provider-prekill.json"
+    provider_stats_exec "$prekill" || die "s8: provider stats unreachable pre-kill"
+    python3 - "$prekill" "$baseline_streams" "$baseline_aborted" \
+      "$baseline_completed" "$baseline_chunks" <<'PY' \
+      || die "s8: provider state does not prove one live mid-stream request; refusing to kill"
 import json, sys
 p = json.load(open(sys.argv[1]))
 bs, ba, bc, bch = (int(x) for x in sys.argv[2:6])
@@ -922,37 +1082,50 @@ ok = (int(p["streamRequests"]) == bs + 1
       and int(p["contentChunkWrites"]) > bch)
 raise SystemExit(0 if ok else 1)
 PY
-  # Final identity gate: the exact container captured above must still be
-  # the running one — anything else fails closed and nothing is killed.
-  local atkill
-  atkill="$(s8_capture_identity "$runtime_cid")" \
-    || die "s8: runtime identity re-inspect failed"
-  [ "$atkill" = "$(cat "$RUN_DIR/s8-runtime-before.txt")" ] \
-    || die "s8: runtime identity changed between capture and the kill gate; refusing"
+    # Final identity gate: the exact container captured above must still be
+    # the running one — anything else fails closed and nothing is killed.
+    local atkill
+    atkill="$(s8_capture_identity "$runtime_cid")" \
+      || die "s8: runtime identity re-inspect failed"
+    [ "$atkill" = "$(cat "$RUN_DIR/s8-runtime-before.txt")" ] \
+      || die "s8: runtime identity changed between capture and the kill gate; refusing"
 
-  echo "== probe-s8: docker kill runtime ($runtime_cid) =="
-  docker kill "$runtime_cid" > /dev/null || die "s8: docker kill failed"
-  local killed
-  killed="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}} {{.State.Pid}}' "$runtime_cid")" \
-    || die "s8: post-kill inspect failed"
-  printf '%s\n' "$killed" > "$RUN_DIR/s8-runtime-killed.txt"
-  case "$killed" in
-    "exited 137 0") : ;;
-    *) die "s8: runtime post-kill state '$killed' (want 'exited 137 0')" ;;
-  esac
+    echo "== probe-s8: docker kill runtime ($runtime_cid) =="
+    docker kill "$runtime_cid" > /dev/null || die "s8: docker kill failed"
+    local killed
+    killed="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}} {{.State.Pid}}' "$runtime_cid")" \
+      || die "s8: post-kill inspect failed"
+    printf '%s\n' "$killed" > "$RUN_DIR/s8-runtime-killed.txt"
+    case "$killed" in
+      "exited 137 0") : ;;
+      *) die "s8: runtime post-kill state '$killed' (want 'exited 137 0')" ;;
+    esac
+  fi
 
-  echo "== probe-s8: old-epoch abort evidence (bounded wait) =="
+  echo "== probe-s8: old-epoch provider evidence after the crash (bounded wait) =="
+  # Mid-stream: the kill orphaned the in-flight request, so the old epoch
+  # must record abort +1 / completed +0 / active 0. Before-finalize: the
+  # provider had FULLY finished before the kill (helper gate), so the old
+  # epoch must show completion WITHOUT any abort — the runtime kill left
+  # it untouched.
   local oldefinal="$RUN_DIR/$name.provider-oldepoch-final.json"
   local settled=0 n
   for n in $(seq 1 30); do
     if provider_stats_exec "$oldefinal" \
-        && python3 - "$oldefinal" "$baseline_aborted" "$baseline_completed" <<'PY'
+        && python3 - "$oldefinal" "$baseline_aborted" "$baseline_completed" \
+           "$baseline_streams" "$bf" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1]))
-ba, bc = int(sys.argv[2]), int(sys.argv[3])
-ok = (int(p["abortedStreamRequests"]) == ba + 1
-      and int(p["completedStreamRequests"]) == bc
-      and int(p["activeStreamRequests"]) == 0)
+ba, bc, bs, bf = (int(x) for x in sys.argv[2:6])
+if bf:
+    ok = (int(p["abortedStreamRequests"]) == ba
+          and int(p["completedStreamRequests"]) == bc + 1
+          and int(p["streamRequests"]) == bs + 1
+          and int(p["activeStreamRequests"]) == 0)
+else:
+    ok = (int(p["abortedStreamRequests"]) == ba + 1
+          and int(p["completedStreamRequests"]) == bc
+          and int(p["activeStreamRequests"]) == 0)
 raise SystemExit(0 if ok else 1)
 PY
     then
@@ -962,7 +1135,7 @@ PY
     sleep 0.5
   done
   [ "$settled" = "1" ] \
-    || die "s8: old-epoch provider never recorded the orphaned abort within the bounded window"
+    || die "s8: old-epoch provider never recorded the expected post-crash state within the bounded window"
 
   echo "== probe-s8: restart runtime (same CID, new epoch) =="
   docker start "$runtime_cid" > /dev/null || die "s8: runtime start failed"
@@ -1091,15 +1264,29 @@ PY
   s8_assert_db 1 \
     "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
     "still exactly one attempt (no new attempt)"
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='ABANDONED_LATE'")" \
-    "attempt ABANDONED_LATE"
+  if [ "$bf" = "1" ]; then
+    # Before-finalize: the SUCCEEDED outcome committed independently
+    # BEFORE the crash and must survive it untouched.
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='SUCCEEDED'")" \
+      "attempt SUCCEEDED (committed independently before the crash)"
+  else
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='ABANDONED_LATE'")" \
+      "attempt ABANDONED_LATE"
+  fi
   s8_assert_db 1 \
     "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND status='FAILED_FINAL' AND assistant_message_id IS NULL")" \
     "generation FAILED_FINAL with no assistant message"
-  s8_assert_db 1 \
-    "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='PROVIDER_OUTCOME_UNKNOWN'")" \
-    "work item FAILED with PROVIDER_OUTCOME_UNKNOWN"
+  if [ "$bf" = "1" ]; then
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='CANDIDATE_LOST_AFTER_ATTEMPT'")" \
+      "work item FAILED with CANDIDATE_LOST_AFTER_ATTEMPT"
+  else
+    s8_assert_db 1 \
+      "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='PROVIDER_OUTCOME_UNKNOWN'")" \
+      "work item FAILED with PROVIDER_OUTCOME_UNKNOWN"
+  fi
   s8_assert_db 0 \
     "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status IN ('PENDING','CLAIMED')")" \
     "work item never requeued"
@@ -1184,10 +1371,26 @@ PY
     die "s8: provider deltaMs restore failed (one bounded EXIT retry follows)"
   fi
 
+  local covered_text not_covered_csv attempt_status error_code helper_file=""
+  if [ "$bf" = "1" ]; then
+    covered_text="runtime worker killed after the provider completed the stream and the SUCCEEDED attempt outcome was committed independently, while the worker's finalize transaction waited on the generation row lock (docker kill, exit 137)"
+    not_covered_csv="claim_before_intent,mid_stream_attempt_created"
+    attempt_status="SUCCEEDED"
+    error_code="CANDIDATE_LOST_AFTER_ATTEMPT"
+    helper_file="$name.finalize-crash.json"
+  else
+    covered_text="runtime worker killed mid-stream while the unique attempt is CREATED (docker kill, exit 137)"
+    not_covered_csv="claim_before_intent,SUCCEEDED_before_finalize"
+    attempt_status="ABANDONED_LATE"
+    error_code="PROVIDER_OUTCOME_UNKNOWN"
+  fi
   python3 - "$RUN_DIR" "$name" "$gid" "$S8_DELTA_MS" "$baseline_delta" \
-    "$S8_RECOVERY_TIMEOUT" > "$RUN_DIR/$name.summary.json" <<'PY'
+    "$S8_RECOVERY_TIMEOUT" "$covered_text" "$not_covered_csv" \
+    "$attempt_status" "$error_code" "$helper_file" \
+    > "$RUN_DIR/$name.summary.json" <<'PY'
 import json, os, sys
-run_dir, name, gid, delta_ms, baseline_delta, recovery_s = sys.argv[1:7]
+run_dir, name, gid, delta_ms, baseline_delta, recovery_s, covered, \
+    not_covered_csv, attempt_status, error_code, helper_file = sys.argv[1:12]
 
 def load(fn):
     try:
@@ -1210,11 +1413,9 @@ summary = {
     "mode": "FUNCTIONAL_ONLY",
     "performance_conclusions": "NONE",
     "scope": {
-        "crash_point_covered": "runtime worker killed mid-stream while the "
-                               "unique attempt is CREATED (docker kill, "
-                               "exit 137)",
-        "crash_points_not_covered": ["claim_before_intent",
-                                     "SUCCEEDED_before_finalize"],
+        "crash_point_covered": covered,
+        "crash_points_not_covered": [x for x in not_covered_csv.split(",")
+                                     if x],
         "note": "single crash-point functional proof on the production-"
                 "derived TLS stack; not the complete S8 matrix, not a "
                 "capacity/perf conclusion and not any §19.2/G12 gate",
@@ -1235,6 +1436,10 @@ summary = {
         "recovery_budget_s": float(recovery_s),
     },
     "generation_id": gid,
+    "recovered_db": {
+        "attempt_status": attempt_status,
+        "work_item_error_code": error_code,
+    },
     "prepare": prepare,
     "verify": verify,
     "provider_epochs": {
@@ -1255,15 +1460,24 @@ summary = {
     },
     "errors": [], "error_count": 0,
 }
+if helper_file:
+    summary["crash_helper"] = load(helper_file)
 print(json.dumps(summary, ensure_ascii=False))
 PY
 }
 
 if [ "$PROBE_S8" = "1" ]; then
-  echo "== probe-s8 functional chain: worker-crash mid-stream recovery =="
-  run_probe_s8
-  echo "== G12 probe-s8 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
-  cat "$RUN_DIR/probe-s8.summary.json"
+  if [ "$PROBE_S8_BEFORE_FINALIZE" = "1" ]; then
+    echo "== probe-s8-before-finalize functional chain: SUCCEEDED-before-finalize crash recovery =="
+    run_probe_s8 probe-s8-before-finalize
+    echo "== G12 probe-s8-before-finalize PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+    cat "$RUN_DIR/probe-s8-before-finalize.summary.json"
+  else
+    echo "== probe-s8 functional chain: worker-crash mid-stream recovery =="
+    run_probe_s8 probe-s8
+    echo "== G12 probe-s8 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+    cat "$RUN_DIR/probe-s8.summary.json"
+  fi
   exit 0
 fi
 
