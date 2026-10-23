@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { closeHttpStack, parseHttpStackState, type HttpStackState } from "../e2e/global-teardown";
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
 vi.mock("node:fs/promises", () => ({ readFile: vi.fn(), realpath: vi.fn(), stat: vi.fn(), unlink: vi.fn() }));
+const ENGINE = fileURLToPath(new URL("../../scripts/measure/g12-go-capacity/resources.py", import.meta.url));
 const RUN = "/tmp/http-close-run";
 const FILE = "/tmp/http-close-state.json";
 const NONCE = "0123456789abcdef0123456789abcdef";
@@ -73,9 +74,9 @@ function harness(options: { gate?: string; restoreFails?: boolean; foreignLive?:
 afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); });
 describe("explicit retained HTTP v4 closure", () => {
   it("closes KEEP stacks with the trusted repository cleanup engine", async () => {
-    const h = harness(); await closeHttpStack(fixture(), FILE);
+    const h = harness(); await closeHttpStack(fixture(), FILE, ENGINE);
     const cleanup = h.calls.find((c) => c.command === "python3");
-    expect(cleanup?.args[0]).toBe(fileURLToPath(new URL("../../scripts/measure/g12-go-capacity/resources.py", import.meta.url)));
+    expect(cleanup?.args[0]).toBe(ENGINE);
     expect(cleanup?.args).not.toContain("/untrusted/metadata/program.py");
     expect(cleanup?.args.slice(-2)).toEqual(["--deadline-seconds", "90"]);
     expect(h.events).toContain("unlink:" + FILE);
@@ -85,50 +86,50 @@ describe("explicit retained HTTP v4 closure", () => {
   });
   it("closes already-restored synthetic stacks without updating the release gate", async () => {
     const h = harness({ gate: "SYNTHETIC|false|e2e-synthetic-v1" });
-    await closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE);
+    await closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE, ENGINE);
     expect(h.calls.filter((c) => c.command === "docker" && c.args.includes("-c"))).toEqual([]);
     expect(h.events.indexOf("unlink:" + RUN + "/.preserve-stack")).toBeLessThan(h.events.indexOf("cleanup"));
     expect(h.events).toContain("unlink:" + FILE);
   });
   it("restores a pending BETA stack before releasing its preservation marker and resources", async () => {
-    const h = harness(); await closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE);
+    const h = harness(); await closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE, ENGINE);
     expect(h.events.slice(0, 3)).toEqual(["restore", "unlink:" + RUN + "/.preserve-stack", "cleanup"]);
     expect(h.calls.find((c) => c.args.includes("-c"))?.args.join(" ")).toContain("'SYNTHETIC', false");
   });
   it("preserves every resource and file when restoration is refused", async () => {
     const h = harness({ restoreFails: true });
-    await expect(closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE)).rejects.toThrow(/restore/);
+    await expect(closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE, ENGINE)).rejects.toThrow(/restore/);
     expect(h.events).toEqual(["restore"]); expect(h.kill).not.toHaveBeenCalled();
   });
   it("rejects an unexpected release policy before shutdown", async () => {
     const h = harness({ gate: "SYNTHETIC|false|foreign-policy" });
-    await expect(closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE)).rejects.toThrow(/policy/);
+    await expect(closeHttpStack(fixture({ releaseMode: "synthetic-eval" }), FILE, ENGINE)).rejects.toThrow(/policy/);
     expect(h.events).toEqual([]); expect(h.kill).not.toHaveBeenCalled();
   });
   it("rejects mismatched creation records before any Docker or process calls", async () => {
     const h = harness(); h.capture.nonce = "foreign";
-    await expect(closeHttpStack(fixture(), FILE)).rejects.toThrow(/creation receipt/);
+    await expect(closeHttpStack(fixture(), FILE, ENGINE)).rejects.toThrow(/creation receipt/);
     expect(h.calls).toEqual([]); expect(h.events).toEqual([]); expect(h.kill).not.toHaveBeenCalled();
   });
   it("rejects live foreign containers and a substituted fixture directory before shutdown", async () => {
     const h = harness({ foreignLive: true });
-    await expect(closeHttpStack(fixture(), FILE)).rejects.toThrow(/live container ownership/);
+    await expect(closeHttpStack(fixture(), FILE, ENGINE)).rejects.toThrow(/live container ownership/);
     expect(h.events).toEqual([]); expect(h.kill).not.toHaveBeenCalled();
     const other = harness({ bindSource: "/tmp/other-run/mc-config/config.json" });
-    await expect(closeHttpStack(fixture(), FILE)).rejects.toThrow(/original fixture bind/);
+    await expect(closeHttpStack(fixture(), FILE, ENGINE)).rejects.toThrow(/original fixture bind/);
     expect(other.events).toEqual([]); expect(other.kill).not.toHaveBeenCalled();
   });
   it("rejects foreign image tags and receipt paths before Docker writes", async () => {
     const h = harness(); h.built["foreign:tag"] = "sha256:" + "e".repeat(64);
-    await expect(closeHttpStack(fixture(), FILE)).rejects.toThrow(/tools-image/);
+    await expect(closeHttpStack(fixture(), FILE, ENGINE)).rejects.toThrow(/tools-image/);
     expect(h.calls).toEqual([]);
     const state = fixture(); state.receipts.capture = "/tmp/other/created-resources.json";
-    await expect(closeHttpStack(state, FILE)).rejects.toThrow(/leaves this run directory/);
+    await expect(closeHttpStack(state, FILE, ENGINE)).rejects.toThrow(/leaves this run directory/);
     expect(h.calls).toEqual([]); expect(h.events).toEqual([]);
   });
   it("keeps the recovery state when the receipt engine rejects cleanup", async () => {
     const h = harness({ engineFails: true });
-    await expect(closeHttpStack(fixture(), FILE)).rejects.toThrow(/cleanup failed/);
+    await expect(closeHttpStack(fixture(), FILE, ENGINE)).rejects.toThrow(/cleanup failed/);
     expect(h.events).not.toContain("unlink:" + FILE);
     expect(h.events).toContain("unlink:" + FILE + ".auth.json");
     expect(h.events).not.toContain("unlink:" + RUN + "/companiond");

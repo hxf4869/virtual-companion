@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import { closeHttpStack, readStackStateFile } from "../../frontend/e2e/global-teardown.ts";
 
 const usage = "Usage: node --experimental-strip-types scripts/dev/close-http-e2e-stack.mjs --state /absolute/path/to/state.json";
@@ -18,7 +19,8 @@ if (values.help) {
     if (!values.state || !isAbsolute(values.state)) throw new Error("--state must name an absolute state-file path");
     const state = await readStackStateFile(values.state);
     if (state.version !== 4) throw new Error("This command closes HTTP v4 stacks only; other records are preserved");
-    await closeHttpStack(state, values.state);
+    const resourcesPy = fileURLToPath(new URL("../../scripts/measure/g12-go-capacity/resources.py", import.meta.url));
+    await closeHttpStack(state, values.state, resourcesPy);
     console.log("HTTP_E2E_STACK_CLOSED");
   } catch (e) {
     const message = e && e.code === "ENOENT" ? "state or ownership receipt is missing; preserved" : e instanceof Error ? e.message : "close failed; records preserved";

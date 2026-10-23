@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFile, realpath, stat, unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const STATE_VERSION = 4;
 const MAX_STATE_BYTES = 4096;
@@ -583,7 +582,7 @@ async function readCloseReceipt(path: string, runDir: string): Promise<CloseRece
   return value as CloseReceipt;
 }
 
-async function httpCloseState(state: HttpStackState): Promise<HttpStackState> {
+async function httpCloseState(state: HttpStackState, resourcesPy: string): Promise<HttpStackState> {
   if (!state.creating || state.container === null || state.containers.length !== 3
       || state.project !== "vce2ehttp-" + state.nonce) {
     throw new Error("HTTP close requires a complete v4 creation record; incomplete state is preserved");
@@ -652,15 +651,15 @@ async function httpCloseState(state: HttpStackState): Promise<HttpStackState> {
   if (!volume || volume.name !== state.project + "_db-data" || volume.nonce !== state.nonce) {
     throw new Error("HTTP close database-volume receipt does not match this run");
   }
-  // Public CLI input never chooses the Python program to execute. Reuse the
-  // current repository's existing cleanup engine with the verified receipts.
-  return { ...state, receipts: { ...state.receipts, resourcesPy:
-    fileURLToPath(new URL("../../scripts/measure/g12-go-capacity/resources.py", import.meta.url)) } };
+  // The CLI supplies this trusted path from its own ESM location; the state
+  // file never chooses a program. Keep this shared module compatible with
+  // Playwright's CommonJS transform as well as Node's ESM loader.
+  return { ...state, receipts: { ...state.receipts, resourcesPy } };
 }
 
 /** Explicit resource closure is separate from the evaluation's BETA check. */
-export async function closeHttpStack(state: HttpStackState, stateFile: string): Promise<void> {
-  const owned = await httpCloseState(state);
+export async function closeHttpStack(state: HttpStackState, stateFile: string, resourcesPy: string): Promise<void> {
+  const owned = await httpCloseState(state, resourcesPy);
   if (owned.releaseMode === "synthetic-eval") {
     const snapshot = releaseGateSnapshot(owned);
     if (snapshot === "SYNTHETIC|false|" + owned.releasePolicyVersion) {

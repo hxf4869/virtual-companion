@@ -44,7 +44,7 @@ describe("shared page navigation", () => {
   it("goes to the fallback page when the uni stack has no parent to pop", () => {
     const navigateBack = vi.fn();
     const redirectTo = vi.fn();
-    // uni-h5 真实形态：getCurrentPages 是全局函数，不在 uni 对象上。
+    // 编译器为裸 getCurrentPages 注入导入；测试提供同名全局标识符，不放在 uni 对象上。
     vi.stubGlobal("uni", { navigateBack, redirectTo });
     vi.stubGlobal(
       "getCurrentPages",

@@ -837,6 +837,21 @@ scripts/dev/close-http-e2e-stack.mjs --state 入口，完整 HTTP v4 收据与�
 后直接关闭。首轮因 pnpm 本地依赖设置差异失败，原记录保留失败；其资源已
 单独核验回收，冻结锁文件离线对齐后使用新一轮验证通过。Owner 门槛保持原状。
 
+2026-10-23 生产二级页返回与共享收尾加载（VC-R103～R108）：uni-h5 生产
+模式不暴露 globalThis.getCurrentPages，原返回逻辑因此无法识别单页栈，
+直接打开或刷新陪伴设置后点击返回只会原地重载。改为编译器可注入的裸
+getCurrentPages 标识符；无父页回所属 tab，有父页保持既有 navigateBack。
+新增 14 返回旅程，以 iPhone/WebKit 与 Android/Chromium 两实例分别覆盖
+陪伴设置、记忆管理、全部会话刷新后的返回及正常站内返回，并断言无整页重载。
+生产 WebKit 基线实际 1 failed（仍停留陪伴设置），原失败记录保留；同轮发现
+上一轮共享收尾中的 import.meta 无法由 Playwright CommonJS 转换加载，
+路径定位移入 ESM 命令入口，再显式传入共享关闭函数，状态文件仍不能选择程序。
+验证：前端 767 项、type-check、命令行 6 项通过；新生产 TLS 候选无过滤、
+无 skip、retries=0 全部 22/22（12/5/5），正式收尾 framework errors=0、
+独立资源缺失核验空清单。另用真实 full KEEP 栈确认命令入口解析的既有清理
+引擎正常回收，伪造元数据程序未执行，本轮进程、会话与编译产物清除。
+仅本地合成数据；Owner/Beta/真机/真实 provider/容量与远端 CI 门槛保持原状。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等
