@@ -11,7 +11,13 @@ generations: one where the subscriber deliberately disconnects right after a
 live delta and re-subscribes per the snapshot-only contract, and one that is
 cancelled only after a live delta proved it active), and 场景 9 (two real
 password+TOTP logins whose sessions and trusted-device credential race a
-session revocation — VC-R128; run_scenario_s9). One opaque session
+session revocation — VC-R128; run_scenario_s9). The S8 probe (VC-R140) is a
+sequential two-phase CLIENT contract for the one crash point "worker killed
+mid-stream with its attempt still CREATED": s8-prepare sends exactly one
+generation and returns right after the first live chat.delta; s8-verify
+takes the prepare ids, waits out the default claim lease, checks the public
+recovered-failure view, then runs one independent health-control
+generation. One opaque session
 cookie drives every request (the session is fabricated by run.sh against the
 same DB). Consents/relationship/conversation are created once per scenario.
 
@@ -1757,6 +1763,225 @@ def run_scenario_s9(args, stats: Stats) -> dict:
     return result
 
 
+def run_scenario_s8_prepare(args, stats: Stats) -> dict:
+    """S8 probe prepare (VC-R140): ONE generation POST on the real public
+    chain, then an incremental SSE subscription that returns as soon as the
+    first live chat.delta is received on the wire — the real-state
+    precondition for the mid-stream worker kill (never a sleep, never a
+    thread-start inference, never a replayed terminal posing as live).
+    The connection is closed by subscribe_until_live_delta's own context
+    manager right after the delta; per S6 evidence that deliberate
+    disconnect neither cancels the generation nor re-POSTs it, so the
+    stream keeps running for the caller's next phase. Output carries only
+    the synthetic ids, booleans, counts and reasons — never text, cookies
+    or headers. A missing live delta is an explicit failure (nonzero exit
+    via stats.errors) and the caller must not enter its kill phase.
+    """
+    client = Client(args.base, args.session, args.csrf, args.account,
+                    origin=args.origin, cafile=args.cacert)
+    st, _ = client.json("PUT", "/api/v1/consents",
+                        {"consentType": "SERVICE_TERMS", "version": "2026-08",
+                         "granted": True})
+    if st != 200:
+        stats.note_error(f"consent {st}")
+    for t in ("PRIVACY_POLICY", "AI_CONTENT_NOTICE",
+              "THIRD_PARTY_MODEL_PROCESSING", "SENSITIVE_DATA_PROCESSING"):
+        client.json("PUT", "/api/v1/consents",
+                    {"consentType": t, "version": "2026-08", "granted": True})
+    st, rel = client.json("POST", "/api/v1/relationships",
+                          {"personaRef": "gentle-listener"})
+    st, conv = client.json("POST", "/api/v1/conversations",
+                           {"relationshipId": rel.get("relationshipId")})
+    conv_id = conv.get("conversationId")
+    gid = None
+    if conv_id:
+        st, body = client.send(conv_id, f"{args.key_prefix}-orig",
+                               "s8 crash recovery turn")
+        gid = str(body.get("generationId")) if st == 202 else None
+    result: dict = {"scenario": "s8-prepare", "generation_id": gid,
+                    "conversation_id": conv_id, "got_live_delta": False,
+                    "catchup_chars": None, "deltas_seen": 0, "attempts": 0,
+                    "reason": None, "errors": [], "error_count": 0}
+    if not gid:
+        stats.note_error(f"s8-prepare send {st}: no generation")
+        result["reason"] = "send_failed"
+    else:
+        probe = client.subscribe_until_live_delta(gid,
+                                                  timeout=args.sse_timeout)
+        result.update(got_live_delta=probe["got_delta"],
+                      catchup_chars=probe["catchup_chars"],
+                      deltas_seen=probe["deltas_seen"],
+                      attempts=probe["attempts"], reason=probe["reason"])
+        if not probe["got_delta"]:
+            stats.note_error(f"s8-prepare no live delta ({probe['reason']})")
+    result["errors"] = stats.errors[:10]
+    result["error_count"] = len(stats.errors)
+    return result
+
+
+def run_scenario_s8_verify(args, stats: Stats) -> dict:
+    """S8 probe verify (VC-R140): take the prepare ids and prove the
+    default-lease crash recovery on the real public chain, then that the
+    service keeps serving. Phase 1 polls ONLY the original generation id's
+    snapshot (never cancel, never re-POST, never a DB write) until
+    FAILED_FINAL inside one absolute deadline — a poll issued or answered
+    past the budget never counts. The public failure view is checked where
+    it actually lives: the snapshot's events must carry the chat.failed
+    terminal with the fault bucket external-failed (the wire never
+    exposes the precise code; run.sh asserts PROVIDER_OUTCOME_UNKNOWN
+    read-only from work_item.last_error_code). A post-terminal
+    subscription must serve chat.failed and the conversation must hold no
+    assistant message for the crashed turn. Phase 2 then sends ONE
+    independent health-control generation (same conversation, fresh
+    idempotency key) and requires chat.completed plus exactly one
+    assistant message afterwards — while the original gid must STILL read
+    FAILED_FINAL, so the control can never mask the recovered failure.
+    Phase 2 runs only when phase 1 is clean (fail closed: no extra writes
+    into an unrecovered state).
+    """
+    client = Client(args.base, args.session, args.csrf, args.account,
+                    origin=args.origin, cafile=args.cacert)
+    gid = str(args.s8_generation_id)
+    conv = str(args.s8_conversation_id)
+    result: dict = {
+        "scenario": "s8-verify",
+        "original": {"generation_id": gid, "status": None,
+                     "failed_fault": None, "failed_fault_ok": False,
+                     "post_terminal": None, "assistant_messages": None,
+                     "status_after_health": None},
+        "health": {"generation_id": None, "terminal": None,
+                   "completed_ok": False, "snapshot_status": None,
+                   "assistant_messages": None},
+        "errors": [], "error_count": 0,
+    }
+    original = result["original"]
+    health = result["health"]
+
+    deadline = time.monotonic() + float(args.s8_recovery_timeout)
+    snap = None
+    status = None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            st, snap = client.json(
+                "GET", f"/api/v1/generations/{gid}/snapshot",
+                timeout=min(30.0, remaining))
+        except Exception as exc:
+            stats.note_error(f"s8 snapshot {type(exc).__name__}")
+            time.sleep(min(0.5, max(0.0, deadline - time.monotonic())))
+            continue
+        if time.monotonic() >= deadline:
+            # The response arrived past the absolute budget: discarded
+            # unparsed — a recovered terminal delivered late can never
+            # count, exactly like a late SSE terminal.
+            snap = None
+            status = None
+            stats.note_error("s8 snapshot result arrived after the "
+                             "recovery budget (discarded)")
+            break
+        status = snap.get("status") if isinstance(snap, dict) else None
+        if status in TERMINAL:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.5, remaining))
+    original["status"] = status
+    if status != "FAILED_FINAL":
+        stats.note_error(f"s8 original generation status {status} "
+                         f"(want FAILED_FINAL within the recovery budget)")
+        result["errors"] = stats.errors[:10]
+        result["error_count"] = len(stats.errors)
+        # Fail closed: without the recovered terminal nothing downstream
+        # (fault view, post-terminal stream, health control) is evidence.
+        return result
+
+    events = snap.get("events") if isinstance(snap, dict) else None
+    fault = None
+    if isinstance(events, list):
+        for ev in events:
+            if isinstance(ev, dict) and ev.get("event") == SSE_FAILED:
+                fault = ev.get("fault")
+                break
+    original["failed_fault"] = fault
+    original["failed_fault_ok"] = fault == "external-failed"
+    if fault != "external-failed":
+        stats.note_error(f"s8 snapshot chat.failed fault {fault!r} "
+                         f"(want external-failed)")
+
+    post = client.subscribe_snapshot_terminal(gid, timeout=args.sse_timeout)
+    original["post_terminal"] = post.get("terminal")
+    if post.get("terminal") != SSE_FAILED:
+        stats.note_error(f"s8 post-terminal event {post.get('terminal')} "
+                         f"(want {SSE_FAILED})")
+
+    _, history = client.messages(conv)
+    before = assistant_messages(history)
+    original["assistant_messages"] = before
+    if before != 0:
+        stats.note_error(f"s8 assistant messages before the health control "
+                         f"{before} (want 0)")
+
+    if stats.errors:
+        result["errors"] = stats.errors[:10]
+        result["error_count"] = len(stats.errors)
+        return result
+
+    st, body = client.send(conv, f"{args.key_prefix}-health",
+                           "s8 health control turn")
+    health_gid = (str(body.get("generationId"))
+                  if st == 202 and isinstance(body, dict) else None)
+    if not health_gid:
+        stats.note_error(f"s8 health control send {st}")
+    else:
+        health["generation_id"] = health_gid
+        r = client.sse(health_gid, timeout=args.sse_timeout)
+        health["terminal"] = r.terminal
+        health["completed_ok"] = r.terminal == SSE_COMPLETED
+        if r.terminal != SSE_COMPLETED:
+            stats.note_error(f"s8 health control terminal {r.terminal} "
+                             f"(want {SSE_COMPLETED})")
+        else:
+            # The control's own persisted snapshot must read COMPLETED —
+            # the SSE terminal alone is not the durable state.
+            try:
+                _, hsnap = client.json(
+                    "GET", f"/api/v1/generations/{health_gid}/snapshot")
+            except Exception as exc:
+                hsnap = None
+                stats.note_error(f"s8 health snapshot {type(exc).__name__}")
+            hstatus = (hsnap.get("status")
+                       if isinstance(hsnap, dict) else None)
+            health["snapshot_status"] = hstatus
+            if hstatus != "COMPLETED":
+                stats.note_error(f"s8 health control snapshot status "
+                                 f"{hstatus} (want COMPLETED)")
+    try:
+        _, snap_after = client.json(
+            "GET", f"/api/v1/generations/{gid}/snapshot")
+    except Exception as exc:
+        snap_after = None
+        stats.note_error(f"s8 post-health snapshot {type(exc).__name__}")
+    original["status_after_health"] = (snap_after.get("status")
+                                       if isinstance(snap_after, dict)
+                                       else None)
+    if original["status_after_health"] != "FAILED_FINAL":
+        stats.note_error("s8 original generation no longer FAILED_FINAL "
+                         "after the health control (masked?)")
+    _, history_after = client.messages(conv)
+    after = assistant_messages(history_after)
+    health["assistant_messages"] = after
+    if after != 1:
+        stats.note_error(f"s8 assistant messages after the health control "
+                         f"{after} (want exactly 1 — the control's own)")
+
+    result["errors"] = stats.errors[:10]
+    result["error_count"] = len(stats.errors)
+    return result
+
+
 def poll_terminal(args, stats: Stats, client: Client, gid: str, accepted_at: float):
     status = "UNKNOWN"
     while time.monotonic() - accepted_at < 120:
@@ -1805,7 +2030,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:18082")
     parser.add_argument("--scenario",
-                        choices=["s3", "s4", "s5", "s6", "s9", "s10"],
+                        choices=["s3", "s4", "s5", "s6", "s9", "s10",
+                                 "s8-prepare", "s8-verify"],
                         required=True)
     parser.add_argument("--session", default=None,
                         help="defaults to $G12_SESSION (env keeps the opaque "
@@ -1828,6 +2054,16 @@ def main() -> int:
                              "scenario's provider hold so a held stream can "
                              "never outlive its budget")
     parser.add_argument("--key-prefix", default="")
+    parser.add_argument("--s8-generation-id", default="",
+                        help="s8-verify: the prepare phase's generation id")
+    parser.add_argument("--s8-conversation-id", default="",
+                        help="s8-verify: the prepare phase's conversation id")
+    parser.add_argument("--s8-recovery-timeout", type=float, default=360.0,
+                        help="s8-verify: absolute budget (seconds) for "
+                             "waiting out the default claim lease; the "
+                             "runtime's own recovery tick lands the "
+                             "terminal earlier, and a terminal observed "
+                             "past the budget never counts")
     args = parser.parse_args()
 
     # Session/CSRF/account resolve from the environment unless given
@@ -1841,6 +2077,15 @@ def main() -> int:
     args.session = args.session or os.environ["G12_SESSION"]
     args.csrf = args.csrf or os.environ["G12_CSRF"]
     args.account = args.account or os.environ["G12_ACCOUNT"]
+
+    if args.scenario == "s8-verify":
+        # The verify phase only ever READS the original generation id and
+        # needs the prepare output as its input contract.
+        if not args.s8_generation_id or not args.s8_conversation_id:
+            parser.error("s8-verify needs --s8-generation-id and "
+                         "--s8-conversation-id (the prepare output ids)")
+        if args.s8_recovery_timeout <= 0:
+            parser.error("--s8-recovery-timeout must be positive")
 
     if args.scenario == "s9":
         # §19.1 S9 (VC-R128) real-login credentials travel by environment
@@ -1866,7 +2111,16 @@ def main() -> int:
         args.s9_budget_seconds = budget
 
     stats = Stats()
-    if args.scenario == "s6":
+    if args.scenario == "s8-prepare":
+        # §19.1 S8 (VC-R140) phase 1: one generation, return after the
+        # first live delta; the caller (run.sh) owns every kill/restart
+        # and DB step around the two phases.
+        result = run_scenario_s8_prepare(args, stats)
+    elif args.scenario == "s8-verify":
+        # §19.1 S8 (VC-R140) phase 2: lease-recovery terminal + health
+        # control, from the prepare ids only.
+        result = run_scenario_s8_verify(args, stats)
+    elif args.scenario == "s6":
         # §19.1 S6 runs its own two independent generations (disconnect/
         # reconnect + cancel); the generic shape/percentile machinery does
         # not apply to it.

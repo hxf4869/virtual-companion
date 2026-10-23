@@ -160,12 +160,58 @@ is 60 seconds by default; expired or late responses fail. This is a bounded
 FUNCTIONAL_ONLY chain with no generation or provider traffic, not a capacity
 or latency acceptance.
 
+Scenario 8 (VC-R140 probe) proves ONE worker-crash recovery point on the
+real public chain: the runtime container is killed (docker kill, exit 137)
+while a generation's unique attempt is still CREATED and a live
+`chat.delta` has just been received. A sequential two-phase client avoids
+any long-lived controller: `s8-prepare` sends exactly one generation and
+returns after the first live delta; run.sh then re-verifies this run's
+nonce-receipted runtime/provider CIDs, asserts the DB mid-stream state
+read-only (work item CLAIMED with an unexpired lease, one attempt CREATED,
+no assistant commit) and the old-epoch provider counters (one active
+mid-stream request with content flowing) — any mismatch fails closed
+before the kill. The old-epoch provider (its own PID namespace) is
+bounded-polled via `docker exec` until the orphaned request is recorded
+(abort +1, completed +0, active 0), the SAME runtime CID is restarted (new
+StartedAt/PID and a changed real network namespace, read as
+`/proc/1/ns/net` from inside the exact CID — `SandboxKey` is empty for
+netns-sharing containers) and the provider CID restarted into the new
+network namespace (its `/proc/1/ns/net` must change and then equal the
+restarted runtime's) with
+counters at initial zero and the config read back at the original deltaMs
+— old/new epoch counters are recorded separately,
+never subtracted across the restart. run.sh then waits out the DEFAULT
+claim lease via a read-only DB poll (no timeout/lease/DB-clock tampering,
+no DB writes) and, BEFORE any health traffic, fixes the recovered DB state
+read-only (attempt ABANDONED_LATE, generation FAILED_FINAL with no
+assistant message, work item FAILED / `PROVIDER_OUTCOME_UNKNOWN`, no
+requeue, no new attempt) plus a further fixed new-epoch zero-request
+sample — forward evidence for the recovery window, never an inference
+back from the post-control count. `s8-verify` then re-checks the public
+view (FAILED_FINAL with the `external-failed` fault bucket — the wire
+never exposes the precise code — the `chat.failed` post-terminal view and
+zero assistant messages for the crashed turn) and only then sends ONE
+independent health-control generation that must complete (SSE
+`chat.completed`, its OWN snapshot reading COMPLETED, exactly one
+assistant message afterwards) while the original STILL reads FAILED_FINAL;
+the new-epoch provider must show exactly that health request (1 stream /
+1 completed / 0 aborted / 0 active). The provider deltaMs is
+widened for the probe window (pending-registered before the first PUT,
+restored on every exit path like the S3/S6 knobs; the restarted provider
+re-reads its initial env, which the restore re-affirms). Collectors,
+sampler, idle windows and warm-up are skipped before any helper would be
+created: no A/B frames, no cross-restart CPU/RSS analysis, no performance
+conclusion. This covers only the attempt-CREATED crash point — the
+claim-before-intent and SUCCEEDED-before-finalize crash points stay
+outside the probe.
+
 ```bash
 bash scripts/measure/g12-go-capacity/run.sh                 # full profile (s4, s3, s6, s9, s5, s10, soak)
 bash scripts/measure/g12-go-capacity/run.sh --probe         # FUNCTIONAL_ONLY wiring proof (s4 branch)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s3      # FUNCTIONAL_ONLY wiring proof (s3 branch)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s6      # FUNCTIONAL_ONLY wiring proof (s6 branch)
 bash scripts/measure/g12-go-capacity/run.sh --probe-s9      # FUNCTIONAL_ONLY public auth/session concurrency
+bash scripts/measure/g12-go-capacity/run.sh --probe-s8      # FUNCTIONAL_ONLY worker-crash mid-stream recovery (VC-R140)
 python3 scripts/measure/g12-go-capacity/test_collector.py   # render/collect/aggregation units
 python3 scripts/measure/g12-go-capacity/test_resources.py   # resource-ownership units (stubbed docker)
 python3 scripts/measure/g12-go-capacity/test_workload.py    # SSE parser/first-delta/quiet-window/s6/s9 units
@@ -186,6 +232,10 @@ cancelled generation, with the fixture-side abort/completion accounting
 above); it runs no other chain and no full profile. `--probe-s9` runs only the S9
 authentication/session chain described above, with the same stack, TLS,
 collection, and ownership cleanup; it runs no other scenario or full profile.
+`--probe-s8` runs only the S8 single-crash-point chain described above
+(collectors/sampler/idle/warm-up skipped before launch) with the same
+preflight, TLS, seeding and ownership cleanup; it runs no other scenario
+and no full profile.
 
 Optional env:
 
@@ -195,6 +245,7 @@ Optional env:
 | `G12_GENS_S10` / `G12_SSE_S10` | 16 / 4 | scenario 10 shape (SSE cap 8/gen) |
 | `G12_S3_HOLD_MS` / `G12_S3_QUIET_MS` | 8000 / 3000 | scenario 3 provider hold and quiet-window budget (probe-s3 uses `G12_PROBE_S3_HOLD_MS` / `G12_PROBE_S3_QUIET_MS`, default 6000 / 2000) |
 | `G12_S6_DELTA_MS` | 400 | scenario 6 widened provider deltaMs so a stream is still in flight after the first live delta (probe-s6 uses `G12_PROBE_S6_DELTA_MS`, default 400; restored to the original value on every exit path) |
+| `G12_PROBE_S8_DELTA_MS` / `G12_PROBE_S8_RECOVERY_TIMEOUT` | 3000 / 360 | probe-s8 widened provider deltaMs (default 8 chunks × 3 s keeps the stream — and its CREATED attempt — in flight well past the serial pre-kill gates; set via the existing bounded `PUT /g12/config` deltaMs knob, restored to the original value on every exit path) and the verify phase's absolute recovery budget in seconds — sized for the DEFAULT claim lease (270 s) plus the recovery tick; never a shortened lease or DB clock |
 | `G12_S9_BUDGET_SECONDS` | 60 | scenario 9 shared monotonic deadline; each request uses the remaining budget, and late responses fail |
 | `G12_CONCURRENCY` / `G12_OUTSTANDING` | 16 / 16 | §19.5 overrides (config caps at 16) |
 | `G12_SOAK_TURNS` / `G12_SOAK_BATCH` | 100 / 10 | recovery workload and batch size |
@@ -207,7 +258,7 @@ Optional env:
 
 Output: `trial.summary.json` (probe: `probe.summary.json`; probe-s3:
 `probe-s3.summary.json`; probe-s6: `probe-s6.summary.json`; probe-s9:
-`probe-s9.summary.json` — all marked
+`probe-s9.summary.json`; probe-s8: `probe-s8.summary.json` — all marked
 `FUNCTIONAL_ONLY`), scenario result/summary and B-analysis JSON (s4's
 summary carries the first-delta block with its baselines,
 provider-known-delay subtraction, coverage evidence and definition; s3's

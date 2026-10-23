@@ -20,7 +20,12 @@ run_scenario_s9 orchestration against a stateful fake auth backend
 (owner isolation, barrier concurrency with a deterministic rendezvous,
 revoke-all causal effects, trusted-cookie fallback, budget exhaustion and
 transport failures as explicit errors, no credentials in serialized
-output).
+output), and the §19.1 S8 (VC-R140) two-phase probe client: prepare fails
+explicitly without a real live delta, and verify accepts only the
+recovered FAILED_FINAL with the public external-failed fault, fails
+closed without a health-control write on any dirty original verdict,
+never re-POSTs the original generation, and never lets the health
+control mask the original terminal.
 
 Determinism: urllib.request.urlopen is swapped for scripted responses and
 workload.time for a fake clock, so deadline and timing assertions never
@@ -2204,6 +2209,268 @@ class S9CLITest(unittest.TestCase):
         self.assertEqual(doc["s9"]["g12_probe"]["status"], 200)
         self.assertEqual(doc["s9"]["trusted_revoked"]["next_step"],
                          "TOTP_REQUIRED")
+
+
+class RunScenarioS8StubTest(unittest.TestCase):
+    """S8 two-phase probe client (VC-R140) against a stubbed Client: the
+    prepare phase must fail explicitly without a live delta (the kill gate
+    stays closed), the verify phase must accept only the recovered
+    FAILED_FINAL with the public external-failed fault bucket, must fail
+    closed (no health-control write) whenever the original's checks are
+    not clean, must never re-POST the original generation, and must not
+    let a passing health control mask the original gid's terminal."""
+
+    def setUp(self):
+        self._real_client = workload.Client
+
+    def install(self, stub):
+        workload.Client = stub
+        self.addCleanup(setattr, workload, "Client", self._real_client)
+
+    @staticmethod
+    def args(**overrides):
+        import argparse
+        base = dict(
+            base="http://127.0.0.1:1", session="s", csrf="c", account="a",
+            origin=None, cacert=None, scenario="s8-prepare",
+            key_prefix="t", sse_timeout=30.0, s8_generation_id="",
+            s8_conversation_id="", s8_recovery_timeout=5.0)
+        base.update(overrides)
+        return argparse.Namespace(**base)
+
+    def make_stub(self, *, probe=None, snapshots=None, post_terminal=None,
+                  histories=None, health_gid="43",
+                  health_terminal="chat.completed"):
+        instances = []
+
+        class Stub:
+            def __init__(self, *a, **k):
+                instances.append(self)
+                self.sends = []
+
+            def json(self, method, path, body=None, timeout=30.0):
+                if method == "PUT" and path == "/api/v1/consents":
+                    return 200, {}
+                if path == "/api/v1/relationships":
+                    return 200, {"relationshipId": "rel"}
+                if path == "/api/v1/conversations":
+                    return 200, {"conversationId": "7"}
+                if path.startswith("/api/v1/generations/") \
+                        and path.endswith("/snapshot"):
+                    gid_key = path[len("/api/v1/generations/"):-len("/snapshot")]
+                    seq = (snapshots or {}).get(gid_key)
+                    if not seq:
+                        return 200, {"status": "FAILED_FINAL",
+                                     "events": [{"event": "chat.failed",
+                                                 "fault": "external-failed"}]}
+                    item = seq.pop(0) if len(seq) > 1 else seq[0]
+                    return 200, item
+                raise AssertionError(path)
+
+            def send(self, conv, key, text):
+                self.sends.append(key)
+                return 202, {"generationId": "42" if key.endswith("-orig")
+                             else health_gid}
+
+            def messages(self, conv):
+                if histories:
+                    return 200, histories.pop(0)
+                return 200, []
+
+            def subscribe_until_live_delta(self, gid, timeout=30.0):
+                return probe or {"got_delta": True, "catchup_chars": 0,
+                                 "deltas_seen": 1, "attempts": 1,
+                                 "reason": None}
+
+            def subscribe_snapshot_terminal(self, gid, timeout=30.0):
+                return {"first_snapshot_text": None,
+                        "first_snapshot_chars": 0,
+                        "terminal": post_terminal or "chat.failed",
+                        "ok": False, "attempts": 1}
+
+            def sse(self, gid, timeout=30.0):
+                ok = health_terminal == "chat.completed"
+                return sse_result(terminal=health_terminal, ok=ok)
+
+        return Stub, instances
+
+    def test_prepare_records_ids_and_live_delta(self):
+        stub_cls, _ = self.make_stub()
+        self.install(stub_cls)
+        result = workload.run_scenario_s8_prepare(self.args(), workload.Stats())
+        self.assertEqual(result["generation_id"], "42")
+        self.assertEqual(result["conversation_id"], "7")
+        self.assertTrue(result["got_live_delta"])
+        self.assertEqual(result["error_count"], 0)
+
+    def test_prepare_without_live_delta_is_an_explicit_failure(self):
+        # A replayed terminal instead of a live delta must never enter a
+        # kill phase: got_live_delta False + a recorded reason/error.
+        stub_cls, _ = self.make_stub(
+            probe={"got_delta": False, "catchup_chars": None,
+                   "deltas_seen": 0, "attempts": 2,
+                   "reason": "terminal:chat.completed"})
+        self.install(stub_cls)
+        stats = workload.Stats()
+        result = workload.run_scenario_s8_prepare(self.args(), stats)
+        self.assertFalse(result["got_live_delta"])
+        self.assertEqual(result["reason"], "terminal:chat.completed")
+        self.assertEqual(result["error_count"], 1)
+        self.assertIn("no live delta", stats.errors[0])
+
+    def test_verify_happy_path_recovery_and_single_health_send(self):
+        stub_cls, instances = self.make_stub(
+            snapshots={"42": [{"status": "FAILED_FINAL",
+                               "events": [{"event": "chat.failed",
+                                           "fault": "external-failed"}]}],
+                       "43": [{"status": "COMPLETED", "events": []}]},
+            histories=[[], [{"role": "assistant", "content": "done"}]])
+        self.install(stub_cls)
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7"),
+            workload.Stats())
+        original, health = result["original"], result["health"]
+        self.assertEqual(result["error_count"], 0)
+        self.assertEqual(original["status"], "FAILED_FINAL")
+        self.assertTrue(original["failed_fault_ok"])
+        self.assertEqual(original["failed_fault"], "external-failed")
+        self.assertEqual(original["post_terminal"], "chat.failed")
+        self.assertEqual(original["assistant_messages"], 0)
+        self.assertEqual(original["status_after_health"], "FAILED_FINAL")
+        self.assertEqual(health["terminal"], "chat.completed")
+        self.assertTrue(health["completed_ok"])
+        self.assertEqual(health["snapshot_status"], "COMPLETED")
+        self.assertEqual(health["assistant_messages"], 1)
+        # Exactly ONE send ever — the health control; the original
+        # generation is never cancelled or re-POSTed.
+        self.assertEqual(instances[0].sends, ["t-health"])
+
+    def test_verify_wrong_fault_fails_closed_without_health_write(self):
+        stub_cls, instances = self.make_stub(
+            snapshots={"42": [{"status": "FAILED_FINAL",
+                               "events": [{"event": "chat.failed"}]}]})
+        self.install(stub_cls)
+        stats = workload.Stats()
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7"),
+            stats)
+        self.assertFalse(result["original"]["failed_fault_ok"])
+        self.assertEqual(result["error_count"], 1)
+        self.assertIn("fault", stats.errors[0])
+        # Fail closed: a dirty original verdict means no health-control
+        # write is issued at all.
+        self.assertEqual(instances[0].sends, [])
+
+    def test_verify_recovery_deadline_never_invents_a_terminal(self):
+        stub_cls, instances = self.make_stub(
+            snapshots={"42": [{"status": "IN_PROGRESS", "events": []}]})
+        self.install(stub_cls)
+        stats = workload.Stats()
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7", s8_recovery_timeout=0.3),
+            stats)
+        self.assertNotEqual(result["original"]["status"], "FAILED_FINAL")
+        self.assertEqual(result["error_count"], 1)
+        self.assertIn("FAILED_FINAL", stats.errors[0])
+        self.assertEqual(instances[0].sends, [])
+
+    def test_verify_late_terminal_is_rejected(self):
+        # A FAILED_FINAL answered PAST the absolute budget is discarded:
+        # the fake clock advances beyond the deadline inside the stub's
+        # json(), so the verify loop must refuse the late terminal instead
+        # of adopting it — and no health-control write may follow.
+        clock = FakeClock()
+        real_time = workload.time
+        workload.time = clock
+        self.addCleanup(setattr, workload, "time", real_time)
+        sent = []
+
+        class LateStub:
+            def __init__(self, *a, **k):
+                self.calls = 0
+
+            def json(self, method, path, body=None, timeout=30.0):
+                if method == "PUT" and path == "/api/v1/consents":
+                    return 200, {}
+                if path == "/api/v1/relationships":
+                    return 200, {"relationshipId": "rel"}
+                if path == "/api/v1/conversations":
+                    return 200, {"conversationId": "7"}
+                if path.endswith("/snapshot"):
+                    self.calls += 1
+                    # The answer lands past the absolute budget.
+                    clock.advance(100.0)
+                    return 200, {"status": "FAILED_FINAL",
+                                 "events": [{"event": "chat.failed",
+                                             "fault": "external-failed"}]}
+                raise AssertionError(path)
+
+            def send(self, conv, key, text):
+                sent.append(key)
+                raise AssertionError("health sent after a late terminal")
+
+        stub = LateStub
+        self.install(stub)
+        stats = workload.Stats()
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7", s8_recovery_timeout=5.0),
+            stats)
+        self.assertIsNone(result["original"]["status"])
+        self.assertEqual(result["error_count"], 2)
+        self.assertIn("after the recovery budget", stats.errors[0])
+        self.assertIn("FAILED_FINAL", stats.errors[1])
+        self.assertEqual(sent, [])
+
+    def test_verify_assistant_before_health_fails_closed(self):
+        stub_cls, instances = self.make_stub(
+            histories=[[{"role": "assistant", "content": "rogue"}]])
+        self.install(stub_cls)
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7"),
+            workload.Stats())
+        self.assertEqual(result["original"]["assistant_messages"], 1)
+        self.assertEqual(result["error_count"], 1)
+        self.assertEqual(instances[0].sends, [])
+
+    def test_verify_health_control_cannot_mask_the_original(self):
+        # After the control completes, the original must STILL be
+        # FAILED_FINAL; anything else is recorded as a masking failure even
+        # though the control itself succeeded.
+        stub_cls, _ = self.make_stub(
+            snapshots={"42": [{"status": "FAILED_FINAL",
+                               "events": [{"event": "chat.failed",
+                                           "fault": "external-failed"}]},
+                              {"status": "COMPLETED", "events": []}],
+                       "43": [{"status": "COMPLETED", "events": []}]},
+            histories=[[], [{"role": "assistant", "content": "done"}]])
+        self.install(stub_cls)
+        result = workload.run_scenario_s8_verify(
+            self.args(scenario="s8-verify", s8_generation_id="42",
+                      s8_conversation_id="7"),
+            workload.Stats())
+        self.assertTrue(result["health"]["completed_ok"])
+        self.assertEqual(result["original"]["status_after_health"],
+                         "COMPLETED")
+        self.assertEqual(result["error_count"], 1)
+        self.assertIn("mask", result["errors"][0])
+
+    def test_verify_requires_prepare_ids(self):
+        err = io.StringIO()
+        with mock.patch.dict(os.environ,
+                             {"G12_SESSION": "s", "G12_CSRF": "c",
+                              "G12_ACCOUNT": "a"}, clear=True), \
+                mock.patch("sys.argv",
+                           ["workload.py", "--scenario", "s8-verify"]), \
+                contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as caught:
+                workload.main()
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("s8-generation-id", err.getvalue())
 
 
 if __name__ == "__main__":

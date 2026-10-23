@@ -908,6 +908,26 @@ TOTP setup/confirm 与可信设备登录，验证并发登录/指定会话删除
 生产输出预算的大回复夹具，未修改生产参数或增加测试矩阵。详见 G12
 采样记录 §15，未据此关闭 G12/Owner 门槛。
 
+2026-10-23 G12 S8 流式崩溃恢复功能探针（VC-R140～R142）：既有 runner
+接入 `--probe-s8`（FUNCTIONAL_ONLY 独立入口，默认 profile 不含 S8）：
+公开链路取得首 live delta 后确认 DB CLAIMED/live lease、唯一 attempt
+CREATED、无 assistant、provider 流在途（stream/active/chunks 各 1），
+再 docker kill runtime 并显式重启同 CID，验证恢复协议在默认 claim 租约
+270s 与恢复 tick 5s 下把原任务收敛为 FAILED_FINAL（snapshot
+chat.failed/external-failed、事后 SSE chat.failed、assistant 0、attempt
+ABANDONED_LATE、work_item FAILED/PROVIDER_OUTCOME_UNKNOWN），同会话独立
+健康对照消息 chat.completed 且 COMPLETED、assistant 恰 1；provider 新旧
+epoch 不跨进程差分，新 epoch 自健康检查前计数全 0 起算，终态
+stream/completed 1、总请求 2。workload 67 项（含 9 个 S8）、资源所有权
+53 项、`bash -n` 与 40 个 heredoc 编译通过；真实 OrbStack/TLS/PG 探针
+退出码 0、349.8s，为唯一一次完整运行（此前 Root 启动包装在 Python 执行
+前即因换行语法错误失败、未建栈，不计为试验）。清理后独立只读核清本轮
+8 容器/4 卷/1 网络/3 镜像标签均不存在、leftovers 为空。探针仅覆盖
+attempt-CREATED 崩溃点；claim-before-intent 与 SUCCEEDED-before-finalize、
+S6 部署链慢读者、完整三次长窗容量与 Owner/Beta/真机/真实 provider 门槛
+均未关闭。详见 `docs/planning/g12-go-capacity-sample.md` §16，未修改
+后端、契约、生产参数或依赖。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

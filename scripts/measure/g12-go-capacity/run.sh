@@ -84,6 +84,52 @@
 # generation/provider call, never touches provider config, and draws no
 # performance conclusion in any mode.
 #
+# --probe-s8 (VC-R140) is the same FUNCTIONAL_ONLY bound for the §19.1 S8
+# worker-crash recovery chain, ONE crash point only: the runtime container
+# is killed (docker kill → exit 137) while one generation's unique attempt
+# is CREATED and a real live chat.delta has just been received on the wire
+# — never the claim-before-intent or SUCCEEDED-before-finalize crash
+# points, and no full-profile scenario. A sequential two-phase client
+# (workload.py s8-prepare / s8-verify) avoids any long-lived controller:
+# prepare sends exactly one generation and returns right after the first
+# live chat.delta; run.sh then re-verifies this run's nonce-receipted
+# runtime/provider CIDs against the daemon, asserts the DB mid-stream
+# state READ-ONLY (work item CLAIMED with an unexpired lease, exactly one
+# attempt CREATED, no assistant commit) and the OLD-epoch provider
+# counters (streamRequests +1, active 1, content chunks flowing, not
+# completed) — any mismatch fails closed before the kill. After the kill
+# the old-epoch provider (its own PID namespace) is bounded-polled via
+# docker exec until the orphaned request is recorded (abort +1,
+# completed +0, active 0), the SAME runtime CID is started again (new
+# StartedAt/PID and a changed real network namespace, read as
+# /proc/1/ns/net from inside the exact CID — SandboxKey is empty for
+# netns-sharing containers) and the provider CID is restarted into the
+# new runtime network namespace (its /proc/1/ns/net must change and then
+# equal the restarted runtime's; nonce and running state are re-verified
+# at every identity capture) with counters back to initial zero and the
+# config read back at the original deltaMs — old/new epoch
+# counters are recorded separately and never subtracted across epochs.
+# run.sh then waits out the DEFAULT claim lease via a read-only DB poll
+# (no timeout, lease or DB-clock tampering) and, BEFORE any health
+# traffic, fixes the recovered DB state read-only (attempt ABANDONED_LATE,
+# work item FAILED with PROVIDER_OUTCOME_UNKNOWN, no requeue, no new
+# attempt) plus a further fixed new-epoch zero-request sample — forward
+# evidence for the recovery window, never an inference back from the
+# post-control count. verify then re-checks the public failure view
+# (FAILED_FINAL with the external-failed fault bucket, the chat.failed
+# post-terminal view, zero assistant messages for the crashed turn) and
+# only then sends ONE independent health-control generation that must
+# complete (chat.completed, its own snapshot COMPLETED) while the original
+# STILL reads FAILED_FINAL; the new-epoch provider must show exactly the
+# health request (1 stream, 1 completed, 0 aborted, 0 active). The
+# provider deltaMs is widened before prepare (pending-registered
+# before the first PUT, restored on every exit path like the S3/S6 knobs;
+# the restarted provider re-reads its initial env, which the restore
+# re-affirms). Collectors, sampler, idle windows and warm-up are skipped
+# BEFORE any helper would be created (FUNCTIONAL_ONLY: no A/B frames, no
+# cross-restart CPU/RSS analysis, no performance conclusion and no §19.2
+# gate) and the summary scopes itself to the single covered crash point.
+#
 # Secrets are synthetic and fabricated locally; never a real provider, never
 # real user data. Each invocation is one independent trial with its own
 # project, images, output directory, and data. Ownership is receipt-based
@@ -94,7 +140,7 @@
 # create action provably produced, and a failed cleanup keeps the records
 # for recovery instead of discarding them.
 #
-# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9]
+# Usage: bash scripts/measure/g12-go-capacity/run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8]
 set -euo pipefail
 export DOCKER_CONTEXT=orbstack
 
@@ -102,13 +148,15 @@ PROBE=0
 PROBE_S3=0
 PROBE_S6=0
 PROBE_S9=0
+PROBE_S8=0
 case "${1:-}" in
   --probe) PROBE=1 ;;
   --probe-s3) PROBE=1; PROBE_S3=1 ;;
   --probe-s6) PROBE=1; PROBE_S6=1 ;;
   --probe-s9) PROBE=1; PROBE_S9=1 ;;
+  --probe-s8) PROBE=1; PROBE_S8=1 ;;
   "") ;;
-  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [--probe | --probe-s3 | --probe-s6 | --probe-s9 | --probe-s8]" >&2; exit 2 ;;
 esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -194,10 +242,20 @@ if [ "$PROBE" = "1" ]; then
   S3_HOLD_MS="${G12_PROBE_S3_HOLD_MS:-6000}"
   S3_QUIET_MS="${G12_PROBE_S3_QUIET_MS:-2000}"
   S6_DELTA_MS="${G12_PROBE_S6_DELTA_MS:-400}"
+  # §19.1 scenario 8 (VC-R140, probe-s8 only): the widened deltaMs keeps
+  # the prepared stream in flight well past the serial pre-kill gates
+  # (default 8 chunks × 3 s ≈ 21 s of CREATED window after the first live
+  # delta); set via the existing bounded PUT /g12/config deltaMs knob — no
+  # new fixture knob, no product timeout change. The verify recovery
+  # budget waits out the DEFAULT claim lease (270 s) plus the recovery
+  # tick — never a shortened lease, timeout or DB clock.
+  S8_DELTA_MS="${G12_PROBE_S8_DELTA_MS:-3000}"
+  S8_RECOVERY_TIMEOUT="${G12_PROBE_S8_RECOVERY_TIMEOUT:-360}"
 fi
 MODE=$( { [ "$PROBE_S3" = "1" ] && echo PROBE_S3; } \
        || { [ "$PROBE_S6" = "1" ] && echo PROBE_S6; } \
        || { [ "$PROBE_S9" = "1" ] && echo PROBE_S9; } \
+       || { [ "$PROBE_S8" = "1" ] && echo PROBE_S8; } \
        || { [ "$PROBE" = "1" ] && echo PROBE || echo PROFILE; })
 
 COMPOSE=(docker compose --env-file "$ENVFILE" -f "$STACK_COMPOSE" -p "$PROJECT")
@@ -256,6 +314,18 @@ cleanup() {
     kill -KILL "$S3_WORKLOAD_PID" 2>/dev/null || true
     wait "$S3_WORKLOAD_PID" 2>/dev/null || true
   fi
+  # The probe-s8 verify workload is also a directly launched python child
+  # (recorded PID = the python process itself): same TERM → bounded wait →
+  # KILL → reap guarantee on every exit path.
+  if [ -n "${S8_VERIFY_PID:-}" ]; then
+    kill -TERM "$S8_VERIFY_PID" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      kill -0 "$S8_VERIFY_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "$S8_VERIFY_PID" 2>/dev/null || true
+    wait "$S8_VERIFY_PID" 2>/dev/null || true
+  fi
   # Scenario-3 provider config: when a holdMs PUT was applied — or MAY have
   # been applied, because a PUT whose response was lost or timed out cannot
   # be proven skipped by the server — and the normal path never restored the
@@ -291,6 +361,24 @@ cleanup() {
       rc=1
     fi
   elif [ -n "${S6_PENDING_RESTORE_DELTA:-}" ]; then
+    log "cleanup: fake-provider deltaMs restore not attempted (no creating marker)"
+    rc=1
+  fi
+  # Probe-s8 provider config: same pending-restore contract for the widened
+  # deltaMs (registered before the first PUT, one bounded EXIT-path attempt
+  # for anything still pending — including under G12_KEEP=1; the restarted
+  # provider re-reads its initial env, and the restore re-affirms the
+  # original value either way).
+  if [ -n "${S8_PENDING_RESTORE_DELTA:-}" ] && [ -f "$CREATING" ]; then
+    if provider_config_put "{\"deltaMs\":$S8_PENDING_RESTORE_DELTA}" \
+        "$RUN_DIR/s8-delta.exit-restore.json"; then
+      S8_PENDING_RESTORE_DELTA=""
+      log "cleanup: restored fake-provider deltaMs to the original value (s8)"
+    else
+      log "cleanup: fake-provider deltaMs restore FAILED (s8); the provider may retain the probe delta (see $RUN_DIR/s8-delta.exit-restore.json.err)"
+      rc=1
+    fi
+  elif [ -n "${S8_PENDING_RESTORE_DELTA:-}" ]; then
     log "cleanup: fake-provider deltaMs restore not attempted (no creating marker)"
     rc=1
   fi
@@ -383,12 +471,37 @@ req.end(body);' \
     "$FAKE_PORT" "$body" > "$out" 2> "$out.err"
 }
 
+provider_stats_exec() {
+  # GET /g12/stats by exec'ing node INSIDE the fake-provider container
+  # (localhost, same bounded request shape as provider_config_put). Unlike
+  # the collector's transient netns scrape this keeps working across the
+  # probe-s8 runtime kill/restart — the provider keeps its own PID
+  # namespace — and creates no helper container. Old-epoch and new-epoch
+  # callers each write their own file; counters are never mixed.
+  local out="$1"
+  "${COMPOSE[@]}" exec -T fake-provider node \
+    -e 'const http=require("http");
+const req=http.request({host:"127.0.0.1",port:Number(process.argv[1]),path:"/g12/stats",method:"GET",timeout:5000,
+  headers:{}},res=>{let d="";res.on("data",c=>d+=c);
+    res.on("end",()=>{process.stdout.write(d);process.exit(res.statusCode===200?0:1);});});
+req.on("timeout",()=>{req.destroy(new Error("g12 stats GET timeout"));});
+req.on("error",e=>{process.stderr.write(e.message+"\n");process.exit(1);});
+req.end();' \
+    "$FAKE_PORT" > "$out" 2> "$out.err"
+}
+
 analyze_window() {
   python3 "$HERE/collector.py" analyze --frames "$FRAMES" \
     --started "$1" --ended "$2"
 }
 
 psql_q() { "${COMPOSE[@]}" exec -T db psql -U vc_migrator -d vc -tAc "$1"; }
+
+run_workload() {
+  # Shared workload invocation: session/CSRF via environment only. Defined
+  # with the other helpers so the pre-collector probe-s8 branch can use it.
+  python3 "$HERE/workload.py" --base "$GO_BASE" --cacert "$CA_FILE" "$@"
+}
 
 echo "== G12 preflight ($MODE) =="
 docker info >/dev/null 2>&1 || die "docker unreachable"
@@ -660,6 +773,500 @@ if state != "ADULT_VERIFIED":
 print(f"  ageState={state}")
 PY
 
+# ---------------------------------------------------------------------------
+# §19.1 scenario 8 (VC-R140): FUNCTIONAL_ONLY probe for ONE crash point —
+# the worker killed mid-stream while its unique attempt is still CREATED.
+# Defined and dispatched here, BEFORE the collector launch: collectors,
+# sampler, idle windows and warm-up are never started in this mode (their
+# launch is skipped, not torn down), so the evidence is the public chain,
+# the fake provider's own counters (old and new epoch kept separate) and
+# READ-ONLY DB assertions.
+# ---------------------------------------------------------------------------
+s8_capture_identity() {
+  # Identity line: Id StartedAt Pid Running realnetns. SandboxKey is EMPTY
+  # for containers that share another container's network namespace
+  # (network_mode=container:<cid> — the fake provider always), so the
+  # namespace FACT is read from the container's own /proc/1/ns/net via
+  # exec on the exact CID (readlink exists in both the Alpine runtime and
+  # the Debian provider image). No helper container is created; nonce and
+  # running state are re-verified by the callers.
+  local cid="$1" line ns
+  line="$(docker inspect -f '{{.Id}} {{.State.StartedAt}} {{.State.Pid}} {{.State.Running}}' "$cid")" || return 1
+  ns="$(docker exec "$cid" readlink /proc/1/ns/net)" || return 1
+  printf '%s %s\n' "$line" "$ns"
+}
+
+s8_assert_db() {
+  # Read-only DB assertion helper: the probe never issues a DB write.
+  [ "$2" = "$1" ] || die "s8 db assertion failed: $3 (got '$2' want '$1')"
+}
+
+run_probe_s8() {
+  local name="probe-s8"
+  local runtime_cid provider_cid
+  # CIDs come from THIS run's creation receipt (never from names or the
+  # compose project label), then re-verified against the daemon together
+  # with the nonce label before anything is killed.
+  runtime_cid="$(python3 - "$CAPTURE" <<'PY'
+import json, sys
+cap = json.load(open(sys.argv[1]))
+by_service = {c["service"]: c["cid"] for c in cap["containers"]}
+print(by_service["runtime"])
+PY
+)"
+  provider_cid="$(python3 - "$CAPTURE" <<'PY'
+import json, sys
+cap = json.load(open(sys.argv[1]))
+by_service = {c["service"]: c["cid"] for c in cap["containers"]}
+print(by_service["fake-provider"])
+PY
+)"
+  [ -n "$runtime_cid" ] || die "s8: runtime CID missing from the creation receipt"
+  [ -n "$provider_cid" ] || die "s8: fake-provider CID missing from the creation receipt"
+  local cid
+  for cid in "$runtime_cid" "$provider_cid"; do
+    [ "$(docker inspect -f '{{index .Config.Labels "vc.g12.nonce"}}' "$cid" 2>/dev/null)" = "$NONCE" ] \
+      || die "s8: container $cid is not this run's nonce-receipted creation; refusing to kill"
+  done
+
+  echo "== probe-s8: old-epoch provider baseline (deltaMs widen, pending-registered) =="
+  local baseline_file="$RUN_DIR/$name.provider-oldepoch-baseline.json"
+  provider_stats_exec "$baseline_file" \
+    || die "s8: provider stats (old epoch) unreachable"
+  local baseline_line baseline_delta chunks_cfg baseline_streams \
+        baseline_aborted baseline_completed baseline_chunks baseline_active
+  baseline_line="$(python3 - "$baseline_file" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+cfg = p.get("config") or {}
+print(cfg.get("deltaMs", "NA"), cfg.get("chunks", "NA"),
+      p.get("streamRequests", "NA"), p.get("abortedStreamRequests", "NA"),
+      p.get("completedStreamRequests", "NA"),
+      p.get("contentChunkWrites", "NA"),
+      p.get("activeStreamRequests", "NA"))
+PY
+)"
+  read -r baseline_delta chunks_cfg baseline_streams baseline_aborted \
+        baseline_completed baseline_chunks baseline_active <<< "$baseline_line"
+  local v
+  for v in "$baseline_delta" "$chunks_cfg" "$baseline_streams" \
+           "$baseline_aborted" "$baseline_completed" "$baseline_chunks" \
+           "$baseline_active"; do
+    case "$v" in '' | *[!0-9]*) die "s8: provider baseline unparseable ($v)" ;; esac
+  done
+  [ "$baseline_active" = "0" ] \
+    || die "s8: provider already has $baseline_active active stream(s) at baseline"
+  # Pending-restore registration BEFORE the first PUT (a PUT whose response
+  # was lost may still have been applied server-side — same contract as the
+  # S3/S6 knobs; cleanup's EXIT path retries once for anything left).
+  S8_PENDING_RESTORE_DELTA=$baseline_delta
+  if ! provider_config_put "{\"deltaMs\":$S8_DELTA_MS}" \
+      "$RUN_DIR/$name.config-set.json"; then
+    if provider_config_put "{\"deltaMs\":$S8_PENDING_RESTORE_DELTA}" \
+        "$RUN_DIR/$name.config-restore.json"; then
+      S8_PENDING_RESTORE_DELTA=""
+      die "s8: provider deltaMs PUT failed (original deltaMs restored)"
+    fi
+    die "s8: provider deltaMs PUT failed AND restore failed (deltaMs possibly left at $S8_DELTA_MS)"
+  fi
+
+  echo "== probe-s8: identities captured; prepare — one generation, first live delta =="
+  s8_capture_identity "$runtime_cid" > "$RUN_DIR/s8-runtime-before.txt" \
+    || die "s8: runtime identity inspect failed"
+  s8_capture_identity "$provider_cid" > "$RUN_DIR/s8-provider-before.txt" \
+    || die "s8: provider identity inspect failed"
+  if ! run_workload --scenario s8-prepare --key-prefix "$TRIAL_ID-$name" \
+      > "$RUN_DIR/$name.prepare.json"; then
+    [ -s "$RUN_DIR/$name.prepare.json" ] && cat "$RUN_DIR/$name.prepare.json" >&2
+    die "s8 prepare failed (no live delta — the kill gate stays closed)"
+  fi
+  local gid conv
+  read -r gid conv <<< "$(python3 - "$RUN_DIR/$name.prepare.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+print(r.get("generation_id") or "", r.get("conversation_id") or "")
+PY
+)"
+  case "$gid" in '' | *[!0-9]*) die "s8: prepare produced no usable generation id ($gid)" ;; esac
+  case "$conv" in '' | *[!0-9]*) die "s8: prepare produced no usable conversation id ($conv)" ;; esac
+
+  echo "== probe-s8: pre-kill assertions (DB read-only + old-epoch provider) =="
+  local owner="$G12_ACCOUNT_ID"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner")" \
+    "generation belongs to the seeded owner"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='CLAIMED' AND wi.lease_expires_at > clock_timestamp()")" \
+    "work item CLAIMED with an unexpired lease"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
+    "exactly one attempt intent"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='CREATED'")" \
+    "attempt intent CREATED"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND assistant_message_id IS NULL")" \
+    "no assistant commit for the generation"
+  local prekill="$RUN_DIR/$name.provider-prekill.json"
+  provider_stats_exec "$prekill" || die "s8: provider stats unreachable pre-kill"
+  python3 - "$prekill" "$baseline_streams" "$baseline_aborted" \
+    "$baseline_completed" "$baseline_chunks" <<'PY' \
+    || die "s8: provider state does not prove one live mid-stream request; refusing to kill"
+import json, sys
+p = json.load(open(sys.argv[1]))
+bs, ba, bc, bch = (int(x) for x in sys.argv[2:6])
+ok = (int(p["streamRequests"]) == bs + 1
+      and int(p["activeStreamRequests"]) == 1
+      and int(p["abortedStreamRequests"]) == ba
+      and int(p["completedStreamRequests"]) == bc
+      and int(p["contentChunkWrites"]) > bch)
+raise SystemExit(0 if ok else 1)
+PY
+  # Final identity gate: the exact container captured above must still be
+  # the running one — anything else fails closed and nothing is killed.
+  local atkill
+  atkill="$(s8_capture_identity "$runtime_cid")" \
+    || die "s8: runtime identity re-inspect failed"
+  [ "$atkill" = "$(cat "$RUN_DIR/s8-runtime-before.txt")" ] \
+    || die "s8: runtime identity changed between capture and the kill gate; refusing"
+
+  echo "== probe-s8: docker kill runtime ($runtime_cid) =="
+  docker kill "$runtime_cid" > /dev/null || die "s8: docker kill failed"
+  local killed
+  killed="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}} {{.State.Pid}}' "$runtime_cid")" \
+    || die "s8: post-kill inspect failed"
+  printf '%s\n' "$killed" > "$RUN_DIR/s8-runtime-killed.txt"
+  case "$killed" in
+    "exited 137 0") : ;;
+    *) die "s8: runtime post-kill state '$killed' (want 'exited 137 0')" ;;
+  esac
+
+  echo "== probe-s8: old-epoch abort evidence (bounded wait) =="
+  local oldefinal="$RUN_DIR/$name.provider-oldepoch-final.json"
+  local settled=0 n
+  for n in $(seq 1 30); do
+    if provider_stats_exec "$oldefinal" \
+        && python3 - "$oldefinal" "$baseline_aborted" "$baseline_completed" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+ba, bc = int(sys.argv[2]), int(sys.argv[3])
+ok = (int(p["abortedStreamRequests"]) == ba + 1
+      and int(p["completedStreamRequests"]) == bc
+      and int(p["activeStreamRequests"]) == 0)
+raise SystemExit(0 if ok else 1)
+PY
+    then
+      settled=1
+      break
+    fi
+    sleep 0.5
+  done
+  [ "$settled" = "1" ] \
+    || die "s8: old-epoch provider never recorded the orphaned abort within the bounded window"
+
+  echo "== probe-s8: restart runtime (same CID, new epoch) =="
+  docker start "$runtime_cid" > /dev/null || die "s8: runtime start failed"
+  local restarted=0
+  for n in $(seq 1 60); do
+    if s8_capture_identity "$runtime_cid" > "$RUN_DIR/s8-runtime-restarted.txt" 2>/dev/null \
+        && python3 - "$RUN_DIR/s8-runtime-before.txt" "$RUN_DIR/s8-runtime-restarted.txt" <<'PY'
+import sys
+old = open(sys.argv[1]).read().split()
+new = open(sys.argv[2]).read().split()
+ok = (len(old) == 5 and len(new) == 5 and new[0] == old[0]  # same CID
+      and new[3] == "true"                                  # running
+      and new[1] != old[1] and new[2] != old[2]
+      and new[4] != old[4])              # new StartedAt/PID/netns
+raise SystemExit(0 if ok else 1)
+PY
+    then
+      restarted=1
+      break
+    fi
+    sleep 1
+  done
+  [ "$restarted" = "1" ] \
+    || die "s8: runtime did not come back as the same CID with a new StartedAt/PID/netns"
+  local tls_back=0
+  for n in $(seq 1 120); do
+    if curl -fsS --cacert "$CA_FILE" --max-time 2 \
+        "$GO_BASE/actuator/health/readiness" 2>/dev/null | grep -q '"UP"'; then
+      tls_back=1
+      break
+    fi
+    sleep 0.5
+  done
+  [ "$tls_back" = "1" ] \
+    || die "s8: caddy TLS readiness did not come back after the runtime restart"
+
+  echo "== probe-s8: restart fake-provider into the new runtime netns =="
+  docker restart "$provider_cid" > /dev/null || die "s8: provider restart failed"
+  local rejoined=0
+  for n in $(seq 1 30); do
+    if s8_capture_identity "$provider_cid" > "$RUN_DIR/s8-provider-restarted.txt" 2>/dev/null \
+        && python3 - "$RUN_DIR/s8-runtime-restarted.txt" "$RUN_DIR/s8-provider-before.txt" "$RUN_DIR/s8-provider-restarted.txt" <<'PY'
+import sys
+rt = open(sys.argv[1]).read().split()
+old = open(sys.argv[2]).read().split()
+new = open(sys.argv[3]).read().split()
+ok = (len(old) == 5 and len(new) == 5 and new[0] == old[0]  # same CID
+      and new[3] == "true"                                  # running
+      and new[1] != old[1] and new[2] != old[2]
+      and new[4] != old[4]               # left the dead old netns
+      and new[4] == rt[4])               # joined the runtime's NEW netns
+raise SystemExit(0 if ok else 1)
+PY
+    then
+      rejoined=1
+      break
+    fi
+    sleep 0.5
+  done
+  [ "$rejoined" = "1" ] \
+    || die "s8: provider did not rejoin the restarted runtime's network namespace"
+  # Fixed zero-sample BEFORE any new traffic: the new epoch starts at
+  # initial counters — the restart proof, and the pre-health-control fact
+  # that the recovery window itself issues no provider request. The same
+  # read-back confirms the restarted provider re-derived its config from
+  # the initial env (deltaMs back at the original value) BEFORE the probe
+  # continues; a mismatch dies here and leaves the pending restore for
+  # cleanup's EXIT attempt.
+  local newinit="$RUN_DIR/$name.provider-newepoch-initial.json"
+  local initzero=0
+  for n in $(seq 1 30); do
+    if provider_stats_exec "$newinit" \
+        && python3 - "$newinit" "$baseline_delta" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+ok = (int(p["streamRequests"]) == 0
+      and int(p["activeStreamRequests"]) == 0
+      and int(p["contentChunkWrites"]) == 0
+      and int(p["abortedStreamRequests"]) == 0
+      and int(p["completedStreamRequests"]) == 0
+      and (p.get("config") or {}).get("deltaMs") == int(sys.argv[2]))
+raise SystemExit(0 if ok else 1)
+PY
+    then
+      initzero=1
+      break
+    fi
+    sleep 0.5
+  done
+  [ "$initzero" = "1" ] \
+    || die "s8: restarted provider counters/config not at the initial state (counters must be zero, config.deltaMs must equal the pre-probe value)"
+
+  echo "== probe-s8: wait out the DEFAULT claim lease (read-only DB poll) =="
+  # The recovery wait itself: only the default lease and the runtime's own
+  # recovery tick, observed via read-only SELECTs — never a shortened
+  # lease, a tampered clock, or a DB write.
+  local recovered=0
+  local dbdeadline=$(( $(date +%s) + S8_RECOVERY_TIMEOUT ))
+  local dbstatus
+  while [ "$(date +%s)" -lt "$dbdeadline" ]; do
+    dbstatus="$(psql_q "SELECT status FROM vc.generation WHERE id=$gid AND owner_user_id=$owner")" \
+      || die "s8: recovery DB poll query failed (read-only)"
+    # A result returned past the budget is never adopted — even a late
+    # FAILED_FINAL — and only the known non-terminal states may keep the
+    # loop going: an empty or unknown status fails instead of posing as
+    # success.
+    [ "$(date +%s)" -lt "$dbdeadline" ] \
+      || die "s8: recovery DB poll result arrived after the budget"
+    case "$dbstatus" in
+      FAILED_FINAL)
+        recovered=1
+        break
+        ;;
+      CREATED | QUEUED | IN_PROGRESS | INPUT_REVIEW | FINAL_REVIEW | COMMITTING)
+        sleep 2
+        ;;
+      *)
+        die "s8: recovery DB poll returned unexpected generation status '$dbstatus'"
+        ;;
+    esac
+  done
+  [ "$recovered" = "1" ] \
+    || die "s8: generation did not reach FAILED_FINAL within the recovery budget (${S8_RECOVERY_TIMEOUT}s read-only DB poll)"
+
+  echo "== probe-s8: recovered-state DB assertions (read-only, BEFORE any health traffic) =="
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid")" \
+    "still exactly one attempt (no new attempt)"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.attempt_intent WHERE owner_user_id=$owner AND generation_id=$gid AND status='ABANDONED_LATE'")" \
+    "attempt ABANDONED_LATE"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.generation WHERE id=$gid AND owner_user_id=$owner AND status='FAILED_FINAL' AND assistant_message_id IS NULL")" \
+    "generation FAILED_FINAL with no assistant message"
+  s8_assert_db 1 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status='FAILED' AND wi.last_error_code='PROVIDER_OUTCOME_UNKNOWN'")" \
+    "work item FAILED with PROVIDER_OUTCOME_UNKNOWN"
+  s8_assert_db 0 \
+    "$(psql_q "SELECT COUNT(*) FROM vc.work_item wi JOIN vc.generation g ON g.owner_user_id=wi.owner_user_id AND wi.kind='GENERATION' AND wi.ref_id=g.id WHERE g.id=$gid AND wi.status IN ('PENDING','CLAIMED')")" \
+    "work item never requeued"
+
+  echo "== probe-s8: fixed new-epoch zero-sample BEFORE the health control =="
+  # Forward evidence, not an inference: the recovery window (crash -> this
+  # point) issued no provider request, sampled after the DB state above is
+  # fixed and before verify sends the one health-control generation.
+  local newzero="$RUN_DIR/$name.provider-newepoch-before-health.json"
+  local prezero=0
+  for n in $(seq 1 30); do
+    if provider_stats_exec "$newzero" \
+        && python3 - "$newzero" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))
+ok = (int(p["streamRequests"]) == 0
+      and int(p["activeStreamRequests"]) == 0
+      and int(p["contentChunkWrites"]) == 0
+      and int(p["abortedStreamRequests"]) == 0
+      and int(p["completedStreamRequests"]) == 0)
+raise SystemExit(0 if ok else 1)
+PY
+    then
+      prezero=1
+      break
+    fi
+    sleep 0.5
+  done
+  [ "$prezero" = "1" ] \
+    || die "s8: new-epoch provider did not stay at zero requests through the recovery window"
+
+  echo "== probe-s8: verify — public recovered-failure view + health control =="
+  local verify_rc=0
+  local watchdog=$((S8_RECOVERY_TIMEOUT + 120))
+  python3 "$HERE/workload.py" --base "$GO_BASE" --cacert "$CA_FILE" \
+    --scenario s8-verify --key-prefix "$TRIAL_ID-$name" \
+    --s8-generation-id "$gid" --s8-conversation-id "$conv" \
+    --s8-recovery-timeout "$S8_RECOVERY_TIMEOUT" --sse-timeout 30 \
+    > "$RUN_DIR/$name.verify.json" 2> "$RUN_DIR/$name.verify.err" &
+  S8_VERIFY_PID=$!
+  local wdeadline=$(( $(date +%s) + watchdog ))
+  while kill -0 "$S8_VERIFY_PID" 2>/dev/null && [ "$(date +%s)" -lt "$wdeadline" ]; do
+    sleep 1
+  done
+  if kill -0 "$S8_VERIFY_PID" 2>/dev/null; then
+    kill -TERM "$S8_VERIFY_PID" 2>/dev/null || true
+    for n in $(seq 1 20); do
+      kill -0 "$S8_VERIFY_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "$S8_VERIFY_PID" 2>/dev/null || true
+    wait "$S8_VERIFY_PID" 2>/dev/null || true
+    S8_VERIFY_PID=""
+    die "s8 verify exceeded its bounded budget (${watchdog}s)"
+  fi
+  wait "$S8_VERIFY_PID" || verify_rc=$?
+  S8_VERIFY_PID=""
+  if [ "$verify_rc" -ne 0 ]; then
+    [ -s "$RUN_DIR/$name.verify.json" ] && cat "$RUN_DIR/$name.verify.json" >&2
+    die "s8 verify failed (rc=$verify_rc)"
+  fi
+
+  echo "== probe-s8: new-epoch provider accounting (exactly the health request) =="
+  local newfinal="$RUN_DIR/$name.provider-newepoch-final.json"
+  provider_stats_exec "$newfinal" \
+    || die "s8: provider stats unreachable (new epoch)"
+  python3 - "$newfinal" <<'PY' \
+    || die "s8: new-epoch provider accounting wrong (want 1 stream / 1 completed / 0 aborted / 0 active)"
+import json, sys
+p = json.load(open(sys.argv[1]))
+ok = (int(p["streamRequests"]) == 1
+      and int(p["completedStreamRequests"]) == 1
+      and int(p["abortedStreamRequests"]) == 0
+      and int(p["activeStreamRequests"]) == 0)
+raise SystemExit(0 if ok else 1)
+PY
+
+  if provider_config_put "{\"deltaMs\":$S8_PENDING_RESTORE_DELTA}" \
+      "$RUN_DIR/$name.config-restore.json"; then
+    S8_PENDING_RESTORE_DELTA=""
+  else
+    die "s8: provider deltaMs restore failed (one bounded EXIT retry follows)"
+  fi
+
+  python3 - "$RUN_DIR" "$name" "$gid" "$S8_DELTA_MS" "$baseline_delta" \
+    "$S8_RECOVERY_TIMEOUT" > "$RUN_DIR/$name.summary.json" <<'PY'
+import json, os, sys
+run_dir, name, gid, delta_ms, baseline_delta, recovery_s = sys.argv[1:7]
+
+def load(fn):
+    try:
+        return json.load(open(os.path.join(run_dir, fn)))
+    except Exception:
+        return None
+
+def text(fn):
+    try:
+        return open(os.path.join(run_dir, fn)).read().strip()
+    except Exception:
+        return None
+
+# Reaching this summary means every shell gate above passed (any mismatch
+# died before this point); the summary assembles the recorded evidence.
+prepare = load(f"{name}.prepare.json")
+verify = load(f"{name}.verify.json")
+summary = {
+    "scenario": name,
+    "mode": "FUNCTIONAL_ONLY",
+    "performance_conclusions": "NONE",
+    "scope": {
+        "crash_point_covered": "runtime worker killed mid-stream while the "
+                               "unique attempt is CREATED (docker kill, "
+                               "exit 137)",
+        "crash_points_not_covered": ["claim_before_intent",
+                                     "SUCCEEDED_before_finalize"],
+        "note": "single crash-point functional proof on the production-"
+                "derived TLS stack; not the complete S8 matrix, not a "
+                "capacity/perf conclusion and not any §19.2/G12 gate",
+    },
+    "method": {
+        "phases": "sequential two-phase client (s8-prepare returns after "
+                  "the first live chat.delta; s8-verify polls only the "
+                  "original generation id), no long-lived controller",
+        "recovery": "default claim lease + recovery tick only; run.sh waits "
+                    "via a read-only DB poll and fixes the recovered DB "
+                    "state plus a zero-request provider sample BEFORE the "
+                    "health control; verify re-checks the public view; no "
+                    "timeout, lease or DB-clock tampering, no DB writes",
+        "provider_epochs": "old/new epoch counters recorded separately, "
+                           "never subtracted across the restart",
+        "delta_ms_set": int(delta_ms),
+        "delta_ms_restored_to": int(baseline_delta),
+        "recovery_budget_s": float(recovery_s),
+    },
+    "generation_id": gid,
+    "prepare": prepare,
+    "verify": verify,
+    "provider_epochs": {
+        "old_baseline": load(f"{name}.provider-oldepoch-baseline.json"),
+        "prekill": load(f"{name}.provider-prekill.json"),
+        "old_epoch_final": load(f"{name}.provider-oldepoch-final.json"),
+        "new_epoch_initial": load(f"{name}.provider-newepoch-initial.json"),
+        "new_epoch_before_health": load(
+            f"{name}.provider-newepoch-before-health.json"),
+        "new_epoch_final": load(f"{name}.provider-newepoch-final.json"),
+    },
+    "identities": {
+        "runtime_before": text("s8-runtime-before.txt"),
+        "runtime_killed": text("s8-runtime-killed.txt"),
+        "runtime_restarted": text("s8-runtime-restarted.txt"),
+        "provider_before": text("s8-provider-before.txt"),
+        "provider_restarted": text("s8-provider-restarted.txt"),
+    },
+    "errors": [], "error_count": 0,
+}
+print(json.dumps(summary, ensure_ascii=False))
+PY
+}
+
+if [ "$PROBE_S8" = "1" ]; then
+  echo "== probe-s8 functional chain: worker-crash mid-stream recovery =="
+  run_probe_s8
+  echo "== G12 probe-s8 PASS (FUNCTIONAL_ONLY; artifacts in $RUN_DIR) =="
+  cat "$RUN_DIR/probe-s8.summary.json"
+  exit 0
+fi
+
 echo "== start collectors (readers + observer + same-window frame loop) =="
 # Mark launch-attempted BEFORE the launch call: once helpers may exist, the
 # collectors receipt is required evidence for cleanup (missing/unreadable
@@ -720,11 +1327,6 @@ cpu_status = {c: k["status"] for c, k in a["b"]["components"].items()}
 nonvalid = {c: s for c, s in cpu_status.items() if s != "VALID"}
 print(f"  idle B CPU windows = {'all VALID' if not nonvalid else nonvalid}")
 PY
-
-run_workload() {
-  # Shared workload invocation: session/CSRF via environment only.
-  python3 "$HERE/workload.py" --base "$GO_BASE" --cacert "$CA_FILE" "$@"
-}
 
 run_scenario() {
   local name="$1" gens="$2" sse="$3"

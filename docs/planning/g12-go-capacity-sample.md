@@ -886,3 +886,56 @@ HTTP 慢读者”的当前口径过时，README 与 runner 输出说明已校正
 上限 256KiB，且引擎在每个 delta 进入 hub 前执行输出预算。文本大小本身
 不能推出 SSE 帧数和全部编码字节上限，因此也不据此断言部署链触发绝不可能；
 当前仅确认尚无验证过的触发方法，G12 与 Owner 验收保持未关闭。
+
+
+## 16. 2026-10-23 补充：S8 流式崩溃恢复功能探针（VC-R140～R142）
+
+### 交付
+
+既有 G12 harness 增加 `--probe-s8`：仅 §19.1 S8 单一崩溃点链的 standalone
+FUNCTIONAL_ONLY 入口（collectors/sampler/idle/warm-up 在启动前跳过，无
+A/B 帧；**默认 profile 不加入 S8**）。场景经公开链路发送并在首个 live
+delta 后 kill runtime，再显式重启同 CID，验证恢复协议把 CREATED attempt
+收敛为终态。恢复使用生产默认参数（claim 租约 270s、恢复 tick 5s，未改
+短）；provider deltaMs 经既有有界 `PUT /g12/config` 临时加宽（默认
+3000ms）并在所有退出路径恢复。只扩展 runner、workload 与相关单测；
+未修改 Go 服务、SQL、公开契约、生产参数或依赖。
+
+### 实测（FUNCTIONAL_ONLY，单次完整运行）
+
+真实 OrbStack/TLS/PostgreSQL 探针退出码 **0**、耗时 **349.8s**。kill 前：
+公开首 live chat.delta，DB CLAIMED 且租约在效、唯一 attempt CREATED、
+无 assistant，旧 provider 端 stream 1/active 1/chunks 1/completed 0。
+`docker kill` 后同 CID exited 137/PID 0，旧 provider 流计为 abort 1/
+completed 0/active 0/chunks 1；显式 start 同 CID 后新 StartedAt/PID 与
+真实 /proc/1 ns，provider 同 CID 重启、真实 netns 从旧值切换为新 runtime
+同值，config.deltaMs 恢复 50。重启后任何健康检查之前，新 provider epoch
+计数固定全 0（含 requests、streamRequests）。
+
+结果：原 gid 公开终态 FAILED_FINAL（snapshot.events chat.failed、fault
+external-failed，事后 SSE chat.failed，assistant 0），attempt 仍 1 且
+ABANDONED_LATE，work_item FAILED/PROVIDER_OUTCOME_UNKNOWN；同一会话独立
+健康对照消息 SSE chat.completed、自身 snapshot COMPLETED、assistant 恰
+1，且原 gid 维持 FAILED_FINAL。新 epoch 最终 stream 1/completed 1/
+abort 0/active 0（provider 总请求 2，其中流式 1；新旧 epoch 不跨进程
+差分）。本节为唯一一次完整 harness 运行：此前 Root 启动包装曾在 Python
+执行前因换行语法错误失败、未建栈，不计为试验。
+
+### 验证与清理核清
+
+稳定候选：test_workload **67** 项（含 9 个 S8）、test_resources **53**
+项（纯 stub，32.7s）、`bash -n`、**40 个**内嵌 Python 编译与
+`git diff --check` 通过；末次修改仅 run.sh DB 轮询，bash -n 与
+diff-check 已复跑通过，workload 输入未变未重跑。成功清理后独立只读核清：
+本轮 8 容器/4 卷/1 网络/3 个构建镜像标签均不存在（collectors 0、从未
+启动），cleanup_leftovers={}、resource_absence=[]、private_files_remaining=[]、
+protected_unchanged=true；外层观察器在清理前保留构建收据
+（未重复 R129 的收据先失问题）。未重跑容器或测试重复证明。
+
+### 维持开放
+
+探针只覆盖 attempt-CREATED 流中崩溃点；claim-before-intent 与
+SUCCEEDED-before-finalize 两个崩溃点仍在探针之外。默认 profile 不含 S8；
+S6 Caddy/TLS 部署链慢读者、完整 profile 三次长窗采样与性能口径、Owner
+gate、真机、真实 provider 与 Beta 前置均未由此关闭。FUNCTIONAL_ONLY，
+无容量/性能结论，不满足 §19.2 门槛。
