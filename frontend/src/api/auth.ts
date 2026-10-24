@@ -200,7 +200,13 @@ export async function verifyRecoveryCode(
 }
 
 export async function logout(t: AuthTransport): Promise<boolean> {
-  const response = await t.request("POST", `${AUTH_BASE}/logout`);
+  // VC-R165: 弱网总时限——响应头或 JSON 正文挂起时 15 秒后按「结果未知」
+  // 失败，UI 才能进入 R164 的无法确认/可重试反馈，而不是无限 busy。复用
+  // transport 既有 timeoutMs 机制（覆盖 fetch 与正文读取全生命周期），不
+  // 新建 timer/AbortController/错误类型，也不推广到其他 auth/admin 请求。
+  const response = await t.request("POST", `${AUTH_BASE}/logout`, undefined, {
+    timeoutMs: 15_000,
+  });
   return response.ok;
 }
 

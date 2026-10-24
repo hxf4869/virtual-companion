@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createAuthenticatedTransport, TransportTimeoutError } from "@/api/transport";
+
 import {
   changeAuthPassword,
   confirmAuthenticator,
@@ -299,5 +301,104 @@ describe("Go Runtime auth client", () => {
     await expect(reauthAuth(ok, "current-password")).resolves.toBe(true);
     await expect(deleteAccount(ok, "Current-Pass-1!")).resolves.toBe(true);
     await expect(recordSurvey(ok, 5)).resolves.toBe(true);
+  });
+});
+
+// VC-R165: 弱网下 logout 不得无限等待——apiLogout 必须经真实
+// createAuthenticatedTransport 的 timeoutMs 总时限（覆盖 fetch 与 JSON 正文
+// 全生命周期）在 15 秒内以既有 TransportTimeoutError 失败（结果未知）。
+describe("logout request deadline", () => {
+  it("times out with the existing TransportTimeoutError when response headers never arrive", async () => {
+    vi.useFakeTimers();
+    // mock 遵守 AbortSignal：abort 时才 reject，其余时间永不返回响应头。
+    let rejectedByAbort = false;
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal) {
+          if (signal.aborted) {
+            rejectedByAbort = true;
+            reject(new DOMException("aborted", "AbortError"));
+            return;
+          }
+          signal.addEventListener(
+            "abort",
+            () => {
+              rejectedByAbort = true;
+              reject(new DOMException("aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onUnauthorized = vi.fn();
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "session",
+      getSessionRevision: () => 1,
+      onUnauthorized,
+    });
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = logout(transport);
+      // 及时附上 rejection handler，避免未处理拒绝噪声。
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      // 15 秒到点前不得结束（旧代码此时已挂死，但测试自身不得跟着挂）。
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("rejected");
+      await expect(outcome).rejects.toBeInstanceOf(TransportTimeoutError);
+      await expect(outcome).rejects.toMatchObject({
+        name: "TransportTimeoutError",
+        timeoutMs: 15_000,
+      });
+      // 中止的是本次请求：signal 已 abort 且 mock 确经 abort 拒绝；
+      // 头从未到达，不构成 401，不得触发 onUnauthorized。
+      const signal = fetchMock.mock.calls[0]?.[1]?.signal;
+      expect(signal?.aborted).toBe(true);
+      expect(rejectedByAbort).toBe(true);
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("times out with the existing TransportTimeoutError when the JSON body never settles", async () => {
+    vi.useFakeTimers();
+    // 头 200 已返回，但正文永不 settle：总时限必须覆盖 JSON 读取阶段。
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise<unknown>(() => {}),
+    }) as unknown as Response));
+    const onUnauthorized = vi.fn();
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "session",
+      getSessionRevision: () => 1,
+      onUnauthorized,
+    });
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = logout(transport);
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("rejected");
+      await expect(outcome).rejects.toBeInstanceOf(TransportTimeoutError);
+      await expect(outcome).rejects.toMatchObject({ timeoutMs: 15_000 });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });

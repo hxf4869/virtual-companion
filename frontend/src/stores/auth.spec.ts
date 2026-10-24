@@ -873,7 +873,13 @@ describe("useAuthStore", () => {
     // 正常路径：代次未变，本次调用拥有本地清理并已执行，返回 true。
     await expect(store.logout(logoutT)).resolves.toBe(true);
 
-    expect(logoutT.request).toHaveBeenCalledWith("POST", "/api/v1/auth/logout");
+    // VC-R165: logout 请求带 15 秒总时限（弱网挂起时按结果未知失败）。
+    expect(logoutT.request).toHaveBeenCalledWith(
+      "POST",
+      "/api/v1/auth/logout",
+      undefined,
+      { timeoutMs: 15_000 },
+    );
     expect(store.isAuthenticated).toBe(false);
     expect(store.accessToken).toBeNull();
   });
