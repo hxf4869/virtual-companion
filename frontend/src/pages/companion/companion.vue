@@ -252,7 +252,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
 
 import type { AvoidTopic } from "@/api/relationship";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -366,6 +366,86 @@ function onRadioKeydown(event: KeyboardEvent): void {
   void nextTick(() => target.focus());
 }
 
+// VC-R178：未保存更改的离开保护。本页所有离开路径在 H5 都汇到
+// getApp().$router（uni.navigateBack→go、navigateTo→push、redirectTo/
+// switchTab→replace、浏览器后退→popstate），在 beforeEach 注册一个可移除
+// 守卫即可全部拦截；vue-router 4 对被守卫取消的 pop 导航会以
+// go(-delta)+pauseListeners 恢复地址，浏览器后退被拒后 URL 回到本页。
+// 确认弹窗用浏览器原生 confirm（键盘可达、零新增弹层）——uni.showModal 的
+// 按钮在 uni-h5 是不可 Tab 到达的裸 div，不复制该缺口。文案只陈述本页
+// 草稿会被丢弃，保存结果未知时也不声称服务端未生效。
+const LEAVE_CONFIRM_MESSAGE = "本页还有更改，离开后页面上的草稿不会保留。确定离开吗？";
+
+interface H5LeaveRouter {
+  beforeEach: (
+    guard: (to: { path: string }, from: { path: string }) => boolean | Promise<boolean>,
+  ) => () => void;
+}
+
+let leaveGuardsInstalled = false;
+let removeRouteLeaveGuard: (() => void) | null = null;
+// VC-R178：最近一次守卫判定被确认“放弃并离开”。beforeEach 放行 ≠ 导航成功
+// （后续守卫取消/失败时页面仍在），确认只记录意图；onDeactivated 真正发生
+// 且意图仍在时才清草稿。每次新的 guard 判定先清理，最新决定生效。
+let confirmedDiscardLeave = false;
+
+// dirty 只在草稿仍归属当前登录身份时才构成拦截条件；换号清理（reset 清空
+// 草稿）与登录目标路由永远放行，旧账号草稿不阻认证/换号链路。
+function draftBelongsToCurrentIdentity(): boolean {
+  return dirty.value
+    && auth.isAuthenticated
+    && loadedForAccountId !== null
+    && loadedForAccountId === auth.accountId;
+}
+
+async function guardRouteLeave(
+  to: { path: string },
+  from: { path: string },
+): Promise<boolean> {
+  confirmedDiscardLeave = false;
+  if (from.path !== "/pages/companion/companion") return true;
+  if (to.path === from.path) return true;
+  if (to.path === "/pages/login/login") return true;
+  if (!draftBelongsToCurrentIdentity()) return true;
+  // 原生 confirm 取消即“继续编辑”；确认即“放弃并离开”——此刻只放行并记
+  // 录意图，绝不代发 PATCH，服务端值保持用户上次保存的结果。
+  const leave = typeof globalThis.confirm === "function"
+    ? globalThis.confirm(LEAVE_CONFIRM_MESSAGE)
+    : false;
+  confirmedDiscardLeave = leave;
+  return leave;
+}
+
+function guardBrowserLeave(event: BeforeUnloadEvent): void {
+  if (!draftBelongsToCurrentIdentity()) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+
+function installLeaveGuards(): void {
+  if (leaveGuardsInstalled) return;
+  leaveGuardsInstalled = true;
+  // 裸 getApp 引用与 app/navigate.ts 的 getCurrentPages 同惯例：uni-h5 构建
+  // 注入；组件测试与非 uni 宿主经 typeof 静默降级（仅失去本页确认弹窗）。
+  if (typeof getApp === "function") {
+    const router = getApp<{ $router?: H5LeaveRouter }>().$router;
+    if (router?.beforeEach) removeRouteLeaveGuard = router.beforeEach(guardRouteLeave);
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", guardBrowserLeave);
+  }
+}
+
+function removeLeaveGuards(): void {
+  if (!leaveGuardsInstalled) return;
+  leaveGuardsInstalled = false;
+  removeRouteLeaveGuard?.();
+  removeRouteLeaveGuard = null;
+  if (typeof window !== "undefined") {
+    window.removeEventListener("beforeunload", guardBrowserLeave);
+  }
+}
+
 // VC-R13：换号身份交接。KeepAlive 缓存的隐藏页不得保留旧账号的偏好与
 // 草稿，也不得被旧账号的在途读取/保存回填或占住保存位。仅在「已知账号 →
 // 不同账号/退出」时清理；null → X（初次恢复、匿名后登录）不清理、不当作
@@ -377,6 +457,8 @@ watch(() => auth.accountId, (next, prev) => {
   loadedForAccountId = null;
   loadSeq++;
   busy.value = false;
+  // VC-R178：换号后旧账号草稿的离开守卫一并撤下（重新激活时按需重装）。
+  removeLeaveGuards();
 });
 
 async function reload(): Promise<void> {
@@ -410,15 +492,36 @@ async function onSave(): Promise<void> {
 
 onMounted(() => {
   void reload();
+  installLeaveGuards();
 });
 
 // VC-R13：KeepAlive 缓存页重新激活时，仅当已认证且当前内容不属于本账号
 // 才重新加载；同账号返回（归属一致）不重载、不重复请求，未保存草稿保留。
 // 与 onMounted 首次同时触发由 reload 同步置位的 busy 去重。
 onActivated(() => {
+  installLeaveGuards();
   if (!auth.isAuthenticated || busy.value) return;
   if (loadedForAccountId === auth.accountId) return;
   void reload();
+});
+
+// VC-R178：KeepAlive 停用（页面被压栈/替换隐藏）与卸载时撤下路由守卫和
+// beforeunload 监听，隐藏页不残留任何离开拦截。确认过“放弃并离开”的停用
+// 才真正清空本页草稿（reset 作废在途读取/保存），并作废账号归属使再次
+// 激活时按服务端重读；未确认的正常 KeepAlive 停用保持“草稿保留”语义。
+onDeactivated(() => {
+  const discardOnLeave = confirmedDiscardLeave;
+  confirmedDiscardLeave = false;
+  removeLeaveGuards();
+  if (!discardOnLeave) return;
+  reset();
+  loadedForAccountId = null;
+  loadSeq++;
+  busy.value = false;
+});
+
+onBeforeUnmount(() => {
+  removeLeaveGuards();
 });
 </script>
 

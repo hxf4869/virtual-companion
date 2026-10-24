@@ -184,6 +184,192 @@ test("companion settings keyboard radio navigation", async ({ page }) => {
   expect(prefsPatches).toBe(0);
 });
 
+/** Push a page onto the real in-app history stack (uni.navigateTo →
+ * router.push), unlike navigateToPage's redirectTo replace, so browser back
+ * and the page-header back both have a previous in-app page to land on. */
+async function pushPage(page: Page, href: string): Promise<void> {
+  await page.evaluate((url) => {
+    const uniApi = (globalThis as Record<string, unknown>).uni as
+      | { navigateTo?: (options: { url: string }) => void }
+      | undefined;
+    uniApi?.navigateTo({ url });
+  }, href);
+  const path = href.split("?", 1)[0];
+  await page.waitForURL((url) => url.hash.startsWith(`#${path}`), { timeout: 20_000 });
+}
+
+/** The active relationship row's saved companion name straight from the API:
+ * the untouched server baseline the discarded drafts are compared against. */
+async function readServerCompanionName(page: Page): Promise<string> {
+  const list = await sessionRequest(page, "GET", "/api/v1/relationships");
+  expect(list.ok, `relationships read failed: ${list.status}`).toBeTruthy();
+  const rows = (Array.isArray(list.body) ? list.body : []) as Array<{
+    active?: boolean;
+    companionName?: unknown;
+  }>;
+  const active = rows.find((row) => row.active);
+  // An empty saved name is a legitimate baseline (default companion); what
+  // matters is that a row exists to compare the untouched server state to.
+  expect(active, "the shared account must have an active relationship").toBeTruthy();
+  return String(active?.companionName ?? "");
+}
+
+/** A reload dismissed at the browser's beforeunload prompt aborts with
+ * ERR_ABORTED; that one expected rejection is swallowed, anything else
+ * propagates. */
+function expectAbortedReload(promise: Promise<unknown>): Promise<void> {
+  return promise.then(
+    () => undefined,
+    (error: unknown) => {
+      const message = String((error as { message?: string } | null)?.message ?? error);
+      if (!message.includes("ERR_ABORTED")) throw error;
+    },
+  );
+}
+
+// VC-R178: unsaved companion-settings changes are confirmed before leaving.
+// Every H5 leave path funnels through getApp().$router, so the page's removable
+// beforeEach guard covers the browser back button and the page-header back
+// alike; the confirmation is the browser's native confirm dialog (keyboard
+// operable, no custom modal layer) and refresh/close go through the standard
+// beforeunload. Discarding never PATCHes: the server keeps the last saved
+// values and a later re-entry re-reads them.
+test("companion settings confirm before discarding unsaved changes on leave", async ({ page }, testInfo) => {
+  await openSharedSession(page, "memory");
+  const baselineName = await readServerCompanionName(page);
+
+  const DRAFT_NAME = "未保存草稿R178";
+  let prefsPatches = 0;
+  page.on("request", (request) => {
+    if (request.method() === "PATCH"
+      && /^\/api\/v1\/relationships\/[^/]+$/.test(new URL(request.url()).pathname)) {
+      prefsPatches += 1;
+    }
+  });
+
+  // Real stack: index → account → companion, both pushes.
+  await pushPage(page, "/pages/account/account");
+  await pushPage(page, "/pages/companion/companion");
+  await expect(page.getByTestId("companion-form")).toBeVisible();
+  await fillUniInput(page, "pref-companion-name", DRAFT_NAME);
+  await page.getByTestId("pref-reply-length-SHORT").click();
+  await expect(page.getByTestId("companion-dirty")).toBeVisible();
+
+  // The native confirm freezes page JS, so every dialog-triggering action is
+  // started unawaited, the dialog handled, and only then the action awaited.
+
+  // —— Browser back · continue editing: the dialog must name the draft loss,
+  // dismissing it keeps the page (vue-router restores the history entry) with
+  // fields and options untouched and no PATCH. ——
+  const backDismissDialog = page.waitForEvent("dialog");
+  const backStay = page.goBack();
+  const dismissed = await backDismissDialog;
+  expect(dismissed.type()).toBe("confirm");
+  expect(dismissed.message()).toContain("本页还有更改");
+  await dismissed.dismiss();
+  await backStay;
+  await page.waitForURL((url) => url.hash.startsWith("#/pages/companion/companion"));
+  await expect(page.getByTestId("companion-form")).toBeVisible();
+  expect(await readUniInputValue(page, "pref-companion-name")).toBe(DRAFT_NAME);
+  await expect(page.getByTestId("pref-reply-length-SHORT")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("companion-dirty")).toBeVisible();
+  expect(prefsPatches).toBe(0);
+  await page.screenshot({ path: testInfo.outputPath("01-browser-back-dismissed.png") });
+
+  // —— Browser back · discard and leave: accepted, lands on the previous page
+  // (account) and still sends nothing to the server. ——
+  const backAcceptDialog = page.waitForEvent("dialog");
+  const backLeave = page.goBack();
+  const leftByBack = await backAcceptDialog;
+  expect(leftByBack.type()).toBe("confirm");
+  await leftByBack.accept();
+  await backLeave;
+  await page.waitForURL((url) => url.hash.startsWith("#/pages/account/account"));
+  expect(prefsPatches).toBe(0);
+
+  // Re-entry (replace from account) re-reads the server baseline: the
+  // discarded draft is gone and the page starts clean.
+  await navigateToPage(page, "/pages/companion/companion");
+  await expect(page.getByTestId("companion-form")).toBeVisible();
+  expect(await readUniInputValue(page, "pref-companion-name")).toBe(baselineName);
+  await expect(page.getByTestId("companion-dirty")).toHaveCount(0);
+
+  // —— Refresh · beforeunload: while dirty the reload is blocked when the
+  // browser dialog is dismissed (draft still on screen), then goes through
+  // once accepted; the reloaded page shows the server value, not the draft. ——
+  await fillUniInput(page, "pref-companion-name", DRAFT_NAME);
+  await expect(page.getByTestId("companion-dirty")).toBeVisible();
+  const reloadBlockedDialog = page.waitForEvent("dialog");
+  // Dismissing the beforeunload leaves Playwright's reload() pending forever
+  // (no ERR_ABORTED rejection), so it is never awaited; the rejection handler
+  // still surfaces any real failure, and the draft assertions below prove the
+  // reload was actually blocked.
+  void expectAbortedReload(page.reload());
+  const beforeunloadStay = await reloadBlockedDialog;
+  expect(beforeunloadStay.type()).toBe("beforeunload");
+  await beforeunloadStay.dismiss();
+  await expect(page.getByTestId("companion-form")).toBeVisible();
+  expect(await readUniInputValue(page, "pref-companion-name")).toBe(DRAFT_NAME);
+  expect(prefsPatches).toBe(0);
+
+  const reloadProceedsDialog = page.waitForEvent("dialog");
+  const reloaded = page.reload();
+  const beforeunloadLeave = await reloadProceedsDialog;
+  expect(beforeunloadLeave.type()).toBe("beforeunload");
+  await beforeunloadLeave.accept();
+  await reloaded;
+  await expect(page.getByTestId("companion-form")).toBeVisible();
+  expect(await readUniInputValue(page, "pref-companion-name")).toBe(baselineName);
+  await expect(page.getByTestId("companion-dirty")).toHaveCount(0);
+
+  // —— Page-header back · continue editing, then discard: the header's
+  // uni.navigateBack goes through the same guard; dismissing keeps the draft,
+  // accepting leaves the companion page. ——
+  await fillUniInput(page, "pref-companion-name", DRAFT_NAME);
+  await expect(page.getByTestId("companion-dirty")).toBeVisible();
+  const headerDismissDialog = page.waitForEvent("dialog");
+  const headerStayClick = page.getByTestId("page-back").click();
+  const dismissedHeader = await headerDismissDialog;
+  expect(dismissedHeader.type()).toBe("confirm");
+  expect(dismissedHeader.message()).toContain("本页还有更改");
+  await dismissedHeader.dismiss();
+  await headerStayClick;
+  await page.waitForURL((url) => url.hash.startsWith("#/pages/companion/companion"));
+  expect(await readUniInputValue(page, "pref-companion-name")).toBe(DRAFT_NAME);
+
+  const headerAcceptDialog = page.waitForEvent("dialog");
+  const headerLeaveClick = page.getByTestId("page-back").click();
+  const leftByHeader = await headerAcceptDialog;
+  expect(leftByHeader.type()).toBe("confirm");
+  await leftByHeader.accept();
+  await headerLeaveClick;
+  await page.waitForURL((url) => !url.hash.startsWith("#/pages/companion/companion"));
+  expect(prefsPatches).toBe(0);
+
+  // The whole journey never changed the server: the API still returns the
+  // saved baseline and a final re-entry renders it clean.
+  expect(await readServerCompanionName(page)).toBe(baselineName);
+  await navigateToPage(page, "/pages/companion/companion");
+  await expect(page.getByTestId("companion-form")).toBeVisible();
+  expect(await readUniInputValue(page, "pref-companion-name")).toBe(baselineName);
+  await expect(page.getByTestId("companion-dirty")).toHaveCount(0);
+
+  // —— The dirty page itself must not gain horizontal overflow at the three
+  // acceptance widths (the confirmation is native browser UI, not page DOM). ——
+  await fillUniInput(page, "pref-companion-name", DRAFT_NAME);
+  await expect(page.getByTestId("companion-dirty")).toBeVisible();
+  for (const [width, height] of [[320, 568], [390, 844], [430, 932]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(page.getByTestId("companion-form")).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const root = document.scrollingElement ?? document.documentElement;
+      return root.scrollWidth - root.clientWidth;
+    });
+    expect(overflow, `${width}px viewport must not scroll horizontally`).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: testInfo.outputPath(`02-dirty-${width}.png`) });
+  }
+});
+
 test("memory page autosave toggle round-trips through the server", async ({ page }) => {
   await openSharedSession(page, "memory");
   await navigateToPage(page, "/pages/memory/memory");

@@ -755,4 +755,150 @@ describe("陪伴设置页", () => {
     expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(true);
     wrapper.unmount();
   });
+
+  // —— VC-R178：未保存更改的离开保护。守卫经 getApp().$router.beforeEach 注册
+  //（uni-h5 的 navigateBack/navigateTo/redirectTo 与浏览器后退都汇到该路由），
+  // 确认走浏览器原生 confirm（uni.showModal 的按钮在 uni-h5 是不可 Tab 到达的
+  // 裸 div，不复制该缺口）。 ——
+  const LEAVE_CONFIRM_MESSAGE = "本页还有更改，离开后页面上的草稿不会保留。确定离开吗？";
+
+  type LeaveGuard = (to: { path: string }, from: { path: string }) => Promise<boolean>;
+
+  function stubH5Router(): {
+    guards: LeaveGuard[];
+    removeGuard: ReturnType<typeof vi.fn>;
+    beforeEach: ReturnType<typeof vi.fn>;
+  } {
+    const guards: LeaveGuard[] = [];
+    const removeGuard = vi.fn();
+    const beforeEach = vi.fn((guard: LeaveGuard) => {
+      guards.push(guard);
+      return removeGuard;
+    });
+    vi.stubGlobal("getApp", vi.fn(() => ({ $router: { beforeEach } })));
+    return { guards, removeGuard, beforeEach };
+  }
+
+  it("未保存更改离开先确认：取消保留草稿；确认只放行，真正停用后才清草稿且零 PATCH", async () => {
+    const { calls } = stubFetch();
+    const router = stubH5Router();
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmSpy);
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(router.beforeEach).toHaveBeenCalledTimes(1);
+    const getsBefore = relationshipGets(calls);
+
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    const guard = router.guards[0]!;
+    const leaveToIndex = () =>
+      guard({ path: "/pages/index/index" }, { path: "/pages/companion/companion" });
+
+    // 继续编辑：守卫取消导航，字段与 dirty 原样保留。
+    await expect(leaveToIndex()).resolves.toBe(false);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy).toHaveBeenCalledWith(LEAVE_CONFIRM_MESSAGE);
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("阿澈");
+    expect(wrapper.get('[data-testid="companion-dirty"]').text()).toContain("未保存");
+
+    // 放弃并离开：守卫只放行——放行不等于导航成功，字段此刻仍在页面上。
+    confirmSpy.mockReturnValue(true);
+    await expect(leaveToIndex()).resolves.toBe(true);
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("阿澈");
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(true);
+
+    // 真正离开（KeepAlive 停用）才清空草稿；再次激活按服务端重读回基线。
+    const page = keepAliveHooksOf(wrapper);
+    page.deactivate();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(false);
+    page.activate();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("林夏");
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(false);
+    expect(relationshipGets(calls)).toBe(getsBefore + 1);
+    // 丢弃后的草稿不再拦截后续离开。
+    await expect(leaveToIndex()).resolves.toBe(true);
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("清洁状态、非本页来源、登录目标与换号清理后的离开不经确认直接放行", async () => {
+    let switched = false;
+    stubFetch({
+      relationships: () => (switched ? [SWITCHED_RELATIONSHIP] : [ACTIVE_RELATIONSHIP]),
+    });
+    const router = stubH5Router();
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirmSpy);
+    const wrapper = mountPage();
+    await flushPromises();
+    const guard = router.guards[0]!;
+
+    // 清洁状态不询问。
+    await expect(
+      guard({ path: "/pages/index/index" }, { path: "/pages/companion/companion" }),
+    ).resolves.toBe(true);
+    // 其它页面的导航不归本守卫管。
+    await expect(
+      guard({ path: "/pages/index/index" }, { path: "/pages/chat/chat" }),
+    ).resolves.toBe(true);
+
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    // 同 path 目标不是离开本页，直接放行。
+    await expect(
+      guard({ path: "/pages/companion/companion" }, { path: "/pages/companion/companion" }),
+    ).resolves.toBe(true);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    // 认证链路目标（登录页）不被旧草稿阻住。
+    await expect(
+      guard({ path: "/pages/login/login" }, { path: "/pages/companion/companion" }),
+    ).resolves.toBe(true);
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    // 换号清理清空旧账号草稿后，普通目标也直接放行。
+    switched = true;
+    await loginViaAuth();
+    await flushPromises();
+    await expect(
+      guard({ path: "/pages/index/index" }, { path: "/pages/companion/companion" }),
+    ).resolves.toBe(true);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("beforeunload 仅在本页活动且 dirty 时阻止；停用/卸载后守卫与监听一并移除", async () => {
+    stubFetch();
+    const router = stubH5Router();
+    const wrapper = mountPage();
+    await flushPromises();
+    const dispatchBeforeUnload = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    expect(dispatchBeforeUnload(), "清洁状态不阻止刷新").toBe(false);
+
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    expect(dispatchBeforeUnload(), "dirty 时阻止刷新/关闭").toBe(true);
+
+    // 隐藏（KeepAlive 停用）：路由守卫与 beforeunload 监听无残留。
+    const page = keepAliveHooksOf(wrapper);
+    page.deactivate();
+    expect(router.removeGuard).toHaveBeenCalledTimes(1);
+    expect(dispatchBeforeUnload()).toBe(false);
+
+    // 重新激活按需重装；卸载后同样清理。
+    router.beforeEach.mockClear();
+    page.activate();
+    expect(router.beforeEach).toHaveBeenCalledTimes(1);
+    expect(dispatchBeforeUnload()).toBe(true);
+    wrapper.unmount();
+    expect(dispatchBeforeUnload()).toBe(false);
+  });
 });
