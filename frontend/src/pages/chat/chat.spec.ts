@@ -756,6 +756,443 @@ describe("聊天产品页", () => {
     wrapper.unmount();
   });
 
+  // ---- VC-R179：已排队的跟底帧不抢走阅读位置 ----
+  // 缺陷：scheduleScrollToBottom 只在入队时检查 followingLatest；帧排队后
+  // 用户经滚动条拖拽/辅助滚动等原生 scroll 离底（不产生 wheel/touchmove/
+  // keydown，既有 user-intent 取消入口不触发），onHistoryScroll 只把
+  // followingLatest 置 false、不取消排队帧——回调仍写 scrollTop=
+  // scrollHeight，抢走阅读位置。契约：帧执行点按最新 followingLatest
+  // 放弃过期跟随；点击回到最新后新排队帧恢复跟随。
+
+  it("已排队的跟底帧在原生 scroll 离底后不抢阅读位置，回到最新后恢复跟随", async () => {
+    // 可控 RAF：帧回调由测试捕获并手动执行，模拟"已排队未渲染"的窗口。
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    Object.defineProperty(history, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(history, "clientHeight", { configurable: true, value: 400 });
+
+    // 打开页面排出的初始跟底帧先执行：视口落在底部。
+    flushFrames();
+    expect(history.scrollTop).toBe(1200);
+
+    // 视口变化重新排队跟底帧（真实 resize → onViewportChange → schedule）。
+    window.dispatchEvent(new Event("resize"));
+    expect(rafQueue.size).toBe(1);
+
+    // 帧仍在排队时只发生原生 scroll 离底：不发 wheel/touchmove/keydown，
+    // followingLatest 已为 false，但排队帧没有任何取消入口。
+    history.scrollTop = 180;
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+
+    // 排队帧此刻执行：必须放弃过期跟随、保留阅读位置（RED 点：旧回调
+    // 仍无条件写 scrollTop=scrollHeight 把视口拉回底部）。
+    flushFrames();
+    expect(history.scrollTop).toBe(180);
+
+    // 点击回到最新后，新排队的帧恢复跟底。
+    await wrapper.find('[data-testid="back-to-latest"]').trigger("click");
+    expect(history.scrollTop).toBe(1200);
+    window.dispatchEvent(new Event("resize"));
+    flushFrames();
+    expect(history.scrollTop).toBe(1200);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R179：视口缩小（几何重排）不中断跟随 ----
+  // 缺陷：onHistoryScroll 只按最新 scrollHeight/clientHeight 算 nearBottom，
+  // 视口缩小时 scrollTop 未变、scroll 事件仍会派发——瞬时离底被误判为
+  // 用户阅读，跟随被关掉，已排队的跟底帧被新执行点条件放弃，视口停在
+  // 旧底不再贴到新底。契约：scrollTop 未变的 scroll 是几何重排，跟随
+  // 中保持跟随；帧执行后贴到新的内容底。
+
+  it("视口缩小派发的 scroll 不中断跟随，跟底帧贴到新的内容底", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    Object.defineProperty(history, "scrollHeight", { configurable: true, value: 1200 });
+    const setClientHeight = (value: number) => Object.defineProperty(
+      history,
+      "clientHeight",
+      { configurable: true, value },
+    );
+    setClientHeight(400);
+
+    // 初始跟底帧执行后视口在底部：真实语义的贴底位置是 scrollHeight-
+    // clientHeight=800（浏览器会 clamp），并派发 scroll 更新观测基线。
+    flushFrames();
+    history.scrollTop = 800;
+    history.dispatchEvent(new Event("scroll"));
+
+    // 视口缩小（clientHeight 400→280）重新排队跟底帧。
+    window.dispatchEvent(new Event("resize"));
+    expect(rafQueue.size).toBe(1);
+
+    // 几何重排派发 scroll，但 scrollTop 未变——不是主动阅读。
+    setClientHeight(280);
+    history.dispatchEvent(new Event("scroll"));
+
+    // 排队帧执行：跟随必须保持并贴到新的内容底（RED：当前被误判离底，
+    // 帧按 followingLatest=false 放弃跟随，视口停在旧位置 800）。
+    flushFrames();
+    expect(history.scrollTop).toBe(1200);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R179：回到最新后的 scroll 事件间隙 ----
+  // 缺陷：回到最新/自动贴底自己写入 scrollTop 后，观测基线只靠异步
+  // scroll 事件更新——事件送达前视口缩高，新底位置相对旧基线被判成
+  // 用户移动，跟随丢失。契约：贴底写入后同步记录实际回读位置（浏览器
+  // clamp 后的值），事件间隙内的几何重排不判成主动阅读。
+
+  it("回到最新后 scroll 事件未送达时视口缩小，跟随保持并贴到新底", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    // 真实 DOM 语义：写入 scrollTop 会被 clamp 到 scrollHeight-clientHeight。
+    let clientHeightValue = 400;
+    let topValue = 0;
+    Object.defineProperty(history, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(history, "clientHeight", {
+      configurable: true,
+      get: () => clientHeightValue,
+    });
+    Object.defineProperty(history, "scrollTop", {
+      configurable: true,
+      get: () => topValue,
+      set: (value: number) => {
+        topValue = Math.max(0, Math.min(value, 1200 - clientHeightValue));
+      },
+    });
+
+    // 初始跟底帧执行：贴到当前底 800。
+    flushFrames();
+    expect(history.scrollTop).toBe(800);
+
+    // 用户滚到阅读位置（离底 620 > 48）：跟随关闭。
+    topValue = 180;
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+
+    // 点击回到最新：写 scrollHeight 被 clamp 到当前底 800；scroll 事件
+    // 尚未送达（真实路径异步），基线不能依赖它。
+    await wrapper.find('[data-testid="back-to-latest"]').trigger("click");
+    expect(history.scrollTop).toBe(800);
+
+    // 视口缩小（clientHeight 400→280）重新排队跟底帧，随后几何重排派发
+    // scroll（scrollTop 未变，不手工补发回到最新的 scroll 掩盖间隙）。
+    window.dispatchEvent(new Event("resize"));
+    expect(rafQueue.size).toBe(1);
+    clientHeightValue = 280;
+    history.dispatchEvent(new Event("scroll"));
+
+    // 排队帧执行：跟随保持并贴到新的内容底 920（RED：当前基线仍停在
+    // 180，回到最新写下的新底 800 被当作用户移动，帧按
+    // followingLatest=false 放弃跟随，视口停在 800）。
+    flushFrames();
+    expect(history.scrollTop).toBe(920);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R179：中间视口 clamp 无事件的真实路径 ----
+  // trace 证据：贴底 top=1478（sh2062/ch584）时连续视口变化，中间态
+  // （ch672）把 top clamp 到 1390 且 resize/scroll 均未送达；最终态
+  // （ch440）的 scroll 里 1390≠基线 1478 被判主动阅读，跟随丢失。契约：
+  // 跟随中 clientHeight 变化的几何重排（含 top 被 clamp）保留跟随，排
+  // 队的跟底帧贴到新的内容底。
+
+  it("中间视口 clamp 无事件后，最终视口的 scroll 仍跟随并贴到新底", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    let clientHeightValue = 584;
+    let topValue = 0;
+    Object.defineProperty(history, "scrollHeight", { configurable: true, value: 2062 });
+    Object.defineProperty(history, "clientHeight", {
+      configurable: true,
+      get: () => clientHeightValue,
+    });
+    Object.defineProperty(history, "scrollTop", {
+      configurable: true,
+      get: () => topValue,
+      set: (value: number) => {
+        topValue = Math.max(0, Math.min(value, 2062 - clientHeightValue));
+      },
+    });
+
+    // 初始跟底：写 scrollHeight 被 clamp 到当前底 1478，基线同步。
+    flushFrames();
+    expect(history.scrollTop).toBe(1478);
+
+    // 中间视口（ch 584→672）：布局把 top clamp 到 1390；该中间态的
+    // resize/scroll 事件被合并未送达（不派发任何事件）。
+    clientHeightValue = 672;
+    history.scrollTop = topValue;
+    expect(history.scrollTop).toBe(1390);
+
+    // 最终视口（ch 672→440）：viewport 排队跟底帧，scroll 到达。
+    window.dispatchEvent(new Event("resize"));
+    expect(rafQueue.size).toBe(1);
+    clientHeightValue = 440;
+    history.dispatchEvent(new Event("scroll"));
+
+    // 跟随保留：排队帧贴到新底 1622（RED：当前 1390 相对旧基线 1478 被
+    // 判主动阅读，帧放弃跟随，视口停在 1390）。
+    flushFrames();
+    expect(history.scrollTop).toBe(1622);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R179：流式乐观内容退出的强制收缩 ----
+  // 流式乐观行退出使内容高度骤降，浏览器把旧位置 clamp 到当前合法范
+  // 围：内容收缩后已有 near-bottom 判定保持跟随，历史回读恢复内容后
+  // 跟底帧贴到新的内容底。
+
+  it("乐观内容退出把位置 clamp 到 0 后，恢复的跟底帧仍贴底", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    let scrollHeightValue = 1976;
+    let topValue = 0;
+    // 容器高度固定：不靠 ch 的偶然 1px 变化保住跟随。
+    Object.defineProperty(history, "clientHeight", { configurable: true, value: 584 });
+    Object.defineProperty(history, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeightValue,
+    });
+    Object.defineProperty(history, "scrollTop", {
+      configurable: true,
+      get: () => topValue,
+      set: (value: number) => {
+        topValue = Math.max(0, Math.min(value, scrollHeightValue - 584));
+      },
+    });
+
+    // 乐观内容贴底：clamp 到 1392，scroll 更新观测基线。
+    flushFrames();
+    expect(history.scrollTop).toBe(1392);
+    history.dispatchEvent(new Event("scroll"));
+
+    // 先排队跟底帧（视口/内容变化触发），随后乐观内容退出：sh 收缩到
+    // 584，浏览器把 top clamp 到 0，派发 scroll——无任何 user-intent、
+    // 容器高度不变。
+    window.dispatchEvent(new Event("resize"));
+    expect(rafQueue.size).toBe(1);
+    scrollHeightValue = 584;
+    history.scrollTop = topValue;
+    expect(history.scrollTop).toBe(0);
+    history.dispatchEvent(new Event("scroll"));
+
+    // 历史回读恢复内容（sh2062），原排队帧此刻执行：贴底 1478。
+    scrollHeightValue = 2062;
+    flushFrames();
+    expect(history.scrollTop).toBe(1478);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R179：真实用户输入优先于几何判定 ----
+
+  it("用户滚轮意图与几何变化同帧到达时保留阅读位置", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    let clientHeightValue = 400;
+    let topValue = 0;
+    Object.defineProperty(history, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(history, "clientHeight", {
+      configurable: true,
+      get: () => clientHeightValue,
+    });
+    Object.defineProperty(history, "scrollTop", {
+      configurable: true,
+      get: () => topValue,
+      set: (value: number) => {
+        topValue = Math.max(0, Math.min(value, 1200 - clientHeightValue));
+      },
+    });
+
+    // 初始贴底：clamp 到当前底 800。
+    flushFrames();
+    expect(history.scrollTop).toBe(800);
+
+    // 用户滚轮（输入优先：暂停跟随并排归属检查帧）；同一帧内视口缩高
+    // 且滚到阅读位置——几何变化不能吞掉用户意图。
+    history.dispatchEvent(new Event("wheel"));
+    clientHeightValue = 280;
+    history.scrollTop = 180;
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    flushFrames();
+    expect(history.scrollTop).toBe(180);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("贴底滚轮无位移后视口缩高：恢复跟随并贴到新底", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    let clientHeightValue = 400;
+    let topValue = 0;
+    Object.defineProperty(history, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(history, "clientHeight", {
+      configurable: true,
+      get: () => clientHeightValue,
+    });
+    Object.defineProperty(history, "scrollTop", {
+      configurable: true,
+      get: () => topValue,
+      set: (value: number) => {
+        topValue = Math.max(0, Math.min(value, 1200 - clientHeightValue));
+      },
+    });
+
+    // 初始贴底：clamp 到当前底 800。
+    flushFrames();
+    expect(history.scrollTop).toBe(800);
+
+    // 滚轮在底部边界：无实际位移；同一帧内视口缩高派发几何 scroll
+    //（瞬时离底 120，但用户没有滚动）。
+    history.dispatchEvent(new Event("wheel"));
+    clientHeightValue = 280;
+    history.dispatchEvent(new Event("scroll"));
+
+    // 归属检查帧：原在跟随且 top 无位移 → 恢复跟随并按需补排贴底帧。
+    flushFrames();
+    // 补排的贴底帧执行：贴到新底 920。
+    flushFrames();
+    expect(history.scrollTop).toBe(920);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   // ---- WP-D（缺口1）：提交互斥覆盖建会话 + 发送 ----
 
   it("连点 10 次发送只在首次建会话时发一次 POST", async () => {

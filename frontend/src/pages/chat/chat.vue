@@ -689,6 +689,39 @@ function startNewConversation(): void {
 const historyEl = ref<unknown>(null);
 const followingLatest = ref(true);
 let pendingScrollFrame = 0;
+// VC-R179：上次观测到的历史节点、scrollTop 与 clientHeight。视口几何
+// 变化（如缩高）会在 scrollTop 未变时对历史容器派发 scroll；高度或内容
+// 变化还会让浏览器把旧位置 clamp 到当前合法范围——跟随中这些都不是主
+// 动阅读，不因瞬时离底丢跟随；稳定几何下的实际滚动仍按原 near-bottom
+// 判定。基线在 historyEl 就绪/更换后的下一拍重建。
+let observedScrollNode: HTMLElement | null = null;
+let observedScrollTop = 0;
+let observedClientHeight = 0;
+
+watch(historyEl, () => {
+  void nextTick(() => {
+    const node = historyNode();
+    observedScrollNode = node;
+    observedScrollTop = node ? node.scrollTop : 0;
+    observedClientHeight = node ? node.clientHeight : 0;
+  });
+});
+
+function isNearBottom(node: HTMLElement): boolean {
+  return node.scrollHeight <= node.clientHeight
+    || node.scrollHeight - node.clientHeight - node.scrollTop <= RESUME_GAP_PX;
+}
+
+// VC-R179：把视口带到内容底。写入后同步记录实际回读的 scrollTop
+// （浏览器会 clamp 到当前最大可滚动值）——观测基线不依赖异步 scroll
+// 事件送达，回到最新/自动贴底与随后的几何重排之间的事件间隙内，新底
+// 位置不会被当成用户移动。
+function scrollHistoryToBottom(node: HTMLElement): void {
+  node.scrollTop = node.scrollHeight;
+  observedScrollTop = node.scrollTop;
+  observedClientHeight = node.clientHeight;
+  observedScrollNode = node;
+}
 
 function historyNode(): HTMLElement | null {
   const raw = historyEl.value;
@@ -710,13 +743,18 @@ function scheduleScrollToBottom(): void {
   if (!node) return;
   const conversationId = store.conversationId;
   if (typeof requestAnimationFrame !== "function") {
-    node.scrollTop = node.scrollHeight;
+    scrollHistoryToBottom(node);
     return;
   }
   pendingScrollFrame = requestAnimationFrame(() => {
     pendingScrollFrame = 0;
+    // VC-R179：入队后用户可能已原生 scroll 离底（滚动条拖拽/辅助滚动不
+    // 产生 wheel/touchmove/keydown，user-intent 取消入口不会触发）。执行
+    // 点按最新 followingLatest 放弃过期跟随，保留阅读位置；重新跟随由
+    // 回到最新后的新入队帧承接。
+    if (!followingLatest.value) return;
     if (historyNode() !== node || store.conversationId !== conversationId) return;
-    node.scrollTop = node.scrollHeight;
+    scrollHistoryToBottom(node);
   });
 }
 
@@ -728,22 +766,64 @@ function onHistoryUserScrollIntent(event: Event): void {
   ) {
     return;
   }
+  // VC-R179：真实用户输入优先于几何判定——立即暂停跟随并取消旧自动
+  // 帧，再排一次带 node/conversation 归属的原生 RAF 检查实际滚动结果。
+  // 冻结输入时刻的跟随态与位置：原在跟随且无实际位移（滚轮打在边界）
+  // 时恢复跟随并按需补排贴底帧——同时发生的内容增长/缩高不留假离底。
   cancelPendingScrollFrame();
+  const node = historyNode();
+  if (!node) return;
+  const wasFollowing = followingLatest.value;
+  const topBefore = node.scrollTop;
+  followingLatest.value = false;
+  const conversationId = store.conversationId;
+  const recheck = (): void => {
+    if (historyNode() !== node || store.conversationId !== conversationId) return;
+    observedScrollTop = node.scrollTop;
+    observedClientHeight = node.clientHeight;
+    if (wasFollowing && node.scrollTop === topBefore) {
+      followingLatest.value = true;
+      scheduleScrollToBottom();
+      return;
+    }
+    followingLatest.value = isNearBottom(node);
+  };
+  if (typeof requestAnimationFrame !== "function") {
+    recheck();
+    return;
+  }
+  pendingScrollFrame = requestAnimationFrame(() => {
+    pendingScrollFrame = 0;
+    recheck();
+  });
 }
 
 function onHistoryScroll(event: Event): void {
   const node = historyNode();
   if (!node || event.target !== node) return;
-  const nearBottom =
-    node.scrollHeight <= node.clientHeight ||
-    node.scrollHeight - node.clientHeight - node.scrollTop <= RESUME_GAP_PX;
-  followingLatest.value = nearBottom;
+  // VC-R179：scrollTop 未变的 scroll 是几何重排而非主动阅读——跟随中
+  // 保持跟随；节点更换后的首个事件只重建观测基线。clientHeight 变化
+  // 同属几何重排：中间视口会把 top clamp 到新最大值且事件可能被合并
+  // 未送达，最终 scroll 里 top 相对旧基线的变化是 clamp 痕迹不是用户
+  // 移动——跟随中也保留。稳定几何下的实际滚动仍按 near-bottom 判定，
+  // 用户回到底部可恢复跟随。
+  const sameNode = node === observedScrollNode;
+  const scrollTopUnchanged = sameNode && node.scrollTop === observedScrollTop;
+  // 正高度基线才可信：挂载瞬间布局未定的 0 不能证明几何 clamp。
+  const geometryReshuffled =
+    sameNode && observedClientHeight > 0 && node.clientHeight > 0
+    && node.clientHeight !== observedClientHeight;
+  observedScrollNode = node;
+  observedScrollTop = node.scrollTop;
+  observedClientHeight = node.clientHeight;
+  if (followingLatest.value && (scrollTopUnchanged || geometryReshuffled)) return;
+  followingLatest.value = isNearBottom(node);
 }
 
 function onBackToLatest(): void {
   followingLatest.value = true;
   const node = historyNode();
-  if (node) node.scrollTop = node.scrollHeight;
+  if (node) scrollHistoryToBottom(node);
 }
 
 function onViewportChange(): void {
