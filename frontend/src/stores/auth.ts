@@ -63,6 +63,9 @@ export const useAuthStore = defineStore("h5-auth", () => {
   // yet been rewritten. It is always the literal "session", never a secret.
   const accessToken = ref<string | null>(null);
   const accountId = ref<string | null>(null);
+  // VC-R169: the committed non-credential session id (from the identity that
+  // established the current session); cleared with clear(). Never a secret.
+  const committedSessionId = ref<string | null>(null);
   const email = ref<string | null>(null);
   const role = ref<string | null>(null);
   const passwordMustChange = ref(false);
@@ -105,22 +108,34 @@ export const useAuthStore = defineStore("h5-auth", () => {
     // Committing an identity is itself a generation boundary: any probe already
     // in flight describes the previous session and must not roll this one back.
     refreshEpoch++;
-    // VC-R12: 只有新登录/挑战完成（newCredential）或不同已知账号交接（与下方
-    // R09 缓存清理同款条件）才推进身份归属代次；对当前同一会话的读回
-    // （accountId 不变）不构成新凭据，不得让挂起的旧登出让位。
-    if (newCredential || (accountId.value !== null && accountId.value !== identity.accountId)) {
+    // VC-R12/R169: 只有新登录/挑战完成（newCredential）、不同已知账号交接，
+    // 或同账号但已确立会话变化（relogin 装了新会话，同样是真实的新凭据事件）
+    // 才推进身份归属代次；同一 session（账号与会话编号均不变）的读回只是
+    // 读取，不得让挂起的旧登出让位。
+    const sameSession = committedSessionId.value !== null
+      && committedSessionId.value === identity.sessionId;
+    const knownAccountHandover = accountId.value !== null
+      && accountId.value !== identity.accountId;
+    const sameAccountNewSession = accountId.value === identity.accountId
+      && committedSessionId.value !== null
+      && !sameSession;
+    if (newCredential || knownAccountHandover || sameAccountNewSession) {
       credentialEpoch++;
     }
     // VC-R09: a handover between two different known accounts must drop the
     // previous account's shared caches; a same-account recovery keeps them.
-    if (accountId.value !== null && accountId.value !== identity.accountId) {
+    if (knownAccountHandover) {
       clearLocalSessionCaches();
-      // VC-R168: GET 读回发现换号交接时作废旧登录流程；自身登录/挑战成功
-      // （newCredential=true）不推进，避免自身页面回调被误失效。
-      if (!newCredential) loginFlowSeq++;
+    }
+    // VC-R168/R169: 读回（非新凭据提交）发现交接——换号或同账号新会话——
+    // 作废旧登录流程；自身登录/挑战成功（newCredential=true）不推进，避免
+    // 自身页面回调被误失效。
+    if (!newCredential && (knownAccountHandover || sameAccountNewSession)) {
+      loginFlowSeq++;
     }
     accessToken.value = "session";
     accountId.value = identity.accountId;
+    committedSessionId.value = identity.sessionId;
     email.value = identity.email ?? null;
     role.value = identity.role;
     passwordMustChange.value = identity.passwordMustChange;
@@ -150,6 +165,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     const hadSession = accountId.value !== null || accessToken.value !== null;
     accessToken.value = null;
     accountId.value = null;
+    committedSessionId.value = null;
     email.value = null;
     role.value = null;
     passwordMustChange.value = false;
@@ -440,6 +456,15 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   /**
+   * VC-R169: read-only committed session id, for the expected-session
+   * precondition header only. Null while the page holds no established
+   * identity. The opaque id is not a credential and never appears in logs.
+   */
+  function getSessionId(): string | null {
+    return committedSessionId.value;
+  }
+
+  /**
    * VC-R168: invalidate the caller's OWN in-flight login flow (page hidden/
    * unmounted with an action still owned by this page): advances the ordinal
    * like reset, keeping challenge data when a mode switch may resume it.
@@ -494,6 +519,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     logout,
     onUnauthorized,
     getSessionRevision,
+    getSessionId,
     getLoginFlowSeq,
     invalidateOwnedLoginFlow,
     getCredentialEpoch,

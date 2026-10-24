@@ -98,6 +98,7 @@ function stubFetch(options: FetchOptions = {}) {
         accountId: options.loginAccountId ?? "9",
         email: "b@example.com",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: true,
         expiresInSeconds: 7200,
@@ -163,6 +164,7 @@ async function loginViaAuth(email = "b@example.com"): Promise<void> {
   const transport = createAuthenticatedTransport({
     getAccessToken: () => auth.accessToken,
     getSessionRevision: () => auth.getSessionRevision(),
+    getSessionId: () => null,
     onUnauthorized: () => auth.clear(),
   });
   await auth.login(transport, email, "pw-b");

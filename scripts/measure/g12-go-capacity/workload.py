@@ -234,11 +234,15 @@ def stream_events(resp, deadline: float, counter: dict | None = None):
 
 class Client:
     def __init__(self, base: str, session: str, csrf: str, account: str,
+                 session_id: str | None = None,
                  origin: str | None = None, cafile: str | None = None):
         self.base = base.rstrip("/")
         self.session = session
         self.csrf = csrf
         self.account = account
+        # VC-R169: the committed non-credential session id (decimal string)
+        # carried as the expected-session precondition on writes.
+        self.session_id = session_id
         if origin is None:
             # The trial configures VC_HTTP_ORIGINS=https://localhost and the
             # backend matches origins exactly (auth.AllowOrigin), so the
@@ -261,6 +265,8 @@ class Client:
             # keeps the workload's intent pinned for its whole run.
             "X-VC-Expected-Account-ID": self.account,
         }
+        if self.session_id:
+            h["X-VC-Expected-Session-ID"] = self.session_id
         if content:
             h["Content-Type"] = "application/json"
             h["X-CSRF-Token"] = self.csrf
@@ -896,6 +902,7 @@ def observer_quiet_runs(frames, baseline_chunks: int, *,
 
 def run_scenario(args, stats: Stats) -> dict:
     client = Client(args.base, args.session, args.csrf, args.account,
+                           session_id=args.session_id,
                     origin=args.origin, cafile=args.cacert)
     st, body = client.json("PUT", "/api/v1/consents",
                            {"consentType": "SERVICE_TERMS", "version": "2026-08",
@@ -989,6 +996,7 @@ def run_scenario_s6(args, stats: Stats) -> dict:
       abort).
     """
     client = Client(args.base, args.session, args.csrf, args.account,
+                           session_id=args.session_id,
                     origin=args.origin, cafile=args.cacert)
     st, _ = client.json("PUT", "/api/v1/consents",
                         {"consentType": "SERVICE_TERMS", "version": "2026-08",
@@ -1284,7 +1292,8 @@ class S9Client:
 
     def __init__(self, base: str, cookies: dict | None = None,
                  origin: str | None = None, cafile: str | None = None,
-                 account_id: str | None = None):
+                 account_id: str | None = None,
+                 session_id: str | None = None):
         self.base = base.rstrip("/")
         if origin is None:
             parts = urllib.parse.urlparse(self.base)
@@ -1294,6 +1303,9 @@ class S9Client:
                             if cafile else None)
         self.cookies = dict(cookies or {})
         self.account_id = account_id
+        # VC-R169: session id captured from the login/challenge completion
+        # response that established this session; carried on writes.
+        self.session_id = session_id
 
     def _headers(self, content: bool, write: bool) -> dict:
         h = {"Origin": self.origin}
@@ -1305,6 +1317,8 @@ class S9Client:
         if write:
             h["X-CSRF-Token"] = self.cookies.get(S9_CSRF_COOKIE, "")
             h["X-VC-Expected-Account-ID"] = self.account_id or ""
+            if self.session_id:
+                h["X-VC-Expected-Session-ID"] = self.session_id
         return h
 
     def request(self, method: str, path: str, body: dict | None = None,
@@ -1485,7 +1499,8 @@ def run_scenario_s9(args, stats: Stats) -> dict:
             return None, None
         client = S9Client(args.base, cookies=jar, origin=args.origin,
                           cafile=args.cacert,
-                          account_id=body.get("accountId"))
+                          account_id=body.get("accountId"),
+                          session_id=body.get("sessionId"))
         return client, jar.get(S9_TRUSTED_COOKIE)
 
     # ---- 1) A full enroll chain: S_a0 (+ trusted-device cookie)
@@ -1514,7 +1529,8 @@ def run_scenario_s9(args, stats: Stats) -> dict:
                          f"next {body.get('nextStep')}")
     cli_target = (S9Client(args.base, cookies=target_jar, origin=args.origin,
                            cafile=args.cacert,
-                           account_id=body.get("accountId"))
+                           account_id=body.get("accountId"),
+                          session_id=body.get("sessionId"))
                   if a2_active else None)
 
     # ---- B's own enroll chain (no trusted device): S_b
@@ -1626,7 +1642,8 @@ def run_scenario_s9(args, stats: Stats) -> dict:
         else:
             cli_new = S9Client(args.base, cookies=jar_new, origin=args.origin,
                                cafile=args.cacert,
-                               account_id=body.get("accountId"))
+                               account_id=body.get("accountId"),
+                          session_id=body.get("sessionId"))
         concurrent["delete_no_set_cookie"] = not delete_rec.get("set_cookies")
         if delete_rec.get("status") != 200:
             step_error("concurrent_delete", 200, delete_rec)
@@ -1740,6 +1757,7 @@ def run_scenario_s9(args, stats: Stats) -> dict:
         stats.note_error("s9 g12_probe budget exhausted before call")
     else:
         probe = Client(args.base, args.session, args.csrf, args.account,
+                           session_id=args.session_id,
                        origin=args.origin, cafile=args.cacert)
         with lock:
             counter["public"] += 1
@@ -1778,6 +1796,7 @@ def run_scenario_s8_prepare(args, stats: Stats) -> dict:
     via stats.errors) and the caller must not enter its kill phase.
     """
     client = Client(args.base, args.session, args.csrf, args.account,
+                           session_id=args.session_id,
                     origin=args.origin, cafile=args.cacert)
     st, _ = client.json("PUT", "/api/v1/consents",
                         {"consentType": "SERVICE_TERMS", "version": "2026-08",
@@ -1849,6 +1868,7 @@ def run_scenario_s8_verify(args, stats: Stats) -> dict:
     state).
     """
     client = Client(args.base, args.session, args.csrf, args.account,
+                           session_id=args.session_id,
                     origin=args.origin, cafile=args.cacert)
     gid = str(args.s8_generation_id)
     conv = str(args.s8_conversation_id)
@@ -2044,6 +2064,9 @@ def resolve_shape(scenario: str, gens: int, sse_per_gen: int) -> tuple[int, int]
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--session-id", default=None,
+                        help="defaults to $G12_SESSION_ID (the committed "
+                             "non-credential session id, decimal string)")
     parser.add_argument("--base", default="http://127.0.0.1:18082")
     parser.add_argument("--scenario",
                         choices=["s3", "s4", "s5", "s6", "s9", "s10",
@@ -2095,11 +2118,14 @@ def main() -> int:
                                        ("csrf", "G12_CSRF"),
                                        ("account", "G12_ACCOUNT"))
                if getattr(args, name) is None and not os.environ.get(var)]
+    if getattr(args, "session_id") is None and not os.environ.get("G12_SESSION_ID"):
+        missing.append("session-id")
     if missing:
         parser.error(f"missing --{','.join(missing)} (or their G12_* env vars)")
     args.session = args.session or os.environ["G12_SESSION"]
     args.csrf = args.csrf or os.environ["G12_CSRF"]
     args.account = args.account or os.environ["G12_ACCOUNT"]
+    args.session_id = args.session_id or os.environ["G12_SESSION_ID"]
 
     if args.scenario == "s8-verify":
         # The verify phase only ever READS the original generation id and

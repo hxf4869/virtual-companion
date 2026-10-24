@@ -4337,8 +4337,12 @@ components:
         matches the deployment allowlist; a missing Origin or any mismatch is rejected. Core endpoints additionally enforce
         the expected-account precondition (VC-R52): requests carry X-VC-Expected-Account-ID with the account id the page committed
         to; authenticated writes are rejected with 409 ACCOUNT_CONTEXT_CHANGED when it is missing or does not equal the cookie
-        principal''s account id, and reads compare it when present. The header is a precondition only — the cookie principal
-        remains the sole authorization source. Identity discovery (GET /api/v1/auth/session) never sends it.'
+        principal''s account id, and reads compare it when present. The session-level twin (VC-R169) is X-VC-Expected-Session-ID:
+        the decimal identity_opaque_session id the page''s identity response established; authenticated writes must carry
+        it and match the cookie session, reads compare it when present, with the same 409 envelope. Both headers are preconditions
+        only — the cookie principal remains the sole authorization source. Identity discovery (GET /api/v1/auth/session) never
+        sends either. Ordering caveat: these preconditions cover requests the page issues with the newer cookie; requests
+        already sent with an older cookie and unauthenticated login Set-Cookie races are out of scope.'
   schemas:
     ErrorEnvelope:
       type: object
@@ -6025,6 +6029,7 @@ components:
       required:
       - nextStep
       - accountId
+      - sessionId
       - role
       - passwordMustChange
       - authenticatorEnabled
@@ -6035,6 +6040,10 @@ components:
           const: ACTIVE
         accountId:
           type: string
+        sessionId:
+          type: string
+          description: The non-credential decimal identity_opaque_session id this identity was established with (VC-R169).
+            The page commits to it as X-VC-Expected-Session-ID; it is not a credential and never authorizes anything.
         email:
           type: string
           format: email

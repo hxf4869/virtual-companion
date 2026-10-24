@@ -98,7 +98,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ok {
-			s.writeAuthenticatedSession(w, session.SessionToken, ident.AccountID, ident.Username, ident.Role, ident.PasswordMustChange, true)
+			s.writeAuthenticatedSession(w, session.SessionToken, session.SessionID, ident.AccountID, ident.Username, ident.Role, ident.PasswordMustChange, true)
 			return
 		}
 		s.clearTrustedDeviceCookie(w)
@@ -155,6 +155,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, sessionIdentityJSON{
 		NextStep:             "ACTIVE",
 		AccountID:            strconv.FormatInt(p.AccountID, 10),
+		SessionID:            strconv.FormatInt(p.SessionID, 10),
 		Email:                accountEmail(p.Username),
 		Role:                 p.Role,
 		PasswordMustChange:   p.PasswordMustChange,
@@ -248,6 +249,7 @@ func (s *Server) handleAuthChallengeComplete(w http.ResponseWriter, r *http.Requ
 	s.writeJSON(w, http.StatusOK, authCompleteJSON{
 		NextStep:             "ACTIVE",
 		AccountID:            strconv.FormatInt(session.AccountID, 10),
+		SessionID:            strconv.FormatInt(session.SessionID, 10),
 		Email:                accountEmail(session.AccountName),
 		Role:                 session.Role,
 		PasswordMustChange:   session.PasswordMustChange,
@@ -616,6 +618,7 @@ func (s *Server) writeChallengeErr(w http.ResponseWriter, err error) {
 func (s *Server) writeAuthenticatedSession(
 	w http.ResponseWriter,
 	raw string,
+	sessionID int64,
 	accountID int64,
 	accountName string,
 	role string,
@@ -626,6 +629,7 @@ func (s *Server) writeAuthenticatedSession(
 	s.writeJSON(w, http.StatusOK, sessionIdentityJSON{
 		NextStep:             "ACTIVE",
 		AccountID:            strconv.FormatInt(accountID, 10),
+		SessionID:            strconv.FormatInt(sessionID, 10),
 		Email:                accountEmail(accountName),
 		Role:                 role,
 		PasswordMustChange:   passwordMustChange,
@@ -753,6 +757,7 @@ func validPasswordInput(password string) bool {
 type sessionIdentityJSON struct {
 	NextStep             string `json:"nextStep"`
 	AccountID            string `json:"accountId"`
+	SessionID            string `json:"sessionId"`
 	Email                string `json:"email,omitempty"`
 	Role                 string `json:"role"`
 	PasswordMustChange   bool   `json:"passwordMustChange"`
@@ -769,6 +774,7 @@ type authNextStepJSON struct {
 type authCompleteJSON struct {
 	NextStep             string   `json:"nextStep"`
 	AccountID            string   `json:"accountId"`
+	SessionID            string   `json:"sessionId"`
 	Email                string   `json:"email,omitempty"`
 	Role                 string   `json:"role"`
 	PasswordMustChange   bool     `json:"passwordMustChange"`

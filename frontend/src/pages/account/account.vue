@@ -434,6 +434,7 @@ let actionSeq = 0;
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   getAccountId: () => auth.accountId,
+  getSessionId: () => auth.getSessionId(),
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
   onAccountContextChanged: handleAccountContextChanged,
@@ -442,6 +443,7 @@ const transport = createAuthenticatedTransport({
 // 副本下载与 transport 同源同一 auth store：cookie 会话 + CSRF + 401 登出。
 const authedFetch = createAuthedFetch(() => auth.accessToken, {
   getAccountId: () => auth.accountId,
+  getSessionId: () => auth.getSessionId(),
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
   onAccountContextChanged: handleAccountContextChanged,

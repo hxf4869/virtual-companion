@@ -664,12 +664,16 @@ func attachAuth(t *testing.T, s *Server, req *http.Request, account int64, write
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.core.Store.IssueOpaqueSession(req.Context(), account, hash, time.Now().Add(time.Hour)); err != nil {
+	sessionID, err := s.core.Store.IssueOpaqueSession(req.Context(), account, hash, time.Now().Add(time.Hour))
+	if err != nil {
 		t.Fatal(err)
 	}
 	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: raw})
-	// The fixture page knows the account it acts for and always states it.
+	// The fixture page knows the account it acts for and always states it,
+	// together with the session id its own fixture session established
+	// (VC-R169: authenticated writes carry both preconditions).
 	req.Header.Set(expectedAccountHeader, strconv.FormatInt(account, 10))
+	req.Header.Set(expectedSessionHeader, strconv.FormatInt(sessionID, 10))
 	if write {
 		req.Header.Set("Origin", "https://vc.test")
 		req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})

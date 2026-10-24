@@ -108,7 +108,7 @@ test("a browser can abort a proxied SSE subscription and continue using generati
       // normal EOF rather than client-disconnect propagation.
       userContent: `用于验证代理断开传播的一次生成。${PROVIDER_TIMEOUT_SENTINEL}`,
     },
-    { accountId: session.accountId },
+    { accountId: session.accountId, sessionId: session.sessionId },
   );
   expect(created.ok, `generation create failed: ${created.status}`).toBeTruthy();
   const generationId = String(

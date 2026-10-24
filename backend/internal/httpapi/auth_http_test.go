@@ -111,6 +111,15 @@ func TestTrustedDeviceSkipsOnlyTOTPAndKeepsFixedExpiry(t *testing.T) {
 	if jar[auth.TrustedDeviceCookieName] == "" {
 		t.Fatal("trusted-device cookie")
 	}
+	// The confirm response establishes the committed session id the page
+	// carries on subsequent authenticated writes.
+	var confirmedIdentity struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(confirmed.Body.Bytes(), &confirmedIdentity); err != nil || confirmedIdentity.SessionID == "" {
+		t.Fatal("confirm response must expose sessionId")
+	}
+	jar[testSessionIDKey] = confirmedIdentity.SessionID
 	store.mu.Lock()
 	originalExpiry := store.trustedDevices[1].ExpiresAt
 	store.mu.Unlock()
@@ -135,6 +144,15 @@ func TestTrustedDeviceSkipsOnlyTOTPAndKeepsFixedExpiry(t *testing.T) {
 	for name, value := range responseCookieJar(trustedLogin) {
 		jar[name] = value
 	}
+	// The relogin installs a newer session; the page commits to its id from
+	// the same response (stale-id writes are exactly what the server rejects).
+	var trustedLoginIdentity struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(trustedLogin.Body.Bytes(), &trustedLoginIdentity); err != nil || trustedLoginIdentity.SessionID == "" {
+		t.Fatal("trusted login response must expose sessionId")
+	}
+	jar[testSessionIDKey] = trustedLoginIdentity.SessionID
 	listed := doJSONCookies(t, s, http.MethodGet, "/api/v1/auth/trusted-devices", "", jar)
 	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), "MacBook") {
 		t.Fatalf("devices %d %s", listed.Code, listed.Body.String())
@@ -571,6 +589,10 @@ func loginJSON(t *testing.T, s *Server, username, password string) *httptest.Res
 	return rec
 }
 
+// testSessionIDKey is a fixture-private jar entry: the session id the
+// simulated page committed to at login. Never sent as a cookie.
+const testSessionIDKey = "_vc_expected_session_id"
+
 func loginCookies(t *testing.T, s *Server, username, password string) map[string]string {
 	t.Helper()
 	rec := loginJSON(t, s, username, password)
@@ -601,6 +623,12 @@ func loginCookies(t *testing.T, s *Server, username, password string) map[string
 	if jar[auth.SessionCookieName] == "" {
 		t.Fatal("session cookie")
 	}
+	// VC-R169: the page also commits to the session id from the same login
+	// response; the underscore key is fixture-private (never sent as a cookie).
+	var identity sessionIdentityJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &identity); err == nil && identity.SessionID != "" {
+		jar[testSessionIDKey] = identity.SessionID
+	}
 	return jar
 }
 
@@ -618,10 +646,18 @@ func doJSONCookies(t *testing.T, s *Server, method, path, body string, jar map[s
 		req = httptest.NewRequest(method, path, nil)
 	}
 	for name, val := range jar {
+		if name == testSessionIDKey {
+			continue
+		}
 		req.AddCookie(&http.Cookie{Name: name, Value: val})
 	}
 	if isStateChanging(method) {
 		req.Header.Set("Origin", "https://vc.test")
+		// VC-R169: an authenticated write from the migrated page carries the
+		// session id its own login established.
+		if sid := jar[testSessionIDKey]; sid != "" {
+			req.Header.Set(expectedSessionHeaderName, sid)
+		}
 		if csrf := jar[csrfCookie]; csrf != "" {
 			req.Header.Set(csrfHeader, csrf)
 		}

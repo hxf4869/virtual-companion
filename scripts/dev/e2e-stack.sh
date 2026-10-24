@@ -365,7 +365,8 @@ UPDATE vc.identity_account
  WHERE id = :admin_id;
 SQL
 for E2E_USER_SUFFIX in \
-    login-return auth-trusted-device relationship-chat realtime-recovery \
+    login-return auth-trusted-device auth-session-context \
+    relationship-chat realtime-recovery \
     provider-faults accessibility navigation-smoke companion-memory; do
     E2E_USERNAME="e2e-user-${E2E_USER_SUFFIX}"
     E2E_EMAIL="${E2E_USERNAME}@example.test"

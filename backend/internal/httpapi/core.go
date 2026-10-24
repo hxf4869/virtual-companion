@@ -28,6 +28,14 @@ const maxCoreBodyBytes = 64 << 10
 // principal as the sole authority; the header never selects an owner.
 const expectedAccountHeader = "X-VC-Expected-Account-ID"
 
+// expectedSessionHeader carries the opaque session id (decimal string of the
+// existing identity_opaque_session id) the page committed to when it received
+// or renewed its identity. Like the account header it is a precondition only:
+// the cookie session remains the sole authority. A same-account relogin in the
+// shared cookie jar installs a newer session, so a page still committed to the
+// previous session id must not run effects with the newer cookie.
+const expectedSessionHeader = "X-VC-Expected-Session-ID"
+
 // CompanionStore is the G7/G8 owner-scoped persistence surface. The production
 // implementation is *postgres.Store; tests may substitute a fake.
 type CompanionStore interface {
@@ -267,6 +275,13 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 		s.writeAPIError(w, http.StatusConflict, "ACCOUNT_CONTEXT_CHANGED", "account context changed")
 		return nil
 	}
+	// VC-R169: same session precondition, checked after the account context so
+	// a mismatched account wins; same rejection code — from the page's point
+	// of view the identity context changed either way.
+	if !expectedSessionMatches(r, p.SessionID, write) {
+		s.writeAPIError(w, http.StatusConflict, "ACCOUNT_CONTEXT_CHANGED", "account context changed")
+		return nil
+	}
 	if write && p.PasswordMustChange && !passwordChangeAllowed(r.URL.Path) {
 		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "password change required")
 		return nil
@@ -295,6 +310,18 @@ func expectedAccountMatches(r *http.Request, accountID int64, write bool) bool {
 		return !write
 	}
 	return expected == strconv.FormatInt(accountID, 10)
+}
+
+// expectedSessionMatches is the VC-R169 session-level twin of
+// expectedAccountMatches: authenticated writes must carry the committed
+// session id and it must equal the cookie session; reads stay header-less but
+// compare when a value is present.
+func expectedSessionMatches(r *http.Request, sessionID int64, write bool) bool {
+	expected := strings.TrimSpace(r.Header.Get(expectedSessionHeader))
+	if expected == "" {
+		return !write
+	}
+	return expected == strconv.FormatInt(sessionID, 10)
 }
 
 // authRequestSource returns the direct peer unless this runtime is explicitly

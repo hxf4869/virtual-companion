@@ -21,6 +21,26 @@ describe("createAuthedFetch", () => {
     vi.stubGlobal("document", { cookie: "vc_csrf=csrf-token-123" });
   });
 
+  it("VC-R169: 会话对象提供编号时认证请求携带会话前置头", async () => {
+    const fetchMock = fetchSequence([200, 200]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const authed = createAuthedFetch(() => "must-not-be-sent", {
+      getSessionRevision: () => 1,
+      getAccountId: () => "7",
+      getSessionId: () => "42",
+      onUnauthorized: vi.fn(),
+    });
+    await authed("/api/v1/exports", { method: "POST" });
+    const writeHeaders = (fetchMock.mock.calls[0][1] as RequestInit).headers as Headers;
+    expect(writeHeaders.get("X-VC-Expected-Account-ID")).toBe("7");
+    expect(writeHeaders.get("X-VC-Expected-Session-ID")).toBe("42");
+
+    await authed("/api/v1/exports/exp-1/download");
+    const readHeaders = (fetchMock.mock.calls[1][1] as RequestInit).headers as Headers;
+    expect(readHeaders.get("X-VC-Expected-Session-ID")).toBe("42");
+  });
+
   it("injects CSRF and credentials on state changes without Bearer", async () => {
     const fetchMock = fetchSequence([200]);
     vi.stubGlobal("fetch", fetchMock);
@@ -43,7 +63,7 @@ describe("createAuthedFetch", () => {
     const renewAccessToken = vi.fn(async () => "renewed" as const);
     const onUnauthorized = vi.fn();
 
-    const authed = createAuthedFetch(() => "a-token", { renewAccessToken, onUnauthorized });
+    const authed = createAuthedFetch(() => "a-token", { renewAccessToken, getSessionId: () => null, onUnauthorized });
     const result = await authed("/api/v1/generations/10/snapshot");
 
     expect(result.status).toBe(401);
@@ -65,6 +85,7 @@ describe("createAuthedFetch", () => {
     vi.stubGlobal("fetch", vi.fn(() => gate.promise));
     const onUnauthorized = vi.fn();
     const authed = createAuthedFetch(() => "a-token", {
+      getSessionId: () => null,
       onUnauthorized,
       getSessionRevision: () => 7,
     });
@@ -83,6 +104,7 @@ describe("createAuthedFetch", () => {
     const onUnauthorized = vi.fn();
     let revision = 1;
     const authed = createAuthedFetch(() => "a-token", {
+      getSessionId: () => null,
       onUnauthorized,
       getSessionRevision: () => revision,
     });
@@ -104,6 +126,7 @@ describe("createAuthedFetch", () => {
     const onUnauthorized = vi.fn();
     let revision = 1;
     const authed = createAuthedFetch(() => "a-token", {
+      getSessionId: () => null,
       onUnauthorized,
       getSessionRevision: () => revision,
     });
@@ -126,7 +149,7 @@ describe("createAuthedFetch", () => {
     const gate = deferred<Response>();
     vi.stubGlobal("fetch", vi.fn(() => gate.promise));
     const onUnauthorized = vi.fn();
-    const authed = createAuthedFetch(() => "a-token", { onUnauthorized });
+    const authed = createAuthedFetch(() => "a-token", { getSessionId: () => null, onUnauthorized });
 
     const pending = authed("/api/v1/realtime/streams/1");
     gate.resolve(response(401));
@@ -159,12 +182,14 @@ describe("createAuthedFetch", () => {
 
     const authed = createAuthedFetch(() => null, {
       getAccountId: () => "42",
+      getSessionId: () => "900",
       onUnauthorized: vi.fn(),
     });
     await authed("/api/v1/exports/1/download?token=one-time", { method: "GET" });
 
     const headers = fetchMock.mock.calls[0][1]?.headers as Headers;
     expect(headers.get("X-VC-Expected-Account-ID")).toBe("42");
+    expect(headers.get("X-VC-Expected-Session-ID")).toBe("900");
   });
 
   it("omits the expected-account header when the session has no known account", async () => {
@@ -174,6 +199,7 @@ describe("createAuthedFetch", () => {
 
     const authed = createAuthedFetch(() => null, {
       getAccountId: () => null,
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
     await authed("/api/v1/exports/1/download?token=one-time", { method: "GET" });
@@ -190,6 +216,7 @@ describe("createAuthedFetch", () => {
     const authed = createAuthedFetch(() => null, {
       getAccountId: () => "42",
       getSessionRevision: () => 7,
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged,
     });
@@ -213,6 +240,7 @@ describe("createAuthedFetch", () => {
     const authed = createAuthedFetch(() => null, {
       getAccountId: () => "42",
       getSessionRevision: () => revision,
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged,
     });
@@ -233,6 +261,7 @@ describe("createAuthedFetch", () => {
 
     const authed = createAuthedFetch(() => null, {
       getAccountId: () => "42",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged,
     });
@@ -256,6 +285,7 @@ describe("createAuthedFetch", () => {
 
     const authed = createAuthedFetch(() => null, {
       getAccountId: () => "42",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged: vi.fn(),
     });

@@ -87,24 +87,32 @@ func (g *logoutGate) letThrough() {
 	g.once.Do(func() { close(g.release) })
 }
 
-// pageAccountTransport 模拟「页面已知账号」的前置条件头：真实浏览器中页面
-// 知道自己渲染的 auth.accountId，并在请求上携带 X-VC-Expected-Account-ID；
-// 完成一次新登录后，页面已知账号随之更新。Cookie 仍由真实 cookiejar 维护，
-// transport 只负责在请求发出前附加当前已知账号的头。
+// pageAccountTransport 模拟「页面已知身份」的前置条件头：真实浏览器中页面
+// 知道自己渲染的 auth.accountId 与登录/发现时确立的 sessionId，并在请求上
+// 携带 X-VC-Expected-Account-ID 与 X-VC-Expected-Session-ID；完成一次新登录
+// 后，页面已知身份随之更新。Cookie 仍由真实 cookiejar 维护，transport 只
+// 负责在请求发出前附加当前已知身份的头。
 type pageAccountTransport struct {
-	mu   sync.Mutex
-	id   string
-	base http.RoundTripper
+	mu        sync.Mutex
+	id        string
+	sessionID string
+	base      http.RoundTripper
 }
 
 func (t *pageAccountTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	t.mu.Lock()
 	id := t.id
+	sessionID := t.sessionID
 	base := t.base
 	t.mu.Unlock()
-	if id != "" && req.Header.Get(expectedAccountHeader) == "" {
+	if req.Header.Get(expectedAccountHeader) == "" || req.Header.Get(expectedSessionHeader) == "" {
 		req = req.Clone(req.Context())
-		req.Header.Set(expectedAccountHeader, id)
+		if id != "" && req.Header.Get(expectedAccountHeader) == "" {
+			req.Header.Set(expectedAccountHeader, id)
+		}
+		if sessionID != "" && req.Header.Get(expectedSessionHeader) == "" {
+			req.Header.Set(expectedSessionHeader, sessionID)
+		}
 	}
 	return base.RoundTrip(req)
 }
@@ -114,6 +122,14 @@ func (t *pageAccountTransport) setAccount(id string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.id = id
+}
+
+// setSessionID 记录页面当前已确立的会话编号（登录/发现响应中的
+// sessionId）。
+func (t *pageAccountTransport) setSessionID(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.sessionID = id
 }
 
 // newRealBrowserClient 返回使用独立真实 cookiejar、并带 page-account
@@ -141,6 +157,11 @@ func realNoteLoginAccount(client *http.Client, body string) {
 		var identity sessionIdentityJSON
 		if err := json.Unmarshal([]byte(body), &identity); err == nil && identity.AccountID != "" {
 			pt.setAccount(identity.AccountID)
+			// VC-R169: the same response also establishes the committed
+			// session id; empty on challenge intermediates (no identity).
+			if identity.SessionID != "" {
+				pt.setSessionID(identity.SessionID)
+			}
 		}
 	}
 }

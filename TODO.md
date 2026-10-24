@@ -1038,6 +1038,18 @@ buffer 实测；handler 退出 UNPROVEN。清理核清 8 容器/4 卷/1 网络/3
 回复；G12、S6 保护触发/handler、Owner/Beta/真机/真实 provider 仍开放
 不勾。详见 `docs/planning/g12-go-capacity-sample.md` §19。
 
+2026-10-24 登录链弱网时限与会话前置（VC-R165/R166/R167/R168/R169）：
+R165 logout 15s 总时限（复用 transport timeoutMs）；R166 登录主链四等待
+点同款时限、二维码失败如实可重试（仅 challenge-unavailable 进失效）、
+VcAuthField/VcTotpCodeInput 修复 uni 100ms 节流窗口下的旧值提交（blur/
+confirm 先同步）；R168 单 store loginFlowSeq 作废迟到登录/挑战结果（页面
+seq 守卫+模式切换/卸载仅作废本页流程）。R169 会话级前置：身份响应新增
+REQUIRED 非凭据 sessionId，core 写强制 X-VC-Expected-Session-ID 且匹配
+（读有则匹配），同账号 relogin 后旧页写 409 并经既有 reconcile 恢复；
+GET persist 发现同账号新会话推进 credentialEpoch+loginFlowSeq。不覆盖
+已发出旧 Cookie 请求排序与 unauth 登录 Set-Cookie 竞争；H5/API 需一起
+更新、旧缓存需刷新。验收与边界见 README「当前状态/工程待核」。
+
 2026-10-24 S6 应用处理函数返回证据补齐（VC-R156/R160/R161）：私有探针按
 收尾前完成计数严格对账全部订阅请求，发送结果不明则保持 UNPROVEN；
 R160 发送失败红例有 2 条新增断言失败，修复后 49 项定向断言和编译检查

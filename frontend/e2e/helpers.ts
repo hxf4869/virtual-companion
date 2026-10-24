@@ -119,6 +119,7 @@ const REQUIRED_CONSENTS = [
 export const E2E_USER_SUFFIXES = [
   "login-return",
   "auth-trusted-device",
+  "auth-session-context",
   "relationship-chat",
   "realtime-recovery",
   "provider-faults",
@@ -136,6 +137,8 @@ export interface E2EUser {
 
 export interface E2ESession {
   accountId: string;
+  /** VC-R169: committed non-credential session id (decimal string). */
+  sessionId: string;
   /** Account email owning this session; used for on-page identity assertions. */
   email: string;
   page: Page;
@@ -172,6 +175,8 @@ interface SharedSessionCookie {
 interface SharedSessionFile {
   cookies: SharedSessionCookie[];
   accountId: string;
+  /** VC-R169: committed session id from the establishing response. */
+  sessionId: string;
   email: string;
 }
 
@@ -324,6 +329,11 @@ export async function completeLoginChallenge(
     accountId?: unknown;
   };
   let accountId: unknown = body.accountId;
+  // VC-R169: a direct ACTIVE login response already carries the committed
+  // session id; challenge completion replaces it below.
+  let committedSessionId = typeof (body as { sessionId?: unknown }).sessionId === "string"
+    ? (body as { sessionId: string }).sessionId
+    : "";
 
   if (body.nextStep === "AUTHENTICATOR_SETUP_REQUIRED") {
     const codeInput = page.locator('[data-testid="setup-code"] input');
@@ -344,7 +354,9 @@ export async function completeLoginChallenge(
     await page.getByTestId("setup-submit").click();
     const confirmed = await confirmPromise;
     expect(confirmed.ok(), `authenticator setup failed: ${confirmed.status()}`).toBeTruthy();
-    accountId = ((await confirmed.json()) as { accountId?: unknown }).accountId;
+    const confirmedBody = (await confirmed.json()) as { accountId?: unknown; sessionId?: unknown };
+    accountId = confirmedBody.accountId;
+    committedSessionId = typeof confirmedBody.sessionId === "string" ? confirmedBody.sessionId : "";
     await saveAuthenticatorSecret(user.email, secret);
     await expect(page.getByTestId("recovery-continue")).toBeVisible();
     await page.getByTestId("recovery-continue").click();
@@ -366,7 +378,9 @@ export async function completeLoginChallenge(
     await page.getByTestId("totp-submit").click();
     const verified = await verifyPromise;
     expect(verified.ok(), `TOTP verification failed: ${verified.status()}`).toBeTruthy();
-    accountId = ((await verified.json()) as { accountId?: unknown }).accountId;
+    const verifiedBody = (await verified.json()) as { accountId?: unknown; sessionId?: unknown };
+    accountId = verifiedBody.accountId;
+    committedSessionId = typeof verifiedBody.sessionId === "string" ? verifiedBody.sessionId : "";
   } else if (body.nextStep !== "ACTIVE") {
     throw new Error(`UI login stopped at unsupported next step: ${String(body.nextStep)}`);
   }
@@ -376,6 +390,9 @@ export async function completeLoginChallenge(
   });
   return {
     accountId: asId(accountId, "accountId"),
+    sessionId: committedSessionId === ""
+      ? (() => { throw new Error("login completion did not expose a sessionId"); })()
+      : committedSessionId,
     email: user.email,
     page,
   };
@@ -419,6 +436,7 @@ async function bootstrapSharedSession(kind: SharedSessionKind): Promise<void> {
     // enrolled on a previous run completes the seeded-secret TOTP challenge
     // instead, so re-running global setup never hard-fails on reuse.
     let accountId: unknown;
+    let sharedSessionId: unknown;
     if (loginBody.nextStep === "TOTP_REQUIRED") {
       const secret = (await readAuthenticatorSecrets())[account.email];
       if (!secret) {
@@ -435,7 +453,9 @@ async function bootstrapSharedSession(kind: SharedSessionKind): Promise<void> {
       );
       expect(verified.ok(), `shared ${kind} TOTP verification failed: ${verified.status()}`)
         .toBeTruthy();
-      accountId = ((await verified.json()) as { accountId?: unknown }).accountId;
+      const verifiedBody = (await verified.json()) as { accountId?: unknown; sessionId?: unknown };
+      accountId = verifiedBody.accountId;
+      sharedSessionId = verifiedBody.sessionId;
     } else {
       expect(
         loginBody.nextStep,
@@ -443,6 +463,7 @@ async function bootstrapSharedSession(kind: SharedSessionKind): Promise<void> {
       ).toBe("AUTHENTICATOR_SETUP_REQUIRED");
       const enrollment = await enrollSharedAuthenticator(api, jsonHeaders, kind, challengeId);
       accountId = enrollment.accountId;
+      sharedSessionId = enrollment.sessionId;
       // The manual key is the account's permanent seed; persist it only on
       // the enrollment path (the TOTP path reuses the stored secret).
       await saveAuthenticatorSecret(account.email, enrollment.manualKey);
@@ -452,6 +473,7 @@ async function bootstrapSharedSession(kind: SharedSessionKind): Promise<void> {
     const shared: SharedSessionFile = {
       cookies: state.cookies as SharedSessionCookie[],
       accountId: asId(accountId, "accountId"),
+      sessionId: asId(sharedSessionId, "sessionId"),
       email: account.email,
     };
     await writeFile(sharedSessionPath(kind), `${JSON.stringify(shared)}\n`, {
@@ -469,7 +491,7 @@ async function enrollSharedAuthenticator(
   jsonHeaders: Record<string, string>,
   kind: SharedSessionKind,
   challengeId: string,
-): Promise<{ accountId: unknown; manualKey: string }> {
+): Promise<{ accountId: unknown; sessionId: unknown; manualKey: string }> {
   const setup = await api.post(
     `/api/v1/auth/challenges/${encodeURIComponent(challengeId)}/authenticator-setup`,
     { headers: jsonHeaders },
@@ -490,8 +512,8 @@ async function enrollSharedAuthenticator(
   );
   expect(confirm.ok(), `shared ${kind} authenticator confirm failed: ${confirm.status()}`)
     .toBeTruthy();
-  const accountId = ((await confirm.json()) as { accountId?: unknown }).accountId;
-  return { accountId, manualKey };
+  const confirmBody = (await confirm.json()) as { accountId?: unknown; sessionId?: unknown };
+  return { accountId: confirmBody.accountId, sessionId: confirmBody.sessionId, manualKey };
 }
 
 /** Resume the shared authenticated session inside this test's browser context
@@ -513,7 +535,12 @@ export async function openSharedSession(
     page.getByTestId("consumer-tabbar"),
     `shared ${kind} session (${shared.email}) is not authenticated`,
   ).toBeVisible();
-  return { accountId: shared.accountId, email: shared.email, page };
+  return {
+    accountId: shared.accountId,
+    sessionId: shared.sessionId,
+    email: shared.email,
+    page,
+  };
 }
 
 /** Navigate inside uni-app without a full reload (and therefore without an
@@ -547,11 +574,15 @@ export interface E2EApiResult {
  * declare the account the session belongs to (X-VC-Expected-Account-ID), taken
  * from the E2ESession's known accountId. Reads keep the header-less shape. */
 const EXPECTED_ACCOUNT_HEADER = "X-VC-Expected-Account-ID";
+const EXPECTED_SESSION_HEADER = "X-VC-Expected-Session-ID";
 const STATE_CHANGING_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
 
 export interface SessionRequestOptions {
   /** Known accountId from E2ESession (openSharedSession / uiLogin). */
   accountId?: string;
+  /** VC-R169: committed session id from E2ESession; carried on writes so the
+   * fixture mirrors the real page (never re-derived from cookies). */
+  sessionId?: string;
 }
 
 /** Execute an API request through the logged-in browser context. Its request
@@ -575,6 +606,9 @@ export async function sessionRequest(
   }
   if (options.accountId && STATE_CHANGING_METHODS.includes(method)) {
     headers[EXPECTED_ACCOUNT_HEADER] = options.accountId;
+  }
+  if (options.sessionId && STATE_CHANGING_METHODS.includes(method)) {
+    headers[EXPECTED_SESSION_HEADER] = options.sessionId;
   }
   const response = await page.context().request.fetch(path, {
     method,
@@ -629,9 +663,10 @@ export async function waitForGenerationTerminal(
 /** Satisfy the synthetic stack's real server-side age/consent gate. */
 export async function prepareGenerationAccess(session: E2ESession): Promise<void> {
   const page = session.page;
-  const { accountId } = session;
+  const { accountId, sessionId } = session;
   const age = await sessionRequest(page, "POST", "/api/v1/age/verification", undefined, {
     accountId,
+    sessionId,
   });
   expect(age.ok, `age verification failed: ${age.status}`).toBeTruthy();
   for (const consentType of REQUIRED_CONSENTS) {
@@ -639,7 +674,7 @@ export async function prepareGenerationAccess(session: E2ESession): Promise<void
       consentType,
       version: "2026-08",
       granted: true,
-    }, { accountId });
+    }, { accountId, sessionId });
     expect(
       consent.ok,
       `${consentType} grant failed: ${consent.status}`,
@@ -669,7 +704,7 @@ export async function createRelationshipAndConversation(
 
   const conversation = await sessionRequest(page, "POST", "/api/v1/conversations", {
     relationshipId,
-  }, { accountId: session.accountId });
+  }, { accountId: session.accountId, sessionId: session.sessionId });
   expect(
     conversation.ok,
     `conversation creation failed: ${conversation.status}`,

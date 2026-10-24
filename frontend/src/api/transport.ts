@@ -23,7 +23,9 @@ export interface TransportRequestOptions {
    * the page knows an account. Reserved for identity discovery
    * (GET /api/v1/auth/session): it must read the current cookie identity
    * without the expected-account precondition, otherwise a page holding a
-   * stale account could never discover the newer cookie account (409 loop). */
+   * stale account could never discover the newer cookie account (409 loop).
+   * VC-R169: the same discovery also omits the expected-session header —
+   * the option covers both expected-identity headers. */
   omitExpectedAccount?: boolean;
 }
 
@@ -47,6 +49,11 @@ export interface AuthTokenProvider {
    * per request entry (with the revision) as the expected-account
    * precondition; never re-read mid-flight and never derived from cookies. */
   getAccountId?(): string | null;
+  /** VC-R169: session id the page committed to when its identity was
+   * established. REQUIRED so a provider that forgets it fails type-check;
+   * captured once per request entry (with the account) as the expected-session
+   * precondition; null while the page holds no established identity. */
+  getSessionId(): string | null;
   onUnauthorized(): void;
   /** VC-R52: the server rejected the request because the cookie identity no
    * longer matches the page's expected account (precise 409 + body code
@@ -59,6 +66,7 @@ const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_COOKIE = "vc_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
 const EXPECTED_ACCOUNT_HEADER = "X-VC-Expected-Account-ID";
+const EXPECTED_SESSION_HEADER = "X-VC-Expected-Session-ID";
 const ACCOUNT_CONTEXT_CHANGED_CODE = "ACCOUNT_CONTEXT_CHANGED";
 
 /** 精确的服务端拒绝形态：HTTP 409 + 错误信封 code === ACCOUNT_CONTEXT_CHANGED。 */
@@ -106,6 +114,11 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
     const expectedAccount = opts?.omitExpectedAccount === true
       ? null
       : (provider.getAccountId?.() ?? null);
+    // VC-R169: captured once per call entry with the same ownership rules as
+    // the account header — never re-read mid-flight.
+    const expectedSession = opts?.omitExpectedAccount === true
+      ? null
+      : provider.getSessionId();
     // 归属成立的期望账号失配拒绝才上报：迟到旧意图（代次已推进）的 409
     // 不得触碰已确立的较新会话。复用 401 的归属判定形态。
     const reportAccountContextChange = (status: number, json: unknown): void => {
@@ -119,6 +132,9 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (expectedAccount !== null) {
       headers[EXPECTED_ACCOUNT_HEADER] = expectedAccount;
+    }
+    if (expectedSession !== null) {
+      headers[EXPECTED_SESSION_HEADER] = expectedSession;
     }
     if (STATE_CHANGING_METHODS.has(method)) {
       const csrf = readCsrfCookie();

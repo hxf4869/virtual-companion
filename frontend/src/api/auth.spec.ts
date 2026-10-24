@@ -36,6 +36,7 @@ function activeIdentity(recoveryCodes?: string[]) {
     accountId: "7",
     email: "alice@example.com",
     role: "USER",
+    sessionId: "9",
     passwordMustChange: false,
     authenticatorEnabled: true,
     expiresInSeconds: 604800,
@@ -160,6 +161,56 @@ describe("Go Runtime auth client", () => {
     );
   });
 
+  it("VC-R169: 身份响应必须携带合法十进制 sessionId，缺失或非法不可用", async () => {
+    // 缺 sessionId 的响应不构成可提交的身份（REQUIRED 字段）。
+    await expect(getAuthSession(transportFor({
+      ok: true,
+      status: 200,
+      json: {
+        nextStep: "ACTIVE",
+        accountId: "7",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 600,
+      },
+    }))).resolves.toEqual({ status: "unavailable" });
+
+    // 非十进制编号同样不可用。
+    await expect(getAuthSession(transportFor({
+      ok: true,
+      status: 200,
+      json: {
+        nextStep: "ACTIVE",
+        accountId: "7",
+        sessionId: "abc",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 600,
+      },
+    }))).resolves.toEqual({ status: "unavailable" });
+
+    // 合法十进制编号进入身份并原样暴露给 store。
+    const identity = await getAuthSession(transportFor({
+      ok: true,
+      status: 200,
+      json: {
+        nextStep: "ACTIVE",
+        accountId: "7",
+        sessionId: "42",
+        role: "USER",
+        passwordMustChange: false,
+        authenticatorEnabled: true,
+        expiresInSeconds: 600,
+      },
+    }));
+    expect(identity.status).toBe("authenticated");
+    if (identity.status === "authenticated") {
+      expect(identity.identity.sessionId).toBe("42");
+    }
+  });
+
   it("maps GET /auth/session to a three-state probe that never fakes a logout", async () => {
     // 401 is the only canonical "no valid session" result.
     await expect(getAuthSession(transportFor({
@@ -182,6 +233,7 @@ describe("Go Runtime auth client", () => {
       json: {
         nextStep: "ACTIVE",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: false,
         expiresInSeconds: 600,
@@ -337,6 +389,7 @@ describe("logout request deadline", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onUnauthorized = vi.fn();
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getAccessToken: () => "session",
       getSessionRevision: () => 1,
       onUnauthorized,
@@ -381,6 +434,7 @@ describe("logout request deadline", () => {
     }) as unknown as Response));
     const onUnauthorized = vi.fn();
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getAccessToken: () => "session",
       getSessionRevision: () => 1,
       onUnauthorized,
@@ -427,6 +481,7 @@ describe("login chain request deadlines", () => {
 
   function deadlineTransport(onUnauthorized: ReturnType<typeof vi.fn>) {
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getAccessToken: () => "session",
       getSessionRevision: () => 1,
       onUnauthorized,

@@ -370,9 +370,11 @@ class RealIO:
             session = os.environ.get("G12_SESSION")
             csrf = os.environ.get("G12_CSRF")
             account = os.environ.get("G12_ACCOUNT")
-            need(session and csrf and account and self.base,
+            session_id = os.environ.get("G12_SESSION_ID")
+            need(session and csrf and account and session_id and self.base,
                  "PUBLIC_ENV")
             self._public_client = Client(self.base, session, csrf, account,
+                                         session_id=session_id,
                                          cafile=self.cacert)
         return self._public_client
 

@@ -317,12 +317,14 @@ func TestVC15PasswordChangeRevocationSemanticsOverRealJar(t *testing.T) {
 	if next.NextStep != "TOTP_REQUIRED" || !validChallengeID(next.ChallengeID) {
 		t.Fatalf("新密码 login 下一步 = %q, 期望 TOTP_REQUIRED 且带有效 challengeId", next.NextStep)
 	}
-	code, _, err = realJSON(client, ts.URL, http.MethodPost,
+	code, verifyBody, err := realJSON(client, ts.URL, http.MethodPost,
 		"/api/v1/auth/challenges/"+next.ChallengeID+"/totp",
 		`{"code":"123456","trustDevice":true}`)
 	if err != nil {
 		t.Fatalf("TOTP 验证请求失败: %v", err)
 	}
+	// The page learns its newly established identity from the same response.
+	realNoteLoginAccount(client, verifyBody)
 	if code != http.StatusOK {
 		t.Fatalf("TOTP 验证状态码 = %d, 期望 200", code)
 	}

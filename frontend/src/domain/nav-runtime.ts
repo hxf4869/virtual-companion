@@ -72,6 +72,8 @@ export function bootstrapAuthSession(): void {
   const transport = createAuthenticatedTransport({
     getAccessToken: () => auth.accessToken,
     renewAccessToken: () => auth.renewAccessToken(transport),
+    getAccountId: () => auth.accountId,
+    getSessionId: () => auth.getSessionId(),
     getSessionRevision: () => auth.getSessionRevision(),
     // Session discovery is valid for anonymous visitors. Let tryRefresh settle
     // the store, then let the route guard decide whether this page needs login.

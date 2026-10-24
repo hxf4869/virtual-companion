@@ -246,6 +246,7 @@ const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   renewAccessToken: () => auth.renewAccessToken(transport),
   getAccountId: () => auth.accountId,
+  getSessionId: () => auth.getSessionId(),
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
   // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，不自动
@@ -257,6 +258,7 @@ const transport = createAuthenticatedTransport({
 const authedFetch = createAuthedFetch(() => auth.accessToken, {
   renewAccessToken: () => auth.renewAccessToken(transport),
   getAccountId: () => auth.accountId,
+  getSessionId: () => auth.getSessionId(),
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
   onAccountContextChanged: () => {

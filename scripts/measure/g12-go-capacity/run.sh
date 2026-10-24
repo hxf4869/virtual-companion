@@ -843,10 +843,12 @@ PY
 HASH=$(printf '%s' "$RAW" | shasum -a 256 | cut -d' ' -f1)
 CSRF=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 G12_ACCOUNT_ID=2000001
-psql_q "SELECT vc.identity_opaque_session_issue(2000001, '$HASH', now() + interval '12 hours')" >/dev/null
+# VC-R169: the issue function returns the new session id; the fixture pins it
+# at startup and passes it to every client (never re-derived from cookies).
+G12_SESSION_ID=$(psql_q "SELECT vc.identity_opaque_session_issue(2000001, '$HASH', now() + interval '12 hours')")
 # The session/CSRF travel by named environment variables only (workload.py),
-# never through argv or logs.
-export G12_SESSION="$RAW" G12_CSRF="$CSRF" G12_ACCOUNT="$G12_ACCOUNT_ID"
+# never through argv or logs. The session id is the non-credential decimal id.
+export G12_SESSION="$RAW" G12_CSRF="$CSRF" G12_ACCOUNT="$G12_ACCOUNT_ID" G12_SESSION_ID="$G12_SESSION_ID"
 echo "  session fabricated"
 
 # §19.1 S9 (VC-R128): two dedicated login-only synthetic accounts with a
@@ -889,6 +891,7 @@ req = urllib.request.Request(base + "/api/v1/age/verification", method="POST", h
     "Cookie": f"vc_session={os.environ['G12_SESSION']}; vc_csrf={os.environ['G12_CSRF']}",
     "X-CSRF-Token": os.environ["G12_CSRF"],
     "X-VC-Expected-Account-ID": os.environ["G12_ACCOUNT"],
+    "X-VC-Expected-Session-ID": os.environ["G12_SESSION_ID"],
 })
 with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
     state = json.loads(resp.read()).get("ageState")

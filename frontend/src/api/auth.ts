@@ -32,6 +32,12 @@ export type AuthNextStep =
 export interface AuthSessionIdentity {
   nextStep: "ACTIVE";
   accountId: string;
+  /**
+   * VC-R169: the non-credential opaque session id (decimal string) this
+   * identity was established with. REQUIRED: the page commits to it and
+   * carries it as X-VC-Expected-Session-ID on authenticated requests.
+   */
+  sessionId: string;
   email?: string;
   role: string;
   passwordMustChange: boolean;
@@ -384,11 +390,16 @@ function asSessionIdentity(json: unknown): AuthSessionIdentity | null {
   if (!json || typeof json !== "object") return null;
   const value = json as Record<string, unknown>;
   const accountId = stringValue(value.accountId);
+  // VC-R169: the session id is REQUIRED and must be a decimal string of the
+  // opaque session id; anything else is an unusable identity, not a fallback.
+  const sessionId = stringValue(value.sessionId);
   const role = stringValue(value.role);
   const expiresInSeconds = Number(value.expiresInSeconds);
   if (
     value.nextStep !== "ACTIVE" ||
     !accountId ||
+    !sessionId ||
+    !/^[1-9][0-9]*$/.test(sessionId) ||
     !role ||
     typeof value.passwordMustChange !== "boolean" ||
     typeof value.authenticatorEnabled !== "boolean" ||
@@ -399,6 +410,7 @@ function asSessionIdentity(json: unknown): AuthSessionIdentity | null {
   return {
     nextStep: "ACTIVE",
     accountId,
+    sessionId,
     email: stringValue(value.email) ?? undefined,
     role,
     passwordMustChange: value.passwordMustChange,

@@ -763,6 +763,7 @@ describe("redesigned authentication entry", () => {
       accountId: "43",
       email: "b@example.com",
       role: "USER",
+      sessionId: "9",
       passwordMustChange: false,
       authenticatorEnabled: true,
       expiresInSeconds: 7200,

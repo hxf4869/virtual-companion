@@ -75,7 +75,7 @@ test("我的→聊天与记忆副本：错密码被拒后真实申请并经浏�
     "POST",
     `/api/v1/conversations/${encodeURIComponent(anchor.conversationId)}/generations`,
     { idempotencyKey: randomUUID(), userContent: sentinel },
-    { accountId: session.accountId },
+    { accountId: session.accountId, sessionId: session.sessionId },
   );
   expect(turn.ok, `generation send failed: HTTP ${turn.status}`).toBeTruthy();
   const generationId = String(

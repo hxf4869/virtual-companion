@@ -146,6 +146,7 @@ export default defineComponent({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
       getAccountId: () => auth.accountId,
+      getSessionId: () => auth.getSessionId(),
       getSessionRevision: () => auth.getSessionRevision(),
       onUnauthorized: () => auth.onUnauthorized(),
       // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，不
@@ -236,7 +237,13 @@ export default defineComponent({
       const csrfBeforeConfirm = readCsrfCookie();
       if (!(await confirmDiscardChanges())) return;
       if (readCsrfCookie() !== csrfBeforeConfirm) {
-        logoutNotice.value = "登录状态已更新，请重新确认退出";
+        // VC-R169: 取消旧意图后必须有界发现当前 Cookie 身份（tryRefresh：
+        // GET /auth/session 省略两个期望头），否则第二次确认仍持旧会话
+        // 编号，新前置下必然 409。不自动重放 logout：用户仍需再次确认。
+        const discovered = await auth.tryRefresh(transport);
+        logoutNotice.value = discovered
+          ? "登录状态已更新，请重新确认退出"
+          : "暂时无法确认登录状态，请重试。";
         return;
       }
       loggingOut.value = true;

@@ -174,6 +174,7 @@ describe("admin console shell", () => {
             accountId: "43",
             email: "b@example.com",
             role: "USER",
+            sessionId: "9",
             passwordMustChange: false,
             authenticatorEnabled: true,
             expiresInSeconds: 7200,
@@ -200,6 +201,7 @@ describe("admin console shell", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -218,10 +220,27 @@ describe("admin console shell", () => {
   it("VC-R39: 确认窗等待期间凭据已被另一标签页换装时，确认旧退出草稿只提示重新确认", async () => {
     const calls: Array<{ method: string; url: string }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push({
-        method: (init?.method ?? "GET").toUpperCase(),
-        url: typeof input === "string" ? input : input.toString(),
-      });
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url });
+      // VC-R169: the cancellation branch discovers the current identity; the
+      // other tab's newer session answers the discovery with a valid identity.
+      if (url === "/api/v1/auth/session" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            nextStep: "ACTIVE",
+            accountId: "7",
+            sessionId: "900",
+            email: "admin@example.com",
+            role: "ADMIN",
+            passwordMustChange: false,
+            authenticatorEnabled: true,
+            expiresInSeconds: 7200,
+          }),
+        };
+      }
       return { ok: true, status: 200, json: async () => ({ ok: true }) };
     }));
     const redirectTo = vi.fn();
@@ -257,6 +276,13 @@ describe("admin console shell", () => {
     expect(redirectTo).not.toHaveBeenCalled();
     expect(navigateTo).not.toHaveBeenCalled();
     expect(wrapper.get('[role="status"]').text()).toBe("登录状态已更新，请重新确认退出");
+
+    // VC-R169: 取消分支必须发现当前 Cookie 身份（GET /auth/session），
+    // 否则二次确认仍持旧会话编号，新前置下必然 409。
+    expect(
+      calls.some((call) => call.method === "GET" && call.url === "/api/v1/auth/session"),
+      "CSRF-change cancellation must discover the current identity",
+    ).toBe(true);
 
     document.cookie = "vc_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     wrapper.unmount();

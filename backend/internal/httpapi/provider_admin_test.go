@@ -110,8 +110,10 @@ func providerRequest(t *testing.T, server *Server, store *providerMemStore, meth
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	// The fixture page states the account it acts for.
+	// The fixture page states the account it acts for, together with the
+	// session id its own fixture session established (VC-R169).
 	req.Header.Set(expectedAccountHeader, strconv.FormatInt(account, 10))
+	req.Header.Set(expectedSessionHeader, strconv.FormatInt(sid, 10))
 	if isStateChanging(method) {
 		req.Header.Set("Origin", "https://vc.test")
 		req.AddCookie(&http.Cookie{Name: csrfCookie, Value: "csrf-token"})

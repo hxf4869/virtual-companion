@@ -293,6 +293,7 @@ const busy = ref(false);
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   getAccountId: () => auth.accountId,
+      getSessionId: () => auth.getSessionId(),
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
   // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，

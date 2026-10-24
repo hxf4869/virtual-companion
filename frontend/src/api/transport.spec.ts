@@ -21,6 +21,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -37,12 +38,57 @@ describe("createAuthenticatedTransport", () => {
     });
   });
 
+  it("VC-R169: 认证页面身份同时携带账号与会话编号，发现流省略两者", async () => {
+    const fetchMock = fetchOk();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = createAuthenticatedTransport({
+      getAccountId: () => "7",
+      getSessionId: () => "42",
+      onUnauthorized: vi.fn(),
+    });
+    await transport.request("POST", "/api/v1/conversations", { incognito: false });
+    const writeInit = fetchMock.mock.calls[0][1] as RequestInit;
+    const writeHeaders = writeInit.headers as Record<string, string>;
+    expect(writeHeaders["X-VC-Expected-Account-ID"]).toBe("7");
+    expect(writeHeaders["X-VC-Expected-Session-ID"]).toBe("42");
+
+    // GET 读也携带（读前置：缺省放行、有则匹配）。
+    await transport.request("GET", "/api/v1/relationships");
+    const readInit = fetchMock.mock.calls[1][1] as RequestInit;
+    const readHeaders = readInit.headers as Record<string, string>;
+    expect(readHeaders["X-VC-Expected-Session-ID"]).toBe("42");
+
+    // 身份发现（omitExpectedAccount）：两个期望头都省略。
+    await transport.request("GET", "/api/v1/auth/session", undefined, {
+      callerHandlesUnauthorized: true,
+      omitExpectedAccount: true,
+    });
+    const discoveryInit = fetchMock.mock.calls[2][1] as RequestInit;
+    const discoveryHeaders = discoveryInit.headers as Record<string, string>;
+    expect(discoveryHeaders["X-VC-Expected-Account-ID"]).toBeUndefined();
+    expect(discoveryHeaders["X-VC-Expected-Session-ID"]).toBeUndefined();
+
+    // 未确立身份（匿名页面）：两个头都不发。
+    const anonymous = createAuthenticatedTransport({
+      getAccountId: () => null,
+      getSessionId: () => null,
+      onUnauthorized: vi.fn(),
+    });
+    await anonymous.request("POST", "/api/v1/auth/login", { account: "a", password: "b" });
+    const anonInit = fetchMock.mock.calls[3][1] as RequestInit;
+    const anonHeaders = anonInit.headers as Record<string, string>;
+    expect(anonHeaders["X-VC-Expected-Account-ID"]).toBeUndefined();
+    expect(anonHeaders["X-VC-Expected-Session-ID"]).toBeUndefined();
+  });
+
   it("does not inject the Authorization header", async () => {
     const fetchMock = fetchOk();
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => "must-not-be-sent",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -61,6 +107,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -82,6 +129,7 @@ describe("createAuthenticatedTransport", () => {
       })),
     );
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
     await transport.request("GET", "/api/v1/version");
@@ -95,6 +143,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -110,6 +159,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -124,6 +174,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -142,6 +193,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized,
     });
 
@@ -161,7 +213,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onUnauthorized = vi.fn();
 
-    const transport = createAuthenticatedTransport({ onUnauthorized });
+    const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized });
 
     const result = await transport.request("GET", "/api/v1/auth/session", undefined, {
       callerHandlesUnauthorized: true,
@@ -188,7 +240,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onUnauthorized = vi.fn();
 
-    const transport = createAuthenticatedTransport({ onUnauthorized });
+    const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized });
 
     const result = await transport.request("GET", "/api/v1/auth/session", undefined, {
       timeoutMs: 15_000,
@@ -218,6 +270,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized,
     });
 
@@ -237,6 +290,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       renewAccessToken,
       onUnauthorized,
     });
@@ -257,6 +311,7 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -269,7 +324,7 @@ describe("createAuthenticatedTransport", () => {
   it("marks a valid JSON response as parsed", async () => {
     const fetchMock = fetchOk();
     vi.stubGlobal("fetch", fetchMock);
-    const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+    const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized: vi.fn() });
 
     const result = await transport.request("GET", "/api/v1/version");
 
@@ -288,7 +343,7 @@ describe("createAuthenticatedTransport", () => {
         }),
       );
       vi.stubGlobal("fetch", fetchMock);
-      const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+      const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized: vi.fn() });
 
       const pending = transport.request("GET", "/api/v1/conversations", undefined, {
         timeoutMs: 15_000,
@@ -316,7 +371,7 @@ describe("createAuthenticatedTransport", () => {
         json: () => new Promise<never>(() => undefined),
       }));
       vi.stubGlobal("fetch", fetchMock);
-      const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+      const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized: vi.fn() });
 
       const pending = transport.request("GET", "/api/v1/conversations", undefined, {
         timeoutMs: 15_000,
@@ -335,7 +390,7 @@ describe("createAuthenticatedTransport", () => {
     vi.useFakeTimers();
     try {
       vi.stubGlobal("fetch", fetchOk());
-      const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+      const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized: vi.fn() });
 
       await transport.request("GET", "/api/v1/version", undefined, { timeoutMs: 15_000 });
       // 正文已读完、定时器已清：推进远超超时点也不再触发任何中止。
@@ -365,7 +420,7 @@ describe("createAuthenticatedTransport", () => {
         });
       });
       vi.stubGlobal("fetch", fetchMock);
-      const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+      const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized: vi.fn() });
 
       const pending = transport.request("GET", "/api/v1/conversations", undefined, {
         timeoutMs: 15_000,
@@ -388,7 +443,7 @@ describe("createAuthenticatedTransport", () => {
     vi.useFakeTimers();
     try {
       vi.stubGlobal("fetch", fetchOk());
-      const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+      const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized: vi.fn() });
 
       const pending = transport.request("GET", "/api/v1/version", undefined, {
         timeoutMs: 15_000,
@@ -403,7 +458,7 @@ describe("createAuthenticatedTransport", () => {
   it("adds no AbortSignal when no per-request options are given (SSE-safe default path)", async () => {
     const fetchMock = fetchOk();
     vi.stubGlobal("fetch", fetchMock);
-    const transport = createAuthenticatedTransport({ onUnauthorized: vi.fn() });
+    const transport = createAuthenticatedTransport({ getSessionId: () => null, onUnauthorized: vi.fn() });
 
     await transport.request("GET", "/api/v1/version");
 
@@ -438,6 +493,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getSessionRevision: () => revision,
       onUnauthorized,
     });
@@ -460,6 +516,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getSessionRevision: () => revision,
       onUnauthorized,
     });
@@ -480,6 +537,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getSessionRevision: () => revision,
       onUnauthorized,
     });
@@ -503,6 +561,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getSessionRevision: () => revision,
       onUnauthorized,
     });
@@ -525,6 +584,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       getSessionRevision: () => revision,
       onUnauthorized,
     });
@@ -549,6 +609,7 @@ describe("createAuthenticatedTransport", () => {
     const onUnauthorized = vi.fn();
 
     const transport = createAuthenticatedTransport({
+      getSessionId: () => null,
       onUnauthorized,
     });
 
@@ -569,6 +630,7 @@ describe("createAuthenticatedTransport", () => {
 
     const transport = createAuthenticatedTransport({
       getAccountId: () => "42",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -589,6 +651,7 @@ describe("createAuthenticatedTransport", () => {
 
     const transport = createAuthenticatedTransport({
       getAccountId: () => null,
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -603,6 +666,7 @@ describe("createAuthenticatedTransport", () => {
 
     const transport = createAuthenticatedTransport({
       getAccountId: () => "42",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
     });
 
@@ -618,21 +682,27 @@ describe("createAuthenticatedTransport", () => {
     vi.stubGlobal("fetch", fetchMock);
     let account = "42";
     const getAccountId = vi.fn(() => account);
+    let session = "900";
+    const getSessionId = vi.fn(() => session);
 
     const transport = createAuthenticatedTransport({
       getAccountId,
+      getSessionId,
       onUnauthorized: vi.fn(),
     });
 
     const pending = transport.request("POST", "/api/v1/exports", { currentPassword: "x" });
-    // 在途期间换号：已捕获的旧意图不得被改写成新账号。
+    // 在途期间换号/换会话：已捕获的旧意图不得被改写成新身份。
     account = "43";
+    session = "901";
     resolvers[0]!({ ok: true, status: 200, json: async () => ({ ok: true }) });
 
     await pending;
     expect(getAccountId).toHaveBeenCalledTimes(1);
+    expect(getSessionId).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
       "X-VC-Expected-Account-ID": "42",
+      "X-VC-Expected-Session-ID": "900",
     });
   });
 
@@ -653,6 +723,7 @@ describe("createAuthenticatedTransport", () => {
 
     const transport = createAuthenticatedTransport({
       getAccountId: () => "42",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged,
     });
@@ -675,6 +746,7 @@ describe("createAuthenticatedTransport", () => {
 
     const transport = createAuthenticatedTransport({
       getAccountId: () => "42",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged,
     });
@@ -699,6 +771,7 @@ describe("createAuthenticatedTransport", () => {
 
     const transport = createAuthenticatedTransport({
       getAccountId: () => "42",
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged,
     });
@@ -732,6 +805,7 @@ describe("createAuthenticatedTransport", () => {
     const transport = createAuthenticatedTransport({
       getAccountId: () => "42",
       getSessionRevision: () => revision,
+      getSessionId: () => null,
       onUnauthorized: vi.fn(),
       onAccountContextChanged,
     });

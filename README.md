@@ -47,7 +47,12 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 - 认证写请求的请求侧排序与其余 API Cookie 竞态边界仍开放（R12/R15/
   R16/R17 收口的是响应侧，不覆盖请求侧；VC-R52 已覆盖跨账号场景：core
   写强制 `X-VC-Expected-Account-ID` 前置条件，陈旧页面的写被服务端 409
-  拒绝且客户端恢复当前 Cookie 身份，同账号重登的请求侧时序仍未闭合）；
+  拒绝且客户端恢复当前 Cookie 身份；VC-R169 追加会话级前置
+  `X-VC-Expected-Session-ID`（身份响应新增非凭据 `sessionId`），同账号重登
+  后旧页持旧会话编号的写同样 409 并经既有 reconcile 恢复。仍不覆盖：页面
+  已发出的旧 Cookie 请求排序与未认证登录 Set-Cookie 竞争；配套版本约束：
+  H5 与 API 需一起更新，旧缓存页面需刷新，新前端解析 REQUIRED sessionId
+  时对旧后端身份响应不可用）；
 - 本地 credentialEpoch 仍不能感知另一标签页登录。VC-R39 只收口 Admin
   退出确认窗这一个窗口：手机 390x844 原视口下旧遮挡实为底栏
   model-mobile-bar 与导航同层（非 modal），抽屉改用既有 overlay 层级后

@@ -105,6 +105,7 @@ function stubFetch(options: FetchOptions = {}): ReturnType<typeof vi.fn> {
         nextStep: "ACTIVE",
         accountId: "7",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: true,
         expiresInSeconds: 7200,
@@ -127,6 +128,7 @@ function stubFetch(options: FetchOptions = {}): ReturnType<typeof vi.fn> {
         accountId: options.loginAccountId ?? "9",
         email: "b@example.com",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: true,
         expiresInSeconds: 7200,
@@ -356,6 +358,7 @@ describe("首页产品骨架", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.clear(),
     });
     const conversationsCalls = () => fetchMock.mock.calls.filter((call) =>
@@ -420,6 +423,7 @@ describe("首页产品骨架", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.clear(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -475,6 +479,7 @@ describe("首页产品骨架", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.clear(),
     });
     await auth.login(transport, "a@example.com", "pw-a");

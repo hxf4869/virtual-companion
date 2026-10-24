@@ -829,6 +829,7 @@ class RunScenarioS6StubTest(unittest.TestCase):
         import argparse
         return argparse.Namespace(
             base="http://127.0.0.1:1", session="s", csrf="c", account="a",
+            session_id="900099",
             origin=None, cacert=None, scenario="s6", key_prefix="t",
             sse_timeout=30.0, gens=0, sse_per_gen=0)
 
@@ -1798,6 +1799,11 @@ class FakeS9Backend:
         if headers.get("x-vc-expected-account-id") \
                 != self.account_ids[session["account"]]:
             return None, self._error(409, "ACCOUNT_CONTEXT_CHANGED")
+        # VC-R169: the page must also commit to the exact session id its
+        # cookie establishes; stale-id writes from a same-account relogin are
+        # rejected exactly like the real backend.
+        if headers.get("x-vc-expected-session-id") != session["row"]:
+            return None, self._error(409, "ACCOUNT_CONTEXT_CHANGED")
         return session, None
 
     # -- endpoints ------------------------------------------------------
@@ -1815,10 +1821,11 @@ class FakeS9Backend:
             self.trusted_logins += 1
             if self.trusted_logins == 2:   # login#3: the concurrent one
                 self._rendezvous()
-            new, csrf, _ = self._issue(account)
+            new, csrf, new_row = self._issue(account)
             return FakeJSONResponse(
                 200, {"nextStep": "ACTIVE",
-                      "accountId": self.account_ids[account]},
+                      "accountId": self.account_ids[account],
+                      "sessionId": new_row},
                 self._session_cookies(new, csrf))
         clear = []
         if token and (trusted is None or not trusted["live"]):
@@ -1879,6 +1886,7 @@ class FakeS9Backend:
         return FakeJSONResponse(
             200, {"nextStep": "ACTIVE",
                   "accountId": self.account_ids[account],
+                  "sessionId": row,
                   "recoveryCodes": ["rc-do-not-print"]}, set_cookies)
 
     def _list(self, cookies):
@@ -1969,6 +1977,7 @@ class S9ScenarioOrchestrationTest(unittest.TestCase):
         return argparse.Namespace(
             base="http://backend", origin=None, cacert=None,
             session="HARNESS-SESS", csrf="HARNESS-CSRF", account="9000001",
+            session_id="900099",
             s9_login_a=S9A, s9_login_b=S9B,
             s9_password_a=S9_PASSWORD, s9_password_b=S9_PASSWORD,
             s9_budget_seconds=budget)
@@ -2175,6 +2184,7 @@ class S9CLITest(unittest.TestCase):
 
     def test_missing_s9_env_is_an_explicit_parser_error(self):
         env = {"G12_SESSION": "s", "G12_CSRF": "c", "G12_ACCOUNT": "a",
+               "G12_SESSION_ID": "900099",
                "G12_S9_LOGIN_A": S9A}   # LOGIN_B + both passwords missing
         err = io.StringIO()
         with mock.patch.dict(os.environ, env, clear=True), \
@@ -2190,7 +2200,8 @@ class S9CLITest(unittest.TestCase):
 
     def test_main_dispatch_prints_s9_shape(self):
         env = {"G12_SESSION": "HARNESS-SESS", "G12_CSRF": "HARNESS-CSRF",
-               "G12_ACCOUNT": "9000001", "G12_S9_LOGIN_A": S9A,
+               "G12_ACCOUNT": "9000001", "G12_SESSION_ID": "900099",
+               "G12_S9_LOGIN_A": S9A,
                "G12_S9_LOGIN_B": S9B, "G12_S9_PASSWORD_A": S9_PASSWORD,
                "G12_S9_PASSWORD_B": S9_PASSWORD,
                "G12_S9_BUDGET_SECONDS": "30"}
@@ -2232,6 +2243,7 @@ class RunScenarioS8StubTest(unittest.TestCase):
         import argparse
         base = dict(
             base="http://127.0.0.1:1", session="s", csrf="c", account="a",
+            session_id="900099",
             origin=None, cacert=None, scenario="s8-prepare",
             key_prefix="t", sse_timeout=30.0, s8_generation_id="",
             s8_conversation_id="", s8_expect="failed",

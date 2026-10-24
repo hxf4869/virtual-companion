@@ -34,6 +34,7 @@ function sampleTokens(_accessToken = "a", passwordMustChange = false): AuthSessi
     nextStep: "ACTIVE",
     expiresInSeconds: 7200,
     accountId: "7",
+    sessionId: "1000",
     email: "alice@example.com",
     role: "USER",
     passwordMustChange,
@@ -71,6 +72,7 @@ function identityB(): AuthSessionIdentity {
     accountId: "8",
     email: "bob@example.com",
     role: "ADMIN",
+    sessionId: "9",
     passwordMustChange: true,
     authenticatorEnabled: false,
   };
@@ -102,6 +104,7 @@ function accountIdentity(accountId: string, email: string): AuthSessionIdentity 
     accountId,
     email,
     role: "USER",
+    sessionId: "9",
     passwordMustChange: false,
     authenticatorEnabled: false,
   };
@@ -619,6 +622,7 @@ describe("useAuthStore", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
 
@@ -723,6 +727,7 @@ describe("useAuthStore", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
 
@@ -770,6 +775,7 @@ describe("useAuthStore", () => {
     const provider = {
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
       getSessionRevision: () => auth.getSessionRevision(),
     };
@@ -810,6 +816,7 @@ describe("useAuthStore", () => {
     const provider = {
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
       getSessionRevision: () => auth.getSessionRevision(),
     };
@@ -971,6 +978,7 @@ describe("useAuthStore", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => store.accessToken,
       getSessionRevision: () => store.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => store.onUnauthorized(),
     });
     try {
@@ -1127,6 +1135,69 @@ describe("useAuthStore", () => {
     await expect(outcome2).resolves.toBe(true);
     expect(store.isAuthenticated).toBe(true);
     expect(store.recoveryCodes).toEqual(["NEW"]);
+  });
+
+  it("VC-R169: 同账号新会话读回推进凭据代次并作废旧页在途流程", async () => {
+    const store = useAuthStore();
+    await expect(
+      store.login(okTransport({ ...sampleTokens(), sessionId: "100" }), "alice", "pw"),
+    ).resolves.toBe("ACTIVE");
+    const epochAfterLogin = store.getCredentialEpoch();
+    const flowAfterLogin = store.getLoginFlowSeq();
+
+    // 旧页发起的 password login 挂起（真实 store.login：同步入口已捕获其
+    // 流程序，此时 flow 已因 login 入口 reset 前进）。
+    const stale = deferredAuthTransport();
+    const staleLogin = store.login(stale.transport, "alice", "pw");
+    const flowDuringStale = store.getLoginFlowSeq();
+
+    // 另一 tab 同账号 relogin（S2），本页 GET 读回发现新已确立会话：推进
+    // credentialEpoch 且（非新凭据提交路径）作废旧页流程。
+    await expect(
+      store.tryRefresh(okTransport({ ...sampleTokens(), sessionId: "200" })),
+    ).resolves.toBe(true);
+    expect(store.getCredentialEpoch()).toBe(epochAfterLogin + 1);
+    expect(store.getLoginFlowSeq()).toBeGreaterThan(flowDuringStale);
+
+    // 旧 login 迟到成功（合法另一 session）：归属已失效，返回 null，
+    // S2 身份保留。
+    stale.settle(0, { ok: true, status: 200, json: { ...sampleTokens(), sessionId: "300" } });
+    await expect(staleLogin).resolves.toBeNull();
+    expect(store.accountId).toBe("7");
+    expect(store.getSessionId()).toBe("200");
+
+    // 同一 session 的读回仍只是读取：凭据代次不再推进。
+    const epochNow = store.getCredentialEpoch();
+    await expect(
+      store.tryRefresh(okTransport({ ...sampleTokens(), sessionId: "200" })),
+    ).resolves.toBe(true);
+    expect(store.getCredentialEpoch()).toBe(epochNow);
+  });
+
+  it("VC-R169: 同账号新会话读回作废旧页在途 logout，不让其清掉新会话", async () => {
+    const store = useAuthStore();
+    await expect(
+      store.login(okTransport(sampleTokens()), "alice", "pw"),
+    ).resolves.toBe("ACTIVE");
+
+    // 旧页的 logout 挂起（S1 时代发起）。
+    const { transport, settleLogout } = pendingLogoutTransport({
+      ok: true,
+      status: 200,
+      json: sampleTokens(),
+    });
+    const loggingOut = store.logout(transport);
+
+    // 另一 tab 同账号 relogin（S2），本页 GET 读回发现新会话。
+    await expect(
+      store.tryRefresh(okTransport({ ...sampleTokens(), sessionId: "777" })),
+    ).resolves.toBe(true);
+
+    // 迟到的旧登出成功：已让位给新凭据，不清新会话。
+    settleLogout({ ok: true, status: 200, json: null });
+    await expect(loggingOut).resolves.toBe(false);
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accountId).toBe("7");
   });
 
   it("VC-R168: 同会话 GET 读回 persist 不得取消在途的有意登录", async () => {

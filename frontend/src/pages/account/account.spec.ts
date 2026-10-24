@@ -127,6 +127,7 @@ function stubFetch(options: FetchOptions = {}) {
         accountId: options.loginAccountId ?? "43",
         email: options.loginEmail ?? "b@example.com",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: true,
         expiresInSeconds: 7200,
@@ -463,6 +464,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -721,6 +723,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -770,6 +773,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -817,6 +821,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "alice@example.com", "pw-a");
@@ -868,6 +873,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -922,6 +928,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -966,6 +973,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "alice@example.com", "pw-new");
@@ -997,6 +1005,7 @@ describe("account page", () => {
         accountId: "42",
         email: "alice@example.com",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: true,
         expiresInSeconds: 7200,
@@ -1019,6 +1028,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await expect(auth.tryRefresh(transport)).resolves.toBe(true);
@@ -1055,6 +1065,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await expect(auth.login(transport, "alice@example.com", "wrong")).resolves.toBeNull();
@@ -1091,6 +1102,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "b@example.com", "pw-b");
@@ -1165,6 +1177,7 @@ describe("account page", () => {
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
       onUnauthorized: () => auth.onUnauthorized(),
     });
     await auth.login(transport, "alice@example.com", "pw-new");
@@ -1232,6 +1245,7 @@ describe("account page", () => {
       sessionIdentity: {
         nextStep: "ACTIVE",
         accountId: "43",
+        sessionId: "43001",
         email: "b@example.com",
         role: "USER",
         passwordMustChange: false,
@@ -1261,6 +1275,7 @@ describe("account page", () => {
 
     // 身份发现（GET /auth/session，显式 omit 期望账号头）恢复当前 Cookie
     // 身份：A→B 交接（persist + R09 缓存清理由 store 负责）。
+    await flushPromises();
     expect(auth.accountId).toBe("43");
     expect(wrapper.get('[data-testid="account-email"]').text()).toBe("b@example.com");
     expect(calls.some((call) => call.method === "GET" && call.url === "/api/v1/auth/session")).toBe(true);
@@ -1338,6 +1353,7 @@ describe("account page", () => {
         accountId: "42",
         email: "alice@example.com",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: true,
         expiresInSeconds: 7200,
@@ -1345,6 +1361,7 @@ describe("account page", () => {
       sessionIdentity: {
         nextStep: "ACTIVE",
         accountId: "43",
+        sessionId: "43001",
         email: "b@example.com",
         role: "USER",
         passwordMustChange: false,
@@ -1360,6 +1377,7 @@ describe("account page", () => {
     const probeTransport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       getAccountId: () => auth.accountId,
+      getSessionId: () => auth.getSessionId(),
       getSessionRevision: () => auth.getSessionRevision(),
       onUnauthorized: () => auth.onUnauthorized(),
     });
@@ -1394,6 +1412,7 @@ describe("account page", () => {
       sessionIdentity: {
         nextStep: "ACTIVE",
         accountId: "43",
+        sessionId: "43001",
         email: "b@example.com",
         role: "USER",
         passwordMustChange: false,
@@ -1430,6 +1449,7 @@ describe("account page", () => {
       sessionIdentity: {
         nextStep: "ACTIVE",
         accountId: "43",
+        sessionId: "43001",
         email: "b@example.com",
         role: "USER",
         passwordMustChange: false,
@@ -1465,6 +1485,7 @@ describe("account page", () => {
       sessionIdentity: {
         nextStep: "ACTIVE",
         accountId: "43",
+        sessionId: "43001",
         email: "b@example.com",
         role: "USER",
         passwordMustChange: false,
@@ -1508,6 +1529,7 @@ describe("account page", () => {
       sessionIdentity: {
         nextStep: "ACTIVE",
         accountId: "43",
+        sessionId: "43001",
         email: "b@example.com",
         role: "USER",
         passwordMustChange: false,

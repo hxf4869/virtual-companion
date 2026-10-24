@@ -25,6 +25,7 @@ kill that is late or unproven never passes.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -993,6 +994,53 @@ class GateEvaluatorTests(unittest.TestCase):
         self.assertIsNone(
             provider_gate_reason(moved, 5, 0, 5, point="A", base_chunks=8))
 
+
+
+class RealIOClientWireTest(unittest.TestCase):
+    """VC-R169: RealIO builds its public client from the pinned environment
+    (including the committed session id); an authenticated JSON write through
+    the REAL Client carries the expected-session header on the wire. Only the
+    header name and the pinned decimal value are asserted; session/CSRF/cookie
+    values never appear in assertions or messages."""
+
+    def test_realio_client_write_carries_pinned_session_header(self):
+        import urllib.request
+
+        import s8_finalize_crash as s8
+
+        captured: List[Tuple[str, Dict[str, str]]] = []
+
+        class RecordingUrlopen:
+            def __call__(self, req, timeout=None, context=None):
+                captured.append((
+                    req.full_url,
+                    {k.lower(): v for k, v in req.header_items()},
+                ))
+                raise AssertionError("wire test ends at the request boundary")
+
+        env = {"G12_SESSION": "wire-session-value",
+               "G12_CSRF": "wire-csrf-value",
+               "G12_ACCOUNT": "2000001",
+               "G12_SESSION_ID": "4242"}
+        with mock.patch.dict(os.environ, env), \
+                mock.patch.object(urllib.request, "urlopen",
+                                  RecordingUrlopen()):
+            io = s8.RealIO(compose=[], provider_port=0,
+                           base="http://127.0.0.1:1")
+            client = io._client()
+            self.assertIsNotNone(io._public_client)
+            # Real client, real json(): the write stops at the wire boundary.
+            with self.assertRaises(AssertionError):
+                client.json("POST", "/api/v1/exports",
+                            {"currentPassword": "x"})
+
+        self.assertEqual(len(captured), 1)
+        url, headers = captured[0]
+        self.assertTrue(url.endswith("/api/v1/exports"))
+        self.assertEqual(headers.get("x-vc-expected-session-id"), "4242")
+        self.assertEqual(headers.get("x-vc-expected-account-id"), "2000001")
+        # The pinned id is a plain decimal fixture constant: no credential
+        # material is echoed anywhere in this test.
 
 if __name__ == "__main__":
     unittest.main()

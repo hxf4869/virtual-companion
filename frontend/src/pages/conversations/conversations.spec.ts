@@ -94,6 +94,7 @@ function stubFetch(options: FetchOptions = {}) {
         nextStep: "ACTIVE",
         accountId: options.loginAccountId ?? "9",
         role: "USER",
+        sessionId: "9",
         passwordMustChange: false,
         authenticatorEnabled: true,
         expiresInSeconds: 7200,
@@ -159,6 +160,7 @@ async function switchToAccountB(): Promise<void> {
   const transport = createAuthenticatedTransport({
     getAccessToken: () => auth.accessToken,
     getSessionRevision: () => auth.getSessionRevision(),
+    getSessionId: () => null,
     onUnauthorized: () => auth.onUnauthorized(),
   });
   await auth.login(transport, "b@example.com", "pw-b");
@@ -170,6 +172,7 @@ async function reloginSameAccount(): Promise<void> {
   const transport = createAuthenticatedTransport({
     getAccessToken: () => auth.accessToken,
     getSessionRevision: () => auth.getSessionRevision(),
+    getSessionId: () => null,
     onUnauthorized: () => auth.onUnauthorized(),
   });
   await auth.login(transport, "a@example.com", "pw-a");

@@ -8,6 +8,7 @@ const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_COOKIE = "vc_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
 const EXPECTED_ACCOUNT_HEADER = "X-VC-Expected-Account-ID";
+const EXPECTED_SESSION_HEADER = "X-VC-Expected-Session-ID";
 const ACCOUNT_CONTEXT_CHANGED_CODE = "ACCOUNT_CONTEXT_CHANGED";
 
 export interface AuthedFetchSession {
@@ -17,6 +18,10 @@ export interface AuthedFetchSession {
   // VC-R52: account the page currently believes is signed in; captured once per
   // call entry and sent as the expected-account precondition header.
   getAccountId?(): string | null;
+  // VC-R169: session id the page committed to; REQUIRED on the session object
+  // so a caller that forgets it fails type-check. Captured once per call
+  // entry and sent as the expected-session precondition header.
+  getSessionId(): string | null;
   onUnauthorized(): void;
   // VC-R52: precise 409 + body code ACCOUNT_CONTEXT_CHANGED that still owns the
   // current session revision. The response is returned to the caller unchanged.
@@ -51,10 +56,15 @@ export function createAuthedFetch(
     // VC-R52: expected-account precondition, captured once per call entry with
     // the revision; never re-read from cookies mid-flight.
     const expectedAccount = session?.getAccountId?.() ?? null;
+    // VC-R169: captured once per call entry, with the account header.
+    const expectedSession = session?.getSessionId() ?? null;
     const headers = new Headers(init?.headers);
     const method = (init?.method ?? "GET").toUpperCase();
     if (expectedAccount !== null) {
       headers.set(EXPECTED_ACCOUNT_HEADER, expectedAccount);
+    }
+    if (expectedSession !== null) {
+      headers.set(EXPECTED_SESSION_HEADER, expectedSession);
     }
     if (STATE_CHANGING_METHODS.has(method)) {
       const csrf = readCsrfCookie();
