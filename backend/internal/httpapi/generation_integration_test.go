@@ -37,16 +37,30 @@ type g10sseFrame struct {
 // until the handler returns (terminal or snapshot-only).
 func sseStream(t *testing.T, s *Server, gid string, account int64) []g10sseFrame {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/realtime/streams/"+gid, nil)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/realtime/streams/"+gid, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	attachAuth(t, s, req, account, false)
 	req.Header.Set("Origin", "https://vc.test")
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("sse %d %s", rec.Code, rec.Body.String())
+	client := ts.Client()
+	client.Timeout = 5 * time.Second
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("sse %d %s", resp.StatusCode, body)
 	}
 	var frames []g10sseFrame
-	for _, raw := range strings.Split(rec.Body.String(), "\n\n") {
+	for _, raw := range strings.Split(string(body), "\n\n") {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue

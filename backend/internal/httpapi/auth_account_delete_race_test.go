@@ -260,8 +260,10 @@ func TestVC16LateAccountDeletionResponseDropsNewerLoginCookies(t *testing.T) {
 		}
 		// 取证信息（仅计数，不含任何凭据值）：基线为 2 条过期 Set-Cookie
 		// （vc_session/vc_csrf，红证据）；定稿后注销响应不带任何
-		// Set-Cookie，计数为 0，故只记录不断言。
-		t.Logf("迟到的注销响应携带 Set-Cookie 头 %d 条", res.setCookies)
+		// Set-Cookie，响应头计数必须为 0，出现即回归失败。
+		if res.setCookies != 0 {
+			t.Errorf("迟到的注销响应携带 Set-Cookie 头 %d 条，期望 0 条", res.setCookies)
+		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("等待注销响应超时")
 	}

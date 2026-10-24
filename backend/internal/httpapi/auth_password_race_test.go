@@ -192,8 +192,10 @@ func TestVC15LatePasswordChangeResponseDropsNewerLoginCookies(t *testing.T) {
 		}
 		// 取证信息（仅计数，不含任何凭据值）：修复前基线为 3 条过期
 		// Set-Cookie（红证据）；VC-R15 定稿后改密响应不带任何 Set-Cookie，
-		// 计数为 0，故只记录不断言。
-		t.Logf("迟到的改密响应携带 Set-Cookie 头 %d 条", res.setCookies)
+		// 响应头计数必须为 0，出现即回归失败。
+		if res.setCookies != 0 {
+			t.Errorf("迟到的改密响应携带 Set-Cookie 头 %d 条，期望 0 条", res.setCookies)
+		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("等待改密响应超时")
 	}
