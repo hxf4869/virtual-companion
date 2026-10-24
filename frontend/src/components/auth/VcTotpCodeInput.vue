@@ -15,8 +15,8 @@
         :aria-invalid="error ? 'true' : 'false'"
         :aria-describedby="error ? `${inputId}-error` : undefined"
         @input="onInput"
-        @confirm="$emit('submit')"
-        @keydown.enter="$emit('submit')"
+        @blur="onInput"
+        @confirm="onConfirm"
       />
       <view class="vc-totp__cells" aria-hidden="true">
         <view
@@ -73,6 +73,17 @@ function onInput(event: Event | { detail?: { value?: string } }): void {
     ? (event.target as HTMLInputElement | null)?.value
     : undefined;
   emit("update:modelValue", (detailValue ?? targetValue ?? "").replace(/\D/g, "").slice(0, 6));
+}
+
+// VC-R167: uni-h5 useValueSync 对外 update:modelValue 有 100ms 节流，快速
+// 纠正验证码后存在「DOM 已是新码、父组件仍旧码」的窗口。blur 与 uni 原生
+// confirm（H5 由输入包装层 onKeyUpEnter 触发，其它端原生）都先经 onInput
+// 按既有规则（纯数字+6 位截断）补同步，confirm 同步后才提交；删除早于
+// confirm 的 keydown.enter 双入口（它会在值同步前抢跑提交旧码）。与
+// VC-R166 的 VcAuthField 修复同模式。
+function onConfirm(event: Event | { detail?: { value?: string } }): void {
+  onInput(event);
+  emit("submit");
 }
 
 defineExpose({

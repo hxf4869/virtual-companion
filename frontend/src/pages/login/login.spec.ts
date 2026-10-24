@@ -511,4 +511,77 @@ describe("redesigned authentication entry", () => {
       wrapper.unmount();
     }
   });
+
+  it("VC-R167: TOTP 快速纠正验证码时 confirm 先同步新码且仅提交一次", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "TOTP_REQUIRED";
+      store.challengeId = "a".repeat(43);
+      return "TOTP_REQUIRED";
+    });
+    const verifySpy = vi.spyOn(store, "verifyAuthenticatorCode").mockResolvedValue(false);
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+
+      const totpInput = wrapper.find('input[aria-label="6 位身份验证器验证码"]');
+      await totpInput.setValue("111111");
+      // 模拟真实节流窗口：DOM 已是新 6 位码，input 事件尚未送达父组件。
+      (totpInput.element as HTMLInputElement).value = "654321";
+      await totpInput.trigger("keydown", { key: "Enter" });
+      // keydown 不得抢跑提交旧码。
+      expect(verifySpy).not.toHaveBeenCalled();
+
+      totpInput.element.dispatchEvent(
+        new CustomEvent("confirm", { detail: { value: "654321" } }),
+      );
+      await flushPromises();
+      expect(verifySpy).toHaveBeenCalledTimes(1);
+      expect(verifySpy).toHaveBeenLastCalledWith(expect.anything(), "654321", false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("VC-R167: 首次设置确认同样先同步新码且仅提交一次", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+      store.challengeId = "c".repeat(43);
+      return "AUTHENTICATOR_SETUP_REQUIRED";
+    });
+    vi.spyOn(store, "loadAuthenticatorSetup").mockImplementation(async () => {
+      store.authenticatorSetup = {
+        manualKey: "ABCDEFGHIJKLMNOP",
+        provisioningUri: "otpauth://totp/Virtual%20Companion:alice",
+        qrCodeDataUrl: "data:image/png;base64,abc",
+      };
+      return true;
+    });
+    const confirmSpy = vi.spyOn(store, "confirmAuthenticator").mockResolvedValue(false);
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.text()).toContain("设置身份验证器");
+
+      const setupInput = wrapper.find('input[data-testid="setup-code"]');
+      await setupInput.setValue("111111");
+      (setupInput.element as HTMLInputElement).value = "654321";
+      await setupInput.trigger("keydown", { key: "Enter" });
+      expect(confirmSpy).not.toHaveBeenCalled();
+
+      setupInput.element.dispatchEvent(
+        new CustomEvent("confirm", { detail: { value: "654321" } }),
+      );
+      await flushPromises();
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(confirmSpy).toHaveBeenLastCalledWith(expect.anything(), "654321", false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });
