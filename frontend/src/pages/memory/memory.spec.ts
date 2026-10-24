@@ -891,6 +891,56 @@ describe("记忆管理页", () => {
     wrapper.unmount();
   });
 
+  it("删除未知核对回包残缺（含无法解析的行）时不误判删除完成", async () => {
+    let phase: "initial" | "weird" | "verified" = "initial";
+    const { calls } = stubFetch({
+      deleteStatus: 500,
+      memories: () => {
+        if (phase === "initial") return DEFAULT_MEMORIES;
+        if (phase === "weird") {
+          // 核对回包里 m1 仍在，但 status=WEIRD 使该行无法按契约解析，
+          // 其余行正常：残缺列表不得被当作权威数据。
+          return [memoryRow({ status: "WEIRD" }), ...DEFAULT_MEMORIES.slice(1)];
+        }
+        return DEFAULT_MEMORIES.slice(1);
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="memory-delete"]').trigger("click");
+    await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-verifying"]').text()).toContain("核对中");
+
+    phase = "weird";
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+
+    // 读取失败：不得宣布删除完成/失败，也不重放 DELETE。
+    expect(wrapper.get('[data-testid="memory-list-error"]').text()).toContain("没有加载出来");
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.text()).toContain("晚上散步");
+    expect(wrapper.text()).toContain("用户的生日在三月。");
+    expect(wrapper.get('[data-testid="memory-verifying"]').text()).toContain("核对中");
+    expect(wrapper.get('[data-testid="memory-unknown"]').text()).toContain("未能确认结果");
+    expect(wrapper.find('[data-testid="memory-refresh"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="memory-rejected"]').exists()).toBe(false);
+    expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+
+    // 读到真实完整且确实无 m1 的权威列表后，同一核对入口才移除条目。
+    phase = "verified";
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).toContain("用户的生日在三月。");
+    expect(wrapper.find('[data-testid="memory-verifying"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
   it("T-57 存在性隐藏被适配为空列表时未知提示与条目保留", async () => {
     let hidden = false;
     stubFetch({

@@ -81,14 +81,14 @@ describe("listMemoriesChecked", () => {
     )).rejects.toBeInstanceOf(MemoryProtocolError);
   });
 
-  it("skips rows without a known status", async () => {
-    const result = await listMemoriesChecked(transport({
+  it("rejects a mixed list where a row cannot be parsed", async () => {
+    // 过滤残缺行会返回"缩小但权威"的列表，调用方会把解析缺失误当条目
+    // 已不存在（如删除核对）：任何一条不可解析，整次读取都是协议错误。
+    await expect(listMemoriesChecked(transport({
       ok: true,
       status: 200,
       json: [memoryRow(), memoryRow({ memoryId: "m2", status: "WEIRD" })],
-    }), "42");
-    expect(result.existenceHidden).toBe(false);
-    expect(result.items).toHaveLength(1);
+    }), "42")).rejects.toBeInstanceOf(MemoryProtocolError);
   });
 
   it("keeps existence-hiding information so empty results are not trusted blindly", async () => {

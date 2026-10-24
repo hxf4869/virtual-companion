@@ -145,12 +145,19 @@ function asMemoryItem(json: unknown): MemoryItem | null {
   };
 }
 
-function asMemoryArray(json: unknown): MemoryItem[] {
-  if (!Array.isArray(json)) return [];
-  return json.flatMap((item) => {
-    const memory = asMemoryItem(item);
-    return memory ? [memory] : [];
-  });
+/**
+ * 解析已通过顶层校验（数组形状）的列表回包。任何一条无法按契约解析都让
+ * 整次读取抛 MemoryProtocolError：过滤残缺行会返回"缩小但权威"的列表，
+ * 调用方（如删除核对）会把解析缺失误当条目已不存在。真实空数组返回 []。
+ */
+function asMemoryArray(json: readonly unknown[], status: number): MemoryItem[] {
+  const items: MemoryItem[] = [];
+  for (const entry of json) {
+    const memory = asMemoryItem(entry);
+    if (!memory) throw new MemoryProtocolError(status);
+    items.push(memory);
+  }
+  return items;
 }
 
 function asEvidence(json: unknown): MemoryEvidence {
@@ -195,7 +202,7 @@ export async function listMemoriesChecked(
   if (response.parseFailed || !Array.isArray(response.json)) {
     throw new MemoryProtocolError(response.status);
   }
-  return { items: asMemoryArray(response.json), existenceHidden: false };
+  return { items: asMemoryArray(response.json, response.status), existenceHidden: false };
 }
 
 /** 编辑记忆摘要；2xx 但响应不可解析时抛 MemoryProtocolError（结果未知）。 */
