@@ -18,8 +18,8 @@
         :aria-invalid="error ? 'true' : 'false'"
         :aria-describedby="error ? `${fieldId}-error` : undefined"
         @input="onInput"
-        @confirm="$emit('submit')"
-        @keydown.enter="$emit('submit')"
+        @blur="onInput"
+        @confirm="onConfirm"
       />
       <button
         v-if="kind === 'password'"
@@ -82,6 +82,16 @@ function onInput(event: Event | { detail?: { value?: string } }): void {
     ? (event.target as HTMLInputElement | null)?.value
     : undefined;
   emit("update:modelValue", detailValue ?? targetValue ?? "");
+}
+
+// VC-R166: uni-h5 useValueSync 对外 update:modelValue 有 100ms 节流，快速
+// 重填后存在「DOM 已是新值、父组件仍旧值」的窗口。blur 与 uni 原生 confirm
+// （H5 由输入包装层 onKeyUpEnter 触发，其它端原生）都先经 onInput 补同步，
+// confirm 同步后才提交；删除早于 confirm 的 keydown.enter 双入口（它会在
+// 值同步前抢跑提交旧值）。
+function onConfirm(event: Event | { detail?: { value?: string } }): void {
+  onInput(event);
+  emit("submit");
 }
 </script>
 

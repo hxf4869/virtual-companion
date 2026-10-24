@@ -329,6 +329,7 @@ describe("useAuthStore", () => {
       "POST",
       `/api/v1/auth/challenges/${challengeId}/authenticator-confirm`,
       { code: "123456", trustDevice: true },
+      { timeoutMs: 15_000 },
     );
   });
 
@@ -368,7 +369,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+      { callerHandlesUnauthorized: true, timeoutMs: 15_000, omitExpectedAccount: true },
     );
   });
 
@@ -432,7 +433,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+      { callerHandlesUnauthorized: true, timeoutMs: 15_000, omitExpectedAccount: true },
     );
   });
 
@@ -567,7 +568,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+      { callerHandlesUnauthorized: true, timeoutMs: 15_000, omitExpectedAccount: true },
     );
 
     store.clear();
@@ -579,7 +580,7 @@ describe("useAuthStore", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+      { callerHandlesUnauthorized: true, timeoutMs: 15_000, omitExpectedAccount: true },
     );
 
     deferred.settle(0, { ok: true, status: 200, json: sampleTokens("a1") });
@@ -950,6 +951,103 @@ describe("useAuthStore", () => {
     expect(store.accountId).toBe("2");
     expect(store.isAuthenticated).toBe(true);
     expect(store.sessionStatus).toBe("authenticated");
+  });
+
+  it("VC-R166: 会话探测超时保持已知身份并如实返回不可用（不 clear、不匿名）", async () => {
+    vi.useFakeTimers();
+    // GET /auth/session 头永不返回、遵守 AbortSignal：探测以超时结束。
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const abort = () => reject(new DOMException("aborted", "AbortError"));
+        const signal = init?.signal;
+        if (signal?.aborted) {
+          abort();
+          return;
+        }
+        signal?.addEventListener("abort", abort, { once: true });
+      })));
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens()), "alice", "pw");
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => store.accessToken,
+      getSessionRevision: () => store.getSessionRevision(),
+      onUnauthorized: () => store.onUnauthorized(),
+    });
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = store.tryRefresh(transport);
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("resolved");
+      await expect(outcome).resolves.toBe(false);
+      // 结果未知 ≠ 无会话：已知身份保持 authenticated，不得 clear/匿名。
+      expect(store.isAuthenticated).toBe(true);
+      expect(store.sessionStatus).toBe("authenticated");
+      expect(store.accountId).toBe("7");
+      expect(store.error).toBe("refresh-failed");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("VC-R166: setup 迟到成功在返回登录（reset）后不得写入全局 secret", async () => {
+    const store = useAuthStore();
+    store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+    store.challengeId = "c1";
+    let settleSetup!: {
+      resolve: (response: AuthApiResponse) => void;
+      reject: (reason?: unknown) => void;
+    };
+    const setupRequest = new Promise<AuthApiResponse>((resolve, reject) => {
+      settleSetup = { resolve, reject };
+    });
+    const transport = { request: vi.fn(() => setupRequest) };
+    const outcome = store.loadAuthenticatorSetup(transport);
+    outcome.catch(() => {});
+    // 加载期间用户返回登录：resetLoginFlow 将 challengeId 置空。
+    store.resetLoginFlow();
+    settleSetup.resolve({
+      ok: true,
+      status: 200,
+      json: {
+        manualKey: "ABCDEFGHIJKLMNOP",
+        provisioningUri: "otpauth://totp/Virtual%20Companion:alice",
+        qrCodeDataUrl: "data:image/png;base64,abc",
+      },
+    });
+    await expect(outcome).resolves.toBe(false);
+    expect(store.authenticatorSetup).toBeNull();
+    expect(store.error).toBeNull();
+  });
+
+  it("VC-R166: setup 迟到失败在新挑战开始后不得写入旧 error", async () => {
+    const store = useAuthStore();
+    store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+    store.challengeId = "c1";
+    let settleSetup!: {
+      resolve: (response: AuthApiResponse) => void;
+      reject: (reason?: unknown) => void;
+    };
+    const setupRequest = new Promise<AuthApiResponse>((resolve, reject) => {
+      settleSetup = { resolve, reject };
+    });
+    const transport = { request: vi.fn(() => setupRequest) };
+    const outcome = store.loadAuthenticatorSetup(transport);
+    outcome.catch(() => {});
+    store.resetLoginFlow();
+    // 同一 store 随后开始新挑战（新 challenge id）。
+    store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+    store.challengeId = "c2";
+    settleSetup.reject(new Error("offline"));
+    await expect(outcome).resolves.toBe(false);
+    expect(store.error).toBeNull();
+    expect(store.authenticatorSetup).toBeNull();
   });
 
   it("VC-R12: 迟到的旧 logout 成功响应不得清掉另一账号的新登录", async () => {

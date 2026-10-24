@@ -106,6 +106,13 @@ export class AuthHttpError extends Error {
 
 const AUTH_BASE = "/api/v1/auth";
 
+// VC-R166: 登录主链等待点（login/getAuthSession/getAuthenticatorSetup/
+// completeChallenge，后者服务 confirm/totp/recovery 三个真实入口）与 logout
+// 共用的请求总时限：弱网挂起（响应头或正文不 settle）时按「结果未知」以既有
+// TransportTimeoutError 结束，界面等待不得永不结束。局部常量，非 transport
+// 默认；非阻塞的 registration-status 与其他 auth/admin 管理请求不适用。
+const LOGIN_CHAIN_TIMEOUT_MS = 15_000;
+
 /** Safe default is closed when the availability response cannot be read. */
 export async function getRegistrationStatus(t: AuthTransport): Promise<boolean> {
   const response = await t.request("GET", `${AUTH_BASE}/registration-status`);
@@ -123,7 +130,9 @@ export async function login(
   account: string,
   password: string,
 ): Promise<AuthLoginResult | null> {
-  const response = await t.request("POST", `${AUTH_BASE}/login`, { account, password });
+  const response = await t.request("POST", `${AUTH_BASE}/login`, { account, password }, {
+    timeoutMs: LOGIN_CHAIN_TIMEOUT_MS,
+  });
   if (response.status === 404) return null;
   const result = asAuthLoginResult(response.json);
   if ((response.ok || response.status === 403) && result) return result;
@@ -138,6 +147,7 @@ export async function login(
 export async function getAuthSession(t: AuthTransport): Promise<AuthSessionProbe> {
   const response = await t.request("GET", `${AUTH_BASE}/session`, undefined, {
     callerHandlesUnauthorized: true,
+    timeoutMs: LOGIN_CHAIN_TIMEOUT_MS,
     // VC-R52 身份发现显式不带期望账号前置：页面身份与 Cookie 身份不同时，
     // 发现流必须能读到当前 Cookie 账号，否则永远撞 409 死循环。
     omitExpectedAccount: true,
@@ -164,6 +174,8 @@ export async function getAuthenticatorSetup(
   const response = await t.request(
     "POST",
     `${AUTH_BASE}/challenges/${encodeURIComponent(challengeId)}/authenticator-setup`,
+    undefined,
+    { timeoutMs: LOGIN_CHAIN_TIMEOUT_MS },
   );
   if (response.status === 404) return null;
   if (!response.ok) throw new AuthHttpError(response.status);
@@ -203,9 +215,9 @@ export async function logout(t: AuthTransport): Promise<boolean> {
   // VC-R165: 弱网总时限——响应头或 JSON 正文挂起时 15 秒后按「结果未知」
   // 失败，UI 才能进入 R164 的无法确认/可重试反馈，而不是无限 busy。复用
   // transport 既有 timeoutMs 机制（覆盖 fetch 与正文读取全生命周期），不
-  // 新建 timer/AbortController/错误类型，也不推广到其他 auth/admin 请求。
+  // 新建 timer/AbortController/错误类型；与其他登录主链等待点共用同一常量。
   const response = await t.request("POST", `${AUTH_BASE}/logout`, undefined, {
-    timeoutMs: 15_000,
+    timeoutMs: LOGIN_CHAIN_TIMEOUT_MS,
   });
   return response.ok;
 }
@@ -323,6 +335,7 @@ async function completeChallenge(
     "POST",
     `${AUTH_BASE}/challenges/${encodeURIComponent(challengeId)}/${endpoint}`,
     { code, trustDevice },
+    { timeoutMs: LOGIN_CHAIN_TIMEOUT_MS },
   );
   if (response.status === 404) {
     // Split the 404 family: AUTH_CHALLENGE_UNAVAILABLE means the challenge can

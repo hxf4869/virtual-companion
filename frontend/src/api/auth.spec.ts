@@ -69,7 +69,7 @@ describe("Go Runtime auth client", () => {
     expect(transport.request).toHaveBeenCalledWith("POST", "/api/v1/auth/login", {
       account: "alice@example.com",
       password: "pw",
-    });
+    }, { timeoutMs: 15_000 });
   });
 
   it("accepts a username as the account identifier", async () => {
@@ -89,7 +89,7 @@ describe("Go Runtime auth client", () => {
     expect(transport.request).toHaveBeenCalledWith("POST", "/api/v1/auth/login", {
       account: "admin",
       password: "pw",
-    });
+    }, { timeoutMs: 15_000 });
   });
 
   it("parses TOTP/setup challenges and admission states without creating identity", async () => {
@@ -131,7 +131,7 @@ describe("Go Runtime auth client", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+      { callerHandlesUnauthorized: true, timeoutMs: 15_000, omitExpectedAccount: true },
     );
 
     const compatibility = transportFor({ ok: true, status: 200, json: activeIdentity() });
@@ -143,7 +143,7 @@ describe("Go Runtime auth client", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+      { callerHandlesUnauthorized: true, timeoutMs: 15_000, omitExpectedAccount: true },
     );
 
     // restoreSession 走同一条发现路径，同样显式 omit。
@@ -156,7 +156,7 @@ describe("Go Runtime auth client", () => {
       "GET",
       "/api/v1/auth/session",
       undefined,
-      { callerHandlesUnauthorized: true, omitExpectedAccount: true },
+      { callerHandlesUnauthorized: true, timeoutMs: 15_000, omitExpectedAccount: true },
     );
   });
 
@@ -212,6 +212,8 @@ describe("Go Runtime auth client", () => {
     expect(setup.request).toHaveBeenCalledWith(
       "POST",
       `/api/v1/auth/challenges/${challenge}/authenticator-setup`,
+      undefined,
+      { timeoutMs: 15_000 },
     );
 
     for (const [request, endpoint] of [
@@ -231,6 +233,7 @@ describe("Go Runtime auth client", () => {
         "POST",
         `/api/v1/auth/challenges/${challenge}/${endpoint}`,
         { code: "123456", trustDevice: true },
+        { timeoutMs: 15_000 },
       );
     }
   });
@@ -385,6 +388,114 @@ describe("logout request deadline", () => {
     try {
       let settled: "resolved" | "rejected" | undefined;
       const outcome = logout(transport);
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("rejected");
+      await expect(outcome).rejects.toBeInstanceOf(TransportTimeoutError);
+      await expect(outcome).rejects.toMatchObject({ timeoutMs: 15_000 });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+// VC-R166: 登录主链等待点（login/getAuthSession/getAuthenticatorSetup/
+// completeChallenge，后者服务 confirm/totp/recovery 三个真实入口）必须有
+// 请求总时限：弱网挂起时以既有 TransportTimeoutError 在 15 秒结束（结果
+// 未知），界面等待不得永不结束。经真实 createAuthenticatedTransport 调用。
+describe("login chain request deadlines", () => {
+  /** 头永不返回、遵守 AbortSignal 的挂起 fetch（abort 时才 reject）。 */
+  function hangingHeadersFetch() {
+    return vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const abort = () => reject(new DOMException("aborted", "AbortError"));
+        const signal = init?.signal;
+        if (signal?.aborted) {
+          abort();
+          return;
+        }
+        signal?.addEventListener("abort", abort, { once: true });
+      }));
+  }
+
+  function deadlineTransport(onUnauthorized: ReturnType<typeof vi.fn>) {
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "session",
+      getSessionRevision: () => 1,
+      onUnauthorized,
+    });
+    return transport;
+  }
+
+  it("ends a hanging password login with the existing TransportTimeoutError", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingHeadersFetch());
+    const onUnauthorized = vi.fn();
+    const transport = deadlineTransport(onUnauthorized);
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = login(transport, "alice@example.com", "pw");
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("rejected");
+      await expect(outcome).rejects.toBeInstanceOf(TransportTimeoutError);
+      await expect(outcome).rejects.toMatchObject({ timeoutMs: 15_000 });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("ends a never-settling authenticator-setup body with the existing TransportTimeoutError", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise<unknown>(() => {}),
+    }) as unknown as Response));
+    const onUnauthorized = vi.fn();
+    const transport = deadlineTransport(onUnauthorized);
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = getAuthenticatorSetup(transport, "c".repeat(43));
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("rejected");
+      await expect(outcome).rejects.toBeInstanceOf(TransportTimeoutError);
+      await expect(outcome).rejects.toMatchObject({ timeoutMs: 15_000 });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("ends a hanging TOTP challenge completion (shared completeChallenge) with the existing TransportTimeoutError", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingHeadersFetch());
+    const onUnauthorized = vi.fn();
+    const transport = deadlineTransport(onUnauthorized);
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = verifyAuthenticatorCode(transport, "c".repeat(43), "123456", false);
       outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
 
       await vi.advanceTimersByTimeAsync(14_999);

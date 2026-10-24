@@ -139,6 +139,21 @@
       <text class="auth-lead">正在准备二维码…</text>
     </view>
 
+    <!-- VC-R166: 二维码暂时没有加载出来（503/网络/超时）不是「验证已失效」：
+         如实说明并可重试；只有挑战真正不可用才进 expired。 -->
+    <view v-else-if="screen === 'setup-error'" class="auth-status">
+      <text class="auth-title" role="heading" aria-level="1">设置身份验证器</text>
+      <text class="auth-lead" role="alert" data-testid="setup-load-error">
+        二维码暂时没有加载出来，请检查网络后重试。
+      </text>
+      <wd-button block size="large" data-testid="setup-retry" @click="loadSetup">
+        重新加载二维码
+      </wd-button>
+      <wd-button block size="large" variant="plain" @click="resetToLogin">
+        返回登录
+      </wd-button>
+    </view>
+
     <VcAuthenticatorSetup
       v-else-if="screen === 'setup' && auth.authenticatorSetup"
       :setup="auth.authenticatorSetup"
@@ -205,6 +220,7 @@ type AuthScreen =
   | "totp"
   | "recovery"
   | "setup-loading"
+  | "setup-error"
   | "setup"
   | "recovery-codes"
   | "admission"
@@ -309,12 +325,31 @@ async function submitCredentials(): Promise<void> {
     return;
   }
   if (next === "AUTHENTICATOR_SETUP_REQUIRED") {
-    screen.value = "setup-loading";
-    const loaded = await auth.loadAuthenticatorSetup(transport);
-    screen.value = loaded ? "setup" : "expired";
+    await loadSetup();
     return;
   }
   screen.value = "admission";
+}
+
+// VC-R166: 首次加载与重试共用一个入口。入口同步置 setup-loading 挡住重复
+// 点击；捕获本次 challenge id，await 后已变（返回登录被 reset 或新挑战）则
+// 安静丢弃——本页 screen/message 由这里保护，全局 secret/error 由 store 的
+// 同款守卫保护。只有 challenge-unavailable 才进 expired；其余失败停留可
+// 重试的 setup-error，不再把 503/网络/超时谎报成「验证已失效」。
+async function loadSetup(): Promise<void> {
+  const challengeAtStart = auth.challengeId;
+  screen.value = "setup-loading";
+  const loaded = await auth.loadAuthenticatorSetup(transport);
+  if (auth.challengeId !== challengeAtStart) return;
+  if (loaded) {
+    screen.value = "setup";
+    return;
+  }
+  if (auth.error === "challenge-unavailable") {
+    screen.value = "expired";
+    return;
+  }
+  screen.value = "setup-error";
 }
 
 async function submitTotp(): Promise<void> {

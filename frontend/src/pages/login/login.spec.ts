@@ -403,4 +403,112 @@ describe("redesigned authentication entry", () => {
     });
     wrapper.unmount();
   });
+
+  it("VC-R166: 二维码加载失败如实可重试，同挑战重试成功后进入设置", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+      store.challengeId = "c".repeat(43);
+      return "AUTHENTICATOR_SETUP_REQUIRED";
+    });
+    let attempt = 0;
+    vi.spyOn(store, "loadAuthenticatorSetup").mockImplementation(async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        store.error = "service-unavailable";
+        return false;
+      }
+      store.error = null;
+      store.authenticatorSetup = {
+        manualKey: "ABCDEFGHIJKLMNOP",
+        provisioningUri: "otpauth://totp/Virtual%20Companion:alice",
+        qrCodeDataUrl: "data:image/png;base64,abc",
+      };
+      return true;
+    });
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+
+      // 503/网络失败：如实说明二维码暂未加载，可重试；不得谎称「验证已失效」。
+      expect(wrapper.text()).not.toContain("本次登录验证已失效");
+      const errorView = wrapper.get('[data-testid="setup-load-error"]');
+      expect(errorView.attributes("role")).toBe("alert");
+      expect(errorView.text()).toContain("二维码暂时没有加载出来");
+      expect(wrapper.text()).toContain("重新加载二维码");
+      expect(wrapper.text()).toContain("返回登录");
+
+      // 同一挑战重试成功：进入真实设置视图，失败态消失。
+      await wrapper.find('[data-testid="setup-retry"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.text()).toContain("ABCDEFGHIJKLMNOP");
+      expect(wrapper.text()).not.toContain("重新加载二维码");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("VC-R166: 挑战真正不可用时仍进入失效视图", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+      store.challengeId = "c".repeat(43);
+      return "AUTHENTICATOR_SETUP_REQUIRED";
+    });
+    vi.spyOn(store, "loadAuthenticatorSetup").mockImplementation(async () => {
+      store.error = "challenge-unavailable";
+      return false;
+    });
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.text()).toContain("本次登录已结束");
+      expect(wrapper.text()).toContain("本次登录验证已失效");
+      expect(wrapper.text()).toContain("重新登录");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("VC-R166: 二维码加载中返回登录后，迟到结果不得覆盖登录表单", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+      store.challengeId = "c".repeat(43);
+      return "AUTHENTICATOR_SETUP_REQUIRED";
+    });
+    let release!: (loaded: boolean) => void;
+    vi.spyOn(store, "loadAuthenticatorSetup").mockImplementation(
+      () => new Promise<boolean>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.text()).toContain("正在准备二维码");
+
+      // 加载中点真实返回按钮（aria-label 返回登录）回到登录表单。
+      await wrapper.find('[aria-label="返回登录"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.find('input[aria-label="账号"]').exists()).toBe(true);
+
+      // 迟到的加载结果：本页不得被改回 setup/expired。
+      release(false);
+      await flushPromises();
+      expect(wrapper.find('input[aria-label="账号"]').exists()).toBe(true);
+      expect(wrapper.text()).not.toContain("本次登录已结束");
+      expect(wrapper.text()).not.toContain("正在准备二维码");
+      expect(store.authenticatorSetup).toBeNull();
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });

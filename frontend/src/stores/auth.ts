@@ -242,6 +242,9 @@ export const useAuthStore = defineStore("h5-auth", () => {
     }
     try {
       const setup = await apiGetAuthenticatorSetup(t, id);
+      // VC-R166: await 期间用户可能已返回登录（resetLoginFlow 置空
+      // challengeId）或开始新挑战：迟到的旧结果不得写入全局 setup/error。
+      if (challengeId.value !== id) return false;
       if (!setup) {
         error.value = "challenge-unavailable";
         return false;
@@ -249,6 +252,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
       authenticatorSetup.value = setup;
       return true;
     } catch (caught) {
+      if (challengeId.value !== id) return false;
       error.value = mapRequestError(caught);
       return false;
     }
