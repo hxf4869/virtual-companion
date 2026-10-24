@@ -1147,3 +1147,43 @@ TLS/chunked、停读保持、preclaim 重试但 live 后不换、终态续片拒
 tcp6 双栈解析 15 项分别通过，未合并成统一套件或写成完整检查重跑。
 三次完整长窗容量测量待人类授权；G12、S6 保护触发/handler 退出、
 Owner gate、Beta 前置、真机与真实 provider 均维持开放。
+
+## 20. 2026-10-24 补充：S6 应用处理函数返回证据（VC-R156/R160/R161）
+
+私有候选仍位于 `/tmp/vc-r151-fx/`，未加入仓库。R156 以既有
+`vc_http_requests_total{handler="realtime_stream",method="GET",code="200"}`
+计数对账：server.go 在 mux.ServeHTTP 返回后记录，严格核对新栈 baseline
+加本轮全部已收响应头的慢/健康订阅尝试；发送结果不明即令账目不确定。
+到期路径只取窗口内最后有效样本，不补采超窗样本。R160 修复部分发送
+抛错的漏记，写尝试前即登记 may-have-sent；确定性模拟发送失败的用例
+在旧行为下有 2 条断言失败（exit 1），修复后当前 49 项定向断言通过
+（exit 0，8.547s）、两文件 py_compile exit 0。新增失败例使用模拟传输，
+未注入真实 TLS 故障。
+
+R161 单次本机真实部署短预检：trial `vcr161-20261024t083236z`，HTTPS
+18464，冻结 HEAD `66b4180d`，exit 1 / 183.0s。生产参数与 R154
+负载不变：8192 个 `<`、2048 片×10ms、provider wire 254274B≤262144，
+firstToken 3000ms、hold 0。慢读者第 4 次尝试在 3.633s 取得自身首 live
+后停读（恰 2 帧），同 response/socket、生成器挂起、帧数不变四布尔全
+真，至 110s 窗口结束不读不换。健康读者共 6 次尝试，最终以空 catch-up
+起始、3.633s 首 live、27.984s 恰一次 chat.completed；live/replay/
+post-terminal 三份 8192 字符均等于唯一 committed assistant，snapshot
+COMPLETED。provider 总 requests 3（含 2 次非流式），stream/completed
+各 1、aborted/active 0、chunks 2048。
+
+收尾前 baseline 0 + slow_reached 4 + healthy_reached 6 = final 10，
+ledger_dirty=false，最后有效窗内样本 t_rel=109.047s；handler_return 为
+`both_returned_pre_wrap`，仅证明两条 live 流的应用 handler 返回，
+TCP 关闭与 net/http goroutine 退出未证明。98 份有效样本、0 无效，
+slow_disconnect 原值全 `0.000000000`、汇总增量 0；worker/subscribers
+从 0 回到 0。整体仍 NOT_TRIGGERED（故 exit 1），S6 部署链保护触发与
+G12 整体验收仍开放；缓冲吸收仍仅假设。R154 的 UNPROVEN 历史记录保留，
+新证据只属于 R161。
+
+清理 require-absent 核验 exit 0：8 容器/4 卷/1 网络/3 构建标签 absent、
+leftovers={}，敏感 env/CA/compose 已删、18464/19091 端口释放，9 个保护
+及候选输入原字节与 HEAD 未变。运行记录为 `/tmp/vc-r161-trial/run-meta.json`，
+场景原件位于忽略目录
+`scripts/measure/g12-go-capacity/.run/vcr161-20261024t083236z/r151.scenario.json`。
+三次完整长窗容量仍待人类授权；Owner gate、Beta、真机及真实 provider
+前置不由本轮代验。

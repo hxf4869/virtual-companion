@@ -1038,6 +1038,19 @@ buffer 实测；handler 退出 UNPROVEN。清理核清 8 容器/4 卷/1 网络/3
 回复；G12、S6 保护触发/handler、Owner/Beta/真机/真实 provider 仍开放
 不勾。详见 `docs/planning/g12-go-capacity-sample.md` §19。
 
+2026-10-24 S6 应用处理函数返回证据补齐（VC-R156/R160/R161）：私有探针按
+收尾前完成计数严格对账全部订阅请求，发送结果不明则保持 UNPROVEN；
+R160 发送失败红例有 2 条新增断言失败，修复后 49 项定向断言和编译检查
+均 exit 0。R161 单次真实部署短预检（vcr161-20261024t083236z，HTTPS
+18464，冻结 HEAD 66b4180d，exit 1/183.0s）保持 R154 预算形状与生产
+参数：计数 0+慢 4 次+健康 6 次=10，无归属不明，两条 live 流的应用
+handler 均已返回；TCP 关闭及 net/http goroutine 退出未证明。慢读者同
+响应停读，健康读者恰一次 completed、三份 8192 文本等于唯一持久化
+回复；98 份有效样本 drop 增量仍 0，整体 NOT_TRIGGERED。清理核清，
+9 输入原字节及 HEAD 未变。S6 保护触发、G12、Owner/Beta/真机/真实
+provider 仍开放；三次完整长窗容量仍待人类授权。新事实见
+`docs/planning/g12-go-capacity-sample.md` §20，R154 历史记录保留。
+
 验证证据见 README「当前状态」。2026-09-06 批次 N-00～N-08 的逐项状态与
 验收仍以对账记录为准，不按提交名回溯勾选。项目仍未达公开生产可发布条件；
 provider 条款/revision/费用外发、真实用户 Beta 前置、真机 IME 与无障碍等

@@ -160,6 +160,19 @@ NOT_TRIGGERED for this shape; handler exit stays UNPROVEN and buffer
 absorption is an untested explanation only. Facts and limits:
 `docs/planning/g12-go-capacity-sample.md` §19.
 
+VC-R161 repeated the same frozen shape with an exact request census.
+Before wrap-up, 0 baseline + 4 slow attempts + 6 healthy attempts matched
+10 completed realtime GET/200 handlers, with no ambiguous send: both live
+application handlers had returned. TCP closure and net/http goroutine exit
+were not proven. The stopped response kept its socket and suspended reader;
+the healthy reader completed once with all 8192 chars matching the committed
+message. All 98 valid samples still showed zero slow-disconnect increments,
+so the overall result remains NOT_TRIGGERED (exit 1, 183.0 s). Deployed S6
+protection and full G12 acceptance remain open; buffer absorption remains an
+untested explanation. Cleanup proved the trial resources absent. The three
+long capacity runs still await human authorization. Details:
+`docs/planning/g12-go-capacity-sample.md` §20.
+
 Scenario 9 uses two isolated synthetic accounts and the public password,
 authenticator setup/confirm, and session APIs. It overlaps a trusted-device
 login with deletion of an explicit existing session: only the target must
