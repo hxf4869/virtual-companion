@@ -795,6 +795,15 @@ describe("聊天产品页", () => {
     const input = wrapper.find('[data-testid="message-input"]');
     await input.setValue("第一句");
     await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    // VC-R172: 准备期间发送不可提交、准备反馈可见、空态让位、输入保持
+    // 可编辑。setValue 会绕过禁用，可编辑性必须显式断言 element.disabled。
+    const sendButton = wrapper.find('[data-testid="send"]');
+    expect((sendButton.element as HTMLButtonElement).disabled).toBe(true);
+    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在准备会话…");
+    expect((input.element as HTMLTextAreaElement).disabled).toBe(false);
 
     // 会话创建在途时，用户写下一条草稿并再次点击：提交互斥拒绝第二次，
     // 新草稿既不丢失也不被重复提交。
@@ -808,6 +817,89 @@ describe("聊天产品页", () => {
     expect(sendSpy).toHaveBeenCalledOnce();
     expect(sendSpy.mock.calls[0]?.[2]).toBe("第一句");
     expect((input.element as HTMLTextAreaElement).value).toBe("等待期间又写的");
+    wrapper.unmount();
+  });
+
+  it("首次发送在 POST 在途时显示发送进度，进入流式后恢复真实回复状态", async () => {
+    const { resolveGenerationPost, pushFrame, endStream } = stubFetch({
+      conversations: [],
+      deferGeneration: true,
+      liveStream: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("第一次发送");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    // generation POST 在途：明确的发送进度，空态让位，发送不可再提交。
+    const sendButton = wrapper.find('[data-testid="send"]');
+    expect((sendButton.element as HTMLButtonElement).disabled).toBe(true);
+    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在发送…");
+    expect(store.generationStarting).toBe(true);
+
+    // SSE 帧到达：真实"正在回复"与停止按钮，不被发送/准备语义遮盖。
+    resolveGenerationPost(
+      response(true, 200, {
+        generationId: "gen-new",
+        conversationId: "conv-new",
+        logicalGenerationId: "lg-new",
+        status: "CREATED",
+      }),
+    );
+    await flushPromises();
+    pushFrame('event: chat.delta\ndata: {"text":"正在生成回复"}\n\n');
+    await flushPromises();
+    expect(store.phase).toBe("streaming");
+    expect(wrapper.find('[data-testid="cancel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在回复…");
+
+    pushFrame('event: chat.completed\ndata: {}\n\n');
+    endStream();
+    await flushPromises();
+    wrapper.unmount();
+  });
+
+  it("建会话失败后解除准备状态，保留草稿与原消息重试入口", async () => {
+    const { calls, resolveCreate } = stubFetch({ conversations: [], deferConversationCreate: true });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("第一句");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    // 准备期间的 busy 反馈先可见，失败后必须释放。
+    expect((wrapper.find('[data-testid="send"]').element as HTMLButtonElement).disabled).toBe(true);
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在准备会话…");
+
+    // 准备期间写下一条草稿；创建失败后 busy 释放，草稿不被吞。
+    await input.setValue("失败前写的草稿");
+    resolveCreate(response(false, 500, { code: "INTERNAL_ERROR" }));
+    await flushPromises();
+
+    expect((wrapper.find('[data-testid="send"]').element as HTMLButtonElement).disabled).toBe(false);
+    expect((input.element as HTMLTextAreaElement).value).toBe("失败前写的草稿");
+    const retry = wrapper.find('[data-testid="retry"]');
+    expect(retry.exists()).toBe(true);
+    expect(retry.text()).toContain("重试原消息");
+    expect(wrapper.find('[data-testid="status"]').text()).not.toContain("正在准备会话…");
+
+    // 重试入口能再次发起创建请求（两次 POST）。注意夹具的 deferredCreate
+    // 已 resolve 成 500，重试的创建同样收到该 500：本用例只锁定失败后释放
+    // busy、草稿保留、重试入口可再次请求；原 A 成功发送的重试语义由既有
+    // VC-R115 用例覆盖，不在此冒认。
+    await retry.trigger("click");
+    await flushPromises();
+    expect(
+      calls.filter((call) => call.method === "POST" && call.url === "/api/v1/conversations"),
+    ).toHaveLength(2);
+    expect((input.element as HTMLTextAreaElement).value).toBe("失败前写的草稿");
     wrapper.unmount();
   });
 

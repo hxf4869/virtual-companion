@@ -96,7 +96,7 @@
         v-if="pageState === 'ready'"
         :model-value="inputText"
         @update:model-value="onDraftInput"
-        :busy="generationBusy"
+        :busy="composerBusy"
         :streaming="store.isStreaming"
         :disabled="!relStore.currentRelationshipId"
         :error-text="sendErrorText"
@@ -131,7 +131,7 @@
             type="button"
             class="chat-option"
             data-testid="new-conversation"
-            :disabled="store.isStreaming || generationBusy"
+            :disabled="store.isStreaming || composerBusy"
             @click="startNewConversation"
           >
             <view class="chat-option__icon" aria-hidden="true">
@@ -199,6 +199,10 @@ const auth = useAuthStore();
 const pageState = ref<PageState>("loading");
 const inputText = ref("");
 const menuOpen = ref(false);
+// VC-R172：建会话准备段的响应式 busy（ensureConversation 挂起期间为真）。
+// submitInFlight 是非响应互斥，覆盖 prepare+send 全程但不进视图；准备反馈
+// 由本状态承担。它只在准备段为真，不包 store.send 的 SSE 与终态补读。
+const preparingConversation = ref(false);
 // VC-R115：结果未确认的原提交快照。失败时记录原始提交内容，重试永远
 // 针对它——输入框里后来写下/编辑的下一条草稿不是重试目标，清空输入框
 // 也不移除重试入口。清空点与旧 directSendError 生命周期一致：新提交
@@ -272,16 +276,21 @@ const companionName = computed(() => (
 ));
 const displayMessages = computed(() => store.displayMessages);
 const generationBusy = computed(() => store.generationStarting);
+// VC-R172：发送链的视图 busy = generation POST 在途（store）∪ 建会话准备段
+// （页面）。复用 composer 的 busy 语义：禁发送/重试按钮，textarea 不禁
+// （组件里 textarea 只读 disabled）。不把非响应的 submitInFlight 并入视图。
+const composerBusy = computed(() => generationBusy.value || preparingConversation.value);
 const showEmptyHistory = computed(() => (
   pageState.value === "ready" &&
   displayMessages.value.length === 0 &&
-  !store.isStreaming
+  !store.isStreaming &&
+  !composerBusy.value
 ));
 const showLoadMore = computed(() => (
   store.historyHasMore && store.messages.length > 0 && !store.isStreaming
 ));
 const canRetry = computed(() => (
-  !generationBusy.value &&
+  !composerBusy.value &&
   (unconfirmedSendText.value !== "" ||
     (store.phase === "failed" && store.pendingUserContent.trim().length > 0))
 ));
@@ -341,6 +350,10 @@ const statusText = computed(() => {
   if (store.cancelUnconfirmed && store.phase === "cancelled") {
     return "已停止显示这条回复，生成状态待确认。";
   }
+  // VC-R172：发送链进度——准备段只覆盖建会话，POST 段由 store 的
+  // generationStarting 接管；SSE 与终态两者均假，"正在回复"不受遮盖。
+  if (preparingConversation.value) return "正在准备会话…";
+  if (store.generationStarting) return "正在发送…";
   switch (store.phase) {
     case "streaming":
       return "正在回复…";
@@ -366,7 +379,9 @@ const statusTone = computed<StatusTone>(() => {
   ) {
     return "error";
   }
-  if (store.phase === "streaming") return "progress";
+  if (store.phase === "streaming" || preparingConversation.value || store.generationStarting) {
+    return "progress";
+  }
   return "muted";
 });
 
@@ -525,6 +540,9 @@ async function sendText(
 ): Promise<boolean> {
   if (submitInFlight || store.isStreaming || generationBusy.value) return false;
   submitInFlight = true;
+  // VC-R172：准备段反馈的生命周期——进入即置位，ensureConversation 返回后
+  // 交给 generationStarting（POST 段），失败路径在 catch 释放。
+  preparingConversation.value = true;
   unconfirmedSendText.value = "";
   if (fromDraft) {
     if (inputText.value.trim() === text) inputText.value = "";
@@ -540,6 +558,8 @@ async function sendText(
   try {
     const ready = await ensureConversation();
     if (!ready) throw new Error("conversation unavailable");
+    // 准备段结束：POST 段的 busy/进度由 store 的 generationStarting 接管。
+    preparingConversation.value = false;
     submittedConversationId = store.conversationId;
     await store.send(transport, deps, text, {
       sourceUserMessageId,
@@ -550,6 +570,8 @@ async function sendText(
     }
     return true;
   } catch {
+    // 建会话失败时准备段可能仍在位：释放，交给既有未确认重试反馈。
+    preparingConversation.value = false;
     const expectedConversationId = submittedConversationId ?? anchorBeforeEnsure;
     if (store.conversationId !== expectedConversationId) return false;
     if (inputText.value.trim() === "") {
@@ -651,7 +673,8 @@ async function onLoadMore(): Promise<void> {
 }
 
 function startNewConversation(): void {
-  if (store.isStreaming || generationBusy.value) return;
+  // VC-R172：准备段的在途提交尚未落地，开新对话会与其竞争窗口归属，一并禁用。
+  if (store.isStreaming || composerBusy.value) return;
   menuOpen.value = false;
   store.reset();
   owningConversationId = ""; // VC-R04：本实例转入空会话，归属同步清空。
