@@ -567,3 +567,124 @@ test("autosave saves a stated preference, recalls it in a later turn, and stops 
   await page.getByTestId("autosave-toggle").click();
   await expect(page.getByTestId("autosave-toggle")).toHaveAttribute("aria-checked", "true");
 });
+
+// VC-R177：V68 的 vc.list_memory 会把过期事件惰性改为 EXPIRED 并照常返回。
+// 通过当前认证 API 造一条普通 ACCEPTED 记录与一条已过期的已确认事件，
+// 先用原始 GET 证明后端真的回 EXPIRED/ACCEPTED，再断言真实记忆页接受该
+// 合法回包：普通记忆可见、无列表错误、过期内容不进入活动视图。
+test("memory page accepts expired event records", async ({ page }) => {
+  const session = await openSharedSession(page, "memory");
+  const relationshipId = await getDefaultRelationshipId(session.page);
+
+  const FACT_SUMMARY = "用户每年秋天安排一次例行体检。";
+  const EVENT_SUMMARY = "用户上个月预约了牙医复诊。";
+  const writeOptions = { accountId: session.accountId, sessionId: session.sessionId };
+  // 创建成功后立即登记自己的 id：中途任何失败也走 finally 软删除清理。
+  const createdIds: Array<{ memoryId: string; label: string }> = [];
+
+  function candidateIdOf(result: { ok: boolean; status: number; body: unknown }, label: string): string {
+    expect(result.ok, `${label} create failed: ${result.status}`).toBeTruthy();
+    const memoryId = String((result.body as { memoryId?: unknown } | null)?.memoryId ?? "");
+    expect(memoryId, `${label} create returned no id`).not.toBe("");
+    return memoryId;
+  }
+
+  try {
+    // 一条普通 RELATIONSHIP 记忆：创建（PENDING_CONFIRMATION）并确认（ACCEPTED）。
+    const fact = await sessionRequest(
+      page,
+      "POST",
+      `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories/candidates`,
+      { scope: "RELATIONSHIP", summary: FACT_SUMMARY },
+      writeOptions,
+    );
+    const factId = candidateIdOf(fact, "fact candidate");
+    createdIds.push({ memoryId: factId, label: "fact candidate" });
+    const factConfirm = await sessionRequest(
+      page,
+      "POST",
+      `/api/v1/memories/${encodeURIComponent(factId)}/confirm`,
+      undefined,
+      writeOptions,
+    );
+    expect(factConfirm.ok, `fact confirm failed: ${factConfirm.status}`).toBeTruthy();
+
+    // 一条已过期事件：eventAt 在 2 天前、eventExpiresAt 在 1 天前（PLANNED），
+    // 确认后由下一次 list 读取惰性改为 EXPIRED 并照常返回。
+    const event = await sessionRequest(
+      page,
+      "POST",
+      `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories/candidates`,
+      {
+        scope: "RELATIONSHIP",
+        summary: EVENT_SUMMARY,
+        eventAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        eventStatus: "PLANNED",
+        eventExpiresAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      writeOptions,
+    );
+    const eventId = candidateIdOf(event, "event candidate");
+    createdIds.push({ memoryId: eventId, label: "event candidate" });
+    const eventConfirm = await sessionRequest(
+      page,
+      "POST",
+      `/api/v1/memories/${encodeURIComponent(eventId)}/confirm`,
+      undefined,
+      writeOptions,
+    );
+    expect(eventConfirm.ok, `event confirm failed: ${eventConfirm.status}`).toBeTruthy();
+
+    // 原始 GET 先证明后端事实：事件行 EXPIRED、普通记忆行 ACCEPTED。
+    const list = await sessionRequest(
+      page,
+      "GET",
+      `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories`,
+    );
+    expect(list.ok, `memories read failed: ${list.status}`).toBeTruthy();
+    const rows = (Array.isArray(list.body) ? list.body : []) as Array<{
+      memoryId?: unknown;
+      status?: unknown;
+    }>;
+    const eventRow = rows.find((row) => String(row.memoryId) === eventId);
+    expect(
+      eventRow?.status,
+      "the overdue event must read back EXPIRED through the real API",
+    ).toBe("EXPIRED");
+    const factRow = rows.find((row) => String(row.memoryId) === factId);
+    expect(
+      factRow?.status,
+      "the plain memory must read back ACCEPTED through the real API",
+    ).toBe("ACCEPTED");
+
+    // 真实记忆页必须接受该合法回包：普通记忆可见、无列表错误、过期内容
+    // 不进入已保存/待确认活动视图。
+    await navigateToPage(page, "/pages/memory/memory");
+    await expect(page.getByTestId("autosave-note")).toBeVisible();
+    await expect(page.getByTestId("memory-row").filter({ hasText: FACT_SUMMARY })).toHaveCount(1);
+    await expect(page.getByTestId("memory-list-error")).toHaveCount(0);
+    await expect(page.getByTestId("memory-row").filter({ hasText: EVENT_SUMMARY })).toHaveCount(0);
+    await expect(page.getByTestId("pending-row").filter({ hasText: EVENT_SUMMARY })).toHaveCount(0);
+  } finally {
+    // 只清理本 case 创建的两条记录，不触碰共享账号的其它数据。先尝试删除
+    // 全部登记的 id（单条失败不中断后续尝试），保存每次结果后统一断言：
+    // 清理失败不得被静默吞掉，否则会污染共享 memory 账号。
+    const cleanupResults: Array<{ label: string; ok: boolean; status: number }> = [];
+    for (const { memoryId, label } of createdIds) {
+      const deleted = await sessionRequest(
+        page,
+        "DELETE",
+        `/api/v1/memories/${encodeURIComponent(memoryId)}`,
+        undefined,
+        writeOptions,
+      );
+      cleanupResults.push({ label, ok: deleted.ok, status: deleted.status });
+    }
+    for (const result of cleanupResults) {
+      expect(
+        result.ok,
+        `cleanup delete failed for ${result.label}: ${result.status}`,
+      ).toBeTruthy();
+    }
+  }
+});

@@ -531,6 +531,52 @@ describe("记忆管理页", () => {
     wrapper.unmount();
   });
 
+  it("合法 EXPIRED/PROPOSED 行不拖垮整页读取，也不进入活动视图", async () => {
+    // V68 的 vc.list_memory 会把过期事件惰性改为 EXPIRED 并照常返回；
+    // PROPOSED 也是契约合法状态。整页真实 fetch 初读必须成功，两类行
+    // 只保留在完整 items 里（避免误确认/误删除核对），不进入已保存与
+    // 待确认两个活动视图。
+    stubFetch({
+      memories: [
+        ...DEFAULT_MEMORIES,
+        memoryRow({
+          memoryId: "x1",
+          summary: "用户上个月预约了牙医。",
+          status: "EXPIRED",
+          eventAt: "2026-09-10T10:00:00Z",
+          eventStatus: "PLANNED",
+          eventExpiresAt: "2026-09-11T10:00:00Z",
+        }),
+        memoryRow({
+          memoryId: "pr1",
+          summary: "提案：用户在学尤克里里。",
+          status: "PROPOSED",
+          autoSaved: false,
+        }),
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-list-error"]').exists()).toBe(false);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.get('[data-testid="memory-pending"]').text()).toContain("学吉他");
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("预约了牙医");
+    expect(wrapper.text()).not.toContain("尤克里里");
+
+    // 完整列表保留合法行的身份：删除核对不得把解析缺失误当条目已不存在。
+    expect(useMemoryStore().items.map((item) => `${item.memoryId}:${item.status}`))
+      .toEqual([
+        "m1:ACCEPTED",
+        "m2:ACCEPTED",
+        "p1:PENDING_CONFIRMATION",
+        "x1:EXPIRED",
+        "pr1:PROPOSED",
+      ]);
+    wrapper.unmount();
+  });
+
   it("缺少默认陪伴时给出未就绪状态", async () => {
     stubFetch({ relationships: [] });
     const wrapper = mountPage();

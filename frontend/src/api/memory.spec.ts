@@ -91,6 +91,42 @@ describe("listMemoriesChecked", () => {
     }), "42")).rejects.toBeInstanceOf(MemoryProtocolError);
   });
 
+  it("parses a legal mixed list with EXPIRED and PROPOSED rows without dropping any", async () => {
+    // 契约合法状态全集见 specs/catalog/memory-candidate-statuses.yaml；V68 的
+    // vc.list_memory 会把过期事件惰性改为 EXPIRED 并照常返回，这些合法行
+    // 不得拖垮整页读取，也不得在解析时被丢弃。
+    const client = transport({
+      ok: true,
+      status: 200,
+      json: [
+        memoryRow(),
+        memoryRow({
+          memoryId: "e1",
+          summary: "用户上个月预约了牙医。",
+          status: "EXPIRED",
+          eventAt: "2026-09-10T10:00:00Z",
+          eventStatus: "PLANNED",
+          eventExpiresAt: "2026-09-11T10:00:00Z",
+        }),
+        memoryRow({
+          memoryId: "pr1",
+          summary: "提案：用户在学尤克里里。",
+          status: "PROPOSED",
+          autoSaved: false,
+        }),
+      ],
+    });
+
+    await expect(listMemoriesChecked(client, "42")).resolves.toMatchObject({
+      existenceHidden: false,
+      items: [
+        { memoryId: "m1", status: "ACCEPTED" },
+        { memoryId: "e1", status: "EXPIRED", eventStatus: "PLANNED" },
+        { memoryId: "pr1", status: "PROPOSED" },
+      ],
+    });
+  });
+
   it("keeps existence-hiding information so empty results are not trusted blindly", async () => {
     await expect(listMemoriesChecked(transport({ ok: false, status: 404, json: null }), "42"))
       .resolves.toEqual({ items: [], existenceHidden: true });

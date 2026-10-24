@@ -47,7 +47,18 @@ export function classifyMemoryWriteError(caught: unknown): MemoryWriteOutcome {
   return "unknown";
 }
 
-export type MemoryStatus = "PENDING_CONFIRMATION" | "ACCEPTED" | "REJECTED";
+/**
+ * 契约合法状态全集（specs/catalog/memory-candidate-statuses.yaml）。
+ * EXPIRED 是真实可达值：V68 的 vc.list_memory 会把过期事件惰性改为
+ * EXPIRED 并照常返回；PROPOSED 为契约合法值。两者都不进入页面的活动视图
+ * （store 只按 ACCEPTED/PENDING_CONFIRMATION 分区），但必须可解析。
+ */
+export type MemoryStatus =
+  | "PROPOSED"
+  | "PENDING_CONFIRMATION"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "EXPIRED";
 
 export interface MemoryItem {
   memoryId: string;
@@ -97,7 +108,13 @@ export interface MemoryTransport {
 const READ_TIMEOUT_MS = 15_000;
 const readOpts: TransportRequestOptions = { timeoutMs: READ_TIMEOUT_MS };
 
-const STATUSES: readonly MemoryStatus[] = ["PENDING_CONFIRMATION", "ACCEPTED", "REJECTED"];
+const STATUSES: readonly MemoryStatus[] = [
+  "PROPOSED",
+  "PENDING_CONFIRMATION",
+  "ACCEPTED",
+  "REJECTED",
+  "EXPIRED",
+];
 
 function classifyStatus(status: number): MemoryHttpErrorKind {
   if (status === 401) return "unauthorized";
