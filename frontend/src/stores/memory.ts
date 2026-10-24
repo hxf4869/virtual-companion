@@ -130,7 +130,16 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     } catch (caught) {
       if (requestEpoch !== ownerEpoch.value) return "unknown";
       const outcome = classifyMemoryWriteError(caught);
-      autoSaveState.value = outcome === "unknown" ? "unknown" : "error";
+      if (outcome === "unknown") {
+        // 结果未知：既有确认值不再可信，作废确认标记（autoSaveEnabled 旧
+        // 缓存本体保留）；后续有效 boolean 读取或成功写入才能重新确认，
+        // 避免重读失败时旧值复活为确定状态。
+        autoSaveValueKnown.value = false;
+        autoSaveState.value = "unknown";
+      } else {
+        // 4xx 确定拒绝：请求未落库，已确认旧值仍然有效。
+        autoSaveState.value = "error";
+      }
       return outcome;
     }
   }

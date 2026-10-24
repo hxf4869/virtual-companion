@@ -240,4 +240,22 @@ describe("auto-save preference", () => {
     await expect(updateMemoryAutoSavePref(client, true)).rejects.toBeInstanceOf(MemoryProtocolError);
     await expect(getMemoryAutoSavePref(client)).rejects.toBeInstanceOf(MemoryProtocolError);
   });
+
+  it("rejects pref bodies without a required boolean enabled field", async () => {
+    await expect(getMemoryAutoSavePref(transport({ ok: true, status: 200, json: {} })))
+      .rejects.toBeInstanceOf(MemoryProtocolError);
+    await expect(getMemoryAutoSavePref(transport({ ok: true, status: 200, json: { enabled: "false" } })))
+      .rejects.toBeInstanceOf(MemoryProtocolError);
+    await expect(updateMemoryAutoSavePref(transport({ ok: true, status: 200, json: {} }), true))
+      .rejects.toBeInstanceOf(MemoryProtocolError);
+    await expect(updateMemoryAutoSavePref(transport({ ok: true, status: 200, json: { enabled: "false" } }), true))
+      .rejects.toBeInstanceOf(MemoryProtocolError);
+  });
+
+  it("keeps legal boolean echoes: false read and true write", async () => {
+    await expect(getMemoryAutoSavePref(transport({ ok: true, status: 200, json: { enabled: false } })))
+      .resolves.toBe(false);
+    await expect(updateMemoryAutoSavePref(transport({ ok: true, status: 200, json: { enabled: true } }), true))
+      .resolves.toBe(true);
+  });
 });

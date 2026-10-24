@@ -46,11 +46,17 @@
         <section class="autosave-card" aria-labelledby="autosave-title">
           <view class="autosave-card__head">
             <text id="autosave-title" class="autosave-card__title">自动记忆</text>
+            <!-- WAI-ARIA 1.2 的 switch 只支持 true/false（mixed 非法，会被
+                 user agent 当作 false 宣告）：未知时显式绑定 button 角色
+                 （uni-app 会编译控件，不依赖原生默认）并省略 aria-checked；
+                 已知时才绑定 switch 与真实 boolean 状态，并给稳定可访问
+                 名称"自动记忆"。 -->
             <button
               type="button"
               class="autosave-toggle"
-              role="switch"
+              :role="autoSaveKnown ? 'switch' : 'button'"
               :aria-checked="autoSaveChecked"
+              :aria-label="autoSaveKnown ? '自动记忆' : '自动记忆，状态待确认'"
               data-testid="autosave-toggle"
               :disabled="autoSaveToggleDisabled"
               @click="onToggleAutoSave"
@@ -514,8 +520,9 @@ const autoSaveToggleLabel = computed(() => {
   return memory.autoSaveEnabled ? "已开启" : "已关闭";
 });
 
+/** switch 不支持 mixed（WAI-ARIA 1.2）：未知时返回 undefined 省略属性。 */
 const autoSaveChecked = computed(() =>
-  autoSaveKnown.value ? String(memory.autoSaveEnabled) : "mixed",
+  autoSaveKnown.value ? String(memory.autoSaveEnabled) : undefined,
 );
 
 const autoSaveToggleDisabled = computed(

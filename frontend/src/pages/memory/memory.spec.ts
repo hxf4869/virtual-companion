@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // 记忆管理页：自动记忆开关读写、已保存列表渲染与编辑/删除、待确认候选
 // 的逐条确认；失败路径一律保留原内容。
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type DOMWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -64,6 +64,10 @@ interface FetchOptions {
   memoriesStatus?: number | (() => number);
   prefEnabled?: boolean | (() => boolean);
   prefStatus?: number | (() => number);
+  /** 提供时，GET 回包用该 JSON 代替合法 { enabled }（模拟无效协议回包）。 */
+  prefGetBody?: unknown;
+  /** 提供时，pref GET 请求挂起直到手动 resolve（用于开关读取 loading 观察）。 */
+  prefGate?: Gate;
   putParseFailed?: boolean;
   /** PUT 时模拟网络中断（fetch 抛 TypeError）：结果未知。 */
   putNetworkError?: boolean;
@@ -113,9 +117,11 @@ function stubFetch(options: FetchOptions = {}) {
     }
     if (url === "/api/v1/memory-auto-save-pref") {
       if (method === "GET") {
+        if (options.prefGate) return options.prefGate.promise as never;
         const status = typeof options.prefStatus === "function"
           ? options.prefStatus()
           : options.prefStatus ?? 200;
+        if (options.prefGetBody !== undefined) return response(status, options.prefGetBody);
         const enabled = typeof options.prefEnabled === "function"
           ? options.prefEnabled()
           : options.prefEnabled ?? true;
@@ -193,6 +199,28 @@ function memoryRows(wrapper: ReturnType<typeof mountPage>) {
 
 async function openEdit(wrapper: ReturnType<typeof mountPage>, testid: string) {
   await wrapper.get(`[data-testid="${testid}"]`).trigger("click");
+}
+
+/**
+ * WAI-ARIA 1.2 的 switch 只支持 true/false（mixed 非法，会被 user agent
+ * 当作 false 宣告）：未知时显式为 button 角色（不依赖原生默认），无
+ * aria-checked，名称含"状态待确认"，原生 disabled。
+ */
+function expectUnknownToggle(toggle: Omit<DOMWrapper<Element>, "exists">): void {
+  expect(toggle.attributes("role")).toBe("button");
+  expect(toggle.attributes("aria-checked")).toBeUndefined();
+  expect(toggle.attributes("aria-label")).toContain("状态待确认");
+  expect(toggle.attributes("disabled")).toBeDefined();
+}
+
+/** 已确认开关：role=switch + 真实 boolean 字符串 + 稳定可访问名称。 */
+function expectKnownToggle(
+  toggle: Omit<DOMWrapper<Element>, "exists">,
+  checked: "true" | "false",
+): void {
+  expect(toggle.attributes("role")).toBe("switch");
+  expect(toggle.attributes("aria-checked")).toBe(checked);
+  expect(toggle.attributes("aria-label")).toBe("自动记忆");
 }
 
 describe("记忆管理页", () => {
@@ -645,8 +673,7 @@ describe("记忆管理页", () => {
 
     const toggle = wrapper.get('[data-testid="autosave-toggle"]');
     expect(toggle.text()).toBe("状态待确认");
-    expect(toggle.attributes("aria-checked")).toBe("mixed");
-    expect(toggle.attributes("disabled")).toBeDefined();
+    expectUnknownToggle(toggle);
 
     // 不按 false 默认值误开启：点击不产生写入。
     await toggle.trigger("click");
@@ -656,8 +683,25 @@ describe("记忆管理页", () => {
     failing = false;
     await wrapper.get('[data-testid="autosave-retry"]').trigger("click");
     await flushPromises();
-    expect(wrapper.get('[data-testid="autosave-toggle"]').text()).toBe("已开启");
-    expect(wrapper.get('[data-testid="autosave-toggle"]').attributes("aria-checked")).toBe("true");
+    const confirmed = wrapper.get('[data-testid="autosave-toggle"]');
+    expect(confirmed.text()).toBe("已开启");
+    expectKnownToggle(confirmed, "true");
+    wrapper.unmount();
+  });
+
+  it("T-54 开关首次读取回包缺 enabled：保持状态待确认，不显示已关闭也不产生写入", async () => {
+    const { calls } = stubFetch({ prefGetBody: {} });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const toggle = wrapper.get('[data-testid="autosave-toggle"]');
+    expect(toggle.text()).toBe("状态待确认");
+    expectUnknownToggle(toggle);
+
+    // 不按 false 默认值误开启：点击不产生写入。
+    await toggle.trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "PUT")).toHaveLength(0);
     wrapper.unmount();
   });
 
@@ -690,6 +734,66 @@ describe("记忆管理页", () => {
     expect(wrapper.get('[data-testid="autosave-toggle"]').text()).toBe("已关闭");
     expect(calls.filter((call) => call.method === "PUT")).toHaveLength(1);
     wrapper.unmount();
+  });
+
+  it("T-55 未知写入后重新读取失败：挂起保持待确认，旧值不复活，读到真实值才恢复", async () => {
+    let phase: "initial" | "refail" | "final" = "initial";
+    const refailGate = gate();
+    const { calls } = stubFetch({
+      putParseFailed: true,
+      prefEnabled: () => (phase === "initial" ? false : true),
+      prefStatus: () => (phase === "refail" ? 503 : 200),
+      get prefGate() {
+        return phase === "refail" ? refailGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    try {
+      await flushPromises();
+
+      // 先确认 false。
+      const confirmed = wrapper.get('[data-testid="autosave-toggle"]');
+      expect(confirmed.text()).toBe("已关闭");
+      expectKnownToggle(confirmed, "false");
+
+      // 用户开启：PUT 回包不可解析，结果未知。
+      await wrapper.get('[data-testid="autosave-toggle"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-testid="autosave-unknown"]').text()).toContain("未能确认");
+
+      // 重新读取挂起：读取提示可见，旧 false 不得复活为"已关闭"。
+      phase = "refail";
+      await wrapper.get('[data-testid="autosave-reload"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-testid="autosave-loading"]').text()).toContain("正在读取开关状态");
+      const pendingToggle = wrapper.get('[data-testid="autosave-toggle"]');
+      expect(pendingToggle.text()).toBe("状态待确认");
+      expectUnknownToggle(pendingToggle);
+
+      // 放行 503：进入错误态，仍保持待确认且禁用。
+      refailGate.resolve(response(503, null));
+      await flushPromises();
+      expect(wrapper.find('[data-testid="autosave-loading"]').exists()).toBe(false);
+      expect(wrapper.get('[data-testid="autosave-error"]').text()).toContain("没有加载出来");
+      const toggle = wrapper.get('[data-testid="autosave-toggle"]');
+      expect(toggle.text()).toBe("状态待确认");
+      expectUnknownToggle(toggle);
+
+      // 最终读到真实 true：显示已开启，全程只发过一次 PUT。
+      phase = "final";
+      await wrapper.get('[data-testid="autosave-retry"]').trigger("click");
+      await flushPromises();
+      const restored = wrapper.get('[data-testid="autosave-toggle"]');
+      expect(restored.text()).toBe("已开启");
+      expectKnownToggle(restored, "true");
+      expect(wrapper.find('[data-testid="autosave-unknown"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="autosave-rejected"]').exists()).toBe(false);
+      expect(calls.filter((call) => call.method === "PUT")).toHaveLength(1);
+    } finally {
+      // 用例中途失败时也要放行挂起的读取并卸载，避免残留 15s 请求定时器。
+      refailGate.resolve(response(503, null));
+      wrapper.unmount();
+    }
   });
 
   it("T-55 重新读取发现写入未生效时给出确定提示", async () => {

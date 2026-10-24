@@ -311,15 +311,26 @@ export async function listMemoryEvidence(
   return response.json.map(asEvidence);
 }
 
+/**
+ * 自动开关回包的 enabled 是契约必填 boolean（OpenAPI MemoryAutoSavePref）。
+ * 缺字段或类型不符都不是合法回包：抛 MemoryProtocolError（GET 为读取
+ * 错误，PUT 为结果未知），不得把缺失值当作 false。
+ */
+function prefEnabledOf(response: MemoryApiResponse): boolean {
+  if (response.parseFailed || !response.json || typeof response.json !== "object") {
+    throw new MemoryProtocolError(response.status);
+  }
+  const enabled = (response.json as Record<string, unknown>).enabled;
+  if (typeof enabled !== "boolean") throw new MemoryProtocolError(response.status);
+  return enabled;
+}
+
 export async function getMemoryAutoSavePref(transport: MemoryTransport): Promise<boolean> {
   const response = await transport.request("GET", "/api/v1/memory-auto-save-pref", undefined, readOpts);
   if (!response.ok) {
     throw new MemoryHttpError(response.status, classifyStatus(response.status));
   }
-  if (response.parseFailed || !response.json || typeof response.json !== "object") {
-    throw new MemoryProtocolError(response.status);
-  }
-  return (response.json as Record<string, unknown>).enabled === true;
+  return prefEnabledOf(response);
 }
 
 /** 更新自动记忆开关；2xx 但响应不可解析时抛 MemoryProtocolError（结果未知）。 */
@@ -336,8 +347,5 @@ export async function updateMemoryAutoSavePref(
   if (!response.ok) {
     throw new MemoryHttpError(response.status, classifyStatus(response.status));
   }
-  if (response.parseFailed || !response.json || typeof response.json !== "object") {
-    throw new MemoryProtocolError(response.status);
-  }
-  return (response.json as Record<string, unknown>).enabled === true;
+  return prefEnabledOf(response);
 }
