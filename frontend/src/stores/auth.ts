@@ -86,6 +86,14 @@ export const useAuthStore = defineStore("h5-auth", () => {
   // 给已确立的较新会话，故以本代次为判据。
   let credentialEpoch = 0;
   let refreshInFlight: { epoch: number; promise: Promise<RefreshOutcome> } | null = null;
+  // VC-R168: 登录流程归属计数（login-flow 序）。reset()（含 login 入口与
+  // clear()/reconcile 链路）与每个有效挑战提交的派发推进它；GET 读回 persist
+  // 不推进（同会话读回不得取消有意登录），不同已知账号的 GET 交接作废旧
+  // 流程；自身登录/挑战成功的 persist 不推进（不得失效自身页面回调）。它
+  // 与 R08 refreshEpoch（会话探测代次）、R12 credentialEpoch（凭据归属，
+  // logout 判据）语义互不重叠：challengeId 在密码步骤不存在、且会被自身
+  // 成功 persist 清空，均不能表达「本次提交是否仍是当前登录流程」。
+  let loginFlowSeq = 0;
 
   const isAuthenticated = computed(() => accountId.value !== null);
   const sessionStatus = computed<SessionStatus>(() => {
@@ -107,6 +115,9 @@ export const useAuthStore = defineStore("h5-auth", () => {
     // previous account's shared caches; a same-account recovery keeps them.
     if (accountId.value !== null && accountId.value !== identity.accountId) {
       clearLocalSessionCaches();
+      // VC-R168: GET 读回发现换号交接时作废旧登录流程；自身登录/挑战成功
+      // （newCredential=true）不推进，避免自身页面回调被误失效。
+      if (!newCredential) loginFlowSeq++;
     }
     accessToken.value = "session";
     accountId.value = identity.accountId;
@@ -122,6 +133,9 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   function resetLoginFlow(): void {
+    // VC-R168: 每次重置都作废在途登录/挑战提交（含返回登录、login 入口与
+    // clear()/reconcile 链路触发的重置）。
+    loginFlowSeq++;
     nextStep.value = "LOGIN";
     challengeId.value = null;
     challengeExpiresAt.value = null;
@@ -204,13 +218,19 @@ export const useAuthStore = defineStore("h5-auth", () => {
     // it ends ACTIVE or in a challenge.
     refreshEpoch++;
     resetLoginFlow();
+    // VC-R168: 捕获本次登录流程归属；迟到结果（reset/新登录后到达）安静
+    // 返回 null，不写身份/挑战/恢复码/error。同会话 GET 读回 persist 不
+    // 推进该序，有意登录不会被探测误取消。
+    const flow = loginFlowSeq;
     let result: AuthLoginResult | null;
     try {
       result = await apiLogin(t, account.trim().toLowerCase(), password);
     } catch (caught) {
+      if (loginFlowSeq !== flow) return null;
       error.value = mapRequestError(caught);
       return null;
     }
+    if (loginFlowSeq !== flow) return null;
     if (!result) {
       error.value = "invalid-credentials";
       return null;
@@ -240,11 +260,17 @@ export const useAuthStore = defineStore("h5-auth", () => {
       error.value = "challenge-unavailable";
       return false;
     }
+    // VC-R168: setup 读取不是 mutation（不推进 seq），但归属仍按当前流程
+    // 检查：invalidate（保留挑战）或 reset 后迟到的读取成功/失败不得回写
+    // 全局 setup/error。persist 清 id 发生在自身成功之后，写入前比对捕获
+    // id 不影响自身。
+    const flow = loginFlowSeq;
     try {
       const setup = await apiGetAuthenticatorSetup(t, id);
-      // VC-R166: await 期间用户可能已返回登录（resetLoginFlow 置空
-      // challengeId）或开始新挑战：迟到的旧结果不得写入全局 setup/error。
-      if (challengeId.value !== id) return false;
+      // VC-R166/R168: await 期间用户可能已返回登录（resetLoginFlow 置空
+      // challengeId）、开始新挑战或经 invalidate 作废本流程：迟到的旧结果
+      // 不得写入全局 setup/error。
+      if (loginFlowSeq !== flow || challengeId.value !== id) return false;
       if (!setup) {
         error.value = "challenge-unavailable";
         return false;
@@ -252,7 +278,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
       authenticatorSetup.value = setup;
       return true;
     } catch (caught) {
-      if (challengeId.value !== id) return false;
+      if (loginFlowSeq !== flow || challengeId.value !== id) return false;
       error.value = mapRequestError(caught);
       return false;
     }
@@ -300,17 +326,25 @@ export const useAuthStore = defineStore("h5-auth", () => {
       error.value = "challenge-unavailable";
       return false;
     }
+    // VC-R168: 每个有效挑战提交都是一次新的流程持有；捕获归属与挑战 id。
+    // persist 清 id 发生在自身成功之后，因此 persist 前比对捕获 id 合法且
+    // 必须做：Back/reset（seq 推进）与同挑战新提交（seq 再推进）都要作废
+    // 旧提交的迟到成功，但不能误伤自身（自身 persist 不推进 seq）。
+    const flow = ++loginFlowSeq;
     let completed: AuthChallengeComplete | null;
     try {
       completed = await request(t, id, code.trim(), trustDevice);
     } catch (caught) {
+      if (loginFlowSeq !== flow) return false;
       error.value = mapRequestError(caught);
       return false;
     }
+    if (loginFlowSeq !== flow) return false;
     if (!completed) {
       error.value = "invalid-code";
       return false;
     }
+    if (challengeId.value !== id) return false;
     const codes = completed.recoveryCodes;
     persist(completed, true);
     recoveryCodes.value = codes;
@@ -395,6 +429,30 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   /**
+   * VC-R168: read-only login-flow ordinal. Page actions capture it
+   * immediately after starting a store mutation (the sync entry establishes
+   * the value) and re-check it after await, before releasing busy, writing
+   * page state or navigating. A plain counter: never a secret, never
+   * persisted, never exposed to the UI, a URL, a header or a log.
+   */
+  function getLoginFlowSeq(): number {
+    return loginFlowSeq;
+  }
+
+  /**
+   * VC-R168: invalidate the caller's OWN in-flight login flow (page hidden/
+   * unmounted with an action still owned by this page): advances the ordinal
+   * like reset, keeping challenge data when a mode switch may resume it.
+   * This is local ownership invalidation only — it never aborts the network
+   * request and never revokes any server-side session or cookie. Only
+   * invalidate when the flow is still owned by the caller: a page must not
+   * invalidate a newer flow another page has already started.
+   */
+  function invalidateOwnedLoginFlow(flow: number): void {
+    if (loginFlowSeq === flow) loginFlowSeq++;
+  }
+
+  /**
    * VC-R15: read-only credential-ownership epoch, for stale-success yield
    * checks only (e.g. a late password-change 200). It advances only when a
    * genuinely newer credential is committed — a login/challenge persist with
@@ -436,6 +494,8 @@ export const useAuthStore = defineStore("h5-auth", () => {
     logout,
     onUnauthorized,
     getSessionRevision,
+    getLoginFlowSeq,
+    invalidateOwnedLoginFlow,
     getCredentialEpoch,
     clear,
   };

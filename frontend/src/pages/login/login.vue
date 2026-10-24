@@ -199,7 +199,7 @@
 
 <script setup lang="ts">
 import { getUniApi } from "@/platform/uni-api";
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import VcAuthenticatorSetup from "@/components/auth/VcAuthenticatorSetup.vue";
@@ -287,6 +287,21 @@ onMounted(() => {
   void auth.loadRegistrationStatus(transport);
 });
 
+// VC-R168: 本页在途登录动作的流程归属（store 异步方法同步入口建立后捕获）。
+// 归属检查通过后清空；模式切换/卸载仅作废「仍由本页拥有」的流程——本地
+// 归属失效，不中止网络请求，也不撤销任何服务端会话/Cookie。
+const inFlightFlow = ref<number | null>(null);
+
+function invalidateInFlight(): void {
+  const flow = inFlightFlow.value;
+  if (flow === null) return;
+  inFlightFlow.value = null;
+  auth.invalidateOwnedLoginFlow(flow);
+  submitting.value = false;
+}
+
+onBeforeUnmount(invalidateInFlight);
+
 async function submitCredentials(): Promise<void> {
   if (submitting.value || !canSubmitCredentials.value) return;
   message.value = "";
@@ -299,7 +314,14 @@ async function submitCredentials(): Promise<void> {
   }
 
   submitting.value = true;
-  const next = await auth.login(transport, normalizedAccount, password.value);
+  // VC-R168: 先调 store（同步入口已建立流程序）再捕获；await 后先查归属，
+  // 再释放 busy/写视图/导航。
+  const pending = auth.login(transport, normalizedAccount, password.value);
+  const flow = auth.getLoginFlowSeq();
+  inFlightFlow.value = flow;
+  const next = await pending;
+  if (auth.getLoginFlowSeq() !== flow) return;
+  inFlightFlow.value = null;
   submitting.value = false;
   if (!next) {
     message.value = auth.error === "invalid-credentials"
@@ -338,9 +360,19 @@ async function submitCredentials(): Promise<void> {
 // 重试的 setup-error，不再把 503/网络/超时谎报成「验证已失效」。
 async function loadSetup(): Promise<void> {
   const challengeAtStart = auth.challengeId;
+  // VC-R168: setup 读取不是 mutation（不推进 store 序），但页面卸载/模式
+  // 切换作废的正是「仍由本页拥有」的在途读取——登记本页在途标记，归属
+  // 成立才处理视图并清标记。
+  const flow = auth.getLoginFlowSeq();
+  inFlightFlow.value = flow;
   screen.value = "setup-loading";
   const loaded = await auth.loadAuthenticatorSetup(transport);
-  if (auth.challengeId !== challengeAtStart) return;
+  if (auth.getLoginFlowSeq() !== flow || auth.challengeId !== challengeAtStart) {
+    // 归属已失效（invalidate/reset 已清本页在途标记或作废本流程）：不改
+    // 视图、不清他人标记。
+    return;
+  }
+  inFlightFlow.value = null;
   if (loaded) {
     screen.value = "setup";
     return;
@@ -356,7 +388,13 @@ async function submitTotp(): Promise<void> {
   if (submitting.value || totpCode.value.length !== 6) return;
   message.value = "";
   submitting.value = true;
-  const ok = await auth.verifyAuthenticatorCode(transport, totpCode.value, trustDevice.value);
+  // VC-R168: 归属先捕获后 await；迟到结果不得改视图/导航。
+  const pending = auth.verifyAuthenticatorCode(transport, totpCode.value, trustDevice.value);
+  const flow = auth.getLoginFlowSeq();
+  inFlightFlow.value = flow;
+  const ok = await pending;
+  if (auth.getLoginFlowSeq() !== flow) return;
+  inFlightFlow.value = null;
   submitting.value = false;
   if (ok) {
     navigateAfterLogin();
@@ -374,7 +412,13 @@ async function submitRecoveryCode(): Promise<void> {
   if (submitting.value || recoveryCode.value.trim().length === 0) return;
   message.value = "";
   submitting.value = true;
-  const ok = await auth.verifyRecoveryCode(transport, recoveryCode.value, trustDevice.value);
+  // VC-R168: 同 submitTotp——归属先捕获后 await。
+  const pending = auth.verifyRecoveryCode(transport, recoveryCode.value, trustDevice.value);
+  const flow = auth.getLoginFlowSeq();
+  inFlightFlow.value = flow;
+  const ok = await pending;
+  if (auth.getLoginFlowSeq() !== flow) return;
+  inFlightFlow.value = null;
   submitting.value = false;
   if (ok) {
     navigateAfterLogin();
@@ -394,7 +438,13 @@ async function submitAuthenticatorSetup(): Promise<void> {
   if (submitting.value || totpCode.value.length !== 6) return;
   message.value = "";
   submitting.value = true;
-  const ok = await auth.confirmAuthenticator(transport, totpCode.value, trustDevice.value);
+  // VC-R168: 同 submitTotp——归属先捕获后 await。
+  const pending = auth.confirmAuthenticator(transport, totpCode.value, trustDevice.value);
+  const flow = auth.getLoginFlowSeq();
+  inFlightFlow.value = flow;
+  const ok = await pending;
+  if (auth.getLoginFlowSeq() !== flow) return;
+  inFlightFlow.value = null;
   submitting.value = false;
   if (!ok) {
     if (auth.error === "challenge-unavailable") {
@@ -410,6 +460,8 @@ async function submitAuthenticatorSetup(): Promise<void> {
 }
 
 function openRecoveryCode(): void {
+  // VC-R168: totp→recovery 模式切换同样作废仍由本页持有的 TOTP 提交。
+  invalidateInFlight();
   message.value = "";
   recoveryCode.value = "";
   screen.value = "recovery";
@@ -417,6 +469,9 @@ function openRecoveryCode(): void {
 
 function onBack(): void {
   if (screen.value === "recovery") {
+    // VC-R168: recovery→totp 模式切换作废仍由本页持有的恢复码提交；挑战
+    // 数据保留，同挑战可改用 TOTP 继续验证。
+    invalidateInFlight();
     message.value = "";
     screen.value = "totp";
     return;
@@ -425,6 +480,7 @@ function onBack(): void {
 }
 
 function resetToLogin(): void {
+  inFlightFlow.value = null;
   auth.resetLoginFlow();
   screen.value = "credentials";
   password.value = "";
@@ -436,7 +492,6 @@ function resetToLogin(): void {
   passwordError.value = "";
   copyMessage.value = "";
 }
-
 function finishRecoveryCodes(): void {
   navigateAfterLogin();
 }

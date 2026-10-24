@@ -1050,6 +1050,121 @@ describe("useAuthStore", () => {
     expect(store.authenticatorSetup).toBeNull();
   });
 
+  it("VC-R168: 迟到的 password login 成功在返回登录（reset）后不得应用", async () => {
+    const store = useAuthStore();
+    const { transport, settle } = deferredAuthTransport();
+    const outcome = store.login(transport, "alice@example.com", "pw");
+    store.resetLoginFlow();
+    settle(0, { ok: true, status: 200, json: sampleTokens() });
+    await expect(outcome).resolves.toBeNull();
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.nextStep).toBe("LOGIN");
+    expect(store.error).toBeNull();
+  });
+
+  it("VC-R168: 迟到的 login 失败在新登录完成后不得写入 error", async () => {
+    const store = useAuthStore();
+    const first = deferredAuthTransport();
+    const outcome1 = store.login(first.transport, "alice@example.com", "pw");
+    // 第二次登录立即完成（ACTIVE persist，新凭据）。
+    await expect(
+      store.login(okTransport(identityB()), "bob@example.com", "pw"),
+    ).resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("8");
+    // 第一次登录此刻才迟到失败（500）：不得把 error 写到新流程上。
+    first.settle(0, { ok: false, status: 500, json: { code: "UNAVAILABLE", message: "no" } });
+    await expect(outcome1).resolves.toBeNull();
+    expect(store.error).toBeNull();
+    expect(store.accountId).toBe("8");
+    expect(store.nextStep).toBe("ACTIVE");
+  });
+
+  it("VC-R168: 迟到的挑战成功在返回登录（reset）后不得 persist 旧身份", async () => {
+    const store = useAuthStore();
+    store.nextStep = "TOTP_REQUIRED";
+    store.challengeId = "c1";
+    const { transport, settle } = deferredAuthTransport();
+    const outcome = store.verifyAuthenticatorCode(transport, "123456", false);
+    // 用户在提交在途时点返回登录：reset 清空登录流程。
+    store.resetLoginFlow();
+    // 迟到的服务端确认成功：服务端可能已建会话（本地让位不撤销 Cookie），
+    // 但本地不得 persist 旧流程身份。
+    settle(0, { ok: true, status: 200, json: { ...sampleTokens(), recoveryCodes: ["OLD-CODE"] } });
+    await expect(outcome).resolves.toBe(false);
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.accountId).toBeNull();
+    expect(store.recoveryCodes).toEqual([]);
+  });
+
+  it("VC-R168: 迟到的挑战失败在新挑战开始后不得写入 error", async () => {
+    const store = useAuthStore();
+    store.nextStep = "TOTP_REQUIRED";
+    store.challengeId = "c1";
+    const { transport, settle } = deferredAuthTransport();
+    const outcome = store.verifyAuthenticatorCode(transport, "123456", false);
+    store.resetLoginFlow();
+    store.nextStep = "TOTP_REQUIRED";
+    store.challengeId = "c2";
+    settle(0, { ok: false, status: 500, json: { code: "UNAVAILABLE", message: "no" } });
+    await expect(outcome).resolves.toBe(false);
+    expect(store.error).toBeNull();
+  });
+
+  it("VC-R168: 同一挑战的第二次提交使第一次失效，第一次迟到成功不得 persist", async () => {
+    const store = useAuthStore();
+    store.nextStep = "TOTP_REQUIRED";
+    store.challengeId = "c1";
+    const first = deferredAuthTransport();
+    const second = deferredAuthTransport();
+    const outcome1 = store.verifyAuthenticatorCode(first.transport, "111111", false);
+    const outcome2 = store.verifyAuthenticatorCode(second.transport, "222222", false);
+    // 第一次的迟到成功：已让位给第二次提交，不得 persist 旧结果。
+    first.settle(0, { ok: true, status: 200, json: { ...sampleTokens(), recoveryCodes: ["OLD"] } });
+    await expect(outcome1).resolves.toBe(false);
+    expect(store.isAuthenticated).toBe(false);
+    // 第二次正常成功：当前流程持有者照常应用。
+    second.settle(0, { ok: true, status: 200, json: { ...sampleTokens(), recoveryCodes: ["NEW"] } });
+    await expect(outcome2).resolves.toBe(true);
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.recoveryCodes).toEqual(["NEW"]);
+  });
+
+  it("VC-R168: 同会话 GET 读回 persist 不得取消在途的有意登录", async () => {
+    const store = useAuthStore();
+    const { transport, settle } = deferredAuthTransport();
+    const outcome = store.login(transport, "alice@example.com", "pw");
+    // 登录在途时一次同会话 GET /auth/session 读回（persist 不作废登录流程）。
+    await expect(store.tryRefresh(okTransport(sampleTokens()))).resolves.toBe(true);
+    settle(0, { ok: true, status: 200, json: sampleTokens() });
+    await expect(outcome).resolves.toBe("ACTIVE");
+    expect(store.isAuthenticated).toBe(true);
+  });
+
+  it("VC-R168: 保留挑战的流程失效后，迟到的 setup 读取成功不得回写全局 secret/error", async () => {
+    const store = useAuthStore();
+    store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+    store.challengeId = "c1";
+    const { transport, settle } = deferredAuthTransport();
+    const outcome = store.loadAuthenticatorSetup(transport);
+    outcome.catch(() => {});
+    // 页面卸载/模式切换作废本页仍拥有的流程（挑战数据保留供重新验证）。
+    store.invalidateOwnedLoginFlow(store.getLoginFlowSeq());
+    expect(store.challengeId).toBe("c1");
+    // 迟到的读取成功：不得回写全局 setup/error。
+    settle(0, {
+      ok: true,
+      status: 200,
+      json: {
+        manualKey: "OLD-SECRET-KEY",
+        provisioningUri: "otpauth://totp/Virtual%20Companion:old",
+        qrCodeDataUrl: "data:image/png;base64,old",
+      },
+    });
+    await expect(outcome).resolves.toBe(false);
+    expect(store.authenticatorSetup).toBeNull();
+    expect(store.error).toBeNull();
+  });
+
   it("VC-R12: 迟到的旧 logout 成功响应不得清掉另一账号的新登录", async () => {
     const store = useAuthStore();
     await expect(

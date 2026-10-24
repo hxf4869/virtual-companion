@@ -5,7 +5,10 @@ import { defineComponent } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import LoginPage from "./login.vue";
+import type { AuthApiResponse, AuthTransport } from "@/api/auth";
 import { useAuthStore } from "@/stores/auth";
+
+type AuthFlowStepResult = ReturnType<typeof useAuthStore>["nextStep"];
 
 const WdConfigProviderStub = defineComponent({
   template: "<div><slot /></div>",
@@ -582,6 +585,280 @@ describe("redesigned authentication entry", () => {
       expect(confirmSpy).toHaveBeenLastCalledWith(expect.anything(), "654321", false);
     } finally {
       wrapper.unmount();
+    }
+  });
+
+  it("VC-R168: TOTP 提交在途时点真实返回登录后，迟到成功不得导航或覆盖登录表单", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "TOTP_REQUIRED";
+      store.challengeId = "a".repeat(43);
+      return "TOTP_REQUIRED";
+    });
+    let releaseTotp!: (ok: boolean) => void;
+    vi.spyOn(store, "verifyAuthenticatorCode").mockImplementation(
+      () => new Promise<boolean>((resolve) => {
+        releaseTotp = resolve;
+      }),
+    );
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+      await wrapper.find('input[aria-label="6 位身份验证器验证码"]').setValue("123456");
+      await wrapper.find('[data-testid="totp-submit"]').trigger("click");
+      await flushPromises();
+
+      // 提交在途时点真实返回按钮（aria-label 返回登录）。
+      await wrapper.find('[aria-label="返回登录"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.find('input[aria-label="账号"]').exists()).toBe(true);
+
+      // 迟到的服务端确认成功：不得把已返回的用户拽去导航，也不得改视图。
+      releaseTotp(true);
+      await flushPromises();
+      expect(redirectTo).not.toHaveBeenCalled();
+      expect(wrapper.find('input[aria-label="账号"]').exists()).toBe(true);
+      expect(wrapper.text()).not.toContain("验证登录");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("VC-R168: 恢复码提交在途时返回 TOTP 后，迟到成功不得导航；同挑战仍可继续验证", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "TOTP_REQUIRED";
+      store.challengeId = "a".repeat(43);
+      return "TOTP_REQUIRED";
+    });
+    let releaseRecovery!: (ok: boolean) => void;
+    vi.spyOn(store, "verifyRecoveryCode").mockImplementation(
+      () => new Promise<boolean>((resolve) => {
+        releaseRecovery = resolve;
+      }),
+    );
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+      await wrapper.find('[data-testid="use-recovery-code"]').trigger("click");
+      await wrapper.find('input[aria-label="恢复码"]').setValue("ABCD-EFGH-IJKL-MNOP");
+      await wrapper.find('[data-testid="recovery-submit"]').trigger("click");
+      await flushPromises();
+
+      // 恢复码提交在途时返回：回 TOTP 视图（同挑战保留，供换一种验证方式）。
+      await wrapper.find('[aria-label="返回登录"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.text()).toContain("验证登录");
+
+      // 迟到的恢复码成功：不得导航，TOTP 视图保持。
+      releaseRecovery(true);
+      await flushPromises();
+      expect(redirectTo).not.toHaveBeenCalled();
+      expect(wrapper.text()).toContain("验证登录");
+      expect(wrapper.find('input[aria-label="6 位身份验证器验证码"]').exists()).toBe(true);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("VC-R168: setup 确认旧失败在 Back 后新登录挂起时，不得写新表单错误或释放新 busy", async () => {
+    const store = useAuthStore();
+    let releaseSetup!: (ok: boolean) => void;
+    let releasePassword!: (step: AuthFlowStepResult) => void;
+    let passwordPending = false;
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      if (passwordPending) {
+        return new Promise<AuthFlowStepResult>((resolve) => {
+          releasePassword = resolve;
+        });
+      }
+      store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+      store.challengeId = "c".repeat(43);
+      return "AUTHENTICATOR_SETUP_REQUIRED";
+    });
+    // 首次设置入口：真实 loadSetup 会经 loadAuthenticatorSetup 读取二维码，
+    // mock 成功准备才能渲染 setup 视图（setup-code 输入存在）。
+    vi.spyOn(store, "loadAuthenticatorSetup").mockImplementation(async () => {
+      store.authenticatorSetup = {
+        manualKey: "ABCDEFGHIJKLMNOP",
+        provisioningUri: "otpauth://totp/Virtual%20Companion:alice",
+        qrCodeDataUrl: "data:image/png;base64,abc",
+      };
+      return true;
+    });
+    vi.spyOn(store, "confirmAuthenticator").mockImplementation(
+      () => new Promise<boolean>((resolve) => {
+        releaseSetup = resolve;
+      }),
+    );
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+      const setupInput = wrapper.find('input[data-testid="setup-code"]');
+      expect(setupInput.exists()).toBe(true);
+      await setupInput.setValue("654321");
+      await wrapper.find('[data-testid="setup-submit"]').trigger("click");
+      await flushPromises();
+
+      // setup 确认在途时点返回登录，随即提交新的密码登录（挂起）。
+      await wrapper.find('[aria-label="返回登录"]').trigger("click");
+      await flushPromises();
+      passwordPending = true;
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+
+      // setup 的迟到失败：不得写新表单错误、不改回旧视图、不释放新 busy。
+      releaseSetup(false);
+      await flushPromises();
+      expect(wrapper.find('[data-testid="error"]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain("设置身份验证器");
+      expect(wrapper.get('[data-testid="submit"]').attributes("disabled")).toBeDefined();
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("VC-R168: 旧页卸载不得失效新页已启动的流程，旧页迟到结果不得覆盖新页", async () => {
+    const store = useAuthStore();
+    // 保存真实 login：页面 A 的 login 被 spy，B 用真实实现 + 内联 deferred
+    // transport（本 spec 不引用 store spec 的私有 helper）。
+    const realLogin = store.login.bind(store);
+    let releaseTotp!: (ok: boolean) => void;
+    const spy = vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "TOTP_REQUIRED";
+      store.challengeId = "a".repeat(43);
+      return "TOTP_REQUIRED";
+    });
+    vi.spyOn(store, "verifyAuthenticatorCode").mockImplementation(
+      () => new Promise<boolean>((resolve) => {
+        releaseTotp = resolve;
+      }),
+    );
+    const redirectToA = vi.fn();
+    vi.stubGlobal("uni", { redirectTo: redirectToA });
+    const pageA = mountPage();
+    // B 的挂起请求与释放（内联 deferred，finally 里兜底 settle 防悬挂）。
+    let settleB!: (response: AuthApiResponse) => void;
+    let bSettled = false;
+    const bRequest = new Promise<AuthApiResponse>((resolve) => {
+      settleB = (response) => {
+        bSettled = true;
+        resolve(response);
+      };
+    });
+    const bTransport: AuthTransport = { request: vi.fn(() => bRequest) };
+    const bIdentity = {
+      nextStep: "ACTIVE",
+      accountId: "43",
+      email: "b@example.com",
+      role: "USER",
+      passwordMustChange: false,
+      authenticatorEnabled: true,
+      expiresInSeconds: 7200,
+    };
+    try {
+      await fillCredentials(pageA);
+      await pageA.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+      await pageA.find('input[aria-label="6 位身份验证器验证码"]').setValue("123456");
+      await pageA.find('[data-testid="totp-submit"]').trigger("click");
+      await flushPromises();
+
+      // 通过同一 store 用真实 login 启动新流程 B（挂起），随后卸载旧页 A。
+      spy.mockRestore();
+      const bOutcome = realLogin(bTransport, "bob@example.com", "pw");
+      pageA.unmount();
+
+      // B 正常完成：必须成功（A 的卸载不得作废 B 的流程）。
+      settleB({ ok: true, status: 200, json: bIdentity });
+      await expect(bOutcome).resolves.toBe("ACTIVE");
+      expect(store.accountId).toBe("43");
+
+      // A 的 TOTP 迟到成功：不得导航（A 页面已卸载，也无权覆盖 B）。
+      releaseTotp(true);
+      await flushPromises();
+      expect(redirectToA).not.toHaveBeenCalled();
+    } finally {
+      if (!bSettled) settleB({ ok: true, status: 200, json: bIdentity });
+      pageA.unmount();
+    }
+  });
+
+  it("VC-R168: 二维码准备中卸载页面后，迟到的真实 setup 读取不得回写全局 secret/error", async () => {
+    const store = useAuthStore();
+    // login stub 只负责给出合法 enroll 挑战；setup 读取走真实
+    // loadAuthenticatorSetup（经页面 transport → fetch stub），否则测不到
+    // 全局 secret 写入。
+    // 真实 page→store→API 边界：spy 只接管 transport，读取仍走真实
+    // loadAuthenticatorSetup 与真实 api 解析，直接可测全局 secret 归属；
+    // 真实 HTTP transport 由既有浏览器用例覆盖，此处不搭 fetch 层。
+    const realLoadSetup = store.loadAuthenticatorSetup.bind(store);
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.nextStep = "AUTHENTICATOR_SETUP_REQUIRED";
+      store.challengeId = "c".repeat(43);
+      return "AUTHENTICATOR_SETUP_REQUIRED";
+    });
+    let settleSetup!: (response: AuthApiResponse) => void;
+    let setupSettled = false;
+    const setupRequest = new Promise<AuthApiResponse>((resolve) => {
+      settleSetup = (response) => {
+        setupSettled = true;
+        resolve(response);
+      };
+    });
+    const deferredTransport: AuthTransport = { request: vi.fn(() => setupRequest) };
+    vi.spyOn(store, "loadAuthenticatorSetup").mockImplementation(
+      () => realLoadSetup(deferredTransport),
+    );
+    const wrapper = mountPage();
+    try {
+      await fillCredentials(wrapper);
+      await wrapper.find('[data-testid="submit"]').trigger("click");
+      await flushPromises();
+      // 进入「正在准备二维码」，真实读取仍在途。
+      expect(wrapper.text()).toContain("正在准备二维码");
+
+      // 页面卸载：本页仍拥有的 setup 读取流程应被作废。
+      wrapper.unmount();
+
+      // 迟到的真实读取成功：不得回写全局 setup/error。
+      settleSetup({
+        ok: true,
+        status: 200,
+        json: {
+          manualKey: "OLD-SECRET-KEY",
+          provisioningUri: "otpauth://totp/Virtual%20Companion:old",
+          qrCodeDataUrl: "data:image/png;base64,old",
+        },
+      });
+      await flushPromises();
+      expect(store.authenticatorSetup).toBeNull();
+      expect(store.error).toBeNull();
+    } finally {
+      if (!setupSettled) {
+        settleSetup({
+          ok: true,
+          status: 200,
+          json: {
+            manualKey: "ABCDEFGHIJKLMNOP",
+            provisioningUri: "otpauth://totp/Virtual%20Companion:alice",
+            qrCodeDataUrl: "data:image/png;base64,abc",
+          },
+        });
+      }
+      wrapper.unmount();
+      vi.unstubAllGlobals();
     }
   });
 });
