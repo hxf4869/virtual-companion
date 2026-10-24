@@ -146,6 +146,13 @@ function mountPage() {
   return mount(CompanionPage, { attachTo: document.body });
 }
 
+// VC-R175：真实 keydown（可取消、冒泡），返回事件以断言页面是否接管了默认动作。
+function pressKey(element: Element, key: string): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+  element.dispatchEvent(event);
+  return event;
+}
+
 // VC-R13：模拟 uni H5 KeepAlive 停用/激活（隐藏实例仍存活，惯例同 index.spec.ts）。
 function keepAliveHooksOf(wrapper: ReturnType<typeof mountPage>) {
   const internal = wrapper.vm.$ as unknown as {
@@ -248,6 +255,112 @@ describe("陪伴设置页", () => {
       gender: "NEUTRAL",
       avatarRef: "AVATAR_NEUTRAL_01",
     });
+    wrapper.unmount();
+  });
+
+  // VC-R175：四个单选组按 W3C APG radio 支持键盘。platform/h5-a11y 的全局 shim 已给
+  // 未声明 tabindex 的 uni-button 补 0 并接管 Enter/Space 激活；本轮缺口是方向键与
+  // roving tabindex（选中项 0、其余 -1），由页面局部处理。这里用真实 keydown + 焦点
+  // 验证，不直接改草稿；组件环境不装全局 shim。
+  it("单选组方向键按焦点项循环选中并移焦：只改草稿不发 PATCH，保存仍提交完整替换体", async () => {
+    const patchBodyRef: { body?: Record<string, unknown> } = {};
+    const { calls } = stubFetch({ patchBodyRef });
+    const wrapper = mountPage();
+    await flushPromises();
+    const option = (testid: string) => wrapper.get(`[data-testid="${testid}"]`);
+
+    // 选中项是组内唯一 Tab 停靠点，其余只能由方向键到达。
+    expect(option("pref-reply-length-MEDIUM").attributes("tabindex")).toBe("0");
+    expect(option("pref-reply-length-SHORT").attributes("tabindex")).toBe("-1");
+    expect(option("pref-reply-length-LONG").attributes("tabindex")).toBe("-1");
+
+    const medium = option("pref-reply-length-MEDIUM").element as HTMLElement;
+    medium.focus();
+    const right = pressKey(medium, "ArrowRight");
+    await flushPromises();
+    expect(right.defaultPrevented).toBe(true);
+    expect(option("pref-reply-length-LONG").attributes("aria-checked")).toBe("true");
+    expect(option("pref-reply-length-LONG").attributes("tabindex")).toBe("0");
+    expect(option("pref-reply-length-MEDIUM").attributes("aria-checked")).toBe("false");
+    expect(option("pref-reply-length-MEDIUM").attributes("tabindex")).toBe("-1");
+    const long = option("pref-reply-length-LONG").element as HTMLElement;
+    expect(document.activeElement).toBe(long);
+    expect(wrapper.get('[data-testid="companion-dirty"]').text()).toContain("未保存");
+
+    // 末项右移回到首项，首项左移回到末项。
+    pressKey(long, "ArrowRight");
+    await flushPromises();
+    const short = option("pref-reply-length-SHORT").element as HTMLElement;
+    expect(option("pref-reply-length-SHORT").attributes("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(short);
+    pressKey(short, "ArrowLeft");
+    await flushPromises();
+    expect(option("pref-reply-length-LONG").attributes("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(long);
+
+    // 上下键等价于左右键，只动当前焦点所在组。
+    const low = option("pref-initiative-LOW").element as HTMLElement;
+    low.focus();
+    pressKey(low, "ArrowDown");
+    await flushPromises();
+    const initiativeMedium = option("pref-initiative-MEDIUM").element as HTMLElement;
+    expect(option("pref-initiative-MEDIUM").attributes("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(initiativeMedium);
+    pressKey(initiativeMedium, "ArrowUp");
+    await flushPromises();
+    expect(document.activeElement).toBe(low);
+    pressKey(low, "ArrowUp");
+    await flushPromises();
+    expect(option("pref-initiative-HIGH").attributes("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(option("pref-initiative-HIGH").element);
+
+    // 其它字段原样，键盘编辑只改草稿、不提前提交。
+    expect(option("pref-reply-length-LONG").attributes("aria-checked")).toBe("true");
+    expect(option("pref-advice-ASK_FIRST").attributes("aria-checked")).toBe("true");
+    expect(option("pref-humor-LIGHT").attributes("aria-checked")).toBe("true");
+    expect(option("pref-topic-WORK").attributes("aria-checked")).toBe("true");
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1);
+    expect(patchBodyRef.body).toEqual({
+      companionName: "林夏",
+      userAddressAs: "小安",
+      replyLength: "LONG",
+      initiative: "HIGH",
+      humor: "LIGHT",
+      advicePref: "ASK_FIRST",
+      remindersAllowed: true,
+      memoryShareScope: "RELATIONSHIP",
+      avoidTopics: ["WORK"],
+      gender: "NEUTRAL",
+      avatarRef: "AVATAR_NEUTRAL_01",
+    });
+    wrapper.unmount();
+  });
+
+  it("单选组非方向键放行给全局 shim：不接管默认动作、不改选中、不发 PATCH", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+    const option = (testid: string) => wrapper.get(`[data-testid="${testid}"]`);
+
+    // Enter/Space 的激活属于 platform/h5-a11y 的 document 级状态机（含 repeat
+    // 防抖），页面若自行 preventDefault 或 click 会让 shim 退出并造成双触发；
+    // Tab 与字符键同样只能原样放行。本环境未装 shim，合成 keydown 不应改变任何选中。
+    const none = option("pref-humor-NONE").element as HTMLElement;
+    none.focus();
+    for (const key of [" ", "Enter", "Tab", "a"]) {
+      const event = pressKey(none, key);
+      await flushPromises();
+      expect(event.defaultPrevented, `key ${JSON.stringify(key)}`).toBe(false);
+    }
+    expect(option("pref-humor-NONE").attributes("aria-checked")).toBe("false");
+    expect(option("pref-humor-LIGHT").attributes("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(none);
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(false);
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
     wrapper.unmount();
   });
 

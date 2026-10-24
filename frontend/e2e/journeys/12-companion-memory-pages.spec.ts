@@ -72,6 +72,118 @@ test("companion settings save survives a full re-read", async ({ page }) => {
   );
 });
 
+/** W3C APG radio group: the checked option is the group's only Tab stop and,
+ * right after a key press, also the focused one. */
+async function expectKeyboardSelected(page: Page, testid: string): Promise<void> {
+  const option = page.getByTestId(testid);
+  await expect(option).toHaveAttribute("aria-checked", "true");
+  await expect(option).toHaveAttribute("tabindex", "0");
+  await expect(option).toBeFocused();
+}
+
+test("companion settings keyboard radio navigation", async ({ page }) => {
+  await openSharedSession(page, "memory");
+  await navigateToPage(page, "/pages/companion/companion");
+  await expect(page.getByTestId("companion-form")).toBeVisible();
+
+  // Keyboard edits touch only the local draft: the page must send no prefs
+  // PATCH while editing (the save button is never clicked in this journey).
+  let prefsPatches = 0;
+  page.on("request", (request) => {
+    if (request.method() === "PATCH"
+      && /^\/api\/v1\/relationships\/[^/]+$/.test(new URL(request.url()).pathname)) {
+      prefsPatches += 1;
+    }
+  });
+
+  // Known local starting point through the visible controls, independent of
+  // whatever the shared seeded user currently has saved.
+  await page.getByTestId("pref-reply-length-MEDIUM").click();
+  await page.getByTestId("pref-initiative-LOW").click();
+  await page.getByTestId("pref-advice-ASK_FIRST").click();
+  await page.getByTestId("pref-humor-LIGHT").click();
+  for (const testid of [
+    "pref-reply-length-MEDIUM", "pref-initiative-LOW", "pref-advice-ASK_FIRST", "pref-humor-LIGHT",
+  ]) {
+    await expect(page.getByTestId(testid)).toHaveAttribute("aria-checked", "true");
+  }
+
+  // Right/Left from the focused checked option select and focus the neighbour,
+  // wrapping at both ends. The h5-a11y shim already makes every uni-button a
+  // Tab stop and handles Enter/Space; the arrow keys and the roving tabindex
+  // (only the checked option stays in the Tab order) are the page's own job.
+  await page.getByTestId("pref-reply-length-MEDIUM").focus();
+  await expect(page.getByTestId("pref-reply-length-MEDIUM")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expectKeyboardSelected(page, "pref-reply-length-LONG");
+  await expect(page.getByTestId("pref-reply-length-MEDIUM")).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByTestId("pref-reply-length-MEDIUM")).toHaveAttribute("tabindex", "-1");
+  await page.keyboard.press("ArrowRight");
+  await expectKeyboardSelected(page, "pref-reply-length-SHORT");
+  await page.keyboard.press("ArrowLeft");
+  await expectKeyboardSelected(page, "pref-reply-length-LONG");
+  await page.keyboard.press("ArrowLeft");
+  await expectKeyboardSelected(page, "pref-reply-length-MEDIUM");
+
+  // Tab enters each group on its checked option only and leaves it with the
+  // next Tab; Shift+Tab walks back the same way.
+  await page.getByTestId("pref-companion-name").locator("input").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("pref-user-address-as").locator("input")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("pref-reply-length-MEDIUM")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("pref-initiative-LOW")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("pref-advice-ASK_FIRST")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("pref-humor-LIGHT")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByTestId("pref-advice-ASK_FIRST")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByTestId("pref-initiative-LOW")).toBeFocused();
+
+  // Up/Down behave like Left/Right and wrap, each group on its own.
+  await page.keyboard.press("ArrowDown");
+  await expectKeyboardSelected(page, "pref-initiative-MEDIUM");
+  await page.keyboard.press("ArrowUp");
+  await expectKeyboardSelected(page, "pref-initiative-LOW");
+  await page.keyboard.press("ArrowUp");
+  await expectKeyboardSelected(page, "pref-initiative-HIGH");
+  await page.keyboard.press("ArrowDown");
+  await expectKeyboardSelected(page, "pref-initiative-LOW");
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("pref-advice-ASK_FIRST")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expectKeyboardSelected(page, "pref-advice-DIRECT");
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("pref-humor-LIGHT")).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expectKeyboardSelected(page, "pref-humor-WARM");
+  await page.keyboard.press("ArrowUp");
+  await expectKeyboardSelected(page, "pref-humor-LIGHT");
+  await expect(page.getByTestId("pref-reply-length-MEDIUM")).toHaveAttribute("aria-checked", "true");
+
+  // Space / Enter activation comes from the h5-a11y shim's document-level
+  // handler (Enter on keydown, Space armed on keydown and fired on keyup); the
+  // page passes both keys through untouched, so the real browser must still
+  // end up with the focused option checked.
+  await page.getByTestId("pref-humor-NONE").focus();
+  await page.keyboard.press("Space");
+  await expectKeyboardSelected(page, "pref-humor-NONE");
+  await page.getByTestId("pref-advice-RARE").focus();
+  await page.keyboard.press("Enter");
+  await expectKeyboardSelected(page, "pref-advice-RARE");
+
+  // The mouse keeps working and moves the Tab stop with the selection.
+  await page.getByTestId("pref-reply-length-SHORT").click();
+  await expect(page.getByTestId("pref-reply-length-SHORT")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("pref-reply-length-SHORT")).toHaveAttribute("tabindex", "0");
+  await expect(page.getByTestId("pref-reply-length-MEDIUM")).toHaveAttribute("tabindex", "-1");
+
+  expect(prefsPatches).toBe(0);
+});
+
 test("memory page autosave toggle round-trips through the server", async ({ page }) => {
   await openSharedSession(page, "memory");
   await navigateToPage(page, "/pages/memory/memory");

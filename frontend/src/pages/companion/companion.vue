@@ -88,7 +88,7 @@
           </view>
         </section>
 
-        <section class="pref-section" aria-labelledby="pref-chat-title">
+        <section class="pref-section" aria-labelledby="pref-chat-title" @keydown="onRadioKeydown">
           <text id="pref-chat-title" class="pref-section__title">聊天偏好</text>
           <view class="pref-card">
             <view class="pref-field">
@@ -102,6 +102,7 @@
                   :class="{ 'pref-option--on': formModel.replyLength === option.value }"
                   role="radio"
                   :aria-checked="formModel.replyLength === option.value"
+                  :tabindex="formModel.replyLength === option.value ? 0 : -1"
                   :data-testid="`pref-reply-length-${option.value}`"
                   @click="edit((d) => { d.replyLength = option.value; })"
                 >
@@ -121,6 +122,7 @@
                   :class="{ 'pref-option--on': formModel.initiative === option.value }"
                   role="radio"
                   :aria-checked="formModel.initiative === option.value"
+                  :tabindex="formModel.initiative === option.value ? 0 : -1"
                   :data-testid="`pref-initiative-${option.value}`"
                   @click="edit((d) => { d.initiative = option.value; })"
                 >
@@ -140,6 +142,7 @@
                   :class="{ 'pref-option--on': formModel.advicePref === option.value }"
                   role="radio"
                   :aria-checked="formModel.advicePref === option.value"
+                  :tabindex="formModel.advicePref === option.value ? 0 : -1"
                   :data-testid="`pref-advice-${option.value}`"
                   @click="edit((d) => { d.advicePref = option.value; })"
                 >
@@ -159,6 +162,7 @@
                   :class="{ 'pref-option--on': formModel.humor === option.value }"
                   role="radio"
                   :aria-checked="formModel.humor === option.value"
+                  :tabindex="formModel.humor === option.value ? 0 : -1"
                   :data-testid="`pref-humor-${option.value}`"
                   @click="edit((d) => { d.humor = option.value; })"
                 >
@@ -248,7 +252,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onMounted, ref, watch } from "vue";
 
 import type { AvoidTopic } from "@/api/relationship";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -328,6 +332,38 @@ function toggleTopic(topic: AvoidTopic): void {
       ? d.avoidTopics.filter((item) => item !== topic)
       : [...d.avoidTopics, topic];
   });
+}
+
+// VC-R175：单选组方向键（W3C APG radio）。右/下选中并聚焦同组 DOM 顺序的下一项，
+// 左/上选中上一项，首尾循环；选中经目标项既有 @click 走同一条 edit 草稿路径。
+// 监听挂在包着四个 radiogroup 的原生 <section> 上：uni-app H5 对内建组件（uni-button）
+// 的模板事件做跨端归一化，currentTarget 只剩 {id,dataset,…} 数据对象，原生元素上的
+// 事件才拿到原始 KeyboardEvent。Tab 序由模板的 roving tabindex（选中项 0、其余 -1）
+// 决定；Enter/Space 激活属于 platform/h5-a11y 的全局 shim，页面不接管、不 preventDefault，
+// 其它键与非 radio 来源一律放行。
+function onRadioKeydown(event: KeyboardEvent): void {
+  let step: number;
+  switch (event.key) {
+    case "ArrowRight":
+    case "ArrowDown":
+      step = 1;
+      break;
+    case "ArrowLeft":
+    case "ArrowUp":
+      step = -1;
+      break;
+    default:
+      return;
+  }
+  const current = (event.target as Element).closest<HTMLElement>('[role="radio"]');
+  if (!current) return;
+  event.preventDefault();
+  const radios = Array.from(
+    current.closest('[role="radiogroup"]')?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [],
+  );
+  const target = radios[(radios.indexOf(current) + step + radios.length) % radios.length];
+  target.click();
+  void nextTick(() => target.focus());
 }
 
 // VC-R13：换号身份交接。KeepAlive 缓存的隐藏页不得保留旧账号的偏好与
