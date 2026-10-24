@@ -553,7 +553,11 @@ func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
 	}
 
 	close(extract.release)
-	waitFor(t, "extraction drained", func() bool { return extract.done.Load() == 1 })
+	// done 在模型返回时置位，而 extractSlots 要等完整 dispatch（含保存）返回
+	// 才释放：排空见证需同时要求槽已空，保存断言才不被时序提前。
+	waitFor(t, "extraction drained", func() bool {
+		return extract.done.Load() == 1 && len(loop.extractSlots) == 0
+	})
 	store.mu.Lock()
 	saved = len(store.extractSaved)
 	store.mu.Unlock()
@@ -590,13 +594,16 @@ func TestLoopBoundsConcurrentExtracts(t *testing.T) {
 	}
 
 	close(extract.release)
-	waitFor(t, "first extraction drained", func() bool { return extract.done.Load() == 1 })
+	waitFor(t, "first extraction drained", func() bool {
+		return extract.done.Load() == 1 && len(loop.extractSlots) == 0
+	})
 	// The held-back job is not starved: the freed slot re-opens the claim.
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
 		t.Fatalf("second round claim %d want 1", got)
 	}
 	waitFor(t, "both extractions drained", func() bool {
-		return extract.calls.Load() == 2 && extract.done.Load() == 2 && extract.active.Load() == 0
+		return extract.calls.Load() == 2 && extract.done.Load() == 2 && extract.active.Load() == 0 &&
+			len(loop.extractSlots) == 0
 	})
 	store.mu.Lock()
 	defer store.mu.Unlock()
