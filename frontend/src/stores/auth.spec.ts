@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listTrustedDevices } from "@/api/auth";
+import { AuthHttpError, listTrustedDevices } from "@/api/auth";
 import type { AuthApiResponse, AuthSessionIdentity, AuthTransport } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
@@ -864,7 +864,7 @@ describe("useAuthStore", () => {
     expect(memory.listStatus).toBe("idle");
   });
 
-  it("logout revokes server-side (cookie) then clears locally, even on transport failure", async () => {
+  it("logout revokes server-side (cookie) then clears locally when the server confirms", async () => {
     const store = useAuthStore();
     const t = okTransport(sampleTokens("a"));
     await store.login(t, "alice", "pw");
@@ -876,12 +876,74 @@ describe("useAuthStore", () => {
     expect(logoutT.request).toHaveBeenCalledWith("POST", "/api/v1/auth/logout");
     expect(store.isAuthenticated).toBe(false);
     expect(store.accessToken).toBeNull();
+  });
 
-    // Transport failure still clears the local session (best effort revoke).
-    await store.login(okTransport(sampleTokens("a2")), "alice", "pw");
-    // 网络失败但代次未变：best-effort 清理仍归属本次调用，返回 true。
-    await expect(store.logout(throwTransport())).resolves.toBe(true);
+  it("VC-R164: HTTP 503 退出无法确认：保留身份抛内部异常，重试成功才清理", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a")), "alice", "pw");
+
+    // 归属成立但服务端未确认撤销（后端 TestLogoutRevokeFailureKeepsCookiesAndSession：
+    // 503 时 cookie/会话仍有效）：清本地会谎称已退出（刷新即恢复会话），必须
+    // 保留身份并以普通内部异常表示「结果无法确认」，不暴露原始错误。
+    const caught = await store.logout(failTransport(503)).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught).not.toBeInstanceOf(AuthHttpError);
+    expect((caught as Error).message).not.toMatch(/503|AUTHENTICATION_REQUIRED/i);
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accountId).toBe("7");
+
+    // 重试成功：正常清理并返回 true。
+    await expect(store.logout(okTransport(sampleTokens()))).resolves.toBe(true);
     expect(store.isAuthenticated).toBe(false);
+  });
+
+  it("VC-R164: 网络失败退出同样无法确认：保留身份抛内部异常，不再 best-effort 清本地", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a")), "alice", "pw");
+
+    const caught = await store.logout(throwTransport()).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).not.toContain("offline");
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accessToken).toBe("session");
+  });
+
+  it("VC-R164: 迟到的失败 logout 让位给较新凭据：返回 false，不 throw、不触碰", async () => {
+    const store = useAuthStore();
+    await expect(
+      store.login(
+        okTransport(accountIdentity("1", "vc-r164-a@example.com")),
+        "vc-r164-a@example.com",
+        "pw-a",
+      ),
+    ).resolves.toBe("ACTIVE");
+
+    const identityB = accountIdentity("2", "vc-r164-b@example.com");
+    const { transport, settleLogout } = pendingLogoutTransport({
+      ok: true,
+      status: 200,
+      json: identityB,
+    });
+    const loggingOut = store.logout(transport);
+
+    await expect(store.login(transport, "vc-r164-b@example.com", "pw-b"))
+      .resolves.toBe("ACTIVE");
+    expect(store.accountId).toBe("2");
+
+    // 账号 A 的 logout 此刻才迟到失败（503）：已让位给 B 的新凭据——
+    // 归属不再成立，不得 throw（那会把让位误报成本次失败），也不清状态。
+    settleLogout({ ok: false, status: 503, json: { code: "UNAVAILABLE", message: "no" } });
+    await expect(loggingOut).resolves.toBe(false);
+
+    expect(store.accountId).toBe("2");
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.sessionStatus).toBe("authenticated");
   });
 
   it("VC-R12: 迟到的旧 logout 成功响应不得清掉另一账号的新登录", async () => {

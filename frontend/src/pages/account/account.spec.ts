@@ -68,6 +68,8 @@ interface FetchOptions {
   /** 提供 409 时，logout POST 以该状态与 logoutErrorBody 应答（失配场景）。 */
   logoutStatus?: number;
   logoutErrorBody?: unknown;
+  /** 提供时，logout POST 直接以网络错误拒绝（结果无法确认场景）。 */
+  logoutNetworkFail?: boolean;
   /** 非 200 的改密 POST 以该信封应答（失配场景）。 */
   passwordErrorBody?: unknown;
   /** 非 200 的注销 DELETE 以该信封应答（失配场景）。 */
@@ -157,6 +159,9 @@ function stubFetch(options: FetchOptions = {}) {
       return response(status, status === 200 ? { ok: true } : (options.passwordErrorBody ?? null));
     }
     if (url === "/api/v1/auth/logout" && method === "POST") {
+      if (options.logoutNetworkFail) {
+        throw new TypeError("network down");
+      }
       if (options.logoutGate) {
         return options.logoutGate.promise.then(() => response(200, { ok: true }));
       }
@@ -474,6 +479,67 @@ describe("account page", () => {
     expect(uni.navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
     expect(uni.redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
     wrapper.unmount();
+  });
+
+  it("VC-R164: 退出 503 无法确认：本地身份保留、按钮恢复并给出可重试提示、不导航", async () => {
+    const { calls } = stubFetch({
+      logoutStatus: 503,
+      logoutErrorBody: { code: "UNAVAILABLE", message: "no" },
+    });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    try {
+      await flushPromises();
+
+      await wrapper.get('[data-testid="account-logout"]').trigger("click");
+      await flushPromises();
+      expect(calls.filter((call) => call.url === "/api/v1/auth/logout")).toHaveLength(1);
+      // 服务端未确认撤销：本地身份必须保留，不得谎称已退出。
+      expect(auth.isAuthenticated).toBe(true);
+      expect(wrapper.get('[data-testid="account-email"]').text()).toBe("alice@example.com");
+      // 退出按钮附近给出读屏可感知（role=alert）的可重试提示。
+      expect(wrapper.get('[data-testid="account-logout-error"]').attributes("role")).toBe("alert");
+      expect(wrapper.get('[data-testid="account-logout-error"]').text())
+        .toBe("暂时无法确认退出结果，请重试。");
+      // 按钮恢复可用，页面不被拽回登录页。
+      expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeUndefined();
+      const uni = (globalThis as unknown as {
+        uni: { navigateTo: ReturnType<typeof vi.fn>; redirectTo: ReturnType<typeof vi.fn> };
+      }).uni;
+      expect(uni.navigateTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+      expect(uni.redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("VC-R164: 网络失败退出同样无法确认；重试成功后正常退出且提示清除", async () => {
+    stubFetch({ logoutNetworkFail: true });
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    try {
+      await flushPromises();
+
+      await wrapper.get('[data-testid="account-logout"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-testid="account-logout-error"]').text())
+        .toBe("暂时无法确认退出结果，请重试。");
+      expect(auth.isAuthenticated).toBe(true);
+
+      // 重试（fetch 换回 200 应答）：真实退出、导航登录页、清掉重试提示。
+      const { calls } = stubFetch();
+      await wrapper.get('[data-testid="account-logout"]').trigger("click");
+      await flushPromises();
+      expect(calls.filter((call) => call.url === "/api/v1/auth/logout")).toHaveLength(1);
+      expect(auth.isAuthenticated).toBe(false);
+      expect(wrapper.find('[data-testid="account-logout-error"]').exists()).toBe(false);
+      const uni = (globalThis as unknown as {
+        uni: { navigateTo: ReturnType<typeof vi.fn> };
+      }).uni;
+      expect(uni.navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   it("requires the current password before account deletion", async () => {

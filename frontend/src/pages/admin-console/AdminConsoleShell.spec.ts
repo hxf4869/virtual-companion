@@ -106,6 +106,52 @@ describe("admin console shell", () => {
     wrapper.unmount();
   });
 
+  it("VC-R164: 退出 503 无法确认：提示可重试、身份保留、不导航；重试成功后正常退出", async () => {
+    let logoutStatus = 503;
+    const calls: Array<{ method: string; url: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url });
+      if (url === "/api/v1/auth/logout" && method === "POST") {
+        return {
+          ok: logoutStatus === 200,
+          status: logoutStatus,
+          json: async () => ({ ok: logoutStatus === 200 }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }));
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo, navigateTo: vi.fn() });
+    const auth = loginAsAdmin();
+    const wrapper = mount(AdminConsoleShell, {
+      props: { active: "review", title: "注册审核", accessState: "ready" },
+    });
+    try {
+
+      const logoutButton = wrapper
+        .findAll(".ac-footer-action")
+        .find((button) => button.text().includes("退出登录"));
+      await logoutButton!.trigger("click");
+      await flushPromises();
+      // 服务端未确认撤销：本地身份保留、不导航，退出按钮附近给出可重试提示。
+      expect(wrapper.get(".ac-message--warning").text()).toBe("暂时无法确认退出结果，请重试。");
+      expect(auth.isAuthenticated).toBe(true);
+      expect(redirectTo).not.toHaveBeenCalledWith({ url: "/pages/login/login" });
+      expect(logoutButton!.attributes("disabled")).toBeUndefined();
+
+      // 重试成功：正常清理并返回登录页，提示随新一轮退出入口清空。
+      logoutStatus = 200;
+      await logoutButton!.trigger("click");
+      await flushPromises();
+      expect(auth.isAuthenticated).toBe(false);
+      expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it("VC-R12: 迟到的旧登出不得清掉换号后的身份，也不得导航回登录页", async () => {
     let releaseLogout!: (value: unknown) => void;
     const logoutGate = new Promise<unknown>((resolve) => {

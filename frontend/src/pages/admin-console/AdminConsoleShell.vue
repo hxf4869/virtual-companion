@@ -247,6 +247,11 @@ export default defineComponent({
         if (owned && !auth.isAuthenticated) {
           await navigate("/pages/login/login", true, true);
         }
+      } catch {
+        // VC-R164: 归属本次调用的退出结果无法确认（HTTP 非 ok / 网络失败）：
+        // 服务端会话可能仍有效——保留当前身份、不导航，退出按钮附近给出
+        // 可重试提示（复用既有 logoutNotice 展示位）。
+        logoutNotice.value = "暂时无法确认退出结果，请重试。";
       } finally {
         loggingOut.value = false;
       }

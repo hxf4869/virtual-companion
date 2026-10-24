@@ -305,6 +305,15 @@
           <text>{{ busy === "logout" ? "正在退出…" : "退出登录" }}</text>
         </button>
 
+        <text
+          v-if="logoutError"
+          class="form-message"
+          data-testid="account-logout-error"
+          role="alert"
+        >
+          {{ logoutError }}
+        </text>
+
         <view class="danger-zone">
           <button
             type="button"
@@ -401,6 +410,8 @@ const deviceActionError = ref("");
 const deleteOpen = ref(false);
 const deletePassword = ref("");
 const deleteError = ref("");
+// VC-R164: 退出结果无法确认时的页面级提示；随重试与账号交接清理。
+const logoutError = ref("");
 const busy = ref<BusyAction | null>(null);
 // VC-R52：期望账号失配（服务端 409 + ACCOUNT_CONTEXT_CHANGED）后的页面级
 // 反馈。放账号页层级而不是会被 :key 重建的面板内部，旧面板重建后仍可见。
@@ -470,6 +481,7 @@ function clearPrivateAccountState(): void {
   deleteOpen.value = false;
   deletePassword.value = "";
   deleteError.value = "";
+  logoutError.value = "";
   trustedDevices.value = [];
   deviceState.value = "idle";
   deviceActionError.value = "";
@@ -617,12 +629,19 @@ async function onChangePassword(): Promise<void> {
 async function onLogout(): Promise<void> {
   if (busy.value) return;
   busy.value = "logout";
+  logoutError.value = "";
   const mySeq = ++actionSeq;
   try {
     // VC-R12: 只有本地清理归属本次调用、且此刻没有较新已认证身份才导航；
     // 让位给较新登录的迟到登出不得清掉新身份，也不得把页面拽回登录页。
     const owned = await auth.logout(transport);
     if (owned && !auth.isAuthenticated) goTo("/pages/login/login");
+  } catch {
+    // VC-R164: 归属本次调用的退出结果无法确认（HTTP 非 ok / 网络失败）：
+    // 服务端会话可能仍有效——保留当前身份、不导航，按钮附近给出可重试提示。
+    if (mySeq === actionSeq) {
+      logoutError.value = "暂时无法确认退出结果，请重试。";
+    }
   } finally {
     if (mySeq === actionSeq) {
       busy.value = null;

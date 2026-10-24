@@ -349,10 +349,11 @@ export const useAuthStore = defineStore("h5-auth", () => {
   async function logout(t: AuthTransport): Promise<boolean> {
     error.value = null;
     const epoch = credentialEpoch;
+    let revoked = false;
     try {
-      await apiLogout(t);
+      revoked = await apiLogout(t);
     } catch {
-      // Best effort: local identity still clears when the network is unavailable.
+      revoked = false;
     }
     // VC-R12: 迟到的旧登出只让位给已确立的较新会话。判据用身份归属代次
     // （credentialEpoch）：login() 入口的代次推进只是登录「意图」，登出挂起
@@ -361,9 +362,14 @@ export const useAuthStore = defineStore("h5-auth", () => {
     // 已登录用户退不出去。只有新登录/挑战完成的 persist、不同已知账号交接的
     // 读回与 clear() 推进该代次；同 ID 重新登录经 persist 推进，因此判据也
     // 覆盖账号相同的 credential 代次切换，无需账号比较。返回 true 表示本次
-    // 调用拥有本地清理并已执行（含网络失败但代次未变的 best-effort 路径）；
-    // false 表示已让位给较新会话，未触碰任何状态。
+    // 调用拥有本地清理并已执行；false 表示已让位给较新会话，未触碰任何状态。
+    // 401/409 的 transport 身份交接（onUnauthorized / onAccountContextChanged）
+    // 已先经 clear() 推进代次，因此让位判定先于失败判定，原保护不受影响。
     if (epoch !== credentialEpoch) return false;
+    // VC-R164: 归属成立但服务端未确认撤销（HTTP 非 ok / 网络失败；后端 503
+    // 时 cookie/会话仍有效）：清本地会谎称已退出、刷新即恢复会话。保留身份，
+    // 以普通内部异常交由 UI 呈现可重试提示；不暴露原始错误。
+    if (!revoked) throw new Error("logout result could not be confirmed");
     clear();
     return true;
   }
