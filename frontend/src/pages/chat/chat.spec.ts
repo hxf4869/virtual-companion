@@ -57,6 +57,8 @@ interface FetchOptions {
   relationshipFails?: boolean | (() => boolean);
   conversations?: unknown[];
   conversationListFails?: boolean | (() => boolean);
+  /** VC-R158：首个 GET /conversations? 挂起，由测试放行（init 读 URL 目标之后的中段夹具）。 */
+  deferConversationList?: boolean;
   messages?: Record<string, unknown[]>;
   createdConversationId?: string;
   deferConversationCreate?: boolean;
@@ -95,6 +97,12 @@ function stubFetch(options: FetchOptions = {}) {
   const deferredCreate = new Promise<StubResponse>((resolve) => {
     resolveCreate = resolve;
   });
+  let resolveConversationList!: (value: StubResponse) => void;
+  const deferredConversationList = new Promise<StubResponse>((resolve) => {
+    resolveConversationList = resolve;
+  });
+  // VC-R158：deferConversationList 只挂起首个会话列表 GET 的闭包级标记。
+  let conversationListDeferralUsed = false;
   let resolveGenerationPost!: (value: StubResponse) => void;
   let rejectGenerationPost!: (reason?: unknown) => void;
   const deferredGenerationPost = new Promise<StubResponse>((resolve, reject) => {
@@ -139,6 +147,10 @@ function stubFetch(options: FetchOptions = {}) {
     if (method === "GET" && /^\/api\/v1\/conversations\?/.test(url)) {
       if (resolveBool(options.conversationListFails)) {
         return response(false, 500, { code: "INTERNAL_ERROR" });
+      }
+      if (options.deferConversationList && !conversationListDeferralUsed) {
+        conversationListDeferralUsed = true;
+        return deferredConversationList;
       }
       return response(true, 200, options.conversations ?? RECENT);
     }
@@ -211,6 +223,7 @@ function stubFetch(options: FetchOptions = {}) {
     calls,
     fetchMock,
     resolveCreate,
+    resolveConversationList,
     resolveGenerationPost,
     rejectGenerationPost,
     resolveSnapshot,
@@ -1491,6 +1504,136 @@ describe("聊天产品页", () => {
     ).length;
     expect(windowCallsAfter).toBe(windowCallsBefore);
     wrapper.unmount();
+  });
+
+  // ---- VC-R158：初始化忙期间丢失的 hash 导航 ----
+  // 缺陷：initPage 在读 URL 目标与 loadConversations/openConversation 等
+  // await 之间收到 hashchange 时被 initBusy 守卫直接丢弃，finally 只清
+  // busy——浏览器返回/前进或编辑 URL 后地址已是 conv-b，页面停在 conv-a。
+  // 契约：只保留一个"确实收到但初始化忙"的待重评标记，init 收尾清 busy
+  // 后复用 onLocationHashChange 按最新 location 重评一次（去重与停用/
+  // 可见性/路径守卫不变）；不排队旧目标，连续 A→B→A 只服从最终 URL。
+
+  it("初始化挂起期间 hash 转向 B：放行后 store 与页面进入 B，目标变更不丢", async () => {
+    const { resolveConversationList } = stubFetch({
+      deferConversationList: true,
+      messages: { "conv-old": CONV_OLD_MESSAGES },
+    });
+    // 无深链挂载：init 读到的目标是默认会话 conv-new，随后会话列表挂起。
+    const wrapper = mountPage();
+    try {
+      await flushPromises();
+      expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(true);
+
+      // init 中段用户把 URL 切到 conv-old（浏览器返回/前进或直接编辑 hash）。
+      vi.stubGlobal("location", {
+        search: "",
+        hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-old",
+        href: "",
+      });
+      window.dispatchEvent(new Event("hashchange"));
+      await flushPromises();
+
+      // 放行会话列表：init 按已读目标落在 conv-new；收尾重评按最新 URL 进入
+      // conv-old——store 与 DOM 都服从最终 URL（VC-R158 修复前停在 conv-new）。
+      resolveConversationList(response(true, 200, RECENT));
+      await flushPromises();
+
+      const store = useChatStore();
+      expect(store.conversationId).toBe("conv-old");
+      expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(false);
+      expect(wrapper.findAll('[data-testid="chat-message"]')).toHaveLength(1);
+      expect(wrapper.text()).toContain("这是 B 会话自己的消息。");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("初始化忙期间 hash 连续 A→B→A：只服从最终 URL，中间目标不打开、同目标不重复加载", async () => {
+    const { calls, resolveConversationList } = stubFetch({
+      deferConversationList: true,
+      messages: { "conv-old": CONV_OLD_MESSAGES },
+    });
+    // 深链 conv-new 挂载：init 读到目标 conv-new 后会话列表挂起。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    try {
+      await flushPromises();
+
+      // 忙期间连续切 B（conv-old）再回 A（conv-new）：待重评标记不排队 B。
+      vi.stubGlobal("location", {
+        search: "",
+        hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-old",
+        href: "",
+      });
+      window.dispatchEvent(new Event("hashchange"));
+      vi.stubGlobal("location", {
+        search: "",
+        hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-new",
+        href: "",
+      });
+      window.dispatchEvent(new Event("hashchange"));
+      resolveConversationList(response(true, 200, RECENT));
+      await flushPromises();
+
+      // 最终 URL 回到 init 已读目标 conv-new：去重——不开第二轮 init，
+      // conv-new 窗口只加载一次，中间目标 conv-old 从未发起请求。
+      const store = useChatStore();
+      expect(store.conversationId).toBe("conv-new");
+      expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(false);
+      expect(wrapper.findAll('[data-testid="chat-message"]')).toHaveLength(2);
+      const windowCalls = calls.filter(
+        (call) => call.method === "GET" && call.url.includes("/messages"),
+      );
+      expect(windowCalls.filter((call) => call.url.includes("conv-new/messages"))).toHaveLength(1);
+      expect(windowCalls.some((call) => call.url.includes("conv-old/messages"))).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("初始化忙期间收到 hash 变更后页面被停用：放行后不再次发起初始化", async () => {
+    const { calls, resolveConversationList } = stubFetch({
+      deferConversationList: true,
+      messages: { "conv-old": CONV_OLD_MESSAGES },
+    });
+    const wrapper = mountPage();
+    try {
+      await flushPromises();
+      expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(true);
+
+      // 忙期间 hash 转向 conv-old（记待重评），随后本实例被 KeepAlive 停用
+      // 转入后台缓存（同款真实停用路径见上方 VC-R04 用例）。
+      vi.stubGlobal("location", {
+        search: "",
+        hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-old",
+        href: "",
+      });
+      window.dispatchEvent(new Event("hashchange"));
+      const internal = wrapper.vm.$ as unknown as {
+        a?: Array<() => void>;
+        da?: Array<() => void>;
+      };
+      internal.da?.forEach((hook) => hook());
+
+      // 放行会话列表：隐藏实例收尾时按停用守卫放弃重评——落在默认会话，
+      // 不发起 conv-old 的任何请求，也不再进入 loading/等待。
+      resolveConversationList(response(true, 200, RECENT));
+      await flushPromises();
+
+      const store = useChatStore();
+      expect(store.conversationId).toBe("conv-new");
+      expect(calls.some((call) => call.url.includes("conv-old/messages"))).toBe(false);
+      expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
+      internal.a?.forEach((hook) => hook());
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   // ---- WP-D（缺口3）：停止后生成状态待确认 + 手动核对 ----

@@ -228,6 +228,13 @@ let lastInitTargetConversationId: string | null = null;
 // 不响应别的页面的 hash 变化；恢复核对（online/visibility）不受此限，
 // 合法所属页在后台恢复仍是设计行为。
 let instanceActive = true;
+// VC-R158：initPage 读过 URL 目标之后的 await（loadConversations/
+// openConversation/恢复）期间收到 hashchange 时，initBusy 守卫会丢弃事件
+// ——URL 已指向 conv-b，页面停在 conv-a。只为这类"确实收到但初始化忙"
+// 的事件保留一个待重评标记，init 收尾清 busy 后复用 onLocationHashChange
+// 按最新 location 重评一次：同目标/离开 chat/停用等守卫在 handler 内自行
+// 去重，不排队旧目标——连续 A→B→A 只服从最终 URL。
+let pendingHashRecheckAfterInit = false;
 onActivated(() => {
   instanceActive = true;
 });
@@ -479,6 +486,10 @@ async function initPage(): Promise<void> {
     pageState.value = "error";
   } finally {
     initBusy.value = false;
+    if (pendingHashRecheckAfterInit) {
+      pendingHashRecheckAfterInit = false;
+      onLocationHashChange();
+    }
   }
 }
 
@@ -744,10 +755,14 @@ let stopLifecycle: (() => void) | undefined;
 function onLocationHashChange(): void {
   // KeepAlive 停用的隐藏页不响应——只有当前活动实例可以重开窗口。
   if (!instanceActive) return;
-  if (initBusy.value || pageState.value === "loading") return;
   if (typeof location === "undefined") return;
   if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
   if (!/^#\/pages\/chat\/chat(\?|$)/.test(location.hash)) return;
+  if (initBusy.value) {
+    pendingHashRecheckAfterInit = true;
+    return;
+  }
+  if (pageState.value === "loading") return;
   if (queryContext().conversationId === lastInitTargetConversationId) return;
   void initPage();
 }
@@ -771,6 +786,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  instanceActive = false;
+  pendingHashRecheckAfterInit = false;
   stopLifecycle?.();
   cancelPendingScrollFrame();
   if (typeof document !== "undefined" && typeof window !== "undefined") {
