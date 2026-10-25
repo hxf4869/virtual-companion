@@ -1301,7 +1301,9 @@ describe("useChatStore", () => {
     expect(store.messages).toHaveLength(PAGE_ROWS);
 
     // 上一会话的更早页在途；用户切到 22（窗口令牌递增）。
-    const manual = store.loadMoreHistory(transport);
+    // R209-B：作废响应不得触发提交前回调（页面据此不写新窗口滚动）。
+    const beforePrepend = vi.fn();
+    const manual = store.loadMoreHistory(transport, undefined, beforePrepend);
     const pendingB = store.openConversation(transport, "22");
     expect(answer("22", pageOf("22", 201, PAGE_ROWS))).toBe(true);
     await flushStore();
@@ -1315,6 +1317,115 @@ describe("useChatStore", () => {
     expect(store.conversationId).toBe("22");
     expect(store.messages).toHaveLength(PAGE_ROWS);
     expect(store.messages.every((m) => m.conversationId === "22")).toBe(true);
+    expect(beforePrepend).not.toHaveBeenCalled();
+  });
+
+  // ---- R209：加载更早消息的在途等待与防重入 ----
+
+  it("R209：loadMoreHistory 在途时吞掉同窗口重复触发，同游标只有一条 GET", async () => {
+    const store = useChatStore();
+    const { transport, answer, pendingCount } = gatedMessagesTransport();
+
+    const opened = store.openConversation(transport, "11");
+    expect(answer("11", pageOf("11", 101, PAGE_ROWS))).toBe(true);
+    await flushStore();
+    await opened;
+    expect(store.messages).toHaveLength(PAGE_ROWS);
+
+    const first = store.loadMoreHistory(transport);
+    expect(store.historyLoadingMore).toBe(true);
+    // 在途期间连点两次：都被吞掉、立即收敛，不产生第二条 before GET。
+    await expect(store.loadMoreHistory(transport)).resolves.toBeUndefined();
+    await expect(store.loadMoreHistory(transport)).resolves.toBeUndefined();
+    expect(pendingCount("11")).toBe(1);
+
+    expect(answer("11", pageOf("11", 51, PAGE_ROWS))).toBe(true);
+    await flushStore();
+    await first;
+    expect(store.messages).toHaveLength(2 * PAGE_ROWS);
+    expect(store.messages[0].messageId).toBe("51");
+    expect(store.historyLoadingMore).toBe(false);
+  });
+
+  it("R209：加载更早消息失败释放等待，重试同游标补齐", async () => {
+    const store = useChatStore();
+    let olderFails = true;
+    let beforeCalls = 0;
+    const transport: ChatTransport = {
+      request(method, path) {
+        const match = path.match(/^\/api\/v1\/conversations\/(\d+)\/messages/);
+        if (method === "GET" && match) {
+          const params = new URLSearchParams(path.split("?")[1] ?? "");
+          if (params.get("before") !== null) {
+            beforeCalls += 1;
+            if (olderFails) return Promise.reject(new TypeError("fetch failed"));
+            return Promise.resolve({ ok: true, status: 200, json: pageOf(match[1], 51, PAGE_ROWS) });
+          }
+          return Promise.resolve({ ok: true, status: 200, json: pageOf(match[1], 101, PAGE_ROWS) });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: [] });
+      },
+    };
+
+    await store.openConversation(transport, "11");
+    await expect(store.loadMoreHistory(transport)).rejects.toBeInstanceOf(TypeError);
+    // 失败释放等待：入口立即可重试，仍走同一 before 游标。
+    expect(store.historyLoadingMore).toBe(false);
+    olderFails = false;
+    await store.loadMoreHistory(transport);
+    expect(beforeCalls).toBe(2);
+    expect(store.messages).toHaveLength(2 * PAGE_ROWS);
+    expect(store.historyLoadingMore).toBe(false);
+  });
+
+  it("R209：切会话作废在途加载，晚到失败不落新窗口，新会话加载不被旧请求锁住", async () => {
+    const store = useChatStore();
+    const gates: Array<{
+      resolve(rows: unknown[]): void;
+      reject(reason?: unknown): void;
+    }> = [];
+    const transport: ChatTransport = {
+      request(method, path) {
+        const match = path.match(/^\/api\/v1\/conversations\/(\d+)\/messages/);
+        if (method === "GET" && match) {
+          const params = new URLSearchParams(path.split("?")[1] ?? "");
+          if (params.get("before") !== null) {
+            return new Promise((resolve, reject) => {
+              gates.push({
+                resolve: (rows) => resolve({ ok: true, status: 200, json: rows }),
+                reject,
+              });
+            });
+          }
+          const rows = match[1] === "11" ? pageOf("11", 101, PAGE_ROWS) : pageOf("22", 201, PAGE_ROWS);
+          return Promise.resolve({ ok: true, status: 200, json: rows });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: [] });
+      },
+    };
+
+    await store.openConversation(transport, "11");
+    const staleLoad = store.loadMoreHistory(transport);
+    expect(store.historyLoadingMore).toBe(true);
+
+    await store.openConversation(transport, "22");
+    // 窗口重建：旧等待清理，新窗口入口立即可用。
+    expect(store.historyLoadingMore).toBe(false);
+    const freshLoad = store.loadMoreHistory(transport);
+    expect(store.historyLoadingMore).toBe(true);
+
+    // 11 的晚到失败先收尾：不得解锁 22 的等待，也不得把失败落进 22 的窗口。
+    gates[0].reject(new TypeError("fetch failed"));
+    await flushStore();
+    expect(store.historyLoadingMore).toBe(true);
+
+    // 22 的更早页正常落地；晚到的失败被静默作废（staleLoad 不再 reject）。
+    gates[1].resolve(pageOf("22", 151, PAGE_ROWS));
+    await Promise.all([staleLoad, freshLoad]);
+    expect(store.conversationId).toBe("22");
+    expect(store.messages).toHaveLength(2 * PAGE_ROWS);
+    expect(store.messages.every((m) => m.conversationId === "22")).toBe(true);
+    expect(store.historyLoadingMore).toBe(false);
   });
 
   // ---- 缺陷（Codex 二轮问题5）：晚到的 openConversation 清理不得破坏 ----

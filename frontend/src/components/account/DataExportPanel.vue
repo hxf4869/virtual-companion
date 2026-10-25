@@ -198,16 +198,17 @@ function isReconciledByPage(error: unknown): boolean {
   return isUnauthorized(error) || isAccountContextChangedError(error);
 }
 
-/** classify 归为 rejected 时才可能走到这里；401 与期望账号失配 409 已在调用方排除。 */
+/** classify 归为 rejected 时才可能走到这里；401 与期望账号失配 409 已在调用方排除。
+ * 创建失败后面板仍是 form 且 request 为空，没有查看进度入口，文案只能引导重新申请。 */
 function describeCreateError(error: unknown): string {
   if (classifyDataExportCreateError(error) === "rejected") {
     if (error instanceof DataExportHttpError && error.status === 404) {
       return "当前密码不正确，没有创建副本。";
     }
     // 400 可能是请求不合法或已有 PENDING，不得断言精确原因。
-    return "这次申请没有被接受：可能已有一份副本在整理中，或这次请求没能提交；可以稍后再查看或重新申请。";
+    return "这次申请没有被接受。若已有副本正在整理，请等它整理完成后重新申请。";
   }
-  return "申请没有完成，结果不确定；请稍后再查看或重新申请。";
+  return "暂时无法确认申请结果。请稍后重新申请；如果刚才的申请已开始整理，需要等它整理完成。";
 }
 
 async function onCreate(): Promise<void> {

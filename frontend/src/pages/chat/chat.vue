@@ -73,6 +73,7 @@
         :has-more="showLoadMore"
         :busy="generationBusy"
         :older-load-error="olderLoadError"
+        :older-loading="store.historyLoadingMore"
         :status-text="statusText"
         :status-tone="statusTone"
         :status-action="statusAction"
@@ -727,25 +728,36 @@ function onStatusAction(): void {
 }
 
 /**
- * WP-D（缺口6）：手动加载更早消息，prepend 后做阅读锚点补偿——记录插入
- * 前的 scrollTop/scrollHeight，插入渲染后按高度差补偿，视口内容不跳动。
+ * WP-D（缺口6）：手动加载更早消息，prepend 后做阅读锚点补偿——按真实
+ * 高度差补偿，视口内容不跳动。
+ * R209：在途等待期间的重复触发直接吞掉——不重发 GET（store 已有同层防
+ * 重入），也不重做第二次阅读补偿。
+ * R209-B：真实浏览器会在 prepend 渲染时自行锚定 scrollTop，渲染后的值不
+ * 可再作基点（会双补偿）。store 在归属校验通过、提交之前回调——在此捕获
+ * 浏览器锚定前的真实阅读几何（等待期间用户滚动后的位置、错误提示清除后
+ * 的高度），渲染后用捕获 top + 高度差作原有补偿；作废响应不触发回调，
+ * 没有有效快照就不写滚动。失败路径提前返回，不写 scrollTop。
  */
 async function onLoadMore(): Promise<void> {
+  if (store.historyLoadingMore) return;
   store.historyLoadFailed = false;
-  const node = historyNode();
-  const anchor = node ? { top: node.scrollTop, height: node.scrollHeight } : null;
+  // R209-B：快照经可变 holder 持有——回调在闭包内赋值，直接用 let 局部
+  // 变量会被 TS 控制流按初始 null 收窄。
+  const holder: { current: { top: number; height: number } | null } = { current: null };
   try {
-    await store.loadMoreHistory(transport);
+    await store.loadMoreHistory(transport, undefined, () => {
+      const node = historyNode();
+      if (node) holder.current = { top: node.scrollTop, height: node.scrollHeight };
+    });
   } catch {
     store.historyLoadFailed = true;
     return;
   }
   await nextTick();
-  if (!anchor) return;
   const after = historyNode();
-  if (after) {
-    after.scrollTop = anchor.top + Math.max(0, after.scrollHeight - anchor.height);
-  }
+  const anchorSnapshot = holder.current;
+  if (!after || !anchorSnapshot) return;
+  after.scrollTop = anchorSnapshot.top + Math.max(0, after.scrollHeight - anchorSnapshot.height);
 }
 
 /** VC-R195：开始新对话会清空输入框的确认文案（只陈述输入框内容会被清空）。 */

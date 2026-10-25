@@ -109,26 +109,28 @@
           </text>
         </section>
 
+        <!-- R208：已有内容时的列表级反馈区。等待/失败/不确定/成功共用同一
+             节点与同一按钮，键盘焦点才能留在原位；等待期间不用原生 disabled
+             （会把焦点掉到 body），用 aria-disabled/aria-busy 表意，重复 GET
+             由 retryList 的 listStatus loading 门挡住。 -->
         <view
-          v-if="memory.listStatus === 'error'"
-          class="memory-list-error"
-          data-testid="memory-list-error"
-          role="alert"
-        >
-          <text>最新内容没有加载出来，下方可能不是当前列表。</text>
-          <button type="button" class="text-action" data-testid="memory-list-retry" @click="retryList">
-            重新加载
-          </button>
-        </view>
-        <view
-          v-else-if="listInconclusiveNotice"
-          class="memory-list-inconclusive"
-          data-testid="memory-list-inconclusive-notice"
+          v-if="listNotice"
+          class="memory-list-notice"
+          :class="{ 'memory-list-notice--failed': listNotice === 'failed' }"
           role="status"
+          data-testid="memory-list-notice"
+          :data-state="listNotice"
         >
-          <text>最新内容没有读出来，下方可能不是当前列表。</text>
-          <button type="button" class="text-action" data-testid="memory-inconclusive-retry" @click="retryList">
-            重新读取
+          <text>{{ listNoticeCopy }}</text>
+          <button
+            type="button"
+            class="text-action"
+            data-testid="memory-list-retry"
+            :aria-disabled="listNotice === 'pending'"
+            :aria-busy="listNotice === 'pending'"
+            @click="retryList"
+          >
+            {{ listRetryLabel }}
           </button>
         </view>
 
@@ -436,7 +438,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, type ComponentPublicInstance } from "vue";
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch, type ComponentPublicInstance } from "vue";
 
 import {
   classifyMemoryWriteError,
@@ -560,6 +562,46 @@ const listInconclusiveNotice = computed(() =>
   && !listWindowEmpty.value,
 );
 
+// R208：已有内容时列表级反馈区的阶段文案。failed/inconclusive 仍由 store 的
+// listStatus 与 listInconclusive 推导；只有用户在反馈区主动点按钮才经历
+// pending → success，正常重新初始化与刷新核对发起的新读取收回手动反馈。
+const LIST_NOTICE_COPY = {
+  pending: "正在重新加载，下方暂时是之前的列表。",
+  failed: "最新内容没有加载出来，下方可能不是当前列表。",
+  inconclusive: "最新内容没有读出来，下方可能不是当前列表。",
+  success: "已更新，下方是当前列表。",
+} as const;
+type ListNotice = keyof typeof LIST_NOTICE_COPY;
+
+/** 用户在列表反馈区主动重载的阶段；null 时交给 failed/inconclusive 或无反馈。 */
+const manualListRefresh = ref<"pending" | "success" | null>(null);
+
+const listNotice = computed<ListNotice | null>(() => {
+  if (manualListRefresh.value === "pending") return "pending";
+  if (memory.listStatus === "error") return "failed";
+  if (listInconclusiveNotice.value) return "inconclusive";
+  if (manualListRefresh.value === "success") return "success";
+  return null;
+});
+
+const listNoticeCopy = computed(() => (
+  listNotice.value ? LIST_NOTICE_COPY[listNotice.value] : ""
+));
+
+const listRetryLabel = computed(() => {
+  if (listNotice.value === "success") return "再次刷新";
+  if (listNotice.value === "inconclusive") return "重新读取";
+  return "重新加载";
+});
+
+// 手动重载等待中发生退出/401/换号的真实清理（memory.reset 递增 ownerEpoch）：
+// 旧响应会按 epoch 比较丢弃、不再回来收尾，pending 若不在此清掉就会停成永久
+// 等待。同步 flush 让清理落在 owner 改变的当下，先于新 owner 之后可能发起的
+// 任何新 pending；旧响应本身不写任何状态，也就不会误清新 pending。
+watch(() => memory.ownerEpoch, () => {
+  manualListRefresh.value = null;
+}, { flush: "sync" });
+
 function setUnknownAction(action: UnknownWriteAction): void {
   unknownAction.value = action;
   rejectedNotice.value = "";
@@ -594,6 +636,7 @@ async function initialLoad(): Promise<void> {
   busy.value = true;
   unknownAction.value = null;
   rejectedNotice.value = "";
+  manualListRefresh.value = null;
   relState.value = "loading";
   try {
     if (!auth.isAuthenticated) {
@@ -625,10 +668,21 @@ async function initialLoad(): Promise<void> {
   }
 }
 
+/**
+ * 列表级重新加载/重新读取（反馈区按钮与空窗口不确定态共用）。重复触发由
+ * store 的 listStatus loading 门挡住（aria-disabled 不拦键盘事件）；等待与
+ * 结果都写回同一反馈区，不卸载按钮。退出/换号后的晚到结果按 ownerEpoch
+ * 丢弃。成功反馈只在刷新后窗口有内容时给出：真实空态自身已说明当前列表。
+ */
 async function retryList(): Promise<void> {
   if (!relationshipId.value) return;
+  if (memory.listStatus === "loading") return;
+  const requestEpoch = memory.ownerEpoch;
+  manualListRefresh.value = "pending";
   const outcome = await memory.load(transport, relationshipId.value);
+  if (memory.ownerEpoch !== requestEpoch) return;
   listInconclusive.value = outcome === "inconclusive";
+  manualListRefresh.value = outcome === "ok" && !listWindowEmpty.value ? "success" : null;
 }
 
 /**
@@ -638,11 +692,16 @@ async function retryList(): Promise<void> {
  */
 async function refreshList(): Promise<void> {
   if (!relationshipId.value) return;
+  // 与 retryList 共用同一列表读取：在途时不重复发 GET。
+  if (memory.listStatus === "loading") return;
   const pending = unknownAction.value;
   if (!pending) {
     await retryList();
     return;
   }
+  // 新读取接管列表反馈：上一次手动重载的"已更新"不得延续到这次结果上
+  //（这次可能失败或是存在性隐藏）。
+  manualListRefresh.value = null;
   const requestEpoch = memory.ownerEpoch;
   const outcome = await memory.load(transport, relationshipId.value);
   if (memory.ownerEpoch !== requestEpoch) return;
@@ -1106,18 +1165,7 @@ onUnmounted(() => {
   color: var(--vc-color-error);
 }
 
-.memory-list-error {
-  display: grid;
-  gap: var(--vc-space-1);
-  padding: var(--vc-space-3);
-  border-radius: var(--vc-radius-control);
-  background: var(--vc-color-surface-soft);
-  color: var(--vc-color-error);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.memory-list-inconclusive {
+.memory-list-notice {
   display: grid;
   gap: var(--vc-space-1);
   padding: var(--vc-space-3);
@@ -1126,6 +1174,14 @@ onUnmounted(() => {
   color: var(--vc-color-ink-muted);
   font-size: 13px;
   line-height: 20px;
+}
+
+.memory-list-notice--failed {
+  color: var(--vc-color-error);
+}
+
+.memory-list-notice .text-action[aria-disabled="true"] {
+  opacity: 0.6;
 }
 
 .memory-section {

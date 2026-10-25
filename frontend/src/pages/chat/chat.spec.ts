@@ -78,6 +78,8 @@ interface FetchOptions {
   cancelStatus?: 200 | 503;
   /** VC-R198：GET /messages?before= 可控 503（仿 relationshipFails 的函数开关），只影响向上加载更早消息。 */
   olderMessagesFails?: boolean | (() => boolean);
+  /** R209：首个 GET /messages?before= 挂起，由测试放行/拒绝（在途等待夹具）。 */
+  deferOlderMessages?: boolean;
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -119,6 +121,14 @@ function stubFetch(options: FetchOptions = {}) {
   });
   // VC-R115：deferGeneration 只作用于首个 POST /generations 的闭包级标记。
   let generationDeferralUsed = false;
+  // R209：deferOlderMessages 只挂起首个 GET /messages?before= 的闭包级标记。
+  let olderDeferralUsed = false;
+  let resolveOlderMessages!: (value: StubResponse) => void;
+  let rejectOlderMessages!: (reason?: unknown) => void;
+  const deferredOlderMessages = new Promise<StubResponse>((resolve, reject) => {
+    resolveOlderMessages = resolve;
+    rejectOlderMessages = reject;
+  });
   // VC-R04：可控 SSE body——测试按需推送帧并关闭（EOF）。
   const encoder = new TextEncoder();
   let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -169,6 +179,10 @@ function stubFetch(options: FetchOptions = {}) {
       const before = params.get("before");
       if (before !== null && resolveBool(options.olderMessagesFails)) {
         return response(false, 503, { code: "SERVICE_UNAVAILABLE" });
+      }
+      if (before !== null && options.deferOlderMessages && !olderDeferralUsed) {
+        olderDeferralUsed = true;
+        return deferredOlderMessages;
       }
       const limit = Number(params.get("limit") ?? 50);
       const numeric = (row: unknown) => Number((row as { messageId: unknown }).messageId);
@@ -240,6 +254,8 @@ function stubFetch(options: FetchOptions = {}) {
     resolveGenerationPost,
     rejectGenerationPost,
     resolveSnapshot,
+    resolveOlderMessages,
+    rejectOlderMessages,
     pushFrame,
     endStream,
   };
@@ -2580,6 +2596,257 @@ describe("聊天产品页", () => {
     expect(wrapper.find('[data-testid="load-more-error"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="load-more"]').text()).toBe("查看更早消息");
     expect(history.scrollTop).toBe(500);
+    wrapper.unmount();
+  });
+
+  // ---- R209：加载更早消息的在途等待与防重入 ----
+  // 缺陷：GET 挂起期间按钮仍显示"查看更早消息"、无 aria-busy/aria-disabled，
+  // 同游标连点/Enter 会重复发多条 before GET。契约：在途入口显示"正在加载
+  // 更早消息…"并标 aria-busy/aria-disabled；同游标重复触发只发一条 GET；
+  // 收尾释放等待；失败后同节点保留就近重试与焦点。
+
+  it("R209：在途等待显示加载文案并标 aria 状态，重复点击只发一条 GET，成功后恢复入口", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const { calls, resolveOlderMessages } = stubFetch({
+      messages: { "conv-new": rows },
+      deferOlderMessages: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.messages).toHaveLength(50);
+    const button = wrapper.find('[data-testid="load-more"]');
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(button.text()).toBe("正在加载更早消息…");
+    expect(button.attributes("aria-busy")).toBe("true");
+    expect(button.attributes("aria-disabled")).toBe("true");
+    expect(store.historyLoadingMore).toBe(true);
+
+    // 在途期间重复点击（等效连续 Enter）：同游标不再发新 GET。
+    await button.trigger("click");
+    await button.trigger("click");
+    await flushPromises();
+    const olderCalls = () => calls.filter((call) => call.url.includes("before=71"));
+    expect(olderCalls()).toHaveLength(1);
+
+    resolveOlderMessages(
+      response(true, 200, rows.filter((row) => Number(row.messageId) < 71).slice(-50)),
+    );
+    await flushPromises();
+
+    expect(olderCalls()).toHaveLength(1);
+    expect(store.messages).toHaveLength(100);
+    expect(store.historyLoadingMore).toBe(false);
+    expect(button.text()).toBe("查看更早消息");
+    expect(button.attributes("aria-busy")).toBe("false");
+    expect(button.attributes("aria-disabled")).toBe("false");
+    wrapper.unmount();
+  });
+
+  it("R209：等待中的加载失败释放等待，同节点保留重试入口与焦点", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const { rejectOlderMessages } = stubFetch({
+      messages: { "conv-new": rows },
+      deferOlderMessages: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.messages).toHaveLength(50);
+    const button = wrapper.find('[data-testid="load-more"]');
+    (button.element as HTMLElement).focus();
+    await button.trigger("click");
+    await flushPromises();
+
+    // 等待中：入口不设原生 disabled（保留焦点），文案与 aria 如实表达在途。
+    expect(button.text()).toBe("正在加载更早消息…");
+    expect(button.attributes("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(button.element);
+
+    rejectOlderMessages(new TypeError("fetch failed"));
+    await flushPromises();
+
+    expect(store.historyLoadingMore).toBe(false);
+    expect(store.historyLoadFailed).toBe(true);
+    expect(wrapper.find('[data-testid="load-more-error"]').exists()).toBe(true);
+    // 失败后同一节点承接就近重试，焦点不丢。
+    expect(button.text()).toBe("再试一次");
+    expect(document.activeElement).toBe(button.element);
+    wrapper.unmount();
+  });
+
+  it("R209：等待期间用户上滚，prepend 补偿以真实阅读位置为基点不回跳", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const { resolveOlderMessages } = stubFetch({
+      messages: { "conv-new": rows },
+      deferOlderMessages: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.messages).toHaveLength(50);
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    Object.defineProperty(history, "scrollHeight", {
+      configurable: true,
+      get: () => (store.messages.length >= 100 ? 9944 : 8316),
+    });
+    Object.defineProperty(history, "clientHeight", { configurable: true, value: 526 });
+    history.scrollTop = 4100;
+    history.dispatchEvent(new Event("wheel"));
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="load-more"]').trigger("click");
+    await flushPromises();
+    expect(store.historyLoadingMore).toBe(true);
+
+    // GET 挂起期间用户向上滚两页（高度未变，真实阅读位置变为 3048）。
+    history.scrollTop = 3048;
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    resolveOlderMessages(
+      response(true, 200, rows.filter((row) => Number(row.messageId) < 71).slice(-50)),
+    );
+    await flushPromises();
+
+    expect(store.messages).toHaveLength(100);
+    // 高度 8316→9944（差 1628）；基点是用户最终位置 3048 → 4676，
+    // 不再按发起快照 4100 补出 5728 抹掉这次移动。
+    expect(history.scrollTop).toBe(4676);
+    wrapper.unmount();
+  });
+
+  it("R209：浏览器渲染自动锚定 scrollTop 后不二次补偿，最终位置只含一次高度差", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const { resolveOlderMessages } = stubFetch({
+      messages: { "conv-new": rows },
+      deferOlderMessages: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.messages).toHaveLength(50);
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    // 模拟真实浏览器几何：scrollHeight 随消息数变化；布局增高时 scrollTop
+    // 随之自动锚定（getter 惰性结算），程序写入视为布局已应用——若候选以
+    // 渲染后 scrollTop 作基点会叠加第二次高度差（4676+1628）。
+    const heightOf = () => (store.messages.length >= 100 ? 9944 : 8316);
+    let laidOutHeight = 8316;
+    let logicalTop = 4100;
+    Object.defineProperty(history, "scrollHeight", { configurable: true, get: heightOf });
+    Object.defineProperty(history, "scrollTop", {
+      configurable: true,
+      get: () => {
+        const height = heightOf();
+        if (height > laidOutHeight) {
+          logicalTop += height - laidOutHeight;
+          laidOutHeight = height;
+        }
+        return logicalTop;
+      },
+      set: (value: number) => {
+        laidOutHeight = heightOf();
+        logicalTop = value;
+      },
+    });
+    history.dispatchEvent(new Event("wheel"));
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="load-more"]').trigger("click");
+    await flushPromises();
+    expect(store.historyLoadingMore).toBe(true);
+
+    // GET 挂起期间用户向上滚两页（高度未变，真实阅读位置 3048）。
+    history.scrollTop = 3048;
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    resolveOlderMessages(
+      response(true, 200, rows.filter((row) => Number(row.messageId) < 71).slice(-50)),
+    );
+    await flushPromises();
+
+    expect(store.messages).toHaveLength(100);
+    // 渲染后几何已含 prepend 高度差（浏览器已锚定到 4676）；补偿写入的
+    // 终值仍只有一次高度差，不发生双补偿。
+    expect(history.scrollHeight).toBe(9944);
+    expect(history.scrollTop).toBe(4676);
+    wrapper.unmount();
+  });
+
+  it("R209：等待期间窗口已切走时，旧响应不写回消息也不修改新会话滚动", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const { resolveOlderMessages } = stubFetch({
+      messages: { "conv-new": rows },
+      deferOlderMessages: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.messages).toHaveLength(50);
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    Object.defineProperty(history, "scrollHeight", {
+      configurable: true,
+      get: () => (store.conversationId === "conv-old" ? 9000 : 8316),
+    });
+    history.scrollTop = 4100;
+    history.dispatchEvent(new Event("wheel"));
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="load-more"]').trigger("click");
+    await flushPromises();
+    expect(store.historyLoadingMore).toBe(true);
+
+    // GET 挂起期间窗口切到其他会话；用户在新窗口的阅读位置是 120。
+    store.conversationId = "conv-old";
+    history.scrollTop = 120;
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    resolveOlderMessages(
+      response(true, 200, rows.filter((row) => Number(row.messageId) < 71).slice(-50)),
+    );
+    await flushPromises();
+
+    // 旧响应被会话归属作废：不 prepend，也不得动新会话的滚动位置。
+    expect(store.conversationId).toBe("conv-old");
+    expect(store.messages).toHaveLength(50);
+    expect(history.scrollTop).toBe(120);
     wrapper.unmount();
   });
 

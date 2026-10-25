@@ -155,6 +155,11 @@ export const useChatStore = defineStore("h5-chat", () => {
   // 结束当前会话）递增；在途分页链路提交前必须持有与当前一致的令牌，晚到的
   // 旧会话响应一律丢弃，禁止把 B 会话的页面串写进已切换到 A 的窗口。
   let historyWindowToken = 0;
+  // R209：手动"加载更早消息"的在途等待与一层防重入。防重入身份＝发起时的
+  // 窗口令牌 + 会话；窗口重建（loadHistory/openConversation/reset）清掉等待
+  // 并作废在途请求，旧请求的 finally 按身份比较，不得释放新一轮的等待。
+  const historyLoadingMore = ref(false);
+  let loadMoreInFlight: { token: number; conversationId: string } | null = null;
   // VC-R09：会话列表读取的账号/窗口归属纪元。reset()（换号/登出清空会话
   // 缓存）递增；loadConversations 在 await 前捕获，提交前校验仍匹配——旧
   // 账号在途的列表读取晚到（成功或失败）不重填新账号的列表、不落任何状态。
@@ -1126,6 +1131,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages.value = [];
     historyHasMore.value = false;
     historyLoadFailed.value = false;
+    // R209：窗口销毁清掉在途等待；令牌已递增，旧请求晚到只作废自己。
+    historyLoadingMore.value = false;
+    loadMoreInFlight = null;
     recentLoadFailed.value = false;
     cancelUnconfirmed.value = false;
     finalAssistant.value = null;
@@ -1177,6 +1185,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 窗口重建即认领新令牌：任何更早的在途分页链路就此作废。
     const token = ++historyWindowToken;
     historyLoadFailed.value = false;
+    // R209：重建窗口清掉旧会话的在途等待，入口立即可用。
+    historyLoadingMore.value = false;
+    loadMoreInFlight = null;
     recentLoadFailed.value = false;
     try {
       await loadRecentWindow(transport, token);
@@ -1255,6 +1266,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages.value = [];
     historyHasMore.value = true;
     historyLoadFailed.value = false;
+    // R209：切窗即清理旧会话的在途等待；令牌同时递增，旧请求晚到只作废自己。
+    historyLoadingMore.value = false;
+    loadMoreInFlight = null;
     recentLoadFailed.value = false;
     // round7（P1）：切窗即作废旧令牌；本链路此后持有自己的快照继续分页。
     const token = ++historyWindowToken;
@@ -1316,17 +1330,43 @@ export const useChatStore = defineStore("h5-chat", () => {
   /**
    * WP-D（缺口6）：手动"加载更早消息"——以当前窗口最旧一条为 before 向前取
    * 一页并 prepend，messageId 去重；取满一页才允许继续向上取。
+   * R209：独立的在途等待与一层防重入——同窗口在途时重复触发（连点/Enter）
+   * 直接吞掉，同游标只发一条 GET；失败只在本请求仍持有窗口时抛给页面
+   * （就近重试入口），窗口已重建的晚到失败静默作废，不覆盖新会话；
+   * 等待随 finally 按身份释放，旧请求不得解锁新请求。
+   * R209-B：beforePrepend 在归属校验（token+会话）通过之后、messages/
+   * hasMore 提交之前同步调用——调用方在此捕获浏览器自动锚定前的真实
+   * 阅读几何；作废响应不触发回调。
    */
-  async function loadMoreHistory(transport: ChatTransport, token: number = historyWindowToken): Promise<void> {
+  async function loadMoreHistory(
+    transport: ChatTransport,
+    token: number = historyWindowToken,
+    beforePrepend?: () => void,
+  ): Promise<void> {
     if (!conversationId.value || !historyHasMore.value || token !== historyWindowToken) return;
+    if (loadMoreInFlight) return;
+    const inFlight = { token, conversationId: conversationId.value };
+    loadMoreInFlight = inFlight;
+    historyLoadingMore.value = true;
     const target = conversationId.value;
     const oldest = messages.value[0]?.messageId;
-    const bufferedPage = await listRecentMessages(transport, target, oldest, HISTORY_PAGE_SIZE);
-    if (token !== historyWindowToken || conversationId.value !== target) return;
-    const known = new Set(messages.value.map((message) => message.messageId));
-    const older = bufferedPage.filter((message) => !known.has(message.messageId));
-    messages.value = [...older, ...messages.value];
-    historyHasMore.value = bufferedPage.length >= HISTORY_PAGE_SIZE;
+    try {
+      const bufferedPage = await listRecentMessages(transport, target, oldest, HISTORY_PAGE_SIZE);
+      if (token !== historyWindowToken || conversationId.value !== target) return;
+      beforePrepend?.();
+      const known = new Set(messages.value.map((message) => message.messageId));
+      const older = bufferedPage.filter((message) => !known.has(message.messageId));
+      messages.value = [...older, ...messages.value];
+      historyHasMore.value = bufferedPage.length >= HISTORY_PAGE_SIZE;
+    } catch (error) {
+      if (token !== historyWindowToken || conversationId.value !== target) return;
+      throw error;
+    } finally {
+      if (loadMoreInFlight === inFlight) {
+        loadMoreInFlight = null;
+        historyLoadingMore.value = false;
+      }
+    }
   }
 
   /**
@@ -1563,6 +1603,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversations,
     historyHasMore,
     historyLoadFailed,
+    historyLoadingMore,
     recentLoadFailed,
     cancelUnconfirmed,
     finalAssistant,

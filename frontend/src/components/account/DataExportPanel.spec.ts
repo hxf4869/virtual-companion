@@ -262,7 +262,7 @@ describe("DataExportPanel", () => {
     await submitCreate(wrapper);
 
     const text = wrapper.get('[data-testid="data-copy-panel"]').text();
-    expect(text).toContain("可能已有一份副本在整理中");
+    expect(text).toContain("这次申请没有被接受。若已有副本正在整理，请等它整理完成后重新申请。");
     expect(text).not.toContain("当前密码不正确");
     wrapper.unmount();
   });
@@ -275,7 +275,7 @@ describe("DataExportPanel", () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="data-copy-error"]').text())
-      .toContain("申请没有完成，结果不确定；请稍后再查看或重新申请。");
+      .toContain("暂时无法确认申请结果。请稍后重新申请；如果刚才的申请已开始整理，需要等它整理完成。");
     expect(createDataExportMock).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
@@ -287,7 +287,7 @@ describe("DataExportPanel", () => {
     await submitCreate(wrapper);
 
     expect(wrapper.get('[data-testid="data-copy-error"]').text())
-      .toContain("申请没有完成，结果不确定");
+      .toContain("暂时无法确认申请结果");
     wrapper.unmount();
   });
 
@@ -318,7 +318,7 @@ describe("DataExportPanel", () => {
     expect(wrapper.find('[data-testid="data-copy-error"]').exists()).toBe(false);
     const text = wrapper.get('[data-testid="data-copy-panel"]').text();
     expect(text).not.toContain("当前密码不正确");
-    expect(text).not.toContain("结果不确定");
+    expect(text).not.toContain("暂时无法确认申请结果");
     expect(text).not.toContain("没有整理成功");
     expect(createDataExportMock).toHaveBeenCalledTimes(1);
     const input = wrapper.get('[data-testid="data-copy-password"]').element as HTMLInputElement;

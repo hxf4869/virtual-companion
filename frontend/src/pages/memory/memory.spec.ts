@@ -217,6 +217,19 @@ function memoryRows(wrapper: ReturnType<typeof mountPage>) {
   return wrapper.findAll('[data-testid="memory-row"]');
 }
 
+/**
+ * R208：列表级反馈区（等待/失败/不确定/成功共用同一节点）当前阶段；
+ * 未渲染时为 undefined。
+ */
+function listNoticeState(wrapper: ReturnType<typeof mountPage>): string | undefined {
+  const notice = wrapper.find('[data-testid="memory-list-notice"]');
+  return notice.exists() ? notice.attributes("data-state") : undefined;
+}
+
+function listGetCount(calls: Array<{ method: string; url: string }>): number {
+  return calls.filter((call) => call.method === "GET" && call.url.includes("/memories")).length;
+}
+
 async function openEdit(wrapper: ReturnType<typeof mountPage>, testid: string) {
   await wrapper.get(`[data-testid="${testid}"]`).trigger("click");
 }
@@ -561,7 +574,8 @@ describe("记忆管理页", () => {
     await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="memory-list-error"]').text()).toContain("没有加载出来");
+    expect(listNoticeState(wrapper)).toBe("failed");
+    expect(wrapper.get('[data-testid="memory-list-notice"]').text()).toContain("没有加载出来");
     // 核对刷新失败：未知提示与旧数据保留。
     expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
     expect(memoryRows(wrapper)).toHaveLength(2);
@@ -572,7 +586,12 @@ describe("记忆管理页", () => {
     // 初始加载 + 失败的刷新 + 成功的重试。
     expect(calls.filter((call) => call.url.includes("/memories") && call.method === "GET"))
       .toHaveLength(3);
-    expect(wrapper.find('[data-testid="memory-list-error"]').exists()).toBe(false);
+    // R208：手动重载成功后同一反馈区显示"已更新"，同一按钮保留为"再次刷新"；
+    // 列表级成功不抹掉写入核对——未知提示仍等待"刷新核对"按预期值确认。
+    expect(listNoticeState(wrapper)).toBe("success");
+    expect(wrapper.get('[data-testid="memory-list-notice"]').text()).toContain("已更新");
+    expect(wrapper.get('[data-testid="memory-list-retry"]').text()).toBe("再次刷新");
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
     expect(memoryRows(wrapper)).toHaveLength(2);
     wrapper.unmount();
   });
@@ -614,7 +633,7 @@ describe("记忆管理页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="memory-list-error"]').exists()).toBe(false);
+    expect(listNoticeState(wrapper)).toBeUndefined();
     expect(memoryRows(wrapper)).toHaveLength(2);
     expect(wrapper.get('[data-testid="memory-pending"]').text()).toContain("学吉他");
     expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(1);
@@ -702,7 +721,8 @@ describe("记忆管理页", () => {
     await flushPromises();
 
     expect(wrapperB.find('[data-testid="memory-loading"]').exists()).toBe(false);
-    expect(wrapperB.get('[data-testid="memory-list-error"]').text()).toContain("没有加载出来");
+    expect(listNoticeState(wrapperB)).toBe("failed");
+    expect(wrapperB.get('[data-testid="memory-list-notice"]').text()).toContain("没有加载出来");
     expect(wrapperB.findAll('[data-testid="memory-row"]')).toHaveLength(0);
     expect(wrapperB.text()).not.toContain("晚上散步");
     expect(useMemoryStore().items).toEqual([]);
@@ -1020,7 +1040,8 @@ describe("记忆管理页", () => {
     await flushPromises();
 
     // 读取失败：不得宣布删除完成/失败，也不重放 DELETE。
-    expect(wrapper.get('[data-testid="memory-list-error"]').text()).toContain("没有加载出来");
+    expect(listNoticeState(wrapper)).toBe("failed");
+    expect(wrapper.get('[data-testid="memory-list-notice"]').text()).toContain("没有加载出来");
     expect(memoryRows(wrapper)).toHaveLength(2);
     expect(wrapper.text()).toContain("晚上散步");
     expect(wrapper.text()).toContain("用户的生日在三月。");
@@ -1241,8 +1262,10 @@ describe("记忆管理页", () => {
 
     expect(memoryRows(remounted)).toHaveLength(2);
     expect(remounted.find('[data-testid="memory-empty"]').exists()).toBe(false);
-    expect(remounted.get('[data-testid="memory-list-inconclusive-notice"]').text())
+    expect(listNoticeState(remounted)).toBe("inconclusive");
+    expect(remounted.get('[data-testid="memory-list-notice"]').text())
       .toContain("可能不是当前列表");
+    expect(remounted.get('[data-testid="memory-list-retry"]').text()).toBe("重新读取");
     remounted.unmount();
   });
 
@@ -1640,6 +1663,273 @@ describe("记忆管理页", () => {
     // 即聚焦 textarea，可立即开始改写。
     const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
     expect(document.activeElement).toBe(input);
+    wrapper.unmount();
+  });
+
+  it("R208 键盘重试列表：等待中同一反馈区与按钮保留焦点并挡重复 GET，再次失败与成功都不卸载按钮", async () => {
+    const retryGate = gate();
+    let gateArmed = false;
+    let failing = false;
+    const { calls } = stubFetch({
+      memoriesStatus: () => (failing ? 503 : 200),
+      get memoriesGate() {
+        return gateArmed ? retryGate : undefined;
+      },
+    });
+    const first = mountPage();
+    await flushPromises();
+    expect(memoryRows(first)).toHaveLength(2);
+
+    // 同一会话内重新进入页面（store 共享已有两条），这次列表 503：旧两行
+    // 保留并出现"重新加载"（实机路径：编辑后刷新核对 GET 503 落到同一状态）。
+    first.unmount();
+    failing = true;
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("failed");
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(listGetCount(calls)).toBe(2);
+
+    // 键盘用户聚焦"重新加载"后按 Enter（走 click）；这次 GET 挂起。
+    const retry = wrapper.get('[data-testid="memory-list-retry"]');
+    const retryElement = retry.element as HTMLButtonElement;
+    retryElement.focus();
+    expect(document.activeElement).toBe(retryElement);
+    gateArmed = true;
+    await retry.trigger("click");
+    await flushPromises();
+
+    // 修复前：listStatus 同步变 loading 使整块错误提示连按钮一起卸载，
+    // activeElement=BODY、role=status 为空、挂起期间没有等待反馈。修复后
+    // 同一节点承载"正在重新加载"，按钮 aria-disabled/aria-busy，焦点仍在
+    // 同一按钮，旧行不动，也不落回首载骨架。
+    expect(listGetCount(calls)).toBe(3);
+    expect(listNoticeState(wrapper)).toBe("pending");
+    const notice = wrapper.get('[data-testid="memory-list-notice"]');
+    expect(notice.attributes("role")).toBe("status");
+    expect(notice.text()).toContain("正在重新加载");
+    expect(wrapper.get('[data-testid="memory-list-retry"]').element).toBe(retryElement);
+    expect(retry.attributes("aria-disabled")).toBe("true");
+    expect(retry.attributes("aria-busy")).toBe("true");
+    expect(document.activeElement).toBe(retryElement);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.find('[data-testid="memory-loading"]').exists()).toBe(false);
+
+    // 等待期间再次 Enter：aria-disabled 不拦键盘事件，由 listStatus loading
+    // 门挡住，不发第二个 GET。
+    await retry.trigger("click");
+    await flushPromises();
+    expect(listGetCount(calls)).toBe(3);
+
+    // 放行 503：回到失败态，仍是同一按钮且焦点没有掉回 body。
+    gateArmed = false;
+    retryGate.resolve(response(503, null));
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("failed");
+    expect(wrapper.get('[data-testid="memory-list-retry"]').element).toBe(retryElement);
+    expect(retry.attributes("aria-disabled")).toBe("false");
+    expect(retry.attributes("aria-busy")).toBe("false");
+    expect(document.activeElement).toBe(retryElement);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+
+    // 服务恢复后再次 Enter：同一反馈区显示"已更新"，同一按钮变"再次刷新"，
+    // 焦点仍留在该按钮；"再次刷新"复用同一读取。
+    failing = false;
+    await retry.trigger("click");
+    await flushPromises();
+    expect(listGetCount(calls)).toBe(4);
+    expect(listNoticeState(wrapper)).toBe("success");
+    expect(wrapper.get('[data-testid="memory-list-notice"]').text()).toContain("已更新");
+    expect(wrapper.get('[data-testid="memory-list-retry"]').element).toBe(retryElement);
+    expect(retry.text()).toBe("再次刷新");
+    expect(document.activeElement).toBe(retryElement);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+
+    await retry.trigger("click");
+    await flushPromises();
+    expect(listGetCount(calls)).toBe(5);
+    expect(listNoticeState(wrapper)).toBe("success");
+    wrapper.unmount();
+  });
+
+  it("R208 等待期间用户移走焦点：重载成功后不抢回，旧行、编辑框与草稿保留", async () => {
+    const retryGate = gate();
+    let gateArmed = false;
+    let failing = false;
+    stubFetch({
+      memoriesStatus: () => (failing ? 503 : 200),
+      get memoriesGate() {
+        return gateArmed ? retryGate : undefined;
+      },
+    });
+    const first = mountPage();
+    await flushPromises();
+    first.unmount();
+    failing = true;
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("failed");
+
+    // 失败态下打开编辑并留下草稿（R204 把焦点送进输入框）。
+    await openEdit(wrapper, "memory-edit");
+    await flushPromises();
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R208 重载期间的草稿。");
+
+    // 回到"重新加载"按 Enter；等待中用户把焦点移到自动记忆开关。
+    const retry = wrapper.get('[data-testid="memory-list-retry"]');
+    (retry.element as HTMLButtonElement).focus();
+    gateArmed = true;
+    await retry.trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("pending");
+    const toggle = wrapper.get('[data-testid="autosave-toggle"]').element as HTMLButtonElement;
+    toggle.focus();
+    expect(document.activeElement).toBe(toggle);
+
+    // 成功回包：反馈区变"已更新"，焦点留在用户移到的开关上不被抢回；
+    // 旧行、编辑框与草稿都保留。
+    gateArmed = false;
+    retryGate.resolve(response(200, DEFAULT_MEMORIES));
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("success");
+    expect(document.activeElement).toBe(toggle);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R208 重载期间的草稿。");
+    wrapper.unmount();
+  });
+
+  it("R208 刷新核对在途时重复点击不发第二个 GET；手动重载的\"已更新\"不延续到之后的存在性隐藏读取", async () => {
+    const verifyGate = gate();
+    let gateArmed = false;
+    let phase: "ok" | "fail" | "hidden" = "ok";
+    const { calls } = stubFetch({
+      patchParseFailed: true,
+      memoriesStatus: () => (phase === "fail" ? 503 : phase === "hidden" ? 404 : 200),
+      get memoriesGate() {
+        return gateArmed ? verifyGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 编辑结果未知 → 刷新核对 503 → 列表失败态 → 手动"重新加载"成功：
+    // "已更新"与写入核对入口并存（列表级成功不替代按预期值的核对）。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("结果未知的内容。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    phase = "fail";
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("failed");
+    phase = "ok";
+    await wrapper.get('[data-testid="memory-list-retry"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("success");
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    expect(listGetCount(calls)).toBe(3);
+
+    // 刷新核对的 GET 挂起期间再点一次：被同一 listStatus loading 门挡住。
+    gateArmed = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listGetCount(calls)).toBe(4);
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listGetCount(calls)).toBe(4);
+
+    // 这次核对读到存在性隐藏（404 适配为空列表）：不得仍显示"已更新"；
+    // 未知提示、旧行与编辑草稿保留，核对算法不变（不误判生效/未生效）。
+    gateArmed = false;
+    verifyGate.resolve(response(404, null));
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBeUndefined();
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="memory-rejected"]').exists()).toBe(false);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    expect(listGetCount(calls)).toBe(4);
+    wrapper.unmount();
+  });
+
+  it("R208 手动重载等待中发生真实 owner 清理：旧 pending 清掉，旧响应不回填也不清新 owner 的 pending", async () => {
+    const gateA = gate();
+    const gateB = gate();
+    let armed: "A" | "B" | null = null;
+    let phase: "a" | "fail" | "b" = "a";
+    const B_MEMORIES = [memoryRow({ memoryId: "b1", summary: "B 的记忆。", autoSaved: false })];
+    const { calls } = stubFetch({
+      patchParseFailed: true,
+      memoriesStatus: () => (phase === "fail" ? 503 : 200),
+      memories: () => (phase === "b" ? B_MEMORIES : DEFAULT_MEMORIES),
+      get memoriesGate() {
+        if (armed === "A") return gateA;
+        if (armed === "B") return gateB;
+        return undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // A：编辑结果未知 → 刷新核对 503 → 列表失败态 → "重新加载"等待中（GET 挂起）。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("结果未知的内容。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    phase = "fail";
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("failed");
+    armed = "A";
+    await wrapper.get('[data-testid="memory-list-retry"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("pending");
+    expect(listGetCount(calls)).toBe(3);
+
+    // 真实 owner 清理（退出：auth.clear 经 session-cleanup 重置 memory store、
+    // ownerEpoch 递增）：旧 pending 随即清掉，不得停成永久"正在重新加载"——
+    // A 的响应会按 epoch 丢弃，不会再回来收尾。
+    useAuthStore().clear();
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBeUndefined();
+    expect(memoryRows(wrapper)).toHaveLength(0);
+
+    // 新 owner 在同一缓存实例上：核对读取拿到 B 的列表，再次失败后发起自己的
+    // "重新加载"等待（GET 挂起）。
+    login();
+    phase = "b";
+    armed = null;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).toContain("B 的记忆。");
+    phase = "fail";
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("failed");
+    armed = "B";
+    await wrapper.get('[data-testid="memory-list-retry"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("pending");
+    expect(listGetCount(calls)).toBe(6);
+
+    // A 的旧响应此时晚到：按已有 epoch 比较丢弃——不回填 A 的列表，也不清掉
+    // 新 owner 刚发起的 pending。
+    gateA.resolve(response(200, DEFAULT_MEMORIES));
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("pending");
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("晚上散步");
+
+    // 新 owner 自己的读取回来：正常收尾为"已更新"。
+    gateB.resolve(response(200, B_MEMORIES));
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("success");
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).toContain("B 的记忆。");
+    expect(listGetCount(calls)).toBe(6);
     wrapper.unmount();
   });
 });

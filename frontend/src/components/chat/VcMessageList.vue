@@ -23,9 +23,11 @@
         class="vc-message-list__older"
         data-testid="load-more"
         :disabled="busy"
-        @click="$emit('load-more')"
+        :aria-busy="olderLoading"
+        :aria-disabled="olderLoading"
+        @click="onOlderClick"
       >
-        {{ olderLoadError ? "再试一次" : "查看更早消息" }}
+        {{ olderLoading ? "正在加载更早消息…" : olderLoadError ? "再试一次" : "查看更早消息" }}
       </button>
     </template>
     <!-- WP-D（缺口6）：历史向上取尽后的确定终态文案。 -->
@@ -91,7 +93,7 @@ import type { Message } from "@/api/chat";
 
 import VcMessageBubble from "./VcMessageBubble.vue";
 
-defineProps<{
+const props = defineProps<{
   messages: Message[];
   companionName: string;
   empty: boolean;
@@ -99,16 +101,25 @@ defineProps<{
   busy: boolean;
   /** VC-R198：更早消息加载失败的文案；非空时在顶部入口就近展示并把入口按钮标为重试。 */
   olderLoadError?: string;
+  /** R209：更早消息加载在途——入口按钮显示等待文案并标 aria-busy/aria-disabled。 */
+  olderLoading?: boolean;
   statusText?: string;
   statusTone?: "progress" | "muted" | "error";
   statusAction?: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (event: "load-more"): void;
   (event: "status-action"): void;
   (event: "user-intent", value: Event): void;
 }>();
+
+function onOlderClick(): void {
+  // R209：在途等待的重复点击/Enter 就地吞掉，不重复 emit；不用原生
+  // disabled，按钮保持可聚焦——等待与失败共用同一节点，焦点不丢。
+  if (props.olderLoading) return;
+  emit("load-more");
+}
 </script>
 
 <style scoped>
