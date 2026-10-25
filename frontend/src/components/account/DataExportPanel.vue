@@ -46,10 +46,30 @@
         >
           {{ busy === "create" ? "申请中…" : "申请副本" }}
         </button>
+        <button
+          type="button"
+          class="secondary-action"
+          data-testid="data-copy-recover"
+          :disabled="busy !== null || password.length === 0"
+          @click="onRecover"
+        >
+          {{ busy === "recover" ? "取回中…" : "取回未领取副本" }}
+        </button>
+        <text class="data-copy-note">
+          “取回未领取副本”找回最近一份未领取且未过期的副本；取回后之前的下载链接会失效。
+        </text>
       </template>
 
       <template v-else-if="phase === 'pending'">
         <text class="data-copy-state">正在整理你的副本。</text>
+        <text
+          v-if="infoMessage"
+          class="data-copy-note"
+          data-testid="data-copy-note"
+          role="status"
+        >
+          {{ infoMessage }}
+        </text>
         <text
           v-if="errorMessage"
           class="form-message"
@@ -138,14 +158,17 @@ import {
   downloadDataExport,
   getDataExportStatus,
   isAccountContextChangedError,
+  recoverDataExport,
+  type DataExportCreatedView,
   type DataExportDownloadFetch,
   type DataExportRequestView,
   type DataExportTransport,
 } from "@/api/data-export";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import AppIcon from "@/design-system/AppIcon.vue";
 
 type PanelPhase = "form" | "pending" | "ready" | "failed" | "expired";
-type BusyAction = "create" | "progress" | "download";
+type BusyAction = "create" | "recover" | "progress" | "download";
 
 const props = defineProps<{
   transport: DataExportTransport;
@@ -199,16 +222,37 @@ function isReconciledByPage(error: unknown): boolean {
 }
 
 /** classify 归为 rejected 时才可能走到这里；401 与期望账号失配 409 已在调用方排除。
- * 创建失败后面板仍是 form 且 request 为空，没有查看进度入口，文案只能引导重新申请。 */
+ * 创建失败后面板仍是 form 且 request 为空，没有查看进度入口；已受理的未知
+ * 结果或已有 PENDING 的拒绝都可改走“取回未领取副本”；取回只保证最近一份
+ * 未领取副本，未知结果下不得承诺就是刚才那次，靠原申请时间辨认。 */
 function describeCreateError(error: unknown): string {
   if (classifyDataExportCreateError(error) === "rejected") {
     if (error instanceof DataExportHttpError && error.status === 404) {
-      return "当前密码不正确，没有创建副本。";
+      // 404 是错密码/存在性隐藏的 fail-closed 合并映射：确定拒绝，但不宣称唯一原因。
+      return "这次申请没有被接受，请核对当前密码后重试。";
     }
     // 400 可能是请求不合法或已有 PENDING，不得断言精确原因。
-    return "这次申请没有被接受。若已有副本正在整理，请等它整理完成后重新申请。";
+    return "这次申请没有被接受。若已有副本正在整理，请等它整理完成后重新申请，"
+      + "或用“取回未领取副本”直接找回。";
   }
-  return "暂时无法确认申请结果。请稍后重新申请；如果刚才的申请已开始整理，需要等它整理完成。";
+  return "暂时无法确认申请结果。请稍后重新申请，或用“取回未领取副本”找回最近一份未领取的副本，并以显示的原申请时间辨认。";
+}
+
+/** 取回失败文案。404 同时覆盖错密码/没有可取回/删除中，只能给含糊但可操作
+ * 的引导，不得把密码断言成唯一原因；未知结果同样不得宣称失败。 */
+function describeRecoverError(error: unknown): string {
+  if (classifyDataExportCreateError(error) === "rejected") {
+    return "这次没有取回副本。请核对当前密码后重试；若最近一份副本已经领取或已过期，请重新申请。";
+  }
+  return "暂时无法确认取回结果。之前的下载链接可能已经失效，请稍后再试一次取回。";
+}
+
+/** create/recover 成功后统一收养副本视图：进入既有 pending/ready 流程，
+ * 一次性 handoff 语义不变。 */
+function adoptExport(view: DataExportCreatedView): void {
+  request.value = view;
+  downloadUrl = view.downloadUrl;
+  applyStatus(view.status);
 }
 
 async function onCreate(): Promise<void> {
@@ -220,12 +264,34 @@ async function onCreate(): Promise<void> {
   try {
     const created = await createDataExport(props.transport, currentPassword);
     if (!alive) return;
-    request.value = created;
-    downloadUrl = created.downloadUrl;
-    applyStatus(created.status);
+    adoptExport(created);
   } catch (error) {
     if (!alive || isReconciledByPage(error)) return;
     errorMessage.value = describeCreateError(error);
+  } finally {
+    if (alive) {
+      password.value = "";
+      busy.value = null;
+    }
+  }
+}
+
+/** 取回最近一份未领取且未过期的副本（显式次动作）。成功即接既有
+ * pending/ready 流程，并以原 requestedAt 本地时间提示取到的是哪一份。 */
+async function onRecover(): Promise<void> {
+  if (busy.value !== null || password.value.length === 0) return;
+  busy.value = "recover";
+  errorMessage.value = "";
+  infoMessage.value = "";
+  const currentPassword = password.value;
+  try {
+    const recovered = await recoverDataExport(props.transport, currentPassword);
+    if (!alive) return;
+    infoMessage.value = `已取回 ${formatLocalDateTime(recovered.requestedAt)} 申请的副本。`;
+    adoptExport(recovered);
+  } catch (error) {
+    if (!alive || isReconciledByPage(error)) return;
+    errorMessage.value = describeRecoverError(error);
   } finally {
     if (alive) {
       password.value = "";

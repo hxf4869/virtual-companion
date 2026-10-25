@@ -137,6 +137,33 @@ func TestExpectedAccountMismatchAndMissingRejectExportWrite(t *testing.T) {
 	if exports != 1 {
 		t.Fatalf("matching export must create exactly one export, got %d", exports)
 	}
+
+	// The recover route is gated identically: the same stale/missing header
+	// shapes reject before any effect — the one-time token stored for the export
+	// just created does not rotate — and the matching header re-issues it.
+	var created exportJSON
+	if err := json.Unmarshal(ok.Body.Bytes(), &created); err != nil {
+		t.Fatal("create response was not valid JSON")
+	}
+	exportID := mustParseID(t, created.ExportID)
+	before := storedExportToken(store, exportID)
+	for name, expected := range map[string]string{"stale page header": "1", "missing header": ""} {
+		rec := sendWithExpectedAccount(t, s, http.MethodPost, "/api/v1/exports/recover", exportBody, bobSession, expected, bobSessionID)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("%s: recover status %d", name, rec.Code)
+		}
+		assertContextChangedEnvelope(t, rec)
+		if storedExportToken(store, exportID) != before {
+			t.Fatalf("%s: rejected recover must not rotate the token", name)
+		}
+	}
+	recovered := sendWithExpectedAccount(t, s, http.MethodPost, "/api/v1/exports/recover", exportBody, bobSession, "2", bobSessionID)
+	if recovered.Code != http.StatusOK {
+		t.Fatalf("matching recover status %d", recovered.Code)
+	}
+	if storedExportToken(store, exportID) == before {
+		t.Fatal("matching recover must re-issue the token")
+	}
 }
 
 func TestExpectedAccountMismatchRejectsPasswordChangeAndAccountDelete(t *testing.T) {

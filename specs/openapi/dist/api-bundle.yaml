@@ -2288,6 +2288,77 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/exports/recover:
+    post:
+      operationId: recoverExport
+      summary: Re-issue the one-time download token of the most recent unclaimed export (FR-DATA-002)
+      description: 'Explicit recovery action for a lost create response. The server selects the caller''s most recent still-UNCLAIMED
+        export — PENDING, or READY and not yet expired, whose one-time token was never consumed — and re-arms that selected
+        request in place via vc.recover_export_request: same exportId and requestedAt, no new export is created, built or
+        queued, and the previously issued token/link stops working the moment this call succeeds. The server cannot tell whether
+        the selected request is the one whose response was lost; it is simply the most recent unclaimed one (an earlier READY
+        export qualifies when no PENDING one exists), and requestedAt lets the caller recognise it. The original token cannot
+        be recovered (only its sha256 digest is stored, V76); the fresh one is echoed EXACTLY ONCE in this response, and the
+        status endpoint never carries a token or URL. Like create, this is a high-risk data-rights operation (ADR-0006 §7.7):
+        the body carries the caller''s CURRENT password, verified synchronously (fail-closed). A wrong password, nothing claimable
+        (consumed, expired, failed or absent) and an account under deletion all answer NOT_FOUND_OR_FORBIDDEN without disclosing
+        which. Requires a server-verified authentication context.'
+      security:
+      - cookieAuth: []
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportCreateRequest'
+      responses:
+        '200':
+          description: The selected most recent unclaimed export request, re-armed in place (same exportId and requestedAt)
+            with its fresh one-time token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportRequest'
+        '400':
+          description: The body is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ACCESS_DENIED — Origin not in the configured allowlist, CSRF double-submit mismatch, or the account
+            must change its password first; rejected before any effect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Wrong current password, nothing claimable, or account deletion in progress; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: ACCOUNT_CONTEXT_CHANGED — the X-VC-Expected-Account-ID or X-VC-Expected-Session-ID precondition is
+            missing or does not match the cookie principal (stale tab); rejected before any effect, the stored token does
+            not rotate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: INVALID_REQUEST — session lookup, password verifier, token generation or the store temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/exports/{exportId}:
     get:
       operationId: getExportStatus
@@ -5584,12 +5655,13 @@ components:
           description: Stable failure reason, present only on FAILED
         downloadToken:
           type: string
-          description: One-time download secret, present ONLY in the create response (V76); only its sha256 digest is stored
-            server-side.
+          description: One-time download secret, present ONLY in the create response and in an explicit recover response (each
+            issues it exactly once; a recover supersedes the earlier token). Only its sha256 digest is stored server-side
+            (V76).
         downloadUrl:
           type: string
-          description: Short-lived one-time download link, present ONLY in the create response; status polls never repeat
-            it.
+          description: Short-lived one-time download link, present ONLY in the create and recover responses; status polls
+            never repeat it.
     ExportDownload:
       type: object
       description: The exported user-data document (FR-DATA-002, one-time).

@@ -82,6 +82,7 @@ type CompanionStore interface {
 	CreateExport(ctx context.Context, owner int64, token string) (postgres.Export, error)
 	GetExport(ctx context.Context, owner, exportID int64) (postgres.Export, error)
 	ConsumeExport(ctx context.Context, owner, exportID int64, token string) (postgres.ExportDownload, error)
+	RecoverExport(ctx context.Context, owner int64, token string) (postgres.Export, error)
 	CompleteExport(ctx context.Context, owner, exportID int64, payload string, expiresAt time.Time) error
 	CompleteExportObject(ctx context.Context, owner, exportID int64, objectKey string, objectBytes int64, expiresAt time.Time) error
 	FailExportWithObject(ctx context.Context, owner, exportID int64, objectKey string, objectBytes int64, errMsg string) error
@@ -206,6 +207,7 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("GET /api/v1/reports", s.handleListReports)
 
 	s.mux.HandleFunc("POST /api/v1/exports", s.handleCreateExport)
+	s.mux.HandleFunc("POST /api/v1/exports/recover", s.handleRecoverExport)
 	s.mux.HandleFunc("GET /api/v1/exports/{exportId}", s.handleGetExport)
 	s.mux.HandleFunc("GET /api/v1/exports/{exportId}/download", s.handleDownloadExport)
 

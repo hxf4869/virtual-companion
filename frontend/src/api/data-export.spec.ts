@@ -7,6 +7,7 @@ import {
   DataExportProtocolError,
   downloadDataExport,
   getDataExportStatus,
+  recoverDataExport,
   type DataExportHttpErrorKind,
   type DataExportTransport,
 } from "./data-export";
@@ -144,6 +145,65 @@ describe("createDataExport", () => {
     const networkError = new TypeError("Failed to fetch");
     await expect(createDataExport({ request: () => Promise.reject(networkError) }, "p"))
       .rejects.toBe(networkError);
+  });
+});
+
+describe("recoverDataExport", () => {
+  it("posts the password to the recover endpoint with the bounded timeout and accepts READY views", async () => {
+    const client = transport({
+      ok: true,
+      status: 200,
+      json: exportRow({
+        status: "READY",
+        completedAt: "2026-10-21T10:05:00Z",
+        downloadUrl: "/api/v1/exports/e1/download",
+        errorMessage: "SECRET_CODE",
+      }),
+    });
+
+    await expect(recoverDataExport(client, "hunter2")).resolves.toEqual({
+      exportId: "e1",
+      status: "READY",
+      requestedAt: "2026-10-21T10:00:00Z",
+      completedAt: "2026-10-21T10:05:00Z",
+      expiresAt: undefined,
+      downloadUrl: "/api/v1/exports/e1/download",
+    });
+    expect(client.request).toHaveBeenCalledWith(
+      "POST",
+      "/api/v1/exports/recover",
+      { currentPassword: "hunter2" },
+      READ_OPTS,
+    );
+  });
+
+  it("keeps create's error semantics: 404 is a definite client rejection and 5xx is server", async () => {
+    // 404 合并覆盖错密码/没有可取回/删除中，调用方只拿到确定的 client 拒绝。
+    await expectHttpError(
+      recoverDataExport(transport({ ok: false, status: 404, json: null }), "p"),
+      404,
+      "client",
+    );
+    await expectHttpError(
+      recoverDataExport(transport({ ok: false, status: 401, json: null }), "p"),
+      401,
+      "unauthorized",
+    );
+    await expectHttpError(
+      recoverDataExport(transport({ ok: false, status: 503, json: null }), "p"),
+      503,
+      "server",
+    );
+  });
+
+  it("treats bad 2xx bodies as protocol errors and lets transport errors through", async () => {
+    await expect(recoverDataExport(
+      transport({ ok: true, status: 200, json: exportRow() }),
+      "p",
+    )).rejects.toBeInstanceOf(DataExportProtocolError);
+    const timeout = new TransportTimeoutError(15_000);
+    await expect(recoverDataExport({ request: () => Promise.reject(timeout) }, "p"))
+      .rejects.toBe(timeout);
   });
 });
 

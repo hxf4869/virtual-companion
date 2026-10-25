@@ -7,6 +7,11 @@
  *   PENDING 申请（ErrConflict 的映射），调用方不得断言精确原因；404 是错密码/
  *   存在性隐藏的 fail-closed 映射；401 由既有 auth 流程处理（transport 已
  *   触发 onUnauthorized）。
+ * - POST /api/v1/exports/recover 复核当前密码后取回当前 owner 最近一份未领取
+ *   且未过期的副本：只旋转一次性 downloadUrl（旧链接失效，已消费的不可重
+ *   武装），不新建副本。200 形状与 create 相同（status 为 PENDING 或 READY）；
+ *   404 是错密码/没有可取回/删除中的 fail-closed 合并映射，调用方不得断言
+ *   唯一原因；401 与精确 409 ACCOUNT_CONTEXT_CHANGED 的语义同 create。
  * - VC-R52：期望账号前置条件被拒时是精确 409 + 信封 code
  *   ACCOUNT_CONTEXT_CHANGED（见 isAccountContextChangedError）。它属于页面级
  *   身份 reconcile 信号，不是密码错误，也不是结果未知。
@@ -69,7 +74,9 @@ export class DataExportProtocolError extends Error {
 }
 
 /**
- * 创建申请抛错后的结果分类。正常返回即确认受理。
+ * 创建申请抛错后的结果分类。正常返回即确认受理。取回（recover）POST 的失败
+ * 复用同一分类：4xx 为确定没有取回，其余同样只能归为结果未知（旋转可能已
+ * 生效，旧链接可能已失效）。
  * - rejected：服务端明确拒绝（4xx，含 401；400 下可能是请求不合法或已有
  *   PENDING 申请，两种都是确定失败）；
  * - unknown：5xx、协议错误、超时、网络异常及其他程序错误——无法证明申请
@@ -159,16 +166,18 @@ function asRequestView(json: unknown): DataExportRequestView | null {
 }
 
 /**
- * 申请导出（同步复核当前密码）。2xx 但响应缺 exportId/status/requestedAt
- * 或非空 downloadUrl 时抛 DataExportProtocolError（结果未知）。
+ * create 与 recover 共用的 POST 语义：失败按状态映射 DataExportHttpError；
+ * 2xx 但响应缺 exportId/status/requestedAt 或非空 downloadUrl 时抛
+ * DataExportProtocolError（结果未知）。
  */
-export async function createDataExport(
+async function postForCreatedView(
   transport: DataExportTransport,
+  path: string,
   currentPassword: string,
 ): Promise<DataExportCreatedView> {
   const response = await transport.request(
     "POST",
-    "/api/v1/exports",
+    path,
     { currentPassword },
     requestOpts,
   );
@@ -187,6 +196,25 @@ export async function createDataExport(
       : undefined;
   if (!view || !downloadUrl) throw new DataExportProtocolError(response.status);
   return { ...view, downloadUrl };
+}
+
+/** 申请导出（同步复核当前密码）。 */
+export function createDataExport(
+  transport: DataExportTransport,
+  currentPassword: string,
+): Promise<DataExportCreatedView> {
+  return postForCreatedView(transport, "/api/v1/exports", currentPassword);
+}
+
+/**
+ * 取回最近一份未领取且未过期的副本（同步复核当前密码）：只旋转一次性
+ * downloadUrl，不新建副本。响应形状与 create 相同。
+ */
+export function recoverDataExport(
+  transport: DataExportTransport,
+  currentPassword: string,
+): Promise<DataExportCreatedView> {
+  return postForCreatedView(transport, "/api/v1/exports/recover", currentPassword);
 }
 
 /** 只读状态；状态响应永不携带 downloadUrl，多余字段忽略。 */

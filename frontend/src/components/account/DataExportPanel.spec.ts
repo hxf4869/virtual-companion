@@ -11,10 +11,12 @@ import {
   createDataExport,
   downloadDataExport,
   getDataExportStatus,
+  recoverDataExport,
   type DataExportCreatedView,
   type DataExportRequestView,
   type DataExportTransport,
 } from "@/api/data-export";
+import { formatLocalDateTime } from "@/domain/timestamp";
 
 import DataExportPanel from "./DataExportPanel.vue";
 
@@ -55,12 +57,14 @@ vi.mock("@/api/data-export", () => {
       && caught.serverCode === "ACCOUNT_CONTEXT_CHANGED"
     ),
     createDataExport: vi.fn(),
+    recoverDataExport: vi.fn(),
     getDataExportStatus: vi.fn(),
     downloadDataExport: vi.fn(),
   };
 });
 
 const createDataExportMock = vi.mocked(createDataExport);
+const recoverDataExportMock = vi.mocked(recoverDataExport);
 const getDataExportStatusMock = vi.mocked(getDataExportStatus);
 const downloadDataExportMock = vi.mocked(downloadDataExport);
 
@@ -128,6 +132,12 @@ async function openPanel(wrapper: PanelWrapper) {
 async function submitCreate(wrapper: PanelWrapper, passwordValue = "Current-Pass-1!") {
   await wrapper.get('[data-testid="data-copy-password"]').setValue(passwordValue);
   await wrapper.get('[data-testid="data-copy-create"]').trigger("click");
+  await flushPromises();
+}
+
+async function submitRecover(wrapper: PanelWrapper, passwordValue = "Current-Pass-1!") {
+  await wrapper.get('[data-testid="data-copy-password"]').setValue(passwordValue);
+  await wrapper.get('[data-testid="data-copy-recover"]').trigger("click");
   await flushPromises();
 }
 
@@ -243,26 +253,29 @@ describe("DataExportPanel", () => {
     wrapper.unmount();
   });
 
-  it("states the wrong password without leaking status codes on create 404", async () => {
+  it("keeps the create 404 copy actionable without asserting the password as the only cause", async () => {
     createDataExportMock.mockRejectedValue(new DataExportHttpError(404, "client"));
     const wrapper = mountPanel();
     await openPanel(wrapper);
     await submitCreate(wrapper);
 
+    // 404 是错密码/存在性隐藏的 fail-closed 合并映射：确定拒绝 + 可操作的
+    // 密码指引，不宣称密码是唯一原因，也不泄露状态码。
     const text = wrapper.get('[data-testid="data-copy-panel"]').text();
-    expect(text).toContain("当前密码不正确，没有创建副本。");
+    expect(text).toContain("这次申请没有被接受，请核对当前密码后重试。");
+    expect(text).not.toContain("当前密码不正确");
     expect(text).not.toContain("404");
     wrapper.unmount();
   });
 
-  it("keeps the create 400 copy honest instead of asserting a precise reason", async () => {
+  it("keeps the create 400 copy honest and points at the recovery entry", async () => {
     createDataExportMock.mockRejectedValue(new DataExportHttpError(400, "client"));
     const wrapper = mountPanel();
     await openPanel(wrapper);
     await submitCreate(wrapper);
 
     const text = wrapper.get('[data-testid="data-copy-panel"]').text();
-    expect(text).toContain("这次申请没有被接受。若已有副本正在整理，请等它整理完成后重新申请。");
+    expect(text).toContain("这次申请没有被接受。若已有副本正在整理，请等它整理完成后重新申请，或用“取回未领取副本”直接找回。");
     expect(text).not.toContain("当前密码不正确");
     wrapper.unmount();
   });
@@ -275,7 +288,7 @@ describe("DataExportPanel", () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="data-copy-error"]').text())
-      .toContain("暂时无法确认申请结果。请稍后重新申请；如果刚才的申请已开始整理，需要等它整理完成。");
+      .toContain("暂时无法确认申请结果。请稍后重新申请，或用“取回未领取副本”找回最近一份未领取的副本，并以显示的原申请时间辨认。");
     expect(createDataExportMock).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
@@ -335,6 +348,174 @@ describe("DataExportPanel", () => {
     expect(wrapper.get('[data-testid="data-copy-error"]').text())
       .toContain("这次申请没有被接受");
     wrapper.unmount();
+  });
+
+  // ---- 取回未领取副本（显式次动作，POST /api/v1/exports/recover）----
+
+  it("expands without auto-recovering and ignores the recover action without a password", async () => {
+    const wrapper = mountPanel();
+    await openPanel(wrapper);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="data-copy-recover"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="data-copy-recover"]').trigger("click");
+    await flushPromises();
+    expect(recoverDataExportMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("recovers into pending, then walks progress→ready→download with the recovered link", async () => {
+    recoverDataExportMock.mockResolvedValue(createdView());
+    getDataExportStatusMock.mockResolvedValue(readyView());
+    downloadDataExportMock.mockResolvedValue(exportBlob());
+    const wrapper = mountPanel();
+    await openPanel(wrapper);
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("Current-Pass-1!");
+    await wrapper.get('[data-testid="data-copy-recover"]').trigger("click");
+    await flushPromises();
+
+    expect(recoverDataExportMock).toHaveBeenCalledTimes(1);
+    expect(recoverDataExportMock).toHaveBeenCalledWith(transport, "Current-Pass-1!");
+    const pendingText = wrapper.get('[data-testid="data-copy-panel"]').text();
+    expect(pendingText).toContain("正在整理你的副本。");
+    // 用原 requestedAt 的本地时间辨认取到的是哪一份，不展示原始 ISO 串。
+    expect(pendingText).toContain(`已取回 ${formatLocalDateTime(REQUESTED_AT)} 申请的副本。`);
+    expect(pendingText).not.toContain(REQUESTED_AT);
+
+    await wrapper.get('[data-testid="data-copy-progress"]').trigger("click");
+    await flushPromises();
+    expect(getDataExportStatusMock).toHaveBeenCalledWith(transport, "exp-1");
+    expect(wrapper.find('[data-testid="data-copy-download"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="data-copy-download"]').trigger("click");
+    await flushPromises();
+    // 一次性 handoff 语义原样：旋转出的新链接只消费一次。
+    expect(downloadDataExportMock).toHaveBeenCalledWith(downloadFetch, DOWNLOAD_URL);
+    expect(clickedAnchors).toHaveLength(1);
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text()).toContain("本次下载已发起。");
+    wrapper.unmount();
+  });
+
+  it("recovers straight into ready when the copy is already finished", async () => {
+    recoverDataExportMock.mockResolvedValue(createdView({
+      status: "READY",
+      completedAt: "2026-10-20T09:06:00Z",
+    }));
+    downloadDataExportMock.mockResolvedValue(exportBlob());
+    const wrapper = mountPanel();
+    await openPanel(wrapper);
+    await wrapper.get('[data-testid="data-copy-password"]').setValue("Current-Pass-1!");
+    await wrapper.get('[data-testid="data-copy-recover"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="data-copy-panel"]').text())
+      .toContain("副本已整理好，可以下载保存到此设备。");
+    expect(wrapper.get('[data-testid="data-copy-note"]').text())
+      .toContain(`已取回 ${formatLocalDateTime(REQUESTED_AT)} 申请的副本。`);
+
+    await wrapper.get('[data-testid="data-copy-download"]').trigger("click");
+    await flushPromises();
+    expect(downloadDataExportMock).toHaveBeenCalledWith(downloadFetch, DOWNLOAD_URL);
+    wrapper.unmount();
+  });
+
+  it("states a recover 404 vaguely without blaming the password alone", async () => {
+    recoverDataExportMock.mockRejectedValue(new DataExportHttpError(404, "client"));
+    const wrapper = mountPanel();
+    await openPanel(wrapper);
+    await submitRecover(wrapper);
+
+    const text = wrapper.get('[data-testid="data-copy-panel"]').text();
+    expect(text).toContain("这次没有取回副本。请核对当前密码后重试；若最近一份副本已经领取或已过期，请重新申请。");
+    // 404 同时覆盖错密码/没有可取回/删除中：不得复用 create 的“密码不正确”
+    // 精确文案，也不泄露状态码；密码即用即清。
+    expect(text).not.toContain("当前密码不正确，没有创建副本。");
+    expect(text).not.toContain("404");
+    expect(wrapper.find('[data-testid="data-copy-create"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="data-copy-password"]').element as HTMLInputElement;
+    expect(input.value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("reports an unknown recover outcome honestly and never auto-resends", async () => {
+    recoverDataExportMock.mockRejectedValue(new DataExportHttpError(503, "server"));
+    const wrapper = mountPanel();
+    await openPanel(wrapper);
+    await submitRecover(wrapper);
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="data-copy-error"]').text())
+      .toContain("暂时无法确认取回结果。之前的下载链接可能已经失效，请稍后再试一次取回。");
+    expect(recoverDataExportMock).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("blocks both apply and recover while either action is busy", async () => {
+    let resolveCreate!: (value: DataExportCreatedView) => void;
+    createDataExportMock.mockReturnValue(new Promise<DataExportCreatedView>((resolve) => {
+      resolveCreate = resolve;
+    }));
+    const createBusy = mountPanel();
+    await openPanel(createBusy);
+    await createBusy.get('[data-testid="data-copy-password"]').setValue("Current-Pass-1!");
+    await createBusy.get('[data-testid="data-copy-create"]').trigger("click");
+
+    const createButton = createBusy.get('[data-testid="data-copy-create"]');
+    const recoverButton = createBusy.get('[data-testid="data-copy-recover"]');
+    expect(createButton.text()).toContain("申请中…");
+    // 只有当前动作显示等待文案；另一动作保持原标签但被禁用。
+    expect(recoverButton.text()).toContain("取回未领取副本");
+    expect(recoverButton.attributes("disabled")).toBeDefined();
+    await createButton.trigger("click");
+    await recoverButton.trigger("click");
+    await recoverButton.trigger("click");
+    expect(createDataExportMock).toHaveBeenCalledTimes(1);
+    expect(recoverDataExportMock).not.toHaveBeenCalled();
+    resolveCreate(createdView());
+    await flushPromises();
+    createBusy.unmount();
+
+    let resolveRecover!: (value: DataExportCreatedView) => void;
+    recoverDataExportMock.mockReturnValue(new Promise<DataExportCreatedView>((resolve) => {
+      resolveRecover = resolve;
+    }));
+    const recoverBusy = mountPanel();
+    await openPanel(recoverBusy);
+    await recoverBusy.get('[data-testid="data-copy-password"]').setValue("Current-Pass-1!");
+    await recoverBusy.get('[data-testid="data-copy-recover"]').trigger("click");
+
+    expect(recoverBusy.get('[data-testid="data-copy-recover"]').text()).toContain("取回中…");
+    expect(recoverBusy.get('[data-testid="data-copy-create"]').text()).toContain("申请副本");
+    await recoverBusy.get('[data-testid="data-copy-recover"]').trigger("click");
+    await recoverBusy.get('[data-testid="data-copy-create"]').trigger("click");
+    expect(recoverDataExportMock).toHaveBeenCalledTimes(1);
+    // create 仍停留在上一场景的那一次调用，本场景没有新增。
+    expect(createDataExportMock).toHaveBeenCalledTimes(1);
+    resolveRecover(createdView());
+    await flushPromises();
+    recoverBusy.unmount();
+  });
+
+  it("discards a late recover response after unmount and starts the next mount clean", async () => {
+    let resolveRecover!: (value: DataExportCreatedView) => void;
+    recoverDataExportMock.mockReturnValue(new Promise<DataExportCreatedView>((resolve) => {
+      resolveRecover = resolve;
+    }));
+    const first = mountPanel();
+    await openPanel(first);
+    await first.get('[data-testid="data-copy-password"]').setValue("Current-Pass-1!");
+    await first.get('[data-testid="data-copy-recover"]').trigger("click");
+    first.unmount();
+
+    resolveRecover(createdView());
+    await flushPromises();
+    expect(createObjectURL).not.toHaveBeenCalled();
+
+    const second = mountPanel();
+    await openPanel(second);
+    expect(second.get('[data-testid="data-copy-panel"]').text()).toContain("申请副本");
+    expect(second.find('[data-testid="data-copy-progress"]').exists()).toBe(false);
+    second.unmount();
   });
 
   it("adds no download copy on a context-changed 409 (page reconcile owns it)", async () => {

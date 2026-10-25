@@ -68,6 +68,7 @@
     "recordConsent",
     "listConsents",
     "createExport",
+    "recoverExport",
     "getExportStatus",
     "downloadExport",
     "getRegistrationStatus",
@@ -128,6 +129,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "d49fdc280a6aa89576fa023d81be4ad06f35029b69c366557f9bd7d18caab210"
+    "sha256": "10e0d94995889f824efe07c36d431a5da578b6c44db91503976e2099304e0100"
   }
 }

@@ -931,7 +931,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 64,
+          "KEEP": 65,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1668,6 +1668,21 @@
           },
           {
             "currentH5Callers": [
+              "frontend/src/api/data-export.ts",
+              "frontend/src/components/account/DataExportPanel.vue"
+            ],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "safety-or-data-rights"
+            ],
+            "method": "POST",
+            "operationId": "recoverExport",
+            "path": "/api/v1/exports/recover",
+            "replacementOrImpact": "Keep explicit recovery of the most recent unclaimed export copy — the selected request is re-armed in place with a fresh one-time token and the earlier link dies; no new copy, the server cannot prove it is a specific lost attempt, and no status poll ever carries a token."
+          },
+          {
+            "currentH5Callers": [
               "frontend/src/stores/auth.ts",
               "frontend/src/pages/login/login.vue"
             ],
@@ -2264,7 +2279,7 @@
           }
         ]
       },
-      "sha256": "970f29c4f108dd5378a3d0d27124347aad9e5779e2215979d8e16c876c8e9005"
+      "sha256": "b1ad98b95a2a148295d4d81f0c70d60eb69c8868b6649f4c53cbbe2fb3a0aef7"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

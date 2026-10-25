@@ -135,6 +135,34 @@ func TestExpectedSessionStaleIDRejectsWriteWithoutEffects(t *testing.T) {
 	if exports != 1 {
 		t.Fatalf("matching export must create exactly one export, got %d", exports)
 	}
+
+	// The recover route carries the same session precondition: both rejecting
+	// shapes 409 before any effect (the stored one-time token of the export just
+	// created does not rotate) and the committed session id re-issues it.
+	var created exportJSON
+	if err := json.Unmarshal(ok.Body.Bytes(), &created); err != nil {
+		t.Fatal("create response was not valid JSON")
+	}
+	exportID := mustParseID(t, created.ExportID)
+	before := storedExportToken(store, exportID)
+	for _, tc := range rejections {
+		rec := sendWithExpectedSession(t, s, http.MethodPost, "/api/v1/exports/recover", exportBody, liveCookie, "2", tc.expected)
+		if rec.Code != http.StatusConflict {
+			t.Errorf("%s: recover status %d", tc.name, rec.Code)
+			continue
+		}
+		assertContextChangedEnvelope(t, rec)
+		if storedExportToken(store, exportID) != before {
+			t.Errorf("%s: rejected recover must not rotate the token", tc.name)
+		}
+	}
+	recovered := sendWithExpectedSession(t, s, http.MethodPost, "/api/v1/exports/recover", exportBody, liveCookie, "2", liveID)
+	if recovered.Code != http.StatusOK {
+		t.Fatalf("matching recover status %d", recovered.Code)
+	}
+	if storedExportToken(store, exportID) == before {
+		t.Fatal("matching recover must re-issue the token")
+	}
 }
 
 func TestExpectedSessionHeaderOnReads(t *testing.T) {

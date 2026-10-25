@@ -292,6 +292,33 @@ func (m *memStore) ConsumeExport(_ context.Context, _ int64, exportID int64, tok
 	return postgres.ExportDownload{Payload: m.exportBody[exportID], ExpiresAt: exp}, nil
 }
 
+// RecoverExport mirrors vc.recover_export_request: the newest export whose
+// one-time token is still unconsumed and is PENDING or unexpired READY takes
+// the fresh token; anything else (including an account under deletion) is
+// not found.
+func (m *memStore) RecoverExport(_ context.Context, _ int64, token string) (postgres.Export, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.deleting {
+		return postgres.Export{}, postgres.ErrNotFound
+	}
+	var pick int64
+	for id, e := range m.exports {
+		if id <= pick || m.exportTok[id] == "" {
+			continue
+		}
+		ready := e.Status == "READY" && e.ExpiresAt != nil && e.ExpiresAt.After(time.Now())
+		if e.Status == "PENDING" || ready {
+			pick = id
+		}
+	}
+	if pick == 0 {
+		return postgres.Export{}, postgres.ErrNotFound
+	}
+	m.exportTok[pick] = token
+	return m.exports[pick], nil
+}
+
 func (m *memStore) CompleteExport(_ context.Context, _ int64, exportID int64, payload string, expiresAt time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

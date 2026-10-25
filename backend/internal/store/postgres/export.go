@@ -130,6 +130,43 @@ func (s *Store) ConsumeExport(ctx context.Context, owner, exportID int64, token 
 	return out, nil
 }
 
+// RecoverExport re-arms the owner's most recent unclaimed export (PENDING or
+// unexpired READY) with a fresh one-time token and returns its status view;
+// the previously issued token stops working when this commits. Zero rows from
+// vc.recover_export_request — consumed, expired, failed, absent or refused
+// under account deletion — surface as ErrNotFound (existence undisclosed).
+func (s *Store) RecoverExport(ctx context.Context, owner int64, token string) (Export, error) {
+	if token == "" {
+		return Export{}, ErrInvalid
+	}
+	var out Export
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT out_id, out_status, out_requested_at, out_completed_at, out_expires_at, out_error_message
+			   FROM vc.recover_export_request($1,$2)`, owner, token)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			return ErrNotFound
+		}
+		rec, err := scanExportRow(rows)
+		if err != nil {
+			return err
+		}
+		out = rec
+		return rows.Err()
+	})
+	if err != nil {
+		return Export{}, mapStoreErr(err)
+	}
+	return out, nil
+}
+
 // CompleteExport seals a PENDING export as READY (inline payload). Isolation
 // tests and G10 worker use this; there is no HTTP complete route.
 func (s *Store) CompleteExport(ctx context.Context, owner, exportID int64, payload string, expiresAt time.Time) error {
@@ -294,11 +331,21 @@ func scanExport(ctx context.Context, tx pgx.Tx, owner, id int64) (Export, bool, 
 	if !rows.Next() {
 		return Export{}, false, rows.Err()
 	}
+	e, err := scanExportRow(rows)
+	if err != nil {
+		return Export{}, false, err
+	}
+	return e, true, rows.Err()
+}
+
+// scanExportRow reads the six status columns shared by every export status
+// function (out_id … out_error_message) from the current row.
+func scanExportRow(rows pgx.Rows) (Export, error) {
 	var e Export
 	var completed, expires pgtype.Timestamptz
 	var errMsg pgtype.Text
 	if err := rows.Scan(&e.ID, &e.Status, &e.RequestedAt, &completed, &expires, &errMsg); err != nil {
-		return Export{}, false, err
+		return Export{}, err
 	}
 	e.CompletedAt = tzPtr(completed)
 	e.ExpiresAt = tzPtr(expires)
@@ -306,5 +353,5 @@ func scanExport(ctx context.Context, tx pgx.Tx, owner, id int64) (Export, bool, 
 		s := errMsg.String
 		e.ErrorMessage = &s
 	}
-	return e, true, rows.Err()
+	return e, nil
 }

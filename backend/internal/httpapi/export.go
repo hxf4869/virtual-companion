@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/url"
+
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 type exportJSON struct {
@@ -42,6 +44,47 @@ func (s *Server) handleCreateExport(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
+	s.writeIssuedExport(w, rec, token)
+}
+
+// handleRecoverExport re-issues a one-time download token for the caller's
+// most recent unclaimed export (PENDING or unexpired READY) and returns that
+// selected request's status with requestedAt so the caller can recognise it;
+// the server cannot know whether it is the request whose create response was
+// lost, only that it is the most recent still-unclaimed one. Same write gates
+// and password check as create; the fresh token is echoed exactly once here
+// and the previous link stops working. Wrong password, nothing claimable and
+// an account under deletion share the same 404 so none of them is disclosed.
+func (s *Server) handleRecoverExport(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"currentPassword"`
+	}
+	if !s.decodeJSON(w, r, &body) {
+		return
+	}
+	if !s.requireCurrentPassword(w, r, p, body.CurrentPassword) {
+		return
+	}
+	token, err := newExportToken()
+	if err != nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return
+	}
+	rec, err := s.core.Store.RecoverExport(r.Context(), p.AccountID, token)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeIssuedExport(w, rec, token)
+}
+
+// writeIssuedExport is the only place a plaintext download token leaves the
+// process: the create and recover responses, each exactly once.
+func (s *Server) writeIssuedExport(w http.ResponseWriter, rec postgres.Export, token string) {
 	download := "/api/v1/exports/" + idString(rec.ID) + "/download?token=" + url.QueryEscape(token)
 	s.writeJSON(w, http.StatusOK, exportJSON{
 		ExportID:      idString(rec.ID),
