@@ -1,4 +1,4 @@
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test, type Response, type Route } from "@playwright/test";
 
 import {
   createRelationshipAndConversation,
@@ -338,6 +338,159 @@ test("queued auto-scroll frames keep the reading position after a native scroll 
     // VC-R183：同文草稿 B 历经三尺寸/阅读/回到最新流程后仍在（只比长度）。
     const draftBLength = (await messageInput.inputValue()).length;
     expect(draftBLength, "同文新草稿 B 不被旧实例发射清除").toBe(submittedPrompt.length);
+  } finally {
+    // 只软删除本 case 创建的会话，不触碰共享账号其它数据。
+    const deleted = await sessionRequest(
+      page,
+      "DELETE",
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
+      undefined,
+      writeOptions,
+    );
+    expect(deleted.ok, `conversation cleanup failed: ${deleted.status}`).toBeTruthy();
+  }
+});
+
+// VC-R185：A 终态同步在途（completed 后终局补页挂起、权威历史未交接）时，
+// 同会话真实发送 B——两轮都必须可提交（不被旧提交长锁静默挡住）；快照与
+// SSE 全程真实完成，只挂起本会话所有终局 history GET（before 游标的
+// load-more 照常放行）。A/B 用户消息与两条 provider 回复在历史挂起期间
+// 都保持且 A 位于 B 之前；放行真实历史后按权威行收敛为各恰两条，不丢、
+// 不重复。两轮补页一起挂起一起放行——不单独放行某一轮来掩盖瞬态消失。
+test("VC-R185 sends the next turn while the previous final sync is still in flight", async ({ page }, testInfo) => {
+  const session = await openSharedSession(page, "chat");
+  await prepareGenerationAccess(session);
+  const { relationshipId, conversationId } = await createRelationshipAndConversation(session);
+  const writeOptions = { accountId: session.accountId, sessionId: session.sessionId };
+
+  try {
+    await navigateToPage(
+      page,
+      `/pages/chat/chat?relationshipId=${encodeURIComponent(relationshipId)}&conversationId=${encodeURIComponent(conversationId)}`,
+    );
+    await expect(page.getByTestId("empty-history")).toContainText("从这里开始");
+
+    // 窄拦本会话 messages GET（空窗口下终局补页与最近窗口同形、无 after 游
+    // 标，按路径整体挂起，仅放行 load-more 的 before 游标）；初始最近窗口
+    // 在 route 安装前已完成，安装后到达的即 A/B 两轮的终局补页。
+    let releaseHistory!: () => void;
+    const historyGate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    let heldCalls = 0;
+    let heldSettled = 0;
+    const holdHistory = async (route: Route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      if (!url.pathname.endsWith(`/api/v1/conversations/${conversationId}/messages`)) {
+        return route.fallback();
+      }
+      if (url.searchParams.get("before") !== null) return route.fallback();
+      heldCalls += 1;
+      try {
+        await historyGate;
+        await route.continue();
+      } finally {
+        heldSettled += 1;
+      }
+    };
+    await page.route(/\/api\/v1\/conversations\/\d+\/messages/, holdHistory);
+
+    const messageInput = page.locator('[data-testid="message-input"] textarea');
+    const promptA = "第一轮：历史还在同步时继续聊。";
+    const promptB = "第二轮：同步没完成也挡不住下一条。";
+    // 组合 DOM 顺序：history 容器内 user-message 与 assistant-md 按文档顺序
+    // 的 testid 数组——只返回 testid，不输出正文/ID。
+    const messageRoleSequence = (): Promise<string[]> =>
+      page.evaluate(() => {
+        const node = document.querySelector('[data-testid="history"]');
+        if (!node) return [];
+        return Array.from(
+          node.querySelectorAll('[data-testid="user-message"], [data-testid="assistant-md"]'),
+        ).map((element) => element.getAttribute("data-testid"));
+      });
+    try {
+      // 第一轮 A：真实发送、真实 SSE 完成；终局补页被挂起。
+      await messageInput.fill(promptA);
+      await page.getByTestId("send").click();
+      await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY }).last())
+        .toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("status")).not.toContainText("正在回复");
+      await expect.poll(() => heldCalls, { timeout: 10_000 }).toBe(1);
+
+      // A 已完成、终态同步在途：发送键真实可用，第二轮 B 必须能提交——
+      // 生成 POST 真实发出并完成（不被任何残留提交锁静默挡住）。
+      await messageInput.fill(promptB);
+      await expect(page.getByTestId("send")).toBeEnabled();
+      await page.getByTestId("send").click();
+      await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY }).nth(1))
+        .toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("status")).not.toContainText("正在回复");
+      await expect.poll(() => heldCalls, { timeout: 10_000 }).toBe(2);
+
+      // 历史仍全部挂起：A/B 用户消息各恰一条、两条回复各恰一条；first/last
+      // 的文本归属证明用户行顺序（A 在 B 之前），组合 DOM 顺序进一步证明
+      // 每条回复位于所属轮次之后，不单独放行任何一轮补页。
+      const userMessages = page.getByTestId("user-message");
+      await expect(userMessages).toHaveCount(2);
+      await expect(userMessages.first()).toContainText("第一轮");
+      await expect(userMessages.last()).toContainText("第二轮");
+      await expect(page.getByTestId("assistant-md")).toHaveCount(2);
+      await expect.poll(messageRoleSequence).toEqual([
+        "user-message",
+        "assistant-md",
+        "user-message",
+        "assistant-md",
+      ]);
+      await page.screenshot({ path: testInfo.outputPath("vc-r185-two-turns-history-held.png") });
+
+      // 放行真实历史（两轮补页一起落地）。放行前先注册响应收集 listener：
+      // 两份本会话 history 响应都必须真实到达且 ok、body finished——只等
+      // 第一份响应或只等 route.continue 结束都不能证明另一份已交接。
+      // listener 在 finally 精确移除；gate 与 route 在外层 finally 兜底，
+      // 失败不吞错。
+      const finalHistoryPathname = `/api/v1/conversations/${conversationId}/messages`;
+      const finalHistoryResponses: Response[] = [];
+      const collectFinalHistory = (response: Response): void => {
+        if (response.request().method() !== "GET") return;
+        if (new URL(response.url()).pathname !== finalHistoryPathname) return;
+        finalHistoryResponses.push(response);
+      };
+      page.on("response", collectFinalHistory);
+      try {
+        releaseHistory();
+        await expect.poll(() => finalHistoryResponses.length, { timeout: 10_000 }).toBe(2);
+        for (const response of finalHistoryResponses) {
+          expect(response.ok(), "终局历史真实请求成功").toBeTruthy();
+          await response.finished();
+        }
+        await expect.poll(() => heldSettled, { timeout: 10_000 }).toBe(heldCalls);
+        // 自然双 RAF：响应体送达后浏览器处理、store 发布与渲染均已完成，
+        // 此刻的各 2 条与组合顺序才是权威交接后的结果。无固定 sleep。
+        await page.evaluate(() => new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }));
+        await expect(userMessages).toHaveCount(2);
+        await expect(userMessages.first()).toContainText("第一轮");
+        await expect(userMessages.last()).toContainText("第二轮");
+        await expect(page.getByTestId("assistant-md")).toHaveCount(2);
+        await expect.poll(messageRoleSequence).toEqual([
+          "user-message",
+          "assistant-md",
+          "user-message",
+          "assistant-md",
+        ]);
+      } finally {
+        page.off("response", collectFinalHistory);
+      }
+    } finally {
+      releaseHistory();
+      try {
+        await expect.poll(() => heldSettled, { timeout: 10_000 }).toBe(heldCalls);
+      } finally {
+        await page.unroute(/\/api\/v1\/conversations\/\d+\/messages/, holdHistory);
+      }
+    }
   } finally {
     // 只软删除本 case 创建的会话，不触碰共享账号其它数据。
     const deleted = await sessionRequest(

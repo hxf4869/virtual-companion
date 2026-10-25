@@ -2610,4 +2610,65 @@ describe("聊天产品页", () => {
     expect((input().element as HTMLTextAreaElement).value).toBe("");
     wrapper.unmount();
   });
+
+  // ---- VC-R185：终态同步在途时下一轮发送 ----
+  // 已读源事实：store.send 在流 completed 之后仍 await 身份快照与历史补页
+  // （stores/chat.ts send 尾段）；此窗口内 phase=completed、generationStarting
+  // =false、isStreaming=false 而 promise 未结算。页面 submitInFlight 是非响应
+  // 布尔，直到 sendText 的 finally 才清，composerBusy 又只含 generationStarting
+  // ∪ preparingConversation——UI 已显示完成、发送键可用，第二笔提交却被旧布尔
+  // 静默挡住。R182 已明确 store 边界支持旧终态同步在途时下一轮 send，本用例
+  // 验证页面消费者不与之矛盾。
+
+  it("VC-R185：终态同步在途时下一轮发送不被静默挡住——完成态的可用发送键下 B 仍交给 store.send", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    // 受控 promise 复现真实 store.send 的生产契约：流已 completed（POST 段的
+    // generationStarting 已清零，isStreaming 由 phase 派生为 false），身份快照
+    // 与历史补页仍在途、promise 暂不结算。
+    let releaseFirstSend!: () => void;
+    const terminalSyncGate = new Promise<void>((resolve) => {
+      releaseFirstSend = resolve;
+    });
+    const sendSpy = vi.spyOn(store, "send").mockImplementation(async () => {
+      store.phase = "completed";
+      store.generationStarting = false;
+      await terminalSyncGate;
+    });
+    const input = () => wrapper.find('[data-testid="message-input"]');
+
+    try {
+      // 首笔 A 正常提交：提交文本同步清空输入框，send 进入终态同步在途。
+      await input().setValue("第一条 A");
+      await wrapper.find('[data-testid="send"]').trigger("click");
+      await flushPromises();
+      expect(sendSpy).toHaveBeenCalledOnce();
+      expect(sendSpy.mock.calls[0]?.[2]).toBe("第一条 A");
+      expect((input().element as HTMLTextAreaElement).value).toBe("");
+
+      // 前置成立：终态同步在途窗口内三项状态均为完成事实。
+      expect(store.phase).toBe("completed");
+      expect(store.generationStarting).toBe(false);
+      expect(store.isStreaming).toBe(false);
+      // UI 已显示完成反馈：生成中的停止入口不在，发送键回到界面。
+      expect(wrapper.find('[data-testid="cancel"]').exists()).toBe(false);
+      // 程序清空已重建 textarea——即时查询当前活字段，重新输入下一条 B。
+      await input().setValue("下一条 B");
+      expect(wrapper.find('[data-testid="send"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="send"]').attributes("disabled")).toBeUndefined();
+
+      // 再点击：B 必须作为第 2 笔提交到达 store.send，不能静默无动作。
+      await wrapper.find('[data-testid="send"]').trigger("click");
+      await flushPromises();
+      expect(sendSpy).toHaveBeenCalledTimes(2);
+      expect(sendSpy.mock.calls[1]?.[2]).toBe("下一条 B");
+    } finally {
+      // 在途 gate 始终放行，flush 后卸载，失败也不污染后续用例。
+      releaseFirstSend();
+      await flushPromises();
+      wrapper.unmount();
+    }
+  });
 });

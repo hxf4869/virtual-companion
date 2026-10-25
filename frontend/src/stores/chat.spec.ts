@@ -4039,4 +4039,205 @@ describe("useChatStore N-05/N-06", () => {
       if (second) await second;
     }
   });
+
+  // VC-R185（生产者侧）：A 终态同步在途（completed 后终局补页挂起、
+  // canonical 窗口未交接）时允许 B 开始新轮——R182 边界3 已证 store 提交
+  // 边界支持该并发，本用例走真实公开 send 验证数据展示契约：A 已完成的
+  // 用户行/回复行不得因 B streaming 被隐藏，也不得在 B completed 时被单值
+  // 过渡记录覆盖丢失；晚到的 A 权威快照只更新 A 自己的过渡身份、不写当前
+  // 轮状态；权威历史到达后 A/B 四行按真实 messageId 各恰一条收敛。两种
+  // 实际顺序各跑一遍：snapshot-first（A 快照先到）与 late-snapshot（A 快照
+  // 延到 B completed 之后才返回——正常成功快照晚到，不是缺 ID 歧义）。
+  it.each(["snapshot-first", "late-snapshot"] as const)(
+    "VC-R185: %s 顺序下 A 终态同步在途时 B 新轮开始，A 已完成行保持显示直至权威历史按真实 ID 交接",
+    async (order) => {
+      const lateSnapshot = order === "late-snapshot";
+      const store = useChatStore();
+      const aText = "第一轮问题";
+      const aReply = "第一轮回复";
+      const bText = "第二轮问题";
+      const bReply = "第二轮回复的开头";
+      const authoritativeHistory = [
+        { messageId: 90, conversationId: 1, role: "user", content: aText },
+        { messageId: 91, conversationId: 1, role: "assistant", content: aReply },
+        { messageId: 92, conversationId: 1, role: "user", content: bText },
+        { messageId: 93, conversationId: 1, role: "assistant", content: bReply },
+      ];
+      const aSnapshotResult: SnapshotResult = {
+        ok: true,
+        status: 200,
+        sourceUserMessageId: "90",
+        assistantMessageId: "91",
+        events: [terminal(2, 1)],
+      };
+      const bSnapshotResult: SnapshotResult = {
+        ok: true,
+        status: 200,
+        sourceUserMessageId: "92",
+        assistantMessageId: "93",
+        events: [terminal(2, 1)],
+      };
+      const historyGate = deferred<ChatApiResponse>();
+      const bTerminalGate = deferred<void>();
+      const aSnapshotGate = deferred<SnapshotResult>();
+      const releaseHistory = (): void => {
+        historyGate.resolve({ ok: true, status: 200, json: authoritativeHistory });
+      };
+      const releaseBTerminal = (): void => {
+        bTerminalGate.resolve();
+      };
+      const releaseSnapshot = (): void => {
+        aSnapshotGate.resolve(aSnapshotResult);
+      };
+      let messagesCalls = 0;
+      let posts = 0;
+      let snapshots = 0;
+      let resumes = 0;
+      const transport: ChatTransport = {
+        async request(method, path): Promise<ChatApiResponse> {
+          if (path === "/api/v1/conversations" && method === "POST") {
+            return { ok: true, status: 200, json: { conversationId: 1 } };
+          }
+          if (path.includes("/generations") && method === "POST") {
+            posts += 1;
+            return {
+              ok: true,
+              status: 200,
+              json: {
+                generationId: posts === 1 ? 42 : 43,
+                conversationId: 1,
+                logicalGenerationId: "lg",
+                status: "CREATED",
+              },
+            };
+          }
+          if (path.includes("/messages")) {
+            messagesCalls += 1;
+            if (messagesCalls === 1) return { ok: true, status: 200, json: [] }; // 初始最近窗口
+            await historyGate.promise; // 两轮终局补页：挂起至权威历史统一放行
+            return { ok: true, status: 200, json: authoritativeHistory };
+          }
+          return { ok: true, status: 200, json: {} };
+        },
+      };
+      const deps: RealtimeDeps = {
+        resume: vi.fn(async (
+          _request: Parameters<RealtimeDeps["resume"]>[0],
+          _signal: Parameters<RealtimeDeps["resume"]>[1],
+          onDurableEvent: Parameters<RealtimeDeps["resume"]>[2],
+        ): Promise<ResumeResult> => {
+          resumes += 1;
+          if (resumes === 1) {
+            // A：一批直接到终态。
+            return { disposition: "RESUMED", events: [delta(1, 1, aReply), terminal(2, 1)] };
+          }
+          // B 第一批：partial delta 经帧级回调即时发布（真实流式路径），批在
+          // terminal 前挂起——B 真正在途；放行后整批带 terminal 返回。
+          onDurableEvent?.(delta(1, 1, bReply));
+          await bTerminalGate.promise;
+          return { disposition: "RESUMED", events: [terminal(2, 1)] };
+        }),
+        fetchSnapshot: vi.fn(async (): Promise<SnapshotResult> => {
+          snapshots += 1;
+          if (snapshots === 1) {
+            // late-snapshot：A 的身份核对挂起，延到 B completed 后才放行。
+            if (lateSnapshot) await aSnapshotGate.promise;
+            return aSnapshotResult;
+          }
+          return bSnapshotResult;
+        }),
+      };
+      await store.initConversation(transport, "1");
+      const first = store.send(transport, deps, aText);
+      let second: Promise<void> | undefined;
+      try {
+        // A completed：终局补页挂起、canonical 窗口仍空；过渡行各恰一条。
+        // snapshot-first 已按真实 90/91 展示；late-snapshot 身份仍在核对，
+        // 以合成 key 展示（绝不入 canonical）。
+        await vi.waitFor(() => expect(messagesCalls).toBe(2));
+        await vi.waitFor(() =>
+          expect(store.displayMessages.map((m) => [m.role, m.messageId])).toEqual(
+            lateSnapshot
+              ? [["user", "__final_user_42__"], ["assistant", "__final_42__"]]
+              : [["user", "90"], ["assistant", "91"]],
+          ),
+        );
+        expect(store.phase).toBe("completed");
+        expect(store.messages).toHaveLength(0);
+
+        // B 新轮（真实 send）：POST 接受、partial delta 已流式发布、terminal
+        // 批挂起——draft/isStreaming 证明 B 真正在途；A 两行在前、B 的在途
+        // echo/草稿在后。
+        second = store.send(transport, deps, bText);
+        await vi.waitFor(() => expect(posts).toBe(2));
+        await vi.waitFor(() => expect(store.draft).toBe(bReply));
+        expect(store.isStreaming).toBe(true);
+        expect(store.displayMessages.map((m) => [m.role, m.messageId])).toEqual(
+          lateSnapshot
+            ? [
+                ["user", "__final_user_42__"],
+                ["assistant", "__final_42__"],
+                ["user", "__pending_user__"],
+                ["assistant", "__streaming__"],
+              ]
+            : [
+                ["user", "90"],
+                ["assistant", "91"],
+                ["user", "__pending_user__"],
+                ["assistant", "__streaming__"],
+              ],
+        );
+
+        // 放 B terminal：B completed、B 核对（92/93）与终局补页均已发出；
+        // A/B 的用户与回复按轮次各恰一条、顺序正确——A 不因身份仍在核对
+        // 而被单值过渡记录覆盖丢失。
+        releaseBTerminal();
+        await vi.waitFor(() => expect(store.phase).toBe("completed"));
+        await vi.waitFor(() => expect(snapshots).toBe(2));
+        await vi.waitFor(() => expect(messagesCalls).toBe(3));
+        expect(store.messages).toHaveLength(0);
+        await vi.waitFor(() =>
+          expect(store.displayMessages.map((m) => [m.role, m.messageId])).toEqual(
+            lateSnapshot
+              ? [["user", "__final_user_42__"], ["assistant", "__final_assistant_42__"], ["user", "92"], ["assistant", "93"]]
+              : [["user", "90"], ["assistant", "91"], ["user", "92"], ["assistant", "93"]],
+          ),
+        );
+
+        // late-snapshot：此刻才放 A 的权威快照——只把 A 归档记录的身份更新
+        // 为真实 90/91，绝不写当前轮（B）的 lastTurnSource（保持 B 的 92）。
+        if (lateSnapshot) {
+          releaseSnapshot();
+          await vi.waitFor(() =>
+            expect(store.displayMessages.map((m) => [m.role, m.messageId])).toEqual([
+              ["user", "90"],
+              ["assistant", "91"],
+              ["user", "92"],
+              ["assistant", "93"],
+            ]),
+          );
+          expect(store.lastTurnSource).toBe("92");
+        }
+
+        // 放行权威历史：两轮补页落地，四行按真实 messageId 各恰一条收敛，
+        // 不丢、不重复。
+        releaseHistory();
+        await second;
+        await first;
+        expect(store.messages.map((m) => m.messageId)).toEqual(["90", "91", "92", "93"]);
+        expect(store.displayMessages.map((m) => [m.role, m.content, m.messageId])).toEqual([
+          ["user", aText, "90"],
+          ["assistant", aReply, "91"],
+          ["user", bText, "92"],
+          ["assistant", bReply, "93"],
+        ]);
+      } finally {
+        releaseSnapshot();
+        releaseBTerminal();
+        releaseHistory();
+        await first;
+        if (second) await second;
+      }
+    },
+  );
 });

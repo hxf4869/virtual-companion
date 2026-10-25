@@ -219,6 +219,20 @@ export const useChatStore = defineStore("h5-chat", () => {
     content: string;
     messageId: string | null;
   } | null>(null);
+  // VC-R185：已完成但权威历史尚未交接的前轮过渡行归档（私有，不导出）。
+  // 新完成轮接管 finalAssistant/finalUserTurn 时，仍未交接的前轮行移入这里
+  // 继续显示——身份核对仍在途（null-ID）的同样归档，晚到的本轮权威快照由
+  // attachSnapshotIdentity 按 generation 补真实身份；缺失/超时的 null-ID
+  // 歧义仍如实开放（不做正文猜测）。条目由 pruneFinalRows 按真实 messageId
+  // 清除，reset/成功切窗一并清理；仅用于 displayMessages 派生，绝不写入
+  // canonical messages（不改 after 分页游标）。
+  const archivedFinalRows = ref<Array<{
+    kind: "user" | "assistant";
+    generationId: string;
+    conversationId: string;
+    messageId: string | null;
+    content: string;
+  }>>([]);
   // N-06（缺口4）：回复已完成但历史同步失败——如实提示"记录同步暂未成功"，
   // 保留已确认内容与重试入口，不得改成发送失败。
   const finalSyncFailed = ref(false);
@@ -310,30 +324,26 @@ export const useChatStore = defineStore("h5-chat", () => {
    */
   const displayMessages = computed<Message[]>(() => {
     const msgs = [...messages.value];
-    if (pendingUserContent.value && isStreaming.value) {
+    // VC-R185：已完成轮次的过渡行按完成顺序显示——归档的前轮在前、最新
+    // final 记录在后，整体位于当前轮在途 echo/草稿之前：新轮 streaming 或
+    // 完成不再隐藏/覆盖前轮已确认正文。每行仍只按真实 messageId 与窗口
+    // 归属去重，null-ID 不做正文比对（N-06 既有边界）。
+    for (const row of archivedFinalRows.value) {
+      if (row.conversationId !== conversationId.value) continue;
+      if (row.messageId !== null && msgs.some((m) => m.messageId === row.messageId)) continue;
       msgs.push({
-        messageId: "__pending_user__",
-        conversationId: conversationId.value,
-        role: "user",
-        content: pendingUserContent.value,
+        messageId: row.messageId ?? `__final_${row.kind}_${row.generationId}__`,
+        conversationId: row.conversationId,
+        role: row.kind,
+        content: row.content,
       });
     }
-    if (isStreaming.value && draft.value) {
-      msgs.push({
-        messageId: "__streaming__",
-        conversationId: conversationId.value,
-        role: "assistant",
-        content: draft.value,
-      });
-    }
-    // VC-R182：已确认完成但权威历史未交接的本轮用户正文过渡行。source id
-    // 已知时由 pruneFinalRows 按真实 messageId 收敛；未知时不做任何正文比对
-    // （同 finalAssistant 的 null-ID 边界，可能出现重复显示）。conversationId
-    // 用捕获时的原始归属，窗口已切换时不把旧正文混入新会话显示。
+    // VC-R182：本轮（最新完成）用户过渡行。source id 已知时由 pruneFinalRows
+    // 按真实 messageId 收敛；conversationId 用捕获时的原始归属，窗口已切换
+    // 时不把旧正文混入新会话显示。
     const userRow = finalUserTurn.value;
     if (
       userRow &&
-      !isStreaming.value &&
       userRow.conversationId === conversationId.value &&
       !finalUserTurnKnownIn(msgs, userRow)
     ) {
@@ -349,12 +359,31 @@ export const useChatStore = defineStore("h5-chat", () => {
     // ID、快照也未确认身份）时不做任何正文比对，过渡行始终显示——此时若
     // 历史同步成功可能出现重复显示，属可接受边界。
     const finalRow = finalAssistant.value;
-    if (finalRow && !isStreaming.value && !finalRowKnownIn(msgs, finalRow)) {
+    if (finalRow && !finalRowKnownIn(msgs, finalRow)) {
       msgs.push({
         messageId: finalRow.messageId ?? `__final_${finalRow.generationId}__`,
         conversationId: conversationId.value,
         role: "assistant",
         content: finalRow.content,
+      });
+    }
+    // STREAM-ECHO: while a turn is in flight the user's own message is echoed as a
+    // pending bubble (the server persists it, but history only reloads after
+    // the stream reaches a terminal state).
+    if (pendingUserContent.value && isStreaming.value) {
+      msgs.push({
+        messageId: "__pending_user__",
+        conversationId: conversationId.value,
+        role: "user",
+        content: pendingUserContent.value,
+      });
+    }
+    if (isStreaming.value && draft.value) {
+      msgs.push({
+        messageId: "__streaming__",
+        conversationId: conversationId.value,
+        role: "assistant",
+        content: draft.value,
       });
     }
     return msgs;
@@ -393,6 +422,55 @@ export const useChatStore = defineStore("h5-chat", () => {
     if (finalRow && finalRowKnownIn(messages.value, finalRow)) finalAssistant.value = null;
     const userRow = finalUserTurn.value;
     if (userRow && finalUserTurnKnownIn(messages.value, userRow)) finalUserTurn.value = null;
+    // VC-R185：归档的前轮过渡行同样只在权威行按真实 messageId 到达后清除。
+    if (archivedFinalRows.value.length > 0) {
+      archivedFinalRows.value = archivedFinalRows.value.filter(
+        (row) => !messages.value.some((m) => m.messageId === row.messageId),
+      );
+    }
+  }
+
+  /**
+   * VC-R185：新完成轮接管最新过渡记录前的归档——把仍归属本窗口且权威窗口
+   * 尚无对应行的前轮记录移入 archivedFinalRows 继续显示（移动语义：原位置
+   * 清空）。同轮重复确认与已切窗的记录不归档；身份核对仍在途的 null-ID
+   * 记录同样归档保留正文，由晚到的本轮快照（attachSnapshotIdentity）补
+   * 真实身份——绝不按正文猜测，缺失/超时的歧义仍开放。
+   */
+  function archiveSupersededUserTurn(nextGeneration: string): void {
+    const row = finalUserTurn.value;
+    if (!row || row.generationId === nextGeneration) return;
+    if (row.conversationId !== conversationId.value) return;
+    if (row.messageId !== null && messages.value.some((m) => m.messageId === row.messageId)) return;
+    archivedFinalRows.value = [
+      ...archivedFinalRows.value,
+      {
+        kind: "user",
+        generationId: row.generationId,
+        conversationId: row.conversationId,
+        messageId: row.messageId,
+        content: row.content,
+      },
+    ];
+    finalUserTurn.value = null;
+  }
+
+  /** VC-R185：finalAssistant 侧的同义归档（记录无会话字段，按当前窗口归属）。 */
+  function archiveSupersededAssistant(nextGeneration: string): void {
+    const row = finalAssistant.value;
+    if (!row || row.generationId === nextGeneration) return;
+    if (row.messageId !== null && messages.value.some((m) => m.messageId === row.messageId)) return;
+    archivedFinalRows.value = [
+      ...archivedFinalRows.value,
+      {
+        kind: "assistant",
+        generationId: row.generationId,
+        conversationId: conversationId.value,
+        messageId: row.messageId,
+        content: row.content,
+      },
+    ];
+    finalAssistant.value = null;
   }
 
   async function run(
@@ -463,6 +541,9 @@ export const useChatStore = defineStore("h5-chat", () => {
 
     if (result.outcome === "completed") {
       phase.value = "completed";
+      // VC-R185：本轮接管最新过渡记录前，把前轮仍未交接的记录归档保留。
+      archiveSupersededUserTurn(id);
+      archiveSupersededAssistant(id);
       // VC-R182：清 pending 前捕获本轮已确认用户正文——完成与历史交接之间
       // 的过渡行；归属取完成时的当前会话（流期间切窗会作废本 run，不会走到
       // 这里）。无本地正文不编造。
@@ -602,6 +683,9 @@ export const useChatStore = defineStore("h5-chat", () => {
         outcome.value = mapped;
         if (mapped === "completed") {
           phase.value = "completed";
+          // VC-R185：本轮接管最新过渡记录前，把前轮仍未交接的记录归档保留。
+          archiveSupersededUserTurn(id);
+          archiveSupersededAssistant(id);
           // VC-R182：完成快照已带权威 source——用户过渡行直接按真实 ID 建立，
           // 后续最近窗口刷新（loadRecentWindow→pruneFinalRows）收敛。
           if (pendingUserContent.value) {
@@ -697,6 +781,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     outcome.value = mapped;
     phase.value = mapped;
     if (mapped === "completed" && final && final.content !== null) {
+      archiveSupersededAssistant(generationId.value);
       finalAssistant.value = {
         generationId: generationId.value,
         messageId: final.messageId,
@@ -710,6 +795,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       // 回退路径在调用前已写入）；取消响应未核对到时保持 null 过渡，由随后
       // 的补页/重试或既有 N-06 null-ID 边界承接，绝不按正文猜。
       if (mapped === "completed" && pendingUserContent.value) {
+        archiveSupersededUserTurn(generationId.value);
         finalUserTurn.value = {
           generationId: generationId.value,
           conversationId: conversationId.value,
@@ -920,10 +1006,54 @@ export const useChatStore = defineStore("h5-chat", () => {
   }
 
   /**
+   * VC-R185：晚到成功快照的身份落位——按原 generation 匹配更新仍持有的
+   * 最新/归档过渡记录（source/assistant 两侧独立，null-ID → 真实 ID），随后
+   * 按真实 ID prune。不依赖 turnSeq/当前 generation：本轮快照对本轮过渡
+   * 正文的晚到确认是正常网络顺序，不是缺 ID 歧义；调用方负责会话/窗口
+   * 归属校验与当前轮提交语义的守卫。
+   */
+  function attachSnapshotIdentity(
+    id: string,
+    identity: { sourceUserMessageId?: string | null; assistantMessageId?: string | null },
+  ): void {
+    const sourceId = identity.sourceUserMessageId;
+    if (sourceId) {
+      const userRow = finalUserTurn.value;
+      if (userRow && userRow.generationId === id && userRow.messageId === null) {
+        finalUserTurn.value = { ...userRow, messageId: sourceId };
+      } else if (archivedFinalRows.value.some((row) => row.kind === "user" && row.generationId === id)) {
+        archivedFinalRows.value = archivedFinalRows.value.map((row) =>
+          row.kind === "user" && row.generationId === id && row.messageId === null
+            ? { ...row, messageId: sourceId }
+            : row,
+        );
+      }
+    }
+    const assistantId = identity.assistantMessageId;
+    if (assistantId) {
+      const assistantRow = finalAssistant.value;
+      if (assistantRow && assistantRow.generationId === id && assistantRow.messageId === null) {
+        finalAssistant.value = { ...assistantRow, messageId: assistantId };
+      } else if (archivedFinalRows.value.some((row) => row.kind === "assistant" && row.generationId === id)) {
+        archivedFinalRows.value = archivedFinalRows.value.map((row) =>
+          row.kind === "assistant" && row.generationId === id && row.messageId === null
+            ? { ...row, messageId: assistantId }
+            : row,
+        );
+      }
+    }
+    pruneFinalRows();
+  }
+
+  /**
    * N-06：SSE 直完成的 turn 用一次有界快照确认本轮持久行身份——与终局补页
    * 并行发起，拿到 assistantMessageId 才附加到过渡行并允许按真实 ID 去重；
    * 快照失败/超时/拿不到 ID 时保留 null-ID 过渡显示，绝不退回正文比对。
-   * await 期间归属失守（新一轮提交/切窗）时结果整体作废，静默跳过。
+   * VC-R185：快照晚于新一轮接管 turn 返回（正常成功快照晚到）时不再整体
+   * 作废——仍按原 generation + 会话归属更新本轮过渡正文身份（最新或已
+   * 归档，见 attachSnapshotIdentity）；只有 lastTurnSource 这类当前轮提交
+   * 语义仍受 turnSeq/当前 generation 守卫，旧轮快照绝不写新轮状态。
+   * 切窗（会话失守）时整体作废不变。
    */
   async function confirmFinalIdentity(
     deps: RealtimeDeps,
@@ -937,39 +1067,16 @@ export const useChatStore = defineStore("h5-chat", () => {
     } catch {
       return;
     }
-    if (
-      turnSeq !== seqAtSubmit ||
-      generationId.value !== id ||
-      conversationId.value !== conversationAtStart
-    ) {
-      return;
-    }
     if (!snapshot || !snapshot.ok) return;
-    // 快照同样是本轮 source 用户消息的权威来源。
-    if (snapshot.sourceUserMessageId) {
+    if (conversationId.value !== conversationAtStart) return;
+    const turnStillCurrent = turnSeq === seqAtSubmit && generationId.value === id;
+    // 快照同样是本轮 source 用户消息的权威来源——仅当前轮可写。
+    if (turnStillCurrent && snapshot.sourceUserMessageId) {
       lastTurnSource.value = snapshot.sourceUserMessageId;
     }
-    // VC-R182：用户过渡行同步获得权威 source id（与下方 assistant 的
-    // messageId 附加对称），不被 assistant 行缺失/已确认的早退阻塞。
-    const userRow = finalUserTurn.value;
-    if (
-      userRow &&
-      userRow.generationId === id &&
-      userRow.messageId === null &&
-      snapshot.sourceUserMessageId
-    ) {
-      finalUserTurn.value = { ...userRow, messageId: snapshot.sourceUserMessageId };
-    }
-    const row = finalAssistant.value;
-    if (
-      row &&
-      row.generationId === id &&
-      row.messageId === null &&
-      snapshot.assistantMessageId
-    ) {
-      finalAssistant.value = { ...row, messageId: snapshot.assistantMessageId };
-    }
-    pruneFinalRows();
+    // VC-R182：用户过渡行同步获得权威 source id（与 assistant 的 messageId
+    // 附加对称），不被 assistant 行缺失/已确认的早退阻塞。
+    attachSnapshotIdentity(id, snapshot);
   }
 
   /**
@@ -1022,6 +1129,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     cancelUnconfirmed.value = false;
     finalAssistant.value = null;
     finalUserTurn.value = null;
+    archivedFinalRows.value = []; // VC-R185：窗口销毁，前轮过渡归档一并清理
     finalSyncFailed.value = false;
     lastTurnSource.value = "";
     turnHasGeneration.value = false;
@@ -1192,6 +1300,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     cancelUnconfirmed.value = false;
     finalAssistant.value = null;
     finalUserTurn.value = null;
+    archivedFinalRows.value = []; // VC-R185：窗口销毁，前轮过渡归档一并清理
     finalSyncFailed.value = false;
     lastTurnSource.value = "";
     turnHasGeneration.value = false;
@@ -1416,8 +1525,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 不出现过渡行与权威行同时显示，也不先等快照再发历史请求。缓冲由本方
     // 持有：后页失败抛出时前页已取得行仍保留并随后发布。
     // finalUserTurn 在新一轮 send 同步接管时不清（与 finalAssistant 一致）：
-    // 旧轮已确认正文在 POST 在途期间保持显示，streaming 起隐藏，新轮完成时
-    // 整体替换；旧 turn 晚到的尾段只按窗口归属发布数据行，失败置位复用本
+    // 旧轮已确认正文在新轮在途期间保持显示，新轮完成时经 VC-R185 归档
+    // 保留直至权威历史按真实 ID 交接；旧 turn 晚到的尾段只按窗口归属发布
+    // 数据行，失败置位复用本
     // 提交的 turnSeq 归属——新一轮接管（turnSeq 递增、finalSyncFailed 清零）
     // 后，旧轮晚到的失败不得改写新轮同步状态。
     const held: Message[] = [];

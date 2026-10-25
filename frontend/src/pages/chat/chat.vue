@@ -200,8 +200,9 @@ const pageState = ref<PageState>("loading");
 const inputText = ref("");
 const menuOpen = ref(false);
 // VC-R172：建会话准备段的响应式 busy（ensureConversation 挂起期间为真）。
-// submitInFlight 是非响应互斥，覆盖 prepare+send 全程但不进视图；准备反馈
-// 由本状态承担。它只在准备段为真，不包 store.send 的 SSE 与终态补读。
+// VC-R185：它就是提交互斥的准备段分量（与 store 的 generationStarting 衔
+// 接覆盖"prepare+POST 启动"），准备反馈由本状态承担；不包 store.send 的
+// SSE 与终态补读。
 const preparingConversation = ref(false);
 // VC-R115：结果未确认的原提交快照。失败时记录原始提交内容，重试永远
 // 针对它——输入框里后来写下/编辑的下一条草稿不是重试目标，清空输入框
@@ -214,9 +215,6 @@ const unconfirmedSendText = ref("");
 // 解除归属。重试清空输入框只依据归属，不经正文比较。
 let inputRefilledFromFailure = false;
 const initBusy = ref(false);
-// WP-D（缺口1）：覆盖"建会话（如需要）+ 发送"的页面级提交互斥——任何
-// await 之前同步置位，await ensureConversation 期间第二次 onSend 无法穿过。
-let submitInFlight = false;
 // VC-R04：本实例实际落地的目标会话（initPage/建会话/开始新对话时同步）。
 // 恢复核对按会话归属介入：等待页（目标 ≠ 当前流所属会话）不核对、不接管，
 // 与 online/visibility 监听的注册顺序无关。
@@ -278,7 +276,8 @@ const displayMessages = computed(() => store.displayMessages);
 const generationBusy = computed(() => store.generationStarting);
 // VC-R172：发送链的视图 busy = generation POST 在途（store）∪ 建会话准备段
 // （页面）。复用 composer 的 busy 语义：禁发送/重试按钮，textarea 不禁
-// （组件里 textarea 只读 disabled）。不把非响应的 submitInFlight 并入视图。
+// （组件里 textarea 只读 disabled）。VC-R185：它同时是提交互斥的关键段守卫
+// （见 sendText）；终态同步段不占用——页面与 R182 的 store 边界一致。
 const composerBusy = computed(() => generationBusy.value || preparingConversation.value);
 const showEmptyHistory = computed(() => (
   pageState.value === "ready" &&
@@ -525,8 +524,12 @@ async function ensureConversation(): Promise<boolean> {
 }
 
 /**
- * WP-D（缺口1+2）：提交路径。互斥在任何 await 之前同步置位，覆盖
- * "建会话（如需要）+ 发送"整体；返回 false 表示正被上一笔提交占用。
+ * WP-D（缺口1+2）+ VC-R185：提交路径。互斥覆盖"建会话（如需要）+ POST/
+ * streaming 启动"关键段：进入即在任何 await 之前同步置 preparingConversation
+ * （composerBusy 的页面侧分量），ensureConversation 同步返回后交接到 store
+ * 的 generationStarting——交接语句之间无 await，无守卫空窗；返回 false 表示
+ * 正被上一笔提交占用。终态同步（completed 后的身份快照/历史补页）不再占用
+ * 提交锁——R182 已明确 store 边界支持旧终态同步在途时下一轮 send。
  * VC-R121：输入框草稿与提交快照分离——清空只按草稿归属（本次提交的就是
  * 输入框内容，或输入框仍持有本次提交的失败自动回填且用户未编辑），不用
  * 正文相等推断，用户重新输入的同文草稿是独立意图。失败恢复同样绝不触碰
@@ -538,8 +541,7 @@ async function sendText(
   sourceUserMessageId?: string,
   fromDraft = false,
 ): Promise<boolean> {
-  if (submitInFlight || store.isStreaming || generationBusy.value) return false;
-  submitInFlight = true;
+  if (composerBusy.value || store.isStreaming) return false;
   // VC-R172：准备段反馈的生命周期——进入即置位，ensureConversation 返回后
   // 交给 generationStarting（POST 段），失败路径在 catch 释放。
   preparingConversation.value = true;
@@ -580,8 +582,6 @@ async function sendText(
     }
     unconfirmedSendText.value = text;
     return true;
-  } finally {
-    submitInFlight = false;
   }
 }
 
