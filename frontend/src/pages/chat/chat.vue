@@ -64,6 +64,34 @@
       </view>
     </view>
 
+    <view
+      v-else-if="pageState === 'account-updated'"
+      class="chat-page-state chat-page-state--message"
+      data-testid="chat-account-updated"
+      role="status"
+    >
+      <text class="chat-page-state__title">登录状态已更新</text>
+      <text class="chat-page-state__copy">
+        当前登录的账号或会话已变化。请返回首页或打开全部会话，重新选择对话后继续。
+      </text>
+      <view class="chat-page-state__actions">
+        <button
+          class="chat-page-primary"
+          data-testid="chat-account-updated-home"
+          @click="onAccountUpdatedHome"
+        >
+          返回首页
+        </button>
+        <button
+          class="chat-page-secondary"
+          data-testid="chat-account-updated-conversations"
+          @click="openAllConversations"
+        >
+          全部会话
+        </button>
+      </view>
+    </view>
+
     <view v-else class="chat-history-frame">
       <VcMessageList
         ref="historyEl"
@@ -133,7 +161,7 @@
             type="button"
             class="chat-option"
             data-testid="new-conversation"
-            :disabled="store.isStreaming || composerBusy"
+            :disabled="store.isStreaming || composerBusy || pageState === 'account-updated'"
             @click="startNewConversation"
           >
             <view class="chat-option__icon" aria-hidden="true">
@@ -174,7 +202,7 @@ import { createAuthedFetch } from "@/api/authed-fetch";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import type { RealtimeDeps } from "@/api/realtime";
 import { createAuthenticatedTransport } from "@/api/transport";
-import { goBack, goTo } from "@/app/navigate";
+import { goBack, goTo, switchTabTo } from "@/app/navigate";
 import VcChatComposer from "@/components/chat/VcChatComposer.vue";
 import VcChatShell from "@/components/chat/VcChatShell.vue";
 import VcMessageList from "@/components/chat/VcMessageList.vue";
@@ -187,7 +215,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 
-type PageState = "loading" | "ready" | "waiting" | "error" | "missing";
+type PageState = "loading" | "ready" | "waiting" | "error" | "missing" | "account-updated";
 type StatusTone = "progress" | "muted" | "error";
 
 const RESUME_GAP_PX = 48;
@@ -217,6 +245,17 @@ const unconfirmedSendText = ref("");
 // 解除归属。重试清空输入框只依据归属，不经正文比较。
 let inputRefilledFromFailure = false;
 const initBusy = ref(false);
+// VC-R221：同一次在途 initPage 被精确身份事件（409 换号/同账号新 session）
+// 作废后，其后续终态不得覆盖登录状态更新说明——用户看到的应是身份说明
+// 与安全入口，而不是同次初始化落下的虚假网络错误。用户后续主动发起的
+// 合法重新初始化在 initPage 入口重置本标记，照常落 error/ready。
+let initInvalidatedByAccountContext = false;
+
+/** VC-R221：initPage 终态的唯一写入口——被身份事件作废的初始化到此为止。 */
+function settleInitPageState(state: PageState): void {
+  if (initInvalidatedByAccountContext) return;
+  pageState.value = state;
+}
 // VC-R04：本实例实际落地的目标会话（initPage/建会话/开始新对话时同步）。
 // 恢复核对按会话归属介入：等待页（目标 ≠ 当前流所属会话）不核对、不接管，
 // 与 online/visibility 监听的注册顺序无关。
@@ -255,7 +294,14 @@ const transport = createAuthenticatedTransport({
   onUnauthorized: () => auth.onUnauthorized(),
   // VC-R52 期望账号失配恢复：先作废旧本地归属再读当前 Cookie 身份，不自动
   // 重放聊天动作（共享入口见 stores/auth.ts reconcileAccountContext）。
+  // VC-R220：精确 409（换号或同账号新 session）已同步清理共享缓存，通用
+  // 可聊空态与禁用输入框在真实身份未重新确立前是错误承诺——立即切到诚实
+  // 的"登录状态已更新"说明与安全返回入口。VC-R221：同时作废正在跑的同
+  // 一次 initPage——它的终态不再覆盖本态；用户主动的重新初始化（initPage
+  // 入口重置标记）照常以 error/ready 覆盖，合法重开后不残留。
   onAccountContextChanged: () => {
+    initInvalidatedByAccountContext = true;
+    pageState.value = "account-updated";
     void auth.reconcileAccountContext(transport);
   },
 });
@@ -265,7 +311,11 @@ const authedFetch = createAuthedFetch(() => auth.accessToken, {
   getSessionId: () => auth.getSessionId(),
   getSessionRevision: () => auth.getSessionRevision(),
   onUnauthorized: () => auth.onUnauthorized(),
+  // VC-R220/R221：同 transport 钩子——SSE 路径的精确 409 也切登录状态
+  // 更新说明态并作废在途初始化。
   onAccountContextChanged: () => {
+    initInvalidatedByAccountContext = true;
+    pageState.value = "account-updated";
     void auth.reconcileAccountContext(transport);
   },
 });
@@ -419,6 +469,14 @@ function onBack(): void {
   goBack("/pages/index/index");
 }
 
+/**
+ * VC-R220：账号上下文失效后的安全出口——顶层切换直达首页，不携带旧
+ * 关系/会话参数，失效上下文的页面实例不留在返回栈。
+ */
+function onAccountUpdatedHome(): void {
+  switchTabTo("/pages/index/index");
+}
+
 function openAllConversations(): void {
   menuOpen.value = false;
   goTo(conversationsHref());
@@ -433,6 +491,9 @@ function bindGenerationContext(): void {
 async function initPage(): Promise<void> {
   if (initBusy.value) return;
   initBusy.value = true;
+  // VC-R221：这是"用户主动发起的合法重新初始化"——重置身份事件作废
+  // 标记，本页照常走 loading→终态，并以此退出 account-updated 说明态。
+  initInvalidatedByAccountContext = false;
   pageState.value = "loading";
   unconfirmedSendText.value = "";
   inputRefilledFromFailure = false;
@@ -440,13 +501,13 @@ async function initPage(): Promise<void> {
   try {
     if (!auth.isAuthenticated) await auth.tryRefresh(transport);
     if (!auth.isAuthenticated) {
-      pageState.value = "error";
+      settleInitPageState("error");
       return;
     }
 
     await relStore.load(transport);
     if (relStore.status === "error") {
-      pageState.value = "error";
+      settleInitPageState("error");
       return;
     }
 
@@ -458,13 +519,13 @@ async function initPage(): Promise<void> {
     }
     const relationshipId = relStore.currentRelationshipId;
     if (!relationshipId) {
-      pageState.value = "missing";
+      settleInitPageState("missing");
       return;
     }
 
     const conversationsLoaded = await store.loadConversations(transport, relationshipId);
     if (!conversationsLoaded) {
-      pageState.value = "error";
+      settleInitPageState("error");
       return;
     }
 
@@ -474,17 +535,17 @@ async function initPage(): Promise<void> {
       if (opened === "busy-streaming") {
         // VC-R02：其他会话的回复仍在生成——正常等待状态，不是网络错误；
         // 等待期间不清空/中断 store 里进行中的流。
-        pageState.value = "waiting";
+        settleInitPageState("waiting");
         return;
       }
       if (opened !== "opened") {
-        pageState.value = "error";
+        settleInitPageState("error");
         return;
       }
     } else if (store.conversationId) {
       if (store.isStreaming) {
         // VC-R02：无目标会话但另一实例的流仍在生成——同样不清空窗口。
-        pageState.value = "waiting";
+        settleInitPageState("waiting");
         return;
       }
       store.reset();
@@ -513,7 +574,7 @@ async function initPage(): Promise<void> {
         inputRefilledFromFailure = true;
       }
     }
-    pageState.value = "ready";
+    settleInitPageState("ready");
     if (store.conversationId) {
       const restoringConversationId = store.conversationId;
       const restoringAccountId = auth.accountId;
@@ -538,7 +599,7 @@ async function initPage(): Promise<void> {
     await nextTick();
     scheduleScrollToBottom();
   } catch {
-    pageState.value = "error";
+    settleInitPageState("error");
   } finally {
     initBusy.value = false;
     if (pendingHashRecheckAfterInit) {

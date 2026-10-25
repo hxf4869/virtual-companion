@@ -57,6 +57,8 @@ interface FetchOptions {
   relationshipFails?: boolean | (() => boolean);
   conversations?: unknown[];
   conversationListFails?: boolean | (() => boolean);
+  /** VC-R221：GET /conversations? 返回精确 409 ACCOUNT_CONTEXT_CHANGED（initPage 列表读取撞身份失配）。 */
+  conversationListAccountChanged?: boolean | (() => boolean);
   /** VC-R158：首个 GET /conversations? 挂起，由测试放行（init 读 URL 目标之后的中段夹具）。 */
   deferConversationList?: boolean;
   messages?: Record<string, unknown[]>;
@@ -80,6 +82,10 @@ interface FetchOptions {
   olderMessagesFails?: boolean | (() => boolean);
   /** R209：首个 GET /messages?before= 挂起，由测试放行/拒绝（在途等待夹具）。 */
   deferOlderMessages?: boolean;
+  /** VC-R220：GET /messages?before= 返回精确 409 ACCOUNT_CONTEXT_CHANGED（换号/同账号新 session）。 */
+  olderMessagesAccountChanged?: boolean | (() => boolean);
+  /** VC-R220：GET /api/v1/auth/session 的 ACTIVE 身份回包（reconcile 读当前 Cookie 身份）。 */
+  authSession?: { accountId: string; sessionId: string };
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -152,6 +158,22 @@ function stubFetch(options: FetchOptions = {}) {
       body: typeof init?.body === "string" ? init.body : undefined,
     });
 
+    if (url === "/api/v1/auth/session") {
+      // VC-R220：身份发现回包——asSessionIdentity 要求的完整 ACTIVE 形状；
+      // 未配置时维持兜底空对象（现有测试不发该请求）。
+      if (options.authSession) {
+        return response(true, 200, {
+          nextStep: "ACTIVE",
+          accountId: options.authSession.accountId,
+          sessionId: options.authSession.sessionId,
+          role: "USER",
+          passwordMustChange: false,
+          authenticatorEnabled: false,
+          expiresInSeconds: 900,
+        });
+      }
+      return response(true, 200, {});
+    }
     if (url === "/api/v1/relationships") {
       if (resolveBool(options.relationshipFails)) {
         return response(false, 500, { code: "INTERNAL_ERROR" });
@@ -159,6 +181,10 @@ function stubFetch(options: FetchOptions = {}) {
       return response(true, 200, options.relationships ?? [RELATIONSHIP]);
     }
     if (method === "GET" && /^\/api\/v1\/conversations\?/.test(url)) {
+      // VC-R221：会话列表读取撞精确 409（服务端判定期望账号/会话失配）。
+      if (resolveBool(options.conversationListAccountChanged)) {
+        return response(false, 409, { code: "ACCOUNT_CONTEXT_CHANGED" });
+      }
       if (resolveBool(options.conversationListFails)) {
         return response(false, 500, { code: "INTERNAL_ERROR" });
       }
@@ -179,6 +205,10 @@ function stubFetch(options: FetchOptions = {}) {
       const before = params.get("before");
       if (before !== null && resolveBool(options.olderMessagesFails)) {
         return response(false, 503, { code: "SERVICE_UNAVAILABLE" });
+      }
+      // VC-R220：向上加载更早消息撞精确 409（服务端判定期望账号/会话失配）。
+      if (before !== null && resolveBool(options.olderMessagesAccountChanged)) {
+        return response(false, 409, { code: "ACCOUNT_CONTEXT_CHANGED" });
       }
       if (before !== null && options.deferOlderMessages && !olderDeferralUsed) {
         olderDeferralUsed = true;
@@ -3234,6 +3264,105 @@ describe("聊天产品页", () => {
     expect((input().element as HTMLTextAreaElement).value).toBe("");
     expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(true);
     expect(calls.filter((call) => call.method === "POST" && call.url === "/api/v1/conversations")).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R220：加载更早消息撞精确 409（换号或同账号新 session）----
+  // 缺陷：409 触发 reconcile 同步清空共享缓存后，页面仍以"从这里开始
+  // 想说什么都可以"的通用可聊空态+禁用输入呈现，菜单"开始新对话"依旧
+  // 可点——提示与可见状态冲突、无原因说明。契约：事件后立即显示诚实的
+  // "登录状态已更新"说明与"返回首页/全部会话"安全入口（不携旧关系/会话
+  // 参数）；通用空态、输入框与加载更早入口不再出现；开始新对话不再无效
+  // 诱导；数据清理与禁发保持（无自动 POST、不重绑任何会话、不重放旧
+  // 消息）；同账号新 session 同样落说明态，不断言必换账号。
+
+  it.each([
+    { label: "换号到另一账号", accountId: "9", sessionId: "21" },
+    { label: "同账号新 session", accountId: "7", sessionId: "21" },
+  ])("VC-R220：加载更早消息撞精确 409（%s）后显示登录状态更新说明与安全入口，不残留可聊空态", async ({ accountId, sessionId }) => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const { calls } = stubFetch({
+      messages: { "conv-new": rows },
+      olderMessagesAccountChanged: true,
+      authSession: { accountId, sessionId },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const auth = useAuthStore();
+    expect(store.messages).toHaveLength(50);
+    expect(wrapper.find('[data-testid="load-more"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="load-more"]').trigger("click");
+    await flushPromises();
+
+    // reconcile 已按 auth/session 读回身份确立；旧窗口数据被同步清理。
+    expect(auth.accountId).toBe(accountId);
+    expect(store.conversationId).toBe("");
+    expect(store.messages).toHaveLength(0);
+    // 诚实说明态替代通用可聊空态与输入框；旧消息与加载更早入口消失。
+    const notice = wrapper.find('[data-testid="chat-account-updated"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.attributes("role")).toBe("status");
+    expect(notice.text()).toContain("登录状态已更新");
+    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-message"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="load-more"]').exists()).toBe(false);
+    // 数据清理与禁发保持：不建会话、不发送、不重放（无任何 POST）。
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+
+    // 返回首页直达顶层、不携带旧关系/会话参数。
+    const redirect = redirectTo();
+    redirect.mockClear();
+    await wrapper.get('[data-testid="chat-account-updated-home"]').trigger("click");
+    expect(redirect).toHaveBeenCalledWith({ url: "/pages/index/index" });
+    expect(redirect.mock.calls[0]?.[0]?.url.includes("relationshipId")).toBe(false);
+
+    // 菜单"开始新对话"不再无效诱导；"全部会话"保持安全可用。
+    await wrapper.get('[data-testid="chat-context-open"]').trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get('[data-testid="new-conversation"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-testid="chat-open-all-conversations"]').attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  // ---- VC-R221：初始化在途撞精确 409 的终态覆盖 ----
+  // 缺陷：首次打开页面时 initPage 的会话列表 GET 携旧期望身份撞精确 409，
+  // 钩子已把页面切到"登录状态已更新"说明态，但同一次在途 initPage 随即
+  // 因 conversationsLoaded=false 落 error 终态——屏幕显示"聊天没有打开
+  // 检查网络后再试一次"的虚假网络错误，身份说明被覆盖。契约：被精确
+  // 身份事件作废的同一次在途初始化不得再写任何终态（说明态保持、无虚假
+  // 网络错误、无自动 POST）；用户后续主动重新初始化仍照常落 error/ready。
+
+  it("VC-R221：初始化中的列表读取撞精确 409 换号：身份说明保持，不被同次初始化的虚假网络错误覆盖", async () => {
+    const { calls } = stubFetch({
+      conversationListAccountChanged: true,
+      authSession: { accountId: "9", sessionId: "21" },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // reconcile 已按 auth/session 读回 B9；旧共享缓存被同步清理。
+    const auth = useAuthStore();
+    expect(auth.accountId).toBe("9");
+    expect(useChatStore().conversations).toEqual([]);
+    // 说明态保持：同次 initPage 的 error 终态（列表读取失败）不得覆盖它。
+    const notice = wrapper.find('[data-testid="chat-account-updated"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toContain("登录状态已更新");
+    expect(notice.text()).toContain("重新选择对话");
+    expect(wrapper.find('[data-testid="chat-init-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("检查网络后再试一次");
+    // 禁发保持：不建会话、不发送、不重放（无任何 POST）。
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
     wrapper.unmount();
   });
 });
