@@ -134,6 +134,45 @@
           </button>
         </view>
 
+        <!-- R233：正在编辑的行已被权威列表移除或不再可渲染（远端删除/
+             REJECTED 等）时，行内编辑器随行卸载会把未保存草稿变得不可见。
+             恢复框挂在空态/分区链之外（空窗口同样显示），继续绑定同一份
+             editDraft，可见可复制；目标行已不存在，不给保存，只给明确
+             放弃入口（清稿不发任何请求）。 -->
+        <view
+          v-if="editingRowMissing"
+          class="memory-row"
+          data-testid="memory-orphan-draft"
+        >
+          <view class="memory-edit">
+            <textarea
+              v-model="editDraft"
+              class="memory-edit__input"
+              data-testid="memory-orphan-draft-input"
+              maxlength="2000"
+              aria-label="编辑记忆内容"
+            />
+            <text
+              class="memory-row__error"
+              data-testid="memory-orphan-draft-note"
+              role="status"
+            >
+              这条记忆已不在当前列表中。修改仍留在这里，如需保留可先复制。
+            </text>
+            <view class="memory-actions">
+              <button
+                type="button"
+                class="memory-action"
+                data-testid="memory-orphan-draft-discard"
+                :disabled="editBusy"
+                @click="cancelEdit"
+              >
+                放弃修改
+              </button>
+            </view>
+          </view>
+        </view>
+
         <view
           v-if="listUnconfirmedEmpty"
           class="memory-state memory-state--center"
@@ -591,6 +630,19 @@ const firstListLoading = computed(() =>
   relState.value === "ready" && memory.listStatus === "loading" && memory.items.length === 0,
 );
 
+/**
+ * 正在编辑的行是否已不在任何可渲染分区：权威刷新可能整表替换 items
+ * （条目被远端删除），也可能行仍在 items 却因状态不再渲染（远端改为
+ * REJECTED/EXPIRED 等）。两种情况行内编辑器都会随行卸载，未保存草稿
+ * 改由恢复框继续承载；不查 items 整表，正是为了覆盖后一种。
+ */
+const editingRowMissing = computed(() => {
+  if (editingId.value === null) return false;
+  const editing = editingId.value;
+  return !memory.acceptedItems.some((item) => item.memoryId === editing)
+    && !memory.pendingItems.some((item) => item.memoryId === editing);
+});
+
 /** 当前窗口没有任何条目（列表状态为 ready）。 */
 const listWindowEmpty = computed(() =>
   relState.value === "ready"
@@ -920,12 +972,12 @@ function editTextarea(): HTMLTextAreaElement | null {
 }
 
 function startEdit(item: MemoryItem): void {
-  // 正在编辑另一条且草稿有实际改动（按保存的 trim 规则比较）时，切换会
-  // 静默丢弃草稿：先原生确认，取消则保留当前草稿与编辑状态。保存
+  // 正在编辑另一条且有未保存草稿（源行可渲染时按保存的 trim 规则比较；
+  // 源行已缺失/不可渲染时草稿只在恢复框里，非空即有丢失风险）时，切换
+  // 会静默丢弃草稿：先原生确认，取消则保留当前草稿与编辑状态。保存
   // 在途（editBusy）不拦截，维持既有切换行为（T-58）。
   if (!editBusy.value && editingId.value !== null && editingId.value !== item.memoryId) {
-    const editing = memory.items.find((entry) => entry.memoryId === editingId.value);
-    if (editing && editDraft.value.trim() !== editing.summary) {
+    if (hasUnsavedEditDraft()) {
       const confirmed = typeof globalThis.confirm === "function"
         ? globalThis.confirm(SWITCH_EDIT_CONFIRM_MESSAGE)
         : false;
@@ -1038,13 +1090,19 @@ let leaveGuardsInstalled = false;
 let removeRouteLeaveGuard: (() => void) | null = null;
 
 /**
- * 是否有离开本页会丢失的未保存草稿：正在编辑的条目仍在共享列表且草稿
- * （按保存的 trim 规则）与已保存内容不同。未编辑、未改动、显式取消与
- * 保存成功退出编辑后都为 false；auth 清理会重置 memory.items，旧账号
- * 草稿因此找不到对应条目，不构成拦截条件。
+ * 是否有离开本页会丢失的未保存草稿：正在编辑的条目仍可渲染时，草稿
+ * （按保存的 trim 规则）与已保存内容不同即脏；条目已被权威列表移除或
+ * 不再可渲染（远端删除/REJECTED 等）时，原摘要无从比较，恢复框仍在
+ * 展示的非空草稿即视为脏，离开守卫继续保护。退出/换号清理走
+ * memory.reset（清空 items 并把 listStatus 置回 idle）：旧账号草稿不
+ * 构成拦截条件，清理性导航不因 accountId watch 未 flush 的瞬时状态
+ * 弹确认。
  */
 function hasUnsavedEditDraft(): boolean {
   if (editingId.value === null) return false;
+  if (editingRowMissing.value) {
+    return memory.listStatus !== "idle" && editDraft.value.trim() !== "";
+  }
   const editing = memory.items.find((item) => item.memoryId === editingId.value);
   return editing !== undefined && editDraft.value.trim() !== editing.summary;
 }

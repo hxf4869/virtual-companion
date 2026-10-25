@@ -2086,6 +2086,156 @@ describe("记忆管理页", () => {
     wrapperB.unmount();
   });
 
+  it("R233 权威刷新移除正在编辑行（空窗口）：恢复框保留草稿可复制，离开需确认，明确放弃不发读写", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { attemptNavigate } = stubLeaveRouter();
+    let refreshed = false;
+    const { calls } = stubFetch({
+      confirmStatus: () => 404,
+      memories: () => (refreshed ? [] : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // Root 复现路径：编辑已保存行留下脏稿（不保存），源行仍可渲染时
+    // 不出现恢复框。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R233 刷新后仍应能复制的草稿。");
+    expect(wrapper.find('[data-testid="memory-orphan-draft"]').exists()).toBe(false);
+
+    // 候选被远端处理：确认 404 → 行内"刷新列表" → 权威回包不含被编辑行。
+    await wrapper.get('[data-testid="pending-confirm"]').trigger("click");
+    await flushPromises();
+    refreshed = true;
+    await wrapper.get('[data-testid="pending-refresh"]').trigger("click");
+    await flushPromises();
+
+    // 整页进入空态，行内编辑器随行卸载；恢复框挂在空态/分区链之外，
+    // 继续承载同一份草稿（可见可复制）。
+    expect(wrapper.find('[data-testid="memory-empty"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-orphan-draft"]').exists()).toBe(true);
+    let input = wrapper.get('[data-testid="memory-orphan-draft-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R233 刷新后仍应能复制的草稿。");
+    expect(wrapper.get('[data-testid="memory-orphan-draft-note"]').text()).toContain("已不在当前列表中");
+
+    // 离开保护：取消留在本页且草稿原样，确认放行。
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    input = wrapper.get('[data-testid="memory-orphan-draft-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R233 刷新后仍应能复制的草稿。");
+    confirmMock.mockReturnValue(true);
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+
+    // 明确放弃：清稿即收起恢复框，不发任何读写，之后离开不再确认。
+    const getsBeforeDiscard = listGetCount(calls);
+    confirmMock.mockClear();
+    await wrapper.get('[data-testid="memory-orphan-draft-discard"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-orphan-draft"]').exists()).toBe(false);
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(listGetCount(calls)).toBe(getsBeforeDiscard);
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("R233 恢复框存在时切换编辑可见行：先确认，取消保留孤儿草稿", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    let refreshed = false;
+    const { calls } = stubFetch({
+      confirmStatus: () => 404,
+      memories: () => (refreshed
+        ? DEFAULT_MEMORIES.filter((row) => row.memoryId === "m2")
+        : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 编辑 m1 留脏稿；候选 404 的行内刷新把权威列表收窄到只剩可见的 m2。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R233 恢复框里的孤儿草稿。");
+    await wrapper.get('[data-testid="pending-confirm"]').trigger("click");
+    await flushPromises();
+    refreshed = true;
+    await wrapper.get('[data-testid="pending-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-orphan-draft"]').exists()).toBe(true);
+    expect(memoryRows(wrapper)).toHaveLength(1);
+
+    // 切到可见行 m2：恢复框里的草稿同样有丢失风险，先确认；取消则保留。
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-testid="memory-orphan-draft"]').exists()).toBe(true);
+    const orphanInput = wrapper.get('[data-testid="memory-orphan-draft-input"]').element as HTMLTextAreaElement;
+    expect(orphanInput.value).toBe("R233 恢复框里的孤儿草稿。");
+
+    // 确认切换：恢复框消失，m2 行内编辑框载入 m2 的已保存内容。
+    confirmMock.mockReturnValue(true);
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="memory-orphan-draft"]').exists()).toBe(false);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("用户的生日在三月。");
+
+    // 全程只有初始读取、候选 404 后的一次刷新，切换本身不发 PATCH。
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("R233 待确认行被远端 REJECTED（仍在 items 却不可渲染）：刷新后恢复框保留草稿并维持离开保护", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { attemptNavigate } = stubLeaveRouter();
+    let refreshed = false;
+    stubFetch({
+      patchStatus: () => 500,
+      memories: () => (refreshed
+        ? [
+            ...DEFAULT_MEMORIES.filter((row) => row.memoryId !== "p1"),
+            memoryRow({
+              memoryId: "p1",
+              summary: "候选：用户最近在学吉他。",
+              status: "REJECTED",
+              createdAt: "2026-09-03T10:00:00Z",
+            }),
+          ]
+        : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 编辑候选 p1 → 保存 5xx 结果未知：草稿留在行内编辑框等待核对。
+    await openEdit(wrapper, "pending-edit");
+    await wrapper.get('[data-testid="pending-edit-input"]').setValue("候选改成周末去公园。");
+    await wrapper.get('[data-testid="pending-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="pending-edit-box"]').exists()).toBe(true);
+
+    // 刷新核对：权威回包里 p1 仍在 items（远端已 REJECTED）但不再可渲染。
+    refreshed = true;
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-pending"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(0);
+    expect(useMemoryStore().items.some((item) => item.memoryId === "p1" && item.status === "REJECTED")).toBe(true);
+    expect(wrapper.find('[data-testid="memory-orphan-draft"]').exists()).toBe(true);
+    const orphanInput = wrapper.get('[data-testid="memory-orphan-draft-input"]').element as HTMLTextAreaElement;
+    expect(orphanInput.value).toBe("候选改成周末去公园。");
+    // 核对按预期值比较：编辑确实未生效，给出确定提示；草稿与恢复框保留。
+    expect(wrapper.get('[data-testid="memory-rejected"]').text()).toContain("没有生效");
+
+    // 行不在视图但草稿非空：离开仍需确认。
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
   it("R204 键盘激活编辑后焦点落入编辑框，不因按钮被替换掉回 body", async () => {
     stubFetch();
     const wrapper = mountPage();
