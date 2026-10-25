@@ -87,6 +87,8 @@ interface FetchOptions {
   /** VC-R13：GET /relationships 响应返回前的闸门（数据先快照再等待）。 */
   beforeRelationships?: () => Promise<void>;
   patchStatus?: number;
+  /** VC-R223：PATCH 的 fetch 以非超时原因直接 reject（原生网络失败：请求可能已送达并提交）。 */
+  patchReject?: boolean;
   patchJson?: unknown | (() => unknown);
   /** VC-R189：可按次求值——仅首次 PATCH 回读不可解析，重试保存正常回读。 */
   patchParseFailed?: boolean | (() => boolean);
@@ -160,6 +162,10 @@ function stubFetch(options: FetchOptions = {}) {
         typeof init?.body === "string" ? init.body : "{}",
       ) as Record<string, unknown>;
     }
+      // VC-R223：请求已发出但连接中断（非超时）——transport 原样上抛原生异常。
+      if (options.patchReject) {
+        throw new TypeError("Failed to fetch");
+      }
       // VC-R214：期望账号失配的精确 409 形态，transport 上报后原样返回调用方。
       if (options.patchAccountContextChanged) {
         return response(409, { code: "ACCOUNT_CONTEXT_CHANGED" });
@@ -519,8 +525,8 @@ describe("陪伴设置页", () => {
     wrapper.unmount();
   });
 
-  it("保存失败保留草稿并允许原样重试", async () => {
-    stubFetch({ patchStatus: 500 });
+  it("确定拒绝（4xx）的保存失败保留草稿并允许原样重试", async () => {
+    stubFetch({ patchStatus: 400 });
     const wrapper = mountPage();
     await flushPromises();
 
@@ -554,6 +560,76 @@ describe("陪伴设置页", () => {
     expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(false);
     expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
       .toBe("林夏");
+    wrapper.unmount();
+  });
+
+  // VC-R223：非超时的原生网络失败与代理在提交后合成的 5xx（502）里，服务端
+  // 都可能已提交该次保存（浏览器无法从同一 5xx status 区分来源），不得断言
+  // "没有保存成功"：显示结果未知并复用重新读取；无后续编辑时以服务端已
+  // 提交值收束。提交后继续编辑的草稿保护由下方 VC-R189 用例覆盖（同一
+  // unknown 分支）。
+  it("网络级失败（非超时 fetch reject）的保存显示结果未知，重新读取收束为已提交值", async () => {
+    let committed = false;
+    const { calls } = stubFetch({
+      relationships: () => [
+        committed
+          ? { ...ACTIVE_RELATIONSHIP, companionName: "阿澈" }
+          : ACTIVE_RELATIONSHIP,
+      ],
+      patchReject: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="companion-unknown"]').text()).toContain("未能确认是否生效");
+    expect(wrapper.find('[data-testid="companion-save-error"]').exists()).toBe(false);
+
+    // 服务端其实已提交该次保存：重新读取拿到已提交值，无后续编辑时收束。
+    committed = true;
+    await wrapper.get('[data-testid="companion-reload"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "GET" && call.url === "/api/v1/relationships"))
+      .toHaveLength(2);
+    expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(false);
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("阿澈");
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("5xx 失败（502 代理提交后回包丢失）的保存显示结果未知，重新读取收束为已提交值", async () => {
+    let committed = false;
+    const { calls } = stubFetch({
+      relationships: () => [
+        committed
+          ? { ...ACTIVE_RELATIONSHIP, companionName: "阿澈" }
+          : ACTIVE_RELATIONSHIP,
+      ],
+      patchStatus: 502,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="companion-unknown"]').text()).toContain("未能确认是否生效");
+    expect(wrapper.find('[data-testid="companion-save-error"]').exists()).toBe(false);
+
+    committed = true;
+    await wrapper.get('[data-testid="companion-reload"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "GET" && call.url === "/api/v1/relationships"))
+      .toHaveLength(2);
+    expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(false);
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("阿澈");
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

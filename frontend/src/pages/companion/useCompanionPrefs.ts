@@ -4,12 +4,11 @@ import {
   listRelationships,
   prefsOfRelationship,
   updateRelationshipPrefs,
-  RelationshipProtocolError,
+  RelationshipHttpError,
   type CompanionPrefs,
   type Relationship,
   type RelationshipTransport,
 } from "@/api/relationship";
-import { TransportTimeoutError } from "@/api/transport";
 
 export type PrefsLoadState = "loading" | "ready" | "error";
 export type PrefsSaveState = "idle" | "saving" | "saved" | "error" | "unknown";
@@ -135,11 +134,18 @@ export function useCompanionPrefs() {
     } catch (caught) {
       if (id !== saveSeq) return;
       // 失败/结果未知：草稿保留，可重试。
-      if (caught instanceof RelationshipProtocolError || caught instanceof TransportTimeoutError) {
+      // VC-R223：仅 4xx（client/unauthorized）是服务端提交前的明确拒绝，
+      // 可断言"没有保存成功"。其余失败一律结果未知：超时、原生网络失败、
+      // 协议错误，以及 5xx——经代理部署时 5xx 可能是提交后回包丢失被代理
+      // 合成，浏览器无法从同一 status 区分其来源，服务端都可能已提交，
+      // 不得断言未保存，统一走 unknownSaveSnapshot + 重新读取收束。
+      const definiteRejection = caught instanceof RelationshipHttpError
+        && (caught.kind === "client" || caught.kind === "unauthorized");
+      if (definiteRejection) {
+        saveState.value = "error";
+      } else {
         unknownSaveSnapshot = snapshot;
         saveState.value = "unknown";
-      } else {
-        saveState.value = "error";
       }
     } finally {
       // 只有仍持有本次保存才释放保存位；换号清理已把保存位让给新账号
