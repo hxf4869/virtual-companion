@@ -713,7 +713,22 @@ async function onToggleAutoSave(): Promise<void> {
   }
 }
 
+/** 切换编辑目标时丢弃未保存草稿的确认文案（不声称服务端未生效）。 */
+const SWITCH_EDIT_CONFIRM_MESSAGE = "当前编辑还有更改，切换后页面上的草稿不会保留。确定切换吗？";
+
 function startEdit(item: MemoryItem): void {
+  // 正在编辑另一条且草稿有实际改动（按保存的 trim 规则比较）时，切换会
+  // 静默丢弃草稿：先原生确认，取消则保留当前草稿与编辑状态。保存
+  // 在途（editBusy）不拦截，维持既有切换行为（T-58）。
+  if (!editBusy.value && editingId.value !== null && editingId.value !== item.memoryId) {
+    const editing = memory.items.find((entry) => entry.memoryId === editingId.value);
+    if (editing && editDraft.value.trim() !== editing.summary) {
+      const confirmed = typeof globalThis.confirm === "function"
+        ? globalThis.confirm(SWITCH_EDIT_CONFIRM_MESSAGE)
+        : false;
+      if (!confirmed) return;
+    }
+  }
   editingId.value = item.memoryId;
   editDraft.value = item.summary;
   editError.value = "";

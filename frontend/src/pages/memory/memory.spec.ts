@@ -1214,6 +1214,9 @@ describe("记忆管理页", () => {
   });
 
   it("核对读取在途时另一条目产生新未知结果：读取返回不误清新未知提示", async () => {
+    // M1 的未知结果保留草稿，切到 M2 前需要用户确认丢弃（R191）：
+    // 这里 mock 用户明确选择切换。
+    vi.stubGlobal("confirm", vi.fn(() => true));
     const listGate = gate();
     let gateArmed = false;
     stubFetch({
@@ -1286,6 +1289,42 @@ describe("记忆管理页", () => {
     expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
     const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
     expect(input.value).toBe("B 的草稿。");
+    wrapper.unmount();
+  });
+
+  it("R191 切换编辑时保护未保存草稿：取消保留、确认切换、未改动不确认，全程不发 PATCH", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { calls } = stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // A：进入编辑并留下未保存草稿。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R191 的未保存草稿。");
+
+    // 有未保存改动时切到 B：先弹原生确认；取消则保留 A 的草稿与编辑状态。
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    let input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R191 的未保存草稿。");
+
+    // 确认切换：草稿被 B 的当前 summary 取代（页面上的草稿不保留）。
+    confirmMock.mockReturnValue(true);
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+    input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("用户的生日在三月。");
+
+    // B 未改动切回 A：不弹确认，直接切换。
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+    input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("用户喜欢在晚上散步。");
+
+    // 只发生了页面内切换，全程不产生任何 PATCH。
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
     wrapper.unmount();
   });
 });
