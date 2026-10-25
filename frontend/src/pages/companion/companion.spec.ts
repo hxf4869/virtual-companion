@@ -56,7 +56,8 @@ interface FetchOptions {
   beforeRelationships?: () => Promise<void>;
   patchStatus?: number;
   patchJson?: unknown | (() => unknown);
-  patchParseFailed?: boolean;
+  /** VC-R189：可按次求值——仅首次 PATCH 回读不可解析，重试保存正常回读。 */
+  patchParseFailed?: boolean | (() => boolean);
   patchBodyRef?: { body?: Record<string, unknown> };
   /** 提供时，PATCH 请求挂起直到手动 resolve（用于在途保存场景）。 */
   patchGate?: Gate;
@@ -127,7 +128,7 @@ function stubFetch(options: FetchOptions = {}) {
       return response(
         200,
         resolveOption(options.patchJson, ACTIVE_RELATIONSHIP),
-        options.patchParseFailed,
+        resolveOption(options.patchParseFailed, false),
       );
     }
     return response(200, {});
@@ -507,6 +508,70 @@ describe("陪伴设置页", () => {
     expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(false);
     expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
       .toBe("林夏");
+    wrapper.unmount();
+  });
+
+  // VC-R189：结果未知的保存其实已生效（服务端应用了提交 A）。重新读取拿到权威 A 时
+  // 不得吞掉保存请求发出后新增的编辑 B：基线换成 A、草稿整份保留 B、dirty 按新
+  // 基线计算，第二次保存实际携带 B，成功后正常收束。
+  it("未知保存后重新读取保留提交后新增的编辑，再次保存携带最新草稿", async () => {
+    const patchBodyRef: { body?: Record<string, unknown> } = {};
+    let patchCount = 0;
+    const { calls } = stubFetch({
+      patchBodyRef,
+      // 服务端按全量替换应用每次 PATCH：读取返回最近一次已提交内容（首次提交前为初始基线）。
+      relationships: () => [{ ...ACTIVE_RELATIONSHIP, ...patchBodyRef.body }],
+      patchJson: () => ({ ...ACTIVE_RELATIONSHIP, ...patchBodyRef.body }),
+      // 仅首次 PATCH（已提交但回读不可解析）结果未知；重试保存正常回读。
+      patchParseFailed: () => patchCount++ === 0,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("林夏");
+
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="companion-unknown"]').text()).toContain("未能确认是否生效");
+
+    // 保存请求发出后继续编辑（B）：对我的称呼。
+    await wrapper.get('[data-testid="pref-user-address-as"]').setValue("R189新称呼");
+
+    await wrapper.get('[data-testid="companion-reload"]').trigger("click");
+    await flushPromises();
+    // 权威 GET 确为已提交的 A：名字已生效；未知横幅收束。
+    expect(calls.filter((call) => call.method === "GET" && call.url === "/api/v1/relationships"))
+      .toHaveLength(2);
+    expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(false);
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("阿澈");
+    // B 仍在，dirty 按新基线（A）计算，保存按钮可用。
+    expect((wrapper.get('[data-testid="pref-user-address-as"]').element as HTMLInputElement).value)
+      .toBe("R189新称呼");
+    expect(wrapper.get('[data-testid="companion-dirty"]').text()).toContain("未保存");
+    expect(wrapper.get('[data-testid="companion-save"]').attributes("disabled")).toBeUndefined();
+
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(2);
+    expect(patchBodyRef.body).toEqual({
+      companionName: "阿澈",
+      userAddressAs: "R189新称呼",
+      replyLength: "MEDIUM",
+      initiative: "LOW",
+      humor: "LIGHT",
+      advicePref: "ASK_FIRST",
+      remindersAllowed: true,
+      memoryShareScope: "RELATIONSHIP",
+      avoidTopics: ["WORK"],
+      gender: "NEUTRAL",
+      avatarRef: "AVATAR_NEUTRAL_01",
+    });
+    expect(wrapper.get('[data-testid="companion-saved"]').text()).toBe("已保存");
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(false);
+    expect((wrapper.get('[data-testid="pref-user-address-as"]').element as HTMLInputElement).value)
+      .toBe("R189新称呼");
     wrapper.unmount();
   });
 

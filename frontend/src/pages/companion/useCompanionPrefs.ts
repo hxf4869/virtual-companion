@@ -19,6 +19,7 @@ export type PrefsSaveState = "idle" | "saving" | "saved" | "error" | "unknown";
  * 保存以服务端回读结果更新基线（不用本地草稿冒充已生效）。
  * 保存期间允许继续编辑草稿：在途请求以提交快照标识，响应只更新基线，
  * 草稿仅在用户保存期间未再编辑时才被归一化基线替换。
+ * 保存结果未知后的重新读取同理：草稿已偏离该次提交快照时只更新基线、保留草稿。
  * 无 active 关系时 load 正常结束但 relationship 为 null（服务端会在
  * 首次聊天时自动创建唯一默认陪伴，本页不提供创建表单）。
  */
@@ -31,6 +32,10 @@ export function useCompanionPrefs() {
   /** 在途保存请求（请求 id + 提交快照）；非 null 即保存中，禁止重复提交。 */
   let saveInFlight: { id: number; snapshot: CompanionPrefs } | null = null;
   let saveSeq = 0;
+  // VC-R189：最近一次结果未知保存的提交快照。重新读取以它识别"保存请求发出后
+  // 又新增的编辑"：有新增编辑时权威值只更新基线、整份保留草稿；读取成功收束
+  // 后清除，读取失败保留以便重试。
+  let unknownSaveSnapshot: CompanionPrefs | null = null;
   // VC-R13：页面私有读取代次。只在「发起新读取」与「换号清理（reset）」时
   // 递增，作废旧账号的在途读取；同账号的重认证不经过 reset，在途读取
   // 照常落地收尾（不用 auth 会话代次：它每次认证都变，会误杀同账号恢复）。
@@ -46,6 +51,13 @@ export function useCompanionPrefs() {
     // 换号清理或更新的读取已接管时静默丢弃，不回填旧账号内容。
     const seq = ++loadSeq;
     loadState.value = "loading";
+    // VC-R189：入口判定——结果未知的保存之后，草稿若已不等于该次提交快照，
+    // 说明用户在保存请求发出后继续编辑；权威读取只更新基线、保留草稿，
+    // 无后续编辑则照旧替换为服务端值。
+    const keepDraft = saveState.value === "unknown"
+      && unknownSaveSnapshot !== null
+      && draft.value !== null
+      && !prefsEqual(unknownSaveSnapshot, draft.value);
     try {
       const list = await listRelationships(transport);
       if (seq !== loadSeq) return;
@@ -65,7 +77,8 @@ export function useCompanionPrefs() {
       }
       relationship.value = active;
       baseline.value = prefs;
-      draft.value = prefs;
+      if (!keepDraft) draft.value = prefs;
+      unknownSaveSnapshot = null;
       saveState.value = "idle";
       loadState.value = "ready";
     } catch {
@@ -89,7 +102,8 @@ export function useCompanionPrefs() {
   async function save(transport: RelationshipTransport): Promise<void> {
     if (!relationship.value || !draft.value || saveInFlight) return;
     const id = ++saveSeq;
-    saveInFlight = { id, snapshot: draft.value };
+    const snapshot = draft.value;
+    saveInFlight = { id, snapshot };
     saveState.value = "saving";
     // PATCH 是全量替换：remindersAllowed 无 UI 入口，始终回传服务端基线值。
     const payload: CompanionPrefs = baseline.value
@@ -107,23 +121,26 @@ export function useCompanionPrefs() {
       const saved = prefsOfRelationship(updated);
       if (!saved) {
         // 服务端已提交但回读体不完整：与不可解析同属"结果未知"。
+        unknownSaveSnapshot = snapshot;
         saveState.value = "unknown";
         return;
       }
       // 响应只更新已确认基线；草稿保持用户最新编辑，
       // 仅当保存期间未再编辑时才用归一化基线替换草稿（现有行为保留）。
       baseline.value = saved;
-      if (prefsEqual(saveInFlight.snapshot, draft.value)) {
+      if (prefsEqual(snapshot, draft.value)) {
         draft.value = saved;
       }
       saveState.value = "saved";
     } catch (caught) {
       if (id !== saveSeq) return;
       // 失败/结果未知：草稿保留，可重试。
-      saveState.value =
-        caught instanceof RelationshipProtocolError || caught instanceof TransportTimeoutError
-          ? "unknown"
-          : "error";
+      if (caught instanceof RelationshipProtocolError || caught instanceof TransportTimeoutError) {
+        unknownSaveSnapshot = snapshot;
+        saveState.value = "unknown";
+      } else {
+        saveState.value = "error";
+      }
     } finally {
       // 只有仍持有本次保存才释放保存位；换号清理已把保存位让给新账号
       // （置空或新保存），迟到收尾不得动它。
@@ -142,6 +159,7 @@ export function useCompanionPrefs() {
     loadSeq++;
     saveSeq++;
     saveInFlight = null;
+    unknownSaveSnapshot = null;
     relationship.value = null;
     baseline.value = null;
     draft.value = null;
