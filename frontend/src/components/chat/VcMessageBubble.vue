@@ -24,7 +24,7 @@
             >{{ part.text }}</text>
             <text v-if="block.truncated" class="vc-md-truncated">回复过长，已截断</text>
           </view>
-          <view v-else-if="block.kind === 'code'" class="vc-md-code">
+          <view v-else-if="block.kind === 'code'" class="vc-md-codeblock">
             <text>{{ block.text }}</text>
             <text v-if="block.truncated" class="vc-md-truncated">代码过长，已截断</text>
           </view>
@@ -156,6 +156,13 @@ const time = computed(() => (
 }
 
 .vc-md-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border-radius: 3px;
+  background: var(--vc-color-surface-soft);
+  padding: 0 4px;
+}
+
+.vc-md-codeblock {
   display: block;
   box-sizing: border-box;
   max-width: 100%;
