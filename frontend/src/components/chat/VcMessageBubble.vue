@@ -123,6 +123,16 @@ const time = computed(() => (
   word-break: break-word;
 }
 
+/* uni-h5 框架基础样式在 html/body 上声明 user-select:none
+   (@dcloudio/uni-h5/style/framework/base.css)：在消息内容元素上局部恢复
+   原生选取，不改全局；头像与时间是兄弟节点，保持不可选。 */
+.vc-message__assistant-copy,
+.vc-message__user-copy,
+.vc-message__assistant-copy :deep(uni-text) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .vc-message__user-copy {
   display: block;
   box-sizing: border-box;
