@@ -53,12 +53,15 @@ const MESSAGES = [
 ];
 
 interface FetchOptions {
-  relationships?: unknown[];
+  /** R233-A：支持函数式夹具——停用期间服务端数据变化（新称呼/新最新会话）。 */
+  relationships?: unknown[] | (() => unknown[]);
   relationshipFails?: boolean | (() => boolean);
-  conversations?: unknown[];
+  conversations?: unknown[] | (() => unknown[]);
   conversationListFails?: boolean | (() => boolean);
   /** VC-R221：GET /conversations? 返回精确 409 ACCOUNT_CONTEXT_CHANGED（initPage 列表读取撞身份失配）。 */
   conversationListAccountChanged?: boolean | (() => boolean);
+  /** R233-A：首个满足条件的 GET /relationships 挂起，由测试放行（激活对账 metadata 回写守卫夹具）。 */
+  deferRelationships?: boolean | (() => boolean);
   /** VC-R158：首个 GET /conversations? 挂起，由测试放行（init 读 URL 目标之后的中段夹具）。 */
   deferConversationList?: boolean;
   messages?: Record<string, unknown[]>;
@@ -92,6 +95,10 @@ function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
   return typeof value === "function" ? value() : value ?? false;
 }
 
+function resolveRows<T>(value: T[] | (() => T[]) | undefined, fallback: T[]): T[] {
+  return typeof value === "function" ? value() : value ?? fallback;
+}
+
 function response(ok: boolean, status: number, json: unknown) {
   return {
     ok,
@@ -112,6 +119,12 @@ function stubFetch(options: FetchOptions = {}) {
   let resolveConversationList!: (value: StubResponse) => void;
   const deferredConversationList = new Promise<StubResponse>((resolve) => {
     resolveConversationList = resolve;
+  });
+  // R233-A：deferRelationships 只挂起首个满足条件的会话关系 GET 的闭包级标记。
+  let relationshipDeferralUsed = false;
+  let resolveRelationships!: (value: StubResponse) => void;
+  const deferredRelationships = new Promise<StubResponse>((resolve) => {
+    resolveRelationships = resolve;
   });
   // VC-R158：deferConversationList 只挂起首个会话列表 GET 的闭包级标记。
   let conversationListDeferralUsed = false;
@@ -175,10 +188,15 @@ function stubFetch(options: FetchOptions = {}) {
       return response(true, 200, {});
     }
     if (url === "/api/v1/relationships") {
+      // R233-A：开关由测试中途打开时，首个 GET 挂起（mount 的 initPage 已读过一次）。
+      if (!relationshipDeferralUsed && resolveBool(options.deferRelationships)) {
+        relationshipDeferralUsed = true;
+        return deferredRelationships;
+      }
       if (resolveBool(options.relationshipFails)) {
         return response(false, 500, { code: "INTERNAL_ERROR" });
       }
-      return response(true, 200, options.relationships ?? [RELATIONSHIP]);
+      return response(true, 200, resolveRows(options.relationships, [RELATIONSHIP]));
     }
     if (method === "GET" && /^\/api\/v1\/conversations\?/.test(url)) {
       // VC-R221：会话列表读取撞精确 409（服务端判定期望账号/会话失配）。
@@ -192,7 +210,7 @@ function stubFetch(options: FetchOptions = {}) {
         conversationListDeferralUsed = true;
         return deferredConversationList;
       }
-      return response(true, 200, options.conversations ?? RECENT);
+      return response(true, 200, resolveRows(options.conversations, RECENT));
     }
     const messageMatch = url.match(/^\/api\/v1\/conversations\/([^/]+)\/messages/);
     if (method === "GET" && messageMatch) {
@@ -281,6 +299,7 @@ function stubFetch(options: FetchOptions = {}) {
     fetchMock,
     resolveCreate,
     resolveConversationList,
+    resolveRelationships,
     resolveGenerationPost,
     rejectGenerationPost,
     resolveSnapshot,
@@ -2278,6 +2297,15 @@ describe("聊天产品页", () => {
     };
     internal.da?.forEach((hook) => hook());
     const fetchCountBefore = calls.length;
+    // R233-A：激活对账允许恰好一次关系 metadata 读取（新称呼，由独立用例
+    // 锚定）；除此之外不得有任何新请求（会话列表/消息/流——窗口重开口径
+    // 与 metadata 口径分别断言，排除"任意多 metadata 请求"蒙混过关）。
+    const metadataCallsBefore = calls.filter(
+      (call) => call.method === "GET" && call.url === "/api/v1/relationships",
+    ).length;
+    const windowCallsBefore = calls.filter(
+      (call) => !(call.method === "GET" && call.url === "/api/v1/relationships"),
+    ).length;
 
     // 隐藏期间前台页面把 hash 切到 conv-old：本实例不得重初始化——无新
     // 请求、不进等待态，保持自己的流式窗口。
@@ -2293,7 +2321,8 @@ describe("聊天产品页", () => {
     expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
 
     // 重新激活并返回原会话（浏览器后退落回本页）：目标与本页最近 init 目标
-    // 一致，无需重开——缓存窗口继续显示自己的流。
+    // 一致，无需重开——缓存窗口继续显示自己的流。R233-A：对账恰好读一次
+    // 关系 metadata，且没有任何窗口重开请求（会话列表/消息/流），不进等待态。
     internal.a?.forEach((hook) => hook());
     vi.stubGlobal("location", {
       search: "",
@@ -2302,10 +2331,309 @@ describe("聊天产品页", () => {
     });
     window.dispatchEvent(new Event("hashchange"));
     await flushPromises();
-    expect(calls.length).toBe(fetchCountBefore);
+    const metadataCallsAfter = calls.filter(
+      (call) => call.method === "GET" && call.url === "/api/v1/relationships",
+    ).length;
+    const windowCallsAfter = calls.filter(
+      (call) => !(call.method === "GET" && call.url === "/api/v1/relationships"),
+    ).length;
+    expect(metadataCallsAfter).toBe(metadataCallsBefore + 1);
+    expect(windowCallsAfter).toBe(windowCallsBefore);
     expect(wrapper.find('[data-testid="chat-waiting"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
     expect(wrapper.find('[data-testid="status"]').text()).toContain("正在回复…");
+    wrapper.unmount();
+  });
+
+  // ---- R233-A：KeepAlive 缓存页返回导航的窗口对账 ----
+  // 缺陷：onActivated 只恢复 instanceActive；停用期间 hashchange 被守卫跳过，
+  // 激活后又按本实例的 lastInitTargetConversationId 对 URL 去重，不再核对共享
+  // store 的当前窗口——另一实例把窗口切走后，返回的缓存页拿别人的会话冒充
+  // 自己的内容（URL/标题是原会话，消息却是切走后的窗口）。
+  // 契约：激活时按本实例已落地的归属（owningConversationId，含空会话）对账；
+  // 一致只静默刷新关系 metadata（新称呼），草稿/滚动/历史窗口/流一律不动；
+  // 失配带原会话重走 initPage（复用 busy/streaming/未知结果/身份守卫），
+  // 不改读服务端最新会话把原草稿带过去。
+
+  /**
+   * 拉取组件内部实例的 KeepAlive 激活/停用钩子（uni H5 RouterView 用
+   * KeepAlive 缓存离场页面；happy-dom 手动 mount 不自动触发，同款先例见
+   * 上方 VC-R04 用例）。
+   */
+  function keepAliveHooks(wrapper: ReturnType<typeof mountPage>) {
+    return wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+  }
+
+  it("显式深链 A → 前台打开 B → 后退回缓存 A：窗口恢复本实例的 A", async () => {
+    stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
+    // 实例1：深链 conv-new（A）。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(useChatStore().conversationId).toBe("conv-new");
+
+    // 实例1 转 KeepAlive 后台，前台新实例2 深链打开 conv-old（B）。
+    const internal = keepAliveHooks(wrapper);
+    internal.da?.forEach((hook) => hook());
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapper2 = mountPage();
+    await flushPromises();
+    expect(useChatStore().conversationId).toBe("conv-old");
+    // redirectTo 把 B 页替换出栈（onUnmounted detach，实例2 不再响应事件）。
+    wrapper2.unmount();
+
+    // 浏览器后退落回缓存实例1：URL/hash 都回到 A。对账前窗口仍在 B——
+    // 激活对账必须把窗口恢复到本实例绑定的 A，而不是继续显示 B 的消息。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-new",
+      href: "",
+    });
+    internal.a?.forEach((hook) => hook());
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+    expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain(MESSAGES[0].content);
+    expect(wrapper.text()).not.toContain("这是 B 会话自己的消息。");
+    wrapper.unmount();
+  });
+
+  it("无深链绑定 A → 前台打开 B → 后退回无 query 缓存页：仍恢复原会话 A，不改读服务端最新", async () => {
+    // 返回导航前服务端"最新会话"变成 conv-old——失配恢复若按
+    // conversations[0] 重选，会把缓存页丢到 B 会话并把原草稿带过去。
+    let latestChanged = false;
+    stubFetch({
+      conversations: () => (latestChanged ? [RECENT[1], RECENT[0]] : RECENT),
+      messages: { "conv-old": CONV_OLD_MESSAGES },
+    });
+    // 实例1：底部聊天入口无深链——绑定默认最新会话 conv-new（A）。
+    vi.stubGlobal("location", { search: "", hash: "#/pages/chat/chat", href: "" });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(useChatStore().conversationId).toBe("conv-new");
+    // 原草稿留在输入框：恢复不得把它带进别的会话。
+    await wrapper.find('[data-testid="message-input"]').setValue("还没说出口的话");
+
+    const internal = keepAliveHooks(wrapper);
+    internal.da?.forEach((hook) => hook());
+    // 前台实例2 从全部会话打开 conv-old（B），随后被替换销毁。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapper2 = mountPage();
+    await flushPromises();
+    expect(useChatStore().conversationId).toBe("conv-old");
+    wrapper2.unmount();
+    latestChanged = true;
+
+    // 后退落回无 query 的缓存实例1：hash 目标与本实例最近 init 目标一致
+    // （都是空），hashchange 去重后也不得停在 B——激活对账兜住，恢复目标
+    // 是本实例已绑定的 A，而不是此刻服务端最新的 B。
+    vi.stubGlobal("location", { search: "", hash: "#/pages/chat/chat", href: "" });
+    internal.a?.forEach((hook) => hook());
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+    expect(wrapper.text()).toContain(MESSAGES[0].content);
+    expect(wrapper.text()).not.toContain("这是 B 会话自己的消息。");
+    expect(
+      (wrapper.find('[data-testid="message-input"]').element as HTMLTextAreaElement).value,
+    ).toBe("还没说出口的话");
+    wrapper.unmount();
+  });
+
+  it("对齐返回（窗口未被切走）只刷新关系 metadata：新称呼可见，草稿/历史/进行中的流原样保持", async () => {
+    // 设置页保存陪伴称呼直写服务端、不经过共享 relationship store——返回
+    // 缓存页时对账只允许一次 metadata 读取，不重开窗口。
+    let relationshipRows: unknown[] = [RELATIONSHIP];
+    const { calls } = stubFetch({ relationships: () => relationshipRows });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+    expect(wrapper.find('[data-testid="chat-companion-name"]').text()).toBe("林夏");
+    await wrapper.find('[data-testid="message-input"]').setValue("打了一半的草稿");
+    // 同会话自己的流仍在生成。
+    seedLiveStreamState();
+    await flushPromises();
+
+    const messagesCallsBefore = calls.filter((call) => call.url.includes("/messages")).length;
+    const conversationsCallsBefore = calls.filter(
+      (call) => call.method === "GET" && call.url.includes("/conversations?"),
+    ).length;
+
+    const internal = keepAliveHooks(wrapper);
+    internal.da?.forEach((hook) => hook());
+    // 停用期间设置页保存了新称呼。
+    relationshipRows = [{ ...RELATIONSHIP, companionName: "阿澈" }];
+
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    // 新称呼立即可见；窗口未被重开——没有新的会话列表/消息请求，草稿、
+    // 历史消息与进行中的流原样保持。
+    expect(wrapper.find('[data-testid="chat-companion-name"]').text()).toBe("阿澈");
+    expect(calls.filter((call) => call.url.includes("/messages")).length)
+      .toBe(messagesCallsBefore);
+    expect(calls.filter((call) => call.method === "GET" && call.url.includes("/conversations?")).length)
+      .toBe(conversationsCallsBefore);
+    expect(store.conversationId).toBe("conv-new");
+    expect(store.phase).toBe("streaming");
+    expect(
+      (wrapper.find('[data-testid="message-input"]').element as HTMLTextAreaElement).value,
+    ).toBe("打了一半的草稿");
+    expect(wrapper.find('[data-testid="status"]').text()).toContain("正在回复…");
+    wrapper.unmount();
+  });
+
+  it("失配恢复撞上其他会话的忙流：进入诚实等待，不取消也不重放", async () => {
+    stubFetch({ messages: { "conv-old": CONV_OLD_MESSAGES } });
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const internal = keepAliveHooks(wrapper);
+    internal.da?.forEach((hook) => hook());
+
+    // 前台实例2 打开 conv-old 并进入流式生成（同款直种先例 seedLiveStreamState）。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapper2 = mountPage();
+    await flushPromises();
+    expect(useChatStore().conversationId).toBe("conv-old");
+    const store = useChatStore();
+    store.generationId = "gen-old-live";
+    store.phase = "streaming";
+    store.pendingUserContent = "B 的问题";
+    store.stream = {
+      status: "streaming",
+      epoch: 1,
+      cursor: 1,
+      events: [
+        { eventSeq: 1, streamEpoch: 1, eventType: "chat.delta", payload: "B 的流。" },
+      ],
+      terminal: false,
+      terminalEventType: null,
+    };
+    await flushPromises();
+
+    // 后退回缓存实例1（owning=conv-new）：共享窗口在 conv-old 且流式中——
+    // 不得取消/重放 B 的流，页面进入诚实等待。
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-new",
+      href: "",
+    });
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    const waiting = wrapper.find('[data-testid="chat-waiting"]');
+    expect(waiting.exists()).toBe(true);
+    expect(waiting.text()).toContain("上一段回复还在生成");
+    expect(store.conversationId).toBe("conv-old");
+    expect(store.phase).toBe("streaming");
+    expect(store.generationId).toBe("gen-old-live");
+    wrapper.unmount();
+    wrapper2.unmount();
+  });
+
+  it("无 query 失配恢复失败进错误页：手动重新加载仍回原会话 A，不改读服务端最新", async () => {
+    let latestChanged = false;
+    let failRelationships = false;
+    stubFetch({
+      relationshipFails: () => failRelationships,
+      conversations: () => (latestChanged ? [RECENT[1], RECENT[0]] : RECENT),
+      messages: { "conv-old": CONV_OLD_MESSAGES },
+    });
+    // 实例1：无深链绑定默认最新会话 conv-new（A），留下原草稿。
+    vi.stubGlobal("location", { search: "", hash: "#/pages/chat/chat", href: "" });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(useChatStore().conversationId).toBe("conv-new");
+    await wrapper.find('[data-testid="message-input"]').setValue("还没说出口的话");
+
+    const internal = keepAliveHooks(wrapper);
+    internal.da?.forEach((hook) => hook());
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-old",
+      hash: "",
+      href: "",
+    });
+    const wrapper2 = mountPage();
+    await flushPromises();
+    wrapper2.unmount();
+    // 激活对账的恢复撞上关系读取 500：落错误页；此刻服务端最新已变成 B。
+    failRelationships = true;
+    latestChanged = true;
+    vi.stubGlobal("location", { search: "", hash: "#/pages/chat/chat", href: "" });
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-init-error"]').exists()).toBe(true);
+
+    // 手动"重新加载"保留本实例已确定的原会话 A——不得按此刻的服务端
+    // 最新（conv-old）重选把原草稿带过去。
+    failRelationships = false;
+    await wrapper.find('[data-testid="chat-retry-init"]').trigger("click");
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.conversationId).toBe("conv-new");
+    expect(wrapper.find('[data-testid="chat-init-error"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain(MESSAGES[0].content);
+    expect(wrapper.text()).not.toContain("这是 B 会话自己的消息。");
+    expect(
+      (wrapper.find('[data-testid="message-input"]').element as HTMLTextAreaElement).value,
+    ).toBe("还没说出口的话");
+    wrapper.unmount();
+  });
+
+  it("对齐返回的 metadata 读取在实例停用后不得回写共享关系数据", async () => {
+    let relationshipRows: unknown[] = [RELATIONSHIP];
+    let deferNext = false;
+    const { resolveRelationships } = stubFetch({
+      relationships: () => relationshipRows,
+      deferRelationships: () => deferNext,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-companion-name"]').text()).toBe("林夏");
+
+    // 对齐返回：对账发起 metadata 读取，等待期间用户又离开（KeepAlive 停用）。
+    const internal = keepAliveHooks(wrapper);
+    internal.da?.forEach((hook) => hook());
+    deferNext = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    internal.da?.forEach((hook) => hook());
+
+    // 放行晚到的响应：已停用的缓存实例不得把它回写进共享 relationships。
+    resolveRelationships(response(true, 200, [{ ...RELATIONSHIP, companionName: "阿澈" }]));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-companion-name"]').text()).toBe("林夏");
     wrapper.unmount();
   });
 

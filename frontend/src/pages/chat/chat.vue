@@ -28,7 +28,11 @@
       <text class="chat-page-state__copy">
         {{ pageState === "missing" ? "重新加载后，我们会继续为你准备。" : "检查网络后再试一次。" }}
       </text>
-      <button class="chat-page-secondary" data-testid="chat-retry-init" @click="initPage">
+      <button
+        class="chat-page-secondary"
+        data-testid="chat-retry-init"
+        @click="initPage({ resumeConversationId: manualReopenTarget() })"
+      >
         重新加载
       </button>
     </view>
@@ -54,7 +58,7 @@
           class="chat-page-primary"
           data-testid="chat-waiting-open"
           :disabled="store.isStreaming"
-          @click="initPage"
+          @click="initPage({ resumeConversationId: manualReopenTarget() })"
         >
           打开所选会话
         </button>
@@ -201,6 +205,7 @@ import {
 import { createAuthedFetch } from "@/api/authed-fetch";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import type { RealtimeDeps } from "@/api/realtime";
+import { listRelationships } from "@/api/relationship";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { goBack, goTo, switchTabTo } from "@/app/navigate";
 import VcChatComposer from "@/components/chat/VcChatComposer.vue";
@@ -280,6 +285,9 @@ let instanceActive = true;
 let pendingHashRecheckAfterInit = false;
 onActivated(() => {
   instanceActive = true;
+  // R233-A：缓存实例回到前台时与共享 store 的窗口对账（见
+  // reconcileAfterReactivation）——只在激活时检查，停用实例不动作。
+  reconcileAfterReactivation();
 });
 onDeactivated(() => {
   instanceActive = false;
@@ -488,7 +496,10 @@ function bindGenerationContext(): void {
   store.bindGenerationContext(auth.accountId ?? "", relationshipId);
 }
 
-async function initPage(): Promise<void> {
+// R233-A：resumeConversationId——激活对账失配恢复传入本实例已成功绑定的
+// 原会话（可为空串＝空会话）；目标不再取 URL query 或服务端最新，原草稿
+// 不得被带进其他会话。
+async function initPage(opts?: { resumeConversationId?: string }): Promise<void> {
   if (initBusy.value) return;
   initBusy.value = true;
   // VC-R221：这是"用户主动发起的合法重新初始化"——重置身份事件作废
@@ -529,7 +540,9 @@ async function initPage(): Promise<void> {
       return;
     }
 
-    const targetConversationId = query.conversationId || store.conversations[0]?.conversationId || "";
+    const targetConversationId = opts?.resumeConversationId !== undefined
+      ? opts.resumeConversationId
+      : query.conversationId || store.conversations[0]?.conversationId || "";
     if (targetConversationId) {
       const opened = await store.openConversation(transport, targetConversationId);
       if (opened === "busy-streaming") {
@@ -616,6 +629,74 @@ async function initPage(): Promise<void> {
 // popstate——在途发送链不受影响。
 interface H5Router {
   replace: (to: string) => unknown;
+}
+
+/**
+ * R233-A：KeepAlive 缓存页重新激活时的生命周期对账。uni H5 返回导航把
+ * 停用的缓存实例推回前台时，共享 chat store 的窗口可能已被其他实例切走：
+ * hashchange 在停用期被守卫跳过，激活后 hashchange 又按本实例的
+ * lastInitTargetConversationId 对 URL 去重，不再核对全局窗口——缓存页会拿
+ * 别的实例的会话冒充自己的内容（URL/标题仍是原会话，消息却是别人的）。
+ * 对账按本实例已落地的归属（owningConversationId，含空会话）核对共享窗口：
+ * 一致——只静默刷新关系 metadata，草稿、滚动位置、历史窗口与进行中的流
+ * 一律不动；失配——带着已成功绑定的原会话重走 initPage（busy/streaming/
+ * 未知结果/身份守卫全部复用），撞上其他实例的忙流落诚实等待，不自动
+ * 取消/重放，也不改读服务端最新会话把原草稿带过去。
+ */
+function reconcileAfterReactivation(): void {
+  // 在途 init（含首次 mount 发起的那次）自己会落地窗口与归属——激活
+  // 对账不重复初始化。
+  if (initBusy.value) return;
+  // 从未跑过 initPage 的实例没有已落地归属可核对。
+  if (lastInitTargetConversationId === null) return;
+  // 只有 ready 页直接显示共享窗口；loading 已被 initBusy 覆盖，
+  // waiting/error/missing/account-updated 各有自己的诚实出口，不改写。
+  if (pageState.value !== "ready") return;
+  if (store.conversationId === owningConversationId) {
+    void refreshRelationshipMetadata();
+    return;
+  }
+  void initPage({ resumeConversationId: owningConversationId });
+}
+
+/**
+ * R233-A：等待/错误页手动重开的目标——保留本实例已确定的原目标，而不是
+ * 重新按 URL query/服务端最新选会话（无 query 缓存页的原草稿会被带进别的
+ * 会话）。优先级：显式 URL 目标（hashchange 停用前的意图，与重开语义
+ * 一致）＞ 本实例已落地的归属（激活失配恢复撞忙流/失败后仍未落地的原
+ * 会话）；两者都没有（首次进入尚未落地）返回 undefined，交给 initPage
+ * 默认选择。
+ */
+function manualReopenTarget(): string | undefined {
+  if (lastInitTargetConversationId) return lastInitTargetConversationId;
+  if (owningConversationId) return owningConversationId;
+  return undefined;
+}
+
+/**
+ * R233-A：对齐返回（共享窗口仍是本实例归属）时静默刷新关系 metadata。
+ * 设置页保存陪伴称呼走 updateRelationshipPrefs 直写服务端，不经过共享
+ * relationship store，缓存页标题（computed 依赖 relStore.current）不会
+ * 自行更新——用既有关系列表读取拿一次权威行，只写 relationships、不动
+ * currentRelationshipId；读取失败静默保留旧标题，不改变页面状态（这是
+ * 显示增强，不是初始化，不落 relStore.load 失败清空 current 的语义）。
+ */
+async function refreshRelationshipMetadata(): Promise<void> {
+  if (!auth.isAuthenticated) return;
+  const accountIdAtRequest = auth.accountId;
+  const sessionIdAtRequest = auth.getSessionId();
+  const conversationIdAtRequest = store.conversationId;
+  try {
+    const rows = await listRelationships(transport);
+    // await 期间本实例被停用（用户又离开）或共享窗口被其他实例切走时，
+    // 晚到的旧行不得回写共享 relationships——与身份变化同一层回写门。
+    if (!instanceActive) return;
+    if (auth.accountId !== accountIdAtRequest || auth.getSessionId() !== sessionIdAtRequest) return;
+    if (store.conversationId !== conversationIdAtRequest) return;
+    relStore.relationships = rows;
+  } catch {
+    // 静默：标题暂留旧值，下次进入页面或失配恢复时再刷新。
+  }
 }
 
 function syncLocationToCreatedConversation(conversationId: string): void {
