@@ -73,6 +73,7 @@
           <VcSessionPreview
             v-for="item in items"
             :key="item.conversationId"
+            :data-conversation-id="item.conversationId"
             :title="conversationTitle(item)"
             :preview="conversationPreview(item)"
             :time="conversationTime(item)"
@@ -93,12 +94,33 @@
           {{ loadMoreFailed ? "重新加载更多" : "加载更多" }}
         </button>
       </template>
+
+      <!-- VC-R199：返回刷新失败时既有列表仍在渲染，反馈固定在视口内，
+           不依赖当前滚动位置；首次无缓存失败仍走上方整页错误卡。 -->
+      <view
+        v-if="refreshFailed"
+        class="conversations-refresh-alert"
+        role="alert"
+        data-testid="conversations-refresh-failed"
+      >
+        <text class="conversations-refresh-alert__copy">
+          会话没有刷新出来，正在显示之前的内容。
+        </text>
+        <button
+          class="conversations-refresh-alert__action"
+          data-testid="conversations-retry-refresh"
+          :disabled="busy"
+          @click="refreshOnReturn"
+        >
+          重试
+        </button>
+      </view>
     </view>
   </ConsumerShell>
 </template>
 
 <script setup lang="ts">
-import { onActivated, onMounted, ref, watch } from "vue";
+import { nextTick, onActivated, onMounted, ref, watch } from "vue";
 
 import { listConversations, type ConversationListItem } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -125,7 +147,14 @@ const relationshipId = ref("");
 const items = ref<ConversationListItem[]>([]);
 const hasMore = ref(false);
 const loadMoreFailed = ref(false);
+// VC-R199：返回刷新失败标记。只在已有可用列表的原地刷新失败时置位，
+// 驱动视口内固定反馈条；不清 items、不切 pageState。
+const refreshFailed = ref(false);
 const busy = ref(false);
+// VC-R199：最后打开旧会话点击行时的视口几何（仅页面内存，随换号清理）。
+// 返回刷新合并重排后按偏移差补偿滚动，把该条送回浏览位置；几何在点击
+// 时捕获——onDeactivated 时页面 DOM 可能已移出文档，不可靠。
+let leaveAnchor: { id: string; docTop: number; scrollTop: number } | null = null;
 // VC-R11：页面私有请求代次（在途请求的收尾归属凭据）。加载流程进入时
 // 递增；身份清理 watch 同步递增以作废在途请求。同账号的真实重认证
 // （login/tryRefresh 推进 store 代次但 accountId 不变）不推进本代次——
@@ -157,6 +186,8 @@ watch(() => auth.accountId, (next, prev) => {
   relationshipId.value = "";
   hasMore.value = false;
   loadMoreFailed.value = false;
+  refreshFailed.value = false;
+  leaveAnchor = null;
   pageState.value = "loading";
   busy.value = false;
 });
@@ -203,6 +234,7 @@ function conversationTime(item: ConversationListItem): string {
 }
 
 function openConversation(item: ConversationListItem): void {
+  leaveAnchor = captureAnchor(item.conversationId);
   goTo(chatHref(item.conversationId));
 }
 
@@ -215,6 +247,7 @@ async function loadInitial(): Promise<void> {
   busy.value = true;
   pageState.value = "loading";
   loadMoreFailed.value = false;
+  refreshFailed.value = false;
   // VC-R11：函数进入即捕获本页私有代次；此后每次 await 之后与 finally 的
   // busy 复位一律以 mySeq === loadSeq 门控——只有更新的加载流程或身份清理
   // watch 接管时才静默丢弃，旧账号的迟到结果不得回填本页状态。
@@ -287,9 +320,133 @@ async function loadMore(): Promise<void> {
   }
 }
 
-// 返回缓存列表时重读最近窗口，体现聊天期间的新会话与活动顺序；busy 去重。
+// VC-R199：服务端 keyset 顺序键 (COALESCE(lastActivityAt, createdAt), 数字 id)
+// 的客户端镜像，只用于刷新时的覆盖边界与旧尾部取舍，不假设已知条目
+// 一定还处在旧时间区域（被打开的旧会话发新消息会升到列表顶部）。
+// 活动时间契约是后端 RFC3339Nano（UTC、Z 结尾、小数秒最多 9 位）；
+// Date.parse 只保留毫秒，会截断亚毫秒差使边界比较落到 id 兜底而与
+// 服务端顺序不一致，因此按契约字符串解析成纳秒再比较。
+const RFC3339_NANO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/;
+
+function activityNanos(raw: string): bigint | null {
+  const matched = RFC3339_NANO_UTC.exec(raw);
+  if (!matched) return null;
+  const millis = Date.UTC(
+    Number(matched[1]),
+    Number(matched[2]) - 1,
+    Number(matched[3]),
+    Number(matched[4]),
+    Number(matched[5]),
+    Number(matched[6]),
+  );
+  if (Number.isNaN(millis)) return null;
+  const fraction = (matched[7] ?? "").padEnd(9, "0");
+  return BigInt(millis) * 1_000_000n + BigInt(fraction);
+}
+
+function orderKeyOf(item: ConversationListItem): { activity: bigint; id: bigint } | null {
+  const activity = activityNanos(item.lastActivityAt ?? item.createdAt ?? "");
+  if (activity === null || !/^\d+$/.test(item.conversationId)) return null;
+  return { activity, id: BigInt(item.conversationId) };
+}
+
+function isStrictlyBelow(item: ConversationListItem, other: ConversationListItem): boolean {
+  const a = orderKeyOf(item);
+  const b = orderKeyOf(other);
+  if (!a || !b) return false;
+  return a.activity !== b.activity ? a.activity < b.activity : a.id < b.id;
+}
+
+function findItemElement(conversationId: string): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return document.querySelector(`[data-conversation-id="${conversationId}"]`);
+}
+
+function readScrollY(): number {
+  if (typeof window === "undefined") return 0;
+  return window.scrollY || window.pageYOffset || 0;
+}
+
+function captureAnchor(conversationId: string): { id: string; docTop: number; scrollTop: number } | null {
+  const el = findItemElement(conversationId);
+  if (!el) return null;
+  const scrollTop = readScrollY();
+  return { id: conversationId, docTop: el.getBoundingClientRect().top + scrollTop, scrollTop };
+}
+
+// VC-R199：刷新合并重排渲染后，把最后打开的旧会话按点击时偏移差送回原
+// 视口位置；该条已不存在时不干预滚动，交给浏览器默认恢复。
+async function restoreAnchoredScroll(mySeq: number): Promise<void> {
+  if (!leaveAnchor) return;
+  const anchor = leaveAnchor;
+  leaveAnchor = null;
+  await nextTick();
+  if (mySeq !== loadSeq) return;
+  const el = findItemElement(anchor.id);
+  if (!el) return;
+  const delta = el.getBoundingClientRect().top + readScrollY() - anchor.docTop;
+  if (typeof window !== "undefined") window.scrollTo(0, anchor.scrollTop + delta);
+}
+
+// VC-R199：返回缓存页的原地刷新。不清 items、不切 pageState——等待与
+// 失败期间既有列表（含已加载范围）始终可用；所有页成功后一次性合并，
+// 任一页失败保留旧列表整体并给出视口内反馈（部分成功就合并会制造缺口）。
+async function refreshOnReturn(): Promise<void> {
+  const mySeq = ++loadSeq;
+  busy.value = true;
+  refreshFailed.value = false;
+  const previousItems = items.value;
+  const oldHead = previousItems[0];
+  let fetched: ConversationListItem[] = [];
+  let lastPageLength = 0;
+  try {
+    for (;;) {
+      const after = fetched.length > 0
+        ? fetched[fetched.length - 1].conversationId
+        : undefined;
+      const page = await listConversations(transport, relationshipId.value, after, PAGE_SIZE);
+      if (mySeq !== loadSeq) return;
+      fetched = fetched.concat(page);
+      lastPageLength = page.length;
+      if (page.length < PAGE_SIZE) break;
+      // 覆盖边界是离开前旧头部的键值快照，不是「出现已知条目」：刚打开
+      // 的旧会话可能已升至首页。页尾仍严格高于旧头部键值就必须继续追赶
+      // （成本正比真实新增量）；旧头部被删时同一边界也让下扫在旧键值区
+      // 域之上停止，不会因找不到具体条目而无界扫描全账户。
+      if (!isStrictlyBelow(oldHead, page[page.length - 1])) break;
+    }
+    if (fetched.length === 0) {
+      // 服务端明确为空：与首屏一致信任服务端真值。
+      items.value = [];
+      hasMore.value = false;
+    } else {
+      const fetchedIds = new Set(fetched.map((item) => item.conversationId));
+      const fetchedLast = fetched[fetched.length - 1];
+      // 旧条目只保留位于已取末尾之后的尾部；位于其上却未被取到的旧条目
+      // 已在离开期间被删除，不以陈旧副本垫底（活动只增不减，仍在的旧
+      // 条目若升到边界之上必然已被重新取到）。
+      const tail = previousItems.filter(
+        (item) => !fetchedIds.has(item.conversationId) && !isStrictlyBelow(fetchedLast, item),
+      );
+      items.value = [...fetched, ...tail];
+      if (tail.length === 0) hasMore.value = lastPageLength === PAGE_SIZE;
+    }
+    await restoreAnchoredScroll(mySeq);
+  } catch {
+    if (mySeq === loadSeq) refreshFailed.value = true;
+  } finally {
+    if (mySeq === loadSeq) busy.value = false;
+  }
+}
+
+// 返回缓存列表时重读最近窗口，体现聊天期间的新会话与活动顺序；已有
+// 可用列表走原地刷新以保留已浏览范围与浏览位置，否则回到首屏流程。
 onActivated(() => {
   if (!auth.isAuthenticated) return;
+  if (pageState.value === "ready" && items.value.length > 0 && relationshipId.value) {
+    void refreshOnReturn();
+    return;
+  }
   void loadInitial();
 });
 
@@ -436,6 +593,46 @@ onMounted(() => {
   font-size: 14px;
   line-height: 22px;
   text-align: center;
+}
+
+/* VC-R199：刷新失败反馈。sticky 底部：占据真实文档流空间，滚到底部时
+   落位在「加载更多」之后不遮挡入口；未滚到其文档位置时吸附视口底部
+   保持可见（外壳祖先为 overflow-x: clip，不产生滚动容器，不破坏吸附）。 */
+.conversations-refresh-alert {
+  position: sticky;
+  bottom: calc(var(--vc-space-4) + env(safe-area-inset-bottom, 0px));
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-3);
+  max-width: 100%;
+  padding: var(--vc-space-2) var(--vc-space-4);
+  border: 1px solid var(--vc-color-error);
+  border-radius: var(--vc-radius-control);
+  background: var(--vc-color-surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+}
+
+.conversations-refresh-alert__copy {
+  color: var(--vc-color-error);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.conversations-refresh-alert__action {
+  flex: none;
+  min-height: 36px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-color-primary);
+  border-radius: var(--vc-radius-control);
+  color: var(--vc-color-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+}
+
+.conversations-refresh-alert__action::after {
+  border: 0;
 }
 
 button:focus-visible {

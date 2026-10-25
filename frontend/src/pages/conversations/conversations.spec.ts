@@ -64,6 +64,8 @@ interface FetchOptions {
   accountB?: { relationships?: unknown[]; conversations?: unknown[] };
   /** VC-R11 场景 b：只挂起第一次 conversations 请求，模拟旧账号读取跨切号在途。 */
   holdFirstConversationFetch?: Promise<void>;
+  /** VC-R199：只挂起第二次 conversations 请求（返回缓存页的激活刷新）。 */
+  holdSecondConversationFetch?: Promise<void>;
   /** VC-R11：登录接口返回的 accountId。默认换号 B=9；同账号重认证传 7。 */
   loginAccountId?: string;
 }
@@ -83,7 +85,7 @@ function response(ok: boolean, status: number, json: unknown) {
 
 function stubFetch(options: FetchOptions = {}) {
   const calls: string[] = [];
-  let heldConversationFetch = false;
+  let conversationFetchCount = 0;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input.toString();
     calls.push(url);
@@ -123,9 +125,12 @@ function stubFetch(options: FetchOptions = {}) {
         : typeof options.conversations === "function"
           ? options.conversations(url)
           : options.conversations ?? [conversation(1), conversation(2)];
-      if (options.holdFirstConversationFetch && !heldConversationFetch) {
-        heldConversationFetch = true;
+      conversationFetchCount += 1;
+      if (options.holdFirstConversationFetch && conversationFetchCount === 1) {
         await options.holdFirstConversationFetch;
+      }
+      if (options.holdSecondConversationFetch && conversationFetchCount === 2) {
+        await options.holdSecondConversationFetch;
       }
       return response(true, 200, rows);
     }
@@ -479,6 +484,306 @@ describe("全部会话", () => {
     expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(2);
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
     expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("第 3 段对话");
+    wrapper.unmount();
+  });
+
+  // VC-R199：离开时返回的旧列表必须带着已加载范围可用；刷新失败不得用
+  // 整页错误卡盖掉既有列表，反馈要出现在当前可见位置并提供重试。
+  it("返回刷新等待期间既有列表保持可用", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const { calls } = stubFetch({
+      holdSecondConversationFetch: refreshGate,
+      conversations: [conversation(1), conversation(2)],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(2);
+
+    // 返回后刷新请求挂起：既有列表不得被骨架或错误卡替换。
+    deactivatePage(wrapper);
+    activatePage(wrapper);
+    await flushPromises();
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="conversations-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="conversations-load-failed"]').exists()).toBe(false);
+
+    releaseRefresh();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="conversations-load-failed"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("返回刷新失败保留既有列表并在当前位置给出重试", async () => {
+    let refreshFails = false;
+    let rows = [conversation(1), conversation(2)];
+    const { calls } = stubFetch({
+      conversationFails: () => refreshFails,
+      conversations: () => rows,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(2);
+
+    deactivatePage(wrapper);
+    refreshFails = true;
+    activatePage(wrapper);
+    await flushPromises();
+
+    // 既有列表保持可点，不被整页错误卡隐藏。
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="conversations-load-failed"]').exists()).toBe(false);
+    const refreshError = wrapper.find('[data-testid="conversations-refresh-failed"]');
+    expect(refreshError.exists()).toBe(true);
+    expect(refreshError.text()).toContain("会话没有刷新出来");
+
+    refreshFails = false;
+    rows = [conversation(3), ...rows];
+    await wrapper.find('[data-testid="conversations-retry-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conversations-refresh-failed"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+    expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("第 3 段对话");
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(3);
+    wrapper.unmount();
+  });
+
+  // VC-R199：keyset 服务端 + 旧条目互异活动时间。c(i) 活动随 i 递减，
+  // n(i) 全部高于旧条目，用于验证合并、尾部保留与停止下扫的键值规则。
+  const OLD_BASE_MS = Date.parse("2026-09-15T08:00:00Z");
+  const NEW_BASE_MS = Date.parse("2026-09-20T08:00:00Z");
+
+  // 合成 id 用纯数字串，与生产 keyset 的数字 id 契约一致（新记录取更大
+  // 段位，仅活动时间不同时就已定序，id 只作平键兜底）。
+  function oldConversation(index: number, overrides: Record<string, unknown> = {}) {
+    return conversation(index, {
+      conversationId: String(index),
+      lastActivityAt: new Date(OLD_BASE_MS - index * 60_000).toISOString(),
+      ...overrides,
+    });
+  }
+
+  function newConversation(index: number) {
+    return {
+      conversationId: String(5000 + index),
+      relationshipId: "rel-1",
+      title: `新对话 ${index}`,
+      lastMessagePreview: `新对话 ${index} 的最后一句。`,
+      createdAt: "2026-08-18T01:00:00Z",
+      lastActivityAt: new Date(NEW_BASE_MS - index * 60_000).toISOString(),
+    };
+  }
+
+  /** 按服务端真实 keyset 规则切页：after 命中数组中的位置后取下一页。 */
+  function cursorPages(server: () => unknown[]) {
+    return (url: string) => {
+      const rows = server();
+      const after = url.match(/[?&]after=([^&]+)/)?.[1];
+      const limit = Number(url.match(/[?&]limit=(\d+)/)?.[1] ?? "20");
+      const start = after
+        ? rows.findIndex((row) => (row as { conversationId: string }).conversationId === after) + 1
+        : 0;
+      return rows.slice(start, start + limit);
+    };
+  }
+
+  // VC-R199：后端 RFC3339Nano 契约保留亚毫秒小数秒（更新较老会话即可
+  // 出现 id 与活动时间相反的顺序）；Date.parse 会截断该精度。
+  function nanoConversation(id: number, nanos: number, title: string) {
+    return {
+      conversationId: String(id),
+      relationshipId: "rel-1",
+      title,
+      lastMessagePreview: `${title} 的最后一句。`,
+      createdAt: "2026-08-18T01:00:00Z",
+      lastActivityAt: `2026-10-25T12:00:00.${String(nanos).padStart(9, "0")}Z`,
+    };
+  }
+
+  it("亚毫秒活动时间差不会让追赶提前停止或丢失旧条目", async () => {
+    // 旧 20 条：id 10001+，活动小数秒 199..180ns；全部同一毫秒内。
+    const oldRows = Array.from({ length: 20 }, (_, i) =>
+      nanoConversation(10001 + i, 199 - i, `第 ${i + 1} 段对话`));
+    let server = oldRows;
+    const { calls } = stubFetch({ conversations: cursorPages(() => server) });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+
+    // 离开期间新增 21 条：id 101+，活动小数秒 299..279ns，高于旧头但同
+    // 一毫秒——截断到毫秒会让边界比较落到 id 兜底（旧头 id 更大）而误停。
+    deactivatePage(wrapper);
+    server = [
+      ...Array.from({ length: 21 }, (_, j) =>
+        nanoConversation(101 + j, 299 - j, `新对话 ${j + 1}`)),
+      ...oldRows,
+    ];
+    activatePage(wrapper);
+    await flushPromises();
+
+    // 必须继续追赶第二页：21 条新记录齐全，旧头仍在列表中未被当作已删。
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(3);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(41);
+    expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("新对话 1");
+    expect(wrapper.text()).toContain("新对话 21");
+    expect(wrapper.text()).toContain("第 1 段对话");
+    wrapper.unmount();
+  });
+
+  it("正常返回合并新增会话并保留已浏览范围与浏览位置", async () => {
+    let server = [
+      ...Array.from({ length: 20 }, (_, index) => oldConversation(index + 1)),
+      oldConversation(21),
+    ];
+    const { calls } = stubFetch({ conversations: cursorPages(() => server) });
+    const wrapper = mountPage();
+    await flushPromises();
+    await wrapper.find('[data-testid="conversations-load-more"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(21);
+
+    // 打开第 15 条旧会话后离开：几何在点击行时捕获，mock 需先就位。
+    const rectTop = { value: 400 };
+    const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      () =>
+        ({
+          top: rectTop.value,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          width: 320,
+          height: 64,
+          x: 0,
+          y: rectTop.value,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    );
+    const scrollTo = vi.fn();
+    Object.defineProperty(window, "scrollTo", {
+      value: scrollTo,
+      writable: true,
+      configurable: true,
+    });
+    await wrapper.findAll('[data-testid="session-preview"]')[14].trigger("click");
+    deactivatePage(wrapper);
+
+    // 离开期间新增 3 条：返回刷新后已取前缀整体下移 52px。
+    server = [
+      newConversation(1),
+      newConversation(2),
+      newConversation(3),
+      ...Array.from({ length: 21 }, (_, index) => oldConversation(index + 1)),
+    ];
+    rectTop.value = 452;
+    activatePage(wrapper);
+    await flushPromises();
+
+    // 新鲜度 + 已浏览范围：新会话在前，旧尾部（含加载更多得到的第 21 条）保留。
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(24);
+    expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("新对话 1");
+    expect(wrapper.text()).toContain("第 15 段对话");
+    expect(wrapper.text()).toContain("第 21 段对话");
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(3);
+    // 浏览位置：最后打开的旧会话按离开时的偏移差补偿回原视口位置。
+    expect(scrollTo).toHaveBeenCalledWith(0, 52);
+
+    rectSpy.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("离开期间新增超过一页时刷新补齐全部新记录不产生缺口", async () => {
+    let server = Array.from({ length: 40 }, (_, index) => oldConversation(index + 1));
+    const { calls } = stubFetch({ conversations: cursorPages(() => server) });
+    const wrapper = mountPage();
+    await flushPromises();
+    await wrapper.find('[data-testid="conversations-load-more"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(40);
+
+    // 离开期间新增 21 条（超过一页），并在旧尾部之下继续追加服务端记录。
+    deactivatePage(wrapper);
+    server = [
+      ...Array.from({ length: 21 }, (_, index) => newConversation(index + 1)),
+      ...Array.from({ length: 45 }, (_, index) => oldConversation(index + 1)),
+    ];
+    activatePage(wrapper);
+    await flushPromises();
+
+    // 第 21 条新记录必须出现在后续分页之前：21 条新增 + 40 条旧范围，无重复。
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(61);
+    expect(wrapper.text()).toContain("新对话 21");
+    expect(wrapper.text()).toContain("第 1 段对话");
+    expect(wrapper.text()).toContain("第 40 段对话");
+
+    // 继续分页从旧尾部游标接入更早记录，不跳过、不重复。
+    await wrapper.find('[data-testid="conversations-load-more"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(66);
+    expect(wrapper.text()).toContain("第 45 段对话");
+    wrapper.unmount();
+  });
+
+  it("刚打开的旧会话升至首位时刷新仍补齐其后的全部新记录", async () => {
+    let server = Array.from({ length: 40 }, (_, index) => oldConversation(index + 1));
+    const { calls } = stubFetch({ conversations: cursorPages(() => server) });
+    const wrapper = mountPage();
+    await flushPromises();
+    await wrapper.find('[data-testid="conversations-load-more"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(40);
+
+    // 离开期间新增 21 条，且刚打开的第 35 条旧会话发了新消息升到首位。
+    deactivatePage(wrapper);
+    server = [
+      oldConversation(35, {
+        lastActivityAt: new Date(NEW_BASE_MS + 60_000).toISOString(),
+      }),
+      ...Array.from({ length: 21 }, (_, index) => newConversation(index + 1)),
+      ...Array.from({ length: 40 }, (_, index) => oldConversation(index + 1))
+        .filter((row) => row.conversationId !== "35"),
+    ];
+    activatePage(wrapper);
+    await flushPromises();
+
+    // 首页会同时包含升至首位的已知旧会话与 19 条新会话：不得据此接尾。
+    expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("第 35 段对话");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(61);
+    expect(wrapper.text()).toContain("新对话 20");
+    expect(wrapper.text()).toContain("新对话 21");
+    expect(wrapper.text()).toContain("第 1 段对话");
+    expect(wrapper.text()).toContain("第 40 段对话");
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(4);
+    wrapper.unmount();
+  });
+
+  it("旧头部已被删除时刷新停止下扫且不保留陈旧条目", async () => {
+    let server = Array.from({ length: 20 }, (_, index) => oldConversation(index + 1));
+    const { calls } = stubFetch({ conversations: cursorPages(() => server) });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+
+    // 离开期间旧头部 20 条全部被删，服务端只剩 50 条新记录与更早的未读记录。
+    deactivatePage(wrapper);
+    server = [
+      ...Array.from({ length: 50 }, (_, index) => newConversation(index + 1)),
+      ...Array.from({ length: 40 }, (_, index) => oldConversation(index + 21)),
+    ];
+    activatePage(wrapper);
+    await flushPromises();
+
+    // 首屏 1 次 + 追赶 3 页：页尾键值低于旧头部后不得继续下扫全账户。
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(4);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(60);
+    expect(wrapper.text()).toContain("新对话 50");
+    expect(wrapper.text()).toContain("第 30 段对话");
+    // 已删除的旧条目不得以陈旧副本垫底。
+    expect(wrapper.text()).not.toContain("第 1 段对话");
     wrapper.unmount();
   });
 });
