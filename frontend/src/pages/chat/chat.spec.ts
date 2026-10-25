@@ -2559,6 +2559,8 @@ describe("聊天产品页", () => {
   });
 
   it("VC-R115：开始新对话清理旧提交——无错误无重试，旧 A 不可复活", async () => {
+    // VC-R195：失败后回填的原提交 A 留在输入框里，开始新对话会先弹原生确认。
+    vi.stubGlobal("confirm", vi.fn(() => true));
     const { calls } = stubFetch({ generations: ["reject", "reject"] });
     const wrapper = mountPage();
     await flushPromises();
@@ -2705,5 +2707,78 @@ describe("聊天产品页", () => {
       await flushPromises();
       wrapper.unmount();
     }
+  });
+
+  // ---- VC-R195：开始新对话前保护未发送草稿 ----
+  // 缺陷：输入框里还有内容时，"开始新对话"不经确认就清空输入框并重置窗口。
+  // 契约：仅输入框有实际内容时先弹原生确认；取消则草稿、当前窗口与原消息
+  // 重试入口一律不动、不发请求、菜单保持打开；确认才走既有新开路径；
+  // 空/纯空白输入不确认，按原行为直接新开。
+
+  it("VC-R195：有未发送草稿时开始新对话先确认：取消保留草稿、窗口与原消息重试入口，确认才执行既有新开", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { calls } = stubFetch({ generations: ["reject"] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    // R115 夹具：原提交 A 结果未确认——重试入口就位；用户随后写下新草稿。
+    await input().setValue("原提交 A");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    await input().setValue("R195 尚未发送的聊天草稿。");
+    const callsBeforeNewConversation = calls.length;
+
+    // 取消：输入草稿、当前窗口、原消息重试入口与菜单全部保持原样，且不发任何请求。
+    await wrapper.find('[data-testid="chat-context-open"]').trigger("click");
+    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect((input().element as HTMLTextAreaElement).value).toBe("R195 尚未发送的聊天草稿。");
+    expect(store.conversationId).toBe("conv-new");
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect(wrapper.find('[data-testid="retry"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="app-sheet"]').exists()).toBe(true);
+    expect(calls).toHaveLength(callsBeforeNewConversation);
+
+    // 确认：才执行既有新开行为——清空输入框与旧提交、重置窗口，仍不提前建会话。
+    confirmMock.mockReturnValue(true);
+    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
+    expect(store.conversationId).toBe("");
+    expect(store.messages).toEqual([]);
+    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="retry"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="app-sheet"]').exists()).toBe(false);
+    expect(calls).toHaveLength(callsBeforeNewConversation);
+    wrapper.unmount();
+  });
+
+  it("VC-R195：输入框为空或只有空白时开始新对话不弹确认，按原行为直接新开", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { calls } = stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("  \n ");
+    await wrapper.find('[data-testid="chat-context-open"]').trigger("click");
+    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(store.conversationId).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
+    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(true);
+    expect(calls.filter((call) => call.method === "POST" && call.url === "/api/v1/conversations")).toHaveLength(0);
+    wrapper.unmount();
   });
 });

@@ -685,9 +685,21 @@ async function onLoadMore(): Promise<void> {
   }
 }
 
+/** VC-R195：开始新对话会清空输入框的确认文案（只陈述输入框内容会被清空）。 */
+const NEW_CONVERSATION_CONFIRM_MESSAGE = "输入框里还有内容，开始新对话会清空输入框。确定开始新对话吗？";
+
 function startNewConversation(): void {
   // VC-R172：准备段的在途提交尚未落地，开新对话会与其竞争窗口归属，一并禁用。
   if (store.isStreaming || composerBusy.value) return;
+  // VC-R195：输入框里还有实际内容（含失败后回填的原提交）时，新开会连带
+  // 清空草稿与原消息重试快照——先原生确认，取消则窗口、草稿、重试信息与
+  // 菜单一律不动；空/纯空白输入没有要丢的内容，按原行为直接新开。
+  if (inputText.value.trim() !== "") {
+    const confirmed = typeof globalThis.confirm === "function"
+      ? globalThis.confirm(NEW_CONVERSATION_CONFIRM_MESSAGE)
+      : false;
+    if (!confirmed) return;
+  }
   menuOpen.value = false;
   store.reset();
   owningConversationId = ""; // VC-R04：本实例转入空会话，归属同步清空。
