@@ -101,7 +101,27 @@
         </button>
       </view>
 
-      <template v-else-if="relStore.current">
+      <template v-else-if="displayRelationship">
+        <view
+          v-if="refreshFailed"
+          class="home-refresh-notice"
+          role="status"
+          data-testid="home-refresh-notice"
+        >
+          <view class="home-refresh-notice__copy">
+            <text class="home-refresh-notice__title">刚才没有刷新成功</text>
+            <text class="home-refresh-notice__text">看到的还是上次的对话。</text>
+          </view>
+          <button
+            class="home-refresh-notice__retry"
+            type="button"
+            data-testid="home-refresh-retry"
+            :disabled="busy"
+            @click="loadHome"
+          >
+            重试
+          </button>
+        </view>
         <VcHomeHero
           :companion-name="companionName"
           :conversation-copy="heroConversationCopy"
@@ -149,6 +169,7 @@ import { computed, onActivated, onMounted, ref, watch } from "vue";
 
 import type { AuthTransport } from "@/api/auth";
 import { listConversations, type ConversationListItem } from "@/api/chat";
+import type { Relationship } from "@/api/relationship";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { goTo } from "@/app/navigate";
 import ConsumerShell from "@/app/ConsumerShell.vue";
@@ -166,11 +187,22 @@ import { useRelationshipStore } from "@/stores/relationship";
 
 type HomeState = "loading" | "ready" | "error" | "missing";
 
+// VC-R202：上次成功加载时由服务端确认的关系上下文（仅本页内存，不回写
+// relationship store）。返回刷新失败会把全局 store 清空，这里保住展示与
+// 导航所需的最小上下文：陪伴本身 + 当时已知的全部关系 id（深链校验用）。
+interface HomeRelationshipContext {
+  relationship: Relationship;
+  knownRelationshipIds: string[];
+}
+
 const auth = useAuthStore();
 const relStore = useRelationshipStore();
 const homeState = ref<HomeState>("loading");
 const conversations = ref<ConversationListItem[]>([]);
 const busy = ref(false);
+// VC-R202：缓存内容仍在展示时，最近一次刷新失败的可见反馈。
+const refreshFailed = ref(false);
+const cachedContext = ref<HomeRelationshipContext | null>(null);
 // VC-R11：页面私有请求代次。不用 auth 的会话代次做写入门控——同账号的
 // 重新登录/续期也会推进它，会把合法的在途加载判过期并永久挂住 busy。
 // 这里只在「发起新加载」与「换号清理」时递增。
@@ -189,8 +221,14 @@ const transport: AuthTransport = createAuthenticatedTransport({
   },
 });
 
+// 展示与导航用关系：优先全局 store 的最新确认值；读取失败被清空时退回
+// 本页缓存的上次已验证关系，链接仍按本账号拥有的关系构建。
+const displayRelationship = computed<Relationship | null>(() => (
+  relStore.current ?? cachedContext.value?.relationship ?? null
+));
+
 const companionName = computed(() => (
-  relStore.current ? companionHeaderName(relStore.current) : ""
+  displayRelationship.value ? companionHeaderName(displayRelationship.value) : ""
 ));
 const latestConversation = computed(() => conversations.value[0] ?? null);
 const heroConversationCopy = computed(() => {
@@ -204,12 +242,15 @@ const latestActivityTime = computed(() => (
 ));
 
 function knownRelationshipIds(): string[] {
-  return relStore.relationships.map((relationship) => relationship.relationshipId);
+  if (relStore.current) {
+    return relStore.relationships.map((relationship) => relationship.relationshipId);
+  }
+  return cachedContext.value?.knownRelationshipIds ?? [];
 }
 
 function chatHref(conversationId?: string): string {
   return buildContextHref("chat", {
-    relationshipId: relStore.currentRelationshipId,
+    relationshipId: displayRelationship.value?.relationshipId ?? null,
     conversationId,
     knownRelationshipIds: knownRelationshipIds(),
   });
@@ -217,7 +258,7 @@ function chatHref(conversationId?: string): string {
 
 function conversationsHref(): string {
   return buildContextHref("conversations", {
-    relationshipId: relStore.currentRelationshipId,
+    relationshipId: displayRelationship.value?.relationshipId ?? null,
     knownRelationshipIds: knownRelationshipIds(),
   });
 }
@@ -252,6 +293,8 @@ function openConversation(conversation: ConversationListItem): void {
 watch(() => auth.accountId, (next, prev) => {
   if (prev === null || next === prev) return;
   conversations.value = [];
+  cachedContext.value = null;
+  refreshFailed.value = false;
   homeState.value = "loading";
   busy.value = false;
   loadSeq++;
@@ -260,7 +303,13 @@ watch(() => auth.accountId, (next, prev) => {
 async function loadHome(): Promise<void> {
   if (!auth.isAuthenticated || busy.value) return;
   busy.value = true;
-  homeState.value = "loading";
+  // VC-R202：已有成功首页时，返回刷新不撤下内容：等待与失败期间上次内容
+  // 保持可见可操作，失败只挂内嵌反馈；无缓存的首次加载才走整页骨架。
+  if (cachedContext.value) {
+    refreshFailed.value = false;
+  } else {
+    homeState.value = "loading";
+  }
   // VC-R11：本次加载的请求代次。每次 await 之后与 finally 的收尾都以
   // mySeq === loadSeq 为门控：换号清理或更新的加载已接管时静默丢弃
   // （不回填旧账号内容，也不动新请求的 busy）；同账号重新登录不递增
@@ -271,27 +320,66 @@ async function loadHome(): Promise<void> {
     await relStore.load(transport);
     if (isStale()) return;
     if (relStore.status === "error") {
-      homeState.value = "error";
+      // 关系读取失败只清空了全局 store；本页按缓存的上次已验证关系继续
+      // 展示与导航，不落入空关系。
+      if (cachedContext.value) refreshFailed.value = true;
+      else homeState.value = "error";
       return;
     }
-    if (!relStore.currentRelationshipId) {
+    const currentRelationship = relStore.current;
+    if (!currentRelationship) {
+      // 服务端确认默认陪伴缺失：旧关系缓存随之作废，走缺失分支。
+      cachedContext.value = null;
       homeState.value = "missing";
       return;
     }
+    if (
+      cachedContext.value &&
+      cachedContext.value.relationship.relationshipId !== currentRelationship.relationshipId
+    ) {
+      // 服务端确认默认陪伴已变化：旧关系的内容不挂到新陪伴名下，缓存
+      // 作废，按新关系整页加载（新关系读取失败即整页错误）。
+      cachedContext.value = null;
+      homeState.value = "loading";
+    }
+    const knownIds = relStore.relationships.map((row) => row.relationshipId);
     const rows = await listConversations(
       transport,
-      relStore.currentRelationshipId,
+      currentRelationship.relationshipId,
       undefined,
       3,
     );
     if (isStale()) return;
     conversations.value = rows;
+    cachedContext.value = {
+      relationship: currentRelationship,
+      knownRelationshipIds: knownIds,
+    };
     homeState.value = "ready";
   } catch {
-    if (!isStale()) homeState.value = "error";
+    if (!isStale()) {
+      if (cachedContext.value) refreshFailed.value = true;
+      else homeState.value = "error";
+    }
   } finally {
     if (!isStale()) busy.value = false;
   }
+}
+
+// VC-R202 追加：返回首页时与全局 store 的已确认上下文对账。其他页面（如
+// 会话列表）可能已用同一 store 确认默认陪伴变化或缺失；旧缓存属于上一个
+// 关系上下文，必须在等待下一次请求前失效并进入新上下文整页加载/缺失，
+// 不让新陪伴名配旧关系的会话或链接。status 不是 ready（loading/error/
+// idle）时结果未知，不动已成功缓存。
+function reconcileConfirmedContext(): boolean {
+  if (relStore.status !== "ready" || !cachedContext.value) return false;
+  const currentId = relStore.currentRelationshipId;
+  if (currentId === cachedContext.value.relationship.relationshipId) return false;
+  conversations.value = [];
+  cachedContext.value = null;
+  refreshFailed.value = false;
+  homeState.value = currentId ? "loading" : "missing";
+  return true;
 }
 
 async function restoreSessionAndHome(): Promise<void> {
@@ -310,7 +398,15 @@ onMounted(() => {
 
 // 返回缓存首页时更新最近对话；首次挂载与在途加载由 busy 去重。
 onActivated(() => {
-  if (!auth.isAuthenticated || busy.value) return;
+  if (!auth.isAuthenticated) return;
+  // VC-R202 追加：其他页面已确认默认关系变化/缺失时，旧上下文（含仍在途
+  // 的旧刷新请求）立即失效：递增代次作废旧请求（迟到响应按既有 loadSeq
+  // 语义静默丢弃），再按新上下文重新加载。
+  if (reconcileConfirmedContext()) {
+    loadSeq++;
+    busy.value = false;
+  }
+  if (busy.value) return;
   void loadHome();
 });
 </script>
@@ -467,6 +563,64 @@ onActivated(() => {
 
 .home-recent {
   min-width: 0;
+}
+
+.home-refresh-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-4);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-color-hairline);
+  border-radius: var(--vc-radius-control);
+  background: var(--vc-color-surface-soft);
+}
+
+.home-refresh-notice__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-refresh-notice__title {
+  color: var(--vc-color-ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.home-refresh-notice__text {
+  color: var(--vc-color-ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.home-refresh-notice__retry {
+  flex-shrink: 0;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-color-primary);
+  border-radius: var(--vc-radius-control);
+  color: var(--vc-color-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.home-refresh-notice__retry::after {
+  border: 0;
+}
+
+.home-refresh-notice__retry:active {
+  background: var(--vc-color-surface);
+}
+
+.home-refresh-notice__retry:disabled {
+  opacity: 0.6;
 }
 
 .home-section-heading {

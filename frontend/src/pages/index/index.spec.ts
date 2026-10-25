@@ -74,6 +74,8 @@ interface FetchOptions {
   conversationFails?: boolean | (() => boolean);
   /** VC-R11：conversations 响应返回前的闸门（数据先快照再等待），用于制造旧账号在途请求。 */
   beforeConversations?: () => Promise<void>;
+  /** VC-R202：relationships 响应返回前的闸门，用于制造返回刷新的在途等待。 */
+  beforeRelationships?: () => Promise<void>;
   /** VC-R11：POST /api/v1/auth/login 返回的 accountId（默认换号到 "9"，可设同 ID 重登录）。 */
   loginAccountId?: string;
 }
@@ -112,6 +114,7 @@ function stubFetch(options: FetchOptions = {}): ReturnType<typeof vi.fn> {
       });
     }
     if (url === "/api/v1/relationships") {
+      if (options.beforeRelationships) await options.beforeRelationships();
       if (resolveOption(options.relationshipFails, false)) {
         return response(false, 500, { code: "INTERNAL_ERROR" });
       }
@@ -351,6 +354,327 @@ describe("首页产品骨架", () => {
     expect(navigateTo()).toHaveBeenCalledWith(expect.objectContaining({
       url: expect.stringContaining("conversationId=new-conversation"),
     }));
+    wrapper.unmount();
+  });
+
+  it("返回刷新等待与关系读取失败时保留内容与继续入口，缓存关系仍可导航", async () => {
+    let releaseHeldRefresh: () => void = () => {};
+    const heldRefresh = new Promise<void>((resolve) => {
+      releaseHeldRefresh = resolve;
+    });
+    let holdRelationships = false;
+    let relationshipFails = false;
+    stubFetch({
+      relationshipFails: () => relationshipFails,
+      beforeRelationships: () => (holdRelationships ? heldRefresh : Promise.resolve()),
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+
+    // 模拟返回首页：刷新在途（relationships 挂起）。
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    holdRelationships = true;
+    relationshipFails = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    // 等待期间：上次内容仍在且可操作，不出现整页骨架或错误。
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+    expect(wrapper.find('[data-testid="tab-home"]').exists()).toBe(true);
+
+    releaseHeldRefresh();
+    await flushPromises();
+
+    // 关系读取失败清空了全局 store：缓存内容保留，只挂内嵌失败反馈与重试。
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("林夏");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+
+    // 缓存页按上次已验证且本账号拥有的关系构建聊天与全部会话链接。
+    await wrapper.findAll('[data-testid="session-preview"]')[2].trigger("click");
+    expect(navigateTo()).toHaveBeenLastCalledWith({
+      url: "/pages/chat/chat?relationshipId=rel-index-1&conversationId=conv-1",
+    });
+    await wrapper.get('[data-testid="home-view-all"]').trigger("click");
+    expect(navigateTo()).toHaveBeenLastCalledWith({
+      url: "/pages/conversations/conversations?relationshipId=rel-index-1",
+    });
+
+    holdRelationships = false;
+    relationshipFails = false;
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+    wrapper.unmount();
+  });
+
+  it("返回刷新最近对话失败时保留内容并内嵌提示，重试后更新最新内容", async () => {
+    let rows = RECENT_CONVERSATIONS;
+    let conversationFails = false;
+    stubFetch({ conversations: () => rows, conversationFails: () => conversationFails });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    conversationFails = true;
+    rows = [{
+      ...RECENT_CONVERSATIONS[0],
+      conversationId: "conv-new",
+      title: "刷新后的新对话",
+      lastMessagePreview: "刷新成功后的合成回复",
+    }];
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("林夏");
+    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("昨晚的那件小事");
+
+    conversationFails = false;
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("刷新成功后的合成回复");
+    await wrapper.get('[data-testid="home-continue-chat"]').trigger("click");
+    expect(navigateTo()).toHaveBeenLastCalledWith(expect.objectContaining({
+      url: expect.stringContaining("conversationId=conv-new"),
+    }));
+    wrapper.unmount();
+  });
+
+  it("刷新确认默认陪伴变化后按新关系整页加载，不保留旧陪伴内容", async () => {
+    let switched = false;
+    stubFetch({
+      relationships: () => (switched ? [SWITCHED_RELATIONSHIP] : [ACTIVE_RELATIONSHIP]),
+      conversations: () => (switched ? SWITCHED_CONVERSATIONS : RECENT_CONVERSATIONS),
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("林夏");
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    switched = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("沈屿");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(1);
+    expect(wrapper.text()).toContain("这是 B 账号自己的最近一条。");
+    expect(wrapper.text()).not.toContain("昨晚的那件小事");
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="home-continue-chat"]').trigger("click");
+    expect(navigateTo()).toHaveBeenLastCalledWith({
+      url: "/pages/chat/chat?relationshipId=rel-index-2&conversationId=conv-b-1",
+    });
+    wrapper.unmount();
+  });
+
+  it("刷新成功返回空列表时采纳真实空态，不用旧缓存盖掉", async () => {
+    let rows: unknown[] = RECENT_CONVERSATIONS;
+    stubFetch({ conversations: () => rows });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    rows = [];
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="home-start-chat"]').text()).toBe("开始第一次对话");
+    expect(wrapper.text()).toContain("想说什么都可以，我们从这里开始。");
+    expect(wrapper.find('[data-testid="home-recent-conversations"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="home-start-chat"]').trigger("click");
+    expect(navigateTo()).toHaveBeenLastCalledWith({
+      url: "/pages/chat/chat?relationshipId=rel-index-1",
+    });
+    wrapper.unmount();
+  });
+
+  it("换号清理本页缓存后，新账号首次关系读取失败仍走整页错误", async () => {
+    let relationshipFails = false;
+    stubFetch({ relationshipFails: () => relationshipFails });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    relationshipFails = true;
+    const auth = useAuthStore();
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
+      onUnauthorized: () => auth.clear(),
+    });
+    await auth.login(transport, "b@example.com", "pw-b");
+    await flushPromises();
+
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("昨晚的那件小事");
+    expect(wrapper.text()).not.toContain("林夏");
+    wrapper.unmount();
+  });
+
+  it("其他页面确认默认关系变化后返回，等待自身读取期间不混合新陪伴与旧会话", async () => {
+    let releaseHeldRelationships: () => void = () => {};
+    const heldRelationships = new Promise<void>((resolve) => {
+      releaseHeldRelationships = resolve;
+    });
+    let holdNextRelationships = false;
+    let switched = false;
+    stubFetch({
+      relationships: () => (switched ? [SWITCHED_RELATIONSHIP] : [ACTIVE_RELATIONSHIP]),
+      conversations: () => (switched ? SWITCHED_CONVERSATIONS : RECENT_CONVERSATIONS),
+      beforeRelationships: () => {
+        if (!holdNextRelationships) return Promise.resolve();
+        holdNextRelationships = false;
+        return heldRelationships;
+      },
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("林夏");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+
+    // 模拟离开首页：会话列表页用同一全局 store 确认了新的默认陪伴。
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    switched = true;
+    const auth = useAuthStore();
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
+      onUnauthorized: () => auth.clear(),
+    });
+    await useRelationshipStore().load(transport);
+    await flushPromises();
+
+    // 返回首页：首页自己的关系读取被挂起，等待期间不得新名字配旧会话。
+    holdNextRelationships = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="current-relationship"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(0);
+    expect(wrapper.text()).not.toContain("昨晚的那件小事");
+    expect(wrapper.text()).not.toContain("林夏");
+    expect(wrapper.find('[data-testid="tab-home"]').exists()).toBe(true);
+
+    releaseHeldRelationships();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("沈屿");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("旧刷新在途被外部确认新关系取代后，迟到的旧会话不回填新上下文", async () => {
+    let releaseHeldConversations: () => void = () => {};
+    const heldConversations = new Promise<void>((resolve) => {
+      releaseHeldConversations = resolve;
+    });
+    let holdNextConversations = false;
+    let switched = false;
+    stubFetch({
+      relationships: () => (switched ? [SWITCHED_RELATIONSHIP] : [ACTIVE_RELATIONSHIP]),
+      conversations: () => (switched ? SWITCHED_CONVERSATIONS : RECENT_CONVERSATIONS),
+      beforeConversations: () => {
+        if (!holdNextConversations) return Promise.resolve();
+        holdNextConversations = false;
+        return heldConversations;
+      },
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 返回首页触发刷新：关系读取（仍为 A）成功，A 的最近会话请求挂起在途。
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    holdNextConversations = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+
+    // 再次离开：会话列表页确认新默认关系 B；返回时旧在途请求被取代。
+    internal.da?.forEach((hook) => hook());
+    switched = true;
+    const auth = useAuthStore();
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getSessionRevision: () => auth.getSessionRevision(),
+      getSessionId: () => null,
+      onUnauthorized: () => auth.clear(),
+    });
+    await useRelationshipStore().load(transport);
+    await flushPromises();
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("沈屿");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(false);
+
+    // 被取代的 A 请求迟到 200：不得回填旧会话或破坏 B 上下文。
+    releaseHeldConversations();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("昨晚的那件小事");
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("沈屿");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
