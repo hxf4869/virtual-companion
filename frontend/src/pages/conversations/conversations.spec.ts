@@ -942,4 +942,84 @@ describe("全部会话", () => {
     expect(wrapper.text()).not.toContain("第 1 段对话");
     wrapper.unmount();
   });
+
+  // VC-R201：返回缓存页后的继续操作焦点。返回刷新挂起证明焦点恢复不等
+  // GET；scrollTo spy 证明聚焦本身不产生程序滚动（滚动归 R199/R200）。
+  it("返回缓存页后焦点立即回到最后打开项，不等返回刷新", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const rows = Array.from({ length: 20 }, (_, index) => conversation(index + 1));
+    stubFetch({
+      holdSecondConversationFetch: refreshGate,
+      conversations: () => rows,
+    });
+    const scrollTo = vi.fn();
+    Object.defineProperty(window, "scrollTo", {
+      value: scrollTo,
+      writable: true,
+      configurable: true,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 键盘打开第 15 条：激活前行按钮先持有焦点（真实 Enter 激活路径）。
+    const opened = wrapper.findAll('[data-testid="session-preview"]')[14].element as HTMLElement;
+    opened.focus();
+    expect(document.activeElement).toBe(opened);
+    await wrapper.findAll('[data-testid="session-preview"]')[14].trigger("click");
+    deactivatePage(wrapper);
+
+    // 实际导航把列表页移出文档使原项失焦：返回瞬间焦点在 body（Root 实测）。
+    // deactivatePage 只触发生命周期不移走 DOM，须显式模拟导航造成的失焦。
+    document.body.focus();
+    expect(document.activeElement).toBe(document.body);
+
+    activatePage(wrapper);
+    // 返回刷新仍在途：焦点已回到最后打开项，键盘可从原地继续（下一 Tab
+    // 即下一项），且聚焦不得引起程序滚动。
+    expect(document.activeElement).toBe(opened);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    releaseRefresh();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+    wrapper.unmount();
+  });
+
+  it("返回刷新在途时用户已移走焦点，响应合并后不抢回", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const rows = Array.from({ length: 20 }, (_, index) => conversation(index + 1));
+    stubFetch({
+      holdSecondConversationFetch: refreshGate,
+      conversations: () => rows,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const opened = wrapper.findAll('[data-testid="session-preview"]')[14].element as HTMLElement;
+    opened.focus();
+    await wrapper.findAll('[data-testid="session-preview"]')[14].trigger("click");
+    deactivatePage(wrapper);
+    document.body.focus();
+    activatePage(wrapper);
+    expect(document.activeElement).toBe(opened);
+
+    // 刷新仍在途时用户已 Tab 到下一项继续操作。
+    const next = wrapper.findAll('[data-testid="session-preview"]')[15].element as HTMLElement;
+    next.focus();
+    expect(document.activeElement).toBe(next);
+
+    releaseRefresh();
+    await flushPromises();
+
+    // 合并落位只管滚动，焦点意图按一次返回消费，不得把焦点抢回最后打开项。
+    expect(document.activeElement).toBe(next);
+    wrapper.unmount();
+  });
 });

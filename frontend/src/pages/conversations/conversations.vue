@@ -1,6 +1,6 @@
 <template>
   <!-- 全部会话是聊天域内的二级页，只用于找到并继续过去的对话。 -->
-  <ConsumerShell route="/pages/conversations/conversations">
+  <ConsumerShell route="/pages/conversations/conversations" ref="shellRef">
     <view class="conversations-page">
       <text class="conversations-page__intro">
         最近聊过的内容都在这里。
@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onActivated, onMounted, ref, watch } from "vue";
+import { nextTick, onActivated, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
 
 import { listConversations, type ConversationListItem } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -156,6 +156,15 @@ const busy = ref(false);
 // 时捕获——onDeactivated 时页面 DOM 可能已移出文档，不可靠。
 // VC-R200：只在用户返回后没有再移动时生效（见 settleScrollAfterMerge）。
 let leaveAnchor: { id: string; docTop: number; scrollTop: number } | null = null;
+// VC-R201：返回后键盘继续操作的焦点意图（仅页面内存，随换号清理）。与
+// leaveAnchor 分离——滚动锚点仍归 R199/R200 的合并落位按视口规则消费，
+// 焦点意图在每次 onActivated 时一次性消费，不随滚动路径失效。
+let focusIntent: string | null = null;
+// VC-R201：H5 下 <view> 编译为 uni 组件，模板 ref 是组件实例而非元素（其上
+// 没有 querySelector），本页自身又因根级注释在 dev 编译下 $el 落在锚点文本
+// 节点。ConsumerShell 是本仓库组件、模板单根 view，取其组件实例的 $el 即
+// 本页真正的根 DOM；焦点查询限定在其内，不命中其他页面或同名元素。
+const shellRef = ref<ComponentPublicInstance | null>(null);
 // VC-R11：页面私有请求代次（在途请求的收尾归属凭据）。加载流程进入时
 // 递增；身份清理 watch 同步递增以作废在途请求。同账号的真实重认证
 // （login/tryRefresh 推进 store 代次但 accountId 不变）不推进本代次——
@@ -189,6 +198,7 @@ watch(() => auth.accountId, (next, prev) => {
   loadMoreFailed.value = false;
   refreshFailed.value = false;
   leaveAnchor = null;
+  focusIntent = null;
   pageState.value = "loading";
   busy.value = false;
 });
@@ -236,7 +246,22 @@ function conversationTime(item: ConversationListItem): string {
 
 function openConversation(item: ConversationListItem): void {
   leaveAnchor = captureAnchor(item.conversationId);
+  focusIntent = item.conversationId;
   goTo(chatHref(item.conversationId));
+}
+
+// VC-R201：返回缓存页时把焦点送回最后打开项，键盘从原地继续（下一 Tab
+// 即下一项/加载更多）。此刻列表就是缓存 DOM：目标项缺失（被删/换号/已不
+// 属于本页）即静默放弃，不为焦点等待刷新、发新请求或补加载更多；
+// preventScroll 保证聚焦不主动滚动页面，滚动落位仍由 R199/R200 负责。
+function restoreFocusAfterReturn(): void {
+  const intent = focusIntent;
+  focusIntent = null;
+  if (!intent) return;
+  const root = shellRef.value?.$el;
+  if (!(root instanceof HTMLElement)) return;
+  const el = root.querySelector<HTMLElement>(`[data-conversation-id="${intent}"]`);
+  if (el) el.focus({ preventScroll: true });
 }
 
 function startChat(): void {
@@ -478,7 +503,10 @@ async function refreshOnReturn(): Promise<void> {
 
 // 返回缓存列表时重读最近窗口，体现聊天期间的新会话与活动顺序；已有
 // 可用列表走原地刷新以保留已浏览范围与浏览位置，否则回到首屏流程。
+// VC-R201：焦点意图按一次返回在此消费；之后无论等待、失败还是响应合并
+// 都不再动焦点，用户在途期间移走的焦点不被抢回。
 onActivated(() => {
+  restoreFocusAfterReturn();
   if (!auth.isAuthenticated) return;
   if (pageState.value === "ready" && items.value.length > 0 && relationshipId.value) {
     void refreshOnReturn();
