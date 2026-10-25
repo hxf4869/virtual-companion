@@ -575,6 +575,29 @@ describe("陪伴设置页", () => {
     wrapper.unmount();
   });
 
+  // VC-R204：未知结果的核对入口同理：键盘发起「重新读取」后表单被骨架屏
+  // 整棵替换，聚焦中的按钮被卸载。收尾须把焦点送回表单首字段（称呼），
+  // 键盘/读屏用户从那里继续核对草稿，而不是从文档顶重新导航。
+  it("未知结果后键盘发起重新读取，收尾后焦点落到表单首字段", async () => {
+    stubFetch({ patchParseFailed: true });
+    const wrapper = mountPage();
+    await flushPromises();
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(true);
+
+    (wrapper.get('[data-testid="companion-reload"]').element as HTMLElement).focus();
+    await wrapper.get('[data-testid="companion-reload"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-testid="pref-companion-name"]').element,
+    );
+    wrapper.unmount();
+  });
+
   it("没有 active 关系时显示空态并引导去聊天", async () => {
     stubFetch({ relationships: [] });
     const wrapper = mountPage();
@@ -606,6 +629,142 @@ describe("陪伴设置页", () => {
 
     expect(calls.filter((call) => call.url === "/api/v1/relationships")).toHaveLength(2);
     expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // VC-R204：键盘用户从错误卡发起重试后，加载分支把聚焦中的「重新加载」
+  // 整棵卸载成骨架屏，焦点掉到 body；弱网下每轮重试都重演。收尾后须把
+  // 焦点送回本次流程的落点：仍失败聚焦新的「重新加载」（Enter 可直接再
+  // 试，同首页 R203 手动重试语义），成功聚焦表单首字段。
+  it("加载失败后键盘重试不丢焦点：再次失败回到重试按钮，成功落到表单首字段", async () => {
+    const relationshipStatuses = [503, 503, 200];
+    stubFetch({
+      get relationshipStatus(): number {
+        return relationshipStatuses.shift() ?? 200;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-load-failed"]').exists()).toBe(true);
+
+    const retry = () => wrapper.get('[data-testid="companion-retry"]');
+    (retry().element as HTMLElement).focus();
+    await retry().trigger("click");
+    await flushPromises();
+    // 再次失败：焦点回到新的重试按钮上，键盘可原地继续重试。
+    expect(wrapper.find('[data-testid="companion-load-failed"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(retry().element);
+
+    await retry().trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(
+      wrapper.get('[data-testid="pref-companion-name"]').element,
+    );
+    wrapper.unmount();
+  });
+
+  // VC-R204：焦点恢复只属于按钮触发的重载。初载（自动）不主动聚焦任何
+  // 字段；手动重载在途时用户已把焦点移到页外元素，收尾不抢回（同会话
+  // 列表 R201 的"移走不抢回"原则）。
+  it("自动加载不主动聚焦；手动重载在途被移走的焦点不被抢回", async () => {
+    stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(document.body);
+    wrapper.unmount();
+
+    let releaseReload!: () => void;
+    const reloadGate = new Promise<void>((resolve) => {
+      releaseReload = resolve;
+    });
+    let heldSecondGet = false;
+    stubFetch({
+      patchParseFailed: true,
+      beforeRelationships: () => {
+        if (heldSecondGet) return reloadGate;
+        heldSecondGet = true;
+        return Promise.resolve();
+      },
+    });
+    const reloading = mountPage();
+    await flushPromises();
+    await reloading.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await reloading.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+    expect(reloading.find('[data-testid="companion-unknown"]').exists()).toBe(true);
+
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    await reloading.get('[data-testid="companion-reload"]').trigger("click");
+    await flushPromises();
+    // 读取在途：用户把焦点移到页外元素。
+    outside.focus();
+    releaseReload();
+    await flushPromises();
+    expect(reloading.find('[data-testid="companion-unknown"]').exists()).toBe(false);
+    expect(reloading.find('[data-testid="companion-form"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+    reloading.unmount();
+  });
+
+  // VC-R204：换号边界。A 的手动重载在途（GET 挂起）时换号 B：B 的
+  // onActivated 自动重载不得消费 A 残留的焦点意图去主动聚焦新账号字段
+  //（意图必须随本次请求闭包走，不落页面级共享状态）；A 的迟到响应也不
+  // 得影响 B 的表单与焦点。
+  it("A 手动重载在途换号 B：B 自动加载不主动聚焦，A 迟到不影响 B", async () => {
+    let switched = false;
+    let releaseHeldGet!: () => void;
+    const heldGet = new Promise<void>((resolve) => {
+      releaseHeldGet = resolve;
+    });
+    let getSeq = 0;
+    stubFetch({
+      relationships: () => (switched ? [SWITCHED_RELATIONSHIP] : [ACTIVE_RELATIONSHIP]),
+      patchParseFailed: true,
+      // GET#1 初载、GET#3（B 激活后自动重载）放行；仅 GET#2（A 的手动
+      // 重新读取）挂起，模拟换号跨过的在途请求。
+      beforeRelationships: () => {
+        getSeq += 1;
+        return getSeq === 2 ? heldGet : Promise.resolve();
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("林夏");
+
+    // A：保存结果未知后键盘发起「重新读取」，GET 挂起在途。
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="companion-reload"]').trigger("click");
+    await flushPromises();
+
+    // 换号 B（隐藏缓存页由 watch 清理），返回本页触发自动重载。
+    const page = keepAliveHooksOf(wrapper);
+    page.deactivate();
+    switched = true;
+    await loginViaAuth();
+    await flushPromises();
+    page.activate();
+    await flushPromises();
+
+    // B 的自动重载成功：表单是 B 的内容，但焦点不得被 A 的手动意图带走。
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("沈屿");
+    expect(document.activeElement).toBe(document.body);
+
+    // A 的迟到响应到达：不影响 B 的表单、加载状态与焦点。
+    releaseHeldGet();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("沈屿");
+    expect(wrapper.find('[data-testid="companion-loading"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
     wrapper.unmount();
   });
 

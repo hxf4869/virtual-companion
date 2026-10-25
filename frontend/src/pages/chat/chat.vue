@@ -493,6 +493,25 @@ async function initPage(): Promise<void> {
     // 不会走到这里）。此后本实例的恢复核对都以此为准。
     owningConversationId = store.conversationId;
     bindGenerationContext();
+    // VC-R204：发送失败的反馈不随页面实例销毁丢失。POST 抛错（结果未知/
+    // 确定失败）不写 store 相位，原提交只记录在发起实例的未确认快照里；
+    // 同会话返回时 openConversation 早退保留 turn 状态，而新实例 initPage
+    // 已清空本地快照——错误文案、重试入口与原消息回填会全部消失。ready
+    // 落地时按 store 仍持有的原提交重建同样的反馈；输入框已有用户草稿时
+    // 只重建重试入口、不覆盖草稿（与 sendText 失败回填同一语义）。failed
+    // 相位有自己的文案/重连分流，streaming/POST 在途不是失败，均不在此列。
+    if (
+      store.pendingUserContent.trim() !== "" &&
+      !store.isStreaming &&
+      !store.generationStarting &&
+      store.phase !== "failed"
+    ) {
+      unconfirmedSendText.value = store.pendingUserContent;
+      if (inputText.value.trim() === "") {
+        inputText.value = store.pendingUserContent;
+        inputRefilledFromFailure = true;
+      }
+    }
     pageState.value = "ready";
     if (store.conversationId) {
       const restoringConversationId = store.conversationId;

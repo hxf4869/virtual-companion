@@ -1620,4 +1620,26 @@ describe("记忆管理页", () => {
     host.unmount();
     wrapperB.unmount();
   });
+
+  it("R204 键盘激活编辑后焦点落入编辑框，不因按钮被替换掉回 body", async () => {
+    stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 键盘用户先聚焦"编辑"按钮再激活（Enter/Space 走 click）。
+    const editButton = wrapper.get('[data-testid="memory-edit"]');
+    (editButton.element as HTMLButtonElement).focus();
+    expect(document.activeElement).toBe(editButton.element);
+
+    await editButton.trigger("click");
+    await flushPromises();
+
+    // 激活后"编辑"按钮所在操作区被编辑框替换，焦点掉回 body（实机证据：
+    // activeElement=BODY）：编辑打开后缺少明确输入焦点，下一次 Tab 才落入
+    // 本条 textarea，键盘用户需补一次 Tab 且无输入位置宣告。修复后激活
+    // 即聚焦 textarea，可立即开始改写。
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(input);
+    wrapper.unmount();
+  });
 });

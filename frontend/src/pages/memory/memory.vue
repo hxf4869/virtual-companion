@@ -3,7 +3,7 @@
        待确认候选（PENDING_CONFIRMATION）次级分区。列表接口无分页参数，
        一次加载该关系下全部未删除记忆；已拒绝条目不展示。 -->
   <ConsumerShell route="/pages/memory/memory">
-    <view class="memory-page">
+    <view ref="pageRoot" class="memory-page">
       <view
         v-if="relState === 'loading' || firstListLoading"
         class="memory-state"
@@ -436,7 +436,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, type ComponentPublicInstance } from "vue";
 
 import {
   classifyMemoryWriteError,
@@ -720,6 +720,18 @@ async function onToggleAutoSave(): Promise<void> {
 /** 切换编辑目标时丢弃未保存草稿的确认文案（不声称服务端未生效）。 */
 const SWITCH_EDIT_CONFIRM_MESSAGE = "当前编辑还有更改，切换后页面上的草稿不会保留。确定切换吗？";
 
+// 真实 H5：<view> 是 uni 内建组件（未 expose），ref 为组件实例、经 $el 取根；
+// 组件测试：未注册的 view 落为原生元素，ref 即元素本身（与 VcChatComposer
+// 的 nativeTextarea 同惯例）。仅查本页子树，同一时刻至多一个编辑框。
+const pageRoot = ref<ComponentPublicInstance | HTMLElement | null>(null);
+
+function editTextarea(): HTMLTextAreaElement | null {
+  const host = pageRoot.value;
+  if (!host) return null;
+  const element = host instanceof HTMLElement ? host : host.$el;
+  return element?.querySelector("textarea") ?? null;
+}
+
 function startEdit(item: MemoryItem): void {
   // 正在编辑另一条且草稿有实际改动（按保存的 trim 规则比较）时，切换会
   // 静默丢弃草稿：先原生确认，取消则保留当前草稿与编辑状态。保存
@@ -737,6 +749,9 @@ function startEdit(item: MemoryItem): void {
   editDraft.value = item.summary;
   editError.value = "";
   confirmDeleteId.value = null;
+  // R204：激活的"编辑"按钮随其操作区一起被编辑框替换，焦点会掉回 body；
+  // 打开编辑器即把焦点送进输入框，键盘用户从原地直接开始改写。
+  void nextTick(() => editTextarea()?.focus());
 }
 
 function cancelEdit(): void {

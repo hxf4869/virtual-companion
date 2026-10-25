@@ -1,7 +1,7 @@
 <template>
   <!-- 陪伴设置：当前 active 关系的行为偏好（全量替换式 PATCH）。
        服务端在首次聊天时自动创建唯一默认陪伴，本页不提供创建表单。 -->
-  <ConsumerShell route="/pages/companion/companion">
+  <ConsumerShell route="/pages/companion/companion" ref="shellRef">
     <view class="companion-page">
       <view
         v-if="loadState === 'loading'"
@@ -27,7 +27,7 @@
           type="button"
           class="secondary-action"
           data-testid="companion-retry"
-          @click="reload"
+          @click="reload(true)"
         >
           重新加载
         </button>
@@ -242,7 +242,7 @@
               type="button"
               class="secondary-action"
               data-testid="companion-reload"
-              @click="reload"
+              @click="reload(true)"
             >
               重新读取
             </button>
@@ -254,7 +254,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
 
 import type { AvoidTopic } from "@/api/relationship";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -295,6 +295,10 @@ let loadedForAccountId: string | null = null;
 // （它每次认证都变，会把同账号恢复误判过期并永久挂住 busy）。
 let loadSeq = 0;
 const busy = ref(false);
+// VC-R204：本页根 DOM。uni-h5 把 view/input 编译为组件（模板 ref 是组件
+// 实例而非元素），ConsumerShell 模板单根 view，取其组件实例的 $el 即本页
+// 真实根元素；焦点目标查询限定在其内，不命中其他缓存页的同名元素。
+const shellRef = ref<ComponentPublicInstance | null>(null);
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -463,7 +467,33 @@ watch(() => auth.accountId, (next, prev) => {
   removeLeaveGuards();
 });
 
-async function reload(): Promise<void> {
+// VC-R204：手动重载（失败重试/未知结果核对）收尾后的键盘焦点恢复。发起
+// 按钮所在分支会被加载骨架整棵卸载，焦点随即掉到 body：键盘与读屏用户
+// 被迫从文档顶重新导航，弱网下每轮重试都重演。焦点意图是本次 reload 的
+// 闭包参数而非页面级共享状态：A 的手动重载在途换号后，新账号 onActivated
+// 的自动重载不得消费旧意图去主动聚焦新账号字段（A 的请求则因 isStale
+// 提前丢弃，意图随闭包作废）。DOM 重渲染后把焦点送回本次流程的落点——
+// 仍失败聚焦新的「重新加载」（Enter 可直接再试，同首页 R203 的手动重试
+// 语义）；成功聚焦表单首字段（未知核对后通常从称呼开始核对/续编草稿），
+// 空态聚焦「去聊天」。用户在途期间已把焦点移到别处（activeElement 非
+// body）时不抢回，同会话列表 R201。
+async function settleReloadFocus(isStale: () => boolean, refocus: boolean): Promise<void> {
+  if (!refocus) return;
+  await nextTick();
+  if (isStale()) return;
+  const root = shellRef.value?.$el;
+  if (!(root instanceof HTMLElement)) return;
+  if (document.activeElement !== document.body) return;
+  const target = loadState.value === "error"
+    ? root.querySelector<HTMLElement>('[data-testid="companion-retry"]')
+    // uni-h5 把 <input> 编译为 uni-input 组件（宿主元素未必可聚焦），取表单
+    // 内第一个原生 input；组件测试环境里它本身就是原生 input。
+    : root.querySelector<HTMLElement>('[data-testid="companion-form"] input')
+      ?? root.querySelector<HTMLElement>('[data-testid="companion-go-chat"]');
+  target?.focus();
+}
+
+async function reload(manual = false): Promise<void> {
   if (busy.value) return;
   busy.value = true;
   // VC-R13：本次加载的代次。每次 await 之后与 finally 的收尾都以
@@ -478,10 +508,13 @@ async function reload(): Promise<void> {
     }
     if (!auth.isAuthenticated) {
       loadState.value = "error";
+      await settleReloadFocus(isStale, manual);
       return;
     }
     loadedForAccountId = auth.accountId;
     await load(transport);
+    if (isStale()) return;
+    await settleReloadFocus(isStale, manual);
   } finally {
     if (!isStale()) busy.value = false;
   }

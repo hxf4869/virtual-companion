@@ -2735,6 +2735,48 @@ describe("聊天产品页", () => {
     wrapper.unmount();
   });
 
+  // ---- VC-R204：发送失败的反馈不随页面实例销毁丢失 ----
+  // 缺陷：POST 抛错（结果未知/确定失败）时 store 相位停在 idle/completed，
+  // 未确认反馈只记录在发起实例的 unconfirmedSendText 里；返回首页再进同一
+  // 会话（首页"继续聊天"带最近会话 ID）时新实例 initPage 清空本地快照，
+  // openConversation 同会话早退又保留 turn 状态——错误文案、重试入口与
+  // 原消息回填全部消失，用户消息在 UI 上丢失。
+
+  it("VC-R204：发送结果未知时离开再返回同一会话：错误反馈、原消息回填与同键重试不丢失", async () => {
+    const { calls } = stubFetch({ generations: ["reject", 200], hangStream: true });
+    const first = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const inputValue = (wrapper: ReturnType<typeof mountPage>) =>
+      (wrapper.find('[data-testid="message-input"]').element as HTMLTextAreaElement).value;
+    await first.find('[data-testid="message-input"]').setValue("这句话不能丢");
+    await first.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+    // 在页失败反馈（既有行为），POST 抛错不写 store 相位。
+    expect(first.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect(store.phase).toBe("idle");
+    expect(store.pendingUserContent).toBe("这句话不能丢");
+
+    // 离开聊天页（返回首页），再从首页"继续聊天"回到同一会话：新页面实例。
+    first.unmount();
+    const second = mountPage();
+    await flushPromises();
+
+    expect(second.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+    expect(second.find('[data-testid="retry"]').text()).toBe("重试原消息");
+    expect(inputValue(second)).toBe("这句话不能丢");
+
+    // 重试入口仍可操作：原 POST 结局未知，同键重发靠幂等键收敛。
+    await second.find('[data-testid="retry"]').trigger("click");
+    await flushPromises();
+    const posts = generationPostBodies(calls);
+    expect(posts.map((post) => post.userContent)).toEqual(["这句话不能丢", "这句话不能丢"]);
+    expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
+    expect(inputValue(second)).toBe("");
+    second.unmount();
+  });
+
   // ---- VC-R121：同文新草稿不得被原消息重试清空 ----
   // 缺陷：sendText 以「输入框正文 === 提交正文」推断草稿归属。原提交 A="好"
   // 在途时用户重新输入同文草稿 B="好"，重试 A 的一刻 B 被清空；若重试再失败，
