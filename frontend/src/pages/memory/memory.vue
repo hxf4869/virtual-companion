@@ -436,7 +436,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from "vue";
 
 import {
   classifyMemoryWriteError,
@@ -791,6 +791,77 @@ async function saveEdit(item: MemoryItem): Promise<void> {
   }
 }
 
+/** 离开本页丢弃未保存草稿的确认文案（不声称服务端未生效）。 */
+const LEAVE_CONFIRM_MESSAGE = "当前编辑还有更改，离开后页面上的草稿不会保留。确定离开吗？";
+
+interface H5LeaveRouter {
+  beforeEach: (
+    guard: (to: { path: string }, from: { path: string }) => boolean | Promise<boolean>,
+  ) => () => void;
+}
+
+let leaveGuardsInstalled = false;
+let removeRouteLeaveGuard: (() => void) | null = null;
+
+/**
+ * 是否有离开本页会丢失的未保存草稿：正在编辑的条目仍在共享列表且草稿
+ * （按保存的 trim 规则）与已保存内容不同。未编辑、未改动、显式取消与
+ * 保存成功退出编辑后都为 false；auth 清理会重置 memory.items，旧账号
+ * 草稿因此找不到对应条目，不构成拦截条件。
+ */
+function hasUnsavedEditDraft(): boolean {
+  if (editingId.value === null) return false;
+  const editing = memory.items.find((item) => item.memoryId === editingId.value);
+  return editing !== undefined && editDraft.value.trim() !== editing.summary;
+}
+
+// 与 companion 页同型的离开拦截：H5 的页面返回/浏览器后退最终都走
+// vue-router 导航，注册一个可移除的 beforeEach 守卫即可全部拦截；确认
+// 用浏览器原生 confirm（键盘可达），文案只陈述本页草稿会被丢弃。登录
+// 目标永远放行，旧账号草稿不阻认证/换号链路。
+async function guardRouteLeave(
+  to: { path: string },
+  from: { path: string },
+): Promise<boolean> {
+  if (from.path !== "/pages/memory/memory") return true;
+  if (to.path === from.path) return true;
+  if (to.path === "/pages/login/login") return true;
+  if (!hasUnsavedEditDraft()) return true;
+  return typeof globalThis.confirm === "function"
+    ? globalThis.confirm(LEAVE_CONFIRM_MESSAGE)
+    : false;
+}
+
+function guardBrowserLeave(event: BeforeUnloadEvent): void {
+  if (!hasUnsavedEditDraft()) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+
+function installLeaveGuards(): void {
+  if (leaveGuardsInstalled) return;
+  leaveGuardsInstalled = true;
+  // 裸 getApp 引用与 companion 页同惯例：uni-h5 构建注入；组件测试与
+  // 非 uni 宿主经 typeof 静默降级（仅失去本页确认弹窗）。
+  if (typeof getApp === "function") {
+    const router = getApp<{ $router?: H5LeaveRouter }>().$router;
+    if (router?.beforeEach) removeRouteLeaveGuard = router.beforeEach(guardRouteLeave);
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", guardBrowserLeave);
+  }
+}
+
+function removeLeaveGuards(): void {
+  if (!leaveGuardsInstalled) return;
+  leaveGuardsInstalled = false;
+  removeRouteLeaveGuard?.();
+  removeRouteLeaveGuard = null;
+  if (typeof window !== "undefined") {
+    window.removeEventListener("beforeunload", guardBrowserLeave);
+  }
+}
+
 function askDelete(memoryId: string): void {
   confirmDeleteId.value = memoryId;
   deleteError.value = "";
@@ -872,7 +943,27 @@ async function actOnCandidate(
 }
 
 onMounted(() => {
+  installLeaveGuards();
   void initialLoad();
+});
+
+// uni-h5 用 RouterView+KeepAlive 渲染页面：确认离开后页面转为 deactivated
+// 缓存而非 unmount（onUnmounted 不及时触发）；而 uni 的页面 onUnload 在
+// initHistory 的 history 监听回调里经 removeCurrentPages 早于路由守卫判定
+// 同步触发，不能当清理时点——会在确认弹窗前撤掉守卫、绕过保护。与
+// companion 页同型：幂等 install，真正 deactivated / unmounted 才 cleanup。
+// 缓存的脏稿实例若被再激活，onActivated 重装守卫、草稿继续受保护，无需
+// 在 deactivated 时清草稿。
+onActivated(() => {
+  installLeaveGuards();
+});
+
+onDeactivated(() => {
+  removeLeaveGuards();
+});
+
+onUnmounted(() => {
+  removeLeaveGuards();
 });
 </script>
 

@@ -4,6 +4,7 @@
 import { flushPromises, mount, type DOMWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h, KeepAlive, nextTick, ref } from "vue";
 
 import { useAuthStore } from "@/stores/auth";
 import { useMemoryStore } from "@/stores/memory";
@@ -193,12 +194,67 @@ function mountPage() {
   return mount(MemoryPage, { attachTo: document.body });
 }
 
+/**
+ * 以真实 KeepAlive 宿主装载页面：uni-h5 用 RouterView+KeepAlive 渲染页面，
+ * 离开页面是 deactivated 缓存而非 unmount。切换 active 即真实的
+ * deactivate/activate 生命周期（onActivated/onDeactivated 实际触发，
+ * 对应"确认离开后页面被缓存、之后可能再激活"的框架边界），不改页面
+ * ref、不卸载 Vue 实例、不经私有属性。
+ */
+function mountPageInKeepAlive() {
+  const active = ref(true);
+  const host = mount(
+    defineComponent({
+      setup: () => () =>
+        h(KeepAlive, () => (active.value ? h(MemoryPage) : h("view", "已离开页面"))),
+    }),
+    { attachTo: document.body },
+  );
+  return { host, active };
+}
+
 function memoryRows(wrapper: ReturnType<typeof mountPage>) {
   return wrapper.findAll('[data-testid="memory-row"]');
 }
 
 async function openEdit(wrapper: ReturnType<typeof mountPage>, testid: string) {
   await wrapper.get(`[data-testid="${testid}"]`).trigger("click");
+}
+
+type LeaveGuard = (to: { path: string }, from: { path: string }) => boolean | Promise<boolean>;
+
+/**
+ * 组件测试宿主没有 uni 注入的 getApp().$router：stub 假的 H5 路由边界，
+ * 记录页面经 beforeEach 注册的守卫，并以 memory 页为起点模拟一次导航
+ * （返回守卫是否放行），不引入真实 vue-router。
+ */
+function stubLeaveRouter() {
+  const guards: LeaveGuard[] = [];
+  vi.stubGlobal("getApp", () => ({
+    $router: {
+      beforeEach(guard: LeaveGuard) {
+        guards.push(guard);
+        return () => {
+          const index = guards.indexOf(guard);
+          if (index >= 0) guards.splice(index, 1);
+        };
+      },
+    },
+  }));
+  async function attemptNavigate(toPath: string): Promise<boolean> {
+    const results = await Promise.all(
+      guards.map((guard) => guard({ path: toPath }, { path: "/pages/memory/memory" })),
+    );
+    return results.every(Boolean);
+  }
+  return { guards, attemptNavigate };
+}
+
+/** 派发可取消的 beforeunload 并返回事件，用 defaultPrevented 断言是否拦截。 */
+function dispatchBeforeUnload(): Event {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event;
 }
 
 /**
@@ -1425,5 +1481,143 @@ describe("记忆管理页", () => {
     // 只发生了页面内切换，全程不产生任何 PATCH。
     expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
     wrapper.unmount();
+  });
+
+  it("R194 脏稿离开页面先确认：取消留在本页，确认放行，全程不发 PATCH", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { attemptNavigate } = stubLeaveRouter();
+    const { calls } = stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R194 的未保存草稿。");
+
+    // 取消离开：导航被拦，草稿与编辑状态留在本页。
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R194 的未保存草稿。");
+
+    // 确认离开：放行导航。
+    confirmMock.mockReturnValue(true);
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+
+    // 守卫只做确认，绝不代发 PATCH。
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("R194 未编辑/未改动/显式取消后离开不确认；登录目标与退出身份放行", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { attemptNavigate } = stubLeaveRouter();
+    stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 未编辑：直接放行。
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+
+    // 编辑但未改动：直接放行。
+    await openEdit(wrapper, "memory-edit");
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+
+    // 显式取消编辑后：直接放行。
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("改动后又取消。");
+    await wrapper.get('[data-testid="memory-edit-cancel"]').trigger("click");
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+
+    // 有脏稿也不阻登录目标。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("登录前的脏稿。");
+    await expect(attemptNavigate("/pages/login/login")).resolves.toBe(true);
+
+    // 退出身份（真实 AuthStore.clear 已重置 memory.items）：非登录目标也
+    // 放行，旧账号草稿不拦换号/登录链路。
+    useAuthStore().clear();
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+
+    expect(confirmMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("R194 刷新只拦当前脏稿，卸载后移除路由守卫与 beforeunload 监听", async () => {
+    const { guards } = stubLeaveRouter();
+    stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(guards).toHaveLength(1);
+
+    // 未编辑：刷新不拦。
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+
+    // 脏稿：刷新拦下；显式取消编辑后恢复不拦。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R194 的未保存草稿。");
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
+    await wrapper.get('[data-testid="memory-edit-cancel"]').trigger("click");
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+
+    // 卸载（真实离开页面）：注册的守卫与监听一并移除，脏稿不再拦截。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("卸载前的脏稿。");
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
+    wrapper.unmount();
+    expect(guards).toHaveLength(0);
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+  });
+
+  it("R194 确认离开且真正 deactivated 才移除守卫；重进只读/再激活不弹旧确认", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { guards, attemptNavigate } = stubLeaveRouter();
+    stubFetch();
+    const { host, active } = mountPageInKeepAlive();
+    await flushPromises();
+
+    // A：在 KeepAlive 宿主（同 uni-h5 页面容器）内编辑留下脏稿。
+    await host.get('[data-testid="memory-edit"]').trigger("click");
+    await host.get('[data-testid="memory-edit-input"]').setValue("R194 返回前需保留的草稿。");
+    expect(guards).toHaveLength(1);
+
+    // 取消离开：导航被拦，守卫与 beforeunload 保持有效——deactivated 未
+    // 发生，任何早于路由判定的页面退出时序都不得提前解除保护。
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(guards).toHaveLength(1);
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
+
+    // 确认离开：放行导航 ≠ 页面已 deactivated；缓存失活后守卫才移除。
+    confirmMock.mockReturnValue(true);
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+    expect(guards).toHaveLength(1);
+    active.value = false;
+    await nextTick();
+    expect(guards).toHaveLength(0);
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+
+    // 重进的新只读实例（未编辑）页面返回：不弹旧实例的脏稿确认。
+    const wrapperB = mountPage();
+    await flushPromises();
+    expect(wrapperB.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(true);
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+
+    // 再激活缓存旧实例：未保存草稿原样保留并重新受保护（取消仍留本页），
+    // 不是待清理的旧状态——因此 deactivated 时无需清草稿。
+    confirmMock.mockReturnValue(false);
+    active.value = true;
+    await nextTick();
+    expect(guards).toHaveLength(2);
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledTimes(3);
+    const input = host.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R194 返回前需保留的草稿。");
+
+    host.unmount();
+    wrapperB.unmount();
   });
 });
