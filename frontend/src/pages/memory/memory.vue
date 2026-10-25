@@ -370,14 +370,28 @@
                   </view>
                 </view>
 
-                <text
+                <view
                   v-else-if="rowErrorId === item.memoryId"
                   class="memory-row__error"
                   data-testid="pending-error"
                   role="alert"
                 >
-                  {{ rowErrorMessage }}
-                </text>
+                  <text>{{ rowErrorMessage }}</text>
+                  <!-- 候选动作 404：该行已不在待确认态，重试无效；就地给列表刷新
+                       入口，复用 retryList（loading 门防重复、R208 反馈区显示等待/
+                       失败），按权威重读后的状态分区或离开本区。 -->
+                  <button
+                    v-if="rowRefreshId === item.memoryId"
+                    type="button"
+                    class="text-action"
+                    data-testid="pending-refresh"
+                    :aria-disabled="memory.listStatus === 'loading'"
+                    :aria-busy="memory.listStatus === 'loading'"
+                    @click="retryList"
+                  >
+                    刷新列表
+                  </button>
+                </view>
 
                 <view v-if="editingId !== item.memoryId" class="memory-actions">
                   <button
@@ -444,6 +458,7 @@ import {
   classifyMemoryWriteError,
   confirmMemory,
   deleteMemory,
+  MemoryHttpError,
   rejectMemory,
   updateMemory,
   type MemoryItem,
@@ -500,6 +515,12 @@ const deleteError = ref("");
 const pendingBusyId = ref<string | null>(null);
 const rowErrorId = ref<string | null>(null);
 const rowErrorMessage = ref("");
+/**
+ * 候选确认/拒绝收到 404 的那一行：服务端只对已不在待确认态的候选（另一
+ * 会话已处理/删除或对本账号不可见）返回它，重试永不成功，行内改给列表
+ * 刷新入口；权威重读成功后清掉，行按新状态分区或离开待确认区。
+ */
+const rowRefreshId = ref<string | null>(null);
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -639,6 +660,7 @@ watch(() => auth.accountId, (next, prev) => {
     pendingBusyId.value = null;
     rowErrorId.value = null;
     rowErrorMessage.value = "";
+    rowRefreshId.value = null;
   }
   // 可见页发现新的确定身份且当前内容不归属它：自动且仅一次重读关系与该
   // 账号的记忆/开关（busy 去重 mount 期间首次发现的在途加载；归属对齐后
@@ -726,20 +748,35 @@ async function initialLoad(): Promise<void> {
 }
 
 /**
- * 列表级重新加载/重新读取（反馈区按钮与空窗口不确定态共用）。重复触发由
- * store 的 listStatus loading 门挡住（aria-disabled 不拦键盘事件）；等待与
- * 结果都写回同一反馈区，不卸载按钮。退出/换号后的晚到结果按 ownerEpoch
- * 丢弃。成功反馈只在刷新后窗口有内容时给出：真实空态自身已说明当前列表。
+ * 列表级重新加载/重新读取（反馈区按钮、空窗口不确定态与候选 404 的行内
+ * 刷新入口共用）。重复触发由 store 的 listStatus loading 门挡住（aria-disabled
+ * 不拦键盘事件）；等待与结果都写回同一反馈区，不卸载按钮。退出/换号后的
+ * 晚到结果按 ownerEpoch 丢弃。成功反馈只在刷新后窗口有内容时给出：真实
+ * 空态自身已说明当前列表。
  */
 async function retryList(): Promise<void> {
   if (!relationshipId.value) return;
   if (memory.listStatus === "loading") return;
   const requestEpoch = memory.ownerEpoch;
+  // 候选 404 行内入口的归属：本次重读只替发起时的那一行收尾。待确认按钮
+  // 不因列表 loading 禁用，在途期间用户仍可操作另一可见候选，其 404 会把
+  // 提示与入口写到新行；404 不推进写版本，store 会把本次旧快照当 ok 写回，
+  // 回包时不得把新行刚写入的入口一起清掉。
+  const refreshTarget = rowRefreshId.value;
   manualListRefresh.value = "pending";
   const outcome = await memory.load(transport, relationshipId.value);
   if (memory.ownerEpoch !== requestEpoch) return;
   listInconclusive.value = outcome === "inconclusive";
   manualListRefresh.value = outcome === "ok" && !listWindowEmpty.value ? "success" : null;
+  // 发起行的入口由本次权威重读接管：该行已按新列表分区或离开待确认区，
+  // 残留提示不再成立；失败/不确定时保留入口，可再刷新。
+  if (outcome === "ok" && refreshTarget !== null && rowRefreshId.value === refreshTarget) {
+    rowRefreshId.value = null;
+    if (rowErrorId.value === refreshTarget) {
+      rowErrorId.value = null;
+      rowErrorMessage.value = "";
+    }
+  }
 }
 
 /**
@@ -1063,6 +1100,7 @@ async function actOnCandidate(
   const requestEpoch = memory.ownerEpoch;
   pendingBusyId.value = item.memoryId;
   rowErrorId.value = null;
+  rowRefreshId.value = null;
   try {
     const updated = await action(transport, item.memoryId);
     if (memory.ownerEpoch !== requestEpoch) return;
@@ -1071,6 +1109,13 @@ async function actOnCandidate(
     if (memory.ownerEpoch !== requestEpoch) return;
     if (classifyMemoryWriteError(caught) === "unknown") {
       setUnknownAction({ kind: "candidate", memoryId: item.memoryId, expectedStatus });
+    } else if (caught instanceof MemoryHttpError && caught.status === 404) {
+      // 404（NOT_FOUND_OR_FORBIDDEN）只在候选已不是待确认态时返回：另一会话
+      // 已确认/拒绝/删除，或条目对本账号不可见。既不是未知写也不是成功，
+      // 更推不出具体结局；"再试一次"永不成功，改为就地刷新按权威列表分区。
+      rowErrorId.value = item.memoryId;
+      rowErrorMessage.value = "这条候选当前无法按待确认操作，请刷新列表确认。";
+      rowRefreshId.value = item.memoryId;
     } else {
       rowErrorId.value = item.memoryId;
       rowErrorMessage.value = failureCopy;

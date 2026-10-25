@@ -85,6 +85,7 @@ interface FetchOptions {
   patchParseFailed?: boolean;
   patchEcho?: Record<string, unknown>;
   deleteStatus?: number;
+  confirmStatus?: number | (() => number);
   rejectStatus?: number | (() => number);
   /** 提供时，confirm 请求挂起直到手动 resolve（用于断言提交中禁用）。 */
   confirmGate?: Gate;
@@ -191,7 +192,12 @@ function stubFetch(options: FetchOptions = {}) {
         if (options.confirmGate) {
           return options.confirmGate.promise as never;
         }
-        return response(200, { ...echoed, status: "ACCEPTED", autoSaved: true });
+        const status = typeof options.confirmStatus === "function"
+          ? options.confirmStatus()
+          : options.confirmStatus ?? 200;
+        return response(status, status === 200
+          ? { ...echoed, status: "ACCEPTED", autoSaved: true }
+          : null);
       }
       if (method === "POST" && memoryMatch[3] === "reject") {
         const status = typeof options.rejectStatus === "function"
@@ -271,6 +277,15 @@ function mountPageInKeepAlive() {
 
 function memoryRows(wrapper: ReturnType<typeof mountPage>) {
   return wrapper.findAll('[data-testid="memory-row"]');
+}
+
+/** 按摘要片段定位待确认行（多候选场景）；找不到时直接抛错定位到此。 */
+function pendingRowOf(wrapper: ReturnType<typeof mountPage>, summaryPart: string) {
+  const row = wrapper
+    .findAll('[data-testid="pending-row"]')
+    .find((candidate) => candidate.text().includes(summaryPart));
+  if (!row) throw new Error(`pending row not found: ${summaryPart}`);
+  return row;
 }
 
 /**
@@ -608,6 +623,177 @@ describe("记忆管理页", () => {
     await wrapper.get('[data-testid="pending-row"] [data-testid="pending-reject"]').trigger("click");
     await flushPromises();
     expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("候选确认遇 404（另一会话已处理）给诚实提示与就地刷新，按权威列表进入已保存", async () => {
+    // 服务端只对已不在待确认态的候选返回 404：本页仍显示旧行，"再试一次"
+    // 永不成功。另一会话已确认 → 权威列表里该条为 ACCEPTED（非自动保存）。
+    let processedElsewhere = false;
+    const { calls } = stubFetch({
+      confirmStatus: 404,
+      memories: () => (processedElsewhere
+        ? DEFAULT_MEMORIES.map((row) => (row.memoryId === "p1"
+          ? { ...row, status: "ACCEPTED", autoSaved: false }
+          : row))
+        : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(listGetCount(calls)).toBe(1);
+
+    processedElsewhere = true;
+    await wrapper.get('[data-testid="pending-row"] [data-testid="pending-confirm"]').trigger("click");
+    await flushPromises();
+
+    // 不宣称已确认/已拒绝，不是可重试的"再试一次"，也不进未知核对；旧行保留，
+    // 不自动发列表请求。
+    const error = wrapper.get('[data-testid="pending-error"]');
+    expect(error.text()).toContain("无法按待确认操作");
+    expect(error.text()).toContain("刷新列表确认");
+    expect(error.text()).not.toContain("再试一次");
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    expect(listGetCount(calls)).toBe(1);
+
+    await wrapper.get('[data-testid="pending-refresh"]').trigger("click");
+    await flushPromises();
+
+    // 权威重读（复用 retryList 与 R208 反馈区）：该条按真实列表数据进入已保存
+    // （"已确认"徽标来自列表的 autoSaved=false，不是 confirm 回显），待确认区
+    // 与行内提示都消失。
+    expect(listGetCount(calls)).toBe(2);
+    expect(listNoticeState(wrapper)).toBe("success");
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(0);
+    expect(wrapper.find('[data-testid="memory-pending"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="pending-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="memory-saved-list"]').text()).toContain("学吉他");
+    const savedRows = memoryRows(wrapper);
+    expect(savedRows).toHaveLength(3);
+    expect(savedRows.map((row) => row.get('[data-testid="memory-badge"]').text()))
+      .toEqual(["自动保存", "已确认", "已确认"]);
+    wrapper.unmount();
+  });
+
+  it("候选拒绝遇 404 后刷新失败保留入口，再次刷新按权威列表隐藏该条", async () => {
+    // 另一会话已处理/删除该候选：权威列表不再含它。刷新失败不当成功、不
+    // 卸载入口（复用 retryList 的 loading 门与 R208 失败反馈）；成功后按列表分区。
+    let listHttpStatus = 200;
+    let removedElsewhere = false;
+    const { calls } = stubFetch({
+      rejectStatus: 404,
+      memoriesStatus: () => listHttpStatus,
+      memories: () => (removedElsewhere
+        ? DEFAULT_MEMORIES.filter((row) => row.memoryId !== "p1")
+        : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    removedElsewhere = true;
+    await wrapper.get('[data-testid="pending-row"] [data-testid="pending-reject"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="pending-error"]').text()).toContain("刷新列表确认");
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(1);
+
+    listHttpStatus = 503;
+    await wrapper.get('[data-testid="pending-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("failed");
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(1);
+    expect(wrapper.get('[data-testid="pending-error"]').text()).toContain("刷新列表确认");
+    expect(wrapper.find('[data-testid="pending-refresh"]').exists()).toBe(true);
+
+    listHttpStatus = 200;
+    await wrapper.get('[data-testid="pending-refresh"]').trigger("click");
+    await flushPromises();
+    // 初始加载 + 失败刷新 + 成功刷新；该条按权威列表离开待确认区，不出现
+    // 任何"已拒绝"/"没有生效"宣称。
+    expect(listGetCount(calls)).toBe(3);
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(0);
+    expect(wrapper.find('[data-testid="memory-pending"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("学吉他");
+    expect(wrapper.find('[data-testid="memory-rejected"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    expect(memoryRows(wrapper)).toHaveLength(2);
+    wrapper.unmount();
+  });
+
+  it("候选 404 刷新在途时另一候选 404：旧快照回包只清发起行，不清新行的提示与入口", async () => {
+    // 待确认按钮不因列表 loading 禁用：A 的刷新 GET 挂起期间用户仍可操作 B。
+    // B 的 404 不推进写版本，store 会把 A 发起时的旧快照（A 已 ACCEPTED、B
+    // 仍 PENDING）当 ok 写回；这次重读在归属上只属于 A，不得把 B 刚写入的
+    // 提示与刷新入口一起清掉。
+    const candidateB = memoryRow({
+      memoryId: "p2",
+      summary: "候选：用户周末想去游泳。",
+      status: "PENDING_CONFIRMATION",
+      createdAt: "2026-09-03T11:00:00Z",
+    });
+    const initial = [...DEFAULT_MEMORIES, candidateB];
+    const staleSnapshot = [
+      ...DEFAULT_MEMORIES.map((row) => (row.memoryId === "p1"
+        ? { ...row, status: "ACCEPTED", autoSaved: false }
+        : row)),
+      candidateB,
+    ];
+    const fetchOptions: FetchOptions = {
+      confirmStatus: 404,
+      rejectStatus: 404,
+      memories: () => initial,
+    };
+    const { calls } = stubFetch(fetchOptions);
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(2);
+
+    // A 确认 404 → A 行出现刷新入口。
+    await pendingRowOf(wrapper, "学吉他").get('[data-testid="pending-confirm"]').trigger("click");
+    await flushPromises();
+    expect(pendingRowOf(wrapper, "学吉他").find('[data-testid="pending-refresh"]').exists()).toBe(true);
+
+    // A 的刷新 GET 挂起（R208 反馈区进入等待）。
+    let resolveList!: (value: unknown) => void;
+    const listGate = {
+      promise: new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+      resolve: (value: unknown) => resolveList(value),
+    };
+    fetchOptions.memoriesGate = listGate;
+    await pendingRowOf(wrapper, "学吉他").get('[data-testid="pending-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("pending");
+    expect(listGetCount(calls)).toBe(2);
+
+    // 挂起期间 B 拒绝 404 → 提示与入口转到 B 行（A 行的随动作开始清掉）。
+    await pendingRowOf(wrapper, "游泳").get('[data-testid="pending-reject"]').trigger("click");
+    await flushPromises();
+    expect(pendingRowOf(wrapper, "游泳").get('[data-testid="pending-error"]').text()).toContain("刷新列表确认");
+    expect(pendingRowOf(wrapper, "游泳").find('[data-testid="pending-refresh"]').exists()).toBe(true);
+    expect(pendingRowOf(wrapper, "学吉他").find('[data-testid="pending-error"]').exists()).toBe(false);
+
+    // 旧快照回包：A 已 ACCEPTED 进入已保存；B 仍 PENDING，其提示与入口必须保留。
+    listGate.resolve(response(200, staleSnapshot));
+    await flushPromises();
+    expect(listNoticeState(wrapper)).toBe("success");
+    expect(memoryRows(wrapper)).toHaveLength(3);
+    expect(wrapper.get('[data-testid="memory-saved-list"]').text()).toContain("学吉他");
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(1);
+    expect(pendingRowOf(wrapper, "游泳").get('[data-testid="pending-error"]').text()).toContain("刷新列表确认");
+    expect(pendingRowOf(wrapper, "游泳").find('[data-testid="pending-refresh"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+
+    // B 自己的入口仍可用：权威列表已不含 B → 离开待确认区。
+    fetchOptions.memoriesGate = undefined;
+    fetchOptions.memories = () => staleSnapshot.filter((row) => row.memoryId !== "p2");
+    await pendingRowOf(wrapper, "游泳").get('[data-testid="pending-refresh"]').trigger("click");
+    await flushPromises();
+    expect(listGetCount(calls)).toBe(3);
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(0);
+    expect(wrapper.find('[data-testid="memory-pending"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("游泳");
+    expect(memoryRows(wrapper)).toHaveLength(3);
     wrapper.unmount();
   });
 
