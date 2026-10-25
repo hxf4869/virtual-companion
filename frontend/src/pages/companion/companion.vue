@@ -65,6 +65,7 @@
               <input
                 id="pref-companion-name"
                 v-model="companionNameInput"
+                aria-label="陪伴的名字"
                 class="pref-input"
                 data-testid="pref-companion-name"
                 type="text"
@@ -78,6 +79,7 @@
               <input
                 id="pref-user-address-as"
                 v-model="userAddressAsInput"
+                aria-label="对我的称呼"
                 class="pref-input"
                 data-testid="pref-user-address-as"
                 type="text"
