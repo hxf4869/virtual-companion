@@ -204,8 +204,10 @@
                   <text class="settings-row__label">信任的设备</text>
                   <text class="settings-row__note">登录仍需密码，可免验证身份验证器</text>
                 </view>
+                <!-- R206：有未确认的撤销时，核对入口就是重试入口，不并排两个
+                     等效按钮。 -->
                 <button
-                  v-if="deviceState === 'error'"
+                  v-if="deviceState === 'error' && !deviceActionUnconfirmed"
                   type="button"
                   class="text-action"
                   data-testid="trusted-devices-retry"
@@ -245,11 +247,13 @@
                     {{ formatLocalDateTime(device.expiresAt) }} 到期
                   </text>
                 </view>
+                <!-- R206：设备 GET 在途时也禁用撤销，避免迟到快照与新 DELETE 重叠
+                     （守卫见 onRevokeTrustedDevice）。 -->
                 <button
                   type="button"
                   class="device-row__revoke"
                   data-testid="trusted-device-revoke"
-                  :disabled="busy !== null"
+                  :disabled="busy !== null || deviceState === 'loading'"
                   @click="onRevokeTrustedDevice(device.id)"
                 >
                   {{ busy === `device:${device.id}` ? "撤销中…" : "撤销" }}
@@ -264,6 +268,21 @@
               >
                 {{ deviceActionError }}
               </text>
+              <!-- R206：核对入口在等待与失败期间保持同一节点，键盘焦点留在原位
+                   （GET 成功读到真相后才撤掉）。等待期不用原生 disabled（会把焦点
+                   掉到 body），用现有 deviceState 给 aria-disabled/aria-busy 表意，
+                   重复请求由 loadTrustedDevices 的 loading 门控挡住。 -->
+              <button
+                v-if="deviceActionUnconfirmed"
+                type="button"
+                class="text-action"
+                data-testid="trusted-device-verify"
+                :aria-disabled="deviceState === 'loading'"
+                :aria-busy="deviceState === 'loading'"
+                @click="loadTrustedDevices"
+              >
+                {{ deviceState === "loading" ? "正在核对…" : "核对设备列表" }}
+              </button>
             </view>
           </view>
         </section>
@@ -407,6 +426,9 @@ const passwordMessage = ref("");
 const trustedDevices = ref<TrustedDevice[]>([]);
 const deviceState = ref<DeviceState>("idle");
 const deviceActionError = ref("");
+// R206: 撤销 DELETE 没有拿到 HTTP 结果（网络断连或 15 秒总时限超时）时为
+// true：文案只承认结果未知，并露出走现有设备列表 GET 的只读核对入口。
+const deviceActionUnconfirmed = ref(false);
 const deleteOpen = ref(false);
 const deletePassword = ref("");
 const deleteError = ref("");
@@ -487,6 +509,7 @@ function clearPrivateAccountState(): void {
   trustedDevices.value = [];
   deviceState.value = "idle";
   deviceActionError.value = "";
+  deviceActionUnconfirmed.value = false;
   busy.value = null;
   devicesForAccountId = null;
   deviceLoadSeq++;
@@ -541,8 +564,16 @@ function reloadStaleAccountSecurity(): void {
 }
 
 async function loadTrustedDevices(): Promise<void> {
+  // R206: 核对入口等待期仍是同一节点且只用 aria-disabled 表意，重复点击由
+  // 这里的 loading 门控挡住，不叠加请求。
+  if (deviceState.value === "loading") return;
   deviceState.value = "loading";
-  deviceActionError.value = "";
+  // R206: 有未确认的撤销时，「无法确认撤销结果」说明与核对入口要等本次 GET
+  // 成功读到真相才撤掉，等待与失败期间保持，用户仍能再次核对；没有未确认
+  // 撤销时沿用原逻辑，进入读取即清掉上一次动作的错误文案。
+  if (!deviceActionUnconfirmed.value) {
+    deviceActionError.value = "";
+  }
   devicesForAccountId = auth.accountId;
   // VC-R11-C: 只判页面私有代次。换号（清理 watch bump）后迟到的成功或失败
   // 静默丢弃；同账号重新认证不 bump，在途结果正常落地，设备区不会挂死。
@@ -552,6 +583,10 @@ async function loadTrustedDevices(): Promise<void> {
     if (mySeq !== deviceLoadSeq) return;
     trustedDevices.value = devices;
     deviceState.value = "ready";
+    if (deviceActionUnconfirmed.value) {
+      deviceActionError.value = "";
+      deviceActionUnconfirmed.value = false;
+    }
   } catch {
     if (mySeq !== deviceLoadSeq) return;
     deviceState.value = "error";
@@ -559,9 +594,13 @@ async function loadTrustedDevices(): Promise<void> {
 }
 
 async function onRevokeTrustedDevice(deviceId: string): Promise<void> {
-  if (busy.value) return;
+  // R206: 设备 GET 在途时不接受撤销——迟到的列表快照会复活刚撤销的行，或
+  // 清掉更新的 DELETE 留下的未确认提示。只用现有 deviceState 挡掉这段重叠
+  // （按钮同条件 disabled），不引入代次或回退；改密/退出等其他动作不受影响。
+  if (busy.value || deviceState.value === "loading") return;
   busy.value = `device:${deviceId}`;
   deviceActionError.value = "";
+  deviceActionUnconfirmed.value = false;
   // VC-R11-C: 撤销只占 actionSeq，不影响在途设备读取。换号后迟到的错误
   // 文案、列表写入与 busy 复位整段丢弃，不得碰新账号正进行的动作。
   const mySeq = ++actionSeq;
@@ -576,8 +615,13 @@ async function onRevokeTrustedDevice(deviceId: string): Promise<void> {
       trustedDevices.value = trustedDevices.value.filter((device) => device.id !== deviceId);
     }
   } catch {
+    // R206: 没有 HTTP 结果（网络断连或 15 秒总时限超时）：服务器可能已受理
+    // 撤销，不得断言「没有撤销成功」。保留该行、如实承认结果未知，并给出走
+    // 现有设备列表 GET 的只读核对入口；绝不自动重发 DELETE。HTTP 确定的
+    // 非 ok 失败仍走上面的既有文案。
     if (mySeq === actionSeq) {
-      deviceActionError.value = "没有撤销成功，请再试一次。";
+      deviceActionError.value = "暂时无法确认撤销结果，请先核对设备列表。";
+      deviceActionUnconfirmed.value = true;
     }
   } finally {
     if (mySeq === actionSeq) {
@@ -951,6 +995,10 @@ async function onConfirmDelete(): Promise<void> {
 
 .text-action {
   color: var(--vc-color-primary);
+}
+
+.text-action[aria-disabled="true"] {
+  opacity: 0.6;
 }
 
 .inline-form {

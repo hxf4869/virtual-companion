@@ -338,10 +338,23 @@ describe("Go Runtime auth client", () => {
       lastUsedAt: "l",
       expiresAt: "e",
     }]);
+    // R206: 两个设备请求与登录/退出链共用 15 秒总时限。
+    expect(devices.request).toHaveBeenCalledWith(
+      "GET",
+      "/api/v1/auth/trusted-devices",
+      undefined,
+      { timeoutMs: 15_000 },
+    );
 
     const ok = transportFor({ ok: true, status: 200, json: { ok: true } });
     await expect(revokeAuthSession(ok, "11")).resolves.toBe(true);
     await expect(revokeTrustedDevice(ok, "3")).resolves.toBe(true);
+    expect(ok.request).toHaveBeenCalledWith(
+      "DELETE",
+      "/api/v1/auth/trusted-devices/3",
+      undefined,
+      { timeoutMs: 15_000 },
+    );
     await expect(revokeAllAuthSessions(transportFor({
       ok: true,
       status: 200,
@@ -460,35 +473,35 @@ describe("logout request deadline", () => {
   });
 });
 
+/** 头永不返回、遵守 AbortSignal 的挂起 fetch（abort 时才 reject）。 */
+function hangingHeadersFetch() {
+  return vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      const abort = () => reject(new DOMException("aborted", "AbortError"));
+      const signal = init?.signal;
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
+      signal?.addEventListener("abort", abort, { once: true });
+    }));
+}
+
+function deadlineTransport(onUnauthorized: ReturnType<typeof vi.fn>) {
+  const transport = createAuthenticatedTransport({
+    getSessionId: () => null,
+    getAccessToken: () => "session",
+    getSessionRevision: () => 1,
+    onUnauthorized,
+  });
+  return transport;
+}
+
 // VC-R166: 登录主链等待点（login/getAuthSession/getAuthenticatorSetup/
 // completeChallenge，后者服务 confirm/totp/recovery 三个真实入口）必须有
 // 请求总时限：弱网挂起时以既有 TransportTimeoutError 在 15 秒结束（结果
 // 未知），界面等待不得永不结束。经真实 createAuthenticatedTransport 调用。
 describe("login chain request deadlines", () => {
-  /** 头永不返回、遵守 AbortSignal 的挂起 fetch（abort 时才 reject）。 */
-  function hangingHeadersFetch() {
-    return vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
-      new Promise<Response>((_resolve, reject) => {
-        const abort = () => reject(new DOMException("aborted", "AbortError"));
-        const signal = init?.signal;
-        if (signal?.aborted) {
-          abort();
-          return;
-        }
-        signal?.addEventListener("abort", abort, { once: true });
-      }));
-  }
-
-  function deadlineTransport(onUnauthorized: ReturnType<typeof vi.fn>) {
-    const transport = createAuthenticatedTransport({
-      getSessionId: () => null,
-      getAccessToken: () => "session",
-      getSessionRevision: () => 1,
-      onUnauthorized,
-    });
-    return transport;
-  }
-
   it("ends a hanging password login with the existing TransportTimeoutError", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", hangingHeadersFetch());
@@ -551,6 +564,69 @@ describe("login chain request deadlines", () => {
     try {
       let settled: "resolved" | "rejected" | undefined;
       const outcome = verifyAuthenticatorCode(transport, "c".repeat(43), "123456", false);
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("rejected");
+      await expect(outcome).rejects.toBeInstanceOf(TransportTimeoutError);
+      await expect(outcome).rejects.toMatchObject({ timeoutMs: 15_000 });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+// R206: 账户页的两个设备请求（GET /auth/trusted-devices、DELETE
+// /auth/trusted-devices/{id}）此前未传 timeoutMs，绕开 transport 总时限：读取
+// 挂起永久 loading 且无重试入口，撤销挂起让 busy 锁死整页动作。现与登录/
+// 退出链共用 15 秒总时限，经真实 createAuthenticatedTransport 以既有
+// TransportTimeoutError 结束（结果未知）。
+describe("trusted-device request deadlines", () => {
+  it("ends a trusted-device list whose headers never arrive with the existing TransportTimeoutError", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingHeadersFetch());
+    const onUnauthorized = vi.fn();
+    const transport = deadlineTransport(onUnauthorized);
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = listTrustedDevices(transport);
+      outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe("rejected");
+      await expect(outcome).rejects.toBeInstanceOf(TransportTimeoutError);
+      await expect(outcome).rejects.toMatchObject({ timeoutMs: 15_000 });
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("ends a trusted-device revoke whose JSON body never settles with the existing TransportTimeoutError", async () => {
+    vi.useFakeTimers();
+    // 头 200 已返回但正文永不 settle：服务器可能已受理撤销，总时限必须覆盖
+    // 正文阶段并以结果未知（而不是确定失败的 false）结束。
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise<unknown>(() => {}),
+    }) as unknown as Response));
+    const onUnauthorized = vi.fn();
+    const transport = deadlineTransport(onUnauthorized);
+    try {
+      let settled: "resolved" | "rejected" | undefined;
+      const outcome = revokeTrustedDevice(transport, "3");
       outcome.then(() => { settled = "resolved"; }, () => { settled = "rejected"; });
 
       await vi.advanceTimersByTimeAsync(14_999);

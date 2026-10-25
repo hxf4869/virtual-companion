@@ -93,6 +93,24 @@ function makeGate(): Gate {
   return { promise, resolve };
 }
 
+/** R206：挂起的设备 GET/DELETE 要像真实 fetch 一样遵守 AbortSignal——transport
+ * 总时限到点 abort 时以 AbortError 拒绝，页面才能按「结果未知」收尾。其余
+ * gate 的测试从不 abort，行为不变。 */
+function raceAbort<T>(signal: AbortSignal | null | undefined, pending: Promise<T>): Promise<T> {
+  if (!signal) return pending;
+  return Promise.race([
+    pending,
+    new Promise<never>((_resolve, reject) => {
+      const abort = () => reject(new DOMException("aborted", "AbortError"));
+      if (signal.aborted) {
+        abort();
+        return;
+      }
+      signal.addEventListener("abort", abort, { once: true });
+    }),
+  ]);
+}
+
 function stubFetch(options: FetchOptions = {}) {
   const calls: Array<{ method: string; url: string; body?: string; headers?: unknown }> = [];
   const deviceGetStatuses = [...(options.deviceGetStatuses ?? [200])];
@@ -137,15 +155,18 @@ function stubFetch(options: FetchOptions = {}) {
       const status = deviceGetStatuses.shift() ?? 200;
       if (options.deviceGetGate && !deviceGetGateUsed) {
         deviceGetGateUsed = true;
-        return options.deviceGetGate.promise.then(
+        return raceAbort(init?.signal, options.deviceGetGate.promise.then(
           () => response(status, status === 200 ? (options.gatedDevices ?? []) : null),
-        );
+        ));
       }
       return response(status, status === 200 ? (options.devices ?? []) : null);
     }
     if (url.startsWith("/api/v1/auth/trusted-devices/") && method === "DELETE") {
       if (options.revokeGate) {
-        return options.revokeGate.promise.then(() => response(200, { ok: true }));
+        return raceAbort(
+          init?.signal,
+          options.revokeGate.promise.then(() => response(200, { ok: true })),
+        );
       }
       const status = options.revokeDeviceStatus ?? 200;
       return response(status, status === 200 ? { ok: true } : null);
@@ -381,6 +402,8 @@ describe("account page", () => {
     await flushPromises();
     expect(wrapper.findAll('[data-testid="trusted-device-row"]')).toHaveLength(1);
     expect(wrapper.get('[data-testid="trusted-device-action-error"]').text()).toContain("再试一次");
+    // R206: HTTP 确定失败保留「没有撤销成功」语义，不露出结果未知才有的核对入口。
+    expect(wrapper.find('[data-testid="trusted-device-verify"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -1589,5 +1612,185 @@ describe("account page", () => {
     gate.resolve(undefined);
     await flushPromises();
     wrapper.unmount();
+  });
+
+  it("R206: 设备读取挂起在 15 秒总时限后落现有错误态并可重试，不再永久加载", async () => {
+    // 只伪造 transport 用的 setTimeout/clearTimeout；flushPromises 仍走真实调度器。
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const gate = makeGate();
+    const device = { id: "3", displayName: "MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const { calls } = stubFetch({ deviceGetGate: gate, devices: [device] });
+    loginAs();
+    const wrapper = mount(AccountPage);
+    try {
+      await flushPromises();
+      const deviceGets = () => calls.filter(
+        (call) => call.url === "/api/v1/auth/trusted-devices" && call.method === "GET",
+      );
+      expect(deviceGets()).toHaveLength(1);
+      expect(wrapper.get('[data-testid="trusted-devices"]').text()).toContain("正在加载设备");
+      expect(wrapper.find('[data-testid="trusted-devices-retry"]').exists()).toBe(false);
+
+      // 15 秒到点前仍在等待，不得提前报错。
+      await vi.advanceTimersByTimeAsync(14_999);
+      await flushPromises();
+      expect(wrapper.get('[data-testid="trusted-devices"]').text()).toContain("正在加载设备");
+      expect(wrapper.find('[data-testid="trusted-devices-error"]').exists()).toBe(false);
+
+      // 到点：总时限把挂起读取按结果未知结束，设备区落既有错误态并露出
+      // 重试入口；不自动重发。
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+      expect(wrapper.get('[data-testid="trusted-devices"]').text()).not.toContain("正在加载设备");
+      expect(wrapper.get('[data-testid="trusted-devices-error"]').text()).toContain("没有加载出来");
+      expect(wrapper.find('[data-testid="trusted-devices-retry"]').exists()).toBe(true);
+      expect(deviceGets()).toHaveLength(1);
+
+      // 重试走现有入口：第二次 GET 正常返回。
+      await wrapper.get('[data-testid="trusted-devices-retry"]').trigger("click");
+      await flushPromises();
+      expect(deviceGets()).toHaveLength(2);
+      expect(wrapper.get('[data-testid="trusted-device-row"]').text()).toContain("MacBook");
+      expect(wrapper.find('[data-testid="trusted-devices-error"]').exists()).toBe(false);
+    } finally {
+      wrapper.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("R206: 撤销未知后核对入口等待期保留同一节点并挡重复请求；核对 GET 超时或失败都保持说明与入口，只有 GET 成功才撤掉", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const revokeGate = makeGate();
+    const macbook = { id: "3", displayName: "MacBook", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const ipad = { id: "4", displayName: "iPad", createdAt: "c", lastUsedAt: "l", expiresAt: "e" };
+    const { calls } = stubFetch({ devices: [macbook, ipad], revokeGate });
+    loginAs();
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    try {
+      await flushPromises();
+      const rows = () => wrapper.findAll('[data-testid="trusted-device-row"]');
+      expect(rows()).toHaveLength(2);
+
+      // 撤销 MacBook：DELETE 挂起，busy 锁住整页动作。
+      await wrapper.findAll('[data-testid="trusted-device-revoke"]')[0].trigger("click");
+      await flushPromises();
+      const deletes = () => calls.filter((call) => call.method === "DELETE");
+      expect(deletes()).toHaveLength(1);
+      expect(wrapper.findAll('[data-testid="trusted-device-revoke"]')[0].text()).toContain("撤销中…");
+      expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      await flushPromises();
+      expect(wrapper.findAll('[data-testid="trusted-device-revoke"]')[0].text()).toContain("撤销中…");
+
+      // 到点：busy 释放、行保留；文案承认结果未知而不是「没有撤销成功」；
+      // 露出只读核对入口；不自动重发 DELETE。
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+      expect(rows()).toHaveLength(2);
+      expect(wrapper.findAll('[data-testid="trusted-device-revoke"]')[0].text()).toBe("撤销");
+      expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeUndefined();
+      const message = () => wrapper.get('[data-testid="trusted-device-action-error"]');
+      expect(message().attributes("role")).toBe("alert");
+      expect(message().text()).toContain("无法确认撤销结果");
+      expect(message().text()).not.toContain("没有撤销成功");
+      const verify = () => wrapper.get<HTMLButtonElement>('[data-testid="trusted-device-verify"]');
+      const verifyElement = verify().element;
+      expect(verify().text()).toBe("核对设备列表");
+      expect(verify().attributes("aria-disabled")).not.toBe("true");
+      expect(deletes()).toHaveLength(1);
+
+      // 核对只走设备列表 GET：第一次挂起（随后超时）、第二次 503，第三次才
+      // 读到服务器真相。
+      const getGate = makeGate();
+      const verifyCalls = stubFetch({
+        deviceGetGate: getGate,
+        deviceGetStatuses: [200, 503, 200],
+        devices: [ipad],
+      }).calls;
+      const verifyGets = () => verifyCalls.filter(
+        (call) => call.url === "/api/v1/auth/trusted-devices" && call.method === "GET",
+      );
+      verifyElement.focus();
+      expect(document.activeElement).toBe(verifyElement);
+      await verify().trigger("click");
+      await flushPromises();
+
+      // 等待期：同一节点、aria-disabled/aria-busy 表意、等待文案；未确认说明
+      // 与已读两行保留；键盘焦点不丢。
+      expect(verifyGets()).toHaveLength(1);
+      expect(verify().element).toBe(verifyElement);
+      expect(verify().attributes("aria-disabled")).toBe("true");
+      expect(verify().attributes("aria-busy")).toBe("true");
+      expect(verify().text()).toBe("正在核对…");
+      expect(message().text()).toContain("无法确认撤销结果");
+      expect(wrapper.get('[data-testid="trusted-devices"]').text()).toContain("正在加载设备");
+      expect(rows()).toHaveLength(2);
+      expect(document.activeElement).toBe(verifyElement);
+
+      // 等待期重复点击不得重复发起请求。
+      await verify().trigger("click");
+      await flushPromises();
+      expect(verifyGets()).toHaveLength(1);
+
+      // 等待期旧设备行的撤销按钮禁用：迟到的 GET 快照不得复活刚撤销的行或清
+      // 掉更新 DELETE 的未确认提示。VTU 与 happy-dom 都不向 disabled 按钮派发
+      // click，故直接调用入口证明同一条件的守卫：无新 DELETE、busy 不被占用；
+      // 退出等其他账号动作不受设备读取影响。
+      const revokeButtons = wrapper.findAll('[data-testid="trusted-device-revoke"]');
+      expect(revokeButtons).toHaveLength(2);
+      expect(revokeButtons[0].attributes("disabled")).toBeDefined();
+      expect(revokeButtons[1].attributes("disabled")).toBeDefined();
+      await (wrapper.vm as unknown as {
+        onRevokeTrustedDevice: (deviceId: string) => Promise<void>;
+      }).onRevokeTrustedDevice("4");
+      await flushPromises();
+      expect(verifyCalls.some((call) => call.method === "DELETE")).toBe(false);
+      expect(wrapper.findAll('[data-testid="trusted-device-revoke"]')[1].text()).toBe("撤销");
+      expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeUndefined();
+
+      // 核对 GET 超时：落错误态，但尚未核对成功——说明与核对入口保持，不并排
+      // 第二个等效重试按钮，已读设备不清空，焦点仍在原节点，无 DELETE。
+      await vi.advanceTimersByTimeAsync(15_000);
+      await flushPromises();
+      expect(wrapper.get('[data-testid="trusted-devices-error"]').text()).toContain("没有加载出来");
+      expect(wrapper.find('[data-testid="trusted-devices-retry"]').exists()).toBe(false);
+      expect(message().text()).toContain("无法确认撤销结果");
+      expect(verify().element).toBe(verifyElement);
+      expect(verify().attributes("aria-disabled")).not.toBe("true");
+      expect(verify().text()).toBe("核对设备列表");
+      expect(rows()).toHaveLength(2);
+      // 阻断只限读取在途：错误态下撤销恢复可用。
+      expect(wrapper.findAll('[data-testid="trusted-device-revoke"]')[0].attributes("disabled")).toBeUndefined();
+      expect(wrapper.text()).toContain("MacBook");
+      expect(document.activeElement).toBe(verifyElement);
+      expect(verifyCalls.some((call) => call.method === "DELETE")).toBe(false);
+
+      // 核对 GET 明确失败（503）：同样保持说明与入口，仍可再次核对。
+      await verify().trigger("click");
+      await flushPromises();
+      expect(verifyGets()).toHaveLength(2);
+      expect(wrapper.get('[data-testid="trusted-devices-error"]').text()).toContain("没有加载出来");
+      expect(wrapper.find('[data-testid="trusted-devices-retry"]').exists()).toBe(false);
+      expect(message().text()).toContain("无法确认撤销结果");
+      expect(verify().element).toBe(verifyElement);
+      expect(rows()).toHaveLength(2);
+
+      // 第三次核对读到服务器真相（撤销其实已生效）：行按只读结果消失，说明
+      // 与入口此时才撤掉；自始至终没有新的 DELETE。
+      await verify().trigger("click");
+      await flushPromises();
+      expect(verifyGets()).toHaveLength(3);
+      expect(verifyCalls.some((call) => call.method === "DELETE")).toBe(false);
+      expect(rows()).toHaveLength(1);
+      expect(rows()[0].text()).toContain("iPad");
+      expect(wrapper.text()).not.toContain("MacBook");
+      expect(wrapper.find('[data-testid="trusted-device-action-error"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="trusted-device-verify"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="trusted-devices-error"]').exists()).toBe(false);
+    } finally {
+      wrapper.unmount();
+      vi.useRealTimers();
+    }
   });
 });

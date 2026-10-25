@@ -66,6 +66,8 @@ interface FetchOptions {
   holdFirstConversationFetch?: Promise<void>;
   /** VC-R199：只挂起第二次 conversations 请求（返回缓存页的激活刷新）。 */
   holdSecondConversationFetch?: Promise<void>;
+  /** VC-R206：只挂起第三次 conversations 请求（失败反馈条上的手动重试）。 */
+  holdThirdConversationFetch?: Promise<void>;
   /** VC-R11：登录接口返回的 accountId。默认换号 B=9；同账号重认证传 7。 */
   loginAccountId?: string;
 }
@@ -116,6 +118,9 @@ function stubFetch(options: FetchOptions = {}) {
       return response(true, 200, options.relationships ?? RELATIONSHIPS);
     }
     if (url.startsWith("/api/v1/conversations")) {
+      // VC-R206：请求序号含会 throw 的失败请求，hold 才能锚定“失败后的
+      // 手动重试”（既有 hold 场景全部无失败，计数序列不受影响）。
+      conversationFetchCount += 1;
       const fails = typeof options.conversationFails === "function"
         ? options.conversationFails(url)
         : options.conversationFails ?? false;
@@ -125,12 +130,14 @@ function stubFetch(options: FetchOptions = {}) {
         : typeof options.conversations === "function"
           ? options.conversations(url)
           : options.conversations ?? [conversation(1), conversation(2)];
-      conversationFetchCount += 1;
       if (options.holdFirstConversationFetch && conversationFetchCount === 1) {
         await options.holdFirstConversationFetch;
       }
       if (options.holdSecondConversationFetch && conversationFetchCount === 2) {
         await options.holdSecondConversationFetch;
+      }
+      if (options.holdThirdConversationFetch && conversationFetchCount === 3) {
+        await options.holdThirdConversationFetch;
       }
       return response(true, 200, rows);
     }
@@ -537,19 +544,129 @@ describe("全部会话", () => {
     // 既有列表保持可点，不被整页错误卡隐藏。
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(2);
     expect(wrapper.find('[data-testid="conversations-load-failed"]').exists()).toBe(false);
-    const refreshError = wrapper.find('[data-testid="conversations-refresh-failed"]');
+    const refreshError = wrapper.find('[data-testid="conversations-refresh-notice"]');
     expect(refreshError.exists()).toBe(true);
+    expect(refreshError.attributes("data-state")).toBe("failed");
     expect(refreshError.text()).toContain("会话没有刷新出来");
 
     refreshFails = false;
     rows = [conversation(3), ...rows];
-    await wrapper.find('[data-testid="conversations-retry-refresh"]').trigger("click");
+    // 键盘从反馈条按钮启动重试：真实 Enter 前按钮先持有焦点。
+    const retryButton = wrapper.find('[data-testid="conversations-retry-refresh"]');
+    (retryButton.element as HTMLElement).focus();
+    await retryButton.trigger("click");
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="conversations-refresh-failed"]').exists()).toBe(false);
+    // VC-R206：手动重试成功后反馈条与同一按钮保留（成功反馈 + 再次刷新），
+    // 键盘焦点不掉到 body。
+    const notice = wrapper.find('[data-testid="conversations-refresh-notice"]');
+    expect(notice.attributes("data-state")).toBe("success");
+    expect(notice.text()).toContain("已更新");
+    const retryAfter = wrapper.find('[data-testid="conversations-retry-refresh"]');
+    expect(retryAfter.text()).toBe("再次刷新");
+    expect(retryAfter.element).toBe(retryButton.element);
+    expect(document.activeElement).toBe(retryButton.element);
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
     expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("第 3 段对话");
     expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(3);
+
+    // 下一次返回的自动刷新收回手动成功提示：自动路径等待与成功都不挂反馈。
+    deactivatePage(wrapper);
+    activatePage(wrapper);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="conversations-refresh-notice"]').exists()).toBe(false);
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(4);
+    wrapper.unmount();
+  });
+
+  // VC-R206：手动重试的等待期间反馈条与同一按钮持续存在（不再无状态），
+  // 键盘焦点留在按钮上，重复 Enter 由 busy 门挡住不发第二次请求。
+  it("手动重试等待期间反馈与按钮保留，重复触发不发新请求", async () => {
+    let releaseRetry!: () => void;
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
+    let refreshFails = false;
+    const { calls } = stubFetch({
+      holdThirdConversationFetch: retryGate,
+      conversationFails: () => refreshFails,
+      conversations: [conversation(1), conversation(2)],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    deactivatePage(wrapper);
+    refreshFails = true;
+    activatePage(wrapper);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="conversations-refresh-notice"]').attributes("data-state")).toBe("failed");
+
+    // 键盘 Enter 启动手动重试：真实 Enter 前按钮先持有焦点；本次请求挂起。
+    refreshFails = false;
+    const retryButton = wrapper.find('[data-testid="conversations-retry-refresh"]');
+    (retryButton.element as HTMLElement).focus();
+    await retryButton.trigger("click");
+    await flushPromises();
+
+    // 等待期间：同一反馈条切到等待文案，同一按钮未卸载，焦点不掉到 body。
+    const pending = wrapper.find('[data-testid="conversations-refresh-notice"]');
+    expect(pending.attributes("data-state")).toBe("pending");
+    expect(pending.text()).toContain("正在刷新");
+    const retryInPending = wrapper.find('[data-testid="conversations-retry-refresh"]');
+    expect(retryInPending.element).toBe(retryButton.element);
+    expect(retryInPending.attributes("aria-disabled")).toBe("true");
+    expect(retryInPending.attributes("aria-busy")).toBe("true");
+    expect(document.activeElement).toBe(retryButton.element);
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(3);
+
+    // 等待期间重复 Enter：busy 门挡住，不发起第二次请求。
+    await retryInPending.trigger("click");
+    await flushPromises();
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(3);
+
+    releaseRetry();
+    await flushPromises();
+
+    // 成功：同一按钮变为再次刷新，焦点仍在原位。
+    expect(wrapper.find('[data-testid="conversations-refresh-notice"]').attributes("data-state")).toBe("success");
+    const retryAfter = wrapper.find('[data-testid="conversations-retry-refresh"]');
+    expect(retryAfter.element).toBe(retryButton.element);
+    expect(retryAfter.text()).toBe("再次刷新");
+    expect(document.activeElement).toBe(retryButton.element);
+    wrapper.unmount();
+  });
+
+  // VC-R206：手动重试再次失败时，失败反馈回到同一反馈条与同一按钮，
+  // 键盘焦点不丢，不需要重新定位。
+  it("手动重试再次失败回到同一反馈条与按钮，焦点保持", async () => {
+    let refreshFails = false;
+    stubFetch({
+      conversationFails: () => refreshFails,
+      conversations: [conversation(1), conversation(2)],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    deactivatePage(wrapper);
+    refreshFails = true;
+    activatePage(wrapper);
+    await flushPromises();
+
+    const retryButton = wrapper.find('[data-testid="conversations-retry-refresh"]');
+    (retryButton.element as HTMLElement).focus();
+    await retryButton.trigger("click");
+    await flushPromises();
+
+    const failed = wrapper.find('[data-testid="conversations-refresh-notice"]');
+    expect(failed.attributes("data-state")).toBe("failed");
+    expect(failed.text()).toContain("会话没有刷新出来");
+    const retryAfter = wrapper.find('[data-testid="conversations-retry-refresh"]');
+    expect(retryAfter.element).toBe(retryButton.element);
+    expect(retryAfter.text()).toBe("重试");
+    // 非 pending 时 aria-disabled/aria-busy 显式为 false（与 Home R203 一致）。
+    expect(retryAfter.attributes("aria-disabled")).toBe("false");
+    expect(retryAfter.attributes("aria-busy")).toBe("false");
+    expect(document.activeElement).toBe(retryButton.element);
     wrapper.unmount();
   });
 
@@ -832,7 +949,7 @@ describe("全部会话", () => {
     refreshFails = true;
     activatePage(wrapper);
     await flushPromises();
-    expect(wrapper.find('[data-testid="conversations-refresh-failed"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="conversations-refresh-notice"]').attributes("data-state")).toBe("failed");
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
     expect(layout.scrollTo).not.toHaveBeenCalled();
 
@@ -843,7 +960,8 @@ describe("全部会话", () => {
     await wrapper.find('[data-testid="conversations-retry-refresh"]').trigger("click");
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="conversations-refresh-failed"]').exists()).toBe(false);
+    // 手动重试成功反馈保留（VC-R206），落位仍按当前位置补偿。
+    expect(wrapper.find('[data-testid="conversations-refresh-notice"]').attributes("data-state")).toBe("success");
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(23);
     expect(layout.scrollTo).toHaveBeenCalledTimes(1);
     expect(layout.scrollTo).toHaveBeenCalledWith(0, 1192);

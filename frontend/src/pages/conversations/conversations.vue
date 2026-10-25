@@ -96,23 +96,29 @@
       </template>
 
       <!-- VC-R199：返回刷新失败时既有列表仍在渲染，反馈固定在视口内，
-           不依赖当前滚动位置；首次无缓存失败仍走上方整页错误卡。 -->
+           不依赖当前滚动位置；首次无缓存失败仍走上方整页错误卡。
+           VC-R206：等待/失败/成功共用同一反馈条与同一按钮节点，键盘焦点
+           才能留在原位。等待期间不用原生 disabled（会把焦点掉到 body），
+           用 aria-disabled 表意，重复请求由 refreshOnReturn 的 busy 门挡住。 -->
       <view
-        v-if="refreshFailed"
+        v-if="refreshNotice"
         class="conversations-refresh-alert"
-        role="alert"
-        data-testid="conversations-refresh-failed"
+        role="status"
+        data-testid="conversations-refresh-notice"
+        :data-state="refreshNotice"
       >
         <text class="conversations-refresh-alert__copy">
-          会话没有刷新出来，正在显示之前的内容。
+          {{ refreshNoticeCopy }}
         </text>
         <button
           class="conversations-refresh-alert__action"
+          type="button"
           data-testid="conversations-retry-refresh"
-          :disabled="busy"
-          @click="refreshOnReturn"
+          :aria-disabled="refreshNotice === 'pending'"
+          :aria-busy="refreshNotice === 'pending'"
+          @click="refreshOnReturn(true)"
         >
-          重试
+          {{ refreshNotice === "success" ? "再次刷新" : "重试" }}
         </button>
       </view>
     </view>
@@ -120,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onActivated, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
+import { computed, nextTick, onActivated, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
 
 import { listConversations, type ConversationListItem } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -139,6 +145,17 @@ import { useRelationshipStore } from "@/stores/relationship";
 
 type PageState = "loading" | "ready" | "error" | "missing";
 
+// VC-R206：返回刷新反馈条的阶段文案；null 为无反馈。自动返回刷新沿用
+// R199：等待与成功不挂反馈，失败才挂；只有用户在反馈条主动点击重试/
+// 再次刷新才经历 pending → failed | success，成功反馈保留到下一次页面
+// 激活的自动刷新把它收回。
+const REFRESH_NOTICE_COPY = {
+  pending: "正在刷新会话，暂时显示之前的内容。",
+  failed: "会话没有刷新出来，正在显示之前的内容。",
+  success: "会话已更新。",
+} as const;
+type RefreshNotice = keyof typeof REFRESH_NOTICE_COPY;
+
 const PAGE_SIZE = 20;
 const auth = useAuthStore();
 const relStore = useRelationshipStore();
@@ -147,9 +164,12 @@ const relationshipId = ref("");
 const items = ref<ConversationListItem[]>([]);
 const hasMore = ref(false);
 const loadMoreFailed = ref(false);
-// VC-R199：返回刷新失败标记。只在已有可用列表的原地刷新失败时置位，
-// 驱动视口内固定反馈条；不清 items、不切 pageState。
-const refreshFailed = ref(false);
+// VC-R199/R206：返回刷新反馈阶段。只在已有可用列表的原地刷新路径上
+// 变化，驱动视口内固定反馈条；不清 items、不切 pageState。
+const refreshNotice = ref<RefreshNotice | null>(null);
+const refreshNoticeCopy = computed(() => (
+  refreshNotice.value ? REFRESH_NOTICE_COPY[refreshNotice.value] : ""
+));
 const busy = ref(false);
 // VC-R199：最后打开旧会话点击行时的视口几何（仅页面内存，随换号清理）。
 // 返回刷新合并重排后按偏移差补偿滚动，把该条送回浏览位置；几何在点击
@@ -196,7 +216,7 @@ watch(() => auth.accountId, (next, prev) => {
   relationshipId.value = "";
   hasMore.value = false;
   loadMoreFailed.value = false;
-  refreshFailed.value = false;
+  refreshNotice.value = null;
   leaveAnchor = null;
   focusIntent = null;
   pageState.value = "loading";
@@ -273,7 +293,7 @@ async function loadInitial(): Promise<void> {
   busy.value = true;
   pageState.value = "loading";
   loadMoreFailed.value = false;
-  refreshFailed.value = false;
+  refreshNotice.value = null;
   // VC-R11：函数进入即捕获本页私有代次；此后每次 await 之后与 finally 的
   // busy 复位一律以 mySeq === loadSeq 门控——只有更新的加载流程或身份清理
   // watch 接管时才静默丢弃，旧账号的迟到结果不得回填本页状态。
@@ -451,10 +471,15 @@ async function settleScrollAfterMerge(mySeq: number, viewport: MergeViewport): P
 // VC-R199：返回缓存页的原地刷新。不清 items、不切 pageState——等待与
 // 失败期间既有列表（含已加载范围）始终可用；所有页成功后一次性合并，
 // 任一页失败保留旧列表整体并给出视口内反馈（部分成功就合并会制造缺口）。
-async function refreshOnReturn(): Promise<void> {
+// VC-R206：manual 表示用户在反馈条主动点击重试/再次刷新——等待期间反馈
+// 切到“正在刷新”而不卸载，成功后显示“已更新”；自动激活只挂失败反馈，
+// 并收回上一次手动成功提示。手动路径的重复触发由 busy 门挡住（aria-
+// disabled 不拦键盘事件）；自动激活保持接管语义，作废在途流程后收尾。
+async function refreshOnReturn(manual = false): Promise<void> {
+  if (manual && busy.value) return;
   const mySeq = ++loadSeq;
   busy.value = true;
-  refreshFailed.value = false;
+  refreshNotice.value = manual ? "pending" : null;
   const previousItems = items.value;
   const oldHead = previousItems[0];
   let fetched: ConversationListItem[] = [];
@@ -494,8 +519,9 @@ async function refreshOnReturn(): Promise<void> {
       if (tail.length === 0) hasMore.value = lastPageLength === PAGE_SIZE;
     }
     await settleScrollAfterMerge(mySeq, viewport);
+    if (mySeq === loadSeq) refreshNotice.value = manual ? "success" : null;
   } catch {
-    if (mySeq === loadSeq) refreshFailed.value = true;
+    if (mySeq === loadSeq) refreshNotice.value = "failed";
   } finally {
     if (mySeq === loadSeq) busy.value = false;
   }
@@ -660,9 +686,10 @@ onMounted(() => {
   text-align: center;
 }
 
-/* VC-R199：刷新失败反馈。sticky 底部：占据真实文档流空间，滚到底部时
+/* VC-R199：刷新反馈。sticky 底部：占据真实文档流空间，滚到底部时
    落位在「加载更多」之后不遮挡入口；未滚到其文档位置时吸附视口底部
-   保持可见（外壳祖先为 overflow-x: clip，不产生滚动容器，不破坏吸附）。 */
+   保持可见（外壳祖先为 overflow-x: clip，不产生滚动容器，不破坏吸附）。
+   VC-R206：等待与成功是中性反馈，失败才用错误色。 */
 .conversations-refresh-alert {
   position: sticky;
   bottom: calc(var(--vc-space-4) + env(safe-area-inset-bottom, 0px));
@@ -672,16 +699,24 @@ onMounted(() => {
   gap: var(--vc-space-3);
   max-width: 100%;
   padding: var(--vc-space-2) var(--vc-space-4);
-  border: 1px solid var(--vc-color-error);
+  border: 1px solid var(--vc-color-hairline);
   border-radius: var(--vc-radius-control);
   background: var(--vc-color-surface);
   box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
 }
 
+.conversations-refresh-alert[data-state="failed"] {
+  border-color: var(--vc-color-error);
+}
+
 .conversations-refresh-alert__copy {
-  color: var(--vc-color-error);
+  color: var(--vc-color-ink);
   font-size: 14px;
   line-height: 20px;
+}
+
+.conversations-refresh-alert[data-state="failed"] .conversations-refresh-alert__copy {
+  color: var(--vc-color-error);
 }
 
 .conversations-refresh-alert__action {
@@ -698,6 +733,10 @@ onMounted(() => {
 
 .conversations-refresh-alert__action::after {
   border: 0;
+}
+
+.conversations-refresh-alert__action[aria-disabled="true"] {
+  opacity: 0.6;
 }
 
 button:focus-visible {

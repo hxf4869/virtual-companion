@@ -115,8 +115,11 @@ const AUTH_BASE = "/api/v1/auth";
 // VC-R166: 登录主链等待点（login/getAuthSession/getAuthenticatorSetup/
 // completeChallenge，后者服务 confirm/totp/recovery 三个真实入口）与 logout
 // 共用的请求总时限：弱网挂起（响应头或正文不 settle）时按「结果未知」以既有
-// TransportTimeoutError 结束，界面等待不得永不结束。局部常量，非 transport
-// 默认；非阻塞的 registration-status 与其他 auth/admin 管理请求不适用。
+// TransportTimeoutError 结束，界面等待不得永不结束。R206 起账户页的两个
+// 设备请求（listTrustedDevices/revokeTrustedDevice）同用此时限：此前未传
+// timeoutMs 绕开了总时限，读取挂起会永久 loading 且无重试入口，撤销挂起会
+// 让 busy 锁死整页动作。局部常量，非 transport 默认；非阻塞的
+// registration-status 与其他 auth/admin 管理请求不适用。
 const LOGIN_CHAIN_TIMEOUT_MS = 15_000;
 
 /** Safe default is closed when the availability response cannot be read. */
@@ -264,7 +267,9 @@ export async function revokeAllAuthSessions(t: AuthTransport): Promise<number> {
 }
 
 export async function listTrustedDevices(t: AuthTransport): Promise<TrustedDevice[]> {
-  const response = await t.request("GET", `${AUTH_BASE}/trusted-devices`);
+  const response = await t.request("GET", `${AUTH_BASE}/trusted-devices`, undefined, {
+    timeoutMs: LOGIN_CHAIN_TIMEOUT_MS,
+  });
   if (!response.ok || !Array.isArray(response.json)) {
     throw new AuthHttpError(response.status);
   }
@@ -279,9 +284,13 @@ export async function revokeTrustedDevice(
   t: AuthTransport,
   deviceId: string,
 ): Promise<boolean> {
+  // R206: 超时抛出的 TransportTimeoutError 表示结果未知（服务器可能已受理
+  // 撤销），与 HTTP 非 ok 的确定失败（返回 false）是两种语义，调用方不得混同。
   const response = await t.request(
     "DELETE",
     `${AUTH_BASE}/trusted-devices/${encodeURIComponent(deviceId)}`,
+    undefined,
+    { timeoutMs: LOGIN_CHAIN_TIMEOUT_MS },
   );
   return response.ok;
 }
