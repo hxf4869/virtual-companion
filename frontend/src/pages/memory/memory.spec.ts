@@ -1096,6 +1096,56 @@ describe("记忆管理页", () => {
     wrapper.unmount();
   });
 
+  it("R193 核对未知编辑结果时后续草稿不丢：确认 A 收束提示但保留 B，再保存实际提交 B", async () => {
+    // 首笔 PATCH 服务端已存 A 但 200 回包不可解析（结果未知）；第二笔正常成功。
+    let patchUnknown = true;
+    let stored = DEFAULT_MEMORIES;
+    const { calls } = stubFetch({
+      get patchParseFailed() {
+        return patchUnknown;
+      },
+      memories: () => stored,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // A：保存后结果未知，编辑框与草稿保留等待核对。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R193未知提交A");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-unknown"]').text()).toContain("未能确认结果");
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1);
+
+    // 服务端实际已存 A；用户在同一编辑框继续输入后续草稿 B。
+    stored = [memoryRow({ summary: "R193未知提交A", autoSaved: false }), ...DEFAULT_MEMORIES.slice(1)];
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R193核对前新增草稿B");
+
+    // 刷新核对：权威列表确认 A，未知提示收束；B 草稿与编辑框保留且可再保存，
+    // 核对本身不代发 PATCH。
+    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-summary"]').text()).toContain("R193未知提交A");
+    expect(wrapper.find('[data-testid="memory-unknown"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R193核对前新增草稿B");
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeUndefined();
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1);
+
+    // 再次保存：第二笔 PATCH 实际携带 B，成功回读 B 后正常退出编辑。
+    patchUnknown = false;
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    const patches = calls.filter((call) => call.method === "PATCH");
+    expect(patches).toHaveLength(2);
+    expect(patches[1]?.body).toBe(JSON.stringify({ summary: "R193核对前新增草稿B" }));
+    expect(wrapper.get('[data-testid="memory-summary"]').text()).toContain("R193核对前新增草稿B");
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("首载存在性隐藏（404）不伪装成确定空态：提示暂时无法确认并可重读", async () => {
     let hidden = true;
     stubFetch({

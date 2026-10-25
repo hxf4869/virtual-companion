@@ -670,8 +670,12 @@ async function refreshList(): Promise<void> {
     if (target.summary === pending.expectedSummary) {
       unknownAction.value = null;
       rejectedNotice.value = "";
-      // 核对确认后才退出编辑；用户已切到另一条时不关它的编辑框。
-      if (editingId.value === pending.memoryId) cancelEdit();
+      // 核对确认后才退出编辑；用户已切到另一条时不关它的编辑框，等待核对
+      // 期间在同一编辑框继续输入的后续草稿（trim 后不等于本次提交快照）
+      // 也不丢弃，留给用户再次保存。
+      if (editingId.value === pending.memoryId && editDraft.value.trim() === pending.expectedSummary) {
+        cancelEdit();
+      }
     } else {
       setRejectedNotice("上一次的修改没有生效，可以再试一次。");
     }
