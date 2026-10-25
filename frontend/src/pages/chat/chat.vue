@@ -72,6 +72,7 @@
         :empty="showEmptyHistory"
         :has-more="showLoadMore"
         :busy="generationBusy"
+        :older-load-error="olderLoadError"
         :status-text="statusText"
         :status-tone="statusTone"
         :status-action="statusAction"
@@ -338,6 +339,13 @@ const sendErrorText = computed(() => {
   if (reconnectFailed.value) return "回复连接中断，点此重新连接";
   return "这次回复没有完成，点此重新尝试";
 });
+/**
+ * VC-R198：更早消息加载失败的反馈不走底部状态区——停在顶部点"查看更早消息"
+ * 的用户看不到列表末尾；交给列表在顶部入口就近展示并提供重试。
+ */
+const olderLoadError = computed(() => (
+  store.historyLoadFailed ? "更早的消息没有加载出来，可以再试一次。" : ""
+));
 const statusText = computed(() => {
   // N-06：仅完成结果使用"回复已完成"文案（finalSyncFailed 只在完成路径
   // 置位，新一轮 send 开始即清除；phase 不符时不抢占其他文案位）。
@@ -345,7 +353,6 @@ const statusText = computed(() => {
     return "回复已完成，记录同步暂未成功。";
   }
   if (store.recentLoadFailed) return "最近的记录没有同步完整，可以重新加载。";
-  if (store.historyLoadFailed) return "更早的消息没有加载出来，可以再试一次。";
   if (store.cancelUnconfirmed && store.phase === "cancelled") {
     return "已停止显示这条回复，生成状态待确认。";
   }
@@ -372,7 +379,6 @@ const statusAction = computed(() => {
 });
 const statusTone = computed<StatusTone>(() => {
   if (
-    store.historyLoadFailed ||
     store.recentLoadFailed ||
     (store.finalSyncFailed && store.phase === "completed")
   ) {

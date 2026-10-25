@@ -9,15 +9,25 @@
     @touchmove.passive="$emit('user-intent', $event)"
     @keydown="$emit('user-intent', $event)"
   >
-    <button
-      v-if="hasMore && messages.length > 0"
-      class="vc-message-list__older"
-      data-testid="load-more"
-      :disabled="busy"
-      @click="$emit('load-more')"
-    >
-      查看更早消息
-    </button>
+    <!-- VC-R198：更早消息加载失败的反馈与重试动作就近放在顶部入口，停在顶部的用户才看得见。 -->
+    <template v-if="hasMore && messages.length > 0">
+      <view
+        v-if="olderLoadError"
+        class="vc-message-list__older-error"
+        data-testid="load-more-error"
+        role="alert"
+      >
+        <text>{{ olderLoadError }}</text>
+      </view>
+      <button
+        class="vc-message-list__older"
+        data-testid="load-more"
+        :disabled="busy"
+        @click="$emit('load-more')"
+      >
+        {{ olderLoadError ? "再试一次" : "查看更早消息" }}
+      </button>
+    </template>
     <!-- WP-D（缺口6）：历史向上取尽后的确定终态文案。 -->
     <view
       v-else-if="messages.length > 0"
@@ -87,6 +97,8 @@ defineProps<{
   empty: boolean;
   hasMore: boolean;
   busy: boolean;
+  /** VC-R198：更早消息加载失败的文案；非空时在顶部入口就近展示并把入口按钮标为重试。 */
+  olderLoadError?: string;
   statusText?: string;
   statusTone?: "progress" | "muted" | "error";
   statusAction?: string;
@@ -139,6 +151,14 @@ defineEmits<{
 
 .vc-message-list__older:active {
   background: var(--vc-color-surface-soft);
+}
+
+.vc-message-list__older-error {
+  margin: 0 auto var(--vc-space-2);
+  color: var(--vc-color-error);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
 }
 
 .vc-message-list__end {

@@ -76,6 +76,8 @@ interface FetchOptions {
   liveStream?: boolean;
   /** 恢复流的停止请求：成功终态或服务不可用（默认保持旧夹具行为）。 */
   cancelStatus?: 200 | 503;
+  /** VC-R198：GET /messages?before= 可控 503（仿 relationshipFails 的函数开关），只影响向上加载更早消息。 */
+  olderMessagesFails?: boolean | (() => boolean);
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -165,6 +167,9 @@ function stubFetch(options: FetchOptions = {}) {
       const params = new URLSearchParams(url.split("?")[1] ?? "");
       const after = params.get("after");
       const before = params.get("before");
+      if (before !== null && resolveBool(options.olderMessagesFails)) {
+        return response(false, 503, { code: "SERVICE_UNAVAILABLE" });
+      }
       const limit = Number(params.get("limit") ?? 50);
       const numeric = (row: unknown) => Number((row as { messageId: unknown }).messageId);
       let out: unknown[];
@@ -2493,6 +2498,87 @@ describe("聊天产品页", () => {
     expect(store.messages).toHaveLength(100);
     expect(Number(store.messages[0].messageId)).toBe(21);
     // 插入前 scrollTop=0、高度 5500；插入后高度 6000 → 补偿 500。
+    expect(history.scrollTop).toBe(500);
+    wrapper.unmount();
+  });
+
+  // ---- VC-R198：更早消息加载失败的反馈要在顶部入口就近可见 ----
+  // 缺陷：失败文案落在消息列表末尾的底部状态区，停在顶部点"查看更早消息"
+  // 的用户看不到任何反馈，按钮像没反应。契约：错误与明确重试动作就近出现在
+  // 顶部入口（DOM 上先于消息块）、可访问；底部状态不重复播报；原窗口与请求
+  // 范围保持；重试走同一 before 游标并按去重补齐，阅读锚点仍按高度差补偿。
+
+  it("VC-R198：更早消息加载失败时顶部入口就近给出可见错误与重试，重试同游标补齐且不重复", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      messageId: String(i + 1),
+      conversationId: "conv-new",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    let olderFails = true;
+    const { calls } = stubFetch({
+      messages: { "conv-new": rows },
+      olderMessagesFails: () => olderFails,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    expect(store.messages).toHaveLength(50);
+    expect(store.messages[0].messageId).toBe("71");
+
+    const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+    Object.defineProperty(history, "scrollHeight", {
+      configurable: true,
+      get: () => 5000 + store.messages.length * 10,
+    });
+    Object.defineProperty(history, "clientHeight", { configurable: true, value: 400 });
+    // 与真实复现一致：原本贴底跟随，再实际位移到顶部。失败后 scrollTop 仍为 0，
+    // 若 wheel 时就已在 0，VC-R179 的意图复查帧会把"无位移"判成继续跟随并在
+    // 重试成功后贴底，掩盖锚点结果。
+    history.scrollTop = history.scrollHeight - history.clientHeight;
+    history.dispatchEvent(new Event("wheel"));
+    history.scrollTop = 0;
+    history.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="load-more"]').trigger("click");
+    await flushPromises();
+
+    // 失败：只发过一次 before=71，原 50 条与阅读位置保持。
+    const olderCalls = () => calls.filter((call) => call.url.includes("before=71"));
+    expect(olderCalls()).toHaveLength(1);
+    expect(store.messages).toHaveLength(50);
+    expect(store.messages[0].messageId).toBe("71");
+    expect(history.scrollTop).toBe(0);
+
+    // 错误在顶部入口就近出现（DOM 上先于消息块）、可访问，并与明确重试动作同处。
+    const error = wrapper.find('[data-testid="load-more-error"]');
+    expect(error.exists()).toBe(true);
+    expect(error.attributes("role")).toBe("alert");
+    expect(error.text()).toContain("更早的消息没有加载出来");
+    const messagesBlock = wrapper.find(".vc-message-list__messages").element;
+    expect(
+      error.element.compareDocumentPosition(messagesBlock) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const retry = wrapper.find('[data-testid="load-more"]');
+    expect(retry.exists()).toBe(true);
+    expect(retry.attributes("disabled")).toBeUndefined();
+    expect(retry.text()).toBe("再试一次");
+    // 底部状态区不再重复播报同一错误。
+    expect(wrapper.find('[data-testid="status"]').text()).not.toContain("更早的消息没有加载出来");
+
+    // 重试：同一 before 游标；成功后补齐为 100 条、无重复，错误消失，锚点按高度差补偿。
+    olderFails = false;
+    await wrapper.find('[data-testid="load-more"]').trigger("click");
+    await flushPromises();
+
+    expect(olderCalls()).toHaveLength(2);
+    expect(store.messages).toHaveLength(100);
+    expect(new Set(store.messages.map((message) => message.messageId)).size).toBe(100);
+    expect(Number(store.messages[0].messageId)).toBe(21);
+    expect(wrapper.find('[data-testid="load-more-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="load-more"]').text()).toBe("查看更早消息");
     expect(history.scrollTop).toBe(500);
     wrapper.unmount();
   });
