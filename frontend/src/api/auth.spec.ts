@@ -370,6 +370,45 @@ describe("Go Runtime auth client", () => {
     await expect(deleteAccount(ok, "Current-Pass-1!")).resolves.toBe(true);
     await expect(recordSurvey(ok, 5)).resolves.toBe(true);
   });
+
+  it("VC-R227: 改密只把 4xx 与可读 {ok:false} 当确定失败；5xx 与 2xx 坏体一律抛错表示结果未知", async () => {
+    const rejected = transportFor({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "no" },
+    });
+    await expect(changeAuthPassword(rejected, "old", "new-password")).resolves.toBe(false);
+    // 与登录/退出链共用 15 秒总时限：挂起不得无限等待。
+    expect(rejected.request).toHaveBeenCalledWith(
+      "POST",
+      "/api/v1/auth/password",
+      { currentPassword: "old", newPassword: "new-password" },
+      { timeoutMs: 15_000 },
+    );
+    await expect(changeAuthPassword(
+      transportFor({ ok: true, status: 200, json: { ok: false } }),
+      "old",
+      "new-password",
+    )).resolves.toBe(false);
+
+    // 5xx 可能是提交后上游回包丢失由代理合成，不能凭 status 断定未提交。
+    await expect(changeAuthPassword(
+      transportFor({ ok: false, status: 502, json: null, parseFailed: true }),
+      "old",
+      "new-password",
+    )).rejects.toMatchObject({ name: "AuthHttpError", status: 502 });
+    // 2xx 正文不可读或缺少合法布尔 ok，同样不是确定失败。
+    await expect(changeAuthPassword(
+      transportFor({ ok: true, status: 200, json: null, parseFailed: true }),
+      "old",
+      "new-password",
+    )).rejects.toMatchObject({ name: "AuthHttpError", status: 200 });
+    await expect(changeAuthPassword(
+      transportFor({ ok: true, status: 200, json: { ok: "yes" } }),
+      "old",
+      "new-password",
+    )).rejects.toMatchObject({ name: "AuthHttpError", status: 200 });
+  });
 });
 
 // VC-R165: 弱网下 logout 不得无限等待——apiLogout 必须经真实

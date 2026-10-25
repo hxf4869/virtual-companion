@@ -156,6 +156,20 @@
               >
                 {{ passwordMessage }}
               </text>
+              <!-- VC-R227：改密结果未知时的就地出口，直接复用 onLogout——服务端
+                   已改密并撤销会话时 POST /logout 撞 401 由 transport 清本地并去
+                   登录页，未撤销时正常退出；仅 clear() 本地会被旧 cookie 自动恢复。
+                   不自动登出、不自动重发改密。 -->
+              <button
+                v-if="passwordUnknown"
+                type="button"
+                class="text-action"
+                data-testid="password-relogin"
+                :disabled="busy !== null"
+                @click="onLogout"
+              >
+                {{ busy === "logout" ? "正在退出…" : "退出并重新登录" }}
+              </button>
               <button
                 type="button"
                 class="primary-action primary-action--compact"
@@ -423,6 +437,9 @@ const currentPassword = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
 const passwordMessage = ref("");
+// VC-R227: 改密结果未知（网络失败/超时/5xx/2xx 坏体）时为 true：只驱动密码
+// 表单内的「退出并重新登录」出口，随换号清理与新提交复位。
+const passwordUnknown = ref(false);
 const trustedDevices = ref<TrustedDevice[]>([]);
 const deviceState = ref<DeviceState>("idle");
 const deviceActionError = ref("");
@@ -501,6 +518,7 @@ function clearPrivateAccountState(): void {
   newPassword.value = "";
   confirmPassword.value = "";
   passwordMessage.value = "";
+  passwordUnknown.value = false;
   passwordOpen.value = auth.passwordMustChange;
   deleteOpen.value = false;
   deletePassword.value = "";
@@ -634,6 +652,7 @@ async function onChangePassword(): Promise<void> {
   if (busy.value || !canChangePassword.value) return;
   busy.value = "password";
   passwordMessage.value = "";
+  passwordUnknown.value = false;
   // VC-R11-C: 迟到的失败文案与 busy 复位按动作代次丢弃。成功路径自身
   // clear() 即身份交接：清理 watch 会 bump actionSeq 并把 busy 置 null，
   // finally 因此跳过复位也不会卡死，成功完成不受影响。
@@ -662,8 +681,13 @@ async function onChangePassword(): Promise<void> {
     auth.clear();
     goTo("/pages/login/login");
   } catch {
+    // VC-R227: changeAuthPassword 只对确定拒绝返回 false；抛错（网络失败、
+    // 15 秒总时限、5xx、2xx 坏体）是结果未知——服务端可能已改密并撤销全部
+    // 会话。不得断言「没有修改成功」：保留已填字段、不自动重发，只露出走
+    // 现有 onLogout 的出口让用户主动核对。
     if (mySeq === actionSeq) {
-      passwordMessage.value = "没有修改成功，请稍后再试。";
+      passwordMessage.value = "无法确认修改结果。请退出并重新登录核对；若修改已生效，需要使用本次提交的新密码。";
+      passwordUnknown.value = true;
     }
   } finally {
     if (mySeq === actionSeq) {

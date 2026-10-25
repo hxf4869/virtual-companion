@@ -118,8 +118,9 @@ const AUTH_BASE = "/api/v1/auth";
 // TransportTimeoutError 结束，界面等待不得永不结束。R206 起账户页的两个
 // 设备请求（listTrustedDevices/revokeTrustedDevice）同用此时限：此前未传
 // timeoutMs 绕开了总时限，读取挂起会永久 loading 且无重试入口，撤销挂起会
-// 让 busy 锁死整页动作。局部常量，非 transport 默认；非阻塞的
-// registration-status 与其他 auth/admin 管理请求不适用。
+// 让 busy 锁死整页动作；R227 起 changeAuthPassword 同用，理由相同。局部常量，
+// 非 transport 默认；非阻塞的 registration-status 与其他 auth/admin 管理请求
+// 不适用。
 const LOGIN_CHAIN_TIMEOUT_MS = 15_000;
 
 /** Safe default is closed when the availability response cannot be read. */
@@ -300,12 +301,23 @@ export async function changeAuthPassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<boolean> {
+  // VC-R227: 返回值只表达两种确定结果——true 为服务端确认成功，false 表示
+  // 本次明确拒绝（4xx，或 2xx 可读 {ok:false}，服务端未提交改密）。其余一律
+  // 抛错表示「结果未知」：网络失败与 15 秒总时限超时由 transport 原样抛出；
+  // 5xx 在当前代理部署下可能是上游提交后回包丢失合成的，浏览器不能凭 status
+  // 断定未提交；2xx 正文不可读或缺少合法布尔 ok 确认同样不能当成失败。
+  // 调用方不得把抛错折叠成「没有修改成功」。
   const response = await t.request(
     "POST",
     `${AUTH_BASE}/password`,
     { currentPassword, newPassword },
+    { timeoutMs: LOGIN_CHAIN_TIMEOUT_MS },
   );
-  return response.ok && asOk(response.json);
+  if (response.status >= 500) throw new AuthHttpError(response.status);
+  if (!response.ok) return false;
+  const confirmed = confirmedOk(response);
+  if (confirmed === undefined) throw new AuthHttpError(response.status);
+  return confirmed;
 }
 
 export async function reauthAuth(
@@ -491,4 +503,14 @@ function stringValue(value: unknown): string | null {
 
 function asOk(json: unknown): boolean {
   return Boolean(json && typeof json === "object" && (json as Record<string, unknown>).ok === true);
+}
+
+/** VC-R227：2xx 正文里的合法布尔 ok 确认。正文不可读、不是对象或 ok 不是
+ * 布尔时返回 undefined，调用方按结果未知处理。 */
+function confirmedOk(response: AuthApiResponse): boolean | undefined {
+  if (response.parseFailed) return undefined;
+  const json = response.json;
+  if (!json || typeof json !== "object") return undefined;
+  const ok = (json as Record<string, unknown>).ok;
+  return typeof ok === "boolean" ? ok : undefined;
 }

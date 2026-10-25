@@ -59,6 +59,10 @@ interface FetchOptions {
   passwordGate?: Gate;
   /** 改密挂起释放后的应答体：默认 {ok:false}（迟到失败）；true 为 {ok:true}（迟到成功）。 */
   passwordGateOk?: boolean;
+  /** 提供时，改密 POST 直接以网络错误拒绝（结果未知场景）。 */
+  passwordNetworkFail?: boolean;
+  /** 提供时，改密 POST 以 200 应答但正文不可解析（2xx 坏体，结果未知场景）。 */
+  passwordBodyUnreadable?: boolean;
   /** 提供时，GET /auth/session 以 200 返回该身份（同会话读回场景）。 */
   sessionIdentity?: unknown;
   /** 提供时，第一条 GET /auth/session 挂起直到手动 resolve（在途旧探测场景）。 */
@@ -172,9 +176,25 @@ function stubFetch(options: FetchOptions = {}) {
       return response(status, status === 200 ? { ok: true } : null);
     }
     if (url === "/api/v1/auth/password" && method === "POST") {
+      if (options.passwordNetworkFail) {
+        throw new TypeError("network down");
+      }
+      if (options.passwordBodyUnreadable) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new SyntaxError("Unexpected end of JSON input");
+          },
+        };
+      }
       if (options.passwordGate) {
-        return options.passwordGate.promise.then(
-          () => response(200, options.passwordGateOk ? { ok: true } : { ok: false }),
+        // R227：改密 POST 现经 15 秒总时限，挂起的 gate 同样要遵守 AbortSignal。
+        return raceAbort(
+          init?.signal,
+          options.passwordGate.promise.then(
+            () => response(200, options.passwordGateOk ? { ok: true } : { ok: false }),
+          ),
         );
       }
       const status = options.passwordStatus ?? 200;
@@ -1792,5 +1812,133 @@ describe("account page", () => {
       wrapper.unmount();
       vi.useRealTimers();
     }
+  });
+
+  it("VC-R227: 改密 POST 挂起在 15 秒总时限后按结果未知结束，整页 busy 释放、字段保留且不自动重发", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const gate = makeGate();
+    const { calls } = stubFetch({ passwordGate: gate });
+    loginAs();
+    const wrapper = mount(AccountPage);
+    try {
+      await flushPromises();
+      const passwordPosts = () => calls.filter((call) => call.url === "/api/v1/auth/password");
+      await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+      await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+      await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+      await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+      await wrapper.get('[data-testid="change-password"]').trigger("click");
+      await flushPromises();
+      expect(passwordPosts()).toHaveLength(1);
+      expect(wrapper.get('[data-testid="change-password"]').text()).toContain("修改中…");
+      expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeDefined();
+
+      // 15 秒到点前仍在等待，不得提前报错。
+      await vi.advanceTimersByTimeAsync(14_999);
+      await flushPromises();
+      expect(wrapper.get('[data-testid="change-password"]').text()).toContain("修改中…");
+      expect(wrapper.find('[data-testid="password-message"]').exists()).toBe(false);
+
+      // 到点：总时限把挂起按结果未知结束——busy 释放、文案不断言「没有修改
+      // 成功」、字段保留、露出退出入口；不自动重发改密。
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+      expect(wrapper.get('[data-testid="change-password"]').text()).toBe("确认修改");
+      expect(wrapper.get('[data-testid="change-password"]').attributes("disabled")).toBeUndefined();
+      expect(wrapper.get('[data-testid="account-logout"]').attributes("disabled")).toBeUndefined();
+      const message = wrapper.get('[data-testid="password-message"]');
+      expect(message.attributes("role")).toBe("alert");
+      expect(message.text()).toContain("无法确认修改结果");
+      expect(message.text()).toContain("新密码");
+      expect(message.text()).not.toContain("没有修改成功");
+      expect(wrapper.find('[data-testid="password-relogin"]').exists()).toBe(true);
+      expect((wrapper.get('[data-testid="current-password"]').element as HTMLInputElement).value)
+        .toBe("OldPass1!");
+      expect(passwordPosts()).toHaveLength(1);
+    } finally {
+      wrapper.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("VC-R227: 网络失败与 2xx 坏体都只承认结果未知；出口走现有退出到登录页，不重发改密", async () => {
+    const mockOptions: FetchOptions = { passwordNetworkFail: true };
+    const { calls } = stubFetch(mockOptions);
+    const auth = loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    const passwordPosts = () => calls.filter((call) => call.url === "/api/v1/auth/password");
+    const logoutPosts = () => calls.filter((call) => call.url === "/api/v1/auth/logout");
+    const message = () => wrapper.get('[data-testid="password-message"]');
+
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+
+    // 网络失败：请求可能已到达并提交，不得断言「没有修改成功」；不自动登出。
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+    expect(passwordPosts()).toHaveLength(1);
+    expect(message().attributes("role")).toBe("alert");
+    expect(message().text()).toContain("无法确认修改结果");
+    expect(message().text()).toContain("新密码");
+    expect(message().text()).not.toContain("没有修改成功");
+    expect(wrapper.find('[data-testid="password-relogin"]').exists()).toBe(true);
+    expect(auth.isAuthenticated).toBe(true);
+    expect(logoutPosts()).toHaveLength(0);
+
+    // 2xx 但正文不可读：status 不足以确认服务端结果，同样未知。
+    mockOptions.passwordNetworkFail = false;
+    mockOptions.passwordBodyUnreadable = true;
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+    expect(passwordPosts()).toHaveLength(2);
+    expect(message().text()).toContain("无法确认修改结果");
+    expect(message().text()).not.toContain("没有修改成功");
+
+    // 出口直接复用 onLogout：走现有 POST /logout 并去登录页，不重发改密。
+    await wrapper.get('[data-testid="password-relogin"]').trigger("click");
+    await flushPromises();
+    expect(logoutPosts()).toHaveLength(1);
+    expect(passwordPosts()).toHaveLength(2);
+    expect(auth.isAuthenticated).toBe(false);
+    expect((globalThis as unknown as {
+      uni: { navigateTo: ReturnType<typeof vi.fn> };
+    }).uni.navigateTo)
+      .toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("VC-R227: 5xx 不能证明服务端未提交，同样按结果未知；再次提交撞 4xx 回到可修正的确定失败", async () => {
+    const mockOptions: FetchOptions = { passwordStatus: 503 };
+    const { calls } = stubFetch(mockOptions);
+    loginAs();
+    const wrapper = mount(AccountPage);
+    await flushPromises();
+    const passwordPosts = () => calls.filter((call) => call.url === "/api/v1/auth/password");
+    const message = () => wrapper.get('[data-testid="password-message"]');
+
+    await wrapper.get('[data-testid="password-toggle"]').trigger("click");
+    await wrapper.get('[data-testid="current-password"]').setValue("OldPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPass1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+    expect(passwordPosts()).toHaveLength(1);
+    expect(message().text()).toContain("无法确认修改结果");
+    expect(message().text()).not.toContain("没有修改成功");
+    expect(wrapper.find('[data-testid="password-relogin"]').exists()).toBe(true);
+
+    // 用户主动再次提交撞 404 确定拒绝：未知标记随新提交复位，文案回到既有
+    // 可修正的确定失败，退出入口收起，字段仍可改。
+    mockOptions.passwordStatus = 404;
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+    expect(passwordPosts()).toHaveLength(2);
+    expect(message().text()).toBe("没有修改成功，请检查当前密码。");
+    expect(wrapper.find('[data-testid="password-relogin"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="change-password"]').attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
   });
 });
