@@ -522,6 +522,42 @@ async function initPage(): Promise<void> {
   }
 }
 
+// VC-R196：把本页"可刷新的定位"同步到刚创建成功的会话。uni.redirectTo 会
+// removeLastPage 并以新 __id__ 重建本页（卸载正在提交的实例）；vue-router
+// 的 replace 保留 history.state.__id__（uni-h5 KeepAlive 的页面 key），同页
+// 同实例只更新地址与 currentRoute，且 replaceState 不触发 hashchange/
+// popstate——在途发送链不受影响。
+interface H5Router {
+  replace: (to: string) => unknown;
+}
+
+function syncLocationToCreatedConversation(conversationId: string): void {
+  // 复用既有保障：initConversation 的窗口令牌已确认创建结果未被丢弃；这里
+  // 再核 store 仍持有该会话（loadHistory 的 await 期间窗口可能又被切走）且
+  // 本实例仍是活动页——KeepAlive 停用的隐藏页不得改写前台页面的地址。
+  if (!instanceActive) return;
+  if (store.conversationId !== conversationId) return;
+  // 裸 getApp 引用与 companion.vue 的 H5 离开守卫同惯例：uni-h5 构建注入；
+  // 组件测试与非 uni 宿主经 typeof 静默降级（仅失去地址同步，不影响发送）。
+  if (typeof getApp === "function") {
+    const router = getApp<{ $router?: H5Router }>().$router;
+    if (router?.replace) {
+      // R04 去重基准随地址更新：与 hash 事件比较的目标已是新地址的真实
+      // 目标——回到旧会话的地址变更不被旧基准忽略，落回同目标也不重开。
+      lastInitTargetConversationId = conversationId;
+      try {
+        void router.replace(buildContextHref("chat", {
+          relationshipId: relStore.currentRelationshipId,
+          conversationId,
+          knownRelationshipIds: knownRelationshipIds(),
+        }));
+      } catch {
+        // 地址同步失败不影响发送链（与 app/navigate.ts 的安全壳同惯例）。
+      }
+    }
+  }
+}
+
 async function ensureConversation(): Promise<boolean> {
   if (store.conversationId) return true;
   const relationshipId = relStore.currentRelationshipId;
@@ -531,6 +567,8 @@ async function ensureConversation(): Promise<boolean> {
   // VC-R04：本实例首次建会话成功——归属随之更新（窗口令牌守卫保证
   // await 期间未被其他实例切换时才会走到这里）。
   owningConversationId = store.conversationId;
+  // VC-R196：创建已落地，可刷新定位指向真实新会话。
+  syncLocationToCreatedConversation(created.conversationId);
   bindGenerationContext();
   void store.loadConversations(transport, relationshipId);
   return true;

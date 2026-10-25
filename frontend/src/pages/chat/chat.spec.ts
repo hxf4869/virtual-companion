@@ -277,6 +277,11 @@ function navigateTo(): ReturnType<typeof vi.fn> {
   return (globalThis as unknown as { uni: { navigateTo: ReturnType<typeof vi.fn> } }).uni.navigateTo;
 }
 
+/** VC-R196：读取 beforeEach 打桩的 uni.redirectTo（断言不走 redirectTo 重建页面）。 */
+function redirectTo(): ReturnType<typeof vi.fn> {
+  return (globalThis as unknown as { uni: { redirectTo: ReturnType<typeof vi.fn> } }).uni.redirectTo;
+}
+
 /** VC-R115：解析 POST /generations 请求体（userContent + idempotencyKey）。 */
 function generationPostBodies(calls: Array<{ method: string; url: string; body?: string }>) {
   return calls
@@ -405,6 +410,61 @@ describe("聊天产品页", () => {
     expect(sendSpy).toHaveBeenCalledOnce();
     expect(sendSpy.mock.calls[0]?.[2]).toBe("今天有点累。");
     expect((input().element as HTMLTextAreaElement).value).toBe("");
+    wrapper.unmount();
+  });
+
+  // ---- VC-R196：新会话创建成功后，可刷新定位指向真实新 ID ----
+  it("首条消息建会话成功后地址同步到新会话：同页 replace 不重建、重试保留、落回同目标不重开", async () => {
+    const { calls } = stubFetch({ generations: [503] });
+    // Root 实证场景：深链打开旧会话（conv-new 两条历史），地址仍指旧 ID。
+    vi.stubGlobal("location", {
+      search: "?relationshipId=rel-1&conversationId=conv-new",
+      hash: "",
+      href: "",
+    });
+    const replace = vi.fn((_to: string) => Promise.resolve());
+    vi.stubGlobal("getApp", vi.fn(() => ({ $router: { replace } })));
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(useChatStore().conversationId).toBe("conv-new");
+
+    // 空输入开始新对话 → 首条消息：建会话成功（conv-created），POST 503
+    // 结果未知（与本地合成 HTTP 实证一致）。
+    await wrapper.find('[data-testid="chat-context-open"]').trigger("click");
+    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.find('[data-testid="message-input"]').setValue("R196 新对话首条消息。");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    // 可刷新定位经 uni 路由同页 replace 指向真实新 ID——保留 history.state
+    // 的页面 key，不重建正在提交的页面；不走 redirectTo 重建，也不只改
+    // 浏览器地址。
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0]?.[0]).toBe(
+      "/pages/chat/chat?relationshipId=rel-1&conversationId=conv-created",
+    );
+    expect(redirectTo()).not.toHaveBeenCalled();
+    // 建会话恰一次；结果未知的原消息重试入口保留在当前窗口。
+    expect(calls.filter((call) => call.method === "POST" && call.url === "/api/v1/conversations"))
+      .toHaveLength(1);
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
+
+    // R04 去重基准随地址更新：地址已指新会话时，落回同目标的 hash 事件
+    // 不重开窗口——无新增加载，重试入口仍在。
+    const messagesCalls = calls.filter(
+      (call) => call.method === "GET" && call.url.includes("/messages"),
+    ).length;
+    vi.stubGlobal("location", {
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=rel-1&conversationId=conv-created",
+      href: "",
+    });
+    window.dispatchEvent(new Event("hashchange"));
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "GET" && call.url.includes("/messages")).length)
+      .toBe(messagesCalls);
+    expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
     wrapper.unmount();
   });
 
