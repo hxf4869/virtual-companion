@@ -55,9 +55,31 @@ function conversationB(index: number) {
   };
 }
 
+// VC-R217：GET /auth/session 读回的 Cookie 身份。A=7 为既有默认；B=9 与
+// 既有换号 fixture 一致，配合按关系 id 区分的数据断言不串号。
+const SESSION_IDENTITY_A: Record<string, unknown> = {
+  nextStep: "ACTIVE",
+  accountId: "7",
+  role: "USER",
+  sessionId: "9",
+  passwordMustChange: false,
+  authenticatorEnabled: true,
+  expiresInSeconds: 7200,
+};
+
+const SESSION_IDENTITY_B: Record<string, unknown> = {
+  ...SESSION_IDENTITY_A,
+  accountId: "9",
+  sessionId: "19",
+};
+
 interface FetchOptions {
-  relationships?: unknown[];
+  relationships?: unknown[] | (() => unknown[]);
   relationshipFails?: boolean | (() => boolean);
+  /** VC-R217：relationships 返回精确 409 + ACCOUNT_CONTEXT_CHANGED（旧期望身份与共享 Cookie 失配）。 */
+  relationshipAccountContextChanged?: boolean | (() => boolean);
+  /** VC-R217：GET /auth/session 读回的 Cookie 身份（reconcile 身份发现用），默认 A。 */
+  sessionIdentity?: Record<string, unknown> | (() => Record<string, unknown>);
   conversationFails?: boolean | ((url: string) => boolean);
   conversations?: unknown[] | ((url: string) => unknown[]);
   /** VC-R11：换号成 B 后按登录账号返回的 B 私有数据。 */
@@ -104,18 +126,31 @@ function stubFetch(options: FetchOptions = {}) {
         expiresInSeconds: 7200,
       });
     }
+    // VC-R217：身份发现入口（auth.reconcile → tryRefresh 的 omit 期望头 GET）。
+    if (url === "/api/v1/auth/session") {
+      const identity = typeof options.sessionIdentity === "function"
+        ? options.sessionIdentity()
+        : options.sessionIdentity;
+      return response(true, 200, identity ?? SESSION_IDENTITY_A);
+    }
     // VC-R11：按请求发起时的登录账号区分 A/B 私有数据。
     const accountB = options.accountB !== undefined && useAuthStore().accountId === "9"
       ? options.accountB
       : null;
     if (url === "/api/v1/relationships") {
+      if (resolveBool(options.relationshipAccountContextChanged)) {
+        return response(false, 409, { code: "ACCOUNT_CONTEXT_CHANGED" });
+      }
       if (accountB) {
         return response(true, 200, accountB.relationships ?? []);
       }
       if (resolveBool(options.relationshipFails)) {
         return response(false, 500, { code: "INTERNAL_ERROR" });
       }
-      return response(true, 200, options.relationships ?? RELATIONSHIPS);
+      const relationships = typeof options.relationships === "function"
+        ? options.relationships()
+        : options.relationships;
+      return response(true, 200, relationships ?? RELATIONSHIPS);
     }
     if (url.startsWith("/api/v1/conversations")) {
       // VC-R206：请求序号含会 throw 的失败请求，hold 才能锚定“失败后的
@@ -473,6 +508,82 @@ describe("全部会话", () => {
     // 不得被错误门控成永久 busy 而挂死页面。
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
     expect(wrapper.find('[data-testid="conversations-load-more"]').attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  // VC-R217：R217-B 缺陷（Root 原生 H5 复现）：对话列表保持激活可见，A 的
+  // 列表读取先失败进入「会话没有加载出来」；另一 Tab 共享 Cookie 换号后点
+  // 重新加载 → GET relationships 带旧期望身份撞精确 409 ACCOUNT_CONTEXT_CHANGED
+  // → transport 上报 → auth.reconcile 同步 clear（A→null：watch 清理）→ 真实
+  // 异步 GET /auth/session 发现当前 Cookie 身份（null→确定账号）。页面全程
+  // 不再触发 onActivated，恢复前无人重载即永久停在「正在加载全部会话」骨架、
+  // 没有任何重试入口。可见页须在 null→确定账号时恰好自动重载一次：身份发现
+  // 恰一次，按当前身份读关系与列表各恰一次，无 query 时默认关系切到新账号
+  // 自己的关系并用其私有列表落地（按关系 id 区分数据，不用 A 数组假充）。
+  // 同一可见流 reconcile 读回仍是 A（null→A）同样恢复。
+  it.each([
+    {
+      label: "换到 B",
+      identity: SESSION_IDENTITY_B,
+      accountId: "9",
+      relationshipId: "rel-b",
+      relationship: RELATIONSHIPS_B,
+      rows: [conversationB(1), conversationB(2)],
+      preview: "B 的秘密对话 1 的最后一句。",
+      staleText: "第 1 段对话",
+    },
+    {
+      label: "仍是 A",
+      identity: SESSION_IDENTITY_A,
+      accountId: "7",
+      relationshipId: "rel-1",
+      relationship: RELATIONSHIPS,
+      rows: [conversation(1), conversation(2)],
+      preview: "这是第 1 段对话的最后一句。",
+      staleText: "B 的秘密对话",
+    },
+  ])("可见页重新加载撞 409 换号：reconcile 发现$label 后自动按当前身份加载一次", async (row) => {
+    let phase: "fail" | "conflict" | "discovered" = "fail";
+    const { calls } = stubFetch({
+      // 身份发现那一刻起按当前 Cookie 身份服务关系数据；会话按 URL 关系 id
+      // 区分，B 的列表只能来自 rel-b 自己的读取。
+      sessionIdentity: () => {
+        phase = "discovered";
+        return row.identity;
+      },
+      relationshipAccountContextChanged: () => phase === "conflict",
+      relationships: () => (phase === "discovered" ? row.relationship : RELATIONSHIPS),
+      conversationFails: () => phase === "fail",
+      conversations: (url) =>
+        (url.includes(`relationshipId=${row.relationshipId}`) ? row.rows : [conversation(1), conversation(2)]),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="conversations-load-failed"]').text()).toContain("会话没有加载出来");
+
+    // 另一 Tab 换号后点重新加载：本页旧期望身份的关系读取撞 409，reconcile
+    // 发现当前身份。真实链路的 clear 与 session 读回之间有真实网络 await，
+    // fixture 按该间隙自然分两步推进，不需要任何同步 flush。
+    phase = "conflict";
+    await wrapper.find('[data-testid="conversations-retry"]').trigger("click");
+    await flushPromises();
+
+    expect(useAuthStore().accountId).toBe(row.accountId);
+    expect(wrapper.find('[data-testid="conversations-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="conversations-load-failed"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="conversations-refresh-notice"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(row.rows.length);
+    expect(wrapper.text()).toContain(row.preview);
+    expect(wrapper.text()).not.toContain(row.staleText);
+    const urls = calls;
+    expect(urls.filter((url) => url === "/api/v1/auth/session")).toHaveLength(1);
+    // 关系读取：初载 + 撞 409 的重载 + 身份发现后恰一次；会话只在初载（失败）
+    // 与身份发现后各读一次，且发现后按当前账号自己的关系 id 读取。
+    expect(urls.filter((url) => url === "/api/v1/relationships")).toHaveLength(3);
+    expect(urls.filter((url) => url.includes("/api/v1/conversations?"))).toEqual([
+      "/api/v1/conversations?relationshipId=rel-1&limit=20",
+      `/api/v1/conversations?relationshipId=${row.relationshipId}&limit=20`,
+    ]);
     wrapper.unmount();
   });
 

@@ -126,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
+import { computed, nextTick, onActivated, onDeactivated, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
 
 import { listConversations, type ConversationListItem } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -191,6 +191,10 @@ const shellRef = ref<ComponentPublicInstance | null>(null);
 // 它只区分「本页发起的哪个请求」，账号数据归属由 watch 与
 // 请求代次承担，因此同账号在途请求照常落地收尾。
 let loadSeq = 0;
+// VC-R217：本页实例当前是否处于 KeepAlive 激活（可见）状态。换号清理后的
+// 身份恢复（null → 确定账号）只对可见页自动重载；隐藏缓存页继续不抢跑，
+// 重载仍交给重新激活时的 onActivated。
+let pageActive = false;
 
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -209,8 +213,20 @@ const transport = createAuthenticatedTransport({
 // 换号/退出：清空旧账号私有内容并回到加载态，并作废在途请求。null → X
 // （初次恢复、匿名后登录）不清理、不当作过期。清理绝不发请求——KeepAlive
 // 隐藏缓存页不得抢跑，重载交给 onActivated。
+// VC-R217：可见页没有 onActivated 兜底——本页自身的动作（重新加载/加载
+// 更多/反馈条重试）撞共享 Cookie 换号的精确 409 时，auth.reconcile 同步
+// clear 再发现当前 Cookie 身份，账号走「已知 A → null（下面的清理分支）→
+// 确定账号」两步，而页面全程保持激活、不会再触发 onActivated，无人重载
+// 就永久停在清理后的骨架（loading 分支没有任何操作入口）。因此 null →
+// 确定账号时可见页在这里恰好自动重载一次；busy 挡住在途流程（首载/激活/
+// 同账号重认证不经过 null，不进本分支，不重复发读）。清理已重置反馈条与
+// 焦点、锚点意图，自动重载不继承旧手动重试语义。
 watch(() => auth.accountId, (next, prev) => {
-  if (prev === null || next === prev) return;
+  if (next === prev) return;
+  if (prev === null) {
+    if (pageActive && !busy.value) void loadInitial();
+    return;
+  }
   loadSeq++;
   items.value = [];
   relationshipId.value = "";
@@ -532,6 +548,7 @@ async function refreshOnReturn(manual = false): Promise<void> {
 // VC-R201：焦点意图按一次返回在此消费；之后无论等待、失败还是响应合并
 // 都不再动焦点，用户在途期间移走的焦点不被抢回。
 onActivated(() => {
+  pageActive = true;
   restoreFocusAfterReturn();
   if (!auth.isAuthenticated) return;
   if (pageState.value === "ready" && items.value.length > 0 && relationshipId.value) {
@@ -542,7 +559,14 @@ onActivated(() => {
 });
 
 onMounted(() => {
+  pageActive = true;
   void loadInitial();
+});
+
+// VC-R217：KeepAlive 停用（压栈隐藏）后不再视为可见；隐藏期间的身份恢复
+// 不抢跑，重载交给重新激活。
+onDeactivated(() => {
+  pageActive = false;
 });
 </script>
 
