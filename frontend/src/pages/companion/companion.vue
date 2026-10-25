@@ -295,6 +295,10 @@ let loadedForAccountId: string | null = null;
 // （它每次认证都变，会把同账号恢复误判过期并永久挂住 busy）。
 let loadSeq = 0;
 const busy = ref(false);
+// VC-R214：本页实例当前是否处于 KeepAlive 激活（可见）状态。换号清理后的
+// 身份恢复（null → 确定账号）只对可见页自动重载；隐藏缓存页继续不抢跑，
+// 重载仍交给重新激活时的 onActivated。
+let pageActive = false;
 // VC-R204：本页根 DOM。uni-h5 把 view/input 编译为组件（模板 ref 是组件
 // 实例而非元素），ConsumerShell 模板单根 view，取其组件实例的 $el 即本页
 // 真实根元素；焦点目标查询限定在其内，不命中其他缓存页的同名元素。
@@ -457,8 +461,22 @@ function removeLeaveGuards(): void {
 // 不同账号/退出」时清理；null → X（初次恢复、匿名后登录）不清理、不当作
 // 过期。清理只重置本地并作废在途请求，不发起新读取——隐藏缓存页不抢跑，
 // 重载交给 onActivated。
+// VC-R214：可见页没有 onActivated 兜底——保存撞共享 Cookie 换号的 409 时，
+// auth.reconcile 会同步 clear 再发现新身份，账号走「已知 A → null（上面
+// 的清理分支）→ 确定账号」两步，而页面全程保持激活、不会再触发
+// onActivated，无人重载就永久停在清理后的骨架。因此 null → 确定账号时
+// 可见页在这里恰好自动重载一次，并重装清理时撤下的离开守卫；busy 挡住
+// 并发的既有重载（它在内部按当前身份确立归属），不重复发读。A→A 重认证
+// 未经过 null，不进本 watch，草稿保留。
 watch(() => auth.accountId, (next, prev) => {
-  if (prev === null || next === prev) return;
+  if (next === prev) return;
+  if (prev === null) {
+    if (pageActive && !busy.value) {
+      installLeaveGuards();
+      void reload();
+    }
+    return;
+  }
   reset();
   loadedForAccountId = null;
   loadSeq++;
@@ -526,6 +544,7 @@ async function onSave(): Promise<void> {
 }
 
 onMounted(() => {
+  pageActive = true;
   void reload();
   installLeaveGuards();
 });
@@ -534,6 +553,7 @@ onMounted(() => {
 // 才重新加载；同账号返回（归属一致）不重载、不重复请求，未保存草稿保留。
 // 与 onMounted 首次同时触发由 reload 同步置位的 busy 去重。
 onActivated(() => {
+  pageActive = true;
   installLeaveGuards();
   if (!auth.isAuthenticated || busy.value) return;
   if (loadedForAccountId === auth.accountId) return;
@@ -545,6 +565,7 @@ onActivated(() => {
 // 才真正清空本页草稿（reset 作废在途读取/保存），并作废账号归属使再次
 // 激活时按服务端重读；未确认的正常 KeepAlive 停用保持“草稿保留”语义。
 onDeactivated(() => {
+  pageActive = false;
   const discardOnLeave = confirmedDiscardLeave;
   confirmedDiscardLeave = false;
   removeLeaveGuards();
@@ -556,6 +577,7 @@ onDeactivated(() => {
 });
 
 onBeforeUnmount(() => {
+  pageActive = false;
   removeLeaveGuards();
 });
 </script>

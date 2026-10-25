@@ -169,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
 
 import type { AuthTransport } from "@/api/auth";
 import { listConversations, type ConversationListItem } from "@/api/chat";
@@ -224,6 +224,10 @@ const cachedContext = ref<HomeRelationshipContext | null>(null);
 // 重新登录/续期也会推进它，会把合法的在途加载判过期并永久挂住 busy。
 // 这里只在「发起新加载」与「换号清理」时递增。
 let loadSeq = 0;
+// VC-R216：本页实例当前是否处于 KeepAlive 激活（可见）状态。换号清理后的
+// 身份恢复（null → 确定账号）只对可见页自动加载；隐藏缓存页继续不抢跑，
+// 重载仍交给重新激活时的 onActivated。
+let pageActive = false;
 
 const transport: AuthTransport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -307,8 +311,19 @@ function openConversation(conversation: ConversationListItem): void {
 // null→X（初次恢复、匿名后登录）时本地状态本就是初始值，不清理、不当作过期。
 // 清理只重置本地状态并作废在途请求（loadSeq++），绝不发起新请求——隐藏
 // 缓存页不抢跑新账号的读取。
+// VC-R216：可见页没有 onActivated 兜底——本页自身的读取（重新加载关系/最近
+// 对话）撞共享 Cookie 换号的 409 时，auth.reconcile 同步 clear 再发现当前身份，
+// 账号走「已知 A → null（下面的清理分支）→ 确定账号」两步，而页面全程保持
+// 激活、不会再触发 onActivated，无人重载就永久停在清理后的骨架。因此 null →
+// 确定账号时可见页在这里恰好自动加载一次；busy 挡住在途的初载/会话重试
+// （它们随后自行 loadHome），不重复发读。清理已把 cachedContext 置空，自动
+// 加载走无缓存整页路径，不继承手动重试的反馈区与焦点意图。
 watch(() => auth.accountId, (next, prev) => {
-  if (prev === null || next === prev) return;
+  if (next === prev) return;
+  if (prev === null) {
+    if (pageActive && !busy.value) void loadHome();
+    return;
+  }
   conversations.value = [];
   cachedContext.value = null;
   refreshNotice.value = null;
@@ -414,11 +429,13 @@ async function restoreSessionAndHome(): Promise<void> {
 }
 
 onMounted(() => {
+  pageActive = true;
   void restoreSessionAndHome();
 });
 
 // 返回缓存首页时更新最近对话；首次挂载与在途加载由 busy 去重。
 onActivated(() => {
+  pageActive = true;
   if (!auth.isAuthenticated) return;
   // VC-R202 追加：其他页面已确认默认关系变化/缺失时，旧上下文（含仍在途
   // 的旧刷新请求）立即失效：递增代次作废旧请求（迟到响应按既有 loadSeq
@@ -429,6 +446,12 @@ onActivated(() => {
   }
   if (busy.value) return;
   void loadHome();
+});
+
+// VC-R216：KeepAlive 停用（页面被压栈隐藏）后不再视为可见；隐藏期间的身份
+// 恢复不抢跑，重载交给重新激活。
+onDeactivated(() => {
+  pageActive = false;
 });
 </script>
 

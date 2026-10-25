@@ -472,6 +472,8 @@ const memory = useMemoryStore();
 
 const relState = ref<RelState>("loading");
 const relationshipId = ref("");
+/** R214：KeepAlive 激活（可见）中；隐藏缓存页不得发起身份重读。 */
+const pageActive = ref(false);
 const busy = ref(false);
 const unknownAction = ref<UnknownWriteAction | null>(null);
 const rejectedNotice = ref("");
@@ -602,6 +604,50 @@ watch(() => memory.ownerEpoch, () => {
   manualListRefresh.value = null;
 }, { flush: "sync" });
 
+// R214：换号身份交接（可见页 409 ACCOUNT_CONTEXT_CHANGED → auth.reconcile
+// 的同步 clear→读回，或退出/其他 Tab 登录的共享清理）。companion 页 VC-R13
+// 同款判据：只在「已知账号 → 不同账号/退出」时清掉本页旧账号上下文与操作
+// 意图（编辑草稿、未知结果、各类反馈与忙态）并作废在途 initialLoad（换号
+// 链 auth.ts persist/clear → session-cleanup 的 memory.reset 同步递增
+// ownerEpoch，与本清理一一配对，initialLoad 以它作唯一晚到丢弃代次）；
+// null→X（首次发现、匿名后登录）不清理、不当过期；accountId 不变的同账号
+// 重认证不触发，未保存草稿保留。清理不发起新读取：身份未定期间停在
+// loading 骨架，不把 store 重置后的 idle 当真空空态，也不自动写；重读交给
+// 下方的身份分支与 onActivated——隐藏缓存页不抢跑。manualListRefresh 由
+// 上面 ownerEpoch 的 sync watch 随真实清理链收回。
+let loadedForAccountId: string | null = null;
+
+watch(() => auth.accountId, (next, prev) => {
+  if (prev !== null && next !== prev) {
+    busy.value = false;
+    loadedForAccountId = null;
+    relationshipId.value = "";
+    relState.value = "loading";
+    unknownAction.value = null;
+    rejectedNotice.value = "";
+    autoSaveTarget.value = null;
+    autoSaveNotice.value = "";
+    listInconclusive.value = false;
+    unavailableDeleteIds.value = [];
+    editingId.value = null;
+    editDraft.value = "";
+    editError.value = "";
+    editBusy.value = false;
+    confirmDeleteId.value = null;
+    deleteBusy.value = false;
+    deleteError.value = "";
+    pendingBusyId.value = null;
+    rowErrorId.value = null;
+    rowErrorMessage.value = "";
+  }
+  // 可见页发现新的确定身份且当前内容不归属它：自动且仅一次重读关系与该
+  // 账号的记忆/开关（busy 去重 mount 期间首次发现的在途加载；归属对齐后
+  // 不再重复）。隐藏页不在此读，激活后再读。
+  if (next !== null && pageActive.value && !busy.value && loadedForAccountId !== next) {
+    void initialLoad();
+  }
+});
+
 function setUnknownAction(action: UnknownWriteAction): void {
   unknownAction.value = action;
   rejectedNotice.value = "";
@@ -634,6 +680,11 @@ function isSameUnknownAction(
 async function initialLoad(): Promise<void> {
   if (busy.value) return;
   busy.value = true;
+  // R214：换号清理链（session-cleanup 的 memory.reset）递增 ownerEpoch，
+  // 它是本次加载的唯一代次：旧 initialLoad 在后续 await 上一律丢弃，不写
+  // relState/relationshipId/listInconclusive，finally 也不释放新加载刚占下
+  // 的 busy。同 owner 内重入由上面的 busy 门挡住，无需第二个计数器。
+  const requestEpoch = memory.ownerEpoch;
   unknownAction.value = null;
   rejectedNotice.value = "";
   manualListRefresh.value = null;
@@ -641,12 +692,17 @@ async function initialLoad(): Promise<void> {
   try {
     if (!auth.isAuthenticated) {
       await auth.tryRefresh(transport);
+      if (memory.ownerEpoch !== requestEpoch) return;
     }
     if (!auth.isAuthenticated) {
       relState.value = "error";
       return;
     }
+    // R214：本页内容归属的账号；换号清理置回 null，onActivated 与身份
+    // watch 据此判定是否重读——同账号返回不重复加载、草稿保留。
+    loadedForAccountId = auth.accountId;
     await relStore.load(transport);
+    if (memory.ownerEpoch !== requestEpoch) return;
     if (relStore.status === "error") {
       relState.value = "error";
       return;
@@ -662,9 +718,10 @@ async function initialLoad(): Promise<void> {
       memory.load(transport, relId),
       memory.loadAutoSave(transport),
     ]);
+    if (memory.ownerEpoch !== requestEpoch) return;
     listInconclusive.value = listOutcome === "inconclusive";
   } finally {
-    busy.value = false;
+    if (memory.ownerEpoch === requestEpoch) busy.value = false;
   }
 }
 
@@ -752,7 +809,10 @@ async function refreshList(): Promise<void> {
 }
 
 async function retryAutoSave(): Promise<void> {
+  const requestEpoch = memory.ownerEpoch;
   await memory.loadAutoSave(transport);
+  // 换号清理后旧账号的核对意图不回填新账号的开关状态。
+  if (memory.ownerEpoch !== requestEpoch) return;
   if (memory.autoSaveState !== "ready") return;
   const target = autoSaveTarget.value;
   autoSaveTarget.value = null;
@@ -769,7 +829,11 @@ async function onToggleAutoSave(): Promise<void> {
   if (autoSaveToggleDisabled.value) return;
   autoSaveNotice.value = "";
   const target = !memory.autoSaveEnabled;
+  const requestEpoch = memory.ownerEpoch;
   const outcome = await memory.setAutoSave(transport, target);
+  // 409 换号 reconcile 已在传输层同步推进 ownerEpoch：旧账号的写入目标与
+  // 提示不得在清理后复活（结果由新账号重读确认，不自动重放动作）。
+  if (memory.ownerEpoch !== requestEpoch) return;
   autoSaveTarget.value = outcome === "unknown" ? target : null;
   if (outcome === "rejected") {
     autoSaveNotice.value = "开关没有更新成功，请重新读取确认当前状态。";
@@ -1017,6 +1081,7 @@ async function actOnCandidate(
 }
 
 onMounted(() => {
+  pageActive.value = true;
   installLeaveGuards();
   void initialLoad();
 });
@@ -1029,14 +1094,24 @@ onMounted(() => {
 // 缓存的脏稿实例若被再激活，onActivated 重装守卫、草稿继续受保护，无需
 // 在 deactivated 时清草稿。
 onActivated(() => {
+  pageActive.value = true;
   installLeaveGuards();
+  // R214：缓存页重新激活时，仅当已认证且当前内容不归属本账号才重读——
+  // 隐藏期间发生的换号只在身份 watch 里清理、不抢跑。同账号返回不重载、
+  // 不重复请求，未保存草稿保留；与 onMounted 首次同时触发由 initialLoad
+  // 同步置位的 busy 去重。
+  if (!auth.isAuthenticated || busy.value) return;
+  if (loadedForAccountId === auth.accountId) return;
+  void initialLoad();
 });
 
 onDeactivated(() => {
+  pageActive.value = false;
   removeLeaveGuards();
 });
 
 onUnmounted(() => {
+  pageActive.value = false;
   removeLeaveGuards();
 });
 </script>

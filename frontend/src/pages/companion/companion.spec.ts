@@ -44,6 +44,38 @@ const SWITCHED_RELATIONSHIP = {
   avatarRef: "AVATAR_FEMALE_01",
 };
 
+// VC-R214：对齐 Root 原生 H5 重现的换号合成——A=7 持关系 42（林夏），
+// 另一 Tab 共享 Cookie 切到 B=84（关系 84 予宁）。本页保存旧关系撞 409
+// ACCOUNT_CONTEXT_CHANGED 后，auth.reconcileAccountContext 先同步 clear
+// 再经 GET /auth/session 读回的 Cookie 身份即 B。
+const RECONCILED_SESSION_B = {
+  nextStep: "ACTIVE",
+  accountId: "84",
+  sessionId: "84",
+  email: "b@example.com",
+  role: "USER",
+  passwordMustChange: false,
+  authenticatorEnabled: true,
+  expiresInSeconds: 7200,
+};
+
+const RECONCILED_RELATIONSHIP_B = {
+  relationshipId: 84,
+  personaRef: "night-listener",
+  active: true,
+  companionName: "予宁",
+  userAddressAs: "小舟",
+  replyLength: "SHORT",
+  initiative: "MEDIUM",
+  humor: "WARM",
+  advicePref: "RARE",
+  remindersAllowed: false,
+  memoryShareScope: "SESSION",
+  avoidTopics: ["HEALTH"],
+  gender: "FEMALE",
+  avatarRef: "AVATAR_FEMALE_01",
+};
+
 interface Gate {
   promise: Promise<unknown>;
   resolve: (value: unknown) => void;
@@ -65,6 +97,11 @@ interface FetchOptions {
   firstPatchGate?: Gate;
   /** VC-R13：POST /api/v1/auth/login 返回的 accountId（默认换号到 "9"）。 */
   loginAccountId?: string;
+  /** VC-R214：GET /api/v1/auth/session 读回的 Cookie 身份（reconcile 的
+   * 身份发现）；可按次求值，未提供时保持既有回退（空对象 → 身份不可解析）。 */
+  sessionIdentity?: Record<string, unknown> | (() => Record<string, unknown>);
+  /** VC-R214：PATCH 一律回 409 + ACCOUNT_CONTEXT_CHANGED（共享 Cookie 已换号）。 */
+  patchAccountContextChanged?: boolean;
 }
 
 function resolveOption<T>(value: T | (() => T) | undefined, fallback: T): T {
@@ -105,6 +142,11 @@ function stubFetch(options: FetchOptions = {}) {
         expiresInSeconds: 7200,
       });
     }
+    if (url === "/api/v1/auth/session" && method === "GET") {
+      // VC-R214：reconcile 的身份发现端点。未提供身份时回空对象——解析不出
+      // 可用身份（unavailable），与既有回退分支行为一致。
+      return response(200, resolveOption(options.sessionIdentity, {}));
+    }
     if (url === "/api/v1/relationships" && method === "GET") {
       const status = options.relationshipStatus ?? 200;
       // VC-R13：数据在过闸门前先快照——释放闸门时送达发起时刻账号的数据。
@@ -118,6 +160,10 @@ function stubFetch(options: FetchOptions = {}) {
         typeof init?.body === "string" ? init.body : "{}",
       ) as Record<string, unknown>;
     }
+      // VC-R214：期望账号失配的精确 409 形态，transport 上报后原样返回调用方。
+      if (options.patchAccountContextChanged) {
+        return response(409, { code: "ACCOUNT_CONTEXT_CHANGED" });
+      }
       if (options.patchGate) return options.patchGate.promise as never;
       if (options.firstPatchGate && !firstPatchHoldUsed) {
         firstPatchHoldUsed = true;
@@ -765,6 +811,93 @@ describe("陪伴设置页", () => {
       .toBe("沈屿");
     expect(wrapper.find('[data-testid="companion-loading"]').exists()).toBe(false);
     expect(document.activeElement).toBe(document.body);
+    wrapper.unmount();
+  });
+
+  // VC-R214：R213-B 缺陷（Root 原生 H5 重现）：本页保持激活可见，A 的改名
+  // 草稿点保存 → PATCH 旧关系撞 409 ACCOUNT_CONTEXT_CHANGED → transport 上报
+  // → auth.reconcile 同步 clear（A→null：watch 清理草稿/保存意图并撤守卫）→
+  // GET /auth/session 发现 B（null→B）。此后页面不会再触发 onActivated，
+  // 恢复前无人重载即永久停在“正在加载陪伴设置”骨架。可见页须在 null→
+  // 确定账号时恰好自动重载一次并重装离开守卫（走既有 router guard 消费者，
+  // 不触发真实原生 beforeunload）。
+  it("可见页保存撞 409 换号：reconcile 恢复到 B 后自动重载 B 表单并重装离开守卫", async () => {
+    let discovered = false;
+    const { calls } = stubFetch({
+      patchAccountContextChanged: true,
+      // 身份发现那一刻起 Cookie 已是 B：其后的 relationships 读取返回 B 的关系。
+      sessionIdentity: () => {
+        discovered = true;
+        return RECONCILED_SESSION_B;
+      },
+      relationships: () => (discovered ? [RECONCILED_RELATIONSHIP_B] : [ACTIVE_RELATIONSHIP]),
+    });
+    const router = stubH5Router();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("林夏");
+
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+
+    // 409 → clear+发现 B 落定：骨架消失，表单是 B 的服务端内容。
+    expect(useAuthStore().accountId).toBe("84");
+    expect(wrapper.find('[data-testid="companion-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(true);
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("予宁");
+    // A 的草稿与保存错误/未知横幅不残留；身份发现恰一次、新身份恰一次读取。
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="companion-save-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="companion-unknown"]').exists()).toBe(false);
+    expect(calls.filter((call) => call.method === "GET" && call.url === "/api/v1/auth/session"))
+      .toHaveLength(1);
+    expect(relationshipGets(calls)).toBe(2);
+
+    // 守卫已重装（挂载一次 + 恢复一次）：B 再编辑出草稿后，离开仍要确认。
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("宁宁");
+    expect(router.beforeEach).toHaveBeenCalledTimes(2);
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmSpy);
+    const guard = router.guards[router.guards.length - 1]!;
+    await expect(guard(
+      { path: "/pages/index/index" },
+      { path: "/pages/companion/companion" },
+    )).resolves.toBe(false);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    // 守卫判定不触发任何重新读取。
+    expect(relationshipGets(calls)).toBe(2);
+    wrapper.unmount();
+  });
+
+  // VC-R214：同一恢复路径在同账号回读时同样成立——409 后 reconcile clear 再
+  // 发现 Cookie 仍是 A（null→A）：可见页自动重载回服务端基线，不停留在
+  // 骨架（草稿已在 A→null 清理时作废，语义同既有换号清理）。
+  it("可见页 409 后 reconcile 发现仍是同账号 A：也自动重载回基线，不停留骨架", async () => {
+    const { calls } = stubFetch({
+      patchAccountContextChanged: true,
+      sessionIdentity: {
+        ...RECONCILED_SESSION_B,
+        accountId: "7",
+        sessionId: "7",
+        email: "a@example.com",
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    await wrapper.get('[data-testid="pref-companion-name"]').setValue("阿澈");
+    await wrapper.get('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+
+    expect(useAuthStore().accountId).toBe("7");
+    expect(wrapper.find('[data-testid="companion-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="companion-form"]').exists()).toBe(true);
+    expect((wrapper.get('[data-testid="pref-companion-name"]').element as HTMLInputElement).value)
+      .toBe("林夏");
+    expect(wrapper.find('[data-testid="companion-dirty"]').exists()).toBe(false);
+    expect(relationshipGets(calls)).toBe(2);
     wrapper.unmount();
   });
 

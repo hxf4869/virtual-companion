@@ -66,10 +66,32 @@ const SWITCHED_CONVERSATIONS = [
   },
 ];
 
+// VC-R216：GET /auth/session 读回的 Cookie 身份。A=7 为既有默认；B=9 与 login
+// mock 的换号 accountId 一致，配合 SWITCHED_* 数据断言不串号。
+const SESSION_IDENTITY_A: Record<string, unknown> = {
+  nextStep: "ACTIVE",
+  accountId: "7",
+  role: "USER",
+  sessionId: "9",
+  passwordMustChange: false,
+  authenticatorEnabled: true,
+  expiresInSeconds: 7200,
+};
+
+const SESSION_IDENTITY_B: Record<string, unknown> = {
+  ...SESSION_IDENTITY_A,
+  accountId: "9",
+  sessionId: "19",
+};
+
 interface FetchOptions {
   session?: "anonymous" | "active" | "network-error" | (() => "anonymous" | "active" | "network-error");
+  /** VC-R216：session 为 active 时读回的身份，默认 A；reconcile 身份发现用。 */
+  sessionIdentity?: Record<string, unknown> | (() => Record<string, unknown>);
   relationships?: unknown[] | (() => unknown[]);
   relationshipFails?: boolean | (() => boolean);
+  /** VC-R216：relationships 返回精确 409 + ACCOUNT_CONTEXT_CHANGED（本页旧期望身份已与共享 Cookie 失配）。 */
+  relationshipAccountContextChanged?: boolean | (() => boolean);
   conversations?: unknown[] | (() => unknown[]);
   conversationFails?: boolean | (() => boolean);
   /** VC-R11：conversations 响应返回前的闸门（数据先快照再等待），用于制造旧账号在途请求。 */
@@ -103,18 +125,13 @@ function stubFetch(options: FetchOptions = {}): ReturnType<typeof vi.fn> {
       if (state === "anonymous") {
         return response(false, 401, { code: "AUTHENTICATION_REQUIRED" });
       }
-      return response(true, 200, {
-        nextStep: "ACTIVE",
-        accountId: "7",
-        role: "USER",
-        sessionId: "9",
-        passwordMustChange: false,
-        authenticatorEnabled: true,
-        expiresInSeconds: 7200,
-      });
+      return response(true, 200, resolveOption(options.sessionIdentity, SESSION_IDENTITY_A));
     }
     if (url === "/api/v1/relationships") {
       if (options.beforeRelationships) await options.beforeRelationships();
+      if (resolveOption(options.relationshipAccountContextChanged, false)) {
+        return response(false, 409, { code: "ACCOUNT_CONTEXT_CHANGED" });
+      }
       if (resolveOption(options.relationshipFails, false)) {
         return response(false, 500, { code: "INTERNAL_ERROR" });
       }
@@ -992,6 +1009,75 @@ describe("首页产品骨架", () => {
     expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe("林夏");
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
     expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // VC-R216：R216-A 缺陷（Root 原生 H5 重现）：首页保持激活可见，A 的关系读取
+  // 先失败进入“重新加载”；另一 Tab 共享 Cookie 换号后点重新加载 → GET
+  // relationships 带旧期望身份撞 409 ACCOUNT_CONTEXT_CHANGED → transport 上报
+  // → auth.reconcile 同步 clear（A→null：watch 清理）→ 真实异步 GET /auth/session
+  // 发现当前 Cookie 身份（null→确定账号）。页面全程不再触发 onActivated，恢复
+  // 前无人重载即永久停在“正在加载最近对话”骨架、没有任何重试入口。可见页须
+  // 在 null→确定账号时恰好自动加载一次：身份发现恰一次、新身份的关系与最近
+  // 对话各恰一次读取，用 B 自己的陪伴/关系 id/列表落地，且不继承手动重试的
+  // 反馈区。同一可见流 reconcile 读回仍是 A（null→A）同样成立。
+  it.each([
+    {
+      label: "换到 B",
+      identity: SESSION_IDENTITY_B,
+      accountId: "9",
+      relationship: SWITCHED_RELATIONSHIP,
+      conversations: SWITCHED_CONVERSATIONS,
+      companion: "沈屿",
+      preview: "这是 B 账号自己的最近一条。",
+    },
+    {
+      label: "仍是 A",
+      identity: SESSION_IDENTITY_A,
+      accountId: "7",
+      relationship: ACTIVE_RELATIONSHIP,
+      conversations: RECENT_CONVERSATIONS,
+      companion: "林夏",
+      preview: "那我们就从你真正想说的地方开始。",
+    },
+  ])("可见页重新加载撞 409 换号：reconcile 发现$label 后自动按当前身份加载一次", async (row) => {
+    let phase: "fail" | "conflict" | "discovered" = "fail";
+    const fetchMock = stubFetch({
+      session: "active",
+      relationshipFails: () => phase === "fail",
+      relationshipAccountContextChanged: () => phase === "conflict",
+      // 身份发现那一刻起，本页读取按当前 Cookie 身份返回。
+      sessionIdentity: () => {
+        phase = "discovered";
+        return row.identity;
+      },
+      relationships: () => (phase === "discovered" ? [row.relationship] : [ACTIVE_RELATIONSHIP]),
+      conversations: () => (phase === "discovered" ? row.conversations : RECENT_CONVERSATIONS),
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-load-error"]').text()).toContain("最近对话没有加载出来");
+
+    // 另一 Tab 换号后点重新加载：本页旧期望身份撞 409，reconcile 发现当前身份。
+    phase = "conflict";
+    await wrapper.find('[data-testid="home-retry"]').trigger("click");
+    await flushPromises();
+
+    expect(useAuthStore().accountId).toBe(row.accountId);
+    expect(wrapper.find('[data-testid="home-loading"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-load-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toBe(row.companion);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(row.conversations.length);
+    expect(wrapper.text()).toContain(`上次我们聊到：${row.preview}`);
+    const urls = fetchMock.mock.calls.map((call) => call[0].toString());
+    expect(urls.filter((url) => url === "/api/v1/auth/session")).toHaveLength(1);
+    // 关系读取：初载 500 + 重新加载 409 + 身份发现后恰一次；最近对话只按当前身份读一次。
+    expect(urls.filter((url) => url === "/api/v1/relationships")).toHaveLength(3);
+    expect(urls.filter((url) => url.startsWith("/api/v1/conversations"))).toEqual([
+      `/api/v1/conversations?relationshipId=${row.relationship.relationshipId}&limit=3`,
+    ]);
     wrapper.unmount();
   });
 });

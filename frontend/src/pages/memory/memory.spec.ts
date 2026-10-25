@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, KeepAlive, nextTick, ref } from "vue";
 
+import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 import { useMemoryStore } from "@/stores/memory";
 
@@ -60,7 +61,15 @@ interface Gate {
 }
 
 interface FetchOptions {
-  relationships?: unknown[];
+  relationships?: unknown[] | (() => unknown[]);
+  /** R214：按关系 ID 区分的列表数据（B 的关系不经全局 memories 数组）。 */
+  memoriesByRel?: Record<string, unknown[]>;
+  /** R214：GET /auth/session 的身份读回（reconcile 换号链）。 */
+  sessionIdentity?: () => Record<string, unknown>;
+  /** 提供时，GET /auth/session 挂起直到手动 resolve（身份未定窗口观察）。 */
+  sessionGate?: Gate;
+  /** R214：PUT 开关返回精确 409 + ACCOUNT_CONTEXT_CHANGED（触发 reconcile）。 */
+  prefPutConflict?: boolean | (() => boolean);
   memories?: unknown[] | (() => unknown[]);
   memoriesStatus?: number | (() => number);
   prefEnabled?: boolean | (() => boolean);
@@ -104,10 +113,22 @@ function stubFetch(options: FetchOptions = {}) {
     const method = (init?.method ?? "GET").toUpperCase();
     calls.push({ method, url, body: typeof init?.body === "string" ? init.body : undefined });
 
-    if (url === "/api/v1/relationships" && method === "GET") {
-      return response(200, options.relationships ?? RELATIONSHIPS);
+    if (url === "/api/v1/auth/session" && method === "GET") {
+      if (options.sessionGate) return options.sessionGate.promise as never;
+      if (options.sessionIdentity) return response(200, options.sessionIdentity());
+      return response(200, {});
     }
-    if (url === "/api/v1/relationships/42/memories" && method === "GET") {
+    if (url === "/api/v1/relationships" && method === "GET") {
+      const rows = typeof options.relationships === "function"
+        ? options.relationships()
+        : options.relationships ?? RELATIONSHIPS;
+      return response(200, rows);
+    }
+    const memoriesMatch = url.match(/^\/api\/v1\/relationships\/([^/]+)\/memories$/);
+    if (memoriesMatch && method === "GET") {
+      if (memoriesMatch[1] !== "42") {
+        return response(200, options.memoriesByRel?.[memoriesMatch[1]] ?? []);
+      }
       if (options.memoriesGate) return options.memoriesGate.promise as never;
       const status = typeof options.memoriesStatus === "function"
         ? options.memoriesStatus()
@@ -129,6 +150,10 @@ function stubFetch(options: FetchOptions = {}) {
         return response(status, status === 200 ? { enabled } : null);
       }
       if (method === "PUT") {
+        const conflict = typeof options.prefPutConflict === "function"
+          ? options.prefPutConflict()
+          : options.prefPutConflict;
+        if (conflict) return response(409, { code: "ACCOUNT_CONTEXT_CHANGED" });
         if (options.putNetworkError) throw new TypeError("Failed to fetch");
         if (options.putParseFailed) return response(200, null, true);
         const request = JSON.parse(
@@ -187,6 +212,37 @@ function login(): void {
   const auth = useAuthStore();
   auth.accessToken = "session";
   auth.accountId = "7";
+  auth.role = "USER";
+}
+
+// ---- R214：换号身份交接的 B 侧装置（与 A 的关系 42 / 默认列表区分） ----
+
+const RELATIONSHIP_B = [
+  { relationshipId: 84, personaRef: "gentle-listener", active: true, companionName: "林夏" },
+];
+
+const B_MEMORIES_R214 = [
+  memoryRow({ memoryId: "201", summary: "B：用户忌口香菜。", autoSaved: false }),
+  memoryRow({ memoryId: "202", summary: "B：用户在准备马拉松。", autoSaved: false }),
+];
+
+/** GET /auth/session 读回的身份（asSessionIdentity 的合法回包形状）。 */
+function sessionIdentityFor(accountId: string, sessionId: string): Record<string, unknown> {
+  return {
+    nextStep: "ACTIVE",
+    accountId,
+    sessionId,
+    role: "USER",
+    passwordMustChange: false,
+    authenticatorEnabled: false,
+    expiresInSeconds: 3600,
+  };
+}
+
+function loginAs(accountId: string): void {
+  const auth = useAuthStore();
+  auth.accessToken = "session";
+  auth.accountId = accountId;
   auth.role = "USER";
 }
 
@@ -732,7 +788,10 @@ describe("记忆管理页", () => {
   it("A 的编辑响应在退出换号后晚到：不写入 B 的状态", async () => {
     const patchGate = gate();
     let gateArmed = false;
+    let phaseB = false;
+    const B_ROWS = [memoryRow({ memoryId: "b1", summary: "B 的记忆。", autoSaved: false })];
     stubFetch({
+      memories: () => (phaseB ? B_ROWS : DEFAULT_MEMORIES),
       get patchGate() {
         return gateArmed ? patchGate : undefined;
       },
@@ -740,20 +799,29 @@ describe("记忆管理页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
+    // 保存请求在途时退出并切换到 B：R214 换号清理作废旧页状态后，可见页
+    // 自动按新确立身份重读（这里读到 B 的列表）。
     await openEdit(wrapper, "memory-edit");
     await wrapper.get('[data-testid="memory-edit-input"]').setValue("A 的晚到编辑。");
+    gateArmed = true;
     await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
     expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeDefined();
 
-    // 保存请求在途时退出并切换到 B。
+    // 保存请求在途时退出并切换到 B：真实链路里 clear 与新身份读回之间隔着
+    // session GET 的 await，这里同样分开 flush 让两次身份变更分别可见。
     useAuthStore().clear();
+    await flushPromises();
     login();
+    phaseB = true;
+    await flushPromises();
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).toContain("B 的记忆。");
 
     patchGate.resolve(response(200, memoryRow({ memoryId: "m1", summary: "A 的晚到编辑。", autoSaved: false })));
     await flushPromises();
 
-    expect(useMemoryStore().items).toEqual([]);
-    expect(memoryRows(wrapper)).toHaveLength(0);
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).toContain("B 的记忆。");
     expect(wrapper.text()).not.toContain("A 的晚到编辑。");
     wrapper.unmount();
   });
@@ -761,7 +829,10 @@ describe("记忆管理页", () => {
   it("A 的删除响应在退出换号后晚到：不写入 B 的状态", async () => {
     const deleteGate = gate();
     let gateArmed = false;
+    let phaseB = false;
+    const B_ROWS = [memoryRow({ memoryId: "b1", summary: "B 的记忆。", autoSaved: false })];
     stubFetch({
+      memories: () => (phaseB ? B_ROWS : DEFAULT_MEMORIES),
       get deleteGate() {
         return gateArmed ? deleteGate : undefined;
       },
@@ -769,19 +840,28 @@ describe("记忆管理页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
+    // 删除请求在途时退出并切换到 B：R214 换号清理后可见页自动重读到 B 的
+    // 列表，A 的晚到删除不得移除 B 的条目。
+    gateArmed = true;
     await wrapper.get('[data-testid="memory-delete"]').trigger("click");
     await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
     expect(wrapper.get('[data-testid="memory-delete-confirm"]').attributes("disabled")).toBeDefined();
 
-    // 删除请求在途时退出并切换到 B。
+    // 删除请求在途时退出并切换到 B（clear 与新身份读回分开 flush）：R214
+    // 换号清理后可见页自动重读到 B 的列表，A 的晚到删除不得移除 B 的条目。
     useAuthStore().clear();
+    await flushPromises();
     login();
+    phaseB = true;
+    await flushPromises();
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).toContain("B 的记忆。");
 
     deleteGate.resolve(response(200, memoryRow({ memoryId: "m1", deletedAt: "2026-09-04T00:00:00Z" })));
     await flushPromises();
 
-    expect(useMemoryStore().items).toEqual([]);
-    expect(memoryRows(wrapper)).toHaveLength(0);
+    expect(memoryRows(wrapper)).toHaveLength(1);
+    expect(wrapper.text()).toContain("B 的记忆。");
     wrapper.unmount();
   });
 
@@ -1896,15 +1976,23 @@ describe("记忆管理页", () => {
     expect(listNoticeState(wrapper)).toBeUndefined();
     expect(memoryRows(wrapper)).toHaveLength(0);
 
-    // 新 owner 在同一缓存实例上：核对读取拿到 B 的列表，再次失败后发起自己的
-    // "重新加载"等待（GET 挂起）。
+    // R214：换号清理同时收走旧 unknownAction（"刷新核对"入口不恢复旧保存
+    // 意图）；新 owner 在同一缓存实例上由身份 watch 自动重读到 B 的列表
+    //（自动读不再挂 gate：armed 复位，gateA 仍持有 A 的旧手动响应）。
+    armed = null;
     login();
     phase = "b";
-    armed = null;
-    await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
     await flushPromises();
     expect(memoryRows(wrapper)).toHaveLength(1);
     expect(wrapper.text()).toContain("B 的记忆。");
+    expect(listGetCount(calls)).toBe(4);
+
+    // 新 owner 建立自己的未知操作与失败读取，再发起自己的"重新加载"等待
+    //（GET 挂起）——与 A 阶段同一 manualListRefresh 对象语义。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("B 的未知内容。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
     phase = "fail";
     await wrapper.get('[data-testid="memory-refresh"]').trigger("click");
     await flushPromises();
@@ -1915,8 +2003,8 @@ describe("记忆管理页", () => {
     expect(listNoticeState(wrapper)).toBe("pending");
     expect(listGetCount(calls)).toBe(6);
 
-    // A 的旧响应此时晚到：按已有 epoch 比较丢弃——不回填 A 的列表，也不清掉
-    // 新 owner 刚发起的 pending。
+    // A 的旧手动响应此时晚到：按已有 epoch 比较丢弃——不回填 A 的列表，
+    // 也不清新 owner 刚发起的 pending。
     gateA.resolve(response(200, DEFAULT_MEMORIES));
     await flushPromises();
     expect(listNoticeState(wrapper)).toBe("pending");
@@ -1930,6 +2018,193 @@ describe("记忆管理页", () => {
     expect(memoryRows(wrapper)).toHaveLength(1);
     expect(wrapper.text()).toContain("B 的记忆。");
     expect(listGetCount(calls)).toBe(6);
+    wrapper.unmount();
+  });
+
+  // ---- R214：记忆页前台身份交接恢复 ----
+
+  it("R214 可见页 409 换号：读回 B 后按新关系自动重读一次，不落真空态", async () => {
+    const sessionGate = gate();
+    let phase: "a" | "b" = "a";
+    const { calls } = stubFetch({
+      relationships: () => (phase === "a" ? RELATIONSHIPS : RELATIONSHIP_B),
+      memoriesByRel: { 84: B_MEMORIES_R214 },
+      prefEnabled: () => phase !== "b",
+      prefPutConflict: true,
+      sessionIdentity: () => sessionIdentityFor("8", "9002"),
+      sessionGate,
+    });
+    const { host } = mountPageInKeepAlive();
+    await flushPromises();
+    expect(host.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+    expect(host.get('[data-testid="autosave-toggle"]').text()).toBe("已开启");
+
+    // 真实 transport 链：PUT 开关 → 精确 409 ACCOUNT_CONTEXT_CHANGED → 页面
+    // 回调 reconcile 同步 clear（作废本地身份、重置共享 store）→ GET
+    // /auth/session 读回挂起。
+    await host.get('[data-testid="autosave-toggle"]').trigger("click");
+    await flushPromises();
+
+    // 身份未定窗口：停在加载骨架，不落"空列表 + 开关待确认且无恢复入口"的
+    // 真空终态；期间不读新账号数据，也不自动重放任何写。
+    expect(host.find('[data-testid="memory-loading"]').exists()).toBe(true);
+    expect(host.find('[data-testid="memory-empty"]').exists()).toBe(false);
+    expect(host.find('[data-testid="autosave-toggle"]').exists()).toBe(false);
+    expect(calls.filter((call) => call.url.includes("/relationships/84"))).toHaveLength(0);
+    expect(calls.filter((call) => call.method === "PUT")).toHaveLength(1);
+
+    // 读回 B：可见页自动按新身份读关系（active 84）→ B 的记忆 → 开关，全部
+    // 按 B 数据渲染，且每个读取只发生一次。
+    phase = "b";
+    sessionGate.resolve(response(200, sessionIdentityFor("8", "9002")));
+    await flushPromises();
+
+    expect(host.find('[data-testid="memory-loading"]').exists()).toBe(false);
+    expect(host.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+    expect(host.text()).toContain("忌口香菜");
+    expect(host.text()).not.toContain("晚上散步");
+    const toggle = host.get('[data-testid="autosave-toggle"]');
+    expect(toggle.text()).toBe("已关闭");
+    expect(toggle.attributes("aria-checked")).toBe("false");
+    expect(calls.filter((call) => call.method === "GET" && call.url === "/api/v1/relationships/84/memories")).toHaveLength(1);
+    host.unmount();
+  });
+
+  it("R214 隐藏缓存页换号不抢跑：激活后才按新身份读取", async () => {
+    let phase: "a" | "b" = "a";
+    const { calls } = stubFetch({
+      relationships: () => (phase === "a" ? RELATIONSHIPS : RELATIONSHIP_B),
+      memoriesByRel: { 84: B_MEMORIES_R214 },
+      prefEnabled: () => phase !== "b",
+      sessionIdentity: () => sessionIdentityFor("8", "9002"),
+    });
+    const { host, active } = mountPageInKeepAlive();
+    await flushPromises();
+    expect(host.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+    const callsWhenHidden = calls.length;
+
+    // 页面被压栈隐藏后，共享 Cookie 在别处换到 B（真实清理链 + 新身份确立）：
+    // 隐藏页只清本地状态，不发起任何 B 的读取。
+    active.value = false;
+    await nextTick();
+    useAuthStore().clear();
+    loginAs("8");
+    phase = "b";
+    await flushPromises();
+    expect(calls.length).toBe(callsWhenHidden);
+    expect(useMemoryStore().items).toEqual([]);
+
+    // 再激活：按当前确立身份读取 B 的关系与记忆（仅一次），A 内容不再回显。
+    active.value = true;
+    await flushPromises();
+    expect(host.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+    expect(host.text()).toContain("忌口香菜");
+    expect(host.text()).not.toContain("晚上散步");
+    expect(calls.filter((call) => call.method === "GET" && call.url === "/api/v1/relationships/84/memories")).toHaveLength(1);
+    host.unmount();
+  });
+
+  it("R214 换号读回同一账号：旧草稿与未知意图全清理，晚到读取不覆盖恢复数据", async () => {
+    const confirmMock = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmMock);
+    const { attemptNavigate } = stubLeaveRouter();
+    const sessionGate = gate();
+    const staleGate = gate();
+    let staleArmed = false;
+    const { calls } = stubFetch({
+      patchParseFailed: true,
+      get memoriesGate() {
+        return staleArmed ? staleGate : undefined;
+      },
+      prefPutConflict: true,
+      sessionIdentity: () => sessionIdentityFor("7", "9002"),
+      sessionGate,
+    });
+    const { host } = mountPageInKeepAlive();
+    await flushPromises();
+    expect(host.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+
+    // A：未保存草稿 + 一次未知保存（memory-refresh 核对入口）+ 挂起的核对
+    // 读取，随后 PUT 开关触发 409 换号（读回仍是账号 7 的新会话）。
+    await host.get('[data-testid="memory-edit"]').trigger("click");
+    await host.get('[data-testid="memory-edit-input"]').setValue("A 的未保存草稿。");
+    await host.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(host.find('[data-testid="memory-refresh"]').exists()).toBe(true);
+    staleArmed = true;
+    await host.get('[data-testid="memory-refresh"]').trigger("click");
+    await flushPromises();
+    await host.get('[data-testid="autosave-toggle"]').trigger("click");
+    await flushPromises();
+
+    // 身份未定窗口：草稿、未知入口与编辑框全部清掉，停在骨架而非真空态。
+    expect(host.find('[data-testid="memory-loading"]').exists()).toBe(true);
+    expect(host.find('[data-testid="memory-refresh"]').exists()).toBe(false);
+    expect(host.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
+
+    // 读回同一账号：自动重读恢复权威数据；挂起的旧核对随后晚到，不得覆盖。
+    staleArmed = false;
+    sessionGate.resolve(response(200, sessionIdentityFor("7", "9002")));
+    await flushPromises();
+    expect(host.find('[data-testid="memory-loading"]').exists()).toBe(false);
+    expect(host.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+    const listGetsAfterRecovery = listGetCount(calls);
+
+    staleGate.resolve(response(200, [memoryRow({ memoryId: "m1", summary: "晚到的旧快照。", autoSaved: false })]));
+    await flushPromises();
+    expect(host.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+    expect(host.text()).not.toContain("晚到的旧快照。");
+    expect(listGetCount(calls)).toBe(listGetsAfterRecovery);
+
+    // 恢复后的账号可继续编辑，离开守卫对新的脏稿仍然生效。
+    await host.get('[data-testid="memory-edit"]').trigger("click");
+    await host.get('[data-testid="memory-edit-input"]').setValue("恢复后要保护的新草稿。");
+    await expect(attemptNavigate("/pages/account/account")).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    host.unmount();
+  });
+
+  it("R214 同账号重认证不构成换号：未保存草稿保留且不重复加载", async () => {
+    const { calls } = stubFetch({
+      sessionIdentity: () => sessionIdentityFor("7", "9003"),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const listGetsBefore = listGetCount(calls);
+
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("同账号要保留的草稿。");
+
+    // 会话续期/同账号读回：accountId 不变，不触发换号清理——草稿保留，
+    // 也不发起重复读取。
+    const auth = useAuthStore();
+    const sessionTransport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      getAccountId: () => auth.accountId,
+      getSessionId: () => auth.getSessionId(),
+      getSessionRevision: () => auth.getSessionRevision(),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+    await auth.tryRefresh(sessionTransport);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("同账号要保留的草稿。");
+    expect(listGetCount(calls)).toBe(listGetsBefore);
+    wrapper.unmount();
+  });
+
+  it("R214 匿名进入经会话发现身份：首次发现不重复加载", async () => {
+    useAuthStore().clear();
+    const { calls } = stubFetch({
+      sessionIdentity: () => sessionIdentityFor("7", "9001"),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="memory-row"]')).toHaveLength(2);
+    expect(listGetCount(calls)).toBe(1);
     wrapper.unmount();
   });
 });
