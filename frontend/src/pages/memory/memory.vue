@@ -235,6 +235,18 @@
                   >
                     {{ editError }}
                   </text>
+                  <!-- 编辑保存 404：重试不会成功；只在用户明确选择后放弃草稿并刷新。 -->
+                  <button
+                    v-if="editNotFound"
+                    type="button"
+                    class="text-action"
+                    data-testid="memory-edit-discard-refresh"
+                    :aria-disabled="memory.listStatus === 'loading'"
+                    :aria-busy="memory.listStatus === 'loading'"
+                    @click="discardEditAndRefresh"
+                  >
+                    放弃修改并刷新列表
+                  </button>
                   <view class="memory-actions">
                     <button
                       type="button"
@@ -348,6 +360,18 @@
                   >
                     {{ editError }}
                   </text>
+                  <!-- 编辑保存 404：重试不会成功；只在用户明确选择后放弃草稿并刷新。 -->
+                  <button
+                    v-if="editNotFound"
+                    type="button"
+                    class="text-action"
+                    data-testid="pending-edit-discard-refresh"
+                    :aria-disabled="memory.listStatus === 'loading'"
+                    :aria-busy="memory.listStatus === 'loading'"
+                    @click="discardEditAndRefresh"
+                  >
+                    放弃修改并刷新列表
+                  </button>
                   <view class="memory-actions">
                     <button
                       type="button"
@@ -507,6 +531,8 @@ const editingId = ref<string | null>(null);
 const editDraft = ref("");
 const editBusy = ref(false);
 const editError = ref("");
+/** 本次编辑保存收到确定 404：条目已不可按当前状态编辑，重试同一保存不会成功。 */
+const editNotFound = ref(false);
 
 const confirmDeleteId = ref<string | null>(null);
 const deleteBusy = ref(false);
@@ -653,6 +679,7 @@ watch(() => auth.accountId, (next, prev) => {
     editingId.value = null;
     editDraft.value = "";
     editError.value = "";
+    editNotFound.value = false;
     editBusy.value = false;
     confirmDeleteId.value = null;
     deleteBusy.value = false;
@@ -908,6 +935,7 @@ function startEdit(item: MemoryItem): void {
   editingId.value = item.memoryId;
   editDraft.value = item.summary;
   editError.value = "";
+  editNotFound.value = false;
   confirmDeleteId.value = null;
   // R204：激活的"编辑"按钮随其操作区一起被编辑框替换，焦点会掉回 body；
   // 打开编辑器即把焦点送进输入框，键盘用户从原地直接开始改写。
@@ -918,6 +946,20 @@ function cancelEdit(): void {
   editingId.value = null;
   editDraft.value = "";
   editError.value = "";
+  editNotFound.value = false;
+}
+
+/**
+ * 用户明确选择放弃本次编辑并按权威列表刷新（编辑保存 404 的就地入口）：
+ * 先守列表读取的 loading 门——在途时不执行，避免先丢草稿才发现
+ * retryList 直接返回；然后复用 cancelEdit 清稿、retryList 读取（等待/
+ * 失败走 R208 列表反馈区）。清稿发生在刷新之前：行随后按权威列表卸载时
+ * 编辑框已不存在，不构成入口刷新暗中丢稿。
+ */
+function discardEditAndRefresh(): void {
+  if (memory.listStatus === "loading") return;
+  cancelEdit();
+  void retryList();
 }
 
 /**
@@ -935,6 +977,7 @@ async function saveEdit(item: MemoryItem): Promise<void> {
   const requestEpoch = memory.ownerEpoch;
   editBusy.value = true;
   editError.value = "";
+  editNotFound.value = false;
   try {
     const updated = await updateMemory(transport, item.memoryId, summary);
     // 退出/换号后旧账号的晚到响应不得写入新会话状态。
@@ -958,11 +1001,27 @@ async function saveEdit(item: MemoryItem): Promise<void> {
     if (classifyMemoryWriteError(caught) === "unknown") {
       // 结果未知（5xx/协议/超时/网络中断）：不宣布失败，草稿保留等待核对。
       setUnknownAction({ kind: "edit", memoryId: item.memoryId, expectedSummary: summary });
+    } else if (caught instanceof MemoryHttpError && caught.status === 404) {
+      // 404（NOT_FOUND_OR_FORBIDDEN）：该条目已不可按当前状态编辑（如在
+      // 另一会话被删除或候选已被处理），重试同一保存不会成功，也不自动
+      // 重读；草稿保留在编辑框里，交给"放弃修改并刷新列表"由用户明确
+      // 选择。只特判有实证的 404：403 另有其义（如 CSRF 明确拒绝），
+      // 维持确定失败文案。晚到时用户已切到另一条（T-58）：只写回仍归属
+      // 本条目的编辑提示，不把 B 的新草稿误标成无法保存；A 的 unknown
+      // 核对记录不在此列，仍按既有语义全局保留。
+      if (editingId.value === item.memoryId) {
+        editError.value = "这条记忆当前无法保存，修改仍留在编辑框里；如需保留可先复制。";
+        editNotFound.value = true;
+      }
     } else {
       editError.value = "没有保存成功，请再试一次。";
     }
   } finally {
-    editBusy.value = false;
+    // 换号清理已释放 editBusy 并允许新账号开自己的保存：旧账号的晚到
+    // 收尾按既有 ownerEpoch 比较丢弃，不得解锁新账号的在途保存。
+    if (memory.ownerEpoch === requestEpoch) {
+      editBusy.value = false;
+    }
   }
 }
 

@@ -82,6 +82,8 @@ interface FetchOptions {
   /** PUT 时模拟网络中断（fetch 抛 TypeError）：结果未知。 */
   putNetworkError?: boolean;
   patchStatus?: number | ((memoryId: string) => number);
+  /** 按 memoryId 挂起对应 PATCH（多请求独立控制晚到顺序，与 patchGate 互斥使用）。 */
+  patchGates?: Record<string, Gate>;
   patchParseFailed?: boolean;
   patchEcho?: Record<string, unknown>;
   deleteStatus?: number;
@@ -168,6 +170,8 @@ function stubFetch(options: FetchOptions = {}) {
       const memoryId = memoryMatch[1];
       if (method === "PATCH") {
         if (options.patchGate) return options.patchGate.promise as never;
+        const gate = options.patchGates?.[memoryId];
+        if (gate) return gate.promise as never;
         const status = typeof options.patchStatus === "function"
           ? options.patchStatus(memoryId)
           : options.patchStatus ?? 200;
@@ -481,6 +485,178 @@ describe("记忆管理页", () => {
     expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(patchCalls);
     expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
     expect(wrapper.text()).toContain("晚上散步");
+    wrapper.unmount();
+  });
+
+  it("编辑已保存记忆遇 404：保留草稿与编辑框、不诱导重试也不自动读取，明确放弃后才清编辑并读到权威缺失", async () => {
+    let authoritative = false;
+    const { calls } = stubFetch({
+      patchStatus: () => 404,
+      memories: () => (authoritative ? [] : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("用户周末想去公园。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+
+    const errorText = wrapper.get('[data-testid="memory-edit-error"]').text();
+    expect(errorText).toContain("这条记忆当前无法保存");
+    expect(errorText).not.toContain("再试一次");
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("用户周末想去公园。");
+    // 404 不自动重读列表：仍只有首载那一次 GET。
+    expect(listGetCount(calls)).toBe(1);
+
+    // 用户明确选择放弃后才清编辑并按权威列表刷新：条目在服务端已不存在。
+    authoritative = true;
+    await wrapper.get('[data-testid="memory-edit-discard-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-edit-discard-refresh"]').exists()).toBe(false);
+    expect(listGetCount(calls)).toBe(2);
+    expect(wrapper.text()).not.toContain("用户喜欢在晚上散步。");
+    wrapper.unmount();
+  });
+
+  it("待确认编辑遇 404 后放弃刷新：首次读取失败可在列表反馈区重试恢复，无假成功与残留编辑状态", async () => {
+    const { attemptNavigate } = stubLeaveRouter();
+    let listReads = 0;
+    let authoritative = false;
+    const { calls } = stubFetch({
+      patchStatus: () => 404,
+      // 第 2 次读取（放弃后的首次刷新）失败，之后恢复。
+      memoriesStatus: () => {
+        listReads += 1;
+        return listReads === 2 ? 503 : 200;
+      },
+      memories: () => (authoritative ? [] : DEFAULT_MEMORIES),
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openEdit(wrapper, "pending-edit");
+    await wrapper.get('[data-testid="pending-edit-input"]').setValue("候选改成周末去公园。");
+    await wrapper.get('[data-testid="pending-edit-save"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="pending-edit-error"]').text()).toContain("这条记忆当前无法保存");
+    expect(wrapper.find('[data-testid="pending-edit-box"]').exists()).toBe(true);
+
+    // 明确放弃并刷新：编辑状态先清；首次读取失败时旧列表保留，失败写进
+    // R208 列表反馈区，给出现成的再试入口。
+    authoritative = true;
+    await wrapper.get('[data-testid="pending-edit-discard-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="pending-edit-box"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="pending-edit-discard-refresh"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("用户最近在学吉他");
+    expect(listNoticeState(wrapper)).toBe("failed");
+
+    // 反馈区再试读到权威缺失：候选行消失；空窗口不给"已更新"假成功。
+    const patchCalls = calls.filter((call) => call.method === "PATCH").length;
+    await wrapper.get('[data-testid="memory-list-retry"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain("用户最近在学吉他");
+    expect(listNoticeState(wrapper)).toBeUndefined();
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(patchCalls);
+    // 编辑已清：离开守卫不再以脏稿拦截导航。
+    await expect(attemptNavigate("/pages/chat/chat")).resolves.toBe(true);
+    wrapper.unmount();
+  });
+
+  it("T-58 编辑 A 在途切到 B 后 A 的 404 晚到：不把无法保存写到 B 的编辑上", async () => {
+    const patchGate = gate();
+    let gateArmed = false;
+    stubFetch({
+      get patchGate() {
+        return gateArmed ? patchGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    gateArmed = true;
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("A 的编辑。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeDefined();
+
+    // A 的编辑框仍开着；保存在途不拦截切换（T-58），切到第二条并改出
+    // B 的有效新草稿。
+    await wrapper.findAll('[data-testid="memory-edit"]')[0].trigger("click");
+    const input = wrapper.get('[data-testid="memory-edit-input"]');
+    expect((input.element as HTMLTextAreaElement).value).toBe("用户的生日在三月。");
+    await input.setValue("B 的草稿。");
+
+    // A 的 404 晚到：404 属于旧条目，B 不得被标成无法保存或露出放弃
+    // 入口，草稿与可保存状态保持不变。
+    gateArmed = false;
+    patchGate.resolve(response(404, null));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-edit-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="memory-edit-discard-refresh"]').exists()).toBe(false);
+    const inputAfter = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(inputAfter.value).toBe("B 的草稿。");
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("换号后 A 的挂起 404 晚到：不解锁新账号在途保存，B 自己的结果正常收束", async () => {
+    const gateA = gate();
+    const gateB = gate();
+    let phase: "a" | "b" = "a";
+    stubFetch({
+      relationships: () => (phase === "a" ? RELATIONSHIPS : RELATIONSHIP_B),
+      memoriesByRel: { 84: B_MEMORIES_R214 },
+      patchGates: { m1: gateA, 201: gateB },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // A：编辑 m1 并提交，PATCH 挂起。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("A 的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeDefined();
+
+    // 真实换号清理（退出经 session-cleanup 重置 memory store、ownerEpoch
+    // 递增，同时清掉 editBusy）后 B 账号登录并自动重读到 B 的列表。
+    useAuthStore().clear();
+    await flushPromises();
+    phase = "b";
+    loginAs("8");
+    await flushPromises();
+    expect(wrapper.text()).toContain("B：用户忌口香菜。");
+
+    // B：开自己的编辑并提交（201 挂起，editBusy 占用中）。
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("B 的修改。");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeDefined();
+
+    // A 的 404 晚到：epoch 已变，不写任何提示，也不得解锁 B 的在途保存。
+    gateA.resolve(response(404, null));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-edit-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeDefined();
+    const draft = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(draft.value).toBe("B 的修改。");
+
+    // B 自己的成功回包正常收束：B 的草稿提交到 B 的条目并退出编辑。
+    gateB.resolve(response(200, memoryRow({ memoryId: "201", summary: "B 的修改。", autoSaved: false })));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("B 的修改。");
+    expect(wrapper.text()).not.toContain("B：用户忌口香菜。");
     wrapper.unmount();
   });
 
