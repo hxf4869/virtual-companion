@@ -3620,4 +3620,423 @@ describe("useChatStore N-05/N-06", () => {
     expect(postBodies[1]?.sourceUserMessageId).toBe("90");
     expect(postBodies[1]?.idempotencyKey).not.toBe(postBodies[0]?.idempotencyKey);
   });
+
+  // VC-R182：send 完成与历史回填之间的用户消息交接。走真实公开 send 流程：
+  // 受控 SSE 到 completed，完成后快照核对与终局补页并行发出；覆盖两种真实
+  // 网络完成顺序——snapshot-first（历史挂起时观察）/ history-first（快照
+  // 挂起、已取得的历史行暂存未发布时观察）。两顺序下已确认用户回显都保持
+  // 恰好一条，权威历史按真实 messageId 到达后交接，不出现临时重复。
+  it.each(["snapshot-first", "history-first"] as const)(
+    "VC-R182: %s 顺序下补页在途时已确认用户回显保持恰好一条，权威行到达后按真实 ID 交接",
+    async (order) => {
+      const snapshotFirst = order === "snapshot-first";
+      const store = useChatStore();
+      const userText = "交接确认";
+      const replyText = "权威回复";
+      const historyResponse: ChatApiResponse = {
+        ok: true,
+        status: 200,
+        json: [
+          { messageId: 90, conversationId: 1, role: "user", content: userText },
+          { messageId: 91, conversationId: 1, role: "assistant", content: replyText },
+        ],
+      };
+      const snapshotResult: SnapshotResult = {
+        ok: true,
+        status: 200,
+        sourceUserMessageId: "90",
+        assistantMessageId: "91",
+        events: [terminal(3, 1)],
+      };
+      const historyGate = deferred<ChatApiResponse>();
+      const snapshotGate = deferred<SnapshotResult>();
+      // gate 放行即返回真实响应（重复 resolve 是 no-op）；finally 复用同一
+      // 放行函数，不靠第二套硬编码响应伪装失败路径。
+      const releaseHistory = (): void => {
+        historyGate.resolve(historyResponse);
+      };
+      const releaseSnapshot = (): void => {
+        snapshotGate.resolve(snapshotResult);
+      };
+      let messagesCalls = 0;
+      let historyServed = 0;
+      const transport: ChatTransport = {
+        async request(method, path): Promise<ChatApiResponse> {
+          if (path === "/api/v1/conversations" && method === "POST") {
+            return { ok: true, status: 200, json: { conversationId: 1 } };
+          }
+          if (path.includes("/generations") && method === "POST") {
+            return {
+              ok: true,
+              status: 200,
+              json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+            };
+          }
+          if (path.includes("/messages")) {
+            messagesCalls += 1;
+            if (messagesCalls === 1) return { ok: true, status: 200, json: [] }; // 初始最近窗口
+            await historyGate.promise; // 终局补页：先挂起，放行后返回权威行
+            historyServed += 1;
+            return historyResponse;
+          }
+          return { ok: true, status: 200, json: {} };
+        },
+      };
+      const deps: RealtimeDeps = {
+        resume: vi.fn(async (): Promise<ResumeResult> => ({
+          disposition: "RESUMED",
+          events: [delta(1, 1, "权威"), delta(2, 1, "回复"), terminal(3, 1)],
+        })),
+        fetchSnapshot: vi.fn(async (): Promise<SnapshotResult> => {
+          await snapshotGate.promise; // 身份核对：先挂起，放行后带权威 ID
+          return snapshotResult;
+        }),
+      };
+      await store.initConversation(transport, "1");
+      const fetchSnapshot = deps.fetchSnapshot as ReturnType<typeof vi.fn>;
+      const sending = store.send(transport, deps, userText);
+      try {
+        // 两个请求都已并行发出：终局补页与身份核对各恰好一次。
+        await vi.waitFor(() => expect(messagesCalls).toBe(2));
+        await vi.waitFor(() => expect(fetchSnapshot).toHaveBeenCalledTimes(1));
+        expect(store.phase).toBe("completed");
+
+        // 先放行不被观察的一方，另一方保持挂起：
+        // - snapshot-first：核对先落地（拿到真实 ID），补页仍在途；
+        // - history-first：补页已取得权威行（暂存未发布），核对仍在途。
+        if (snapshotFirst) {
+          releaseSnapshot();
+          await vi.waitFor(() => expect(store.lastTurnSource).toBe("90"));
+        } else {
+          releaseHistory();
+          await vi.waitFor(() => expect(historyServed).toBe(1));
+          // 暂存不发布：窗口仍为空，用户/回复各恰好一条（均为过渡行）。
+          expect(store.messages).toHaveLength(0);
+        }
+
+        const userPending = store.displayMessages.filter(
+          (m) => m.role === "user" && m.content === userText,
+        );
+        expect(userPending, `${order} 顺序下已确认用户回显恰好一条`).toHaveLength(1);
+        const replyPending = store.displayMessages.filter(
+          (m) => m.role === "assistant" && m.content === replyText,
+        );
+        expect(replyPending).toHaveLength(1);
+
+        // 放行另一方：权威历史按真实 messageId 交接，各恰好一条。
+        if (snapshotFirst) {
+          releaseHistory();
+        } else {
+          releaseSnapshot();
+        }
+        await sending;
+        expect(store.messages).toHaveLength(2);
+        const userFinal = store.displayMessages.filter(
+          (m) => m.role === "user" && m.content === userText,
+        );
+        expect(userFinal).toHaveLength(1);
+        expect(userFinal[0].messageId).toBe("90");
+        const replyFinal = store.displayMessages.filter(
+          (m) => m.role === "assistant" && m.content === replyText,
+        );
+        expect(replyFinal).toHaveLength(1);
+        expect(replyFinal[0].messageId).toBe("91");
+      } finally {
+        // 失败时也放行挂起请求并收束 send promise；send 在 transport 成功路径
+        // 不 reject，若意外拒绝让测试以真实错误失败（不吞异常）。
+        releaseHistory();
+        releaseSnapshot();
+        await sending;
+      }
+    },
+  );
+
+  // VC-R182 边界1：补页第一页 50 条成功、次页拒绝——调用方持有的暂存缓冲
+  // 不丢前页已取得行（随身份核对结束后发布），finalSyncFailed 如实置位；
+  // 缺失的回复行由手动同步重试带回并按真实 ID 收敛。
+  it("VC-R182: 次页失败保留前页已取得行与用户回显，retryFinalSync 权威到达后收敛", async () => {
+    const store = useChatStore();
+    const userText = "同步失败轮";
+    const replyText = "已完成回复";
+    // 前页恰满 50 条（41..90，含本轮用户行 90），次页（after=90）拒绝。
+    const firstPage = Array.from({ length: 50 }, (_, index) => {
+      const id = 41 + index;
+      return id === 90
+        ? { messageId: 90, conversationId: 1, role: "user", content: userText }
+        : { messageId: id, conversationId: 1, role: "assistant", content: `更早回复 ${id}` };
+    });
+    let messagesCalls = 0;
+    const transport: ChatTransport = {
+      async request(method, path): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) {
+          messagesCalls += 1;
+          if (messagesCalls === 1) return { ok: true, status: 200, json: [] };
+          if (messagesCalls === 2) return { ok: true, status: 200, json: firstPage };
+          throw new Error("tail sync lost");
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [delta(1, 1, replyText), terminal(2, 1)],
+      })),
+      fetchSnapshot: vi.fn(async (): Promise<SnapshotResult> => ({
+        ok: true,
+        status: 200,
+        sourceUserMessageId: "90",
+        assistantMessageId: "91",
+        events: [terminal(2, 1)],
+      })),
+    };
+    await store.initConversation(transport, "1");
+    await store.send(transport, deps, userText);
+
+    expect(store.phase).toBe("completed");
+    expect(store.finalSyncFailed).toBe(true);
+    // 次页失败不丢前页：50 条已取得行全部发布；用户过渡行按真实 ID 收敛为
+    // 恰好一条（90），缺失的回复行 91 由回复过渡行继续显示。
+    expect(store.messages).toHaveLength(50);
+    const userHeld = store.displayMessages.filter((m) => m.role === "user" && m.content === userText);
+    expect(userHeld).toHaveLength(1);
+    expect(userHeld[0].messageId).toBe("90");
+    expect(store.displayMessages.filter((m) => m.role === "assistant" && m.content === replyText)).toHaveLength(1);
+
+    // 手动同步重试（after=90）：带回权威回复行后按真实 ID 收敛。
+    await store.retryFinalSync(mockChatTransport({
+      messagesJson: [
+        { messageId: 91, conversationId: 1, role: "assistant", content: replyText },
+      ],
+    }));
+    expect(store.finalSyncFailed).toBe(false);
+    const replyFinal = store.displayMessages.filter((m) => m.role === "assistant" && m.content === replyText);
+    expect(replyFinal).toHaveLength(1);
+    expect(replyFinal[0].messageId).toBe("91");
+  });
+
+  // VC-R182 边界2：快照缺失 source ID 时不按正文猜身份——窗口既有同文消息
+  // （旧轮同文行 + 本轮权威行）都不得吞掉当前回显；null-ID 过渡行保留显示
+  // 属 N-06 既有边界（可能与权威行重复显示），绝不因此反推身份。
+  it("VC-R182: 快照缺 source 时同文消息不吞回显，null-ID 过渡行保留", async () => {
+    const store = useChatStore();
+    const userText = "同样的问法";
+    const replyText = "本轮回复";
+    let messagesCalls = 0;
+    const transport: ChatTransport = {
+      async request(method, path): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+          };
+        }
+        if (path.includes("/messages")) {
+          messagesCalls += 1;
+          if (messagesCalls === 1) {
+            // 初始窗口已有旧轮同文用户消息。
+            return {
+              ok: true,
+              status: 200,
+              json: [{ messageId: 80, conversationId: 1, role: "user", content: userText }],
+            };
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: [
+              { messageId: 90, conversationId: 1, role: "user", content: userText },
+              { messageId: 91, conversationId: 1, role: "assistant", content: replyText },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [delta(1, 1, replyText), terminal(2, 1)],
+      })),
+      // 快照成功但协议缺失 source/assistant ID。
+      fetchSnapshot: vi.fn(async (): Promise<SnapshotResult> => ({
+        ok: true,
+        status: 200,
+        events: [],
+      })),
+    };
+    await store.initConversation(transport, "1");
+    await store.send(transport, deps, userText);
+
+    expect(store.phase).toBe("completed");
+    // 权威行已发布（80 旧同文、90 本轮、91 回复），过渡行因 ID 未知保留：
+    // 既有同文消息没有吞掉当前回显。
+    expect(store.messages.map((m) => m.messageId)).toEqual(["80", "90", "91"]);
+    const echoRows = store.displayMessages.filter((m) => m.messageId === "__final_user_42__");
+    expect(echoRows, "null-ID 用户回显不被同文消息吞掉").toHaveLength(1);
+    expect(echoRows[0].content).toBe(userText);
+  });
+
+  // VC-R182 边界3（合成 deferred 用例）：新一轮 POST 未被接受时不借旧
+  // completed 显示新正文；旧 turn 在途的核对/补页晚到不清新一轮提交、不写
+  // 新轮归属；新 POST 放行后本轮按真实 ID 正常交接。
+  it("VC-R182: 新 POST 未接受不显示新正文，旧 turn 核对/补页晚到不清新轮", async () => {
+    const store = useChatStore();
+    const turn1Text = "第一轮问题";
+    const turn2Text = "第二轮问题";
+    const historyGate = deferred<ChatApiResponse>();
+    const snapshotGate = deferred<SnapshotResult>();
+    const postGate = deferred<ChatApiResponse>();
+    // 第一轮补页前页恰满 50 条（41..90，含第一轮用户行 90）；次页拒绝——
+    // 旧轮晚到的失败置位按 turnSeq 归属作废，不改新一轮同步状态。
+    const historyResponse: ChatApiResponse = {
+      ok: true,
+      status: 200,
+      json: Array.from({ length: 50 }, (_, index) => {
+        const id = 41 + index;
+        return id === 90
+          ? { messageId: 90, conversationId: 1, role: "user", content: turn1Text }
+          : { messageId: id, conversationId: 1, role: "assistant", content: `第一轮更早 ${id}` };
+      }),
+    };
+    const snapshotResult: SnapshotResult = {
+      ok: true,
+      status: 200,
+      sourceUserMessageId: "90",
+      assistantMessageId: "91",
+      events: [terminal(2, 1)],
+    };
+    const releaseHistory = (): void => {
+      historyGate.resolve(historyResponse);
+    };
+    const releaseSnapshot = (): void => {
+      snapshotGate.resolve(snapshotResult);
+    };
+    const releasePost = (): void => {
+      postGate.resolve({
+        ok: true,
+        status: 200,
+        json: { generationId: 43, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+      });
+    };
+    let messagesCalls = 0;
+    let snapshots = 0;
+    let posts = 0;
+    let resumes = 0;
+    const transport: ChatTransport = {
+      async request(method, path): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations" && method === "POST") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/generations") && method === "POST") {
+          posts += 1;
+          if (posts === 1) {
+            return {
+              ok: true,
+              status: 200,
+              json: { generationId: 42, conversationId: 1, logicalGenerationId: "lg", status: "CREATED" },
+            };
+          }
+          return postGate.promise; // 第二轮 POST 挂起，未被接受
+        }
+        if (path.includes("/messages")) {
+          messagesCalls += 1;
+          if (messagesCalls === 1) return { ok: true, status: 200, json: [] };
+          if (messagesCalls === 2) {
+            await historyGate.promise; // 第一轮补页前页挂起
+            return historyResponse;
+          }
+          if (messagesCalls === 3) throw new Error("turn1 tail sync lost"); // 前页后拒绝
+          return {
+            ok: true,
+            status: 200,
+            json: [
+              { messageId: 92, conversationId: 1, role: "user", content: turn2Text },
+              { messageId: 93, conversationId: 1, role: "assistant", content: "第二轮回复" },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => {
+        resumes += 1;
+        const reply = resumes === 1 ? "第一轮回复" : "第二轮回复";
+        return { disposition: "RESUMED", events: [delta(1, 1, reply), terminal(2, 1)] };
+      }),
+      fetchSnapshot: vi.fn(async (): Promise<SnapshotResult> => {
+        snapshots += 1;
+        if (snapshots === 1) return snapshotGate.promise; // 第一轮核对挂起
+        return {
+          ok: true,
+          status: 200,
+          sourceUserMessageId: "92",
+          assistantMessageId: "93",
+          events: [terminal(2, 1)],
+        };
+      }),
+    };
+    await store.initConversation(transport, "1");
+    const first = store.send(transport, deps, turn1Text);
+    let second: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() => expect(messagesCalls).toBe(2)); // 第一轮补页已发出
+      await vi.waitFor(() => expect(snapshots).toBe(1)); // 第一轮核对已发出
+      expect(store.phase).toBe("completed");
+      // 第一轮已确认回显可见（核对/补页均在途）。
+      expect(store.displayMessages.filter((m) => m.role === "user" && m.content === turn1Text)).toHaveLength(1);
+
+      // 第二轮提交已发起（generationStarting），POST 未被接受——新正文
+      // 不得显示；第一轮回显保持。
+      second = store.send(transport, deps, turn2Text);
+      await vi.waitFor(() => expect(posts).toBe(2));
+      expect(store.generationStarting).toBe(true);
+      expect(store.displayMessages.filter((m) => m.role === "user" && m.content === turn2Text)).toHaveLength(0);
+      expect(store.displayMessages.filter((m) => m.role === "user" && m.content === turn1Text)).toHaveLength(1);
+
+      // 旧 turn 的核对与补页此刻才晚到：turnSeq 归属作废——不写新轮
+      // lastTurnSource、不干扰在途提交；补页前页数据行按窗口归属照常发布，
+      // 其次页失败按本提交 turnSeq 作废，不得置新轮的 finalSyncFailed。
+      releaseSnapshot();
+      releaseHistory();
+      await vi.waitFor(() => expect(store.messages.some((m) => m.messageId === "90")).toBe(true));
+      expect(store.lastTurnSource).toBe("");
+      expect(store.generationStarting).toBe(true);
+      expect(store.pendingUserContent).toBe(turn2Text);
+      expect(store.finalSyncFailed).toBe(false);
+
+      // 放行新 POST：第二轮正常完成并按真实 ID 交接（第一轮过渡行随
+      // 新轮完成替换，canonical 行已在窗口）。
+      releasePost();
+      await second;
+      await first;
+      const users1 = store.displayMessages.filter((m) => m.role === "user" && m.content === turn1Text);
+      expect(users1).toHaveLength(1);
+      expect(users1[0].messageId).toBe("90");
+      const users2 = store.displayMessages.filter((m) => m.role === "user" && m.content === turn2Text);
+      expect(users2).toHaveLength(1);
+      expect(users2[0].messageId).toBe("92");
+    } finally {
+      releaseHistory();
+      releaseSnapshot();
+      releasePost();
+      await first;
+      if (second) await second;
+    }
+  });
 });

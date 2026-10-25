@@ -1082,6 +1082,92 @@ describe("聊天产品页", () => {
     wrapper.unmount();
   });
 
+  // ---- VC-R182：同条数权威替换的跟底（正确行为锁） ----
+  // Vue 的 watch source getter 每次求值都返回新数组、返回值按引用比较，
+  // displayMessages 任何重算——包括完成与历史交接稳定为 2→2（过渡行被
+  // 同条数权威行替换，ID/正文/内容高度都变）——都会触发回调并排跟底帧。
+  // 本用例锁定该既有正确行为：先排空初始 nextTick/RAF 并确认队列为 0，
+  // 再做同条数替换，断言跟底帧照排、可写 clamp 位置贴到新底；防止未来把
+  // watch source 改成逐元素比较形态后丢失 2→2 排帧。
+
+  it("同条数权威行替换后跟底帧照排并贴到新底", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    stubFetch({ messages: { "conv-new": [] } });
+    const wrapper = mountPage();
+    try {
+      await flushPromises();
+
+      const store = useChatStore();
+      const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+      let scrollHeightValue = 1976;
+      let topValue = 0;
+      Object.defineProperty(history, "clientHeight", { configurable: true, value: 584 });
+      Object.defineProperty(history, "scrollHeight", {
+        configurable: true,
+        get: () => scrollHeightValue,
+      });
+      Object.defineProperty(history, "scrollTop", {
+        configurable: true,
+        get: () => topValue,
+        set: (value: number) => {
+          topValue = Math.max(0, Math.min(value, scrollHeightValue - 584));
+        },
+      });
+
+      // 完成而历史未交接：用户/回复各一条过渡行，初始贴底 1392。
+      store.phase = "completed";
+      store.finalUserTurn = {
+        generationId: "gen-new",
+        conversationId: store.conversationId,
+        content: "完成但历史未回填的用户消息",
+        messageId: null,
+      };
+      store.finalAssistant = { generationId: "gen-new", messageId: null, content: "已确认的回复正文" };
+      await wrapper.vm.$nextTick();
+      flushFrames();
+      expect(history.scrollTop).toBe(1392);
+      history.dispatchEvent(new Event("scroll"));
+
+      // 充分排空初始 nextTick/RAF 后确认无任何排队帧——后续排帧只可能
+      // 来自同条数替换本身，排除初始遗留帧的假阳性。
+      await wrapper.vm.$nextTick();
+      flushFrames();
+      expect(rafQueue.size).toBe(0);
+
+      // 权威交接：同条数 2→2 替换为真实 ID 行，内容更高（sh2062）。长度与
+      // draft/状态文案都不变——只有数组引用变化；跟底帧必须照排。
+      store.messages = [
+        { messageId: "90", conversationId: store.conversationId, role: "user", content: "完成但历史未回填的用户消息" },
+        { messageId: "91", conversationId: store.conversationId, role: "assistant", content: "已确认的回复正文" },
+      ];
+      store.finalUserTurn = null;
+      store.finalAssistant = null;
+      scrollHeightValue = 2062;
+      await wrapper.vm.$nextTick();
+      await wrapper.vm.$nextTick();
+      expect(rafQueue.size, "同条数替换也要排队跟底帧").toBe(1);
+      flushFrames();
+      expect(history.scrollTop).toBe(1478);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   // ---- VC-R179：真实用户输入优先于几何判定 ----
 
   it("用户滚轮意图与几何变化同帧到达时保留阅读位置", async () => {

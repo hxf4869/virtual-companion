@@ -128,23 +128,98 @@ test("queued auto-scroll frames keep the reading position after a native scroll 
     );
     await expect(page.getByTestId("empty-history")).toContainText("从这里开始");
 
-    // 一条长而合法的合成消息：70 行显式换行短句（总长 <1000 字，UI
-    // maxlength=4000 内），配合栈内 loopback provider 的固定回复，一次
-    // 真实发送即可得到多屏可滚动历史，不跑多轮、不碰真实供应商。
-    const longPrompt = Array.from({ length: 70 }, (_, index) => `第${index + 1}行：慢慢说，我在听。`).join("\n");
-    await page.locator('[data-testid="message-input"] textarea').fill(longPrompt);
-    await page.getByTestId("send").click();
-
-    // completed 与历史窗口刷新之间，finalAssistant 与持久化消息可能短暂
-    // 同时渲染；取最后一条，语义仍是"本会话出现 provider 回复"。
-    await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY }).last())
-      .toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("status")).not.toContainText("正在回复");
-
     const distanceFromBottom = () => page.evaluate(() => {
       const node = document.querySelector<HTMLElement>('[data-testid="history"]');
       return node ? node.scrollHeight - node.clientHeight - node.scrollTop : Number.NaN;
     });
+
+    // VC-R182：初始化空历史已结束、发送前窄拦本会话终局补页——空窗口下
+    // 补页首页与最近窗口同形（无 after 游标），故按本会话 messages 路径窄
+    // 拦，仅放行 load-more（before 游标）；初始最近窗口在本 route 安装前
+    // 已完成，安装后到达的即终局补页。SSE 与身份核对快照照常真实完成。
+    // 终局历史挂起期间断言用户长消息仍恰好一条、视口正常贴底；放行并精确
+    // unroute 后继续原有前后 932→700 正控、3 尺寸与回到最新流程。
+    let releaseFinalHistory!: () => void;
+    const finalHistoryGate = new Promise<void>((resolve) => {
+      releaseFinalHistory = resolve;
+    });
+    let heldFinalHistoryCalls = 0;
+    let heldFinalHistorySettled = 0;
+    const holdFinalHistory = async (route: Route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      if (!url.pathname.endsWith(`/api/v1/conversations/${conversationId}/messages`)) {
+        return route.fallback();
+      }
+      if (url.searchParams.get("before") !== null) return route.fallback();
+      heldFinalHistoryCalls += 1;
+      try {
+        await finalHistoryGate;
+        await route.continue();
+      } finally {
+        heldFinalHistorySettled += 1;
+      }
+    };
+    await page.route(/\/api\/v1\/conversations\/\d+\/messages/, holdFinalHistory);
+
+    try {
+      // 一条长而合法的合成消息：70 行显式换行短句（总长 <1000 字，UI
+      // maxlength=4000 内），配合栈内 loopback provider 的固定回复，一次
+      // 真实发送即可得到多屏可滚动历史，不跑多轮、不碰真实供应商。
+      const longPrompt = Array.from({ length: 70 }, (_, index) => `第${index + 1}行：慢慢说，我在听。`).join("\n");
+      await page.locator('[data-testid="message-input"] textarea').fill(longPrompt);
+      await page.getByTestId("send").click();
+
+      // completed 与历史窗口刷新之间，finalAssistant 与持久化消息可能短暂
+      // 同时渲染；取最后一条，语义仍是"本会话出现 provider 回复"。
+      await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY }).last())
+        .toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("status")).not.toContainText("正在回复");
+
+      // 完成而终局历史仍挂起：补页恰好被拦一次；用户长消息不因乐观回显
+      // 退出而消失（恰好一条），视口保持贴底、跟随未被夺走。
+      await expect.poll(() => heldFinalHistoryCalls, { timeout: 10_000 }).toBe(1);
+      await expect(page.getByTestId("user-message").filter({ hasText: "第1行" })).toHaveCount(1);
+      await expect(page.getByTestId("user-message")).toHaveCount(1);
+      await expect.poll(distanceFromBottom, { timeout: 10_000 }).toBeLessThanOrEqual(48);
+      await expect(page.getByTestId("back-to-latest")).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath("vc-r182-handoff-history-held.png") });
+
+      // 放行前先建立该终局 GET 的 response 等待：放行后保存实际 response、
+      // 断言真实 HTTP 成功并等响应体完整送达（finished），再等被拦路由真正
+      // continue 完成（先于 finally 的 unroute，避免 "Route is already
+      // handled" 竞争）。
+      const finalHistoryPathname = `/api/v1/conversations/${conversationId}/messages`;
+      const finalHistoryResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET"
+          && new URL(response.url()).pathname === finalHistoryPathname,
+      );
+      releaseFinalHistory();
+      const finalResponse = await finalHistoryResponse;
+      expect(finalResponse.ok(), "终局补页真实请求成功").toBeTruthy();
+      await finalResponse.finished();
+      await expect.poll(() => heldFinalHistorySettled, { timeout: 10_000 })
+        .toBe(heldFinalHistoryCalls);
+
+      // 自然双 RAF：响应体送达后浏览器处理响应、store 发布与渲染均已完成
+      // ——此刻的各 1 条才是权威行（响应头时刻可能仍渲染过渡行，不能据
+      // count=1 断言已权威交接）。无固定 sleep。
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }));
+      await expect(page.getByTestId("user-message").filter({ hasText: "第1行" })).toHaveCount(1);
+      await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY })).toHaveCount(1);
+    } finally {
+      releaseFinalHistory();
+      // 等待失败也不吞错：内层 finally 保证仍精确 unroute，错误真实传播。
+      try {
+        await expect.poll(() => heldFinalHistorySettled, { timeout: 10_000 })
+          .toBe(heldFinalHistoryCalls);
+      } finally {
+        await page.unroute(/\/api\/v1\/conversations\/\d+\/messages/, holdFinalHistory);
+      }
+    }
 
     // 可滚动历史成立：等待历史回读完成后差值 >400（同一条件，等待而非
     // 放宽），再确认自动跟随已把视口带到最新消息附近。
