@@ -1193,6 +1193,89 @@ describe("聊天产品页", () => {
     wrapper.unmount();
   });
 
+  // ---- VC-R181：手动回到最新取消过期的用户意图检查帧 ----
+  // 缺陷：离底后一次滚轮排出的用户意图检查帧冻结 wasFollowing=false /
+  // topBefore；回到最新只恢复跟随并写底，不取消该旧帧——随后视口缩高
+  // 排贴底帧时 scheduleScrollToBottom 因 pendingScrollFrame≠0 早退，旧帧
+  // 执行点用冻结的 wasFollowing=false 重算 nearBottom=false，把用户刚恢
+  // 复的跟随再次关掉。契约：手动回到最新是恢复跟随的明确意图，取消排队
+  // 的旧用户检查帧，随后的视口变化重新排队贴底帧贴到新底。
+
+  it("回到最新取消排队的用户意图检查帧，视口缩高后仍贴到新底", async () => {
+    let rafSeq = 0;
+    const rafQueue = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafSeq += 1;
+      rafQueue.set(rafSeq, callback);
+      return rafSeq;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+      rafQueue.delete(handle);
+    });
+    const flushFrames = (): void => {
+      const callbacks = [...rafQueue.values()];
+      rafQueue.clear();
+      for (const callback of callbacks) callback(0);
+    };
+
+    const wrapper = mountPage();
+    try {
+      await flushPromises();
+
+      const history = wrapper.find('[data-testid="history"]').element as HTMLElement;
+      // 真实 DOM 语义：写入 scrollTop 会被 clamp 到 scrollHeight-clientHeight。
+      let clientHeightValue = 400;
+      let topValue = 0;
+      Object.defineProperty(history, "scrollHeight", { configurable: true, value: 1200 });
+      Object.defineProperty(history, "clientHeight", {
+        configurable: true,
+        get: () => clientHeightValue,
+      });
+      Object.defineProperty(history, "scrollTop", {
+        configurable: true,
+        get: () => topValue,
+        set: (value: number) => {
+          topValue = Math.max(0, Math.min(value, 1200 - clientHeightValue));
+        },
+      });
+
+      // 初始贴底帧执行：clamp 到当前底 800。
+      flushFrames();
+      expect(history.scrollTop).toBe(800);
+
+      // 原生滚到阅读位置（离底 620 > 48）：跟随关闭，按钮出现。
+      topValue = 180;
+      history.dispatchEvent(new Event("scroll"));
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+
+      // 滚轮排用户意图检查帧（冻结 wasFollowing=false / topBefore=180）；
+      // 帧仍在排队时真实滚到 170 并送达 scroll——不先 flush。
+      history.dispatchEvent(new Event("wheel"));
+      topValue = 170;
+      history.dispatchEvent(new Event("scroll"));
+
+      // 点击回到最新：恢复跟随并写底 800；此时排队的旧检查帧尚未执行。
+      await wrapper.find('[data-testid="back-to-latest"]').trigger("click");
+      expect(history.scrollTop).toBe(800);
+
+      // 视口缩高（ch 400→280）：resize 派发（贴底排帧在旧帧未取消时被
+      // 占位早退），几何重排派发 scroll（top 未变，跟随保留）。
+      clientHeightValue = 280;
+      window.dispatchEvent(new Event("resize"));
+      history.dispatchEvent(new Event("scroll"));
+
+      // 排队帧执行：回到最新必须已取消旧检查帧，让新的贴底帧贴到新底
+      // 920（RED：旧帧用冻结的 wasFollowing=false 重算 nearBottom=false，
+      // 视口停在 800且回到最新按钮重现）。
+      flushFrames();
+      expect(history.scrollTop).toBe(920);
+      expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   // ---- WP-D（缺口1）：提交互斥覆盖建会话 + 发送 ----
 
   it("连点 10 次发送只在首次建会话时发一次 POST", async () => {

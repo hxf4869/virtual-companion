@@ -821,6 +821,9 @@ function onHistoryScroll(event: Event): void {
 }
 
 function onBackToLatest(): void {
+  // VC-R181：手动恢复跟随的明确意图——取消离底时排队的用户意图检查帧，
+  // 避免其用冻结的 wasFollowing=false 在执行点再次关掉刚恢复的跟随。
+  cancelPendingScrollFrame();
   followingLatest.value = true;
   const node = historyNode();
   if (node) scrollHistoryToBottom(node);
