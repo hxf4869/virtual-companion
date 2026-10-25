@@ -768,8 +768,12 @@ async function saveEdit(item: MemoryItem): Promise<void> {
     if (pendingUnknown?.kind === "edit" && pendingUnknown.memoryId === item.memoryId) {
       unknownAction.value = { ...pendingUnknown, expectedSummary: updated.summary };
     }
-    // 该编辑的晚到响应不得关闭已切换到另一条的编辑框。
-    if (editingId.value === item.memoryId) cancelEdit();
+    // 该编辑的晚到响应不得关闭已切换到另一条的编辑框；保存发出后用户在
+    // 同一编辑框继续输入的草稿（trim 后不等于本次提交内容）也不丢弃，
+    // 忙态释放后可再次保存。
+    if (editingId.value === item.memoryId && editDraft.value.trim() === summary) {
+      cancelEdit();
+    }
   } catch (caught) {
     if (memory.ownerEpoch !== requestEpoch) return;
     if (classifyMemoryWriteError(caught) === "unknown") {

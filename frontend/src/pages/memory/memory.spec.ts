@@ -1047,6 +1047,55 @@ describe("记忆管理页", () => {
     wrapper.unmount();
   });
 
+  it("R192 保存 A 在途时继续输入 B：A 成功写回列表但保留 B 草稿，再保存实际提交 B", async () => {
+    const patchGate = gate();
+    let gateArmed = false;
+    const { calls } = stubFetch({
+      get patchGate() {
+        return gateArmed ? patchGate : undefined;
+      },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // A：进入编辑、填入 A 并保存；首笔 PATCH 被挂起，按钮进入忙态。
+    gateArmed = true;
+    await openEdit(wrapper, "memory-edit");
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R192提交内容A");
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeDefined();
+    let patches = calls.filter((call) => call.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.body).toBe(JSON.stringify({ summary: "R192提交内容A" }));
+
+    // 忙态期间同一编辑框继续输入后续草稿 B（textarea 仍可编辑）。
+    await wrapper.get('[data-testid="memory-edit-input"]').setValue("R192后续草稿B");
+
+    // 释放 A 的成功响应：列表写回 A，但 B 草稿保留、编辑框不关、可再次保存。
+    gateArmed = false;
+    patchGate.resolve(response(200, memoryRow({ memoryId: "m1", summary: "R192提交内容A", autoSaved: false })));
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="memory-summary"]').text()).toContain("R192提交内容A");
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(true);
+    const input = wrapper.get('[data-testid="memory-edit-input"]').element as HTMLTextAreaElement;
+    expect(input.value).toBe("R192后续草稿B");
+    expect(wrapper.get('[data-testid="memory-edit-save"]').attributes("disabled")).toBeUndefined();
+    expect(wrapper.get('[data-testid="memory-edit-save"]').text()).toBe("保存");
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1);
+
+    // 再次保存：第二笔 PATCH 实际携带 B，成功回读 B 并退出编辑。
+    await wrapper.get('[data-testid="memory-edit-save"]').trigger("click");
+    await flushPromises();
+
+    patches = calls.filter((call) => call.method === "PATCH");
+    expect(patches).toHaveLength(2);
+    expect(patches[1]?.body).toBe(JSON.stringify({ summary: "R192后续草稿B" }));
+    expect(wrapper.get('[data-testid="memory-summary"]').text()).toContain("R192后续草稿B");
+    expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("首载存在性隐藏（404）不伪装成确定空态：提示暂时无法确认并可重读", async () => {
     let hidden = true;
     stubFetch({
