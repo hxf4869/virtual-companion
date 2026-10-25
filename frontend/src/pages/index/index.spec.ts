@@ -415,7 +415,10 @@ describe("首页产品骨架", () => {
     relationshipFails = false;
     await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
     await flushPromises();
-    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    // VC-R203：手动重试成功不再卸载反馈区——同一节点切到“已更新”，
+    // 同一按钮变为“再次刷新”，键盘焦点不必重找。
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("success");
+    expect(wrapper.get('[data-testid="home-refresh-retry"]').text()).toBe("再次刷新");
     expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
     wrapper.unmount();
   });
@@ -452,12 +455,159 @@ describe("首页产品骨架", () => {
     conversationFails = false;
     await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
     await flushPromises();
-    expect(wrapper.find('[data-testid="home-refresh-notice"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("success");
     expect(wrapper.text()).toContain("刷新成功后的合成回复");
     await wrapper.get('[data-testid="home-continue-chat"]').trigger("click");
     expect(navigateTo()).toHaveBeenLastCalledWith(expect.objectContaining({
       url: expect.stringContaining("conversationId=conv-new"),
     }));
+    wrapper.unmount();
+  });
+
+  it("手动重试等待期间保留同一按钮与内容，不重复请求，响应不抢焦点", async () => {
+    let releaseHeldRefresh: () => void = () => {};
+    let heldRefresh = Promise.resolve();
+    const holdNextRefresh = () => {
+      heldRefresh = new Promise<void>((resolve) => {
+        releaseHeldRefresh = resolve;
+      });
+    };
+    let relationshipFails = false;
+    const fetchMock = stubFetch({
+      relationshipFails: () => relationshipFails,
+      beforeRelationships: () => heldRefresh,
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 返回自动刷新失败：先进入 R202 的内嵌失败反馈。
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    relationshipFails = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("failed");
+
+    // 手动重试：关系读取挂起在途，等待期间反馈与按钮都还在原地。
+    holdNextRefresh();
+    relationshipFails = false;
+    const retryElement = wrapper.get('[data-testid="home-refresh-retry"]').element;
+    const relationshipsCalls = () => fetchMock.mock.calls.filter(
+      ([url]) => String(url) === "/api/v1/relationships",
+    ).length;
+    const callsBeforeRetry = relationshipsCalls();
+
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("pending");
+    expect(wrapper.text()).toContain("正在刷新");
+    expect(wrapper.get('[data-testid="home-refresh-retry"]').attributes("aria-disabled")).toBe("true");
+    expect(wrapper.get('[data-testid="home-refresh-retry"]').element).toBe(retryElement);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+    expect(wrapper.find('[data-testid="home-continue-chat"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="tab-home"]').exists()).toBe(true);
+
+    // 等待期间重复点击不得重复发起请求。
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+    expect(relationshipsCalls()).toBe(callsBeforeRetry + 1);
+
+    // 键盘已从重试按钮移到主操作：响应落地不得把焦点抢走。
+    const mainAction = wrapper.get<HTMLButtonElement>('[data-testid="home-continue-chat"]').element;
+    mainAction.focus();
+    expect(document.activeElement).toBe(mainAction);
+    releaseHeldRefresh();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("success");
+    expect(wrapper.text()).toContain("已更新");
+    expect(wrapper.get('[data-testid="home-refresh-retry"]').text()).toBe("再次刷新");
+    expect(wrapper.get('[data-testid="home-refresh-retry"]').element).toBe(retryElement);
+    expect(document.activeElement).toBe(mainAction);
+
+    // 同一按钮的“再次刷新”仍是同一个读取操作。
+    holdNextRefresh();
+    const callsAfterSuccess = relationshipsCalls();
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("pending");
+    expect(relationshipsCalls()).toBe(callsAfterSuccess + 1);
+    releaseHeldRefresh();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("success");
+    wrapper.unmount();
+  });
+
+  it("手动重试再次失败仍保留同一按钮与内容，可继续重试", async () => {
+    let relationshipFails = false;
+    stubFetch({ relationshipFails: () => relationshipFails });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    relationshipFails = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    const notice = wrapper.find('[data-testid="home-refresh-notice"]');
+    expect(notice.attributes("data-state")).toBe("failed");
+    expect(notice.text()).toContain("刚才没有刷新成功");
+    expect(notice.text()).toContain("显示的是上次加载的内容。");
+    const retryElement = wrapper.get('[data-testid="home-refresh-retry"]').element;
+
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("failed");
+    expect(wrapper.get('[data-testid="home-refresh-retry"]').element).toBe(retryElement);
+    expect(wrapper.get('[data-testid="home-refresh-retry"]').text()).toBe("重试");
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+
+    relationshipFails = false;
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("success");
+    wrapper.unmount();
+  });
+
+  it("空历史刷新失败时提示按上次加载的内容表述，开始入口保留", async () => {
+    let conversationFails = false;
+    stubFetch({ conversations: [], conversationFails: () => conversationFails });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="home-start-chat"]').text()).toBe("开始第一次对话");
+
+    const internal = wrapper.vm.$ as unknown as {
+      a?: Array<() => void>;
+      da?: Array<() => void>;
+    };
+    internal.da?.forEach((hook) => hook());
+    conversationFails = true;
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+
+    const notice = wrapper.find('[data-testid="home-refresh-notice"]');
+    expect(notice.attributes("data-state")).toBe("failed");
+    expect(notice.text()).not.toContain("看到的还是上次的对话");
+    expect(notice.text()).toContain("显示的是上次加载的内容。");
+    expect(wrapper.get('[data-testid="home-start-chat"]').text()).toBe("开始第一次对话");
+    expect(wrapper.text()).toContain("想说什么都可以，我们从这里开始。");
+
+    conversationFails = false;
+    await wrapper.get('[data-testid="home-refresh-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="home-refresh-notice"]').attributes("data-state")).toBe("success");
+    expect(wrapper.get('[data-testid="home-start-chat"]').text()).toBe("开始第一次对话");
     wrapper.unmount();
   });
 

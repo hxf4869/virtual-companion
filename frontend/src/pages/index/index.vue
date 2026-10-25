@@ -95,31 +95,35 @@
           class="home-secondary-action"
           data-testid="home-retry"
           :disabled="busy"
-          @click="loadHome"
+          @click="loadHome()"
         >
           重新加载
         </button>
       </view>
 
       <template v-else-if="displayRelationship">
+        <!-- VC-R203：等待/失败/成功共用同一反馈区与同一按钮节点，键盘焦点才能
+             留在原位。等待期间不用原生 disabled（会把焦点掉到 body），用
+             aria-disabled 表意，重复请求由 loadHome 的 busy 门控挡住。 -->
         <view
-          v-if="refreshFailed"
+          v-if="refreshNotice"
           class="home-refresh-notice"
           role="status"
           data-testid="home-refresh-notice"
+          :data-state="refreshNotice"
         >
           <view class="home-refresh-notice__copy">
-            <text class="home-refresh-notice__title">刚才没有刷新成功</text>
-            <text class="home-refresh-notice__text">看到的还是上次的对话。</text>
+            <text class="home-refresh-notice__title">{{ refreshNoticeCopy.title }}</text>
+            <text class="home-refresh-notice__text">{{ refreshNoticeCopy.text }}</text>
           </view>
           <button
             class="home-refresh-notice__retry"
             type="button"
             data-testid="home-refresh-retry"
-            :disabled="busy"
-            @click="loadHome"
+            :aria-disabled="refreshNotice === 'pending'"
+            @click="loadHome(true)"
           >
-            重试
+            {{ refreshNotice === "success" ? "再次刷新" : "重试" }}
           </button>
         </view>
         <VcHomeHero
@@ -187,6 +191,17 @@ import { useRelationshipStore } from "@/stores/relationship";
 
 type HomeState = "loading" | "ready" | "error" | "missing";
 
+// VC-R203：缓存内容仍在展示时的内嵌刷新反馈阶段文案；null 为无反馈。
+// 普通初载与自动返回刷新沿用 R202：等待与成功都不挂反馈，失败才挂；
+// 只有用户在反馈区主动点击重试/再次刷新才经历 pending → failed | success，
+// 成功反馈保留到下一次页面激活的自动刷新把它收回。
+const REFRESH_NOTICE_COPY = {
+  pending: { title: "正在刷新", text: "正在获取最新的对话内容。" },
+  failed: { title: "刚才没有刷新成功", text: "显示的是上次加载的内容。" },
+  success: { title: "已更新", text: "现在显示的是最新的对话内容。" },
+} as const;
+type RefreshNotice = keyof typeof REFRESH_NOTICE_COPY;
+
 // VC-R202：上次成功加载时由服务端确认的关系上下文（仅本页内存，不回写
 // relationship store）。返回刷新失败会把全局 store 清空，这里保住展示与
 // 导航所需的最小上下文：陪伴本身 + 当时已知的全部关系 id（深链校验用）。
@@ -200,8 +215,10 @@ const relStore = useRelationshipStore();
 const homeState = ref<HomeState>("loading");
 const conversations = ref<ConversationListItem[]>([]);
 const busy = ref(false);
-// VC-R202：缓存内容仍在展示时，最近一次刷新失败的可见反馈。
-const refreshFailed = ref(false);
+const refreshNotice = ref<RefreshNotice | null>(null);
+const refreshNoticeCopy = computed(() => (
+  refreshNotice.value ? REFRESH_NOTICE_COPY[refreshNotice.value] : { title: "", text: "" }
+));
 const cachedContext = ref<HomeRelationshipContext | null>(null);
 // VC-R11：页面私有请求代次。不用 auth 的会话代次做写入门控——同账号的
 // 重新登录/续期也会推进它，会把合法的在途加载判过期并永久挂住 busy。
@@ -294,21 +311,24 @@ watch(() => auth.accountId, (next, prev) => {
   if (prev === null || next === prev) return;
   conversations.value = [];
   cachedContext.value = null;
-  refreshFailed.value = false;
+  refreshNotice.value = null;
   homeState.value = "loading";
   busy.value = false;
   loadSeq++;
 });
 
-async function loadHome(): Promise<void> {
+async function loadHome(manual = false): Promise<void> {
   if (!auth.isAuthenticated || busy.value) return;
   busy.value = true;
   // VC-R202：已有成功首页时，返回刷新不撤下内容：等待与失败期间上次内容
   // 保持可见可操作，失败只挂内嵌反馈；无缓存的首次加载才走整页骨架。
+  // VC-R203：manual 表示用户在反馈区主动点击重试/再次刷新——等待期间
+  // 反馈区切到“正在刷新”而不卸载，成功后显示“已更新”；自动刷新不提示。
   if (cachedContext.value) {
-    refreshFailed.value = false;
+    refreshNotice.value = manual ? "pending" : null;
   } else {
     homeState.value = "loading";
+    refreshNotice.value = null;
   }
   // VC-R11：本次加载的请求代次。每次 await 之后与 finally 的收尾都以
   // mySeq === loadSeq 为门控：换号清理或更新的加载已接管时静默丢弃
@@ -322,7 +342,7 @@ async function loadHome(): Promise<void> {
     if (relStore.status === "error") {
       // 关系读取失败只清空了全局 store；本页按缓存的上次已验证关系继续
       // 展示与导航，不落入空关系。
-      if (cachedContext.value) refreshFailed.value = true;
+      if (cachedContext.value) refreshNotice.value = "failed";
       else homeState.value = "error";
       return;
     }
@@ -356,9 +376,10 @@ async function loadHome(): Promise<void> {
       knownRelationshipIds: knownIds,
     };
     homeState.value = "ready";
+    refreshNotice.value = manual ? "success" : null;
   } catch {
     if (!isStale()) {
-      if (cachedContext.value) refreshFailed.value = true;
+      if (cachedContext.value) refreshNotice.value = "failed";
       else homeState.value = "error";
     }
   } finally {
@@ -377,7 +398,7 @@ function reconcileConfirmedContext(): boolean {
   if (currentId === cachedContext.value.relationship.relationshipId) return false;
   conversations.value = [];
   cachedContext.value = null;
-  refreshFailed.value = false;
+  refreshNotice.value = null;
   homeState.value = currentId ? "loading" : "missing";
   return true;
 }
@@ -619,7 +640,7 @@ onActivated(() => {
   background: var(--vc-color-surface);
 }
 
-.home-refresh-notice__retry:disabled {
+.home-refresh-notice__retry[aria-disabled="true"] {
   opacity: 0.6;
 }
 
