@@ -37,6 +37,31 @@ describe("model service change ledger", () => {
     vi.unstubAllGlobals();
   });
 
+  it("explicitly accepts and submits credentials longer than uni-input's default 140 characters", async () => {
+    const credential = "synthetic-key-" + "x".repeat(4082);
+    let savedCredential: unknown;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/v1/admin/providers/wechat" && init?.method === "PUT") {
+        savedCredential = JSON.parse(String(init.body)).credential;
+      }
+      return { ok: true, status: 200, headers: new Headers(),
+        json: async () => url === "/api/v1/admin/providers" ? providerPayload : { ok: true } };
+    }));
+    const wrapper = mount(AdminModelsPage);
+    await flushPromises();
+    const field = wrapper.get('[data-testid="provider-credential"]');
+    expect(field.attributes("maxlength")).toBe("4096");
+    await field.setValue(credential);
+    await wrapper.get('[data-testid="provider-save"]').trigger("click");
+    await wrapper.get('[data-testid="provider-reauth-password"]').setValue("synthetic-password");
+    await wrapper.get('[data-testid="provider-reauth"]').trigger("click");
+    await flushPromises();
+    expect(savedCredential).toBe(credential);
+    expect(wrapper.text()).not.toContain(credential);
+    wrapper.unmount();
+  });
+
   it("stages a change, reauthenticates, then saves without ever rendering the credential", async () => {
     const calls: Array<{ url: string; method: string; body?: unknown; csrf?: string | null }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

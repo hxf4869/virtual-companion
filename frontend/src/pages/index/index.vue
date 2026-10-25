@@ -171,10 +171,6 @@ const relStore = useRelationshipStore();
 const homeState = ref<HomeState>("loading");
 const conversations = ref<ConversationListItem[]>([]);
 const busy = ref(false);
-// VC-R11：本页内容归属的账号（加载发起时同步确立，惯例同 chat 页的
-// owningConversationId）。KeepAlive 返回缓存页时按它判断是否需要为新账号
-// 重载；换号清理会把它置空。
-let loadedForAccountId: string | null = null;
 // VC-R11：页面私有请求代次。不用 auth 的会话代次做写入门控——同账号的
 // 重新登录/续期也会推进它，会把合法的在途加载判过期并永久挂住 busy。
 // 这里只在「发起新加载」与「换号清理」时递增。
@@ -258,7 +254,6 @@ watch(() => auth.accountId, (next, prev) => {
   conversations.value = [];
   homeState.value = "loading";
   busy.value = false;
-  loadedForAccountId = null;
   loadSeq++;
 });
 
@@ -271,7 +266,6 @@ async function loadHome(): Promise<void> {
   // （不回填旧账号内容，也不动新请求的 busy）；同账号重新登录不递增
   // 代次，旧请求正常落地并收尾，不会把页面永久挂在加载态。
   const mySeq = ++loadSeq;
-  loadedForAccountId = auth.accountId;
   const isStale = () => mySeq !== loadSeq;
   try {
     await relStore.load(transport);
@@ -314,12 +308,9 @@ onMounted(() => {
   void restoreSessionAndHome();
 });
 
-// VC-R11：KeepAlive 返回缓存页时按内容归属决定是否重载。首次挂载
-// onMounted 与 onActivated 会同时触发——初次加载已同步置位 busy 作去重
-// 守卫，避免重复请求；同账号返回（归属一致）不重载，未认证时不发请求。
+// 返回缓存首页时更新最近对话；首次挂载与在途加载由 busy 去重。
 onActivated(() => {
   if (!auth.isAuthenticated || busy.value) return;
-  if (loadedForAccountId === auth.accountId) return;
   void loadHome();
 });
 </script>

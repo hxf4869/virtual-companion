@@ -26,10 +26,12 @@ type OpenConfig struct {
 // connection, runs the work, and commits or rolls back before return.
 // Authentication must not wrap an HTTP request in this transaction.
 type Store struct {
-	pool      *pgxpool.Pool
-	secret    []byte
-	txTimeout time.Duration
-	cipher    *FieldCipher
+	pool             *pgxpool.Pool
+	secret           []byte
+	txTimeout        time.Duration
+	cipher           *FieldCipher
+	maxReservedCost  int64
+	monthlyCostLimit int64
 
 	txCount atomic.Uint64
 	txNanos atomic.Uint64

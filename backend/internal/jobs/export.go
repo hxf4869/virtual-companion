@@ -51,6 +51,12 @@ func (l *Loop) handleExportWithKey(
 	c postgres.JobClaim,
 	keyFor func(owner, exportID int64) (string, error),
 ) error {
+	lease := l.policy.ExportLease
+	if lease <= 0 {
+		lease = 10 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, lease)
+	defer cancel()
 	exp, err := l.store.GetExport(ctx, c.OwnerID, c.RefID)
 	if err != nil {
 		_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_MISSING")

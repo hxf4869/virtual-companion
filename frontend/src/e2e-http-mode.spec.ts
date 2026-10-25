@@ -55,8 +55,19 @@ function harness(options: { alive?: number[]; starts?: Record<number, string>; e
   vi.mocked(unlink).mockImplementation(async (path) => { removed.push(String(path)); });
   return { kill, alive, removed, engineCalls, dockerCalls };
 }
-afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllEnvs(); });
 describe("HTTP v4 ownership contract", () => {
+  it("allows default only on GitHub Actions Linux and keeps foreign contexts forbidden", () => {
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("RUNNER_OS", "Linux");
+    expect(fixture({ dockerContext: "default" }).dockerContext).toBe("default");
+    expect(() => fixture({ dockerContext: "remote" })).toThrow(/orbstack/);
+    vi.stubEnv("RUNNER_OS", "macOS");
+    expect(() => fixture({ dockerContext: "default" })).toThrow(/orbstack/);
+    vi.stubEnv("RUNNER_OS", "Linux");
+    vi.stubEnv("GITHUB_ACTIONS", "");
+    expect(() => fixture({ dockerContext: "default" })).toThrow(/orbstack/);
+  });
   it("rejects legacy names, missing start times and foreign Docker contexts before side effects", () => {
     expect(() => fixture({ version: 2 })).toThrow(/legacy/);
     expect(() => fixture({ containers: ["vc-e2e-pg-4242"] })).toThrow(/actual container IDs/);

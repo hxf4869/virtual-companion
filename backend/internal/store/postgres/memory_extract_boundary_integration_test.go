@@ -55,7 +55,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 
 	// No consent granted yet: the withdrawal state that committed before the
 	// prepare transaction refuses the attempt with no outbound.
-	prep, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a")
+	prep, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a")
+	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	// replayable payload.
 	payload := `[{"summary":"x","category":"PREFERENCE"}]`
 	in, out := int64(11), int64(7)
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a")
+	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	// no new usage — the caller gets attempt id 0 and must not record an
 	// outcome. Exactly the two attempts above exist, and the stored payload
 	// comes back decrypted.
-	prep2, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a")
+	prep2, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,11 +181,11 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	if !found2 {
 		t.Fatalf("claimed set %v misses extract job %d", claims2, job2)
 	}
-	prepA, err := store.PrepareMemoryExtractAttempt(ctx, 1, job2, gen2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a")
+	prepA, err := store.PrepareMemoryExtractAttempt(ctx, 1, job2, gen2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil || prepA.Decision != "EXTRACTABLE" || prepA.AttemptID <= 0 {
 		t.Fatalf("prepA decision %q attempt %d err=%v", prepA.Decision, prepA.AttemptID, err)
 	}
-	prepB, err := store.PrepareMemoryExtractAttempt(ctx, 1, job2, gen2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a")
+	prepB, err := store.PrepareMemoryExtractAttempt(ctx, 1, job2, gen2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil || prepB.Decision != "EXTRACTABLE" || prepB.AttemptID <= 0 || prepB.AttemptID == prepA.AttemptID {
 		t.Fatalf("prepB decision %q attempt %d err=%v", prepB.Decision, prepB.AttemptID, err)
 	}
@@ -203,7 +203,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	}
 
 	// A stale claim token fences the holder out without any attempt.
-	prep3, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, "stale-token", claim.Fence, "prov-a", "sup-a", "model-a")
+	prep3, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, "stale-token", claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestMemoryExtractPrepareAttemptRefusalOrder(t *testing.T) {
 		`UPDATE vc.message SET model_eligible = false WHERE owner_user_id = 1 AND id = $1`, src); err != nil {
 		t.Fatal(err)
 	}
-	prep, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a")
+	prep, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestMemoryExtractPrepareAttemptRefusalOrder(t *testing.T) {
 	if _, err := store.UpdateMemoryAutoSavePref(ctx, 1, false); err != nil {
 		t.Fatal(err)
 	}
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a")
+	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestMemoryExtractPrepareAttemptRefusalOrder(t *testing.T) {
 	if _, err := store.RecordConsent(ctx, 1, "SENSITIVE_DATA_PROCESSING", "2026-08", false); err != nil {
 		t.Fatal(err)
 	}
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a")
+	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}

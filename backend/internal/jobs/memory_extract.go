@@ -107,7 +107,7 @@ const (
 // lifecycle: the claim-fenced pre-flight transaction before the provider call
 // and the usage outcome after it. postgres.Store implements it.
 type extractAttemptStore interface {
-	PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string) (postgres.MemoryExtractPreparation, error)
+	PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string, inputTokens int) (postgres.MemoryExtractPreparation, error)
 	RecordMemoryExtractOutcome(ctx context.Context, owner, jobID, attemptID int64, out postgres.MemoryExtractOutcome) (int64, error)
 }
 
@@ -171,7 +171,8 @@ func (l *Loop) handleMemoryExtract(ctx context.Context, c postgres.JobClaim) err
 		return l.closeExtract(ctx, c, "FAILED", extractClosePrepareFailed)
 	}
 	prep, err := attempts.PrepareMemoryExtractAttempt(ctx, c.OwnerID, c.JobID, c.RefID,
-		c.Token, c.Fence, identity.providerID, identity.supplierName, identity.modelID)
+		c.Token, c.Fence, identity.providerID, identity.supplierName, identity.modelID,
+		companion.EstimateTokens(extractSystemPrompt)+companion.EstimateTokens(extractUserPrompt(input.UserContent)))
 	if err != nil {
 		return l.failExtract(ctx, c, extractClosePrepareFailed)
 	}
@@ -567,6 +568,12 @@ func extractSensitive(s string) bool {
 // extractSpeculative reports whether the summary opens with a hedge marker —
 // the model guessing instead of the user stating.
 func extractSpeculative(summary string) bool {
+	for _, subject := range extractSummaryPrefixes {
+		if rest, ok := strings.CutPrefix(summary, subject); ok {
+			summary = strings.TrimSpace(rest)
+			break
+		}
+	}
 	for _, prefix := range extractHedgePrefixes {
 		if strings.HasPrefix(summary, prefix) {
 			return true
@@ -751,11 +758,29 @@ func extractSummaryGrounded(summary, userHaystack string) (string, bool) {
 			continue
 		}
 		idx := strings.Index(userHaystack, rest)
-		if idx >= 0 && extractSubjectOK(userHaystack, idx) {
+		if idx >= 0 && extractSubjectOK(userHaystack, idx) && !extractQuestionAt(userHaystack, idx) {
 			return rest, true
 		}
 	}
 	return "", false
+}
+
+// Keep the source sentence's question suffix: a verbatim fragment of
+// "我喜欢喝茶吗？" is not a statement that the user likes tea.
+func extractQuestionAt(text string, idx int) bool {
+	start := 0
+	if previous := strings.LastIndexAny(text[:idx], "。！？.!?"); previous >= 0 {
+		_, size := utf8.DecodeRuneInString(text[previous:])
+		start = previous + size
+	}
+	sentence := text[start:]
+	if end := strings.IndexAny(text[idx:], "。！？.!?"); end >= 0 {
+		_, size := utf8.DecodeRuneInString(text[idx+end:])
+		sentence = text[start : idx+end+size]
+	}
+	return strings.ContainsAny(sentence, "?？") ||
+		strings.HasSuffix(sentence, "吗") || strings.HasSuffix(sentence, "么") ||
+		containsAny(sentence, []string{"是否", "是不是", "会不会"})
 }
 
 // extractEvidenceBindsSummary reports whether the evidence quote corroborates

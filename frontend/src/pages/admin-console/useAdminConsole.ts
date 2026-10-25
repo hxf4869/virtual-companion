@@ -1,5 +1,5 @@
 import { getUniApi } from "@/platform/uni-api";
-import { ref, type Ref } from "vue";
+import { ref, watch, type Ref } from "vue";
 
 import type { AuthTransport } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -11,12 +11,26 @@ export interface AdminConsoleAccess {
   accessState: Ref<AdminAccessState>;
   transport: AuthTransport;
   ensureAccess(): Promise<boolean>;
+  captureContext(): () => boolean;
   goTo(url: string, replace?: boolean): void;
 }
 
-export function useAdminConsoleAccess(): AdminConsoleAccess {
+export function useAdminConsoleAccess(clearPrivateState: () => void): AdminConsoleAccess {
   const auth = useAuthStore();
   const accessState = ref<AdminAccessState>("checking");
+  let contextRevision = 0;
+  watch(() => [auth.accountId, auth.getSessionId(), auth.role], () => {
+    contextRevision++;
+    accessState.value = auth.isAuthenticated && auth.role !== "ADMIN"
+      ? "forbidden"
+      : "unavailable";
+    clearPrivateState();
+  }, { flush: "sync" });
+
+  function captureContext(): () => boolean {
+    const revision = contextRevision;
+    return () => revision === contextRevision;
+  }
   const transport = createAuthenticatedTransport({
     getAccessToken: () => auth.accessToken,
     renewAccessToken: () => auth.renewAccessToken(transport),
@@ -66,5 +80,5 @@ export function useAdminConsoleAccess(): AdminConsoleAccess {
     }
   }
 
-  return { accessState, transport, ensureAccess, goTo };
+  return { accessState, transport, ensureAccess, captureContext, goTo };
 }

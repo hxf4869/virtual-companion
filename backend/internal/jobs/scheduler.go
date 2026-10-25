@@ -91,7 +91,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 			slog.String("error_code", "EXPORT_EXPIRY"),
 		)
 	} else {
-		objs, err := store.ListExpiredExportObjects(ctx)
+		objs, err := store.ListExportCleanupObjects(ctx)
 		if err == nil {
 			if len(objs) > 0 && s.loop.blobs == nil {
 				s.loop.log.Info("export object cleanup",
@@ -119,6 +119,24 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 						slog.String("error_code", "EXPORT_OBJECT_CLEAR"),
 					)
 				}
+			}
+		}
+	}
+	if s.loop.blobs != nil {
+		uploads, err := store.ClaimExportUploadCleanup(ctx)
+		if err != nil {
+			s.loop.log.Info("export upload cleanup", slog.String("operation", "export_upload_cleanup"),
+				slog.String("outcome", "error"), slog.String("error_code", "EXPORT_UPLOAD_CLAIM"))
+		}
+		for _, upload := range uploads {
+			if err := s.loop.blobs.Delete(ctx, upload.ObjectKey); err != nil {
+				s.loop.log.Info("export upload cleanup", slog.String("operation", "export_upload_cleanup"),
+					slog.String("outcome", "error"), slog.String("error_code", "EXPORT_UPLOAD_DELETE"))
+				continue
+			}
+			if err := store.CompleteExportUploadCleanup(ctx, upload.OwnerID, upload.IntentID); err != nil {
+				s.loop.log.Info("export upload cleanup", slog.String("operation", "export_upload_cleanup"),
+					slog.String("outcome", "error"), slog.String("error_code", "EXPORT_UPLOAD_CLEAR"))
 			}
 		}
 	}

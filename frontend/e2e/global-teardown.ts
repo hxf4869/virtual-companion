@@ -224,7 +224,11 @@ export function parseHttpStackState(raw: string): HttpStackState {
   if (!nonEmptyString(c.runDir) || !c.runDir.startsWith("/")
       || typeof c.nonce !== "string" || !/^[a-f0-9]{32}$/u.test(c.nonce)
       || !nonEmptyString(c.project)) throw new Error("HTTP E2E run ownership is invalid");
-  if (c.dockerContext !== "orbstack") throw new Error("HTTP E2E requires the orbstack Docker context");
+  const allowedContext = c.dockerContext === "orbstack"
+    || (c.dockerContext === "default"
+      && process.env.GITHUB_ACTIONS === "true"
+      && process.env.RUNNER_OS === "Linux");
+  if (!allowedContext) throw new Error("HTTP E2E requires orbstack, or default on a GitHub Actions Linux runner");
   if (typeof c.keep !== "boolean" || typeof c.creating !== "boolean") throw new Error("HTTP E2E lifecycle flags are invalid");
   if (c.releaseMode !== "full" && c.releaseMode !== "synthetic-eval") throw new Error("HTTP E2E release mode is invalid");
   if (typeof c.releasePolicyVersion !== "string" || !/^[A-Za-z0-9_.-]{1,64}$/u.test(c.releasePolicyVersion)) {
@@ -624,7 +628,7 @@ async function httpCloseState(state: HttpStackState, resourcesPy: string): Promi
       throw new Error("HTTP close container receipt is incomplete or mismatched");
     }
     seen.add(entry.cid);
-    const live = spawnSync("docker", ["--context", "orbstack", "inspect", "--format",
+    const live = spawnSync("docker", ["--context", state.dockerContext, "inspect", "--format",
       "{{json .Config.Labels}}\n{{json .Mounts}}", entry.cid], { encoding: "utf8", timeout: 10_000 });
     if (live.status !== 0) throw new Error("HTTP close cannot confirm a recorded container; preserved");
     let labels: CloseReceipt;

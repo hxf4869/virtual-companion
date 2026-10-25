@@ -43,7 +43,9 @@ type Store interface {
 	ExpireQueuedGenerations(ctx context.Context, timeout time.Duration) (int, error)
 	PurgeExpiredOpaqueSessions(ctx context.Context) (int, error)
 	ExpireStaleExports(ctx context.Context) (int, error)
-	ListExpiredExportObjects(ctx context.Context) ([]postgres.ExportObject, error)
+	ListExportCleanupObjects(ctx context.Context) ([]postgres.ExportObject, error)
+	ClaimExportUploadCleanup(ctx context.Context) ([]postgres.ExportUploadCleanup, error)
+	CompleteExportUploadCleanup(ctx context.Context, owner, intentID int64) error
 	ClearExportObject(ctx context.Context, owner, exportID int64, objectKey string) error
 	RunRetentionCategory(ctx context.Context, category string, dryRun bool) error
 	StartTurn(ctx context.Context, owner int64, in postgres.StartTurn) (postgres.GenerationView, error)

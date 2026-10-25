@@ -139,6 +139,22 @@ class HttpLifecycleTest(unittest.TestCase):
         self.assertEqual(p.returncode,1,p.stderr)
         self.assertIn('orbstack',p.stderr)
 
+    def test_ci_default_context_requires_linux_and_local_socket(self):
+        base, env = self.environment()
+        env.update(E2E_DOCKER_CONTEXT='default', GITHUB_ACTIONS='true', RUNNER_OS='Linux')
+        docker = base/'bin/docker'
+        docker.write_text('#!/bin/sh\nprintf "unix:///var/run/docker.sock\\n"\n')
+        p = subprocess.run(['bash','-c','source "$LAUNCHER"'], env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        env['GITHUB_ACTIONS'] = 'false'
+        p = subprocess.run(['bash','-c','source "$LAUNCHER"'], env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(p.returncode, 1, p.stderr)
+        env['GITHUB_ACTIONS'] = 'true'
+        docker.write_text('#!/bin/sh\nprintf "tcp://remote.invalid:2375\\n"\n')
+        p = subprocess.run(['bash','-c','source "$LAUNCHER"'], env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertIn('local Unix socket', p.stderr)
+
     def process_case(self, correct):
         _, env = self.environment()
         env['CORRECT_IDENTITY']='1' if correct else '0'

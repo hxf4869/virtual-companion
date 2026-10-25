@@ -487,15 +487,28 @@ async function initPage(): Promise<void> {
     // 不会走到这里）。此后本实例的恢复核对都以此为准。
     owningConversationId = store.conversationId;
     bindGenerationContext();
+    pageState.value = "ready";
     if (store.conversationId) {
-      const restored = await store.tryRestoreAfterReload(
+      const restoringConversationId = store.conversationId;
+      const restoringAccountId = auth.accountId;
+      const restoringSessionId = auth.getSessionId();
+      const stillOwnsRestore = (): boolean => instanceActive
+        && owningConversationId === restoringConversationId
+        && store.conversationId === restoringConversationId
+        && auth.accountId === restoringAccountId
+        && auth.getSessionId() === restoringSessionId;
+      // 历史已就绪，恢复流独立运行；不能等整个 SSE 结束才显示消息和停止按钮。
+      void store.tryRestoreAfterReload(
         deps,
         { accountId: auth.accountId ?? "", relationshipId },
         instanceToken,
-      );
-      if (restored) await store.loadHistory(transport);
+        transport,
+      ).then((restored) => {
+        if (restored && stillOwnsRestore()) return store.loadHistory(transport);
+      }).catch(() => {
+        if (stillOwnsRestore()) store.recentLoadFailed = true;
+      });
     }
-    pageState.value = "ready";
     await nextTick();
     scheduleScrollToBottom();
   } catch {
@@ -603,7 +616,7 @@ async function onRetry(): Promise<void> {
   // 重试＝重新连接原流/快照，绝不新建 generation、不重复用户消息；
   // not_found_or_forbidden 不重连循环也不新键发送——一次有界核对，草稿保留。
   if (reconnectFailed.value || turnUnverifiable.value) {
-    void store.recoverInFlight(deps, instanceToken, owningConversationId);
+    void store.recoverInFlight(deps, instanceToken, owningConversationId, transport);
     return;
   }
   // N-05：发送结果未确认＝普通同键重发：不调用 resolveTurnSource、不传
@@ -647,7 +660,7 @@ function onStatusAction(): void {
     void store.loadHistory(transport);
     return;
   }
-  void store.recoverInFlight(deps, instanceToken, owningConversationId);
+  void store.recoverInFlight(deps, instanceToken, owningConversationId, transport);
 }
 
 /**
@@ -882,7 +895,7 @@ onMounted(() => {
       removeEventListener: (name, handler) => window.removeEventListener(name, handler),
       getVisibility: () => document.visibilityState,
       onRecover: () => {
-        void store.recoverInFlight(deps, instanceToken, owningConversationId);
+        void store.recoverInFlight(deps, instanceToken, owningConversationId, transport);
       },
     });
     document.addEventListener("scroll", onHistoryScroll, { capture: true, passive: true });

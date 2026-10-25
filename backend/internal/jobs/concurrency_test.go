@@ -221,7 +221,7 @@ func (s *concurrencyStore) GetMemoryAutoSavePref(context.Context, int64) (bool, 
 // PrepareMemoryExtractAttempt stands in for the V133 pre-flight transaction:
 // the loop tests only need the extractable path so the handler reaches the
 // provider call.
-func (s *concurrencyStore) PrepareMemoryExtractAttempt(context.Context, int64, int64, int64, string, string, string, string, string) (postgres.MemoryExtractPreparation, error) {
+func (s *concurrencyStore) PrepareMemoryExtractAttempt(context.Context, int64, int64, int64, string, string, string, string, string, int) (postgres.MemoryExtractPreparation, error) {
 	return postgres.MemoryExtractPreparation{AttemptID: 1, AttemptNo: 1, Decision: "EXTRACTABLE"}, nil
 }
 

@@ -43,13 +43,14 @@ type extractTestStore struct {
 
 	// V133 attempt surface. prepareDecision defaults to EXTRACTABLE; the
 	// prior payload replays through the parser without a second model call.
-	prepareDecision string
-	prepareErr      error
-	priorPayload    string
-	prepareCalls    int
-	prepared        []postgres.JobClaim
-	outcomes        []postgres.MemoryExtractOutcome
-	outcomeErr      error
+	prepareDecision     string
+	prepareErr          error
+	priorPayload        string
+	prepareCalls        int
+	preparedInputTokens int
+	prepared            []postgres.JobClaim
+	outcomes            []postgres.MemoryExtractOutcome
+	outcomeErr          error
 }
 
 type extractClose struct {
@@ -57,10 +58,11 @@ type extractClose struct {
 	reason string
 }
 
-func (s *extractTestStore) PrepareMemoryExtractAttempt(_ context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string) (postgres.MemoryExtractPreparation, error) {
+func (s *extractTestStore) PrepareMemoryExtractAttempt(_ context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string, inputTokens int) (postgres.MemoryExtractPreparation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prepareCalls++
+	s.preparedInputTokens = inputTokens
 	s.prepared = append(s.prepared, postgres.JobClaim{OwnerID: owner, JobID: jobID, RefID: generationID, Token: token, Fence: fence})
 	if s.prepareErr != nil {
 		return postgres.MemoryExtractPreparation{}, s.prepareErr
@@ -268,6 +270,9 @@ func TestMemoryExtractSavesWhitelistedItems(t *testing.T) {
 	loop := newExtractTestLoop(store, provider)
 	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
 		t.Fatal(err)
+	}
+	if store.preparedInputTokens <= companion.EstimateTokens(store.input.UserContent) {
+		t.Fatal("cost admission omitted extraction input or system prompt")
 	}
 	if got := len(store.saved); got != 2 {
 		t.Fatalf("saved %d, want 2", got)

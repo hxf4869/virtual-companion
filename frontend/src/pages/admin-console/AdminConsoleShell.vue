@@ -58,7 +58,7 @@
           <text class="ac-heading__title">{{ title }}</text>
           <text v-if="subtitle" class="ac-heading__subtitle">{{ subtitle }}</text>
         </view>
-        <view class="ac-topbar__actions">
+        <view v-if="accessState === 'ready'" class="ac-topbar__actions">
           <slot name="actions" />
         </view>
       </header>

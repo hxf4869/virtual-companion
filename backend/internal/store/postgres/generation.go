@@ -611,9 +611,12 @@ func (s *Store) PrepareAttempt(ctx context.Context, cmd turn.PrepareAttempt) (tu
 			providerID, supplier, cmd.ModelID, cats,
 			cmd.ConsentVersion, cmd.ProviderContractVersion,
 			cmd.PromptVersion, cmd.PersonaVersion, cmd.ConfigVersion,
-			cmd.ReservedCost, cmd.MonthlyCostLimit,
+			int64(0), int64(0),
 		).Scan(&attemptID, &attemptNo, &paid)
 		if err != nil {
+			return err
+		}
+		if err := s.reserveModelCost(ctx, tx, cmd.OwnerID, cmd.JobID, paid, providerID, cmd.ModelID, cmd.Budget.MaxInputTokens, cmd.Budget.MaxOutputTokens, cmd.Budget.MaxReservedCost); err != nil {
 			return err
 		}
 		out = turn.PreparedAttempt{
@@ -644,7 +647,7 @@ func (s *Store) RecordAttemptOutcome(ctx context.Context, outcome companion.Atte
 			`SELECT vc.go_record_attempt_outcome($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 			outcome.OwnerID, attemptID, outcome.JobID, outcome.ClaimToken, outcome.ClaimFence,
 			logical, outcome.Failure, string(outcome.Billing),
-			outcome.Usage.InputTokens, outcome.Usage.OutputTokens, int64(0),
+			outcome.Usage.InputTokens, outcome.Usage.OutputTokens, nil,
 		).Scan(&n); err != nil {
 			return err
 		}

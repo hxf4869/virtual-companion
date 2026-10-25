@@ -126,15 +126,11 @@ const items = ref<ConversationListItem[]>([]);
 const hasMore = ref(false);
 const loadMoreFailed = ref(false);
 const busy = ref(false);
-// VC-R11：本实例列表内容当前所属的账号（加载确立时同步写入，惯例同
-// chat.vue 的 owningConversationId）。null 表示当前没有归属任何账号的
-// 内容；KeepAlive 重新激活时以此为基准决定是否重走首屏加载。
-let loadedForAccountId: string | null = null;
 // VC-R11：页面私有请求代次（在途请求的收尾归属凭据）。加载流程进入时
 // 递增；身份清理 watch 同步递增以作废在途请求。同账号的真实重认证
 // （login/tryRefresh 推进 store 代次但 accountId 不变）不推进本代次——
 // 它只区分「本页发起的哪个请求」，账号数据归属由 watch 与
-// loadedForAccountId 承担，因此同账号在途请求照常落地收尾。
+// 请求代次承担，因此同账号在途请求照常落地收尾。
 let loadSeq = 0;
 
 const transport = createAuthenticatedTransport({
@@ -163,7 +159,6 @@ watch(() => auth.accountId, (next, prev) => {
   loadMoreFailed.value = false;
   pageState.value = "loading";
   busy.value = false;
-  loadedForAccountId = null;
 });
 
 function knownRelationshipIds(): string[] {
@@ -244,7 +239,6 @@ async function loadInitial(): Promise<void> {
       items.value = [];
       hasMore.value = false;
       pageState.value = "missing";
-      loadedForAccountId = auth.accountId;
       return;
     }
 
@@ -258,7 +252,6 @@ async function loadInitial(): Promise<void> {
     items.value = page;
     hasMore.value = page.length === PAGE_SIZE;
     pageState.value = "ready";
-    loadedForAccountId = auth.accountId;
   } catch {
     if (mySeq !== loadSeq) return;
     pageState.value = "error";
@@ -294,12 +287,9 @@ async function loadMore(): Promise<void> {
   }
 }
 
-// VC-R11：KeepAlive 缓存页重新激活时，仅当已认证且当前内容不属于本账号
-// 才重走首屏加载；同账号返回缓存页不重载、不重复请求。与 onMounted 首次
-// 同时触发由 loadInitial 同步置位的 busy 去重（在途加载不重复发起）。
+// 返回缓存列表时重读最近窗口，体现聊天期间的新会话与活动顺序；busy 去重。
 onActivated(() => {
   if (!auth.isAuthenticated) return;
-  if (loadedForAccountId === auth.accountId) return;
   void loadInitial();
 });
 

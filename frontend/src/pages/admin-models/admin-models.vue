@@ -145,6 +145,7 @@
                 v-model="draft.credential"
                 class="provider-input"
                 type="password"
+                :maxlength="4096"
                 autocomplete="new-password"
                 :placeholder="isCreating ? '输入 API 密钥' : '留空以保留现有密钥'"
                 :disabled="busy"
@@ -350,7 +351,7 @@ export default {
   name: "AdminModelsPage",
   components: { AdminConsoleShell, AppIcon },
   setup() {
-    const { accessState, transport, ensureAccess, goTo } = useAdminConsoleAccess();
+    const { accessState, transport, ensureAccess, captureContext, goTo } = useAdminConsoleAccess(clearPrivateState);
     const providers = ref<ModelProvider[]>([]);
     const selectedId = ref("");
     const draft = ref<ProviderDraft | null>(null);
@@ -367,6 +368,21 @@ export default {
     const reauthConfirmed = ref(false);
     const reauthPassword = ref("");
     const pendingAction = ref<PendingAction>(null);
+
+    function clearPrivateState(): void {
+      providers.value = [];
+      selectedId.value = "";
+      draft.value = null;
+      baseline.value = null;
+      isCreating.value = false;
+      loading.value = false;
+      saving.value = false;
+      discovering.value = false;
+      reauthRequested.value = false;
+      reauthConfirmed.value = false;
+      reauthPassword.value = "";
+      resetFeedback();
+    }
 
     const busy = computed(() => loading.value || saving.value || discovering.value);
     const selectedProvider = computed(() => providers.value.find((item) => item.providerId === selectedId.value) ?? null);
@@ -389,9 +405,12 @@ export default {
     }
 
     async function loadProviders(preferredId = selectedId.value): Promise<boolean> {
+      const ownsContext = captureContext();
       loading.value = true;
       try {
-        providers.value = await listModelProviders(transport);
+        const rows = await listModelProviders(transport);
+        if (!ownsContext()) return false;
+        providers.value = rows;
         const next = providers.value.find((item) => item.providerId === preferredId) ?? providers.value[0] ?? null;
         if (next) setDraftFromProvider(next);
         else {
@@ -402,10 +421,10 @@ export default {
         }
         return true;
       } catch {
-        setMessage("模型服务配置读取失败，请检查系统状态后重试。", "error");
+        if (ownsContext()) setMessage("模型服务配置读取失败，请检查系统状态后重试。", "error");
         return false;
       } finally {
-        loading.value = false;
+        if (ownsContext()) loading.value = false;
       }
     }
 
@@ -515,12 +534,15 @@ export default {
 
     async function confirmReauth(): Promise<void> {
       if (busy.value || !reauthPassword.value) return;
+      const ownsContext = captureContext();
       const password = reauthPassword.value;
       reauthPassword.value = "";
       saving.value = pendingAction.value === "save";
       discovering.value = pendingAction.value === "discover";
       try {
-        reauthConfirmed.value = await reauthAuth(transport, password);
+        const authenticated = await reauthAuth(transport, password);
+        if (!ownsContext()) return;
+        reauthConfirmed.value = authenticated;
         if (!reauthConfirmed.value) {
           setMessage("身份确认失败，请检查密码后重试。", "error");
           return;
@@ -534,11 +556,14 @@ export default {
         if (action === "save") await saveNow();
         if (action === "discover") await discoverNow();
       } catch {
+        if (!ownsContext()) return;
         reauthConfirmed.value = false;
         setMessage("身份确认请求失败，请稍后重试。", "error");
       } finally {
-        saving.value = false;
-        discovering.value = false;
+        if (ownsContext()) {
+          saving.value = false;
+          discovering.value = false;
+        }
       }
     }
 
@@ -561,6 +586,7 @@ export default {
 
     async function discoverNow(): Promise<void> {
       if (!draft.value || discovering.value) return;
+      const ownsContext = captureContext();
       discovering.value = true;
       catalogMessage.value = "";
       try {
@@ -570,6 +596,7 @@ export default {
           baseUrl: value.baseUrl.trim(),
           credential: value.credential || undefined,
         });
+        if (!ownsContext()) return;
         const existing = new Set(value.models.map((model) => model.modelId.trim()).filter(Boolean));
         if (value.models.length === 1 && !value.models[0].modelId.trim() && discovered.length > 0) {
           value.models.splice(0, 1);
@@ -592,6 +619,7 @@ export default {
           ? "提供方没有返回可用模型；仍可手动填写模型 ID。"
           : `读取到 ${discovered.length} 个模型，新增 ${added} 个；请确认限制后再保存。`;
       } catch (error) {
+        if (!ownsContext()) return;
         if (error instanceof ProviderHttpError && error.status === 403) {
           reauthConfirmed.value = false;
           reauthRequested.value = true;
@@ -600,12 +628,13 @@ export default {
           setMessage("模型目录读取失败。请检查 API 地址、协议和密钥；仍可手动填写模型。", "error");
         }
       } finally {
-        discovering.value = false;
+        if (ownsContext()) discovering.value = false;
       }
     }
 
     async function saveNow(): Promise<void> {
       if (!draft.value || saving.value) return;
+      const ownsContext = captureContext();
       saving.value = true;
       const value = draft.value;
       const providerId = value.providerId.trim();
@@ -624,15 +653,18 @@ export default {
             state: model.state,
           })),
         });
+        if (!ownsContext()) return;
         pendingAction.value = null;
         showValidation.value = false;
         const reloaded = await loadProviders(providerId);
+        if (!ownsContext()) return;
         if (reloaded) {
           setMessage("提供方配置已保存；新配置从下一轮对话开始生效。", "success");
         } else {
           setMessage("保存请求成功，但无法读取最新配置，请刷新确认。", "warning");
         }
       } catch (error) {
+        if (!ownsContext()) return;
         if (error instanceof ProviderHttpError && error.status === 403) {
           reauthConfirmed.value = false;
           reauthRequested.value = true;
@@ -642,7 +674,7 @@ export default {
           setMessage("保存失败。请检查地址、模型参数和启用状态后重试。", "error");
         }
       } finally {
-        saving.value = false;
+        if (ownsContext()) saving.value = false;
       }
     }
 

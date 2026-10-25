@@ -193,7 +193,7 @@ export default {
   name: "AdminRoutingPage",
   components: { AdminConsoleShell, AppIcon },
   setup() {
-    const { accessState, transport, ensureAccess, goTo } = useAdminConsoleAccess();
+    const { accessState, transport, ensureAccess, captureContext, goTo } = useAdminConsoleAccess(clearPrivateState);
     const providers = ref<ModelProvider[]>([]);
     const routes = ref<RouteView[]>([]);
     const baseline = ref<RouteView[]>([]);
@@ -204,6 +204,17 @@ export default {
     const reauthPassword = ref("");
     const message = ref("");
     const messageKind = ref<MessageKind>("success");
+    function clearPrivateState(): void {
+      providers.value = [];
+      routes.value = [];
+      baseline.value = [];
+      loading.value = false;
+      saving.value = false;
+      reauthRequested.value = false;
+      reauthConfirmed.value = false;
+      reauthPassword.value = "";
+      message.value = "";
+    }
     const busy = computed(() => loading.value || saving.value);
     const dirty = computed(() => routeKey(routes.value) !== routeKey(baseline.value));
     const changeItems = computed(() => {
@@ -228,18 +239,21 @@ export default {
     }
 
     async function load(): Promise<boolean> {
+      const ownsContext = captureContext();
       loading.value = true;
       try {
-        providers.value = await listModelProviders(transport);
+        const rows = await listModelProviders(transport);
+        if (!ownsContext()) return false;
+        providers.value = rows;
         const next = providerRoutes(providers.value);
         routes.value = next;
         baseline.value = next.map((route) => ({ ...route }));
         return true;
       } catch {
-        setMessage("路由顺序读取失败，请检查系统状态后重试。", "error");
+        if (ownsContext()) setMessage("路由顺序读取失败，请检查系统状态后重试。", "error");
         return false;
       } finally {
-        loading.value = false;
+        if (ownsContext()) loading.value = false;
       }
     }
 
@@ -284,11 +298,14 @@ export default {
 
     async function confirmReauth(): Promise<void> {
       if (busy.value || !reauthPassword.value) return;
+      const ownsContext = captureContext();
       saving.value = true;
       const password = reauthPassword.value;
       reauthPassword.value = "";
       try {
-        reauthConfirmed.value = await reauthAuth(transport, password);
+        const authenticated = await reauthAuth(transport, password);
+        if (!ownsContext()) return;
+        reauthConfirmed.value = authenticated;
         if (!reauthConfirmed.value) {
           setMessage("身份确认失败，请检查密码后重试。", "error");
           return;
@@ -298,28 +315,33 @@ export default {
         saving.value = false;
         await saveNow();
       } catch {
+        if (!ownsContext()) return;
         reauthConfirmed.value = false;
         setMessage("身份确认请求失败，请稍后重试。", "error");
       } finally {
-        saving.value = false;
+        if (ownsContext()) saving.value = false;
       }
     }
 
     async function saveNow(): Promise<void> {
       if (saving.value) return;
+      const ownsContext = captureContext();
       saving.value = true;
       try {
         await saveModelRoutingOrder(
           transport,
           routes.value.map(({ providerId, modelId }) => ({ providerId, modelId })),
         );
+        if (!ownsContext()) return;
         const reloaded = await load();
+        if (!ownsContext()) return;
         if (reloaded) {
           setMessage("全局路由顺序已更新，将从下一轮对话开始生效。", "success");
         } else {
           setMessage("保存请求成功，但无法读取最新配置，请刷新确认。", "warning");
         }
       } catch (error) {
+        if (!ownsContext()) return;
         if (error instanceof ProviderHttpError && error.status === 403) {
           reauthConfirmed.value = false;
           reauthRequested.value = true;
@@ -328,7 +350,7 @@ export default {
           setMessage("路由顺序保存失败；本页仍保留未保存调整。", "error");
         }
       } finally {
-        saving.value = false;
+        if (ownsContext()) saving.value = false;
       }
     }
 

@@ -72,9 +72,10 @@ func TestG10AttemptIntentOutcomeFinalizeAndRecovery(t *testing.T) {
 	}
 
 	prep, err := store.PrepareAttempt(ctx, turn.PrepareAttempt{
+		ModelID: "synthetic-go-model",
 		OwnerID: c.OwnerID, TurnID: itoa(c.RefID), JobID: c.JobID,
 		ClaimToken: c.Token, ClaimFence: c.Fence,
-		Budget: companion.TurnBudget{MaxInputTokens: 8000, MaxOutputTokens: 128, MaxAttempts: 2, MaxResponseBytes: 1024,
+		Budget: companion.TurnBudget{MaxReservedCost: 1_000_000, MaxInputTokens: 8000, MaxOutputTokens: 128, MaxAttempts: 2, MaxResponseBytes: 1024,
 			ConnectTimeout: time.Second, FirstTokenTimeout: time.Second, TotalTimeout: 5 * time.Second},
 		Categories:    []turn.DataCategory{turn.CategoryMessage},
 		PromptVersion: "companion-chat-go-v1", ConsentVersion: "OK",
@@ -144,9 +145,10 @@ func TestG12PrepareAttemptRechecksCurrentOutboundGate(t *testing.T) {
 	}
 	prepare := func(c JobClaim) error {
 		_, err := store.PrepareAttempt(ctx, turn.PrepareAttempt{
+			ModelID: "synthetic-go-model",
 			OwnerID: c.OwnerID, TurnID: itoa(c.RefID), JobID: c.JobID,
 			ClaimToken: c.Token, ClaimFence: c.Fence,
-			Budget: companion.TurnBudget{MaxAttempts: 1, MaxInputTokens: 8, MaxOutputTokens: 4,
+			Budget: companion.TurnBudget{MaxReservedCost: 1_000_000, MaxAttempts: 1, MaxInputTokens: 8, MaxOutputTokens: 4,
 				MaxResponseBytes: 64, ConnectTimeout: time.Second,
 				FirstTokenTimeout: time.Second, TotalTimeout: time.Second},
 			Categories: []turn.DataCategory{turn.CategoryMessage},
@@ -244,9 +246,10 @@ func TestG10CrashRecoveryMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := store.PrepareAttempt(ctx, turn.PrepareAttempt{
+			ModelID: "synthetic-go-model",
 			OwnerID: c.OwnerID, TurnID: itoa(c.RefID), JobID: c.JobID,
 			ClaimToken: c.Token, ClaimFence: c.Fence,
-			Budget: companion.TurnBudget{MaxAttempts: 2, MaxInputTokens: 8, MaxOutputTokens: 4, MaxResponseBytes: 64,
+			Budget: companion.TurnBudget{MaxReservedCost: 1_000_000, MaxAttempts: 2, MaxInputTokens: 8, MaxOutputTokens: 4, MaxResponseBytes: 64,
 				ConnectTimeout: time.Second, FirstTokenTimeout: time.Second, TotalTimeout: time.Second},
 			ProviderID: "openai-compatible", SupplierName: "openai-compatible",
 		}); err != nil {
@@ -274,9 +277,10 @@ func TestG10CrashRecoveryMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 		prep, err := store.PrepareAttempt(ctx, turn.PrepareAttempt{
+			ModelID: "synthetic-go-model",
 			OwnerID: c.OwnerID, TurnID: itoa(c.RefID), JobID: c.JobID,
 			ClaimToken: c.Token, ClaimFence: c.Fence,
-			Budget: companion.TurnBudget{MaxAttempts: 2, MaxInputTokens: 8, MaxOutputTokens: 4, MaxResponseBytes: 64,
+			Budget: companion.TurnBudget{MaxReservedCost: 1_000_000, MaxAttempts: 2, MaxInputTokens: 8, MaxOutputTokens: 4, MaxResponseBytes: 64,
 				ConnectTimeout: time.Second, FirstTokenTimeout: time.Second, TotalTimeout: time.Second},
 			ProviderID: "openai-compatible", SupplierName: "openai-compatible",
 		})

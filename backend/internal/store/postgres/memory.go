@@ -662,7 +662,7 @@ type MemoryExtractOutcome struct {
 // actual outbound category (MESSAGE_TEXT), turn extractability incl. the
 // no_memory markers and model_eligible, route admission, and the attempt
 // registration (stale CREATED attempts of earlier holders are abandoned).
-func (s *Store) PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string) (MemoryExtractPreparation, error) {
+func (s *Store) PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string, inputTokens int) (MemoryExtractPreparation, error) {
 	if owner <= 0 || jobID <= 0 || generationID <= 0 || token == "" || fence == "" ||
 		providerID == "" || supplierName == "" || modelID == "" {
 		return MemoryExtractPreparation{}, ErrInvalid
@@ -686,6 +686,11 @@ func (s *Store) PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, g
 			out.AttemptNo = int(no.Int64)
 		}
 		out.Decision = decision.String
+		if out.AttemptID > 0 && out.Decision == "EXTRACTABLE" {
+			if err := s.reserveModelCost(ctx, tx, owner, jobID, memoryExtractCostKey(out.AttemptID), providerID, modelID, inputTokens, 512, s.maxReservedCost); err != nil {
+				return err
+			}
+		}
 		// The replay payload is stored encrypted at rest (same stored-field
 		// cipher as every message field); the handler receives plaintext.
 		plain, err := s.decryptStored(payload.String)

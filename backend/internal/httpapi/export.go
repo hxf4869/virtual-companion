@@ -114,8 +114,9 @@ func (s *Server) handleDownloadExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(envelope)
-		_ = s.core.Blobs.Delete(r.Context(), dl.ObjectKey)
-		_ = s.core.Store.ClearExportObject(r.Context(), p.AccountID, id, dl.ObjectKey)
+		if err := s.core.Blobs.Delete(r.Context(), dl.ObjectKey); err == nil {
+			_ = s.core.Store.ClearExportObject(r.Context(), p.AccountID, id, dl.ObjectKey)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

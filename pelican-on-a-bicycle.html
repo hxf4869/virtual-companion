@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>鹈鹕骑自行车 · Pelican on a Bicycle</title>
+<style>
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: #eef3f8;
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+    padding: 24px;
+  }
+  .stage { width: min(92vw, 900px); }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 14px;
+    color: #2f3437;
+  }
+  h1 span { font-weight: 400; color: #7a848c; font-size: 14px; }
+  svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(20, 40, 60, 0.16);
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <h1>鹈鹕骑自行车 <span>· Pelican on a Bicycle</span></h1>
+
+    <svg viewBox="0 0 800 450" role="img" aria-label="一只鹈鹕骑着自行车前进的动画">
+
+      <!-- 天空 -->
+      <rect x="0" y="0" width="800" height="450" fill="#dff2fb" />
+
+      <!-- 太阳（缓慢旋转的光芒） -->
+      <g>
+        <animateTransform attributeName="transform" type="rotate"
+          values="0 90 90; 360 90 90" dur="40s" repeatCount="indefinite" />
+        <g stroke="#ffd76e" stroke-width="4" stroke-linecap="round">
+          <line x1="90" y1="40" x2="90" y2="52" />
+          <line x1="90" y1="128" x2="90" y2="140" />
+          <line x1="40" y1="90" x2="52" y2="90" />
+          <line x1="128" y1="90" x2="140" y2="90" />
+          <line x1="55" y1="55" x2="63" y2="63" />
+          <line x1="117" y1="117" x2="125" y2="125" />
+          <line x1="125" y1="55" x2="117" y2="63" />
+          <line x1="63" y1="117" x2="55" y2="125" />
+        </g>
+        <circle cx="90" cy="90" r="26" fill="#ffd76e" />
+      </g>
+
+      <!-- 云（从右往左飘过） -->
+      <g fill="#ffffff" opacity="0.9">
+        <g>
+          <animateTransform attributeName="transform" type="translate"
+            values="820 110; -160 110" dur="16s" begin="-4s" repeatCount="indefinite" />
+          <ellipse cx="0" cy="0" rx="34" ry="16" />
+          <ellipse cx="24" cy="-8" rx="22" ry="14" />
+          <ellipse cx="-22" cy="-6" rx="20" ry="12" />
+        </g>
+        <g>
+          <animateTransform attributeName="transform" type="translate"
+            values="820 70; -160 70" dur="22s" begin="-14s" repeatCount="indefinite" />
+          <ellipse cx="0" cy="0" rx="28" ry="13" />
+          <ellipse cx="20" cy="-7" rx="18" ry="11" />
+        </g>
+        <g>
+          <animateTransform attributeName="transform" type="translate"
+            values="820 150; -160 150" dur="19s" begin="-9s" repeatCount="indefinite" />
+          <ellipse cx="0" cy="0" rx="26" ry="12" />
+          <ellipse cx="-18" cy="-6" rx="16" ry="10" />
+        </g>
+      </g>
+
+      <!-- 草地与马路 -->
+      <rect x="0" y="345" width="800" height="10" fill="#7fb069" />
+      <rect x="0" y="355" width="800" height="95" fill="#465057" />
+      <line x1="0" y1="355" x2="800" y2="355" stroke="#2f3437" stroke-width="3" opacity="0.25" />
+
+      <!-- 马路中线（虚线向左流动，制造前进感） -->
+      <line x1="0" y1="400" x2="800" y2="400" stroke="#f4f7fb" stroke-width="5"
+        stroke-dasharray="34 26" stroke-linecap="round">
+        <animate attributeName="stroke-dashoffset" values="0;60" dur="0.7s" repeatCount="indefinite" />
+      </line>
+
+      <!-- 路边灌木（快速掠过） -->
+      <g>
+        <g>
+          <animateTransform attributeName="transform" type="translate"
+            values="860 338; -60 338" dur="6s" begin="-1s" repeatCount="indefinite" />
+          <rect x="-2" y="0" width="4" height="12" fill="#7a5b3a" />
+          <circle cx="0" cy="-8" r="13" fill="#6a9c5d" />
+        </g>
+        <g>
+          <animateTransform attributeName="transform" type="translate"
+            values="860 338; -60 338" dur="6s" begin="-3.5s" repeatCount="indefinite" />
+          <rect x="-2" y="0" width="4" height="12" fill="#7a5b3a" />
+          <circle cx="0" cy="-8" r="11" fill="#6a9c5d" />
+        </g>
+        <g>
+          <animateTransform attributeName="transform" type="translate"
+            values="860 338; -60 338" dur="6s" begin="-5s" repeatCount="indefinite" />
+          <rect x="-2" y="0" width="4" height="12" fill="#7a5b3a" />
+          <circle cx="0" cy="-8" r="12" fill="#6a9c5d" />
+        </g>
+      </g>
+
+      <!-- 地面阴影 -->
+      <ellipse cx="240" cy="358" rx="46" ry="7" fill="rgba(0,0,0,0.15)" />
+      <ellipse cx="460" cy="358" rx="46" ry="7" fill="rgba(0,0,0,0.15)" />
+
+      <!-- 速度线 -->
+      <g stroke="#2f3437" stroke-width="3" stroke-linecap="round" opacity="0.3">
+        <line x1="130" y1="180" x2="172" y2="180">
+          <animate attributeName="opacity" values="0.1;0.4;0.1" dur="0.7s" repeatCount="indefinite" />
+        </line>
+        <line x1="110" y1="210" x2="158" y2="210">
+          <animate attributeName="opacity" values="0.4;0.1;0.4" dur="0.7s" repeatCount="indefinite" />
+        </line>
+        <line x1="140" y1="240" x2="180" y2="240">
+          <animate attributeName="opacity" values="0.15;0.35;0.15" dur="0.9s" repeatCount="indefinite" />
+        </line>
+      </g>
+
+      <!-- 骑手 + 自行车（整体随踩踏节奏轻微起伏） -->
+      <g>
+        <animateTransform attributeName="transform" type="translate"
+          values="0 0; 0 -4; 0 0; 0 -4; 0 0" keyTimes="0;0.25;0.5;0.75;1"
+          dur="0.7s" repeatCount="indefinite" />
+
+        <!-- 远侧腿（相位差半圈，画在车架后面） -->
+        <polyline points="318,238 341,270 350,313" fill="none" stroke="#c9c3b4"
+          stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+          <animate attributeName="points" dur="0.7s" repeatCount="indefinite"
+            values="318,238 341,270 350,313;
+                    318,238 323,257 328,295;
+                    318,238 335,250 350,277;
+                    318,238 357,263 372,295;
+                    318,238 341,270 350,313" />
+        </polyline>
+
+        <!-- 后轮 -->
+        <circle cx="240" cy="300" r="55" fill="none" stroke="#2f3437" stroke-width="6" />
+        <g stroke="#8a9199" stroke-width="2.5">
+          <animateTransform attributeName="transform" type="rotate"
+            values="0 240 300; 360 240 300" dur="0.7s" repeatCount="indefinite" />
+          <line x1="185" y1="300" x2="295" y2="300" />
+          <line x1="240" y1="245" x2="240" y2="355" />
+          <line x1="201" y1="261" x2="279" y2="339" />
+          <line x1="279" y1="261" x2="201" y2="339" />
+        </g>
+        <circle cx="240" cy="300" r="5" fill="#2f3437" />
+
+        <!-- 前轮 -->
+        <circle cx="460" cy="300" r="55" fill="none" stroke="#2f3437" stroke-width="6" />
+        <g stroke="#8a9199" stroke-width="2.5">
+          <animateTransform attributeName="transform" type="rotate"
+            values="0 460 300; 360 460 300" dur="0.7s" repeatCount="indefinite" />
+          <line x1="405" y1="300" x2="515" y2="300" />
+          <line x1="460" y1="245" x2="460" y2="355" />
+          <line x1="421" y1="261" x2="499" y2="339" />
+          <line x1="499" y1="261" x2="421" y2="339" />
+        </g>
+        <circle cx="460" cy="300" r="5" fill="#2f3437" />
+
+        <!-- 车架 -->
+        <g stroke="#d64545" stroke-width="7" stroke-linecap="round" fill="none">
+          <path d="M300,245 L350,295" />   <!-- 立管 -->
+          <path d="M430,245 L350,295" />   <!-- 下管 -->
+          <path d="M300,245 L430,245" />   <!-- 上管 -->
+          <path d="M300,245 L240,300" />   <!-- 后上叉 -->
+          <path d="M350,295 L240,300" />   <!-- 后下叉 -->
+          <path d="M430,245 L460,300" />   <!-- 前叉 -->
+          <path d="M430,245 L422,232" />   <!-- 把立 -->
+        </g>
+
+        <!-- 车座 -->
+        <path d="M286,246 L318,243 L312,250 L286,250 Z" fill="#2f3437" />
+        <!-- 车把 -->
+        <path d="M412,232 L432,230" stroke="#2f3437" stroke-width="5" stroke-linecap="round" />
+        <circle cx="412" cy="232" r="4" fill="#2f3437" />
+
+        <!-- 牙盘与链条 -->
+        <circle cx="350" cy="295" r="16" fill="none" stroke="#2f3437" stroke-width="4" />
+        <path d="M350,279 L240,296 M350,311 L240,304" stroke="#2f3437" stroke-width="3" fill="none" />
+
+        <!-- 曲柄与脚踏（旋转） -->
+        <g stroke="#2f3437" stroke-width="5" stroke-linecap="round">
+          <animateTransform attributeName="transform" type="rotate"
+            values="0 350 295; 360 350 295" dur="0.7s" repeatCount="indefinite" />
+          <line x1="350" y1="295" x2="350" y2="277" />
+          <line x1="344" y1="276" x2="356" y2="276" stroke-width="4" />
+          <line x1="350" y1="295" x2="350" y2="313" />
+          <line x1="344" y1="314" x2="356" y2="314" stroke-width="4" />
+        </g>
+
+        <!-- 鹈鹕：尾羽 -->
+        <path d="M242,200 L206,188 L212,216 L246,224 Z" fill="#e9e4d8" stroke="#2f3437" stroke-width="3" stroke-linejoin="round" />
+
+        <!-- 鹈鹕：身体 -->
+        <ellipse cx="310" cy="210" rx="68" ry="52" fill="#f7f4ec" stroke="#2f3437" stroke-width="3" />
+
+        <!-- 鹈鹕：翅膀（扶把，轻微扇动） -->
+        <g>
+          <animateTransform attributeName="transform" type="rotate"
+            values="-3 335 195; 3 335 195; -3 335 195" dur="0.7s" repeatCount="indefinite" />
+          <path d="M335,195 C362,204 396,214 418,229 L422,236 C400,244 364,244 340,234 C328,224 328,205 335,195 Z"
+            fill="#e9e4d8" stroke="#2f3437" stroke-width="3" stroke-linejoin="round" />
+        </g>
+
+        <!-- 鹈鹕：脖子 -->
+        <path d="M355,185 C380,165 410,150 440,142" fill="none" stroke="#2f3437" stroke-width="22" stroke-linecap="round" />
+        <path d="M355,185 C380,165 410,150 440,142" fill="none" stroke="#f7f4ec" stroke-width="15" stroke-linecap="round" />
+
+        <!-- 鹈鹕：头部（轻微点动） -->
+        <g>
+          <animateTransform attributeName="transform" type="rotate"
+            values="-2 440 142; 2 440 142; -2 440 142" dur="1.4s" repeatCount="indefinite" />
+          <circle cx="445" cy="140" r="20" fill="#f7f4ec" stroke="#2f3437" stroke-width="3" />
+          <circle cx="451" cy="134" r="4" fill="#2f3437" />
+          <!-- 上喙 -->
+          <path d="M462,136 L532,142 L528,148 L460,146 Z" fill="#e8a13c" stroke="#2f3437" stroke-width="3" stroke-linejoin="round" />
+          <!-- 喉囊（一鼓一鼓，里面还藏着一条小鱼） -->
+          <path d="M458,146 C462,170 510,172 528,146 L460,146 Z" fill="#f0b25c" stroke="#2f3437" stroke-width="3" stroke-linejoin="round">
+            <animate attributeName="d" dur="1.4s" repeatCount="indefinite"
+              values="M458,146 C462,170 510,172 528,146 L460,146 Z;
+                      M458,146 C464,176 512,178 528,146 L460,146 Z;
+                      M458,146 C462,170 510,172 528,146 L460,146 Z" />
+          </path>
+          <path d="M498,163 L508,158 L502,168 Z" fill="#d1495b" />
+        </g>
+
+        <!-- 鹈鹕：近侧腿（踩踏，与曲柄同步） -->
+        <polyline points="318,238 334,250 350,277" fill="none" stroke="#d9d4c8"
+          stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+          <animate attributeName="points" dur="0.7s" repeatCount="indefinite"
+            values="318,238 334,250 350,277;
+                    318,238 356,263 372,295;
+                    318,238 340,270 350,313;
+                    318,238 322,257 328,295;
+                    318,238 334,250 350,277" />
+        </polyline>
+      </g>
+    </svg>
+  </div>
+</body>
+</html>

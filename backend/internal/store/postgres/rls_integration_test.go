@@ -312,8 +312,13 @@ func TestWrongBindingSecretRejectedByDatabase(t *testing.T) {
 
 func resetFixtures(t *testing.T) {
 	t.Helper()
+	testEnv.store.UseCostLimits(1_000_000, 1_000_000_000)
 	_, err := psqlSuper(`
 TRUNCATE vc.account_deletion_intent, vc.relationship, vc.vc_user CASCADE;
+TRUNCATE vc.model_cost_reservation, vc.month_cost_budget, vc.model_unit_price;
+INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES
+ ('openai-compatible','synthetic-go-model',1,0.001,0.002),
+ ('prov-a','model-a',1,0.001,0.002);
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice'), (2, 'bob');
 INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active)
 VALUES (1, 10, 'persona-a', true), (2, 20, 'persona-bob', true);

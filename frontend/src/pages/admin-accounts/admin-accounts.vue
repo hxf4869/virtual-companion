@@ -151,7 +151,7 @@ import { formatLocalDateTime } from "@/domain/timestamp";
 import AdminConsoleShell from "@/pages/admin-console/AdminConsoleShell.vue";
 import { useAdminConsoleAccess } from "@/pages/admin-console/useAdminConsole";
 
-const { accessState, transport, ensureAccess } = useAdminConsoleAccess();
+const { accessState, transport, ensureAccess, captureContext } = useAdminConsoleAccess(clearPrivateState);
 const accounts = ref<AdminAccount[]>([]);
 const selectedId = ref("");
 const loading = ref(false);
@@ -160,6 +160,15 @@ const resetOpen = ref(false);
 const password = ref("");
 const actionMessage = ref("");
 const acting = ref(false);
+
+function clearPrivateState(): void {
+  accounts.value = [];
+  selectedId.value = "";
+  loading.value = false;
+  loadFailed.value = false;
+  acting.value = false;
+  closeReset();
+}
 
 const selected = computed(() => (
   accounts.value.find((account) => account.accountId === selectedId.value)
@@ -177,17 +186,20 @@ async function retryAccess(): Promise<void> {
 
 async function loadAccounts(): Promise<void> {
   if (loading.value) return;
+  const ownsContext = captureContext();
   loading.value = true;
   loadFailed.value = false;
   try {
-    accounts.value = await listAdminAccounts(transport);
+    const rows = await listAdminAccounts(transport);
+    if (!ownsContext()) return;
+    accounts.value = rows;
     if (!accounts.value.some((account) => account.accountId === selectedId.value)) {
       selectedId.value = accounts.value[0]?.accountId ?? "";
     }
   } catch {
-    loadFailed.value = true;
+    if (ownsContext()) loadFailed.value = true;
   } finally {
-    loading.value = false;
+    if (ownsContext()) loading.value = false;
   }
 }
 
@@ -235,14 +247,19 @@ function closeReset(): void {
 async function confirmReset(): Promise<void> {
   const account = selected.value;
   if (!account || !password.value || acting.value) return;
+  const ownsContext = captureContext();
   acting.value = true;
   actionMessage.value = "";
   try {
-    if (!await reauthAuth(transport, password.value)) {
+    const authenticated = await reauthAuth(transport, password.value);
+    if (!ownsContext()) return;
+    if (!authenticated) {
       actionMessage.value = "管理员密码不正确。";
       return;
     }
-    if (!await resetAdminAuthenticator(transport, account.accountId)) {
+    const reset = await resetAdminAuthenticator(transport, account.accountId);
+    if (!ownsContext()) return;
+    if (!reset) {
       actionMessage.value = "没有重置成功，请稍后重试。";
       return;
     }
@@ -255,9 +272,9 @@ async function confirmReset(): Promise<void> {
     password.value = "";
     actionMessage.value = "身份验证器已重置。";
   } catch {
-    actionMessage.value = "没有重置成功，请刷新后重试。";
+    if (ownsContext()) actionMessage.value = "没有重置成功，请刷新后重试。";
   } finally {
-    acting.value = false;
+    if (ownsContext()) acting.value = false;
   }
 }
 </script>

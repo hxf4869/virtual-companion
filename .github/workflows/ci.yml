@@ -245,7 +245,7 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       - name: Verify vendored Go dependencies
-        run: GOPROXY=off go list -C backend -mod=vendor -m all
+        run: GOPROXY=off go list -C backend -mod=vendor -deps ./... > /dev/null
       - name: Set up pnpm
         # pnpm/action-setup@v6 -> 0977fd99725f1db4007ccb2928dbb4e90d06cc86
         # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。

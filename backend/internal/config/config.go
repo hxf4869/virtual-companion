@@ -48,20 +48,22 @@ func ForbiddenPlanes() []Plane {
 // from the environment or private files outside the repository and are
 // never logged.
 type Config struct {
-	Mode         Mode
-	HTTP         HTTP
-	Log          Log
-	Pprof        Pprof
-	Shutdown     Shutdown
-	Version      Version
-	Database     Database
-	OwnerBinding OwnerBinding
-	Crypto       Crypto
-	ExportS3     ExportS3
-	Provider     Provider
-	Budget       Budget
-	Session      Session
-	Concurrency  Concurrency
+	// MonthlyCostLimit is the global model-cost admission cap in micro-USD. Zero refuses outbound calls.
+	MonthlyCostLimit int64
+	Mode             Mode
+	HTTP             HTTP
+	Log              Log
+	Pprof            Pprof
+	Shutdown         Shutdown
+	Version          Version
+	Database         Database
+	OwnerBinding     OwnerBinding
+	Crypto           Crypto
+	ExportS3         ExportS3
+	Provider         Provider
+	Budget           Budget
+	Session          Session
+	Concurrency      Concurrency
 }
 
 // ExportS3 is the one supported export object store. Runtime access is
@@ -468,6 +470,13 @@ func loadConcurrencyEnv(cfg *Config, getenv func(string) string) error {
 }
 
 func loadBudgetEnv(cfg *Config, getenv func(string) string) error {
+	if raw := strings.TrimSpace(getenv("VC_MONTHLY_COST_LIMIT")); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("VC_MONTHLY_COST_LIMIT: %w", err)
+		}
+		cfg.MonthlyCostLimit = n
+	}
 	if raw := strings.TrimSpace(getenv("VC_BUDGET_MAX_INPUT_TOKENS")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil {
@@ -669,6 +678,12 @@ func (c Config) Validate() error {
 	}
 	if c.Concurrency.RecoverInterval < time.Second || c.Concurrency.RecoverInterval > time.Minute {
 		return fmt.Errorf("VC_JOB_RECOVER_INTERVAL must be between 1s and 1m")
+	}
+	if c.MonthlyCostLimit < 0 || c.MonthlyCostLimit > hardMaxReservedCost {
+		return fmt.Errorf("VC_MONTHLY_COST_LIMIT must be in [0, %d]", hardMaxReservedCost)
+	}
+	if c.MonthlyCostLimit > 0 && c.Budget.MaxReservedCost > c.MonthlyCostLimit {
+		return fmt.Errorf("VC_BUDGET_MAX_RESERVED_COST must not exceed VC_MONTHLY_COST_LIMIT")
 	}
 	return c.Budget.validate(c.Provider)
 }

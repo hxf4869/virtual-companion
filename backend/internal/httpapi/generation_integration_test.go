@@ -117,6 +117,7 @@ func (f *fakeStreamProvider) Stream(ctx context.Context, _ companion.ModelReques
 
 func g10Policy() jobs.Policy {
 	return jobs.Policy{
+		ModelID:            "synthetic-go-model",
 		GenerationLease:    5 * time.Minute,
 		ExportLease:        10 * time.Minute,
 		DefaultLease:       60 * time.Second,
@@ -131,6 +132,7 @@ func g10Policy() jobs.Policy {
 
 func g10Budget() companion.TurnBudget {
 	return companion.TurnBudget{
+		MaxReservedCost:   1_000_000,
 		MaxInputTokens:    8000,
 		MaxOutputTokens:   2048,
 		MaxResponseBytes:  256 << 10,

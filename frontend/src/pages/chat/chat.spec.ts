@@ -74,6 +74,8 @@ interface FetchOptions {
   deferSnapshot?: boolean;
   /** VC-R04：GET /realtime/streams/:id 返回可控 SSE 流，帧由测试推送/关闭。 */
   liveStream?: boolean;
+  /** 恢复流的停止请求：成功终态或服务不可用（默认保持旧夹具行为）。 */
+  cancelStatus?: 200 | 503;
 }
 
 function resolveBool(value: boolean | (() => boolean) | undefined): boolean {
@@ -208,6 +210,12 @@ function stubFetch(options: FetchOptions = {}) {
       if (options.deferSnapshot) return deferredSnapshot;
       return response(true, 200, { events: [] });
     }
+    if (method === "POST" && url.endsWith("/cancel") && options.cancelStatus !== undefined) {
+      return response(options.cancelStatus === 200, options.cancelStatus, {
+        generationId: "gen-restored", conversationId: "conv-new",
+        logicalGenerationId: "lg-restored", status: "CANCELLED",
+      });
+    }
     if (method === "GET" && url.startsWith("/api/v1/realtime/streams/")) {
       // VC-R02：挂起的 Fetch-SSE 连接——resume 永不落地，流保持在 streaming。
       if (options.hangStream) return new Promise<StubResponse>(() => undefined);
@@ -297,6 +305,33 @@ describe("聊天产品页", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it.each([200, 503] as const)("刷新恢复时立即展示流式内容，停止向后端发请求（HTTP %s）", async (cancelStatus) => {
+    sessionStorage.setItem("vc.gen.restore", JSON.stringify({
+      accountId: "7", relationshipId: "rel-1", conversationId: "conv-new",
+      generationId: "gen-restored", savedAtEpochMs: Date.now(),
+    }));
+    const { calls, pushFrame } = stubFetch({ liveStream: true, cancelStatus });
+    const wrapper = mountPage();
+    await flushPromises();
+    pushFrame('event: chat.delta\ndata: {"event":"chat.delta","text":"恢复中的合成回复"}\n\n');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-loading"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="draft"]').text()).toContain("恢复中的合成回复");
+    await wrapper.get('[data-testid="cancel"]').trigger("click");
+    await flushPromises();
+    expect(calls.filter((call) => call.method === "POST" && call.url.endsWith("/cancel")))
+      .toEqual([{ method: "POST", url: "/api/v1/generations/gen-restored/cancel", body: undefined }]);
+    expect(useChatStore().phase).toBe("cancelled");
+    expect(useChatStore().cancelUnconfirmed).toBe(cancelStatus === 503);
+    if (cancelStatus === 200) {
+      expect(sessionStorage.getItem("vc.gen.restore")).toBeNull();
+    } else {
+      expect(sessionStorage.getItem("vc.gen.restore")).toContain("gen-restored");
+      expect(wrapper.text()).toContain("生成状态待确认");
+    }
+    wrapper.unmount();
   });
 
   it("用陪伴者身份、非真人说明和三项底栏建立聊天骨架", async () => {

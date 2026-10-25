@@ -601,6 +601,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     deps: RealtimeDeps,
     ownerToken?: number,
     pageConversationId?: string,
+    transport?: ChatTransport,
   ): Promise<void> {
     const id = generationId.value;
     if (!id) return;
@@ -647,6 +648,7 @@ export const useChatStore = defineStore("h5-chat", () => {
         return;
       }
       if (!recoverStillCurrent()) return;
+      if (transport) lastTransport = transport;
       if (!snapshot.ok) {
         // S0-20: a gone generation (404) means the stored id is stale — drop
         // it instead of re-finding a dead turn on every reload.
@@ -744,6 +746,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     deps: RealtimeDeps,
     ctx: { accountId: string; relationshipId: string },
     ownerToken?: number,
+    transport?: ChatTransport,
   ): Promise<boolean> {
     if (!conversationId.value) return false; // no open conversation to attach to
     if (phase.value === "streaming") return false; // live stream owns the turn
@@ -763,7 +766,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       return false;
     }
     generationId.value = stored.generationId;
-    await recoverInFlight(deps, ownerToken, conversationId.value);
+    await recoverInFlight(deps, ownerToken, conversationId.value, transport);
     return true;
   }
 
@@ -883,11 +886,10 @@ export const useChatStore = defineStore("h5-chat", () => {
     const transport = lastTransport;
     const deps = lastDeps;
     const id = generationId.value;
-    if (!transport || !deps || !id) {
-      // 无核对通道：保持既有语义——本地已停止，丢弃恢复标识。
+    if (!deps || !id) {
+      // 本地中止不证明后端已停；有生成标识时保留核对与恢复入口。
       current.abort();
-      cancelUnconfirmed.value = false;
-      clearRestorableGeneration(safeSessionStorage());
+      cancelUnconfirmed.value = Boolean(id);
       return;
     }
     if (cancelVerifyInFlight) {
@@ -906,16 +908,15 @@ export const useChatStore = defineStore("h5-chat", () => {
     // 先发起有界取消请求（不等待其响应），再做本地中断。
     void (async () => {
       try {
-        const generation = await withTimeout(
-          cancelGeneration(transport, id),
-          CANCEL_VERIFY_TIMEOUT_MS,
-        );
+        const generation = transport
+          ? await withTimeout(cancelGeneration(transport, id), CANCEL_VERIFY_TIMEOUT_MS)
+          : null;
         if (!cancelVerifyStillCurrent()) return;
         if (generation && TERMINAL_GENERATION_STATUSES.has(generation.status)) {
           applyConfirmedTerminal(terminalEventOf(generation.status));
           // N-06（T-40）：取消响应只确认状态、不带正文——服务端实际完成时，
           // 用一次有界补页把权威行带回；失败置 finalSyncFailed 如实提示。
-          if (generation.status === "COMPLETED") {
+          if (generation.status === "COMPLETED" && transport) {
             void syncFinalFromHistory(transport, seqAtCancel, id);
           }
           return;

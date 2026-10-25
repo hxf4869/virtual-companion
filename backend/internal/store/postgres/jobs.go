@@ -164,11 +164,13 @@ func (s *Store) ExpireStaleExports(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-func (s *Store) ListExpiredExportObjects(ctx context.Context) ([]ExportObject, error) {
+func (s *Store) ListExportCleanupObjects(ctx context.Context) ([]ExportObject, error) {
 	var out []ExportObject
 	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
-			`SELECT out_owner_user_id, out_id, out_object_key FROM vc.list_expired_export_objects()`)
+			`SELECT out_owner_user_id, out_id, out_object_key FROM vc.list_expired_export_objects()
+             UNION ALL
+             SELECT out_owner_user_id, out_id, out_object_key FROM vc.list_failed_export_objects()`)
 		if err != nil {
 			return err
 		}

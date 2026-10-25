@@ -126,6 +126,7 @@ func startTestDB() error {
 		stopTestDB()
 		return err
 	}
+	store.UseCostLimits(1_000_000, 1_000_000_000)
 	testEnv.store = store
 	return nil
 }
@@ -215,6 +216,9 @@ BEGIN
 END $$;
 ALTER ROLE vc_runtime_login LOGIN INHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER NOBYPASSRLS PASSWORD '` + testRuntimePassword + `';
 GRANT vc_api, vc_worker, vc_job_coordinator, vc_dispatcher TO vc_runtime_login;
+INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k)
+VALUES ('openai-compatible','synthetic-go-model',1,0.001,0.002)
+ON CONFLICT DO NOTHING;
 `
 	return psqlStdin(sql)
 }

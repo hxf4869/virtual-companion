@@ -150,7 +150,9 @@ func StreamAttempt(ctx context.Context, in StreamInput) StreamResult {
 			ProviderErr: nil,
 		}
 	}
-	if errors.Is(perr, errLengthStop) || (perr == nil && lengthHit) {
+	// The adapters classify sink errors and may replace errLengthStop with
+	// CANCELED after stop cancels the call. This engine owns the length fact.
+	if lengthHit {
 		final := review(acc)
 		return StreamResult{
 			Status:      AttemptSucceeded,

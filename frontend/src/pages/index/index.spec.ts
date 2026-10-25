@@ -333,6 +333,27 @@ describe("首页产品骨架", () => {
     wrapper.unmount();
   });
 
+  it("同账号从聊天返回缓存首页时更新最近会话和继续目标", async () => {
+    let rows = RECENT_CONVERSATIONS;
+    const fetchMock = stubFetch({ conversations: () => rows });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+    const internal = wrapper.vm.$ as unknown as { a?: Array<() => void>; da?: Array<() => void> };
+    internal.da?.forEach((hook) => hook());
+    rows = [{ ...RECENT_CONVERSATIONS[0], conversationId: "new-conversation",
+      title: "刚刚的新对话", lastMessagePreview: "最新的合成回复" }];
+    internal.a?.forEach((hook) => hook());
+    await flushPromises();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/conversations?"))).toHaveLength(2);
+    expect(wrapper.text()).toContain("最新的合成回复");
+    await wrapper.get('[data-testid="home-continue-chat"]').trigger("click");
+    expect(navigateTo()).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("conversationId=new-conversation"),
+    }));
+    wrapper.unmount();
+  });
+
   it("换号后返回缓存的首页不显示旧账号会话预览，激活后只加载新账号内容", async () => {
     let switched = false;
     const fetchMock = stubFetch({

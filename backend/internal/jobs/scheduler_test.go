@@ -24,6 +24,34 @@ type schedulerTestStore struct {
 	recoveredExtracts []int64
 	expiredExports    []postgres.JobClaim
 	recoveredExports  []int64
+	uploads           []postgres.ExportUploadCleanup
+	cleanedUploads    []int64
+}
+
+func (s *schedulerTestStore) ClaimExportUploadCleanup(context.Context) ([]postgres.ExportUploadCleanup, error) {
+	return s.uploads, nil
+}
+
+func (s *schedulerTestStore) CompleteExportUploadCleanup(_ context.Context, _, id int64) error {
+	s.cleanedUploads = append(s.cleanedUploads, id)
+	s.uploads = nil
+	return nil
+}
+
+func TestSchedulerRetriesFailedUploadCleanup(t *testing.T) {
+	store := newSchedulerTestStore()
+	store.objects = nil
+	store.uploads = []postgres.ExportUploadCleanup{{OwnerID: 1, IntentID: 23, ObjectKey: "synthetic-stale-upload"}}
+	blob := &schedulerTestBlob{deleteErr: errors.New("synthetic unavailable")}
+	runSchedulerOnce(t, store, blob)
+	if len(store.cleanedUploads) != 0 || len(store.uploads) != 1 {
+		t.Fatal("failed delete discarded the upload tombstone")
+	}
+	blob.deleteErr = nil
+	runSchedulerOnce(t, store, blob)
+	if len(store.cleanedUploads) != 1 || store.cleanedUploads[0] != 23 {
+		t.Fatal("failed export upload was not cleaned after storage recovered")
+	}
 }
 
 func (s *schedulerTestStore) PurgeExpiredOpaqueSessions(context.Context) (int, error) {
@@ -34,7 +62,7 @@ func (s *schedulerTestStore) ExpireStaleExports(context.Context) (int, error) {
 	return 0, nil
 }
 
-func (s *schedulerTestStore) ListExpiredExportObjects(context.Context) ([]postgres.ExportObject, error) {
+func (s *schedulerTestStore) ListExportCleanupObjects(context.Context) ([]postgres.ExportObject, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]postgres.ExportObject(nil), s.objects...), nil

@@ -298,6 +298,7 @@ func (r *Runtime) openStore(ctx context.Context) error {
 	if r.deps.Cipher != nil {
 		store.UseCipher(r.deps.Cipher)
 	}
+	store.UseCostLimits(r.cfg.Budget.MaxReservedCost, r.cfg.MonthlyCostLimit)
 	r.store = store
 	r.metrics.SetDBStatsSource(func() observability.DBStats {
 		st := store.Stats()

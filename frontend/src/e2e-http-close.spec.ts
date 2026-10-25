@@ -71,8 +71,17 @@ function harness(options: { gate?: string; restoreFails?: boolean; foreignLive?:
   }) as typeof spawnSync);
   return { capture, built, calls, events, kill };
 }
-afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllEnvs(); });
 describe("explicit retained HTTP v4 closure", () => {
+  it("uses the recorded CI default context for HTTP ownership checks", async () => {
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("RUNNER_OS", "Linux");
+    const h = harness();
+    await closeHttpStack(fixture({ dockerContext: "default" }), FILE, ENGINE);
+    const inspectCalls = h.calls.filter((call) => call.command === "docker" && call.args.includes("inspect"));
+    expect(inspectCalls).toHaveLength(3);
+    expect(inspectCalls.every((call) => call.args[1] === "default")).toBe(true);
+  });
   it("closes KEEP stacks with the trusted repository cleanup engine", async () => {
     const h = harness(); await closeHttpStack(fixture(), FILE, ENGINE);
     const cleanup = h.calls.find((c) => c.command === "python3");

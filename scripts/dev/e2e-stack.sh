@@ -8,7 +8,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 die() { echo "HTTP E2E FAIL: $*" >&2; exit 1; }
 E2E_DOCKER_CONTEXT="${E2E_DOCKER_CONTEXT:-orbstack}"
-[ "$E2E_DOCKER_CONTEXT" = orbstack ] || die "only the orbstack context is authorized"
+if [ "$E2E_DOCKER_CONTEXT" != orbstack ]; then
+    [ "$E2E_DOCKER_CONTEXT" = default ] && [ "${GITHUB_ACTIONS:-}" = true ] && [ "${RUNNER_OS:-}" = Linux ] \
+        || die "only the orbstack context or GitHub Linux runner's default context is authorized"
+    ci_docker_endpoint="$(docker --context default context inspect default --format '{{.Endpoints.docker.Host}}')" \
+        || die "cannot inspect CI Docker endpoint"
+    case "$ci_docker_endpoint" in unix:///*) ;; *) die "CI Docker endpoint must be a local Unix socket" ;; esac
+fi
 E2E_RELEASE_MODE="${E2E_RELEASE_MODE:-full}"
 case "$E2E_RELEASE_MODE" in full|synthetic-eval) ;; *) die "unsupported release mode" ;; esac
 while IFS= read -r inherited_runtime_name; do
@@ -459,6 +465,8 @@ export VC_PROVIDER_TOTAL_TIMEOUT=3s
 export VC_BUDGET_CONNECT_TIMEOUT=1s
 export VC_BUDGET_FIRST_TOKEN_TIMEOUT=2s
 export VC_BUDGET_TOTAL_TIMEOUT=3s
+export VC_BUDGET_MAX_RESERVED_COST=1000000
+export VC_MONTHLY_COST_LIMIT=1000000000
 export VC_JOB_RECOVER_INTERVAL=1s
 set -m
 "$GO_BINARY" >"$RUNTIME_LOG" 2>&1 &

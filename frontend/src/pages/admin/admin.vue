@@ -162,7 +162,7 @@ import { formatLocalDateTime } from "@/domain/timestamp";
 import AdminConsoleShell from "@/pages/admin-console/AdminConsoleShell.vue";
 import { useAdminConsoleAccess } from "@/pages/admin-console/useAdminConsole";
 
-const { accessState, transport, ensureAccess } = useAdminConsoleAccess();
+const { accessState, transport, ensureAccess, captureContext } = useAdminConsoleAccess(clearPrivateState);
 const accounts = ref<AdminAccount[]>([]);
 const selectedId = ref("");
 const loading = ref(false);
@@ -171,6 +171,15 @@ const acting = ref(false);
 const pendingDecision = ref<AdminReviewDecision | null>(null);
 const password = ref("");
 const actionMessage = ref("");
+
+function clearPrivateState(): void {
+  accounts.value = [];
+  selectedId.value = "";
+  loading.value = false;
+  loadFailed.value = false;
+  acting.value = false;
+  cancelDecision();
+}
 
 const pendingAccounts = computed(() => (
   accounts.value.filter((account) => account.status === "PENDING_REVIEW")
@@ -191,16 +200,19 @@ async function retryAccess(): Promise<void> {
 
 async function loadAccounts(): Promise<void> {
   if (loading.value) return;
+  const ownsContext = captureContext();
   loading.value = true;
   loadFailed.value = false;
   try {
-    accounts.value = await listAdminAccounts(transport);
+    const rows = await listAdminAccounts(transport);
+    if (!ownsContext()) return;
+    accounts.value = rows;
     const stillPresent = pendingAccounts.value.some((account) => account.accountId === selectedId.value);
     if (!stillPresent) selectedId.value = pendingAccounts.value[0]?.accountId ?? "";
   } catch {
-    loadFailed.value = true;
+    if (ownsContext()) loadFailed.value = true;
   } finally {
-    loading.value = false;
+    if (ownsContext()) loading.value = false;
   }
 }
 
@@ -229,14 +241,18 @@ async function confirmDecision(): Promise<void> {
   const account = selected.value;
   const decision = pendingDecision.value;
   if (!account || !decision || !password.value || acting.value) return;
+  const ownsContext = captureContext();
   acting.value = true;
   actionMessage.value = "";
   try {
-    if (!await reauthAuth(transport, password.value)) {
+    const authenticated = await reauthAuth(transport, password.value);
+    if (!ownsContext()) return;
+    if (!authenticated) {
       actionMessage.value = "管理员密码不正确。";
       return;
     }
     await reviewAdminAccount(transport, account.accountId, decision);
+    if (!ownsContext()) return;
     accounts.value = accounts.value.map((item) => (
       item.accountId === account.accountId
         ? { ...item, status: decision === "APPROVE" ? "ACTIVE" : "REJECTED" }
@@ -245,9 +261,9 @@ async function confirmDecision(): Promise<void> {
     selectedId.value = pendingAccounts.value[0]?.accountId ?? "";
     cancelDecision();
   } catch {
-    actionMessage.value = "没有处理成功，请刷新后重试。";
+    if (ownsContext()) actionMessage.value = "没有处理成功，请刷新后重试。";
   } finally {
-    acting.value = false;
+    if (ownsContext()) acting.value = false;
   }
 }
 </script>

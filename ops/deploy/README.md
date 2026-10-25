@@ -106,6 +106,27 @@ docker top deploy-runtime-1 -eo pid,comm,args
 `POST /api/v1/admin/providers/{providerId}/models/discover` 和
 `PUT /api/v1/admin/model-routing-order`，均为 ADMIN-only。
 
+### 模型成本准入
+
+聊天生成和自动记忆提取共用一个原子维护的本地月度成本准入额度。启动配置
+`VC_BUDGET_MAX_RESERVED_COST`（每次模型请求的保守预留上限）与
+`VC_MONTHLY_COST_LIMIT`（全局月度上限）均以 **micro-USD** 表示，
+1 USD = 1,000,000 micro-USD。默认 0 表示未配置：应用仍可启动和管理数据，
+但不会发送模型请求。限额必须为正，且单次上限不得超过月度上限。
+
+外发还要求 `vc.model_unit_price` 存在当前启用、已生效、精确匹配
+`provider_id` 与 `model_id` 的价格。由有权维护数据库的管理员录入经核对的
+`input_usd_per_1k`、`output_usd_per_1k`（USD / 1,000 tokens），更新价格时新增
+递增的 `price_version`；不使用 `*` 模型兜底，也不把未知价格当作免费。
+这些价格与限额配置不等于授权真实供应商外发。
+
+每次请求外发前预留完整单次上限，且配置的 token 预算按当前价格计算后须能
+容纳在该上限内。每条 reservation 冻结价格版本与原始月份；正常结果按真实
+usage 结算并释放未用余额，明确未发送时释放全部，取消、崩溃或结果未知时
+按预留上限结算。已发出的请求若供应商报告超出预估的真实费用，会如实记账，
+后续请求将被月度额度拒绝；不要把单次上限配置得低于供应商的实际计价上界。
+本地合成测试使用显式的合成正价格和独立额度，不复用真实账单数据。
+
 ## 数据库与升级
 
 - `vc_migrator` 只供一次性 `migrate`/`bootstrap` 使用；

@@ -154,9 +154,13 @@ export default {
   name: "AdminSystemPage",
   components: { AdminConsoleShell, AppIcon },
   setup() {
-    const { accessState, transport, ensureAccess } = useAdminConsoleAccess();
+    const { accessState, transport, ensureAccess, captureContext } = useAdminConsoleAccess(clearPrivateState);
     const loading = ref(false);
     const snapshot = ref<AdminRuntimeSnapshot | null>(null);
+    function clearPrivateState(): void {
+      snapshot.value = null;
+      loading.value = false;
+    }
     const checkedAtLabel = computed(() => snapshot.value ? formatLocalDateTime(snapshot.value.checkedAt) : "—");
     const versionLabel = computed(() => {
       const info = snapshot.value?.version;
@@ -174,11 +178,13 @@ export default {
 
     async function runChecks(): Promise<void> {
       if (loading.value || accessState.value !== "ready") return;
+      const ownsContext = captureContext();
       loading.value = true;
       try {
-        snapshot.value = await loadAdminRuntimeSnapshot(transport);
+        const result = await loadAdminRuntimeSnapshot(transport);
+        if (ownsContext()) snapshot.value = result;
       } finally {
-        loading.value = false;
+        if (ownsContext()) loading.value = false;
       }
     }
 

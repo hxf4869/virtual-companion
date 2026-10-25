@@ -464,18 +464,21 @@ describe("全部会话", () => {
     wrapper.unmount();
   });
 
-  it("VC-R11：同账号返回缓存页不重载、不重复请求", async () => {
-    const { calls } = stubFetch();
+  it("同账号返回缓存页时刷新聊天期间新增的会话", async () => {
+    let rows = [conversation(1), conversation(2)];
+    const { calls } = stubFetch({ conversations: () => rows });
     const wrapper = mountPage();
     await flushPromises();
     expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(1);
 
     deactivatePage(wrapper);
+    rows = [conversation(3), ...rows];
     activatePage(wrapper);
     await flushPromises();
 
-    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(1);
-    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(2);
+    expect(calls.filter((url) => url.includes("/api/v1/conversations?"))).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(3);
+    expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("第 3 段对话");
     wrapper.unmount();
   });
 });

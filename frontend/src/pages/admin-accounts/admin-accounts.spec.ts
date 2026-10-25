@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "@/stores/auth";
+import { createAuthenticatedTransport } from "@/api/transport";
 
 import AdminAccountsPage from "./admin-accounts.vue";
 
@@ -31,6 +32,73 @@ describe("admin accounts page", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     loginAdmin();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("clears admin data when context reconciliation establishes an ordinary user", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => (
+      String(input) === "/api/v1/auth/session"
+        ? response(200, { nextStep: "ACTIVE", accountId: "2", sessionId: "9", role: "USER",
+          passwordMustChange: false, authenticatorEnabled: true, expiresInSeconds: 7200 })
+        : response(200, [activeAccount])
+    )));
+    const wrapper = mount(AdminAccountsPage);
+    await flushPromises();
+    await wrapper.get('[data-testid="authenticator-reset-open"]').trigger("click");
+    await wrapper.get('[data-testid="authenticator-reset-password"]').setValue("private-admin-password");
+    const auth = useAuthStore();
+    const transport = createAuthenticatedTransport({
+      getSessionId: () => auth.getSessionId(), onUnauthorized: () => auth.clear(),
+    });
+    await auth.reconcileAccountContext(transport);
+    await flushPromises();
+    expect(auth.role).toBe("USER");
+    expect(wrapper.text()).toContain("当前账号不能进入后台");
+    expect(wrapper.text()).not.toContain(activeAccount.email);
+    expect(wrapper.find('[data-testid="authenticator-reset-password"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="accounts-refresh"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("does not let a previous administrator's delayed list overwrite the new context", async () => {
+    let resolveOld!: (value: ReturnType<typeof response>) => void;
+    const old = new Promise<ReturnType<typeof response>>((resolve) => { resolveOld = resolve; });
+    let reads = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => ++reads === 1
+      ? old
+      : response(200, [{ ...activeAccount, email: "new-context@example.test" }])));
+    const wrapper = mount(AdminAccountsPage);
+    await flushPromises();
+    useAuthStore().accountId = "2";
+    await flushPromises();
+    await wrapper.get('[data-testid="admin-access-retry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("new-context@example.test");
+    resolveOld(response(200, [activeAccount]));
+    await flushPromises();
+    expect(wrapper.text()).toContain("new-context@example.test");
+    expect(wrapper.text()).not.toContain(activeAccount.email);
+    wrapper.unmount();
+  });
+
+  it("does not continue an old authenticator reset after reauthentication returns in a new context", async () => {
+    let finishReauth!: (value: ReturnType<typeof response>) => void;
+    const reauth = new Promise<ReturnType<typeof response>>((resolve) => { finishReauth = resolve; });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/reauth")
+      ? reauth : response(200, [activeAccount]));
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(AdminAccountsPage);
+    await flushPromises();
+    await wrapper.get('[data-testid="authenticator-reset-open"]').trigger("click");
+    await wrapper.get('[data-testid="authenticator-reset-password"]').setValue("Admin-Pass-1!");
+    await wrapper.get('[data-testid="authenticator-reset-submit"]').trigger("click");
+    useAuthStore().accountId = "2";
+    finishReauth(response(200, { ok: true }));
+    await flushPromises();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/authenticator-reset"))).toBe(false);
+    expect(wrapper.text()).not.toContain(activeAccount.email);
+    wrapper.unmount();
   });
 
   it("shows account admission and authenticator facts without secrets", async () => {
