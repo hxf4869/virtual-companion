@@ -154,6 +154,7 @@ const busy = ref(false);
 // VC-R199：最后打开旧会话点击行时的视口几何（仅页面内存，随换号清理）。
 // 返回刷新合并重排后按偏移差补偿滚动，把该条送回浏览位置；几何在点击
 // 时捕获——onDeactivated 时页面 DOM 可能已移出文档，不可靠。
+// VC-R200：只在用户返回后没有再移动时生效（见 settleScrollAfterMerge）。
 let leaveAnchor: { id: string; docTop: number; scrollTop: number } | null = null;
 // VC-R11：页面私有请求代次（在途请求的收尾归属凭据）。加载流程进入时
 // 递增；身份清理 watch 同步递增以作废在途请求。同账号的真实重认证
@@ -374,18 +375,52 @@ function captureAnchor(conversationId: string): { id: string; docTop: number; sc
   return { id: conversationId, docTop: el.getBoundingClientRect().top + scrollTop, scrollTop };
 }
 
-// VC-R199：刷新合并重排渲染后，把最后打开的旧会话按点击时偏移差送回原
-// 视口位置；该条已不存在时不干预滚动，交给浏览器默认恢复。
-async function restoreAnchoredScroll(mySeq: number): Promise<void> {
-  if (!leaveAnchor) return;
+// VC-R200：返回时 uni-h5 经 vue-router scrollBehavior 按 savedPosition 把
+// scrollY 恢复成离开值，且先于刷新响应到达；合并时 scrollY 仍等于点击锚点
+// 的 scrollTop 即用户未动，差异只可能来自用户滚动（合并前本页没有程序
+// 性滚动）。容差吸收亚像素取整。
+const SCROLL_TOLERANCE = 1;
+
+interface MergeViewport {
+  scrollY: number;
+  /** 合并前的可见首条及其视口偏移；位于顶部或没有可锚定条目时为 null。 */
+  anchor: { id: string; viewportTop: number } | null;
+}
+
+function captureMergeViewport(): MergeViewport {
+  const scrollY = readScrollY();
+  if (scrollY <= SCROLL_TOLERANCE || typeof document === "undefined") {
+    return { scrollY, anchor: null };
+  }
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-conversation-id]"))) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom <= 0) continue;
+    const id = el.getAttribute("data-conversation-id");
+    return { scrollY, anchor: id ? { id, viewportTop: rect.top } : null };
+  }
+  return { scrollY, anchor: null };
+}
+
+// VC-R199/R200：合并重排渲染后的滚动落位。用户返回后未再移动时，把最后
+// 打开的旧会话按点击时偏移差送回原视口位置；已浏览到别处时以合并前的真实
+// 视口为准——顶部保持顶部看最新会话，其余把可见首条补偿回同一视口偏移，
+// 保住正在看的内容与相对位置。锚定条目已不存在时不干预滚动。
+async function settleScrollAfterMerge(mySeq: number, viewport: MergeViewport): Promise<void> {
   const anchor = leaveAnchor;
   leaveAnchor = null;
   await nextTick();
-  if (mySeq !== loadSeq) return;
-  const el = findItemElement(anchor.id);
+  if (mySeq !== loadSeq || typeof window === "undefined") return;
+  if (anchor && Math.abs(viewport.scrollY - anchor.scrollTop) <= SCROLL_TOLERANCE) {
+    const el = findItemElement(anchor.id);
+    if (!el) return;
+    const delta = el.getBoundingClientRect().top + readScrollY() - anchor.docTop;
+    window.scrollTo(0, anchor.scrollTop + delta);
+    return;
+  }
+  if (!viewport.anchor) return;
+  const el = findItemElement(viewport.anchor.id);
   if (!el) return;
-  const delta = el.getBoundingClientRect().top + readScrollY() - anchor.docTop;
-  if (typeof window !== "undefined") window.scrollTo(0, anchor.scrollTop + delta);
+  window.scrollTo(0, el.getBoundingClientRect().top + readScrollY() - viewport.anchor.viewportTop);
 }
 
 // VC-R199：返回缓存页的原地刷新。不清 items、不切 pageState——等待与
@@ -415,6 +450,8 @@ async function refreshOnReturn(): Promise<void> {
       // 域之上停止，不会因找不到具体条目而无界扫描全账户。
       if (!isStrictlyBelow(oldHead, page[page.length - 1])) break;
     }
+    // 等待期间用户可能继续浏览，落位依据必须是合并前这一刻的真实视口。
+    const viewport = captureMergeViewport();
     if (fetched.length === 0) {
       // 服务端明确为空：与首屏一致信任服务端真值。
       items.value = [];
@@ -431,7 +468,7 @@ async function refreshOnReturn(): Promise<void> {
       items.value = [...fetched, ...tail];
       if (tail.length === 0) hasMore.value = lastPageLength === PAGE_SIZE;
     }
-    await restoreAnchoredScroll(mySeq);
+    await settleScrollAfterMerge(mySeq, viewport);
   } catch {
     if (mySeq === loadSeq) refreshFailed.value = true;
   } finally {

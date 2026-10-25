@@ -696,6 +696,162 @@ describe("全部会话", () => {
     wrapper.unmount();
   });
 
+  // VC-R200：按真实布局模拟几何——每条 64px、列表自文档 100px 起，rect 是
+  // 文档位置减当前 scrollY 的视口相对值。scrollY 分阶段设置：返回时
+  // vue-router 按 savedPosition 把 scrollY 恢复成离开值（与点击锚点一致），
+  // 之后的差异只可能来自用户滚动。
+  const ITEM_HEIGHT = 64;
+  const LIST_TOP = 100;
+
+  function mockLayout() {
+    let scrollY = 0;
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
+    Object.defineProperty(window, "scrollY", { get: () => scrollY, configurable: true });
+    const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        const index = Array.from(document.querySelectorAll("[data-conversation-id]")).indexOf(this);
+        const top = index < 0 ? 0 : LIST_TOP + index * ITEM_HEIGHT - scrollY;
+        return {
+          top,
+          bottom: top + ITEM_HEIGHT,
+          left: 0,
+          right: 320,
+          width: 320,
+          height: ITEM_HEIGHT,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        } as DOMRect;
+      },
+    );
+    const scrollTo = vi.fn();
+    Object.defineProperty(window, "scrollTo", { value: scrollTo, writable: true, configurable: true });
+    return {
+      scrollTo,
+      setScrollY(value: number) {
+        scrollY = value;
+      },
+      restore() {
+        rectSpy.mockRestore();
+        if (originalScrollY) Object.defineProperty(window, "scrollY", originalScrollY);
+        else Reflect.deleteProperty(window, "scrollY");
+      },
+    };
+  }
+
+  // VC-R200：返回刷新等待或失败期间用户已浏览到别处时，合并落位必须以
+  // 当前视口为准，不得把离开时的点击锚点抢回来。
+  it("刷新等待期间主动回到顶部，合并后保持顶部不跳回旧锚点", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    let server = Array.from({ length: 20 }, (_, index) => oldConversation(index + 1));
+    stubFetch({
+      holdSecondConversationFetch: refreshGate,
+      conversations: cursorPages(() => server),
+    });
+    const layout = mockLayout();
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+
+    // 在 scrollY=800 处打开第 15 条后离开；返回时恢复到同一位置，刷新挂起。
+    layout.setScrollY(800);
+    await wrapper.findAll('[data-testid="session-preview"]')[14].trigger("click");
+    deactivatePage(wrapper);
+    server = [newConversation(1), newConversation(2), newConversation(3), ...server];
+    activatePage(wrapper);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+
+    // 用户按 Home 回到顶部看最新会话，之后刷新才完成。
+    layout.setScrollY(0);
+    releaseRefresh();
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(23);
+    expect(wrapper.findAll('[data-testid="session-preview"]')[0].text()).toContain("新对话 1");
+    expect(layout.scrollTo).not.toHaveBeenCalled();
+
+    layout.restore();
+    wrapper.unmount();
+  });
+
+  it("刷新等待期间浏览到中段，合并新增会话后仍保持正在看的同一条及相对位置", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    let server = Array.from({ length: 20 }, (_, index) => oldConversation(index + 1));
+    stubFetch({
+      holdSecondConversationFetch: refreshGate,
+      conversations: cursorPages(() => server),
+    });
+    const layout = mockLayout();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    layout.setScrollY(800);
+    await wrapper.findAll('[data-testid="session-preview"]')[14].trigger("click");
+    deactivatePage(wrapper);
+    server = [newConversation(1), newConversation(2), newConversation(3), ...server];
+    activatePage(wrapper);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+
+    // 用户滚到 scrollY=1000：可见首条是第 15 段（文档 996，露在视口上方 4px）。
+    layout.setScrollY(1000);
+    releaseRefresh();
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(23);
+    // 上方合入 3 条（192px）后第 15 段位于文档 1188：补偿到 1192 让它仍停在
+    // 视口上方 4px，而不是只跳过旧 scrollTo 让内容整体下移。
+    expect(layout.scrollTo).toHaveBeenCalledTimes(1);
+    expect(layout.scrollTo).toHaveBeenCalledWith(0, 1192);
+
+    layout.restore();
+    wrapper.unmount();
+  });
+
+  it("刷新失败后浏览到别处再重试，按当前位置落位而不抢回旧锚点", async () => {
+    let refreshFails = false;
+    let server = Array.from({ length: 20 }, (_, index) => oldConversation(index + 1));
+    stubFetch({
+      conversationFails: () => refreshFails,
+      conversations: cursorPages(() => server),
+    });
+    const layout = mockLayout();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    layout.setScrollY(800);
+    await wrapper.findAll('[data-testid="session-preview"]')[14].trigger("click");
+    deactivatePage(wrapper);
+    refreshFails = true;
+    activatePage(wrapper);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="conversations-refresh-failed"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(20);
+    expect(layout.scrollTo).not.toHaveBeenCalled();
+
+    // 失败期间用户浏览到 scrollY=1000，再点重试；此时服务端已有 3 条新会话。
+    layout.setScrollY(1000);
+    refreshFails = false;
+    server = [newConversation(1), newConversation(2), newConversation(3), ...server];
+    await wrapper.find('[data-testid="conversations-retry-refresh"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conversations-refresh-failed"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="session-preview"]')).toHaveLength(23);
+    expect(layout.scrollTo).toHaveBeenCalledTimes(1);
+    expect(layout.scrollTo).toHaveBeenCalledWith(0, 1192);
+
+    layout.restore();
+    wrapper.unmount();
+  });
+
   it("离开期间新增超过一页时刷新补齐全部新记录不产生缺口", async () => {
     let server = Array.from({ length: 40 }, (_, index) => oldConversation(index + 1));
     const { calls } = stubFetch({ conversations: cursorPages(() => server) });
