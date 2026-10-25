@@ -359,8 +359,8 @@ describe("聊天产品页", () => {
 
     const store = useChatStore();
     const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("今天有点累。");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("今天有点累。");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
 
@@ -369,7 +369,7 @@ describe("聊天产品页", () => {
     expect(store.conversationId).toBe("conv-created");
     expect(sendSpy).toHaveBeenCalledOnce();
     expect(sendSpy.mock.calls[0]?.[2]).toBe("今天有点累。");
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
     wrapper.unmount();
   });
 
@@ -400,20 +400,20 @@ describe("聊天产品页", () => {
     const sendSpy = vi.spyOn(store, "send")
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValueOnce();
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("这句话不能丢");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("这句话不能丢");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
 
     // N-05：结果未知的 POST 不得宣称"没发出去"。
     expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
-    expect((input.element as HTMLTextAreaElement).value).toBe("这句话不能丢");
+    expect((input().element as HTMLTextAreaElement).value).toBe("这句话不能丢");
 
     await wrapper.find('[data-testid="retry"]').trigger("click");
     await flushPromises();
     expect(sendSpy).toHaveBeenCalledTimes(2);
     expect(sendSpy.mock.calls[1]?.[2]).toBe("这句话不能丢");
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
     wrapper.unmount();
   });
 
@@ -423,14 +423,14 @@ describe("聊天产品页", () => {
 
     const store = useChatStore();
     const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("第一句");
-    await input.trigger("keydown", { key: "Enter", shiftKey: false });
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("第一句");
+    await input().trigger("keydown", { key: "Enter", shiftKey: false });
     await flushPromises();
     expect(sendSpy).toHaveBeenCalledOnce();
 
-    await input.setValue("第二句");
-    await input.trigger("keydown", { key: "Enter", shiftKey: true });
+    await input().setValue("第二句");
+    await input().trigger("keydown", { key: "Enter", shiftKey: true });
     await flushPromises();
     expect(sendSpy).toHaveBeenCalledOnce();
     wrapper.unmount();
@@ -1398,8 +1398,8 @@ describe("聊天产品页", () => {
 
     const store = useChatStore();
     const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("第一句");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("第一句");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
 
@@ -1409,11 +1409,11 @@ describe("聊天产品页", () => {
     expect((sendButton.element as HTMLButtonElement).disabled).toBe(true);
     expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="status"]').text()).toContain("正在准备会话…");
-    expect((input.element as HTMLTextAreaElement).disabled).toBe(false);
+    expect((input().element as HTMLTextAreaElement).disabled).toBe(false);
 
     // 会话创建在途时，用户写下一条草稿并再次点击：提交互斥拒绝第二次，
     // 新草稿既不丢失也不被重复提交。
-    await input.setValue("等待期间又写的");
+    await input().setValue("等待期间又写的");
     await wrapper.find('[data-testid="send"]').trigger("click");
 
     resolveCreate(response(true, 200, { conversationId: "conv-created" }));
@@ -1422,7 +1422,7 @@ describe("聊天产品页", () => {
     expect(calls.filter((call) => call.method === "POST" && call.url === "/api/v1/conversations")).toHaveLength(1);
     expect(sendSpy).toHaveBeenCalledOnce();
     expect(sendSpy.mock.calls[0]?.[2]).toBe("第一句");
-    expect((input.element as HTMLTextAreaElement).value).toBe("等待期间又写的");
+    expect((input().element as HTMLTextAreaElement).value).toBe("等待期间又写的");
     wrapper.unmount();
   });
 
@@ -1475,8 +1475,8 @@ describe("聊天产品页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("第一句");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("第一句");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
 
@@ -1485,12 +1485,12 @@ describe("聊天产品页", () => {
     expect(wrapper.find('[data-testid="status"]').text()).toContain("正在准备会话…");
 
     // 准备期间写下一条草稿；创建失败后 busy 释放，草稿不被吞。
-    await input.setValue("失败前写的草稿");
+    await input().setValue("失败前写的草稿");
     resolveCreate(response(false, 500, { code: "INTERNAL_ERROR" }));
     await flushPromises();
 
     expect((wrapper.find('[data-testid="send"]').element as HTMLButtonElement).disabled).toBe(false);
-    expect((input.element as HTMLTextAreaElement).value).toBe("失败前写的草稿");
+    expect((input().element as HTMLTextAreaElement).value).toBe("失败前写的草稿");
     const retry = wrapper.find('[data-testid="retry"]');
     expect(retry.exists()).toBe(true);
     expect(retry.text()).toContain("重试原消息");
@@ -1505,7 +1505,7 @@ describe("聊天产品页", () => {
     expect(
       calls.filter((call) => call.method === "POST" && call.url === "/api/v1/conversations"),
     ).toHaveLength(2);
-    expect((input.element as HTMLTextAreaElement).value).toBe("失败前写的草稿");
+    expect((input().element as HTMLTextAreaElement).value).toBe("失败前写的草稿");
     wrapper.unmount();
   });
 
@@ -1539,17 +1539,17 @@ describe("聊天产品页", () => {
         rejectSend = reject;
       }),
     );
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("原始消息");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("原始消息");
     await wrapper.find('[data-testid="send"]').trigger("click");
     // 输入框已清空（内容 === 提交快照），此时用户开始写下一条草稿。
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
-    await input.setValue("新草稿");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
+    await input().setValue("新草稿");
 
     rejectSend(new Error("offline"));
     await flushPromises();
 
-    expect((input.element as HTMLTextAreaElement).value).toBe("新草稿");
+    expect((input().element as HTMLTextAreaElement).value).toBe("新草稿");
     expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(true);
     wrapper.unmount();
   });
@@ -1567,10 +1567,10 @@ describe("聊天产品页", () => {
         rejectSend = reject;
       }),
     );
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("A 会话的消息");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("A 会话的消息");
     await wrapper.find('[data-testid="send"]').trigger("click");
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
 
     // 提交在途时用户切换到另一会话（真实 openConversation：窗口令牌递增）。
     const switchTransport = {
@@ -1583,7 +1583,7 @@ describe("聊天产品页", () => {
     rejectSend(new Error("offline"));
     await flushPromises();
 
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
     expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(false);
     expect(store.phase).not.toBe("failed");
     wrapper.unmount();
@@ -2416,21 +2416,21 @@ describe("聊天产品页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("原提交 A");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("原提交 A");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
     // 首个 POST /generations 在途：提交文本同步清空输入框。
     expect(generationPostBodies(calls)).toHaveLength(1);
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
     // 在途期间用户写下一条草稿 B（textarea 不禁用）。
-    await input.setValue("草稿 B");
+    await input().setValue("草稿 B");
 
     // 首个 POST 网络失败（结果未知）：未确认错误出现，草稿 B 保留。
     rejectGenerationPost(new TypeError("fetch failed"));
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
-    expect((input.element as HTMLTextAreaElement).value).toBe("草稿 B");
+    expect((input().element as HTMLTextAreaElement).value).toBe("草稿 B");
 
     // 重试：针对原提交 A、复用同一幂等键；草稿 B 不被吞、不被清空。
     await wrapper.find('[data-testid="retry"]').trigger("click");
@@ -2439,7 +2439,7 @@ describe("聊天产品页", () => {
     expect(posts).toHaveLength(2);
     expect(posts[1]?.userContent).toBe("原提交 A");
     expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
-    expect((input.element as HTMLTextAreaElement).value).toBe("草稿 B");
+    expect((input().element as HTMLTextAreaElement).value).toBe("草稿 B");
     expect(wrapper.find('[data-testid="retry"]').text()).toBe("重试原消息");
 
     // 用户显式点发送提交草稿 B：新意图、新键，不复用 A 的键。
@@ -2467,18 +2467,18 @@ describe("聊天产品页", () => {
     const store = useChatStore();
     store.pendingUserContent = "更早一轮的残留";
 
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("原提交 A");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("原提交 A");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
 
     // 建会话失败：从未发起 POST /generations；未确认错误出现，输入框回填 A。
     expect(generationPostBodies(calls)).toHaveLength(0);
     expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
-    expect((input.element as HTMLTextAreaElement).value).toBe("原提交 A");
+    expect((input().element as HTMLTextAreaElement).value).toBe("原提交 A");
 
     // 用户把输入框改成新草稿 B；随后建会话恢复可用，再点重试。
-    await input.setValue("草稿 B");
+    await input().setValue("草稿 B");
     createFails = false;
     await wrapper.find('[data-testid="retry"]').trigger("click");
     await flushPromises();
@@ -2495,7 +2495,7 @@ describe("聊天产品页", () => {
     const posts = generationPostBodies(calls);
     expect(posts).toHaveLength(1);
     expect(posts[0]?.userContent).toBe("原提交 A");
-    expect((input.element as HTMLTextAreaElement).value).toBe("草稿 B");
+    expect((input().element as HTMLTextAreaElement).value).toBe("草稿 B");
     wrapper.unmount();
   });
 
@@ -2504,15 +2504,15 @@ describe("聊天产品页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("原提交 A");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("原提交 A");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
-    expect((input.element as HTMLTextAreaElement).value).toBe("原提交 A");
+    expect((input().element as HTMLTextAreaElement).value).toBe("原提交 A");
 
     // 用户清空输入框：原提交 A 的重试入口不得随之消失。
-    await input.setValue("");
+    await input().setValue("");
     expect(wrapper.find('[data-testid="retry"]').exists()).toBe(true);
 
     await wrapper.find('[data-testid="retry"]').trigger("click");
@@ -2528,8 +2528,8 @@ describe("聊天产品页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const input = wrapper.find('[data-testid="message-input"]');
-    await input.setValue("原提交 A");
+    const input = () => wrapper.find('[data-testid="message-input"]');
+    await input().setValue("原提交 A");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(true);
@@ -2542,7 +2542,7 @@ describe("聊天产品页", () => {
     expect(wrapper.find('[data-testid="retry"]').exists()).toBe(false);
 
     // 新窗口的新草稿走全新提交：旧 A 不再被任何入口复活。
-    await input.setValue("新窗口的新草稿");
+    await input().setValue("新窗口的新草稿");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
     const posts = generationPostBodies(calls);
@@ -2568,22 +2568,22 @@ describe("聊天产品页", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const input = wrapper.find('[data-testid="message-input"]');
+    const input = () => wrapper.find('[data-testid="message-input"]');
     // A 与 B 完全同文：正文相等从现在起不能再作为归属依据。
-    await input.setValue("好");
+    await input().setValue("好");
     await wrapper.find('[data-testid="send"]').trigger("click");
     await flushPromises();
     expect(generationPostBodies(calls)).toHaveLength(1);
     // 首 POST 在途：提交文本同步清空输入框（既有行为）。
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
     // 在途期间用户重新输入与 A 完全相同的下一条草稿 B。
-    await input.setValue("好");
+    await input().setValue("好");
 
     // 首 POST 网络失败（结果未知）：未确认文案出现，同文 B 保留。
     rejectGenerationPost(new TypeError("fetch failed"));
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-send-error"]').text()).toContain("没有确认发送结果，点此重试");
-    expect((input.element as HTMLTextAreaElement).value).toBe("好");
+    expect((input().element as HTMLTextAreaElement).value).toBe("好");
 
     // 重试原消息 A：同键、同原文；重试 2xx 成功后草稿 B 仍在（RED 点：
     // 当前实现把同文 B 误当提交正文清空）。
@@ -2593,7 +2593,7 @@ describe("聊天产品页", () => {
     expect(posts).toHaveLength(2);
     expect(posts[1]?.userContent).toBe("好");
     expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
-    expect((input.element as HTMLTextAreaElement).value).toBe("好");
+    expect((input().element as HTMLTextAreaElement).value).toBe("好");
     expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(false);
 
     // 流走完后显式发送 B：新意图、新键，发送自己的草稿才清空输入框。
@@ -2607,7 +2607,7 @@ describe("聊天产品页", () => {
     expect(after).toHaveLength(3);
     expect(after[2]?.userContent).toBe("好");
     expect(after[2]?.idempotencyKey).not.toBe(after[0]?.idempotencyKey);
-    expect((input.element as HTMLTextAreaElement).value).toBe("");
+    expect((input().element as HTMLTextAreaElement).value).toBe("");
     wrapper.unmount();
   });
 });

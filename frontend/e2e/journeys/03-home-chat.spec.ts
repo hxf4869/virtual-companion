@@ -162,13 +162,33 @@ test("queued auto-scroll frames keep the reading position after a native scroll 
     };
     await page.route(/\/api\/v1\/conversations\/\d+\/messages/, holdFinalHistory);
 
+    // 一条长而合法的合成消息：70 行显式换行短句（总长 <1000 字，UI
+    // maxlength=4000 内），配合栈内 loopback provider 的固定回复，一次
+    // 真实发送即可得到多屏可滚动历史，不跑多轮、不碰真实供应商。
+    // 声明在 inner try 之外：末尾的同文草稿 B 回归也复用同一输入定位。
+    const longPrompt = Array.from({ length: 70 }, (_, index) => `第${index + 1}行：慢慢说，我在听。`).join("\n");
+    const submittedPrompt = `${longPrompt}!`;
+    const messageInput = page.locator('[data-testid="message-input"] textarea');
+
     try {
-      // 一条长而合法的合成消息：70 行显式换行短句（总长 <1000 字，UI
-      // maxlength=4000 内），配合栈内 loopback provider 的固定回复，一次
-      // 真实发送即可得到多屏可滚动历史，不跑多轮、不碰真实供应商。
-      const longPrompt = Array.from({ length: 70 }, (_, index) => `第${index + 1}行：慢慢说，我在听。`).join("\n");
-      await page.locator('[data-testid="message-input"] textarea').fill(longPrompt);
+      await messageInput.fill(longPrompt);
+      // VC-R183：真实键盘紧接补一个尾字符——uni 对 input 发射做 100ms
+      // 节流，连续输入的尾字可能尚未进入 modelValue，提交必须等于用户
+      // 当前看到的完整原生输入。点击前先建立本会话 generation POST 等待。
+      await messageInput.press("!");
+      const generationPost = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST"
+          && /\/api\/v1\/conversations\/\d+\/generations$/.test(new URL(response.url()).pathname),
+      );
       await page.getByTestId("send").click();
+      const generationResponse = await generationPost;
+      // 只比较"提交正文等于实际完整输入"的布尔，不打印请求/正文/键/ID。
+      const submittedBody = generationResponse.request().postDataJSON() as { userContent?: string };
+      expect(
+        submittedBody.userContent === submittedPrompt,
+        "generation POST 提交正文等于实际完整输入（含尾字符）",
+      ).toBe(true);
 
       // completed 与历史窗口刷新之间，finalAssistant 与持久化消息可能短暂
       // 同时渲染；取最后一条，语义仍是"本会话出现 provider 回复"。
@@ -184,6 +204,21 @@ test("queued auto-scroll frames keep the reading position after a native scroll 
       await expect.poll(distanceFromBottom, { timeout: 10_000 }).toBeLessThanOrEqual(48);
       await expect(page.getByTestId("back-to-latest")).toHaveCount(0);
       await page.screenshot({ path: testInfo.outputPath("vc-r182-handoff-history-held.png") });
+
+      // VC-R183：发送后本 case 未再输入任何新草稿——真实 textarea 的 value
+      // 应已为空（发送同步清空草稿；uni-h5 的 props→原生同步是 100ms 尾部
+      // debounce，此刻早已过去）。只轮询 value 长度，不读取/输出正文；失败
+      // 时消息附带三项非正文事实（发送键禁用与否、发送错误区有无、textarea
+      // 节点数）辅助区分状态残留/DOM 未同步/失败回填，不参与判定。
+      const composerFacts = {
+        sendDisabled: await page.getByTestId("send").isDisabled(),
+        sendErrorCount: await page.getByTestId("chat-send-error").count(),
+        textareaCount: await messageInput.count(),
+      };
+      await expect.poll(() => messageInput.inputValue().then((value) => value.length), {
+        message: `发送后无新草稿，真实 textarea value 应为空；前置事实=${JSON.stringify(composerFacts)}`,
+        timeout: 5_000,
+      }).toBe(0);
 
       // 放行前先建立该终局 GET 的 response 等待：放行后保存实际 response、
       // 断言真实 HTTP 成功并等响应体完整送达（finished），再等被拦路由真正
@@ -228,6 +263,12 @@ test("queued auto-scroll frames keep the reading position after a native scroll 
       return node ? node.scrollHeight - node.clientHeight : Number.NaN;
     }), { timeout: 10_000 }).toBeGreaterThan(400);
     await expect.poll(distanceFromBottom, { timeout: 10_000 }).toBeLessThanOrEqual(48);
+
+    // VC-R183 修复回归：发送后用户重新写下一条草稿 B（与实际完整提交串
+    // 完全同文），不再发送——真实同文新草稿必须原样保留：旧实例的迟到
+    // 发射已因实例重建失效，且不得反过来清掉 B。B 随后经历原三尺寸/
+    // 阅读/回到最新全流程，末尾仅按长度断言（不输出正文）。
+    await messageInput.fill(submittedPrompt);
 
     // 前置高度正控（原生 RAF，任何包装之前）：贴底状态下 932→700 缩高，
     // 既有自动跟随应把视口带回底部。
@@ -293,6 +334,10 @@ test("queued auto-scroll frames keep the reading position after a native scroll 
     // 有自动跟随应把视口带回底部。
     await page.setViewportSize({ width: 430, height: 700 });
     await expect.poll(distanceFromBottom, { timeout: 5_000 }).toBeLessThanOrEqual(48);
+
+    // VC-R183：同文草稿 B 历经三尺寸/阅读/回到最新流程后仍在（只比长度）。
+    const draftBLength = (await messageInput.inputValue()).length;
+    expect(draftBLength, "同文新草稿 B 不被旧实例发射清除").toBe(submittedPrompt.length);
   } finally {
     // 只软删除本 case 创建的会话，不触碰共享账号其它数据。
     const deleted = await sessionRequest(
