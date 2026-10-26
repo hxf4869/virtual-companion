@@ -300,6 +300,12 @@ func TestG9IsolationOpaqueAuth(t *testing.T) {
 	if jar[auth.SessionCookieName] == "" || jar[auth.TrustedDeviceCookieName] == "" {
 		t.Fatal("session and trusted-device cookies are required")
 	}
+	// VC-R169: authenticated writes carry the session id this confirm
+	// response established; the key is fixture-private, never a cookie.
+	if completed.SessionID == "" {
+		t.Fatal("confirm response must expose sessionId")
+	}
+	jar[testSessionIDKey] = completed.SessionID
 	devices, err := store.ListTrustedDevices(t.Context(), 1)
 	if err != nil || len(devices) != 1 {
 		t.Fatalf("trusted devices %v %v", devices, err)
@@ -347,6 +353,13 @@ func TestG9IsolationOpaqueAuth(t *testing.T) {
 	for name, value := range responseCookieJar(trustedLogin) {
 		jar[name] = value
 	}
+	// VC-R169: the trusted relogin installs a newer session; adopt its id
+	// from the same response while completed keeps the recovery codes.
+	var trustedIdentity sessionIdentityJSON
+	if err := json.Unmarshal(trustedLogin.Body.Bytes(), &trustedIdentity); err != nil || trustedIdentity.SessionID == "" {
+		t.Fatal("trusted login response must expose sessionId")
+	}
+	jar[testSessionIDKey] = trustedIdentity.SessionID
 	devices, err = store.ListTrustedDevices(t.Context(), 1)
 	if err != nil || len(devices) != 1 || !devices[0].ExpiresAt.Equal(fixedExpiry) {
 		t.Fatalf("trusted-device fixed expiry %v %v", devices, err)
@@ -377,6 +390,13 @@ func TestG9IsolationOpaqueAuth(t *testing.T) {
 		t.Fatalf("recovery login %d %s", recovery.Code, recovery.Body.String())
 	}
 	recoveryJar := responseCookieJar(recovery)
+	// VC-R169: logout is an authenticated write; the recovery session's id
+	// comes from the same response that issued it.
+	var recoveryIdentity sessionIdentityJSON
+	if err := json.Unmarshal(recovery.Body.Bytes(), &recoveryIdentity); err != nil || recoveryIdentity.SessionID == "" {
+		t.Fatal("recovery login response must expose sessionId")
+	}
+	recoveryJar[testSessionIDKey] = recoveryIdentity.SessionID
 	logout = doJSONCookies(t, s, http.MethodPost, "/api/v1/auth/logout", "", recoveryJar)
 	if logout.Code != http.StatusOK {
 		t.Fatalf("recovery logout %d %s", logout.Code, logout.Body.String())
