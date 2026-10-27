@@ -1,6 +1,6 @@
 # ADR-0007：Go 单二进制 Companion Runtime
 
-- 状态：Accepted
+- 状态：Accepted（§1 Go-only 单程序、§3 非工具 Agent、§4 单 provider 及本地安全策略覆盖范围由 ADR-0009 按其生效点替代）
 - 日期：2026-08-30
 - 决策范围：Owner-only 本地 Technical Alpha 及其后续单机并发验证的 **Go 目标运行时**
 - 规范：`docs/planning/2026-08-30-go-companion-runtime-redesign.md`（implementation baseline）

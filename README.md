@@ -5,6 +5,11 @@ AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前后端运行时为
 pgvector。Generation、Realtime、Memory、数据权利与管理员模型配置已接入 Go
 runtime；项目尚未达到真实用户或公开生产发布条件。
 
+> 2026-10-27 起目标方向改为 V2：原生 SillyTavern 宿主 + Go 长期服务，Owner 本人非商业使用
+> （[ADR-0009](docs/decisions/0009-v2-sillytavern-host-direction.md)、
+> [执行计划](docs/planning/2026-10-27-v2-execution-plan.md)、[PRODUCT.md](PRODUCT.md)）。
+> 下文描述的是 V2 实施前的现有实现。
+
 ## 当前状态（2026-10-22）
 
 工作分支 `codex/audit-remediation`。本节概览可用能力、实际验证范围、

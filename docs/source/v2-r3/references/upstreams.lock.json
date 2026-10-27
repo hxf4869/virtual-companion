@@ -1,0 +1,205 @@
+{
+  "schema": "vc-v2-upstream-candidates-v1",
+  "reviewed_on": "2026-10-27",
+  "timezone": "Asia/Shanghai",
+  "user_decisions": {
+    "deployment": "1A",
+    "tavern_compatibility": "2C",
+    "usage": "3C",
+    "main_ui": "A1",
+    "first_release": "B2",
+    "storage": "C1",
+    "notifications": [
+      "email",
+      "feishu"
+    ],
+    "legacy": "E3",
+    "write_protection": "F2",
+    "model_bindings": "G2"
+  },
+  "baseline_repo": {
+    "url": "https://github.com/hxf4869/virtual-companion",
+    "ref": "main",
+    "commit": "baa26f7bd2cf50f23058b030e1bc690a5fb553d4"
+  },
+  "research_st_release_head": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+  "combination_runtime_status": "NOT_RUN",
+  "policy": {
+    "automatic_startup_updates": false,
+    "mutable_cdn_branch_urls": false,
+    "artifact_hash_required_after_fetch": true,
+    "can_adjust_versions_after_reproduced_incompatibility": true,
+    "note": "These are researched immutable source candidates, not a proven compatible installed release."
+  },
+  "components": [
+    {
+      "id": "sillytavern",
+      "repo": "https://github.com/SillyTavern/SillyTavern",
+      "ref": "1.19.0",
+      "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+      "version": "1.19.0",
+      "license": "AGPL-3.0",
+      "role": "required-host",
+      "requires": [],
+      "artifact": null,
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    },
+    {
+      "id": "tavern-helper",
+      "repo": "https://github.com/N0VI028/JS-Slash-Runner",
+      "ref": "main",
+      "commit": "0af421068e7c03b6b0a71b68feb79d201164edeb",
+      "version": "4.11.3",
+      "license": "PolyForm-Noncommercial-1.0.0",
+      "role": "required-complex-card-extension",
+      "requires": [
+        "sillytavern"
+      ],
+      "artifact": null,
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    },
+    {
+      "id": "ejs-template",
+      "repo": "https://github.com/zonde306/ST-Prompt-Template",
+      "ref": "main",
+      "commit": "d6f520d149aba146305b0b781ddd691d449c28d2",
+      "version": "1.17.9",
+      "license": "AGPL-3.0",
+      "role": "required-for-target-fixture",
+      "requires": [
+        "sillytavern"
+      ],
+      "artifact": null,
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    },
+    {
+      "id": "mvu",
+      "repo": "https://github.com/MagicalAstrogy/MagVarUpdate",
+      "ref": "beta",
+      "commit": "d03b7dc8a6ebf9bd611c7e2dc91f3b35462deebc",
+      "version": null,
+      "license": "MIT",
+      "role": "required-for-target-fixture",
+      "requires": [
+        "tavern-helper"
+      ],
+      "minimum_helper": "3.4.17",
+      "artifact": "artifact/bundle.js",
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    },
+    {
+      "id": "memorycore",
+      "repo": "https://github.com/TencentCloud/TencentDB-Agent-Memory",
+      "ref": "feat/server_team",
+      "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+      "version": "2.0.3",
+      "license": "MIT",
+      "role": "optional-memory-candidate",
+      "requires": [],
+      "artifact": null,
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    },
+    {
+      "id": "pi",
+      "repo": "https://github.com/earendil-works/pi",
+      "ref": "main",
+      "commit": "177e2ad7e41e85c16c859f844a0569a3c76f2666",
+      "version": null,
+      "license": "MIT",
+      "role": "optional-background-agent-candidate",
+      "requires": [],
+      "artifact": null,
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    },
+    {
+      "id": "cognee",
+      "repo": "https://github.com/topoteretes/cognee",
+      "ref": "main",
+      "commit": "37f788bd287750e10d7610173e5332b3843f6ebd",
+      "version": "1.6.5",
+      "license": "Apache-2.0",
+      "role": "future-knowledge-graph-candidate",
+      "requires": [],
+      "artifact": null,
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    },
+    {
+      "id": "cognee-rs",
+      "repo": "https://github.com/topoteretes/cognee-rs",
+      "ref": "main",
+      "commit": "b97e1d5f934b94ef8d0dbd3e7e7078ded8abfe88",
+      "version": null,
+      "license": "MIT OR Apache-2.0",
+      "role": "experimental-reference-only",
+      "requires": [],
+      "artifact": null,
+      "sha256": null,
+      "source_reviewed_on": "2026-10-27",
+      "runtime_status": "NOT_RUN",
+      "artifact_status": "NOT_FETCHED",
+      "immutable_source": true
+    }
+  ],
+  "package_revision": "R3",
+  "revision_note": "User selections applied; original eight runtime candidates retained, not executed. Added design and notification references are research candidates, not installed dependencies.",
+  "additional_references": [
+    {
+      "id": "stitch-skills",
+      "repo": "https://github.com/google-labs-code/stitch-skills",
+      "commit": "0337446dadde6f8c94210444e2aa9d546126480f",
+      "license": "Apache-2.0",
+      "role": "design-workflow-reference",
+      "stars_snapshot": 8610,
+      "source_reviewed_on": "2026-10-27",
+      "status": "NOT_INSTALLED"
+    },
+    {
+      "id": "go-mail",
+      "repo": "https://github.com/wneessen/go-mail",
+      "commit": "a9cae6bf332173cc8bf60df5611af6289e66a7dd",
+      "license": "MIT",
+      "role": "optional-SMTP-library-if-existing-sender-not-sufficient",
+      "stars_snapshot": 1503,
+      "source_reviewed_on": "2026-10-27",
+      "status": "NOT_INSTALLED"
+    },
+    {
+      "id": "lark-go-sdk",
+      "repo": "https://github.com/larksuite/oapi-sdk-go",
+      "commit": "db9f52d0a88e3f5e4ed81bb34d71a28e3f5608fa",
+      "license": "MIT",
+      "role": "official-reference-optional-if-app-message-route-needed",
+      "stars_snapshot": 623,
+      "source_reviewed_on": "2026-10-27",
+      "status": "NOT_INSTALLED"
+    }
+  ]
+}

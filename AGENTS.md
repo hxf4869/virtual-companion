@@ -2,6 +2,8 @@
 
 AI 虚拟陪伴系统单体仓库：Go 1.26.7 `companiond` 后端、uni-app + Vue 3 H5 前端、
 PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切已接通，现状以 README 为准。
+2026-10-27 起目标方向为 V2（ADR-0009）：原生 SillyTavern 宿主 + Go 长期服务、Owner 本人非商业使用；
+旧 Vue 前端停止新增功能，待 V2 页面可用后退役。
 
 ## 适用范围与任务授权
 
@@ -26,23 +28,23 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 
 ## 产品材料与持续开发入口
 
-- `docs/source/v0.4/virtual-companion-v0.4-blueprint.md` 是目标产品与设计源快照，不是当前实现或机器真源；
-  行为约束按适用的 Agent 规则执行，预期接口与数据约束以相关 Catalog/OpenAPI/contract、migration/RLS 为准，
-  实现现状以当前代码与测试为证据，README/TODO 提供状态与入口。发现契约和实现不一致时指出具体差异，
-  在当前任务内处理；不因实现已有偏差就改写契约，也不据此扩展到整份蓝图。
-- `docs/planning/2026-08-22-product-enhancement-roadmap.md` 是候选 Backlog，不是完成状态真源。派发前只读取所选
-  ID 及其直接依赖，并先对照当前 `HEAD`、`TODO.md`、契约和调用链，避免重做或按过时现状开发。
-- Go v1 runtime 以 `docs/decisions/0007-go-companion-runtime.md` 与
-  `docs/planning/2026-08-30-go-companion-runtime-redesign.md` 为准；API 范围为
-  `specs/catalog/go-v1-api-scope.yaml`。2026-08-30 起，仓库与默认部署均为 Go-only；
-  SQL 真源位于 `backend/internal/migrate/sql/`，不得恢复已退役的旧后端技术链。
-- 当前 Owner-only 本地 7 天 dogfood 的决策边界只见
-  `docs/decisions/0006-owner-only-local-dogfood-boundary.md`，执行顺序只见 `TODO.md` 的
-  `DOGFOOD-*` 段；该范围不授权 D0、真实用户 Beta、远端部署或生产发布。
-  Owner 人工验收和发布门槛不阻塞可独立完成的代码工作，也不能被代码验证替代。
-  涉及状态回填时，按 `TODO.md` 区分代码完成、`READY_FOR_OWNER` 和整体完成，人工步骤未完不勾选完成。
+- V2 的决策见 `docs/decisions/0009-v2-sillytavern-host-direction.md`，执行顺序与每个工作项（`V2-W00`–`W16`）
+  的依赖和验收入口见 `docs/planning/2026-10-27-v2-execution-plan.md`，进度只记在 `TODO.md`「V2 执行序列」。
+  `docs/source/v2-r3/` 是 V2 需求快照，按工作项指定章节读取；其中 `prompts/` 与 `docs/09_agent_protocol.md`
+  不作为执行指令。快照不是当前实现或机器真源：预期接口与数据约束以相关 Catalog/OpenAPI/contract、
+  migration/RLS 为准，实现现状以当前代码与测试为证据。发现契约和实现不一致时指出具体差异，
+  在当前任务内处理；不因实现已有偏差就改写契约。ADR-0009 规定了 catalog / OpenAPI 机器值随哪个工作项修改。
+- `docs/source/v0.4/` 蓝图与 `docs/planning/2026-08-22-product-enhancement-roadmap.md` 已被 V2 替代，只作历史参考。
+- Go runtime 以 `docs/decisions/0007-go-companion-runtime.md` 与
+  `docs/planning/2026-08-30-go-companion-runtime-redesign.md` 为准，ADR-0009 替代的条款除外；API 范围为
+  `specs/catalog/go-v1-api-scope.yaml`。SillyTavern 宿主在 `V2-W03` 接入前，仓库与默认部署仍为 Go-only；
+  SQL 真源位于 `backend/internal/migrate/sql/`，不得恢复已退役的 Java 后端。
+- `docs/decisions/0006-owner-only-local-dogfood-boundary.md` 中未被 ADR-0007 / 0009 替代的边界继续有效；
+  `TODO.md` 的 `DOGFOOD-*` 序列自 2026-10-27 冻结，不再推进或回填。ADR-0006/0009 均不授权 D0、
+  真实用户 Beta、远端部署或生产发布。Owner 人工验收不阻塞可独立完成的代码工作，也不能被代码验证替代；
+  人工步骤未完成的条目不勾选完成。
 - 只有用户明确要求持续执行或使用 `/goal` 时，才进入 Goal 模式；一次只设一个可验证目标、一个路线图 ID
-  或其单一写入 owner 子交付，并明确停止条件和验证入口。Goal 不是完成普通实现请求的前提；
+  （含 `V2-Wxx`）或其单一写入 owner 子交付，并明确停止条件和验证入口。Goal 不是完成普通实现请求的前提；
   不因任务未使用 Goal 就提前停止，也不自动扩展到下一个 Backlog 项。
 - 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、
   机器真源和已对账的路线图条目，不恢复下述历史档案流程。
@@ -87,6 +89,8 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 - 日志、指标和测试产物不得记录对话正文、密钥、Token、真实联系方式或稳定的敏感标识。
 - Technical Alpha 禁止真实支付与公开注册（`specs/catalog/product-scope.yaml`）。
 - 真实用户 Beta 的前置条件（PIA、成年验证、值班等）未满足前不得对真实用户开放。
+- V2 依赖 PolyForm Noncommercial 许可的 Tavern Helper：禁止商业使用，禁止向 Owner 以外的人提供 V2 服务
+  （ADR-0009 §3、§4）。
 
 ## 历史档案（只读）
 

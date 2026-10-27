@@ -1,0 +1,197 @@
+{
+  "schema": "vc-execution-package-manifest-v1",
+  "package_revision": "R3",
+  "created_on": "2026-10-27",
+  "algorithm": "SHA256",
+  "excludes": [
+    "MANIFEST.sha256.json"
+  ],
+  "supersedes_archive_sha256": "ab44ec6ef924c1115b15a464514bf756b3766afc8ab123a133bd9f59acaaedb4",
+  "files": [
+    {
+      "path": "BUNDLE_VALIDATION.md",
+      "bytes": 4077,
+      "sha256": "fd9c7ac33d6d0677a25b70ffb7688c83a06c390883471cde0a70f237acac2a53"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 3112,
+      "sha256": "dcd9919ee15c360ceb6f7949f39c4caa0fbf186da4a83524fb9393576a6e4380"
+    },
+    {
+      "path": "DECISIONS.md",
+      "bytes": 7197,
+      "sha256": "c83e8c043fce0a3106e6f750493bd7fcbf3b1dae6276b7a99df3222b929238ff"
+    },
+    {
+      "path": "DESIGN.md",
+      "bytes": 15395,
+      "sha256": "1a5f11ac18a8dff175d2f2d777a96538e037269bc347ceac7b71681ee99c1632"
+    },
+    {
+      "path": "MASTER_PLAN.md",
+      "bytes": 15225,
+      "sha256": "f912fbb636a81ceed5aefa569c4c837c8cb853f254fbc510d1c46e9a150bd232"
+    },
+    {
+      "path": "START_HERE.md",
+      "bytes": 5506,
+      "sha256": "3616c69ebeb2521dcb4081473761b381caa75aa5884e57d0839254bfeef3c79f"
+    },
+    {
+      "path": "docs/01_existing_audit.md",
+      "bytes": 12007,
+      "sha256": "1e0c1770c5f98da9add36e8ec8c378e6ce26ac0c4f9291f953d5489d4e95ca1f"
+    },
+    {
+      "path": "docs/02_reuse_and_licenses.md",
+      "bytes": 14993,
+      "sha256": "d63bc9add26fe285b617c19d4322443923542c6837e6e39e201e6e64f6178ffc"
+    },
+    {
+      "path": "docs/03_architecture.md",
+      "bytes": 62778,
+      "sha256": "a5db87f329ddb8e1afab6dffe1d73f70b80ba0b1236b6adaab21ce58c612e2ad"
+    },
+    {
+      "path": "docs/04_tavern_compatibility.md",
+      "bytes": 17461,
+      "sha256": "31ef0d09bcd8d891c92b0a946c315510daec721497915371adbad85d42cc4fb5"
+    },
+    {
+      "path": "docs/05_memory_companion.md",
+      "bytes": 19650,
+      "sha256": "3abef0facdc1b3f93f49738a87ab10addf44362e61998af3ece281a16c3d5f9a"
+    },
+    {
+      "path": "docs/06_story_runtime.md",
+      "bytes": 11125,
+      "sha256": "7e079d03c51a7498ddb1eb07b9e9aff3ce5828d8b2b35d1182d831c260e07164"
+    },
+    {
+      "path": "docs/07_work_plan.md",
+      "bytes": 18788,
+      "sha256": "b3d4f765f4e721f120d6890ad6b1ddca0047b53aaceb125287c0bfb71abef9a3"
+    },
+    {
+      "path": "docs/08_verification_operations.md",
+      "bytes": 24171,
+      "sha256": "b40b7b4d792fd1ffece07e53eaafe961f3dfa1c61c4667b48865be75edc2ddca"
+    },
+    {
+      "path": "docs/09_agent_protocol.md",
+      "bytes": 6775,
+      "sha256": "a7c4b762aed81fa61d46a6e6c369dc6645ded3334359fe862a2ae5f70bcb1c3e"
+    },
+    {
+      "path": "fixtures/README.md",
+      "bytes": 5893,
+      "sha256": "8b6886c9ce4a3047dca77888ecad8422b7c869bfbea1f4903fdc59f3ce809821"
+    },
+    {
+      "path": "fixtures/companion_v2.json",
+      "bytes": 2778,
+      "sha256": "458e20e12160450a566c68e088a726229ce36c5a0b23558d7710048a23c51615"
+    },
+    {
+      "path": "fixtures/companion_v3.json",
+      "bytes": 2953,
+      "sha256": "fcbbffa7d7d4d031827bc08259bff8f878824de9acdc0530539953d11e8e2669"
+    },
+    {
+      "path": "fixtures/complex_card_recipe.md",
+      "bytes": 3547,
+      "sha256": "4390467a87ddc56047a3531e3bb2b83a0bab5496c31d1aa47ce8cb74ae8b678d"
+    },
+    {
+      "path": "fixtures/lifecycle_cases.json",
+      "bytes": 40488,
+      "sha256": "2a3c390ca4b9ecb058ce3cd93ff665efa38fd6adfd64301a86ef601ebe3252ad"
+    },
+    {
+      "path": "fixtures/memory_cases.json",
+      "bytes": 60441,
+      "sha256": "6dd172f7355cacf7098ddf10a7e8e2f2f3f504375156379b23c554bb84db3538"
+    },
+    {
+      "path": "fixtures/model_config_details.png",
+      "bytes": 151463,
+      "sha256": "533e6e6d0645ca1844d18716507be5f8e340b6d3c36f9511569ba25ca81fc0b4"
+    },
+    {
+      "path": "fixtures/model_config_protocols.png",
+      "bytes": 80460,
+      "sha256": "0f4eb9f7920237ea043f41d8c3a0e2b24c16d90a0a18e0ebbce2e9b30528cd7b"
+    },
+    {
+      "path": "fixtures/model_profiles.json",
+      "bytes": 11841,
+      "sha256": "b684a670b7f6f65047828952f96ab7e2fde9a5b26195255dc73f2cb3f9182dc0"
+    },
+    {
+      "path": "fixtures/public_lore.json",
+      "bytes": 1209,
+      "sha256": "33e707716ac50dc934f5bfd941be5b8bb6affb83245bb787604e27d37635e158"
+    },
+    {
+      "path": "fixtures/rainy_inn_case.json",
+      "bytes": 8307,
+      "sha256": "1b9c387b0e46b0b9bbe1bbd4b68638d840447a04918cc5fa6e04327b5054af57"
+    },
+    {
+      "path": "prompts/CLAUDE_CODE_START.md",
+      "bytes": 3450,
+      "sha256": "debbb40937384767e3c377b974e61ebe8d9076cc703ff82c20f66abd3e490794"
+    },
+    {
+      "path": "prompts/CODEX_START.md",
+      "bytes": 3950,
+      "sha256": "56124b771721c3b99a4b5d5695212f774e5a4b621403bcf5d2353676a2cde38d"
+    },
+    {
+      "path": "prompts/CONTINUE.md",
+      "bytes": 1197,
+      "sha256": "7db9354c1f16daaa29ea2b3dd8f43094517876364db00280c7d928ee11bb8703"
+    },
+    {
+      "path": "prompts/REVIEW.md",
+      "bytes": 2422,
+      "sha256": "d34c6cb665e07e15b4e69b946401d1cb901ef98adb76174df93659bd1b94ecfc"
+    },
+    {
+      "path": "references/SOURCES.md",
+      "bytes": 22639,
+      "sha256": "5800ff31b83fa36789acbdcb997228dbb69040ae56fa55fe3d3ab78864c02f75"
+    },
+    {
+      "path": "references/decisions.json",
+      "bytes": 25429,
+      "sha256": "619c188a377fd5a5c6c8e70df60da5107aa578ca1620145c83a778398ddc25bc"
+    },
+    {
+      "path": "references/upstreams.lock.json",
+      "bytes": 6477,
+      "sha256": "ee35ae905d58e2abe8771cc5f7322e90dec409bc4e5f4b50ae46011ee4cde253"
+    },
+    {
+      "path": "templates/ACCEPTANCE_REPORT.md",
+      "bytes": 1654,
+      "sha256": "aa2fb6d48d6c3a454f9f29f47d15590457d87c2a05c5e2083ee03fe3f4ef1edf"
+    },
+    {
+      "path": "templates/ADR_V2_DRAFT.md",
+      "bytes": 2297,
+      "sha256": "07f6386c5cd925b4e928164c94fa71417b7c4f78301571f79c3dcebf7a985124"
+    },
+    {
+      "path": "templates/REFERENCE_DECISION.md",
+      "bytes": 1243,
+      "sha256": "2c6ba801b819c1ebbe65be7fc2f02c928bbd7ee8ae1ef607c66700ceb963486d"
+    },
+    {
+      "path": "templates/TODO_SECTION.md",
+      "bytes": 1409,
+      "sha256": "5a3fe497fdd4aac2da047b4389f52b7f76a8032ce75f788ec83750a574e8b0d0"
+    }
+  ]
+}

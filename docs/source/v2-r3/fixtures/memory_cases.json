@@ -1,0 +1,1798 @@
+{
+  "schema": "vc-v2-fixture-memory-v1",
+  "timezone": "Asia/Shanghai",
+  "frozen_now": "2026-10-27T20:00:00+08:00",
+  "runtime_status": "NOT_RUN",
+  "cases": [
+    {
+      "id": "M01",
+      "name": "超过20条后的新相关记忆",
+      "kind": "retrieval",
+      "scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-a",
+        "mode": "COMPANION",
+        "branch": "main"
+      },
+      "pre_extracted_records": [
+        {
+          "id": "noise-001",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号1的阅读记录中收藏了一枚图案1的书签。",
+          "occurred_at": "2026-09-01T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-001"
+        },
+        {
+          "id": "noise-002",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号2的阅读记录中收藏了一枚图案2的书签。",
+          "occurred_at": "2026-09-02T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-002"
+        },
+        {
+          "id": "noise-003",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号3的阅读记录中收藏了一枚图案3的书签。",
+          "occurred_at": "2026-09-03T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-003"
+        },
+        {
+          "id": "noise-004",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号4的阅读记录中收藏了一枚图案4的书签。",
+          "occurred_at": "2026-09-04T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-004"
+        },
+        {
+          "id": "noise-005",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号5的阅读记录中收藏了一枚图案5的书签。",
+          "occurred_at": "2026-09-05T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-005"
+        },
+        {
+          "id": "noise-006",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号6的阅读记录中收藏了一枚图案6的书签。",
+          "occurred_at": "2026-09-06T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-006"
+        },
+        {
+          "id": "noise-007",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号7的阅读记录中收藏了一枚图案7的书签。",
+          "occurred_at": "2026-09-07T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-007"
+        },
+        {
+          "id": "noise-008",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号8的阅读记录中收藏了一枚图案8的书签。",
+          "occurred_at": "2026-09-08T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-008"
+        },
+        {
+          "id": "noise-009",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号9的阅读记录中收藏了一枚图案9的书签。",
+          "occurred_at": "2026-09-09T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-009"
+        },
+        {
+          "id": "noise-010",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号10的阅读记录中收藏了一枚图案10的书签。",
+          "occurred_at": "2026-09-10T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-010"
+        },
+        {
+          "id": "noise-011",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号11的阅读记录中收藏了一枚图案11的书签。",
+          "occurred_at": "2026-09-11T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-011"
+        },
+        {
+          "id": "noise-012",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号12的阅读记录中收藏了一枚图案12的书签。",
+          "occurred_at": "2026-09-12T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-012"
+        },
+        {
+          "id": "noise-013",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号13的阅读记录中收藏了一枚图案13的书签。",
+          "occurred_at": "2026-09-13T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-013"
+        },
+        {
+          "id": "noise-014",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号14的阅读记录中收藏了一枚图案14的书签。",
+          "occurred_at": "2026-09-14T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-014"
+        },
+        {
+          "id": "noise-015",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号15的阅读记录中收藏了一枚图案15的书签。",
+          "occurred_at": "2026-09-15T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-015"
+        },
+        {
+          "id": "noise-016",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号16的阅读记录中收藏了一枚图案16的书签。",
+          "occurred_at": "2026-09-16T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-016"
+        },
+        {
+          "id": "noise-017",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号17的阅读记录中收藏了一枚图案17的书签。",
+          "occurred_at": "2026-09-17T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-017"
+        },
+        {
+          "id": "noise-018",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号18的阅读记录中收藏了一枚图案18的书签。",
+          "occurred_at": "2026-09-18T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-018"
+        },
+        {
+          "id": "noise-019",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号19的阅读记录中收藏了一枚图案19的书签。",
+          "occurred_at": "2026-09-19T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-019"
+        },
+        {
+          "id": "noise-020",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号20的阅读记录中收藏了一枚图案20的书签。",
+          "occurred_at": "2026-09-20T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-020"
+        },
+        {
+          "id": "noise-021",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号21的阅读记录中收藏了一枚图案21的书签。",
+          "occurred_at": "2026-09-21T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-021"
+        },
+        {
+          "id": "noise-022",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号22的阅读记录中收藏了一枚图案22的书签。",
+          "occurred_at": "2026-09-22T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-022"
+        },
+        {
+          "id": "noise-023",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号23的阅读记录中收藏了一枚图案23的书签。",
+          "occurred_at": "2026-09-23T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-023"
+        },
+        {
+          "id": "noise-024",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号24的阅读记录中收藏了一枚图案24的书签。",
+          "occurred_at": "2026-09-24T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-024"
+        },
+        {
+          "id": "noise-025",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号25的阅读记录中收藏了一枚图案25的书签。",
+          "occurred_at": "2026-09-25T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-025"
+        },
+        {
+          "id": "noise-026",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号26的阅读记录中收藏了一枚图案26的书签。",
+          "occurred_at": "2026-09-26T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-026"
+        },
+        {
+          "id": "noise-027",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号27的阅读记录中收藏了一枚图案27的书签。",
+          "occurred_at": "2026-09-27T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-027"
+        },
+        {
+          "id": "noise-028",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号28的阅读记录中收藏了一枚图案28的书签。",
+          "occurred_at": "2026-09-28T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-028"
+        },
+        {
+          "id": "noise-029",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号29的阅读记录中收藏了一枚图案29的书签。",
+          "occurred_at": "2026-09-01T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-029"
+        },
+        {
+          "id": "noise-030",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号30的阅读记录中收藏了一枚图案30的书签。",
+          "occurred_at": "2026-09-02T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-030"
+        },
+        {
+          "id": "noise-031",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号31的阅读记录中收藏了一枚图案31的书签。",
+          "occurred_at": "2026-09-03T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-031"
+        },
+        {
+          "id": "noise-032",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号32的阅读记录中收藏了一枚图案32的书签。",
+          "occurred_at": "2026-09-04T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-032"
+        },
+        {
+          "id": "noise-033",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号33的阅读记录中收藏了一枚图案33的书签。",
+          "occurred_at": "2026-09-05T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-033"
+        },
+        {
+          "id": "noise-034",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号34的阅读记录中收藏了一枚图案34的书签。",
+          "occurred_at": "2026-09-06T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-034"
+        },
+        {
+          "id": "noise-035",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号35的阅读记录中收藏了一枚图案35的书签。",
+          "occurred_at": "2026-09-07T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-035"
+        },
+        {
+          "id": "noise-036",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号36的阅读记录中收藏了一枚图案36的书签。",
+          "occurred_at": "2026-09-08T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-036"
+        },
+        {
+          "id": "noise-037",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号37的阅读记录中收藏了一枚图案37的书签。",
+          "occurred_at": "2026-09-09T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-037"
+        },
+        {
+          "id": "noise-038",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号38的阅读记录中收藏了一枚图案38的书签。",
+          "occurred_at": "2026-09-10T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-038"
+        },
+        {
+          "id": "noise-039",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号39的阅读记录中收藏了一枚图案39的书签。",
+          "occurred_at": "2026-09-11T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-039"
+        },
+        {
+          "id": "noise-040",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号40的阅读记录中收藏了一枚图案40的书签。",
+          "occurred_at": "2026-09-12T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-040"
+        },
+        {
+          "id": "noise-041",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号41的阅读记录中收藏了一枚图案41的书签。",
+          "occurred_at": "2026-09-13T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-041"
+        },
+        {
+          "id": "noise-042",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号42的阅读记录中收藏了一枚图案42的书签。",
+          "occurred_at": "2026-09-14T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-042"
+        },
+        {
+          "id": "noise-043",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号43的阅读记录中收藏了一枚图案43的书签。",
+          "occurred_at": "2026-09-15T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-043"
+        },
+        {
+          "id": "noise-044",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号44的阅读记录中收藏了一枚图案44的书签。",
+          "occurred_at": "2026-09-16T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-044"
+        },
+        {
+          "id": "noise-045",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号45的阅读记录中收藏了一枚图案45的书签。",
+          "occurred_at": "2026-09-17T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-045"
+        },
+        {
+          "id": "noise-046",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号46的阅读记录中收藏了一枚图案46的书签。",
+          "occurred_at": "2026-09-18T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-046"
+        },
+        {
+          "id": "noise-047",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号47的阅读记录中收藏了一枚图案47的书签。",
+          "occurred_at": "2026-09-19T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-047"
+        },
+        {
+          "id": "noise-048",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号48的阅读记录中收藏了一枚图案48的书签。",
+          "occurred_at": "2026-09-20T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-048"
+        },
+        {
+          "id": "noise-049",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号49的阅读记录中收藏了一枚图案49的书签。",
+          "occurred_at": "2026-09-21T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-049"
+        },
+        {
+          "id": "noise-050",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号50的阅读记录中收藏了一枚图案50的书签。",
+          "occurred_at": "2026-09-22T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-050"
+        },
+        {
+          "id": "noise-051",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号51的阅读记录中收藏了一枚图案51的书签。",
+          "occurred_at": "2026-09-23T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-051"
+        },
+        {
+          "id": "noise-052",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号52的阅读记录中收藏了一枚图案52的书签。",
+          "occurred_at": "2026-09-24T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-052"
+        },
+        {
+          "id": "noise-053",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号53的阅读记录中收藏了一枚图案53的书签。",
+          "occurred_at": "2026-09-25T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-053"
+        },
+        {
+          "id": "noise-054",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号54的阅读记录中收藏了一枚图案54的书签。",
+          "occurred_at": "2026-09-26T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-054"
+        },
+        {
+          "id": "noise-055",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号55的阅读记录中收藏了一枚图案55的书签。",
+          "occurred_at": "2026-09-27T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-055"
+        },
+        {
+          "id": "noise-056",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号56的阅读记录中收藏了一枚图案56的书签。",
+          "occurred_at": "2026-09-28T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-056"
+        },
+        {
+          "id": "noise-057",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号57的阅读记录中收藏了一枚图案57的书签。",
+          "occurred_at": "2026-09-01T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-057"
+        },
+        {
+          "id": "noise-058",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号58的阅读记录中收藏了一枚图案58的书签。",
+          "occurred_at": "2026-09-02T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-058"
+        },
+        {
+          "id": "noise-059",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号59的阅读记录中收藏了一枚图案59的书签。",
+          "occurred_at": "2026-09-03T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-059"
+        },
+        {
+          "id": "noise-060",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号60的阅读记录中收藏了一枚图案60的书签。",
+          "occurred_at": "2026-09-04T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-060"
+        },
+        {
+          "id": "noise-061",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号61的阅读记录中收藏了一枚图案61的书签。",
+          "occurred_at": "2026-09-05T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-061"
+        },
+        {
+          "id": "noise-062",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号62的阅读记录中收藏了一枚图案62的书签。",
+          "occurred_at": "2026-09-06T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-062"
+        },
+        {
+          "id": "noise-063",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号63的阅读记录中收藏了一枚图案63的书签。",
+          "occurred_at": "2026-09-07T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-063"
+        },
+        {
+          "id": "noise-064",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号64的阅读记录中收藏了一枚图案64的书签。",
+          "occurred_at": "2026-09-08T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-064"
+        },
+        {
+          "id": "noise-065",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号65的阅读记录中收藏了一枚图案65的书签。",
+          "occurred_at": "2026-09-09T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-065"
+        },
+        {
+          "id": "noise-066",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号66的阅读记录中收藏了一枚图案66的书签。",
+          "occurred_at": "2026-09-10T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-066"
+        },
+        {
+          "id": "noise-067",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号67的阅读记录中收藏了一枚图案67的书签。",
+          "occurred_at": "2026-09-11T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-067"
+        },
+        {
+          "id": "noise-068",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号68的阅读记录中收藏了一枚图案68的书签。",
+          "occurred_at": "2026-09-12T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-068"
+        },
+        {
+          "id": "noise-069",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号69的阅读记录中收藏了一枚图案69的书签。",
+          "occurred_at": "2026-09-13T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-069"
+        },
+        {
+          "id": "noise-070",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号70的阅读记录中收藏了一枚图案70的书签。",
+          "occurred_at": "2026-09-14T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-070"
+        },
+        {
+          "id": "noise-071",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号71的阅读记录中收藏了一枚图案71的书签。",
+          "occurred_at": "2026-09-15T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-071"
+        },
+        {
+          "id": "noise-072",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号72的阅读记录中收藏了一枚图案72的书签。",
+          "occurred_at": "2026-09-16T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-072"
+        },
+        {
+          "id": "noise-073",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号73的阅读记录中收藏了一枚图案73的书签。",
+          "occurred_at": "2026-09-17T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-073"
+        },
+        {
+          "id": "noise-074",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号74的阅读记录中收藏了一枚图案74的书签。",
+          "occurred_at": "2026-09-18T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-074"
+        },
+        {
+          "id": "noise-075",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号75的阅读记录中收藏了一枚图案75的书签。",
+          "occurred_at": "2026-09-19T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-075"
+        },
+        {
+          "id": "noise-076",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号76的阅读记录中收藏了一枚图案76的书签。",
+          "occurred_at": "2026-09-20T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-076"
+        },
+        {
+          "id": "noise-077",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号77的阅读记录中收藏了一枚图案77的书签。",
+          "occurred_at": "2026-09-21T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-077"
+        },
+        {
+          "id": "noise-078",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号78的阅读记录中收藏了一枚图案78的书签。",
+          "occurred_at": "2026-09-22T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-078"
+        },
+        {
+          "id": "noise-079",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号79的阅读记录中收藏了一枚图案79的书签。",
+          "occurred_at": "2026-09-23T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-079"
+        },
+        {
+          "id": "noise-080",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号80的阅读记录中收藏了一枚图案80的书签。",
+          "occurred_at": "2026-09-24T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-080"
+        },
+        {
+          "id": "noise-081",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号81的阅读记录中收藏了一枚图案81的书签。",
+          "occurred_at": "2026-09-25T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-081"
+        },
+        {
+          "id": "noise-082",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号82的阅读记录中收藏了一枚图案82的书签。",
+          "occurred_at": "2026-09-26T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-082"
+        },
+        {
+          "id": "noise-083",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号83的阅读记录中收藏了一枚图案83的书签。",
+          "occurred_at": "2026-09-27T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-083"
+        },
+        {
+          "id": "noise-084",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号84的阅读记录中收藏了一枚图案84的书签。",
+          "occurred_at": "2026-09-28T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-084"
+        },
+        {
+          "id": "noise-085",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号85的阅读记录中收藏了一枚图案85的书签。",
+          "occurred_at": "2026-09-01T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-085"
+        },
+        {
+          "id": "noise-086",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号86的阅读记录中收藏了一枚图案86的书签。",
+          "occurred_at": "2026-09-02T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-086"
+        },
+        {
+          "id": "noise-087",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号87的阅读记录中收藏了一枚图案87的书签。",
+          "occurred_at": "2026-09-03T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-087"
+        },
+        {
+          "id": "noise-088",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号88的阅读记录中收藏了一枚图案88的书签。",
+          "occurred_at": "2026-09-04T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-088"
+        },
+        {
+          "id": "noise-089",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号89的阅读记录中收藏了一枚图案89的书签。",
+          "occurred_at": "2026-09-05T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-089"
+        },
+        {
+          "id": "noise-090",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号90的阅读记录中收藏了一枚图案90的书签。",
+          "occurred_at": "2026-09-06T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-090"
+        },
+        {
+          "id": "noise-091",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号91的阅读记录中收藏了一枚图案91的书签。",
+          "occurred_at": "2026-09-07T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-091"
+        },
+        {
+          "id": "noise-092",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号92的阅读记录中收藏了一枚图案92的书签。",
+          "occurred_at": "2026-09-08T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-092"
+        },
+        {
+          "id": "noise-093",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号93的阅读记录中收藏了一枚图案93的书签。",
+          "occurred_at": "2026-09-09T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-093"
+        },
+        {
+          "id": "noise-094",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号94的阅读记录中收藏了一枚图案94的书签。",
+          "occurred_at": "2026-09-10T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-094"
+        },
+        {
+          "id": "noise-095",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号95的阅读记录中收藏了一枚图案95的书签。",
+          "occurred_at": "2026-09-11T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-095"
+        },
+        {
+          "id": "noise-096",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号96的阅读记录中收藏了一枚图案96的书签。",
+          "occurred_at": "2026-09-12T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-096"
+        },
+        {
+          "id": "noise-097",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号97的阅读记录中收藏了一枚图案97的书签。",
+          "occurred_at": "2026-09-13T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-097"
+        },
+        {
+          "id": "noise-098",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号98的阅读记录中收藏了一枚图案98的书签。",
+          "occurred_at": "2026-09-14T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-098"
+        },
+        {
+          "id": "noise-099",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号99的阅读记录中收藏了一枚图案99的书签。",
+          "occurred_at": "2026-09-15T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-099"
+        },
+        {
+          "id": "noise-100",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户在编号100的阅读记录中收藏了一枚图案100的书签。",
+          "occurred_at": "2026-09-16T10:00:00+08:00",
+          "status": "ACCEPTED",
+          "source_id": "source-noise-100"
+        },
+        {
+          "id": "new-relevant-101",
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a",
+            "mode": "COMPANION",
+            "branch": "main"
+          },
+          "content": "用户计划于2026年10月30日去厦门参加朋友婚礼。",
+          "status": "ACCEPTED",
+          "source_id": "source-new-relevant-101",
+          "source_timestamp": "2026-10-20T20:00:00+08:00",
+          "source_timezone": "Asia/Shanghai",
+          "recorded_at": "2026-10-20T20:00:00+08:00",
+          "event_date": "2026-10-30",
+          "event_timezone": "Asia/Shanghai",
+          "event_time": null,
+          "time_precision": "date",
+          "event_status": "planned",
+          "normalization_status": "explicit_date"
+        }
+      ],
+      "query": "我在2026年10月30日准备去哪里，为什么？",
+      "expected": {
+        "must_retrieve": [
+          "new-relevant-101"
+        ],
+        "answer_facts": [
+          "2026-10-30",
+          "厦门",
+          "朋友婚礼"
+        ],
+        "must_appear_in_final_request": true,
+        "event_date": "2026-10-30",
+        "must_not_substitute_query_relative_date": "2026-11-06"
+      },
+      "note": "直接输入已提炼记录只验证检索，不证明模型抽取能力。source_timestamp/recorded_at 是10月20日的来源与记录时间，event_date 是10月30日的未来计划；不得混为同一个发生时间。",
+      "query_timestamp": "2026-10-27T20:00:00+08:00",
+      "query_timezone": "Asia/Shanghai"
+    },
+    {
+      "id": "M02",
+      "name": "跨会话更正城市",
+      "kind": "source_lifecycle",
+      "scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-a",
+        "mode": "COMPANION",
+        "branch": "main"
+      },
+      "events": [
+        {
+          "source": "city-old",
+          "chat": "chat-old",
+          "text": "我现在住在北京。",
+          "time": "2026-10-01T10:00:00+08:00"
+        },
+        {
+          "source": "city-new",
+          "chat": "chat-new",
+          "text": "我已经搬到上海了，以后说我现在的城市请用上海。",
+          "time": "2026-10-21T10:00:00+08:00"
+        }
+      ],
+      "query": "我现在住哪儿？",
+      "expected": {
+        "current_fact": "上海",
+        "past_fact_allowed": "以前住北京",
+        "old_must_not_be_current": true
+      }
+    },
+    {
+      "id": "M03",
+      "name": "不同用户同款角色",
+      "kind": "isolation",
+      "events": [
+        {
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "user-a-same-template",
+            "template": "template-chenxia"
+          },
+          "text": "我的幸运颜色是青色。"
+        },
+        {
+          "scope": {
+            "owner": "fixture-user-b",
+            "instance": "user-b-same-template",
+            "template": "template-chenxia"
+          },
+          "text": "我的幸运颜色是橙色。"
+        }
+      ],
+      "query_scope": {
+        "owner": "fixture-user-a",
+        "instance": "user-a-same-template"
+      },
+      "query": "我的幸运颜色是什么？",
+      "expected": {
+        "include": [
+          "青色"
+        ],
+        "exclude_private_sources": [
+          "user-b-same-template"
+        ]
+      }
+    },
+    {
+      "id": "M04",
+      "name": "同一用户不同实例的私有经历",
+      "kind": "isolation",
+      "events": [
+        {
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-a"
+          },
+          "text": "这次我们把旅行计划叫作海鸥计划。",
+          "sharing": "private-to-instance"
+        },
+        {
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "companion-b"
+          },
+          "text": "你好，我们第一次见。"
+        }
+      ],
+      "query_scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-b"
+      },
+      "query": "我们之前一起做的旅行计划叫什么？",
+      "expected": {
+        "must_not_retrieve_instance": "companion-a",
+        "must_not_invent_shared_experience": true
+      }
+    },
+    {
+      "id": "M05",
+      "name": "遗忘后旧任务不能复活",
+      "kind": "forget",
+      "scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-a",
+        "mode": "COMPANION",
+        "branch": "main"
+      },
+      "events": [
+        {
+          "op": "save",
+          "source": "forget-source",
+          "text": "我收藏过一枚蓝色帆船徽章。"
+        },
+        {
+          "op": "queue_extract",
+          "source": "forget-source",
+          "revision": 1
+        },
+        {
+          "op": "forget",
+          "source": "forget-source"
+        },
+        {
+          "op": "finish_old_extract",
+          "source": "forget-source",
+          "revision": 1
+        }
+      ],
+      "query": "我收藏过什么徽章？",
+      "expected": {
+        "active_source_absent": true,
+        "retrieval_absent": true,
+        "derived_summary_absent": true,
+        "stale_job_cannot_restore": true
+      }
+    },
+    {
+      "id": "M06",
+      "name": "虚构身份不变现实画像",
+      "kind": "mode_isolation",
+      "events": [
+        {
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "story-actor-a",
+            "mode": "STORY",
+            "world_run": "run-a"
+          },
+          "text": "在这局故事中，我扮演一名钟表修复师。"
+        }
+      ],
+      "query_scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-a",
+        "mode": "COMPANION"
+      },
+      "query": "我的现实职业是什么？",
+      "expected": {
+        "must_not_infer_real_occupation_from_story": true
+      }
+    },
+    {
+      "id": "M07",
+      "name": "swipe与分支当前有效性",
+      "kind": "branch",
+      "events": [
+        {
+          "op": "save",
+          "chat": "branch-chat",
+          "message_id": "m-1",
+          "swipe": 0,
+          "branch": "root",
+          "text": "我们选择了红门。"
+        },
+        {
+          "op": "save_alternative",
+          "chat": "branch-chat",
+          "message_id": "m-1",
+          "swipe": 1,
+          "branch": "root",
+          "text": "我们选择了蓝门。"
+        },
+        {
+          "op": "select_swipe",
+          "chat": "branch-chat",
+          "message_id": "m-1",
+          "swipe": 1
+        },
+        {
+          "op": "branch",
+          "parent": "root",
+          "new_branch": "blue-path",
+          "selected_swipe": 1
+        },
+        {
+          "op": "finish_old_extract",
+          "message_id": "m-1",
+          "swipe": 0,
+          "branch": "root"
+        }
+      ],
+      "query_scope": {
+        "branch": "blue-path"
+      },
+      "query": "我们选择了哪扇门？",
+      "expected": {
+        "current_fact": "蓝门",
+        "excluded_fact": "红门",
+        "stale_alternative_cannot_write": true
+      }
+    },
+    {
+      "id": "M08",
+      "name": "模型台词不能伪造工具完成",
+      "kind": "tool_provenance",
+      "events": [
+        {
+          "op": "assistant_text",
+          "text": "我已经为你设置明晚的提醒。"
+        },
+        {
+          "op": "tool_result",
+          "tool": "create_reminder",
+          "status": "failed",
+          "error_code": "TEST_STORAGE_FAILURE"
+        }
+      ],
+      "expected": {
+        "completed_reminders": 0,
+        "must_not_store_completed_action": true,
+        "failure_visible": true
+      }
+    },
+    {
+      "id": "M09",
+      "name": "摘要真正进入新请求",
+      "kind": "summary",
+      "scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-a",
+        "mode": "COMPANION",
+        "branch": "main"
+      },
+      "events": [
+        {
+          "source": "summary-source",
+          "text": "我们正在讨论一份蓝窗书店的读书计划，下一步还没决定读哪一本。"
+        },
+        {
+          "op": "complete_summary",
+          "source": "summary-source",
+          "summary": "正在讨论读书计划，下一本书未定。"
+        }
+      ],
+      "query": "我们上次谈到哪一步了？",
+      "expected": {
+        "valid_summary_in_final_request": true,
+        "source_traceable": true,
+        "no_empty_hook_claim": true
+      }
+    },
+    {
+      "id": "M10",
+      "name": "不同剧情局次和视角不串秘密",
+      "kind": "story_scope",
+      "events": [
+        {
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "zhou-run-a",
+            "mode": "STORY",
+            "world_run": "run-a",
+            "branch": "main",
+            "view": "zhou"
+          },
+          "text": "本局的怀表藏在维修柜中。",
+          "marker": "SECRET_RUN_A_ZHOU_73"
+        },
+        {
+          "scope": {
+            "owner": "fixture-user-a",
+            "instance": "zhou-run-b",
+            "mode": "STORY",
+            "world_run": "run-b",
+            "branch": "main",
+            "view": "zhou"
+          },
+          "text": "这是一局全新的故事，尚未发现怀表。"
+        }
+      ],
+      "query_scope": {
+        "owner": "fixture-user-a",
+        "instance": "zhou-run-b",
+        "mode": "STORY",
+        "world_run": "run-b",
+        "branch": "main",
+        "view": "zhou"
+      },
+      "query": "怀表在哪里？",
+      "expected": {
+        "must_not_retrieve_run": "run-a",
+        "forbidden_marker_in_final_request": false,
+        "marker": "SECRET_RUN_A_ZHOU_73"
+      }
+    },
+    {
+      "id": "M11",
+      "name": "相对日期依来源归一化且查询不移动既有计划",
+      "kind": "relative_date_normalization",
+      "runtime_status": "NOT_RUN",
+      "scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-a",
+        "mode": "COMPANION",
+        "branch": "main"
+      },
+      "normalization_rule": "ISO_WEEK_NEXT_WEEK_FRIDAY_IN_SOURCE_TIMEZONE",
+      "events": [
+        {
+          "op": "save_source",
+          "source_id": "relative-wedding-source",
+          "revision": 1,
+          "source_timestamp": "2026-10-20T20:00:00+08:00",
+          "source_timezone": "Asia/Shanghai",
+          "text": "下周五去厦门参加朋友婚礼。"
+        },
+        {
+          "op": "extract_at",
+          "task_timestamp": "2026-10-27T19:00:00+08:00",
+          "task_timezone": "Asia/Shanghai",
+          "source_id": "relative-wedding-source"
+        },
+        {
+          "op": "retry_extract_at",
+          "task_timestamp": "2026-10-27T11:30:00Z",
+          "task_timezone": "UTC",
+          "source_id": "relative-wedding-source"
+        }
+      ],
+      "expected_normalization": {
+        "event_date": "2026-10-30",
+        "event_timezone": "Asia/Shanghai",
+        "event_time": null,
+        "time_precision": "date",
+        "source_expression": "下周五",
+        "source_timestamp": "2026-10-20T20:00:00+08:00",
+        "source_timezone": "Asia/Shanghai",
+        "retries_keep_same_event_date": true,
+        "no_fabricated_reminder_instant": true
+      },
+      "queries": [
+        {
+          "query_timestamp": "2026-10-27T20:00:00+08:00",
+          "query_timezone": "Asia/Shanghai",
+          "text": "10月30日我要去哪里？",
+          "expected": {
+            "resolved_query_date": "2026-10-30",
+            "answer_facts": [
+              "厦门",
+              "朋友婚礼"
+            ]
+          }
+        },
+        {
+          "query_timestamp": "2026-10-27T20:00:00+08:00",
+          "query_timezone": "Asia/Shanghai",
+          "text": "我下周五有什么安排？",
+          "expected": {
+            "resolved_query_date": "2026-11-06",
+            "must_not_attribute_oct30_wedding_to_nov6": true,
+            "may_explain_existing_oct30_plan": true,
+            "must_not_move_existing_event": true
+          }
+        }
+      ],
+      "note": "记录中的相对词使用来源基准；新问题中的相对词使用该问题自己的时间与时区。两者分别解释，不能用新问题覆盖已规范化计划。 抽取19:00、UTC重试11:30Z（当地19:30）、查询20:00按时间顺序执行；查询冻结时刻不读取未来提取结果。"
+    },
+    {
+      "id": "M12",
+      "name": "缺少来源时区或日期语义有歧义时保持待澄清",
+      "kind": "relative_date_ambiguity",
+      "runtime_status": "NOT_RUN",
+      "scope": {
+        "owner": "fixture-user-a",
+        "instance": "companion-a",
+        "mode": "COMPANION",
+        "branch": "main"
+      },
+      "events": [
+        {
+          "op": "save_source",
+          "source_id": "ambiguous-reminder-source",
+          "revision": 1,
+          "source_timestamp": "2026-10-20T16:30:00Z",
+          "source_timezone": null,
+          "user_timezone_snapshot": null,
+          "text": "明天晚上提醒我带书。"
+        },
+        {
+          "op": "extract_at",
+          "task_timestamp": "2026-10-27T12:00:00Z",
+          "task_timezone": "UTC",
+          "source_id": "ambiguous-reminder-source"
+        }
+      ],
+      "possible_interpretations": [
+        {
+          "if_source_timezone": "Asia/Shanghai",
+          "source_local_date": "2026-10-21",
+          "tomorrow_local_date": "2026-10-22"
+        },
+        {
+          "if_source_timezone": "America/Los_Angeles",
+          "source_local_date": "2026-10-20",
+          "tomorrow_local_date": "2026-10-21"
+        }
+      ],
+      "expected": {
+        "normalization_status": "needs_clarification",
+        "event_date": null,
+        "reminder_due_at": null,
+        "no_automatic_timezone_choice": true,
+        "no_due_reminder_created": true,
+        "existing_followups_unchanged": true,
+        "original_text_and_source_timestamp_preserved": true,
+        "must_not_rebase_on_extraction_time": true
+      },
+      "note": "不得用服务器UTC或当前用户时区猜原消息的当地日期。“晚上”也不是确定时刻；收到足够澄清后再规范化，已有计划只有明确修订才变更。"
+    }
+  ],
+  "temporal_policy": {
+    "source_timestamp": "保留原消息发生时间，不能用抽取任务、重试或当前查询时间替代。",
+    "source_timezone": "保留来源明确时区或当时已知用户时区快照；不得静默采用服务器进程时区。",
+    "event_time": "未来计划与原消息时间分开保存；明确日期保存为 event_date，未知时刻保持 null，precision=date。",
+    "relative_week_fixture_rule": "本样例明确采用 ISO 周（周一为一周起点）：下周五表示来源当地日期所在周的下一周周五。此样例约定不能代替处理真实自然语言歧义。",
+    "normalization": "基于来源 timestamp + timezone 归一化一次并记录解释；后续检索和任务重试不按当前时间重解析原相对词。明确纠正时创建新修订。",
+    "ambiguity": "缺少可确定基准、时区或存在歧义时标记 needs_clarification；不创建可触发提醒、不改写既有预约。",
+    "date_only": "只有日期不虚构零点时刻；实际提醒需明确提醒时刻或采用用户已确认的提醒规则。"
+  }
+}

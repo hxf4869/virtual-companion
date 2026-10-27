@@ -1,0 +1,379 @@
+{
+  "schema": "vc-v2-model-config-fixture-v1",
+  "package_revision": "R3",
+  "fixture_only": true,
+  "runtime_status": "NOT_RUN",
+  "network_calls_allowed": false,
+  "description": "字段与状态示例；全部关闭。模型ID和token限额是合成输入，不是用户选择或真实模型规格。",
+  "providers": [
+    {
+      "id": "fixture-provider-anthropic",
+      "name": "合成示例 anthropic_messages",
+      "enabled": false,
+      "protocol": "anthropic_messages",
+      "base_url": "https://anthropic.example.invalid/v1",
+      "endpoint_join_mode": "base_url_append_protocol_suffix",
+      "protocol_suffix": "/messages",
+      "expected_final_url": "https://anthropic.example.invalid/v1/messages",
+      "credential_reference": null,
+      "credential_authority": null,
+      "config_revision": 1,
+      "test_status": "NOT_RUN",
+      "price_authorized": false
+    },
+    {
+      "id": "fixture-provider-chat",
+      "name": "合成示例 openai_chat_completions",
+      "enabled": false,
+      "protocol": "openai_chat_completions",
+      "base_url": "https://chat.example.invalid/v1",
+      "endpoint_join_mode": "base_url_append_protocol_suffix",
+      "protocol_suffix": "/chat/completions",
+      "expected_final_url": "https://chat.example.invalid/v1/chat/completions",
+      "credential_reference": null,
+      "credential_authority": null,
+      "config_revision": 1,
+      "test_status": "NOT_RUN",
+      "price_authorized": false
+    },
+    {
+      "id": "fixture-provider-responses",
+      "name": "合成示例 openai_responses",
+      "enabled": false,
+      "protocol": "openai_responses",
+      "base_url": "https://responses.example.invalid/v1",
+      "endpoint_join_mode": "base_url_append_protocol_suffix",
+      "protocol_suffix": "/responses",
+      "expected_final_url": "https://responses.example.invalid/v1/responses",
+      "credential_reference": null,
+      "credential_authority": null,
+      "config_revision": 1,
+      "test_status": "NOT_RUN",
+      "price_authorized": false
+    }
+  ],
+  "models": [
+    {
+      "id": "fixture-model-anthropic",
+      "provider_id": "fixture-provider-anthropic",
+      "model_id": "fixture-model-anthropic",
+      "display_name": "仅用于配置样例 anthropic_messages",
+      "enabled": false,
+      "context_window_tokens": 32768,
+      "max_output_tokens": 2048,
+      "token_limits_source": "SYNTHETIC_FIXTURE_NOT_REAL_MODEL_SPEC",
+      "input_modalities": [
+        "text"
+      ],
+      "capabilities": {
+        "image_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "video_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "pdf_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "structured_output": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "tool_calls": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "native_web_search": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "system_message": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "text_input": {
+          "declared": true,
+          "verification_status": "NOT_RUN"
+        }
+      },
+      "reasoning_levels": [],
+      "reasoning_parameter_mapping": {},
+      "intelligent_configuration": {
+        "enabled": false,
+        "source": null,
+        "overwrite_manual_fields": false
+      },
+      "pricing": {
+        "input_per_million_tokens": null,
+        "output_per_million_tokens": null,
+        "currency": null,
+        "cached_input_rate": null,
+        "extra_tool_rates": null,
+        "verified_on": null,
+        "unknown_means_free": false
+      },
+      "config_revision": 1
+    },
+    {
+      "id": "fixture-model-chat",
+      "provider_id": "fixture-provider-chat",
+      "model_id": "fixture-model-chat",
+      "display_name": "仅用于配置样例 openai_chat_completions",
+      "enabled": false,
+      "context_window_tokens": 32768,
+      "max_output_tokens": 2048,
+      "token_limits_source": "SYNTHETIC_FIXTURE_NOT_REAL_MODEL_SPEC",
+      "input_modalities": [
+        "text"
+      ],
+      "capabilities": {
+        "image_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "video_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "pdf_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "structured_output": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "tool_calls": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "native_web_search": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "system_message": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "text_input": {
+          "declared": true,
+          "verification_status": "NOT_RUN"
+        }
+      },
+      "reasoning_levels": [],
+      "reasoning_parameter_mapping": {},
+      "intelligent_configuration": {
+        "enabled": false,
+        "source": null,
+        "overwrite_manual_fields": false
+      },
+      "pricing": {
+        "input_per_million_tokens": null,
+        "output_per_million_tokens": null,
+        "currency": null,
+        "cached_input_rate": null,
+        "extra_tool_rates": null,
+        "verified_on": null,
+        "unknown_means_free": false
+      },
+      "config_revision": 1
+    },
+    {
+      "id": "fixture-model-responses",
+      "provider_id": "fixture-provider-responses",
+      "model_id": "fixture-model-responses",
+      "display_name": "仅用于配置样例 openai_responses",
+      "enabled": false,
+      "context_window_tokens": 32768,
+      "max_output_tokens": 2048,
+      "token_limits_source": "SYNTHETIC_FIXTURE_NOT_REAL_MODEL_SPEC",
+      "input_modalities": [
+        "text"
+      ],
+      "capabilities": {
+        "image_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "video_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "pdf_input": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "structured_output": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "tool_calls": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "native_web_search": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "system_message": {
+          "declared": null,
+          "verification_status": "unknown"
+        },
+        "text_input": {
+          "declared": true,
+          "verification_status": "NOT_RUN"
+        }
+      },
+      "reasoning_levels": [],
+      "reasoning_parameter_mapping": {},
+      "intelligent_configuration": {
+        "enabled": false,
+        "source": null,
+        "overwrite_manual_fields": false
+      },
+      "pricing": {
+        "input_per_million_tokens": null,
+        "output_per_million_tokens": null,
+        "currency": null,
+        "cached_input_rate": null,
+        "extra_tool_rates": null,
+        "verified_on": null,
+        "unknown_means_free": false
+      },
+      "config_revision": 1
+    }
+  ],
+  "purpose_bindings": {
+    "foreground_chat": {
+      "mode": "pinned",
+      "profile_id": null,
+      "enabled": false,
+      "status": "PENDING_CONFIGURATION"
+    },
+    "memory_extraction_dedup_summary": {
+      "mode": "pinned",
+      "profile_id": null,
+      "enabled": false,
+      "status": "PENDING_CONFIGURATION"
+    },
+    "background_greetings": {
+      "mode": "pinned",
+      "profile_id": null,
+      "enabled": false,
+      "status": "PENDING_CONFIGURATION"
+    },
+    "story_director": {
+      "mode": "pinned",
+      "profile_id": null,
+      "enabled": false,
+      "status": "PENDING_CONFIGURATION"
+    },
+    "npc_dialogue": {
+      "mode": "pinned",
+      "profile_id": null,
+      "enabled": false,
+      "status": "PENDING_CONFIGURATION"
+    }
+  },
+  "embedding": {
+    "enabled": false,
+    "model_id": null,
+    "provider_id": null,
+    "endpoint": null,
+    "dimension": null,
+    "preprocessing_version": null,
+    "status": "PENDING_CONFIGURATION",
+    "not_one_of_chat_protocol_choices": true
+  },
+  "budget": {
+    "real_validation": {
+      "amount": null,
+      "currency": null,
+      "authorized": false
+    },
+    "daily_background": {
+      "amount": null,
+      "currency": null,
+      "authorized": false
+    }
+  },
+  "configuration_rules": {
+    "one_logical_catalog": true,
+    "Go_catalog_ST_runtime_projection": true,
+    "foreground_binding_change_updates_background": false,
+    "shared_profile_edit_lists_affected_bindings": true,
+    "native_ST_direct_edits_reconciled": true,
+    "pending_mapping_blocks_only_affected_purposes": true,
+    "save_triggers_network_test": false,
+    "credentials_in_export_or_log": false,
+    "protocol_silent_fallback": false,
+    "empty_model_list_prevents_manual_model_id": false,
+    "declared_capability_implies_actual_support": false,
+    "provider_rejects_unsupported_capability": "explicit_unsupported_error_no_silent_drop",
+    "embedding_space_mixing_allowed": false
+  },
+  "url_examples": [
+    {
+      "protocol": "anthropic_messages",
+      "base_url": "https://anthropic.example.invalid/v1",
+      "suffix": "/messages",
+      "expected": "https://anthropic.example.invalid/v1/messages"
+    },
+    {
+      "protocol": "openai_chat_completions",
+      "base_url": "https://chat.example.invalid/v1",
+      "suffix": "/chat/completions",
+      "expected": "https://chat.example.invalid/v1/chat/completions"
+    },
+    {
+      "protocol": "openai_responses",
+      "base_url": "https://responses.example.invalid/v1",
+      "suffix": "/responses",
+      "expected": "https://responses.example.invalid/v1/responses"
+    },
+    {
+      "protocol": "openai_chat_completions",
+      "input": "https://chat.example.invalid/v1/chat/completions",
+      "expected_behavior": "explain full endpoint input, normalize explicitly or reject; never append duplicate endpoint"
+    },
+    {
+      "protocol": "anthropic_messages",
+      "input": "https://proxy.example.invalid/custom/v1/",
+      "expected": "https://proxy.example.invalid/custom/v1/messages"
+    }
+  ],
+  "binding_transition_examples": [
+    {
+      "action": "switch foreground profile A to B",
+      "expected": "independently pinned extraction/greetings/director/NPC unchanged"
+    },
+    {
+      "action": "edit shared provider endpoint used by foreground and extraction",
+      "expected": "show impact, version both projections as applicable; reject unauthorized new endpoint for real calls"
+    },
+    {
+      "action": "edit native ST settings outside unified view",
+      "expected": "reconcile foreground mapping before generation; do not silently mutate unrelated background"
+    },
+    {
+      "action": "new provider unavailable",
+      "expected": "explicit failure; no automatic fallback to another paid model"
+    }
+  ],
+  "references": {
+    "protocols_image": "model_config_protocols.png",
+    "fields_image": "model_config_details.png",
+    "design": "../DESIGN.md",
+    "architecture": "../docs/03_architecture.md"
+  },
+  "strict_story_context_policy": {
+    "new_turn": "explicit_current_ActorView",
+    "cross_turn_remote_conversation_or_previous_response_id": false,
+    "current_tool_turn_items_require_same_scope_and_version": true,
+    "store_false_alone_is_isolation": false,
+    "runtime_status": "NOT_RUN"
+  }
+}

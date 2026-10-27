@@ -1,0 +1,752 @@
+{
+  "schema": "vc-v2-user-decisions-v3",
+  "package_revision": "R3",
+  "updated_on": "2026-10-27",
+  "timezone": "Asia/Shanghai",
+  "authority_document": "../DECISIONS.md",
+  "confirmed_decisions": [
+    {
+      "id": "1A",
+      "topic": "deployment",
+      "value": "server_web_h5",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27"
+    },
+    {
+      "id": "2C",
+      "topic": "compatibility_priority",
+      "value": "native_complex_tavern_cards_and_extensions",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27"
+    },
+    {
+      "id": "3C",
+      "topic": "usage",
+      "value": "noncommercial_personal",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27"
+    },
+    {
+      "id": "A1",
+      "topic": "A",
+      "value": "native_st_main_browser",
+      "description": "ST main UI; old Vue not required as history UI after E3; mini-program not a launch deliverable",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    {
+      "id": "B2",
+      "topic": "B",
+      "value": "P0_through_P6_including_P5",
+      "description": "Full first usable release includes strict three-NPC story",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    {
+      "id": "C1",
+      "topic": "C",
+      "value": "st_native_plaintext_disk_permissions_encrypted_backups",
+      "description": "Accept stated ST storage difference; retain Go field-protection capability",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    {
+      "id": "D2",
+      "topic": "D",
+      "value": "closed_webpage_external_notification",
+      "description": "Both email and Feishu required in launch; independently configurable",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    {
+      "id": "E3",
+      "topic": "E",
+      "value": "no_old_chat_migration",
+      "description": "No migration or compulsory history UI; no authorization to erase old data",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    {
+      "id": "F2",
+      "topic": "F",
+      "value": "atomic_version_check_all_chat_saves",
+      "description": "All paths reject stale revision; preserve draft; no automatic MVU merge",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    {
+      "id": "G2",
+      "topic": "G",
+      "value": "independent_pinned_purpose_bindings",
+      "description": "Custom three-protocol configuration, actual models and budgets configured at runtime",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    {
+      "id": "N1",
+      "topic": "launch_notifications",
+      "value": [
+        "email",
+        "feishu"
+      ],
+      "evidence": "首版通知：邮箱、飞书",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27"
+    },
+    {
+      "id": "UI-DESIGN",
+      "topic": "frontend_workflow",
+      "value": [
+        "DESIGN.md",
+        "Stitch_desktop_mobile_screens",
+        "ST_frontend_implementation"
+      ],
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27"
+    },
+    {
+      "id": "MODEL-3",
+      "topic": "model_protocols",
+      "value": [
+        "anthropic_messages",
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27"
+    },
+    {
+      "id": "REFACTOR",
+      "topic": "module_refactor",
+      "value": "replace_remove_or_rewrite_poor_modules_after_reuse_research",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27"
+    }
+  ],
+  "confirmation_scope": "1A/2C/3C and A1/B2/C1/D2/E3/F2/G2, email+Feishu launch, design→Stitch→frontend, three protocols, and module refactor scope are user-confirmed. Engineering mechanisms and runtime values are not separately user-confirmed.",
+  "current_request": {
+    "execution_mode": "document_revision_only",
+    "current_request_authorizes_implementation": false,
+    "allowed_work": [
+      "requirements_revision",
+      "architecture_revision",
+      "task_revision",
+      "acceptance_revision",
+      "fixture_revision",
+      "package_integrity_validation",
+      "revised_zip_delivery"
+    ],
+    "project_code_modified": false,
+    "application_started": false,
+    "application_tests_started": false,
+    "deployment_started": false,
+    "real_model_calls_started": false,
+    "future_implementation_requires_separate_user_instruction": true,
+    "pending_decisions_block_only_their_dependent_work_after_implementation_is_authorized": false,
+    "stitch_designs_generated": false,
+    "real_notifications_sent": false,
+    "refactor_scope_authorized_for_future_implementation": true,
+    "runtime_configuration_blocks_only_dependent_operations": true
+  },
+  "retained_technical_direction": {
+    "status": "ENGINEERING_BASELINE_TO_VALIDATE",
+    "components": [
+      "native SillyTavern Node host",
+      "UI extension and server plugin",
+      "Go long-term service",
+      "PostgreSQL"
+    ],
+    "integration_policy": "Research current code, official docs and GitHub before implementing; reuse fit components, allow complete module refactor; patch only demonstrated host gaps.",
+    "main_product_interface": "native_ST_with_integrated_theme_and_extension_pages",
+    "old_vue_retirement": "allowed_no_mandatory_legacy_history_UI",
+    "uni_app_wechat_plan_change": "not_first_release",
+    "go_rewrite_to_rust_planned": false,
+    "existing_go_implementation_mandatory": false,
+    "unneeded_compatibility_layers": false,
+    "future_channel_stubs": false
+  },
+  "pending_decisions": {},
+  "model_configuration": {
+    "status": "REQUIREMENTS_CONFIRMED_RUNTIME_VALUES_PENDING",
+    "binding_strategy": "independent_pinned_per_purpose",
+    "real_model_calls_authorized": false,
+    "roles": {
+      "foreground_chat": {
+        "status": "PENDING_CONFIGURATION",
+        "provider": null,
+        "provider_api_type": null,
+        "endpoint": null,
+        "model": null,
+        "profile": null,
+        "mode": "pinned",
+        "follow_profile": null,
+        "credential_reference": null,
+        "credential_owner": null,
+        "config_revision": null,
+        "max_input_tokens": null,
+        "max_output_tokens": null,
+        "real_model_calls_authorized": false,
+        "enabled": false
+      },
+      "memory_extraction_dedup_summary": {
+        "status": "PENDING_CONFIGURATION",
+        "provider": null,
+        "provider_api_type": null,
+        "endpoint": null,
+        "model": null,
+        "profile": null,
+        "mode": "pinned",
+        "follow_profile": null,
+        "credential_reference": null,
+        "credential_owner": null,
+        "config_revision": null,
+        "max_input_tokens": null,
+        "max_output_tokens": null,
+        "real_model_calls_authorized": false,
+        "enabled": false
+      },
+      "background_greetings": {
+        "status": "PENDING_CONFIGURATION",
+        "provider": null,
+        "provider_api_type": null,
+        "endpoint": null,
+        "model": null,
+        "profile": null,
+        "mode": "pinned",
+        "follow_profile": null,
+        "credential_reference": null,
+        "credential_owner": null,
+        "config_revision": null,
+        "max_input_tokens": null,
+        "max_output_tokens": null,
+        "real_model_calls_authorized": false,
+        "enabled": false
+      },
+      "embedding": {
+        "status": "PENDING_CONFIGURATION",
+        "provider": null,
+        "provider_api_type": null,
+        "endpoint": null,
+        "model": null,
+        "profile": null,
+        "mode": "independent_embedding",
+        "follow_profile": null,
+        "credential_reference": null,
+        "credential_owner": null,
+        "config_revision": null,
+        "max_input_tokens": null,
+        "max_output_tokens": null,
+        "real_model_calls_authorized": false,
+        "enabled": false,
+        "dimension": null,
+        "preprocessing_version": null,
+        "resource_source": null
+      },
+      "story_director": {
+        "status": "PENDING_CONFIGURATION",
+        "provider": null,
+        "provider_api_type": null,
+        "endpoint": null,
+        "model": null,
+        "profile": null,
+        "mode": "pinned",
+        "follow_profile": null,
+        "credential_reference": null,
+        "credential_owner": null,
+        "config_revision": null,
+        "max_input_tokens": null,
+        "max_output_tokens": null,
+        "real_model_calls_authorized": false,
+        "enabled": false
+      },
+      "npc_dialogue": {
+        "status": "PENDING_CONFIGURATION",
+        "provider": null,
+        "provider_api_type": null,
+        "endpoint": null,
+        "model": null,
+        "profile": null,
+        "mode": "pinned",
+        "follow_profile": null,
+        "credential_reference": null,
+        "credential_owner": null,
+        "config_revision": null,
+        "max_input_tokens": null,
+        "max_output_tokens": null,
+        "real_model_calls_authorized": false,
+        "enabled": false
+      }
+    },
+    "configuration_ownership": {
+      "logical_registry": "Go provider/model catalog and purpose bindings with revisions",
+      "foreground_effective_config": "ST native runtime projection, checked against bound profile",
+      "management_entry": "ST integrated settings",
+      "native_ST_edit": "reconcile foreground only, shared-profile edit shows affected purposes; never silently changes independent background",
+      "credential_custody": "single authority per provider; C1 boundaries apply where ST owns"
+    },
+    "no_silent_fallback_or_model_drift": true,
+    "existing_api_key_is_not_new_cost_authorization": true,
+    "requires_explicit_follow_or_pinned_binding": false,
+    "engineering_status": "design_requirement_not_runtime_verified",
+    "protocol_choices": [
+      "anthropic_messages",
+      "openai_chat_completions",
+      "openai_responses"
+    ],
+    "requires_explicit_pinned_binding": true,
+    "follow_chat_required": false,
+    "required_provider_fields": [
+      "id",
+      "name",
+      "enabled",
+      "protocol",
+      "base_url",
+      "credential_reference"
+    ],
+    "required_model_fields": [
+      "model_id",
+      "context_window_tokens",
+      "max_output_tokens",
+      "input_modalities",
+      "capabilities",
+      "reasoning_levels",
+      "reasoning_parameter_mapping"
+    ],
+    "optional_price_fields": [
+      "input_per_million_tokens",
+      "output_per_million_tokens",
+      "currency",
+      "verified_on"
+    ],
+    "frontend_selection_changes_independent_background": false,
+    "shared_profile_change_shows_affected_purposes": true,
+    "config_save_sends_test_request": false,
+    "sample_fixture": "../fixtures/model_profiles.json",
+    "capability_declaration_values": [
+      true,
+      false,
+      null
+    ],
+    "capability_verification_states": [
+      "unknown",
+      "NOT_RUN",
+      "verified",
+      "unsupported"
+    ]
+  },
+  "cost_authorization": {
+    "real_model_calls_authorized": false,
+    "real_model_acceptance": {
+      "status": "PENDING_CONFIGURATION",
+      "amount": null,
+      "currency": null,
+      "allowed_purposes": null,
+      "max_requests": null,
+      "max_tokens": null,
+      "valid_until": null,
+      "provider_billing_limit": null,
+      "pricing_verified": false,
+      "real_model_calls_authorized": false,
+      "allowed_provider_endpoint_model_profiles": null
+    },
+    "daily_background": {
+      "status": "PENDING_CONFIGURATION",
+      "amount": null,
+      "currency": null,
+      "allowed_purposes": null,
+      "max_requests": null,
+      "max_tokens": null,
+      "valid_until": null,
+      "provider_billing_limit": null,
+      "pricing_verified": false,
+      "real_model_calls_authorized": false,
+      "allowed_provider_endpoint_model_profiles": null
+    },
+    "existing_credentials_imply_authorization": false,
+    "covered_call_categories": [
+      "foreground_reply",
+      "tool_followup",
+      "extension_extra_requests",
+      "memory_extraction",
+      "deduplication",
+      "summary",
+      "background_greeting",
+      "retry",
+      "embedding",
+      "story_director",
+      "npc_dialogue"
+    ],
+    "unknown_pricing_or_uncontrolled_paid_path": "BLOCK_REAL_PAID_CALLS",
+    "limit_semantics": "Request / token limits and application estimates are distinct from the provider actual billing amount limit; provider semantics must be verified.",
+    "engineering_status": "design_requirement_not_runtime_verified",
+    "model_change_expands_authorization": false
+  },
+  "existing_contracts": {
+    "authentication": {
+      "status": "EXISTING_CONTRACT",
+      "requirement": "password and TOTP",
+      "newly_confirmed_in_this_revision": false,
+      "st_session_mapping": "proposed adaptation through existing Go authentication and a controlled reverse proxy",
+      "integration_runtime_verified": false
+    },
+    "go_application_encryption": {
+      "status": "EXISTING_CONTRACT",
+      "keep_existing_go_field_protection": true,
+      "st_storage_route": "C1",
+      "existing_implementation_must_be_retained": false
+    },
+    "access_scope": {
+      "status": "RETAINED_PERSONAL_SCOPE",
+      "value": "owner personal use; additional accounts only for isolated synthetic tests"
+    }
+  },
+  "technical_requirements": {
+    "data_authority": {
+      "status": "design_requirement_not_runtime_verified",
+      "st_chat_card_foreground_owner": "SillyTavern",
+      "go_direct_jsonl_writes": false,
+      "free_mode_variable_owner": "card runtime / MVU",
+      "strict_story_state_owner": "Go; P5 required in first release",
+      "old_go_chat_owner": "legacy_data_custodian; no migration or automatic v2 recall"
+    },
+    "all_chat_write_protection": {
+      "status": "design_requirement_not_runtime_verified",
+      "strategy": "F2",
+      "inbox_lease_alone_is_sufficient": false,
+      "runtime_verified": false,
+      "all_write_paths_required": [
+        "ordinary_message",
+        "edit",
+        "script_and_mvu_auto_save",
+        "swipe",
+        "delete",
+        "rename",
+        "branch_and_rollback",
+        "overwrite_import",
+        "group_chat"
+      ],
+      "force_bypass_allowed": false,
+      "same_device_late_snapshot_guard": true,
+      "persisted_revision_required": true
+    },
+    "source_reconciliation": {
+      "status": "design_requirement_not_runtime_verified",
+      "notifications": "optimization, not sole source of correctness",
+      "checkpoints": [
+        "chat_open",
+        "connection_restore",
+        "retrieval_prepare_including_candidate_source_chats",
+        "background_generation_prepare",
+        "extraction_commit"
+      ],
+      "unknown_source_verification": "withhold affected old source and derived context; do not misclassify read failure as confirmed deletion"
+    },
+    "cross_domain_export_deletion": {
+      "status": "design_requirement_not_runtime_verified",
+      "domains": [
+        "old_go_chat",
+        "st_chat_and_native_backups",
+        "memory",
+        "source_snapshot",
+        "inbox",
+        "background_job_payload",
+        "external_memory_derived_data",
+        "notification_delivery_records",
+        "export_objects",
+        "legacy_archive_inventory"
+      ],
+      "distinct_operations": [
+        "delete_long_term_memory",
+        "delete_original_chat",
+        "exclude_from_controlled_future_model_context",
+        "backup_retention_and_cleanup"
+      ],
+      "long_term_memory_deletion_alone_guarantees_context_exclusion": false,
+      "legacy_no_history_UI_required": true,
+      "external_sent_message_retraction_guaranteed": false
+    },
+    "temporal_normalization": {
+      "status": "design_requirement_not_runtime_verified",
+      "basis": "source timestamp and source timezone, separate from extraction time and query time",
+      "date_only_invents_midnight_reminder": false,
+      "ambiguous_status": "needs_clarification",
+      "retry_rebases_existing_event": false
+    },
+    "offline_companion": {
+      "status": "design_requirement_not_runtime_verified",
+      "policy": "server companion profile or waiting-host intent; arbitrary browser scripts do not run offline by assumption",
+      "notification_scope": "D2; email and Feishu"
+    },
+    "legacy_data": {
+      "selected_option": "E3",
+      "migrate_old_chats": false,
+      "required_old_history_UI": false,
+      "delete_old_data_authorized": false,
+      "automatic_legacy_memory_carryover": false,
+      "export_delete_responsibility_retained": true
+    },
+    "notification_delivery": {
+      "launch_channels": [
+        "email",
+        "feishu"
+      ],
+      "other_channels_first_release": false,
+      "each_channel_implementation_and_device_acceptance_required": true,
+      "enable_both_per_event_required": false,
+      "authority": "Go durable notification event with per-channel delivery state",
+      "st_delivery_ack_independent": true,
+      "provider_acceptance_is_device_display": false,
+      "provider_acceptance_is_user_read": false,
+      "ambiguous_send_status": "delivery_unknown",
+      "remote_exactly_once_promised": false,
+      "retry_policy": "bounded, per-channel, preserve unknown result",
+      "real_send_authorized_by_current_request": false
+    },
+    "design_workflow": {
+      "source": "../DESIGN.md",
+      "required_sequence": [
+        "design_system",
+        "Stitch_desktop_mobile_screens",
+        "ST_frontend_implementation"
+      ],
+      "ST_runtime_preserved": true,
+      "actual_Stitch_output_status": "NOT_GENERATED",
+      "screenshots_are_user_configuration_references": true
+    },
+    "strict_story_context": {
+      "status": "design_requirement_not_runtime_verified",
+      "cross_turn_remote_conversation_or_previous_response_id": false,
+      "context_basis": "explicit_current_ActorView",
+      "current_tool_turn_items_scope": [
+        "owner",
+        "instance",
+        "run",
+        "branch",
+        "actor",
+        "config_revision",
+        "source_revision"
+      ],
+      "rollback_or_source_removal_invalidates_inflight_context": true,
+      "store_false_alone_is_isolation_proof": false
+    },
+    "world_chat_projection": {
+      "status": "design_requirement_not_runtime_verified",
+      "world_commit_authority": "Go_world_event",
+      "projection_id": "world_event_id",
+      "projection_save_uses_F2": true,
+      "projection_retry_reexecutes_action": false,
+      "world_success_implies_chat_saved": false,
+      "reuse_existing_jobs": true
+    }
+  },
+  "roadmap": {
+    "all_phases": [
+      "P0",
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "P5",
+      "P6"
+    ],
+    "work_items": "W01–W16",
+    "first_delivery_scope_status": "CONFIRMED_B2",
+    "first_delivery_selected_path": [
+      "P0",
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "P5",
+      "P6"
+    ],
+    "P5_retained_in_full_roadmap": true,
+    "current_implementation_phase": null,
+    "P5_required_first_release": true,
+    "task_dependencies": {
+      "W05": "F2 guard with B05/B07",
+      "W06": "source recovery",
+      "W10": "inbox B04 plus email/Feishu"
+    }
+  },
+  "engineering_selections": {
+    "status": "candidate_selection_and_validation_not_extra_product_decisions",
+    "MemoryCore": "finite comparison against existing baseline including scope and full data lifecycle",
+    "Pi": "only if a real background agent gap remains",
+    "extension_versions": "immutable candidates; adjust after demonstrated incompatibility and record evidence"
+  },
+  "verification": {
+    "risk_evidence_level": "static_source_or_design_analysis; not reproduced application faults",
+    "implementation_status": "NOT_STARTED_BY_THIS_REQUEST",
+    "application_runtime_status": "NOT_RUN",
+    "combination_runtime_status": "NOT_RUN",
+    "real_model_validation_status": "NOT_RUN",
+    "document_json_validation_status": "PASS_MATERIAL_ONLY",
+    "package_integrity_status": "PASS_MATERIAL_ONLY",
+    "stitch_output_status": "NOT_GENERATED",
+    "notification_runtime_status": "NOT_RUN"
+  },
+  "selected_decisions": {
+    "A": {
+      "id": "A1",
+      "topic": "A",
+      "value": "native_st_main_browser",
+      "description": "ST main UI; old Vue not required as history UI after E3; mini-program not a launch deliverable",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    "B": {
+      "id": "B2",
+      "topic": "B",
+      "value": "P0_through_P6_including_P5",
+      "description": "Full first usable release includes strict three-NPC story",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    "C": {
+      "id": "C1",
+      "topic": "C",
+      "value": "st_native_plaintext_disk_permissions_encrypted_backups",
+      "description": "Accept stated ST storage difference; retain Go field-protection capability",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    "D": {
+      "id": "D2",
+      "topic": "D",
+      "value": "closed_webpage_external_notification",
+      "description": "Both email and Feishu required in launch; independently configurable",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    "E": {
+      "id": "E3",
+      "topic": "E",
+      "value": "no_old_chat_migration",
+      "description": "No migration or compulsory history UI; no authorization to erase old data",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    "F": {
+      "id": "F2",
+      "topic": "F",
+      "value": "atomic_version_check_all_chat_saves",
+      "description": "All paths reject stale revision; preserve draft; no automatic MVU merge",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    },
+    "G": {
+      "id": "G2",
+      "topic": "G",
+      "value": "independent_pinned_purpose_bindings",
+      "description": "Custom three-protocol configuration, actual models and budgets configured at runtime",
+      "status": "CONFIRMED",
+      "user_confirmed": true,
+      "confirmed_on": "2026-10-27",
+      "runtime_verified": false
+    }
+  },
+  "has_blocking_product_decisions": false,
+  "runtime_setup_pending": [
+    {
+      "id": "model_profiles_and_credentials",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "first_real_model_call",
+      "values": null
+    },
+    {
+      "id": "real_validation_budget",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "paid_acceptance_batch",
+      "amount": null,
+      "currency": null
+    },
+    {
+      "id": "background_daily_budget",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "enable_paid_background_jobs",
+      "amount": null,
+      "currency": null
+    },
+    {
+      "id": "embedding_selection",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "enable_vector_backend",
+      "values": null,
+      "default_effective_state": "disabled"
+    },
+    {
+      "id": "email_settings_and_recipients",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "real_email_send",
+      "values": null
+    },
+    {
+      "id": "feishu_webhook_and_destination",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "real_feishu_send",
+      "values": null
+    },
+    {
+      "id": "target_mobile_devices",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "closed_page_notification_acceptance",
+      "values": null
+    },
+    {
+      "id": "backup_keys_retention_restore",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "private_data_or_production_credentials",
+      "values": null
+    },
+    {
+      "id": "stitch_environment_access",
+      "status": "PENDING_CONFIGURATION",
+      "required_before": "actual_Stitch_screen_generation",
+      "values": null
+    }
+  ],
+  "engineering_defaults": {
+    "user_confirmed_individually": false,
+    "email_transport": "existing_qualified_SMTP_or_mature_Go_mail_library",
+    "feishu_transport": "custom_group_bot_webhook; official app messages only if actual target need warrants",
+    "notification_preview": "generic_title_and_authenticated_app_link",
+    "model_registry": "one_logical_Go_catalog_with_versioned_ST_runtime_projection",
+    "credential_custody": "one_authority_per_provider; choose existing Go protected store or ST secret path during integration",
+    "design_style": "editable_engineering_baseline_in_DESIGN.md",
+    "all_chat_save_guard": "atomic_compare_commit_revision; no generic collaborative editing system"
+  }
+}
