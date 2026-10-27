@@ -254,8 +254,8 @@ MVU（d03b7dc8）的最小组合冒烟在真实浏览器中 19 步全部 PASS（
 provider（127.0.0.1:8743，出站请求含角色描述/世界书/用户消息，固定流式回复，DOM 可见渲染）
 → 聊天 jsonl 原生落盘（含 message 0 变量）→ 页面刷新读回一致。根因与修复细节见 §6.4。
 **W00 技术工作已完成，结论为可行（限本节最小组合与已盘点的补丁路径）。**
-按第 5 节 W00 的“完成后先停下，向 Owner 报告结论，确认后再继续”，当前停在 W00 完成确认点；
-W01–W16 尚未开始，特别是 W01 旧数据清理尚未执行。
+按第 5 节 W00 的“完成后先停下，向 Owner 报告结论，确认后再继续”：Owner 已于 2026-10-28
+明确确认进入 W01，此确认点已通过；后续按第 2 节推进，进度以 TODO 为准。
 
 ### 6.1 上游版本锁
 
@@ -406,7 +406,7 @@ C04（复杂状态卡）全案属 W04 验收，本轮只证明最小合成卡链
 1. **最小组合可行性已闭合（2026-10-28）**：ST + Helper + EJS + MVU 四组件固定版本的最小冒烟
    两轮全绿（§6.4），此前 §2.4 触发的三次修复暂停条件已由恢复排查轮次解除。W00 的验收入口
    （版本锁、入口盘点、最小冒烟、命令与结果记录）证据已齐，W00 标记 DONE；按第 5 节 W00
-   完成确认点，等待 Owner 确认后再进入 W01。
+   完成确认点，Owner 已于 2026-10-28 明确确认进入 W01，此确认点已通过。
 2. **R-CDN（版本锁限制，仍未闭合）**：Helper 4.11.3 的 iframe 运行期引用未锁版本的 CDN 资源，
    涉及 jquery/jquery-ui/vue/vue-router/fontawesome/log.js。四个仓库 commit 已固定，不等于完整
    运行依赖已固定；W03 接入运行栈时必须补齐这些资源的固定版本/自托管，不能直接接受可变 URL 为完成状态。
@@ -433,6 +433,91 @@ C04（复杂状态卡）全案属 W04 验收，本轮只证明最小合成卡链
 6. 目录约定（§4）已应用于 `.gitignore` 和 `upstream.lock.json`；未创建业务扩展或核心补丁。
    进度与提交记录仅写入 TODO 的 V2-W00 条目。
 
-## 7. W01 模块处置表与清理记录（待回填）
+## 7. W01 模块处置表与清理记录（2026-10-28 回填）
 
-尚未执行。
+### 7.1 模块处置表
+
+按第 5 节 W01 要求逐模块给出处置（「导出 / 删除」按两条链路分列，共 10 项）。W01 只盘点，
+不实施重构；「依据」列标注（判断）的条目为计划 / ADR 未明文规定、基于当前代码消费者的
+设计判断，其余为文档明文。
+
+| 模块 | 处置 | 依据 | 当前代码证据 | V2 工作项 |
+|---|---|---|---|---|
+| 认证 | 保留；W05 改造为唯一可见登录入口并绑定 ST 会话 | ADR-0009 §6、ARCH §14、第 5 节 W05 | `backend/internal/auth/`（password.go、totp.go、session.go）；`httpapi/auth.go`（登录 / TOTP / 会话吊销） | W05（含 §6.2 盘点的 P14 绑定补丁） |
+| 关系 | 改造：单活跃关系 → CharacterInstance 多角色实例 | ADR-0009 §5（activeCompanionLimit 与 V9 约束在 W05 同项修改） | `httpapi/relationship.go`；`store/postgres/companion.go`、`relationship_clearance.go` | W05 |
+| 记忆（来源 / 记忆 / 摘要） | 改造：W07 替换固定窗口 / 同分召回与时间模型，W08 对照 MemoryCore 后收敛提取责任方 | 第 5 节 W07 / W08；快照审计 §8 | `httpapi/memory.go`；`store/postgres/memory.go`、`generation.go`（会话 summary）；`jobs/memory_extract.go` | W07、W08（W11 绑定用途模型） |
+| 任务与提醒 | jobs 底座（claim / lease / 调度）保留复用；V39 reminder 模型暂保留，W09/W11 按实际契约评估改造（判断：当前缺少 Go CRUD 入口，只有偏好与计数引用，这本身不足以决定替换表） | 审计 §10「可靠任务」为保留能力；遵循现有模型优先复用原则 | `jobs/`（loop.go、scheduler.go）；`store/postgres/jobs.go`、`lease.go`；`migrate/sql/V39__reminders.sql`（表 + RLS） | W09、W11；本项不删表或重写提醒 |
+| 字段加密 | 保留，不动；W03 作为 C1 基线沿用 | ADR-0009 §1 C1「Go 字段加密保留」、§6；审计 §9 | `store/postgres/fieldcipher.go`（AES-256-GCM、enc2 信封）；generation / memory 写入与 `blobstore/minio.go` 实际调用 | W03；W06 / W08（新敏感文本同路径） |
+| 导出（export 机制） | 保留并改造：机制扩展到跨存储数据权利 | 第 3 节调整 9、第 5 节 W06；审计 §9「可复用参考」 | `httpapi/export.go`；`jobs/export.go`；`store/postgres/export_cleanup.go`；`blobstore/minio.go` | W06（D02–D05）、W16 |
+| 删除（账号删除 / tombstone） | 保留并改造：durable deletion intent 与 manifest 机制保留为参考 | 同上 | `httpapi/account.go`（handleDeleteAccount）；`V103__durable_account_deletion_intent.sql`；备份脚本 tombstone 导出链 | W06、W16 |
+| provider | 保留：三协议 adapter 复用；W03 改造为模型目录 + Provider → Model → 用途绑定 | 第 3 节调整 5（明文引用 factory.go）、第 5 节 W03 | `provider/factory.go` 与 anthropic / openai / responses 三 adapter；`httpapi/provider_admin.go`；V119 | W03、W09（G2）、W11（计量） |
+| realtime（SSE Hub） | 旧 Vue 专用流式链路候选退役（判断：W15 须先确认替代路径就绪且无剩余消费者；不提前删除可复用部件） | ADR-0009 §2 / A1；审计 §8 | `realtime/hub.go`、`event.go`；`httpapi/realtime.go`；`server.go` 路由注册；`turn/coordinator.go` 喂流 | W10（inbox 替代投递）、W15（随旧前端删除） |
+| Vue 前端 | 删除：W15 随 ST 页面可用后退役；此前冻结，不再新增功能 | ADR-0009 §1 A1、§5；第 5 节 W15 | `frontend/src/pages/*`（chat / login / memory 等）；`frontend/package.json`（uni-app + Vue3） | W15（替代：W02 设计，W04 / W15 ST 页面） |
+
+### 7.2 本机环境盘点（2026-10-28，只读）
+
+- Docker（orbstack context）：33 个容器中无任何 vc / companion / deploy / ST
+  命名容器；命名卷中无 `deploy_db-data` / `deploy_minio-data` / `vc-local_*` / `vce2ehttp-*`，
+  `docker compose ls -a` 仅其他四个项目
+  （dev-toolbox / mhcl / pmxy / xhhm）。外层复核 133 个卷无 virtual / companion / vc- / vc_ /
+  deploy 命名匹配——这只证明已查命名范围内未发现，不等于全机绝无残留。
+  复核时 `redis` 与 `rabbitmq` 两个无关容器仍在运行，本轮未对它们操作。
+- 匿名卷不以名称或创建时间认领；本轮未读取、未删除任何匿名卷。
+- `ops/deploy/` 仅有 `.env.example`（无真实 `.env`）；RLS 测试容器为一次性 `--rm` 且不挂载卷；
+  e2e 栈项目名 `vce2ehttp-<nonce>`，当前无残留。
+- 本次检查的备份日志元数据显示旧备份链路最后成功运行于 2026-08-31 11:19，源容器名为
+  `vc-local-db-1`；该容器当前不存在，其原 compose 定义在当前源码与 git 历史中未定位到。
+- **数据库与对象存储状态：在已核查配置 / 容器 / 命名卷范围内未发现可用本项目实例；未执行
+  SQL / 对象删除。** Owner 在线身份库当前不在场，未从旧备份恢复账号；W05 可按授权重建身份；
+  现存私有配置与密钥保留。
+
+### 7.3 实际执行的清理
+
+前置预检（一次性只读，全部通过）：两目录真实路径与预期一致且均非符号链接；11 个文件均为
+常规文件、大小逐一匹配（合计 5,357,709 字节）；两目录文件清单与预期完全一致，无新增未知文件。
+
+1. **卸载旧备份定时任务（配置保留）**
+   - 命令：`launchctl bootout gui/$(id -u) /Users/hxf/Library/LaunchAgents/com.virtualcompanion.daily-backup.plist`
+   - 验证：卸载后 `launchctl list | grep virtualcompanion` 无输出（此前为已加载、未运行、上次退出码 5）。
+   - plist、`~/.virtual-companion/etc/`（wrapper 与 env）、`secrets/backup-passphrase`、`certs/`、
+     `logs/` 均保留；未修改配置或密钥文件，未解密备份内容。
+2. **删除 11 个旧业务数据文件**（逐个对精确绝对路径执行 `rm`，无通配、无递归、未入废纸篓、
+   未解密 / 导出 / 复制，目录本体保留）
+   - `~/.virtual-companion/backups/`：6 个，5,356,714 字节。
+   - `~/.virtual-companion/deletion-manifests/`：5 个，995 字节。
+   - 本轮实际执行的文件删除命令（每条仅一个精确文件）：
+
+     ```bash
+     rm /Users/hxf/.virtual-companion/backups/vc-backup-20260825-162348.tar.enc
+     rm /Users/hxf/.virtual-companion/backups/vc-backup-20260825-162532.tar.enc
+     rm /Users/hxf/.virtual-companion/backups/vc-backup-20260825-164657.tar.enc
+     rm /Users/hxf/.virtual-companion/backups/vc-backup-20260825-165632.tar.enc
+     rm /Users/hxf/.virtual-companion/backups/vc-backup-20260825-165747.tar.enc
+     rm /Users/hxf/.virtual-companion/backups/vc-backup-20260831-111910.tar.enc
+     rm /Users/hxf/.virtual-companion/deletion-manifests/deletion-manifest-20260825-162532.enc
+     rm /Users/hxf/.virtual-companion/deletion-manifests/deletion-manifest-20260825-164657.enc
+     rm /Users/hxf/.virtual-companion/deletion-manifests/deletion-manifest-20260825-165632.enc
+     rm /Users/hxf/.virtual-companion/deletion-manifests/deletion-manifest-20260825-165747.enc
+     rm /Users/hxf/.virtual-companion/deletion-manifests/deletion-manifest-20260831-111910.enc
+     ```
+
+   - 删除后只读验证（全部通过）：两目录 `find -type f` 计数均为 0 且目录列表为空；11 个路径
+     逐一检查均不存在；两目录本体保留。
+
+### 7.4 保留范围
+
+- 未跟踪 `virtual-companion-v2-execution-20261027.zip`、全部源代码 / 测试 / 历史文档与未提交工作。
+- W00 V2 验证资产：`integrations/sillytavern/.local`（合成数据 / 脚本 / 产物，394MB）、`upstream/`、
+  `upstream.lock.json`。
+- 备份链路全部配置与凭据（plist / wrapper / env / passphrase / certs / logs）——属运行配置而非
+  旧业务数据；V2 备份策略在 W16 重定义，届时按需重新加载或替换。
+- 其他项目全部容器 / 卷 / 镜像 / 文件；全部 docker 匿名卷（不按名称 / 创建时间认领）。
+- 本轮清理范围仅限已定位的本项目旧业务备份，不声称清除无法归属的全机数据副本。
+
+### 7.5 未执行项（如实记录）
+
+- 数据库逐表 DELETE 事务方案（W01 盘点阶段静态分析形成）本轮未使用：已核查范围未发现可用
+  本项目数据库实例，因此未执行 SQL、未取得逐表清空查询结果；不把静态方案写成运行验证通过。
+  如后续发现可归属本项目的旧实例，按 ADR-0009 E3 处理。
+- 未创建 / 启动数据库，未执行任何 SQL，未修改任何 migration / schema；未删除任何 Docker
+  容器 / 卷 / 镜像，未读取匿名卷内容。
