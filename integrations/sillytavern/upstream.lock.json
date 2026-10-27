@@ -1,0 +1,108 @@
+{
+  "schema": "vc-v2-st-upstream-lock-v1",
+  "locked_on": "2026-10-28",
+  "locked_by": "V2-W00",
+  "policy": {
+    "pin_by": "commit",
+    "no_auto_update": true,
+    "upgrade": "升级是显式动作：重新核验 ref/commit 存在、更新本文件 SHA256、重放 W00 冒烟（计划 §6）",
+    "note": "本锁替代快照 references/upstreams.lock.json 的候选状态；快照中 Helper/EJS/MVU 的分支头引用已在此固定为 commit。"
+  },
+  "components": [
+    {
+      "id": "sillytavern",
+      "repo": "https://github.com/SillyTavern/SillyTavern",
+      "tag": "1.19.0",
+      "tag_type": "lightweight",
+      "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+      "version": "1.19.0",
+      "license": "AGPL-3.0",
+      "role": "required-host",
+      "install": "npm install --no-save --no-audit --no-fund --loglevel=error --no-progress --omit=dev --ignore-scripts（start.sh 同款，667 包）",
+      "artifact_sha256": {
+        "package.json": "5b6e0634a63872c33603bf803217613a388f2e5dbd5990f7b30d254bfbf027c2",
+        "package-lock.json": "5ee4095a82d2b326e30290480b33529553cba60d2f418bc086ed3c08d874d888",
+        "server.js": "cf0bf95e2172de47dccbc194d7aaefa7546774ad86cc4a49dcecdb97c4d3f58a"
+      },
+      "runtime_status": "verified-start",
+      "runtime_evidence": "127.0.0.1:8742 启动；/version 返回 pkgVersion 1.19.0 + gitRevision 7e8663cd9；真实浏览器加载（S01–S02 PASS）"
+    },
+    {
+      "id": "tavern-helper",
+      "repo": "https://github.com/N0VI028/JS-Slash-Runner",
+      "ref_at_lock": "main",
+      "commit": "0af421068e7c03b6b0a71b68feb79d201164edeb",
+      "version": "4.11.3",
+      "license": "PolyForm-Noncommercial-1.0.0",
+      "role": "required-complex-card-extension",
+      "install": "复制仓库目录（含 dist 产物与 .git）到 ST 用户扩展目录 data/<user>/extensions/JS-Slash-Runner；dist 随上游提交，无需本地构建",
+      "artifact_sha256": {
+        "manifest.json": "47cbcd3d96227d2665b568c4027283f1bcbfaf6a340e72716fd0f234170432b8",
+        "dist/index.js": "932c5267ad9ee0d6f36f3d70a9dd21a8f7effbcfef71cd26e87a1f310890da57",
+        "dist/index.css": "74e471b8565f8a9bb95d2b2ac7616105aa5e3bd12f9692dae75d9427ae5190af"
+      },
+      "runtime_status": "verified-loaded",
+      "runtime_evidence": "/api/extensions/discover 列出 third-party/JS-Slash-Runner；浏览器内 globalThis.TavernHelper 暴露 160 个 API（S03/S05 PASS）",
+      "caveat": "脚本/渲染 iframe 运行时在运行期从 testingcf.jsdelivr.net 加载 8 个未锁版本资源（jquery、jquery-ui、vue、vue-router、fontawesome、log.js；log.js 来自上游默认分支）——见计划 §6 限制 R-CDN",
+      "minimum_st": "1.13.0"
+    },
+    {
+      "id": "ejs-template",
+      "repo": "https://github.com/zonde306/ST-Prompt-Template",
+      "ref_at_lock": "main",
+      "commit": "d6f520d149aba146305b0b781ddd691d449c28d2",
+      "version": "1.17.9",
+      "license": "AGPL-3.0",
+      "role": "required-for-target-fixture",
+      "install": "复制仓库目录（含 dist 产物与 .git）到 data/<user>/extensions/ST-Prompt-Template；dist 随上游提交，无需本地构建",
+      "artifact_sha256": {
+        "manifest.json": "6337ad56c4bc2f48e28f874533f690e48918900afe4bbb0d68e5125d7204e5fc",
+        "dist/index.js": "9a4d1a3228a90a235b1b4111e5698c9fb7ac31b3f9828023d5dc582d9ee01ca5"
+      },
+      "runtime_status": "verified-loaded",
+      "runtime_evidence": "/api/extensions/discover 列出 third-party/ST-Prompt-Template；#prompt_template_settings 面板存在且 #pt_enabled=true；console 出现 'ST-Prompt-Template initialized'（S04/S05 PASS）"
+    },
+    {
+      "id": "mvu",
+      "repo": "https://github.com/MagicalAstrogy/MagVarUpdate",
+      "ref_at_lock": "beta（与 master 同 SHA）",
+      "commit": "d03b7dc8a6ebf9bd611c7e2dc91f3b35462deebc",
+      "version": null,
+      "license": "MIT",
+      "role": "required-for-target-fixture",
+      "minimum_helper": "3.4.17",
+      "install": "非 ST 扩展：自托管 bundle 并经 Helper 角色卡局部脚本 import（替代教程的 CDN @master 引用）",
+      "self_host": {
+        "source": "artifact/bundle.js",
+        "served_at": "ST 用户文件目录 data/<user>/user/files/mvu-bundle-d03b7dc8.js（GET /user/files/mvu-bundle-d03b7dc8.js → 200，611598 字节）",
+        "loader": "角色卡 data.extensions.TavernHelper_scripts[0].content = \"import '/user/files/mvu-bundle-d03b7dc8.js'\""
+      },
+      "artifact_sha256": {
+        "artifact/bundle.js": "a5d6166d43a78c7fad05669864efd76852f58eea905814dcd89f8e1b29fa4b27",
+        "artifact/bundle.js.LICENSE.txt": "0269008f285ff9108c0cde1666766b1ee62a94f9059f1a7c3747e85933b5cdd8"
+      },
+      "runtime_status": "blocked",
+      "runtime_evidence": "自托管 bundle HTTP 200；角色脚本启用列表已持久化；第三次修复后 window.Mvu 仍未在 60s 内出现（临时冒烟步骤 S10 FAIL）。",
+      "blocked_detail": "Helper 角色脚本 iframe 的实际执行及失败原因尚未定位。终端对三个 CDN URL 的 curl 返回 200，不证明浏览器 iframe 的资源加载正常。主页面未捕获错误也不能排除 frame 内错误。"
+    }
+  ],
+  "excluded_at_w00": [
+    {
+      "id": "memorycore",
+      "reason": "W08 对照项，不在 W00 冒烟栈内（ADR-0009 §5）"
+    },
+    {
+      "id": "pi",
+      "reason": "MVU 可选路径未启用；首版只选一种更新方式（TAV §4）"
+    }
+  ],
+  "smoke": {
+    "entry_scripts": [
+      ".local/scripts/start-st.sh（ST 启动）",
+      ".local/scripts/mock-provider.mjs（固定 provider）",
+      ".local/scripts/smoke.mjs（Playwright + 系统 Chrome headless 冒烟）"
+    ],
+    "result_file": "integrations/sillytavern/.local/artifacts/smoke-result.json（gitignored，本机证据）",
+    "status": "临时冒烟步骤 S10 FAIL；S11–S15 NOT_RUN；W00 BLOCKED，触发执行计划 §2.4 三次修复暂停条件。临时 S 编号不是 VER 剧情用例编号。"
+  }
+}

@@ -243,9 +243,141 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 - 读：WP W16；VER §5–§8。
 - 验收：D06、O01；最终报告列出用例状态、三协议 / 两渠道结果、真实费用、E3 旧数据位置与责任。
 
-## 6. W00 结论（待回填）
+## 6. W00 结论（2026-10-28 回填）
 
-尚未执行。
+**总体结论：可行性未闭合，W00 BLOCKED。** 已拉取并锁定四个上游，完成三类入口的初步源码分析，
+取得 ST 启动、Helper/EJS 加载、合成卡导入、角色选择与脚本启用持久化的运行证据。
+但 `window.Mvu` 在三次针对性修复后仍未出现，已触发 §2.4「同一工作项的同一失败经 3 次修复仍未解决」。
+已停止重试；没有完成 ST + Helper + EJS + MVU 的最小组合冒烟，也没有实施或验证拟议补丁。
+源码分析提供了集中补丁的候选接入点，不能据此把 W00 标为可行或完成。
+**W01–W16 均未启动；须由 Owner 决定是否恢复 W00 排查，补齐证据并确认结论后再按依赖推进。**
+
+### 6.1 上游版本锁
+
+版本、commit、许可、产物 SHA256、自托管与运行状态见 `integrations/sillytavern/upstream.lock.json`
+（仓库唯一提交物之一；上游源码与运行产物在 gitignored 的 `integrations/sillytavern/upstream/` 与
+`integrations/sillytavern/.local/`）。要点：ST `1.19.0` 轻量 tag = `7e8663cd`（AGPL-3.0）；
+Helper `0af42106`（4.11.3，PolyForm Noncommercial 1.0.0）；EJS `d6f520d1`（1.17.9，AGPL-3.0）；
+MVU `d03b7dc8`（MIT，无发布版本号，按 commit + bundle SHA256 锁定，已自托管替代 CDN `@master`）。
+Helper/EJS 的 dist 与 MVU 的 artifact/bundle.js 均随上游提交，无需本地构建；MemoryCore / pi 不在 W00 栈内。
+
+### 6.2 入口盘点与"公开扩展点 / 需改 ST 核心"判断
+
+**聊天写入（F2）** —— 初步判断：普通保存有共同函数，但导入、删除、改名及启动迁移有独立写入路径；纯公开扩展点不足。
+
+| 入口类 | 事实（ST 1.19.0 源码定位） | 判断 |
+|---|---|---|
+| 单聊/群聊内容保存（新消息、编辑、swipe、删消息、metadata、分支/checkpoint、Helper/MVU 全部保存 API） | 普通 `/save`、`/group/save` 收敛到 `src/endpoints/chats.js:532` `trySaveChat`（`/save`、`/group/save` 透传 `force`=第三参 `skipIntegrityCheck`，truthy 即完全跳过 integrity 比较）；写入原子（write-file-atomic 5.0.1）；revision 可存 `chatData[0].chat_metadata` 自有命名空间随 JSONL 一次落盘、重启从首行恢复 | 需改核心，但单点（P1/P2） |
+| 前端保存 | 收敛到 `public/script.js:7395` `saveChat` 与 `public/scripts/group-chats.js:623` `saveGroupChat` 2 个函数；另有 4 处绕行 fetch（`renamePastChats`、`renameGroupMember`、`saveGroupBookmarkChat`、`convertSoloToGroupChat`）不带 force 也不处理 integrity 错误；`getContext().saveChat` 实为 `saveChatConditional`，错误被吞 | 需改核心（P8–P11） |
+| 删除/改名/导入 | 10 处独立 fs 入口不经 `trySaveChat`：`/rename`(chats.js:621，copy+unlink 非原子)、`/delete`(654)、`/group/delete`(900)、`/import`(771)、`/group/import`(751)、BYAF 导入(characters.js:803)、`/groups/delete`(groups.js:203)、`/characters/rename`(1053，整目录 cp+rm)、`/characters/delete`(1416)、data-maid(770)；删除后旧请求可重建同名文件（chats.js:339 视不存在为 intact） | 需改核心（P3–P7）；chat identity=文件名，无持久 id |
+| 保存完成事件 | 服务端无 chat_saved 事件；前端 `MESSAGE_RECEIVED`≠持久化；server plugin 拿不到 app、挂在全部核心路由之后，**不能拦截原生路由**（`src/plugin-loader.js:213`） | 需改核心（P12 进程内事件） |
+| Helper/MVU 写入 | 全部经 `saveChatConditional`/`saveMetadataDebounced` → 收敛入 P1 覆盖范围，无绕过；唯一例外 Helper `/api/chats/import`（`TH/src/function/import_raw.ts:72`） | 需随导入与普通保存适配，运行兼容性未验证 |
+
+
+补充盘点（外层核对）：备份恢复由 `public/scripts/chat-backups.js:73` 的 `restoreBackup`
+下载 JSONL 后调用 `importCharacterChat` / `importGroupChat`，必须纳入导入的身份/revision 规则，
+不能把备份里的旧 revision 当作新写入凭据。`src/endpoints/backups.js` 本身只列出、下载与删除备份。
+另有启动路径 `src/server-main.js:302` → `groups.js:34` `migrateGroupChatsMetadataFormat`，
+在 `groups.js:87` 直接重写旧格式群聊；它不经过 `trySaveChat`。当前 V2 无旧聊天迁移，但恢复旧格式
+ST 副本时该路径可能可达，恢复顺序与身份/revision 初始化仍待验证，不能宣称所有内容写入均已收敛。
+
+**最终请求（三协议）** —— 候选方案：前端公开事件配合服务端最终出站校验；未取得最终请求运行证据。
+
+| 挂钩/出口 | 事实 | 判断 |
+|---|---|---|
+| `CHAT_COMPLETION_SETTINGS_READY` | `public/scripts/openai.js:3146`，事件之后直接序列化 body 并 fetch，无额外提示词构造；载荷即最终 body 引用，属性级修改（含整体替换 messages、tools）生效；dryRun 不触发；工具后续轮次 `return Generate('normal',...)` 完整重入（tool-calling.js:255，RECURSE_LIMIT=5）→ 每轮必触发 | **公开扩展点可用**：校验扩展 loading_order > EJS(1) 后注册后执行，看到的是 EJS 改写后结果 |
+| `CHAT_COMPLETION_PROMPT_READY` | openai.js:1619，之后仍有消息过滤/role 改写/服务端转换；不读回整体替换 | 不作唯一校验点（可作早期检查） |
+| EJS/Helper 顺序风险 | EJS 核心改写就在 SETTINGS_READY 事件内（其 manifest loading_order=1 先执行）；Helper iframe 脚本可晚注册排在校验之后、Helper per-request optionsInjector `once()` 排最后可覆写 tools（不动 messages）；`custom-request.js` ChatCompletionService 直接 fetch 绕过两事件 | 残余通道 → 服务端最小兜底补丁（在 `/api/backends/chat-completions/generate` 路由，chat-completions.js:2242） |
+| 三协议出口 | Anthropic Messages（`sendClaudeRequest`，Claude 转换 prompt-converters.js:197）与 OpenAI Chat Completions / Custom（`endpointUrl=${apiUrl}/chat/completions`，2626）同一前端出口 + 同一服务端路由；流式 Claude/通用均原始 SSE 透传；**OpenAI Responses API 在 1.19.0 完全不存在**（全量 grep 无 `/v1/responses`、`previous_response_id` 等） | Responses 需新增：服务端 `sendResponsesRequest` + 请求体映射 + 流事件重组（或转 OpenAI chunk SSE 不动前端解析）+ 工具调用/usage/取消/错误映射，估 300–500 行 + 流 100–200 行；前端只加 source 配置 |
+| text completion | 独立出口（`/api/backends/text-completions/*`），不在首版三协议范围内 | 严格剧情模式须拒绝未受校验的出口；不能假设用户不会切换而允许绕过 |
+
+**认证** —— 候选方案：反向代理保护全部 HTTP 入口，并在 ST 用户解析后绑定 Go 与 ST 身份；集成未运行。
+
+| 事项 | 事实 | 判断 |
+|---|---|---|
+| server plugin | `init(router)` 只拿独立 Router 挂 `/api/plugins/<id>`，在 `requireLoginMiddleware`（server-main.js:248）与 CSRF 之后，拿不到 app，**不能作认证前置**（server-main.js:313 晚于 setupPrivateEndpoints:278） | plugin 仅做 Go 桥接 API |
+| session/多用户 | `cookie-session`（客户端 cookie，HMAC 签名，无服务端 store）；`enableUserAccounts` off 时恒为 default-user；密码 scrypt；session.version 绑定密码（改密踢会话） | — |
+| SSO 可信头 | `sso.autheliaAuth` 读 `Remote-User`，仅 `GET /login` 且无既有 session 时触发（users.js:1048），头值须匹配**已存在且启用**的 handle，不自动建号；trustedProxies 校验直连 socket 非 XFF | 反代可注入自动登录 |
+| 路由覆盖面 | 业务路由/用户数据文件路由全部在 requireLogin 之后（server-startup.js:141-188 + users.js:1212）；免登录白名单：`/`、`/login`、`/csrf-token`、`public/` 静态、`POST /api/users/{list,login,recover-step1,recover-step2}`；模型响应存在流式 HTTP 通道，也必须受相同入口鉴权保护 | 反代 `auth_request` 全覆盖；须显式拦 login/recover 路由 + 剥离外部身份头 + ST 仅听 127.0.0.1 |
+| Go 侧绑定 | 已有只读校验端点 `GET /api/v1/auth/session`（backend/internal/httpapi/core.go:217、auth.go:141）可复用其鉴权逻辑；该端点返回 JSON，且身份响应含 `PasswordMustChange` 等状态，不能直接等同于完整 ST 准入接口。仍须按 ARCH §14 检查会话/TOTP 完成态并输出可信 ST handle | W05 增映射 |
+| 会话一致性/主动清理 | 已有 ST session 不因头变化切换或失效（users.js:751-775）；cookie-session 无服务端 store 无法服务端踢除 | W05 必须验证注销、失效及合成账号切换，需绑定补丁（P14） |
+
+### 6.3 集中可重放补丁清单（评估，未实施）
+
+以下为设计候选，不是已验证的完整补丁集。ST 补丁基于锁定 commit `7e8663cd`；拟存放 `integrations/sillytavern/patches/`，每个附理由/版本/可去除条件。
+
+| # | 位置 | 内容 | 预计规模 | 可去除条件 |
+|---|---|---|---|---|
+| P1 | `src/endpoints/chats.js` `trySaveChat` | base revision 读取/比较/推进 + chat identity 临界区串行（单实例内） | 60–100 行 | 上游原生支持 revision 或 F2 废止 |
+| P2 | 同上 `/save`、`/group/save` | `force` 不再豁免项目 revision 检查 | 5–10 行 | 同上 |
+| P3–P7 | chats.js `/rename`/`/delete`/`/group/delete`/`/import`/`/group/import`、characters.js `/rename`/`/delete`、groups.js `/delete`、data-maid | 删除墓碑（阻止旧请求重建）、重命名保 identity、导入撞名走 revision 规则、目录迁移同步身份记录 | 每路由 10–25 行，共 ~80 行 | 同上 |
+| P8–P11 | 前端 `script.js` `saveChat`、`group-chats.js` `saveGroupChat` 等、`bookmarks.js` | 携带 base revision、移除 OVERWRITE→force 通道改 F2 冲突流程、4 处绕行 fetch 补基线 | 80–120 行 | 同上 |
+| P12 | chats.js `trySaveChat` 尾部 | 保存完成通知仅用于加速；Go 仍须对账持久内容，不能仅凭事件判定 delivered | 10–20 行接线估计 | 可靠轮询取代通知 |
+| P13 | 自有 server plugin（不改 ST） | 身份/映射/来源查询桥接；聊天写入仍由 ST 受保护入口执行，Go 不平行改写聊天文件 | 未估计 | — |
+| P14 | `src/server-main.js:164` 后单点插入 | ST session handle 与可信头映射一致性校验（不一致清 session 拒绝）；W05 必做，Owner-only 不豁免注销失效与合成账号切换验收 | ~30–40 行 | 上游合入 app 级插件钩子或强制 SSO 模式 |
+| P15 | `src/endpoints/backends/chat-completions.js` | `/generate` 出站前最小校验兜底（覆盖 Helper optionsInjector 晚注册与 custom-request 绕过通道）；配合前端 SETTINGS_READY 扩展 | 30–60 行 | 前端残余通道被上游收口 |
+| P16 | 同文件新增 `sendResponsesRequest` + prompt-converters 转换 | OpenAI Responses 协议（请求映射、流重组、工具、usage、取消、错误） | 300–500 + 流 100–200 行 | 上游实现 Responses |
+
+表中行数是子代理给出的接线估计，尚未通过实现验证，**不构成总规模承诺**；稳定聊天身份、
+持久删除状态、重命名/恢复的崩溃顺序、同端异步快照基线、冲突草稿等仍需在获准恢复后闭合设计。
+原汇总的“7 文件、8–12 块、600–900 行”未覆盖全部自有逻辑及启动迁移，不作为结论保留。
+每个原生入口应调用同一版本检查/提交实现，不能只先检查再在锁外写入；若后续证据表明无法形成
+集中可重放补丁，仍须按 ADR-0009 §2 停止并重新决策。Responses 属首版明确需求，尚未实现。
+
+### 6.4 实际启动与冒烟命令及结果
+
+```bash
+# 上游拉取与锁定（gitignored：integrations/sillytavern/upstream/）
+git clone https://github.com/SillyTavern/SillyTavern.git SillyTavern
+git -C SillyTavern checkout 7e8663cd9c184a550b37238218bdd32c6efc68e9  # tag 1.19.0
+# Helper/EJS/MVU 同法 checkout 0af42106 / d6f520d1 / d03b7dc8（核验存在后固定）
+cd SillyTavern && npm install --no-save --no-audit --no-fund --loglevel=error --no-progress --omit=dev --ignore-scripts  # 667 包
+# 启动（.local/st/ 隔离 config 与 dataRoot，仅 127.0.0.1:8742）
+# 以下在仓库根目录执行；脚本与测试依赖均仅保留于本机忽略目录
+bash integrations/sillytavern/.local/scripts/start-st.sh   # PASS：/version → 1.19.0 / 7e8663cd9
+node integrations/sillytavern/.local/scripts/mock-provider.mjs  # 本地固定 provider，:8743
+node integrations/sillytavern/.local/scripts/smoke.mjs     # 退出码 1：S10 FAIL，S11–S15 NOT_RUN
+```
+
+这里的 S01–S16 是临时脚本步骤编号，**不是 VER §2 的剧情验收用例 S01–S05**。
+冒烟结果（真实浏览器：playwright-core 1.64.1 驱动系统 Chrome 156 headless；结果 JSON 在
+`.local/artifacts/smoke-result.json`，gitignored）：
+
+- **已验证的子项**：页面加载与 ST 前端就绪；Helper 加载（`globalThis.TavernHelper` 160 API）；
+  EJS 加载（设置面板 + `pt_enabled=true` + console `ST-Prompt-Template initialized`）；
+  `/api/extensions/discover` 列出两扩展；Chat Completion→Custom 指向本地 mock 连接终态"有效的"
+  （ST custom source 设计上不发探测请求，真实出站证据在发送链）；合成卡导入（含 3 条世界书
+  条目 + 1 条 Helper 脚本，强断言字段齐备）；角色已选中且聊天对象存在开场白（唯一角色名，新聊天；最后一次记录 `dom_mes=0`，不证明开场白已可见渲染）；
+  世界书导入弹窗确认；公开 API 启用角色脚本并持久化（`extension_settings.tavern_helper.script.
+  enabled.characters` 含 avatar，reload 后仍生效）。
+- **S10 FAIL；S11–S15 NOT_RUN**：`window.Mvu` 60s 未出现 → MVU `[InitVar]` 初始化、发送→mock 回复、
+  最终请求内容捕获、聊天 JSONL 落盘全部 NOT_RUN（级联）。三次针对性修复（①Helper 启用弹窗
+  处理——原测试未覆盖 Helper 自有 useModal 弹窗；②唯一角色名隔离消除
+  状态残留；③公开 API 写入启用列表 + reload）后仍未通，已用尽 Owner 允许的修复次数。
+- **诊断事实与限制**：自托管 bundle HTTP 200（611598 字节）；终端 curl 对 testingcf.jsdelivr.net
+  的 vue、log.js 及 gcore.jsdelivr.net 的 vue 三个 URL 均返回 200。这不能排除浏览器 iframe 的
+  请求、模块加载或运行错误。主页面未捕获 console/pageerror，不等于 iframe 内没有错误；
+  脚本启用状态已持久化，但 iframe 是否实际执行及失败原因仍未定位。
+
+验证结束后已停止本轮 ST（8742）与固定 provider（8743）进程；本机合成数据和失败结果保留。
+
+### 6.5 结论与限制
+
+1. **W00 BLOCKED，触发 §2.4 三次修复暂停条件。** 没有运行第四次修复；W01 以及依赖 W00 的
+   后续工作均未启动。需要 Owner 决定是否恢复 W00 定位 Helper 角色脚本加载，不能把该阻塞推迟到 W03。
+2. **R-CDN（版本锁限制）**：Helper 4.11.3 的 iframe 运行期引用未锁版本的 CDN 资源，涉及
+   jquery/jquery-ui/vue/vue-router/fontawesome/log.js。四个仓库 commit 已固定，不等于完整运行依赖
+   已固定；后续必须补齐这些资源的固定版本/自托管，不能直接接受可变 URL 为完成状态。
+3. **恢复排查的候选入口（未执行）**：获准继续 W00 后，用 headed 浏览器检查当前角色的 Helper
+   脚本库、实际 iframe 创建、frame console 与 network；保留现有合成状态，不先假设是网络故障。
+   本机忽略目录保留测试脚本与失败结果；这些临时脚本不是仓库新增测试编排入口。
+4. **未验证项**：F2 原子基线检查、稳定身份/删除墓碑/恢复顺序、监听器运行时顺序、三协议最终
+   出站与工具后续轮次、Go/ST 绑定均未实现或未运行。静态定位只提供后续设计输入，不记为用例 PASS。
+5. **委派设置**：ZCode 主会话界面为 GLM-5.3／最高思考；3 个 `general-purpose` 只读子代理
+   已完成，无嵌套、无写入。ZCode 报告子代理元数据为 `claude-fable-5-1`，无法据此确认其实际模型
+   符合 GLM-5.3 要求，后续委派须先核实；本轮不声称子代理模型配置已满足。
+6. 目录约定（§4）已应用于 `.gitignore` 和 `upstream.lock.json`；未创建业务扩展或核心补丁。
+   进度与提交记录仅写入 TODO 的 V2-W00 条目。
 
 ## 7. W01 模块处置表与清理记录（待回填）
 

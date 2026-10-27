@@ -92,3 +92,7 @@ backend/companiond
 *.exe
 *.test
 *.out
+
+# V2 SillyTavern 上游源码与本地运行产物（ADR-0009 / 执行计划 §4：只提交 upstream.lock.json 与自有集成代码）
+integrations/sillytavern/upstream/
+integrations/sillytavern/.local/
