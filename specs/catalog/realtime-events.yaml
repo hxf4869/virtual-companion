@@ -63,3 +63,36 @@ resumeDispositions:
 - GAP_EXPIRED
 - RESET_REQUIRED
 - NOT_FOUND_OR_FORBIDDEN
+# Go v1 (ADR-0007) scope annotations. The 7-field envelopeRequired above and
+# the legacy-only codes describe the pre-Go-v1 (retired backend) protocol that
+# legacy consumers still reference; the Go runtime emits none of it on the wire.
+# Frontend-internal normalization (stream reducer state) must not be projected
+# back onto the wire protocol.
+goV1:
+  publicEvents:
+  - chat.accepted
+  - chat.snapshot
+  - chat.delta
+  - chat.completed
+  - chat.blocked
+  - chat.failed
+  - chat.cancelled
+  wireFrame:
+    deltaAndSnapshot: '{"event":NAME,"text":"..."}'
+    others: '{"event":NAME}'
+    sseId: none (no SSE id/epoch/seq; no Last-Event-ID replay — reconnect
+      re-attaches via the snapshot)
+  legacyOnlyCodes:
+  - chat.replace
+  - safety.notice
+  - service.mode.changed
+  - memory.candidate.created
+  - memory.candidate.confirmation_required
+  - stream.resume.accepted
+  - stream.gap
+  - stream.reset
+  - stream.denied
+  legacyEnvelope: The envelopeRequired fields (schemaVersion, event,
+    generationId, streamEpoch, eventSeq, committedAt, payload) describe the
+    retired backend protocol only; Go v1 emits bare SSE data frames per
+    wireFrame and never wraps them in that envelope.

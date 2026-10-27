@@ -1501,8 +1501,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '429':
-          description: INVALID_REQUEST — this generation already holds its cap of 8 live subscribers (per-generation, not
-            per-owner). Retry after the Retry-After interval, fixed at 1 second.
+          description: RATE_LIMITED — this generation already holds its cap of 8 live subscribers (per-generation, not per-owner).
+            Retry after the Retry-After interval, fixed at 1 second.
           headers:
             Retry-After:
               description: Fixed 1-second retry delay before re-issuing this GET
@@ -1789,10 +1789,11 @@ paths:
     get:
       operationId: getMemoryAutoSave
       summary: The caller's memory auto-save switch (MEM-AUTO-SAVE, §7.4)
-      description: 'The per-owner deterministic low-sensitivity auto-save switch Retired runtime behavior: vc.get_memory_auto_save_pref
+      description: 'The legacy per-owner deterministic low-sensitivity auto-save switch runtime behavior: vc.get_memory_auto_save_pref
         (V66). Default true — §7.4 lists auto-save as the controlled Beta baseline, limited to the fixed low-sensitivity whitelist
-        categories; the owner can turn it off at any time. Go v1 (ADR-0007): RETIRE auto-save; candidates are Owner-explicit
-        only. Hide the H5 switch in the same slice. Requires a server-verified authentication context.'
+        categories; the owner can turn it off at any time. Go v1 (ADR-0007): this legacy endpoint is RETIRED, superseded by
+        /api/v1/memory-auto-save-pref (KEEP per go-v1-api-scope) — the V66 auto-save capability itself stays; memory candidates
+        keep being extracted automatically behind that switch. Requires a server-verified authentication context.'
       security:
       - bearerAuth: []
       responses:
@@ -4453,6 +4454,11 @@ components:
       - BETA_OPERATIONS_NOT_READY
       - INVALID_REQUEST
       - AUTH_RATE_LIMITED
+      - INTERNAL_ERROR
+      - SCHEMA_UNAVAILABLE
+      - PASSWORD_CHANGE_REQUIRED
+      - RATE_LIMITED
+      - AUTH_CHALLENGE_UNAVAILABLE
       - ACCOUNT_CONTEXT_CHANGED
     ServiceModeStatus:
       type: object
@@ -7536,4 +7542,6 @@ components:
       required: true
       schema:
         type: string
-      description: The one-time download token handed out inside the authenticated status response
+      description: The one-time download token issued only by the create and recover export responses (single-use, single-issuance).
+        The authenticated status response never carries a token — poll it to learn the request state, and recover to re-issue
+        if the token was lost.

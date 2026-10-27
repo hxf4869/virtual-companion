@@ -915,3 +915,23 @@ func waitFor(t *testing.T, ok func() bool, what string) {
 	}
 	t.Fatalf("timeout waiting for %s", what)
 }
+
+func TestSubscriberLimitResponds429RateLimited(t *testing.T) {
+	t.Parallel()
+	env := newRT(t)
+	env.hub.Accepted(testGID)
+	for i := 0; i < realtime.MaxSubscribers; i++ {
+		if _, err := env.hub.Subscribe(testGID); err != nil {
+			t.Fatalf("fill subscriber slots: %v", err)
+		}
+	}
+	rec := httptest.NewRecorder()
+	env.srv.Handler().ServeHTTP(rec, authed(http.MethodGet, "/api/v1/realtime/streams/"+testGID))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatal("missing Retry-After header")
+	}
+	assertEnvelope(t, rec, "RATE_LIMITED")
+}

@@ -164,19 +164,38 @@ internalAccountRequestBoundary:
       - ADMIN
       - USER
   fieldCharacterLimits:
+    account: 320
     username: 128
     password: 1024
     displayName: 256
     role: 16
   fieldUtf8ByteLimits:
     encoding: UTF-8
+    account: 320
     username: 512
     password: 4096
     displayName: 1024
     role: 64
+  # Go v1 (ADR-0007) scope: the current login body field is `account` (a
+  # username OR the account email), frozen at 320 characters / 320 UTF-8 bytes
+  # (backend maxLoginIDRunes, OpenAPI LoginRequest.account). The historical
+  # `username` limits (128 chars / 512 bytes) keep applying only to the legacy
+  # username field (identity username column, legacy admin-created accounts);
+  # they are NOT the current login limit and must not be blanket-raised to 320.
+  currentLoginAccountField:
+    name: account
+    accepts: username_or_email
+    maxCharacters: 320
+    maxUtf8Bytes: 320
+  legacyUsernameField:
+    appliesTo:
+      - identity_username_column
+      - legacy_admin_created_accounts
+    maxCharacters: 128
+    maxUtf8Bytes: 512
   requiredNonBlankFields:
     login:
-      - username
+      - account
       - password
     adminCreateAccount:
       - username
@@ -209,7 +228,14 @@ h5CredentialBoundary:
       sameSite: Lax
       refreshEndpoint: RETIRE
       accessTokenInResponseBodyForbidden: true
+  # M11: `preferredSessionCookie` (vc_refresh) is the RETIRED backend's session
+  # refresh mechanism, kept for legacy contracts and compat layers. Go v1's
+  # current session cookie is goV1.sessionCookie above (vc_session, opaque
+  # session; the refresh endpoint stays RETIRE). The Go v1 runtime never sets
+  # or reads vc_refresh, and logout clears vc_session/vc_csrf (no refresh
+  # cookie is involved).
   preferredSessionCookie:
+    legacyBackendsOnly: true
     name: vc_refresh
     attributes:
       - HttpOnly

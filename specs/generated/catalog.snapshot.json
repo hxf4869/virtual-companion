@@ -2851,6 +2851,34 @@
           "committedAt",
           "payload"
         ],
+        "goV1": {
+          "legacyEnvelope": "The envelopeRequired fields (schemaVersion, event, generationId, streamEpoch, eventSeq, committedAt, payload) describe the retired backend protocol only; Go v1 emits bare SSE data frames per wireFrame and never wraps them in that envelope.",
+          "legacyOnlyCodes": [
+            "chat.replace",
+            "safety.notice",
+            "service.mode.changed",
+            "memory.candidate.created",
+            "memory.candidate.confirmation_required",
+            "stream.resume.accepted",
+            "stream.gap",
+            "stream.reset",
+            "stream.denied"
+          ],
+          "publicEvents": [
+            "chat.accepted",
+            "chat.snapshot",
+            "chat.delta",
+            "chat.completed",
+            "chat.blocked",
+            "chat.failed",
+            "chat.cancelled"
+          ],
+          "wireFrame": {
+            "deltaAndSnapshot": "{\"event\":NAME,\"text\":\"...\"}",
+            "others": "{\"event\":NAME}",
+            "sseId": "none (no SSE id/epoch/seq; no Last-Event-ID replay — reconnect re-attaches via the snapshot)"
+          }
+        },
         "resumeDispositions": [
           "RESUMED",
           "TERMINAL_SNAPSHOT",
@@ -2860,7 +2888,7 @@
         ],
         "schemaVersion": 1
       },
-      "sha256": "e191871ff12becd0e5e864b92408c11d6fe53b665aaf092ae8a1503420286a7c"
+      "sha256": "a6eb10dacf1d63f03c0cf09a607fadd1dffd63410417542e0b075ed86454c3fb"
     },
     "report-reasons.yaml": {
       "document": {

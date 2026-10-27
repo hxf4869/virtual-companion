@@ -129,7 +129,7 @@ func (s *Server) handleRealtimeStream(w http.ResponseWriter, r *http.Request) {
 	sub, err := s.realtime.Hub.Subscribe(gid)
 	if errors.Is(err, realtime.ErrTooMany) {
 		w.Header().Set("Retry-After", "1")
-		s.writeAPIError(w, http.StatusTooManyRequests, "INVALID_REQUEST", "subscriber limit reached")
+		s.writeAPIError(w, http.StatusTooManyRequests, "RATE_LIMITED", "subscriber limit reached")
 		return
 	}
 	if errors.Is(err, realtime.ErrNotFound) {
