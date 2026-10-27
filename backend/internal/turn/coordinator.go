@@ -5,11 +5,18 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/safety"
 )
+
+// defaultFinalizeWriteTimeout bounds the last-chance attempt-outcome and
+// terminal writes issued after the request context already died. The store
+// applies its own per-transaction timeout on top; the lease-expiry recovery
+// path remains the backstop when even these writes fail.
+const defaultFinalizeWriteTimeout = 10 * time.Second
 
 // Coordinator runs one Companion Turn. Hub is the concrete RealtimeHub;
 // nil is allowed so G5 unit tests stay hub-free.
@@ -19,6 +26,24 @@ type Coordinator struct {
 	Policy   *safety.Policy
 	Log      *slog.Logger
 	Hub      *realtime.Hub
+
+	// finalizeWriteTimeout overrides defaultFinalizeWriteTimeout when set;
+	// production construction leaves it zero.
+	finalizeWriteTimeout time.Duration
+}
+
+func (c *Coordinator) finWriteTimeout() time.Duration {
+	if c != nil && c.finalizeWriteTimeout > 0 {
+		return c.finalizeWriteTimeout
+	}
+	return defaultFinalizeWriteTimeout
+}
+
+// finalizeContext returns a short-lived context that outlives cancellation of
+// ctx (values preserved) so finalization persistence can still reach the
+// store. Provider calls and normal success writes keep using the original ctx.
+func (c *Coordinator) finalizeContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), c.finWriteTimeout())
 }
 
 // Command starts one turn that already has a seed in Store.
@@ -167,13 +192,15 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 	}
 
 	if ctx.Err() != nil {
-		_ = c.Store.RecordAttemptOutcome(ctx, companion.AttemptOutcome{
+		finCtx, cancelFin := c.finalizeContext(ctx)
+		defer cancelFin()
+		_ = c.Store.RecordAttemptOutcome(finCtx, companion.AttemptOutcome{
 			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
 			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Status: companion.AttemptCancelled, Failure: string(companion.CodeCanceled),
 			Delivery: companion.DeliveryNotSent, Billing: companion.BillingNotSent, Budget: prep.Budget,
 		})
-		phase, ev := c.terminalize(ctx, TerminalCommand{
+		phase, ev := c.terminalize(finCtx, TerminalCommand{
 			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
 			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Phase: companion.PhaseCancelled, Reason: string(companion.CodeCanceled),
@@ -227,8 +254,17 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 		Budget:     prep.Budget,
 		Categories: categoryStrings(plan.Trace.EffectiveCategories),
 	}
-	if recErr := c.Store.RecordAttemptOutcome(ctx, outcome); recErr != nil {
-		return c.fail(ctx, cmd, prep.AttemptID, companion.PhaseFailed, "OUTCOME_WRITE", &outcome, plan.Trace)
+	// After a mid-stream cancellation the request context is done, but the
+	// attempt outcome and the terminal state still deserve one bounded
+	// persistence attempt; a healthy context reuses ctx unchanged.
+	recCtx := ctx
+	cancelRec := func() {}
+	if ctx.Err() != nil {
+		recCtx, cancelRec = c.finalizeContext(ctx)
+		defer cancelRec()
+	}
+	if recErr := c.Store.RecordAttemptOutcome(recCtx, outcome); recErr != nil {
+		return c.fail(recCtx, cmd, prep.AttemptID, companion.PhaseFailed, "OUTCOME_WRITE", &outcome, plan.Trace)
 	}
 
 	attemptNo := cmd.AttemptNo
@@ -275,7 +311,7 @@ func (c *Coordinator) Run(ctx context.Context, cmd Command) Result {
 				RetryAllowed: true,
 			}
 		}
-		phase, ev := c.terminalize(ctx, TerminalCommand{
+		phase, ev := c.terminalize(recCtx, TerminalCommand{
 			OwnerID: cmd.OwnerID, TurnID: cmd.TurnID, AttemptID: prep.AttemptID,
 			JobID: cmd.JobID, ClaimToken: cmd.ClaimToken, ClaimFence: cmd.ClaimFence,
 			Phase: phase, Reason: reason,
