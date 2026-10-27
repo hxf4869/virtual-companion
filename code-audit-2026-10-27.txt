@@ -1,0 +1,224 @@
+================================================================================
+虚拟伴随系统（virtual-companion）全仓库代码审计报告
+审计日期：2026-10-27    审计范围：根提交 85cc739 → HEAD（baa26f7b）
+工具链：open-code-review delegate 模式 + 11 个并发评审子代理 + 主代理逐条复核
+================================================================================
+
+一、总体结论
+--------------------------------------------------------------------------------
+审计完成，覆盖率 1397/1397。
+未发现 critical / high 问题；15 条 medium（全部经主代理逐条读源码复核确认）、
+28 条 low。四条仓库红线全部通过。本次为只读审计，未修改任何文件。
+
+二、审计方式与覆盖对账
+--------------------------------------------------------------------------------
+- ocr delegate preview range 模式（根提交 85cc739 → HEAD）：
+  可审文件 1397 个，约 85.8 万行新增代码。
+- 分 11 个均衡批次，全部由 general-purpose 子代理并发评审
+  （backend-core-1/2、backend-migrate-1/2、infra-db-1/2、frontend-1/2、
+  specs、scripts、misc）；ocr delegate rule 规则获取、diff 获取、逐文件
+  评审均在子代理内完成。主机并发上限约 3-4，实际分 4 波派发。
+- 最终审计（主代理）：
+  1) 校验 11 份 findings JSON 与预览清单对账：601 个代码文件全部 reviewed；
+     1 个为子代理记录路径笔误（infra/db/run-measure.sh，实为
+     infra/db/measure/run-measure.sh），内容已实际评审；
+  2) 逐条读取源码复核全部 15 条 medium，全部属实。
+- 范围裁剪：docs/ 795 个纯文档文件按"非代码"显式跳过（skill 允许）；
+  ocr 自身另排除 1844 个非评审文件（lockfile、二进制等）。
+- Findings 分布：medium 15（bug 6 / security 1 / test 2 / maintainability 若干 /
+  documentation 7 类），low 28。
+
+三、红线核查（全部通过）
+--------------------------------------------------------------------------------
+1. 无硬编码密钥/Token/真实联系方式。测试凭据均为 //go:build integration 隔离、
+   docker --rm 临时容器或明确标注的合成值（13800138000 为通用假号码夹具）。
+2. 日志/指标/测试产物不记录对话正文、密钥、真实联系方式或稳定敏感标识；
+   日志均为低基数 body-free（operation/outcome/error_code）。
+3. 无真实支付与公开注册路径：product-scope publicRegistrationEnabled=false、
+   paymentEnabled=false，register fail-closed 403，契约中无开启路径。
+4. 数据隔离为 cookie principal → owner HMAC 绑定 → WithOwner 事务 →
+   FORCE RLS 多层收口，SQL 全参数化，未发现越权路径。
+前端无 XSS 注入面（无 v-html/innerHTML 插入用户输入）、凭据不落存储。
+
+四、Medium 问题（15 条，全部经复核确认）
+--------------------------------------------------------------------------------
+【Go 后端 4 条】
+
+M1  backend/internal/turn/coordinator.go:168-232  (bug)
+    取消/超时分支在 ctx.Err() != nil 后仍用该已取消的 ctx 调
+    RecordAttemptOutcome / terminalize，pgx 必然报 context canceled 且错误被
+    "_ =" 吞掉——该分支的收尾写库是死代码，终态持久化实际全靠 lease 恢复
+    收敛。建议收尾写改用 context.WithoutCancel(ctx)。
+
+M2  backend/internal/provider/openai/config.go:55-57  (bug)
+    withDefaults 把显式配置的 Temperature=0（校验层明确允许）静默覆盖为默认
+    1.0（adapter.go:47 调 withDefaults 已确认生效），确定性温度配置失效。
+
+M3  backend/internal/migrate/sql/V117__go_generation_jobs.sql:1093-1100
+    （V136 重定义保留同形）  (bug)
+    go_recover_expired_generation 对非 CREATED attempt 再次调
+    go_close_reservation，而该预留已在 go_record_attempt_outcome 落库时关闭
+    过一次，且 go_close_reservation 无幂等标记。worker 在 outcome 提交后、
+    job 终止前崩溃再恢复时，同周期其他预留会被二次冲减（reserved 二次扣减
+    →月度硬上限低估可超发；UNKNOWN 时 used 二次累计）。仅 reserved_cost>0
+    时有实际影响。
+
+M4  backend/internal/migrate/sql/V117__go_generation_jobs.sql:807-1218
+    （V136 同形）  (bug/maintainability)
+    Go 路径多处 generation 状态写入越过 specs/catalog/generation-states.yaml
+    合法转移边：go_finalize_generation 写 CREATED/QUEUED→FINAL_REVIEW，
+    go_terminalize_generation 写 CREATED/QUEUED→IN_PROGRESS→FAILED_FINAL、
+    QUEUED→FINAL_REVIEW 等，均不在目录转移表内；DB 无转移 CHECK 故静默
+    成功，注释还自称 "Catalog hops"。旧 SQL 状态机（V25/V58/V10）严格按目录
+    走，属契约-实现不一致。
+
+【前端 1 条】
+
+M5  frontend/src/stores/chat.ts:900-904  (bug)
+    cancel() 单飞守卫下，上一轮核对在途（≤10s）时对新一轮的停止只做本地
+    abort：不发 POST /cancel、不留恢复标识（cancelUnconfirmed 已被新一轮
+    send 清掉），UI 显示"已停止回复"，但服务端继续生成并持久化，历史同步后
+    回复仍会出现在窗口。
+
+【infra/DB 1 条】
+
+M6  infra/db/measure/phases/81_cross_relationship_recall.sql:41-53  (test)
+    注释声称"结构化+语义交替"探测，实际 1000 次循环只调 vc.recall_memory，
+    从未调用 vc.semantic_recall（V68 的向量语义召回路径），§26.4 跨关系语义
+    召回泄露=0 的不变量未被本阶段实际验证。
+
+【specs 契约 7 条】
+
+M7  specs/openapi/virtual-companion.yaml:4844  (documentation)
+    ErrorCode 枚举仅 18 码（已精确核验），缺 catalog 新增 5 码；其中
+    RATE_LIMITED / AUTH_CHALLENGE_UNAVAILABLE / PASSWORD_CHANGE_REQUIRED 被
+    同文件响应描述实际引用（L1193/2223/2509 等），与全部生成物（23 码）失配。
+
+M8  specs/openapi/virtual-companion.yaml:1982  (documentation)
+    getMemoryAutoSave 描述 "RETIRE auto-save; candidates are Owner-explicit
+    only"，与 V66 自动保存 KEEP（go-v1-api-scope、memory-recall-contract、
+    同文件 /memory-auto-save-pref 端点）矛盾。
+
+M9  specs/openapi/virtual-companion.yaml:8063  (documentation)
+    ExportToken 参数描述称 token 在 status 响应发放，与 create/recover-only、
+    status 永不携带 token 的多处描述直接冲突。
+
+M10 specs/catalog/realtime-events.yaml  (maintainability)
+    16 事件类型中 9 个无 Go v1 生产者（OpenAPI 声明仅 7 个公开事件、帧仅
+    {event,text}），7 字段信封与 Go v1 实际帧形状不一致，且缺少其他目录
+    文件的 goV1/兼容标注。
+
+M11 specs/contracts/identity-session-boundary-contract.yaml:213  (documentation)
+    vc_refresh 段未标废弃且声明 requiredFor refresh/logout，与 refresh
+    RETIRE、logout 不设 cookie 的 Go v1 行为冲突。
+
+M12 同上 :167-173  (documentation)
+    登录字段冻结上限 username 128 字符/512 字节（appliesTo 含
+    authentication），与 OpenAPI/后端 account 320/320（用户名或邮箱）不一致。
+
+M13 specs/openapi/virtual-companion.yaml  (bug)
+    openRealtimeStream 的 429/503 均用 INVALID_REQUEST（后端一致如此返回），
+    与同文件 429→RATE_LIMITED 及错误码语义不一致，客户端需特判。
+
+【scripts 2 条】
+
+M14 scripts/checks/catalog_tool.py:386-389  (security)
+    generate() 对 --output 指向的任意目录无条件 shutil.rmtree(out)，无范围
+    校验或确认，误传路径（如仓库根目录）会被整目录静默删除。
+
+M15 scripts/dev/openapi_tool.py:97-100  (security)
+    同一危险模式的复刻（--output 可指向任意目录，默认 specs/openapi/dist）。
+
+五、Low 问题（28 条，摘要）
+--------------------------------------------------------------------------------
+【Go 后端 8 条】
+- backend/internal/bootstrap/bootstrap.go:80-121
+  一次性引导流程丢弃 pgx/SQL 错误根因（无 %w、无日志），排障困难；
+  同函数 108-110 auth.Hash 失败却原样返回，行为不一致。
+- backend/internal/migrate/migrate.go:61-68
+  连接/advisory lock/history 初始化失败路径统一丢弃底层错误原因。
+- backend/internal/jobs/export.go:81
+  RecordExportUploadIntent 传未兜底的原始 l.policy.ExportLease（可为 0），
+  与同函数开头 10 分钟兜底不一致。
+- backend/internal/provider/modelhttp/sse.go:70-74
+  每个 data 行重新 Join 全部已有行检查上限，O(n²) 拷贝；有界但可放大 CPU。
+- backend/internal/migrate/sql/V114__export_upload_intent.sql:176-197
+  record_export_upload_intent 锁序 fence→intent，与 claim/complete 的
+  intent→fence 相反，同 key 并发可被 40P01 死锁中止一方（协议仍收敛）。
+- backend/internal/migrate/sql/V39__reminders.sql:81,168-173
+  create/update_reminder 对 p_recurrence/p_status 裸 NOT IN 校验，NULL 绕过
+  后抛裸 23502；V75 修复清单漏掉这两个函数。
+- V117__go_generation_jobs.sql:403-418
+  go_start_turn 幂等重放分支返回归一化 mode 而非行上冻结的 g.mode。
+- V133__memory_extract_outbound_boundary.sql:261-265
+  IF NOT ('MESSAGE_TEXT' = ANY(...)) 永假，决策码不可达。
+
+【前端 6 条】
+- frontend/src/api/relationship.ts:217-226
+  listRelationships 对 2xx 但不可解析回包静默返回 []，与 memory.ts
+  "协议错误不得当作权威空结果"纪律不一致。
+- frontend/src/pages/memory/memory.vue:1197-1242
+  doDelete/actOnCandidate finally 复位忙态缺 ownerEpoch 门控，换号后旧账号
+  迟到收尾可提前解锁新账号在途删除（服务端软删幂等，影响有限）。
+- frontend/src/api/sse-parser.ts:159-195
+  abortRequested 死变量，两处检查恒假，注释与实现不符。
+- frontend/src/stores/chat.ts:518-524
+  流式期间每事件全量拷贝 events + 全量重建草稿，O(n²)（2000 字截断下有限）。
+- frontend/src/stores/chat.ts:1259-1293
+  openConversation 失败回滚快照缺 recentLoadFailed，重试入口丢失。
+- frontend/src/pages/conversations/conversations.vue:500-517
+  refreshOnReturn 边界比较 TypeError 被吞成永久 failed 反馈。
+
+【infra/DB 4 条】
+- infra/db/run-rls-tests.sh:40-44
+  docker rm -f 缺 -v，PG 镜像声明 VOLUME，可能留孤儿匿名卷（同目录其他
+  脚本均已修复）。
+- infra/db/backup/run-restore-drill.sh:508-510
+  tombstone manifest 的 ${acc} 直接拼进 SQL（其余字段走 psql -v 安全替换）；
+  artifact 有 MAC 认证，可利用性受限。
+- infra/db/measure/phases/20_cross_tenant.sql:44-69
+  EXCEPTION WHEN OTHERS THEN NULL 吞掉全部错误，系统性失败仍报 PASS。
+- infra/db/tests/104_relationship_clearance.sql:271-273
+  首个 count 结果未断言即被覆盖，死代码。
+
+【scripts/仓库卫生 7 条】
+- scripts/check.sh:32-36
+  各检查 stderr 写固定 /tmp/check_<name>.err，并发两个 check.sh 互相覆盖
+  （PASS/FAIL 判定不受影响）。
+- scripts/dev/synthetic-eval.sh:20
+  硬编码个人路径 /Users/hxf/.local/go/bin 进仓库脚本。
+- scripts/measure/gen_mem_eval_samples.py:16-20
+  random.seed() 死代码，docstring "fixed seed" 有误导。
+- scripts/checks/license-inventory.yaml:17-18
+  注释计数过时（写 23，实际 24），清单数据本身正确。
+- .github/workflows/ci.yml:3-7
+  未配 concurrency 组，PR 更新会叠加冗余 6-job 运行。
+- ops/beta-duty-roster.yaml 与 .example.yaml 逐字节相同且无消费方，双模板
+  易漂移。
+- 仓库根 pelican-bike.html / pelican-on-a-bicycle.html / pelican-on-bicycle.html
+  三份同主题 SVG 演示页，全仓无引用，与产品无关。
+
+【specs 3 条】
+- reauth 描述指向已 RETIRE 的 admin password reset。
+- SendGenerationRequest 的 idempotencyKey/userContent 未声明后端实际存在的
+  128 字符/64KiB 上限。
+- 两个挑战端点 429 缺 Retry-After 头声明。
+
+六、总体评价与建议
+--------------------------------------------------------------------------------
+代码质量整体很高：SSRF 防护（https 强制、私网拦截、禁重定向、DNS 预解析
+锁定）、取消/核对协议、RLS fail-closed 自检、导出加密与一次性下载令牌、
+CI 最小权限与 SHA pin 等设计严谨；各批次子代理排查出的疑点绝大多数经核实
+为误报并已正确丢弃。
+
+建议优先处理（按影响排序）：
+1. M3 成本预留二次冲减（涉及计费正确性，超发风险）；
+2. M1 取消路径死代码（终态持久化依赖 lease 恢复兜底）；
+3. M5 前端取消语义与用户预期不符（服务端继续生成并持久化）；
+4. specs 7 条一致性偏差（M7-M13）建议下次契约重生成时一并修正
+   （specs/generated 为生成物，OpenAPI 手改需走 catalog_tool 流程）；
+5. M14/M15 rmtree 危险模式加范围校验。
+
+本次审计只读，未修复任何问题。如需修复，可指定范围（如"修 M1/M3/M5"），
+按最小完整修改实施并跑受影响检查。
+================================================================================
