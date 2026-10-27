@@ -9,21 +9,24 @@
 
 - [x] `V2-W02a` 方向文档对齐（2026-10-27）：ADR-0009、`PRODUCT.md`、`AGENTS.md`、执行计划、本节，
       需求快照入库 `docs/source/v2-r3/`；catalog / OpenAPI 机器值按 ADR-0009 §5 随对应工作项修改。
-- [ ] `V2-W00` ST 宿主可行性验证：写入 / 最终请求 / 认证入口与补丁面，锁定上游版本。最先执行；
+- [x] `V2-W00` ST 宿主可行性验证：写入 / 最终请求 / 认证入口与补丁面，锁定上游版本。最先执行；
       W03、W05、W13 依赖其结论。
-      结果：BLOCKED（2026-10-28）；提交 `3791d293..93e25bbc`；验证 `git diff --check` PASS；
-      `python3` 读取版本锁逐项比对四个上游 HEAD 与 10 个产物 SHA256 PASS；
-      `node integrations/sillytavern/.local/scripts/smoke.mjs` FAIL（退出码 1，临时步骤 S10：MVU 未初始化）。
-      用例：C01 JSON 导入的世界书/扩展字段子项 PASS，PNG、导出与可见开场操作 NOT_RUN；
-      C04 Helper/EJS 加载子项 PASS，MVU 初始化 FAIL，变量更新/状态栏/刷新一致性 NOT_RUN；
-      B01、B05、B07、MODEL06–MODEL08、S01 NOT_RUN（仅入口源码分析，没有实现或完整请求运行证据）。
-      已完成：四组件固定版本与许可/产物锁；真实 ST 启动；3 个 `general-purpose` 子代理分别分析
-      F2、最终请求与认证，均已结束；入口、补丁候选及限制见执行计划 §6。未实施业务代码或核心补丁。
-      暂停：按 §2.4，MVU 初始化在弹窗处理、唯一测试角色、公开设置启用并 reload 三次修复后仍失败；
-      发送、最终请求捕获与聊天落盘依赖链 NOT_RUN，运行可行性未闭合，不勾选完成，不进入 W01–W16。
-      需要决定：是否恢复 W00，定位 Helper 角色脚本 iframe 的实际执行；不得把阻塞推迟到 W03。
-      ZCode 主会话界面为 GLM-5.3／最高；子代理元数据报告为 `claude-fable-5-1`，实际模型未能确认为 GLM-5.3。
-      本轮 ST/mock 进程已停止；合成数据与失败结果保留在本机忽略目录；无真实模型/通知/部署或旧数据清理。
+      结果：DONE（2026-10-28）；提交 `3791d293..25ac463e`；验证
+      `node integrations/sillytavern/.local/scripts/smoke.mjs` PASS（连续两轮 19/19，退出码 0）；
+      `git diff --check` PASS；版本锁 JSON 校验 PASS，四个固定提交与已核验的 10 个产物 SHA256 未改变。
+      用例：C01 JSON 导入/世界书与扩展字段/首条可见开场子项 PASS（PNG、导出、其他开场 NOT_RUN）；
+      C02 关键词/常驻条目进入实际请求子项 PASS（递归、预算、冷却等 NOT_RUN）；
+      C04 Helper/EJS 加载、MVU 初始化值 10、原生落盘与刷新后重选角色读回子项 PASS；
+      C04 状态栏、EJS 条件执行、10→15 更新及其他完整场景 NOT_RUN，不提前标整案 PASS；
+      MODEL06 OpenAI Chat Completions 本地固定 provider 流式往返子项 PASS，Anthropic/Responses/真实模型 NOT_RUN；
+      B01、B05、B07、MODEL07–MODEL08、S01 NOT_RUN（后续认证/F2/协议/剧情实现验收未执行）。
+      已完成：四组件版本锁、三类入口与补丁候选盘点、真实宿主最小组合冒烟；结论与限制见执行计划 §6。
+      修复：本机冒烟卡改现代脚本字段、修正 InitVar 标记并持久绑定主世界书；等待真实保存完成，
+      刷新后恢复原生连接并检查可见发送按钮。未修改业务代码或上游核心，测试脚本保留在本机忽略目录。
+      历史：此前三次修复暂停已在本次获准恢复后解除；当前按第 5 节 W00 完成确认点，等待 Owner
+      确认进入 W01，W01–W16 尚未开始。Helper 未锁 CDN 资源须在 W03 接入时补齐。
+      本次恢复用 ZCode GLM-5.3／最高思考主会话，2 个 general-purpose 子代理详情均显示 GLM-5.3；
+      子代理思考级别无单独证据；两者均已结束。测试服务已关闭，合成数据保留，原有 ZIP 未改动。
 - [ ] `V2-W01` 现有工程盘点与旧数据清理：模块处置表；V2 前旧业务数据与本地备份不保留，盘点后删除。
       W00 结论为可行后执行。
 - [ ] `V2-W02` 设计规范工作副本与 Stitch 桌面 / 手机稿。用例：UI01（设计来源）。
