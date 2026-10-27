@@ -187,8 +187,10 @@ export const useChatStore = defineStore("h5-chat", () => {
   // 缺陷6：键绑定提交会话——换会话后同文本不复用旧键；其他会话在途提交
   // 写入的键也不会被本会话的确定失败误清。
   let lastSendKey: { conversationId: string; content: string; key: string } | null = null;
-  // WP-D（缺口3）：取消核对单飞——连续点击停止不产生并发取消请求风暴。
-  let cancelVerifyInFlight = false;
+  // WP-D（缺口3）：取消核对单飞——同一 turn/generation 的连续停止只发一次
+  // 取消请求；跨轮不互斥（M5）：旧轮核对未完成时新轮仍要发出自己的取消
+  // 请求，旧核对的 finally 按身份比较释放，不会清掉新轮的在途标识。
+  let cancelVerifyOwner: { turn: number; generation: string } | null = null;
   // VC-R04：恢复核对的介入资格与单飞标识。
   // - 介入资格（会话归属）：共享 store 的多个 chat 页实例都装了 online/
   //   visibility 监听，断连后同一事件会让它们先后进入 recoverInFlight，且
@@ -897,17 +899,24 @@ export const useChatStore = defineStore("h5-chat", () => {
       cancelUnconfirmed.value = Boolean(id);
       return;
     }
-    if (cancelVerifyInFlight) {
-      // 单飞：不产生并发取消风暴；本地立即停止不受影响。
+    // M5：按 turn 身份单飞（同 recoverCheckOwner 约定）——旧轮核对在途不
+    // 阻塞新轮发出自己的取消请求；本地立即停止始终先行。
+    const seqAtCancel = turnSeq;
+    const cancelIdentity = { turn: seqAtCancel, generation: id };
+    if (
+      cancelVerifyOwner &&
+      cancelVerifyOwner.turn === cancelIdentity.turn &&
+      cancelVerifyOwner.generation === cancelIdentity.generation
+    ) {
+      // 单飞：同一轮已有取消核对在途；本地立即停止不受影响。
       current.abort();
       return;
     }
-    cancelVerifyInFlight = true;
+    cancelVerifyOwner = cancelIdentity;
     cancelUnconfirmed.value = true; // 终态未知前保留恢复标识
     // M2：捕获发起时的 turn 归属。旧核对回调写入前必须重新校验——"取消→
     // 立即重发"时新轮 run 启动前 generationId 仍是旧值，仅凭 id 校验会让旧
     // 取消响应击落新轮（清新轮 echo、打回 cancelled、删恢复标识）。
-    const seqAtCancel = turnSeq;
     const cancelVerifyStillCurrent = (): boolean =>
       turnSeq === seqAtCancel && generationId.value === id && !generationStarting.value;
     // 先发起有界取消请求（不等待其响应），再做本地中断。
@@ -929,7 +938,8 @@ export const useChatStore = defineStore("h5-chat", () => {
         // 取消请求丢失/超时/不可解析/状态非终态：用快照核对一次。
         await confirmTerminalFromSnapshot(deps, id, cancelVerifyStillCurrent);
       } finally {
-        cancelVerifyInFlight = false;
+        // M5：只释放自己拥有的单飞位——旧轮核对结束不得清掉新轮的在途标识。
+        if (cancelVerifyOwner === cancelIdentity) cancelVerifyOwner = null;
       }
     })();
     current.abort();
@@ -1261,6 +1271,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       messages: messages.value,
       historyHasMore: historyHasMore.value,
       historyLoadFailed: historyLoadFailed.value,
+      recentLoadFailed: recentLoadFailed.value,
     };
     conversationId.value = id;
     messages.value = [];
@@ -1290,6 +1301,9 @@ export const useChatStore = defineStore("h5-chat", () => {
         messages.value = previous.messages;
         historyHasMore.value = previous.historyHasMore;
         historyLoadFailed.value = previous.historyLoadFailed;
+        // 失败回滚恢复原会话"最近记录未同步完整"的重试入口；切换时已把
+        // recentLoadFailed 清假，不恢复会丢掉原会话的既有提示。
+        recentLoadFailed.value = previous.recentLoadFailed;
       }
       return "failed";
     }

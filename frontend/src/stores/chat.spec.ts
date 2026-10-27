@@ -587,6 +587,194 @@ describe("useChatStore", () => {
     expect(store.phase).toBe("cancelled");
   });
 
+  // ---- M5：取消单飞按 turn 归属 ----
+
+  function deferred(): { promise: Promise<void>; resolve: () => void } {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  /** M5 传输桩：把请求/响应记入 flow 供确定性等待；42/43 的取消请求各挂起到对应 gate。 */
+  function m5Transport(flow: string[], gate42: Promise<void>, gate43: Promise<void>): ChatTransport {
+    let generations = 0;
+    return {
+      async request(_method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) {
+          return { ok: true, status: 200, json: [] };
+        }
+        if (path.endsWith("/cancel")) {
+          const numeric = path.split("/")[4];
+          flow.push(`cancel:${numeric}`);
+          if (numeric === "42") {
+            await gate42;
+            flow.push("responded:42");
+          } else {
+            await gate43;
+            flow.push("responded:43");
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: {
+              generationId: Number(numeric),
+              conversationId: 1,
+              logicalGenerationId: numeric === "42" ? "lg-1" : "lg-2",
+              status: "CANCELLED",
+            },
+          };
+        }
+        if (path.includes("/generations")) {
+          generations += 1;
+          return {
+            ok: true,
+            status: 200,
+            json: {
+              generationId: generations === 1 ? 42 : 43,
+              conversationId: 1,
+              logicalGenerationId: generations === 1 ? "lg-1" : "lg-2",
+              status: "CREATED",
+            },
+          };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+  }
+
+  /**
+   * M5 依赖桩。可中止分支：等 abort（正常取消路径）或 abortCleanup 放行
+   * （失败收尾时 cancel 可能从未发生，finally 也能结束这次 run）二者先到，
+   * 返回非终态批次（run 随即落定，下一轮 send 才能开始）。挂起分支：忽略
+   * abort、await runGate——建模"取消后流仍在收尾"，让之后的 cancel() 调用
+   * 时 handle 仍存活、真正走到单飞守卫，而不是因为 handle 已空提前返回。
+   */
+  function m5Deps(
+    onRun: (turn: "a" | "b") => void,
+    runGate: Promise<void>,
+    abortCleanup: Promise<void>,
+    hangFirstRun = false,
+  ): RealtimeDeps {
+    let runs = 0;
+    return {
+      resume: vi.fn(async (_req: unknown, signal?: AbortSignal) => {
+        const turn = runs++ === 0 ? "a" : "b";
+        onRun(turn);
+        const hang = hangFirstRun || turn === "b";
+        if (!hang) {
+          const aborted = new Promise<void>((resolve) => {
+            signal?.addEventListener("abort", () => resolve(), { once: true });
+          });
+          await Promise.race([aborted, abortCleanup]);
+          return { disposition: "RESUMED", events: [delta(1)] } as ResumeResult;
+        }
+        await runGate;
+        return { disposition: "RESUMED", events: [delta(1), terminal(2)] } as ResumeResult;
+      }),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+  }
+
+  it("M5: new turn cancel still reaches the backend while the previous verify is pending", async () => {
+    const store = useChatStore();
+    const flow: string[] = [];
+    const firstCancel = deferred();
+    const secondCancel = deferred();
+    const secondRun = deferred();
+    const abortCleanup = deferred();
+    const transport = m5Transport(flow, firstCancel.promise, secondCancel.promise);
+    const deps = m5Deps((turn) => flow.push(`run:${turn}`), secondRun.promise, abortCleanup.promise);
+    let sendA: Promise<void> | null = null;
+    let sendB: Promise<void> | null = null;
+    let bodyFailed = false;
+
+    try {
+      await store.initConversation(transport, "1");
+      sendA = store.send(transport, deps, "第一轮");
+      await vi.waitFor(() => expect(flow).toContain("run:a"));
+      await store.cancel(); // A 轮取消：请求挂起（核对在途），本地流立即中止
+      await sendA; // A 的 run 完全落定后，B 轮才被允许开始
+
+      sendB = store.send(transport, deps, "第二轮");
+      await vi.waitFor(() => expect(flow).toContain("run:b"));
+      await store.cancel(); // B 轮取消：必须照常发出服务端取消请求
+
+      // 旧轮核对在途不得拦截新轮取消（旧全局单飞会拦下它）。
+      expect(flow.filter((e) => e === "cancel:43")).toHaveLength(1);
+      expect(store.cancelUnconfirmed).toBe(true);
+
+      // A 的核对链推进到收尾完成：响应返回（responded:42）+ 过期守卫丢弃 +
+      // finally 释放自己的单飞位——waitFor 的轮询间隔保证这些微任务已排空。
+      firstCancel.resolve();
+      await vi.waitFor(() => expect(flow).toContain("responded:42"));
+
+      // 再次取消 B：B 的 run 仍挂起（handle 存活），必须命中同轮单飞分支；
+      // 若 A 的收尾错误清掉了 B 的在途标识，这里会重复发请求（数量变 2）。
+      await store.cancel();
+      expect(flow.filter((e) => e === "cancel:43")).toHaveLength(1);
+
+      // B 的核对完成：确认 CANCELLED 终态，清除待确认标识。
+      secondCancel.resolve();
+      await vi.waitFor(() => expect(store.cancelUnconfirmed).toBe(false));
+      expect(store.phase).toBe("cancelled");
+    } catch (error) {
+      bodyFailed = true;
+      throw error;
+    } finally {
+      // 释放测试创建的全部等待——含 cancel 从未发生时 A 分支仍在等的
+      // abort（abortCleanup）——再等待已启动的 run 退出。原始断言失败继续
+      // 传播；仅当 try 正常完成时，run 退出异常才作为测试失败抛出。
+      firstCancel.resolve();
+      secondCancel.resolve();
+      secondRun.resolve();
+      abortCleanup.resolve();
+      const exits = await Promise.allSettled([
+        sendA ?? Promise.resolve(),
+        sendB ?? Promise.resolve(),
+      ]);
+      if (!bodyFailed) {
+        const rejected = exits.find((exit) => exit.status === "rejected");
+        if (rejected) throw (rejected as PromiseRejectedResult).reason;
+      }
+    }
+  });
+
+  it("M5: same turn consecutive cancel clicks fire only one cancel request", async () => {
+    const store = useChatStore();
+    const flow: string[] = [];
+    const cancelGate = deferred();
+    const runGate = deferred();
+    const abortCleanup = deferred();
+    // 单轮场景：唯一的取消请求（42）挂起在 cancelGate 上；run 挂起在
+    // runGate 上且忽略 abort——两次点击时 handle 均存活，第二次点击必须由
+    // 同轮单飞挡下，而不是空 handle 提前返回。
+    const transport = m5Transport(flow, cancelGate.promise, cancelGate.promise);
+    const deps = m5Deps((turn) => flow.push(`run:${turn}`), runGate.promise, abortCleanup.promise, true);
+    let sendA: Promise<void> | null = null;
+
+    try {
+      await store.initConversation(transport, "1");
+      sendA = store.send(transport, deps, "第一轮");
+      await vi.waitFor(() => expect(flow).toContain("run:a"));
+
+      await store.cancel(); // 第一次点击：发出取消请求（挂起），本地流立即中止
+      await store.cancel(); // 第二次点击：同轮单飞，只本地中止，不重复发请求
+      expect(flow.filter((e) => e === "cancel:42")).toHaveLength(1);
+
+      cancelGate.resolve();
+      await vi.waitFor(() => expect(store.cancelUnconfirmed).toBe(false));
+      expect(store.phase).toBe("cancelled");
+    } finally {
+      cancelGate.resolve();
+      runGate.resolve();
+      abortCleanup.resolve();
+      if (sendA) await sendA.catch(() => undefined);
+    }
+  });
+
   // ---- TASK-0186: send flow + history ----
 
   it("initConversation creates conversation and loads history", async () => {
@@ -1150,6 +1338,24 @@ describe("useChatStore", () => {
     expect(store.conversationId).toBe("5");
     expect(store.messages.map((message) => message.content)).toEqual(["原会话"]);
     expect(store.historyHasMore).toBe(false);
+  });
+
+  it("openConversation failure rollback restores the original conversation's recentLoadFailed", async () => {
+    const store = useChatStore();
+    store.conversationId = "5";
+    store.messages = [
+      { messageId: "old", conversationId: "5", role: "user", content: "原会话" },
+    ];
+    // 原会话已有"最近记录未同步完整"提示：切换失败回滚后重试入口必须保留。
+    store.recentLoadFailed = true;
+    const failing: ChatTransport = {
+      request: async () => ({ ok: false, status: 503, json: null }),
+    };
+
+    const opened = await store.openConversation(failing, "6");
+
+    expect(opened).toBe("failed");
+    expect(store.recentLoadFailed).toBe(true);
   });
 
   // ---- round7（P1）：快速切换会话的 stale response 不得串写当前窗口 ----
