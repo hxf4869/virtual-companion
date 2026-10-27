@@ -62,13 +62,22 @@ describe("listRelationships", () => {
     );
   });
 
-  it("skips malformed rows and hides 403/404 existence", async () => {
+  it("treats corrupt payloads as protocol errors, not an empty list", async () => {
     await expect(listRelationships(transport({
       ok: true,
       status: 200,
       json: [{ personaRef: "missing-id" }, null],
-    }))).resolves.toEqual([]);
+    }))).rejects.toBeInstanceOf(RelationshipProtocolError);
+    await expect(listRelationships(transport({ ok: true, status: 200, json: null })))
+      .rejects.toBeInstanceOf(RelationshipProtocolError);
+    await expect(listRelationships(transport({ ok: true, status: 200, json: {} })))
+      .rejects.toBeInstanceOf(RelationshipProtocolError);
+  });
+
+  it("hides 403/404 existence and keeps a legal empty array authoritative", async () => {
     await expect(listRelationships(transport({ ok: false, status: 404, json: null })))
+      .resolves.toEqual([]);
+    await expect(listRelationships(transport({ ok: true, status: 200, json: [] })))
       .resolves.toEqual([]);
   });
 

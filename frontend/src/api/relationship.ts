@@ -218,10 +218,13 @@ export async function listRelationships(
     if (response.status === 403 || response.status === 404) return [];
     throw new RelationshipHttpError(response.status, classifyStatus(response.status));
   }
-  if (!Array.isArray(response.json)) return [];
-  return response.json.flatMap((value) => {
+  // 损坏回包（非数组、解析失败、行缺 id/personaRef）是协议失败，不得伪装成
+  // 权威空结果或部分列表——"没有关系"只能来自合法的空数组。
+  if (!Array.isArray(response.json)) throw new RelationshipProtocolError(response.status);
+  return response.json.map((value) => {
     const relationship = asRelationship(value);
-    return relationship ? [relationship] : [];
+    if (!relationship) throw new RelationshipProtocolError(response.status);
+    return relationship;
   });
 }
 
