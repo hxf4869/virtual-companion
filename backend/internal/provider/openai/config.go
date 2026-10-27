@@ -15,7 +15,6 @@ const (
 	chatCompletionsPath      = "/v1/chat/completions"
 	defaultMaxTokens         = 8192
 	hardMaxTokens            = 262144
-	defaultTemperature       = 1.0
 	minTemperature           = 0.0
 	maxTemperature           = 2.0
 	defaultConnectTimeout    = 10 * time.Second
@@ -33,6 +32,8 @@ const (
 
 // Config is the adapter construction input. Endpoint and credential come
 // only from process configuration, never from the repository or ModelRequest.
+// Temperature is sent as-is: an explicit 0 must stay 0 in the request body,
+// and the process configuration layer owns the default for unset values.
 type Config struct {
 	Endpoint          string
 	BearerToken       string
@@ -51,9 +52,6 @@ type Config struct {
 func (c Config) withDefaults() Config {
 	if c.MaxTokens == 0 {
 		c.MaxTokens = defaultMaxTokens
-	}
-	if c.Temperature == 0 {
-		c.Temperature = defaultTemperature
 	}
 	if c.ConnectTimeout == 0 {
 		c.ConnectTimeout = defaultConnectTimeout
