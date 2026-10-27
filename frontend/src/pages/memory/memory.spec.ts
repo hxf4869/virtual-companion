@@ -86,6 +86,10 @@ interface FetchOptions {
   patchGates?: Record<string, Gate>;
   patchParseFailed?: boolean;
   patchEcho?: Record<string, unknown>;
+  /** 按 memoryId 挂起对应 DELETE（换号晚到场景，与 deleteGate 互斥使用）。 */
+  deleteGates?: Record<string, Gate>;
+  /** 按 memoryId 挂起对应 confirm（换号晚到场景，与 confirmGate 互斥使用）。 */
+  confirmGates?: Record<string, Gate>;
   deleteStatus?: number;
   confirmStatus?: number | (() => number);
   rejectStatus?: number | (() => number);
@@ -186,6 +190,8 @@ function stubFetch(options: FetchOptions = {}) {
       }
       if (method === "DELETE") {
         if (options.deleteGate) return options.deleteGate.promise as never;
+        const deleteGateById = options.deleteGates?.[memoryId];
+        if (deleteGateById) return deleteGateById.promise as never;
         const status = options.deleteStatus ?? 200;
         return response(status, status === 200
           ? memoryRow({ memoryId, deletedAt: "2026-09-04T00:00:00Z" })
@@ -196,6 +202,8 @@ function stubFetch(options: FetchOptions = {}) {
         if (options.confirmGate) {
           return options.confirmGate.promise as never;
         }
+        const confirmGateById = options.confirmGates?.[memoryId];
+        if (confirmGateById) return confirmGateById.promise as never;
         const status = typeof options.confirmStatus === "function"
           ? options.confirmStatus()
           : options.confirmStatus ?? 200;
@@ -657,6 +665,104 @@ describe("记忆管理页", () => {
     expect(wrapper.find('[data-testid="memory-edit-box"]').exists()).toBe(false);
     expect(wrapper.text()).toContain("B 的修改。");
     expect(wrapper.text()).not.toContain("B：用户忌口香菜。");
+    wrapper.unmount();
+  });
+
+  it("换号后 A 的挂起删除晚到：不解锁新账号在途删除，B 自己的结果正常收束", async () => {
+    const gateA = gate();
+    const gateB = gate();
+    let phase: "a" | "b" = "a";
+    stubFetch({
+      relationships: () => (phase === "a" ? RELATIONSHIPS : RELATIONSHIP_B),
+      memoriesByRel: { 84: B_MEMORIES_R214 },
+      deleteGates: { m1: gateA, "201": gateB },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // A：删除 m1，DELETE 挂起（deleteBusy 占用中）。
+    await wrapper.findAll('[data-testid="memory-delete"]')[0].trigger("click");
+    await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-delete-confirm"]').attributes("disabled")).toBeDefined();
+
+    // 真实换号清理（ownerEpoch 递增，清理链已释放 deleteBusy）后 B 登录重读。
+    useAuthStore().clear();
+    await flushPromises();
+    phase = "b";
+    loginAs("8");
+    await flushPromises();
+    expect(wrapper.text()).toContain("B：用户忌口香菜。");
+
+    // B：删除自己的 201（DELETE 挂起，deleteBusy 再次占用）。
+    await wrapper.findAll('[data-testid="memory-delete"]')[0].trigger("click");
+    await wrapper.get('[data-testid="memory-delete-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-delete-confirm"]').attributes("disabled")).toBeDefined();
+
+    // A 的删除晚到：epoch 已变，不得解锁 B 的在途删除。
+    gateA.resolve(response(200, memoryRow({ memoryId: "m1", deletedAt: "2026-09-04T00:00:00Z" })));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="memory-delete-confirm"]').attributes("disabled")).toBeDefined();
+
+    // B 自己的成功回包正常收束。
+    gateB.resolve(response(200, memoryRow({ memoryId: "201", deletedAt: "2026-09-04T00:00:00Z" })));
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("B：用户忌口香菜。");
+    wrapper.unmount();
+  });
+
+  it("换号后 A 的挂起候选确认晚到：不解锁新账号在途候选操作", async () => {
+    const gateA = gate();
+    const gateB = gate();
+    let phase: "a" | "b" = "a";
+    const bListWithCandidate = [
+      memoryRow({
+        memoryId: "211",
+        summary: "B：候选待确认。",
+        status: "PENDING_CONFIRMATION",
+        autoSaved: false,
+        conversationId: null,
+      }),
+    ];
+    stubFetch({
+      relationships: () => (phase === "a" ? RELATIONSHIPS : RELATIONSHIP_B),
+      memoriesByRel: { 84: bListWithCandidate },
+      confirmGates: { p1: gateA, "211": gateB },
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // A：确认候选 p1，POST confirm 挂起（pendingBusyId 占用中）。
+    await pendingRowOf(wrapper, "学吉他").get('[data-testid="pending-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="pending-row"] [data-testid="pending-confirm"]').attributes("disabled"))
+      .toBeDefined();
+
+    // 换号后 B 登录重读到 B 的候选。
+    useAuthStore().clear();
+    await flushPromises();
+    phase = "b";
+    loginAs("8");
+    await flushPromises();
+    expect(wrapper.text()).toContain("B：候选待确认。");
+
+    // B：确认自己的候选 211（confirm 挂起，pendingBusyId 再次占用）。
+    await pendingRowOf(wrapper, "B：候选待确认").get('[data-testid="pending-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="pending-row"] [data-testid="pending-confirm"]').attributes("disabled"))
+      .toBeDefined();
+
+    // A 的确认晚到：epoch 已变，不得解锁 B 的在途候选操作。
+    gateA.resolve(response(200, { ...echoMemory("p1"), status: "ACCEPTED", autoSaved: true }));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="pending-row"] [data-testid="pending-confirm"]').attributes("disabled"))
+      .toBeDefined();
+
+    // B 自己的成功回包正常收束。
+    gateB.resolve(response(200, { ...echoMemory("211"), status: "ACCEPTED", autoSaved: true }));
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="pending-row"]')).toHaveLength(0);
     wrapper.unmount();
   });
 

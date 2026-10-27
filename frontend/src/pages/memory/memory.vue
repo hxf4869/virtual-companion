@@ -1195,7 +1195,11 @@ async function doDelete(item: MemoryItem): Promise<void> {
       deleteError.value = "没有删除成功，请再试一次。";
     }
   } finally {
-    deleteBusy.value = false;
+    // 换号清理已释放 deleteBusy 并允许新账号开自己的删除：旧账号的晚到
+    // 收尾按既有 ownerEpoch 比较丢弃，不得解锁新账号的在途删除。
+    if (memory.ownerEpoch === requestEpoch) {
+      deleteBusy.value = false;
+    }
   }
 }
 
@@ -1238,7 +1242,10 @@ async function actOnCandidate(
       rowErrorMessage.value = failureCopy;
     }
   } finally {
-    pendingBusyId.value = null;
+    // 同 deleteBusy：晚到收尾按 ownerEpoch 比较，不清新账号的在途忙态。
+    if (memory.ownerEpoch === requestEpoch) {
+      pendingBusyId.value = null;
+    }
   }
 }
 
