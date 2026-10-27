@@ -6,33 +6,81 @@
 - 进度入口：`TODO.md`「V2 执行序列」——唯一进度记录，本文件不记录进度
 
 本文件是 V2 的唯一计划文件：规定执行顺序、相对快照的调整、每个工作项的依赖与验收入口。
-W00 结论与 W01 模块处置表完成后回填到本文件对应章节。分工（Codex 调度、本机 zcode 实施、
-Claude Code 审计与规划）、调度循环与提示词见调度入口 `docs/planning/2026-10-27-v2-dispatch.md`。
+W00 结论与 W01 模块处置表完成后回填到本文件对应章节。
 
 ## 1. 阅读顺序与优先级
 
-1. 规则优先级：当次用户指令 > `AGENTS.md`（Codex 经 `AGENTS.override.md` 读取）> ADR-0009 > 本计划与调度入口 > 快照。
-2. 快照中 `START_HERE.md`、`prompts/`、`docs/09_agent_protocol.md` 的执行方式不适用；按本计划第 2 节与调度入口执行。
+1. 规则优先级：当次用户指令 > `AGENTS.md` > ADR-0009 > 本计划 > 快照。
+2. 快照中 `START_HERE.md`、`prompts/`、`docs/09_agent_protocol.md` 的执行方式不适用；按本计划第 2 节执行。
 3. 每个工作项只读本计划列出的快照章节、相关代码与契约，不通读整个快照。快照中的
    `MANIFEST.sha256.json`、`BUNDLE_VALIDATION.md`、`templates/` 只是材料自身记录，不需要维护。
 
 ## 2. 执行方式
 
-- **一次一个工作项**，同一时间只有一个执行者写工作树。实施者开始前对照当前 `HEAD`、`TODO.md` 与契约做
-  fit-check，完成后汇报；调度者门禁检查、送审、回填 `TODO.md` 后派发下一项（见调度入口）。
+整个 V2 序列可以连续执行（`AGENTS.md` 允许用一个 Goal 覆盖），按本节的顺序、完成标准与暂停条件逐项推进。
+
+### 2.1 顺序与依赖
+
+按编号顺序推进；一个工作项完成并回填 `TODO.md` 后再开始下一项，同一时间只推进一个工作项。
+依赖满足指依赖项状态为 `DONE` 或 `READY_FOR_OWNER`。
+
+| 项 | 依赖 | 项 | 依赖 |
+|---|---|---|---|
+| W00 | — | W09 | W03、W07 |
+| W01 | W00（结论为可行） | W10 | W05、W09 |
+| W02 | W00 | W11 | W09 |
+| W03 | W00（结论为可行）、W01 | W12 | W03、W05 |
+| W04 | W03 | W13 | W00、W12 |
+| W05 | W00、W03 | W14 | W13 |
+| W06 | W01、W05 | W15 | W04、W08、W10、W14 |
+| W07 | W06 | W16 | W15 |
+| W08 | W07 | | |
+
+只缺 Owner 输入（Stitch 稿、真实凭据、预算、目标手机、部署授权）的工作项照常推进：用合成数据完成可做部分，
+缺输入的子项记为 `BLOCKED`。
+
+### 2.2 每个工作项的做法
+
+- **fit-check**：开始前对照当前 `HEAD`、`TODO.md` 与契约；已满足的部分只验证并记录，不为完成编号重写。
 - **契约先行**：涉及接口、数据或范围约束的工作项，在同一项内同步修改 `specs/catalog`、
   `specs/openapi`、`backend/internal/migrate/sql/`（含 RLS 测试），并用
   `python scripts/checks/catalog_tool.py generate` 重新生成 `specs/generated/**`。ADR-0009 §5 规定了
   catalog / OpenAPI 机器值的生效工作项，提前修改会让契约与实现脱节。
-- **验证**：按 `AGENTS.md` 检查表选择入口。首次引入 ST 扩展 / server plugin 等 Node 代码的工作项
-  须先读 `docs/engineering/checks-principles.md`，再把其测试接入 `scripts/check.sh`，并更新
+- **验证**：按 `AGENTS.md` 检查表对受影响组件做一次相称验证。首次引入 ST 扩展 / server plugin 等 Node 代码的
+  工作项须先读 `docs/engineering/checks-principles.md`，再把其测试接入 `scripts/check.sh`，并更新
   `AGENTS.md` 检查表。
-- **验收记录**：用快照 `docs/08_verification_operations.md` §2 的用例 ID 给出
-  `PASS / FAIL / NOT_RUN / BLOCKED / NOT_APPLICABLE`；实施者写在最终汇报中，调度者回填到 `TODO.md`。跨阶段用例只记录已具备的子项，不提前标整案
-  PASS。不创建单独的证据文件。
+- **依赖**：新增依赖直接引入（ADR-0009 §3），许可须允许非商业自用，版本固定并登记许可。
 - **真实外部动作**：真实模型调用、邮件 / 飞书发送、远端部署按当次会话授权；运行配置未填写时
   使用合成固定 provider 与本地模拟，继续独立开发。
-- **依赖**：新增依赖由实施者直接引入（ADR-0009 §3），许可须允许非商业自用，版本固定并登记许可。
+- **提交**：小步提交，中文提交信息；工作项结束时 `git status` 干净。
+
+### 2.3 回填 TODO
+
+用快照 `docs/08_verification_operations.md` §2 的用例 ID 记录状态；跨阶段用例只记录已具备的子项，
+不提前标整案 PASS。不创建单独的证据文件。
+
+```text
+- [x] `V2-W00` ……（原文不改）
+      结果：DONE（2026-10-28）；提交 <起>..<止>；验证 <命令> PASS
+      用例：C01 PASS；C02 NOT_RUN（原因）；……
+```
+
+状态：全部完成为 `DONE` 并勾选；代码完成但还差 Owner 人工验收为 `READY_FOR_OWNER`，不勾选；
+只完成部分且被 Owner 输入阻塞为 `BLOCKED`，不勾选并写明缺什么。
+
+### 2.4 暂停条件
+
+出现以下情况时停止推进，在 `TODO.md` 当前条目写明已完成部分、阻塞原因和需要的决定，并向 Owner 报告：
+
+- W00 结论为不可行，或实现事实表明 ADR-0009 §1–§2 的范围或架构需要改变；
+- 同一工作项的同一失败经 3 次修复仍未解决；
+- 剩余可做的工作都需要真实模型调用、真实邮件 / 飞书发送或远端部署，而当前会话没有授权；
+- 剩余工作项都被 Owner 项阻塞。
+
+### 2.5 整体完成
+
+W00–W16 均为 `DONE`，或只因 Owner 项保持 `READY_FOR_OWNER` / `BLOCKED`；在最终状态上运行一次
+`bash scripts/check.sh` 并记录结果后停止，等待 Owner 安排最终审计。不自行追加重构或新一轮计划。
 
 ## 3. 相对快照的调整
 
@@ -47,7 +95,7 @@ Claude Code 审计与规划）、调度循环与提示词见调度入口 `docs/p
 | 7 | Stitch 稿由 Owner 提供或在具备 Stitch 访问的会话生成；缺失时页面实现项 `BLOCKED`，后端与兼容验证继续 | 当前 Agent 环境不保证有 Stitch |
 | 8 | 引入 ST 栈的工作项扩展许可清单（`scripts/checks/license-inventory.yaml` 等） | 现有许可门禁只扫描 `backend/go.mod` 与 `frontend/package.json` |
 | 9 | 旧数据不保留：W01 清理 V2 前的旧业务数据与本地备份。B03 改为验证旧数据已清理且未进入 V2；D02–D04 不再包含旧 Go 数据域 | Owner 2026-10-27 决定，替代快照 E3 中“保管、导出与删除责任”的要求 |
-| 10 | W01 在 W00 审计通过后执行（快照允许并行） | 同一工作树一次只运行一个实施者；W01 含不可逆清理，应在确认方向可行后进行 |
+| 10 | W01 在 W00 结论为可行后执行（快照允许并行） | W01 含不可逆清理，应在确认方向可行后进行 |
 
 ## 4. 目录约定（W00 可按实际情况调整并回填）
 
@@ -81,7 +129,7 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
   停止并报告 Owner 重新决策，不进入 W03 / W05。
 - 验证：`git diff --check`；记录实际运行的启动与冒烟命令及结果。
 
-### W01 现有工程盘点与旧数据清理（P0，W00 审计通过后执行）
+### W01 现有工程盘点与旧数据清理（P0，W00 结论为可行后执行）
 
 - 读：WP W01；快照 `docs/01_existing_audit.md` §8、§10；ARCH §13。
 - 盘点：逐模块给出“保留 / 改造 / 替换 / 删除”及理由（认证、关系、记忆、任务、字段加密、导出 / 删除、
@@ -201,8 +249,3 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 ## 7. W01 模块处置表与清理记录（待回填）
 
 尚未执行。
-
-## 8. 派发、门禁与审计
-
-分工、调度循环、依赖表、zcode / Claude Code 调用方式、提示词模板与 Codex 启动提示词见
-`docs/planning/2026-10-27-v2-dispatch.md`。首个派发项为 W00。

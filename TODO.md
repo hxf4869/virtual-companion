@@ -4,16 +4,15 @@
 
 > 决策 `docs/decisions/0009-v2-sillytavern-host-direction.md`；每项的内容与验收入口见
 > `docs/planning/2026-10-27-v2-execution-plan.md`；需求快照 `docs/source/v2-r3/`。
-> 由 Codex 按调度入口 `docs/planning/2026-10-27-v2-dispatch.md` 一次派发一个工作项（zcode 实施、
-> Claude Code 审计）；本节只由调度者回填。用例状态（PASS/FAIL/NOT_RUN/BLOCKED/NOT_APPLICABLE）记在
-> 对应条目下，跨阶段用例只记已具备的子项。B06 为 NOT_APPLICABLE（未选 F1）。本节之后的章节是 V2 前的历史记录。
+> 按执行计划第 2 节的顺序逐项推进，每项完成后按第 2.3 节格式回填本节。用例状态
+> （PASS/FAIL/NOT_RUN/BLOCKED/NOT_APPLICABLE）记在对应条目下，跨阶段用例只记已具备的子项。B06 为 NOT_APPLICABLE（未选 F1）。本节之后的章节是 V2 前的历史记录。
 
-- [x] `V2-W02a` 方向文档对齐（2026-10-27）：ADR-0009、`PRODUCT.md`、`AGENTS.md`、执行计划、调度入口、本节，
+- [x] `V2-W02a` 方向文档对齐（2026-10-27）：ADR-0009、`PRODUCT.md`、`AGENTS.md`、执行计划、本节，
       需求快照入库 `docs/source/v2-r3/`；catalog / OpenAPI 机器值按 ADR-0009 §5 随对应工作项修改。
 - [ ] `V2-W00` ST 宿主可行性验证：写入 / 最终请求 / 认证入口与补丁面，锁定上游版本。最先执行；
       W03、W05、W13 依赖其结论。
 - [ ] `V2-W01` 现有工程盘点与旧数据清理：模块处置表；V2 前旧业务数据与本地备份不保留，盘点后删除。
-      W00 审计通过后执行。
+      W00 结论为可行后执行。
 - [ ] `V2-W02` 设计规范工作副本与 Stitch 桌面 / 手机稿。用例：UI01（设计来源）。
 - [ ] `V2-W03` 原生宿主、C1 保护基线、模型目录与三协议基础。用例：C01、C02、C03、C06、C07、D01、
       MODEL06–MODEL08（基础）、UI03。

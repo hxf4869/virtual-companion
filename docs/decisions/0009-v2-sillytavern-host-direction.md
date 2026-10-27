@@ -60,7 +60,7 @@ PostgreSQL。数据权威划分见快照 `MASTER_PLAN.md` §4，要点：
   并标明许可；向 Owner 以外的人提供网络服务时须按 AGPL 提供对应源码。
 - 现有许可门禁 `scripts/checks/check_licenses.py` 只扫描 `backend/go.mod` 与
   `frontend/package.json`；引入 ST 栈的工作项须把新组件纳入许可清单，不得绕过门禁。
-- 其他生产依赖（MemoryCore、邮件库、飞书 SDK 等）由实施者按需直接引入，不需 Owner 逐项确认
+- 其他生产依赖（MemoryCore、邮件库、飞书 SDK 等）按需直接引入，不需 Owner 逐项确认
   （2026-10-27 Owner 授权）；条件是许可允许非商业自用、版本固定，并登记到上游版本锁或许可清单。
 
 ### 4. 安全策略取舍
@@ -112,7 +112,7 @@ catalog 与 OpenAPI 的机器值在对应工作项中与实现同步修改；在
 ## 后果
 
 - 快照 `docs/source/v2-r3/` 是 V2 需求细节来源；其中 `prompts/` 与 `docs/09_agent_protocol.md`
-  不作为执行指令，执行以 `AGENTS.md`、执行计划与调度入口（`docs/planning/2026-10-27-v2-dispatch.md`）为准。
+  不作为执行指令，执行以 `AGENTS.md` 与执行计划为准。
 - 执行计划在快照 W01–W16 之前增加 W00（ST 宿主可行性验证）；W03 / W05 依赖其结论。
 - 运行配置（模型、Key、预算、SMTP、飞书 Webhook、目标手机、备份与保留期限、Stitch 访问）
   缺失只阻塞依赖它的真实调用或验收，不阻塞合成数据开发。

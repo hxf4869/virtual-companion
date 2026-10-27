@@ -3,9 +3,6 @@
 Codex 在同一目录优先加载 `AGENTS.override.md`，不会自动合并同目录的 `AGENTS.md`。
 开展仓库任务前，先读取同目录的 `AGENTS.md`，将其作为本仓库规则执行；本文件补充以下 Git 要求。
 
-Owner 要求调度 V2 时，Codex 是调度者：按 `docs/planning/2026-10-27-v2-dispatch.md` 派发本机 zcode 实施、
-调用 Claude Code 审计，自己不写业务代码。
-
 - 每次本地提交后立即 `git push` 到当前跟踪的远程分支。
 - 禁止 force push。未要求时不开 PR。
 - 上述推送已有项目授权，无需逐次确认；它规定提交后的动作，不单凭本条创建提交。
