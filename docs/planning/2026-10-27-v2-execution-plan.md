@@ -243,14 +243,19 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 - 读：WP W16；VER §5–§8。
 - 验收：D06、O01；最终报告列出用例状态、三协议 / 两渠道结果、真实费用、E3 旧数据位置与责任。
 
-## 6. W00 结论（2026-10-28 回填）
+## 6. W00 结论（2026-10-28 回填；同日恢复排查后更新）
 
-**总体结论：可行性未闭合，W00 BLOCKED。** 已拉取并锁定四个上游，完成三类入口的初步源码分析，
-取得 ST 启动、Helper/EJS 加载、合成卡导入、角色选择与脚本启用持久化的运行证据。
-但 `window.Mvu` 在三次针对性修复后仍未出现，已触发 §2.4「同一工作项的同一失败经 3 次修复仍未解决」。
-已停止重试；没有完成 ST + Helper + EJS + MVU 的最小组合冒烟，也没有实施或验证拟议补丁。
-源码分析提供了集中补丁的候选接入点，不能据此把 W00 标为可行或完成。
-**W01–W16 均未启动；须由 Owner 决定是否恢复 W00 排查，补齐证据并确认结论后再按依赖推进。**
+**总体结论：最小组合可行性已用运行证据闭合，冒烟两轮全绿。** 四个上游已拉取并锁定；
+三类入口的源码分析结论不变（§6.2、§6.3）。2026-10-28 凌晨的恢复排查定位并修复了
+上一轮 BLOCKED 的数据格式、世界书绑定与测试流程问题后，ST 1.19.0 + Helper 4.11.3 + EJS 1.17.9 +
+MVU（d03b7dc8）的最小组合冒烟在真实浏览器中 19 步全部 PASS（退出码 0，连续两轮复跑一致）：
+合成卡导入（现代字段脚本 + comment [InitVar] 世界书条目）→ 角色选择 → 脚本 iframe 实际执行
+（主页面 `window.Mvu`）→ `[InitVar]` 把 `trust` 初始化为严格值 10 → 真实发送到本地固定
+provider（127.0.0.1:8743，出站请求含角色描述/世界书/用户消息，固定流式回复，DOM 可见渲染）
+→ 聊天 jsonl 原生落盘（含 message 0 变量）→ 页面刷新读回一致。根因与修复细节见 §6.4。
+**W00 技术工作已完成，结论为可行（限本节最小组合与已盘点的补丁路径）。**
+按第 5 节 W00 的“完成后先停下，向 Owner 报告结论，确认后再继续”，当前停在 W00 完成确认点；
+W01–W16 尚未开始，特别是 W01 旧数据清理尚未执行。
 
 ### 6.1 上游版本锁
 
@@ -315,7 +320,7 @@ ST 副本时该路径可能可达，恢复顺序与身份/revision 初始化仍�
 | P12 | chats.js `trySaveChat` 尾部 | 保存完成通知仅用于加速；Go 仍须对账持久内容，不能仅凭事件判定 delivered | 10–20 行接线估计 | 可靠轮询取代通知 |
 | P13 | 自有 server plugin（不改 ST） | 身份/映射/来源查询桥接；聊天写入仍由 ST 受保护入口执行，Go 不平行改写聊天文件 | 未估计 | — |
 | P14 | `src/server-main.js:164` 后单点插入 | ST session handle 与可信头映射一致性校验（不一致清 session 拒绝）；W05 必做，Owner-only 不豁免注销失效与合成账号切换验收 | ~30–40 行 | 上游合入 app 级插件钩子或强制 SSO 模式 |
-| P15 | `src/endpoints/backends/chat-completions.js` | `/generate` 出站前最小校验兜底（覆盖 Helper optionsInjector 晚注册与 custom-request 绕过通道）；配合前端 SETTINGS_READY 扩展 | 30–60 行 | 前端残余通道被上游收口 |
+| P15 | `src/endpoints/backends/chat-completions.js` | 各协议完成消息转换后、实际发送前调用共同内容校验（覆盖 Helper 晚注册与 custom-request 绕过）；路由入口检查不能代替最终出站校验 | 30–60 行 | 前端残余通道被上游收口 |
 | P16 | 同文件新增 `sendResponsesRequest` + prompt-converters 转换 | OpenAI Responses 协议（请求映射、流重组、工具、usage、取消、错误） | 300–500 + 流 100–200 行 | 上游实现 Responses |
 
 表中行数是子代理给出的接线估计，尚未通过实现验证，**不构成总规模承诺**；稳定聊天身份、
@@ -324,7 +329,7 @@ ST 副本时该路径可能可达，恢复顺序与身份/revision 初始化仍�
 每个原生入口应调用同一版本检查/提交实现，不能只先检查再在锁外写入；若后续证据表明无法形成
 集中可重放补丁，仍须按 ADR-0009 §2 停止并重新决策。Responses 属首版明确需求，尚未实现。
 
-### 6.4 实际启动与冒烟命令及结果
+### 6.4 实际启动与冒烟命令及结果（2026-10-28 更新）
 
 ```bash
 # 上游拉取与锁定（gitignored：integrations/sillytavern/upstream/）
@@ -336,46 +341,95 @@ cd SillyTavern && npm install --no-save --no-audit --no-fund --loglevel=error --
 # 以下在仓库根目录执行；脚本与测试依赖均仅保留于本机忽略目录
 bash integrations/sillytavern/.local/scripts/start-st.sh   # PASS：/version → 1.19.0 / 7e8663cd9
 node integrations/sillytavern/.local/scripts/mock-provider.mjs  # 本地固定 provider，:8743
-node integrations/sillytavern/.local/scripts/smoke.mjs     # 退出码 1：S10 FAIL，S11–S15 NOT_RUN
+node integrations/sillytavern/.local/scripts/smoke.mjs     # PASS：19/19 步，退出码 0（连续两轮）
 ```
 
-这里的 S01–S16 是临时脚本步骤编号，**不是 VER §2 的剧情验收用例 S01–S05**。
-冒烟结果（真实浏览器：playwright-core 1.64.1 驱动系统 Chrome 156 headless；结果 JSON 在
-`.local/artifacts/smoke-result.json`，gitignored）：
+这里的 S01–S16 是临时脚本步骤编号，**不是 VER §2 的剧情验收用例 S01–S05**；
+C04（复杂状态卡）全案属 W04 验收，本轮只证明最小合成卡链路，不把 C04 标为 PASS。
+冒烟环境：真实浏览器（playwright-core 1.64.1 驱动系统 Chrome headless）；结果 JSON 与截图在
+`.local/artifacts/`（smoke-result.json、smoke-final.png，gitignored）。
 
-- **已验证的子项**：页面加载与 ST 前端就绪；Helper 加载（`globalThis.TavernHelper` 160 API）；
-  EJS 加载（设置面板 + `pt_enabled=true` + console `ST-Prompt-Template initialized`）；
-  `/api/extensions/discover` 列出两扩展；Chat Completion→Custom 指向本地 mock 连接终态"有效的"
-  （ST custom source 设计上不发探测请求，真实出站证据在发送链）；合成卡导入（含 3 条世界书
-  条目 + 1 条 Helper 脚本，强断言字段齐备）；角色已选中且聊天对象存在开场白（唯一角色名，新聊天；最后一次记录 `dom_mes=0`，不证明开场白已可见渲染）；
-  世界书导入弹窗确认；公开 API 启用角色脚本并持久化（`extension_settings.tavern_helper.script.
-  enabled.characters` 含 avatar，reload 后仍生效）。
-- **S10 FAIL；S11–S15 NOT_RUN**：`window.Mvu` 60s 未出现 → MVU `[InitVar]` 初始化、发送→mock 回复、
-  最终请求内容捕获、聊天 JSONL 落盘全部 NOT_RUN（级联）。三次针对性修复（①Helper 启用弹窗
-  处理——原测试未覆盖 Helper 自有 useModal 弹窗；②唯一角色名隔离消除
-  状态残留；③公开 API 写入启用列表 + reload）后仍未通，已用尽 Owner 允许的修复次数。
-- **诊断事实与限制**：自托管 bundle HTTP 200（611598 字节）；终端 curl 对 testingcf.jsdelivr.net
-  的 vue、log.js 及 gcore.jsdelivr.net 的 vue 三个 URL 均返回 200。这不能排除浏览器 iframe 的
-  请求、模块加载或运行错误。主页面未捕获 console/pageerror，不等于 iframe 内没有错误；
-  脚本启用状态已持久化，但 iframe 是否实际执行及失败原因仍未定位。
+- **两轮全绿（2026-10-28 01:37 / 01:39 本地时间，退出码 0，19 步全 PASS）**。关键正证据：
+  - S06 连接三层读回：UI 输入、模块值（`getContext().chatCompletionSettings` 即 openai.js 的
+    `oai_settings` 活引用；ST 1.19.0 不挂 `window.oai_settings`）、服务端 settings.json 持久化
+    均指向 mock（`custom_url=http://127.0.0.1:8743/v1`、`model=w00-fixed-model`）。
+  - S07 卡导入内容级断言：现代字段 `data.extensions.tavern_helper.scripts[0]` 为
+    `enabled=true` 且 `content` 含自托管 bundle 路径；`[InitVar]` 条目在 comment 字段。
+  - S09/S09b：世界书导入（同名覆盖）+ 主世界书绑定（见下"根因 2/3"）；reload 后
+    avatar 仍在 `tavern_helper.script.enabled.characters` 且 `primary` 绑定保持。
+  - S10：主页面 `window.Mvu`（typeof=object，含 getMvuData、parseMessage、getMvuVariable 等接口；MVU `initGlobals` 挂 `window.parent`）。
+  - S11：`Mvu.getMvuVariable(trust)=10`（存储形态 `[10,"信任度，[0,100]"]`）——严格值，非仅存在。
+  - S12：真实发送 → mock 固定流式回复；`dom_mes=3 ≥ chat len=3`（并经最终截图确认三条消息可见）。
+  - S14：mock 捕获最终出站请求体：11 条 messages，含用户消息、角色描述、关键词命中的世界书条目
+    （关键词激活）、常驻条目、角色名，`model=w00-fixed-model`、`stream=true`。
+  - S15/S15b：聊天 jsonl 4 行原生落盘（msg0.variables 含 trust、integrity 存在）；
+    页面刷新并重新选择同一角色后，聊天 3 条、DOM 3 条、末条回复与 trust=10 均读回；不宣称自动恢复角色或自动重连。
 
-验证结束后已停止本轮 ST（8742）与固定 provider（8743）进程；本机合成数据和失败结果保留。
+- **上一轮 BLOCKED 的根因与修复（本轮证实并闭合，历史记录保留）**：
+  1. **fixture 脚本字段错误（数据根因 1）**：旧字段 `data.extensions.TavernHelper_scripts` 里放
+     现代直接形状（`type:'script'` + 直接字段、无 `value` 包装）时，Helper 0af42106 的 Zod
+     `ScriptTree` union 先命中 `ScriptItem` 分支（`{type:'script', value:ScriptData}`），缺失的
+     `value` 被 `.prefault({})` 兜底成空对象，直接字段全部剥离——迁移产物为
+     `enabled:false、name:''、content:''、id:新生成 uuid`（导入后 PNG 落盘实测逐字段吻合）。
+     每条脚本再被 `enabled` 过滤（`src/store/scripts.ts:83-92`），disabled 空脚本永远进不了
+     iframe，`window.Mvu` 因此不可能出现。修复：改写现代字段
+     `data.extensions.tavern_helper.scripts[]`（直接 Script 形状，`enabled:true`）。
+  2. **[InitVar] 标记位置错误（数据根因 2）**：MVU 只识别世界书条目 **comment** 字段含
+     `[initvar]`（`variable_init.ts:271`），fixture 原写在 name 上，即使脚本执行 trust 也不会
+     初始化。修复：标记移入 comment（ST 导入按 `convertCharacterBook` 原样保留 comment）。
+  3. **角色主世界书绑定不持久（集成事实 3）**：ST 1.19.0 的导入确认弹窗只写世界书文件与
+     编辑表单 hidden input（`#character_world`，`index.html:6206`），不写
+     `characters[chid].data.extensions.world`；编辑器不保存则绑定丢失，MVU 的
+     `getEnabledLorebookList` 扫描不到任何书。修复：Helper 公开 API
+     `setCurrentCharLorebooks({ primary, additional: [] })` 显式绑定（内部走
+     `editCurrentCharacter` 落盘）；`additional` 必须显式传 `[]`——缺省时 `_.concat` 拼入
+     `undefined` 元素被判为"缺失的空书名"而报错（Helper 0af42106 潜在缺陷，已实测）。
+  4. **测试缺陷（本轮修复的 smoke.mjs 断言/门控）**：本机 playwright-core 1.64.1 的 `page.waitForFunction(async …)` 把返回的
+     Promise 当 truthy 立即假通过（实测 26ms，`.local/scripts/test-wff.mjs`），导致"持久化已确认"
+     为假象、reload 与 debounced 保存竞态；`/api/settings/get` 返回 `{settings:"<JSON 字符串>"}`
+     信封，直接读顶层字段恒 undefined；custom source 在页面 reload 后不自动重连
+     （onlineStatus=no_connection、`#send_but` 隐藏、welcome 屏未离开），发送前须重新触发连接并
+     等待按钮可见；`window.oai_settings` 不存在，模块值用 `getContext().chatCompletionSettings`。
+     以上均已改为 Node 侧条件轮询（page.evaluate 返回已解析值）、信封解析、重连 + 可见按钮 +
+     `/go` 兜底，并收紧了 S04/S07/S09b/S10/S11/S12/S14/S15/S15b 断言与 S03–S05/S11 门控传递。
+- **上一轮三次修复未解的历史**：弹窗处理、唯一角色名、公开 API 启用列表均为真实但未命中上述
+  数据根因；本轮为恢复排查轮次，根因证据先行（子代理源码链验证 + 落盘对照），修正后
+  依赖链逐步闭合。S06 断言增强暴露的 `window.oai_settings` 误读与 S09b 竞态属测试自身缺陷，
+  修复均基于实证，未虚增通过状态。
+
+验证结束后已关闭本轮 ST（8742）与固定 provider（8743）进程。本机忽略目录保留修正后的
+冒烟脚本、合成数据与结果产物；实际修复位于本机测试卡生成/测试脚本，仓库更新版本锁运行状态
+与本节记录，没有产品业务代码或上游补丁改动。这些临时脚本不是仓库新增测试编排入口。
 
 ### 6.5 结论与限制
 
-1. **W00 BLOCKED，触发 §2.4 三次修复暂停条件。** 没有运行第四次修复；W01 以及依赖 W00 的
-   后续工作均未启动。需要 Owner 决定是否恢复 W00 定位 Helper 角色脚本加载，不能把该阻塞推迟到 W03。
-2. **R-CDN（版本锁限制）**：Helper 4.11.3 的 iframe 运行期引用未锁版本的 CDN 资源，涉及
-   jquery/jquery-ui/vue/vue-router/fontawesome/log.js。四个仓库 commit 已固定，不等于完整运行依赖
-   已固定；后续必须补齐这些资源的固定版本/自托管，不能直接接受可变 URL 为完成状态。
-3. **恢复排查的候选入口（未执行）**：获准继续 W00 后，用 headed 浏览器检查当前角色的 Helper
-   脚本库、实际 iframe 创建、frame console 与 network；保留现有合成状态，不先假设是网络故障。
-   本机忽略目录保留测试脚本与失败结果；这些临时脚本不是仓库新增测试编排入口。
-4. **未验证项**：F2 原子基线检查、稳定身份/删除墓碑/恢复顺序、监听器运行时顺序、三协议最终
-   出站与工具后续轮次、Go/ST 绑定均未实现或未运行。静态定位只提供后续设计输入，不记为用例 PASS。
-5. **委派设置**：ZCode 主会话界面为 GLM-5.3／最高思考；3 个 `general-purpose` 只读子代理
-   已完成，无嵌套、无写入。ZCode 报告子代理元数据为 `claude-fable-5-1`，无法据此确认其实际模型
-   符合 GLM-5.3 要求，后续委派须先核实；本轮不声称子代理模型配置已满足。
+1. **最小组合可行性已闭合（2026-10-28）**：ST + Helper + EJS + MVU 四组件固定版本的最小冒烟
+   两轮全绿（§6.4），此前 §2.4 触发的三次修复暂停条件已由恢复排查轮次解除。W00 的验收入口
+   （版本锁、入口盘点、最小冒烟、命令与结果记录）证据已齐，W00 标记 DONE；按第 5 节 W00
+   完成确认点，等待 Owner 确认后再进入 W01。
+2. **R-CDN（版本锁限制，仍未闭合）**：Helper 4.11.3 的 iframe 运行期引用未锁版本的 CDN 资源，
+   涉及 jquery/jquery-ui/vue/vue-router/fontawesome/log.js。四个仓库 commit 已固定，不等于完整
+   运行依赖已固定；W03 接入运行栈时必须补齐这些资源的固定版本/自托管，不能直接接受可变 URL 为完成状态。
+   （本轮冒烟证明当前 CDN 可达且脚本可执行，不改变该限制。）
+3. **本轮新增的集成事实（对 W03/W04 有直接影响）**：
+   - Helper 旧字段迁移陷阱：`TavernHelper_scripts` + 直接形状 + `type:'script'` 会被
+     `value.prefault({})` 转换成 disabled 空脚本；自有合成卡采用现代字段
+     `data.extensions.tavern_helper`。这不否定 Helper 对合法旧格式的原生迁移支持。
+   - 本轮原生导入流程未持久化角色主世界书绑定（`data.extensions.world`）；已验证的接入方式
+     是通过 Helper 公开 API 保存绑定，并检查刷新后的值。W04 制卡应复用已验证的绑定流程。
+   - MVU `[InitVar]` 只认世界书条目 comment；变量存储为 `键:[值,注释]` 元组。
+   - custom source 在页面 reload 后不自动重连；`window.oai_settings` 不存在，模块值经
+     `getContext().chatCompletionSettings` 读取。
+   - 测试工具事实：本机 playwright-core 1.64.1 的异步 `waitForFunction` 谓词有假通过复现；
+     `/api/settings/get` 返回字符串信封。后续集成测试须等待已解析的实际结果，再判断条件是否成立。
+4. **未验证项（不变）**：F2 原子基线检查、稳定身份/删除墓碑/恢复顺序、监听器运行时顺序、
+   三协议最终出站与工具后续轮次、Go/ST 绑定均未实现或未运行。§6.2/§6.3 的补丁清单仍是
+   设计候选。静态定位与最小冒烟只证明链路连通，不记为 VER 用例 PASS。
+5. **委派设置**：恢复排查轮（2026-10-28）ZCode 主会话为 GLM-5.3／最高思考（个人套餐）；
+   2 个 `general-purpose` 只读子代理（A：schema 转换验证；B：冒烟断言审查）已完成并结束，
+   无嵌套、无写入。Codex 在 ZCode 子代理详情面板确认两者显示"正在使用 GLM-5.3(个人套餐)"，
+   以此 UI 证据记录模型符合要求；子代理思考级别无单独证据，不作声明。上一轮
+   `claude-fable-5-1` 元数据不足以判断实际模型，本轮补充了直接 UI 证据。
 6. 目录约定（§4）已应用于 `.gitignore` 和 `upstream.lock.json`；未创建业务扩展或核心补丁。
    进度与提交记录仅写入 TODO 的 V2-W00 条目。
 
