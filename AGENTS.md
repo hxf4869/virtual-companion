@@ -34,6 +34,10 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
   不作为执行指令。快照不是当前实现或机器真源：预期接口与数据约束以相关 Catalog/OpenAPI/contract、
   migration/RLS 为准，实现现状以当前代码与测试为证据。发现契约和实现不一致时指出具体差异，
   在当前任务内处理；不因实现已有偏差就改写契约。ADR-0009 规定了 catalog / OpenAPI 机器值随哪个工作项修改。
+- V2 分工：Codex 调度、本机 zcode 实施、Claude Code 审计与规划；循环、调用方式与提示词见
+  `docs/planning/2026-10-27-v2-dispatch.md`。实施者不改 `TODO.md`，「V2 执行序列」只由调度者回填；
+  同一时间只有一个执行者写工作树。V2 工作项内新增依赖、W01 清理 V2 前旧业务数据与本地备份
+  已获 Owner 持久授权（ADR-0009），不再逐项确认。
 - `docs/source/v0.4/` 蓝图与 `docs/planning/2026-08-22-product-enhancement-roadmap.md` 已被 V2 替代，只作历史参考。
 - Go runtime 以 `docs/decisions/0007-go-companion-runtime.md` 与
   `docs/planning/2026-08-30-go-companion-runtime-redesign.md` 为准，ADR-0009 替代的条款除外；API 范围为
@@ -45,7 +49,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
   人工步骤未完成的条目不勾选完成。
 - 只有用户明确要求持续执行或使用 `/goal` 时，才进入 Goal 模式；一次只设一个可验证目标、一个路线图 ID
   （含 `V2-Wxx`）或其单一写入 owner 子交付，并明确停止条件和验证入口。Goal 不是完成普通实现请求的前提；
-  不因任务未使用 Goal 就提前停止，也不自动扩展到下一个 Backlog 项。
+  不因任务未使用 Goal 就提前停止，也不自动扩展到下一个 Backlog 项（V2 调度者按调度入口推进下一项除外）。
 - 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、
   机器真源和已对账的路线图条目，不恢复下述历史档案流程。
 

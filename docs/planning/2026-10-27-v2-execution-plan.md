@@ -6,20 +6,20 @@
 - 进度入口：`TODO.md`「V2 执行序列」——唯一进度记录，本文件不记录进度
 
 本文件是 V2 的唯一计划文件：规定执行顺序、相对快照的调整、每个工作项的依赖与验收入口。
-W00 结论与 W01 模块处置表完成后回填到本文件对应章节。
+W00 结论与 W01 模块处置表完成后回填到本文件对应章节。分工（Codex 调度、本机 zcode 实施、
+Claude Code 审计与规划）、调度循环与提示词见调度入口 `docs/planning/2026-10-27-v2-dispatch.md`。
 
 ## 1. 阅读顺序与优先级
 
-1. 规则优先级：当次用户指令 > `AGENTS.md`（Codex 经 `AGENTS.override.md` 读取）> ADR-0009 > 本计划 > 快照。
-2. 快照中 `START_HERE.md`、`prompts/`、`docs/09_agent_protocol.md` 的“W01–W16 连续推进、不再询问、
-   依赖选型不逐项审批”不适用；按本计划第 2 节执行。
+1. 规则优先级：当次用户指令 > `AGENTS.md`（Codex 经 `AGENTS.override.md` 读取）> ADR-0009 > 本计划与调度入口 > 快照。
+2. 快照中 `START_HERE.md`、`prompts/`、`docs/09_agent_protocol.md` 的执行方式不适用；按本计划第 2 节与调度入口执行。
 3. 每个工作项只读本计划列出的快照章节、相关代码与契约，不通读整个快照。快照中的
    `MANIFEST.sha256.json`、`BUNDLE_VALIDATION.md`、`templates/` 只是材料自身记录，不需要维护。
 
 ## 2. 执行方式
 
-- **一次一个工作项**（或其单一写入 owner 子交付）。开始前对照当前 `HEAD`、`TODO.md` 与契约做
-  fit-check；完成后回填 `TODO.md` 并停止，下一项由 Owner 派发。
+- **一次一个工作项**，同一时间只有一个执行者写工作树。实施者开始前对照当前 `HEAD`、`TODO.md` 与契约做
+  fit-check，完成后汇报；调度者门禁检查、送审、回填 `TODO.md` 后派发下一项（见调度入口）。
 - **契约先行**：涉及接口、数据或范围约束的工作项，在同一项内同步修改 `specs/catalog`、
   `specs/openapi`、`backend/internal/migrate/sql/`（含 RLS 测试），并用
   `python scripts/checks/catalog_tool.py generate` 重新生成 `specs/generated/**`。ADR-0009 §5 规定了
@@ -27,13 +27,12 @@ W00 结论与 W01 模块处置表完成后回填到本文件对应章节。
 - **验证**：按 `AGENTS.md` 检查表选择入口。首次引入 ST 扩展 / server plugin 等 Node 代码的工作项
   须先读 `docs/engineering/checks-principles.md`，再把其测试接入 `scripts/check.sh`，并更新
   `AGENTS.md` 检查表。
-- **验收记录**：用快照 `docs/08_verification_operations.md` §2 的用例 ID，在 `TODO.md` 对应工作项下记录
-  `PASS / FAIL / NOT_RUN / BLOCKED / NOT_APPLICABLE`。跨阶段用例只记录已具备的子项，不提前标整案
+- **验收记录**：用快照 `docs/08_verification_operations.md` §2 的用例 ID 给出
+  `PASS / FAIL / NOT_RUN / BLOCKED / NOT_APPLICABLE`；实施者写在最终汇报中，调度者回填到 `TODO.md`。跨阶段用例只记录已具备的子项，不提前标整案
   PASS。不创建单独的证据文件。
 - **真实外部动作**：真实模型调用、邮件 / 飞书发送、远端部署按当次会话授权；运行配置未填写时
   使用合成固定 provider 与本地模拟，继续独立开发。
-- **依赖**：ST、Tavern Helper、EJS、MVU 已由 ADR-0009 接受；其他新增生产依赖引入前向 Owner 说明
-  用途、许可和替代方案，确认后再加入。
+- **依赖**：新增依赖由实施者直接引入（ADR-0009 §3），许可须允许非商业自用，版本固定并登记许可。
 
 ## 3. 相对快照的调整
 
@@ -44,10 +43,11 @@ W00 结论与 W01 模块处置表完成后回填到本文件对应章节。
 | 3 | 前台安全策略按 ADR-0009 §4 | 快照未处理 ST 前台绕过 Go 本地安全策略的问题 |
 | 4 | W00 把上游锁到 tag / commit，下载后记录产物 SHA256 | 快照 `upstreams.lock.json` 中 MVU 用 `beta`、Helper / Pi 用 `main`、MemoryCore 用 `feat/server_team` 分支 |
 | 5 | 模型目录唯一权威在 Go；Go 已有三协议 adapter（`backend/internal/provider/factory.go`），ST 前台补齐自身三协议，不新增第三条模型链 | 避免两套配置与第三条调用链 |
-| 6 | 邮件发送需新引入实现（仓库没有 SMTP 代码），W10 选型后经 Owner 确认 | 快照假设“复用现有发信能力”，本仓库不成立 |
+| 6 | 邮件发送需新引入实现（仓库没有 SMTP 代码），W10 直接选型引入 | 快照假设“复用现有发信能力”，本仓库不成立 |
 | 7 | Stitch 稿由 Owner 提供或在具备 Stitch 访问的会话生成；缺失时页面实现项 `BLOCKED`，后端与兼容验证继续 | 当前 Agent 环境不保证有 Stitch |
 | 8 | 引入 ST 栈的工作项扩展许可清单（`scripts/checks/license-inventory.yaml` 等） | 现有许可门禁只扫描 `backend/go.mod` 与 `frontend/package.json` |
-| 9 | 旧 Go 数据的现有清理任务是否继续由 Owner 在 W01 后决定 | ADR-0006 §7.1 的 30 天正文清理与 E3“旧数据不自动删除”需要明确取舍 |
+| 9 | 旧数据不保留：W01 清理 V2 前的旧业务数据与本地备份。B03 改为验证旧数据已清理且未进入 V2；D02–D04 不再包含旧 Go 数据域 | Owner 2026-10-27 决定，替代快照 E3 中“保管、导出与删除责任”的要求 |
+| 10 | W01 在 W00 审计通过后执行（快照允许并行） | 同一工作树一次只运行一个实施者；W01 含不可逆清理，应在确认方向可行后进行 |
 
 ## 4. 目录约定（W00 可按实际情况调整并回填）
 
@@ -81,14 +81,16 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
   停止并报告 Owner 重新决策，不进入 W03 / W05。
 - 验证：`git diff --check`；记录实际运行的启动与冒烟命令及结果。
 
-### W01 现有工程与旧数据盘点（P0，可与 W00 并行）
+### W01 现有工程盘点与旧数据清理（P0，W00 审计通过后执行）
 
-- 读：WP W01；快照 `docs/01_existing_audit.md` §8、§10；ARCH §13、§16。
-- 做：逐模块给出“保留 / 改造 / 替换 / 删除”及理由（认证、关系、记忆、任务、字段加密、导出 / 删除、
-  provider、realtime、Vue 前端）；只读盘点旧聊天、来源、记忆、任务、导出对象与备份的存放位置和
-  导出 / 删除入口；列出现有保留期清理任务对旧数据的影响。
-- 产出：回填本计划第 7 节；旧数据保留问题提交 Owner 决定（TODO `V2-OWNER-LEGACY-RETENTION`）。
-- 验证：`git diff --check`。
+- 读：WP W01；快照 `docs/01_existing_audit.md` §8、§10；ARCH §13。
+- 盘点：逐模块给出“保留 / 改造 / 替换 / 删除”及理由（认证、关系、记忆、任务、字段加密、导出 / 删除、
+  provider、realtime、Vue 前端）；列出 V2 前旧业务数据的位置：PostgreSQL 中的会话、消息、记忆、任务、
+  同意与导出记录，对象存储中的导出对象，本地加密备份与删除 tombstone manifest。
+- 清理：删除上述旧业务数据与本地备份，不导出（ADR-0009 E3）。Owner 账号与身份验证器可清除后重建，
+  是否保留按 W05 需要决定。只清理本仓库服务在本机产生的数据，不碰其他项目或 OrbStack 中的无关容器与卷。
+- 产出：回填本计划第 7 节（处置表、实际执行的清理命令与删除范围）。
+- 验证：只读查询确认清理目标已空；`git diff --check`。
 
 ### W02 设计规范与 Stitch 稿（P0）
 
@@ -101,7 +103,7 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 ### W03 原生宿主、存储保护与模型配置基础（P1）
 
 - 读：WP W03；ARCH §8、§15、§17；`fixtures/model_profiles.json`。
-- 依赖：W00 结论为可行。
+- 依赖：W00 结论为可行；W01。
 - 做：固定版本 ST 栈的开发启动方式；C1 开发环境保护基线；Go 模型目录 Provider → Model → 用途绑定，
   ST 前台作为受版本同步的投影；ST 侧三协议（含 Responses 真实语义适配，不只换路径）。
 - 契约：`product-scope.yaml` `technology.currentRuntime` / `targetRuntime` 与 `catalog_tool.py` 校验；
@@ -141,8 +143,8 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 ### W08 记忆实现对照与管理闭环（P3）
 
 - 读：WP W08；MEM；快照 `docs/02_reuse_and_licenses.md`。
-- 做：现有 Go 记忆与 MemoryCore 按 scope、来源、纠正、删除、导出对照；外部引擎进入正式路径前
-  经 Owner 确认依赖；记忆查看 / 纠正 / 遗忘页面（依赖设计稿）。
+- 做：现有 Go 记忆与 MemoryCore 按 scope、来源、纠正、删除、导出对照，选定后直接接入，只保留一个
+  提取责任方；记忆查看 / 纠正 / 遗忘页面（依赖设计稿）。
 - 验收：M01–M12 全部；MODEL05。
 
 ### W09 跟进、时间与 G2 后台配置（P4）
@@ -155,7 +157,7 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 - 读：WP W10；ARCH §5、§11。
 - 依赖：W05（F2）、W09。
 - 做：inbox 领取 / 保存 / ACK；SMTP 与飞书群 Webhook 两个渠道，独立投递记录、重试、quiet hours、
-  结果未知状态；通知文本经本地安全策略；邮件库选型经 Owner 确认。
+  结果未知状态；通知文本经本地安全策略；邮件库按需选型直接引入。
 - 契约：开启 `PUSH_NOTIFICATION` 同意（OpenAPI 同意枚举、`V41__consent_records.sql` 起的同意记录），
   按需更新 `processing-purposes.yaml` / `data-categories.yaml`。
 - 验收：C08、B04、N01–N03；A04 需 Owner 配置真实目标并在手机上验证。
@@ -196,22 +198,11 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 
 尚未执行。
 
-## 7. W01 模块处置表（待回填）
+## 7. W01 模块处置表与清理记录（待回填）
 
 尚未执行。
 
-## 8. Codex 启动提示词
+## 8. 派发、门禁与审计
 
-派发单个工作项时，将 `<Wxx>` 替换为工作项编号后发送：
-
-```text
-执行 V2-<Wxx>。先读 AGENTS.md、docs/decisions/0009-v2-sillytavern-host-direction.md、
-docs/planning/2026-10-27-v2-execution-plan.md 第 1–4 节与 <Wxx> 小节，再读该小节列出的
-docs/source/v2-r3/ 章节、相关代码与契约。核对 git status 与 TODO.md「V2 执行序列」，保护未提交改动。
-只做 <Wxx> 的范围；契约、迁移、生成物与实现同项同步；按 AGENTS.md 检查表做一次相称验证；
-在 TODO.md 回填用例状态（PASS/FAIL/NOT_RUN/BLOCKED/NOT_APPLICABLE）后提交并停止。
-真实模型、邮件 / 飞书发送、远端部署和新增非必需依赖需要我在本会话授权；
-运行配置缺失时用合成数据继续，并在 TODO 标明阻塞项。
-```
-
-首个派发建议 W00；W01 只读盘点，可与 W00 并行派发。
+分工、调度循环、依赖表、zcode / Claude Code 调用方式、提示词模板与 Codex 启动提示词见
+`docs/planning/2026-10-27-v2-dispatch.md`。首个派发项为 W00。
