@@ -79,6 +79,32 @@ def validate(root: Path) -> list[str]:
         errors.append("source: ErrorCode must be a string enum")
     if "NOT_FOUND_OR_FORBIDDEN" not in (error_code.get("enum") or []):
         errors.append("source: ErrorCode must include NOT_FOUND_OR_FORBIDDEN (existence hiding)")
+    # M7: the OpenAPI ErrorCode enum must mirror the error-codes catalog (the
+    # single source of truth) as an exact set. Only set consistency is checked
+    # here; catalog content itself stays catalog_tool's responsibility.
+    enum_codes = set(error_code.get("enum") or [])
+    catalog_path = root / "specs/catalog/error-codes.yaml"
+    if catalog_path.exists():
+        try:
+            catalog_codes = {
+                entry.get("code")
+                for entry in load_yaml(catalog_path).get("entries", [])
+                if isinstance(entry, dict)
+            } - {None}
+        except ValueError:
+            errors.append(f"source: cannot parse {catalog_path.relative_to(root)}")
+        else:
+            if catalog_codes:
+                missing = sorted(catalog_codes - enum_codes)
+                extra = sorted(enum_codes - catalog_codes)
+                if missing:
+                    errors.append(
+                        "source: ErrorCode enum missing catalog codes: " + ", ".join(missing)
+                    )
+                if extra:
+                    errors.append(
+                        "source: ErrorCode enum has codes absent from catalog: " + ", ".join(extra)
+                    )
     paths = doc.get("paths", {})
     if not paths:
         errors.append("source: at least one path is required")
@@ -94,7 +120,67 @@ def validate(root: Path) -> list[str]:
     return errors
 
 
+def symlinked_component_below(root: Path, target: Path) -> Path | None:
+    """First symlinked path component strictly below an already-resolved root
+    (target included), or None. Aliases above the repository root stay
+    normalized because callers resolve root first; redirections inside it
+    do not."""
+    current = root
+    for part in target.relative_to(root).parts:
+        current = current / part
+        if current.is_symlink():
+            return current
+    return None
+
+
+def ensure_safe_output_dir(root: Path, out: Path) -> None:
+    """Refuse output targets whose deletion would destroy non-generated content.
+
+    resolve() normalizes '..' and follows symlinks so the checks below operate
+    on the real target location, not on the spelling of the path. The
+    tool-owned default directory keeps its recursive-delete permission only
+    while the lexical chain from the repository root down to it is
+    symlink-free: a redirected default (specs/openapi/dist -> anywhere) must
+    not inherit that permission just because its target still sits inside the
+    repository.
+    """
+    root = root.resolve()
+    resolved = out.resolve()
+    home = Path.home().resolve()
+    protected = {root, home, *root.parents, *home.parents}
+    if resolved in protected:
+        raise ValueError(
+            f"refusing output directory {resolved}: deleting it would destroy "
+            "the repository root, the home directory, or a directory above one of them"
+        )
+    source = (root / "specs/openapi/virtual-companion.yaml").resolve()
+    if resolved == source or source.is_relative_to(resolved):
+        raise ValueError(
+            f"refusing output directory {resolved}: it contains generator inputs "
+            f"({source.parent})"
+        )
+    default_out = root / "specs/openapi/dist"
+    if resolved == default_out.resolve():
+        redirect = symlinked_component_below(root, default_out)
+        if redirect is not None:
+            raise ValueError(
+                f"refusing default output directory {default_out}: "
+                f"{redirect.relative_to(root)} is a symlink to {redirect.resolve()}; "
+                "the tool-owned output must be a real directory, not a redirected alias"
+            )
+        return
+    if resolved.exists():
+        if not resolved.is_dir():
+            raise ValueError(f"refusing output path {resolved}: not a directory")
+        if any(resolved.iterdir()):
+            raise ValueError(
+                f"refusing non-empty custom output directory {resolved}: "
+                "custom --output must not exist or must be empty"
+            )
+
+
 def generate(root: Path, out: Path) -> None:
+    ensure_safe_output_dir(root, out)
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -170,7 +256,11 @@ def main() -> int:
         return 0
     if args.command == "generate":
         out = (args.output or root / "specs/openapi/dist").resolve()
-        generate(root, out)
+        try:
+            generate(root, out)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
         print(f"Generated: {out}")
         return 0
     diffs = diff_generated(root)

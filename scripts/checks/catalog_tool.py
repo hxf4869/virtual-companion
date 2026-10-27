@@ -383,7 +383,66 @@ def enum_sources(root: Path) -> list[tuple[str, list[str]]]:
     return result
 
 
+def symlinked_component_below(root: Path, target: Path) -> Path | None:
+    # First symlinked path component strictly below an already-resolved root
+    # (target included), or None. Aliases above the repository root stay
+    # normalized because callers resolve root first; redirections inside it
+    # do not.
+    current = root
+    for part in target.relative_to(root).parts:
+        current = current / part
+        if current.is_symlink():
+            return current
+    return None
+
+def ensure_safe_output_dir(root: Path, out: Path) -> None:
+    """Refuse output targets whose deletion would destroy non-generated content.
+
+    resolve() normalizes '..' and follows symlinks so the checks below operate
+    on the real target location, not on the spelling of the path. The
+    tool-owned default directory keeps its recursive-delete permission only
+    while the lexical chain from the repository root down to it is
+    symlink-free: a redirected default (specs/generated -> anywhere) must not
+    inherit that permission just because its target still sits inside the
+    repository.
+    """
+    root = root.resolve()
+    resolved = out.resolve()
+    home = Path.home().resolve()
+    protected = {root, home, *root.parents, *home.parents}
+    if resolved in protected:
+        raise ValueError(
+            f"refusing output directory {resolved}: deleting it would destroy "
+            "the repository root, the home directory, or a directory above one of them"
+        )
+    sources = (root / "specs/catalog").resolve()
+    if resolved == sources or sources.is_relative_to(resolved):
+        raise ValueError(
+            f"refusing output directory {resolved}: it contains generator inputs "
+            f"({sources})"
+        )
+    default_out = root / "specs/generated"
+    if resolved == default_out.resolve():
+        redirect = symlinked_component_below(root, default_out)
+        if redirect is not None:
+            raise ValueError(
+                f"refusing default output directory {default_out}: "
+                f"{redirect.relative_to(root)} is a symlink to {redirect.resolve()}; "
+                "the tool-owned output must be a real directory, not a redirected alias"
+            )
+        return
+    if resolved.exists():
+        if not resolved.is_dir():
+            raise ValueError(f"refusing output path {resolved}: not a directory")
+        if any(resolved.iterdir()):
+            raise ValueError(
+                f"refusing non-empty custom output directory {resolved}: "
+                "custom --output must not exist or must be empty"
+            )
+
+
 def generate(root: Path, out: Path) -> None:
+    ensure_safe_output_dir(root, out)
     if out.exists(): shutil.rmtree(out)
     ts_dir = out / "typescript"; openapi_dir = out / "openapi"; sql_dir = out / "sql"
     for d in (ts_dir, openapi_dir, sql_dir): d.mkdir(parents=True, exist_ok=True)
@@ -445,7 +504,13 @@ def main() -> int:
         return 1
     if args.command == "validate": print("Catalog validation: PASS"); return 0
     if args.command == "generate":
-        out=(args.output or root/"specs/generated").resolve(); generate(root,out); print(f"Generated: {out}"); return 0
+        out=(args.output or root/"specs/generated").resolve()
+        try:
+            generate(root,out)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        print(f"Generated: {out}"); return 0
     diffs=diff_generated(root)
     if diffs:
         for d in diffs: print(f"DRIFT: {d}", file=sys.stderr)
