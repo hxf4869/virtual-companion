@@ -6,56 +6,40 @@ import (
 	"context"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
-// TestMemoryExtractPrepareAttemptBoundary pins the V133 pre-flight and outcome
-// contract against the real database: a withdrawn consent that committed
-// before prepare refuses the attempt (CONSENT_WITHDRAWN), a granted owner
-// gets an EXTRACTABLE attempt registered with the actual outbound category
-// (MESSAGE_TEXT) allowed, usage settles write-once as USAGE_REPORTED or
-// UNKNOWN (never zero), a replay-only retry reuses the stored successful
-// payload WITHOUT registering a new attempt (attempt id 0, no second usage
-// row) and the stored payload rests as plaintext JSON, a superseded CREATED attempt
-// is abandoned with an UNKNOWN disposition (it may already have gone
-// outbound), and a stale claim token fences the holder out (CLAIM_LOST)
-// without creating any attempt row.
+// TestMemoryExtractPrepareAttemptBoundary pins the pre-flight and outcome
+// contract against the real database on ST_MEMORY_EXTRACT: a withdrawn consent
+// that committed before prepare refuses the attempt (CONSENT_WITHDRAWN), a
+// granted owner gets an EXTRACTABLE attempt registered with the actual
+// outbound category (MESSAGE_TEXT) allowed, usage settles write-once as
+// USAGE_REPORTED or UNKNOWN (never zero), a replay-only retry reuses the
+// stored successful payload WITHOUT registering a new attempt (attempt id 0,
+// no second usage row) and the stored payload rests as plaintext JSON, a
+// superseded CREATED attempt is abandoned with an UNKNOWN disposition (it may
+// already have gone outbound), and a stale claim token fences the holder out
+// (CLAIM_LOST) without creating any attempt row.
 func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	resetFixtures(t)
 	ctx := context.Background()
 	store := testEnv.store
-	if _, err := store.UpdateMemoryAutoSavePref(ctx, 1, true); err != nil {
-		t.Fatal(err)
+	useSTExtractRoute(t, store)
+	sourceID := openSTExtractSource(t, store, sourceChat, "extract-card", sourceMessage, sourceCandidate, "边界来源")
+	jobs := stExtractJobIDs(t, store, 1)
+	if len(jobs) != 1 {
+		t.Fatalf("ST extract jobs %v, want 1", jobs)
 	}
-	conv, err := store.CreateConversation(ctx, 1, 10, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	genID, _, _ := seedFinishedTurn(t, 1, conv, "COMPLETED", false, false)
-	jobID, err := store.EnqueueMemoryExtract(ctx, 1, genID)
-	if err != nil || jobID <= 0 {
-		t.Fatalf("enqueue job=%d err=%v", jobID, err)
-	}
-	claims, err := store.ClaimJobs(ctx, 30*time.Second, 30*time.Second, 30*time.Second, 32, 32, 32)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var claim JobClaim
-	found := false
-	for _, c := range claims {
-		if c.Kind == "MEMORY_EXTRACT" && c.JobID == jobID {
-			claim, found = c, true
-		}
-	}
-	if !found {
-		t.Fatalf("claimed set %v misses extract job %d", claims, jobID)
+	jobID := jobs[0]
+	claim := claimSTExtract(t, store, jobID)
+	if claim.RefID != sourceID {
+		t.Fatalf("extract ref %d, want source %d", claim.RefID, sourceID)
 	}
 
 	// No consent granted yet: the withdrawal state that committed before the
 	// prepare transaction refuses the attempt with no outbound.
-	prep, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +52,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep, err = store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +88,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	// replayable payload.
 	payload := `[{"summary":"x","category":"PREFERENCE"}]`
 	in, out := int64(11), int64(7)
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep, err = store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +120,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	// no new usage — the caller gets attempt id 0 and must not record an
 	// outcome. Exactly the two attempts above exist, and the stored payload
 	// comes back unchanged.
-	prep2, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep2, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,31 +145,28 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	}
 
 	// A superseded CREATED attempt may already have gone outbound, so the
-	// ABANDON marks UNKNOWN — never NOT_SENT.
-	gen2, _, _ := seedFinishedTurn(t, 1, conv, "COMPLETED", false, false)
-	job2, err := store.EnqueueMemoryExtract(ctx, 1, gen2)
-	if err != nil || job2 <= 0 {
-		t.Fatalf("enqueue job2=%d err=%v", job2, err)
+	// ABANDON marks UNKNOWN — never NOT_SENT. A second chat keeps the first
+	// claim live; rewriting the same snapshot would cancel that job.
+	const (
+		boundaryChat      = "10000000-0000-0000-0000-0000000000b8"
+		boundaryMessage   = "20000000-0000-0000-0000-0000000000b8"
+		boundaryCandidate = "30000000-0000-0000-0000-0000000000b8"
+	)
+	source2 := openSTExtractSource(t, store, boundaryChat, "extract-card-b", boundaryMessage, boundaryCandidate, "覆盖来源")
+	jobs2 := stExtractJobIDs(t, store, 1)
+	if len(jobs2) != 2 || jobs2[0] != jobID {
+		t.Fatalf("ST extract jobs %v, want the original job plus one new job", jobs2)
 	}
-	claims2, err := store.ClaimJobs(ctx, 30*time.Second, 30*time.Second, 30*time.Second, 32, 32, 32)
-	if err != nil {
-		t.Fatal(err)
+	job2 := jobs2[1]
+	claim2 := claimSTExtract(t, store, job2)
+	if claim2.RefID != source2 {
+		t.Fatalf("second extract ref %d, want source %d", claim2.RefID, source2)
 	}
-	var claim2 JobClaim
-	found2 := false
-	for _, c := range claims2 {
-		if c.Kind == "MEMORY_EXTRACT" && c.JobID == job2 {
-			claim2, found2 = c, true
-		}
-	}
-	if !found2 {
-		t.Fatalf("claimed set %v misses extract job %d", claims2, job2)
-	}
-	prepA, err := store.PrepareMemoryExtractAttempt(ctx, 1, job2, gen2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a", 128)
+	prepA, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, job2, source2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil || prepA.Decision != "EXTRACTABLE" || prepA.AttemptID <= 0 {
 		t.Fatalf("prepA decision %q attempt %d err=%v", prepA.Decision, prepA.AttemptID, err)
 	}
-	prepB, err := store.PrepareMemoryExtractAttempt(ctx, 1, job2, gen2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a", 128)
+	prepB, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, job2, source2, claim2.Token, claim2.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil || prepB.Decision != "EXTRACTABLE" || prepB.AttemptID <= 0 || prepB.AttemptID == prepA.AttemptID {
 		t.Fatalf("prepB decision %q attempt %d err=%v", prepB.Decision, prepB.AttemptID, err)
 	}
@@ -203,7 +184,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	}
 
 	// A stale claim token fences the holder out without any attempt.
-	prep3, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, "stale-token", claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep3, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, "stale-token", claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,65 +193,56 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	}
 }
 
-// TestMemoryExtractPrepareAttemptRefusalOrder pins the remaining V133 refusal
-// branches in ordering: a model-ineligible source (the V112 egress fact) never
-// enters a provider request, a closed auto-save switch refuses the attempt
-// outright, and a consent revocation that committed before the next prepare
-// keeps refusing even though an earlier attempt succeeded.
+// TestMemoryExtractPrepareAttemptRefusalOrder pins the refusal order on
+// ST_MEMORY_EXTRACT. An ineligible settled source is SOURCE_SUPPRESSED (the
+// source guard that replaced the generation MODEL_INELIGIBLE branch). Closing
+// auto-save and revoking consent still win while that source stays ineligible,
+// because those checks run first. None of the refusals registers an attempt.
 func TestMemoryExtractPrepareAttemptRefusalOrder(t *testing.T) {
 	resetFixtures(t)
 	ctx := context.Background()
 	store := testEnv.store
-	if _, err := store.UpdateMemoryAutoSavePref(ctx, 1, true); err != nil {
-		t.Fatal(err)
-	}
 	for _, typ := range requiredConsents {
 		if _, err := store.RecordConsent(ctx, 1, typ, "2026-08", true); err != nil {
 			t.Fatal(err)
 		}
 	}
-	conv, err := store.CreateConversation(ctx, 1, 10, false)
-	if err != nil {
-		t.Fatal(err)
+	useSTExtractRoute(t, store)
+	const (
+		refusalChat      = "10000000-0000-0000-0000-0000000000c8"
+		refusalMessage   = "20000000-0000-0000-0000-0000000000c8"
+		refusalCandidate = "30000000-0000-0000-0000-0000000000c8"
+	)
+	sourceID := openSTExtractSource(t, store, refusalChat, "extract-card-c", refusalMessage, refusalCandidate, "拒绝来源")
+	jobs := stExtractJobIDs(t, store, 1)
+	if len(jobs) != 1 {
+		t.Fatalf("ST extract jobs %v, want 1", jobs)
 	}
-	genID, src, _ := seedFinishedTurn(t, 1, conv, "COMPLETED", false, false)
-	jobID, err := store.EnqueueMemoryExtract(ctx, 1, genID)
-	if err != nil || jobID <= 0 {
-		t.Fatalf("enqueue job=%d err=%v", jobID, err)
-	}
-	claims, err := store.ClaimJobs(ctx, 30*time.Second, 30*time.Second, 30*time.Second, 32, 32, 32)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var claim JobClaim
-	found := false
-	for _, c := range claims {
-		if c.Kind == "MEMORY_EXTRACT" && c.JobID == jobID {
-			claim, found = c, true
-		}
-	}
-	if !found {
-		t.Fatalf("claimed set %v misses extract job %d", claims, jobID)
+	jobID := jobs[0]
+	claim := claimSTExtract(t, store, jobID)
+	if claim.RefID != sourceID {
+		t.Fatalf("extract ref %d, want source %d", claim.RefID, sourceID)
 	}
 
-	// A blocked/cancelled turn's source message is model-ineligible.
+	// The source stays ineligible for every decision below, so a later refusal
+	// can only appear by being checked before SOURCE_SUPPRESSED.
 	if err := IsolationSuperExec(ctx,
-		`UPDATE vc.message SET model_eligible = false WHERE owner_user_id = 1 AND id = $1`, src); err != nil {
+		`UPDATE vc.st_message_source SET eligible = false WHERE owner_user_id = 1 AND id = $1`, sourceID); err != nil {
 		t.Fatal(err)
 	}
-	prep, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prep.Decision != "MODEL_INELIGIBLE" || prep.AttemptID != 0 {
-		t.Fatalf("decision %q attempt %d, want MODEL_INELIGIBLE with no attempt", prep.Decision, prep.AttemptID)
+	if prep.Decision != "SOURCE_SUPPRESSED" || prep.AttemptID != 0 {
+		t.Fatalf("decision %q attempt %d, want SOURCE_SUPPRESSED with no attempt", prep.Decision, prep.AttemptID)
 	}
 
 	// The auto-save kill switch refuses the attempt outright.
 	if _, err := store.UpdateMemoryAutoSavePref(ctx, 1, false); err != nil {
 		t.Fatal(err)
 	}
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep, err = store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,11 +257,20 @@ func TestMemoryExtractPrepareAttemptRefusalOrder(t *testing.T) {
 	if _, err := store.RecordConsent(ctx, 1, "SENSITIVE_DATA_PROCESSING", "2026-08", false); err != nil {
 		t.Fatal(err)
 	}
-	prep, err = store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep, err = store.PrepareSTMemoryExtractAttempt(ctx, 1, jobID, sourceID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if prep.Decision != "CONSENT_WITHDRAWN" || prep.AttemptID != 0 {
 		t.Fatalf("decision %q attempt %d, want CONSENT_WITHDRAWN with no attempt", prep.Decision, prep.AttemptID)
+	}
+	var attempts int
+	if err := store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT count(*) FROM vc.memory_extract_attempt WHERE work_item_id = $1`, jobID).Scan(&attempts)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 {
+		t.Fatalf("refusals registered %d attempts", attempts)
 	}
 }
