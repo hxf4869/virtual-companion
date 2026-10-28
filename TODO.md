@@ -55,11 +55,16 @@
       验证：`bash scripts/check.sh` 10/10 PASS（23.4s，检查期间输入未变）；`--quick` PASS（1.4s）；
       `node integrations/sillytavern/scripts/accept.mjs` 的 C01/C02/C03/C06/C07 PASS。
       原生建群高亮等待等已知诊断见验收结果的 error_notes；CHARX 导出 NOT_APPLICABLE（上游不支持）。
-      Go 目录 SQL/RLS 与 Store 真库检查已通过；模型页和协议插件分别完成组件验证，统一接线仍在进行。
-      当前集成主会话 GLM-5.3／最高思考，3 个 general-purpose 子代理分别负责前端投影、运行装配、
-      端到端夹具；主会话负责服务端状态 / 生成接线及整合。账号 ID 使用无精度损失的十进制字符串契约。
-      剩余：真实 ST + Go 统一运行、三协议合成端到端与 UI03 运行验收、最终检查及提交；真实模型、
-      真机与正式数据保护仍不计通过。Owner 已暂停 Goal 自动续跑，明确要求当前任务继续。
+      Go 目录切片已提交并推送 `3e3281bb`；SQL/RLS、Store 真库及直接消费者检查通过。
+      统一栈：`node integrations/sillytavern/scripts/accept-managed.mjs` 默认 14/14 场景 PASS（退出码 0）；
+      包括三协议流式 / 非流式、工具续接、取消、上下文预算、原生配置偏离拒绝、Key 撤销、版本冲突与
+      续接隔离；使用真实 ST / Go / PostgreSQL / MinIO 与本地合成 provider，不代表真实模型验收。
+      C1：正常应用产物加密备份后隔离恢复，11 项目录比对及配置文件比对 PASS，目录 / 文件权限与
+      错误口令拒绝 PASS；D01.a 磁盘保护仍 BLOCKED（FileVault 关闭），D01.d 合成备份恢复子项 PASS。
+      ZCode 以 GLM-5.3／最高思考完成三路模块并行；运行验收已切换新会话，客户端 CSRF 修复另由
+      独立 general-purpose 子代理完成。账号 ID 使用无精度损失的十进制字符串契约。
+      剩余：UI03 真实页面与原生发送验收、最终检查及 ST 切片提交；真实模型、真机与正式数据保护
+      仍不计通过。Owner 已暂停 Goal 自动续跑，明确要求当前任务继续。
 - [ ] `V2-W04` 复杂状态卡与首轮手机体验。用例：C04、C05、UI01 / UI02（基础）。
 - [ ] `V2-W05` 认证、角色实例与 F2 全写入保护。用例：B01、B05、B07。
 - [ ] `V2-W06` 来源对账、E3 与跨存储数据权利。用例：B02、B03、R01–R05、D02–D05。
