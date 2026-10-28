@@ -1,0 +1,24 @@
+{
+  "id": "st-koboldhorde-vc-guard",
+  "kind": "deterministic-string-replacement",
+  "reason": "V2-W13（ADR-0009 §2、执行计划 §6.2）：ST 1.19.0 前台 main_api=koboldhorde 的文本生成不走 public/script.js getGenerateUrl 里的 /api/backends/koboldhorde/generate（锁定源码不存在该路由）。sendGenerationRequest 在 getGenerateUrl 之前调用 generateHorde，实际请求是 POST /api/horde/generate-text（public/scripts/horde.js），由本文件 router.post('/generate-text') 转发到 https://aihorde.net/api/v2/generate/text/async。该处理函数没有空 body 判断，入口后即读密钥并 fetch。补丁只在入口、联系上游之前插入同一桥接钩子；桥存在则拒绝且不回显正文，桥不存在则为空操作。不新增空 body 判断，不改提示词组装。",
+  "upstream": {
+    "component": "sillytavern",
+    "repo": "https://github.com/SillyTavern/SillyTavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+    "version": "1.19.0"
+  },
+  "target": "src/endpoints/horde.js",
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改",
+  "removal_condition": "上游关闭该独立文本生成路由，或提供与三协议最终出站核对等价且可覆盖本路由的公开钩子并被 V2 启用；或 V2 放弃 ST 前台受管生成链。升级 ST 版本必须重算 expected_input_sha256 / expected_output_sha256 并复核锚点只命中一次。",
+  "expected_input_sha256": "9a0280cfa2c5498f540b8593b100e80cbacdefa563038a6cc6c60c9c9923f3f4",
+  "expected_output_sha256": "e8737bebe2b02e632792bf36903202629edaff0e8eabfecae798c306a013f97c",
+  "replacements": [
+    {
+      "from": "router.post('/generate-text', async (request, response) => {\n    const apiKey = readSecret(request.user.directories, SECRET_KEYS.HORDE) || ANONYMOUS_KEY;",
+      "to": "router.post('/generate-text', async (request, response) => {\n    // virtual-companion bridge hook (patch st-koboldhorde-vc-guard; W13 unvalidated exit)\n    const vcBridge = globalThis[Symbol.for('virtual-companion.bridge')];\n    if (vcBridge) {\n        await vcBridge.guardUnmanagedGeneration(request, response);\n        return;\n    }\n\n    const apiKey = readSecret(request.user.directories, SECRET_KEYS.HORDE) || ANONYMOUS_KEY;",
+      "count": 1,
+      "where": "/generate-text：处理函数入口、readSecret 与 aihorde fetch 之前。本路由没有空 body 判断，不新增该判断以免桥缺失时改变原生行为"
+    }
+  ]
+}

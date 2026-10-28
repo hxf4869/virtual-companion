@@ -61,3 +61,18 @@ start 预检 / status 与 `tests/patcher.test.mjs` 都按该值校验，输出�
   st.log）；收口为只记录状态码与状态文本，浏览器收到的错误体保持原生行为。与上一个补丁的两处
   日志收口配套（受管三协议流式路径都经过该函数）。
 - **应用与校验**：同上（assemble-managed 应用，start-managed / status-managed 复核）。
+
+## 未受校验文本生成出口（W13，四份同形规格）
+
+| 规格 | 目标 | 路由 |
+| --- | --- | --- |
+| `st-text-completions-vc-guard.json` | `src/endpoints/backends/text-completions.js` | `POST /generate` |
+| `st-kobold-vc-guard.json` | `src/endpoints/backends/kobold.js` | `POST /generate` |
+| `st-koboldhorde-vc-guard.json` | `src/endpoints/horde.js` | `POST /generate-text` |
+| `st-novel-vc-guard.json` | `src/endpoints/novelai.js` | `POST /generate` |
+
+- **理由**：这四条是锁定 ST 1.19.0 上实际会把聊天提示词送出上游、且不经过三协议 `finalOutboundGuard` 的独立文本生成路由。server plugin 只能挂 `/api/plugins/*`，不能拦截已注册的核心路由。每份规格只在该路由入口插入同一钩子 `guardUnmanagedGeneration`（空 body 判断之后；horde 的 `/generate-text` 上游没有空 body 判断，因此插在函数入口，不新增判断）。桥存在时一律拒绝，固定错误码 `VC_UNVALIDATED_GENERATION`，不回显正文；桥不存在时为空操作。不改提示词组装。
+- **koboldhorde**：前台 `getGenerateUrl` 写的是 `/api/backends/koboldhorde/generate`，锁定源码没有这条路由。`sendGenerationRequest` 实际调用 `generateHorde` → `POST /api/horde/generate-text`。
+- **不在本补丁内**：`/generate-image`、`/generate-voice`、嵌入、模型下载与状态查询。它们不是聊天文本生成旁路。
+- **应用与校验**：列入 `CORE_PATCH_SPECS`，由 assemble-managed 重放到 `dev-managed/st-run`；upstream 原始检出不改。输入/输出 SHA256 硬校验。
+- **可去除条件**：见各规格 `removal_condition`。升级 ST 必须重算两个 SHA 并复核锚点只命中一次。
