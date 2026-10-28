@@ -84,7 +84,21 @@
       Owner 项：目标手机、真实软键盘/触控及真实模型体验 NOT_RUN；不能用窄视口替代真机，条目暂不勾选。
       F2 与长期记忆的跨阶段复查 NOT_RUN（分别随 W05/记忆工作项补齐）；更早楼层编辑沿用 MVU 显式回放，
       不承诺任意历史编辑自动级联重算。受管进程及专用PG/MinIO容器已清理；原有 ZIP 保留。
-- [ ] `V2-W05` 认证、角色实例与 F2 全写入保护。用例：B01、B05、B07。
+- [x] `V2-W05` 认证、角色实例与 F2 全写入保护。用例：B01、B05、B07。
+      结果：DONE（2026-10-28）；实现提交 `eea2b120`、`7a2d99ea`，均已推送。
+      Go 密码/TOTP 为唯一可见登录；所有 ST 资源/API 在线核验 Go 会话，私有账号→handle 映射、
+      页面期望身份、Go 注销与旧页拒绝已接通。CharacterInstance 复用 relationship，ConversationBinding
+      复用 conversation；V141 解除单活跃约束，Catalog/OpenAPI 与 Owner/RLS 同步，不在 Go 复制聊天 revision。
+      F2 覆盖普通/群聊保存、脚本/MVU metadata、编辑/swipe/删消息、改名/删 chat、分支父基线、导入、
+      角色目录批量、群组删除、Data Maid 与启动旧格式迁移；内容和 live revision 同写 JSONL，
+      身份墓碑阻止旧请求复活，force 不绕过；冲突保留本页草稿，Helper/MVU 迟到结果拒绝。
+      验证：`scripts/check.sh` 10/10 PASS（23s，ST 211/211）；PostgreSQL 实例绑定并发 integration PASS
+      （50.6s）；`run-rls-tests.sh` 176/176 PASS。真实 Chrome `auth-browser` / `f2-native` / `f2-browser`
+      全部 PASS：密码/TOTP、未完成/伪造头/注销/过期/Go故障拒绝、账号数据隔离、共享 cookie 后旧页 409、
+      全写入口与同基线并发一成一冲、草稿保留/显式重载、真实 Helper 迟到 updater 均通过。
+      C04/C05 在受管认证/F2 下回归 PASS（真实 MVU 初始化/生成、swipe、分支、编辑重算、跨聊天迟到任务；
+      console/page errors=0）。B04 的 Inbox+ACK 留到 W10；真实 Owner/目标手机、正式磁盘保护与远端部署
+      沿用 W03/W04/W16 待办，本项合成验收不替代这些结果。
 - [ ] `V2-W06` 来源对账、E3 与跨存储数据权利。用例：B02、B03、R01–R05、D02–D05。
 - [ ] `V2-W07` 相关检索、摘要与时间规范。用例：M01–M12（检索与日期子项）。
 - [ ] `V2-W08` 记忆实现对照与管理闭环。用例：M01–M12、MODEL05。
