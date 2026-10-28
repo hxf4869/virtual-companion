@@ -1,0 +1,122 @@
+// Virtual Companion ST 桥接插件 — Go 管理桥（固定路径白名单代理）。
+// 许可：AGPL-3.0-only（见目录 README；ADR-0009 §3）。
+// 挂载：/api/plugins/virtual-companion/go/<Go 完整路径>（S3 前端已按此写 API 模块）。
+// 安全约束（W03 边界）：
+//  - 仅白名单内的「方法 + 精确路径」可转发；目标地址只来自服务配置 VC_ST_GO_BASE_URL，
+//    禁止任意 URL / 任意 path 代理；
+//  - 只转发 vc_session / vc_csrf 两个 cookie；X-VC-CSRF-Token 映射为 Go 的 X-CSRF-Token；
+//    ST 自己的 X-CSRF-Token 不透传；X-VC-Expected-Account-ID / X-VC-Expected-Session-ID 透传；
+//    Origin 原样转发（Go 侧需把确切 ST 来源加入白名单）；
+//  - 绝不附加 Authorization / 服务令牌 —— 管理操作必须以调用者本人的 Go 会话授权，
+//    服务令牌不得提升浏览器权限；
+//  - 响应体原样透传（Go writeJSON / ErrorEnvelope），不记录任何请求或响应体。
+
+import { writeErrorResponse } from './errors.js';
+import { log } from './log.js';
+
+// 路径段字符集：字母数字与有限符号；显式排除 %、/、..，防编码穿越。
+const SEG = '[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,200})';
+
+// 白名单：模型设置页真实所需 + 既有会话/登录。新增路径在这里加一行并注明消费者；
+// 权限判断全部由 Go 决定，本桥不做角色判定。
+export const ADMIN_BRIDGE_ROUTES = [
+    { method: 'GET', path: /^\/api\/v1\/auth\/session$/, where: '会话核验（生成与页面）' },
+    { method: 'POST', path: /^\/api\/v1\/auth\/login$/, where: '既有登录入口（合成登录，不新造平台）' },
+    { method: 'POST', path: /^\/api\/v1\/auth\/reauth$/, where: '既有写入再认证（FreshReauth）' },
+    { method: 'GET', path: /^\/api\/v1\/admin\/providers$/, where: '供应商列表' },
+    { method: 'PUT', path: new RegExp(`^/api/v1/admin/providers/${SEG}$`), where: '保存供应商（含凭据引用与 expectedRevision）' },
+    { method: 'POST', path: new RegExp(`^/api/v1/admin/providers/${SEG}/models/discover$`), where: '拉取模型列表（辅助，显式操作）' },
+    { method: 'GET', path: /^\/api\/v1\/admin\/model-purposes$/, where: '用途绑定列表' },
+    { method: 'PUT', path: new RegExp(`^/api/v1/admin/model-purposes/${SEG}$`), where: '保存用途绑定' },
+];
+
+const FORWARD_HEADERS = ['x-vc-expected-account-id', 'x-vc-expected-session-id'];
+const FORWARD_COOKIES = new Set(['vc_session', 'vc_csrf']);
+
+function pickCookies(cookieHeader) {
+    if (!cookieHeader) return '';
+    const kept = [];
+    for (const pair of cookieHeader.split(';')) {
+        const name = pair.split('=')[0].trim();
+        if (FORWARD_COOKIES.has(name)) kept.push(pair.trim());
+    }
+    return kept.join('; ');
+}
+
+/**
+ * @param {object} args
+ * @param {{goBaseUrl: string, timeoutMs: number}} args.config
+ * @param {typeof fetch} [args.fetchImpl]
+ * @returns {(req: import('express').Request, res: import('express').ServerResponse) => Promise<void>}
+ */
+export function createAdminBridge({ config, fetchImpl = fetch }) {
+    return async function adminBridgeHandler(req, res) {
+        try {
+            const raw = String(req.url || '');
+            const path = raw.split('?')[0];
+            const search = raw.includes('?') ? raw.slice(raw.indexOf('?')) : '';
+            const method = String(req.method || 'GET').toUpperCase();
+
+            const matched = ADMIN_BRIDGE_ROUTES.some((route) => route.method === method && route.path.test(path));
+            if (!matched) {
+                log.warn(`管理桥拒绝未登记路由：${method} ${path}`);
+                writeErrorResponse(res, 404, 'VC_BRIDGE_ROUTE_NOT_ALLOWED', '该路径/方法不在管理桥白名单内');
+                return;
+            }
+            if (!config.goBaseUrl) {
+                writeErrorResponse(res, 503, 'VC_GO_NOT_CONFIGURED', '未配置 VC_ST_GO_BASE_URL，管理桥不可用');
+                return;
+            }
+
+            const headers = { Accept: 'application/json' };
+            const contentType = req.headers['content-type'];
+            const hasBody = method !== 'GET' && method !== 'HEAD';
+            if (hasBody) {
+                if (contentType && !String(contentType).toLowerCase().includes('application/json')) {
+                    writeErrorResponse(res, 415, 'VC_BRIDGE_BODY_UNSUPPORTED', '管理桥只转发 application/json 请求体');
+                    return;
+                }
+                headers['Content-Type'] = 'application/json';
+            }
+            const vcCsrf = req.headers['x-vc-csrf-token'];
+            if (typeof vcCsrf === 'string' && vcCsrf) headers['X-CSRF-Token'] = vcCsrf;
+            for (const name of FORWARD_HEADERS) {
+                const value = req.headers[name];
+                if (typeof value === 'string' && value) headers[name.replace(/(^|-)([a-z])/g, (m) => m.toUpperCase())] = value;
+            }
+            const origin = req.headers.origin;
+            if (typeof origin === 'string' && origin) headers.Origin = origin;
+            const cookie = pickCookies(req.headers.cookie);
+            if (cookie) headers.Cookie = cookie;
+
+            let body;
+            if (hasBody && req.body !== undefined && req.body !== null) {
+                body = JSON.stringify(req.body);
+            }
+
+            const upstream = await fetchImpl(config.goBaseUrl + path + search, {
+                method,
+                headers,
+                ...(body !== undefined ? { body } : {}),
+                signal: AbortSignal.timeout(config.timeoutMs),
+            });
+
+            const buffer = Buffer.from(await upstream.arrayBuffer());
+            res.statusCode = upstream.status;
+            const respType = upstream.headers.get('content-type');
+            if (respType) res.setHeader('Content-Type', respType);
+            res.setHeader('Cache-Control', 'no-store');
+            for (const setCookie of upstream.headers.getSetCookie?.() ?? []) {
+                res.appendHeader('Set-Cookie', setCookie);
+            }
+            res.end(buffer);
+        } catch (error) {
+            if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+                writeErrorResponse(res, 504, 'VC_GO_TIMEOUT', 'Go 服务响应超时');
+                return;
+            }
+            log.error(`管理桥转发失败：${error?.name ?? 'unknown'}（不记录请求体）`);
+            writeErrorResponse(res, 502, 'VC_GO_UNREACHABLE', 'Go 服务不可达');
+        }
+    };
+}
