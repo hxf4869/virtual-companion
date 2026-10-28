@@ -343,10 +343,21 @@ func operation(path string) string {
 			}
 		}
 		if strings.HasPrefix(path, "/api/v1/relationships/") {
-			if strings.HasSuffix(path, "/deactivate") {
+			switch {
+			case strings.HasSuffix(path, "/deactivate"):
 				return "relationship_deactivate"
+			case strings.HasSuffix(path, "/proactive-policy"):
+				return "proactive_policy"
+			case strings.HasSuffix(path, "/follow-ups"):
+				return "follow_ups"
 			}
 			return "relationship"
+		}
+		if strings.HasPrefix(path, "/api/v1/follow-ups/") {
+			if strings.HasSuffix(path, "/cancel") {
+				return "follow_up_cancel"
+			}
+			return "follow_up"
 		}
 		if strings.Contains(path, "/messages/") {
 			return "message"

@@ -16,6 +16,32 @@ INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active) VALUES
     (19001, 10, 'persona-a', true),
     (19002, 20, 'persona-b', true);
 
+-- V161 rejects a triggerable row that has no memory and source. These two
+-- published memories share one current source so the scheduled inserts below
+-- keep the same bodies, instants and error text.
+INSERT INTO vc.conversation(
+    owner_user_id, id, relationship_id, title, st_chat_identity, st_mode, st_source_state, incognito)
+VALUES (
+    19001, 19010, 10, 'w09',
+    '19000000-0000-4000-8000-000000001901', 'COMPANION', 'PRESENT', false);
+INSERT INTO vc.st_message_source(
+    owner_user_id, conversation_id, message_id, candidate_id, source_revision, source_generation,
+    source_ref, role, content_cipher, present, settled, eligible, suppressed, source_position)
+VALUES (
+    19001, 19010, '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
+    1, 1, 'st:19000000-0000-4000-8000-000000001901:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:1:1',
+    'user', 'w09-source', true, true, true, false, 1);
+BEGIN;
+SELECT vc.set_owner_context(19001, 'w09src', encode(vc.hmac(convert_to('vc-owner-binding-v1|19001|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|w09src', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+INSERT INTO vc.memory_item(id, owner_user_id, relationship_id, scope, summary, status) VALUES
+    (19011, 19001, 10, 'RELATIONSHIP', 'w09 dated memory', 'ACCEPTED'),
+    (19012, 19001, 10, 'RELATIONSHIP', 'w09 minute memory', 'ACCEPTED');
+INSERT INTO vc.memory_evidence(owner_user_id, id, memory_item_id, source_ref) VALUES
+    (19001, 19021, 19011, 'st:19000000-0000-4000-8000-000000001901:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:1:1'),
+    (19001, 19022, 19012, 'st:19000000-0000-4000-8000-000000001901:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:1:1');
+COMMIT;
+RESET ROLE;
+
 CREATE TEMP TABLE w09_ids (
     follow_id bigint,
     job_id bigint
@@ -104,7 +130,7 @@ BEGIN
     END;
 
     v_dated := vc.insert_follow_up(
-        19001, 10, NULL, NULL, NULL, 'w09-confirmed-date',
+        19001, 10, 19011, 'st:19000000-0000-4000-8000-000000001901:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:1:1', 1, 'w09-confirmed-date',
         'SCHEDULED', 'explicit_date', 'date', true,
         DATE '2026-11-02', NULL, 'Asia/Shanghai', timestamptz '2026-11-02 09:30:00+08');
     SELECT trigger_at INTO v_trigger FROM vc.follow_up WHERE id = v_dated;
@@ -113,7 +139,7 @@ BEGIN
     END IF;
 
     v_id := vc.insert_follow_up(
-        19001, 10, NULL, NULL, NULL, 'w09-follow-up-body',
+        19001, 10, 19012, 'st:19000000-0000-4000-8000-000000001901:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:1:1', 1, 'w09-follow-up-body',
         'SCHEDULED', 'explicit_date', 'minute', false,
         DATE '2026-11-02', '15:04', 'Asia/Shanghai', timestamptz '2026-11-02 15:04:00+08');
     IF v_id IS NULL OR (SELECT count(*) FROM vc.list_follow_ups(19001, 10) WHERE out_id = v_id AND out_body = 'w09-follow-up-body') <> 1 THEN
@@ -293,6 +319,10 @@ END $$;
 COMMIT;
 RESET ROLE;
 
+-- The source fixture makes this an ST-bound account. The existing deletion
+-- guard requires a completed ST receipt before the owner row can cascade.
+INSERT INTO vc.account_deletion_intent(account_id, username_digest, status, st_status)
+VALUES (19001, lpad('190', 64, '0'), 'REQUESTED', 'COMPLETED');
 DELETE FROM vc.vc_user WHERE id = 19001;
 DO $$
 BEGIN
