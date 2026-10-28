@@ -19,6 +19,7 @@ import (
 
 var ErrUnavailable = errors.New("ST source temporarily unavailable")
 var uuid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var inboxEventID = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)
 
 func ValidIdentity(id string) bool { return uuid.MatchString(id) }
 
@@ -36,6 +37,7 @@ type Message struct {
 	Eligible        bool       `json:"eligible"`
 	SourceTimestamp *time.Time `json:"sourceTimestamp"`
 	SourceTimezone  string     `json:"sourceTimezone"`
+	InboxEventID    string     `json:"inboxEventId,omitempty"`
 }
 type Snapshot struct {
 	ChatIdentity string    `json:"chatIdentity"`
@@ -138,7 +140,7 @@ func (c *Client) Read(ctx context.Context, owner int64, queries []Query) ([]Snap
 			}
 			seen := make(map[string]bool, len(snap.Messages))
 			for _, m := range snap.Messages {
-				if !ValidIdentity(m.MessageID) || !ValidIdentity(m.CandidateID) || m.Revision < 1 || seen[m.MessageID] || (m.Role != "user" && m.Role != "assistant" && m.Role != "system") {
+				if !ValidIdentity(m.MessageID) || !ValidIdentity(m.CandidateID) || m.Revision < 1 || seen[m.MessageID] || (m.Role != "user" && m.Role != "assistant" && m.Role != "system") || (m.InboxEventID != "" && !inboxEventID.MatchString(m.InboxEventID)) {
 					return nil, ErrUnavailable
 				}
 				seen[m.MessageID] = true

@@ -79,6 +79,40 @@ func TestNewClientRejectsInvalidConfiguration(t *testing.T) {
 	}
 }
 
+func TestReadAcceptsInboxEventIDAndRejectsABadOne(t *testing.T) {
+	server, _ := serveSourceRead(t, func(w http.ResponseWriter, owner string, chats []Query) {
+		writeSourceResponse(w, owner, map[string]any{
+			"chatIdentity": chats[0].ChatIdentity, "state": "PRESENT", "revision": 2, "location": "chats/synthetic-inbox.jsonl",
+			"messages": []map[string]any{{
+				"messageId": synthIdentityN(1), "candidateId": synthIdentityN(2), "revision": 1,
+				"role": "assistant", "text": "synthetic greeting", "settled": true, "eligible": true,
+				"inboxEventId": "fu-read",
+			}},
+		})
+	})
+	client := newSourceClient(t, server)
+	snapshots, err := client.Read(context.Background(), 2000001, []Query{{ChatIdentity: synthIdentity}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) != 1 || len(snapshots[0].Messages) != 1 || snapshots[0].Messages[0].InboxEventID != "fu-read" {
+		t.Fatalf("messages = %+v", snapshots[0].Messages)
+	}
+	bad, _ := serveSourceRead(t, func(w http.ResponseWriter, owner string, chats []Query) {
+		writeSourceResponse(w, owner, map[string]any{
+			"chatIdentity": chats[0].ChatIdentity, "state": "PRESENT", "revision": 2, "location": "chats/synthetic-inbox.jsonl",
+			"messages": []map[string]any{{
+				"messageId": synthIdentityN(1), "candidateId": synthIdentityN(2), "revision": 1,
+				"role": "assistant", "text": "synthetic greeting", "settled": true, "eligible": true,
+				"inboxEventId": "has space",
+			}},
+		})
+	})
+	if _, err := newSourceClient(t, bad).Read(context.Background(), 2000001, []Query{{ChatIdentity: synthIdentity}}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("bad inbox event id = %v", err)
+	}
+}
+
 func TestReadPostsPrivateSourceQueryWithBearerAndExactDecimalOwner(t *testing.T) {
 	server, captured := serveSourceRead(t, func(w http.ResponseWriter, owner string, chats []Query) {
 		writeSourceResponse(w, owner, map[string]any{
