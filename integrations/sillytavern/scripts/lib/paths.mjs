@@ -17,6 +17,7 @@ export const MVU_DIR = path.join(UPSTREAM, 'MagVarUpdate');
 export const UPSTREAM_LOCK = path.join(INTEG, 'upstream.lock.json');
 export const VENDOR_LOCK = path.join(INTEG, 'vendor.lock.json');
 export const PATCH_SPEC = path.join(INTEG, 'patches', 'helper-selfhost-runtime-assets.json');
+export const MVU_PATCH_SPEC = path.join(INTEG, 'patches', 'mvu-current-message-lifecycle.json');
 
 export const DEV = path.resolve(process.env.VC_ST_DEV_DIR || path.join(INTEG, 'dev'));
 export const DATA_ROOT = path.join(DEV, 'data');
@@ -25,7 +26,7 @@ export const EXT_DIR = path.join(USER_DIR, 'extensions');
 export const RUN_DIR = path.join(DEV, 'run');
 export const CONFIG_PATH = path.join(DEV, 'config.yaml');
 export const DERIVED_MANIFEST = path.join(DEV, 'derived-manifest.json');
-export const VENDOR_CACHE = path.join(DEV, 'vendor-cache');
+export const VENDOR_CACHE = path.resolve(process.env.VC_ST_VENDOR_CACHE || path.join(DEV, 'vendor-cache'));
 export const ARTIFACTS = path.join(DEV, 'artifacts');
 
 export const ST_PORT = Number(process.env.VC_ST_PORT || 8742);

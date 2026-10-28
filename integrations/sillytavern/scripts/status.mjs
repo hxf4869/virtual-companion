@@ -5,7 +5,7 @@ import path from 'node:path';
 import { DEV, DATA_ROOT, USER_DIR, RUN_DIR, CONFIG_PATH, ST_URL, MOCK_PORT } from './lib/paths.mjs';
 import { isPidAlive, looseEntries } from './lib/util.mjs';
 import { loadConfig, checkInvariants } from './lib/config.mjs';
-import { verifyStDependencyTree, verifyVendorTree, verifyPatchedDist } from './lib/verify.mjs';
+import { verifyStDependencyTree, verifyVendorTree, verifyPatchedDist, verifyNativeRuntime } from './lib/verify.mjs';
 
 const out = { dev_dir: DEV, bootstrap_ok: fs.existsSync(path.join(DEV, 'bootstrap-ok')) };
 const mode = (p) => { try { return (fs.statSync(p).mode & 0o777).toString(8).padStart(4, '0'); } catch { return null; } };
@@ -32,4 +32,5 @@ if (fs.existsSync(CONFIG_PATH)) {
 try { out.st_dependency_tree = verifyStDependencyTree(); } catch (e) { out.st_dependency_tree = { error: e.message }; }
 out.helper_patch = verifyPatchedDist();
 out.vendor = verifyVendorTree();
+out.native_runtime = verifyNativeRuntime();
 console.log(JSON.stringify(out, null, 2));

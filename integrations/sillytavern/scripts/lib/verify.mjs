@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { sha256File, readJson } from './util.mjs';
-import { ST_DIR, EXT_DIR, PATCH_SPEC, VENDOR_LOCK } from './paths.mjs';
+import { ST_DIR, EXT_DIR, USER_DIR, PATCH_SPEC, MVU_PATCH_SPEC, VENDOR_LOCK, UPSTREAM_LOCK } from './paths.mjs';
 
 export const VENDOR_SERVE_ROOT = path.join(EXT_DIR, 'JS-Slash-Runner', 'lib', 'vendor');
 export const PATCHED_DIST = path.join(EXT_DIR, 'JS-Slash-Runner', 'dist', 'index.js');
@@ -24,6 +24,26 @@ export function verifyPatchedDist(dist = PATCHED_DIST, spec = readJson(PATCH_SPE
     if (!fs.existsSync(dist)) return { ok: false, reason: 'dist 不存在' };
     const got = sha256File(dist);
     return { ok: got === spec.expected_output_sha256, got, want: spec.expected_output_sha256 };
+}
+
+/** 原生/受管共用的复杂卡运行栈：锁定 Helper/EJS 产物、vendor 和派生 MVU。 */
+export function verifyNativeRuntime(userDir = USER_DIR) {
+    const ext = path.join(userDir, 'extensions');
+    const problems = [];
+    const lock = readJson(UPSTREAM_LOCK);
+    for (const [id, dir] of [['tavern-helper', 'JS-Slash-Runner'], ['ejs-template', 'ST-Prompt-Template']]) {
+        const component = lock.components.find((c) => c.id === id);
+        for (const [file, original] of Object.entries(component.artifact_sha256)) {
+            const want = id === 'tavern-helper' && file === 'dist/index.js' ? readJson(PATCH_SPEC).expected_output_sha256 : original;
+            const target = path.join(ext, dir, file);
+            if (!fs.existsSync(target) || sha256File(target) !== want) problems.push(`${dir}/${file}`);
+        }
+    }
+    const mvu = path.join(userDir, 'user/files/mvu-bundle-d03b7dc8.js');
+    if (!fs.existsSync(mvu) || sha256File(mvu) !== readJson(MVU_PATCH_SPEC).expected_output_sha256) problems.push('mvu-bundle');
+    const vendor = verifyVendorTree(path.join(ext, 'JS-Slash-Runner/lib/vendor'));
+    problems.push(...vendor.missing.map((p) => `vendor missing ${p}`), ...vendor.mismatched.map((p) => `vendor mismatch ${p}`));
+    return { ok: problems.length === 0, problems };
 }
 
 /**

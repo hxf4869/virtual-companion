@@ -11,7 +11,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { INTEG, ST_DIR, DEV, DATA_ROOT, RUN_DIR, CONFIG_PATH, ST_PORT, MOCK_PORT, ST_URL } from './lib/paths.mjs';
 import { ok, info, fail, waitFor, tightenTree } from './lib/util.mjs';
 import { loadConfig, checkInvariants } from './lib/config.mjs';
-import { verifyStDependencyTree, verifyVendorTree, verifyPatchedDist } from './lib/verify.mjs';
+import { verifyStDependencyTree, verifyNativeRuntime } from './lib/verify.mjs';
 
 const args = process.argv.slice(2);
 const WITH_MOCK = !args.includes('--no-mock');
@@ -33,15 +33,13 @@ async function preflight() {
     if (bad.length) die(`config 安全不变量被破坏：\n  ${bad.join('\n  ')}`);
     const deps = verifyStDependencyTree();
     if (!deps.ok) die(`ST 依赖树与 package-lock 不一致（缺 ${deps.missing.length}，版本不符 ${deps.mismatched.length}）；重跑 bootstrap`);
-    const pd = verifyPatchedDist();
-    if (!pd.ok) die(`Helper dist 校验失败：${JSON.stringify(pd)}（dataRoot 扩展被改动或 bootstrap 未跑）`);
-    const vt = verifyVendorTree();
-    if (!vt.ok) die(`vendor 完整性失败：缺 ${vt.missing.join(',')} 不符 ${vt.mismatched.join(',')}`);
+    const runtime = verifyNativeRuntime();
+    if (!runtime.ok) die(`复杂卡运行栈校验失败：${runtime.problems.join(', ')}`);
     const stOwner = portOwner(ST_PORT);
     if (stOwner) die(`端口 ${ST_PORT} 已被 PID ${stOwner.join(',')} 占用（不是本脚本启动的进程不接管）`);
     const mockOwner = WITH_MOCK ? portOwner(MOCK_PORT) : null;
     if (mockOwner) die(`端口 ${MOCK_PORT} 已被 PID ${mockOwner.join(',')} 占用`);
-    ok(`preflight：配置不变量、ST 依赖树（${deps.checked}）、Helper 补丁产物、vendor（${vt.expected}）、端口 均通过`);
+    ok(`preflight：配置不变量、ST 依赖树（${deps.checked}）、Helper/EJS/MVU 与 vendor、端口 均通过`);
 }
 
 function launch(cmd, argv, env, cwd, logFile) {

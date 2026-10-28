@@ -13,11 +13,11 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
     ST_DIR, MANAGED_DEV, MANAGED_DATA_ROOT, MANAGED_RUN_DIR, MANAGED_CONFIG_PATH,
-    MANAGED_ST_RUN, MANAGED_ST_PORT, MANAGED_ST_URL,
+    MANAGED_ST_RUN, MANAGED_ST_PORT, MANAGED_ST_URL, MANAGED_USER_DIR,
 } from './lib/paths.mjs';
 import { ok, info, fail, waitFor, tightenTree } from './lib/util.mjs';
 import { loadConfig, checkInvariants, MANAGED_CONFIG_INVARIANTS } from './lib/config.mjs';
-import { verifyStDependencyTree } from './lib/verify.mjs';
+import { verifyStDependencyTree, verifyNativeRuntime } from './lib/verify.mjs';
 import { verifyStUpstreamClean, verifyCorePatches, verifyManagedDeployment, requireManagedGoEnv } from './lib/managed.mjs';
 
 function die(msg) { fail(msg, 5); }
@@ -32,6 +32,8 @@ async function preflight(goEnv) {
     if (!goEnv.ok) die(`Go 桥接环境缺失，受管模式不静默降级回原生 Key：\n  ${goEnv.problems.join('\n  ')}`);
     ok(`Go 桥接环境就绪：VC_ST_GO_BASE_URL=${goEnv.baseUrl}，VC_ST_PLUGIN_SERVICE_TOKEN 已配置（>=32 字节）`);
     verifyStUpstreamClean();
+    const runtime = verifyNativeRuntime(MANAGED_USER_DIR);
+    if (!runtime.ok) die(`复杂卡运行栈校验失败：${runtime.problems.join(', ')}`);
     ok('upstream sillytavern 工作树干净（HEAD 对锁）');
     const cp = verifyCorePatches({});
     if (!cp.ok) die(`核心补丁校验失败：\n  ${cp.problems.join('\n  ')}`);

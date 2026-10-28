@@ -1,0 +1,19 @@
+{
+  "id": "mvu-current-message-lifecycle",
+  "reason": "W04真实快速swipe复现：3秒全局节流丢弃不同消息/候选的MESSAGE_RECEIVED，原文已为8但变量仍为15。每次事件仍由原生异步链等待，保留onMessageReceived的短占位内容和取消检查。",
+  "upstream": {
+    "component": "mvu",
+    "commit": "d03b7dc8a6ebf9bd611c7e2dc91f3b35462deebc"
+  },
+  "removal_condition": "上游不再按全局时间窗丢弃不同消息/候选，且C04/C05真实浏览器回归通过后移除此补丁。",
+  "target": "artifact/bundle.js",
+  "expected_input_sha256": "a5d6166d43a78c7fad05669864efd76852f58eea905814dcd89f8e1b29fa4b27",
+  "expected_output_sha256": "557923facfc1bcedb641639db4aa79e848d1a21bfccfe6b275abe2c4dce8f901",
+  "replacements": [
+    {
+      "from": "n=_.throttle(t,3e3,{trailing:!1})",
+      "to": "n=Object.assign(t,{cancel(){}})",
+      "count": 1
+    }
+  ]
+}

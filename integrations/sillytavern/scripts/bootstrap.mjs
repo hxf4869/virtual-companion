@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import {
     INTEG, ST_DIR, HELPER_DIR, EJS_DIR, MVU_DIR, UPSTREAM_LOCK, VENDOR_LOCK, PATCH_SPEC,
     DEV, DATA_ROOT, USER_DIR, EXT_DIR, RUN_DIR, CONFIG_PATH, DERIVED_MANIFEST, VENDOR_CACHE,
-    ST_PORT,
+    ST_PORT, MVU_PATCH_SPEC,
 } from './lib/paths.mjs';
 import { sha256File, sha512Base64, readJson, writeJson, mkdirp, run, copyTree, ok, info, fail } from './lib/util.mjs';
 import { applySpecToFile } from './lib/patcher.mjs';
@@ -171,11 +171,13 @@ function assembleDataRoot(vendorReport) {
     // MVU bundle（沿用 W00 已验证的自托管路径）
     const mvuLock = readJson(UPSTREAM_LOCK).components.find((c) => c.id === 'mvu');
     const mvuDst = path.join(USER_DIR, 'user', 'files', 'mvu-bundle-d03b7dc8.js');
-    fs.copyFileSync(path.join(MVU_DIR, 'artifact', 'bundle.js'), mvuDst);
-    fs.chmodSync(mvuDst, 0o600);
-    const mvuSha = sha256File(mvuDst);
-    if (mvuSha !== mvuLock.artifact_sha256['artifact/bundle.js']) die(`MVU bundle SHA256 不匹配：${mvuSha}`);
-    ok('MVU bundle 自托管并校验');
+    const mvuSpec = readJson(MVU_PATCH_SPEC);
+    if (mvuSpec.expected_input_sha256 !== mvuLock.artifact_sha256['artifact/bundle.js']) die('MVU 补丁输入与上游锁不符');
+    applySpecToFile(path.join(MVU_DIR, 'artifact', 'bundle.js'), mvuDst, mvuSpec);
+    const licenseDst = path.join(USER_DIR, 'user/files/bundle.js.LICENSE.txt');
+    fs.copyFileSync(path.join(MVU_DIR, 'artifact/bundle.js.LICENSE.txt'), licenseDst);
+    fs.chmodSync(licenseDst, 0o600);
+    ok('MVU bundle 生命周期补丁、自托管与输入输出校验');
 }
 
 // ---------- 6. config + manifest ----------
@@ -189,7 +191,7 @@ function writeConfigAndManifest(vendorReport, patchResult) {
         config: { path: CONFIG_PATH, mode: '0600' },
         patches: [{ id: readJson(PATCH_SPEC).id, target: 'extensions/JS-Slash-Runner/dist/index.js', input_sha256: patchResult.inputSha256, output_sha256: patchResult.outputSha256, replacements: patchResult.report }],
         vendor: vendorReport,
-        mvu_bundle: { file: 'user/files/mvu-bundle-d03b7dc8.js', sha256: readJson(UPSTREAM_LOCK).components.find((c) => c.id === 'mvu').artifact_sha256['artifact/bundle.js'] },
+        mvu_bundle: { file: 'user/files/mvu-bundle-d03b7dc8.js', patch: readJson(MVU_PATCH_SPEC).id, sha256: readJson(MVU_PATCH_SPEC).expected_output_sha256 },
         note: '原始产物 SHA256 只存于 upstream.lock.json（未改）；本文件是派生产物记录。',
     });
     fs.writeFileSync(path.join(DEV, 'bootstrap-ok'), new Date().toISOString(), { mode: 0o600 });

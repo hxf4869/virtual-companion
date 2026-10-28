@@ -1,0 +1,286 @@
+{
+  "name": "澄夏C041028053427",
+  "description": "原创成年店员{{char}}经营蓝窗书店，与{{user}}简短交谈。",
+  "personality": "原创合成人格",
+  "scenario": "原创合成场景",
+  "first_mes": "欢迎来到蓝窗书店。想读读这本旅行笔记吗？\r\n<StatusPlaceHolderImpl/>",
+  "mes_example": "",
+  "creatorcomment": "",
+  "avatar": "none",
+  "talkativeness": "0.5",
+  "fav": false,
+  "tags": [
+    "vc-acceptance",
+    "synthetic"
+  ],
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "澄夏C041028053427",
+    "description": "原创成年店员{{char}}经营蓝窗书店，与{{user}}简短交谈。",
+    "personality": "原创合成人格",
+    "scenario": "原创合成场景",
+    "first_mes": "欢迎来到蓝窗书店。想读读这本旅行笔记吗？\r\n<StatusPlaceHolderImpl/>",
+    "mes_example": "",
+    "creator_notes": "",
+    "system_prompt": "",
+    "post_history_instructions": "",
+    "tags": [
+      "vc-acceptance",
+      "synthetic"
+    ],
+    "creator": "vc-w03-s1",
+    "character_version": "1.0",
+    "alternate_greetings": [
+      "窗外下着小雨。澄夏把旅行笔记放在桌上。\r\n<StatusPlaceHolderImpl/>"
+    ],
+    "extensions": {
+      "talkativeness": "0.5",
+      "fav": false,
+      "world": "蓝窗书店C041028053427",
+      "depth_prompt": {
+        "prompt": "",
+        "depth": 4,
+        "role": "system"
+      },
+      "vc_fixture": {
+        "synthetic": true,
+        "case": "acceptance"
+      },
+      "regex_scripts": [
+        {
+          "id": "vc04-hide-update",
+          "scriptName": "vc04-hide-update",
+          "findRegex": "/<UpdateVariable>[\\s\\S]*?<\\/UpdateVariable>/gi",
+          "replaceString": "",
+          "trimStrings": [],
+          "placement": [
+            2
+          ],
+          "disabled": false,
+          "markdownOnly": true,
+          "promptOnly": false,
+          "runOnEdit": true,
+          "substituteRegex": 0,
+          "minDepth": null,
+          "maxDepth": null
+        },
+        {
+          "id": "vc04-status",
+          "scriptName": "vc04-status",
+          "findRegex": "/<StatusPlaceHolderImpl\\/>/g",
+          "replaceString": "```html\n<!doctype html><html lang=\"zh-CN\"><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>\nbody{margin:0;padding:12px;color:#eff3fa;background:#1c222c;font:16px/1.6 system-ui,sans-serif}h3{font-size:16px;margin:0 0 8px}dl{display:flex;flex-wrap:wrap;gap:8px 24px;margin:0}dt{font-size:14px;color:#b7c1d2}dd{margin:0}button{margin-top:12px;min-height:44px;border:1px solid #394453;border-radius:8px;background:#252d39;color:#eff3fa;font:inherit;padding:8px 12px}button:focus-visible{outline:2px solid #9ab9ff}p{margin:8px 0 0;color:#b7c1d2}\n</style></head><body><h3>蓝窗书店</h3><dl><div><dt>信任</dt><dd id=\"trust\">读取中</dd></div><div><dt>场景</dt><dd id=\"scene\">读取中</dd></div><div><dt>已聊旅行笔记</dt><dd id=\"discussed\">读取中</dd></div></dl><button id=\"read-state\" type=\"button\">查看当前状态</button><p id=\"notice\" role=\"status\"></p><script>\nasync function readState(){await waitGlobalInitialized('Mvu');const d=Mvu.getMvuData({type:'message',message_id:getCurrentMessageId()});const value=k=>{const v=d.stat_data?.[k];return Array.isArray(v)?v[0]:v};document.querySelector('#trust').textContent=String(value('trust'));document.querySelector('#scene').textContent=String(value('scene'));document.querySelector('#discussed').textContent=String(value('discussed_book'));document.querySelector('#notice').textContent='已刷新';}\ndocument.querySelector('#read-state').addEventListener('click',()=>readState());readState();\n</script></body></html>\n```",
+          "trimStrings": [],
+          "placement": [
+            2
+          ],
+          "disabled": false,
+          "markdownOnly": true,
+          "promptOnly": false,
+          "runOnEdit": true,
+          "substituteRegex": 0,
+          "minDepth": null,
+          "maxDepth": null
+        }
+      ],
+      "tavern_helper": {
+        "scripts": [
+          {
+            "type": "script",
+            "enabled": true,
+            "name": "MVU（锁定自托管）",
+            "id": "vc04-mvu",
+            "content": "import '/user/files/mvu-bundle-d03b7dc8.js'",
+            "info": "仅随 AI 输出更新，不启用额外模型调用。编辑最后一条回复后，点击“重新处理变量”；编辑更早楼层需使用 MVU 回放楼层功能。",
+            "button": {
+              "enabled": true,
+              "buttons": [
+                {
+                  "name": "重新处理变量",
+                  "visible": true
+                },
+                {
+                  "name": "重新读取初始变量",
+                  "visible": false
+                },
+                {
+                  "name": "快照楼层",
+                  "visible": false
+                },
+                {
+                  "name": "重演楼层",
+                  "visible": false
+                },
+                {
+                  "name": "重试额外模型解析",
+                  "visible": false
+                },
+                {
+                  "name": "增量校正额外模型解析",
+                  "visible": false
+                },
+                {
+                  "name": "清除旧楼层变量",
+                  "visible": false
+                }
+              ]
+            },
+            "data": {},
+            "export_with": {
+              "data": true,
+              "button": true
+            }
+          }
+        ],
+        "variables": {}
+      }
+    },
+    "character_book": {
+      "entries": [
+        {
+          "id": 0,
+          "keys": [],
+          "secondary_keys": [],
+          "comment": "[InitVar]书店状态",
+          "content": "{\"trust\":[10,\"信任度\"],\"scene\":[\"bookshop\",\"地点\"],\"discussed_book\":[false,\"已讨论旅行笔记\"]}",
+          "constant": false,
+          "selective": false,
+          "insertion_order": 100,
+          "enabled": true,
+          "position": "before_char",
+          "use_regex": true,
+          "extensions": {
+            "position": 0,
+            "exclude_recursion": false,
+            "display_index": 0,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "outlet_name": "",
+            "group": "",
+            "group_override": false,
+            "group_weight": 100,
+            "prevent_recursion": false,
+            "delay_until_recursion": false,
+            "scan_depth": null,
+            "match_whole_words": null,
+            "use_group_scoring": false,
+            "case_sensitive": null,
+            "automation_id": "",
+            "role": 0,
+            "vectorized": false,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "match_persona_description": false,
+            "match_character_description": false,
+            "match_character_personality": false,
+            "match_character_depth_prompt": false,
+            "match_scenario": false,
+            "match_creator_notes": false,
+            "triggers": [],
+            "ignore_budget": false
+          }
+        },
+        {
+          "id": 1,
+          "keys": [
+            "书店",
+            "旅行笔记"
+          ],
+          "secondary_keys": [],
+          "comment": "公开设定",
+          "content": "VC04_BOOK 蓝窗书店有一本虚构的旅行笔记。",
+          "constant": false,
+          "selective": false,
+          "insertion_order": 100,
+          "enabled": true,
+          "position": "before_char",
+          "use_regex": true,
+          "extensions": {
+            "position": 0,
+            "exclude_recursion": false,
+            "display_index": 1,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "outlet_name": "",
+            "group": "",
+            "group_override": false,
+            "group_weight": 100,
+            "prevent_recursion": false,
+            "delay_until_recursion": false,
+            "scan_depth": null,
+            "match_whole_words": null,
+            "use_group_scoring": false,
+            "case_sensitive": null,
+            "automation_id": "",
+            "role": 0,
+            "vectorized": false,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "match_persona_description": false,
+            "match_character_description": false,
+            "match_character_personality": false,
+            "match_character_depth_prompt": false,
+            "match_scenario": false,
+            "match_creator_notes": false,
+            "triggers": [],
+            "ignore_budget": false
+          }
+        },
+        {
+          "id": 2,
+          "keys": [],
+          "secondary_keys": [],
+          "comment": "讨论后的公开说明",
+          "content": "<% const v=getvar('stat_data.discussed_book',{defaults:false}); if ((Array.isArray(v)?v[0]:v)===true) { %>VC04_EJS_DISCUSS 已聊过旅行笔记，可以继续谈书中的海边小镇。<% } %>",
+          "constant": true,
+          "selective": false,
+          "insertion_order": 100,
+          "enabled": true,
+          "position": "before_char",
+          "use_regex": true,
+          "extensions": {
+            "position": 0,
+            "exclude_recursion": false,
+            "display_index": 2,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "outlet_name": "",
+            "group": "",
+            "group_override": false,
+            "group_weight": 100,
+            "prevent_recursion": false,
+            "delay_until_recursion": false,
+            "scan_depth": null,
+            "match_whole_words": null,
+            "use_group_scoring": false,
+            "case_sensitive": null,
+            "automation_id": "",
+            "role": 0,
+            "vectorized": false,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "match_persona_description": false,
+            "match_character_description": false,
+            "match_character_personality": false,
+            "match_character_depth_prompt": false,
+            "match_scenario": false,
+            "match_creator_notes": false,
+            "triggers": [],
+            "ignore_budget": false
+          }
+        }
+      ],
+      "name": "蓝窗书店C041028053427"
+    }
+  },
+  "create_date": "2026-10-28T05:34:34.968Z"
+}

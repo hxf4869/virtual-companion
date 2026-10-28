@@ -13,6 +13,7 @@
 // 幂等：st-run 与部署目录整体重建，重跑逐字节一致。PG 与 Go 进程不在本脚本生命周期内（由验收侧管理）。
 // 用法：node scripts/assemble-managed.mjs
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import {
     INTEG, UPSTREAM_LOCK, MANAGED_DEV, MANAGED_DATA_ROOT, MANAGED_USER_DIR, MANAGED_EXT_DIR,
@@ -45,6 +46,15 @@ function main() {
     mkdirp(MANAGED_USER_DIR, 0o700);
     mkdirp(MANAGED_RUN_DIR, 0o700);
 
+    // 复用原生 bootstrap 装配锁定 Helper/EJS/MVU；仅复用静态 vendor 缓存，不复制聊天或凭据。
+    const native = spawnSync(process.execPath, [path.join(INTEG, 'scripts/bootstrap.mjs'), '--offline'], {
+        env: { ...process.env, VC_ST_DEV_DIR: MANAGED_DEV, VC_ST_PORT: String(MANAGED_ST_PORT),
+            VC_ST_VENDOR_CACHE: process.env.VC_ST_VENDOR_CACHE || path.join(INTEG, 'dev/vendor-cache') },
+        stdio: 'inherit',
+    });
+    if (native.status !== 0) die('锁定复杂卡运行栈装配失败；先完成原生 bootstrap 的 vendor 缓存');
+    const nativeManifest = readJson(MANAGED_MANIFEST);
+
     const corePatches = buildRunCopy({});
     for (const p of corePatches) ok(`核心补丁 ${p.id}：${p.replacements.length} 条替换，输出 SHA256 ${p.output_sha256.slice(0, 12)}…`);
 
@@ -74,6 +84,7 @@ function main() {
         core_patches: corePatches,
         plugin: { source: 'server-plugin/virtual-companion', target: 'st-run/plugins/virtual-companion', files: deployment.plugin.files },
         extension: { source: 'extension/vc-model-settings', target: 'data/default-user/extensions/vc-model-settings', excluded: ['harness'], files: deployment.extension.files },
+        mvu_bundle: nativeManifest.mvu_bundle,
         config: { path: MANAGED_CONFIG_PATH, mode: '0600', enable_server_plugins: true, port: MANAGED_ST_PORT },
         note: '原始产物 SHA256 只存于 upstream.lock.json（未改）；本文件是受管派生产物记录。',
     });

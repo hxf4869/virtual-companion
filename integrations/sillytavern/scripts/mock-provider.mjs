@@ -15,6 +15,8 @@ const SLOW_MODEL = 'vc03-slow-model';   // 该模型名触发 250ms/片慢速流
 const MAX_CAPTURES = 200;
 
 const captures = [];   // { seq, receivedAt, method, url, model, stream, authMatched, body }
+// 合成复杂卡验收：一次性响应队列；进程重启即清空，只监听 loopback。
+const replies = [];
 let seq = 0;
 const startedAt = Date.now();
 
@@ -45,6 +47,15 @@ function capture(req, bodyText) {
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
     const p = url.pathname;
+    if (req.method === 'POST' && p === '/__replies') {
+        let input;
+        try { input = JSON.parse(await readBody(req)); } catch { input = null; }
+        if (!Array.isArray(input) || input.length > 8 || input.some((s) => typeof s !== 'string' || s.length > 16000)) {
+            res.writeHead(400); res.end('expected up to 8 synthetic reply strings'); return;
+        }
+        replies.splice(0, replies.length, ...input);
+        res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); return;
+    }
     if (req.method === 'GET' && p === '/__health') {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true, since: startedAt, captured: captures.length, port: PORT }));
@@ -70,13 +81,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && /\/chat\/completions$/.test(p)) {
         const rec = capture(req, await readBody(req));
         const body = rec.body || {};
+        const reply = replies.length ? replies.shift() : FIXED_REPLY;
         console.log(`[mock] #${rec.seq} chat/completions stream=${rec.stream} messages=${Array.isArray(body.messages) ? body.messages.length : '?'} auth=${rec.authMatched}`);
         const id = `chatcmpl-vc03-${rec.seq}`;
         const created = Math.floor(Date.now() / 1000);
         const model = body.model || 'vc03-fixed-model';
         if (body.stream) {
             res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-            const pieces = FIXED_REPLY.match(/.{1,6}/gu) || [FIXED_REPLY];
+            const pieces = reply.match(reply === FIXED_REPLY ? /[\s\S]{1,6}/gu : /[\s\S]{1,80}/gu) || [reply];
             const delay = model === SLOW_MODEL ? 250 : 30;
             for (const [i, piece] of pieces.entries()) {
                 if (res.writableEnded || res.destroyed) return;
@@ -91,7 +103,7 @@ const server = http.createServer(async (req, res) => {
             return;
         }
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ id, object: 'chat.completion', created, model, choices: [{ index: 0, message: { role: 'assistant', content: FIXED_REPLY }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }));
+        res.end(JSON.stringify({ id, object: 'chat.completion', created, model, choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }));
         return;
     }
     const rec = capture(req, req.method === 'POST' ? await readBody(req) : '');

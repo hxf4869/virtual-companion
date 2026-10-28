@@ -9,7 +9,7 @@ import {
 } from './lib/paths.mjs';
 import { isPidAlive, looseEntries } from './lib/util.mjs';
 import { loadConfig, checkInvariants, MANAGED_CONFIG_INVARIANTS } from './lib/config.mjs';
-import { verifyStDependencyTree } from './lib/verify.mjs';
+import { verifyStDependencyTree, verifyNativeRuntime } from './lib/verify.mjs';
 import { verifyCorePatches, verifyManagedDeployment, requireManagedGoEnv } from './lib/managed.mjs';
 
 const out = { mode: 'managed', managed_dev: MANAGED_DEV, assemble_ok: fs.existsSync(path.join(MANAGED_DEV, 'assemble-ok')) };
@@ -27,6 +27,7 @@ out.go_env = { ok: goEnv.ok, base_url: goEnv.baseUrl || null, token_configured: 
 out.st_run = { path: MANAGED_ST_RUN, node_modules_symlink: (() => { try { return fs.readlinkSync(path.join(MANAGED_ST_RUN, 'node_modules')); } catch { return null; } })() };
 out.core_patches = verifyCorePatches({});
 out.deployment = verifyManagedDeployment({});
+out.native_runtime = verifyNativeRuntime(MANAGED_USER_DIR);
 
 if (fs.existsSync(MANAGED_CONFIG_PATH)) {
     try {
