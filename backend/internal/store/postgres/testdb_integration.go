@@ -8,11 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/migrate"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -162,45 +162,11 @@ func waitReady() error {
 }
 
 func applyMigrations() error {
-	root, err := findRepoRoot()
-	if err != nil {
-		return err
-	}
-	dir := filepath.Join(root, "backend", "internal", "migrate", "sql")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	type mig struct {
-		version int
-		path    string
-	}
-	var files []mig
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasPrefix(name, "V") || !strings.HasSuffix(name, ".sql") {
-			continue
-		}
-		cut := strings.Index(name, "__")
-		if cut < 0 {
-			continue
-		}
-		n, err := strconv.Atoi(name[1:cut])
-		if err != nil {
-			continue
-		}
-		files = append(files, mig{version: n, path: filepath.Join(dir, name)})
-	}
-	sort.Slice(files, func(i, j int) bool { return files[i].version < files[j].version })
-	if len(files) == 0 {
-		return fmt.Errorf("no migrations in %s", dir)
-	}
-	for _, f := range files {
-		if err := psqlFile(f.path); err != nil {
-			return fmt.Errorf("%s: %w", filepath.Base(f.path), err)
-		}
-	}
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	dsn := fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/%s?sslmode=disable",
+		testSuperUser, testSuperPassword, testEnv.port, testDBName)
+	return migrate.Run(ctx, migrate.Config{DSN: dsn})
 }
 
 func seedAndRoles() error {

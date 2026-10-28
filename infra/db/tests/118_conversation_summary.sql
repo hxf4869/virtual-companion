@@ -3,10 +3,10 @@
 -- Covers: record_conversation_summary builds the version chain (prev_id) and
 -- enforces the quality floor (an ECONOMY write after a validated PREMIUM row
 -- is skipped, returning 0); turn metadata resolves snapshot actual class/range
--- without exposing message content, and the encrypted wrapper is the only vc_api write;
+-- without exposing message content, and the owner-bound plaintext writer is available to vc_api;
 -- latest_conversation_summary surfaces only VALID rows; deleting a
 -- message inside a covered range removes its derived summaries (FR-CHAT-004);
--- cross-owner isolation and vc_api-only encrypted grants are enforced.
+-- cross-owner isolation and vc_api-only write grants are enforced.
 
 \set ON_ERROR_STOP on
 
@@ -76,24 +76,24 @@ DECLARE
     v_stored text;
 BEGIN
     -- Direct record: PREMIUM first, chain link follows.
-    SELECT vc.record_encrypted_conversation_summary(
-        v_alice, 1, 10, 11, 'enc2:default:1:QUJDRA==', 'model-a', '2', '2026-08',
+    SELECT vc.record_conversation_summary(
+        v_alice, 1, 10, 11, 'first premium summary', 'model-a', '2', '2026-08',
         0.95, true, 'PREMIUM') INTO v_sum1;
     IF v_sum1 IS NULL OR v_sum1 <= 0 THEN
         RAISE EXCEPTION 'first PREMIUM summary must be recorded';
     END IF;
 
     -- Quality floor: ECONOMY after validated PREMIUM is skipped (returns 0).
-    SELECT vc.record_encrypted_conversation_summary(
-        v_alice, 1, 10, 13, 'enc2:default:1:RUZHSA==', 'model-b', '1', '2026-08',
+    SELECT vc.record_conversation_summary(
+        v_alice, 1, 10, 13, 'economy summary', 'model-b', '1', '2026-08',
         0.9, true, 'ECONOMY') INTO v_sum2;
     IF v_sum2 <> 0 THEN
         RAISE EXCEPTION 'ECONOMY write after validated PREMIUM must be skipped, got %', v_sum2;
     END IF;
 
     -- A PREMIUM follow-up extends the chain with prev_id = the first row.
-    SELECT vc.record_encrypted_conversation_summary(
-        v_alice, 1, 10, 13, 'enc2:default:1:SUpLTA==', 'model-a', '2', '2026-08',
+    SELECT vc.record_conversation_summary(
+        v_alice, 1, 10, 13, 'follow-up premium summary', 'model-a', '2', '2026-08',
         0.95, true, 'PREMIUM') INTO v_sum2;
     IF v_sum2 IS NULL OR v_sum2 <= 0 THEN
         RAISE EXCEPTION 'PREMIUM follow-up must be recorded';
@@ -103,26 +103,22 @@ BEGIN
         RAISE EXCEPTION 'chain must link to the previous row, got %', v_prev;
     END IF;
 
+    IF to_regprocedure('vc.record_encrypted_conversation_summary(bigint,bigint,bigint,bigint,text,text,text,text,real,boolean,text)') IS NOT NULL THEN
+        RAISE EXCEPTION 'encrypted summary write surface must be removed';
+    END IF;
     BEGIN
         PERFORM vc.record_conversation_summary(
-            v_alice, 1, 10, 11, 'plaintext', 'm', '1', '1', 1.0, true, 'PREMIUM');
-        RAISE EXCEPTION 'legacy plaintext writer unexpectedly executable';
-    EXCEPTION
-        WHEN insufficient_privilege THEN NULL;
-    END;
-    BEGIN
-        PERFORM vc.record_encrypted_conversation_summary(
-            v_alice, 1, 10, 11, 'plaintext', 'm', '1', '1', 1.0, true, 'PREMIUM');
-        RAISE EXCEPTION 'encrypted writer unexpectedly accepted plaintext';
+            v_alice, 1, 10, 11, '  ', 'm', '1', '1', 1.0, true, 'PREMIUM');
+        RAISE EXCEPTION 'blank summary unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%unexpectedly accepted plaintext%' THEN RAISE; END IF;
-        IF SQLERRM NOT LIKE '%enc2 ciphertext is required%' THEN RAISE; END IF;
+        IF SQLERRM LIKE '%blank summary unexpectedly accepted%' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%summary must be%' THEN RAISE; END IF;
     END;
 
     -- Range/confidence validation fails closed.
     BEGIN
-        PERFORM vc.record_encrypted_conversation_summary(
-            1, 1, 13, 10, 'enc2:default:1:WA==', 'm', '1', '1', 1.0, true, 'PREMIUM');
+        PERFORM vc.record_conversation_summary(
+            1, 1, 13, 10, 'summary', 'm', '1', '1', 1.0, true, 'PREMIUM');
         RAISE EXCEPTION 'inverted range unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE '%inverted range unexpectedly accepted%' THEN
@@ -131,8 +127,8 @@ BEGIN
         IF SQLERRM NOT LIKE '%range%' THEN RAISE; END IF;
     END;
     BEGIN
-        PERFORM vc.record_encrypted_conversation_summary(
-            1, 1, 10, 11, 'enc2:default:1:WA==', 'm', '1', '1', 1.5, true, 'PREMIUM');
+        PERFORM vc.record_conversation_summary(
+            1, 1, 10, 11, 'summary', 'm', '1', '1', 1.5, true, 'PREMIUM');
         RAISE EXCEPTION 'confidence > 1 unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE '%confidence > 1 unexpectedly accepted%' THEN
@@ -141,7 +137,7 @@ BEGIN
         IF SQLERRM NOT LIKE '%confidence%' THEN RAISE; END IF;
     END;
 
-    -- Turn metadata exposes only ids/count/class; the application encrypts before write.
+    -- Turn metadata exposes only ids/count/class; the application supplies the plaintext summary.
     PERFORM vc.mint_entitlement_snapshot(v_alice, 100, false);
     SELECT out_conversation_id, out_from_message_id, out_to_message_id,
            out_message_count, out_service_class
@@ -151,11 +147,11 @@ BEGIN
         RAISE EXCEPTION 'turn metadata invalid: % % % % %',
             v_conv, v_from, v_to, v_count, v_class;
     END IF;
-    SELECT vc.record_encrypted_conversation_summary(
-        v_alice, v_conv, v_from, v_to, 'enc2:default:1:TU5PUA==',
+    SELECT vc.record_conversation_summary(
+        v_alice, v_conv, v_from, v_to, 'premium turn summary',
         'deterministic-summarizer', '1', '1', 1.0, true, v_class) INTO n;
     IF n IS NULL OR n <= 0 THEN
-        RAISE EXCEPTION 'encrypted turn summary must be recorded for PREMIUM turn';
+        RAISE EXCEPTION 'plaintext turn summary must be recorded for PREMIUM turn';
     END IF;
 
     -- Degraded snapshot exposes actual ECONOMY; the existing PREMIUM floor skips it.
@@ -167,16 +163,16 @@ BEGIN
     IF v_class <> 'ECONOMY' OR v_to <> 13 THEN
         RAISE EXCEPTION 'degraded turn metadata must expose actual ECONOMY';
     END IF;
-    SELECT vc.record_encrypted_conversation_summary(
-        v_alice, v_conv, v_from, v_to, 'enc2:default:1:UVJTVA==',
+    SELECT vc.record_conversation_summary(
+        v_alice, v_conv, v_from, v_to, 'degraded turn summary',
         'deterministic-summarizer', '1', '1', 1.0, true, v_class) INTO n;
     IF n <> 0 THEN
         RAISE EXCEPTION 'degraded turn summary must be skipped by the floor, got %', n;
     END IF;
 
     SELECT out_summary INTO v_stored FROM vc.latest_conversation_summary(v_alice, 1);
-    IF v_stored NOT LIKE 'enc2:%' THEN
-        RAISE EXCEPTION 'effective summary must be ciphertext at rest';
+    IF v_stored IS DISTINCT FROM 'premium turn summary' THEN
+        RAISE EXCEPTION 'effective summary must preserve plaintext at rest';
     END IF;
 
     -- FR-CHAT-004 / S0-32: deleting a covered message removes derived summaries.
@@ -224,9 +220,9 @@ BEGIN
     BEGIN
         -- Under bob's context, an owner-mismatched write (alice's owner id)
         -- must fail the trusted-owner assertion.
-        PERFORM vc.record_encrypted_conversation_summary(
+        PERFORM vc.record_conversation_summary(
             current_setting('sum.a')::bigint, 1, 10, 10,
-            'enc2:default:1:WA==', 'm', '1', '1',
+            'summary', 'm', '1', '1',
             1.0, true, 'PREMIUM');
         RAISE EXCEPTION 'owner-mismatched summary write unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN

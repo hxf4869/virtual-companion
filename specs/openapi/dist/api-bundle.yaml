@@ -6665,9 +6665,10 @@ components:
     MemoryTime:
       type: object
       description: V2 source-time interpretation stored separately from recording time and the legacy eventAt instant. Original
-        expressions are encrypted at rest. Extraction delay, retry, server timezone changes or a later user timezone must
-        not reinterpret this snapshot. Queries normalize their own relative expressions without modifying this event. A date-only
-        event has no fabricated time or reminder; ambiguous expressions remain untriggerable.
+        expressions are stored as plaintext in the memory domain under ADR-0009, with owner binding and FORCE RLS. Extraction
+        delay, retry, server timezone changes or a later user timezone must not reinterpret this snapshot. Queries normalize
+        their own relative expressions without modifying this event. A date-only event has no fabricated time or reminder;
+        ambiguous expressions remain untriggerable.
       required:
       - sourceTimestamp
       - sourceTimezone

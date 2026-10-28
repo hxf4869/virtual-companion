@@ -5,7 +5,6 @@ package postgres
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -80,14 +79,14 @@ func TestSTMemoryExtractQueueAttemptAndLateWriteFence(t *testing.T) {
 	if err != nil || prep.Decision != "EXTRACTABLE" || prep.AttemptID < 1 {
 		t.Fatalf("prepare=%s err=%v", prep.Decision, err)
 	}
-	var cipher string
+	var content string
 	if err := store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT content_cipher FROM vc.st_message_source WHERE owner_user_id=1 AND id=$1`, c.RefID).Scan(&cipher)
+		return tx.QueryRow(ctx, `SELECT content_cipher FROM vc.st_message_source WHERE owner_user_id=1 AND id=$1`, c.RefID).Scan(&content)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(cipher, "enc2:") || strings.Contains(cipher, "乌龙茶") {
-		t.Fatal("source snapshot is not encrypted")
+	if content != snapshot.Messages[0].Text {
+		t.Fatal("source snapshot is not stored as plaintext")
 	}
 	// Invalidate the persisted source while the extraction is out at a provider.
 	snapshot.Revision = 3

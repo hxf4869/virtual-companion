@@ -363,7 +363,7 @@ func TestLoadSeedSessionMemoryStaysInConversation(t *testing.T) {
 
 	view, err := store.StartTurn(ctx, 1, StartTurn{
 		ConversationID: convA, IdempotencyKey: "mem-turn-1",
-		UserContent: "mem-current", Mode: "LISTEN", MaxOutstanding: 4,
+		UserContent: "rel memory session", Mode: "LISTEN", MaxOutstanding: 4,
 	})
 	if err != nil {
 		t.Fatal(err)

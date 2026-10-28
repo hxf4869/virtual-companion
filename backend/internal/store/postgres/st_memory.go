@@ -262,10 +262,6 @@ func (s *Store) stQuerySource(ctx context.Context, owner, conversation int64) (s
 	if err != nil {
 		return out, mapStoreErr(err)
 	}
-	out.text, err = s.decryptStored(out.text)
-	if err != nil {
-		return out, errStore
-	}
 	return out, nil
 }
 
@@ -324,10 +320,7 @@ func (s *Store) refreshSTSummary(ctx context.Context, owner, conversation int64)
 		texts := []string{}
 		for i := len(sources) - 1; i >= 0; i-- {
 			d := sources[i]
-			plain, err := s.decryptStored(d.text)
-			if err != nil {
-				return errStore
-			}
+			plain := d.text
 			r := []rune(plain)
 			if len(r) > 160 {
 				plain = string(r[:160]) + "…"
@@ -346,10 +339,7 @@ func (s *Store) refreshSTSummary(ctx context.Context, owner, conversation int64)
 			texts = append(texts, "「"+plain+"」"+label)
 			refs = append(refs, d.ref)
 		}
-		stored, err := s.encryptStored(strings.Join(texts, "；"))
-		if err != nil {
-			return errStore
-		}
+		stored := strings.Join(texts, "；")
 		_, err = tx.Exec(ctx, `SELECT vc.record_st_summary($1,$2,$3,$4)`, owner, conversation, refs, stored)
 		return err
 	}))
@@ -370,10 +360,6 @@ func (s *Store) stSummaries(ctx context.Context, owner, target int64, chats []st
 			var d stDigest
 			if err := rows.Scan(&d.id, &d.conversation, &d.text, &d.refs); err != nil {
 				return err
-			}
-			d.text, err = s.decryptStored(d.text)
-			if err != nil {
-				return errStore
 			}
 			out = append(out, d)
 		}
@@ -412,15 +398,11 @@ func (s *Store) stillCurrentMemories(ctx context.Context, owner int64, b stMemor
 		defer rows.Close()
 		for rows.Next() {
 			var id int64
-			var cipher string
-			if err := rows.Scan(&id, &cipher); err != nil {
+			var summary string
+			if err := rows.Scan(&id, &summary); err != nil {
 				return err
 			}
-			plain, err := s.decryptStored(cipher)
-			if err != nil {
-				return errStore
-			}
-			valid[id] = plain
+			valid[id] = summary
 		}
 		return rows.Err()
 	})

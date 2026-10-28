@@ -125,16 +125,12 @@ func (s *Store) applySTSourceSnapshot(ctx context.Context, owner int64, base stS
 	if snap.State == "PRESENT" && !snap.NotModified {
 		messages := make([]map[string]any, 0, len(snap.Messages))
 		for _, m := range snap.Messages {
-			cipher := ""
+			content := ""
 			if m.Eligible && !base.incognito {
-				var err error
-				cipher, err = s.encryptStored(m.Text)
-				if err != nil {
-					return STSourceState{}, errStore
-				}
+				content = m.Text
 			}
 			messages = append(messages, map[string]any{"messageId": m.MessageID, "candidateId": m.CandidateID, "revision": m.Revision,
-				"role": m.Role, "cipher": cipher, "settled": m.Settled, "eligible": m.Eligible && !base.incognito,
+				"role": m.Role, "cipher": content, "settled": m.Settled, "eligible": m.Eligible && !base.incognito,
 				"sourceTimestamp": m.SourceTimestamp, "sourceTimezone": m.SourceTimezone})
 		}
 		var err error

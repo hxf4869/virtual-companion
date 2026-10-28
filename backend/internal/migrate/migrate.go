@@ -27,6 +27,8 @@ var migrationFiles embed.FS
 // never receives schema-owner credentials.
 type Config struct {
 	DSN string
+	// DecryptMemory is the existing field cipher, injected by the command.
+	DecryptMemory func(string) (string, error)
 }
 
 type migration struct {
@@ -82,7 +84,7 @@ func Run(ctx context.Context, cfg Config) error {
 		if _, ok := applied[item.Version]; ok {
 			continue
 		}
-		if err := applyOne(ctx, conn, item); err != nil {
+		if err := applyOne(ctx, conn, item, cfg); err != nil {
 			return err
 		}
 	}
@@ -125,7 +127,7 @@ func appliedVersions(ctx context.Context, conn *pgx.Conn) (map[int64]string, err
 	return out, nil
 }
 
-func applyOne(ctx context.Context, conn *pgx.Conn, item migration) error {
+func applyOne(ctx context.Context, conn *pgx.Conn, item migration, cfg Config) error {
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("migration %s transaction failed", item.File)
@@ -134,6 +136,11 @@ func applyOne(ctx context.Context, conn *pgx.Conn, item migration) error {
 	started := time.Now()
 	if _, err := tx.Exec(ctx, item.SQL); err != nil {
 		return fmt.Errorf("migration %s failed: %w", item.File, err)
+	}
+	if item.Version == 146 {
+		if err := migrateMemoryPlaintext(ctx, tx, cfg.DecryptMemory); err != nil {
+			return fmt.Errorf("migration %s: %w", item.File, err)
+		}
 	}
 	executionMillis := time.Since(started).Milliseconds()
 	if _, err := tx.Exec(ctx, `

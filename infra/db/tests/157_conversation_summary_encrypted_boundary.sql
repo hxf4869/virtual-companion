@@ -1,5 +1,6 @@
--- 157_conversation_summary_encrypted_boundary: S0-32 runtime has no plaintext
--- writer; turn metadata contains no message body; incognito produces no metadata.
+-- 157_conversation_summary_encrypted_boundary: W08 replaces the encrypted
+-- writer with owner-bound plaintext; turn metadata still contains no message
+-- body and incognito produces no metadata.
 
 \set ON_ERROR_STOP on
 
@@ -44,11 +45,11 @@ SET LOCAL ROLE vc_api;
 DO $$
 DECLARE n integer; stored text;
 BEGIN
-    IF has_function_privilege(
+    IF NOT has_function_privilege(
         'vc_api',
         'vc.record_conversation_summary(bigint,bigint,bigint,bigint,text,text,text,text,real,boolean,text)',
         'EXECUTE') THEN
-        RAISE EXCEPTION 'legacy plaintext-capable writer must be revoked';
+        RAISE EXCEPTION 'owner-bound plaintext writer must be available';
     END IF;
     IF to_regprocedure('vc.record_turn_summary(bigint,bigint)') IS NOT NULL THEN
         RAISE EXCEPTION 'SQL plaintext turn writer must be removed';
@@ -57,15 +58,15 @@ BEGIN
         RAISE EXCEPTION 'plaintext stored-text reader must be removed';
     END IF;
 
-    BEGIN
-        PERFORM vc.record_encrypted_conversation_summary(
-            current_setting('t.summary_user')::bigint, 1, 10, 11,
-            'sensitive-normal', 'm', '1', '1', 1.0, true, 'ECONOMY');
-        RAISE EXCEPTION 'plaintext unexpectedly accepted';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%plaintext unexpectedly accepted%' THEN RAISE; END IF;
-        IF SQLERRM NOT LIKE '%enc2 ciphertext is required%' THEN RAISE; END IF;
-    END;
+    IF to_regprocedure('vc.record_encrypted_conversation_summary(bigint,bigint,bigint,bigint,text,text,text,text,real,boolean,text)') IS NOT NULL THEN
+        RAISE EXCEPTION 'encrypted-only writer must be removed';
+    END IF;
+    IF has_function_privilege(
+        'vc_worker',
+        'vc.record_conversation_summary(bigint,bigint,bigint,bigint,text,text,text,text,real,boolean,text)',
+        'EXECUTE') THEN
+        RAISE EXCEPTION 'legacy summary writer must remain vc_api-only';
+    END IF;
 
     SELECT count(*) INTO n FROM vc.conversation_summary_turn_metadata(
         current_setting('t.summary_user')::bigint, 100);
@@ -74,13 +75,13 @@ BEGIN
         current_setting('t.summary_user')::bigint, 101);
     IF n <> 0 THEN RAISE EXCEPTION 'incognito turn must not produce summary metadata'; END IF;
 
-    PERFORM vc.record_encrypted_conversation_summary(
+    PERFORM vc.record_conversation_summary(
         current_setting('t.summary_user')::bigint, 1, 10, 11,
-        'enc2:default:1:QUJDRA==', 'm', '1', '1', 1.0, true, 'ECONOMY');
+        'sensitive-normal', 'm', '1', '1', 1.0, true, 'ECONOMY');
     SELECT out_summary INTO stored FROM vc.latest_conversation_summary(
         current_setting('t.summary_user')::bigint, 1);
-    IF stored NOT LIKE 'enc2:%' OR stored LIKE '%sensitive-normal%' THEN
-        RAISE EXCEPTION 'effective summary is not opaque ciphertext';
+    IF stored IS DISTINCT FROM 'sensitive-normal' THEN
+        RAISE EXCEPTION 'effective summary must preserve plaintext';
     END IF;
 
     PERFORM vc.delete_message(current_setting('t.summary_user')::bigint, 1, 10);

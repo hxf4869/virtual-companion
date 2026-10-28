@@ -20,7 +20,7 @@ type recallQuery struct {
 }
 type recallCandidate struct {
 	Memory
-	cipher, temporal string
+	temporal string
 }
 
 func keywordTerms(text string) map[string]bool {
@@ -108,18 +108,13 @@ func (s *Store) queryMemories(ctx context.Context, owner, relationship, conversa
 			for rows.Next() {
 				var c recallCandidate
 				var temporal *string
-				if err := rows.Scan(&c.ID, &c.Scope, &c.cipher, &c.ConversationID, &c.CreatedAt, &c.EventAt, &c.EventStatus, &temporal, &c.Sources); err != nil {
+				if err := rows.Scan(&c.ID, &c.Scope, &c.Summary, &c.ConversationID, &c.CreatedAt, &c.EventAt, &c.EventStatus, &temporal, &c.Sources); err != nil {
 					rows.Close()
 					return err
 				}
 				c.RelationshipID = relationship
 				after = c.ID
 				count++
-				c.Summary, err = s.decryptStored(c.cipher)
-				if err != nil {
-					rows.Close()
-					return errStore
-				}
 				if temporal != nil {
 					c.temporal = *temporal
 					c.Time, err = s.decodeMemoryTime(*temporal)
@@ -198,7 +193,7 @@ func (s *Store) queryMemories(ctx context.Context, owner, relationship, conversa
 			return nil, mapStoreErr(err)
 		}
 		for _, c := range batch {
-			if got, ok := valid[c.ID]; !ok || got != [2]string{c.cipher, c.temporal} {
+			if got, ok := valid[c.ID]; !ok || got != [2]string{c.Summary, c.temporal} {
 				continue
 			}
 			if seenText[c.Summary] {

@@ -21,7 +21,7 @@ const (
 	memoryExtractMaxAttempts = 3
 )
 
-// Memory is one candidate or canonical row after decrypt.
+// Memory is one plaintext candidate or canonical row.
 type Memory struct {
 	ID                   int64
 	RelationshipID       int64
@@ -81,10 +81,6 @@ func (s *Store) CreateMemoryCandidate(ctx context.Context, owner int64, in Memor
 		if err := s.guardMemorySources(ctx, tx, owner, in); err != nil {
 			return err
 		}
-		stored, err := s.encryptStored(in.Summary)
-		if err != nil {
-			return errStore
-		}
 		evidence := in.Evidence
 		if len(evidence) == 0 {
 			evidence = []string{sourceDirect}
@@ -92,7 +88,7 @@ func (s *Store) CreateMemoryCandidate(ctx context.Context, owner int64, in Memor
 		var id int64
 		if err := tx.QueryRow(ctx,
 			`SELECT vc.create_memory_candidate_keyed($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			owner, in.RelationshipID, in.Scope, stored, in.ConversationID, evidence,
+			owner, in.RelationshipID, in.Scope, in.Summary, in.ConversationID, evidence,
 			in.EventAt, in.EventStatus, in.EventExpiresAt, nullIfBlank(in.IdempotencyKey),
 		).Scan(&id); err != nil {
 			return err
@@ -135,11 +131,6 @@ func (s *Store) ListMemories(ctx context.Context, owner, relationshipID int64, i
 			if err != nil {
 				return err
 			}
-			plain, err := s.decryptStored(mem.Summary)
-			if err != nil {
-				return errStore
-			}
-			mem.Summary = plain
 			mem.RelationshipID = relationshipID
 			out = append(out, mem)
 		}
@@ -200,13 +191,9 @@ func (s *Store) UpdateMemory(ctx context.Context, owner, memoryID int64, summary
 		if !ok || (existing.Status != memoryPending && existing.Status != memoryAccepted) {
 			return ErrNotFound
 		}
-		stored, err := s.encryptStored(summary)
-		if err != nil {
-			return errStore
-		}
 		var updated bool
 		if err := tx.QueryRow(ctx, `SELECT vc.update_memory($1,$2,$3,$4,$5,$6)`,
-			owner, memoryID, stored, eventAt, eventStatus, eventExpiresAt).Scan(&updated); err != nil {
+			owner, memoryID, summary, eventAt, eventStatus, eventExpiresAt).Scan(&updated); err != nil {
 			return err
 		}
 		if !updated {
@@ -383,8 +370,8 @@ func (s *Store) UpdateMemoryAutoSavePref(ctx context.Context, owner int64, enabl
 }
 
 // CreateAutoSavedMemory stores one auto-extracted memory as ACCEPTED with
-// auto_saved=true, encrypting the summary with the same stored-field cipher
-// as the manual candidate path. The Go side re-checks the same source guards
+// auto_saved=true and a plaintext summary, like the manual candidate path.
+// The Go side re-checks the same source guards
 // the tombstone flip relies on (conversation incognito, per-message no_memory)
 // before the keyed insert, so a deleted memory's sources can never re-extract.
 // The insert transaction also re-reads the owner's auto-save pref and the
@@ -494,10 +481,6 @@ func (s *Store) CreateAutoSavedMemory(ctx context.Context, owner int64, in AutoS
 		if !allowed {
 			return ErrInvalid
 		}
-		stored, err := s.encryptStored(in.Summary)
-		if err != nil {
-			return errStore
-		}
 		var id int64
 		// RELATIONSHIP scope: the auto-extracted preference must recall into
 		// later conversations of the same relationship (conversation binding
@@ -506,7 +489,7 @@ func (s *Store) CreateAutoSavedMemory(ctx context.Context, owner int64, in AutoS
 		// requires it for SESSION scope.
 		if err := tx.QueryRow(ctx,
 			`SELECT vc.create_auto_saved_memory($1,$2,'RELATIONSHIP',$3,$4,$5,$6)`,
-			owner, in.RelationshipID, stored, in.ConversationID,
+			owner, in.RelationshipID, in.Summary, in.ConversationID,
 			in.Evidence, nullIfBlank(in.IdempotencyKey),
 		).Scan(&id); err != nil {
 			return err
@@ -680,7 +663,7 @@ type MemoryExtractPreparation struct {
 	// PriorPayload is the stored output of an earlier successful call for the
 	// same job: a retry whose local save failed replays it through the parser
 	// instead of calling the model again. The SQL layer treats it as opaque
-	// text; it is encrypted at rest and decrypted here.
+	// text; memory-domain JSON is stored and read unchanged.
 	PriorPayload string
 }
 
@@ -688,8 +671,7 @@ type MemoryExtractPreparation struct {
 // mean the provider reported no usage: the disposition records UNKNOWN, never
 // zero. FailureCode uses the closed attempt failure vocabulary (empty for a
 // success or when nothing more specific is known). OutputPayload — the minimal
-// accepted entries of a successful call — is persisted encrypted at rest like
-// every other stored message field.
+// accepted entries of a successful call — is persisted as plaintext JSON.
 type MemoryExtractOutcome struct {
 	Status        string // SUCCEEDED, FAILED, CANCELLED
 	InputTokens   *int64
@@ -737,13 +719,7 @@ func (s *Store) prepareMemoryExtractAttempt(ctx context.Context, owner, jobID, g
 				return err
 			}
 		}
-		// The replay payload is stored encrypted at rest (same stored-field
-		// cipher as every message field); the handler receives plaintext.
-		plain, err := s.decryptStored(payload.String)
-		if err != nil {
-			return errStore
-		}
-		out.PriorPayload = plain
+		out.PriorPayload = payload.String
 		return nil
 	})
 	if err != nil {
@@ -774,13 +750,7 @@ func (s *Store) RecordMemoryExtractOutcome(ctx context.Context, owner, jobID, at
 	}
 	var payload any
 	if out.OutputPayload != "" {
-		// The replayable payload persists encrypted at rest, like every other
-		// stored message field; the SQL layer treats it as opaque text.
-		stored, err := s.encryptStored(out.OutputPayload)
-		if err != nil {
-			return 0, errStore
-		}
-		payload = stored
+		payload = out.OutputPayload
 	}
 	var rows int64
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
@@ -908,11 +878,7 @@ func (s *Store) scanMemoryGet(ctx context.Context, tx pgx.Tx, owner, id int64) (
 	); err != nil {
 		return Memory{}, false, err
 	}
-	plain, err := s.decryptStored(stored)
-	if err != nil {
-		return Memory{}, false, errStore
-	}
-	m.Summary = plain
+	m.Summary = stored
 	m.ConversationID = int8Ptr(conv)
 	m.SupersededAt = tzPtr(supersededAt)
 	m.SupersededByMemoryID = int8Ptr(supersededBy)

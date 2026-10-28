@@ -50,7 +50,8 @@ type Stats struct {
 	TxSeconds    float64
 }
 
-// Open pings PostgreSQL and returns a pool. The caller must Close it.
+// Open checks PostgreSQL and the completed memory migration before exposing
+// a runtime pool. The caller must Close it.
 func Open(ctx context.Context, cfg OpenConfig) (*Store, error) {
 	if cfg.DSN == "" {
 		return nil, fmt.Errorf("database DSN is required")
@@ -74,6 +75,11 @@ func Open(ctx context.Context, cfg OpenConfig) (*Store, error) {
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("database ping failed")
+	}
+	var memoryReady bool
+	if err := pool.QueryRow(ctx, `SELECT vc.memory_plaintext_ready()`).Scan(&memoryReady); err != nil || !memoryReady {
+		pool.Close()
+		return nil, fmt.Errorf("memory plaintext migration is required before runtime startup")
 	}
 	timeout := cfg.TxTimeout
 	if timeout <= 0 {

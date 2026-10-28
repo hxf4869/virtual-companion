@@ -18,7 +18,7 @@ import (
 // (MESSAGE_TEXT) allowed, usage settles write-once as USAGE_REPORTED or
 // UNKNOWN (never zero), a replay-only retry reuses the stored successful
 // payload WITHOUT registering a new attempt (attempt id 0, no second usage
-// row) and the stored payload rests encrypted, a superseded CREATED attempt
+// row) and the stored payload rests as plaintext JSON, a superseded CREATED attempt
 // is abandoned with an UNKNOWN disposition (it may already have gone
 // outbound), and a stale claim token fences the holder out (CLAIM_LOST)
 // without creating any attempt row.
@@ -119,7 +119,7 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 		t.Fatalf("outcome rows=%d err=%v, want 1", rows, err)
 	}
 
-	// The replayable payload rests encrypted — never the raw model JSON.
+	// W08: replay preserves the accepted JSON payload verbatim.
 	var rawPayload string
 	if err := store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
@@ -128,14 +128,14 @@ func TestMemoryExtractPrepareAttemptBoundary(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if rawPayload == payload || !IsEncrypted(rawPayload) {
-		t.Fatalf("stored payload %q is not encrypted at rest", rawPayload)
+	if rawPayload != payload {
+		t.Fatal("stored replay payload differs from plaintext JSON")
 	}
 
 	// The replay-only retry reuses the stored payload: NO new attempt row and
 	// no new usage — the caller gets attempt id 0 and must not record an
 	// outcome. Exactly the two attempts above exist, and the stored payload
-	// comes back decrypted.
+	// comes back unchanged.
 	prep2, err := store.PrepareMemoryExtractAttempt(ctx, 1, jobID, genID, claim.Token, claim.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)

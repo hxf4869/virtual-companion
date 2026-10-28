@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,7 +39,7 @@ func main() {
 }
 
 func runMigrate() {
-	cfg, err := migrate.LoadEnv(os.Getenv)
+	cfg, err := migrationConfig(os.Getenv)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "companiond migrate: %v\n", err)
 		os.Exit(1)
@@ -47,6 +49,50 @@ func runMigrate() {
 		os.Exit(1)
 	}
 	fmt.Fprintln(os.Stdout, "companiond migrate complete")
+}
+
+// Migrations use the same current/previous key slots as the runtime, without
+// requiring unrelated provider, export or runtime database configuration.
+func migrationConfig(getenv func(string) string) (migrate.Config, error) {
+	cfg, err := migrate.LoadEnv(getenv)
+	if err != nil {
+		return cfg, err
+	}
+	key := strings.TrimSpace(getenv("VC_CRYPTO_REST_KEY"))
+	if key == "" {
+		return cfg, nil
+	} // Empty/plaintext databases need no decryption.
+	version := func(name string, fallback int) (int, error) {
+		raw := strings.TrimSpace(getenv(name))
+		if raw == "" {
+			return fallback, nil
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			return 0, fmt.Errorf("%s must be a positive integer", name)
+		}
+		return n, nil
+	}
+	current, err := version("VC_CRYPTO_REST_KEY_VERSION", 1)
+	if err != nil {
+		return cfg, err
+	}
+	previous, err := version("VC_CRYPTO_PREVIOUS_REST_KEY_VERSION", 0)
+	if err != nil {
+		return cfg, err
+	}
+	id := strings.TrimSpace(getenv("VC_CRYPTO_REST_KEY_ID"))
+	if id == "" {
+		id = "default"
+	}
+	cipher, err := postgres.NewFieldCipherWithPrevious(id, current, key,
+		strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY_ID")), previous,
+		strings.TrimSpace(getenv("VC_CRYPTO_PREVIOUS_REST_KEY")))
+	if err != nil {
+		return cfg, fmt.Errorf("migration field cipher: %w", err)
+	}
+	cfg.DecryptMemory = cipher.Decrypt
+	return cfg, nil
 }
 
 func runBootstrap() {

@@ -152,8 +152,8 @@ type OwnerBinding struct {
 	Secret string
 }
 
-// Crypto is the at-rest field cipher. Go only writes enc2; enc1/plaintext
-// are dual-read until Phase 6 deletes the legacy reader.
+// Crypto protects non-memory fields at rest. Protected fields write enc2;
+// enc1/plaintext are dual-read until Phase 6 deletes the legacy reader.
 type Crypto struct {
 	RestKeyID              string
 	RestKeyVersion         int

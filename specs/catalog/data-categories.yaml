@@ -1,5 +1,20 @@
 schemaVersion: 1
 catalogId: data-categories
+memoryDomainStorage:
+  fieldEncryption: false
+  representation: PLAINTEXT_OR_JSON
+  boundaryContract: specs/contracts/memory-recall-contract.yaml
+  protection:
+    - OWNER_BINDING_AND_FORCE_RLS
+    - DIRECTORY_PERMISSIONS
+    - DISK_OR_VOLUME_PROTECTION
+    - ENCRYPTED_BACKUPS
+  note: >-
+    ADR-0009 permits plaintext only for the memory-domain fields listed in the
+    memory contract, including source-index text. Data categories and access
+    restrictions remain unchanged. Account data, provider credentials, legacy
+    Go message bodies and encrypted export-object envelopes retain their
+    existing field or object encryption.
 entries:
 - code: MESSAGE_TEXT
   order: 0

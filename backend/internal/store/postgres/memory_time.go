@@ -10,7 +10,7 @@ import (
 )
 
 // MemoryTime keeps the immutable source clock separate from the extraction
-// clock and from local event dates. The full object is encrypted at rest.
+// clock and from local event dates. The full object is stored as plaintext JSON.
 type MemoryTime struct {
 	SourceTimestamp *time.Time `json:"sourceTimestamp"`
 	SourceTimezone  *string    `json:"sourceTimezone"`
@@ -36,25 +36,21 @@ func memoryEvidenceRefs(ctx context.Context, tx pgx.Tx, owner, id int64) ([]stri
 }
 
 func (s *Store) readMemoryTime(ctx context.Context, tx pgx.Tx, owner, id int64) (*MemoryTime, error) {
-	var cipher *string
-	if err := tx.QueryRow(ctx, `SELECT vc.get_memory_temporal($1,$2)`, owner, id).Scan(&cipher); err != nil {
+	var stored *string
+	if err := tx.QueryRow(ctx, `SELECT vc.get_memory_temporal($1,$2)`, owner, id).Scan(&stored); err != nil {
 		return nil, err
 	}
-	if cipher == nil {
+	if stored == nil {
 		return nil, nil
 	}
-	return s.decodeMemoryTime(*cipher)
+	return s.decodeMemoryTime(*stored)
 }
-func (s *Store) decodeMemoryTime(cipher string) (*MemoryTime, error) {
-	if cipher == "" {
+func (s *Store) decodeMemoryTime(stored string) (*MemoryTime, error) {
+	if stored == "" {
 		return nil, nil
-	}
-	plain, err := s.decryptStored(cipher)
-	if err != nil {
-		return nil, errStore
 	}
 	var out MemoryTime
-	if json.Unmarshal([]byte(plain), &out) != nil {
+	if json.Unmarshal([]byte(stored), &out) != nil {
 		return nil, errStore
 	}
 	return &out, nil
@@ -100,10 +96,6 @@ func (s *Store) writeMemoryTime(ctx context.Context, tx pgx.Tx, owner, id int64,
 	if err != nil {
 		return errStore
 	}
-	stored, err := s.encryptStored(string(raw))
-	if err != nil {
-		return errStore
-	}
-	_, err = tx.Exec(ctx, `SELECT vc.set_memory_temporal($1,$2,$3)`, owner, id, stored)
+	_, err = tx.Exec(ctx, `SELECT vc.set_memory_temporal($1,$2,$3)`, owner, id, string(raw))
 	return err
 }

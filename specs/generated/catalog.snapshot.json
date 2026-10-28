@@ -711,9 +711,21 @@
             "order": 5
           }
         ],
+        "memoryDomainStorage": {
+          "boundaryContract": "specs/contracts/memory-recall-contract.yaml",
+          "fieldEncryption": false,
+          "note": "ADR-0009 permits plaintext only for the memory-domain fields listed in the memory contract, including source-index text. Data categories and access restrictions remain unchanged. Account data, provider credentials, legacy Go message bodies and encrypted export-object envelopes retain their existing field or object encryption.",
+          "protection": [
+            "OWNER_BINDING_AND_FORCE_RLS",
+            "DIRECTORY_PERMISSIONS",
+            "DISK_OR_VOLUME_PROTECTION",
+            "ENCRYPTED_BACKUPS"
+          ],
+          "representation": "PLAINTEXT_OR_JSON"
+        },
         "schemaVersion": 1
       },
-      "sha256": "40f6ea94b1031c84acc60a0acb5fe493a06981db94d5bd2dbc7993558cf6e396"
+      "sha256": "a2fd927a8f83bd27285a3c82d17c231ec05c2218a3c0aa2a2133eec6ce97263d"
     },
     "error-codes.yaml": {
       "document": {

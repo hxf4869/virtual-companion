@@ -251,15 +251,14 @@ func TestCreateAutoSavedMemoryIntegration(t *testing.T) {
 		t.Fatalf("evidence %+v err=%v", evi, err)
 	}
 
-	// Defect fix: the auto-saved summary must rest encrypted (enc envelope,
-	// never the plaintext), while every app read path returns plaintext.
+	// W08: auto-saved summaries persist as plaintext and read back unchanged.
 	raw, err := psqlSuper(fmt.Sprintf(
 		`SELECT summary FROM vc.memory_item WHERE owner_user_id = 1 AND id = %d`, mem.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if raw == create.Summary || !IsEncrypted(raw) {
-		t.Fatalf("auto-saved summary not encrypted at rest: %q", raw)
+	if raw != create.Summary {
+		t.Fatal("auto-saved summary is not stored as plaintext")
 	}
 	got, err := store.GetMemory(ctx, 1, mem.ID)
 	if err != nil || got.Summary != create.Summary {
@@ -279,9 +278,7 @@ func TestCreateAutoSavedMemoryIntegration(t *testing.T) {
 		t.Fatalf("ListMemories did not return the auto-saved memory as plaintext")
 	}
 
-	// V126: the SQL-side summary ceiling no longer measures the ciphertext
-	// envelope, so a plaintext at the Go-store 2000-rune limit persists
-	// (its envelope is far longer than 2000 characters).
+	// The full Go-store 2000-rune plaintext limit persists without truncation.
 	long := strings.Repeat("记", maxSummaryRunes)
 	longMem, err := store.CreateAutoSavedMemory(ctx, 1, AutoSavedMemoryCreate{
 		RelationshipID: 10, ConversationID: conv, Summary: long,
@@ -295,8 +292,8 @@ func TestCreateAutoSavedMemoryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !IsEncrypted(rawLong) {
-		t.Fatalf("limit summary not encrypted at rest: %d chars", len(rawLong))
+	if rawLong != long {
+		t.Fatalf("limit summary not stored intact: %d chars", len(rawLong))
 	}
 
 	// Same idempotency key returns the existing row instead of duplicating.
@@ -349,7 +346,7 @@ func TestCreateAutoSavedMemoryIntegration(t *testing.T) {
 	}
 	view, err := store.StartTurn(ctx, 1, StartTurn{
 		ConversationID: convNew, IdempotencyKey: "auto-seed-turn-1",
-		UserContent: "new-session-turn", Mode: "LISTEN", MaxOutstanding: 4,
+		UserContent: "自动保存的合成记忆", Mode: "LISTEN", MaxOutstanding: 4,
 	})
 	if err != nil {
 		t.Fatal(err)

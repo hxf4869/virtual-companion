@@ -22,7 +22,8 @@ import (
 //
 // Deletion: Phase 6 after every protected column is current enc2, backup
 // restore is verified, and enc1/plaintext/unrecognized counts are 0
-// (redesign §14.5). Go never writes enc1 or plaintext.
+// (redesign §14.5). Protected fields never write enc1 or plaintext; the
+// W08 plaintext memory domain does not use FieldCipher.
 const (
 	enc2Prefix     = "enc2:"
 	enc1Prefix     = "enc1:"

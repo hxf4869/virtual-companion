@@ -8,7 +8,7 @@ import (
 )
 
 // ReadSTMemoryExtractInput reads the claimed job's immutable source ref, then
-// reconciles its chat and reloads the encrypted text. A superseded claim never
+// reconciles its chat and reloads the plaintext text. A superseded claim never
 // borrows the new candidate/revision under the same numeric source row.
 func (s *Store) ReadSTMemoryExtractInput(ctx context.Context, owner, jobID, sourceID int64) (MemoryExtractInput, error) {
 	var out MemoryExtractInput
@@ -24,10 +24,7 @@ func (s *Store) ReadSTMemoryExtractInput(ctx context.Context, owner, jobID, sour
 				}
 				return err
 			}
-			out.UserContent, err = s.decryptStored(stored)
-			if err != nil {
-				return errStore
-			}
+			out.UserContent = stored
 			out.Status = "INELIGIBLE"
 			if out.ModelEligible {
 				out.Status = "COMPLETED"

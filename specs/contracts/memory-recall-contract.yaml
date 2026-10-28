@@ -14,6 +14,37 @@ canonicalInvariants:
   - delete, supersede and consent withdrawal make the item immediately unrecallable
   - restore-before-read must honour tombstones
   - provider or agent sessions are not a second canonical memory
+storage:
+  decision: docs/decisions/0009-v2-sillytavern-host-direction.md
+  fieldEncryption: false
+  representation: plaintext_or_json
+  plaintextFields:
+    - memory_item.summary
+    - memory_item.temporal_cipher
+    - conversation_summary.summary
+    - st_message_source.content_cipher
+    - memory_extract_attempt.output_payload
+    - memory_import_bundle.payload[*].summary
+  columnNaming: legacy_cipher_suffix_does_not_imply_encryption
+  coverage: all_rows_including_invalid_suppressed_deleted_and_historical_versions
+  accessProtection: owner_binding_and_force_rls_unchanged
+  atRestProtection: directory_permissions_disk_or_volume_protection_and_encrypted_backups
+  unchangedEncryption:
+    - totp_secrets
+    - provider_credentials
+    - non_memory_message_fields_including_legacy_go_message_bodies
+    - export_object_envelopes
+    - backups
+  upgrade:
+    transaction: schema_change_paged_conversion_and_schema_history_are_atomic
+    reader: injected_field_cipher_decrypt_with_current_and_previous_keys
+    input: mixed_plaintext_enc1_and_enc2_in_nonempty_databases
+    failure: rollback_entire_version_on_wrong_key_unknown_key_or_malformed_envelope
+    preserve: ids_timestamps_states_suppression_and_replacement_relationships
+    temporalValues: preserve_snapshot_without_reinterpretation_or_requeue
+    deletionBarrier: complete_existing_account_deletion_before_upgrade_never_disable_barrier
+    cutover: stop_old_writers_and_require_completed_migration_before_runtime_serves
+    runtime: direct_plaintext_or_json_reads_and_writes_without_cipher_detection_fallback
 goV1:
   autoSave: true
   modelAutoExtractionJob: true
