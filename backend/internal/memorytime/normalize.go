@@ -34,7 +34,9 @@ type Result struct {
 }
 
 var (
-	datePattern  = regexp.MustCompile(`(?:([0-9]{4})年)?([0-9]{1,2})月([0-9]{1,2})日|([0-9]{4})-([0-9]{2})-([0-9]{2})|下周([一二三四五六日天])|今天|明天|后天`)
+	// 号 is the same calendar day as 日. Chinese numerals cover 十月三十号 and
+	// 十一月六日; a bare 10号 still has no month and stays unresolved.
+	datePattern  = regexp.MustCompile(`(?:([0-9]{4})年)?([0-9]{1,2})月([0-9]{1,2})[日号]|([0-9]{4})-([0-9]{2})-([0-9]{2})|下周([一二三四五六日天])|今天|明天|后天|(?:([0-9]{4})年)?([一二三四五六七八九十]{1,3})月([一二三四五六七八九十]{1,3})[日号]`)
 	clockPattern = regexp.MustCompile(`([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?`)
 	// These are temporal expressions we recognize as incomplete, not formats
 	// whose meaning we silently infer from the extraction time.
@@ -44,7 +46,8 @@ var (
 
 // Normalize also handles queries: callers pass the query's own timestamp and
 // timezone, and must not overwrite an existing event with that query result.
-// Supported dates are YYYY-MM-DD, YYYY年M月D日, M月D日 (source year),
+// Supported dates are YYYY-MM-DD, YYYY年M月D日/号, M月D日/号 (source year),
+// the same forms written with Chinese numerals (十月三十号, 2026年十一月六日),
 // 下周一..日 (next Monday-based calendar week), 今天/明天/后天, optionally
 // followed by an unambiguous 24-hour HH:mm time. Other temporal expressions
 // stay pending clarification. A numeric offset on sourceTimestamp does not
@@ -99,14 +102,25 @@ func Normalize(expression string, sourceTimestamp time.Time, sourceTimezone stri
 	var year, month, day int
 	status := StatusNormalized
 	switch {
-	case part(1) != "" || part(4) != "":
-		y, m, d := part(1), part(2), part(3)
-		if part(4) != "" {
-			y, m, d = part(4), part(5), part(6)
+	case part(1) != "" || part(4) != "" || part(8) != "":
+		if part(8) != "" {
+			var okM, okD bool
+			year, _ = strconv.Atoi(part(8))
+			month, okM = chineseNumber(part(9))
+			day, okD = chineseNumber(part(10))
+			if !okM || !okD {
+				result.NormalizationRule = "INVALID_DATE"
+				return result
+			}
+		} else {
+			y, m, d := part(1), part(2), part(3)
+			if part(4) != "" {
+				y, m, d = part(4), part(5), part(6)
+			}
+			year, _ = strconv.Atoi(y)
+			month, _ = strconv.Atoi(m)
+			day, _ = strconv.Atoi(d)
 		}
-		year, _ = strconv.Atoi(y)
-		month, _ = strconv.Atoi(m)
-		day, _ = strconv.Atoi(d)
 		result.NormalizationRule = "EXPLICIT_CALENDAR_DATE"
 		status = StatusExplicitDate
 	default:
@@ -121,6 +135,16 @@ func Normalize(expression string, sourceTimestamp time.Time, sourceTimezone stri
 			year = local.Year()
 			month, _ = strconv.Atoi(part(2))
 			day, _ = strconv.Atoi(part(3))
+			result.NormalizationRule = "MONTH_DAY_IN_SOURCE_YEAR"
+		case part(9) != "":
+			var okM, okD bool
+			year = local.Year()
+			month, okM = chineseNumber(part(9))
+			day, okD = chineseNumber(part(10))
+			if !okM || !okD {
+				result.NormalizationRule = "INVALID_DATE"
+				return result
+			}
 			result.NormalizationRule = "MONTH_DAY_IN_SOURCE_YEAR"
 		case part(7) != "":
 			weekday := map[string]int{"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}[part(7)]
@@ -162,6 +186,42 @@ func Normalize(expression string, sourceTimestamp time.Time, sourceTimezone stri
 	result.EventDate, result.EventTime = &eventDate, eventTime
 	result.EventTimezone, result.TimePrecision = &sourceTimezone, &precision
 	return result
+}
+
+func chineseNumber(s string) (int, bool) {
+	digit := map[rune]int{'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
+	r := []rune(s)
+	switch len(r) {
+	case 1:
+		if r[0] == '十' {
+			return 10, true
+		}
+		n, ok := digit[r[0]]
+		return n, ok
+	case 2:
+		if r[0] == '十' {
+			n, ok := digit[r[1]]
+			return 10 + n, ok
+		}
+		if r[1] == '十' {
+			n, ok := digit[r[0]]
+			if !ok || n > 3 {
+				return 0, false
+			}
+			return n * 10, true
+		}
+	case 3:
+		if r[1] != '十' {
+			return 0, false
+		}
+		a, oka := digit[r[0]]
+		b, okb := digit[r[2]]
+		if !oka || !okb || a > 3 {
+			return 0, false
+		}
+		return a*10 + b, true
+	}
+	return 0, false
 }
 
 func digitAdjacent(s string, start, end int) bool {

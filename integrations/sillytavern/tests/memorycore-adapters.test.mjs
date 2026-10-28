@@ -68,6 +68,10 @@ test('native recall keeps independent questions above their own relevance gate a
             assert.deepEqual(input.filter.allowedRecordIds, ['wedding', 'book']);
             assert.equal(input.filter.minCosine, 0.58);
             assert.equal(input.filter.minFtsScore, 0.80);
+            assert.equal(input.filter.cosineFloor, 0.50);
+            assert.equal(input.filter.ftsFloor, 0.58);
+            assert.equal(input.filter.genericSchedule, false);
+            assert.equal(input.filter.lexicalQuery, undefined);
             return { hits: input.query.includes('去哪里') ? [{ record_id: 'wedding', score: 0.6, cosine: 0.63 }]
                 : [{ record_id: 'book', score: 0.5, cosine: 0.7 }, { record_id: 'wedding', score: 0.2, cosine: 0.59 }] };
         },
@@ -77,6 +81,30 @@ test('native recall keeps independent questions above their own relevance gate a
     assert.deepEqual(queries, ['我在2026年10月30日准备去哪里，为什么', '我们上次读书计划谈到哪一步了']);
     assert.deepEqual(hits.map(h => h.record_id), ['wedding', 'book']);
     assert.equal(hits[0].cosine, 0.63, 'same record retains its strongest accepted candidate, not the later weaker hit');
+});
+
+test('dated generic schedule sets the date floor and a date-free lexical query', async () => {
+    const { createNativeFactory, RELEVANCE, isGenericSchedule } = await import('../memorycore-service/native-engine.mjs');
+    assert.equal(isGenericSchedule('10月30号有什么安排'), true);
+    assert.equal(isGenericSchedule('十一月六日我在哪里举行婚礼？'), false);
+    assert.equal(isGenericSchedule('10月30日我要去哪里？'), true);
+    const seen = [];
+    const native = await (await createNativeFactory({
+        VectorStore: class {
+            async init() {}
+            queryL1Records() { return [{ record_id: 'wedding', content: '婚礼', metadata_json: '{"eventDate":"2026-10-30"}' }]; }
+        },
+        async recallL1Candidates(input) { seen.push(input); return { hits: [] }; },
+    }))('/synthetic-unused');
+    await native.search({ query: '10月30号有什么安排', topK: 5, scope: {}, allowedRecordIds: ['wedding', 'dentist'], eventDate: '2026-10-30' });
+    await native.search({ query: '十一月六日我在哪里举行婚礼？', topK: 5, scope: {}, allowedRecordIds: ['dentist'], dateRestricted: true });
+    assert.equal(seen[0].filter.genericSchedule, true);
+    assert.equal(seen[0].filter.dateCosineFloor, RELEVANCE.dateCosineFloor);
+    assert.equal(seen[0].filter.lexicalQuery.includes('10月30'), false);
+    assert.deepEqual(seen[0].filter.allowedRecordIds, ['wedding']);
+    assert.equal(seen[1].filter.genericSchedule, false);
+    assert.equal(seen[1].filter.lexicalQuery.includes('举行婚礼'), true);
+    assert.equal(seen[1].query.includes('十一月六日'), true);
 });
 
 function sceneRunner(dir, stage, fetchImpl) {

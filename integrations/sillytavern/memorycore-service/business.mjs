@@ -410,7 +410,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             const eligible = ids.filter(id => published.has(id)); if (!eligible.length) return [];
             const embedding = native.getSpace().rebuilding ? undefined : await embeddingFactory(input.embedding);
             const results = await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
-                allowedRecordIds: eligible, embedding, eventDate: input.eventDate });
+                allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true });
             return currentSpace(ctx, input.embedding, async () =>
                 !(await readJSON(path.join(dir, 'cleanup.json'))) && native.getScope(key).revision === revision ? results : []);
         }
