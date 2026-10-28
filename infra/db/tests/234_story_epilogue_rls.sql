@@ -113,7 +113,7 @@ DO $$
 DECLARE
     doc jsonb;
     keys jsonb;
-    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","instances","memoryAutoSave","memoryTimes","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
+    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","inbox","instances","memoryAutoSave","memoryTimes","notificationChannels","notificationDeliveries","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
     v_discard bigint;
     v_save bigint;
     v_memory bigint;
