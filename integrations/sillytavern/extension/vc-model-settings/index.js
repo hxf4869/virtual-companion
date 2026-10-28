@@ -17,6 +17,7 @@ import { installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-clie
 import { createProjectionController } from './projection.js';
 import { mountChatShell } from './chat-shell.js';
 import { mountDataRights } from './data-rights.js';
+import { mountMemoryPage } from './memory-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
 
 export async function init() {
@@ -63,6 +64,7 @@ export async function init() {
     globalThis.addEventListener('vc-memory-status', (event) => memory.finalStatus(event.detail));
 
     const dataRights = mountDataRights();
+    const memoryPage = mountMemoryPage({ getRelationshipId: () => getContext().chatMetadata?.vc_binding?.relationshipId });
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {
         console.warn('[vc-model-settings] 未找到扩展菜单挂载点 #extensionsMenu');
@@ -85,6 +87,11 @@ export async function init() {
     dataButton.innerHTML = '<i class="fa-solid fa-file-shield" aria-hidden="true"></i><span class="vcms-menu-label">数据副本与删除</span>';
     dataButton.addEventListener('click', () => dataRights.open());
     dataContainer.append(dataButton); wand.append(dataContainer);
+    const memoryContainer = document.createElement('div'); memoryContainer.className = 'extension_container';
+    const memoryButton = document.createElement('button'); memoryButton.type = 'button'; memoryButton.id = 'vc_memory_menu_button'; memoryButton.className = 'menu_button';
+    memoryButton.innerHTML = '<i class="fa-solid fa-brain" aria-hidden="true"></i><span class="vcms-menu-label">记忆</span>';
+    memoryButton.addEventListener('click', () => memoryPage.open());
+    memoryContainer.append(memoryButton); wand.append(memoryContainer);
 
     button.addEventListener('click', () => {
         if (!pageController.isOpen()) pageController.open();

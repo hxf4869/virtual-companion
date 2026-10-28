@@ -109,7 +109,7 @@ function classify(status, body) {
     return new ApiError('error', body?.message || '请求失败。', { status, code, details });
 }
 
-async function request(method, goPath, body) {
+async function request(method, goPath, body, { page = false } = {}) {
     const write = method !== 'GET' && method !== 'HEAD';
     if (write && !sessionContext) {
         // 快照未取得前不发写请求：发出去也必然被 Go 以 409 拒绝，
@@ -147,7 +147,7 @@ async function request(method, goPath, body) {
     if (!response.ok) {
         throw classify(response.status, data ?? {});
     }
-    return data;
+    return page ? { items: data, nextCursor: response.headers.get('X-Next-Cursor') || null } : data;
 }
 
 /**
@@ -236,3 +236,17 @@ export async function downloadDataExport(url) {
     if (!response.ok) throw classify(response.status, {});
     return response.blob();
 }
+
+// UI-P03 沿用 Go 的 memoryId / summary / time.*，不另建响应信封。
+export const fetchRelationships = () => request('GET', '/api/v1/relationships');
+export function fetchMemories(relationshipId, filters = {}) {
+    const query = new URLSearchParams();
+    for (const key of ['q', 'status', 'eventDateFrom', 'eventDateTo', 'cursor', 'limit']) {
+        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') query.set(key, String(filters[key]));
+    }
+    return request('GET', `/api/v1/relationships/${encodeURIComponent(relationshipId)}/memories?${query}`, undefined, { page: true });
+}
+export const fetchMemory = (id) => request('GET', `/api/v1/memories/${encodeURIComponent(id)}`);
+export const fetchMemoryEvidence = (id) => request('GET', `/api/v1/memories/${encodeURIComponent(id)}/evidence`);
+export const correctMemory = (id, { summary, expectedVersion }) => request('PATCH', `/api/v1/memories/${encodeURIComponent(id)}`, { summary, expectedVersion });
+export const forgetMemory = (id) => request('DELETE', `/api/v1/memories/${encodeURIComponent(id)}`);
