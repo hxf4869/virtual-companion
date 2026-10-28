@@ -306,6 +306,8 @@ func operation(path string) string {
 		return "admin_model_purposes"
 	case "/api/v1/story/runs":
 		return "story_run"
+	case "/api/v1/st/tools/execute":
+		return "tool_execute"
 	default:
 		if strings.HasPrefix(path, "/api/v1/admin/model-purposes/") {
 			return "admin_model_purpose"

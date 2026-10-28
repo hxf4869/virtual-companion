@@ -646,6 +646,83 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/st/tools/execute:
+    post:
+      operationId: executeTool
+      summary: Execute one tool for the session-bound ST chat
+      description: 'The signed-in ST plugin calls this with the Go cookie, CSRF token and expected account/session preconditions.
+        Owner and relationship come only from that session''s chat binding. The service-token channel is not used, because
+        it accepts a caller-supplied owner. Fresh reauth is not required. Two tools exist: query_scheduled_follow_ups returns
+        the binding''s SCHEDULED follow-ups, and manage_reminder creates or cancels a vc.reminder or cancels one follow-up
+        of the same binding. The execution row commits before any reminder or follow-up change. The same idempotency key returns
+        that execution and does not write again. A business rejection, including assistant prose, an unknown tool, a date-only
+        or zoneless instant, remindersAllowed=false, and a caller-supplied owner or relationship, is HTTP 200 with status
+        FAILED and does not create a successful reminder or follow-up change. Assistant prose is not stored. Step, timeout
+        and token bounds are recorded; an integer outside step 1..8, timeoutMs 1..120000 or tokenLimit 1..8192 is stored and
+        fails with INVALID_BOUNDS.'
+      security:
+      - cookieAuth: []
+      parameters:
+      - in: header
+        name: X-CSRF-Token
+        required: true
+        schema:
+          type: string
+        description: Double-submit token matching the vc_csrf cookie; Origin must also be allowed
+      - in: header
+        name: X-VC-Expected-Account-ID
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        description: Page identity precondition, never the owner authorization source
+      - in: header
+        name: X-VC-Expected-Session-ID
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        description: Opaque-session row identity established by the page's authentication response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecuteRequest'
+      responses:
+        '200':
+          description: The committed execution. status FAILED is an execution fact, not an HTTP error. The same idempotency
+            key returns the original row.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecuteResult'
+        '400':
+          description: The request cannot be stored. chatIdentity or idempotencyKey is missing or malformed, tool is present
+            but blank, purpose exceeds 64 characters, modelRevision exceeds 128 characters, or step, timeoutMs or tokenLimit
+            is not an integer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin or CSRF rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Expected account or session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/story/runs:
     post:
       operationId: startStoryRun
@@ -2291,10 +2368,9 @@ paths:
     post:
       operationId: createReminder
       summary: Create a structured user reminder (FR-NOTIFY-001)
-      description: Creates a structured reminder record under the caller's relationship (vc.create_reminder). Reminders are
-        canonical records, never a prompt instruction; Technical Alpha stores and lists them without any push transport (主动消息不在
-        Alpha 范围). W09 follow-ups are a separate resource and do not use this reminder record. remindAt is a UTC instant;
-        recurrence is NONE, DAILY or WEEKLY. Requires a server-verified authentication context.
+      description: Not implemented. The user reminder page stays deferred. A model creates a cancellable vc.reminder only
+        through executeTool. remindAt there is an RFC3339 instant with Z or a numeric offset; a date-only value is rejected
+        and is not stored as midnight.
       parameters:
       - $ref: '#/components/parameters/RelationshipId'
       requestBody:
@@ -2325,9 +2401,8 @@ paths:
     get:
       operationId: listReminders
       summary: Keyset-paginated reminders of a relationship, soonest first
-      description: Keyset page of the relationship's reminder records ordered by (remind_at, id) via vc.list_reminders. after
-        is the last reminder id seen; limit is clamped to a safe band by the server. Requires a server-verified authentication
-        context.
+      description: Not implemented. The user reminder page stays deferred. This route is not the model tool. executeTool queries
+        follow-ups, not this list.
       parameters:
       - $ref: '#/components/parameters/RelationshipId'
       - name: after
@@ -2361,9 +2436,9 @@ paths:
     patch:
       operationId: updateReminder
       summary: Update one owned reminder (FR-NOTIFY-001)
-      description: Updates text / remindAt / recurrence / status of an owned reminder via vc.update_reminder (every field
-        is required in the body; no partial silent edits). A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN; existence
-        is never disclosed. Requires a server-verified authentication context.
+      description: 'Not implemented. The user reminder page stays deferred. status in this request remains only ACTIVE or
+        DISMISSED. A tool cancellation is terminal: vc.update_reminder rejects a CANCELLED row, and the model cancels through
+        executeTool instead of this route.'
       parameters:
       - $ref: '#/components/parameters/ReminderId'
       requestBody:
@@ -2394,8 +2469,8 @@ paths:
     delete:
       operationId: deleteReminder
       summary: Delete one owned reminder (FR-NOTIFY-001)
-      description: Deletes an owned reminder via vc.delete_reminder. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN;
-        existence is never disclosed. Requires a server-verified authentication context.
+      description: Not implemented. The user reminder page stays deferred. Tool cancellation keeps the vc.reminder row and
+        sets CANCELLED; it does not call delete_reminder.
       parameters:
       - $ref: '#/components/parameters/ReminderId'
       responses:
@@ -6699,7 +6774,8 @@ components:
           description: Always true on a confirmed delete
     Reminder:
       type: object
-      description: One structured user reminder (FR-NOTIFY-001).
+      description: One vc.reminder row (FR-NOTIFY-001). The user CRUD routes are not implemented. executeTool creates and
+        cancels rows in this shape.
       required:
       - reminderId
       - relationshipId
@@ -6714,14 +6790,15 @@ components:
           description: Stable owner-scoped reminder identifier
         relationshipId:
           type: string
-          description: Owning relationship identifier
+          description: Owning relationship identifier, taken from the session chat binding
         text:
           type: string
           description: The reminder text (1..500 characters)
         remindAt:
           type: string
           format: date-time
-          description: UTC instant the reminder is due
+          description: RFC3339 instant with Z or a numeric offset. A date-only value is not an instant and is not stored as
+            midnight.
         recurrence:
           type: string
           description: NONE, DAILY or WEEKLY
@@ -6731,10 +6808,24 @@ components:
           - WEEKLY
         status:
           type: string
-          description: ACTIVE or DISMISSED
+          description: ACTIVE, DISMISSED, or CANCELLED. CANCELLED is terminal.
           enum:
           - ACTIVE
           - DISMISSED
+          - CANCELLED
+        idempotencyKey:
+          type: string
+          nullable: true
+          description: Present when executeTool created the row. Null on a legacy create_reminder row.
+        executionId:
+          type: string
+          nullable: true
+          description: Tool execution that created the row. Null on a legacy create_reminder row.
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when status is CANCELLED. A repeat cancel does not change it.
         createdAt:
           type: string
           format: date-time
@@ -6758,7 +6849,8 @@ components:
         remindAt:
           type: string
           format: date-time
-          description: UTC instant the reminder is due
+          description: RFC3339 instant with Z or a numeric offset. Date-only and zoneless local times are rejected by executeTool
+            and are not stored as midnight.
         recurrence:
           type: string
           description: NONE (default), DAILY or WEEKLY
@@ -6769,8 +6861,8 @@ components:
           default: NONE
     ReminderUpdateRequest:
       type: object
-      description: Body for updating a reminder. Every field is required — the update writes the whole record so no partial
-        silent edit is possible.
+      description: Body for the deferred user update route. Every field is required. status is only ACTIVE or DISMISSED; CANCELLED
+        is not an edit target.
       required:
       - text
       - remindAt
@@ -7439,7 +7531,8 @@ components:
           description: Deletion timestamp, present only when deleted
     ExportReminder:
       type: object
-      description: One structured reminder (FR-DATA-002).
+      description: One structured reminder in the existing reminders export domain (FR-DATA-002). Tool executions are not
+        a separate export domain. New fields are always present; a legacy row leaves them null.
       required:
       - reminderId
       - relationshipId
@@ -7447,6 +7540,9 @@ components:
       - remindAt
       - recurrence
       - status
+      - idempotencyKey
+      - executionId
+      - cancelledAt
       properties:
         reminderId:
           type: string
@@ -7460,13 +7556,144 @@ components:
         remindAt:
           type: string
           format: date-time
-          description: UTC instant the reminder is due
+          description: RFC3339 instant the reminder is due
         recurrence:
           type: string
           description: NONE, DAILY or WEEKLY
         status:
           type: string
-          description: ACTIVE or DISMISSED
+          description: ACTIVE, DISMISSED or CANCELLED
+        idempotencyKey:
+          type: string
+          nullable: true
+          description: Tool idempotency key, or null when create_reminder wrote the row
+        executionId:
+          type: string
+          nullable: true
+          description: Creating tool execution, or null when create_reminder wrote the row
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Cancellation instant, or null while the row is not CANCELLED
+    ToolExecuteRequest:
+      type: object
+      additionalProperties: true
+      description: One tool call for the signed-in chat. relationshipId, ownerUserId, ownerId and ownerAccountId, at the top
+        level or inside arguments, are not authority. They are stored as a failed execution (FORBIDDEN_RELATIONSHIP). HTTP
+        400 is only for a body that cannot be stored. A recorded failure is HTTP 200 with status FAILED.
+      required:
+      - chatIdentity
+      - idempotencyKey
+      properties:
+        chatIdentity:
+          type: string
+          description: Lowercase UUID of the ST chat already bound to this session
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 200
+          pattern: ^[A-Za-z0-9._:~-]{8,200}$
+          description: Same owner and key returns the original execution
+        tool:
+          type: string
+          description: query_scheduled_follow_ups or manage_reminder. Any other name is a failed execution UNKNOWN_TOOL, not
+            an HTTP error. Omit tool when the body is assistant prose.
+        arguments:
+          type: object
+          additionalProperties: true
+          description: manage_reminder create uses action=create, text (1..500 characters), remindAt and optional recurrence
+            NONE, DAILY or WEEKLY. remindAt must be RFC3339 with Z or a numeric offset. YYYY-MM-DD fails as DATE_ONLY. A local
+            time without a zone fails as MISSING_TIMEZONE. Neither is stored as midnight. An explicit offset midnight is a
+            real instant. remindersAllowed=false fails create as REMINDERS_DISABLED before the instant is checked. Cancel
+            uses action=cancel, target reminder or follow_up, and reminderId or followUpId. Query and cancel stay allowed
+            when reminders are off. Owner and relationship keys inside this object fail the execution.
+        role:
+          type: string
+          description: assistant marks prose. A legal tool still runs; the prose is not stored.
+        content:
+          type: string
+          description: Assistant prose. Not stored. Without a legal tool the execution fails as ASSISTANT_TEXT.
+        utterance:
+          type: string
+          description: Assistant prose. Not stored. Without a legal tool the execution fails as ASSISTANT_TEXT.
+        purpose:
+          type: string
+          maxLength: 64
+          description: Optional purpose label stored on the execution. Blank becomes null.
+        modelRevision:
+          type: string
+          maxLength: 128
+          description: Optional model revision stored on the execution. Blank becomes null.
+        step:
+          type: integer
+          description: Optional step bound. 1..8 is accepted. An integer outside that band is stored and the execution fails
+            with INVALID_BOUNDS. Omitted means no step bound. A non-integer is HTTP 400.
+        timeoutMs:
+          type: integer
+          description: Optional timeout bound in milliseconds. 1..120000 is accepted. An integer outside that band is stored
+            and fails with INVALID_BOUNDS. A non-integer is HTTP 400.
+        tokenLimit:
+          type: integer
+          description: Optional token bound. 1..8192 is accepted. An integer outside that band is stored and fails with INVALID_BOUNDS.
+            A non-integer is HTTP 400.
+    ToolExecuteResult:
+      type: object
+      additionalProperties: false
+      description: The committed tool execution. failureCode is null when status is SUCCEEDED.
+      required:
+      - executionId
+      - tool
+      - status
+      - failureCode
+      - result
+      - purpose
+      - modelRevision
+      - step
+      - timeoutMs
+      - tokenLimit
+      properties:
+        executionId:
+          type: string
+          description: Stable owner-scoped execution id
+        tool:
+          type: string
+          description: 'Recorded name: query_scheduled_follow_ups, manage_reminder, assistant_text, unknown, or rejected.'
+        status:
+          type: string
+          description: SUCCEEDED or FAILED. RUNNING exists only before apply commits.
+          enum:
+          - RUNNING
+          - SUCCEEDED
+          - FAILED
+        failureCode:
+          type: string
+          nullable: true
+          description: Null on success. Otherwise ASSISTANT_TEXT, UNKNOWN_TOOL, FORBIDDEN_RELATIONSHIP, UNBOUND_CHAT, REMINDERS_DISABLED,
+            DATE_ONLY, MISSING_TIMEZONE, INVALID_INSTANT, INVALID_ARGUMENTS, INVALID_BOUNDS, or NOT_FOUND.
+        result:
+          type: object
+          additionalProperties: true
+          description: Query returns followUps of id, status, triggerAt, eventDate, eventTime and eventTimezone. Create and
+            cancel return the affected id and status. A failed execution returns an empty object.
+        purpose:
+          type: string
+          nullable: true
+        modelRevision:
+          type: string
+          nullable: true
+        step:
+          type: integer
+          nullable: true
+          description: Stored step bound, including a value that failed INVALID_BOUNDS. Null when omitted.
+        timeoutMs:
+          type: integer
+          nullable: true
+          description: Stored timeout bound. Null when omitted.
+        tokenLimit:
+          type: integer
+          nullable: true
+          description: Stored token bound. Null when omitted.
     ExportConsent:
       type: object
       description: One effective consent record (FR-DATA-002).

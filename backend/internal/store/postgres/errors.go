@@ -132,7 +132,8 @@ func mapRaise(msg string) error {
 		return ErrConflict
 	case strings.Contains(msg, "not found"):
 		return ErrNotFound
-	case strings.Contains(msg, "idempotency_key is invalid"):
+	case strings.Contains(msg, "idempotency_key is invalid"),
+		strings.Contains(msg, "chat_identity is invalid"):
 		return ErrInvalid
 	case strings.Contains(msg, "outstanding generations exceeded"):
 		return ErrRateLimited

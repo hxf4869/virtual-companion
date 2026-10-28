@@ -1064,7 +1064,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 82,
+          "KEEP": 83,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1267,6 +1267,18 @@
             "operationId": "recallSTMemory",
             "path": "/api/v1/st/memory/recall",
             "replacementOrImpact": "V2-W07 native ST memory block and three-protocol final-request consumer. Resolve scope and the last persisted user query from the owned ST binding, rank related memories and validate summary/source dependencies before budgeted injection. Unavailable or disabled recall removes the old block; STORY does not fall back to ordinary companion memory."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "executeTool",
+            "path": "/api/v1/st/tools/execute",
+            "replacementOrImpact": "W11 one session-bound tool entry. The model cannot name an owner or relationship. query_scheduled_follow_ups returns that binding's SCHEDULED follow-ups. manage_reminder creates or cancels a vc.reminder, or cancels one follow-up of the same binding. The execution row commits before the business row. The same idempotency key returns the same execution. Assistant text, a date-only or zoneless instant, remindersAllowed=false, and a caller-supplied relationship fail without a successful reminder or follow-up change."
           },
           {
             "currentH5Callers": [],
@@ -1742,7 +1754,7 @@
             "method": "POST",
             "operationId": "createReminder",
             "path": "/api/v1/relationships/{relationshipId}/reminders",
-            "replacementOrImpact": "V39 structured reminder CRUD stays DEFER for W11. W09 follow-ups are a separate read/cancel surface and do not use vc.reminder."
+            "replacementOrImpact": "The user reminder page stays deferred and this route is not implemented. W11 creates a cancellable vc.reminder only through executeTool."
           },
           {
             "currentH5Callers": [],
@@ -1750,7 +1762,7 @@
             "method": "GET",
             "operationId": "listReminders",
             "path": "/api/v1/relationships/{relationshipId}/reminders",
-            "replacementOrImpact": "The redesigned Home does not expose reminders."
+            "replacementOrImpact": "The user reminder page stays deferred and this route is not implemented. Listing model-created reminders is not a separate operation."
           },
           {
             "currentH5Callers": [],
@@ -1758,7 +1770,7 @@
             "method": "PATCH",
             "operationId": "updateReminder",
             "path": "/api/v1/reminders/{reminderId}",
-            "replacementOrImpact": "Reminder editing is DEFER with no current frontend entry."
+            "replacementOrImpact": "The user reminder page stays deferred and this route is not implemented. A tool cancellation is terminal and is not an edit back to ACTIVE."
           },
           {
             "currentH5Callers": [],
@@ -1766,7 +1778,7 @@
             "method": "DELETE",
             "operationId": "deleteReminder",
             "path": "/api/v1/reminders/{reminderId}",
-            "replacementOrImpact": "Reminder deletion is DEFER with no current frontend entry."
+            "replacementOrImpact": "The user reminder page stays deferred and this route is not implemented. Tool cancellation keeps the row as CANCELLED."
           },
           {
             "currentH5Callers": [],
@@ -2604,7 +2616,7 @@
           }
         ]
       },
-      "sha256": "0e672af32ef91aeaa9b4ec1b3f8fcc278771afa6f8baff6503b23164b4097f7c"
+      "sha256": "a8886ee0dc8d552ed0584b7c86c8acd3336e77d83dc52777294df427db8521c5"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
