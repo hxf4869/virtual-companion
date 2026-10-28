@@ -1,6 +1,7 @@
 -- W11-3: foreground, tool, extraction and greeting spend one month cap.
 -- A hold that would exceed the cap fails. After a real release, the next
--- purpose can hold.
+-- purpose can hold. Each 10/10 hold is the 0.000030 estimate, so the first
+-- monthly argument is 30 micro-USD (one estimate). The ceiling stays 1 USD.
 
 \set ON_ERROR_STOP on
 
@@ -31,12 +32,12 @@ DO $$
 DECLARE r record; v_id bigint;
 BEGIN
     SELECT * INTO r FROM vc.reserve_model_usage(
-        22201, 'FOREGROUND_CHAT', 'fg-222', 'w11-meter', 'priced', 10, 10, 1000000, 1000000);
+        22201, 'FOREGROUND_CHAT', 'fg-222', 'w11-meter', 'priced', 10, 10, 1000000, 30);
     v_id := r.out_reservation_id;
     INSERT INTO meter222 VALUES (v_id);
     BEGIN
         PERFORM 1 FROM vc.reserve_model_usage(
-            22201, 'TOOL_TURN', 'tool-222', 'w11-meter', 'priced', 10, 10, 1000000, 1000000);
+            22201, 'TOOL_TURN', 'tool-222', 'w11-meter', 'priced', 10, 10, 1000000, 30);
         RAISE EXCEPTION 'tool hold crossed the cap';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE '%tool hold crossed the cap%' THEN RAISE; END IF;
@@ -66,5 +67,5 @@ BEGIN
      WHERE purpose IN ('MEMORY_EXTRACTION_DEDUP_SUMMARY', 'BACKGROUND_GREETINGS') AND status = 'HELD';
     IF n <> 2 THEN RAISE EXCEPTION 'shared pool holds %', n; END IF;
     SELECT reserved_usd + settled_usd + unsettled_usd INTO v_spend FROM vc.month_cost_budget;
-    IF v_spend IS DISTINCT FROM 2.000000 THEN RAISE EXCEPTION 'spend %', v_spend; END IF;
+    IF v_spend IS DISTINCT FROM 0.000060 THEN RAISE EXCEPTION 'spend %', v_spend; END IF;
 END $$;

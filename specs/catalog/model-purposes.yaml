@@ -15,8 +15,10 @@ entries:
   note: >-
     Foreground SillyTavern turns pin this binding. Tool follow-up turns share
     the same binding and are reserved as TOOL_TURN. Missing price, missing
-    budget, or a monthly cap performs no real call. A timeout or a send with
-    no usage stays UNKNOWN and unsettled; it is not released as zero.
+    budget, or a monthly cap performs no real call. The hold is the priced
+    token cap, at most the per-call ceiling. The output count is the request
+    max output, not an expected length. A timeout keeps that estimate and is
+    not released as zero.
 - code: MEMORY_EXTRACTION_DEDUP_SUMMARY
   order: 1
   executor: GO_BACKGROUND

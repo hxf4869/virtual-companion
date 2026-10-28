@@ -1,5 +1,6 @@
 -- W11-3: a foreground reservation stores its purpose. Another owner cannot
--- settle, cancel, or read it.
+-- settle, cancel, or read it. The hold is the priced estimate (10/10 at
+-- 0.001/0.002 is 0.000030), not the 1 USD ceiling argument.
 
 \set ON_ERROR_STOP on
 
@@ -37,7 +38,7 @@ BEGIN
     SELECT * INTO r FROM vc.reserve_model_usage(
         22101, 'FOREGROUND_CHAT', 'fg-221', 'w11-meter', 'priced', 10, 10, 1000000, 4000000);
     IF r.out_purpose IS DISTINCT FROM 'FOREGROUND_CHAT' OR r.out_status IS DISTINCT FROM 'HELD'
-       OR r.out_reserved_usd IS DISTINCT FROM '1.000000' OR r.out_reservation_id IS NULL THEN
+       OR r.out_reserved_usd IS DISTINCT FROM '0.000030' OR r.out_reservation_id IS NULL THEN
         RAISE EXCEPTION 'reserve got %', r;
     END IF;
     UPDATE meter221 SET id = r.out_reservation_id;

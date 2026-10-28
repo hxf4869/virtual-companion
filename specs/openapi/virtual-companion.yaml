@@ -5102,8 +5102,10 @@ paths:
       description: >-
         W11-3 private service channel, same authentication as resolveModelPurpose.
         The SillyTavern plugin sends the owner account it already verified.
-        purpose is FOREGROUND_CHAT or TOOL_TURN. The server reserves its
-        configured ceiling against the shared month cap. A still-HELD reservation
+        purpose is FOREGROUND_CHAT or TOOL_TURN. estimatedOutputTokens is this
+        request's max output, not an expected length. The server reserves
+        min(per-call ceiling, priced token cap) against the shared month cap.
+        A timeout keeps that estimate. Settlement uses actual usage. A still-HELD reservation
         for the same owner, purpose, provider, and model returns that
         reservation. A settled, released, or unknown attempt is not reused.
         Missing price or budget is 409 MODEL_NO_ELIGIBLE_DEPLOYMENT with
@@ -10744,6 +10746,10 @@ components:
         estimatedOutputTokens:
           type: integer
           minimum: 0
+          description: >-
+            This request's max output tokens, not an expected length. The hold
+            is min(per-call ceiling, (estimatedInputTokens * input price +
+            estimatedOutputTokens * output price) / 1000).
     ModelUsageReservation:
       type: object
       additionalProperties: false
@@ -10760,8 +10766,11 @@ components:
           const: HELD
         reservedUsd:
           type: string
-          description: Six-decimal USD reserved for this hold. The server reserves its whole ceiling.
-          example: '1.000000'
+          description: >-
+            Six-decimal USD. The hold is the priced token cap and does not
+            exceed the per-call ceiling. A timeout keeps this amount.
+            Settlement uses actual usage.
+          example: '0.000030'
         attemptId:
           type: string
     ModelUsageSettleRequest:

@@ -22,13 +22,14 @@ type modelUsageStore interface {
 }
 
 type modelUsageReserveJSON struct {
-	OwnerAccountID        string `json:"ownerAccountId"`
-	Purpose               string `json:"purpose"`
-	AttemptID             string `json:"attemptId"`
-	ProviderID            string `json:"providerId"`
-	ModelID               string `json:"modelId"`
-	EstimatedInputTokens  int    `json:"estimatedInputTokens"`
-	EstimatedOutputTokens int    `json:"estimatedOutputTokens"`
+	OwnerAccountID       string `json:"ownerAccountId"`
+	Purpose              string `json:"purpose"`
+	AttemptID            string `json:"attemptId"`
+	ProviderID           string `json:"providerId"`
+	ModelID              string `json:"modelId"`
+	EstimatedInputTokens int    `json:"estimatedInputTokens"`
+	// EstimatedOutputTokens is this request's max output, not an expected length.
+	EstimatedOutputTokens int `json:"estimatedOutputTokens"`
 }
 
 type modelUsageSettleJSON struct {

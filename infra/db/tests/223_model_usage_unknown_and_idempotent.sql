@@ -1,6 +1,6 @@
--- W11-3: a timeout stays UNKNOWN with its hold, not a zero actual. A second
--- real send is a new reservation. Settling the same reservation twice does
--- not add the actual twice.
+-- W11-3: a timeout stays UNKNOWN with its priced estimate, not a zero actual
+-- and not the 1 USD ceiling. A second real send is a new reservation.
+-- Settling the same reservation twice does not add the actual twice.
 
 \set ON_ERROR_STOP on
 
@@ -64,11 +64,11 @@ DECLARE v_status text; v_actual numeric; v_reserved numeric; v_settled numeric; 
 BEGIN
     SELECT status, actual_usd, reserved_usd INTO v_status, v_actual, v_reserved
       FROM vc.model_cost_reservation WHERE provider_attempt_id = 'fg-223-timeout';
-    IF v_status IS DISTINCT FROM 'UNKNOWN' OR v_actual IS NOT NULL OR v_reserved IS DISTINCT FROM 1.000000 THEN
+    IF v_status IS DISTINCT FROM 'UNKNOWN' OR v_actual IS NOT NULL OR v_reserved IS DISTINCT FROM 0.000030 THEN
         RAISE EXCEPTION 'timeout row % % %', v_status, v_actual, v_reserved;
     END IF;
     SELECT settled_usd, reserved_usd, unsettled_usd INTO v_settled, v_reserved, v_unsettled FROM vc.month_cost_budget;
-    IF v_settled IS DISTINCT FROM 0.003000 OR v_reserved IS DISTINCT FROM 0 OR v_unsettled IS DISTINCT FROM 1.000000 THEN
+    IF v_settled IS DISTINCT FROM 0.003000 OR v_reserved IS DISTINCT FROM 0 OR v_unsettled IS DISTINCT FROM 0.000030 THEN
         RAISE EXCEPTION 'month % % %', v_settled, v_reserved, v_unsettled;
     END IF;
     SELECT count(*) INTO n FROM vc.model_cost_reservation WHERE provider_attempt_id = 'tool-223-send';

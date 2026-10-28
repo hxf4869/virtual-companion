@@ -39,7 +39,8 @@ func TestModelUsageFourPurposesShareOneMonth(t *testing.T) {
 	resetFixtures(t)
 	meterIdentity(t)
 	store := testEnv.store
-	store.UseCostLimits(1_000_000, 4_000_000)
+	// Four 10/10 estimates are 30 micro-USD each. The month holds exactly four.
+	store.UseCostLimits(1_000_000, 120)
 	ctx := context.Background()
 	if _, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
 		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-shared",
@@ -64,7 +65,7 @@ func TestModelUsageFourPurposesShareOneMonth(t *testing.T) {
 	}
 	costAssertSQL(t, "SELECT string_agg(purpose, ',' ORDER BY purpose) FROM vc.model_cost_reservation",
 		"BACKGROUND_GREETINGS,FOREGROUND_CHAT,MEMORY_EXTRACTION_DEDUP_SUMMARY,TOOL_TURN")
-	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "4000000")
+	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "120")
 	_, err = store.ReserveModelUsage(ctx, ModelUsageReserve{
 		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-over",
 		ProviderID: "prov-a", ModelID: "model-a", InputTokens: 10, OutputTokens: 10,
@@ -73,14 +74,15 @@ func TestModelUsageFourPurposesShareOneMonth(t *testing.T) {
 		t.Fatalf("fifth hold %v", err)
 	}
 	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation", "4")
-	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "4000000")
+	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "120")
 }
 
 func TestModelUsageConcurrentReserveCannotExceedCap(t *testing.T) {
 	resetFixtures(t)
 	meterIdentity(t)
 	store := testEnv.store
-	store.UseCostLimits(1_000_000, 1_000_000)
+	// One 10/10 estimate is 30 micro-USD and fills this month.
+	store.UseCostLimits(1_000_000, 30)
 	ctx := context.Background()
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -115,7 +117,7 @@ func TestModelUsageConcurrentReserveCannotExceedCap(t *testing.T) {
 		t.Fatalf("ok=%d denied=%d", ok, denied)
 	}
 	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation", "1")
-	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "1000000")
+	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "30")
 }
 
 func TestModelUsageTimeoutIsNotZero(t *testing.T) {
@@ -135,11 +137,11 @@ func TestModelUsageTimeoutIsNotZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cancelled.Status != "UNKNOWN" || cancelled.ReservedUSD == "0.000000" || cancelled.ReservedUSD == "0" || cancelled.ActualUSD != nil {
+	if cancelled.Status != "UNKNOWN" || cancelled.ReservedUSD != "0.000030" || cancelled.ActualUSD != nil {
 		t.Fatalf("cancel %+v", cancelled)
 	}
-	costAssertSQL(t, "SELECT status || ':' || coalesce(actual_usd::text, 'null') || ':' || round(reserved_usd*1000000)::bigint FROM vc.model_cost_reservation", "UNKNOWN:null:1000000")
-	costAssertSQL(t, "SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", "0:0:1000000")
+	costAssertSQL(t, "SELECT status || ':' || coalesce(actual_usd::text, 'null') || ':' || round(reserved_usd*1000000)::bigint FROM vc.model_cost_reservation", "UNKNOWN:null:30")
+	costAssertSQL(t, "SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", "0:0:30")
 }
 
 func TestModelUsageSecondSendHasItsOwnReservation(t *testing.T) {

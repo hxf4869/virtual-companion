@@ -64,14 +64,16 @@ func TestCostAdmissionFailsClosedBeforeAttemptReturns(t *testing.T) {
 	if _, err := prepareCost(c, "synthetic-go-model"); err != nil {
 		t.Fatal(err)
 	}
-	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "1000000")
+	// 8000 input and 512 output at 0.001/0.002 is 9024 micro-USD, not the ceiling.
+	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "9024")
 }
 
 func TestCostGlobalMonthlyCapSerializesConcurrentOwners(t *testing.T) {
 	resetFixtures(t)
 	first := costClaim(t, 1, 10, "cost-owner-1")
 	second := costClaim(t, 2, 20, "cost-owner-2")
-	testEnv.store.UseCostLimits(1000000, 1000000)
+	// One chat estimate is 9024 micro-USD. The month holds exactly one.
+	testEnv.store.UseCostLimits(1000000, 9024)
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
 	for _, claim := range []JobClaim{first, second} {
@@ -90,7 +92,7 @@ func TestCostGlobalMonthlyCapSerializesConcurrentOwners(t *testing.T) {
 		t.Fatalf("allowed %d calls with only one reservation of budget", allowed)
 	}
 	costAssertSQL(t, "SELECT count(*) FROM vc.attempt_intent", "1")
-	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "1000000")
+	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "9024")
 }
 
 func TestCostOutcomeUsesFrozenPriceAndOriginalMonth(t *testing.T) {
@@ -133,7 +135,7 @@ func TestCostUnknownRecoveryAndUnsentOutcome(t *testing.T) {
 				if _, err := testEnv.store.RecoverExpiredGeneration(context.Background(), c.OwnerID, c.JobID); err != nil {
 					t.Fatal(err)
 				}
-				want = "0:0:1000000"
+				want = "0:0:9024"
 			} else {
 				err := testEnv.store.RecordAttemptOutcome(context.Background(), companion.AttemptOutcome{OwnerID: c.OwnerID, JobID: c.JobID, AttemptID: p.AttemptID, ClaimToken: c.Token, ClaimFence: c.Fence, Status: companion.AttemptFailed, Billing: companion.BillingNotSent})
 				if err != nil {
@@ -150,10 +152,12 @@ func TestCostExtractionUsesSameCapAndClosesOnJobCancel(t *testing.T) {
 	ctx := context.Background()
 	store := testEnv.store
 	c := costClaim(t, 1, 10, "cost-chat-hold")
+	// 8000 input and 512 output price to 9024 micro-USD and fill this month.
+	store.UseCostLimits(1000000, 9024)
 	if _, err := prepareCost(c, "synthetic-go-model"); err != nil {
 		t.Fatal(err)
 	}
-	// The shared ceiling now applies to the only live extractor. The chat
+	// The shared month cap now applies to the only live extractor. The chat
 	// reservation above already holds the whole monthly cap.
 	useSTExtractRoute(t, store)
 	sourceID := openSTExtractSource(t, store, sourceChat, "extract-card", sourceMessage, sourceCandidate, "费用来源")
@@ -165,7 +169,7 @@ func TestCostExtractionUsesSameCapAndClosesOnJobCancel(t *testing.T) {
 	if extract.RefID != sourceID {
 		t.Fatalf("extract ref %d, want source %d", extract.RefID, sourceID)
 	}
-	store.UseCostLimits(1000000, 1000000)
+	store.UseCostLimits(1000000, 9024)
 	if _, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, extract.JobID, sourceID, extract.Token, extract.Fence, "prov-a", "sup-a", "model-a", 128); err == nil {
 		t.Fatal("extraction bypassed the chat reservation")
 	}
@@ -185,6 +189,6 @@ func TestCostExtractionUsesSameCapAndClosesOnJobCancel(t *testing.T) {
 	if err := store.CompleteJob(ctx, 1, extract.JobID, extract.Token, extract.Fence, "CANCELLED", "synthetic"); err != nil {
 		t.Fatal(err)
 	}
-	costAssertSQL(t, fmt.Sprintf("SELECT status || ':' || coalesce(actual_usd::text, 'null') || ':' || round(reserved_usd*1000000)::bigint FROM vc.model_cost_reservation WHERE provider_attempt_id='memory-extract:%d'", prep.AttemptID), "UNKNOWN:null:1000000")
+	costAssertSQL(t, fmt.Sprintf("SELECT status || ':' || coalesce(actual_usd::text, 'null') || ':' || round(reserved_usd*1000000)::bigint FROM vc.model_cost_reservation WHERE provider_attempt_id='memory-extract:%d'", prep.AttemptID), "UNKNOWN:null:1152")
 	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation WHERE status='HELD' AND purpose='LEGACY_CHAT'", "1")
 }

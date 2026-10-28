@@ -32,12 +32,13 @@ func (e *ModelUsageError) Error() string {
 }
 
 type ModelUsageReserve struct {
-	Owner        int64
-	Purpose      string
-	AttemptID    string
-	ProviderID   string
-	ModelID      string
-	InputTokens  int
+	Owner       int64
+	Purpose     string
+	AttemptID   string
+	ProviderID  string
+	ModelID     string
+	InputTokens int
+	// OutputTokens is this request's max output, not an expected length.
 	OutputTokens int
 }
 

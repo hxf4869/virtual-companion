@@ -3040,7 +3040,7 @@
           {
             "code": "FOREGROUND_CHAT",
             "executor": "SILLYTAVERN_NATIVE",
-            "note": "Foreground SillyTavern turns pin this binding. Tool follow-up turns share the same binding and are reserved as TOOL_TURN. Missing price, missing budget, or a monthly cap performs no real call. A timeout or a send with no usage stays UNKNOWN and unsettled; it is not released as zero.",
+            "note": "Foreground SillyTavern turns pin this binding. Tool follow-up turns share the same binding and are reserved as TOOL_TURN. Missing price, missing budget, or a monthly cap performs no real call. The hold is the priced token cap, at most the per-call ceiling. The output count is the request max output, not an expected length. A timeout keeps that estimate and is not released as zero.",
             "order": 0,
             "runSnapshot": "IMMUTABLE_AT_START",
             "unauthorizedBudget": "NO_REAL_CALL"
@@ -3111,7 +3111,7 @@
         "note": "V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose pins one model profile independently; changing one binding never touches another. EMBEDDING uses the dedicated Go embedding configuration (W08), never a chat profile. Its snapshot pins the Ollama artifact digest, dimensions, preprocessing and normalization; any vector-space-defining change allocates a new spaceId. Rebuilding uses lexical recall only.",
         "schemaVersion": 1
       },
-      "sha256": "25e5a638fed3db18e28600f7e187b90a53aa0cc713c677ab8bf034fb1313bf93"
+      "sha256": "9b255c75037ea25c6562f290d0f6ac17cbc61403851f955ba4e99f5bd7d5a052"
     },
     "persona-templates.yaml": {
       "document": {

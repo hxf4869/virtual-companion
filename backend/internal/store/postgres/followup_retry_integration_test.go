@@ -131,7 +131,7 @@ func TestFollowUpHoldRequeuesAfterBinding(t *testing.T) {
 	if err := db.QueryRow(ctx, `SELECT count(*)::int, coalesce(sum(reserved_usd), 0)::text FROM vc.model_cost_reservation WHERE provider_attempt_id = $1`, attempt).Scan(&count, &reserved); err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 || reserved != "1.000000" {
+	if count != 1 || reserved != "0.000042" {
 		t.Fatalf("reservation count=%d reserved=%s", count, reserved)
 	}
 }

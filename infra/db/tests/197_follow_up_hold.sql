@@ -429,7 +429,7 @@ BEGIN
       INTO v_count, v_reserved
       FROM vc.model_cost_reservation
      WHERE provider_attempt_id = 'follow-up:19711';
-    IF v_count <> 1 OR v_reserved <> '1.000000' THEN
+    IF v_count <> 1 OR v_reserved <> '0.000042' THEN
         RAISE EXCEPTION 'reservation was doubled: count % reserved %', v_count, v_reserved;
     END IF;
 END $$;
