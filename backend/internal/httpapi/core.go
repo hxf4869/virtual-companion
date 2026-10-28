@@ -266,6 +266,11 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("GET /api/v1/admin/model-purposes", s.handleListPurposeBindings)
 	s.mux.HandleFunc("PUT /api/v1/admin/model-purposes/{purpose}", s.handleSavePurposeBinding)
 	s.mux.HandleFunc("POST /api/v1/service/model-purposes/{purpose}/resolve", s.handleResolvePurpose)
+	s.mux.HandleFunc("POST /api/v1/service/model-usage/reservations", s.handleReserveModelUsage)
+	s.mux.HandleFunc("POST /api/v1/service/model-usage/reservations/{reservationId}/settle", s.handleSettleModelUsage)
+	s.mux.HandleFunc("POST /api/v1/service/model-usage/reservations/{reservationId}/cancel", s.handleCancelModelUsage)
+	s.mux.HandleFunc("POST /api/v1/service/model-usage/local-embeddings", s.handleRecordLocalEmbedding)
+	s.mux.HandleFunc("GET /api/v1/auth/admin/usage", s.handleAdminModelUsage)
 	s.registerGeneration()
 }
 

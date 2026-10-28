@@ -127,20 +127,20 @@ func TestCostUnknownRecoveryAndUnsentOutcome(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := "0:0"
+			want := "0:0:0"
 			if disposition == "UNKNOWN" {
 				expireClaim(t, c)
 				if _, err := testEnv.store.RecoverExpiredGeneration(context.Background(), c.OwnerID, c.JobID); err != nil {
 					t.Fatal(err)
 				}
-				want = "1000000:0"
+				want = "0:0:1000000"
 			} else {
 				err := testEnv.store.RecordAttemptOutcome(context.Background(), companion.AttemptOutcome{OwnerID: c.OwnerID, JobID: c.JobID, AttemptID: p.AttemptID, ClaimToken: c.Token, ClaimFence: c.Fence, Status: companion.AttemptFailed, Billing: companion.BillingNotSent})
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
-			costAssertSQL(t, "SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint FROM vc.month_cost_budget", want)
+			costAssertSQL(t, "SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", want)
 		})
 	}
 }
@@ -185,5 +185,6 @@ func TestCostExtractionUsesSameCapAndClosesOnJobCancel(t *testing.T) {
 	if err := store.CompleteJob(ctx, 1, extract.JobID, extract.Token, extract.Fence, "CANCELLED", "synthetic"); err != nil {
 		t.Fatal(err)
 	}
-	costAssertSQL(t, fmt.Sprintf("SELECT status || ':' || round(actual_usd*1000000)::bigint FROM vc.model_cost_reservation WHERE provider_attempt_id='memory-extract:%d'", prep.AttemptID), "SETTLED:1000000")
+	costAssertSQL(t, fmt.Sprintf("SELECT status || ':' || coalesce(actual_usd::text, 'null') || ':' || round(reserved_usd*1000000)::bigint FROM vc.model_cost_reservation WHERE provider_attempt_id='memory-extract:%d'", prep.AttemptID), "UNKNOWN:null:1000000")
+	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation WHERE status='HELD' AND purpose='LEGACY_CHAT'", "1")
 }

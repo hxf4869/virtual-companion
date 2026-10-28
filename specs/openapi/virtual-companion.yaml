@@ -4332,13 +4332,22 @@ paths:
   /api/v1/auth/admin/usage:
     get:
       operationId: getAdminUsageSummary
-      summary: Per-day usage and cost summary (ADMIN only, ADMIN-OPS)
+      summary: Purpose usage summary (ADMIN only)
       description: >-
-        Per-day aggregates (generation count, settled input/output tokens,
-        actual cost) over vc.generation_usage since the days floor, via
-        vc.admin_usage_summary. days is clamped to 1..90 by the server
-        (default 14). Requires a valid Bearer access token whose account is an
-        ACTIVE ADMIN.
+        W11-3 purpose summary since the days floor (vc.admin_model_usage_summary).
+        days is clamped to 1..90 by the server (default 14); a non-integer days
+        is 400. The seven purposes are always returned, in order: foreground,
+        memory extraction, background greetings, tool turns, legacy chat
+        reservations, unlinked generation_usage, and local embeddings. Actual,
+        estimated, and unsettled dollars are six-decimal strings, or null when
+        that purpose has no dollar amount. Embedding calls stay a count with
+        null dollars. A generation_usage row whose provider_ref matches a
+        reservation is kept and is not added again. Authenticated by the
+        HttpOnly vc_session cookie of an ACTIVE ADMIN. This read does not
+        require Origin or CSRF. X-VC-Expected-Account-ID and
+        X-VC-Expected-Session-ID are compared only when the caller sends them.
+      security:
+        - cookieAuth: []
       parameters:
         - name: days
           in: query
@@ -4348,13 +4357,17 @@ paths:
           description: Days to cover, clamped to 1..90 (default 14).
       responses:
         '200':
-          description: Per-day usage rows, newest day first
+          description: One row for every usage purpose
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/UsageSummaryItem'
+                $ref: '#/components/schemas/ModelUsageSummaryResponse'
+        '400':
+          description: days is present and is not an integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -5078,6 +5091,239 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '503':
           description: Service channel not configured (no VC_ST_PLUGIN_SERVICE_TOKEN)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/model-usage/reservations:
+    post:
+      operationId: reserveModelUsage
+      summary: Reserve monthly budget before a foreground or tool send
+      description: >-
+        W11-3 private service channel, same authentication as resolveModelPurpose.
+        The SillyTavern plugin sends the owner account it already verified.
+        purpose is FOREGROUND_CHAT or TOOL_TURN. The server reserves its
+        configured ceiling against the shared month cap. A still-HELD reservation
+        for the same owner, purpose, provider, and model returns that
+        reservation. A settled, released, or unknown attempt is not reused.
+        Missing price or budget is 409 MODEL_NO_ELIGIBLE_DEPLOYMENT with
+        details.reason NO_PRICE or NO_BUDGET. Over the monthly cap is 429
+        RATE_LIMITED with details.reason OVER_LIMIT and Retry-After 2. Those
+        refusals perform no provider call. An inactive owner is 403.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelUsageReserveRequest'
+      responses:
+        '200':
+          description: Held reservation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelUsageReservation'
+        '400':
+          description: Invalid owner, purpose, attempt, provider, model, or token estimates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Browser Origin present, or the owner account is not ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: >-
+            MODEL_NO_ELIGIBLE_DEPLOYMENT when details.reason is NO_PRICE or
+            NO_BUDGET. INVALID_REQUEST when details.reason is ATTEMPT_REUSED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Monthly cap exceeded. details.reason is OVER_LIMIT. Retry-After is 2.
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Seconds to wait. This refusal sends 2.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Service channel not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/model-usage/reservations/{reservationId}/settle:
+    post:
+      operationId: settleModelUsage
+      summary: Settle one reservation from reported usage
+      description: >-
+        The first reported usage wins. Repeating the same reservationId returns
+        idempotent true and the original actualUsd, inputTokens, and
+        outputTokens. It does not add the actual to the month again. Another
+        owner's reservation is 404 NOT_FOUND_OR_FORBIDDEN.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/ModelUsageReservationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelUsageSettleRequest'
+      responses:
+        '200':
+          description: Settled reservation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelUsageSettlement'
+        '400':
+          description: Invalid reservation id, owner, or token counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Browser Origin present, or the owner account is not ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Reservation missing or owned by another account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Service channel not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/model-usage/reservations/{reservationId}/cancel:
+    post:
+      operationId: cancelModelUsage
+      summary: Release a reservation that was not sent, or mark a timeout unknown
+      description: >-
+        disposition NOT_SENT releases the hold and returns status RELEASED.
+        disposition UNKNOWN keeps the original reservedUsd, leaves actualUsd
+        null, and keeps the amount in the monthly unsettled total. It is not
+        released as zero. Repeating the same terminal disposition is idempotent.
+        Cancelling a settled reservation does not unsettle it and is 404.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/ModelUsageReservationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelUsageCancelRequest'
+      responses:
+        '200':
+          description: Released or unknown reservation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelUsageCancellation'
+        '400':
+          description: Invalid reservation id, owner, or disposition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Browser Origin present, or the owner account is not ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Reservation missing, owned by another account, or already settled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Service channel not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/model-usage/local-embeddings:
+    post:
+      operationId: recordLocalEmbeddingCall
+      summary: Record one local embedding call without a dollar cost
+      description: >-
+        Increments the non-billed embedding count for the verified owner.
+        The call does not write a zero-dollar online cost and does not move
+        month_cost_budget.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelUsageOwnerRequest'
+      responses:
+        '200':
+          description: The call was recorded and is not billed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalEmbeddingRecord'
+        '400':
+          description: Invalid owner account id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Browser Origin present, or the owner account is not ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Service channel not configured
           content:
             application/json:
               schema:
@@ -10462,6 +10708,189 @@ components:
         cost:
           type: number
           description: Settled actual cost that day (USD unless the deployment currency differs)
+    ModelUsageOwnerRequest:
+      type: object
+      additionalProperties: false
+      required: [ownerAccountId]
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: '^[1-9][0-9]*$'
+          description: ACTIVE account the plugin already verified. Decimal string.
+    ModelUsageReserveRequest:
+      type: object
+      additionalProperties: false
+      required: [ownerAccountId, purpose, attemptId, providerId, modelId, estimatedInputTokens, estimatedOutputTokens]
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: '^[1-9][0-9]*$'
+        purpose:
+          type: string
+          enum: [FOREGROUND_CHAT, TOOL_TURN]
+        attemptId:
+          type: string
+          minLength: 1
+          description: New for every upstream send. A settled attempt is not reusable.
+        providerId:
+          type: string
+          minLength: 1
+        modelId:
+          type: string
+          minLength: 1
+        estimatedInputTokens:
+          type: integer
+          minimum: 0
+        estimatedOutputTokens:
+          type: integer
+          minimum: 0
+    ModelUsageReservation:
+      type: object
+      additionalProperties: false
+      required: [reservationId, purpose, status, reservedUsd, attemptId]
+      properties:
+        reservationId:
+          type: string
+          pattern: '^[1-9][0-9]*$'
+        purpose:
+          type: string
+          enum: [FOREGROUND_CHAT, TOOL_TURN]
+        status:
+          type: string
+          const: HELD
+        reservedUsd:
+          type: string
+          description: Six-decimal USD reserved for this hold. The server reserves its whole ceiling.
+          example: '1.000000'
+        attemptId:
+          type: string
+    ModelUsageSettleRequest:
+      type: object
+      additionalProperties: false
+      required: [ownerAccountId, inputTokens, outputTokens]
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: '^[1-9][0-9]*$'
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        outputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+    ModelUsageSettlement:
+      type: object
+      additionalProperties: false
+      required: [reservationId, purpose, status, actualUsd, inputTokens, outputTokens, idempotent]
+      properties:
+        reservationId:
+          type: string
+        purpose:
+          type: string
+        status:
+          type: string
+          const: SETTLED
+        actualUsd:
+          type: string
+          description: Six-decimal USD from the first reported usage.
+          example: '0.003000'
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        idempotent:
+          type: boolean
+          description: False on the first settlement. True when this reservationId was already settled.
+    ModelUsageCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [ownerAccountId, disposition]
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: '^[1-9][0-9]*$'
+        disposition:
+          type: string
+          enum: [NOT_SENT, UNKNOWN]
+    ModelUsageCancellation:
+      type: object
+      additionalProperties: false
+      required: [reservationId, purpose, status, reservedUsd, actualUsd, idempotent]
+      properties:
+        reservationId:
+          type: string
+        purpose:
+          type: string
+        status:
+          type: string
+          enum: [RELEASED, UNKNOWN]
+        reservedUsd:
+          type: string
+          description: Original hold, including when status is UNKNOWN. Not rewritten to zero.
+        actualUsd:
+          type: string
+          nullable: true
+          description: Null. A cancel does not book an actual.
+        idempotent:
+          type: boolean
+    LocalEmbeddingRecord:
+      type: object
+      additionalProperties: false
+      required: [recorded, billing]
+      properties:
+        recorded:
+          type: boolean
+          const: true
+        billing:
+          type: string
+          const: NONE
+    ModelUsagePurposeRow:
+      type: object
+      additionalProperties: false
+      required: [purpose, calls, actualUsd, estimatedUsd, unsettledUsd, inputTokens, outputTokens]
+      properties:
+        purpose:
+          type: string
+          enum: [FOREGROUND_CHAT, MEMORY_EXTRACTION_DEDUP_SUMMARY, BACKGROUND_GREETINGS, TOOL_TURN, LEGACY_CHAT, LEGACY_GENERATION, EMBEDDING]
+        calls:
+          type: integer
+          format: int64
+          minimum: 0
+        actualUsd:
+          type: string
+          nullable: true
+          description: Settled dollars, or null when this purpose has none. Embedding is always null.
+        estimatedUsd:
+          type: string
+          nullable: true
+          description: Dollars still held, or null. Legacy generation and embedding are always null.
+        unsettledUsd:
+          type: string
+          nullable: true
+          description: Dollars left UNKNOWN, or null. Legacy generation and embedding are always null.
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        outputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+    ModelUsageSummaryResponse:
+      type: object
+      additionalProperties: false
+      required: [purposes]
+      properties:
+        purposes:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/ModelUsagePurposeRow'
     ProviderPlanStatusItem:
       type: object
       description: >-
@@ -10563,6 +10992,14 @@ components:
       schema:
         $ref: '#/components/schemas/ModelPurpose'
       description: One of the six fixed model purposes
+    ModelUsageReservationId:
+      name: reservationId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[1-9][0-9]*$'
+      description: Decimal reservation id returned by reserveModelUsage
     AccountId:
       name: accountId
       in: path

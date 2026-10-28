@@ -201,7 +201,7 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, reason, nil)
 	}
 	switch decision {
-	case "REUSED_SETTLED":
+	case "REUSED_SETTLED", "REUSED_UNKNOWN":
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "ALREADY_CHARGED", nil)
 	case "REUSED_RELEASED":
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "COST_RELEASED", nil)

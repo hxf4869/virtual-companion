@@ -53,7 +53,12 @@ type memStore struct {
 	stInstances    map[int64]memSTInstance
 	// memoryAutoSave holds explicit per-owner overrides; a missing owner
 	// reads as enabled, matching the V66 SQL default.
-	memoryAutoSave map[int64]bool
+	memoryAutoSave    map[int64]bool
+	usageCalls        int
+	usageSettles      int
+	usageSummaryCalls int
+	usageLastAttempt  string
+	usageErr          error
 }
 
 type memSession struct {

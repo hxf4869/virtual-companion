@@ -148,6 +148,8 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ProcessingPu
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ProcessingPurpose','CONVERSATION_SUMMARY',4) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ProcessingPurpose','PRODUCT_EVAL',5) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ProcessingPurpose','BACKGROUND_GREETING',6) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ProcessingPurpose','FOREGROUND_CHAT',7) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ProcessingPurpose','TOOL_TURN',8) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','AUTHENTICATION_REQUIRED',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','ACCESS_DENIED',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','NOT_FOUND_OR_FORBIDDEN',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;

@@ -10,6 +10,13 @@ entries:
 - code: FOREGROUND_CHAT
   order: 0
   executor: SILLYTAVERN_NATIVE
+  runSnapshot: IMMUTABLE_AT_START
+  unauthorizedBudget: NO_REAL_CALL
+  note: >-
+    Foreground SillyTavern turns pin this binding. Tool follow-up turns share
+    the same binding and are reserved as TOOL_TURN. Missing price, missing
+    budget, or a monthly cap performs no real call. A timeout or a send with
+    no usage stays UNKNOWN and unsettled; it is not released as zero.
 - code: MEMORY_EXTRACTION_DEDUP_SUMMARY
   order: 1
   executor: GO_BACKGROUND
@@ -33,6 +40,9 @@ entries:
 - code: EMBEDDING
   order: 5
   executor: GO_BACKGROUND
+  note: >-
+    Local embedding calls are a non-billed count. They are not reported as a
+    zero-dollar online cost and do not enter the monthly cost budget.
   chatProtocolBindable: false
   configurationPath: /api/v1/admin/embedding-config
   provider: OLLAMA

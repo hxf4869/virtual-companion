@@ -22,3 +22,15 @@ entries:
     route order. An in-progress run keeps the snapshot taken when it started.
     Missing authorization, price or budget performs no real call. Inbox and
     notification delivery belong to W10.
+- code: FOREGROUND_CHAT
+  order: 7
+  modelPurpose: FOREGROUND_CHAT
+  note: >-
+    Foreground SillyTavern generation. The reservation purpose is
+    FOREGROUND_CHAT and uses the FOREGROUND_CHAT model binding.
+- code: TOOL_TURN
+  order: 8
+  modelPurpose: FOREGROUND_CHAT
+  note: >-
+    Tool follow-up turn. The reservation purpose is TOOL_TURN. Model resolution
+    uses the FOREGROUND_CHAT binding, not a separate model purpose.

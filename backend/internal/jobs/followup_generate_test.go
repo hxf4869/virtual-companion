@@ -133,6 +133,20 @@ func TestFollowUpSafetyBlockStoresNoBody(t *testing.T) {
 	}
 }
 
+func TestFollowUpReusedUnknownMakesNoRequest(t *testing.T) {
+	fake := newFollowGenFake(scheduledFollowRow(), greetPurpose("https://models.example/v1"))
+	fake.prepareDecision = "REUSED_UNKNOWN"
+	var requests int
+	factory := scriptedFollowFactory(fake, &requests, "下周见", nil)
+	if err := generateFollowUp(context.Background(), fake, factory, safety.New(), followClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 || fake.builds != 0 || fake.holds != 0 {
+		t.Fatalf("unknown reuse requests=%d builds=%d holds=%d", requests, fake.builds, fake.holds)
+	}
+	assertFollowOutcome(t, fake, "NOT_GENERATED", "ALREADY_CHARGED")
+}
+
 func TestFollowUpBudgetOrMissingPriceMakesNoRequest(t *testing.T) {
 	t.Run("budget", func(t *testing.T) {
 		fake := newFollowGenFake(scheduledFollowRow(), greetPurpose("https://models.example/v1"))
@@ -585,6 +599,7 @@ type followGenFake struct {
 	settleKinds            []followSettle
 	jobs                   []followJobClose
 	blockedGreetingAttempt bool
+	prepareDecision        string
 }
 
 func newFollowGenFake(row postgres.FollowUpGeneration, purpose postgres.ResolvedPurpose) *followGenFake {
@@ -659,6 +674,9 @@ func (f *followGenFake) FinishFollowUpGeneration(_ context.Context, _, _ int64, 
 
 func (f *followGenFake) PrepareFollowUpModelCall(_ context.Context, _, _ int64, _, provider, model string, _, _ int) (string, error) {
 	f.prepares++
+	if f.prepareDecision != "" {
+		return f.prepareDecision, nil
+	}
 	if f.budgetErr != nil {
 		return "", f.budgetErr
 	}

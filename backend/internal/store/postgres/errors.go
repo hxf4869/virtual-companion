@@ -116,6 +116,17 @@ func mapStoreErr(err error) error {
 
 func mapRaise(msg string) error {
 	switch {
+	case strings.Contains(msg, "model usage unit price is unknown"):
+		return &ModelUsageError{Reason: ModelUsageNoPrice}
+	case strings.Contains(msg, "model usage limits are not configured"),
+		strings.Contains(msg, "model usage ceiling is too small"):
+		return &ModelUsageError{Reason: ModelUsageNoBudget}
+	case strings.Contains(msg, "model usage monthly cap exceeded"):
+		return &ModelUsageError{Reason: ModelUsageOverLimit}
+	case strings.Contains(msg, "model usage reservation is not reusable"):
+		return &ModelUsageError{Reason: ModelUsageAttemptReused}
+	case strings.Contains(msg, "model usage purpose is not reservable"):
+		return ErrInvalid
 	case strings.Contains(msg, "revision conflict (current "):
 		return &RevisionConflictError{Current: raisedInt(msg, "revision conflict (current ")}
 	case strings.Contains(msg, "profile in use: "):

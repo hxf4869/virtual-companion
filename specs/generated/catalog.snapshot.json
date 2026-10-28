@@ -194,7 +194,9 @@
       "EMBEDDING",
       "CONVERSATION_SUMMARY",
       "PRODUCT_EVAL",
-      "BACKGROUND_GREETING"
+      "BACKGROUND_GREETING",
+      "FOREGROUND_CHAT",
+      "TOOL_TURN"
     ],
     "ProviderAttemptStatus": [
       "CREATED",
@@ -1064,8 +1066,8 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 83,
-          "RETIRE": 39,
+          "KEEP": 88,
+          "RETIRE": 38,
           "SIMPLIFY": 6
         },
         "note": "The API consumer matrix remains the deletion/scope source. KEEP requires core-outcome, current H5 production caller, safety/data-rights, or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations are removed with H5 in a later slice, not in G0.",
@@ -2270,11 +2272,14 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "RETIRE",
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
             "method": "GET",
             "operationId": "getAdminUsageSummary",
             "path": "/api/v1/auth/admin/usage",
-            "replacementOrImpact": "The redesigned admin console has no usage summary. Go v1 keeps internal limits."
+            "replacementOrImpact": "W11-3 admin summary of foreground, extraction, greeting, and tool turns, plus legacy reservations, unlinked generation_usage, and non-billed local embeddings. Old generation_usage rows stay and are not counted twice."
           },
           {
             "currentH5Callers": [],
@@ -2420,6 +2425,50 @@
             "operationId": "resolveModelPurpose",
             "path": "/api/v1/service/model-purposes/{purpose}/resolve",
             "replacementOrImpact": "V2-W03 service channel for the SillyTavern server plugin (shared service token, never a browser); returns the live credential for one READY binding and grants no administrative rights."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "reserveModelUsage",
+            "path": "/api/v1/service/model-usage/reservations",
+            "replacementOrImpact": "W11-3 reserve before a foreground or tool send. The owner is the account the plugin already verified. Missing price, missing budget, or the monthly cap refuses the reservation and performs no provider call."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "settleModelUsage",
+            "path": "/api/v1/service/model-usage/reservations/{reservationId}/settle",
+            "replacementOrImpact": "W11-3 settlement of one reservation from reported usage. Repeating the same reservationId keeps the first actual and does not add it again."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "cancelModelUsage",
+            "path": "/api/v1/service/model-usage/reservations/{reservationId}/cancel",
+            "replacementOrImpact": "W11-3 cancel before a real send releases the hold. A timeout or missing usage is UNKNOWN and stays unsettled; it is not released as zero."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "recordLocalEmbeddingCall",
+            "path": "/api/v1/service/model-usage/local-embeddings",
+            "replacementOrImpact": "W11-3 local embedding count. The call is not a zero-dollar online cost and does not move the monthly budget."
           },
           {
             "currentH5Callers": [],
@@ -2616,7 +2665,7 @@
           }
         ]
       },
-      "sha256": "a8886ee0dc8d552ed0584b7c86c8acd3336e77d83dc52777294df427db8521c5"
+      "sha256": "fbbf3808916ac5737b95e72c9337959eae77d88fc62ab28a180614aa08bb28f8"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2991,7 +3040,10 @@
           {
             "code": "FOREGROUND_CHAT",
             "executor": "SILLYTAVERN_NATIVE",
-            "order": 0
+            "note": "Foreground SillyTavern turns pin this binding. Tool follow-up turns share the same binding and are reserved as TOOL_TURN. Missing price, missing budget, or a monthly cap performs no real call. A timeout or a send with no usage stays UNKNOWN and unsettled; it is not released as zero.",
+            "order": 0,
+            "runSnapshot": "IMMUTABLE_AT_START",
+            "unauthorizedBudget": "NO_REAL_CALL"
           },
           {
             "acceptedSamplingCapabilityStatuses": [
@@ -3046,6 +3098,7 @@
               "l2",
               "none"
             ],
+            "note": "Local embedding calls are a non-billed count. They are not reported as a zero-dollar online cost and do not enter the monthly cost budget.",
             "order": 5,
             "provider": "OLLAMA",
             "queryPreprocessingVersions": [
@@ -3058,7 +3111,7 @@
         "note": "V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose pins one model profile independently; changing one binding never touches another. EMBEDDING uses the dedicated Go embedding configuration (W08), never a chat profile. Its snapshot pins the Ollama artifact digest, dimensions, preprocessing and normalization; any vector-space-defining change allocates a new spaceId. Rebuilding uses lexical recall only.",
         "schemaVersion": 1
       },
-      "sha256": "569727828461f4ea85b2ef6fd113b85ecb1ec0854cce4bcddac0acf4e71f1ea7"
+      "sha256": "25e5a638fed3db18e28600f7e187b90a53aa0cc713c677ab8bf034fb1313bf93"
     },
     "persona-templates.yaml": {
       "document": {
@@ -3110,11 +3163,23 @@
             "modelPurpose": "BACKGROUND_GREETINGS",
             "note": "Go background greeting and follow-up wording. Execution resolves only the BACKGROUND_GREETINGS pinned binding and revision, never the legacy global route order. An in-progress run keeps the snapshot taken when it started. Missing authorization, price or budget performs no real call. Inbox and notification delivery belong to W10.",
             "order": 6
+          },
+          {
+            "code": "FOREGROUND_CHAT",
+            "modelPurpose": "FOREGROUND_CHAT",
+            "note": "Foreground SillyTavern generation. The reservation purpose is FOREGROUND_CHAT and uses the FOREGROUND_CHAT model binding.",
+            "order": 7
+          },
+          {
+            "code": "TOOL_TURN",
+            "modelPurpose": "FOREGROUND_CHAT",
+            "note": "Tool follow-up turn. The reservation purpose is TOOL_TURN. Model resolution uses the FOREGROUND_CHAT binding, not a separate model purpose.",
+            "order": 8
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "60ce528817dd3d37157fff26f85bc42cc49a103a063d0ec8fa0d93fa0aa03b59"
+      "sha256": "37d42a0f96e9c26f4373e108fc14db66db7eab801185b1c4629f4794d23ca3fb"
     },
     "product-scope.yaml": {
       "document": {

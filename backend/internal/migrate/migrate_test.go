@@ -13,8 +13,8 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 160 {
-		t.Fatalf("migration count = %d, want 160", len(items))
+	if len(items) != 164 {
+		t.Fatalf("migration count = %d, want 164", len(items))
 	}
 	// Versions must be strictly ascending.
 	for i := 1; i < len(items); i++ {
@@ -22,7 +22,7 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 			t.Fatalf("migration[%d].Version = %d not after %d", i, items[i].Version, items[i-1].Version)
 		}
 	}
-	if items[len(items)-1].File != "V190__tool_execution.sql" {
+	if items[len(items)-1].File != "V194__local_embedding_usage.sql" {
 		t.Fatalf("latest migration = %q", items[len(items)-1].File)
 	}
 }

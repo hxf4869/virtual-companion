@@ -9,10 +9,10 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 83
+  KEEP: 88
   SIMPLIFY: 6
   DEFER: 15
-  RETIRE: 39
+  RETIRE: 38
 operations:
 - operationId: callMemoryCoreModel
   method: POST
@@ -970,8 +970,13 @@ operations:
   method: GET
   path: /api/v1/auth/admin/usage
   currentH5Callers: []
-  decision: RETIRE
-  replacementOrImpact: The redesigned admin console has no usage summary. Go v1 keeps internal limits.
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: >-
+    W11-3 admin summary of foreground, extraction, greeting, and tool turns,
+    plus legacy reservations, unlinked generation_usage, and non-billed local
+    embeddings. Old generation_usage rows stay and are not counted twice.
 - operationId: getAdminProviderPlan
   method: GET
   path: /api/v1/auth/admin/provider-plan
@@ -1088,6 +1093,47 @@ operations:
   replacementOrImpact: V2-W03 service channel for the SillyTavern server plugin (shared service
     token, never a browser); returns the live credential for one READY binding and grants no
     administrative rights.
+- operationId: reserveModelUsage
+  method: POST
+  path: /api/v1/service/model-usage/reservations
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: >-
+    W11-3 reserve before a foreground or tool send. The owner is the account
+    the plugin already verified. Missing price, missing budget, or the monthly
+    cap refuses the reservation and performs no provider call.
+- operationId: settleModelUsage
+  method: POST
+  path: /api/v1/service/model-usage/reservations/{reservationId}/settle
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: >-
+    W11-3 settlement of one reservation from reported usage. Repeating the same
+    reservationId keeps the first actual and does not add it again.
+- operationId: cancelModelUsage
+  method: POST
+  path: /api/v1/service/model-usage/reservations/{reservationId}/cancel
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: >-
+    W11-3 cancel before a real send releases the hold. A timeout or missing
+    usage is UNKNOWN and stays unsettled; it is not released as zero.
+- operationId: recordLocalEmbeddingCall
+  method: POST
+  path: /api/v1/service/model-usage/local-embeddings
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  replacementOrImpact: >-
+    W11-3 local embedding count. The call is not a zero-dollar online cost and
+    does not move the monthly budget.
 - operationId: getTrialStatus
   method: GET
   path: /api/v1/trial-status

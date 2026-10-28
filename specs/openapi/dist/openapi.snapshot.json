@@ -124,6 +124,10 @@
     "saveModelPurpose",
     "callMemoryCoreModel",
     "resolveModelPurpose",
+    "reserveModelUsage",
+    "settleModelUsage",
+    "cancelModelUsage",
+    "recordLocalEmbeddingCall",
     "getTrialStatus",
     "recordSurvey",
     "listMySurveys",
@@ -147,6 +151,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "2455581a2a609cbfc220d9b4f926579fc99cf77619c1b4892276b61ee3afc41b"
+    "sha256": "4653dc169dfebce805773b66e7b47c55d6855a77fc62c804ebdb6232c8649dab"
   }
 }

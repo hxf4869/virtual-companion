@@ -83,8 +83,9 @@ func TestMemoryCoreCallAccountingAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close(ctx)
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM vc.model_cost_reservation WHERE owner_user_id=1 AND work_item_id=$1 AND status='SETTLED'`, job.JobID).Scan(&ledger); err != nil || ledger != 2 {
-		t.Fatalf("ledger count %d %v", ledger, err)
+	var unknown int
+	if err := db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE status='SETTLED'), count(*) FILTER (WHERE status='UNKNOWN' AND actual_usd IS NULL AND reserved_usd > 0) FROM vc.model_cost_reservation WHERE owner_user_id=1 AND work_item_id=$1`, job.JobID).Scan(&ledger, &unknown); err != nil || ledger != 1 || unknown != 1 {
+		t.Fatalf("ledger settled=%d unknown=%d err=%v", ledger, unknown, err)
 	}
 	in.CallSequence = 3
 	in.ClaimFence = "stale"

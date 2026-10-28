@@ -318,6 +318,23 @@ func operation(path string) string {
 		if strings.HasPrefix(path, "/api/v1/service/model-purposes/") {
 			return "service_model_purpose_resolve"
 		}
+		if path == "/api/v1/service/model-usage/reservations" {
+			return "service_model_usage_reserve"
+		}
+		if path == "/api/v1/service/model-usage/local-embeddings" {
+			return "service_model_usage_embedding"
+		}
+		if path == "/api/v1/auth/admin/usage" {
+			return "admin_usage"
+		}
+		if strings.HasPrefix(path, "/api/v1/service/model-usage/reservations/") {
+			switch {
+			case strings.HasSuffix(path, "/settle"):
+				return "service_model_usage_settle"
+			case strings.HasSuffix(path, "/cancel"):
+				return "service_model_usage_cancel"
+			}
+		}
 		if strings.HasPrefix(path, "/api/v1/auth/challenges/") {
 			return "auth_challenge"
 		}

@@ -30,7 +30,7 @@ func (s *Store) PrepareMemoryCoreCall(ctx context.Context, in MemoryCoreCall) (M
 			return ErrConflict
 		}
 		if out.AttemptID > 0 && out.Decision == "EXTRACTABLE" {
-			return s.reserveModelCost(ctx, tx, in.Owner, in.Job, memoryExtractCostKey(out.AttemptID), in.ProviderID, in.ModelID, in.InputTokens, in.OutputTokens, s.maxReservedCost)
+			return s.reserveModelCostPurpose(ctx, tx, in.Owner, in.Job, memoryExtractCostKey(out.AttemptID), in.ProviderID, in.ModelID, PurposeMemoryExtraction, in.InputTokens, in.OutputTokens, s.maxReservedCost)
 		}
 		return nil
 	})

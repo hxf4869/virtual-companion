@@ -213,6 +213,8 @@ components:
       - CONVERSATION_SUMMARY
       - PRODUCT_EVAL
       - BACKGROUND_GREETING
+      - FOREGROUND_CHAT
+      - TOOL_TURN
     ErrorCode:
       type: string
       enum:

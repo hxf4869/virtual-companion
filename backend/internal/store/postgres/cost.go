@@ -21,6 +21,13 @@ func (s *Store) reserveModelCost(ctx context.Context, tx pgx.Tx, owner, jobID in
 	return err
 }
 
+func (s *Store) reserveModelCostPurpose(ctx context.Context, tx pgx.Tx, owner, jobID int64, attempt, provider, model, purpose string, inputTokens, outputTokens int, ceiling int64) error {
+	_, err := tx.Exec(ctx, `SELECT vc.go_hold_model_cost($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		owner, jobID, attempt, provider, model, inputTokens, outputTokens,
+		min(s.maxReservedCost, ceiling), s.monthlyCostLimit, purpose)
+	return err
+}
+
 func memoryExtractCostKey(attemptID int64) string {
 	return "memory-extract:" + strconv.FormatInt(attemptID, 10)
 }
