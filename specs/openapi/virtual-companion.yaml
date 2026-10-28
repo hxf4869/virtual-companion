@@ -437,17 +437,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/st/bindings:
+    post:
+      operationId: resolveSTBinding
+      summary: Resolve a stable ST chat to its owner-scoped instance and conversation
+      description: >-
+        Native ST calls through the authenticated same-origin server plugin. The
+        cookie principal is the sole owner authority; the request has no ownerId
+        property. Requires CSRF and matching X-VC-Expected-Account-ID and
+        X-VC-Expected-Session-ID preconditions. The same owner and chatIdentity
+        resolve idempotently. A different characterRef, mode or explicit relationshipId
+        for an established binding returns 409 without overwriting it. Omitting
+        relationshipId creates an independent active instance for a new chat, even
+        when another instance uses the same card. An explicit relationshipId reuses
+        that owned instance for a branch and must match its characterRef. ST keeps
+        content and F2 revision authority; this operation stores neither message
+        bodies nor a second revision counter. Group-chat memory bindings are outside
+        this single-character operation.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/STBindingRequest'
+      responses:
+        '200':
+          description: Existing or newly established stable binding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/STBinding'
+        '400':
+          description: Invalid binding fields or non-string/invalid relationship identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin, CSRF or password-change gate rejected the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Explicit relationship absent or owned by another user; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: REVISION_CONFLICT for an incompatible binding, or ACCOUNT_CONTEXT_CHANGED for stale/missing identity preconditions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
-      summary: Create a Companion relationship (becomes the active Companion)
+      summary: Create an independently active Companion relationship
       description: >-
         Creates a new relationship owned by the caller. The new relationship
-        becomes the caller's single active Companion; any previously active
-        relationship is atomically deactivated so activeCompanionLimit=1 always
-        holds. Requires a server-verified authentication context; the caller's
-        identity is the owner, never a request field. Concurrent creates for the
-        same owner can never produce two active Companions.
+        becomes active without deactivating other relationships. This endpoint
+        retains the existing approved persona-template input; native ST cards use
+        resolveSTBinding. Requires a server-verified authentication context; the
+        caller's identity is the owner, never a request field. Multiple instances
+        may remain active concurrently (V2-W05).
       security:
         - cookieAuth: []
       requestBody:
@@ -458,7 +520,7 @@ paths:
               $ref: '#/components/schemas/RelationshipCreateRequest'
       responses:
         '200':
-          description: The created relationship, now the active Companion
+          description: The created, independently active relationship
           content:
             application/json:
               schema:
@@ -473,7 +535,7 @@ paths:
       operationId: listRelationships
       summary: List the caller's relationships
       description: >-
-        Returns every relationship owned by the caller (the active Companion and
+        Returns every relationship owned by the caller (active Companions and
         any dormant ones). Requires a server-verified authentication context;
         other owners' relationships are never disclosed.
       security:
@@ -524,10 +586,9 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
     post:
       operationId: activateRelationship
-      summary: Make a relationship the active Companion
+      summary: Activate one Companion relationship
       description: >-
-        Promotes the target relationship to the caller's single active Companion,
-        atomically deactivating any other active relationship. A foreign or
+        Activates the target relationship without changing other instances. A foreign or
         absent id maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
       security:
         - cookieAuth: []
@@ -535,7 +596,7 @@ paths:
         - $ref: '#/components/parameters/RelationshipId'
       responses:
         '200':
-          description: The relationship, now the active Companion
+          description: The relationship, now active
           content:
             application/json:
               schema:
@@ -5469,11 +5530,53 @@ components:
           type: string
         commit:
           type: string
+    STBindingRequest:
+      type: object
+      required: [chatIdentity, characterRef, mode]
+      properties:
+        chatIdentity:
+          type: string
+          minLength: 1
+          description: Stable ST F2 chat identity, preserved across chat renames
+        characterRef:
+          type: string
+          minLength: 1
+          description: Stable ST card reference; not a global instance deduplication key
+        mode:
+          type: string
+          enum: [COMPANION, STORY]
+        relationshipId:
+          type: [string, 'null']
+          pattern: '^[1-9][0-9]{0,18}$'
+          description: Optional owned instance for explicit branch reuse; positive int64 decimal string, never a JSON number
+        displayName:
+          type: string
+          maxLength: 32
+          description: Optional initial companion name; trimmed on creation, ignored for an existing binding
+    STBinding:
+      type: object
+      required: [relationshipId, conversationId, chatIdentity, characterRef, mode]
+      properties:
+        relationshipId:
+          type: string
+          pattern: '^[1-9][0-9]{0,18}$'
+          description: CharacterInstance identifier, backed by the existing relationship row
+        conversationId:
+          type: string
+          pattern: '^[1-9][0-9]{0,18}$'
+          description: Stable Go conversation identifier for this ST chat binding
+        chatIdentity:
+          type: string
+        characterRef:
+          type: string
+        mode:
+          type: string
+          enum: [COMPANION, STORY]
     Relationship:
       type: object
       description: >-
-        A Companion relationship owned by exactly one user. At most one
-        relationship per owner is active at any time (activeCompanionLimit=1).
+        A Companion relationship owned by exactly one user. Each instance has an
+        independent active flag; V2-W05 imposes no single-active limit.
         Structured preferences (FR-COMP-003) are always present after create
         (catalog defaults apply until the caller PATCHes them). Presentation
         fields (FR-COMP-002) carry the companion's gender presentation and a
@@ -5501,7 +5604,7 @@ components:
           description: Reference to the Persona bound to this Companion
         active:
           type: boolean
-          description: Whether this is the owner's current active Companion
+          description: Whether this instance is active; other instances may also be active
         createdAt:
           type: string
           format: date-time

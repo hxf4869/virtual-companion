@@ -15,6 +15,7 @@
     "updateIncognitoPref",
     "getMemoryAutoSavePref",
     "updateMemoryAutoSavePref",
+    "resolveSTBinding",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -132,6 +133,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "946ce2ce8ba0e4c54499c8d66b719bbc3f023da3c215016a70119687eef9fbf6"
+    "sha256": "7e99dbc21d3239910c30dfa3b0134b0a0333c86be9777cf5854aa593da10c7b8"
   }
 }

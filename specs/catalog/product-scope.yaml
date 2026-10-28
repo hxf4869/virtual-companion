@@ -8,7 +8,8 @@ hypothesis:
   - TRUSTWORTHY_MEMORY
   invalidatesAutomaticallyWhenDiscoveryGateFails: true
 alpha:
-  activeCompanionLimit: 1
+  # V2-W05: null means no single-active cap; each instance has its own active flag.
+  activeCompanionLimit: null
   personaTemplates:
   - gentle-listener
   publicRegistrationEnabled: false

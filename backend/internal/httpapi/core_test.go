@@ -49,6 +49,8 @@ type memStore struct {
 	authChallenges map[string]memAuthChallenge
 	trustedDevices map[int64]memTrustedDevice
 	nextTrustedID  int64
+	stBindings     map[string]postgres.STBinding
+	stInstances    map[int64]memSTInstance
 	// memoryAutoSave holds explicit per-owner overrides; a missing owner
 	// reads as enabled, matching the V66 SQL default.
 	memoryAutoSave map[int64]bool
@@ -120,11 +122,6 @@ func (m *memStore) CreateRelationship(_ context.Context, owner int64, personaRef
 	defer m.mu.Unlock()
 	id := m.next
 	m.next++
-	if prev, ok := m.active[owner]; ok {
-		rel := m.rels[prev]
-		rel.Active = false
-		m.rels[prev] = rel
-	}
 	rel := postgres.Relationship{
 		ID: id, PersonaRef: personaRef, Active: true, CreatedAt: time.Unix(1, 0).UTC(),
 		ReplyLength: "MEDIUM", Initiative: "LOW", Humor: "LIGHT", AdvicePref: "ASK_FIRST",
@@ -152,11 +149,6 @@ func (m *memStore) ActivateRelationship(_ context.Context, owner, id int64) (pos
 	rel, ok := m.rels[id]
 	if !ok {
 		return postgres.Relationship{}, postgres.ErrNotFound
-	}
-	if prev, ok := m.active[owner]; ok && prev != id {
-		old := m.rels[prev]
-		old.Active = false
-		m.rels[prev] = old
 	}
 	rel.Active = true
 	m.rels[id] = rel

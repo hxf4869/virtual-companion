@@ -39,6 +39,7 @@ const expectedSessionHeader = "X-VC-Expected-Session-ID"
 // CompanionStore is the G7/G8 owner-scoped persistence surface. The production
 // implementation is *postgres.Store; tests may substitute a fake.
 type CompanionStore interface {
+	ResolveSTBinding(ctx context.Context, owner int64, input postgres.STBindingInput) (postgres.STBinding, error)
 	CreateRelationship(ctx context.Context, owner int64, personaRef string) (postgres.Relationship, error)
 	ListRelationships(ctx context.Context, owner int64) ([]postgres.Relationship, error)
 	ActivateRelationship(ctx context.Context, owner, id int64) (postgres.Relationship, error)
@@ -168,6 +169,7 @@ type Core struct {
 }
 
 func (s *Server) registerCore() {
+	s.mux.HandleFunc("POST /api/v1/st/bindings", s.handleResolveSTBinding)
 	s.mux.HandleFunc("POST /api/v1/relationships", s.handleCreateRelationship)
 	s.mux.HandleFunc("GET /api/v1/relationships", s.handleListRelationships)
 	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}", s.handleActivateRelationship)

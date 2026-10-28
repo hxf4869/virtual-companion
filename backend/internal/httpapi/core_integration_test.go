@@ -79,12 +79,9 @@ func TestG7IsolationLifecycle(t *testing.T) {
 	for _, row := range rels {
 		if row.Active {
 			active++
-			if row.RelationshipID != rel2.RelationshipID {
-				t.Fatal("newest must be the unique active companion")
-			}
 		}
 	}
-	if active != 1 {
+	if active != 2 {
 		t.Fatalf("active count %d", active)
 	}
 

@@ -1,9 +1,6 @@
--- 29_relationship_lifecycle_activate_deactivate: the full Companion lifecycle
--- maintains activeCompanionLimit=1 at every transition. create activates the
--- newest and deactivates the prior; activate switches the single active slot;
--- deactivate is permitted to reach zero active; list returns every owned
--- relationship. The activate path takes the per-owner advisory lock and locks
--- the target row, so concurrent switches never corrupt the single-active count.
+-- 29_relationship_lifecycle_activate_deactivate: V2 instances have independent
+-- active flags. Activating one never disables another; explicit deactivation
+-- can still reach zero active, and list returns every owned instance.
 
 \set ON_ERROR_STOP on
 
@@ -25,28 +22,31 @@ DECLARE
     n   int;
 BEGIN
     SELECT vc.create_relationship(1, 'persona-a') INTO v_a;  -- A active
-    SELECT vc.create_relationship(1, 'persona-b') INTO v_b;  -- B active, A dormant
+    SELECT vc.create_relationship(1, 'persona-b') INTO v_b;  -- A and B active
 
-    PERFORM 1 FROM vc.relationship WHERE id = v_a AND active = false;
-    IF NOT FOUND THEN RAISE EXCEPTION 'A must be dormant after second create'; END IF;
+    PERFORM 1 FROM vc.relationship WHERE id = v_a AND active = true;
+    IF NOT FOUND THEN RAISE EXCEPTION 'A must remain active after second create'; END IF;
     PERFORM 1 FROM vc.relationship WHERE id = v_b AND active = true;
     IF NOT FOUND THEN RAISE EXCEPTION 'B must be active after second create'; END IF;
     SELECT count(*) INTO n FROM vc.relationship WHERE active;
-    IF n <> 1 THEN RAISE EXCEPTION 'expected 1 active after creates, got %', n; END IF;
+    IF n <> 2 THEN RAISE EXCEPTION 'expected 2 active after creates, got %', n; END IF;
 
-    -- activate A: switches the single active slot back to A.
+    -- activate A: keeps B active as well.
     PERFORM vc.activate_relationship(1, v_a);
     PERFORM 1 FROM vc.relationship WHERE id = v_a AND active = true;
     IF NOT FOUND THEN RAISE EXCEPTION 'A must be active after activate'; END IF;
-    PERFORM 1 FROM vc.relationship WHERE id = v_b AND active = false;
-    IF NOT FOUND THEN RAISE EXCEPTION 'B must be dormant after activating A'; END IF;
+    PERFORM 1 FROM vc.relationship WHERE id = v_b AND active = true;
+    IF NOT FOUND THEN RAISE EXCEPTION 'B must remain active after activating A'; END IF;
     SELECT count(*) INTO n FROM vc.relationship WHERE active;
-    IF n <> 1 THEN RAISE EXCEPTION 'expected 1 active after activate, got %', n; END IF;
+    IF n <> 2 THEN RAISE EXCEPTION 'expected 2 active after activate, got %', n; END IF;
 
-    -- deactivate A: zero active Companions is permitted under Alpha.
+    -- Deactivating A leaves B unchanged; explicitly deactivating both reaches zero.
     PERFORM vc.deactivate_relationship(1, v_a);
     SELECT count(*) INTO n FROM vc.relationship WHERE active;
-    IF n <> 0 THEN RAISE EXCEPTION 'expected 0 active after deactivate, got %', n; END IF;
+    IF n <> 1 THEN RAISE EXCEPTION 'expected B active after deactivating A, got %', n; END IF;
+    PERFORM vc.deactivate_relationship(1, v_b);
+    SELECT count(*) INTO n FROM vc.relationship WHERE active;
+    IF n <> 0 THEN RAISE EXCEPTION 'expected 0 active after deactivating both, got %', n; END IF;
 
     -- activate B: exactly one active again.
     PERFORM vc.activate_relationship(1, v_b);

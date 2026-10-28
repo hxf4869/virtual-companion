@@ -976,7 +976,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 68,
+          "KEEP": 69,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1126,12 +1126,24 @@
             "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "resolveSTBinding",
+            "path": "/api/v1/st/bindings",
+            "replacementOrImpact": "V2-W05 native ST consumer via the authenticated server plugin (integrations/sillytavern/server-plugin/virtual-companion/index.js). Resolve a stable ST chat to an independent relationship instance and conversation; explicit branches may reuse the instance. Cookie identity supplies the owner; ST retains revision authority."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
               "core-outcome"
             ],
             "method": "POST",
             "operationId": "createRelationship",
             "path": "/api/v1/relationships",
-            "replacementOrImpact": "The server creates the unique default companion during first authenticator setup; the current frontend does not expose manual creation."
+            "replacementOrImpact": "Retain the existing persona-template consumer and default companion setup. Creation preserves other active instances; ST card binding uses resolveSTBinding."
           },
           {
             "currentH5Callers": [
@@ -1152,7 +1164,7 @@
             "method": "GET",
             "operationId": "getRelationship",
             "path": "/api/v1/relationships/{relationshipId}",
-            "replacementOrImpact": "No production H5 caller. List plus prefs/update cover the unique companion. Delete in a later OpenAPI/H5 slice."
+            "replacementOrImpact": "No production H5 caller. List plus prefs/update cover companion instances. Delete in a later OpenAPI/H5 slice."
           },
           {
             "currentH5Callers": [],
@@ -1163,7 +1175,7 @@
             "method": "POST",
             "operationId": "activateRelationship",
             "path": "/api/v1/relationships/{relationshipId}",
-            "replacementOrImpact": "Retain the server lifecycle operation; the current frontend does not expose a switcher."
+            "replacementOrImpact": "Retain per-instance activation without disabling other instances; the current frontend does not expose a switcher."
           },
           {
             "currentH5Callers": [],
@@ -2357,7 +2369,7 @@
           }
         ]
       },
-      "sha256": "4cd5e3e5868121a2cd0bdd15c63e0e6064285e095abe25edc87e3998c3805365"
+      "sha256": "daf21b78d051aacd8a482ee2d38e5d28b980938a2b2e59247244ff29f37d879e"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2780,7 +2792,7 @@
     "product-scope.yaml": {
       "document": {
         "alpha": {
-          "activeCompanionLimit": 1,
+          "activeCompanionLimit": null,
           "canonicalLongTermMemoryScope": "RELATIONSHIP",
           "enabledMemoryScopes": [
             "SESSION",
@@ -2875,7 +2887,7 @@
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "8b7d63372a7f182c33faf46b0717a032249152c795d157aea975ec83de4dbd8a"
+      "sha256": "76e4be09b3f5a16c95cabde21e62628c5b4ad66b2651bb6db38ba82885139e7e"
     },
     "provider-attempt-statuses.yaml": {
       "document": {
