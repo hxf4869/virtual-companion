@@ -146,9 +146,14 @@ func TestStartStoryRunConflictsWhenConversationAlreadyHasAnotherCase(t *testing.
 	resetFixtures(t)
 	ctx := context.Background()
 	conversationID := mustStoryConversation(t, ctx, 1, "w12-story-conflict")
-	if _, err := psqlSuper(
-		`INSERT INTO vc.story_run(owner_user_id, id, case_id, world_version, stage, conversation_id)
-		 VALUES (1, 9001, 'other-case', 0, 'investigation', ` + itoa(conversationID) + `)`); err != nil {
+	if _, err := psqlSuper(`BEGIN;
+		INSERT INTO vc.story_run(owner_user_id, id, case_id, world_version, stage, conversation_id)
+		 VALUES (1, 9001, 'other-case', 0, 'investigation', ` + itoa(conversationID) + `);
+		INSERT INTO vc.story_branch(owner_user_id, id, run_id)
+		 VALUES (1, 9002, 9001);
+		UPDATE vc.story_run SET current_branch_id = 9002
+		 WHERE owner_user_id = 1 AND id = 9001;
+		COMMIT;`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := testEnv.store.StartStoryRun(ctx, 1, conversationID, "rainy-inn-v1"); !errors.Is(err, ErrConflict) {

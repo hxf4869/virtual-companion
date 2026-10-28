@@ -311,10 +311,22 @@ func operation(path string) string {
 			return "admin_model_purpose"
 		}
 		if strings.HasPrefix(path, "/api/v1/story/") {
-			if strings.HasSuffix(path, "/outbound-check") {
+			switch {
+			case strings.HasSuffix(path, "/outbound-check"):
 				return "story_outbound_check"
+			case strings.HasSuffix(path, "/actions"):
+				return "story_action"
+			case strings.HasSuffix(path, "/rewind"):
+				return "story_rewind"
+			case strings.Contains(path, "/projections/"):
+				return "story_projection"
+			case strings.Contains(path, "/participants/"):
+				return "story_participant"
+			case strings.HasSuffix(path, "/epilogue"):
+				return "story_epilogue"
+			default:
+				return "story_actor_view"
 			}
-			return "story_actor_view"
 		}
 		if strings.HasPrefix(path, "/api/v1/service/model-purposes/") {
 			return "service_model_purpose_resolve"

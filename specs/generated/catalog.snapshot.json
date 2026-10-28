@@ -1064,7 +1064,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 83,
+          "KEEP": 88,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1304,6 +1304,66 @@
             "operationId": "checkStoryOutbound",
             "path": "/api/v1/story/runs/{runId}/actors/{actorId}/outbound-check",
             "replacementOrImpact": "V2-W13 second line for the SillyTavern server plugin. The plugin submits extracted final-request text for one actor. Hidden private facts, GM truth text, sample markers, and remote history references are refused with a fixed error and are not echoed. A mismatched worldVersion conflicts. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "commitStoryAction",
+            "path": "/api/v1/story/runs/{runId}/actions",
+            "replacementOrImpact": "V2-W14 submits one action or dialogue statement for the owned run. The browser session is the owner. Repeating an actionId returns the original event. A stale world version or branch conflicts and writes nothing. A refused command returns accepted false and writes nothing. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "rewindStory",
+            "path": "/api/v1/story/runs/{runId}/rewind",
+            "replacementOrImpact": "V2-W14 forks the current head at an earlier world version and returns the new branch. The browser session is the owner. A target that is not before the current version is rejected. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "confirmStoryProjection",
+            "path": "/api/v1/story/runs/{runId}/projections/{eventId}/confirm",
+            "replacementOrImpact": "V2-W14 marks one owned world event's pending chat projection confirmed. A cancelled or user-deleted projection stays unchanged and returns confirmed false. The browser session is the owner. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "mapStoryParticipant",
+            "path": "/api/v1/story/runs/{runId}/participants/{actorId}",
+            "replacementOrImpact": "V2-W14 maps one owned companion onto lin, zhou, or su. The player cannot be mapped. Deleting the companion later clears only the relationship id. The browser session is the owner. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "decideStoryEpilogue",
+            "path": "/api/v1/story/runs/{runId}/epilogue",
+            "replacementOrImpact": "V2-W14 saves or discards one shared-play summary after the run has ended. Discard writes no memory. Save creates one pending memory candidate and does not confirm it. The browser session is the owner. This operation does not call a model."
           },
           {
             "currentH5Callers": [],
@@ -2617,7 +2677,7 @@
           }
         ]
       },
-      "sha256": "12cad33f17102bf315f0446309082eef9d9e2234544a634ec56603e76c372563"
+      "sha256": "d6aada35bba2ac08bd0b9f183f686d939b5f63e035a3ce08276339ebff5344ef"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

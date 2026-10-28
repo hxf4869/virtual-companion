@@ -13,7 +13,8 @@ import (
 // ErrStoryWorldVersion means the caller's expected world version is not the run's.
 var ErrStoryWorldVersion = errors.New("story world version conflict")
 
-// StoryParticipant is one person in a run. RelationshipID stays nil until W14.
+// StoryParticipant is one person in a run. RelationshipID is set when an owned
+// companion is mapped onto lin, zhou, or su, and becomes nil if that companion is deleted.
 type StoryParticipant struct {
 	ActorID        string
 	Name           string
@@ -34,7 +35,8 @@ type StoryRun struct {
 }
 
 // StoryActorFacts is the stored identity and branch events for one actor.
-// Events are already limited to that actor's visibility.
+// Events come from this branch and its parent prefix, limited to rows whose
+// visibility includes the actor. Each row keeps its full visibility.
 // ChatIdentity is that run's STORY conversation st_chat_identity.
 type StoryActorFacts struct {
 	ConversationID int64
@@ -233,26 +235,12 @@ func (s *Store) LoadStoryActor(ctx context.Context, owner, runID, branchID int64
 		if err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT id, actor_id, world_version, body
-			FROM vc.story_event
-			WHERE owner_user_id=$1 AND run_id=$2 AND branch_id=$3 AND $4 = ANY(visibility)
-			ORDER BY id`, owner, runID, branchID, actorID)
+		events, err := loadPrefixEvents(ctx, tx, owner, branchID)
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-		out.Events = []story.Event{}
-		for rows.Next() {
-			var event story.Event
-			var body []byte
-			if err := rows.Scan(&event.ID, &event.ActorID, &event.WorldVersion, &body); err != nil {
-				return err
-			}
-			event.Visibility = []string{actorID}
-			event.Body = append([]byte(nil), body...)
-			out.Events = append(out.Events, event)
-		}
-		return rows.Err()
+		out.Events = eventsVisibleTo(events, actorID)
+		return nil
 	})
 	if err != nil {
 		return StoryActorFacts{}, mapStoryErr(err)
@@ -269,21 +257,32 @@ func uniqueViolation(err error) bool {
 }
 
 func mapStoryErr(err error) error {
+	if errors.Is(err, story.ErrInvalid) {
+		return ErrInvalid
+	}
 	if err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) ||
 		errors.Is(err, ErrConflict) || errors.Is(err, ErrStoryWorldVersion) || errors.Is(err, errStore) {
 		return err
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "P0001" {
+		msg := pgErr.Message
 		switch {
-		case strings.Contains(pgErr.Message, "STORY conversation"):
+		case strings.Contains(msg, "STORY conversation"):
 			return ErrConflict
-		case strings.Contains(pgErr.Message, "invalid input"):
+		case strings.Contains(msg, "conflicts with"):
+			return ErrStoryWorldVersion
+		case strings.Contains(msg, "requires an ending"), strings.Contains(msg, "already"):
+			return ErrConflict
+		case strings.Contains(msg, "deletion"):
+			return ErrNotFound
+		case strings.Contains(msg, "not owned"), strings.Contains(msg, "not mapped"),
+			strings.Contains(msg, "not a participant"), strings.Contains(msg, "is not in this run"),
+			strings.Contains(msg, "not found"):
+			return ErrNotFound
+		case strings.Contains(msg, "invalid input"), strings.Contains(msg, "cannot"),
+			strings.Contains(msg, "not before"), strings.Contains(msg, "no stage"):
 			return ErrInvalid
-		case strings.Contains(pgErr.Message, "not found"):
-			return ErrNotFound
-		case strings.Contains(pgErr.Message, "deletion"):
-			return ErrNotFound
 		}
 	}
 	return mapStoreErr(err)

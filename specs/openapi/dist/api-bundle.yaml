@@ -864,6 +864,305 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/actions:
+    post:
+      operationId: commitStoryAction
+      summary: Commit one story action or dialogue statement
+      description: Applies the embedded case rules to the current branch, including events inherited from parent branches,
+        and commits an accepted command atomically with its pending projection. An empty action is a dialogue statement and
+        does not change items or truth. Repeating an actionId returns the original event and does not write. A refused command
+        returns accepted false and does not write. expectedWorldVersion must be the current head, and branchId must be the
+        current branch, unless the actionId was already committed. Cookie identity is the owner. Requires CSRF, Origin and
+        the expected account and session headers. This operation does not call a model.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryRunId'
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryActionRequest'
+      responses:
+        '200':
+          description: Accepted, replayed, or refused without writing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryActionResult'
+        '400':
+          description: Invalid run, branch, actor, action, or body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin or CSRF rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run or branch absent or owned by someone else
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: World version or current branch does not match, or the account/session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/rewind:
+    post:
+      operationId: rewindStory
+      summary: Fork the story at an earlier world version
+      description: Creates a child of the current branch headed at toWorldVersion and makes that child the current branch.
+        The target must be before the current version. chatIdentity is stored on the new branch and must be unique for the
+        owner. Pending projections that fall off the restored prefix are cancelled. Cookie identity is the owner. Requires
+        CSRF, Origin and the expected account and session headers. This operation does not call a model.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryRunId'
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryRewindRequest'
+      responses:
+        '200':
+          description: The new current branch and restored world version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryRewindResult'
+        '400':
+          description: Invalid run, target version, or chat identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin or CSRF rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run absent or owned by someone else
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Chat identity is already mapped, or the account/session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/projections/{eventId}/confirm:
+    post:
+      operationId: confirmStoryProjection
+      summary: Confirm one world event's chat projection
+      description: Marks the pending projection of one world event in this run as confirmed. An already confirmed projection
+        returns confirmed true. A cancelled or user-deleted projection returns confirmed false and is left unchanged. The
+        event must belong to the run. Cookie identity is the owner. Requires CSRF, Origin and the expected account and session
+        headers. This operation does not call a model.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryRunId'
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      responses:
+        '200':
+          description: The projection was confirmed, was already confirmed, or was left unchanged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryProjectionConfirmResult'
+        '400':
+          description: Invalid run or event id, or a non-empty body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin or CSRF rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Event absent, not in this run, or owned by someone else
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Account or session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/participants/{actorId}:
+    post:
+      operationId: mapStoryParticipant
+      summary: Map one companion onto a story actor
+      description: Binds one owned companion relationship to lin, zhou, or su in this run. The player cannot be mapped. Deleting
+        that companion later leaves the participant in the run and clears relationshipId. Cookie identity is the owner. Requires
+        CSRF, Origin and the expected account and session headers. This operation does not call a model.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryRunId'
+      - name: actorId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryParticipantMapRequest'
+      responses:
+        '200':
+          description: The actor now points at the owned companion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryParticipantMapResult'
+        '400':
+          description: Invalid run, actor, or relationship id, or the actor cannot be mapped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin or CSRF rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run, actor, or relationship absent or owned by someone else
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Relationship is already mapped to another actor, or the account/session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/epilogue:
+    post:
+      operationId: decideStoryEpilogue
+      summary: Save or discard the shared-play summary
+      description: Records the owner's choice after the run has an ending. discard writes no memory and must omit relationshipId
+        and summary. save creates one pending memory candidate for a companion already mapped to lin, zhou, or su and does
+        not confirm it. Confirmation stays on the existing memory candidate path. Repeating the same choice returns the original
+        result. Cookie identity is the owner. Requires CSRF, Origin and the expected account and session headers. This operation
+        does not call a model.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StoryRunId'
+      - $ref: '#/components/parameters/StoryCSRF'
+      - $ref: '#/components/parameters/StoryExpectedAccount'
+      - $ref: '#/components/parameters/StoryExpectedSession'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryEpilogueRequest'
+      responses:
+        '200':
+          description: The recorded choice. A save includes the pending memory candidate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryEpilogueResult'
+        '400':
+          description: Invalid decision, summary, or relationship id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin or CSRF rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run absent, or the save relationship is not mapped on this run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: The run has no ending, the choice differs from one already recorded, or the account/session context
+            changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -6298,6 +6597,199 @@ components:
         hasConversation:
           type: boolean
           description: True when the final body still contains a provider conversation reference.
+    StoryActionRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - branchId
+      - expectedWorldVersion
+      - actionId
+      - actorId
+      properties:
+        branchId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        expectedWorldVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        actionId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Idempotency key. Repeating it returns the original event.
+        actorId:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
+        action:
+          type: string
+          maxLength: 64
+          description: Empty when this command is a dialogue statement.
+        target:
+          type: string
+          maxLength: 64
+        clueId:
+          type: string
+          maxLength: 64
+        text:
+          type: string
+          maxLength: 4000
+          description: Dialogue text. Ignored by action rules that do not use it.
+    StoryActionResult:
+      type: object
+      additionalProperties: false
+      required:
+      - accepted
+      - replayed
+      - worldVersion
+      - branchId
+      - stage
+      - ended
+      properties:
+        accepted:
+          type: boolean
+          description: False when the rules refuse the command. Nothing is written.
+        replayed:
+          type: boolean
+          description: True when actionId was already committed. worldVersion and worldEventId are the original values.
+        reason:
+          type: string
+          description: Stable refusal code. Absent when the command was accepted.
+        worldVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        worldEventId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: Absent when the command was refused.
+        branchId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        stage:
+          type: string
+        ended:
+          type: boolean
+    StoryRewindRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - toWorldVersion
+      - chatIdentity
+      properties:
+        toWorldVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Restored version. It must be before the current head.
+        chatIdentity:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$
+          description: Identity stored on the new branch. Unique per owner.
+    StoryRewindResult:
+      type: object
+      additionalProperties: false
+      required:
+      - branchId
+      - worldVersion
+      - stage
+      properties:
+        branchId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: The new current branch.
+        worldVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        stage:
+          type: string
+    StoryProjectionConfirmResult:
+      type: object
+      additionalProperties: false
+      required:
+      - worldEventId
+      - confirmed
+      properties:
+        worldEventId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        confirmed:
+          type: boolean
+          description: False when the projection was cancelled or deleted by the user.
+    StoryParticipantMapRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - relationshipId
+      properties:
+        relationshipId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: Owned companion to bind to this actor.
+    StoryParticipantMapResult:
+      type: object
+      additionalProperties: false
+      required:
+      - runId
+      - actorId
+      - relationshipId
+      properties:
+        runId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        actorId:
+          type: string
+        relationshipId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+    StoryEpilogueRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - save
+          - discard
+        relationshipId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: Required for save. Must be omitted for discard.
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Required for save. Must be omitted for discard.
+    StoryEpilogueResult:
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - save
+          - discard
+        relationshipId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: Present for save.
+        memoryId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: Present for save. The candidate is not confirmed by this operation.
+        memoryStatus:
+          type: string
+          description: Present for save. The save itself leaves the candidate pending confirmation.
+        summary:
+          type: string
+          description: Present for save.
     Relationship:
       type: object
       description: A Companion relationship owned by exactly one user. Each instance has an independent active flag; V2-W05
@@ -9987,6 +10479,33 @@ components:
           type: string
           description: ACTIVE at creation
   parameters:
+    StoryRunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]{0,18}$
+    StoryCSRF:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+    StoryExpectedAccount:
+      name: X-VC-Expected-Account-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]{0,18}$
+    StoryExpectedSession:
+      name: X-VC-Expected-Session-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]{0,18}$
     ProviderId:
       name: providerId
       in: path

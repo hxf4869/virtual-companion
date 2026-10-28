@@ -22,6 +22,11 @@
     "startStoryRun",
     "getStoryActorView",
     "checkStoryOutbound",
+    "commitStoryAction",
+    "rewindStory",
+    "confirmStoryProjection",
+    "mapStoryParticipant",
+    "decideStoryEpilogue",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -147,6 +152,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "cd3bd939fc1ddf61c1042b916f70f5d68ad782feb115b4a74407b10db7e726df"
+    "sha256": "bd1efb1ad5e7eb6904507095315bf53f4861511cddad2b0dbc860d8ca710e0ea"
   }
 }
