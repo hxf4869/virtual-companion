@@ -169,15 +169,16 @@ func TestEngineCorrectionRebuildsProfileWithoutOldFact(t *testing.T) {
 		text: "我最喜欢喝乌龙茶，每天下午都会喝一杯。", zone: "Asia/Shanghai", at: at,
 		summary: "当前事实：喜欢乌龙茶", recordID: "record-old",
 	})
-	if err := s.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile($1,$2,$3,$4,$5,$6)`, 1, oldClaim.JobID, oldClaim.Token, oldClaim.Fence, []string{oldOp.SourceRef}, "当前事实：喜欢乌龙茶")
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	recordEngineProfile(t, oldBinding.ConversationID, oldClaim.JobID, oldClaim.Token, oldClaim.Fence, []string{oldOp.SourceRef}, "当前事实：喜欢乌龙茶")
 	if err := s.CompleteJob(ctx, 1, oldClaim.JobID, oldClaim.Token, oldClaim.Fence, "DONE", ""); err != nil {
 		t.Fatal(err)
 	}
+	keptChat := "10000000-0000-0000-0000-0000000000b3"
+	publishEngineMemory(t, s, snapshots, engineSample{
+		chat: keptChat, message: "20000000-0000-0000-0000-0000000000b3", candidate: "30000000-0000-0000-0000-0000000000b3",
+		text: "我每周日都会阅读。", zone: "Asia/Shanghai", at: at,
+		summary: "当前事实：周日阅读", recordID: "record-kept", relationship: &oldBinding.RelationshipID,
+	})
 	correctionChat := "10000000-0000-0000-0000-0000000000b2"
 	nextBinding, nextClaim, nextOp, _ := publishEngineMemory(t, s, snapshots, engineSample{
 		chat: correctionChat, message: "20000000-0000-0000-0000-0000000000b2", candidate: "30000000-0000-0000-0000-0000000000b2",
@@ -242,19 +243,20 @@ func TestEngineCorrectionRebuildsProfileWithoutOldFact(t *testing.T) {
 		t.Fatal("correction did not schedule and finish a profile rebuild")
 	}
 	joined := strings.Join(allowed, ",")
-	if !strings.Contains(joined, "record-new") || strings.Contains(joined, "record-old") {
+	if !strings.Contains(joined, "record-new") || !strings.Contains(joined, "record-kept") || strings.Contains(joined, "record-old") {
 		t.Fatalf("profile allowlist = %v", allowed)
 	}
-	summaries, err := s.stSummaries(ctx, 1, nextBinding.ConversationID, []stSummaryChat{{id: oldBinding.ConversationID, chat: sourceChat}, {id: nextBinding.ConversationID, chat: correctionChat}})
-	if err != nil {
+	var persona string
+	var stale int
+	if err = s.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT out_persona FROM vc.memory_profile_current(1,$1,$2)`, nextBinding.RelationshipID, nextBinding.ConversationID).Scan(&persona); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, `SELECT count(*) FROM vc.memory_profile WHERE owner_user_id=1 AND relationship_id=$1 AND valid AND position('乌龙茶' in persona)>0`, nextBinding.RelationshipID).Scan(&stale)
+	}); err != nil {
 		t.Fatal(err)
 	}
-	current := make([]string, 0, len(summaries))
-	for _, summary := range summaries {
-		current = append(current, summary.text)
-	}
-	body := strings.Join(current, "\n")
-	if strings.Contains(body, "乌龙茶") || !strings.Contains(body, "茉莉花茶") {
-		t.Fatalf("current profile facts = %q conversation=%d", body, nextBinding.ConversationID)
+	if strings.Contains(persona, "乌龙茶") || !strings.Contains(persona, "茉莉花茶") || !strings.Contains(persona, "record-kept") || stale != 0 {
+		t.Fatalf("current profile facts = %q stale=%d conversation=%d", persona, stale, nextBinding.ConversationID)
 	}
 }
