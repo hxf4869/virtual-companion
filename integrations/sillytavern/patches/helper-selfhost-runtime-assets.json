@@ -12,7 +12,7 @@
   "applies_to": "bootstrap 复制到 <dataRoot>/default-user/extensions/JS-Slash-Runner/ 的副本；upstream/ 原始检出不修改",
   "removal_condition": "上游 Helper 改为相对/同源路径加载或提供可配置的资源基址；或 V2 替换 Helper 依赖。升级 Helper 版本时须重算 expected_input_sha256 / expected_output_sha256 并复核每条命中次数。",
   "expected_input_sha256": "932c5267ad9ee0d6f36f3d70a9dd21a8f7effbcfef71cd26e87a1f310890da57",
-  "expected_output_sha256": "638fcf8df33dedaf64fd5ca6527a76face65d8ac2e97610a33eedab9af741a6e",
+  "expected_output_sha256": "4a67f42a3822ba55e64eb877b344a5697c6ca43b7f88298377fae90834d3a4c0",
   "served_prefix": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor",
   "replacements": [
     {
@@ -65,7 +65,7 @@
     },
     {
       "from": "function WI(e,t={type:`chat`}){let n=e(zI(t));return pI(n)?n.then(e=>(HI(e,t),e)):(HI(n,t),n)}",
-      "to": "function WI(e,t={type:`chat`}){const vcG=globalThis[Symbol.for('virtual-companion.f2-source')],vcS=vcG&&['chat','message'].includes(t.type)?vcG.capture(t.message_id):null;let n=e(zI(t));const vcWrite=e=>{if(vcS)vcG.assert(vcS,e);HI(e,t);return e};return pI(n)?n.then(vcWrite):vcWrite(n)}",
+      "to": "function WI(e,t={type:`chat`}){const vcG=globalThis[Symbol.for('virtual-companion.f2-source')],vcS=vcG&&['chat','message'].includes(t.type)?vcG.capture(t.message_id):null,vcDone=vcS?vcG.begin(t.message_id):null;let n;try{n=e(zI(t))}catch(e){vcDone?.(!1);throw e}const vcWrite=e=>{try{if(vcS)vcG.assert(vcS,e);HI(e,t);vcDone?.(!0);return e}catch(e){vcDone?.(!1);throw e}};return pI(n)?n.then(vcWrite,e=>{vcDone?.(!1);throw e}):vcWrite(n)}",
       "count": 1,
       "where": "W05 async variable updater"
     }

@@ -97,6 +97,7 @@ function makeManagedFixture() {
     fs.writeFileSync(path.join(pluginSrc, 'index.js'), 'export default {};\n');
     fs.writeFileSync(path.join(pluginSrc, 'package.json'), '{"name":"vc-plugin","type":"module"}\n');
     fs.writeFileSync(path.join(pluginSrc, 'lib', 'go-client.js'), 'export const x = 1;\n');
+    fs.writeFileSync(path.join(pluginSrc, 'lib', 'source-identity.js'), 'export {};\n');
     const extSrc = path.join(root, 'extension');
     fs.mkdirSync(path.join(extSrc, 'harness'), { recursive: true });
     fs.writeFileSync(path.join(extSrc, 'manifest.json'), '{"js":"index.js"}\n');
@@ -156,7 +157,7 @@ test('deployManagedAssets：harness 不被部署；部署漂移/缺失被 verify
         const extDir = path.join(f.root, 'data', 'default-user', 'extensions');
         fs.mkdirSync(extDir, { recursive: true });
         const dep = deployManagedAssets({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
-        assert.equal(dep.plugin.files, 3);
+        assert.equal(dep.plugin.files, 4);
         assert.equal(dep.extension.files, 4, 'harness 内文件不计入部署');
         assert.ok(!fs.existsSync(path.join(extDir, 'vc-model-settings', 'harness')));
         assert.ok(fs.existsSync(path.join(runDir, 'plugins', 'virtual-companion', 'index.js')));

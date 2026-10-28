@@ -3,10 +3,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PRIVATE_ST_PATHS } from './source-bridge.js';
 
 const ASSETS = new Map([['/auth/', 'index.html'], ['/auth/index.js', 'index.js'], ['/auth/style.css', 'style.css']]);
 const AUTH_API = [
     ['GET', /^session$/], ['POST', /^(login|logout|password|reauth)$/],
+    ['DELETE', /^account$/],
     ['POST', /^challenges\/[A-Za-z0-9_-]{43}\/(authenticator-setup|authenticator-confirm|totp|recovery-code)$/],
 ];
 const COOKIE_NAMES = new Set(['vc_session', 'vc_csrf', 'vc_trusted_device']);
@@ -32,6 +34,7 @@ export function parseAccountHandles(raw) {
 }
 
 export function createHostAuth({ config, getUser, accountVersion, indexHtml, fetchImpl = fetch,
+    sourceBridge, accountData,
     authDir = fileURLToPath(new URL('../auth/', import.meta.url)) }) {
     async function proxyAuth(req, res, suffix) {
         if (!AUTH_API.some(([method, pattern]) => req.method === method && pattern.test(suffix))) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
@@ -39,9 +42,10 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
         for (const h of ['origin', 'x-csrf-token', 'x-vc-expected-account-id', 'x-vc-expected-session-id']) {
             if (typeof req.headers[h] === 'string') headers[h] = req.headers[h];
         }
-        if (req.method === 'POST') headers['Content-Type'] = 'application/json';
+        const write = !['GET', 'HEAD'].includes(req.method);
+        if (write) headers['Content-Type'] = 'application/json';
         const upstream = await fetchImpl(`${config.goBaseUrl}/api/v1/auth/${suffix}`, {
-            method: req.method, headers, ...(req.method === 'POST' ? { body: JSON.stringify(req.body ?? {}) } : {}),
+            method: req.method, headers, ...(write ? { body: JSON.stringify(req.body ?? {}) } : {}),
             redirect: 'error', signal: AbortSignal.timeout(config.timeoutMs),
         });
         res.status(upstream.status); res.setHeader('Cache-Control', 'no-store');
@@ -53,6 +57,10 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
     }
     return async function hostAuth(req, res, next) {
         try {
+            if (req.method === 'POST' && PRIVATE_ST_PATHS.includes(req.path)) {
+                if (!sourceBridge) return fail(res, 503, 'VC_SOURCE_UNAVAILABLE', '来源读取暂不可用');
+                return await sourceBridge(req, res);
+            }
             if (req.method === 'GET' && req.path === '/index.html') return res.redirect(303, '/');
             if (req.method === 'GET' && ['/auth', '/login'].includes(req.path)) return res.redirect(303, '/auth/');
             if (req.method === 'GET' && ASSETS.has(req.path)) {
@@ -76,16 +84,26 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             }
             const identity = await response.json();
             const handle = config.accountHandles[identity.accountId];
+            if (identity.deletionPending) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             if (identity.nextStep !== 'ACTIVE' || identity.authenticatorEnabled !== true || identity.passwordMustChange !== false || !handle
                 || !/^[1-9][0-9]*$/.test(identity.sessionId)) {
                 if (req.method === 'GET' && req.path === '/') return res.redirect(303, '/auth/');
                 return fail(res, 403, 'ACCESS_DENIED', '请完成登录与身份验证');
             }
+            if (identity.stDataConfigured !== true) return fail(res, 503, 'VC_DATA_NOT_CONFIGURED', '聊天数据服务尚未配置');
             const user = await getUser(handle);
             if (!user?.enabled || user.handle !== handle) return fail(res, 403, 'ACCESS_DENIED', '此账号尚未绑定可用的聊天空间');
             const mismatch = req.session?.vcAccountId !== identity.accountId || req.session?.vcSessionId !== identity.sessionId || req.session?.handle !== handle;
             const canBind = req.method === 'GET' && (['/', '/auth/access'].includes(req.path) || req.path === '/csrf-token' && !req.session?.vcSessionId);
             if (mismatch && !canBind) return fail(res, 409, 'ACCOUNT_CONTEXT_CHANGED', '登录状态已变化，请重新打开聊天');
+            if (canBind) {
+                const registered = await fetchImpl(`${config.goBaseUrl}/api/v1/service/st/profile`, {
+                    method: 'POST', headers: { Authorization: `Bearer ${config.serviceToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ownerAccountId: identity.accountId, handle }), redirect: 'error', signal: AbortSignal.timeout(config.timeoutMs),
+                });
+                const scope = registered.ok ? await registered.json() : null;
+                if (scope?.ownerAccountId !== identity.accountId || scope?.handle !== handle) return fail(res, 503, 'VC_DATA_NOT_CONFIGURED', '聊天空间登记尚未完成');
+            }
             if (mismatch) req.session = { handle, version: accountVersion(user), vcAccountId: identity.accountId, vcSessionId: identity.sessionId };
             if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
                 if (req.headers['x-vc-expected-account-id'] !== identity.accountId || req.headers['x-vc-expected-session-id'] !== identity.sessionId) {
@@ -93,6 +111,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 }
             }
             req.vcIdentity = { accountId: identity.accountId, sessionId: identity.sessionId, handle };
+            if (accountData && !await accountData.enter(identity.accountId, handle, res)) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });
             if (req.method === 'GET' && req.path === '/') {

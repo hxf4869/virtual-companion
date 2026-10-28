@@ -121,9 +121,12 @@ async function request(method, goPath, body) {
     }
     let response;
     try {
-        response = await fetch(`${BRIDGE_PREFIX}${goPath}`, {
+        const accountDelete = goPath === '/api/v1/auth/account';
+        const headers = writeHeaders(write);
+        if (accountDelete) headers['X-CSRF-Token'] = readCookie('vc_csrf');
+        response = await fetch(accountDelete ? '/auth/api/account' : `${BRIDGE_PREFIX}${goPath}`, {
             method,
-            headers: writeHeaders(write),
+            headers,
             credentials: 'same-origin',
             cache: 'no-store',
             body: body === undefined ? undefined : JSON.stringify(body),
@@ -178,6 +181,10 @@ export function resolveSTBinding(payload) {
     return request('POST', '/api/v1/st/bindings', payload);
 }
 
+export function reconcileSTSources(chatIdentities) {
+    return request('POST', '/api/v1/st/sources/reconcile', { chatIdentities });
+}
+
 /** PUT /api/v1/admin/providers/{providerId} → {ok, revision}；body 含 expectedRevision / credential / clearCredential / models 快照 */
 export function saveProvider(providerId, payload) {
     return request('PUT', `${GO_PREFIX}/providers/${encodeURIComponent(providerId)}`, payload);
@@ -213,4 +220,15 @@ export function discoverProviderModels(providerId, { protocol, baseUrl, credenti
  */
 export function reauth(password) {
     return request('POST', '/api/v1/auth/reauth', { password });
+}
+
+export const createDataExport = (currentPassword) => request('POST', '/api/v1/exports', { currentPassword });
+export const recoverDataExport = (currentPassword) => request('POST', '/api/v1/exports/recover', { currentPassword });
+export const getDataExport = (id) => request('GET', `/api/v1/exports/${encodeURIComponent(id)}`);
+export const deleteOwnAccount = (currentPassword) => request('DELETE', '/api/v1/auth/account', { currentPassword });
+export async function downloadDataExport(url) {
+    if (!/^\/api\/v1\/exports\/[1-9][0-9]*\/download\?token=[A-Za-z0-9_-]+$/.test(url)) throw new ApiError('invalid', '下载链接无效');
+    const response = await fetch(`${BRIDGE_PREFIX}${url}`, { headers: writeHeaders(false), credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) throw classify(response.status, {});
+    return response.blob();
 }

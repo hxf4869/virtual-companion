@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 69
+  KEEP: 71
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -133,6 +133,26 @@ operations:
     (integrations/sillytavern/server-plugin/virtual-companion/index.js). Resolve a stable
     ST chat to an independent relationship instance and conversation; explicit branches
     may reuse the instance. Cookie identity supplies the owner; ST retains revision authority.
+- operationId: registerSTProfile
+  method: POST
+  path: /api/v1/service/st/profile
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - safety-or-data-rights
+  replacementOrImpact: W06 trusted native host entry records the private profile before
+    its first chat, so account deletion retains that storage scope even after configuration loss.
+- operationId: reconcileSTSources
+  method: POST
+  path: /api/v1/st/sources/reconcile
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  - safety-or-data-rights
+  replacementOrImpact: V2-W06 native ST open, reconnect and persisted-save consumer.
+    Read the authenticated owner's bounded chat set over the private ST service channel;
+    apply source invalidation before memory use. Browser content is never authoritative.
 - operationId: createRelationship
   method: POST
   path: /api/v1/relationships

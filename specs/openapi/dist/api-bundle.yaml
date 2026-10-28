@@ -451,6 +451,121 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/st/profile:
+    post:
+      operationId: registerSTProfile
+      summary: Register the authenticated native host profile for data rights
+      description: Private server channel, requiring the shared service token and rejecting Origin. The native host first
+        verifies the Go cookie session, then submits that exact account's configured handle on entry. The account must be
+        ACTIVE and not deleting. Repeating the same mapping is idempotent; changing a registered handle is rejected. This
+        durable locator covers private cards/worlds created before a first chat and keeps deletion pending if the ST configuration
+        is later unavailable.
+      security:
+      - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - ownerAccountId
+              - handle
+              properties:
+                ownerAccountId:
+                  type: string
+                  pattern: ^[1-9][0-9]*$
+                handle:
+                  type: string
+                  pattern: ^[A-Za-z0-9_-]{1,64}$
+      responses:
+        '200':
+          description: The registered owner and handle, echoed as strings
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - ownerAccountId
+                - handle
+                properties:
+                  ownerAccountId:
+                    type: string
+                  handle:
+                    type: string
+        '400':
+          description: Invalid profile, inactive/deleting owner or incompatible mapping
+        '401':
+          description: Invalid service token
+        '403':
+          description: Browser Origin rejected
+        '503':
+          description: ST service channel is not configured
+  /api/v1/st/sources/reconcile:
+    post:
+      operationId: reconcileSTSources
+      summary: Reconcile persisted sources of bound ST chats
+      description: Called on native chat open, reconnect and persisted save through the authenticated server plugin. Cookie
+        identity is the owner authority. Requires CSRF and matching expected account/session headers. Reads only the supplied
+        1..64 owner-bound chat identities through the private service channel. The browser supplies no message content or
+        authoritative revision. UNKNOWN, transport and parse failures remain UNAVAILABLE and temporarily exclude dependent
+        memories; only a confirmed tombstone permanently invalidates a deleted chat. Retrieval and extraction completion also
+        reconcile independently, so a lost browser notification cannot preserve stale facts.
+      security:
+      - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - chatIdentities
+              properties:
+                chatIdentities:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  uniqueItems: true
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: Per-chat persisted source state; unavailable is not deletion
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - chatIdentity
+                  - state
+                  properties:
+                    chatIdentity:
+                      type: string
+                      format: uuid
+                    state:
+                      type: string
+                      enum:
+                      - PRESENT
+                      - DELETED
+                      - UNAVAILABLE
+                    revision:
+                      type: integer
+                      format: int64
+                      minimum: 0
+        '400':
+          description: Invalid or duplicate chat identities
+        '401':
+          description: No valid authenticated session
+        '403':
+          description: Origin or CSRF rejected
+        '404':
+          description: One or more chats are not bound to this owner
+        '409':
+          description: Account/session context changed or concurrent reconciliation requires retry
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -3143,12 +3258,14 @@ paths:
         keeps the session alive. Before the destructive cascade, V103 independently commits an owner-bound deletion intent,
         cancels durable generation/work and cooperatively signals provider sessions on every instance. The intent blocks new
         outbound and late message/memory/vector/export writes. The caller''s account, refresh sessions and owned business
-        data are then removed through the vc_user cascade. The append-only compliance audit and a tombstone containing only
-        account id plus username digest survive; the deleted username cannot be recreated. An already-deleted or disabled
-        account maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). The response sets no cookies: an expiring Set-Cookie
-        is addressed by name and path only, so a delayed success response must not delete the vc_session or vc_csrf a newer
-        login has just installed; the deleted account''s cookies left in the browser are inert (the cascade removed every
-        session server-side) until the next login overwrites them.'
+        data are then removed through the vc_user cascade. W06 extends the cascade across storage: the owner''s SillyTavern
+        private copy is cleared over the host service channel, and until that cleanup is confirmed the call answers 202 with
+        the pending domains while a background job retries to completion. The append-only compliance audit and a tombstone
+        containing only account id plus username digest survive; the deleted username cannot be recreated. An already-deleted
+        or disabled account maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). The response sets no cookies: an
+        expiring Set-Cookie is addressed by name and path only, so a delayed success response must not delete the vc_session
+        or vc_csrf a newer login has just installed; the deleted account''s cookies left in the browser are inert (the cascade
+        removed every session server-side) until the next login overwrites them.'
       security:
       - cookieAuth: []
       requestBody:
@@ -3165,6 +3282,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountDeletedResponse'
+        '202':
+          description: 'Deletion accepted and still in progress: the ST host has not yet confirmed the private-copy cleanup.
+            A background job retries the pending domains; a later call answers the confirmed 200'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionProgress'
         '400':
           description: Missing, unreadable or invalid request body (blank currentPassword)
           content:
@@ -3183,6 +3307,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: 'Deletion stays pending: export-object cleanup could not be confirmed (object store unavailable). The
+            intent and pending domains persist; retry the same call'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionPendingError'
   /api/v1/auth/admin/accounts:
     post:
       operationId: createInternalAccount
@@ -4710,6 +4841,7 @@ components:
       - ACCOUNT_CONTEXT_CHANGED
       - REVISION_CONFLICT
       - MODEL_PROFILE_IN_USE
+      - ACCOUNT_DELETION_PENDING
     ServiceModeStatus:
       type: object
       description: Current generation-service mode (FR-RES-005).
@@ -5964,7 +6096,9 @@ components:
           description: Download expiry, present once READY
         errorMessage:
           type: string
-          description: Stable failure reason, present only on FAILED
+          description: 'Stable machine reason. Present on FAILED — e.g. ST_EXPORT_TOO_LARGE when the ST online copy exceeds
+            its 64 MiB / 10000-file bound — and on PENDING while the ST host copy is unavailable (ST_UNAVAILABLE): the same
+            task stays PENDING and resumes once the host recovers.'
         downloadToken:
           type: string
           description: One-time download secret, present ONLY in the create response and in an explicit recover response (each
@@ -6017,6 +6151,133 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExportConsent'
+        snapshotMode:
+          type: string
+          const: PER_FILE_AND_QUERY
+          description: 'Snapshot strategy (W06): the ST private copy is captured per file with per-file capture times while
+            Go-side records are exported by bounded queries; results are never silently truncated.'
+        v2:
+          $ref: '#/components/schemas/V2OwnerExport'
+    V2OwnerExport:
+      type: object
+      description: Owner-scoped cross-storage copy of the V2 runtime (W06). Binds the Go source index, summaries and extraction
+        task results to the SillyTavern per-file private copy; credentials, historical/offline backups and regenerable caches
+        are excluded. The ST online copy is bounded (64 MiB or 10000 files) — exceeding the bound fails the export explicitly
+        (ST_EXPORT_TOO_LARGE), never silently truncating it.
+      required:
+      - go
+      - domains
+      properties:
+        go:
+          type: object
+          description: Decrypted Go-side records (account metadata, ST source bindings, persisted sources, summaries and extraction
+            task/results) produced by vc.export_v2_owner_metadata.
+        st:
+          $ref: '#/components/schemas/STAccountExport'
+        domains:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportDomain'
+    STAccountExport:
+      type: object
+      description: Per-file snapshot of the owner's SillyTavern private root, taken by the ST host over the private service
+        channel. Regenerable caches (thumbnails/vectors), historical backups, temporary uploads, the F2 identity index and
+        secrets.json are excluded; settings.json is copied with credential values stripped.
+      required:
+      - ownerAccountId
+      - handle
+      - state
+      - startedAt
+      - completedAt
+      - snapshot
+      - fileCount
+      - bytes
+      - files
+      - exclusions
+      properties:
+        ownerAccountId:
+          type: string
+        handle:
+          type: string
+        state:
+          type: string
+          const: COMPLETE
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        snapshot:
+          type: string
+          const: PER_FILE
+        fileCount:
+          type: integer
+          minimum: 0
+        bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/STExportFile'
+        exclusions:
+          type: array
+          items:
+            type: string
+    STExportFile:
+      type: object
+      required:
+      - path
+      - encoding
+      - data
+      - bytes
+      - capturedAt
+      - modifiedAt
+      properties:
+        path:
+          type: string
+          description: POSIX-style path relative to the owner's ST private root
+        encoding:
+          type: string
+          const: base64
+        data:
+          type: string
+          description: Base64-encoded file bytes
+        bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        capturedAt:
+          type: string
+          format: date-time
+        modifiedAt:
+          type: string
+          format: date-time
+    ExportDomain:
+      type: object
+      description: Cross-storage coverage statement for one data domain.
+      required:
+      - system
+      - state
+      - records
+      properties:
+        system:
+          type: string
+          description: Domain identifier, e.g. GO_METADATA_SOURCES_TASKS_RESULTS, ST_PRIVATE_CONTENT, EXTERNAL_MEMORY_ENGINE,
+            BACKUPS, CREDENTIALS.
+        state:
+          type: string
+          enum:
+          - COMPLETE
+          - NOT_APPLICABLE
+          - EXCLUDED
+        records:
+          type: integer
+          minimum: 0
+        note:
+          type: string
     ExportConversation:
       type: object
       description: One conversation with its full message history (FR-DATA-002).
@@ -6419,6 +6680,10 @@ components:
       - authenticatorEnabled
       - expiresInSeconds
       properties:
+        stDataConfigured:
+          type: boolean
+          description: True only when the Go-to-ST data channel is configured; the native host requires this before admitting
+            access.
         nextStep:
           type: string
           const: ACTIVE
@@ -6441,6 +6706,10 @@ components:
           type: boolean
         authenticatorEnabled:
           type: boolean
+        deletionPending:
+          type: boolean
+          description: Present and true only while this account's deletion intent is active; omitted otherwise. Clients must
+            treat true as deletion-in-progress (cross-storage cleanup may still be pending).
         expiresInSeconds:
           type: integer
           format: int64
@@ -6814,6 +7083,49 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed deletion
+    AccountDeletionProgress:
+      type: object
+      description: 'Deletion accepted and still in progress (W06): the SillyTavern host has not yet confirmed the cleanup
+        of the owner''s private copy. A background job retries the pending domains; a later call returns the confirmed 200
+        {"ok":true}.'
+      required:
+      - status
+      - pendingDomains
+      properties:
+        status:
+          type: string
+          const: PENDING
+        pendingDomains:
+          type: array
+          items:
+            type: string
+            enum:
+            - ST
+          description: Domains whose cleanup is not yet confirmed
+    AccountDeletionPendingError:
+      type: object
+      description: Deletion remains pending because export-object cleanup could not be confirmed (object store unavailable).
+        The deletion intent and pending domains persist; retry the same call later.
+      required:
+      - code
+      - message
+      - status
+      - pendingDomains
+      properties:
+        code:
+          type: string
+          const: INVALID_REQUEST
+        message:
+          type: string
+        status:
+          type: string
+          const: PENDING
+        pendingDomains:
+          type: array
+          items:
+            type: string
+            enum:
+            - EXPORT_OBJECTS
     TrialGrantRequest:
       type: object
       description: ENT-TRIAL grant body; turns/days fall back to 20/14 when omitted.

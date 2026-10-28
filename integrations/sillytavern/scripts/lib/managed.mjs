@@ -105,6 +105,8 @@ export function deployManagedAssets({ pluginSrc = SERVER_PLUGIN_SRC, extensionSr
         fs.copyFileSync(path.join(extensionSrc, name), path.join(runtime, name));
         fs.chmodSync(path.join(runtime, name), 0o600);
     }
+    fs.copyFileSync(path.join(pluginSrc, 'lib/source-identity.js'), path.join(runtime, 'source-identity.js'));
+    fs.chmodSync(path.join(runtime, 'source-identity.js'), 0o600);
     if (fs.existsSync(path.join(extDst, 'harness'))) throw new Error('harness/ 不应被部署进生产扩展目录');
     return {
         plugin: { source: pluginSrc, target: pluginDst, files: countFiles(pluginDst) },
@@ -166,6 +168,8 @@ export function verifyManagedDeployment({ pluginSrc = SERVER_PLUGIN_SRC, extensi
         const deployed = path.join(runDir, 'public/scripts/vc-runtime', name);
         if (!fs.existsSync(deployed) || sha256File(deployed) !== sha256File(path.join(extensionSrc, name))) problems.push(`native F2 部署缺失或漂移：${name}`);
     }
+    const sourceRuntime = path.join(runDir, 'public/scripts/vc-runtime/source-identity.js');
+    if (!fs.existsSync(sourceRuntime) || sha256File(sourceRuntime) !== sha256File(path.join(pluginSrc, 'lib/source-identity.js'))) problems.push('native 来源身份模块部署缺失或漂移');
     return { ok: problems.length === 0, problems };
 }
 

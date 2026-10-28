@@ -229,6 +229,7 @@ components:
       - ACCOUNT_CONTEXT_CHANGED
       - REVISION_CONFLICT
       - MODEL_PROFILE_IN_USE
+      - ACCOUNT_DELETION_PENDING
     MessageFeedbackKind:
       type: string
       enum:

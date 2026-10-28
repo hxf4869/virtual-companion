@@ -51,3 +51,5 @@ entries:
   order: 23
 - code: MODEL_PROFILE_IN_USE
   order: 24
+- code: ACCOUNT_DELETION_PENDING
+  order: 25

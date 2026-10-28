@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { getF2Store, F2Error } from '../server-plugin/virtual-companion/lib/f2-store.js';
+import { reconcileSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
 
 const moduleURL = new URL('../server-plugin/virtual-companion/lib/f2-store.js', import.meta.url).href;
 const fresh = () => ({ id: randomUUID(), revision: 0 });
@@ -19,6 +20,7 @@ async function fixture(t) {
 }
 async function rawWrite(root, relative, data) {
     const file = path.join(root, relative);
+    if (data[0]?.chat_metadata?.vc_f2) reconcileSourceIdentities(data);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, data.map((row) => JSON.stringify(row)).join('\n') + '\n');
 }

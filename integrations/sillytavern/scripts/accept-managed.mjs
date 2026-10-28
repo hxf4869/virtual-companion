@@ -60,6 +60,7 @@ import {
 } from './managed-lib.mjs';
 import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-protocol-provider.mjs';
 import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
+import { sceneSourceNative, sceneRightsBrowser, sceneRightsNative } from './w06-accept.mjs';
 
 // ---------------------------------------------------------------------------
 // 常量与 CLI
@@ -89,6 +90,8 @@ const S3_BUCKET = process.env.VC_W03_S3_BUCKET || 'vc03m-accept';
 const PG_LABEL = 'com.vc.w03=managed';
 const OWNER_ACCOUNT_ID = process.env.VC_W03_OWNER_ACCOUNT_ID || '424242';
 const SECOND_ACCOUNT_ID = String(BigInt(OWNER_ACCOUNT_ID) + 1n);
+const RIGHTS_ACCOUNT_ID = String(9007199254740993n + BigInt(Date.now()));
+const RIGHTS_HANDLE = `vc-w06-rights-${RIGHTS_ACCOUNT_ID}`;
 const GO_TOOLCHAIN = 'go1.26.10';
 
 const argv = process.argv.slice(2);
@@ -299,6 +302,14 @@ VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner', '${vector.goHash}', 'AD
 ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
 `);
     secrets.password = vector.password;
+    if (secrets.needsRights) {
+        psql(`INSERT INTO vc.vc_user(id,display_name) VALUES (${BigInt(RIGHTS_ACCOUNT_ID)}, 'W06 synthetic rights');
+          INSERT INTO vc.identity_account(id,username,password_hash,role,status,display_name) VALUES (${BigInt(RIGHTS_ACCOUNT_ID)},'w06-accept-rights','${vector.goHash}','ADMIN','ACTIVE','W06 synthetic rights');`);
+        const { data: rightsChallenge } = await authRequest('login', { account:'w06-accept-rights', password:secrets.password });
+        const { data: rightsSetup } = await authRequest(`challenges/${rightsChallenge.challengeId}/authenticator-setup`, {});
+        const rightsAuth = await authRequest(`challenges/${rightsChallenge.challengeId}/authenticator-confirm`, { code:totpCode(rightsSetup.manualKey), trustDevice:false });
+        secrets.rightsSession = sessionFrom(rightsAuth.response, rightsAuth.data);
+    }
     const { data: challenge } = await authRequest('login', { account: 'w03-accept-owner', password: secrets.password });
     if (challenge.nextStep !== 'AUTHENTICATOR_SETUP_REQUIRED') dieLifecycle('合成 Owner 应进入首次 TOTP 设置');
     const { data: setup } = await authRequest(`challenges/${challenge.challengeId}/authenticator-setup`, {});
@@ -334,6 +345,7 @@ function goServiceSpec(secrets) {
             VC_EXPORT_S3_BUCKET: secrets.s3.bucket,
             VC_PROVIDER_ALLOW_LOOPBACK_HTTP: 'true',
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
+            VC_ST_HOST_BASE_URL: ST_BASE,
         },
     };
 }
@@ -441,6 +453,13 @@ async function startManagedStack(secrets, artifactsDir) {
     const storage = requireSt('node-persist').create();
     await storage.init({ dir: path.join(DEV_MANAGED, 'data/_storage'), ttl: false, expiredInterval: 0 });
     await storage.setItem('user:vc-w05-second', { handle: 'vc-w05-second', name: '合成第二账号', created: Date.now(), password: '', salt: '', enabled: true, admin: false });
+    if (secrets.needsRights) {
+        await storage.setItem(`user:${RIGHTS_HANDLE}`, { handle:RIGHTS_HANDLE, name:'W06 合成数据权利', created:Date.now(), password:'', salt:'', enabled:true, admin:false });
+        const target = path.join(DEV_MANAGED,'data',RIGHTS_HANDLE,'settings.json');
+        const settings = JSON.parse(fs.readFileSync(path.join(INTEG,'upstream/SillyTavern/default/content/settings.json'),'utf8'));
+        settings.firstRun=false; settings.username='W06 合成账号';
+        fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,JSON.stringify(settings),{mode:0o600});
+    }
     // Persona onboarding is separate from B01 authentication. This disposable
     // profile starts with a named persona so parallel tabs do not each prompt.
     const secondSettingsPath = path.join(DEV_MANAGED, 'data/vc-w05-second/settings.json');
@@ -454,7 +473,7 @@ async function startManagedStack(secrets, artifactsDir) {
             VC_ST_PORT: String(ST_PORT),
             VC_ST_GO_BASE_URL: GO_BASE,
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
-            VC_ST_ACCOUNT_HANDLES: JSON.stringify({ [OWNER_ACCOUNT_ID]: 'default-user', [SECOND_ACCOUNT_ID]: 'vc-w05-second' }),
+            VC_ST_ACCOUNT_HANDLES: JSON.stringify({ [OWNER_ACCOUNT_ID]: 'default-user', [SECOND_ACCOUNT_ID]: 'vc-w05-second', ...(secrets.needsRights ? { [RIGHTS_ACCOUNT_ID]: RIGHTS_HANDLE } : {}) }),
             VC_ST_GO_TIMEOUT_MS: '2000',
         },
         label: 'start-managed（ST 8752 + 插件桥环境）',
@@ -1671,7 +1690,10 @@ const SCENE_IMPLS = {
     'ui04-browser': sceneUi04Browser,
     'auth-browser': sceneAuthBrowser,
     'f2-native': sceneF2Native,
+    'source-native': sceneSourceNative,
     'f2-browser': sceneF2Browser,
+    'rights-browser': sceneRightsBrowser,
+    'rights-native': sceneRightsNative,
 };
 
 async function runFull() {
@@ -1695,6 +1717,7 @@ async function runFull() {
     fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
 
     const secrets = {
+        needsRights: selected.some((id) => id.startsWith('rights-')),
         pgPassword: synthSecret(18),
         ownerBinding: synthServiceToken(),
         restKey: synthRestKey(),
@@ -1709,7 +1732,10 @@ async function runFull() {
         screenshots: [],
         fixtureHttp,
         admin: null, st: null,
-        w05: { stBase: ST_BASE, goBase: GO_BASE, ownerId: OWNER_ACCOUNT_ID, secondId: SECOND_ACCOUNT_ID, totpCode,
+        w06: { accountId:RIGHTS_ACCOUNT_ID, handle:RIGHTS_HANDLE,
+            wakeExport: (id) => psql(`UPDATE vc.work_item SET next_attempt_at=now() WHERE kind='DATA_EXPORT' AND ref_id=${BigInt(id)} AND status='PENDING';`),
+        },
+        w05: { dataRoot: path.join(DEV_MANAGED, 'data'), stBase: ST_BASE, goBase: GO_BASE, ownerId: OWNER_ACCOUNT_ID, secondId: SECOND_ACCOUNT_ID, totpCode,
             expireSession: (id) => psql(`UPDATE vc.identity_opaque_session SET expires_at=now()-interval '1 second' WHERE id=${BigInt(id)};`),
         },
     };

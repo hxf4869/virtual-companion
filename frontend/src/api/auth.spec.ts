@@ -368,6 +368,7 @@ describe("Go Runtime auth client", () => {
     await expect(changeAuthPassword(ok, "old", "new-password")).resolves.toBe(true);
     await expect(reauthAuth(ok, "current-password")).resolves.toBe(true);
     await expect(deleteAccount(ok, "Current-Pass-1!")).resolves.toBe(true);
+    await expect(deleteAccount(transportFor({ ok: true, status: 202, json: { status: "PENDING" } }), "Current-Pass-1!")).resolves.toBe(false);
     await expect(recordSurvey(ok, 5)).resolves.toBe(true);
   });
 

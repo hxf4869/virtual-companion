@@ -469,12 +469,16 @@ func (s *Store) SelectRecallMemories(ctx context.Context, owner, relationshipID,
 	if shareScope == "" {
 		shareScope = "RELATIONSHIP"
 	}
+	candidates, err := s.stRecallCandidates(ctx, owner, relationshipID, conversationID, shareScope)
+	if err != nil {
+		return nil, err
+	}
 	var out []Memory
-	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
 			`SELECT out_id, out_scope, out_summary, out_conversation_id
-			   FROM vc.go_select_recall_memories($1, $2, $3, $4, $5)`,
-			owner, relationshipID, conversationID, shareScope, seedWindow)
+			   FROM vc.go_select_recall_memories($1, $2, $3, $4, $5) WHERE out_id=ANY($6::bigint[])`,
+			owner, relationshipID, conversationID, shareScope, seedWindow, candidates)
 		if err != nil {
 			return err
 		}

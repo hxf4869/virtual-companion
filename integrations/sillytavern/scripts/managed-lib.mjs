@@ -414,8 +414,11 @@ export const SCENES = [
     { id: 'ui03-browser', title: 'UI03 浏览器场景（真实浏览器，主会话串联执行；截图进 artifacts）', needs: ['catalog', 'stack', 'browser'], default: false },
     { id: 'ui04-browser', title: 'W04 复杂卡与聊天界面（真实 Helper/EJS/MVU + Go 投影）', needs: ['catalog', 'stack', 'browser'], default: false },
     { id: 'auth-browser', title: 'W05 B01 唯一登录、TOTP、全入口保护与账号切换', needs: ['go', 'stack', 'browser'], default: false },
+    { id: 'source-native', title: 'W06 ST→Go持久来源、漏报、迟到结果、读取故障和删除', needs: ['go', 'stack'], default: false },
     { id: 'f2-native', title: 'W05 B05/B07 原生写入口CAS、删除身份与分支父版本', needs: ['go', 'stack'], default: false },
     { id: 'f2-browser', title: 'W05 B07 两个真实页面冲突保留草稿与迟到脚本拒绝', needs: ['go', 'stack', 'browser'], default: false },
+    { id: 'rights-browser', title: 'W06 D02/D05 原生数据权利页面、一次性下载与手机布局', needs: ['go', 'stack'], default: false },
+    { id: 'rights-native', title: 'W06 D03/D04 离线重试与独立合成账号删号', needs: ['go', 'stack'], default: false },
 ];
 
 /** 展开过滤器：具名场景 + 依赖闭包（needs 中的内部能力不算场景，'catalog' 由 catalog-admin 提供）。 */

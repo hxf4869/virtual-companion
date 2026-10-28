@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { reconcileSourceIdentities, sourceMessages } from './source-identity.js';
 
 const stores = new Map();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -180,6 +181,16 @@ class F2Store {
         this.tail = result.catch(() => {}); // 仅释放队列；调用者仍收到原始拒绝。
         return result;
     }
+    // Account deletion drains the same queue but must also work when its
+    // obsolete identity index is corrupt. The host has already frozen access.
+    removeAccountData() {
+        const result = this.tail.then(async () => {
+            await fs.rm(this.root, { recursive: true, force: true });
+            await syncDirectory(path.dirname(this.root));
+        });
+        this.tail = result.catch(() => {});
+        return result;
+    }
     assertPathFree(records, file, id) {
         const relative = this.relative(file);
         for (const r of records.values()) {
@@ -191,21 +202,42 @@ class F2Store {
         const chat = await readDocument(file);
         if (!chat) return null;
         let token = documentToken(chat);
+        let sourceChanged;
+        try { sourceChanged = reconcileSourceIdentities(chat, chat); }
+        catch { throw corrupt('持久来源身份损坏'); }
+        const legacy = !token;
         if (!token) {
             this.assertPathFree(records, file, null);
             token = { id: randomUUID(), revision: 0 };
-            // 这是既有文件的原子初始化；中断后可直接从已写入首行补登记，无需复制旧聊天。
-            await atomicWrite(file, withToken(chat, token));
         }
         const r = records.get(token.id);
         if (r?.state === 'deleted') throw deleted();
         if (r && r.path !== this.relative(file)) throw conflict('聊天身份已移动到其他路径');
         this.assertPathFree(records, file, token.id);
+        if (legacy || sourceChanged) {
+            if (!legacy) token = nextToken(token);
+            await atomicWrite(file, withToken(chat, token));
+        }
         if (!r || r.state !== 'live') await this.record(records, { id: token.id, state: 'live', path: this.relative(file) });
         return { chat, token };
     }
     async read(input) {
         return this.run(async (records) => (await this.current(records, await this.file(input)))?.chat ?? []);
+    }
+    async sourceSnapshot(id, revision) {
+        if (typeof id !== 'string' || !uuid.test(id)) throw new F2Error(400, 'VC_CHAT_INVALID', '来源身份无效');
+        return this.run(async (records) => {
+            const record = records.get(id);
+            if (!record) return { chatIdentity: id, state: 'UNKNOWN' };
+            if (record.state === 'deleted') return { chatIdentity: id, state: 'DELETED', revision: record.revision };
+            try {
+                const current = await this.current(records, await this.file(record.path));
+                if (!current || current.token.id !== id) return { chatIdentity: id, state: 'UNAVAILABLE' };
+                const result = { chatIdentity: id, state: 'PRESENT', revision: current.token.revision, location: record.path };
+                if (revision === current.token.revision) return { ...result, notModified: true };
+                return { ...result, messages: sourceMessages(current.chat) };
+            } catch { return { chatIdentity: id, state: 'UNAVAILABLE' }; }
+        });
     }
     async save(input, chatArray, { expected, parent, beforeCommit } = {}) {
         const base = expectedToken(expected), parentBase = parent === undefined ? null : expectedToken(parent);
@@ -236,6 +268,7 @@ class F2Store {
             if (beforeCommit) await beforeCommit();
             if (!current && !r) await this.record(records, { id: base.id, state: 'pending-create', path: this.relative(file) });
             const token = nextToken(base);
+            reconcileSourceIdentities(snapshot, current?.chat ?? []);
             await atomicWrite(file, withToken(snapshot, token));
             if (!current) await this.record(records, { id: base.id, state: 'live', path: this.relative(file) });
             return token;
@@ -330,6 +363,7 @@ class F2Store {
             if (!current) throw conflict('迁移源文件不存在');
             if (documentToken(current) || [...records.values()].some((r) => r.path === this.relative(file))) throw conflict('已有 F2 身份不能执行旧格式迁移');
             const token = { id: randomUUID(), revision: 0 };
+            reconcileSourceIdentities(snapshot);
             await atomicWrite(file, withToken(snapshot, token));
             await this.record(records, { id: token.id, state: 'live', path: this.relative(file) });
             return token;

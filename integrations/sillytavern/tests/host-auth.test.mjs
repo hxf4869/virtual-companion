@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHostAuth, parseAccountHandles } from '../server-plugin/virtual-companion/lib/host-auth.js';
 
-const active = { nextStep: 'ACTIVE', accountId: '42', sessionId: '7', authenticatorEnabled: true, passwordMustChange: false };
+const active = { stDataConfigured: true, nextStep: 'ACTIVE', accountId: '42', sessionId: '7', authenticatorEnabled: true, passwordMustChange: false };
 function harness({ identity = active, status = 200, fetchImpl } = {}) {
     const requests = [];
     const gate = createHostAuth({
-        config: { goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '42': 'owner', '43': 'other' } },
+        config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '42': 'owner', '43': 'other' } },
         getUser: async (handle) => ({ handle, enabled: true }), accountVersion: () => 'v1', indexHtml: () => '<html><head></head><body></body></html>',
-        fetchImpl: fetchImpl || (async (url, options) => { requests.push({ url, options }); return new Response(JSON.stringify(identity), { status }); }),
+        fetchImpl: fetchImpl || (async (url, options) => { requests.push({ url, options }); if(url.endsWith('/service/st/profile')) return new Response(options.body, { status:200 }); return new Response(JSON.stringify(identity), { status }); }),
     });
     async function call(path = '/', { method = 'GET', session = {}, headers = {}, body } = {}) {
         const req = { path, method, session, headers: { cookie: 'vc_session=synthetic; st_session=not-forwarded', ...headers }, body };
@@ -76,4 +76,13 @@ test('单一登录入口，原生登录恢复禁用；auth代理保留Origin/CSR
 test('账号映射拒绝路径穿越与不同账号复用同一ST空间', () => {
     assert.deepEqual(parseAccountHandles('{"42":"default-user"}'), { '42': 'default-user' });
     for (const raw of ['[]', '{"42":"../other"}', '{"42":"owner","43":"owner"}']) assert.throws(() => parseAccountHandles(raw));
+});
+
+test('没有Go数据通道时拒绝原生空间，首次入口必须登记实际私有profile', async()=>{
+    const missing=await harness({identity:{...active,stDataConfigured:false}}).call('/');
+    assert.equal(missing.res.statusCode,503);assert.equal(missing.next,false);
+    const h=harness();await h.call('/');
+    const registration=h.requests.find((r)=>r.url.endsWith('/service/st/profile'));
+    assert.ok(registration);assert.deepEqual(JSON.parse(registration.options.body),{ownerAccountId:'42',handle:'owner'});
+    assert.match(registration.options.headers.Authorization,/^Bearer /);assert.equal(registration.options.headers.Origin,undefined);
 });

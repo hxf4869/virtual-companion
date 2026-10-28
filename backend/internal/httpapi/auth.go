@@ -152,6 +152,11 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
+	deleting, err := s.core.Store.DeletionIntentActive(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
 	s.writeJSON(w, http.StatusOK, sessionIdentityJSON{
 		NextStep:             "ACTIVE",
 		AccountID:            strconv.FormatInt(p.AccountID, 10),
@@ -160,6 +165,8 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		Role:                 p.Role,
 		PasswordMustChange:   p.PasswordMustChange,
 		AuthenticatorEnabled: enabled,
+		DeletionPending:      deleting,
+		STDataConfigured:     s.cfg.STPlugin.HostBaseURL != "" && s.cfg.STPlugin.ServiceToken != "",
 		ExpiresInSeconds:     int64(s.sessionTTL().Seconds()),
 	})
 }
@@ -755,6 +762,8 @@ func validPasswordInput(password string) bool {
 }
 
 type sessionIdentityJSON struct {
+	STDataConfigured     bool   `json:"stDataConfigured"`
+	DeletionPending      bool   `json:"deletionPending,omitempty"`
 	NextStep             string `json:"nextStep"`
 	AccountID            string `json:"accountId"`
 	SessionID            string `json:"sessionId"`

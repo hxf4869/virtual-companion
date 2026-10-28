@@ -5,39 +5,54 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 type exportEnvelope struct {
-	ExportedAt        string               `json:"exportedAt"`
-	ConversationCount int                  `json:"conversationCount"`
-	MessageCount      int                  `json:"messageCount"`
-	MemoryCount       int                  `json:"memoryCount"`
-	Conversations     []exportConversation `json:"conversations"`
-	Memories          []exportMemory       `json:"memories"`
+	ExportID          int64                   `json:"exportId,string"`
+	GeneratedAt       string                  `json:"generatedAt"`
+	ExpiresAt         string                  `json:"expiresAt"`
+	AIContentNotice   string                  `json:"aiContentNotice"`
+	Reminders         []any                   `json:"reminders"`
+	Consents          []any                   `json:"consents"`
+	V2                *postgres.V2OwnerExport `json:"v2,omitempty"`
+	SnapshotMode      string                  `json:"snapshotMode"`
+	CompletedAt       string                  `json:"completedAt"`
+	ExportedAt        string                  `json:"exportedAt"`
+	ConversationCount int                     `json:"conversationCount"`
+	MessageCount      int                     `json:"messageCount"`
+	MemoryCount       int                     `json:"memoryCount"`
+	Conversations     []exportConversation    `json:"conversations"`
+	Memories          []exportMemory          `json:"memories"`
 }
 
 type exportConversation struct {
-	ConversationID int64           `json:"conversationId"`
-	RelationshipID int64           `json:"relationshipId"`
+	Title          *string         `json:"title,omitempty"`
+	ConversationID int64           `json:"conversationId,string"`
+	RelationshipID int64           `json:"relationshipId,string"`
 	Incognito      bool            `json:"incognito"`
 	Messages       []exportMessage `json:"messages"`
 }
 
 type exportMessage struct {
-	MessageID int64  `json:"messageId"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"createdAt"`
-	NoMemory  bool   `json:"noMemory"`
+	AIGenerated bool   `json:"aiGenerated"`
+	MessageID   int64  `json:"messageId,string"`
+	Role        string `json:"role"`
+	Content     string `json:"content"`
+	CreatedAt   string `json:"createdAt"`
+	NoMemory    bool   `json:"noMemory"`
 }
 
 type exportMemory struct {
-	MemoryID       int64  `json:"memoryId"`
-	RelationshipID int64  `json:"relationshipId"`
+	Scope          string `json:"scope"`
+	CreatedAt      string `json:"createdAt"`
+	MemoryID       int64  `json:"memoryId,string"`
+	RelationshipID int64  `json:"relationshipId,string"`
 	Summary        string `json:"summary"`
 	Status         string `json:"status"`
 }
@@ -66,12 +81,21 @@ func (l *Loop) handleExportWithKey(
 		_ = l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "DONE", "")
 		return nil
 	}
-	payload, err := l.buildExport(ctx, c.OwnerID)
+	expires := time.Now().UTC().Add(24 * time.Hour)
+	payload, err := l.buildExport(ctx, c.OwnerID, c.RefID, expires)
 	if err != nil {
+		if errors.Is(err, stsource.ErrExportTooLarge) {
+			_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "ST_EXPORT_TOO_LARGE")
+			return err
+		}
+		if errors.Is(err, stsource.ErrUnavailable) {
+			if sourceStore, ok := l.store.(v2ExportStore); ok {
+				return sourceStore.DeferExportForST(ctx, c.OwnerID, c.JobID, c.Token, c.Fence)
+			}
+		}
 		_ = l.store.FailExportJob(ctx, c.OwnerID, c.JobID, c.RefID, c.Token, c.Fence, "EXPORT_BUILD")
 		return err
 	}
-	expires := time.Now().UTC().Add(24 * time.Hour)
 	if l.blobs != nil {
 		key, err := keyFor(c.OwnerID, c.RefID)
 		if err != nil {
@@ -170,8 +194,8 @@ func newExportObjectKeyWithRead(
 // functions clamp p_limit to this cap (vc.list_conversations / vc.list_messages).
 const exportPageSize = 100
 
-func (l *Loop) buildExport(ctx context.Context, owner int64) ([]byte, error) {
-	env := exportEnvelope{ExportedAt: time.Now().UTC().Format(time.RFC3339)}
+func (l *Loop) buildExport(ctx context.Context, owner, exportID int64, expires time.Time) ([]byte, error) {
+	env := exportEnvelope{ExportID: exportID, ExpiresAt: expires.UTC().Format(time.RFC3339Nano), AIContentNotice: "助手消息由 AI 生成。", Reminders: []any{}, Consents: []any{}, ExportedAt: time.Now().UTC().Format(time.RFC3339)}
 	convs, err := l.listAllConversations(ctx, owner)
 	if err != nil {
 		return nil, err
@@ -179,6 +203,7 @@ func (l *Loop) buildExport(ctx context.Context, owner int64) ([]byte, error) {
 	for _, conv := range convs {
 		row := exportConversation{
 			ConversationID: conv.ID,
+			Title:          conv.Title,
 			RelationshipID: conv.RelationshipID,
 			Incognito:      conv.Incognito,
 			Messages:       []exportMessage{},
@@ -189,7 +214,7 @@ func (l *Loop) buildExport(ctx context.Context, owner int64) ([]byte, error) {
 		}
 		for _, m := range msgs {
 			row.Messages = append(row.Messages, exportMessage{
-				MessageID: m.ID,
+				MessageID: m.ID, AIGenerated: m.Role == "assistant",
 				Role:      m.Role,
 				Content:   m.Content,
 				CreatedAt: m.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -211,7 +236,7 @@ func (l *Loop) buildExport(ctx context.Context, owner int64) ([]byte, error) {
 		}
 		for _, mem := range mems {
 			env.Memories = append(env.Memories, exportMemory{
-				MemoryID: mem.ID, RelationshipID: rel.ID, Summary: mem.Summary, Status: mem.Status,
+				MemoryID: mem.ID, RelationshipID: rel.ID, Summary: mem.Summary, Status: mem.Status, Scope: mem.Scope, CreatedAt: mem.CreatedAt.UTC().Format(time.RFC3339Nano),
 			})
 			env.MemoryCount++
 		}
@@ -222,5 +247,30 @@ func (l *Loop) buildExport(ctx context.Context, owner int64) ([]byte, error) {
 	if env.Memories == nil {
 		env.Memories = []exportMemory{}
 	}
+	if sourceStore, ok := l.store.(v2ExportStore); ok {
+		data, err := sourceStore.ExportV2OwnerData(ctx, owner)
+		if err != nil {
+			return nil, err
+		}
+		if rows, ok := data.Go["reminders"].([]any); ok {
+			env.Reminders = rows
+			delete(data.Go, "reminders")
+		}
+		if rows, ok := data.Go["consents"].([]any); ok {
+			env.Consents = rows
+			delete(data.Go, "consents")
+		}
+		env.V2 = &data
+	}
+	env.SnapshotMode = "PER_FILE_AND_QUERY"
+	env.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	env.GeneratedAt = env.CompletedAt
 	return json.Marshal(env)
+}
+
+// The concrete runtime supplies this V2 data domain; isolated legacy worker
+// tests can still exercise their existing Go-only export fixtures.
+type v2ExportStore interface {
+	ExportV2OwnerData(context.Context, int64) (postgres.V2OwnerExport, error)
+	DeferExportForST(context.Context, int64, int64, string, string) error
 }

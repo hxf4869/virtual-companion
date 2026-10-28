@@ -52,6 +52,16 @@ func (s *Store) RequestAccountDeletion(ctx context.Context, owner int64) error {
 		if !ok {
 			return ErrNotFound
 		}
+		needsST := s.stData != nil
+		if !needsST {
+			if err := tx.QueryRow(ctx, `SELECT vc.requires_st_account_cleanup_current()`).Scan(&needsST); err != nil {
+				return err
+			}
+		}
+		if needsST {
+			_, err := tx.Exec(ctx, `SELECT vc.require_st_account_deletion_current()`)
+			return err
+		}
 		return nil
 	})
 	return mapStoreErr(err)
@@ -92,6 +102,11 @@ func (s *Store) DeleteAccount(ctx context.Context, owner int64) error {
 			return err
 		}
 		if !ok {
+			// A concurrent HTTP/recovery continuation may have completed first.
+			var status string
+			if err := tx.QueryRow(ctx, `SELECT out_status FROM vc.get_st_account_deletion_current()`).Scan(&status); err == nil && status == "COMPLETED" {
+				return nil
+			}
 			return ErrNotFound
 		}
 		return nil

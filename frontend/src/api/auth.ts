@@ -338,7 +338,7 @@ export async function deleteAccount(
     `${AUTH_BASE}/account`,
     { currentPassword },
   );
-  return response.ok;
+  return response.ok && response.status === 200;
 }
 
 /** Record today's 1–5 被理解感 score. false also covers an already-recorded day. */

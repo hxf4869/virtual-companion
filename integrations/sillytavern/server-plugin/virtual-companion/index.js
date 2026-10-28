@@ -18,6 +18,8 @@ import { log } from './lib/log.js';
 import fs from 'node:fs';
 import { createHostAuth } from './lib/host-auth.js';
 import { createF2Hooks } from './lib/f2-routes.js';
+import { createSourceBridge } from './lib/source-bridge.js';
+import { createAccountData } from './lib/account-data.js';
 
 export const info = {
     id: 'virtual-companion',
@@ -28,8 +30,18 @@ export const info = {
 export async function init(router) {
     const config = loadConfig();
     const users = await import(new URL('../../src/users.js', import.meta.url).href);
+    const storage = (await import('node-persist')).default;
+    const getUser = async (handle) => (await users.getAllEnabledUsers()).find((user) => user.handle === handle);
+    const accountData = createAccountData({ getUserDirectories: users.getUserDirectories,
+        purgeProfile: async (handle) => {
+            // Keep the required native default-profile slot disabled and empty.
+            await storage.setItem(users.toKey(handle), { handle, name: '', enabled: false, admin: false, password: '', salt: '', created: 0 });
+            await storage.removeItem(users.toAvatarKey(handle));
+        },
+    });
+    const sourceBridge = createSourceBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData });
     const hostAuth = createHostAuth({ config,
-        getUser: async (handle) => (await users.getAllEnabledUsers()).find((user) => user.handle === handle),
+        getUser, sourceBridge, accountData,
         accountVersion: users.getAccountVersion,
         indexHtml: () => fs.readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8'),
     });

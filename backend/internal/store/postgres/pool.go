@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -32,6 +33,8 @@ type Store struct {
 	cipher           *FieldCipher
 	maxReservedCost  int64
 	monthlyCostLimit int64
+	stSources        stsource.Reader
+	stData           stsource.DataClient
 
 	txCount atomic.Uint64
 	txNanos atomic.Uint64

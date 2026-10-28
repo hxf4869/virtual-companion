@@ -121,11 +121,11 @@ type purposeBindingSaveJSON struct {
 // SillyTavern plugin forwards the Go session's accountId verbatim, and the
 // string form keeps IDs above the JS safe-integer range exact end to end.
 type purposeResolveRequestJSON struct {
-	OwnerAccountID   string  `json:"ownerAccountId"`
-	ProviderID       string  `json:"providerId,omitempty"`
-	ProfileKey       string  `json:"profileKey,omitempty"`
-	ProviderRevision *int64  `json:"providerRevision,omitempty"`
-	BindingRevision  *int64  `json:"bindingRevision,omitempty"`
+	OwnerAccountID   string `json:"ownerAccountId"`
+	ProviderID       string `json:"providerId,omitempty"`
+	ProfileKey       string `json:"profileKey,omitempty"`
+	ProviderRevision *int64 `json:"providerRevision,omitempty"`
+	BindingRevision  *int64 `json:"bindingRevision,omitempty"`
 }
 
 type purposeResolveProviderJSON struct {
@@ -233,8 +233,8 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 			EndpointURL:          s.endpointURL(row.BaseURL, row.Protocol),
 			CredentialConfigured: row.CredentialConfigured,
 			State:                row.State, Revision: row.Revision,
-			UpdatedAt:            rfc3339(row.UpdatedAt),
-			Models:               make([]providerModelJSON, 0, len(row.Models)),
+			UpdatedAt: rfc3339(row.UpdatedAt),
+			Models:    make([]providerModelJSON, 0, len(row.Models)),
 		}
 		for _, model := range row.Models {
 			item.Models = append(item.Models, modelToJSON(model))
@@ -421,7 +421,7 @@ func (s *Server) handleSavePurposeBinding(w http.ResponseWriter, r *http.Request
 // grants an administrator session: the admin surface ignores this token.
 func (s *Server) serviceCaller(w http.ResponseWriter, r *http.Request) bool {
 	token := s.cfg.STPlugin.ServiceToken
-	if token == "" || s.core == nil || s.core.Providers == nil {
+	if token == "" || s.core == nil {
 		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "service channel not configured")
 		return false
 	}
@@ -439,6 +439,10 @@ func (s *Server) serviceCaller(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (s *Server) handleResolvePurpose(w http.ResponseWriter, r *http.Request) {
+	if s.core == nil || s.core.Providers == nil {
+		s.writeAPIError(w, 503, "INVALID_REQUEST", "service channel not configured")
+		return
+	}
 	if !s.serviceCaller(w, r) {
 		return
 	}

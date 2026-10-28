@@ -40,6 +40,7 @@ const expectedSessionHeader = "X-VC-Expected-Session-ID"
 // implementation is *postgres.Store; tests may substitute a fake.
 type CompanionStore interface {
 	ResolveSTBinding(ctx context.Context, owner int64, input postgres.STBindingInput) (postgres.STBinding, error)
+	ReconcileSTSources(ctx context.Context, owner int64, chats []string) ([]postgres.STSourceState, error)
 	CreateRelationship(ctx context.Context, owner int64, personaRef string) (postgres.Relationship, error)
 	ListRelationships(ctx context.Context, owner int64) ([]postgres.Relationship, error)
 	ActivateRelationship(ctx context.Context, owner, id int64) (postgres.Relationship, error)
@@ -96,6 +97,8 @@ type CompanionStore interface {
 	RecordAccountDeletionCancelSignals(ctx context.Context, owner int64, count int) error
 	DeletionIntentActive(ctx context.Context, owner int64) (bool, error)
 	DeleteAccount(ctx context.Context, owner int64) error
+	ClearSTAccountData(ctx context.Context, owner int64) (bool, error)
+	RegisterSTProfile(ctx context.Context, owner int64, handle string) error
 
 	IssueOpaqueSession(ctx context.Context, accountID int64, tokenHash string, expires time.Time) (int64, error)
 	LookupOpaqueSession(ctx context.Context, tokenHash string) (*auth.Principal, error)
@@ -170,6 +173,8 @@ type Core struct {
 
 func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/st/bindings", s.handleResolveSTBinding)
+	s.mux.HandleFunc("POST /api/v1/st/sources/reconcile", s.handleReconcileSTSources)
+	s.mux.HandleFunc("POST /api/v1/service/st/profile", s.handleRegisterSTProfile)
 	s.mux.HandleFunc("POST /api/v1/relationships", s.handleCreateRelationship)
 	s.mux.HandleFunc("GET /api/v1/relationships", s.handleListRelationships)
 	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}", s.handleActivateRelationship)
@@ -296,6 +301,18 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 	if write && p.PasswordMustChange && !passwordChangeAllowed(r.URL.Path) {
 		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "password change required")
 		return nil
+	}
+	// Export recovery keeps its existing password/eligibility indistinguishability.
+	if write && r.URL.Path != "/api/v1/auth/account" && r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/exports/recover" {
+		deleting, err := s.core.Store.DeletionIntentActive(r.Context(), p.AccountID)
+		if err != nil {
+			s.writeStoreErr(w, err)
+			return nil
+		}
+		if deleting {
+			s.writeAPIError(w, http.StatusConflict, "ACCOUNT_DELETION_PENDING", "account deletion is in progress")
+			return nil
+		}
 	}
 	return p
 }

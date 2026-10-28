@@ -46,6 +46,7 @@ async function run(action) {
     finally { busy = false; document.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }
 }
 async function enter() {
+    if (identity.deletionPending) { show('login-form', '账号删除处理中'); clearSecrets(); message('聊天已暂停，尚未完成的数据清理会在服务恢复后继续。'); return; }
     if (identity.passwordMustChange) { show('password-step', '修改密码'); $('current-password').focus(); return; }
     if (!identity.authenticatorEnabled) { show('login-form', '登录'); message('请重新登录并完成验证器设置'); return; }
     const response = await fetch('/auth/access', { credentials: 'same-origin', headers: { Accept: 'application/json' } });

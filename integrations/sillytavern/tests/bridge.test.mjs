@@ -298,6 +298,12 @@ test('插件 init/exit：按真实部署布局加载ST用户模块，注册认�
     const plugin = path.join(root, 'plugins/virtual-companion');
     fs.cpSync(path.join(HERE, '../server-plugin/virtual-companion'), plugin, { recursive: true });
     fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
+    // The production host provides node-persist; this isolated layout supplies
+    // its storage contract without requiring a downloaded ST tree in unit CI.
+    const persistence = path.join(root, 'node_modules/node-persist');
+    fs.mkdirSync(persistence, { recursive: true });
+    fs.writeFileSync(path.join(persistence, 'package.json'), '{"type":"module","exports":"./index.js"}');
+    fs.writeFileSync(path.join(persistence, 'index.js'), 'export default { setItem: async () => {}, removeItem: async () => {} };');
     fs.mkdirSync(path.join(root, 'src'));
     fs.writeFileSync(path.join(root, 'src/users.js'), 'export const getAllEnabledUsers = async () => []; export const getAccountVersion = () => "version"; export const getUserDirectories = () => ({});');
     const { init, exit, info } = await import(pathToFileURL(path.join(plugin, 'index.js')).href);

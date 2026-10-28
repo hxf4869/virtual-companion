@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
+	"github.com/hxf4869/virtual-companion/internal/datarights"
 	"net/http"
 )
 
@@ -30,35 +33,21 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreErr(w, err)
 		return
 	}
-	// Each successful clear removes this batch from the durable worklist.
-	// Continue until empty; an ambiguous read/clear failure must never permit
-	// the account cascade to discard pointers to objects still in storage.
-	for {
-		pointers, err := s.core.Store.ListOwnerExportObjects(r.Context(), p.AccountID)
-		if err != nil {
-			s.writeStoreErr(w, err)
-			return
-		}
-		if len(pointers) == 0 {
-			break
-		}
-		if s.core.Blobs == nil {
-			s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
-			return
-		}
-		for _, obj := range pointers {
-			if err := s.core.Blobs.Delete(r.Context(), obj.ObjectKey); err != nil {
-				s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
-				return
-			}
-			if err := s.core.Store.ClearExportObject(r.Context(), p.AccountID, obj.ExportID, obj.ObjectKey); err != nil {
-				s.writeStoreErr(w, err)
-				return
-			}
-		}
+	var deleteObject func(context.Context, string) error
+	if s.core.Blobs != nil {
+		deleteObject = s.core.Blobs.Delete
 	}
-	if err := s.core.Store.DeleteAccount(r.Context(), p.AccountID); err != nil {
-		s.writeStoreErr(w, err)
+	progress, err := datarights.ContinueDeletion(r.Context(), p.AccountID, s.core.Store, deleteObject)
+	if err != nil {
+		if errors.Is(err, datarights.ErrObjectUnavailable) {
+			s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"code": "INVALID_REQUEST", "message": "account deletion is pending", "status": progress.Status, "pendingDomains": progress.PendingDomains})
+		} else {
+			s.writeStoreErr(w, err)
+		}
+		return
+	}
+	if progress.Status != "COMPLETED" {
+		s.writeJSON(w, http.StatusAccepted, progress)
 		return
 	}
 	// VC-R16: the server-side cascade above (the account and every session

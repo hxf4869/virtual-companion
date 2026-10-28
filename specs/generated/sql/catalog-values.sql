@@ -164,6 +164,7 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','ACCOUNT_CONTEXT_CHANGED',22) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','REVISION_CONFLICT',23) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','MODEL_PROFILE_IN_USE',24) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','ACCOUNT_DELETION_PENDING',25) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','TOO_MECHANICAL',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','FORGOT_CONTEXT',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','CROSSED_BOUNDARY',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;

@@ -121,14 +121,24 @@ func (l *Loop) handleMemoryExtract(ctx context.Context, c postgres.JobClaim) err
 	if l == nil || l.store == nil {
 		return postgres.ErrInvalid
 	}
-	input, err := l.store.ReadMemoryExtractInput(ctx, c.OwnerID, c.RefID)
+	var input postgres.MemoryExtractInput
+	var err error
+	if c.Kind == KindSTMemoryExtract {
+		sourceStore, ok := l.store.(stExtractStore)
+		if !ok {
+			return l.closeExtract(ctx, c, "FAILED", "ST_SOURCE_UNAVAILABLE")
+		}
+		input, err = sourceStore.ReadSTMemoryExtractInput(ctx, c.OwnerID, c.JobID, c.RefID)
+	} else {
+		input, err = l.store.ReadMemoryExtractInput(ctx, c.OwnerID, c.RefID)
+	}
 	if err != nil {
 		if errors.Is(err, postgres.ErrNotFound) {
 			return l.closeExtract(ctx, c, "FAILED", "GENERATION_MISSING")
 		}
 		return l.failExtract(ctx, c, "EXTRACT_READ")
 	}
-	if input.Status != "COMPLETED" || input.SourceMessageID == nil || input.AssistantMessageID == nil {
+	if input.Status != "COMPLETED" || (input.SourceRef == "" && (input.SourceMessageID == nil || input.AssistantMessageID == nil)) {
 		return l.closeExtract(ctx, c, "DONE", "TURN_NOT_EXTRACTABLE")
 	}
 	// Suppression guards: incognito turn, or either source message carries the
@@ -153,7 +163,15 @@ func (l *Loop) handleMemoryExtract(ctx context.Context, c postgres.JobClaim) err
 	// Resolve the model the same way generation does: first database route via
 	// the closed factory, falling back to the process-level env provider when
 	// no route is configured. Config failures are terminal, never retried.
-	provider, closeProvider, identity, code := l.extractProvider(ctx)
+	var provider companion.Provider
+	var closeProvider func()
+	var identity extractProviderIdentity
+	var code string
+	if c.Kind == KindSTMemoryExtract {
+		provider, closeProvider, identity, code = l.extractSTProvider(ctx, c.OwnerID)
+	} else {
+		provider, closeProvider, identity, code = l.extractProvider(ctx)
+	}
 	if code != "" {
 		return l.closeExtract(ctx, c, "FAILED", code)
 	}
@@ -170,7 +188,11 @@ func (l *Loop) handleMemoryExtract(ctx context.Context, c postgres.JobClaim) err
 	if !ok {
 		return l.closeExtract(ctx, c, "FAILED", extractClosePrepareFailed)
 	}
-	prep, err := attempts.PrepareMemoryExtractAttempt(ctx, c.OwnerID, c.JobID, c.RefID,
+	prepare := attempts.PrepareMemoryExtractAttempt
+	if c.Kind == KindSTMemoryExtract {
+		prepare = l.store.(stExtractStore).PrepareSTMemoryExtractAttempt
+	}
+	prep, err := prepare(ctx, c.OwnerID, c.JobID, c.RefID,
 		c.Token, c.Fence, identity.providerID, identity.supplierName, identity.modelID,
 		companion.EstimateTokens(extractSystemPrompt)+companion.EstimateTokens(extractUserPrompt(input.UserContent)))
 	if err != nil {
@@ -193,12 +215,16 @@ func (l *Loop) handleMemoryExtract(ctx context.Context, c postgres.JobClaim) err
 	items, parsed := parseExtractOutput(payload, extractMaxItems, input.UserContent)
 	if payload == "" {
 		callCtx, cancel := context.WithCancel(ctx)
-		l.cancels.Register(KindMemoryExtract, c.OwnerID, c.JobID, cancel)
+		cancelKind := KindMemoryExtract
+		if c.Kind == KindSTMemoryExtract {
+			cancelKind = KindSTMemoryExtract
+		}
+		l.cancels.Register(cancelKind, c.OwnerID, c.JobID, cancel)
 		var result companion.AttemptResult
 		var callErr error
 		payload, result, callErr = l.callExtractProvider(callCtx, provider, input)
 		cancel()
-		l.cancels.Unregister(KindMemoryExtract, c.JobID)
+		l.cancels.Unregister(cancelKind, c.JobID)
 		// Settle the attempt in one short transaction: real usage or an
 		// explicit UNKNOWN — never zero for a missing report. A payload that
 		// is not a JSON array settles its usage but is not stored as the
@@ -246,10 +272,15 @@ func (l *Loop) handleMemoryExtract(ctx context.Context, c postgres.JobClaim) err
 	// The evidence binds the user source message only: the assistant message
 	// is not an extraction source, and the V57 tombstone flip on this ref is
 	// what re-suppresses the source after a deletion.
-	evidence := []string{
-		fmt.Sprintf("message:%d", *input.SourceMessageID),
+	evidence := []string{input.SourceRef}
+	if input.SourceRef == "" {
+		evidence = []string{fmt.Sprintf("message:%d", *input.SourceMessageID)}
 	}
 	for i, item := range items {
+		key := fmt.Sprintf("auto%d-%d", c.RefID, i)
+		if input.SourceRef != "" {
+			key = fmt.Sprintf("st-auto%d-%d", c.JobID, i)
+		}
 		_, err := l.store.CreateAutoSavedMemory(ctx, c.OwnerID, postgres.AutoSavedMemoryCreate{
 			RelationshipID: input.RelationshipID,
 			ConversationID: input.ConversationID,
@@ -257,7 +288,7 @@ func (l *Loop) handleMemoryExtract(ctx context.Context, c postgres.JobClaim) err
 			Evidence:       evidence,
 			// Stable per (generation, index): a retried job re-hits the same
 			// keys and the keyed insert returns the existing rows.
-			IdempotencyKey: fmt.Sprintf("auto%d-%d", c.RefID, i),
+			IdempotencyKey: key,
 		})
 		if err != nil {
 			if errors.Is(err, postgres.ErrInvalid) || errors.Is(err, postgres.ErrNotFound) {

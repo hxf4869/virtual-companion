@@ -1,6 +1,6 @@
 {
   "id": "st-host-auth",
-  "reason": "在cookie-session之后、ST用户解析与所有资源/API之前统一核验Go会话、TOTP完成态及明确的账号handle映射；身份头不参与准入。",
+  "reason": "在cookie-session之后、ST用户解析与所有资源/API之前统一核验Go会话、TOTP完成态及明确的账号handle映射；身份头不参与准入。 临时上传移入已认证用户私有目录，使删号能够清理该用户的在线临时文件。",
   "upstream": {
     "component": "sillytavern",
     "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
@@ -8,11 +8,16 @@
   "removal_condition": "上游提供覆盖全部资源/API的可信宿主认证钩子和页面身份绑定，且B01回归通过后移除。",
   "target": "src/server-main.js",
   "expected_input_sha256": "567d8a9d52e70816e74f119409933f2b42ad03132d7ef01f8db3ae145c2fe7bf",
-  "expected_output_sha256": "ca659171712bc07ad2bfd40d8ca2f8a69999a897d3971aa2f406c407e4934b0c",
+  "expected_output_sha256": "1ccfa720bc57b10e5dd38392ac5f5acb2e8894ff6d9ed5944c7b5e4f8a52b96e",
   "replacements": [
     {
       "from": "app.use(setUserDataMiddleware);",
       "to": "// V2: Go-backed admission precedes every native resource and API.\napp.use((req, res, next) => {\n    const gate = globalThis[Symbol.for('virtual-companion.bridge')]?.hostAuth;\n    if (!gate) return res.status(503).json({ code: 'VC_AUTH_UNAVAILABLE', message: 'Authentication unavailable' });\n    return gate(req, res, next);\n});\napp.use( setUserDataMiddleware);",
+      "count": 1
+    },
+    {
+      "from": "const uploadsPath = path.join(cliArgs.dataRoot, UPLOADS_DIRECTORY);\napp.use(multer({ dest: uploadsPath, limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar'));",
+      "to": "// W06: temporary uploads belong to the authenticated user's deletion scope.\napp.use(multer({ storage: multer.diskStorage({\n    destination(req, _file, done) {\n        const root = req.user?.directories?.root;\n        if (!root) return done(new Error('Authenticated upload directory required'), '');\n        const target = path.join(root, '.uploads');\n        try { fs.mkdirSync(target, { recursive: true, mode: 0o700 }); done(null, target); }\n        catch (error) { done(error, ''); }\n    },\n}), limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar'));",
       "count": 1
     }
   ],

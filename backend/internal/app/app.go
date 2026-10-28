@@ -18,6 +18,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/hxf4869/virtual-companion/internal/stsource"
 )
 
 // StoreBinder receives the owner-bound pool after Runtime opens it.
@@ -299,6 +300,15 @@ func (r *Runtime) openStore(ctx context.Context) error {
 		store.UseCipher(r.deps.Cipher)
 	}
 	store.UseCostLimits(r.cfg.Budget.MaxReservedCost, r.cfg.MonthlyCostLimit)
+	if r.cfg.STPlugin.HostBaseURL != "" {
+		client, err := stsource.NewClient(r.cfg.STPlugin.HostBaseURL, r.cfg.STPlugin.ServiceToken)
+		if err != nil {
+			store.Close()
+			return err
+		}
+		store.UseSTSourceReader(client)
+		store.UseSTDataClient(client)
+	}
 	r.store = store
 	r.metrics.SetDBStatsSource(func() observability.DBStats {
 		st := store.Stats()

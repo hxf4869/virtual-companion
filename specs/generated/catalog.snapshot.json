@@ -93,7 +93,8 @@
       "AUTH_CHALLENGE_UNAVAILABLE",
       "ACCOUNT_CONTEXT_CHANGED",
       "REVISION_CONFLICT",
-      "MODEL_PROFILE_IN_USE"
+      "MODEL_PROFILE_IN_USE",
+      "ACCOUNT_DELETION_PENDING"
     ],
     "GenerationState": [
       "CREATED",
@@ -817,11 +818,15 @@
           {
             "code": "MODEL_PROFILE_IN_USE",
             "order": 24
+          },
+          {
+            "code": "ACCOUNT_DELETION_PENDING",
+            "order": 25
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "228222a922fc434c541bd2d7e33e2257ecf585dd03218468d3db18d43c02ba1c"
+      "sha256": "19bf8a12bb00c2ee9b976461f2f21d17cad79547edbe6f089bec563754670236"
     },
     "generation-states.yaml": {
       "document": {
@@ -976,7 +981,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 69,
+          "KEEP": 71,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1133,6 +1138,29 @@
             "operationId": "resolveSTBinding",
             "path": "/api/v1/st/bindings",
             "replacementOrImpact": "V2-W05 native ST consumer via the authenticated server plugin (integrations/sillytavern/server-plugin/virtual-companion/index.js). Resolve a stable ST chat to an independent relationship instance and conversation; explicit branches may reuse the instance. Cookie identity supplies the owner; ST retains revision authority."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "safety-or-data-rights"
+            ],
+            "method": "POST",
+            "operationId": "registerSTProfile",
+            "path": "/api/v1/service/st/profile",
+            "replacementOrImpact": "W06 trusted native host entry records the private profile before its first chat, so account deletion retains that storage scope even after configuration loss."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "safety-or-data-rights"
+            ],
+            "method": "POST",
+            "operationId": "reconcileSTSources",
+            "path": "/api/v1/st/sources/reconcile",
+            "replacementOrImpact": "V2-W06 native ST open, reconnect and persisted-save consumer. Read the authenticated owner's bounded chat set over the private ST service channel; apply source invalidation before memory use. Browser content is never authoritative."
           },
           {
             "currentH5Callers": [],
@@ -2369,7 +2397,7 @@
           }
         ]
       },
-      "sha256": "daf21b78d051aacd8a482ee2d38e5d28b980938a2b2e59247244ff29f37d879e"
+      "sha256": "feae19a08e784c8725697e5cb988217439d7b119ee42aa0b0bc7a51aed94dd9b"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

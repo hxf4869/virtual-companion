@@ -73,6 +73,7 @@ type Config struct {
 // it grants no administrative rights.
 type STPlugin struct {
 	ServiceToken string
+	HostBaseURL  string
 }
 
 // ExportS3 is the one supported export object store. Runtime access is
@@ -291,7 +292,7 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			CookieSecure: true,
 			ReauthWindow: 15 * time.Minute,
 		},
-		STPlugin: STPlugin{ServiceToken: strings.TrimSpace(getenv("VC_ST_PLUGIN_SERVICE_TOKEN"))},
+		STPlugin: STPlugin{ServiceToken: strings.TrimSpace(getenv("VC_ST_PLUGIN_SERVICE_TOKEN")), HostBaseURL: strings.TrimSpace(getenv("VC_ST_HOST_BASE_URL"))},
 		Concurrency: Concurrency{
 			// §19.5 Owner-only product defaults: serial worker, 8 outstanding,
 			// 5-minute queue timeout. Benchmark profiles override per run and
@@ -621,6 +622,9 @@ func (c Config) Validate() error {
 	}
 	if c.STPlugin.ServiceToken != "" && len(c.STPlugin.ServiceToken) < 32 {
 		return fmt.Errorf("VC_ST_PLUGIN_SERVICE_TOKEN must be at least 32 characters when set")
+	}
+	if c.Mode == ModeFull && c.STPlugin.ServiceToken != "" && c.STPlugin.HostBaseURL == "" {
+		return fmt.Errorf("VC_ST_HOST_BASE_URL is required with the ST service channel")
 	}
 	if c.Provider.Enabled {
 		if len(c.Provider.ID) < 1 || len(c.Provider.ID) > 128 {

@@ -8,11 +8,11 @@
   "removal_condition": "上游原生提供全部写入 CAS、稳定身份与同端异步来源保护，且 B05/B07 回归通过后移除。",
   "target": "public/script.js",
   "expected_input_sha256": "955c603d0bad84bac5a716f0818d85c2543e44d4c43878e0d63ef1e55ca91855",
-  "expected_output_sha256": "fb5a9cd89a9363aa2fc403cca79251cf9586e0adad626a8b36ce4efb53d19137",
+  "expected_output_sha256": "b439f0d147a0bd5617bedc620c63d68fc550f55f95ebb6e0ae95dc6c72cfd3a3",
   "replacements": [
     {
       "from": "import { getContext } from './scripts/st-context.js';\n",
-      "to": "import { getContext } from './scripts/st-context.js'; // W05 native source\nimport { vcF2, createNativeF2IO, createSourceGuard, characterChatPath, groupChatPath } from './scripts/vc-runtime/f2-client.js';\nexport { vcF2, characterChatPath, groupChatPath };\nexport const vcF2IO = createNativeF2IO({ getRequestHeaders });\nexport const vcSourceGuard = createSourceGuard(getContext);\nglobalThis[Symbol.for('virtual-companion.f2-source')] = vcSourceGuard;\n",
+      "to": "import { getContext } from './scripts/st-context.js'; // W05 native source\nimport { vcF2, createNativeF2IO, createSourceGuard, characterChatPath, groupChatPath } from './scripts/vc-runtime/f2-client.js';\nexport { vcF2, characterChatPath, groupChatPath };\nexport const vcF2IO = createNativeF2IO({ getRequestHeaders });\nimport { prepareSourceIdentities } from './scripts/vc-runtime/source-identity.js';\nfunction vcSaveSourceSettlement() {\n    if (is_send_press || (!selected_group && this_chid === undefined) || !chat_metadata.vc_f2 || !vcSourceGuard.isSettled()) return;\n    void saveChatConditional().catch(() => {}); // F2 already preserves and shows the rejected draft.\n}\nexport const vcSourceGuard = createSourceGuard(getContext, { onSettled: vcSaveSourceSettlement });\nvcF2.setSourcePreparer((chat) => prepareSourceIdentities(chat, { settled: !is_send_press && vcSourceGuard.isSettled() }));\neventSource.on(event_types.GENERATION_ENDED, () => {\n    const metadata = chat_metadata;\n    // Do not await inside the event: the native caller resets its busy flag after emit.\n    void waitUntilCondition(() => !is_send_press, DEFAULT_SAVE_EDIT_TIMEOUT, 50)\n        .then(() => { if (chat_metadata === metadata) vcSaveSourceSettlement(); }).catch(() => {});\n});\nglobalThis[Symbol.for('virtual-companion.f2-source')] = vcSourceGuard;\n",
       "count": 1
     },
     {

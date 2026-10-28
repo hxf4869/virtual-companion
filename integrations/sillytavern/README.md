@@ -204,3 +204,50 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 - 备份只打包显式保护清单（chats、group chats、groups、characters、worlds、backups、OpenAI Settings、
   user 资源、settings/secrets、cookie-secret、config.yaml），排除可确定性再生的自托管派生文件与
   `extensions/`；keyfile 不得位于 dataRoot 内、不得与归档同目录。
+
+### W06 持久来源对账
+
+Go 进程设置 `VC_ST_HOST_BASE_URL` 为该受管 ST 的内部地址（本机开发为
+`http://127.0.0.1:8752`），与 ST 共用 `VC_ST_PLUGIN_SERVICE_TOKEN`。该令牌仅用于
+服务端私有通道；`POST /internal/v1/st/sources` 拒绝浏览器 Origin，以 Go 账号映射选择
+唯一用户根。未配置或读取失败时来源为待核对，不能把缺失响应当作删除。
+
+ST JSONL 的 F2 revision 是持久权威；`vc_message_id` 与每个 swipe 的 `extra.vc_source`
+记录稳定来源身份。Go 只保留已核对索引和加密来源快照。打开、重连、保存后通知加速对账，
+检索与提取提交仍独立读回，因此关闭浏览器不会使旧来源永久有效。
+
+### W06 数据副本与删除
+
+- **入口**：Owner 的数据副本与账号删除入口在 ST 扩展菜单「数据副本与删除」（`vc-model-settings`
+  扩展）。扩展只是入口与状态展示：导出/删除实际由 Go `/api/v1/exports` 与 `/api/v1/auth/account`
+  执行，密码确认、一次性下载令牌等语义以 Go API 为准。
+- **跨存储前提**：完整（受管）模式设置了 `VC_ST_PLUGIN_SERVICE_TOKEN` 时，Go 启动即校验
+  `VC_ST_HOST_BASE_URL` 必须指向该 ST 的内部地址（见上节），缺失或非法是启动校验失败，
+  不会带病进入运行态。运行中 ST 不可达才是 PENDING 语义：需要 ST 数据域的导出任务保持 PENDING
+  （`errorMessage=ST_UNAVAILABLE`，同一任务恢复后自动继续），账号删除保持 202 PENDING，
+  由后台任务重试至确认。
+- **导出语义**：完整副本 `snapshotMode=PER_FILE_AND_QUERY`——ST 私有内容按文件逐个捕获（凭据、
+  历史备份、可再生缓存与锁定受管扩展可重新生成的调试 source map 排除；settings 副本剔除凭据值，
+  运行代码与私人扩展仍保留在副本中），Go 侧记录按有界查询导出，两者经来源绑定与
+  任务结果合并进下载文档的 `v2` 域（`go` / `st` / `domains` 覆盖清单）。ST 在线副本上限 64 MiB 与
+  10000 个文件，超限任务显式失败（`ST_EXPORT_TOO_LARGE`），绝不静默截断。
+- **删除语义**：Go 先落删除意图并冻结该账号；ST 私有根清理未确认时删除返回 202
+  `{status:"PENDING",pendingDomains:["ST"]}`，对象存储清理失败保持 503 与 pending 信息；
+  会话查询可见 `deletionPending`。确认完成后才返回 200 `{"ok":true}`。
+- **账号映射登记**：ST dataRoot 下的 `_vc_accounts/`（各用户根目录的兄弟目录，即
+  `DATA_ROOT/_vc_accounts/<ownerAccountId>.json`）持久保存账号映射与删除状态
+  （ACTIVE/DELETING/DELETED），重启保留。删除的冻结与幂等重试依赖它；清空该目录不受支持，
+  也不会恢复账号——Go 侧删除意图与账号 tombstone 独立存在。
+  首次认证进入 ST 时，经私有服务通道把账号→handle 登记到 Go；尚未创建聊天的私有角色、世界书
+  也进入导出与删除范围。以后移除 ST 通道配置不会把已登记的数据域误报为不存在，相关任务仍待处理。
+- **ST 来源提取现状**：ST 持久来源的记忆提取复用既有任务队列与用量账本（与 MEMORY_EXTRACT
+  同队列、同 attempt/计费记账），用途绑定固定为 `MEMORY_EXTRACTION_DEDUP_SUMMARY`，缺失即显式
+  失败，不回落前台/全局 provider。当前 Go 后台尚未接线钉住的生成参数：该用途绑定钉了
+  temperature/topP/reasoningEffort 时任务以 `EXTRACTION_PARAMETERS_UNSUPPORTED` 显式失败，
+  W09 补齐前不要为该用途钉参数。
+- **边界**：离线备份策略与恢复后的清理属 W16，本节不承诺任何保留期限或部署形态；当前无外部
+  记忆引擎（导出 `domains` 中 `EXTERNAL_MEMORY_ENGINE` 为 NOT_APPLICABLE），inbox/通知尚未
+  投产，均不在本节声称范围。
+- **验收入口**：`node scripts/accept-managed.mjs --filter source-native,rights-browser,rights-native`；
+  浏览器路径使用上文 `VC_W03_CHROMIUM_PATH`。覆盖实际来源读回、桌面/手机宽度页面、一次性副本、
+  ST 不可用后的同任务恢复与独立合成账号清理，不使用真实 Owner 数据。

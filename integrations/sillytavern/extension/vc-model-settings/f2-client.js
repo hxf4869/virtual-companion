@@ -23,6 +23,8 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
     const observed = new Map();
     let active = null;
     let epoch = 0;
+    let prepareSource;
+    let observeSource;
 
     const ensureMetadata = (metadata) => {
         if (!metadata.vc_f2) metadata.vc_f2 = { id: uuid(), revision: 0 };
@@ -58,6 +60,7 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
     function save(path, payload, { live = false, send, apply = () => {} } = {}) {
         // This clone and serialization run synchronously, before compression,
         // queue waits or network IO can observe a different chat/swipe.
+        if (prepareSource) prepareSource(payload.chat);
         const frozen = structuredClone(payload);
         const original = frozen.chat?.[0]?.chat_metadata?.vc_f2;
         const serialized = JSON.stringify(frozen);
@@ -102,6 +105,11 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
             source.committedSequence = sequence;
             remember(path, source.token);
             if (active === source && sources.get(path) === source) apply(structuredClone(source.token));
+            // Observation accelerates reconciliation, but cannot turn a persisted
+            // chat into a failed save. Retrieval and job completion also read back.
+            if (observeSource && body.chat[0].chat_metadata.vc_binding) {
+                void Promise.resolve().then(() => observeSource(structuredClone(source.token))).catch(() => {});
+            }
             return result;
         }).catch((error) => {
             source.blocked = true;
@@ -114,6 +122,8 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
     }
     return { loaded, leave, expected, remember, ensureMetadata, branchMetadata, save,
         known: (path) => observed.has(path),
+        setSourcePreparer: (prepare) => { prepareSource = prepare; },
+        setSourceObserver: (observe) => { observeSource = observe; },
     };
 }
 
@@ -181,7 +191,27 @@ export function createNativeF2IO({ getRequestHeaders, fetchImpl = fetch, client 
 /** Used by the actual Helper and MVU callbacks, before reading and after every
  * awaited updater. Revision, metadata object, target message and swipe all
  * belong to the captured source; none may be relabelled with a newer source. */
-export function createSourceGuard(getContext) {
+export function createSourceGuard(getContext, { onSettled = () => {} } = {}) {
+    const pending = new Set();
+    const failed = new WeakSet();
+    function begin(messageId) {
+        const snapshot = capture(messageId), entry = { metadata: snapshot.metadata, message: snapshot.message };
+        pending.add(entry);
+        let finished = false;
+        return (success = true) => {
+            if (finished) return;
+            finished = true;
+            pending.delete(entry);
+            if (entry.message) { if (success) failed.delete(entry.message); else failed.add(entry.message); }
+            const c = getContext();
+            if (success && entry.metadata === c.chatMetadata && c.chat.includes(entry.message) && isSettled()) onSettled();
+        };
+    }
+    function isSettled() {
+        const c = getContext();
+        return !c.chat.some((m) => failed.has(m))
+            && ![...pending].some((p) => p.metadata === c.chatMetadata && c.chat.includes(p.message));
+    }
     function capture(messageId) {
         const c = getContext();
         const index = messageId === undefined || messageId === 'latest'
@@ -209,12 +239,12 @@ export function createSourceGuard(getContext) {
             throw error;
         }
     }
-    return { capture, assert };
+    return { capture, assert, begin, isSettled };
 }
 
 /** The extension calls this once; native CHAT_CHANGED is the only subscription.
  * Binding failures never write metadata, and groups only participate in F2. */
-export async function installInstanceBinding({ getContext, resolveBinding, writeExtensionField, captureSessionContext }) {
+export async function installInstanceBinding({ getContext, resolveBinding, writeExtensionField, captureSessionContext, reconcileSources, onSourceStatus = () => {} }) {
     await captureSessionContext();
     const cardWrites = new WeakMap();
     const source = () => {
@@ -241,21 +271,39 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
         const current = source();
         if (!current?.characterRef) throw new F2ConflictError('VC_CHARACTER_REF_UNCONFIRMED');
         const existing = metadata.vc_binding;
-        if (existing?.chatIdentity === current.chatIdentity && existing.characterRef === current.characterRef
-            && existing.mode === current.mode && typeof existing.relationshipId === 'string' && typeof existing.conversationId === 'string') return existing;
         const result = await binding.ensure({ ...current, relationshipId: existing?.relationshipId || null,
             displayName: Array.from(card.name || '').slice(0, 32).join('') });
         if (getContext().chatMetadata !== metadata) throw new StaleBindingError();
-        metadata.vc_binding = result;
-        await getContext().saveChat();
+        if (JSON.stringify(existing) !== JSON.stringify(result)) {
+            metadata.vc_binding = result;
+            await getContext().saveChat();
+        }
         return result;
     }
+    const reconcileCurrent = async () => {
+        const current = source();
+        if (!current || !reconcileSources) return;
+        try {
+            const states = await reconcileSources([current.chatIdentity]);
+            if (source()?.chatIdentity === current.chatIdentity) onSourceStatus(states);
+            return states;
+        } catch (error) {
+            if (source()?.chatIdentity === current.chatIdentity) onSourceStatus([{ chatIdentity: current.chatIdentity, state: 'UNAVAILABLE' }]);
+            throw error;
+        }
+    };
+    vcF2.setSourceObserver(async (token) => {
+        if (!reconcileSources) return;
+        const states = await reconcileSources([token.id]);
+        if (source()?.chatIdentity === token.id) onSourceStatus(states);
+    });
     const changed = () => ensureBound().catch((error) => {
         if (error instanceof StaleBindingError) return;
         showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error);
         throw error;
-    });
+    }).then(() => reconcileCurrent().catch(() => {}));
     const c = getContext(); c.eventSource.on(c.eventTypes.CHAT_CHANGED, changed);
+    globalThis.addEventListener?.('online', () => { void changed().catch(() => {}); });
     await changed();
-    return { ensureBound };
+    return { ensureBound, reconcileCurrent };
 }

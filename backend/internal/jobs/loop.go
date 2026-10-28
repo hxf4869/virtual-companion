@@ -20,9 +20,10 @@ import (
 )
 
 const (
-	KindGeneration    = "GENERATION"
-	KindExport        = "DATA_EXPORT"
-	KindMemoryExtract = "MEMORY_EXTRACT"
+	KindGeneration      = "GENERATION"
+	KindExport          = "DATA_EXPORT"
+	KindMemoryExtract   = "MEMORY_EXTRACT"
+	KindSTMemoryExtract = "ST_MEMORY_EXTRACT"
 )
 
 // Store is the durable jobs/generation surface used by the worker.
@@ -450,7 +451,7 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 				// Shutdown raced the slot handoff; the abandoned claim is
 				// left to lease-expiry recovery.
 			}
-		case KindMemoryExtract:
+		case KindMemoryExtract, KindSTMemoryExtract:
 			select {
 			case l.extractSlots <- struct{}{}:
 				l.handlers.Add(1)
@@ -573,7 +574,7 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 			slog.String("event_type", action),
 		)
 	}
-	return nil
+	return l.recoverAccountDeletions(ctx)
 }
 
 func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {
@@ -585,7 +586,7 @@ func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {
 		err = l.handleGeneration(ctx, c, runID)
 	case KindExport:
 		err = l.handleExport(ctx, c)
-	case KindMemoryExtract:
+	case KindMemoryExtract, KindSTMemoryExtract:
 		err = l.handleMemoryExtract(ctx, c)
 	default:
 		log.Info("job skipped",

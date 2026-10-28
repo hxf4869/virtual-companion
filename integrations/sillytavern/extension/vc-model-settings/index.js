@@ -12,10 +12,11 @@
 import { getRequestHeaders } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
 import { mountModelSettings } from './page.js';
-import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding } from './api.js';
+import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding, reconcileSTSources } from './api.js';
 import { installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
 import { mountChatShell } from './chat-shell.js';
+import { mountDataRights } from './data-rights.js';
 
 export async function init() {
     setStHeadersProvider(() => {
@@ -43,10 +44,12 @@ export async function init() {
     });
     projection.init();
     // Instance metadata is persisted through the same native F2 save path.
-    installInstanceBinding({ getContext, resolveBinding: resolveSTBinding,
+    installInstanceBinding({ getContext, resolveBinding: resolveSTBinding, reconcileSources: reconcileSTSources,
+        onSourceStatus: (states) => { if (states.some((s) => s.state === 'UNAVAILABLE')) globalThis.toastr?.warning('部分长期记忆暂不可用；聊天仍可保存。'); },
         writeExtensionField: (...args) => getContext().writeExtensionField(...args), captureSessionContext,
     }).catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
 
+    const dataRights = mountDataRights();
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {
         console.warn('[vc-model-settings] 未找到扩展菜单挂载点 #extensionsMenu');
@@ -64,6 +67,11 @@ export async function init() {
     button.innerHTML = '<i class="fa-solid fa-microchip"></i><span class="vcms-menu-label">模型设置</span>';
     container.appendChild(button);
     wand.appendChild(container);
+    const dataContainer = document.createElement('div'); dataContainer.className = 'extension_container';
+    const dataButton = document.createElement('button'); dataButton.type = 'button'; dataButton.id = 'vc_data_menu_button'; dataButton.className = 'menu_button';
+    dataButton.innerHTML = '<i class="fa-solid fa-file-shield" aria-hidden="true"></i><span class="vcms-menu-label">数据副本与删除</span>';
+    dataButton.addEventListener('click', () => dataRights.open());
+    dataContainer.append(dataButton); wand.append(dataContainer);
 
     button.addEventListener('click', () => {
         if (!pageController.isOpen()) pageController.open();

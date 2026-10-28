@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -60,6 +61,9 @@ type MemoryCreate struct {
 
 func (s *Store) CreateMemoryCandidate(ctx context.Context, owner int64, in MemoryCreate) (Memory, error) {
 	if err := validateMemoryCreate(in); err != nil {
+		return Memory{}, err
+	}
+	if err := s.reconcileSTEvidence(ctx, owner, in.Evidence); err != nil {
 		return Memory{}, err
 	}
 	var out Memory
@@ -378,6 +382,9 @@ func (s *Store) CreateAutoSavedMemory(ctx context.Context, owner int64, in AutoS
 	if in.IdempotencyKey != "" && !validIdempotencyKey(in.IdempotencyKey) {
 		return Memory{}, ErrInvalid
 	}
+	if err := s.reconcileSTEvidence(ctx, owner, in.Evidence); err != nil {
+		return Memory{}, err
+	}
 	var out Memory
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		// V128: take the per-owner write barrier before any guard read. The
@@ -411,6 +418,12 @@ func (s *Store) CreateAutoSavedMemory(ctx context.Context, owner int64, in AutoS
 			return ErrInvalid
 		}
 		for _, ref := range in.Evidence {
+			if strings.HasPrefix(ref, "st:") {
+				if err := guardSTEvidence(ctx, tx, owner, in.RelationshipID, ref); err != nil {
+					return err
+				}
+				continue
+			}
 			msgID, ok := messageRefID(ref)
 			if !ok {
 				return ErrInvalid
@@ -524,6 +537,7 @@ func outboundAllowInTx(ctx context.Context, tx pgx.Tx, owner int64) (bool, error
 
 // MemoryExtractInput is the durable read of one finished turn for extraction.
 type MemoryExtractInput struct {
+	SourceRef          string // immutable ST source, empty for the legacy Go-generation origin
 	RelationshipID     int64
 	ConversationID     int64
 	Status             string
@@ -663,6 +677,9 @@ type MemoryExtractOutcome struct {
 // no_memory markers and model_eligible, route admission, and the attempt
 // registration (stale CREATED attempts of earlier holders are abandoned).
 func (s *Store) PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string, inputTokens int) (MemoryExtractPreparation, error) {
+	return s.prepareMemoryExtractAttempt(ctx, owner, jobID, generationID, token, fence, providerID, supplierName, modelID, inputTokens, false)
+}
+func (s *Store) prepareMemoryExtractAttempt(ctx context.Context, owner, jobID, generationID int64, token, fence, providerID, supplierName, modelID string, inputTokens int, st bool) (MemoryExtractPreparation, error) {
 	if owner <= 0 || jobID <= 0 || generationID <= 0 || token == "" || fence == "" ||
 		providerID == "" || supplierName == "" || modelID == "" {
 		return MemoryExtractPreparation{}, ErrInvalid
@@ -671,9 +688,11 @@ func (s *Store) PrepareMemoryExtractAttempt(ctx context.Context, owner, jobID, g
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		var attempt, no pgtype.Int8
 		var decision, payload pgtype.Text
-		err := tx.QueryRow(ctx,
-			`SELECT out_attempt_id, out_attempt_no, out_decision, out_prior_payload
-			   FROM vc.go_prepare_memory_extract_attempt($1,$2,$3,$4,$5,$6,$7,$8)`,
+		query := `SELECT out_attempt_id,out_attempt_no,out_decision,out_prior_payload FROM vc.go_prepare_memory_extract_attempt($1,$2,$3,$4,$5,$6,$7,$8)`
+		if st {
+			query = `SELECT out_attempt_id,out_attempt_no,out_decision,out_prior_payload FROM vc.go_prepare_st_memory_extract_attempt($1,$2,$3,$4,$5,$6,$7,$8)`
+		}
+		err := tx.QueryRow(ctx, query,
 			owner, jobID, generationID, token, fence, providerID, supplierName, modelID,
 		).Scan(&attempt, &no, &decision, &payload)
 		if err != nil {
@@ -805,6 +824,12 @@ func (s *Store) guardMemorySources(ctx context.Context, tx pgx.Tx, owner int64, 
 		}
 	}
 	for _, ref := range in.Evidence {
+		if strings.HasPrefix(ref, "st:") {
+			if err := guardSTEvidence(ctx, tx, owner, in.RelationshipID, ref); err != nil {
+				return err
+			}
+			continue
+		}
 		msgID, ok := parseMessageRef(ref)
 		if !ok {
 			continue

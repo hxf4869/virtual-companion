@@ -344,7 +344,7 @@ func TestExportBuildPaginatesAllConversations(t *testing.T) {
 			CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		}}
 	}
-	payload, err := newExportBuildLoop(store).buildExport(context.Background(), 7)
+	payload, err := newExportBuildLoop(store).buildExport(context.Background(), 7, 42, time.Now().UTC().Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestExportListsConversationsWithStableIdCursor(t *testing.T) {
 	for i := int64(1); i <= 205; i++ {
 		store.convs = append(store.convs, postgres.Conversation{ID: i, RelationshipID: 5})
 	}
-	payload, err := newExportBuildLoop(store).buildExport(context.Background(), 7)
+	payload, err := newExportBuildLoop(store).buildExport(context.Background(), 7, 42, time.Now().UTC().Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestExportBuildPaginatesAllMessages(t *testing.T) {
 			CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		})
 	}
-	payload, err := newExportBuildLoop(store).buildExport(context.Background(), 7)
+	payload, err := newExportBuildLoop(store).buildExport(context.Background(), 7, 42, time.Now().UTC().Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,7 +474,7 @@ func TestExportBuildPaginatesAllMessages(t *testing.T) {
 
 func TestExportBuildEmptyOwnerProducesEmptyEnvelope(t *testing.T) {
 	t.Parallel()
-	payload, err := newExportBuildLoop(&exportTestStore{}).buildExport(context.Background(), 7)
+	payload, err := newExportBuildLoop(&exportTestStore{}).buildExport(context.Background(), 7, 42, time.Now().UTC().Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,5 +557,32 @@ func TestExportMessageCursorStallFailsWithoutSealing(t *testing.T) {
 	}
 	if store.objectBytes != 0 {
 		t.Fatalf("stalled export sealed %d bytes", store.objectBytes)
+	}
+}
+
+func TestExportDownloadRequiredContractFields(t *testing.T) {
+	t.Parallel()
+	store := &exportTestStore{convs: []postgres.Conversation{{ID: 9007199254740993, RelationshipID: 5}}, msgs: map[int64][]postgres.Message{9007199254740993: {{ID: 9007199254740994, Role: "assistant", Content: "synthetic"}}}}
+	expires := time.Now().UTC().Add(24 * time.Hour)
+	payload, err := newExportBuildLoop(store).buildExport(context.Background(), 7, 42, expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]any
+	if json.Unmarshal(payload, &data) != nil {
+		t.Fatal("export is not JSON")
+	}
+	if data["exportId"] != "42" || data["generatedAt"] == "" || data["expiresAt"] != expires.Format(time.RFC3339Nano) || data["aiContentNotice"] == "" {
+		t.Fatal("required document metadata is missing")
+	}
+	for _, field := range []string{"conversations", "memories", "reminders", "consents"} {
+		if _, ok := data[field].([]any); !ok {
+			t.Fatalf("%s must be an array", field)
+		}
+	}
+	conv := data["conversations"].([]any)[0].(map[string]any)
+	message := conv["messages"].([]any)[0].(map[string]any)
+	if conv["conversationId"] != "9007199254740993" || message["messageId"] != "9007199254740994" || message["aiGenerated"] != true {
+		t.Fatal("wire IDs or AI marker violate the export contract")
 	}
 }

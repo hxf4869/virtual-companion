@@ -740,11 +740,12 @@ func TestLoopClaimsExtractOnlyWithinFreeSlots(t *testing.T) {
 	// Releasing the extraction re-opens capacity: the held-back jobs are not
 	// starved, one per freed slot.
 	close(extract.release)
-	waitFor(t, "blocked extraction drained", func() bool { return extract.done.Load() == 1 })
+	// Provider return precedes persistence and the worker's slot-release defer.
+	waitFor(t, "blocked extraction drained", func() bool { return extract.done.Load() == 1 && len(loop.extractSlots) == 0 })
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
 		t.Fatalf("post-release claim %d want 1", got)
 	}
-	waitFor(t, "reclaimed extraction drained", func() bool { return extract.done.Load() == 2 })
+	waitFor(t, "reclaimed extraction drained", func() bool { return extract.done.Load() == 2 && len(loop.extractSlots) == 0 })
 }
 
 // leaseClaimState is one job's durable claim inside leaseClaimStore.

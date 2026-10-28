@@ -16,6 +16,8 @@
     "getMemoryAutoSavePref",
     "updateMemoryAutoSavePref",
     "resolveSTBinding",
+    "registerSTProfile",
+    "reconcileSTSources",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -133,6 +135,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "7e99dbc21d3239910c30dfa3b0134b0a0333c86be9777cf5854aa593da10c7b8"
+    "sha256": "046f91091f619cb6effc3c6f7d4b8dd1deca2d8860ac14143ddbb8f1c877ddb4"
   }
 }
