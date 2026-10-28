@@ -1,0 +1,14 @@
+{
+    "display_name": "Virtual Companion · 模型设置",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Virtual Companion",
+    "version": "0.1.0",
+    "homePage": "https://github.com/hxf4869/virtual-companion",
+    "hooks": {
+        "activate": "init"
+    }
+}

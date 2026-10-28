@@ -1,0 +1,1612 @@
+/* Virtual Companion · 模型设置页 — 作用域样式（全部选择器限定在 .vcms-root 内）。
+   Tokens 来自 docs/product/v2-design.md §3（初始深色基线）。
+   桌面 ≥1100px：左供应商列表 + 右编辑区；<1100px / 手机：单列长表单滚动，底部粘性保存栏。 */
+
+/* ST 扩展菜单入口按钮的文字（按钮本体样式沿用 ST .menu_button） */
+#vc_models_menu_button .vcms-menu-label {
+    margin-left: 6px;
+    font-size: 14px;
+}
+
+.vcms-root {
+    /* tokens */    --vcms-bg: #14181F;
+    --vcms-surface: #1C222C;
+    --vcms-raised: #252D39;
+    --vcms-border: #394453;
+    --vcms-border-soft: #2C3542;
+    --vcms-text: #EFF3FA;
+    --vcms-text-2: #B7C1D2;
+    --vcms-primary: #9AB9FF;
+    --vcms-on-primary: #131C30;
+    --vcms-success: #8FD5AD;
+    --vcms-warning: #F6C581;
+    --vcms-danger: #FFAAA6;
+    --vcms-radius-input: 8px;
+    --vcms-radius-panel: 12px;
+    --vcms-radius-overlay: 16px;
+    --vcms-space-1: 4px;
+    --vcms-space-2: 8px;
+    --vcms-space-3: 12px;
+    --vcms-space-4: 16px;
+    --vcms-space-6: 24px;
+    --vcms-space-8: 32px;
+    --vcms-font:
+        -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+        "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+    --vcms-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: dark;
+
+    position: relative;
+    z-index: 30000;
+    font-family: var(--vcms-font);
+    color: var(--vcms-text);
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.vcms-root .vcms-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--vcms-bg);
+}
+
+/* page.js 的 open/close 只切 overlay.hidden；组件 display 规则（同等特异性、声明在后）
+   会覆盖 UA 对 [hidden] 的 display:none，导致初始空遮罩常显、关闭后继续挡住页面。
+   本作用域内 hidden 属性的语义必须无条件成立（dirty 标记、放弃按钮等同类切换元素） */
+.vcms-root [hidden] {
+    display: none !important;
+}
+
+.vcms-root .vcms-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    outline: none;
+}
+
+/* ---------- 表面细节：选区 / 插入符 / 滚动条 ---------- */
+
+.vcms-root ::selection {
+    background: rgba(154, 185, 255, 0.32);
+    color: var(--vcms-text);
+}
+
+.vcms-root * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--vcms-border) transparent;
+}
+
+.vcms-root *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.vcms-root *::-webkit-scrollbar-thumb {
+    background: var(--vcms-border);
+    border-radius: 8px;
+}
+
+.vcms-root *::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* ---------- 头部 ---------- */
+
+.vcms-root .vcms-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vcms-space-4);
+    padding: var(--vcms-space-4) var(--vcms-space-6);
+    border-bottom: 1px solid var(--vcms-border-soft);
+    background: var(--vcms-surface);
+    flex: none;
+}
+
+.vcms-root .vcms-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.vcms-root .vcms-subtitle {
+    margin: 2px 0 0;
+    font-size: 14px;
+    color: var(--vcms-text-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.vcms-root .vcms-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--vcms-space-3);
+}
+
+.vcms-root .vcms-dirty {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--vcms-warning);
+}
+
+.vcms-root .vcms-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vcms-warning);
+}
+
+/* ---------- 按钮 ---------- */
+
+.vcms-root .vcms-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 var(--vcms-space-4);
+    border-radius: var(--vcms-radius-input);
+    border: 1px solid transparent;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
+    white-space: nowrap;
+}
+
+.vcms-root .vcms-btn:focus-visible,
+.vcms-root .vcms-iconbtn:focus-visible,
+.vcms-root .vcms-switch:focus-visible,
+.vcms-root .vcms-seg-btn:focus-visible,
+.vcms-root .vcms-provider-card:focus-visible,
+.vcms-root .vcms-model-row:focus-visible,
+.vcms-root .vcms-tab:focus-visible {
+    outline: 2px solid var(--vcms-primary);
+    outline-offset: 2px;
+}
+
+.vcms-root .vcms-btn-primary {
+    background: var(--vcms-primary);
+    color: var(--vcms-on-primary);
+}
+
+.vcms-root .vcms-btn-primary:hover:not(:disabled) {
+    background: #B3CCFF;
+}
+
+.vcms-root .vcms-btn-primary:active:not(:disabled) {
+    background: #86A8F2;
+}
+
+.vcms-root .vcms-btn-primary:disabled {
+    background: var(--vcms-raised);
+    color: var(--vcms-text-2);
+    cursor: not-allowed;
+    border-color: var(--vcms-border-soft);
+}
+
+.vcms-root .vcms-btn-primary-outline {
+    background: transparent;
+    color: var(--vcms-primary);
+    border-color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-btn-primary-outline:hover:not(:disabled) {
+    background: rgba(154, 185, 255, 0.12);
+}
+
+.vcms-root .vcms-btn-ghost {
+    background: transparent;
+    color: var(--vcms-text);
+    border-color: var(--vcms-border);
+}
+
+.vcms-root .vcms-btn-ghost:hover:not(:disabled) {
+    border-color: var(--vcms-primary);
+    color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-btn-danger {
+    background: var(--vcms-danger);
+    color: #47201E;
+}
+
+.vcms-root .vcms-btn-danger:hover:not(:disabled) {
+    background: #FFC2BE;
+}
+
+.vcms-root .vcms-btn-danger-ghost {
+    background: transparent;
+    color: var(--vcms-danger);
+    border-color: var(--vcms-border);
+}
+
+.vcms-root .vcms-btn-danger-ghost:hover:not(:disabled) {
+    border-color: var(--vcms-danger);
+}
+
+.vcms-root .vcms-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.vcms-root .vcms-btn-sm {
+    min-height: 32px;
+    padding: 0 var(--vcms-space-3);
+    font-size: 14px;
+}
+
+.vcms-root .vcms-iconbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--vcms-radius-input);
+    border: 1px solid var(--vcms-border);
+    background: transparent;
+    color: var(--vcms-text);
+    font-size: 17px;
+    cursor: pointer;
+}
+
+.vcms-root .vcms-iconbtn:hover {
+    border-color: var(--vcms-primary);
+    color: var(--vcms-primary);
+}
+
+/* ---------- 主体布局 ---------- */
+
+.vcms-root .vcms-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+}
+
+.vcms-root .vcms-layout {
+    display: flex;
+    width: 100%;
+    min-height: 0;
+}
+
+.vcms-root .vcms-providers {
+    width: 300px;
+    flex: none;
+    border-right: 1px solid var(--vcms-border-soft);
+    background: var(--vcms-surface);
+    padding: var(--vcms-space-4);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-3);
+}
+
+.vcms-root .vcms-providers-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-section-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vcms-text-2);
+    letter-spacing: 0.02em;
+}
+
+.vcms-root .vcms-provider-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-provider-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+    padding: var(--vcms-space-3);
+    border-radius: var(--vcms-radius-panel);
+    border: 1px solid var(--vcms-border-soft);
+    background: var(--vcms-raised);
+    color: var(--vcms-text);
+    font-family: inherit;
+    font-size: 15px;
+    cursor: pointer;
+    transition: border-color 160ms ease-out;
+}
+
+.vcms-root .vcms-provider-card:hover {
+    border-color: var(--vcms-border);
+}
+
+.vcms-root .vcms-conflict {
+    margin-bottom: var(--vcms-space-3);
+}
+
+.vcms-root .vcms-provider-card.is-selected {
+    border-color: var(--vcms-primary);
+    box-shadow: inset 0 0 0 1px var(--vcms-primary);
+    background: rgba(154, 185, 255, 0.10);
+}
+
+.vcms-root .vcms-provider-card.is-disabled .vcms-provider-name {
+    color: var(--vcms-text-2);
+}
+
+.vcms-root .vcms-provider-card.is-new .vcms-provider-name {
+    color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-provider-name {
+    font-weight: 600;
+}
+
+.vcms-root .vcms-provider-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.vcms-root .vcms-provider-sub {
+    font-size: 13px;
+    color: var(--vcms-text-2);
+}
+
+.vcms-root .vcms-empty-providers {
+    padding: var(--vcms-space-4) var(--vcms-space-3);
+    border: 1px dashed var(--vcms-border);
+    border-radius: var(--vcms-radius-panel);
+    font-size: 15px;
+    color: var(--vcms-text-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-3);
+    align-items: flex-start;
+}
+
+.vcms-root .vcms-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---------- Tabs ---------- */
+
+.vcms-root .vcms-tabs {
+    display: flex;
+    gap: var(--vcms-space-2);
+    padding: var(--vcms-space-3) var(--vcms-space-6) 0;
+    border-bottom: 1px solid var(--vcms-border-soft);
+    flex: none;
+}
+
+.vcms-root .vcms-tab {
+    appearance: none;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--vcms-text-2);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    padding: var(--vcms-space-2) var(--vcms-space-2) var(--vcms-space-3);
+    cursor: pointer;
+    min-height: 44px;
+}
+
+.vcms-root .vcms-tab:hover {
+    color: var(--vcms-text);
+}
+
+.vcms-root .vcms-tab.is-active {
+    color: var(--vcms-primary);
+    border-bottom-color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-tabpanes {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--vcms-space-4) var(--vcms-space-6) var(--vcms-space-8);
+    overscroll-behavior: contain;
+}
+
+/* ---------- 表单 ---------- */
+
+.vcms-root .vcms-form {
+    max-width: 860px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-6);
+}
+
+.vcms-root .vcms-section {
+    background: var(--vcms-surface);
+    border: 1px solid var(--vcms-border-soft);
+    border-radius: var(--vcms-radius-panel);
+    padding: var(--vcms-space-4) var(--vcms-space-4) var(--vcms-space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-4);
+}
+
+.vcms-root .vcms-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vcms-space-3);
+    flex-wrap: wrap;
+}
+
+.vcms-root .vcms-section-tools {
+    display: flex;
+    gap: var(--vcms-space-2);
+    flex-wrap: wrap;
+}
+
+.vcms-root .vcms-section-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.vcms-root .vcms-section-note {
+    margin: -6px 0 0;
+    font-size: 13px;
+}
+
+.vcms-root .vcms-subsection-title {
+    margin: var(--vcms-space-3) 0 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--vcms-text-2);
+    letter-spacing: 0.02em;
+}
+
+.vcms-root .vcms-grid2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--vcms-space-4);
+}
+
+.vcms-root .vcms-grid3 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--vcms-space-4);
+}
+
+.vcms-root .vcms-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.vcms-root .vcms-field label,
+.vcms-root .vcms-field-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vcms-text-2);
+}
+
+.vcms-root input[type="text"],
+.vcms-root input[type="url"],
+.vcms-root input[type="password"],
+.vcms-root input[type="number"],
+.vcms-root select {
+    width: 100%;
+    min-height: 40px;
+    padding: 6px var(--vcms-space-3);
+    border-radius: var(--vcms-radius-input);
+    border: 1px solid var(--vcms-border);
+    background: var(--vcms-bg);
+    color: var(--vcms-text);
+    font-family: inherit;
+    font-size: 15px;
+    caret-color: var(--vcms-primary);
+    transition: border-color 160ms ease-out;
+}
+
+.vcms-root input:focus-visible,
+.vcms-root select:focus-visible {
+    outline: none;
+    border-color: var(--vcms-primary);
+    box-shadow: 0 0 0 1px var(--vcms-primary);
+}
+
+.vcms-root input::placeholder {
+    color: #7E8A9C;
+}
+
+.vcms-root input[readonly] {
+    color: var(--vcms-text-2);
+    background: var(--vcms-surface);
+}
+
+.vcms-root .vcms-mono {
+    font-family: var(--vcms-mono);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+}
+
+.vcms-root .vcms-field-err {
+    margin: 0;
+    font-size: 13px;
+    color: var(--vcms-danger);
+    display: none;
+}
+
+.vcms-root .vcms-field-err.is-visible {
+    display: block;
+}
+
+.vcms-root .vcms-muted {
+    color: var(--vcms-text-2);
+    font-size: 13px;
+    margin: 0;
+}
+
+/* 协议选择（radio 卡片） */
+
+.vcms-root .vcms-protocols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--vcms-space-3);
+}
+
+.vcms-root .vcms-protocol {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--vcms-space-3);
+    border: 1px solid var(--vcms-border);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+    cursor: pointer;
+    transition: border-color 160ms ease-out;
+}
+
+.vcms-root .vcms-protocol input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.vcms-root .vcms-protocol.is-selected {
+    border-color: var(--vcms-primary);
+    box-shadow: inset 0 0 0 1px var(--vcms-primary);
+}
+
+.vcms-root .vcms-protocol:hover {
+    border-color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-protocol-name {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.vcms-root .vcms-protocol-endpoint {
+    color: var(--vcms-text-2);
+}
+
+.vcms-root .vcms-endpoint-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--vcms-space-2);
+    padding: var(--vcms-space-3);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+    border: 1px solid var(--vcms-border-soft);
+    font-size: 14px;
+}
+
+.vcms-root .vcms-endpoint-line .vcms-muted {
+    color: #C6CFDD;
+    font-size: 14px;
+}
+
+.vcms-root .vcms-endpoint-url {
+    color: var(--vcms-text);
+    word-break: break-all;
+}
+
+/* 状态开关 */
+
+.vcms-root .vcms-switch-row {
+    display: flex;
+    align-items: center;
+    gap: var(--vcms-space-3);
+}
+
+.vcms-root .vcms-switch {
+    position: relative;
+    width: 48px;
+    height: 28px;
+    border-radius: 14px;
+    border: 1px solid var(--vcms-border);
+    background: var(--vcms-bg);
+    cursor: pointer;
+    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    padding: 0;
+}
+
+.vcms-root .vcms-switch-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--vcms-text-2);
+    transition: transform 160ms ease-out, background-color 160ms ease-out;
+}
+
+.vcms-root .vcms-switch.is-on {
+    background: rgba(154, 185, 255, 0.24);
+    border-color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-switch.is-on .vcms-switch-knob {
+    transform: translateX(20px);
+    background: var(--vcms-primary);
+}
+
+/* 徽标 */
+
+.vcms-root .vcms-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.vcms-root .vcms-badge-ok {
+    color: var(--vcms-success);
+    border-color: rgba(143, 213, 173, 0.4);
+    background: rgba(143, 213, 173, 0.08);
+}
+
+.vcms-root .vcms-badge-warn {
+    color: var(--vcms-warning);
+    border-color: rgba(246, 197, 129, 0.4);
+    background: rgba(246, 197, 129, 0.08);
+}
+
+.vcms-root .vcms-badge-danger {
+    color: var(--vcms-danger);
+    border-color: rgba(255, 170, 166, 0.4);
+    background: rgba(255, 170, 166, 0.08);
+}
+
+.vcms-root .vcms-badge-muted {
+    color: var(--vcms-text-2);
+    border-color: var(--vcms-border);
+    background: transparent;
+}
+
+.vcms-root .vcms-badge-info {
+    color: var(--vcms-primary);
+    border-color: rgba(154, 185, 255, 0.4);
+    background: rgba(154, 185, 255, 0.08);
+}
+
+/* 密钥区 */
+
+.vcms-root .vcms-keybox {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vcms-space-3);
+    flex-wrap: wrap;
+    padding: var(--vcms-space-3);
+    border: 1px solid var(--vcms-border-soft);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+}
+
+.vcms-root .vcms-keybox-state {
+    display: flex;
+    align-items: center;
+    gap: var(--vcms-space-2);
+    flex-wrap: wrap;
+    font-size: 15px;
+}
+
+.vcms-root .vcms-keybox-actions {
+    display: flex;
+    gap: var(--vcms-space-2);
+    flex-wrap: wrap;
+}
+
+.vcms-root .vcms-keyclear-confirm {
+    margin-top: var(--vcms-space-3);
+    padding: var(--vcms-space-3);
+    border: 1px solid rgba(255, 170, 166, 0.4);
+    border-radius: var(--vcms-radius-input);
+    background: rgba(255, 170, 166, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-2);
+    font-size: 14px;
+}
+
+/* 模型列表与表单 */
+
+.vcms-root .vcms-model-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-model-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vcms-space-3);
+    padding: var(--vcms-space-3);
+    border: 1px solid var(--vcms-border-soft);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+    cursor: pointer;
+    min-height: 44px;
+    transition: border-color 160ms ease-out;
+}
+
+.vcms-root .vcms-model-row:hover {
+    border-color: var(--vcms-border);
+}
+
+.vcms-root .vcms-model-row.is-selected {
+    border-color: var(--vcms-primary);
+    box-shadow: inset 0 0 0 1px var(--vcms-primary);
+}
+
+.vcms-root .vcms-model-row-main {
+    display: flex;
+    align-items: baseline;
+    gap: var(--vcms-space-3);
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.vcms-root .vcms-model-name {
+    font-weight: 600;
+}
+
+.vcms-root .vcms-model-row-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.vcms-root .vcms-model-form {
+    border-top: 1px solid var(--vcms-border-soft);
+    padding-top: var(--vcms-space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-4);
+}
+
+.vcms-root .vcms-advanced summary {
+    cursor: pointer;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    color: var(--vcms-text-2);
+    font-size: 15px;
+    list-style-position: inside;
+}
+
+.vcms-root .vcms-advanced summary:hover {
+    color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-3);
+    padding-top: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-checks {
+    display: flex;
+    gap: var(--vcms-space-4);
+    flex-wrap: wrap;
+}
+
+.vcms-root .vcms-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    min-height: 32px;
+    cursor: pointer;
+}
+
+.vcms-root .vcms-check input {
+    accent-color: var(--vcms-primary);
+    width: 18px;
+    height: 18px;
+}
+
+/* 能力四态分段 */
+
+.vcms-root .vcms-capgrid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-caprow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--vcms-space-3);
+    flex-wrap: wrap;
+    min-height: 44px;
+}
+
+.vcms-root .vcms-capname {
+    font-size: 15px;
+    min-width: 110px;
+}
+
+.vcms-root .vcms-seg {
+    display: inline-flex;
+    border: 1px solid var(--vcms-border);
+    border-radius: var(--vcms-radius-input);
+    overflow: hidden;
+}
+
+.vcms-root .vcms-seg-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vcms-text-2);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 var(--vcms-space-3);
+    min-height: 36px;
+    min-width: 64px;
+    cursor: pointer;
+    border-left: 1px solid var(--vcms-border-soft);
+    transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+
+.vcms-root .vcms-seg-btn:first-child {
+    border-left: none;
+}
+
+.vcms-root .vcms-seg-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.vcms-root .vcms-seg-btn.is-active.vcms-cap-unknown {
+    background: var(--vcms-raised);
+    color: var(--vcms-text);
+}
+
+.vcms-root .vcms-seg-btn.is-active.vcms-cap-declared {
+    background: rgba(154, 185, 255, 0.2);
+    color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-seg-btn.is-active.vcms-cap-verified {
+    background: rgba(143, 213, 173, 0.2);
+    color: var(--vcms-success);
+}
+
+.vcms-root .vcms-seg-btn.is-active.vcms-cap-unsupported {
+    background: rgba(255, 170, 166, 0.16);
+    color: var(--vcms-danger);
+}
+
+/* 模型操作 / 克隆 / 删除确认 */
+
+.vcms-root .vcms-model-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--vcms-space-3);
+    flex-wrap: wrap;
+}
+
+.vcms-root .vcms-inline-confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vcms-space-2);
+    font-size: 14px;
+    color: var(--vcms-warning);
+    flex-wrap: wrap;
+}
+
+.vcms-root .vcms-clone-form {
+    padding: var(--vcms-space-3);
+    border: 1px solid var(--vcms-border);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-3);
+}
+
+/* 提示条 */
+
+.vcms-root .vcms-callout {
+    display: flex;
+    gap: var(--vcms-space-3);
+    align-items: flex-start;
+    padding: var(--vcms-space-3) var(--vcms-space-4);
+    border-radius: var(--vcms-radius-input);
+    font-size: 14px;
+    border: 1px solid;
+}
+
+.vcms-root .vcms-callout p {
+    margin: 0 0 6px;
+}
+
+.vcms-root .vcms-callout p:last-child {
+    margin-bottom: 0;
+}
+
+.vcms-root .vcms-callout > i {
+    margin-top: 3px;
+    flex: none;
+}
+
+.vcms-root .vcms-callout ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+.vcms-root .vcms-callout-warn {
+    border-color: rgba(246, 197, 129, 0.45);
+    background: rgba(246, 197, 129, 0.07);
+    color: var(--vcms-warning);
+}
+
+.vcms-root .vcms-callout-warn > div {
+    color: var(--vcms-text);
+}
+
+.vcms-root .vcms-callout-danger {
+    border-color: rgba(255, 170, 166, 0.45);
+    background: rgba(255, 170, 166, 0.07);
+    color: var(--vcms-danger);
+}
+
+.vcms-root .vcms-callout-danger > div {
+    color: var(--vcms-text);
+}
+
+.vcms-root .vcms-callout-info {
+    border-color: rgba(154, 185, 255, 0.4);
+    background: rgba(154, 185, 255, 0.06);
+    color: var(--vcms-primary);
+}
+
+.vcms-root .vcms-callout-info > div {
+    color: var(--vcms-text);
+}
+
+.vcms-root .vcms-callout-actions {
+    display: flex;
+    gap: var(--vcms-space-2);
+    flex-wrap: wrap;
+    margin-top: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-conflict-compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--vcms-space-3);
+    margin-top: var(--vcms-space-2);
+    font-size: 14px;
+}
+
+.vcms-root .vcms-conflict-compare > div {
+    padding: var(--vcms-space-2) var(--vcms-space-3);
+    border: 1px solid var(--vcms-border-soft);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+}
+
+.vcms-root .vcms-inline-note {
+    padding: var(--vcms-space-2) var(--vcms-space-3);
+    font-size: 13px;
+    align-items: flex-start;
+}
+
+/* 独立测试 */
+
+.vcms-root .vcms-testbox {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-3);
+}
+
+.vcms-root .vcms-test-target {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: var(--vcms-space-3);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+    border: 1px solid var(--vcms-border-soft);
+    font-size: 15px;
+}
+
+.vcms-root .vcms-test-url {
+    color: var(--vcms-text-2);
+    word-break: break-all;
+}
+
+.vcms-root .vcms-update-meta {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 用途绑定表 ---------- */
+
+.vcms-root .vcms-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--vcms-border-soft);
+    border-radius: var(--vcms-radius-input);
+}
+
+.vcms-root .vcms-bindings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    min-width: 720px;
+}
+
+.vcms-root .vcms-bindings-table th {
+    text-align: left;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vcms-text-2);
+    padding: var(--vcms-space-2) var(--vcms-space-3);
+    border-bottom: 1px solid var(--vcms-border-soft);
+    background: var(--vcms-bg);
+    white-space: nowrap;
+}
+
+.vcms-root .vcms-bindings-table td {
+    padding: var(--vcms-space-3);
+    border-bottom: 1px solid var(--vcms-border-soft);
+    vertical-align: top;
+}
+
+.vcms-root .vcms-bindings-table tr:last-child td {
+    border-bottom: none;
+}
+
+.vcms-root .vcms-binding-purpose {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 150px;
+}
+
+.vcms-root .vcms-binding-name {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.vcms-root .vcms-binding-select select {
+    min-width: 220px;
+    width: 100%;
+    max-width: 300px;
+}
+
+.vcms-root .vcms-binding-select {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vcms-root .vcms-binding-embednote {
+    max-width: 260px;
+}
+
+.vcms-root .vcms-binding-row.is-dirty .vcms-binding-name::after {
+    content: " *";
+    color: var(--vcms-warning);
+}
+
+.vcms-root .vcms-binding-revision {
+    white-space: nowrap;
+}
+
+.vcms-root .vcms-binding-errorrow td {
+    padding-top: 0;
+}
+
+.vcms-root .vcms-bindings-save {
+    display: flex;
+    align-items: center;
+    gap: var(--vcms-space-3);
+    flex-wrap: wrap;
+    margin-top: var(--vcms-space-3);
+}
+
+/* ---------- 空态 / 加载 / 错误 ---------- */
+
+.vcms-root .vcms-stateblock {
+    margin: auto;
+    max-width: 420px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--vcms-space-3);
+    padding: var(--vcms-space-8) var(--vcms-space-4);
+}
+
+.vcms-root .vcms-stateblock h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.vcms-root .vcms-stateblock p {
+    margin: 0;
+    color: var(--vcms-text-2);
+    font-size: 14px;
+}
+
+.vcms-root .vcms-stateblock-icon {
+    font-size: 28px;
+    color: var(--vcms-text-2);
+}
+
+.vcms-root .vcms-empty-models {
+    padding: var(--vcms-space-4);
+    border: 1px dashed var(--vcms-border);
+    border-radius: var(--vcms-radius-input);
+    font-size: 14px;
+    color: var(--vcms-text-2);
+}
+
+.vcms-root .vcms-skeleton {
+    display: flex;
+    gap: var(--vcms-space-4);
+    width: 100%;
+    padding: var(--vcms-space-4);
+    flex: 1;
+}
+
+.vcms-root .vcms-sk-col {
+    width: 300px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-sk-card {
+    height: 84px;
+    border-radius: var(--vcms-radius-panel);
+    background: linear-gradient(100deg, var(--vcms-surface) 40%, var(--vcms-raised) 50%, var(--vcms-surface) 60%);
+    background-size: 200% 100%;
+    animation: vcms-sk 1.2s ease-in-out infinite;
+}
+
+.vcms-root .vcms-sk-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-3);
+}
+
+.vcms-root .vcms-sk-line {
+    height: 16px;
+    border-radius: var(--vcms-radius-input);
+    background: linear-gradient(100deg, var(--vcms-surface) 40%, var(--vcms-raised) 50%, var(--vcms-surface) 60%);
+    background-size: 200% 100%;
+    animation: vcms-sk 1.2s ease-in-out infinite;
+}
+
+.vcms-root .vcms-sk-line:nth-child(even) {
+    width: 70%;
+}
+
+@keyframes vcms-sk {
+    from { background-position: 120% 0; }
+    to { background-position: -20% 0; }
+}
+
+/* ---------- 底栏 / 关闭确认 / Toast ---------- */
+
+.vcms-root .vcms-footer {
+    display: none;
+}
+
+.vcms-root .vcms-unsaved-bar {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 84px;
+    display: flex;
+    align-items: center;
+    gap: var(--vcms-space-3);
+    flex-wrap: wrap;
+    padding: var(--vcms-space-3) var(--vcms-space-4);
+    background: var(--vcms-raised);
+    border: 1px solid var(--vcms-warning);
+    border-radius: var(--vcms-radius-panel);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    font-size: 14px;
+    max-width: min(92vw, 640px);
+    z-index: 2;
+}
+
+.vcms-root .vcms-toast {
+    position: fixed;
+    top: var(--vcms-space-4);
+    right: var(--vcms-space-4);
+    z-index: 31000;
+    padding: var(--vcms-space-3) var(--vcms-space-4);
+    border-radius: var(--vcms-radius-panel);
+    background: var(--vcms-raised);
+    border: 1px solid var(--vcms-border);
+    font-size: 14px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    max-width: min(80vw, 420px);
+}
+
+.vcms-root .vcms-toast-success {
+    border-color: rgba(143, 213, 173, 0.5);
+}
+
+.vcms-root .vcms-toast-error {
+    border-color: rgba(255, 170, 166, 0.5);
+}
+
+.vcms-root .vcms-toast-info {
+    border-color: rgba(154, 185, 255, 0.5);
+}
+
+/* ---------- 受管横幅（注入 ST 原生 #openai_api 面板；不在 .vcms-root 内） ---------- */
+/* vcfg-* 独立于页面作用域：位于 ST 原生 API 连接面板中，只声明自身样式，不改原生元素。 */
+
+#vc_foreground_banner.vcfg-banner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 8px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+#vc_foreground_banner .vcfg-banner-main {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    min-width: 0;
+    flex: 1;
+}
+
+#vc_foreground_banner .vcfg-banner-main > i {
+    margin-top: 3px;
+    flex: none;
+}
+
+#vc_foreground_banner .vcfg-banner-title {
+    margin: 0;
+    font-weight: 700;
+}
+
+#vc_foreground_banner .vcfg-banner-detail,
+#vc_foreground_banner .vcfg-banner-meta {
+    margin: 2px 0 0;
+    opacity: 0.85;
+}
+
+#vc_foreground_banner .vcfg-banner-meta {
+    font-variant-numeric: tabular-nums;
+}
+
+#vc_foreground_banner .vcfg-banner-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#vc_foreground_banner .vcfg-banner-btn {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#vc_foreground_banner .vcfg-banner-btn:hover {
+    text-decoration: underline;
+}
+
+#vc_foreground_banner.vcfg-banner-ready {
+    border-color: rgba(143, 213, 173, 0.5);
+    background: rgba(143, 213, 173, 0.08);
+    color: #8FD5AD;
+}
+
+#vc_foreground_banner.vcfg-banner-ready .vcfg-banner-title,
+#vc_foreground_banner.vcfg-banner-ready .vcfg-banner-detail {
+    color: inherit;
+}
+
+#vc_foreground_banner.vcfg-banner-pending {
+    border-color: rgba(246, 197, 129, 0.5);
+    background: rgba(246, 197, 129, 0.08);
+    color: #F6C581;
+}
+
+#vc_foreground_banner.vcfg-banner-drift {
+    border-color: rgba(255, 170, 166, 0.5);
+    background: rgba(255, 170, 166, 0.08);
+    color: #FFAAA6;
+}
+
+#vc_foreground_banner.vcfg-banner-pending .vcfg-banner-btn,
+#vc_foreground_banner.vcfg-banner-drift .vcfg-banner-btn {
+    color: inherit;
+}
+
+/* ---------- 连接检查与 403 再验证（页面内） ---------- */
+
+.vcms-root .vcms-check-line {
+    margin: 0;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--vcms-success);
+}
+
+.vcms-root .vcms-check-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-2);
+}
+
+.vcms-root .vcms-check-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+    padding: var(--vcms-space-2) var(--vcms-space-3);
+    border: 1px solid var(--vcms-border-soft);
+    border-radius: var(--vcms-radius-input);
+    background: var(--vcms-bg);
+}
+
+.vcms-root .vcms-check-list li {
+    display: flex;
+    gap: var(--vcms-space-3);
+    justify-content: space-between;
+    font-size: 13px;
+    min-width: 0;
+}
+
+.vcms-root .vcms-check-list li .vcms-mono {
+    word-break: break-all;
+}
+
+.vcms-root .vcms-reauth-bar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vcms-space-2);
+    margin: var(--vcms-space-3) var(--vcms-space-6) 0;
+    padding: var(--vcms-space-3) var(--vcms-space-4);
+    border: 1px solid rgba(154, 185, 255, 0.5);
+    border-radius: var(--vcms-radius-panel);
+    background: rgba(154, 185, 255, 0.08);
+    font-size: 14px;
+    flex: none;
+}
+
+.vcms-root .vcms-reauth-main {
+    display: flex;
+    gap: var(--vcms-space-3);
+    align-items: flex-start;
+}
+
+.vcms-root .vcms-reauth-main p {
+    margin: 0;
+}
+
+.vcms-root .vcms-reauth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 420px;
+}
+
+/* ---------- 响应式：窄桌面 / 平板 / 手机 ---------- */
+
+@media (max-width: 1099px) {
+    .vcms-root .vcms-layout {
+        flex-direction: column;
+        min-height: 0;
+        height: 100%;
+    }
+
+    .vcms-root .vcms-providers {
+        width: 100%;
+        flex: none;
+        border-right: none;
+        border-bottom: 1px solid var(--vcms-border-soft);
+        padding: var(--vcms-space-3) var(--vcms-space-4);
+        overflow-x: auto;
+        overflow-y: hidden;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: var(--vcms-space-2);
+    }
+
+    .vcms-root .vcms-providers-head {
+        flex: none;
+        flex-direction: row;
+    }
+
+    .vcms-root .vcms-provider-list {
+        flex-direction: row;
+        gap: var(--vcms-space-2);
+        overflow-x: auto;
+        padding-bottom: 2px;
+    }
+
+    .vcms-root .vcms-provider-card {
+        flex: none;
+        width: 220px;
+    }
+
+    .vcms-root .vcms-empty-providers {
+        flex: none;
+        border-style: solid;
+    }
+
+    .vcms-root .vcms-tabs {
+        padding: var(--vcms-space-2) var(--vcms-space-4) 0;
+    }
+
+    .vcms-root .vcms-reauth-bar {
+        margin: var(--vcms-space-2) var(--vcms-space-4) 0;
+    }
+
+    .vcms-root .vcms-tabpanes {
+        padding: var(--vcms-space-3) var(--vcms-space-4) 96px;
+    }
+
+    /* 手机长表单：粘性保存 / 取消栏，触控目标 ≥44px */
+    .vcms-root .vcms-footer {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        gap: var(--vcms-space-3);
+        padding: var(--vcms-space-3) var(--vcms-space-4) calc(var(--vcms-space-3) + env(safe-area-inset-bottom, 0px));
+        background: var(--vcms-surface);
+        border-top: 1px solid var(--vcms-border-soft);
+        z-index: 1;
+    }
+
+    .vcms-root .vcms-footer .vcms-btn {
+        flex: 1;
+        min-height: 44px;
+    }
+
+    .vcms-root .vcms-header {
+        padding: var(--vcms-space-3) var(--vcms-space-4);
+        flex-wrap: wrap;
+    }
+
+    .vcms-root .vcms-header-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 480px) {
+    .vcms-root {
+        font-size: 15px;
+    }
+
+    /* 冲突/提示条中的小按钮在手机上放大到可触控尺寸 */
+    .vcms-root .vcms-callout-actions .vcms-btn,
+    .vcms-root .vcms-callout-actions .vcms-btn-sm {
+        min-height: 44px;
+    }
+
+    .vcms-root .vcms-provider-card {
+        width: 180px;
+    }
+
+    .vcms-root .vcms-provider-sub {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .vcms-root .vcms-title {
+        font-size: 18px;
+    }
+
+    .vcms-root .vcms-btn,
+    .vcms-root .vcms-tab,
+    .vcms-root .vcms-seg-btn {
+        min-height: 44px;
+    }
+
+    .vcms-root .vcms-seg-btn {
+        min-width: 56px;
+        padding: 0 var(--vcms-space-2);
+        font-size: 12px;
+    }
+
+    .vcms-root .vcms-caprow {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--vcms-space-2);
+    }
+
+    .vcms-root .vcms-capname {
+        min-width: 0;
+    }
+
+    .vcms-root .vcms-seg {
+        display: flex;
+    }
+
+    .vcms-root .vcms-seg-btn {
+        flex: 1;
+    }
+
+    .vcms-root .vcms-unsaved-bar {
+        bottom: 120px;
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+    }
+
+    .vcms-root .vcms-update-meta {
+        word-break: break-all;
+    }
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VC 模型设置 · harness</title>
+<link rel="stylesheet" href="/vc-model-settings/style.css">
+<style>
+    /* 模拟 ST 宿主的最小深色外壳；仅用于脱离 ST 的独立验证，不进入扩展交付路径。 */
+    body { margin: 0; background: #101318; color: #d8dee9; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .host-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #171b22; border-bottom: 1px solid #2a3140; position: sticky; top: 0; z-index: 5; }
+    .host-bar strong { font-size: 14px; }
+    .host-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #3a4453; background: transparent; color: #d8dee9; font-size: 14px; cursor: pointer; }
+    .host-btn:hover { border-color: #9ab9ff; color: #9ab9ff; }
+    .host-note { font-size: 14px; color: #8a93a5; }
+    .host-chat { padding: 24px 16px 96px; max-width: 720px; margin: 0 auto; }
+    .host-msg { padding: 10px 14px; border-radius: 12px; margin-bottom: 12px; background: #1a2028; font-size: 15px; line-height: 1.6; }
+</style>
+</head>
+<body>
+    <div class="host-bar">
+        <strong>SillyTavern 宿主（模拟外壳）</strong>
+        <button type="button" class="host-btn" id="open-models">
+            <i class="fa-solid fa-microchip"></i> 模型设置
+        </button>
+        <span class="host-note" id="scenario-note">scenario=sample</span>
+    </div>
+    <div class="host-chat">
+        <div class="host-msg">宿主聊天内容保持可见 —— 扩展页面是可关闭的近全屏层，不替换原生聊天与导航。</div>
+        <div class="host-msg">角色、会话与世界书继续使用原生 ST 流程。</div>
+    </div>
+    <script type="module">
+        // 合成 CSRF cookie（模拟 Go 双提交令牌的可读 cookie）
+        document.cookie = 'vc_csrf=synthetic-csrf; path=/';
+        const params = new URLSearchParams(location.search);
+        const scenario = params.get('scenario') ?? 'sample';
+        document.getElementById('scenario-note').textContent = `scenario=${scenario}`;
+        const { setStHeadersProvider } = await import('/vc-model-settings/api.js');
+        setStHeadersProvider(() => ({
+            'X-CSRF-Token': 'st-harness-token',
+            'X-Vc-Harness-Scenario': scenario,
+        }));
+        const { mountModelSettings } = await import('/vc-model-settings/page.js');
+        const controller = mountModelSettings();
+        if (params.get('autostart') === '1') controller.open();
+        document.getElementById('open-models').addEventListener('click', () => controller.open());
+    </script>
+</body>
+</html>
