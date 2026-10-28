@@ -303,6 +303,56 @@ test('account deletion is durable, idempotent and fences every instance includin
     await assert.rejects(engine.invoke('propose', { ...proposalInput(), scope: { ...scope, instanceId: '22' }, operationId: 'late' }), /OWNER_DELETED/);
 });
 
+test('account deletion closes the owner store and removes sqlite files, including a cleared retry', async t => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-erase-'));
+    const databaseFiles = ['vectors.db', 'vectors.db-wal', 'vectors.db-shm'];
+    let closes = 0;
+    const engine = createControlledEngine({
+        dataRoot: root,
+        nativeFactory: async dir => {
+            const native = fakeNative();
+            const held = [];
+            for (const name of databaseFiles) {
+                const handle = await fs.open(path.join(dir, name), 'w');
+                await handle.writeFile('owner plaintext vectors');
+                held.push(handle);
+            }
+            await fs.writeFile(path.join(dir, 'notes.bin'), 'other owner data');
+            native.close = async () => {
+                closes++;
+                while (held.length) await held.pop().close();
+            };
+            return native;
+        },
+        embeddingFactory: async () => ({}),
+        runnerFactory: () => ({}),
+    });
+    t.after(async () => { await engine.close(); await fs.rm(root, { recursive: true, force: true }); });
+    const ownerDir = path.join(root, 'owners', '1');
+    const request = { scope: { ownerId: '1', instanceId: '1', mode: 'COMPANION', domainId: 'account-rights', profileScopeId: 'account-rights' }, accountDeletion: true };
+    const absent = async () => {
+        for (const name of [...databaseFiles, 'notes.bin']) {
+            await assert.rejects(fs.lstat(path.join(ownerDir, name)), err => err.code === 'ENOENT');
+        }
+    };
+    const first = await engine.invoke('clear-owner', request);
+    assert.equal(first.status, 'cleared');
+    assert.equal(first.physicalErasure, true);
+    assert.equal(closes, 1);
+    await absent();
+    assert.equal(JSON.parse(await fs.readFile(path.join(ownerDir, 'deleted.json'), 'utf8')).status, 'cleared');
+    const second = await engine.invoke('clear-owner', request);
+    assert.equal(second.status, 'cleared');
+    assert.equal(second.physicalErasure, true);
+    assert.equal(closes, 2);
+    await absent();
+    const third = await engine.invoke('clear-owner', request);
+    assert.equal(third.physicalErasure, true);
+    assert.equal(closes, 3);
+    await absent();
+    assert.equal(JSON.parse(await fs.readFile(path.join(ownerDir, 'deleted.json'), 'utf8')).status, 'cleared');
+});
+
 test('restore applies current Go allowlist before any read and keeps the gate on malformed rights', async t => {
     const { engine, native, root } = await fixture(t);
     await engine.invoke('propose', proposalInput());

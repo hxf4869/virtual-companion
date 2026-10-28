@@ -27,23 +27,39 @@ func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOpe
 	if !ok {
 		return ErrInvalid
 	}
+	publishedHere := map[string]bool{}
+	if op.ID != "" {
+		projections, e := s.engineProjections(ctx, c.OwnerID, op.Input.RelationshipID)
+		if e != nil {
+			return e
+		}
+		for _, p := range projections {
+			if p.OperationID == op.ID {
+				publishedHere[p.RecordID] = true
+			}
+		}
+	}
 	for id, m := range candidates {
 		// ST marks the actively generating chat unsettled. Keep each stored
 		// conversation profile independent so it can still serve another chat.
 		// A merged L1 retains all dependencies; never strip them to fit a profile.
-		if m.ConversationID == nil || *m.ConversationID != op.Input.ConversationID {
-			continue
-		}
-		sameConversation := len(m.Sources) > 0
-		for _, raw := range m.Sources {
-			ref, valid := stsource.ParseRef(raw)
-			if !valid || ref.Chat != origin.Chat {
-				sameConversation = false
-				break
+		// A record this operation just published is the exception: a correction
+		// keeps every source, including evidence from the superseded record.
+		if !publishedHere[id] {
+			if m.ConversationID == nil || *m.ConversationID != op.Input.ConversationID {
+				continue
 			}
-		}
-		if !sameConversation {
-			continue
+			sameConversation := len(m.Sources) > 0
+			for _, raw := range m.Sources {
+				ref, valid := stsource.ParseRef(raw)
+				if !valid || ref.Chat != origin.Chat {
+					sameConversation = false
+					break
+				}
+			}
+			if !sameConversation {
+				continue
+			}
 		}
 		ids = append(ids, id)
 		for _, ref := range m.Sources {

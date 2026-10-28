@@ -7,6 +7,7 @@ import { createCallbackRunner } from './llm-runner.mjs';
 // Calibrated against fixtures/memorycore-calibration.json with qwen3 0.6b Q8_0,
 // qwen3-retrieval-v1. Scores are applied to each lane BEFORE upstream RRF.
 export const RELEVANCE = Object.freeze({ minCosine: 0.58, minFtsScore: 0.80 });
+export const OWNER_DATABASE_FILES = Object.freeze(['vectors.db', 'vectors.db-wal', 'vectors.db-shm']);
 function toRecord(row) {
     return { id: row.record_id, content: row.content, type: row.type, priority: row.priority,
         scene_name: row.scene_name, metadata: JSON.parse(row.metadata_json || '{}'), version: row.version,
@@ -15,7 +16,7 @@ function toRecord(row) {
 }
 export async function createNativeFactory(api) {
     return async dir => {
-        const store = new api.VectorStore(path.join(dir, 'vectors.db'), 0);
+        const store = new api.VectorStore(path.join(dir, OWNER_DATABASE_FILES[0]), 0);
         await store.init();
         const list = (ids, scope) => store.queryL1Records({ ...scope, ...(ids ? { recordIds: ids } : {}) }).map(toRecord);
         return {

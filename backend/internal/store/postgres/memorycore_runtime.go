@@ -262,11 +262,7 @@ func (s *Store) PublishEngineProposal(ctx context.Context, c JobClaim, op Engine
 			return e
 		}
 		for _, id := range ids {
-			m, _, e := s.scanMemoryGet(ctx, tx, c.OwnerID, id)
-			if e != nil {
-				return e
-			}
-			if e = s.writeMemoryTime(ctx, tx, c.OwnerID, id, m.Summary, refs, false); e != nil {
+			if e = s.writeVerifiedSourceTime(ctx, tx, c.OwnerID, id, op.Input.UserContent, c.RefID); e != nil {
 				return e
 			}
 		}
