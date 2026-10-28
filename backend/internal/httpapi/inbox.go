@@ -11,7 +11,7 @@ import (
 )
 
 // inboxStore is the W10 inbox surface. Handlers bind it by type assertion so
-// CompanionStore stays unchanged. Route registration belongs to T4.
+// CompanionStore stays unchanged. registerCore registers the routes.
 type inboxStore interface {
 	ListInboxEvents(ctx context.Context, owner int64) ([]postgres.InboxEvent, error)
 	ClaimInboxEvent(ctx context.Context, owner int64, eventID string, leaseSeconds int) (postgres.InboxClaim, error)

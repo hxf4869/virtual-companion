@@ -466,3 +466,51 @@ func TestReadMissingMessagesIsNotAnEmptySnapshot(t *testing.T) {
 		t.Fatal("missing messages must not confirm an empty source")
 	}
 }
+
+func TestDeliverInboxAcceptsReadbackWithoutCandidate(t *testing.T) {
+	const messageID = "20000000-0000-0000-0000-000000000001"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/internal/v1/st/inbox" {
+			t.Errorf("request %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer "+synthToken || r.Header.Get("Origin") != "" {
+			t.Errorf("auth or origin leaked")
+		}
+		var body InboxDeliveryRequest
+		if json.NewDecoder(r.Body).Decode(&body) != nil || body.OwnerAccountID != "7" || body.File != "chats/card/one.jsonl" {
+			t.Errorf("body %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"saved": true, "stopped": false, "waitingHost": false, "associated": false, "acked": true,
+			"linkStatus": "present",
+			"readback": map[string]any{
+				"chatIdentity": synthIdentity, "chatRevision": 2, "eventId": "w10-body",
+				"messageId": messageID, "messageRevision": 1,
+			},
+		})
+	}))
+	defer server.Close()
+	client := newSourceClient(t, server)
+	result, err := client.DeliverInbox(context.Background(), InboxDeliveryRequest{
+		OwnerAccountID: "7",
+		File:           "chats/card/one.jsonl",
+		Event:          InboxDeliveryEvent{EventID: "w10-body", Intent: "BODY"},
+		Lease:          InboxDeliveryLease{Token: "lease-token", ExpiresAt: time.Now().Add(time.Minute)},
+	})
+	if err != nil || !result.Acked || result.Readback == nil || result.Readback.MessageID != messageID || result.Readback.CandidateID != "" || result.Readback.MessageRevision != 1 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "hook-secret-must-not-surface", http.StatusForbidden)
+	}))
+	defer refused.Close()
+	denied, err := newSourceClient(t, refused).DeliverInbox(context.Background(), InboxDeliveryRequest{
+		OwnerAccountID: "7", File: "chats/card/one.jsonl",
+		Event: InboxDeliveryEvent{EventID: "w10-body"},
+		Lease: InboxDeliveryLease{Token: "lease-token", ExpiresAt: time.Now().Add(time.Minute)},
+	})
+	if !errors.Is(err, ErrUnavailable) || denied.Acked || (err != nil && strings.Contains(err.Error(), "hook-secret")) {
+		t.Fatalf("denied=%+v err=%v", denied, err)
+	}
+}

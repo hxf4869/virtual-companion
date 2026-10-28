@@ -45,6 +45,9 @@ func TestInboxObserveLink(t *testing.T) {
 	if got := ObserveInboxLink(event, stsource.Snapshot{State: "UNAVAILABLE"}); got != "present" {
 		t.Fatalf("unavailable = %s", got)
 	}
+	if got := ObserveInboxLink(event, stsource.Snapshot{State: "PRESENT", NotModified: true, BranchRoot: "other-branch"}); got != "present" {
+		t.Fatalf("not modified = %s", got)
+	}
 	undelivered := event
 	undelivered.STDelivered = false
 	undelivered.MessageID = nil

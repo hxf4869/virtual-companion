@@ -160,7 +160,37 @@ func TestAcceptedIsNotSTACK(t *testing.T) {
 	if store.correlation == "" {
 		t.Fatal("accepted delivery has no correlation id")
 	}
+	if sender.last.SMTPUsername != "mailer" || sender.last.SMTPPassword != "planted-pass" {
+		t.Fatal("accepted send did not use the channel credential")
+	}
 	assertLogClean(t, store.log)
+}
+
+func TestMissingCredentialFailsClosed(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	store := &noteStore{row: readyDelivery(), omitCredential: true}
+	sender := &noteSender{kind: notify.KindAccepted}
+	if err := RunNotificationDeliveries(context.Background(), store, sender, nil, now, store.logger(), MaxNotificationAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if sender.calls != 0 || store.row.Status != "failed" || store.failureCode != notify.CodeCredentialMissing {
+		t.Fatalf("status=%s code=%s calls=%d", store.row.Status, store.failureCode, sender.calls)
+	}
+	assertLogClean(t, store.log)
+}
+
+func TestDeliveryTextLinksTheConversationWithoutPreview(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	store := &noteStore{row: readyDelivery()}
+	store.row.ConversationID = 9
+	store.row.Preview = false
+	sender := &noteSender{kind: notify.KindAccepted}
+	if err := RunNotificationDeliveries(context.Background(), store, sender, nil, now, store.logger(), MaxNotificationAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if sender.calls != 1 || !strings.Contains(sender.last.Text, "/api/v1/conversations/9") || strings.Contains(sender.last.Text, noteBody) {
+		t.Fatal("sent text omitted the conversation link or included the greeting")
+	}
 }
 
 func TestDailyLimitDefersWithoutSpendingAttempt(t *testing.T) {
@@ -200,15 +230,16 @@ func readyDelivery() postgres.NotificationDelivery {
 }
 
 type noteStore struct {
-	row           postgres.NotificationDelivery
-	log           bytes.Buffer
-	schedules     int
-	records       int
-	stops         int
-	stopReason    string
-	failureCode   string
-	correlation   string
-	triggerWrites int
+	row            postgres.NotificationDelivery
+	log            bytes.Buffer
+	schedules      int
+	records        int
+	stops          int
+	stopReason     string
+	failureCode    string
+	correlation    string
+	triggerWrites  int
+	omitCredential bool
 }
 
 func (s *noteStore) logger() *slog.Logger {
@@ -227,6 +258,13 @@ func (s *noteStore) ListDueNotificationDeliveries(_ context.Context, now time.Ti
 
 func (s *noteStore) LoadNotificationDelivery(context.Context, int64, int64, time.Time) (postgres.NotificationDelivery, error) {
 	return s.row, nil
+}
+
+func (s *noteStore) LoadNotificationCredential(context.Context, int64, string, string) (string, error) {
+	if s.omitCredential {
+		return "", nil
+	}
+	return "mailer\nplanted-pass", nil
 }
 
 func (s *noteStore) RecordNotificationOutcome(_ context.Context, _, _ int64, outcome, failureCode, correlation string) (string, error) {
@@ -260,10 +298,12 @@ type noteSender struct {
 	code  string
 	calls int
 	err   error
+	last  notify.Request
 }
 
-func (s *noteSender) Send(context.Context, notify.Request) (notify.Result, error) {
+func (s *noteSender) Send(_ context.Context, req notify.Request) (notify.Result, error) {
 	s.calls++
+	s.last = req
 	if s.err != nil {
 		return notify.Result{}, s.err
 	}

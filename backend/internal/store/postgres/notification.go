@@ -15,6 +15,13 @@ const (
 	NotificationStop  = "stop"
 	NotificationDefer = "defer"
 	NotificationSend  = "send"
+
+	// DefaultNotificationDailyLimit is the notification send cap used when
+	// the delivery view has no positive limit of its own. It is not
+	// proactive_policy.daily_limit. A character with no greeting policy
+	// stores 0 there; treating 0 as the notification cap would defer every
+	// notice until the next local midnight and never send it.
+	DefaultNotificationDailyLimit = 20
 )
 
 // NotificationDue is one pending delivery the worker may look at. It carries
@@ -59,6 +66,9 @@ type NotificationDelivery struct {
 	FollowStatus       string
 	STDelivered        bool
 	ExpiresAt          *time.Time
+	// ConversationID is the inbox conversation. The login-protected link is
+	// built from it. Zero means the caller has no conversation to name.
+	ConversationID int64
 }
 
 // NotificationDecision is the pre-send gate. Defer changes only the delivery's
@@ -93,9 +103,11 @@ func NotificationNextMidnight(now time.Time, zone *string) time.Time {
 	return start.AddDate(0, 0, 1)
 }
 
-// DecideNotificationSend checks the channel, quiet hours, daily limit, deletion
-// and the current push consent before any network call. A closed proactive
-// switch does not by itself stop a channel; the daily limit does.
+// DecideNotificationSend checks the channel, quiet hours, the notification
+// daily cap, deletion and the current push consent before any network call.
+// A closed proactive switch does not by itself stop a channel. Quiet hours
+// still come from the character policy. A non-positive DailyLimit means
+// DefaultNotificationDailyLimit, not proactive_policy.daily_limit.
 func DecideNotificationSend(now time.Time, row NotificationDelivery) NotificationDecision {
 	if row.Status != "pending" {
 		return NotificationDecision{Action: NotificationSkip}
@@ -119,11 +131,18 @@ func DecideNotificationSend(now time.Time, row NotificationDelivery) Notificatio
 	if quiet, until := NotificationQuietUntil(now, row.QuietHoursStart, row.QuietHoursEnd, row.QuietHoursTimezone); quiet {
 		return NotificationDecision{Action: NotificationDefer, NextAttempt: &until, AttemptCount: row.AttemptCount}
 	}
-	if row.SentToday >= row.DailyLimit {
+	if row.SentToday >= notificationDailyLimit(row.DailyLimit) {
 		next := NotificationNextMidnight(now, row.QuietHoursTimezone)
 		return NotificationDecision{Action: NotificationDefer, NextAttempt: &next, AttemptCount: row.AttemptCount}
 	}
 	return NotificationDecision{Action: NotificationSend}
+}
+
+func notificationDailyLimit(limit int) int {
+	if limit <= 0 {
+		return DefaultNotificationDailyLimit
+	}
+	return limit
 }
 
 // CreateNotificationDeliveries inserts one pending delivery for each enabled
@@ -270,11 +289,22 @@ func (s *Store) LoadNotificationDelivery(ctx context.Context, owner, id int64, n
 			&row.ConsentGranted, &row.DeletionActive, &row.SentToday, &row.TriggerAt,
 			&follow, &row.STDelivered, &row.ExpiresAt,
 		)
+		if err != nil {
+			return err
+		}
 		if follow != nil {
 			row.FollowStatus = *follow
 		}
 		row.OwnerID = owner
-		return err
+		// The SQL column is the greeting policy's daily_limit, including 0
+		// when that policy is absent. Notifications do not borrow it.
+		row.DailyLimit = DefaultNotificationDailyLimit
+		return tx.QueryRow(ctx, `
+			SELECT i.conversation_id
+			  FROM vc.notification_delivery d
+			  JOIN vc.inbox_event i
+			    ON i.owner_user_id = d.owner_user_id AND i.event_id = d.event_id
+			 WHERE d.owner_user_id = $1 AND d.id = $2`, owner, id).Scan(&row.ConversationID)
 	})
 	if err != nil {
 		return NotificationDelivery{}, mapNotificationErr(err)
@@ -320,6 +350,238 @@ func (s *Store) StopNotificationDeliveries(ctx context.Context, owner int64, eve
 	return n, nil
 }
 
+// NotificationChannel is one saved target. The credential is never copied
+// into this view.
+type NotificationChannel struct {
+	ID               int64
+	Channel          string
+	Enabled          bool
+	ConfiguredTarget string
+	PreviewBody      bool
+	RelationshipIDs  []int64
+}
+
+// NotificationChannelInput is a channel write. CredentialMode is keep, clear
+// or set. set encrypts CredentialPlain with the field cipher. keep reads the
+// stored ciphertext and writes it back. clear stores null. An omitted HTTP
+// credential is keep, so a later save does not wipe the secret.
+type NotificationChannelInput struct {
+	Channel          string
+	Enabled          bool
+	ConfiguredTarget string
+	PreviewBody      bool
+	RelationshipIDs  []int64
+	CredentialMode   string
+	CredentialPlain  string
+}
+
+// NotificationDeliveryList is the owner-facing delivery row. It has no body
+// and no credential.
+type NotificationDeliveryList struct {
+	ID               int64
+	EventID          string
+	Channel          string
+	ConfiguredTarget string
+	Status           string
+	AttemptCount     int
+	NextAttemptAt    *time.Time
+	CorrelationID    *string
+	FailureCode      *string
+	StoppedReason    *string
+}
+
+// PutNotificationChannel stores one channel. The plaintext credential is
+// encrypted here and is not returned.
+func (s *Store) PutNotificationChannel(ctx context.Context, owner int64, in NotificationChannelInput) (NotificationChannel, error) {
+	if strings.TrimSpace(in.ConfiguredTarget) == "" || strings.Contains(strings.ToLower(in.ConfiguredTarget), "://") {
+		return NotificationChannel{}, ErrInvalid
+	}
+	if in.CredentialMode == "set" && in.CredentialPlain == "" {
+		return NotificationChannel{}, ErrInvalid
+	}
+	var out NotificationChannel
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		cipher, err := notificationCredentialArg(ctx, tx, s, owner, in)
+		if err != nil {
+			return err
+		}
+		var id int64
+		if err := tx.QueryRow(ctx, `SELECT vc.put_notification_channel($1,$2,$3,$4,$5,$6,$7)`,
+			owner, in.Channel, in.Enabled, in.ConfiguredTarget, cipher, in.PreviewBody, in.RelationshipIDs).Scan(&id); err != nil {
+			return err
+		}
+		return scanNotificationChannel(ctx, tx, owner, id, &out)
+	})
+	if err != nil {
+		return NotificationChannel{}, mapNotificationErr(err)
+	}
+	return out, nil
+}
+
+func notificationCredentialArg(ctx context.Context, tx pgx.Tx, s *Store, owner int64, in NotificationChannelInput) (any, error) {
+	switch in.CredentialMode {
+	case "clear":
+		return nil, nil
+	case "set":
+		stored, err := s.encryptStored(in.CredentialPlain)
+		if err != nil || !IsEncrypted(stored) {
+			return nil, ErrInvalid
+		}
+		return stored, nil
+	default:
+		var existing *string
+		err := tx.QueryRow(ctx, `
+			SELECT credential_cipher FROM vc.notification_channel
+			 WHERE owner_user_id = $1 AND channel = $2 AND configured_target = $3`,
+			owner, in.Channel, in.ConfiguredTarget).Scan(&existing)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			return nil, nil
+		}
+		return *existing, nil
+	}
+}
+
+func scanNotificationChannel(ctx context.Context, tx pgx.Tx, owner, id int64, out *NotificationChannel) error {
+	var rels []int64
+	err := tx.QueryRow(ctx, `
+		SELECT id, channel, enabled, configured_target, preview_body, relationship_ids
+		  FROM vc.notification_channel
+		 WHERE owner_user_id = $1 AND id = $2`, owner, id).Scan(
+		&out.ID, &out.Channel, &out.Enabled, &out.ConfiguredTarget, &out.PreviewBody, &rels)
+	if err != nil {
+		return err
+	}
+	if rels == nil {
+		rels = []int64{}
+	}
+	out.RelationshipIDs = rels
+	return nil
+}
+
+// ListNotificationChannels returns the owner's channels without credentials.
+func (s *Store) ListNotificationChannels(ctx context.Context, owner int64) ([]NotificationChannel, error) {
+	var out []NotificationChannel
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT id, channel, enabled, configured_target, preview_body, relationship_ids
+			  FROM vc.notification_channel
+			 WHERE owner_user_id = $1
+			 ORDER BY id`, owner)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		out = []NotificationChannel{}
+		for rows.Next() {
+			var row NotificationChannel
+			var rels []int64
+			if err := rows.Scan(&row.ID, &row.Channel, &row.Enabled, &row.ConfiguredTarget, &row.PreviewBody, &rels); err != nil {
+				return err
+			}
+			if rels == nil {
+				rels = []int64{}
+			}
+			row.RelationshipIDs = rels
+			out = append(out, row)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapNotificationErr(err)
+	}
+	return out, nil
+}
+
+// ListNotificationDeliveries returns delivery status without a body or a credential.
+func (s *Store) ListNotificationDeliveries(ctx context.Context, owner int64) ([]NotificationDeliveryList, error) {
+	var out []NotificationDeliveryList
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT id, event_id, channel, configured_target, status, attempt_count,
+			       next_attempt_at, correlation_id, failure_code, stopped_reason
+			  FROM vc.notification_delivery
+			 WHERE owner_user_id = $1
+			 ORDER BY id`, owner)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		out = []NotificationDeliveryList{}
+		for rows.Next() {
+			var row NotificationDeliveryList
+			if err := rows.Scan(&row.ID, &row.EventID, &row.Channel, &row.ConfiguredTarget, &row.Status,
+				&row.AttemptCount, &row.NextAttemptAt, &row.CorrelationID, &row.FailureCode, &row.StoppedReason); err != nil {
+				return err
+			}
+			out = append(out, row)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapNotificationErr(err)
+	}
+	return out, nil
+}
+
+// LoadNotificationCredential decrypts the channel row for this target.
+// A missing row or a null cipher is an empty string. The caller records that
+// as a closed failure and does not try another channel or a process secret.
+func (s *Store) LoadNotificationCredential(ctx context.Context, owner int64, channel, target string) (string, error) {
+	var stored *string
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
+			SELECT credential_cipher FROM vc.notification_channel
+			 WHERE owner_user_id = $1 AND channel = $2 AND configured_target = $3`,
+			owner, channel, target).Scan(&stored)
+		if errors.Is(err, pgx.ErrNoRows) {
+			stored = nil
+			return nil
+		}
+		return err
+	})
+	if err != nil {
+		return "", mapNotificationErr(err)
+	}
+	if stored == nil || *stored == "" {
+		return "", nil
+	}
+	plain, err := s.decryptStored(*stored)
+	if err != nil {
+		return "", errStore
+	}
+	return plain, nil
+}
+
+// ClearNotificationDomain deletes this owner's deliveries and channels only
+// while a deletion intent is active. Otherwise the rows stay pending.
+func (s *Store) ClearNotificationDomain(ctx context.Context, owner int64) (bool, error) {
+	return s.clearCurrentDomain(ctx, owner, `SELECT vc.clear_notification_domain_current()`)
+}
+
+// ClearInboxDomain deletes this owner's inbox rows only while a deletion
+// intent is active. Call it after the notification domain so the delivery
+// foreign key is already gone.
+func (s *Store) ClearInboxDomain(ctx context.Context, owner int64) (bool, error) {
+	return s.clearCurrentDomain(ctx, owner, `SELECT vc.clear_inbox_domain_current()`)
+}
+
+func (s *Store) clearCurrentDomain(ctx context.Context, owner int64, query string) (bool, error) {
+	var done bool
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, query).Scan(&done)
+	})
+	if err != nil {
+		return false, mapStoreErr(err)
+	}
+	return done, nil
+}
+
 func nullText(value string) any {
 	if strings.TrimSpace(value) == "" {
 		return nil
@@ -346,7 +608,10 @@ func mapNotificationErr(err error) error {
 		case strings.Contains(msg, "consent is not current"),
 			strings.Contains(msg, "not enabled"),
 			strings.Contains(msg, "schedule is invalid"),
-			strings.Contains(msg, "target is invalid"):
+			strings.Contains(msg, "target is invalid"),
+			strings.Contains(msg, "must not carry a URL"),
+			strings.Contains(msg, "credential must be field ciphertext"),
+			strings.Contains(msg, "relationship not found"):
 			return ErrInvalid
 		}
 	}

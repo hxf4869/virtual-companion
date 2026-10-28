@@ -236,6 +236,11 @@ func ObserveInboxLink(event InboxEvent, snap stsource.Snapshot) string {
 	case "DELETED":
 		return "removed"
 	case "PRESENT":
+		// An unchanged snapshot has no message list. It is not evidence that
+		// the saved message disappeared, and it must not open a new delivery.
+		if snap.NotModified {
+			return event.LinkStatus
+		}
 	default:
 		return event.LinkStatus
 	}

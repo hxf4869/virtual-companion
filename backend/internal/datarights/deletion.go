@@ -55,6 +55,22 @@ func ContinueDeletion(ctx context.Context, owner int64, store DeletionStore, del
 			}
 		}
 	}
+	// Deliveries reference inbox rows. Clear notification first, and only
+	// while the deletion intent is active. Until that step the rows stay
+	// pending. A store that has no inbox domain skips these two names.
+	if domains, ok := store.(interface {
+		ClearNotificationDomain(context.Context, int64) (bool, error)
+		ClearInboxDomain(context.Context, int64) (bool, error)
+	}); ok {
+		done, err := domains.ClearNotificationDomain(ctx, owner)
+		if err != nil || !done {
+			return pending("NOTIFICATION"), err
+		}
+		done, err = domains.ClearInboxDomain(ctx, owner)
+		if err != nil || !done {
+			return pending("INBOX"), err
+		}
+	}
 	if err := store.DeleteAccount(ctx, owner); err != nil {
 		return pending("GO"), err
 	}

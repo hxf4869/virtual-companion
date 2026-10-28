@@ -25,13 +25,14 @@ const (
 	KindUnknown  = "unknown"
 	KindRetry    = "retry"
 
-	CodeSMTPRejected   = "SMTP_REJECTED"
-	CodeSMTPTemporary  = "SMTP_TEMPORARY"
-	CodeHTTPError      = "HTTP_ERROR"
-	CodeFeishuRejected = "FEISHU_REJECTED"
-	CodeRateLimited    = "RATE_LIMITED"
-	CodeSafetyBlocked  = "SAFETY_BLOCKED"
-	CodeNotConfigured  = "NOT_CONFIGURED"
+	CodeSMTPRejected      = "SMTP_REJECTED"
+	CodeSMTPTemporary     = "SMTP_TEMPORARY"
+	CodeHTTPError         = "HTTP_ERROR"
+	CodeFeishuRejected    = "FEISHU_REJECTED"
+	CodeRateLimited       = "RATE_LIMITED"
+	CodeSafetyBlocked     = "SAFETY_BLOCKED"
+	CodeNotConfigured     = "NOT_CONFIGURED"
+	CodeCredentialMissing = "CREDENTIAL_MISSING"
 )
 
 // Message is the text that will be handed to a channel after safety review.
@@ -42,13 +43,19 @@ type Message struct {
 
 // Request is one delivery attempt. Target is the mailbox or the group label.
 // It is never a webhook URL and must not be written to logs.
+// SMTPUsername, SMTPPassword, WebhookURL and SignSecret come from the channel
+// row. They are not process configuration and must not be written to logs.
 type Request struct {
-	Channel    string
-	Target     string
-	Subject    string
-	Text       string
-	DeliveryID int64
-	Now        time.Time
+	Channel      string
+	Target       string
+	Subject      string
+	Text         string
+	DeliveryID   int64
+	Now          time.Time
+	SMTPUsername string
+	SMTPPassword string
+	WebhookURL   string
+	SignSecret   string
 }
 
 // Result is a channel outcome. Accepted and a terminal unknown or failed are
@@ -83,6 +90,18 @@ func Compose(channel, intent string, body *string, preview bool) Message {
 		text.WriteString(GroupVisible)
 	}
 	return Message{Subject: Title, Text: text.String()}
+}
+
+// ComposeWithLink adds the login-protected conversation path when the id is
+// known. A zero id leaves the text unchanged. The path carries no body, API
+// key or long-lived token. Preview still controls whether the greeting is
+// included; WAITING_HOST never includes it.
+func ComposeWithLink(channel, intent string, body *string, preview bool, conversationID int64) Message {
+	msg := Compose(channel, intent, body, preview)
+	if conversationID > 0 {
+		msg.Text += "\n/api/v1/conversations/" + itoa(conversationID)
+	}
+	return msg
 }
 
 // FeishuSign is the custom-bot signature: HMAC-SHA256 with

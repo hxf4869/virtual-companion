@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/notify"
@@ -22,6 +23,7 @@ const MaxNotificationAttempts = 5
 type notificationStore interface {
 	ListDueNotificationDeliveries(context.Context, time.Time) ([]postgres.NotificationDue, error)
 	LoadNotificationDelivery(context.Context, int64, int64, time.Time) (postgres.NotificationDelivery, error)
+	LoadNotificationCredential(context.Context, int64, string, string) (string, error)
 	RecordNotificationOutcome(context.Context, int64, int64, string, string, string) (string, error)
 	ScheduleNotificationDelivery(context.Context, int64, int64, int, time.Time) error
 	StopNotificationDeliveries(context.Context, int64, *string, string) (int, error)
@@ -73,19 +75,33 @@ func deliverNotification(ctx context.Context, store notificationStore, sender no
 		}
 		return store.ScheduleNotificationDelivery(ctx, row.OwnerID, row.ID, decision.AttemptCount, *decision.NextAttempt)
 	}
-	msg := notify.Compose(row.Channel, row.Intent, row.Body, row.Preview)
+	plain, err := store.LoadNotificationCredential(ctx, row.OwnerID, row.Channel, row.ConfiguredTarget)
+	if err != nil {
+		return err
+	}
+	user, pass, hook, secret, ok := channelCredential(row.Channel, plain)
+	if !ok {
+		logNotificationCode(logger, notify.CodeCredentialMissing)
+		_, err = store.RecordNotificationOutcome(ctx, row.OwnerID, row.ID, "failed", notify.CodeCredentialMissing, "")
+		return err
+	}
+	msg := notify.ComposeWithLink(row.Channel, row.Intent, row.Body, row.Preview, row.ConversationID)
 	if !policy.ReviewOutput(msg.Subject + "\n" + msg.Text).Allow {
 		logNotificationCode(logger, notify.CodeSafetyBlocked)
 		_, err = store.RecordNotificationOutcome(ctx, row.OwnerID, row.ID, "failed", notify.CodeSafetyBlocked, "")
 		return err
 	}
 	result, sendErr := sender.Send(ctx, notify.Request{
-		Channel:    row.Channel,
-		Target:     row.ConfiguredTarget,
-		Subject:    msg.Subject,
-		Text:       msg.Text,
-		DeliveryID: row.ID,
-		Now:        now,
+		Channel:      row.Channel,
+		Target:       row.ConfiguredTarget,
+		Subject:      msg.Subject,
+		Text:         msg.Text,
+		DeliveryID:   row.ID,
+		Now:          now,
+		SMTPUsername: user,
+		SMTPPassword: pass,
+		WebhookURL:   hook,
+		SignSecret:   secret,
 	})
 	if sendErr != nil {
 		result = notify.Result{Kind: notify.KindUnknown}
@@ -136,6 +152,36 @@ func applyNotificationResult(ctx context.Context, store notificationStore, row p
 		logNotificationCode(logger, notify.CodeNotConfigured)
 		_, err := store.RecordNotificationOutcome(ctx, row.OwnerID, row.ID, "failed", notify.CodeNotConfigured, "")
 		return err
+	}
+}
+
+// channelCredential reads the channel row plaintext. EMAIL is a username
+// line, which may be empty, and the remainder is the password. The password
+// is required. FEISHU is a webhook URL line and the remainder is the sign
+// secret. The URL is required. Only trailing newlines are removed. A missing
+// credential is not replaced by another channel or by a process secret.
+func channelCredential(channel, plain string) (user, pass, hook, secret string, ok bool) {
+	plain = strings.TrimRight(plain, "\r\n")
+	if plain == "" {
+		return "", "", "", "", false
+	}
+	line, rest, found := strings.Cut(plain, "\n")
+	line = strings.TrimRight(line, "\r")
+	rest = strings.TrimRight(rest, "\r\n")
+	switch channel {
+	case "EMAIL":
+		if !found || rest == "" {
+			return "", "", "", "", false
+		}
+		return line, rest, "", "", true
+	case "FEISHU":
+		hook = strings.TrimSpace(line)
+		if hook == "" || !strings.Contains(hook, "://") {
+			return "", "", "", "", false
+		}
+		return "", "", hook, rest, true
+	default:
+		return "", "", "", "", false
 	}
 }
 

@@ -13,9 +13,11 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
+	"github.com/hxf4869/virtual-companion/internal/notify"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
+	"github.com/hxf4869/virtual-companion/internal/safety"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/turn"
 )
@@ -207,13 +209,16 @@ type Loop struct {
 	blobs           BlobStore
 	metrics         *observability.Registry
 
-	claimMu         sync.Mutex
-	generationSlots chan struct{}
-	extractSlots    chan struct{}
-	followSlots     chan struct{}
-	handlers        sync.WaitGroup
-	wake            chan struct{}
-	started         atomic.Bool
+	claimMu           sync.Mutex
+	notifyMu          sync.Mutex
+	notifySender      notify.Sender
+	notifyMaxAttempts int
+	generationSlots   chan struct{}
+	extractSlots      chan struct{}
+	followSlots       chan struct{}
+	handlers          sync.WaitGroup
+	wake              chan struct{}
+	started           atomic.Bool
 
 	// followGenerate is the test seam for FOLLOW_UP. Production leaves it nil
 	// and handleFollowUp resolves the greeting itself.
@@ -270,6 +275,19 @@ func (l *Loop) BindStore(store *postgres.Store) {
 		return
 	}
 	l.store = store
+}
+
+// UseNotification installs the channel sender. A nil sender still projects
+// ready rows and does not call RunNotificationDeliveries. maxAttempts is the
+// notification cap, not the proactive greeting daily limit.
+func (l *Loop) UseNotification(sender notify.Sender, maxAttempts int) {
+	if l == nil {
+		return
+	}
+	l.notifyMu.Lock()
+	l.notifySender = sender
+	l.notifyMaxAttempts = maxAttempts
+	l.notifyMu.Unlock()
 }
 
 func (l *Loop) Use(store Store, provider companion.Provider, hub *realtime.Hub, blobs BlobStore) {
@@ -390,6 +408,7 @@ func (l *Loop) run(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		n := l.ClaimOnce(ctx)
+		l.RunInboxAndNotifications(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -602,7 +621,44 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 			return err
 		}
 	}
+	l.RunInboxAndNotifications(ctx)
 	return nil
+}
+
+// RunInboxAndNotifications projects ready follow-ups and sends due
+// notifications. It is outside claimMu. notifyMu serializes the two callers
+// and is not taken by anything this method calls.
+func (l *Loop) RunInboxAndNotifications(ctx context.Context) {
+	if l == nil || l.store == nil {
+		return
+	}
+	l.notifyMu.Lock()
+	defer l.notifyMu.Unlock()
+	if projector, ok := l.store.(interface {
+		ProjectInbox(context.Context) error
+	}); ok {
+		if err := projector.ProjectInbox(ctx); err != nil {
+			l.log.Info("projection",
+				slog.String("operation", "INBOX_PROJECTION"),
+				slog.String("outcome", "error"),
+				slog.String("error_code", "INBOX_PROJECTION"),
+			)
+		}
+	}
+	if l.notifySender == nil {
+		return
+	}
+	delivery, ok := l.store.(notificationStore)
+	if !ok {
+		return
+	}
+	if err := RunNotificationDeliveries(ctx, delivery, l.notifySender, safety.New(), time.Now(), l.log, l.notifyMaxAttempts); err != nil {
+		l.log.Info("notification delivery",
+			slog.String("operation", "notification_delivery"),
+			slog.String("outcome", "error"),
+			slog.String("error_code", "NOTIFICATION_DELIVERY"),
+		)
+	}
 }
 
 func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -68,6 +69,7 @@ type Config struct {
 	Session          Session
 	Concurrency      Concurrency
 	STPlugin         STPlugin
+	Notify           Notify
 }
 
 // STPlugin is the shared secret the SillyTavern server plugin presents on the
@@ -413,8 +415,20 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 	if err := loadConcurrencyEnv(&cfg, getenv); err != nil {
 		return Config{}, err
 	}
+	notifyCfg, err := LoadNotify(getenv)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Notify = notifyCfg
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
+	}
+	if raw := strings.TrimSpace(getenv("VC_SMTP_CA_FILE")); raw != "" {
+		pool, err := loadSMTPCA(raw)
+		if err != nil {
+			return Config{}, errors.New("VC_SMTP_CA_FILE is invalid")
+		}
+		cfg.Notify.SMTPRootCAs = pool
 	}
 	return cfg, nil
 }

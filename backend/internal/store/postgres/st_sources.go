@@ -147,7 +147,52 @@ func (s *Store) applySTSourceSnapshot(ctx context.Context, owner int64, base stS
 		}
 		return tx.QueryRow(ctx, `SELECT st_applied_revision FROM vc.conversation WHERE owner_user_id=$1 AND st_chat_identity=$2`, owner, base.ChatIdentity).Scan(&out.Revision)
 	})
-	return out, mapStoreErr(err)
+	if err != nil {
+		return out, mapStoreErr(err)
+	}
+	// A present or deleted snapshot may change the inbox link. It does not
+	// create a delivery. UNAVAILABLE and RETRY leave the link as stored.
+	if out.State != "RETRY" && (snap.State == "PRESENT" || snap.State == "DELETED") {
+		if err := s.syncInboxLinks(ctx, owner, base.ChatIdentity, snap); err != nil {
+			return STSourceState{}, err
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) syncInboxLinks(ctx context.Context, owner int64, chat string, snap stsource.Snapshot) error {
+	var ids []string
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT i.event_id
+			  FROM vc.inbox_event i
+			  JOIN vc.conversation c
+			    ON c.owner_user_id = i.owner_user_id AND c.id = i.conversation_id
+			 WHERE i.owner_user_id = $1 AND c.st_chat_identity = $2
+			 ORDER BY i.id`, owner, chat)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		ids = []string{}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				return err
+			}
+			ids = append(ids, id)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return mapStoreErr(err)
+	}
+	for _, id := range ids {
+		if _, err := s.ApplyInboxLink(ctx, owner, id, snap); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Both extraction completion and manual evidence creation re-read persisted

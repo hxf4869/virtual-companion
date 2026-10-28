@@ -45,4 +45,10 @@ func TestDecideNotificationSendGates(t *testing.T) {
 	if DecideNotificationSend(now, deleting).Action != NotificationSkip {
 		t.Fatal("deletion was not left pending")
 	}
+	unlimited := row
+	unlimited.DailyLimit = 0
+	unlimited.SentToday = 0
+	if DecideNotificationSend(now, unlimited).Action != NotificationSend {
+		t.Fatal("a missing daily limit deferred the notification")
+	}
 }

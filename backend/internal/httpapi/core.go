@@ -265,6 +265,13 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("GET /api/v1/admin/model-purposes", s.handleListPurposeBindings)
 	s.mux.HandleFunc("PUT /api/v1/admin/model-purposes/{purpose}", s.handleSavePurposeBinding)
 	s.mux.HandleFunc("POST /api/v1/service/model-purposes/{purpose}/resolve", s.handleResolvePurpose)
+	s.mux.HandleFunc("GET /api/v1/inbox", s.handleListInbox)
+	s.mux.HandleFunc("POST /api/v1/inbox/{eventId}/claim", s.handleClaimInbox)
+	s.mux.HandleFunc("POST /api/v1/inbox/{eventId}/ack", s.handleAckInbox)
+	s.mux.HandleFunc("POST /api/v1/inbox/{eventId}/read", s.handleMarkInboxRead)
+	s.mux.HandleFunc("GET /api/v1/notification-channels", s.handleListNotificationChannels)
+	s.mux.HandleFunc("PUT /api/v1/notification-channels", s.handlePutNotificationChannel)
+	s.mux.HandleFunc("GET /api/v1/notification-deliveries", s.handleListNotificationDeliveries)
 	s.registerGeneration()
 }
 

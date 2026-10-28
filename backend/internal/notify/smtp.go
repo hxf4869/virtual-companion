@@ -84,11 +84,14 @@ func (s *SMTP) client(req Request) (*mail.Client, *mail.Msg, error) {
 		mail.WithTimeout(s.cfg.Timeout),
 		mail.WithHELO("localhost"),
 	}
-	if strings.TrimSpace(s.cfg.Username) != "" {
+	// Process SMTP username and password are deployment leftovers. The channel
+	// row is the only credential. An empty request password does not fall
+	// back to the process secret and does not authenticate.
+	if strings.TrimSpace(req.SMTPPassword) != "" {
 		opts = append(opts,
 			mail.WithSMTPAuth(mail.SMTPAuthPlain),
-			mail.WithUsername(s.cfg.Username),
-			mail.WithPassword(s.cfg.Password),
+			mail.WithUsername(req.SMTPUsername),
+			mail.WithPassword(req.SMTPPassword),
 		)
 	}
 	client, err := mail.NewClient(host, opts...)

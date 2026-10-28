@@ -16,9 +16,9 @@ import (
 
 const feishuBodyLimit = 64 * 1024
 
-// FeishuConfig is the group custom-bot endpoint. The URL and the sign secret
-// come from process configuration, not from the database. An empty URL means
-// the channel is not configured and Send does not dial.
+// FeishuConfig is an optional HTTP client override. The webhook URL and the
+// sign secret are fields on Request, taken from the channel row. Values on
+// this struct are not used and are not a fallback.
 type FeishuConfig struct {
 	WebhookURL string
 	SignSecret string
@@ -49,10 +49,8 @@ func NewFeishu(cfg FeishuConfig) *Feishu {
 // a business failure. 429 and the bot rate-limit codes stay retryable. A
 // break after the request was written is unknown.
 func (f *Feishu) Send(ctx context.Context, req Request) (Result, error) {
-	if f == nil || strings.TrimSpace(f.cfg.WebhookURL) == "" {
-		return Result{Kind: KindFailed, FailureCode: CodeNotConfigured}, nil
-	}
-	if !webhookAllowed(f.cfg.WebhookURL) {
+	hook := strings.TrimSpace(req.WebhookURL)
+	if f == nil || hook == "" || !webhookAllowed(hook) {
 		return Result{Kind: KindFailed, FailureCode: CodeNotConfigured}, nil
 	}
 	now := req.Now
@@ -63,7 +61,7 @@ func (f *Feishu) Send(ctx context.Context, req Request) (Result, error) {
 		"msg_type": "text",
 		"content":  map[string]string{"text": req.Text},
 	}
-	if secret := f.cfg.SignSecret; secret != "" {
+	if secret := req.SignSecret; secret != "" {
 		ts := strconv.FormatInt(now.Unix(), 10)
 		payload["timestamp"] = ts
 		payload["sign"] = FeishuSign(ts, secret)
@@ -72,7 +70,7 @@ func (f *Feishu) Send(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{Kind: KindFailed, FailureCode: CodeHTTPError}, nil
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, f.cfg.WebhookURL, bytes.NewReader(raw))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, hook, bytes.NewReader(raw))
 	if err != nil {
 		return Result{Kind: KindFailed, FailureCode: CodeNotConfigured}, nil
 	}

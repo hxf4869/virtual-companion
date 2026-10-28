@@ -67,12 +67,19 @@ import { sceneMemoryRealEval } from './w08-real-eval.mjs';
 import { sceneMemoryBrowser } from './w07-accept.mjs';
 import { sceneMemorycoreNative } from './w08-native-accept.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
+import { sceneInboxNotify, startW10Capture, stopW10Capture } from './w10-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
     id: 'story-view-browser',
     title: 'W12 玩家剧情页：开局、玩家视图、桌面与 390px',
     needs: ['go', 'stack', 'browser'],
+    default: false,
+});
+SCENES.push({
+    id: 'w10-inbox-notify',
+    title: 'W10 Inbox 与本地邮箱飞书通知',
+    needs: ['go', 'stack'],
     default: false,
 });
 
@@ -340,6 +347,8 @@ ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
 // 合成 Go 服务（build 后运行；环境面见文件头注释）
 // ---------------------------------------------------------------------------
 
+let w10Capture = null;
+
 function goServiceSpec(secrets) {
     return {
         binary: path.join(RUN_DIR, 'companiond-accept'),
@@ -366,6 +375,12 @@ function goServiceSpec(secrets) {
             VC_MEMORYCORE_BASE_URL: 'http://127.0.0.1:8754',
             VC_MEMORYCORE_SERVICE_TOKEN: secrets.memorycoreToken,
             VC_MEMORYCORE_CALLBACK_TOKEN: secrets.memorycoreCallbackToken,
+            ...(w10Capture ? {
+                VC_SMTP_HOST: '127.0.0.1',
+                VC_SMTP_PORT: String(w10Capture.smtpPort),
+                VC_SMTP_FROM: 'notify@example.test',
+                VC_SMTP_CA_FILE: w10Capture.caFile,
+            } : {}),
         },
     };
 }
@@ -533,6 +548,11 @@ function killTree(pid) {
 }
 
 async function cleanupManaged(secrets) {
+    if (w10Capture) {
+        const capture = w10Capture;
+        w10Capture = null;
+        try { await stopW10Capture(capture); } catch { /* 证书和监听已尽力关闭 */ }
+    }
     const stopped = [];
     // ST 进程归属：B 的 stop-managed.mjs 按 st.pid + 命令行核对停止（防误杀原生实例）
     const stopManaged = path.join(SCRIPTS, 'stop-managed.mjs');
@@ -1848,6 +1868,7 @@ const SCENE_IMPLS = {
     'rights-native': sceneRightsNative,
     'memory-browser': sceneMemoryBrowser,
     'story-view-browser': sceneStoryViewBrowser,
+    'w10-inbox-notify': sceneInboxNotify,
 };
 
 async function runFull() {
@@ -1904,6 +1925,7 @@ async function runFull() {
         w06: { accountId:RIGHTS_ACCOUNT_ID, handle:RIGHTS_HANDLE,
             wakeExport: (id) => psql(`UPDATE vc.work_item SET next_attempt_at=now() WHERE kind='DATA_EXPORT' AND ref_id=${BigInt(id)} AND status='PENDING';`),
         },
+        w10: { psql, capture: w10Capture },
         w05: { dataRoot: path.join(DEV_MANAGED, 'data'), stBase: ST_BASE, goBase: GO_BASE, ownerId: OWNER_ACCOUNT_ID, secondId: SECOND_ACCOUNT_ID, totpCode,
             expireSession: (id) => psql(`UPDATE vc.identity_opaque_session SET expires_at=now()-interval '1 second' WHERE id=${BigInt(id)};`),
         },
@@ -1933,6 +1955,10 @@ async function runFull() {
             });
             log.ok('owner binding secret 已按应用原生路径种子（与 Go 服务 env 同值）');
             await startManagedMinio(secrets);
+            if (selected.includes('w10-inbox-notify')) {
+                w10Capture = await startW10Capture();
+                ctx.w10.capture = w10Capture;
+            }
             await startGoService(secrets, artifactsDir);
             await seedSyntheticOwner(secrets);
             ctx.admin = createGoAdminClient({ baseUrl: GO_BASE, origin: ST_BASE, session: secrets.session });

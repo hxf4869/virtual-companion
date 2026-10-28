@@ -39,13 +39,15 @@ func TestFeishuHTTPBusinessRateAndSuccess(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			t.Cleanup(srv.Close)
-			sender := NewFeishu(FeishuConfig{WebhookURL: srv.URL, SignSecret: secret})
+			sender := NewFeishu(FeishuConfig{WebhookURL: "http://127.0.0.1:1/unused", SignSecret: "process-secret"})
 			result, err := sender.Send(context.Background(), Request{
 				Channel:    "FEISHU",
 				Target:     "group-w10",
 				Text:       Title + "\n" + LoginHint + "\n" + GroupVisible,
 				DeliveryID: 9,
 				Now:        now,
+				WebhookURL: srv.URL,
+				SignSecret: secret,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -83,8 +85,8 @@ func TestFeishuDoesNotFollowRedirect(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"code":0}`))
 	})
-	sender := NewFeishu(FeishuConfig{WebhookURL: srv.URL + "/hook", SignSecret: "demo-secret"})
-	result, err := sender.Send(context.Background(), Request{Text: Title, Now: time.Unix(10, 0)})
+	sender := NewFeishu(FeishuConfig{WebhookURL: "http://127.0.0.1:1/unused", SignSecret: "process-secret"})
+	result, err := sender.Send(context.Background(), Request{Text: Title, Now: time.Unix(10, 0), WebhookURL: srv.URL + "/hook", SignSecret: "demo-secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +99,8 @@ func TestFeishuDoesNotFollowRedirect(t *testing.T) {
 }
 
 func TestFeishuExternalHTTPIsNotDialed(t *testing.T) {
-	sender := NewFeishu(FeishuConfig{WebhookURL: "http://hooks.example.test/secret-path", SignSecret: "demo-secret"})
-	result, err := sender.Send(context.Background(), Request{Text: Title})
+	sender := NewFeishu(FeishuConfig{})
+	result, err := sender.Send(context.Background(), Request{Text: Title, WebhookURL: "http://hooks.example.test/secret-path", SignSecret: "demo-secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,5 +109,23 @@ func TestFeishuExternalHTTPIsNotDialed(t *testing.T) {
 	}
 	if strings.Contains(result.FailureCode, "hooks.example.test") || strings.Contains(result.FailureCode, "secret-path") {
 		t.Fatalf("result echoed the webhook: %+v", result)
+	}
+}
+
+func TestFeishuIgnoresProcessWebhook(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0}`))
+	}))
+	t.Cleanup(srv.Close)
+	sender := NewFeishu(FeishuConfig{WebhookURL: srv.URL, SignSecret: "process-secret"})
+	result, err := sender.Send(context.Background(), Request{Text: Title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits != 0 || result.Kind != KindFailed || result.FailureCode != CodeNotConfigured {
+		t.Fatalf("hits=%d result=%+v", hits, result)
 	}
 }

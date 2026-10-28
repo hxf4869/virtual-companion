@@ -1,8 +1,10 @@
 package config
 
 import (
+	"crypto/x509"
 	"errors"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -19,6 +21,9 @@ type Notify struct {
 	FeishuWebhookURL string
 	FeishuSignSecret string
 	MaxAttempts      int
+	// SMTPRootCAs is the optional deployment trust anchor. It is not a
+	// credential. Certificate verification stays on.
+	SMTPRootCAs *x509.CertPool
 }
 
 // LoadNotify reads notification settings. Absent values leave both channels
@@ -71,6 +76,18 @@ func (n Notify) Validate() error {
 		return errors.New("VC_FEISHU_WEBHOOK_URL is not allowed")
 	}
 	return nil
+}
+
+func loadSMTPCA(path string) (*x509.CertPool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(raw) {
+		return nil, errors.New("VC_SMTP_CA_FILE is invalid")
+	}
+	return pool, nil
 }
 
 func feishuWebhookAllowed(raw string) bool {

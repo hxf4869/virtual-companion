@@ -57,6 +57,25 @@ func TestComposeWaitingHostIgnoresBody(t *testing.T) {
 	}
 }
 
+func TestComposeWithLinkKeepsPreviewOff(t *testing.T) {
+	body := "w10 greeting text"
+	msg := ComposeWithLink("EMAIL", "BODY", &body, false, 9)
+	if !strings.Contains(msg.Text, "/api/v1/conversations/9") || strings.Contains(msg.Text, body) {
+		t.Fatal("link text omitted the conversation path or included the greeting")
+	}
+	if !strings.Contains(msg.Text, LoginHint) || msg.Subject != Title {
+		t.Fatal("link text dropped the generic notice")
+	}
+	plain := ComposeWithLink("EMAIL", "BODY", &body, false, 0)
+	if plain.Text != Compose("EMAIL", "BODY", &body, false).Text {
+		t.Fatal("a zero conversation id changed the text")
+	}
+	waiting := ComposeWithLink("FEISHU", "WAITING_HOST", &body, true, 9)
+	if !strings.Contains(waiting.Text, WaitingHost) || strings.Contains(waiting.Text, body) || !strings.Contains(waiting.Text, "/api/v1/conversations/9") {
+		t.Fatal("waiting host link text changed the fixed copy")
+	}
+}
+
 func TestCorrelationAndBackoff(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	id := Correlation("n", 42, now)
