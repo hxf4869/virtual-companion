@@ -54,13 +54,14 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 
 | 命令 | 实测 | 覆盖 |
 |---|---|---|
-| `bash scripts/check.sh` | ~25.5s | 下述全部 |
+| `bash scripts/check.sh` | ~23.4s | 下述全部（Go 1.26.10；2026-10-28 实测） |
 | `bash scripts/check.sh --quick` | ~1.5s | catalog / OpenAPI / paid-features / licenses，不要求 Go 或 pnpm |
 | ├ catalog validate/drift | ~1s | `specs/catalog` 契约（含 Go v1 API scope 对账 OpenAPI）与 `specs/generated` 漂移 |
 | ├ openapi validate/drift | <1s | `specs/openapi` 合同与生成物漂移 |
 | ├ paid-features | <1s | 依赖/配置中禁止付费运行时前提 |
-| ├ licenses | <1s | Go/前端直接依赖许可证清单核对 |
+| ├ licenses | <1s | Go/前端直接依赖许可证清单核对；ST 集成域（`upstream.lock`/`vendor.lock`/`package.json`）按 `domainPolicies.stIntegration` 门禁 |
 | ├ go-test | ~10s | `backend/` vendor 离线 `go test ./...`（runtime、crypto、provider、core、HTTP、jobs、realtime 与迁移） |
+| ├ st-integration-test | ~4s | `integrations/sillytavern/tests/*.test.mjs` 离线单测（S1 config/backup/patcher/lock 与 S3/S4 扩展、协议测试，`node --test`；浏览器验收 `scripts/accept.mjs` 不在本表，见该目录 README） |
 | ├ frontend-test | ~10s | vitest 全量 |
 | └ frontend-type-check | ~4s | vue-tsc |
 | `bash infra/db/run-rls-tests.sh` | Docker | SQL/RLS/并发测试 |

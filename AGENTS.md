@@ -1,6 +1,6 @@
 # Repository Agent Rules — Virtual Companion
 
-AI 虚拟陪伴系统单体仓库：Go 1.26.7 `companiond` 后端、uni-app + Vue 3 H5 前端、
+AI 虚拟陪伴系统单体仓库：Go 1.26.10 `companiond` 后端、uni-app + Vue 3 H5 前端、
 PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切已接通，现状以 README 为准。
 2026-10-27 起目标方向为 V2（ADR-0009）：原生 SillyTavern 宿主 + Go 长期服务、Owner 本人非商业使用；
 旧 Vue 前端停止新增功能，待 V2 页面可用后退役。
@@ -60,10 +60,11 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 | --- | --- |
 | 纯文档或 Agent 规则 | 核对相关 diff、引用与规则一致性，运行 `git diff --check` |
 | Catalog/OpenAPI、生成物、依赖清单等仓库约束 | `bash scripts/check.sh --quick` |
-| Go 后端（Go 1.26.7） | `GOPROXY=off go test -C backend -mod=vendor -count=1 ./...`；局部修改可将 `./...` 收窄到受影响包 |
+| Go 后端（Go 1.26.10，以 `backend/go.mod` 为准） | `GOPROXY=off go test -C backend -mod=vendor -count=1 ./...`；局部修改可将 `./...` 收窄到受影响包 |
 | 前端（Node 22 + pnpm 11） | `pnpm --dir frontend test:run && pnpm --dir frontend type-check` |
+| ST 集成脚本（Node 22） | `node --test "integrations/sillytavern/tests/*.test.mjs"`（离线单测，已并入 `check.sh` 全量；浏览器验收与备份入口见 `integrations/sillytavern/README.md`，不进 check.sh） |
 | SQL/RLS | `bash infra/db/run-rls-tests.sh`（OrbStack Docker，使用本地测试环境） |
-| 跨组件实现改动或需要仓库整体验证 | `bash scripts/check.sh`（仓库约束检查 + Go 单测 + 前端测试与类型检查） |
+| 跨组件实现改动或需要仓库整体验证 | `bash scripts/check.sh`（仓库约束检查 + Go 单测 + ST 集成单测 + 前端测试与类型检查） |
 
 - 只读任务按问题获取必要证据，不套用实现交付检查；纯文档改动不启动无关的应用测试。
   修改共享接口、协议或数据结构时，覆盖直接受影响的生产者、消费者和迁移路径，不能只查单侧。

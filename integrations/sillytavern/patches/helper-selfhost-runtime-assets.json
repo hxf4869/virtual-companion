@@ -1,0 +1,31 @@
+{
+  "id": "helper-selfhost-runtime-assets",
+  "kind": "deterministic-string-replacement",
+  "reason": "Tavern Helper 4.11.3 的脚本/渲染 iframe 模板（src/iframe/third_party_script.html、third_party_message.html）、iframe 构建器（src/panel/render/iframe.ts 的 log.js）与面板（src/Panel.vue 暴露 Vue 给 devtools）在运行期从 testingcf.jsdelivr.net 加载无版本 CDN 资源。V2 要求实际选定运行链不依赖可变 CDN（ADR-0009 §3 固定版本；执行计划 §6.5 R-CDN）。这些模板已编译进 dist/index.js，无公开扩展点可覆盖，故对复制到 dataRoot 的 dist 副本做确定性字串替换，指向由 vendor.lock.json 固定并自托管的同源路径。",
+  "upstream": {
+    "component": "tavern-helper",
+    "repo": "https://github.com/N0VI028/JS-Slash-Runner",
+    "commit": "0af421068e7c03b6b0a71b68feb79d201164edeb",
+    "version": "4.11.3"
+  },
+  "target": "dist/index.js",
+  "applies_to": "bootstrap 复制到 <dataRoot>/default-user/extensions/JS-Slash-Runner/ 的副本；upstream/ 原始检出不修改",
+  "removal_condition": "上游 Helper 改为相对/同源路径加载或提供可配置的资源基址；或 V2 替换 Helper 依赖。升级 Helper 版本时须重算 expected_input_sha256 / expected_output_sha256 并复核每条命中次数。",
+  "expected_input_sha256": "932c5267ad9ee0d6f36f3d70a9dd21a8f7effbcfef71cd26e87a1f310890da57",
+  "expected_output_sha256": "3f479dc4a3edf8208ba96e33820408bec95f68932331dbed9e8d130a2e9718f5",
+  "served_prefix": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor",
+  "replacements": [
+    { "from": "https://testingcf.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/fontawesome-free-7.3.1/css/all.min.css", "count": 1, "where": "third_party_message.html" },
+    { "from": "https://testingcf.jsdelivr.net/npm/jquery/dist/jquery.min.js", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/jquery-4.0.0/jquery.min.js", "count": 1, "where": "third_party_message.html" },
+    { "from": "https://testingcf.jsdelivr.net/npm/jquery-ui/dist/jquery-ui.min.js", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/jquery-ui-1.14.2/jquery-ui.min.js", "count": 1, "where": "third_party_message.html" },
+    { "from": "https://testingcf.jsdelivr.net/npm/jquery-ui/themes/base/theme.min.css", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/jquery-ui-1.14.2/theme.css", "count": 1, "where": "third_party_message.html" },
+    { "from": "https://testingcf.jsdelivr.net/npm/jquery-ui-touch-punch", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/jquery-ui-touch-punch-0.2.3/jquery.ui.touch-punch.min.js", "count": 1, "where": "third_party_message.html" },
+    { "from": "https://testingcf.jsdelivr.net/npm/vue/dist/vue.runtime.global.prod.min.js", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/vue-3.5.44/vue.runtime.global.prod.js", "count": 3, "where": "third_party_message.html + third_party_script.html + Panel.vue(useScriptTag)" },
+    { "from": "https://testingcf.jsdelivr.net/npm/vue-router/dist/vue-router.global.prod.min.js", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/vue-router-5.4.0/vue-router.global.prod.js", "count": 2, "where": "third_party_message.html + third_party_script.html" },
+    { "from": "https://testingcf.jsdelivr.net/gh/N0VI028/JS-Slash-Runner/src/iframe/node_modules/log.js", "to": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor/jsr-0af42106/log.js", "count": 2, "where": "panel/render/iframe.ts（脚本与渲染 iframe 两处）" }
+  ],
+  "left_as_is": [
+    "https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/…（30 处，内置脚本市场，用户主动安装时才加载）",
+    "https://testingcf.jsdelivr.net/gh/N0VI028/JS-Slash-Runner/src/panel/optimize/…（1 处，优化面板懒加载）"
+  ]
+}

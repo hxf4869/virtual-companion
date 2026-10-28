@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Deterministic direct-dependency license gate for Go and the frontend."""
+"""Deterministic direct-dependency license gate for Go, the frontend and the ST integration domain.
+
+The Go / frontend domains are checked against the global ``allowedLicenseFamilies``.
+The ``integrations/sillytavern`` domain (upstream.lock.json components, vendor.lock.json
+self-hosted runtime assets, integrations/sillytavern/package.json) is checked against
+``domainPolicies.stIntegration.allowedLicenseFamilies`` only; that list never widens the
+Go / frontend policy.
+
+``--root DIR`` points the gate at another repository root (used to prove the gate fails
+on a deliberately bad input without touching the real files).
+"""
 from __future__ import annotations
 
 import json
@@ -11,8 +21,13 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+if len(sys.argv) >= 3 and sys.argv[1] == "--root":
+    ROOT = Path(sys.argv[2]).resolve()
 LICENSE_POLICY = ROOT / "scripts/checks/license-policy.yaml"
 LICENSE_INVENTORY = ROOT / "scripts/checks/license-inventory.yaml"
+ST_UPSTREAM_LOCK = ROOT / "integrations/sillytavern/upstream.lock.json"
+ST_VENDOR_LOCK = ROOT / "integrations/sillytavern/vendor.lock.json"
+ST_PACKAGE_JSON = ROOT / "integrations/sillytavern/package.json"
 GO_REQUIRE = re.compile(r"^([^\s]+)\s+v[^\s]+(?:\s+//\s+indirect)?$")
 
 
@@ -62,6 +77,68 @@ def exception_is_active(entry: dict) -> tuple[bool, str | None]:
     if parsed <= date.today():
         return False, f"exception has expired (expiresAt={expires_at})"
     return True, None
+
+
+def split_license_expression(expr: str) -> list[str]:
+    """'CC-BY-4.0 AND OFL-1.1 AND MIT' -> each family must be allowed on its own."""
+    parts = [p.strip().strip("()") for p in re.split(r"\s+AND\s+", str(expr))]
+    return [p for p in parts if p]
+
+
+def check_st_integration(policy: dict, inventory: dict, errors: list[str]) -> int:
+    """Return the number of checked ST-domain items (0 when the domain is absent)."""
+    domain = (policy.get("domainPolicies") or {}).get("stIntegration")
+    if not isinstance(domain, dict):
+        if ST_UPSTREAM_LOCK.exists() or ST_VENDOR_LOCK.exists():
+            errors.append("license-policy.yaml: domainPolicies.stIntegration missing while ST locks exist")
+        return 0
+    allowed = {str(x) for x in domain.get("allowedLicenseFamilies", [])}
+    checked = 0
+
+    def require(label: str, expr: object) -> None:
+        nonlocal checked
+        checked += 1
+        families = split_license_expression(str(expr or ""))
+        if not families:
+            errors.append(f"{label}: missing license")
+            return
+        for fam in families:
+            if fam not in allowed:
+                errors.append(f"{label}: license family '{fam}' not allowed for stIntegration")
+
+    if ST_UPSTREAM_LOCK.exists():
+        lock = json.loads(ST_UPSTREAM_LOCK.read_text(encoding="utf-8"))
+        for comp in lock.get("components", []):
+            require(f"upstream.lock.json component '{comp.get('id')}'", comp.get("license"))
+    else:
+        errors.append("integrations/sillytavern/upstream.lock.json missing")
+
+    if ST_VENDOR_LOCK.exists():
+        vendor = json.loads(ST_VENDOR_LOCK.read_text(encoding="utf-8"))
+        for pkg in vendor.get("packages", []):
+            require(f"vendor.lock.json package '{pkg.get('name')}@{pkg.get('version')}'", pkg.get("license"))
+            for item in pkg.get("files", []):
+                if item.get("license"):
+                    require(f"vendor.lock.json file '{item.get('to')}'", item.get("license"))
+        for src in vendor.get("local_sources", []):
+            require(f"vendor.lock.json local source '{src.get('name')}'", src.get("license"))
+    else:
+        errors.append("integrations/sillytavern/vendor.lock.json missing")
+
+    if ST_PACKAGE_JSON.exists():
+        st_inventory = {
+            str(e.get("name", "")).strip(): str(e.get("licenseFamily", "")).strip()
+            for e in inventory.get("integrationDirectDependencies", [])
+            if str(e.get("name", "")).strip()
+        }
+        for name, scope in sorted(extract_frontend_dependencies(ST_PACKAGE_JSON)):
+            checked += 1
+            family = st_inventory.get(name)
+            if not family:
+                errors.append(f"integrations/sillytavern/package.json: {scope} '{name}' is not in license-inventory.yaml")
+            elif family not in allowed:
+                errors.append(f"integrations/sillytavern/package.json: {scope} '{name}' has disallowed license family '{family}'")
+    return checked
 
 
 def main() -> int:
@@ -120,6 +197,8 @@ def main() -> int:
                 f"frontend/package.json: {scope} '{name}' has disallowed license family '{family}'"
             )
 
+    st_checked = check_st_integration(policy, inventory, errors)
+
     if errors:
         for item in sorted(set(errors)):
             print(f"ERROR: {item}", file=sys.stderr)
@@ -128,7 +207,8 @@ def main() -> int:
     total = len(go_dependencies) + len(frontend_dependencies)
     print(
         f"License inventory check: PASS ({total} direct dependencies: "
-        f"{len(go_dependencies)} Go, {len(frontend_dependencies)} frontend)"
+        f"{len(go_dependencies)} Go, {len(frontend_dependencies)} frontend; "
+        f"stIntegration domain {st_checked} items)"
     )
     return 0
 

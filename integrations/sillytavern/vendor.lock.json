@@ -1,0 +1,118 @@
+{
+  "schema": "vc-v2-st-vendor-lock-v1",
+  "locked_on": "2026-10-28",
+  "locked_by": "V2-W03-S1",
+  "purpose": "Tavern Helper 0af42106 的脚本/渲染 iframe 与面板运行期从 testingcf.jsdelivr.net 加载未锁版本资源（计划 §6.5 R-CDN）。本文件把实际选定运行链上的每个资源固定到 npm 官方发布的具体版本与字节，由 scripts/bootstrap.mjs 下载校验后自托管到 ST 同源路径；日常检查不联网。",
+  "served_prefix": "/scripts/extensions/third-party/JS-Slash-Runner/lib/vendor",
+  "install_dir": "<dataRoot>/default-user/extensions/JS-Slash-Runner/lib/vendor",
+  "version_selection": "vue / vue-router 取 Helper 自身 pnpm-lock.yaml 锁定值（3.5.44 / 5.4.0）；jquery / jquery-ui / jquery-ui-touch-punch / fontawesome-free 在 Helper 中无锁定（仅 @types），取 2026-10-28 jsdelivr 无版本 URL 实际解析到的 npm latest（即 W00 冒烟实际运行版本），并与 registry dist-tags 交叉核对一致。",
+  "minified_note": "jsdelivr 对包内不存在的 *.min.* 路径即时压缩（jquery-ui 的 themes/base/theme.min.css、vue 与 vue-router 的 *.prod.min.js 均属此类）。自托管一律使用 npm 包内实际存在的文件：theme.css、vue.runtime.global.prod.js、vue-router.global.prod.js（后两者本身已是生产压缩构建）。",
+  "packages": [
+    {
+      "name": "jquery",
+      "version": "4.0.0",
+      "license": "MIT",
+      "tarball": "https://registry.npmjs.org/jquery/-/jquery-4.0.0.tgz",
+      "tarball_integrity": "sha512-TXCHVR3Lb6TZdtw1l3RTLf8RBWVGexdxL6AC8/e0xZKEpBflBsjh9/8LXw+dkNFuOyW9B7iB3O1sP7hS0Kiacg==",
+      "files": [
+        { "from": "package/dist/jquery.min.js", "to": "jquery-4.0.0/jquery.min.js", "sha256": "39a546ea9ad97f8bfaf5d3e0e8f8556adb415e470e59007ada9759dce472adaa" }
+      ]
+    },
+    {
+      "name": "jquery-ui",
+      "version": "1.14.2",
+      "license": "MIT",
+      "tarball": "https://registry.npmjs.org/jquery-ui/-/jquery-ui-1.14.2.tgz",
+      "tarball_integrity": "sha512-1gSl7PUjyipa2adSr780Ujk16faicrV7PjPPzPtvWk7tTqBnsqp67NNV9jZK2+BIxUPXWSnIUU/LBCgwgGZE+Q==",
+      "files": [
+        { "from": "package/dist/jquery-ui.min.js", "to": "jquery-ui-1.14.2/jquery-ui.min.js", "sha256": "99b95259f6d8cdaabf7fee1a93232113a5c42c2a2ee236e480fbfe2503c44763" },
+        { "from": "package/themes/base/theme.css", "to": "jquery-ui-1.14.2/theme.css", "sha256": "bcf37e5108201905bbba94ca6c6a5134c6692d0dccc0d00b12acd4e412aa230a", "note": "theme.css 以 url(\"images/…\") 引用下列 6 个图标图，随同自托管" },
+        { "from": "package/themes/base/images/ui-icons_444444_256x240.png", "to": "jquery-ui-1.14.2/images/ui-icons_444444_256x240.png", "sha256": "42f3fd7ecbd1e18e5e9c5cbbc2ba9ce4d81a388258a81833d38819a1406ff48d" },
+        { "from": "package/themes/base/images/ui-icons_555555_256x240.png", "to": "jquery-ui-1.14.2/images/ui-icons_555555_256x240.png", "sha256": "9dab1725ee38e87989a48796505748157d0238ac72c25a072f5162aa61e2da06" },
+        { "from": "package/themes/base/images/ui-icons_777620_256x240.png", "to": "jquery-ui-1.14.2/images/ui-icons_777620_256x240.png", "sha256": "91e1ea5f253e72e2e9402cff2bb58fa98b5faa49f9ded999c760013b94ead7f8" },
+        { "from": "package/themes/base/images/ui-icons_777777_256x240.png", "to": "jquery-ui-1.14.2/images/ui-icons_777777_256x240.png", "sha256": "943d9bc18134619d37406debd81636b63881363a019513c1d6e6cb13b5c5fb30" },
+        { "from": "package/themes/base/images/ui-icons_cc0000_256x240.png", "to": "jquery-ui-1.14.2/images/ui-icons_cc0000_256x240.png", "sha256": "6efc1db612130b63222e0f6bf54d37392c3f2bdb2c10ba50f5d0f1e14d63af61" },
+        { "from": "package/themes/base/images/ui-icons_ffffff_256x240.png", "to": "jquery-ui-1.14.2/images/ui-icons_ffffff_256x240.png", "sha256": "6d81fc3fac3b17a25f4ef3eee1394642d38b1adba5c7442acef3b3c8b045cbe7" }
+      ]
+    },
+    {
+      "name": "jquery-ui-touch-punch",
+      "version": "0.2.3",
+      "license": "MIT",
+      "license_note": "package.json 声明 \"Dual licensed under the MIT or GPL Version 2 licenses\"（包内无 LICENSE 文件）；本项目选择 MIT 条款使用。",
+      "tarball": "https://registry.npmjs.org/jquery-ui-touch-punch/-/jquery-ui-touch-punch-0.2.3.tgz",
+      "tarball_integrity": "sha512-Q/7aAd+SjbV0SspHO7Kuk96NJIbLwJAS0lD81U1PKcU2T5ZKayXMORH+Y5qvYLuy41xqVQbWimsRKDn1v3oI2Q==",
+      "files": [
+        { "from": "package/jquery.ui.touch-punch.min.js", "to": "jquery-ui-touch-punch-0.2.3/jquery.ui.touch-punch.min.js", "sha256": "000854d782781aff1b16ea5451c1da3d07efadd35ab911ccb7e4b851571a25bd" }
+      ]
+    },
+    {
+      "name": "@fortawesome/fontawesome-free",
+      "version": "7.3.1",
+      "license": "CC-BY-4.0 AND OFL-1.1 AND MIT",
+      "license_note": "图标 CC-BY-4.0、字体文件（webfonts/*.woff2）SIL OFL 1.1、CSS/JS 代码 MIT；不按单一 MIT 登记。",
+      "tarball": "https://registry.npmjs.org/@fortawesome/fontawesome-free/-/fontawesome-free-7.3.1.tgz",
+      "tarball_integrity": "sha512-wmglKKPDIkgV3aWlZzWECCPoGIkYCulzBwxG9+w7rc5BGapZ6cPMpoPOT8k36J0Ni7PPX6c/rsoMWfS4d1MUMg==",
+      "files": [
+        { "from": "package/css/all.min.css", "to": "fontawesome-free-7.3.1/css/all.min.css", "sha256": "e0b69df26e19596d4b81bf7eb0c54b6047e7221ec18d5d4d40c11eefd3ef8a4b", "note": "CSS 仅以 url(../webfonts/*.woff2) 引用下列 4 个字体文件；保持 css/ 与 webfonts/ 相对结构" },
+        { "from": "package/webfonts/fa-brands-400.woff2", "to": "fontawesome-free-7.3.1/webfonts/fa-brands-400.woff2", "sha256": "ff66d1cfb67dbe3da432bbe36572cabfa4eef0e591303c2cba111474ba1d15bc", "license": "OFL-1.1" },
+        { "from": "package/webfonts/fa-regular-400.woff2", "to": "fontawesome-free-7.3.1/webfonts/fa-regular-400.woff2", "sha256": "f4722d10b9e1b41eefe3b51a026312ee1970edb7782f94b0080d3d475945734c", "license": "OFL-1.1" },
+        { "from": "package/webfonts/fa-solid-900.woff2", "to": "fontawesome-free-7.3.1/webfonts/fa-solid-900.woff2", "sha256": "24e5fae26b41c08b2df81c91669f5aaae71d81a84a4713fc56b5c621b78dd456", "license": "OFL-1.1" },
+        { "from": "package/webfonts/fa-v4compatibility.woff2", "to": "fontawesome-free-7.3.1/webfonts/fa-v4compatibility.woff2", "sha256": "c776ee1f1fe21cd72195e91de7afd5c9dbd007e9d06016254d65fbcc091398ca", "license": "OFL-1.1" }
+      ]
+    },
+    {
+      "name": "vue",
+      "version": "3.5.44",
+      "license": "MIT",
+      "pinned_from": "upstream/JS-Slash-Runner/pnpm-lock.yaml（vue@3.5.44）",
+      "tarball": "https://registry.npmjs.org/vue/-/vue-3.5.44.tgz",
+      "tarball_integrity": "sha512-dvvmaOCG7lAMkJTPqPwWeGMsPS6DIsFsfZDUgBp9V6mHf9b3+/wyVwYR4Es+WV6uJC0FKRxp81Obcq0ZwUcGFQ==",
+      "files": [
+        { "from": "package/dist/vue.runtime.global.prod.js", "to": "vue-3.5.44/vue.runtime.global.prod.js", "sha256": "d4ce95b94ad5808c55c26a1de57098bd7aa5fc07c31cc2ceb517b24a80633a13" }
+      ]
+    },
+    {
+      "name": "vue-router",
+      "version": "5.4.0",
+      "license": "MIT",
+      "pinned_from": "upstream/JS-Slash-Runner/pnpm-lock.yaml（vue-router@5.4.0）",
+      "tarball": "https://registry.npmjs.org/vue-router/-/vue-router-5.4.0.tgz",
+      "tarball_integrity": "sha512-pFvcYcxinDHjZUlf7AzFBrT8r8Xqvv4uMHoJnjc+EqPawXQvHTkF8S4tfSmQLpriVHUGfkaKlI7Et0KRjTMTdw==",
+      "files": [
+        { "from": "package/dist/vue-router.global.prod.js", "to": "vue-router-5.4.0/vue-router.global.prod.js", "sha256": "a2b9d9ec60148ab9e85acfadec672e59b3c4d7ac50b926c784ca72235cb6070f" }
+      ]
+    }
+  ],
+  "local_sources": [
+    {
+      "name": "tavern-helper log.js",
+      "license": "PolyForm-Noncommercial-1.0.0",
+      "source": "upstream/JS-Slash-Runner/src/iframe/node_modules/log.js（锁定 commit 0af42106 内的文件；上游 CDN URL 指向其默认分支同路径）",
+      "to": "jsr-0af42106/log.js",
+      "sha256": "045e99e508dc6fd428e3a99f3665e5f454423e1f170c65b39c8967218f9addf1"
+    }
+  ],
+  "not_in_selected_runtime_chain": [
+    {
+      "where": "src/panel/script/Builtin.vue → dist 中 30 处 https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/…",
+      "what": "Helper 内置脚本市场（输入助手、标签化等）的脚本与 README；仅在用户于「脚本」面板主动安装时按需加载",
+      "decision": "不在本切片选定运行栈，不替换、不预下载、不建商店；保持上游行为并在此记录边界。"
+    },
+    {
+      "where": "src/panel/Optimize.vue → dist 中 1 处 https://testingcf.jsdelivr.net/gh/N0VI028/JS-Slash-Runner/src/panel/optimize/${name}/…",
+      "what": "「优化」面板按名称懒加载的说明/脚本文本；仅用户点击该面板时触发",
+      "decision": "同上，不在选定运行链。"
+    },
+    {
+      "where": "MagVarUpdate d03b7dc8 artifact/bundle.js 内 pi-ai@1.3.0 懒加载",
+      "what": "MVU 可选 PI 路径（未启用；upstream.lock.json excluded_at_w00.pi）",
+      "decision": "保持关闭；不实现 PI 额外请求。"
+    },
+    {
+      "where": "ST-Prompt-Template d6f520d1 dist/index.js 内 jsdelivr/unpkg 字串",
+      "what": "构建元数据（sourcemap/包说明），非运行期加载",
+      "decision": "无需替换。"
+    }
+  ]
+}

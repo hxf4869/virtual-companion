@@ -30,3 +30,20 @@ requirements:
   - production_truth_remains_in_project_database
   - community_feature_matrix_reviewed_before_upgrade
   - commercial_purchase_requires_separate_adr
+# 域内策略：只约束对应域，不放宽上面 Go / 旧前端的全局 allowlist（ADR-0009 §3：Owner 接受 ST 栈许可后果）。
+domainPolicies:
+  stIntegration:
+    scope:
+      - integrations/sillytavern/upstream.lock.json   # ST / Helper / EJS / MVU 四上游组件
+      - integrations/sillytavern/vendor.lock.json     # Helper 运行期自托管资源（含字体）
+      - integrations/sillytavern/package.json         # 集成脚本自身直接依赖
+    allowedLicenseFamilies:
+      - AGPL-3.0                        # SillyTavern、ST-Prompt-Template；自有补丁/扩展同样按 AGPL 标注
+      - PolyForm-Noncommercial-1.0.0    # Tavern Helper：整个 V2 仅 Owner 本人非商业使用
+      - MIT
+      - Apache-2.0
+      - CC-BY-4.0                       # Font Awesome 图标
+      - OFL-1.1                         # Font Awesome 字体文件
+    constraints:
+      - noncommercial_only_owner_use     # PolyForm-NC → 不得商用、不得向 Owner 以外的人提供服务
+      - agpl_source_offer_if_network_served_to_others

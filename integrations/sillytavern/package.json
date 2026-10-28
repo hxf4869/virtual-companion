@@ -1,0 +1,21 @@
+{
+  "name": "vc-sillytavern-integration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "V2 SillyTavern 宿主集成：开发入口脚本、确定性补丁、C1 备份包装、验收脚本与离线测试（自有代码按 AGPL-3.0 标注，见 README）",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "start": "node scripts/start.mjs",
+    "stop": "node scripts/stop.mjs",
+    "status": "node scripts/status.mjs",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "accept": "node scripts/accept.mjs",
+    "protection-report": "node scripts/protection-report.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1"
+  }
+}

@@ -96,3 +96,6 @@ backend/companiond
 # V2 SillyTavern 上游源码与本地运行产物（ADR-0009 / 执行计划 §4：只提交 upstream.lock.json 与自有集成代码）
 integrations/sillytavern/upstream/
 integrations/sillytavern/.local/
+# V2-W03-S1 本切片专用开发运行目录（dataRoot/config/pid/日志/vendor 缓存/验收产物）与集成脚本依赖
+integrations/sillytavern/dev/
+integrations/sillytavern/node_modules/
