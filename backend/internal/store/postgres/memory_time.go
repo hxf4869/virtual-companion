@@ -99,3 +99,39 @@ func (s *Store) writeMemoryTime(ctx context.Context, tx pgx.Tx, owner, id int64,
 	_, err = tx.Exec(ctx, `SELECT vc.set_memory_temporal($1,$2,$3)`, owner, id, string(raw))
 	return err
 }
+
+// writeVerifiedSourceTime normalizes an engine publication from the verified
+// source text and that source row's frozen clock. A rewritten summary and
+// evidence collected from superseded records do not choose the anchor.
+func (s *Store) writeVerifiedSourceTime(ctx context.Context, tx pgx.Tx, owner, id int64, basis string, sourceID int64) error {
+	existing, err := s.readMemoryTime(ctx, tx, owner, id)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+	out := MemoryTime{RecordedAt: time.Now().UTC()}
+	err = tx.QueryRow(ctx, `SELECT source_timestamp,source_timezone FROM vc.st_message_source WHERE owner_user_id=$1 AND id=$2`, owner, sourceID).Scan(&out.SourceTimestamp, &out.SourceTimezone)
+	if err != nil {
+		return err
+	}
+	var at time.Time
+	var zone string
+	if out.SourceTimestamp != nil {
+		at = *out.SourceTimestamp
+	}
+	if out.SourceTimezone != nil {
+		zone = *out.SourceTimezone
+	}
+	out.Result = memorytime.Normalize(basis, at, zone)
+	if out.SourceTimestamp == nil && out.NormalizationStatus == memorytime.StatusNone {
+		return nil
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return errStore
+	}
+	_, err = tx.Exec(ctx, `SELECT vc.set_memory_temporal($1,$2,$3)`, owner, id, string(raw))
+	return err
+}

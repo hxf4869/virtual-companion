@@ -398,6 +398,7 @@ export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies, expec
 /** accept-managed 的验收场景注册表。needs 声明运行依赖，编排按需补齐。 */
 export const SCENES = [
     { id: 'memory-real-model', title: 'W08 Owner授权私有模型少量实际提取（显式选择，最多3条来源）', needs: ['go', 'stack'], default: false },
+    { id: 'memory-real-eval', title: 'W08 真实模型效果评估（显式选择，最多80次调用，不进默认集）', needs: ['go', 'stack'], default: false },
     { id: 'memorycore-native', title: 'W08 受控 MemoryCore 固定源码、SQLite、范围与本机 embedding', needs: ['memorycore'], default: false },
     { id: 'memorycore-foundation', title: 'W08 MemoryCore 固定源码基础服务、鉴权、重启与数据保留', needs: ['memorycore'], default: false },
     { id: 'login-shape', title: '合成 Owner 登录请求形状（真实 POST /api/v1/auth/login）', needs: ['go'], default: true },

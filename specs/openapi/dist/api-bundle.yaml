@@ -646,6 +646,146 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs:
+    post:
+      operationId: startStoryRun
+      summary: Open one story run for a STORY conversation
+      description: Creates the rainy-inn-v1 run, its root branch and four participants (the player plus 林岚, 周澈 and 苏禾) for
+        one owned conversation whose st_mode is STORY. Repeating the same conversation and case returns the existing run.
+        A different case for that conversation conflicts, so one conversation cannot hold two runs. A COMPANION conversation
+        is rejected. Participants do not create relationship rows. Cookie identity is the owner. Requires CSRF, Origin and
+        the expected account and session headers. This operation does not call a model; STORY_DIRECTOR stays disabled.
+      security:
+      - cookieAuth: []
+      parameters:
+      - in: header
+        name: X-CSRF-Token
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-VC-Expected-Account-ID
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      - in: header
+        name: X-VC-Expected-Session-ID
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartStoryRunRequest'
+      responses:
+        '200':
+          description: The new or existing run and its root branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryRun'
+        '400':
+          description: Invalid conversation id or unsupported case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin or CSRF rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Conversation absent or owned by someone else
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: COMPANION conversation, a different case already opened, or account/session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/actors/{actorId}/view:
+    get:
+      operationId: getStoryActorView
+      summary: Read one actor's visible story projection
+      description: Returns the public setting, the public NPC cast, that actor's own initial knowledge and events already
+        visible to the actor. The response carries the stable conversation, run, branch, actor and worldVersion. A worldVersion
+        that does not match the run conflicts. World truth and other actors' private knowledge are filtered before serialization
+        and are not part of this schema. Cookie identity is the owner. Another owner and an anonymous caller are rejected.
+        This read does not call a model.
+      security:
+      - cookieAuth: []
+      parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      - name: actorId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
+      - name: branchId
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      - name: worldVersion
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      responses:
+        '200':
+          description: The actor's visible projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryActorView'
+        '400':
+          description: Invalid run, branch, actor or worldVersion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run, branch or actor absent or owned by someone else
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: worldVersion does not match the run, or the account/session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -5828,6 +5968,183 @@ components:
             type: string
             pattern: ^[1-9][0-9]{0,18}$
           description: Selected verified summary identifiers, kept as decimal strings
+    StartStoryRunRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - conversationId
+      - caseId
+      properties:
+        conversationId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: Owned conversation whose mode is STORY
+        caseId:
+          type: string
+          const: rainy-inn-v1
+          description: Embedded world definition id
+    StoryParticipant:
+      type: object
+      additionalProperties: false
+      required:
+      - actorId
+      - name
+      - role
+      - scene
+      properties:
+        actorId:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum:
+          - player
+          - npc
+        scene:
+          type: string
+    StoryRun:
+      type: object
+      additionalProperties: false
+      required:
+      - conversationId
+      - runId
+      - branchId
+      - caseId
+      - worldVersion
+      - stage
+      - participants
+      properties:
+        conversationId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        runId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        branchId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        caseId:
+          type: string
+          const: rainy-inn-v1
+        worldVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        stage:
+          type: string
+        participants:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/StoryParticipant'
+    StoryActorView:
+      type: object
+      additionalProperties: false
+      description: Public setting, the public NPC cast, the actor's own initial knowledge and events already visible to that
+        actor. World truth is not a property of this object.
+      required:
+      - conversationId
+      - runId
+      - branchId
+      - actorId
+      - worldVersion
+      - publicLore
+      - knowledge
+      - events
+      - participants
+      properties:
+        conversationId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        runId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        branchId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        actorId:
+          type: string
+        worldVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        publicLore:
+          type: object
+          additionalProperties: false
+          required:
+          - setting
+          - locations
+          - knownEvent
+          properties:
+            setting:
+              type: string
+            locations:
+              type: array
+              items:
+                type: string
+            knownEvent:
+              type: string
+        knowledge:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - id
+            - fact
+            - marker
+            properties:
+              id:
+                type: string
+              fact:
+                type: string
+              marker:
+                type: string
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - eventId
+            - actorId
+            - worldVersion
+            - body
+            properties:
+              eventId:
+                type: string
+                pattern: ^[1-9][0-9]{0,18}$
+              actorId:
+                type: string
+              worldVersion:
+                type: integer
+                format: int64
+                minimum: 0
+              body:
+                type: object
+                additionalProperties: true
+        participants:
+          type: array
+          minItems: 3
+          maxItems: 3
+          description: Public names and public personas of the case NPCs.
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - actorId
+            - name
+            - publicPersona
+            properties:
+              actorId:
+                type: string
+              name:
+                type: string
+              publicPersona:
+                type: string
+                description: Public persona copied from the world definition.
     Relationship:
       type: object
       description: A Companion relationship owned by exactly one user. Each instance has an independent active flag; V2-W05

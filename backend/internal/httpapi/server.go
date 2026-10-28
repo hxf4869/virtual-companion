@@ -304,9 +304,14 @@ func operation(path string) string {
 		return "service_memorycore_llm"
 	case "/api/v1/admin/model-purposes":
 		return "admin_model_purposes"
+	case "/api/v1/story/runs":
+		return "story_run"
 	default:
 		if strings.HasPrefix(path, "/api/v1/admin/model-purposes/") {
 			return "admin_model_purpose"
+		}
+		if strings.HasPrefix(path, "/api/v1/story/") {
+			return "story_actor_view"
 		}
 		if strings.HasPrefix(path, "/api/v1/service/model-purposes/") {
 			return "service_model_purpose_resolve"

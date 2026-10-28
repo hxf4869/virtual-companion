@@ -55,6 +55,61 @@ async function fileTool(stagingDir, stage, tool) {
     throw new Error('MEMORYCORE_TOOL_NOT_ALLOWED');
 }
 
+function stripModelWrappers(text) {
+    const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const fenced = withoutThink.match(/^```(?:json)?[ \t]*\r?\n?([\s\S]*?)\r?\n?```$/i);
+    return (fenced ? fenced[1] : withoutThink).trim();
+}
+function isModelAction(action) {
+    return Boolean(action) && typeof action === 'object' && !Array.isArray(action) && (action.tool || typeof action.text === 'string');
+}
+function balancedObjectEnd(text, start) {
+    let depth = 0, quoted = false, escaped = false;
+    for (let i = start; i < text.length; i++) {
+        const c = text[i];
+        if (quoted) {
+            if (escaped) escaped = false;
+            else if (c === '\\') escaped = true;
+            else if (c === '"') quoted = false;
+            continue;
+        }
+        if (c === '"') { quoted = true; continue; }
+        if (c === '{') depth++;
+        else if (c === '}') {
+            if (--depth === 0) return i + 1;
+        }
+    }
+    return -1;
+}
+// Real replies are not pure JSON. Accept a whole object after removing reasoning
+// and a json fence, then the first balanced object that is itself a tool or finish.
+// Anything else is the final reply. Tool paths stay on the strict fileTool path.
+function parseModelAction(text) {
+    try {
+        const whole = JSON.parse(stripModelWrappers(text));
+        if (isModelAction(whole)) return whole;
+    } catch { /* prefix or prose */ }
+    const stripped = stripModelWrappers(text);
+    for (let i = 0; i < stripped.length; i++) {
+        if (stripped[i] !== '{') continue;
+        const end = balancedObjectEnd(stripped, i);
+        if (end < 0) continue;
+        try {
+            const action = JSON.parse(stripped.slice(i, end));
+            if (isModelAction(action)) return action;
+        } catch { /* keep scanning */ }
+        if (end > i) i = end - 1;
+    }
+    return { text };
+}
+async function callbackFailureCode(response) {
+    try {
+        const payload = await response.json();
+        const code = payload && payload.code;
+        if (typeof code === 'string' && code.length <= 64 && /^MEMORYCORE_[A-Z0-9_]+$/.test(code)) return code;
+    } catch { /* generic closed code */ }
+    return 'MEMORYCORE_CALLBACK_FAILED';
+}
 export function createCallbackRunner({ baseURL, token, operationToken, stage, stagingDir, fetchImpl = fetch, counter = { value: 0 }, maxSteps = 12 }) {
     const url = new URL(baseURL);
     if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password ||
@@ -68,19 +123,25 @@ export function createCallbackRunner({ baseURL, token, operationToken, stage, st
         for (let step = 0; step < (tools ? maxSteps : 1); step++) {
             const remaining = deadline - Date.now();
             if (remaining <= 0) throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
-            let result;
+            let response;
             try {
-                const response = await fetchImpl(url.origin + '/api/v1/service/memorycore/llm', {
+                response = await fetchImpl(url.origin + '/api/v1/service/memorycore/llm', {
                     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
                     body: JSON.stringify({ operationToken, stage, callSequence: ++counter.value, messages }), signal: AbortSignal.timeout(remaining),
                 });
-                if (!response.ok) throw new Error();
+            } catch (error) {
+                const name = error && error.name;
+                if (name === 'AbortError' || name === 'TimeoutError') throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
+                throw new Error('MEMORYCORE_CALLBACK_FAILED');
+            }
+            if (!response.ok) throw new Error(await callbackFailureCode(response));
+            let result;
+            try {
                 result = await response.json();
-                if (typeof result.text !== 'string' || result.text.length > 200000) throw new Error();
             } catch { throw new Error('MEMORYCORE_CALLBACK_FAILED'); }
+            if (typeof result.text !== 'string' || result.text.length > 200000) throw new Error('MEMORYCORE_CALLBACK_FAILED');
             if (!tools) return result.text;
-            let action;
-            try { action = JSON.parse(result.text); } catch { throw new Error('MEMORYCORE_TOOL_RESPONSE'); }
+            const action = parseModelAction(result.text);
             if (!action.tool && typeof action.text === 'string') return action.text;
             const output = await fileTool(stagingDir, stage, action.tool);
             messages.push({ role: 'assistant', content: result.text }, { role: 'user', content: JSON.stringify({ toolResult: output }) });

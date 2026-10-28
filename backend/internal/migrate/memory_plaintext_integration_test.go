@@ -45,9 +45,8 @@ func TestMemoryPlaintextMigration(t *testing.T) {
 		if err := migrate.Run(ctx, migrate.Config{DSN: dsn, DecryptMemory: current.Decrypt}); err != nil {
 			t.Fatal(err)
 		}
-		if got := plaintextQuery(t, conn, plaintextSnapshot); got != want {
-			t.Fatal("migration changed metadata or did not convert every memory field across both owners and pages")
-		}
+		migrated := plaintextQuery(t, conn, plaintextSnapshot)
+		assertPlaintextMigrated(t, migrated, want)
 		if got := plaintextQuery(t, conn, plaintextRLSSnapshot); got != rlsBefore {
 			t.Fatal("migration changed FORCE RLS or ownership policies")
 		}
@@ -60,7 +59,7 @@ func TestMemoryPlaintextMigration(t *testing.T) {
 		}}); err != nil {
 			t.Fatal(err)
 		}
-		if got := plaintextQuery(t, conn, plaintextSnapshot); got != want {
+		if got := plaintextQuery(t, conn, plaintextSnapshot); got != migrated {
 			t.Fatal("reentry changed stored data")
 		}
 
@@ -209,6 +208,157 @@ const plaintextFunctionSnapshot = `SELECT jsonb_agg(jsonb_build_object('name',p.
 
 type plaintextExecer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+// assertPlaintextMigrated checks the V145 snapshot against the database after
+// V146–V152. Every pre-existing field must match, including restored plaintext
+// across both owners and the 260-row page. The only accepted drift is the
+// V149 conversation_summary.valid cutover and columns added after V145 at
+// their defaults. A ciphertext envelope, a dropped row, or any other change
+// fails.
+func assertPlaintextMigrated(t *testing.T, got, want string) {
+	t.Helper()
+	if strings.Contains(got, "enc1:") || strings.Contains(got, "enc2:") {
+		t.Fatal("ciphertext envelope survived migration")
+	}
+	gotValue := decodePlaintextSnapshot(t, got)
+	wantValue := decodePlaintextSnapshot(t, want)
+	if err := comparePlaintext("", "", gotValue, wantValue); err != nil {
+		t.Fatalf("migration changed metadata or did not convert every memory field across both owners and pages: %v", err)
+	}
+}
+
+func decodePlaintextSnapshot(t *testing.T, raw string) any {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func comparePlaintext(table, path string, got, want any) error {
+	switch wantValue := want.(type) {
+	case map[string]any:
+		gotMap, ok := got.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: got %T, want object", path, got)
+		}
+		for key, wantChild := range wantValue {
+			gotChild, ok := gotMap[key]
+			if !ok {
+				return fmt.Errorf("%s: missing %s", path, key)
+			}
+			// V153 blanks the body of rows that were already soft-deleted.
+			// Live rows must still match the pre-migration plaintext.
+			if table == "memory" && key == "summary" {
+				if deletedAt, exists := gotMap["deleted_at"]; exists && deletedAt != nil {
+					if gotChild != "" {
+						return fmt.Errorf("%s.summary: forgotten memory summary = %#v, want empty", path, gotChild)
+					}
+					continue
+				}
+			}
+			childTable := table
+			childPath := path + "." + key
+			if table == "" {
+				childTable = key
+				childPath = key
+			}
+			if err := comparePlaintext(childTable, childPath, gotChild, wantChild); err != nil {
+				return err
+			}
+		}
+		for key, gotChild := range gotMap {
+			if _, ok := wantValue[key]; ok {
+				continue
+			}
+			if err := addedPlaintextColumn(table, key, gotChild); err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+		}
+		return nil
+	case []any:
+		gotList, ok := got.([]any)
+		if !ok {
+			return fmt.Errorf("%s: got %T, want array", path, got)
+		}
+		if len(gotList) != len(wantValue) {
+			return fmt.Errorf("%s: length %d, want %d", path, len(gotList), len(wantValue))
+		}
+		for i := range wantValue {
+			if err := comparePlaintext(table, fmt.Sprintf("%s[%d]", path, i), gotList[i], wantValue[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		if table == "summary" && strings.HasSuffix(path, ".valid") {
+			if got != false || (want != false && want != true) {
+				return fmt.Errorf("%s: got %#v, want false after the V149 cutover (was %#v)", path, got, want)
+			}
+			return nil
+		}
+		if !sameJSONValue(got, want) {
+			return fmt.Errorf("%s: got %#v want %#v", path, got, want)
+		}
+		return nil
+	}
+}
+
+func addedPlaintextColumn(table, key string, got any) error {
+	switch table {
+	case "memory":
+		switch key {
+		case "engine_record_id", "engine_version", "engine_operation_id",
+			"supersedes_memory_id", "cleanup_detail", "cleanup_revision",
+			"correction_operation_id", "correction_previous_operation_id",
+			"correction_summary", "correction_revision":
+			if got != nil {
+				return fmt.Errorf("new column %s = %#v, want null", key, got)
+			}
+			return nil
+		case "management_version":
+			if n, ok := got.(json.Number); ok && n.String() == "1" {
+				return nil
+			}
+			return fmt.Errorf("management_version = %#v, want 1", got)
+		case "cleanup_state":
+			if got == "NONE" {
+				return nil
+			}
+			return fmt.Errorf("cleanup_state = %#v, want NONE", got)
+		}
+	case "attempt":
+		switch key {
+		case "memorycore_operation_id", "memorycore_stage", "memorycore_call_sequence":
+			if got != nil {
+				return fmt.Errorf("new column %s = %#v, want null", key, got)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("unexpected column %s.%s = %#v", table, key, got)
+}
+
+func sameJSONValue(got, want any) bool {
+	switch gotValue := got.(type) {
+	case nil:
+		return want == nil
+	case bool:
+		wantValue, ok := want.(bool)
+		return ok && gotValue == wantValue
+	case string:
+		wantValue, ok := want.(string)
+		return ok && gotValue == wantValue
+	case json.Number:
+		wantValue, ok := want.(json.Number)
+		return ok && gotValue.String() == wantValue.String()
+	default:
+		return false
+	}
 }
 
 func plaintextExec(t *testing.T, conn plaintextExecer, query string, args ...any) {

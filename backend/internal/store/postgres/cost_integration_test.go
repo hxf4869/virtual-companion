@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/turn"
@@ -154,46 +153,36 @@ func TestCostExtractionUsesSameCapAndClosesOnJobCancel(t *testing.T) {
 	if _, err := prepareCost(c, "synthetic-go-model"); err != nil {
 		t.Fatal(err)
 	}
-	conv, err := store.CreateConversation(ctx, 1, 10, false)
-	if err != nil {
-		t.Fatal(err)
+	// The shared ceiling now applies to the only live extractor. The chat
+	// reservation above already holds the whole monthly cap.
+	useSTExtractRoute(t, store)
+	sourceID := openSTExtractSource(t, store, sourceChat, "extract-card", sourceMessage, sourceCandidate, "费用来源")
+	jobs := stExtractJobIDs(t, store, 1)
+	if len(jobs) != 1 {
+		t.Fatalf("ST extract jobs %v, want 1", jobs)
 	}
-	gen, _, _ := seedFinishedTurn(t, 1, conv, "COMPLETED", false, false)
-	job, err := store.EnqueueMemoryExtract(ctx, 1, gen)
-	if err != nil {
-		t.Fatal(err)
-	}
-	claims, err := store.ClaimJobs(ctx, time.Minute, time.Minute, time.Minute, 8, 8, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var extract JobClaim
-	for _, claim := range claims {
-		if claim.Kind == "MEMORY_EXTRACT" && claim.JobID == job {
-			extract = claim
-		}
-	}
-	if extract.JobID == 0 {
-		t.Fatal("missing extract claim")
+	extract := claimSTExtract(t, store, jobs[0])
+	if extract.RefID != sourceID {
+		t.Fatalf("extract ref %d, want source %d", extract.RefID, sourceID)
 	}
 	store.UseCostLimits(1000000, 1000000)
-	if _, err := store.PrepareMemoryExtractAttempt(ctx, 1, job, gen, extract.Token, extract.Fence, "prov-a", "sup-a", "model-a", 128); err == nil {
+	if _, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, extract.JobID, sourceID, extract.Token, extract.Fence, "prov-a", "sup-a", "model-a", 128); err == nil {
 		t.Fatal("extraction bypassed the chat reservation")
 	}
 	costAssertSQL(t, "SELECT count(*) FROM vc.memory_extract_attempt", "0")
 	// 512 output tokens alone cost 1,024 micro-USD. Including this request's
 	// 128 input tokens costs 1,152, so a 1,100 ceiling must refuse it.
 	store.UseCostLimits(1100, 2000000)
-	if _, err := store.PrepareMemoryExtractAttempt(ctx, 1, job, gen, extract.Token, extract.Fence, "prov-a", "sup-a", "model-a", 128); err == nil {
+	if _, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, extract.JobID, sourceID, extract.Token, extract.Fence, "prov-a", "sup-a", "model-a", 128); err == nil {
 		t.Fatal("extraction input tokens were omitted from the ceiling check")
 	}
 	costAssertSQL(t, "SELECT count(*) FROM vc.memory_extract_attempt", "0")
 	store.UseCostLimits(1000000, 2000000)
-	prep, err := store.PrepareMemoryExtractAttempt(ctx, 1, job, gen, extract.Token, extract.Fence, "prov-a", "sup-a", "model-a", 128)
+	prep, err := store.PrepareSTMemoryExtractAttempt(ctx, 1, extract.JobID, sourceID, extract.Token, extract.Fence, "prov-a", "sup-a", "model-a", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.CompleteJob(ctx, 1, job, extract.Token, extract.Fence, "CANCELLED", "synthetic"); err != nil {
+	if err := store.CompleteJob(ctx, 1, extract.JobID, extract.Token, extract.Fence, "CANCELLED", "synthetic"); err != nil {
 		t.Fatal(err)
 	}
 	costAssertSQL(t, fmt.Sprintf("SELECT status || ':' || round(actual_usd*1000000)::bigint FROM vc.model_cost_reservation WHERE provider_attempt_id='memory-extract:%d'", prep.AttemptID), "SETTLED:1000000")

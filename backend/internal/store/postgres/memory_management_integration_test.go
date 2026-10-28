@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -130,6 +131,7 @@ func TestManagedMemoryFiltersIsolationCorrectionAndForget(t *testing.T) {
 	if state.Lifecycle != "FORGETTING" || state.RecallEligible || state.Cleanup.State != "PENDING" {
 		t.Fatalf("suppression %+v", state)
 	}
+	assertForgottenBodyGone(t, ctx, 1, id, "我改到11月6日去杭州参加婚礼")
 	if err = testEnv.store.continueMemoryCleanup(ctx, 1, id); err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +143,7 @@ func TestManagedMemoryFiltersIsolationCorrectionAndForget(t *testing.T) {
 	if state.Lifecycle != "FORGOTTEN" || state.Cleanup.State != "DONE" {
 		t.Fatalf("cleanup %+v", state)
 	}
+	assertForgottenBodyGone(t, ctx, 1, id, "我改到11月6日去杭州参加婚礼")
 	if calls["/internal/commit"] != 1 || calls["/internal/correct-propose"] != 1 || calls["/internal/forget"] != 1 {
 		t.Fatalf("unexpected calls %v", calls)
 	}
@@ -162,6 +165,227 @@ func TestManagedMemoryFiltersIsolationCorrectionAndForget(t *testing.T) {
 		t.Fatal("invalidated proposal reached engine commit")
 	}
 
+}
+
+func assertForgottenBodyGone(t *testing.T, ctx context.Context, owner, id int64, sentence string) {
+	t.Helper()
+	detail, err := testEnv.store.GetManagedMemory(ctx, owner, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row struct {
+		Summary        string `json:"summary"`
+		RelationshipID string `json:"relationshipId"`
+	}
+	if json.Unmarshal(detail, &row) != nil || row.Summary != "" || strings.Contains(string(detail), sentence) {
+		t.Fatalf("forgotten detail still holds body: %s", detail)
+	}
+	rel, err := strconv.ParseInt(row.RelationshipID, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, _, err := testEnv.store.ListManagedMemories(ctx, owner, rel, MemoryFilters{Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, raw := range listed {
+		var item struct {
+			ID      string `json:"memoryId"`
+			Summary string `json:"summary"`
+		}
+		if json.Unmarshal(raw, &item) != nil {
+			t.Fatal("list row")
+		}
+		if item.ID == strconv.FormatInt(id, 10) {
+			seen = true
+			if item.Summary != "" {
+				t.Fatalf("list summary %q", item.Summary)
+			}
+		}
+		if strings.Contains(item.Summary, sentence) {
+			t.Fatal("list still holds forgotten body")
+		}
+	}
+	if !seen {
+		t.Fatal("forgotten tombstone missing from list")
+	}
+	evidence, err := testEnv.store.ManagedMemoryEvidence(ctx, owner, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence) == 0 {
+		t.Fatal("forgotten evidence rows missing")
+	}
+	for _, raw := range evidence {
+		var ev struct {
+			Excerpt string `json:"excerpt"`
+		}
+		if json.Unmarshal(raw, &ev) != nil || ev.Excerpt != "" || strings.Contains(string(raw), sentence) {
+			t.Fatalf("evidence still holds body: %s", raw)
+		}
+	}
+	conn, err := pgx.Connect(ctx, IsolationSuperDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	var summary string
+	var correction *string
+	if err = conn.QueryRow(ctx, `SELECT summary, correction_summary FROM vc.memory_item WHERE owner_user_id=$1 AND id=$2`, owner, id).Scan(&summary, &correction); err != nil || summary != "" || correction != nil {
+		t.Fatalf("stored body summary=%q correction=%v err=%v", summary, correction, err)
+	}
+}
+
+func TestForgetDropsDerivedProfileAcrossSharedSessionsUntilRebuild(t *testing.T) {
+	a, snapshots := stMemoryFixture(t)
+	ctx := context.Background()
+	at := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	chatB := "10000000-0000-0000-0000-0000000000b2"
+	b, err := testEnv.store.ResolveSTBinding(ctx, 1, STBindingInput{ChatIdentity: chatB, CharacterRef: "memory-card", Mode: "COMPANION", RelationshipID: &a.RelationshipID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshots[sourceChat] = stMemorySnapshot(sourceChat, "今天只是随便聊聊。", at)
+	snapshots[chatB] = stMemorySnapshot(chatB, "换个话题接着说。", at)
+	if _, err = testEnv.store.ReconcileSTSources(ctx, 1, []string{sourceChat, chatB}); err != nil {
+		t.Fatal(err)
+	}
+	if err = IsolationSuperExec(ctx, `UPDATE vc.relationship SET memory_share_scope='RELATIONSHIP' WHERE owner_user_id=1 AND id=$1`, a.RelationshipID); err != nil {
+		t.Fatal(err)
+	}
+	var scope string
+	if err = testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT memory_share_scope FROM vc.relationship WHERE owner_user_id=1 AND id=$1`, a.RelationshipID).Scan(&scope)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if scope == "SESSION" || scope != "RELATIONSHIP" {
+		t.Fatalf("share scope %s", scope)
+	}
+	refA, refB := refForChat(t, sourceChat), refForChat(t, chatB)
+	forgotten := addSTMemory(t, a, "一条可遗忘的普通事实", refA)
+	addSTMemory(t, b, "兄弟会话仍保留的周日阅读", refB)
+	const secret = "紫丁香花盆下的备用钥匙"
+	profileEngineFixture(t, a, refA, "画像："+secret)
+	profileEngineFixture(t, b, refB, "画像：兄弟会话仍保留的周日阅读")
+	var jobB int64
+	if err = testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT id FROM vc.work_item WHERE owner_user_id=1 AND kind='ST_MEMORY_EXTRACT' AND st_source_ref=$1`, refB).Scan(&jobB); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile(1,$1,'profile-token','profile-fence',$2,$3)`, jobB, []string{refA, refB}, "兄弟会话摘要："+secret)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/internal/search":
+			var input struct {
+				Allowed []string `json:"allowedRecordIds"`
+			}
+			if json.NewDecoder(r.Body).Decode(&input) != nil {
+				w.WriteHeader(400)
+				return
+			}
+			out := []map[string]string{}
+			for _, id := range input.Allowed {
+				out = append(out, map[string]string{"record_id": id})
+			}
+			json.NewEncoder(w).Encode(out)
+		case "/internal/forget":
+			w.Write([]byte(`{"status":"cleared"}`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+	client, err := memoryengine.New(server.URL, "synthetic-forget-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testEnv.store.UseMemoryEngine(client)
+	t.Cleanup(func() { testEnv.store.UseMemoryEngine(nil) })
+	sibling := STMemoryRequest{ChatIdentity: chatB, Revision: 1, Enabled: true, BudgetTokens: 1024}
+	origin := STMemoryRequest{ChatIdentity: sourceChat, Revision: 1, Enabled: true, BudgetTokens: 1024}
+	shared, err := testEnv.store.RecallSTMemory(ctx, 1, sibling)
+	if err != nil || !strings.Contains(shared.Block, secret) {
+		t.Fatalf("sibling session did not receive the derived profile: %+v %v", shared, err)
+	}
+	if err = testEnv.store.ForgetManagedMemory(ctx, 1, forgotten.ID); err != nil {
+		t.Fatal(err)
+	}
+	marker := "forget-" + strconv.FormatInt(forgotten.ID, 10) + "-profile"
+	var jobStatus string
+	if err = testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT w.status FROM vc.work_item w JOIN vc.memorycore_operation op ON (op.owner_user_id,op.job_id)=(w.owner_user_id,w.id) WHERE op.owner_user_id=1 AND op.profile_operation_id=$1`, marker).Scan(&jobStatus)
+	}); err != nil || jobStatus != "PENDING" {
+		t.Fatalf("rebuild job status=%s err=%v", jobStatus, err)
+	}
+	for _, req := range []STMemoryRequest{sibling, origin} {
+		out, err := testEnv.store.RecallSTMemory(ctx, 1, req)
+		if err != nil || strings.Contains(out.Block, secret) {
+			t.Fatalf("forgotten fact still injected chat=%s block=%q err=%v", req.ChatIdentity, out.Block, err)
+		}
+	}
+	var leaked int
+	if err = testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT count(*) FROM vc.read_st_summaries(1,$1,$2) WHERE position($3 in out_summary)>0`, []int64{a.ConversationID, b.ConversationID}, b.ConversationID, secret).Scan(&leaked)
+	}); err != nil || leaked != 0 {
+		t.Fatalf("sibling read_st_summaries still returned the fact: n=%d err=%v", leaked, err)
+	}
+	conn, err := pgx.Connect(ctx, IsolationSuperDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	var stored int
+	if err = conn.QueryRow(ctx, `SELECT count(*) FROM vc.conversation_summary WHERE owner_user_id=1 AND position($1 in summary)>0`, secret).Scan(&stored); err != nil || stored != 0 {
+		t.Fatalf("summary body still stores the forgotten fact: n=%d err=%v", stored, err)
+	}
+	if err = testEnv.store.continueMemoryCleanup(ctx, 1, forgotten.ID); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := testEnv.store.GetManagedMemory(ctx, 1, forgotten.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state struct {
+		Lifecycle string `json:"lifecycle"`
+		Cleanup   struct {
+			State string `json:"state"`
+		} `json:"cleanup"`
+	}
+	if err = json.Unmarshal(detail, &state); err != nil {
+		t.Fatal(err)
+	}
+	if state.Cleanup.State == "DONE" || state.Lifecycle == "FORGOTTEN" {
+		t.Fatalf("cleanup completed before profile rebuild: %+v", state)
+	}
+	if err = IsolationSuperExec(ctx, `UPDATE vc.work_item w SET status='DONE', finished_at=clock_timestamp() FROM vc.memorycore_operation op WHERE (op.owner_user_id,op.job_id)=(w.owner_user_id,w.id) AND op.owner_user_id=1 AND op.profile_operation_id=$1`, marker); err != nil {
+		t.Fatal(err)
+	}
+	if err = testEnv.store.continueMemoryCleanup(ctx, 1, forgotten.ID); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = testEnv.store.GetManagedMemory(ctx, 1, forgotten.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(detail, &state); err != nil {
+		t.Fatal(err)
+	}
+	if state.Cleanup.State != "DONE" || state.Lifecycle != "FORGOTTEN" {
+		t.Fatalf("cleanup after rebuild: %+v", state)
+	}
+	for _, req := range []STMemoryRequest{sibling, origin} {
+		out, err := testEnv.store.RecallSTMemory(ctx, 1, req)
+		if err != nil || strings.Contains(out.Block, secret) {
+			t.Fatalf("rebuilt recall restored the forgotten fact chat=%s block=%q err=%v", req.ChatIdentity, out.Block, err)
+		}
+	}
 }
 
 func TestManagedCorrectionRebaseRequiresUnchangedTargetAndSources(t *testing.T) {

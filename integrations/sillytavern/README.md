@@ -132,6 +132,11 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   `VC_W03_CHROMIUM_PATH` 指定本机已有 Chromium 系浏览器的绝对路径，不要求 Playwright 自带浏览器
   已下载：
   `VC_W03_CHROMIUM_PATH=/absolute/path/to/chrome node scripts/accept-managed.mjs --filter ui03-browser`。
+- **`story-view-browser`（W12 玩家剧情页，默认不选，不调用模型）**：扩展菜单「剧情」打开独立页面。
+  先在本链工作目录执行 `set -a; . ./.vc-wt.env; set +a`，再用本链端口与容器名运行
+  `node integrations/sillytavern/scripts/accept-managed.mjs --filter story-view-browser`。
+  页面放在现有扩展 `vc-model-settings`（`story-page.js`），因为受管装配只部署该扩展。
+  验收覆盖开局、玩家可见视图、桌面三列与 390px 单列；不提交行动、不回档、不显示结局。
 - **夹具生命周期**：端口归属检查（ST 8752 / fixture 8753 / Go 8095 任一被监听即退出，不接管）→
   专用 loopback 容器（label `com.vc.w03=managed`，随机 127.0.0.1 端口）：PG `vc-w03-managed-pg`
   （默认镜像 `pgvector/pgvector:0.8.5-pg18`）与 MinIO `vc-w03-managed-minio`（默认镜像
@@ -144,8 +149,9 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   不打印、不写示例值，无需任何真实凭据；受管 dataRoot 跨 run 保留合成聊天与设置（UI03 文本带本轮
   唯一 scope 后缀）。产物写 `dev-managed/artifacts/accept-<ts>/`（结果 JSON + 截图，截图不含 Key）。
 - **清理归属**：进程只停本轮归属（ST 经 `stop-managed.mjs` 按 st.pid 命令行核对；go/fixture 只停
-  本轮实际启动的 child），容器只按 `com.vc.w03=managed` 标签移除；不 lsof 扫端口杀进程，不碰
-  8742/8743 原生实例。
+  本轮实际启动的 child）。容器只移除本轮环境变量命名的 PG 与 MinIO（默认 `vc-w03-managed-pg`、
+  `vc-w03-managed-minio`），且标签必须是 `com.vc.w03=managed`；不按标签扫删其他链的容器。
+  不 lsof 扫端口杀进程，不碰 8742/8743 原生实例。
 - **验收边界**：以上为合成环境验收；FileVault 磁盘加密、正式备份配置、真实 provider Key、预算与
   手机等 Owner 项仍未验收，不据此声称 V2 整体完成。
 

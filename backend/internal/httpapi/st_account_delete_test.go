@@ -32,9 +32,10 @@ func TestAccountDeleteDoesNotCascadeWhileSTCleanupIsPending(t *testing.T) {
 		t.Fatal("Go account was deleted before ST confirmation")
 	}
 	response = doJSON(t, s, http.MethodPost, "/api/v1/st/bindings", `{"chatIdentity":"pending","characterRef":"c","mode":"COMPANION"}`, 1)
-	if response.Code != http.StatusConflict {
-		t.Fatalf("deleting owner business write=%d", response.Code)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("deleting owner business write=%d %s", response.Code, response.Body.String())
 	}
+	assertEnvelope(t, response, "NOT_FOUND_OR_FORBIDDEN")
 	m.pending = false
 	response = doJSON(t, s, http.MethodDelete, "/api/v1/auth/account", body, 1)
 	if response.Code != http.StatusOK || !m.deleted {

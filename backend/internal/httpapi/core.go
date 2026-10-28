@@ -181,6 +181,8 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/st/bindings", s.handleResolveSTBinding)
 	s.mux.HandleFunc("POST /api/v1/st/sources/reconcile", s.handleReconcileSTSources)
 	s.mux.HandleFunc("POST /api/v1/st/memory/recall", s.handleSTMemoryRecall)
+	s.mux.HandleFunc("POST /api/v1/story/runs", s.handleStartStoryRun)
+	s.mux.HandleFunc("GET /api/v1/story/runs/{runId}/actors/{actorId}/view", s.handleStoryActorView)
 	s.mux.HandleFunc("POST /api/v1/service/st/profile", s.handleRegisterSTProfile)
 	s.mux.HandleFunc("POST /api/v1/relationships", s.handleCreateRelationship)
 	s.mux.HandleFunc("GET /api/v1/relationships", s.handleListRelationships)
@@ -315,7 +317,12 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "password change required")
 		return nil
 	}
-	// Export recovery keeps its existing password/eligibility indistinguishability.
+	// An active deletion intent freezes late writes before any handler effect.
+	// The answer stays NOT_FOUND_OR_FORBIDDEN, the same code the SQL barrier
+	// maps to: OpenAPI resource writes do not publish ACCOUNT_DELETION_PENDING.
+	// Deletion state is disclosed on GET /api/v1/auth/session (deletionPending).
+	// Export recovery stays on its password path so a deletion answer matches
+	// a wrong password or an absent export.
 	if write && r.URL.Path != "/api/v1/auth/account" && r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/exports/recover" {
 		deleting, err := s.core.Store.DeletionIntentActive(r.Context(), p.AccountID)
 		if err != nil {
@@ -323,7 +330,7 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 			return nil
 		}
 		if deleting {
-			s.writeAPIError(w, http.StatusConflict, "ACCOUNT_DELETION_PENDING", "account deletion is in progress")
+			s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
 			return nil
 		}
 	}

@@ -32,9 +32,10 @@
 //      assemble-managed.mjs（幂等重建 dev-managed/st-run）→ start-managed.mjs
 //      （VC_ST_GO_BASE_URL + VC_ST_PLUGIN_SERVICE_TOKEN 硬校验）；
 //   9) 验收场景；产物写 dev-managed/artifacts/accept-<ts>/（结果 JSON + 截图；截图不含 Key）；
-//  10) 清理：只按容器标签与本轮 spawn 归属（st.pid 经 B 的 stop-managed.mjs 命令行核对停止；
+//  10) 清理：只按本轮容器名与 spawn 归属（st.pid 经 B 的 stop-managed.mjs 命令行核对停止；
 //      go/fixture 只停本轮实际启动的 child 并清其 PID 文件，不认残留 PID 文件；
-//      docker rm -f <label 匹配>；不 lsof 扫端口杀进程）。
+//      只 docker rm 本轮 PG_CONTAINER / MINIO_CONTAINER，且标签必须是 com.vc.w03=managed；
+//      不按标签扫删其他链的容器；不 lsof 扫端口杀进程）。
 //
 // 环境变量面（全部可覆盖；密钥类缺省在进程内合成随机，绝不需要真实凭据）：
 //   VC_W03_ST_PORT(8752) VC_W03_FIXTURE_PORT(8753) VC_W03_GO_PORT(8095)
@@ -62,9 +63,18 @@ import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-proto
 import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
 import { sceneSourceNative, sceneRightsBrowser, sceneRightsNative } from './w06-accept.mjs';
 import { sceneMemoryRealModel } from './w08-real-accept.mjs';
+import { sceneMemoryRealEval } from './w08-real-eval.mjs';
 import { sceneMemoryBrowser } from './w07-accept.mjs';
 import { sceneMemorycoreNative } from './w08-native-accept.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
+
+// W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
+SCENES.push({
+    id: 'story-view-browser',
+    title: 'W12 玩家剧情页：开局、玩家视图、桌面与 390px',
+    needs: ['go', 'stack', 'browser'],
+    default: false,
+});
 
 // ---------------------------------------------------------------------------
 // 常量与 CLI
@@ -462,6 +472,10 @@ async function startManagedStack(secrets, artifactsDir) {
     const requireSt = createRequire(path.join(INTEG, 'upstream/SillyTavern/package.json'));
     const storage = requireSt('node-persist').create();
     await storage.init({ dir: path.join(DEV_MANAGED, 'data/_storage'), ttl: false, expiredInterval: 0 });
+    // 第二账号先写入后，ST 只在用户表为空时创建 default-user。Owner 映射的就是 default-user，缺失时宿主拒绝进入聊天。
+    if (!await storage.getItem('user:default-user')) {
+        await storage.setItem('user:default-user', { handle: 'default-user', name: 'User', created: Date.now(), password: '', admin: true, enabled: true, salt: '' });
+    }
     await storage.setItem('user:vc-w05-second', { handle: 'vc-w05-second', name: '合成第二账号', created: Date.now(), password: '', salt: '', enabled: true, admin: false });
     if (secrets.needsRights) {
         await storage.setItem(`user:${RIGHTS_HANDLE}`, { handle:RIGHTS_HANDLE, name:'W06 合成数据权利', created:Date.now(), password:'', salt:'', enabled:true, admin:false });
@@ -477,6 +491,13 @@ async function startManagedStack(secrets, artifactsDir) {
     secondSettings.firstRun = false; secondSettings.username = '合成第二账号';
     fs.mkdirSync(path.dirname(secondSettingsPath), { recursive: true, mode: 0o700 });
     fs.writeFileSync(secondSettingsPath, JSON.stringify(secondSettings), { mode: 0o600 });
+    const defaultSettingsPath = path.join(DEV_MANAGED, 'data/default-user/settings.json');
+    if (!fs.existsSync(defaultSettingsPath)) {
+        const defaultSettings = JSON.parse(fs.readFileSync(path.join(INTEG, 'upstream/SillyTavern/default/content/settings.json'), 'utf8'));
+        defaultSettings.firstRun = false; defaultSettings.username = '合成验收用户';
+        fs.mkdirSync(path.dirname(defaultSettingsPath), { recursive: true, mode: 0o700 });
+        fs.writeFileSync(defaultSettingsPath, JSON.stringify(defaultSettings), { mode: 0o600 });
+    }
     runChecked(process.execPath, [path.join(SCRIPTS, 'start-managed.mjs')], {
         cwd: INTEG,
         env: {
@@ -537,10 +558,14 @@ async function cleanupManaged(secrets) {
         fs.rmSync(path.join(RUN_DIR, 'go.pid'), { force: true });
     }
     if (stopped.length) log.info(`已停止：${stopped.join(', ')}（TERM）`);
-    // 容器标签归属
-    const list = spawnSync('docker', ['ps', '-a', '--filter', `label=${PG_LABEL}`, '--format', '{{.Names}}'], { encoding: 'utf8' });
-    const names = (list.stdout || '').split('\n').map((s) => s.trim()).filter(Boolean);
-    for (const name of names) {
+    // 只移除本轮命名的 PG / MinIO。并行链共用 com.vc.w03=managed，不能按标签全删。
+    for (const name of [PG_CONTAINER, MINIO_CONTAINER]) {
+        const label = spawnSync('docker', ['inspect', '-f', '{{index .Config.Labels "com.vc.w03"}}', name], { encoding: 'utf8' });
+        if (label.status !== 0) continue;
+        if ((label.stdout || '').trim() !== 'managed') {
+            log.warn(`容器 ${name} 存在但不是 ${PG_LABEL}，不移除`);
+            continue;
+        }
         try {
             runChecked('docker', ['rm', '-f', name], { label: `docker rm ${name}` });
             log.info(`已移除受管容器 ${name}（label ${PG_LABEL}）`);
@@ -1684,10 +1709,121 @@ async function runDryRun() {
 // main 编排
 // ---------------------------------------------------------------------------
 
+const STORY_MARKERS = ['PRIVATE_LIN_LOAN_31', 'PRIVATE_ZHOU_WATCH_44', 'PRIVATE_SU_WITNESS_57', 'GM_ONLY_WATCH_TRUTH_92'];
+
+async function sceneStoryViewBrowser(ctx) {
+    const { chromium } = await import('playwright-core');
+    const browser = await chromium.launch({
+        headless: true,
+        ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}),
+    });
+    const actorHits = [];
+    const modelHits = [];
+    const playerViews = [];
+    let watchModel = false;
+    try {
+        const bc = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        await bc.addCookies([
+            { name: 'vc_session', value: ctx.secrets.session.vcSession, domain: '127.0.0.1', path: '/', httpOnly: true, secure: false, sameSite: 'Lax' },
+            { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, domain: '127.0.0.1', path: '/', httpOnly: false, secure: false, sameSite: 'Lax' },
+        ]);
+        const page = await bc.newPage();
+        page.setDefaultTimeout(120000);
+        const errors = [];
+        const consoleLines = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        page.on('console', (msg) => {
+            if (msg.type() === 'error' || msg.type() === 'warning') consoleLines.push(msg.text().slice(0, 240));
+        });
+        page.on('request', (req) => {
+            const url = req.url();
+            if (/\/actors\/(?:lin|zhou|su|gm)\//.test(url)) actorHits.push(url);
+            if (url.includes('/actors/player/view')) playerViews.push(url);
+            if (watchModel && /\/(?:generate|v1\/chat\/completions|v1\/messages|v1\/responses)(?:\?|$)/.test(url)) modelHits.push(url);
+        });
+        const failShot = async (error) => {
+            const url = page.url();
+            let text = '';
+            try { text = (await page.locator('body').innerText({ timeout: 2000 })).replace(/\s+/g, ' ').slice(0, 240); } catch { /* 页面已关闭 */ }
+            try { await page.screenshot({ path: path.join(ctx.artifactsDir, 'story-failure.png') }); } catch { /* 截图失败不影响原因 */ }
+            throw new Error(`${error.message} url=${url} body=${text} console=${consoleLines.slice(-4).join(' | ')}`);
+        };
+        try {
+        await page.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+        if (new URL(page.url()).pathname.startsWith('/auth')) throw new Error('未进入聊天，停在登录页');
+        await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.()?.eventSource));
+        await page.waitForSelector('#send_textarea', { state: 'attached' });
+        await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'));
+        const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
+        if (await onboarding.count()) {
+            await onboarding.locator('textarea').fill('合成验收用户');
+            await onboarding.locator('.popup-button-ok').click();
+            await onboarding.waitFor({ state: 'hidden' });
+        }
+        await page.waitForFunction(async () => (await import('/script.js')).settingsReady);
+        await page.waitForSelector('#preloader', { state: 'hidden' });
+        await page.waitForSelector('#vc_story_menu_button', { state: 'attached' });
+        await page.locator('#extensionsMenuButton').click();
+        await page.locator('#vc_story_menu_button').click();
+        await page.locator('.vc-story-dialog[open]').waitFor();
+        watchModel = true;
+        await page.locator('[data-action="start"]').click();
+        await page.waitForFunction(() => {
+            const root = document.querySelector('.vc-story');
+            return root?.getAttribute('data-state') === 'playing' || Boolean(root?.querySelector('[role="alert"]'));
+        }, null, { timeout: 60000 });
+        const storyState = await page.locator('.vc-story').getAttribute('data-state');
+        if (storyState !== 'playing') {
+            throw new Error(`开局未进入玩家视图：${await page.locator('.vc-story [role="alert"]').innerText()}`);
+        }
+        const visible = await page.locator('.vc-story').innerText();
+        for (const text of ['雨夜旅馆：失踪的怀表', '雨夜，小旅馆的一枚展柜怀表失踪。玩家受邀调查。', '20:20老板发现怀表不见了。', '林岚', '周澈', '苏禾', '大堂', '厨房', '维修间', '调查中']) {
+            if (!visible.includes(text)) throw new Error(`玩家视图缺少：${text}`);
+        }
+        const dom = await page.evaluate(() => document.documentElement.outerHTML);
+        const stored = await page.evaluate(() => {
+            const entries = [];
+            for (let i = 0; i < localStorage.length; i += 1) {
+                const key = localStorage.key(i);
+                entries.push([key, localStorage.getItem(key)]);
+            }
+            return JSON.stringify(entries);
+        });
+        for (const marker of STORY_MARKERS) {
+            if (dom.includes(marker)) throw new Error(`页面 DOM 含 ${marker}`);
+            if (stored.includes(marker)) throw new Error(`localStorage 含 ${marker}`);
+        }
+        if (actorHits.length) throw new Error(`请求了非玩家视图：${actorHits.join(' ')}`);
+        if (!playerViews.length) throw new Error('没有请求玩家 ActorView');
+        if (modelHits.length) throw new Error(`剧情页调用了模型：${modelHits.join(' ')}`);
+        const desktopColumns = await page.locator('.vc-story-cast').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length);
+        if (desktopColumns !== 3) throw new Error(`桌面 cast 应为 3 列，实际 ${desktopColumns}`);
+        await page.screenshot({ path: path.join(ctx.artifactsDir, 'story-desktop.png') });
+        ctx.screenshots.push(path.join(ctx.artifactsDir, 'story-desktop.png'));
+        await page.setViewportSize({ width: 390, height: 844 });
+        const mobile = await page.locator('.vc-story-cast').evaluate((el) => ({
+            columns: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length,
+            overflow: document.querySelector('.vc-story-dialog').scrollWidth <= window.innerWidth,
+        }));
+        if (mobile.columns !== 1) throw new Error(`390px cast 应为 1 列，实际 ${mobile.columns}`);
+        if (!mobile.overflow) throw new Error('390px 剧情页横向溢出');
+        await page.screenshot({ path: path.join(ctx.artifactsDir, 'story-mobile.png') });
+        ctx.screenshots.push(path.join(ctx.artifactsDir, 'story-mobile.png'));
+        if (errors.length) throw new Error(`剧情页出现未捕获错误：${errors.join(' | ')}`);
+        return { desktop: true, mobile: true, playerView: true };
+        } catch (error) {
+            await failShot(error);
+        }
+    } finally {
+        await browser.close();
+    }
+}
+
 const SCENE_IMPLS = {
     'memorycore-foundation': sceneMemorycoreFoundation,
     'memorycore-native': sceneMemorycoreNative,
     'memory-real-model': sceneMemoryRealModel,
+    'memory-real-eval': sceneMemoryRealEval,
     'login-shape': sceneLoginShape,
     'catalog-admin': sceneCatalogAdmin,
     'zero-upstream-on-save': sceneZeroUpstreamOnSave,
@@ -1711,6 +1847,7 @@ const SCENE_IMPLS = {
     'rights-browser': sceneRightsBrowser,
     'rights-native': sceneRightsNative,
     'memory-browser': sceneMemoryBrowser,
+    'story-view-browser': sceneStoryViewBrowser,
 };
 
 async function runFull() {
@@ -1756,6 +1893,12 @@ async function runFull() {
             seedRealEstimate: () => psql("INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES ('vc08-real','cline-pass/deepseek-v4.1-flash-1017',1,0.01,0.02) ON CONFLICT DO NOTHING;"),
             realProgress: () => JSON.parse(psql(`SELECT json_build_object('done',count(*) FILTER(WHERE status='DONE'),'failed',count(*) FILTER(WHERE status IN('FAILED','DEAD_LETTERED','CANCELLED') OR attempt_count>0)) FROM vc.work_item WHERE owner_user_id=${BigInt(OWNER_ACCOUNT_ID)} AND kind='ST_MEMORY_EXTRACT';`).trim()),
             realUsage: () => JSON.parse(psql("SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT memorycore_stage AS stage,count(*) AS calls,coalesce(sum(input_tokens),0) AS input_tokens,coalesce(sum(output_tokens),0) AS output_tokens,count(*) FILTER(WHERE billing_disposition='UNKNOWN' OR billing_disposition IS NULL) AS unknown_usage FROM vc.memory_extract_attempt WHERE provider_id='vc08-real' GROUP BY memorycore_stage ORDER BY memorycore_stage)x;").trim()),
+            realAttempts: () => JSON.parse(psql("SELECT coalesce(json_agg(x ORDER BY x.id),'[]'::json) FROM (SELECT id, coalesce(memorycore_stage,'') AS stage, status, coalesce(billing_disposition,'') AS billing, coalesce(failure_code,'') AS failure, input_tokens, output_tokens FROM vc.memory_extract_attempt WHERE provider_id='vc08-real') x;").trim() || '[]'),
+            extractJobs: () => JSON.parse(psql(`SELECT coalesce(json_agg(x ORDER BY x.id),'[]'::json) FROM (SELECT id, status, attempt_count FROM vc.work_item WHERE owner_user_id=${BigInt(OWNER_ACCOUNT_ID)} AND kind='ST_MEMORY_EXTRACT') x;`).trim() || '[]'),
+            probeSummary: (token) => {
+                if (typeof token !== 'string' || [...token].length < 1 || [...token].length > 16 || /['\\]/.test(token)) return 'skip';
+                return psql(`SELECT CASE WHEN EXISTS (SELECT 1 FROM vc.conversation_summary s WHERE s.owner_user_id=${BigInt(OWNER_ACCOUNT_ID)} AND s.valid AND strpos(s.summary, '${token}') > 0) THEN 'yes' ELSE 'no' END;`).trim();
+            },
             seedSyntheticPrice: () => psql("INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES ('vc08-memory','vc08-memory',1,0.001,0.002) ON CONFLICT DO NOTHING;"),
         },
         w06: { accountId:RIGHTS_ACCOUNT_ID, handle:RIGHTS_HANDLE,

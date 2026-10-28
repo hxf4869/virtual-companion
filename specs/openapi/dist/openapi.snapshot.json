@@ -19,6 +19,8 @@
     "registerSTProfile",
     "reconcileSTSources",
     "recallSTMemory",
+    "startStoryRun",
+    "getStoryActorView",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -144,6 +146,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "6f9e2d31ded636c5544addb8396a54b41e6b6aa947064eb6cdebe9212f02ac3c"
+    "sha256": "ec2f02ac6d601f6415c12d26f3346812a3cfe76ac0a24d8469e8d2af3dbcadd4"
   }
 }
