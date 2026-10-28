@@ -50,21 +50,23 @@
       依赖或模拟业务逻辑。ZCode 主会话 GLM-5.3／最高思考，2 个 general-purpose 只读子代理已完成。
 - [ ] `V2-W03` 原生宿主、C1 保护基线、模型目录与三协议基础。用例：C01、C02、C03、C06、C07、D01、
       MODEL06–MODEL08（基础）、UI03。
-      进行中（2026-10-28）：宿主基础切片已提交并推送 `7ba20e6d`，包含开发启动、Helper 固定资源、
-      C1 合成备份恢复脚本和许可 / Node 检查接入；实现边界见执行计划 W03。
-      验证：`bash scripts/check.sh` 10/10 PASS（23.4s，检查期间输入未变）；`--quick` PASS（1.4s）；
-      `node integrations/sillytavern/scripts/accept.mjs` 的 C01/C02/C03/C06/C07 PASS。
-      原生建群高亮等待等已知诊断见验收结果的 error_notes；CHARX 导出 NOT_APPLICABLE（上游不支持）。
-      Go 目录切片已提交并推送 `3e3281bb`；SQL/RLS、Store 真库及直接消费者检查通过。
-      统一栈：`node integrations/sillytavern/scripts/accept-managed.mjs` 默认 14/14 场景 PASS（退出码 0）；
-      包括三协议流式 / 非流式、工具续接、取消、上下文预算、原生配置偏离拒绝、Key 撤销、版本冲突与
-      续接隔离；使用真实 ST / Go / PostgreSQL / MinIO 与本地合成 provider，不代表真实模型验收。
-      C1：正常应用产物加密备份后隔离恢复，11 项目录比对及配置文件比对 PASS，目录 / 文件权限与
-      错误口令拒绝 PASS；D01.a 磁盘保护仍 BLOCKED（FileVault 关闭），D01.d 合成备份恢复子项 PASS。
-      ZCode 以 GLM-5.3／最高思考完成三路模块并行；运行验收已切换新会话，客户端 CSRF 修复另由
-      独立 general-purpose 子代理完成。账号 ID 使用无精度损失的十进制字符串契约。
-      剩余：UI03 真实页面与原生发送验收、最终检查及 ST 切片提交；真实模型、真机与正式数据保护
-      仍不计通过。Owner 已暂停 Goal 自动续跑，明确要求当前任务继续。
+      结果：READY_FOR_OWNER（2026-10-28）；代码提交 `7ba20e6d..dbb0fe1a` 已推送；
+      实现边界见执行计划 W03，运行入口与验收命令见 `integrations/sillytavern/README.md`。
+      验证：最终 `bash scripts/check.sh` 10/10 PASS（25.4s，检查期间源码未变，含 ST 166/166 单测）；
+      SQL/RLS、Store 真库及直接消费者检查 PASS；`git diff --check` PASS。
+      用例：`accept.mjs` 的 C01/C02/C03/C06/C07 PASS；CHARX 导出 NOT_APPLICABLE（上游不支持），
+      原生建群高亮等已知诊断已在结果 error_notes 中说明，不影响对应持久化与交互断言。
+      `accept-managed.mjs --filter` 全 15 场景（含 `ui03-browser`）一次 PASS、退出码 0；MODEL06–MODEL08
+      基础合成子项 PASS，覆盖三协议流式 / 非流式、工具续接、取消、上下文预算、配置偏离拒绝、
+      Key 撤销、版本冲突、续接隔离；真实 ST / Go / PostgreSQL / MinIO 配合本地合成 provider。
+      UI03 桌面真实界面子项 PASS：保存读回、409 保留草稿、Key 只显状态、身份快照写入保护、
+      用途绑定与参数投影、保存 / 绑定零上游请求、显式连接及三协议原生输入发送，出站捕获与回复对应。
+      D01.d 合成备份恢复子项 PASS：正常应用产物加密备份后隔离恢复，11 项目录与配置比对一致，
+      目录 / 文件权限及错误口令拒绝通过；本轮受管进程和专用 PG / MinIO 容器已清理。
+      Owner 待配置：D01.a BLOCKED（FileVault 关闭，正式磁盘 / 卷保护未落实）；建议确认加密存储位置、
+      备份目标 / 保留期和密钥保管后补 D01 正式配置验收。此前只使用合成数据，不接入真实私人数据或正式 Key。
+      真实模型效果、真实费用和真机子项 NOT_RUN（缺对应 Owner 输入），不以合成结果替代；
+      不阻塞依赖已满足的后续独立代码工作。原有用户 ZIP 保留且未纳入提交。
 - [ ] `V2-W04` 复杂状态卡与首轮手机体验。用例：C04、C05、UI01 / UI02（基础）。
 - [ ] `V2-W05` 认证、角色实例与 F2 全写入保护。用例：B01、B05、B07。
 - [ ] `V2-W06` 来源对账、E3 与跨存储数据权利。用例：B02、B03、R01–R05、D02–D05。
