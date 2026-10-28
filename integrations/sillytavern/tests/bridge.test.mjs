@@ -323,6 +323,9 @@ test('插件 init/exit：按真实部署布局加载ST用户模块，注册认�
         assert.equal(typeof bridge.interceptStatus, 'function', '/status 钩子对端必须随插件注册');
         assert.equal(typeof bridge.hostAuth, 'function', '全入口认证钩子必须注册');
         assert.equal(typeof bridge.f2.save, 'function', '原生保存必须接入F2');
+        assert.equal(typeof bridge.attemptInboxDelivery, 'function', 'inbox 保存必须留在桥对象上');
+        assert.equal(typeof bridge.interceptGenerate, 'function');
+        assert.equal(typeof bridge.finalOutboundGuard, 'function');
         exit();
         assert.equal(globalThis[BRIDGE_SYMBOL], undefined);
         assert.equal(info.id, 'virtual-companion');

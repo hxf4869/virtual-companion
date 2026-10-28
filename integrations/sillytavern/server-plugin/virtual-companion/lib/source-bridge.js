@@ -1,13 +1,14 @@
 // Go-only read channel: the shared service secret never reaches a browser.
 import { timingSafeEqual } from 'node:crypto';
 import { getF2Store } from './f2-store.js';
+import { INBOX_BRIDGE_PATH } from './inbox-bridge.js';
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const SOURCE_BRIDGE_PATH = '/internal/v1/st/sources';
 export const DATA_EXPORT_PATH = '/internal/v1/st/data/export';
 export const DATA_DELETE_PATH = '/internal/v1/st/data/delete';
-export const PRIVATE_ST_PATHS = [SOURCE_BRIDGE_PATH, DATA_EXPORT_PATH, DATA_DELETE_PATH];
+export const PRIVATE_ST_PATHS = [SOURCE_BRIDGE_PATH, DATA_EXPORT_PATH, DATA_DELETE_PATH, INBOX_BRIDGE_PATH];
 function reject(res, status, code) { return res.status(status).json({ code }); }
-export function createSourceBridge({ config, getUser, getUserDirectories, accountData }) {
+export function createSourceBridge({ config, getUser, getUserDirectories, accountData, inbox }) {
     return async (req, res) => {
         res.setHeader('Cache-Control', 'no-store');
         if (req.headers.origin) return reject(res, 403, 'ACCESS_DENIED');
@@ -17,6 +18,13 @@ export function createSourceBridge({ config, getUser, getUserDirectories, accoun
         const { ownerAccountId, chats } = req.body || {};
         const handle = typeof ownerAccountId === 'string' && /^[1-9][0-9]{0,18}$/.test(ownerAccountId) ? config.accountHandles[ownerAccountId] : null;
         if (!handle) return reject(res, 403, 'ACCESS_DENIED');
+        if (req.path === INBOX_BRIDGE_PATH) {
+            if (!inbox) return reject(res, 503, 'ST_INBOX_UNAVAILABLE');
+            const profile = await getUser(handle);
+            if (!profile?.enabled || profile.handle !== handle) return reject(res, 403, 'ACCESS_DENIED');
+            if (accountData && !await accountData.readable(ownerAccountId, handle)) return reject(res, 503, 'ST_ACCOUNT_DELETING');
+            return inbox(req, res);
+        }
         if ([DATA_EXPORT_PATH, DATA_DELETE_PATH].includes(req.path)) {
             if (!accountData) return reject(res, 503, 'ST_DATA_UNAVAILABLE');
             if (req.path === DATA_DELETE_PATH) {

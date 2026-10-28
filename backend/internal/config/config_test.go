@@ -1,6 +1,15 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
+	"math/big"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -465,6 +474,63 @@ func TestBudgetCannotExceedEnabledProvider(t *testing.T) {
 	}))
 	if err == nil || !strings.Contains(err.Error(), "must not exceed VC_PROVIDER_MAX_TOKENS") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLoadEnvAppliesNotifyRules(t *testing.T) {
+	t.Parallel()
+	_, err := LoadEnv(env(map[string]string{
+		"VC_MODE":      "full",
+		"VC_SMTP_HOST": "127.0.0.1",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VC_SMTP_PORT") {
+		t.Fatalf("partial smtp %v", err)
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:     []string{"localhost"},
+		IsCA:         true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadEnv(env(map[string]string{
+		"VC_MODE":         "full",
+		"VC_SMTP_HOST":    "127.0.0.1",
+		"VC_SMTP_PORT":    "2525",
+		"VC_SMTP_FROM":    "notify@example.test",
+		"VC_SMTP_CA_FILE": caPath,
+	}))
+	if err != nil || cfg.Notify.SMTPRootCAs == nil || cfg.Notify.SMTPHost != "127.0.0.1" || cfg.Notify.MaxAttempts != 5 {
+		t.Fatalf("ca cfg err=%v host=%s attempts=%d", err, cfg.Notify.SMTPHost, cfg.Notify.MaxAttempts)
+	}
+	secret := "w10-ca-secret-must-not-leak"
+	bad := filepath.Join(dir, "bad.pem")
+	if err := os.WriteFile(bad, []byte(secret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = LoadEnv(env(map[string]string{
+		"VC_MODE":         "full",
+		"VC_SMTP_HOST":    "127.0.0.1",
+		"VC_SMTP_PORT":    "2525",
+		"VC_SMTP_FROM":    "notify@example.test",
+		"VC_SMTP_CA_FILE": bad,
+	}))
+	if err == nil || err.Error() != "VC_SMTP_CA_FILE is invalid" || strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), bad) {
+		t.Fatalf("bad ca %v", err)
 	}
 }
 

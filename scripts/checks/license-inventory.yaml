@@ -8,6 +8,8 @@ description: >-
 goDirectDependencies:
   - module: github.com/jackc/pgx/v5
     licenseFamily: MIT
+  - module: github.com/wneessen/go-mail
+    licenseFamily: MIT
   - module: github.com/minio/minio-go/v7
     licenseFamily: Apache-2.0
   - module: github.com/pquerna/otp

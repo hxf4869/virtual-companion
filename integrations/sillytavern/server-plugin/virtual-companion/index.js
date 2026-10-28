@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import { createHostAuth } from './lib/host-auth.js';
 import { createF2Hooks } from './lib/f2-routes.js';
 import { createSourceBridge } from './lib/source-bridge.js';
+import { attemptInboxDelivery, createInboxBridge } from './lib/inbox-bridge.js';
 import { createAccountData } from './lib/account-data.js';
 
 export const info = {
@@ -41,7 +42,8 @@ export async function init(router) {
             await storage.removeItem(users.toAvatarKey(handle));
         },
     });
-    const sourceBridge = createSourceBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData });
+    const inbox = createInboxBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData });
+    const sourceBridge = createSourceBridge({ config, getUser, getUserDirectories: users.getUserDirectories, accountData, inbox });
     const hostAuth = createHostAuth({ config,
         getUser, sourceBridge, accountData,
         accountVersion: users.getAccountVersion,
@@ -64,7 +66,7 @@ export async function init(router) {
     // ③ interceptStatus（/status 路由开头；受管标记用真实上游模型列表应答，不篡改 online_status）。
     // ④ guardUnmanagedGeneration（text-completions / kobold / horde generate-text / novel；不改 generate-bridge）。
     const f2 = createF2Hooks({ getUserDirectories: users.getUserDirectories });
-    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2, guardUnmanagedGeneration };
+    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2, guardUnmanagedGeneration, attemptInboxDelivery };
     log.info(`插件就绪：goBaseUrl=${config.goBaseUrl || '(未配置)'} 服务令牌=${config.serviceToken ? '已配置' : '缺失（受控生成不可用）'} estimator=${counter.estimator}`);
 }
 

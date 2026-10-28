@@ -87,12 +87,16 @@ func (s *Store) ExportV2OwnerData(ctx context.Context, owner int64) (V2OwnerExpo
 			row[domain.field] = plain
 		}
 	}
+	inboxN := goArrayLen(out.Go["inbox"])
+	channelN := goArrayLen(out.Go["notificationChannels"])
+	deliveryN := goArrayLen(out.Go["notificationDeliveries"])
 	count := 0
 	for _, value := range out.Go {
 		if rows, ok := value.([]any); ok {
 			count += len(rows)
 		}
 	}
+	count -= inboxN + channelN + deliveryN
 	engine, err := s.exportMemoryCoreOwner(ctx, owner)
 	if err != nil {
 		return out, err
@@ -105,6 +109,9 @@ func (s *Store) ExportV2OwnerData(ctx context.Context, owner int64) (V2OwnerExpo
 		}
 	}
 	out.Domains = []ExportDomain{{System: "GO_METADATA_SOURCES_TASKS_RESULTS", State: "COMPLETE", Records: count},
+		{System: "INBOX", State: "COMPLETE", Records: inboxN},
+		{System: "NOTIFICATION_CHANNELS", State: "COMPLETE", Records: channelN},
+		{System: "NOTIFICATION_DELIVERIES", State: "COMPLETE", Records: deliveryN},
 		{System: "EXTERNAL_MEMORY_ENGINE", State: "COMPLETE", Records: engineCount, Note: "MemoryCore L0/L1, profiles, JSONL, metadata and operation state; per-owner snapshot."},
 		{System: "BACKUPS", State: "EXCLUDED", Note: "Historical and offline backups are not merged into this online copy; online private backups are included in account deletion."},
 		{System: "CREDENTIALS", State: "EXCLUDED", Note: "API keys, authentication secrets, session tokens and internal leases are excluded."}}
@@ -128,4 +135,12 @@ func (s *Store) ExportV2OwnerData(ctx context.Context, owner int64) (V2OwnerExpo
 		out.Domains = append(out.Domains, ExportDomain{System: "ST_PRIVATE_CONTENT", State: "NOT_APPLICABLE", Note: "No ST service, registered profile or chat binding configured."})
 	}
 	return out, nil
+}
+
+func goArrayLen(value any) int {
+	rows, ok := value.([]any)
+	if !ok {
+		return 0
+	}
+	return len(rows)
 }

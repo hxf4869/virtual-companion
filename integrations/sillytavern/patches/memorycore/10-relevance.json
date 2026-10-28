@@ -1,7 +1,7 @@
 {
   "id": "vc-memorycore-10-relevance",
   "group": "prefilter",
-  "reason": "Apply calibrated cosine/FTS score rejection before RRF and retain raw lane scores.",
+  "reason": "Reject low-relevance lanes before RRF. Keep a both-lane band near the leader and a dated generic-schedule cosine floor; do not drop the absolute gates.",
   "upstream": {
     "commit": "084bed45cad6bb7f877455082cee82835d65671a",
     "version": "1.0.2-beta.1"
@@ -9,10 +9,10 @@
   "removal_condition": "Upstream provides per-lane gates and raw scores in fused candidates.",
   "target": "MemoryCore/src/core/tools/l1-candidate-recall.ts",
   "expected_input_sha256": "1f30af090002921c2209b78a7e97166c6eb2b71ca243c29262250d432c273668",
-  "expected_output_sha256": "003c11c017a4fd76e272c85117311455a678a8a14942be7f45e4a978bbb8a746",
+  "expected_output_sha256": "f8d1b2cfbd12bd6309002582e0dd0d885dcc39e4b98ce639e6b58fd87038bdfe",
   "changed_lines": {
-    "added": 7,
-    "removed": 3
+    "added": 28,
+    "removed": 4
   },
   "validation": [
     "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
@@ -26,7 +26,12 @@
     },
     {
       "from": "  const ftsOk = ftsHits.length > 0;",
-      "to": "  const ftsHits = ftsRaw.filter(r => r.score >= (filter?.minFtsScore ?? 0)).map(r => ({ ...r, ftsScore: r.score }));\n  const vecHits = vecRaw.filter(r => r.score >= (filter?.minCosine ?? -1)).map(r => ({ ...r, cosine: r.score }));\n  const ftsOk = Boolean(ftsHits.length);",
+      "to": "  // Absolute accepts, a both-lane band near the lane leader, and a dated\n  // generic-schedule cosine floor. Defaults keep absolute rejection:\n  // omitted floors equal the accepts and omitted gaps are zero.\n  const cosAccept = filter?.minCosine ?? -1;\n  const ftsAccept = filter?.minFtsScore ?? 0;\n  const cosFloor = filter?.cosineFloor ?? cosAccept;\n  const ftsFloor = filter?.ftsFloor ?? ftsAccept;\n  const cosGap = filter?.cosineGap ?? 0;\n  const ftsGap = filter?.ftsGap ?? 0;\n  const dateFloor = filter?.genericSchedule ? (filter?.dateCosineFloor ?? cosFloor) : cosAccept;\n  const cosIds = new Map(vecRaw.map(r => [r.record_id, r.score]));\n  const ftsIds = new Map(ftsRaw.map(r => [r.record_id, r.score]));\n  const bestCos = Math.max(-1, ...cosIds.values());\n  const bestFts = Math.max(-1, ...ftsIds.values());\n  const supported = new Set();\n  for (const [id, cos] of cosIds) {\n    const lex = ftsIds.get(id);\n    if (lex === undefined) continue;\n    if (cos >= cosFloor && lex >= ftsFloor && bestCos - cos <= cosGap && bestFts - lex <= ftsGap) supported.add(id);\n  }\n  const ftsHits = ftsRaw.filter(r => r.score >= ftsAccept || supported.has(r.record_id)).map(r => ({ ...r, ftsScore: r.score }));\n  const vecHits = vecRaw.filter(r => r.score >= cosAccept || (filter?.genericSchedule && r.score >= dateFloor) || supported.has(r.record_id)).map(r => ({ ...r, cosine: r.score }));\n  const ftsOk = Boolean(ftsHits.length);",
+      "count": 1
+    },
+    {
+      "from": "recallFts(query, topK, vectorStore, hasFts, filter, logger, tag),",
+      "to": "recallFts(filter?.lexicalQuery ?? query, topK, vectorStore, hasFts, filter, logger, tag),",
       "count": 1
     },
     {

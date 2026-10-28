@@ -76,6 +76,9 @@ func (s *Store) ListConsents(ctx context.Context, owner int64) ([]Consent, error
 	return out, nil
 }
 
+// RecordConsent stores one consent row. PUSH_NOTIFICATION withdrawal does
+// not stop deliveries in Go: vc.stop_notification_on_push_withdrawal runs
+// on the insert and stops unsent rows with consent_withdrawn.
 func (s *Store) RecordConsent(ctx context.Context, owner int64, consentType, version string, granted bool) (Consent, error) {
 	if _, ok := approvedConsents[consentType]; !ok {
 		return Consent{}, ErrInvalid

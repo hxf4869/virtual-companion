@@ -71,6 +71,33 @@ test('patched recall retains raw cosine/BM25 scores when both lanes fuse', async
     assert.equal(result.hits[0].ftsRank, -1.5);
     assert.equal(result.hits[0].score, 2 / 61);
 });
+test('dated generic schedule keeps a low cosine floor and near misses stay rejected', async t => {
+    const recall = await loadRecall(t);
+    const filter = { genericSchedule: true, dateCosineFloor: 0.30, minCosine: 0.58, minFtsScore: 0.80,
+        cosineFloor: 0.50, ftsFloor: 0.58, cosineGap: 0.08, ftsGap: 0.20 };
+    const dated = await recall({ ...params({ vector: [hit('day', 0.33)] }), filter });
+    assert.equal(dated.hits.length, 1);
+    assert.equal(dated.hits[0].cosine, 0.33);
+    const topical = await recall({ ...params({ vector: [hit('day', 0.33)] }), filter: { ...filter, genericSchedule: false } });
+    assert.deepEqual(topical.hits, []);
+    const closed = { ...filter, genericSchedule: false };
+    const band = await recall({ ...params({ fts: [hit('fact', 0.63)], vector: [hit('fact', 0.52)] }), filter: closed });
+    assert.equal(band.hits.length, 1);
+    assert.equal(band.hits[0].record_id, 'fact');
+    const cat = await recall({ ...params({ vector: [hit('cat', 0.53)] }), filter: closed });
+    assert.deepEqual(cat.hits, []);
+    const pet = await recall({ ...params({ fts: [hit('name', 0.72)], vector: [hit('name', 0.44)] }), filter: closed });
+    assert.deepEqual(pet.hits, []);
+});
+test('date-restricted lexical search does not reuse the calendar expression', async t => {
+    const recall = await loadRecall(t);
+    let seen;
+    const input = params();
+    input.vectorStore.searchL1Fts = async query => { seen = query; return []; };
+    input.filter = { lexicalQuery: '参加什么' };
+    await recall(input);
+    assert.equal(seen, '参加什么');
+});
 test('rejected candidates do not consume RRF ranks or gain weight from the other lane', async t => {
     const recall = await loadRecall(t);
     const result = await recall(params({ fts: [hit('rejected', 0.39), hit('accepted', 0.6, { ftsRank: -1.5 })],

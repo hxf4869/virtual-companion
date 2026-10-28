@@ -4,76 +4,36 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/jackc/pgx/v5"
 	"sort"
 	"strings"
 )
 
-// BuildEngineProfile publishes only a fully verified engine profile. Model tool
-// output remains inside staging until all source dependencies pass again.
+type profileScene struct {
+	File      string   `json:"file"`
+	Summary   string   `json:"summary"`
+	RecordIDs []string `json:"recordIds"`
+}
+
+type memoryProfile struct {
+	ID        int64
+	Persona   string
+	Scenes    []profileScene
+	Refs      []string
+	RecordIDs []string
+}
+
+// BuildEngineProfile publishes one profile for the target allowlist. The same
+// fingerprint skips the engine. A cross-chat merge stays out; a correction
+// successor stays in only when every source still passes the allowlist.
 func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOperation, token string) error {
-	candidates, e := s.engineCandidates(ctx, c.OwnerID, op.Input.RelationshipID, op.Input.ConversationID)
+	fingerprint, ids, refs, cached, e := s.profileBuildInput(ctx, c.OwnerID, op.Input.RelationshipID, op.Input.ConversationID)
 	if e != nil {
 		return e
 	}
-	if len(candidates) == 0 {
+	if fingerprint == "" || len(ids) == 0 || cached {
 		return nil
 	}
-	ids := []string{}
-	refs := []string{}
-	seen := map[string]bool{}
-	origin, ok := stsource.ParseRef(op.SourceRef)
-	if !ok {
-		return ErrInvalid
-	}
-	publishedHere := map[string]bool{}
-	if op.ID != "" {
-		projections, e := s.engineProjections(ctx, c.OwnerID, op.Input.RelationshipID)
-		if e != nil {
-			return e
-		}
-		for _, p := range projections {
-			if p.OperationID == op.ID {
-				publishedHere[p.RecordID] = true
-			}
-		}
-	}
-	for id, m := range candidates {
-		// ST marks the actively generating chat unsettled. Keep each stored
-		// conversation profile independent so it can still serve another chat.
-		// A merged L1 retains all dependencies; never strip them to fit a profile.
-		// A record this operation just published is the exception: a correction
-		// keeps every source, including evidence from the superseded record.
-		if !publishedHere[id] {
-			if m.ConversationID == nil || *m.ConversationID != op.Input.ConversationID {
-				continue
-			}
-			sameConversation := len(m.Sources) > 0
-			for _, raw := range m.Sources {
-				ref, valid := stsource.ParseRef(raw)
-				if !valid || ref.Chat != origin.Chat {
-					sameConversation = false
-					break
-				}
-			}
-			if !sameConversation {
-				continue
-			}
-		}
-		ids = append(ids, id)
-		for _, ref := range m.Sources {
-			if !seen[ref] {
-				seen[ref] = true
-				refs = append(refs, ref)
-			}
-		}
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	sort.Strings(ids)
-	sort.Strings(refs)
 	deps := []string{}
 	refByDependency := map[string]string{}
 	e = s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
@@ -146,28 +106,173 @@ func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOpe
 		refs = append(refs, refByDependency[dep])
 	}
 	sort.Strings(refs)
+	persona := profile.Files["persona.md"]
+	if strings.TrimSpace(persona) == "" {
+		return ErrInvalid
+	}
+	if len([]rune(persona)) > 16000 {
+		persona = string([]rune(persona)[:16000])
+	}
+	scenes, e := profileScenes(profile.Files, ids)
+	if e != nil {
+		return e
+	}
+	encoded, e := json.Marshal(scenes)
+	if e != nil {
+		return e
+	}
+	return mapStoreErr(s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
+		_, e := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)`, c.OwnerID, c.JobID, c.Token, c.Fence, refs, persona, string(encoded), ids, fingerprint)
+		return e
+	}))
+}
+func (s *Store) profileBuildInput(ctx context.Context, owner, rel, conv int64) (string, []string, []string, bool, error) {
+	var fingerprint string
+	ids, refs := []string{}, []string{}
+	seenID, seenRef := map[string]bool{}, map[string]bool{}
+	cached := false
+	e := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		if e := tx.QueryRow(ctx, `SELECT vc.memory_profile_fingerprint($1,$2,$3)`, owner, rel, conv).Scan(&fingerprint); e != nil {
+			return e
+		}
+		rows, e := tx.Query(ctx, `SELECT record_id, source_ref FROM vc.memory_profile_allowlist($1,$2,$3)`, owner, rel, conv)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, ref string
+			if e = rows.Scan(&id, &ref); e != nil {
+				return e
+			}
+			if id != "" && !seenID[id] {
+				seenID[id] = true
+				ids = append(ids, id)
+			}
+			if ref != "" && !seenRef[ref] {
+				seenRef[ref] = true
+				refs = append(refs, ref)
+			}
+		}
+		if e = rows.Err(); e != nil {
+			return e
+		}
+		var present bool
+		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vc.memory_profile_current($1,$2,$3))`, owner, rel, conv).Scan(&present); e != nil {
+			return e
+		}
+		cached = present
+		return nil
+	})
+	sort.Strings(ids)
+	sort.Strings(refs)
+	return fingerprint, ids, refs, cached, mapStoreErr(e)
+}
+func profileScenes(files map[string]string, allow []string) ([]profileScene, error) {
+	allowSet := map[string]bool{}
+	for _, id := range allow {
+		allowSet[id] = true
+	}
 	keys := []string{}
-	for key := range profile.Files {
-		if strings.HasSuffix(key, ".md") {
+	for key := range files {
+		if strings.HasPrefix(key, "scene_blocks/") && strings.HasSuffix(key, ".md") {
 			keys = append(keys, key)
 		}
 	}
 	sort.Strings(keys)
-	texts := []string{}
+	listed := map[string][]string{}
+	hasIndex := false
+	if raw, ok := files["scene_index.json"]; ok {
+		hasIndex = true
+		var asMap map[string][]string
+		if json.Unmarshal([]byte(raw), &asMap) == nil && asMap != nil {
+			listed = asMap
+		} else {
+			var asList []profileScene
+			if json.Unmarshal([]byte(raw), &asList) != nil {
+				return nil, ErrInvalid
+			}
+			for _, scene := range asList {
+				listed[scene.File] = scene.RecordIDs
+			}
+		}
+	}
+	out := []profileScene{}
 	for _, key := range keys {
-		texts = append(texts, profile.Files[key])
+		ids := []string{}
+		if hasIndex {
+			for _, id := range listed[key] {
+				if allowSet[id] {
+					ids = append(ids, id)
+				}
+			}
+		} else {
+			ids = append(ids, allow...)
+		}
+		sort.Strings(ids)
+		deduped := []string{}
+		prev := ""
+		for _, id := range ids {
+			if id == "" || id == prev {
+				continue
+			}
+			deduped = append(deduped, id)
+			prev = id
+		}
+		out = append(out, profileScene{File: key, Summary: files[key], RecordIDs: deduped})
 	}
-	body := strings.Join(texts, "\n")
-	if body == "" {
-		return ErrInvalid
+	return out, nil
+}
+func (s *Store) currentMemoryProfile(ctx context.Context, owner, rel, conv int64) (*memoryProfile, error) {
+	var out memoryProfile
+	var scenes []byte
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT out_id,out_persona,out_scenes,out_refs,out_record_ids FROM vc.memory_profile_current($1,$2,$3)`, owner, rel, conv).Scan(&out.ID, &out.Persona, &scenes, &out.Refs, &out.RecordIDs)
+	})
+	if err == pgx.ErrNoRows {
+		return nil, nil
 	}
-	if len([]rune(body)) > 16000 {
-		body = string([]rune(body)[:16000])
+	if err != nil {
+		return nil, mapStoreErr(err)
 	}
-	return mapStoreErr(s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
-		_, e := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile($1,$2,$3,$4,$5,$6)`, c.OwnerID, c.JobID, c.Token, c.Fence, refs, body)
+	if len(scenes) > 0 && string(scenes) != "null" {
+		if e := json.Unmarshal(scenes, &out.Scenes); e != nil {
+			return nil, ErrInvalid
+		}
+	}
+	return &out, nil
+}
+func (s *Store) validMemoryProfileExists(ctx context.Context, owner, rel int64) (bool, error) {
+	var present bool
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vc.memory_profile WHERE owner_user_id=$1 AND relationship_id=$2 AND valid AND btrim(persona)<>'')`, owner, rel).Scan(&present)
+	})
+	return present, mapStoreErr(err)
+}
+func (s *Store) enqueueProfileRebuild(ctx context.Context, owner, rel int64) error {
+	return mapStoreErr(s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		_, e := tx.Exec(ctx, `SELECT vc.go_enqueue_memory_profile_rebuild($1,$2)`, owner, rel)
 		return e
 	}))
+}
+func (s *Store) profileFallbackMemories(ctx context.Context, owner, rel, conv int64) ([]Memory, error) {
+	out := []Memory{}
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, e := tx.Query(ctx, `SELECT out_id,out_summary FROM vc.memory_profile_fallback($1,$2,$3)`, owner, rel, conv)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m Memory
+			if e = rows.Scan(&m.ID, &m.Summary); e != nil {
+				return e
+			}
+			out = append(out, m)
+		}
+		return rows.Err()
+	})
+	return out, mapStoreErr(err)
 }
 func (s *Store) RecoverEngineOperations(ctx context.Context) error {
 	var tasks [][2]int64

@@ -95,6 +95,12 @@ func TestOperationClassifiesGenerationRoutesBeforeConversationRoutes(t *testing.
 		"/api/v1/auth/challenges/token/totp":           "auth_challenge",
 		"/api/v1/auth/trusted-devices/2":               "auth_trusted_device",
 		"/api/v1/admin/accounts/2/authenticator-reset": "admin_authenticator_reset",
+		"/api/v1/inbox":                                "inbox",
+		"/api/v1/inbox/ev-1/claim":                     "inbox_claim",
+		"/api/v1/inbox/ev-1/ack":                       "inbox_ack",
+		"/api/v1/inbox/ev-1/read":                      "inbox_read",
+		"/api/v1/notification-channels":                "notification_channels",
+		"/api/v1/notification-deliveries":              "notification_deliveries",
 	}
 	for path, want := range cases {
 		if got := operation(path); got != want {
@@ -120,6 +126,13 @@ func TestUnmappedAndWritesAreNotRegistered(t *testing.T) {
 	s.Handler().ServeHTTP(sse, httptest.NewRequest(http.MethodGet, "/api/v1/realtime/streams/1", nil))
 	if sse.Code != http.StatusNotFound {
 		t.Fatalf("unwired SSE %d", sse.Code)
+	}
+	for _, path := range []string{"/api/v1/inbox", "/api/v1/notification-channels", "/api/v1/notification-deliveries"} {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("unregistered %s %d", path, rec.Code)
+		}
 	}
 }
 

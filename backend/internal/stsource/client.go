@@ -19,6 +19,7 @@ import (
 
 var ErrUnavailable = errors.New("ST source temporarily unavailable")
 var uuid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var inboxEventID = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)
 
 func ValidIdentity(id string) bool { return uuid.MatchString(id) }
 
@@ -36,6 +37,7 @@ type Message struct {
 	Eligible        bool       `json:"eligible"`
 	SourceTimestamp *time.Time `json:"sourceTimestamp"`
 	SourceTimezone  string     `json:"sourceTimezone"`
+	InboxEventID    string     `json:"inboxEventId,omitempty"`
 }
 type Snapshot struct {
 	ChatIdentity string    `json:"chatIdentity"`
@@ -138,7 +140,7 @@ func (c *Client) Read(ctx context.Context, owner int64, queries []Query) ([]Snap
 			}
 			seen := make(map[string]bool, len(snap.Messages))
 			for _, m := range snap.Messages {
-				if !ValidIdentity(m.MessageID) || !ValidIdentity(m.CandidateID) || m.Revision < 1 || seen[m.MessageID] || (m.Role != "user" && m.Role != "assistant" && m.Role != "system") {
+				if !ValidIdentity(m.MessageID) || !ValidIdentity(m.CandidateID) || m.Revision < 1 || seen[m.MessageID] || (m.Role != "user" && m.Role != "assistant" && m.Role != "system") || (m.InboxEventID != "" && !inboxEventID.MatchString(m.InboxEventID)) {
 					return nil, ErrUnavailable
 				}
 				seen[m.MessageID] = true
@@ -166,6 +168,78 @@ type Ref struct {
 func (r Ref) String() string {
 	return fmt.Sprintf("st:%s:%s:%s:%d:%d", r.Chat, r.Message, r.Candidate, r.Revision, r.Generation)
 }
+
+var ownerAccountID = regexp.MustCompile(`^[1-9][0-9]{0,18}$`)
+
+// InboxDeliveryRequest is the private bridge body. OwnerAccountID is the
+// decimal account id. The file is the chat location from the source snapshot.
+type InboxDeliveryEvent struct {
+	EventID     string  `json:"eventId"`
+	Intent      string  `json:"intent,omitempty"`
+	Body        *string `json:"body,omitempty"`
+	Branch      *string `json:"branch,omitempty"`
+	STDelivered bool    `json:"stDelivered,omitempty"`
+	MessageID   string  `json:"messageId,omitempty"`
+}
+
+type InboxDeliveryLease struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+type InboxDeliveryRequest struct {
+	OwnerAccountID string             `json:"ownerAccountId"`
+	File           string             `json:"file"`
+	Event          InboxDeliveryEvent `json:"event"`
+	Lease          InboxDeliveryLease `json:"lease"`
+}
+
+// InboxReadback is the saved message. candidateId is optional; the bridge
+// does not require it, and a missing value must still ACK.
+type InboxReadback struct {
+	ChatIdentity    string `json:"chatIdentity"`
+	ChatRevision    int64  `json:"chatRevision"`
+	EventID         string `json:"eventId"`
+	MessageID       string `json:"messageId"`
+	MessageRevision int64  `json:"messageRevision"`
+	CandidateID     string `json:"candidateId,omitempty"`
+}
+
+type InboxDeliveryResult struct {
+	Saved       bool           `json:"saved"`
+	Stopped     bool           `json:"stopped"`
+	WaitingHost bool           `json:"waitingHost"`
+	Associated  bool           `json:"associated"`
+	Acked       bool           `json:"acked"`
+	LinkStatus  string         `json:"linkStatus,omitempty"`
+	Readback    *InboxReadback `json:"readback,omitempty"`
+}
+
+// DeliverInbox posts one save attempt. A non-200 response is unavailable and
+// does not include the response body. The request never sets Origin.
+func (c *Client) DeliverInbox(ctx context.Context, req InboxDeliveryRequest) (InboxDeliveryResult, error) {
+	if c == nil || !ownerAccountID.MatchString(req.OwnerAccountID) || strings.TrimSpace(req.File) == "" || !inboxEventID.MatchString(req.Event.EventID) || req.Lease.Token == "" || req.Lease.ExpiresAt.IsZero() {
+		return InboxDeliveryResult{}, ErrUnavailable
+	}
+	var out InboxDeliveryResult
+	if err := c.call(ctx, "/internal/v1/st/inbox", req, &out); err != nil {
+		return InboxDeliveryResult{}, err
+	}
+	if out.Readback != nil {
+		rb := out.Readback
+		if !ValidIdentity(rb.ChatIdentity) || !ValidIdentity(rb.MessageID) || rb.MessageRevision < 1 {
+			return InboxDeliveryResult{}, ErrUnavailable
+		}
+		if rb.EventID != "" && rb.EventID != req.Event.EventID {
+			return InboxDeliveryResult{}, ErrUnavailable
+		}
+		if rb.CandidateID != "" && !ValidIdentity(rb.CandidateID) {
+			return InboxDeliveryResult{}, ErrUnavailable
+		}
+	}
+	return out, nil
+}
+
 func ParseRef(raw string) (Ref, bool) {
 	fields := strings.Split(raw, ":")
 	if len(fields) != 6 || fields[0] != "st" || !ValidIdentity(fields[1]) || !ValidIdentity(fields[2]) || !ValidIdentity(fields[3]) {

@@ -1,7 +1,7 @@
 {
   "id": "vc-memorycore-08-isolation",
   "group": "prefilter",
-  "reason": "Carry trusted record allowlists and calibrated lane thresholds with the existing isolation filter.",
+  "reason": "Carry trusted record allowlists and the calibrated lane gates with the existing isolation filter.",
   "upstream": {
     "commit": "084bed45cad6bb7f877455082cee82835d65671a",
     "version": "1.0.2-beta.1"
@@ -9,9 +9,9 @@
   "removal_condition": "Upstream exposes trusted allowlists in store and recall contracts.",
   "target": "MemoryCore/src/core/store/isolation.ts",
   "expected_input_sha256": "e9426032b390c37a340cec13207a1447bbdcc017d704421179ae7b26be9d43f3",
-  "expected_output_sha256": "c51ee6f47adf30660de22dab58b41dee13aa6a663b49177dcb153981ea5fe9ae",
+  "expected_output_sha256": "a88f8c99df3b9ab1a1bdf0957923cec4fa01412812cc2f66c0c80bb74e8c72de",
   "changed_lines": {
-    "added": 8,
+    "added": 15,
     "removed": 1
   },
   "validation": [
@@ -21,7 +21,7 @@
   "replacements": [
     {
       "from": "export interface IsolationFilter {\n  teamId?: string;",
-      "to": "export interface IsolationFilter {\n  allowedRecordIds?: string[];\n  minCosine?: number;\n  minFtsScore?: number;\n  teamId?: string;",
+      "to": "export interface IsolationFilter {\n  allowedRecordIds?: string[];\n  minCosine?: number;\n  minFtsScore?: number;\n  cosineFloor?: number;\n  ftsFloor?: number;\n  cosineGap?: number;\n  ftsGap?: number;\n  dateCosineFloor?: number;\n  genericSchedule?: boolean;\n  lexicalQuery?: string;\n  teamId?: string;",
       "count": 1
     },
     {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/migrate"
+	"github.com/hxf4869/virtual-companion/internal/notify"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/provider/openai"
@@ -212,6 +214,20 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 		}
 		loop.Use(nil, ad, hub, blobs)
 	}
+	// Channel credentials stay in the channel row. Process config only names
+	// the SMTP server. An empty host still runs deliveries so a missing
+	// server fails closed instead of borrowing another secret.
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.Notify.SMTPRootCAs}
+	sender, err := notify.NewService(notify.SMTPConfig{
+		Host: cfg.Notify.SMTPHost,
+		Port: cfg.Notify.SMTPPort,
+		From: cfg.Notify.SMTPFrom,
+		TLS:  tlsCfg,
+	}, notify.FeishuConfig{})
+	if err != nil {
+		return app.Deps{}, err
+	}
+	loop.UseNotification(sender, cfg.Notify.MaxAttempts)
 	return app.Deps{
 		Lease:            postgres.NewPlaneLease(cfg.Database.DSN),
 		Jobs:             loop,

@@ -66,7 +66,8 @@
       "SAFETY_SIGNAL",
       "ACCOUNT_METADATA",
       "AGE_VERIFICATION_RESULT",
-      "USAGE_METADATA"
+      "USAGE_METADATA",
+      "NOTIFICATION_TEXT"
     ],
     "ErrorCode": [
       "AUTHENTICATION_REQUIRED",
@@ -194,7 +195,8 @@
       "EMBEDDING",
       "CONVERSATION_SUMMARY",
       "PRODUCT_EVAL",
-      "BACKGROUND_GREETING"
+      "BACKGROUND_GREETING",
+      "NOTIFICATION_DELIVERY"
     ],
     "ProviderAttemptStatus": [
       "CREATED",
@@ -726,6 +728,10 @@
           {
             "code": "USAGE_METADATA",
             "order": 5
+          },
+          {
+            "code": "NOTIFICATION_TEXT",
+            "order": 6
           }
         ],
         "memoryDomainStorage": {
@@ -739,7 +745,7 @@
             "restore": "CURRENT_GO_DELETION_AND_SOURCE_ALLOWLIST_BEFORE_ENGINE_READS"
           },
           "fieldEncryption": false,
-          "note": "ADR-0009 permits plaintext only for the memory-domain fields listed in the memory contract, including source-index text. Data categories and access restrictions remain unchanged. Account data, provider credentials, legacy Go message bodies and encrypted export-object envelopes retain their existing field or object encryption.",
+          "note": "ADR-0009 permits plaintext only for the memory-domain fields listed in the memory contract, including source-index text. Data categories and access restrictions remain unchanged. Account data, provider credentials, legacy Go message bodies and encrypted export-object envelopes retain their existing field or object encryption. Notification text is not a credential category and is not a memory-domain field.",
           "protection": [
             "OWNER_BINDING_AND_FORCE_RLS",
             "DIRECTORY_PERMISSIONS",
@@ -750,7 +756,7 @@
         },
         "schemaVersion": 1
       },
-      "sha256": "4521aadbf171bd6a0d255587abf6fe6ba61aade81ee9d3c4d4cd8dd87c82219a"
+      "sha256": "a16491c16e6d1818ed6e04df18437ea7432e71c2126011969b684f411f4b0f40"
     },
     "error-codes.yaml": {
       "document": {
@@ -1064,7 +1070,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 88,
+          "KEEP": 95,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1872,7 +1878,7 @@
             "method": "GET",
             "operationId": "listFollowUps",
             "path": "/api/v1/relationships/{relationshipId}/follow-ups",
-            "replacementOrImpact": "W09 read of follow-ups Go created from a published memory whose source was verified again and from the saved MemoryTime. There is no create API. V39 reminders stay DEFER. Inbox delivery is W10. Model tools are W11."
+            "replacementOrImpact": "W09 read of follow-ups Go created from a published memory whose source was verified again and from the saved MemoryTime. There is no create API. V39 reminders stay DEFER. This read does not create an inbox event. Inbox claim, ACK and channel delivery are separate operations. Model tools are W11."
           },
           {
             "currentH5Callers": [],
@@ -1895,6 +1901,83 @@
             "operationId": "cancelFollowUp",
             "path": "/api/v1/follow-ups/{followUpId}/cancel",
             "replacementOrImpact": "Cancel one owned follow-up. This does not write MemoryCore, create an inbox event, or let model wording decide the cancellation."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listInboxEvents",
+            "path": "/api/v1/inbox",
+            "replacementOrImpact": "List the caller's inbox events. Persisted, SillyTavern delivered, in-app read and link status are separate facts. This read does not create an inbox event or a channel delivery."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "claimInboxEvent",
+            "path": "/api/v1/inbox/{eventId}/claim",
+            "replacementOrImpact": "Take a short lease to attempt one SillyTavern save. The lease token is not a session or an API key. A live lease is not replaced. Claiming does not mark the event delivered."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "ackInboxEvent",
+            "path": "/api/v1/inbox/{eventId}/ack",
+            "replacementOrImpact": "Acknowledge a SillyTavern save after the saved message is read back. An expired lease cannot ACK. ACK does not change in-app read or link status and is not a channel outcome."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "markInboxEventRead",
+            "path": "/api/v1/inbox/{eventId}/read",
+            "replacementOrImpact": "Record in-app read. It does not mark SillyTavern delivered, change link status, or record a channel outcome."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listNotificationChannels",
+            "path": "/api/v1/notification-channels",
+            "replacementOrImpact": "List email and Feishu channel configuration for the caller. SMTP passwords, webhook URLs and signing secrets are never returned."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "putNotificationChannel",
+            "path": "/api/v1/notification-channels",
+            "replacementOrImpact": "Upsert one email or Feishu target. A credential in the request is stored as field ciphertext and is not echoed. The target is a label, not a URL."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listNotificationDeliveries",
+            "path": "/api/v1/notification-deliveries",
+            "replacementOrImpact": "Read delivery status. accepted, failed and unknown are channel outcomes. They do not mean SillyTavern delivered, in-app read, or link present."
           },
           {
             "currentH5Callers": [],
@@ -2677,7 +2760,7 @@
           }
         ]
       },
-      "sha256": "d6aada35bba2ac08bd0b9f183f686d939b5f63e035a3ce08276339ebff5344ef"
+      "sha256": "a65a59bf94b63b0a7fde6f910d76652716ed41faff940e29299cbbd6877e19cf"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -3169,13 +3252,18 @@
           {
             "code": "BACKGROUND_GREETING",
             "modelPurpose": "BACKGROUND_GREETINGS",
-            "note": "Go background greeting and follow-up wording. Execution resolves only the BACKGROUND_GREETINGS pinned binding and revision, never the legacy global route order. An in-progress run keeps the snapshot taken when it started. Missing authorization, price or budget performs no real call. Inbox and notification delivery belong to W10.",
+            "note": "Go background greeting and follow-up wording. Execution resolves only the BACKGROUND_GREETINGS pinned binding and revision, never the legacy global route order. An in-progress run keeps the snapshot taken when it started. Missing authorization, price or budget performs no real call. Notification delivery is a separate processing purpose and is not a model purpose.",
             "order": 6
+          },
+          {
+            "code": "NOTIFICATION_DELIVERY",
+            "note": "Deliver an already prepared inbox event by email or Feishu. This purpose does not call a model and is not a ModelPurpose. A current PUSH_NOTIFICATION grant is required before an outbound delivery. Withdrawal stops only deliveries that have not been sent.",
+            "order": 7
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "60ce528817dd3d37157fff26f85bc42cc49a103a063d0ec8fa0d93fa0aa03b59"
+      "sha256": "e292b54f048f32615b9988a84a305c8b1b1a9c8217e048c32be763eefa6f0757"
     },
     "product-scope.yaml": {
       "document": {

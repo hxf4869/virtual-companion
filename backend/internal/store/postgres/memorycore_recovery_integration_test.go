@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,25 +124,54 @@ func TestEngineProfileCannotLaunderParentBranchThroughIndependentChat(t *testing
 	if _, err := s.ReconcileSTSources(ctx, 1, []string{sourceChat, independentID, childID}); err != nil {
 		t.Fatal(err)
 	}
-	refs := []string{refForChat(t, sourceChat), refForChat(t, independentID)}
+	addSTMemory(t, b, "parent-only fact", refForChat(t, sourceChat))
+	addSTMemory(t, independent, "independent fact", refForChat(t, independentID))
+	var fingerprint string
+	var refs, ids []string
+	if err := s.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT vc.memory_profile_fingerprint(1,$1,$2)`, independent.RelationshipID, independent.ConversationID).Scan(&fingerprint); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, `SELECT COALESCE((SELECT array_agg(DISTINCT source_ref ORDER BY source_ref) FROM vc.memory_profile_allowlist(1,$1,$2)), '{}'), COALESCE((SELECT array_agg(DISTINCT record_id ORDER BY record_id) FROM vc.memory_profile_allowlist(1,$1,$2)), '{}')`, independent.RelationshipID, independent.ConversationID).Scan(&refs, &ids)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if fingerprint == "" || len(ids) != 2 || len(refs) != 2 {
+		t.Fatalf("independent allowlist fingerprint=%q ids=%v refs=%v", fingerprint, ids, refs)
+	}
+	const persona = "累积画像含父分支事实"
+	if err := IsolationSuperExec(ctx, `INSERT INTO vc.memory_profile(owner_user_id,relationship_id,fingerprint,persona,st_source_refs,record_ids) VALUES(1,$1,$2,$3,$4,$5)`, independent.RelationshipID, fingerprint, persona, refs, ids); err != nil {
+		t.Fatal(err)
+	}
 	if err := IsolationSuperExec(ctx, `INSERT INTO vc.conversation_summary(owner_user_id,id,conversation_id,summary,model_id,model_version,prompt_version,confidence,service_class,st_source_refs) VALUES(1,nextval('vc.conversation_summary_id_seq'),$1,'engine profile containing parent-only fact','memorycore','test','st-memorycore-profile-v1',1,'ECONOMY',$2)`, independent.ConversationID, refs); err != nil {
 		t.Fatal(err)
 	}
-	chats := []stSummaryChat{{id: independent.ConversationID, chat: independentID}}
+	chats := []stSummaryChat{{id: independent.ConversationID, chat: independentID}, {id: b.ConversationID, chat: sourceChat}, {id: child.ConversationID, chat: childID}}
 	got, err := s.stSummaries(ctx, 1, independent.ConversationID, chats)
-	if err != nil || len(got) != 1 {
-		t.Fatalf("independent target should retain verified profile: n=%d err=%v", len(got), err)
-	}
-	got, err = s.stSummaries(ctx, 1, child.ConversationID, chats)
 	if err != nil || len(got) != 0 {
-		t.Fatalf("parent fact laundered through independent profile: n=%d err=%v", len(got), err)
+		t.Fatalf("retired profile-v1 summary stayed on the read path: n=%d err=%v", len(got), err)
 	}
-	// A later SESSION setting must also gate dependencies inside one's own profile.
+	recall := func(chat string) STMemoryResult {
+		t.Helper()
+		out, err := s.RecallSTMemory(ctx, 1, STMemoryRequest{ChatIdentity: chat, Revision: 1, Enabled: true, BudgetTokens: 1024})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	shared := recall(independentID)
+	if !strings.Contains(shared.Block, persona) {
+		t.Fatalf("independent target lost the verified profile: %+v", shared)
+	}
+	branched := recall(childID)
+	if strings.Contains(branched.Block, "parent-only fact") || strings.Contains(branched.Block, persona) {
+		t.Fatalf("parent fact laundered through independent profile: %+v", branched)
+	}
 	if err := IsolationSuperExec(ctx, `UPDATE vc.relationship SET memory_share_scope='SESSION' WHERE owner_user_id=1 AND id=$1`, b.RelationshipID); err != nil {
 		t.Fatal(err)
 	}
-	got, err = s.stSummaries(ctx, 1, independent.ConversationID, chats)
-	if err != nil || len(got) != 0 {
-		t.Fatalf("cross-chat dependency survived SESSION gate: n=%d err=%v", len(got), err)
+	shared = recall(independentID)
+	if strings.Contains(shared.Block, "parent-only fact") || strings.Contains(shared.Block, persona) {
+		t.Fatalf("cross-chat dependency survived SESSION gate: %+v", shared)
 	}
 }

@@ -86,7 +86,14 @@ func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64
 		RecordID string `json:"record_id"`
 		ID       string `json:"id"`
 	}
-	e = s.memoryEngine.Call(ctx, "search", map[string]any{"scope": EngineScope(owner, rel), "allowedRecordIds": ids, "embedding": embedding, "query": q.Text, "topK": q.Limit}, &hits)
+	// The allowlist above is already limited to q.Date. MemoryCore must not
+	// apply that date again: a merged summary can omit metadata.eventDate
+	// while the Go record still carries the verified source date.
+	payload := map[string]any{"scope": EngineScope(owner, rel), "allowedRecordIds": ids, "embedding": embedding, "query": q.Text, "topK": q.Limit}
+	if q.Date != nil {
+		payload["dateRestricted"] = true
+	}
+	e = s.memoryEngine.Call(ctx, "search", payload, &hits)
 	if e != nil {
 		return nil, e
 	}

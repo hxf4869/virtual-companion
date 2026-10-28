@@ -2,8 +2,13 @@
 // Source revision covers the selected text, speaker and MVU snapshot; it is
 // independent of a chat header save and never uses a filename/array index as ID.
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const eventIdPattern = /^[A-Za-z0-9_.:-]{1,128}$/;
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const validId = (v) => typeof v === 'string' && uuidPattern.test(v);
+function inboxEventId(source) {
+    const id = source?.inbox_event_id;
+    return typeof id === 'string' && eventIdPattern.test(id) ? id : '';
+}
 const selectedIndex = (message) => Array.isArray(message.swipes) && message.swipes.length
     ? Math.max(0, Math.min(message.swipes.length - 1, Number.isInteger(message.swipe_id) ? message.swipe_id : 0)) : 0;
 function candidates(message) {
@@ -40,7 +45,9 @@ export function prepareSourceIdentities(chat, { settled, sourceTimezone, uuid = 
             if (!object(source)) source = {};
             if (!validId(source.id) || swipes.has(source.id)) {
                 const sent = message.swipe_info?.[candidate.index]?.send_date ?? message.send_date;
+                const kept = inboxEventId(source);
                 source = { id: uuid(), sourceTimestamp: sourceInstant(sent), sourceTimezone: validTimezone(sourceTimezone) };
+                if (kept) source.inbox_event_id = kept;
             }
             swipes.add(source.id);
             candidate.extra.vc_source = source;
@@ -94,7 +101,9 @@ export function reconcileSourceIdentities(chat, previous = []) {
             const changed = !existing || existing.signature !== signature(message, candidate) || JSON.stringify(existing.time) !== JSON.stringify(time);
             const revision = !existing ? 1 : existing.source.revision + (changed ? 1 : 0);
             if (!Number.isSafeInteger(revision)) throw new Error('Source revision limit reached');
+            const eventId = inboxEventId(source) || inboxEventId(existing?.source);
             candidate.extra.vc_source = { id: source.id, revision, settled: source.settled === true, ...time };
+            if (eventId) candidate.extra.vc_source.inbox_event_id = eventId;
             if (Array.isArray(message.swipes) && candidate.index === selectedIndex(message)) message.swipe_info[candidate.index].extra.vc_source = structuredClone(candidate.extra.vc_source);
         }
     }
@@ -110,10 +119,13 @@ export function sourceMessages(chat) {
     return chat.slice(1).map((message) => {
         const candidate = candidates(message)[selectedIndex(message)];
         const source = candidate.extra.vc_source;
-        return { messageId: message.vc_message_id, candidateId: source.id, revision: source.revision,
+        const row = { messageId: message.vc_message_id, candidateId: source.id, revision: source.revision,
             role: message.is_user ? 'user' : message.is_system ? 'system' : 'assistant',
             text: candidate.text, settled: source.settled === true,
             eligible: !message.is_system && !candidate.extra.no_memory, ...sourceTime(source),
         };
+        const eventId = inboxEventId(source);
+        if (eventId) row.inboxEventId = eventId;
+        return row;
     });
 }

@@ -25,6 +25,20 @@ const swipeMessage = (texts, selected = 0, over = {}) => message({
 const candidateIds = (m) => m.swipe_info.map((entry) => entry.extra.vc_source.id);
 const candidateRevisions = (m) => m.swipe_info.map((entry) => entry.extra.vc_source.revision);
 
+test('inbox_event_id 随来源身份保留，并进入来源投影', () => {
+    const chat = [header(), message({ extra: { vc_source: { inbox_event_id: 'fu-keep' } } })];
+    reconcileSourceIdentities(chat, []);
+    assert.equal(chat[1].extra.vc_source.inbox_event_id, 'fu-keep');
+    assert.equal(sourceMessages(chat)[0].inboxEventId, 'fu-keep');
+    const revision = chat[1].extra.vc_source.revision;
+    const stripped = structuredClone(chat);
+    delete stripped[1].extra.vc_source.inbox_event_id;
+    reconcileSourceIdentities(stripped, chat);
+    assert.equal(stripped[1].extra.vc_source.inbox_event_id, 'fu-keep');
+    assert.equal(stripped[1].extra.vc_source.revision, revision);
+    assert.equal(sourceMessages(stripped)[0].inboxEventId, 'fu-keep');
+});
+
 test('prepare 为消息顶层与全部候选分配稳定 UUID，header 不分配', () => {
     const chat = [header(), message(), swipeMessage(['a', 'b'], 1)];
     prepareSourceIdentities(chat);

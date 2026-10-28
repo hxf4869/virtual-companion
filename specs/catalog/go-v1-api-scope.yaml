@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 88
+  KEEP: 95
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -673,7 +673,8 @@ operations:
   replacementOrImpact: >-
     W09 read of follow-ups Go created from a published memory whose source was
     verified again and from the saved MemoryTime. There is no create API.
-    V39 reminders stay DEFER. Inbox delivery is W10. Model tools are W11.
+    V39 reminders stay DEFER. This read does not create an inbox event. Inbox
+    claim, ACK and channel delivery are separate operations. Model tools are W11.
 - operationId: getFollowUp
   method: GET
   path: /api/v1/follow-ups/{followUpId}
@@ -692,6 +693,79 @@ operations:
   replacementOrImpact: >-
     Cancel one owned follow-up. This does not write MemoryCore, create an inbox
     event, or let model wording decide the cancellation.
+- operationId: listInboxEvents
+  method: GET
+  path: /api/v1/inbox
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    List the caller's inbox events. Persisted, SillyTavern delivered, in-app
+    read and link status are separate facts. This read does not create an inbox
+    event or a channel delivery.
+- operationId: claimInboxEvent
+  method: POST
+  path: /api/v1/inbox/{eventId}/claim
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Take a short lease to attempt one SillyTavern save. The lease token is not
+    a session or an API key. A live lease is not replaced. Claiming does not
+    mark the event delivered.
+- operationId: ackInboxEvent
+  method: POST
+  path: /api/v1/inbox/{eventId}/ack
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Acknowledge a SillyTavern save after the saved message is read back. An
+    expired lease cannot ACK. ACK does not change in-app read or link status
+    and is not a channel outcome.
+- operationId: markInboxEventRead
+  method: POST
+  path: /api/v1/inbox/{eventId}/read
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Record in-app read. It does not mark SillyTavern delivered, change link
+    status, or record a channel outcome.
+- operationId: listNotificationChannels
+  method: GET
+  path: /api/v1/notification-channels
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    List email and Feishu channel configuration for the caller. SMTP passwords,
+    webhook URLs and signing secrets are never returned.
+- operationId: putNotificationChannel
+  method: PUT
+  path: /api/v1/notification-channels
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Upsert one email or Feishu target. A credential in the request is stored as
+    field ciphertext and is not echoed. The target is a label, not a URL.
+- operationId: listNotificationDeliveries
+  method: GET
+  path: /api/v1/notification-deliveries
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Read delivery status. accepted, failed and unknown are channel outcomes.
+    They do not mean SillyTavern delivered, in-app read, or link present.
 - operationId: createReport
   method: POST
   path: /api/v1/reports

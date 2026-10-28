@@ -20,5 +20,12 @@ entries:
     Go background greeting and follow-up wording. Execution resolves only the
     BACKGROUND_GREETINGS pinned binding and revision, never the legacy global
     route order. An in-progress run keeps the snapshot taken when it started.
-    Missing authorization, price or budget performs no real call. Inbox and
-    notification delivery belong to W10.
+    Missing authorization, price or budget performs no real call. Notification
+    delivery is a separate processing purpose and is not a model purpose.
+- code: NOTIFICATION_DELIVERY
+  order: 7
+  note: >-
+    Deliver an already prepared inbox event by email or Feishu. This purpose
+    does not call a model and is not a ModelPurpose. A current PUSH_NOTIFICATION
+    grant is required before an outbound delivery. Withdrawal stops only
+    deliveries that have not been sent.
