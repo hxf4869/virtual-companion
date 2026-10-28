@@ -63,6 +63,86 @@ func TestOpenRainyInnParticipants(t *testing.T) {
 	}
 }
 
+func TestActorViewProjectsNPCPublicPersonasForEveryActor(t *testing.T) {
+	rawDef, err := os.ReadFile("cases/rainy-inn-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var def struct {
+		Actors []struct {
+			ID            string `json:"id"`
+			Name          string `json:"name"`
+			Role          string `json:"role"`
+			PublicPersona string `json:"public_persona"`
+			Goal          string `json:"goal"`
+		} `json:"actors"`
+	}
+	if err := json.Unmarshal(rawDef, &def); err != nil {
+		t.Fatal(err)
+	}
+	type publicPerson struct {
+		ActorID       string `json:"actorId"`
+		Name          string `json:"name"`
+		PublicPersona string `json:"publicPersona"`
+	}
+	var want []publicPerson
+	var goals []string
+	for _, actor := range def.Actors {
+		if actor.Goal != "" {
+			goals = append(goals, actor.Goal)
+		}
+		if actor.Role != "npc" {
+			continue
+		}
+		if actor.ID == "" || actor.Name == "" || actor.PublicPersona == "" {
+			t.Fatalf("npc definition incomplete: %+v", actor)
+		}
+		want = append(want, publicPerson{ActorID: actor.ID, Name: actor.Name, PublicPersona: actor.PublicPersona})
+	}
+	if len(want) != 3 || len(goals) != 3 {
+		t.Fatalf("npcs=%d goals=%d", len(want), len(goals))
+	}
+	events := []Event{
+		{ID: 1, ActorID: "player", WorldVersion: 0, Visibility: []string{"player", "lin", "zhou", "su"}, Body: json.RawMessage(`{"note":"PUBLIC_LOBBY_NOTE"}`)},
+		{ID: 2, ActorID: "lin", WorldVersion: 0, Visibility: []string{"lin"}, Body: json.RawMessage(`{"note":"PRIVATE_LIN_LOAN_31"}`)},
+		{ID: 3, ActorID: "zhou", WorldVersion: 0, Visibility: []string{"zhou"}, Body: json.RawMessage(`{"note":"PRIVATE_ZHOU_WATCH_44"}`)},
+		{ID: 4, ActorID: "su", WorldVersion: 0, Visibility: []string{"su"}, Body: json.RawMessage(`{"note":"PRIVATE_SU_WITNESS_57"}`)},
+	}
+	scope := Scope{ConversationID: 7, RunID: 11, BranchID: 13, WorldVersion: 0}
+	for _, actor := range []string{"player", "lin", "zhou", "su"} {
+		scope.ActorID = actor
+		view, err := ActorView("rainy-inn-v1", scope, events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := json.Marshal(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertStoryBody(t, actor, string(body))
+		for _, goal := range goals {
+			if strings.Contains(string(body), goal) {
+				t.Fatalf("%s view contains private goal %s in %s", actor, goal, body)
+			}
+		}
+		var decoded struct {
+			Participants []map[string]any `json:"participants"`
+		}
+		if err := json.Unmarshal(body, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if len(decoded.Participants) != len(want) {
+			t.Fatalf("%s participants = %+v", actor, decoded.Participants)
+		}
+		for i, person := range want {
+			got := decoded.Participants[i]
+			if len(got) != 3 || got["actorId"] != person.ActorID || got["name"] != person.Name || got["publicPersona"] != person.PublicPersona {
+				t.Fatalf("%s participant %d = %#v want %+v", actor, i, got, person)
+			}
+		}
+	}
+}
+
 func TestActorViewHidesGMAndOtherPrivateKnowledge(t *testing.T) {
 	events := []Event{
 		{ID: 1, ActorID: "player", WorldVersion: 0, Visibility: []string{"player", "lin", "zhou", "su"}, Body: json.RawMessage(`{"note":"PUBLIC_LOBBY_NOTE"}`)},

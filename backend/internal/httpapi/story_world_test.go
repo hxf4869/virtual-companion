@@ -77,6 +77,7 @@ func (m *storyWorldHTTPStore) LoadStoryActor(_ context.Context, owner, runID, br
 func TestStoryActorViewHTTPBodyHidesOtherSecrets(t *testing.T) {
 	m := &storyWorldHTTPStore{memStore: newMemStore()}
 	s := newCoreServer(t, "full", m)
+	personas, goals := rainyInnNPCPublic(t)
 	for _, actor := range []string{"player", "lin", "zhou", "su"} {
 		path := "/api/v1/story/runs/11/actors/" + actor + "/view?branchId=13&worldVersion=0"
 		rec := doJSON(t, s, http.MethodGet, path, "", 1)
@@ -84,6 +85,16 @@ func TestStoryActorViewHTTPBodyHidesOtherSecrets(t *testing.T) {
 			t.Fatalf("%s status=%d body=%s", actor, rec.Code, rec.Body.String())
 		}
 		body := rec.Body.String()
+		for _, persona := range personas {
+			if !strings.Contains(body, persona) {
+				t.Fatalf("%s HTTP body missing public persona %s: %s", actor, persona, body)
+			}
+		}
+		for _, goal := range goals {
+			if strings.Contains(body, goal) {
+				t.Fatalf("%s HTTP body contains private goal %s: %s", actor, goal, body)
+			}
+		}
 		for _, want := range []string{
 			`"conversationId":"7"`,
 			`"runId":"11"`,
@@ -101,6 +112,16 @@ func TestStoryActorViewHTTPBodyHidesOtherSecrets(t *testing.T) {
 		var decoded map[string]any
 		if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
 			t.Fatal(err)
+		}
+		parts, _ := decoded["participants"].([]any)
+		if len(parts) != 3 {
+			t.Fatalf("%s participants = %#v", actor, decoded["participants"])
+		}
+		for _, item := range parts {
+			obj, _ := item.(map[string]any)
+			if len(obj) != 3 || obj["actorId"] == "" || obj["name"] == "" || obj["publicPersona"] == "" {
+				t.Fatalf("%s participant keys = %#v", actor, obj)
+			}
 		}
 		walkStoryKeys(t, decoded)
 	}
@@ -199,7 +220,7 @@ func TestStoryActorViewSchemaHasNoGMTruth(t *testing.T) {
 	if loc := regexp.MustCompile(`\n    [A-Z]`).FindStringIndex(rest[len("    StoryActorView:"):]); loc != nil {
 		section = rest[:len("    StoryActorView:")+loc[0]]
 	}
-	for _, name := range []string{"conversationId", "runId", "branchId", "actorId", "worldVersion", "publicLore", "knowledge", "events"} {
+	for _, name := range []string{"conversationId", "runId", "branchId", "actorId", "worldVersion", "publicLore", "knowledge", "events", "participants", "publicPersona"} {
 		if !strings.Contains(section, name) {
 			t.Fatalf("schema missing %s: %s", name, section)
 		}
@@ -289,6 +310,40 @@ func walkStoryKeys(t *testing.T, v any) {
 			walkStoryKeys(t, child)
 		}
 	}
+}
+
+func rainyInnNPCPublic(t *testing.T) (personas, goals []string) {
+	t.Helper()
+	raw, err := os.ReadFile("../story/cases/rainy-inn-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var def struct {
+		Actors []struct {
+			Role          string `json:"role"`
+			PublicPersona string `json:"public_persona"`
+			Goal          string `json:"goal"`
+		} `json:"actors"`
+	}
+	if err := json.Unmarshal(raw, &def); err != nil {
+		t.Fatal(err)
+	}
+	for _, actor := range def.Actors {
+		if actor.Goal != "" {
+			goals = append(goals, actor.Goal)
+		}
+		if actor.Role != "npc" {
+			continue
+		}
+		if actor.PublicPersona == "" {
+			t.Fatal("npc missing public_persona")
+		}
+		personas = append(personas, actor.PublicPersona)
+	}
+	if len(personas) != 3 || len(goals) != 3 {
+		t.Fatalf("personas=%d goals=%d", len(personas), len(goals))
+	}
+	return personas, goals
 }
 
 func mustJSONMap(t *testing.T, raw []byte) map[string]any {

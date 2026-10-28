@@ -9,11 +9,6 @@ const HIDDEN = /PRIVATE_[A-Z0-9_]+|GM_ONLY_[A-Z0-9_]+/;
 const DECIMAL_ID = /^[1-9][0-9]{0,18}$/;
 const ACTOR_ID = /^[a-z][a-z0-9_-]{0,63}$/;
 const PLACES = { lobby: '大堂', kitchen: '厨房', workshop: '维修间' };
-const PERSONA = {
-    lin: '旅馆老板，穿蓝围裙，想找回怀表并维护旅馆名声。',
-    zhou: '住客，穿蓝外套，曾帮旅馆修灯，说话谨慎。',
-    su: '钟表修复师，观察细致，只愿意确认自己确实看到的事情。',
-};
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -28,7 +23,7 @@ function allowRun(raw) {
         const name = shown(item?.name);
         const role = item?.role === 'player' || item?.role === 'npc' ? item.role : '';
         if (!actorId || !name || !role) continue;
-        participants.push({ actorId, name, role, persona: role === 'npc' ? (PERSONA[actorId] || '') : '' });
+        participants.push({ actorId, name, role });
     }
     return {
         caseId: raw?.caseId === 'rainy-inn-v1' ? 'rainy-inn-v1' : '',
@@ -53,7 +48,15 @@ function allowView(raw) {
         const note = shown(item?.body?.note);
         if (note) events.push(note);
     }
-    return { setting: shown(lore.setting), knownEvent: shown(lore.knownEvent), locations, knowledge, events };
+    const participants = [];
+    for (const item of Array.isArray(raw?.participants) ? raw.participants : []) {
+        const actorId = typeof item?.actorId === 'string' && ACTOR_ID.test(item.actorId) ? item.actorId : '';
+        const name = shown(item?.name);
+        const persona = shown(item?.publicPersona);
+        if (!actorId || !name) continue;
+        participants.push({ actorId, name, persona });
+    }
+    return { setting: shown(lore.setting), knownEvent: shown(lore.knownEvent), locations, knowledge, events, participants };
 }
 
 function list(items) {
@@ -69,7 +72,7 @@ export function renderStoryPage(state) {
     </div>`;
     }
     const stage = state.run.stage === 'investigation' ? '调查中' : '';
-    const people = state.run.participants.filter((person) => person.role === 'npc').map((person) => `<article class="vc-story-person"><h3>${esc(person.name)}</h3>${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</article>`).join('');
+    const people = state.view.participants.map((person) => `<article class="vc-story-person"><h3>${esc(person.name)}</h3>${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</article>`).join('');
     return `<div class="vc-story" data-state="playing">
       <header class="vc-story-bar"><h1>${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage">${esc(stage)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
       <p class="vc-story-setting">${esc(state.view.setting)}</p>

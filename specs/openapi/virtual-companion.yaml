@@ -777,9 +777,10 @@ paths:
       operationId: getStoryActorView
       summary: Read one actor's visible story projection
       description: >-
-        Returns the public setting, that actor's own initial knowledge and
-        events already visible to the actor. The response carries the stable
-        conversation, run, branch, actor and worldVersion. A worldVersion that
+        Returns the public setting, the public NPC cast, that actor's own
+        initial knowledge and events already visible to the actor. The response
+        carries the stable conversation, run, branch, actor and worldVersion.
+        A worldVersion that
         does not match the run conflicts. World truth and other actors' private
         knowledge are filtered before serialization and are not part of this
         schema. Cookie identity is the owner. Another owner and an anonymous
@@ -6271,9 +6272,10 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        Public setting, the actor's own initial knowledge and events already
-        visible to that actor. World truth is not a property of this object.
-      required: [conversationId, runId, branchId, actorId, worldVersion, publicLore, knowledge, events]
+        Public setting, the public NPC cast, the actor's own initial knowledge
+        and events already visible to that actor. World truth is not a property
+        of this object.
+      required: [conversationId, runId, branchId, actorId, worldVersion, publicLore, knowledge, events, participants]
       properties:
         conversationId:
           type: string
@@ -6335,6 +6337,23 @@ components:
               body:
                 type: object
                 additionalProperties: true
+        participants:
+          type: array
+          minItems: 3
+          maxItems: 3
+          description: Public names and public personas of the case NPCs.
+          items:
+            type: object
+            additionalProperties: false
+            required: [actorId, name, publicPersona]
+            properties:
+              actorId:
+                type: string
+              name:
+                type: string
+              publicPersona:
+                type: string
+                description: Public persona copied from the world definition.
     Relationship:
       type: object
       description: >-

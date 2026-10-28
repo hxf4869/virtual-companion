@@ -54,16 +54,24 @@ type Scope struct {
 	WorldVersion   int64
 }
 
+// PublicParticipant is one NPC's public identity. Private goals stay in the definition.
+type PublicParticipant struct {
+	ActorID       string `json:"actorId"`
+	Name          string `json:"name"`
+	PublicPersona string `json:"publicPersona"`
+}
+
 // View is safe to show to one actor. It has no GM-truth fields.
 type View struct {
-	ConversationID string         `json:"conversationId"`
-	RunID          string         `json:"runId"`
-	BranchID       string         `json:"branchId"`
-	ActorID        string         `json:"actorId"`
-	WorldVersion   int64          `json:"worldVersion"`
-	PublicLore     PublicLore     `json:"publicLore"`
-	Knowledge      []Knowledge    `json:"knowledge"`
-	Events         []VisibleEvent `json:"events"`
+	ConversationID string              `json:"conversationId"`
+	RunID          string              `json:"runId"`
+	BranchID       string              `json:"branchId"`
+	ActorID        string              `json:"actorId"`
+	WorldVersion   int64               `json:"worldVersion"`
+	PublicLore     PublicLore          `json:"publicLore"`
+	Knowledge      []Knowledge         `json:"knowledge"`
+	Events         []VisibleEvent      `json:"events"`
+	Participants   []PublicParticipant `json:"participants"`
 }
 
 // PublicLore is the case's public setting.
@@ -96,9 +104,10 @@ type definition struct {
 		KnownEvent string   `json:"known_event"`
 	} `json:"public_lore"`
 	Actors []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-		Role string `json:"role"`
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		Role          string `json:"role"`
+		PublicPersona string `json:"public_persona"`
 	} `json:"actors"`
 	GM struct {
 		Marker string `json:"marker"`
@@ -135,9 +144,10 @@ func Open(caseID string) (Spec, error) {
 	}, nil
 }
 
-// ActorView projects public lore, the actor's own initial knowledge, and
-// events visible to that actor. GM truth and other actors' private knowledge
-// stay in the definition and are not copied onto the result.
+// ActorView projects public lore, the public NPC cast, the actor's own
+// initial knowledge, and events visible to that actor. GM truth and other
+// actors' private knowledge stay in the definition and are not copied onto
+// the result.
 func ActorView(caseID string, scope Scope, events []Event) (View, error) {
 	def, err := load(caseID)
 	if err != nil {
@@ -180,9 +190,23 @@ func ActorView(caseID string, scope Scope, events []Event) (View, error) {
 		PublicLore: PublicLore{
 			Setting: def.PublicLore.Setting, Locations: locations, KnownEvent: def.PublicLore.KnownEvent,
 		},
-		Knowledge: knowledge,
-		Events:    visible,
+		Knowledge:    knowledge,
+		Events:       visible,
+		Participants: publicParticipants(def),
 	}, nil
+}
+
+func publicParticipants(def definition) []PublicParticipant {
+	out := make([]PublicParticipant, 0)
+	for _, actor := range def.Actors {
+		if actor.Role != "npc" {
+			continue
+		}
+		out = append(out, PublicParticipant{
+			ActorID: actor.ID, Name: actor.Name, PublicPersona: actor.PublicPersona,
+		})
+	}
+	return out
 }
 
 func load(caseID string) (definition, error) {

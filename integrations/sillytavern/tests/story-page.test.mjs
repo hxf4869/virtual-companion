@@ -51,6 +51,11 @@ function poisonedView(extra = {}) {
             { eventId: '1', actorId: 'player', worldVersion: 0, body: { note: '玩家已看见空展柜' } },
             { eventId: '2', actorId: 'zhou', worldVersion: 0, body: { note: 'PRIVATE_ZHOU_WATCH_44', secret: 'PRIVATE_SU_WITNESS_57' } },
         ],
+        participants: [
+            { actorId: 'lin', name: '林岚', publicPersona: '响应中的林岚公开人设' },
+            { actorId: 'zhou', name: '周澈', publicPersona: '响应中的周澈公开人设' },
+            { actorId: 'su', name: '苏禾', publicPersona: '响应中的苏禾公开人设' },
+        ],
         gm: 'GM_ONLY_WATCH_TRUTH_92',
         ...extra,
     };
@@ -175,6 +180,25 @@ test('409 显示固定冲突文案，不回显响应，也不进入已开局', a
     page.close();
 });
 
+test('NPC 公开人设来自 ActorView，页面源码不含定义原文', async () => {
+    const page = await started();
+    const html = renderStoryPage(page.state);
+    const fixture = JSON.parse(await readFile(new URL('../../../docs/source/v2-r3/fixtures/rainy_inn_case.json', import.meta.url), 'utf8'));
+    const defined = fixture.actors.map((actor) => actor.public_persona).filter(Boolean);
+    assert.equal(defined.length, 3);
+    const source = await readFile(new URL('../extension/vc-model-settings/story-page.js', import.meta.url), 'utf8');
+    for (const persona of ['响应中的林岚公开人设', '响应中的周澈公开人设', '响应中的苏禾公开人设']) {
+        assert.ok(html.includes(persona), persona);
+        assert.equal(source.includes(persona), false);
+    }
+    for (const persona of defined) {
+        assert.equal(html.includes(persona), false, persona);
+        assert.equal(source.includes(persona), false, persona);
+    }
+    assertNoSecrets('人设渲染', html);
+    page.close();
+});
+
 test('动态文本转义，不能把线索或名字写成 HTML', async () => {
     const base = route;
     route = (url) => {
@@ -185,6 +209,11 @@ test('动态文本转义，不能把线索或名字写成 HTML', async () => {
             return { body: poisonedView({
                 publicLore: { setting: '<script>alert(1)</script>', locations: ['lobby'], knownEvent: '20:20老板发现怀表不见了。' },
                 knowledge: [{ id: 'x', fact: "大堂<img src=x onerror=alert(1)>", marker: 'VISIBLE' }],
+                participants: [
+                    { actorId: 'lin', name: '"><img src=x onerror=alert(1)>', publicPersona: '<img src=persona onerror=alert(1)>' },
+                    { actorId: 'zhou', name: '周澈', publicPersona: '响应中的周澈公开人设' },
+                    { actorId: 'su', name: '苏禾', publicPersona: '响应中的苏禾公开人设' },
+                ],
             }) };
         }
         return base(url);
