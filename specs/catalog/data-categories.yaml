@@ -21,7 +21,8 @@ memoryDomainStorage:
     memory contract, including source-index text. Data categories and access
     restrictions remain unchanged. Account data, provider credentials, legacy
     Go message bodies and encrypted export-object envelopes retain their
-    existing field or object encryption.
+    existing field or object encryption. Notification text is not a credential
+    category and is not a memory-domain field.
 entries:
 - code: MESSAGE_TEXT
   order: 0
@@ -35,3 +36,5 @@ entries:
   order: 4
 - code: USAGE_METADATA
   order: 5
+- code: NOTIFICATION_TEXT
+  order: 6

@@ -1,7 +1,8 @@
 -- W12-A: story run isolation, STORY-only binding, owner export, and account deletion.
 -- Owner 2 cannot read owner 1. Missing owner context returns no rows. A COMPANION
--- chat cannot open a run. Export keeps the existing keys and adds this owner's
--- run state. Account deletion removes the rows without a new external receipt.
+-- chat cannot open a run. Export keeps the existing keys, including the W10
+-- inbox and notification keys, and adds this owner's run state. Account
+-- deletion removes the rows without a new external receipt.
 \set ON_ERROR_STOP on
 
 INSERT INTO vc.vc_user(id, display_name) VALUES
@@ -177,7 +178,7 @@ DO $$
 DECLARE
     doc jsonb;
     keys jsonb;
-    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","instances","memoryAutoSave","memoryTimes","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
+    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","inbox","instances","memoryAutoSave","memoryTimes","notificationChannels","notificationDeliveries","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
 BEGIN
     doc := vc.export_v2_owner_metadata(17001);
     SELECT coalesce(jsonb_agg(k ORDER BY k), '[]'::jsonb) INTO keys FROM jsonb_object_keys(doc) AS k;

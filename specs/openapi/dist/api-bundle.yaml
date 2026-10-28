@@ -2496,9 +2496,10 @@ paths:
       operationId: listFollowUps
       summary: List follow-ups for one character
       description: Lists follow-ups Go created for this character from a published memory whose source was verified again
-        and from the saved MemoryTime. There is no client create operation. triggerAt is the follow-up's own instant; a date-only
-        MemoryTime is not stored as a midnight reminder. needs_clarification cannot be triggerable. Work that is ready to
-        run is claimed as work item kind FOLLOW_UP. Requires a server-verified authentication context.
+        and from the saved MemoryTime. There is no client create operation, and this read does not create an inbox event.
+        triggerAt is the follow-up's own instant; a date-only MemoryTime is not stored as a midnight reminder. needs_clarification
+        cannot be triggerable. Work that is ready to run is claimed as work item kind FOLLOW_UP. Requires a server-verified
+        authentication context.
       security:
       - cookieAuth: []
       parameters:
@@ -2579,6 +2580,222 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/inbox:
+    get:
+      operationId: listInboxEvents
+      summary: List inbox events
+      description: Lists inbox events owned by the caller. A row being persisted, SillyTavern delivered, read in the app,
+        and the link status present, removed or invalidated are separate facts. None of them is a channel outcome. Requires
+        a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Inbox events owned by the caller
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InboxEvent'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/inbox/{eventId}/claim:
+    post:
+      operationId: claimInboxEvent
+      summary: Lease one inbox event for a SillyTavern save
+      description: Issues a short lease for one save attempt. The lease token is not a session and not an API key. A live
+        lease is not replaced. An expired lease can be claimed again. Claiming does not mark the event delivered, read, or
+        accepted by a channel. Requires a server-verified authentication context. A foreign or absent event is NOT_FOUND_OR_FORBIDDEN.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/InboxEventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxClaimRequest'
+      responses:
+        '200':
+          description: The new short lease
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxClaimResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: A live lease is already held
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/inbox/{eventId}/ack:
+    post:
+      operationId: ackInboxEvent
+      summary: Acknowledge a SillyTavern save
+      description: Records SillyTavern delivered after the saved message id and revision are read back. An expired lease cannot
+        ACK, and ACK does not change in-app read or link status. It is not a channel accepted, failed or unknown outcome.
+        Requires a server-verified authentication context. A foreign or absent event is NOT_FOUND_OR_FORBIDDEN.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/InboxEventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxAckRequest'
+      responses:
+        '200':
+          description: The inbox event, now SillyTavern delivered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxEvent'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: The lease is expired or the lease token does not match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/inbox/{eventId}/read:
+    post:
+      operationId: markInboxEventRead
+      summary: Mark one inbox event read in the app
+      description: Records in-app read. This does not mark SillyTavern delivered, change link status, or record a channel
+        outcome. Requires a server-verified authentication context. A foreign or absent event is NOT_FOUND_OR_FORBIDDEN.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/InboxEventId'
+      responses:
+        '200':
+          description: The inbox event, now read in the app
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxEvent'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/notification-channels:
+    get:
+      operationId: listNotificationChannels
+      summary: List notification channels
+      description: Lists the caller's email and Feishu channel configuration. SMTP passwords, webhook URLs and signing secrets
+        are never returned. Requires a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Channel configuration without credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationChannel'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: putNotificationChannel
+      summary: Upsert one notification channel
+      description: Upserts one email address or Feishu group label for the caller. A credential in the request is encrypted
+        before storage and is not echoed. The target must not be a URL. Requires a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationChannelWriteRequest'
+      responses:
+        '200':
+          description: The stored channel without any credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationChannel'
+        '400':
+          description: The target is a URL, or the credential is not accepted for encryption
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/notification-deliveries:
+    get:
+      operationId: listNotificationDeliveries
+      summary: List notification deliveries
+      description: Lists channel delivery rows owned by the caller. accepted, failed and unknown are channel outcomes. unknown
+        means the peer may already have received the message. None of these outcomes means SillyTavern delivered, in-app read,
+        or that the linked message is still present. Requires a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Delivery rows owned by the caller
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationDelivery'
+        '401':
+          description: No valid server-verified authentication context
           content:
             application/json:
               schema:
@@ -6896,13 +7113,282 @@ components:
             a confirmed reminder rule.
         eventId:
           type: string
-          description: Stable id a later inbox delivery can reference. W09 does not create that delivery.
+          description: Stable id a later inbox delivery can reference. W09 does not create that delivery. Inbox persistence,
+            SillyTavern delivered, in-app read, link state and channel outcomes are separate facts on this id.
         deliverable:
           type: string
           enum:
           - NOT_DELIVERABLE
           - DELIVERABLE
           description: Whether a later W10 delivery may pick this up. W09 does not deliver it.
+    InboxIntent:
+      type: string
+      description: Why the inbox row exists. BODY copies a ready greeting. WAITING_HOST has no generated reply. This is not
+        a channel outcome.
+      enum:
+      - BODY
+      - WAITING_HOST
+    InboxLinkStatus:
+      type: string
+      description: Whether the saved SillyTavern message is still the current link. present, removed and invalidated are independent
+        of SillyTavern delivered, in-app read, and channel accepted, failed or unknown.
+      enum:
+      - present
+      - removed
+      - invalidated
+    InboxLink:
+      type: object
+      additionalProperties: false
+      description: Locates the character and conversation. It carries no API key, message body, or long-lived login token.
+      required:
+      - relationshipId
+      - conversationId
+      properties:
+        relationshipId:
+          type: string
+        conversationId:
+          type: string
+        branch:
+          type:
+          - string
+          - 'null'
+          maxLength: 128
+    InboxEvent:
+      type: object
+      additionalProperties: false
+      description: One persisted inbox event. persisted, stDelivered, read and linkStatus do not substitute for each other
+        or for a channel delivery status.
+      required:
+      - inboxId
+      - eventId
+      - relationshipId
+      - conversationId
+      - intent
+      - persisted
+      - stDelivered
+      - linkStatus
+      - link
+      - read
+      properties:
+        inboxId:
+          type: string
+        eventId:
+          type: string
+        relationshipId:
+          type: string
+        conversationId:
+          type: string
+        branch:
+          type:
+          - string
+          - 'null'
+        sourceRevision:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        intent:
+          $ref: '#/components/schemas/InboxIntent'
+        body:
+          type:
+          - string
+          - 'null'
+          description: Greeting text for BODY. Null for WAITING_HOST.
+        persisted:
+          type: boolean
+          description: The inbox row exists. Independent of delivery and read facts.
+        stDelivered:
+          type: boolean
+          description: SillyTavern save was acknowledged. Independent of channel outcome, in-app read and link status.
+        messageId:
+          type:
+          - string
+          - 'null'
+        messageRevision:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        linkStatus:
+          $ref: '#/components/schemas/InboxLinkStatus'
+        link:
+          $ref: '#/components/schemas/InboxLink'
+        readAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        read:
+          type: boolean
+          description: In-app read. Independent of stDelivered and linkStatus.
+    InboxClaimRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - leaseSeconds
+      properties:
+        leaseSeconds:
+          type: integer
+          minimum: 1
+          maximum: 120
+    InboxClaimResponse:
+      type: object
+      additionalProperties: false
+      description: A short save lease. Not a session and not an API key.
+      required:
+      - leaseToken
+      - leaseExpiresAt
+      properties:
+        leaseToken:
+          type: string
+          description: Short lease for one save attempt. Not a session and not an API key.
+        leaseExpiresAt:
+          type: string
+          format: date-time
+    InboxAckRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - leaseToken
+      - messageId
+      - messageRevision
+      properties:
+        leaseToken:
+          type: string
+        messageId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        messageRevision:
+          type: integer
+          minimum: 0
+    NotificationChannelKind:
+      type: string
+      description: Email SMTP or a Feishu group webhook. No other channel is supported.
+      enum:
+      - EMAIL
+      - FEISHU
+    NotificationDeliveryStatus:
+      type: string
+      description: Channel delivery state. pending is unsent. accepted, failed and unknown are terminal channel outcomes and
+        do not substitute for SillyTavern delivered, in-app read, or link status. unknown means the peer may already have
+        received the message. stopped means an unsent row was halted and was not sent.
+      enum:
+      - pending
+      - accepted
+      - failed
+      - unknown
+      - stopped
+    NotificationChannel:
+      type: object
+      additionalProperties: false
+      description: One configured email or Feishu target. Credentials are not part of this object.
+      required:
+      - channelId
+      - channel
+      - enabled
+      - configuredTarget
+      - previewBody
+      - relationshipIds
+      properties:
+        channelId:
+          type: string
+        channel:
+          $ref: '#/components/schemas/NotificationChannelKind'
+        enabled:
+          type: boolean
+        configuredTarget:
+          type: string
+          minLength: 1
+          maxLength: 320
+          description: Email address or Feishu group label. Not a webhook URL.
+        previewBody:
+          type: boolean
+          description: Body preview is off unless explicitly enabled.
+        relationshipIds:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+    NotificationChannelWriteRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - channel
+      - enabled
+      - configuredTarget
+      - previewBody
+      - relationshipIds
+      properties:
+        channel:
+          $ref: '#/components/schemas/NotificationChannelKind'
+        enabled:
+          type: boolean
+        configuredTarget:
+          type: string
+          minLength: 1
+          maxLength: 320
+        credential:
+          type:
+          - string
+          - 'null'
+          description: Server encrypts this value before storage. It is never returned or exported. Null clears a stored credential.
+        previewBody:
+          type: boolean
+        relationshipIds:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+    NotificationDelivery:
+      type: object
+      additionalProperties: false
+      description: One channel attempt for an inbox event. Status is independent of SillyTavern delivered, in-app read and
+        link status.
+      required:
+      - deliveryId
+      - eventId
+      - channel
+      - configuredTarget
+      - status
+      - attemptCount
+      properties:
+        deliveryId:
+          type: string
+        eventId:
+          type: string
+        channel:
+          $ref: '#/components/schemas/NotificationChannelKind'
+        configuredTarget:
+          type: string
+        status:
+          $ref: '#/components/schemas/NotificationDeliveryStatus'
+        attemptCount:
+          type: integer
+          minimum: 0
+        nextAttemptAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        correlationId:
+          type:
+          - string
+          - 'null'
+          description: Opaque platform correlation id. Not a credential.
+        failureCode:
+          type:
+          - string
+          - 'null'
+        stoppedReason:
+          type:
+          - string
+          - 'null'
+          enum:
+          - cancelled
+          - expired
+          - consent_withdrawn
+          - null
     ProactivePolicy:
       type: object
       additionalProperties: false
@@ -7070,7 +7556,9 @@ components:
         consentType:
           type: string
           description: 'FR-AUTH-003 catalogue: SERVICE_TERMS, PRIVACY_POLICY, AI_CONTENT_NOTICE, THIRD_PARTY_MODEL_PROCESSING,
-            SENSITIVE_DATA_PROCESSING, EMERGENCY_CONTACT, MODEL_TRAINING, PUSH_NOTIFICATION.'
+            SENSITIVE_DATA_PROCESSING, EMERGENCY_CONTACT, MODEL_TRAINING, PUSH_NOTIFICATION. PUSH_NOTIFICATION is not required
+            for chat. Only a current grant allows email or Feishu delivery. Withdrawal stops unsent deliveries only. It does
+            not rewrite accepted, failed or unknown channel outcomes, SillyTavern delivered, in-app read, or link status.'
           enum:
           - SERVICE_TERMS
           - PRIVACY_POLICY
@@ -7250,8 +7738,10 @@ components:
         go:
           type: object
           description: Decrypted Go-side records (account metadata, ST source bindings, persisted sources, summaries, extraction
-            task/results, follow-ups and proactive policies) produced by vc.export_v2_owner_metadata. Follow-up body text
-            is part of this online copy and is removed with the account. Inbox and notification records are not included.
+            task/results, follow-ups, proactive policies, inbox events, notification channels and delivery status) produced
+            by vc.export_v2_owner_metadata. Follow-up body text and inbox text are part of this online copy and are removed
+            with the account. The copy includes events, link status, channel name and delivery status. It excludes SMTP passwords,
+            webhook URLs, signatures, session tokens and inbox lease tokens.
         st:
           $ref: '#/components/schemas/STAccountExport'
         domains:
@@ -9915,6 +10405,13 @@ components:
       schema:
         type: string
       description: Owner-scoped follow-up identifier
+    InboxEventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped inbox event id. It locates the inbox row and is not an API key or a session token.
     MemoryId:
       name: memoryId
       in: path

@@ -71,6 +71,13 @@
     "listFollowUps",
     "getFollowUp",
     "cancelFollowUp",
+    "listInboxEvents",
+    "claimInboxEvent",
+    "ackInboxEvent",
+    "markInboxEventRead",
+    "listNotificationChannels",
+    "putNotificationChannel",
+    "listNotificationDeliveries",
     "createReport",
     "listReports",
     "getReport",
@@ -146,6 +153,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "ec2f02ac6d601f6415c12d26f3346812a3cfe76ac0a24d8469e8d2af3dbcadd4"
+    "sha256": "ddd7a351b03198ec54ed001cdf235e68a618e3ddf6e6b1470f106bad3cb48a55"
   }
 }
