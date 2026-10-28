@@ -181,7 +181,22 @@
       integration PASS；ST 离线测试 364/364 PASS；`story-view-browser` PASS；`git diff --check` PASS。
       遗留到 W14：participant.relationship_id 当前 ON DELETE CASCADE（SET NULL 会触发 V103 删号屏障），映射陪伴
       实例时需重定删除语义。执行：Claude 调度，Grok Build（grok-4.7-build-fast / xhigh）实现，调度者逐项审查复跑。
-- [ ] `V2-W13` 三协议最终请求控制。用例：S01、MODEL07（剧情子项）。
+- [x] `V2-W13` 三协议最终请求控制。用例：S01、MODEL07（剧情子项）。
+      结果：DONE（2026-10-29）；提交 `5084e099..30b40f1d`（链分支 `v2/w12` 续做，合并 main 后快进入 main）。
+      主防线：插件在 Chat/Anthropic 的最终出站钩子与 Responses 适配后的 body 上，把剧情回合整体重写为当前
+      actor 的 ActorView 规范文本 + 本轮玩家话语 + 本轮工具记录，角色卡、世界书、宏、EJS、历史与晚注册追加
+      一律不出站；缺 vc_story 的剧情请求拒绝且不回退原文。第二道防线：Go outbound-check（服务令牌，浏览器
+      Origin 拒绝）对重写前后与原始 body 文本桶并集规范化后比对他人私密 fact/goal、标记与 GM 真相，拒绝体不
+      回显；chatIdentity 必须是该局绑定会话。Responses 推理续接绑定 run/branch/actor/worldVersion。text
+      completions、kobold、horde、novelai 四条未受校验出口以集中可重放补丁在联系上游前拒绝（每处 7 行，锁定
+      上游不变，ADR-0009 §2 停止条件未触发）。前台在 EJS 之后写入单一 actor 的 vc_story，剧情不注入陪伴记忆。
+      用例：S01 三协议最终请求子项 PASS、MODEL07 剧情子项 PASS（固定 provider，`story-outbound` 受管浏览器
+      验收：三协议各 4 次上游请求/50 条断言，含工具后续轮与 Responses 续接不跨角色；世界书混入他人私密与缺
+      身份时上游请求 0；DOM/localStorage 无标记）；真实模型叙事、流式取消与 usage 不在本项（MODEL 计量属 W11）。
+      验证：`bash scripts/check.sh` PASS；RLS 全量 PASS；integration 三包全量 PASS；ST 离线测试 410/410；
+      `assemble-managed` 补丁 SHA 复核 PASS；`git diff --check` PASS。
+      已知取舍：剧情回合不带历史对话（同一聊天含他人 NPC 回复会泄露知情），对话连贯性由 W14 以带可见性的
+      已提交对话事件经 ActorView 投影恢复，列为 W14 必做。执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W14` 行动、分支、结局与陪伴角色入局。用例：S02–S05。
 - [ ] `V2-W15` 完整界面、手机与性能；删除旧 Vue / uni-app 前端。用例：UI01–UI03。
 - [ ] `V2-W16` 保护、恢复与运行说明。用例：D06、O01；最终报告。
