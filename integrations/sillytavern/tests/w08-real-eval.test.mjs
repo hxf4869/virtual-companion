@@ -118,5 +118,5 @@ test('memory-real-eval 只在显式过滤时运行，产物在忽略目录', () 
     for (const sample of [...SOURCE_SAMPLES, ...OPTIONAL_SAMPLES]) assert.equal(fixture.includes(sample.text), true, sample.id);
     const noiseInFixture = [...fixture.matchAll(/"id": "noise-\d+"/g)].length;
     assert.ok(noiseInFixture > OPTIONAL_SAMPLES.filter((sample) => sample.id.startsWith('noise-')).length);
-    assert.equal(REPO_ROOT.endsWith('virtual-companion'), true);
+    assert.equal(fs.existsSync(new URL(`file://${REPO_ROOT}/AGENTS.md`)), true); // 指向仓库根（worktree 目录名可不同）
 });
