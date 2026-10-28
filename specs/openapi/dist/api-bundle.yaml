@@ -786,6 +786,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/actors/{actorId}/outbound-check:
+    post:
+      operationId: checkStoryOutbound
+      summary: Check one actor's final outbound request
+      description: V2-W13 second line for the SillyTavern server plugin. Authenticated solely by the shared service token;
+        a request carrying an Origin header is refused as browser originated. The caller names the owner account and sends
+        every text bucket extracted from the converted final body (messages, system, instructions, tool definitions, and tool
+        results), plus whether previous_response_id or a provider conversation is still present. Go rejects text that, after
+        whitespace removal, fullwidth folding, punctuation folding, and ASCII case folding, contains another actor's initial
+        private fact, GM truth text, or a sample marker that actor cannot see. The actor's own initial private fact and marker
+        are allowed. Either remote history flag rejects the request. A mismatched worldVersion conflicts. Success returns
+        only passed=true. Refusal uses a fixed error code and does not echo facts, markers, or the submitted text. This operation
+        does not call a model.
+      security:
+      - serviceToken: []
+      parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      - name: actorId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryOutboundCheckRequest'
+      responses:
+        '200':
+          description: The extracted text is allowed for this actor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryOutboundCheckResult'
+        '400':
+          description: Invalid run, actor, owner, branch, chat identity, protocol, or body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Browser Origin is present, or the extracted text contains hidden facts, sample markers, or a remote
+            history reference. The body does not echo the submitted text.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run, branch, or actor absent or owned by someone else
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: worldVersion does not match the run, or the loaded branch does not match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Service channel is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -5977,6 +6055,81 @@ components:
               publicPersona:
                 type: string
                 description: Public persona copied from the world definition.
+    StoryOutboundCheckResult:
+      type: object
+      additionalProperties: false
+      description: Pass result only. Submitted text is not returned.
+      required:
+      - passed
+      properties:
+        passed:
+          type: boolean
+          const: true
+    StoryOutboundCheckRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - ownerAccountId
+      - branchId
+      - worldVersion
+      - chatIdentity
+      - protocol
+      - messages
+      - system
+      - instructions
+      - toolDefinitions
+      - toolResults
+      - hasPreviousResponseId
+      - hasConversation
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: ACTIVE Go account the plugin is acting for.
+        branchId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        worldVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        chatIdentity:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: ST chat identity of the owned story conversation.
+        protocol:
+          $ref: '#/components/schemas/ModelProviderProtocol'
+        messages:
+          type: array
+          description: Message text extracted from the converted final body.
+          items:
+            type: string
+        system:
+          type: array
+          description: System text extracted from the converted final body.
+          items:
+            type: string
+        instructions:
+          type: array
+          description: Instructions text extracted from the converted final body. Empty when the protocol has none.
+          items:
+            type: string
+        toolDefinitions:
+          type: array
+          description: Tool names, descriptions, and parameter text.
+          items:
+            type: string
+        toolResults:
+          type: array
+          description: Tool result text from this turn.
+          items:
+            type: string
+        hasPreviousResponseId:
+          type: boolean
+          description: True when the final body still contains previous_response_id.
+        hasConversation:
+          type: boolean
+          description: True when the final body still contains a provider conversation reference.
     Relationship:
       type: object
       description: A Companion relationship owned by exactly one user. Each instance has an independent active flag; V2-W05

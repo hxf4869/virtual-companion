@@ -183,6 +183,7 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/st/memory/recall", s.handleSTMemoryRecall)
 	s.mux.HandleFunc("POST /api/v1/story/runs", s.handleStartStoryRun)
 	s.mux.HandleFunc("GET /api/v1/story/runs/{runId}/actors/{actorId}/view", s.handleStoryActorView)
+	s.mux.HandleFunc("POST /api/v1/story/runs/{runId}/actors/{actorId}/outbound-check", s.handleStoryOutboundCheck)
 	s.mux.HandleFunc("POST /api/v1/service/st/profile", s.handleRegisterSTProfile)
 	s.mux.HandleFunc("POST /api/v1/relationships", s.handleCreateRelationship)
 	s.mux.HandleFunc("GET /api/v1/relationships", s.handleListRelationships)

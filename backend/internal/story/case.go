@@ -110,7 +110,12 @@ type definition struct {
 		PublicPersona string `json:"public_persona"`
 	} `json:"actors"`
 	GM struct {
-		Marker string `json:"marker"`
+		Marker        string `json:"marker"`
+		Motive        string `json:"motive"`
+		WatchLocation string `json:"watch_location"`
+		Timeline      []struct {
+			Fact string `json:"fact"`
+		} `json:"timeline"`
 	} `json:"gm_truth"`
 	Private []struct {
 		ID      string   `json:"id"`
