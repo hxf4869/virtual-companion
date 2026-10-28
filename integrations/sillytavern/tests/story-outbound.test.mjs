@@ -98,7 +98,7 @@ function setup(t, protocol) {
                 actorId: state.viewActor ?? actor, worldVersion: Number(parsed.searchParams.get('worldVersion')),
                 publicLore: { setting: `CANONICAL_VIEW_${state.viewActor ?? actor}`, locations: ['lobby'], knownEvent: '公开事件' },
                 knowledge: [{ id: 'k1', fact: '公开可知的柜台位置。', marker: 'PUBLIC_COUNTER' }],
-                events: [],
+                events: (state.eventsByActor?.[state.viewActor ?? actor]) || [],
                 participants: [
                     { actorId: 'lin', name: '林岚', publicPersona: '前台', goal: 'SHOULD_NOT_LEAK_GOAL_FIELD' },
                     { actorId: 'zhou', name: '周澈', publicPersona: '住客' },
@@ -570,4 +570,55 @@ test('ActorView 的 actor 与 vc_story 不一致时拒绝，且不调用 outboun
     assert.equal(state.upstream.length, 0);
     assert.equal(JSON.parse(result.res.body()).error.code, 'VC_STORY_VIEW_MISMATCH');
     assert.equal(JSON.stringify(finalBody).includes(WORLD), false);
+});
+
+test('林岚可见的对白在林岚视图和重写后的上游，不在周澈视图，旧聊天历史不出站', async (t) => {
+    const state = setup(t, 'OPENAI_CHAT_COMPLETIONS');
+    const line = '林岚，钥匙是你借出的吗？';
+    const oldHistory = '上一轮不该出站的旧聊天历史VCW14';
+    state.eventsByActor = {
+        lin: [{ eventId: '9', actorId: 'player', worldVersion: 1, body: { kind: 'statement', text: line } }],
+        zhou: [],
+    };
+    const linFinal = chatFinal({
+        extra: {
+            messages: [
+                { role: 'system', content: `${WORLD}\n${CARD}` },
+                { role: 'user', content: oldHistory },
+                { role: 'user', content: '现在只问这一句' },
+            ],
+        },
+    });
+    await runTurn(state, 'OPENAI_CHAT_COMPLETIONS', generateBody('OPENAI_CHAT_COMPLETIONS', {
+        vc_story: story({ actorId: 'lin', worldVersion: 1 }),
+        messages: [
+            { role: 'user', content: oldHistory },
+            { role: 'user', content: '现在只问这一句' },
+        ],
+    }), linFinal);
+    const linSent = JSON.stringify(state.upstream.at(-1).body);
+    assert.match(linSent, new RegExp(line));
+    assert.equal(linSent.includes(oldHistory), false);
+    assert.match(state.views.at(-1).url, /\/actors\/lin\//);
+    state.upstream.length = 0;
+    const zhouFinal = chatFinal({
+        extra: {
+            messages: [
+                { role: 'system', content: `${WORLD}\n${CARD}` },
+                { role: 'user', content: oldHistory },
+                { role: 'user', content: '现在只问这一句' },
+            ],
+        },
+    });
+    await runTurn(state, 'OPENAI_CHAT_COMPLETIONS', generateBody('OPENAI_CHAT_COMPLETIONS', {
+        vc_story: story({ actorId: 'zhou', worldVersion: 1 }),
+        messages: [
+            { role: 'user', content: oldHistory },
+            { role: 'user', content: '现在只问这一句' },
+        ],
+    }), zhouFinal);
+    const zhouSent = JSON.stringify(state.upstream.at(-1).body);
+    assert.equal(zhouSent.includes(line), false);
+    assert.equal(zhouSent.includes(oldHistory), false);
+    assert.match(state.views.at(-1).url, /\/actors\/zhou\//);
 });

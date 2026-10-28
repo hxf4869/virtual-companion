@@ -61,6 +61,23 @@
 }
 .vc-story-root li { margin: 8px 0; overflow-wrap: anywhere; }
 .vc-story-root [role="alert"] { color: var(--vcms-danger); }
+.vc-story-root .vc-story-sync { color: var(--vcms-primary); }
+.vc-story-root .vc-story-actions,
+.vc-story-root .vc-story-rewind,
+.vc-story-root .vc-story-companions,
+.vc-story-root .vc-story-ending {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 16px;
+}
+.vc-story-root .vc-story-say-row { display: flex; gap: 8px; width: 100%; }
+.vc-story-root .vc-story-say-row input,
+.vc-story-root .vc-story-ending textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+}
 .vc-story-root :is(button):focus-visible { outline: 2px solid var(--vcms-primary); outline-offset: 3px; }
 
 @media (max-width: 760px) {

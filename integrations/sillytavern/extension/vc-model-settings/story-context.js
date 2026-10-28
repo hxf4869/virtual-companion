@@ -40,6 +40,18 @@ export function createStoryContext({ getContext }) {
         actorId = '';
     }
 
+    // 行动、回档推进同一局的分支头。不清除已经选中的 actor。
+    function advance(turn) {
+        if (!run) return;
+        const runId = decimal(turn?.runId);
+        const branchId = decimal(turn?.branchId);
+        const conversationId = decimal(turn?.conversationId);
+        const worldVersion = worldVersionOf(turn?.worldVersion);
+        if (!runId || !branchId || !conversationId || worldVersion === null) return;
+        if (runId !== run.runId || conversationId !== run.conversationId) return;
+        run = { runId, branchId, conversationId, worldVersion };
+    }
+
     function currentIdentity() {
         let ctx;
         try { ctx = getContext() || {}; } catch { return null; }
@@ -72,5 +84,5 @@ export function createStoryContext({ getContext }) {
         eventSource.on(eventName, attachStoryIdentity);
     }
 
-    return { setRun, selectActor, clear, install };
+    return { setRun, selectActor, clear, advance, install };
 }

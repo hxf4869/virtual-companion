@@ -1,19 +1,53 @@
 // UI-P06 玩家剧情页。只渲染玩家 ActorView 的公开字段；不写 localStorage，不调用模型。
 import * as api from './api.js';
+import * as actions from './story-action.js';
+import { STORY_SYNC_PENDING } from './story-projection.js';
 
+export { STORY_SYNC_PENDING };
 export const STORY_CONFLICT = '这一局与当前对话冲突，开局未完成。';
 const SESSION_CHANGED = '登录状态已变化，请重新打开剧情页。';
 const START_FAILED = '开局未完成，请重试。';
+const ACTION_FAILED = '这步行动没有完成，请重试。';
+const ACTION_CONFLICT = '这步行动与当前进度不一致，没有另开分支。';
+const REWIND_BLOCKED = '当前聊天还不能回档';
+const REWIND_FAILED = '回档没有完成，请重试。';
+const NEED_CAST = '请先让一位陪伴入局，再保存共同游玩摘要。';
+const SAVE_HINT = '已保存共同游玩摘要，请到记忆页确认后才会写入日常记忆。';
+const DISCARD_HINT = '已放弃共同游玩摘要，不会写入日常记忆。';
 const CASE_TITLE = '雨夜旅馆：失踪的怀表';
 const HIDDEN = /PRIVATE_[A-Z0-9_]+|GM_ONLY_[A-Z0-9_]+/;
 const DECIMAL_ID = /^[1-9][0-9]{0,18}$/;
 const ACTOR_ID = /^[a-z][a-z0-9_-]{0,63}$/;
+const CHAT_IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 const PLACES = { lobby: '大堂', kitchen: '厨房', workshop: '维修间' };
+const CASTABLE = ['lin', 'zhou', 'su'];
+const REASONS = {
+    bad_command: '这步行动无法识别，世界没有变化。',
+    unknown_actor: '当前角色不能做这步行动，世界没有变化。',
+    action_not_allowed: '当前不能做这步行动，世界没有变化。',
+    no_matching_rule: '没有对应的剧情规则，世界没有变化。',
+    precondition_failed: '条件还不足，世界没有变化。',
+};
+const STEPS = [
+    { id: 'a1', label: '向林岚询问借用记录', action: 'request_evidence', target: 'lin' },
+    { id: 'a2', label: '向苏禾询问目击', action: 'request_evidence', target: 'su' },
+    { id: 'a3', label: '向周澈出示借用记录', action: 'show_clue', target: 'zhou', clueId: 'loan_note' },
+    { id: 'a4', label: '向周澈出示蓝色衣袖', action: 'show_clue', target: 'zhou', clueId: 'blue_sleeve' },
+    { id: 'a5', label: '向周澈索要钥匙', action: 'request_key', target: 'zhou' },
+    { id: 'a6', label: '检查维修柜', action: 'inspect', target: 'workshop_cabinet' },
+    { id: 'a7', label: '指认周澈', action: 'accuse', target: 'zhou' },
+];
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function shown(value) {
     return typeof value === 'string' && value !== '' && !HIDDEN.test(value) ? value : '';
+}
+
+function decimalOf(value) {
+    if (typeof value === 'string' && DECIMAL_ID.test(value)) return value;
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
+    return '';
 }
 
 function allowRun(raw) {
@@ -25,9 +59,10 @@ function allowRun(raw) {
         if (!actorId || !name || !role) continue;
         participants.push({ actorId, name, role });
     }
+    const stage = raw?.stage === 'investigation' || raw?.stage === 'resolved' ? raw.stage : '';
     return {
         caseId: raw?.caseId === 'rainy-inn-v1' ? 'rainy-inn-v1' : '',
-        stage: raw?.stage === 'investigation' ? 'investigation' : '',
+        stage,
         participants,
     };
 }
@@ -45,8 +80,24 @@ function allowView(raw) {
     }
     const events = [];
     for (const item of Array.isArray(raw?.events) ? raw.events : []) {
-        const note = shown(item?.body?.note);
-        if (note) events.push(note);
+        const body = item?.body;
+        if (!body || typeof body !== 'object') continue;
+        const clueName = shown(body.clueName);
+        const text = shown(body.text);
+        const note = shown(body.note);
+        const qualification = shown(body.qualification);
+        const parts = [clueName, text, note, qualification].filter(Boolean);
+        if (parts.length === 0) continue;
+        const line = parts.join('\n');
+        const worldVersion = typeof item.worldVersion === 'number' && Number.isSafeInteger(item.worldVersion) && item.worldVersion >= 0
+            ? item.worldVersion : null;
+        events.push({
+            worldEventId: decimalOf(item.eventId),
+            worldVersion,
+            phase: body.phase === 'resolved' ? 'resolved' : 'investigation',
+            line,
+            clueName,
+        });
     }
     const participants = [];
     for (const item of Array.isArray(raw?.participants) ? raw.participants : []) {
@@ -78,6 +129,16 @@ function storyTurn(run, view, conversationId) {
     return { runId, branchId, worldVersion, conversationId: conversation };
 }
 
+function stageWord(stage) {
+    if (stage === 'resolved') return '已结束';
+    if (stage === 'investigation') return '调查中';
+    return '';
+}
+
+function rewindCopy(ask) {
+    return `回到世界版本 ${ask.version}，阶段为${ask.stage}。此版本之后的行动不会留在当前分支，需要重新提交才会再次发生。该阶段之后形成的分支记忆会失效，不会并入当前进度。`;
+}
+
 export function renderStoryPage(state) {
     const playing = Boolean(state.run && state.view);
     if (!playing) {
@@ -86,19 +147,40 @@ export function renderStoryPage(state) {
       <section class="vc-story-gate"><h2>${CASE_TITLE}</h2>${state.error ? `<p role="alert">${esc(state.error)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-primary" data-action="start" ${state.busy ? 'disabled' : ''}>开局</button></section>
     </div>`;
     }
-    const stage = state.run.stage === 'investigation' ? '调查中' : '';
+    const ended = state.run.stage === 'resolved';
+    const stage = stageWord(state.run.stage);
+    const version = state.turn?.worldVersion ?? 0;
     const people = state.view.participants.map((person) => {
         const pressed = state.actorId === person.actorId;
         return `<button type="button" class="vc-story-person" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}"><h3>${esc(person.name)}</h3>${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</button>`;
     }).join('');
-    return `<div class="vc-story" data-state="playing">
+    const versions = new Set();
+    if (version > 0) versions.add(0);
+    for (const event of state.view.events) {
+        if (typeof event.worldVersion === 'number' && event.worldVersion < version) versions.add(event.worldVersion);
+    }
+    const rewind = [...versions].sort((a, b) => a - b).map((item) => `<button type="button" class="vcms-btn" data-action="ask-rewind" data-version="${item}">回到版本 ${item}</button>`).join('');
+    const steps = ended ? '' : STEPS.map((step) => `<button type="button" class="vcms-btn" data-action="act" data-step="${esc(step.id)}">${esc(step.label)}</button>`).join('');
+    const companions = state.companions ? state.companions.map((row) => CASTABLE.map((actorId) => {
+        const person = state.view.participants.find((item) => item.actorId === actorId);
+        const label = person?.name || actorId;
+        return `<button type="button" class="vcms-btn" data-action="map-companion" data-actor="${esc(actorId)}" data-relationship="${esc(row.relationshipId)}">${esc(row.name)} 入局为${esc(label)}</button>`;
+    }).join('')).join('') : '<button type="button" class="vcms-btn" data-action="show-companions">选择陪伴入局</button>';
+    return `<div class="vc-story" data-state="${ended ? 'ended' : 'playing'}" data-world-version="${version}">
       <header class="vc-story-bar"><h1>${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage">${esc(stage)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
+      ${state.syncPending ? `<p class="vc-story-sync">${esc(STORY_SYNC_PENDING)}</p>` : ''}
+      ${state.reason ? `<p role="alert">${esc(state.reason)}</p>` : ''}
+      ${state.notice ? `<p class="vc-story-evidence">${esc(state.notice)}</p>` : ''}
       <p class="vc-story-setting">${esc(state.view.setting)}</p>
       <p class="vc-story-known">${esc(state.view.knownEvent)}</p>
       <section class="vc-story-cast">${people}</section>
       <ul class="vc-story-places">${list(state.view.locations)}</ul>
       <ul class="vc-story-clues">${list(state.view.knowledge)}</ul>
-      <ul class="vc-story-events">${list(state.view.events)}</ul>
+      <ul class="vc-story-events">${list(state.view.events.map((event) => event.line))}</ul>
+      ${ended ? '' : `<section class="vc-story-actions">${steps}<label class="vc-story-say-row"><input data-field="say" maxlength="4000"><button type="button" class="vcms-btn" data-action="say">对所选角色说</button></label></section>`}
+      ${rewind || state.rewindAsk ? `<section class="vc-story-rewind">${rewind}${state.rewindAsk ? `<p>${esc(rewindCopy(state.rewindAsk))}</p><button type="button" class="vcms-btn" data-action="confirm-rewind">确认回档</button>` : ''}</section>` : ''}
+      <section class="vc-story-companions">${companions}</section>
+      ${ended ? `<section class="vc-story-ending"><h2>结局</h2>${state.epilogue ? `<p>${esc(state.epilogue)}</p>` : ''}<textarea data-field="summary" maxlength="2000"></textarea><button type="button" class="vcms-btn" data-action="save-epilogue">保存共同游玩摘要</button><button type="button" class="vcms-btn" data-action="discard-epilogue">放弃共同游玩摘要</button></section>` : ''}
     </div>`;
 }
 
@@ -107,27 +189,136 @@ export function createStoryPage({
     onChange = () => {},
     onRun = () => {},
     onActor = () => {},
+    onAdvance = () => {},
+    getChatIdentity = () => '',
+    project = null,
 } = {}) {
-    const state = { open: false, busy: false, error: '', conflict: false, run: null, view: null, turn: null, actorId: '' };
+    const state = {
+        open: false, busy: false, error: '', conflict: false, run: null, view: null, turn: null, actorId: '',
+        reason: '', notice: '', syncPending: false, rewindAsk: null, epilogue: '', companions: null, mapped: {},
+    };
     let epoch = 0;
     let remembered = '';
+    let statements = 0;
+    const jobs = new Set();
     const emit = () => onChange(state);
     const alive = (ticket) => state.open && epoch === ticket;
-    function fail(error) {
+    function currentStoryId() {
+        const current = getConversation() || {};
+        return current.mode === 'STORY' && DECIMAL_ID.test(current.conversationId || '') ? current.conversationId : '';
+    }
+    function resetRun() {
         state.run = null;
         state.view = null;
         state.turn = null;
         state.actorId = '';
+        state.reason = '';
+        state.notice = '';
+        state.syncPending = false;
+        state.rewindAsk = null;
+        state.epilogue = '';
+        state.companions = null;
+        state.mapped = {};
         onRun(null);
+    }
+    function fail(error) {
+        resetRun();
         state.conflict = error?.status === 409 && error?.code !== 'ACCOUNT_CONTEXT_CHANGED';
         if (error?.status === 409 && error?.code === 'ACCOUNT_CONTEXT_CHANGED') state.error = SESSION_CHANGED;
         else if (error?.status === 409) state.error = STORY_CONFLICT;
         else state.error = START_FAILED;
     }
+    async function refreshView() {
+        const view = await api.fetchStoryActorView({
+            runId: state.turn.runId,
+            branchId: state.turn.branchId,
+            worldVersion: state.turn.worldVersion,
+        });
+        state.view = allowView(view);
+        const turn = storyTurn(state.turn, view, state.turn.conversationId);
+        if (turn) {
+            state.turn = turn;
+            onAdvance(turn);
+        }
+    }
+    async function reloadHead() {
+        const run = await api.startStoryRun(state.turn.conversationId);
+        const allowed = allowRun(run);
+        if (allowed.caseId) state.run = allowed;
+        const branchId = decimalOf(run?.branchId);
+        const runId = decimalOf(run?.runId) || state.turn.runId;
+        if (branchId) state.turn = { ...state.turn, runId, branchId, worldVersion: typeof run?.worldVersion === 'number' ? run.worldVersion : state.turn.worldVersion };
+        await refreshView();
+        state.notice = '';
+    }
+    async function projectEvent(result, text) {
+        if (typeof project !== 'function' || !result?.worldEventId) return;
+        const job = { runId: state.turn.runId, worldEventId: String(result.worldEventId), text, cancelled: false };
+        jobs.add(job);
+        try {
+            const done = await project(job);
+            if (done?.confirmed) state.syncPending = false;
+        } catch {
+            // 世界已经生效。补写失败时留下待同步，不把错误冒泡成开局失败。
+        } finally {
+            jobs.delete(job);
+        }
+    }
+    async function applyCommand(command) {
+        const ticket = epoch;
+        state.busy = true;
+        state.reason = '';
+        state.notice = '';
+        emit();
+        try {
+            const result = await actions.commitStoryAction({
+                runId: state.turn.runId,
+                branchId: state.turn.branchId,
+                expectedWorldVersion: state.turn.worldVersion,
+                ...command,
+            });
+            if (!alive(ticket)) return;
+            if (!result?.accepted) {
+                state.reason = REASONS[result?.reason] || '这步行动没有生效，世界没有变化。';
+                state.syncPending = false;
+                await refreshView();
+                return;
+            }
+            if (result.replayed) {
+                await reloadHead();
+                return;
+            }
+            state.turn = { ...state.turn, branchId: decimalOf(result.branchId) || state.turn.branchId, worldVersion: result.worldVersion };
+            if (result.ended || result.stage === 'resolved') state.run = { ...state.run, stage: 'resolved' };
+            else if (result.stage === 'investigation') state.run = { ...state.run, stage: 'investigation' };
+            onAdvance(state.turn);
+            await refreshView();
+            if (!alive(ticket)) return;
+            const event = state.view.events.find((item) => item.worldEventId && item.worldEventId === String(result.worldEventId));
+            state.notice = event?.clueName ? `发现证据：${event.clueName}` : '';
+            state.syncPending = true;
+            emit();
+            await projectEvent(result, event?.line || state.notice || '这一步行动已记录');
+        } catch (error) {
+            if (!alive(ticket)) return;
+            if (error?.status === 409 && error?.code !== 'ACCOUNT_CONTEXT_CHANGED') {
+                state.reason = ACTION_CONFLICT;
+                try { await reloadHead(); } catch { /* 保持当前头 */ }
+            } else if (error?.status === 409) state.reason = SESSION_CHANGED;
+            else state.reason = ACTION_FAILED;
+        } finally {
+            if (alive(ticket)) {
+                state.busy = false;
+                emit();
+            }
+        }
+    }
     return {
         state,
         async open() {
             state.open = true;
+            const current = currentStoryId();
+            if (state.turn && current && state.turn.conversationId !== current) resetRun();
             emit();
             if (state.run) return;
             try {
@@ -149,7 +340,118 @@ export function createStoryPage({
             onActor(actorId);
             emit();
         },
+        askRewind(version) {
+            const target = Number(version);
+            if (!state.turn || !Number.isSafeInteger(target) || target < 0 || target >= state.turn.worldVersion) return;
+            const resolved = state.view?.events?.some((event) => event.worldVersion === target && event.phase === 'resolved');
+            state.rewindAsk = { version: target, stage: resolved ? '已结束' : '调查中' };
+            state.reason = '';
+            emit();
+        },
+        async confirmRewind() {
+            if (!state.rewindAsk || !state.turn || state.busy) return;
+            const chatIdentity = getChatIdentity() || '';
+            if (!CHAT_IDENTITY.test(chatIdentity)) {
+                state.reason = REWIND_BLOCKED;
+                emit();
+                return;
+            }
+            const ticket = epoch;
+            for (const job of jobs) job.cancelled = true;
+            state.busy = true;
+            state.reason = '';
+            emit();
+            try {
+                const result = await actions.rewindStory({
+                    runId: state.turn.runId,
+                    toWorldVersion: state.rewindAsk.version,
+                    chatIdentity,
+                });
+                if (!alive(ticket)) return;
+                state.rewindAsk = null;
+                state.notice = '';
+                state.syncPending = false;
+                state.turn = {
+                    ...state.turn,
+                    branchId: decimalOf(result?.branchId) || state.turn.branchId,
+                    worldVersion: typeof result?.worldVersion === 'number' ? result.worldVersion : state.turn.worldVersion,
+                };
+                if (result?.stage === 'resolved') state.run = { ...state.run, stage: 'resolved' };
+                else if (result?.stage === 'investigation') state.run = { ...state.run, stage: 'investigation' };
+                onAdvance(state.turn);
+                await refreshView();
+            } catch (error) {
+                if (!alive(ticket)) return;
+                state.reason = error?.status === 409 && error?.code === 'ACCOUNT_CONTEXT_CHANGED' ? SESSION_CHANGED : REWIND_FAILED;
+            } finally {
+                if (alive(ticket)) {
+                    state.busy = false;
+                    emit();
+                }
+            }
+        },
+        act(stepId) {
+            const step = STEPS.find((item) => item.id === stepId);
+            if (!state.turn || !state.run || state.busy || !step || state.run.stage === 'resolved') return;
+            return applyCommand({ actionId: step.id, actorId: 'player', action: step.action, target: step.target, clueId: step.clueId });
+        },
+        say(text) {
+            const spoken = typeof text === 'string' ? text.trim() : '';
+            if (!state.turn || state.busy || !CASTABLE.includes(state.actorId) || !spoken || state.run?.stage === 'resolved') {
+                if (state.turn && !CASTABLE.includes(state.actorId)) state.reason = '先选择要对谁说。';
+                emit();
+                return;
+            }
+            statements += 1;
+            return applyCommand({ actionId: `s${statements}`, actorId: 'player', target: state.actorId, text: spoken });
+        },
+        async showCompanions() {
+            if (!state.turn) return;
+            const list = await api.fetchRelationships();
+            const rows = [];
+            for (const item of Array.isArray(list) ? list : []) {
+                const relationshipId = decimalOf(item?.relationshipId);
+                const name = shown(item?.companionName) || shown(item?.personaRef);
+                if (!relationshipId || !name) continue;
+                rows.push({ relationshipId, name });
+            }
+            state.companions = rows;
+            emit();
+        },
+        async mapCompanion(actorId, relationshipId) {
+            const id = decimalOf(relationshipId);
+            if (!state.turn || !CASTABLE.includes(actorId) || !id) return;
+            await actions.mapStoryParticipant({ runId: state.turn.runId, actorId, relationshipId: id });
+            state.mapped = { ...state.mapped, [actorId]: id };
+            emit();
+        },
+        async saveEpilogue(summary) {
+            if (state.run?.stage !== 'resolved' || !state.turn) return;
+            const actorId = CASTABLE.find((id) => state.mapped[id]);
+            const text = typeof summary === 'string' ? summary.trim() : '';
+            if (!actorId || !text) {
+                state.epilogue = NEED_CAST;
+                emit();
+                return;
+            }
+            await actions.decideStoryEpilogue({
+                runId: state.turn.runId,
+                decision: 'save',
+                relationshipId: state.mapped[actorId],
+                summary: text,
+            });
+            state.epilogue = SAVE_HINT;
+            emit();
+        },
+        async discardEpilogue() {
+            if (state.run?.stage !== 'resolved' || !state.turn) return;
+            await actions.decideStoryEpilogue({ runId: state.turn.runId, decision: 'discard' });
+            state.epilogue = DISCARD_HINT;
+            emit();
+        },
         async start() {
+            const current = currentStoryId();
+            if (state.turn && current && state.turn.conversationId !== current) resetRun();
             if (!state.open || state.busy || state.run) return;
             const ticket = epoch;
             state.busy = true;
@@ -159,10 +461,10 @@ export function createStoryPage({
             try {
                 await api.captureSessionContext();
                 if (!alive(ticket)) return;
-                const current = getConversation() || {};
+                const chat = getConversation() || {};
                 let conversationId = '';
-                if (current.mode === 'STORY' && DECIMAL_ID.test(current.conversationId || '')) {
-                    conversationId = current.conversationId;
+                if (chat.mode === 'STORY' && DECIMAL_ID.test(chat.conversationId || '')) {
+                    conversationId = chat.conversationId;
                 } else if (DECIMAL_ID.test(remembered)) {
                     conversationId = remembered;
                 } else {
@@ -185,6 +487,11 @@ export function createStoryPage({
                 state.actorId = '';
                 state.error = '';
                 state.conflict = false;
+                state.reason = '';
+                state.notice = '';
+                state.syncPending = false;
+                state.rewindAsk = null;
+                state.epilogue = '';
                 onRun(state.turn);
             } catch (error) {
                 if (!alive(ticket)) return;
@@ -203,6 +510,9 @@ export function mountStoryPage({
     getConversation = () => ({ conversationId: '', mode: '' }),
     onRun = () => {},
     onActor = () => {},
+    onAdvance = () => {},
+    getChatIdentity = () => '',
+    project = null,
 } = {}) {
     const style = document.createElement('link');
     style.rel = 'stylesheet';
@@ -217,11 +527,11 @@ export function mountStoryPage({
     root.append(dialog);
     document.body.append(root);
     let opener;
-    const render = (state) => {
-        if (!state.open) return;
-        dialog.innerHTML = `<div class="vc-story-page">${renderStoryPage(state)}</div>`;
+    const render = (next) => {
+        if (!next.open) return;
+        dialog.innerHTML = `<div class="vc-story-page">${renderStoryPage(next)}</div>`;
     };
-    const page = createStoryPage({ getConversation, onRun, onActor, onChange: render });
+    const page = createStoryPage({ getConversation, onRun, onActor, onAdvance, getChatIdentity, project, onChange: render });
     const close = () => {
         page.close();
         dialog.close();
@@ -232,9 +542,18 @@ export function mountStoryPage({
     dialog.addEventListener('click', (event) => {
         const target = event.target.closest('button');
         if (!target || target.disabled) return;
-        if (target.dataset.action === 'close') close();
-        if (target.dataset.action === 'start') void page.start();
-        if (target.dataset.action === 'select-actor') page.selectActor(target.dataset.actor);
+        const action = target.dataset.action;
+        if (action === 'close') close();
+        if (action === 'start') void page.start();
+        if (action === 'select-actor') page.selectActor(target.dataset.actor);
+        if (action === 'act') void page.act(target.dataset.step);
+        if (action === 'say') void page.say(dialog.querySelector('[data-field="say"]')?.value || '');
+        if (action === 'ask-rewind') page.askRewind(target.dataset.version);
+        if (action === 'confirm-rewind') void page.confirmRewind();
+        if (action === 'show-companions') void page.showCompanions();
+        if (action === 'map-companion') void page.mapCompanion(target.dataset.actor, target.dataset.relationship);
+        if (action === 'save-epilogue') void page.saveEpilogue(dialog.querySelector('[data-field="summary"]')?.value || '');
+        if (action === 'discard-epilogue') void page.discardEpilogue();
     });
     return {
         open(returnFocusTarget = document.activeElement) {

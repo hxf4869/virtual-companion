@@ -262,6 +262,24 @@ test('剧情页选择的 actor 进入下一次发送，worldVersion 取视图版
     }
 });
 
+test('advance 更新当前分支和世界版本，不清除已选 actor', async () => {
+    const context = host('STORY');
+    const { events, story, install } = wire(context);
+    install();
+    story.setRun(armedTurn());
+    story.selectActor('zhou');
+    story.advance({ runId: RUN_ID, branchId: '9007199254740998', worldVersion: 6, conversationId: CONVERSATION_ID });
+    const body = { messages: [{ role: 'user', content: '还是周澈' }] };
+    await events.eventSource.emit(READY, body);
+    assert.deepEqual(body.vc_story, {
+        runId: RUN_ID,
+        branchId: '9007199254740998',
+        actorId: 'zhou',
+        worldVersion: 6,
+        chatIdentity: CHAT,
+    });
+});
+
 test('扩展 loading_order 晚于 EJS，SETTINGS_READY 只追加注册', async () => {
     const manifest = JSON.parse(await readFile(new URL('../extension/vc-model-settings/manifest.json', import.meta.url), 'utf8'));
     const index = await readFile(new URL('../extension/vc-model-settings/index.js', import.meta.url), 'utf8');

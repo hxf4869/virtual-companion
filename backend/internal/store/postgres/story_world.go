@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 
@@ -23,7 +24,7 @@ type StoryParticipant struct {
 	RelationshipID *int64
 }
 
-// StoryRun is the root branch created for one STORY conversation.
+// StoryRun is the current branch head of one STORY conversation.
 type StoryRun struct {
 	ConversationID int64
 	RunID          int64
@@ -147,24 +148,20 @@ func lookupStoryRun(ctx context.Context, tx pgx.Tx, owner, conversationID int64)
 
 func loadStoryRun(ctx context.Context, tx pgx.Tx, owner, conversationID int64, spec story.Spec) (StoryRun, error) {
 	var out StoryRun
-	err := tx.QueryRow(ctx, `SELECT id, case_id, world_version, stage, conversation_id
+	var branchID sql.NullInt64
+	err := tx.QueryRow(ctx, `SELECT id, case_id, world_version, stage, conversation_id, current_branch_id
 		FROM vc.story_run WHERE owner_user_id=$1 AND conversation_id=$2`,
-		owner, conversationID).Scan(&out.RunID, &out.CaseID, &out.WorldVersion, &out.Stage, &out.ConversationID)
+		owner, conversationID).Scan(&out.RunID, &out.CaseID, &out.WorldVersion, &out.Stage, &out.ConversationID, &branchID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return StoryRun{}, ErrNotFound
 	}
 	if err != nil {
 		return StoryRun{}, err
 	}
-	err = tx.QueryRow(ctx, `SELECT id FROM vc.story_branch
-		WHERE owner_user_id=$1 AND run_id=$2 AND parent_branch_id IS NULL`,
-		owner, out.RunID).Scan(&out.BranchID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if !branchID.Valid || branchID.Int64 <= 0 {
 		return StoryRun{}, ErrNotFound
 	}
-	if err != nil {
-		return StoryRun{}, err
-	}
+	out.BranchID = branchID.Int64
 	rows, err := tx.Query(ctx, `SELECT actor_id, role, scene, relationship_id
 		FROM vc.story_participant WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id`,
 		owner, out.RunID)

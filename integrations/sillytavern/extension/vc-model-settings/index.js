@@ -9,10 +9,12 @@
 //     eventSource / eventTypes（CHAT_COMPLETION_SETTINGS_READY、CHAT_CHANGED）。
 // third-party 扩展被装载在 /scripts/extensions/third-party/<name>/（比内置扩展深一层），
 // 相对导入主脚本要走四层（内置扩展的三层在这里会落到不存在的 /scripts/script.js）
-import { getRequestHeaders } from '../../../../script.js';
+import { getRequestHeaders, getChat, saveChat as saveCurrentChat } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
 import { mountModelSettings } from './page.js';
 import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding, reconcileSTSources, recallSTMemory } from './api.js';
+import { confirmStoryProjection } from './story-action.js';
+import { createStoryProjection } from './story-projection.js';
 import { installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
 import { mountChatShell } from './chat-shell.js';
@@ -71,6 +73,31 @@ export async function init() {
 
     const dataRights = mountDataRights();
     const memoryPage = mountMemoryPage({ getRelationshipId: () => getContext().chatMetadata?.vc_binding?.relationshipId });
+    const storyProjection = createStoryProjection({
+        readChat: async () => {
+            await getChat();
+            const ctx = getContext();
+            return {
+                metadata: ctx.chatMetadata && typeof ctx.chatMetadata === 'object' ? ctx.chatMetadata : {},
+                messages: Array.isArray(ctx.chat) ? ctx.chat.slice() : [],
+            };
+        },
+        saveChat: async (snapshot) => {
+            const ctx = getContext();
+            if (ctx.chatMetadata && snapshot.metadata) Object.assign(ctx.chatMetadata, snapshot.metadata);
+            if (Array.isArray(ctx.chat)) ctx.chat.splice(0, ctx.chat.length, ...snapshot.messages);
+            try {
+                await saveCurrentChat();
+            } catch (error) {
+                if (error?.code) throw error;
+                const wrapped = new Error('save failed');
+                wrapped.code = 'VC_SAVE_FAILED';
+                wrapped.name = 'F2ConflictError';
+                throw wrapped;
+            }
+        },
+        confirm: ({ runId, worldEventId }) => confirmStoryProjection({ runId, worldEventId }),
+    });
     const storyPage = mountStoryPage({
         getConversation: () => {
             try {
@@ -84,6 +111,11 @@ export async function init() {
         },
         onRun: (turn) => story.setRun(turn),
         onActor: (actorId) => story.selectActor(actorId),
+        onAdvance: (turn) => story.advance(turn),
+        getChatIdentity: () => {
+            try { return getContext().chatMetadata?.vc_f2?.id || ''; } catch { return ''; }
+        },
+        project: (job) => storyProjection.project(job),
     });
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {
