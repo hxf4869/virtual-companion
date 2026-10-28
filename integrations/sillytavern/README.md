@@ -62,7 +62,9 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   （输入/输出 SHA256 硬校验，不匹配即失败）。副本整体重建，重跑逐字节一致。
 - **部署**（同为可重放派生物，整体重建）：`server-plugin/virtual-companion` → `st-run/plugins/virtual-companion/`
   （ST serverDirectory/plugins 装载点）；`extension/vc-model-settings` → `dev-managed/data/default-user/extensions/vc-model-settings/`
-  （排除 `harness/` 开发验收用具）。派生产物记录在 `dev-managed/derived-manifest.json`；`upstream.lock.json` 不改。
+  （排除 `harness/` 开发验收用具）。W04 起复用 `bootstrap --offline` 将锁定 Helper / EJS / MVU
+  装配到受管 dataRoot；只复用原生 `dev/vendor-cache` 静态资源（可用 `VC_ST_VENDOR_CACHE` 指定），
+  不复制原生聊天、设置或凭据。派生产物记录在 `dev-managed/derived-manifest.json`；`upstream.lock.json` 不改。
 - **配置与环境**：受管 `config.yaml` 与原生共用同一安全不变量体系，唯一差异
   `enableServerPlugins=true`（`enableServerPluginsAutoUpdate=false`、扩展 `autoUpdate=false` 不变）。
   端口默认 127.0.0.1:8752（`VC_ST_PORT` 可覆盖）；运行目录默认 `dev-managed`，dataRoot 在其 `data/`
@@ -93,6 +95,11 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   `revision-conflict`、`continuation-hygiene`。
 - **`--filter <场景,…>`**：按场景 id 具名选择，依赖闭包自动补齐且依赖先行（如 `--filter e2e-chat`
   会自动先跑 `catalog-admin` 建目录）；`--dry-run` 只做 fixture 与断言库自检，不碰 docker/Go/ST 完整栈。
+- **`ui04-browser`（可选，默认不选）**：`--filter ui04-browser` 通过完整 Go / ST 栈复用 C04 / C05 与
+  UI02 基础浏览器验收，实际加载本项目聊天导航、模型投影及锁定 Helper / EJS / MVU。只使用本地合成
+  provider；360 / 390 窄视口和短视口不替代目标手机或软键盘验收。只复验已有合成卡的 UI02 时，
+  指定 `VC_W04_CASES=UI02 VC_ST_ACCEPT_CHARACTER=<已通过C04/C05且当前状态为8的合成卡名>`；
+  原生流程会重新打开该卡、核对其合成标记和真实状态，不重跑已经通过的 C04/C05。
 - **`ui03-browser`（可选真实界面场景，默认不选）**：`--filter ui03-browser` 显式执行，真实浏览器完成
   UI03 全流程（编辑保存读回 / 409 冲突保留草稿 / Key 只显状态 / 用途绑定投影写原生设置 / 三协议经
   原生界面发送）。浏览器由 `playwright-core` 驱动（随 `npm ci` 安装），可执行文件以
@@ -121,9 +128,37 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 - 用 `lib/fixtures.mjs` 生成的原创合成数据驱动真 ST 前端，固定 provider 由 `scripts/mock-provider.mjs`
   返回确定性回复；对模型请求的断言读 mock 内存捕获（`/__captures`），不落盘请求正文。
 - 覆盖 VER §2 的 C01（JSON/PNG 卡）、C02（世界书关键词/次级/递归/预算/冷却）、C03（宏/预设/正则三层
-  区别）、C06（CHARX 自有资源原生导入；ST 无 CHARX 导出，不承诺）、C07（群聊指定发言/策略/停止/身份）。
+  区别）、C04/C05（原创复杂卡：真实 Helper iframe / MVU / EJS 与原生 swipe，见下小节）、C06（CHARX 自有
+  资源原生导入；ST 无 CHARX 导出，不承诺）、C07（群聊指定发言/策略/停止/身份）。
 - 产物：`dev/artifacts/accept-<run>/`（result.json、各用例截图、fixtures）；真实模型与目标手机为 NOT_RUN，
   不与 mock 结果混写。已知 ST 自身噪声（建群高亮的未处理拒绝等）在 result.json `error_notes` 中逐条说明。
+
+### 复杂卡 C04/C05（真实 Helper iframe / MVU / EJS）
+
+- 可直接导入的原生导出卡：[澄夏复杂卡](fixtures/chengxia-complex.json)。卡名保留验收时的合成标识；
+  内嵌世界书、显示正则和自托管脚本引用均由真实 ST 导出，使用前先完成本目录 bootstrap。
+- 用法：`node scripts/accept.mjs --only C04,C05`。C05 依赖 C04 产出的角色与候选状态（`complex.ready`），
+  单独 `--only C05` 只会记 NOT_RUN。
+- 卡由 `scripts/lib/complex-card.mjs` 原创合成（角色「澄夏」；`complexCard(name, book)` /
+  `complexReply(trust)` / `statusPanel`），不含真实数据：`[InitVar]` 世界书条目初始化
+  `trust=10 / scene / discussed_book`、关键词条目（`VC04_BOOK`）、EJS 常驻条目
+  （`getvar('stat_data.discussed_book')` 为真才输出 `VC04_EJS_DISCUSS`）、两条角色正则（显示层隐藏
+  `<UpdateVariable>` 协议块；`<StatusPlaceHolderImpl/>` 替换为真实 iframe 状态栏，按钮只读所在楼层变量）、
+  角色脚本 `vc04-mvu` 引用自托管锁定 bundle `/user/files/mvu-bundle-d03b7dc8.js`（见 `patches/README.md`）。
+- 覆盖：C04 初始化 10 → 原生生成经 MVU 解析为 15（原文保留 `_.set('trust', 15)`，显示层隐藏）→ 刷新重开
+  保持 → 下一轮实际请求含 EJS 条件片段且无未替换宏；C05 原生右滑生成候选 8（不在 15 上累加）→ 刷新保持 8
+  → 左滑回 15 / 右滑回 8 → 原生分支隔离 → 末条编辑后显式重算 → 重生成 → 切换聊天后迟到任务无效。
+  编辑最后一条回复后使用卡自带的 MVU「重新处理变量」按钮；更早楼层需用 MVU 回放功能，
+  不承诺任意历史编辑会自动级联重算。关键状态同时断言 `Mvu.getMvuData` 内存值、iframe 面板读数与原生 chat JSONL
+  `variables[swipe_id].stat_data` 落盘。
+- 回复注入：`mock-provider.mjs` 的 `POST /__replies` 接收一次性字符串队列（最多 8 条、每条 ≤16000 字符），
+  按请求顺序消费，耗尽回落固定回复；进程重启即清空，仅 loopback。C04/C05 用它送入
+  `complexReply(15 / 8)` 的 `<UpdateVariable>` 文本，不涉及任何真实模型。
+- 产物：`dev/artifacts/accept-<run>/fixtures/` 保存导入卡 JSON 与 C04.4 原生导出的
+  `complex-card-export.json`，截图 `C04-desktop.png` / `C05-swipes.png`。这些只是本地合成验收生成物，
+  不构成目标手机或真实模型证据。
+- 边界：仅本地合成模型；W05 F2、记忆注入、真实手机与真实模型均待后续工作项，不得据此声称 PASS。
+  当前验收结果统一见仓库 `TODO.md` 的 V2-W04。
 
 ## 保护范围与边界
 

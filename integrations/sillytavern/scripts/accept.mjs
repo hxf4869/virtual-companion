@@ -626,6 +626,8 @@ async function caseUI02(page) {
         await page.locator('#vc-chat-nav').getByRole('button', { name: '角色', exact: true }).click();
         await page.locator('#right-nav-panel').waitFor({ state: 'visible' });
         await page.locator('#rightNavDrawerIcon').click();
+        await poll(() => page.evaluate(() => getComputedStyle(document.querySelector('#right-nav-panel')).display === 'none'
+            && document.querySelector('#rightNavDrawerIcon').classList.contains('closedIcon')), 10000, '原生角色抽屉关闭动画结束');
         await page.locator('#vc-chat-nav').getByRole('button', { name: '模型设置', exact: true }).click();
         await page.locator('.vcms-overlay').waitFor({ state: 'visible' });
         await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
@@ -816,6 +818,7 @@ async function main() {
 
     const { chromium } = await import('playwright-core');
     const browser = await chromium.launch({ executablePath: pre.browser, headless: true });
+    result.browserVersion = browser.version();
     const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'zh-CN',
         ...(process.env.VC_ST_ACCEPT_STORAGE_STATE ? { storageState: process.env.VC_ST_ACCEPT_STORAGE_STATE } : {}) })).newPage();
     page.on('console', (m) => { if (m.type() === 'error' && consoleErrors.length < 30) { const l = m.location(); consoleErrors.push({ t: tms(), text: m.text().slice(0, 240), at: l?.url ? `${l.url.replace(ST_URL, '')}:${l.lineNumber}:${l.columnNumber}` : null, during: current?.running ?? current?.id ?? null }); } });

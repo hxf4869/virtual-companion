@@ -1,7 +1,7 @@
 # 确定性补丁（patches/）
 
 本目录存放对锁定上游的确定性补丁规格。原则：`upstream/` 原始检出一律不改；补丁只作用于运行副本
-（helper 资产补丁 → bootstrap 复制到 dataRoot 的副本，ST 核心桥补丁 → assemble-managed 复制到
+（helper / MVU 资产补丁 → bootstrap 复制到 dataRoot 的副本，ST 核心桥补丁 → assemble-managed 复制到
 `dev-managed/st-run` 的运行副本）；每个规格声明输入与输出的 SHA256，bootstrap / assemble-managed /
 start 预检 / status 与 `tests/patcher.test.mjs` 都按该值校验，输出可逐字节复现。
 
@@ -20,6 +20,23 @@ start 预检 / status 与 `tests/patcher.test.mjs` 都按该值校验，输出�
   原样保留——它们只在用户主动安装脚本或打开优化面板时加载，不属于默认运行链；见规格的 `left_as_is`。
 - **可去除条件**：上游 Helper 改为相对 / 同源路径加载或提供可配置资源基址；或 V2 替换 Helper 依赖。
   满足后删除本规格与 `vendor.lock.json` 对应条目，并重跑 bootstrap / start 预检 / 相关测试。
+
+## mvu-current-message-lifecycle.json（MVU 资产补丁，W04）
+
+- **对象**：MagVarUpdate（MVU）锁定 commit `d03b7dc8` 的 `artifact/bundle.js`，由 bootstrap 应用到
+  dataRoot 自托管副本 `user/files/mvu-bundle-d03b7dc8.js`（bootstrap 在派生 manifest 记录补丁 id 与
+  输出 SHA）；`upstream/` 原始检出不改。
+- **当前证据**：W04 真实快速 swipe 复现——上游 `MESSAGE_RECEIVED` 处理经
+  `_.throttle(t, 3e3, {trailing:false})` 全局 3 秒节流，不区分消息/候选；右滑产生的新候选事件落在窗口内
+  被丢弃，原文已为 8 而变量仍为 15。
+- **改法**：单处字串替换 `n=_.throttle(t,3e3,{trailing:!1})` → `n=Object.assign(t,{cancel(){}})`
+  （count 1）：每次事件直接进入原生异步处理链并受其自身等待，保留 `onMessageReceived` 的短占位内容与
+  取消检查（`cancel` 留空操作以兼容原调用面）。不改上游源码，不建立平行变量解析器。
+- **校验**：`expected_input_sha256` / `expected_output_sha256` 由 bootstrap 硬校验；升级 MVU 版本须重算
+  两个 SHA 并复核 `count` 命中次数。
+- **验证入口**：`accept.mjs --only C04,C05` 与受管 `accept-managed.mjs --filter ui04-browser`；结果见 `TODO.md`。
+- **可去除条件**：见规格 `removal_condition`——上游不再按全局时间窗丢弃不同消息/候选，且 C04/C05 真实
+  浏览器回归通过后移除。
 
 ## st-chat-completions-vc-bridge.json（受管核心补丁）
 

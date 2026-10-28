@@ -68,6 +68,22 @@
       真实模型效果、真实费用和真机子项 NOT_RUN（缺对应 Owner 输入），不以合成结果替代；
       不阻塞依赖已满足的后续独立代码工作。原有用户 ZIP 保留且未纳入提交。
 - [ ] `V2-W04` 复杂状态卡与首轮手机体验。用例：C04、C05、UI01 / UI02（基础）。
+      结果：READY_FOR_OWNER（2026-10-28）；代码提交 `7d34aa2b..fb22abc6` 已推送；
+      原创原生导出卡 `integrations/sillytavern/fixtures/chengxia-complex.json`，运行/验收入口见集成 README。
+      验证：`bash scripts/check.sh` 10/10 PASS（25s）；最终受影响 ST 离线测试 172/172 PASS（4.6s）；
+      原生 `accept.mjs --only C04,C05` PASS；受管 `accept-managed.mjs --filter ui04-browser` 中 C04/C05 PASS，
+      UI02 修复后按 `VC_W04_CASES=UI02` 定向复验 PASS（含 catalog-admin，退出码 0）；`git diff --check` PASS。
+      实际浏览器 Google Chrome 156.0.8078.48；真实 ST/Go/PG/MinIO 与本地合成 provider，未调用真实模型。
+      用例：C04 当前宿主子项 PASS（真实 Helper iframe/MVU/EJS；10→15；下一轮条件上下文；刷新、原生保存）；
+      C05 当前宿主子项 PASS（候选8、15/8切换、分支隔离、末条编辑后显式重算、重生成与迟到任务完整结束后不串写）。
+      修复上游 MVU 3秒全局节流吞掉快速新候选事件；补丁只作用于自托管派生 bundle，保留原始上游锁。
+      受管装配复用原生 bootstrap 安装锁定 Helper/EJS/MVU 与同源资源；不复制原生聊天、设置或凭据。
+      UI01 聊天/导航实现子项 PASS；UI02 桌面与390/360窄屏基础子项 PASS（真实状态栏、原生角色抽屉、模型页、
+      草稿保留、短视口输入可达、发送与停止）；修复 ST transform 包含块导致手机模型页遮罩高度为0。
+      原生角色抽屉关闭动画已单独核对结束状态，截图中间态不作为残留遮挡缺陷；验收等待实际 display:none。
+      Owner 项：目标手机、真实软键盘/触控及真实模型体验 NOT_RUN；不能用窄视口替代真机，条目暂不勾选。
+      F2 与长期记忆的跨阶段复查 NOT_RUN（分别随 W05/记忆工作项补齐）；更早楼层编辑沿用 MVU 显式回放，
+      不承诺任意历史编辑自动级联重算。受管进程及专用PG/MinIO容器已清理；原有 ZIP 保留。
 - [ ] `V2-W05` 认证、角色实例与 F2 全写入保护。用例：B01、B05、B07。
 - [ ] `V2-W06` 来源对账、E3 与跨存储数据权利。用例：B02、B03、R01–R05、D02–D05。
 - [ ] `V2-W07` 相关检索、摘要与时间规范。用例：M01–M12（检索与日期子项）。
