@@ -13,3 +13,12 @@ entries:
   order: 4
 - code: PRODUCT_EVAL
   order: 5
+- code: BACKGROUND_GREETING
+  order: 6
+  modelPurpose: BACKGROUND_GREETINGS
+  note: >-
+    Go background greeting and follow-up wording. Execution resolves only the
+    BACKGROUND_GREETINGS pinned binding and revision, never the legacy global
+    route order. An in-progress run keeps the snapshot taken when it started.
+    Missing authorization, price or budget performs no real call. Inbox and
+    notification delivery belong to W10.

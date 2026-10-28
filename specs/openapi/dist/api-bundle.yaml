@@ -2153,8 +2153,8 @@ paths:
       summary: Create a structured user reminder (FR-NOTIFY-001)
       description: Creates a structured reminder record under the caller's relationship (vc.create_reminder). Reminders are
         canonical records, never a prompt instruction; Technical Alpha stores and lists them without any push transport (主动消息不在
-        Alpha 范围). remindAt is a UTC instant; recurrence is NONE, DAILY or WEEKLY. Requires a server-verified authentication
-        context.
+        Alpha 范围). W09 follow-ups are a separate resource and do not use this reminder record. remindAt is a UTC instant;
+        recurrence is NONE, DAILY or WEEKLY. Requires a server-verified authentication context.
       parameters:
       - $ref: '#/components/parameters/RelationshipId'
       requestBody:
@@ -2265,6 +2265,172 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReminderDeletedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/proactive-policy:
+    get:
+      operationId: getProactivePolicy
+      summary: Read one character's proactive greeting policy
+      description: Returns the caller's proactive policy for this character instance. A missing row is default off, with offline
+        capability undeclared and allowedModes COMPANION. Enabling the policy without a declared offline capability means
+        later greeting execution records waiting-host and does not claim a reply was already sent. Background greeting generation
+        resolves only the BACKGROUND_GREETINGS pinned binding and revision; it does not fall back to the legacy global route
+        order. An in-progress run keeps the snapshot taken when it started. Missing authorization, price or budget performs
+        no real call. Requires a server-verified authentication context. A foreign or absent relationship is NOT_FOUND_OR_FORBIDDEN.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: The stored policy, or the default-off policy when no row exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProactivePolicy'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Relationship absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: putProactivePolicy
+      summary: Replace one character's proactive greeting policy
+      description: Replaces the caller's proactive policy for this character instance. The default is off, and importing a
+        character does not enable it. This write does not call a model or create an inbox event. Requires a server-verified
+        authentication context.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProactivePolicyWriteRequest'
+      responses:
+        '200':
+          description: The stored policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProactivePolicy'
+        '400':
+          description: Quiet hours are incomplete or a limit is out of range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Relationship absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/follow-ups:
+    get:
+      operationId: listFollowUps
+      summary: List follow-ups for one character
+      description: Lists follow-ups Go created for this character from a published memory whose source was verified again
+        and from the saved MemoryTime. There is no client create operation. triggerAt is the follow-up's own instant; a date-only
+        MemoryTime is not stored as a midnight reminder. needs_clarification cannot be triggerable. Work that is ready to
+        run is claimed as work item kind FOLLOW_UP. Requires a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: Follow-ups owned by the caller for this character
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FollowUp'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Relationship absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/follow-ups/{followUpId}:
+    get:
+      operationId: getFollowUp
+      summary: Read one owned follow-up
+      description: Returns the follow-up when it belongs to the caller. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN.
+        Requires a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/FollowUpId'
+      responses:
+        '200':
+          description: The caller's follow-up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/follow-ups/{followUpId}/cancel:
+    post:
+      operationId: cancelFollowUp
+      summary: Cancel one owned follow-up
+      description: Cancels the caller's follow-up and clears its trigger instant. Cancellation is not inferred from model
+        wording, does not write a MemoryCore proposal, and does not create an inbox event. A foreign or absent id maps to
+        NOT_FOUND_OR_FORBIDDEN. Requires a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/FollowUpId'
+      responses:
+        '200':
+          description: The follow-up, now cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUp'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -3930,9 +4096,11 @@ paths:
     put:
       operationId: reorderModelRoutes
       summary: Replace the complete global model route order
-      description: Go v1 ADMIN surface requiring fresh reauthentication and CSRF. routes must contain every currently enabled
-        provider/model pair exactly once. Array order becomes deterministic global priority. Each generation freezes only
-        the first two eligible routes and never observes mid-turn edits.
+      description: 'Go v1 ADMIN surface requiring fresh reauthentication and CSRF. routes must contain every currently enabled
+        provider/model pair exactly once. Array order becomes deterministic global priority for legacy Go chat. Each generation
+        freezes only the first two eligible routes and never observes mid-turn edits. BACKGROUND_GREETINGS does not consult
+        this order: it resolves only its own pinned binding and revision, and an in-progress greeting run keeps the snapshot
+        taken when it started.'
       security:
       - cookieAuth: []
       requestBody:
@@ -6319,6 +6487,207 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed delete
+    FollowUpStatus:
+      type: string
+      description: Follow-up lifecycle (specs/catalog/follow-up-statuses.yaml). SCHEDULED is the only triggerable status.
+      enum:
+      - NEEDS_CLARIFICATION
+      - SCHEDULED
+      - ASKED
+      - CANCELLED
+      - SILENT
+      - DEFERRED
+      - WAITING_HOST
+      - BODY_READY
+    FollowUp:
+      type: object
+      additionalProperties: false
+      description: One Go-owned follow-up. triggerAt is independent of MemoryTime.eventDate. W07 leaves MemoryTime.reminderAt
+        null and does not schedule this row. A needs_clarification normalization, or a date-only time without a confirmed
+        reminder rule, has triggerAt null. Body text is online-domain plaintext included in the owner export and removed with
+        the account.
+      required:
+      - followUpId
+      - relationshipId
+      - status
+      - body
+      - normalizationStatus
+      - reminderRuleConfirmed
+      - eventId
+      - deliverable
+      properties:
+        followUpId:
+          type: string
+        relationshipId:
+          type: string
+        memoryItemId:
+          type:
+          - string
+          - 'null'
+        sourceRef:
+          type:
+          - string
+          - 'null'
+        sourceRevision:
+          type:
+          - integer
+          - 'null'
+        status:
+          $ref: '#/components/schemas/FollowUpStatus'
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        normalizationStatus:
+          type: string
+          enum:
+          - explicit_date
+          - normalized
+          - needs_clarification
+          - none
+        timePrecision:
+          type:
+          - string
+          - 'null'
+          enum:
+          - date
+          - minute
+          - null
+        reminderRuleConfirmed:
+          type: boolean
+        eventDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        eventTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          description: Explicit local HH:mm. Null for a date-only follow-up; never a fabricated midnight.
+        eventTimezone:
+          type:
+          - string
+          - 'null'
+        triggerAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Trigger instant for a SCHEDULED follow-up. Null unless the time is minute-precision or a date with
+            a confirmed reminder rule.
+        eventId:
+          type: string
+          description: Stable id a later inbox delivery can reference. W09 does not create that delivery.
+        deliverable:
+          type: string
+          enum:
+          - NOT_DELIVERABLE
+          - DELIVERABLE
+          description: Whether a later W10 delivery may pick this up. W09 does not deliver it.
+    ProactivePolicy:
+      type: object
+      additionalProperties: false
+      description: Per-character proactive greeting policy. enabled defaults to false. offlineCapable defaults to false. When
+        enabled is true and offlineCapable is false, greeting execution uses waiting-host rather than a server-written reply.
+        Background generation uses only the BACKGROUND_GREETINGS binding.
+      required:
+      - relationshipId
+      - enabled
+      - dailyLimit
+      - recentInteractionMinutes
+      - allowedModes
+      - offlineCapable
+      properties:
+        relationshipId:
+          type: string
+        enabled:
+          type: boolean
+          default: false
+        quietHoursStart:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        quietHoursEnd:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        quietHoursTimezone:
+          type:
+          - string
+          - 'null'
+          description: IANA timezone. Required together with both quiet-hour times.
+        dailyLimit:
+          type: integer
+          minimum: 0
+          maximum: 48
+        recentInteractionMinutes:
+          type: integer
+          minimum: 0
+          maximum: 10080
+        allowedModes:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - COMPANION
+            - STORY
+        offlineCapable:
+          type: boolean
+          default: false
+          description: Declares that this character may generate greeting text without the SillyTavern host.
+    ProactivePolicyWriteRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - enabled
+      - dailyLimit
+      - recentInteractionMinutes
+      - allowedModes
+      - offlineCapable
+      properties:
+        enabled:
+          type: boolean
+        quietHoursStart:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        quietHoursEnd:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+        quietHoursTimezone:
+          type:
+          - string
+          - 'null'
+        dailyLimit:
+          type: integer
+          minimum: 0
+          maximum: 48
+        recentInteractionMinutes:
+          type: integer
+          minimum: 0
+          maximum: 10080
+        allowedModes:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - COMPANION
+            - STORY
+        offlineCapable:
+          type: boolean
     ServiceClassAssignRequest:
       type: object
       description: ADMIN-only simulated service-class assignment (ENT-SNAP).
@@ -6563,8 +6932,9 @@ components:
             is COMPLETE only after this copy succeeds.'
         go:
           type: object
-          description: Decrypted Go-side records (account metadata, ST source bindings, persisted sources, summaries and extraction
-            task/results) produced by vc.export_v2_owner_metadata.
+          description: Decrypted Go-side records (account metadata, ST source bindings, persisted sources, summaries, extraction
+            task/results, follow-ups and proactive policies) produced by vc.export_v2_owner_metadata. Follow-up body text
+            is part of this online copy and is removed with the account. Inbox and notification records are not included.
         st:
           $ref: '#/components/schemas/STAccountExport'
         domains:
@@ -7061,7 +7431,7 @@ components:
           - 'null'
           format: date-time
           description: Separately confirmed reminder instant. W07 normalization always returns null and does not schedule
-            or alter a reminder or follow-up.
+            or alter a reminder or follow-up. A follow-up uses FollowUp.triggerAt; a date-only event is not a midnight reminder.
     MemoryAutoSavePref:
       type: object
       description: The per-owner memory auto-save switch state (V66, §7.4).
@@ -8081,7 +8451,9 @@ components:
           description: Provider revision after a snapshot save (absent for the route-order mutation).
     ModelPurpose:
       type: string
-      description: Independently bound model purposes (specs/catalog/model-purposes.yaml, ADR-0009 G2).
+      description: Independently bound model purposes (specs/catalog/model-purposes.yaml, ADR-0009 G2). BACKGROUND_GREETINGS
+        resolves only its pinned binding and revision, never the legacy global route order. A greeting run freezes that snapshot
+        at start. Missing authorization, price or budget performs no real call.
       enum:
       - FOREGROUND_CHAT
       - MEMORY_EXTRACTION_DEDUP_SUMMARY
@@ -8253,7 +8625,8 @@ components:
         must be one of reasoningLevels; an unsupported value is rejected, never dropped. Protocol mapping is performed by
         the SillyTavern server plugin and Go MemoryCore callback. The callback only sends a non-null temperature or topP when
         the selected profile declares that capability DECLARED or VERIFIED; UNKNOWN and UNSUPPORTED are rejected before budget
-        admission or network I/O.
+        admission or network I/O. BACKGROUND_GREETINGS uses that same limited sampling rule and does not drop a non-null temperature
+        or topP.
       properties:
         temperature:
           type:
@@ -9218,6 +9591,13 @@ components:
       schema:
         type: string
       description: Owner-scoped reminder identifier
+    FollowUpId:
+      name: followUpId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped follow-up identifier
     MemoryId:
       name: memoryId
       in: path

@@ -152,6 +152,17 @@ components:
       - COMPLETED
       - CANCELLED
       - UNKNOWN
+    FollowUpStatus:
+      type: string
+      enum:
+      - NEEDS_CLARIFICATION
+      - SCHEDULED
+      - ASKED
+      - CANCELLED
+      - SILENT
+      - DEFERRED
+      - WAITING_HOST
+      - BODY_READY
     PersonaTemplate:
       type: string
       enum:
@@ -201,6 +212,7 @@ components:
       - EMBEDDING
       - CONVERSATION_SUMMARY
       - PRODUCT_EVAL
+      - BACKGROUND_GREETING
     ErrorCode:
       type: string
       enum:
