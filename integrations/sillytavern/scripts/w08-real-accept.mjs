@@ -8,7 +8,30 @@ import { importSyntheticCard } from './w05-accept.mjs';
 import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
 import { REPO_ROOT } from './lib/paths.mjs';
 import path from 'node:path';
+import { startMeter } from './lib/real-model-meter.mjs';
 const expect = (r, status, label) => { assert.equal(r.status, status, `${label}: HTTP ${r.status} (${r.json?.code || 'native'})`); return r.json; };
+
+async function decisionCodes(artifactsDir) {
+    try {
+        const text = await fs.readFile(path.join(artifactsDir, 'go.log'), 'utf8');
+        return [...text.matchAll(/"decision_code":"(MEMORYCORE_[A-Z0-9_]+)"/g)].map((match) => match[1]);
+    } catch {
+        return [];
+    }
+}
+
+function structuralMemory(row) {
+    return {
+        lifecycle: row?.lifecycle || null,
+        recallEligible: row?.recallEligible === true,
+        eventDate: row?.time?.eventDate ?? null,
+        normalizationStatus: row?.time?.normalizationStatus ?? null,
+        timePrecision: row?.time?.timePrecision ?? null,
+        reminderAt: row?.time?.reminderAt ?? null,
+        summaryChars: [...(row?.summary || '')].length,
+        hasPreferenceToken: (row?.summary || '').includes('乌龙茶'),
+    };
+}
 
 export async function sceneMemoryRealModel(ctx) {
     const lines = new TextDecoder('gb18030').decode(await fs.readFile(path.join(REPO_ROOT, 'agents.txt'))).split(/\r?\n/);
@@ -16,9 +39,16 @@ export async function sceneMemoryRealModel(ctx) {
         const line = lines.find(s => s.toLowerCase().startsWith(label));
         return line?.replace(/^[^:：]*[:：]\s*/, '').trim();
     };
-    const baseUrl = value('api 地址'), credential = value('api key');
+    const configuredBase = value('api 地址'), credential = value('api key');
     const modelId = 'cline-pass/deepseek-v4.1-flash-1017';
-    assert.ok(baseUrl?.startsWith('https://') && credential && value('模型id') === modelId, '私有模型配置必须完整匹配已授权模型');
+    assert.ok(configuredBase?.startsWith('https://') && credential && value('模型id') === modelId, '私有模型配置必须完整匹配已授权模型');
+    let meter;
+    if (process.env.VC_W08_METER === '1') {
+        const maxCalls = Number(process.env.VC_W08_METER_MAX || 30);
+        meter = await startMeter(configuredBase, { maxCalls: Number.isInteger(maxCalls) && maxCalls > 0 ? maxCalls : 30 });
+        ctx.w08.meter = meter;
+    }
+    const baseUrl = meter?.baseUrl || configuredBase;
     const models = [{ profileKey: 'memory', modelId, displayName: 'Owner 实际提取验收', contextWindowTokens: 32768, maxOutputTokens: 4096,
         state: 'ENABLED', capabilities: { systemMessage: 'DECLARED' }, reasoningLevels: ['max'], generationParams: { reasoningEffort: 'max' } }];
     const spec = { displayName: 'Owner 已授权私有模型', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl, state: 'ENABLED', models };
@@ -49,6 +79,7 @@ export async function sceneMemoryRealModel(ctx) {
                 { name: '合成用户', is_user: true, mes: inputs[n], send_date: '2026-10-20T20:00:00+08:00', extra: {} }];
             prepareSourceIdentities(rows, { settled: true, sourceTimezone: 'Asia/Shanghai' });
             expect(await st.call('POST', '/api/chats/save', { avatar_url: card.avatar, file_name: file, chat: rows }), 200, '保存少量合成来源');
+            const persistedAt = Date.now();
             const binding = expect(await ctx.admin.call('POST', '/api/v1/st/bindings', { chatIdentity: identity, characterRef: card.avatar,
                 mode: 'COMPANION', displayName: 'W08 实际提取样本', ...(relationshipId ? { relationshipId } : {}) }), 200, '绑定同一实例独立聊天');
             relationshipId = binding.relationshipId;
@@ -58,6 +89,21 @@ export async function sceneMemoryRealModel(ctx) {
                 progress = ctx.w08.realProgress();
                 return progress.failed > 0 || progress.done >= n + 1;
             }, { timeoutMs: 300000, label: `第${n + 1}条实际提取完成` });
+            if (progress.failed > 0) {
+                const listed = await ctx.admin.call('GET', `/api/v1/relationships/${relationshipId}/memories?limit=100`);
+                const rowsNow = listed.status === 200 && Array.isArray(listed.json) ? listed.json : [];
+                const saved = await st.call('POST', '/api/chats/get', { avatar_url: card.avatar, file_name: file });
+                const token = saved.status === 200 ? saved.json?.[0]?.chat_metadata?.vc_f2 : null;
+                const recall = token ? await ctx.admin.call('POST', '/api/v1/st/memory/recall', { chatIdentity: token.id, revision: token.revision, enabled: true, budgetTokens: 1024 }) : null;
+                const block = typeof recall?.json?.block === 'string' ? recall.json.block : '';
+                ctx.results.memoryRealStop = {
+                    caseId: 'accept-source-1', phase: n + 1, progress,
+                    observedAfterPersistMs: Date.now() - persistedAt,
+                    decisionCodes: await decisionCodes(ctx.artifactsDir),
+                    memories: rowsNow.map(structuralMemory),
+                    recall: recall ? { http: recall.status, memoryCount: recall.json?.memoryIds?.length || 0, summaryCount: recall.json?.summaryIds?.length || 0, blockChars: block.length, blockHasPreferenceToken: block.includes('乌龙茶') } : null,
+                };
+            }
             assert.equal(progress.failed, 0, '实际提取任务失败；关闭用途并停止新增样本');
             const memories = expect(await ctx.admin.call('GET', `/api/v1/relationships/${relationshipId}/memories?limit=100`), 200, '读取实际模型发布结果');
             if (n === 0) firstPreferenceId = memories.find(m => m.lifecycle === 'ACTIVE' && m.summary.includes('乌龙茶'))?.memoryId;
@@ -96,5 +142,18 @@ export async function sceneMemoryRealModel(ctx) {
         const usage = ctx.w08.realUsage();
         ctx.results.memoryRealModel ??= { model: modelId, reasoningEffort: 'max', usage, completed: false, pricing: 'conservative_acceptance_estimate_not_supplier_bill' };
         ctx.results.memoryRealModel.usage = usage;
+        ctx.results.memoryRealModel.decisionCodes = await decisionCodes(ctx.artifactsDir);
+        if (meter) {
+            const dir = path.join(REPO_ROOT, 'integrations/sillytavern/.local/w08-g3');
+            await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+            const cost = meter.snapshot().reduce((sum, call) => sum + (call.cost || 0), 0);
+            await fs.writeFile(path.join(dir, 'result.json'), JSON.stringify({
+                model: modelId, reasoningEffort: 'max', pricing: 'provider_usage_cost_field',
+                providerCalls: meter.snapshot(), costSum: cost,
+                ledger: usage, stop: ctx.results.memoryRealStop || null,
+                acceptance: ctx.results.memoryRealModel,
+            }, null, 2) + '\n', { mode: 0o600 });
+            await meter.stop();
+        }
     }
 }
