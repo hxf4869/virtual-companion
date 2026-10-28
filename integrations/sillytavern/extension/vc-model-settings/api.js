@@ -250,3 +250,28 @@ export const fetchMemory = (id) => request('GET', `/api/v1/memories/${encodeURIC
 export const fetchMemoryEvidence = (id) => request('GET', `/api/v1/memories/${encodeURIComponent(id)}/evidence`);
 export const correctMemory = (id, { summary, expectedVersion }) => request('PATCH', `/api/v1/memories/${encodeURIComponent(id)}`, { summary, expectedVersion });
 export const forgetMemory = (id) => request('DELETE', `/api/v1/memories/${encodeURIComponent(id)}`);
+
+const STORY_DECIMAL_ID = /^[1-9][0-9]{0,18}$/;
+const STORY_WORLD_VERSION = /^(0|[1-9][0-9]{0,18})$/;
+
+function requireStoryId(value, pattern) {
+    if (typeof value !== 'string' || !pattern.test(value)) {
+        throw new ApiError('invalid', '请求内容未通过校验，请检查表单。', { status: 0, code: 'INVALID_REQUEST' });
+    }
+}
+
+/** POST /api/v1/story/runs。只开固定案件，不提交行动。 */
+export function startStoryRun(conversationId) {
+    requireStoryId(conversationId, STORY_DECIMAL_ID);
+    return request('POST', '/api/v1/story/runs', { conversationId, caseId: 'rainy-inn-v1' });
+}
+
+/** GET 玩家 ActorView。actor 固定为 player，不读取其他角色。 */
+export function fetchStoryActorView({ runId, branchId, worldVersion } = {}) {
+    const version = typeof worldVersion === 'number' && Number.isSafeInteger(worldVersion) ? String(worldVersion) : worldVersion;
+    requireStoryId(runId, STORY_DECIMAL_ID);
+    requireStoryId(branchId, STORY_DECIMAL_ID);
+    requireStoryId(version, STORY_WORLD_VERSION);
+    const query = new URLSearchParams({ branchId, worldVersion: version });
+    return request('GET', `/api/v1/story/runs/${runId}/actors/player/view?${query}`);
+}

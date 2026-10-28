@@ -31,6 +31,8 @@ export const ADMIN_BRIDGE_ROUTES = [
     { method: 'POST', path: /^\/api\/v1\/st\/bindings$/, where: 'W05 原生聊天的角色实例与会话绑定' },
     { method: 'POST', path: /^\/api\/v1\/st\/sources\/reconcile$/, where: 'W06 打开、重连与保存后的持久来源核对' },
     { method: 'POST', path: /^\/api\/v1\/st\/memory\/recall$/, where: 'W07 当前已绑定聊天的相关记忆与摘要' },
+    { method: 'POST', path: /^\/api\/v1\/story\/runs$/, where: 'W12 玩家开局（固定案件，不放行行动或回档）' },
+    { method: 'GET', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/actors\/player\/view$/, where: 'W12 玩家 ActorView（只放行 player）' },
     { method: 'POST', path: /^\/api\/v1\/exports(?:\/recover)?$/, where: 'W06 数据副本创建和取回' },
     { method: 'GET', path: /^\/api\/v1\/exports\/[1-9][0-9]*(?:\/download)?$/, where: 'W06 副本状态和一次性下载' },
     { method: 'GET', path: /^\/api\/v1\/admin\/providers$/, where: '供应商列表' },

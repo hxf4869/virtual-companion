@@ -18,6 +18,7 @@ import { createProjectionController } from './projection.js';
 import { mountChatShell } from './chat-shell.js';
 import { mountDataRights } from './data-rights.js';
 import { mountMemoryPage } from './memory-page.js';
+import { mountStoryPage } from './story-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
 
 export async function init() {
@@ -65,6 +66,18 @@ export async function init() {
 
     const dataRights = mountDataRights();
     const memoryPage = mountMemoryPage({ getRelationshipId: () => getContext().chatMetadata?.vc_binding?.relationshipId });
+    const storyPage = mountStoryPage({
+        getConversation: () => {
+            try {
+                const binding = getContext().chatMetadata?.vc_binding || {};
+                const conversationId = typeof binding.conversationId === 'string' ? binding.conversationId : '';
+                if (binding.mode === 'STORY' && /^[1-9][0-9]{0,18}$/.test(conversationId)) return { conversationId, mode: 'STORY' };
+                return { conversationId: '', mode: binding.mode || 'COMPANION' };
+            } catch {
+                return { conversationId: '', mode: 'COMPANION' };
+            }
+        },
+    });
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {
         console.warn('[vc-model-settings] 未找到扩展菜单挂载点 #extensionsMenu');
@@ -92,6 +105,11 @@ export async function init() {
     memoryButton.innerHTML = '<i class="fa-solid fa-brain" aria-hidden="true"></i><span class="vcms-menu-label">记忆</span>';
     memoryButton.addEventListener('click', () => memoryPage.open(document.getElementById('extensionsMenuButton')));
     memoryContainer.append(memoryButton); wand.append(memoryContainer);
+    const storyContainer = document.createElement('div'); storyContainer.className = 'extension_container';
+    const storyButton = document.createElement('button'); storyButton.type = 'button'; storyButton.id = 'vc_story_menu_button'; storyButton.className = 'menu_button';
+    storyButton.innerHTML = '<i class="fa-solid fa-book-open" aria-hidden="true"></i><span class="vcms-menu-label">剧情</span>';
+    storyButton.addEventListener('click', () => storyPage.open(document.getElementById('extensionsMenuButton')));
+    storyContainer.append(storyButton); wand.append(storyContainer);
 
     button.addEventListener('click', () => {
         if (!pageController.isOpen()) pageController.open();
