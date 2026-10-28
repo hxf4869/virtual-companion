@@ -118,6 +118,17 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             await writeJSON(file, { scope: op.scope, status: 'revoked' });
         }
     }
+    async function retirePublishedProfiles(ctx, scope, keepId) {
+        const retiredRoot = privateDirectory(path.join(ctx.dir, 'retired-profiles'));
+        for (const { id, op, file } of await operationEntries(ctx)) {
+            if (id === keepId || op.status !== 'profile-published' || !sameScope(op.scope, scope)) continue;
+            const dest = path.join(retiredRoot, id);
+            await fs.rm(dest, { recursive: true, force: true });
+            try { await fs.rename(path.join(ctx.dir, 'profiles', id), dest); }
+            catch (e) { if (e.code !== 'ENOENT') throw e; }
+            await writeJSON(file, { scope: op.scope, status: 'profile-retired', ...(Number.isSafeInteger(op.revision) ? { revision: op.revision } : {}), ...(op.dependencies ? { dependencies: op.dependencies } : {}) });
+        }
+    }
     async function scrubSuperseded(ctx, currentId, targets, sourceDependencies) {
         if (!targets.length) return;
         const removed = new Set(targets.map(t => t.id));
@@ -444,6 +455,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                     catch (e) { if (e.code !== 'ENOENT') throw e; await fs.access(destination); }
                     await writeJSON(file, { ...stored, status: 'profile-published' });
                 }
+                await retirePublishedProfiles(ctx, input.scope, input.operationId);
                 return { status: 'published', dependencies: stored.dependencies };
             });
             const slot = await serial(input.scope.ownerId, async () => {

@@ -89,12 +89,7 @@ func TestEngineProjectionPublicationRecoveryAndSourceFence(t *testing.T) {
 		t.Fatal("idempotent publish", e)
 	}
 
-	if e = s.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
-		_, e := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile($1,$2,$3,$4,$5,$6)`, 1, c.JobID, c.Token, c.Fence, []string{op.SourceRef}, "synthetic verified profile")
-		return e
-	}); e != nil {
-		t.Fatal(e)
-	}
+	recordEngineProfile(t, b.ConversationID, c.JobID, c.Token, c.Fence, []string{op.SourceRef}, "synthetic verified profile")
 	if e = s.CompleteJob(ctx, 1, c.JobID, c.Token, c.Fence, "DONE", ""); e != nil {
 		t.Fatal(e)
 	}
@@ -115,9 +110,12 @@ func TestEngineProjectionPublicationRecoveryAndSourceFence(t *testing.T) {
 	if e = s.PublishEngineProposal(ctx, nextJobs[0], next, empty); e != nil {
 		t.Fatal(e)
 	}
-	summaries, e := s.stSummaries(ctx, 1, b.ConversationID, []stSummaryChat{{id: b.ConversationID, chat: sourceChat}})
-	if e != nil || len(summaries) != 1 {
-		t.Fatalf("empty proposal invalidated valid profile: %d %v", len(summaries), e)
+	var profiles int
+	var persona string
+	if e = s.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT count(*), COALESCE(string_agg(persona, ''), '') FROM vc.memory_profile WHERE owner_user_id=1 AND relationship_id=$1 AND valid AND btrim(persona)<>''`, b.RelationshipID).Scan(&profiles, &persona)
+	}); e != nil || profiles != 1 || persona != "synthetic verified profile" {
+		t.Fatalf("empty proposal invalidated valid profile: n=%d persona=%q err=%v", profiles, persona, e)
 	}
 
 	if _, e = s.SaveEmbeddingConfig(ctx, 7, SaveEmbeddingConfig{Model: "synthetic-next", ArtifactVersion: "two", Dimensions: 3, QueryPreprocessingVersion: "identity-v1", DocumentPreprocessingVersion: "identity-v1", Normalization: "l2", State: "ENABLED", ExpectedRevision: 1}); e != nil {

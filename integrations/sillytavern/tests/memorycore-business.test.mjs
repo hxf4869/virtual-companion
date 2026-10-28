@@ -498,3 +498,34 @@ test('cleanup of a revoked operation preserves an unrelated current epoch propos
     await engine.invoke('commit', current);
     assert.ok(native.records.has('current-record'));
 });
+
+test('publishing a new profile retires the previous profile-published directory', async t => {
+    const { engine, native, root } = await fixture(t);
+    native.rebuildProfile = async ({ stagingDir }) => {
+        const marker = stagingDir.endsWith('profile-old') ? 'persona-old-beijing' : 'persona-new-shanghai';
+        await fs.writeFile(path.join(stagingDir, 'persona.md'), marker);
+    };
+    await engine.invoke('propose', proposalInput());
+    await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
+    const first = { scope, revision: 0, operationId: 'profile-old', allowedRecordIds: ['record1'] };
+    await engine.invoke('rebuild-profile', first);
+    await engine.invoke('rebuild-profile', { ...first, publish: true, verifiedDependencies: ['message1'] });
+    const second = { ...first, operationId: 'profile-new' };
+    await engine.invoke('rebuild-profile', second);
+    await engine.invoke('rebuild-profile', { ...second, publish: true, verifiedDependencies: ['message1'] });
+    const retired = JSON.parse(await fs.readFile(path.join(root, 'owners/1/operations/profile-old.json'), 'utf8'));
+    assert.equal(retired.status, 'profile-retired');
+    assert.equal(JSON.stringify(retired).includes('persona-old-beijing'), false);
+    await assert.rejects(fs.access(path.join(root, 'owners/1/profiles/profile-old')));
+    assert.equal(await fs.readFile(path.join(root, 'owners/1/retired-profiles/profile-old/persona.md'), 'utf8'), 'persona-old-beijing');
+    const published = (await engine.invoke('operation-status', { scope, operationId: 'profile-old' })).status;
+    assert.notEqual(published, 'profile-published');
+    const exported = JSON.stringify(await engine.invoke('export-owner', { scope }));
+    assert.equal(exported.includes('persona-old-beijing'), false);
+    assert.equal(exported.includes('persona-new-shanghai'), true);
+    assert.equal((await engine.invoke('forget', { scope, revision: 0, recordIds: ['record1'] })).status, 'cleared');
+    const afterForget = JSON.stringify(await engine.invoke('export-owner', { scope }));
+    assert.equal(afterForget.includes('profile-published'), false);
+    assert.equal(afterForget.includes('persona-old-beijing'), false);
+    assert.equal(afterForget.includes('persona-new-shanghai'), false);
+});
