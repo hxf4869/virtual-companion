@@ -149,10 +149,38 @@
       本项未启用外部记忆引擎、embedding 或常驻付费后台任务；私有模型配置未提交，原有 ZIP 保留。
       按 Owner 最新“准备收尾”要求在 W07 收尾后暂停 Goal，W08–W16 未开始，整体 V2 尚未完成。
 - [ ] `V2-W08` 记忆实现对照与管理闭环。用例：M01–M12、MODEL05。
-- [ ] `V2-W09` 跟进、时间与 G2 后台配置。用例：A01、A02、MODEL01–MODEL04（后台子项）。
+- [x] `V2-W09` 跟进、时间与 G2 后台配置。用例：A01、A02、MODEL01–MODEL04（后台子项）。
+      结果：DONE（2026-10-29）；提交 `639dc9ca..8d43b354`（链分支 `v2/w09`，合并 main 后快进入 main）。
+      V160–V162、V166–V167：跟进与主动策略表（FORCE RLS），可触发跟进必须带记忆与来源且写入前核验；
+      只从已发布、来源再核验的记忆与已保存 MemoryTime 建立，不重新规范化；来源失效/遗忘/替代/改期与有界
+      「已有结果」整句规则取消且不复活。调度按用户时区安静时段（含跨午夜）、最近互动、日上限、模式与来源
+      判定入队/延后/沉默，延后不改事件日期。后台问候冻结 BACKGROUND_GREETINGS 快照，参数能力不符拒绝且不发
+      请求，经月度预留记账，正文经本地安全策略（拦截不落正文），未声明离线能力只记 WAITING_HOST；不可生成时
+      6/12/24 小时退避、第 4 次转 SILENT，补绑定或重新开启后可再入队。主动策略默认关闭。
+      用例：A01/A02 合成子项 PASS（跟进建立/取消、到期判定、安静时段与日上限、问候生成与安全拦截）；
+      MODEL01 后台快照与前台改绑隔离 PASS（MemoryCore 回调快照随 W08 G9 修复）；MODEL02–MODEL04 后台子项
+      PASS（未绑定/无价格/超预算零真实调用、按用途独立绑定）；A01 真实模型问候 NOT_RUN（后台日预算与用途
+      正式绑定属 V2-OWNER-MODELS，本项未启用常驻付费任务）；inbox/通知属 W10，模型工具属 W11。
+      验证：`bash scripts/check.sh` 10/10 PASS（29s）；RLS 全量 PASS；integration 三包（postgres/migrate/httpapi）
+      全量 PASS；Go 单测与 ST 离线测试 PASS；`git diff --check` PASS。合并 W12 时修正 V160 导出函数包装名
+      （与 V170 同名冲突）与 RLS 200 的合并后导出键期望。执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W10` Inbox 与邮箱＋飞书通知。用例：C08、B04、N01–N03、A04。
 - [ ] `V2-W11` 有限工具与统一调用计量。用例：A03、MODEL01–MODEL05。
-- [ ] `V2-W12` 世界、角色视图与样例。用例：S01（世界与视图子项）。
+- [x] `V2-W12` 世界、角色视图与样例。用例：S01（世界与视图子项）。
+      结果：DONE（2026-10-29）；提交 `517a2922..4eab850c`（链分支 `v2/w12`，经合并 main 后快进入 main）。
+      V170 新增剧情局/根分支/参与者/事件表（FORCE RLS，写入经 go_assert_owner，局只能绑定同 owner 的 STORY
+      会话且绑定后模式锁定），剧情状态纳入导出并随删号删除。雨夜客栈定义以 go:embed 为唯一真源；同一 STORY
+      会话幂等开局（一根分支、四名参与者，NPC 不建角色实例）。ActorView 以白名单投影返回公开设定、NPC 公开
+      人设、本人初始认知与可见事件，结构中无 GM 字段，他人私密按 known_by 排除；worldVersion 不符冲突。
+      公开世界书样例「蓝窗书店」与雨夜整案分离。ST「剧情」页只以 player 读取视图，admin-bridge 只放行开局与
+      player 视图。
+      用例：S01 世界与视图子项 PASS（Go/HTTP 对整个响应体做私密与 GM 标记字符串检查；受管浏览器
+      `story-view-browser` 校验 DOM/localStorage 不含标记、桌面与 390px 布局）；S01 三协议最终请求 NOT_RUN
+      （W13）；行动、分支、回档、结局与陪伴入局属 W14。
+      验证：`bash scripts/check.sh` 10/10 PASS（26s）；RLS 全量 PASS（含 200）；Go 单测与剧情/W08 相关真库
+      integration PASS；ST 离线测试 364/364 PASS；`story-view-browser` PASS；`git diff --check` PASS。
+      遗留到 W14：participant.relationship_id 当前 ON DELETE CASCADE（SET NULL 会触发 V103 删号屏障），映射陪伴
+      实例时需重定删除语义。执行：Claude 调度，Grok Build（grok-4.7-build-fast / xhigh）实现，调度者逐项审查复跑。
 - [ ] `V2-W13` 三协议最终请求控制。用例：S01、MODEL07（剧情子项）。
 - [ ] `V2-W14` 行动、分支、结局与陪伴角色入局。用例：S02–S05。
 - [ ] `V2-W15` 完整界面、手机与性能；删除旧 Vue / uni-app 前端。用例：UI01–UI03。

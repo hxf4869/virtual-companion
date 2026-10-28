@@ -251,6 +251,16 @@ func comparePlaintext(table, path string, got, want any) error {
 			if !ok {
 				return fmt.Errorf("%s: missing %s", path, key)
 			}
+			// V153 blanks the body of rows that were already soft-deleted.
+			// Live rows must still match the pre-migration plaintext.
+			if table == "memory" && key == "summary" {
+				if deletedAt, exists := gotMap["deleted_at"]; exists && deletedAt != nil {
+					if gotChild != "" {
+						return fmt.Errorf("%s.summary: forgotten memory summary = %#v, want empty", path, gotChild)
+					}
+					continue
+				}
+			}
 			childTable := table
 			childPath := path + "." + key
 			if table == "" {

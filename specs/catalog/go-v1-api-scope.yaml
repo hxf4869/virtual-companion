@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 78
+  KEEP: 83
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -561,7 +561,7 @@ operations:
   path: /api/v1/relationships/{relationshipId}/reminders
   currentH5Callers: []
   decision: DEFER
-  replacementOrImpact: Reminder and proactive follow-up are DEFER with no current frontend entry.
+  replacementOrImpact: V39 structured reminder CRUD stays DEFER for W11. W09 follow-ups are a separate read/cancel surface and do not use vc.reminder.
 - operationId: listReminders
   method: GET
   path: /api/v1/relationships/{relationshipId}/reminders
@@ -580,6 +580,57 @@ operations:
   currentH5Callers: []
   decision: DEFER
   replacementOrImpact: Reminder deletion is DEFER with no current frontend entry.
+- operationId: getProactivePolicy
+  method: GET
+  path: /api/v1/relationships/{relationshipId}/proactive-policy
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    W09 per-character proactive policy. Missing row is default off, offline
+    capability undeclared. Enabling without that capability means waiting-host,
+    not a generated reply. BACKGROUND_GREETINGS resolves only its own pinned
+    binding and revision and does not fall back to the legacy global route order.
+- operationId: putProactivePolicy
+  method: PUT
+  path: /api/v1/relationships/{relationshipId}/proactive-policy
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    W09 policy write for one character instance. Default remains off. Importing
+    a character does not enable it. No model call and no inbox write.
+- operationId: listFollowUps
+  method: GET
+  path: /api/v1/relationships/{relationshipId}/follow-ups
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    W09 read of follow-ups Go created from a published memory whose source was
+    verified again and from the saved MemoryTime. There is no create API.
+    V39 reminders stay DEFER. Inbox delivery is W10. Model tools are W11.
+- operationId: getFollowUp
+  method: GET
+  path: /api/v1/follow-ups/{followUpId}
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: Read one owned follow-up. A foreign or absent id is NOT_FOUND_OR_FORBIDDEN.
+- operationId: cancelFollowUp
+  method: POST
+  path: /api/v1/follow-ups/{followUpId}/cancel
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Cancel one owned follow-up. This does not write MemoryCore, create an inbox
+    event, or let model wording decide the cancellation.
 - operationId: createReport
   method: POST
   path: /api/v1/reports
@@ -984,7 +1035,12 @@ operations:
   keepBecause:
   - h5-caller
   - owner-instruction
-  replacementOrImpact: Keep the complete deterministic global provider/model priority chain.
+  replacementOrImpact: >-
+    Keep the complete deterministic global provider/model priority chain for legacy
+    Go chat. BACKGROUND_GREETINGS resolves only its own pinned binding and revision
+    and does not fall back to this order. An in-progress greeting run keeps the
+    snapshot taken when it started. Missing authorization, price or budget performs
+    no real call.
 - operationId: listModelPurposes
   method: GET
   path: /api/v1/admin/model-purposes

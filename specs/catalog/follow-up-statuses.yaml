@@ -1,0 +1,28 @@
+schemaVersion: 1
+catalogId: follow-up-statuses
+note: >-
+  W09 follow-up lifecycle. SCHEDULED is the only triggerable status and requires
+  an explicit trigger instant. A MemoryTime normalization of needs_clarification,
+  or a date-only time without a confirmed reminder rule, cannot be written as
+  that instant. Proactive greeting defaults off. Enabling it without a declared
+  offline capability yields WAITING_HOST and must not claim the host already
+  replied. Go creates and cancels rows only from a published memory whose source
+  was verified again and from the saved MemoryTime. V39 vc.reminder stays
+  unchanged for W11. MemoryCore proposals and model tools do not write this table.
+entries:
+- code: NEEDS_CLARIFICATION
+  order: 0
+- code: SCHEDULED
+  order: 1
+- code: ASKED
+  order: 2
+- code: CANCELLED
+  order: 3
+- code: SILENT
+  order: 4
+- code: DEFERRED
+  order: 5
+- code: WAITING_HOST
+  order: 6
+- code: BODY_READY
+  order: 7

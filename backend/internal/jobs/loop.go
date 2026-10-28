@@ -25,6 +25,7 @@ const (
 	KindExport          = "DATA_EXPORT"
 	KindMemoryExtract   = "MEMORY_EXTRACT"
 	KindSTMemoryExtract = "ST_MEMORY_EXTRACT"
+	KindFollowUp        = "FOLLOW_UP"
 )
 
 // Store is the durable jobs/generation surface used by the worker.
@@ -209,9 +210,14 @@ type Loop struct {
 	claimMu         sync.Mutex
 	generationSlots chan struct{}
 	extractSlots    chan struct{}
+	followSlots     chan struct{}
 	handlers        sync.WaitGroup
 	wake            chan struct{}
 	started         atomic.Bool
+
+	// followGenerate is the test seam for FOLLOW_UP. Production leaves it nil
+	// and handleFollowUp resolves the greeting itself.
+	followGenerate func(context.Context, postgres.JobClaim) error
 
 	claims            atomic.Uint64
 	recoveries        atomic.Uint64
@@ -251,6 +257,7 @@ func NewLoop(log *slog.Logger, policy Policy, budget companion.TurnBudget) *Loop
 		cancels:         NewCancels(),
 		generationSlots: make(chan struct{}, policy.MaxConcurrentTurns),
 		extractSlots:    make(chan struct{}, policy.MaxConcurrentExtracts),
+		followSlots:     make(chan struct{}, 1),
 		wake:            make(chan struct{}, 1),
 		done:            make(chan struct{}),
 	}
@@ -462,6 +469,12 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 				// Shutdown raced the slot handoff; the abandoned claim is
 				// left to lease-expiry recovery.
 			}
+		case KindFollowUp:
+			// The greeting call runs outside claimMu. The slot is taken in
+			// the handler so a batch of FOLLOW_UP claims cannot deadlock
+			// the claim lock.
+			l.handlers.Add(1)
+			go l.dispatchFollowUp(ctx, c)
 		default:
 			l.dispatch(ctx, c)
 		}
@@ -605,6 +618,8 @@ func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {
 		err = l.handleEngineExtract(ctx, c)
 	case KindMemoryExtract:
 		err = l.closeExtract(ctx, c, "CANCELLED", "LEGACY_EXTRACT_RETIRED")
+	case KindFollowUp:
+		err = l.handleFollowUp(ctx, c)
 	default:
 		log.Info("job skipped",
 			slog.String("operation", "job_dispatch"),

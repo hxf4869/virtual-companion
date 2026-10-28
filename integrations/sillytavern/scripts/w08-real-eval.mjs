@@ -10,7 +10,12 @@ import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/
 import { REPO_ROOT, MANAGED_MEMORYCORE_DATA } from './lib/paths.mjs';
 import { startMeter } from './lib/real-model-meter.mjs';
 
-export const CALL_CAP = 80;
+export const CALL_CAP = 300;
+export function callCap(env = process.env) {
+    const raw = Number(env.VC_W08_EVAL_CALL_CAP);
+    if (!Number.isInteger(raw) || raw < 1) return CALL_CAP;
+    return raw;
+}
 export const RESULT_RELATIVE = 'integrations/sillytavern/.local/w08-real-eval/result.json';
 const MODEL_ID = 'cline-pass/deepseek-v4.1-flash-1017';
 const FINISH_OK = new Set(['stop', 'length', 'content_filter']);
@@ -60,9 +65,14 @@ export function cleanupSettled(state) {
     return state === 'DONE';
 }
 
-export function canAddSample(callsUsed, { cap = CALL_CAP, floor = 6, peak = 0 } = {}) {
+export function canAddSample(callsUsed, { cap = callCap(), floor = 6, peak = 0 } = {}) {
     const need = Math.max(floor, peak);
     return Number.isFinite(callsUsed) && callsUsed + need <= cap;
+}
+
+export function recallHit(tokens, includes) {
+    const expected = [...new Set((tokens || []).filter((token) => typeof token === 'string' && token !== ''))];
+    return expected.length > 0 && expected.every((token) => includes(token));
 }
 
 export function classifyMiss({ hit, extracted, dateGated, recallEligible, inRecall }) {
@@ -96,6 +106,14 @@ export function latencyStats(values) {
     const nums = values.filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
     if (!nums.length) return { p50Ms: null, maxMs: null, n: 0 };
     return { p50Ms: nums[Math.ceil(nums.length * 0.5) - 1], maxMs: nums.at(-1), n: nums.length };
+}
+
+// A late profile response must not discard the remaining recall matrix.
+// A new extraction attempt would write the question back into memory, so that still stops the run.
+export function queryPhaseStop({ callsNow, cap, stages = [] } = {}) {
+    if (Number.isFinite(callsNow) && Number.isFinite(cap) && callsNow >= cap) return 'call-budget';
+    if (stages.some((stage) => stage === 'l1-extraction' || stage === 'l1-conflict-detection')) return 'query-called-model';
+    return null;
 }
 
 export function zipCost(attempts, calls) {
@@ -182,10 +200,16 @@ export function publicQuery(row) {
     };
 }
 
-function runCap() {
-    const raw = Number(process.env.VC_W08_EVAL_REMAINING || CALL_CAP);
-    if (!Number.isInteger(raw) || raw < 1) return CALL_CAP;
-    return Math.min(raw, CALL_CAP);
+export function runCap(env = process.env) {
+    const cap = callCap(env);
+    const raw = Number(env.VC_W08_EVAL_REMAINING || cap);
+    if (!Number.isInteger(raw) || raw < 1) return cap;
+    return Math.min(raw, cap);
+}
+
+function sampleRecallTokens(sample) {
+    const tokens = QUERIES.filter((query) => query.kind === 'positive' && Array.isArray(query.tokens) && (query.needs || []).includes(sample.id)).flatMap((query) => query.tokens);
+    return [...new Set(tokens)];
 }
 
 function withoutBannedKeys(value) {
@@ -202,26 +226,26 @@ function withoutBannedKeys(value) {
     return walk(value);
 }
 
+function sealValue(node, bannedSubstrings, seen) {
+    if (typeof node === 'string') {
+        if ([...node].length > 180) return undefined;
+        for (const secret of bannedSubstrings) if (secret && node.includes(secret)) return undefined;
+        return node;
+    }
+    if (node === null || typeof node !== 'object') return node;
+    if (seen.has(node)) return node;
+    seen.add(node);
+    if (Array.isArray(node)) return node.map((item) => sealValue(item, bannedSubstrings, seen)).filter((item) => item !== undefined);
+    const out = {};
+    for (const [key, child] of Object.entries(node)) {
+        const next = sealValue(child, bannedSubstrings, seen);
+        if (next !== undefined) out[key] = next;
+    }
+    return out;
+}
+
 export function sealReport(value, bannedSubstrings = []) {
-    const seen = new WeakSet();
-    const walk = (node, key) => {
-        if (key && BANNED_KEYS.has(key)) throw new Error(`结果含禁止字段 ${key}`);
-        if (typeof node === 'string') {
-            if ([...node].length > 180) throw new Error('结果含过长字符串');
-            for (const secret of bannedSubstrings) if (secret && node.includes(secret)) throw new Error('结果含敏感片段');
-            return;
-        }
-        if (!node || typeof node !== 'object') return;
-        if (seen.has(node)) return;
-        seen.add(node);
-        if (Array.isArray(node)) {
-            node.forEach((item) => walk(item, key));
-            return;
-        }
-        for (const [childKey, child] of Object.entries(node)) walk(child, childKey);
-    };
-    walk(value, '');
-    return value;
+    return sealValue(withoutBannedKeys(value), bannedSubstrings, new WeakSet());
 }
 
 const expectStatus = (response, status, label) => {
@@ -301,6 +325,7 @@ function publicCall(call, stage) {
 
 export async function sceneMemoryRealEval(ctx) {
     const { base, credential } = await configuredModel();
+    const effectiveCap = callCap();
     const meterCap = runCap();
     const meter = await startMeter(base, { maxCalls: meterCap });
     ctx.w08.meter = meter;
@@ -416,7 +441,8 @@ export async function sceneMemoryRealEval(ctx) {
                 const deadline = Date.now() + 30000;
                 while (Date.now() < deadline) {
                     const probed = await recall(ctx, token, sample.at, sample.zone);
-                    if (active.some((row) => probed.memoryIds.includes(row.memoryId))) {
+                    const tokens = sampleRecallTokens(sample);
+                    if (active.some((row) => probed.memoryIds.includes(row.memoryId)) || recallHit(tokens, (tokenText) => probed.has(tokenText))) {
                         recallableMs = Date.now() - persistedAt;
                         break;
                     }
@@ -452,15 +478,23 @@ export async function sceneMemoryRealEval(ctx) {
         const enabled = purposesNow.find((item) => item.purpose === 'MEMORY_EXTRACTION_DEDUP_SUMMARY');
         if (enabled) expectStatus(await ctx.admin.savePurpose(enabled.purpose, { providerId: 'vc08-real', profileKey: 'memory', state: 'DISABLED', expectedRevision: enabled.revision }), 200, 'purpose-off');
         const callsAtQueries = meter.snapshot().length;
+        const attemptsAtQueries = ctx.w08.realAttempts().length;
         let queryProviderCalls = 0;
         for (const query of QUERIES) {
             if (query.needs.some((id) => !written.some((sample) => sample.id === id && sample.ready))) {
                 skipped.push({ id: query.id, reason: 'source-not-ready' });
                 continue;
             }
-            if (meter.snapshot().length > callsAtQueries) {
+            const stopReason = queryPhaseStop({
+                callsNow: meter.snapshot().length,
+                cap: meterCap,
+                stages: ctx.w08.realAttempts().slice(attemptsAtQueries).map((row) => row.stage || ''),
+            });
+            if (stopReason) {
                 budgetStop = true;
-                skipped.push({ id: query.id, reason: 'query-called-model' });
+                for (const pending of QUERIES.slice(QUERIES.indexOf(query))) {
+                    if (!queries.some((done) => done.queryId === pending.id) && !skipped.some((item) => item.id === pending.id)) skipped.push({ id: pending.id, reason: stopReason });
+                }
                 break;
             }
             const group = query.group;
@@ -488,15 +522,15 @@ export async function sceneMemoryRealEval(ctx) {
             const saved = expectStatus(await st.call('POST', '/api/chats/get', { avatar_url: card.avatar, file_name: file }), 200, query.id);
             const probed = await recall(ctx, saved[0].chat_metadata.vc_f2, query.at, query.zone);
             queryProviderCalls = meter.snapshot().length - callsAtQueries;
-            if (queryProviderCalls > 0) budgetStop = true;
             const sources = written.filter((sample) => query.needs.includes(sample.id));
             const expected = sources.flatMap((sample) => sample.memoryIds);
             const source = sources[0];
             const memory = source ? (await listMemories(ctx, source.relationshipId)).find((row) => expected.includes(row.memoryId)) : null;
             const eventDate = memory?.time?.eventDate ?? source?.eventDate ?? null;
-            const inRecall = expected.some((id) => probed.memoryIds.includes(id));
+            const contentHit = recallHit(query.tokens, (tokenText) => probed.has(tokenText));
+            const inRecall = contentHit;
             const dateGated = Boolean(query.queryDate) && (!eventDate || eventDate !== query.queryDate);
-            const hit = query.kind === 'positive' && inRecall;
+            const hit = query.kind === 'positive' && contentHit;
             const tokenSeen = (query.tokens || []).some((token) => probed.has(token));
             const leaked = (query.absentTokens || query.forbid || []).some((token) => probed.has(token));
             const empty = probed.count === 0 && !leaked;
@@ -515,7 +549,6 @@ export async function sceneMemoryRealEval(ctx) {
                     hit, extracted: expected.length > 0, dateGated, recallEligible: memory?.recallEligible === true, inRecall,
                 }) : null,
             }));
-            if (queryProviderCalls > 0) break;
         }
         const direct = queries.find((query) => query.queryId === 'M02-direct');
         const forgottenIds = written.find((sample) => sample.id === 'M05')?.memoryIds || [];
@@ -526,13 +559,13 @@ export async function sceneMemoryRealEval(ctx) {
             forget.outboundAbsent = afterForget ? absent : null;
             forget.recallAbsent = forget.outboundAbsent;
         }
-        const correction = {
+        const correction = direct ? {
             caseId: 'M02',
             outboundSurface: 'st-memory-recall-block',
-            currentFactOnly: Boolean(direct?.tokenSeen) && !direct?.leaked,
-            currentFactRecalled: Boolean(direct?.tokenSeen),
-            oldFactInOutbound: Boolean(direct?.leaked),
-        };
+            currentFactOnly: Boolean(direct.tokenSeen) && !direct.leaked,
+            currentFactRecalled: Boolean(direct.tokenSeen),
+            oldFactInOutbound: Boolean(direct.leaked),
+        } : { caseId: 'M02', skipped: true, outboundSurface: 'st-memory-recall-block' };
         const zipped = zipCost(ctx.w08.realAttempts(), meter.snapshot());
         const cost = summarizeCost(zipped.rows, userMessages);
         const dates = ['M01', 'M11', 'M12'].map((caseId) => {
@@ -552,9 +585,9 @@ export async function sceneMemoryRealEval(ctx) {
         const reportBody = {
             model: MODEL_ID,
             reasoningEffort: 'max',
-            callCap: CALL_CAP,
+            callCap: effectiveCap,
             runCap: meterCap,
-            priorProviderCalls: CALL_CAP - meterCap,
+            priorProviderCalls: effectiveCap - meterCap,
             providerCalls: calls.length,
             budgetStop,
             costAligned: zipped.aligned,
@@ -583,12 +616,18 @@ export async function sceneMemoryRealEval(ctx) {
             calls: calls.map((call, index) => publicCall(call, zipped.rows[index]?.stage)),
         };
         try {
-            Object.assign(report, sealReport(reportBody, [credential]));
+            const sealed = sealReport(reportBody, [credential]);
+            if (JSON.stringify(sealed) !== JSON.stringify(reportBody)) sealed.sealStripped = true;
+            Object.assign(report, sealed);
         } catch {
+            const partial = {
+                providerCalls: calls.length, completed: false, sealStripped: true, budgetStop,
+                callCap: effectiveCap, runCap: meterCap, queryProviderCalls, queries, callbackFailures,
+            };
             try {
-                Object.assign(report, sealReport(withoutBannedKeys(reportBody), [credential]), { sealStripped: true });
+                Object.assign(report, sealReport(partial, [credential]));
             } catch {
-                Object.assign(report, { providerCalls: calls.length, completed: false, sealStripped: true, callbackFailures });
+                Object.assign(report, { providerCalls: calls.length, completed: false, sealStripped: true, budgetStop, queryProviderCalls, callbackFailures: callbackFailures.length });
             }
         }
     } finally {

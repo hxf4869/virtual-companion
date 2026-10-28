@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"io"
+	"log/slog"
 	"net/http"
 )
 
@@ -33,7 +34,13 @@ func (s *Server) handleMemoryCoreLLM(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.core.MemoryCore.Call(r.Context(), body)
 	if err != nil {
-		s.writeAPIError(w, 409, "INVALID_REQUEST", "memory callback refused or failed")
+		code := memorycore.DecisionCode(err)
+		s.log.Info("memorycore callback",
+			slog.String("operation", "memorycore_callback"),
+			slog.String("outcome", "error"),
+			slog.String("decision_code", code),
+		)
+		s.writeAPIError(w, 409, code, "memory callback refused")
 		return
 	}
 	s.writeJSON(w, 200, out)

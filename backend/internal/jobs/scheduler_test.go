@@ -168,6 +168,41 @@ func runSchedulerOnce(t *testing.T, store *schedulerTestStore, blob BlobStore) {
 	}
 }
 
+type followUpDueFake struct {
+	*schedulerTestStore
+	calls int
+}
+
+func (f *followUpDueFake) ListFollowUpSyncTargets(context.Context) ([]postgres.FollowUpSyncTarget, error) {
+	f.calls++
+	return nil, nil
+}
+
+func (f *followUpDueFake) SyncFollowUps(context.Context, int64, int64) error { return nil }
+
+func (f *followUpDueFake) ListDueFollowUps(context.Context, time.Time) ([]postgres.FollowUpDueFacts, error) {
+	return nil, nil
+}
+
+func (f *followUpDueFake) ApplyFollowUpDue(context.Context, int64, int64, postgres.FollowUpDueDecision) (bool, error) {
+	return false, nil
+}
+
+func TestSchedulerRunsFollowUpDueOnce(t *testing.T) {
+	store := &followUpDueFake{schedulerTestStore: newSchedulerTestStore()}
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, nil, nil, nil)
+	if err := NewScheduler(loop).RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewScheduler(loop).RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if store.calls != 2 {
+		t.Fatalf("follow-up passes = %d", store.calls)
+	}
+}
+
 func TestSchedulerKeepsPointerWithoutBlobStore(t *testing.T) {
 	store := newSchedulerTestStore()
 	runSchedulerOnce(t, store, nil)

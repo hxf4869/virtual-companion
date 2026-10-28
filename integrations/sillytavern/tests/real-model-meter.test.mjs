@@ -37,8 +37,9 @@ test('meter keeps the upstream path and records only shape, tokens and cost', as
         assert.deepEqual(seen.map((call) => call.url), ['/custom/v1/chat/completions', '/custom/v1/fail']);
         const snapshot = meter.snapshot();
         assert.equal(snapshot.length, 2);
-        assert.deepEqual(snapshot[0], { status: 200, roles: ['user'], kind: 'embedded-json', chars: `前缀 {"text":"ok"} ${secret}`.length, keys: ['text'], leadingChars: 3, finish: 'stop', reasoningChars: 6, promptTokens: 11, completionTokens: 7, totalTokens: 18, cost: 0.125, wire: { contentType: 'application/json', envelope: true, outerObject: null, object: null, choices: 1, index: null, content: 'string', usageBalanced: true }, structure: { fieldNames: ['choices', 'usage'], outerFieldNames: ['data', 'success'], messageFields: ['content', 'reasoning_content', 'role'], choiceFields: ['finish_reason', 'message'], finishReason: 'stop', contentEmpty: false, reasoningEmpty: false, toolCalls: false, contentChars: `前缀 {"text":"ok"} ${secret}`.length, reasoningChars: 6, toolCallCount: 0, usageShapes: { prompt: 'int', completion: 'int', total: 'int' } } });
+        assert.deepEqual(snapshot[0], { status: 200, success: true, roles: ['user'], kind: 'embedded-json', chars: `前缀 {"text":"ok"} ${secret}`.length, keys: ['text'], leadingChars: 3, finish: 'stop', reasoningChars: 6, promptTokens: 11, completionTokens: 7, totalTokens: 18, cost: 0.125, wire: { contentType: 'application/json', envelope: true, outerObject: null, object: null, choices: 1, index: null, content: 'string', usageBalanced: true }, structure: { fieldNames: ['choices', 'usage'], outerFieldNames: ['data', 'success'], messageFields: ['content', 'reasoning_content', 'role'], choiceFields: ['finish_reason', 'message'], finishReason: 'stop', contentEmpty: false, reasoningEmpty: false, toolCalls: false, contentChars: `前缀 {"text":"ok"} ${secret}`.length, reasoningChars: 6, toolCallCount: 0, usageShapes: { prompt: 'int', completion: 'int', total: 'int' } } });
         assert.equal(snapshot[1].status, 500);
+        assert.equal(snapshot[1].success, false);
         assert.equal(snapshot[1].kind, 'unparsed');
         assert.equal(JSON.stringify(snapshot).includes(secret), false);
         assert.equal(JSON.stringify(snapshot).includes('synthetic-token'), false);
@@ -53,6 +54,25 @@ test('meter keeps the upstream path and records only shape, tokens and cost', as
         } finally {
             await capped.stop();
         }
+    } finally {
+        await meter.stop();
+        await new Promise((resolve) => upstream.close(resolve));
+    }
+});
+
+test('meter records an envelope success false without the response text', async () => {
+    const secret = 'synthetic-envelope-body';
+    const upstream = await listen(async (_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ success: false, data: { choices: [{ message: { content: secret } }] } }));
+    });
+    const address = upstream.address();
+    const meter = await startMeter(`http://127.0.0.1:${address.port}/v1`);
+    try {
+        const response = await fetch(`${meter.baseUrl}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+        assert.equal(response.status, 200);
+        assert.equal(meter.snapshot()[0].success, false);
+        assert.equal(JSON.stringify(meter.snapshot()).includes(secret), false);
     } finally {
         await meter.stop();
         await new Promise((resolve) => upstream.close(resolve));

@@ -97,6 +97,16 @@
       "ACCOUNT_DELETION_PENDING",
       "MEMORY_VERSION_CONFLICT"
     ],
+    "FollowUpStatus": [
+      "NEEDS_CLARIFICATION",
+      "SCHEDULED",
+      "ASKED",
+      "CANCELLED",
+      "SILENT",
+      "DEFERRED",
+      "WAITING_HOST",
+      "BODY_READY"
+    ],
     "GenerationState": [
       "CREATED",
       "INPUT_REVIEW",
@@ -183,7 +193,8 @@
       "MEMORY_EXTRACT",
       "EMBEDDING",
       "CONVERSATION_SUMMARY",
-      "PRODUCT_EVAL"
+      "PRODUCT_EVAL",
+      "BACKGROUND_GREETING"
     ],
     "ProviderAttemptStatus": [
       "CREATED",
@@ -473,6 +484,11 @@
             "typeName": "MemoryEventStatus"
           },
           {
+            "file": "follow-up-statuses.yaml",
+            "kind": "enum",
+            "typeName": "FollowUpStatus"
+          },
+          {
             "file": "persona-templates.yaml",
             "kind": "enum",
             "typeName": "PersonaTemplate"
@@ -524,7 +540,7 @@
         "generatorVersion": "1.0.0",
         "schemaVersion": 1
       },
-      "sha256": "2f8cdec12f5463b1d7ad53a96d817fcb718e44b30796bc8443e639da6a608e71"
+      "sha256": "0a502838cc3d4254b38ae9cb9662274d75550d4dfe7d00f26db5f157e9f24ed5"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -853,6 +869,48 @@
       },
       "sha256": "afe46d29dfe2ff2e9dc46beb3bca5764dd5d2bb9c279c414b6c7f5467e255c9f"
     },
+    "follow-up-statuses.yaml": {
+      "document": {
+        "catalogId": "follow-up-statuses",
+        "entries": [
+          {
+            "code": "NEEDS_CLARIFICATION",
+            "order": 0
+          },
+          {
+            "code": "SCHEDULED",
+            "order": 1
+          },
+          {
+            "code": "ASKED",
+            "order": 2
+          },
+          {
+            "code": "CANCELLED",
+            "order": 3
+          },
+          {
+            "code": "SILENT",
+            "order": 4
+          },
+          {
+            "code": "DEFERRED",
+            "order": 5
+          },
+          {
+            "code": "WAITING_HOST",
+            "order": 6
+          },
+          {
+            "code": "BODY_READY",
+            "order": 7
+          }
+        ],
+        "note": "W09 follow-up lifecycle. SCHEDULED is the only triggerable status and requires an explicit trigger instant. A MemoryTime normalization of needs_clarification, or a date-only time without a confirmed reminder rule, cannot be written as that instant. Proactive greeting defaults off. Enabling it without a declared offline capability yields WAITING_HOST and must not claim the host already replied. Go creates and cancels rows only from a published memory whose source was verified again and from the saved MemoryTime. V39 vc.reminder stays unchanged for W11. MemoryCore proposals and model tools do not write this table.",
+        "schemaVersion": 1
+      },
+      "sha256": "da5ee4b629603839cb2903165c72736795b30c895428a5742b96f4d353524f6e"
+    },
     "generation-states.yaml": {
       "document": {
         "catalogId": "generation-states",
@@ -1006,7 +1064,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 78,
+          "KEEP": 83,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1697,7 +1755,7 @@
             "method": "POST",
             "operationId": "createReminder",
             "path": "/api/v1/relationships/{relationshipId}/reminders",
-            "replacementOrImpact": "Reminder and proactive follow-up are DEFER with no current frontend entry."
+            "replacementOrImpact": "V39 structured reminder CRUD stays DEFER for W11. W09 follow-ups are a separate read/cancel surface and do not use vc.reminder."
           },
           {
             "currentH5Callers": [],
@@ -1722,6 +1780,61 @@
             "operationId": "deleteReminder",
             "path": "/api/v1/reminders/{reminderId}",
             "replacementOrImpact": "Reminder deletion is DEFER with no current frontend entry."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "getProactivePolicy",
+            "path": "/api/v1/relationships/{relationshipId}/proactive-policy",
+            "replacementOrImpact": "W09 per-character proactive policy. Missing row is default off, offline capability undeclared. Enabling without that capability means waiting-host, not a generated reply. BACKGROUND_GREETINGS resolves only its own pinned binding and revision and does not fall back to the legacy global route order."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "putProactivePolicy",
+            "path": "/api/v1/relationships/{relationshipId}/proactive-policy",
+            "replacementOrImpact": "W09 policy write for one character instance. Default remains off. Importing a character does not enable it. No model call and no inbox write."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listFollowUps",
+            "path": "/api/v1/relationships/{relationshipId}/follow-ups",
+            "replacementOrImpact": "W09 read of follow-ups Go created from a published memory whose source was verified again and from the saved MemoryTime. There is no create API. V39 reminders stay DEFER. Inbox delivery is W10. Model tools are W11."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "getFollowUp",
+            "path": "/api/v1/follow-ups/{followUpId}",
+            "replacementOrImpact": "Read one owned follow-up. A foreign or absent id is NOT_FOUND_OR_FORBIDDEN."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "cancelFollowUp",
+            "path": "/api/v1/follow-ups/{followUpId}/cancel",
+            "replacementOrImpact": "Cancel one owned follow-up. This does not write MemoryCore, create an inbox event, or let model wording decide the cancellation."
           },
           {
             "currentH5Callers": [],
@@ -2252,7 +2365,7 @@
             "method": "PUT",
             "operationId": "reorderModelRoutes",
             "path": "/api/v1/admin/model-routing-order",
-            "replacementOrImpact": "Keep the complete deterministic global provider/model priority chain."
+            "replacementOrImpact": "Keep the complete deterministic global provider/model priority chain for legacy Go chat. BACKGROUND_GREETINGS resolves only its own pinned binding and revision and does not fall back to this order. An in-progress greeting run keeps the snapshot taken when it started. Missing authorization, price or budget performs no real call."
           },
           {
             "currentH5Callers": [],
@@ -2504,7 +2617,7 @@
           }
         ]
       },
-      "sha256": "1841e8f416bbc8b58e31ed9791ed7df393d44f4f3b2893747647fc72f7e2537e"
+      "sha256": "12cad33f17102bf315f0446309082eef9d9e2234544a634ec56603e76c372563"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2895,9 +3008,21 @@
             "order": 1
           },
           {
+            "acceptedSamplingCapabilityStatuses": [
+              "DECLARED",
+              "VERIFIED"
+            ],
             "code": "BACKGROUND_GREETINGS",
             "executor": "GO_BACKGROUND",
-            "order": 2
+            "globalRouteFallback": false,
+            "nonNullSamplingCapabilities": [
+              "temperature",
+              "topP"
+            ],
+            "order": 2,
+            "resolution": "PINNED_BINDING_AND_REVISION_ONLY",
+            "runSnapshot": "IMMUTABLE_AT_START",
+            "unauthorizedBudget": "NO_REAL_CALL"
           },
           {
             "code": "STORY_DIRECTOR",
@@ -2934,7 +3059,7 @@
         "note": "V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose pins one model profile independently; changing one binding never touches another. EMBEDDING uses the dedicated Go embedding configuration (W08), never a chat profile. Its snapshot pins the Ollama artifact digest, dimensions, preprocessing and normalization; any vector-space-defining change allocates a new spaceId. Rebuilding uses lexical recall only.",
         "schemaVersion": 1
       },
-      "sha256": "af8705c9ed7c48683988421dbb7223bcd56f3883d518183ab7e566fccc1a479e"
+      "sha256": "569727828461f4ea85b2ef6fd113b85ecb1ec0854cce4bcddac0acf4e71f1ea7"
     },
     "persona-templates.yaml": {
       "document": {
@@ -2980,11 +3105,17 @@
           {
             "code": "PRODUCT_EVAL",
             "order": 5
+          },
+          {
+            "code": "BACKGROUND_GREETING",
+            "modelPurpose": "BACKGROUND_GREETINGS",
+            "note": "Go background greeting and follow-up wording. Execution resolves only the BACKGROUND_GREETINGS pinned binding and revision, never the legacy global route order. An in-progress run keeps the snapshot taken when it started. Missing authorization, price or budget performs no real call. Inbox and notification delivery belong to W10.",
+            "order": 6
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "463a700d1b4f4f93b2fcf6e81b0331050d6ceaccdfcff867f31c90f09035606f"
+      "sha256": "60ce528817dd3d37157fff26f85bc42cc49a103a063d0ec8fa0d93fa0aa03b59"
     },
     "product-scope.yaml": {
       "document": {

@@ -50,6 +50,9 @@ catalogs:
 - file: memory-event-statuses.yaml
   kind: enum
   typeName: MemoryEventStatus
+- file: follow-up-statuses.yaml
+  kind: enum
+  typeName: FollowUpStatus
 - file: persona-templates.yaml
   kind: enum
   typeName: PersonaTemplate

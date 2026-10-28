@@ -102,6 +102,14 @@ function parseModelAction(text) {
     }
     return { text };
 }
+async function callbackFailureCode(response) {
+    try {
+        const payload = await response.json();
+        const code = payload && payload.code;
+        if (typeof code === 'string' && code.length <= 64 && /^MEMORYCORE_[A-Z0-9_]+$/.test(code)) return code;
+    } catch { /* generic closed code */ }
+    return 'MEMORYCORE_CALLBACK_FAILED';
+}
 export function createCallbackRunner({ baseURL, token, operationToken, stage, stagingDir, fetchImpl = fetch, counter = { value: 0 }, maxSteps = 12 }) {
     const url = new URL(baseURL);
     if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password ||
@@ -115,16 +123,23 @@ export function createCallbackRunner({ baseURL, token, operationToken, stage, st
         for (let step = 0; step < (tools ? maxSteps : 1); step++) {
             const remaining = deadline - Date.now();
             if (remaining <= 0) throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
-            let result;
+            let response;
             try {
-                const response = await fetchImpl(url.origin + '/api/v1/service/memorycore/llm', {
+                response = await fetchImpl(url.origin + '/api/v1/service/memorycore/llm', {
                     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
                     body: JSON.stringify({ operationToken, stage, callSequence: ++counter.value, messages }), signal: AbortSignal.timeout(remaining),
                 });
-                if (!response.ok) throw new Error();
+            } catch (error) {
+                const name = error && error.name;
+                if (name === 'AbortError' || name === 'TimeoutError') throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
+                throw new Error('MEMORYCORE_CALLBACK_FAILED');
+            }
+            if (!response.ok) throw new Error(await callbackFailureCode(response));
+            let result;
+            try {
                 result = await response.json();
-                if (typeof result.text !== 'string' || result.text.length > 200000) throw new Error();
             } catch { throw new Error('MEMORYCORE_CALLBACK_FAILED'); }
+            if (typeof result.text !== 'string' || result.text.length > 200000) throw new Error('MEMORYCORE_CALLBACK_FAILED');
             if (!tools) return result.text;
             const action = parseModelAction(result.text);
             if (!action.tool && typeof action.text === 'string') return action.text;

@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import { SCENES, resolveSceneFilter } from '../scripts/managed-lib.mjs';
 import { REPO_ROOT } from '../scripts/lib/paths.mjs';
 import {
-    CALL_CAP, RESULT_RELATIVE, SOURCE_SAMPLES, OPTIONAL_SAMPLES,
-    canAddSample, cleanupSettled, classifyMiss, judgeAcross, latencyStats, zipCost, summarizeCost,
-    decodeRefusalHint, publicQuery, sealReport,
+    RESULT_RELATIVE, SOURCE_SAMPLES, OPTIONAL_SAMPLES,
+    callCap, canAddSample, cleanupSettled, classifyMiss, judgeAcross, latencyStats, queryPhaseStop, zipCost, summarizeCost,
+    decodeRefusalHint, publicQuery, recallHit, runCap, sealReport,
 } from '../scripts/w08-real-eval.mjs';
 
 const healthy = {
@@ -21,13 +21,28 @@ test('遗忘清理只在 DONE 时算完成，PARTIAL 仍要等画像重建', () 
 });
 
 test('预算按已观测峰值保留，默认至少留 6 次才开始下一条', () => {
-    assert.equal(CALL_CAP, 80);
-    assert.equal(canAddSample(0), true);
-    assert.equal(canAddSample(74), true);
-    assert.equal(canAddSample(75), false);
-    assert.equal(canAddSample(70, { peak: 10 }), true);
-    assert.equal(canAddSample(71, { peak: 10 }), false);
-    assert.equal(canAddSample(Number.NaN), false);
+    assert.equal(callCap({}), 300);
+    assert.equal(callCap({ VC_W08_EVAL_CALL_CAP: '120' }), 120);
+    assert.equal(callCap({ VC_W08_EVAL_CALL_CAP: '0' }), 300);
+    assert.equal(callCap({ VC_W08_EVAL_CALL_CAP: 'nope' }), 300);
+    assert.equal(runCap({ VC_W08_EVAL_CALL_CAP: '300', VC_W08_EVAL_REMAINING: '34' }), 34);
+    assert.equal(runCap({ VC_W08_EVAL_REMAINING: '900' }), 300);
+    assert.equal(canAddSample(0, { cap: 80 }), true);
+    assert.equal(canAddSample(74, { cap: 80 }), true);
+    assert.equal(canAddSample(75, { cap: 80 }), false);
+    assert.equal(canAddSample(70, { cap: 80, peak: 10 }), true);
+    assert.equal(canAddSample(71, { cap: 80, peak: 10 }), false);
+    assert.equal(canAddSample(Number.NaN, { cap: 80 }), false);
+});
+
+test('召回命中看期望词是否都出现，并保留探针返回的记忆 id', () => {
+    const includes = (token) => ['厦门', '婚礼'].includes(token);
+    assert.equal(recallHit(['厦门', '婚礼'], includes), true);
+    assert.equal(recallHit(['厦门', '戒指'], includes), false);
+    assert.equal(recallHit([], includes), false);
+    const row = publicQuery({ id: 'M01-direct', caseId: 'M01', kind: 'positive', hit: true, memoryIds: ['11'], summaryIds: ['5'] });
+    assert.deepEqual(row.memoryIds, ['11']);
+    assert.equal(row.hit, true);
 });
 
 test('未命中分成四类', () => {
@@ -48,6 +63,14 @@ test('画像判定只给结论和一句理由', () => {
     assert.equal(judgeAcross({ caseId: 'M11', layer: 'L2', required: ['厦门', '2026-10-30'], texts: ['去厦门'] }).verdict, '部分');
     assert.equal(judgeAcross({ caseId: 'M05', layer: 'L2', required: ['帆船', '徽章'], texts: ['帆船'], mode: 'any' }).verdict, '贴切');
     assert.equal(judgeAcross({ caseId: 'M09', layer: 'L3', required: ['蓝窗'], texts: ['其他'], expect: 'may-omit' }).verdict, '部分');
+});
+
+test('提问阶段只在新的提取尝试或预算耗尽时停止', () => {
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: ['l2-scene'] }), null);
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: [] }), null);
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: ['l1-extraction'] }), 'query-called-model');
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: ['l1-conflict-detection'] }), 'query-called-model');
+    assert.equal(queryPhaseStop({ callsNow: 300, cap: 300, stages: [] }), 'call-budget');
 });
 
 test('延迟取最近秩 P50，并丢掉无法召回的空值', () => {
@@ -91,16 +114,21 @@ test('回调解码只指出结构拒绝点', () => {
     }), ['envelope-and-object', 'choice']);
 });
 
-test('公开查询去掉正文，封存结果拒绝密钥、长文和正文类字段', () => {
+test('公开查询去掉正文，封存先剥离字段名再丢掉过长或敏感字符串', () => {
     const query = publicQuery({ id: 'M02-direct', caseId: 'M02', kind: 'positive', text: '我现在住哪儿？', hit: true, empty: false, leaked: false, tokenSeen: true, count: 1, memoryIds: ['9'], summaryIds: [], missReason: null, datedFactsExcluded: null });
     assert.equal(Object.hasOwn(query, 'text'), false);
     assert.equal(JSON.stringify(query).includes('我现在住哪儿'), false);
     assert.equal(query.tokenSeen, true);
     const ok = { model: 'm', contentKind: 'string', note: '短结论' };
-    assert.equal(sealReport(ok, ['secret-value']), ok);
-    assert.throws(() => sealReport({ content: 'x' }), /禁止字段/);
-    assert.throws(() => sealReport({ note: 'a'.repeat(181) }), /过长/);
-    assert.throws(() => sealReport({ note: 'prefix secret-value suffix' }, ['secret-value']), /敏感/);
+    assert.deepEqual(sealReport(ok, ['secret-value']), ok);
+    assert.deepEqual(sealReport({ content: 'x', providerCalls: 2 }), { providerCalls: 2 });
+    assert.deepEqual(sealReport({ structure: { usageShapes: { prompt: 'int', completion: 'int', total: 'int' } } }), { structure: { usageShapes: { completion: 'int', total: 'int' } } });
+    const sealed = sealReport({ note: 'a'.repeat(181), leak: 'prefix secret-value suffix', cost: 1, providerCalls: 2, datedFactsExcluded: null }, ['secret-value']);
+    assert.equal(Object.hasOwn(sealed, 'note'), false);
+    assert.equal(Object.hasOwn(sealed, 'leak'), false);
+    assert.equal(sealed.cost, 1);
+    assert.equal(sealed.providerCalls, 2);
+    assert.equal(sealed.datedFactsExcluded, null);
 });
 
 test('memory-real-eval 只在显式过滤时运行，产物在忽略目录', () => {

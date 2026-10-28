@@ -18,6 +18,12 @@ entries:
 - code: BACKGROUND_GREETINGS
   order: 2
   executor: GO_BACKGROUND
+  nonNullSamplingCapabilities: [temperature, topP]
+  acceptedSamplingCapabilityStatuses: [DECLARED, VERIFIED]
+  resolution: PINNED_BINDING_AND_REVISION_ONLY
+  globalRouteFallback: false
+  runSnapshot: IMMUTABLE_AT_START
+  unauthorizedBudget: NO_REAL_CALL
 - code: STORY_DIRECTOR
   order: 3
   executor: GO_BACKGROUND

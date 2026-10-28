@@ -46,9 +46,23 @@ type ProfileInUseError struct{ Purposes []string }
 
 func (e *ProfileInUseError) Error() string { return "model profile in use" }
 
+// Purpose-unavailable reasons are stable, body-free classes. Status stays the
+// binding status callers already branch on; Reason says why it is not READY.
+const (
+	PurposeReasonPending    = "pending"
+	PurposeReasonDisabled   = "disabled"
+	PurposeReasonCredential = "credential"
+	PurposeReasonProvider   = "provider"
+	PurposeReasonModel      = "model"
+	PurposeReasonContext    = "context"
+)
+
 // PurposeUnavailableError is a service resolution against a binding that is
 // not READY; Status carries the derived binding status.
-type PurposeUnavailableError struct{ Status string }
+type PurposeUnavailableError struct {
+	Status string
+	Reason string
+}
 
 func (e *PurposeUnavailableError) Error() string { return "purpose not ready" }
 
