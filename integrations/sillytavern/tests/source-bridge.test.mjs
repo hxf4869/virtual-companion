@@ -182,7 +182,7 @@ test('成功快照返回 PRESENT 的消息内容、位置与版本并回显 owne
     assert.equal('notModified' in snapshot, false);
     const rows = snapshot.messages;
     assert.equal(rows.length, 2);
-    assert.deepEqual(Object.keys(rows[0]).sort(), ['candidateId', 'eligible', 'messageId', 'revision', 'role', 'settled', 'text']);
+    assert.deepEqual(Object.keys(rows[0]).sort(), ['candidateId', 'eligible', 'messageId', 'revision', 'role', 'settled', 'sourceTimestamp', 'sourceTimezone', 'text']);
     assert.deepEqual(rows.map((row) => row.role), ['user', 'assistant']);
     assert.deepEqual(rows.map((row) => row.text), ['用户合成消息', '助手合成消息']);
     assert.deepEqual(rows.map((row) => row.eligible), [true, true]);
@@ -202,7 +202,7 @@ test('同 revision 返回 notModified 且不带消息；落后 revision 返回�
 
     const hit = await call({ body: { ownerAccountId: '101', chats: [{ chatIdentity: base.id, revision: 1 }] }, headers: auth });
     assert.equal(hit.res.statusCode, 200);
-    assert.deepEqual(snapshotOf(hit), [{ chatIdentity: base.id, state: 'PRESENT', revision: 1, location: 'chats/card/main.jsonl', notModified: true }]);
+    assert.deepEqual(snapshotOf(hit), [{ chatIdentity: base.id, state: 'PRESENT', revision: 1, location: 'chats/card/main.jsonl', branchRoot: base.id, notModified: true }]);
 
     const second = await store.save(file, chatRows(['用户合成消息2', '助手合成消息2']), { expected: base });
     assert.equal(second.revision, 2);

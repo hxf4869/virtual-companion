@@ -181,6 +181,10 @@ export function resolveSTBinding(payload) {
     return request('POST', '/api/v1/st/bindings', payload);
 }
 
+export function recallSTMemory(payload) {
+    return request('POST', '/api/v1/st/memory/recall', payload);
+}
+
 export function reconcileSTSources(chatIdentities) {
     return request('POST', '/api/v1/st/sources/reconcile', { chatIdentities });
 }

@@ -30,6 +30,21 @@ async function identity(root, record) {
 }
 async function record(root, id) { return JSON.parse(await fs.readFile(path.join(root, '.vc-f2', `${id}.json`), 'utf8')); }
 
+test('W07 分支根在父CAS内确定，后续保存和孙分支不能借浏览器改根', async (t) => {
+    const { root, store, file } = await fixture(t);
+    const base = await store.save(file, chat('父聊天'), { expected: fresh() });
+    const childFile = path.join(root, 'chats/card/blue.jsonl');
+    const child = await store.save(childFile, chat('蓝门'), { expected: fresh(), parent: base });
+    assert.equal((await store.sourceSnapshot(child.id)).branchRoot, base.id);
+    const changed = await store.read(childFile);
+    changed[0].chat_metadata.vc_branch_root = randomUUID();
+    const updated = await store.save(childFile, changed, { expected: child });
+    assert.equal((await store.sourceSnapshot(child.id)).branchRoot, base.id);
+    const grandchild = await store.save(path.join(root, 'chats/card/blue-next.jsonl'), chat('蓝门下一幕'), { expected: fresh(), parent: updated });
+    assert.equal((await store.sourceSnapshot(grandchild.id)).branchRoot, base.id);
+    assert.equal((await store.sourceSnapshot(base.id)).branchRoot, base.id);
+});
+
 // 两个编辑者持同一已读基线，服务端只允许一个完整快照提交。
 test('共享实例、同基线并发一成一冲，force不能绕过，调用时冻结快照', async (t) => {
     const { root, store, file } = await fixture(t);

@@ -330,7 +330,7 @@ func (s *Store) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSee
 		if shareScope == "" {
 			shareScope = "RELATIONSHIP"
 		}
-		mems, err := s.SelectRecallMemories(ctx, key.OwnerID, view.relationshipID, view.conversationID, shareScope)
+		mems, err := s.SelectRecallMemories(ctx, key.OwnerID, view.relationshipID, view.conversationID, shareScope, seed.CurrentUserMessage)
 		if err != nil {
 			return turn.ContextSeed{}, err
 		}
@@ -338,7 +338,7 @@ func (s *Store) LoadSeed(ctx context.Context, key turn.TurnKey) (turn.ContextSee
 			seed.EligibleMemories = append(seed.EligibleMemories, turn.MemoryCandidate{
 				SourceID:  strconv.FormatInt(mem.ID, 10),
 				Summary:   mem.Summary,
-				Relevance: 50,
+				Relevance: mem.Relevance,
 				Confirmed: true,
 			})
 		}
@@ -461,51 +461,15 @@ func (s *Store) MessageModelEligible(ctx context.Context, owner, messageID int64
 	return eligible, nil
 }
 
-// SelectRecallMemories reads the effective recall set for one turn (V132):
-// ACCEPTED, not deleted, not superseded, due events lazily expired, scope
-// filtered by the relationship's memoryShareScope read convention, cut and
-// ordered in SQL. The management read vc.list_memory stays untouched.
-func (s *Store) SelectRecallMemories(ctx context.Context, owner, relationshipID, conversationID int64, shareScope string) ([]Memory, error) {
-	if shareScope == "" {
-		shareScope = "RELATIONSHIP"
+// SelectRecallMemories uses the same scoped query ranker as ST. The optional
+// query keeps explicit management/lifecycle callers useful without inventing
+// query text; production generation always supplies the current user input.
+func (s *Store) SelectRecallMemories(ctx context.Context, owner, relationshipID, conversationID int64, shareScope string, query ...string) ([]Memory, error) {
+	text := ""
+	if len(query) > 0 {
+		text = query[0]
 	}
-	candidates, err := s.stRecallCandidates(ctx, owner, relationshipID, conversationID, shareScope)
-	if err != nil {
-		return nil, err
-	}
-	var out []Memory
-	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
-			`SELECT out_id, out_scope, out_summary, out_conversation_id
-			   FROM vc.go_select_recall_memories($1, $2, $3, $4, $5) WHERE out_id=ANY($6::bigint[])`,
-			owner, relationshipID, conversationID, shareScope, seedWindow, candidates)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var mem Memory
-			var stored string
-			if err := rows.Scan(&mem.ID, &mem.Scope, &stored, &mem.ConversationID); err != nil {
-				return err
-			}
-			plain, err := s.decryptStored(stored)
-			if err != nil {
-				return errStore
-			}
-			mem.Summary = plain
-			mem.RelationshipID = relationshipID
-			out = append(out, mem)
-		}
-		if out == nil {
-			out = []Memory{}
-		}
-		return rows.Err()
-	})
-	if err != nil {
-		return nil, mapStoreErr(err)
-	}
-	return out, nil
+	return s.queryMemories(ctx, owner, relationshipID, conversationID, shareScope, recallQuery{Text: text, Limit: seedWindow})
 }
 
 type generationMeta struct {

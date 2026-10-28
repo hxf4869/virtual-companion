@@ -17,6 +17,7 @@ import { log } from './log.js';
 import { authSession, resolveModelPurpose } from './go-client.js';
 import { finalRequestUrl, nativeBaseUrl } from './url-normalize.js';
 import { checkContextBudget, resolveOutputTokens, writeBackOutputTokens } from './context-guard.js';
+import { refreshMemorySlot } from './memory-guard.js';
 import {
     buildResponsesRequest, convertResponsesToChatCompletion, bridgeResponsesStream, extractRoundFromOutput,
 } from './responses-adapter.js';
@@ -189,59 +190,85 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
     async function runResponsesProtocol({ body, request, response, resolved, url, user, fingerprint, scope }) {
         const { model, provider } = resolved;
         const round = trailingToolRound(body);
-        const continuationItems = round.callIds.length
-            ? continuationStore.take({ user, fingerprint, scope, round })
-            : [];
-        const { requestBody, outputTokens } = buildResponsesRequest({ body, model, continuationItems });
-        checkContextBudget({ model, finalBody: requestBody, outputTokens, counter: tokenCounter });
-
         const controller = new AbortController();
+        const onClose = () => controller.abort();
         request.socket.removeAllListeners('close');
-        request.socket.on('close', () => controller.abort());
-        const startedAt = now();
-        const upstream = await fetchImpl(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: body.stream ? 'text/event-stream' : 'application/json',
-                Authorization: `Bearer ${provider.credential}`,
-            },
-            body: JSON.stringify(requestBody),
-            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(config.timeoutMs)]),
-        });
+        request.socket.on('close', onClose);
+        // Authentication/config resolution may already have awaited before
+        // reaching this handler; a previously closed socket cannot emit again.
+        if (request.socket.destroyed || request.aborted) controller.abort();
+        try {
+            controller.signal.throwIfAborted();
+            const { requestBody, outputTokens } = buildResponsesRequest({ body, model });
+            const continuationAnchor = requestBody.input.findLast((item) => item.type === 'function_call'
+                && String(item.call_id) === round.calls[0]?.id);
+            const memorySnapshot = await refreshMemorySlot({ config, request, response,
+                finalBody: requestBody, signal: controller.signal });
+            controller.signal.throwIfAborted();
+            // Opaque reasoning may contain previously recalled facts. Compare
+            // the actual final memory snapshot before admitting any such item.
+            const continuationItems = round.callIds.length
+                ? continuationStore.take({ user, fingerprint, scope, round, memorySnapshot })
+                : [];
+            if (continuationItems.length) {
+                requestBody.input.splice(requestBody.input.indexOf(continuationAnchor), 0, ...continuationItems);
+            }
+            checkContextBudget({ model, finalBody: requestBody, outputTokens, counter: tokenCounter });
+            controller.signal.throwIfAborted();
 
-        if (!upstream.ok) {
-            log.warn(`Responses 上游失败：HTTP ${upstream.status}（model=${model.modelId}，正文不读取不回显）`);
-            writeErrorResponse(response, 502, 'VC_UPSTREAM_ERROR', upstreamErrorText(upstream.status, upstream.statusText));
+            const startedAt = now();
+            const upstream = await fetchImpl(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: body.stream ? 'text/event-stream' : 'application/json',
+                    Authorization: `Bearer ${provider.credential}`,
+                },
+                body: JSON.stringify(requestBody),
+                signal: AbortSignal.any([controller.signal, AbortSignal.timeout(config.timeoutMs)]),
+            });
+
+            if (!upstream.ok) {
+                log.warn(`Responses 上游失败：HTTP ${upstream.status}（model=${model.modelId}，正文不读取不回显）`);
+                writeErrorResponse(response, 502, 'VC_UPSTREAM_ERROR', upstreamErrorText(upstream.status, upstream.statusText));
+                return true;
+            }
+
+            const commitRound = (finished) => {
+                if (!finished?.ok || controller.signal.aborted) return;
+                continuationStore.commit({
+                    user, fingerprint, scope, memorySnapshot,
+                    calls: finished.calls,
+                    reasoningItems: finished.reasoningItems,
+                });
+            };
+
+            if (body.stream === true) {
+                await bridgeResponsesStream({ upstream, res: response, onRoundFinished: commitRound });
+            } else {
+                const json = await upstream.json();
+                controller.signal.throwIfAborted();
+                const round2 = extractRoundFromOutput(json.output);
+                continuationStore.commit({
+                    user, fingerprint, scope, memorySnapshot,
+                    calls: round2.toolCalls.map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments })),
+                    reasoningItems: round2.reasoningItems,
+                });
+                response.statusCode = 200;
+                response.setHeader('Content-Type', 'application/json');
+                response.setHeader('Cache-Control', 'no-store');
+                response.end(JSON.stringify(convertResponsesToChatCompletion(json)));
+            }
+            log.info(`Responses 出站完成：model=${model.modelId} stream=${body.stream === true} 耗时${now() - startedAt}ms estimator=${tokenCounter.estimator}`);
             return true;
+        } catch (error) {
+            // A failed/aborted source check cannot leave an old opaque round
+            // available for a later retry that happens to reuse its call IDs.
+            if (round.callIds.length) continuationStore.discard({ round });
+            throw error;
+        } finally {
+            request.socket.removeListener('close', onClose);
         }
-
-        const commitRound = (finished) => {
-            if (!finished?.ok) return;
-            continuationStore.commit({
-                user, fingerprint, scope,
-                calls: finished.calls,
-                reasoningItems: finished.reasoningItems,
-            });
-        };
-
-        if (body.stream === true) {
-            await bridgeResponsesStream({ upstream, res: response, onRoundFinished: commitRound });
-        } else {
-            const json = await upstream.json();
-            const round2 = extractRoundFromOutput(json.output);
-            continuationStore.commit({
-                user, fingerprint, scope,
-                calls: round2.toolCalls.map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments })),
-                reasoningItems: round2.reasoningItems,
-            });
-            response.statusCode = 200;
-            response.setHeader('Content-Type', 'application/json');
-            response.setHeader('Cache-Control', 'no-store');
-            response.end(JSON.stringify(convertResponsesToChatCompletion(json)));
-        }
-        log.info(`Responses 出站完成：model=${model.modelId} stream=${body.stream === true} 耗时${now() - startedAt}ms estimator=${tokenCounter.estimator}`);
-        return true;
     }
 
     async function handle(request, response) {
@@ -380,10 +407,11 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
      * （窗口预算、输出上限——含 Claude thinking 追加——与期望 URL）。同步执行。
      * @returns {boolean} true = 已拒绝并写出响应（原生链应立即 return）
      */
-    function finalOutboundGuard(request, response, finalBody, url) {
+    async function finalOutboundGuard(request, response, finalBody, url) {
         const managed = request?.vcManaged;
         if (!managed) return false; // 非受管请求（受管宿主下不应出现）不干预
         try {
+            await refreshMemorySlot({ config, request, response, finalBody });
             if (typeof url === 'string' && url.replace(/\/+$/, '') !== managed.expectedUrl.replace(/\/+$/, '')) {
                 throw new BridgeError(409, 'VC_OUTBOUND_URL_DRIFT', '最终出站地址与 Go 登记的规范化地址不一致，已拒绝发送');
             }

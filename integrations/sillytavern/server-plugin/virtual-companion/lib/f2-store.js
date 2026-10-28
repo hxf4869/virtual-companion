@@ -233,7 +233,8 @@ class F2Store {
             try {
                 const current = await this.current(records, await this.file(record.path));
                 if (!current || current.token.id !== id) return { chatIdentity: id, state: 'UNAVAILABLE' };
-                const result = { chatIdentity: id, state: 'PRESENT', revision: current.token.revision, location: record.path };
+                const result = { chatIdentity: id, state: 'PRESENT', revision: current.token.revision, location: record.path,
+                    branchRoot: current.chat[0].chat_metadata?.vc_branch_root || id };
                 if (revision === current.token.revision) return { ...result, notModified: true };
                 return { ...result, messages: sourceMessages(current.chat) };
             } catch { return { chatIdentity: id, state: 'UNAVAILABLE' }; }
@@ -253,6 +254,7 @@ class F2Store {
             if (r?.state === 'deleted') throw deleted();
             if (r && r.path !== this.relative(file)) throw conflict('聊天身份与目标路径不符');
             const current = await this.current(records, file);
+            let branchRoot = current?.chat[0].chat_metadata?.vc_branch_root || base.id;
             if (current) {
                 if (parentBase || !sameToken(current.token, base)) throw conflict();
             } else {
@@ -263,11 +265,13 @@ class F2Store {
                     if (parentBase.id === base.id || parentRecord?.state !== 'live') throw conflict('分支父身份无效');
                     const source = await readDocument(await this.file(parentRecord.path));
                     if (!source || !sameToken(documentToken(source), parentBase)) throw conflict('分支父读取基线已失效');
+                    branchRoot = source[0].chat_metadata?.vc_branch_root || parentBase.id;
                 }
             }
             if (beforeCommit) await beforeCommit();
             if (!current && !r) await this.record(records, { id: base.id, state: 'pending-create', path: this.relative(file) });
             const token = nextToken(base);
+            snapshot[0].chat_metadata = { ...snapshot[0].chat_metadata, vc_branch_root: branchRoot };
             reconcileSourceIdentities(snapshot, current?.chat ?? []);
             await atomicWrite(file, withToken(snapshot, token));
             if (!current) await this.record(records, { id: base.id, state: 'live', path: this.relative(file) });

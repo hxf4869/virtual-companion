@@ -25,6 +25,7 @@ export const ADMIN_BRIDGE_ROUTES = [
     { method: 'POST', path: /^\/api\/v1\/auth\/reauth$/, where: '既有写入再认证（FreshReauth）' },
     { method: 'POST', path: /^\/api\/v1\/st\/bindings$/, where: 'W05 原生聊天的角色实例与会话绑定' },
     { method: 'POST', path: /^\/api\/v1\/st\/sources\/reconcile$/, where: 'W06 打开、重连与保存后的持久来源核对' },
+    { method: 'POST', path: /^\/api\/v1\/st\/memory\/recall$/, where: 'W07 当前已绑定聊天的相关记忆与摘要' },
     { method: 'POST', path: /^\/api\/v1\/exports(?:\/recover)?$/, where: 'W06 数据副本创建和取回' },
     { method: 'GET', path: /^\/api\/v1\/exports\/[1-9][0-9]*(?:\/download)?$/, where: 'W06 副本状态和一次性下载' },
     { method: 'GET', path: /^\/api\/v1\/admin\/providers$/, where: '供应商列表' },

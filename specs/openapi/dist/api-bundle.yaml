@@ -566,6 +566,86 @@ paths:
           description: One or more chats are not bound to this owner
         '409':
           description: Account/session context changed or concurrent reconciliation requires retry
+  /api/v1/st/memory/recall:
+    post:
+      operationId: recallSTMemory
+      summary: Recall verified history for the current persisted ST conversation
+      description: Native ST calls through the same-origin server plugin with the caller's Go cookie, CSRF token and expected
+        account/session preconditions. The server derives owner, instance, mode and allowed sharing scope from the existing
+        conversation binding, then reads the last persisted user message as the query; the browser supplies no query text,
+        owner or instance authority. revision must match the current ST chat revision. Candidate selection is scoped before
+        Chinese keyword relevance ranking and does not truncate to the earliest 100 records. Candidate and summary source
+        dependencies are reconciled, then valid results are deduplicated and trimmed to budgetTokens. The block contains attributable
+        historical data, not overriding system instructions. Each Anthropic Messages, OpenAI Chat Completions and OpenAI Responses
+        final exit calls this operation again and replaces or removes the earlier block. Unavailable sources cannot reuse
+        old memories or an unverified summary. Ordinary companion chat may explicitly skip memory; STORY never receives the
+        ordinary companion-memory fallback. This operation does not schedule reminders or call an embedding/model provider.
+      security:
+      - cookieAuth: []
+      parameters:
+      - in: header
+        name: X-CSRF-Token
+        required: true
+        schema:
+          type: string
+        description: Double-submit token matching the vc_csrf cookie; Origin must also be allowed
+      - in: header
+        name: X-VC-Expected-Account-ID
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        description: Page identity precondition, never the owner authorization source
+      - in: header
+        name: X-VC-Expected-Session-ID
+        required: true
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        description: Opaque-session row identity established by the page's authentication response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/STMemoryRecallRequest'
+      responses:
+        '200':
+          description: Verified budgeted history block or an explicit skipped/disabled state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/STMemoryRecall'
+        '400':
+          description: Invalid chat identity, revision, budget or query-time fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Origin, CSRF or password-change gate rejected the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Chat is absent or not bound to this owner; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Chat revision or expected account/session context changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -5273,6 +5353,88 @@ components:
           enum:
           - COMPANION
           - STORY
+    STMemoryRecallRequest:
+      type: object
+      required:
+      - chatIdentity
+      - revision
+      - enabled
+      properties:
+        chatIdentity:
+          type: string
+          format: uuid
+          description: Existing owner-bound ST F2 chat identity
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Expected persisted ST revision; never an instruction to advance it
+        enabled:
+          type: boolean
+          description: Explicit per-request control for the dedicated long-term-memory block
+        budgetTokens:
+          type: integer
+          minimum: 128
+          maximum: 2048
+          default: 1024
+          description: Independent budget for the combined memory and verified-summary block
+        queryTimestamp:
+          type: string
+          format: date-time
+          description: Optional timestamp of the current query, interpreted separately from historical source time. Omission
+            uses the persisted query's snapshot; this field never rebases a stored event date on extraction/retry time.
+        queryTimezone:
+          type: string
+          description: Optional IANA timezone snapshot for the current query (for example Asia/Shanghai). Omission uses its
+            persisted source snapshot; a missing timezone is not guessed from the server or a later user setting.
+    STMemoryRecall:
+      type: object
+      required:
+      - status
+      - block
+      - sources
+      - memoryIds
+      - summaryIds
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          - skipped
+          - disabled
+          description: Whether verified history is available, skipped or explicitly disabled
+        block:
+          type: string
+          description: Budgeted historical-data block for the dedicated ST injection slot. Empty for skipped/disabled results,
+            which must remove any previous block.
+        sources:
+          type: array
+          description: Persisted chat revisions used by the selected memories and summaries
+          items:
+            type: object
+            required:
+            - chatIdentity
+            - revision
+            properties:
+              chatIdentity:
+                type: string
+                format: uuid
+              revision:
+                type: integer
+                format: int64
+                minimum: 0
+        memoryIds:
+          type: array
+          items:
+            type: string
+            pattern: ^[1-9][0-9]{0,18}$
+          description: Selected owner-scoped memory identifiers, kept as decimal strings
+        summaryIds:
+          type: array
+          items:
+            type: string
+            pattern: ^[1-9][0-9]{0,18}$
+          description: Selected verified summary identifiers, kept as decimal strings
     Relationship:
       type: object
       description: A Companion relationship owned by exactly one user. Each instance has an independent active flag; V2-W05
@@ -6498,6 +6660,87 @@ components:
           type: string
           format: date-time
           description: Event expiry; once passed, reads lazily move the row to EXPIRED (§11.12 Event 到期, V61-style lazy sweep).
+        time:
+          $ref: '#/components/schemas/MemoryTime'
+    MemoryTime:
+      type: object
+      description: V2 source-time interpretation stored separately from recording time and the legacy eventAt instant. Original
+        expressions are encrypted at rest. Extraction delay, retry, server timezone changes or a later user timezone must
+        not reinterpret this snapshot. Queries normalize their own relative expressions without modifying this event. A date-only
+        event has no fabricated time or reminder; ambiguous expressions remain untriggerable.
+      required:
+      - sourceTimestamp
+      - sourceTimezone
+      - recordedAt
+      - sourceExpression
+      - normalizationRule
+      - normalizationStatus
+      - eventDate
+      - eventTime
+      - eventTimezone
+      - timePrecision
+      - reminderAt
+      properties:
+        sourceTimestamp:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Immutable source-message timestamp, not extraction execution time
+        sourceTimezone:
+          type:
+          - string
+          - 'null'
+          description: IANA timezone captured with the source; null when unknown
+        recordedAt:
+          type: string
+          format: date-time
+          description: When this interpretation was persisted, distinct from event/source time
+        sourceExpression:
+          type: string
+          description: Original temporal expression; empty when no temporal claim is present
+        normalizationRule:
+          type: string
+          description: Applied deterministic interpretation rule or reason clarification is needed
+        normalizationStatus:
+          type: string
+          enum:
+          - explicit_date
+          - normalized
+          - needs_clarification
+          - none
+        eventDate:
+          type:
+          - string
+          - 'null'
+          format: date
+          description: Normalized local calendar date, not an instant or a midnight reminder
+        eventTime:
+          type:
+          - string
+          - 'null'
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          description: Explicit local 24-hour HH:mm time; null for date-only or uncertain events
+        eventTimezone:
+          type:
+          - string
+          - 'null'
+          description: IANA timezone of the interpreted event, without guessing a missing source timezone
+        timePrecision:
+          type:
+          - string
+          - 'null'
+          enum:
+          - date
+          - minute
+          - null
+        reminderAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Separately confirmed reminder instant. W07 normalization always returns null and does not schedule
+            or alter a reminder or follow-up.
     MemoryAutoSavePref:
       type: object
       description: The per-owner memory auto-save switch state (V66, §7.4).

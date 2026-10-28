@@ -134,7 +134,8 @@ func (s *Store) applySTSourceSnapshot(ctx context.Context, owner int64, base stS
 				}
 			}
 			messages = append(messages, map[string]any{"messageId": m.MessageID, "candidateId": m.CandidateID, "revision": m.Revision,
-				"role": m.Role, "cipher": cipher, "settled": m.Settled, "eligible": m.Eligible && !base.incognito})
+				"role": m.Role, "cipher": cipher, "settled": m.Settled, "eligible": m.Eligible && !base.incognito,
+				"sourceTimestamp": m.SourceTimestamp, "sourceTimezone": m.SourceTimezone})
 		}
 		var err error
 		payload, err = json.Marshal(messages)
@@ -144,8 +145,8 @@ func (s *Store) applySTSourceSnapshot(ctx context.Context, owner int64, base stS
 	}
 	out := STSourceState{ChatIdentity: base.ChatIdentity}
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `SELECT vc.apply_st_source_snapshot($1,$2,$3,$4,$5,$6,$7::jsonb)`,
-			owner, base.ChatIdentity, base.Revision, revision, snap.State, snap.Location, payload).Scan(&out.State); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT vc.apply_st_source_snapshot($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
+			owner, base.ChatIdentity, base.Revision, revision, snap.State, snap.Location, payload, nullIfBlank(snap.BranchRoot)).Scan(&out.State); err != nil {
 			return err
 		}
 		return tx.QueryRow(ctx, `SELECT st_applied_revision FROM vc.conversation WHERE owner_user_id=$1 AND st_chat_identity=$2`, owner, base.ChatIdentity).Scan(&out.Revision)
@@ -192,44 +193,4 @@ func guardSTEvidence(ctx context.Context, tx pgx.Tx, owner, relationship int64, 
 		return ErrInvalid
 	}
 	return nil
-}
-
-// Candidate identities are frozen before the remote check. Final selection is
-// restricted to this set; a newly inserted, unverified memory cannot slip in.
-// Unavailable sources participate in selection, so a later read can recover.
-func (s *Store) stRecallCandidates(ctx context.Context, owner, relationship, conversation int64, scope string) ([]int64, error) {
-	ids := []int64{}
-	chats := []string{}
-	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT out_memory_id,out_chats FROM vc.st_recall_candidates($1,$2,$3,$4)`, owner, relationship, conversation, scope)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		seen := map[string]bool{}
-		for rows.Next() {
-			var id int64
-			var refs []string
-			if err := rows.Scan(&id, &refs); err != nil {
-				return err
-			}
-			ids = append(ids, id)
-			for _, chat := range refs {
-				if !seen[chat] {
-					seen[chat] = true
-					chats = append(chats, chat)
-				}
-			}
-		}
-		return rows.Err()
-	})
-	if err != nil {
-		return nil, mapStoreErr(err)
-	}
-	for start := 0; start < len(chats); start += 64 {
-		if _, err := s.ReconcileSTSources(ctx, owner, chats[start:min(start+64, len(chats))]); err != nil {
-			return nil, err
-		}
-	}
-	return ids, nil
 }

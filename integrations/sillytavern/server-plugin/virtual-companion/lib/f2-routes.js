@@ -20,6 +20,7 @@ function importDocument(raw) {
     chat[0].chat_metadata = { ...chat[0].chat_metadata };
     delete chat[0].chat_metadata.vc_f2;
     delete chat[0].chat_metadata.vc_f2_parent;
+    delete chat[0].chat_metadata.vc_branch_root;
     delete chat[0].chat_metadata.vc_binding;
     return chat;
 }

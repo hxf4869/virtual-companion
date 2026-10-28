@@ -577,25 +577,26 @@ export class ToolContinuationStore {
     constructor({ ttlMs = 10 * 60_000, maxEntries = 64 } = {}) {
         this.ttlMs = ttlMs;
         this.maxEntries = maxEntries;
-        /** @type {Map<string, {user: string, fingerprint: string, scope: string|undefined, items: Array, expiresAt: number}>} */
+        /** @type {Map<string, {user: string, fingerprint: string, scope: string|undefined, items: Array, memorySnapshot: object|null, expiresAt: number}>} */
         this.entries = new Map();
     }
 
     /** 仅当本回合产生了工具调用与 reasoning 项时写入一条（按回合指纹键控）。 */
-    commit({ user, fingerprint, scope, calls, reasoningItems }) {
+    commit({ user, fingerprint, scope, calls, reasoningItems, memorySnapshot = null }) {
         if (!Array.isArray(calls) || calls.length === 0 || !Array.isArray(reasoningItems) || reasoningItems.length === 0) return;
         this.sweep();
         while (this.entries.size >= this.maxEntries) {
             this.entries.delete(this.entries.keys().next().value);
         }
-        this.entries.set(roundKey(calls), { user, fingerprint, scope, items: reasoningItems, expiresAt: Date.now() + this.ttlMs });
+        this.entries.set(roundKey(calls), { user, fingerprint, scope, items: reasoningItems,
+            memorySnapshot: structuredClone(memorySnapshot), expiresAt: Date.now() + this.ttlMs });
     }
 
     /**
      * 取出并一次性消费。当前请求的尾部工具回合必须与提交时的调用清单逐项完全一致
      * （id、name、arguments），且 user/配置指纹/scope 匹配；任一不符即丢弃不注入。
      */
-    take({ user, fingerprint, scope, round }) {
+    take({ user, fingerprint, scope, round, memorySnapshot = null }) {
         this.sweep();
         const key = roundKey(round.calls);
         const entry = this.entries.get(key);
@@ -605,8 +606,14 @@ export class ToolContinuationStore {
             log.info('工具回合续接状态因用户/会话/配置变化被丢弃（不注入）');
             return [];
         }
+        if (entry.memorySnapshot?.status === 'skipped' || memorySnapshot?.status === 'skipped'
+            || JSON.stringify(entry.memorySnapshot) !== JSON.stringify(memorySnapshot)) {
+            throw new BridgeError(409, 'VC_MEMORY_CONTINUATION_CHANGED', '工具回合的长期记忆来源已变化或暂不可核验，请重新发起本轮互动');
+        }
         return entry.items;
     }
+
+    discard({ round }) { this.entries.delete(roundKey(round.calls)); }
 
     sweep() {
         const now = Date.now();

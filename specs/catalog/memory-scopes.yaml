@@ -1,5 +1,35 @@
 schemaVersion: 1
 catalogId: memory-scopes
+note: >-
+  V2 recall resolves owner, character instance and mode from the authenticated
+  ST conversation binding before searching. A shared card template is never a
+  shared memory scope. STORY bindings do not consume ordinary companion memory.
+retrievalPolicy:
+  operationId: recallSTMemory
+  querySource: last_persisted_user_message
+  selection: >-
+    Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first;
+    rank Chinese keyword candidates by query relevance without an earliest-100
+    candidate cutoff. Reconcile each candidate and summary's persisted source
+    dependencies before selecting and applying the token budget.
+  finalRequest: >-
+    The ST native extension uses a separately named history-data block. Each of
+    the three protocol exits recalls again before sending and replaces or removes
+    the earlier block. Source changes, unavailable sources and disabled recall
+    cannot retain an old block or use an unverified summary as fallback.
+  failure: >-
+    Ordinary companion chat may continue with verified current card/history and
+    an explicit skipped-memory state. No ordinary-memory fallback is allowed for
+    STORY. No remote embedding is implied by the keyword baseline.
+  budgetTokens:
+    minimum: 128
+    maximum: 2048
+    default: 1024
+  time: >-
+    Keep source timestamp/timezone, recording time, normalized local event date/time
+    and reminder instant distinct. Relative source expressions use their saved
+    source timezone and calendar; queries use their own snapshot. Unknown or
+    ambiguous time stays needs_clarification. A date never creates a midnight reminder.
 entries:
 - code: SESSION
   order: 0

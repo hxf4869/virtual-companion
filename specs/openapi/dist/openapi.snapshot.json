@@ -18,6 +18,7 @@
     "resolveSTBinding",
     "registerSTProfile",
     "reconcileSTSources",
+    "recallSTMemory",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -135,6 +136,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "046f91091f619cb6effc3c6f7d4b8dd1deca2d8860ac14143ddbb8f1c877ddb4"
+    "sha256": "790b99cb9ff59edac529b73768040f0784041d878854b04e60085ea3639bc791"
   }
 }

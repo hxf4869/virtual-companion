@@ -365,7 +365,9 @@ func TestLoadSeedHonoursMemoryShareScope(t *testing.T) {
 
 	view, err := store.StartTurn(ctx, 1, StartTurn{
 		ConversationID: convA, IdempotencyKey: "scope-turn-1",
-		UserContent: "scope-current", Mode: "LISTEN", MaxOutstanding: 4,
+		// Both memory classes are relevant; the test isolates scope filtering
+		// from the W07 query ranker instead of relying on unrelated fallback.
+		UserContent: "scope sess", Mode: "LISTEN", MaxOutstanding: 4,
 	})
 	if err != nil {
 		t.Fatal(err)

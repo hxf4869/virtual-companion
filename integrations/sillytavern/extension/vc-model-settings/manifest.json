@@ -1,6 +1,7 @@
 {
     "display_name": "Virtual Companion · 模型设置",
     "loading_order": 100,
+    "generate_interceptor": "vcLongTermMemoryInterceptor",
     "requires": [],
     "optional": [],
     "js": "index.js",

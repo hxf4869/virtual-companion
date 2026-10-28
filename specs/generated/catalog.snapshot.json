@@ -981,7 +981,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 71,
+          "KEEP": 72,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1161,6 +1161,18 @@
             "operationId": "reconcileSTSources",
             "path": "/api/v1/st/sources/reconcile",
             "replacementOrImpact": "V2-W06 native ST open, reconnect and persisted-save consumer. Read the authenticated owner's bounded chat set over the private ST service channel; apply source invalidation before memory use. Browser content is never authoritative."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "core-outcome",
+              "safety-or-data-rights"
+            ],
+            "method": "POST",
+            "operationId": "recallSTMemory",
+            "path": "/api/v1/st/memory/recall",
+            "replacementOrImpact": "V2-W07 native ST memory block and three-protocol final-request consumer. Resolve scope and the last persisted user query from the owned ST binding, rank related memories and validate summary/source dependencies before budgeted injection. Unavailable or disabled recall removes the old block; STORY does not fall back to ordinary companion memory."
           },
           {
             "currentH5Callers": [],
@@ -2397,7 +2409,7 @@
           }
         ]
       },
-      "sha256": "feae19a08e784c8725697e5cb988217439d7b119ee42aa0b0bc7a51aed94dd9b"
+      "sha256": "def2442054e8db128f13c1afeb879c911999532ae755fba04b43282025a0e04a"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2530,9 +2542,23 @@
           "COMPANION",
           "SAFETY_INTERNAL"
         ],
+        "note": "V2 recall resolves owner, character instance and mode from the authenticated ST conversation binding before searching. A shared card template is never a shared memory scope. STORY bindings do not consume ordinary companion memory.",
+        "retrievalPolicy": {
+          "budgetTokens": {
+            "default": 1024,
+            "maximum": 2048,
+            "minimum": 128
+          },
+          "failure": "Ordinary companion chat may continue with verified current card/history and an explicit skipped-memory state. No ordinary-memory fallback is allowed for STORY. No remote embedding is implied by the keyword baseline.",
+          "finalRequest": "The ST native extension uses a separately named history-data block. Each of the three protocol exits recalls again before sending and replaces or removes the earlier block. Source changes, unavailable sources and disabled recall cannot retain an old block or use an unverified summary as fallback.",
+          "operationId": "recallSTMemory",
+          "querySource": "last_persisted_user_message",
+          "selection": "Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first; rank Chinese keyword candidates by query relevance without an earliest-100 candidate cutoff. Reconcile each candidate and summary's persisted source dependencies before selecting and applying the token budget.",
+          "time": "Keep source timestamp/timezone, recording time, normalized local event date/time and reminder instant distinct. Relative source expressions use their saved source timezone and calendar; queries use their own snapshot. Unknown or ambiguous time stays needs_clarification. A date never creates a midnight reminder."
+        },
         "schemaVersion": 1
       },
-      "sha256": "9c0e9606d46e304e16d153de2c21a9df23ce2a7a5429812407b0ab2f854f99bf"
+      "sha256": "ed81fb7f2581a4f8b52875770035a41525fcf7f0235d1d63ecbb34da6f849d68"
     },
     "message-feedback-kinds.yaml": {
       "document": {

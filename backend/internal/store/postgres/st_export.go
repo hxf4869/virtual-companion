@@ -62,7 +62,7 @@ func (s *Store) ExportV2OwnerData(ctx context.Context, owner int64) (V2OwnerExpo
 	if decoder.Decode(&out.Go) != nil {
 		return out, errStore
 	}
-	for _, domain := range []struct{ name, field string }{{"sources", "content"}, {"summaries", "content"}, {"extractionResults", "output"}, {"reminders", "text"}} {
+	for _, domain := range []struct{ name, field string }{{"sources", "content"}, {"summaries", "content"}, {"extractionResults", "output"}, {"reminders", "text"}, {"memoryTimes", "content"}} {
 		rows, ok := out.Go[domain.name].([]any)
 		if !ok {
 			return out, errStore

@@ -27,13 +27,15 @@ type Query struct {
 	Revision     *int64 `json:"revision,omitempty"`
 }
 type Message struct {
-	MessageID   string `json:"messageId"`
-	CandidateID string `json:"candidateId"`
-	Revision    int64  `json:"revision"`
-	Role        string `json:"role"`
-	Text        string `json:"text"`
-	Settled     bool   `json:"settled"`
-	Eligible    bool   `json:"eligible"`
+	MessageID       string     `json:"messageId"`
+	CandidateID     string     `json:"candidateId"`
+	Revision        int64      `json:"revision"`
+	Role            string     `json:"role"`
+	Text            string     `json:"text"`
+	Settled         bool       `json:"settled"`
+	Eligible        bool       `json:"eligible"`
+	SourceTimestamp *time.Time `json:"sourceTimestamp"`
+	SourceTimezone  string     `json:"sourceTimezone"`
 }
 type Snapshot struct {
 	ChatIdentity string    `json:"chatIdentity"`
@@ -42,6 +44,7 @@ type Snapshot struct {
 	Location     string    `json:"location,omitempty"`
 	NotModified  bool      `json:"notModified,omitempty"`
 	Messages     []Message `json:"messages,omitempty"`
+	BranchRoot   string    `json:"branchRoot,omitempty"`
 }
 type Reader interface {
 	Read(context.Context, int64, []Query) ([]Snapshot, error)
@@ -127,6 +130,9 @@ func (c *Client) Read(ctx context.Context, owner int64, queries []Query) ([]Snap
 		delete(wanted, snap.ChatIdentity)
 		switch snap.State {
 		case "PRESENT":
+			if snap.BranchRoot != "" && !ValidIdentity(snap.BranchRoot) {
+				return nil, ErrUnavailable
+			}
 			if snap.Revision < 0 || snap.Location == "" || (!snap.NotModified && snap.Messages == nil) || (snap.NotModified && (query.Revision == nil || *query.Revision != snap.Revision || len(snap.Messages) > 0)) {
 				return nil, ErrUnavailable
 			}

@@ -12,11 +12,12 @@
 import { getRequestHeaders } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
 import { mountModelSettings } from './page.js';
-import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding, reconcileSTSources } from './api.js';
+import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding, reconcileSTSources, recallSTMemory } from './api.js';
 import { installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
 import { mountChatShell } from './chat-shell.js';
 import { mountDataRights } from './data-rights.js';
+import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
 
 export async function init() {
     setStHeadersProvider(() => {
@@ -44,10 +45,22 @@ export async function init() {
     });
     projection.init();
     // Instance metadata is persisted through the same native F2 save path.
-    installInstanceBinding({ getContext, resolveBinding: resolveSTBinding, reconcileSources: reconcileSTSources,
+    const bindingReady = installInstanceBinding({ getContext, resolveBinding: resolveSTBinding, reconcileSources: reconcileSTSources,
         onSourceStatus: (states) => { if (states.some((s) => s.state === 'UNAVAILABLE')) globalThis.toastr?.warning('部分长期记忆暂不可用；聊天仍可保存。'); },
         writeExtensionField: (...args) => getContext().writeExtensionField(...args), captureSessionContext,
-    }).catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
+    });
+    bindingReady.catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
+    let reportMemory = () => {};
+    const memory = createMemoryInjection({ getContext, recall: recallSTMemory,
+        ensureBinding: async () => (await bindingReady).ensureBound(),
+        onStatus: (message) => { reportMemory(message); if (message.includes('跳过')) globalThis.toastr?.warning(message); },
+    });
+    reportMemory = mountMemoryControls({ getContext, reset: memory.reset });
+    globalThis[MEMORY_INTERCEPTOR] = memory.intercept;
+    const events = getContext();
+    events.eventSource.on(events.eventTypes.CHAT_CHANGED, memory.reset);
+    events.eventSource.on(events.eventTypes.CHAT_COMPLETION_SETTINGS_READY, memory.attach);
+    globalThis.addEventListener('vc-memory-status', (event) => memory.finalStatus(event.detail));
 
     const dataRights = mountDataRights();
     const wand = document.querySelector('#extensionsMenu');

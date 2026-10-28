@@ -10,19 +10,20 @@ import (
 )
 
 type memoryJSON struct {
-	MemoryID             string  `json:"memoryId"`
-	Scope                string  `json:"scope"`
-	Summary              string  `json:"summary"`
-	Status               string  `json:"status"`
-	ConversationID       *string `json:"conversationId,omitempty"`
-	CreatedAt            string  `json:"createdAt"`
-	DeletedAt            *string `json:"deletedAt,omitempty"`
-	AutoSaved            bool    `json:"autoSaved"`
-	SupersededAt         *string `json:"supersededAt,omitempty"`
-	SupersededByMemoryID *string `json:"supersededByMemoryId,omitempty"`
-	EventAt              *string `json:"eventAt,omitempty"`
-	EventStatus          *string `json:"eventStatus,omitempty"`
-	EventExpiresAt       *string `json:"eventExpiresAt,omitempty"`
+	MemoryID             string               `json:"memoryId"`
+	Scope                string               `json:"scope"`
+	Summary              string               `json:"summary"`
+	Status               string               `json:"status"`
+	ConversationID       *string              `json:"conversationId,omitempty"`
+	CreatedAt            string               `json:"createdAt"`
+	DeletedAt            *string              `json:"deletedAt,omitempty"`
+	AutoSaved            bool                 `json:"autoSaved"`
+	SupersededAt         *string              `json:"supersededAt,omitempty"`
+	SupersededByMemoryID *string              `json:"supersededByMemoryId,omitempty"`
+	EventAt              *string              `json:"eventAt,omitempty"`
+	EventStatus          *string              `json:"eventStatus,omitempty"`
+	EventExpiresAt       *string              `json:"eventExpiresAt,omitempty"`
+	Time                 *postgres.MemoryTime `json:"time,omitempty"`
 }
 
 type memoryEvidenceJSON struct {
@@ -46,6 +47,7 @@ func memoryJSONFrom(m postgres.Memory) memoryJSON {
 		EventAt:              optTime(m.EventAt),
 		EventStatus:          m.EventStatus,
 		EventExpiresAt:       optTime(m.EventExpiresAt),
+		Time:                 m.Time,
 	}
 }
 

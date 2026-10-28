@@ -61,6 +61,7 @@ import {
 import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-protocol-provider.mjs';
 import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
 import { sceneSourceNative, sceneRightsBrowser, sceneRightsNative } from './w06-accept.mjs';
+import { sceneMemoryBrowser } from './w07-accept.mjs';
 
 // ---------------------------------------------------------------------------
 // 常量与 CLI
@@ -1694,6 +1695,7 @@ const SCENE_IMPLS = {
     'f2-browser': sceneF2Browser,
     'rights-browser': sceneRightsBrowser,
     'rights-native': sceneRightsNative,
+    'memory-browser': sceneMemoryBrowser,
 };
 
 async function runFull() {

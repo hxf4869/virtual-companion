@@ -27,7 +27,7 @@ function candidates(message) {
 
 /** Called synchronously before a browser save is cloned/queued. New IDs stay on
  * the live messages, so a later save does not mint identities for the same row. */
-export function prepareSourceIdentities(chat, { settled, uuid = () => crypto.randomUUID() } = {}) {
+export function prepareSourceIdentities(chat, { settled, sourceTimezone, uuid = () => crypto.randomUUID() } = {}) {
     if (!Array.isArray(chat)) return;
     const messages = new Set();
     for (const message of chat.slice(1)) {
@@ -38,13 +38,27 @@ export function prepareSourceIdentities(chat, { settled, uuid = () => crypto.ran
         for (const candidate of candidates(message)) {
             let source = candidate.extra.vc_source;
             if (!object(source)) source = {};
-            if (!validId(source.id) || swipes.has(source.id)) source = { id: uuid() };
+            if (!validId(source.id) || swipes.has(source.id)) {
+                const sent = message.swipe_info?.[candidate.index]?.send_date ?? message.send_date;
+                source = { id: uuid(), sourceTimestamp: sourceInstant(sent), sourceTimezone: validTimezone(sourceTimezone) };
+            }
             swipes.add(source.id);
             candidate.extra.vc_source = source;
             if (settled !== undefined) source.settled = settled === true;
             if (Array.isArray(message.swipes) && candidate.index === selectedIndex(message)) message.swipe_info[candidate.index].extra.vc_source = structuredClone(source);
         }
     }
+}
+function sourceInstant(value) {
+    // Only absolute instants are interpreted. Legacy local dates keep an unknown
+    // timezone instead of acquiring whichever zone this process happens to use.
+    if (typeof value !== 'string' || !/(Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+function validTimezone(value) {
+    if (typeof value !== 'string' || !value) return '';
+    try { new Intl.DateTimeFormat('en', { timeZone: value }); return value; } catch { return ''; }
 }
 function signature(message, candidate) {
     return JSON.stringify({ text: candidate.text, name: message.name, user: Boolean(message.is_user),
@@ -59,7 +73,7 @@ function previousSources(chat) {
             const source = candidate.extra.vc_source;
             if (source !== undefined && (!object(source) || !validId(source.id) || !Number.isSafeInteger(source.revision) || source.revision < 1)) throw new Error('Saved source identity is invalid');
             if (validId(source?.id) && Number.isSafeInteger(source.revision) && source.revision >= 1) {
-                result.set(`${message.vc_message_id}/${source.id}`, { source, signature: signature(message, candidate) });
+                result.set(`${message.vc_message_id}/${source.id}`, { source, signature: signature(message, candidate), time: sourceTime(source) });
             }
         }
     }
@@ -76,14 +90,18 @@ export function reconcileSourceIdentities(chat, previous = []) {
         for (const candidate of candidates(message)) {
             const source = candidate.extra.vc_source;
             const existing = old.get(`${message.vc_message_id}/${source.id}`);
-            const changed = !existing || existing.signature !== signature(message, candidate);
+            const time = sourceTime(source);
+            const changed = !existing || existing.signature !== signature(message, candidate) || JSON.stringify(existing.time) !== JSON.stringify(time);
             const revision = !existing ? 1 : existing.source.revision + (changed ? 1 : 0);
             if (!Number.isSafeInteger(revision)) throw new Error('Source revision limit reached');
-            candidate.extra.vc_source = { id: source.id, revision, settled: source.settled === true };
+            candidate.extra.vc_source = { id: source.id, revision, settled: source.settled === true, ...time };
             if (Array.isArray(message.swipes) && candidate.index === selectedIndex(message)) message.swipe_info[candidate.index].extra.vc_source = structuredClone(candidate.extra.vc_source);
         }
     }
     return JSON.stringify(chat) !== before;
+}
+function sourceTime(source) {
+    return { sourceTimestamp: sourceInstant(source.sourceTimestamp), sourceTimezone: validTimezone(source.sourceTimezone) };
 }
 
 /** Read only selected candidates; deselected swipes are retained in JSONL but
@@ -95,7 +113,7 @@ export function sourceMessages(chat) {
         return { messageId: message.vc_message_id, candidateId: source.id, revision: source.revision,
             role: message.is_user ? 'user' : message.is_system ? 'system' : 'assistant',
             text: candidate.text, settled: source.settled === true,
-            eligible: !message.is_system && !candidate.extra.no_memory,
+            eligible: !message.is_system && !candidate.extra.no_memory, ...sourceTime(source),
         };
     });
 }

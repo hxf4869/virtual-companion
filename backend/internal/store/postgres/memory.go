@@ -37,6 +37,9 @@ type Memory struct {
 	EventAt              *time.Time
 	EventStatus          *string
 	EventExpiresAt       *time.Time
+	Time                 *MemoryTime
+	Relevance            int
+	Sources              []string
 }
 
 // MemoryEvidence is one attributable source row.
@@ -94,6 +97,9 @@ func (s *Store) CreateMemoryCandidate(ctx context.Context, owner int64, in Memor
 		).Scan(&id); err != nil {
 			return err
 		}
+		if err := s.writeMemoryTime(ctx, tx, owner, id, in.Summary, evidence, false); err != nil {
+			return err
+		}
 		mem, ok, err := s.scanMemoryGet(ctx, tx, owner, id)
 		if err != nil {
 			return err
@@ -140,7 +146,18 @@ func (s *Store) ListMemories(ctx context.Context, owner, relationshipID int64, i
 		if out == nil {
 			out = []Memory{}
 		}
-		return rows.Err()
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		for i := range out {
+			out[i].Time, err = s.readMemoryTime(ctx, tx, owner, out[i].ID)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, mapStoreErr(err)
@@ -194,6 +211,13 @@ func (s *Store) UpdateMemory(ctx context.Context, owner, memoryID int64, summary
 		}
 		if !updated {
 			return ErrNotFound
+		}
+		refs, err := memoryEvidenceRefs(ctx, tx, owner, memoryID)
+		if err != nil {
+			return err
+		}
+		if err := s.writeMemoryTime(ctx, tx, owner, memoryID, summary, refs, true); err != nil {
+			return err
 		}
 		mem, ok, err := s.scanMemoryGet(ctx, tx, owner, memoryID)
 		if err != nil {
@@ -485,6 +509,9 @@ func (s *Store) CreateAutoSavedMemory(ctx context.Context, owner int64, in AutoS
 			owner, in.RelationshipID, stored, in.ConversationID,
 			in.Evidence, nullIfBlank(in.IdempotencyKey),
 		).Scan(&id); err != nil {
+			return err
+		}
+		if err := s.writeMemoryTime(ctx, tx, owner, id, in.Summary, in.Evidence, false); err != nil {
 			return err
 		}
 		mem, ok, err := s.scanMemoryGet(ctx, tx, owner, id)
@@ -892,7 +919,13 @@ func (s *Store) scanMemoryGet(ctx context.Context, tx pgx.Tx, owner, id int64) (
 	m.EventAt = tzPtr(eventAt)
 	m.EventStatus = textPtr(eventStatus)
 	m.EventExpiresAt = tzPtr(eventExpires)
-	return m, true, rows.Err()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return Memory{}, false, err
+	}
+	m.Time, err = s.readMemoryTime(ctx, tx, owner, id)
+	return m, true, err
 }
 
 func scanMemoryListRow(row interface{ Scan(dest ...any) error }) (Memory, error) {

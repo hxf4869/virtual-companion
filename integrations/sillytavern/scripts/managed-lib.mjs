@@ -419,6 +419,7 @@ export const SCENES = [
     { id: 'f2-browser', title: 'W05 B07 两个真实页面冲突保留草稿与迟到脚本拒绝', needs: ['go', 'stack', 'browser'], default: false },
     { id: 'rights-browser', title: 'W06 D02/D05 原生数据权利页面、一次性下载与手机布局', needs: ['go', 'stack'], default: false },
     { id: 'rights-native', title: 'W06 D03/D04 离线重试与独立合成账号删号', needs: ['go', 'stack'], default: false },
+    { id: 'memory-browser', title: 'W07 M01/M09 原生长期记忆、摘要与最终请求', needs: ['catalog', 'stack', 'browser'], default: false },
 ];
 
 /** 展开过滤器：具名场景 + 依赖闭包（needs 中的内部能力不算场景，'catalog' 由 catalog-admin 提供）。 */

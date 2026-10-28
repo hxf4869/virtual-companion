@@ -61,6 +61,7 @@ export const CORE_PATCH_SPECS = [
     path.join(INTEG, 'patches', 'st-f2-data-maid-client.json'),
     path.join(INTEG, 'patches', 'st-f2-extensions.json'),
     path.join(INTEG, 'patches', 'st-chat-completions-vc-bridge.json'),
+    path.join(INTEG, 'patches', 'st-memory-status-client.json'),
     path.join(INTEG, 'patches', 'st-util-stream-error-log.json'),
 ];
 

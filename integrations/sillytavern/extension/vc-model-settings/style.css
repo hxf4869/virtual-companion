@@ -57,6 +57,12 @@ body.vc-chat-shell #send_textarea { min-height: 44px; font-size: max(16px, var(-
 }
 
 /* ST 扩展菜单入口按钮的文字（按钮本体样式沿用 ST .menu_button） */
+.vc-memory-controls { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; color: var(--SmartThemeBodyColor); }
+.vc-memory-controls label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.vc-memory-controls input[type="number"] { width: 6em; min-height: 44px; font: inherit; font-variant-numeric: tabular-nums; }
+.vc-memory-controls input:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.vc-memory-controls [data-memory-status]:empty { display: none; }
+.vc-memory-controls [data-memory-status] { width: 100%; font-size: 14px; }
 #vc_models_menu_button .vcms-menu-label,
 #vc_data_menu_button .vcms-menu-label {
     margin-left: 6px;

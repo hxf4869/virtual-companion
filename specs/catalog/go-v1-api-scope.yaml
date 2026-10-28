@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 71
+  KEEP: 72
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -153,6 +153,19 @@ operations:
   replacementOrImpact: V2-W06 native ST open, reconnect and persisted-save consumer.
     Read the authenticated owner's bounded chat set over the private ST service channel;
     apply source invalidation before memory use. Browser content is never authoritative.
+- operationId: recallSTMemory
+  method: POST
+  path: /api/v1/st/memory/recall
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - core-outcome
+  - safety-or-data-rights
+  replacementOrImpact: V2-W07 native ST memory block and three-protocol final-request
+    consumer. Resolve scope and the last persisted user query from the owned ST binding,
+    rank related memories and validate summary/source dependencies before budgeted
+    injection. Unavailable or disabled recall removes the old block; STORY does not
+    fall back to ordinary companion memory.
 - operationId: createRelationship
   method: POST
   path: /api/v1/relationships

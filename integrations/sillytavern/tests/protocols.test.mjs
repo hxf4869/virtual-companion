@@ -11,6 +11,7 @@ import { buildResponsesRequest, convertResponsesToChatCompletion, bridgeResponse
 import { parseBindingMarker, createGenerateBridge } from '../server-plugin/virtual-companion/lib/generate-bridge.js';
 import { createTokenCounter, checkContextBudget, PROTOCOL_OVERHEAD_TOKENS } from '../server-plugin/virtual-companion/lib/context-guard.js';
 import { BridgeError } from '../server-plugin/virtual-companion/lib/errors.js';
+import { memoryBlock } from '../extension/vc-model-settings/memory-injection.js';
 
 // —— 测试用确定性计数器：CJK 字 1 token，其余 4 字符 1 token ——
 const fakeTokenizer = {
@@ -365,6 +366,94 @@ test('续接存储：TTL 过期不注入；无 reasoning 项不提交', () => {
     assert.equal(empty.entries.size, 0);
 });
 
+test('W07 Responses：记忆失效、关闭或不可读时拒绝整个推理续接；稳定资料仍可续接', async () => {
+    const chatIdentity = '20000000-0000-4000-8000-000000000001';
+    const sourceIdentity = '20000000-0000-4000-8000-000000000002';
+    const original = { status: 'ok', block: '用户喜欢蓝色书签', memoryIds: ['7'], summaryIds: ['8'],
+        sources: [{ chatIdentity, revision: 4 }, { chatIdentity: sourceIdentity, revision: 2 }] };
+    const calls = [{ id: 'memory_call', name: 'get_time', arguments: '{}' }];
+    for (const change of ['same', 'forgotten', 'disabled', 'unavailable']) {
+        let recalled = structuredClone(original);
+        const captured = [];
+        const normalGo = goStub({ resolvePayload: () => resolveOk(), captures: [] });
+        const { server: go, port } = await startServer((req, res) => {
+            if (req.url !== '/api/v1/st/memory/recall') return normalGo(req, res);
+            req.resume();
+            req.on('end', () => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(recalled)); });
+        });
+        const store = new ToolContinuationStore();
+        const bridge = createGenerateBridge({ config: { goBaseUrl: `http://127.0.0.1:${port}`, serviceToken: 'T'.repeat(40), timeoutMs: 5000 },
+            continuationStore: store, counter,
+            fetchImpl: async (_url, init) => {
+                captured.push(JSON.parse(init.body));
+                const output = captured.length === 1 ? [
+                    { type: 'reasoning', id: 'rs-memory', summary: [{ type: 'summary_text', text: original.block }], encrypted_content: 'ENC_OLD_MEMORY' },
+                    { type: 'function_call', call_id: calls[0].id, name: calls[0].name, arguments: calls[0].arguments },
+                ] : [{ type: 'message', content: [{ type: 'output_text', text: '合成回复' }] }];
+                return new Response(JSON.stringify({ id: 'r-memory', model: 'upstream-model-x', output, usage: { input_tokens: 3, output_tokens: 2 } }), { status: 200 });
+            } });
+        try {
+            const metadata = { chatIdentity, revision: 4, enabled: true, budgetTokens: 1024, block: original.block };
+            const first = mockRes();
+            await bridge.interceptGenerate(mockReq({ body: baseBody({ custom_url: MARKER, vc_memory: metadata,
+                messages: [{ role: 'user', content: `查一下时间\n${memoryBlock(original.block)}` }] }), headers: { cookie: 'vc_session=s1' } }), first);
+            assert.equal(first.statusCode, 200, change);
+            assert.equal(store.entries.size, 1);
+            const enabled = change !== 'disabled';
+            recalled = change === 'same' ? { ...structuredClone(original), sources: [{ chatIdentity, revision: 5 }, { chatIdentity: sourceIdentity, revision: 2 }] }
+                : { status: change === 'unavailable' ? 'skipped' : change === 'disabled' ? 'disabled' : 'ok', block: '', memoryIds: [], summaryIds: [], sources: [] };
+            const second = mockRes();
+            const messages = [{ role: 'user', content: `查一下时间\n${memoryBlock(recalled.block)}` },
+                { role: 'assistant', content: '', tool_calls: [{ id: calls[0].id, type: 'function', function: { name: calls[0].name, arguments: calls[0].arguments } }] },
+                { role: 'tool', tool_call_id: calls[0].id, content: '12:00' }];
+            await bridge.interceptGenerate(mockReq({ body: baseBody({ custom_url: MARKER, messages,
+                vc_memory: { ...metadata, revision: 5, enabled, block: recalled.block } }), headers: { cookie: 'vc_session=s1' } }), second);
+            if (change === 'same') {
+                assert.equal(second.statusCode, 200);
+                assert.equal(captured.length, 2);
+                const items = captured[1].input;
+                const index = items.findIndex((item) => item.type === 'reasoning');
+                assert.equal(items[index].encrypted_content, 'ENC_OLD_MEMORY');
+                assert.equal(items[index + 1].type, 'function_call');
+            } else {
+                assert.equal(second.statusCode, 409, change);
+                assert.equal(JSON.parse(second.body()).error.code, 'VC_MEMORY_CONTINUATION_CHANGED');
+                assert.equal(captured.length, 1, `${change} must not call upstream`);
+            }
+            assert.equal(store.entries.size, 0, 'changed or consumed round cannot stay cached');
+        } finally { go.closeAllConnections(); go.close(); }
+    }
+});
+
+test('W07 Responses：来源重核期间取消不会发起上游请求', async () => {
+    let entered;
+    const recalling = new Promise((resolve) => { entered = resolve; });
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let providerCalls = 0;
+    const normalGo = goStub({ resolvePayload: () => resolveOk(), captures: [] });
+    const { server: go, port } = await startServer((req, res) => {
+        if (req.url !== '/api/v1/st/memory/recall') return normalGo(req, res);
+        req.resume(); req.on('end', () => { entered(); gate.then(() => res.end('{}')); });
+    });
+    const store = new ToolContinuationStore();
+    const bridge = createGenerateBridge({ config: { goBaseUrl: `http://127.0.0.1:${port}`, serviceToken: 'T'.repeat(40), timeoutMs: 5000 },
+        continuationStore: store, counter, fetchImpl: async () => { providerCalls++; throw new Error('must not call'); } });
+    try {
+        const req = mockReq({ body: baseBody({ custom_url: MARKER, vc_memory: {
+            chatIdentity: '20000000-0000-4000-8000-000000000001', revision: 4, enabled: true, budgetTokens: 1024, block: '',
+        } }), headers: { cookie: 'vc_session=s1' } });
+        const response = mockRes();
+        const pending = bridge.interceptGenerate(req, response);
+        await recalling;
+        req.socket.emit('close');
+        await pending;
+        assert.equal(providerCalls, 0);
+        assert.equal(store.entries.size, 0);
+        assert.equal(response.statusCode, 504);
+    } finally { release(); go.closeAllConnections(); go.close(); }
+});
+
 // ---------------------------------------------------------------------------
 // 端到端（本地合成 Go + provider）：三协议约束与安全语义
 // ---------------------------------------------------------------------------
@@ -617,7 +706,7 @@ test('端到端：Chat/Anthropic 约束后交回原生链（URL/凭据/model/输
         // 模拟补丁后的原生链：拼 URL/鉴权并发送，再过 finalOutboundGuard
         const endpointUrl = `${body.custom_url}/chat/completions`;
         const requestBody = { ...body, messages: body.messages, stop: undefined };
-        assert.equal(bridge.finalOutboundGuard(req, res, requestBody, endpointUrl), false, '防线放行合法请求');
+        assert.equal(await bridge.finalOutboundGuard(req, res, requestBody, endpointUrl), false, '防线放行合法请求');
         const upstream = await fetch(endpointUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + req.vcGoCredential },
@@ -630,13 +719,13 @@ test('端到端：Chat/Anthropic 约束后交回原生链（URL/凭据/model/输
 
         // 最终防线：Claude thinking 式 max_tokens 追加超登记 → 拒绝发送
         const res2 = mockRes();
-        assert.equal(bridge.finalOutboundGuard(req, res2, { ...requestBody, max_tokens: 900 }, endpointUrl), true);
+        assert.equal(await bridge.finalOutboundGuard(req, res2, { ...requestBody, max_tokens: 900 }, endpointUrl), true);
         assert.equal(res2.statusCode, 400);
         assert.equal(JSON.parse(res2.body()).error.code, 'VC_OUTPUT_LIMIT_EXCEEDED');
 
         // 最终防线：URL 漂移 → 拒绝
         const res3 = mockRes();
-        assert.equal(bridge.finalOutboundGuard(req, res3, requestBody, 'http://elsewhere.example/v1/chat/completions'), true);
+        assert.equal(await bridge.finalOutboundGuard(req, res3, requestBody, 'http://elsewhere.example/v1/chat/completions'), true);
         assert.equal(JSON.parse(res3.body()).error.code, 'VC_OUTBOUND_URL_DRIFT');
     } finally {
         go.close(); provider.close();
@@ -664,7 +753,7 @@ test('端到端 Anthropic：reverse_proxy/proxy_password/model 服务端覆写�
         assert.equal(body.max_tokens, 400);
         // 模拟原生最终请求体（thinking 追加后超上限）→ 防线拒绝
         const res2 = mockRes();
-        assert.equal(bridge.finalOutboundGuard(req, res2, { ...body, max_tokens: 2000 }, 'https://claude.example/v1/messages'), true);
+        assert.equal(await bridge.finalOutboundGuard(req, res2, { ...body, max_tokens: 2000 }, 'https://claude.example/v1/messages'), true);
         assert.equal(JSON.parse(res2.body()).error.code, 'VC_OUTPUT_LIMIT_EXCEEDED');
     } finally {
         go.close();

@@ -174,6 +174,7 @@ type Core struct {
 func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/st/bindings", s.handleResolveSTBinding)
 	s.mux.HandleFunc("POST /api/v1/st/sources/reconcile", s.handleReconcileSTSources)
+	s.mux.HandleFunc("POST /api/v1/st/memory/recall", s.handleSTMemoryRecall)
 	s.mux.HandleFunc("POST /api/v1/service/st/profile", s.handleRegisterSTProfile)
 	s.mux.HandleFunc("POST /api/v1/relationships", s.handleCreateRelationship)
 	s.mux.HandleFunc("GET /api/v1/relationships", s.handleListRelationships)

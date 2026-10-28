@@ -263,3 +263,39 @@ test('原生与 Helper 合并需要独立的 selected extra；来源准备不制
     reconcileSourceIdentities(chat);
     assert.doesNotThrow(() => JSON.stringify(chat));
 });
+
+test('W07 新来源冻结来源瞬时和浏览器时区；保存、换时区与分支不重解析', () => {
+    const chat = [header(), message({ is_user: true, send_date: '2026-10-20T10:00:00+08:00', mes: '下周五去婚礼' })];
+    prepareSourceIdentities(chat, { sourceTimezone: 'Asia/Shanghai', settled: true });
+    reconcileSourceIdentities(chat);
+    const saved = structuredClone(chat);
+    assert.equal(sourceMessages(chat)[0].sourceTimestamp, '2026-10-20T02:00:00.000Z');
+    assert.equal(sourceMessages(chat)[0].sourceTimezone, 'Asia/Shanghai');
+    chat[1].send_date = '2026-10-29T23:00:00Z'; // display metadata does not reinterpret the frozen source
+    prepareSourceIdentities(chat, { sourceTimezone: 'America/New_York' });
+    reconcileSourceIdentities(chat, saved);
+    assert.equal(sourceMessages(chat)[0].sourceTimestamp, '2026-10-20T02:00:00.000Z');
+    assert.equal(sourceMessages(chat)[0].sourceTimezone, 'Asia/Shanghai');
+    assert.equal(sourceMessages(chat)[0].revision, 1);
+    const branch = structuredClone(chat);
+    prepareSourceIdentities(branch, { sourceTimezone: 'UTC' });
+    assert.equal(sourceMessages(branch)[0].sourceTimezone, 'Asia/Shanghai');
+    branch[1].extra.vc_source.sourceTimezone = 'Europe/London';
+    reconcileSourceIdentities(branch, chat);
+    assert.equal(sourceMessages(branch)[0].revision, 2, '显式来源时区更正必须失效派生内容');
+});
+
+test('W07 旧来源缺时区保持未知；swipe的新候选冻结各自时间', () => {
+    const old = [header(), message({ send_date: '2026-10-20T02:00:00Z' })];
+    reconcileSourceIdentities(old);
+    prepareSourceIdentities(old, { sourceTimezone: 'Asia/Shanghai' });
+    assert.equal(sourceMessages(old)[0].sourceTimezone, '');
+    const unknown = [header(), message({ send_date: '2026年10月20日' })];
+    reconcileSourceIdentities(unknown);
+    assert.equal(sourceMessages(unknown)[0].sourceTimestamp, null);
+    const chat = [header(), swipeMessage(['a', 'b'], 0, { send_date: '2026-10-20T02:00:00Z' })];
+    chat[1].swipe_info[1].send_date = '2026-10-21T04:00:00Z';
+    prepareSourceIdentities(chat, { sourceTimezone: 'Asia/Shanghai' });
+    assert.equal(chat[1].swipe_info[0].extra.vc_source.sourceTimestamp, '2026-10-20T02:00:00.000Z');
+    assert.equal(chat[1].swipe_info[1].extra.vc_source.sourceTimestamp, '2026-10-21T04:00:00.000Z');
+});
