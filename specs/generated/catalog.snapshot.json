@@ -1006,7 +1006,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 75,
+          "KEEP": 77,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1209,6 +1209,30 @@
             "operationId": "recallSTMemory",
             "path": "/api/v1/st/memory/recall",
             "replacementOrImpact": "V2-W07 native ST memory block and three-protocol final-request consumer. Resolve scope and the last persisted user query from the owned ST binding, rank related memories and validate summary/source dependencies before budgeted injection. Unavailable or disabled recall removes the old block; STORY does not fall back to ordinary companion memory."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "startStoryRun",
+            "path": "/api/v1/story/runs",
+            "replacementOrImpact": "V2-W12 opens one rainy-inn-v1 run for one STORY conversation. Repeating the same conversation and case is idempotent. A COMPANION conversation or a different case conflicts, and one conversation cannot hold two runs. The player and three NPCs are participants without relationship rows. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getStoryActorView",
+            "path": "/api/v1/story/runs/{runId}/actors/{actorId}/view",
+            "replacementOrImpact": "V2-W12 returns one actor's public setting, own initial knowledge and events already visible to that actor. A mismatched worldVersion conflicts. World truth and other actors' private knowledge are omitted. This read does not call a model."
           },
           {
             "currentH5Callers": [],
@@ -2467,7 +2491,7 @@
           }
         ]
       },
-      "sha256": "826a8d2f232e57c84df77448fb591ccafcb381eb56ec9c922300d7ca27247f10"
+      "sha256": "f6db455f233a23cfcd699a2323973edbb439ef73ca14abc8badbe5416f2655f0"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

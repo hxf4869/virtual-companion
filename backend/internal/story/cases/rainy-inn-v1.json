@@ -1,0 +1,297 @@
+{
+  "schema": "vc-v2-fixture-story-v1",
+  "case_id": "rainy-inn-v1",
+  "title": "雨夜旅馆：失踪的怀表",
+  "runtime_status": "NOT_RUN",
+  "usage": "此文件为规则引擎输入，不能整份注入NPC上下文或作为公共世界书。",
+  "public_lore": {
+    "setting": "雨夜，小旅馆的一枚展柜怀表失踪。玩家受邀调查。",
+    "locations": [
+      "lobby",
+      "kitchen",
+      "workshop"
+    ],
+    "known_event": "20:20老板发现怀表不见了。"
+  },
+  "actors": [
+    {
+      "id": "player",
+      "name": "调查者",
+      "role": "player"
+    },
+    {
+      "id": "lin",
+      "name": "林岚",
+      "role": "npc",
+      "public_persona": "旅馆老板，穿蓝围裙，想找回怀表并维护旅馆名声。",
+      "goal": "找回怀表并澄清自己未离开厨房的时间。"
+    },
+    {
+      "id": "zhou",
+      "name": "周澈",
+      "role": "npc",
+      "public_persona": "住客，穿蓝外套，曾帮旅馆修灯，说话谨慎。",
+      "goal": "避免承认擅自拿走怀表；证据充分时可归还钥匙。"
+    },
+    {
+      "id": "su",
+      "name": "苏禾",
+      "role": "npc",
+      "public_persona": "钟表修复师，观察细致，只愿意确认自己确实看到的事情。",
+      "goal": "如实提供有限目击信息，不把推测说成亲眼所见。"
+    }
+  ],
+  "gm_truth": {
+    "responsible_actor": "zhou",
+    "watch_location": "workshop_cabinet",
+    "motive": "周澈因维修报酬争议擅自暂藏怀表。",
+    "marker": "GM_ONLY_WATCH_TRUTH_92",
+    "timeline": [
+      {
+        "time": "19:55",
+        "fact": "林岚把维修柜钥匙借给周澈修灯。"
+      },
+      {
+        "time": "20:10",
+        "fact": "大堂短暂停电。"
+      },
+      {
+        "time": "20:12",
+        "fact": "周澈取走怀表并藏在维修柜。"
+      },
+      {
+        "time": "20:13",
+        "fact": "苏禾看到蓝色衣袖的人进入维修间，没看清脸。"
+      },
+      {
+        "time": "20:20",
+        "fact": "林岚宣布怀表失踪。"
+      }
+    ]
+  },
+  "initial_private_knowledge": [
+    {
+      "id": "lin-loan",
+      "known_by": [
+        "lin"
+      ],
+      "fact": "19:55把维修柜钥匙借给周澈，并有借用记录。",
+      "marker": "PRIVATE_LIN_LOAN_31"
+    },
+    {
+      "id": "zhou-watch",
+      "known_by": [
+        "zhou"
+      ],
+      "fact": "自己把怀表藏在维修柜，钥匙还在自己手里。",
+      "marker": "PRIVATE_ZHOU_WATCH_44"
+    },
+    {
+      "id": "su-witness",
+      "known_by": [
+        "su"
+      ],
+      "fact": "20:13只看见蓝色衣袖进入维修间，没有看清脸。",
+      "marker": "PRIVATE_SU_WITNESS_57"
+    }
+  ],
+  "initial_state": {
+    "version": 0,
+    "phase": "investigation",
+    "key_holder": "zhou",
+    "watch_location": "workshop_cabinet",
+    "player_clues": [],
+    "ended": false,
+    "actor_revealed_clues": {
+      "lin": [],
+      "zhou": [],
+      "su": []
+    }
+  },
+  "clues": [
+    {
+      "id": "loan_note",
+      "name": "钥匙借用记录",
+      "origin_actor": "lin",
+      "reveal_action": "request_evidence"
+    },
+    {
+      "id": "blue_sleeve",
+      "name": "蓝色衣袖的目击",
+      "origin_actor": "su",
+      "reveal_action": "request_evidence",
+      "qualification": "只能证明有人穿蓝色衣物，不能单凭此认定身份。"
+    },
+    {
+      "id": "watch_recovered",
+      "name": "在维修柜找回怀表",
+      "reveal_action": "inspect",
+      "requires": {
+        "key_holder": "player"
+      }
+    }
+  ],
+  "allowed_actions": [
+    "ask",
+    "inspect",
+    "request_evidence",
+    "show_clue",
+    "request_key",
+    "accuse"
+  ],
+  "rules": [
+    {
+      "id": "evidence-lin",
+      "action": "request_evidence",
+      "target": "lin",
+      "effect": {
+        "grant_player_clue": "loan_note"
+      },
+      "visibility": [
+        "player",
+        "lin"
+      ]
+    },
+    {
+      "id": "evidence-su",
+      "action": "request_evidence",
+      "target": "su",
+      "effect": {
+        "grant_player_clue": "blue_sleeve"
+      },
+      "visibility": [
+        "player",
+        "su"
+      ]
+    },
+    {
+      "id": "show-owned",
+      "action": "show_clue",
+      "guard": "玩家确实持有指定线索，目标角色存在。",
+      "effect": "仅给玩家和目标角色新增对应可见事件；不自动给所有NPC。"
+    },
+    {
+      "id": "key-release",
+      "action": "request_key",
+      "target": "zhou",
+      "requires_player_clues": [
+        "loan_note",
+        "blue_sleeve"
+      ],
+      "effect": {
+        "key_holder": "player"
+      },
+      "visibility": [
+        "player",
+        "zhou"
+      ],
+      "requires_target_knows": [
+        "loan_note",
+        "blue_sleeve"
+      ],
+      "guard": "玩家持有两条线索且已向周澈出示，周澈才按规则归还钥匙；持有但未出示不会自动进入NPC认知。"
+    },
+    {
+      "id": "cabinet-inspect",
+      "action": "inspect",
+      "target": "workshop_cabinet",
+      "requires": {
+        "key_holder": "player"
+      },
+      "effect": {
+        "watch_location": "player",
+        "grant_player_clue": "watch_recovered"
+      },
+      "visibility": [
+        "player"
+      ]
+    },
+    {
+      "id": "resolve",
+      "action": "accuse",
+      "target": "zhou",
+      "requires_player_clues": [
+        "loan_note",
+        "blue_sleeve",
+        "watch_recovered"
+      ],
+      "effect": {
+        "ended": true,
+        "phase": "resolved"
+      },
+      "visibility": [
+        "player",
+        "lin",
+        "zhou",
+        "su"
+      ]
+    }
+  ],
+  "deterministic_success_path": [
+    {
+      "action_id": "a1",
+      "action": "request_evidence",
+      "target": "lin"
+    },
+    {
+      "action_id": "a2",
+      "action": "request_evidence",
+      "target": "su"
+    },
+    {
+      "action": "show_clue",
+      "target": "zhou",
+      "clue_id": "loan_note",
+      "action_id": "a3"
+    },
+    {
+      "action": "show_clue",
+      "target": "zhou",
+      "clue_id": "blue_sleeve",
+      "action_id": "a4"
+    },
+    {
+      "action_id": "a5",
+      "action": "request_key",
+      "target": "zhou"
+    },
+    {
+      "action_id": "a6",
+      "action": "inspect",
+      "target": "workshop_cabinet"
+    },
+    {
+      "action_id": "a7",
+      "action": "accuse",
+      "target": "zhou"
+    }
+  ],
+  "checks": [
+    "initial su prompt excludes PRIVATE_ZHOU_WATCH_44 and GM_ONLY_WATCH_TRUTH_92",
+    "initial zhou prompt excludes PRIVATE_SU_WITNESS_57",
+    "cabinet inspect before acquiring key fails without world state change",
+    "replaying same action_id does not increment version or duplicate clues",
+    "rollback before cabinet inspection removes player watch_recovered and invalidates derived future memory",
+    "unselected swipe speech does not change authoritative truth",
+    "final actual request is checked after world info and target plugin injections",
+    "request_key before showing both owned clues to zhou fails without world state change",
+    "a companion cast into one NPC uses a separate run instance; only user-selected shared-play summary returns to daily memory",
+    "strict new turns do not reuse a remote conversation or previous_response_id containing another actor or branch context",
+    "world commit followed by ST conflict/crash retries the stable world_event_id projection only; no second action and no duplicate transcript"
+  ],
+  "projection_recovery_scenario": {
+    "related_acceptance": "S02",
+    "runtime_status": "NOT_RUN",
+    "setup": "Submit one legal action and atomically persist its world event plus pending projection.",
+    "actions": [
+      "Before ST save completes, cause an F2 revision conflict or close the browser.",
+      "Reopen, load current chat revision, resume projection twice, including once with save acknowledgement lost."
+    ],
+    "expected": [
+      "World version and inventory change once only.",
+      "Transcript projection exists once per world_event_id after readback; an already committed action is not regenerated.",
+      "World-committed and chat-saved statuses remain separate until reconciled.",
+      "Rollback cancels obsolete pending projections; deliberate removal of an existing projection is not auto-restored."
+    ]
+  }
+}

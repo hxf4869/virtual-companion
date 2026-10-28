@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 75
+  KEEP: 77
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -174,6 +174,31 @@ operations:
     rank related memories and validate summary/source dependencies before budgeted
     injection. Unavailable or disabled recall removes the old block; STORY does not
     fall back to ordinary companion memory.
+- operationId: startStoryRun
+  method: POST
+  path: /api/v1/story/runs
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W12 opens one rainy-inn-v1 run for one STORY conversation.
+    Repeating the same conversation and case is idempotent. A COMPANION conversation
+    or a different case conflicts, and one conversation cannot hold two runs.
+    The player and three NPCs are participants without relationship rows.
+    This operation does not call a model.
+- operationId: getStoryActorView
+  method: GET
+  path: /api/v1/story/runs/{runId}/actors/{actorId}/view
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W12 returns one actor's public setting, own initial
+    knowledge and events already visible to that actor. A mismatched worldVersion
+    conflicts. World truth and other actors' private knowledge are omitted.
+    This read does not call a model.
 - operationId: createRelationship
   method: POST
   path: /api/v1/relationships
