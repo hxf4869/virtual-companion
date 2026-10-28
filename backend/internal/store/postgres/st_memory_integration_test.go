@@ -89,17 +89,29 @@ func TestSTMemoryQueryBeyondHundredAndDateAnchor(t *testing.T) {
 	if wedding.Time == nil || wedding.Time.EventDate == nil || *wedding.Time.EventDate != "2026-10-30" || wedding.Time.ReminderAt != nil {
 		t.Fatalf("wrong immutable date: %+v", wedding.Time)
 	}
-	for _, text := range []string{"2026年10月30日准备去哪里，为什么？", "10月30日我要去哪里？"} {
+	for _, text := range []string{"2026年10月30日准备去哪里，为什么？", "10月30日我要去哪里？", "10月30号有什么安排"} {
 		date := "2026-10-30"
 		got, err := testEnv.store.searchEngineMemories(ctx, 1, b.RelationshipID, b.ConversationID, recallQuery{Text: text, Date: &date, Limit: 20})
 		if err != nil || len(got) != 1 || got[0].ID != wedding.ID {
 			t.Fatalf("new relevant record hidden by fixed window: n=%d err=%v", len(got), err)
+		}
+		if lastEngineSearch["dateRestricted"] != true {
+			t.Fatalf("dated recall omitted dateRestricted: %#v", lastEngineSearch["dateRestricted"])
+		}
+		if _, forwarded := lastEngineSearch["eventDate"]; forwarded {
+			t.Fatal("dated recall forwarded eventDate")
 		}
 	}
 	later := "2026-11-06"
 	got, err := testEnv.store.searchEngineMemories(ctx, 1, b.RelationshipID, b.ConversationID, recallQuery{Text: "我下周五有什么安排", Date: &later, Limit: 20})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if lastEngineSearch["dateRestricted"] != true {
+		t.Fatal("next-week query omitted dateRestricted")
+	}
+	if _, forwarded := lastEngineSearch["eventDate"]; forwarded {
+		t.Fatal("next-week query forwarded eventDate")
 	}
 	for _, m := range got {
 		if m.ID == wedding.ID {

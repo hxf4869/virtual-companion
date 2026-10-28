@@ -1070,7 +1070,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 89,
+          "KEEP": 90,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -1297,6 +1297,19 @@
             "operationId": "getStoryActorView",
             "path": "/api/v1/story/runs/{runId}/actors/{actorId}/view",
             "replacementOrImpact": "V2-W12 returns one actor's public setting, own initial knowledge and events already visible to that actor. A mismatched worldVersion conflicts. World truth and other actors' private knowledge are omitted. This read does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome",
+              "safety-or-data-rights"
+            ],
+            "method": "POST",
+            "operationId": "checkStoryOutbound",
+            "path": "/api/v1/story/runs/{runId}/actors/{actorId}/outbound-check",
+            "replacementOrImpact": "V2-W13 second line for the SillyTavern server plugin. The plugin submits extracted final-request text for one actor. Hidden private facts, GM truth text, sample markers, and remote history references are refused with a fixed error and are not echoed. A mismatched worldVersion conflicts. This operation does not call a model."
           },
           {
             "currentH5Callers": [],
@@ -2687,7 +2700,7 @@
           }
         ]
       },
-      "sha256": "dcd5f1f63b9a6c7af6a1b981d02cf00da2d310070b80ae306397d5c43e6bf7ec"
+      "sha256": "12281fb77e6f0aa8d81030650e802f4013d5b0e54dd9b6860772ddd89be6aeee"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

@@ -21,6 +21,7 @@
     "recallSTMemory",
     "startStoryRun",
     "getStoryActorView",
+    "checkStoryOutbound",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -153,6 +154,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "ddd7a351b03198ec54ed001cdf235e68a618e3ddf6e6b1470f106bad3cb48a55"
+    "sha256": "462d9e0b38efc31e65914821bc0bbe3f157c700565c9a7d0528ff5faa27ac7bf"
   }
 }

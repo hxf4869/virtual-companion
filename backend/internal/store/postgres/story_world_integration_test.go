@@ -108,7 +108,7 @@ func TestStoryActorViewReadsOnlyVisibleEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if facts.ConversationID != conversationID || facts.RunID != run.RunID || facts.BranchID != run.BranchID || facts.WorldVersion != 0 || facts.CaseID != "rainy-inn-v1" {
+		if facts.ConversationID != conversationID || facts.RunID != run.RunID || facts.BranchID != run.BranchID || facts.WorldVersion != 0 || facts.CaseID != "rainy-inn-v1" || facts.ChatIdentity != "w12-story-view" {
 			t.Fatalf("facts = %+v", facts)
 		}
 		blob := string(mustJSON(t, facts.Events))

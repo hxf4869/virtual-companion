@@ -5,7 +5,7 @@ import { SCENES, resolveSceneFilter } from '../scripts/managed-lib.mjs';
 import { REPO_ROOT } from '../scripts/lib/paths.mjs';
 import {
     RESULT_RELATIVE, SOURCE_SAMPLES, OPTIONAL_SAMPLES,
-    callCap, canAddSample, cleanupSettled, classifyMiss, judgeAcross, latencyStats, zipCost, summarizeCost,
+    callCap, canAddSample, cleanupSettled, classifyMiss, judgeAcross, latencyStats, queryPhaseStop, zipCost, summarizeCost,
     decodeRefusalHint, publicQuery, recallHit, runCap, sealReport,
 } from '../scripts/w08-real-eval.mjs';
 
@@ -63,6 +63,14 @@ test('画像判定只给结论和一句理由', () => {
     assert.equal(judgeAcross({ caseId: 'M11', layer: 'L2', required: ['厦门', '2026-10-30'], texts: ['去厦门'] }).verdict, '部分');
     assert.equal(judgeAcross({ caseId: 'M05', layer: 'L2', required: ['帆船', '徽章'], texts: ['帆船'], mode: 'any' }).verdict, '贴切');
     assert.equal(judgeAcross({ caseId: 'M09', layer: 'L3', required: ['蓝窗'], texts: ['其他'], expect: 'may-omit' }).verdict, '部分');
+});
+
+test('提问阶段只在新的提取尝试或预算耗尽时停止', () => {
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: ['l2-scene'] }), null);
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: [] }), null);
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: ['l1-extraction'] }), 'query-called-model');
+    assert.equal(queryPhaseStop({ callsNow: 42, callsAtQueries: 41, cap: 300, stages: ['l1-conflict-detection'] }), 'query-called-model');
+    assert.equal(queryPhaseStop({ callsNow: 300, cap: 300, stages: [] }), 'call-budget');
 });
 
 test('延迟取最近秩 P50，并丢掉无法召回的空值', () => {

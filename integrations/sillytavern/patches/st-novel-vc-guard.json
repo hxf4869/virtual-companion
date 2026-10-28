@@ -1,0 +1,24 @@
+{
+  "id": "st-novel-vc-guard",
+  "kind": "deterministic-string-replacement",
+  "reason": "V2-W13（ADR-0009 §2、执行计划 §6.2）：ST 1.19.0 前台 main_api=novel 的文本生成走 POST /api/novelai/generate（public/script.js getGenerateUrl 与 nai-settings.js generateNovelWithStreaming）。该处理函数在空 body 判断后组装 input/parameters 并 fetch NovelAI /ai/generate。它不经过三协议最终核对，server plugin 也不能事后拦截。补丁只在空 body 判断之后、读取密钥与联系上游之前插入同一桥接钩子；桥存在则拒绝且不回显正文，桥不存在则为空操作。不改提示词组装。图像与语音路由不是文本生成旁路，不在本补丁内。",
+  "upstream": {
+    "component": "sillytavern",
+    "repo": "https://github.com/SillyTavern/SillyTavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+    "version": "1.19.0"
+  },
+  "target": "src/endpoints/novelai.js",
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改",
+  "removal_condition": "上游关闭该独立文本生成路由，或提供与三协议最终出站核对等价且可覆盖本路由的公开钩子并被 V2 启用；或 V2 放弃 ST 前台受管生成链。升级 ST 版本必须重算 expected_input_sha256 / expected_output_sha256 并复核锚点只命中一次。",
+  "expected_input_sha256": "0b6b41052ae0311ae6e716955b0805a44b1b63e3a58bf403b81becf0ff1b04ce",
+  "expected_output_sha256": "890e7c85502707be274f7d6ab751c2b5867819f8ddb436fce65525fecaa506b3",
+  "replacements": [
+    {
+      "from": "router.post('/generate', async function (req, res) {\n    if (!req.body) return res.sendStatus(400);\n\n    const api_key_novel = readSecret(req.user.directories, SECRET_KEYS.NOVEL);",
+      "to": "router.post('/generate', async function (req, res) {\n    if (!req.body) return res.sendStatus(400);\n\n    // virtual-companion bridge hook (patch st-novel-vc-guard; W13 unvalidated exit)\n    const vcBridge = globalThis[Symbol.for('virtual-companion.bridge')];\n    if (vcBridge) {\n        await vcBridge.guardUnmanagedGeneration(req, res);\n        return;\n    }\n\n    const api_key_novel = readSecret(req.user.directories, SECRET_KEYS.NOVEL);",
+      "count": 1,
+      "where": "/generate：空 body 判断之后、读取密钥与上游 fetch 之前（不含 /generate-image 与 /generate-voice）"
+    }
+  ]
+}

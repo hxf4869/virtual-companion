@@ -153,6 +153,29 @@ test('accept-managed.mjs 声明了全部场景实现（源文本契约检查）'
     assert.ok(!src.includes(DEFAULT_EXPECT_KEY), 'accept-managed 不应内联 fixture 默认 key（运行时合成）');
 });
 
+test('story-outbound 只在显式 filter 注册，不进入默认场景表', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
+    const at = src.indexOf("id: 'story-outbound'");
+    assert.notEqual(at, -1, 'accept-managed 应追加 story-outbound');
+    const block = src.slice(at, at + 360);
+    assert.match(block, /default:\s*false/);
+    assert.match(block, /'catalog'/);
+    assert.match(block, /'stack'/);
+    assert.match(block, /'browser'/);
+    assert.match(src, /'story-outbound':\s*sceneStoryOutbound/);
+    assert.equal(SCENES.some((scene) => scene.id === 'story-outbound'), false, '共享场景表不收录该场景');
+    assert.equal(resolveSceneFilter().includes('story-outbound'), false);
+    const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    assert.match(readme, /--filter story-outbound/);
+    assert.match(readme, /\.vc-wt\.env/);
+    const scene = src.slice(src.indexOf('async function sceneStoryOutbound'), src.indexOf('const SCENE_IMPLS'));
+    const armed = scene.slice(scene.indexOf('if (proxyArmed && spec.proxy)'));
+    assert.notEqual(armed.indexOf('if (proxyArmed && spec.proxy)'), -1, 'Claude 首发须处理代理确认');
+    assert.match(armed.slice(0, 700), /waitFor\(\{ timeout: 15000 \}\)/, '代理弹窗在点击发送后出现，必须等待而不是立刻视为没有');
+    assert.doesNotMatch(armed.slice(0, 500), /confirmProxy\(spec\.proxy\)/);
+});
+
 // ---------------------------------------------------------------------------
 // dry-run 自检路径（复用 accept-managed 的 runDryRun 不引入 CLI 副作用：
 // 这里等价复验其三件套：fixture 单起 + 精确 ID + SSE 闭包）

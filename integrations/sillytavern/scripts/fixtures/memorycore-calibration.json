@@ -1,45 +1,518 @@
 {
   "documents": [
-    {"id":"tea","content":"我最爱喝茉莉花茶，喝咖啡会心悸。"},
-    {"id":"food","content":"我对花生过敏，点餐要避开花生和花生油。"},
-    {"id":"travel","content":"我计划明年三月去京都看樱花。"},
-    {"id":"work","content":"我在杭州做软件开发，周三需要去办公室。"},
-    {"id":"sport","content":"我每周六上午都会去游泳。"},
-    {"id":"book","content":"我最近正在阅读科幻小说三体。"},
-    {"id":"music","content":"我练钢琴已经三年了，最喜欢肖邦的夜曲。"},
-    {"id":"sleep","content":"我通常晚上十一点睡觉，早晨七点起床。"},
-    {"id":"wedding","content":"我的婚礼定在2026年10月30日，地点是苏州。","eventDate":"2026-10-30"},
-    {"id":"dentist","content":"2026年11月6日我预约了牙医洗牙。","eventDate":"2026-11-06"},
-    {"id":"name","content":"我朋友的名字叫林晓。"},
-    {"id":"cat","content":"我觉得猫很可爱，但是我没有养宠物。"},
-    {"id":"friend-wedding","content":"我计划于2026年10月30日去厦门参加朋友婚礼。","eventDate":"2026-10-30"}
+    {
+      "id": "tea",
+      "content": "我最爱喝茉莉花茶，喝咖啡会心悸。"
+    },
+    {
+      "id": "food",
+      "content": "我对花生过敏，点餐要避开花生和花生油。"
+    },
+    {
+      "id": "travel",
+      "content": "我计划明年三月去京都看樱花。"
+    },
+    {
+      "id": "work",
+      "content": "我在杭州做软件开发，周三需要去办公室。"
+    },
+    {
+      "id": "sport",
+      "content": "我每周六上午都会去游泳。"
+    },
+    {
+      "id": "book",
+      "content": "我最近正在阅读科幻小说三体。"
+    },
+    {
+      "id": "music",
+      "content": "我练钢琴已经三年了，最喜欢肖邦的夜曲。"
+    },
+    {
+      "id": "sleep",
+      "content": "我通常晚上十一点睡觉，早晨七点起床。"
+    },
+    {
+      "id": "wedding",
+      "content": "我的婚礼定在2026年10月30日，地点是苏州。",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "id": "dentist",
+      "content": "2026年11月6日我预约了牙医洗牙。",
+      "eventDate": "2026-11-06"
+    },
+    {
+      "id": "name",
+      "content": "我朋友的名字叫林晓。"
+    },
+    {
+      "id": "cat",
+      "content": "我觉得猫很可爱，但是我没有养宠物。"
+    },
+    {
+      "id": "friend-wedding",
+      "content": "我计划于2026年10月30日去厦门参加朋友婚礼。",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "id": "city",
+      "content": "我已经搬到上海了，以后说我现在的城市请用上海。"
+    },
+    {
+      "id": "seagull",
+      "content": "这次我们把旅行计划叫作海鸥计划。"
+    },
+    {
+      "id": "badge",
+      "content": "我收藏过一枚蓝色帆船徽章。"
+    },
+    {
+      "id": "reading",
+      "content": "我们正在讨论一份蓝窗书店的读书计划，下一步还没决定读哪一本。"
+    },
+    {
+      "id": "dated-summary",
+      "content": "用户将去厦门参加朋友婚礼。",
+      "eventDate": "2026-10-30"
+    }
   ],
   "queries": [
-    {"query":"我最喜欢喝哪种茶？","expected":"tea","kind":"positive"},
-    {"query":"哪种饮料会让我心跳不舒服？","expected":"tea","kind":"paraphrase"},
-    {"query":"我吃什么会过敏？","expected":"food","kind":"positive"},
-    {"query":"帮我提醒一下订餐时要避免的食材。","expected":"food","kind":"paraphrase"},
-    {"query":"我打算去哪里看樱花？","expected":"travel","kind":"positive"},
-    {"query":"明年春天我的旅行安排是什么？","expected":"travel","kind":"paraphrase"},
-    {"query":"我在哪座城市工作？","expected":"work","kind":"positive"},
-    {"query":"每周哪天我需要到公司？","expected":"work","kind":"paraphrase"},
-    {"query":"我周六做什么运动？","expected":"sport","kind":"positive"},
-    {"query":"我周末下水锻炼的习惯是什么？","expected":"sport","kind":"paraphrase"},
-    {"query":"我最近在读哪本小说？","expected":"book","kind":"positive"},
-    {"query":"我练什么乐器？","expected":"music","kind":"positive"},
-    {"query":"我平时几点休息？","expected":"sleep","kind":"paraphrase"},
-    {"query":"我的婚礼什么时候举行？","expected":"wedding","kind":"positive"},
-    {"query":"十一月六号我有什么安排？","expected":"dentist","kind":"date","eventDate":"2026-11-06"},
-    {"query":"我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？（第一轮合成验证）","expected":"friend-wedding","kind":"multi-question","eventDate":"2026-10-30"},
-    {"query":"我的宠物名字是什么？","expected":null,"kind":"distractor"},
-    {"query":"我养的猫叫什么名字？","expected":null,"kind":"distractor"},
-    {"query":"我的信用卡还款日是几号？","expected":null,"kind":"no-answer"},
-    {"query":"我妈妈的生日是什么时候？","expected":null,"kind":"no-answer"},
-    {"query":"我的护照号码是多少？","expected":null,"kind":"no-answer"},
-    {"query":"我下个月的机票航班号是什么？","expected":null,"kind":"distractor"},
-    {"query":"我的工资是多少？","expected":null,"kind":"distractor"},
-    {"query":"我开的车是什么品牌？","expected":null,"kind":"no-answer"},
-    {"query":"我的结婚纪念日是哪一年开始的？","expected":null,"kind":"distractor"},
-    {"query":"十一月六日我在哪里举行婚礼？","expected":null,"kind":"date-conflict","eventDate":"2026-11-06"}
+    {
+      "query": "我最喜欢喝哪种茶？",
+      "expected": "tea",
+      "kind": "positive"
+    },
+    {
+      "query": "哪种饮料会让我心跳不舒服？",
+      "expected": "tea",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "喝什么茶",
+      "expected": "tea",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天会心悸",
+      "expected": "tea",
+      "kind": "date"
+    },
+    {
+      "query": "我吃什么会过敏？",
+      "expected": "food",
+      "kind": "positive"
+    },
+    {
+      "query": "帮我提醒一下订餐时要避免的食材。",
+      "expected": "food",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "花生过敏",
+      "expected": "food",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天不能吃花生",
+      "expected": "food",
+      "kind": "date"
+    },
+    {
+      "query": "我打算去哪里看樱花？",
+      "expected": "travel",
+      "kind": "positive"
+    },
+    {
+      "query": "明年春天我的旅行安排是什么？",
+      "expected": "travel",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "去看樱花",
+      "expected": "travel",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天去京都",
+      "expected": "travel",
+      "kind": "date"
+    },
+    {
+      "query": "我在哪里做软件开发？",
+      "expected": "work",
+      "kind": "positive"
+    },
+    {
+      "query": "每周哪天我需要到公司？",
+      "expected": "work",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "去办公室",
+      "expected": "work",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天去办公室",
+      "expected": "work",
+      "kind": "date"
+    },
+    {
+      "query": "我周六做什么运动？",
+      "expected": "sport",
+      "kind": "positive"
+    },
+    {
+      "query": "我周末下水锻炼的习惯是什么？",
+      "expected": "sport",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "去游泳",
+      "expected": "sport",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天游泳",
+      "expected": "sport",
+      "kind": "date"
+    },
+    {
+      "query": "我最近在读哪本小说？",
+      "expected": "book",
+      "kind": "positive"
+    },
+    {
+      "query": "我在看的科幻小说是哪本？",
+      "expected": "book",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "哪本小说",
+      "expected": "book",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天在读三体",
+      "expected": "book",
+      "kind": "date"
+    },
+    {
+      "query": "我练什么乐器？",
+      "expected": "music",
+      "kind": "positive"
+    },
+    {
+      "query": "我最喜欢谁的钢琴曲？",
+      "expected": "music",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "练钢琴",
+      "expected": "music",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天练钢琴",
+      "expected": "music",
+      "kind": "date"
+    },
+    {
+      "query": "我晚上几点睡觉？",
+      "expected": "sleep",
+      "kind": "positive"
+    },
+    {
+      "query": "我平时几点休息？",
+      "expected": "sleep",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "几点睡觉",
+      "expected": "sleep",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天睡觉",
+      "expected": "sleep",
+      "kind": "date"
+    },
+    {
+      "query": "我的婚礼什么时候举行？",
+      "expected": "wedding",
+      "kind": "positive"
+    },
+    {
+      "query": "我的婚礼在哪座城市办？",
+      "expected": "wedding",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "婚礼在哪",
+      "expected": "wedding",
+      "kind": "short"
+    },
+    {
+      "query": "10月30日我的婚礼在哪",
+      "expected": "wedding",
+      "kind": "date",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "query": "我什么时候去看牙医？",
+      "expected": "dentist",
+      "kind": "positive"
+    },
+    {
+      "query": "我预约了什么口腔护理？",
+      "expected": "dentist",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "看牙医",
+      "expected": "dentist",
+      "kind": "short"
+    },
+    {
+      "query": "十一月六号我有什么安排？",
+      "expected": "dentist",
+      "kind": "date",
+      "eventDate": "2026-11-06"
+    },
+    {
+      "query": "我下周五有什么安排？",
+      "expected": "dentist",
+      "kind": "date",
+      "eventDate": "2026-11-06"
+    },
+    {
+      "query": "我朋友叫什么名字？",
+      "expected": "name",
+      "kind": "positive"
+    },
+    {
+      "query": "我认识的朋友怎么称呼？",
+      "expected": "name",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "朋友叫啥",
+      "expected": "name",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天提到林晓",
+      "expected": "name",
+      "kind": "date"
+    },
+    {
+      "query": "我要去哪里参加朋友的婚礼？",
+      "expected": "friend-wedding",
+      "kind": "positive"
+    },
+    {
+      "query": "十月三十号我打算去哪、参加什么？",
+      "expected": "friend-wedding",
+      "kind": "paraphrase",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "query": "朋友婚礼",
+      "expected": "friend-wedding",
+      "kind": "short"
+    },
+    {
+      "query": "10月30号有什么安排",
+      "expected": "friend-wedding",
+      "kind": "date",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "query": "我现在住哪儿？",
+      "expected": "city",
+      "kind": "positive"
+    },
+    {
+      "query": "目前我定居的城市是哪一座？",
+      "expected": "city",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "现在城市",
+      "expected": "city",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天搬到上海",
+      "expected": "city",
+      "kind": "date"
+    },
+    {
+      "query": "这次旅行计划叫什么？",
+      "expected": "seagull",
+      "kind": "positive"
+    },
+    {
+      "query": "我们给这次出行起了什么代号？",
+      "expected": "seagull",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "计划叫啥",
+      "expected": "seagull",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天定了海鸥计划",
+      "expected": "seagull",
+      "kind": "date"
+    },
+    {
+      "query": "我收藏过什么徽章？",
+      "expected": "badge",
+      "kind": "positive"
+    },
+    {
+      "query": "我有过一枚什么颜色的船徽？",
+      "expected": "badge",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "什么徽章",
+      "expected": "badge",
+      "kind": "short"
+    },
+    {
+      "query": "我哪一天收藏过徽章",
+      "expected": "badge",
+      "kind": "date"
+    },
+    {
+      "query": "我们上次谈到哪一步了？",
+      "expected": "reading",
+      "kind": "positive"
+    },
+    {
+      "query": "上次的阅读计划进展如何？",
+      "expected": "reading",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "读书计划",
+      "expected": "reading",
+      "kind": "short"
+    },
+    {
+      "query": "我们哪一天讨论读书计划",
+      "expected": "reading",
+      "kind": "date"
+    },
+    {
+      "query": "10月30日我要去哪里？",
+      "expected": "dated-summary",
+      "kind": "positive",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "query": "那个厦门的婚礼是哪一天的安排？",
+      "expected": "dated-summary",
+      "kind": "paraphrase"
+    },
+    {
+      "query": "参加婚礼",
+      "expected": "dated-summary",
+      "kind": "short"
+    },
+    {
+      "query": "10月30号我要去哪",
+      "expected": "dated-summary",
+      "kind": "date",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "query": "我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？（第一轮合成验证）",
+      "expected": "friend-wedding",
+      "kind": "multi-question",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "query": "我的宠物名字是什么？",
+      "expected": null,
+      "kind": "distractor"
+    },
+    {
+      "query": "我养的猫叫什么名字？",
+      "expected": null,
+      "kind": "distractor"
+    },
+    {
+      "query": "我的信用卡还款日是几号？",
+      "expected": null,
+      "kind": "no-answer"
+    },
+    {
+      "query": "我妈妈的生日是什么时候？",
+      "expected": null,
+      "kind": "no-answer"
+    },
+    {
+      "query": "我的护照号码是多少？",
+      "expected": null,
+      "kind": "no-answer"
+    },
+    {
+      "query": "我下个月的机票航班号是什么？",
+      "expected": null,
+      "kind": "distractor"
+    },
+    {
+      "query": "我的工资是多少？",
+      "expected": null,
+      "kind": "distractor"
+    },
+    {
+      "query": "我开的车是什么品牌？",
+      "expected": null,
+      "kind": "no-answer"
+    },
+    {
+      "query": "我的结婚纪念日是哪一年开始的？",
+      "expected": null,
+      "kind": "distractor"
+    },
+    {
+      "query": "十一月六日我在哪里举行婚礼？",
+      "expected": null,
+      "kind": "date-conflict",
+      "eventDate": "2026-11-06"
+    },
+    {
+      "query": "11月6日我去厦门吗？",
+      "expected": null,
+      "kind": "wrong-scope",
+      "eventDate": "2026-11-06"
+    },
+    {
+      "query": "10月30日我的护照号码是多少",
+      "expected": null,
+      "kind": "wrong-scope",
+      "eventDate": "2026-10-30"
+    },
+    {
+      "query": "我的工号是多少？",
+      "expected": null,
+      "kind": "no-answer"
+    },
+    {
+      "query": "我的年终奖是多少？",
+      "expected": null,
+      "kind": "distractor"
+    },
+    {
+      "query": "苏州的气温是多少？",
+      "expected": null,
+      "kind": "distractor"
+    }
   ]
 }

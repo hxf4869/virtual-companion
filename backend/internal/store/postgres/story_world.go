@@ -35,6 +35,7 @@ type StoryRun struct {
 
 // StoryActorFacts is the stored identity and branch events for one actor.
 // Events are already limited to that actor's visibility.
+// ChatIdentity is that run's STORY conversation st_chat_identity.
 type StoryActorFacts struct {
 	ConversationID int64
 	RunID          int64
@@ -42,6 +43,7 @@ type StoryActorFacts struct {
 	ActorID        string
 	CaseID         string
 	WorldVersion   int64
+	ChatIdentity   string
 	Events         []story.Event
 }
 
@@ -194,14 +196,21 @@ func (s *Store) LoadStoryActor(ctx context.Context, owner, runID, branchID int64
 	}
 	var out StoryActorFacts
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		err := tx.QueryRow(ctx, `SELECT conversation_id, case_id, world_version
-			FROM vc.story_run WHERE owner_user_id=$1 AND id=$2`,
-			owner, runID).Scan(&out.ConversationID, &out.CaseID, &out.WorldVersion)
+		var mode string
+		err := tx.QueryRow(ctx, `SELECT r.conversation_id, r.case_id, r.world_version,
+				COALESCE(c.st_chat_identity, ''), COALESCE(c.st_mode, '')
+			FROM vc.story_run r
+			JOIN vc.conversation c ON c.owner_user_id = r.owner_user_id AND c.id = r.conversation_id
+			WHERE r.owner_user_id=$1 AND r.id=$2`,
+			owner, runID).Scan(&out.ConversationID, &out.CaseID, &out.WorldVersion, &out.ChatIdentity, &mode)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
+		}
+		if mode != "STORY" || strings.TrimSpace(out.ChatIdentity) == "" {
+			return ErrNotFound
 		}
 		if out.WorldVersion != worldVersion {
 			return ErrStoryWorldVersion

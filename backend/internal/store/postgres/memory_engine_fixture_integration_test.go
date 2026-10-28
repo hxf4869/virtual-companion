@@ -16,6 +16,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// lastEngineSearch is the most recent /internal/search body from the fixture.
+var lastEngineSearch map[string]any
+
 // This transport double ranks only the trusted allowlist. SQLite/search/model
 // behavior is covered separately by memorycore-native; these tests exercise the
 // production Go source, date, branch and final-publication gates.
@@ -34,19 +37,29 @@ func memoryEngineFixture(t *testing.T) {
 			w.WriteHeader(404)
 			return
 		}
-		var input struct {
-			Allowed []string `json:"allowedRecordIds"`
-			Limit   int      `json:"topK"`
-		}
+		var input map[string]any
 		if json.NewDecoder(r.Body).Decode(&input) != nil {
 			w.WriteHeader(400)
 			return
 		}
-		sort.Strings(input.Allowed)
+		lastEngineSearch = input
+		var allowed []string
+		if list, ok := input["allowedRecordIds"].([]any); ok {
+			for _, id := range list {
+				if s, ok := id.(string); ok {
+					allowed = append(allowed, s)
+				}
+			}
+		}
+		limit := 0
+		if n, ok := input["topK"].(float64); ok {
+			limit = int(n)
+		}
+		sort.Strings(allowed)
 		out := []map[string]string{}
-		for _, id := range input.Allowed {
+		for _, id := range allowed {
 			out = append(out, map[string]string{"record_id": id})
-			if input.Limit > 0 && len(out) >= input.Limit {
+			if limit > 0 && len(out) >= limit {
 				break
 			}
 		}

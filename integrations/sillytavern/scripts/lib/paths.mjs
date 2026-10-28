@@ -61,6 +61,10 @@ export const CORE_PATCH_SPECS = [
     path.join(INTEG, 'patches', 'st-f2-data-maid-client.json'),
     path.join(INTEG, 'patches', 'st-f2-extensions.json'),
     path.join(INTEG, 'patches', 'st-chat-completions-vc-bridge.json'),
+    path.join(INTEG, 'patches', 'st-text-completions-vc-guard.json'),
+    path.join(INTEG, 'patches', 'st-kobold-vc-guard.json'),
+    path.join(INTEG, 'patches', 'st-koboldhorde-vc-guard.json'),
+    path.join(INTEG, 'patches', 'st-novel-vc-guard.json'),
     path.join(INTEG, 'patches', 'st-memory-status-client.json'),
     path.join(INTEG, 'patches', 'st-util-stream-error-log.json'),
 ];

@@ -311,6 +311,9 @@ func operation(path string) string {
 			return "admin_model_purpose"
 		}
 		if strings.HasPrefix(path, "/api/v1/story/") {
+			if strings.HasSuffix(path, "/outbound-check") {
+				return "story_outbound_check"
+			}
 			return "story_actor_view"
 		}
 		if strings.HasPrefix(path, "/api/v1/service/model-purposes/") {
