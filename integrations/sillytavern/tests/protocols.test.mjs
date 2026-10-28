@@ -484,6 +484,32 @@ function goStub({ resolvePayload, sessionStatus = 200, captures } = {}) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify(payload));
         }
+        if (req.method === 'POST' && url.pathname === '/api/v1/service/model-usage/reservations') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+                reservationId: '1',
+                purpose: body?.purpose ?? 'FOREGROUND_CHAT',
+                status: 'HELD',
+                reservedUsd: '1.000000',
+                attemptId: body?.attemptId ?? '1',
+            }));
+        }
+        const usageAction = url.pathname.match(/^\/api\/v1\/service\/model-usage\/reservations\/([^/]+)\/(settle|cancel)$/);
+        if (req.method === 'POST' && usageAction) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            if (usageAction[2] === 'settle') {
+                return res.end(JSON.stringify({
+                    reservationId: usageAction[1], purpose: 'FOREGROUND_CHAT', status: 'SETTLED',
+                    actualUsd: '0.003000', inputTokens: body?.inputTokens ?? 0, outputTokens: body?.outputTokens ?? 0,
+                    idempotent: false,
+                }));
+            }
+            return res.end(JSON.stringify({
+                reservationId: usageAction[1], purpose: 'FOREGROUND_CHAT',
+                status: body?.disposition === 'NOT_SENT' ? 'RELEASED' : 'UNKNOWN',
+                reservedUsd: '1.000000', actualUsd: null, idempotent: false,
+            }));
+        }
         res.writeHead(404); res.end('{}');
     };
 }

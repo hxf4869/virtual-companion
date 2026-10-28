@@ -3,8 +3,8 @@
 
 import crypto from 'node:crypto';
 import { BridgeError, upstreamErrorText, writeErrorResponse } from './errors.js';
-import { executeSessionTool, settleModelUsage, cancelModelUsage } from './go-client.js';
-import { reserveSend, readUsageTokens } from './model-usage.js';
+import { executeSessionTool } from './go-client.js';
+import { reserveSend, readUsageTokens, settleUsage, cancelUsage } from './model-usage.js';
 import { checkContextBudget, resolveOutputTokens } from './context-guard.js';
 import { refreshMemorySlot } from './memory-guard.js';
 import { finalRequestUrl } from './url-normalize.js';
@@ -343,7 +343,7 @@ function anthropicBody(tools, messages, model, outputCap, body) {
 async function cancelQuiet(config, reservation, disposition) {
     if (!reservation?.reservationId) return;
     try {
-        await cancelModelUsage(config, reservation.reservationId, {
+        await cancelUsage(config, reservation.reservationId, {
             ownerAccountId: reservation.ownerAccountId,
             disposition,
         });
@@ -432,7 +432,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         }
         if (reservation) {
             try {
-                await settleModelUsage(config, reservation.reservationId, {
+                await settleUsage(config, reservation.reservationId, {
                     ownerAccountId: reservation.ownerAccountId,
                     inputTokens: usage.inputTokens,
                     outputTokens: usage.outputTokens,

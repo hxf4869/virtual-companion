@@ -36,7 +36,7 @@ async function readJsonResponse(res) {
     return { status: res.status, ok: res.ok, json, text, headers: res.headers };
 }
 
-/** 服务通道预留。返回状态与 JSON，由调用方区分 404 放行与拒绝。不携带 Origin。 */
+/** 服务通道预留。返回状态与 JSON。调用方只接受契约 200。不携带 Origin。 */
 export async function reserveModelUsage(config, payload) {
     const res = await goFetch(config, '/api/v1/service/model-usage/reservations', {
         method: 'POST',
@@ -46,7 +46,7 @@ export async function reserveModelUsage(config, payload) {
     return readJsonResponse(res);
 }
 
-/** 同一 reservationId 再次结算由 Go 返回 idempotent:true，金额保持第一次。 */
+/** 单次结算。同一 reservationId 再次结算由 Go 返回 idempotent:true，金额保持第一次。重试在 model-usage.js。 */
 export async function settleModelUsage(config, reservationId, payload) {
     const res = await goFetch(config, `/api/v1/service/model-usage/reservations/${encodeURIComponent(reservationId)}/settle`, {
         method: 'POST',
@@ -60,7 +60,7 @@ export async function settleModelUsage(config, reservationId, payload) {
     return parsed.json;
 }
 
-/** disposition 为 NOT_SENT（未发送）或 UNKNOWN（已发送但没有可信 usage）。 */
+/** 单次取消。disposition 为 NOT_SENT（未发送）或 UNKNOWN（已发送但没有可信 usage）。重试在 model-usage.js。 */
 export async function cancelModelUsage(config, reservationId, payload) {
     const res = await goFetch(config, `/api/v1/service/model-usage/reservations/${encodeURIComponent(reservationId)}/cancel`, {
         method: 'POST',

@@ -15,7 +15,7 @@
 import crypto from 'node:crypto';
 import { BridgeError, writeErrorResponse, upstreamErrorText } from './errors.js';
 import { log } from './log.js';
-import { authSession, resolveModelPurpose, settleModelUsage, cancelModelUsage } from './go-client.js';
+import { authSession, resolveModelPurpose } from './go-client.js';
 import { finalRequestUrl, nativeBaseUrl } from './url-normalize.js';
 import { checkContextBudget, resolveOutputTokens, writeBackOutputTokens } from './context-guard.js';
 import { refreshMemorySlot } from './memory-guard.js';
@@ -23,7 +23,7 @@ import {
     buildResponsesRequest, convertResponsesToChatCompletion, bridgeResponsesStream, extractRoundFromOutput,
 } from './responses-adapter.js';
 import { prepareToolPolicy, runBoundedToolLoop, stripUnmeteredRequestFields } from './tool-loop.js';
-import { reserveSend, armUsageHold, usageFetchInstalled, readUsageTokens } from './model-usage.js';
+import { reserveSend, armUsageHold, usageFetchInstalled, readUsageTokens, settleUsage, cancelUsage } from './model-usage.js';
 
 export const BRIDGE_SYMBOL = Symbol.for('virtual-companion.bridge');
 const PURPOSES_ALLOWED = new Set(['FOREGROUND_CHAT']);
@@ -207,7 +207,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             if (!hold?.reservationId || settled) return;
             settled = true;
             try {
-                await cancelModelUsage(config, hold.reservationId, { ownerAccountId, disposition });
+                await cancelUsage(config, hold.reservationId, { ownerAccountId, disposition });
             } catch { /* 记账失败不回显上游正文 */ }
         };
         const closeHold = async (usage) => {
@@ -217,7 +217,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                 await cancelHold('UNKNOWN');
                 return;
             }
-            await settleModelUsage(config, hold.reservationId, {
+            await settleUsage(config, hold.reservationId, {
                 ownerAccountId,
                 inputTokens: tokens.inputTokens,
                 outputTokens: tokens.outputTokens,
