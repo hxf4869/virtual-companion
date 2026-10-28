@@ -85,6 +85,32 @@ test('partial file publication resumes same commit without repeating native writ
     assert.deepEqual(await engine.invoke('search', { scope, embedding, allowedRecordIds: ['record1'], query: 'x' }), []);
     assert.equal((await engine.invoke('commit', input)).status, 'published'); assert.equal(native.records.size, 1);
 });
+test('rebuild-profile HTTP returns a closed tool code and drops free-form errors', async t => {
+    const { createMemoryCoreServer } = await import('../memorycore-service/http.mjs');
+    const { engine, native } = await fixture(t);
+    await engine.invoke('propose', proposalInput());
+    await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
+    const token = 't'.repeat(32), server = createMemoryCoreServer({ engine, token, commit: 'fixed' });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+    const post = async (operationId) => {
+        const res = await fetch(`http://127.0.0.1:${server.address().port}/internal/rebuild-profile`, {
+            method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ scope, revision: 0, operationId, allowedRecordIds: ['record1'] }),
+        });
+        return { status: res.status, json: await res.json() };
+    };
+    native.rebuildProfile = async () => { throw new Error('MEMORYCORE_TOOL_PATH'); };
+    const closed = await post('profile-closed');
+    assert.equal(closed.status, 422);
+    assert.equal(closed.json.code, 'MEMORYCORE_TOOL_PATH');
+    const leaked = 'synthetic secret sentence';
+    native.rebuildProfile = async () => { throw new Error(`boom ${leaked}`); };
+    const open = await post('profile-open');
+    assert.equal(open.status, 422);
+    assert.equal(open.json.code, 'MEMORYCORE_OPERATION_FAILED');
+    assert.equal(JSON.stringify(open.json).includes(leaked), false);
+});
 test('HTTP business operations reject missing token and browser Origin', async t => {
     const { createMemoryCoreServer } = await import('../memorycore-service/http.mjs');
     const { engine } = await fixture(t);

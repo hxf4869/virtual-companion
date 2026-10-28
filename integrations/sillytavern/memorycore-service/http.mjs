@@ -40,8 +40,11 @@ export function createMemoryCoreServer({ token, engine, commit }) {
                 return send(200, await engine.invoke(action, input));
             } catch (e) {
                 // No upstream exception text: it may contain model content/paths.
-                const conflict = /(?:REVISION|SPACE|OPERATION|PROPOSAL|PROFILE_VERIFICATION)/.test(e.message);
-                return send(conflict ? 409 : 422, { code: conflict ? 'MEMORYCORE_CONFLICT' : 'MEMORYCORE_OPERATION_FAILED' });
+                const message = typeof e?.message === 'string' ? e.message : '';
+                const conflict = /(?:REVISION|SPACE|OPERATION|PROPOSAL|PROFILE_VERIFICATION)/.test(message);
+                if (conflict) return send(409, { code: 'MEMORYCORE_CONFLICT' });
+                const closed = /^MEMORYCORE_[A-Z0-9_]+$/.test(message) ? message : 'MEMORYCORE_OPERATION_FAILED';
+                return send(422, { code: closed });
             }
         }
         req.resume();

@@ -1,33 +1,57 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const TOOL_INSTRUCTION = `Return only JSON. To use a file tool return {"tool":{"name":"read_file"|"write_to_file"|"list_files"|"delete_file","path":"relative path","content":"for writes"}}. To finish return {"text":"final response"}. Only supplied staging files are accessible. No shell, network, or other tools.`;
+const TOOL_INSTRUCTION = `Return only JSON. To use a file tool return {"tool":{"name":"read_file"|"write_to_file"|"list_files"|"delete_file"|"read"|"write"|"edit","path":"scene filename or scene_blocks/<name>.md","content":"for writes","edits":[{"oldText":"unique text","newText":"replacement"}]}}. For L2, path is a scene filename or scene_blocks/<name>.md. For L3, only persona.md may be written. To finish return {"text":"final response"}. Only supplied staging files are accessible. No shell, network, or other tools.`;
+const BARE_MD = /^[\p{L}\p{N} _.-]+\.md$/u;
+const SCENE_MD = /^scene_blocks\/[\p{L}\p{N} _.-]+\.md$/u;
+
+function replaceOnce(text, oldText, next) {
+    if (typeof oldText !== 'string' || oldText.length === 0 || typeof next !== 'string') throw new Error('MEMORYCORE_TOOL_EDIT');
+    const at = text.indexOf(oldText);
+    if (at < 0 || text.indexOf(oldText, at + 1) !== -1) throw new Error('MEMORYCORE_TOOL_EDIT');
+    return text.slice(0, at) + next + text.slice(at + oldText.length);
+}
 
 // Neither model responses nor upstream workspaceDir/storage can select a root.
+// L2 bare filenames are the scene workspace names from the upstream prompt.
 async function fileTool(stagingDir, stage, tool) {
-    const rel = tool?.path;
-    if (typeof rel !== 'string' || rel.includes('\\') || rel.includes('..') || path.isAbsolute(rel) ||
-        !(rel === 'scene_blocks' || /^scene_blocks\/[\p{L}\p{N} _.-]+\.md$/u.test(rel) || rel === 'persona.md')) throw new Error('MEMORYCORE_TOOL_PATH');
-    const writing = ['write_to_file', 'delete_file'].includes(tool.name);
+    let name = tool?.name;
+    if (name === 'read') name = 'read_file';
+    else if (name === 'write') name = 'write_to_file';
+    let rel = tool?.path;
+    if (typeof rel !== 'string' || rel.includes('\\') || rel.includes('..') || path.isAbsolute(rel)) throw new Error('MEMORYCORE_TOOL_PATH');
+    if (stage === 'l2-scene' && rel !== 'persona.md' && BARE_MD.test(rel)) rel = `scene_blocks/${rel}`;
+    if (!(rel === 'scene_blocks' || SCENE_MD.test(rel) || rel === 'persona.md')) throw new Error('MEMORYCORE_TOOL_PATH');
+    const writing = name === 'write_to_file' || name === 'delete_file' || name === 'edit';
     if (writing && (stage === 'l3-persona' ? rel !== 'persona.md' : !rel.startsWith('scene_blocks/'))) throw new Error('MEMORYCORE_TOOL_PATH');
     const target = path.join(stagingDir, rel);
     for (const item of [stagingDir, path.dirname(target), target]) {
         try { if ((await fs.lstat(item)).isSymbolicLink()) throw new Error('MEMORYCORE_TOOL_PATH'); }
         catch (e) { if (e.code !== 'ENOENT') throw e; }
     }
-    if (tool.name === 'write_to_file') {
+    if (name === 'write_to_file') {
         if (typeof tool.content !== 'string' || tool.content.length > 100000) throw new Error('MEMORYCORE_TOOL_SIZE');
         await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
         await fs.writeFile(target, tool.content, { mode: 0o600 }); return 'written';
     }
-    if (tool.name === 'read_file') return (await fs.readFile(target, 'utf8')).slice(0, 100000);
-    if (tool.name === 'list_files' && rel === 'scene_blocks') {
+    if (name === 'edit') {
+        if (!Array.isArray(tool.edits) || tool.edits.length === 0) throw new Error('MEMORYCORE_TOOL_EDIT');
+        let text;
+        try { text = await fs.readFile(target, 'utf8'); }
+        catch (error) { if (error.code === 'ENOENT') throw new Error('MEMORYCORE_TOOL_EDIT'); throw error; }
+        if (text.length > 100000) throw new Error('MEMORYCORE_TOOL_SIZE');
+        for (const edit of tool.edits) text = replaceOnce(text, edit?.oldText, edit?.newText);
+        if (text.length > 100000) throw new Error('MEMORYCORE_TOOL_SIZE');
+        await fs.writeFile(target, text, { mode: 0o600 }); return 'edited';
+    }
+    if (name === 'read_file') return (await fs.readFile(target, 'utf8')).slice(0, 100000);
+    if (name === 'list_files' && rel === 'scene_blocks') {
         let names;
         try { names = await fs.readdir(target); }
         catch (error) { if (error.code !== 'ENOENT') throw error; names = []; }
         return JSON.stringify(names.filter(x => x.endsWith('.md')));
     }
-    if (tool.name === 'delete_file') { await fs.rm(target, { force: true }); return 'deleted'; }
+    if (name === 'delete_file') { await fs.rm(target, { force: true }); return 'deleted'; }
     throw new Error('MEMORYCORE_TOOL_NOT_ALLOWED');
 }
 

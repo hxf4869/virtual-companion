@@ -65,7 +65,7 @@ export async function createNativeFactory(api) {
                 const storage = new api.StorageAdapter(new api.LocalStorageBackend({ rootDir: stagingDir }));
                 const scene = new api.SceneExtractor({ dataDir: stagingDir, config: {}, storage, llmRunner: runner('l2-scene'), traceContext: scope });
                 const result = await scene.extract(records.map(r => ({ id: r.id, content: r.content, created_at: r.createdAt })));
-                if (!result.success) throw new Error('MEMORYCORE_PROFILE_FAILED');
+                if (!result.success) throw new Error(typeof result.error === 'string' && /^MEMORYCORE_[A-Z0-9_]+$/.test(result.error) ? result.error : 'MEMORYCORE_PROFILE_FAILED');
                 const persona = new api.PersonaGenerator({ dataDir: stagingDir, config: {}, storage, llmRunner: runner('l3-persona'), traceContext: scope });
                 if (await persona.generateLocalPersona() === 'failed') throw new Error('MEMORYCORE_PROFILE_FAILED');
                 await fs.access(path.join(stagingDir, 'persona.md'));

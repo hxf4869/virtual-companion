@@ -9,11 +9,27 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 )
 
 var ErrUnavailable = errors.New("memory engine unavailable")
 var ErrConflict = errors.New("memory engine operation conflict")
+
+var closedCodePattern = regexp.MustCompile(`^MEMORYCORE_[A-Z0-9_]+$`)
+
+type closedError struct{ code string }
+
+func (e *closedError) Error() string { return e.code }
+
+// ClosedCode returns a closed engine code carried by err. Any other text is discarded.
+func ClosedCode(err error) string {
+	var closed *closedError
+	if errors.As(err, &closed) && len(closed.code) <= 64 && closedCodePattern.MatchString(closed.code) {
+		return closed.code
+	}
+	return ""
+}
 
 type Scope struct {
 	OwnerID        string `json:"ownerId"`
@@ -62,7 +78,7 @@ func (c *Client) Call(ctx context.Context, action string, input, out any) error 
 		return ErrConflict
 	}
 	if res.StatusCode != 200 {
-		return ErrUnavailable
+		return closedStatus(res.Body)
 	}
 	if out == nil {
 		_, e = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<20))
@@ -72,4 +88,14 @@ func (c *Client) Call(ctx context.Context, action string, input, out any) error 
 		return ErrUnavailable
 	}
 	return nil
+}
+func closedStatus(body io.Reader) error {
+	var payload struct {
+		Code string `json:"code"`
+	}
+	dec := json.NewDecoder(io.LimitReader(body, 512))
+	if dec.Decode(&payload) != nil || len(payload.Code) > 64 || !closedCodePattern.MatchString(payload.Code) {
+		return ErrUnavailable
+	}
+	return &closedError{code: payload.Code}
 }

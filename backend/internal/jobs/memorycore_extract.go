@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
+	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"log/slog"
 	"time"
@@ -115,7 +116,11 @@ func (l *Loop) buildEngineProfile(ctx context.Context, c postgres.JobClaim, op p
 	}
 	defer l.memoryCore.Revoke(token)
 	if e = s.BuildEngineProfile(ctx, c, op, token); e != nil {
-		return l.failExtract(ctx, c, "MEMORYCORE_PROFILE")
+		code := memoryengine.ClosedCode(e)
+		if code == "" {
+			code = "MEMORYCORE_PROFILE"
+		}
+		return l.failExtract(ctx, c, code)
 	}
 	return l.closeExtract(ctx, c, "DONE", "")
 }
