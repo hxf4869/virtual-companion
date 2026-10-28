@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,51 +24,59 @@ var ErrFollowUpBudget = errors.New("follow-up model budget denied")
 // Body is the topic. Greeting is the model text, and it is empty unless the
 // row is BODY_READY.
 type FollowUpGeneration struct {
-	ID                 int64
-	RelationshipID     int64
-	Status             string
-	Body               string
-	EventID            string
-	Deliverable        string
-	Greeting           *string
-	Outcome            *string
-	Reason             *string
-	SourceValid        bool
-	PolicyEnabled      bool
-	OfflineCapable     bool
-	CompanionName      *string
-	UserAddressAs      *string
-	ReplyLength        string
-	Initiative         string
-	Humor              string
-	AdvicePref         string
-	MemoryShareScope   string
-	AvoidTopics        []string
-	Gender             string
-	MemoryItemID       *int64
-	SourceRef          *string
-	SourceRevision     *int64
-	ProviderID         *string
-	ModelID            *string
-	Protocol           *string
-	ProviderRevision   *int64
-	BindingRevision    *int64
-	Params             json.RawMessage
+	ID               int64
+	RelationshipID   int64
+	Status           string
+	Body             string
+	EventID          string
+	Deliverable      string
+	Greeting         *string
+	Outcome          *string
+	Reason           *string
+	SourceValid      bool
+	PolicyEnabled    bool
+	OfflineCapable   bool
+	CompanionName    *string
+	UserAddressAs    *string
+	ReplyLength      string
+	Initiative       string
+	Humor            string
+	AdvicePref       string
+	MemoryShareScope string
+	AvoidTopics      []string
+	Gender           string
+	MemoryItemID     *int64
+	SourceRef        *string
+	SourceRevision   *int64
+	ProviderID       *string
+	ModelID          *string
+	Protocol         *string
+	ProviderRevision *int64
+	BindingRevision  *int64
+	Params           json.RawMessage
+	// Deferrals is how many generation holds are already stored. DeferredUntil
+	// is set only while the latest hold is still waiting.
+	Deferrals     int
+	DeferredUntil *time.Time
 }
 
 // FollowUpGenerationFinish records one generation outcome. Greeting is stored
 // only for BODY_READY. Provider fields are the frozen route and never include
 // a credential.
 type FollowUpGenerationFinish struct {
-	Outcome            string
-	Reason             string
-	Greeting           *string
-	ProviderID         string
-	ModelID            string
-	Protocol           string
-	ProviderRevision   *int64
-	BindingRevision    *int64
-	Params             json.RawMessage
+	Outcome          string
+	Reason           string
+	Greeting         *string
+	ProviderID       string
+	ModelID          string
+	Protocol         string
+	ProviderRevision *int64
+	BindingRevision  *int64
+	Params           json.RawMessage
+	// Now is the worker clock for a NOT_GENERATED or POLICY_DISABLED hold.
+	// Zero uses the database clock. The event date, clock, and timezone are
+	// never arguments of a hold.
+	Now time.Time
 }
 
 func (s *Store) LoadFollowUpGeneration(ctx context.Context, owner, id int64) (FollowUpGeneration, error) {
@@ -131,12 +140,16 @@ func (s *Store) FinishFollowUpGeneration(ctx context.Context, owner, id int64, i
 	if len(in.Params) > 0 {
 		params = string(in.Params)
 	}
+	var now any
+	if !in.Now.IsZero() {
+		now = in.Now
+	}
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			SELECT vc.finish_follow_up_generation($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
+			SELECT vc.finish_follow_up_generation($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12)`,
 			owner, id, in.Outcome, in.Reason, in.Greeting,
 			nullIfBlank(in.ProviderID), nullIfBlank(in.ModelID), nullIfBlank(in.Protocol),
-			in.ProviderRevision, in.BindingRevision, params)
+			in.ProviderRevision, in.BindingRevision, params, now)
 		return err
 	})
 	return mapFollowUpGenErr(err)

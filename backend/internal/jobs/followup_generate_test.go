@@ -246,6 +246,7 @@ func TestFollowUpRetryDoesNotDoubleBook(t *testing.T) {
 }
 
 func TestFollowUpPolicyDisabledMakesNoRequest(t *testing.T) {
+	useFollowHoldClock(t, time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC))
 	row := scheduledFollowRow()
 	row.PolicyEnabled = false
 	fake := newFollowGenFake(row, greetPurpose("https://models.example/v1"))
@@ -256,10 +257,113 @@ func TestFollowUpPolicyDisabledMakesNoRequest(t *testing.T) {
 	if requests != 0 || fake.resolves != 0 || fake.holds != 0 {
 		t.Fatalf("disabled policy called the model: requests=%d resolves=%d holds=%d", requests, fake.resolves, fake.holds)
 	}
-	if fake.row.Status != "SCHEDULED" || fake.row.Deliverable == "DELIVERABLE" || fake.row.Greeting != nil {
+	wantUntil := time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC).Add(6 * time.Hour)
+	if fake.row.Status != "DEFERRED" || fake.row.Deferrals != 1 || fake.row.DeferredUntil == nil || !fake.row.DeferredUntil.Equal(wantUntil) || fake.row.Deliverable == "DELIVERABLE" || fake.row.Greeting != nil || fake.row.Body != "下周复查" {
 		t.Fatalf("disabled policy row = %+v", fake.row)
 	}
 	assertFollowOutcome(t, fake, "POLICY_DISABLED", "POLICY_DISABLED")
+	if len(fake.jobs) != 1 || fake.jobs[0].status != "FAILED" || fake.jobs[0].reason != "POLICY_DISABLED" {
+		t.Fatalf("job = %+v", fake.jobs)
+	}
+}
+
+func TestFollowUpUnboundDefersThenGeneratesAfterBinding(t *testing.T) {
+	now := time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC)
+	useFollowHoldClock(t, now)
+	fake := newFollowGenFake(scheduledFollowRow(), greetPurpose("https://models.example/v1"))
+	fake.resolveErr = &postgres.PurposeUnavailableError{Status: "PENDING_CONFIGURATION"}
+	var requests int
+	factory := scriptedFollowFactory(fake, &requests, "下周见", nil)
+	claim := followClaim()
+	if err := generateFollowUp(context.Background(), fake, factory, safety.New(), claim); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 || fake.builds != 0 || fake.prepares != 0 || fake.holds != 0 {
+		t.Fatalf("unbound requested: requests=%d builds=%d prepares=%d holds=%d", requests, fake.builds, fake.prepares, fake.holds)
+	}
+	if fake.row.Status != "DEFERRED" || fake.row.Deferrals != 1 || fake.row.DeferredUntil == nil || !fake.row.DeferredUntil.Equal(now.Add(6*time.Hour)) || fake.row.Greeting != nil || fake.row.Body != "下周复查" || fake.row.EventID != "fu-m-42" {
+		t.Fatalf("unbound hold = %+v", fake.row)
+	}
+	assertFollowOutcome(t, fake, "NOT_GENERATED", "UNBOUND")
+	if len(fake.jobs) != 1 || fake.jobs[0].status != "FAILED" || fake.jobs[0].reason != "UNBOUND" {
+		t.Fatalf("job = %+v", fake.jobs)
+	}
+	if err := generateFollowUp(context.Background(), fake, factory, safety.New(), claim); err != nil {
+		t.Fatal(err)
+	}
+	if fake.finishCount != 1 || fake.row.Deferrals != 1 || len(fake.jobs) != 2 || fake.jobs[1].status != "FAILED" {
+		t.Fatalf("replay finishes=%d deferrals=%d jobs=%+v", fake.finishCount, fake.row.Deferrals, fake.jobs)
+	}
+
+	fake.resolveErr = nil
+	fake.row.Status = "SCHEDULED"
+	if err := generateFollowUp(context.Background(), fake, factory, safety.New(), claim); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || fake.holds != 1 || fake.settles != 1 || fake.prepares != 1 {
+		t.Fatalf("bound generation requests=%d holds=%d settles=%d prepares=%d", requests, fake.holds, fake.settles, fake.prepares)
+	}
+	if fake.row.Status != "BODY_READY" || fake.row.Greeting == nil || *fake.row.Greeting != "下周见" || fake.row.EventID != "fu-m-42" {
+		t.Fatalf("generated row = %+v", fake.row)
+	}
+	if len(fake.jobs) != 3 || fake.jobs[2].status != "DONE" {
+		t.Fatalf("jobs = %+v", fake.jobs)
+	}
+	if err := generateFollowUp(context.Background(), fake, factory, safety.New(), claim); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || fake.holds != 1 || fake.settles != 1 || fake.finishCount != 2 || fake.row.Greeting == nil || *fake.row.Greeting != "下周见" {
+		t.Fatalf("repeat requests=%d holds=%d settles=%d finishes=%d greeting=%v", requests, fake.holds, fake.settles, fake.finishCount, fake.row.Greeting)
+	}
+}
+
+func TestFollowUpHoldDoublesUntilSilent(t *testing.T) {
+	now := time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC)
+	useFollowHoldClock(t, now)
+	wants := []time.Duration{6 * time.Hour, 12 * time.Hour, 24 * time.Hour}
+	for i, want := range wants {
+		hold := nextFollowUpHold(now, i)
+		if hold.Status != "DEFERRED" || hold.Deferrals != i+1 || hold.Until == nil || !hold.Until.Equal(now.Add(want)) {
+			t.Fatalf("step %d = %+v", i, hold)
+		}
+	}
+	capped := nextFollowUpHold(now, followDeferLimit)
+	if capped.Status != "SILENT" || capped.Until != nil || capped.Deferrals != followDeferLimit {
+		t.Fatalf("cap = %+v", capped)
+	}
+
+	fake := newFollowGenFake(scheduledFollowRow(), greetPurpose("https://models.example/v1"))
+	fake.resolveErr = &postgres.PurposeUnavailableError{Status: "PENDING_CONFIGURATION"}
+	var requests int
+	factory := scriptedFollowFactory(fake, &requests, "下周见", nil)
+	for i, want := range wants {
+		fake.row.Status = "SCHEDULED"
+		if err := generateFollowUp(context.Background(), fake, factory, safety.New(), followClaim()); err != nil {
+			t.Fatal(err)
+		}
+		if requests != 0 || fake.row.Status != "DEFERRED" || fake.row.Deferrals != i+1 || fake.row.DeferredUntil == nil || !fake.row.DeferredUntil.Equal(now.Add(want)) || fake.row.Greeting != nil || fake.row.Body != "下周复查" {
+			t.Fatalf("attempt %d = %+v", i, fake.row)
+		}
+		assertFollowOutcome(t, fake, "NOT_GENERATED", "UNBOUND")
+	}
+	fake.row.Status = "SCHEDULED"
+	if err := generateFollowUp(context.Background(), fake, factory, safety.New(), followClaim()); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 || fake.row.Status != "SILENT" || fake.row.Deferrals != followDeferLimit || fake.row.DeferredUntil != nil || fake.row.Greeting != nil || fake.row.Body != "下周复查" {
+		t.Fatalf("silent = %+v", fake.row)
+	}
+	assertFollowOutcome(t, fake, "NOT_GENERATED", "UNBOUND")
+	if fake.jobs[len(fake.jobs)-1].status != "FAILED" {
+		t.Fatalf("jobs = %+v", fake.jobs)
+	}
+}
+
+func useFollowHoldClock(t *testing.T, now time.Time) {
+	t.Helper()
+	previous := followHoldNow
+	followHoldNow = func() time.Time { return now }
+	t.Cleanup(func() { followHoldNow = previous })
 }
 
 func TestFollowUpSourceInvalidCancelsWithoutRequest(t *testing.T) {
@@ -460,26 +564,26 @@ type followJobClose struct {
 }
 
 type followGenFake struct {
-	row              postgres.FollowUpGeneration
-	purpose          postgres.ResolvedPurpose
-	resolveErr       error
-	budgetErr        error
-	revoked          bool
-	revokeAfterHold  bool
-	resolves         int
-	prepares         int
-	holds            int
-	settles          int
-	builds           int
-	finishCount      int
-	held             bool
-	charged          bool
-	released         bool
-	preparedProvider string
-	preparedModel    string
-	credentialIDs    []string
-	settleKinds      []followSettle
-	jobs             []followJobClose
+	row                    postgres.FollowUpGeneration
+	purpose                postgres.ResolvedPurpose
+	resolveErr             error
+	budgetErr              error
+	revoked                bool
+	revokeAfterHold        bool
+	resolves               int
+	prepares               int
+	holds                  int
+	settles                int
+	builds                 int
+	finishCount            int
+	held                   bool
+	charged                bool
+	released               bool
+	preparedProvider       string
+	preparedModel          string
+	credentialIDs          []string
+	settleKinds            []followSettle
+	jobs                   []followJobClose
 	blockedGreetingAttempt bool
 }
 
@@ -492,11 +596,17 @@ func (f *followGenFake) LoadFollowUpGeneration(context.Context, int64, int64) (p
 }
 
 func (f *followGenFake) FinishFollowUpGeneration(_ context.Context, _, _ int64, in postgres.FollowUpGenerationFinish) error {
-	f.finishCount++
 	if in.Outcome == "BLOCKED" && in.Greeting != nil && strings.TrimSpace(*in.Greeting) != "" {
 		f.blockedGreetingAttempt = true
 		return errors.New("blocked generation cannot store a body")
 	}
+	if in.Outcome == "NOT_GENERATED" || in.Outcome == "POLICY_DISABLED" {
+		if (f.row.Status == "DEFERRED" || f.row.Status == "SILENT") && f.row.Outcome != nil &&
+			(*f.row.Outcome == "NOT_GENERATED" || *f.row.Outcome == "POLICY_DISABLED") {
+			return nil
+		}
+	}
+	f.finishCount++
 	if f.row.Outcome != nil && followOutcomeTerminal(*f.row.Outcome) {
 		if *f.row.Outcome == in.Outcome {
 			return nil
@@ -532,6 +642,17 @@ func (f *followGenFake) FinishFollowUpGeneration(_ context.Context, _, _ int64, 
 	case "CANCELLED", "SOURCE_INVALID":
 		f.row.Status = "CANCELLED"
 		f.row.Greeting = nil
+	case "NOT_GENERATED", "POLICY_DISABLED":
+		now := in.Now
+		if now.IsZero() {
+			now = time.Now()
+		}
+		hold := nextFollowUpHold(now, f.row.Deferrals)
+		f.row.Status = hold.Status
+		f.row.DeferredUntil = hold.Until
+		f.row.Deferrals = hold.Deferrals
+		f.row.Greeting = nil
+		f.row.Deliverable = "NOT_DELIVERABLE"
 	}
 	return nil
 }

@@ -27,7 +27,9 @@ func DecideFollowUpDue(now time.Time, in postgres.FollowUpDueFacts) postgres.Fol
 
 // RunFollowUpDue syncs published memories, then applies one due decision per row.
 // A follow-up enqueued earlier in the same pass counts toward that character's
-// daily limit. Sync failures skip only that character's due rows.
+// daily limit. Sync failures skip only that character's due rows. A closed
+// policy stays on its current SCHEDULED or DEFERRED row and does not spend a
+// generation backoff.
 func RunFollowUpDue(ctx context.Context, store followUpDueStore, now time.Time) error {
 	if store == nil {
 		return errFollowUpStore

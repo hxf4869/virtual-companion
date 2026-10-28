@@ -65,7 +65,10 @@ type FollowUpDueDecision struct {
 
 // DecideFollowUpDue chooses leave, defer, silent, or enqueue. Quiet hours and
 // the recent-interaction window use the user's zone and an absolute instant.
-// A closed policy stays scheduled. The event date is not rewritten.
+// A closed policy is left as it is, SCHEDULED or DEFERRED. That does not move
+// deferred_until and does not spend a generation backoff: turning proactive
+// messaging off is not a failed greeting. The next open pass enqueues a row
+// that is already due. The event date is not rewritten.
 func DecideFollowUpDue(now time.Time, in FollowUpDueFacts) FollowUpDueDecision {
 	if followUpNotDue(now, in) || in.Asked || in.AlreadyQueued || !in.PolicyEnabled || in.TopicResolved {
 		return duePlan(FollowUpDueLeave, nil, in)

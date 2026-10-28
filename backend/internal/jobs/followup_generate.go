@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
@@ -14,6 +15,37 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/safety"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
+
+const (
+	// followDeferBase is the first wait after a greeting was not generated:
+	// the background purpose is unbound, the price is missing, admission
+	// refused the call, or the policy closed while the job was already
+	// claimed. Each later wait doubles. followDeferLimit is how many waits
+	// are kept; the next failure becomes SILENT and keeps the reason.
+	// V167 finish_follow_up_generation applies the same 6h, 12h, 24h schedule.
+	followDeferBase  = 6 * time.Hour
+	followDeferLimit = 3
+)
+
+// followHoldNow is the clock for that wait. Tests replace it.
+var followHoldNow = time.Now
+
+type followHold struct {
+	Status    string
+	Until     *time.Time
+	Deferrals int
+}
+
+// nextFollowUpHold is the wait for one more NOT_GENERATED or POLICY_DISABLED
+// result. prior is how many waits are already stored. The fourth failure
+// (prior >= followDeferLimit) is SILENT and does not move the count.
+func nextFollowUpHold(now time.Time, prior int) followHold {
+	if prior >= followDeferLimit {
+		return followHold{Status: "SILENT", Deferrals: prior}
+	}
+	until := now.Add(followDeferBase << prior)
+	return followHold{Status: "DEFERRED", Until: &until, Deferrals: prior + 1}
+}
 
 const (
 	followGenBodyReady      = "BODY_READY"
@@ -79,7 +111,9 @@ func (l *Loop) handleFollowUp(ctx context.Context, c postgres.JobClaim) error {
 
 // generateFollowUp rechecks the follow-up, freezes the BACKGROUND_GREETINGS
 // route, and writes either a deliverable greeting or an explicit non-generation.
-// It does not write a delivery row, send a notification, or read a card file.
+// NOT_GENERATED and POLICY_DISABLED defer the row, or leave it SILENT once
+// the backoff is exhausted. The event date is not rewritten. It does not
+// write a delivery row, send a notification, or read a card file.
 func generateFollowUp(ctx context.Context, store followUpStore, factory func(modelprovider.Route) (companion.Provider, error), reviewer *safety.Policy, claim postgres.JobClaim) error {
 	if store == nil {
 		return errors.New("follow-up store is unavailable")
@@ -90,6 +124,9 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 	}
 	if row.Outcome != nil && followGenTerminal(*row.Outcome) {
 		return completeFollowUp(ctx, store, claim, *row.Outcome, followReason(row.Reason, *row.Outcome))
+	}
+	if outcome, reason, held := followHoldAlready(row); held {
+		return completeFollowUp(ctx, store, claim, outcome, reason)
 	}
 	if row.Status == followGenCancelled {
 		if err := finishFollowUp(ctx, store, claim, plainFollowFinish(followGenCancelled, followGenCancelled)); err != nil {
@@ -247,7 +284,22 @@ func closeFollowSnapshot(ctx context.Context, store followUpStore, claim postgre
 }
 
 func finishFollowUp(ctx context.Context, store followUpStore, claim postgres.JobClaim, in postgres.FollowUpGenerationFinish) error {
+	if in.Now.IsZero() {
+		in.Now = followHoldNow()
+	}
 	return store.FinishFollowUpGeneration(ctx, claim.OwnerID, claim.RefID, in)
+}
+
+// followHoldAlready reports a hold that this claim already recorded. A
+// reclaimed job closes itself and does not spend another backoff.
+func followHoldAlready(row postgres.FollowUpGeneration) (string, string, bool) {
+	if row.Status != "DEFERRED" && row.Status != "SILENT" {
+		return "", "", false
+	}
+	if row.Outcome == nil || (*row.Outcome != followGenNotGenerated && *row.Outcome != followGenPolicyDisabled) {
+		return "", "", false
+	}
+	return *row.Outcome, followReason(row.Reason, *row.Outcome), true
 }
 
 func completeFollowUp(ctx context.Context, store followUpStore, claim postgres.JobClaim, outcome, reason string) error {

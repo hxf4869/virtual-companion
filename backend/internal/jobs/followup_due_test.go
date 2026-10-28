@@ -113,6 +113,36 @@ func TestFollowUpDuePolicyOffDoesNotEnqueue(t *testing.T) {
 	assertDuePlan(t, got, facts)
 }
 
+func TestFollowUpDueClosedPolicyKeepsDeferred(t *testing.T) {
+	facts := dueReady()
+	facts.Status = "DEFERRED"
+	facts.PolicyEnabled = false
+	facts.TriggerAt = nil
+	until := shanghaiTime(2026, time.November, 2, 18, 0)
+	facts.DeferredUntil = &until
+	got := DecideFollowUpDue(until, facts)
+	if got.Action != postgres.FollowUpDueLeave || got.DeferredUntil != nil {
+		t.Fatalf("closed deferred action = %s until %v", got.Action, got.DeferredUntil)
+	}
+	if got.EventDate == nil || *got.EventDate != "2026-11-02" || got.EventTime == nil || *got.EventTime != "15:04" || got.TriggerAt != nil {
+		t.Fatalf("closed deferred plan = %+v", got)
+	}
+}
+
+func TestFollowUpDueDeferredEnqueuesWhenOpen(t *testing.T) {
+	facts := dueReady()
+	facts.Status = "DEFERRED"
+	facts.PolicyEnabled = true
+	facts.TriggerAt = nil
+	until := shanghaiTime(2026, time.November, 2, 18, 0)
+	facts.DeferredUntil = &until
+	got := DecideFollowUpDue(until, facts)
+	if got.Action != postgres.FollowUpDueEnqueue || got.DeferredUntil != nil {
+		t.Fatalf("open deferred action = %s until %v", got.Action, got.DeferredUntil)
+	}
+	assertDuePlan(t, got, facts)
+}
+
 func TestFollowUpDueServerZoneDoesNotChangePlan(t *testing.T) {
 	facts := dueReady()
 	now := facts.TriggerAt.Add(time.Hour)
