@@ -1,0 +1,1752 @@
+#!/usr/bin/env node
+// V2-W03 受管端到端验收编排入口（子代理 C 夹具 owner）。
+// 许可：AGPL-3.0-only（见 integrations/sillytavern/README；ADR-0009 §3）。
+//
+// 用法：
+//   node scripts/accept-managed.mjs --dry-run            只做自检：fixture provider 单起 +
+//                                                         断言库自测，不碰 docker/Go/ST 完整栈
+//   node scripts/accept-managed.mjs                       完整受管栈 + 默认场景（见 SCENES）
+//   node scripts/accept-managed.mjs --filter a,b          按场景 id 选择（依赖自动补齐）
+//   node scripts/accept-managed.mjs --filter ui03-browser 真实浏览器场景（主会话串联时执行）
+//
+// 生命周期（任一步失败即硬失败退出并清理，真实退出码；所有子命令 pipefail 语义）：
+//   1) 端口归属检查（ST 8752 / fixture 8753 / Go 8095：被任何 PID 监听即退出，不接管）；
+//   2) docker PG：容器 vc-w03-managed-pg（label com.vc.w03=managed，镜像 pgvector/pgvector:0.8.5-pg18，
+//      随机 127.0.0.1 端口，合成口令；DSN 只进子进程环境，不打印）；
+//   3) 迁移：GOTOOLCHAIN=go1.26.10 GOPROXY=off go run -C backend -mod=vendor ./cmd/companiond migrate
+//      （VC_MIGRATE_DB_DSN=...，名字见 backend/internal/migrate.LoadEnv）+ companiond bootstrap
+//      （owner binding secret 种子：V27 契约非 migration，走应用原生子命令）；
+//   4) 受管 MinIO：容器 vc-w03-managed-minio（同 label com.vc.w03=managed，镜像
+//      vc-g12-minio-tools:local = scripts/dev/Dockerfile.e2e-minio-tools 的 pinned 产物，
+//      随机 127.0.0.1 端口 + 合成口令）；mc 经共享网络命名空间建合成桶后即弃；
+//      Go 的 VC_EXPORT_S3_* 指向该 loopback 端点（wireDeps 会真实 BucketExists 校验）；
+//   5) 合成 Go 服务：同工具链 go build 后运行 ./cmd/companiond（无参 = HTTP 运行时），
+//      环境参照 backend/internal/httpapi/provider_integration_test.go newCatalogServer +
+//      full 模式必填项（VC_DB_DSN/VC_OWNER_BINDING_SECRET/VC_CRYPTO_REST_KEY/VC_EXPORT_S3_* 受管 MinIO），
+//      VC_HTTP_ADDR=127.0.0.1:8095、VC_HTTP_ORIGINS=http://127.0.0.1:8752、
+//      VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true、VC_ST_PLUGIN_SERVICE_TOKEN=合成随机(>=32B)；
+//   6) 合成 Owner：真实 POST /api/v1/auth/login 验证请求形状；会话按 core_integration_test.go
+//      adminJSON/IssueOpaqueSession 模式以 SQL 直发（identity_opaque_session_issue + record_reauth），
+//      之后全部走真实 HTTP；
+//   7) fixture provider：本目录 managed-protocol-provider.mjs 子进程（127.0.0.1:8753）；
+//   8) B 的受管组装/启动入口链（不重造组装）：S1 bootstrap（仅当原生 dev/ 未装配）→
+//      assemble-managed.mjs（幂等重建 dev-managed/st-run）→ start-managed.mjs
+//      （VC_ST_GO_BASE_URL + VC_ST_PLUGIN_SERVICE_TOKEN 硬校验）；
+//   9) 验收场景；产物写 dev-managed/artifacts/accept-<ts>/（结果 JSON + 截图；截图不含 Key）；
+//  10) 清理：只按容器标签与本轮 spawn 归属（st.pid 经 B 的 stop-managed.mjs 命令行核对停止；
+//      go/fixture 只停本轮实际启动的 child 并清其 PID 文件，不认残留 PID 文件；
+//      docker rm -f <label 匹配>；不 lsof 扫端口杀进程）。
+//
+// 环境变量面（全部可覆盖；密钥类缺省在进程内合成随机，绝不需要真实凭据）：
+//   VC_W03_ST_PORT(8752) VC_W03_FIXTURE_PORT(8753) VC_W03_GO_PORT(8095)
+//   VC_W03_PG_CONTAINER(vc-w03-managed-pg) VC_W03_PG_IMAGE(pgvector/pgvector:0.8.5-pg18)
+//   VC_W03_MINIO_CONTAINER(vc-w03-managed-minio) VC_W03_MINIO_IMAGE(vc-g12-minio-tools:local)
+//   VC_W03_S3_BUCKET(vc03m-accept)     受管 MinIO 合成桶名
+//   VC_W03_OWNER_ACCOUNT_ID(424242)  合成 Owner 账号 id（十进制字符串语义）
+//   VC_W03_DEV_DIR(dev-managed)      受管运行目录（与 B 的 assemble/start-managed 共用 VC_ST_DEV_DIR 语义）
+//   VC_W03_FAIL_FAST(0)              场景失败即停
+// 退出码：0 全部所选场景通过；2 用法错误；3 生命周期失败；4 场景失败（结果 JSON 仍写出）。
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+    synthApiKey, synthServiceToken, synthRestKey, synthSecret, synthSessionToken, synthCsrfToken,
+    assertExactAccountId, assertApiError, parseSSEText, collectChatStream, collectAnthropicStream,
+    collectResponsesStream, responsesEventTypes, createGoAdminClient, serviceResolve, createStClient,
+    SCENES, resolveSceneFilter, waitFor,
+} from './managed-lib.mjs';
+import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-protocol-provider.mjs';
+
+// ---------------------------------------------------------------------------
+// 常量与 CLI
+// ---------------------------------------------------------------------------
+
+const INTEG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = path.resolve(INTEG, '..', '..');
+const BACKEND = path.join(REPO_ROOT, 'backend');
+const SCRIPTS = path.join(INTEG, 'scripts');
+const DEV_MANAGED = path.resolve(process.env.VC_W03_DEV_DIR || path.join(INTEG, 'dev-managed'));
+const RUN_DIR = path.join(DEV_MANAGED, 'run');
+const ARTIFACTS_ROOT = path.join(DEV_MANAGED, 'artifacts');
+
+const ST_PORT = Number(process.env.VC_W03_ST_PORT || 8752);
+const FIXTURE_PORT = Number(process.env.VC_W03_FIXTURE_PORT || 8753);
+const GO_PORT = Number(process.env.VC_W03_GO_PORT || 8095);
+const GO_BASE = `http://127.0.0.1:${GO_PORT}`;
+const ST_BASE = `http://127.0.0.1:${ST_PORT}`;
+const FIXTURE_BASE = `http://127.0.0.1:${FIXTURE_PORT}`;
+const PG_CONTAINER = process.env.VC_W03_PG_CONTAINER || 'vc-w03-managed-pg';
+const PG_IMAGE = process.env.VC_W03_PG_IMAGE || 'pgvector/pgvector:0.8.5-pg18';
+const MINIO_CONTAINER = process.env.VC_W03_MINIO_CONTAINER || 'vc-w03-managed-minio';
+// 本机已构建的 pinned MinIO/mc 合一镜像（scripts/dev/Dockerfile.e2e-minio-tools 产物；
+// 上游 OCI 镜像不可得 VC-R19，禁止自动拉取）
+const MINIO_IMAGE = process.env.VC_W03_MINIO_IMAGE || 'vc-g12-minio-tools:local';
+const S3_BUCKET = process.env.VC_W03_S3_BUCKET || 'vc03m-accept';
+const PG_LABEL = 'com.vc.w03=managed';
+const OWNER_ACCOUNT_ID = process.env.VC_W03_OWNER_ACCOUNT_ID || '424242';
+const GO_TOOLCHAIN = 'go1.26.10';
+
+const argv = process.argv.slice(2);
+const DRY_RUN = argv.includes('--dry-run');
+const HELP = argv.includes('--help') || argv.includes('-h');
+const FILTER_IDX = argv.indexOf('--filter');
+const FILTER = FILTER_IDX >= 0 ? argv[FILTER_IDX + 1] : undefined;
+
+function usage() {
+    console.log(`用法：node scripts/accept-managed.mjs [--dry-run] [--filter <scene,...>]
+
+场景（--filter 逗号分隔，依赖自动补齐；默认全选 default:true）：
+${SCENES.map((s) => `  ${s.id.padEnd(22)} ${s.default ? '' : '(需显式选择)'}${s.title}`).join('\n')}`);
+}
+
+const log = {
+    ok: (m) => console.log(`[accept] ✓ ${m}`),
+    info: (m) => console.log(`[accept] · ${m}`),
+    warn: (m) => console.log(`[accept] ! ${m}`),
+    fail: (m) => console.error(`[accept] ✗ ${m}`),
+};
+
+class LifecycleError extends Error {}
+function dieLifecycle(msg) { throw new LifecycleError(msg); }
+
+/** 真实退出码的子命令执行（pipefail 语义：非零即抛）；stderr 原样透传。 */
+function runChecked(cmd, args, { cwd, env, label, input } = {}) {
+    // encoding:'buffer' 下 spawnSync 只接受 Buffer 型 input，字符串先转（psql SQL 走 stdin）
+    const stdin = typeof input === 'string' ? Buffer.from(input, 'utf8') : input;
+    const r = spawnSync(cmd, args, { cwd, env: env ? { ...process.env, ...env } : process.env, encoding: 'buffer', input: stdin });
+    if (r.stderr?.length) process.stderr.write(r.stderr);
+    if (r.error) dieLifecycle(`${label} 无法执行：${r.error.message}`);
+    if (r.status !== 0) dieLifecycle(`${label} 失败（exit=${r.status}）`);
+    return r.stdout?.toString('utf8') ?? '';
+}
+
+// ---------------------------------------------------------------------------
+// 端口归属 / 容器 / 进程归属管理（清理只按标签与 PID 文件，不 lsof 扫杀）
+// ---------------------------------------------------------------------------
+
+function listeningPids(port) {
+    const r = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fp'], { encoding: 'utf8' });
+    if (r.status !== 0 && !(r.stdout || '').trim()) return [];
+    return [...(r.stdout || '').matchAll(/^p(\d+)$/gm)].map((m) => Number(m[1]));
+}
+
+function assertPortsFree() {
+    for (const [name, port] of [['ST', ST_PORT], ['fixture', FIXTURE_PORT], ['Go', GO_PORT]]) {
+        const pids = listeningPids(port);
+        if (pids.length) dieLifecycle(`端口 ${port}（${name}）已被 PID ${pids.join(',')} 监听；受管验收不接管他人端口（8742/8743 旧实例请用 scripts/stop.mjs 处理）`);
+    }
+    log.ok(`端口归属检查通过：ST=${ST_PORT} fixture=${FIXTURE_PORT} Go=${GO_PORT} 均空闲`);
+}
+
+function docker(args, { label } = {}) {
+    return runChecked('docker', args, { label: label || `docker ${args[0]}` });
+}
+
+/** 受管 PG：存在同名容器时按标签决定处置；启动随机 127.0.0.1 端口并等 pg_isready。 */
+async function startManagedPg(secrets) {
+    const exists = spawnSync('docker', ['inspect', '-f', '{{.Id}}', PG_CONTAINER], { encoding: 'utf8' });
+    if (exists.status === 0) {
+        const label = spawnSync('docker', ['inspect', '-f', '{{index .Config.Labels "com.vc.w03"}}', PG_CONTAINER], { encoding: 'utf8' });
+        if ((label.stdout || '').trim() !== 'managed') {
+            dieLifecycle(`容器 ${PG_CONTAINER} 已存在但缺少标签 ${PG_LABEL}（非本夹具所有），不接管`);
+        }
+        docker(['rm', '-f', PG_CONTAINER], { label: 'docker rm 旧受管 PG' });
+        log.info('移除上一次残留的受管 PG 容器（label 归属确认）');
+    }
+    docker([
+        'run', '-d', '--name', PG_CONTAINER, '--label', PG_LABEL,
+        '-e', `POSTGRES_PASSWORD=${secrets.pgPassword}`,
+        '-e', 'POSTGRES_DB=vc',
+        '-p', '127.0.0.1::5432',
+        PG_IMAGE,
+    ], { label: 'docker run 受管 PG' });
+    const portOut = docker(['port', PG_CONTAINER, '5432/tcp'], { label: 'docker port' });
+    const m = /127\.0\.0\.1:(\d+)/.exec(portOut.trim());
+    if (!m) dieLifecycle(`无法解析受管 PG 随机端口：${portOut.trim()}`);
+    const pgPort = m[1];
+    secrets.dsn = `postgres://postgres:${secrets.pgPassword}@127.0.0.1:${pgPort}/vc`;
+    await waitFor(() => {
+        // 显式 TCP：入口脚本 init 阶段的临时 server 只听 Unix socket（不带 -h 的 pg_isready
+        // 会提前放行），-h 127.0.0.1 -p 5432 只可能命中最终 server，避免 migrate 撞无监听窗口
+        const r = spawnSync('docker', ['exec', PG_CONTAINER, 'pg_isready', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'vc'], { encoding: 'utf8' });
+        return r.status === 0;
+    }, { timeoutMs: 60000, label: `受管 PG 就绪（容器 ${PG_CONTAINER}，TCP pg_isready 命中最终 server，随机 127.0.0.1:${pgPort}）` });
+    log.ok(`受管 PG 就绪：127.0.0.1:${pgPort}（DSN 仅进子进程环境，不打印）`);
+    return pgPort;
+}
+
+/**
+ * 受管 MinIO（同 label 归属；形态照抄 scripts/dev/e2e-stack.sh：随机 127.0.0.1 端口 +
+ * 合成口令 + mc 经共享网络命名空间建桶，凭据只进容器 env 与 bind-mount 的 config.json，
+ * 不进进程参数表；blobstore.New 的 BucketExists 校验由真实服务满足）。
+ */
+async function startManagedMinio(secrets) {
+    const exists = spawnSync('docker', ['inspect', '-f', '{{.Id}}', MINIO_CONTAINER], { encoding: 'utf8' });
+    if (exists.status === 0) {
+        const label = spawnSync('docker', ['inspect', '-f', '{{index .Config.Labels "com.vc.w03"}}', MINIO_CONTAINER], { encoding: 'utf8' });
+        if ((label.stdout || '').trim() !== 'managed') {
+            dieLifecycle(`容器 ${MINIO_CONTAINER} 已存在但缺少标签 ${PG_LABEL}（非本夹具所有），不接管`);
+        }
+        docker(['rm', '-f', MINIO_CONTAINER], { label: 'docker rm 旧受管 MinIO' });
+        log.info('移除上一次残留的受管 MinIO 容器（label 归属确认）');
+    }
+    const imageReady = spawnSync('docker', ['image', 'inspect', MINIO_IMAGE], { encoding: 'utf8' });
+    if (imageReady.status !== 0) {
+        dieLifecycle(`镜像 ${MINIO_IMAGE} 不在本机（不自动拉取；用 scripts/dev/Dockerfile.e2e-minio-tools 构建或设 VC_W03_MINIO_IMAGE）`);
+    }
+    const accessKey = `vc03m-${synthSecret(9)}`;
+    const secretKey = synthSecret(18);
+    docker([
+        'run', '-d', '--name', MINIO_CONTAINER, '--label', PG_LABEL,
+        '-e', `MINIO_ROOT_USER=${accessKey}`,
+        '-e', `MINIO_ROOT_PASSWORD=${secretKey}`,
+        '-p', '127.0.0.1::9000',
+        MINIO_IMAGE, 'server', '/data',
+    ], { label: 'docker run 受管 MinIO' });
+    const portOut = docker(['port', MINIO_CONTAINER, '9000/tcp'], { label: 'docker port minio' });
+    const m = /127\.0\.0\.1:(\d+)/.exec(portOut.trim());
+    if (!m) dieLifecycle(`无法解析受管 MinIO 随机端口：${portOut.trim()}`);
+    const minioPort = m[1];
+    await waitFor(async () => {
+        try {
+            return (await fetch(`http://127.0.0.1:${minioPort}/minio/health/live`)).ok;
+        } catch {
+            return false;
+        }
+    }, { timeoutMs: 60000, label: `受管 MinIO 就绪（容器 ${MINIO_CONTAINER}，随机 127.0.0.1:${minioPort}）` });
+    // mc 引导建桶：共享 MinIO 网络命名空间（容器内 127.0.0.1:9000），凭据走只读 bind 的
+    // config.json（version 10 别名格式，同 e2e-stack），mc 辅助目录落在临时容器层。
+    fs.mkdirSync(RUN_DIR, { recursive: true });
+    const mcConfig = path.join(RUN_DIR, 'mc-config.json');
+    fs.writeFileSync(mcConfig, JSON.stringify({
+        version: '10',
+        aliases: {
+            w03: {
+                url: 'http://127.0.0.1:9000',
+                accessKey, secretKey,
+                api: 'S3v4', path: 'auto',
+            },
+        },
+    }), { mode: 0o600 });
+    try {
+        docker([
+            'run', '--rm', '--entrypoint', '/bin/mc',
+            '--network', `container:${MINIO_CONTAINER}`,
+            '-e', 'MC_UPDATE=off', '-e', 'MINIO_UPDATE=off',
+            '-v', `${mcConfig}:/mc-config/config.json:ro`,
+            MINIO_IMAGE, '--config-dir', '/mc-config', 'mb', '--ignore-existing', `w03/${S3_BUCKET}`,
+        ], { label: 'mc 建桶（合成凭据经只读 bind 传递）' });
+    } finally {
+        fs.rmSync(mcConfig, { force: true });
+    }
+    secrets.s3 = {
+        endpoint: `http://127.0.0.1:${minioPort}`,
+        accessKey, secretKey, bucket: S3_BUCKET,
+    };
+    log.ok(`受管 MinIO 就绪：127.0.0.1:${minioPort} 桶 ${S3_BUCKET} 已建（凭据只在容器 env 与已删的临时 config）`);
+}
+
+/** 在受管 PG 上执行 SQL（stdin 传参，避免出现在进程参数表）；-v ON_ERROR_STOP=1。 */
+function psql(sql) {
+    return runChecked('docker', ['exec', '-i', PG_CONTAINER, 'psql', '-U', 'postgres', '-d', 'vc', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A'], {
+        label: 'psql', input: sql,
+    });
+}
+
+/** 合成 Owner 账号 + 直发不透明会话（参照 core_integration_test.go adminJSON/IssueOpaqueSession）。 */
+async function seedSyntheticOwner(secrets) {
+    const { raw, hash } = synthSessionToken();
+    const csrf = synthCsrfToken();
+    const out = psql(`
+INSERT INTO vc.vc_user(id, display_name)
+VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner')
+ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name;
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner', '${synthSecret(16) /* 占位哈希：登录走 404 信封断言，会话由直发建立 */}', 'ADMIN', 'ACTIVE', 'w03-accept-owner')
+ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
+SELECT vc.identity_opaque_session_issue(${BigInt(OWNER_ACCOUNT_ID)}, '${hash}', now() + interval '2 hours');
+`);
+    const sessionId = out.trim().split('\n').filter(Boolean).at(-1);
+    if (!/^\d+$/.test(sessionId)) dieLifecycle(`identity_opaque_session_issue 未返回会话 id：${String(sessionId).slice(0, 40)}`);
+    const reauth = psql(`SELECT vc.identity_opaque_session_record_reauth(${BigInt(OWNER_ACCOUNT_ID)}, ${BigInt(sessionId)});`);
+    if (!/t|true/i.test(reauth.trim())) dieLifecycle('identity_opaque_session_record_reauth 未生效（FreshReauth 不可用）');
+    secrets.session = {
+        vcSession: raw, vcCsrf: csrf,
+        accountId: OWNER_ACCOUNT_ID, sessionId,
+    };
+    log.ok(`合成 Owner 会话直发完成（accountId=${OWNER_ACCOUNT_ID} sessionId=${sessionId}；raw token 不打印）`);
+}
+
+// ---------------------------------------------------------------------------
+// 合成 Go 服务（build 后运行；环境面见文件头注释）
+// ---------------------------------------------------------------------------
+
+function goServiceSpec(secrets) {
+    return {
+        binary: path.join(RUN_DIR, 'companiond-accept'),
+        env: {
+            VC_MODE: 'full',
+            VC_VERSION: 'w03-accept',
+            VC_LOG_LEVEL: 'info',
+            VC_HTTP_ADDR: `127.0.0.1:${GO_PORT}`,
+            VC_HTTP_ORIGINS: ST_BASE,
+            VC_SESSION_COOKIE_SECURE: 'false',
+            VC_DB_DSN: secrets.dsn,
+            VC_MIGRATE_DB_DSN: secrets.dsn,
+            VC_OWNER_BINDING_SECRET: secrets.ownerBinding,
+            VC_CRYPTO_REST_KEY: secrets.restKey,
+            VC_EXPORT_S3_ENDPOINT: secrets.s3.endpoint,
+            VC_EXPORT_S3_ACCESS_KEY: secrets.s3.accessKey,
+            VC_EXPORT_S3_SECRET_KEY: secrets.s3.secretKey,
+            VC_EXPORT_S3_BUCKET: secrets.s3.bucket,
+            VC_PROVIDER_ALLOW_LOOPBACK_HTTP: 'true',
+            VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
+        },
+    };
+}
+
+async function startGoService(secrets, artifactsDir) {
+    fs.mkdirSync(RUN_DIR, { recursive: true });
+    const spec = goServiceSpec(secrets);
+    runChecked('go', ['build', '-C', BACKEND, '-mod=vendor', '-o', spec.binary, './cmd/companiond'], {
+        cwd: REPO_ROOT,
+        env: { GOTOOLCHAIN: GO_TOOLCHAIN, GOPROXY: 'off' },
+        label: 'go build companiond',
+    });
+    const logFd = fs.openSync(path.join(artifactsDir, 'go.log'), 'a');
+    const child = spawn(spec.binary, [], { env: { ...process.env, ...spec.env }, stdio: ['ignore', logFd, logFd], detached: true });
+    fs.closeSync(logFd);
+    child.unref();
+    secrets.goPid = child.pid;
+    fs.writeFileSync(path.join(RUN_DIR, 'go.pid'), String(child.pid), { mode: 0o600 });
+    await waitFor(async () => {
+        try {
+            const r = await fetch(`${GO_BASE}/actuator/health`);
+            return r.ok;
+        } catch {
+            return false;
+        }
+    }, { timeoutMs: 60000, label: `Go 服务就绪（${GO_BASE}/actuator/health，日志 ${artifactsDir}/go.log）` });
+    log.ok(`Go 服务就绪 ${GO_BASE}（pid=${child.pid}）`);
+}
+
+// ---------------------------------------------------------------------------
+// fixture provider 子进程与 ST 受管栈（B 的组装/启动入口）
+// ---------------------------------------------------------------------------
+
+async function startFixtureProvider(secrets, artifactsDir) {
+    fs.mkdirSync(RUN_DIR, { recursive: true });
+    const logFd = fs.openSync(path.join(artifactsDir, 'fixture.log'), 'a');
+    const child = spawn(process.execPath, [
+        path.join(SCRIPTS, 'managed-protocol-provider.mjs'),
+        '--port', String(FIXTURE_PORT),
+        '--expect-key', secrets.fixtureKey,
+    ], { env: { ...process.env, VC_W03_FIXTURE_PORT: String(FIXTURE_PORT), VC_W03_FIXTURE_KEY: secrets.fixtureKey }, stdio: ['ignore', logFd, logFd], detached: true });
+    fs.closeSync(logFd);
+    child.unref();
+    secrets.fixturePid = child.pid;
+    fs.writeFileSync(path.join(RUN_DIR, 'fixture.pid'), String(child.pid), { mode: 0o600 });
+    await waitFor(async () => {
+        try {
+            return (await fetch(`${FIXTURE_BASE}/__health`)).ok;
+        } catch {
+            return false;
+        }
+    }, { timeoutMs: 20000, label: `fixture provider 就绪（${FIXTURE_BASE}，日志 ${artifactsDir}/fixture.log）` });
+    log.ok(`fixture provider 就绪 ${FIXTURE_BASE}（pid=${child.pid}，expectKey 只在进程间传递）`);
+}
+
+const fixtureHttp = {
+    async captures(opts = {}) {
+        const q = new URLSearchParams();
+        if (opts.since) q.set('since', String(opts.since));
+        if (opts.protocol) q.set('protocol', opts.protocol);
+        if (opts.endpointSuffix) q.set('endpoint', opts.endpointSuffix);
+        const r = await fetch(`${FIXTURE_BASE}/__captures?${q}`);
+        const j = await r.json();
+        return j.captures;
+    },
+    async count(opts = {}) {
+        return (await this.captures(opts)).length;
+    },
+    async clear() {
+        await fetch(`${FIXTURE_BASE}/__captures/clear`, { method: 'POST' });
+    },
+    async setOverride(model, directive) {
+        await fetch(`${FIXTURE_BASE}/__ctl`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ overrides: { [model]: directive } }),
+        });
+    },
+};
+
+/**
+ * B 的受管组装/启动入口链（不重造组装）：
+ *   bootstrap.mjs（S1 原生 dev/，仅当 dev/bootstrap-ok 缺失时；显式 VC_ST_DEV_DIR=dev 防串位）
+ *   → assemble-managed.mjs（幂等重建 dev-managed/st-run 与部署）
+ *   → start-managed.mjs（需 VC_ST_GO_BASE_URL + VC_ST_PLUGIN_SERVICE_TOKEN，硬校验）。
+ * stop 由 stop-managed.mjs（st.pid 命令行核对）负责，见 cleanupManaged。
+ */
+async function startManagedStack(secrets, artifactsDir) {
+    const nativeDevOk = path.join(INTEG, 'dev', 'bootstrap-ok');
+    if (!fs.existsSync(nativeDevOk)) {
+        log.info('原生 dev/ 尚未 bootstrap（assemble-managed 依赖其重建的 upstream node_modules），先跑 S1 bootstrap');
+        runChecked(process.execPath, [path.join(SCRIPTS, 'bootstrap.mjs')], {
+            cwd: INTEG,
+            env: { VC_ST_DEV_DIR: path.join(INTEG, 'dev') },
+            label: 'S1 bootstrap（原生 dev/）',
+        });
+    }
+    runChecked(process.execPath, [path.join(SCRIPTS, 'assemble-managed.mjs')], {
+        cwd: INTEG,
+        env: { VC_ST_PORT: String(ST_PORT) },
+        label: 'assemble-managed（受管 st-run 组装，幂等）',
+    });
+    runChecked(process.execPath, [path.join(SCRIPTS, 'start-managed.mjs')], {
+        cwd: INTEG,
+        env: {
+            VC_ST_PORT: String(ST_PORT),
+            VC_ST_GO_BASE_URL: GO_BASE,
+            VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
+        },
+        label: 'start-managed（ST 8752 + 插件桥环境）',
+    });
+    await waitFor(async () => {
+        try {
+            const r = await fetch(`${ST_BASE}/version`);
+            if (!r.ok) return false;
+            const j = await r.json();
+            return typeof j?.pkgVersion === 'string';
+        } catch {
+            return false;
+        }
+    }, { timeoutMs: 120000, label: `ST 就绪（${ST_BASE}/version；日志 ${RUN_DIR}/st.log）` });
+    log.ok(`受管 ST 栈就绪 ${ST_BASE}（B 入口：assemble-managed → start-managed）`);
+}
+
+// ---------------------------------------------------------------------------
+// 清理（只按容器标签与 PID 文件归属）
+// ---------------------------------------------------------------------------
+
+function killTree(pid) {
+    if (!pid || !Number.isInteger(pid)) return;
+    try { process.kill(pid, 'SIGTERM'); } catch { /* 已退出 */ }
+}
+
+async function cleanupManaged(secrets) {
+    const stopped = [];
+    // ST 进程归属：B 的 stop-managed.mjs 按 st.pid + 命令行核对停止（防误杀原生实例）
+    const stopManaged = path.join(SCRIPTS, 'stop-managed.mjs');
+    if (fs.existsSync(stopManaged)) {
+        try {
+            runChecked(process.execPath, [stopManaged], { cwd: INTEG, env: { VC_ST_PORT: String(ST_PORT) }, label: 'stop-managed（st.pid 归属停止）' });
+            stopped.push('st.pid（经 stop-managed）');
+        } catch (e) {
+            log.warn(`stop-managed 失败：${e.message}（继续清理其余归属）`);
+        }
+    }
+    // 本脚本自有进程：只终止本轮实际启动的 child（secrets.goPid/fixturePid，spawn 返回值，
+    // 不是 PID 文件），并清除本轮写入的 PID 文件；残留历史 PID 文件不代表所有权，
+    // 不据此 kill（防误杀被系统复用的 PID；仍存活的历史进程由启动前端口归属检查拦截）
+    if (secrets.fixturePid && Number.isInteger(secrets.fixturePid)) {
+        killTree(secrets.fixturePid);
+        stopped.push(`fixture.pid=${secrets.fixturePid}`);
+        fs.rmSync(path.join(RUN_DIR, 'fixture.pid'), { force: true });
+    }
+    if (secrets.goPid && Number.isInteger(secrets.goPid)) {
+        killTree(secrets.goPid);
+        stopped.push(`go.pid=${secrets.goPid}`);
+        fs.rmSync(path.join(RUN_DIR, 'go.pid'), { force: true });
+    }
+    if (stopped.length) log.info(`已停止：${stopped.join(', ')}（TERM）`);
+    // 容器标签归属
+    const list = spawnSync('docker', ['ps', '-a', '--filter', `label=${PG_LABEL}`, '--format', '{{.Names}}'], { encoding: 'utf8' });
+    const names = (list.stdout || '').split('\n').map((s) => s.trim()).filter(Boolean);
+    for (const name of names) {
+        try {
+            runChecked('docker', ['rm', '-f', name], { label: `docker rm ${name}` });
+            log.info(`已移除受管容器 ${name}（label ${PG_LABEL}）`);
+        } catch (e) {
+            log.warn(`容器 ${name} 移除失败：${e.message}`);
+        }
+    }
+    // 等子进程真正退出，避免端口残留影响下一轮
+    await new Promise((r) => setTimeout(r, 700));
+}
+
+// ---------------------------------------------------------------------------
+// 验收场景实现
+// ---------------------------------------------------------------------------
+
+/** 受管目录登记（三协议各一个 provider + 独立小窗 provider + 三态草稿 provider）。 */
+function providerCatalogSpec(fixtureKey) {
+    const model = (profileKey, modelId, displayName, extra = {}) => ({
+        profileKey, modelId, displayName,
+        contextWindowTokens: 8192, maxOutputTokens: 2048,
+        state: 'ENABLED',
+        capabilities: { toolCalls: 'DECLARED', systemMessage: 'DECLARED' },
+        reasoningLevels: [],
+        generationParams: { temperature: 0.3 },
+        ...extra,
+    });
+    return [
+        {
+            providerId: 'vc03m-chat', displayName: '受管 Chat', protocol: 'OPENAI_CHAT_COMPLETIONS',
+            baseUrl: `${FIXTURE_BASE}/v1`, credential: fixtureKey, state: 'ENABLED',
+            models: [
+                model('chat', 'vc03m-chat', 'Chat 主档'),
+                model('chat-tools', 'vc03m-tools', 'Chat 工具档', { generationParams: { temperature: 0.3, topP: 0.9 } }),
+                model('chat-slow', 'vc03m-chat-slow', 'Chat 慢速档'),
+            ],
+        },
+        {
+            providerId: 'vc03m-resp', displayName: '受管 Responses', protocol: 'OPENAI_RESPONSES',
+            baseUrl: `${FIXTURE_BASE}/v1`, credential: fixtureKey, state: 'ENABLED',
+            models: [
+                model('reasoning', 'vc03m-reasoning', 'Responses 推理+工具档', { reasoningLevels: ['low'], generationParams: { temperature: 0.3, reasoningEffort: 'low' } }),
+                model('usage', 'vc03m-usage', 'Responses 用量档'),
+            ],
+        },
+        {
+            providerId: 'vc03m-claude', displayName: '受管 Claude', protocol: 'ANTHROPIC_MESSAGES',
+            baseUrl: `${FIXTURE_BASE}/v1`, credential: fixtureKey, state: 'ENABLED',
+            models: [
+                model('chat', 'vc03m-chat', 'Claude 主档'),
+                model('tools', 'vc03m-tools', 'Claude 工具档'),
+            ],
+        },
+        {
+            providerId: 'vc03m-tiny', displayName: '受管小窗', protocol: 'OPENAI_CHAT_COMPLETIONS',
+            baseUrl: `${FIXTURE_BASE}/v1`, credential: fixtureKey, state: 'ENABLED',
+            models: [model('tiny', 'vc03m-chat', '小窗档', { contextWindowTokens: 256, maxOutputTokens: 64 })],
+        },
+    ];
+}
+
+/** 把 FOREGROUND_CHAT 绑定到指定 profile，返回含最新 revision 的标记快照。
+ *  requireReady=false 允许清 Key 后的 UNAVAILABLE 绑定（快照带 status 供场景断言）。 */
+async function bindForeground(ctx, providerId, profileKey, modelId, { requireReady = true } = {}) {
+    const purposes = await ctx.admin.listPurposes();
+    if (purposes.status !== 200) throw new Error(`model-purposes 列表 HTTP ${purposes.status}`);
+    const row = purposes.json.find((r) => r.purpose === 'FOREGROUND_CHAT');
+    if (!row) throw new Error('FOREGROUND_CHAT 缺失于用途列表');
+    const saved = await ctx.admin.savePurpose('FOREGROUND_CHAT', {
+        providerId, profileKey, state: 'ENABLED', expectedRevision: row.revision,
+    });
+    if (saved.status !== 200 || (requireReady && saved.json.status !== 'READY')) {
+        throw new Error(`绑定失败：HTTP ${saved.status} ${JSON.stringify(saved.json).slice(0, 200)}`);
+    }
+    const providers = await ctx.admin.listProviders();
+    const provider = providers.json.find((p) => p.providerId === providerId);
+    if (!provider) throw new Error(`provider ${providerId} 未在列表中`);
+    const bindingRevision = saved.json.revision;
+    const marker = `vc-go://model-purposes/FOREGROUND_CHAT?provider=${encodeURIComponent(providerId)}&profile=${encodeURIComponent(profileKey)}&pr=${provider.revision}&br=${bindingRevision}&scope=${encodeURIComponent(ctx.scope)}`;
+    return { providerId, profileKey, providerRevision: provider.revision, bindingRevision, modelId, marker, status: saved.json.status };
+}
+
+/** 断言某 provider 的用途绑定当前不可用（清 Key 后）。 */
+async function readFixtureCapture(ctx, { protocol, since, index = -1 }) {
+    const rows = await ctx.fixtureHttp.captures({ protocol, since });
+    if (!rows.length) throw new Error(`fixture 未捕获 ${protocol} 请求`);
+    return rows.at(index);
+}
+
+async function sceneLoginShape(ctx) {
+    // 真实登录端点请求形状：合成账号 + 合成口令（占位 hash 无法通过），断言错误信封；
+    // 非法形状断言 400。会话本身由 seedSyntheticOwner 直发（adminJSON 模式），后续全走真实 HTTP。
+    const r1 = await fetch(`${GO_BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: ST_BASE },
+        body: JSON.stringify({ account: 'w03-accept-owner', password: 'w03-synthetic-not-the-login-hash' }),
+    });
+    const body1 = await r1.json();
+    if (r1.status !== 404 || body1.code !== 'NOT_FOUND_OR_FORBIDDEN') {
+        throw new Error(`合成账号登录应返回 404 NOT_FOUND_OR_FORBIDDEN，实际 ${r1.status} ${JSON.stringify(body1).slice(0, 160)}`);
+    }
+    const r2 = await fetch(`${GO_BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: ST_BASE },
+        body: JSON.stringify({ account: '', password: '' }),
+    });
+    const body2 = await r2.json();
+    if (r2.status !== 400 || body2.code !== 'INVALID_REQUEST') {
+        throw new Error(`非法登录形状应返回 400 INVALID_REQUEST，实际 ${r2.status} ${JSON.stringify(body2).slice(0, 160)}`);
+    }
+    const session = await ctx.admin.sessionIdentity();
+    if (session.status !== 200 || !decimalStringsEqualOk(session.json.accountId, OWNER_ACCOUNT_ID)) {
+        throw new Error(`会话核验失败：HTTP ${session.status} ${JSON.stringify(session.json).slice(0, 160)}`);
+    }
+    assertExactAccountId(session.json.accountId, OWNER_ACCOUNT_ID, 'Go 会话 accountId');
+    log.ok(`登录端点形状与会话核验通过（accountId=${session.json.accountId} 精确十进制字符串）`);
+}
+
+function decimalStringsEqualOk(actual, expected) {
+    return typeof actual === 'string' && actual.trim() === expected.trim() && /^\d+$/.test(actual.trim());
+}
+
+async function sceneCatalogAdmin(ctx) {
+    const admin = ctx.admin;
+    const specs = providerCatalogSpec(ctx.secrets.fixtureKey);
+
+    // —— 保存（含凭据）→ revision 1 ——
+    for (const spec of specs) {
+        const saved = await admin.saveProvider(spec.providerId, {
+            displayName: spec.displayName, protocol: spec.protocol, baseUrl: spec.baseUrl,
+            credential: spec.credential, state: spec.state,
+            models: spec.models,
+        });
+        if (saved.status !== 200 || saved.json.revision !== 1) {
+            throw new Error(`保存 ${spec.providerId} 失败：HTTP ${saved.status} ${JSON.stringify(saved.json).slice(0, 200)}`);
+        }
+    }
+    log.ok(`四个受管 provider 保存成功（revision=1，凭据=合成 fixture key）`);
+
+    // —— 读回：无明文凭据、credentialConfigured、endpointUrl 规范 ——
+    const listed = await admin.listProviders();
+    if (listed.status !== 200) throw new Error(`providers 列表 HTTP ${listed.status}`);
+    const text = JSON.stringify(listed.json);
+    if (text.includes(ctx.secrets.fixtureKey) || text.includes('"credential"')) {
+        throw new Error('providers 列表泄露凭据（含明文 key 或 credential 字段）');
+    }
+    const endpointBy = {
+        'vc03m-chat': `${FIXTURE_BASE}/v1/chat/completions`,
+        'vc03m-resp': `${FIXTURE_BASE}/v1/responses`,
+        'vc03m-claude': `${FIXTURE_BASE}/v1/messages`,
+        'vc03m-tiny': `${FIXTURE_BASE}/v1/chat/completions`,
+    };
+    for (const [pid, endpointUrl] of Object.entries(endpointBy)) {
+        const row = listed.json.find((p) => p.providerId === pid);
+        if (!row || row.credentialConfigured !== true || row.endpointUrl !== endpointUrl) {
+            throw new Error(`${pid} 读回异常：credentialConfigured=${row?.credentialConfigured} endpointUrl=${row?.endpointUrl}（期望 ${endpointUrl}）`);
+        }
+    }
+    log.ok('读回断言通过：credentialConfigured=true、endpointUrl 按协议规范化、无明文凭据');
+
+    // —— 绑定 FOREGROUND_CHAT → READY ——
+    const snapChat = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    if (snapChat.bindingRevision !== 2) throw new Error(`首次绑定后 bindingRevision 应为 2，实际 ${snapChat.bindingRevision}`);
+    ctx.snapshots.chat = snapChat;
+
+    // —— 409 保留草稿：用过期 expectedRevision 再保存，文档必须原样保留 ——
+    const stale = await admin.saveProvider('vc03m-chat', {
+        displayName: '受管 Chat（过期写入）', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        credential: ctx.secrets.fixtureKey, state: 'ENABLED', expectedRevision: 999,
+        models: [specs[0].models[0]],
+    });
+    if (stale.status !== 409 || stale.json.code !== 'REVISION_CONFLICT') {
+        throw new Error(`过期 revision 写入应 409 REVISION_CONFLICT，实际 ${stale.status} ${JSON.stringify(stale.json).slice(0, 160)}`);
+    }
+    const afterStale = await admin.listProviders();
+    const chatRow = afterStale.json.find((p) => p.providerId === 'vc03m-chat');
+    if (chatRow.models.length !== specs[0].models.length || !chatRow.models.some((m) => m.profileKey === 'chat-slow')) {
+        throw new Error(`409 后模型文档被破坏：profiles=${chatRow.models.map((m) => m.profileKey).join(',')}`);
+    }
+    if (chatRow.displayName !== '受管 Chat' || chatRow.revision !== 1) {
+        throw new Error(`409 后 provider 字段被改动：displayName=${chatRow.displayName} revision=${chatRow.revision}`);
+    }
+    log.ok('409 REVISION_CONFLICT 保留草稿通过（revision 与全部模型文档原样）');
+
+    // —— Key 三态：无 Key 草稿 → 已配置 → 清除（各自读回断言） ——
+    const draftSave = await admin.saveProvider('vc03m-draft', {
+        displayName: '受管草稿', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        state: 'DISABLED', models: [specs[0].models[0]],
+    });
+    if (draftSave.status !== 200) throw new Error(`无 Key 草稿保存失败：HTTP ${draftSave.status}`);
+    const draftList = await admin.listProviders();
+    const draftRow = draftList.json.find((p) => p.providerId === 'vc03m-draft');
+    if (draftRow?.credentialConfigured !== false) throw new Error('草稿态 credentialConfigured 应为 false');
+    const setKey = await admin.saveProvider('vc03m-draft', {
+        displayName: '受管草稿', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        credential: ctx.secrets.fixtureKey, state: 'ENABLED', expectedRevision: draftSave.json.revision,
+        models: [specs[0].models[0]],
+    });
+    if (setKey.status !== 200) throw new Error(`补 Key 失败：HTTP ${setKey.status}`);
+    const clearKey = await admin.saveProvider('vc03m-draft', {
+        displayName: '受管草稿', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        clearCredential: true, state: 'DISABLED', expectedRevision: setKey.json.revision,
+        models: [specs[0].models[0]],
+    });
+    if (clearKey.status !== 200) throw new Error(`清 Key 失败：HTTP ${clearKey.status}`);
+    const clearedList = await admin.listProviders();
+    const clearedRow = clearedList.json.find((p) => p.providerId === 'vc03m-draft');
+    if (clearedRow?.credentialConfigured !== false) throw new Error('清 Key 后 credentialConfigured 应为 false');
+    log.ok('Key 三态通过：草稿(无 Key) → 已配置 → 清除');
+
+    // —— 共享影响：绑定切到 Responses，再切回；切换只改绑定行，不碰其他 provider ——
+    const snapResp = await bindForeground(ctx, 'vc03m-resp', 'reasoning', 'vc03m-reasoning');
+    const midList = await admin.listProviders();
+    const chatUnchanged = midList.json.find((p) => p.providerId === 'vc03m-chat');
+    if (chatUnchanged.revision !== 1) throw new Error(`绑定切换不该改 provider revision（vc03m-chat=${chatUnchanged.revision}）`);
+    ctx.snapshots.responses = snapResp;
+    ctx.snapshots.chat = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    ctx.snapshots.claude = await bindForeground(ctx, 'vc03m-claude', 'chat', 'vc03m-chat');
+    ctx.snapshots.tiny = await bindForeground(ctx, 'vc03m-tiny', 'tiny', 'vc03m-chat');
+    log.ok(`绑定切换（独立用途面）通过：br=${snapChat.bindingRevision}→${snapResp.bindingRevision}→…→${ctx.snapshots.chat.bindingRevision}，provider revision 不受影响`);
+
+    // —— discover：真实 POST 到 fixture /models（显式操作，计入 fixture 计数） ——
+    const discovered = await admin.discover('vc03m-chat', {
+        protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`, credential: ctx.secrets.fixtureKey,
+    });
+    if (discovered.status !== 200 || !discovered.json.some((m) => m.modelId === 'vc03m-chat')) {
+        throw new Error(`discover 失败：HTTP ${discovered.status} ${JSON.stringify(discovered.json).slice(0, 160)}`);
+    }
+    const modelsCapture = await readFixtureCapture(ctx, { protocol: 'models' });
+    if (modelsCapture.auth.matched !== true) throw new Error('discover 的 /models 请求 auth 未匹配合成 key');
+    log.ok('discover 通过（真实 fixture /models，auth 匹配）');
+}
+
+async function sceneZeroUpstreamOnSave(ctx) {
+    // 只做保存/绑定/再保存（不 discover、不生成）：fixture 请求计数差必须为 0
+    await ctx.fixtureHttp.clear();
+    const before = await ctx.fixtureHttp.count();
+    const saved = await ctx.admin.saveProvider('vc03m-chat', {
+        displayName: '受管 Chat', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        state: 'ENABLED', expectedRevision: (await providerRevision(ctx, 'vc03m-chat')),
+        models: providerCatalogSpec(ctx.secrets.fixtureKey)[0].models,
+    });
+    if (saved.status !== 200) throw new Error(`仅配置保存失败：HTTP ${saved.status}`);
+    ctx.snapshots.chat = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    const mid = await ctx.fixtureHttp.count();
+    if (mid !== before) throw new Error(`保存/绑定期间出现上游请求：${before} → ${mid}`);
+    // 二次保存（KEEP 凭据）也不该触上游
+    const saved2 = await ctx.admin.saveProvider('vc03m-chat', {
+        displayName: '受管 Chat2', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        state: 'ENABLED', expectedRevision: saved.json.revision,
+        models: providerCatalogSpec(ctx.secrets.fixtureKey)[0].models,
+    });
+    if (saved2.status !== 200) throw new Error(`二次保存失败：HTTP ${saved2.status}`);
+    const after = await ctx.fixtureHttp.count();
+    if (after !== before) throw new Error(`仅配置投影零上游请求断言失败：${before} → ${after}`);
+    log.ok(`零上游请求断言通过：保存/绑定/再保存期间 fixture 计数恒为 ${before}`);
+}
+
+async function providerRevision(ctx, providerId) {
+    const listed = await ctx.admin.listProviders();
+    const row = listed.json.find((p) => p.providerId === providerId);
+    if (!row) throw new Error(`provider ${providerId} 不存在`);
+    return row.revision;
+}
+
+async function sceneServiceResolve(ctx) {
+    // seed 大 ID 账号（safe-integer 之上）：精确十进制字符串可解析，float 邻值被拒
+    psql(`
+INSERT INTO vc.vc_user(id, display_name) VALUES (9007199254740993, 'w03-big-owner')
+ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name;
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (9007199254740993, 'w03-big-owner', '${synthSecret(12)}', 'ADMIN', 'ACTIVE', 'w03-big-owner')
+ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE';
+`);
+    const snap = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    const base = { purpose: 'FOREGROUND_CHAT', providerId: snap.providerId, profileKey: snap.profileKey, providerRevision: snap.providerRevision, bindingRevision: snap.bindingRevision };
+
+    const okBig = await serviceResolve({ baseUrl: GO_BASE, serviceToken: ctx.secrets.serviceToken, body: { ...base, ownerAccountId: '9007199254740993' } });
+    if (okBig.status !== 200 || okBig.json?.provider?.credential !== ctx.secrets.fixtureKey) {
+        throw new Error(`大 owner resolve 失败：HTTP ${okBig.status} ${JSON.stringify(okBig.json).slice(0, 160)}`);
+    }
+    assertExactAccountId('9007199254740993', '9007199254740993');
+    const neighbor = await serviceResolve({ baseUrl: GO_BASE, serviceToken: ctx.secrets.serviceToken, body: { ...base, ownerAccountId: '9007199254740992' } });
+    if (neighbor.status !== 403 || neighbor.json?.code !== 'ACCESS_DENIED') {
+        throw new Error(`float 邻值 owner 必须被拒，实际 HTTP ${neighbor.status} ${JSON.stringify(neighbor.json).slice(0, 160)}`);
+    }
+    const bad = await serviceResolve({ baseUrl: GO_BASE, serviceToken: ctx.secrets.serviceToken, body: { ...base, ownerAccountId: 'not-a-number' } });
+    if (bad.status !== 400 || bad.json?.code !== 'INVALID_REQUEST') {
+        throw new Error(`非十进制 ownerAccountId 应 400，实际 HTTP ${bad.status}`);
+    }
+    const noToken = await serviceResolve({ baseUrl: GO_BASE, serviceToken: 'wrong-token-wrong-token-wrong-token-0000', body: { ...base, ownerAccountId: OWNER_ACCOUNT_ID } });
+    if (noToken.status !== 401) throw new Error(`错误服务令牌应 401，实际 ${noToken.status}`);
+
+    const stalePr = await serviceResolve({ baseUrl: GO_BASE, serviceToken: ctx.secrets.serviceToken, body: { ...base, ownerAccountId: OWNER_ACCOUNT_ID, providerRevision: snap.providerRevision + 500 } });
+    if (stalePr.status !== 409 || stalePr.json?.code !== 'REVISION_CONFLICT') {
+        throw new Error(`过期 providerRevision 应 409 REVISION_CONFLICT，实际 HTTP ${stalePr.status}`);
+    }
+    const staleBr = await serviceResolve({ baseUrl: GO_BASE, serviceToken: ctx.secrets.serviceToken, body: { ...base, ownerAccountId: OWNER_ACCOUNT_ID, bindingRevision: snap.bindingRevision + 500 } });
+    if (staleBr.status !== 409 || staleBr.json?.code !== 'REVISION_CONFLICT') {
+        throw new Error(`过期 bindingRevision 应 409 REVISION_CONFLICT，实际 HTTP ${staleBr.status}`);
+    }
+    const fine = await serviceResolve({ baseUrl: GO_BASE, serviceToken: ctx.secrets.serviceToken, body: { ...base, ownerAccountId: OWNER_ACCOUNT_ID } });
+    if (fine.status !== 200 || fine.json.purpose !== 'FOREGROUND_CHAT'
+        || fine.json.provider.protocol !== 'OPENAI_CHAT_COMPLETIONS'
+        || fine.json.provider.baseUrl !== `${FIXTURE_BASE}/v1`
+        || fine.json.model.modelId !== 'vc03m-chat'
+        || fine.json.model.maxOutputTokens !== 2048
+        || fine.json.model.generationParams?.temperature !== 0.3) {
+        throw new Error(`resolve 响应形状异常：HTTP ${fine.status} ${JSON.stringify(fine.json).slice(0, 240)}`);
+    }
+    log.ok('受控取用断言通过：大 owner 精确 ID / float 邻值拒绝 / revision 冲突 / 响应形状');
+}
+
+async function readSSEEvents(res) {
+    return parseSSEText(await res.text());
+}
+
+async function sceneE2eChat(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+
+    // 非流式
+    const nonStream = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '你好，受管验收' }],
+        max_tokens: 512, stream: false,
+    });
+    if (nonStream.status !== 200 || nonStream.json?.choices?.[0]?.message?.role !== 'assistant') {
+        throw new Error(`Chat 非流式生成失败：HTTP ${nonStream.status} ${String(nonStream.text).slice(0, 200)}`);
+    }
+    const capNon = await readFixtureCapture(ctx, { protocol: 'chat', since });
+    if (capNon.finalUrl !== '/v1/chat/completions' || capNon.auth.scheme !== 'bearer' || capNon.auth.matched !== true) {
+        throw new Error(`Chat 出站异常：finalUrl=${capNon.finalUrl} auth=${JSON.stringify(capNon.auth)}`);
+    }
+    if (capNon.body.model !== 'vc03m-chat' || Number(capNon.body.max_tokens) > 2048) {
+        throw new Error(`Chat 出站约束异常：model=${capNon.body.model} max_tokens=${capNon.body.max_tokens}`);
+    }
+    if (Math.abs(Number(capNon.body.temperature) - 0.3) > 1e-6) {
+        throw new Error(`Chat 钉住采样未生效：temperature=${capNon.body.temperature}`);
+    }
+    if (!Array.isArray(capNon.body.messages) || capNon.body.messages.at(-1)?.role !== 'user') {
+        throw new Error('Chat 出站 messages 形状异常');
+    }
+
+    // 流式（SSE 透传）
+    const stream = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '流式请回复' }],
+        max_tokens: 512, stream: true,
+    });
+    if (stream.status !== 200) throw new Error(`Chat 流式 HTTP ${stream.status}`);
+    const events = await readSSEEvents(stream.res);
+    const collected = collectChatStream(events);
+    if (!collected.sawDone || collected.finish !== 'stop' || collected.content !== '收到。这是受管验收的合成回复，内容固定可断言。') {
+        throw new Error(`Chat 流式内容异常：finish=${collected.finish} done=${collected.sawDone} content=${collected.content.slice(0, 40)}`);
+    }
+
+    // 上游可控错误（__ctl 覆盖）：Responses 码面由 e2e-responses 断言；custom 源走 ST 原生
+    // custom 链，非流式错误契约是 HTTP 200 + {error} 信封（upstream makeRequest 失败包装）
+    await ctx.fixtureHttp.setOverride('vc03m-chat', { error: { status: 500, message: 'synthetic' } });
+    const errGen = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '触发错误' }],
+        max_tokens: 512, stream: false,
+    });
+    await ctx.fixtureHttp.setOverride('vc03m-chat', null);
+    if (errGen.status !== 200 || !errGen.json?.error || typeof errGen.json.error.message !== 'string') {
+        throw new Error(`Chat 上游错误应透传为 200 + error 信封，实际 HTTP ${errGen.status} ${String(errGen.text).slice(0, 160)}`);
+    }
+    log.ok('Chat Completions 端到端通过：非流式/流式/出站形状/auth/URL/钉住采样/上游错误');
+}
+
+async function sceneE2eResponses(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-resp', 'reasoning', 'vc03m-reasoning');
+    const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+
+    // 非流式：桥接转换为 chat completion，tool_calls 完整
+    const nonStream = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '查一下广州天气' }],
+        max_tokens: 512, stream: false,
+    });
+    const msg = nonStream.json?.choices?.[0]?.message;
+    if (nonStream.status !== 200 || !Array.isArray(msg?.tool_calls) || msg.tool_calls[0]?.function?.name !== 'lookup_weather') {
+        throw new Error(`Responses 非流式桥接异常：HTTP ${nonStream.status} ${String(nonStream.text).slice(0, 200)}`);
+    }
+    if (msg.tool_calls[0].function.arguments !== '{"city":"广州"}') {
+        throw new Error(`Responses 工具参数分片重组异常：${msg.tool_calls[0].function.arguments}`);
+    }
+    const capNon = await readFixtureCapture(ctx, { protocol: 'responses', since });
+    if (capNon.finalUrl !== '/v1/responses' || capNon.auth.matched !== true) {
+        throw new Error(`Responses 出站异常：finalUrl=${capNon.finalUrl} auth=${JSON.stringify(capNon.auth)}`);
+    }
+    if (!Array.isArray(capNon.body.input) || !capNon.body.input.some((i) => i.type === 'message' && i.role === 'user')) {
+        throw new Error('Responses input 映射异常（缺 user message item）');
+    }
+    if (!Array.isArray(capNon.body.include) || !capNon.body.include.includes('reasoning.encrypted_content')) {
+        throw new Error('Responses include 未携带 reasoning.encrypted_content');
+    }
+    if (capNon.body.store !== false || capNon.body.truncation !== 'disabled') {
+        throw new Error(`Responses 约束字段异常：store=${capNon.body.store} truncation=${capNon.body.truncation}`);
+    }
+    if (capNon.body.model !== 'vc03m-reasoning' || Number(capNon.body.max_output_tokens) > 2048) {
+        throw new Error(`Responses 出站约束异常：model=${capNon.body.model} max_output_tokens=${capNon.body.max_output_tokens}`);
+    }
+
+    // 流式：事件序 → chat chunk 桥接
+    const stream = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '流式工具调用' }],
+        max_tokens: 512, stream: true,
+    });
+    if (stream.status !== 200) throw new Error(`Responses 流式 HTTP ${stream.status}`);
+    const collected = collectChatStream(await readSSEEvents(stream.res));
+    if (collected.finish !== 'tool_calls' || collected.toolCalls[0]?.name !== 'lookup_weather' || collected.toolCalls[0]?.arguments !== '{"city":"广州"}') {
+        throw new Error(`Responses 流式工具桥接异常：${JSON.stringify(collected).slice(0, 200)}`);
+    }
+
+    // 上游错误：插件整体适配层写出固定 502 VC_UPSTREAM_ERROR（不回显上游正文）
+    await ctx.fixtureHttp.setOverride('vc03m-reasoning', { error: { status: 503, message: 'synthetic upstream down' } });
+    const errGen = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '触发错误' }],
+        max_tokens: 512, stream: false,
+    });
+    await ctx.fixtureHttp.setOverride('vc03m-reasoning', null);
+    if (errGen.status !== 502 || errGen.json?.error?.code !== 'VC_UPSTREAM_ERROR') {
+        throw new Error(`Responses 上游错误应 502 VC_UPSTREAM_ERROR，实际 HTTP ${errGen.status} ${String(errGen.text).slice(0, 200)}`);
+    }
+    if (String(errGen.text).includes('synthetic upstream down')) {
+        throw new Error('Responses 错误响应回显了上游正文（违规）');
+    }
+    log.ok('Responses 端到端通过：非流式/流式事件桥接/工具分片重组/include 约束/上游错误固定文案');
+}
+
+async function sceneE2eAnthropic(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-claude', 'chat', 'vc03m-chat');
+    const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+
+    // 非流式：ST 原生 claude 链（system 提出、messages 转换）→ 转 chat completion 返回。
+    // use_sysprompt 是浏览器侧 claude 源的真实开关：不开则 ST 整个删除 system 字段（上游
+    // chat-completions.js useSystemPrompt 分支）；开启时 system 为内容块数组（非字符串）
+    const nonStream = await ctx.st.generate({
+        chat_completion_source: 'claude', model: 'vc03m-chat', reverse_proxy: snap.marker,
+        use_sysprompt: true,
+        messages: [
+            { role: 'system', content: '你是受管验收助手' },
+            { role: 'user', content: '你好' },
+        ],
+        max_tokens: 512, stream: false,
+    });
+    if (nonStream.status !== 200 || nonStream.json?.choices?.[0]?.message?.content !== '收到。这是受管验收的合成回复，内容固定可断言。') {
+        throw new Error(`Anthropic 非流式失败：HTTP ${nonStream.status} ${String(nonStream.text).slice(0, 200)}`);
+    }
+    const capNon = await readFixtureCapture(ctx, { protocol: 'anthropic', since });
+    if (capNon.finalUrl !== '/v1/messages' || capNon.auth.matched !== true) {
+        throw new Error(`Anthropic 出站异常：finalUrl=${capNon.finalUrl} auth=${JSON.stringify(capNon.auth)}`);
+    }
+    const systemBlocks = Array.isArray(capNon.body.system) ? capNon.body.system : [capNon.body.system];
+    const systemText = systemBlocks.map((b) => (typeof b === 'string' ? b : b?.text ?? '')).join('');
+    if (!systemText.includes('受管验收助手')) {
+        throw new Error(`Anthropic messages-system 转换异常：system=${String(JSON.stringify(capNon.body.system)).slice(0, 80)}`);
+    }
+    if (!Array.isArray(capNon.body.messages) || capNon.body.messages.some((m) => m.role === 'system') || capNon.body.messages.at(-1)?.role !== 'user') {
+        throw new Error('Anthropic messages 形状异常（system 未提出或尾消息非 user）');
+    }
+    if (capNon.body.model !== 'vc03m-chat' || Number(capNon.body.max_tokens) > 2048) {
+        throw new Error(`Anthropic 出站约束异常：model=${capNon.body.model} max_tokens=${capNon.body.max_tokens}`);
+    }
+
+    // 流式：Anthropic SSE 透传
+    const stream = await ctx.st.generate({
+        chat_completion_source: 'claude', model: 'vc03m-chat', reverse_proxy: snap.marker,
+        messages: [{ role: 'user', content: '流式回复' }],
+        max_tokens: 512, stream: true,
+    });
+    if (stream.status !== 200) throw new Error(`Anthropic 流式 HTTP ${stream.status}`);
+    const collected = collectAnthropicStream(await readSSEEvents(stream.res));
+    if (collected.content !== '收到。这是受管验收的合成回复，内容固定可断言。' || collected.stopReason !== 'end_turn') {
+        throw new Error(`Anthropic 流式内容异常：stop=${collected.stopReason} content=${collected.content.slice(0, 40)}`);
+    }
+
+    // 上游可控错误：原生 claude 链非流式错误契约是 HTTP 500 + {error:true}（与 custom 链
+    // 的 200 + error 信封不同；透传不回显断言留给日志红线）
+    await ctx.fixtureHttp.setOverride('vc03m-chat', { error: { status: 529, message: 'synthetic overloaded' } });
+    const errGen = await ctx.st.generate({
+        chat_completion_source: 'claude', model: 'vc03m-chat', reverse_proxy: snap.marker,
+        messages: [{ role: 'user', content: '触发错误' }],
+        max_tokens: 512, stream: false,
+    });
+    await ctx.fixtureHttp.setOverride('vc03m-chat', null);
+    if (errGen.status < 500 || !errGen.json?.error) {
+        throw new Error(`Anthropic 上游错误应 5xx + error，实际 HTTP ${errGen.status} ${String(errGen.text).slice(0, 160)}`);
+    }
+    log.ok('Anthropic Messages 端到端通过：system 转换/messages 形状/auth/流式/usage 路径/上游错误');
+}
+
+async function sceneToolRound(ctx) {
+    // —— Chat 协议工具回合：分片 arguments 重组 + 第二轮回传 ——
+    const chatSnap = await bindForeground(ctx, 'vc03m-chat', 'chat-tools', 'vc03m-tools');
+    const tools = [{ type: 'function', function: { name: 'lookup_weather', description: '查天气', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }];
+    const round1 = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-tools', custom_url: chatSnap.marker,
+        messages: [{ role: 'user', content: '北京天气如何' }],
+        max_tokens: 512, stream: false, tools,
+    });
+    const round1Msg = round1.json?.choices?.[0]?.message;
+    if (round1.status !== 200 || round1Msg?.tool_calls?.[0]?.function?.name !== 'lookup_weather') {
+        throw new Error(`Chat 工具轮1 失败：HTTP ${round1.status} ${String(round1.text).slice(0, 200)}`);
+    }
+    const callId = round1Msg.tool_calls[0].id;
+    const callArgs = round1Msg.tool_calls[0].function.arguments;
+    if (callArgs !== '{"city":"北京","unit":"celsius"}') {
+        throw new Error(`Chat 工具参数分片重组异常：${callArgs}`);
+    }
+    const sinceChat = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+    const round2 = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-tools', custom_url: chatSnap.marker,
+        messages: [
+            { role: 'user', content: '北京天气如何' },
+            { role: 'assistant', content: '', tool_calls: round1Msg.tool_calls },
+            { role: 'tool', tool_call_id: callId, content: '{"temp_c":21}' },
+        ],
+        max_tokens: 512, stream: false, tools,
+    });
+    if (round2.status !== 200) throw new Error(`Chat 工具轮2 失败：HTTP ${round2.status}`);
+    const capRound2 = await readFixtureCapture(ctx, { protocol: 'chat', since: sinceChat });
+    const tail = capRound2.body.messages.at(-1);
+    if (tail?.role !== 'tool' || tail?.tool_call_id !== callId || !String(tail.content).includes('"temp_c":21')) {
+        throw new Error(`Chat 工具轮2 出站形状异常：tail=${JSON.stringify(tail).slice(0, 120)}`);
+    }
+
+    // —— Responses：reasoning(encrypted) + function_call，轮2 同轮续接回传 ——
+    const respSnap = await bindForeground(ctx, 'vc03m-resp', 'reasoning', 'vc03m-reasoning');
+    const r1 = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: respSnap.marker,
+        messages: [{ role: 'user', content: '广州天气如何' }],
+        max_tokens: 512, stream: false,
+    });
+    const r1Calls = r1.json?.choices?.[0]?.message?.tool_calls;
+    if (r1.status !== 200 || r1Calls?.[0]?.function?.name !== 'lookup_weather') {
+        throw new Error(`Responses 工具轮1 失败：HTTP ${r1.status} ${String(r1.text).slice(0, 200)}`);
+    }
+    const rCallId = r1Calls[0].id;
+    const sinceResp = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+    const r2 = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: respSnap.marker,
+        messages: [
+            { role: 'user', content: '广州天气如何' },
+            { role: 'assistant', content: '', tool_calls: r1Calls },
+            { role: 'tool', tool_call_id: rCallId, content: '{"temp_c":26}' },
+        ],
+        max_tokens: 512, stream: false,
+    });
+    if (r2.status !== 200) throw new Error(`Responses 工具轮2 失败：HTTP ${r2.status}`);
+    const capR2 = await readFixtureCapture(ctx, { protocol: 'responses', since: sinceResp });
+    const reasoningItems = capR2.body.input.filter((i) => i.type === 'reasoning');
+    const callItems = capR2.body.input.filter((i) => i.type === 'function_call');
+    if (reasoningItems.length === 0 || !reasoningItems[0].encrypted_content) {
+        throw new Error('Responses 轮2 未注入 reasoning(encrypted_content) 续接项');
+    }
+    if (!callItems.some((i) => i.call_id === rCallId)) {
+        throw new Error('Responses 轮2 input 缺少本轮 function_call 回传');
+    }
+    if (capR2.body.input.indexOf(reasoningItems[0]) > capR2.body.input.indexOf(callItems[0])) {
+        throw new Error('Responses 轮2 reasoning 续接项应位于 function_call 之前');
+    }
+    log.ok('工具回合通过：Chat 分片重组+轮2 回传；Responses 同轮 reasoning(encrypted_content) 续接');
+}
+
+async function sceneCancelStream(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-chat', 'chat-slow', 'vc03m-chat-slow');
+    const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+    const controller = new AbortController();
+    const started = Date.now();
+    const streaming = ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat-slow', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '慢速流' }],
+        max_tokens: 512, stream: true,
+    }, { signal: controller.signal });
+    void streaming.then(async ({ res }) => {
+        try { await res.arrayBuffer(); } catch { /* 预期中断 */ }
+    }).catch(() => { /* 预期中断 */ });
+    await new Promise((r) => setTimeout(r, 450));
+    controller.abort();
+    await waitFor(async () => {
+        const rows = await ctx.fixtureHttp.captures({ protocol: 'chat', since });
+        return rows.some((c) => c.aborted === true || (c.durationMs ?? 0) > 900);
+    }, { timeoutMs: 15000, intervalMs: 250, label: 'fixture 感知取消' });
+    const after = await ctx.fixtureHttp.captures({ protocol: 'chat', since });
+    const abortedRec = after.find((c) => c.aborted === true || (c.durationMs ?? 0) > 900);
+    if (!abortedRec) throw new Error('取消后 fixture 未标记 aborted/长耗时');
+    // 取消后的下一次请求必须完全正常（无状态污染）
+    const healthy = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: (await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat')).marker,
+        messages: [{ role: 'user', content: '取消后正常请求' }],
+        max_tokens: 512, stream: false,
+    });
+    if (healthy.status !== 200) throw new Error(`取消后正常请求失败：HTTP ${healthy.status}`);
+    log.ok(`取消场景通过：客户端中断 ${Date.now() - started}ms 后 fixture 标记 aborted，后续请求无污染`);
+}
+
+async function sceneContextBudget(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-tiny', 'tiny', 'vc03m-chat');
+    // 长对话：小窗 256 tokens，长 ASCII 输入（guesstimate ≈ bytes/3.35）必然超窗
+    const longText = 'context-budget-fixture-line '.repeat(120);
+    const overflow = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+        messages: [{ role: 'user', content: longText }],
+        max_tokens: 64, stream: false,
+    });
+    if (overflow.status !== 400 || overflow.json?.error?.code !== 'VC_CONTEXT_OVERFLOW') {
+        throw new Error(`长对话应 400 VC_CONTEXT_OVERFLOW，实际 HTTP ${overflow.status} ${String(overflow.text).slice(0, 200)}`);
+    }
+    const overflowCount = await ctx.fixtureHttp.count({ protocol: 'chat' });
+    // 输出预留超登记上限：拒绝且不出站
+    const outLimit = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 9999, stream: false,
+    });
+    if (outLimit.status !== 400 || outLimit.json?.error?.code !== 'VC_OUTPUT_LIMIT_EXCEEDED') {
+        throw new Error(`超登记输出应 400 VC_OUTPUT_LIMIT_EXCEEDED，实际 HTTP ${outLimit.status} ${String(outLimit.text).slice(0, 200)}`);
+    }
+    const afterCount = await ctx.fixtureHttp.count({ protocol: 'chat' });
+    if (afterCount !== overflowCount) {
+        throw new Error(`预算拒绝不得出站：chat 捕获 ${overflowCount} → ${afterCount}`);
+    }
+    log.ok('上下文预算与输出预留通过：VC_CONTEXT_OVERFLOW / VC_OUTPUT_LIMIT_EXCEEDED 且零上游请求');
+}
+
+async function sceneNativeDrift(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    // 换模型
+    const driftModel = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'gpt-4o', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '偏离模型' }],
+        max_tokens: 512, stream: false,
+    });
+    if (driftModel.status !== 409 || driftModel.json?.error?.code !== 'VC_NATIVE_DRIFT') {
+        throw new Error(`改 model 应 409 VC_NATIVE_DRIFT，实际 HTTP ${driftModel.status} ${String(driftModel.text).slice(0, 200)}`);
+    }
+    // 钉住采样被覆写
+    const driftTemp = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '偏离采样' }],
+        max_tokens: 512, temperature: 0.9, stream: false,
+    });
+    if (driftTemp.status !== 409 || driftTemp.json?.error?.code !== 'VC_NATIVE_DRIFT') {
+        throw new Error(`覆写钉住采样应 409 VC_NATIVE_DRIFT，实际 HTTP ${driftTemp.status}`);
+    }
+    log.ok('原生偏离拒绝通过：model 与钉住采样均 VC_NATIVE_DRIFT');
+}
+
+async function sceneKeyRevoke(ctx) {
+    const revisionBefore = await providerRevision(ctx, 'vc03m-chat');
+    const cleared = await ctx.admin.saveProvider('vc03m-chat', {
+        displayName: '受管 Chat', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        clearCredential: true, state: 'DISABLED', expectedRevision: revisionBefore,
+        models: providerCatalogSpec(ctx.secrets.fixtureKey)[0].models,
+    });
+    if (cleared.status !== 200) throw new Error(`clearCredential 保存失败：HTTP ${cleared.status}`);
+    // 清 Key 后绑定合法状态是 UNAVAILABLE（无凭据即不可用；绑定行仍可写、revision 照常推进），
+    // 这里正向断言该状态，再用其标记走服务通道与生成链的拒绝断言
+    const snapStale = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat', { requireReady: false });
+    if (snapStale.status !== 'UNAVAILABLE') {
+        throw new Error(`清 Key 后绑定应为 UNAVAILABLE，实际 ${snapStale.status}`);
+    }
+    // 服务通道：清 Key 后下一次 resolve 即拒绝
+    const resolve = await serviceResolve({ baseUrl: GO_BASE, serviceToken: ctx.secrets.serviceToken, body: { purpose: 'FOREGROUND_CHAT', ownerAccountId: OWNER_ACCOUNT_ID, providerId: 'vc03m-chat', profileKey: 'chat' } });
+    if (resolve.status !== 409 || resolve.json?.code !== 'MODEL_NO_ELIGIBLE_DEPLOYMENT') {
+        throw new Error(`清 Key 后 resolve 应 409 MODEL_NO_ELIGIBLE_DEPLOYMENT，实际 HTTP ${resolve.status} ${JSON.stringify(resolve.json).slice(0, 160)}`);
+    }
+    // 生成链同样拒绝（插件映射 VC_MODEL_NO_ELIGIBLE_DEPLOYMENT）
+    const gen = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snapStale.marker,
+        messages: [{ role: 'user', content: '已撤销的 Key' }],
+        max_tokens: 512, stream: false,
+    });
+    if (gen.status !== 409 || gen.json?.error?.code !== 'VC_MODEL_NO_ELIGIBLE_DEPLOYMENT') {
+        throw new Error(`清 Key 后生成应 409 VC_MODEL_NO_ELIGIBLE_DEPLOYMENT，实际 HTTP ${gen.status} ${String(gen.text).slice(0, 200)}`);
+    }
+    // 恢复凭据，供后续场景
+    const restored = await ctx.admin.saveProvider('vc03m-chat', {
+        displayName: '受管 Chat', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        credential: ctx.secrets.fixtureKey, state: 'ENABLED', expectedRevision: cleared.json.revision,
+        models: providerCatalogSpec(ctx.secrets.fixtureKey)[0].models,
+    });
+    if (restored.status !== 200) throw new Error(`恢复凭据失败：HTTP ${restored.status}`);
+    log.ok('Key 撤销通过：clearCredential 后 resolve 与生成双双即时拒绝，恢复后可用');
+}
+
+async function sceneRevisionConflict(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    const mutated = await ctx.admin.saveProvider('vc03m-chat', {
+        displayName: '受管 Chat（另侧更新）', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl: `${FIXTURE_BASE}/v1`,
+        state: 'ENABLED', expectedRevision: snap.providerRevision,
+        models: providerCatalogSpec(ctx.secrets.fixtureKey)[0].models,
+    });
+    if (mutated.status !== 200) throw new Error(`另侧 provider 更新失败：HTTP ${mutated.status}`);
+    const staleGen = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-chat', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '用旧 revision 生成' }],
+        max_tokens: 512, stream: false,
+    });
+    if (staleGen.status !== 409 || staleGen.json?.error?.code !== 'VC_REVISION_CONFLICT') {
+        throw new Error(`旧 br/pr 生成应 409 VC_REVISION_CONFLICT，实际 HTTP ${staleGen.status} ${String(staleGen.text).slice(0, 200)}`);
+    }
+    // 重新绑定后恢复
+    await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    log.ok('revision 冲突通过：provider 另侧更新后旧标记生成 VC_REVISION_CONFLICT');
+}
+
+async function sceneContinuationHygiene(ctx) {
+    const snap = await bindForeground(ctx, 'vc03m-resp', 'reasoning', 'vc03m-reasoning');
+    const r1 = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '先制造一轮工具调用' }],
+        max_tokens: 512, stream: false,
+    });
+    const calls = r1.json?.choices?.[0]?.message?.tool_calls;
+    if (r1.status !== 200 || !calls?.length) throw new Error(`续接卫生前置工具轮失败：HTTP ${r1.status}`);
+
+    // a) 新用户回合（尾部非工具回合）不得注入旧 reasoning
+    const sinceA = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+    const fresh = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: snap.marker,
+        messages: [{ role: 'user', content: '新的用户回合' }],
+        max_tokens: 512, stream: false,
+    });
+    if (fresh.status !== 200) throw new Error(`新回合生成失败：HTTP ${fresh.status}`);
+    const capFresh = await readFixtureCapture(ctx, { protocol: 'responses', since: sinceA });
+    if (capFresh.body.input.some((i) => i.type === 'reasoning')) {
+        throw new Error('新用户回合不应注入旧 reasoning 续接项');
+    }
+
+    // b) 换 scope（换 chat 语义）+ 同尾部工具回合：指纹不匹配 → 不注入
+    const scopeB = `${ctx.scope}#chat-b`;
+    const markerB = snap.marker.replace(/scope=[^&]+$/, `scope=${encodeURIComponent(scopeB)}`);
+    const sinceB = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+    const crossScope = await ctx.st.generate({
+        chat_completion_source: 'custom', model: 'vc03m-reasoning', custom_url: markerB,
+        messages: [
+            { role: 'user', content: '先制造一轮工具调用' },
+            { role: 'assistant', content: '', tool_calls: calls },
+            { role: 'tool', tool_call_id: calls[0].id, content: '{"temp_c":26}' },
+        ],
+        max_tokens: 512, stream: false,
+    });
+    if (crossScope.status !== 200) throw new Error(`换 scope 工具续接生成失败：HTTP ${crossScope.status}`);
+    const capCross = await readFixtureCapture(ctx, { protocol: 'responses', since: sinceB });
+    if (capCross.body.input.some((i) => i.type === 'reasoning')) {
+        throw new Error('换 scope 的工具回合不应注入旧 reasoning（续接一次性 + scope 绑定）');
+    }
+    log.ok('续接卫生通过：新用户回合与换 scope 工具回合均不注入旧 reasoning');
+}
+
+async function sceneUi03Browser(ctx) {
+    // 真实浏览器 UI03 验收（默认不在 --filter，主会话串联时执行）：
+    //   注入合成 Go 会话 cookie → 打开 ST → 真实 DOM 全流程：
+    //   1) 模型页编辑保存 → 服务端 revision+1 → 界面读回一致；
+    //   2) 另侧更新后 UI 保存 → 409 冲突，草稿原样保留（conflict-keep）；
+    //   3) Key 只显示状态（状态盒/替换框为空且 password/页面无明文）；
+    //   4) 用途绑定经 UI 保存 → 投影写原生设置（marker/模型/上下文/输出参数/main_api）；
+    //   5) 三协议（Chat/Responses/Claude）经原生界面发送，fixture 断言真实出站。
+    //   截图不含 API Key（页面本身不回显凭据）。
+    let chromium;
+    try {
+        ({ chromium } = await import('playwright-core'));
+    } catch {
+        throw new Error('playwright-core 不可用（node_modules 缺失）；真实浏览器串联由主会话环境执行');
+    }
+    // chromium 可执行文件可用 VC_W03_CHROMIUM_PATH 覆盖（playwright-core 1.64 锁定依赖；
+    // 无对应版本缓存时复用本机已有的 Chromium for Testing 二进制）
+    const launchOpts = { headless: true };
+    if (process.env.VC_W03_CHROMIUM_PATH) launchOpts.executablePath = process.env.VC_W03_CHROMIUM_PATH;
+    const browser = await chromium.launch(launchOpts);
+    try {
+        const browserContext = await browser.newContext();
+        await browserContext.addCookies([
+            { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ST_BASE },
+            { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ST_BASE },
+        ]);
+        const page = await browserContext.newPage();
+        const consoleLines = [];
+        page.on('console', (m) => consoleLines.push(`[page:${m.type()}] ${m.text().slice(0, 160)}`));
+        // 网络探针（诊断连接检查与生成）：request 级（未应答也可见）+ 4xx/5xx 应答体
+        page.on('request', (req) => {
+            const u = req.url();
+            if (u.includes('/api/backends/chat-completions/status') || u.includes('/api/backends/chat-completions/generate')) {
+                let hint = '';
+                try {
+                    const pd = req.postDataJSON?.();
+                    if (pd) hint = ` src=${pd.chat_completion_source} marker=${String(pd.custom_url ?? pd.reverse_proxy ?? '').slice(0, 40)}`;
+                } catch { /* 无体 */ }
+                console.log(`[ui03-req] POST ${u.replace(ST_BASE, '')}${hint}`);
+            }
+        });
+        page.on('response', async (res) => {
+            const u = res.url();
+            const isWatched = u.includes('/api/backends/chat-completions/status') || u.includes('/api/backends/chat-completions/generate');
+            if (isWatched || res.status() >= 400) {
+                let bodyHint = '';
+                try {
+                    const req = res.request();
+                    const pd = req.postDataJSON?.() ?? null;
+                    bodyHint = pd ? ` src=${pd.chat_completion_source} custom=${String(pd.custom_url ?? pd.reverse_proxy ?? '').slice(0, 46)}` : '';
+                } catch { /* 无体 */ }
+                let respHint = '';
+                if (res.status() >= 400) {
+                    try { respHint = ` resp=${(await res.text()).slice(0, 120)}`; } catch { /* 已释放 */ }
+                }
+                console.log(`[ui03-net] ${res.status()} ${u.replace(ST_BASE, '')}${bodyHint}${respHint}`);
+            }
+        });
+        await page.goto(ST_BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.waitForTimeout(4000);
+        // ST 首启欢迎弹窗（合成 dataRoot 首次初始化）会拦截所有点击：按真实用户流程完成
+        // （用户名默认合成填入 + 确定），不绕过、不调 z-index
+        // ST 首启欢迎弹窗（合成 dataRoot 首次初始化）会拦截所有点击：按真实用户流程完成。
+        // 控件为锁定源码形状（public/scripts/popup.js）：textarea=用户名（默认 User）、
+        // .popup-button-ok=确定（DIV 按钮，getByRole(button) 不可见）
+        const welcomeDialog = page.locator('dialog[open].popup').first();
+        if (await welcomeDialog.count()) {
+            await welcomeDialog.locator('textarea').fill('w03-owner');
+            await welcomeDialog.locator('.popup-button-ok').click();
+            await welcomeDialog.waitFor({ state: 'hidden', timeout: 10000 });
+            log.info('ST 首启欢迎弹窗已按真实用户流程完成（合成用户名 + .popup-button-ok）');
+        }
+        // 扩展经 manifest hooks.activate 自动激活（已验证）；按钮在收起的魔法棒菜单里，
+        // attached 等待确认激活，随后按真实用户路径打开（魔法棒 → 模型设置）
+        await page.waitForSelector('#vc_models_menu_button', { state: 'attached', timeout: 45000 });
+        const openPanel = async () => {
+            // overlay 元素常驻 DOM（init 即挂载、保持隐藏），开合判断必须用可见性
+            if (await page.locator('.vcms-overlay').isVisible()) return;
+            await page.click('#extensionsMenuButton');
+            await page.click('#vc_models_menu_button');
+            await page.waitForSelector('.vcms-overlay', { state: 'visible', timeout: 10000 });
+        };
+        const closePanel = async () => {
+            if (!(await page.locator('.vcms-overlay').isVisible())) return;
+            // 有未保存修改时关闭会先确认；按真实用户路径先放弃修改（阶段 2 保留的冲突草稿等）
+            if (await page.locator('#vcms-dirty').isVisible()) {
+                await page.click('#vcms-discard');
+                await page.waitForSelector('#vcms-dirty', { state: 'hidden', timeout: 5000 });
+            }
+            await page.click('.vcms-overlay [data-action="close"]');
+            await page.waitForSelector('.vcms-overlay', { state: 'hidden', timeout: 10000 });
+        };
+        await openPanel();
+        try {
+            await page.waitForSelector('#vcms-provider-list > *', { timeout: 10000 });
+        } catch {
+            const panelState = await page.evaluate(() => ({
+                hidden: document.querySelector('.vcms-overlay')?.hidden ?? null,
+                outerStart: document.querySelector('.vcms-overlay')?.outerHTML?.replace(/\s+/g, ' ').slice(0, 260) ?? null,
+                rootHtml: document.querySelector('#vc-model-settings-root')?.outerHTML?.replace(/\s+/g, ' ').slice(0, 200) ?? null,
+                bodyClass: document.body.className,
+            }));
+            const pageErrs = consoleLines.filter((l) => l.includes('error') || l.includes('Error')).slice(-6);
+            console.log(`[ui03-panel-state] ${JSON.stringify(panelState)} errs=${JSON.stringify(pageErrs)}`);
+            await page.screenshot({ path: path.join(ctx.artifactsDir, 'ui03-panel-missing.png'), fullPage: false });
+            throw new Error(`模型页 provider 列表未出现：${JSON.stringify(panelState).slice(0, 200)}`);
+        }
+        const cardCount = await page.locator('#vcms-provider-list > *').count();
+        if (cardCount < 5) throw new Error(`模型页 provider 卡不足：${cardCount}（期望 ≥5，catalog-admin 已建）`);
+
+        // —— 阶段 1：真实 DOM 保存 → 读回（首卡默认已选中，表单已在）——
+        // 契约：保存不触发任何上游请求（page.js:657、MASTER_PLAN:103）——真实页面计数断言
+        const saveCount0 = await ctx.fixtureHttp.count();
+        const chatCard = page.locator('#vcms-provider-list > *').first();
+        await page.waitForSelector('#vcms-f-display', { timeout: 5000 });
+        const beforeList = await ctx.admin.listProviders();
+        const beforeRow = beforeList.json.find((p) => p.providerId === 'vc03m-chat');
+        await page.fill('#vcms-f-display', '受管 Chat（UI03）');
+        await page.click('#vcms-save');
+        await waitFor(async () => {
+            const l = await ctx.admin.listProviders();
+            const row = l.json.find((p) => p.providerId === 'vc03m-chat');
+            return row && row.displayName === '受管 Chat（UI03）' && row.revision === beforeRow.revision + 1;
+        }, { timeoutMs: 15000, label: 'UI 保存落库（displayName + revision+1）' });
+        await chatCard.click(); // 重新选中读回
+        await page.waitForSelector('#vcms-f-display', { timeout: 5000 });
+        const readBack = await page.inputValue('#vcms-f-display');
+        if (readBack !== '受管 Chat（UI03）') throw new Error(`UI 读回异常：display=${readBack}`);
+        if ((await ctx.fixtureHttp.count()) !== saveCount0) {
+            throw new Error(`保存期间出现上游请求（违反零请求契约）：${saveCount0} → ${await ctx.fixtureHttp.count()}`);
+        }
+        await page.screenshot({ path: path.join(ctx.artifactsDir, 'ui03-save-readback.png'), fullPage: false });
+        log.ok('UI03 保存读回通过：真实 DOM 编辑 → 保存 → 服务端 revision+1 → 界面读回一致');
+
+        // —— 阶段 2：版本冲突保留草稿 ——
+        await page.fill('#vcms-f-display', 'UI03 冲突草稿值');
+        const curList = await ctx.admin.listProviders();
+        const curRow = curList.json.find((p) => p.providerId === 'vc03m-chat');
+        const externalName = `受管 Chat（他侧更新 ${Date.now() % 1000}）`;
+        const external = await ctx.admin.saveProvider('vc03m-chat', {
+            displayName: externalName, protocol: 'OPENAI_CHAT_COMPLETIONS',
+            baseUrl: `${FIXTURE_BASE}/v1`, state: 'ENABLED', expectedRevision: curRow.revision,
+            models: providerCatalogSpec(ctx.secrets.fixtureKey)[0].models,
+        });
+        if (external.status !== 200) throw new Error(`外部更新失败：HTTP ${external.status}`);
+        await page.click('#vcms-save');
+        await page.waitForSelector('[data-action="conflict-keep"]', { timeout: 10000 });
+        const draftKept = await page.inputValue('#vcms-f-display');
+        if (draftKept !== 'UI03 冲突草稿值') throw new Error(`冲突后草稿被破坏：display=${draftKept}`);
+        await page.screenshot({ path: path.join(ctx.artifactsDir, 'ui03-conflict-draft.png'), fullPage: false });
+        await page.click('[data-action="conflict-keep"]');
+        const afterConflict = (await ctx.admin.listProviders()).json.find((p) => p.providerId === 'vc03m-chat');
+        if (afterConflict.displayName === 'UI03 冲突草稿值' || afterConflict.displayName !== externalName) {
+            throw new Error(`冲突后服务端值异常：${afterConflict.displayName}`);
+        }
+        log.ok('UI03 版本冲突保留草稿通过：409 后界面草稿原样、服务端保持他侧更新');
+
+        // —— 阶段 3：Key 只显示状态 ——
+        // 受管 Chat 已配置合成 Key：选中即显示状态盒（不回显、无输入框），替换才出现 password 输入
+        await chatCard.click();
+        await page.waitForSelector('.vcms-keybox', { timeout: 5000 });
+        if (await page.locator('#vcms-f-key').count()) throw new Error('已配置 Key 的供应商不应直接出现密钥输入框');
+        const keyboxText = await page.locator('.vcms-keybox').first().innerText();
+        if (!/已配置/.test(keyboxText)) throw new Error(`Key 状态盒文案异常：${keyboxText.slice(0, 60)}`);
+        await page.click('[data-action="key-replace"]');
+        await page.waitForSelector('#vcms-f-key', { timeout: 5000 });
+        const keyType = await page.getAttribute('#vcms-f-key', 'type');
+        const keyValue = await page.inputValue('#vcms-f-key');
+        if (keyType !== 'password') throw new Error(`密钥输入框 type=${keyType}（应为 password）`);
+        if (keyValue !== '') throw new Error(`替换密钥框必须为空且不回显原值，实际=${String(keyValue).slice(0, 8)}…`);
+        const pageHtml = await page.content();
+        if (pageHtml.includes(ctx.secrets.fixtureKey)) throw new Error('页面 DOM 泄露明文密钥');
+        await page.click('[data-action="key-undo"]');
+        await page.screenshot({ path: path.join(ctx.artifactsDir, 'ui03-key-status.png'), fullPage: false });
+        log.ok('UI03 Key 只显示状态通过：状态盒 + password 替换框 + 页面无明文密钥');
+
+        // —— 阶段 4/5：用途绑定 + 原生投影/上下文/输出参数 + 三协议原生发送 ——
+        const bindAndProject = async (optionValue, markerPred, label) => {
+            // 契约断言：用途绑定 → 投影刷新全程零上游请求（含改 source 的绑定；
+            // 连接只发生在用户显式点击"连接"）
+            const count0 = await ctx.fixtureHttp.count();
+            await openPanel();
+            await page.click('[data-action="tab"][data-tab="bindings"]');
+            await page.waitForSelector('select[data-bind="binding.FOREGROUND_CHAT"]', { timeout: 5000 });
+            await page.selectOption('select[data-bind="binding.FOREGROUND_CHAT"]', optionValue);
+            await page.click('[data-action="save-bindings"]');
+            await waitFor(async () => {
+                const purposes = await ctx.admin.listPurposes();
+                const row = purposes.json.find((r) => r.purpose === 'FOREGROUND_CHAT');
+                const [p, f] = optionValue.split('::');
+                return row && row.providerId === p && row.profileKey === f && row.status === 'READY';
+            }, { timeoutMs: 15000, label: `UI 绑定落库（${label}）` });
+            await page.waitForFunction((pred) => {
+                const oai = window.SillyTavern?.getContext?.()?.chatCompletionSettings ?? {};
+                return pred.includes('reverse')
+                    ? String(oai.reverse_proxy ?? '').includes(pred.replace('reverse:', ''))
+                    : String(oai.custom_url ?? '').includes(pred);
+            }, markerPred, { timeout: 20000, polling: 400 });
+            if ((await ctx.fixtureHttp.count()) !== count0) {
+                throw new Error(`${label} 绑定/投影期间出现上游请求（违反零请求契约）：${count0} → ${await ctx.fixtureHttp.count()}`);
+            }
+        };
+        const nativeSend = async (text, expectReply, { expectProxyMarker } = {}) => {
+            await closePanel(); // 面板是全屏遮罩，发送前按真实路径收起
+            // 真实用户连接步骤：ST 的连接检查只在点"连接"时发起（投影不自动触发）。
+            // 打开右上 API 抽屉 → 点连接 → 等发送键出现（no_connection 时它被隐藏）
+            if (await page.locator('#send_but.displayNone').count()) {
+                if (!(await page.locator('#api_button_openai').isVisible())) {
+                    await page.click('#API-status-top');
+                }
+                await page.waitForSelector('#api_button_openai', { state: 'visible', timeout: 10000 });
+                await page.click('#api_button_openai');
+                await page.waitForFunction(() => !document.querySelector('#send_but')?.classList.contains('displayNone')
+                    && document.querySelector('#send_but')?.offsetParent !== null, undefined, { timeout: 30000, polling: 400 });
+            }
+            const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+            await page.fill('#send_textarea', text);
+            await page.waitForFunction(() => {
+                const b = document.querySelector('#send_but');
+                const s = document.querySelector('#mes_stop');
+                return b && !b.disabled && !b.classList.contains('disabled')
+                    && (!s || getComputedStyle(s).display === 'none'); // 点击前无在途生成
+            }, undefined, { timeout: 30000, polling: 400 });
+            await page.click('#send_but');
+            // Claude 源 reverse_proxy 变更后，ST 客户端会弹"正在连接代理"确认（openai.js:537
+            // validateReverseProxy）阻塞生成：核对弹窗确指本轮绑定标记后才按真实用户流程确认
+            if (expectProxyMarker) {
+                const confirmDialog = page.locator('dialog[open].popup').first();
+                await confirmDialog.waitFor({ timeout: 15000 });
+                const dlgText = (await confirmDialog.innerText()).replace(/\s+/g, ' ');
+                if (!dlgText.includes(expectProxyMarker)) {
+                    throw new Error(`代理确认弹窗目标异常（期望含 ${expectProxyMarker}）：${dlgText.slice(0, 120)}`);
+                }
+                await confirmDialog.locator('.popup-button-ok').click();
+                await confirmDialog.waitFor({ state: 'hidden', timeout: 10000 });
+            }
+            // 判据用 getContext().chat 真源（accept.mjs 同模式）：末两条恰为本轮消息对
+            // （用户文本本轮唯一）+ AI 回复到位 + #mes_stop 空闲。首次无角色发送会
+            // newAssistantChat 替换欢迎会话（script.js:1760），不能跨会话套计数增长
+            try {
+                await page.waitForFunction(({ text: t, reply }) => {
+                    const ch = window.SillyTavern.getContext()?.chat ?? [];
+                    const last = ch[ch.length - 1];
+                    const prev = ch[ch.length - 2];
+                    const stop = document.querySelector('#mes_stop');
+                    const idle = !stop || getComputedStyle(stop).display === 'none';
+                    return idle && !!prev && prev.is_user === true && String(prev.mes ?? '').includes(t)
+                        && !!last && !last.is_user && String(last.mes ?? '').includes(reply);
+                }, { text, reply: expectReply }, { timeout: 45000, polling: 500 });
+            } catch {
+                const diag = await page.evaluate(() => ({
+                    chatLen: window.SillyTavern.getContext()?.chat?.length ?? -1,
+                    lastTwo: (window.SillyTavern.getContext()?.chat ?? []).slice(-2).map((m) => ({ is_user: m.is_user, mes: String(m.mes ?? '').slice(0, 60) })),
+                    stopVisible: (() => { const s = document.querySelector('#mes_stop'); return !!s && getComputedStyle(s).display !== 'none'; })(),
+                    lastResources: performance.getEntriesByType('resource').slice(-8).map((e) => `${e.name.split('/').slice(-2).join('/')} ${Math.round(e.duration)}ms`),
+                    genState: window.SillyTavern.getContext()?.generation_started ?? null,
+                }));
+                await page.screenshot({ path: path.join(ctx.artifactsDir, 'ui03-send-stuck.png'), fullPage: false });
+                console.log(`[ui03-send-diag] ${JSON.stringify(diag)} console=${JSON.stringify(consoleLines.slice(-8))}`);
+                throw new Error(`原生发送后未等到本轮消息对：${JSON.stringify(diag)}`);
+            }
+            return since;
+        };
+
+        // 协议 1/3：Chat Completions（投影负责把 main_api 切到 openai——真实接线）
+        await bindAndProject('vc03m-chat::chat', 'provider=vc03m-chat&profile=chat', 'chat');
+        await page.waitForFunction(() => {
+            const c = window.SillyTavern?.getContext?.() ?? {};
+            const oai = c.chatCompletionSettings ?? {};
+            return String(c.mainApi ?? '') === 'openai'
+                && oai.chat_completion_source === 'custom'
+                && String(oai.custom_url ?? '').startsWith('vc-go://')
+                && Number(oai.openai_max_tokens) === 2048
+                && Number(oai.openai_max_context) === 8192
+                && String(oai.custom_model ?? '') === 'vc03m-chat';
+        }, undefined, { timeout: 20000, polling: 400 });
+        // 受管 dataRoot 跨运行持久（chat/设置累积），用户文本带本轮唯一 scope 后缀，
+        // 防止上一轮的同文案消息对让断言误匹配
+        const sinceChat = await nativeSend(`UI03 原生发送：Chat ${ctx.scope}`, '受管验收的合成回复');
+        let cap = await readFixtureCapture(ctx, { protocol: 'chat', since: sinceChat });
+        if (cap.finalUrl !== '/v1/chat/completions' || cap.body.model !== 'vc03m-chat' || cap.auth.matched !== true) {
+            throw new Error(`Chat 原生发送出站异常：${cap.finalUrl} ${cap.body?.model}`);
+        }
+        if (Math.abs(Number(cap.body.temperature) - 0.3) > 1e-6) throw new Error(`Chat 原生发送钉住采样丢失：${cap.body.temperature}`);
+        await page.screenshot({ path: path.join(ctx.artifactsDir, 'ui03-native-chat.png'), fullPage: false });
+        log.ok('UI03 原生投影+Chat 原生发送通过：marker/模型/上下文 8192/输出 2048/钉住采样经原生界面真实发出');
+
+        // 协议 2/3：Responses（仍走 custom 源，插件桥适配 /v1/responses）
+        await bindAndProject('vc03m-resp::usage', 'provider=vc03m-resp&profile=usage', 'responses');
+        const sinceResp = await nativeSend(`UI03 原生发送：Responses ${ctx.scope}`, '带固定用量的回复');
+        cap = await readFixtureCapture(ctx, { protocol: 'responses', since: sinceResp });
+        if (cap.finalUrl !== '/v1/responses' || cap.body.model !== 'vc03m-usage' || cap.auth.matched !== true || cap.body.store !== false) {
+            throw new Error(`Responses 原生发送出站异常：${cap.finalUrl} ${cap.body?.model} store=${cap.body?.store}`);
+        }
+        log.ok('UI03 Responses 原生发送通过：原生界面 → 插件桥 → /v1/responses（store=false、auth 匹配）');
+
+        // 协议 3/3：Anthropic（同为 main_api=openai，族内 chat_completion_source=claude）
+        await bindAndProject('vc03m-claude::chat', 'reverse:provider=vc03m-claude&profile=chat', 'claude');
+        await page.waitForFunction(() => {
+            const c = window.SillyTavern?.getContext?.() ?? {};
+            const oai = c.chatCompletionSettings ?? {};
+            return String(c.mainApi ?? '') === 'openai'
+                && oai.chat_completion_source === 'claude'
+                && String(oai.reverse_proxy ?? '').startsWith('vc-go://') && String(oai.claude_model ?? '') === 'vc03m-chat';
+        }, undefined, { timeout: 20000, polling: 400 });
+        const sinceClaude = await nativeSend(`UI03 原生发送：Claude ${ctx.scope}`, '受管验收的合成回复', {
+            // 只确认确指本轮 claude 绑定标记的代理弹窗（不全局接受任意弹窗）
+            expectProxyMarker: 'vc-go://model-purposes/FOREGROUND_CHAT?provider=vc03m-claude',
+        });
+        cap = await readFixtureCapture(ctx, { protocol: 'anthropic', since: sinceClaude });
+        if (cap.finalUrl !== '/v1/messages' || cap.body.model !== 'vc03m-chat' || cap.auth.matched !== true) {
+            throw new Error(`Claude 原生发送出站异常：${cap.finalUrl} ${cap.body?.model}`);
+        }
+        await page.screenshot({ path: path.join(ctx.artifactsDir, 'ui03-native-claude.png'), fullPage: false });
+        log.ok('UI03 Anthropic 原生发送通过：main_api=openai + source=claude + reverse_proxy marker → /v1/messages');
+
+        ctx.screenshots.push('ui03-save-readback.png', 'ui03-conflict-draft.png', 'ui03-key-status.png', 'ui03-native-chat.png', 'ui03-native-claude.png');
+        log.ok('UI03 真实浏览器界面验收通过：保存读回 / 冲突保留草稿 / Key 只显状态 / 原生投影与三协议原生发送');
+    } finally {
+        await browser.close();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// dry-run：fixture provider 单起 + 断言库自测（不碰 docker/Go/ST）
+// ---------------------------------------------------------------------------
+
+async function runDryRun() {
+    log.info('dry-run：只做夹具自检（fixture provider 单起 + 断言库自测），不启动完整受管栈');
+    const fixture = await createProtocolFixtureServer({ port: 0, expectKey: DEFAULT_EXPECT_KEY });
+    try {
+        const health = await (await fetch(`${fixture.url}/__health`)).json();
+        if (!health.ok) throw new Error('fixture /__health 异常');
+        const r = await fetch(`${fixture.url}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${DEFAULT_EXPECT_KEY}` },
+            body: JSON.stringify({ model: 'vc03m-chat', messages: [{ role: 'user', content: 'dry-run' }], stream: false }),
+        });
+        const j = await r.json();
+        if (r.status !== 200 || j.choices[0].message.role !== 'assistant') throw new Error('fixture chat 响应异常');
+        const count = await fixture.api.count();
+        if (count < 1) throw new Error('fixture 捕获计数异常');
+        // 断言库自测
+        assertExactAccountId('9007199254740993', '9007199254740993');
+        let neighborRejected = false;
+        try {
+            assertExactAccountId('9007199254740992', '9007199254740993');
+        } catch {
+            neighborRejected = true;
+        }
+        if (!neighborRejected) throw new Error('精确 ID 断言未拒绝 float 邻值');
+        assertApiError(409, { code: 'REVISION_CONFLICT', message: 'x' }, 'REVISION_CONFLICT');
+        const events = parseSSEText('event: response.completed\ndata: {"type":"response.completed"}\n\n');
+        if (responsesEventTypes(events)[0] !== 'response.completed') throw new Error('SSE 解析自测失败');
+        if (resolveSceneFilter('e2e-chat').length !== 2) throw new Error('场景过滤依赖闭包自测失败');
+        log.ok(`dry-run 自检通过：fixture（随机端口 ${fixture.port}）+ 精确 ID + SSE + 场景闭包`);
+    } finally {
+        await fixture.api.close();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// main 编排
+// ---------------------------------------------------------------------------
+
+const SCENE_IMPLS = {
+    'login-shape': sceneLoginShape,
+    'catalog-admin': sceneCatalogAdmin,
+    'zero-upstream-on-save': sceneZeroUpstreamOnSave,
+    'service-resolve': sceneServiceResolve,
+    'e2e-chat': sceneE2eChat,
+    'e2e-responses': sceneE2eResponses,
+    'e2e-anthropic': sceneE2eAnthropic,
+    'tool-round': sceneToolRound,
+    'cancel-stream': sceneCancelStream,
+    'context-budget': sceneContextBudget,
+    'native-drift': sceneNativeDrift,
+    'key-revoke': sceneKeyRevoke,
+    'revision-conflict': sceneRevisionConflict,
+    'continuation-hygiene': sceneContinuationHygiene,
+    'ui03-browser': sceneUi03Browser,
+};
+
+async function runFull() {
+    const selected = resolveSceneFilter(FILTER);
+    if (FILTER && selected.length === 0) {
+        log.fail(`--filter 解析为空场景集：${FILTER}`);
+        process.exit(2);
+    }
+    const sceneById = (id) => SCENES.find((s) => s.id === id);
+    const needsStack = selected.some((id) => sceneById(id)?.needs.includes('stack'));
+    const needsGo = selected.some((id) => {
+        const needs = sceneById(id)?.needs ?? [];
+        return needs.includes('go') || needs.includes('catalog');
+    });
+    const needsFixture = selected.some((id) => {
+        const needs = sceneById(id)?.needs ?? [];
+        return needs.includes('fixture') || needs.includes('catalog') || needs.includes('stack');
+    });
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const artifactsDir = path.join(ARTIFACTS_ROOT, `accept-${ts}`);
+    fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
+
+    const secrets = {
+        pgPassword: synthSecret(18),
+        ownerBinding: synthServiceToken(),
+        restKey: synthRestKey(),
+        serviceToken: synthServiceToken(),
+        fixtureKey: synthApiKey(),
+    };
+    const results = { startedAt: new Date().toISOString(), selected, scenes: {}, artifactsDir };
+    const ctx = {
+        secrets, artifactsDir, results,
+        scope: `w03-accept-${ts}`,
+        snapshots: {},
+        screenshots: [],
+        fixtureHttp,
+        admin: null, st: null,
+    };
+
+    let failed = 0;
+    try {
+        if (needsGo) {
+            assertPortsFree();
+            await startManagedPg(secrets);
+            runChecked('go', ['run', '-C', BACKEND, '-mod=vendor', './cmd/companiond', 'migrate'], {
+                cwd: REPO_ROOT,
+                env: { GOTOOLCHAIN: GO_TOOLCHAIN, GOPROXY: 'off', VC_MIGRATE_DB_DSN: secrets.dsn },
+                label: 'companiond migrate（VC_MIGRATE_DB_DSN，DSN 不打印）',
+            });
+            log.ok('迁移完成（backend/internal/migrate 全量 SQL）');
+            // owner binding secret 种子（V27 契约：不属于 migration，由 companiond bootstrap
+            // 以应用原生路径 ON CONFLICT 语义写入并校验；缺它则 set_owner_context 全部拒绝，
+            // handleSession→AuthenticatorEnabled 会以 ErrOwnerContextRejected→401）
+            runChecked('go', ['run', '-C', BACKEND, '-mod=vendor', './cmd/companiond', 'bootstrap'], {
+                cwd: REPO_ROOT,
+                env: {
+                    GOTOOLCHAIN: GO_TOOLCHAIN, GOPROXY: 'off',
+                    VC_BOOTSTRAP_DB_DSN: secrets.dsn, VC_OWNER_BINDING_SECRET: secrets.ownerBinding,
+                },
+                label: 'companiond bootstrap（VC_BOOTSTRAP_DB_DSN + 本轮合成 ownerBinding，均不打印）',
+            });
+            log.ok('owner binding secret 已按应用原生路径种子（与 Go 服务 env 同值）');
+            await startManagedMinio(secrets);
+            await startGoService(secrets, artifactsDir);
+            await seedSyntheticOwner(secrets);
+            ctx.admin = createGoAdminClient({ baseUrl: GO_BASE, origin: ST_BASE, session: secrets.session });
+        }
+        if (needsFixture) {
+            await startFixtureProvider(secrets, artifactsDir);
+        }
+        if (needsStack) {
+            await startManagedStack(secrets, artifactsDir);
+            // 桥的 pickSessionCookies 从 generate 请求 Cookie 里取 Go 会话做核验（生产链路
+            // 浏览器同源持有 vc_session/vc_csrf 一并带上），此处按同形状注入
+            ctx.st = createStClient({
+                baseUrl: ST_BASE,
+                extraCookies: `vc_session=${secrets.session.vcSession}; vc_csrf=${secrets.session.vcCsrf}`,
+            });
+        }
+
+        for (const id of selected) {
+            const scene = SCENES.find((s) => s.id === id);
+            log.info(`场景 ${id}：${scene.title}`);
+            const startedAt = Date.now();
+            try {
+                await SCENE_IMPLS[id](ctx);
+                results.scenes[id] = { status: 'PASS', ms: Date.now() - startedAt };
+                log.ok(`场景 ${id} PASS（${Date.now() - startedAt}ms）`);
+            } catch (e) {
+                failed += 1;
+                results.scenes[id] = { status: 'FAIL', ms: Date.now() - startedAt, error: e.message };
+                log.fail(`场景 ${id} FAIL：${e.message}`);
+                if (process.env.VC_W03_FAIL_FAST === '1') break;
+            }
+        }
+    } finally {
+        results.finishedAt = new Date().toISOString();
+        results.screenshots = ctx.screenshots;
+        const resultsPath = path.join(artifactsDir, 'results.json');
+        fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2) + '\n', { mode: 0o600 });
+        log.info(`结果 JSON 已写入 ${path.relative(REPO_ROOT, resultsPath)}`);
+        await cleanupManaged(secrets);
+    }
+    if (failed > 0) {
+        log.fail(`${failed} 个场景失败（退出码 4）`);
+        process.exit(4);
+    }
+    log.ok(`全部 ${selected.length} 个所选场景通过`);
+}
+
+async function main() {
+    if (HELP) {
+        usage();
+        return;
+    }
+    if (!DRY_RUN && !FILTER && argv.some((a) => !['--dry-run', '--help', '-h'].includes(a))) {
+        usage();
+        process.exit(2);
+    }
+    if (FILTER !== undefined) {
+        try {
+            resolveSceneFilter(FILTER);
+        } catch (e) {
+            log.fail(String(e.message));
+            usage();
+            process.exit(2);
+        }
+    }
+    try {
+        if (DRY_RUN) {
+            await runDryRun();
+            return;
+        }
+        await runFull();
+    } catch (e) {
+        if (e instanceof LifecycleError) {
+            log.fail(`生命周期失败：${e.message}`);
+            process.exit(3);
+        }
+        log.fail(`未预期失败：${e.stack || e.message}`);
+        process.exit(3);
+    }
+}
+
+main().catch((e) => {
+    log.fail(`未预期失败：${e.stack || e.message}`);
+    process.exit(3);
+});

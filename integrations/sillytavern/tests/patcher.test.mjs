@@ -1,11 +1,14 @@
-// 确定性补丁器：合成 fixture 验证正确替换与坏输入失败（不读 upstream/）。
+// 确定性补丁器与受管（managed）运行装配：合成 fixture 验证正确替换与坏输入失败（不读 upstream/）。
+// 受管部分覆盖：运行副本构建（顶层排除 + node_modules 符号链接 + 核心补丁 SHA 硬校验）、
+// 部署排除 harness、verifyCorePatches/verifyManagedDeployment 漂移检出、幂等重跑逐字节一致。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { applySpecToText, applySpecToFile } from '../scripts/lib/patcher.mjs';
-import { sha256 } from '../scripts/lib/util.mjs';
+import { sha256, sha256File } from '../scripts/lib/util.mjs';
+import { buildRunCopy, deployManagedAssets, verifyCorePatches, verifyManagedDeployment, assertManagedDevIsolated } from '../scripts/lib/managed.mjs';
 
 const CDN_A = 'https://cdn.example/npm/a/dist/a.min.js';
 const CDN_B = 'https://cdn.example/npm/b/dist/b.min.js';
@@ -55,4 +58,136 @@ test('文件级应用：输出 0600，内容与文本级一致', () => {
         assert.equal(fs.readFileSync(out, 'utf8'), r.output);
         assert.equal(fs.statSync(out).mode & 0o777, 0o600);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------- 受管（managed）运行装配（合成树；不依赖真实 upstream/） ----------
+
+const STREAM_LINE = '            console.warn(`Streaming request failed with status ${from.status} ${statusText}: ${detail}`);';
+const UTIL_SRC = `"use strict";\n${STREAM_LINE}\nmodule.exports = {};\n`;
+
+/** 合成 ST 源树 + 核心补丁规格 + 插件/扩展源，全部落在临时目录。 */
+function makeManagedFixture() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-managed-'));
+    const stDir = path.join(root, 'SillyTavern');
+    fs.mkdirSync(path.join(stDir, 'src', 'endpoints', 'backends'), { recursive: true });
+    fs.writeFileSync(path.join(stDir, 'server.js'), 'console.log("st");\n');
+    fs.writeFileSync(path.join(stDir, 'src', 'util.js'), UTIL_SRC);
+    fs.writeFileSync(path.join(stDir, 'src', 'endpoints', 'backends', 'chat-completions.js'), 'module.exports = {};\n');
+    // 依赖树以符号链接复用：合成 node_modules 必须真实存在
+    fs.mkdirSync(path.join(stDir, 'node_modules', 'express'), { recursive: true });
+    fs.writeFileSync(path.join(stDir, 'node_modules', 'express', 'package.json'), '{"name":"express","version":"5.0.0"}\n');
+    // 顶层排除项：复制后不得出现在运行副本
+    for (const d of ['data', 'backups', 'colab', '.git']) fs.mkdirSync(path.join(stDir, d));
+    fs.writeFileSync(path.join(stDir, 'data', 'x.txt'), 'x');
+    // 补丁规格（输入/输出 SHA 由合成内容计算，applySpecToFile 硬校验）
+    const patched = UTIL_SRC.split(STREAM_LINE).join('            console.warn(`Streaming request failed with status ${from.status} ${statusText}`); // vc patch');
+    const spec = {
+        id: 't-util', kind: 'deterministic-string-replacement', reason: 'r', upstream: { component: 'sillytavern', commit: 'c', version: 'v' },
+        target: 'src/util.js', applies_to: 'a', removal_condition: 'rc',
+        expected_input_sha256: sha256(Buffer.from(UTIL_SRC)),
+        expected_output_sha256: sha256(Buffer.from(patched)),
+        replacements: [{ from: STREAM_LINE, to: '            console.warn(`Streaming request failed with status ${from.status} ${statusText}`); // vc patch', count: 1 }],
+    };
+    const specFile = path.join(root, 't-util.json');
+    fs.writeFileSync(specFile, JSON.stringify(spec));
+    // 插件与扩展源（扩展含必须排除的 harness/）
+    const pluginSrc = path.join(root, 'server-plugin');
+    fs.mkdirSync(path.join(pluginSrc, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(pluginSrc, 'index.js'), 'export default {};\n');
+    fs.writeFileSync(path.join(pluginSrc, 'package.json'), '{"name":"vc-plugin","type":"module"}\n');
+    fs.writeFileSync(path.join(pluginSrc, 'lib', 'go-client.js'), 'export const x = 1;\n');
+    const extSrc = path.join(root, 'extension');
+    fs.mkdirSync(path.join(extSrc, 'harness'), { recursive: true });
+    fs.writeFileSync(path.join(extSrc, 'manifest.json'), '{"js":"index.js"}\n');
+    fs.writeFileSync(path.join(extSrc, 'index.js'), 'export const init = () => {};\n');
+    fs.writeFileSync(path.join(extSrc, 'harness', 'server.mjs'), 'export {}; // 开发验收用具，不是生产扩展资产\n');
+    return { root, stDir, spec, specFile, patched, pluginSrc, extSrc };
+}
+
+test('buildRunCopy：顶层排除项不进副本、node_modules 为符号链接、核心补丁 SHA 硬校验通过', () => {
+    const f = makeManagedFixture();
+    try {
+        const runDir = path.join(f.root, 'st-run');
+        const patches = buildRunCopy({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        assert.equal(patches.length, 1);
+        assert.equal(patches[0].id, 't-util');
+        assert.equal(patches[0].output_sha256, sha256(Buffer.from(f.patched)));
+        for (const d of ['.git', 'data', 'backups', 'colab']) assert.ok(!fs.existsSync(path.join(runDir, d)), `副本不应包含顶层 ${d}`);
+        assert.ok(fs.lstatSync(path.join(runDir, 'node_modules')).isSymbolicLink(), 'node_modules 必须是符号链接');
+        assert.equal(fs.realpathSync(path.join(runDir, 'node_modules')), fs.realpathSync(path.join(f.stDir, 'node_modules')));
+        assert.equal(fs.readFileSync(path.join(runDir, 'src', 'util.js'), 'utf8'), f.patched, '补丁后的 util.js 落位');
+        assert.equal(fs.readFileSync(path.join(f.stDir, 'src', 'util.js'), 'utf8'), UTIL_SRC, 'upstream 原文件必须保持未改');
+        const cp = verifyCorePatches({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        assert.equal(cp.ok, true);
+    } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('buildRunCopy：上游输入漂移或规格 SHA 不匹配必须硬失败（不静默产出）', () => {
+    const f = makeManagedFixture();
+    try {
+        fs.appendFileSync(path.join(f.stDir, 'src', 'util.js'), '// drift\n');
+        assert.throws(() => buildRunCopy({ stDir: f.stDir, runDir: path.join(f.root, 'st-run'), specs: [f.specFile] }), /输入 SHA256 不匹配/);
+    } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('受管装配幂等：重跑 buildRunCopy 后补丁产物与关键文件逐字节一致', () => {
+    const f = makeManagedFixture();
+    try {
+        const runDir = path.join(f.root, 'st-run');
+        buildRunCopy({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        const before = {
+            util: sha256File(path.join(runDir, 'src', 'util.js')),
+            server: sha256File(path.join(runDir, 'server.js')),
+            cc: sha256File(path.join(runDir, 'src', 'endpoints', 'backends', 'chat-completions.js')),
+        };
+        buildRunCopy({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        assert.equal(sha256File(path.join(runDir, 'src', 'util.js')), before.util);
+        assert.equal(sha256File(path.join(runDir, 'server.js')), before.server);
+        assert.equal(sha256File(path.join(runDir, 'src', 'endpoints', 'backends', 'chat-completions.js')), before.cc);
+    } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('deployManagedAssets：harness 不被部署；部署漂移/缺失被 verifyManagedDeployment 检出', () => {
+    const f = makeManagedFixture();
+    try {
+        const runDir = path.join(f.root, 'st-run');
+        const extDir = path.join(f.root, 'data', 'default-user', 'extensions');
+        fs.mkdirSync(extDir, { recursive: true });
+        const dep = deployManagedAssets({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
+        assert.equal(dep.plugin.files, 3);
+        assert.equal(dep.extension.files, 2, 'harness 内文件不计入部署');
+        assert.ok(!fs.existsSync(path.join(extDir, 'vc-model-settings', 'harness')));
+        assert.ok(fs.existsSync(path.join(runDir, 'plugins', 'virtual-companion', 'index.js')));
+        let v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
+        assert.equal(v.ok, true);
+        fs.rmSync(path.join(extDir, 'vc-model-settings', 'manifest.json'));
+        v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
+        assert.equal(v.ok, false);
+        assert.ok(v.problems.some((p) => p.includes('manifest.json')));
+        fs.writeFileSync(path.join(runDir, 'plugins', 'virtual-companion', 'index.js'), 'tampered\n');
+        v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
+        assert.ok(v.problems.some((p) => p.includes('内容漂移')));
+    } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('verifyCorePatches：upstream 输入或运行副本输出被改动都会被检出', () => {
+    const f = makeManagedFixture();
+    try {
+        const runDir = path.join(f.root, 'st-run');
+        buildRunCopy({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        fs.writeFileSync(path.join(runDir, 'src', 'util.js'), 'tampered\n');
+        let v = verifyCorePatches({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        assert.equal(v.ok, false);
+        assert.ok(v.problems.some((p) => p.includes('输出 SHA 不匹配')));
+        buildRunCopy({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        fs.appendFileSync(path.join(f.stDir, 'src', 'util.js'), '// drift\n');
+        v = verifyCorePatches({ stDir: f.stDir, runDir, specs: [f.specFile] });
+        assert.ok(v.problems.some((p) => p.includes('输入 SHA 不匹配')));
+    } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('assertManagedDevIsolated：受管目录指向原生 dev/ 默认路径必须拒绝', () => {
+    const nativeDefault = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'dev');
+    assert.throws(() => assertManagedDevIsolated(nativeDefault), /原生 dev/);
+    assert.doesNotThrow(() => assertManagedDevIsolated(path.join(nativeDefault, '..', 'dev-managed')));
 });

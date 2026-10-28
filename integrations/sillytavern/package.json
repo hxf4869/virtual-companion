@@ -11,6 +11,10 @@
     "start": "node scripts/start.mjs",
     "stop": "node scripts/stop.mjs",
     "status": "node scripts/status.mjs",
+    "assemble-managed": "node scripts/assemble-managed.mjs",
+    "start-managed": "node scripts/start-managed.mjs",
+    "stop-managed": "node scripts/stop-managed.mjs",
+    "status-managed": "node scripts/status-managed.mjs",
     "test": "node --test \"tests/*.test.mjs\"",
     "accept": "node scripts/accept.mjs",
     "protection-report": "node scripts/protection-report.mjs"

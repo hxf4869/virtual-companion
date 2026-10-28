@@ -1,4 +1,6 @@
 // 锁文件与补丁规格一致性（离线，不需要 upstream/ 或 dev/）。
+// 受管（managed）核心补丁规格只做结构校验：输入/输出 SHA 与真实 upstream 文件的比对在
+// assemble-managed / start-managed 预检运行（需要 upstream/ 克隆）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,6 +12,11 @@ const INTEG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const upstream = JSON.parse(fs.readFileSync(path.join(INTEG, 'upstream.lock.json'), 'utf8'));
 const vendor = JSON.parse(fs.readFileSync(path.join(INTEG, 'vendor.lock.json'), 'utf8'));
 const spec = JSON.parse(fs.readFileSync(path.join(INTEG, 'patches', 'helper-selfhost-runtime-assets.json'), 'utf8'));
+const coreSpecs = ['st-chat-completions-vc-bridge', 'st-util-stream-error-log'].map((id) => ({
+    id,
+    file: path.join(INTEG, 'patches', `${id}.json`),
+    json: JSON.parse(fs.readFileSync(path.join(INTEG, 'patches', `${id}.json`), 'utf8')),
+}));
 const HEX64 = /^[0-9a-f]{64}$/;
 const SHA512 = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
 
@@ -82,4 +89,23 @@ test('补丁规格：坏输入必须被拒绝（缺字段 / count 非法 / from=
     assert.ok(validateSpec(bad3).some((e) => e.includes('expected_input_sha256')));
     const { reason, ...bad4 } = spec;
     assert.ok(validateSpec(bad4).some((e) => e.includes('reason')));
+});
+
+test('受管核心补丁规格：两个 ST 源码补丁对锁定 sillytavern commit、结构有效、目标互不重叠', () => {
+    const st = upstream.components.find((c) => c.id === 'sillytavern');
+    const targets = new Set();
+    for (const s of coreSpecs) {
+        assert.deepEqual(validateSpec(s.json), [], `${s.id} 规格无效`);
+        assert.equal(s.json.upstream.component, 'sillytavern');
+        assert.equal(s.json.upstream.commit, st.commit, `${s.id} 必须对准锁定 commit`);
+        assert.match(s.json.expected_input_sha256, HEX64, s.id);
+        assert.match(s.json.expected_output_sha256, HEX64, s.id);
+        assert.notEqual(s.json.expected_output_sha256, s.json.expected_input_sha256, s.id);
+        assert.ok(s.json.target.startsWith('src/'), `${s.id} 只应作用于 ST 源码（upstream 原始检出不改，补丁应用于运行副本）`);
+        assert.ok(!targets.has(s.json.target), `补丁目标重叠 ${s.json.target}`);
+        targets.add(s.json.target);
+        assert.ok(s.json.replacements.length >= 1);
+        assert.ok(s.json.reason && s.json.removal_condition && s.json.applies_to);
+    }
+    assert.equal(targets.size, 2);
 });

@@ -1,12 +1,13 @@
 // 本切片专用 ST config.yaml：输出 JSON（合法 YAML，ST 用 yaml.parse 读取），只显式声明与安全/锁定/数据目录有关的键；
 // ST 首次启动用 lodash defaultsDeep 从 default/config.yaml 补齐其余键并以 yaml.stringify 重写（src/config-init.js）。
 // 运行期回读统一复用 ST 锁定的 yaml 依赖（upstream/SillyTavern/node_modules/yaml，package-lock 固定），不自制解析器。
+// 受管（managed）差异只经 enableServerPlugins 显式参数化：受管宿主策略要求装载 server plugin，其余安全项不变。
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import fs from 'node:fs';
 import { ST_DIR } from './paths.mjs';
 
-export function buildConfigObject({ dataRoot, port }) {
+export function buildConfigObject({ dataRoot, port, enableServerPlugins = false }) {
     return {
         dataRoot,
         listen: false,
@@ -24,7 +25,7 @@ export function buildConfigObject({ dataRoot, port }) {
         securityOverride: false,
         allowKeysExposure: false,
         hostWhitelist: { enabled: false, scan: true, hosts: [] },
-        enableServerPlugins: false,
+        enableServerPlugins,
         enableServerPluginsAutoUpdate: false,
         extensions: { enabled: true, autoUpdate: false, models: { autoDownload: false } },
         enableDownloadableTokenizers: false,
@@ -34,7 +35,7 @@ export function buildConfigObject({ dataRoot, port }) {
     };
 }
 
-/** 安全不变量：start / status / 测试据此判断配置没有被削弱。 */
+/** 原生（S1）安全不变量：start / status / 测试据此判断配置没有被削弱。 */
 export const CONFIG_INVARIANTS = {
     listen: false,
     whitelistMode: true,
@@ -52,6 +53,9 @@ export const CONFIG_INVARIANTS = {
     'backups.chat.enabled': true,
 };
 
+/** 受管（managed）不变量：与原生唯一差异是 enableServerPlugins=true（受管宿主策略要求插件装载）。 */
+export const MANAGED_CONFIG_INVARIANTS = { ...CONFIG_INVARIANTS, enableServerPlugins: true };
+
 /** JSON 文本即合法 YAML 1.2 文档。 */
 export function renderConfig(opts) {
     return JSON.stringify(buildConfigObject(opts), null, 2) + '\n';
@@ -61,10 +65,10 @@ export function getPath(obj, dotted) {
     return dotted.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), obj);
 }
 
-/** 返回违反不变量的列表（空数组 = 合规）。 */
-export function checkInvariants(cfg) {
+/** 返回违反不变量的列表（空数组 = 合规）；invariants 可传受管不变量表（受管差异显式参数化）。 */
+export function checkInvariants(cfg, invariants = CONFIG_INVARIANTS) {
     const bad = [];
-    for (const [k, want] of Object.entries(CONFIG_INVARIANTS)) {
+    for (const [k, want] of Object.entries(invariants)) {
         const got = getPath(cfg, k);
         if (got !== want) bad.push(`${k}=${JSON.stringify(got)}（要求 ${JSON.stringify(want)}）`);
     }
