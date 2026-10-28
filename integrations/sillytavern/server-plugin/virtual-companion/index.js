@@ -2,8 +2,9 @@
 // 许可：AGPL-3.0-only（见目录 README；ADR-0009 §3）。
 // 部署：<ST 安装目录>/plugins/virtual-companion/（由仓库 scripts/bootstrap 复制并
 // 开启 enableServerPlugins；接线归 S1，本目录是唯一写入 owner 的源码）。
-// init(router) 只挂 /go 管理桥路由（登录/CSRF 中间件之后，不能也不拦截原生路由）；
-// 生成链与连接检查经集中补丁的钩子调用 globalThis[Symbol.for('virtual-companion.bridge')]：
+// init(router) 挂 /go 管理桥，并注册 hostAuth/F2 供集中核心补丁调用；
+// hostAuth 在 app 层覆盖用户解析、静态资源与原生 API，Router 本身仍位于登录/CSRF 之后。
+// 生成链与连接检查共用 globalThis[Symbol.for('virtual-companion.bridge')]：
 //   ① interceptGenerate（/generate switch 分发前）② finalOutboundGuard（Chat/Claude 最终发送前）
 //   ③ interceptStatus（/status 路由开头：受管标记只以真实上游模型列表应答）。
 
@@ -14,6 +15,9 @@ import { createStatusBridge } from './lib/status-bridge.js';
 import { ToolContinuationStore } from './lib/responses-adapter.js';
 import { createTokenCounter } from './lib/context-guard.js';
 import { log } from './lib/log.js';
+import fs from 'node:fs';
+import { createHostAuth } from './lib/host-auth.js';
+import { createF2Hooks } from './lib/f2-routes.js';
 
 export const info = {
     id: 'virtual-companion',
@@ -23,6 +27,12 @@ export const info = {
 
 export async function init(router) {
     const config = loadConfig();
+    const users = await import(new URL('../../src/users.js', import.meta.url).href);
+    const hostAuth = createHostAuth({ config,
+        getUser: async (handle) => (await users.getAllEnabledUsers()).find((user) => user.handle === handle),
+        accountVersion: users.getAccountVersion,
+        indexHtml: () => fs.readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8'),
+    });
     router.use('/go', createAdminBridge({ config }));
 
     let counter;
@@ -38,7 +48,8 @@ export async function init(router) {
     const { interceptStatus } = createStatusBridge({ config });
     // 补丁钩子对端：① interceptGenerate（/generate 分发前）② finalOutboundGuard（Chat/Claude 最终发送前）
     // ③ interceptStatus（/status 路由开头；受管标记用真实上游模型列表应答，不篡改 online_status）。
-    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus };
+    const f2 = createF2Hooks({ getUserDirectories: users.getUserDirectories });
+    globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2 };
     log.info(`插件就绪：goBaseUrl=${config.goBaseUrl || '(未配置)'} 服务令牌=${config.serviceToken ? '已配置' : '缺失（受控生成不可用）'} estimator=${counter.estimator}`);
 }
 

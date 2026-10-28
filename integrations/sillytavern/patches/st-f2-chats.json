@@ -1,0 +1,157 @@
+{
+  "id": "st-f2-chats",
+  "kind": "deterministic-string-replacement",
+  "reason": "W05 原生聊天读写、改名、删除与导入统一F2；原生格式转换/备份保留，force不能跳过版本检查。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+    "version": "1.19.0"
+  },
+  "target": "src/endpoints/chats.js",
+  "removal_condition": "上游原生等价F2覆盖所有相关路由并通过版本/删除/导入回归时移除。",
+  "expected_input_sha256": "40012ebc71a75357e62f7532e5b20def0d8b6c132bb6ab48f662993cc97b9063",
+  "expected_output_sha256": "bb7a135d68f5c28d0e1fcad0cadfcf55fa6894bc32fb6e123690197c573491f0",
+  "replacements": [
+    {
+      "from": "} from '../util.js';\n\nconst isBackupEnabled =",
+      "to": "} from '../util.js';\n\n// F2 hooks: managed runtime fails closed if the plugin is unavailable.\nfunction vcF2() {\n    const hooks = globalThis[Symbol.for('virtual-companion.bridge')]?.f2;\n    if (!hooks) throw Object.assign(new Error('F2 storage is unavailable'), { status: 503, code: 'VC_F2_UNAVAILABLE' });\n    return hooks;\n}\nfunction vcF2Error(error, response) {\n    if (!String(error?.code || '').startsWith('VC_')) return false;\n    response.status(error.status || 500).send({ error: 'f2', code: error.code, message: error.message });\n    return true;\n}\n\nconst isBackupEnabled =",
+      "count": 1
+    },
+    {
+      "from": "    const jsonlData = chatData?.map(m => JSON.stringify(m)).join('\\n');\n\n    const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);\n    const chatIntegritySlug = doIntegrityCheck ? chatData?.[0]?.chat_metadata?.integrity : undefined;\n\n    if (chatIntegritySlug && !await checkChatIntegrity(filePath, chatIntegritySlug)) {\n        throw new IntegrityMismatchError(`Chat integrity check failed for \"${filePath}\". The expected integrity slug was \"${chatIntegritySlug}\".`);\n    }\n    tryWriteFileSync(filePath, jsonlData);\n    getBackupFunction(handle, cardName)(backupDirectory, cardName, jsonlData);",
+      "to": "    const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);\n    const chatIntegritySlug = doIntegrityCheck ? chatData?.[0]?.chat_metadata?.integrity : undefined;\n    const vcToken = await vcF2().save(handle, filePath, chatData, async () => {\n        if (chatIntegritySlug && !await checkChatIntegrity(filePath, chatIntegritySlug)) {\n            throw new IntegrityMismatchError(`Chat integrity check failed for \"${filePath}\". The expected integrity slug was \"${chatIntegritySlug}\".`);\n        }\n    });\n    chatData[0].chat_metadata.vc_f2 = vcToken;\n    delete chatData[0].chat_metadata.vc_f2_parent;\n    const jsonlData = chatData.map(m => JSON.stringify(m)).join('\\n');\n    getBackupFunction(handle, cardName)(backupDirectory, cardName, jsonlData);\n    return vcToken;",
+      "count": 1
+    },
+    {
+      "from": "            await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);\n            return response.send({ ok: true });",
+      "to": "            const vcToken = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);\n            return response.send({ ok: true, vc_f2: vcToken });",
+      "count": 1
+    },
+    {
+      "from": "            await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups);\n            return response.send({ ok: true });",
+      "to": "            const vcToken = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups);\n            return response.send({ ok: true, vc_f2: vcToken });",
+      "count": 1
+    },
+    {
+      "from": "router.post('/get', validateAvatarUrlMiddleware, function (request, response) {",
+      "to": "router.post('/get', validateAvatarUrlMiddleware, async function (request, response) {",
+      "count": 1
+    },
+    {
+      "from": "        return response.send(getChatData(chatFilePath));\n    } catch (error) {\n        console.error(error);\n        return response.send({});",
+      "to": "        return response.send(await vcF2().read(request.user, chatFilePath));\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error(error);\n        return response.sendStatus(500);",
+      "count": 1
+    },
+    {
+      "from": "        if (!fs.existsSync(pathToOriginalFile) || fs.existsSync(pathToRenamedFile)) {\n            console.error('Either Source or Destination files are not available');\n            return response.status(400).send({ error: true });\n        }\n\n        fs.copyFileSync(pathToOriginalFile, pathToRenamedFile);\n        fs.unlinkSync(pathToOriginalFile);",
+      "to": "        const vcToken = await vcF2().rename(request, pathToOriginalFile, pathToRenamedFile);",
+      "count": 1
+    },
+    {
+      "from": "return response.send({ ok: true, sanitizedFileName });",
+      "to": "return response.send({ ok: true, sanitizedFileName, vc_f2: vcToken });",
+      "count": 1
+    },
+    {
+      "from": "router.post('/delete', validateAvatarUrlMiddleware, function (request, response) {",
+      "to": "router.post('/delete', validateAvatarUrlMiddleware, async function (request, response) {",
+      "count": 1
+    },
+    {
+      "from": "        //Return success if the file was deleted.\n        if (tryDeleteFile(chatFilePath)) {\n            return response.send({ ok: true });\n        } else {\n            console.error('The chat file was not deleted.');\n            return response.sendStatus(400);\n        }",
+      "to": "        const vcToken = await vcF2().remove(request, chatFilePath);\n        return response.send({ ok: true, vc_f2: vcToken });",
+      "count": 1
+    },
+    {
+      "from": "router.post('/group/import', function (request, response) {",
+      "to": "router.post('/group/import', async function (request, response) {",
+      "count": 1
+    },
+    {
+      "from": "        fs.copyFileSync(pathToUpload, pathToNewFile);\n        fs.unlinkSync(pathToUpload);\n        return response.send({ res: chatname });",
+      "to": "        const existed = fs.existsSync(pathToNewFile);\n        const vcToken = await vcF2().importChat(request, pathToNewFile, fs.readFileSync(pathToUpload, 'utf8'), { existed });\n        fs.unlinkSync(pathToUpload);\n        return response.send({ res: chatname, vc_f2: vcToken });",
+      "count": 1
+    },
+    {
+      "from": "router.post('/import', validateAvatarUrlMiddleware, function (request, response) {",
+      "to": "router.post('/import', validateAvatarUrlMiddleware, async function (request, response) {",
+      "count": 1
+    },
+    {
+      "from": "    const fileNames = [];\n\n    if (!request.file)",
+      "to": "    const fileNames = [];\n    const vcTokens = [];\n\n    if (!request.file)",
+      "count": 1
+    },
+    {
+      "from": "            const handleChat = (chat) => {\n                const fileName = `${characterName} - ${humanizedDateTime()} imported.jsonl`;\n                const filePath = path.join(directoryPath, fileName);\n                fileNames.push(fileName);\n                writeFileAtomicSync(filePath, chat, 'utf8');\n            };",
+      "to": "            const handleChat = async (chat) => {\n                const fileName = `${characterName} - ${humanizedDateTime()} imported.jsonl`;\n                const filePath = path.join(directoryPath, fileName);\n                const existed = fs.existsSync(filePath);\n                const vcToken = await vcF2().importChat(request, filePath, chat, { existed, index: fileNames.length });\n                fileNames.push(fileName);\n                vcTokens.push({ file_name: fileName, vc_f2: vcToken });\n            };",
+      "count": 1
+    },
+    {
+      "from": "                chat.forEach(handleChat);\n            } else {\n                handleChat(chat);",
+      "to": "                for (const entry of chat) await handleChat(entry);\n            } else {\n                await handleChat(chat);",
+      "count": 1
+    },
+    {
+      "from": "response.send({ res: true, fileNames });",
+      "to": "response.send({ res: true, fileNames, vc_f2_chats: vcTokens });",
+      "count": 2
+    },
+    {
+      "from": "            fileNames.push(fileName);\n            if (flattenedChat !== data) {\n                writeFileAtomicSync(filePath, flattenedChat, 'utf8');\n            } else {\n                fs.copyFileSync(pathToUpload, filePath);\n            }",
+      "to": "            const existed = fs.existsSync(filePath);\n            const vcToken = await vcF2().importChat(request, filePath, flattenedChat, { existed });\n            fileNames.push(fileName);\n            vcTokens.push({ file_name: fileName, vc_f2: vcToken });",
+      "count": 1
+    },
+    {
+      "from": "router.post('/group/get', (request, response) => {\n    if (!request.body || !request.body.id) {\n        return response.sendStatus(400);\n    }\n\n    const id = request.body.id;\n    const chatFilePath = path.join(request.user.directories.groupChats, sanitize(`${id}.jsonl`));\n\n    return response.send(getChatData(chatFilePath));\n});",
+      "to": "router.post('/group/get', async (request, response) => {\n    if (!request.body || !request.body.id) return response.sendStatus(400);\n    try {\n        const chatFilePath = path.join(request.user.directories.groupChats, sanitize(`${request.body.id}.jsonl`));\n        return response.send(await vcF2().read(request.user, chatFilePath));\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error(error);\n        return response.sendStatus(500);\n    }\n});",
+      "count": 1
+    },
+    {
+      "from": "router.post('/group/delete', (request, response) => {",
+      "to": "router.post('/group/delete', async (request, response) => {",
+      "count": 1
+    },
+    {
+      "from": "        //Return success if the file was deleted.\n        if (tryDeleteFile(chatFilePath)) {\n            return response.send({ ok: true });\n        } else {\n            console.error('The group chat file was not deleted.');\n            return response.sendStatus(400);\n        }",
+      "to": "        const vcToken = await vcF2().remove(request, chatFilePath);\n        return response.send({ ok: true, vc_f2: vcToken });",
+      "count": 1
+    },
+    {
+      "from": "            const vcToken = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);\n            return response.send({ ok: true, vc_f2: vcToken });\n        } else {\n            return response.status(400).send({ error: 'The request\\'s body.chat is not an array.' });\n        }\n    } catch (error) {\n        if (error instanceof IntegrityMismatchError) {\n",
+      "to": "            const vcToken = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);\n            return response.send({ ok: true, vc_f2: vcToken });\n        } else {\n            return response.status(400).send({ error: 'The request\\'s body.chat is not an array.' });\n        }\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        if (error instanceof IntegrityMismatchError) {\n",
+      "count": 1
+    },
+    {
+      "from": "        return response.send({ ok: true, sanitizedFileName, vc_f2: vcToken });\n    } catch (error) {\n        console.error('Error renaming chat file:', error);\n",
+      "to": "        return response.send({ ok: true, sanitizedFileName, vc_f2: vcToken });\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error('Error renaming chat file:', error);\n",
+      "count": 1
+    },
+    {
+      "from": "        }\n        const vcToken = await vcF2().remove(request, chatFilePath);\n        return response.send({ ok: true, vc_f2: vcToken });\n    } catch (error) {\n        console.error(error);\n",
+      "to": "        }\n        const vcToken = await vcF2().remove(request, chatFilePath);\n        return response.send({ ok: true, vc_f2: vcToken });\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error(error);\n",
+      "count": 1
+    },
+    {
+      "from": "        return response.send({ res: chatname, vc_f2: vcToken });\n    } catch (error) {\n        console.error(error);\n",
+      "to": "        return response.send({ res: chatname, vc_f2: vcToken });\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error(error);\n",
+      "count": 1
+    },
+    {
+      "from": "        }\n    } catch (error) {\n        console.error(error);\n",
+      "to": "        }\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error(error);\n",
+      "count": 1
+    },
+    {
+      "from": "        return response.send({ ok: true, vc_f2: vcToken });\n    } catch (error) {\n        console.error(error);\n",
+      "to": "        return response.send({ ok: true, vc_f2: vcToken });\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error(error);\n",
+      "count": 1
+    },
+    {
+      "from": "        }\n    } catch (error) {\n        if (error instanceof IntegrityMismatchError) {\n",
+      "to": "        }\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        if (error instanceof IntegrityMismatchError) {\n",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

@@ -1,6 +1,7 @@
 // 确定性补丁器与受管（managed）运行装配：合成 fixture 验证正确替换与坏输入失败（不读 upstream/）。
 // 受管部分覆盖：运行副本构建（顶层排除 + node_modules 符号链接 + 核心补丁 SHA 硬校验）、
-// 部署排除 harness、verifyCorePatches/verifyManagedDeployment 漂移检出、幂等重跑逐字节一致。
+// 部署排除 harness、verifyCorePatches/verifyManagedDeployment 漂移检出、幂等重跑逐字节一致、
+// Go 桥接环境硬校验（requireManagedGoEnv：baseURL/token/账号映射）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { applySpecToText, applySpecToFile } from '../scripts/lib/patcher.mjs';
 import { sha256, sha256File } from '../scripts/lib/util.mjs';
-import { buildRunCopy, deployManagedAssets, verifyCorePatches, verifyManagedDeployment, assertManagedDevIsolated } from '../scripts/lib/managed.mjs';
+import { buildRunCopy, deployManagedAssets, verifyCorePatches, verifyManagedDeployment, assertManagedDevIsolated, requireManagedGoEnv } from '../scripts/lib/managed.mjs';
 
 const CDN_A = 'https://cdn.example/npm/a/dist/a.min.js';
 const CDN_B = 'https://cdn.example/npm/b/dist/b.min.js';
@@ -100,6 +101,7 @@ function makeManagedFixture() {
     fs.mkdirSync(path.join(extSrc, 'harness'), { recursive: true });
     fs.writeFileSync(path.join(extSrc, 'manifest.json'), '{"js":"index.js"}\n');
     fs.writeFileSync(path.join(extSrc, 'index.js'), 'export const init = () => {};\n');
+    for (const name of ['f2-client.js', 'instance-binding.js']) fs.writeFileSync(path.join(extSrc, name), 'export {};\n');
     fs.writeFileSync(path.join(extSrc, 'harness', 'server.mjs'), 'export {}; // 开发验收用具，不是生产扩展资产\n');
     return { root, stDir, spec, specFile, patched, pluginSrc, extSrc };
 }
@@ -155,11 +157,16 @@ test('deployManagedAssets：harness 不被部署；部署漂移/缺失被 verify
         fs.mkdirSync(extDir, { recursive: true });
         const dep = deployManagedAssets({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
         assert.equal(dep.plugin.files, 3);
-        assert.equal(dep.extension.files, 2, 'harness 内文件不计入部署');
+        assert.equal(dep.extension.files, 4, 'harness 内文件不计入部署');
         assert.ok(!fs.existsSync(path.join(extDir, 'vc-model-settings', 'harness')));
         assert.ok(fs.existsSync(path.join(runDir, 'plugins', 'virtual-companion', 'index.js')));
         let v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
         assert.equal(v.ok, true);
+        const runtimeClient = path.join(runDir, 'public/scripts/vc-runtime/f2-client.js');
+        assert.ok(fs.existsSync(runtimeClient), '所有profile共用原生F2模块');
+        fs.writeFileSync(runtimeClient, 'tampered\n');
+        v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
+        assert.ok(v.problems.some((p) => p.includes('native F2')));
         fs.rmSync(path.join(extDir, 'vc-model-settings', 'manifest.json'));
         v = verifyManagedDeployment({ pluginSrc: f.pluginSrc, extensionSrc: f.extSrc, runDir, extDir });
         assert.equal(v.ok, false);
@@ -190,4 +197,45 @@ test('assertManagedDevIsolated：受管目录指向原生 dev/ 默认路径必�
     const nativeDefault = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'dev');
     assert.throws(() => assertManagedDevIsolated(nativeDefault), /原生 dev/);
     assert.doesNotThrow(() => assertManagedDevIsolated(path.join(nativeDefault, '..', 'dev-managed')));
+});
+
+// ---------- Go 桥接环境硬校验（requireManagedGoEnv） ----------
+
+const goEnvValid = {
+    VC_ST_GO_BASE_URL: 'http://127.0.0.1:8095',
+    VC_ST_PLUGIN_SERVICE_TOKEN: 't'.repeat(32),
+    VC_ST_ACCOUNT_HANDLES: '{"12345678901234567":"owner-main"}',
+};
+
+test('requireManagedGoEnv：完整环境（含有效账号映射）通过，返回解析后的 accountHandles 供 start 透传', () => {
+    const r = requireManagedGoEnv(goEnvValid);
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.accountHandles, { '12345678901234567': 'owner-main' });
+});
+
+test('requireManagedGoEnv：空/非法/重复 handle 的账号映射必须被拒绝，且错误不回显映射内容', () => {
+    const missing = { ...goEnvValid, VC_ST_ACCOUNT_HANDLES: '' };
+    for (const env of [missing, { ...goEnvValid, VC_ST_ACCOUNT_HANDLES: undefined }, { ...goEnvValid, VC_ST_ACCOUNT_HANDLES: '{}' }]) {
+        const r = requireManagedGoEnv(env);
+        assert.equal(r.ok, false, '空映射必须被拒');
+        assert.ok(r.problems.some((p) => p.startsWith('VC_ST_ACCOUNT_HANDLES')));
+        assert.equal(r.accountHandles, undefined);
+    }
+    const invalid = [
+        '{bad json',                             // 非法 JSON
+        '{"acct":"owner-main"}',                 // 账号不是正整数 ID
+        '{"12345678901234567":"../escape"}',     // handle 含路径字符
+        '{"1":"dup","2":"dup"}',                 // 两个账号共用同一 handle
+        '["12345678901234567"]',                 // 不是对象
+    ];
+    for (const raw of invalid) {
+        const r = requireManagedGoEnv({ ...goEnvValid, VC_ST_ACCOUNT_HANDLES: raw });
+        assert.equal(r.ok, false, `非法映射必须被拒（${raw.slice(0, 12)}…）`);
+        assert.ok(r.problems.some((p) => p.startsWith('VC_ST_ACCOUNT_HANDLES')));
+        assert.equal(r.accountHandles, undefined);
+        for (const p of r.problems) {
+            assert.ok(!p.includes('owner-main') && !p.includes('dup') && !p.includes('bad json') && !p.includes('escape'), '错误信息不得回显映射内容');
+        }
+    }
 });

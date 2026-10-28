@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// V2-W03 受管状态：只读汇报受管实例（进程/端口//version、Go 桥接环境配置与否、核心补丁与部署完整性、
-// 受管配置不变量、ST 依赖树、dataRoot 权限）。只输出 JSON，不打印任何密钥值。
+// V2-W05 受管状态：只读汇报受管实例（进程/端口、登录入口 /auth/ 健康与账号映射配置与否、Go 桥接环境、
+// 核心补丁与部署完整性、受管配置不变量、ST 依赖树、dataRoot 权限）。只输出 JSON，不打印任何密钥或账号映射值。
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -18,11 +18,16 @@ const mode = (p) => { try { return (fs.statSync(p).mode & 0o777).toString(8).pad
 const pidFile = path.join(MANAGED_RUN_DIR, 'st.pid');
 const pid = fs.existsSync(pidFile) ? Number(fs.readFileSync(pidFile, 'utf8').trim()) : null;
 out.st = { pid, alive: pid ? isPidAlive(pid) : false, port: MANAGED_ST_PORT };
-try { const r = await fetch(`${MANAGED_ST_URL}/version`); out.st.version = r.ok ? await r.json() : { http: r.status }; } catch (e) { out.st.version = { error: String(e.cause?.code || e.message) }; }
+// 登录入口健康只读 /auth/（/version 已受登录保护，未认证 401 不算不健康）
+try {
+    const r = await fetch(`${MANAGED_ST_URL}/auth/`);
+    const ct = r.headers.get('content-type') || '';
+    out.st.auth = { ready: r.ok && ct.includes('text/html'), http: r.status, content_type: ct.split(';')[0] || null };
+} catch (e) { out.st.auth = { ready: false, error: String(e.cause?.code || e.message) }; }
 
-// Go 桥接环境只汇报配置与否与问题，不输出任何值
+// Go 桥接环境只汇报配置与否与问题（问题为静态说明），不输出任何值；账号映射只报 configured 布尔
 const goEnv = requireManagedGoEnv();
-out.go_env = { ok: goEnv.ok, base_url: goEnv.baseUrl || null, token_configured: Boolean(process.env.VC_ST_PLUGIN_SERVICE_TOKEN), timeout_ms_configured: Boolean(process.env.VC_ST_GO_TIMEOUT_MS), problems: goEnv.problems };
+out.go_env = { ok: goEnv.ok, base_url: goEnv.baseUrl || null, token_configured: Boolean(process.env.VC_ST_PLUGIN_SERVICE_TOKEN), timeout_ms_configured: Boolean(process.env.VC_ST_GO_TIMEOUT_MS), mapping_configured: Boolean(goEnv.accountHandles), problems: goEnv.problems };
 
 out.st_run = { path: MANAGED_ST_RUN, node_modules_symlink: (() => { try { return fs.readlinkSync(path.join(MANAGED_ST_RUN, 'node_modules')); } catch { return null; } })() };
 out.core_patches = verifyCorePatches({});

@@ -276,10 +276,11 @@ export async function serviceResolve({ baseUrl, serviceToken, body, fetchImpl = 
 }
 
 // ---------------------------------------------------------------------------
-// ST HTTP 客户端（/generate 真实端点 + CSRF）
+// ST HTTP 客户端（/generate 真实端点 + 通用 call + CSRF）
 // ---------------------------------------------------------------------------
 
-export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies }) {
+export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies, expectedIdentity }) {
+    const pageIdentity = expectedIdentity ? Object.freeze({ accountId: expectedIdentity.accountId, sessionId: expectedIdentity.sessionId }) : null;
     // ST 1.19 用 cookie-session（server-main.js）+ csrf-sync 同步模式：
     // 会话内容序列化进 cookie 本身，cookie 名为 `session-<sha256(hostname).slice(0,8)>`
     // （users.js getCookieSessionName，随宿主机名变化），签名另发 `<name>.sig` cookie；
@@ -289,6 +290,10 @@ export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies }) {
     // extraCookies：追加的浏览器同源 cookie（如 Go 会话 vc_session/vc_csrf）——生产链路里
     // 浏览器经 ST 同源桥持有 Go 会话，generate 请求会一并带上，桥的 pickSessionCookies
     // 从中取 vc_session/vc_csrf 做 Go 会话核验（generate-bridge.js）。
+    // W05：受管栈中 /csrf-token 也在 host-auth 之后，GET 本身必须携带 Go 会话 cookie（extraCookies）。
+    // expectedIdentity：创建时传入的页面身份副本（页面 meta vc-account-id / vc-session-id 的值）；
+    // 不安全请求固定携带 X-VC-Expected-Account-ID / X-VC-Expected-Session-ID，值冻结于创建时刻，
+    // 绝不依据后续响应或新 cookie 自动换身份——会话漂移必须以 409 暴露给调用方处理。
     let csrf = null;
     const cookieJar = new Map();
     function absorbSetCookies(res) {
@@ -298,9 +303,26 @@ export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies }) {
             if (m) cookieJar.set(m[1].trim(), m[2]);
         }
     }
+    /** ST 签名 cookie jar 与追加的 Go 会话 cookie 统一拼接（ensureCsrf / generate / call 复用）。 */
+    function joinCookies() {
+        const parts = [...cookieJar].map(([n, v]) => `${n}=${v}`);
+        if (extraCookies) parts.push(extraCookies);
+        return parts.length > 0 ? parts.join('; ') : null;
+    }
+    /** 不安全请求携带冻结的期望身份双头（host-auth 对非 GET/HEAD/OPTIONS 强制双头一致）。 */
+    function applyExpectedIdentity(headers) {
+        if (pageIdentity) {
+            headers['X-VC-Expected-Account-ID'] = pageIdentity.accountId;
+            headers['X-VC-Expected-Session-ID'] = pageIdentity.sessionId;
+        }
+        return headers;
+    }
     async function ensureCsrf() {
         if (csrf) return csrf;
-        const res = await fetchImpl(`${baseUrl}/csrf-token`);
+        const headers = {};
+        const cookie = joinCookies();
+        if (cookie) headers.Cookie = cookie;
+        const res = await fetchImpl(`${baseUrl}/csrf-token`, { headers });
         const j = await res.json();
         csrf = j.token;
         if (!csrf) throw new Error('ST /csrf-token 未返回 token');
@@ -315,11 +337,9 @@ export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies }) {
     async function generate(body, { signal } = {}) {
         const token = await ensureCsrf();
         const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': token };
-        const cookieParts = [...cookieJar].map(([n, v]) => `${n}=${v}`);
-        if (extraCookies) cookieParts.push(extraCookies);
-        if (cookieParts.length > 0) {
-            headers.Cookie = cookieParts.join('; ');
-        }
+        applyExpectedIdentity(headers);
+        const cookie = joinCookies();
+        if (cookie) headers.Cookie = cookie;
         const res = await fetchImpl(`${baseUrl}/api/backends/chat-completions/generate`, {
             method: 'POST',
             headers,
@@ -336,7 +356,39 @@ export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies }) {
         }
         return { status: res.status, ok: res.ok, json, text };
     }
-    return { generate, ensureCsrf };
+    /**
+     * 通用受管 ST 测试客户端入口（任意原生端点）：GET/HEAD 懒 csrf、只带 cookie；
+     * 不安全方法自动补 ST CSRF 双提交与冻结期望身份双头。返回 {status, ok, json, text}
+     * （非 JSON 正文 json=null）；不打印请求/响应正文与任何凭据。
+     */
+    async function call(method, path, body, { signal } = {}) {
+        const headers = { Accept: 'application/json' };
+        const multipart = body instanceof FormData;
+        const unsafe = method !== 'GET' && method !== 'HEAD';
+        if (unsafe) {
+            const token = await ensureCsrf();
+            if (!multipart) headers['Content-Type'] = 'application/json';
+            headers['X-CSRF-Token'] = token;
+            applyExpectedIdentity(headers);
+        }
+        const cookie = joinCookies();
+        if (cookie) headers.Cookie = cookie;
+        const res = await fetchImpl(baseUrl + path, {
+            method,
+            headers,
+            ...(body !== undefined ? { body: multipart ? body : JSON.stringify(body) } : {}),
+            ...(signal ? { signal } : {}),
+        });
+        const text = await res.text();
+        let json = null;
+        try {
+            json = text ? JSON.parse(text) : null;
+        } catch {
+            json = null;
+        }
+        return { status: res.status, ok: res.ok, json, text };
+    }
+    return { generate, ensureCsrf, call };
 }
 
 // ---------------------------------------------------------------------------
@@ -361,6 +413,9 @@ export const SCENES = [
     { id: 'continuation-hygiene', title: '切换 chat/新回合/取消不混旧工具续接', needs: ['catalog', 'stack'], default: true },
     { id: 'ui03-browser', title: 'UI03 浏览器场景（真实浏览器，主会话串联执行；截图进 artifacts）', needs: ['catalog', 'stack', 'browser'], default: false },
     { id: 'ui04-browser', title: 'W04 复杂卡与聊天界面（真实 Helper/EJS/MVU + Go 投影）', needs: ['catalog', 'stack', 'browser'], default: false },
+    { id: 'auth-browser', title: 'W05 B01 唯一登录、TOTP、全入口保护与账号切换', needs: ['go', 'stack', 'browser'], default: false },
+    { id: 'f2-native', title: 'W05 B05/B07 原生写入口CAS、删除身份与分支父版本', needs: ['go', 'stack'], default: false },
+    { id: 'f2-browser', title: 'W05 B07 两个真实页面冲突保留草稿与迟到脚本拒绝', needs: ['go', 'stack', 'browser'], default: false },
 ];
 
 /** 展开过滤器：具名场景 + 依赖闭包（needs 中的内部能力不算场景，'catalog' 由 catalog-admin 提供）。 */

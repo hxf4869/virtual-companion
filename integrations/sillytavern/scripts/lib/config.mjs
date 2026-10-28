@@ -1,14 +1,16 @@
 // 本切片专用 ST config.yaml：输出 JSON（合法 YAML，ST 用 yaml.parse 读取），只显式声明与安全/锁定/数据目录有关的键；
 // ST 首次启动用 lodash defaultsDeep 从 default/config.yaml 补齐其余键并以 yaml.stringify 重写（src/config-init.js）。
 // 运行期回读统一复用 ST 锁定的 yaml 依赖（upstream/SillyTavern/node_modules/yaml，package-lock 固定），不自制解析器。
-// 受管（managed）差异只经 enableServerPlugins 显式参数化：受管宿主策略要求装载 server plugin，其余安全项不变。
+// 受管（managed）差异只经 enableServerPlugins 显式参数化：装载 server plugin；enableUserAccounts=true
+// （Go 唯一身份在 ST app 级中间件核验并绑定到配置的本地 handle，不用 Authelia/Authentik 或客户端身份头），
+// 并显式禁用 SSO 头自动登录；原生（S1）保持 enableUserAccounts=false。
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import fs from 'node:fs';
 import { ST_DIR } from './paths.mjs';
 
 export function buildConfigObject({ dataRoot, port, enableServerPlugins = false }) {
-    return {
+    const cfg = {
         dataRoot,
         listen: false,
         port,
@@ -20,7 +22,7 @@ export function buildConfigObject({ dataRoot, port, enableServerPlugins = false 
         whitelistDockerHosts: false,
         basicAuthMode: false,
         enableCorsProxy: false,
-        enableUserAccounts: false,
+        enableUserAccounts: enableServerPlugins,
         disableCsrfProtection: false,
         securityOverride: false,
         allowKeysExposure: false,
@@ -33,6 +35,9 @@ export function buildConfigObject({ dataRoot, port, enableServerPlugins = false 
         logging: { enableAccessLog: true, minLogLevel: 1 },
         heartbeatInterval: 0,
     };
+    if (!enableServerPlugins) return cfg;
+    // 受管显式禁用 SSO 头自动登录（键名对齐 default/config.yaml 的 sso 段）；trustedProxies=[] 即不信任任何转发头来源
+    return { ...cfg, sso: { autheliaAuth: false, authentikAuth: false, trustedProxies: [] } };
 }
 
 /** 原生（S1）安全不变量：start / status / 测试据此判断配置没有被削弱。 */
@@ -53,8 +58,15 @@ export const CONFIG_INVARIANTS = {
     'backups.chat.enabled': true,
 };
 
-/** 受管（managed）不变量：与原生唯一差异是 enableServerPlugins=true（受管宿主策略要求插件装载）。 */
-export const MANAGED_CONFIG_INVARIANTS = { ...CONFIG_INVARIANTS, enableServerPlugins: true };
+/** 受管（managed）不变量：在原生全部保护（CSRF、loopback、keys、自动更新等）之上覆盖 enableServerPlugins=true
+ *  与 enableUserAccounts=true（Go 唯一身份经 ST 账户登录绑定本地 handle），并断言两种 SSO 头自动登录均禁用。 */
+export const MANAGED_CONFIG_INVARIANTS = {
+    ...CONFIG_INVARIANTS,
+    enableServerPlugins: true,
+    enableUserAccounts: true,
+    'sso.autheliaAuth': false,
+    'sso.authentikAuth': false,
+};
 
 /** JSON 文本即合法 YAML 1.2 文档。 */
 export function renderConfig(opts) {

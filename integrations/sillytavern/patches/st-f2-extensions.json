@@ -1,0 +1,20 @@
+{
+  "id": "st-f2-extensions",
+  "reason": "W05：稳定角色引用的真实消费者必须获知卡片写入失败，避免把只存在内存的引用用于 Go 绑定。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游 writeExtensionField 传播持久化失败后移除。",
+  "target": "public/scripts/extensions.js",
+  "replacements": [
+    {
+      "from": "    if (!mergeResponse.ok) {\n        console.error('Failed to save extension field', mergeResponse.statusText);\n    }",
+      "to": "    if (!mergeResponse.ok) throw new Error('Character extension field was not persisted');",
+      "count": 1
+    }
+  ],
+  "expected_input_sha256": "f5ee3fee55d52e8b7041ceafb260dba5a2b2dada53081f930045ab8b6447d30d",
+  "expected_output_sha256": "bd5352d0aa463b42f4a10ab2e90e2138d5b3128e3484b5dcd4f44f304b342018",
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

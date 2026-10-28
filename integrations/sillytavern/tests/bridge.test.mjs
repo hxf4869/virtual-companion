@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import os from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EventEmitter } from 'node:events';
 
 import { createAdminBridge, ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
@@ -18,7 +19,6 @@ import { BridgeError, writeErrorResponse } from '../server-plugin/virtual-compan
 import { loadConfig } from '../server-plugin/virtual-companion/lib/config.js';
 import { validateSpec, applySpecToText } from '../scripts/lib/patcher.mjs';
 import { sha256 } from '../scripts/lib/util.mjs';
-import { info, init, exit } from '../server-plugin/virtual-companion/index.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -292,7 +292,15 @@ test('config：弱服务令牌拒绝；非法 Go 基地址拒绝', () => {
 // 插件 init/exit（部署契约：全局桥对象 + /go 路由挂载）
 // ---------------------------------------------------------------------------
 
-test('插件 init/exit：注册/注销全局桥对象，挂载 /go 路由，弱令牌直接失败', async () => {
+test('插件 init/exit：按真实部署布局加载ST用户模块，注册认证/F2/生成桥并挂载 /go', async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-plugin-deploy-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const plugin = path.join(root, 'plugins/virtual-companion');
+    fs.cpSync(path.join(HERE, '../server-plugin/virtual-companion'), plugin, { recursive: true });
+    fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
+    fs.mkdirSync(path.join(root, 'src'));
+    fs.writeFileSync(path.join(root, 'src/users.js'), 'export const getAllEnabledUsers = async () => []; export const getAccountVersion = () => "version"; export const getUserDirectories = () => ({});');
+    const { init, exit, info } = await import(pathToFileURL(path.join(plugin, 'index.js')).href);
     const prev = process.env.VC_ST_GO_BASE_URL;
     const prevTok = process.env.VC_ST_PLUGIN_SERVICE_TOKEN;
     process.env.VC_ST_GO_BASE_URL = 'http://127.0.0.1:8080';
@@ -307,6 +315,8 @@ test('插件 init/exit：注册/注销全局桥对象，挂载 /go 路由，弱�
         const bridge = globalThis[BRIDGE_SYMBOL];
         assert.ok(bridge && typeof bridge.interceptGenerate === 'function' && typeof bridge.finalOutboundGuard === 'function');
         assert.equal(typeof bridge.interceptStatus, 'function', '/status 钩子对端必须随插件注册');
+        assert.equal(typeof bridge.hostAuth, 'function', '全入口认证钩子必须注册');
+        assert.equal(typeof bridge.f2.save, 'function', '原生保存必须接入F2');
         exit();
         assert.equal(globalThis[BRIDGE_SYMBOL], undefined);
         assert.equal(info.id, 'virtual-companion');

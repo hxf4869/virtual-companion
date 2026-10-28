@@ -1,0 +1,20 @@
+{
+  "id": "st-host-auth",
+  "reason": "在cookie-session之后、ST用户解析与所有资源/API之前统一核验Go会话、TOTP完成态及明确的账号handle映射；身份头不参与准入。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游提供覆盖全部资源/API的可信宿主认证钩子和页面身份绑定，且B01回归通过后移除。",
+  "target": "src/server-main.js",
+  "expected_input_sha256": "567d8a9d52e70816e74f119409933f2b42ad03132d7ef01f8db3ae145c2fe7bf",
+  "expected_output_sha256": "ca659171712bc07ad2bfd40d8ca2f8a69999a897d3971aa2f406c407e4934b0c",
+  "replacements": [
+    {
+      "from": "app.use(setUserDataMiddleware);",
+      "to": "// V2: Go-backed admission precedes every native resource and API.\napp.use((req, res, next) => {\n    const gate = globalThis[Symbol.for('virtual-companion.bridge')]?.hostAuth;\n    if (!gate) return res.status(503).json({ code: 'VC_AUTH_UNAVAILABLE', message: 'Authentication unavailable' });\n    return gate(req, res, next);\n});\napp.use( setUserDataMiddleware);",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

@@ -11,6 +11,7 @@ import {
     INTEG, ST_DIR, UPSTREAM_LOCK, CORE_PATCH_SPECS, SERVER_PLUGIN_SRC, EXTENSION_SRC,
     MANAGED_DEV, MANAGED_ST_RUN, MANAGED_EXT_DIR,
 } from './paths.mjs';
+import { parseAccountHandles } from '../../server-plugin/virtual-companion/lib/host-auth.js';
 
 /** 运行副本对 ST 源码树的顶层排除项：.git / node_modules（符号链接复用）/ data / backups / colab。 */
 export const RUN_COPY_SKIP = ['.git', 'node_modules', 'data', 'backups', 'colab'];
@@ -97,6 +98,13 @@ export function deployManagedAssets({ pluginSrc = SERVER_PLUGIN_SRC, extensionSr
     const extDst = path.join(extDir, 'vc-model-settings');
     fs.rmSync(extDst, { recursive: true, force: true });
     copyTree(extensionSrc, extDst, { skip: ['.git', 'harness'] });
+    // Native F2 is mandatory for every mapped profile, even without a user extension.
+    const runtime = path.join(runDir, 'public/scripts/vc-runtime');
+    mkdirp(runtime, 0o700);
+    for (const name of ['f2-client.js', 'instance-binding.js']) {
+        fs.copyFileSync(path.join(extensionSrc, name), path.join(runtime, name));
+        fs.chmodSync(path.join(runtime, name), 0o600);
+    }
     if (fs.existsSync(path.join(extDst, 'harness'))) throw new Error('harness/ 不应被部署进生产扩展目录');
     return {
         plugin: { source: pluginSrc, target: pluginDst, files: countFiles(pluginDst) },
@@ -154,12 +162,18 @@ export function verifyManagedDeployment({ pluginSrc = SERVER_PLUGIN_SRC, extensi
     if (fs.existsSync(path.join(extDst, 'harness'))) problems.push('harness/ 被部署进生产扩展目录');
     problems.push(...treeDiff(pluginSrc, pluginDst, ['.git']).map((d) => `plugin ${d}`));
     problems.push(...treeDiff(extensionSrc, extDst, ['.git', 'harness']).map((d) => `extension ${d}`));
+    for (const name of ['f2-client.js', 'instance-binding.js']) {
+        const deployed = path.join(runDir, 'public/scripts/vc-runtime', name);
+        if (!fs.existsSync(deployed) || sha256File(deployed) !== sha256File(path.join(extensionSrc, name))) problems.push(`native F2 部署缺失或漂移：${name}`);
+    }
     return { ok: problems.length === 0, problems };
 }
 
 /**
  * Go 桥接环境预检（start-managed 硬门槛）：VC_ST_GO_BASE_URL 与 VC_ST_PLUGIN_SERVICE_TOKEN（>=32 字节）
  * 必须存在且非空——受管宿主策略（补丁 reason：插件装载即受管，无标记显式拒绝），绝不静默降级回 ST 本地密钥。
+ * VC_ST_ACCOUNT_HANDLES 必须解析为非空的 Go 账号→ST handle 映射（复用插件 host-auth 的 parseAccountHandles：
+ * 账号为正整数 ID、handle 仅字母数字_- 且互不重复）；错误只给静态说明，绝不回显映射或密钥原始内容。
  */
 export function requireManagedGoEnv(env = process.env) {
     const problems = [];
@@ -168,5 +182,19 @@ export function requireManagedGoEnv(env = process.env) {
     if (!baseUrl) problems.push('VC_ST_GO_BASE_URL 缺失或为空（受管模式不回退 ST 本地密钥，硬失败）');
     if (!token) problems.push('VC_ST_PLUGIN_SERVICE_TOKEN 缺失或为空（受管模式不回退 ST 本地密钥，硬失败）');
     else if (Buffer.byteLength(token, 'utf8') < 32) problems.push(`VC_ST_PLUGIN_SERVICE_TOKEN 长度 ${Buffer.byteLength(token, 'utf8')} 字节 < 32`);
-    return { ok: problems.length === 0, problems, baseUrl };
+    let accountHandles;
+    const rawHandles = String(env.VC_ST_ACCOUNT_HANDLES || '').trim();
+    if (!rawHandles) problems.push('VC_ST_ACCOUNT_HANDLES 缺失或为空（Go 账号→ST handle 映射，受管登录必需）');
+    else {
+        try {
+            accountHandles = parseAccountHandles(rawHandles);
+            if (Object.keys(accountHandles).length === 0) {
+                accountHandles = undefined;
+                problems.push('VC_ST_ACCOUNT_HANDLES 是空映射（至少需要一条 Go 账号→ST handle 绑定）');
+            }
+        } catch {
+            problems.push('VC_ST_ACCOUNT_HANDLES 无效（须为 Go 账号 ID→ST handle 的 JSON 对象：账号为正整数 ID，handle 仅字母数字与 _- 且互不重复；不回显原始内容）');
+        }
+    }
+    return { ok: problems.length === 0, problems, baseUrl, accountHandles };
 }

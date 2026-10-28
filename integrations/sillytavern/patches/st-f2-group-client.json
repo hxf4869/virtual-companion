@@ -1,0 +1,85 @@
+{
+  "id": "st-f2-group-client",
+  "reason": "W05：原生入口捕获不可变 F2 读取基线，旧完整快照和迟到异步结果拒绝；冲突留在页面，不提供 force 覆盖。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游原生提供全部写入 CAS、稳定身份与同端异步来源保护，且 B05/B07 回归通过后移除。",
+  "target": "public/scripts/group-chats.js",
+  "expected_input_sha256": "862eb24dfe1f596a2bd6d039a69397667829e0fc34471d22d2028d7781a5c73c",
+  "expected_output_sha256": "7e9bd232cab1793bfbfeb893252e27af43c91ab2ed7afb54797e46c258993a19",
+  "replacements": [
+    {
+      "from": "import { Fuse } from '../lib.js';\n",
+      "to": "import { Fuse } from '../lib.js'; // W05\nimport { vcF2, vcF2IO, vcSourceGuard, groupChatPath } from '../script.js';\n",
+      "count": 1
+    },
+    {
+      "from": "    return [];\n}\n\n/**\n * Validates a group",
+      "to": "    throw new Error('Group chat could not be loaded');\n}\n\n/**\n * Validates a group",
+      "count": 1
+    },
+    {
+      "from": "\n\n    await loadItemizedPrompts(getCurrentChatId());\n\n    if (group && Array.isArray(group.members) && freshChat) {",
+      "to": "\n\n    updateChatMetadata(metadata, true);\n    vcF2.loaded(groupChatPath(chat_id), chat_metadata);\n    await loadItemizedPrompts(getCurrentChatId());\n\n    if (group && Array.isArray(group.members) && freshChat) {",
+      "count": 1
+    },
+    {
+      "from": "    updateChatMetadata(metadata, true);\n\n    if (reload)",
+      "to": "    // The active metadata, including a successful initial save ACK, is retained.\n\n    if (reload)",
+      "count": 1
+    },
+    {
+      "from": "async function saveGroupChat(groupId, shouldSaveGroup, force = false) {\n    const group = groups.find(x => x.id == groupId);\n    if (!group) {\n        console.warn('Group not found', groupId);\n        return;\n    }\n    const chatId = group.chat_id;\n    group.date_last_chat = Date.now();\n    /** @type {ChatHeader} */\n    const chatHeader = {\n        chat_metadata: { ...chat_metadata },\n        user_name: 'unused',\n        character_name: 'unused',\n    };\n    const saveGroupChatRequest = await compressRequest({\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chat], force: force }),\n    });\n    const response = await fetch('/api/chats/group/save', saveGroupChatRequest);\n\n    if (!response.ok) {\n        const errorData = await response.json();\n        const isIntegrityError = errorData?.error === 'integrity' && !force;\n        if (!isIntegrityError) {\n            toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Group Chat could not be saved`);\n            console.error('Group chat could not be saved', response);\n            return;\n        }\n\n        const popupResult = await Popup.show.input(\n            t`ERROR: Chat integrity check failed while saving the file.`,\n            t`<p>After you click OK, the page will be reloaded to prevent data corruption.</p>\n              <p>To confirm an overwrite (and potentially <b>LOSE YOUR DATA</b>), enter <code>OVERWRITE</code> (in all caps) in the box below before clicking OK.</p>`,\n            '',\n            { okButton: 'OK', cancelButton: false },\n        );\n\n        const forceSaveConfirmed = popupResult === 'OVERWRITE';\n\n        if (!forceSaveConfirmed) {\n            console.warn('Chat integrity check failed, and user did not confirm the overwrite. Reloading the page.');\n            window.location.reload();\n            return;\n        }\n\n        await saveGroupChat(groupId, shouldSaveGroup, true);\n    }\n\n    if (shouldSaveGroup) {\n        await editGroup(groupId, false, false);\n    }\n}\n\n",
+      "to": "async function saveGroupChat(groupId, shouldSaveGroup, force = false) {\n    const group = groups.find(x => x.id == groupId);\n    if (!group) throw new Error('Group not found');\n    const chatId = group.chat_id;\n    const metadata = chat_metadata;\n    vcF2.ensureMetadata(metadata);\n    group.date_last_chat = Date.now();\n    await vcF2.save(groupChatPath(chatId), { id: chatId, chat: [{ chat_metadata: metadata, user_name: 'unused', character_name: 'unused' }, ...chat], force: false }, {\n        live: true,\n        send: async (body) => fetch('/api/chats/group/save', await compressRequest({ method: 'POST', headers: getRequestHeaders(), body })),\n        apply: (token) => { if (chat_metadata === metadata) metadata.vc_f2 = token; },\n    });\n    if (shouldSaveGroup) await editGroup(groupId, false, false);\n}\n\n",
+      "count": 1
+    },
+    {
+      "from": "                        const saveChatRequest = await compressRequest({\n                            method: 'POST',\n                            headers: getRequestHeaders(),\n                            body: JSON.stringify({ id: chatId, chat: [...messages] }),\n                        });\n                        const saveChatResponse = await fetch('/api/chats/group/save', saveChatRequest);\n\n                        if (!saveChatResponse.ok) {\n                            throw new Error('Group member could not be renamed');\n                        }\n\n",
+      "to": "                        await vcF2.save(groupChatPath(chatId), { id: chatId, chat: messages }, {\n                            send: async (body) => fetch('/api/chats/group/save', await compressRequest({ method: 'POST', headers: getRequestHeaders(), body })),\n                        });\n\n",
+      "count": 1
+    },
+    {
+      "from": "    const response = await fetch('/api/groups/delete', {\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ id: id }),",
+      "to": "    const vcBaselines = await vcF2IO.baselines((group?.chats || []).map((file) => ({ file, isGroup: true })));\n    const response = await fetch('/api/groups/delete', {\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ id: id, vc_f2_chats: vcBaselines }),",
+      "count": 1
+    },
+    {
+      "from": "\n\n    if (group && Array.isArray(group.chats)) {\n        for (const chatId of group.chats) {",
+      "to": "\n\n    await vcF2IO.parse(response.clone(), { operation: 'delete-group', vc_f2_chats: vcBaselines });\n    if (group && Array.isArray(group.chats)) {\n        for (const chatId of group.chats) {",
+      "count": 1
+    },
+    {
+      "from": "    group.chats.splice(group.chats.indexOf(chatName), 1);\n\n    const response",
+      "to": "    const vcExpected = await vcF2IO.baseline({ file: chatName, isGroup: true });\n\n    const response",
+      "count": 1
+    },
+    {
+      "from": "        body: JSON.stringify({ id: chatName }),",
+      "to": "        body: JSON.stringify({ id: chatName, vc_f2: vcExpected }),",
+      "count": 1
+    },
+    {
+      "from": "    if (!response.ok) {\n        toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Group chat could not be deleted`);\n        console.error('Group chat could not be deleted');\n        return;\n    }",
+      "to": "    await vcF2IO.parse(response, { operation: 'delete', vc_f2: vcExpected });\n    group.chats.splice(group.chats.indexOf(chatName), 1);",
+      "count": 1
+    },
+    {
+      "from": "    group.chats.splice(group.chats.indexOf(chatId), 1);\n\n    if (group.chat_id === chatId) {\n        group.chat_id = '';\n        updateChatMetadata({}, true);\n    }\n\n    const response",
+      "to": "    const vcExpected = await vcF2IO.baseline({ file: chatId, isGroup: true });\n\n    const response",
+      "count": 1
+    },
+    {
+      "from": "    const response = await fetch('/api/chats/group/delete', {\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ id: chatId }),\n    });\n\n    if (response.ok)",
+      "to": "    const response = await fetch('/api/chats/group/delete', {\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ id: chatId, vc_f2: vcExpected }),\n    });\n    await vcF2IO.parse(response.clone(), { operation: 'delete', vc_f2: vcExpected });\n    group.chats.splice(group.chats.indexOf(chatId), 1);\n    if (group.chat_id === chatId) { group.chat_id = ''; updateChatMetadata({}, true); }\n\n    if (response.ok)",
+      "count": 1
+    },
+    {
+      "from": "export async function saveGroupBookmarkChat(groupId, name, metadata, mesId, chatData = undefined) {\n    const group = groups.find(x => x.id === groupId);\n\n    if (!group) {\n        return;\n    }\n\n    group.chats.push(name);\n\n    /** @type {ChatHeader} */\n    const chatHeader = {\n        chat_metadata: { ...chat_metadata, ...(metadata || {}) },\n        user_name: 'unused',\n        character_name: 'unused',\n    };\n\n    /** @type {ChatMessage[]} */\n    const trimmedChat = Array.isArray(chatData)\n        ? chatData\n        : (mesId !== undefined && mesId >= 0 && mesId < chat.length)\n            ? chat.slice(0, Number(mesId) + 1)\n            : chat;\n\n    await editGroup(groupId, true, false);\n\n    const saveChatRequest = await compressRequest({\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ id: name, chat: [chatHeader, ...trimmedChat] }),\n    });\n    const response = await fetch('/api/chats/group/save', saveChatRequest);\n\n    if (!response.ok) {\n        toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Group chat could not be saved`);\n        console.error('Group chat could not be saved', response);\n    }\n}\n\n",
+      "to": "export async function saveGroupBookmarkChat(groupId, name, metadata, mesId, chatData = undefined) {\n    const group = groups.find(x => x.id === groupId);\n    if (!group) throw new Error('Group not found');\n    const branch = metadata?.vc_f2_parent ? metadata : { ...metadata, ...vcF2.branchMetadata(chat_metadata) };\n    const trimmed = Array.isArray(chatData) ? chatData : mesId !== undefined && mesId >= 0 && mesId < chat.length ? chat.slice(0, Number(mesId) + 1) : chat.slice();\n    await vcF2.save(groupChatPath(name), { id: name, chat: [{ chat_metadata: { ...chat_metadata, ...branch }, user_name: 'unused', character_name: 'unused' }, ...trimmed] }, {\n        send: async (body) => fetch('/api/chats/group/save', await compressRequest({ method: 'POST', headers: getRequestHeaders(), body })),\n    });\n    group.chats.push(name);\n    await editGroup(groupId, true, false);\n}\n\n",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

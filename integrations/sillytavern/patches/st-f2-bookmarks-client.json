@@ -1,0 +1,95 @@
+{
+  "id": "st-f2-bookmarks-client",
+  "reason": "W05：原生入口捕获不可变 F2 读取基线，旧完整快照和迟到异步结果拒绝；冲突留在页面，不提供 force 覆盖。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游原生提供全部写入 CAS、稳定身份与同端异步来源保护，且 B05/B07 回归通过后移除。",
+  "target": "public/scripts/bookmarks.js",
+  "expected_input_sha256": "5c3a68aa82e58c0d82777065b8466572fc1b202cad98a92ba4daa852c386ad1b",
+  "expected_output_sha256": "b1e4422537644d12897e761fa0051f105053fa0765e74026c0094fb639cbc58d",
+  "replacements": [
+    {
+      "from": "import { humanizedDateTime } from './RossAscends-mods.js';\n",
+      "to": "import { humanizedDateTime } from './RossAscends-mods.js'; // W05\nimport { vcF2, vcSourceGuard, groupChatPath } from '../script.js';\n",
+      "count": 1
+    },
+    {
+      "from": "    const newMetadata = { main_chat: mainChatName, integrity: uuidv4() };",
+      "to": "    const vcSource = vcSourceGuard.capture(mesId);\n    const newMetadata = { main_chat: mainChatName, integrity: uuidv4(), ...vcF2.branchMetadata(chat_metadata) };",
+      "count": 1
+    },
+    {
+      "from": "    const existingChats = await getExistingChatNames();\n    const name = getUniqueName(mainChatName, (x) => existingChats.includes(x), { nameBuilder: buildBranchName, startIndex: 1 });",
+      "to": "    const branchChatSnapshot = getBranchChatSnapshot(mesId, { swipeId: selectedSwipeId });\n    const existingChats = await getExistingChatNames();\n    vcSourceGuard.assert(vcSource);\n    const name = getUniqueName(mainChatName, (x) => existingChats.includes(x), { nameBuilder: buildBranchName, startIndex: 1 });",
+      "count": 1
+    },
+    {
+      "from": "    const branchChatSnapshot = getBranchChatSnapshot(mesId, { swipeId: selectedSwipeId });\n    if (!branchChatSnapshot)",
+      "to": "    if (!branchChatSnapshot)",
+      "count": 1
+    },
+    {
+      "from": "    // append to branches list if it exists",
+      "to": "    vcSourceGuard.assert(vcSource);\n    // Append only to the captured parent, after child ACK.",
+      "count": 1
+    },
+    {
+      "from": "\n\n    let name = await getBookmarkName({ isReplace: isReplace, forceName: forceName });\n ",
+      "to": "\n\n    const vcSource = vcSourceGuard.capture(mesId);\n    const vcSnapshot = structuredClone(chat.slice(0, mesId + 1));\n    const vcBranch = vcF2.branchMetadata(chat_metadata);\n    let name = await getBookmarkName({ isReplace: isReplace, forceName: forceName });\n    vcSourceGuard.assert(vcSource);\n ",
+      "count": 1
+    },
+    {
+      "from": "    const newMetadata = { main_chat: mainChat, integrity: uuidv4() };",
+      "to": "    const newMetadata = { main_chat: mainChat, integrity: uuidv4(), ...vcBranch };",
+      "count": 1
+    },
+    {
+      "from": "    await saveItemizedPrompts(name);\n\n    if (selected_group)",
+      "to": "    await saveItemizedPrompts(name);\n    vcSourceGuard.assert(vcSource);\n\n    if (selected_group)",
+      "count": 1
+    },
+    {
+      "from": "        await saveGroupBookmarkChat(selected_group, name, newMetadata, mesId);",
+      "to": "        await saveGroupBookmarkChat(selected_group, name, newMetadata, mesId, vcSnapshot);",
+      "count": 1
+    },
+    {
+      "from": "        await saveChat({ chatName: name, withMetadata: newMetadata, mesId });",
+      "to": "        await saveChat({ chatName: name, withMetadata: newMetadata, mesId, chatData: vcSnapshot });",
+      "count": 1
+    },
+    {
+      "from": "\n\n    lastMes.extra.bookmark_link = name;\n\n",
+      "to": "\n\n    vcSourceGuard.assert(vcSource);\n    lastMes.extra.bookmark_link = name;\n\n",
+      "count": 1
+    },
+    {
+      "from": "\n\n    const confirm = await Popup.show.confirm(t`Convert to group chat`, t",
+      "to": "\n\n    const vcSource = vcSourceGuard.capture();\n    const vcSnapshot = structuredClone(chat);\n    const vcBranch = vcF2.branchMetadata(chat_metadata);\n    const confirm = await Popup.show.confirm(t`Convert to group chat`, t",
+      "count": 1
+    },
+    {
+      "from": "\n\n    const character = characters[this_chid];\n\n    // Populate group required fields\n ",
+      "to": "\n\n    vcSourceGuard.assert(vcSource);\n    const character = characters[this_chid];\n\n    // Populate group required fields\n ",
+      "count": 1
+    },
+    {
+      "from": "    const metadata = Object.assign({}, chat_metadata);",
+      "to": "    const metadata = { ...chat_metadata, ...vcBranch };\n    delete metadata.vc_binding;",
+      "count": 1
+    },
+    {
+      "from": "    const groupChat = [...chat].map(m => structuredClone(m));",
+      "to": "    vcSourceGuard.assert(vcSource);\n    const groupChat = vcSnapshot;",
+      "count": 1
+    },
+    {
+      "from": "    const createChatRequest = await compressRequest({\n        method: 'POST',\n        headers: getRequestHeaders(),\n        body: JSON.stringify({ id: chatName, chat: [chatHeader, ...groupChat] }),\n    });\n    const createChatResponse = await fetch('/api/chats/group/save', createChatRequest);\n\n    if (!createChatResponse.ok) {\n        console.error('Group chat creation unsuccessful');\n        toastr.error('Group chat creation unsuccessful');\n        return;\n    }\n\n",
+      "to": "    await vcF2.save(groupChatPath(chatName), { id: chatName, chat: [chatHeader, ...groupChat] }, {\n        send: async (body) => fetch('/api/chats/group/save', await compressRequest({ method: 'POST', headers: getRequestHeaders(), body })),\n    });\n\n",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

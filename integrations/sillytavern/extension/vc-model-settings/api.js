@@ -173,6 +173,11 @@ export function fetchProviders() {
     return request('GET', `${GO_PREFIX}/providers`);
 }
 
+/** POST /api/v1/st/bindings → 稳定实例/会话绑定（ID 保持十进制字符串）。 */
+export function resolveSTBinding(payload) {
+    return request('POST', '/api/v1/st/bindings', payload);
+}
+
 /** PUT /api/v1/admin/providers/{providerId} → {ok, revision}；body 含 expectedRevision / credential / clearCredential / models 快照 */
 export function saveProvider(providerId, payload) {
     return request('PUT', `${GO_PREFIX}/providers/${encodeURIComponent(providerId)}`, payload);

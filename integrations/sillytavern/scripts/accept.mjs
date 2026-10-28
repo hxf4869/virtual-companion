@@ -60,11 +60,15 @@ function detectBrowser() {
 }
 async function preflight() {
     const out = {};
-    try { const r = await fetch(`${ST_URL}/version`); out.st = r.ok ? await r.json() : { http: r.status }; } catch (e) { out.st = { error: String(e.cause?.code || e.message) }; }
+    try {
+        const r = await fetch(`${ST_URL}/${MANAGED ? 'auth/' : 'version'}`);
+        out.st = MANAGED ? { authReady: r.ok && String(r.headers.get('content-type')).includes('text/html'), http: r.status }
+            : r.ok ? await r.json() : { http: r.status };
+    } catch (e) { out.st = { error: String(e.cause?.code || e.message) }; }
     try { const r = await fetch(`${MOCK_URL}/__health`); out.mock = r.ok ? await r.json() : { http: r.status }; } catch (e) { out.mock = { error: String(e.cause?.code || e.message) }; }
     out.browser = detectBrowser();
     const blockers = [];
-    if (typeof out.st?.pkgVersion !== 'string') blockers.push(`ST 未就绪 ${ST_URL}：${JSON.stringify(out.st)}`);
+    if (MANAGED ? !out.st?.authReady : typeof out.st?.pkgVersion !== 'string') blockers.push(`ST 未就绪 ${ST_URL}：${JSON.stringify(out.st)}`);
     if (out.mock?.ok !== true) blockers.push(`mock 未就绪 ${MOCK_URL}：${JSON.stringify(out.mock)}`);
     if (!out.browser) blockers.push('未找到 Chromium 系浏览器（设 VC_ST_BROWSER 指向可执行文件）');
     return { ...out, blockers };

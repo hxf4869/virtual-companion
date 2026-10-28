@@ -7,11 +7,12 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 两条运行入口（互相独立，可同时运行）：
 
 - **原生（S1）**：`bootstrap.mjs` / `start.mjs`，dataRoot `dev/data`，ST 127.0.0.1:8742 + mock 8743；
-  两个核心桥补丁不参与，`enableServerPlugins=false`。
+  核心桥补丁不参与，`enableServerPlugins=false`。
 - **受管（managed，V2-W03 集成收口）**：`assemble-managed.mjs` / `start-managed.mjs`，dataRoot
   `dev-managed/data`，ST 127.0.0.1:8752；ST 源码以「最小可重放运行副本」`dev-managed/st-run` 运行，
-  两个核心桥补丁打在副本上（`upstream/` 永远保持原始），`enableServerPlugins=true` 装载
-  `server-plugin/virtual-companion`。见下文「受管（managed）运行装配」。
+  集中规格的核心桥补丁打在副本上（`upstream/` 永远保持原始），`enableServerPlugins=true` 装载
+  `server-plugin/virtual-companion`；W05 起入口经 Go 密码+TOTP 登录（见「登录与身份」）。
+  见下文「受管（managed）运行装配」。
 
 ## 首次准备
 
@@ -34,10 +35,10 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 | `node scripts/start.mjs` | 预检（配置不变量 / 依赖树 / 补丁与 vendor SHA / 端口）后启动 ST（127.0.0.1:8742）与本地固定 provider mock（8743）；PID 记录在 `dev/run/*.pid` |
 | `node scripts/stop.mjs` | 只停 `dev/run/*.pid` 归属本实例的进程（核对进程命令行） |
 | `node scripts/status.mjs` | 只读汇报进程 / `/version` / dataRoot 权限 / 配置不变量 / 依赖树与补丁、vendor 完整性（JSON） |
-| `node scripts/assemble-managed.mjs` | 受管装配：校验 upstream 干净与依赖树 → 整体重建 `dev-managed/st-run`（复制源码树 + `node_modules` 符号链接 + 两个核心补丁）→ 部署 server plugin 与 `vc-model-settings` 扩展（排除 `harness/`）→ 写受管 `config.yaml`（`enableServerPlugins:true`）与 `derived-manifest.json`；幂等可重跑 |
-| `node scripts/start-managed.mjs` | 受管启动（127.0.0.1:8752）：预检含核心补丁输入/输出 SHA、upstream 干净、部署完整性与 Go 桥接环境硬校验；缺 `VC_ST_GO_BASE_URL` / `VC_ST_PLUGIN_SERVICE_TOKEN`（>=32 字节）即硬失败退出，绝不静默降级回原生 Key；PID/日志在 `dev-managed/run/` |
+| `node scripts/assemble-managed.mjs` | 受管装配：校验 upstream 干净与依赖树 → 整体重建 `dev-managed/st-run`（复制源码树 + `node_modules` 符号链接 + 核心补丁）→ 部署 server plugin 与 `vc-model-settings` 扩展（排除 `harness/`）→ 写受管 `config.yaml`（`enableServerPlugins:true`、`enableUserAccounts:true`、SSO 头自动登录禁用）与 `derived-manifest.json`；幂等可重跑 |
+| `node scripts/start-managed.mjs` | 受管启动（127.0.0.1:8752）：预检含核心补丁输入/输出 SHA、upstream 干净、部署完整性与 Go 桥接环境硬校验；缺 `VC_ST_GO_BASE_URL` / `VC_ST_PLUGIN_SERVICE_TOKEN`（>=32 字节）/ `VC_ST_ACCOUNT_HANDLES`（非空 Go 账号→ST handle 映射）即硬失败退出，绝不静默降级回原生 Key；健康等待公开 `/auth/`；PID/日志在 `dev-managed/run/` |
 | `node scripts/stop-managed.mjs` | 只停 `dev-managed/run/st.pid` 归属受管实例的进程（核对命令行，不碰 8742/8743 原生实例） |
-| `node scripts/status-managed.mjs` | 只读汇报受管实例状态（JSON；Go 环境只报配置与否，不输出密钥值） |
+| `node scripts/status-managed.mjs` | 只读汇报受管实例状态（JSON；登录入口 `/auth/` 探活、账号映射只报 configured 布尔，不输出密钥与映射值） |
 | `node scripts/accept.mjs [--only C07]` | 真浏览器验收（下节）；不进 `scripts/check.sh` |
 | `node scripts/accept-managed.mjs [--filter <场景,…>]` | 受管端到端验收（见「受管端到端验收」节）：默认 14 个接口/协议场景；`ui03-browser` 真实界面场景需显式 `--filter`；不进 `scripts/check.sh` |
 | `node scripts/protection-report.mjs [--archive … --key-file …]` | C1/D01 保护清单与权限报告（只读） |
@@ -53,25 +54,49 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 ## 受管（managed）运行装配
 
 W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后端（Go 为模型目录与凭据唯一权威），
-`upstream/` 始终保持原始（HEAD 对锁、工作树干净），两个核心桥补丁只打在运行副本上。
+`upstream/` 始终保持原始（HEAD 对锁、工作树干净），集中规格的核心桥补丁只打在运行副本上。
 
 - **运行副本 `dev-managed/st-run`**：ST 源码树复制品（顶层排除 `.git`/`node_modules`/`data`/`backups`/`colab`）；
   `node_modules` 用符号链接指向 `upstream/SillyTavern/node_modules`（原生 bootstrap 已按锁定 package-lock
-  重建并校验，受管只复用不重建）。`assemble-managed` 对副本应用
-  `patches/st-chat-completions-vc-bridge.json` 与 `patches/st-util-stream-error-log.json`
-  （输入/输出 SHA256 硬校验，不匹配即失败）。副本整体重建，重跑逐字节一致。
+  重建并校验，受管只复用不重建）。`assemble-managed` 按集中规格（`scripts/lib/paths.mjs` 的
+  `CORE_PATCH_SPECS`）对副本应用核心补丁：app 级单点登录钩子（`st-host-auth`）、登录客户端与
+  F2 全链 CAS 系列、`/generate` 桥与 provider 正文日志收口（输入/输出 SHA256 硬校验，不匹配即
+  失败；清单以 `CORE_PATCH_SPECS` 为准，不在此固定数量）。副本整体重建，重跑逐字节一致。
 - **部署**（同为可重放派生物，整体重建）：`server-plugin/virtual-companion` → `st-run/plugins/virtual-companion/`
   （ST serverDirectory/plugins 装载点）；`extension/vc-model-settings` → `dev-managed/data/default-user/extensions/vc-model-settings/`
   （排除 `harness/` 开发验收用具）。W04 起复用 `bootstrap --offline` 将锁定 Helper / EJS / MVU
   装配到受管 dataRoot；只复用原生 `dev/vendor-cache` 静态资源（可用 `VC_ST_VENDOR_CACHE` 指定），
   不复制原生聊天、设置或凭据。派生产物记录在 `dev-managed/derived-manifest.json`；`upstream.lock.json` 不改。
-- **配置与环境**：受管 `config.yaml` 与原生共用同一安全不变量体系，唯一差异
-  `enableServerPlugins=true`（`enableServerPluginsAutoUpdate=false`、扩展 `autoUpdate=false` 不变）。
+- **配置与环境**：受管 `config.yaml` 与原生共用同一安全不变量体系；在原生全部保护之上，受管差异为
+  `enableServerPlugins=true` 与 `enableUserAccounts=true`（Go 唯一身份经 ST 账户会话绑定本地 handle），
+  并显式禁用 SSO 头自动登录（`sso.autheliaAuth` / `sso.authentikAuth` 均 `false`、
+  `sso.trustedProxies=[]` 不信任任何转发头）；ST 原生登录、恢复与账号管理 API 由登录中间件拒绝
+  （唯一例外：认证后的 `GET /api/users/me` 只读自身 profile），不构成第二套入口。
+  `enableServerPluginsAutoUpdate=false`、扩展 `autoUpdate=false` 等其余不变量不变。
   端口默认 127.0.0.1:8752（`VC_ST_PORT` 可覆盖）；运行目录默认 `dev-managed`，dataRoot 在其 `data/`
   子目录中（`VC_ST_DEV_DIR` 可覆盖运行目录，供测试隔离；指向原生 `dev/` 会被拒绝）。
-- **启动门槛**：`start-managed` 要求 `VC_ST_GO_BASE_URL`（如 `http://127.0.0.1:8095`）与
-  `VC_ST_PLUGIN_SERVICE_TOKEN`（>=32 字节）存在且非空，否则硬失败退出——受管宿主策略不静默降级回
-  ST 本地密钥；两变量与可选 `VC_ST_GO_TIMEOUT_MS` 透传给 ST 进程环境，不落盘。
+  原生（S1）离线 dev 配置不变：`enableServerPlugins=false`、`enableUserAccounts=false`，无上述
+  桥接环境与登录要求。
+- **启动门槛**：`start-managed` 要求 `VC_ST_GO_BASE_URL`（如 `http://127.0.0.1:8095`）、
+  `VC_ST_PLUGIN_SERVICE_TOKEN`（>=32 字节）与 `VC_ST_ACCOUNT_HANDLES` 存在且有效，否则硬失败退出
+  ——受管宿主策略不静默降级回 ST 本地密钥；三者与可选 `VC_ST_GO_TIMEOUT_MS` 透传给 ST 进程环境，
+  不落盘（`VC_ST_ACCOUNT_HANDLES` 预检解析后重新序列化透传，原始值与解析值都不写配置文件与日志）。
+- **登录与身份（W05）**：Go 密码 + TOTP 是唯一可见登录。`VC_ST_ACCOUNT_HANDLES` 是显式私有环境变量：
+  Go 账号 ID→ST 本地 handle 的 JSON 对象，不能为空映射；账号须为正整数 ID，handle 仅限字母数字与
+  `_-` 且不可复用（两个账号不能绑定同一 handle），校验失败即拒绝启动。server plugin 的
+  `lib/host-auth.js` 提供 app 级单点登录钩子（插件 `init` 注册到全局桥对象，`st-host-auth`
+  补丁让 server-main 在 ST 用户解析、静态资源与原生 API 之前调用它）：未登录访问 `/`
+  跳转 `/auth/`；`/auth/` 静态登录页（`server-plugin/virtual-companion/auth/`）与 `/auth/api/*`
+  （会话查询 / 登录 / 注销 / 改密与重验证 / TOTP 设置与确认 / 恢复码）代理到 Go `/api/v1/auth/*`，
+  只透传 `vc_*` cookie 与必要头，不信任 `Remote-User` 等客户端身份头；Go 会话须 ACTIVE 且已启用
+  TOTP，才按映射绑定本地 handle 进入聊天空间。start-managed / status-managed 的就绪探针只读公开的
+  `/auth/`（HTTP 200 + HTML）；`/version` 等其余资源都在认证之后，未认证响应不判为不健康。
+- **F2 保存冲突（W05）**：聊天 JSONL 的 live revision 是唯一权威；`.vc-f2` 只存身份、墓碑与中断恢复
+  信息，不构成第二份内容真源。原生保存 / 改名 / 删除 / 导入 / 群聊 / 角色批量 / DataMaid / 启动迁移
+  全链路带 CAS 版本检查，force 参数不能绕过；冲突输入只保留在本页，经显式复制 / 重载才能落到新版本。
+  Tavern Helper 与 MVU 的异步写入有来源守卫，不冒充原生保存链路。验收入口：
+  `node scripts/accept-managed.mjs --filter auth-browser,f2-native,f2-browser`（浏览器场景需
+  `VC_W03_CHROMIUM_PATH` 指向本机真实 Chromium 系浏览器）；结果状态由外层统一回填，本节不预设通过。
 - **桥接语义**：ST 侧的模型保存、用途绑定与仅配置投影零上游请求；受控取用（显式连接检查/目录拉取）
   与生成是分开的显式动作。写请求携带 Go 会话身份快照头（`X-VC-Expected-Account-ID` /
   `X-VC-Expected-Session-ID`），revision 冲突返回 409 且界面草稿保留；模型 Key 不回显，界面只显示状态。
@@ -111,9 +136,10 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   （默认镜像 `pgvector/pgvector:0.8.5-pg18`）与 MinIO `vc-w03-managed-minio`（默认镜像
   `vc-g12-minio-tools:local`，本机按 `scripts/dev/Dockerfile.e2e-minio-tools` 构建的 pinned 产物，
   脚本不自动拉取；容器名/镜像等以脚本 `VC_W03_*` 环境变量面为准）→ `companiond migrate` +
-  `bootstrap`（owner binding secret 种子）→ 种子合成 Owner → 运行 Go（8095）与受管 ST（8752）、
-  fixture provider（8753）。
-- **凭据与数据**：口令/令牌/Key 全部进程内随机合成，只进子进程环境与 gitignored 的 `dev-managed/`，
+  `bootstrap`（owner binding secret 种子）→ 运行 Go（8095）→ 合成账号真实密码/TOTP 登录 →
+  受管 ST（8752）与 fixture provider（8753）。
+- **凭据与数据**：临时口令/令牌/Key 在进程内生成；登录口令复用已签入的公开 BCrypt 测试向量。
+  仅使用合成材料，只进子进程环境与 gitignored 的 `dev-managed/`，
   不打印、不写示例值，无需任何真实凭据；受管 dataRoot 跨 run 保留合成聊天与设置（UI03 文本带本轮
   唯一 scope 后缀）。产物写 `dev-managed/artifacts/accept-<ts>/`（结果 JSON + 截图，截图不含 Key）。
 - **清理归属**：进程只停本轮归属（ST 经 `stop-managed.mjs` 按 st.pid 命令行核对；go/fixture 只停
@@ -163,15 +189,17 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 ## 保护范围与边界
 
 - 仅监听 127.0.0.1：whitelist 限 loopback、CSRF 开启、无 basicAuth / CORS proxy / 各类自动更新与
-  模型自动下载关闭；安全不变量集中在 `scripts/lib/config.mjs`（原生 `CONFIG_INVARIANTS`，受管
-  `MANAGED_CONFIG_INVARIANTS` 唯一差异 `enableServerPlugins=true`），start / start-managed 预检与
-  status / status-managed 分别核对。受管 server plugin 装载即受管：Go 桥接环境缺失时启动硬失败，
-  不静默降级回 ST 本地密钥。
+  模型自动下载关闭；安全不变量集中在 `scripts/lib/config.mjs`（原生 `CONFIG_INVARIANTS`；受管
+  `MANAGED_CONFIG_INVARIANTS` 在原生集合上覆盖 `enableServerPlugins=true`、`enableUserAccounts=true`，
+  并断言两种 SSO 头自动登录均禁用），start / start-managed 预检与
+  status / status-managed 分别核对。受管 server plugin 装载即受管：Go 桥接环境（base URL / token /
+  账号映射）缺失或非法时启动硬失败，不静默降级回 ST 本地密钥。
 - `dev/data`、`dev-managed/data` 目录 0700 / 文件 0600（start 后收紧）；磁盘卷加密状态由
   protection-report 如实报告（FileVault Off 即 D01.a BLOCKED，待 Owner 开启，脚本不推断为已保护）。
 - 只使用合成数据与合成 key（`VC_ST_MOCK_EXPECT_KEY`，默认 `vc03-synthetic-key`）；禁止真实私人数据、
   真实 provider 凭据或正式 Key 进入 `dev/`、`dev-managed/`、日志与任何提交物；受管
-  `VC_ST_PLUGIN_SERVICE_TOKEN` 只经进程环境注入，不落盘。
+  `VC_ST_PLUGIN_SERVICE_TOKEN` 与 `VC_ST_ACCOUNT_HANDLES` 只经进程环境注入，不落盘、不进日志与
+  status 输出。
 - Tavern Helper 为 PolyForm-Noncommercial：禁止商业使用，禁止向 Owner 以外的人提供本服务（ADR-0009 §3/§4）。
 - 备份只打包显式保护清单（chats、group chats、groups、characters、worlds、backups、OpenAI Settings、
   user 资源、settings/secrets、cookie-secret、config.yaml），排除可确定性再生的自托管派生文件与

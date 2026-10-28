@@ -49,6 +49,17 @@ export const MANAGED_ST_URL = `http://127.0.0.1:${MANAGED_ST_PORT}`;
 
 /** 受管核心桥补丁规格（作用于运行副本，upstream/ 原始检出一律不改）。 */
 export const CORE_PATCH_SPECS = [
+    path.join(INTEG, 'patches', 'st-host-auth.json'),
+    path.join(INTEG, 'patches', 'st-go-login-client.json'),
+    path.join(INTEG, 'patches', 'st-client-f2.json'),
+    path.join(INTEG, 'patches', 'st-f2-chats.json'),
+    path.join(INTEG, 'patches', 'st-f2-characters.json'),
+    path.join(INTEG, 'patches', 'st-f2-groups.json'),
+    path.join(INTEG, 'patches', 'st-f2-data-maid.json'),
+    path.join(INTEG, 'patches', 'st-f2-group-client.json'),
+    path.join(INTEG, 'patches', 'st-f2-bookmarks-client.json'),
+    path.join(INTEG, 'patches', 'st-f2-data-maid-client.json'),
+    path.join(INTEG, 'patches', 'st-f2-extensions.json'),
     path.join(INTEG, 'patches', 'st-chat-completions-vc-bridge.json'),
     path.join(INTEG, 'patches', 'st-util-stream-error-log.json'),
 ];

@@ -1,0 +1,25 @@
+{
+  "id": "st-f2-data-maid-client",
+  "reason": "W05：Data Maid 删除携带生成报告时捕获的聊天基线，不能临删除读取最新版本后覆盖。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "removal_condition": "上游 Data Maid 支持版本化删除且 B05 回归通过后移除。",
+  "target": "public/scripts/data-maid.js",
+  "replacements": [
+    {
+      "from": "        return await response.json();",
+      "to": "        const result = await response.json();\n        this.vcF2Baselines = result.vc_f2_chats || [];\n        return result;",
+      "count": 1
+    },
+    {
+      "from": "                body: JSON.stringify({ hashes: hashes, token: this.token }),",
+      "to": "                body: JSON.stringify({ hashes: hashes, token: this.token, vc_f2_chats: (this.vcF2Baselines || []).filter((row) => hashes.includes(row.hash)) }),",
+      "count": 1
+    }
+  ],
+  "expected_input_sha256": "8b55769784adb4cbfa104be17fa066fff6c9d1d51565bfe54280c5e1ead8a09e",
+  "expected_output_sha256": "92130b19aa8989a86e57730270a63137bdba36cdf2eddb8d27e87d5ac561e1b6",
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

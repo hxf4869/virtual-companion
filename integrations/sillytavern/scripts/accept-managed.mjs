@@ -25,9 +25,8 @@
 //      full 模式必填项（VC_DB_DSN/VC_OWNER_BINDING_SECRET/VC_CRYPTO_REST_KEY/VC_EXPORT_S3_* 受管 MinIO），
 //      VC_HTTP_ADDR=127.0.0.1:8095、VC_HTTP_ORIGINS=http://127.0.0.1:8752、
 //      VC_PROVIDER_ALLOW_LOOPBACK_HTTP=true、VC_ST_PLUGIN_SERVICE_TOKEN=合成随机(>=32B)；
-//   6) 合成 Owner：真实 POST /api/v1/auth/login 验证请求形状；会话按 core_integration_test.go
-//      adminJSON/IssueOpaqueSession 模式以 SQL 直发（identity_opaque_session_issue + record_reauth），
-//      之后全部走真实 HTTP；
+//   6) 合成 Owner：使用既有 BCrypt 测试向量建账号，真实密码登录 → TOTP 设置/确认 →
+//      重新认证；会话只由 Go HTTP 签发，秘密仅在本轮进程内存；
 //   7) fixture provider：本目录 managed-protocol-provider.mjs 子进程（127.0.0.1:8753）；
 //   8) B 的受管组装/启动入口链（不重造组装）：S1 bootstrap（仅当原生 dev/ 未装配）→
 //      assemble-managed.mjs（幂等重建 dev-managed/st-run）→ start-managed.mjs
@@ -51,13 +50,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import {
-    synthApiKey, synthServiceToken, synthRestKey, synthSecret, synthSessionToken, synthCsrfToken,
+    synthApiKey, synthServiceToken, synthRestKey, synthSecret,
     assertExactAccountId, assertApiError, parseSSEText, collectChatStream, collectAnthropicStream,
     collectResponsesStream, responsesEventTypes, createGoAdminClient, serviceResolve, createStClient,
     SCENES, resolveSceneFilter, waitFor,
 } from './managed-lib.mjs';
 import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-protocol-provider.mjs';
+import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
 
 // ---------------------------------------------------------------------------
 // 常量与 CLI
@@ -86,6 +88,7 @@ const MINIO_IMAGE = process.env.VC_W03_MINIO_IMAGE || 'vc-g12-minio-tools:local'
 const S3_BUCKET = process.env.VC_W03_S3_BUCKET || 'vc03m-accept';
 const PG_LABEL = 'com.vc.w03=managed';
 const OWNER_ACCOUNT_ID = process.env.VC_W03_OWNER_ACCOUNT_ID || '424242';
+const SECOND_ACCOUNT_ID = String(BigInt(OWNER_ACCOUNT_ID) + 1n);
 const GO_TOOLCHAIN = 'go1.26.10';
 
 const argv = process.argv.slice(2);
@@ -255,28 +258,56 @@ function psql(sql) {
     });
 }
 
-/** 合成 Owner 账号 + 直发不透明会话（参照 core_integration_test.go adminJSON/IssueOpaqueSession）。 */
+/** RFC6238 合成验收客户端；只使用本轮 Go API 发出的临时测试密钥。 */
+function totpCode(secret, at = Date.now()) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = '';
+    for (const c of secret.toUpperCase().replace(/=+$/, '')) bits += alphabet.indexOf(c).toString(2).padStart(5, '0');
+    const bytes = Buffer.from((bits.match(/.{8}/g) || []).map((b) => Number.parseInt(b, 2)));
+    const counter = Buffer.alloc(8); counter.writeBigUInt64BE(BigInt(Math.floor(at / 30000)));
+    const digest = crypto.createHmac('sha1', bytes).update(counter).digest();
+    const offset = digest.at(-1) & 15;
+    return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1000000).padStart(6, '0');
+}
+async function authRequest(suffix, body, base = GO_BASE) {
+    const response = await fetch(`${base}/api/v1/auth/${suffix}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Origin: ST_BASE }, body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new LifecycleError(`合成认证步骤 ${suffix.split('/').at(-1)} 未完成（HTTP ${response.status}）`);
+    return { response, data };
+}
+function sessionFrom(response, data) {
+    const cookies = new Map((response.headers.getSetCookie?.() || []).map((line) => {
+        const pair = line.split(';')[0], split = pair.indexOf('=');
+        return [pair.slice(0, split), pair.slice(split + 1)];
+    }));
+    if (!cookies.get('vc_session') || !cookies.get('vc_csrf') || data.nextStep !== 'ACTIVE') throw new LifecycleError('合成登录未返回完整会话');
+    return { vcSession: cookies.get('vc_session'), vcCsrf: cookies.get('vc_csrf'), accountId: data.accountId, sessionId: data.sessionId };
+}
+
+/** 合成账号使用已有跨语言 BCrypt 测试向量；会话由真实密码+TOTP API 签发。 */
 async function seedSyntheticOwner(secrets) {
-    const { raw, hash } = synthSessionToken();
-    const csrf = synthCsrfToken();
-    const out = psql(`
+    const vector = JSON.parse(fs.readFileSync(path.join(BACKEND, 'contracttest/testdata/crypto-vectors.json'), 'utf8')).bcrypt;
+    psql(`
 INSERT INTO vc.vc_user(id, display_name)
-VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner')
+VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner'), (${BigInt(SECOND_ACCOUNT_ID)}, 'w05-accept-second')
 ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name;
 INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
-VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner', '${synthSecret(16) /* 占位哈希：登录走 404 信封断言，会话由直发建立 */}', 'ADMIN', 'ACTIVE', 'w03-accept-owner')
+VALUES (${BigInt(OWNER_ACCOUNT_ID)}, 'w03-accept-owner', '${vector.goHash}', 'ADMIN', 'ACTIVE', 'w03-accept-owner'),
+       (${BigInt(SECOND_ACCOUNT_ID)}, 'w05-accept-second', '${vector.goHash}', 'ADMIN', 'ACTIVE', 'w05-accept-second')
 ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
-SELECT vc.identity_opaque_session_issue(${BigInt(OWNER_ACCOUNT_ID)}, '${hash}', now() + interval '2 hours');
 `);
-    const sessionId = out.trim().split('\n').filter(Boolean).at(-1);
-    if (!/^\d+$/.test(sessionId)) dieLifecycle(`identity_opaque_session_issue 未返回会话 id：${String(sessionId).slice(0, 40)}`);
-    const reauth = psql(`SELECT vc.identity_opaque_session_record_reauth(${BigInt(OWNER_ACCOUNT_ID)}, ${BigInt(sessionId)});`);
-    if (!/t|true/i.test(reauth.trim())) dieLifecycle('identity_opaque_session_record_reauth 未生效（FreshReauth 不可用）');
-    secrets.session = {
-        vcSession: raw, vcCsrf: csrf,
-        accountId: OWNER_ACCOUNT_ID, sessionId,
-    };
-    log.ok(`合成 Owner 会话直发完成（accountId=${OWNER_ACCOUNT_ID} sessionId=${sessionId}；raw token 不打印）`);
+    secrets.password = vector.password;
+    const { data: challenge } = await authRequest('login', { account: 'w03-accept-owner', password: secrets.password });
+    if (challenge.nextStep !== 'AUTHENTICATOR_SETUP_REQUIRED') dieLifecycle('合成 Owner 应进入首次 TOTP 设置');
+    const { data: setup } = await authRequest(`challenges/${challenge.challengeId}/authenticator-setup`, {});
+    const { response, data } = await authRequest(`challenges/${challenge.challengeId}/authenticator-confirm`, { code: totpCode(setup.manualKey), trustDevice: false });
+    secrets.session = sessionFrom(response, data);
+    secrets.recoveryCodes = data.recoveryCodes;
+    const client = createGoAdminClient({ baseUrl: GO_BASE, origin: ST_BASE, session: secrets.session });
+    if (!(await client.reauth(secrets.password)).ok) dieLifecycle('合成 Owner 重新认证未完成');
+    log.ok('合成 Owner 真实密码、TOTP 设置与重新认证完成（不输出凭据、验证码或恢复码）');
 }
 
 // ---------------------------------------------------------------------------
@@ -405,25 +436,37 @@ async function startManagedStack(secrets, artifactsDir) {
         env: { VC_ST_PORT: String(ST_PORT) },
         label: 'assemble-managed（受管 st-run 组装，幂等）',
     });
+    // 仅给一次性合成验收创建第二个本地 profile。复用 ST 的存储实现，在进程启动前写入。
+    const requireSt = createRequire(path.join(INTEG, 'upstream/SillyTavern/package.json'));
+    const storage = requireSt('node-persist').create();
+    await storage.init({ dir: path.join(DEV_MANAGED, 'data/_storage'), ttl: false, expiredInterval: 0 });
+    await storage.setItem('user:vc-w05-second', { handle: 'vc-w05-second', name: '合成第二账号', created: Date.now(), password: '', salt: '', enabled: true, admin: false });
+    // Persona onboarding is separate from B01 authentication. This disposable
+    // profile starts with a named persona so parallel tabs do not each prompt.
+    const secondSettingsPath = path.join(DEV_MANAGED, 'data/vc-w05-second/settings.json');
+    const secondSettings = JSON.parse(fs.readFileSync(fs.existsSync(secondSettingsPath) ? secondSettingsPath : path.join(INTEG, 'upstream/SillyTavern/default/content/settings.json'), 'utf8'));
+    secondSettings.firstRun = false; secondSettings.username = '合成第二账号';
+    fs.mkdirSync(path.dirname(secondSettingsPath), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(secondSettingsPath, JSON.stringify(secondSettings), { mode: 0o600 });
     runChecked(process.execPath, [path.join(SCRIPTS, 'start-managed.mjs')], {
         cwd: INTEG,
         env: {
             VC_ST_PORT: String(ST_PORT),
             VC_ST_GO_BASE_URL: GO_BASE,
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
+            VC_ST_ACCOUNT_HANDLES: JSON.stringify({ [OWNER_ACCOUNT_ID]: 'default-user', [SECOND_ACCOUNT_ID]: 'vc-w05-second' }),
+            VC_ST_GO_TIMEOUT_MS: '2000',
         },
         label: 'start-managed（ST 8752 + 插件桥环境）',
     });
     await waitFor(async () => {
         try {
-            const r = await fetch(`${ST_BASE}/version`);
-            if (!r.ok) return false;
-            const j = await r.json();
-            return typeof j?.pkgVersion === 'string';
+            const r = await fetch(`${ST_BASE}/auth/`);
+            return r.ok && String(r.headers.get('content-type')).includes('text/html');
         } catch {
             return false;
         }
-    }, { timeoutMs: 120000, label: `ST 就绪（${ST_BASE}/version；日志 ${RUN_DIR}/st.log）` });
+    }, { timeoutMs: 120000, label: `ST 登录入口就绪（${ST_BASE}/auth/；日志 ${RUN_DIR}/st.log）` });
     log.ok(`受管 ST 栈就绪 ${ST_BASE}（B 入口：assemble-managed → start-managed）`);
 }
 
@@ -556,7 +599,7 @@ async function readFixtureCapture(ctx, { protocol, since, index = -1 }) {
 
 async function sceneLoginShape(ctx) {
     // 真实登录端点请求形状：合成账号 + 合成口令（占位 hash 无法通过），断言错误信封；
-    // 非法形状断言 400。会话本身由 seedSyntheticOwner 直发（adminJSON 模式），后续全走真实 HTTP。
+    // 非法形状断言 400。会话由 seedSyntheticOwner 的真实密码/TOTP 流程签发。
     const r1 = await fetch(`${GO_BASE}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Origin: ST_BASE },
@@ -1626,6 +1669,9 @@ const SCENE_IMPLS = {
     'continuation-hygiene': sceneContinuationHygiene,
     'ui03-browser': sceneUi03Browser,
     'ui04-browser': sceneUi04Browser,
+    'auth-browser': sceneAuthBrowser,
+    'f2-native': sceneF2Native,
+    'f2-browser': sceneF2Browser,
 };
 
 async function runFull() {
@@ -1663,6 +1709,9 @@ async function runFull() {
         screenshots: [],
         fixtureHttp,
         admin: null, st: null,
+        w05: { stBase: ST_BASE, goBase: GO_BASE, ownerId: OWNER_ACCOUNT_ID, secondId: SECOND_ACCOUNT_ID, totpCode,
+            expireSession: (id) => psql(`UPDATE vc.identity_opaque_session SET expires_at=now()-interval '1 second' WHERE id=${BigInt(id)};`),
+        },
     };
 
     let failed = 0;
@@ -1703,6 +1752,7 @@ async function runFull() {
             ctx.st = createStClient({
                 baseUrl: ST_BASE,
                 extraCookies: `vc_session=${secrets.session.vcSession}; vc_csrf=${secrets.session.vcCsrf}`,
+                expectedIdentity: secrets.session,
             });
         }
 

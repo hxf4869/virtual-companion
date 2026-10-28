@@ -23,6 +23,7 @@ export const ADMIN_BRIDGE_ROUTES = [
     { method: 'GET', path: /^\/api\/v1\/auth\/session$/, where: '会话核验（生成与页面）' },
     { method: 'POST', path: /^\/api\/v1\/auth\/login$/, where: '既有登录入口（合成登录，不新造平台）' },
     { method: 'POST', path: /^\/api\/v1\/auth\/reauth$/, where: '既有写入再认证（FreshReauth）' },
+    { method: 'POST', path: /^\/api\/v1\/st\/bindings$/, where: 'W05 原生聊天的角色实例与会话绑定' },
     { method: 'GET', path: /^\/api\/v1\/admin\/providers$/, where: '供应商列表' },
     { method: 'PUT', path: new RegExp(`^/api/v1/admin/providers/${SEG}$`), where: '保存供应商（含凭据引用与 expectedRevision）' },
     { method: 'POST', path: new RegExp(`^/api/v1/admin/providers/${SEG}/models/discover$`), where: '拉取模型列表（辅助，显式操作）' },

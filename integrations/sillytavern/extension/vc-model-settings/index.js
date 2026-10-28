@@ -12,7 +12,8 @@
 import { getRequestHeaders } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
 import { mountModelSettings } from './page.js';
-import { setStHeadersProvider, fetchProviders, fetchModelPurposes } from './api.js';
+import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding } from './api.js';
+import { installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
 import { mountChatShell } from './chat-shell.js';
 
@@ -20,7 +21,7 @@ export async function init() {
     setStHeadersProvider(() => {
         const headers = getRequestHeaders();
         // 浏览器侧桥约定：X-CSRF-Token 用 ST 令牌；Go 令牌经 X-VC-CSRF-Token 由 api.js 附加。
-        return { 'X-CSRF-Token': headers['X-CSRF-Token'] ?? headers['x-csrf-token'] ?? '' };
+        return { ...headers, 'X-CSRF-Token': headers['X-CSRF-Token'] ?? headers['x-csrf-token'] ?? '' };
     });
 
     // 页面控制器（单例，立即挂载但保持隐藏；横幅「打开模型设置」与菜单共用同一实例）。
@@ -41,6 +42,10 @@ export async function init() {
         projection.refresh();
     });
     projection.init();
+    // Instance metadata is persisted through the same native F2 save path.
+    installInstanceBinding({ getContext, resolveBinding: resolveSTBinding,
+        writeExtensionField: (...args) => getContext().writeExtensionField(...args), captureSessionContext,
+    }).catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
 
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {

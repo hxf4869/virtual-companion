@@ -1,12 +1,16 @@
 #!/usr/bin/env node
-// V2-W03 受管启动：在受管运行副本（st-run）上启动 ST（仅 127.0.0.1，默认 8752，VC_ST_PORT 可覆盖）。
-// - 预检：assemble-ok、Go 桥接环境硬校验（VC_ST_GO_BASE_URL / VC_ST_PLUGIN_SERVICE_TOKEN >=32 字节，
-//   缺失或为空即硬失败退出，绝不静默降级回 ST 本地密钥）、upstream 工作树干净、两个核心补丁
+// V2-W05 受管启动：在受管运行副本（st-run）上启动 ST（仅 127.0.0.1，默认 8752，VC_ST_PORT 可覆盖）。
+// - 预检：assemble-ok、Go 桥接环境硬校验（VC_ST_GO_BASE_URL / VC_ST_PLUGIN_SERVICE_TOKEN >=32 字节 /
+//   VC_ST_ACCOUNT_HANDLES 为非空且合法的 Go 账号→ST handle 映射，缺失、为空或非法即硬失败退出，
+//   绝不静默降级回 ST 本地密钥）、upstream 工作树干净、两个核心补丁
 //   输入/输出 SHA、ST 依赖树（经符号链接复用 upstream node_modules）、插件/扩展部署完整性、
-//   受管 config 安全不变量（enableServerPlugins:true 为受管唯一差异）、端口归属；
+//   受管 config 安全不变量（在原生全部保护之上 enableServerPlugins=true、enableUserAccounts=true、
+//   SSO 头自动登录禁用）、端口归属；
 // - 启动：cwd=st-run 运行 node server.js；VC_ST_GO_BASE_URL / VC_ST_PLUGIN_SERVICE_TOKEN /
-//   VC_ST_GO_TIMEOUT_MS 透传给 ST 进程环境；PID/日志落在受管 run 目录；
-// - 健康等待 /version 后收紧受管 dataRoot 权限（0700/0600）。
+//   VC_ST_GO_TIMEOUT_MS / VC_ST_ACCOUNT_HANDLES（解析后重新序列化）透传给 ST 进程环境，
+//   账号映射不写配置文件与日志；PID/日志落在受管 run 目录；
+// - 健康等待登录入口 GET /auth/（HTTP 200 + HTML；/version 已受登录保护，不作为健康判据）
+//   后收紧受管 dataRoot 权限（0700/0600）。
 // 用法：VC_ST_GO_BASE_URL=http://127.0.0.1:8095 VC_ST_PLUGIN_SERVICE_TOKEN=<>=32字节 node scripts/start-managed.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,7 +34,7 @@ function portOwner(port) {
 async function preflight(goEnv) {
     if (!fs.existsSync(path.join(MANAGED_DEV, 'assemble-ok'))) die(`受管装配未完成（缺 ${path.join(MANAGED_DEV, 'assemble-ok')}）。先运行 node scripts/assemble-managed.mjs`);
     if (!goEnv.ok) die(`Go 桥接环境缺失，受管模式不静默降级回原生 Key：\n  ${goEnv.problems.join('\n  ')}`);
-    ok(`Go 桥接环境就绪：VC_ST_GO_BASE_URL=${goEnv.baseUrl}，VC_ST_PLUGIN_SERVICE_TOKEN 已配置（>=32 字节）`);
+    ok(`Go 桥接环境就绪：VC_ST_GO_BASE_URL=${goEnv.baseUrl}，VC_ST_PLUGIN_SERVICE_TOKEN 已配置（>=32 字节），VC_ST_ACCOUNT_HANDLES 已配置（不回显）`);
     verifyStUpstreamClean();
     const runtime = verifyNativeRuntime(MANAGED_USER_DIR);
     if (!runtime.ok) die(`复杂卡运行栈校验失败：${runtime.problems.join(', ')}`);
@@ -74,9 +78,10 @@ async function main() {
         SILLYTAVERN_EXTENSIONS_AUTOUPDATE: 'false',
         SILLYTAVERN_EXTENSIONS_MODELS_AUTODOWNLOAD: 'false',
         SILLYTAVERN_ENABLESERVERPLUGINSAUTOUPDATE: 'false',
-        // 受管桥接环境（预检已硬校验；显式列出以表明透传意图，不落盘）
+        // 受管桥接环境（预检已硬校验；显式列出以表明透传意图，不落盘；账号映射只透传进程环境，不写配置与日志）
         VC_ST_GO_BASE_URL: goEnv.baseUrl,
         VC_ST_PLUGIN_SERVICE_TOKEN: process.env.VC_ST_PLUGIN_SERVICE_TOKEN,
+        VC_ST_ACCOUNT_HANDLES: JSON.stringify(goEnv.accountHandles),
         ...(process.env.VC_ST_GO_TIMEOUT_MS ? { VC_ST_GO_TIMEOUT_MS: process.env.VC_ST_GO_TIMEOUT_MS } : {}),
     };
     const st = launch(process.execPath, ['server.js', '--configPath', MANAGED_CONFIG_PATH, '--dataRoot', MANAGED_DATA_ROOT, '--port', String(MANAGED_ST_PORT), '--listen', 'false', '--browserLaunchEnabled', 'false'], env, MANAGED_ST_RUN, path.join(MANAGED_RUN_DIR, 'st.log'));
@@ -84,9 +89,12 @@ async function main() {
     info(`受管 ST 启动 pid=${st.pid}（cwd=st-run，日志 ${path.relative(MANAGED_DEV, path.join(MANAGED_RUN_DIR, 'st.log'))}）`);
     try {
         await waitFor(async () => {
-            try { const r = await fetch(`${MANAGED_ST_URL}/version`); if (!r.ok) return false; const j = await r.json(); return typeof j?.pkgVersion === 'string' ? j : false; } catch { return false; }
-        }, { timeoutMs: 90000, label: '受管 ST /version 就绪' });
-        ok(`受管 ST 就绪 ${MANAGED_ST_URL}（/version 200）`);
+            try {
+                const r = await fetch(`${MANAGED_ST_URL}/auth/`);
+                return r.ok && (r.headers.get('content-type') || '').includes('text/html');
+            } catch { return false; }
+        }, { timeoutMs: 90000, label: '受管 ST 登录入口就绪' });
+        ok(`受管 ST 登录入口就绪 ${MANAGED_ST_URL}/auth/`);
         const t = tightenTree(MANAGED_DATA_ROOT);
         ok(`受管 dataRoot 权限收紧：${t.dirs} 目录 / ${t.files} 文件，调整 ${t.changed} 项`);
         ok('status：node scripts/status-managed.mjs；停止：node scripts/stop-managed.mjs');

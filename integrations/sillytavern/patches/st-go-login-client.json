@@ -1,0 +1,25 @@
+{
+  "id": "st-go-login-client",
+  "reason": "W05：原生账号菜单不再提供第二套密码或账号管理；注销真实撤销Go会话后回唯一登录页。只读me仍供原生profile/密钥能力判断。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
+  },
+  "target": "public/scripts/user.js",
+  "removal_condition": "上游提供宿主认证菜单和注销钩子并通过B01后移除。",
+  "expected_input_sha256": "d4e29b231527dd375034bb36699e308650d5ce16a47c8a8f15dcb5adb3af4b39",
+  "expected_output_sha256": "3b462716081c1e55e04630022172c74aec3abe8687d348b5464c749cacd96c17",
+  "replacements": [
+    {
+      "from": "    await getCurrentUser();\n}",
+      "to": "    await getCurrentUser();\n    $('#account_button, #admin_button').hide();\n}",
+      "count": 1
+    },
+    {
+      "from": "async function logout() {\n    await fetch('/api/users/logout', {\n        method: 'POST',\n        headers: getRequestHeaders({ omitContentType: true }),\n    });\n\n    // On an explicit logout stop auto login\n    // to allow user to change username even\n    // when auto auth (such as authelia or basic)\n    // would be valid\n    const urlParams = new URLSearchParams(window.location.search);\n    urlParams.set('noauto', 'true');\n\n    window.location.search = urlParams.toString();\n}\n\n",
+      "to": "async function logout() {\n    const csrf = document.cookie.split(';').map((p) => p.trim()).find((p) => p.startsWith('vc_csrf='))?.slice('vc_csrf='.length) || '';\n    const headers = { ...getRequestHeaders(), 'X-CSRF-Token': csrf };\n    const result = await fetch('/auth/api/logout', { method: 'POST', headers, body: '{}' });\n    if (!result.ok) { toastr.error('注销未完成，请重试。'); return; }\n    location.replace('/auth/');\n}\n\n",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

@@ -37,6 +37,8 @@ W00 结论与 W01 模块处置表完成后回填到本文件对应章节。
 > ZCode 负责边界明确的文档、机械修改和较简单的辅助工作，优先使用新的短会话。仍使用
 > GLM-5.3／最高思考、不开 Fast。同一工作项内按独立文件 owner 并行，不重复调查或交叉写入。
 > Owner 已暂停 Goal 自动续跑，但明确要求当前任务继续；该操作不撤销本次任务的执行授权。
+> 后续明确由 Codex 主 Agent 继续核心实现与验收，不再开 Codex 子代理；Codex 控制 ZCode
+> 并行处理辅助工作，ZCode 可按真正独立的边界使用自己的子代理。
 
 ### 2.1 顺序与依赖
 
@@ -209,6 +211,22 @@ MEM = `docs/05_memory_companion.md`，STORY = `docs/06_story_runtime.md`。
 - 契约：`activeCompanionLimit`、V9 唯一活跃关系约束（新 migration）、OpenAPI 关系接口描述，与代码
   在本项内一起修改；RLS 测试覆盖新表。
 - 验收：B01、B05、B07（B04 留到 W10）。
+
+**W05 fit-check（2026-10-28，实际接线取代 W00 的候选估计）：**
+
+- 角色实例复用 `relationship`，聊天绑定复用 `conversation`；V141 只增加 ST 引用、聊天身份与模式，
+  移除单活跃索引。不新增平行实例表或 Go revision 权威；新字段沿用现有 Owner/RLS 边界。
+- 锁定 ST 的插件 Router 位于认证之后，不能覆盖静态资源；在 `server-main.js` 的 cookie-session
+  后、用户解析及所有资源/API 前插入一个 app 级钩子。钩子逐请求复用 Go `GET /auth/session`，
+  同时核验 ACTIVE、TOTP、强制改密状态和私有配置中的账号→ST handle 映射，不缓存准入结果。
+  这替代快照 §14 的反代认证适配候选，覆盖同一实际边界，不增加第二套身份平台或认证 API。
+  当前只验证本机 loopback 受管入口，未声称完成真实部署或磁盘保护。
+- ST 自身登录/恢复/账号管理禁用，只读自身 profile 保留，原生注销按钮接 Go。页面捕获非凭据账号/
+  会话 ID，写入带期望身份；旧页得到拒绝，不用迟到响应清掉新页共享 cookie。
+- F2 通过 `CORE_PATCH_SPECS` 集中重放：聊天、角色、群组、Data Maid 和启动迁移只接存储钩子；
+  前端保存、分支与异步 Helper/MVU 接捕获基线和来源守卫。live revision 与内容一起写入 JSONL；
+  `.vc-f2` 只保存身份、墓碑和中断恢复状态。同一文件始终经同一 Owner 串行边界，Go 不平行写聊天。
+  补丁仍在派生副本中应用，锁定上游树不修改；不沿用 W00 的初步行数估计作为实际覆盖证据。
 
 ### W06 来源对账、E3 与跨存储数据权利（P2）
 

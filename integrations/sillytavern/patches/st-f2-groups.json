@@ -1,0 +1,52 @@
+{
+  "id": "st-f2-groups",
+  "kind": "deterministic-string-replacement",
+  "reason": "W05 群组删除先按全部子聊天读取基线核验并写墓碑；启动时旧格式迁移早于插件初始化，直接复用部署的同一F2核心，只允许无F2身份的旧文件。",
+  "upstream": {
+    "component": "sillytavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+    "version": "1.19.0"
+  },
+  "target": "src/endpoints/groups.js",
+  "removal_condition": "上游提供等价F2边界并通过相关回归后移除。",
+  "expected_input_sha256": "c5b956f8b4a2809b554229fed24588ed37163f1e73c129d4270ac6832438612b",
+  "expected_output_sha256": "55dab11fa69461051cffc7b26041b9ac2f4a0b1ca7db2f4e4b63f5e6158b83ef",
+  "replacements": [
+    {
+      "from": "import { getFileNameValidationFunction } from '../middleware/validateFileName.js';\n\nexport const router",
+      "to": "import { getFileNameValidationFunction } from '../middleware/validateFileName.js';\n\nfunction vcF2() {\n    const hooks = globalThis[Symbol.for('virtual-companion.bridge')]?.f2;\n    if (!hooks) throw Object.assign(new Error('F2 storage is unavailable'), { status: 503, code: 'VC_F2_UNAVAILABLE' });\n    return hooks;\n}\nfunction vcF2Error(error, response) {\n    if (!String(error?.code || '').startsWith('VC_')) return false;\n    response.status(error.status || 500).send({ error: 'f2', code: error.code, message: error.message });\n    return true;\n}\n\nexport const router",
+      "count": 1
+    },
+    {
+      "from": "                            await writeFileAtomic(chatFilePath, newChatDataRaw, 'utf8');",
+      "to": "                            const { migrateLegacyChat } = await import('../../plugins/virtual-companion/lib/f2-routes.js');\n                            await migrateLegacyChat(userDirs, chatFilePath, newChatData);",
+      "count": 1
+    },
+    {
+      "from": "                        } catch (chatError) {\n                            console.error(color.red(`Could not update existing chat data for ${chatId}`), chatError);\n                        }",
+      "to": "                        } catch (chatError) {\n                            throw chatError; // Do not erase legacy group metadata after an unsuccessful chat migration.\n                        }",
+      "count": 1
+    },
+    {
+      "from": "                } catch (groupError) {\n                    console.error(color.red(`Could not process group file ${groupFile.name}`), groupError);\n                }",
+      "to": "                } catch (groupError) {\n                    throw groupError;\n                }",
+      "count": 1
+    },
+    {
+      "from": "        } catch (directoryError) {\n            console.error(color.red(`Error migrating group chats metadata for user at ${userDirs.root}`), directoryError);\n        }",
+      "to": "        } catch (directoryError) {\n            throw directoryError;\n        }",
+      "count": 1
+    },
+    {
+      "from": "    try {\n        // Delete group chats\n        const group = JSON.parse(fs.readFileSync(pathToGroup, 'utf8'));\n\n        if (group && Array.isArray(group.chats)) {\n            for (const chat of group.chats) {\n                console.info('Deleting group chat', chat);\n                const pathToFile = path.join(request.user.directories.groupChats, sanitize(`${chat}.jsonl`));\n\n                if (fs.existsSync(pathToFile)) {\n                    fs.unlinkSync(pathToFile);\n                }\n            }\n        }\n    } catch (error) {\n        console.error('Could not delete group chats. Clean them up manually.', error);\n    }",
+      "to": "    let vcTokens = [];\n    try {\n        const group = JSON.parse(fs.readFileSync(pathToGroup, 'utf8'));\n        const files = Array.isArray(group.chats) ? group.chats.map(chat => path.join(request.user.directories.groupChats, sanitize(`${chat}.jsonl`))) : [];\n        vcTokens = await vcF2().removeChats(request, files);\n    } catch (error) {\n        if (vcF2Error(error, response)) return;\n        console.error(error);\n        return response.sendStatus(500);\n    }",
+      "count": 1
+    },
+    {
+      "from": "    if (fs.existsSync(pathToGroup)) {\n        fs.unlinkSync(pathToGroup);\n    }\n\n    return response.send({ ok: true });",
+      "to": "    if (fs.existsSync(pathToGroup)) {\n        fs.unlinkSync(pathToGroup);\n    }\n\n    return response.send({ ok: true, vc_f2_chats: vcTokens });",
+      "count": 1
+    }
+  ],
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改"
+}

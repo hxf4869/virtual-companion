@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Virtual Companion 登录</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="index.js"></script>
+</head>
+<body>
+  <main class="auth-panel">
+    <h1 id="auth-title">登录</h1>
+    <p id="auth-error" role="alert" hidden></p>
+
+    <form id="login-form">
+      <div class="field">
+        <label for="account">用户名</label>
+        <input id="account" name="account" type="text" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password">
+      </div>
+      <button type="submit" class="primary">继续</button>
+    </form>
+
+    <section id="verify-step" hidden>
+      <p id="setup-info" hidden>在验证器中添加此密钥</p>
+      <code id="setup-secret" hidden></code>
+      <form id="verify-form">
+        <div class="field">
+          <label id="code-label" for="code">验证码</label>
+          <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code">
+        </div>
+        <button type="submit" class="primary">验证</button>
+      </form>
+      <div class="step-actions">
+        <button type="button" id="use-recovery" class="secondary">使用恢复码</button>
+        <button type="button" id="back-login" class="ghost">返回登录</button>
+      </div>
+    </section>
+
+    <section id="password-step" hidden>
+      <form id="password-form">
+        <div class="field">
+          <label for="current-password">当前密码</label>
+          <input id="current-password" name="current-password" type="password" autocomplete="current-password">
+        </div>
+        <div class="field">
+          <label for="new-password">新密码</label>
+          <input id="new-password" name="new-password" type="password" autocomplete="new-password">
+        </div>
+        <div class="field">
+          <label for="confirm-password">确认新密码</label>
+          <input id="confirm-password" name="confirm-password" type="password" autocomplete="new-password">
+        </div>
+        <button type="submit" class="primary">修改密码</button>
+      </form>
+    </section>
+
+    <section id="recovery-step" hidden>
+      <pre id="recovery-codes"></pre>
+      <button type="button" id="finish-login" class="primary">已保存，进入</button>
+    </section>
+  </main>
+</body>
+</html>

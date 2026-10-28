@@ -1,23 +1,25 @@
-# virtual-companion server plugin（V2-W03-S4）
+# virtual-companion server plugin（V2-W03-S4 / W05）
 
-ST 1.19.0（commit `7e8663cd`）服务端插件：Go 模型目录受控取用、三协议真实适配、
-Go 管理 API 桥。许可：**AGPL-3.0-only**（ADR-0009 §3）。
+ST 1.19.0（commit `7e8663cd`）服务端插件：Go 登录中间件（host-auth）与 F2 保存冲突防护、
+Go 模型目录受控取用、三协议真实适配、Go 管理 API 桥。许可：**AGPL-3.0-only**（ADR-0009 §3）。
 
 ## 部署（S1 接线契约，本目录不自动安装）
 
 - 复制本目录到 `<ST 安装目录>/plugins/virtual-companion/`；
   ST `plugin-loader` 从安装目录的 `plugins/` 装载（`src/server-main.js:312`）。
 - 开启 `enableServerPlugins: true`；保持 `enableServerPluginsAutoUpdate: false`。
-- 配套核心补丁（应用于受管运行副本 `dev-managed/st-run/`，接线见仓库 `scripts/assemble-managed.mjs`；
-  `upstream/` 原始树不改）：
-  - `../../patches/st-chat-completions-vc-bridge.json`
-    （`src/endpoints/backends/chat-completions.js`：钩子①分发前拦截、钩子②CUSTOM
-    受控凭据、钩子③④Chat/Claude 最终发送前防线、钩子⑤`/status` 受管连接检查、两处 provider 正文日志收口）
-  - `../../patches/st-util-stream-error-log.json`
-    （`src/util.js`：流式失败分支的 provider 正文日志收口）
+- 配套核心补丁按仓库集中规格 `scripts/lib/paths.mjs` 的 `CORE_PATCH_SPECS` 应用于受管运行副本
+  `dev-managed/st-run/`（接线见 `scripts/assemble-managed.mjs`；`upstream/` 原始树不改）。
+  清单以 `CORE_PATCH_SPECS` 为准，不在此固定数量；`/generate` 桥（分发前拦截、受控凭据、
+  Chat/Claude 最终发送前防线）、`/status` 受管连接检查与 provider 正文日志收口都在其中。
+- **钩子接线**：`init(router)` 挂 `/go` 管理桥，并把 hostAuth / F2 / 生成桥 / 连接检查注册到
+  全局桥对象 `globalThis[Symbol.for('virtual-companion.bridge')]`，由集中补丁在原生链路的固定
+  单点调用——`st-host-auth` 让 server-main 在 ST 用户解析、静态资源与原生 API 之前调用
+  `hostAuth`（app 级单点，不逐路由拦截原生入口）。
 - **受管宿主策略**：插件一经装载即受管——`/generate` 请求缺失/失效绑定标记一律
   显式拒绝（`VC_UNMANAGED_GENERATION`），不回退 ST SecretManager 的旧全局 Key。
-  插件未装载时补丁钩子为空操作，S1 的独立原生验收不受影响。
+  「插件未装载时补丁钩子为空操作」只适用于旧生成桥 / 连接检查钩子；受管的 hostAuth 与
+  F2 钩子在插件缺失时必须 503 拒绝（fail-closed），S1 则是根本不应用这些受管核心补丁。
 - 插件启动时动态 `import` ST 自带 `src/endpoints/tokenizers.js` 复用其 tokenizer
   计数；部署时必须保留 `<ST>/src/` 与 `node_modules`。取不到时退回 guesstimate
   并在日志/错误元数据标注 `estimator=st-guesstimate`。
@@ -26,8 +28,9 @@ Go 管理 API 桥。许可：**AGPL-3.0-only**（ADR-0009 §3）。
 
 | 变量 | 说明 |
 | --- | --- |
-| `VC_ST_GO_BASE_URL` | Go `companiond` 基地址（如 `http://127.0.0.1:8080`），管理桥与受控取用共用；缺失只降级对应能力 |
+| `VC_ST_GO_BASE_URL` | Go `companiond` 基地址（如 `http://127.0.0.1:8095`），登录核验、管理桥与受控取用共用；受管下缺失即硬失败（start-managed 预检拒绝、hostAuth 返回 503），不降级 |
 | `VC_ST_PLUGIN_SERVICE_TOKEN` | 受控取用服务令牌（≥32 字节；Go 与插件服务端各持一份，不进浏览器、不打日志） |
+| `VC_ST_ACCOUNT_HANDLES` | Go 账号 ID→ST 本地 handle 的 JSON 对象映射（非空、handle 不可复用；只经进程环境注入，不落盘、不进日志；语义见上级 README「登录与身份」） |
 | `VC_ST_GO_TIMEOUT_MS` | 上游/Go 请求超时（默认 30000） |
 
 Go 侧需把确切 ST 来源（如 `http://127.0.0.1:8742`）加入 Origin 白名单（写入类请求校验）。
@@ -39,14 +42,36 @@ Go 侧需把确切 ST 来源（如 `http://127.0.0.1:8742`）加入 Origin 白�
 - 白名单（方法+路径）见 `lib/admin-bridge.js` `ADMIN_BRIDGE_ROUTES`：
   `GET/PUT providers`、`POST providers/{id}/models/discover`、
   `GET model-purposes`、`PUT model-purposes/{purpose}`、
-  `GET auth/session`、`POST auth/login`、`POST auth/reauth`。
+  `GET auth/session`、`POST auth/login`、`POST auth/reauth`、
+  `POST /api/v1/st/bindings`（W05 原生聊天的角色实例与会话绑定，实际消费者是原生聊天的
+  `installInstanceBinding`）。
   其余一律 404；目标地址只来自 `VC_ST_GO_BASE_URL`；权限全部由 Go 决定。
 - 调用者凭据：页面发 `X-CSRF-Token`（ST 令牌，过 ST 中间件）+ `X-VC-CSRF-Token`（JS 可读
-  `vc_csrf` cookie 值）+ 可选 `X-VC-Expected-Account-ID` / `X-VC-Expected-Session-ID`；
+  `vc_csrf` cookie 值）+ `X-VC-Expected-Account-ID` / `X-VC-Expected-Session-ID`
+  （写请求在受管 hostAuth 下必需，非可选）；
   插件只转发 `vc_session`/`vc_csrf` 两个 cookie，把 `X-VC-CSRF-Token` 映射为 Go 的
   `X-CSRF-Token`，剥离 ST 的 CSRF 头，原样转发 `Origin`。**永不附加服务令牌**——
   管理操作必须由调用者本人的 Go 会话授权，服务令牌不得提升浏览器权限。
 - 响应体原样透传（Go `writeJSON` / 错误信封 `{code,message}`）；请求与响应体不写日志。
+
+## 登录与账号边界（W05）
+
+- `lib/host-auth.js` 的 `hostAuth` 是 app 级单点钩子：Go 密码 + TOTP 是唯一可见登录，
+  `/auth/` 静态页与 `/auth/api/*` 代理到 Go `/api/v1/auth/*`；会话核验通过后按
+  `VC_ST_ACCOUNT_HANDLES` 绑定本地 handle。完整语义（映射约束、就绪探针、期望身份双头）
+  见上级 README「登录与身份（W05）」。
+- ST 原生登录、恢复与账号管理 API 一律 403，不构成第二套入口；唯一例外是认证后的
+  `GET /api/users/me`（只读自身 profile）。
+- 原生注销按钮改走 Go 注销，ST 账号管理 UI 隐藏（`patches/st-go-login-client.json`）。
+
+## F2 保存冲突（W05）
+
+- `lib/f2-routes.js` / `lib/f2-store.js` 为原生保存、改名、删除、导入、群聊、角色批量、
+  DataMaid 与启动迁移提供全链 CAS。语义边界（JSONL live revision 唯一权威、`.vc-f2` 只存
+  身份/墓碑/中断恢复、force 不绕过、冲突只在本页保留）见上级 README「F2 保存冲突（W05）」。
+- 原生 F2 的两个运行时模块（`f2-client.js`、`instance-binding.js`）统一由 ST
+  `/scripts/vc-runtime/` 提供：装配时由 `scripts/lib/managed.mjs` 从自有 extension 源拷贝并
+  校验，所有映射 profile 均可用，不依赖每个 profile 单独安装扩展。
 
 ## 生成链（受控取用 + 三协议）
 
