@@ -12,15 +12,18 @@
 //   Custom 源放 custom_url，Claude 源放 reverse_proxy；scope 为 projection 携带的
 //   最小当前会话字段（稳定 chat 标识，切换会话即变化；见 README「续接范围」）。
 
+import crypto from 'node:crypto';
 import { BridgeError, writeErrorResponse, upstreamErrorText } from './errors.js';
 import { log } from './log.js';
-import { authSession, resolveModelPurpose } from './go-client.js';
+import { authSession, resolveModelPurpose, settleModelUsage, cancelModelUsage } from './go-client.js';
 import { finalRequestUrl, nativeBaseUrl } from './url-normalize.js';
 import { checkContextBudget, resolveOutputTokens, writeBackOutputTokens } from './context-guard.js';
 import { refreshMemorySlot } from './memory-guard.js';
 import {
     buildResponsesRequest, convertResponsesToChatCompletion, bridgeResponsesStream, extractRoundFromOutput,
 } from './responses-adapter.js';
+import { prepareToolPolicy, runBoundedToolLoop, stripUnmeteredRequestFields } from './tool-loop.js';
+import { reserveSend, armUsageHold, usageFetchInstalled, readUsageTokens } from './model-usage.js';
 
 export const BRIDGE_SYMBOL = Symbol.for('virtual-companion.bridge');
 const PURPOSES_ALLOWED = new Set(['FOREGROUND_CHAT']);
@@ -187,7 +190,7 @@ export async function resolveManagedBinding(config, { marker, cookieHeader }) {
 export function createGenerateBridge({ config, continuationStore, counter, now = () => Date.now(), fetchImpl = fetch }) {
     const tokenCounter = counter ?? { estimator: 'st-guesstimate', count: (t) => Math.ceil(Buffer.byteLength(t, 'utf8') / 3.35) };
 
-    async function runResponsesProtocol({ body, request, response, resolved, url, user, fingerprint, scope }) {
+    async function runResponsesProtocol({ body, request, response, resolved, url, user, fingerprint, scope, ownerAccountId }) {
         const { model, provider } = resolved;
         const round = trailingToolRound(body);
         const controller = new AbortController();
@@ -197,6 +200,30 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
         // Authentication/config resolution may already have awaited before
         // reaching this handler; a previously closed socket cannot emit again.
         if (request.socket.destroyed || request.aborted) controller.abort();
+        let hold = null;
+        let settled = false;
+        let sent = false;
+        const cancelHold = async (disposition) => {
+            if (!hold?.reservationId || settled) return;
+            settled = true;
+            try {
+                await cancelModelUsage(config, hold.reservationId, { ownerAccountId, disposition });
+            } catch { /* 记账失败不回显上游正文 */ }
+        };
+        const closeHold = async (usage) => {
+            if (!hold?.reservationId || settled) return;
+            const tokens = readUsageTokens(usage);
+            if (!tokens) {
+                await cancelHold('UNKNOWN');
+                return;
+            }
+            await settleModelUsage(config, hold.reservationId, {
+                ownerAccountId,
+                inputTokens: tokens.inputTokens,
+                outputTokens: tokens.outputTokens,
+            });
+            settled = true;
+        };
         try {
             controller.signal.throwIfAborted();
             const { requestBody, outputTokens } = buildResponsesRequest({ body, model });
@@ -213,10 +240,22 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             if (continuationItems.length) {
                 requestBody.input.splice(requestBody.input.indexOf(continuationAnchor), 0, ...continuationItems);
             }
-            checkContextBudget({ model, finalBody: requestBody, outputTokens, counter: tokenCounter });
+            const budget = checkContextBudget({ model, finalBody: requestBody, outputTokens, counter: tokenCounter });
+            controller.signal.throwIfAborted();
+            const reserved = await reserveSend(config, {
+                ownerAccountId,
+                purpose: 'FOREGROUND_CHAT',
+                attemptId: crypto.randomUUID(),
+                providerId: provider.providerId,
+                modelId: model.modelId,
+                estimatedInputTokens: Math.max(0, Math.round(Number(budget.estimatedInputTokens) || 0)),
+                estimatedOutputTokens: outputTokens,
+            });
+            if (reserved?.reservationId) hold = { reservationId: reserved.reservationId };
             controller.signal.throwIfAborted();
 
             const startedAt = now();
+            sent = true;
             const upstream = await fetchImpl(url, {
                 method: 'POST',
                 headers: {
@@ -229,6 +268,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             });
 
             if (!upstream.ok) {
+                await cancelHold('UNKNOWN');
                 log.warn(`Responses 上游失败：HTTP ${upstream.status}（model=${model.modelId}，正文不读取不回显）`);
                 writeErrorResponse(response, 502, 'VC_UPSTREAM_ERROR', upstreamErrorText(upstream.status, upstream.statusText));
                 return true;
@@ -244,10 +284,21 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             };
 
             if (body.stream === true) {
-                await bridgeResponsesStream({ upstream, res: response, onRoundFinished: commitRound });
+                await bridgeResponsesStream({
+                    upstream, res: response,
+                    onRoundFinished: async (finished) => {
+                        commitRound(finished);
+                        try {
+                            await closeHold(finished?.usage);
+                        } catch {
+                            await cancelHold('UNKNOWN');
+                        }
+                    },
+                });
             } else {
                 const json = await upstream.json();
                 controller.signal.throwIfAborted();
+                await closeHold(json?.usage);
                 const round2 = extractRoundFromOutput(json.output);
                 continuationStore.commit({
                     user, fingerprint, scope, memorySnapshot,
@@ -262,6 +313,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             log.info(`Responses 出站完成：model=${model.modelId} stream=${body.stream === true} 耗时${now() - startedAt}ms estimator=${tokenCounter.estimator}`);
             return true;
         } catch (error) {
+            await cancelHold(sent ? 'UNKNOWN' : 'NOT_SENT');
             // A failed/aborted source check cannot leave an old opaque round
             // available for a later retry that happens to reuse its call IDs.
             if (round.callIds.length) continuationStore.discard({ round });
@@ -329,10 +381,18 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             }
             enforcePinnedParams(body, resolved.model, protocol);
             enforceBoundModel(body, resolved.model);
+            const responsesPolicy = prepareToolPolicy(body, resolved.model);
+            if (responsesPolicy.companion) {
+                return await runBoundedToolLoop({
+                    config, request, response, body, resolved, session,
+                    counter: tokenCounter, fetchImpl, now,
+                });
+            }
             return await runResponsesProtocol({
                 body, request, response, resolved,
                 url: finalRequestUrl(protocol, resolved.provider),
                 user, fingerprint, scope: marker.scope,
+                ownerAccountId: session.accountId,
             });
         }
 
@@ -344,6 +404,13 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             writeBackOutputTokens(body, outputTokens);
             enforcePinnedParams(body, resolved.model, protocol);
             enforceBoundModel(body, resolved.model);
+            const chatPolicy = prepareToolPolicy(body, resolved.model);
+            if (chatPolicy.companion) {
+                return await runBoundedToolLoop({
+                    config, request, response, body, resolved, session,
+                    counter: tokenCounter, fetchImpl, now,
+                });
+            }
             body.custom_url = nativeBaseUrl(protocol, resolved.provider);
             request.vcGoCredential = resolved.provider.credential; // 补丁点：CUSTOM apiKey 改为请求内受控凭据
             request.vcManaged = {
@@ -351,6 +418,9 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                 expectedUrl: finalRequestUrl(protocol, resolved.provider),
                 counter: tokenCounter,
                 outputTokens,
+                ownerAccountId: session.accountId,
+                providerId: resolved.provider.providerId,
+                modelId: resolved.model.modelId,
             };
             log.info(`Chat Completions 约束后交回原生链：model=${resolved.model.modelId}`);
             return false;
@@ -364,6 +434,13 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             writeBackOutputTokens(body, outputTokens);
             enforcePinnedParams(body, resolved.model, protocol);
             enforceBoundModel(body, resolved.model);
+            const anthropicPolicy = prepareToolPolicy(body, resolved.model);
+            if (anthropicPolicy.companion) {
+                return await runBoundedToolLoop({
+                    config, request, response, body, resolved, session,
+                    counter: tokenCounter, fetchImpl, now,
+                });
+            }
             // 原生 sendClaudeRequest 在设置 reverse_proxy 时使用 proxy_password 作为 Key；
             // 两者都只在服务端请求对象上覆写，不回传浏览器。原生 thinking 可能再调大
             // max_tokens —— 由补丁钩子②（最终发送前）复核拦截。
@@ -374,6 +451,9 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                 expectedUrl: finalRequestUrl(protocol, resolved.provider),
                 counter: tokenCounter,
                 outputTokens,
+                ownerAccountId: session.accountId,
+                providerId: resolved.provider.providerId,
+                modelId: resolved.model.modelId,
             };
             log.info(`Anthropic 约束后交回原生链：model=${resolved.model.modelId}`);
             return false;
@@ -425,7 +505,30 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                     );
                 }
             }
-            checkContextBudget({ model: managed.model, finalBody, outputTokens: managed.outputTokens, counter: managed.counter });
+            const budget = checkContextBudget({ model: managed.model, finalBody, outputTokens: managed.outputTokens, counter: managed.counter });
+            if (request.body?.vc_mvu_extra === true) {
+                throw new BridgeError(409, 'VC_UNMETERED_EXTRA', '未计量的额外生成已关闭，本次未发送');
+            }
+            stripUnmeteredRequestFields(finalBody);
+            if (managed.ownerAccountId && managed.providerId && managed.modelId) {
+                const reserved = await reserveSend(config, {
+                    ownerAccountId: managed.ownerAccountId,
+                    purpose: 'FOREGROUND_CHAT',
+                    attemptId: crypto.randomUUID(),
+                    providerId: managed.providerId,
+                    modelId: managed.modelId,
+                    estimatedInputTokens: Math.max(0, Math.round(Number(budget.estimatedInputTokens) || 0)),
+                    estimatedOutputTokens: managed.outputTokens,
+                });
+                if (reserved?.reservationId && usageFetchInstalled()) {
+                    armUsageHold({
+                        reservationId: reserved.reservationId,
+                        ownerAccountId: managed.ownerAccountId,
+                        expectedUrl: url,
+                        config,
+                    });
+                }
+            }
             return false;
         } catch (error) {
             if (error instanceof BridgeError) {

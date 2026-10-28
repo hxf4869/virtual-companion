@@ -75,6 +75,12 @@ SCENES.push({
     needs: ['go', 'stack', 'browser'],
     default: false,
 });
+SCENES.push({
+    id: 'w11-tool-meter',
+    title: 'W11 三协议陪伴工具回合与前台计量',
+    needs: ['catalog', 'stack'],
+    default: false,
+});
 
 // ---------------------------------------------------------------------------
 // 常量与 CLI
@@ -1819,6 +1825,101 @@ async function sceneStoryViewBrowser(ctx) {
     }
 }
 
+async function sceneW11ToolMeter(ctx) {
+    // 管理 API 不能把 DECLARED 升成 VERIFIED（V140）。目录场景写完后只在库里改能力。
+    const verified = psql(`UPDATE vc.provider_model
+        SET capabilities = jsonb_set(capabilities, '{toolCalls}', '"VERIFIED"', true)
+        WHERE provider_id IN ('vc03m-chat', 'vc03m-resp', 'vc03m-claude')
+        RETURNING provider_id;`);
+    const verifiedCount = verified.split('\n').map((line) => line.trim()).filter(Boolean).length;
+    if (verifiedCount < 3) throw new Error(`toolCalls VERIFIED 更新行数不足：${verifiedCount}`);
+    psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
+        VALUES
+            ('vc03m-chat', 'vc03m-chat', 1, 0.001, 0.002),
+            ('vc03m-chat', 'vc03m-tools', 1, 0.001, 0.002),
+            ('vc03m-resp', 'vc03m-reasoning', 1, 0.001, 0.002),
+            ('vc03m-claude', 'vc03m-chat', 1, 0.001, 0.002)
+        ON CONFLICT DO NOTHING;`);
+    const chatIdentity = crypto.randomUUID();
+    const bound = await ctx.admin.call('POST', '/api/v1/st/bindings', {
+        chatIdentity,
+        characterRef: 'w11-tool-meter',
+        mode: 'COMPANION',
+        displayName: 'W11工具',
+    });
+    if (bound.status !== 200 || bound.json?.chatIdentity !== chatIdentity) {
+        throw new Error(`陪伴绑定失败：HTTP ${bound.status} ${String(bound.text).slice(0, 180)}`);
+    }
+    const tools = [
+        { type: 'function', function: { name: 'query_scheduled_follow_ups', description: '查询待跟进', parameters: { type: 'object', properties: {} } } },
+        { type: 'function', function: { name: 'manage_reminder', description: '创建或取消提醒', parameters: { type: 'object', properties: { action: { type: 'string' } } } } },
+    ];
+    const rounds = [
+        { name: 'chat', providerId: 'vc03m-chat', profileKey: 'chat', modelId: 'vc03m-chat', source: 'custom' },
+        { name: 'responses', providerId: 'vc03m-resp', profileKey: 'reasoning', modelId: 'vc03m-reasoning', source: 'custom' },
+        { name: 'anthropic', providerId: 'vc03m-claude', profileKey: 'chat', modelId: 'vc03m-chat', source: 'claude' },
+    ];
+    for (const round of rounds) {
+        await ctx.fixtureHttp.setOverride(round.modelId, {
+            tool: { name: 'query_scheduled_follow_ups', argumentsPieces: ['{}'] },
+            stopAfterToolResult: true,
+            text: '已根据工具结果回复。',
+        });
+        try {
+            const snap = await bindForeground(ctx, round.providerId, round.profileKey, round.modelId);
+            const body = {
+                chat_completion_source: round.source,
+                model: round.modelId,
+                messages: [{ role: 'user', content: '有没有待跟进' }],
+                tools,
+                vc_chat_identity: chatIdentity,
+                max_tokens: 256,
+                stream: false,
+            };
+            if (round.source === 'claude') {
+                body.reverse_proxy = snap.marker;
+                body.use_sysprompt = false;
+            } else {
+                body.custom_url = snap.marker;
+            }
+            const generated = await ctx.st.generate(body);
+            const content = generated.json?.choices?.[0]?.message?.content ?? '';
+            if (generated.status !== 200 || !String(content).includes('已根据工具结果回复。')) {
+                throw new Error(`${round.name} 工具回合失败：HTTP ${generated.status} ${String(generated.text).slice(0, 240)}`);
+            }
+        } finally {
+            await ctx.fixtureHttp.setOverride(round.modelId, null);
+        }
+    }
+    const usage = await ctx.admin.call('GET', '/api/v1/auth/admin/usage?days=14');
+    if (usage.status !== 200 || !Array.isArray(usage.json?.purposes)) {
+        throw new Error(`用量汇总失败：HTTP ${usage.status} ${String(usage.text).slice(0, 180)}`);
+    }
+    // 汇总里的 estimatedUsd 只加仍在 HELD 的预留（V194）。结算完成后它为空，实际金额在 actualUsd。
+    for (const purpose of ['FOREGROUND_CHAT', 'TOOL_TURN']) {
+        const row = usage.json.purposes.find((item) => item.purpose === purpose);
+        if (!row || Number(row.calls) < 3 || row.actualUsd == null || row.estimatedUsd != null || row.unsettledUsd != null) {
+            throw new Error(`${purpose} 汇总不符：${JSON.stringify(row ?? null)}`);
+        }
+    }
+    const ledger = psql(`SELECT purpose || ' ' || status || ' ' || count(*)::text || ' ' || count(reserved_usd)::text || ' ' || count(actual_usd)::text
+        FROM vc.model_cost_reservation
+        WHERE purpose IN ('FOREGROUND_CHAT', 'TOOL_TURN')
+        GROUP BY purpose, status
+        ORDER BY 1;`);
+    const settled = new Map();
+    for (const line of ledger.split('\n').map((item) => item.trim()).filter(Boolean)) {
+        const [purpose, status, count, reserved, actual] = line.split(' ');
+        if (status !== 'SETTLED') throw new Error(`计量留下未结算行：${line}`);
+        if (Number(count) < 3 || reserved !== count || actual !== count) throw new Error(`结算行不完整：${line}`);
+        settled.set(purpose, Number(count));
+    }
+    if (!settled.has('FOREGROUND_CHAT') || !settled.has('TOOL_TURN')) {
+        throw new Error(`预留账本缺少用途：${ledger.trim()}`);
+    }
+    log.ok('W11 三协议陪伴工具回合通过：前台与工具回合均已预留并结算');
+}
+
 const SCENE_IMPLS = {
     'memorycore-foundation': sceneMemorycoreFoundation,
     'memorycore-native': sceneMemorycoreNative,
@@ -1848,6 +1949,7 @@ const SCENE_IMPLS = {
     'rights-native': sceneRightsNative,
     'memory-browser': sceneMemoryBrowser,
     'story-view-browser': sceneStoryViewBrowser,
+    'w11-tool-meter': sceneW11ToolMeter,
 };
 
 async function runFull() {

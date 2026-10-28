@@ -7,12 +7,91 @@
 
 import { BridgeError } from './errors.js';
 
-async function goFetch(config, path, init) {
+async function goFetch(config, path, init = {}) {
     if (!config.goBaseUrl) {
         throw new BridgeError(503, 'VC_GO_NOT_CONFIGURED', '未配置 VC_ST_GO_BASE_URL，无法访问 Go 服务');
     }
-    const url = config.goBaseUrl + path;
-    return fetch(url, { ...init, signal: AbortSignal.timeout(config.timeoutMs) });
+    const timeout = AbortSignal.timeout(config.timeoutMs);
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    return fetch(config.goBaseUrl + path, { ...init, signal });
+}
+
+function serviceHeaders(config) {
+    if (!config.serviceToken) {
+        throw new BridgeError(503, 'VC_SERVICE_TOKEN_MISSING', '未配置 VC_ST_PLUGIN_SERVICE_TOKEN，受控取用通道不可用');
+    }
+    return {
+        Authorization: `Bearer ${config.serviceToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+    };
+}
+
+async function readJsonResponse(res) {
+    const text = await res.text();
+    let json = null;
+    try {
+        json = text ? JSON.parse(text) : null;
+    } catch { /* 保持 null，按状态码处理 */ }
+    return { status: res.status, ok: res.ok, json, text, headers: res.headers };
+}
+
+/** 服务通道预留。返回状态与 JSON，由调用方区分 404 放行与拒绝。不携带 Origin。 */
+export async function reserveModelUsage(config, payload) {
+    const res = await goFetch(config, '/api/v1/service/model-usage/reservations', {
+        method: 'POST',
+        headers: serviceHeaders(config),
+        body: JSON.stringify(payload),
+    });
+    return readJsonResponse(res);
+}
+
+/** 同一 reservationId 再次结算由 Go 返回 idempotent:true，金额保持第一次。 */
+export async function settleModelUsage(config, reservationId, payload) {
+    const res = await goFetch(config, `/api/v1/service/model-usage/reservations/${encodeURIComponent(reservationId)}/settle`, {
+        method: 'POST',
+        headers: serviceHeaders(config),
+        body: JSON.stringify(payload),
+    });
+    const parsed = await readJsonResponse(res);
+    if (!parsed.ok) {
+        throw new BridgeError(502, 'VC_USAGE_SETTLE_FAILED', '用量结算失败');
+    }
+    return parsed.json;
+}
+
+/** disposition 为 NOT_SENT（未发送）或 UNKNOWN（已发送但没有可信 usage）。 */
+export async function cancelModelUsage(config, reservationId, payload) {
+    const res = await goFetch(config, `/api/v1/service/model-usage/reservations/${encodeURIComponent(reservationId)}/cancel`, {
+        method: 'POST',
+        headers: serviceHeaders(config),
+        body: JSON.stringify(payload),
+    });
+    const parsed = await readJsonResponse(res);
+    if (!parsed.ok) {
+        throw new BridgeError(502, 'VC_USAGE_CANCEL_FAILED', '用量预留取消失败');
+    }
+    return parsed.json;
+}
+
+/**
+ * 浏览器会话执行工具。Cookie + CSRF + Origin，不使用服务令牌。
+ * 返回原始响应文本，调用方不得改写成另一份「已完成」。
+ */
+export async function executeSessionTool(config, { cookieHeader, origin, csrfToken, expectedAccountId, expectedSessionId, payload, signal }) {
+    const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    if (cookieHeader) headers.Cookie = cookieHeader;
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    if (origin) headers.Origin = origin;
+    if (expectedAccountId) headers['X-VC-Expected-Account-ID'] = expectedAccountId;
+    if (expectedSessionId) headers['X-VC-Expected-Session-ID'] = expectedSessionId;
+    const res = await goFetch(config, '/api/v1/st/tools/execute', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        ...(signal ? { signal } : {}),
+    });
+    return readJsonResponse(res);
 }
 
 /** 用浏览器同主机携带的 vc_session 核验真实 Owner；GET 无需 CSRF。返回 sessionIdentityJSON。 */

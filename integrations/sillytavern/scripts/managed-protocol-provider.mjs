@@ -149,6 +149,17 @@ function memorycoreFixture(body, documents) {
     return JSON.stringify(memories.length ? [{ scene_name: 'synthetic', message_ids: ['synthetic-source'], memories }] : []);
 }
 
+function requestHasToolResult(body) {
+    if (!body || typeof body !== 'object') return false;
+    if (Array.isArray(body.messages)) {
+        for (const message of body.messages) {
+            if (message?.role === 'tool') return true;
+            if (Array.isArray(message?.content) && message.content.some((part) => part?.type === 'tool_result')) return true;
+        }
+    }
+    return Array.isArray(body.input) && body.input.some((item) => item?.type === 'function_call_output');
+}
+
 export function buildPlan(model, body, headerDirective, ctlOverride) {
     const base = SCRIPTS[model] || SCRIPTS['vc03m-chat'];
     const bodyDirective = body && typeof body === 'object' && body.vc_fixture && typeof body.vc_fixture === 'object'
@@ -156,11 +167,18 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
         : null;
     const merged = { ...base, ...(ctlOverride || {}), ...(headerDirective || {}), ...(bodyDirective || {}) };
     const usage = { ...DEFAULT_USAGE, ...(merged.usage || {}) };
+    let text = Array.isArray(merged.memorycoreDocuments) ? memorycoreFixture(body, merged.memorycoreDocuments) : typeof merged.text === 'string' ? merged.text : base.text ?? '';
+    let tool = merged.tool ?? null;
+    // 只在显式打开时，把「已带工具结果的后续请求」收成纯文本。默认剧本保持原样。
+    if (merged.stopAfterToolResult === true && requestHasToolResult(body)) {
+        tool = null;
+        if (!text) text = '已根据工具结果回复。';
+    }
     return {
         model,
-        text: Array.isArray(merged.memorycoreDocuments) ? memorycoreFixture(body, merged.memorycoreDocuments) : typeof merged.text === 'string' ? merged.text : base.text ?? '',
+        text,
         reasoning: merged.reasoning ?? null,
-        tool: merged.tool ?? null,
+        tool,
         usage,
         error: merged.error ?? null,
         delay: merged.delay ?? null,

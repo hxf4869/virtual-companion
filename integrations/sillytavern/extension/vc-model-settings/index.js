@@ -20,6 +20,7 @@ import { mountDataRights } from './data-rights.js';
 import { mountMemoryPage } from './memory-page.js';
 import { mountStoryPage } from './story-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
+import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 
 export async function init() {
     setStHeadersProvider(() => {
@@ -62,6 +63,26 @@ export async function init() {
     const events = getContext();
     events.eventSource.on(events.eventTypes.CHAT_CHANGED, memory.reset);
     events.eventSource.on(events.eventTypes.CHAT_COMPLETION_SETTINGS_READY, memory.attach);
+    events.eventSource.on(events.eventTypes.CHAT_COMPLETION_SETTINGS_READY, (generateData) => {
+        attachCompanionIdentity(generateData, getContext);
+    });
+    try {
+        const { ToolManager } = await import('../../../../scripts/tool-calling.js');
+        if (typeof ToolManager?.registerFunctionTool === 'function') {
+            for (const spec of companionToolSpecs) {
+                ToolManager.registerFunctionTool({
+                    name: spec.name,
+                    displayName: spec.displayName,
+                    description: spec.description,
+                    parameters: spec.parameters,
+                    shouldRegister() { return companionToolsShouldRegister(getContext); },
+                    action() { throw new Error(COMPANION_TOOL_ACTION_ERROR); },
+                });
+            }
+        }
+    } catch (error) {
+        console.warn(`[vc-model-settings] 陪伴工具未注册：${error?.name ?? 'error'}`);
+    }
     globalThis.addEventListener('vc-memory-status', (event) => memory.finalStatus(event.detail));
 
     const dataRights = mountDataRights();

@@ -32,6 +32,10 @@ function harness(t) {
             provider: { providerId: 'p', protocol: 'OPENAI_RESPONSES', revision: 1, credential: 'synthetic', endpointUrl: 'http://fixture-model/v1' },
             model: { profileKey: 'm', modelId: 'fixture-model', contextWindowTokens: 8192, maxOutputTokens: 512 } });
         if (url.endsWith('/memory/recall')) return Response.json(await h.recall(init));
+        // 用量预留不在这组夹具里。404 按约定放行，其它地址仍禁止。
+        if (String(url).includes('/service/model-usage/reservations')) {
+            return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
+        }
         assert.fail('No external request is permitted in this deterministic test');
     });
     h.store = new ToolContinuationStore();

@@ -70,6 +70,18 @@ function contentToText(content) {
     return '';
 }
 
+/** 用调用方给出的工具结果覆盖对应 tool 消息。字符串原样保留，供 Responses 映射。 */
+export function applyToolOutputs(messages, outputsByCallId) {
+    if (!Array.isArray(messages) || !outputsByCallId) return messages;
+    for (const message of messages) {
+        if (message?.role !== 'tool' || !message.tool_call_id) continue;
+        if (Object.prototype.hasOwnProperty.call(outputsByCallId, message.tool_call_id)) {
+            message.content = outputsByCallId[message.tool_call_id];
+        }
+    }
+    return messages;
+}
+
 /** 找到末尾的受控工具回合（assistant(tool_calls) + 其后全部 tool 结果）在 messages 中的起点。 */
 function trailingToolRoundStart(messages) {
     let i = messages.length;
@@ -446,7 +458,7 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
     const reasoningItems = [];
     const buffer = new SseBuffer();
 
-    const finishRound = (finishReason, usage, responseJson) => {
+    const finishRound = async (finishReason, usage, responseJson) => {
         if (roundCommitted) return;
         roundCommitted = true;
         let items = reasoningItems;
@@ -463,17 +475,17 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
         write(finalChunk);
         res.write('data: [DONE]\n\n');
         res.end();
-        if (onRoundFinished) onRoundFinished({ ok: true, reasoningItems: items, calls, finishReason, usage });
+        if (onRoundFinished) await onRoundFinished({ ok: true, reasoningItems: items, calls, finishReason, usage });
     };
 
-    const failRound = (reason) => {
+    const failRound = async (reason) => {
         if (roundCommitted) { res.end(); return; }
         roundCommitted = true;
         // 固定文案：不回显上游错误消息（可能包含回显正文或敏感值）
         write({ error: { message: reason, code: 'VC_UPSTREAM_STREAM_ERROR' } });
         res.write('data: [DONE]\n\n');
         res.end();
-        if (onRoundFinished) onRoundFinished({ ok: false, reasoningItems: [], calls: [], finishReason: 'error', usage: undefined });
+        if (onRoundFinished) await onRoundFinished({ ok: false, reasoningItems: [], calls: [], finishReason: 'error', usage: undefined });
     };
 
     try {
@@ -528,19 +540,19 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
                         }
                         break;
                     case 'response.completed':
-                        finishRound(sawToolCall ? 'tool_calls' : 'stop', mapUsage(event.response?.usage), event.response);
+                        await finishRound(sawToolCall ? 'tool_calls' : 'stop', mapUsage(event.response?.usage), event.response);
                         return;
                     case 'response.incomplete': {
                         const reason = event.response?.incomplete_details?.reason;
                         const finish = reason === 'max_output_tokens' ? 'length' : reason === 'content_filter' ? 'content_filter' : 'stop';
-                        finishRound(finish, mapUsage(event.response?.usage), event.response);
+                        await finishRound(finish, mapUsage(event.response?.usage), event.response);
                         return;
                     }
                     case 'response.failed':
-                        failRound('上游流式生成失败（response.failed）');
+                        await failRound('上游流式生成失败（response.failed）');
                         return;
                     case 'error':
-                        failRound('上游流错误（error 事件）');
+                        await failRound('上游流错误（error 事件）');
                         return;
                     default:
                         break;
@@ -548,7 +560,7 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
             }
         }
         // 上游流自然结束但没有任何终止事件：按协议缺陷处理，不伪造成功。
-        failRound('上游 SSE 流未发送终止事件即结束');
+        await failRound('上游 SSE 流未发送终止事件即结束');
     } catch (error) {
         if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
             roundCommitted = true; // 取消不提交续接状态

@@ -20,6 +20,7 @@ import { createHostAuth } from './lib/host-auth.js';
 import { createF2Hooks } from './lib/f2-routes.js';
 import { createSourceBridge } from './lib/source-bridge.js';
 import { createAccountData } from './lib/account-data.js';
+import { installUsageFetch, uninstallUsageFetch } from './lib/model-usage.js';
 
 export const info = {
     id: 'virtual-companion',
@@ -60,12 +61,15 @@ export async function init(router) {
     const { interceptStatus } = createStatusBridge({ config });
     // 补丁钩子对端：① interceptGenerate（/generate 分发前）② finalOutboundGuard（Chat/Claude 最终发送前）
     // ③ interceptStatus（/status 路由开头；受管标记用真实上游模型列表应答，不篡改 online_status）。
+    // 包装在桥创建之后安装，陪伴循环仍使用当时的 fetch；原生出站才走一次性预留结算。
+    installUsageFetch();
     const f2 = createF2Hooks({ getUserDirectories: users.getUserDirectories });
     globalThis[BRIDGE_SYMBOL] = { ...bridge, interceptStatus, hostAuth, f2 };
     log.info(`插件就绪：goBaseUrl=${config.goBaseUrl || '(未配置)'} 服务令牌=${config.serviceToken ? '已配置' : '缺失（受控生成不可用）'} estimator=${counter.estimator}`);
 }
 
 export function exit() {
+    uninstallUsageFetch();
     delete globalThis[BRIDGE_SYMBOL];
     log.info('插件卸载，生成桥已注销');
 }
