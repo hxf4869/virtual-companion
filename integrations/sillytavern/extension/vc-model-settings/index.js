@@ -20,6 +20,7 @@ import { mountDataRights } from './data-rights.js';
 import { mountMemoryPage } from './memory-page.js';
 import { mountStoryPage } from './story-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
+import { createStoryContext } from './story-context.js';
 
 export async function init() {
     setStHeadersProvider(() => {
@@ -59,9 +60,13 @@ export async function init() {
     });
     reportMemory = mountMemoryControls({ getContext, reset: memory.reset });
     globalThis[MEMORY_INTERCEPTOR] = memory.intercept;
+    const story = createStoryContext({ getContext });
     const events = getContext();
     events.eventSource.on(events.eventTypes.CHAT_CHANGED, memory.reset);
     events.eventSource.on(events.eventTypes.CHAT_COMPLETION_SETTINGS_READY, memory.attach);
+    // 本扩展 loading_order 为 100，晚于 EJS（loading_order 1）装载。
+    // SETTINGS_READY 只用 on() 追加，因此 vc_story 写在 EJS 改写之后。
+    story.install(events.eventSource, events.eventTypes.CHAT_COMPLETION_SETTINGS_READY);
     globalThis.addEventListener('vc-memory-status', (event) => memory.finalStatus(event.detail));
 
     const dataRights = mountDataRights();
@@ -77,6 +82,8 @@ export async function init() {
                 return { conversationId: '', mode: 'COMPANION' };
             }
         },
+        onRun: (turn) => story.setRun(turn),
+        onActor: (actorId) => story.selectActor(actorId),
     });
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {

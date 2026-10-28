@@ -63,6 +63,21 @@ function list(items) {
     return items.map((item) => `<li>${esc(item)}</li>`).join('');
 }
 
+function storyTurn(run, view, conversationId) {
+    const runId = typeof run?.runId === 'string' && DECIMAL_ID.test(run.runId) ? run.runId : '';
+    const branchId = typeof run?.branchId === 'string' && DECIMAL_ID.test(run.branchId) ? run.branchId : '';
+    const fromRun = typeof run?.conversationId === 'string' && DECIMAL_ID.test(run.conversationId) ? run.conversationId : '';
+    const fromChat = typeof conversationId === 'string' && DECIMAL_ID.test(conversationId) ? conversationId : '';
+    const conversation = fromRun || fromChat;
+    const worldVersion = typeof view?.worldVersion === 'number' && Number.isSafeInteger(view.worldVersion) && view.worldVersion >= 0
+        ? view.worldVersion : null;
+    if (!runId || !branchId || !conversation || worldVersion === null) return null;
+    if (typeof view?.runId === 'string' && view.runId !== runId) return null;
+    if (typeof view?.branchId === 'string' && view.branchId !== branchId) return null;
+    if (fromRun && fromChat && fromRun !== fromChat) return null;
+    return { runId, branchId, worldVersion, conversationId: conversation };
+}
+
 export function renderStoryPage(state) {
     const playing = Boolean(state.run && state.view);
     if (!playing) {
@@ -72,7 +87,10 @@ export function renderStoryPage(state) {
     </div>`;
     }
     const stage = state.run.stage === 'investigation' ? '调查中' : '';
-    const people = state.view.participants.map((person) => `<article class="vc-story-person"><h3>${esc(person.name)}</h3>${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</article>`).join('');
+    const people = state.view.participants.map((person) => {
+        const pressed = state.actorId === person.actorId;
+        return `<button type="button" class="vc-story-person" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}"><h3>${esc(person.name)}</h3>${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</button>`;
+    }).join('');
     return `<div class="vc-story" data-state="playing">
       <header class="vc-story-bar"><h1>${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage">${esc(stage)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
       <p class="vc-story-setting">${esc(state.view.setting)}</p>
@@ -84,8 +102,13 @@ export function renderStoryPage(state) {
     </div>`;
 }
 
-export function createStoryPage({ getConversation = () => ({ conversationId: '', mode: '' }), onChange = () => {} } = {}) {
-    const state = { open: false, busy: false, error: '', conflict: false, run: null, view: null };
+export function createStoryPage({
+    getConversation = () => ({ conversationId: '', mode: '' }),
+    onChange = () => {},
+    onRun = () => {},
+    onActor = () => {},
+} = {}) {
+    const state = { open: false, busy: false, error: '', conflict: false, run: null, view: null, turn: null, actorId: '' };
     let epoch = 0;
     let remembered = '';
     const emit = () => onChange(state);
@@ -93,6 +116,9 @@ export function createStoryPage({ getConversation = () => ({ conversationId: '',
     function fail(error) {
         state.run = null;
         state.view = null;
+        state.turn = null;
+        state.actorId = '';
+        onRun(null);
         state.conflict = error?.status === 409 && error?.code !== 'ACCOUNT_CONTEXT_CHANGED';
         if (error?.status === 409 && error?.code === 'ACCOUNT_CONTEXT_CHANGED') state.error = SESSION_CHANGED;
         else if (error?.status === 409) state.error = STORY_CONFLICT;
@@ -114,6 +140,13 @@ export function createStoryPage({ getConversation = () => ({ conversationId: '',
             epoch += 1;
             state.open = false;
             state.busy = false;
+            emit();
+        },
+        selectActor(actorId) {
+            if (!state.turn || !state.view) return;
+            if (!state.view.participants.some((person) => person.actorId === actorId)) return;
+            state.actorId = actorId;
+            onActor(actorId);
             emit();
         },
         async start() {
@@ -148,8 +181,11 @@ export function createStoryPage({ getConversation = () => ({ conversationId: '',
                 if (!alive(ticket)) return;
                 state.run = allowRun(run);
                 state.view = allowView(view);
+                state.turn = storyTurn(run, view, conversationId);
+                state.actorId = '';
                 state.error = '';
                 state.conflict = false;
+                onRun(state.turn);
             } catch (error) {
                 if (!alive(ticket)) return;
                 fail(error);
@@ -163,7 +199,11 @@ export function createStoryPage({ getConversation = () => ({ conversationId: '',
     };
 }
 
-export function mountStoryPage({ getConversation = () => ({ conversationId: '', mode: '' }) } = {}) {
+export function mountStoryPage({
+    getConversation = () => ({ conversationId: '', mode: '' }),
+    onRun = () => {},
+    onActor = () => {},
+} = {}) {
     const style = document.createElement('link');
     style.rel = 'stylesheet';
     style.href = new URL('./story.css', import.meta.url).href;
@@ -181,7 +221,7 @@ export function mountStoryPage({ getConversation = () => ({ conversationId: '', 
         if (!state.open) return;
         dialog.innerHTML = `<div class="vc-story-page">${renderStoryPage(state)}</div>`;
     };
-    const page = createStoryPage({ getConversation, onChange: render });
+    const page = createStoryPage({ getConversation, onRun, onActor, onChange: render });
     const close = () => {
         page.close();
         dialog.close();
@@ -194,6 +234,7 @@ export function mountStoryPage({ getConversation = () => ({ conversationId: '', 
         if (!target || target.disabled) return;
         if (target.dataset.action === 'close') close();
         if (target.dataset.action === 'start') void page.start();
+        if (target.dataset.action === 'select-actor') page.selectActor(target.dataset.actor);
     });
     return {
         open(returnFocusTarget = document.activeElement) {
