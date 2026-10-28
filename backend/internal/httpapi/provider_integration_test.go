@@ -37,6 +37,11 @@ func newCatalogServer(t *testing.T, store *postgres.Store) *Server {
 			return "false"
 		case "VC_ST_PLUGIN_SERVICE_TOKEN":
 			return catalogServiceToken
+		case "VC_ST_HOST_BASE_URL":
+			// Full mode refuses a service token without the host the channel
+			// calls. The catalog flow never dials it; the value only satisfies
+			// startup validation (W06).
+			return "http://127.0.0.1:8752"
 		default:
 			return ""
 		}
