@@ -58,6 +58,10 @@ export const FIXTURE_MODELS = [
  *   delay           {firstMs, perChunkMs} 可控延迟（测取消）
  *   chunks          文本分片数（缺省 3）
  *   abortAfterChunks 写完 N 片后主动断流（测取消）
+ *   toolOnce        为 true 且本剧本有 tool 时：请求尚无工具结果则只回这一次工具
+ *                   （Responses 保留 reasoning，文本清空）；已有工具结果则只回 followUpText，
+ *                   不再带 tool 或新的 reasoning。未设置时剧本保持原样。
+ *   followUpText    toolOnce 后续轮的纯文本（缺省「合成工具后续已核对。」）
  */
 export const SCRIPTS = {
     'vc03m-chat': { text: '收到。这是受管验收的合成回复，内容固定可断言。' },
@@ -149,6 +153,18 @@ function memorycoreFixture(body, documents) {
     return JSON.stringify(memories.length ? [{ scene_name: 'synthetic', message_ids: ['synthetic-source'], memories }] : []);
 }
 
+function bodyHasToolFollowUp(body) {
+    if (!body || typeof body !== 'object') return false;
+    if (Array.isArray(body.messages)) {
+        for (const message of body.messages) {
+            if (message?.role === 'tool') return true;
+            if (Array.isArray(message?.content) && message.content.some((part) => part?.type === 'tool_result')) return true;
+        }
+    }
+    if (Array.isArray(body.input) && body.input.some((item) => item?.type === 'function_call_output')) return true;
+    return false;
+}
+
 export function buildPlan(model, body, headerDirective, ctlOverride) {
     const base = SCRIPTS[model] || SCRIPTS['vc03m-chat'];
     const bodyDirective = body && typeof body === 'object' && body.vc_fixture && typeof body.vc_fixture === 'object'
@@ -156,11 +172,24 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
         : null;
     const merged = { ...base, ...(ctlOverride || {}), ...(headerDirective || {}), ...(bodyDirective || {}) };
     const usage = { ...DEFAULT_USAGE, ...(merged.usage || {}) };
+    let text = Array.isArray(merged.memorycoreDocuments) ? memorycoreFixture(body, merged.memorycoreDocuments) : typeof merged.text === 'string' ? merged.text : base.text ?? '';
+    let reasoning = merged.reasoning ?? null;
+    let tool = merged.tool ?? null;
+    // 只服务受管验收的一次工具后续。默认剧本不读请求正文，避免把工具模型变成回显器。
+    if (merged.toolOnce === true && tool && !Array.isArray(merged.memorycoreDocuments)) {
+        if (bodyHasToolFollowUp(body)) {
+            tool = null;
+            reasoning = null;
+            text = typeof merged.followUpText === 'string' ? merged.followUpText : '合成工具后续已核对。';
+        } else {
+            text = '';
+        }
+    }
     return {
         model,
-        text: Array.isArray(merged.memorycoreDocuments) ? memorycoreFixture(body, merged.memorycoreDocuments) : typeof merged.text === 'string' ? merged.text : base.text ?? '',
-        reasoning: merged.reasoning ?? null,
-        tool: merged.tool ?? null,
+        text,
+        reasoning,
+        tool,
         usage,
         error: merged.error ?? null,
         delay: merged.delay ?? null,

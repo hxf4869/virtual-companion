@@ -5,6 +5,7 @@
 // 许可：AGPL-3.0-only（见 integrations/sillytavern/README；ADR-0009 §3）。
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 
 import {
     createProtocolFixtureServer, DEFAULT_EXPECT_KEY, FIXTURE_MODELS, SCRIPTS, buildPlan,
@@ -292,6 +293,130 @@ test('客户端中途断开：流式请求标记 aborted 且不写后续分片',
         if (cap?.aborted !== true) await new Promise((r) => setTimeout(r, 100));
     }
     assert.equal(cap.aborted, true);
+});
+
+test('toolOnce：无工具结果时只回一次工具调用，已有工具结果时改为纯文本且不另起 reasoning', async () => {
+    const follow = '合成工具后续已核对。';
+    const directive = {
+        toolOnce: true,
+        tool: { name: 'note_clue', argumentsPieces: ['{}'] },
+        reasoning: { text: '核对当前问句的字面。', encrypted: true },
+        followUpText: follow,
+    };
+    const token = `tool-once-${crypto.randomUUID()}`;
+    const firstPlan = buildPlan('vc03m-tools', { messages: [{ role: 'user', content: token }] }, null, directive);
+    assert.equal(firstPlan.tool?.name, 'note_clue');
+    assert.equal(firstPlan.text, '');
+    assert.equal(firstPlan.reasoning?.text, '核对当前问句的字面。');
+    assert.equal(firstPlan.reasoning?.encrypted, true);
+
+    const chatFollow = buildPlan('vc03m-tools', {
+        messages: [{ role: 'user', content: token }, { role: 'tool', tool_call_id: 'call-1', content: '已记下公开线索。' }],
+    }, null, directive);
+    assert.equal(chatFollow.tool, null);
+    assert.equal(chatFollow.reasoning, null);
+    assert.equal(chatFollow.text, follow);
+
+    const anthropicFollow = buildPlan('vc03m-tools', {
+        messages: [{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu-1', content: '已记下公开线索。' }] }],
+    }, null, directive);
+    assert.equal(anthropicFollow.tool, null);
+    assert.equal(anthropicFollow.text, follow);
+
+    const responsesFirst = buildPlan('vc03m-reasoning', { input: [{ type: 'message', role: 'user', content: token }] }, null, directive);
+    assert.equal(responsesFirst.tool?.name, 'note_clue');
+    assert.equal(responsesFirst.text, '');
+    assert.ok(responsesFirst.reasoning?.encrypted);
+    const responsesFollow = buildPlan('vc03m-reasoning', {
+        input: [{ type: 'function_call_output', call_id: 'call-1', output: '已记下公开线索。' }],
+    }, null, directive);
+    assert.equal(responsesFollow.tool, null);
+    assert.equal(responsesFollow.reasoning, null);
+    assert.equal(responsesFollow.text, follow);
+
+    const untouched = buildPlan('vc03m-tools', {
+        messages: [{ role: 'user', content: token }, { role: 'tool', tool_call_id: 'call-1', content: '已记下公开线索。' }],
+    }, null, null);
+    assert.equal(untouched.tool?.name, 'lookup_weather');
+    assert.equal(untouched.text, '');
+
+    const bodyWins = buildPlan('vc03m-chat', {
+        messages: [{ role: 'tool', tool_call_id: 'call-1', content: '已记下公开线索。' }],
+        vc_fixture: directive,
+    }, { toolOnce: false, text: '头覆盖' }, { toolOnce: false, text: 'ctl 覆盖' });
+    assert.equal(bodyWins.text, follow);
+    assert.equal(bodyWins.tool, null);
+
+    const chatFirst = await post('/v1/chat/completions', {
+        model: 'vc03m-tools', stream: false, vc_fixture: directive,
+        messages: [{ role: 'user', content: `${token}-chat` }],
+    });
+    const chatFirstJson = await chatFirst.json();
+    assert.equal(chatFirst.status, 200);
+    assert.equal(chatFirstJson.choices[0].finish_reason, 'tool_calls');
+    assert.equal(chatFirstJson.choices[0].message.tool_calls[0].function.name, 'note_clue');
+    assert.equal(chatFirstJson.choices[0].message.tool_calls[0].function.arguments, '{}');
+    assert.equal(chatFirstJson.choices[0].message.content, null);
+
+    const chatSecond = await post('/v1/chat/completions', {
+        model: 'vc03m-tools', stream: false, vc_fixture: directive,
+        messages: [
+            { role: 'user', content: `${token}-chat` },
+            { role: 'assistant', tool_calls: chatFirstJson.choices[0].message.tool_calls },
+            { role: 'tool', tool_call_id: 'call-1', content: '已记下公开线索。' },
+        ],
+    });
+    const chatSecondJson = await chatSecond.json();
+    assert.equal(chatSecond.status, 200);
+    assert.equal(chatSecondJson.choices[0].finish_reason, 'stop');
+    assert.equal(chatSecondJson.choices[0].message.content, follow);
+    assert.equal(chatSecondJson.choices[0].message.tool_calls, undefined);
+
+    const responsesRes = await post('/v1/responses', {
+        model: 'vc03m-reasoning', stream: false, vc_fixture: directive,
+        input: [{ type: 'message', role: 'user', content: `${token}-responses` }],
+    });
+    const responsesJson = await responsesRes.json();
+    assert.equal(responsesRes.status, 200);
+    assert.ok(responsesJson.output.some((item) => item.type === 'reasoning' && item.encrypted_content));
+    assert.ok(responsesJson.output.some((item) => item.type === 'function_call' && item.name === 'note_clue'));
+    assert.equal(responsesJson.output.some((item) => item.type === 'message'), false);
+    const responsesNext = await post('/v1/responses', {
+        model: 'vc03m-reasoning', stream: false, vc_fixture: directive,
+        input: [
+            { type: 'message', role: 'user', content: `${token}-responses` },
+            { type: 'function_call_output', call_id: 'call-1', output: '已记下公开线索。' },
+        ],
+    });
+    const responsesNextJson = await responsesNext.json();
+    assert.equal(responsesNextJson.output.some((item) => item.type === 'reasoning' || item.type === 'function_call'), false);
+    assert.equal(responsesNextJson.output.find((item) => item.type === 'message')?.content?.[0]?.text, follow);
+
+    const claudeFirst = await post('/v1/messages', {
+        model: 'vc03m-tools', stream: false, vc_fixture: directive, max_tokens: 256,
+        messages: [{ role: 'user', content: `${token}-claude` }],
+    });
+    const claudeFirstJson = await claudeFirst.json();
+    assert.equal(claudeFirst.status, 200);
+    assert.equal(claudeFirstJson.stop_reason, 'tool_use');
+    assert.equal(claudeFirstJson.content.find((block) => block.type === 'tool_use')?.name, 'note_clue');
+    const claudeSecond = await post('/v1/messages', {
+        model: 'vc03m-tools', stream: false, vc_fixture: directive, max_tokens: 256,
+        messages: [
+            { role: 'user', content: `${token}-claude` },
+            { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu-1', content: '已记下公开线索。' }] },
+        ],
+    });
+    const claudeSecondJson = await claudeSecond.json();
+    assert.equal(claudeSecondJson.stop_reason, 'end_turn');
+    assert.equal(claudeSecondJson.content.some((block) => block.type === 'tool_use'), false);
+    assert.equal(claudeSecondJson.content.find((block) => block.type === 'text')?.text, follow);
+
+    const rows = (await fixture.api.captures()).filter((row) => JSON.stringify(row.body ?? '').includes(token));
+    assert.ok(rows.length >= 6, '三次协议的首轮与后续轮都要留下完整 body');
+    assert.ok(rows.some((row) => row.protocol === 'chat' && row.body.messages?.some((message) => message.role === 'tool' && message.content === '已记下公开线索。')));
+    assert.ok(rows.some((row) => row.protocol === 'responses' && row.body.input?.some((item) => item.type === 'function_call_output')));
+    assert.ok(rows.some((row) => row.protocol === 'anthropic' && JSON.stringify(row.body.messages).includes('tool_result')));
 });
 
 test('MemoryCore fixture extracts only declared matching synthetic facts and returns bounded file-tool steps', () => {

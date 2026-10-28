@@ -335,6 +335,47 @@ for (const protocol of PROTOCOLS) {
     });
 }
 
+test('ANTHROPIC_MESSAGES：重写只保留本轮工具记录，历史工具结果不进入上游', async (t) => {
+    const state = setup(t, 'ANTHROPIC_MESSAGES');
+    const history = [
+        { role: 'user', content: [{ type: 'text', text: '上一轮公开问句' }] },
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_old', name: 'note_clue', input: {} }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_old', content: 'OLD_TOOL_NOTE_PUBLIC' }] },
+        { role: 'assistant', content: [{ type: 'text', text: '上一轮后续文本' }] },
+    ];
+    const fresh = anthropicFinal({
+        messages: [...history, { role: 'user', content: [{ type: 'text', text: PLAYER }] }],
+    });
+    await runTurn(state, 'ANTHROPIC_MESSAGES', generateBody('ANTHROPIC_MESSAGES'), fresh);
+    assert.equal(state.upstream.length, 1);
+    const freshSent = JSON.stringify(state.upstream[0].body.messages);
+    assert.equal(freshSent.includes('toolu_old'), false);
+    assert.equal(freshSent.includes('OLD_TOOL_NOTE_PUBLIC'), false);
+    assert.equal(freshSent.includes('上一轮公开问句'), false);
+    assert.equal(freshSent.includes('上一轮后续文本'), false);
+    assert.equal(freshSent.includes('tool_use'), false);
+    assert.match(freshSent, new RegExp(PLAYER));
+
+    state.upstream.length = 0;
+    const follow = anthropicFinal({
+        messages: [
+            ...history,
+            { role: 'user', content: [{ type: 'text', text: PLAYER }] },
+            { role: 'assistant', content: [{ type: 'text', text: '旁白' }, { type: 'tool_use', id: 'toolu_new', name: 'note_clue', input: {} }] },
+            { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_new', content: 'NEW_TOOL_NOTE_PUBLIC' }] },
+        ],
+    });
+    await runTurn(state, 'ANTHROPIC_MESSAGES', generateBody('ANTHROPIC_MESSAGES'), follow);
+    assert.equal(state.upstream.length, 1);
+    const followSent = JSON.stringify(state.upstream[0].body.messages);
+    assert.equal(followSent.includes('toolu_old'), false);
+    assert.equal(followSent.includes('OLD_TOOL_NOTE_PUBLIC'), false);
+    assert.equal(followSent.includes('旁白'), false);
+    assert.match(followSent, /toolu_new/);
+    assert.match(followSent, /NEW_TOOL_NOTE_PUBLIC/);
+    assert.match(followSent, new RegExp(PLAYER));
+});
+
 test('Responses：注入的 reasoning input item 含他人 goal 时不联系上游', async (t) => {
     const state = setup(t, 'OPENAI_RESPONSES');
     state.nextOutput = () => [{

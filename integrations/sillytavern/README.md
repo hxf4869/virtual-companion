@@ -137,6 +137,12 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   `node integrations/sillytavern/scripts/accept-managed.mjs --filter story-view-browser`。
   页面放在现有扩展 `vc-model-settings`（`story-page.js`），因为受管装配只部署该扩展。
   验收覆盖开局、玩家可见视图、桌面三列与 390px 单列；不提交行动、不回档、不显示结局。
+- **`story-outbound`（W13 三协议剧情出站，默认不选）**：先在本链工作目录执行
+  `set -a; . ./.vc-wt.env; set +a`，再用本链端口与容器名运行
+  `node integrations/sillytavern/scripts/accept-managed.mjs --filter story-outbound`。
+  场景会先跑 `catalog-admin`。固定 provider 捕获三协议实际上游 body，并只做一次工具调用后续。
+  断言规范视图、本轮玩家话语与工具记录；世界书探针、他人私密、GM 标记与跨角色 reasoning 不出站。
+  请求正文不写入结果目录。
 - **夹具生命周期**：端口归属检查（ST 8752 / fixture 8753 / Go 8095 任一被监听即退出，不接管）→
   专用 loopback 容器（label `com.vc.w03=managed`，随机 127.0.0.1 端口）：PG `vc-w03-managed-pg`
   （默认镜像 `pgvector/pgvector:0.8.5-pg18`）与 MinIO `vc-w03-managed-minio`（默认镜像

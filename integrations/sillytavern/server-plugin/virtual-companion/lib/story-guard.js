@@ -225,17 +225,35 @@ function chatToolMessages(messages) {
     return out;
 }
 
+function isToolResultOnly(message) {
+    return Array.isArray(message?.content) && message.content.length > 0
+        && message.content.every((block) => block?.type === 'tool_result');
+}
+
+function toolResultContent(block) {
+    return typeof block?.content === 'string' ? block.content : textOf(block?.content);
+}
+
+// 只取贴在末尾的这一轮：assistant 的 tool_use，加上紧随的 tool_result。
+// 更早的工具往返留在原文里供核对，但不进入重写后的上游。
 function anthropicToolMessages(messages) {
-    const out = [];
-    for (const message of messages ?? []) {
-        if (!Array.isArray(message?.content)) continue;
-        const blocks = message.content.filter((block) => block?.type === 'tool_use' || block?.type === 'tool_result');
-        if (!blocks.length) continue;
+    const list = messages ?? [];
+    let end = list.length;
+    while (end > 0 && isToolResultOnly(list[end - 1])) end -= 1;
+    if (end === list.length || end === 0) return [];
+    const assistant = list[end - 1];
+    const uses = Array.isArray(assistant?.content) ? assistant.content.filter((block) => block?.type === 'tool_use') : [];
+    if (!uses.length) return [];
+    const out = [{
+        role: 'assistant',
+        content: uses.map((block) => ({ type: 'tool_use', id: block.id, name: block.name, input: block.input ?? {} })),
+    }];
+    for (const message of list.slice(end)) {
+        const results = (message?.content ?? []).filter((block) => block?.type === 'tool_result');
+        if (!results.length) continue;
         out.push({
-            role: message.role === 'assistant' ? 'assistant' : 'user',
-            content: blocks.map((block) => (block.type === 'tool_use'
-                ? { type: 'tool_use', id: block.id, name: block.name, input: block.input ?? {} }
-                : { type: 'tool_result', tool_use_id: block.tool_use_id, content: typeof block.content === 'string' ? block.content : textOf(block.content) })),
+            role: 'user',
+            content: results.map((block) => ({ type: 'tool_result', tool_use_id: block.tool_use_id, content: toolResultContent(block) })),
         });
     }
     return out;
