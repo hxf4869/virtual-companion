@@ -19,6 +19,9 @@ import (
 var ErrCapability = errors.New("memorycore capability unavailable")
 var ErrReplay = errors.New("memorycore call already consumed")
 var ErrParameters = errors.New("memorycore model parameters unsupported")
+var ErrPurposeDisabled = errors.New("memorycore purpose disabled")
+var ErrCredentialRevoked = errors.New("memorycore credential revoked")
+var ErrBudget = errors.New("memorycore budget denied")
 
 type Store interface {
 	ResolvePurpose(context.Context, postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
@@ -143,13 +146,20 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 			}
 		}
 	}
-	// A configuration revision changed during the operation invalidates this
-	// capability. ResolvePurpose checks both assertions without returning keys.
-	p, err := b.store.ResolvePurpose(ctx, postgres.ResolvePurpose{OwnerAccountID: op.scope.Owner, Purpose: postgres.PurposeMemoryExtraction, ProviderID: op.purpose.ProviderID, ProfileKey: op.purpose.Model.ProfileKey, ProviderRevision: &op.purpose.ProviderRevision, BindingRevision: &op.purpose.BindingRevision})
-	if err != nil {
+	// MODEL01: the in-flight call keeps the snapshot frozen at Open. Sending
+	// still re-reads the purpose with no revision assertion, so a disable or
+	// a revoked credential stops the request. A revision change alone does not.
+	if _, err := b.store.ResolvePurpose(ctx, postgres.ResolvePurpose{OwnerAccountID: op.scope.Owner, Purpose: postgres.PurposeMemoryExtraction}); err != nil {
+		var unavailable *postgres.PurposeUnavailableError
+		if errors.As(err, &unavailable) {
+			if unavailable.Reason == postgres.PurposeReasonCredential {
+				return Response{}, ErrCredentialRevoked
+			}
+			return Response{}, ErrPurposeDisabled
+		}
 		return Response{}, err
 	}
-	r, err := route(p)
+	r, err := route(op.purpose)
 	if err != nil {
 		return Response{}, err
 	}
@@ -160,8 +170,14 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 	if closer, ok := provider.(interface{ Close() }); ok {
 		defer closer.Close()
 	}
-	prep, err := b.store.PrepareMemoryCoreCall(ctx, postgres.MemoryCoreCall{Owner: op.scope.Owner, Job: op.scope.Job, Source: op.scope.Source, ClaimToken: op.scope.ClaimToken, ClaimFence: op.scope.ClaimFence, OperationID: op.scope.OperationID, Stage: req.Stage, CallSequence: req.CallSequence, ProviderID: p.ProviderID, SupplierName: p.ProviderName, ModelID: p.Model.ModelID, InputTokens: tokens, OutputTokens: plan.MaxTokens})
+	prep, err := b.store.PrepareMemoryCoreCall(ctx, postgres.MemoryCoreCall{Owner: op.scope.Owner, Job: op.scope.Job, Source: op.scope.Source, ClaimToken: op.scope.ClaimToken, ClaimFence: op.scope.ClaimFence, OperationID: op.scope.OperationID, Stage: req.Stage, CallSequence: req.CallSequence, ProviderID: op.purpose.ProviderID, SupplierName: op.purpose.ProviderName, ModelID: op.purpose.Model.ModelID, InputTokens: tokens, OutputTokens: plan.MaxTokens})
 	if err != nil {
+		if errors.Is(err, postgres.ErrConflict) {
+			return Response{}, ErrReplay
+		}
+		if errors.Is(err, postgres.ErrRateLimited) {
+			return Response{}, ErrBudget
+		}
 		return Response{}, err
 	}
 	if prep.Decision != "EXTRACTABLE" || prep.AttemptID <= 0 {
@@ -243,4 +259,38 @@ func route(p postgres.ResolvedPurpose) (modelprovider.Route, error) {
 		return modelprovider.Route{}, ErrParameters
 	}
 	return r, nil
+}
+
+// DecisionCode is the closed MEMORYCORE_* class for a callback failure.
+// It never includes request text, provider bodies, or credentials.
+func DecisionCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, ErrReplay), errors.Is(err, postgres.ErrConflict):
+		return "MEMORYCORE_REPLAY"
+	case errors.Is(err, ErrCredentialRevoked):
+		return "MEMORYCORE_CREDENTIAL_REVOKED"
+	case errors.Is(err, ErrPurposeDisabled):
+		return "MEMORYCORE_PURPOSE_DISABLED"
+	case errors.Is(err, ErrBudget), errors.Is(err, postgres.ErrRateLimited):
+		return "MEMORYCORE_BUDGET_DENIED"
+	case errors.Is(err, ErrParameters), companion.Is(err, companion.CodeInvalidRequest):
+		return "MEMORYCORE_PARAMETERS"
+	case errors.Is(err, context.DeadlineExceeded), companion.Is(err, companion.CodeTimeout):
+		return "MEMORYCORE_UPSTREAM_TIMEOUT"
+	case companion.Is(err, companion.CodeMalformed):
+		return "MEMORYCORE_UPSTREAM_MALFORMED"
+	case errors.Is(err, ErrCapability):
+		return "MEMORYCORE_CAPABILITY"
+	}
+	var unavailable *postgres.PurposeUnavailableError
+	if errors.As(err, &unavailable) {
+		if unavailable.Reason == postgres.PurposeReasonCredential {
+			return "MEMORYCORE_CREDENTIAL_REVOKED"
+		}
+		return "MEMORYCORE_PURPOSE_DISABLED"
+	}
+	return "MEMORYCORE_CALLBACK_FAILED"
 }

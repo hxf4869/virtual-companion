@@ -552,6 +552,29 @@ func (s *Store) ResolveProviderRoutes(ctx context.Context) ([]ProviderRoute, err
 	return out, nil
 }
 
+// purposeUnavailableReason explains a non-READY binding. A disabled purpose
+// stays "disabled" even when the credential is also gone; a configured binding
+// with no stored credential is "credential".
+func purposeUnavailableReason(purpose, bindingState string, bound bool, providerState string,
+	credentialConfigured bool, modelState string, contextWindow *int) string {
+	switch {
+	case !bound:
+		return PurposeReasonPending
+	case bindingState != ProviderEnabled:
+		return PurposeReasonDisabled
+	case !credentialConfigured:
+		return PurposeReasonCredential
+	case providerState != ProviderEnabled:
+		return PurposeReasonProvider
+	case modelState != ProviderEnabled:
+		return PurposeReasonModel
+	case purpose != PurposeEmbedding && contextWindow == nil:
+		return PurposeReasonContext
+	default:
+		return PurposeReasonProvider
+	}
+}
+
 // bindingStatus derives the purpose status. A disabled binding is reported as
 // DISABLED even when its target is unusable; chat purposes also require the
 // context window the SillyTavern projection budgets with.
@@ -709,7 +732,7 @@ func (s *Store) ResolvePurpose(ctx context.Context, in ResolvePurpose) (Resolved
 		status := bindingStatus(out.Purpose, bindingState, providerIDText.Valid, providerState,
 			stored.Valid, modelState.String, contextWindow)
 		if status != BindingReady {
-			return &PurposeUnavailableError{Status: status}
+			return &PurposeUnavailableError{Status: status, Reason: purposeUnavailableReason(out.Purpose, bindingState, providerIDText.Valid, providerState, stored.Valid, modelState.String, contextWindow)}
 		}
 		if (in.ProviderID != "" && in.ProviderID != providerID) ||
 			(in.ProfileKey != "" && in.ProfileKey != profileKey.String) ||

@@ -45,6 +45,16 @@ test('callback uses fixed destination and capability; tools stay in staging and 
         const timeout = createCallbackRunner({ baseURL: 'http://127.0.0.1:8095', token: 'x'.repeat(32), operationToken: 'capability', stage: 'l1-extraction',
             fetchImpl: async () => { throw new Error('secret request body'); } });
         await assert.rejects(timeout.run({ prompt: 'x' }), /^Error: MEMORYCORE_CALLBACK_FAILED$/);
+        const refused = createCallbackRunner({ baseURL: 'http://127.0.0.1:8095', token: 'x'.repeat(32), operationToken: 'capability', stage: 'l1-extraction',
+            fetchImpl: async () => new Response(JSON.stringify({ code: 'MEMORYCORE_PURPOSE_DISABLED', message: 'secret dialogue' }), { status: 409 }) });
+        await assert.rejects(refused.run({ prompt: 'secret dialogue' }), (error) => {
+            assert.equal(error.message, 'MEMORYCORE_PURPOSE_DISABLED');
+            assert.equal(String(error.message).includes('secret'), false);
+            return true;
+        });
+        const opaque = createCallbackRunner({ baseURL: 'http://127.0.0.1:8095', token: 'x'.repeat(32), operationToken: 'capability', stage: 'l1-extraction',
+            fetchImpl: async () => new Response('secret dialogue', { status: 500 }) });
+        await assert.rejects(opaque.run({ prompt: 'x' }), /^Error: MEMORYCORE_CALLBACK_FAILED$/);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 

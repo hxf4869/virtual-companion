@@ -14,16 +14,31 @@ type fakeStore struct {
 	purpose            *postgres.ResolvedPurpose
 	prepared, recorded int
 	denied             bool
+	budget             bool
 	outcomes           []postgres.MemoryExtractOutcome
+	resolves           int
+	next               func(postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
 }
 
-func (s *fakeStore) ResolvePurpose(context.Context, postgres.ResolvePurpose) (postgres.ResolvedPurpose, error) {
+func (s *fakeStore) ResolvePurpose(_ context.Context, in postgres.ResolvePurpose) (postgres.ResolvedPurpose, error) {
+	s.resolves++
+	// A send-time recheck that still asserts the Open revisions is the old
+	// MODEL01 failure: configuration drift must not be required to refuse.
+	if s.resolves > 1 && (in.ProviderRevision != nil || in.BindingRevision != nil) {
+		return postgres.ResolvedPurpose{}, &postgres.ResolveConflictError{}
+	}
+	if s.resolves > 1 && s.next != nil {
+		return s.next(in)
+	}
 	if s.purpose != nil {
 		return *s.purpose, nil
 	}
 	return postgres.ResolvedPurpose{ProviderID: "fixture", ProviderName: "Fixture", Protocol: postgres.ProtocolOpenAIChat, Model: postgres.ProviderModel{ModelID: "fixture", MaxOutputTokens: 64, Capabilities: postgres.ModelCapabilities{"systemMessage": postgres.CapabilityVerified}}}, nil
 }
 func (s *fakeStore) PrepareMemoryCoreCall(_ context.Context, in postgres.MemoryCoreCall) (postgres.MemoryExtractPreparation, error) {
+	if s.budget {
+		return postgres.MemoryExtractPreparation{}, postgres.ErrRateLimited
+	}
 	if s.denied {
 		return postgres.MemoryExtractPreparation{}, postgres.ErrConflict
 	}
@@ -129,6 +144,119 @@ func TestModelParameterCapabilityRefusals(t *testing.T) {
 	p.Model.GenerationParams = &postgres.GenerationParams{Temperature: &temperature}
 	if _, err := route(p); !errors.Is(err, ErrParameters) {
 		t.Fatal("Anthropic temperature above supported range accepted")
+	}
+}
+
+func readyPurpose(model string, temperature float64) postgres.ResolvedPurpose {
+	value := temperature
+	return postgres.ResolvedPurpose{
+		ProviderID: "fixture", ProviderName: "Fixture", Protocol: postgres.ProtocolOpenAIChat,
+		ProviderRevision: 3, BindingRevision: 4, Credential: "frozen-credential",
+		Model: postgres.ProviderModel{
+			ProfileKey: "memory", ModelID: model, MaxOutputTokens: 64,
+			Capabilities:     postgres.ModelCapabilities{"temperature": postgres.CapabilityVerified},
+			GenerationParams: &postgres.GenerationParams{Temperature: &value},
+		},
+	}
+}
+
+func openCall(t *testing.T, st *fakeStore, factory func(modelprovider.Route) (companion.Provider, error)) (*Broker, string) {
+	t.Helper()
+	b := New(st, factory)
+	token, err := b.Open(context.Background(), Scope{Owner: 1, Job: 2, Source: 3, ClaimToken: "lease", ClaimFence: "fence", OperationID: "op", ExpiresAt: time.Now().Add(time.Minute)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b, token
+}
+
+func TestCallRefusesDisabledPurposeBeforeUpstream(t *testing.T) {
+	purpose := readyPurpose("frozen-model", 0.2)
+	st := &fakeStore{purpose: &purpose}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	st.next = func(postgres.ResolvePurpose) (postgres.ResolvedPurpose, error) {
+		return postgres.ResolvedPurpose{}, &postgres.PurposeUnavailableError{Status: postgres.BindingDisabled, Reason: postgres.PurposeReasonDisabled}
+	}
+	req := Request{OperationToken: token, Stage: "l2-scene", CallSequence: 1, Messages: []Message{{Role: "user", Content: "synthetic"}}}
+	_, err := b.Call(context.Background(), req)
+	if !errors.Is(err, ErrPurposeDisabled) || DecisionCode(err) != "MEMORYCORE_PURPOSE_DISABLED" || p.calls != 0 || st.prepared != 0 {
+		t.Fatalf("disabled purpose reached upstream: %v calls=%d prepared=%d", err, p.calls, st.prepared)
+	}
+	st.next = nil
+	if _, err = b.Call(context.Background(), req); err != nil || p.calls != 1 {
+		t.Fatalf("refusal consumed the sequence: %v calls=%d", err, p.calls)
+	}
+}
+
+func TestCallRefusesRevokedCredentialBeforeUpstream(t *testing.T) {
+	purpose := readyPurpose("frozen-model", 0.2)
+	st := &fakeStore{purpose: &purpose}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	st.next = func(postgres.ResolvePurpose) (postgres.ResolvedPurpose, error) {
+		return postgres.ResolvedPurpose{}, &postgres.PurposeUnavailableError{Status: postgres.BindingUnavailable, Reason: postgres.PurposeReasonCredential}
+	}
+	_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l2-scene", CallSequence: 1, Messages: []Message{{Role: "user", Content: "synthetic"}}})
+	if !errors.Is(err, ErrCredentialRevoked) || DecisionCode(err) != "MEMORYCORE_CREDENTIAL_REVOKED" || p.calls != 0 || st.prepared != 0 {
+		t.Fatalf("revoked credential reached upstream: %v calls=%d prepared=%d", err, p.calls, st.prepared)
+	}
+}
+
+func TestCallKeepsFrozenSnapshotWhenRevisionChanges(t *testing.T) {
+	purpose := readyPurpose("frozen-model", 0.2)
+	replacement := readyPurpose("replacement-model", 0.9)
+	replacement.ProviderRevision = purpose.ProviderRevision + 1
+	replacement.BindingRevision = purpose.BindingRevision + 1
+	replacement.Credential = "replacement-credential"
+	st := &fakeStore{purpose: &purpose}
+	p := &fakeProvider{}
+	var got modelprovider.Route
+	b, token := openCall(t, st, func(route modelprovider.Route) (companion.Provider, error) { got = route; return p, nil })
+	st.next = func(postgres.ResolvePurpose) (postgres.ResolvedPurpose, error) { return replacement, nil }
+	_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-extraction", CallSequence: 1, Messages: []Message{{Role: "user", Content: "synthetic"}}})
+	if err != nil || p.calls != 1 || st.prepared != 1 {
+		t.Fatalf("revision change failed the in-flight call: %v calls=%d prepared=%d", err, p.calls, st.prepared)
+	}
+	if got.ModelID != "frozen-model" || got.Temperature == nil || *got.Temperature != 0.2 || got.Credential != "frozen-credential" {
+		t.Fatalf("in-flight call left the frozen snapshot: model=%s credential=%s temp=%v", got.ModelID, got.Credential, got.Temperature)
+	}
+}
+
+func TestDecisionCodeClasses(t *testing.T) {
+	cases := []struct {
+		err  error
+		code string
+	}{
+		{nil, ""},
+		{ErrCapability, "MEMORYCORE_CAPABILITY"},
+		{ErrReplay, "MEMORYCORE_REPLAY"},
+		{postgres.ErrConflict, "MEMORYCORE_REPLAY"},
+		{ErrPurposeDisabled, "MEMORYCORE_PURPOSE_DISABLED"},
+		{ErrCredentialRevoked, "MEMORYCORE_CREDENTIAL_REVOKED"},
+		{ErrBudget, "MEMORYCORE_BUDGET_DENIED"},
+		{postgres.ErrRateLimited, "MEMORYCORE_BUDGET_DENIED"},
+		{ErrParameters, "MEMORYCORE_PARAMETERS"},
+		{companion.InvalidRequest(), "MEMORYCORE_PARAMETERS"},
+		{companion.Timeout(companion.TimeoutTotal, companion.DeliveryUnknown), "MEMORYCORE_UPSTREAM_TIMEOUT"},
+		{context.DeadlineExceeded, "MEMORYCORE_UPSTREAM_TIMEOUT"},
+		{companion.Malformed(companion.DeliveryReceived), "MEMORYCORE_UPSTREAM_MALFORMED"},
+		{errors.New("database down"), "MEMORYCORE_CALLBACK_FAILED"},
+	}
+	for _, tc := range cases {
+		if got := DecisionCode(tc.err); got != tc.code {
+			t.Fatalf("DecisionCode(%v)=%s want %s", tc.err, got, tc.code)
+		}
+	}
+}
+
+func TestCallBudgetRefusalDoesNotSend(t *testing.T) {
+	st := &fakeStore{budget: true}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l2-scene", CallSequence: 1, Messages: []Message{{Role: "user", Content: "synthetic"}}})
+	if !errors.Is(err, ErrBudget) || DecisionCode(err) != "MEMORYCORE_BUDGET_DENIED" || p.calls != 0 || st.prepared != 0 {
+		t.Fatalf("budget refusal sent or misclassified: %v calls=%d prepared=%d", err, p.calls, st.prepared)
 	}
 }
 

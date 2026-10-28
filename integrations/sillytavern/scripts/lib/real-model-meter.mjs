@@ -85,14 +85,15 @@ export function startMeter(upstreamBase, options = {}) {
         } catch {
             res.writeHead(502, { 'content-type': 'application/json' });
             res.end('{"error":"upstream"}');
-            calls.push({ status: 502, roles, kind: 'transport' });
+            calls.push({ status: 502, success: false, roles, kind: 'transport' });
             return;
         }
         const responseBody = Buffer.from(await upstreamResponse.arrayBuffer());
         const rawText = responseBody.toString('utf8');
-        const record = { status: upstreamResponse.status, roles, kind: 'unparsed', chars: 0, keys: [], finish: null, reasoningChars: 0, promptTokens: null, completionTokens: null, totalTokens: null, cost: null, wire: { contentType: upstreamResponse.headers.get('content-type'), envelope: false, outerObject: null, object: null, choices: 0, index: null, content: 'absent', usageBalanced: false }, structure: emptyStructure() };
+        const record = { status: upstreamResponse.status, success: upstreamResponse.ok, roles, kind: 'unparsed', chars: 0, keys: [], finish: null, reasoningChars: 0, promptTokens: null, completionTokens: null, totalTokens: null, cost: null, wire: { contentType: upstreamResponse.headers.get('content-type'), envelope: false, outerObject: null, object: null, choices: 0, index: null, content: 'absent', usageBalanced: false }, structure: emptyStructure() };
         try {
             const body = JSON.parse(rawText);
+            if (body && typeof body === 'object' && typeof body.success === 'boolean') record.success = body.success;
             const payload = completionOf(body);
             const choice = payload?.choices?.[0] || {};
             const message = choice.message || {};

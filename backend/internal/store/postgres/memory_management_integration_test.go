@@ -131,6 +131,7 @@ func TestManagedMemoryFiltersIsolationCorrectionAndForget(t *testing.T) {
 	if state.Lifecycle != "FORGETTING" || state.RecallEligible || state.Cleanup.State != "PENDING" {
 		t.Fatalf("suppression %+v", state)
 	}
+	assertForgottenBodyGone(t, ctx, 1, id, "我改到11月6日去杭州参加婚礼")
 	if err = testEnv.store.continueMemoryCleanup(ctx, 1, id); err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +143,7 @@ func TestManagedMemoryFiltersIsolationCorrectionAndForget(t *testing.T) {
 	if state.Lifecycle != "FORGOTTEN" || state.Cleanup.State != "DONE" {
 		t.Fatalf("cleanup %+v", state)
 	}
+	assertForgottenBodyGone(t, ctx, 1, id, "我改到11月6日去杭州参加婚礼")
 	if calls["/internal/commit"] != 1 || calls["/internal/correct-propose"] != 1 || calls["/internal/forget"] != 1 {
 		t.Fatalf("unexpected calls %v", calls)
 	}
@@ -163,6 +165,76 @@ func TestManagedMemoryFiltersIsolationCorrectionAndForget(t *testing.T) {
 		t.Fatal("invalidated proposal reached engine commit")
 	}
 
+}
+
+func assertForgottenBodyGone(t *testing.T, ctx context.Context, owner, id int64, sentence string) {
+	t.Helper()
+	detail, err := testEnv.store.GetManagedMemory(ctx, owner, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row struct {
+		Summary        string `json:"summary"`
+		RelationshipID string `json:"relationshipId"`
+	}
+	if json.Unmarshal(detail, &row) != nil || row.Summary != "" || strings.Contains(string(detail), sentence) {
+		t.Fatalf("forgotten detail still holds body: %s", detail)
+	}
+	rel, err := strconv.ParseInt(row.RelationshipID, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, _, err := testEnv.store.ListManagedMemories(ctx, owner, rel, MemoryFilters{Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, raw := range listed {
+		var item struct {
+			ID      string `json:"memoryId"`
+			Summary string `json:"summary"`
+		}
+		if json.Unmarshal(raw, &item) != nil {
+			t.Fatal("list row")
+		}
+		if item.ID == strconv.FormatInt(id, 10) {
+			seen = true
+			if item.Summary != "" {
+				t.Fatalf("list summary %q", item.Summary)
+			}
+		}
+		if strings.Contains(item.Summary, sentence) {
+			t.Fatal("list still holds forgotten body")
+		}
+	}
+	if !seen {
+		t.Fatal("forgotten tombstone missing from list")
+	}
+	evidence, err := testEnv.store.ManagedMemoryEvidence(ctx, owner, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence) == 0 {
+		t.Fatal("forgotten evidence rows missing")
+	}
+	for _, raw := range evidence {
+		var ev struct {
+			Excerpt string `json:"excerpt"`
+		}
+		if json.Unmarshal(raw, &ev) != nil || ev.Excerpt != "" || strings.Contains(string(raw), sentence) {
+			t.Fatalf("evidence still holds body: %s", raw)
+		}
+	}
+	conn, err := pgx.Connect(ctx, IsolationSuperDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	var summary string
+	var correction *string
+	if err = conn.QueryRow(ctx, `SELECT summary, correction_summary FROM vc.memory_item WHERE owner_user_id=$1 AND id=$2`, owner, id).Scan(&summary, &correction); err != nil || summary != "" || correction != nil {
+		t.Fatalf("stored body summary=%q correction=%v err=%v", summary, correction, err)
+	}
 }
 
 func TestForgetDropsDerivedProfileAcrossSharedSessionsUntilRebuild(t *testing.T) {
