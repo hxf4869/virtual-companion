@@ -174,6 +174,16 @@ func (s *Server) handleStoryOutboundCheck(w http.ResponseWriter, r *http.Request
 		s.writeAPIError(w, http.StatusConflict, "REVISION_CONFLICT", "story world conflict")
 		return
 	}
+	// 局已装入但会话身份对不上：与世界版本冲突同一类，409，不回显任何身份。
+	// 会话不是 STORY 或身份为空时，store 返回 ErrNotFound，上面已经写成 404。
+	if facts.ChatIdentity == "" {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	if facts.ChatIdentity != body.ChatIdentity {
+		s.writeAPIError(w, http.StatusConflict, "REVISION_CONFLICT", "story world conflict")
+		return
+	}
 	texts := make([]string, 0, len(body.Messages)+len(body.System)+len(body.Instructions)+len(body.ToolDefinitions)+len(body.ToolResults))
 	texts = append(texts, body.Messages...)
 	texts = append(texts, body.System...)

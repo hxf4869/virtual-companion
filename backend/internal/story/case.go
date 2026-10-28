@@ -108,6 +108,7 @@ type definition struct {
 		Name          string `json:"name"`
 		Role          string `json:"role"`
 		PublicPersona string `json:"public_persona"`
+		Goal          string `json:"goal"`
 	} `json:"actors"`
 	GM struct {
 		Marker        string `json:"marker"`

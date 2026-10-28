@@ -73,6 +73,7 @@ func (m *storyWorldHTTPStore) LoadStoryActor(_ context.Context, owner, runID, br
 	return postgres.StoryActorFacts{
 		ConversationID: 7, RunID: 11, BranchID: 13, ActorID: actorID,
 		CaseID: "rainy-inn-v1", WorldVersion: 0, Events: storyProbeEvents(),
+		ChatIdentity: "10000000-0000-4000-8000-000000000007",
 	}, nil
 }
 
@@ -623,6 +624,61 @@ func TestStoryOutboundCheckSchemaDoesNotCarryFacts(t *testing.T) {
 			t.Fatalf("result schema contains %s", name)
 		}
 	}
+}
+
+func TestStoryOutboundCheckRejectsOtherNPCGoal(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	zhouGoal := "避免承认擅自拿走怀表；证据充分时可归还钥匙。"
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"messages": []string{zhouGoal},
+	}))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("lin seeing zhou goal status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "ACCESS_DENIED")
+	if !strings.Contains(rec.Body.String(), "story outbound rejected") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+	assertStoryOutboundClean(t, rec.Body.String())
+	assertStoryOutboundClean(t, logs.String())
+}
+
+func TestStoryOutboundCheckAllowsOwnNPCGoal(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	zhouGoal := "避免承认擅自拿走怀表；证据充分时可归还钥匙。"
+	rec := postStoryOutbound(t, s, "zhou", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"messages": []string{zhouGoal},
+	}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("zhou own goal status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.TrimSpace(rec.Body.String()) != `{"passed":true}` {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+	assertStoryOutboundClean(t, logs.String())
+}
+
+func TestStoryOutboundCheckChatIdentityMustMatchRun(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	const wrong = "10000000-0000-4000-8000-000000000099"
+	const bound = "10000000-0000-4000-8000-000000000007"
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"chatIdentity": wrong,
+	}))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("mismatched chatIdentity status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "REVISION_CONFLICT")
+	if !strings.Contains(rec.Body.String(), "story world conflict") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+	for _, id := range []string{wrong, bound} {
+		if strings.Contains(rec.Body.String(), id) || strings.Contains(logs.String(), id) {
+			t.Fatalf("chat identity echoed: %s", id)
+		}
+	}
+	assertStoryOutboundClean(t, rec.Body.String())
+	assertStoryOutboundClean(t, logs.String())
 }
 
 func spaceEveryHTTP(s string) string {

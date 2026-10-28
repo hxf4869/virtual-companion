@@ -7,12 +7,69 @@
 
 import { BridgeError } from './errors.js';
 
-async function goFetch(config, path, init) {
+async function goFetch(config, path, init = {}) {
     if (!config.goBaseUrl) {
         throw new BridgeError(503, 'VC_GO_NOT_CONFIGURED', '未配置 VC_ST_GO_BASE_URL，无法访问 Go 服务');
     }
-    const url = config.goBaseUrl + path;
-    return fetch(url, { ...init, signal: AbortSignal.timeout(config.timeoutMs) });
+    const timeout = AbortSignal.timeout(config.timeoutMs);
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    return fetch(config.goBaseUrl + path, { ...init, signal });
+}
+
+function storySessionHeaders(request) {
+    const headers = { Accept: 'application/json' };
+    const pairs = String(request?.headers?.cookie || '').split(';').map((part) => part.trim()).filter(Boolean);
+    const cookie = pairs.filter((part) => /^(vc_session|vc_csrf)=/.test(part)).join('; ');
+    if (cookie) headers.Cookie = cookie;
+    for (const field of ['origin', 'x-vc-expected-account-id', 'x-vc-expected-session-id']) {
+        if (typeof request?.headers?.[field] === 'string') headers[field] = request.headers[field];
+    }
+    return headers;
+}
+
+/** 用浏览器会话读取一个 actor 的 ActorView。不携带服务令牌。 */
+export async function fetchStoryActorView(config, { request, runId, branchId, actorId, worldVersion, signal }) {
+    const path = `/api/v1/story/runs/${encodeURIComponent(runId)}/actors/${encodeURIComponent(actorId)}/view?branchId=${encodeURIComponent(branchId)}&worldVersion=${encodeURIComponent(String(worldVersion))}`;
+    const res = await goFetch(config, path, { method: 'GET', headers: storySessionHeaders(request), signal });
+    if (res.status === 401) {
+        throw new BridgeError(401, 'VC_GO_SESSION_REQUIRED', '尚未登录 Go 会话（vc_session）；请先完成 Go 登录后再生成');
+    }
+    if (res.status === 404) throw new BridgeError(404, 'VC_STORY_VIEW_UNAVAILABLE', '当前剧情视角不可用');
+    if (res.status === 409) throw new BridgeError(409, 'VC_STORY_VIEW_CONFLICT', '剧情世界版本冲突，请重新加载');
+    if (!res.ok) throw new BridgeError(502, 'VC_STORY_VIEW_FAILED', `剧情视角读取失败（HTTP ${res.status}）`);
+    try {
+        return await res.json();
+    } catch {
+        throw new BridgeError(502, 'VC_STORY_VIEW_FAILED', '剧情视角响应无效');
+    }
+}
+
+/** 服务令牌调用 outbound-check。非 200 或 passed 不为 true 都拒绝，不回显响应正文。 */
+export async function checkStoryOutbound(config, { runId, actorId, body, signal }) {
+    if (!config.serviceToken) {
+        throw new BridgeError(503, 'VC_SERVICE_TOKEN_MISSING', '未配置 VC_ST_PLUGIN_SERVICE_TOKEN，剧情出站核对不可用');
+    }
+    const path = `/api/v1/story/runs/${encodeURIComponent(runId)}/actors/${encodeURIComponent(actorId)}/outbound-check`;
+    const res = await goFetch(config, path, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${config.serviceToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal,
+    });
+    let json = null;
+    try {
+        json = await res.json();
+    } catch {
+        json = null;
+    }
+    if (res.status !== 200 || json?.passed !== true) {
+        throw new BridgeError(409, 'VC_STORY_OUTBOUND_REJECTED', '剧情出站核对未通过，已拒绝联系上游');
+    }
+    return json;
 }
 
 /** 用浏览器同主机携带的 vc_session 核验真实 Owner；GET 无需 CSRF。返回 sessionIdentityJSON。 */

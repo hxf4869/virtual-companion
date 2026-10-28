@@ -63,6 +63,12 @@ func hiddenFor(def definition, actorID string) []string {
 		add(item.Fact)
 		add(item.Marker)
 	}
+	for _, actor := range def.Actors {
+		if actor.ID == actorID {
+			continue
+		}
+		add(actor.Goal)
+	}
 	return out
 }
 

@@ -169,6 +169,31 @@ func insertRune(s string, extra rune) string {
 	return b.String()
 }
 
+func TestCheckOutboundHidesOtherNPCGoals(t *testing.T) {
+	zhouGoal := "避免承认擅自拿走怀表；证据充分时可归还钥匙。"
+	linGoal := "找回怀表并澄清自己未离开厨房的时间。"
+	suGoal := "如实提供有限目击信息，不把推测说成亲眼所见。"
+	for _, hidden := range []string{zhouGoal, spaceEvery(zhouGoal), suGoal} {
+		err := CheckOutbound("rainy-inn-v1", "lin", []string{hidden}, false)
+		if !errors.Is(err, ErrOutboundRejected) {
+			t.Fatalf("lin accepted other goal %q: %v", hidden, err)
+		}
+		if err.Error() != "story outbound rejected" {
+			t.Fatalf("rejection error = %q", err.Error())
+		}
+		assertNoEcho(t, err.Error())
+	}
+	if err := CheckOutbound("rainy-inn-v1", "zhou", []string{zhouGoal, spaceEvery(zhouGoal)}, false); err != nil {
+		t.Fatalf("zhou own goal rejected: %v", err)
+	}
+	if err := CheckOutbound("rainy-inn-v1", "lin", []string{linGoal, spaceEvery(linGoal)}, false); err != nil {
+		t.Fatalf("lin own goal rejected: %v", err)
+	}
+	if err := CheckOutbound("rainy-inn-v1", "zhou", []string{linGoal}, false); !errors.Is(err, ErrOutboundRejected) {
+		t.Fatalf("zhou accepted lin goal: %v", err)
+	}
+}
+
 func fullwidthASCII(s string) string {
 	var b strings.Builder
 	for _, r := range s {
