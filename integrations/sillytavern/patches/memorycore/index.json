@@ -1,6 +1,20 @@
 {
   "schema": "vc-memorycore-patches-v1",
   "upstream_commit": "084bed45cad6bb7f877455082cee82835d65671a",
-  "specs": [],
-  "note": "W08-1 foundation consumes unmodified local storage only; business patches belong to W08-3. Specs use scripts/lib/patcher.mjs."
+  "specs": [
+    "01-prepare.json",
+    "02-record.json",
+    "03-dedup.json",
+    "04-strict-sql.json",
+    "05-commit.json",
+    "06-cleanup.json",
+    "07-space.json",
+    "08-isolation.json",
+    "09-prefilter.json",
+    "10-relevance.json",
+    "10-score-types.json",
+    "11-staging.json"
+  ],
+  "note": "W08-3 controlled operations; runtime copy only. Four groups; changed_lines is actual unified diff additions/deletions.",
+  "changed_lines": 318
 }

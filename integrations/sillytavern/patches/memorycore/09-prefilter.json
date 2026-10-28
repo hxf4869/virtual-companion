@@ -1,0 +1,68 @@
+{
+  "id": "vc-memorycore-09-prefilter",
+  "group": "prefilter",
+  "reason": "Intersect allowlist and identity in SQL before KNN/FTS Top-K; avoid missing-ID sqlite-vec alpha trap.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream prefilters both retrieval lanes and exposes raw calibration scores.",
+  "target": "MemoryCore/src/core/store/sqlite/memory-store.ts",
+  "expected_input_sha256": "1de0f43f97022f334cc74645d94c2deb22137850beac3e7f6abfb193c17ba0b0",
+  "expected_output_sha256": "255da47c419baba9fb860ef3a7ccbc5e372769d8bb2e17a84e437af93fe4f5be",
+  "changed_lines": {
+    "added": 36,
+    "removed": 13
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "import { DEFAULT_ISOLATION_ID, rowMatchesIsolation }",
+      "to": "import { DEFAULT_ISOLATION_ID, rowMatchesIsolation, buildIsolationWhere }",
+      "count": 1
+    },
+    {
+      "from": "  searchL1Vector(queryEmbedding: Float32Array, topK = 5, _queryText?: string, filter?: IsolationFilter): VectorSearchResult[] {",
+      "to": "  private controlledIds(filter: IsolationFilter, layer: \"l0\" | \"l1\", vectors = false): string[] {\n    const table = layer === \"l1\" ? \"l1_records\" : \"l0_conversations\";\n    const where = buildIsolationWhere(filter);\n    const vectorGuard = vectors ? ` AND record_id IN (SELECT record_id FROM ${layer}_vec)` : \"\";\n    return (this.db.prepare(`SELECT record_id FROM ${table} WHERE ${where.clause || \"1\"}${vectorGuard}`)\n      .all(...where.params) as Array<{record_id: string}>).map(r => r.record_id);\n  }\n\n  searchL1Vector(queryEmbedding : Float32Array, topK = 5, _queryText?: string, filter?: IsolationFilter): VectorSearchResult[] {",
+      "count": 1
+    },
+    {
+      "from": "      const rows = this.stmtSearchVec!.all(\n        Buffer.from(queryEmbedding.buffer),\n        retrieveCount,\n      ) as Array<{ record_id: string; distance: number }>;",
+      "to": "      const ids = filter ? this.controlledIds(filter, \"l1\", true) : undefined;\n      if (ids?.length === 0 || this.getSpace()?.rebuilding) return [];\n      const statement = ids ? this.db.prepare(`SELECT record_id, distance FROM l1_vec\n        WHERE embedding MATCH ? AND k=? AND record_id IN (SELECT value FROM json_each(?)) ORDER BY distance`) : this.stmtSearchVec!;\n      const rows = statement.all(Buffer.from(queryEmbedding.buffer, queryEmbedding.byteOffset, queryEmbedding.byteLength),\n        retrieveCount, ...(ids ? [JSON.stringify(ids)] : [])) as Array<{ record_id: string; distance: number }>;",
+      "count": 1
+    },
+    {
+      "from": "      const rows = this.stmtL0SearchVec!.all(\n        Buffer.from(queryEmbedding.buffer),\n        retrieveCount,\n      ) as Array<{ record_id: string; distance: number }>;",
+      "to": "      const ids = filter ? this.controlledIds(filter, \"l0\", true) : undefined;\n      if (ids?.length === 0 || this.getSpace()?.rebuilding) return [];\n      const statement = ids ? this.db.prepare(`SELECT record_id, distance FROM l0_vec\n        WHERE embedding MATCH ? AND k=? AND record_id IN (SELECT value FROM json_each(?)) ORDER BY distance`) : this.stmtL0SearchVec!;\n      const rows = statement.all(Buffer.from(queryEmbedding.buffer, queryEmbedding.byteOffset, queryEmbedding.byteLength),\n        retrieveCount, ...(ids ? [JSON.stringify(ids)] : [])) as Array<{ record_id: string; distance: number }>;",
+      "count": 1
+    },
+    {
+      "from": "      const rows = this.stmtL1FtsSearch.all(ftsQuery, retrieveLimit)",
+      "to": "      const ids = filter ? this.controlledIds(filter, \"l1\") : undefined;\n      if (ids?.length === 0) return [];\n      const statement = ids ? this.db.prepare(`SELECT *, content_original AS content, bm25(l1_fts) AS rank\n        FROM l1_fts WHERE l1_fts MATCH ? AND record_id IN (SELECT value FROM json_each(?)) ORDER BY rank ASC LIMIT ?`) : this.stmtL1FtsSearch;\n      const rows = statement.all(ftsQuery, ...(ids ? [JSON.stringify(ids)] : []), retrieveLimit)",
+      "count": 1
+    },
+    {
+      "from": "      const rows = this.stmtL0FtsSearch.all(ftsQuery, retrieveLimit)",
+      "to": "      const ids = filter ? this.controlledIds(filter, \"l0\") : undefined;\n      if (ids?.length === 0) return [];\n      const statement = ids ? this.db.prepare(`SELECT *, message_text_original AS message_text, bm25(l0_fts) AS rank\n        FROM l0_fts WHERE l0_fts MATCH ? AND record_id IN (SELECT value FROM json_each(?)) ORDER BY rank ASC LIMIT ?`) : this.stmtL0FtsSearch;\n      const rows = statement.all(ftsQuery, ...(ids ? [JSON.stringify(ids)] : []), retrieveLimit)",
+      "count": 1
+    },
+    {
+      "from": "          score: bm25RankToScore(r.rank),\n          timestamp_str:",
+      "to": "          score: bm25RankToScore(r.rank),\n          ftsRank: r.rank,\n          timestamp_str:",
+      "count": 1
+    },
+    {
+      "from": "          score: bm25RankToScore(r.rank),\n          recorded_at:",
+      "to": "          score: bm25RankToScore(r.rank),\n          ftsRank: r.rank,\n          recorded_at:",
+      "count": 1
+    },
+    {
+      "from": "      let rows = raw as unknown as L1RecordRow[];",
+      "to": "      let rows = (raw as unknown as L1RecordRow[]);\n      if (filter?.recordIds !== undefined) rows = rows.filter(r => filter.recordIds!.includes(r.record_id));",
+      "count": 1
+    }
+  ]
+}

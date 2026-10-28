@@ -48,6 +48,7 @@ func ForbiddenPlanes() []Plane {
 // from the environment or private files outside the repository and are
 // never logged.
 type Config struct {
+	MemoryCoreCallbackToken string
 	// MonthlyCostLimit is the global model-cost admission cap in micro-USD. Zero refuses outbound calls.
 	MonthlyCostLimit int64
 	Mode             Mode
@@ -292,7 +293,8 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			CookieSecure: true,
 			ReauthWindow: 15 * time.Minute,
 		},
-		STPlugin: STPlugin{ServiceToken: strings.TrimSpace(getenv("VC_ST_PLUGIN_SERVICE_TOKEN")), HostBaseURL: strings.TrimSpace(getenv("VC_ST_HOST_BASE_URL"))},
+		MemoryCoreCallbackToken: strings.TrimSpace(getenv("VC_MEMORYCORE_CALLBACK_TOKEN")),
+		STPlugin:                STPlugin{ServiceToken: strings.TrimSpace(getenv("VC_ST_PLUGIN_SERVICE_TOKEN")), HostBaseURL: strings.TrimSpace(getenv("VC_ST_HOST_BASE_URL"))},
 		Concurrency: Concurrency{
 			// §19.5 Owner-only product defaults: serial worker, 8 outstanding,
 			// 5-minute queue timeout. Benchmark profiles override per run and
@@ -619,6 +621,9 @@ func (c Config) Validate() error {
 		if err := requireAESKey(c.Crypto.PreviousRestKeyBase64); err != nil {
 			return fmt.Errorf("VC_CRYPTO_PREVIOUS_REST_KEY: %w", err)
 		}
+	}
+	if c.MemoryCoreCallbackToken != "" && (len(c.MemoryCoreCallbackToken) < 32 || strings.ContainsAny(c.MemoryCoreCallbackToken, " \r\n\t")) {
+		return fmt.Errorf("VC_MEMORYCORE_CALLBACK_TOKEN must contain at least 32 non-whitespace bytes")
 	}
 	if c.STPlugin.ServiceToken != "" && len(c.STPlugin.ServiceToken) < 32 {
 		return fmt.Errorf("VC_ST_PLUGIN_SERVICE_TOKEN must be at least 32 characters when set")

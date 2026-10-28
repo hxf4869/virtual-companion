@@ -397,6 +397,7 @@ export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies, expec
 
 /** accept-managed 的验收场景注册表。needs 声明运行依赖，编排按需补齐。 */
 export const SCENES = [
+    { id: 'memorycore-native', title: 'W08 受控 MemoryCore 固定源码、SQLite、范围与本机 embedding', needs: ['memorycore'], default: false },
     { id: 'memorycore-foundation', title: 'W08 MemoryCore 固定源码基础服务、鉴权、重启与数据保留', needs: ['memorycore'], default: false },
     { id: 'login-shape', title: '合成 Owner 登录请求形状（真实 POST /api/v1/auth/login）', needs: ['go'], default: true },
     { id: 'catalog-admin', title: 'Go 侧建 provider/模型/用途绑定 + UI03 API 面（保存/读回/Key 三态/独立用途/409 保留草稿）', needs: ['go', 'fixture'], default: true },

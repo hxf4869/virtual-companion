@@ -62,6 +62,7 @@ import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-proto
 import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
 import { sceneSourceNative, sceneRightsBrowser, sceneRightsNative } from './w06-accept.mjs';
 import { sceneMemoryBrowser } from './w07-accept.mjs';
+import { sceneMemorycoreNative } from './w08-native-accept.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
 
 // ---------------------------------------------------------------------------
@@ -1676,6 +1677,7 @@ async function runDryRun() {
 
 const SCENE_IMPLS = {
     'memorycore-foundation': sceneMemorycoreFoundation,
+    'memorycore-native': sceneMemorycoreNative,
     'login-shape': sceneLoginShape,
     'catalog-admin': sceneCatalogAdmin,
     'zero-upstream-on-save': sceneZeroUpstreamOnSave,

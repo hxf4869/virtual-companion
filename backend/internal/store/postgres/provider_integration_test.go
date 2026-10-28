@@ -433,3 +433,32 @@ func TestPurposeBindingsAndServiceResolution(t *testing.T) {
 		t.Fatalf("revoked key err=%v", err)
 	}
 }
+
+func TestModelSamplingCapabilitiesRoundTrip(t *testing.T) {
+	store := resetCatalogFixtures(t)
+	ctx := context.Background()
+	model := catalogModel("memory", "sampling-model", intPtr(32768))
+	model.Capabilities = ModelCapabilities{"temperature": CapabilityDeclared, "topP": CapabilityUnsupported}
+	model.GenerationParams = &GenerationParams{Temperature: f64Ptr(0.25), TopP: f64Ptr(0.75)}
+	in := SaveProvider{ProviderID: "sampling", DisplayName: "Sampling fixture", Protocol: ProtocolOpenAIChat, BaseURL: "https://example.test/v1", Credential: "synthetic", State: ProviderEnabled, Models: []ProviderModel{model}}
+	if _, err := store.SaveProviderConfig(ctx, 7, in); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SavePurposeBinding(ctx, 7, SavePurposeBinding{Purpose: PurposeMemoryExtraction, ProviderID: "sampling", ProfileKey: "memory", State: ProviderEnabled}); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := store.ResolvePurpose(ctx, ResolvePurpose{OwnerAccountID: 1, Purpose: PurposeMemoryExtraction})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Model.Capabilities["temperature"] != CapabilityDeclared || resolved.Model.Capabilities["topP"] != CapabilityUnsupported || resolved.Model.Capabilities["systemMessage"] != CapabilityUnknown {
+		t.Fatalf("capabilities not preserved: %+v", resolved.Model.Capabilities)
+	}
+	if *resolved.Model.GenerationParams.Temperature != 0.25 || *resolved.Model.GenerationParams.TopP != 0.75 {
+		t.Fatal("parameters changed")
+	}
+	in.Models[0].Capabilities["temperature"] = CapabilityVerified
+	if _, err := store.SaveProviderConfig(ctx, 7, in); err == nil {
+		t.Fatal("administrator forged verified sampling capability")
+	}
+}

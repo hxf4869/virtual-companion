@@ -1,0 +1,73 @@
+{
+  "id": "vc-memorycore-03-dedup",
+  "group": "proposal-commit",
+  "reason": "Reject extraction dedup timeout/malformed/partial decisions instead of silently storing duplicates.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream offers strict failure propagation and complete decision validation.",
+  "target": "MemoryCore/src/core/record/l1-dedup.ts",
+  "expected_input_sha256": "359cae39a3b2659760b4bf2656b7753a2c3c4dce7d0b180ee6ded6a1649204f7",
+  "expected_output_sha256": "cb47ca2d392ccdf9129871e1baf2c43b4b7483ea0a969976d46ac6189bf3fa26",
+  "changed_lines": {
+    "added": 15,
+    "removed": 7
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "  memories: Array<ExtractedMemory & { record_id: string }>;\n  config:",
+      "to": "  memories: Array<ExtractedMemory & { record_id: string }>;\n  strict?: boolean;\n  config:",
+      "count": 1
+    },
+    {
+      "from": "return runLlmJudgment(matches, memories, config, logger, model, promptMode, llmRunner, traceContext);",
+      "to": "return runLlmJudgment(matches, memories, config, logger, model, promptMode, llmRunner, traceContext, params.strict);",
+      "count": 1
+    },
+    {
+      "from": "  traceContext?: TraceContext,\n): Promise<DedupDecision[]> {",
+      "to": "  traceContext?: TraceContext,\n  strict = false,\n): Promise<DedupDecision[]> {",
+      "count": 1
+    },
+    {
+      "from": "const decisions = parseBatchResult(result, memories, logger);",
+      "to": "const decisions = parseBatchResult(result, memories, logger, strict);",
+      "count": 1
+    },
+    {
+      "from": "  } catch (err) {\n    logger?.warn?.(\n      `${TAG} Batch conflict detection failed",
+      "to": "  } catch (err) {\n    if (strict) throw err;\n    logger?.warn?.(\n      `${TAG} Batch conflict detection failed ",
+      "count": 1
+    },
+    {
+      "from": "  logger?: Logger,\n): DedupDecision[] {",
+      "to": "  logger?: Logger,\n  strict = false,\n): DedupDecision[] {",
+      "count": 1
+    },
+    {
+      "from": "      logger?.warn?.(`${TAG} No JSON array found",
+      "to": "      if (strict) throw new Error(\"DEDUP_INVALID\");\n      logger?.warn?.(`${TAG} JSON array missing ",
+      "count": 1
+    },
+    {
+      "from": "      const action = String(d.action ?? \"store\");",
+      "to": "      const action = String((d.action ?? \"store\"));\n      if (strict && (!memories.some(m => m.record_id === recordId) || decisions.some(d => d.record_id === recordId) || !validActions.includes(action) || !Array.isArray(d.target_ids))) throw new Error(\"DEDUP_INVALID\");",
+      "count": 1
+    },
+    {
+      "from": "      if (!decidedIds.has(mem.record_id)) {",
+      "to": "      if (decidedIds.has(mem.record_id) === false) {\n        if (strict) throw new Error(\"DEDUP_INCOMPLETE\");",
+      "count": 1
+    },
+    {
+      "from": "    logger?.warn?.(`${TAG} Failed to parse conflict detection result:",
+      "to": "    if (strict) throw err;\n    logger?.warn?.(`${TAG} Failed to parse conflict detection result :",
+      "count": 1
+    }
+  ]
+}

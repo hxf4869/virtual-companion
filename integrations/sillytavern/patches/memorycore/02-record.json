@@ -1,0 +1,28 @@
+{
+  "id": "vc-memorycore-02-record",
+  "group": "proposal-commit",
+  "reason": "Build prepared records without JSONL, model calls, or embeddings; source time is trusted input.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream provides pure record preparation with caller-owned time and versions.",
+  "target": "MemoryCore/src/core/record/l1-writer.ts",
+  "expected_input_sha256": "3856e6dd65de1bf780520e27d8f17e7c626fcd3871594a05d61a14a6ffa1232c",
+  "expected_output_sha256": "87915e5a4f787cc6da3f7aa4c0557759beaf02a7c4d86b1319388380d8afee19",
+  "changed_lines": {
+    "added": 12,
+    "removed": 1
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "export function generateMemoryId(): string {",
+      "to": "export function prepareMemoryRecord(memory: ExtractedMemory, decision: DedupDecision,\n  scope: Pick<MemoryRecord, \"sessionKey\" | \"sessionId\" | \"teamId\" | \"userId\" | \"agentId\" | \"taskId\">,\n  recordedAt: string, version: number): MemoryRecord {\n  const replacing = decision.action === \"merge\" || decision.action === \"update\";\n  return { id: decision.record_id, content: replacing ? decision.merged_content ?? memory.content : memory.content,\n    type: replacing ? decision.merged_type ?? memory.type : memory.type,\n    priority: replacing ? decision.merged_priority ?? memory.priority : memory.priority,\n    scene_name: memory.scene_name, source_message_ids: memory.source_message_ids, metadata: memory.metadata,\n    timestamps: [recordedAt], createdAt: recordedAt, updatedAt: recordedAt, version, ...scope };\n}\n\nexport function generateMemoryId() : string {",
+      "count": 1
+    }
+  ]
+}

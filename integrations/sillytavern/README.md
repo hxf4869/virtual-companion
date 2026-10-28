@@ -280,15 +280,16 @@ ST JSONL 的 F2 revision 是持久权威；`vc_message_id` 与每个 swipe 的 `
 ## W08-1 MemoryCore 基础服务
 
 MemoryCore 作为独立 Node 进程运行，默认只监听 `127.0.0.1:8754`（`VC_MEMORYCORE_PORT` 可覆盖）。
-本步只提供基础存储探针、`GET /healthz` 与带内部鉴权的 `GET /readyz`；**不提供提取、召回、模型或向量业务**。
+默认提供基础存储探针、`GET /healthz` 与带内部鉴权的 `GET /readyz`。显式配置 Go 回调后启用下述隔离受控能力；**生产权威尚未切换**。
 `readyz` 的 `foundation=true, storageReady=true, businessReady=false` 仅表示已运行锁定上游的
 `LocalStorageBackend.putObject/getObject/deleteObject` 合成读写探针。没有配置真实模型也能启动，且不会调用模型。
 
-- 上游保持干净；`upstream.lock.json` 锁定 MIT LICENSE、package.json 与两个实际消费的 storage TS 文件 SHA256。
-  固定 commit **没有 MemoryCore 依赖锁**。本步没有新增 npm 依赖，也不安装上游 package.json 的依赖；
-  `node:module.stripTypeScriptTypes` 在装配时擦除类型，不运行上游 postinstall。后续需要第三方依赖时再按实际消费建立自有锁。
+- 上游保持干净；`upstream.lock.json` 锁定 MIT LICENSE、package.json 与实际消费模块。
+  固定 commit 没有依赖锁；集成域 package-lock 固定 sqlite-vec、jieba 与 crc-32 的必要依赖，
+  不安装完整上游依赖，不运行上游 postinstall。装配只转换锁定模块闭包。
 - `memorycore-service/` 是自有包装代码；装配到 `dev-managed/memorycore-run/`，只复制所需模块与 LICENSE。
-  `patches/memorycore/index.json` 当前是空补丁集；后续非空规格必须经过现有 `scripts/lib/patcher.mjs`，不修改上游检出。
+  `patches/memorycore/index.json` 登记提案/严格提交、检索前隔离、清理与向量空间四组补丁；
+  通过现有 `scripts/lib/patcher.mjs` 校验输入/输出再应用，不修改上游检出。
 - 数据在 `dev-managed/memorycore-data/owners/<可信十进制 owner ID>/`；目录 0700、文件 0600、umask 077。
   装配只重建运行副本，保留数据；运行中的服务拒绝重新装配。此目录尚未纳入跨域数据权利／备份，正式数据接入留到后续步骤。
 - 独立服务令牌通过私有运行环境 `VC_MEMORYCORE_SERVICE_TOKEN` 注入（至少 32 字节、无空白），不写入锁、配置、manifest、PID 或日志。
@@ -319,3 +320,28 @@ node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-fou
 启动、健康／就绪、状态、停止、重装配保留合成 owner 数据、重启和最终端口释放，最后只停止该验收进程。
 不启动 Go/PG/MinIO，不调用真实模型，不清理其他受管资源或 `vc-w08-embedding`。
 离线 `tests/memorycore-*.test.mjs` 由现有 `scripts/check.sh` 自动覆盖，不依赖上游检出、Docker 或网络。
+
+
+W08③ 受控能力只面向 Go 内部调用，验收只用合成数据。设置 `VC_MEMORYCORE_CALLBACK_BASE_URL`
+（Go 的 `127.0.0.1` HTTP 地址）和独立 `VC_MEMORYCORE_CALLBACK_TOKEN` 后可使用
+`POST /internal/{propose,commit,operation-status,search,rebuild-profile,rebuild-space,forget,clear-owner,export-owner}`。
+身份、逻辑记忆域、来源、allowlist、revision 与 embedding 快照来自可信 Go；模型只返回内容与动作。
+浏览器不可调用内部接口，MemoryCore 不持有供应商密钥。Go 侧操作能力由 `memorycore.Broker.Open`
+签发；当前没有生产队列调用，④才接线。
+
+`propose` 不写 live；`commit` 的 SQLite 事务先产生 receipt，再发布 JSONL，部分发布可用同操作 ID 恢复。
+L2/L3 在独立 staging 中用受限文件工具生成，`rebuild-profile` 的发布步骤必须带 Go 核验过的完整依赖。
+遗忘先提高 revision，再清理所有相关副本；返回 pending 时不得当作清理完成。SQLite WAL/空闲页及离线备份
+不属于此步骤物理擦除承诺。`businessReady=false` 保持到④的生产来源/数据权利接线完成。
+
+Embedding 使用 Go 专用 `/api/v1/admin/embedding-config` 快照与固定本机 Ollama 端点，制品、维度或预处理
+变化创建新空间。重建期间只允许词检索；`rebuild-space` 完整成功后才恢复向量。
+当前阈值与校准样本见 `memorycore-service/native-engine.mjs`、`scripts/fixtures/memorycore-calibration.json`。
+该校准是本机中文合成集结果，不代表未测试模型或全量真实记忆的召回率。
+
+```bash
+node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native
+```
+
+该受管场景验证固定源码/真实 SQLite/sqlite-vec、10,000 条范围外干扰、中文正负召回、纠正、作用域、
+遗忘、版本屏障与故障恢复；使用现有 `vc-w08-embedding`，结束删除本轮合成数据，保留 embedding 容器。

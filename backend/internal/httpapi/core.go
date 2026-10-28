@@ -14,6 +14,7 @@ import (
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/jobs"
+	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
@@ -159,19 +160,23 @@ type AuthFlowStore interface {
 // against an isolation or cutover database. api-migration never registers
 // these routes (Phase 4 write hard-ban).
 type Core struct {
-	Store     CompanionStore
-	Sessions  auth.Sessions
-	Passwords *auth.Password
-	Blobs     BlobStore
-	Limiter   *auth.Limiter
-	Turns     GenerationAPI
-	Providers ProviderAdminStore
-	AuthFlow  AuthFlowStore
-	Cancels   *jobs.Cancels
-	Hub       *realtime.Hub
+	MemoryCore *memorycore.Broker
+	Store      CompanionStore
+	Sessions   auth.Sessions
+	Passwords  *auth.Password
+	Blobs      BlobStore
+	Limiter    *auth.Limiter
+	Turns      GenerationAPI
+	Providers  ProviderAdminStore
+	AuthFlow   AuthFlowStore
+	Cancels    *jobs.Cancels
+	Hub        *realtime.Hub
 }
 
 func (s *Server) registerCore() {
+	s.mux.HandleFunc("POST /api/v1/service/memorycore/llm", s.handleMemoryCoreLLM)
+	s.mux.HandleFunc("GET /api/v1/admin/embedding-config", s.handleGetEmbeddingConfig)
+	s.mux.HandleFunc("PUT /api/v1/admin/embedding-config", s.handleSaveEmbeddingConfig)
 	s.mux.HandleFunc("POST /api/v1/st/bindings", s.handleResolveSTBinding)
 	s.mux.HandleFunc("POST /api/v1/st/sources/reconcile", s.handleReconcileSTSources)
 	s.mux.HandleFunc("POST /api/v1/st/memory/recall", s.handleSTMemoryRecall)

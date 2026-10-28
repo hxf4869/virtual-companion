@@ -1,0 +1,28 @@
+{
+  "id": "vc-memorycore-06-cleanup",
+  "group": "cleanup",
+  "reason": "Delete L1 vector/FTS/provenance/audit replicas strictly; wrapper owns JSONL/profile cleanup.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream source deletion covers every persisted reference with strict error semantics.",
+  "target": "MemoryCore/src/core/store/sqlite/memory-store.ts",
+  "expected_input_sha256": "faaa2c063dea734ed8cad2061c3174f5c705f3c25bcd2aba37f5e2f97e82b1a3",
+  "expected_output_sha256": "e735f77ed14a492a6f93fb88f912b55c28897c20c6eae7e4ae5742da07e28973",
+  "changed_lines": {
+    "added": 34,
+    "removed": 1
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "  upsertMemoryGenerationRefs(records: MemoryGenerationRefRecord[]): void {",
+      "to": "  private deleteControlledRecord(id: string): void {\n    this.stmtDeleteMeta.run(id);\n    if (this.vecTablesReady) this.stmtDeleteVec!.run(id);\n    if (this.ftsAvailable) this.stmtL1FtsDelete.run(id);\n    this.db.prepare(\"DELETE FROM memory_generation_refs WHERE layer='l1' AND memory_id=?\").run(id);\n    this.db.prepare(\"DELETE FROM memory_audit WHERE layer='L1' AND record_id=?\").run(id);\n  }\n  forgetRecords(ids: string[], filter: IsolationFilter): void {\n    this.db.exec(\"BEGIN IMMEDIATE\");\n    try {\n      for (const id of ids) {\n        const row = this.stmtGetMeta.get(id) as any;\n        if (row && !rowMatchesIsolation(row, filter)) throw new Error(\"DELETE_SCOPE_CONFLICT\");\n        this.deleteControlledRecord(id);\n      }\n      this.db.exec(\"COMMIT\");\n    } catch (error) { this.db.exec(\"ROLLBACK\"); throw error; }\n  }\n\n  forgetSources(ids: string[], filter: IsolationFilter): void {\n    this.db.exec(\"BEGIN IMMEDIATE\");\n    try {\n      for (const id of ids) {\n        const row = this.stmtL0GetMeta.get(id) as any;\n        if (row && !rowMatchesIsolation(row, filter)) throw new Error(\"DELETE_SCOPE_CONFLICT\");\n        this.stmtL0DeleteMeta.run(id);\n        if (this.vecTablesReady) this.stmtL0DeleteVec!.run(id);\n        if (this.ftsAvailable) this.stmtL0FtsDelete.run(id);\n      }\n      this.db.exec(\"COMMIT\");\n    } catch (error) { this.db.exec(\"ROLLBACK\"); throw error; }\n  }\n\n  upsertMemoryGenerationRefs(records : MemoryGenerationRefRecord[]): void {",
+      "count": 1
+    }
+  ]
+}

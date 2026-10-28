@@ -47,6 +47,8 @@ export const CAPABILITY_FIELDS = [
     { key: 'toolCalls', label: '工具调用', kind: 'capability' },
     { key: 'nativeWebSearch', label: '原生联网搜索', kind: 'capability' },
     { key: 'systemMessage', label: 'system 消息', kind: 'capability' },
+    { key: 'temperature', label: 'temperature 参数', kind: 'capability' },
+    { key: 'topP', label: 'topP 参数', kind: 'capability' },
 ];
 
 // 推理等级内部值与后端 V140 约束一致：^[a-z0-9_-]{1,32}$（小写）。

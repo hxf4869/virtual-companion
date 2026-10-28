@@ -3,8 +3,9 @@ catalogId: model-purposes
 note: >-
   V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose
   pins one model profile independently; changing one binding never touches another.
-  EMBEDDING is not one of the three chat protocols and stays PENDING_CONFIGURATION until a
-  dedicated embedding path exists (W08).
+  EMBEDDING uses the dedicated Go embedding configuration (W08), never a chat profile.
+  Its snapshot pins the Ollama artifact digest, dimensions, preprocessing and normalization;
+  any vector-space-defining change allocates a new spaceId. Rebuilding uses lexical recall only.
 entries:
 - code: FOREGROUND_CHAT
   order: 0
@@ -12,6 +13,8 @@ entries:
 - code: MEMORY_EXTRACTION_DEDUP_SUMMARY
   order: 1
   executor: GO_BACKGROUND
+  nonNullSamplingCapabilities: [temperature, topP]
+  acceptedSamplingCapabilityStatuses: [DECLARED, VERIFIED]
 - code: BACKGROUND_GREETINGS
   order: 2
   executor: GO_BACKGROUND
@@ -25,3 +28,10 @@ entries:
   order: 5
   executor: GO_BACKGROUND
   chatProtocolBindable: false
+  configurationPath: /api/v1/admin/embedding-config
+  provider: OLLAMA
+  endpoint: http://127.0.0.1:11438
+  queryPreprocessingVersions: [qwen3-retrieval-v1, identity-v1]
+  documentPreprocessingVersions: [identity-v1]
+  normalizationValues: [l2, none]
+  qwen3QueryTemplate: "Instruct: Given a question, retrieve relevant personal memories that answer the question.\nQuery: ${text}"

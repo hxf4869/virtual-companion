@@ -17,6 +17,9 @@ import (
 var _ companion.Provider = (*Adapter)(nil)
 
 type Config struct {
+	Temperature       *float64
+	TopP              *float64
+	ReasoningEffort   *string
 	BaseURL           string
 	BearerToken       string
 	Model             string
@@ -73,8 +76,12 @@ func (a *Adapter) Stream(ctx context.Context, req companion.ModelRequest, emit f
 		maxTokens = req.MaxTokens
 	}
 	payload := responseRequest{
+		Temperature: a.cfg.Temperature, TopP: a.cfg.TopP,
 		Model: a.cfg.Model, Input: make([]inputMessage, 0, len(req.Messages)),
 		Stream: req.Stream, Store: false, MaxOutputTokens: maxTokens,
+	}
+	if a.cfg.ReasoningEffort != nil {
+		payload.Reasoning = &reasoningParam{Effort: *a.cfg.ReasoningEffort}
 	}
 	for _, m := range req.Messages {
 		payload.Input = append(payload.Input, inputMessage{Role: string(m.Role), Content: m.Content})
@@ -94,11 +101,18 @@ func (a *Adapter) Stream(ctx context.Context, req companion.ModelRequest, emit f
 }
 
 type responseRequest struct {
-	Model           string         `json:"model"`
-	Input           []inputMessage `json:"input"`
-	Stream          bool           `json:"stream"`
-	Store           bool           `json:"store"`
-	MaxOutputTokens int            `json:"max_output_tokens"`
+	Reasoning       *reasoningParam `json:"reasoning,omitempty"`
+	Temperature     *float64        `json:"temperature,omitempty"`
+	TopP            *float64        `json:"top_p,omitempty"`
+	Model           string          `json:"model"`
+	Input           []inputMessage  `json:"input"`
+	Stream          bool            `json:"stream"`
+	Store           bool            `json:"store"`
+	MaxOutputTokens int             `json:"max_output_tokens"`
+}
+
+type reasoningParam struct {
+	Effort string `json:"effort"`
 }
 
 type inputMessage struct {

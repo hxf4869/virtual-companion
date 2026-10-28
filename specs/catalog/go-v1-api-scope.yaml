@@ -9,11 +9,19 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 72
+  KEEP: 75
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
 operations:
+- operationId: callMemoryCoreModel
+  method: POST
+  path: /api/v1/service/memorycore/llm
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: Bounded internal MemoryCore callback with Go-issued operation capability and per-call accounting; no browser authority.
 - operationId: getVersion
   method: GET
   path: /api/v1/version
@@ -955,7 +963,23 @@ operations:
   keepBecause:
   - owner-instruction
   replacementOrImpact: V2-W03 independent per-purpose pinning with revision conflict semantics;
-    EMBEDDING only accepts the pending (unbound) state until W08.
+    EMBEDDING stays unbound here and uses its dedicated embedding configuration endpoint.
+- operationId: getEmbeddingConfiguration
+  method: GET
+  path: /api/v1/admin/embedding-config
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: W08 dedicated local Ollama configuration snapshot; independent of chat profiles.
+- operationId: saveEmbeddingConfiguration
+  method: PUT
+  path: /api/v1/admin/embedding-config
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: W08 ADMIN snapshot update with revision checks and new spaceId when embedding semantics change.
 - operationId: resolveModelPurpose
   method: POST
   path: /api/v1/service/model-purposes/{purpose}/resolve

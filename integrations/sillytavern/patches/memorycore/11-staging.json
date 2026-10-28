@@ -1,0 +1,28 @@
+{
+  "id": "vc-memorycore-11-staging",
+  "group": "proposal-commit",
+  "reason": "Do not let a scoped-storage scene extraction normalize files in the process working directory.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream uses StorageAdapter for filename normalization or skips the local-filesystem operation.",
+  "target": "MemoryCore/src/core/scene/scene-extractor.ts",
+  "expected_input_sha256": "4b1a0ed8fb2f8a9039ff8a5d736c78fdd0ece36f8c7865d857c84360dc4f7545",
+  "expected_output_sha256": "43f8b6e35524542c1259f95bfa3b58b5c347a31dffd2dc0c01a8aeb195827eef",
+  "changed_lines": {
+    "added": 1,
+    "removed": 1
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "const normResult = await normalizeSceneFilenames(sceneBlocksDir, this.logger);",
+      "to": "const normResult = this.storage ? { renamed: 0, skipped: 0 } : await normalizeSceneFilenames(sceneBlocksDir, this.logger);",
+      "count": 1
+    }
+  ]
+}

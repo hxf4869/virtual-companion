@@ -280,7 +280,7 @@ test('PUT models：未编辑模型不带四个子对象（保留语义）；编�
     put = buildProviderPut(providerDraftWithModels([edited]));
     assert.equal(put.models[0].capabilities.toolCalls, 'UNSUPPORTED');
     assert.equal(put.models[0].capabilities.imageInput, 'DECLARED');
-    assert.equal(Object.keys(put.models[0].capabilities).length, 7, '整体替换为完整能力对象');
+    assert.equal(Object.keys(put.models[0].capabilities).length, 9, '整体替换为完整能力对象');
 });
 
 test('PUT capabilities：未触碰的 VERIFIED 透传保留；触碰字段不得声明 VERIFIED', () => {
@@ -312,7 +312,7 @@ test('克隆：整体替换子对象，VERIFIED 降级为 DECLARED，不影响�
 });
 
 test('能力字段全集与四态合法', () => {
-    assert.equal(CAPABILITY_FIELDS.length, 7);
+    assert.equal(CAPABILITY_FIELDS.length, 9);
     for (const field of CAPABILITY_FIELDS) {
         const model = modelFixture({ editedSubs: new Set(['capabilities']) });
         model.capabilities[field.key] = 'DECLARED';
@@ -396,4 +396,15 @@ test('unrecordedModels：筛出未收录模型；已收录 / 重复条目 / 空 
         { modelId: 'vendor/new-one', displayName: '新模型' },
     ]);
     assert.deepEqual(unrecordedModels([], []), []);
+});
+
+test('采样参数能力在其他能力编辑中保留 VERIFIED，克隆降为 DECLARED', () => {
+    const source = modelDraftFromApi({ profileKey: 'sampling', modelId: 'sampling', displayName: 'sampling', maxOutputTokens: 10,
+        capabilities: { temperature: 'VERIFIED', topP: 'VERIFIED', toolCalls: 'UNKNOWN' } });
+    source.editedSubs.add('capabilities'); source.touchedCaps.add('toolCalls'); source.capabilities.toolCalls = 'DECLARED';
+    const put = buildProviderPut(providerDraftWithModels([source]));
+    assert.equal(put.models[0].capabilities.temperature, 'VERIFIED'); assert.equal(put.models[0].capabilities.topP, 'VERIFIED');
+    const clone = cloneModelDraft(source, { profileKey: 'sampling-copy', displayName: 'sampling copy' });
+    const cloned = buildProviderPut(providerDraftWithModels([clone])).models[0];
+    assert.equal(cloned.capabilities.temperature, 'DECLARED'); assert.equal(cloned.capabilities.topP, 'DECLARED');
 });

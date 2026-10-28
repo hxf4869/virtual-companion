@@ -993,12 +993,23 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 72,
+          "KEEP": 75,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
         "note": "The API consumer matrix remains the deletion/scope source. KEEP requires core-outcome, current H5 production caller, safety/data-rights, or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations are removed with H5 in a later slice, not in G0.",
         "operations": [
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "callMemoryCoreModel",
+            "path": "/api/v1/service/memorycore/llm",
+            "replacementOrImpact": "Bounded internal MemoryCore callback with Go-issued operation capability and per-call accounting; no browser authority."
+          },
           {
             "currentH5Callers": [
               "frontend/src/api/admin-runtime.ts"
@@ -2213,7 +2224,29 @@
             "method": "PUT",
             "operationId": "saveModelPurpose",
             "path": "/api/v1/admin/model-purposes/{purpose}",
-            "replacementOrImpact": "V2-W03 independent per-purpose pinning with revision conflict semantics; EMBEDDING only accepts the pending (unbound) state until W08."
+            "replacementOrImpact": "V2-W03 independent per-purpose pinning with revision conflict semantics; EMBEDDING stays unbound here and uses its dedicated embedding configuration endpoint."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "getEmbeddingConfiguration",
+            "path": "/api/v1/admin/embedding-config",
+            "replacementOrImpact": "W08 dedicated local Ollama configuration snapshot; independent of chat profiles."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "saveEmbeddingConfiguration",
+            "path": "/api/v1/admin/embedding-config",
+            "replacementOrImpact": "W08 ADMIN snapshot update with revision checks and new spaceId when embedding semantics change."
           },
           {
             "currentH5Callers": [],
@@ -2421,7 +2454,7 @@
           }
         ]
       },
-      "sha256": "def2442054e8db128f13c1afeb879c911999532ae755fba04b43282025a0e04a"
+      "sha256": "3ba92cf21bf1abff96c8c4a77b344806ed0473f916d5cc122fed1fd9f8ba9cbf"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2774,8 +2807,16 @@
             "order": 0
           },
           {
+            "acceptedSamplingCapabilityStatuses": [
+              "DECLARED",
+              "VERIFIED"
+            ],
             "code": "MEMORY_EXTRACTION_DEDUP_SUMMARY",
             "executor": "GO_BACKGROUND",
+            "nonNullSamplingCapabilities": [
+              "temperature",
+              "topP"
+            ],
             "order": 1
           },
           {
@@ -2796,14 +2837,29 @@
           {
             "chatProtocolBindable": false,
             "code": "EMBEDDING",
+            "configurationPath": "/api/v1/admin/embedding-config",
+            "documentPreprocessingVersions": [
+              "identity-v1"
+            ],
+            "endpoint": "http://127.0.0.1:11438",
             "executor": "GO_BACKGROUND",
-            "order": 5
+            "normalizationValues": [
+              "l2",
+              "none"
+            ],
+            "order": 5,
+            "provider": "OLLAMA",
+            "queryPreprocessingVersions": [
+              "qwen3-retrieval-v1",
+              "identity-v1"
+            ],
+            "qwen3QueryTemplate": "Instruct: Given a question, retrieve relevant personal memories that answer the question.\nQuery: ${text}"
           }
         ],
-        "note": "V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose pins one model profile independently; changing one binding never touches another. EMBEDDING is not one of the three chat protocols and stays PENDING_CONFIGURATION until a dedicated embedding path exists (W08).",
+        "note": "V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose pins one model profile independently; changing one binding never touches another. EMBEDDING uses the dedicated Go embedding configuration (W08), never a chat profile. Its snapshot pins the Ollama artifact digest, dimensions, preprocessing and normalization; any vector-space-defining change allocates a new spaceId. Rebuilding uses lexical recall only.",
         "schemaVersion": 1
       },
-      "sha256": "50dda0fefde2469a0439d178d16177fcdf4921531712b2b418f24c7edfc2b775"
+      "sha256": "af8705c9ed7c48683988421dbb7223bcd56f3883d518183ab7e566fccc1a479e"
     },
     "persona-templates.yaml": {
       "document": {

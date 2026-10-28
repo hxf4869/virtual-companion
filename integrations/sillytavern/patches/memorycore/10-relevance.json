@@ -1,0 +1,43 @@
+{
+  "id": "vc-memorycore-10-relevance",
+  "group": "prefilter",
+  "reason": "Apply calibrated cosine/FTS score rejection before RRF and retain raw lane scores.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream provides per-lane gates and raw scores in fused candidates.",
+  "target": "MemoryCore/src/core/tools/l1-candidate-recall.ts",
+  "expected_input_sha256": "1f30af090002921c2209b78a7e97166c6eb2b71ca243c29262250d432c273668",
+  "expected_output_sha256": "003c11c017a4fd76e272c85117311455a678a8a14942be7f45e4a978bbb8a746",
+  "changed_lines": {
+    "added": 7,
+    "removed": 3
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "  const [ftsHits, vecHits] = await Promise.all([",
+      "to": "  const [ftsRaw, vecRaw] = await Promise.all([",
+      "count": 1
+    },
+    {
+      "from": "  const ftsOk = ftsHits.length > 0;",
+      "to": "  const ftsHits = ftsRaw.filter(r => r.score >= (filter?.minFtsScore ?? 0)).map(r => ({ ...r, ftsScore: r.score }));\n  const vecHits = vecRaw.filter(r => r.score >= (filter?.minCosine ?? -1)).map(r => ({ ...r, cosine: r.score }));\n  const ftsOk = Boolean(ftsHits.length);",
+      "count": 1
+    },
+    {
+      "from": "    metadata_json: r.metadata_json,\n  };",
+      "to": "    metadata_json: r.metadata_json,\n    ...((r as any).ftsRank !== undefined ? { ftsRank: (r as any).ftsRank } : {}),\n  };",
+      "count": 1
+    },
+    {
+      "from": "        existing.rrfScore += score;",
+      "to": "        existing.rrfScore = existing.rrfScore + score;\n        existing.item = { ...existing.item, ...item };",
+      "count": 1
+    }
+  ]
+}

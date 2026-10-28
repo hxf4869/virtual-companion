@@ -8,8 +8,8 @@ export function requireServiceToken(value) {
     return value;
 }
 
-// No business routes in W08-1. Health is public; readiness/internal routes
-// require a service token. Neither responses nor logs echo request material.
+// Health is public; all internal operations require the dedicated Go service token.
+// Browser Origin requests are rejected, including callers with a stolen session cookie.
 export function createMemoryCoreServer({ token, engine, commit }) {
     const expected = Buffer.from(`Bearer ${requireServiceToken(token)}`);
     return http.createServer({ maxHeaderSize: 8192 }, async (req, res) => {
@@ -17,14 +17,34 @@ export function createMemoryCoreServer({ token, engine, commit }) {
             res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
             res.end(JSON.stringify(body));
         };
-        req.resume();
         if (req.headers.origin) return send(403, { code: 'ORIGIN_NOT_ALLOWED' });
         const route = req.url?.split('?')[0];
         if (route !== '/healthz') {
             const actual = Buffer.from(req.headers.authorization || '');
             if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return send(401, { code: 'UNAUTHORIZED' });
         }
-        if (!['/healthz', '/readyz'].includes(route)) return send(404, { code: 'NOT_FOUND' });
+        if (!['/healthz', '/readyz'].includes(route)) {
+            const action = route?.startsWith('/internal/') ? route.slice('/internal/'.length) : '';
+            if (!engine.invoke || !['propose','commit','operation-status','search','rebuild-profile','rebuild-space','forget','clear-owner','export-owner'].includes(action)) {
+                req.resume(); return send(404, { code: 'NOT_FOUND' });
+            }
+            if (req.method !== 'POST') { req.resume(); return send(405, { code: 'METHOD_NOT_ALLOWED' }); }
+            try {
+                let size = 0; const parts = [];
+                for await (const chunk of req) {
+                    size += chunk.length;
+                    if (size > 2 * 1024 * 1024) { send(413, { code: 'REQUEST_TOO_LARGE' }); return; }
+                    parts.push(chunk);
+                }
+                const input = JSON.parse(Buffer.concat(parts).toString('utf8'));
+                return send(200, await engine.invoke(action, input));
+            } catch (e) {
+                // No upstream exception text: it may contain model content/paths.
+                const conflict = /(?:REVISION|SPACE|OPERATION|PROPOSAL|PROFILE_VERIFICATION)/.test(e.message);
+                return send(conflict ? 409 : 422, { code: conflict ? 'MEMORYCORE_CONFLICT' : 'MEMORYCORE_OPERATION_FAILED' });
+            }
+        }
+        req.resume();
         if (req.method !== 'GET') return send(405, { code: 'METHOD_NOT_ALLOWED' });
         if (route === '/healthz') return send(200, { status: 'ok', service: 'vc-memorycore', upstreamCommit: commit });
         try {

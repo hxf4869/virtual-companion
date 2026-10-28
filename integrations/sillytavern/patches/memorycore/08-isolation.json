@@ -1,0 +1,33 @@
+{
+  "id": "vc-memorycore-08-isolation",
+  "group": "prefilter",
+  "reason": "Carry trusted record allowlists and calibrated lane thresholds with the existing isolation filter.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream exposes trusted allowlists in store and recall contracts.",
+  "target": "MemoryCore/src/core/store/isolation.ts",
+  "expected_input_sha256": "e9426032b390c37a340cec13207a1447bbdcc017d704421179ae7b26be9d43f3",
+  "expected_output_sha256": "c51ee6f47adf30660de22dab58b41dee13aa6a663b49177dcb153981ea5fe9ae",
+  "changed_lines": {
+    "added": 8,
+    "removed": 1
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "export interface IsolationFilter {\n  teamId?: string;",
+      "to": "export interface IsolationFilter {\n  allowedRecordIds?: string[];\n  minCosine?: number;\n  minFtsScore?: number;\n  teamId?: string;",
+      "count": 1
+    },
+    {
+      "from": "  const parts: string[] = [];\n  const params: string[] = [];",
+      "to": "  const params: string[] = [];\n  const parts: string[] = [];\n  if (filter.allowedRecordIds !== undefined) {\n    parts.push(`${tablePrefix}record_id IN (SELECT value FROM json_each(?))`);\n    params.push(JSON.stringify(filter.allowedRecordIds));\n  }",
+      "count": 1
+    }
+  ]
+}

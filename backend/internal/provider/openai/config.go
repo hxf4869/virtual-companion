@@ -35,6 +35,9 @@ const (
 // Temperature is sent as-is: an explicit 0 must stay 0 in the request body,
 // and the process configuration layer owns the default for unset values.
 type Config struct {
+	OmitTemperature   bool
+	TopP              *float64
+	ReasoningEffort   *string
 	Endpoint          string
 	BearerToken       string
 	Model             string
@@ -71,6 +74,9 @@ func (c Config) withDefaults() Config {
 // Validate reports construction errors without opening a connection.
 func (c Config) Validate() error {
 	c = c.withDefaults()
+	if c.TopP != nil && (math.IsNaN(*c.TopP) || *c.TopP < 0 || *c.TopP > 1) {
+		return fmt.Errorf("provider topP must be between 0 and 1")
+	}
 	if strings.TrimSpace(c.Endpoint) == "" {
 		return fmt.Errorf("provider endpoint is required")
 	}

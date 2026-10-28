@@ -98,6 +98,15 @@ exceptions: []
 # integrations/sillytavern/package.json 直接依赖（按 license-policy.yaml domainPolicies.stIntegration 核对；
 # 上游组件（含 MemoryCore MIT）与运行期自托管资源的许可直接读 upstream.lock.json / vendor.lock.json，不在此重复登记）
 integrationDirectDependencies:
+  - name: sqlite-vec
+    licenseFamily: Apache-2.0
+    scope: runtime
+  - name: "@node-rs/jieba"
+    licenseFamily: MIT
+    scope: runtime
+  - name: crc-32
+    licenseFamily: Apache-2.0
+    scope: runtime
   - name: playwright-core
     licenseFamily: Apache-2.0
     scope: dev   # 浏览器验收脚本驱动系统 Chrome；不进 check.sh

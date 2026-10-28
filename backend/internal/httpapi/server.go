@@ -10,7 +10,9 @@ import (
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/config"
+	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/observability"
+	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
 )
 
@@ -76,6 +78,12 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 		s.core = core
 		if s.core.Limiter == nil {
 			s.core.Limiter = auth.NewLimiter()
+		}
+		if s.core.MemoryCore == nil && cfg.MemoryCoreCallbackToken != "" {
+			if store, ok := s.core.Providers.(memorycore.Store); ok {
+				factory := modelprovider.Factory{ConnectTimeout: cfg.Provider.ConnectTimeout, FirstTokenTimeout: cfg.Provider.FirstTokenTimeout, TotalTimeout: cfg.Provider.TotalTimeout, MaxResponseBytes: cfg.Provider.MaxResponseBytes, Temperature: cfg.Provider.Temperature, AllowLoopbackHTTP: cfg.Provider.AllowLoopbackHTTP}
+				s.core.MemoryCore = memorycore.New(store, factory.Build)
+			}
 		}
 		s.registerCore()
 	}
@@ -290,6 +298,10 @@ func operation(path string) string {
 		return "admin_providers"
 	case "/api/v1/admin/model-routing-order":
 		return "admin_model_routing_order"
+	case "/api/v1/admin/embedding-config":
+		return "admin_embedding_config"
+	case "/api/v1/service/memorycore/llm":
+		return "service_memorycore_llm"
 	case "/api/v1/admin/model-purposes":
 		return "admin_model_purposes"
 	default:

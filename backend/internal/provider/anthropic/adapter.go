@@ -19,6 +19,8 @@ var _ companion.Provider = (*Adapter)(nil)
 const apiVersion = "2023-06-01"
 
 type Config struct {
+	Temperature       *float64
+	TopP              *float64
 	BaseURL           string
 	APIKey            string
 	Model             string
@@ -75,6 +77,7 @@ func (a *Adapter) Stream(ctx context.Context, req companion.ModelRequest, emit f
 		maxTokens = req.MaxTokens
 	}
 	payload := messageRequest{
+		Temperature: a.cfg.Temperature, TopP: a.cfg.TopP,
 		Model: a.cfg.Model, MaxTokens: maxTokens, Stream: req.Stream,
 		Messages: make([]message, 0, len(req.Messages)),
 	}
@@ -106,11 +109,13 @@ func (a *Adapter) Stream(ctx context.Context, req companion.ModelRequest, emit f
 }
 
 type messageRequest struct {
-	Model     string    `json:"model"`
-	MaxTokens int       `json:"max_tokens"`
-	System    string    `json:"system,omitempty"`
-	Messages  []message `json:"messages"`
-	Stream    bool      `json:"stream"`
+	Temperature *float64  `json:"temperature,omitempty"`
+	TopP        *float64  `json:"top_p,omitempty"`
+	Model       string    `json:"model"`
+	MaxTokens   int       `json:"max_tokens"`
+	System      string    `json:"system,omitempty"`
+	Messages    []message `json:"messages"`
+	Stream      bool      `json:"stream"`
 }
 
 type message struct {

@@ -1,0 +1,28 @@
+{
+  "id": "vc-memorycore-10-score-types",
+  "group": "prefilter",
+  "reason": "Expose original lane scores alongside fused rank for calibration and relevance decisions.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream result types preserve per-lane scores.",
+  "target": "MemoryCore/src/core/store/types.ts",
+  "expected_input_sha256": "d3bb97a9a1bdea76467c050715c4da861784c0bf5a107b1232d2fb52a5b6744d",
+  "expected_output_sha256": "9fdd2a37bf129a9c2aaafaca285a6c8d05a0ba0afdbcb2847eae8b6d5fa20d11",
+  "changed_lines": {
+    "added": 4,
+    "removed": 1
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "export interface L1SearchResult {",
+      "to": "export interface L1SearchResult  {\n  cosine?: number;\n  ftsScore?: number;\n  ftsRank?: number;",
+      "count": 1
+    }
+  ]
+}

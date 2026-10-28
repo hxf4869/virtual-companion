@@ -53,7 +53,7 @@ var Purposes = []string{
 // profile. Text input is implicit and not recorded.
 var CapabilityKeys = []string{
 	"imageInput", "videoInput", "pdfInput", "structuredOutput",
-	"toolCalls", "nativeWebSearch", "systemMessage",
+	"toolCalls", "nativeWebSearch", "systemMessage", "temperature", "topP",
 }
 
 var (
@@ -320,8 +320,8 @@ func (s *Store) ListProviderConfigs(ctx context.Context, actingAccountID int64) 
 					Protocol: protocol, BaseURL: baseURL,
 					CredentialConfigured: credentialConfigured,
 					State:                state, Revision: revision,
-					UpdatedAt:            providerUpdated.UTC(),
-					Models:               []ProviderModel{},
+					UpdatedAt: providerUpdated.UTC(),
+					Models:    []ProviderModel{},
 				})
 			}
 			if !profileKey.Valid {
@@ -329,7 +329,7 @@ func (s *Store) ListProviderConfigs(ctx context.Context, actingAccountID int64) 
 			}
 			model := ProviderModel{
 				ProfileKey: profileKey.String, ModelID: modelID.String,
-				DisplayName: modelDisplay.String,
+				DisplayName:     modelDisplay.String,
 				MaxOutputTokens: int(maxOutput.Int32), Priority: int(priority.Int32),
 				State: modelState.String, BoundPurposes: bound,
 			}

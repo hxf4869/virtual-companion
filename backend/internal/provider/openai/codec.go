@@ -12,12 +12,14 @@ import (
 )
 
 type chatRequest struct {
-	Model         string         `json:"model"`
-	MaxTokens     int            `json:"max_tokens"`
-	Temperature   float64        `json:"temperature"`
-	Messages      []chatMessage  `json:"messages"`
-	Stream        bool           `json:"stream"`
-	StreamOptions *streamOptions `json:"stream_options,omitempty"`
+	Model           string         `json:"model"`
+	MaxTokens       int            `json:"max_tokens"`
+	Temperature     *float64       `json:"temperature,omitempty"`
+	TopP            *float64       `json:"top_p,omitempty"`
+	ReasoningEffort *string        `json:"reasoning_effort,omitempty"`
+	Messages        []chatMessage  `json:"messages"`
+	Stream          bool           `json:"stream"`
+	StreamOptions   *streamOptions `json:"stream_options,omitempty"`
 }
 
 type chatMessage struct {
@@ -97,9 +99,13 @@ func encodeRequest(cfg Config, req companion.ModelRequest) ([]byte, error) {
 	body := chatRequest{
 		Model:       cfg.Model,
 		MaxTokens:   maxTokens,
-		Temperature: cfg.Temperature,
-		Messages:    make([]chatMessage, 0, len(req.Messages)),
-		Stream:      req.Stream,
+		Temperature: &cfg.Temperature,
+		TopP:        cfg.TopP, ReasoningEffort: cfg.ReasoningEffort,
+		Messages: make([]chatMessage, 0, len(req.Messages)),
+		Stream:   req.Stream,
+	}
+	if cfg.OmitTemperature {
+		body.Temperature = nil
 	}
 	for _, m := range req.Messages {
 		body.Messages = append(body.Messages, chatMessage{
@@ -145,8 +151,12 @@ func validateRequest(req companion.ModelRequest) error {
 func decodeCompletion(r io.Reader, maxBytes int64) (string, companion.Usage, companion.FinishReason, error) {
 	dec := json.NewDecoder(newBoundReader(r, maxBytes))
 	dec.UseNumber()
-	var payload completionPayload
-	if err := dec.Decode(&payload); err != nil {
+	var wire struct {
+		completionPayload
+		Data    *completionPayload `json:"data"`
+		Success *bool              `json:"success"`
+	}
+	if err := dec.Decode(&wire); err != nil {
 		if err == errOverLimit {
 			return "", companion.Usage{}, "", errOverLimit
 		}
@@ -154,6 +164,13 @@ func decodeCompletion(r io.Reader, maxBytes int64) (string, companion.Usage, com
 	}
 	if dec.More() {
 		return "", companion.Usage{}, "", errMalformed
+	}
+	payload := wire.completionPayload
+	if wire.Success != nil || wire.Data != nil {
+		if wire.Success == nil || !*wire.Success || wire.Data == nil || payload.Object != "" {
+			return "", companion.Usage{}, "", errMalformed
+		}
+		payload = *wire.Data
 	}
 	if payload.Object != "chat.completion" {
 		return "", companion.Usage{}, "", errMalformed

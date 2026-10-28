@@ -1,0 +1,28 @@
+{
+  "id": "vc-memorycore-07-space",
+  "group": "vector-space",
+  "reason": "Bind vectors to one Go-owned space and deny vector reads/commits throughout rebuilding.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream supports artifact/preprocessing space identity, complete rebuilding and strict space guards.",
+  "target": "MemoryCore/src/core/store/sqlite/memory-store.ts",
+  "expected_input_sha256": "e735f77ed14a492a6f93fb88f912b55c28897c20c6eae7e4ae5742da07e28973",
+  "expected_output_sha256": "1de0f43f97022f334cc74645d94c2deb22137850beac3e7f6abfb193c17ba0b0",
+  "changed_lines": {
+    "added": 42,
+    "removed": 1
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "  private readEmbeddingMeta(): EmbeddingMeta | null {",
+      "to": "  getSpace(): { spaceId: string; dimensions: number; rebuilding: boolean } | null {\n    const row = this.db.prepare(\"SELECT value FROM embedding_meta WHERE key='vc_space'\").get() as {value: string} | undefined;\n    return row ? JSON.parse(row.value) : null;\n  }\n  configureSpace(spaceId: string, dimensions: number): any {\n    const saved = this.getSpace();\n    if (saved?.spaceId === spaceId && saved.dimensions !== dimensions) throw new Error(\"SPACE_CONFIG_CONFLICT\");\n    this.db.enableLoadExtension(true);\n    require(\"sqlite-vec\").load(this.db);\n    this.db.enableLoadExtension(false);\n    if (saved?.spaceId === spaceId && saved.dimensions === dimensions) {\n      if (this.dimensions !== dimensions || !this.vecTablesReady) {\n        this.dimensions = dimensions;\n        this.initSchema();\n      }\n      return saved;\n    }\n    if (!spaceId || !Number.isInteger(dimensions) || dimensions < 1 || dimensions > 65536) throw new Error(\"SPACE_INVALID\");\n    this.dimensions = dimensions;\n    this.dropVectorTables();\n    this.initSchema();\n    const state = { spaceId, dimensions, rebuilding: this.tableRowCount(\"l1_records\") > 0 };\n    this.db.prepare(\"INSERT OR REPLACE INTO embedding_meta VALUES('vc_space',?)\").run(JSON.stringify(state));\n    return state;\n  }\n  writeRebuiltVector(id: string, embedding: Float32Array, spaceId: string): void {\n    const space = this.getSpace();\n    if (!space?.rebuilding || space.spaceId !== spaceId || !this.stmtGetMeta.get(id)) throw new Error(\"SPACE_REBUILD_CONFLICT\");\n    if (embedding.length !== this.dimensions || !embedding.every(Number.isFinite) || embedding.every(v => v === 0)) throw new Error(\"EMBEDDING_INVALID\");\n    this.stmtDeleteVec!.run(id);\n    this.stmtInsertVec!.run(id, Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength), \"\");\n  }\n  finishSpaceRebuild(spaceId: string, failures: number): any {\n    const state = this.getSpace();\n    const count = (this.db.prepare(\"SELECT count(*) n FROM l1_vec\").get() as {n: number}).n;\n    if (!state || state.spaceId !== spaceId || failures !== 0 || count !== this.tableRowCount(\"l1_records\")) throw new Error(\"SPACE_REBUILD_INCOMPLETE\");\n    state.rebuilding = false;\n    this.db.prepare(\"UPDATE embedding_meta SET value=? WHERE key='vc_space'\").run(JSON.stringify(state));\n    return state;\n  }\n\n  private readEmbeddingMeta() : EmbeddingMeta | null {",
+      "count": 1
+    }
+  ]
+}

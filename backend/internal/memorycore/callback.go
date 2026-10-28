@@ -1,0 +1,246 @@
+// Package memorycore owns the bounded model capability used by the isolated
+// MemoryCore engine. It does not enqueue work or publish production memories.
+package memorycore
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/hxf4869/virtual-companion/internal/companion"
+	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
+	"github.com/hxf4869/virtual-companion/internal/provider/modelhttp"
+	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+)
+
+var ErrCapability = errors.New("memorycore capability unavailable")
+var ErrReplay = errors.New("memorycore call already consumed")
+var ErrParameters = errors.New("memorycore model parameters unsupported")
+
+type Store interface {
+	ResolvePurpose(context.Context, postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
+	PrepareMemoryCoreCall(context.Context, postgres.MemoryCoreCall) (postgres.MemoryExtractPreparation, error)
+	RecordMemoryExtractOutcome(context.Context, int64, int64, int64, postgres.MemoryExtractOutcome) (int64, error)
+}
+type Scope struct {
+	Owner, Job, Source                  int64
+	ClaimToken, ClaimFence, OperationID string
+	ExpiresAt                           time.Time
+}
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+type Request struct {
+	OperationToken string    `json:"operationToken"`
+	Stage          string    `json:"stage"`
+	CallSequence   int       `json:"callSequence"`
+	Messages       []Message `json:"messages"`
+}
+type Usage struct {
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
+	TotalTokens  int64 `json:"totalTokens"`
+}
+type Response struct {
+	Text         string                 `json:"text"`
+	Usage        Usage                  `json:"usage"`
+	FinishReason companion.FinishReason `json:"finishReason"`
+}
+type operation struct {
+	sync.Mutex
+	scope   Scope
+	purpose postgres.ResolvedPurpose
+	last    int
+	revoked bool
+}
+type Broker struct {
+	sync.Mutex
+	store      Store
+	factory    func(modelprovider.Route) (companion.Provider, error)
+	operations map[string]*operation
+}
+
+func New(store Store, factory func(modelprovider.Route) (companion.Provider, error)) *Broker {
+	return &Broker{store: store, factory: factory, operations: map[string]*operation{}}
+}
+
+// Open is a Go-only method. Neither browser nor model can create a capability,
+// select the owner or route, or choose an arbitrary callback destination.
+func (b *Broker) Open(ctx context.Context, scope Scope) (string, error) {
+	if scope.Owner <= 0 || scope.Job <= 0 || scope.Source <= 0 || scope.ClaimToken == "" || scope.ClaimFence == "" || scope.OperationID == "" || len(scope.OperationID) > 128 || !scope.ExpiresAt.After(time.Now()) || scope.ExpiresAt.After(time.Now().Add(10*time.Minute)) {
+		return "", ErrCapability
+	}
+	purpose, err := b.store.ResolvePurpose(ctx, postgres.ResolvePurpose{OwnerAccountID: scope.Owner, Purpose: postgres.PurposeMemoryExtraction})
+	if err != nil {
+		return "", err
+	}
+	if _, err := route(purpose); err != nil {
+		return "", err
+	}
+	token := rand.Text()
+	b.Lock()
+	defer b.Unlock()
+	for key, op := range b.operations {
+		if !op.scope.ExpiresAt.After(time.Now()) {
+			delete(b.operations, key)
+		}
+	}
+	b.operations[token] = &operation{scope: scope, purpose: purpose}
+	return token, nil
+}
+func (b *Broker) Revoke(token string) {
+	b.Lock()
+	op := b.operations[token]
+	delete(b.operations, token)
+	b.Unlock()
+	if op != nil {
+		op.Lock()
+		op.revoked = true
+		op.Unlock()
+	}
+}
+func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
+	switch req.Stage {
+	case "l1-extraction", "l1-conflict-detection", "l2-scene", "l3-persona":
+	default:
+		return Response{}, ErrCapability
+	}
+	b.Lock()
+	op := b.operations[req.OperationToken]
+	b.Unlock()
+	if op == nil {
+		return Response{}, ErrCapability
+	}
+	op.Lock()
+	defer op.Unlock()
+	if op.revoked || !op.scope.ExpiresAt.After(time.Now()) {
+		return Response{}, ErrCapability
+	}
+	if req.CallSequence != op.last+1 || req.CallSequence > 32 {
+		return Response{}, ErrReplay
+	}
+	plan := companion.ModelRequest{Stream: false, MaxTokens: min(4096, op.purpose.Model.MaxOutputTokens)}
+	tokens := 0
+	for _, m := range req.Messages {
+		plan.Messages = append(plan.Messages, companion.Message{Role: companion.Role(m.Role), Content: m.Content})
+		tokens += companion.EstimateTokens(m.Content)
+	}
+	if modelhttp.ValidateRequest(plan) != nil || tokens > 32768 {
+		return Response{}, companion.InvalidRequest()
+	}
+	if op.purpose.Model.ContextWindowTokens != nil && tokens+plan.MaxTokens > *op.purpose.Model.ContextWindowTokens {
+		return Response{}, companion.InvalidRequest()
+	}
+	for _, m := range plan.Messages {
+		if m.Role == companion.RoleSystem {
+			c := op.purpose.Model.Capabilities["systemMessage"]
+			if c != postgres.CapabilityDeclared && c != postgres.CapabilityVerified {
+				return Response{}, ErrParameters
+			}
+		}
+	}
+	// A configuration revision changed during the operation invalidates this
+	// capability. ResolvePurpose checks both assertions without returning keys.
+	p, err := b.store.ResolvePurpose(ctx, postgres.ResolvePurpose{OwnerAccountID: op.scope.Owner, Purpose: postgres.PurposeMemoryExtraction, ProviderID: op.purpose.ProviderID, ProfileKey: op.purpose.Model.ProfileKey, ProviderRevision: &op.purpose.ProviderRevision, BindingRevision: &op.purpose.BindingRevision})
+	if err != nil {
+		return Response{}, err
+	}
+	r, err := route(p)
+	if err != nil {
+		return Response{}, err
+	}
+	provider, err := b.factory(r)
+	if err != nil {
+		return Response{}, ErrParameters
+	}
+	if closer, ok := provider.(interface{ Close() }); ok {
+		defer closer.Close()
+	}
+	prep, err := b.store.PrepareMemoryCoreCall(ctx, postgres.MemoryCoreCall{Owner: op.scope.Owner, Job: op.scope.Job, Source: op.scope.Source, ClaimToken: op.scope.ClaimToken, ClaimFence: op.scope.ClaimFence, OperationID: op.scope.OperationID, Stage: req.Stage, CallSequence: req.CallSequence, ProviderID: p.ProviderID, SupplierName: p.ProviderName, ModelID: p.Model.ModelID, InputTokens: tokens, OutputTokens: plan.MaxTokens})
+	if err != nil {
+		return Response{}, err
+	}
+	if prep.Decision != "EXTRACTABLE" || prep.AttemptID <= 0 {
+		return Response{}, ErrCapability
+	}
+	op.last = req.CallSequence // Never replay a potentially sent call, even after timeout.
+	callCtx, cancel := context.WithDeadline(ctx, op.scope.ExpiresAt)
+	defer cancel()
+	var out strings.Builder
+	result, callErr := provider.Stream(callCtx, plan, func(d companion.OutputDelta) error {
+		if out.Len()+len(d.Text) > 256<<10 {
+			return companion.Malformed(companion.DeliveryReceived)
+		}
+		out.WriteString(d.Text)
+		return nil
+	})
+	outcome := postgres.MemoryExtractOutcome{Status: "SUCCEEDED"}
+	if callErr == nil {
+		outcome.InputTokens = &result.Usage.InputTokens
+		outcome.OutputTokens = &result.Usage.OutputTokens
+	} else {
+		outcome.Status = "FAILED"
+		if pe := companion.AsError(callErr); pe != nil {
+			outcome.FailureCode = "OTHER"
+			switch pe.Code {
+			case companion.CodeRateLimited:
+				outcome.FailureCode = "HTTP_429"
+			case companion.CodeUpstreamUnavailable:
+				outcome.FailureCode = "HTTP_5XX"
+			case companion.CodeDisconnected:
+				outcome.FailureCode = "DISCONNECTED"
+			case companion.CodeTimeout:
+				outcome.FailureCode = "TIMEOUT_" + string(pe.Phase)
+			}
+		}
+	}
+	saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer saveCancel()
+	rows, saveErr := b.store.RecordMemoryExtractOutcome(saveCtx, op.scope.Owner, op.scope.Job, prep.AttemptID, outcome)
+	if saveErr != nil {
+		return Response{}, saveErr
+	}
+	if rows != 1 {
+		return Response{}, ErrCapability
+	}
+	if callErr != nil {
+		return Response{}, callErr
+	}
+	return Response{Text: out.String(), Usage: Usage{result.Usage.InputTokens, result.Usage.OutputTokens, result.Usage.TotalTokens}, FinishReason: result.Finish}, nil
+}
+func route(p postgres.ResolvedPurpose) (modelprovider.Route, error) {
+	r := modelprovider.Route{ProviderID: p.ProviderID, SupplierName: p.ProviderName, Protocol: p.Protocol, BaseURL: p.BaseURL, Credential: p.Credential, ModelID: p.Model.ModelID, MaxOutputTokens: min(4096, p.Model.MaxOutputTokens), UseProfileParams: true}
+	if p.Model.GenerationParams != nil {
+		r.Temperature = p.Model.GenerationParams.Temperature
+		r.TopP = p.Model.GenerationParams.TopP
+		r.ReasoningEffort = p.Model.GenerationParams.ReasoningEffort
+	}
+	for key, value := range map[string]*float64{"temperature": r.Temperature, "topP": r.TopP} {
+		if value == nil {
+			continue
+		}
+		capability := p.Model.Capabilities[key]
+		if capability != postgres.CapabilityDeclared && capability != postgres.CapabilityVerified {
+			return modelprovider.Route{}, ErrParameters
+		}
+	}
+	if r.ReasoningEffort != nil {
+		found := false
+		for _, level := range p.Model.ReasoningLevels {
+			if level == *r.ReasoningEffort {
+				found = true
+			}
+		}
+		if !found || p.Protocol == postgres.ProtocolAnthropic {
+			return modelprovider.Route{}, ErrParameters
+		}
+	}
+	if p.Protocol == postgres.ProtocolAnthropic && ((r.Temperature != nil && *r.Temperature > 1) || (r.Temperature != nil && r.TopP != nil)) {
+		return modelprovider.Route{}, ErrParameters
+	}
+	return r, nil
+}

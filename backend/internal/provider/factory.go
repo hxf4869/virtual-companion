@@ -18,14 +18,18 @@ import (
 )
 
 type Route struct {
-	ProviderID      string
-	SupplierName    string
-	Protocol        string
-	BaseURL         string
-	Credential      string
-	ModelID         string
-	MaxOutputTokens int
-	Priority        int
+	UseProfileParams bool
+	Temperature      *float64
+	TopP             *float64
+	ReasoningEffort  *string
+	ProviderID       string
+	SupplierName     string
+	Protocol         string
+	BaseURL          string
+	Credential       string
+	ModelID          string
+	MaxOutputTokens  int
+	Priority         int
 }
 
 type Factory struct {
@@ -70,18 +74,24 @@ func (f Factory) Build(route Route) (companion.Provider, error) {
 	if err != nil {
 		return nil, err
 	}
+	temperature := f.Temperature
+	if route.Temperature != nil {
+		temperature = *route.Temperature
+	}
+	omitTemperature := route.UseProfileParams && route.Temperature == nil
 	switch route.Protocol {
 	case "OPENAI_CHAT_COMPLETIONS":
 		return openai.New(openai.Config{
 			Endpoint: endpoint.String(), BearerToken: route.Credential,
 			Model: route.ModelID, MaxTokens: route.MaxOutputTokens,
-			Temperature: f.Temperature, ConnectTimeout: f.ConnectTimeout,
+			Temperature: temperature, OmitTemperature: omitTemperature, TopP: route.TopP, ReasoningEffort: route.ReasoningEffort, ConnectTimeout: f.ConnectTimeout,
 			FirstTokenTimeout: f.FirstTokenTimeout, TotalTimeout: f.TotalTimeout,
 			MaxResponseBytes:  f.MaxResponseBytes,
 			AllowLoopbackHTTP: f.AllowLoopbackHTTP,
 		})
 	case "OPENAI_RESPONSES":
 		return responses.New(responses.Config{
+			Temperature: route.Temperature, TopP: route.TopP, ReasoningEffort: route.ReasoningEffort,
 			BaseURL: route.BaseURL, BearerToken: route.Credential,
 			Model: route.ModelID, MaxTokens: route.MaxOutputTokens,
 			ConnectTimeout: f.ConnectTimeout, FirstTokenTimeout: f.FirstTokenTimeout,
@@ -89,7 +99,11 @@ func (f Factory) Build(route Route) (companion.Provider, error) {
 			AllowLoopbackHTTP: f.AllowLoopbackHTTP,
 		})
 	case "ANTHROPIC_MESSAGES":
+		if route.ReasoningEffort != nil {
+			return nil, errors.New("unsupported reasoning parameter")
+		}
 		return anthropic.New(anthropic.Config{
+			Temperature: route.Temperature, TopP: route.TopP,
 			BaseURL: route.BaseURL, APIKey: route.Credential,
 			Model: route.ModelID, MaxTokens: route.MaxOutputTokens,
 			ConnectTimeout: f.ConnectTimeout, FirstTokenTimeout: f.FirstTokenTimeout,

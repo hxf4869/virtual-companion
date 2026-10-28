@@ -32,8 +32,8 @@ export function verifyMemorycoreUpstream({ sourceDir = MEMORYCORE_DIR, lock = re
     return c;
 }
 
-// Build is dependency-free and deterministic. Empty patch sets are valid;
-// individual nonempty specs use exactly the shared patcher and pinned commit.
+// Compile only the locked module closure; no upstream install or host plugin.
+// Empty fixture patch sets remain supported by the same deterministic builder.
 export function memorycoreBuild({ sourceDir = MEMORYCORE_DIR, serviceDir = MEMORYCORE_SERVICE_SRC,
     lock = readJson(UPSTREAM_LOCK), patchIndex = MEMORYCORE_PATCH_INDEX } = {}) {
     const c = memorycoreComponent(lock);
@@ -43,8 +43,10 @@ export function memorycoreBuild({ sourceDir = MEMORYCORE_DIR, serviceDir = MEMOR
     const index = readJson(patchIndex);
     if (index.upstream_commit !== c.commit || !Array.isArray(index.specs)) throw new Error('MemoryCore patch set does not match lock');
     const sourceFiles = {};
-    for (const name of ['local-backend', 'list-page']) {
-        const rel = `MemoryCore/src/core/storage/${name}.ts`;
+    const modules = c.source_modules ?? ['core/storage/local-backend.ts', 'core/storage/list-page.ts'];
+    for (const module of modules) {
+        if (!/^[a-z0-9-/]+\.ts$/.test(module) || module.includes('..')) throw new Error('Invalid locked MemoryCore module');
+        const rel = `MemoryCore/src/${module}`;
         sourceFiles[rel] = fs.readFileSync(path.join(sourceDir, rel), 'utf8');
     }
     const patches = [];
@@ -60,7 +62,25 @@ export function memorycoreBuild({ sourceDir = MEMORYCORE_DIR, serviceDir = MEMOR
         'upstream/LICENSE': fs.readFileSync(path.join(sourceDir, 'LICENSE'), 'utf8'),
         'build.json': JSON.stringify({ commit: c.commit, version: c.version, foundation: true }) + '\n' };
     for (const [rel, text] of Object.entries(sourceFiles)) {
-        files[`upstream/${path.basename(rel, '.ts')}.js`] = stripTypeScriptTypes(text, { mode: 'strip' });
+        const module = rel.slice('MemoryCore/src/'.length).replace(/\.ts$/, '.js');
+        files[`upstream/${module}`] = stripTypeScriptTypes(text, { mode: 'transform' });
+        // Foundation API keeps its existing path while controlled consumers
+        // use the preserved module hierarchy below.
+        if (['core/storage/local-backend.js', 'core/storage/list-page.js'].includes(module)) {
+            files[`upstream/${path.basename(module)}`] = files[`upstream/${module}`];
+        }
+    }
+    if (c.source_modules) {
+        files['upstream-api.mjs'] = [
+            ['VectorStore', 'core/store/sqlite/memory-store'],
+            ['extractL1Memories', 'core/record/l1-extractor'],
+            ['SceneExtractor', 'core/scene/scene-extractor'],
+            ['PersonaGenerator', 'core/persona/persona-generator'],
+            ['StorageAdapter, createScopedStorageAdapter', 'core/storage/adapter'],
+            ['LocalStorageBackend', 'core/storage/local-backend'],
+            ['recallL1Candidates', 'core/tools/l1-candidate-recall'],
+            ['tokenizeForFts, buildFtsQuery, bm25RankToScore', 'core/store/tokenize'],
+        ].map(([names, module]) => `export { ${names} } from './upstream/${module}.js';`).join('\n') + '\n';
     }
     for (const name of fs.readdirSync(serviceDir).filter((name) => name.endsWith('.mjs')).sort()) {
         files[name] = fs.readFileSync(path.join(serviceDir, name), 'utf8');
@@ -135,7 +155,10 @@ export async function startMemorycore({ managedDev = MANAGED_DEV, port = MEMORYC
         logFD = fs.openSync(p.log, 'a', 0o600); fs.chmodSync(p.log, 0o600);
         child = spawn(process.execPath, [path.join(p.run, 'server.mjs'), '--dataRoot', p.data, '--port', String(port)], {
             cwd: p.run, detached: true, stdio: ['ignore', logFD, logFD],
-            env: { PATH: process.env.PATH, NODE_ENV: 'production', VC_MEMORYCORE_SERVICE_TOKEN: token },
+            env: { PATH: process.env.PATH, NODE_ENV: 'production', VC_MEMORYCORE_SERVICE_TOKEN: token,
+                ...(process.env.VC_MEMORYCORE_CALLBACK_BASE_URL ? { VC_MEMORYCORE_CALLBACK_BASE_URL: process.env.VC_MEMORYCORE_CALLBACK_BASE_URL } : {}),
+                ...(process.env.VC_MEMORYCORE_CALLBACK_TOKEN ? { VC_MEMORYCORE_CALLBACK_TOKEN: process.env.VC_MEMORYCORE_CALLBACK_TOKEN } : {}),
+            },
         });
         fs.closeSync(logFD); logFD = undefined;
         await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', () => reject(new Error('MemoryCore spawn failed'))); });

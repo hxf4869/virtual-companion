@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createMemoryCoreServer, requireServiceToken } from './http.mjs';
 import { openFoundationEngine } from './engine.mjs';
+import { openControlledEngine } from './native-engine.mjs';
 
 process.umask(0o077);
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
@@ -13,12 +14,17 @@ try {
     const token = requireServiceToken(process.env.VC_MEMORYCORE_SERVICE_TOKEN);
     const build = JSON.parse(fs.readFileSync(new URL('./build.json', import.meta.url), 'utf8'));
     const engine = await openFoundationEngine(dataRoot);
+    if (process.env.VC_MEMORYCORE_CALLBACK_TOKEN) {
+        const controlled = await openControlledEngine({ dataRoot, callbackBaseURL: process.env.VC_MEMORYCORE_CALLBACK_BASE_URL,
+            callbackToken: process.env.VC_MEMORYCORE_CALLBACK_TOKEN });
+        engine.invoke = controlled.invoke; engine.close = controlled.close;
+    }
     const server = createMemoryCoreServer({ token, engine, commit: build.commit });
     server.requestTimeout = 5000;
     server.headersTimeout = 5000;
     server.on('error', () => { process.stderr.write('MEMORYCORE_LISTEN_FAILED\n'); process.exit(1); });
     server.listen(port, '127.0.0.1', () => process.stdout.write('MEMORYCORE_FOUNDATION_READY\n'));
-    const close = () => { server.close(() => process.exit(0)); server.closeAllConnections(); };
+    const close = () => { server.close(async () => { await engine.close?.(); process.exit(0); }); server.closeAllConnections(); };
     process.on('SIGTERM', close); process.on('SIGINT', close);
 } catch {
     // Upstream exceptions may contain paths/content: only a fixed code leaves this process.

@@ -1,0 +1,28 @@
+{
+  "id": "vc-memorycore-05-commit",
+  "group": "proposal-commit",
+  "reason": "Atomically validate revision/versions and persist prepared L1 records plus idempotent receipt.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream offers atomic prepare/commit receipts, revision fences, and strict failures.",
+  "target": "MemoryCore/src/core/store/sqlite/memory-store.ts",
+  "expected_input_sha256": "f6e33645200eadb4fd482ab7836c3839e7fa87cf284dd7c363b1074d5cd9b997",
+  "expected_output_sha256": "faaa2c063dea734ed8cad2061c3174f5c705f3c25bcd2aba37f5e2f97e82b1a3",
+  "changed_lines": {
+    "added": 68,
+    "removed": 1
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "  getRawDb(): DatabaseSync {",
+      "to": "  // Controlled service state shares the connection and transaction with L1.\n  private controlledSchema(): void {\n    this.db.exec(`CREATE TABLE IF NOT EXISTS vc_scopes(scope_key TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0);\n      CREATE TABLE IF NOT EXISTS vc_operations(operation_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, receipt TEXT NOT NULL);`);\n  }\n  getScope(scopeKey: string): { revision: number } {\n    this.controlledSchema();\n    return this.db.prepare(\"SELECT revision FROM vc_scopes WHERE scope_key=?\").get(scopeKey) as { revision: number } ?? { revision: 0 };\n  }\n  getOperation(operationId: string): any {\n    this.controlledSchema();\n    const row = this.db.prepare(\"SELECT receipt FROM vc_operations WHERE operation_id=?\").get(operationId) as { receipt: string } | undefined;\n    return row ? JSON.parse(row.receipt) : null;\n  }\n  commitPrepared(input: { operationId: string; scopeKey: string; revision: number; spaceId: string;\n    filter: IsolationFilter; l0Records?: L0Record[]; targets: Array<{id: string; version: number}>;\n    records: Array<{record: MemoryRecord; embedding: Float32Array}> }): any {\n    this.controlledSchema();\n    if (this.degraded || !this.ftsAvailable || !this.vecTablesReady) throw new Error(\"STORE_UNAVAILABLE\");\n    this.db.exec(\"BEGIN IMMEDIATE\");\n    try {\n      const receipt = { operationId: input.operationId, scopeKey: input.scopeKey, revision: input.revision,\n        spaceId: input.spaceId, recordIds: input.records.map(x => x.record.id), sourceIds: (input.l0Records ?? []).map(x => x.id), status: \"committed\" };\n      const previous = this.getOperation(input.operationId);\n      if (previous) {\n        if (JSON.stringify(previous) !== JSON.stringify(receipt)) throw new Error(\"OPERATION_CONFLICT\");\n        this.db.exec(\"COMMIT\"); return previous;\n      }\n      if (this.getScope(input.scopeKey).revision !== input.revision) throw new Error(\"STALE_REVISION\");\n      const space = this.getSpace();\n      if (!space || space.spaceId !== input.spaceId || space.rebuilding) throw new Error(\"SPACE_NOT_READY\");\n      for (const target of input.targets) {\n        const row = this.stmtGetMeta.get(target.id) as any;\n        if (!row || row.version !== target.version || !rowMatchesIsolation(row, input.filter)) throw new Error(\"TARGET_VERSION_CONFLICT\");\n      }\n      for (const {record, embedding} of input.records) {\n        const row = { team_id: record.teamId, user_id: record.userId, agent_id: record.agentId,\n          session_id: record.sessionId, session_key: record.sessionKey, task_id: record.taskId };\n        if (!rowMatchesIsolation(row, input.filter) || this.stmtGetMeta.get(record.id)) throw new Error(\"RECORD_SCOPE_CONFLICT\");\n        if (embedding.length !== this.dimensions || !embedding.every(Number.isFinite) || embedding.every(v => v === 0)) throw new Error(\"EMBEDDING_INVALID\");\n      }\n      for (const record of input.l0Records ?? []) {\n        const identity = { team_id: record.teamId, user_id: record.userId, agent_id: record.agentId,\n          session_id: record.sessionId, session_key: record.sessionKey, task_id: record.taskId };\n        const existing = this.stmtL0GetMeta.get(record.id) as any;\n        if (!rowMatchesIsolation(identity, input.filter) || (existing && (!rowMatchesIsolation(existing, input.filter) ||\n          existing.message_text !== record.messageText || existing.timestamp !== record.timestamp))) throw new Error(\"SOURCE_CONFLICT\");\n        if (!this.upsertL0(record, undefined, true)) throw new Error(\"SOURCE_WRITE_FAILED\");\n      }\n      for (const target of input.targets) this.deleteControlledRecord(target.id);\n      for (const {record, embedding} of input.records) {\n        if (!this.upsertL1(record, embedding, true)) throw new Error(\"COMMIT_FAILED\");\n      }\n      this.db.prepare(\"INSERT INTO vc_operations VALUES(?,?,?)\").run(input.operationId, input.scopeKey, JSON.stringify(receipt));\n      this.db.exec(\"COMMIT\"); return receipt;\n    } catch (error) { this.db.exec(\"ROLLBACK\"); throw error; }\n  }\n  invalidateScope(scopeKey: string): { revision: number } {\n    this.controlledSchema();\n    this.db.exec(\"BEGIN IMMEDIATE\");\n    try {\n      this.db.prepare(\"INSERT INTO vc_scopes VALUES(?,1) ON CONFLICT(scope_key) DO UPDATE SET revision=revision+1\").run(scopeKey);\n      this.db.prepare(\"UPDATE vc_operations SET receipt=json_set(receipt,'$.status','revoked') WHERE scope_key=?\").run(scopeKey);\n      const result = this.getScope(scopeKey); this.db.exec(\"COMMIT\"); return result;\n    } catch (error) { this.db.exec(\"ROLLBACK\"); throw error; }\n  }\n\n  getRawDb() : DatabaseSync {",
+      "count": 1
+    }
+  ]
+}

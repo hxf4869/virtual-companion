@@ -17,7 +17,7 @@ const GO = '/api/v1/admin';
 
 const REASONING_LEVEL_RE = /^[a-z0-9_-]{1,32}$/;
 const PROVIDER_ID_RE = /^[a-z][a-z0-9-]{0,63}$/;
-const CAP_KEYS = ['imageInput', 'videoInput', 'pdfInput', 'structuredOutput', 'toolCalls', 'nativeWebSearch', 'systemMessage'];
+const CAP_KEYS = ['imageInput', 'videoInput', 'pdfInput', 'structuredOutput', 'toolCalls', 'nativeWebSearch', 'systemMessage', 'temperature', 'topP'];
 const PURPOSE_IDS = ['FOREGROUND_CHAT', 'MEMORY_EXTRACTION_DEDUP_SUMMARY', 'BACKGROUND_GREETINGS', 'STORY_DIRECTOR', 'NPC_DIALOGUE', 'EMBEDDING'];
 
 let now = '2026-10-28T10:00:00+08:00';

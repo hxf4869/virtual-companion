@@ -1,0 +1,53 @@
+{
+  "id": "vc-memorycore-01-prepare",
+  "group": "proposal-commit",
+  "reason": "Expose side-effect-free extraction and strict scoped dedup before live writes.",
+  "upstream": {
+    "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+    "version": "1.0.2-beta.1"
+  },
+  "removal_condition": "Upstream exposes an equivalent prepare API with strict errors and trusted target versions.",
+  "target": "MemoryCore/src/core/record/l1-extractor.ts",
+  "expected_input_sha256": "eb354b4571ed088398ccd1885baee7800933d4005b4dad4e42b755d0d3ef7e7b",
+  "expected_output_sha256": "c9898daac24d13c66a5ee7b3b7801894e3d907145d4ce829ebd20b1eea8e64e4",
+  "changed_lines": {
+    "added": 32,
+    "removed": 5
+  },
+  "validation": [
+    "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
+    "node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native"
+  ],
+  "replacements": [
+    {
+      "from": "import { writeMemory, generateMemoryId }",
+      "to": "import { writeMemory, generateMemoryId, prepareMemoryRecord }",
+      "count": 1
+    },
+    {
+      "from": "  lastSceneName?: string;\n}",
+      "to": "  lastSceneName?: string;\n  proposal?: { records: MemoryRecord[]; targets: Array<{ id: string; version: number }> };\n}",
+      "count": 1
+    },
+    {
+      "from": "    /** Max new messages to send in one extraction call */",
+      "to": "    prepareOnly?: boolean;\n    allowedRecordIds?: string[];\n    recordedAt?: string;\n    relevance?: { minCosine?: number; minFtsScore?: number };\n    /** Maximum new messages sent in an extraction call. */",
+      "count": 1
+    },
+    {
+      "from": "    earlyEmptyReason = outcome.emptyReason;",
+      "to": "    earlyEmptyReason = (outcome.emptyReason);\n    if (options.prepareOnly && [\"parse_fail\", \"not_array\", \"no_json\"].includes(earlyEmptyReason ?? \"\")) throw new Error(\"EXTRACTION_INVALID\");",
+      "count": 1
+    },
+    {
+      "from": "    logger?.error(`${TAG} LLM extraction failed:",
+      "to": "    if (options.prepareOnly) throw err;\n    logger?.error(`${TAG} LLM extraction failed :",
+      "count": 1
+    },
+    {
+      "from": "  // Step 2: Batch Conflict Detection + Write\n",
+      "to": "  // Controlled prepare has no live storage or generation-log effects.\n  if (options.prepareOnly) {\n    if (!options.llmRunner || !options.vectorStore || !options.allowedRecordIds || !options.recordedAt) throw new Error(\"PREPARE_CONTEXT_REQUIRED\");\n    const filter = { teamId, userId, agentId, sessionId, taskId, sessionKey, allowedRecordIds: options.allowedRecordIds, ...options.relevance };\n    const decisions = await batchDedup({ memories: memoriesWithIds, config, llmRunner: options.llmRunner,\n      vectorStore: options.vectorStore, embeddingService: options.embeddingService, filter, strict: true });\n    const targetIds = [...new Set(decisions.filter(d => d.action === \"update\" || d.action === \"merge\").flatMap(d => d.target_ids))];\n    if (targetIds.some(id => !options.allowedRecordIds!.includes(id))) throw new Error(\"TARGET_OUTSIDE_ALLOWLIST\");\n    const targets = targetIds.length ? await options.vectorStore.queryL1Records({ ...filter, recordIds: targetIds }) : [];\n    if (targets.length !== targetIds.length) throw new Error(\"TARGET_MISSING\");\n    const records = decisions.filter(d => d.action !== \"skip\").map(d => {\n      const memory = memoriesWithIds.find(m => m.record_id === d.record_id);\n      if (!memory) throw new Error(\"UNKNOWN_DECISION_RECORD\");\n      const version = Math.max(0, ...targets.filter(t => d.target_ids.includes(t.record_id)).map(t => t.version ?? 0)) + 1;\n      return prepareMemoryRecord(memory, d, { sessionKey, sessionId: sessionId!, teamId, userId, agentId, taskId }, options.recordedAt!, version);\n    });\n    return { success: true, extractedCount: extracted.length, storedCount: 0, records: [], sceneNames,\n      proposal: { records, targets: targets.map(t => ({ id: t.record_id, version: t.version ?? 0 })) } };\n  }\n\n  // Original immediate-write path (unused by the controlled service).\n",
+      "count": 1
+    }
+  ]
+}

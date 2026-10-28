@@ -110,8 +110,11 @@
     "saveModelProvider",
     "discoverProviderModels",
     "reorderModelRoutes",
+    "getEmbeddingConfiguration",
+    "saveEmbeddingConfiguration",
     "listModelPurposes",
     "saveModelPurpose",
+    "callMemoryCoreModel",
     "resolveModelPurpose",
     "getTrialStatus",
     "recordSurvey",
@@ -136,6 +139,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "066569fad5d3978fda2515d5cd856d12295309d53ff7c57f46f6a00d2a4e6f28"
+    "sha256": "6c13f8cb0ffb40e23d3dc26370906dbeda73a5991977950947d09970e856fee9"
   }
 }
