@@ -15,6 +15,20 @@
 
 \set ON_ERROR_STOP on
 
+-- W08 retires these capabilities from production roles. Keep the historical
+-- behavior/isolation assertions below under a temporary regression-only role.
+CREATE ROLE vc_embedding_regression_122 NOLOGIN INHERIT IN ROLE vc_api;
+DO $$ DECLARE f record; actor text; BEGIN
+ FOR f IN SELECT oid,oid::regprocedure AS signature FROM pg_proc
+ WHERE pronamespace='vc'::regnamespace AND proname IN ('upsert_memory_embedding','semantic_recall') LOOP
+  FOREACH actor IN ARRAY ARRAY['vc_api','vc_worker','vc_job_coordinator','vc_dispatcher'] LOOP
+   IF has_function_privilege(actor,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'retired embedding function available to production role %: %',actor,f.signature; END IF;
+  END LOOP;
+  EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO vc_embedding_regression_122',f.signature);
+ END LOOP;
+END $$;
+
+
 TRUNCATE vc.emergency_contact, vc.memory_auto_save_pref, vc.consent_record,
          vc.conversation_summary, vc.memory_embedding, vc.trial_grant,
          vc.entitlement_snapshot, vc.service_class_assignment,
@@ -60,7 +74,7 @@ BEGIN;
 SELECT set_config('mse.a', (SELECT a::text FROM mse_owner), true),
        set_config('mse.b', (SELECT b::text FROM mse_owner), true);
 SELECT vc.set_owner_context(current_setting('mse.a')::bigint, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|' || current_setting('mse.a') || '|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
-SET LOCAL ROLE vc_api;
+SET LOCAL ROLE vc_embedding_regression_122;
 DO $$
 DECLARE
     v_alice bigint := current_setting('mse.a')::bigint;
@@ -289,7 +303,7 @@ RESET ROLE;
 -- ---------------------------------------------------------------------------
 BEGIN;
 SELECT vc.set_owner_context(current_setting('mse.b')::bigint, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|' || current_setting('mse.b') || '|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
-SET LOCAL ROLE vc_api;
+SET LOCAL ROLE vc_embedding_regression_122;
 DO $$
 DECLARE
     v_bob   bigint := current_setting('mse.b')::bigint;
@@ -322,3 +336,7 @@ EXCEPTION
     WHEN insufficient_privilege THEN NULL;
 END $$;
 RESET ROLE;
+
+COMMIT;
+DROP OWNED BY vc_embedding_regression_122;
+DROP ROLE vc_embedding_regression_122;

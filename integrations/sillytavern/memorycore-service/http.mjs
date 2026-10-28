@@ -25,7 +25,7 @@ export function createMemoryCoreServer({ token, engine, commit }) {
         }
         if (!['/healthz', '/readyz'].includes(route)) {
             const action = route?.startsWith('/internal/') ? route.slice('/internal/'.length) : '';
-            if (!engine.invoke || !['propose','commit','operation-status','search','rebuild-profile','rebuild-space','forget','clear-owner','export-owner'].includes(action)) {
+            if (!engine.invoke || !['propose','correct-propose','scope-status','invalidate-scope','commit','operation-status','search','rebuild-profile','read-profile','rebuild-space','forget','clear-owner','export-owner'].includes(action)) {
                 req.resume(); return send(404, { code: 'NOT_FOUND' });
             }
             if (req.method !== 'POST') { req.resume(); return send(405, { code: 'METHOD_NOT_ALLOWED' }); }
@@ -50,7 +50,7 @@ export function createMemoryCoreServer({ token, engine, commit }) {
         try {
             const ready = await engine.ready();
             send(ready ? 200 : 503, { status: ready ? 'ready' : 'unavailable', foundation: true,
-                storageReady: Boolean(ready), businessReady: false, upstreamCommit: commit });
+                storageReady: Boolean(ready), businessReady: Boolean(ready && engine.invoke), upstreamCommit: commit });
         } catch { send(503, { status: 'unavailable', foundation: true, storageReady: false, businessReady: false }); }
     });
 }

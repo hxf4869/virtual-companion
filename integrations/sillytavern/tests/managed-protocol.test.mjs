@@ -293,3 +293,17 @@ test('客户端中途断开：流式请求标记 aborted 且不写后续分片',
     }
     assert.equal(cap.aborted, true);
 });
+
+test('MemoryCore fixture extracts only declared matching synthetic facts and returns bounded file-tool steps', () => {
+    const docs = [{ content: '我喜欢绿茶。', type: 'persona' }, { content: '我计划于2026年10月30日去厦门参加朋友婚礼。' }];
+    const plan = body => buildPlan('vc08-memory', body, null, { memorycoreDocuments: docs });
+    const extracted = JSON.parse(plan({ messages: [{ role: 'user', content: 'message: 我喜欢绿茶。' }] }).text);
+    assert.deepEqual(extracted[0].memories.map(m => m.content), ['我喜欢绿茶。']);
+    assert.deepEqual(JSON.parse(plan({ messages: [{ role: 'user', content: '我的宠物叫什么？' }] }).text), []);
+    const dedup = JSON.parse(plan({ messages: [{ role: 'user', content: '### 第 1 条新记忆 (record_id: m_1_a)\n### 第 2 条新记忆 (record_id: m_2_b)' }] }).text);
+    assert.deepEqual(dedup, [{ record_id: 'm_1_a', action: 'store', target_ids: [] }, { record_id: 'm_2_b', action: 'store', target_ids: [] }]);
+    const tool = JSON.parse(plan({ messages: [{ role: 'system', content: 'Only supplied staging files are accessible.' }, { role: 'user', content: 'New Memories List 我喜欢绿茶。' }] }).text);
+    assert.equal(tool.tool.path, 'scene_blocks/synthetic.md');
+    const done = JSON.parse(plan({ messages: [{ role: 'system', content: 'Only supplied staging files are accessible.' }, { role: 'user', content: '{"toolResult":"written"}' }] }).text);
+    assert.deepEqual(done, { text: 'done' });
+});

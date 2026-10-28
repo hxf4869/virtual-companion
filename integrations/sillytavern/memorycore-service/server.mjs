@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createMemoryCoreServer, requireServiceToken } from './http.mjs';
 import { openFoundationEngine } from './engine.mjs';
 import { openControlledEngine } from './native-engine.mjs';
+import { acquireRuntimeLock } from './storage.mjs';
 
 process.umask(0o077);
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
@@ -13,11 +14,15 @@ try {
         !process.argv.includes('--port') || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('MEMORYCORE_CONFIG');
     const token = requireServiceToken(process.env.VC_MEMORYCORE_SERVICE_TOKEN);
     const build = JSON.parse(fs.readFileSync(new URL('./build.json', import.meta.url), 'utf8'));
+    const releaseLock = acquireRuntimeLock(dataRoot);
+    process.once('exit', releaseLock);
     const engine = await openFoundationEngine(dataRoot);
     if (process.env.VC_MEMORYCORE_CALLBACK_TOKEN) {
         const controlled = await openControlledEngine({ dataRoot, callbackBaseURL: process.env.VC_MEMORYCORE_CALLBACK_BASE_URL,
             callbackToken: process.env.VC_MEMORYCORE_CALLBACK_TOKEN });
         engine.invoke = controlled.invoke; engine.close = controlled.close;
+        const foundationReady = engine.ready;
+        engine.ready = async () => (await foundationReady()) && (await controlled.ready());
     }
     const server = createMemoryCoreServer({ token, engine, commit: build.commit });
     server.requestTimeout = 5000;

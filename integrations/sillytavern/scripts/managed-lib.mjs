@@ -397,6 +397,7 @@ export function createStClient({ baseUrl, fetchImpl = fetch, extraCookies, expec
 
 /** accept-managed 的验收场景注册表。needs 声明运行依赖，编排按需补齐。 */
 export const SCENES = [
+    { id: 'memory-real-model', title: 'W08 Owner授权私有模型少量实际提取（显式选择，最多3条来源）', needs: ['go', 'stack'], default: false },
     { id: 'memorycore-native', title: 'W08 受控 MemoryCore 固定源码、SQLite、范围与本机 embedding', needs: ['memorycore'], default: false },
     { id: 'memorycore-foundation', title: 'W08 MemoryCore 固定源码基础服务、鉴权、重启与数据保留', needs: ['memorycore'], default: false },
     { id: 'login-shape', title: '合成 Owner 登录请求形状（真实 POST /api/v1/auth/login）', needs: ['go'], default: true },
@@ -421,7 +422,7 @@ export const SCENES = [
     { id: 'f2-browser', title: 'W05 B07 两个真实页面冲突保留草稿与迟到脚本拒绝', needs: ['go', 'stack', 'browser'], default: false },
     { id: 'rights-browser', title: 'W06 D02/D05 原生数据权利页面、一次性下载与手机布局', needs: ['go', 'stack'], default: false },
     { id: 'rights-native', title: 'W06 D03/D04 离线重试与独立合成账号删号', needs: ['go', 'stack'], default: false },
-    { id: 'memory-browser', title: 'W07 M01/M09 原生长期记忆、摘要与最终请求', needs: ['catalog', 'stack', 'browser'], default: false },
+    { id: 'memory-browser', title: 'W08 正式提取、管理纠正遗忘与W07原生最终请求', needs: ['catalog', 'stack', 'browser'], default: false },
 ];
 
 /** 展开过滤器：具名场景 + 依赖闭包（needs 中的内部能力不算场景，'catalog' 由 catalog-admin 提供）。 */

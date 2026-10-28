@@ -113,20 +113,18 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		queryZone = in.QueryTimezone
 	}
 	queryTime := memorytime.Normalize(querySource.text, queryAt, queryZone)
-	memories, err := s.queryMemories(ctx, owner, b.relationship, b.id, b.scope, recallQuery{Text: querySource.text, Date: queryTime.EventDate, Limit: 20})
+	memories, err := s.searchEngineMemories(ctx, owner, b.relationship, b.id, recallQuery{Text: querySource.text, Date: queryTime.EventDate, Limit: 20})
 	if err != nil {
 		return out, err
 	}
-	// Short summaries are deterministic extracts of settled user sources.
-	// Rebuild after edits/forgetting from current dependencies, never a stale
-	// aggregate fallback, and never from assistant claims of tool success.
+	// Only engine-derived profiles with verified dependencies may be injected.
 	chats, err := s.stSummaryChats(ctx, owner, b)
 	if err != nil {
 		return out, err
 	}
-	chatIDs := make([]string, 0, len(chats))
-	for _, c := range chats {
-		chatIDs = append(chatIDs, c.chat)
+	chatIDs := []string{}
+	for _, chat := range chats {
+		chatIDs = append(chatIDs, chat.chat)
 	}
 	if len(chatIDs) > 0 {
 		checked, err := s.ReconcileSTSources(ctx, owner, chatIDs)
@@ -137,15 +135,8 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		for _, state := range checked {
 			if state.State == "UNAVAILABLE" {
 				out.Status = "skipped"
+				return emptySTMemory(out), nil
 			}
-		}
-	}
-	if out.Status == "skipped" {
-		return emptySTMemory(out), nil
-	}
-	for _, c := range chats {
-		if err := s.refreshSTSummary(ctx, owner, c.id); err != nil {
-			return out, err
 		}
 	}
 	summaries, err := s.stSummaries(ctx, owner, b.id, chats)
@@ -212,7 +203,7 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		}
 	}
 	for _, d := range summaries {
-		if add("会话摘要（来源摘录）：" + d.text) {
+		if add("会话摘要（引擎归纳）：" + d.text) {
 			out.SummaryIDs = append(out.SummaryIDs, fmt.Sprint(d.id))
 		}
 	}
@@ -290,59 +281,6 @@ func (s *Store) stSummaryChats(ctx context.Context, owner int64, b stMemoryBindi
 		return rows.Err()
 	})
 	return out, mapStoreErr(err)
-}
-func (s *Store) refreshSTSummary(ctx context.Context, owner, conversation int64) error {
-	return mapStoreErr(s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT source_ref,content_cipher,source_timestamp,source_timezone,source_position FROM vc.st_message_source
-            WHERE owner_user_id=$1 AND conversation_id=$2 AND present AND settled AND eligible AND NOT suppressed AND role='user'
-            ORDER BY source_position DESC,id DESC LIMIT 12`, owner, conversation)
-		if err != nil {
-			return err
-		}
-		sources := []stDigestSource{}
-		for rows.Next() {
-			var d stDigestSource
-			if err := rows.Scan(&d.ref, &d.text, &d.at, &d.timezone, &d.position); err != nil {
-				rows.Close()
-				return err
-			}
-			sources = append(sources, d)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
-		}
-		if len(sources) == 0 {
-			return nil
-		}
-		refs := []string{}
-		texts := []string{}
-		for i := len(sources) - 1; i >= 0; i-- {
-			d := sources[i]
-			plain := d.text
-			r := []rune(plain)
-			if len(r) > 160 {
-				plain = string(r[:160]) + "…"
-			}
-			var at time.Time
-			if d.at != nil {
-				at = *d.at
-			}
-			normalized := memorytime.Normalize(plain, at, valueOrEmpty(d.timezone))
-			label := ""
-			if normalized.EventDate != nil {
-				label = "（事件日期=" + *normalized.EventDate + "）"
-			} else if normalized.NormalizationStatus == memorytime.StatusNeedsClarification {
-				label = "（时间待澄清）"
-			}
-			texts = append(texts, "「"+plain+"」"+label)
-			refs = append(refs, d.ref)
-		}
-		stored := strings.Join(texts, "；")
-		_, err = tx.Exec(ctx, `SELECT vc.record_st_summary($1,$2,$3,$4)`, owner, conversation, refs, stored)
-		return err
-	}))
 }
 func (s *Store) stSummaries(ctx context.Context, owner, target int64, chats []stSummaryChat) ([]stDigest, error) {
 	out := []stDigest{}

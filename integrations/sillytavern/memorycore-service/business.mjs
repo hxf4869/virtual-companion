@@ -95,7 +95,10 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         }
         return out;
     }
-    async function noCleanup(ctx) { if (await readJSON(path.join(ctx.dir, 'cleanup.json'))) fail('CLEANUP_PENDING'); }
+    async function noCleanup(ctx) {
+        if (await readJSON(path.join(ctx.dir, 'deleted.json'))) fail('OWNER_DELETED');
+        if (await readJSON(path.join(ctx.dir, 'cleanup.json'))) fail('CLEANUP_PENDING');
+    }
     async function liveOperation(ctx, file, scope, revision, status) {
         checkRevision(ctx.native, scope, revision);
         if ((await readJSON(file))?.status !== status) fail('REVISION_CONFLICT');
@@ -158,10 +161,119 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         }
         return result;
     }
+    async function reconcileRestored() {
+        return serial('restore-gate', async () => {
+            const file = path.join(dataRoot, 'restore-pending.json'), rights = await readJSON(file);
+            if (!rights) return;
+            if (rights.version !== 1 || !rights.owners || typeof rights.owners !== 'object' || !Array.isArray(rights.deletions)) fail('RESTORE_RIGHTS');
+            const deletedOwners = new Set(rights.deletions.map(d => d.ownerId));
+            for (const ownerId of await entries(path.join(dataRoot, 'owners'))) {
+                if (!/^[1-9][0-9]*$/.test(ownerId)) fail('RESTORE_OWNER');
+                const scope = { ownerId, instanceId: '1', mode: 'COMPANION', domainId: 'account-rights', profileScopeId: 'account-rights' };
+                const ctx = await owner(scope), policy = rights.owners[ownerId];
+                const deleted = !policy || policy.deleted === true || deletedOwners.has(ownerId);
+                if (!deleted && (!Array.isArray(policy.recordIds) || !Array.isArray(policy.sourceIds))) fail('RESTORE_RIGHTS');
+                const ids = new Set(deleted ? [] : policy.recordIds), sources = new Set(deleted ? [] : policy.sourceIds);
+                const removed = new Set(ctx.native.list().filter(r => !ids.has(r.id) || !r.metadata?.vcDependencies?.length || r.metadata.vcDependencies.some(id => !sources.has(id))).map(r => r.id));
+                ctx.native.forgetRecords([...removed]);
+                ctx.native.forgetSources(ctx.native.listSources().map(r => r.id || r.record_id).filter(id => !sources.has(id)));
+                for (const { id, op } of await operationEntries(ctx)) {
+                    const retainProfile = !deleted && removed.size === 0 && op.status === 'profile-published' && op.dependencies?.length && op.dependencies.every(id => sources.has(id));
+                    if (retainProfile) continue;
+                    await scrubOperation(ctx, id, op, removed, deleted || op.status !== 'published');
+                }
+                await fs.rm(path.join(ctx.dir, 'staging'), { recursive: true, force: true });
+                privateDirectory(path.join(ctx.dir, 'staging'));
+                await fs.rm(path.join(ctx.dir, 'cleanup.json'), { force: true });
+                if (deleted) await writeJSON(path.join(ctx.dir, 'deleted.json'), { status: 'cleared' });
+            }
+            await fs.rename(file, path.join(dataRoot, 'go-rights.json'));
+        });
+    }
     async function invoke(action, input) {
+        await reconcileRestored();
         if (!input || typeof input !== 'object' || ['owner','directory','dataRoot','callbackURL','callbackUrl'].some(k => Object.hasOwn(input, k))) fail('REQUEST');
         const ctx = await owner(input.scope), { native, dir } = ctx;
         const key = scopeKey(input.scope), mapped = mapScope(input.scope);
+        if (!['clear-owner', 'export-owner', 'operation-status'].includes(action) && await readJSON(path.join(dir, 'deleted.json'))) fail('OWNER_DELETED');
+        if (action === 'scope-status') return { revision: native.getScope(key).revision };
+        if (action === 'invalidate-scope') return serial(input.scope.ownerId, async () => {
+            if (!Number.isSafeInteger(input.revision) || input.revision < native.getScope(key).revision) fail('REVISION_CONFLICT');
+            if (native.getScope(key).revision === input.revision) return { revision: input.revision };
+            while (native.getScope(key).revision < input.revision) native.invalidateScope(key);
+            for (const { id, op } of await operationEntries(ctx)) {
+                if (sameScope(op.scope, input.scope) && op.status !== 'published' && op.status !== 'revoked')
+                    await scrubOperation(ctx, id, op, new Set(), true);
+            }
+            return { revision: native.getScope(key).revision };
+        });
+        if (action === 'correct-propose') {
+            if (!safeId(input.recordId) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 ||
+                typeof input.summary !== 'string' || !input.summary.trim() || [...input.summary].length > 2000) fail('CORRECTION');
+            const request = { scope: input.scope, revision: input.revision, embedding: input.embedding,
+                recordId: input.recordId, expectedVersion: input.expectedVersion, summary: input.summary, messages: [], ...(input.previousOperationId ? { previousOperationId: input.previousOperationId } : {}) };
+            const slot = await serial(input.scope.ownerId, async () => {
+                await noCleanup(ctx); checkRevision(native, input.scope, input.revision);
+                await configure(ctx, input.embedding);
+                const { file, stored } = await operation(ctx, input);
+                if (stored) {
+                    if (!isDeepStrictEqual(stored.request, request)) fail('OPERATION_CONFLICT');
+                    if (stored.status === 'proposed') return { work: Promise.resolve(stored.proposal) };
+                    if (stored.status === 'preparing' && pending.has(file)) return { work: pending.get(file) };
+                    if (stored.status !== 'failed' && !(stored.status === 'preparing' && !pending.has(file))) fail('OPERATION_NOT_PROPOSABLE');
+                }
+                const target = native.list([input.recordId], mapped)[0];
+                if (!target && input.previousOperationId) {
+                    // A prior epoch may have committed the replacement before Go
+                    // could publish it. Re-register that exact existing record;
+                    // never reconstruct content or repeat extraction from memory.
+                    const previous = await operation(ctx, { scope: input.scope, operationId: input.previousOperationId });
+                    const ids = previous.stored?.receipt?.recordIds || [];
+                    const records = ids.length === 1 ? native.list(ids, mapped) : [];
+                    if (records.length !== 1 || records[0].content !== input.summary || !records[0].metadata?.vcDependencies?.length) fail('VERSION_CONFLICT');
+                    const record = records[0], dependencies = record.metadata.vcDependencies;
+                    return currentSpace(ctx, input.embedding, async () => {
+                        const registered = native.commitPrepared({ operationId: input.operationId, scopeKey: key, revision: input.revision,
+                            spaceId: input.embedding.spaceId, filter: mapped, l0Records: [], records: [], targets: [] });
+                        if (registered.status === 'revoked') fail('REVISION_CONFLICT');
+                        const proposal = { records: [record], targets: [], dependencies, vectors: [] };
+                        const receipt = { ...registered, status: 'published', recordIds: ids };
+                        await fs.writeFile(path.join(dir, 'records', input.operationId + '.jsonl'), JSON.stringify(record) + '\n', { mode: 0o600 });
+                        await writeJSON(file, { scope: input.scope, request, status: 'published', proposal, receipt });
+                        return { work: Promise.resolve(proposal) };
+                    });
+                }
+                if (!target || (target.version || 1) !== input.expectedVersion) fail('VERSION_CONFLICT');
+                const dependencies = [...new Set(target.metadata?.vcDependencies || [])];
+                const record = { ...target, id: randomUUID(), content: input.summary, version: 1,
+                    source_message_ids: dependencies, metadata: { ...target.metadata, vcDependencies: dependencies, vcScopeKey: key } };
+                await writeJSON(file, { scope: input.scope, request, status: 'preparing' });
+                const work = (async () => {
+                    try {
+                        const embedding = await embeddingFactory(input.embedding);
+                        const vectors = await embedding.embedBatch([input.summary]);
+                        const proposal = { records: [record], targets: [{ id: target.id, version: target.version || 1 }],
+                            dependencies, vectors: vectors.map(v => [...v]) };
+                        return await serial(input.scope.ownerId, async () => {
+                            await liveOperation(ctx, file, input.scope, input.revision, 'preparing');
+                            return currentSpace(ctx, input.embedding, async () => {
+                                await writeJSON(file, { scope: input.scope, request, status: 'proposed', proposal });
+                                return proposal;
+                            });
+                        });
+                    } catch (error) {
+                        await serial(input.scope.ownerId, async () => {
+                            const current = await readJSON(file);
+                            if (current?.status === 'preparing' && native.getScope(key).revision === input.revision)
+                                await writeJSON(file, { scope: input.scope, request, status: 'failed' });
+                        });
+                        throw error;
+                    } finally { pending.delete(file); }
+                })();
+                pending.set(file, work); return { work };
+            });
+            return slot.work;
+        }
         if (action === 'propose') {
             const ids = allowed(input);
             if (!Array.isArray(input.messages) || !input.messages.length || input.messages.length > 100 ||
@@ -243,12 +355,33 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                 await writeJSON(file, stored); return stored.receipt;
             });
         });
-        if (action === 'operation-status') {
-            const { stored } = await operation(ctx, input);
+        if (action === 'operation-status') return serial(input.scope.ownerId, async () => {
+            const { file, stored } = await operation(ctx, input);
             if (!stored) return { status: 'unknown' };
-            const revoked = native.getOperation(input.operationId)?.status === 'revoked';
-            return revoked ? { status: 'revoked' } : { status: stored.status, ...(stored.receipt ? { receipt: stored.receipt } : {}) };
-        }
+            if (['preparing', 'building-profile'].includes(stored.status) && !pending.has(file)) {
+                await fs.rm(path.join(dir, 'staging', input.operationId), { recursive: true, force: true });
+                await writeJSON(file, { scope: stored.scope, status: 'failed' });
+                return { status: 'failed' };
+            }
+            const nativeReceipt = native.getOperation(input.operationId);
+            const revoked = nativeReceipt?.status === 'revoked';
+            // Revocation scrubs proposal text, but cleanup must retain the
+            // committed record IDs even after a partial file publication.
+            return revoked ? { status: 'revoked', receipt: { operationId: nativeReceipt.operationId,
+                recordIds: nativeReceipt.recordIds || [], sourceIds: nativeReceipt.sourceIds || [], status: 'revoked' } } : { status: stored.status, ...(stored.receipt ? { receipt: stored.receipt } : {}), ...(stored.proposal ? { proposal: stored.proposal } : {}),
+                ...(stored.dependencies ? { dependencies: stored.dependencies } : {}), ...(Number.isSafeInteger(stored.revision) ? { revision: stored.revision } : {}) };
+        });
+        if (action === 'read-profile') return serial(input.scope.ownerId, async () => {
+            if (await readJSON(path.join(dir, 'cleanup.json'))) return {};
+            const ids = allowed(input);
+            if (!safeId(input.operationId)) fail('OPERATION_ID');
+            const stored = await readJSON(path.join(dir, 'operations', `${input.operationId}.json`));
+            if (!stored || stored.status !== 'profile-published' || !sameScope(stored.scope, input.scope) ||
+                stored.revision !== native.getScope(key).revision || !stored.dependencies?.length) return {};
+            const records = native.list(ids, mapped), dependencies = new Set(records.flatMap(r => r.metadata?.vcDependencies || []));
+            if (stored.dependencies.some(id => !dependencies.has(id))) return {};
+            return { dependencies: stored.dependencies, files: await profileFiles(path.join(dir, 'profiles', input.operationId)) };
+        });
         if (action === 'search') {
             if (await readJSON(path.join(dir, 'cleanup.json'))) return [];
             const revision = native.getScope(key).revision;
@@ -268,6 +401,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         if (action === 'rebuild-space') return serial(input.scope.ownerId, async () => {
             await noCleanup(ctx);
             await configure(ctx, input.embedding);
+            if (!native.getSpace().rebuilding) return { spaceId: input.embedding.spaceId, failures: 0, ready: true };
             const embedding = await embeddingFactory(input.embedding);
             let failures = 0;
             for (const record of native.list()) {
@@ -329,30 +463,63 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             return slot.work;
         }
         if (['forget','clear-owner'].includes(action)) return serial(input.scope.ownerId, async () => {
-            if (action === 'forget' && (!Array.isArray(input.recordIds) || !input.recordIds.every(safeId))) fail('RECORD_IDS');
+            if (action === 'forget' && (!Array.isArray(input.recordIds) || !input.recordIds.every(safeId) || (input.sourceIds !== undefined && (!Array.isArray(input.sourceIds) || !input.sourceIds.every(safeId))))) fail('RECORD_IDS');
             const file = path.join(dir, 'cleanup.json');
-            const request = { action, scope: input.scope, revision: input.revision, recordIds: [...new Set(input.recordIds || [])].sort() };
+            const accountDeletion = action === 'clear-owner' && input.accountDeletion === true;
+            const deletedFile = path.join(dir, 'deleted.json');
+            if (accountDeletion) {
+                const deleted = await readJSON(deletedFile);
+                if (deleted?.status === 'cleared') return { status: 'cleared', physicalErasure: false };
+                await writeJSON(deletedFile, { status: 'pending' });
+            }
             let cleanup = await readJSON(file);
+            if (accountDeletion && cleanup && cleanup.request.action !== 'clear-owner') {
+                const result = await runCleanup(ctx, cleanup, file);
+                if (result.status !== 'cleared') return result;
+                cleanup = null;
+            }
+            const request = { action, scope: input.scope, revision: accountDeletion ? (cleanup?.request.revision ?? native.getScope(key).revision) : input.revision, recordIds: [...new Set(input.recordIds || [])].sort(), ...(input.sourceIds ? { sourceIds: [...new Set(input.sourceIds)].sort() } : {}), ...(input.revisionAdvanced === true ? { revisionAdvanced: true } : {}), ...(input.matchSourceRecords === false ? { matchSourceRecords: false } : {}) };
             if (cleanup) {
                 if (JSON.stringify(cleanup.request) !== JSON.stringify(request)) fail('CLEANUP_PENDING');
             } else {
-                checkRevision(native, input.scope, input.revision);
-                const selected = native.list(action === 'forget' ? input.recordIds : undefined, action === 'forget' ? mapped : undefined);
-                const removed = selected.map(r => r.id), dependencies = new Set(selected.flatMap(r => r.metadata?.vcDependencies || []));
-                const ops = (await operationEntries(ctx)).filter(({ op }) => action === 'clear-owner' || sameScope(op.scope, input.scope) ||
-                    op.proposal?.records?.some(r => removed.includes(r.id)) || op.dependencies?.some(id => dependencies.has(id)));
+                if (action === 'forget') {
+                    if (!Number.isSafeInteger(input.revision) || input.revision < 0 || input.revision > native.getScope(key).revision) fail('REVISION_CONFLICT');
+                } else checkRevision(native, input.scope, request.revision);
+                const sourceSet = new Set(input.sourceIds || []);
+                const selected = native.list(undefined, action === 'forget' ? mapped : undefined).filter(r => action !== 'forget' || input.recordIds.includes(r.id) || (input.matchSourceRecords !== false && r.metadata?.vcDependencies?.some(id => sourceSet.has(id))));
+                const removed = selected.map(r => r.id), dependencies = new Set([...sourceSet, ...selected.flatMap(r => r.metadata?.vcDependencies || [])]);
+                const requestedRecords = new Set([...removed, ...(input.recordIds || [])]);
+                const retainedDependencies = new Set(native.list().filter(r => !removed.includes(r.id)).flatMap(r => r.metadata?.vcDependencies || []));
+                const affectedDependencies = new Set([...dependencies].filter(id => !retainedDependencies.has(id)));
+                const targetRevision = Math.max(native.getScope(key).revision, (input.revision || 0) + (input.revisionAdvanced === true ? 0 : 1));
+                const ops = (await operationEntries(ctx)).filter(({ op }) => action === 'clear-owner' ||
+                    (sameScope(op.scope, input.scope) && op.status !== 'published' && (op.request?.revision ?? op.revision ?? -1) < targetRevision) ||
+                    op.proposal?.records?.some(r => requestedRecords.has(r.id)) ||
+                    op.dependencies?.some(id => affectedDependencies.has(id)) ||
+                    op.proposal?.dependencies?.some(id => affectedDependencies.has(id)) ||
+                    op.request?.messages?.some(m => affectedDependencies.has(m.id)));
                 const keys = new Set([key, ...selected.map(r => r.metadata?.vcScopeKey).filter(Boolean), ...ops.map(({ op }) => scopeKey(op.scope))]);
                 const sourceIds = action === 'clear-owner' ? native.listSources().map(r => r.id || r.record_id) : [...dependencies];
-                cleanup = { request, status: 'pending', removed, sourceIds, scopes: [...keys].map(key => ({ key, revision: native.getScope(key).revision + 1 })),
+                cleanup = { request, status: 'pending', removed, sourceIds, scopes: [...keys].map(scope => ({ key: scope, revision: scope === key && action === 'forget' ? Math.max(native.getScope(scope).revision, input.revision + (input.revisionAdvanced === true ? 0 : 1)) : native.getScope(scope).revision + 1 })),
                     operations: ops.map(({ id, op }) => ({ id, scope: op.scope })) };
                 await writeJSON(file, cleanup); // Durable, body-free intent precedes invalidation/deletion.
             }
-            return runCleanup(ctx, cleanup, file);
+            const result = await runCleanup(ctx, cleanup, file);
+            if (accountDeletion && result.status === 'cleared') {
+                for (const sub of ['operations', 'records', 'profiles', 'staging']) {
+                    await fs.rm(path.join(dir, sub), { recursive: true, force: true });
+                    privateDirectory(path.join(dir, sub));
+                }
+                await writeJSON(deletedFile, { status: 'cleared' });
+            }
+            return result;
         });
         if (action === 'export-owner') return serial(input.scope.ownerId, async () => {
             const profiles = [], jsonl = [], operations = [];
             for (const { id, op } of await operationEntries(ctx)) {
-                operations.push({ operationId: id, scope: op.scope, status: op.status, ...(op.receipt ? { receipt: op.receipt } : {}) });
+                operations.push({ operationId: id, scope: op.scope, status: op.status, ...(op.receipt ? { receipt: op.receipt } : {}),
+                    ...(op.proposal ? { proposal: op.proposal } : {}), ...(op.dependencies ? { dependencies: op.dependencies } : {}),
+                    ...(op.request?.messages ? { sourceMessages: op.request.messages } : {}) });
                 if (op.status === 'profile-published') profiles.push({ operationId: id, scope: op.scope, dependencies: op.dependencies,
                     files: await profileFiles(path.join(dir, 'profiles', id)) });
                 if (op.status === 'published') {
@@ -361,9 +528,10 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                 }
             }
             return { records: native.list(), sources: native.listSources(), profiles, jsonl, operations,
+                staging: await profileFiles(path.join(dir, 'staging')),
                 embeddingSpace: native.getSpace(), cleanup: (await readJSON(path.join(dir, 'cleanup.json')))?.status || 'clear', physicalErasure: false };
         });
         fail('NOT_FOUND');
     }
-    return { invoke, async ready() { return true; }, async close() { for (const p of owners.values()) (await p).native.close(); } };
+    return { invoke, async ready() { await reconcileRestored(); return true; }, async close() { for (const p of owners.values()) (await p).native.close(); } };
 }

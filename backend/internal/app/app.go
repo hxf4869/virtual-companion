@@ -16,7 +16,10 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/httpapi"
 	"github.com/hxf4869/virtual-companion/internal/jobs"
+	"github.com/hxf4869/virtual-companion/internal/memorycore"
+	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"github.com/hxf4869/virtual-companion/internal/observability"
+	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/stsource"
 )
@@ -309,6 +312,14 @@ func (r *Runtime) openStore(ctx context.Context) error {
 		store.UseSTSourceReader(client)
 		store.UseSTDataClient(client)
 	}
+	if r.cfg.MemoryCoreBaseURL != "" {
+		client, err := memoryengine.New(r.cfg.MemoryCoreBaseURL, r.cfg.MemoryCoreServiceToken)
+		if err != nil {
+			store.Close()
+			return err
+		}
+		store.UseMemoryEngine(client)
+	}
 	r.store = store
 	r.metrics.SetDBStatsSource(func() observability.DBStats {
 		st := store.Stats()
@@ -343,6 +354,11 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 		Blobs:     r.deps.Blobs,
 	}
 	if loop, ok := r.deps.Jobs.(*jobs.Loop); ok {
+		if r.cfg.MemoryCoreCallbackToken != "" {
+			factory := modelprovider.Factory{ConnectTimeout: r.cfg.Provider.ConnectTimeout, FirstTokenTimeout: r.cfg.Provider.FirstTokenTimeout, TotalTimeout: r.cfg.Provider.TotalTimeout, MaxResponseBytes: r.cfg.Provider.MaxResponseBytes, AllowLoopbackHTTP: r.cfg.Provider.AllowLoopbackHTTP}
+			core.MemoryCore = memorycore.New(r.store, factory.Build)
+			loop.UseMemoryCore(core.MemoryCore)
+		}
 		core.Cancels = loop.Cancels()
 		core.Hub = loop.Hub()
 		r.metrics.SetJobsStatsSource(func() observability.JobsStats {

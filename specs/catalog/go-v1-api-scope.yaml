@@ -445,8 +445,8 @@ operations:
   decision: KEEP
   keepBecause:
   - core-outcome
-  replacementOrImpact: Keep explicit Owner candidate create. Auto-save is the separate
-    MEMORY_EXTRACT job (memory-recall-contract goV1), not this endpoint.
+  replacementOrImpact: Keep explicit Owner candidate create. MemoryCore alone extracts via
+    ST_MEMORY_EXTRACT; this endpoint is an explicit Owner action.
 - operationId: listMemories
   method: GET
   path: /api/v1/relationships/{relationshipId}/memories
@@ -454,7 +454,7 @@ operations:
   decision: KEEP
   keepBecause:
   - core-outcome
-  replacementOrImpact: Keep listing canonical and pending memory.
+  replacementOrImpact: W08 UI-P03 filtered lifecycle list with cursor and X-Next-Cursor header.
 - operationId: getMemory
   method: GET
   path: /api/v1/memories/{memoryId}
@@ -462,7 +462,7 @@ operations:
   decision: KEEP
   keepBecause:
   - core-outcome
-  replacementOrImpact: Keep the memory detail backend capability without a current frontend entry.
+  replacementOrImpact: W08 UI-P03 detail includes replacement history, source state and cleanup progress after forgetting.
 - operationId: updateMemory
   method: PATCH
   path: /api/v1/memories/{memoryId}
@@ -470,7 +470,7 @@ operations:
   decision: KEEP
   keepBecause:
   - core-outcome
-  replacementOrImpact: Keep Owner edit of canonical memory.
+  replacementOrImpact: W08 expectedVersion correction creates a replacement; stale versions return MEMORY_VERSION_CONFLICT (409).
 - operationId: deleteMemory
   method: DELETE
   path: /api/v1/memories/{memoryId}
@@ -478,7 +478,7 @@ operations:
   decision: KEEP
   keepBecause:
   - core-outcome
-  replacementOrImpact: Keep delete/tombstone. Restore must not resurrect.
+  replacementOrImpact: W08 immediate suppression returns 202; asynchronous online cleanup reports DONE or PARTIAL and restore cannot resurrect.
 - operationId: confirmMemoryCandidate
   method: POST
   path: /api/v1/memories/{memoryId}/confirm

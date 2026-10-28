@@ -64,7 +64,7 @@ func TestMemoryCandidateLifecycle(t *testing.T) {
 	if canonical.Status != "ACCEPTED" {
 		t.Fatalf("confirm %+v", canonical)
 	}
-	edit := doJSON(t, s, http.MethodPatch, "/api/v1/memories/"+mem.MemoryID, `{"summary":"fixture-fact-edited"}`, 1)
+	edit := managedWrite(t, s, http.MethodPatch, "/api/v1/memories/"+mem.MemoryID, `{"summary":"fixture-fact-edited","expectedVersion":1}`, true)
 	if edit.Code != http.StatusOK {
 		t.Fatalf("edit %d %s", edit.Code, edit.Body.String())
 	}
@@ -72,15 +72,14 @@ func TestMemoryCandidateLifecycle(t *testing.T) {
 	if ev.Code != http.StatusOK {
 		t.Fatalf("evidence %d %s", ev.Code, ev.Body.String())
 	}
-	del := doJSON(t, s, http.MethodDelete, "/api/v1/memories/"+mem.MemoryID, "", 1)
-	if del.Code != http.StatusOK {
+	del := managedWrite(t, s, http.MethodDelete, "/api/v1/memories/"+mem.MemoryID, "", true)
+	if del.Code != http.StatusAccepted {
 		t.Fatalf("delete %d %s", del.Code, del.Body.String())
 	}
 	missing := doJSON(t, s, http.MethodGet, "/api/v1/memories/"+mem.MemoryID, "", 1)
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("deleted get %d", missing.Code)
+	if missing.Code != http.StatusOK || !strings.Contains(missing.Body.String(), `"lifecycle":"FORGETTING"`) {
+		t.Fatalf("deleted detail %d %s", missing.Code, missing.Body.String())
 	}
-	assertEnvelope(t, missing, "NOT_FOUND_OR_FORBIDDEN")
 
 	cand := doJSON(t, s, http.MethodPost, base+"/candidates", `{"scope":"RELATIONSHIP","summary":"reject-me"}`, 1)
 	var pending memoryJSON

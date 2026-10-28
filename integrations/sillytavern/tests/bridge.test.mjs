@@ -477,3 +477,26 @@ test('BridgeError 形态：status/code/message/extra；writeErrorResponse 输出
     assert.equal(res.statusCode, 409);
     assert.deepEqual(JSON.parse(res.body()), { error: { message: 'msg', code: 'VC_X', a: 1 } });
 });
+
+test('W08 memory management routes preserve cursor, conflict and cleanup responses', async () => {
+    const responses = {
+        'GET /api/v1/relationships': { body: [] },
+        'GET /api/v1/relationships/7/memories': { body: [], headers: { 'X-Next-Cursor': '123' } },
+        'GET /api/v1/memories/8': { body: { memoryId: '8' } },
+        'GET /api/v1/memories/8/evidence': { body: [] },
+        'PATCH /api/v1/memories/8': { status: 409, body: { error: { code: 'MEMORY_VERSION_CONFLICT' } } },
+        'DELETE /api/v1/memories/8': { status: 202, body: { cleanup: { state: 'PENDING' } } },
+    };
+    const state = { upstream: [], responses }, { server, port } = await startServer(fakeGo(state));
+    try {
+        const handler = createAdminBridge({ config: baseConfig(port) });
+        for (const [key, expected] of Object.entries(responses)) {
+            const [method, url] = key.split(' '), res = mockRes();
+            await handler(bridgeReq({ method, url: url + (url.endsWith('memories') ? '?q=hello&cursor=9&limit=2' : ''), body: method === 'PATCH' ? { summary: 'fixed', expectedVersion: 1 } : undefined }), res);
+            assert.equal(res.statusCode, expected.status || 200, key);
+            assert.deepEqual(JSON.parse(res.body()), expected.body);
+            if (expected.headers) assert.equal(res.headers['X-Next-Cursor'], '123');
+        }
+        assert.equal(state.upstream[1].search, '?q=hello&cursor=9&limit=2');
+    } finally { server.close(); }
+});

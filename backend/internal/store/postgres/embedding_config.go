@@ -82,6 +82,10 @@ func (s *Store) SaveEmbeddingConfig(ctx context.Context, actor int64, in SaveEmb
 		var err error
 		out, err = scanEmbeddingConfig(tx.QueryRow(ctx, `SELECT `+embeddingColumns+` FROM vc.go_admin_save_embedding_config($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
 			actor, in.Model, in.ArtifactVersion, in.Dimensions, in.QueryPreprocessingVersion, in.DocumentPreprocessingVersion, in.Normalization, in.State, in.ExpectedRevision))
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `SELECT vc.go_enqueue_memorycore_rebuilds($1)`, actor)
 		return err
 	})
 	return out, mapStoreErr(err)

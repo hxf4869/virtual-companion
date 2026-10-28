@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
+	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/turn"
 )
@@ -27,6 +29,7 @@ type concurrencyStore struct {
 	enqueueCalls int
 	// extract surface used by the async-extraction tests.
 	extractInput postgres.MemoryExtractInput
+	engine       *blockingExtractProvider
 	extractSaved []postgres.AutoSavedMemoryCreate
 	retryCalls   int
 	closes       []extractClose
@@ -67,7 +70,7 @@ func (s *concurrencyStore) ClaimJobs(_ context.Context, _, _, _ time.Duration, l
 		switch c.Kind {
 		case KindGeneration:
 			allowed = gen > 0
-		case KindMemoryExtract:
+		case KindSTMemoryExtract:
 			allowed = extract > 0
 		default:
 			allowed = true
@@ -76,7 +79,7 @@ func (s *concurrencyStore) ClaimJobs(_ context.Context, _, _, _ time.Duration, l
 			switch c.Kind {
 			case KindGeneration:
 				gen--
-			case KindMemoryExtract:
+			case KindSTMemoryExtract:
 				extract--
 			}
 			out = append(out, c)
@@ -128,7 +131,8 @@ func TestLoopClaimsExportWhileGenerationAndExtractSlotsFull(t *testing.T) {
 	}
 	generation := newConcurrencyProvider()
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, &kindSplitProvider{extract: extract, generation: generation}, nil, nil)
+	loop.Use(store, generation, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 
 	// Both kind slots fill up with blocked jobs.
 	if got := loop.ClaimOnce(context.Background()); got != 2 {
@@ -296,7 +300,7 @@ func (p *kindSplitProvider) Stream(ctx context.Context, req companion.ModelReque
 // extractClaim builds one MEMORY_EXTRACT claim and arms the extract input so
 // the handler reaches the provider call.
 func extractClaim(jobID, refID int64) postgres.JobClaim {
-	return postgres.JobClaim{OwnerID: 1, JobID: jobID, Kind: KindMemoryExtract, RefID: refID,
+	return postgres.JobClaim{OwnerID: 1, JobID: jobID, Kind: KindSTMemoryExtract, RefID: refID,
 		Token: fmt.Sprintf("et-%d", jobID), Fence: fmt.Sprintf("ef-%d", jobID)}
 }
 
@@ -530,7 +534,8 @@ func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
 	generation := newConcurrencyProvider()
 	close(generation.release) // generation completes immediately
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, &kindSplitProvider{extract: extract, generation: generation}, nil, nil)
+	loop.Use(store, generation, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 2 {
 		t.Fatalf("claim %d want 2 (extract + generation)", got)
@@ -545,8 +550,8 @@ func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
 	enqueued := store.enqueueCalls
 	saved := len(store.extractSaved)
 	store.mu.Unlock()
-	if enqueued != 1 {
-		t.Fatalf("generation enqueue calls %d, want 1 while extract blocked", enqueued)
+	if enqueued != 0 {
+		t.Fatalf("legacy generation enqueue calls %d, want 0 while ST extract blocked", enqueued)
 	}
 	if saved != 0 {
 		t.Fatalf("extract saved %d items before release", saved)
@@ -561,7 +566,7 @@ func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
 	store.mu.Lock()
 	saved = len(store.extractSaved)
 	store.mu.Unlock()
-	if saved != 1 || store.extractSaved[0].IdempotencyKey != "auto500-0" {
+	if saved != 1 || store.extractSaved[0].IdempotencyKey != "engine-900" {
 		t.Fatalf("saved %+v", store.extractSaved)
 	}
 }
@@ -581,6 +586,7 @@ func TestLoopBoundsConcurrentExtracts(t *testing.T) {
 	}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
 	loop.Use(store, extract, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
 		t.Fatalf("claim %d want 1 (single extract slot)", got)
@@ -589,7 +595,7 @@ func TestLoopBoundsConcurrentExtracts(t *testing.T) {
 	if got := extract.calls.Load(); got != 1 {
 		t.Fatalf("concurrent extract calls %d, want 1 (cap enforced)", got)
 	}
-	if got := store.pendingByKind(KindMemoryExtract); got != 1 {
+	if got := store.pendingByKind(KindSTMemoryExtract); got != 1 {
 		t.Fatalf("pending extracts %d, want 1 held back unclaimed", got)
 	}
 
@@ -608,7 +614,7 @@ func TestLoopBoundsConcurrentExtracts(t *testing.T) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if len(store.extractSaved) != 2 ||
-		store.extractSaved[0].IdempotencyKey != "auto501-0" || store.extractSaved[1].IdempotencyKey != "auto502-0" {
+		store.extractSaved[0].IdempotencyKey != "engine-901" || store.extractSaved[1].IdempotencyKey != "engine-902" {
 		t.Fatalf("saved %+v", store.extractSaved)
 	}
 }
@@ -624,6 +630,7 @@ func TestLoopStopCancelsInFlightExtract(t *testing.T) {
 	extract := &blockingExtractProvider{release: make(chan struct{})}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
 	loop.Use(store, extract, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 	if err := loop.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -660,6 +667,7 @@ func TestLoopCancelOwnerStopsInFlightExtract(t *testing.T) {
 	extract := &blockingExtractProvider{release: make(chan struct{})}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
 	loop.Use(store, extract, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
 		t.Fatalf("claim %d want 1", got)
@@ -707,7 +715,8 @@ func TestLoopClaimsExtractOnlyWithinFreeSlots(t *testing.T) {
 	generation := newConcurrencyProvider()
 	close(generation.release) // generation completes immediately
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, &kindSplitProvider{extract: extract, generation: generation}, nil, nil)
+	loop.Use(store, generation, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 
 	before := runtime.NumGoroutine()
 	if got := loop.ClaimOnce(context.Background()); got != 2 {
@@ -727,7 +736,7 @@ func TestLoopClaimsExtractOnlyWithinFreeSlots(t *testing.T) {
 	if got := extract.calls.Load(); got != 1 {
 		t.Fatalf("extract provider calls %d, want 1", got)
 	}
-	if got := store.pendingByKind(KindMemoryExtract); got != 12 {
+	if got := store.pendingByKind(KindSTMemoryExtract); got != 12 {
 		t.Fatalf("pending extracts %d, want 12 unclaimed", got)
 	}
 	if stats := loop.Stats(); stats.Claims != 2 {
@@ -874,7 +883,7 @@ func (s *leaseClaimStore) ClaimJobs(_ context.Context, generationLease, exportLe
 		switch c.Kind {
 		case KindGeneration:
 			allowed, lease = gen > 0, generationLease
-		case KindMemoryExtract:
+		case KindSTMemoryExtract:
 			allowed = extract > 0
 		default:
 			allowed, lease = true, exportLease
@@ -886,7 +895,7 @@ func (s *leaseClaimStore) ClaimJobs(_ context.Context, generationLease, exportLe
 		switch c.Kind {
 		case KindGeneration:
 			gen--
-		case KindMemoryExtract:
+		case KindSTMemoryExtract:
 			extract--
 		}
 		s.seq++
@@ -960,8 +969,8 @@ func (s *leaseClaimStore) ListExpiredMemoryExtractJobs(_ context.Context, limit 
 	defer s.mu.Unlock()
 	var out []postgres.JobClaim
 	for id, st := range s.claims {
-		if st.kind == KindMemoryExtract && st.status == "CLAIMED" && !st.leaseEnd.After(s.now) && len(out) < limit {
-			out = append(out, postgres.JobClaim{OwnerID: st.pending.OwnerID, JobID: id, Kind: KindMemoryExtract})
+		if st.kind == KindSTMemoryExtract && st.status == "CLAIMED" && !st.leaseEnd.After(s.now) && len(out) < limit {
+			out = append(out, postgres.JobClaim{OwnerID: st.pending.OwnerID, JobID: id, Kind: KindSTMemoryExtract})
 		}
 	}
 	return out, nil
@@ -973,7 +982,7 @@ func (s *leaseClaimStore) RecoverExpiredMemoryExtract(_ context.Context, _, jobI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st, ok := s.claims[jobID]
-	if !ok || st.kind != KindMemoryExtract {
+	if !ok || st.kind != KindSTMemoryExtract {
 		return "", postgres.ErrNotFound
 	}
 	if st.status != "CLAIMED" {
@@ -1060,9 +1069,8 @@ func (s *leaseClaimStore) RecoverExpiredExport(_ context.Context, _, jobID int64
 
 // TestLoopExpiredExtractRequeueFencesOldHolder pins the expiry coordination:
 // an extraction whose claim lease elapsed mid-provider-call is requeued by
-// recovery; the old holder may finish its already-started call but its save
-// is idempotency-keyed (no duplicate memory) and its CompleteJob is refused
-// by fencing, so the retried claim is the only committer.
+// recovery; the old holder may finish its already-started commit but its Go publication
+// and CompleteJob are refused by fencing; only the retried claim publishes.
 func TestLoopExpiredExtractRequeueFencesOldHolder(t *testing.T) {
 	store := newLeaseClaimStore()
 	armExtractInput(store.concurrencyStore)
@@ -1074,6 +1082,7 @@ func TestLoopExpiredExtractRequeueFencesOldHolder(t *testing.T) {
 	}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
 	loop.Use(store, extract, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
 		t.Fatalf("claim %d want 1", got)
@@ -1092,14 +1101,14 @@ func TestLoopExpiredExtractRequeueFencesOldHolder(t *testing.T) {
 		t.Fatalf("extract calls before release %d want 1", got)
 	}
 
-	// The old holder finishes its already-started call: it may save through
-	// the idempotency key exactly once, but its commit must be fenced.
+	// The old holder may finish the engine call, but no Go projection is
+	// published until a live claim revalidates and completes the operation.
 	close(extract.release)
 	waitFor(t, "old holder fenced on close", func() bool {
 		return store.fencedCloseCount() == 1 && len(loop.extractSlots) == 0
 	})
-	if got := store.savedRowCount(); got != 1 {
-		t.Fatalf("saved memories %d want 1 (idempotency key dedup)", got)
+	if got := store.savedRowCount(); got != 0 {
+		t.Fatalf("stale holder published %d memories, want 0", got)
 	}
 
 	// The requeued job is the only claim that can commit.
@@ -1178,4 +1187,63 @@ func TestLoopExpiredGenerationClaimCannotStartAfterRequeue(t *testing.T) {
 	if got := store.promoteConflictCount(); got != 1 {
 		t.Fatalf("fenced promotes %d want 1", got)
 	}
+}
+
+// attachConcurrencyEngine uses the production ST orchestration. The engine has
+// an existing proposal, so no model callback is needed; its commit transport is
+// blocked to exercise worker slots, cancellation and lease expiry independently.
+func attachConcurrencyEngine(loop *Loop, store any, engine *blockingExtractProvider) {
+	switch s := store.(type) {
+	case *concurrencyStore:
+		s.engine = engine
+	case *leaseClaimStore:
+		s.concurrencyStore.engine = engine
+	default:
+		panic("unsupported concurrency fixture")
+	}
+	loop.UseMemoryCore(memorycore.New(nil, nil))
+}
+func (s *concurrencyStore) PrepareEngineOperation(_ context.Context, c postgres.JobClaim) (postgres.EngineOperation, error) {
+	return postgres.EngineOperation{ID: fmt.Sprintf("engine-%d", c.JobID), Input: s.extractInput}, nil
+}
+func (s *concurrencyStore) EngineCall(ctx context.Context, action string, input, out any) error {
+	switch action {
+	case "operation-status":
+		return json.Unmarshal([]byte(`{"status":"proposed","proposal":{"records":[{"id":"test-record","content":"用户喜欢安静"}],"targets":[],"dependencies":["source"]}}`), out)
+	case "commit":
+		_, err := s.engine.Stream(ctx, companion.ModelRequest{}, func(companion.OutputDelta) error { return nil })
+		return err
+	default:
+		return fmt.Errorf("unexpected engine action %s", action)
+	}
+}
+func (s *concurrencyStore) ValidateEngineProposal(context.Context, postgres.JobClaim, postgres.EngineOperation, json.RawMessage) ([]string, error) {
+	return []string{"source"}, nil
+}
+func (s *concurrencyStore) PublishEngineProposal(_ context.Context, _ postgres.JobClaim, op postgres.EngineOperation, _ json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.extractSaved = append(s.extractSaved, postgres.AutoSavedMemoryCreate{IdempotencyKey: op.ID})
+	return nil
+}
+func (s *leaseClaimStore) PublishEngineProposal(_ context.Context, c postgres.JobClaim, op postgres.EngineOperation, _ json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.saveCalls++
+	if !s.liveLocked(c.JobID, c.Token, c.Fence) {
+		return postgres.ErrConflict
+	}
+	if s.saveKeys[op.ID] == 0 {
+		s.saveKeys[op.ID] = len(s.saveKeys) + 1
+	}
+	return nil
+}
+func (s *leaseClaimStore) RetryMemoryExtract(ctx context.Context, owner, job int64, token, fence string) (string, error) {
+	s.mu.Lock()
+	live := s.liveLocked(job, token, fence)
+	s.mu.Unlock()
+	if !live {
+		return "", postgres.ErrConflict
+	}
+	return s.concurrencyStore.RetryMemoryExtract(ctx, owner, job, token, fence)
 }

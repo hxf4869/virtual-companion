@@ -230,6 +230,7 @@ components:
       - REVISION_CONFLICT
       - MODEL_PROFILE_IN_USE
       - ACCOUNT_DELETION_PENDING
+      - MEMORY_VERSION_CONFLICT
     MessageFeedbackKind:
       type: string
       enum:

@@ -51,6 +51,12 @@ echo "== [2/3] 解密 openssl enc -d"
 openssl enc -d -aes-256-cbc -pbkdf2 "${PASS_ARGS[@]}" -in "$WORK/body" -out "$WORK/plain.tar" || { echo "FAIL: 解密失败" >&2; exit 4; }
 echo "== [3/3] 解包到 $TARGET 并收紧权限（目录 0700 / 文件 0600）"
 tar -xpf "$WORK/plain.tar" -C "$TARGET" || { echo "FAIL: 解包失败" >&2; exit 5; }
+if [ -d "$TARGET/_memorycore" ]; then
+    # The service remains blocked if current Go deletion/suppression state cannot
+    # be obtained. Never trust the rights snapshot contained in the old archive.
+    printf '{"blocked":true}\n' > "$TARGET/_memorycore/restore-pending.json"
+    python3 "$SCRIPT_DIR/lib/memorycore-backup.py" restore "$TARGET/_memorycore" || exit 5
+fi
 find "$TARGET" -type d -exec chmod 700 {} + || { echo "FAIL: 收紧目录权限失败" >&2; exit 5; }
 find "$TARGET" -type f -exec chmod 600 {} + || { echo "FAIL: 收紧文件权限失败" >&2; exit 5; }
 ENTRIES=$(tar -tf "$WORK/plain.tar" | wc -l | tr -d ' ')

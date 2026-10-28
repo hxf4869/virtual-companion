@@ -53,3 +53,5 @@ entries:
   order: 24
 - code: ACCOUNT_DELETION_PENDING
   order: 25
+- code: MEMORY_VERSION_CONFLICT
+  order: 26

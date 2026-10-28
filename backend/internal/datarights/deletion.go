@@ -17,6 +17,7 @@ type DeletionProgress struct {
 }
 type DeletionStore interface {
 	ClearSTAccountData(context.Context, int64) (bool, error)
+	ClearMemoryCoreAccountData(context.Context, int64) (bool, error)
 	ListOwnerExportObjects(context.Context, int64) ([]postgres.ExportObject, error)
 	ClearExportObject(context.Context, int64, int64, string) error
 	DeleteAccount(context.Context, int64) error
@@ -29,6 +30,10 @@ func ContinueDeletion(ctx context.Context, owner int64, store DeletionStore, del
 	done, err := store.ClearSTAccountData(ctx, owner)
 	if err != nil || !done {
 		return pending("ST"), err
+	}
+	done, err = store.ClearMemoryCoreAccountData(ctx, owner)
+	if err != nil || !done {
+		return pending("MEMORYCORE"), err
 	}
 	for {
 		objects, err := store.ListOwnerExportObjects(ctx, owner)

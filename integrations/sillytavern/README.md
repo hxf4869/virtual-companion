@@ -241,27 +241,25 @@ ST JSONL 的 F2 revision 是持久权威；`vc_message_id` 与每个 swipe 的 `
   也不会恢复账号——Go 侧删除意图与账号 tombstone 独立存在。
   首次认证进入 ST 时，经私有服务通道把账号→handle 登记到 Go；尚未创建聊天的私有角色、世界书
   也进入导出与删除范围。以后移除 ST 通道配置不会把已登记的数据域误报为不存在，相关任务仍待处理。
-- **ST 来源提取现状**：ST 持久来源的记忆提取复用既有任务队列与用量账本（与 MEMORY_EXTRACT
-  同队列、同 attempt/计费记账），用途绑定固定为 `MEMORY_EXTRACTION_DEDUP_SUMMARY`，缺失即显式
-  失败，不回落前台/全局 provider。当前 Go 后台尚未接线钉住的生成参数：该用途绑定钉了
-  temperature/topP/reasoningEffort 时任务以 `EXTRACTION_PARAMETERS_UNSUPPORTED` 显式失败，
-  W09 补齐前不要为该用途钉参数。
-- **边界**：离线备份策略与恢复后的清理属 W16，本节不承诺任何保留期限或部署形态；当前无外部
-  记忆引擎（导出 `domains` 中 `EXTERNAL_MEMORY_ENGINE` 为 NOT_APPLICABLE），inbox/通知尚未
-  投产，均不在本节声称范围。
+- **ST 来源提取现状**：`ST_MEMORY_EXTRACT` 复用现有队列、attempt 与用量账本，生产 handler 调用
+  MemoryCore 阶段提交；旧 `MEMORY_EXTRACT` 不再入队、领取、消费或重放 payload。
+  用途固定为 `MEMORY_EXTRACTION_DEDUP_SUMMARY`，缺失即失败，不回落前台/全局 provider。
+  Go Broker 显式映射已声明支持的 temperature/topP/reasoningEffort，配置变更使旧能力失效。
+- **边界**：MemoryCore 自 W08 纳入必需在线导出/删除域；恢复屏障亦见下文 W08 说明。
+  离线备份保留策略仍属 W16；inbox/通知尚未投产，不在当前清单声称范围。
 - **验收入口**：`node scripts/accept-managed.mjs --filter source-native,rights-browser,rights-native`；
   浏览器路径使用上文 `VC_W03_CHROMIUM_PATH`。覆盖实际来源读回、桌面/手机宽度页面、一次性副本、
   ST 不可用后的同任务恢复与独立合成账号清理，不使用真实 Owner 数据。
 
-## W07 长期记忆召回、摘要与时间
+## W07 原生注入与时间门禁（W08 切换引擎后保留）
 
 - 原生扩展设置中的「长期记忆」开关和召回预算控制专用 `vc_long_term_memory` 资料块；默认开启、
   1024 token，范围 128–2048。块使用原生 USER 历史资料位置，不覆盖角色卡、世界书或系统指令。
-- 当前已保存的用户消息作为查询；Go 从会话绑定确定 Owner、实例与模式，再对加密记忆分页排序。
-  中文使用双字/词匹配，规范事件日期独立匹配；没有最早 20/100 条窗口，也未启用 embedding。
+- 当前已保存的用户消息作为查询；Go 从会话绑定确定 Owner、实例、模式与允许来源，构造已发布记录
+  allowlist。MemoryCore 在此集合内做本机向量和词检索，低相关先拒绝再融合；事件日期由 Go 硬过滤。
   仅同实例独立会话共享，当前分支不读取同族母分支或兄弟分支的私人经历；剧情暂不注入日常记忆。
-- 候选、短摘要与实际出站分别核对持久来源。摘要复用现有加密表，记录准确来源引用并作有界用户
-  原文摘录；它不把助手台词当工具完成证明。遗忘、编辑、删除、swipe 变化会使旧资料失效。
+- 候选、L2/L3 派生摘要与实际出站分别核对完整持久来源。只有通过核验的派生内容才可注入；
+  不把助手台词当工具完成证明。遗忘、编辑、删除、swipe 变化会撤销受影响记录及派生资料。
   来源暂不可读时显示「本轮已跳过」，不以旧摘要兜底；旧聊天漏报修改也会被检索恢复对账发现。
 - 新来源保存原始时间/时区，规范化结果与记录时间分离。明确日期、下一自然周和有限清晰时间表达
   可解释；缺失时区、多日期或「晚上」等歧义保持待澄清。只有日期不会创建零点提醒，查询不会移动
@@ -327,17 +325,18 @@ W08③ 受控能力只面向 Go 内部调用，验收只用合成数据。设置
 `POST /internal/{propose,commit,operation-status,search,rebuild-profile,rebuild-space,forget,clear-owner,export-owner}`。
 身份、逻辑记忆域、来源、allowlist、revision 与 embedding 快照来自可信 Go；模型只返回内容与动作。
 浏览器不可调用内部接口，MemoryCore 不持有供应商密钥。Go 侧操作能力由 `memorycore.Broker.Open`
-签发；当前没有生产队列调用，④才接线。
+签发，绑定生产 `ST_MEMORY_EXTRACT` 任务的 claim token/fence；每次模型调用独立准入与记账。
 
 `propose` 不写 live；`commit` 的 SQLite 事务先产生 receipt，再发布 JSONL，部分发布可用同操作 ID 恢复。
 L2/L3 在独立 staging 中用受限文件工具生成，`rebuild-profile` 的发布步骤必须带 Go 核验过的完整依赖。
 遗忘先提高 revision，再清理所有相关副本；返回 pending 时不得当作清理完成。SQLite WAL/空闲页及离线备份
-不属于此步骤物理擦除承诺。`businessReady=false` 保持到④的生产来源/数据权利接线完成。
+不属于此步骤物理擦除承诺。配置 callback 且恢复对账通过时健康接口返回 `businessReady=true`；这不代替 Go 的用途配置与逐来源门禁。
 
 Embedding 使用 Go 专用 `/api/v1/admin/embedding-config` 快照与固定本机 Ollama 端点，制品、维度或预处理
 变化创建新空间。重建期间只允许词检索；`rebuild-space` 完整成功后才恢复向量。
 当前阈值与校准样本见 `memorycore-service/native-engine.mjs`、`scripts/fixtures/memorycore-calibration.json`。
-该校准是本机中文合成集结果，不代表未测试模型或全量真实记忆的召回率。
+同一问题含 2–4 个独立问句时，在同一可信 allowlist 内逐问句召回再合并已通过门槛的结果，避免多主题
+向量互相稀释；单问句保持原查询。该校准是本机中文合成集结果，不代表未测试模型或全量真实记忆的召回率。
 
 ```bash
 node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native
@@ -345,3 +344,49 @@ node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-nat
 
 该受管场景验证固定源码/真实 SQLite/sqlite-vec、10,000 条范围外干扰、中文正负召回、纠正、作用域、
 遗忘、版本屏障与故障恢复；使用现有 `vc-w08-embedding`，结束删除本轮合成数据，保留 embedding 容器。
+
+
+W08④ 的 Go 运行配置需要 `VC_MEMORYCORE_BASE_URL=http://127.0.0.1:8754`、独立
+`VC_MEMORYCORE_SERVICE_TOKEN` 与 `VC_MEMORYCORE_CALLBACK_TOKEN`；令牌仅由本机私有配置注入。
+MemoryCore 进程使用同一 callback token 与 `VC_MEMORYCORE_CALLBACK_BASE_URL` 指向 Go。
+提取用途绑定为 `MEMORY_EXTRACTION_DEDUP_SUMMARY`，embedding 使用独立配置，不复用聊天 provider。
+旧 Go `MEMORY_EXTRACT`、旧提取 payload 重放、自生成摘要和 `vc.memory_embedding` 不再参与生产。
+
+管理页经 ST 会话/CSRF 桥访问 Go：列表支持 q/status/事件日期筛选与 `X-Next-Cursor`；详情包含来源、
+替代历史和 cleanup。纠正携带 `expectedVersion`，创建新记录并替代旧记录；冲突为
+`409 MEMORY_VERSION_CONFLICT`。遗忘为 `202`，先停止召回，随后显示 PENDING/DONE/PARTIAL。
+DONE 只表示本次在线记忆域清理完成，不表示 ST 聊天原文或离线备份已删除。
+
+```bash
+node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-native,memory-browser
+```
+
+`memory-browser` 通过正式队列提取后在记忆页读取，核对并发纠正冲突、草稿保留、新版本、遗忘后的
+实际出站请求、清理状态与 1440/360/390px 布局、键盘焦点和弹窗返回；保留 W07 的来源、日期及摘要断言。
+L2/L3 的 Go 摘要投影按来源会话独立构建，跨会话召回再组合完整核验的摘要。原生生成会暂时将
+当前聊天来源标为未稳定，因此一个会话的画像不混入另一个活跃会话的来源。跨会话合并的 L1
+保留全部证据并继续参与正式召回，不删减依赖以塞入单会话摘要。
+
+`memorycore-native` 另验证未发布记录不可检索、SQLite 清理失败后的抑制与同意图恢复、迟到提交拒绝、
+当前 embedding 空间和重建。默认用合成模型，本机 embedding 容器保持运行；手机视口不替代真机软键盘验收。
+
+跨域导出把 `EXTERNAL_MEMORY_ENGINE` 作为必需在线域；引擎未配置或不可达时保留同一任务，
+删号在引擎域确认完成前保留 Go 账号与删除意图。
+`backup.sh` 自动纳入存在的 `dev-managed/memorycore-data`（可用 `VC_MEMORYCORE_DATA_ROOT` 指定），
+须通过私有环境配置 `VC_MEMORYCORE_DATABASE_URL`，或在无本机 psql 时设置 `VC_MEMORYCORE_PG_CONTAINER`
+使用 OrbStack PG 容器（二选一；容器内用户/库默认 postgres/vc，可用 `VC_MEMORYCORE_PG_USER` /
+`VC_MEMORYCORE_PG_DATABASE` 覆盖），并先停止受管 MemoryCore。`runtime.lock` 拒绝在线
+多文件快照；SQLite backup 一致快照包含画像、metadata、适配状态和 Go suppression 快照，外层仍加密。
+含 `_memorycore` 的 `restore.sh` 必须连接当前权威 PostgreSQL，生成最新删除/来源 allowlist 恢复门禁；
+数据库不可达退出 5 并保留 blocked 标记。全部 owner 清理、来源对账完成前不开放引擎读取。
+恢复产物 `_memorycore` 应作为引擎 dataRoot；PG 本体仍用现有 PG 备份流程恢复，历史归档的 `go-rights`
+不能替代最新删除意图。离线备份保留策略仍属 W16。
+
+已有 Owner 授权时，`--filter memory-real-model` 可单独验证 3 条合成来源（中文偏好、跨会话改口、
+相对日期）和 API 遗忘。它仅在内存中以 GB18030 读取根目录 gitignored `agents.txt`，使用指定
+Chat Completions 模型与 `reasoningEffort=max`，不写凭据或请求正文到日志/产物；结束先关闭用途并清除
+临时 provider 凭据，再由受管入口删除临时 PG。逐 stage 的调用次数与 provider token 用量来自 Go
+attempt 账本。该场景使用明确的保守验收估算费率（输入 0.01、输出 0.02 USD/1K token）与预算准入，
+费率不代表供应商价格，产物不宣称实际费用。首次任务失败即关闭用途，不继续增加样本；默认场景不运行真实模型。
+本轮已验证该 Owner 模型的 L1 实际提取与发布；L2 工具步骤未通过，真实改口/日期样本未继续执行。
+空场景目录的 list_files 已修复并有离线回归，但不把它宣称为实际 L2 失败的已证实根因。

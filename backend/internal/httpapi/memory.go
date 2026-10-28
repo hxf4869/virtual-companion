@@ -2,7 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"github.com/hxf4869/virtual-companion/internal/auth"
+	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +15,13 @@ import (
 )
 
 type memoryJSON struct {
+	Version              int64                `json:"version"`
+	Type                 string               `json:"type"`
+	RelationshipID       string               `json:"relationshipId"`
+	Mode                 string               `json:"mode"`
+	Lifecycle            string               `json:"lifecycle"`
+	SourceStatus         string               `json:"sourceStatus"`
+	RecallEligible       bool                 `json:"recallEligible"`
 	MemoryID             string               `json:"memoryId"`
 	Scope                string               `json:"scope"`
 	Summary              string               `json:"summary"`
@@ -33,7 +45,22 @@ type memoryEvidenceJSON struct {
 }
 
 func memoryJSONFrom(m postgres.Memory) memoryJSON {
+	lifecycle := "ACTIVE"
+	if m.SupersededAt != nil {
+		lifecycle = "SUPERSEDED"
+	}
+	if m.DeletedAt != nil {
+		lifecycle = "FORGETTING"
+	}
+	kind := "FACT"
+	if m.EventAt != nil {
+		kind = "EVENT"
+	}
+	if m.Time == nil {
+		m.Time = &postgres.MemoryTime{RecordedAt: m.CreatedAt}
+	}
 	return memoryJSON{
+		Version: 1, Type: kind, RelationshipID: idString(m.RelationshipID), Mode: "DAILY", Lifecycle: lifecycle, SourceStatus: "PENDING_VERIFICATION", RecallEligible: false,
 		MemoryID:             idString(m.ID),
 		Scope:                m.Scope,
 		Summary:              m.Summary,
@@ -105,33 +132,56 @@ func (s *Server) handleCreateMemoryCandidate(w http.ResponseWriter, r *http.Requ
 	s.writeJSON(w, http.StatusOK, memoryJSONFrom(mem))
 }
 
+type managedMemoryStore interface {
+	ListManagedMemories(context.Context, int64, int64, postgres.MemoryFilters) ([]json.RawMessage, string, error)
+	GetManagedMemory(context.Context, int64, int64) (json.RawMessage, error)
+	ManagedMemoryEvidence(context.Context, int64, int64) ([]json.RawMessage, error)
+	CorrectManagedMemory(context.Context, int64, int64, int64, string) (json.RawMessage, error)
+	ForgetManagedMemory(context.Context, int64, int64) error
+}
+
+func (s *Server) managedMemories(w http.ResponseWriter) managedMemoryStore {
+	st, ok := s.core.Store.(managedMemoryStore)
+	if !ok {
+		s.writeAPIError(w, 503, "INVALID_REQUEST", "temporarily unavailable")
+		return nil
+	}
+	return st
+}
 func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
 	p := s.corePrincipal(w, r, false)
 	if p == nil {
 		return
 	}
-	relID, ok := parsePathID(r.PathValue("relationshipId"))
+	id, ok := parsePathID(r.PathValue("relationshipId"))
 	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		s.writeAPIError(w, 400, "INVALID_REQUEST", "invalid request")
 		return
 	}
-	include, ok := parseOptionalBool(r.URL.Query().Get("includeDeleted"))
-	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+	st := s.managedMemories(w)
+	if st == nil {
 		return
 	}
-	list, err := s.core.Store.ListMemories(r.Context(), p.AccountID, relID, include)
+	q := r.URL.Query()
+	limit := 0
+	if q.Has("limit") {
+		v, e := strconv.Atoi(q.Get("limit"))
+		if e != nil || v < 1 {
+			s.writeAPIError(w, 400, "INVALID_REQUEST", "invalid request")
+			return
+		}
+		limit = v
+	}
+	rows, next, err := st.ListManagedMemories(r.Context(), p.AccountID, id, postgres.MemoryFilters{Query: q.Get("q"), Status: q.Get("status"), EventDateFrom: q.Get("eventDateFrom"), EventDateTo: q.Get("eventDateTo"), Cursor: q.Get("cursor"), Limit: limit})
 	if err != nil {
 		s.writeStoreErr(w, err)
 		return
 	}
-	out := make([]memoryJSON, 0, len(list))
-	for _, m := range list {
-		out = append(out, memoryJSONFrom(m))
+	if next != "" {
+		w.Header().Set("X-Next-Cursor", next)
 	}
-	s.writeJSON(w, http.StatusOK, out)
+	s.writeJSON(w, 200, rows)
 }
-
 func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 	p := s.corePrincipal(w, r, false)
 	if p == nil {
@@ -139,65 +189,87 @@ func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := parsePathID(r.PathValue("memoryId"))
 	if !ok {
-		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		s.writeAPIError(w, 404, "NOT_FOUND_OR_FORBIDDEN", "not found")
 		return
 	}
-	mem, err := s.core.Store.GetMemory(r.Context(), p.AccountID, id)
+	st := s.managedMemories(w)
+	if st == nil {
+		return
+	}
+	row, err := st.GetManagedMemory(r.Context(), p.AccountID, id)
 	if err != nil {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, memoryJSONFrom(mem))
+	s.writeJSON(w, 200, row)
 }
-
 func (s *Server) handleUpdateMemory(w http.ResponseWriter, r *http.Request) {
 	p := s.corePrincipal(w, r, true)
 	if p == nil {
 		return
 	}
+	if !auth.FreshReauth(p, time.Now(), s.cfg.Session.ReauthWindow) {
+		s.writeAPIError(w, 403, "ACCESS_DENIED", "recent reauthentication required")
+		return
+	}
 	id, ok := parsePathID(r.PathValue("memoryId"))
 	if !ok {
-		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		s.writeAPIError(w, 404, "NOT_FOUND_OR_FORBIDDEN", "not found")
 		return
 	}
 	var body struct {
-		Summary        string  `json:"summary"`
-		EventAt        *string `json:"eventAt"`
-		EventStatus    *string `json:"eventStatus"`
-		EventExpiresAt *string `json:"eventExpiresAt"`
+		Summary         string `json:"summary"`
+		ExpectedVersion int64  `json:"expectedVersion"`
 	}
 	if !s.decodeJSON(w, r, &body) {
 		return
 	}
-	eventAt, eventExpires, ok := parseEventTimes(body.EventAt, body.EventExpiresAt)
-	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+	if body.ExpectedVersion < 1 {
+		s.writeAPIError(w, 400, "INVALID_REQUEST", "expectedVersion is required")
 		return
 	}
-	mem, err := s.core.Store.UpdateMemory(r.Context(), p.AccountID, id, strings.TrimSpace(body.Summary), eventAt, trimOpt(body.EventStatus), eventExpires)
+	st := s.managedMemories(w)
+	if st == nil {
+		return
+	}
+	row, err := st.CorrectManagedMemory(r.Context(), p.AccountID, id, body.ExpectedVersion, strings.TrimSpace(body.Summary))
+	if errors.Is(err, postgres.ErrMemoryVersionConflict) {
+		s.writeAPIError(w, 409, "MEMORY_VERSION_CONFLICT", "memory has changed")
+		return
+	}
+	if errors.Is(err, memoryengine.ErrUnavailable) {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "memory engine temporarily unavailable")
+		return
+	}
 	if err != nil {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, memoryJSONFrom(mem))
+	s.writeJSON(w, 200, row)
 }
-
 func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 	p := s.corePrincipal(w, r, true)
 	if p == nil {
 		return
 	}
-	id, ok := parsePathID(r.PathValue("memoryId"))
-	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+	if !auth.FreshReauth(p, time.Now(), s.cfg.Session.ReauthWindow) {
+		s.writeAPIError(w, 403, "ACCESS_DENIED", "recent reauthentication required")
 		return
 	}
-	mem, err := s.core.Store.DeleteMemory(r.Context(), p.AccountID, id)
-	if err != nil {
+	id, ok := parsePathID(r.PathValue("memoryId"))
+	if !ok {
+		s.writeAPIError(w, 400, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	st := s.managedMemories(w)
+	if st == nil {
+		return
+	}
+	if err := st.ForgetManagedMemory(r.Context(), p.AccountID, id); err != nil {
 		s.writeStoreErr(w, err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, memoryJSONFrom(mem))
+	s.writeJSON(w, 202, map[string]any{"cleanup": map[string]string{"state": "PENDING"}})
 }
 
 func (s *Server) handleConfirmMemory(w http.ResponseWriter, r *http.Request) {
@@ -258,23 +330,19 @@ func (s *Server) handleListMemoryEvidence(w http.ResponseWriter, r *http.Request
 	}
 	id, ok := parsePathID(r.PathValue("memoryId"))
 	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		s.writeAPIError(w, 400, "INVALID_REQUEST", "invalid request")
 		return
 	}
-	list, err := s.core.Store.ListMemoryEvidence(r.Context(), p.AccountID, id)
+	st := s.managedMemories(w)
+	if st == nil {
+		return
+	}
+	rows, err := st.ManagedMemoryEvidence(r.Context(), p.AccountID, id)
 	if err != nil {
 		s.writeStoreErr(w, err)
 		return
 	}
-	out := make([]memoryEvidenceJSON, 0, len(list))
-	for _, e := range list {
-		out = append(out, memoryEvidenceJSON{
-			EvidenceID: idString(e.ID),
-			SourceRef:  e.SourceRef,
-			CreatedAt:  rfc3339(e.CreatedAt),
-		})
-	}
-	s.writeJSON(w, http.StatusOK, out)
+	s.writeJSON(w, 200, rows)
 }
 
 // memoryAutoSavePrefStore is the per-owner auto-memory kill-switch surface

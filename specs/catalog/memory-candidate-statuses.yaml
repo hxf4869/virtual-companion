@@ -16,4 +16,7 @@ alphaModelCandidatesRequireConfirmation: true
 goV1:
   autoSave: true
   modelAutoExtractionJob: true
-  productionSemanticRecallClaimed: false
+  productionSemanticRecallClaimed: true
+  extractionAuthority: MemoryCore
+  extractionJob: ST_MEMORY_EXTRACT
+  legacyMemoryExtractEnabled: false

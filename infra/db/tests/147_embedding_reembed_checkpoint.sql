@@ -3,6 +3,20 @@
 
 \set ON_ERROR_STOP on
 
+-- W08 retires these capabilities from production roles. Keep the historical
+-- behavior/isolation assertions below under a temporary regression-only role.
+CREATE ROLE vc_embedding_regression_147 NOLOGIN INHERIT IN ROLE vc_job_coordinator;
+DO $$ DECLARE f record; actor text; BEGIN
+ FOR f IN SELECT oid,oid::regprocedure AS signature FROM pg_proc
+ WHERE pronamespace='vc'::regnamespace AND proname IN ('ensure_embedding_reembed_job','set_embedding_reembed_status','claim_embedding_reembed_batch','complete_embedding_reembed_item','retire_embedding_space') LOOP
+  FOREACH actor IN ARRAY ARRAY['vc_api','vc_worker','vc_job_coordinator','vc_dispatcher'] LOOP
+   IF has_function_privilege(actor,f.oid,'EXECUTE') THEN RAISE EXCEPTION 'retired embedding function available to production role %: %',actor,f.signature; END IF;
+  END LOOP;
+  EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO vc_embedding_regression_147',f.signature);
+ END LOOP;
+END $$;
+
+
 TRUNCATE vc.embedding_reembed_job, vc.memory_embedding, vc.memory_evidence,
          vc.memory_item, vc.relationship, vc.identity_auth_event,
          vc.identity_refresh_token, vc.identity_account, vc.vc_user CASCADE;
@@ -44,7 +58,7 @@ BEGIN
     INSERT INTO reembed_ids VALUES (v_owner, v_one, v_two, v_deleted);
 END $$;
 
-GRANT SELECT ON reembed_ids TO vc_job_coordinator;
+GRANT SELECT ON reembed_ids TO vc_embedding_regression_147;
 -- Seed the old 64-dimensional space, including one deleted row to prove it is
 -- never re-embedded. Direct setup is superuser-only; runtime roles remain SD-only.
 INSERT INTO vc.memory_embedding(
@@ -57,7 +71,7 @@ SELECT owner_id, memory_id,
  CROSS JOIN LATERAL unnest(ARRAY[one_id, two_id, deleted_id]) AS memory_id;
 
 BEGIN;
-SET LOCAL ROLE vc_job_coordinator;
+SET LOCAL ROLE vc_embedding_regression_147;
 DO $$
 DECLARE
     v_status text;
@@ -133,7 +147,7 @@ END $$;
 -- Explicit resume resets only the failed pass checkpoint. The successful target
 -- row is excluded, so only the missing second row is retried.
 BEGIN;
-SET LOCAL ROLE vc_job_coordinator;
+SET LOCAL ROLE vc_embedding_regression_147;
 DO $$
 DECLARE
     v_owner bigint;
@@ -158,7 +172,7 @@ COMMIT;
 RESET ROLE;
 
 BEGIN;
-SET LOCAL ROLE vc_job_coordinator;
+SET LOCAL ROLE vc_embedding_regression_147;
 DO $$
 DECLARE v_deleted bigint;
 BEGIN
@@ -198,13 +212,13 @@ BEGIN
         RAISE EXCEPTION 'reembed/retire functions leaked beyond coordinator';
     END IF;
     IF NOT has_function_privilege(
-            'vc_job_coordinator', 'vc.claim_embedding_reembed_batch(text,integer)', 'EXECUTE') THEN
+            'vc_embedding_regression_147', 'vc.claim_embedding_reembed_batch(text,integer)', 'EXECUTE') THEN
         RAISE EXCEPTION 'coordinator lacks reembed claim';
     END IF;
 END $$;
 
 BEGIN;
-SET LOCAL ROLE vc_job_coordinator;
+SET LOCAL ROLE vc_embedding_regression_147;
 DO $$
 DECLARE v_denied boolean := false;
 BEGIN
@@ -219,3 +233,7 @@ BEGIN
 END $$;
 COMMIT;
 RESET ROLE;
+
+COMMIT;
+DROP OWNED BY vc_embedding_regression_147;
+DROP ROLE vc_embedding_regression_147;

@@ -24,6 +24,7 @@ const sourceCandidate = "30000000-0000-0000-0000-000000000001"
 func sourceFixture(t *testing.T) (STBinding, *stsource.Snapshot, *bool) {
 	t.Helper()
 	resetFixtures(t)
+	memoryEngineFixture(t)
 	binding, err := testEnv.store.ResolveSTBinding(context.Background(), 1, STBindingInput{ChatIdentity: sourceChat, CharacterRef: "source-card", Mode: "COMPANION", DisplayName: "来源测试"})
 	if err != nil {
 		t.Fatal(err)
@@ -31,14 +32,29 @@ func sourceFixture(t *testing.T) (STBinding, *stsource.Snapshot, *bool) {
 	snapshot := &stsource.Snapshot{ChatIdentity: sourceChat, State: "PRESENT", Revision: 1, Location: "chats/card/one.jsonl", Messages: []stsource.Message{{MessageID: sourceMessage, CandidateID: sourceCandidate, Revision: 1, Role: "user", Text: "我喜欢乌龙茶", Settled: true, Eligible: true}}}
 	unavailable := new(bool)
 	testEnv.store.UseSTSourceReader(sourceReaderFunc(func(_ context.Context, owner int64, queries []stsource.Query) ([]stsource.Snapshot, error) {
-		if owner != 1 || len(queries) != 1 || queries[0].ChatIdentity != sourceChat {
+		if owner != 1 {
 			t.Error("unexpected owner/source scope")
 			return nil, stsource.ErrUnavailable
 		}
-		if *unavailable {
-			return nil, stsource.ErrUnavailable
+		out := []stsource.Snapshot{}
+		for _, query := range queries {
+			if query.ChatIdentity != sourceChat {
+				other := *snapshot
+				other.ChatIdentity = query.ChatIdentity
+				other.BranchRoot = other.ChatIdentity
+				other.Revision = 1
+				other.State = "PRESENT"
+				other.NotModified = false
+				other.Messages = []stsource.Message{{MessageID: sourceMessage, CandidateID: sourceCandidate, Revision: 1, Role: "user", Text: "你记得我喜欢什么茶吗？", Eligible: true, Settled: false}}
+				out = append(out, other)
+			} else {
+				if *unavailable {
+					return nil, stsource.ErrUnavailable
+				}
+				out = append(out, *snapshot)
+			}
 		}
-		return []stsource.Snapshot{*snapshot}, nil
+		return out, nil
 	}))
 	t.Cleanup(func() { testEnv.store.UseSTSourceReader(nil) })
 	return binding, snapshot, unavailable
@@ -65,6 +81,7 @@ func acceptedSourceMemory(t *testing.T, binding STBinding, ref string) Memory {
 	if err != nil {
 		t.Fatal(err)
 	}
+	projectEngineFixture(t, m)
 	return m
 }
 func TestSTSourcesCrossChatRecallReconcilesMissedEditsAndLateResults(t *testing.T) {
@@ -79,14 +96,14 @@ func TestSTSourcesCrossChatRecallReconcilesMissedEditsAndLateResults(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	mems, err := testEnv.store.SelectRecallMemories(ctx, 1, binding.RelationshipID, branch.ConversationID, "RELATIONSHIP")
+	mems, err := nativeSourceRecall(ctx, branch, 1)
 	if err != nil || len(mems) != 1 {
 		t.Fatalf("initial recall len=%d err=%v", len(mems), err)
 	}
 	snapshot.Revision = 2
 	snapshot.Messages[0].Revision = 2
 	snapshot.Messages[0].Text = "现在喜欢红茶"
-	mems, err = testEnv.store.SelectRecallMemories(ctx, 1, binding.RelationshipID, branch.ConversationID, "RELATIONSHIP")
+	mems, err = nativeSourceRecall(ctx, branch, 1)
 	if err != nil || len(mems) != 0 {
 		t.Fatalf("stale cross-chat recall len=%d err=%v", len(mems), err)
 	}
@@ -103,21 +120,21 @@ func TestSTSourcesUnavailableRecoversWithoutPermanentInvalidation(t *testing.T) 
 	}
 	m := acceptedSourceMemory(t, binding, currentSourceRef(t))
 	*unavailable = true
-	mems, err := testEnv.store.SelectRecallMemories(ctx, 1, binding.RelationshipID, binding.ConversationID, "RELATIONSHIP")
+	mems, err := nativeSourceRecall(ctx, binding, snapshot.Revision)
 	if err != nil || len(mems) != 0 {
 		t.Fatalf("unavailable recall len=%d err=%v", len(mems), err)
 	}
 	*unavailable = false
 	snapshot.NotModified = true
 	snapshot.Messages = nil
-	mems, err = testEnv.store.SelectRecallMemories(ctx, 1, binding.RelationshipID, binding.ConversationID, "RELATIONSHIP")
+	mems, err = nativeSourceRecall(ctx, binding, snapshot.Revision)
 	if err != nil || len(mems) != 1 || mems[0].ID != m.ID {
 		t.Fatalf("recovered recall len=%d err=%v", len(mems), err)
 	}
 	snapshot.NotModified = false
 	snapshot.State = "DELETED"
 	snapshot.Revision = 2
-	mems, err = testEnv.store.SelectRecallMemories(ctx, 1, binding.RelationshipID, binding.ConversationID, "RELATIONSHIP")
+	mems, err = nativeSourceRecall(ctx, binding, snapshot.Revision)
 	if err != nil || len(mems) != 0 {
 		t.Fatalf("deleted recall len=%d err=%v", len(mems), err)
 	}

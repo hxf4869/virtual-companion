@@ -94,7 +94,8 @@
       "ACCOUNT_CONTEXT_CHANGED",
       "REVISION_CONFLICT",
       "MODEL_PROFILE_IN_USE",
-      "ACCOUNT_DELETION_PENDING"
+      "ACCOUNT_DELETION_PENDING",
+      "MEMORY_VERSION_CONFLICT"
     ],
     "GenerationState": [
       "CREATED",
@@ -713,6 +714,14 @@
         ],
         "memoryDomainStorage": {
           "boundaryContract": "specs/contracts/memory-recall-contract.yaml",
+          "engine": {
+            "authority": "MEMORYCORE",
+            "backup": "OFFLINE_SQLITE_SNAPSHOT_WITH_PROFILES_METADATA_ADAPTER_AND_GO_SUPPRESSION",
+            "deletion": "DURABLE_ENGINE_RECEIPT_BEFORE_GO_ACCOUNT_CASCADE",
+            "onlineExportDomain": "EXTERNAL_MEMORY_ENGINE",
+            "ownerIsolation": "PRIVATE_OWNER_DIRECTORY_AND_TRUSTED_ALLOWLIST",
+            "restore": "CURRENT_GO_DELETION_AND_SOURCE_ALLOWLIST_BEFORE_ENGINE_READS"
+          },
           "fieldEncryption": false,
           "note": "ADR-0009 permits plaintext only for the memory-domain fields listed in the memory contract, including source-index text. Data categories and access restrictions remain unchanged. Account data, provider credentials, legacy Go message bodies and encrypted export-object envelopes retain their existing field or object encryption.",
           "protection": [
@@ -725,7 +734,7 @@
         },
         "schemaVersion": 1
       },
-      "sha256": "a2fd927a8f83bd27285a3c82d17c231ec05c2218a3c0aa2a2133eec6ce97263d"
+      "sha256": "4521aadbf171bd6a0d255587abf6fe6ba61aade81ee9d3c4d4cd8dd87c82219a"
     },
     "error-codes.yaml": {
       "document": {
@@ -834,11 +843,15 @@
           {
             "code": "ACCOUNT_DELETION_PENDING",
             "order": 25
+          },
+          {
+            "code": "MEMORY_VERSION_CONFLICT",
+            "order": 26
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "19bf8a12bb00c2ee9b976461f2f21d17cad79547edbe6f089bec563754670236"
+      "sha256": "afe46d29dfe2ff2e9dc46beb3bca5764dd5d2bb9c279c414b6c7f5467e255c9f"
     },
     "generation-states.yaml": {
       "document": {
@@ -1546,7 +1559,7 @@
             "method": "POST",
             "operationId": "createMemoryCandidate",
             "path": "/api/v1/relationships/{relationshipId}/memories/candidates",
-            "replacementOrImpact": "Keep explicit Owner candidate create. Auto-save is the separate MEMORY_EXTRACT job (memory-recall-contract goV1), not this endpoint."
+            "replacementOrImpact": "Keep explicit Owner candidate create. MemoryCore alone extracts via ST_MEMORY_EXTRACT; this endpoint is an explicit Owner action."
           },
           {
             "currentH5Callers": [],
@@ -1557,7 +1570,7 @@
             "method": "GET",
             "operationId": "listMemories",
             "path": "/api/v1/relationships/{relationshipId}/memories",
-            "replacementOrImpact": "Keep listing canonical and pending memory."
+            "replacementOrImpact": "W08 UI-P03 filtered lifecycle list with cursor and X-Next-Cursor header."
           },
           {
             "currentH5Callers": [],
@@ -1568,7 +1581,7 @@
             "method": "GET",
             "operationId": "getMemory",
             "path": "/api/v1/memories/{memoryId}",
-            "replacementOrImpact": "Keep the memory detail backend capability without a current frontend entry."
+            "replacementOrImpact": "W08 UI-P03 detail includes replacement history, source state and cleanup progress after forgetting."
           },
           {
             "currentH5Callers": [],
@@ -1579,7 +1592,7 @@
             "method": "PATCH",
             "operationId": "updateMemory",
             "path": "/api/v1/memories/{memoryId}",
-            "replacementOrImpact": "Keep Owner edit of canonical memory."
+            "replacementOrImpact": "W08 expectedVersion correction creates a replacement; stale versions return MEMORY_VERSION_CONFLICT (409)."
           },
           {
             "currentH5Callers": [],
@@ -1590,7 +1603,7 @@
             "method": "DELETE",
             "operationId": "deleteMemory",
             "path": "/api/v1/memories/{memoryId}",
-            "replacementOrImpact": "Keep delete/tombstone. Restore must not resurrect."
+            "replacementOrImpact": "W08 immediate suppression returns 202; asynchronous online cleanup reports DONE or PARTIAL and restore cannot resurrect."
           },
           {
             "currentH5Callers": [],
@@ -2454,7 +2467,7 @@
           }
         ]
       },
-      "sha256": "3ba92cf21bf1abff96c8c4a77b344806ed0473f916d5cc122fed1fd9f8ba9cbf"
+      "sha256": "826a8d2f232e57c84df77448fb591ccafcb381eb56ec9c922300d7ca27247f10"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2485,12 +2498,15 @@
         ],
         "goV1": {
           "autoSave": true,
+          "extractionAuthority": "MemoryCore",
+          "extractionJob": "ST_MEMORY_EXTRACT",
+          "legacyMemoryExtractEnabled": false,
           "modelAutoExtractionJob": true,
-          "productionSemanticRecallClaimed": false
+          "productionSemanticRecallClaimed": true
         },
         "schemaVersion": 1
       },
-      "sha256": "dc4256df316073f1debdca3c7cf22066072abe025b3a59c3c42aee9cccb724fd"
+      "sha256": "23d0202eb00d7cfc4acf19ce7a861aa91370666ccd1f097125cdd993ac82d3db"
     },
     "memory-event-statuses.yaml": {
       "document": {
@@ -2542,9 +2558,31 @@
             "order": 3
           }
         ],
-        "schemaVersion": 1
+        "schemaVersion": 1,
+        "v2Management": {
+          "cleanup": [
+            "NONE",
+            "PENDING",
+            "DONE",
+            "PARTIAL"
+          ],
+          "correction": "new_record_with_expected_version",
+          "forget": "immediate_suppression_then_async_online_cleanup",
+          "history": "retained_projection_replacement_chain",
+          "lifecycle": [
+            "ACTIVE",
+            "SUPERSEDED",
+            "FORGETTING",
+            "FORGOTTEN"
+          ],
+          "sourceStatus": [
+            "VALID",
+            "PENDING_VERIFICATION",
+            "INVALID"
+          ]
+        }
       },
-      "sha256": "4f77eac1446e2248944a3ef9d9134fee91aedd36c03904f553eab1fa6d68f15d"
+      "sha256": "3f8a51b02b4b34261e0c55f8fdab01087c87d6e93034a511071d17758a6f5beb"
     },
     "memory-scopes.yaml": {
       "document": {
@@ -2594,16 +2632,16 @@
             "maximum": 2048,
             "minimum": 128
           },
-          "failure": "Ordinary companion chat may continue with verified current card/history and an explicit skipped-memory state. No ordinary-memory fallback is allowed for STORY. No remote embedding is implied by the keyword baseline.",
+          "failure": "Ordinary companion chat may continue with verified current card/history and an explicit skipped-memory state. No ordinary-memory fallback is allowed for STORY. Rebuilding embedding spaces permit current lexical retrieval only; legacy vc.memory_embedding is not a production fallback.",
           "finalRequest": "The ST native extension uses a separately named history-data block. Each of the three protocol exits recalls again before sending and replaces or removes the earlier block. Source changes, unavailable sources and disabled recall cannot retain an old block or use an unverified summary as fallback.",
           "operationId": "recallSTMemory",
           "querySource": "last_persisted_user_message",
-          "selection": "Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first; rank Chinese keyword candidates by query relevance without an earliest-100 candidate cutoff. Reconcile each candidate and summary's persisted source dependencies before selecting and applying the token budget.",
+          "selection": "Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first; Build a trusted allowlist from published current Go projections. MemoryCore ranks candidates within that set before KNN/FTS top-K, using only the current embedding space and rejecting low relevance before fusion. Reconcile each candidate and L2/L3 summary's complete persisted source dependencies before selecting and applying the token budget.",
           "time": "Keep source timestamp/timezone, recording time, normalized local event date/time and reminder instant distinct. Relative source expressions use their saved source timezone and calendar; queries use their own snapshot. Unknown or ambiguous time stays needs_clarification. A date never creates a midnight reminder."
         },
         "schemaVersion": 1
       },
-      "sha256": "ed81fb7f2581a4f8b52875770035a41525fcf7f0235d1d63ecbb34da6f849d68"
+      "sha256": "54d3d1a24de0d2e4f68e2896b90c05b7b6e1e468f080b0bb154164427c18f765"
     },
     "message-feedback-kinds.yaml": {
       "document": {
@@ -2978,14 +3016,11 @@
         },
         "memory": {
           "autoSaveEnabled": true,
-          "ollamaEmbedding": "SHADOW_EVAL_ONLY",
+          "ollamaEmbedding": "PRODUCTION_MEMORYCORE_ONLY",
           "productionRecall": [
-            "EXPLICIT_CANDIDATE",
-            "KEYWORD",
-            "SOURCE",
-            "RECENCY"
+            "MEMORYCORE_PRE_FILTERED_SEMANTIC_AND_LEXICAL"
           ],
-          "productionSemanticRecallClaimed": false
+          "productionSemanticRecallClaimed": true
         },
         "phase": "TECHNICAL_ALPHA",
         "safety": {
@@ -3009,7 +3044,7 @@
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "76e4be09b3f5a16c95cabde21e62628c5b4ad66b2651bb6db38ba82885139e7e"
+      "sha256": "37667624bd39048d48d416be717896d251320f39ed61caaec323bdd6504276c6"
     },
     "provider-attempt-statuses.yaml": {
       "document": {

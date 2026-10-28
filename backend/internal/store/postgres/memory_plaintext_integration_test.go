@@ -43,9 +43,7 @@ func TestMemoryPlaintextStorageAndLiteralEnvelopePrefixes(t *testing.T) {
 	if err != nil || decoded.EventDate == nil || *decoded.EventDate != "2026-10-30" || !decoded.RecordedAt.Equal(m.Time.RecordedAt) {
 		t.Fatal("stored temporal object did not round-trip")
 	}
-	if err := testEnv.store.refreshSTSummary(ctx, 1, b.ConversationID); err != nil {
-		t.Fatal(err)
-	}
+	profileEngineFixture(t, b, ref, text)
 	digests, err := testEnv.store.stSummaries(ctx, 1, b.ConversationID, []stSummaryChat{{id: b.ConversationID, chat: sourceChat}})
 	if err != nil || len(digests) != 1 {
 		t.Fatalf("plaintext summary read: count=%d err=%v", len(digests), err)
@@ -62,12 +60,13 @@ func TestMemoryPlaintextStorageAndLiteralEnvelopePrefixes(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0].Summary != updated {
 		t.Fatalf("literal prefix list failed: %v", err)
 	}
-	matches, err := testEnv.store.queryMemories(ctx, 1, b.RelationshipID, b.ConversationID, "RELATIONSHIP", recallQuery{Text: "新的明文偏好"})
+	matches, err := testEnv.store.searchEngineMemories(ctx, 1, b.RelationshipID, b.ConversationID, recallQuery{Text: "新的明文偏好"})
 	if err != nil || len(matches) != 1 || matches[0].Summary != updated {
 		t.Fatalf("literal prefix recall failed: %v", err)
 	}
 	testEnv.store.UseSTDataClient(&testSTData{})
 	t.Cleanup(func() { testEnv.store.UseSTDataClient(nil) })
+	installRightsEngine(t, testEnv.store)
 	exported, err := testEnv.store.ExportV2OwnerData(ctx, 1)
 	if err != nil {
 		t.Fatal(err)

@@ -21,7 +21,12 @@ async function fileTool(stagingDir, stage, tool) {
         await fs.writeFile(target, tool.content, { mode: 0o600 }); return 'written';
     }
     if (tool.name === 'read_file') return (await fs.readFile(target, 'utf8')).slice(0, 100000);
-    if (tool.name === 'list_files' && rel === 'scene_blocks') return JSON.stringify((await fs.readdir(target)).filter(x => x.endsWith('.md')));
+    if (tool.name === 'list_files' && rel === 'scene_blocks') {
+        let names;
+        try { names = await fs.readdir(target); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; names = []; }
+        return JSON.stringify(names.filter(x => x.endsWith('.md')));
+    }
     if (tool.name === 'delete_file') { await fs.rm(target, { force: true }); return 'deleted'; }
     throw new Error('MEMORYCORE_TOOL_NOT_ALLOWED');
 }

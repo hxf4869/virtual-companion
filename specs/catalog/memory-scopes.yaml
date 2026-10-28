@@ -9,9 +9,11 @@ retrievalPolicy:
   querySource: last_persisted_user_message
   selection: >-
     Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first;
-    rank Chinese keyword candidates by query relevance without an earliest-100
-    candidate cutoff. Reconcile each candidate and summary's persisted source
-    dependencies before selecting and applying the token budget.
+    Build a trusted allowlist from published current Go projections. MemoryCore
+    ranks candidates within that set before KNN/FTS top-K, using only the current
+    embedding space and rejecting low relevance before fusion. Reconcile each
+    candidate and L2/L3 summary's complete persisted source dependencies before
+    selecting and applying the token budget.
   finalRequest: >-
     The ST native extension uses a separately named history-data block. Each of
     the three protocol exits recalls again before sending and replaces or removes
@@ -20,7 +22,8 @@ retrievalPolicy:
   failure: >-
     Ordinary companion chat may continue with verified current card/history and
     an explicit skipped-memory state. No ordinary-memory fallback is allowed for
-    STORY. No remote embedding is implied by the keyword baseline.
+    STORY. Rebuilding embedding spaces permit current lexical retrieval only;
+    legacy vc.memory_embedding is not a production fallback.
   budgetTokens:
     minimum: 128
     maximum: 2048

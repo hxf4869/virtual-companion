@@ -10,9 +10,10 @@ import (
 )
 
 type V2OwnerExport struct {
-	Go      map[string]any          `json:"go"`
-	ST      *stsource.AccountExport `json:"st,omitempty"`
-	Domains []ExportDomain          `json:"domains"`
+	MemoryCore map[string]any          `json:"memorycore"`
+	Go         map[string]any          `json:"go"`
+	ST         *stsource.AccountExport `json:"st,omitempty"`
+	Domains    []ExportDomain          `json:"domains"`
 }
 type ExportDomain struct {
 	System  string `json:"system"`
@@ -92,8 +93,19 @@ func (s *Store) ExportV2OwnerData(ctx context.Context, owner int64) (V2OwnerExpo
 			count += len(rows)
 		}
 	}
+	engine, err := s.exportMemoryCoreOwner(ctx, owner)
+	if err != nil {
+		return out, err
+	}
+	out.MemoryCore = engine
+	engineCount := 0
+	for _, value := range engine {
+		if rows, ok := value.([]any); ok {
+			engineCount += len(rows)
+		}
+	}
 	out.Domains = []ExportDomain{{System: "GO_METADATA_SOURCES_TASKS_RESULTS", State: "COMPLETE", Records: count},
-		{System: "EXTERNAL_MEMORY_ENGINE", State: "NOT_APPLICABLE", Note: "No external memory engine is connected."},
+		{System: "EXTERNAL_MEMORY_ENGINE", State: "COMPLETE", Records: engineCount, Note: "MemoryCore L0/L1, profiles, JSONL, metadata and operation state; per-owner snapshot."},
 		{System: "BACKUPS", State: "EXCLUDED", Note: "Historical and offline backups are not merged into this online copy; online private backups are included in account deletion."},
 		{System: "CREDENTIALS", State: "EXCLUDED", Note: "API keys, authentication secrets, session tokens and internal leases are excluded."}}
 	if s.stData != nil {

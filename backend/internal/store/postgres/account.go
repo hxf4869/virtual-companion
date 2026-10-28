@@ -59,7 +59,18 @@ func (s *Store) RequestAccountDeletion(ctx context.Context, owner int64) error {
 			}
 		}
 		if needsST {
-			_, err := tx.Exec(ctx, `SELECT vc.require_st_account_deletion_current()`)
+			if _, err := tx.Exec(ctx, `SELECT vc.require_st_account_deletion_current()`); err != nil {
+				return err
+			}
+		}
+		needsEngine := s.memoryEngine != nil
+		if !needsEngine {
+			if err := tx.QueryRow(ctx, `SELECT vc.requires_memorycore_account_cleanup_current()`).Scan(&needsEngine); err != nil {
+				return err
+			}
+		}
+		if needsEngine {
+			_, err := tx.Exec(ctx, `SELECT vc.require_memorycore_account_deletion_current()`)
 			return err
 		}
 		return nil

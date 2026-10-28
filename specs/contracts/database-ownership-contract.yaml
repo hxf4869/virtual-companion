@@ -25,3 +25,10 @@ requiredTests:
   - cross_conversation_reference_denied
   - stale_worker_fence_denied
   - missing_context_fail_closed
+memoryCoreBoundary:
+  authority: Go_owner_binding_and_current_projection_allowlist
+  storage: per_owner_SQLite_and_private_files_0700_0600
+  export: engine_domain_required_and_unavailability_defers_same_export_job
+  deletion: durable_account_deletion_intent_requires_engine_completion_before_Go_cascade
+  backup: consistent_offline_SQLite_snapshot_plus_profiles_metadata_adapter_and_Go_suppression
+  restore: current_Go_rights_reconciliation_gate_before_any_engine_read

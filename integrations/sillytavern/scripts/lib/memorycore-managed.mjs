@@ -146,6 +146,7 @@ export async function preflightMemorycore({ managedDev = MANAGED_DEV, port = MEM
 }
 export async function startMemorycore({ managedDev = MANAGED_DEV, port = MEMORYCORE_PORT, token = process.env.VC_MEMORYCORE_SERVICE_TOKEN } = {}) {
     await preflightMemorycore({ managedDev, port, token });
+    const businessReady = Boolean(process.env.VC_MEMORYCORE_CALLBACK_TOKEN);
     const p = memorycorePaths(managedDev);
     privateDirectory(p.logs);
     // Exclusive reservation closes the gap between preflight and spawn.
@@ -171,10 +172,10 @@ export async function startMemorycore({ managedDev = MANAGED_DEV, port = MEMORYC
                     headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(1000),
                 });
                 const body = await response.json();
-                return response.ok && body.storageReady === true && body.businessReady === false && body.upstreamCommit === memorycoreComponent().commit;
+                return response.ok && body.storageReady === true && body.businessReady === businessReady && body.upstreamCommit === memorycoreComponent().commit;
             } catch { return false; }
         }, { timeoutMs: 10000, label: 'MemoryCore foundation readiness' });
-        return { pid: child.pid, port, foundation: true, businessReady: false };
+        return { pid: child.pid, port, foundation: true, businessReady };
     } catch (error) {
         // Use the actual newly spawned child, not an unregistered/stale PID file.
         if (child?.pid && child.exitCode === null) {

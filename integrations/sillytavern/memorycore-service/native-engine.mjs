@@ -43,10 +43,23 @@ export async function createNativeFactory(api) {
                 let ids = allowedRecordIds;
                 if (eventDate) ids = list(ids, scope).filter(r => (r.metadata.eventDate || r.metadata.activity_start_time?.slice(0, 10)) === eventDate).map(r => r.id);
                 if (!ids.length) return [];
-                const result = await api.recallL1Candidates({ query, topK, vectorStore: store,
-                    embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined,
-                    filter: { ...scope, allowedRecordIds: ids, ...RELEVANCE } });
-                return result.hits.slice(0, topK);
+                // Independent questions must each pass the same relevance gates.
+                // Embedding a multi-topic paragraph once can dilute a valid fact
+                // below threshold; no threshold is relaxed and IDs stay scoped.
+                const parts = query.split(/[。？！!?；;]/u).map(part => part.trim())
+                    .filter(part => part && !/^[（(][^？?]*[)）]$/u.test(part));
+                const queries = parts.length >= 2 && parts.length <= 4 ? parts : [query];
+                const hits = new Map();
+                for (const question of queries) {
+                    const result = await api.recallL1Candidates({ query: question, topK, vectorStore: store,
+                        embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined,
+                        filter: { ...scope, allowedRecordIds: ids, ...RELEVANCE } });
+                    for (const hit of result.hits) {
+                        const prior = hits.get(hit.record_id);
+                        if (!prior || hit.score > prior.score) hits.set(hit.record_id, hit);
+                    }
+                }
+                return [...hits.values()].sort((a, b) => b.score - a.score).slice(0, topK);
             },
             async rebuildProfile({ records, stagingDir, scope, runner }) {
                 const storage = new api.StorageAdapter(new api.LocalStorageBackend({ rootDir: stagingDir }));

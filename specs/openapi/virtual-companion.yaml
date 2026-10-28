@@ -1987,31 +1987,71 @@ paths:
     get:
       operationId: listMemories
       summary: List the caller's memory for a relationship
-      description: >-
-        Returns the memory candidates and canonical records scoped to a
-        relationship (vc.list_memory). Soft-deleted records are excluded unless
-        includeDeleted is set. Another relationship's memory is never disclosed;
-        a foreign relationship yields no rows and never discloses existence.
-        Requires a server-verified authentication context.
+      description: Owner-scoped memory projections with lifecycle, verified source state and current recall
+        eligibility. Results use descending memoryId keyset pagination; X-Next-Cursor is absent on the last
+        page. Target-chat branch checks remain mandatory at recall.
       security:
-        - cookieAuth: []
+      - cookieAuth: []
       parameters:
-        - $ref: '#/components/parameters/RelationshipId'
-        - name: includeDeleted
-          in: query
-          required: false
-          schema:
-            type: boolean
-          description: Include soft-deleted memory in the result (default false).
+      - $ref: '#/components/parameters/RelationshipId'
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 2000
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVE
+          - SUPERSEDED
+          - FORGETTING
+          - FORGOTTEN
+          - PENDING_VERIFICATION
+          - INVALID
+      - name: eventDateFrom
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: eventDateTo
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]*$
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
       responses:
         '200':
-          description: Memory scoped to the relationship (excluding deleted by default)
+          description: Memory projections for this relationship
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Memory'
+          headers:
+            X-Next-Cursor:
+              description: Opaque next-page cursor; absent on the final page
+              schema:
+                type: string
         '401':
           description: No valid server-verified authentication context
           content:
@@ -2022,14 +2062,12 @@ paths:
     get:
       operationId: getMemory
       summary: Fetch a memory owned by the caller
-      description: >-
-        Returns a non-deleted memory owned by the caller (vc.get_memory). A
-        foreign, absent or deleted id maps to NOT_FOUND_OR_FORBIDDEN; existence is
-        never disclosed. Requires a server-verified authentication context.
+      description: Returns the owned projection including replacement history and asynchronous cleanup progress,
+        even after forgetting. Foreign or absent identifiers are indistinguishable.
       security:
-        - cookieAuth: []
+      - cookieAuth: []
       parameters:
-        - $ref: '#/components/parameters/MemoryId'
+      - $ref: '#/components/parameters/MemoryId'
       responses:
         '200':
           description: The caller's memory
@@ -2051,18 +2089,14 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
     patch:
       operationId: updateMemory
-      summary: Edit a memory's content (status-preserving, idempotent)
-      description: >-
-        Edits the summary of an owned, non-deleted, editable memory
-        (vc.update_memory). Only PENDING_CONFIRMATION and ACCEPTED memories are
-        editable; status is never changed, so this cannot create or revive a
-        canonical record. Idempotent: applying the same summary twice succeeds
-        both times. A foreign, absent, deleted or dead-end id maps to
-        NOT_FOUND_OR_FORBIDDEN. Requires a server-verified authentication context.
+      summary: Correct a memory by creating a replacement
+      description: Requires fresh reauthentication and expectedVersion. MemoryCore stages and commits a
+        new record; Go verifies current sources before publishing its replacement projection. The old record
+        becomes SUPERSEDED and affected derived profiles are revoked. A stale version returns 409 MEMORY_VERSION_CONFLICT.
       security:
-        - cookieAuth: []
+      - cookieAuth: []
       parameters:
-        - $ref: '#/components/parameters/MemoryId'
+      - $ref: '#/components/parameters/MemoryId'
       requestBody:
         required: true
         content:
@@ -2071,7 +2105,7 @@ paths:
               $ref: '#/components/schemas/MemoryUpdateRequest'
       responses:
         '200':
-          description: The updated memory, status unchanged
+          description: New memory replacing the previous version
           content:
             application/json:
               schema:
@@ -2084,29 +2118,27 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: 'MEMORY_VERSION_CONFLICT: reload the current record before correcting'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
     delete:
       operationId: deleteMemory
-      summary: Soft-delete a memory (idempotent)
-      description: >-
-        Soft-deletes an owned memory (vc.delete_memory). Idempotent on already-
-        deleted rows: a duplicate delete of the caller's own memory returns
-        success. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN; existence
-        is never disclosed. Requires a server-verified authentication context.
+      summary: Forget a memory and queue online cleanup
+      description: Requires fresh reauthentication. Commits suppression before returning 202. Recall stops
+        immediately; detail.cleanup reports PENDING, DONE or PARTIAL. Original ST chat and offline backups
+        remain outside this operation.
       security:
-        - cookieAuth: []
+      - cookieAuth: []
       parameters:
-        - $ref: '#/components/parameters/MemoryId'
+      - $ref: '#/components/parameters/MemoryId'
       responses:
-        '200':
-          description: The memory was soft-deleted (or was already deleted)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Memory'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -2119,6 +2151,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '202':
+          description: Suppression committed; cleanup pending
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - cleanup
+                properties:
+                  cleanup:
+                    $ref: '#/components/schemas/MemoryCleanup'
   /api/v1/memories/{memoryId}/confirm:
     post:
       operationId: confirmMemoryCandidate
@@ -5524,6 +5567,7 @@ components:
         - REVISION_CONFLICT
         - MODEL_PROFILE_IN_USE
         - ACCOUNT_DELETION_PENDING
+        - MEMORY_VERSION_CONFLICT
     ServiceModeStatus:
       type: object
       description: Current generation-service mode (FR-RES-005).
@@ -6979,8 +7023,16 @@ components:
         export explicitly (ST_EXPORT_TOO_LARGE), never silently truncating it.
       required:
         - go
+        - memorycore
         - domains
       properties:
+        memorycore:
+          type: object
+          description: >-
+            Required W08 engine domain: L0/L1 records, sources, profiles, JSONL,
+            staged artifacts, operation proposals and receipts, embedding space,
+            and cleanup state. Unreachable engine defers the same export task;
+            EXTERNAL_MEMORY_ENGINE is COMPLETE only after this copy succeeds.
         go:
           type: object
           description: >-
@@ -7261,19 +7313,22 @@ components:
           description: The new title (blank clears the rename)
     Memory:
       type: object
-      description: >-
-        A memory candidate or canonical record owned by exactly one user within a
-        relationship. Model extraction only creates PENDING_CONFIRMATION
-        candidates; ACCEPTED (canonical) is reached by user confirmation
-        (INV-MEM-001/002) or, since V66, the deterministic low-sensitivity
-        auto-save rule — such rows carry autoSaved=true so the UI can mark them
-        (界面明示). status follows the memory-candidate-statuses catalog.
+      description: Go lifecycle and provenance projection of MemoryCore records. Management lifecycle is distinct
+        from candidate status; actual recall additionally checks the target chat, branch and budget.
       required:
-        - memoryId
-        - scope
-        - summary
-        - status
-        - autoSaved
+      - memoryId
+      - scope
+      - summary
+      - status
+      - autoSaved
+      - version
+      - type
+      - relationshipId
+      - mode
+      - lifecycle
+      - sourceStatus
+      - recallEligible
+      - time
       properties:
         memoryId:
           type: string
@@ -7300,34 +7355,115 @@ components:
           description: Soft-deletion timestamp; present only when includeDeleted is true
         autoSaved:
           type: boolean
-          description: True only for rows saved by the deterministic low-sensitivity auto rule (V66).
+          description: True for canonical records published from MemoryCore extraction.
         supersededAt:
           type: string
           format: date-time
-          description: >-
-            R44 (V68) explicit-supersede timestamp; present only when this
-            canonical memory was replaced by a newer confirmed one (§11.11).
-            Like deletedAt it is a tombstone column, not a status value.
+          description: R44 (V68) explicit-supersede timestamp; present only when this canonical memory was
+            replaced by a newer confirmed one (§11.11). Like deletedAt it is a tombstone column, not a status
+            value.
         supersededByMemoryId:
           type: string
           description: The replacing memory identifier, present only with supersededAt.
         eventAt:
           type: string
           format: date-time
-          description: >-
-            R44 (V68 / §11.12) event anchor; present only on event memories
-            (any event field requires eventAt).
+          description: R44 (V68 / §11.12) event anchor; present only on event memories (any event field requires
+            eventAt).
         eventStatus:
           type: string
-          description: memory-event-statuses catalog code (PLANNED / IN_PROGRESS / COMPLETED / CANCELLED / UNKNOWN).
+          description: memory-event-statuses catalog code (PLANNED / IN_PROGRESS / COMPLETED / CANCELLED /
+            UNKNOWN).
         eventExpiresAt:
           type: string
           format: date-time
-          description: >-
-            Event expiry; once passed, reads lazily move the row to EXPIRED
-            (§11.12 Event 到期, V61-style lazy sweep).
+          description: Event expiry; once passed, reads lazily move the row to EXPIRED (§11.12 Event 到期, V61-style
+            lazy sweep).
         time:
           $ref: '#/components/schemas/MemoryTime'
+        version:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+          enum:
+          - FACT
+          - EVENT
+        relationshipId:
+          type: string
+        mode:
+          type: string
+          enum:
+          - DAILY
+          - STORY
+        lifecycle:
+          type: string
+          enum:
+          - ACTIVE
+          - SUPERSEDED
+          - FORGETTING
+          - FORGOTTEN
+        sourceStatus:
+          type: string
+          enum:
+          - VALID
+          - PENDING_VERIFICATION
+          - INVALID
+        recallEligible:
+          type: boolean
+        supersedesMemoryId:
+          type:
+          - string
+          - 'null'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryHistory'
+        cleanup:
+          $ref: '#/components/schemas/MemoryCleanup'
+    MemoryHistory:
+      type: object
+      required:
+      - memoryId
+      - version
+      - summary
+      - lifecycle
+      - time
+      properties:
+        memoryId:
+          type: string
+          description: Stable owner-scoped memory identifier
+        version:
+          type: integer
+          minimum: 1
+        summary:
+          type: string
+          description: Memory content summary
+        lifecycle:
+          type: string
+          enum:
+          - ACTIVE
+          - SUPERSEDED
+          - FORGETTING
+          - FORGOTTEN
+        time:
+          $ref: '#/components/schemas/MemoryTime'
+    MemoryCleanup:
+      type: object
+      required:
+      - state
+      properties:
+        state:
+          type: string
+          enum:
+          - NONE
+          - PENDING
+          - DONE
+          - PARTIAL
+        detail:
+          type:
+          - string
+          - 'null'
     MemoryTime:
       type: object
       description: >-
@@ -7443,24 +7579,20 @@ components:
           description: Optional event expiry; must be strictly after eventAt.
     MemoryUpdateRequest:
       type: object
-      description: Body for editing a memory's content (status-preserving).
+      additionalProperties: false
+      description: Explicit correction with optimistic concurrency. The response has a
+        new memoryId and next version.
       required:
-        - summary
+      - summary
+      - expectedVersion
       properties:
         summary:
           type: string
-          description: The new memory content summary
-        eventAt:
-          type: string
-          format: date-time
-          description: 'R44: optional event edit; absent leaves the stored value unchanged.'
-        eventStatus:
-          type: string
-          description: 'R44: optional memory-event-statuses code edit; absent leaves the stored value unchanged.'
-        eventExpiresAt:
-          type: string
-          format: date-time
-          description: 'R44: optional event expiry edit; absent leaves the stored value unchanged.'
+          minLength: 1
+          maxLength: 2000
+        expectedVersion:
+          type: integer
+          minimum: 1
     MemoryConfirmRequest:
       type: object
       description: >-
@@ -7477,8 +7609,15 @@ components:
       type: object
       description: A cited source reference supporting a memory candidate.
       required:
-        - evidenceId
-        - sourceRef
+      - evidenceId
+      - sourceRef
+      - chatDisplayName
+      - messageId
+      - revision
+      - sourceTimestamp
+      - sourceTimezone
+      - status
+      - excerpt
       properties:
         evidenceId:
           type: string
@@ -7490,6 +7629,32 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (RFC 3339)
+        chatDisplayName:
+          type: string
+        messageId:
+          type: string
+        revision:
+          type:
+          - integer
+          - 'null'
+        sourceTimestamp:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        sourceTimezone:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string
+          enum:
+          - VALID
+          - PENDING_VERIFICATION
+          - INVALID
+        excerpt:
+          type: string
+          maxLength: 500
     LoginRequest:
       type: object
       description: Account-and-password first login step. Account accepts a username or email address.
@@ -8012,6 +8177,9 @@ components:
             type: string
             enum:
               - ST
+              - MEMORYCORE
+              - EXPORT_OBJECTS
+              - GO
           description: Domains whose cleanup is not yet confirmed
     AccountDeletionPendingError:
       type: object
@@ -8038,7 +8206,10 @@ components:
           items:
             type: string
             enum:
+              - ST
+              - MEMORYCORE
               - EXPORT_OBJECTS
+              - GO
     TrialGrantRequest:
       type: object
       description: ENT-TRIAL grant body; turns/days fall back to 20/14 when omitted.

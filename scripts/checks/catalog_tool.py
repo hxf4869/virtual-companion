@@ -197,8 +197,8 @@ def validate(root: Path) -> list[str]:
     memory_scope = product.get("memory", {})
     if memory_scope.get("autoSaveEnabled") is not True:
         errors.append("product-scope.yaml: memory.autoSaveEnabled must be true")
-    if memory_scope.get("productionSemanticRecallClaimed") is not False:
-        errors.append("product-scope.yaml: memory.productionSemanticRecallClaimed must be false")
+    if memory_scope.get("productionSemanticRecallClaimed") is not True:
+        errors.append("product-scope.yaml: memory.productionSemanticRecallClaimed must be true")
     if product.get("safety", {}).get("remoteClassifier") != "DEFER":
         errors.append("product-scope.yaml: safety.remoteClassifier must be DEFER")
     protocols_doc = load_yaml(cdir / "model-protocols.yaml")
@@ -210,8 +210,8 @@ def validate(root: Path) -> list[str]:
         errors.append("memory-candidate-statuses.yaml: goV1.autoSave must be true")
     if candidate.get("goV1", {}).get("modelAutoExtractionJob") is not True:
         errors.append("memory-candidate-statuses.yaml: goV1.modelAutoExtractionJob must be true")
-    if candidate.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
-        errors.append("memory-candidate-statuses.yaml: goV1.productionSemanticRecallClaimed must be false")
+    if candidate.get("goV1", {}).get("productionSemanticRecallClaimed") is not True:
+        errors.append("memory-candidate-statuses.yaml: goV1.productionSemanticRecallClaimed must be true")
     safety_contract = load_yaml(root / "specs/contracts/safety-fail-closed-contract.yaml")
     if safety_contract.get("goV1", {}).get("remoteClassifier") != "DEFER":
         errors.append("safety-fail-closed-contract.yaml: goV1.remoteClassifier must be DEFER")
@@ -227,21 +227,21 @@ def validate(root: Path) -> list[str]:
             f"{live_model_protocols}"
         )
     memory_contract = load_yaml(root / "specs/contracts/memory-recall-contract.yaml")
-    if memory_contract.get("goV1", {}).get("productionSemanticRecallClaimed") is not False:
-        errors.append("memory-recall-contract.yaml: goV1.productionSemanticRecallClaimed must be false")
-    # Auto-save via the MEMORY_EXTRACT job is a delivered capability (owner
+    if memory_contract.get("goV1", {}).get("productionSemanticRecallClaimed") is not True:
+        errors.append("memory-recall-contract.yaml: goV1.productionSemanticRecallClaimed must be true")
+    # Auto-save via the ST_MEMORY_EXTRACT job is a delivered capability (owner
     # decision 2026-09-05). The contract must declare it with its guardrails,
     # and the per-owner pref endpoints must stay KEEP in the API scope.
     go_memory = memory_contract.get("goV1", {})
     if go_memory.get("autoSave") is not True or go_memory.get("modelAutoExtractionJob") is not True:
         errors.append(
             "memory-recall-contract.yaml: goV1.autoSave and goV1.modelAutoExtractionJob "
-            "must be true (auto-save via MEMORY_EXTRACT is delivered)")
+            "must be true (auto-save via ST_MEMORY_EXTRACT is delivered)")
     auto_save_expect = {
         "autoSavePrefDefaultOn": True,
-        "autoSaveMaxItemsPerTurn": 3,
+        "autoSaveMaxItemsPerTurn": 100,
         "autoSavedMarking": "auto_saved_true",
-        "autoSaveIdempotency": "idempotency_key",
+        "autoSaveIdempotency": "durable_operation_id_and_engine_receipt",
     }
     for key, expected_value in auto_save_expect.items():
         if go_memory.get(key) != expected_value:

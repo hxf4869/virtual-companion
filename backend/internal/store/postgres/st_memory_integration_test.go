@@ -17,6 +17,7 @@ import (
 func stMemoryFixture(t *testing.T) (STBinding, map[string]*stsource.Snapshot) {
 	t.Helper()
 	resetFixtures(t)
+	memoryEngineFixture(t)
 	ciph, err := NewDefaultFieldCipher(isoRestKeyForStore())
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +59,7 @@ func addSTMemory(t *testing.T, b STBinding, summary, ref string) Memory {
 	if err != nil {
 		t.Fatal(err)
 	}
+	projectEngineFixture(t, m)
 	return m
 }
 func refForChat(t *testing.T, chat string) string {
@@ -89,13 +91,13 @@ func TestSTMemoryQueryBeyondHundredAndDateAnchor(t *testing.T) {
 	}
 	for _, text := range []string{"2026年10月30日准备去哪里，为什么？", "10月30日我要去哪里？"} {
 		date := "2026-10-30"
-		got, err := testEnv.store.queryMemories(ctx, 1, b.RelationshipID, b.ConversationID, "RELATIONSHIP", recallQuery{Text: text, Date: &date, Limit: 20})
+		got, err := testEnv.store.searchEngineMemories(ctx, 1, b.RelationshipID, b.ConversationID, recallQuery{Text: text, Date: &date, Limit: 20})
 		if err != nil || len(got) != 1 || got[0].ID != wedding.ID {
 			t.Fatalf("new relevant record hidden by fixed window: n=%d err=%v", len(got), err)
 		}
 	}
 	later := "2026-11-06"
-	got, err := testEnv.store.queryMemories(ctx, 1, b.RelationshipID, b.ConversationID, "RELATIONSHIP", recallQuery{Text: "我下周五有什么安排", Date: &later, Limit: 20})
+	got, err := testEnv.store.searchEngineMemories(ctx, 1, b.RelationshipID, b.ConversationID, recallQuery{Text: "我下周五有什么安排", Date: &later, Limit: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +133,11 @@ func TestSTMemorySummaryScopeInvalidationAndBudget(t *testing.T) {
 	if _, err := testEnv.store.ReconcileSTSources(ctx, 1, []string{sourceChat}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := testEnv.store.ReconcileSTSources(ctx, 1, []string{otherChat}); err != nil {
+		t.Fatal(err)
+	}
 	memory := addSTMemory(t, b, "用户讨论蓝窗书店的读书计划", refForChat(t, sourceChat))
+	profileEngineFixture(t, b, refForChat(t, sourceChat), "我们正在讨论蓝窗书店的读书计划，下一本书未定。")
 	req := STMemoryRequest{ChatIdentity: otherChat, Revision: 1, Enabled: true, BudgetTokens: 1024}
 	out, err := testEnv.store.RecallSTMemory(ctx, 1, req)
 	if err != nil || !strings.Contains(out.Block, "蓝窗书店") || len(out.SummaryIDs) != 1 {
@@ -244,10 +250,15 @@ func TestSTMemoryRechecksDiscoveredBranchScope(t *testing.T) {
 func TestSTMemoryRejectsTargetChangedDuringDependencyReads(t *testing.T) {
 	for _, state := range []string{"PRESENT", "DELETED"} {
 		t.Run(state, func(t *testing.T) {
-			_, _ = stMemoryFixture(t)
+			b, snapshots := stMemoryFixture(t)
 			ctx := context.Background()
 			at := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
 			snapshot := stMemorySnapshot(sourceChat, "旧查询：我们上次讨论什么？", at)
+			snapshots[sourceChat] = snapshot
+			if _, err := testEnv.store.ReconcileSTSources(ctx, 1, []string{sourceChat}); err != nil {
+				t.Fatal(err)
+			}
+			addSTMemory(t, b, "我们上次讨论读书", refForChat(t, sourceChat))
 			reads := 0
 			testEnv.store.UseSTSourceReader(sourceReaderFunc(func(_ context.Context, _ int64, queries []stsource.Query) ([]stsource.Snapshot, error) {
 				out := []stsource.Snapshot{}

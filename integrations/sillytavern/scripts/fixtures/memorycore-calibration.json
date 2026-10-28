@@ -11,7 +11,8 @@
     {"id":"wedding","content":"我的婚礼定在2026年10月30日，地点是苏州。","eventDate":"2026-10-30"},
     {"id":"dentist","content":"2026年11月6日我预约了牙医洗牙。","eventDate":"2026-11-06"},
     {"id":"name","content":"我朋友的名字叫林晓。"},
-    {"id":"cat","content":"我觉得猫很可爱，但是我没有养宠物。"}
+    {"id":"cat","content":"我觉得猫很可爱，但是我没有养宠物。"},
+    {"id":"friend-wedding","content":"我计划于2026年10月30日去厦门参加朋友婚礼。","eventDate":"2026-10-30"}
   ],
   "queries": [
     {"query":"我最喜欢喝哪种茶？","expected":"tea","kind":"positive"},
@@ -29,6 +30,7 @@
     {"query":"我平时几点休息？","expected":"sleep","kind":"paraphrase"},
     {"query":"我的婚礼什么时候举行？","expected":"wedding","kind":"positive"},
     {"query":"十一月六号我有什么安排？","expected":"dentist","kind":"date","eventDate":"2026-11-06"},
+    {"query":"我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？（第一轮合成验证）","expected":"friend-wedding","kind":"multi-question","eventDate":"2026-10-30"},
     {"query":"我的宠物名字是什么？","expected":null,"kind":"distractor"},
     {"query":"我养的猫叫什么名字？","expected":null,"kind":"distractor"},
     {"query":"我的信用卡还款日是几号？","expected":null,"kind":"no-answer"},

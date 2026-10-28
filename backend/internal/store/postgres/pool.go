@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,6 +36,7 @@ type Store struct {
 	monthlyCostLimit int64
 	stSources        stsource.Reader
 	stData           stsource.DataClient
+	memoryEngine     *memoryengine.Client
 
 	txCount atomic.Uint64
 	txNanos atomic.Uint64

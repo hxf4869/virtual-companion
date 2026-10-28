@@ -92,6 +92,8 @@ export async function sceneMemorycoreNative(ctx) {
         failPublication = true;
         await assert.rejects(engine.invoke('commit', { scope, revision: 0, operationId: 'calibration1' }), /PUBLICATION/);
         assert.equal((await engine.invoke('operation-status', { scope, operationId: 'calibration1' })).status, 'publishing');
+        assert.deepEqual(await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: p.records.map(r => r.id), query: '我的婚礼什么时候举行？' }), [], '引擎未完成发布不能进入检索');
+        checks.push('unpublished-records-never-searchable');
         const receipt = await engine.invoke('commit', { scope, revision: 0, operationId: 'calibration1' });
         assert.equal(receipt.status, 'published'); checks.push('partial-publication-resume');
         extracted = fixture.documents.slice(10);
@@ -111,12 +113,13 @@ export async function sceneMemorycoreNative(ctx) {
             calibration.push({ kind: item.kind, expected: item.expected, hit: item.expected ? hits.some(h => h.record_id === idsByLabel[item.expected]) : hits.length === 0,
                 candidates: hits.map(h => ({ label: fixture.documents.find(d => idsByLabel[d.id] === h.record_id)?.id, cosine: h.cosine, ftsScore: h.ftsScore })) });
             if (!item.expected) assert.equal(hits.length, 0, `negative ${item.kind}`);
-            if (item.eventDate) assert.ok(hits.every(h => h.record_id !== idsByLabel.wedding));
+            if (item.eventDate === '2026-11-06') assert.ok(hits.every(h => h.record_id !== idsByLabel.wedding && h.record_id !== idsByLabel['friend-wedding']));
+            if (item.kind === 'multi-question') assert.ok(hits.some(h => h.record_id === idsByLabel[item.expected]), 'independent valid question must survive multi-topic embedding dilution');
         }
         const inherited = await engine.invoke('search', { scope: { ...scope, profileScopeId: 'branch-b' }, embedding: snapshot, allowedRecordIds: [idsByLabel.wedding], query: '我的婚礼什么时候举行？' });
         assert.deepEqual(inherited.map(h => h.record_id), [idsByLabel.wedding]); checks.push('M07-branch-inherits-only-Go-allowed-IDs');
         const positives = calibration.filter(r => r.expected), negatives = calibration.filter(r => !r.expected);
-        assert.ok(positives.filter(r => r.hit).length >= 13); checks.push('calibration-positive-paraphrase-no-answer-distractor-M11');
+        assert.ok(positives.filter(r => r.hit).length >= 14); checks.push('calibration-positive-paraphrase-no-answer-distractor-M11');
         const staged = await engine.invoke('rebuild-profile', { ...base, operationId: 'profile1', allowedRecordIds: ids });
         assert.equal(staged.status, 'staged');
         assert.equal((await fs.readdir(path.join(paths.data, 'owners/101/profiles'))).length, 0);
@@ -135,7 +138,18 @@ export async function sceneMemorycoreNative(ctx) {
         assert.equal((await engine.invoke('operation-status', { scope, operationId: 'timeout' })).status, 'failed'); checks.push('timeout-is-failure');
         replacement = undefined; extracted = [{ content: '隔离测试的迟到提案不能在遗忘之后恢复。' }];
         await engine.invoke('propose', { ...base, operationId: 'late' });
-        const forgotten = await engine.invoke('forget', { scope, revision: 0, recordIds: [corrected.records[0].id] });
+        const forgetRequest = { scope, revision: 0, recordIds: [corrected.records[0].id] };
+        const originalForget = api.VectorStore.prototype.forgetRecords;
+        let partial;
+        try {
+            api.VectorStore.prototype.forgetRecords = function () { throw new Error('SYNTHETIC_SQLITE_WRITE_FAILURE'); };
+            partial = await engine.invoke('forget', forgetRequest);
+        } finally { api.VectorStore.prototype.forgetRecords = originalForget; }
+        assert.equal(partial.status, 'pending', 'SQLite失败不能误报完成');
+        assert.deepEqual(await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: [corrected.records[0].id], query: '我喜欢喝什么茶？' }), [], '部分清理时立即停止召回');
+        const forgotten = await engine.invoke('forget', forgetRequest);
+        assert.equal(forgotten.revision, partial.revision, '同一清理意图恢复不得重复提高revision');
+        checks.push('partial-cleanup-stays-suppressed-and-resumes');
         await assert.rejects(engine.invoke('commit', { scope, revision: 0, operationId: 'late' }), /REVISION/);
         assert.equal(forgotten.status, 'cleared'); checks.push('M04-forget-revokes-late-commit');
         const changedSpace = { ...snapshot, spaceId: 'synthetic-space-2', revision: 2 };

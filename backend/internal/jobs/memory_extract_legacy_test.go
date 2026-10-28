@@ -370,19 +370,6 @@ func extractFailureCode(err error) string {
 
 // enqueueMemoryExtract is the post-completion trigger. It must never affect
 // the chat reply: enqueue failures are logged and the task may be lost.
-func (l *Loop) enqueueMemoryExtract(ctx context.Context, owner, generationID int64) {
-	if l == nil || l.store == nil {
-		return
-	}
-	if _, err := l.store.EnqueueMemoryExtract(ctx, owner, generationID); err != nil {
-		l.log.Info("memory extract enqueue",
-			slog.String("operation", "memory_extract_enqueue"),
-			slog.String("outcome", "error"),
-			slog.String("error_code", "EXTRACT_ENQUEUE_FAILED"),
-		)
-	}
-}
-
 // extractProviderIdentity is the outbound identity recorded with the attempt:
 // the database route's provider when one is configured, otherwise the
 // process-level env provider defaults.
@@ -506,41 +493,6 @@ func (l *Loop) callExtractProvider(ctx context.Context, provider companion.Provi
 // failExtract schedules the bounded retry (V29 requeue: RETRY_SCHEDULED or
 // DEAD_LETTERED). Only when the requeue call itself errors does the handler
 // attempt an explicit FAILED close, and a losing claim is ignored.
-func (l *Loop) failExtract(ctx context.Context, c postgres.JobClaim, code string) error {
-	action, err := l.store.RetryMemoryExtract(ctx, c.OwnerID, c.JobID, c.Token, c.Fence)
-	if err == nil {
-		l.log.Info("memory extract retry",
-			slog.String("operation", "memory_extract"),
-			slog.String("outcome", "requeued"),
-			slog.String("event_type", action),
-			slog.String("decision_code", code),
-		)
-		return nil
-	}
-	if err := l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, "FAILED", code); err != nil {
-		// The bounded retry and the explicit close both failed: the swallowed
-		// commit error must stay observable (audit L3), the claim then ages
-		// out through lease-expiry recovery.
-		l.log.Info("memory extract retry",
-			slog.String("operation", "memory_extract_retry"),
-			slog.String("outcome", "error"),
-			slog.String("error_code", "EXTRACT_CLOSE_FAILED"),
-		)
-	}
-	return nil
-}
-
-func (l *Loop) closeExtract(ctx context.Context, c postgres.JobClaim, status, reason string) error {
-	if err := l.store.CompleteJob(ctx, c.OwnerID, c.JobID, c.Token, c.Fence, status, reason); err != nil {
-		l.log.Info("memory extract close",
-			slog.String("operation", "memory_extract"),
-			slog.String("outcome", "error"),
-			slog.String("error_code", "EXTRACT_CLOSE_FAILED"),
-		)
-	}
-	return nil
-}
-
 // extractSystemPrompt states exactly the contract the server validates: the
 // summary is the subject marker (用户) plus one verbatim contiguous span of
 // the user message (a minimal rewrite adds nothing), and the evidence is a

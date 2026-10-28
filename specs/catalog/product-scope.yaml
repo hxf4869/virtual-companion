@@ -46,13 +46,10 @@ technology:
   - ANTHROPIC_MESSAGES
 memory:
   autoSaveEnabled: true
-  productionSemanticRecallClaimed: false
+  productionSemanticRecallClaimed: true
   productionRecall:
-  - EXPLICIT_CANDIDATE
-  - KEYWORD
-  - SOURCE
-  - RECENCY
-  ollamaEmbedding: SHADOW_EVAL_ONLY
+  - MEMORYCORE_PRE_FILTERED_SEMANTIC_AND_LEXICAL
+  ollamaEmbedding: PRODUCTION_MEMORYCORE_ONLY
 safety:
   goV1ReviewPaths:
   - LOCAL_DETERMINISTIC_SAFETY_POLICY

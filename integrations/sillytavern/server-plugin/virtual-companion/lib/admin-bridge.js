@@ -20,6 +20,11 @@ const SEG = '[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,200})';
 // 白名单：模型设置页真实所需 + 既有会话/登录。新增路径在这里加一行并注明消费者；
 // 权限判断全部由 Go 决定，本桥不做角色判定。
 export const ADMIN_BRIDGE_ROUTES = [
+    { method: 'GET', path: /^\/api\/v1\/relationships$/, where: 'W08 记忆页角色实例' },
+    { method: 'GET', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/memories$/, where: 'W08 记忆列表' },
+    { method: 'GET', path: /^\/api\/v1\/memories\/[1-9][0-9]*(?:\/evidence)?$/, where: 'W08 记忆详情与证据' },
+    { method: 'PATCH', path: /^\/api\/v1\/memories\/[1-9][0-9]*$/, where: 'W08 版本纠正' },
+    { method: 'DELETE', path: /^\/api\/v1\/memories\/[1-9][0-9]*$/, where: 'W08 记忆遗忘' },
     { method: 'GET', path: /^\/api\/v1\/auth\/session$/, where: '会话核验（生成与页面）' },
     { method: 'POST', path: /^\/api\/v1\/auth\/login$/, where: '既有登录入口（合成登录，不新造平台）' },
     { method: 'POST', path: /^\/api\/v1\/auth\/reauth$/, where: '既有写入再认证（FreshReauth）' },
@@ -111,6 +116,8 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
             const respType = upstream.headers.get('content-type');
             if (respType) res.setHeader('Content-Type', respType);
             res.setHeader('Cache-Control', 'no-store');
+            const cursor = upstream.headers.get('x-next-cursor');
+            if (cursor) res.setHeader('X-Next-Cursor', cursor);
             for (const setCookie of upstream.headers.getSetCookie?.() ?? []) {
                 res.appendHeader('Set-Cookie', setCookie);
             }

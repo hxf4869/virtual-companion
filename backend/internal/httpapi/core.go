@@ -99,6 +99,7 @@ type CompanionStore interface {
 	DeletionIntentActive(ctx context.Context, owner int64) (bool, error)
 	DeleteAccount(ctx context.Context, owner int64) error
 	ClearSTAccountData(ctx context.Context, owner int64) (bool, error)
+	ClearMemoryCoreAccountData(ctx context.Context, owner int64) (bool, error)
 	RegisterSTProfile(ctx context.Context, owner int64, handle string) error
 
 	IssueOpaqueSession(ctx context.Context, accountID int64, tokenHash string, expires time.Time) (int64, error)

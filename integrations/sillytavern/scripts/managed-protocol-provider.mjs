@@ -129,6 +129,26 @@ function classifyAuth(req, expectKey) {
  * 合成最终响应 plan：指令覆盖链 请求体 vc_fixture > x-vc-fixture 头 > __ctl 覆盖 > 剧本。
  * 返回值只含合成材料，不含任何请求回显。
  */
+// Only enabled by the in-memory synthetic test controller. This is a fixture,
+// never a fallback extractor or a route for a real model credential.
+function memorycoreFixture(body, documents) {
+    const messages = body?.messages || [];
+    const system = messages.filter(m => m.role === 'system').map(m => m.content).join('\n');
+    const prompt = messages.find(m => m.role === 'user')?.content || '';
+    if (system.includes('Only supplied staging files are accessible.')) {
+        if (messages.some(m => m.role === 'user' && m.content.includes('"toolResult"'))) return JSON.stringify({ text: 'done' });
+        const persona = /persona|画像/i.test(system) && !prompt.includes('New Memories List');
+        const content = documents.filter(d => prompt.includes(d.content)).map(d => d.content).join('\n');
+        return JSON.stringify({ tool: { name: 'write_to_file', path: persona ? 'persona.md' : 'scene_blocks/synthetic.md',
+            content: persona ? '# 合成画像\n' + content : '-----META-START-----\ncreated: 2026-10-28\nupdated: 2026-10-28\nsummary: 合成来源摘要\nheat: 1\n-----META-END-----\n' + content } });
+    }
+    const fresh = [...prompt.matchAll(/条新记忆 \(record_id: ([a-zA-Z0-9_-]+)\)/g)].map(m => m[1]);
+    if (fresh.length) return JSON.stringify(fresh.map(record_id => ({ record_id, action: 'store', target_ids: [] })));
+    const memories = documents.filter(d => prompt.includes(d.content)).map(d => ({ content: d.content, type: d.type || 'episodic',
+        priority: 50, source_message_ids: ['synthetic-source'], metadata: d.eventDate ? { eventDate: d.eventDate } : {} }));
+    return JSON.stringify(memories.length ? [{ scene_name: 'synthetic', message_ids: ['synthetic-source'], memories }] : []);
+}
+
 export function buildPlan(model, body, headerDirective, ctlOverride) {
     const base = SCRIPTS[model] || SCRIPTS['vc03m-chat'];
     const bodyDirective = body && typeof body === 'object' && body.vc_fixture && typeof body.vc_fixture === 'object'
@@ -138,7 +158,7 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
     const usage = { ...DEFAULT_USAGE, ...(merged.usage || {}) };
     return {
         model,
-        text: typeof merged.text === 'string' ? merged.text : base.text ?? '',
+        text: Array.isArray(merged.memorycoreDocuments) ? memorycoreFixture(body, merged.memorycoreDocuments) : typeof merged.text === 'string' ? merged.text : base.text ?? '',
         reasoning: merged.reasoning ?? null,
         tool: merged.tool ?? null,
         usage,

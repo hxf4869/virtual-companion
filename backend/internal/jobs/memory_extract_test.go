@@ -499,10 +499,9 @@ func TestMemoryExtractSkipsSuppressedTurns(t *testing.T) {
 	}
 }
 
-// TestEnqueueFailureDoesNotAffectCompletedGeneration drives the real
-// handleGeneration completed path with a failing trigger: the chat reply
-// terminal state must stay successful and the task may be lost.
-func TestEnqueueFailureDoesNotAffectCompletedGeneration(t *testing.T) {
+// The retired Go enqueue path must never run, even if its storage entrypoint
+// would fail. Foreground generation completion remains successful.
+func TestRetiredEnqueueFailureCannotAffectCompletedGeneration(t *testing.T) {
 	t.Parallel()
 	store := newConcurrencyStore(1)
 	store.enqueueErr = errors.New("enqueue unavailable")
@@ -514,14 +513,14 @@ func TestEnqueueFailureDoesNotAffectCompletedGeneration(t *testing.T) {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if store.enqueueCalls != 1 {
-		t.Fatalf("enqueue calls %d, want 1", store.enqueueCalls)
+	if store.enqueueCalls != 0 {
+		t.Fatalf("legacy enqueue calls %d, want 0", store.enqueueCalls)
 	}
 }
 
-// TestGenerationCompletionEnqueuesOncePerGeneration pins the trigger count on
-// the real completed path; per-generation dedup is the SQL unique index.
-func TestGenerationCompletionEnqueuesOncePerGeneration(t *testing.T) {
+// Go foreground completion cannot create a second extraction authority.
+// Only persisted ST sources enqueue the production MemoryCore job.
+func TestGenerationCompletionDoesNotEnqueueRetiredExtractor(t *testing.T) {
 	t.Parallel()
 	store := newConcurrencyStore(1)
 	provider := &routeProvider{text: "我在。"}
@@ -532,8 +531,8 @@ func TestGenerationCompletionEnqueuesOncePerGeneration(t *testing.T) {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if store.enqueueCalls != 1 {
-		t.Fatalf("enqueue calls %d, want exactly 1", store.enqueueCalls)
+	if store.enqueueCalls != 0 {
+		t.Fatalf("legacy enqueue calls %d, want 0", store.enqueueCalls)
 	}
 }
 

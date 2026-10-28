@@ -5,9 +5,16 @@ applicability:
 canonicalInvariants:
   - canonical memory belongs to one owner and one relationship
   - a manually created candidate is not a Prompt fact until the owner explicitly confirms it
-  - auto-save is performed only by the MEMORY_EXTRACT job and lands directly as ACCEPTED with auto_saved=true; it never enters the candidate confirmation flow
+  - MemoryCore is the sole extraction authority; ST_MEMORY_EXTRACT orchestrates proposals, verification, commit and Go projection publication
+  - legacy MEMORY_EXTRACT enqueue, claim, consumption and payload replay are disabled; historical attempts and usage remain attributable
+  - MemoryCore creates L0-L3 content; Go owns authorization, current-source verification, suppression, lifecycle, temporal normalization, orchestration and usage
   - auto-save is consent-gated by the per-owner pref (V66, default on) and honours the incognito and no_memory boundaries
-  - one turn yields at most 3 auto-saved memories, deduplicated by idempotency key
+  - every extraction operation is bound to a live queue claim token and fence; each model stage passes Go budget admission and records actual usage
+  - a timeout checks operation-status before retry; only the same operation may resume an uncertain commit
+  - engine-written but Go-unpublished records never enter a trusted recall allowlist
+  - recovery revalidates source revisions, suppression, branch and target versions before publishing or cleaning an uncertain operation
+  - forgetting or source invalidation advances the scope revision and rejects late commits
+  - replacement revokes the old record and all affected L2/L3 immediately; derived publication requires verified complete dependencies
   - an auto-saved memory stays owner-editable and owner-deletable; a deleted one must not resurrect
   - auto-saved memories are stored with RELATIONSHIP scope so they recall into later conversations of the same relationship; the relationship binding keeps them isolated across relationships and accounts
   - incognito and no-memory messages are not long-term extraction sources
@@ -49,14 +56,28 @@ goV1:
   autoSave: true
   modelAutoExtractionJob: true
   autoSavePrefDefaultOn: true
-  autoSaveMaxItemsPerTurn: 3
+  autoSaveMaxItemsPerTurn: 100
   autoSavedMarking: auto_saved_true
-  autoSaveIdempotency: idempotency_key
-  productionSemanticRecallClaimed: false
+  autoSaveIdempotency: durable_operation_id_and_engine_receipt
+  productionSemanticRecallClaimed: true
   productionRecall:
-    - EXPLICIT_CANDIDATE
-    - KEYWORD
-    - SOURCE
-    - RECENCY
-  ollamaEmbedding: SHADOW_EVAL_ONLY
+    - MEMORYCORE_PRE_FILTERED_SEMANTIC_AND_LEXICAL
+  ollamaEmbedding: PRODUCTION_MEMORYCORE_ONLY
   semanticRecallFailureDisposition: degrade_to_no_semantic_memory_chat_continues
+  authority:
+    engine: MemoryCore
+    candidateGate: trusted_Go_record_allowlist_before_KNN_FTS_topK
+    vectorSpace: current_Go_embedding_snapshot_only
+    relevance: reject_low_cosine_and_lexical_scores_before_fusion_allow_empty_results
+    temporalGate: Go_event_date_hard_constraint
+    finalGate: recheck_sources_current_versions_target_binding_and_token_budget
+    nativeInjection: W07_USER_history_block_with_three_protocol_final_exit_recheck
+    derivedGate: L2_L3_complete_dependency_verification_before_publish_and_injection
+    derivedProjection: source_conversation_with_complete_dependencies_combined_across_verified_chats
+    crossChatMergedL1: preserve_all_evidence_and_do_not_strip_dependencies_to_fit_a_summary
+    retired: [Go_extraction_prompt_and_parser, Go_summary_generation, vc.memory_embedding_writes_reembed_and_semantic_recall]
+  dataRights:
+    requiredOnlineDomain: EXTERNAL_MEMORY_ENGINE
+    export: include_engine_records_sources_profiles_metadata_and_adapter_state
+    accountDeletion: confirm_engine_cleanup_before_final_Go_account_delete_retry_same_intent_when_unavailable
+    restore: apply_latest_deletion_intents_and_source_suppression_then_reconcile_before_read

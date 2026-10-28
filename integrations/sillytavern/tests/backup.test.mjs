@@ -16,7 +16,7 @@ let T; let DATA; let KEY; let OUT; let CONFIG;
 const PASS = `synthetic-${crypto.randomBytes(12).toString('hex')}`;
 
 function sh(script, args, env = {}) {
-    return spawnSync('bash', [script, ...args], { encoding: 'utf8', env: { ...process.env, VC_ST_BACKUP_PASSPHRASE: undefined, VC_ST_BACKUP_PASSPHRASE_FILE: undefined, ...env } });
+    return spawnSync('bash', [script, ...args], { encoding: 'utf8', env: { ...process.env, VC_ST_BACKUP_PASSPHRASE: undefined, VC_ST_BACKUP_PASSPHRASE_FILE: undefined, VC_MEMORYCORE_DATA_ROOT: path.join(T || os.tmpdir(), 'no-engine'), ...env } });
 }
 function walkFiles(root) {
     const out = [];
@@ -131,4 +131,39 @@ test('环境变量口令路径同样可用，且产物与 keyfile 路径互不�
     assert.equal(sh(RESTORE, [out2, R], { VC_ST_BACKUP_PASSPHRASE: PASS }).status, 0);
     assert.ok(fs.readFileSync(path.join(DATA, 'default-user/chats/合成角色/2026.jsonl')).equals(fs.readFileSync(path.join(R, 'default-user/chats/合成角色/2026.jsonl'))));
     assert.ok(!fs.existsSync(path.join(R, '_config')), '未传 config 时归档不含 _config');
+});
+
+test('W08 snapshot includes SQLite, metadata and Go suppression; restore requires fresh Go rights and blocks reads until reconciliation', () => {
+    const engine = path.join(T, 'engine'), owner = path.join(engine, 'owners/1');
+    fs.mkdirSync(path.join(owner, 'profiles/p1'), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(owner, 'profiles/p1/persona.md'), 'synthetic profile');
+    fs.writeFileSync(path.join(owner, 'space-config.json'), JSON.stringify({ spaceId: 'synthetic-space' }));
+    const db = path.join(owner, 'vectors.db');
+    const seeded = spawnSync('python3', ['-c', "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); db.execute('CREATE TABLE memories(value TEXT)'); db.execute(\"INSERT INTO memories VALUES ('synthetic')\"); db.commit(); db.close()", db]);
+    assert.equal(seeded.status, 0);
+    const bin = path.join(T, 'synthetic-pg-bin'); fs.mkdirSync(bin);
+    const rights = { version: 1, owners: { '1': { deleted: false, recordIds: ['old'], sourceIds: ['source-1-1-1'], suppressedSources: [] } }, deletions: [] };
+    const fixture = path.join(T, 'current-rights.json'); fs.writeFileSync(fixture, JSON.stringify(rights));
+    fs.writeFileSync(path.join(bin, 'psql'), '#!/usr/bin/env python3\nimport os\nprint(open(os.environ["VC_TEST_RIGHTS"]).read())\n', { mode: 0o700 });
+    const env = { VC_ST_BACKUP_PASSPHRASE: PASS, VC_MEMORYCORE_DATA_ROOT: engine,
+        VC_MEMORYCORE_DATABASE_URL: 'postgresql://synthetic', VC_TEST_RIGHTS: fixture, PATH: bin + path.delimiter + process.env.PATH };
+    const archive = path.join(T, 'engine-backup/snapshot.vcbae1');
+    const b = sh(BACKUP, [DATA, '-', archive], env); assert.equal(b.status, 0, b.stderr + b.stdout);
+    // Rights changed after the backup. Restoring must use this new source state.
+    rights.owners['1'].recordIds = []; rights.owners['1'].sourceIds = [];
+    rights.owners['1'].suppressedSources = [{ sourceId: '1', sourceRef: 'synthetic', suppressed: true }];
+    fs.writeFileSync(fixture, JSON.stringify(rights));
+    const target = path.join(T, 'engine-restore');
+    const r = sh(RESTORE, [archive, target], env); assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.equal(fs.readFileSync(path.join(target, '_memorycore/owners/1/profiles/p1/persona.md'), 'utf8'), 'synthetic profile');
+    const read = spawnSync('python3', ['-c', "import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute('SELECT value FROM memories').fetchone()[0])", path.join(target, '_memorycore/owners/1/vectors.db')], { encoding: 'utf8' });
+    assert.equal(read.status, 0); assert.equal(read.stdout.trim(), 'synthetic');
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(target, '_memorycore/go-rights.json'), 'utf8')).owners['1'].recordIds, ['old']);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(target, '_memorycore/restore-pending.json'), 'utf8')), rights);
+    const unavailable = sh(RESTORE, [archive, path.join(T, 'engine-unavailable')], { ...env, VC_MEMORYCORE_DATABASE_URL: undefined });
+    assert.equal(unavailable.status, 5);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(T, 'engine-unavailable/_memorycore/restore-pending.json'), 'utf8')), { blocked: true });
+    fs.writeFileSync(path.join(engine, 'runtime.lock'), String(process.pid));
+    const running = sh(BACKUP, [DATA, '-', path.join(T, 'engine-backup/running.vcbae1')], env);
+    assert.equal(running.status, 2); assert.equal(fs.existsSync(path.join(T, 'engine-backup/running.vcbae1')), false);
 });

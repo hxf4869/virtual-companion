@@ -276,5 +276,5 @@ export function mountMemoryPage({ getRelationshipId = () => '' } = {}) {
             case 'cancel-reauth': page.cancelReauth(); break;
         }
     });
-    return { open() { if (dialog.open) return; opener = document.activeElement; dialog.showModal(); void page.open(getRelationshipId()); dialog.querySelector('h1')?.focus(); }, close };
+    return { open(returnFocusTarget = document.activeElement) { if (dialog.open) return; opener = returnFocusTarget; dialog.showModal(); void page.open(getRelationshipId()); dialog.querySelector('h1')?.focus(); }, close };
 }

@@ -74,7 +74,7 @@ async function main() {
     process.umask(0o077);
     if (process.argv.includes('--memorycore-only')) {
         const started = await startMemorycore();
-        ok(`MemoryCore foundation ready on 127.0.0.1:${started.port}; businessReady=false`); return;
+        ok(`MemoryCore foundation ready on 127.0.0.1:${started.port}; businessReady=${started.businessReady}`); return;
     }
     const goEnv = requireManagedGoEnv();
     await preflight(goEnv);

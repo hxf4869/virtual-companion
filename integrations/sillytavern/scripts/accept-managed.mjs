@@ -61,6 +61,7 @@ import {
 import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-protocol-provider.mjs';
 import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
 import { sceneSourceNative, sceneRightsBrowser, sceneRightsNative } from './w06-accept.mjs';
+import { sceneMemoryRealModel } from './w08-real-accept.mjs';
 import { sceneMemoryBrowser } from './w07-accept.mjs';
 import { sceneMemorycoreNative } from './w08-native-accept.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
@@ -91,7 +92,8 @@ const MINIO_CONTAINER = process.env.VC_W03_MINIO_CONTAINER || 'vc-w03-managed-mi
 const MINIO_IMAGE = process.env.VC_W03_MINIO_IMAGE || 'vc-g12-minio-tools:local';
 const S3_BUCKET = process.env.VC_W03_S3_BUCKET || 'vc03m-accept';
 const PG_LABEL = 'com.vc.w03=managed';
-const OWNER_ACCOUNT_ID = process.env.VC_W03_OWNER_ACCOUNT_ID || '424242';
+// Disposable PG resets job IDs; a fresh owner also isolates persistent engine operations.
+const OWNER_ACCOUNT_ID = process.env.VC_W03_OWNER_ACCOUNT_ID || String(Date.now());
 const SECOND_ACCOUNT_ID = String(BigInt(OWNER_ACCOUNT_ID) + 1n);
 const RIGHTS_ACCOUNT_ID = String(9007199254740993n + BigInt(Date.now()));
 const RIGHTS_HANDLE = `vc-w06-rights-${RIGHTS_ACCOUNT_ID}`;
@@ -338,6 +340,8 @@ function goServiceSpec(secrets) {
             VC_HTTP_ADDR: `127.0.0.1:${GO_PORT}`,
             VC_HTTP_ORIGINS: ST_BASE,
             VC_SESSION_COOKIE_SECURE: 'false',
+            VC_BUDGET_MAX_RESERVED_COST: '1000000',
+            VC_MONTHLY_COST_LIMIT: '10000000',
             VC_DB_DSN: secrets.dsn,
             VC_MIGRATE_DB_DSN: secrets.dsn,
             VC_OWNER_BINDING_SECRET: secrets.ownerBinding,
@@ -349,6 +353,9 @@ function goServiceSpec(secrets) {
             VC_PROVIDER_ALLOW_LOOPBACK_HTTP: 'true',
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
             VC_ST_HOST_BASE_URL: ST_BASE,
+            VC_MEMORYCORE_BASE_URL: 'http://127.0.0.1:8754',
+            VC_MEMORYCORE_SERVICE_TOKEN: secrets.memorycoreToken,
+            VC_MEMORYCORE_CALLBACK_TOKEN: secrets.memorycoreCallbackToken,
         },
     };
 }
@@ -477,8 +484,10 @@ async function startManagedStack(secrets, artifactsDir) {
             VC_ST_GO_BASE_URL: GO_BASE,
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
             VC_MEMORYCORE_SERVICE_TOKEN: secrets.memorycoreToken,
+            VC_MEMORYCORE_CALLBACK_BASE_URL: GO_BASE,
+            VC_MEMORYCORE_CALLBACK_TOKEN: secrets.memorycoreCallbackToken,
             VC_ST_ACCOUNT_HANDLES: JSON.stringify({ [OWNER_ACCOUNT_ID]: 'default-user', [SECOND_ACCOUNT_ID]: 'vc-w05-second', ...(secrets.needsRights ? { [RIGHTS_ACCOUNT_ID]: RIGHTS_HANDLE } : {}) }),
-            VC_ST_GO_TIMEOUT_MS: '2000',
+            VC_ST_GO_TIMEOUT_MS: secrets.needsMemory ? '30000' : '2000',
         },
         label: 'start-managed（ST 8752 + 插件桥环境）',
     });
@@ -1678,6 +1687,7 @@ async function runDryRun() {
 const SCENE_IMPLS = {
     'memorycore-foundation': sceneMemorycoreFoundation,
     'memorycore-native': sceneMemorycoreNative,
+    'memory-real-model': sceneMemoryRealModel,
     'login-shape': sceneLoginShape,
     'catalog-admin': sceneCatalogAdmin,
     'zero-upstream-on-save': sceneZeroUpstreamOnSave,
@@ -1725,11 +1735,13 @@ async function runFull() {
 
     const secrets = {
         needsRights: selected.some((id) => id.startsWith('rights-')),
+        needsMemory: selected.some(id => id.startsWith('memory-')),
         pgPassword: synthSecret(18),
         ownerBinding: synthServiceToken(),
         restKey: synthRestKey(),
         serviceToken: synthServiceToken(),
         memorycoreToken: synthServiceToken(),
+        memorycoreCallbackToken: synthServiceToken(),
         fixtureKey: synthApiKey(),
     };
     const results = { startedAt: new Date().toISOString(), selected, scenes: {}, artifactsDir };
@@ -1740,6 +1752,12 @@ async function runFull() {
         screenshots: [],
         fixtureHttp,
         admin: null, st: null,
+        w08: {
+            seedRealEstimate: () => psql("INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES ('vc08-real','cline-pass/deepseek-v4.1-flash-1017',1,0.01,0.02) ON CONFLICT DO NOTHING;"),
+            realProgress: () => JSON.parse(psql(`SELECT json_build_object('done',count(*) FILTER(WHERE status='DONE'),'failed',count(*) FILTER(WHERE status IN('FAILED','DEAD_LETTERED','CANCELLED') OR attempt_count>0)) FROM vc.work_item WHERE owner_user_id=${BigInt(OWNER_ACCOUNT_ID)} AND kind='ST_MEMORY_EXTRACT';`).trim()),
+            realUsage: () => JSON.parse(psql("SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT memorycore_stage AS stage,count(*) AS calls,coalesce(sum(input_tokens),0) AS input_tokens,coalesce(sum(output_tokens),0) AS output_tokens,count(*) FILTER(WHERE billing_disposition='UNKNOWN' OR billing_disposition IS NULL) AS unknown_usage FROM vc.memory_extract_attempt WHERE provider_id='vc08-real' GROUP BY memorycore_stage ORDER BY memorycore_stage)x;").trim()),
+            seedSyntheticPrice: () => psql("INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES ('vc08-memory','vc08-memory',1,0.001,0.002) ON CONFLICT DO NOTHING;"),
+        },
         w06: { accountId:RIGHTS_ACCOUNT_ID, handle:RIGHTS_HANDLE,
             wakeExport: (id) => psql(`UPDATE vc.work_item SET next_attempt_at=now() WHERE kind='DATA_EXPORT' AND ref_id=${BigInt(id)} AND status='PENDING';`),
         },

@@ -9,6 +9,8 @@ import (
 func (m *memStore) RegisterSTProfile(context.Context, int64, string) error  { return nil }
 func (m *memStore) ClearSTAccountData(context.Context, int64) (bool, error) { return true, nil }
 
+func (m *memStore) ClearMemoryCoreAccountData(context.Context, int64) (bool, error) { return true, nil }
+
 type pendingSTDeletionStore struct {
 	*memStore
 	pending bool

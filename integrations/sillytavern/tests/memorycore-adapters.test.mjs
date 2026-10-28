@@ -47,3 +47,40 @@ test('callback uses fixed destination and capability; tools stay in staging and 
         await assert.rejects(timeout.run({ prompt: 'x' }), /^Error: MEMORYCORE_CALLBACK_FAILED$/);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
+
+test('native recall keeps independent questions above their own relevance gate and preserves the same allowlist', async () => {
+    const { createNativeFactory } = await import('../memorycore-service/native-engine.mjs');
+    const queries = [];
+    const native = await (await createNativeFactory({
+        VectorStore: class { async init() {} queryL1Records() { return []; } },
+        async recallL1Candidates(input) {
+            queries.push(input.query);
+            assert.deepEqual(input.filter.allowedRecordIds, ['wedding', 'book']);
+            assert.equal(input.filter.minCosine, 0.58);
+            assert.equal(input.filter.minFtsScore, 0.80);
+            return { hits: input.query.includes('去哪里') ? [{ record_id: 'wedding', score: 0.6, cosine: 0.63 }]
+                : [{ record_id: 'book', score: 0.5, cosine: 0.7 }, { record_id: 'wedding', score: 0.2, cosine: 0.59 }] };
+        },
+    }))('/synthetic-unused');
+    const hits = await native.search({ query: '我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？（第一轮合成验证）',
+        topK: 2, scope: {}, allowedRecordIds: ['wedding', 'book'] });
+    assert.deepEqual(queries, ['我在2026年10月30日准备去哪里，为什么', '我们上次读书计划谈到哪一步了']);
+    assert.deepEqual(hits.map(h => h.record_id), ['wedding', 'book']);
+    assert.equal(hits[0].cosine, 0.63, 'same record retains its strongest accepted candidate, not the later weaker hit');
+});
+
+test('a fresh profile can list its empty scene directory before writing', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-runner-empty-'));
+    let step = 0;
+    try {
+        const runner = createCallbackRunner({ baseURL: 'http://127.0.0.1:8095', token: 'x'.repeat(32), operationToken: 'capability',
+            stage: 'l2-scene', stagingDir: dir, fetchImpl: async (_url, init) => {
+                const body = JSON.parse(init.body);
+                if (++step === 1) return Response.json({ text: JSON.stringify({ tool: { name: 'list_files', path: 'scene_blocks' } }) });
+                assert.deepEqual(JSON.parse(body.messages.at(-1).content), { toolResult: '[]' });
+                return Response.json({ text: JSON.stringify({ text: 'done' }) });
+            } });
+        assert.equal(await runner.run({ prompt: 'first profile' }), 'done');
+        assert.equal(step, 2);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});

@@ -90,7 +90,7 @@ export async function init() {
     const memoryContainer = document.createElement('div'); memoryContainer.className = 'extension_container';
     const memoryButton = document.createElement('button'); memoryButton.type = 'button'; memoryButton.id = 'vc_memory_menu_button'; memoryButton.className = 'menu_button';
     memoryButton.innerHTML = '<i class="fa-solid fa-brain" aria-hidden="true"></i><span class="vcms-menu-label">记忆</span>';
-    memoryButton.addEventListener('click', () => memoryPage.open());
+    memoryButton.addEventListener('click', () => memoryPage.open(document.getElementById('extensionsMenuButton')));
     memoryContainer.append(memoryButton); wand.append(memoryContainer);
 
     button.addEventListener('click', () => {

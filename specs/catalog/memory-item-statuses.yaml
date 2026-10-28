@@ -9,3 +9,11 @@ entries:
   order: 2
 - code: DELETED
   order: 3
+
+v2Management:
+  lifecycle: [ACTIVE, SUPERSEDED, FORGETTING, FORGOTTEN]
+  sourceStatus: [VALID, PENDING_VERIFICATION, INVALID]
+  cleanup: [NONE, PENDING, DONE, PARTIAL]
+  correction: new_record_with_expected_version
+  forget: immediate_suppression_then_async_online_cleanup
+  history: retained_projection_replacement_chain

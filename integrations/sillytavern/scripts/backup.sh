@@ -100,6 +100,14 @@ if [ "$CONFIG" != "-" ]; then
     TAR_ARGS+=(-C "$WORK/stage" "_config")
 fi
 
+# W08: an engine snapshot is mandatory when the managed data root exists.
+MEMORYCORE_DATA="${VC_MEMORYCORE_DATA_ROOT:-$SCRIPT_DIR/../dev-managed/memorycore-data}"
+if [ -d "$MEMORYCORE_DATA/owners" ]; then
+    mkdir -p "$WORK/stage"
+    python3 "$SCRIPT_DIR/lib/memorycore-backup.py" snapshot "$MEMORYCORE_DATA" "$WORK/stage/_memorycore" || exit 2
+    TAR_ARGS+=(-C "$WORK/stage" "_memorycore")
+fi
+
 echo "== [1/4] 打包保护清单（$(printf '%s, ' "${INCLUDE[@]}" | sed 's/, $//')${CONFIG:+, _config/config.yaml}）"
 [ ${#MISSING[@]} -eq 0 ] || echo "      未出现（跳过）：${MISSING[*]}"
 tar -cf "$WORK/plain.tar" "${TAR_ARGS[@]}" || { echo "FAIL: tar 打包失败" >&2; exit 2; }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/config"
+	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
@@ -95,7 +96,7 @@ func PolicyFrom(cfg config.Config) Policy {
 		ExportLease:     10 * time.Minute,
 		// MEMORY_EXTRACT claims run on the default lease; it must always cover
 		// the bounded extraction call (20s) plus finalization margin.
-		DefaultLease:          max(60*time.Second, extractTotalTimeout+10*time.Second),
+		DefaultLease:          6 * time.Minute,
 		ProviderID:            cfg.Provider.ID,
 		SupplierName:          cfg.Provider.SupplierName,
 		ModelID:               cfg.Provider.Model,
@@ -199,6 +200,7 @@ type Loop struct {
 	store           Store
 	provider        companion.Provider
 	providerFactory func(modelprovider.Route) (companion.Provider, error)
+	memoryCore      *memorycore.Broker
 	hub             *realtime.Hub
 	cancels         *Cancels
 	blobs           BlobStore
@@ -574,7 +576,20 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 			slog.String("event_type", action),
 		)
 	}
-	return l.recoverAccountDeletions(ctx)
+	if err := l.recoverAccountDeletions(ctx); err != nil {
+		return err
+	}
+	if engine, ok := l.store.(interface{ RecoverEngineOperations(context.Context) error }); ok {
+		if err := engine.RecoverEngineOperations(ctx); err != nil {
+			return err
+		}
+	}
+	if cleanup, ok := l.store.(interface{ RecoverMemoryCleanup(context.Context) error }); ok {
+		if err := cleanup.RecoverMemoryCleanup(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {
@@ -586,8 +601,10 @@ func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {
 		err = l.handleGeneration(ctx, c, runID)
 	case KindExport:
 		err = l.handleExport(ctx, c)
-	case KindMemoryExtract, KindSTMemoryExtract:
-		err = l.handleMemoryExtract(ctx, c)
+	case KindSTMemoryExtract:
+		err = l.handleEngineExtract(ctx, c)
+	case KindMemoryExtract:
+		err = l.closeExtract(ctx, c, "CANCELLED", "LEGACY_EXTRACT_RETIRED")
 	default:
 		log.Info("job skipped",
 			slog.String("operation", "job_dispatch"),

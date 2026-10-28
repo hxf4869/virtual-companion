@@ -4,6 +4,13 @@ memoryDomainStorage:
   fieldEncryption: false
   representation: PLAINTEXT_OR_JSON
   boundaryContract: specs/contracts/memory-recall-contract.yaml
+  engine:
+    authority: MEMORYCORE
+    onlineExportDomain: EXTERNAL_MEMORY_ENGINE
+    ownerIsolation: PRIVATE_OWNER_DIRECTORY_AND_TRUSTED_ALLOWLIST
+    deletion: DURABLE_ENGINE_RECEIPT_BEFORE_GO_ACCOUNT_CASCADE
+    backup: OFFLINE_SQLITE_SNAPSHOT_WITH_PROFILES_METADATA_ADAPTER_AND_GO_SUPPRESSION
+    restore: CURRENT_GO_DELETION_AND_SOURCE_ALLOWLIST_BEFORE_ENGINE_READS
   protection:
     - OWNER_BINDING_AND_FORCE_RLS
     - DIRECTORY_PERMISSIONS

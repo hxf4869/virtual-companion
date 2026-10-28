@@ -103,6 +103,7 @@ func TestSTAccountDeletionRemainsPendingAndResumesIdempotently(t *testing.T) {
 }
 func TestSTOwnerExportDecryptsSourcesAndKeepsExternalFailureVisible(t *testing.T) {
 	store, data := rightsFixture(t)
+	installRightsEngine(t, store)
 	ctx := context.Background()
 	binding, err := store.ResolveSTBinding(ctx, 1, STBindingInput{ChatIdentity: sourceChat, CharacterRef: "export-card", Mode: "COMPANION", DisplayName: "合成角色"})
 	if err != nil {
