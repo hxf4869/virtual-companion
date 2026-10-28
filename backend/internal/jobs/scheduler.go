@@ -143,5 +143,14 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 	_ = store.RunRetentionCategory(ctx, "EXPORT_RESIDUE", true)
 	_ = s.loop.RecoverOnce(ctx)
 	_, _ = store.ExpireQueuedGenerations(ctx, s.loop.policy.QueueTimeout)
+	if due, ok := store.(followUpDueStore); ok {
+		if err := RunFollowUpDue(ctx, due, time.Now()); err != nil {
+			s.loop.log.Info("follow-up due",
+				slog.String("operation", "follow_up_due"),
+				slog.String("outcome", "error"),
+				slog.String("error_code", "FOLLOW_UP_DUE"),
+			)
+		}
+	}
 	return nil
 }
