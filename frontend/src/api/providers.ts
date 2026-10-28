@@ -8,6 +8,8 @@ export type ProviderProtocol =
 export type ProviderState = "ENABLED" | "DISABLED";
 
 export interface ModelRoute {
+  /** Stable profile identity within the provider; equals modelId for rows saved before profiles. */
+  profileKey: string;
   modelId: string;
   displayName: string;
   contextWindowTokens?: number;
@@ -35,6 +37,7 @@ export interface SaveModelProvider {
   credential?: string;
   state: ProviderState;
   models: Array<{
+    profileKey?: string;
     modelId: string;
     displayName: string;
     contextWindowTokens?: number;
@@ -46,6 +49,7 @@ export interface SaveModelProvider {
 export interface RouteRef {
   providerId: string;
   modelId: string;
+  profileKey?: string;
 }
 
 export interface DiscoveredModel {
@@ -167,6 +171,7 @@ function parseModel(value: unknown): ModelRoute | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const modelId = text(row.modelId);
+  const profileKey = text(row.profileKey) ?? modelId;
   const displayName = text(row.displayName);
   const state = text(row.state) as ProviderState | null;
   const maxOutputTokens = integer(row.maxOutputTokens);
@@ -180,6 +185,7 @@ function parseModel(value: unknown): ModelRoute | null {
     return null;
   }
   return {
+    profileKey: profileKey ?? modelId,
     modelId,
     displayName,
     state,

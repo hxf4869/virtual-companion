@@ -64,6 +64,15 @@ type Config struct {
 	Budget           Budget
 	Session          Session
 	Concurrency      Concurrency
+	STPlugin         STPlugin
+}
+
+// STPlugin is the shared secret the SillyTavern server plugin presents on the
+// service channel that resolves purpose bindings and credentials. It lives
+// only in the Go and plugin server processes; browsers never receive it and
+// it grants no administrative rights.
+type STPlugin struct {
+	ServiceToken string
 }
 
 // ExportS3 is the one supported export object store. Runtime access is
@@ -282,6 +291,7 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 			CookieSecure: true,
 			ReauthWindow: 15 * time.Minute,
 		},
+		STPlugin: STPlugin{ServiceToken: strings.TrimSpace(getenv("VC_ST_PLUGIN_SERVICE_TOKEN"))},
 		Concurrency: Concurrency{
 			// §19.5 Owner-only product defaults: serial worker, 8 outstanding,
 			// 5-minute queue timeout. Benchmark profiles override per run and
@@ -608,6 +618,9 @@ func (c Config) Validate() error {
 		if err := requireAESKey(c.Crypto.PreviousRestKeyBase64); err != nil {
 			return fmt.Errorf("VC_CRYPTO_PREVIOUS_REST_KEY: %w", err)
 		}
+	}
+	if c.STPlugin.ServiceToken != "" && len(c.STPlugin.ServiceToken) < 32 {
+		return fmt.Errorf("VC_ST_PLUGIN_SERVICE_TOKEN must be at least 32 characters when set")
 	}
 	if c.Provider.Enabled {
 		if len(c.Provider.ID) < 1 || len(c.Provider.ID) > 128 {

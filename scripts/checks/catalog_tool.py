@@ -165,10 +165,25 @@ def validate(root: Path) -> list[str]:
     tech = product.get("technology", {})
     if tech.get("goBaseline") != "1.26":
         errors.append("product-scope.yaml: technology.goBaseline must be '1.26'")
-    if tech.get("targetRuntime") != "GO_COMPANIOND":
-        errors.append("product-scope.yaml: technology.targetRuntime must be GO_COMPANIOND")
-    if tech.get("currentRuntime") != "GO_COMPANIOND":
-        errors.append("product-scope.yaml: technology.currentRuntime must be GO_COMPANIOND")
+    # ADR-0009 §5 (W03): the runtime is the SillyTavern Node host plus Go
+    # companiond, and Go stays the only model catalog / credential authority.
+    st_runtime = "SILLYTAVERN_NODE_PLUS_GO_COMPANIOND"
+    if tech.get("targetRuntime") != st_runtime:
+        errors.append(f"product-scope.yaml: technology.targetRuntime must be {st_runtime}")
+    if tech.get("currentRuntime") != st_runtime:
+        errors.append(f"product-scope.yaml: technology.currentRuntime must be {st_runtime}")
+    if tech.get("modelCatalogAuthority") != "GO_COMPANIOND":
+        errors.append("product-scope.yaml: technology.modelCatalogAuthority must be GO_COMPANIOND")
+    model_purposes = [
+        "FOREGROUND_CHAT",
+        "MEMORY_EXTRACTION_DEDUP_SUMMARY",
+        "BACKGROUND_GREETINGS",
+        "STORY_DIRECTOR",
+        "NPC_DIALOGUE",
+        "EMBEDDING",
+    ]
+    if codes(load_yaml(cdir / "model-purposes.yaml")) != model_purposes:
+        errors.append(f"model-purposes.yaml: codes must be exactly {model_purposes}")
     live_model_protocols = [
         "OPENAI_CHAT_COMPLETIONS",
         "OPENAI_RESPONSES",

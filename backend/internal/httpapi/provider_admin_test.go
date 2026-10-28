@@ -20,6 +20,13 @@ type providerMemStore struct {
 	saved      []postgres.SaveProvider
 	orders     [][]postgres.RouteRef
 	credential string
+	saveErr    error
+	bindings   []postgres.PurposeBinding
+	bindSaved  []postgres.SavePurposeBinding
+	bindErr    error
+	resolved   postgres.ResolvedPurpose
+	resolveErr error
+	resolveIn  []postgres.ResolvePurpose
 }
 
 func (m *providerMemStore) ListProviderConfigs(context.Context, int64) ([]postgres.ProviderConfig, error) {
@@ -33,14 +40,40 @@ func (m *providerMemStore) GetProviderCredential(context.Context, int64, string)
 	return m.credential, nil
 }
 
-func (m *providerMemStore) SaveProviderConfig(_ context.Context, _ int64, in postgres.SaveProvider) error {
+func (m *providerMemStore) SaveProviderConfig(_ context.Context, _ int64, in postgres.SaveProvider) (int64, error) {
+	if m.saveErr != nil {
+		return 0, m.saveErr
+	}
 	m.saved = append(m.saved, in)
-	return nil
+	return int64(len(m.saved)) + 1, nil
 }
 
 func (m *providerMemStore) ReorderProviderModels(_ context.Context, _ int64, in []postgres.RouteRef) error {
 	m.orders = append(m.orders, append([]postgres.RouteRef(nil), in...))
 	return nil
+}
+
+func (m *providerMemStore) ListPurposeBindings(context.Context, int64) ([]postgres.PurposeBinding, error) {
+	return append([]postgres.PurposeBinding(nil), m.bindings...), nil
+}
+
+func (m *providerMemStore) SavePurposeBinding(_ context.Context, _ int64, in postgres.SavePurposeBinding) (postgres.PurposeBinding, error) {
+	if m.bindErr != nil {
+		return postgres.PurposeBinding{}, m.bindErr
+	}
+	m.bindSaved = append(m.bindSaved, in)
+	return postgres.PurposeBinding{
+		Purpose: in.Purpose, ProviderID: in.ProviderID, ProfileKey: in.ProfileKey,
+		State: in.State, Status: postgres.BindingReady, Revision: 2, UpdatedAt: time.Unix(20, 0),
+	}, nil
+}
+
+func (m *providerMemStore) ResolvePurpose(_ context.Context, in postgres.ResolvePurpose) (postgres.ResolvedPurpose, error) {
+	m.resolveIn = append(m.resolveIn, in)
+	if m.resolveErr != nil {
+		return postgres.ResolvedPurpose{}, m.resolveErr
+	}
+	return m.resolved, nil
 }
 
 func (m *providerMemStore) ResolveProviderRoutes(context.Context) ([]postgres.ProviderRoute, error) {
@@ -252,5 +285,283 @@ func TestProviderAdminDiscoversModelsWithSavedCredential(t *testing.T) {
 	}
 	if len(models) != 2 || models[0].DisplayName != "model-a" || models[1].DisplayName != "Model B" {
 		t.Fatalf("models %+v", models)
+	}
+}
+
+func decodeBody(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode %s: %v", rec.Body.String(), err)
+	}
+	return out
+}
+
+func TestProviderAdminSaveCredentialTriStateAndProfileFields(t *testing.T) {
+	t.Parallel()
+	server, store := newProviderServer(t)
+	model := `{"profileKey":"m1@memory","modelId":"m1","displayName":"Memory","contextWindowTokens":32768,"maxOutputTokens":1024,"state":"ENABLED","capabilities":{"toolCalls":"DECLARED"},"reasoningLevels":["low"],"generationParams":{"temperature":0.2,"reasoningEffort":"low"},"pricing":{"currency":"USD","inputPerMillionTokens":1.5}}`
+	set := `{"displayName":"Acme","protocol":"OPENAI_RESPONSES","baseUrl":"https://gateway.example/v1","credential":"secret","state":"ENABLED","expectedRevision":3,"models":[` + model + `]}`
+	rec := providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/providers/acme", set, 9, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set %d %s", rec.Code, rec.Body.String())
+	}
+	if body := decodeBody(t, rec); body["ok"] != true || body["revision"] != float64(2) {
+		t.Fatalf("mutation response %s", rec.Body.String())
+	}
+	saved := store.saved[0]
+	if saved.Credential != "secret" || saved.ClearCredential || saved.ExpectedRevision == nil || *saved.ExpectedRevision != 3 {
+		t.Fatalf("set passthrough %+v", saved)
+	}
+	m := saved.Models[0]
+	if m.ProfileKey != "m1@memory" || m.Capabilities["toolCalls"] != postgres.CapabilityDeclared ||
+		len(m.ReasoningLevels) != 1 || m.GenerationParams == nil || *m.GenerationParams.ReasoningEffort != "low" ||
+		m.Pricing == nil || *m.Pricing.Currency != "USD" {
+		t.Fatalf("profile passthrough %+v", m)
+	}
+
+	clear := `{"displayName":"Acme","protocol":"OPENAI_RESPONSES","baseUrl":"https://gateway.example/v1","clearCredential":true,"state":"DISABLED","models":[{"modelId":"m1","displayName":"Primary","maxOutputTokens":4096,"state":"ENABLED"}]}`
+	rec = providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/providers/acme", clear, 9, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear %d %s", rec.Code, rec.Body.String())
+	}
+	saved = store.saved[1]
+	if saved.Credential != "" || !saved.ClearCredential || saved.ExpectedRevision != nil {
+		t.Fatalf("clear passthrough %+v", saved)
+	}
+	// An older caller sends no profile documents: they must arrive as nil
+	// (keep), never as empty replacements.
+	legacy := saved.Models[0]
+	if legacy.ProfileKey != "" || legacy.Capabilities != nil || legacy.ReasoningLevels != nil ||
+		legacy.GenerationParams != nil || legacy.Pricing != nil {
+		t.Fatalf("legacy model must keep stored documents %+v", legacy)
+	}
+
+	keep := `{"displayName":"Acme","protocol":"OPENAI_RESPONSES","baseUrl":"https://gateway.example/v1","state":"DISABLED","models":[{"modelId":"m1","displayName":"Primary","maxOutputTokens":4096,"state":"ENABLED"}]}`
+	rec = providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/providers/acme", keep, 9, true)
+	if rec.Code != http.StatusOK || store.saved[2].Credential != "" || store.saved[2].ClearCredential {
+		t.Fatalf("keep %d %+v", rec.Code, store.saved[2])
+	}
+}
+
+func TestProviderAdminSaveMapsCatalogConflicts(t *testing.T) {
+	t.Parallel()
+	server, store := newProviderServer(t)
+	body := `{"displayName":"Acme","protocol":"OPENAI_RESPONSES","baseUrl":"https://gateway.example/v1","state":"DISABLED","models":[{"modelId":"m1","displayName":"Primary","maxOutputTokens":4096,"state":"ENABLED"}]}`
+
+	store.saveErr = &postgres.RevisionConflictError{Current: 7}
+	rec := providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/providers/acme", body, 9, true)
+	payload := decodeBody(t, rec)
+	if rec.Code != http.StatusConflict || payload["code"] != "REVISION_CONFLICT" ||
+		payload["details"].(map[string]any)["currentRevision"] != float64(7) {
+		t.Fatalf("revision conflict %d %s", rec.Code, rec.Body.String())
+	}
+
+	store.saveErr = &postgres.ProfileInUseError{Purposes: []string{"FOREGROUND_CHAT"}}
+	rec = providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/providers/acme", body, 9, true)
+	payload = decodeBody(t, rec)
+	if rec.Code != http.StatusConflict || payload["code"] != "MODEL_PROFILE_IN_USE" ||
+		!strings.Contains(rec.Body.String(), `"purposes":["FOREGROUND_CHAT"]`) {
+		t.Fatalf("profile in use %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProviderAdminSaveMakesNoOutboundCall(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	server, store := newProviderServer(t)
+	server.cfg.Provider.AllowLoopbackHTTP = true
+	body := `{"displayName":"Local","protocol":"OPENAI_CHAT_COMPLETIONS","baseUrl":"` + upstream.URL + `/v1","credential":"secret","state":"ENABLED","models":[{"modelId":"m1","displayName":"Primary","maxOutputTokens":4096,"state":"ENABLED"}]}`
+	rec := providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/providers/local", body, 9, true)
+	if rec.Code != http.StatusOK || len(store.saved) != 1 || calls != 0 {
+		t.Fatalf("save %d saved=%d upstream calls=%d", rec.Code, len(store.saved), calls)
+	}
+}
+
+func TestProviderAdminListExposesProfileFieldsWithoutSecrets(t *testing.T) {
+	t.Parallel()
+	server, store := newProviderServer(t)
+	effort := "low"
+	store.configs[0].Revision = 4
+	store.configs[0].Models[0].ProfileKey = "m1"
+	store.configs[0].Models[0].Capabilities = postgres.ModelCapabilities{"toolCalls": postgres.CapabilityDeclared}
+	store.configs[0].Models[0].ReasoningLevels = []string{"low"}
+	store.configs[0].Models[0].GenerationParams = &postgres.GenerationParams{ReasoningEffort: &effort}
+	store.configs[0].Models[0].Pricing = &postgres.ModelPricing{}
+	store.configs[0].Models[0].BoundPurposes = []string{"FOREGROUND_CHAT"}
+	rec := providerRequest(t, server, store, http.MethodGet, "/api/v1/admin/providers", "", 9, false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list %d %s", rec.Code, rec.Body.String())
+	}
+	var payload []providerJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	item := payload[0]
+	if item.Revision != 4 || item.EndpointURL != "https://gateway.example/v1/responses" ||
+		item.Models[0].ProfileKey != "m1" || item.Models[0].Capabilities["toolCalls"] != "DECLARED" ||
+		item.Models[0].BoundPurposes[0] != "FOREGROUND_CHAT" || item.Models[0].Pricing.Currency != nil {
+		t.Fatalf("list payload %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "credential\"") || strings.Contains(rec.Body.String(), "cipher") {
+		t.Fatalf("secret material leaked %s", rec.Body.String())
+	}
+}
+
+func TestPurposeBindingAdminSurface(t *testing.T) {
+	t.Parallel()
+	server, store := newProviderServer(t)
+	store.bindings = []postgres.PurposeBinding{{
+		Purpose: postgres.PurposeForegroundChat, State: postgres.ProviderDisabled,
+		Status: postgres.BindingPending, Revision: 1, UpdatedAt: time.Unix(10, 0),
+	}}
+	list := providerRequest(t, server, store, http.MethodGet, "/api/v1/admin/model-purposes", "", 9, false)
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"providerId":null`) ||
+		!strings.Contains(list.Body.String(), `"status":"PENDING_CONFIGURATION"`) {
+		t.Fatalf("list %d %s", list.Code, list.Body.String())
+	}
+	if user := providerRequest(t, server, store, http.MethodGet, "/api/v1/admin/model-purposes", "", 1, false); user.Code != http.StatusForbidden {
+		t.Fatalf("user list %d", user.Code)
+	}
+
+	body := `{"providerId":"acme","profileKey":"m1","state":"ENABLED","expectedRevision":1}`
+	stale := providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/model-purposes/FOREGROUND_CHAT", body, 9, false)
+	if stale.Code != http.StatusForbidden || len(store.bindSaved) != 0 {
+		t.Fatalf("stale reauth %d saved=%d", stale.Code, len(store.bindSaved))
+	}
+	fresh := providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/model-purposes/FOREGROUND_CHAT", body, 9, true)
+	if fresh.Code != http.StatusOK || len(store.bindSaved) != 1 || store.bindSaved[0].Purpose != "FOREGROUND_CHAT" ||
+		store.bindSaved[0].ProfileKey != "m1" || *store.bindSaved[0].ExpectedRevision != 1 ||
+		!strings.Contains(fresh.Body.String(), `"status":"READY"`) || !strings.Contains(fresh.Body.String(), `"revision":2`) {
+		t.Fatalf("fresh %d %s saved=%+v", fresh.Code, fresh.Body.String(), store.bindSaved)
+	}
+
+	store.bindErr = &postgres.RevisionConflictError{Current: 5}
+	conflict := providerRequest(t, server, store, http.MethodPut, "/api/v1/admin/model-purposes/FOREGROUND_CHAT", body, 9, true)
+	if conflict.Code != http.StatusConflict || decodeBody(t, conflict)["code"] != "REVISION_CONFLICT" {
+		t.Fatalf("conflict %d %s", conflict.Code, conflict.Body.String())
+	}
+}
+
+func serviceRequest(t *testing.T, server *Server, token, origin, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/service/model-purposes/FOREGROUND_CHAT/resolve", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestServiceResolveChannel(t *testing.T) {
+	t.Parallel()
+	const token = "st-plugin-service-token-0123456789abcdef"
+	server, store := newProviderServer(t)
+	body := `{"ownerAccountId":"1","providerId":"acme","profileKey":"m1","providerRevision":4,"bindingRevision":2}`
+
+	if rec := serviceRequest(t, server, token, "", body); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured channel %d %s", rec.Code, rec.Body.String())
+	}
+	server.cfg.STPlugin.ServiceToken = token
+	if rec := serviceRequest(t, server, "", "", body); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing token %d", rec.Code)
+	}
+	if rec := serviceRequest(t, server, "wrong-token-wrong-token-wrong-token-wrong", "", body); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong token %d", rec.Code)
+	}
+	if rec := serviceRequest(t, server, token, "https://vc.test", body); rec.Code != http.StatusForbidden || len(store.resolveIn) != 0 {
+		t.Fatalf("browser origin %d resolves=%d", rec.Code, len(store.resolveIn))
+	}
+
+	window := 32768
+	store.resolved = postgres.ResolvedPurpose{
+		Purpose: postgres.PurposeForegroundChat, BindingRevision: 2,
+		ProviderID: "acme", ProviderName: "Acme", Protocol: postgres.ProtocolOpenAIResponses,
+		BaseURL: "https://gateway.example/v1", ProviderRevision: 4, Credential: "plain-secret",
+		Model: postgres.ProviderModel{
+			ProfileKey: "m1", ModelID: "m1", DisplayName: "Primary", ContextWindowTokens: &window,
+			MaxOutputTokens: 4096, State: postgres.ProviderEnabled,
+			Capabilities: postgres.ModelCapabilities{"toolCalls": postgres.CapabilityDeclared},
+			ReasoningLevels: []string{}, GenerationParams: &postgres.GenerationParams{},
+			Pricing: &postgres.ModelPricing{}, BoundPurposes: []string{},
+		},
+	}
+	rec := serviceRequest(t, server, token, "", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("resolve %d %s", rec.Code, rec.Body.String())
+	}
+	var resolved purposeResolveResponseJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &resolved); err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Provider.Credential != "plain-secret" || resolved.Provider.EndpointURL != "https://gateway.example/v1/responses" ||
+		resolved.BindingRevision != 2 || resolved.Model.ContextWindowTokens == nil || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("resolved payload %s", rec.Body.String())
+	}
+	in := store.resolveIn[0]
+	if in.OwnerAccountID != 1 || in.Purpose != "FOREGROUND_CHAT" || in.ProviderID != "acme" ||
+		*in.ProviderRevision != 4 || *in.BindingRevision != 2 {
+		t.Fatalf("resolve input %+v", in)
+	}
+
+	// The owner ID travels as a decimal string so the plugin can forward the
+	// session accountId verbatim: an ID above the JS safe-integer range must
+	// reach the store as the exact int64, never float-mangled to a neighbour.
+	const beyondJSSafe = int64(9007199254740993) // 2^53+1, not representable as float64
+	bigID := `{"ownerAccountId":"9007199254740993","providerId":"acme","profileKey":"m1","providerRevision":4,"bindingRevision":2}`
+	if rec := serviceRequest(t, server, token, "", bigID); rec.Code != http.StatusOK {
+		t.Fatalf("big owner resolve %d %s", rec.Code, rec.Body.String())
+	}
+	if got := store.resolveIn[len(store.resolveIn)-1].OwnerAccountID; got != beyondJSSafe {
+		t.Fatalf("big owner id got %d want %d", got, beyondJSSafe)
+	}
+	for name, invalid := range map[string]string{
+		"float neighbor": `{"ownerAccountId":"9007199254740992.0"}`,
+		"non numeric":    `{"ownerAccountId":"3ad"}`,
+		"zero":           `{"ownerAccountId":"0"}`,
+		"negative":       `{"ownerAccountId":"-5"}`,
+		"empty":          `{"ownerAccountId":""}`,
+		"json number":    `{"ownerAccountId":1}`,
+		"hex":            `{"ownerAccountId":"0x1"}`,
+	} {
+		if rec := serviceRequest(t, server, token, "", invalid); rec.Code != http.StatusBadRequest {
+			t.Fatalf("invalid owner id %s: got %d %s", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	store.resolveErr = &postgres.PurposeUnavailableError{Status: postgres.BindingUnavailable}
+	rec = serviceRequest(t, server, token, "", body)
+	if rec.Code != http.StatusConflict || decodeBody(t, rec)["code"] != "MODEL_NO_ELIGIBLE_DEPLOYMENT" ||
+		!strings.Contains(rec.Body.String(), `"status":"UNAVAILABLE"`) {
+		t.Fatalf("unavailable %d %s", rec.Code, rec.Body.String())
+	}
+	store.resolveErr = &postgres.ResolveConflictError{ProviderID: "acme", ProfileKey: "m2", ProviderRevision: 5, BindingRevision: 3}
+	rec = serviceRequest(t, server, token, "", body)
+	if rec.Code != http.StatusConflict || decodeBody(t, rec)["code"] != "REVISION_CONFLICT" ||
+		!strings.Contains(rec.Body.String(), `"profileKey":"m2"`) {
+		t.Fatalf("stale %d %s", rec.Code, rec.Body.String())
+	}
+	store.resolveErr = postgres.ErrServiceOwnerRejected
+	if rec = serviceRequest(t, server, token, "", body); rec.Code != http.StatusForbidden {
+		t.Fatalf("owner rejected %d", rec.Code)
+	}
+
+	// The service token is not an administrator session.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/providers", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	admin := httptest.NewRecorder()
+	server.Handler().ServeHTTP(admin, req)
+	if admin.Code != http.StatusUnauthorized {
+		t.Fatalf("service token on admin surface %d %s", admin.Code, admin.Body.String())
 	}
 }

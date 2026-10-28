@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -29,6 +30,48 @@ var ErrAuthChallengeUnavailable = errors.New("auth challenge unavailable")
 // with SQL, ids, or body text.
 var errStore = errors.New("store operation failed")
 
+// ErrServiceOwnerRejected is a service-channel request naming an owner
+// account that is not ACTIVE.
+var ErrServiceOwnerRejected = errors.New("service owner rejected")
+
+// RevisionConflictError is an optimistic-concurrency miss on a provider or a
+// purpose binding. Current is the revision the caller has to re-read.
+type RevisionConflictError struct{ Current int64 }
+
+func (e *RevisionConflictError) Error() string { return "revision conflict" }
+
+// ProfileInUseError is a snapshot that would drop a profile a purpose still
+// pins; the binding must move first.
+type ProfileInUseError struct{ Purposes []string }
+
+func (e *ProfileInUseError) Error() string { return "model profile in use" }
+
+// PurposeUnavailableError is a service resolution against a binding that is
+// not READY; Status carries the derived binding status.
+type PurposeUnavailableError struct{ Status string }
+
+func (e *PurposeUnavailableError) Error() string { return "purpose not ready" }
+
+// ResolveConflictError is a stale service-channel assertion; the fields are
+// the live values the projection must adopt.
+type ResolveConflictError struct {
+	ProviderID       string
+	ProfileKey       string
+	ProviderRevision int64
+	BindingRevision  int64
+}
+
+func (e *ResolveConflictError) Error() string { return "resolve conflict" }
+
+func typedStoreErr(err error) bool {
+	var revision *RevisionConflictError
+	var inUse *ProfileInUseError
+	var unavailable *PurposeUnavailableError
+	var resolve *ResolveConflictError
+	return errors.As(err, &revision) || errors.As(err, &inUse) ||
+		errors.As(err, &unavailable) || errors.As(err, &resolve)
+}
+
 func mapStoreErr(err error) error {
 	if err == nil {
 		return nil
@@ -37,6 +80,7 @@ func mapStoreErr(err error) error {
 		errors.Is(err, ErrConflict) || errors.Is(err, ErrRateLimited) ||
 		errors.Is(err, ErrAuthChallengeUnavailable) ||
 		errors.Is(err, ErrOwnerContextRejected) || errors.Is(err, turn.ErrOutboundDenied) ||
+		errors.Is(err, ErrServiceOwnerRejected) || typedStoreErr(err) ||
 		errors.Is(err, errStore) {
 		return err
 	}
@@ -58,6 +102,14 @@ func mapStoreErr(err error) error {
 
 func mapRaise(msg string) error {
 	switch {
+	case strings.Contains(msg, "revision conflict (current "):
+		return &RevisionConflictError{Current: raisedInt(msg, "revision conflict (current ")}
+	case strings.Contains(msg, "profile in use: "):
+		return &ProfileInUseError{Purposes: strings.Split(raisedTail(msg, "profile in use: "), ",")}
+	case strings.Contains(msg, "owner is not an active account"):
+		return ErrServiceOwnerRejected
+	case strings.Contains(msg, "go_admin_purpose: profile not found"):
+		return ErrInvalid
 	case strings.Contains(msg, "owner deletion is in progress"):
 		return ErrNotFound
 	case strings.Contains(msg, "deletion is in progress"):
@@ -88,7 +140,27 @@ func mapRaise(msg string) error {
 		return ErrInvalid
 	case strings.Contains(msg, "go_admin_provider"):
 		return ErrInvalid
+	case strings.Contains(msg, "go_admin_purpose"):
+		return ErrInvalid
 	default:
 		return errStore
 	}
+}
+
+// raisedTail returns the text after marker in a RAISE message, trimmed.
+func raisedTail(msg, marker string) string {
+	return strings.TrimSpace(msg[strings.Index(msg, marker)+len(marker):])
+}
+
+// raisedInt parses the integer that follows marker up to the next ')'.
+func raisedInt(msg, marker string) int64 {
+	tail := raisedTail(msg, marker)
+	if end := strings.IndexByte(tail, ')'); end >= 0 {
+		tail = tail[:end]
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(tail), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }

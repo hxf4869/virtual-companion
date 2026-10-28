@@ -30,8 +30,13 @@ alpha:
   zeroLlmDefaultForFree: false
 technology:
   goBaseline: '1.26'
-  currentRuntime: GO_COMPANIOND
-  targetRuntime: GO_COMPANIOND
+  # ADR-0009 §5 (W03): native SillyTavern Node host + Go companiond. Go is the
+  # single model catalog / credential authority; the SillyTavern front end is a
+  # revision-synchronized projection. The ST extension pages (W03-S3) and the
+  # Responses adapter (W03-S4) are tracked in TODO.md V2-W03, not claimed here.
+  currentRuntime: SILLYTAVERN_NODE_PLUS_GO_COMPANIOND
+  targetRuntime: SILLYTAVERN_NODE_PLUS_GO_COMPANIOND
+  modelCatalogAuthority: GO_COMPANIOND
   database: POSTGRESQL_18
   vector: PGVECTOR_0.8.5
   modelProtocols:

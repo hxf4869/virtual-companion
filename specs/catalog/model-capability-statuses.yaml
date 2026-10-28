@@ -1,0 +1,18 @@
+schemaVersion: 1
+catalogId: model-capability-statuses
+note: >-
+  Per-capability status of a model profile (image/video/pdf input, structured output, tool calls,
+  native web search, system message). Administrators may declare UNKNOWN, DECLARED or UNSUPPORTED.
+  VERIFIED is written only by an explicit verification action and never inferred from a model id;
+  an administrator may echo it unchanged for a field the same profile already has verified, but a
+  new profile, a clone (new profileKey) or an upgrade from another status is rejected.
+entries:
+- code: UNKNOWN
+  order: 0
+- code: DECLARED
+  order: 1
+- code: VERIFIED
+  order: 2
+  adminInput: echo-only
+- code: UNSUPPORTED
+  order: 3

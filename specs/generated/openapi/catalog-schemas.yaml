@@ -83,6 +83,29 @@ components:
       - FAKE
       - FAILURE
       - ZERO_LLM
+    ModelPurpose:
+      type: string
+      enum:
+      - FOREGROUND_CHAT
+      - MEMORY_EXTRACTION_DEDUP_SUMMARY
+      - BACKGROUND_GREETINGS
+      - STORY_DIRECTOR
+      - NPC_DIALOGUE
+      - EMBEDDING
+    ModelPurposeBindingStatus:
+      type: string
+      enum:
+      - PENDING_CONFIGURATION
+      - DISABLED
+      - UNAVAILABLE
+      - READY
+    ModelCapabilityStatus:
+      type: string
+      enum:
+      - UNKNOWN
+      - DECLARED
+      - VERIFIED
+      - UNSUPPORTED
     UserMessageState:
       type: string
       enum:
@@ -204,6 +227,8 @@ components:
       - RATE_LIMITED
       - AUTH_CHALLENGE_UNAVAILABLE
       - ACCOUNT_CONTEXT_CHANGED
+      - REVISION_CONFLICT
+      - MODEL_PROFILE_IN_USE
     MessageFeedbackKind:
       type: string
       enum:

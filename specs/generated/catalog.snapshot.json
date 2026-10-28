@@ -91,7 +91,9 @@
       "PASSWORD_CHANGE_REQUIRED",
       "RATE_LIMITED",
       "AUTH_CHALLENGE_UNAVAILABLE",
-      "ACCOUNT_CONTEXT_CHANGED"
+      "ACCOUNT_CONTEXT_CHANGED",
+      "REVISION_CONFLICT",
+      "MODEL_PROFILE_IN_USE"
     ],
     "GenerationState": [
       "CREATED",
@@ -142,6 +144,12 @@
       "FACTUAL_ERROR",
       "UNSAFE"
     ],
+    "ModelCapabilityStatus": [
+      "UNKNOWN",
+      "DECLARED",
+      "VERIFIED",
+      "UNSUPPORTED"
+    ],
     "ModelProtocol": [
       "OPENAI_CHAT_COMPLETIONS",
       "OPENAI_RESPONSES",
@@ -149,6 +157,20 @@
       "FAKE",
       "FAILURE",
       "ZERO_LLM"
+    ],
+    "ModelPurpose": [
+      "FOREGROUND_CHAT",
+      "MEMORY_EXTRACTION_DEDUP_SUMMARY",
+      "BACKGROUND_GREETINGS",
+      "STORY_DIRECTOR",
+      "NPC_DIALOGUE",
+      "EMBEDDING"
+    ],
+    "ModelPurposeBindingStatus": [
+      "PENDING_CONFIGURATION",
+      "DISABLED",
+      "UNAVAILABLE",
+      "READY"
     ],
     "PersonaTemplate": [
       "gentle-listener"
@@ -410,6 +432,21 @@
             "typeName": "ModelProtocol"
           },
           {
+            "file": "model-purposes.yaml",
+            "kind": "enum",
+            "typeName": "ModelPurpose"
+          },
+          {
+            "file": "model-purpose-binding-statuses.yaml",
+            "kind": "enum",
+            "typeName": "ModelPurposeBindingStatus"
+          },
+          {
+            "file": "model-capability-statuses.yaml",
+            "kind": "enum",
+            "typeName": "ModelCapabilityStatus"
+          },
+          {
             "file": "message-states.yaml",
             "kind": "multi-enum"
           },
@@ -485,7 +522,7 @@
         "generatorVersion": "1.0.0",
         "schemaVersion": 1
       },
-      "sha256": "c72c3d64d7fdebe47b26997e8d3a6e4ccb0cb5b524c5e816c69e1001589f5c9b"
+      "sha256": "2f8cdec12f5463b1d7ad53a96d817fcb718e44b30796bc8443e639da6a608e71"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -772,11 +809,19 @@
           {
             "code": "ACCOUNT_CONTEXT_CHANGED",
             "order": 22
+          },
+          {
+            "code": "REVISION_CONFLICT",
+            "order": 23
+          },
+          {
+            "code": "MODEL_PROFILE_IN_USE",
+            "order": 24
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "a44e55fcf5d6c00377b22ea6eddcd53a14f59750fd11724a44c0eda89beb2530"
+      "sha256": "228222a922fc434c541bd2d7e33e2257ecf585dd03218468d3db18d43c02ba1c"
     },
     "generation-states.yaml": {
       "document": {
@@ -931,7 +976,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 65,
+          "KEEP": 68,
           "RETIRE": 39,
           "SIMPLIFY": 6
         },
@@ -2086,6 +2131,39 @@
           },
           {
             "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "listModelPurposes",
+            "path": "/api/v1/admin/model-purposes",
+            "replacementOrImpact": "V2-W03 G2 purpose bindings (ADR-0009). Consumer is the SillyTavern extension page via the Go session; the retiring Vue console has no entry."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "saveModelPurpose",
+            "path": "/api/v1/admin/model-purposes/{purpose}",
+            "replacementOrImpact": "V2-W03 independent per-purpose pinning with revision conflict semantics; EMBEDDING only accepts the pending (unbound) state until W08."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "resolveModelPurpose",
+            "path": "/api/v1/service/model-purposes/{purpose}/resolve",
+            "replacementOrImpact": "V2-W03 service channel for the SillyTavern server plugin (shared service token, never a browser); returns the live credential for one READY binding and grants no administrative rights."
+          },
+          {
+            "currentH5Callers": [],
             "decision": "RETIRE",
             "method": "GET",
             "operationId": "getTrialStatus",
@@ -2279,7 +2357,7 @@
           }
         ]
       },
-      "sha256": "b1ad98b95a2a148295d4d81f0c70d60eb69c8868b6649f4c53cbbe2fb3a0aef7"
+      "sha256": "4cd5e3e5868121a2cd0bdd15c63e0e6064285e095abe25edc87e3998c3805365"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -2504,6 +2582,33 @@
       },
       "sha256": "3da0567de355150a61d3d8ed3e0e63f1c1073d30647cb8351849a036faf70381"
     },
+    "model-capability-statuses.yaml": {
+      "document": {
+        "catalogId": "model-capability-statuses",
+        "entries": [
+          {
+            "code": "UNKNOWN",
+            "order": 0
+          },
+          {
+            "code": "DECLARED",
+            "order": 1
+          },
+          {
+            "adminInput": "echo-only",
+            "code": "VERIFIED",
+            "order": 2
+          },
+          {
+            "code": "UNSUPPORTED",
+            "order": 3
+          }
+        ],
+        "note": "Per-capability status of a model profile (image/video/pdf input, structured output, tool calls, native web search, system message). Administrators may declare UNKNOWN, DECLARED or UNSUPPORTED. VERIFIED is written only by an explicit verification action and never inferred from a model id; an administrator may echo it unchanged for a field the same profile already has verified, but a new profile, a clone (new profileKey) or an upgrade from another status is rejected.",
+        "schemaVersion": 1
+      },
+      "sha256": "fcb9d33fb18a508fdea281313c94937d0724f4a657fe97b6194d38d1a7c879e9"
+    },
     "model-protocols.yaml": {
       "document": {
         "catalogId": "model-protocols",
@@ -2554,6 +2659,73 @@
         "schemaVersion": 1
       },
       "sha256": "62180516e8c0136b8661f4ee9e9d1c877f70a890da8da8b58d4336b477217b23"
+    },
+    "model-purpose-binding-statuses.yaml": {
+      "document": {
+        "catalogId": "model-purpose-binding-statuses",
+        "entries": [
+          {
+            "code": "PENDING_CONFIGURATION",
+            "order": 0
+          },
+          {
+            "code": "DISABLED",
+            "order": 1
+          },
+          {
+            "code": "UNAVAILABLE",
+            "order": 2
+          },
+          {
+            "code": "READY",
+            "order": 3
+          }
+        ],
+        "note": "Derived per binding from its own state and the referenced provider/profile. Only READY may be resolved by the SillyTavern server plugin; disabling or clearing a key moves the binding out of READY for the next request.",
+        "schemaVersion": 1
+      },
+      "sha256": "9afdc667cc36197b9bb329f6f49fbded248803d5c6a344d25473021b35a85f67"
+    },
+    "model-purposes.yaml": {
+      "document": {
+        "catalogId": "model-purposes",
+        "entries": [
+          {
+            "code": "FOREGROUND_CHAT",
+            "executor": "SILLYTAVERN_NATIVE",
+            "order": 0
+          },
+          {
+            "code": "MEMORY_EXTRACTION_DEDUP_SUMMARY",
+            "executor": "GO_BACKGROUND",
+            "order": 1
+          },
+          {
+            "code": "BACKGROUND_GREETINGS",
+            "executor": "GO_BACKGROUND",
+            "order": 2
+          },
+          {
+            "code": "STORY_DIRECTOR",
+            "executor": "GO_BACKGROUND",
+            "order": 3
+          },
+          {
+            "code": "NPC_DIALOGUE",
+            "executor": "SILLYTAVERN_NATIVE",
+            "order": 4
+          },
+          {
+            "chatProtocolBindable": false,
+            "code": "EMBEDDING",
+            "executor": "GO_BACKGROUND",
+            "order": 5
+          }
+        ],
+        "note": "V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose pins one model profile independently; changing one binding never touches another. EMBEDDING is not one of the three chat protocols and stays PENDING_CONFIGURATION until a dedicated embedding path exists (W08).",
+        "schemaVersion": 1
+      },
+      "sha256": "50dda0fefde2469a0439d178d16177fcdf4921531712b2b418f24c7edfc2b775"
     },
     "persona-templates.yaml": {
       "document": {
@@ -2690,19 +2862,20 @@
         },
         "schemaVersion": 1,
         "technology": {
-          "currentRuntime": "GO_COMPANIOND",
+          "currentRuntime": "SILLYTAVERN_NODE_PLUS_GO_COMPANIOND",
           "database": "POSTGRESQL_18",
           "goBaseline": "1.26",
+          "modelCatalogAuthority": "GO_COMPANIOND",
           "modelProtocols": [
             "OPENAI_CHAT_COMPLETIONS",
             "OPENAI_RESPONSES",
             "ANTHROPIC_MESSAGES"
           ],
-          "targetRuntime": "GO_COMPANIOND",
+          "targetRuntime": "SILLYTAVERN_NODE_PLUS_GO_COMPANIOND",
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "bd7bb7481e1cd901d2aff3fb265b3a3165fbfdfb5b9428542f77e8e8b026c85c"
+      "sha256": "8b7d63372a7f182c33faf46b0717a032249152c795d157aea975ec83de4dbd8a"
     },
     "provider-attempt-statuses.yaml": {
       "document": {

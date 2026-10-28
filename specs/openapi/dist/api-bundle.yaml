@@ -3481,10 +3481,15 @@ paths:
     put:
       operationId: saveModelProvider
       summary: Create or replace one provider configuration
-      description: Go v1 ADMIN surface requiring fresh reauthentication and CSRF. The body is the complete model snapshot
-        for this provider; previously stored models omitted from the body are removed from configuration. Historical attempts
-        retain their provider/model text. credential is required for a new provider and optional when updating; omission preserves
-        the encrypted value. The response never contains a secret.
+      description: 'Go v1 ADMIN surface requiring fresh reauthentication and CSRF. The body is the complete profile snapshot
+        for this provider; previously stored profiles omitted from the body are removed from configuration, except a profile
+        still pinned by a purpose (409 MODEL_PROFILE_IN_USE). Historical attempts retain their provider/model text. Credential
+        is a tri-state: a non-empty credential replaces the stored one, clearCredential removes it (state must be DISABLED),
+        and omitting both keeps the stored value. A new provider without a credential is saved as a DISABLED draft; ENABLED
+        requires a stored credential and an enabled profile. expectedRevision, when present, is compared under the row lock
+        and a mismatch is 409 REVISION_CONFLICT with details.currentRevision; omitting it keeps last-write-wins for older
+        callers. Per-profile capabilities, reasoningLevels, generationParams and pricing objects are replaced when present
+        and kept when omitted. Saving performs no network call. The response never contains a secret.'
       security:
       - cookieAuth: []
       parameters:
@@ -3497,13 +3502,15 @@ paths:
               $ref: '#/components/schemas/AdminModelProviderSaveRequest'
       responses:
         '200':
-          description: Provider snapshot saved atomically
+          description: Provider snapshot saved atomically; revision is the new provider revision
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminProviderMutationResponse'
         '400':
-          description: Invalid provider, URL, protocol, model list or credential
+          description: Invalid provider, URL, protocol, profile list, credential action (clear while ENABLED), capability
+            status (VERIFIED accepted only as an unchanged echo of the same profile field), reasoningEffort outside reasoningLevels
+            or price without currency
           content:
             application/json:
               schema:
@@ -3516,6 +3523,13 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
           description: ADMIN role, CSRF or fresh reauthentication requirement failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: REVISION_CONFLICT (details.currentRevision) or MODEL_PROFILE_IN_USE (details.purposes) — nothing was
+            written
           content:
             application/json:
               schema:
@@ -3555,7 +3569,8 @@ paths:
                 items:
                   $ref: '#/components/schemas/DiscoveredProviderModel'
         '400':
-          description: Invalid provider id, protocol or base URL
+          description: Invalid provider id, protocol or base URL, or the saved provider is a credential-less draft and no
+            write-only credential was supplied
           content:
             application/json:
               schema:
@@ -3632,6 +3647,175 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '503':
           description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/model-purposes:
+    get:
+      operationId: listModelPurposes
+      summary: List the six purpose bindings
+      description: V2-W03 (ADR-0009 G2) Go v1 ADMIN surface. Always returns one binding per ModelPurpose with its derived
+        status. A binding pins one profile (providerId + profileKey); several purposes may pin the same profile and the provider
+        list shows that sharing as boundPurposes.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: All purpose bindings
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 6
+                maxItems: 6
+                items:
+                  $ref: '#/components/schemas/ModelPurposeBinding'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/model-purposes/{purpose}:
+    put:
+      operationId: saveModelPurpose
+      summary: Pin, unpin, enable or disable one purpose
+      description: Go v1 ADMIN surface requiring fresh reauthentication and CSRF. Replaces exactly one binding; other purposes
+        are never touched, so switching the foreground chat model leaves independently pinned background purposes unchanged.
+        providerId and profileKey are both null (pending) or both set to an existing profile. EMBEDDING is not one of the
+        three chat protocols and only accepts the pending state in this version. expectedRevision, when present, must equal
+        the binding revision (409 REVISION_CONFLICT with details.currentRevision). Saving performs no network call and does
+        not change which model a running request uses.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ModelPurposeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPurposeBindingSaveRequest'
+      responses:
+        '200':
+          description: The updated binding with its new revision and derived status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelPurposeBinding'
+        '400':
+          description: Invalid state, a half-specified or unknown profile reference, or EMBEDDING pinned to a chat-protocol
+            profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ADMIN role, CSRF or fresh reauthentication requirement failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Unknown purpose
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: REVISION_CONFLICT with details.currentRevision; nothing was written
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service/model-purposes/{purpose}/resolve:
+    post:
+      operationId: resolveModelPurpose
+      summary: Resolve one READY purpose binding for the SillyTavern server plugin
+      description: V2-W03 private service channel; Go remains the only credential authority. Authenticated solely by the shared
+        service token (never a cookie); a request carrying an Origin header is refused as browser originated. The caller names
+        the ACTIVE Go owner account it acts for and may assert the providerId / profileKey / providerRevision / bindingRevision
+        its projection believes; any mismatch is 409 REVISION_CONFLICT with the live values in details. A binding that is
+        not READY (pending, disabled, provider or profile disabled, credential cleared, chat purpose without a context window)
+        is 409 MODEL_NO_ELIGIBLE_DEPLOYMENT with details.status. The rows are read on every call, so disabling or clearing
+        a key affects the next request. The decrypted credential is returned once for this request and must not be persisted
+        by the plugin (no SecretManager mirror); the response is Cache-Control no-store. This channel grants no administrator
+        rights.
+      security:
+      - serviceToken: []
+      parameters:
+      - $ref: '#/components/parameters/ModelPurposeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPurposeResolveRequest'
+      responses:
+        '200':
+          description: Live provider, profile configuration and credential for one request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelPurposeResolveResponse'
+        '400':
+          description: Invalid body or unknown purpose code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Browser origin present, or the owner account is not ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Unknown purpose
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: MODEL_NO_ELIGIBLE_DEPLOYMENT (details.status) when the binding is not READY, or REVISION_CONFLICT (details.providerId,
+            profileKey, providerRevision, bindingRevision) when the caller's assertion is stale
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Service channel not configured (no VC_ST_PLUGIN_SERVICE_TOKEN)
           content:
             application/json:
               schema:
@@ -4415,6 +4599,12 @@ components:
         only — the cookie principal remains the sole authorization source. Identity discovery (GET /api/v1/auth/session) never
         sends either. Ordering caveat: these preconditions cover requests the page issues with the newer cookie; requests
         already sent with an older cookie and unauthenticated login Set-Cookie races are out of scope.'
+    serviceToken:
+      type: http
+      scheme: bearer
+      description: V2-W03 service channel for the SillyTavern server plugin only. The shared token (VC_ST_PLUGIN_SERVICE_TOKEN,
+        >= 32 characters) lives in the Go and plugin server processes; browsers never receive it, a request carrying an Origin
+        header is refused, and the token grants no administrator session (the /api/v1/admin surface ignores it).
   schemas:
     ErrorEnvelope:
       type: object
@@ -4460,6 +4650,8 @@ components:
       - RATE_LIMITED
       - AUTH_CHALLENGE_UNAVAILABLE
       - ACCOUNT_CONTEXT_CHANGED
+      - REVISION_CONFLICT
+      - MODEL_PROFILE_IN_USE
     ServiceModeStatus:
       type: object
       description: Current generation-service mode (FR-RES-005).
@@ -6584,17 +6776,31 @@ components:
     AdminProviderModel:
       type: object
       additionalProperties: false
+      description: 'One model profile: a configured use of a remote model. Several profiles may share modelId ("save as new"
+        keeps the remote id and takes a new profileKey); purposes pin (providerId, profileKey).'
       required:
+      - profileKey
       - modelId
       - displayName
       - maxOutputTokens
       - priority
       - state
+      - capabilities
+      - reasoningLevels
+      - generationParams
+      - pricing
+      - boundPurposes
       properties:
+        profileKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Stable profile identifier within the provider; equals modelId for plain profiles.
         modelId:
           type: string
           minLength: 1
           maxLength: 200
+          description: Remote model identifier sent to the provider.
         displayName:
           type: string
           minLength: 1
@@ -6603,29 +6809,53 @@ components:
           type: integer
           minimum: 1
           maximum: 2000000
+          description: Absent means unknown; chat purposes pinned to such a profile are UNAVAILABLE.
         maxOutputTokens:
           type: integer
           minimum: 1
           maximum: 262144
+          description: Output reservation subtracted from the context window when budgeting a request.
         priority:
           type: integer
           minimum: 1
           maximum: 32
-          description: Global priority across every provider/model pair; smaller values run first.
+          description: Global priority across every provider/profile; smaller values run first in the legacy Go chain.
         state:
           $ref: '#/components/schemas/ModelProviderState'
+        capabilities:
+          $ref: '#/components/schemas/ModelCapabilities'
+        reasoningLevels:
+          $ref: '#/components/schemas/ModelReasoningLevels'
+        generationParams:
+          $ref: '#/components/schemas/ModelGenerationParams'
+        pricing:
+          $ref: '#/components/schemas/ModelPricing'
+        boundPurposes:
+          type: array
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ModelPurpose'
+          description: Purposes currently pinned to this profile; editing it affects all of them.
         updatedAt:
           type: string
           format: date-time
     AdminProviderModelInput:
       type: object
       additionalProperties: false
+      description: Profile input. capabilities, reasoningLevels, generationParams and pricing are replaced when present and
+        kept when omitted (a new profile starts with UNKNOWN capabilities, no levels, no params, unknown price).
       required:
       - modelId
       - displayName
       - maxOutputTokens
       - state
       properties:
+        profileKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Defaults to modelId. Use a distinct value to "save as new" without overwriting the original profile.
         modelId:
           type: string
           minLength: 1
@@ -6644,10 +6874,18 @@ components:
           maximum: 262144
         state:
           $ref: '#/components/schemas/ModelProviderState'
+        capabilities:
+          $ref: '#/components/schemas/ModelCapabilities'
+        reasoningLevels:
+          $ref: '#/components/schemas/ModelReasoningLevels'
+        generationParams:
+          $ref: '#/components/schemas/ModelGenerationParams'
+        pricing:
+          $ref: '#/components/schemas/ModelPricing'
     AdminModelProvider:
       type: object
       additionalProperties: false
-      description: Secret-free ADMIN view of one provider and all of its model routes.
+      description: Secret-free ADMIN view of one provider and all of its model profiles.
       required:
       - providerId
       - displayName
@@ -6655,6 +6893,7 @@ components:
       - baseUrl
       - credentialConfigured
       - state
+      - revision
       - models
       properties:
         providerId:
@@ -6671,11 +6910,20 @@ components:
           format: uri
           maxLength: 2048
           description: HTTPS origin/prefix or an address ending in /v1; never a terminal protocol path.
+        endpointUrl:
+          type: string
+          format: uri
+          description: Normalized final request address derived from baseUrl and protocol (e.g. .../v1/responses).
         credentialConfigured:
           type: boolean
           description: Presence only. No credential material, prefix, ciphertext or fingerprint is exposed.
         state:
           $ref: '#/components/schemas/ModelProviderState'
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Advances by one on every successful snapshot save; compare with expectedRevision.
         updatedAt:
           type: string
           format: date-time
@@ -6710,7 +6958,16 @@ components:
           minLength: 1
           maxLength: 4096
           writeOnly: true
-          description: Required when creating; omission on update preserves the encrypted credential.
+          description: Replaces the stored credential. Omit (and leave clearCredential false) to keep it.
+        clearCredential:
+          type: boolean
+          default: false
+          description: Removes the stored credential; only valid with state DISABLED and without credential.
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional optimistic check against the current provider revision (0 for a new provider).
         state:
           $ref: '#/components/schemas/ModelProviderState'
         models:
@@ -6767,6 +7024,11 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+        profileKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Profile to order; defaults to modelId, which addresses plain profiles only.
     ModelRoutingOrderRequest:
       type: object
       additionalProperties: false
@@ -6788,6 +7050,300 @@ components:
         ok:
           type: boolean
           const: true
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Provider revision after a snapshot save (absent for the route-order mutation).
+    ModelPurpose:
+      type: string
+      description: Independently bound model purposes (specs/catalog/model-purposes.yaml, ADR-0009 G2).
+      enum:
+      - FOREGROUND_CHAT
+      - MEMORY_EXTRACTION_DEDUP_SUMMARY
+      - BACKGROUND_GREETINGS
+      - STORY_DIRECTOR
+      - NPC_DIALOGUE
+      - EMBEDDING
+    ModelPurposeBindingStatus:
+      type: string
+      description: 'Derived binding status. PENDING_CONFIGURATION: no profile pinned; DISABLED: binding switched off; UNAVAILABLE:
+        provider or profile disabled, credential cleared, or a chat purpose on a profile without a context window; READY:
+        resolvable by the service channel.'
+      enum:
+      - PENDING_CONFIGURATION
+      - DISABLED
+      - UNAVAILABLE
+      - READY
+    ModelCapabilityStatus:
+      type: string
+      description: UNKNOWN nothing declared; DECLARED claimed by the administrator but not tested; VERIFIED set only by an
+        explicit verification action — an administrator may echo it unchanged for a field the same profile already has verified,
+        while a new profile, a clone (new profileKey) or an upgrade from any other status is rejected; UNSUPPORTED known not
+        to work. A declared capability is never treated as actually supported.
+      enum:
+      - UNKNOWN
+      - DECLARED
+      - VERIFIED
+      - UNSUPPORTED
+    ModelCapabilities:
+      type: object
+      additionalProperties: false
+      description: Capability slots of a profile; text input is implicit. Responses contain every key, inputs may omit keys
+        (treated as UNKNOWN).
+      properties:
+        imageInput:
+          $ref: '#/components/schemas/ModelCapabilityStatus'
+        videoInput:
+          $ref: '#/components/schemas/ModelCapabilityStatus'
+        pdfInput:
+          $ref: '#/components/schemas/ModelCapabilityStatus'
+        structuredOutput:
+          $ref: '#/components/schemas/ModelCapabilityStatus'
+        toolCalls:
+          $ref: '#/components/schemas/ModelCapabilityStatus'
+        nativeWebSearch:
+          $ref: '#/components/schemas/ModelCapabilityStatus'
+        systemMessage:
+          $ref: '#/components/schemas/ModelCapabilityStatus'
+    ModelReasoningLevels:
+      type: array
+      maxItems: 8
+      uniqueItems: true
+      description: Reasoning levels this profile accepts for generationParams.reasoningEffort; empty means the model has no
+        reasoning control.
+      items:
+        type: string
+        pattern: ^[a-z0-9_-]{1,32}$
+    ModelGenerationParams:
+      type: object
+      additionalProperties: false
+      description: Bounded protocol-independent request parameters pinned by the profile. null means "do not send". reasoningEffort
+        must be one of reasoningLevels; an unsupported value is rejected, never dropped. Protocol mapping is performed by
+        the SillyTavern server plugin.
+      properties:
+        temperature:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+          maximum: 2
+        topP:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+          maximum: 1
+        reasoningEffort:
+          type:
+          - string
+          - 'null'
+          pattern: ^[a-z0-9_-]{1,32}$
+    ModelPricing:
+      type: object
+      additionalProperties: false
+      description: Optional price metadata per million tokens. null fields mean unknown and are never read as zero cost; any
+        stated price requires currency.
+      properties:
+        currency:
+          type:
+          - string
+          - 'null'
+          pattern: ^[A-Z]{3}$
+          description: ISO 4217 code.
+        inputPerMillionTokens:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+        outputPerMillionTokens:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+        verifiedOn:
+          type:
+          - string
+          - 'null'
+          format: date
+          description: Date the price was last checked against the provider.
+    ModelPurposeBinding:
+      type: object
+      additionalProperties: false
+      required:
+      - purpose
+      - providerId
+      - profileKey
+      - modelId
+      - state
+      - status
+      - revision
+      properties:
+        purpose:
+          $ref: '#/components/schemas/ModelPurpose'
+        providerId:
+          type:
+          - string
+          - 'null'
+          pattern: ^[a-z][a-z0-9-]{0,63}$
+        profileKey:
+          type:
+          - string
+          - 'null'
+          maxLength: 200
+        modelId:
+          type:
+          - string
+          - 'null'
+          maxLength: 200
+          description: Remote model id of the pinned profile, for display.
+        state:
+          $ref: '#/components/schemas/ModelProviderState'
+        status:
+          $ref: '#/components/schemas/ModelPurposeBindingStatus'
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
+    ModelPurposeBindingSaveRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - state
+      properties:
+        providerId:
+          type:
+          - string
+          - 'null'
+          pattern: ^[a-z][a-z0-9-]{0,63}$
+        profileKey:
+          type:
+          - string
+          - 'null'
+          maxLength: 200
+        state:
+          $ref: '#/components/schemas/ModelProviderState'
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 1
+    ModelPurposeResolveRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - ownerAccountId
+      properties:
+        ownerAccountId:
+          type: string
+          pattern: ^[0-9]+$
+          description: Decimal-string Go account ID the plugin acts for. Transported as a string (same as the session accountId)
+            so IDs above the JavaScript safe-integer range stay exact; the server parses it as a strict int64 and rejects
+            non-positive values.
+        providerId:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,63}$
+        profileKey:
+          type: string
+          maxLength: 200
+        providerRevision:
+          type: integer
+          format: int64
+          minimum: 1
+        bindingRevision:
+          type: integer
+          format: int64
+          minimum: 1
+    ModelPurposeResolveProvider:
+      type: object
+      additionalProperties: false
+      required:
+      - providerId
+      - displayName
+      - protocol
+      - baseUrl
+      - revision
+      - credential
+      properties:
+        providerId:
+          type: string
+        displayName:
+          type: string
+        protocol:
+          $ref: '#/components/schemas/ModelProviderProtocol'
+        baseUrl:
+          type: string
+          format: uri
+        endpointUrl:
+          type: string
+          format: uri
+        revision:
+          type: integer
+          format: int64
+        credential:
+          type: string
+          description: Decrypted provider credential for this request only; never persist or log it.
+    ModelPurposeResolveModel:
+      type: object
+      additionalProperties: false
+      description: The pinned profile as the plugin must apply it; no priority or binding bookkeeping.
+      required:
+      - profileKey
+      - modelId
+      - displayName
+      - maxOutputTokens
+      - state
+      - capabilities
+      - reasoningLevels
+      - generationParams
+      - pricing
+      properties:
+        profileKey:
+          type: string
+        modelId:
+          type: string
+        displayName:
+          type: string
+        contextWindowTokens:
+          type: integer
+          minimum: 1
+          maximum: 2000000
+          description: Present for every READY chat purpose; the request budget must include history, card, lore, memory,
+            tools and maxOutputTokens.
+        maxOutputTokens:
+          type: integer
+          minimum: 1
+          maximum: 262144
+        state:
+          $ref: '#/components/schemas/ModelProviderState'
+        capabilities:
+          $ref: '#/components/schemas/ModelCapabilities'
+        reasoningLevels:
+          $ref: '#/components/schemas/ModelReasoningLevels'
+        generationParams:
+          $ref: '#/components/schemas/ModelGenerationParams'
+        pricing:
+          $ref: '#/components/schemas/ModelPricing'
+    ModelPurposeResolveResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - purpose
+      - bindingRevision
+      - provider
+      - model
+      properties:
+        purpose:
+          $ref: '#/components/schemas/ModelPurpose'
+        bindingRevision:
+          type: integer
+          format: int64
+        provider:
+          $ref: '#/components/schemas/ModelPurposeResolveProvider'
+        model:
+          $ref: '#/components/schemas/ModelPurposeResolveModel'
     ProviderRegistryItem:
       type: object
       description: One persisted deployment registry row (V4, §12.4).
@@ -7463,6 +8019,13 @@ components:
         type: string
         pattern: ^[a-z][a-z0-9-]{0,63}$
       description: Stable administrator-defined provider identifier
+    ModelPurposeId:
+      name: purpose
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ModelPurpose'
+      description: One of the six fixed model purposes
     AccountId:
       name: accountId
       in: path

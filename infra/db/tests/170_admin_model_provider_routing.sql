@@ -1,12 +1,21 @@
 -- 170_admin_model_provider_routing: G12 administrator provider/model chain.
 -- Covers ADMIN authorization, secret-free list, deployment admission sync,
 -- deterministic global reorder, full-snapshot removal and least privilege.
+-- V140 signatures: credential action + revision on providers, profiles keyed
+-- by (provider_id, profile_key).
 
 \set ON_ERROR_STOP on
 
 TRUNCATE vc.provider_model, vc.provider_config, vc.provider_deployment,
          vc.identity_auth_event, vc.identity_opaque_session,
          vc.identity_refresh_token, vc.identity_account, vc.vc_user CASCADE;
+-- TRUNCATE CASCADE removed the seeded binding rows; restore them.
+INSERT INTO vc.model_purpose_binding(purpose, state, updated_by)
+VALUES ('FOREGROUND_CHAT', 'DISABLED', 0), ('MEMORY_EXTRACTION_DEDUP_SUMMARY', 'DISABLED', 0),
+       ('BACKGROUND_GREETINGS', 'DISABLED', 0), ('STORY_DIRECTOR', 'DISABLED', 0),
+       ('NPC_DIALOGUE', 'DISABLED', 0), ('EMBEDDING', 'DISABLED', 0)
+ON CONFLICT (purpose) DO UPDATE
+   SET provider_id = NULL, profile_key = NULL, state = 'DISABLED';
 
 INSERT INTO vc.vc_user(id, display_name)
 VALUES (9001, 'provider admin'), (9002, 'ordinary user');
@@ -24,11 +33,12 @@ DECLARE
     n integer;
     v_order text;
     v_cipher text;
+    v_revision bigint;
 BEGIN
     BEGIN
         PERFORM vc.go_admin_upsert_provider(
             9001, 'acme', 'Acme', 'OPENAI_RESPONSES',
-            'https://gateway.example/v1', 'enc2:test-envelope', 'ENABLED');
+            'https://gateway.example/v1', 'SET', 'enc2:test-envelope', 'ENABLED', NULL, true);
         RAISE EXCEPTION 'provider without an enabled model must fail';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE '%provider without an enabled model must fail%' THEN
@@ -37,17 +47,25 @@ BEGIN
         IF SQLERRM NOT LIKE '%requires an enabled model%' THEN RAISE; END IF;
     END;
 
-    PERFORM vc.go_admin_upsert_provider(
+    v_revision := vc.go_admin_upsert_provider(
         9001, 'acme', 'Acme', 'OPENAI_RESPONSES',
-        'https://gateway.example/v1', 'enc2:test-envelope', 'DISABLED');
+        'https://gateway.example/v1', 'SET', 'enc2:test-envelope', 'DISABLED', NULL, false);
+    IF v_revision <> 0 THEN
+        RAISE EXCEPTION 'prepared provider must sit at revision 0, got %', v_revision;
+    END IF;
     PERFORM vc.go_admin_upsert_provider_model(
-        9001, 'acme', 'model-a', 'Model A', 256000, 32000, 'ENABLED');
+        9001, 'acme', 'model-a', 'model-a', 'Model A', 256000, 32000, 'ENABLED',
+        NULL, NULL, NULL, NULL);
     PERFORM vc.go_admin_upsert_provider_model(
-        9001, 'acme', 'model-b', 'Model B', NULL, 4096, 'ENABLED');
+        9001, 'acme', 'model-b', 'model-b', 'Model B', NULL, 4096, 'ENABLED',
+        NULL, NULL, NULL, NULL);
     PERFORM vc.go_admin_normalize_provider_model_priorities(9001);
-    PERFORM vc.go_admin_upsert_provider(
+    v_revision := vc.go_admin_upsert_provider(
         9001, 'acme', 'Acme', 'OPENAI_RESPONSES',
-        'https://gateway.example/v1', NULL, 'ENABLED');
+        'https://gateway.example/v1', 'KEEP', NULL, 'ENABLED', NULL, true);
+    IF v_revision <> 1 THEN
+        RAISE EXCEPTION 'first snapshot must land at revision 1, got %', v_revision;
+    END IF;
 
     IF NOT EXISTS (
         SELECT 1 FROM vc.admin_provider_registry(9001)
@@ -75,8 +93,8 @@ BEGIN
     END IF;
     PERFORM vc.go_admin_reorder_provider_models(
         9001,
-        '[{"providerId":"acme","modelId":"model-b"},'
-        '{"providerId":"acme","modelId":"model-a"}]'::jsonb);
+        '[{"providerId":"acme","profileKey":"model-b"},'
+        '{"providerId":"acme","profileKey":"model-a"}]'::jsonb);
     SELECT string_agg(out_model_id, ',' ORDER BY out_priority)
       INTO v_order FROM vc.go_resolve_model_routes();
     IF v_order IS DISTINCT FROM 'model-b,model-a' THEN
@@ -89,7 +107,7 @@ BEGIN
         9001, 'acme', ARRAY['model-b']::text[]);
     PERFORM vc.go_admin_normalize_provider_model_priorities(9001);
     SELECT count(*) INTO n FROM vc.go_admin_list_provider_models(9001)
-     WHERE out_provider_id = 'acme' AND out_model_id = 'model-a';
+     WHERE out_provider_id = 'acme' AND out_profile_key = 'model-a';
     IF n <> 0 THEN
         RAISE EXCEPTION 'omitted model returned after full-snapshot removal';
     END IF;

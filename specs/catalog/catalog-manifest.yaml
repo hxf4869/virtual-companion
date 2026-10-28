@@ -27,6 +27,15 @@ catalogs:
 - file: model-protocols.yaml
   kind: enum
   typeName: ModelProtocol
+- file: model-purposes.yaml
+  kind: enum
+  typeName: ModelPurpose
+- file: model-purpose-binding-statuses.yaml
+  kind: enum
+  typeName: ModelPurposeBindingStatus
+- file: model-capability-statuses.yaml
+  kind: enum
+  typeName: ModelCapabilityStatus
 - file: message-states.yaml
   kind: multi-enum
 - file: memory-scopes.yaml

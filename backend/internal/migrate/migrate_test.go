@@ -13,8 +13,8 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 139 {
-		t.Fatalf("migration count = %d, want 139", len(items))
+	if len(items) != 140 {
+		t.Fatalf("migration count = %d, want 140", len(items))
 	}
 	// Versions must be strictly ascending.
 	for i := 1; i < len(items); i++ {
@@ -22,7 +22,7 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 			t.Fatalf("migration[%d].Version = %d not after %d", i, items[i].Version, items[i-1].Version)
 		}
 	}
-	if items[len(items)-1].File != "V139__export_recover_token_rotation.sql" {
+	if items[len(items)-1].File != "V140__model_catalog_purposes.sql" {
 		t.Fatalf("latest migration = %q", items[len(items)-1].File)
 	}
 }

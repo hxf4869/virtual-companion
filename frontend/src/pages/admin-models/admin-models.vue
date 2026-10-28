@@ -325,6 +325,8 @@ import { useAdminConsoleAccess } from "@/pages/admin-console/useAdminConsole";
 
 interface ModelDraft {
   key: number;
+  /** Server profile identity; empty for new rows (the server defaults it to modelId). */
+  profileKey: string;
   modelId: string;
   displayName: string;
   contextWindowTokens: string;
@@ -607,6 +609,7 @@ export default {
           existing.add(model.modelId);
           value.models.push({
             key: nextModelKey++,
+            profileKey: "",
             modelId: model.modelId,
             displayName: model.displayName,
             contextWindowTokens: "",
@@ -646,6 +649,7 @@ export default {
           credential: value.credential || undefined,
           state: value.state,
           models: value.models.map((model) => ({
+            profileKey: model.profileKey || undefined,
             modelId: model.modelId.trim(),
             displayName: model.displayName.trim(),
             contextWindowTokens: model.contextWindowTokens ? Number(model.contextWindowTokens) : undefined,
@@ -738,6 +742,7 @@ export default {
 function blankModel(): ModelDraft {
   return {
     key: nextModelKey++,
+    profileKey: "",
     modelId: "",
     displayName: "",
     contextWindowTokens: "",
@@ -768,6 +773,7 @@ function providerDraft(provider: ModelProvider): ProviderDraft {
     state: provider.state,
     models: provider.models.map((model) => ({
       key: nextModelKey++,
+      profileKey: model.profileKey,
       modelId: model.modelId,
       displayName: model.displayName,
       contextWindowTokens: model.contextWindowTokens?.toString() ?? "",
@@ -811,11 +817,13 @@ function validateDraft(
   value.models.forEach((model, index) => {
     const number = index + 1;
     const id = model.modelId.trim();
+    // Rows are identified by their profile key; two profiles may share a model ID.
+    const identity = modelIdentity(model);
     const output = Number(model.maxOutputTokens);
     const context = model.contextWindowTokens ? Number(model.contextWindowTokens) : undefined;
     if (!id) errors.push(`模型 ${number} 缺少模型 ID。`);
-    else if (ids.has(id)) errors.push(`模型 ID ${id} 重复。`);
-    ids.add(id);
+    else if (ids.has(identity)) errors.push(`模型 ${identity} 重复。`);
+    ids.add(identity);
     if (!model.displayName.trim()) errors.push(`模型 ${number} 缺少显示名称。`);
     if (!Number.isInteger(output) || output < 1 || output > 262144) {
       errors.push(`模型 ${number} 的最大输出 token 应为 1–262144 的整数。`);
@@ -858,8 +866,8 @@ function describeChanges(baseline: ProviderDraft | null, current: ProviderDraft 
   const before = comparableModels(baseline.models);
   const after = comparableModels(current.models);
   if (before !== after) {
-    const beforeIds = new Set(baseline.models.map((model) => model.modelId));
-    const afterIds = new Set(current.models.map((model) => model.modelId));
+    const beforeIds = new Set(baseline.models.map(modelIdentity));
+    const afterIds = new Set(current.models.map(modelIdentity));
     const added = [...afterIds].filter((id) => id && !beforeIds.has(id)).length;
     const removed = [...beforeIds].filter((id) => id && !afterIds.has(id)).length;
     if (added) items.push(`新增 ${added} 个模型`);
@@ -867,6 +875,10 @@ function describeChanges(baseline: ProviderDraft | null, current: ProviderDraft 
     if (!added && !removed) items.push("修改模型参数或状态");
   }
   return items;
+}
+
+function modelIdentity(model: ModelDraft): string {
+  return (model.profileKey || model.modelId).trim();
 }
 
 function comparableModels(models: ModelDraft[]): string {

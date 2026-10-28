@@ -106,6 +106,9 @@
     "saveModelProvider",
     "discoverProviderModels",
     "reorderModelRoutes",
+    "listModelPurposes",
+    "saveModelPurpose",
+    "resolveModelPurpose",
     "getTrialStatus",
     "recordSurvey",
     "listMySurveys",
@@ -129,6 +132,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "7e5f64e1fc81e7058eec04f2435b15d2385484b7e9e65c831dc495795227d7bc"
+    "sha256": "946ce2ce8ba0e4c54499c8d66b719bbc3f023da3c215016a70119687eef9fbf6"
   }
 }

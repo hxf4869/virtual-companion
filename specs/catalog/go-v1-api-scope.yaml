@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 65
+  KEEP: 68
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 39
@@ -892,6 +892,34 @@ operations:
   - h5-caller
   - owner-instruction
   replacementOrImpact: Keep the complete deterministic global provider/model priority chain.
+- operationId: listModelPurposes
+  method: GET
+  path: /api/v1/admin/model-purposes
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: V2-W03 G2 purpose bindings (ADR-0009). Consumer is the SillyTavern extension
+    page via the Go session; the retiring Vue console has no entry.
+- operationId: saveModelPurpose
+  method: PUT
+  path: /api/v1/admin/model-purposes/{purpose}
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: V2-W03 independent per-purpose pinning with revision conflict semantics;
+    EMBEDDING only accepts the pending (unbound) state until W08.
+- operationId: resolveModelPurpose
+  method: POST
+  path: /api/v1/service/model-purposes/{purpose}/resolve
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: V2-W03 service channel for the SillyTavern server plugin (shared service
+    token, never a browser); returns the live credential for one READY binding and grants no
+    administrative rights.
 - operationId: getTrialStatus
   method: GET
   path: /api/v1/trial-status

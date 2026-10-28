@@ -113,6 +113,38 @@ describe("model service change ledger", () => {
     wrapper.unmount();
   });
 
+  it("submits two profiles of one model by their profile keys instead of collapsing them", async () => {
+    const twoProfiles = [{
+      ...providerPayload[0],
+      models: [
+        { ...providerPayload[0].models[0], profileKey: "Deepseek-v4-flash" },
+        { ...providerPayload[0].models[0], profileKey: "Deepseek-v4-flash@memory", displayName: "DeepSeek for memory", priority: 2 },
+      ],
+    }];
+    let saved: { models: Array<{ profileKey?: string; modelId: string }> } | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/v1/admin/providers/wechat" && init?.method === "PUT") {
+        saved = JSON.parse(String(init.body));
+      }
+      return { ok: true, status: 200, headers: new Headers(),
+        json: async () => url === "/api/v1/admin/providers" ? twoProfiles : { ok: true } };
+    }));
+    const wrapper = mount(AdminModelsPage, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[data-testid="provider-display-name"]').setValue("微信模型网关");
+    await wrapper.get('[data-testid="provider-save"]').trigger("click");
+    expect(wrapper.text()).not.toContain("重复");
+    await wrapper.get('[data-testid="provider-reauth-password"]').setValue("AdminPassword1!");
+    await wrapper.get('[data-testid="provider-reauth"]').trigger("click");
+    await flushPromises();
+    expect(saved?.models.map((model) => [model.profileKey, model.modelId])).toEqual([
+      ["Deepseek-v4-flash", "Deepseek-v4-flash"],
+      ["Deepseek-v4-flash@memory", "Deepseek-v4-flash"],
+    ]);
+    wrapper.unmount();
+  });
+
   it("reports a confirmed save whose provider readback fails without replacing the old baseline", async () => {
     let providerReads = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

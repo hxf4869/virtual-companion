@@ -37,6 +37,28 @@ describe("model provider API", () => {
     expect(providers[0].credentialConfigured).toBe(true);
     expect(providers[0]).not.toHaveProperty("credential");
     expect(providers[0].models[0].priority).toBe(1);
+    expect(providers[0].models[0].profileKey).toBe("m1");
+  });
+
+  it("keeps the profile identity and falls back to modelId for rows saved before profiles", async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: [{
+        providerId: "acme",
+        displayName: "Acme",
+        protocol: "OPENAI_RESPONSES",
+        baseUrl: "https://gateway.example/v1",
+        credentialConfigured: true,
+        state: "ENABLED",
+        models: [
+          { profileKey: "m1@memory", modelId: "m1", displayName: "Memory", maxOutputTokens: 1024, priority: 1, state: "ENABLED" },
+          { modelId: "m1", displayName: "Chat", maxOutputTokens: 4096, priority: 2, state: "ENABLED" },
+        ],
+      }],
+    }));
+    const providers = await listModelProviders({ request });
+    expect(providers[0].models.map((model) => model.profileKey)).toEqual(["m1@memory", "m1"]);
   });
 
   it("saves a provider by encoded id and preserves the typed body", async () => {

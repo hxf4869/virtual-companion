@@ -21,6 +21,15 @@ export type ProviderAttemptStatus = typeof ProviderAttemptStatusValues[number]
 export const ModelProtocolValues = ["OPENAI_CHAT_COMPLETIONS", "OPENAI_RESPONSES", "ANTHROPIC_MESSAGES", "FAKE", "FAILURE", "ZERO_LLM"] as const
 export type ModelProtocol = typeof ModelProtocolValues[number]
 
+export const ModelPurposeValues = ["FOREGROUND_CHAT", "MEMORY_EXTRACTION_DEDUP_SUMMARY", "BACKGROUND_GREETINGS", "STORY_DIRECTOR", "NPC_DIALOGUE", "EMBEDDING"] as const
+export type ModelPurpose = typeof ModelPurposeValues[number]
+
+export const ModelPurposeBindingStatusValues = ["PENDING_CONFIGURATION", "DISABLED", "UNAVAILABLE", "READY"] as const
+export type ModelPurposeBindingStatus = typeof ModelPurposeBindingStatusValues[number]
+
+export const ModelCapabilityStatusValues = ["UNKNOWN", "DECLARED", "VERIFIED", "UNSUPPORTED"] as const
+export type ModelCapabilityStatus = typeof ModelCapabilityStatusValues[number]
+
 export const UserMessageStateValues = ["PERSISTED", "DELETE_PENDING", "DELETED"] as const
 export type UserMessageState = typeof UserMessageStateValues[number]
 
@@ -54,7 +63,7 @@ export type DataCategory = typeof DataCategoryValues[number]
 export const ProcessingPurposeValues = ["COMPANION_CHAT", "OUTPUT_REVIEW", "MEMORY_EXTRACT", "EMBEDDING", "CONVERSATION_SUMMARY", "PRODUCT_EVAL"] as const
 export type ProcessingPurpose = typeof ProcessingPurposeValues[number]
 
-export const ErrorCodeValues = ["AUTHENTICATION_REQUIRED", "ACCESS_DENIED", "NOT_FOUND_OR_FORBIDDEN", "AGE_VERIFICATION_REQUIRED", "MODEL_NO_ELIGIBLE_DEPLOYMENT", "MODEL_ATTEMPT_TIMEOUT", "MODEL_ALL_UNAVAILABLE", "GENERATION_CANCELLED", "GENERATION_OUTPUT_BLOCKED", "STREAM_GAP_EXPIRED", "STREAM_RESET_REQUIRED", "MEMORY_CONFIRMATION_REQUIRED", "MEMORY_FORBIDDEN_CONTENT", "CATALOG_DRIFT_DETECTED", "BETA_OPERATIONS_NOT_READY", "INVALID_REQUEST", "AUTH_RATE_LIMITED", "INTERNAL_ERROR", "SCHEMA_UNAVAILABLE", "PASSWORD_CHANGE_REQUIRED", "RATE_LIMITED", "AUTH_CHALLENGE_UNAVAILABLE", "ACCOUNT_CONTEXT_CHANGED"] as const
+export const ErrorCodeValues = ["AUTHENTICATION_REQUIRED", "ACCESS_DENIED", "NOT_FOUND_OR_FORBIDDEN", "AGE_VERIFICATION_REQUIRED", "MODEL_NO_ELIGIBLE_DEPLOYMENT", "MODEL_ATTEMPT_TIMEOUT", "MODEL_ALL_UNAVAILABLE", "GENERATION_CANCELLED", "GENERATION_OUTPUT_BLOCKED", "STREAM_GAP_EXPIRED", "STREAM_RESET_REQUIRED", "MEMORY_CONFIRMATION_REQUIRED", "MEMORY_FORBIDDEN_CONTENT", "CATALOG_DRIFT_DETECTED", "BETA_OPERATIONS_NOT_READY", "INVALID_REQUEST", "AUTH_RATE_LIMITED", "INTERNAL_ERROR", "SCHEMA_UNAVAILABLE", "PASSWORD_CHANGE_REQUIRED", "RATE_LIMITED", "AUTH_CHALLENGE_UNAVAILABLE", "ACCOUNT_CONTEXT_CHANGED", "REVISION_CONFLICT", "MODEL_PROFILE_IN_USE"] as const
 export type ErrorCode = typeof ErrorCodeValues[number]
 
 export const MessageFeedbackKindValues = ["TOO_MECHANICAL", "FORGOT_CONTEXT", "CROSSED_BOUNDARY", "FACTUAL_ERROR", "UNSAFE"] as const

@@ -1,0 +1,27 @@
+schemaVersion: 1
+catalogId: model-purposes
+note: >-
+  V2 G2 purposes (ADR-0009, snapshot ARCH §17.4 / fixtures/model_profiles.json). Each purpose
+  pins one model profile independently; changing one binding never touches another.
+  EMBEDDING is not one of the three chat protocols and stays PENDING_CONFIGURATION until a
+  dedicated embedding path exists (W08).
+entries:
+- code: FOREGROUND_CHAT
+  order: 0
+  executor: SILLYTAVERN_NATIVE
+- code: MEMORY_EXTRACTION_DEDUP_SUMMARY
+  order: 1
+  executor: GO_BACKGROUND
+- code: BACKGROUND_GREETINGS
+  order: 2
+  executor: GO_BACKGROUND
+- code: STORY_DIRECTOR
+  order: 3
+  executor: GO_BACKGROUND
+- code: NPC_DIALOGUE
+  order: 4
+  executor: SILLYTAVERN_NATIVE
+- code: EMBEDDING
+  order: 5
+  executor: GO_BACKGROUND
+  chatProtocolBindable: false

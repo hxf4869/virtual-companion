@@ -66,12 +66,13 @@ describe("routing change ledger", () => {
     await wrapper.get('[data-testid="routing-reauth"]').trigger("click");
     await flushPromises();
 
+    // Rows the server returned without profileKey are addressed by modelId.
     expect(calls).toContainEqual({
       url: "/api/v1/admin/model-routing-order",
       method: "PUT",
       body: { routes: [
-        { providerId: "acme", modelId: "backup" },
-        { providerId: "acme", modelId: "primary" },
+        { providerId: "acme", modelId: "backup", profileKey: "backup" },
+        { providerId: "acme", modelId: "primary", profileKey: "primary" },
       ] },
     });
     wrapper.unmount();

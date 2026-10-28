@@ -46,7 +46,7 @@
           </view>
           <view
             v-for="(route, index) in routes"
-            :key="`${route.providerId}:${route.modelId}`"
+            :key="`${route.providerId}:${route.profileKey ?? route.modelId}`"
             class="routing-row"
             role="row"
             data-testid="routing-row"
@@ -219,12 +219,12 @@ export default {
     const dirty = computed(() => routeKey(routes.value) !== routeKey(baseline.value));
     const changeItems = computed(() => {
       if (!dirty.value) return [];
-      const previous = new Map(baseline.value.map((route, index) => [`${route.providerId}:${route.modelId}`, index + 1]));
+      const previous = new Map(baseline.value.map((route, index) => [routeIdentity(route), index + 1]));
       return routes.value
         .map((route, index) => ({
-          key: `${route.providerId}:${route.modelId}`,
+          key: routeIdentity(route),
           model: route.modelName,
-          from: previous.get(`${route.providerId}:${route.modelId}`) ?? "新增",
+          from: previous.get(routeIdentity(route)) ?? "新增",
           to: index + 1,
         }))
         .filter((item) => item.from !== item.to);
@@ -330,7 +330,7 @@ export default {
       try {
         await saveModelRoutingOrder(
           transport,
-          routes.value.map(({ providerId, modelId }) => ({ providerId, modelId })),
+          routes.value.map(({ providerId, modelId, profileKey }) => ({ providerId, modelId, profileKey })),
         );
         if (!ownsContext()) return;
         const reloaded = await load();
@@ -393,6 +393,7 @@ function providerRoutes(items: ModelProvider[]): RouteView[] {
       .map((model) => ({
         providerId: provider.providerId,
         modelId: model.modelId,
+        profileKey: model.profileKey,
         providerName: provider.displayName,
         modelName: model.displayName,
         protocol: provider.protocol,
@@ -403,8 +404,12 @@ function providerRoutes(items: ModelProvider[]): RouteView[] {
     .map(({ priority: _priority, ...route }) => route);
 }
 
+function routeIdentity(route: RouteRef): string {
+  return `${route.providerId}:${route.profileKey ?? route.modelId}`;
+}
+
 function routeKey(items: RouteView[]): string {
-  return items.map((route) => `${route.providerId}:${route.modelId}`).join("|");
+  return items.map(routeIdentity).join("|");
 }
 
 function protocolLabel(protocol: ProviderProtocol): string {

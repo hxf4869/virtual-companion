@@ -122,12 +122,16 @@ type GenerationAPI interface {
 }
 
 // ProviderAdminStore is the small platform-level configuration surface used by
-// ADMIN. It stays separate from CompanionStore because it is not owner data.
+// ADMIN, plus the service-channel resolution the SillyTavern server plugin
+// uses. It stays separate from CompanionStore because it is not owner data.
 type ProviderAdminStore interface {
 	ListProviderConfigs(ctx context.Context, actingAccountID int64) ([]postgres.ProviderConfig, error)
 	GetProviderCredential(ctx context.Context, actingAccountID int64, providerID string) (string, error)
-	SaveProviderConfig(ctx context.Context, actingAccountID int64, in postgres.SaveProvider) error
+	SaveProviderConfig(ctx context.Context, actingAccountID int64, in postgres.SaveProvider) (int64, error)
 	ReorderProviderModels(ctx context.Context, actingAccountID int64, order []postgres.RouteRef) error
+	ListPurposeBindings(ctx context.Context, actingAccountID int64) ([]postgres.PurposeBinding, error)
+	SavePurposeBinding(ctx context.Context, actingAccountID int64, in postgres.SavePurposeBinding) (postgres.PurposeBinding, error)
+	ResolvePurpose(ctx context.Context, in postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
 }
 
 // AuthFlowStore owns the short-lived login challenge, authenticator and
@@ -236,6 +240,9 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("PUT /api/v1/admin/providers/{providerId}", s.handleSaveProvider)
 	s.mux.HandleFunc("POST /api/v1/admin/providers/{providerId}/models/discover", s.handleDiscoverProviderModels)
 	s.mux.HandleFunc("PUT /api/v1/admin/model-routing-order", s.handleReorderProviderModels)
+	s.mux.HandleFunc("GET /api/v1/admin/model-purposes", s.handleListPurposeBindings)
+	s.mux.HandleFunc("PUT /api/v1/admin/model-purposes/{purpose}", s.handleSavePurposeBinding)
+	s.mux.HandleFunc("POST /api/v1/service/model-purposes/{purpose}/resolve", s.handleResolvePurpose)
 	s.registerGeneration()
 }
 

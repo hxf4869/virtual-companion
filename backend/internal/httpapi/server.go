@@ -290,7 +290,15 @@ func operation(path string) string {
 		return "admin_providers"
 	case "/api/v1/admin/model-routing-order":
 		return "admin_model_routing_order"
+	case "/api/v1/admin/model-purposes":
+		return "admin_model_purposes"
 	default:
+		if strings.HasPrefix(path, "/api/v1/admin/model-purposes/") {
+			return "admin_model_purpose"
+		}
+		if strings.HasPrefix(path, "/api/v1/service/model-purposes/") {
+			return "service_model_purpose_resolve"
+		}
 		if strings.HasPrefix(path, "/api/v1/auth/challenges/") {
 			return "auth_challenge"
 		}

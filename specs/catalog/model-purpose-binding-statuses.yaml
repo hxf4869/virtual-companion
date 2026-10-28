@@ -1,0 +1,15 @@
+schemaVersion: 1
+catalogId: model-purpose-binding-statuses
+note: >-
+  Derived per binding from its own state and the referenced provider/profile. Only READY may be
+  resolved by the SillyTavern server plugin; disabling or clearing a key moves the binding out of
+  READY for the next request.
+entries:
+- code: PENDING_CONFIGURATION
+  order: 0
+- code: DISABLED
+  order: 1
+- code: UNAVAILABLE
+  order: 2
+- code: READY
+  order: 3

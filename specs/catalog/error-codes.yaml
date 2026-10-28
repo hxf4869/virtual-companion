@@ -47,3 +47,7 @@ entries:
   order: 21
 - code: ACCOUNT_CONTEXT_CHANGED
   order: 22
+- code: REVISION_CONFLICT
+  order: 23
+- code: MODEL_PROFILE_IN_USE
+  order: 24
