@@ -27,12 +27,18 @@ import {
     deployManagedAssets, verifyCorePatches, verifyManagedDeployment,
 } from './lib/managed.mjs';
 
+import { verifyMemorycoreUpstream, assembleMemorycore } from './lib/memorycore-managed.mjs';
+
 function die(msg) { fail(msg, 4); }
 
 // ---------- main ----------
 function main() {
     process.umask(0o077);
     assertManagedDevIsolated();
+    verifyMemorycoreUpstream();
+    if (process.argv.includes('--memorycore-only')) {
+        assembleMemorycore(); ok('MemoryCore foundation assembled; persistent data retained'); return;
+    }
     const lock = readJson(UPSTREAM_LOCK);
     const commit = verifyStUpstreamClean({ lock });
     ok(`upstream sillytavern @ ${commit.slice(0, 10)}（干净）`);
@@ -58,6 +64,7 @@ function main() {
     const corePatches = buildRunCopy({});
     for (const p of corePatches) ok(`核心补丁 ${p.id}：${p.replacements.length} 条替换，输出 SHA256 ${p.output_sha256.slice(0, 12)}…`);
 
+    const memorycore = assembleMemorycore();
     const deployment = deployManagedAssets({});
     ok(`server plugin 已部署：${path.relative(INTEG, deployment.plugin.target)}（${deployment.plugin.files} 个文件）`);
     ok(`用户扩展已部署：${path.relative(INTEG, deployment.extension.target)}（${deployment.extension.files} 个文件，排除 ${deployment.extension.excluded.join('/')}）`);
@@ -81,6 +88,7 @@ function main() {
             skip: ['.git', 'node_modules', 'data', 'backups', 'colab'],
             node_modules: 'symlink -> upstream/SillyTavern/node_modules（bootstrap 按锁定 package-lock 重建）',
         },
+        memorycore,
         core_patches: corePatches,
         plugin: { source: 'server-plugin/virtual-companion', target: 'st-run/plugins/virtual-companion', files: deployment.plugin.files },
         extension: { source: 'extension/vc-model-settings', target: 'data/default-user/extensions/vc-model-settings', excluded: ['harness'], files: deployment.extension.files },

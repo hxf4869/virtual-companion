@@ -1,0 +1,6 @@
+{
+  "schema": "vc-memorycore-patches-v1",
+  "upstream_commit": "084bed45cad6bb7f877455082cee82835d65671a",
+  "specs": [],
+  "note": "W08-1 foundation consumes unmodified local storage only; business patches belong to W08-3. Specs use scripts/lib/patcher.mjs."
+}

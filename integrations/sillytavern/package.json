@@ -5,7 +5,9 @@
   "description": "V2 SillyTavern 宿主集成：开发入口脚本、确定性补丁、C1 备份包装、验收脚本与离线测试（自有代码按 AGPL-3.0 标注，见 README）",
   "license": "AGPL-3.0-only",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "bootstrap": "node scripts/bootstrap.mjs",
     "start": "node scripts/start.mjs",

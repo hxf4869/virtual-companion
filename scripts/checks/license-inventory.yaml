@@ -96,7 +96,7 @@ frontendDirectDependencies:
 # 例外账本（有到期日的受控接受；check_licenses.py 校验 expiresAt > 今天才生效）
 exceptions: []
 # integrations/sillytavern/package.json 直接依赖（按 license-policy.yaml domainPolicies.stIntegration 核对；
-# 上游四组件与运行期自托管资源的许可直接读 upstream.lock.json / vendor.lock.json，不在此重复登记）
+# 上游组件（含 MemoryCore MIT）与运行期自托管资源的许可直接读 upstream.lock.json / vendor.lock.json，不在此重复登记）
 integrationDirectDependencies:
   - name: playwright-core
     licenseFamily: Apache-2.0

@@ -70,3 +70,11 @@ export const SERVER_PLUGIN_SRC = path.join(INTEG, 'server-plugin', 'virtual-comp
 export const EXTENSION_SRC = path.join(INTEG, 'extension', 'vc-model-settings');
 
 export const VC_AEAD = path.join(REPO_ROOT, 'infra', 'db', 'backup', 'vc_aead.py');
+
+// W08: independent MemoryCore service; source copies and persistent data never overlap.
+export const MEMORYCORE_DIR = path.join(UPSTREAM, 'TencentDB-Agent-Memory');
+export const MEMORYCORE_SERVICE_SRC = path.join(INTEG, 'memorycore-service');
+export const MEMORYCORE_PATCH_INDEX = path.join(INTEG, 'patches/memorycore/index.json');
+export const MANAGED_MEMORYCORE_RUN = path.join(MANAGED_DEV, 'memorycore-run');
+export const MANAGED_MEMORYCORE_DATA = path.join(MANAGED_DEV, 'memorycore-data');
+export const MEMORYCORE_PORT = Number(process.env.VC_MEMORYCORE_PORT || 8754);

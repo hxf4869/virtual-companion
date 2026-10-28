@@ -20,9 +20,9 @@ const coreSpecs = CORE_PATCH_SPECS.map((file) => ({
 const HEX64 = /^[0-9a-f]{64}$/;
 const SHA512 = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
 
-test('upstream.lock：四组件均为 commit 锁定且产物 SHA256 合法', () => {
+test('upstream.lock：五组件均为 commit 锁定且产物 SHA256 合法', () => {
     assert.equal(upstream.policy.pin_by, 'commit');
-    assert.equal(upstream.components.length, 4);
+    assert.equal(upstream.components.length, 5);
     for (const c of upstream.components) {
         assert.match(c.commit, /^[0-9a-f]{40}$/, c.id);
         assert.ok(c.license, `${c.id} 缺 license`);

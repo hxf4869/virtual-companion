@@ -62,6 +62,7 @@ import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-proto
 import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
 import { sceneSourceNative, sceneRightsBrowser, sceneRightsNative } from './w06-accept.mjs';
 import { sceneMemoryBrowser } from './w07-accept.mjs';
+import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
 
 // ---------------------------------------------------------------------------
 // 常量与 CLI
@@ -474,6 +475,7 @@ async function startManagedStack(secrets, artifactsDir) {
             VC_ST_PORT: String(ST_PORT),
             VC_ST_GO_BASE_URL: GO_BASE,
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
+            VC_MEMORYCORE_SERVICE_TOKEN: secrets.memorycoreToken,
             VC_ST_ACCOUNT_HANDLES: JSON.stringify({ [OWNER_ACCOUNT_ID]: 'default-user', [SECOND_ACCOUNT_ID]: 'vc-w05-second', ...(secrets.needsRights ? { [RIGHTS_ACCOUNT_ID]: RIGHTS_HANDLE } : {}) }),
             VC_ST_GO_TIMEOUT_MS: '2000',
         },
@@ -505,7 +507,7 @@ async function cleanupManaged(secrets) {
     const stopManaged = path.join(SCRIPTS, 'stop-managed.mjs');
     if (fs.existsSync(stopManaged)) {
         try {
-            runChecked(process.execPath, [stopManaged], { cwd: INTEG, env: { VC_ST_PORT: String(ST_PORT) }, label: 'stop-managed（st.pid 归属停止）' });
+            runChecked(process.execPath, [stopManaged], { cwd: INTEG, env: { VC_ST_DEV_DIR: DEV_MANAGED, VC_ST_PORT: String(ST_PORT) }, label: 'stop-managed（st.pid 归属停止）' });
             stopped.push('st.pid（经 stop-managed）');
         } catch (e) {
             log.warn(`stop-managed 失败：${e.message}（继续清理其余归属）`);
@@ -1673,6 +1675,7 @@ async function runDryRun() {
 // ---------------------------------------------------------------------------
 
 const SCENE_IMPLS = {
+    'memorycore-foundation': sceneMemorycoreFoundation,
     'login-shape': sceneLoginShape,
     'catalog-admin': sceneCatalogAdmin,
     'zero-upstream-on-save': sceneZeroUpstreamOnSave,
@@ -1724,6 +1727,7 @@ async function runFull() {
         ownerBinding: synthServiceToken(),
         restKey: synthRestKey(),
         serviceToken: synthServiceToken(),
+        memorycoreToken: synthServiceToken(),
         fixtureKey: synthApiKey(),
     };
     const results = { startedAt: new Date().toISOString(), selected, scenes: {}, artifactsDir };
@@ -1805,7 +1809,7 @@ async function runFull() {
         const resultsPath = path.join(artifactsDir, 'results.json');
         fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2) + '\n', { mode: 0o600 });
         log.info(`结果 JSON 已写入 ${path.relative(REPO_ROOT, resultsPath)}`);
-        await cleanupManaged(secrets);
+        if (needsGo || needsStack || needsFixture) await cleanupManaged(secrets);
     }
     if (failed > 0) {
         log.fail(`${failed} 个场景失败（退出码 4）`);

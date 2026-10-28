@@ -12,7 +12,11 @@ import { loadConfig, checkInvariants, MANAGED_CONFIG_INVARIANTS } from './lib/co
 import { verifyStDependencyTree, verifyNativeRuntime } from './lib/verify.mjs';
 import { verifyCorePatches, verifyManagedDeployment, requireManagedGoEnv } from './lib/managed.mjs';
 
-const out = { mode: 'managed', managed_dev: MANAGED_DEV, assemble_ok: fs.existsSync(path.join(MANAGED_DEV, 'assemble-ok')) };
+import { statusMemorycore } from './lib/memorycore-managed.mjs';
+
+const memorycore = await statusMemorycore();
+if (process.argv.includes('--memorycore-only')) { console.log(JSON.stringify({ memorycore }, null, 2)); process.exit(0); }
+const out = { memorycore, mode: 'managed', managed_dev: MANAGED_DEV, assemble_ok: fs.existsSync(path.join(MANAGED_DEV, 'assemble-ok')) };
 const mode = (p) => { try { return (fs.statSync(p).mode & 0o777).toString(8).padStart(4, '0'); } catch { return null; } };
 
 const pidFile = path.join(MANAGED_RUN_DIR, 'st.pid');

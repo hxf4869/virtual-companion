@@ -1,7 +1,7 @@
 # SillyTavern 集成（V2-W03-S1 / W03 受管装配）
 
 V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本切片脚本，全部在本机 127.0.0.1 运行。
-四个上游组件由 `upstream.lock.json` 固定 commit 与原始产物 SHA256；本目录自有代码按 AGPL-3.0-only
+五个上游组件由 `upstream.lock.json` 固定 commit 与原始产物 SHA256；本目录自有代码按 AGPL-3.0-only
 （`package.json`），许可门禁见 `scripts/checks/license-policy.yaml` 的 `domainPolicies.stIntegration`。
 
 两条运行入口（互相独立，可同时运行）：
@@ -16,13 +16,14 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 
 ## 首次准备
 
-1. `upstream/`（gitignored）：按 `upstream.lock.json` 克隆四个仓库并 checkout 锁定 commit
+1. `upstream/`（gitignored）：按 `upstream.lock.json` 克隆五个仓库并 checkout 锁定 commit
    （bootstrap 不自动克隆，避免隐式网络写操作）：
    - SillyTavern 1.19.0（`7e8663cd9`）
    - Tavern Helper / JS-Slash-Runner 4.11.3（`0af42106`，PolyForm-Noncommercial → 仅 Owner 本人非商业使用）
    - ST-Prompt-Template 1.17.9（`d6f520d1`）
    - MagVarUpdate（MVU）（`d03b7dc8`）
-2. `npm ci`（安装 `devDependencies: playwright-core`，驱动本机 Chrome 做验收）。
+   - TencentDB-Agent-Memory（`084bed45cad6bb7f877455082cee82835d65671a`，MIT），检出目录 `upstream/TencentDB-Agent-Memory/`
+2. Node 22.13+（本机验证 22.23.1）；`npm ci`（安装 `devDependencies: playwright-core`，驱动本机 Chrome 做验收）。
 3. `node scripts/bootstrap.mjs`：校验上游 commit/产物 SHA → ST 依赖树按锁 `npm ci`（联网）→
    下载 `vendor.lock.json` 固定的 npm 官方 tarball（联网，逐文件 sha256）→ 在 `dev/data` 重建
    dataRoot（复制 Helper/EJS、应用确定性补丁、自托管 vendor 与 MVU bundle）→ 生成 `dev/config.yaml`。
@@ -36,8 +37,8 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 | `node scripts/stop.mjs` | 只停 `dev/run/*.pid` 归属本实例的进程（核对进程命令行） |
 | `node scripts/status.mjs` | 只读汇报进程 / `/version` / dataRoot 权限 / 配置不变量 / 依赖树与补丁、vendor 完整性（JSON） |
 | `node scripts/assemble-managed.mjs` | 受管装配：校验 upstream 干净与依赖树 → 整体重建 `dev-managed/st-run`（复制源码树 + `node_modules` 符号链接 + 核心补丁）→ 部署 server plugin 与 `vc-model-settings` 扩展（排除 `harness/`）→ 写受管 `config.yaml`（`enableServerPlugins:true`、`enableUserAccounts:true`、SSO 头自动登录禁用）与 `derived-manifest.json`；幂等可重跑 |
-| `node scripts/start-managed.mjs` | 受管启动（127.0.0.1:8752）：预检含核心补丁输入/输出 SHA、upstream 干净、部署完整性与 Go 桥接环境硬校验；缺 `VC_ST_GO_BASE_URL` / `VC_ST_PLUGIN_SERVICE_TOKEN`（>=32 字节）/ `VC_ST_ACCOUNT_HANDLES`（非空 Go 账号→ST handle 映射）即硬失败退出，绝不静默降级回原生 Key；健康等待公开 `/auth/`；PID/日志在 `dev-managed/run/` |
-| `node scripts/stop-managed.mjs` | 只停 `dev-managed/run/st.pid` 归属受管实例的进程（核对命令行，不碰 8742/8743 原生实例） |
+| `node scripts/start-managed.mjs` | 受管启动（127.0.0.1:8752）：预检含核心补丁输入/输出 SHA、upstream 干净、部署完整性与 Go 桥接环境硬校验；缺独立 `VC_MEMORYCORE_SERVICE_TOKEN` 或 `VC_ST_GO_BASE_URL` / `VC_ST_PLUGIN_SERVICE_TOKEN`（>=32 字节）/ `VC_ST_ACCOUNT_HANDLES`（非空 Go 账号→ST handle 映射）即硬失败退出，绝不静默降级回原生 Key；健康等待公开 `/auth/`；PID/日志在 `dev-managed/run/` |
+| `node scripts/stop-managed.mjs` | 先停止核验归属的 `memorycore.pid`，再停 `dev-managed/run/st.pid` 归属受管实例的进程（核对命令行，不碰 8742/8743 原生实例） |
 | `node scripts/status-managed.mjs` | 只读汇报受管实例状态（JSON；登录入口 `/auth/` 探活、账号映射只报 configured 布尔，不输出密钥与映射值） |
 | `node scripts/accept.mjs [--only C07]` | 真浏览器验收（下节）；不进 `scripts/check.sh` |
 | `node scripts/accept-managed.mjs [--filter <场景,…>]` | 受管端到端验收（见「受管端到端验收」节）：默认 14 个接口/协议场景；`ui03-browser` 真实界面场景需显式 `--filter`；不进 `scripts/check.sh` |
@@ -100,7 +101,7 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 - **桥接语义**：ST 侧的模型保存、用途绑定与仅配置投影零上游请求；受控取用（显式连接检查/目录拉取）
   与生成是分开的显式动作。写请求携带 Go 会话身份快照头（`X-VC-Expected-Account-ID` /
   `X-VC-Expected-Session-ID`），revision 冲突返回 409 且界面草稿保留；模型 Key 不回显，界面只显示状态。
-- **生命周期边界**：`assemble-managed` / `start-managed` 只负责 ST 侧装配与运行，不拉起完整 Go/PG/S3；
+- **生命周期边界**：`assemble-managed` / `start-managed` 负责 ST 与 MemoryCore 基础服务装配／运行，不拉起完整 Go/PG/S3；
   PG（容器 `vc-w03-managed-pg`）与 Go 进程由验收侧脚本管理，手工运行受管栈需自备已就绪的 Go 服务与
   桥接配置（`VC_ST_GO_BASE_URL` / `VC_ST_PLUGIN_SERVICE_TOKEN`）。原生实例（8742/8743）与受管实例
   （8752）互不接管，`stop`/`stop-managed` 各按自己 pid 文件收口。
@@ -274,3 +275,47 @@ ST JSONL 的 F2 revision 是持久权威；`vc_message_id` 与每个 swipe 的 `
 
 真实模型仅在当前会话授权、私有配置与用途/计费边界明确后单独验证。记忆管理页面和引擎对照属 W08；
 本节的固定 provider 结果不代表真实模型提取质量、通知或严格剧情已经验收。
+
+
+## W08-1 MemoryCore 基础服务
+
+MemoryCore 作为独立 Node 进程运行，默认只监听 `127.0.0.1:8754`（`VC_MEMORYCORE_PORT` 可覆盖）。
+本步只提供基础存储探针、`GET /healthz` 与带内部鉴权的 `GET /readyz`；**不提供提取、召回、模型或向量业务**。
+`readyz` 的 `foundation=true, storageReady=true, businessReady=false` 仅表示已运行锁定上游的
+`LocalStorageBackend.putObject/getObject/deleteObject` 合成读写探针。没有配置真实模型也能启动，且不会调用模型。
+
+- 上游保持干净；`upstream.lock.json` 锁定 MIT LICENSE、package.json 与两个实际消费的 storage TS 文件 SHA256。
+  固定 commit **没有 MemoryCore 依赖锁**。本步没有新增 npm 依赖，也不安装上游 package.json 的依赖；
+  `node:module.stripTypeScriptTypes` 在装配时擦除类型，不运行上游 postinstall。后续需要第三方依赖时再按实际消费建立自有锁。
+- `memorycore-service/` 是自有包装代码；装配到 `dev-managed/memorycore-run/`，只复制所需模块与 LICENSE。
+  `patches/memorycore/index.json` 当前是空补丁集；后续非空规格必须经过现有 `scripts/lib/patcher.mjs`，不修改上游检出。
+- 数据在 `dev-managed/memorycore-data/owners/<可信十进制 owner ID>/`；目录 0700、文件 0600、umask 077。
+  装配只重建运行副本，保留数据；运行中的服务拒绝重新装配。此目录尚未纳入跨域数据权利／备份，正式数据接入留到后续步骤。
+- 独立服务令牌通过私有运行环境 `VC_MEMORYCORE_SERVICE_TOKEN` 注入（至少 32 字节、无空白），不写入锁、配置、manifest、PID 或日志。
+  不与 ST 桥接令牌共用；默认受管启动也不会把它传给 ST。无 CORS，带 Origin 的请求被拒绝。
+- `run/memorycore.pid` 与 `memorycore.log` 均 0600。停止只处理 PID 文件所记且入口绝对路径和 dataRoot 匹配的进程，
+  不能根据端口接管或杀死其他服务。日志只记录固定生命周期／错误码。
+
+在仓库根目录可单独运行基础服务（先通过私有运行配置提供令牌，不将值写进命令或仓库）：
+
+```bash
+node integrations/sillytavern/scripts/bootstrap.mjs --memorycore-only --offline
+node integrations/sillytavern/scripts/assemble-managed.mjs --memorycore-only
+node integrations/sillytavern/scripts/start-managed.mjs --memorycore-only
+node integrations/sillytavern/scripts/status-managed.mjs --memorycore-only
+node integrations/sillytavern/scripts/stop-managed.mjs --memorycore-only
+```
+
+不带 `--memorycore-only` 的受管入口管理 ST 与 MemoryCore 两个进程，仍需既有 Go 桥接配置。
+`VC_ST_DEV_DIR` 同时控制两者的运行根；原生 `dev/` 不用于受管装配。
+
+真实验收复用现有入口：
+
+```bash
+node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-foundation
+```
+
+该场景使用 artifacts 下的独立受管根、随机 loopback 端口和内存中的合成令牌；验证锁定源码、鉴权、权限、
+启动、健康／就绪、状态、停止、重装配保留合成 owner 数据、重启和最终端口释放，最后只停止该验收进程。
+不启动 Go/PG/MinIO，不调用真实模型，不清理其他受管资源或 `vc-w08-embedding`。
+离线 `tests/memorycore-*.test.mjs` 由现有 `scripts/check.sh` 自动覆盖，不依赖上游检出、Docker 或网络。

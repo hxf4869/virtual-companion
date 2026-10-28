@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
-    INTEG, ST_DIR, HELPER_DIR, EJS_DIR, MVU_DIR, UPSTREAM_LOCK, VENDOR_LOCK, PATCH_SPEC,
+    INTEG, ST_DIR, HELPER_DIR, EJS_DIR, MVU_DIR, MEMORYCORE_DIR, UPSTREAM_LOCK, VENDOR_LOCK, PATCH_SPEC,
     DEV, DATA_ROOT, USER_DIR, EXT_DIR, RUN_DIR, CONFIG_PATH, DERIVED_MANIFEST, VENDOR_CACHE,
     ST_PORT, MVU_PATCH_SPEC,
 } from './lib/paths.mjs';
@@ -31,7 +31,7 @@ function die(msg) { fail(msg, 2); }
 
 // ---------- 1. 上游 commit 与工作树 ----------
 function verifyUpstreams(lock) {
-    const dirById = { sillytavern: ST_DIR, 'tavern-helper': HELPER_DIR, 'ejs-template': EJS_DIR, mvu: MVU_DIR };
+    const dirById = { sillytavern: ST_DIR, 'tavern-helper': HELPER_DIR, 'ejs-template': EJS_DIR, mvu: MVU_DIR, memorycore: MEMORYCORE_DIR };
     for (const c of lock.components) {
         const dir = dirById[c.id];
         if (!dir || !fs.existsSync(dir)) {
@@ -47,7 +47,7 @@ function verifyUpstreams(lock) {
 
 // ---------- 2. 原始产物 SHA ----------
 function verifyArtifacts(lock) {
-    const dirById = { sillytavern: ST_DIR, 'tavern-helper': HELPER_DIR, 'ejs-template': EJS_DIR, mvu: MVU_DIR };
+    const dirById = { sillytavern: ST_DIR, 'tavern-helper': HELPER_DIR, 'ejs-template': EJS_DIR, mvu: MVU_DIR, memorycore: MEMORYCORE_DIR };
     for (const c of lock.components) {
         for (const [rel, want] of Object.entries(c.artifact_sha256 || {})) {
             const file = path.join(dirById[c.id], rel);
@@ -202,6 +202,12 @@ function writeConfigAndManifest(vendorReport, patchResult) {
 async function main() {
     process.umask(0o077);
     const lock = readJson(UPSTREAM_LOCK);
+    if (args.includes('--memorycore-only')) {
+        const selected = { ...lock, components: lock.components.filter((c) => c.id === 'memorycore') };
+        if (selected.components.length !== 1) die('MemoryCore lock missing');
+        verifyUpstreams(selected); verifyArtifacts(selected);
+        ok('MemoryCore foundation bootstrap complete (no npm install / postinstall)'); return;
+    }
     const vendorLock = readJson(VENDOR_LOCK);
     verifyUpstreams(lock);
     verifyArtifacts(lock);

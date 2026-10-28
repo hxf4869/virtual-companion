@@ -84,13 +84,31 @@
       "runtime_status": "verified-initialized",
       "runtime_evidence": "自托管 bundle HTTP 200；脚本 iframe 实际执行后 initGlobals 将 Mvu 挂到 window.parent（主页面 window.Mvu，含 getMvuData、parseMessage、getMvuVariable 等接口）；[InitVar] 标记（世界书条目 comment 字段）初始化 message 0 变量，Mvu.getMvuVariable(trust)=10；变量随聊天 jsonl 原生落盘并在页面刷新、重新选择同一角色后读回一致（冒烟 S10/S11/S15/S15b PASS，2026-10-28 两轮全绿）",
       "caveat": "[InitVar] 只识别世界书条目 comment 字段（variable_init.ts:271），写在条目 name 上不会触发初始化；且角色须绑定主世界书（characters[chid].data.extensions.world）——ST 1.19.0 的导入确认弹窗只写世界书文件与编辑表单 hidden input，不持久化该绑定，需显式绑定（冒烟经 Helper 公开 API setCurrentCharLorebooks 完成，注意 additional 须传 []，缺省会被 lodash concat 拼入 undefined 而报错）。"
+    },
+    {
+      "id": "memorycore",
+      "repo": "https://github.com/TencentCloud/TencentDB-Agent-Memory",
+      "commit": "084bed45cad6bb7f877455082cee82835d65671a",
+      "version": "1.0.2-beta.1",
+      "license": "MIT",
+      "role": "required-memory-engine-foundation",
+      "install": "No upstream npm install; postinstall disabled. Node >=22.13 built-in stripTypeScriptTypes assembles only the two dependency-free storage modules.",
+      "dependency_lock": {
+        "upstream": null,
+        "reason": "This commit contains no MemoryCore dependency lock. W08-1 consumes only Node built-ins; no upstream npm dependencies are installed.",
+        "wrapper": "integrations/sillytavern/package-lock.json",
+        "runtime_npm_dependencies": []
+      },
+      "artifact_sha256": {
+        "LICENSE": "bcaf06dea1a63d27aab5633035b620e0127295583456c2a9402565ef63ecb0b0",
+        "MemoryCore/package.json": "f62772d976f0924febdef71bf36792770fad36318ba7a3cb0504d304fd408bf2",
+        "MemoryCore/src/core/storage/local-backend.ts": "f076a738bd06e40f8bf9076e729d51362ec15735f1022c8cbef089efc3c92d86",
+        "MemoryCore/src/core/storage/list-page.ts": "8b6bdfd56ae23f29eea0b748f882fbc1eda5fbc0ac1e94d9d40df603fde3af68"
+      },
+      "runtime_status": "foundation-only-no-business-operations"
     }
   ],
   "excluded_at_w00": [
-    {
-      "id": "memorycore",
-      "reason": "W08 对照项，不在 W00 冒烟栈内（ADR-0009 §5）"
-    },
     {
       "id": "pi",
       "reason": "MVU 可选路径未启用；首版只选一种更新方式（TAV §4）"

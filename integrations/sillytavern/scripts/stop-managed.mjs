@@ -8,10 +8,17 @@ import { spawnSync } from 'node:child_process';
 import { MANAGED_DEV, MANAGED_RUN_DIR, MANAGED_CONFIG_PATH, MANAGED_DATA_ROOT, MANAGED_ST_PORT } from './lib/paths.mjs';
 import { isPidAlive, pidCommand, ok, info } from './lib/util.mjs';
 
+import { stopMemorycore } from './lib/memorycore-managed.mjs';
+
+let memorycoreFailed = false;
+try { await stopMemorycore(); ok('MemoryCore stopped (owned PID only)'); }
+catch (error) { process.stderr.write(`REFUSE ${error.message}\n`); memorycoreFailed = true; }
+if (process.argv.includes('--memorycore-only')) process.exit(memorycoreFailed ? 1 : 0);
+
 const PID_FILE = 'st.pid';
 const matchesManaged = (cmd) => cmd.includes('server.js') && cmd.includes(`--configPath ${MANAGED_CONFIG_PATH}`) && cmd.includes(`--dataRoot ${MANAGED_DATA_ROOT}`);
 
-let failures = 0;
+let failures = memorycoreFailed ? 1 : 0;
 const p = path.join(MANAGED_RUN_DIR, PID_FILE);
 if (!fs.existsSync(p)) {
     info(`${PID_FILE} 不存在（受管实例未运行或已停止）`);

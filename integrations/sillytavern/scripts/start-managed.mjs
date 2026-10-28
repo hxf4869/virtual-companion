@@ -24,6 +24,8 @@ import { loadConfig, checkInvariants, MANAGED_CONFIG_INVARIANTS } from './lib/co
 import { verifyStDependencyTree, verifyNativeRuntime } from './lib/verify.mjs';
 import { verifyStUpstreamClean, verifyCorePatches, verifyManagedDeployment, requireManagedGoEnv } from './lib/managed.mjs';
 
+import { startMemorycore, stopMemorycore } from './lib/memorycore-managed.mjs';
+
 function die(msg) { fail(msg, 5); }
 
 function portOwner(port) {
@@ -59,16 +61,21 @@ async function preflight(goEnv) {
     ok(`preflight：Go 环境、upstream 干净、核心补丁 SHA、依赖树（${deps.checked}）、部署完整性、受管配置不变量、端口 均通过`);
 }
 
-function launch(cmd, argv, env, cwd, logFile) {
+async function launch(cmd, argv, env, cwd, logFile) {
     const log = fs.openSync(logFile, 'a');
     const child = spawn(cmd, argv, { cwd, env, detached: true, stdio: ['ignore', log, log] });
     fs.closeSync(log);
+    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', () => reject(new Error('ST spawn failed'))); });
     child.unref();
     return child;
 }
 
 async function main() {
     process.umask(0o077);
+    if (process.argv.includes('--memorycore-only')) {
+        const started = await startMemorycore();
+        ok(`MemoryCore foundation ready on 127.0.0.1:${started.port}; businessReady=false`); return;
+    }
     const goEnv = requireManagedGoEnv();
     await preflight(goEnv);
     const env = {
@@ -84,10 +91,13 @@ async function main() {
         VC_ST_ACCOUNT_HANDLES: JSON.stringify(goEnv.accountHandles),
         ...(process.env.VC_ST_GO_TIMEOUT_MS ? { VC_ST_GO_TIMEOUT_MS: process.env.VC_ST_GO_TIMEOUT_MS } : {}),
     };
-    const st = launch(process.execPath, ['server.js', '--configPath', MANAGED_CONFIG_PATH, '--dataRoot', MANAGED_DATA_ROOT, '--port', String(MANAGED_ST_PORT), '--listen', 'false', '--browserLaunchEnabled', 'false'], env, MANAGED_ST_RUN, path.join(MANAGED_RUN_DIR, 'st.log'));
-    fs.writeFileSync(path.join(MANAGED_RUN_DIR, 'st.pid'), String(st.pid), { mode: 0o600 });
-    info(`受管 ST 启动 pid=${st.pid}（cwd=st-run，日志 ${path.relative(MANAGED_DEV, path.join(MANAGED_RUN_DIR, 'st.log'))}）`);
+    await startMemorycore();
+    delete env.VC_MEMORYCORE_SERVICE_TOKEN; // Independent token is not passed to the ST host.
+    let st;
     try {
+        st = await launch(process.execPath, ['server.js', '--configPath', MANAGED_CONFIG_PATH, '--dataRoot', MANAGED_DATA_ROOT, '--port', String(MANAGED_ST_PORT), '--listen', 'false', '--browserLaunchEnabled', 'false'], env, MANAGED_ST_RUN, path.join(MANAGED_RUN_DIR, 'st.log'));
+        fs.writeFileSync(path.join(MANAGED_RUN_DIR, 'st.pid'), String(st.pid), { mode: 0o600 });
+        info(`受管 ST 启动 pid=${st.pid}（cwd=st-run，日志 ${path.relative(MANAGED_DEV, path.join(MANAGED_RUN_DIR, 'st.log'))}）`);
         await waitFor(async () => {
             try {
                 const r = await fetch(`${MANAGED_ST_URL}/auth/`);
@@ -99,6 +109,7 @@ async function main() {
         ok(`受管 dataRoot 权限收紧：${t.dirs} 目录 / ${t.files} 文件，调整 ${t.changed} 项`);
         ok('status：node scripts/status-managed.mjs；停止：node scripts/stop-managed.mjs');
     } catch (e) {
+        try { await stopMemorycore(); } finally { st?.kill('SIGTERM'); }
         die(`健康等待失败：${e.message}（查看 dev-managed/run/st.log；清理用 node scripts/stop-managed.mjs）`);
     }
 }

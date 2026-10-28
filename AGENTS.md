@@ -62,7 +62,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 | Catalog/OpenAPI、生成物、依赖清单等仓库约束 | `bash scripts/check.sh --quick` |
 | Go 后端（Go 1.26.10，以 `backend/go.mod` 为准） | `GOPROXY=off go test -C backend -mod=vendor -count=1 ./...`；局部修改可将 `./...` 收窄到受影响包 |
 | 前端（Node 22 + pnpm 11） | `pnpm --dir frontend test:run && pnpm --dir frontend type-check` |
-| ST 集成脚本（Node 22） | `node --test "integrations/sillytavern/tests/*.test.mjs"`（离线单测，已并入 `check.sh` 全量；浏览器验收与备份入口见 `integrations/sillytavern/README.md`，不进 check.sh） |
+| ST 集成脚本（Node 22.13+） | `node --test "integrations/sillytavern/tests/*.test.mjs"`（离线单测，已并入 `check.sh` 全量；浏览器验收与备份入口见 `integrations/sillytavern/README.md`，不进 check.sh） |
 | SQL/RLS | `bash infra/db/run-rls-tests.sh`（OrbStack Docker，使用本地测试环境） |
 | 跨组件实现改动或需要仓库整体验证 | `bash scripts/check.sh`（仓库约束检查 + Go 单测 + ST 集成单测 + 前端测试与类型检查） |
 
