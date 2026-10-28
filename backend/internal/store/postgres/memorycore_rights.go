@@ -28,13 +28,26 @@ func (s *Store) ClearMemoryCoreAccountData(ctx context.Context, owner int64) (bo
 		return false, nil
 	}
 	var result struct {
-		Status string `json:"status"`
+		Status          string `json:"status"`
+		PhysicalErasure bool   `json:"physicalErasure"`
 	}
-	if err := s.memoryEngine.Call(ctx, "clear-owner", map[string]any{"scope": memoryCoreAccountScope(owner), "accountDeletion": true}, &result); err != nil {
-		return false, nil
-	}
-	if result.Status != "cleared" {
-		return false, nil
+	// The same deletion task retries once. A cleared receipt can still leave
+	// vectors.db behind; the engine removes those files on the next call.
+	for attempt := 0; attempt < 2; attempt++ {
+		result.Status = ""
+		result.PhysicalErasure = false
+		if err := s.memoryEngine.Call(ctx, "clear-owner", map[string]any{"scope": memoryCoreAccountScope(owner), "accountDeletion": true}, &result); err != nil {
+			return false, nil
+		}
+		if result.Status != "cleared" {
+			return false, nil
+		}
+		if result.PhysicalErasure {
+			break
+		}
+		if attempt == 1 {
+			return false, nil
+		}
 	}
 	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `SELECT vc.complete_memorycore_account_deletion_current()`)

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { ownerDirectory, privateDirectory } from './storage.mjs';
+import { OWNER_DATABASE_FILES } from './native-engine.mjs';
 
 const fail = code => { throw new Error(`MEMORYCORE_${code}`); };
 const safeId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(value);
@@ -125,6 +126,21 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             if (removed.has(record.id)) for (const id of record.metadata?.vcDependencies || []) dependencies.add(id);
         for (const { id, op } of ops) if (id !== currentId && (op.proposal?.records?.some(r => removed.has(r.id)) || op.dependencies?.some(id => dependencies.has(id))))
             await scrubOperation(ctx, id, op, removed, Boolean(op.dependencies));
+    }
+    async function physicallyEraseOwner(ctx, ownerId) {
+        try { await ctx.native.close(); } catch { /* a closed handle must not keep the database files */ }
+        owners.delete(String(ownerId));
+        for (const name of await entries(ctx.dir)) {
+            if (name === 'deleted.json') continue;
+            try { await fs.rm(path.join(ctx.dir, name), { recursive: true, force: true }); }
+            catch { return false; }
+        }
+        for (const name of OWNER_DATABASE_FILES) {
+            const file = path.join(ctx.dir, name);
+            try { await fs.lstat(file); return false; }
+            catch (error) { if (error.code !== 'ENOENT') return false; }
+        }
+        return true;
     }
     async function runCleanup(ctx, cleanup, file) {
         const { native } = ctx, { request } = cleanup;
@@ -469,7 +485,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             const deletedFile = path.join(dir, 'deleted.json');
             if (accountDeletion) {
                 const deleted = await readJSON(deletedFile);
-                if (deleted?.status === 'cleared') return { status: 'cleared', physicalErasure: false };
+                if (deleted?.status === 'cleared') return { status: 'cleared', physicalErasure: await physicallyEraseOwner(ctx, input.scope.ownerId) };
                 await writeJSON(deletedFile, { status: 'pending' });
             }
             let cleanup = await readJSON(file);
@@ -506,11 +522,8 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             }
             const result = await runCleanup(ctx, cleanup, file);
             if (accountDeletion && result.status === 'cleared') {
-                for (const sub of ['operations', 'records', 'profiles', 'staging']) {
-                    await fs.rm(path.join(dir, sub), { recursive: true, force: true });
-                    privateDirectory(path.join(dir, sub));
-                }
                 await writeJSON(deletedFile, { status: 'cleared' });
+                return { ...result, physicalErasure: await physicallyEraseOwner(ctx, input.scope.ownerId) };
             }
             return result;
         });

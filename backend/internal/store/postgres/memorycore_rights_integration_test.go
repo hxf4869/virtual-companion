@@ -18,10 +18,11 @@ import (
 )
 
 type rightsEngineFixture struct {
-	unavailable bool
-	pending     bool
-	calls       int
-	owners      []string
+	unavailable     bool
+	pending         bool
+	withholdErasure bool
+	calls           int
+	owners          []string
 }
 
 func installRightsEngine(t *testing.T, s *Store) *rightsEngineFixture {
@@ -57,7 +58,7 @@ func installRightsEngine(t *testing.T, s *Store) *rightsEngineFixture {
 			if f.pending {
 				status = "pending"
 			}
-			json.NewEncoder(w).Encode(map[string]string{"status": status})
+			json.NewEncoder(w).Encode(map[string]any{"status": status, "physicalErasure": status == "cleared" && !f.withholdErasure})
 		default:
 			t.Errorf("unexpected engine action %s", r.URL.Path)
 			w.WriteHeader(404)
@@ -110,6 +111,36 @@ func TestMemoryCoreAccountDeletionBlocksCascadeUntilOnlineDomainCompletes(t *tes
 	}
 	if _, found, err := s.LookupIdentity(ctx, "disabled"); err != nil || !found {
 		t.Fatal("other account deleted")
+	}
+}
+func TestMemoryCoreAccountDeletionStaysPendingWithoutPhysicalErasure(t *testing.T) {
+	s, _ := rightsFixture(t)
+	engine := installRightsEngine(t, s)
+	engine.withholdErasure = true
+	ctx := context.Background()
+	if err := s.RequestAccountDeletion(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if done, err := s.ClearSTAccountData(ctx, 1); err != nil || !done {
+		t.Fatalf("ST=%v %v", done, err)
+	}
+	if done, err := s.ClearMemoryCoreAccountData(ctx, 1); err != nil || done {
+		t.Fatalf("cleared without erasure completed=%v %v", done, err)
+	}
+	if engine.calls != 2 {
+		t.Fatalf("same deletion task did not retry the engine: calls=%d", engine.calls)
+	}
+	var status string
+	if err := s.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT vc.get_memorycore_account_deletion_current()`).Scan(&status)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if status != "PENDING" {
+		t.Fatalf("deletion receipt %s", status)
+	}
+	if err := s.DeleteAccount(ctx, 1); err == nil {
+		t.Fatal("account deleted before physical erasure")
 	}
 }
 func TestMemoryCoreExportIncludesEngineDomainAndRejectsConfigurationLoss(t *testing.T) {
