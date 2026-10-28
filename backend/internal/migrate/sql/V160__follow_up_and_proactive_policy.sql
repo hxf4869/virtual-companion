@@ -557,7 +557,7 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION vc.export_v2_owner_metadata(bigint) RENAME TO export_v2_owner_metadata_v145;
+ALTER FUNCTION vc.export_v2_owner_metadata(bigint) RENAME TO export_v2_owner_metadata_v153;
 CREATE FUNCTION vc.export_v2_owner_metadata(p_owner bigint)
     RETURNS jsonb
     LANGUAGE plpgsql
@@ -567,7 +567,7 @@ CREATE FUNCTION vc.export_v2_owner_metadata(p_owner bigint)
 AS $$
 BEGIN
     PERFORM vc.go_assert_owner(p_owner);
-    RETURN vc.export_v2_owner_metadata_v145(p_owner) || jsonb_build_object(
+    RETURN vc.export_v2_owner_metadata_v153(p_owner) || jsonb_build_object(
         'followUps', COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
                 'followUpId', f.id::text,
@@ -606,6 +606,6 @@ BEGIN
     );
 END;
 $$;
-REVOKE ALL ON FUNCTION vc.export_v2_owner_metadata(bigint), vc.export_v2_owner_metadata_v145(bigint) FROM PUBLIC;
-REVOKE ALL ON FUNCTION vc.export_v2_owner_metadata_v145(bigint) FROM vc_api, vc_worker;
+REVOKE ALL ON FUNCTION vc.export_v2_owner_metadata(bigint), vc.export_v2_owner_metadata_v153(bigint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION vc.export_v2_owner_metadata_v153(bigint) FROM vc_api, vc_worker;
 GRANT EXECUTE ON FUNCTION vc.export_v2_owner_metadata(bigint) TO vc_api, vc_worker;

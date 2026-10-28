@@ -177,7 +177,7 @@ DO $$
 DECLARE
     doc jsonb;
     keys jsonb;
-    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","instances","memoryAutoSave","memoryTimes","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
+    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","instances","memoryAutoSave","memoryTimes","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
 BEGIN
     doc := vc.export_v2_owner_metadata(17001);
     SELECT coalesce(jsonb_agg(k ORDER BY k), '[]'::jsonb) INTO keys FROM jsonb_object_keys(doc) AS k;
