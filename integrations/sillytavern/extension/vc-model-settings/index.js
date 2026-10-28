@@ -14,6 +14,7 @@ import { getContext } from '../../../../scripts/st-context.js';
 import { mountModelSettings } from './page.js';
 import { setStHeadersProvider, fetchProviders, fetchModelPurposes } from './api.js';
 import { createProjectionController } from './projection.js';
+import { mountChatShell } from './chat-shell.js';
 
 export async function init() {
     setStHeadersProvider(() => {
@@ -24,6 +25,7 @@ export async function init() {
 
     // 页面控制器（单例，立即挂载但保持隐藏；横幅「打开模型设置」与菜单共用同一实例）。
     const pageController = mountModelSettings();
+    mountChatShell({ getContext, openModels: () => pageController.open() });
 
     // 前台投影：Go FOREGROUND_CHAT 绑定 → ST 原生 chatCompletionSettings。
     // 初始化即刷新一次；页面保存目录成功后经 onCatalogSaved 再刷新。

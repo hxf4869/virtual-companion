@@ -47,6 +47,7 @@
 //   VC_W03_FAIL_FAST(0)              场景失败即停
 // 退出码：0 全部所选场景通过；2 用法错误；3 生命周期失败；4 场景失败（结果 JSON 仍写出）。
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
@@ -1221,6 +1222,28 @@ async function sceneContinuationHygiene(ctx) {
     log.ok('续接卫生通过：新用户回合与换 scope 工具回合均不注入旧 reasoning');
 }
 
+async function sceneUi04Browser(ctx) {
+    await bindForeground(ctx, 'vc03m-chat', 'chat', 'vc03m-chat');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-w04-browser-'));
+    const state = path.join(dir, 'state.json');
+    const cookies = [['vc_session', ctx.secrets.session.vcSession], ['vc_csrf', ctx.secrets.session.vcCsrf]].map(([name, value]) => ({
+        name, value, domain: '127.0.0.1', path: '/', expires: -1, httpOnly: name === 'vc_session', secure: false, sameSite: 'Lax',
+    }));
+    fs.writeFileSync(state, JSON.stringify({ cookies, origins: [] }), { mode: 0o600 });
+    try {
+        // 异步 child：本进程的合成 provider 必须继续响应，不能使用 spawnSync。
+        await new Promise((resolve, reject) => {
+            const child = spawn(process.execPath, [path.join(SCRIPTS, 'accept.mjs'), '--managed', '--only', process.env.VC_W04_CASES || 'C04,C05,UI02'], {
+                env: { ...process.env, VC_ST_DEV_DIR: DEV_MANAGED, VC_ST_PORT: String(ST_PORT), VC_ST_MOCK_PORT: String(FIXTURE_PORT),
+                    VC_ST_ACCEPT_STORAGE_STATE: state, ...(process.env.VC_W03_CHROMIUM_PATH ? { VC_ST_BROWSER: process.env.VC_W03_CHROMIUM_PATH } : {}) },
+                stdio: 'inherit',
+            });
+            child.on('error', reject);
+            child.on('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(`W04 浏览器子进程失败：${code ?? signal}`)));
+        });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
 async function sceneUi03Browser(ctx) {
     // 真实浏览器 UI03 验收（默认不在 --filter，主会话串联时执行）：
     //   注入合成 Go 会话 cookie → 打开 ST → 真实 DOM 全流程：
@@ -1602,6 +1625,7 @@ const SCENE_IMPLS = {
     'revision-conflict': sceneRevisionConflict,
     'continuation-hygiene': sceneContinuationHygiene,
     'ui03-browser': sceneUi03Browser,
+    'ui04-browser': sceneUi04Browser,
 };
 
 async function runFull() {

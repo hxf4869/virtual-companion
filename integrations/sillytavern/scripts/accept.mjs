@@ -15,6 +15,7 @@ import path from 'node:path';
 import { USER_DIR, ARTIFACTS, ST_URL, MOCK_URL, MOCK_PORT } from './lib/paths.mjs';
 import { mkdirp, sha256, waitFor } from './lib/util.mjs';
 import { makePng, makePngCard, readCharaChunk, pngSize, makeStoredZip, bookEntry, cardV2, cardV3, worldBook } from './lib/fixtures.mjs';
+import { complexCard, complexReply } from './lib/complex-card.mjs';
 
 const RUN = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(4, 14);
 const ART = path.join(ARTIFACTS, `accept-${RUN}`);
@@ -23,6 +24,7 @@ const MOCK_MODEL = 'vc03-fixed-model';
 const SLOW_MODEL = 'vc03-slow-model';
 const REPLY_MARK = '【固定回复】';
 const SYNTHETIC_KEY = process.env.VC_ST_MOCK_EXPECT_KEY || 'vc03-synthetic-key';
+const MANAGED = process.argv.includes('--managed');
 
 // ---------- 结果记录 ----------
 const T0 = Date.now();
@@ -71,8 +73,9 @@ async function preflight() {
 // ---------- mock 捕获（仅内存，经本地接口读取） ----------
 async function mockClear() { await fetch(`${MOCK_URL}/__captures/clear`, { method: 'POST' }); return Date.now(); }
 async function mockChatCaptures(since) {
-    const r = await fetch(`${MOCK_URL}/__captures?since=${since - 1000}`);
-    return (await r.json()).filter((c) => /\/chat\/completions$/.test(c.url));
+    const r = await fetch(`${MOCK_URL}/__captures${MANAGED ? '' : `?since=${since - 1000}`}`);
+    const data = await r.json();
+    return (MANAGED ? data.captures.map((c) => ({ ...c, url: c.finalUrl })) : data).filter((c) => /\/chat\/completions$/.test(c.url));
 }
 /** 等待自 since 起至少 n 条 chat/completions 捕获；返回捕获数组（正文只在内存中用于断言，不写入结果）。 */
 async function waitCaptures(since, n, timeoutMs = 30000) {
@@ -145,6 +148,15 @@ const idleInPage = () => {
 async function waitIdle(page, label = '生成空闲') { await poll(() => ctxEval(page, idleInPage), 30000, label); }
 /** Chat Completion → Custom 指向本地 mock；三层读回（UI / 模块活引用 / 服务端 settings.json）+ onlineStatus 终态。 */
 async function connectMock(page) {
+    if (MANAGED) {
+        await poll(() => page.evaluate(() => {
+            const s = SillyTavern.getContext().chatCompletionSettings;
+            return s.chat_completion_source === 'custom' && s.custom_model === 'vc03m-chat' && String(s.custom_url).startsWith('vc-go://');
+        }), 30000, 'Go 目录前台投影');
+        await page.evaluate(() => document.querySelector('#api_button_openai').click());
+        await poll(() => page.evaluate(() => ['有效的', 'Valid'].includes(String(SillyTavern.getContext().onlineStatus))), 30000, '受管连接');
+        return '真实 Go 目录投影 + server plugin + 本地合成 provider';
+    }
     await ctxEval(page, () => { window.SillyTavern.getContext().powerUserSettings.tag_import_setting = 2; $('#main_api').val('openai').trigger('change'); $('#chat_completion_source').val('custom').trigger('change'); });
     await poll(() => ctxEval(page, () => $('#chat_completion_source').val() === 'custom' && $('#custom_api_url_text').length === 1), 10000, 'custom 面板');
     await ctxEval(page, (a) => {
@@ -174,9 +186,15 @@ async function selectCharacter(page, name) {
 }
 /** 处理"导入内嵌世界书"确认弹窗并等待世界书文件落盘；再用 Helper 公开 API 持久绑定主世界书（ST 1.19.0 导入确认不持久化 extensions.world）。 */
 async function importEmbeddedBookAndBind(page, bookName, avatar) {
-    const popup = await clickPopup(page, /^确认$|^是$|^OK$|Confirm|Import|导入|Yes/, 10000);
+    const confirm = /^确认$|^确定$|^是$|^OK$|Confirm|Import|导入|Yes/;
+    const popup = await clickPopup(page, confirm, 10000);
     const file = path.join(USER_DIR, 'worlds', `${bookName}.json`);
-    await poll(() => fs.existsSync(file), 15000, `世界书文件 ${bookName}.json`);
+    await poll(async () => {
+        // 初次导入复杂卡时，原生正则许可弹窗可能排在世界书确认之前。
+        await clickPopup(page, confirm, 300);
+        return fs.existsSync(file) && await page.evaluate((name) => TavernHelper.getLorebooks().includes(name)
+            && !document.querySelector('dialog.popup[open]'), bookName);
+    }, 15000, `世界书文件 ${bookName}.json`);
     await ctxEval(page, (b) => globalThis.TavernHelper.setCurrentCharLorebooks({ primary: b, additional: [] }), bookName);
     await poll(() => ctxEval(page, (b) => globalThis.TavernHelper.getCharLorebooks().primary === b, bookName), 10000, 'primary 绑定');
     const pngFile = path.join(USER_DIR, 'characters', avatar);
@@ -417,6 +435,221 @@ async function caseC03(page) {
     await ctxEval(page, () => { const c = window.SillyTavern.getContext(); c.extensionSettings.regex = (c.extensionSettings.regex || []).filter((x) => !String(x.id).startsWith('vc03-')); c.saveSettingsDebounced(); });
     current.screenshot = await shot(page, 'C03');
 }
+// ---------- C04/C05 真实 MVU 状态卡 ----------
+let complex = null;
+async function queueReplies(...replies) {
+    if (MANAGED && replies.length !== 1) throw new Error('受管 fixture 每次设置单个确定响应');
+    const r = await fetch(`${MOCK_URL}/${MANAGED ? '__ctl' : '__replies'}`, { method: 'POST', body: JSON.stringify(MANAGED ? { overrides: { '*': { text: replies[0] } } } : replies) });
+    if (!r.ok) throw new Error(`mock replies HTTP ${r.status}`);
+}
+async function mvuState(page, messageId = -1) {
+    return page.evaluate((i) => {
+        if (!window.Mvu) return null;
+        const d = Mvu.getMvuData({ type: 'message', message_id: i });
+        const value = (k) => Array.isArray(d.stat_data?.[k]) ? d.stat_data[k][0] : d.stat_data?.[k];
+        return { trust: value('trust'), scene: value('scene'), discussed: value('discussed_book') };
+    }, messageId);
+}
+async function expectTrust(page, trust, messageId = -1) {
+    await poll(async () => { const s = await mvuState(page, messageId); return s?.trust === trust && s.scene === 'bookshop'; }, 25000, `MVU trust=${trust}`);
+}
+async function swipeReady(page) {
+    await poll(() => page.evaluate(async () => (await import('/script.js')).isSwipingAllowed()), 15000, '原生 swipe 生命周期完成');
+}
+async function reloadComplex(page) {
+    await page.reload({ waitUntil: 'domcontentloaded' }); await uiReady(page);
+    await selectCharacter(page, complex.name); await connectMock(page);
+    await poll(() => page.evaluate(() => !!window.Mvu), 30000, 'MVU 初始化');
+}
+async function panelTrust(page, messageId, expected) {
+    const frame = page.frameLocator(`#chat .mes[mesid="${messageId}"] .mes_text iframe`).first();
+    await frame.locator('#read-state').click({ timeout: 20000 });
+    await poll(async () => (await frame.locator('#trust').innerText()) === String(expected), 10000, '真实状态栏按钮读数');
+}
+async function persistedTrust(page, messageId, expected) {
+    const id = await page.evaluate(() => SillyTavern.getContext().getCurrentChatId());
+    const file = path.join(USER_DIR, 'chats', path.basename(complex.avatar, '.png'), `${id}.jsonl`);
+    await poll(() => {
+        if (!fs.existsSync(file)) return false;
+        const m = fs.readFileSync(file, 'utf8').trim().split('\n').map((x) => JSON.parse(x))[messageId + 1];
+        const v = m?.variables?.[m.swipe_id ?? 0]?.stat_data?.trust;
+        return (Array.isArray(v) ? v[0] : v) === expected;
+    }, 20000, '原生 JSONL 状态落盘');
+}
+async function caseC04(page) {
+    beginCase('C04', '真实 Helper iframe / EJS / MVU：初始化、更新、上下文、刷新');
+    const name = `澄夏C04${RUN}`, book = `蓝窗书店C04${RUN}`;
+    const file = path.join(FIX, `${name}.json`);
+    fs.writeFileSync(file, JSON.stringify(complexCard(name, book), null, 2));
+    let ok = await step('C04.1 原生导入，启用可信合成脚本与显示正则', true, async () => {
+        const c = await importCharacterFile(page, file, name); complex = { name, ...c };
+        await selectCharacter(page, name); await importEmbeddedBookAndBind(page, book, c.avatar);
+        await page.evaluate((avatar) => {
+            const c = SillyTavern.getContext(), es = c.extensionSettings;
+            es.tavern_helper ??= {}; es.tavern_helper.script ??= {}; es.tavern_helper.script.enabled ??= {};
+            const enabled = es.tavern_helper.script.enabled.characters ??= [];
+            if (!enabled.includes(avatar)) enabled.push(avatar);
+            es.character_allowed_regex ??= [];
+            if (!es.character_allowed_regex.includes(avatar)) es.character_allowed_regex.push(avatar);
+            c.saveSettingsDebounced();
+        }, c.avatar);
+        await poll(async () => { const s = (await persistedSettings(page)).extension_settings; return s.tavern_helper?.script?.enabled?.characters?.includes(c.avatar) === true && s.character_allowed_regex?.includes(c.avatar) === true; }, 20000, '脚本及正则启用落盘');
+        await reloadComplex(page);
+        return '真实锁定 MVU 自托管脚本加载；角色绑定世界书';
+    });
+    ok = await step('C04.2 初始化 10，真实 iframe 按钮读取当前楼层', ok, async () => {
+        await expectTrust(page, 10, 0); await panelTrust(page, 0, 10); await persistedTrust(page, 0, 10);
+        return JSON.stringify(await mvuState(page, 0));
+    });
+    ok = await step('C04.3 原生生成经过 MVU 解析更新为 15；显示隐藏协议，原文保留', ok, async () => {
+        await queueReplies(complexReply(15));
+        const result = await sendSolo(page, '聊聊书店里的旅行笔记。'); complex.replyId = result.replyIdx;
+        await expectTrust(page, 15); await panelTrust(page, result.replyIdx, 15); await persistedTrust(page, result.replyIdx, 15);
+        const raw = (await chatMes(page, result.replyIdx)).mes;
+        const shown = await mesText(page, result.replyIdx);
+        if (!raw.includes("_.set('trust', 15)") || shown.includes('_.set(')) throw new Error('正则显示/原文边界不符');
+        const request = flat(result.capture);
+        if (!request.includes('VC04_BOOK') || !request.includes(name) || /\{\{char\}\}|\{\{user\}\}|<%/.test(request) || request.includes('VC04_EJS_DISCUSS')) throw new Error('首轮宏、世界书或 EJS 条件不符');
+        return 'trust=15；discussed_book=true；原始协议保留，显示层隐藏；首轮无条件片段';
+    });
+    ok = await step('C04.4 刷新重开保持 15；下一轮实际请求包含 EJS 条件片段', ok, async () => {
+        await reloadComplex(page); await expectTrust(page, 15); await panelTrust(page, complex.replyId, 15);
+        await queueReplies(complexReply(15)); const r = await sendSolo(page, '继续谈旅行笔记里的海边小镇。'); complex.replyId = r.replyIdx;
+        const request = flat(r.capture);
+        if (!request.includes('VC04_EJS_DISCUSS') || /<%|\{\{char\}\}|\{\{user\}\}/.test(request)) throw new Error('EJS 未按真实变量注入下一轮');
+        await expectTrust(page, 15); await persistedTrust(page, r.replyIdx, 15);
+        fs.writeFileSync(path.join(FIX, 'complex-card-export.json'), JSON.stringify(await exportCharacter(page, complex.avatar, 'json'), null, 2));
+        return '刷新后状态与下一轮请求一致；已通过原生导出卡及内嵌世界书/正则/脚本引用';
+    });
+    complex.ready = ok;
+    current.screenshot = await shot(page, 'C04-desktop');
+}
+async function caseC05(page) {
+    beginCase('C05', '真实 swipe 状态与刷新隔离');
+    let ok = await step('C05.1 原生右滑生成第二候选 8', complex?.ready === true, async () => {
+        await queueReplies(complexReply(8)); await waitIdle(page);
+        await page.locator('#chat .last_mes .swipe_right').click();
+        await expectTrust(page, 8); await panelTrust(page, complex.replyId, 8); await persistedTrust(page, complex.replyId, 8);
+        return '当前候选 trust=8，不在15上累加';
+    });
+    ok = await step('C05.2 刷新保持 8，原生左滑回 15，右滑回 8', ok, async () => {
+        await reloadComplex(page); await expectTrust(page, 8);
+        await swipeReady(page);
+        await page.locator('#chat .last_mes .swipe_left').click(); await expectTrust(page, 15); await panelTrust(page, complex.replyId, 15);
+        await swipeReady(page);
+        await page.locator('#chat .last_mes .swipe_right').click(); await expectTrust(page, 8); await persistedTrust(page, complex.replyId, 8);
+        return '原生候选与消息变量逐一对应';
+    });
+    ok = await step('C05.3 从 15 候选创建原生分支，与父聊天 8 候选隔离', ok, async () => {
+        await swipeReady(page); await page.locator('#chat .last_mes .swipe_left').click(); await expectTrust(page, 15); await swipeReady(page);
+        complex.parent = await page.evaluate(() => SillyTavern.getContext().getCurrentChatId());
+        await runSlash(page, `/branch-create ${complex.replyId}`);
+        await poll(() => page.evaluate((id) => SillyTavern.getContext().getCurrentChatId() !== id, complex.parent), 20000, '分支打开');
+        complex.branch = await page.evaluate(() => SillyTavern.getContext().getCurrentChatId());
+        await expectTrust(page, 15); await persistedTrust(page, complex.replyId, 15);
+        await page.evaluate(async (id) => (await import('/script.js')).openCharacterChat(id), complex.parent);
+        await swipeReady(page); await page.locator('#chat .last_mes .swipe_right').click(); await expectTrust(page, 8); await persistedTrust(page, complex.replyId, 8); await swipeReady(page);
+        await page.evaluate(async (id) => (await import('/script.js')).openCharacterChat(id), complex.branch);
+        await expectTrust(page, 15); await panelTrust(page, complex.replyId, 15);
+        return '父聊天=8；分支=15；均原生保存且回开读回';
+    });
+    ok = await step('C05.4 编辑末条回复后使用 MVU 原生重算按钮，刷新保持 8', ok, async () => {
+        await page.locator('#chat .last_mes .mes_edit').click();
+        await page.locator('#chat .last_mes .edit_textarea').fill(complexReply(8));
+        await page.locator('#chat .last_mes .mes_edit_done').click();
+        await page.locator('.qr--button').filter({ hasText: '重新处理变量' }).click();
+        await expectTrust(page, 8); await persistedTrust(page, complex.replyId, 8);
+        await reloadComplex(page); await expectTrust(page, 8); await panelTrust(page, complex.replyId, 8);
+        return '遵循上游显式重算语义；不声称历史编辑自动级联';
+    });
+    ok = await step('C05.5 原生重生成重新解析为 15', ok, async () => {
+        await queueReplies(complexReply(15)); await waitIdle(page);
+        await page.evaluate(() => document.querySelector('#option_regenerate').click());
+        await expectTrust(page, 15); await persistedTrust(page, complex.replyId, 15); await panelTrust(page, complex.replyId, 15);
+        return '重生成结果与当前候选状态一致';
+    });
+    ok = await step('C05.6 真实 MVU 异步更新暂停后切换聊天，迟到任务不得污染目标聊天', ok, async () => {
+        await waitIdle(page);
+        await page.evaluate(() => {
+            const c = SillyTavern.getContext();
+            window.__vcHold = { reached: false, released: false, finished: false };
+            const buttons = Object.values(TavernHelper.getAllEnabledScriptButtons()).flat();
+            const buttonId = buttons.find((b) => b.button_name === '重新处理变量').button_id;
+            const originalEmit = c.eventSource.emit;
+            c.eventSource.emit = function (event, ...args) {
+                const result = originalEmit.call(this, event, ...args);
+                if (event === buttonId) Promise.resolve(result).then(() => { window.__vcHold.finished = true; }, () => { window.__vcHold.finished = 'error'; });
+                return result;
+            };
+            window.__vcRestoreEmit = () => { c.eventSource.emit = originalEmit; };
+            c.eventSource.once(Mvu.events.VARIABLE_UPDATE_ENDED, async () => {
+                window.__vcHold.reached = true;
+                await new Promise((resolve) => { window.__vcRelease = resolve; });
+                window.__vcHold.released = true;
+            });
+        });
+        await page.locator('.qr--button').filter({ hasText: '重新处理变量' }).click();
+        await poll(() => page.evaluate(() => window.__vcHold.reached), 10000, 'MVU 在真实 await 事件处暂停');
+        await page.evaluate(async (id) => (await import('/script.js')).openCharacterChat(id), complex.parent);
+        await expectTrust(page, 8);
+        await page.evaluate(() => window.__vcRelease());
+        await poll(() => page.evaluate(() => window.__vcHold.released), 10000, '旧异步任务释放');
+        await poll(() => page.evaluate(() => window.__vcHold.finished === true), 10000, '原生按钮完整异步调用链结束');
+        await page.evaluate(() => window.__vcRestoreEmit());
+        await expectTrust(page, 8); await persistedTrust(page, complex.replyId, 8);
+        await reloadComplex(page); await expectTrust(page, 8);
+        return '旧15任务释放后目标聊天仍为8，刷新亦一致';
+    });
+    current.screenshot = await shot(page, 'C05-swipes');
+}
+async function caseUI02(page) {
+    beginCase('UI02', 'W04 聊天导航与窄屏基础操作（真机另验）');
+    let ok = await step('UI02.1 完整扩展加载，桌面导航与状态栏可用', MANAGED && complex?.ready === true, async () => {
+        await page.locator('#vc-chat-nav').waitFor({ state: 'visible' });
+        await panelTrust(page, complex.replyId, 8);
+        current.screenshot = await shot(page, 'UI01-desktop');
+        return '原生聊天 + 自有导航 + Go 投影 + 真实卡内 iframe 同时运行';
+    });
+    ok = await step('UI02.2 390/360 窄屏输入、状态栏和主要导航无横溢', ok, async () => {
+        for (const width of [390, 360]) {
+            await page.setViewportSize({ width, height: 844 });
+            await page.locator('#vc-chat-nav').getByRole('button', { name: '聊天', exact: true }).click();
+            await page.locator('#send_textarea').fill('尚未发送的窄屏草稿');
+            const dims = await page.evaluate(() => {
+                const r = (s) => { const e = document.querySelector(s), b = e.getBoundingClientRect(); return { x: b.x, right: b.right, bottom: b.bottom, width: b.width, height: b.height }; };
+                return { viewport: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth + 1, input: r('#send_textarea'), send: r('#send_but'), nav: r('#vc-chat-nav'), font: parseFloat(getComputedStyle(document.querySelector('#send_textarea')).fontSize) };
+            });
+            if (dims.overflow || dims.input.right > width + 1 || dims.send.right > width + 1 || dims.send.width < 44 || dims.send.height < 44 || dims.font < 16) throw new Error(JSON.stringify(dims));
+            await panelTrust(page, complex.replyId, 8);
+            await shot(page, `UI02-${width}`);
+        }
+        await page.locator('#vc-chat-nav').getByRole('button', { name: '角色', exact: true }).click();
+        await page.locator('#right-nav-panel').waitFor({ state: 'visible' });
+        await page.locator('#rightNavDrawerIcon').click();
+        await page.locator('#vc-chat-nav').getByRole('button', { name: '模型设置', exact: true }).click();
+        await page.locator('.vcms-overlay').waitFor({ state: 'visible' });
+        await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
+        if (await page.locator('#send_textarea').inputValue() !== '尚未发送的窄屏草稿') throw new Error('导航丢失输入草稿');
+        return '390/360 无横溢，主发送目标≥44px；角色抽屉/模型页开关保持草稿';
+    });
+    ok = await step('UI02.3 缩短视口保留输入，原生发送与停止仍可操作', ok, async () => {
+        await page.setViewportSize({ width: 390, height: 450 });
+        await page.locator('#send_textarea').focus();
+        const bottom = await page.locator('#send_but').boundingBox();
+        if (!bottom || bottom.y < 0 || bottom.y + bottom.height > 451) throw new Error('短视口发送控件不可达');
+        await shot(page, 'UI02-short-viewport');
+        await page.setViewportSize({ width: 390, height: 844 });
+        await queueReplies(complexReply(15)); const result = await sendSolo(page, '手机窄屏继续聊旅行笔记。');
+        await expectTrust(page, 15); await panelTrust(page, result.replyIdx, 15);
+        await fetch(`${MOCK_URL}/__ctl`, { method: 'POST', body: JSON.stringify({ overrides: { '*': { text: '正在缓慢输出的合成台词。'.repeat(100), chunks: 100, delay: { firstMs: 20, perChunkMs: 100 } } } }) });
+        await typeAndSend(page, '请慢一点回复，验证停止。');
+        await page.locator('#mes_stop').waitFor({ state: 'visible' });
+        await page.locator('#mes_stop').click(); await waitIdle(page);
+        await page.locator('#send_textarea').fill('停止后可继续输入');
+        await shot(page, 'UI02-stopped');
+        return '短视口输入/发送可达；390px 原生发送、真实流停止与继续输入通过；软键盘和真机NOT_RUN';
+    });
+}
 // ---------- C06 CHARX ----------
 function findFiles(root, name) {
     const out = []; if (!fs.existsSync(root)) return out;
@@ -583,7 +816,8 @@ async function main() {
 
     const { chromium } = await import('playwright-core');
     const browser = await chromium.launch({ executablePath: pre.browser, headless: true });
-    const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'zh-CN' })).newPage();
+    const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'zh-CN',
+        ...(process.env.VC_ST_ACCEPT_STORAGE_STATE ? { storageState: process.env.VC_ST_ACCEPT_STORAGE_STATE } : {}) })).newPage();
     page.on('console', (m) => { if (m.type() === 'error' && consoleErrors.length < 30) { const l = m.location(); consoleErrors.push({ t: tms(), text: m.text().slice(0, 240), at: l?.url ? `${l.url.replace(ST_URL, '')}:${l.lineNumber}:${l.columnNumber}` : null, during: current?.running ?? current?.id ?? null }); } });
     page.on('pageerror', (e) => { if (pageErrors.length < 30) pageErrors.push({ t: tms(), message: String(e?.message || e).slice(0, 240), stack: String(e?.stack || '').split('\n').slice(0, 8).map((s) => s.trim().replace(ST_URL, '')).join(' | ').slice(0, 900), during: current?.running ?? current?.id ?? null }); });
     const only = (() => { const i = process.argv.indexOf('--only'); return i >= 0 ? String(process.argv[i + 1] || '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) : null; })();
@@ -597,8 +831,20 @@ async function main() {
             return `ST ${pre.st.pkgVersion}（${pre.st.gitRevision}）`;
         });
         connected = await step('C00.2 Chat Completion → Custom 指向 mock（UI / 模块 / 服务端三层读回 + onlineStatus）', connected, () => connectMock(page));
-        for (const fn of [caseC01, caseC02, caseC03, caseC06, caseC07]) {
+        if (connected && only?.includes('UI02') && !only.includes('C04') && process.env.VC_ST_ACCEPT_CHARACTER) {
+            const name = process.env.VC_ST_ACCEPT_CHARACTER;
+            await selectCharacter(page, name);
+            const previous = await page.evaluate(() => {
+                const c = SillyTavern.getContext(), ch = c.characters[c.characterId];
+                if (ch.data?.extensions?.vc_fixture?.synthetic !== true) throw new Error('只允许复用明确标记的合成卡');
+                return { avatar: ch.avatar, replyId: c.chat.length - 1 };
+            });
+            complex = { name, ...previous, ready: true };
+            await expectTrust(page, 8);
+        }
+        for (const fn of [caseC01, caseC02, caseC03, caseC04, caseC05, caseC06, caseC07, caseUI02]) {
             const id = fn.name.replace('case', '');
+            if (id === 'UI02' && !only?.includes('UI02')) continue;
             if (only && !only.includes(id)) continue;
             if (!connected) { beginCase(id, '依赖 C00 前置连接'); record('前置未通过', 'NOT_RUN', 'C00 失败'); continue; }
             try { await fn(page); } catch (e) {

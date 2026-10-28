@@ -360,6 +360,7 @@ export const SCENES = [
     { id: 'revision-conflict', title: 'revision 冲突：另改 provider 后旧 br 生成 → VC_REVISION_CONFLICT', needs: ['catalog', 'stack'], default: true },
     { id: 'continuation-hygiene', title: '切换 chat/新回合/取消不混旧工具续接', needs: ['catalog', 'stack'], default: true },
     { id: 'ui03-browser', title: 'UI03 浏览器场景（真实浏览器，主会话串联执行；截图进 artifacts）', needs: ['catalog', 'stack', 'browser'], default: false },
+    { id: 'ui04-browser', title: 'W04 复杂卡与聊天界面（真实 Helper/EJS/MVU + Go 投影）', needs: ['catalog', 'stack', 'browser'], default: false },
 ];
 
 /** 展开过滤器：具名场景 + 依赖闭包（needs 中的内部能力不算场景，'catalog' 由 catalog-admin 提供）。 */
