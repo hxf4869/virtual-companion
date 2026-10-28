@@ -63,6 +63,7 @@ import { createProtocolFixtureServer, DEFAULT_EXPECT_KEY } from './managed-proto
 import { sceneAuthBrowser, sceneF2Native, sceneF2Browser } from './w05-accept.mjs';
 import { sceneSourceNative, sceneRightsBrowser, sceneRightsNative } from './w06-accept.mjs';
 import { sceneMemoryRealModel } from './w08-real-accept.mjs';
+import { sceneMemoryRealEval } from './w08-real-eval.mjs';
 import { sceneMemoryBrowser } from './w07-accept.mjs';
 import { sceneMemorycoreNative } from './w08-native-accept.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
@@ -1822,6 +1823,7 @@ const SCENE_IMPLS = {
     'memorycore-foundation': sceneMemorycoreFoundation,
     'memorycore-native': sceneMemorycoreNative,
     'memory-real-model': sceneMemoryRealModel,
+    'memory-real-eval': sceneMemoryRealEval,
     'login-shape': sceneLoginShape,
     'catalog-admin': sceneCatalogAdmin,
     'zero-upstream-on-save': sceneZeroUpstreamOnSave,
@@ -1891,6 +1893,12 @@ async function runFull() {
             seedRealEstimate: () => psql("INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES ('vc08-real','cline-pass/deepseek-v4.1-flash-1017',1,0.01,0.02) ON CONFLICT DO NOTHING;"),
             realProgress: () => JSON.parse(psql(`SELECT json_build_object('done',count(*) FILTER(WHERE status='DONE'),'failed',count(*) FILTER(WHERE status IN('FAILED','DEAD_LETTERED','CANCELLED') OR attempt_count>0)) FROM vc.work_item WHERE owner_user_id=${BigInt(OWNER_ACCOUNT_ID)} AND kind='ST_MEMORY_EXTRACT';`).trim()),
             realUsage: () => JSON.parse(psql("SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT memorycore_stage AS stage,count(*) AS calls,coalesce(sum(input_tokens),0) AS input_tokens,coalesce(sum(output_tokens),0) AS output_tokens,count(*) FILTER(WHERE billing_disposition='UNKNOWN' OR billing_disposition IS NULL) AS unknown_usage FROM vc.memory_extract_attempt WHERE provider_id='vc08-real' GROUP BY memorycore_stage ORDER BY memorycore_stage)x;").trim()),
+            realAttempts: () => JSON.parse(psql("SELECT coalesce(json_agg(x ORDER BY x.id),'[]'::json) FROM (SELECT id, coalesce(memorycore_stage,'') AS stage, status, coalesce(billing_disposition,'') AS billing, coalesce(failure_code,'') AS failure, input_tokens, output_tokens FROM vc.memory_extract_attempt WHERE provider_id='vc08-real') x;").trim() || '[]'),
+            extractJobs: () => JSON.parse(psql(`SELECT coalesce(json_agg(x ORDER BY x.id),'[]'::json) FROM (SELECT id, status, attempt_count FROM vc.work_item WHERE owner_user_id=${BigInt(OWNER_ACCOUNT_ID)} AND kind='ST_MEMORY_EXTRACT') x;`).trim() || '[]'),
+            probeSummary: (token) => {
+                if (typeof token !== 'string' || [...token].length < 1 || [...token].length > 16 || /['\\]/.test(token)) return 'skip';
+                return psql(`SELECT CASE WHEN EXISTS (SELECT 1 FROM vc.conversation_summary s WHERE s.owner_user_id=${BigInt(OWNER_ACCOUNT_ID)} AND s.valid AND strpos(s.summary, '${token}') > 0) THEN 'yes' ELSE 'no' END;`).trim();
+            },
             seedSyntheticPrice: () => psql("INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES ('vc08-memory','vc08-memory',1,0.001,0.002) ON CONFLICT DO NOTHING;"),
         },
         w06: { accountId:RIGHTS_ACCOUNT_ID, handle:RIGHTS_HANDLE,

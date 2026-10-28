@@ -311,7 +311,12 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "password change required")
 		return nil
 	}
-	// Export recovery keeps its existing password/eligibility indistinguishability.
+	// An active deletion intent freezes late writes before any handler effect.
+	// The answer stays NOT_FOUND_OR_FORBIDDEN, the same code the SQL barrier
+	// maps to: OpenAPI resource writes do not publish ACCOUNT_DELETION_PENDING.
+	// Deletion state is disclosed on GET /api/v1/auth/session (deletionPending).
+	// Export recovery stays on its password path so a deletion answer matches
+	// a wrong password or an absent export.
 	if write && r.URL.Path != "/api/v1/auth/account" && r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/exports/recover" {
 		deleting, err := s.core.Store.DeletionIntentActive(r.Context(), p.AccountID)
 		if err != nil {
@@ -319,7 +324,7 @@ func (s *Server) corePrincipal(w http.ResponseWriter, r *http.Request, write boo
 			return nil
 		}
 		if deleting {
-			s.writeAPIError(w, http.StatusConflict, "ACCOUNT_DELETION_PENDING", "account deletion is in progress")
+			s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
 			return nil
 		}
 	}

@@ -11,9 +11,140 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/hxf4869/virtual-companion/internal/turn"
 	"github.com/jackc/pgx/v5"
 )
+
+// useSTExtractRoute arms the only production extractor: an enabled
+// MEMORY_EXTRACTION_DEDUP_SUMMARY binding. enqueue_memory_extract itself
+// stays the retired NULL function.
+func useSTExtractRoute(t *testing.T, store *Store) {
+	t.Helper()
+	ctx := context.Background()
+	ciph, err := NewDefaultFieldCipher(isoRestKeyForStore())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.UseCipher(ciph)
+	t.Cleanup(func() {
+		store.UseCipher(nil)
+		store.UseSTSourceReader(nil)
+	})
+	if err := IsolationSuperExec(ctx, `
+INSERT INTO vc.vc_user(id, display_name) VALUES (7, 'admin') ON CONFLICT (id) DO NOTHING;
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (7, 'w08-admin', 'synthetic', 'ADMIN', 'ACTIVE', 'admin')
+ON CONFLICT (id) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE';
+UPDATE vc.model_purpose_binding
+   SET provider_id = NULL, profile_key = NULL, state = 'DISABLED'
+ WHERE provider_id = 'prov-a';
+DELETE FROM vc.provider_model WHERE provider_id = 'prov-a';
+DELETE FROM vc.provider_deployment WHERE provider_id = 'prov-a';
+DELETE FROM vc.provider_config WHERE provider_id = 'prov-a'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveProviderConfig(ctx, 7, SaveProvider{
+		ProviderID: "prov-a", DisplayName: "Source extraction", Protocol: ProtocolOpenAIChat,
+		BaseURL: "https://example.test/v1", Credential: "synthetic", State: ProviderEnabled,
+		Models: []ProviderModel{catalogModel("memory", "model-a", intPtr(32768))},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SavePurposeBinding(ctx, 7, SavePurposeBinding{
+		Purpose: "MEMORY_EXTRACTION_DEDUP_SUMMARY", ProviderID: "prov-a", ProfileKey: "memory", State: ProviderEnabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// openSTExtractSource persists one settled user source and lets the reconcile
+// trigger enqueue its single ST_MEMORY_EXTRACT job. The returned id is the
+// work item's ref_id.
+func openSTExtractSource(t *testing.T, store *Store, chat, character, messageID, candidateID, text string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := store.UpdateMemoryAutoSavePref(ctx, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	binding, err := store.ResolveSTBinding(ctx, 1, STBindingInput{ChatIdentity: chat, CharacterRef: character, Mode: "COMPANION"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := stsource.Snapshot{
+		ChatIdentity: chat, State: "PRESENT", Revision: 1,
+		Location: "chats/synthetic/" + chat + ".jsonl",
+		Messages: []stsource.Message{{
+			MessageID: messageID, CandidateID: candidateID, Revision: 1, Role: "user",
+			Text: text, Eligible: true, Settled: true,
+		}},
+	}
+	store.UseSTSourceReader(sourceReaderFunc(func(_ context.Context, owner int64, queries []stsource.Query) ([]stsource.Snapshot, error) {
+		if owner != 1 || len(queries) != 1 || queries[0].ChatIdentity != chat {
+			return nil, fmt.Errorf("unexpected source read")
+		}
+		return []stsource.Snapshot{snapshot}, nil
+	}))
+	if _, err := store.ReconcileSTSources(ctx, 1, []string{chat}); err != nil {
+		t.Fatal(err)
+	}
+	var sourceID int64
+	if err := store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT id FROM vc.st_message_source
+			WHERE owner_user_id = 1 AND conversation_id = $1 AND message_id = $2::uuid AND present`,
+			binding.ConversationID, messageID).Scan(&sourceID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return sourceID
+}
+
+func stExtractJobIDs(t *testing.T, store *Store, owner int64) []int64 {
+	t.Helper()
+	var ids []int64
+	if err := store.WithOwner(context.Background(), owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT id FROM vc.work_item
+			WHERE kind = 'ST_MEMORY_EXTRACT' ORDER BY id`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				return err
+			}
+			ids = append(ids, id)
+		}
+		return rows.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	return ids
+}
+
+// claimSTExtract claims one pending ST_MEMORY_EXTRACT job. Generation capacity
+// stays at zero so an already-claimed chat turn is not part of the result.
+func claimSTExtract(t *testing.T, store *Store, jobID int64) JobClaim {
+	t.Helper()
+	claims, err := store.ClaimJobs(context.Background(), 30*time.Second, 30*time.Second, 30*time.Second, 32, 0, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range claims {
+		if c.Kind == "ST_MEMORY_EXTRACT" && c.JobID == jobID {
+			if c.OwnerID != 1 || c.Token == "" || c.Fence == "" || c.RefID <= 0 {
+				t.Fatalf("bad ST extract claim %+v", c)
+			}
+			return c
+		}
+	}
+	t.Fatalf("claimed set %v misses ST extract job %d", claims, jobID)
+	return JobClaim{}
+}
 
 // seedFinishedTurn inserts one synthetic finished turn (user message, assistant
 // message, generation row) with contents stored through the store cipher and
@@ -85,27 +216,47 @@ func TestEnqueueMemoryExtractCreatesIdempotentJob(t *testing.T) {
 	resetFixtures(t)
 	ctx := context.Background()
 	store := testEnv.store
-	if _, err := store.UpdateMemoryAutoSavePref(ctx, 1, true); err != nil {
-		t.Fatal(err)
-	}
 	conv, err := store.CreateConversation(ctx, 1, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	genID, _, _ := seedFinishedTurn(t, 1, conv, "COMPLETED", false, false)
 
-	job1, err := store.EnqueueMemoryExtract(ctx, 1, genID)
-	if err != nil || job1 <= 0 {
-		t.Fatalf("enqueue job=%d err=%v", job1, err)
+	// V149 retired the generation extractor. The function still accepts the
+	// call, including a repeat and a foreign generation, and returns NULL.
+	for _, owner := range []int64{1, 1, 2} {
+		job, err := store.EnqueueMemoryExtract(ctx, owner, genID)
+		if err != nil || job != 0 {
+			t.Fatalf("retired enqueue owner=%d job=%d err=%v, want NULL", owner, job, err)
+		}
 	}
-	// At-most-one: a repeated enqueue (crash/retry) returns the same job.
-	job2, err := store.EnqueueMemoryExtract(ctx, 1, genID)
-	if err != nil || job2 != job1 {
-		t.Fatalf("re-enqueue job=%d want %d err=%v", job2, job1, err)
+	legacy, err := psqlSuper(`SELECT count(*) FROM vc.work_item WHERE kind = 'MEMORY_EXTRACT'`)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Another owner cannot enqueue against a foreign generation.
-	if _, err := store.EnqueueMemoryExtract(ctx, 2, genID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("cross-owner enqueue err=%v want ErrNotFound", err)
+	if legacy != "0" {
+		t.Fatalf("retired enqueue created %s MEMORY_EXTRACT jobs", legacy)
+	}
+
+	// The same at-most-one property now lives on ST_MEMORY_EXTRACT: one
+	// settled source gets one job, a repeated reconcile keeps that job, and
+	// another owner cannot enqueue against the foreign chat.
+	useSTExtractRoute(t, store)
+	openSTExtractSource(t, store, sourceChat, "extract-card", sourceMessage, sourceCandidate, "幂等来源")
+	first := stExtractJobIDs(t, store, 1)
+	openSTExtractSource(t, store, sourceChat, "extract-card", sourceMessage, sourceCandidate, "幂等来源")
+	second := stExtractJobIDs(t, store, 1)
+	if len(first) != 1 || len(second) != 1 || first[0] != second[0] {
+		t.Fatalf("ST extract jobs first=%v second=%v, want one stable job", first, second)
+	}
+	if _, err := store.ReconcileSTSources(ctx, 2, []string{sourceChat}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-owner reconcile err=%v want ErrNotFound", err)
+	}
+	if jobs := stExtractJobIDs(t, store, 1); len(jobs) != 1 || jobs[0] != first[0] {
+		t.Fatalf("cross-owner reconcile changed jobs %v", jobs)
+	}
+	if jobs := stExtractJobIDs(t, store, 2); len(jobs) != 0 {
+		t.Fatalf("owner 2 received %v", jobs)
 	}
 }
 

@@ -38,6 +38,23 @@ function completionOf(body) {
     return body;
 }
 
+function names(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).sort() : [];
+}
+
+function usageShape(raw, field) {
+    const match = String(raw).match(new RegExp(`"${field}"\\s*:\\s*([^,}\\s]+)`));
+    if (!match) return 'absent';
+    const token = match[1];
+    if (/^-?\d+$/.test(token)) return 'int';
+    if (/^-?\d+\.\d+(?:[eE][+-]?\d+)?$/.test(token) || /^-?\d+[eE][+-]?\d+$/.test(token)) return 'decimal';
+    return 'other';
+}
+
+function emptyStructure() {
+    return { fieldNames: [], outerFieldNames: [], messageFields: [], choiceFields: [], finishReason: null, contentEmpty: true, reasoningEmpty: true, toolCalls: false, contentChars: 0, reasoningChars: 0, toolCallCount: 0, usageShapes: { prompt: 'absent', completion: 'absent', total: 'absent' } };
+}
+
 export function startMeter(upstreamBase, options = {}) {
     const upstream = new URL(upstreamBase);
     const calls = [];
@@ -72,17 +89,20 @@ export function startMeter(upstreamBase, options = {}) {
             return;
         }
         const responseBody = Buffer.from(await upstreamResponse.arrayBuffer());
-        const record = { status: upstreamResponse.status, roles, kind: 'unparsed', chars: 0, keys: [], finish: null, reasoningChars: 0, promptTokens: null, completionTokens: null, totalTokens: null, cost: null, wire: { contentType: upstreamResponse.headers.get('content-type'), envelope: false, outerObject: null, object: null, choices: 0, index: null, content: 'absent', usageBalanced: false } };
+        const rawText = responseBody.toString('utf8');
+        const record = { status: upstreamResponse.status, roles, kind: 'unparsed', chars: 0, keys: [], finish: null, reasoningChars: 0, promptTokens: null, completionTokens: null, totalTokens: null, cost: null, wire: { contentType: upstreamResponse.headers.get('content-type'), envelope: false, outerObject: null, object: null, choices: 0, index: null, content: 'absent', usageBalanced: false }, structure: emptyStructure() };
         try {
-            const body = JSON.parse(responseBody.toString('utf8'));
+            const body = JSON.parse(rawText);
             const payload = completionOf(body);
-            const message = payload?.choices?.[0]?.message || {};
+            const choice = payload?.choices?.[0] || {};
+            const message = choice.message || {};
             const shape = classifyContent(typeof message.content === 'string' ? message.content : null);
             const reasoning = message.reasoning_content ?? message.reasoning;
             const usage = payload?.usage && typeof payload.usage === 'object' ? payload.usage : {};
             const prompt = numeric(usage.prompt_tokens);
             const completion = numeric(usage.completion_tokens);
             const total = numeric(usage.total_tokens);
+            const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.length : 0;
             record.kind = shape.kind;
             record.chars = shape.chars;
             record.keys = shape.keys;
@@ -102,6 +122,20 @@ export function startMeter(upstreamBase, options = {}) {
                 index: Number.isInteger(payload?.choices?.[0]?.index) ? payload.choices[0].index : null,
                 content: typeof message.content === 'string' ? (message.content.length ? 'string' : 'empty') : (message.content == null ? 'absent' : typeof message.content),
                 usageBalanced: Number.isInteger(prompt) && Number.isInteger(completion) && Number.isInteger(total) && prompt + completion === total,
+            };
+            record.structure = {
+                fieldNames: names(payload),
+                outerFieldNames: names(body),
+                messageFields: names(message),
+                choiceFields: names(choice),
+                finishReason: record.finish,
+                contentEmpty: record.wire.content !== 'string',
+                reasoningEmpty: record.reasoningChars === 0,
+                toolCalls: toolCalls > 0,
+                contentChars: record.chars,
+                reasoningChars: record.reasoningChars,
+                toolCallCount: toolCalls,
+                usageShapes: { prompt: usageShape(rawText, 'prompt_tokens'), completion: usageShape(rawText, 'completion_tokens'), total: usageShape(rawText, 'total_tokens') },
             };
         } catch { /* keep unparsed */ }
         calls.push(record);
