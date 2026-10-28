@@ -1,6 +1,8 @@
 -- W10-T1: inbox and notification isolation.
 -- Cross-owner reads and claims see nothing. A delivery key
--- (event_id, channel, configured_target) cannot be inserted twice.
+-- (owner_user_id, event_id, channel, configured_target) cannot be inserted
+-- twice for one owner. The same event, channel and target may exist for
+-- another owner.
 -- unknown and failed cannot replace each other. Deletion intent rejects
 -- new inbox and delivery rows. Export contains inbox, channels and
 -- deliveries and no credential material. Runtime roles cannot DML.
@@ -74,9 +76,33 @@ BEGIN
         SELECT 1 FROM pg_constraint
         WHERE conrelid = 'vc.notification_delivery'::regclass
           AND contype = 'u'
-          AND pg_get_constraintdef(oid) = 'UNIQUE (event_id, channel, configured_target)'
+          AND pg_get_constraintdef(oid) = 'UNIQUE (owner_user_id, event_id, channel, configured_target)'
     ) THEN
-        RAISE EXCEPTION 'delivery unique key must be (event_id, channel, configured_target)';
+        RAISE EXCEPTION 'delivery unique key must be (owner_user_id, event_id, channel, configured_target)';
+    END IF;
+    IF (
+        SELECT count(DISTINCT p.proname) FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'vc'
+          AND p.prosecdef
+          AND p.proname IN (
+              'schedule_notification_delivery', 'list_due_notification_deliveries',
+              'load_notification_delivery')
+    ) <> 3 THEN
+        RAISE EXCEPTION 'notification send functions must be SECURITY DEFINER';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+        WHERE n.nspname = 'vc'
+          AND p.proname IN (
+              'schedule_notification_delivery', 'list_due_notification_deliveries',
+              'load_notification_delivery', 'stop_unsent_notification_deliveries')
+          AND a.grantee = 0
+          AND a.privilege_type = 'EXECUTE'
+    ) THEN
+        RAISE EXCEPTION 'notification send functions must not be executable by PUBLIC';
     END IF;
     IF (
         SELECT count(DISTINCT p.proname) FROM pg_proc p
@@ -501,6 +527,21 @@ BEGIN
         RAISE EXCEPTION 'runtime role stopped deliveries directly';
     EXCEPTION WHEN insufficient_privilege THEN NULL;
     END;
+    BEGIN
+        PERFORM vc.list_due_notification_deliveries(clock_timestamp());
+        RAISE EXCEPTION 'vc_api listed due notification deliveries';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        PERFORM vc.load_notification_delivery(21001, 1, clock_timestamp());
+        RAISE EXCEPTION 'vc_api loaded a notification delivery';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        PERFORM vc.schedule_notification_delivery(21001, 1, 0, clock_timestamp());
+        RAISE EXCEPTION 'vc_api scheduled a notification delivery';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
 
     v_doc := vc.export_v2_owner_metadata(21001);
     SELECT coalesce(jsonb_agg(k ORDER BY k), '[]'::jsonb) INTO v_keys FROM jsonb_object_keys(v_doc) AS k;
@@ -706,6 +747,55 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         IF SQLERRM <> 'notification delivery: stop reason is invalid' THEN RAISE; END IF;
     END;
+END $$;
+
+-- The same event, channel and target on another owner is a different key.
+INSERT INTO vc.follow_up(
+    owner_user_id, id, relationship_id, body, status, normalization_status,
+    event_id, deliverable, greeting_body, generation_outcome)
+VALUES
+    (21002, 21080, 21020, 'w10 other topic', 'BODY_READY', 'none',
+     'w10-body', 'DELIVERABLE', 'w10 other greeting', 'BODY_READY');
+SELECT setval(
+    'vc.follow_up_id_seq',
+    GREATEST(21080, (SELECT last_value FROM vc.follow_up_id_seq)));
+
+BEGIN;
+SELECT vc.set_owner_context(21002, 'w10-same-key', encode(vc.hmac(convert_to('vc-owner-binding-v1|21002|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|w10-same-key', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
+DO $$
+BEGIN
+    PERFORM vc.put_notification_channel(
+        21002, 'EMAIL', true, 'owner@example.test', NULL, false, ARRAY[21020]::bigint[]);
+    PERFORM vc.record_consent(21002, 'PUSH_NOTIFICATION', 'w10-1', true);
+    PERFORM vc.create_inbox_event(21002, 'w10-body', 21021, 'main', 1, NULL);
+    PERFORM vc.create_notification_delivery(21002, 'w10-body', 'EMAIL', 'owner@example.test');
+    BEGIN
+        PERFORM vc.create_notification_delivery(21002, 'w10-body', 'EMAIL', 'owner@example.test');
+        RAISE EXCEPTION 'same owner duplicate accepted';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'notification delivery: duplicate target' THEN RAISE; END IF;
+    END;
+END $$;
+COMMIT;
+RESET ROLE;
+
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM vc.notification_delivery
+         WHERE event_id = 'w10-body'
+           AND channel = 'EMAIL'
+           AND configured_target = 'owner@example.test') <> 2 THEN
+        RAISE EXCEPTION 'same event channel and target must be allowed for two owners';
+    END IF;
+    IF (SELECT status FROM vc.notification_delivery
+         WHERE owner_user_id = 21001 AND event_id = 'w10-body' AND channel = 'EMAIL') IS DISTINCT FROM 'accepted' THEN
+        RAISE EXCEPTION 'cross owner insert changed the first delivery';
+    END IF;
+    IF (SELECT body FROM vc.inbox_event
+         WHERE owner_user_id = 21002 AND event_id = 'w10-body') IS DISTINCT FROM 'w10 other greeting' THEN
+        RAISE EXCEPTION 'cross owner inbox copied the wrong body';
+    END IF;
 END $$;
 
 INSERT INTO vc.account_deletion_intent(account_id, username_digest, status, st_status)

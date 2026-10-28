@@ -3,9 +3,9 @@
 -- Channel secrets stay in credential_cipher (enc2 field ciphertext) and are
 -- omitted from export_v2_owner_metadata. The previous export body is renamed
 -- to export_v2_owner_metadata_v180_base; that name is not used by V144–V170.
--- The delivery unique key is global (event_id, channel, configured_target),
--- matching the contract. Follow-up event ids are unique per owner only, so
--- callers must not reuse the same event id, channel and target across owners.
+-- The delivery unique key is (owner_user_id, event_id, channel,
+-- configured_target). Follow-up event ids are unique per owner only, so the
+-- same event id, channel and target may exist for two owners.
 -- Unsent means status pending. accepted, failed and unknown are terminal and
 -- are not rewritten when a follow-up is cancelled, an inbox expires, or
 -- PUSH_NOTIFICATION is withdrawn.
@@ -104,7 +104,7 @@ CREATE TABLE vc.notification_delivery (
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     PRIMARY KEY (owner_user_id, id),
-    CONSTRAINT notification_delivery_event_channel_target UNIQUE (event_id, channel, configured_target),
+    CONSTRAINT notification_delivery_event_channel_target UNIQUE (owner_user_id, event_id, channel, configured_target),
     FOREIGN KEY (owner_user_id) REFERENCES vc.vc_user(id) ON DELETE CASCADE,
     FOREIGN KEY (owner_user_id, event_id)
         REFERENCES vc.inbox_event(owner_user_id, event_id) ON DELETE CASCADE,
@@ -542,6 +542,7 @@ BEGIN
     IF p_reason IS NULL OR p_reason NOT IN ('cancelled', 'expired', 'consent_withdrawn') THEN
         RAISE EXCEPTION 'notification delivery: stop reason is invalid';
     END IF;
+    PERFORM vc.go_assert_owner(p_owner);
     UPDATE vc.notification_delivery
        SET status = 'stopped',
            stopped_reason = p_reason,
@@ -651,6 +652,175 @@ CREATE TRIGGER consent_push_withdrawal_stops_notification
     AFTER INSERT ON vc.consent_record
     FOR EACH ROW EXECUTE FUNCTION vc.stop_notification_on_push_withdrawal();
 
+-- schedule keeps a retry pending. record_notification_delivery_outcome treats
+-- unknown and failed as terminal, so a bounded retry must not call it yet.
+-- list_due is a cross-owner scan and returns no body and no credential.
+-- load is owner-scoped and also returns no credential.
+CREATE FUNCTION vc.schedule_notification_delivery(
+    p_owner bigint,
+    p_delivery_id bigint,
+    p_attempt_count integer,
+    p_next_attempt_at timestamptz)
+    RETURNS void
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = vc, pg_catalog
+AS $$
+DECLARE
+    v_status text;
+    v_attempts integer;
+BEGIN
+    PERFORM vc.go_assert_owner(p_owner);
+    IF p_attempt_count IS NULL OR p_attempt_count < 0 OR p_next_attempt_at IS NULL THEN
+        RAISE EXCEPTION 'notification delivery: schedule is invalid';
+    END IF;
+    SELECT d.status, d.attempt_count INTO v_status, v_attempts
+      FROM vc.notification_delivery d
+     WHERE d.owner_user_id = p_owner AND d.id = p_delivery_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'notification delivery not found';
+    END IF;
+    IF v_status <> 'pending' THEN
+        RAISE EXCEPTION 'notification delivery: outcome is already terminal';
+    END IF;
+    IF p_attempt_count < v_attempts THEN
+        RAISE EXCEPTION 'notification delivery: schedule is invalid';
+    END IF;
+    UPDATE vc.notification_delivery
+       SET attempt_count = p_attempt_count,
+           next_attempt_at = p_next_attempt_at,
+           updated_at = clock_timestamp()
+     WHERE owner_user_id = p_owner AND id = p_delivery_id;
+END;
+$$;
+
+CREATE FUNCTION vc.list_due_notification_deliveries(p_now timestamptz)
+    RETURNS TABLE(out_owner bigint, out_id bigint)
+    LANGUAGE sql
+    STABLE
+    SECURITY DEFINER
+    SET search_path = vc, pg_catalog
+AS $$
+    SELECT d.owner_user_id, d.id
+      FROM vc.notification_delivery d
+      JOIN vc.inbox_event i
+        ON (i.owner_user_id, i.event_id) = (d.owner_user_id, d.event_id)
+      JOIN vc.notification_channel c
+        ON c.owner_user_id = d.owner_user_id
+       AND c.channel = d.channel
+       AND c.configured_target = d.configured_target
+       AND c.enabled
+       AND i.relationship_id = ANY (c.relationship_ids)
+     WHERE d.status = 'pending'
+       AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= COALESCE(p_now, clock_timestamp()))
+       AND NOT EXISTS (
+            SELECT 1 FROM vc.account_deletion_intent a
+             WHERE a.account_id = d.owner_user_id)
+     ORDER BY d.next_attempt_at NULLS FIRST, d.owner_user_id, d.id;
+$$;
+
+CREATE FUNCTION vc.load_notification_delivery(
+    p_owner bigint,
+    p_delivery_id bigint,
+    p_now timestamptz)
+    RETURNS TABLE(
+        out_id bigint,
+        out_event_id text,
+        out_channel text,
+        out_configured_target text,
+        out_status text,
+        out_attempt_count integer,
+        out_next_attempt_at timestamptz,
+        out_intent text,
+        out_body text,
+        out_preview boolean,
+        out_relationship bigint,
+        out_channel_enabled boolean,
+        out_policy_enabled boolean,
+        out_quiet_start text,
+        out_quiet_end text,
+        out_quiet_timezone text,
+        out_daily_limit integer,
+        out_consent boolean,
+        out_deletion boolean,
+        out_sent_today integer,
+        out_trigger_at timestamptz,
+        out_follow_status text,
+        out_st_delivered boolean,
+        out_expires_at timestamptz)
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = vc, pg_catalog
+AS $$
+DECLARE
+    v_now timestamptz := COALESCE(p_now, clock_timestamp());
+    v_zone text;
+    v_day timestamptz;
+BEGIN
+    PERFORM vc.go_assert_owner(p_owner);
+    SELECT d.id, d.event_id, d.channel, d.configured_target, d.status,
+           d.attempt_count, d.next_attempt_at
+      INTO out_id, out_event_id, out_channel, out_configured_target, out_status,
+           out_attempt_count, out_next_attempt_at
+      FROM vc.notification_delivery d
+     WHERE d.owner_user_id = p_owner AND d.id = p_delivery_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'notification delivery not found';
+    END IF;
+    SELECT i.relationship_id, i.intent, i.body, i.st_delivered, i.expires_at
+      INTO out_relationship, out_intent, out_body, out_st_delivered, out_expires_at
+      FROM vc.inbox_event i
+     WHERE i.owner_user_id = p_owner AND i.event_id = out_event_id;
+    SELECT f.status, f.trigger_at
+      INTO out_follow_status, out_trigger_at
+      FROM vc.follow_up f
+     WHERE f.owner_user_id = p_owner AND f.event_id = out_event_id;
+    SELECT (c.enabled AND out_relationship = ANY (c.relationship_ids)), c.preview_body
+      INTO out_channel_enabled, out_preview
+      FROM vc.notification_channel c
+     WHERE c.owner_user_id = p_owner
+       AND c.channel = out_channel
+       AND c.configured_target = out_configured_target;
+    out_channel_enabled := COALESCE(out_channel_enabled, false);
+    out_preview := COALESCE(out_preview, false);
+    SELECT COALESCE(p.enabled, false),
+           to_char(p.quiet_hours_start, 'HH24:MI'),
+           to_char(p.quiet_hours_end, 'HH24:MI'),
+           p.quiet_hours_timezone,
+           COALESCE(p.daily_limit, 0)
+      INTO out_policy_enabled, out_quiet_start, out_quiet_end, out_quiet_timezone, out_daily_limit
+      FROM vc.proactive_policy p
+     WHERE p.owner_user_id = p_owner AND p.relationship_id = out_relationship;
+    out_policy_enabled := COALESCE(out_policy_enabled, false);
+    out_daily_limit := COALESCE(out_daily_limit, 0);
+    IF out_quiet_timezone IS NOT NULL THEN
+        out_quiet_timezone := vc.follow_up_zone(out_quiet_timezone);
+    END IF;
+    SELECT c.granted INTO out_consent
+      FROM vc.consent_record c
+     WHERE c.owner_user_id = p_owner AND c.consent_type = 'PUSH_NOTIFICATION'
+     ORDER BY c.id DESC
+     LIMIT 1;
+    out_consent := COALESCE(out_consent, false);
+    out_deletion := EXISTS (
+        SELECT 1 FROM vc.account_deletion_intent a WHERE a.account_id = p_owner);
+    v_zone := vc.follow_up_zone(out_quiet_timezone);
+    v_day := (date_trunc('day', v_now AT TIME ZONE v_zone) AT TIME ZONE v_zone);
+    SELECT count(DISTINCT d2.event_id)::integer INTO out_sent_today
+      FROM vc.notification_delivery d2
+      JOIN vc.inbox_event i2
+        ON (i2.owner_user_id, i2.event_id) = (d2.owner_user_id, d2.event_id)
+     WHERE d2.owner_user_id = p_owner
+       AND i2.relationship_id = out_relationship
+       AND d2.status IN ('accepted', 'unknown')
+       AND d2.updated_at >= v_day
+       AND d2.updated_at < v_day + interval '1 day';
+    out_sent_today := COALESCE(out_sent_today, 0);
+    RETURN NEXT;
+END;
+$$;
+
 REVOKE ALL ON FUNCTION vc.put_notification_channel(bigint, text, boolean, text, text, boolean, bigint[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION vc.create_inbox_event(bigint, text, bigint, text, bigint, timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION vc.create_notification_delivery(bigint, text, text, text) FROM PUBLIC;
@@ -663,6 +833,9 @@ REVOKE ALL ON FUNCTION vc.mark_inbox_read(bigint, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION vc.stop_unsent_notification_deliveries(bigint, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION vc.stop_inbox_deliveries_on_follow_up_cancel() FROM PUBLIC;
 REVOKE ALL ON FUNCTION vc.stop_notification_on_push_withdrawal() FROM PUBLIC;
+REVOKE ALL ON FUNCTION vc.schedule_notification_delivery(bigint, bigint, integer, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION vc.list_due_notification_deliveries(timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION vc.load_notification_delivery(bigint, bigint, timestamptz) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION
     vc.put_notification_channel(bigint, text, boolean, text, text, boolean, bigint[]),
@@ -675,6 +848,13 @@ GRANT EXECUTE ON FUNCTION
     vc.set_inbox_link_status(bigint, text, text),
     vc.mark_inbox_read(bigint, text)
     TO vc_api, vc_worker;
+
+GRANT EXECUTE ON FUNCTION
+    vc.stop_unsent_notification_deliveries(bigint, text, text),
+    vc.schedule_notification_delivery(bigint, bigint, integer, timestamptz),
+    vc.list_due_notification_deliveries(timestamptz),
+    vc.load_notification_delivery(bigint, bigint, timestamptz)
+    TO vc_worker;
 
 ALTER FUNCTION vc.export_v2_owner_metadata(bigint) RENAME TO export_v2_owner_metadata_v180_base;
 CREATE FUNCTION vc.export_v2_owner_metadata(p_owner bigint)

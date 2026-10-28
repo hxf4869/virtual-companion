@@ -13,3 +13,6 @@
 
 # Verbatim source snapshots preserve Markdown hard-break spaces.
 docs/source/** whitespace=-trailing-space
+
+# vendor 必须与上游逐字一致，不做空白检查
+backend/vendor/** -whitespace
