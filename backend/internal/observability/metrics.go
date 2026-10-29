@@ -41,6 +41,7 @@ type MemoryRecallStats struct {
 	RerankInvalid        int
 	RerankDisabled       int
 	RerankFallback       int
+	RerankGateFallback   int
 	RerankCandidates     int
 	RerankKept           int
 	RerankOnly           int
@@ -125,6 +126,7 @@ func (r *Registry) ObserveMemoryRecall(stats MemoryRecallStats) {
 	r.memoryRecall.RerankInvalid += stats.RerankInvalid
 	r.memoryRecall.RerankDisabled += stats.RerankDisabled
 	r.memoryRecall.RerankFallback += stats.RerankFallback
+	r.memoryRecall.RerankGateFallback += stats.RerankGateFallback
 	r.memoryRecall.RerankCandidates += stats.RerankCandidates
 	r.memoryRecall.RerankKept += stats.RerankKept
 	r.memoryRecall.RerankOnly += stats.RerankOnly
@@ -267,6 +269,7 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 	writeCounter(&buf, "vc_memory_rerank_invalid_total", "Memory recalls that fell back because the reranker response was invalid.", float64(memory.RerankInvalid))
 	writeCounter(&buf, "vc_memory_rerank_disabled_total", "Memory recalls that used cosine and FTS because rerank was disabled.", float64(memory.RerankDisabled))
 	writeCounter(&buf, "vc_memory_rerank_fallback_total", "Memory recalls that fell back to cosine and FTS gates.", float64(memory.RerankFallback))
+	writeCounter(&buf, "vc_memory_rerank_gate_fallback_total", "Summary or profile reranks that fell back to the cosine gate.", float64(memory.RerankGateFallback))
 	writeCounter(&buf, "vc_memory_rerank_candidates_total", "Candidates sent to the reranker.", float64(memory.RerankCandidates))
 	writeCounter(&buf, "vc_memory_rerank_kept_total", "Candidates kept after the rerank threshold.", float64(memory.RerankKept))
 	writeCounter(&buf, "vc_memory_rerank_only_total", "Candidates injected only because the rerank logit passed.", float64(memory.RerankOnly))

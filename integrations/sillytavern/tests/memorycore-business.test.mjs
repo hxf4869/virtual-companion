@@ -98,6 +98,27 @@ test('proposal does not publish; commit and replay are idempotent; allowlist emp
     assert.deepEqual(await engine.invoke('search', { scope, embedding, allowedRecordIds: [], query: 'content' }), []);
     assert.equal((await engine.invoke('search', { scope, embedding, allowedRecordIds: ['record1'], query: 'content' })).length, 1);
 });
+test('search passes owner and scope into the embedding client and native cache identity', async (t) => {
+    let embeddingOptions;
+    const { engine, native } = await fixture(t, {
+        embeddingFactory: async (_snapshot, options) => {
+            embeddingOptions = options;
+            return { embedBatch: async (rows) => rows.map(() => new Float32Array([1, 0])) };
+        },
+    });
+    const p = proposalInput();
+    await engine.invoke('propose', p);
+    await engine.invoke('commit', { scope, revision: 0, operationId: p.operationId });
+    native.configureSpace = () => {};
+    native.getSpace = () => ({ spaceId: embedding.spaceId, dimensions: 2, rebuilding: false });
+    let seen;
+    native.search = async (input) => { seen = input; return []; };
+    await engine.invoke('search', { scope, embedding, allowedRecordIds: ['record1'], query: 'content' });
+    assert.equal(embeddingOptions.ownerId, '1');
+    assert.equal(embeddingOptions.scope, '7:COMPANION:daily-7:main');
+    assert.equal(seen.cacheOwnerId, '1');
+    assert.equal(seen.cacheScope, '7:COMPANION:daily-7:main');
+});
 test('search passes rerankEnabled false through to native search', async (t) => {
     const { engine, native } = await fixture(t);
     const p = proposalInput();

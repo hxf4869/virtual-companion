@@ -54,12 +54,12 @@ func TestSceneGateUsesRerankIDs(t *testing.T) {
 }
 
 func TestDecodeEngineSearchKeepsRerankDecision(t *testing.T) {
-	raw := json.RawMessage(`{"hits":[{"record_id":"a"}],"gated":["persona"],"stats":{"rerankDecision":"timeout","rerankCandidates":4,"rerankKept":0,"rerankOnly":1,"rerankFallback":1,"summaryGateAllow":2}}`)
+	raw := json.RawMessage(`{"hits":[{"record_id":"a"}],"gated":["persona"],"stats":{"rerankDecision":"timeout","rerankCandidates":4,"rerankKept":0,"rerankOnly":1,"rerankFallback":1,"rerankGateFallback":1,"summaryGateAllow":2}}`)
 	hits, gated, known, observed := decodeEngineSearch(raw)
 	if !known || len(hits) != 1 || hits[0].RecordID != "a" || len(gated) != 1 || gated[0] != "persona" {
 		t.Fatalf("hits=%+v gated=%v known=%v", hits, gated, known)
 	}
-	if observed.RerankDecision != "timeout" || observed.RerankCandidates != 4 || observed.RerankKept != 0 || observed.RerankOnly != 1 || observed.RerankFallback != 1 || observed.SummaryAllow != 2 {
+	if observed.RerankDecision != "timeout" || observed.RerankCandidates != 4 || observed.RerankKept != 0 || observed.RerankOnly != 1 || observed.RerankFallback != 1 || observed.RerankGateFallback != 1 || observed.SummaryAllow != 2 {
 		t.Fatalf("observe %+v", observed)
 	}
 }

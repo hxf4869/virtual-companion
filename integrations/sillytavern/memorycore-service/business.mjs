@@ -15,6 +15,9 @@ export function mapScope(scope) {
         sessionId: scope.domainId, sessionKey: scope.domainId };
 }
 function scopeKey(scope) { return `${scope.instanceId}:${scope.mode}:${scope.domainId}:${scope.profileScopeId}`; }
+function embeddingCall(embeddingFactory, input) {
+    return embeddingFactory(input.embedding, { ownerId: input.scope.ownerId, scope: scopeKey(input.scope) });
+}
 function sameIdentity(a, b) { return JSON.stringify(mapScope(a)) === JSON.stringify(mapScope(b)); }
 function sameScope(a, b) { return sameIdentity(a, b) && a.profileScopeId === b.profileScopeId; }
 async function readJSON(file) { try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return null; throw e; } }
@@ -295,7 +298,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                 await writeJSON(file, { scope: input.scope, request, status: 'preparing' });
                 const work = (async () => {
                     try {
-                        const embedding = await embeddingFactory(input.embedding);
+                        const embedding = await embeddingCall(embeddingFactory, input);
                         const vectors = await embedding.embedBatch([input.summary]);
                         const proposal = { records: [record], targets: [{ id: target.id, version: target.version || 1 }],
                             dependencies, vectors: vectors.map(v => [...v]) };
@@ -346,7 +349,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                         });
                     });
                     try {
-                        const embedding = await embeddingFactory(input.embedding);
+                        const embedding = await embeddingCall(embeddingFactory, input);
                         const proposal = await native.prepare({ messages: input.messages, scope: mapped, allowedRecordIds: ids,
                             runner: runnerFactory(input.operationToken), embedding, recordedAt: input.messages.at(-1).timestamp });
                         const targets = proposal.targets || [];
@@ -458,10 +461,11 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             // Re-check the saved snapshot so an older revision cannot return
             // after a newer one has been committed. Summary text is scored
             // even when no L1 row shares the question's date.
-            const embedding = (eligible.length || gateTexts?.length) && !native.getSpace().rebuilding ? await embeddingFactory(input.embedding) : undefined;
+            const embedding = (eligible.length || gateTexts?.length) && !native.getSpace().rebuilding ? await embeddingCall(embeddingFactory, input) : undefined;
             const results = (eligible.length || gateTexts?.length) ? await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
                 allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true, gateTexts, observe: input.observe === true,
-                rerank: input.rerankEnabled === false ? false : input.rerank })
+                rerank: input.rerankEnabled === false ? false : input.rerank,
+                cacheOwnerId: input.scope.ownerId, cacheScope: scopeKey(input.scope) })
                 : [];
             return currentSpace(ctx, input.embedding, async () =>
                 !(await readJSON(path.join(dir, 'cleanup.json'))) && native.getScope(key).revision === revision ? results : []);
@@ -470,7 +474,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             await noCleanup(ctx);
             await configure(ctx, input.embedding);
             if (!native.getSpace().rebuilding) return { spaceId: input.embedding.spaceId, failures: 0, ready: true };
-            const embedding = await embeddingFactory(input.embedding);
+            const embedding = await embeddingCall(embeddingFactory, input);
             let failures = 0;
             for (const record of native.list()) {
                 try {

@@ -85,6 +85,7 @@ type RecallObserve struct {
 	RerankKept           int    `json:"rerankKept"`
 	RerankOnly           int    `json:"rerankOnly"`
 	RerankFallback       int    `json:"rerankFallback"`
+	RerankGateFallback   int    `json:"rerankGateFallback"`
 	QueryEmbeddingMs     int    `json:"queryEmbeddingMs"`
 	LooseRetrievalMs     int    `json:"looseRetrievalMs"`
 	OriginalGateMs       int    `json:"originalGateMs"`
