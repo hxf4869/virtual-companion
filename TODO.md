@@ -315,7 +315,9 @@
       校准集正例 78/78、负例 22/22 空、top-1 69/78（原门槛 67/78）；第 10 轮真实评估 H1–H4 PASS，正例 6/8，持久化到可召回 P50 48.3s。
       验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级见 `V2-DEPLOY` 待办。
 - [ ] `V2-F03` 前端 Apple 风格重设计（Owner 2026-10-29 确认交互原型为基线）。设计真源 `DESIGN.md` 第 2 版（`6bf76812`），
-      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F1、F2、F3、F4a（记忆+陪伴）、F4b（角色+剧情）并行进行中。
+      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F4a（记忆+陪伴，`7b01ffec`）、F4b（角色+剧情，`ca9e6c16`）DONE（vc-ui 开启时生效，新增 fe4a-ui / fe4b-ui 场景）；F1、F2、F3 进行中。
+      待查：`story-real`（真实模型，默认关闭的旧剧情对话框）两次在“NPC 对白提交”等待超时（日志 `npc_reply_not_auto_committed`，林岚/周澈各一次）；
+      F4b 对 `story-page.js` 只有新增、旧路径未改，判断为真实模型行为或既有问题，需在 main 上单独复查。
       Owner 2026-10-29 决定：embedding 与重排作为默认本机模型在模型页显示名称与状态、重排可一键开关，暂不提供更换；
       后端状态接口与开关已完成（LM，2026-10-30；V266 `vc.owner_memory_rerank`，GET/PUT `/api/v1/admin/local-models*`），页面在 F3。日后更换模型须带记忆向量重建与重排阈值重新校准的完整流程。
 
