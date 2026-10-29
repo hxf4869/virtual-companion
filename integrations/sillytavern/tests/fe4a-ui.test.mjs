@@ -323,3 +323,16 @@ test('新样式只写在 body.vc-ui 下，旧陪伴样式标记仍在', async ()
     assert.match(index, /export \{ mountMemoryTab \} from '\.\/memory-page\.js'/);
     assert.match(index, /export \{ mountInboxTab \} from '\.\/inbox-page\.js'/);
 });
+
+test('陪伴空列表不显示重试，失败才重试，空跟进留在分组里', () => {
+    const page = createInboxPage();
+    page.state.open = true;
+    const empty = renderInboxTab(page.state);
+    assert.match(empty, /role="status">没有消息</);
+    assert.doesNotMatch(empty, /data-action="retry-open"/);
+    assert.match(empty, /<div class="vc-group"><div class="vc-cell" role="status">没有跟进<\/div><\/div>/);
+    page.state.error = '加载失败，请重试。';
+    page.state.inbox = [];
+    const failed = renderInboxTab(page.state);
+    assert.match(failed, /data-action="retry-open">重试</);
+});

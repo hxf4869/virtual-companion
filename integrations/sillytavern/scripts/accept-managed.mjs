@@ -74,6 +74,7 @@ import { sceneW15Ui } from './w15-ui-accept.mjs';
 import { sceneFe4aUi } from './fe4a-ui-accept.mjs';
 import { sceneFe4bUi } from './fe4b-ui-accept.mjs';
 import { sceneF3Settings } from './f3-settings-accept.mjs';
+import { sceneVcUiShell } from './vc-ui-shell-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -139,6 +140,13 @@ SCENES.push({
 SCENES.push({
     id: 'f3-settings',
     title: 'F3 设置与酒馆抽屉页',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+});
+// F1 外壳不进默认集。显式 --filter vc-ui-shell 才运行。
+SCENES.push({
+    id: 'vc-ui-shell',
+    title: 'F1 外壳：导航、会话列表、对话页与设置',
     needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
@@ -3056,6 +3064,7 @@ const SCENE_IMPLS = {
     'fe4a-ui': sceneFe4aUi,
     'fe4b-ui': sceneFe4bUi,
     'f3-settings': sceneF3Settings,
+    'vc-ui-shell': sceneVcUiShell,
 };
 
 async function runFull() {

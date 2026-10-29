@@ -13,22 +13,23 @@ import { getRequestHeaders, getChat, saveChat as saveCurrentChat } from '../../.
 import { getContext } from '../../../../scripts/st-context.js';
 import { budgetSignalFromGenerateBody, isGenerateRequestUrl } from './model-logic.js';
 import { mountModelSettings } from './page.js';
-import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding, reconcileSTSources, recallSTMemory } from './api.js';
+import { setStHeadersProvider, fetchProviders, fetchModelPurposes, fetchRelationships, captureSessionContext, resolveSTBinding, reconcileSTSources, recallSTMemory } from './api.js';
 import { confirmStoryProjection } from './story-action.js';
 import { createStoryProjection } from './story-projection.js';
 import { armSilentF2Conflict, disarmSilentF2Conflict, installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
 import { loadInboxEvents, mountChatShell } from './chat-shell.js';
 import { mountDataRights } from './data-rights.js';
-import { mountMemoryPage } from './memory-page.js';
-import { mountInboxPage } from './inbox-page.js';
-import { cardsFromContext, createCompanionInstance, mountInstancePage } from './instance-page.js';
+import { mountMemoryPage, mountMemoryTab } from './memory-page.js';
+import { mountInboxPage, mountInboxTab } from './inbox-page.js';
+import { bindingsFromContext, cardsFromContext, createCompanionInstance, importNativeCharacterFile, mountCharactersTab, mountInstancePage } from './instance-page.js';
 import { planOpenCreatedChat } from './instance-open.js';
 import { commitStoryProjectionSave } from './projection-save.js';
-import { mountStoryPage } from './story-page.js';
+import { mountStoryPage, mountStoryTab } from './story-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
 import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 import { createStoryContext } from './story-context.js';
+import { mountShell, registerShellTabs } from './shell.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages } from './drawers.js';
 export { openDrawerPage, openModelSettings, openAccountData } from './drawers.js';
@@ -195,16 +196,24 @@ export async function init() {
             }
         },
     });
+    const characterCards = () => {
+        try { return cardsFromContext(getContext()); } catch { return []; }
+    };
+    const characterBindings = () => {
+        try { return bindingsFromContext(getContext()); } catch { return []; }
+    };
+    const createBinding = async (args) => {
+        const created = await createCompanionInstance(args);
+        try { await openCreatedChat(args); } catch { /* 实例已创建；打不开会话时不回滚绑定 */ }
+        return created;
+    };
     charactersPage = mountInstancePage({
         getContext,
-        getCards: () => {
-            try { return cardsFromContext(getContext()); } catch { return []; }
-        },
-        createBinding: async (args) => {
-            const created = await createCompanionInstance(args);
-            try { await openCreatedChat(args); } catch { /* 实例已创建；打不开会话时不回滚绑定 */ }
-            return created;
-        },
+        getCards: characterCards,
+        getBindings: characterBindings,
+        loadRelationships: fetchRelationships,
+        importCard: (spec) => importNativeCharacterFile({ ...spec, getContext }),
+        createBinding,
     });
     const storyProjection = createStoryProjection({
         readChat: async () => {
@@ -253,6 +262,64 @@ export async function init() {
         },
         project: (job) => storyProjection.project(job),
     });
+    if (readVcUiFlag()) {
+        const navigation = {
+            openInstance() {},
+        };
+        registerShellTabs({
+            characters: (container) => mountCharactersTab(container, {
+                getContext,
+                getCards: characterCards,
+                getBindings: characterBindings,
+                loadRelationships: fetchRelationships,
+                importCard: (spec) => importNativeCharacterFile({ ...spec, getContext }),
+                createBinding,
+                onOpenInstance: (instance) => navigation.openInstance(instance),
+            }),
+            memory: (container) => mountMemoryTab(container, {
+                getRelationshipId: () => {
+                    const id = getContext().chatMetadata?.vc_binding?.relationshipId;
+                    return id == null || id === '' ? '' : String(id);
+                },
+            }),
+            inbox: (container) => mountInboxTab(container, {
+                onOpenConversation: (payload) => navigation.openInstance({
+                    relationshipId: payload?.relationshipId,
+                    conversationId: payload?.conversationId,
+                }),
+            }),
+            story: (container) => mountStoryTab(container, {
+                onConfigure: () => { if (!pageController.isOpen()) pageController.open(); },
+                getConversation: () => {
+                    try {
+                        const binding = getContext().chatMetadata?.vc_binding || {};
+                        const conversationId = typeof binding.conversationId === 'string' ? binding.conversationId : '';
+                        if (binding.mode === 'STORY' && /^[1-9][0-9]{0,18}$/.test(conversationId)) return { conversationId, mode: 'STORY' };
+                        return { conversationId: '', mode: binding.mode || 'COMPANION' };
+                    } catch {
+                        return { conversationId: '', mode: 'COMPANION' };
+                    }
+                },
+                onRun: (turn) => story.setRun(turn),
+                onActor: (actorId) => story.selectActor(actorId),
+                onAdvance: (turn) => story.advance(turn),
+                getChatIdentity: () => {
+                    try { return getContext().chatMetadata?.vc_f2?.id || ''; } catch { return ''; }
+                },
+                project: (job) => storyProjection.project(job),
+            }),
+        });
+        const shell = mountShell({
+            getContext,
+            openModels: (opener) => { if (!pageController.isOpen()) pageController.open(opener); },
+            openCharacters: (opener) => charactersPage?.open(opener),
+            openInbox: (opener) => inboxPage?.open(opener),
+            openStory: (opener) => storyPage?.open(opener),
+            openAccount: (opener) => dataRights?.open(opener),
+            openMemory: (opener) => memoryPage?.open(opener),
+        });
+        navigation.openInstance = (instance, opener) => shell?.openConversation?.(instance, opener);
+    }
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {
         console.warn('[vc-model-settings] 未找到扩展菜单挂载点 #extensionsMenu');

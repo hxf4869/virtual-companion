@@ -1,0 +1,609 @@
+/* F1 外壳。只在 body.vc-ui 下生效，挂在 vc-ui.css 之后。
+   宿主覆盖（定位，不改消息外观）：
+   - #vc-chat-nav、#top-bar：视觉隐藏，节点保留
+   - #top-settings-holder：只收起栏高和图标。抽屉内容是其中的 position:absolute，不能裁切容器
+   - #sheld / #chat / #send_form：压过 mobile-styles ≤1000px 的 100dvw、left、top
+   - iOS @supports 里 #sheld 的 100dvh - 36px
+   - 抽屉打开时把 #top-settings-holder 抬到外壳之上（只改 z-index）
+*/
+
+body.vc-ui {
+  overflow: hidden;
+}
+
+body.vc-ui #vc-chat-nav,
+body.vc-ui #top-bar {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+body.vc-ui #top-settings-holder {
+  height: 0 !important;
+  min-height: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+body.vc-ui #top-settings-holder .drawer-toggle {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  border: 0 !important;
+}
+
+body.vc-ui #top-settings-holder .drawer-content.openDrawer {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+body.vc-ui #vc-shell {
+  position: fixed;
+  z-index: 25;
+  left: 0;
+  right: 0;
+  top: 0;
+  box-sizing: border-box;
+  height: calc(100dvh - var(--vc-keyboard, 0px));
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--vc-canvas);
+  color: var(--vc-ink);
+  font-family: var(--vc-font);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* 宿主 body 上的变换会把 position:fixed 的标签栏钉在文档底部。改成相对外壳。 */
+body.vc-ui #vc-shell > .vc-tabbar {
+  position: absolute;
+}
+
+body.vc-ui #vc-shell > .vc-sidebar {
+  flex: none;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"] > .vc-sidebar,
+body.vc-ui #vc-shell[data-chrome="sidebar"] > .vc-tabbar,
+body.vc-ui #vc-shell[data-wide="1"] .vc-side-collapse {
+  display: none;
+}
+
+body.vc-ui .vc-shell-body {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+body.vc-ui .vc-shell-pages {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"] .vc-shell-pages,
+body.vc-ui #vc-shell[data-chrome="sidebar"]:not([data-destination="chat"]) .vc-shell-pages {
+  flex: 1;
+  width: auto;
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"] {
+  display: grid;
+  grid-template-columns: var(--vc-sidebar, 240px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"] > .vc-sidebar {
+  grid-column: 1;
+  grid-row: 1;
+  width: auto;
+  min-width: 0;
+  height: 100%;
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"] > .vc-shell-body {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"]:not([data-settings="page"]):not([data-list="hidden"]) > .vc-shell-body {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+body.vc-ui #vc-shell[data-wide="0"][data-chrome="sidebar"] {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+body.vc-ui #vc-shell[data-wide="0"][data-chrome="sidebar"] > .vc-sidebar:not(.is-collapsed) {
+  position: absolute;
+  z-index: 8;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 240px;
+  background: var(--vc-canvas);
+  box-shadow: 8px 0 24px color-mix(in srgb, var(--vc-ink) 12%, transparent);
+}
+
+body.vc-ui #vc-shell[data-destination="chat"][data-chrome="sidebar"] .vc-shell-pages {
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  height: 100%;
+}
+
+body.vc-ui #vc-shell[data-list="hidden"][data-destination="chat"] .vc-shell-pages {
+  display: none;
+}
+
+body.vc-ui .vc-shell-page {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--vc-canvas);
+}
+
+body.vc-ui .vc-shell-page.is-on {
+  display: flex;
+}
+
+body.vc-ui .vc-shell-page.is-enter {
+  animation: vc-shell-in var(--vc-dur-standard) var(--vc-spring);
+}
+
+body.vc-ui .vc-shell-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"] .vc-shell-scroll {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+}
+
+body.vc-ui .vc-shell-page .vc-large-title {
+  opacity: calc(1 - var(--vc-nav-p, 0));
+}
+
+body.vc-ui #vc-shell[data-wide="1"][data-destination="chat"] .vc-shell-page[data-page="chat"] {
+  box-shadow: inset -0.5px 0 var(--vc-separator);
+}
+
+body.vc-ui .vc-tab-lens {
+  transform: translateX(calc(var(--vc-tab, 0) * 100%));
+}
+
+body.vc-ui .vc-side-link {
+  position: relative;
+}
+
+body.vc-ui .vc-side-link .vc-badge,
+body.vc-ui .vc-tab .vc-badge {
+  position: absolute;
+}
+
+body.vc-ui .vc-sidebar:not(.is-collapsed) .vc-side-link .vc-badge {
+  position: static;
+  margin-left: auto;
+  top: auto;
+  left: auto;
+}
+
+body.vc-ui .vc-convo {
+  --vc-inset: 84px;
+  align-items: flex-start;
+}
+
+body.vc-ui .vc-convo-avatar-slot {
+  flex: none;
+}
+
+body.vc-ui .vc-convo-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--vc-radius-pill);
+  display: grid;
+  place-items: center;
+  background: var(--vc-fill);
+  color: var(--vc-ink);
+  font-weight: 600;
+  object-fit: cover;
+}
+
+body.vc-ui .vc-convo-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vc-space-xs);
+  min-width: 0;
+}
+
+body.vc-ui .vc-convo-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.vc-ui .vc-convo-inst {
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.vc-ui .vc-convo-time {
+  margin-left: auto;
+  color: var(--vc-ink-3);
+  font-size: var(--vc-fs-footnote);
+  flex: none;
+}
+
+body.vc-ui .vc-convo-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-subhead);
+  line-height: var(--vc-lh-subhead);
+}
+
+body.vc-ui .vc-convo-unread {
+  width: 8px;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-accent);
+  flex: none;
+}
+
+body.vc-ui .vc-shell-chat {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: auto;
+  max-width: none;
+  flex-direction: column;
+  background: var(--vc-surface);
+  overflow: hidden;
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"] .vc-shell-chat,
+body.vc-ui #vc-shell[data-chrome="tabbar"][data-chat="open"] .vc-shell-chat {
+  display: flex;
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"][data-chat="open"] .vc-shell-chat {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: env(safe-area-inset-top, 0px);
+  bottom: 0;
+  z-index: 6;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body.vc-ui.is-keyboard #vc-shell[data-chrome="tabbar"][data-chat="open"] .vc-shell-chat {
+  padding-bottom: 0;
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"][data-chat="open"] .vc-shell-chat.is-push {
+  animation: vc-shell-push var(--vc-dur-emphasized) var(--vc-spring);
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"] .vc-shell-chat.is-pop {
+  animation: vc-shell-pop var(--vc-dur-emphasized) var(--vc-spring);
+}
+
+body.vc-ui .vc-shell-pages,
+body.vc-ui .vc-shell-chat:not(.is-push):not(.is-pop) {
+  transform: none !important;
+}
+
+body.vc-ui .vc-shell-chat .vc-navbar {
+  flex: none;
+}
+
+body.vc-ui .vc-who-slot {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 168px);
+  display: flex;
+  justify-content: center;
+}
+
+body.vc-ui .vc-who {
+  max-width: 100%;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vc-space-xs);
+  padding: 0 12px 0 4px;
+  border: 0;
+  color: var(--vc-ink);
+  min-width: 0;
+}
+
+body.vc-ui .vc-who .vc-convo-avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+
+body.vc-ui .vc-who-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+body.vc-ui .vc-who-copy b,
+body.vc-ui .vc-who-copy small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.vc-ui .vc-who-copy b {
+  font-size: var(--vc-fs-subhead);
+  font-weight: 600;
+}
+
+body.vc-ui .vc-who-copy small {
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-caption);
+}
+
+body.vc-ui .vc-chat-back,
+body.vc-ui .vc-list-toggle {
+  display: none;
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"][data-chat="open"] .vc-chat-back,
+body.vc-ui #vc-shell[data-wide="0"][data-chrome="sidebar"][data-destination="chat"][data-chat="open"] .vc-chat-back {
+  display: grid;
+}
+
+body.vc-ui .vc-shell-chat-body {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+}
+
+body.vc-ui .vc-chat-empty {
+  display: none;
+  width: 100%;
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="closed"] .vc-chat-empty {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+}
+
+body.vc-ui #sheld {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  flex: 1 1 auto !important;
+  align-self: center;
+  box-sizing: border-box !important;
+  width: min(100%, 720px) !important;
+  max-width: min(100%, 720px) !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  transform: none !important;
+  resize: none !important;
+  z-index: auto !important;
+  background: var(--vc-surface);
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-chat="closed"] .vc-shell-chat > .vc-navbar {
+  display: none;
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-chat="closed"] .vc-shell-chat-body #sheld {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  max-width: 1px !important;
+  margin: 0 !important;
+  flex: none !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  pointer-events: none !important;
+}
+
+body.vc-ui #chat {
+  flex: 1 1 auto !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+body.vc-ui #chat .mes,
+body.vc-ui #chat .mes_block,
+body.vc-ui #chat .mes_text {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+body.vc-ui #chat .mes {
+  width: 100% !important;
+}
+
+body.vc-ui #chat .mes_block {
+  flex: 1 1 auto !important;
+  width: auto !important;
+}
+
+body.vc-ui #chat .mes_text {
+  overflow-wrap: anywhere !important;
+}
+
+body.vc-ui #send_form {
+  position: relative !important;
+  flex: none !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+}
+
+body.vc-ui .vc-shell-settings {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--vc-canvas);
+}
+
+body.vc-ui #vc-shell[data-settings="page"] .vc-shell-settings {
+  display: flex;
+}
+
+body.vc-ui #vc-shell[data-settings="page"] .vc-shell-pages,
+body.vc-ui #vc-shell[data-settings="page"] .vc-shell-chat {
+  display: none;
+}
+
+body.vc-ui .vc-settings-form {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+body.vc-ui .vc-settings-account {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--vc-radius-pill);
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--vc-fill);
+  color: var(--vc-ink);
+}
+
+body.vc-ui .vc-settings-form .vc-group .vc-cell {
+  --vc-inset: 58px;
+}
+
+body.vc-ui .vc-side-foot {
+  margin-top: auto;
+  display: flex;
+}
+
+body.vc-ui.vc-host-drawer #top-settings-holder {
+  z-index: 80 !important;
+}
+
+@media (max-width: 1000px) {
+  body.vc-ui #sheld,
+  body.vc-ui #chat,
+  body.vc-ui #send_form {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    width: min(100%, 720px) !important;
+    max-width: min(100%, 720px) !important;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  body.vc-ui #sheld {
+    height: auto !important;
+    max-height: none !important;
+    width: min(100%, 720px) !important;
+    max-width: min(100%, 720px) !important;
+    padding: 0 !important;
+  }
+}
+
+@keyframes vc-shell-in {
+  from { opacity: 0; transform: scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes vc-shell-push {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+
+@keyframes vc-shell-pop {
+  from { transform: none; }
+  to { transform: translateX(100%); }
+}
+
+body.vc-ui .vc-shell-scroll:has(.vc-large-title:not([data-shell-title])) > .vc-large-title[data-shell-title],
+body.vc-ui .vc-shell-scroll:has([data-vc-owned-title]) > .vc-large-title:not([data-vc-owned-title]) {
+  display: none;
+}
