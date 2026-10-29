@@ -316,7 +316,7 @@ function ensureFlyLayer(doc) {
     layer.style.inset = '0';
     layer.style.overflow = 'hidden';
     layer.style.pointerEvents = 'none';
-    layer.style.zIndex = '35';
+    layer.style.zIndex = 'var(--vc-z-fly)';
     doc.body.append(layer);
     return layer;
 }

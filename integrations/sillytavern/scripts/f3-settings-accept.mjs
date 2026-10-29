@@ -321,19 +321,40 @@ export async function sceneF3Settings(ctx) {
                 const tag = `${width}-${theme}`;
                 for (const [id] of DRAWERS) {
                     await openDrawer(page, id);
-                    if (width >= 744 && id === 'left-nav-panel') {
-                        const left = await page.locator('#left-nav-panel').evaluate((el) => getComputedStyle(el).left);
-                        if (left !== '240px') throw new Error(`宽屏抽屉定位不符：${left}`);
+                    const cover = await page.locator(`#${id}`).evaluate((el) => {
+                        const style = getComputedStyle(el);
+                        const sheld = document.getElementById('sheld');
+                        const shell = document.getElementById('vc-shell');
+                        const box = el.getBoundingClientRect();
+                        const x = Math.min(window.innerWidth - 12, Math.max(box.left + 24, 12));
+                        const y = Math.min(window.innerHeight - 12, Math.max(box.top + 96, 96));
+                        const hit = document.elementFromPoint(x, y);
+                        const sidebar = document.querySelector('#vc-shell .vc-sidebar');
+                        const sideHit = document.elementFromPoint(12, Math.min(240, window.innerHeight - 12));
+                        return {
+                            bg: style.backgroundColor,
+                            z: Number.parseFloat(style.zIndex),
+                            sheldZ: Number.parseFloat(sheld ? getComputedStyle(sheld).zIndex : ''),
+                            shellZ: Number.parseFloat(shell ? getComputedStyle(shell).zIndex : ''),
+                            w: box.width,
+                            x: box.x,
+                            left: style.left,
+                            hit: !!(hit && (hit === el || el.contains(hit))),
+                            sidebarClickable: !!(sidebar && sideHit && sidebar.contains(sideHit) && !el.contains(sideHit)),
+                        };
+                    });
+                    const covered = cover.bg && cover.bg !== 'rgba(0, 0, 0, 0)' && cover.z > cover.sheldZ && cover.z > cover.shellZ && cover.hit;
+                    if (!covered) {
+                        throw new Error(id === 'right-nav-panel' ? `角色卡页未盖住内容区 ${tag}` : `抽屉页未盖住内容区 ${id} ${tag}`);
+                    }
+                    if (width < 744 && (cover.x > 8 || cover.w < 360)) {
+                        throw new Error(id === 'right-nav-panel' ? `角色卡页未铺满 ${tag}` : `抽屉页未铺满 ${id} ${tag}`);
+                    }
+                    if (width >= 744) {
+                        if (cover.left !== '240px') throw new Error(`宽屏抽屉定位不符：${cover.left}`);
+                        if (!cover.sidebarClickable) throw new Error(`侧边栏被抽屉挡住 ${id} ${tag}`);
                     }
                     if (id === 'right-nav-panel') {
-                        const cover = await page.locator('#right-nav-panel').evaluate((el) => {
-                            const style = getComputedStyle(el);
-                            const sheld = getComputedStyle(document.getElementById('sheld'));
-                            const box = el.getBoundingClientRect();
-                            return { bg: style.backgroundColor, z: Number.parseFloat(style.zIndex), sheldZ: Number.parseFloat(sheld.zIndex), w: box.width, x: box.x };
-                        });
-                        if (!cover.bg || cover.bg === 'rgba(0, 0, 0, 0)' || !(cover.z > cover.sheldZ)) throw new Error(`角色卡页未盖住内容区 ${tag}`);
-                        if (width < 744 && (cover.x > 8 || cover.w < 360)) throw new Error(`角色卡页未铺满 ${tag}`);
                         await showRightView('list');
                         await shot(page, path.join(ctx.artifactsDir, `f3-${tag}-right-nav-panel.png`));
                         await showRightView('edit');

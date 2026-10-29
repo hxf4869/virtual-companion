@@ -18,7 +18,7 @@ export function flyAvatar(fromImg, toImg, { container, fromRect, toRect } = {}) 
     const clone = fromImg.cloneNode(true);
     Object.assign(clone.style, {
         position: host === fromImg.ownerDocument.body ? 'fixed' : 'absolute',
-        zIndex: '80',
+        zIndex: 'var(--vc-z-fly)',
         left: `${a.left - (host === fromImg.ownerDocument.body ? 0 : origin.left)}px`,
         top: `${a.top - (host === fromImg.ownerDocument.body ? 0 : origin.top)}px`,
         width: `${a.width}px`,

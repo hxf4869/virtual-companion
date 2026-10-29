@@ -29,10 +29,10 @@ import { mountStoryPage, mountStoryTab } from './story-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
 import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 import { createStoryContext } from './story-context.js';
-import { mountShell, registerShellTabs } from './shell.js';
+import { TAVERN_ENTRIES, mountShell, registerShellTabs } from './shell.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
-import { mountDrawerPages } from './drawers.js';
-export { openDrawerPage, openModelSettings, openAccountData } from './drawers.js';
+import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
+export { openAccountData, openDrawerPage, openModelSettings };
 
 function requestUrl(input) {
     if (typeof input === 'string') return input;
@@ -317,6 +317,16 @@ export async function init() {
             openStory: (opener) => storyPage?.open(opener),
             openAccount: (opener) => dataRights?.open(opener),
             openMemory: (opener) => memoryPage?.open(opener),
+            seams: {
+                surface: async () => ({
+                    openDrawerPage(id) {
+                        const entry = TAVERN_ENTRIES.find((item) => item.id === id);
+                        return openDrawerPage(entry ? entry.panel : id);
+                    },
+                    openModelSettings,
+                    openAccountData,
+                }),
+            },
         });
         navigation.openInstance = (instance, opener) => shell?.openConversation?.(instance, opener);
     }
