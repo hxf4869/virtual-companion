@@ -1,0 +1,188 @@
+name: vc-v2
+
+x-node: &node
+  image: virtual-companion-st:12eaee94
+  build:
+    context: ../../..
+    dockerfile: ops/deploy/v2/Dockerfile.st
+    args:
+      VC_PUBLIC_HOST: ${VC_PUBLIC_HOST:?set in /etc/virtual-companion/compose.env}
+  user: "1000:1000"
+  init: true
+  restart: unless-stopped
+  network_mode: service:ingress
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+
+x-go: &go
+  image: virtual-companion-runtime:12eaee94
+  build: {context: ../../../backend, dockerfile: Dockerfile}
+  user: "1000:1000"
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+
+services:
+  # A private proxy owns the shared loopback namespace. Only the existing
+  # HTTPS Nginx joins edge; none of this stack's ports are published.
+  ingress:
+    image: nginx:stable-alpine@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1
+    container_name: vc-v2-ingress
+    user: "101:101"
+    entrypoint: [nginx, -g, "daemon off;"]
+    volumes: ["./ingress.conf:/etc/nginx/nginx.conf:ro"]
+    tmpfs: [/tmp]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks:
+      edge: {ipv4_address: 172.24.0.2}
+      backend: {}
+    restart: unless-stopped
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+
+  db:
+    image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+    env_file: [{path: /etc/virtual-companion/db.env, format: raw}]
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./db-init.sh:/docker-entrypoint-initdb.d/10-vc-roles.sh:ro
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U vc_migrator -d vc"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+
+  migrate:
+    <<: *go
+    env_file: [{path: /etc/virtual-companion/migrate.env, format: raw}]
+    command: [migrate]
+    networks: [backend]
+    depends_on: {db: {condition: service_healthy}}
+    restart: "no"
+
+  bootstrap:
+    <<: *go
+    env_file: [{path: /etc/virtual-companion/bootstrap.env, format: raw}]
+    command: [bootstrap]
+    networks: [backend]
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    restart: "no"
+
+  minio:
+    image: virtual-companion-minio:v2
+    build:
+      context: /opt/virtual-companion/minio-tools
+      dockerfile: ../source/ops/deploy/v2/Dockerfile.minio
+    user: "1000:1000"
+    env_file: [{path: /etc/virtual-companion/minio.env, format: raw}]
+    command: [server, /data, --console-address, "127.0.0.1:9001"]
+    volumes: ["minio-data:/data"]
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+
+  minio-init:
+    image: virtual-companion-minio:v2
+    user: "1000:1000"
+    env_file: [{path: /etc/virtual-companion/minio-init.env, format: raw}]
+    command: [minio-init]
+    tmpfs: ["/mc-config:uid=1000,gid=1000,mode=0700"]
+    networks: [backend]
+    depends_on: {minio: {condition: service_healthy}}
+    restart: "no"
+
+  runtime:
+    <<: *go
+    env_file: [{path: /etc/virtual-companion/runtime.env, format: raw}]
+    network_mode: service:ingress
+    volumes: ["st-data:/vc-data:ro"]
+    depends_on:
+      ingress: {condition: service_started}
+      bootstrap: {condition: service_completed_successfully}
+      minio-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8095/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  embedding:
+    image: ${VC_EMBEDDING_IMAGE:?set in /etc/virtual-companion/compose.env}
+    user: "1000:1000"
+    entrypoint: [ollama]
+    command: [serve]
+    environment:
+      HOME: /tmp
+      OLLAMA_HOST: 127.0.0.1:11438
+      OLLAMA_MODELS: /models
+    volumes: ["${VC_EMBEDDING_MODELS_DIR:?set in /etc/virtual-companion/compose.env}:/models:ro"]
+    tmpfs: [/tmp]
+    network_mode: service:ingress
+    depends_on: {ingress: {condition: service_started}}
+    healthcheck:
+      test: [CMD-SHELL, "ollama list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+
+  memorycore:
+    <<: *node
+    env_file: [{path: /etc/virtual-companion/memorycore.env, format: raw}]
+    command: [node, /srv/vc-managed/memorycore-run/server.mjs, --dataRoot, /srv/vc-managed/memorycore-data, --port, "8754"]
+    volumes: ["memorycore-data:/srv/vc-managed/memorycore-data"]
+    depends_on:
+      runtime: {condition: service_healthy}
+      embedding: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8754/readyz',{headers:{authorization:'Bearer '+process.env.VC_MEMORYCORE_SERVICE_TOKEN}}).then(async r=>{const b=await r.json();process.exit(r.ok&&b.foundation&&b.storageReady&&b.businessReady?0:1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  st:
+    <<: *node
+    env_file: [{path: /etc/virtual-companion/st.env, format: raw}]
+    working_dir: /srv/vc-managed/st-run
+    command: [node, server.js, --configPath, /srv/vc-managed/config.yaml, --dataRoot, /srv/vc-managed/data, --port, "8752", --listen, "false", --browserLaunchEnabled, "false"]
+    volumes:
+      - st-data:/srv/vc-managed/data
+      - /srv/virtual-companion/config.yaml:/srv/vc-managed/config.yaml
+    depends_on:
+      runtime: {condition: service_healthy}
+      memorycore: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8752/auth/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+networks:
+  edge:
+    name: vc-v2-edge
+    ipam: {config: [{subnet: 172.24.0.0/24}]}
+  backend:
+    internal: true
+
+volumes:
+  db-data:
+  minio-data:
+  st-data:
+  memorycore-data:

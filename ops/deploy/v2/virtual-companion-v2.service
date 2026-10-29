@@ -1,0 +1,17 @@
+[Unit]
+Description=Owner Virtual Companion V2 Docker stack
+Requires=docker.service
+Wants=network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/virtual-companion/source
+ExecStart=/usr/bin/docker compose --env-file /etc/virtual-companion/compose.env -f ops/deploy/v2/compose.yaml up -d --no-build --pull never --wait --wait-timeout 180
+ExecStop=/usr/bin/docker compose --env-file /etc/virtual-companion/compose.env -f ops/deploy/v2/compose.yaml stop --timeout 45
+TimeoutStartSec=240
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

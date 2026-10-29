@@ -332,13 +332,30 @@
 - [ ] `V2-OWNER-NOTIFY`：SMTP 服务、发件凭据与收件地址；飞书 Webhook、签名密钥与目标群。
       2026-10-29 Owner 决定：邮箱与飞书两个渠道都接；凭据由 Owner 在主动陪伴页渠道设置中自行填写，不经聊天传递。
       真实发送验证需 Owner 单次授权后进行。
+      2026-10-29 部署配置 PASS：Owner 提供私有文件并授权导入；邮箱 SMTP 与飞书渠道经既有 Store 字段加密入库，
+      两条渠道与正文预览均保持关闭，投递记录为 0；临时导入文件已删除，原始输入只在服务器私有目录 root/0600 保管。
+      真实 SMTP 认证、邮件/飞书发送及手机接收 NOT_RUN，继续等待 Owner 对该次发送单独授权；不将配置成功视为送达成功。
 - [ ] `V2-OWNER-DEVICE`：目标手机及邮件 / 飞书客户端通知设置（A04、UI02 真机验收）。
+      2026-10-29 已提供远端 HTTPS 登录入口；390/360 宽、软键盘、返回手势、复杂卡及关闭网页后的真机通知仍为 NOT_RUN，需 Owner 本人操作。
 - [ ] `V2-OWNER-PROTECTION`：磁盘 / 卷保护、备份位置与保留期、密钥保管、ST 聊天保留期限（D01、D06）。
       W03 只读盘点确认本机 FileVault 关闭；正式数据所在磁盘 / 卷保护、实际备份与密钥保管配置仍待落实。
       先完成合成数据的权限与加密备份恢复验证，真实私人数据和正式 Key 接入保持待配置。
       2026-10-29 Owner 决定：不开启 FileVault，已知并接受磁盘明文（聊天、角色、记忆）在设备丢失/送修时可被读取的风险；
       不设定期备份，仅按需手动执行 `backup.sh`。
 - [ ] `V2-OWNER-DEPLOY`：服务器常驻部署的目标与授权（1A；授权前在本机开发与验证）。
+      2026-10-29 基础部署已上线（PASS），完整业务/人工验收未完成，故本条暂不勾选。Owner 授权由 Codex 部署到京东云服务器
+      （Docker Compose，复用现有 Nginx 与 Owner 提供的证书，公网 HTTPS 域名；域名与主机细节只记在服务器 `/etc/virtual-companion/`，不入公开仓库）。
+      - 部署配置见 `ops/deploy/v2/`（Compose、ST 镜像、私有 ingress、systemd 单元、Nginx 站点模板）。所有 V2 容器不发布宿主端口，
+        ST/Go/MemoryCore/embedding 共享网络命名空间并只监听 loopback，PG/MinIO 只在 Docker internal 网络；Go 运行角色为
+        NOSUPERUSER / NOBYPASSRLS；私有环境文件 root/0600；ST 启用 Host 白名单。
+      - 应用版本 main `12eaee94`；上游、vendor 与核心补丁校验 PASS；迁移、Owner 初始化、MinIO 建桶 PASS。
+      - 验收 PASS：HTTPS 证书、HTTP→HTTPS、未登录跳转登录、私有脚本 401、非法 Origin 403、登录限流 429；
+        `systemctl restart` 后 Go health、MemoryCore readyz 三项、ST 登录页恢复，Owner 与通知渠道配置保留；
+        外部端口只开放 HTTP/HTTPS 与原有 SSH，V2 内部端口均不可达。
+      - NOT_RUN：Owner 首次登录改密与 TOTP 绑定、模型页真实配置与前台发送、记忆提取/遗忘、剧情行动/回档、手机真机、真实通知、整机重启。
+      - 证书需手动续期（到期日记在服务器运维记录）。
+      - 待升级：部署版本早于 Q5（DECLARED 陪伴回合 409 修复）、T1（工具调用验证）、Q1、Q3、Q4 与 R2（bge 重排）；
+        R2 合入后按 `ops/deploy/v2/README.md` 升级，并先在服务器补齐 `/etc/virtual-companion/compose.env`。
 
 ## 当前状态（2026-10-21，V2 前实现快照）
 

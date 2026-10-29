@@ -1,0 +1,9 @@
+# Same releases and checksums as ../minio/Dockerfile, supplied locally because
+# this host's GitHub release downloads terminate with unexpected EOF.
+FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+COPY --chmod=0755 minio mc minio-entrypoint.sh minio-init.sh /usr/local/bin/
+RUN printf '%s\n' \
+    '7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f  /usr/local/bin/minio' \
+    '01f866e9c5f9b87c2b09116fa5d7c06695b106242d829a8bb32990c00312e891  /usr/local/bin/mc' \
+    | sha256sum -c -
+ENTRYPOINT ["/usr/local/bin/minio-entrypoint.sh"]
