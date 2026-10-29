@@ -74,6 +74,7 @@ export function mountModelSettings() {
         closing: false, // 关闭确认条
         toast: null,
         check: { busy: false, error: null, result: null }, // 连接检查（check-only，不改草稿）
+        budget: { known: false, insufficient: false },
         reauth: { open: false, busy: false, error: null, password: '', retry: null }, // 403 再验证；retry: 'provider' | 'bindings'
     };
 
@@ -104,6 +105,12 @@ export function mountModelSettings() {
         isDirty,
         onCatalogSaved(cb) {
             if (typeof cb === 'function') catalogSavedCallbacks.push(cb);
+        },
+        applyBudget(payload) {
+            state.budget = logic.interpretUsageBudget(payload);
+            if (state.phase === 'ready') render();
+            syncSendGate();
+            return state.budget;
         },
         root,
         _state: state, // 仅 harness / 测试观察用，不作为产品接口
@@ -420,7 +427,10 @@ export function mountModelSettings() {
 
     // ---------- 打开 / 关闭 ----------
 
-    function open() {
+    let returnFocus = null;
+
+    function open(opener) {
+        if (opener && typeof opener.focus === 'function') returnFocus = opener;
         overlay.hidden = false;
         document.body.classList.add('vcms-no-scroll');
         // 会话上下文已变更时，重新进入本页也视为显式重新加载（重新捕获快照）。
@@ -445,6 +455,9 @@ export function mountModelSettings() {
         overlay.hidden = true;
         state.closing = false;
         document.body.classList.remove('vcms-no-scroll');
+        const back = returnFocus;
+        returnFocus = null;
+        back?.focus?.();
     }
 
     function toast(message, kind) {
@@ -461,9 +474,52 @@ export function mountModelSettings() {
 
     // ---------- 渲染 ----------
 
+    let sendGateInstalled = false;
+    function installSendGate() {
+        if (sendGateInstalled || typeof document.addEventListener !== 'function') return;
+        sendGateInstalled = true;
+        // #send_but 在宿主里是 div。disabled 属性拦不住点击，也不被 Playwright 当成禁用。
+        document.addEventListener('click', (event) => {
+            if (!state.budget.insufficient) return;
+            const target = event.target;
+            const send = target?.closest?.('#send_but') || (target?.id === 'send_but' ? target : null);
+            if (!send) return;
+            event.preventDefault?.();
+            event.stopPropagation?.();
+        }, true);
+    }
+
+    function syncSendGate() {
+        installSendGate();
+        const send = document.querySelector('#send_but');
+        if (!send) return;
+        if (state.budget.insufficient) {
+            send.disabled = true;
+            send.title = logic.BUDGET_COPY;
+            // 宿主 #send_but 是 div。Playwright 只在 button 等角色上承认 aria-disabled。
+            if (!send.hasAttribute('role')) {
+                send.setAttribute('role', 'button');
+                send.setAttribute('data-vc-budget-role', '');
+            }
+            send.setAttribute('aria-disabled', 'true');
+            send.setAttribute('data-vc-budget-gate', '');
+            return;
+        }
+        if (!send.hasAttribute('data-vc-budget-gate')) return;
+        send.disabled = false;
+        send.removeAttribute('aria-disabled');
+        if (send.hasAttribute('data-vc-budget-role')) {
+            send.removeAttribute('role');
+            send.removeAttribute('data-vc-budget-role');
+        }
+        if (send.title === logic.BUDGET_COPY) send.removeAttribute('title');
+        send.removeAttribute('data-vc-budget-gate');
+    }
+
     function render() {
         overlay.innerHTML = renderShell();
         refreshFeedback();
+        syncSendGate();
     }
 
     function renderShell() {
@@ -474,7 +530,8 @@ export function mountModelSettings() {
                 ${state.reauth.open ? renderReauthBar() : ''}
                 ${state.phase === 'loading' ? renderSkeleton() : ''}
                 ${state.phase === 'load-error' ? renderLoadError() : ''}
-                ${state.phase === 'ready' ? renderContent() : ''}
+                ${state.budget.insufficient ? `<p class="vcms-callout vcms-callout-warning" role="status" id="vcms-budget">${logic.BUDGET_COPY}</p>` : ''}
+            ${state.phase === 'ready' ? renderContent() : ''}
             </div>
             ${renderFooter()}
         </div>
@@ -647,7 +704,7 @@ export function mountModelSettings() {
                 <div class="vcms-section-head">
                     <h3 class="vcms-section-title">模型配置</h3>
                     <div class="vcms-section-tools">
-                        <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="discover" ${state.discoverBusy ? 'disabled' : ''}>
+                        <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="discover" ${state.discoverBusy || state.budget.insufficient ? 'disabled' : ''}>
                             <i class="fa-solid fa-cloud-arrow-down ${state.discoverBusy ? 'fa-spin' : ''}"></i>
                             ${state.discoverBusy ? '拉取中…' : '拉取模型列表'}
                         </button>
@@ -795,6 +852,7 @@ export function mountModelSettings() {
         const isShared = m.boundPurposes?.length > 0;
         return `
         <div class="vcms-model-form" data-profile="${esc(m.profileKey)}">
+            ${logic.modelPriceMissing(m.pricing) ? `<p class="vcms-callout vcms-callout-warning" role="status" id="vcms-no-price">${logic.NO_PRICE_COPY}</p>` : ''}
             ${isShared ? `<div class="vcms-callout vcms-callout-info"><i class="fa-solid fa-share-nodes"></i><div>该配置正被这些用途使用：${m.boundPurposes.map((p) => esc(logic.purposeMeta(p).label)).join('、')}。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。</div></div>` : ''}
             <div class="vcms-grid2">
                 <div class="vcms-field">
@@ -980,7 +1038,8 @@ export function mountModelSettings() {
                 ${check.error ? `<div class="vcms-callout vcms-callout-danger" role="alert"><i class="fa-solid fa-triangle-exclamation"></i><div>${esc(check.error)}</div></div>` : ''}
                 ${resultBlock}
                 <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-primary" data-action="check-connection" ${check.busy ? 'disabled' : ''}>
+                    ${state.budget.insufficient ? `<p class="vcms-callout vcms-callout-warning" role="status">${logic.BUDGET_COPY}</p>` : ''}
+                    <button type="button" class="vcms-btn vcms-btn-primary" data-action="check-connection" ${check.busy || state.budget.insufficient ? 'disabled' : ''}>
                         <i class="fa-solid fa-plug-circle-check ${check.busy ? 'fa-spin' : ''}"></i>
                         ${check.busy ? '检查中…' : '检查连接'}
                     </button>
@@ -1191,6 +1250,22 @@ export function mountModelSettings() {
             });
             const ctxNote = overlay.querySelector('.vcms-model-form [data-note="ctx"]');
             if (ctxNote) ctxNote.hidden = !isBlank(model.contextWindowTokens);
+            const form = overlay.querySelector('.vcms-model-form');
+            if (form) {
+                let callout = form.querySelector('#vcms-no-price');
+                if (logic.modelPriceMissing(model.pricing)) {
+                    if (!callout) {
+                        callout = document.createElement('p');
+                        callout.className = 'vcms-callout vcms-callout-warning';
+                        callout.id = 'vcms-no-price';
+                        callout.setAttribute('role', 'status');
+                        callout.textContent = logic.NO_PRICE_COPY;
+                        form.prepend(callout);
+                    }
+                } else if (callout) {
+                    callout.remove();
+                }
+            }
         }
 
         const saveDisabled = anyError || state.saving;
@@ -1216,6 +1291,13 @@ export function mountModelSettings() {
 
     // ---------- 事件 ----------
 
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Escape' || overlay.hidden || ev.defaultPrevented) return;
+        if (document.querySelector('dialog[open]')) return;
+        ev.preventDefault();
+        requestClose();
+    });
+
     overlay.addEventListener('click', (ev) => {
         const actionEl = ev.target.closest('[data-action]');
         if (!actionEl || !overlay.contains(actionEl)) return;
@@ -1223,11 +1305,6 @@ export function mountModelSettings() {
     });
 
     overlay.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Escape') {
-            ev.stopPropagation();
-            requestClose();
-            return;
-        }
         if (ev.key === 'Enter' && ev.target?.id === 'vcms-reauth-password') {
             ev.preventDefault();
             doReauth();
@@ -1653,6 +1730,7 @@ export function mountModelSettings() {
     }
 
     async function doDiscover() {
+        if (state.budget.insufficient) return;
         if (state.discoverBusy) return;
         state.check = { busy: false, error: null, result: null }; // 拉取会改草稿模型集合，旧检查结果失效
         const check = logic.validateProviderForm(state.draft, { isNew: state.creatingNew });
@@ -1715,7 +1793,7 @@ export function mountModelSettings() {
      * 不发起生成调用，也不自动修改草稿；「加入列表」由用户显式选择。
      */
     async function doCheckConnection() {
-        if (state.check.busy) return;
+        if (state.check.busy || state.budget.insufficient) return;
         const check = logic.validateProviderForm(state.draft, { isNew: state.creatingNew });
         if (check.errors.baseUrl || check.errors.protocol) {
             state.check = { busy: false, error: '请先填写正确的 Base URL 与协议，再检查连接。', result: null };

@@ -1,6 +1,7 @@
 // UI-P01：只给原生聊天增加导航、身份摘要和状态条，不接管生成、消息 DOM 或卡内 iframe。
 import { storyRequest } from './api.js';
 import { mountInstancePage } from './instance-page.js';
+import { BUDGET_COPY } from './model-logic.js';
 import { requestOpenMemory } from './memory-page.js';
 
 export const CHAT_EMPTY_COPY = '这段会话还没有消息。';
@@ -66,7 +67,9 @@ function fallbackOpenCharacters(opener) {
     charactersPage.open(opener);
 }
 
-export function mountChatShell({ getContext, openModels, openCharacters } = {}) {
+export function mountChatShell({
+    getContext, openModels, openCharacters, openInbox, openStory, openAccount, openMemory,
+} = {}) {
     ensureChatStyles();
     if (document.querySelector('#vc-chat-nav')) return;
     document.body.classList.add('vc-chat-shell');
@@ -88,9 +91,10 @@ export function mountChatShell({ getContext, openModels, openCharacters } = {}) 
     const status = document.createElement('div');
     status.id = 'vc-chat-status';
     nav.append(identity, status);
-    function button(label, icon, action) {
+    function button(label, icon, navName, action) {
         const control = document.createElement('button');
         control.type = 'button';
+        control.setAttribute('data-nav', navName);
         const glyph = document.createElement('i');
         glyph.className = `fa-solid ${icon}`;
         glyph.setAttribute('aria-hidden', 'true');
@@ -99,19 +103,68 @@ export function mountChatShell({ getContext, openModels, openCharacters } = {}) 
         nav.append(control);
         return control;
     }
-    button('聊天', 'fa-comments', () => document.querySelector('#send_textarea')?.focus());
-    button('角色', 'fa-address-card', (opener) => {
+    const moreDialog = document.createElement('dialog');
+    moreDialog.id = 'vc-chat-more';
+    moreDialog.setAttribute('aria-label', '更多');
+    let moreOpener = null;
+    function closeMore() {
+        if (moreDialog.open) moreDialog.close();
+        moreOpener?.focus?.();
+    }
+    function openMore(opener) {
+        moreOpener = opener;
+        if (!moreDialog.open) moreDialog.showModal();
+        moreDialog.querySelector('button')?.focus?.();
+    }
+    function moreItem(label, action) {
+        const control = document.createElement('button');
+        control.type = 'button';
+        control.textContent = label;
+        control.addEventListener('click', () => {
+            closeMore();
+            action(control);
+        });
+        moreDialog.append(control);
+        return control;
+    }
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.textContent = '返回';
+    back.addEventListener('click', closeMore);
+    moreDialog.append(back);
+    const openMemoryPage = (opener) => (typeof openMemory === 'function' ? openMemory(opener) : requestOpenMemory(opener));
+    moreItem('记忆', openMemoryPage);
+    moreItem('主动陪伴', (opener) => openInbox?.(opener));
+    moreItem('剧情', (opener) => openStory?.(opener));
+    moreItem('账户', (opener) => openAccount?.(opener));
+    moreDialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeMore();
+    });
+    button('聊天', 'fa-comments', 'chat', () => document.querySelector('#send_textarea')?.focus());
+    button('角色', 'fa-address-card', 'characters', (opener) => {
         globalThis.dispatchEvent(new CustomEvent('vc-open-characters', { detail: { opener } }));
         (typeof openCharacters === 'function' ? openCharacters : fallbackOpenCharacters)(opener);
     });
-    button('模型设置', 'fa-microchip', () => openModels?.());
-    document.body.append(nav);
+    button('记忆', 'fa-brain', 'memory', openMemoryPage);
+    button('主动陪伴', 'fa-bell', 'inbox', (opener) => {
+        globalThis.dispatchEvent(new CustomEvent('vc-view-inbox', { detail: { opener } }));
+        openInbox?.(opener);
+    });
+    button('剧情', 'fa-book-open', 'story', (opener) => openStory?.(opener));
+    button('模型', 'fa-microchip', 'models', (opener) => openModels?.(opener));
+    button('账户', 'fa-user-shield', 'account', (opener) => openAccount?.(opener));
+    button('更多', 'fa-ellipsis', 'more', openMore);
+    document.body.append(nav, moreDialog);
     let online = true;
     let inboxCount = 0;
+    let budgetInsufficient = false;
     const updateHeight = () => {
         const rect = nav.getBoundingClientRect?.();
-        if (!rect) return;
-        document.body.style.setProperty('--vc-chat-nav-height', `${rect.height}px`);
+        if (rect) document.body.style.setProperty('--vc-chat-nav-height', `${rect.height}px`);
+        const statusRect = status.getBoundingClientRect?.();
+        const space = status.childNodes?.length && statusRect ? statusRect.height : 0;
+        document.body.style.setProperty('--vc-chat-status-space', `${space}px`);
     };
     if (typeof ResizeObserver === 'function') {
         const resizeObserver = new ResizeObserver(updateHeight);
@@ -140,6 +193,14 @@ export function mountChatShell({ getContext, openModels, openCharacters } = {}) 
             offline.textContent = CHAT_OFFLINE_COPY;
             status.append(offline);
         }
+        if (budgetInsufficient) {
+            const budget = document.createElement('p');
+            budget.id = 'vc-chat-budget';
+            budget.className = 'vc-chat-offline';
+            budget.setAttribute('role', 'status');
+            budget.textContent = BUDGET_COPY;
+            status.append(budget);
+        }
         if (inboxCount > 0) {
             const row = document.createElement('div');
             row.className = 'vc-chat-inbox';
@@ -151,7 +212,7 @@ export function mountChatShell({ getContext, openModels, openCharacters } = {}) 
             view.setAttribute('data-action', 'view-inbox');
             view.textContent = '查看';
             view.addEventListener('click', () => {
-                globalThis.dispatchEvent(new CustomEvent('vc-view-inbox', { detail: { count: inboxCount } }));
+                globalThis.dispatchEvent(new CustomEvent('vc-view-inbox', { detail: { count: inboxCount, opener: view } }));
             });
             row.append(label, view);
             status.append(row);
@@ -184,6 +245,10 @@ export function mountChatShell({ getContext, openModels, openCharacters } = {}) 
         },
         setInboxEvents(events, scope) {
             inboxCount = pendingInboxWrites(events, scope).length;
+            paintStatus();
+        },
+        setBudgetInsufficient(on) {
+            budgetInsufficient = on === true;
             paintStatus();
         },
         refresh,

@@ -5,6 +5,7 @@ import * as api from '../extension/vc-model-settings/api.js';
 import {
     IMPORT_FAILED_COPY, UNSAVED_INSTANCE_COPY,
     inspectCharacterFile, renderInstancePage, createInstancePage, cardsFromContext, bindingsFromContext,
+    importNativeCharacterFile,
 } from '../extension/vc-model-settings/instance-page.js';
 
 const prefs = {
@@ -126,6 +127,75 @@ test('导入失败保持原模板，文件内容不进页面', async () => {
     assert.equal(page.state.importError, IMPORT_FAILED_COPY);
     assert.deepEqual(page.state.cards.map((item) => item.name), ['澄夏']);
     assert.equal(renderInstancePage(page.state).includes('不可出现的人设原文'), false);
+});
+
+test('角色卡导入成功后写回 vc_character_ref，已有引用不覆盖', async () => {
+    const characters = [{ avatar: 'old.png', name: '澄夏', data: { extensions: { vc_character_ref: 'card-1' } } }];
+    const writes = [];
+    let seen;
+    const page = createInstancePage({
+        loadRelationships: async () => [],
+        getCards: () => [{ ...card }],
+        importCard: (spec) => importNativeCharacterFile({
+            ...spec,
+            getContext: () => ({
+                characters,
+                writeExtensionField: async (id, key, value) => {
+                    writes.push({ id, key, value });
+                    characters[id].data = { ...characters[id].data, extensions: { ...characters[id].data?.extensions, [key]: value } };
+                },
+            }),
+            loadNative: async () => ({
+                processDroppedFiles: async (files) => {
+                    seen = files[0];
+                    characters.push({ avatar: 'new.png', name: '合成卡', description: '沿湖', data: { extensions: {} } });
+                },
+            }),
+            newRef: () => 'ref-new',
+        }),
+    });
+    await page.open();
+    await page.importFile({ name: '合成.json', bytes: new TextEncoder().encode(JSON.stringify({ name: '合成卡', description: '沿湖' })) });
+    assert.equal(page.state.importError, '');
+    assert.deepEqual(page.state.cards.map((item) => item.name), ['澄夏', '合成卡']);
+    assert.equal(page.state.cards[1].characterRef, 'ref-new');
+    assert.equal(seen.type, 'application/json');
+    assert.equal(seen.name, '合成.json');
+    assert.deepEqual(writes, [{ id: 1, key: 'vc_character_ref', value: 'ref-new' }]);
+
+    const kept = [];
+    const existing = [{ avatar: 'kept.png', name: '已有', data: { extensions: { vc_character_ref: 'ref-kept' }, description: '不改' } }];
+    const again = await importNativeCharacterFile({
+        name: '已有.json',
+        format: 'json',
+        bytes: new TextEncoder().encode(JSON.stringify({ name: '已有' })),
+        getContext: () => ({ characters: existing, writeExtensionField: async () => { kept.push('write'); } }),
+        loadNative: async () => ({
+            processDroppedFiles: async () => {
+                existing.push({ avatar: 'added.png', name: '已有', data: { extensions: { vc_character_ref: 'ref-kept' } } });
+            },
+        }),
+        newRef: () => 'should-not-run',
+    });
+    assert.equal(again.characterRef, 'ref-kept');
+    assert.deepEqual(kept, []);
+});
+
+test('原生导入未加入角色时不改模板', async () => {
+    const page = createInstancePage({
+        loadRelationships: async () => [],
+        getCards: () => [{ ...card }],
+        importCard: (spec) => importNativeCharacterFile({
+            ...spec,
+            getContext: () => ({ characters: [], writeExtensionField: async () => { throw new Error('should not write'); } }),
+            loadNative: async () => ({ processDroppedFiles: async () => { throw new Error('秘密人设原文'); } }),
+        }),
+    });
+    await page.open();
+    await page.importFile({ name: '合成.json', bytes: new TextEncoder().encode(JSON.stringify({ name: '新卡', description: '秘密人设原文' })) });
+    assert.equal(page.state.importError, IMPORT_FAILED_COPY);
+    assert.deepEqual(page.state.cards.map((item) => item.name), ['澄夏']);
+    assert.equal(renderInstancePage(page.state).includes('秘密人设原文'), false);
 });
 
 test('未保存时不能切换，放弃后才切换，Escape 语义由取消保持草稿', async () => {

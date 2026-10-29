@@ -399,6 +399,51 @@ export const KEY_STATE_LABELS = {
 
 // ---------- 计价显示（未知 ≠ 免费） ----------
 
+export const NO_PRICE_COPY = '未配置单价，无法发送';
+export const BUDGET_COPY = '当月可用额度不足，测试与发送暂不可用。设置仍可保存。';
+
+function pricePresent(value) {
+    return value !== '' && value !== null && value !== undefined && !(typeof value === 'number' && !Number.isFinite(value));
+}
+
+/** 输入或输出单价缺失即 W11 的 NO_PRICE。0 是已配置的价格，不是缺失。 */
+export function modelPriceMissing(pricing) {
+    if (!pricing || typeof pricing !== 'object') return true;
+    return !pricePresent(pricing.inputPerMillionTokens) || !pricePresent(pricing.outputPerMillionTokens);
+}
+
+/**
+ * GET /api/v1/auth/admin/usage 只有用途花费，没有剩余额度。
+ * 真实摘要必须返回 known:false，不能用花费反推「预算不足」。
+ */
+export function interpretUsageBudget(payload) {
+    if (!payload || typeof payload !== 'object') return { known: false, insufficient: false };
+    const reason = payload.reason || payload.details?.reason;
+    if (payload.budgetInsufficient === true || reason === 'NO_BUDGET' || reason === 'OVER_LIMIT') {
+        return { known: true, insufficient: true };
+    }
+    return { known: false, insufficient: false };
+}
+
+const GENERATE_REFUSAL = {
+    '未配置预算，本次生成未发送': 'NO_BUDGET',
+    '本月额度已用完，本次生成未发送': 'OVER_LIMIT',
+};
+
+/** 插件拒绝体没有 reason 字段，只带这两句中文。缺单价不是预算不足。 */
+export function budgetSignalFromGenerateBody(body) {
+    const error = body?.error;
+    if (!error || typeof error !== 'object' || error.code !== 'VC_USAGE_REFUSED') return null;
+    const reason = error.reason || error.details?.reason || GENERATE_REFUSAL[error.message];
+    if (reason !== 'NO_BUDGET' && reason !== 'OVER_LIMIT') return null;
+    return { reason };
+}
+
+export function isGenerateRequestUrl(url) {
+    const value = String(url || '');
+    return value.includes('/api/backends/') && value.includes('/generate');
+}
+
 export function formatPricing(pricing) {
     if (!pricing) return '未配置';
     const { currency, inputPerMillionTokens, outputPerMillionTokens, verifiedOn } = pricing;

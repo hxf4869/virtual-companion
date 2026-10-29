@@ -112,6 +112,10 @@ test('聊天壳挂载空会话、断线、待写入条，不拉 inbox，记忆�
     assert.equal(document.body.textContent.includes('另一条也不可见'), false);
     shell.setChannel({ online: true });
     assert.equal(document.body.textContent.includes(CHAT_OFFLINE_COPY), false);
+    shell.setBudgetInsufficient(true);
+    assert.match(document.querySelector('#vc-chat-budget')?.textContent || '', /当月可用额度不足/);
+    shell.setBudgetInsufficient(false);
+    assert.equal(document.querySelector('#vc-chat-budget'), null);
     buttonByText(document, '记忆').click();
     assert.equal(memoryEvents.length, 1);
     assert.equal(memoryEvents[0].opener, buttonByText(document, '记忆'));

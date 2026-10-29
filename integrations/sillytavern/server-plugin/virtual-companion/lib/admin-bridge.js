@@ -13,13 +13,15 @@
 
 import { writeErrorResponse } from './errors.js';
 import { log } from './log.js';
+import { INBOX_UI_ROUTES } from './inbox-ui-routes.js';
+import { STORY_UI_ROUTES } from './story-ui-routes.js';
 
 // 路径段字符集：字母数字与有限符号；显式排除 %、/、..，防编码穿越。
 const SEG = '[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,200})';
 
 // 白名单：模型设置页真实所需 + 既有会话/登录。新增路径在这里加一行并注明消费者；
 // 权限判断全部由 Go 决定，本桥不做角色判定。
-export const ADMIN_BRIDGE_ROUTES = [
+const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/relationships$/, where: 'W08 记忆页角色实例' },
     { method: 'GET', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/memories$/, where: 'W08 记忆列表' },
     { method: 'GET', path: /^\/api\/v1\/memories\/[1-9][0-9]*(?:\/evidence)?$/, where: 'W08 记忆详情与证据' },
@@ -45,7 +47,35 @@ export const ADMIN_BRIDGE_ROUTES = [
     { method: 'POST', path: new RegExp(`^/api/v1/admin/providers/${SEG}/models/discover$`), where: '拉取模型列表（辅助，显式操作）' },
     { method: 'GET', path: /^\/api\/v1\/admin\/model-purposes$/, where: '用途绑定列表' },
     { method: 'PUT', path: new RegExp(`^/api/v1/admin/model-purposes/${SEG}$`), where: '保存用途绑定' },
+    { method: 'POST', path: /^\/api\/v1\/auth\/password$/, where: 'W15 账户改密' },
+    { method: 'GET', path: /^\/api\/v1\/auth\/sessions$/, where: 'W15 当前会话列表' },
+    { method: 'DELETE', path: /^\/api\/v1\/auth\/sessions\/[1-9][0-9]*$/, where: 'W15 撤销单个会话' },
+    { method: 'POST', path: /^\/api\/v1\/auth\/sessions\/revoke-all$/, where: 'W15 撤销全部会话' },
+    { method: 'POST', path: /^\/api\/v1\/auth\/logout$/, where: 'W15 登出当前会话' },
+    { method: 'POST', path: /^\/api\/v1\/admin\/accounts\/[1-9][0-9]*\/authenticator-reset$/, where: 'W15 重置验证器（响应不回密钥）' },
+    // 聊天页常量在扩展里。插件运行时不能跨目录导入，这里按同一路径并入。
+    { method: 'GET', path: /^\/api\/v1\/inbox$/, where: 'W15 聊天页待写入会话条' },
+    { method: 'PATCH', path: /^\/api\/v1\/relationships\/[1-9][0-9]*$/, where: 'W15 陪伴实例名称' },
 ];
+
+function routeKey(route) {
+    return `${route.method} ${String(route.path.source).replace(/\\\//g, '/')}`;
+}
+
+function mergeRoutes(base, extra) {
+    const seen = new Set(base.map(routeKey));
+    const out = base.slice();
+    for (const route of extra) {
+        const key = routeKey(route);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(route);
+    }
+    return out;
+}
+
+// inbox 的 claim / ack 不在 INBOX_UI_ROUTES 中，合并后仍然拒绝。
+export const ADMIN_BRIDGE_ROUTES = mergeRoutes(ADMIN_BRIDGE_BASE, [...INBOX_UI_ROUTES, ...STORY_UI_ROUTES]);
 
 const FORWARD_HEADERS = ['x-vc-expected-account-id', 'x-vc-expected-session-id'];
 const FORWARD_COOKIES = new Set(['vc_session', 'vc_csrf']);
