@@ -220,10 +220,11 @@ export function resolveForegroundProjection(purposes, providers) {
     const pinned = {};
     if (params.temperature !== undefined && params.temperature !== null) pinned.temperature = Number(params.temperature);
     if (params.topP !== undefined && params.topP !== null) pinned.topP = Number(params.topP);
-    // 钉住推理等级仅对 custom 源两协议生效：ST 对 custom 源始终发送 reasoning_effort
-    // （openai.js getReasoningEffort 原样回传 oai_settings.reasoning_effort，默认 'auto'），
-    // Go 钉住且请求值不同会被服务端 409 VC_NATIVE_DRIFT。Anthropic 的推理由原生 thinking
-    // 预算承载，服务端对该协议也跳过该字段核对，不在此钉住。
+    // 钉住推理等级仅对 custom 源两协议生效。投影把钉住值写入 oai_settings，界面显示该值；
+    // ST getReasoningEffort 对 CUSTOM 会把 max 收成 high、min 收成 low（openai.js，
+    // gpt-6-astra 除外）。发送前 restoreManagedReasoningEffort 按界面值写回，
+    // 服务端仍按钉住值 409 VC_NATIVE_DRIFT。Anthropic 的推理由原生 thinking 预算承载，
+    // 服务端对该协议跳过该字段核对，不在此钉住。
     if (provider.protocol !== 'ANTHROPIC_MESSAGES'
         && params.reasoningEffort !== undefined && params.reasoningEffort !== null && params.reasoningEffort !== '') {
         pinned.reasoningEffort = String(params.reasoningEffort);
@@ -342,6 +343,23 @@ export function rewriteGenerateData(generateData, decision, scope) {
     const marker = settingsMarkerFor(decision, scope);
     if (decision.source === 'custom') generateData.custom_url = marker;
     else generateData.reverse_proxy = marker;
+    return true;
+}
+
+/**
+ * SETTINGS_READY：受管 custom 源把 generateData.reasoning_effort 恢复成界面值。
+ * 受管资格与 rewriteGenerateData 相同（decision.eligible）；custom 用已有的
+ * decision.source（PROTOCOL_TO_SOURCE），不另建判断。
+ * oai_settings.reasoning_effort 为 auto 或空时不写入，保持 ST 对 auto 留下的 undefined。
+ * 写入界面值而不是 Go 钉住值：手改成与钉住值不同的等级会原样进入请求，由服务端拒绝。
+ * @returns {boolean} 是否写入
+ */
+export function restoreManagedReasoningEffort(generateData, decision, settings) {
+    if (!decision?.eligible || decision.source !== 'custom') return false;
+    if (!generateData || typeof generateData !== 'object') return false;
+    const ui = settings?.reasoning_effort;
+    if (ui === undefined || ui === null || ui === '' || ui === 'auto') return false;
+    generateData.reasoning_effort = String(ui);
     return true;
 }
 
@@ -601,6 +619,9 @@ export function createProjectionController(host) {
             const ctx = safeContext();
             const scope = buildScope(characterKeyOf(ctx ?? {}), chatKeyOf(ctx?.chatId), runState.runId);
             rewriteGenerateData(generateData, state.decision, scope);
+            // getReasoningEffort 已把 CUSTOM 的 max/min 收成 high/low；这里按界面值写回。
+            // 注册早于 memory.attach / attachCompanionIdentity / story.install，后三者不改该字段。
+            restoreManagedReasoningEffort(generateData, state.decision, ctx?.chatCompletionSettings);
         } catch {
             // emit 会吞 handler 异常；此处再自保一次，绝不打断生成链。
         }

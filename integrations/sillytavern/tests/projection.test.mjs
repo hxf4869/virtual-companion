@@ -20,6 +20,7 @@ import {
     diffProjection,
     driftSummary,
     rewriteGenerateData,
+    restoreManagedReasoningEffort,
     bannerModel,
     ineligibleReasonLabel,
     NATIVE_REASONING_EFFORTS,
@@ -453,6 +454,63 @@ test('rewriteGenerateData：custom 源写 custom_url；claude 源写 reverse_pro
     const untouched = { chat_completion_source: 'custom', custom_url: 'https://plain.example/v1' };
     rewriteGenerateData(untouched, { eligible: false }, 'x');
     assert.equal(untouched.custom_url, 'https://plain.example/v1');
+});
+
+function managedCustomDecision() {
+    const { purposes } = catalogFixture();
+    return resolveForegroundProjection(purposes, [{
+        ...catalogFixture().providers[0],
+        models: [{
+            ...catalogFixture().providers[0].models[0],
+            generationParams: { temperature: 0.8, topP: 0.95, reasoningEffort: 'max' },
+        }],
+    }]);
+}
+
+test('受管 custom：ST 已把 max 映射成 high 时，恢复为界面值 max', () => {
+    const decision = managedCustomDecision();
+    assert.equal(decision.eligible, true);
+    assert.equal(decision.source, 'custom');
+    assert.equal(decision.pinned.reasoningEffort, 'max');
+    // getReasoningEffort 对 CUSTOM 把 max 收成 high 之后，generate_data 里已是 high。
+    const data = { chat_completion_source: 'custom', reasoning_effort: 'high', custom_url: 'keep' };
+    assert.equal(restoreManagedReasoningEffort(data, decision, { reasoning_effort: 'max' }), true);
+    assert.equal(data.reasoning_effort, 'max');
+    assert.equal(data.custom_url, 'keep');
+    // 写入的是界面值，不是钉住值：手改成 high 必须原样留下，交给服务端 409。
+    const handEdited = { reasoning_effort: 'low' };
+    assert.equal(restoreManagedReasoningEffort(handEdited, decision, { reasoning_effort: 'high' }), true);
+    assert.equal(handEdited.reasoning_effort, 'high');
+});
+
+test('受管 custom：界面为 auto 时不写入 reasoning_effort', () => {
+    const decision = managedCustomDecision();
+    const data = { chat_completion_source: 'custom', reasoning_effort: undefined, custom_url: 'keep' };
+    assert.equal(restoreManagedReasoningEffort(data, decision, { reasoning_effort: 'auto' }), false);
+    assert.equal(data.reasoning_effort, undefined);
+    assert.equal(data.custom_url, 'keep');
+});
+
+test('非受管：不改 reasoning_effort', () => {
+    const unmanaged = { chat_completion_source: 'custom', reasoning_effort: 'high', custom_url: 'https://plain.example/v1' };
+    assert.equal(
+        restoreManagedReasoningEffort(unmanaged, { eligible: false, reason: 'no-binding' }, { reasoning_effort: 'max' }),
+        false,
+    );
+    assert.equal(unmanaged.reasoning_effort, 'high');
+    assert.equal(unmanaged.custom_url, 'https://plain.example/v1');
+
+    const { purposes, providers } = catalogFixture();
+    const claude = resolveForegroundProjection(purposes, [{
+        ...providers[0],
+        protocol: 'ANTHROPIC_MESSAGES',
+        models: [{ ...providers[0].models[0], generationParams: { reasoningEffort: 'max' } }],
+    }]);
+    assert.equal(claude.eligible, true);
+    assert.equal(claude.source, 'claude');
+    const claudeData = { chat_completion_source: 'claude', reasoning_effort: 'high' };
+    assert.equal(restoreManagedReasoningEffort(claudeData, claude, { reasoning_effort: 'max' }), false);
+    assert.equal(claudeData.reasoning_effort, 'high');
 });
 
 test('生命周期串测：READY 多轮 + CHAT_CHANGED 后 scope 变化符合冻结判据', () => {

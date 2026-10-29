@@ -758,6 +758,43 @@ test('端到端：Chat/Anthropic 约束后交回原生链（URL/凭据/model/输
     }
 });
 
+test('钉住 reasoningEffort=max：请求 max 放行；请求 high 仍 VC_NATIVE_DRIFT', async () => {
+    const captures = [];
+    const model = baseModel({ generationParams: { reasoningEffort: 'max' } });
+    const { server: go, port: goPort } = await startServer(goStub({
+        resolvePayload: () => resolveOk({
+            provider: { protocol: 'OPENAI_CHAT_COMPLETIONS', endpointUrl: 'http://127.0.0.1:9/v1' },
+            model,
+        }),
+        captures,
+    }));
+    const bridge = createGenerateBridge({
+        config: { goBaseUrl: `http://127.0.0.1:${goPort}`, serviceToken: 'T'.repeat(40), timeoutMs: 5000 },
+        continuationStore: new ToolContinuationStore(), counter,
+    });
+    try {
+        const okBody = baseBody({ custom_url: MARKER, reasoning_effort: 'max', max_tokens: 500 });
+        const resOk = mockRes();
+        assert.equal(
+            await bridge.interceptGenerate(mockReq({ body: okBody, headers: { cookie: 'vc_session=s1' } }), resOk),
+            false,
+            '请求 max 与钉住值一致，Chat 交回原生链',
+        );
+        assert.equal(okBody.reasoning_effort, 'max');
+
+        const highBody = baseBody({ custom_url: MARKER, reasoning_effort: 'high', max_tokens: 500 });
+        const resHigh = mockRes();
+        assert.equal(await bridge.interceptGenerate(mockReq({ body: highBody, headers: { cookie: 'vc_session=s1' } }), resHigh), true);
+        assert.equal(resHigh.statusCode, 409);
+        const err = JSON.parse(resHigh.body()).error;
+        assert.equal(err.code, 'VC_NATIVE_DRIFT');
+        assert.deepEqual(err.driftedFields, ['reasoning_effort']);
+        assert.equal(highBody.reasoning_effort, 'high', '拒绝时不改写请求');
+    } finally {
+        go.close();
+    }
+});
+
 test('端到端 Anthropic：reverse_proxy/proxy_password/model 服务端覆写（不回浏览器）', async () => {
     const captures = [];
     const { server: go, port: goPort } = await startServer(goStub({
