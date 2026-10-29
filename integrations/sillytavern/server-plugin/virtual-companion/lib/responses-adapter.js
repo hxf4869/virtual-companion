@@ -16,6 +16,7 @@
 
 import { BridgeError } from './errors.js';
 import { log } from './log.js';
+import { absorbStreamAbort } from './stream-abort.js';
 
 const RESPONSES_PARAM_ALLOWLIST = new Set([
     'temperature', 'top_p', 'top_logprobs', 'truncation', 'parallel_tool_calls',
@@ -489,6 +490,7 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
         if (onRoundFinished) await onRoundFinished({ ok: false, reasoningItems: [], calls: [], finishReason: 'error', usage: undefined });
     };
 
+    absorbStreamAbort(upstream?.body);
     try {
         for await (const bytes of upstream.body) {
             for (const data of buffer.push(bytes)) {

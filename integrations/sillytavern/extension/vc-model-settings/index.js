@@ -32,7 +32,9 @@ import { createStoryContext } from './story-context.js';
 import { TAVERN_ENTRIES, mountShell, registerShellTabs } from './shell.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
+import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
 export { openAccountData, openDrawerPage, openModelSettings };
+export { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget };
 
 function requestUrl(input) {
     if (typeof input === 'string') return input;
@@ -63,6 +65,7 @@ function installGenerateBudgetWatch(onSignal) {
 function mountVcUi() {
     if (!readVcUiFlag()) return;
     enableVcUi();
+    mountChatView({ getContext });
     if (!document.head) return;
     for (const [id, file] of [
         ['vc-ui-css', './vc-ui.css'],
@@ -318,6 +321,7 @@ export async function init() {
             openAccount: (opener) => dataRights?.open(opener),
             openMemory: (opener) => memoryPage?.open(opener),
             seams: {
+                chat: () => ({ mountChatView, openMemoryInspector, openChatMoreMenu, posterTarget }),
                 surface: async () => ({
                     openDrawerPage(id) {
                         const entry = TAVERN_ENTRIES.find((item) => item.id === id);
