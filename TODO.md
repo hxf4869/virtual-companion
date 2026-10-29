@@ -302,6 +302,9 @@
       Responses 工具续接为进程内存态，重启不可续；远端部署（V2-OWNER-DEPLOY）；generation/realtime 旧链是否退役另案。
       执行：Claude 调度与审查；Grok Build 与 Cursor grok-4.7 实现。
 
+- [ ] `V2-F01` 计费单价与预算可选、用量统计（Owner 2026-10-29 决定，见 V2-OWNER-MODELS）。未配单价放行并记 token（费用未知不记 0），
+      未设预算不设上限，有价有预算时维持原预留与拒绝；记录输入/输出/缓存命中 token；模型页用量区按月、按用途展示。
+
 ### V2 Owner 项与运行配置（缺失只阻塞相关真实调用或验收）
 
 - [x] `V2-OWNER-STITCH`：提供 Stitch 访问或设计稿（W02 与各页面实现项依赖）。
@@ -317,11 +320,18 @@
       其他协议真实目标、各用途正式绑定与日常后台预算仍待配置；本次测试授权不自动启用常驻后台付费任务。
       2026-10-28（W08 起）Owner 授权 Claude 调度会话与 Codex 子代理使用 `agents.txt` 中的模型做真实调用；
       embedding 优先在本机 OrbStack 运行与京东云同款的轻量模型，京东云实例作为对照或备选。
+      2026-10-29 Owner 决定：前台用 agents.txt 的 `cline-pass/deepseek-v4.1-flash-1017`；单价与月度预算为可选——未配单价时照常发送，
+      只记录输入/输出/缓存命中 token，费用记为未知而非 0；未设月度预算时不设上限；填了 USD 单价与预算后恢复按金额预留与拒绝。
+      用量在模型页用量区查看（按月、按用途）。实现见 V2 后续项 `V2-F01`。
 - [ ] `V2-OWNER-NOTIFY`：SMTP 服务、发件凭据与收件地址；飞书 Webhook、签名密钥与目标群。
+      2026-10-29 Owner 决定：邮箱与飞书两个渠道都接；凭据由 Owner 在主动陪伴页渠道设置中自行填写，不经聊天传递。
+      真实发送验证需 Owner 单次授权后进行。
 - [ ] `V2-OWNER-DEVICE`：目标手机及邮件 / 飞书客户端通知设置（A04、UI02 真机验收）。
 - [ ] `V2-OWNER-PROTECTION`：磁盘 / 卷保护、备份位置与保留期、密钥保管、ST 聊天保留期限（D01、D06）。
       W03 只读盘点确认本机 FileVault 关闭；正式数据所在磁盘 / 卷保护、实际备份与密钥保管配置仍待落实。
       先完成合成数据的权限与加密备份恢复验证，真实私人数据和正式 Key 接入保持待配置。
+      2026-10-29 Owner 决定：不开启 FileVault，已知并接受磁盘明文（聊天、角色、记忆）在设备丢失/送修时可被读取的风险；
+      不设定期备份，仅按需手动执行 `backup.sh`。
 - [ ] `V2-OWNER-DEPLOY`：服务器常驻部署的目标与授权（1A；授权前在本机开发与验证）。
 
 ## 当前状态（2026-10-21，V2 前实现快照）
@@ -1407,6 +1417,7 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 实施基线：`docs/planning/2026-08-30-go-companion-runtime-redesign.md`。一次一个可验证 slice。
 
+      2026-10-29 Owner 表示也要在手机上使用：需部署方案（目标服务器、访问方式、TLS、数据位置）经 Owner 授权后执行，授权前不改远端。
 - [x] `G0` ADR/Catalog/OpenAPI scope 与 API consumer matrix（catalog/openapi check；不写 Go 业务代码）
 - [x] `G1` 旧后端资源/事务基线与 benchmark workload（历史报告：`docs/planning/g1-java-resource-baseline.md`；不再复跑）
 - [x] `G2` Go module、config、health、logging、metrics、shutdown、`api-migration/full` 硬隔离（unit/check；migration 模式无法启动 provider/jobs；不含 DB 业务 API）
