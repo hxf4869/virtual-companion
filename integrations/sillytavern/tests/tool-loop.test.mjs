@@ -515,6 +515,27 @@ test('toolCalls 未验证或剧情回合不把陪伴工具发给上游', async (
     });
 });
 
+test('toolCalls 为 DECLARED 的陪伴回合去掉未验证陪伴工具后仍出站', async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        capabilities: { toolCalls: 'DECLARED' },
+        scripts: [chatText('普通回复仍应发出')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        const body = requestBody('OPENAI_CHAT_COMPLETIONS');
+        body.tool_choice = 'auto';
+        const req = mockReq(body);
+        assert.equal(await bridge.interceptGenerate(req, res), false);
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body(), '');
+        assert.deepEqual(body.tools ?? [], []);
+        assert.equal(body.tool_choice, undefined);
+        assert.ok(req.vcManaged);
+        assert.equal(state.providerReqs.length, 0);
+        assert.equal(state.executes.length, 0);
+    });
+});
+
 test('剧情回合 toolCalls UNKNOWN 且无工具时正常出站，不含陪伴工具', async () => {
     await withStack({
         protocol: 'OPENAI_CHAT_COMPLETIONS',

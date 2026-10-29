@@ -14,6 +14,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import urllib.parse
 
 DELETION_SQL = """
 /* vc_deletion_manifest */
@@ -47,7 +49,13 @@ SELECT jsonb_build_object(
    FROM vc.conversation c
    LEFT JOIN vc.relationship r ON (r.owner_user_id,r.id)=(c.owner_user_id,c.relationship_id)
    LEFT JOIN vc.identity_account a ON a.id=c.owner_user_id
-   WHERE c.st_source_state='DELETED' AND c.relationship_id IS NOT NULL) s),'[]'::jsonb));
+   WHERE c.st_source_state='DELETED' AND c.relationship_id IS NOT NULL) s),'[]'::jsonb),
+ 'memories',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+   'ownerId',m.owner_user_id::text,
+   'memoryId',m.id::text,
+   'relationshipId',COALESCE(m.relationship_id::text,'')))
+   FROM vc.memory_item m
+   WHERE m.deleted_at IS NOT NULL),'[]'::jsonb));
 """
 
 HANDLE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
@@ -60,23 +68,90 @@ def fail(code):
     raise RuntimeError(code)
 
 
+def pgpass_escape(value):
+    return value.replace('\\', '\\\\').replace(':', '\\:')
+
+
+def scrubbed_env():
+    env = dict(os.environ)
+    for key in ('PGPASSWORD', 'VC_ST_DATABASE_URL', 'VC_BACKUP_PG_DSN'):
+        env.pop(key, None)
+    return env
+
+
+def assign_libpq(env, url):
+    """Apply a libpq URL to env. A password is written to a new 0600 PGPASSFILE."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ('postgres', 'postgresql'):
+        fail('DELETION_STATE_UNAVAILABLE')
+    directory = ''
+    try:
+        if parsed.password is not None:
+            directory = tempfile.mkdtemp(prefix='vc-pgpass-')
+            os.chmod(directory, 0o700)
+            path = os.path.join(directory, 'pgpass')
+            host = parsed.hostname or '*'
+            port = '*' if parsed.port is None else str(parsed.port)
+            user = urllib.parse.unquote(parsed.username or '*')
+            password = urllib.parse.unquote(parsed.password)
+            line = ':'.join((
+                pgpass_escape(host), pgpass_escape(port), '*',
+                pgpass_escape(user), pgpass_escape(password),
+            )) + '\n'
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.write(descriptor, line.encode())
+            os.close(descriptor)
+            env['PGPASSFILE'] = path
+        if parsed.hostname:
+            env['PGHOST'] = parsed.hostname
+        if parsed.port:
+            env['PGPORT'] = str(parsed.port)
+        if parsed.username:
+            env['PGUSER'] = urllib.parse.unquote(parsed.username)
+        database = urllib.parse.unquote(parsed.path.lstrip('/'))
+        if database:
+            env['PGDATABASE'] = database
+        sslmode = urllib.parse.parse_qs(parsed.query).get('sslmode')
+        if sslmode:
+            env['PGSSLMODE'] = sslmode[0]
+        return directory
+    except Exception:
+        if directory:
+            shutil.rmtree(directory, ignore_errors=True)
+        raise
+
+
+def docker_base():
+    command = ['docker']
+    context = os.environ.get('VC_DOCKER_CONTEXT', '')
+    if context:
+        command.extend(['--context', context])
+    return command
+
+
 def query_database():
     url = os.environ.get('VC_ST_DATABASE_URL', '')
     container = os.environ.get('VC_ST_PG_CONTAINER', '')
     if bool(url) == bool(container):
         fail('DELETION_STATE_UNAVAILABLE')
-    env = dict(os.environ)
-    if url.startswith(('postgres://', 'postgresql://')):
-        command = ['psql', url, '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1']
-    elif url:
-        env['PGDATABASE'] = url
-        command = ['psql', '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1']
-    else:
-        command = ['docker', '--context', 'orbstack', 'exec', '-i', container, 'psql',
-                   '-U', os.environ.get('VC_ST_PG_USER', 'postgres'),
-                   '-d', os.environ.get('VC_ST_PG_DATABASE', 'vc'),
-                   '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1']
-    result = subprocess.run(command, input=DELETION_SQL, text=True, env=env, capture_output=True)
+    env = scrubbed_env()
+    cleanup = ''
+    try:
+        if url.startswith(('postgres://', 'postgresql://')):
+            cleanup = assign_libpq(env, url)
+            command = ['psql', '-X', '-q', '-A', '-t', '-w', '-v', 'ON_ERROR_STOP=1']
+        elif url:
+            env['PGDATABASE'] = url
+            command = ['psql', '-X', '-q', '-A', '-t', '-w', '-v', 'ON_ERROR_STOP=1']
+        else:
+            command = docker_base() + ['exec', '-i', container, 'psql',
+                       '-U', os.environ.get('VC_ST_PG_USER', 'postgres'),
+                       '-d', os.environ.get('VC_ST_PG_DATABASE', 'vc'),
+                       '-X', '-q', '-A', '-t', '-w', '-v', 'ON_ERROR_STOP=1']
+        result = subprocess.run(command, input=DELETION_SQL, text=True, env=env, capture_output=True)
+    finally:
+        if cleanup:
+            shutil.rmtree(cleanup, ignore_errors=True)
     if result.returncode or not result.stdout.strip():
         fail('DELETION_STATE_UNAVAILABLE')
     return parse_deletion(result.stdout)
@@ -89,7 +164,7 @@ def parse_deletion(raw):
         fail('DELETION_STATE_INVALID')
     if not isinstance(value, dict) or value.get('version') != 1:
         fail('DELETION_STATE_INVALID')
-    for key in ('accounts', 'conversations', 'relationships', 'f2Tombstones'):
+    for key in ('accounts', 'conversations', 'relationships', 'f2Tombstones', 'memories'):
         if key in value and not isinstance(value[key], list):
             fail('DELETION_STATE_INVALID')
     return value
@@ -170,7 +245,7 @@ def load_manifest(path):
 
 
 def union(parts):
-    accounts, conversations, relationships, tombs = [], [], [], []
+    accounts, conversations, relationships, tombs, memories = [], [], [], [], []
     seen = set()
 
     def add(bucket, key, row):
@@ -192,7 +267,13 @@ def union(parts):
         for row in part.get('f2Tombstones') or []:
             if isinstance(row, dict):
                 add(tombs, ('f', row.get('handle') or '', row.get('id') or '', row.get('path') or ''), row)
-    return {'version': 1, 'accounts': accounts, 'conversations': conversations, 'relationships': relationships, 'f2Tombstones': tombs}
+        for row in part.get('memories') or []:
+            if isinstance(row, dict):
+                add(memories, ('m', str(row.get('ownerId') or ''), str(row.get('memoryId') or '')), row)
+    return {
+        'version': 1, 'accounts': accounts, 'conversations': conversations,
+        'relationships': relationships, 'f2Tombstones': tombs, 'memories': memories,
+    }
 
 
 def isolate(target, parts):
@@ -349,6 +430,7 @@ def publish_manifest(path, state, rights):
         'conversations': state.get('conversations') or [],
         'relationships': state.get('relationships') or [],
         'f2Tombstones': state.get('f2Tombstones') or [],
+        'memories': state.get('memories') or [],
         'retention': {'expiresAt': None, 'reason': 'V2-OWNER-PROTECTION'},
     }
     if rights is not None:

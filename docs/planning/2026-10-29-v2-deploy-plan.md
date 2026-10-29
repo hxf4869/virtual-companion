@@ -84,7 +84,9 @@
 - 升级：拉取新提交 → `bootstrap.mjs` 核对上游 → `assemble-managed.mjs` → `companiond migrate` → 依次重启 companiond、MemoryCore、ST。
   PostgreSQL 迁移不承诺降级，升级前先手动备份。
 - 备份：Owner 决定不设定期备份，按需手动执行 `integrations/sillytavern/scripts/backup.sh`（先停 MemoryCore；归档与口令文件不放在数据根内）。
-  `backup.sh` 不包含 PostgreSQL 与 MinIO，需要时另行 `pg_dump`。恢复只用 `restore.sh` 到空目录并遵守恢复门。
+  需要纳入 PostgreSQL 时，设置 `VC_BACKUP_PG_DSN` 或 `VC_BACKUP_PG_CONTAINER` 恰好其一；`pg_dump -Fc` 进入同一 VCBAE1，口令不进 argv。都不设置时归档不含数据库，输出标明「未含 PostgreSQL」。
+  MinIO 不纳入：导出对象约 24 小时过期，是对话与记忆的临时下载副本，权威数据在 PostgreSQL 与 ST 文件。
+  恢复用 `restore.sh` 解到空目录。归档含数据库时只 `pg_restore` 到新的 `vc_restore_*` 隔离库，不覆盖当前库、不自动切换。恢复门在删除并集应用到新库和文件副本之前保持 blocked。成功后输出新库名，由 Owner 决定是否切换。
 - 日志：ST 与 MemoryCore 日志在数据目录 `run/` 下；Go 由 systemd journal 收集。日志约定不含对话正文与令牌，定期轮转。
 - 磁盘保护：服务器磁盘加密状态在盘点时如实记录；Owner 已决定本机不开 FileVault，服务器同样以盘点结果为准，不宣称已加密。
 

@@ -1,5 +1,7 @@
 # 备份与恢复（§22.13 / R47；每日加密备份见 ADR-0006 §7.4）
 
+V2 按需手动入口是 `integrations/sillytavern/scripts/backup.sh`：可选把 PostgreSQL（`pg_dump -Fc`）打进同一 VCBAE1；MinIO 导出对象故意不备份（约 24 小时过期的临时下载副本）。恢复只进新的隔离库，不覆盖当前库。下面的每日脚本是 ADR-0006 dogfood 历史链路，不是 V2 入口。
+
 一次性演练入口：`bash infra/db/backup/run-backup-drill.sh`（匿名容器，无宿主端口/
 卷挂载；产物走 stdout/docker cp；日志在 `$VC_DB_LOG_DIR`）。
 
