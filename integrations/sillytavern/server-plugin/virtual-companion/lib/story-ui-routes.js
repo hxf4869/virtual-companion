@@ -5,6 +5,7 @@ const ACTOR = '[a-z][a-z0-9_-]{0,63}';
 export const STORY_UI_ROUTES = Object.freeze([
     { method: 'POST', path: new RegExp(`^/api/v1/story/runs/${RUN}/actions$`), where: 'W15 剧情行动' },
     { method: 'POST', path: new RegExp(`^/api/v1/story/runs/${RUN}/rewind$`), where: 'W15 剧情回档' },
+    { method: 'GET', path: new RegExp(`^/api/v1/story/runs/${RUN}/projections$`), where: 'W16 未确认投影只读补写' },
     { method: 'POST', path: new RegExp(`^/api/v1/story/runs/${RUN}/projections/${RUN}/confirm$`), where: 'W15 投影确认' },
     { method: 'POST', path: new RegExp(`^/api/v1/story/runs/${RUN}/participants/${ACTOR}$`), where: 'W15 陪伴入局' },
     { method: 'POST', path: new RegExp(`^/api/v1/story/runs/${RUN}/epilogue$`), where: 'W15 结局摘要' },

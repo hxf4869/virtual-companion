@@ -23,6 +23,16 @@ type storyActionStore interface {
 	DecideStoryEpilogue(context.Context, int64, postgres.StoryEpilogue) (postgres.StoryEpilogueResult, error)
 }
 
+type storyProjectionListStore interface {
+	ListPendingStoryProjections(context.Context, int64, int64) ([]postgres.PendingStoryProjection, error)
+}
+
+type storyPendingProjectionResponse struct {
+	WorldEventID string `json:"worldEventId"`
+	WorldVersion int64  `json:"worldVersion"`
+	Text         string `json:"text"`
+}
+
 type storyActionResponse struct {
 	Accepted     bool   `json:"accepted"`
 	Replayed     bool   `json:"replayed"`
@@ -130,6 +140,43 @@ func (s *Server) handleStoryRewind(w http.ResponseWriter, r *http.Request) {
 		WorldVersion int64  `json:"worldVersion"`
 		Stage        string `json:"stage"`
 	}{BranchID: idString(result.BranchID), WorldVersion: result.WorldVersion, Stage: result.Stage})
+}
+
+func (s *Server) handleListPendingStoryProjections(w http.ResponseWriter, r *http.Request) {
+	principal := s.corePrincipal(w, r, false)
+	if principal == nil {
+		return
+	}
+	runID, runOK := parsePathID(r.PathValue("runId"))
+	query := r.URL.Query()
+	if !runOK || len(query) != 1 || len(query["state"]) != 1 || query.Get("state") != "PENDING" {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	store, ok := s.core.Store.(storyProjectionListStore)
+	if !ok {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "story world is unavailable")
+		return
+	}
+	rows, err := store.ListPendingStoryProjections(r.Context(), principal.AccountID, runID)
+	if err != nil {
+		s.writeStoryErr(w, err)
+		return
+	}
+	out := make([]storyPendingProjectionResponse, 0, len(rows))
+	for _, row := range rows {
+		if row.EventID <= 0 || row.WorldVersion < 0 || row.Text == "" {
+			continue
+		}
+		out = append(out, storyPendingProjectionResponse{
+			WorldEventID: idString(row.EventID),
+			WorldVersion: row.WorldVersion,
+			Text:         row.Text,
+		})
+	}
+	s.writeJSON(w, http.StatusOK, struct {
+		Projections []storyPendingProjectionResponse `json:"projections"`
+	}{Projections: out})
 }
 
 func (s *Server) handleStoryProjectionConfirm(w http.ResponseWriter, r *http.Request) {

@@ -140,7 +140,7 @@ bash integrations/sillytavern/scripts/backup.sh \
 bash integrations/sillytavern/scripts/restore.sh "$ARCHIVE" "$EMPTY_DIR"
 ```
 
-13:14:31，退出码 0。目标是新建空目录。59 个条目，目录 0700、文件 0600。合成聊天与 `vectors.db` 在副本中可读，原 dataRoot 里的同名文件仍在。副本没有 `_vc_accounts/`，也没有 `.vc-f2/`。`_memorycore/restore-pending.json` 已由当前 PostgreSQL 重写（95 字节）。归档里的 `go-rights.json` 不作为恢复后门禁。这次只证明解包到空目录成功，不是 D06 恢复演练，没有把副本切成可检索、可跑任务的环境。
+13:14:31，退出码 0。目标是新建空目录。59 个条目，目录 0700、文件 0600。合成聊天与 `vectors.db` 在副本中可读，原 dataRoot 里的同名文件仍在。副本没有 `_vc_accounts/`，也没有 `.vc-f2/`。`_memorycore/restore-pending.json` 已由当前 PostgreSQL 重写（95 字节）。归档里的 `go-rights.json` 不作为恢复后门禁。这次只证明解包到空目录成功。D06 另有离线演练：存在时把 `_vc_accounts/` 与各用户 `.vc-f2/` 打进归档；删除清单写在归档外。恢复先保持 `restore-gate.json` blocked，用当前库并上那份清单清理后再删除标记。
 
 `backup.sh` 不导出 PostgreSQL，也不复制 MinIO。`restore.sh` 不恢复这两个存储。旧的 `infra/db/backup/run-daily-backup.sh` 仍是 Go 库与对象存储那条历史链路，不含 ST dataRoot 与 MemoryCore，本轮没有执行它。
 
@@ -155,23 +155,21 @@ bash integrations/sillytavern/scripts/restore.sh "$ARCHIVE" "$EMPTY_DIR"
 | 数据 | 位置 | 正文或私密 | 加密 | 备份是否覆盖 |
 | --- | --- | --- | --- | --- |
 | ST 聊天、群聊、角色、世界书、自动备份、secrets、设置与 cookie secret | 受管 `dev-managed/data`（`VC_ST_DEV_DIR`）；原生在 `dev/data`。清单见 `backup.sh` | 含。jsonl 与 secrets 在 dataRoot 内可被 ST 进程读取 | 静态明文。只在 `backup.sh` 打成 VCBAE1（openssl aes-256-cbc，再经 `vc_aead.py` 封装） | 覆盖清单内已存在的路径。排除 `extensions/` 与锁定的 MVU bundle。无保留期 |
-| ST 身份墓碑 | 用户根下 `.vc-f2/*.json` | 身份、路径、revision，不含正文副本 | 明文 | 不在 `backup.sh` 清单。本轮恢复副本中不存在 |
-| 账号映射与删除状态 | `DATA_ROOT/_vc_accounts/<id>.json` | 账号到 handle，以及 ACTIVE/DELETING/DELETED | 明文 | 不在清单。本轮恢复副本中不存在 |
+| ST 身份墓碑 | 用户根下 `.vc-f2/*.json` | 身份、路径、revision，不含正文副本 | 明文 | 目录存在时进入 `backup.sh`。恢复不拿归档里的旧墓碑当权威，改用当前库、当前数据根和归档外清单的并集 |
+| 账号映射与删除状态 | `DATA_ROOT/_vc_accounts/<id>.json` | 账号到 handle，以及 ACTIVE/DELETING/DELETED | 明文 | 目录存在时进入清单。同上，归档内的 ACTIVE 不能抵消当前删除 |
 | Go PostgreSQL `vc.*` | 受管验收容器或本机合成容器中的库 | 记忆、摘要、来源快照含正文。凭据、TOTP、通知渠道凭据、导出口令仍走字段加密 | 记忆域明文（`V146__memory_plaintext.sql`，列名仍是 `content_cipher` / `temporal_cipher`）。其余为 AES-256-GCM `enc2` | `backup.sh` 不打 PG dump。旧每日备份不是 V2 入口，本轮未执行 |
-| 删除意图 | `vc.account_deletion_intent` | digest，不是正文 | 不是字段加密 | 不随 `backup.sh` 导出。MemoryCore 快照里的 `go-rights.json` 只是当时读到的权利，恢复时改读当前库 |
+| 删除意图 | `vc.account_deletion_intent`，以及已删除的 conversation / relationship 映射 | digest、身份与路径，不是正文 | 不是字段加密 | 不打进归档。`backup.sh` 在设置了当前库时把最新清单写到 `VC_ST_DELETION_MANIFEST`（默认与归档同目录的 `deletion-manifest.json`）。恢复与当前库取并集，不写回 PostgreSQL。MemoryCore 的 `go-rights.json` 仍只是当时读到的权利；恢复先读当前库，再与清单里的权利取交集，避免回滚后的库把已删记录加回 allowlist |
 | MemoryCore | `dev-managed/memorycore-data/owners/<十进制 owner>/` | 含。`vectors.db`、jsonl、画像与操作记录可含派生文本 | 明文，目录 0700、文件 0600。Owner 决定不加密 | `owners/` 存在时纳入，排除 wal/shm 与 `runtime.lock`。本轮已验证。无保留期 |
 | MinIO 导出对象 | `exports/<owner>/<id>-<hex>.json` | 含对话与记忆副本 | 上传前字段加密 | 对象约 24 小时后由 scheduler 清理。不在 `backup.sh` 内。本轮只建了空桶，没有导出对象 |
 | 本机 embedding | 约定 `127.0.0.1:11438` 的 `qwen3-embedding:0.6b`，容器名 `vc-w08-embedding` | 请求瞬时可能含记忆文本；容器内是模型权重 | 无应用层加密 | 无备份。仓库没有创建该容器的脚本。本轮未启动 |
 | 日志 | `dev-managed/run/st.log`、`memorycore.log`；Go 为进程自身输出 | 插件约定禁止正文与令牌。本轮 MemoryCore 日志只有固定就绪码 | 明文。MemoryCore 日志文件为 0600 | 不进备份 |
 
+恢复门是副本里的 `restore-gate.json`。`companiond` 启动时读取 `VC_RESTORE_GATE_FILE` 指向的路径，每次领取任务和读取记忆时再读文件内容。文件为 `{"blocked":true}`、内容无效或无法读取时，不领取任务、不跑恢复、不投递通知，记忆列表/详情/证据返回 `503 RESTORE_GATE_CLOSED`。文件不存在或 `blocked` 为 false 时开放。`restore.sh` 在清理完成前留下 blocked，成功后删除该文件。上面 13:14 的空目录解包没有删除状态，不能代替 D06 演练；演练在 `tests/backup-d06.test.mjs`。
+
 ### 已知缺口
 
-下列各项留在 W16 后续，本轮没有实现，也不能把这次空目录解包写成恢复演练已通过：
-
-- 备份不含 `_vc_accounts/` 与 `.vc-f2/`，隔离副本没有 ST 侧删除状态。
-- PostgreSQL 与 MinIO 不由 `restore.sh` 恢复。
-- D06 的跨存储顺序尚未实现：先在隔离副本保持查询和任务关闭，应用不随旧快照回滚的最新删除，清理后再开放检索和任务。恢复出来的 ST jsonl、角色、世界书和 secrets 会原样放回。
-- 备份位置、保留期、密钥存放位置、FileVault 或等价卷加密、ST 聊天留存期限仍待 Owner（`V2-OWNER-PROTECTION`）。远端常驻部署仍待 Owner（`V2-OWNER-DEPLOY`）。
+- PostgreSQL 与 MinIO 不由 `restore.sh` 恢复。删掉的导出对象不会因为这次 ST 副本清理而消失。
+- 备份位置、保留期、密钥存放位置、FileVault 或等价卷加密、ST 聊天留存期限仍待 Owner（`V2-OWNER-PROTECTION`）。成功恢复会标明 `expires=unset`，不把在线删除写成离线副本已经消失。远端常驻部署仍待 Owner（`V2-OWNER-DEPLOY`）。
 
 ## 受管（managed）运行装配
 
@@ -336,8 +334,9 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   status 输出。
 - Tavern Helper 为 PolyForm-Noncommercial：禁止商业使用，禁止向 Owner 以外的人提供本服务（ADR-0009 §3/§4）。
 - 备份打包显式保护清单（chats、group chats、groups、characters、worlds、backups、OpenAI Settings、
-  user 资源、settings/secrets、cookie-secret、config.yaml）；`memorycore-data/owners/` 存在时另打 MemoryCore 快照。
-  排除可确定性再生的自托管派生文件与 `extensions/`，也不包含 `_vc_accounts/`、`.vc-f2/`、PostgreSQL 与 MinIO。
+  user 资源、settings/secrets、cookie-secret、config.yaml，以及存在的 `_vc_accounts/` 与各用户 `.vc-f2/`）；
+  `memorycore-data/owners/` 存在时另打 MemoryCore 快照。排除可确定性再生的自托管派生文件与 `extensions/`，
+  也不包含 PostgreSQL 与 MinIO。删除清单在归档外，不随快照回滚。
   keyfile 不得位于 dataRoot 内、不得与归档同目录。保留期未定，见「本机运行说明」。
 
 ### W06 持久来源对账
@@ -513,7 +512,9 @@ L2/L3 的 Go 摘要投影按来源会话独立构建，跨会话召回再组合�
 `VC_MEMORYCORE_PG_DATABASE` 覆盖），并先停止受管 MemoryCore。`runtime.lock` 拒绝在线
 多文件快照；SQLite backup 一致快照包含画像、metadata、适配状态和 Go suppression 快照，外层仍加密。
 含 `_memorycore` 的 `restore.sh` 必须连接当前权威 PostgreSQL，生成最新删除/来源 allowlist 恢复门禁；
-数据库不可达退出 5 并保留 blocked 标记。全部 owner 清理、来源对账完成前不开放引擎读取。
+数据库不可达退出 5 并保留 blocked 标记。归档里带有 `_vc_accounts/`、`.vc-f2/`，或设置了当前库 / 删除清单时，
+同一退出码也覆盖 ST 聊天与角色映射的清理。全部 owner 清理、来源对账完成前不开放引擎读取。
+`VC_RESTORE_GATE_FILE` 指向副本的 `restore-gate.json` 时，Go 在该标记撤掉前不领取任务、不开放记忆检索。
 恢复产物 `_memorycore` 应作为引擎 dataRoot；PG 本体仍用现有 PG 备份流程恢复，历史归档的 `go-rights`
 不能替代最新删除意图。离线备份没有保留期，也没有定时清理，这两项仍是 `V2-OWNER-PROTECTION`。
 

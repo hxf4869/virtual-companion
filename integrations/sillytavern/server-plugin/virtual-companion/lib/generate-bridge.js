@@ -560,6 +560,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                         ownerAccountId: managed.ownerAccountId,
                         expectedUrl: url,
                         config,
+                        request,
                     });
                 }
             }

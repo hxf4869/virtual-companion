@@ -49,9 +49,9 @@ const add = (id, name, status, evidence) => items.push({ id, name, status, evide
 
 // D01.c 保护清单覆盖（原生文件 + 自动备份 + secrets 迁移备份 + 原生预设 + 卡导入资源）
 {
-    const list = ['cookie-secret.txt', 'default-user/settings.json', 'default-user/secrets.json', 'default-user/chats', 'default-user/group chats', 'default-user/groups', 'default-user/characters', 'default-user/worlds', 'default-user/backups', 'default-user/OpenAI Settings', 'default-user/user'];
+    const list = ['cookie-secret.txt', 'default-user/settings.json', 'default-user/secrets.json', 'default-user/chats', 'default-user/group chats', 'default-user/groups', 'default-user/characters', 'default-user/worlds', 'default-user/backups', 'default-user/OpenAI Settings', 'default-user/user', '_vc_accounts', 'default-user/.vc-f2'];
     const present = list.filter((r) => fs.existsSync(path.join(dataRoot, r)));
-    add('D01.c', '备份保护清单覆盖', 'PASS', `backup.sh 清单：${list.join(', ')} + config.yaml；当前 dataRoot 存在 ${present.length}/${list.length}（缺项为尚未产生的数据，脚本按存在性打包）。characters/ 含 CHARX 背景资源，user/images 含 CHARX misc 资源，OpenAI Settings 含原生预设；default-user/backups 覆盖 ST 自动聊天备份、settings 备份与 secrets 迁移副本。唯一排除：user/files/mvu-bundle-d03b7dc8.js（上游锁 + bootstrap 确定性再生）；extensions/ 由锁 + 补丁 + vendor.lock 重放，不入备份`);
+    add('D01.c', '备份保护清单覆盖', 'PASS', `backup.sh 清单：${list.join(', ')} + config.yaml；当前 dataRoot 存在 ${present.length}/${list.length}（缺项为尚未产生的数据，脚本按存在性打包）。characters/ 含 CHARX 背景资源，user/images 含 CHARX misc 资源，OpenAI Settings 含原生预设；default-user/backups 覆盖 ST 自动聊天备份、settings 备份与 secrets 迁移副本。_vc_accounts/ 与 default-user/.vc-f2/ 只含删除/身份状态。唯一排除：user/files/mvu-bundle-d03b7dc8.js（上游锁 + bootstrap 确定性再生）；extensions/ 由锁 + 补丁 + vendor.lock 重放，不入备份`);
 }
 
 // D01.d 加密备份与密钥分离（无 --key-file 证据时不推断密钥分离，保持未验证）

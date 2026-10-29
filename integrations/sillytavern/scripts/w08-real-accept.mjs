@@ -54,10 +54,10 @@ export async function sceneMemoryRealModel(ctx) {
     const spec = { displayName: 'Owner 已授权私有模型', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl, state: 'ENABLED', models };
     let provider;
     try {
-        ctx.w08.seedRealEstimate();
         for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING'])
             expect(await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'w08-authorized-real-sample', granted: true }), 200, '合成账号实际提取授权');
         provider = expect(await ctx.admin.saveProvider('vc08-real', { ...spec, credential, expectedRevision: 0 }), 200, '注入私有用途配置');
+        ctx.w08.seedRealEstimate();
         const embeddingModel = (await (await fetch('http://127.0.0.1:11438/api/tags')).json()).models.find(m => m.name === 'qwen3-embedding:0.6b');
         assert.ok(embeddingModel);
         const previous = await ctx.admin.call('GET', '/api/v1/admin/embedding-config');

@@ -320,7 +320,7 @@ func operation(path string) string {
 				return "story_action"
 			case strings.HasSuffix(path, "/rewind"):
 				return "story_rewind"
-			case strings.Contains(path, "/projections/"):
+			case strings.Contains(path, "/projections/"), strings.HasSuffix(path, "/projections"):
 				return "story_projection"
 			case strings.Contains(path, "/participants/"):
 				return "story_participant"

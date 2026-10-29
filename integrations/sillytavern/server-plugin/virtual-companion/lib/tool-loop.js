@@ -355,6 +355,33 @@ async function cancelQuiet(config, reservation, disposition) {
     } catch { /* 记账失败不掩盖上游结果 */ }
 }
 
+function bindClientAbort(request) {
+    const controller = new AbortController();
+    const abort = () => {
+        if (!controller.signal.aborted) controller.abort();
+    };
+    const socket = request?.socket;
+    if (socket && typeof socket.on === 'function') socket.on('close', abort);
+    if (typeof request?.on === 'function') {
+        request.on('aborted', abort);
+        request.on('close', abort);
+    }
+    if (socket?.destroyed || request?.aborted) abort();
+    return {
+        signal: controller.signal,
+        gone() {
+            return controller.signal.aborted || request?.aborted === true || socket?.destroyed === true;
+        },
+        stop() {
+            if (socket && typeof socket.removeListener === 'function') socket.removeListener('close', abort);
+            if (typeof request?.removeListener === 'function') {
+                request.removeListener('aborted', abort);
+                request.removeListener('close', abort);
+            }
+        },
+    };
+}
+
 /**
  * 插件独占陪伴工具回合。出站工具结果等于 Go 的原始执行体。
  * @returns {Promise<boolean>}
@@ -380,12 +407,19 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         writeCompletion(response, body, content);
         return true;
     };
+    const client = bindClientAbort(request);
+    const stepSignal = () => AbortSignal.any([client.signal, AbortSignal.timeout(remainingMs())]);
+    const stopped = async (reservation, disposition) => {
+        await cancelQuiet(config, reservation, disposition);
+        throw new BridgeError(504, 'VC_UPSTREAM_TIMEOUT', '上游模型服务响应超时');
+    };
 
+    try {
     while (sends < MAX_TOOL_STEPS) {
+        if (client.gone()) await stopped(null, 'NOT_SENT');
         if (sends > 0 && completionSum + tokenLimit > MAX_TOOL_TOKENS) return stop(TOKEN_STOP);
         const outbound = providerBody(protocol, body, messages, model, tokenLimit);
-        const signal = AbortSignal.timeout(remainingMs());
-        await refreshMemorySlot({ config, request, response, finalBody: outbound, signal });
+        await refreshMemorySlot({ config, request, response, finalBody: outbound, signal: stepSignal() });
         const budget = checkContextBudget({ model, finalBody: outbound, outputTokens: tokenLimit, counter });
         const purpose = sends === 0 ? 'FOREGROUND_CHAT' : 'TOOL_TURN';
         const reserved = await reserveSend(config, {
@@ -400,6 +434,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         const reservation = reserved?.reservationId
             ? { reservationId: reserved.reservationId, ownerAccountId: session.accountId }
             : null;
+        if (client.gone()) await stopped(reservation, 'NOT_SENT');
         let upstream;
         try {
             const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
@@ -413,7 +448,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
                 method: 'POST',
                 headers,
                 body: JSON.stringify(outbound),
-                signal: AbortSignal.timeout(remainingMs()),
+                signal: stepSignal(),
             });
         } catch (error) {
             await cancelQuiet(config, reservation, 'UNKNOWN');
@@ -487,7 +522,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         const executeJob = async (job) => {
             const parsed = await executeSessionTool(config, {
                 ...sessionAuth,
-                signal: AbortSignal.timeout(remainingMs()),
+                signal: stepSignal(),
                 payload: {
                     chatIdentity,
                     idempotencyKey: job.key,
@@ -547,4 +582,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
     }
     log.info(`工具循环达到步数上限：model=${model.modelId} sends=${sends}`);
     return stop(STEP_STOP);
+    } finally {
+        client.stop();
+    }
 }

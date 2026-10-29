@@ -6,7 +6,7 @@ import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
 
 const SHOTS = process.env.VC_W15_SHOTS
-    || '/private/tmp/claude-501/-Users-hxf-projects-virtual-companion/67c91cf9-5973-42e2-bbc0-514b65af332e/scratchpad/w15-shots/w15-4a';
+    || '/private/tmp/claude-501/-Users-hxf-projects-virtual-companion/67c91cf9-5973-42e2-bbc0-514b65af332e/scratchpad/w15-shots/w15-4c';
 const GREETING = '这是一次合成测试对话。';
 const REPLY = '收到。这是受管验收的合成回复，内容固定可断言。';
 const VIEWPORTS = [
@@ -24,6 +24,52 @@ const NAV = [
     ['models', '模型'],
     ['account', '账户'],
 ];
+
+function ledgerModel(profileKey, displayName, pricing) {
+    const model = {
+        profileKey,
+        modelId: profileKey,
+        displayName,
+        contextWindowTokens: 8192,
+        maxOutputTokens: 1024,
+        state: 'ENABLED',
+    };
+    if (pricing) model.pricing = pricing;
+    return model;
+}
+
+/** 用管理 API 造出三种 ledgerPrice。空价显式提交 pricing:{}，重复运行也会清回 MISSING。 */
+async function ensureLedgerProfiles(ctx) {
+    const reauth = await ctx.admin.reauth(ctx.secrets.password);
+    if (!reauth.ok) throw new Error(`计价样本重新验证失败 HTTP ${reauth.status}`);
+    const listed = await ctx.admin.listProviders();
+    if (listed.status !== 200 || !Array.isArray(listed.json)) throw new Error(`供应商列表 HTTP ${listed.status}`);
+    const existing = listed.json.find((item) => item.providerId === 'w15-ledger');
+    const body = {
+        displayName: '计价样本',
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        baseUrl: `http://127.0.0.1:${process.env.VC_W03_FIXTURE_PORT}/v1`,
+        credential: ctx.secrets.fixtureKey,
+        state: 'ENABLED',
+        models: [
+            ledgerModel('usd', '美元价', { currency: 'USD', inputPerMillionTokens: 1.5, outputPerMillionTokens: 3 }),
+            ledgerModel('empty', '空价', {}),
+            ledgerModel('cny', '人民币价', { currency: 'CNY', inputPerMillionTokens: 1, outputPerMillionTokens: 1 }),
+        ],
+    };
+    if (existing) body.expectedRevision = existing.revision;
+    const saved = await ctx.admin.saveProvider('w15-ledger', body);
+    if (!saved.ok) {
+        const detail = String(saved.text || '').replaceAll(ctx.secrets.fixtureKey, '[redacted]').slice(0, 180);
+        throw new Error(`计价样本保存 HTTP ${saved.status} ${detail}`);
+    }
+    const again = await ctx.admin.listProviders();
+    const provider = Array.isArray(again.json) ? again.json.find((item) => item.providerId === 'w15-ledger') : null;
+    const byKey = Object.fromEntries((provider?.models || []).map((model) => [model.profileKey, model.ledgerPrice]));
+    if (byKey.usd !== 'ACTIVE' || byKey.empty !== 'MISSING' || byKey.cny !== 'UNSUPPORTED_CURRENCY') {
+        throw new Error(`ledgerPrice 不符合预期 ${JSON.stringify(byKey)}`);
+    }
+}
 
 export async function sceneW15Ui(ctx) {
     fs.mkdirSync(SHOTS, { recursive: true });
@@ -67,6 +113,7 @@ export async function sceneW15Ui(ctx) {
     const perfFile = `W15-perf-${crypto.randomUUID()}`;
     await saveChatFile(perfFile, 'COMPANION');
 
+    await ensureLedgerProfiles(ctx);
     const { chromium } = await import('playwright-core');
     const browser = await chromium.launch({
         headless: true,
@@ -216,11 +263,43 @@ export async function sceneW15Ui(ctx) {
                         await page.locator('.vc-data-dialog[open]').waitFor();
                         await waitFor(async () => page.evaluate(() => {
                             const text = document.querySelector('.vc-data-dialog')?.innerText || '';
-                            return text.includes('修改密码') && text.includes('重置验证器') && text.includes('登出其他会话') && text.includes('备份状态独立，策略在 W16') && (text.includes('当前会话') || text.includes('操作尚未完成'));
+                            const sessions = document.querySelector('[data-sessions]')?.textContent || '';
+                            const listed = sessions.includes('当前会话') || sessions.includes('没有进行中的会话');
+                            return listed && text.includes('修改密码') && text.includes('重置验证器') && text.includes('登出其他会话') && text.includes('备份状态独立，策略在 W16');
                         }), { timeoutMs: 20000, label: '账户页' });
-                        const accountText = await page.locator('.vc-data-dialog').innerText();
-                        if (!accountText.includes('当前会话')) throw new Error('账户页没有当前会话');
-                        if (!/验证器已启用|验证器未启用/.test(accountText)) throw new Error('账户页没有验证器状态');
+                        const accountProbe = await page.evaluate(async () => {
+                            const body = document.querySelector('.vc-data-body')?.innerText || '';
+                            const listed = await (await fetch('/api/plugins/virtual-companion/go/api/v1/auth/sessions')).json();
+                            const current = (Array.isArray(listed) ? listed : []).find((item) => item?.current === true);
+                            let expected = '当前会话';
+                            if (typeof current?.createdAt === 'string' && current.createdAt) {
+                                const date = new Date(current.createdAt);
+                                if (!Number.isNaN(date.getTime())) {
+                                    expected = `当前会话 · ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(date)}`;
+                                }
+                            }
+                            const node = document.querySelector('[data-sessions]');
+                            const norm = (value) => String(value || '').replace(/[\u00a0\u202f]/g, ' ');
+                            const text = norm(node?.textContent || '');
+                            const html = node?.innerHTML || '';
+                            const leaked = [];
+                            if (current?.accountId && (text.includes(String(current.accountId)) || html.includes(String(current.accountId)))) leaked.push('account');
+                            if (current?.role && (text.includes(String(current.role)) || html.includes(String(current.role)))) leaked.push('role');
+                            const labels = ['修改密码', '验证器', '当前会话', '导出数据', '删除账号及在线数据'].filter((label) => !document.querySelector(`[aria-label="${label}"]`));
+                            return {
+                                cards: Boolean(document.querySelector('.vc-account-cards')),
+                                passwordInBody: body.includes('当前密码'),
+                                labels,
+                                sessionOk: text.includes(norm(expected)),
+                                row: text.slice(0, 80),
+                                empty: text.includes('没有进行中的会话'),
+                                leaked,
+                            };
+                        });
+                        if (!accountProbe.cards || accountProbe.passwordInBody || accountProbe.labels.length || !accountProbe.sessionOk || accountProbe.empty || accountProbe.leaked.length) {
+                            throw new Error(`账户结构异常 ${JSON.stringify(accountProbe)}`);
+                        }
+                        if (!/验证器已启用|验证器未启用/.test(await page.locator('.vc-data-dialog').innerText())) throw new Error('账户页没有验证器状态');
                     }
                     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
                     await shot(`${viewport.name}-${name}.png`);
@@ -231,7 +310,53 @@ export async function sceneW15Ui(ctx) {
                     if (name === 'inbox') await closeIf('.vc-inbox-dialog[open]', '[data-action="close"]');
                     if (name === 'story') await closeIf('.vc-story-dialog[open]', '[data-action="close"]');
                     if (name === 'models') await closeIf('.vcms-overlay:not([hidden])', '[data-action="close"]');
-                    if (name === 'account') await closeIf('.vc-data-dialog[open]', '[data-close]');
+                    if (name === 'account') {
+                        await page.locator('[data-reset]').click();
+                        await page.locator('.vc-account-reauth:not([hidden])').waitFor();
+                        const secretState = await page.evaluate(() => {
+                            const input = document.querySelector('[data-reauth-password]');
+                            return {
+                                value: input?.value || '',
+                                named: input?.getAttribute('name') || '',
+                                valued: input?.hasAttribute('value') === true,
+                                focused: document.activeElement === input,
+                            };
+                        });
+                        if (secretState.value || secretState.named || secretState.valued || !secretState.focused) {
+                            throw new Error(`重新验证层不符合焦点或密码规则 ${JSON.stringify(secretState)}`);
+                        }
+                        if (viewport.width === 390) {
+                            await page.setViewportSize({ width: 390, height: 450 });
+                            await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+                            const shortFit = await page.evaluate(() => {
+                                const input = document.querySelector('[data-reauth-password]');
+                                const rect = input?.getBoundingClientRect();
+                                return {
+                                    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                                    top: rect?.top ?? -1,
+                                    bottom: rect?.bottom ?? 9999,
+                                    height: window.innerHeight,
+                                };
+                            });
+                            if (shortFit.overflow > 1 || shortFit.top < 0 || shortFit.bottom > shortFit.height + 1) {
+                                throw new Error(`短视口重新验证不可用 ${JSON.stringify(shortFit)}`);
+                            }
+                            await shot('390x450-account-reauth.png');
+                            await assertLayout(390);
+                            await page.setViewportSize({ width: 390, height: 844 });
+                        }
+                        await shot(`${viewport.name}-account-reauth.png`);
+                        await assertSurface('account-reauth');
+                        await page.keyboard.press('Escape');
+                        await waitFor(async () => page.evaluate(() => {
+                            const hidden = document.querySelector('.vc-account-reauth')?.hidden === true;
+                            const open = document.querySelector('.vc-data-dialog')?.open === true;
+                            const focused = (document.activeElement?.textContent || '').includes('重置验证器');
+                            const value = document.querySelector('[data-reauth-password]')?.value || '';
+                            return hidden && open && focused && value === '';
+                        }), { timeoutMs: 5000, label: '重新验证 Escape 回到重置验证器' });
+                        await closeIf('.vc-data-dialog[open]', '[data-close]');
+                    }
                 }
                 if (await page.locator('#vc-chat-more[open]').count()) {
                     await page.keyboard.press('Escape');
@@ -305,13 +430,7 @@ export async function sceneW15Ui(ctx) {
                 await openNav('models', '模型', viewport.width);
                 await page.locator('#vcms-f-display').waitFor();
                 const beforeBudget = await page.locator('.vcms-overlay').innerText();
-                if (beforeBudget.includes('当月可用额度不足')) throw new Error('清空单价前不应显示预算不足');
-                await page.locator('details.vcms-advanced').evaluate((el) => { el.open = true; });
-                await page.locator('#vcms-m-pin').fill('');
-                await page.locator('#vcms-m-pout').fill('');
-                await page.locator('#vcms-no-price').waitFor();
-                if (await page.locator('#vcms-save').isDisabled()) throw new Error('未配置单价时保存不可用');
-                await shot(`${viewport.name}-model-noprice.png`);
+                if (beforeBudget.includes('当月可用额度不足')) throw new Error('进入模型页时不应显示预算不足');
                 await page.evaluate(() => window.dispatchEvent(new CustomEvent('vc-apply-budget', { detail: { budgetInsufficient: true } })));
                 await page.locator('#vcms-budget').waitFor();
                 const gated = await page.evaluate(() => ({
@@ -326,13 +445,63 @@ export async function sceneW15Ui(ctx) {
                 await page.evaluate(() => window.dispatchEvent(new CustomEvent('vc-apply-budget', { detail: {} })));
                 await waitFor(async () => page.evaluate(() => document.querySelector('#send_but')?.disabled !== true), { timeoutMs: 5000, label: '预算门禁解除' });
                 if (await page.locator('#vcms-discard').isVisible()) await page.locator('#vcms-discard').click();
+                const showLedger = async (key, includes, excludes) => {
+                    await page.locator(`[data-action="select-model"][data-key="${key}"]`).click();
+                    await waitFor(async () => page.evaluate(({ profile, want, block }) => {
+                        const pressed = document.querySelector(`[data-action="select-model"][data-key="${profile}"]`)?.getAttribute('aria-pressed') === 'true';
+                        const text = `${document.querySelector('.vcms-model-form')?.innerText || ''}\n${document.querySelector('#vcms-m-display')?.value || ''}`;
+                        return pressed && want.every((item) => text.includes(item)) && block.every((item) => !text.includes(item));
+                    }, { profile: key, want: includes, block: excludes }), { timeoutMs: 10000, label: `ledger ${key}` });
+                };
+                await page.locator('[data-action="select-provider"][data-id="w15-ledger"]').click();
+                await showLedger('usd', ['美元价'], ['未配置单价，无法发送', '仅美元计价可用于发送']);
+                await shot(`${viewport.name}-model-ledger-active.png`);
+                await showLedger('empty', ['未配置单价，无法发送'], ['仅美元计价可用于发送']);
+                if (await page.locator('#vcms-currency-price').count()) throw new Error('空价模型显示了币种提示');
+                await shot(`${viewport.name}-model-ledger-missing.png`);
+                await showLedger('cny', ['仅美元计价可用于发送'], ['未配置单价，无法发送']);
+                await shot(`${viewport.name}-model-ledger-currency.png`);
+                await assertLayout(viewport.width);
+                await assertSurface(`ledger-${viewport.name}`);
                 await closeIf('.vcms-overlay:not([hidden])', '[data-action="close"]');
                 await assertSurface(viewport.name);
             }
+            await page.setViewportSize({ width: 1440, height: 900 });
+            await openNav('models', '模型', 1440);
+            await page.locator('#vcms-f-display').waitFor();
+            await page.locator('[data-action="select-provider"][data-id="w15-ledger"]').click();
+            await page.locator('[data-action="select-model"][data-key="empty"]').click();
+            await page.locator('#vcms-no-price').waitFor();
+            await page.locator('details.vcms-advanced').evaluate((el) => { el.open = true; });
+            await page.locator('#vcms-m-currency').selectOption('USD');
+            await page.locator('#vcms-m-pin').fill('1.5');
+            await page.locator('#vcms-m-pout').fill('3');
+            if (!(await page.locator('#vcms-no-price').count())) throw new Error('填写表单价格后不应撤掉服务端未配置提示');
+            if (await page.locator('#vcms-save').isDisabled()) throw new Error('补上美元价后保存不可用');
+            const fresh = await ctx.admin.reauth(ctx.secrets.password);
+            if (!fresh.ok) throw new Error(`保存前重新验证失败 HTTP ${fresh.status}`);
+            await page.locator('#vcms-save').click();
+            const reauthBox = page.locator('#vcms-reauth-password');
+            if (await reauthBox.waitFor({ state: 'visible', timeout: 4000 }).then(() => true).catch(() => false)) {
+                await reauthBox.fill(ctx.secrets.password);
+                await page.locator('[data-action="reauth-submit"]').click();
+                await reauthBox.waitFor({ state: 'hidden', timeout: 20000 });
+            }
+            await page.locator('[data-action="select-model"][data-key="empty"]').click();
+            await waitFor(async () => page.evaluate(() => {
+                const pressed = document.querySelector('[data-action="select-model"][data-key="empty"]')?.getAttribute('aria-pressed') === 'true';
+                const text = document.querySelector('.vcms-model-form')?.innerText || '';
+                return pressed && !document.querySelector('#vcms-no-price') && !text.includes('未配置单价，无法发送') && !text.includes('仅美元计价可用于发送');
+            }), { timeoutMs: 20000, label: '保存后空价变为可发送' });
+            const savedList = await ctx.admin.listProviders();
+            const savedEmpty = savedList.json?.find((item) => item.providerId === 'w15-ledger')?.models?.find((model) => model.profileKey === 'empty');
+            if (savedEmpty?.ledgerPrice !== 'ACTIVE') throw new Error(`保存后 ledgerPrice=${savedEmpty?.ledgerPrice || '缺失'}`);
+            const passwordLeft = await page.locator('#vcms-reauth-password').inputValue().catch(() => '');
+            if (passwordLeft) throw new Error('模型重新验证后密码仍留在输入框');
+            await shot('1440-model-ledger-resave.png');
+            await assertSurface('ledger-resave');
+            await closeIf('.vcms-overlay:not([hidden])', '[data-action="close"]');
             if (typeof ctx.w10?.psql !== 'function') throw new Error('受管数据库入口不可用');
-            ctx.w10.psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
-                VALUES ('vc03m-chat', 'vc03m-chat', 1, 0.001, 0.002)
-                ON CONFLICT DO NOTHING;`);
             await page.setViewportSize({ width: 1440, height: 900 });
             await openChat(perfFile);
             await waitFor(async () => page.evaluate(() => String(window.SillyTavern.getContext().chatCompletionSettings?.custom_url ?? '').includes('profile=chat')), { timeoutMs: 30000, label: 'chat 投影' });

@@ -178,6 +178,7 @@ test('管理桥：并入聊天、主动陪伴与剧情路由；claim/ack 与账�
             { method: 'POST', url: '/api/v1/story/runs/11/actions' },
             { method: 'POST', url: '/api/v1/story/runs/11/rewind' },
             { method: 'POST', url: '/api/v1/story/runs/11/projections/3/confirm' },
+            { method: 'GET', url: '/api/v1/story/runs/11/projections' },
             { method: 'POST', url: '/api/v1/story/runs/11/participants/lin' },
             { method: 'POST', url: '/api/v1/story/runs/11/epilogue' },
             { method: 'POST', url: '/api/v1/auth/password' },
@@ -522,10 +523,10 @@ for (const name of ['st-chat-completions-vc-bridge.json', 'st-util-stream-error-
                 const count = (needle) => result.output.split(needle).length - 1;
                 assert.equal(count('settleOutboundResponse?.('), 2, 'Chat 与 Claude 各结算一次');
                 assert.equal(count('abandonOutbound?.('), 2, 'Chat 与 Claude 各在抛错时取消一次');
-                const chatSettle = result.output.indexOf('settleOutboundResponse?.(fetchResponse, endpointUrl)');
-                const claudeSettle = result.output.indexOf("settleOutboundResponse?.(generateResponse, apiUrl + '/messages')");
-                const chatAbandon = result.output.indexOf('abandonOutbound?.(endpointUrl)');
-                const claudeAbandon = result.output.indexOf("abandonOutbound?.(apiUrl + '/messages')");
+                const chatSettle = result.output.indexOf('settleOutboundResponse?.(fetchResponse, endpointUrl, request)');
+                const claudeSettle = result.output.indexOf("settleOutboundResponse?.(generateResponse, apiUrl + '/messages', request)");
+                const chatAbandon = result.output.indexOf('abandonOutbound?.(endpointUrl, request)');
+                const claudeAbandon = result.output.indexOf("abandonOutbound?.(apiUrl + '/messages', request)");
                 assert.ok(chatAbandon > 0 && chatAbandon < chatSettle, 'Chat 取消在结算之前');
                 assert.ok(claudeAbandon > 0 && claudeAbandon < claudeSettle, 'Claude 取消在结算之前');
                 assert.match(result.output.slice(chatSettle - 700, chatSettle), /JSON\.stringify\(requestBody\)/);
@@ -548,11 +549,11 @@ test('补丁钩子形态：最终防线与拦截钩子都以可选链调用，�
     const guard = spec.replacements.find((r) => r.to.includes('finalOutboundGuard') && r.to.includes('generateResponse')).to;
     assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.finalOutboundGuard\?\.\(request, response, requestBody, apiUrl \+ '\/messages'\)/);
     const chat = spec.replacements.find((r) => r.to.includes('fetchResponse') && r.to.includes('endpointUrl')).to;
-    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(fetchResponse, endpointUrl\)/);
-    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(endpointUrl\)/);
+    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(fetchResponse, endpointUrl, request\)/);
+    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(endpointUrl, request\)/);
     assert.match(chat, /\.catch\(async \(error\) => \{[\s\S]*throw error;\s*\}\)/);
-    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(generateResponse, apiUrl \+ '\/messages'\)/);
-    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(apiUrl \+ '\/messages'\)/);
+    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(generateResponse, apiUrl \+ '\/messages', request\)/);
+    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(apiUrl \+ '\/messages', request\)/);
     assert.match(guard, /\.catch\(async \(error\) => \{[\s\S]*throw error;\s*\}\)/);
     const hook1 = spec.replacements[0].to;
     assert.match(hook1, /vcBridge\.interceptGenerate\(request, response\)/);

@@ -244,6 +244,21 @@
       `git diff --check` PASS。遗留到 W15：投影补写重试期间 F2 冲突对话框会弹出并阻塞页面。
       执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W15` 完整界面、手机与性能；删除旧 Vue / uni-app 前端。用例：UI01–UI03。
+      结果：READY_FOR_OWNER（2026-10-29）；W15 提交 `79b67385`、`209bbfe6`、`0acf49eb`、`f9fa4755`、`067d6ae4`、`051585fb`、
+      `d19c095b`、`36fa63a7`，合并 `2e707c06`、`7d9a482f`、`952fada0`（其间夹有 W11/W16 提交，不以区间表示范围）。
+      ST 扩展七页（聊天、角色、记忆、主动陪伴、剧情、模型、账户/数据）经导航可达，桌面左侧、手机底栏「更多」；F2 冲突按规范文案
+      「查看最新 / 保留草稿」，两条路径都把未保存输入放回输入框且无强制覆盖；剧情投影补写静默冲突、读写之间宿主新增消息时拒绝覆盖；
+      聊天断线接 ST 在线状态与浏览器 online/offline；数据页常驻恢复限制说明；模型页按账本 ledgerPrice 显示「未配置单价」「仅美元计价可用于发送」，
+      发送被拒（NO_BUDGET/OVER_LIMIT）后显示预算不足；账户页改密、验证器、会话。旧 Vue/uni-app 前端与其 CI、check.sh 入口已删除。
+      用例：UI01 七页与状态合成 PASS（受管 `w15-ui`、离线页测试与 harness；设计稿 14 张可追溯，运行页与 Stitch 逐屏对应、换主题未断言）；
+      UI02 窄屏 390/360、触控 ≥44px、复杂卡同屏状态栏合成 PASS，软键盘与真机 NOT_RUN（V2-OWNER-DEVICE），历史滚动由宿主 #chat 承担未单独断言；
+      UI03 三协议原生发送、保存不试连、409 保留草稿、Key 不回显、预算不足真实拒绝且上游 0 次合成 PASS（`ui03-browser`、`w15-ui`），
+      真实供应商与真实时延 NOT_RUN（V2-OWNER-MODELS）。§4.1 性能仅 n=1 固定 provider 样本（发送→上游约 0.43s，首字→完成约 3.6s），
+      无扩展关/开对照，不作 p95 或容量结论。
+      验证：受管 9 场景 PASS（catalog-admin、ui03-browser、memory-browser、story-view-browser、w11-tool-meter、w10-inbox-notify、
+      story-outbound、story-play、w15-ui）；ST 离线测试 551/551；w15 harness 三套 failures 为空；`check.sh` 全量 PASS（19s，已不含前端）。
+      遗留：真机/软键盘（V2-OWNER-DEVICE）、真实模型与时延（V2-OWNER-MODELS）；generation/realtime Go 路由与 Hub 是否退役另案（catalog 仍为 core-outcome）。
+      执行：Claude 调度与审查；Grok Build 与 Cursor grok-4.7-xhigh-fast 实现。
 - [ ] `V2-W16` 保护、恢复与运行说明。用例：D06、O01；最终报告。
 
 ### V2 Owner 项与运行配置（缺失只阻塞相关真实调用或验收）

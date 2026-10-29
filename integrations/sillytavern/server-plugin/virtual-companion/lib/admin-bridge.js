@@ -37,6 +37,7 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/actors\/player\/view$/, where: 'W12 玩家 ActorView（只放行 player）' },
     { method: 'POST', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/actions$/, where: 'W14 提交行动' },
     { method: 'POST', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/rewind$/, where: 'W14 回档' },
+    { method: 'GET', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/projections$/, where: 'W16 未确认投影只读补写' },
     { method: 'POST', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/projections\/[1-9][0-9]*\/confirm$/, where: 'W14 确认投影' },
     { method: 'POST', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/participants\/[a-z][a-z0-9_-]{0,63}$/, where: 'W14 陪伴入局' },
     { method: 'POST', path: /^\/api\/v1\/story\/runs\/[1-9][0-9]*\/epilogue$/, where: 'W14 结局摘要' },

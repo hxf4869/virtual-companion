@@ -56,7 +56,6 @@ export async function sceneMemoryBrowser(ctx) {
     assert.ok(current, '前台用途应已登记');
     expect(await ctx.admin.savePurpose('FOREGROUND_CHAT', { providerId: 'vc03m-chat', profileKey: 'chat',
         state: 'ENABLED', expectedRevision: current.revision }), 200, '绑定本地合成前台模型');
-    ctx.w08.seedSyntheticPrice();
     for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
         expect(await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'w08-synthetic', granted: true }), 200, '合成账号模型处理授权');
     }
@@ -70,6 +69,8 @@ export async function sceneMemoryBrowser(ctx) {
         baseUrl: `http://127.0.0.1:${process.env.VC_W03_FIXTURE_PORT || 8753}/v1`, credential: ctx.secrets.fixtureKey, state: 'ENABLED', expectedRevision: 0,
         models: [{ profileKey: 'memory', modelId: 'vc08-memory', displayName: 'MemoryCore 合成提取', contextWindowTokens: 32768,
             maxOutputTokens: 4096, state: 'ENABLED', capabilities: { systemMessage: 'DECLARED' }, reasoningLevels: [], generationParams: {} }] }), 200, '登记独立提取用途模型');
+    // 该模型不写目录价。保存会停用已有手写单价，所以在保存之后写入测试单价。
+    ctx.w08.seedSyntheticPrice();
     await ctx.fixtureHttp.setOverride('vc08-memory', { memorycoreDocuments: [{ content: wedding, eventDate: '2026-10-30' },
         { content: reading }, { content: revisedReading }, { content: nativeFact, type: 'persona' }] });
     const extractionPurpose = purposes.find(row => row.purpose === 'MEMORY_EXTRACTION_DEDUP_SUMMARY');
