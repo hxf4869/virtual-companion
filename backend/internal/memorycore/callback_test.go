@@ -54,10 +54,12 @@ func (s *fakeStore) RecordMemoryExtractOutcome(_ context.Context, _, _, _ int64,
 type fakeProvider struct {
 	calls   int
 	failure bool
+	last    companion.ModelRequest
 }
 
-func (p *fakeProvider) Stream(_ context.Context, _ companion.ModelRequest, emit func(companion.OutputDelta) error) (companion.AttemptResult, error) {
+func (p *fakeProvider) Stream(_ context.Context, req companion.ModelRequest, emit func(companion.OutputDelta) error) (companion.AttemptResult, error) {
 	p.calls++
+	p.last = req
 	if p.failure {
 		return companion.AttemptResult{}, companion.Timeout(companion.TimeoutTotal, companion.DeliveryUnknown)
 	}
@@ -247,6 +249,24 @@ func TestDecisionCodeClasses(t *testing.T) {
 		if got := DecisionCode(tc.err); got != tc.code {
 			t.Fatalf("DecisionCode(%v)=%s want %s", tc.err, got, tc.code)
 		}
+	}
+}
+
+func TestCallUsesRemainingOperationBudget(t *testing.T) {
+	st := &fakeStore{}
+	p := &fakeProvider{}
+	b := New(st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	expires := time.Now().Add(90 * time.Second)
+	token, err := b.Open(context.Background(), Scope{Owner: 1, Job: 2, Source: 3, ClaimToken: "lease", ClaimFence: "fence", OperationID: "op-budget", ExpiresAt: expires})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-extraction", CallSequence: 1, Messages: []Message{{Role: "user", Content: "synthetic"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.last.Timeouts.FirstToken < 60*time.Second || p.last.Timeouts.Total < 60*time.Second || p.last.Timeouts.Total > 90*time.Second {
+		t.Fatalf("call budget %+v is not the time remaining until the operation expires", p.last.Timeouts)
 	}
 }
 

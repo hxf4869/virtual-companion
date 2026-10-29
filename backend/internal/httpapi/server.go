@@ -81,7 +81,7 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 		}
 		if s.core.MemoryCore == nil && cfg.MemoryCoreCallbackToken != "" {
 			if store, ok := s.core.Providers.(memorycore.Store); ok {
-				factory := modelprovider.Factory{ConnectTimeout: cfg.Provider.ConnectTimeout, FirstTokenTimeout: cfg.Provider.FirstTokenTimeout, TotalTimeout: cfg.Provider.TotalTimeout, MaxResponseBytes: cfg.Provider.MaxResponseBytes, Temperature: cfg.Provider.Temperature, AllowLoopbackHTTP: cfg.Provider.AllowLoopbackHTTP}
+				factory := memorycore.ExtractionFactory(modelprovider.Factory{ConnectTimeout: cfg.Provider.ConnectTimeout, FirstTokenTimeout: cfg.Provider.FirstTokenTimeout, TotalTimeout: cfg.Provider.TotalTimeout, MaxResponseBytes: cfg.Provider.MaxResponseBytes, Temperature: cfg.Provider.Temperature, AllowLoopbackHTTP: cfg.Provider.AllowLoopbackHTTP})
 				s.core.MemoryCore = memorycore.New(store, factory.Build)
 			}
 		}

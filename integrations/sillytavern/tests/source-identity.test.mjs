@@ -219,6 +219,26 @@ test('legacy 上一持久 JSONL（无 vc 字段）全部按新来源处理，set
     assert.deepEqual(candidateRevisions(chat[2]), [1, 1]);
 });
 
+test('发送中的保存不能把未改动的已结算来源改回未结算', () => {
+    const chat = [header(), message({ is_user: true, mes: '我平时喜欢喝龙井绿茶。' })];
+    prepareSourceIdentities(chat, { settled: true, sourceTimezone: 'Asia/Shanghai' });
+    reconcileSourceIdentities(chat, []);
+    const saved = structuredClone(chat);
+    const sending = structuredClone(saved);
+    prepareSourceIdentities(sending, { settled: false, sourceTimezone: 'Asia/Shanghai' });
+    sending.push(message({ is_user: true, mes: '我在2026年10月30日准备去哪里？' }));
+    reconcileSourceIdentities(sending, saved);
+    assert.equal(sending[1].extra.vc_source.settled, true);
+    assert.equal(sending[1].extra.vc_source.revision, saved[1].extra.vc_source.revision);
+    assert.equal(sending[2].extra.vc_source.settled, false);
+    const edited = structuredClone(saved);
+    prepareSourceIdentities(edited, { settled: false, sourceTimezone: 'Asia/Shanghai' });
+    edited[1].mes = '我们决定暂停读书计划，等下次再选书。';
+    reconcileSourceIdentities(edited, saved);
+    assert.equal(edited[1].extra.vc_source.settled, false);
+    assert.equal(edited[1].extra.vc_source.revision, saved[1].extra.vc_source.revision + 1);
+});
+
 test('settled 仅显式 true 有效', () => {
     const chat = [header(), message({ mes: 'a' }), message({ mes: 'b' }), message({ mes: 'c' })];
     reconcileSourceIdentities(chat, []);

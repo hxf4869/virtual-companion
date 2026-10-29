@@ -355,7 +355,7 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 	}
 	if loop, ok := r.deps.Jobs.(*jobs.Loop); ok {
 		if r.cfg.MemoryCoreCallbackToken != "" {
-			factory := modelprovider.Factory{ConnectTimeout: r.cfg.Provider.ConnectTimeout, FirstTokenTimeout: r.cfg.Provider.FirstTokenTimeout, TotalTimeout: r.cfg.Provider.TotalTimeout, MaxResponseBytes: r.cfg.Provider.MaxResponseBytes, AllowLoopbackHTTP: r.cfg.Provider.AllowLoopbackHTTP}
+			factory := memorycore.ExtractionFactory(modelprovider.Factory{ConnectTimeout: r.cfg.Provider.ConnectTimeout, FirstTokenTimeout: r.cfg.Provider.FirstTokenTimeout, TotalTimeout: r.cfg.Provider.TotalTimeout, MaxResponseBytes: r.cfg.Provider.MaxResponseBytes, AllowLoopbackHTTP: r.cfg.Provider.AllowLoopbackHTTP})
 			core.MemoryCore = memorycore.New(r.store, factory.Build)
 			loop.UseMemoryCore(core.MemoryCore)
 		}

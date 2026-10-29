@@ -110,6 +110,10 @@ async function callbackFailureCode(response) {
     } catch { /* generic closed code */ }
     return 'MEMORYCORE_CALLBACK_FAILED';
 }
+// Five and a half minutes covers reasoning effort max and still finishes
+// inside the six-minute extract lease. The previous three-minute cap cancelled
+// the call before the provider budget did.
+export const CALL_DEADLINE_CAP_MS = 330000;
 export function createCallbackRunner({ baseURL, token, operationToken, stage, stagingDir, fetchImpl = fetch, counter = { value: 0 }, maxSteps = 12 }) {
     const url = new URL(baseURL);
     if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password ||
@@ -119,7 +123,7 @@ export function createCallbackRunner({ baseURL, token, operationToken, stage, st
         const tools = Boolean(stagingDir);
         const messages = [{ role: 'system', content: (params.systemPrompt || '') + (tools ? '\n' + TOOL_INSTRUCTION : '') },
             { role: 'user', content: params.prompt }];
-        const deadline = Date.now() + Math.min(params.timeoutMs || 180000, 180000);
+        const deadline = Date.now() + Math.min(params.timeoutMs || CALL_DEADLINE_CAP_MS, CALL_DEADLINE_CAP_MS);
         for (let step = 0; step < (tools ? maxSteps : 1); step++) {
             const remaining = deadline - Date.now();
             if (remaining <= 0) throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');

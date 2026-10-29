@@ -513,6 +513,22 @@
       "query": "苏州的气温是多少？",
       "expected": null,
       "kind": "distractor"
+    },
+    {
+      "query": "我的血型是什么？",
+      "expected": null,
+      "kind": "same-relationship-unrelated"
+    },
+    {
+      "query": "我平时通勤用什么交通工具？",
+      "expected": null,
+      "kind": "same-relationship-unrelated"
+    },
+    {
+      "query": "十二月三日我有什么安排？",
+      "expected": null,
+      "kind": "wrong-date",
+      "eventDate": "2026-12-03"
     }
   ]
 }

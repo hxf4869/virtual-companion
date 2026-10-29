@@ -93,7 +93,14 @@ func TestEngineProfileExcludesOtherChatAndMergedDependencies(t *testing.T) {
 		case "/internal/read-profile":
 			json.NewEncoder(w).Encode(map[string]any{"dependencies": expectedDependencies, "files": map[string]string{"persona.md": "A：固定阅读计划摘要"}})
 		case "/internal/search":
-			json.NewEncoder(w).Encode([]any{})
+			// Relevance stays in the engine. This double returns only the
+			// allowlist Go already filtered, so a stale profile cannot add
+			// records the engine did not return.
+			out := []map[string]string{}
+			for _, id := range input.AllowedRecordIDs {
+				out = append(out, map[string]string{"record_id": id})
+			}
+			json.NewEncoder(w).Encode(out)
 		default:
 			w.WriteHeader(404)
 		}

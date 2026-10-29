@@ -248,14 +248,32 @@ test('same revision is immutable and same space only permits a newer state revis
 test('space configuration serializes concurrent revisions and survives clear-owner', async t => {
     const { engine, native, root } = await fixture(t);
     await engine.invoke('propose', proposalInput());
+    await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
     const newer = { ...embedding, revision: 3, spaceId: 'space3' };
-    const [accepted, stale] = await Promise.allSettled([
-        engine.invoke('search', { ...searchInput(['record1']), embedding: newer }),
-        engine.invoke('search', { ...searchInput(['record1']), embedding: { ...embedding, revision: 2, spaceId: 'space2' } }),
-    ]);
-    assert.equal(accepted.status, 'fulfilled'); assert.equal(stale.status, 'rejected');
-    assert.match(stale.reason.message, /SPACE_CONFIG_REVISION/);
+    const older = { ...embedding, revision: 2, spaceId: 'space2' };
+    const entered = deferred();
+    const release = deferred();
+    const search = native.search.bind(native);
+    let held = false;
+    native.search = async input => {
+        if (!held) {
+            held = true;
+            entered.resolve();
+            await release.promise;
+        }
+        return search(input);
+    };
+    // The older revision passes configure first and stays inside retrieval.
+    // The newer revision then commits. The older call must not succeed after that.
+    const stale = engine.invoke('search', { ...searchInput(['record1']), embedding: older });
+    await entered.promise;
+    const accepted = await engine.invoke('search', { ...searchInput(['record1']), embedding: newer });
+    assert.deepEqual(accepted.map(row => row.id), ['record1']);
+    release.resolve();
+    await assert.rejects(stale, /SPACE_CONFIG_REVISION/);
     assert.equal(native.getSpace().spaceId, 'space3');
+    const unpublished = engine.invoke('search', { ...searchInput(['missing-record']), embedding: older });
+    await assert.rejects(unpublished, /SPACE_CONFIG_REVISION/);
     assert.equal((await engine.invoke('clear-owner', { scope, revision: 0 })).status, 'cleared');
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, 'owners/1/space-config.json'), 'utf8')), newer);
     await assert.rejects(engine.invoke('search', searchInput(['record1'])), /SPACE_CONFIG_REVISION/);
@@ -418,6 +436,21 @@ test('forgetting trusted source dependencies removes a committed correction befo
     assert.equal(native.records.has(replacement.records[0].id),true);
     const result=await engine.invoke('forget',{scope,revision:0,recordIds:['record1'],sourceIds:['message1']});
     assert.equal(result.status,'cleared');assert.equal(native.records.size,0);assert.equal(native.listSources().length,0);
+});
+
+test('failed extraction keeps the request and the same operation can be proposed again', async t => {
+    const { engine, root } = await fixture(t);
+    await engine.invoke('export-owner', { scope });
+    const input = { ...proposalInput(), operationId: 'retry-failed' };
+    const request = { scope: input.scope, revision: input.revision, embedding: input.embedding, allowedRecordIds: input.allowedRecordIds, messages: input.messages };
+    const file = path.join(root, 'owners/1/operations/retry-failed.json');
+    await fs.writeFile(file, JSON.stringify({ scope, request, status: 'preparing' }));
+    assert.equal((await engine.invoke('operation-status', { scope, operationId: 'retry-failed' })).status, 'failed');
+    const stored = JSON.parse(await fs.readFile(file, 'utf8'));
+    assert.equal(stored.status, 'failed');
+    assert.deepEqual(stored.request, request);
+    const proposal = await engine.invoke('propose', input);
+    assert.equal(proposal.records[0].content, 'synthetic content');
 });
 
 test('operation status marks restart-orphaned preparing and profile work failed without replay', async t => {

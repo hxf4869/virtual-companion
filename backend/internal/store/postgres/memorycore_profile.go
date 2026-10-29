@@ -255,25 +255,6 @@ func (s *Store) enqueueProfileRebuild(ctx context.Context, owner, rel int64) err
 		return e
 	}))
 }
-func (s *Store) profileFallbackMemories(ctx context.Context, owner, rel, conv int64) ([]Memory, error) {
-	out := []Memory{}
-	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		rows, e := tx.Query(ctx, `SELECT out_id,out_summary FROM vc.memory_profile_fallback($1,$2,$3)`, owner, rel, conv)
-		if e != nil {
-			return e
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var m Memory
-			if e = rows.Scan(&m.ID, &m.Summary); e != nil {
-				return e
-			}
-			out = append(out, m)
-		}
-		return rows.Err()
-	})
-	return out, mapStoreErr(err)
-}
 func (s *Store) RecoverEngineOperations(ctx context.Context) error {
 	var tasks [][2]int64
 	e := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {

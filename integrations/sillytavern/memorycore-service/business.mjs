@@ -313,10 +313,10 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                 await configure(ctx, input.embedding);
                 const { file, stored } = await operation(ctx, input);
                 if (stored) {
-                    if (JSON.stringify(stored.request) !== JSON.stringify(request)) fail('OPERATION_CONFLICT');
+                    if (stored.request && JSON.stringify(stored.request) !== JSON.stringify(request)) fail('OPERATION_CONFLICT');
                     if (stored.status === 'proposed') return { work: Promise.resolve(stored.proposal) };
                     if (stored.status === 'preparing' && pending.has(file)) return { work: pending.get(file) };
-                    fail('OPERATION_NOT_PROPOSABLE');
+                    if (stored.status !== 'failed' && !(stored.status === 'preparing' && !pending.has(file))) fail('OPERATION_NOT_PROPOSABLE');
                 }
                 await writeJSON(file, { scope: input.scope, request, status: 'preparing' });
                 const work = (async () => {
@@ -387,7 +387,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             if (!stored) return { status: 'unknown' };
             if (['preparing', 'building-profile'].includes(stored.status) && !pending.has(file)) {
                 await fs.rm(path.join(dir, 'staging', input.operationId), { recursive: true, force: true });
-                await writeJSON(file, { scope: stored.scope, status: 'failed' });
+                await writeJSON(file, { scope: stored.scope, ...(stored.request ? { request: stored.request } : {}), status: 'failed' });
                 return { status: 'failed' };
             }
             const nativeReceipt = native.getOperation(input.operationId);
@@ -418,10 +418,13 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             for (const { op } of await operationEntries(ctx)) {
                 if (op?.status === 'published' && sameIdentity(op.scope, input.scope)) for (const id of op.receipt.recordIds) published.add(id);
             }
-            const eligible = ids.filter(id => published.has(id)); if (!eligible.length) return [];
-            const embedding = native.getSpace().rebuilding ? undefined : await embeddingFactory(input.embedding);
-            const results = await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
-                allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true });
+            const eligible = ids.filter(id => published.has(id));
+            // An empty hit list is still a successful read of this revision.
+            // Re-check the saved snapshot so an older revision cannot return
+            // after a newer one has been committed.
+            const embedding = eligible.length && !native.getSpace().rebuilding ? await embeddingFactory(input.embedding) : undefined;
+            const results = eligible.length ? await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
+                allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true }) : [];
             return currentSpace(ctx, input.embedding, async () =>
                 !(await readJSON(path.join(dir, 'cleanup.json'))) && native.getScope(key).revision === revision ? results : []);
         }

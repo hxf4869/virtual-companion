@@ -102,7 +102,10 @@ export function reconcileSourceIdentities(chat, previous = []) {
             const revision = !existing ? 1 : existing.source.revision + (changed ? 1 : 0);
             if (!Number.isSafeInteger(revision)) throw new Error('Source revision limit reached');
             const eventId = inboxEventId(source) || inboxEventId(existing?.source);
-            candidate.extra.vc_source = { id: source.id, revision, settled: source.settled === true, ...time };
+            // An in-flight send marks the whole chat unsettled. Keep an unchanged
+            // source settled so its record stays in the profile fingerprint.
+            const settled = source.settled === true || Boolean(existing && existing.source.settled === true && !changed);
+            candidate.extra.vc_source = { id: source.id, revision, settled, ...time };
             if (eventId) candidate.extra.vc_source.inbox_event_id = eventId;
             if (Array.isArray(message.swipes) && candidate.index === selectedIndex(message)) message.swipe_info[candidate.index].extra.vc_source = structuredClone(candidate.extra.vc_source);
         }

@@ -69,10 +69,12 @@ func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64
 		return nil, e
 	}
 	ids := []string{}
+	allowed := map[string]Memory{}
 	for id, m := range candidates {
 		if q.Date != nil && (m.Time == nil || m.Time.EventDate == nil || *m.Time.EventDate != *q.Date) {
 			continue
 		}
+		allowed[id] = m
 		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
@@ -104,7 +106,7 @@ func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64
 		if id == "" {
 			id = hit.ID
 		}
-		if m, ok := candidates[id]; ok && !seen[m.Summary] {
+		if m, ok := allowed[id]; ok && !seen[m.Summary] {
 			seen[m.Summary] = true
 			out = append(out, m)
 		}

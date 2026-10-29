@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createOllamaEmbedding } from '../memorycore-service/embedding.mjs';
-import { createCallbackRunner } from '../memorycore-service/llm-runner.mjs';
+import { createCallbackRunner, CALL_DEADLINE_CAP_MS } from '../memorycore-service/llm-runner.mjs';
 
 const snapshot = { provider: 'OLLAMA', endpoint: 'http://127.0.0.1:11438', model: 'qwen3-embedding:0.6b',
     artifactVersion: 'sha256:fixture', dimensions: 2, queryPreprocessingVersion: 'qwen3-retrieval-v1',
@@ -56,6 +56,10 @@ test('callback uses fixed destination and capability; tools stay in staging and 
             fetchImpl: async () => new Response('secret dialogue', { status: 500 }) });
         await assert.rejects(opaque.run({ prompt: 'x' }), /^Error: MEMORYCORE_CALLBACK_FAILED$/);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test('callback runner deadline covers reasoning max inside the extract lease', () => {
+    assert.equal(CALL_DEADLINE_CAP_MS, 330000);
 });
 
 test('native recall keeps independent questions above their own relevance gate and preserves the same allowlist', async () => {

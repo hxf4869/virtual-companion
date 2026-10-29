@@ -400,7 +400,7 @@ function goServiceSpec(secrets) {
             VC_PROVIDER_ALLOW_LOOPBACK_HTTP: 'true',
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,
             VC_ST_HOST_BASE_URL: ST_BASE,
-            VC_MEMORYCORE_BASE_URL: 'http://127.0.0.1:8754',
+            VC_MEMORYCORE_BASE_URL: `http://127.0.0.1:${process.env.VC_MEMORYCORE_PORT || 8754}`,
             VC_MEMORYCORE_SERVICE_TOKEN: secrets.memorycoreToken,
             VC_MEMORYCORE_CALLBACK_TOKEN: secrets.memorycoreCallbackToken,
             ...(w10Capture ? {
