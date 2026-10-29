@@ -71,6 +71,7 @@ import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
 import { sceneInboxNotify, startW10Capture, stopW10Capture } from './w10-accept.mjs';
 import { sceneStoryReal } from './story-real-accept.mjs';
 import { sceneW15Ui } from './w15-ui-accept.mjs';
+import { sceneFe4bUi } from './fe4b-ui-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -117,6 +118,13 @@ SCENES.push({
     id: 'w15-ui',
     title: 'W15 七页导航、模型预算与账户',
     needs: ['catalog', 'stack', 'browser'],
+    default: false,
+});
+// F4b 新界面不进默认集。显式 --filter fe4b-ui 才运行，只开本地静态页与浏览器。
+SCENES.push({
+    id: 'fe4b-ui',
+    title: 'F4b 角色与剧情新界面：网格、详情、开局转场与回档取消',
+    needs: ['browser'],
     default: false,
 });
 
@@ -3030,6 +3038,7 @@ const SCENE_IMPLS = {
     'story-play': sceneStoryPlay,
     'story-real': sceneStoryReal,
     'w15-ui': sceneW15Ui,
+    'fe4b-ui': sceneFe4bUi,
 };
 
 async function runFull() {

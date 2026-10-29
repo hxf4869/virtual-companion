@@ -1,5 +1,9 @@
 // UI-P02：角色卡模板来自宿主卡，陪伴实例来自已有 relationships 与 POST /api/v1/st/bindings。
 import { fetchRelationships, resolveSTBinding, storyRequest } from './api.js';
+import { confirmAlert } from './ui/alert.js';
+import { icon } from './ui/icons.js';
+import { createNav } from './ui/nav.js';
+import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 
 export const IMPORT_FAILED_COPY = '文件不是受支持的角色卡格式，原有角色未发生变动。请核对 JSON / PNG 角色元数据规范。';
 export const UNSAVED_INSTANCE_COPY = '当前存在未保存更改，切换实例前请先保存。';
@@ -543,4 +547,440 @@ export function mountInstancePage(options = {}) {
         close,
         page,
     };
+}
+
+function isVcUiOn() {
+    try {
+        if (globalThis.document?.body?.classList?.contains('vc-ui')) return true;
+        return globalThis.localStorage?.getItem('vc-ui') === 'on';
+    } catch {
+        return false;
+    }
+}
+
+function characterModel(state) {
+    const cards = (Array.isArray(state.cards) ? state.cards : []).map((card) => ({
+        characterRef: card?.characterRef || '',
+        name: card?.name || '未命名角色卡',
+        description: card?.description || '',
+        worldName: card?.worldName || '',
+        avatar: typeof card?.avatar === 'string' ? card.avatar : '',
+        instances: [],
+    }));
+    const byRef = new Map(cards.map((card) => [card.characterRef, card]));
+    const instances = instancesFrom(state.relationships).map((item) => {
+        const row = (state.relationships || []).find((rel) => String(rel?.relationshipId) === item.relationshipId) || {};
+        return {
+            ...item,
+            characterRef: typeof row.characterRef === 'string' ? row.characterRef : '',
+            lastAt: row.lastChatAt || row.lastMessageAt || '',
+            chatIdentity: '',
+        };
+    });
+    const placed = new Set();
+    for (const binding of Array.isArray(state.bindings) ? state.bindings : []) {
+        const card = byRef.get(binding?.characterRef || '');
+        const inst = instances.find((item) => item.relationshipId === String(binding?.relationshipId ?? ''));
+        if (!card || !inst || placed.has(inst.relationshipId)) continue;
+        card.instances.push({ ...inst, chatIdentity: typeof binding.chatIdentity === 'string' ? binding.chatIdentity : '' });
+        placed.add(inst.relationshipId);
+    }
+    for (const inst of instances) {
+        if (placed.has(inst.relationshipId)) continue;
+        const card = byRef.get(inst.characterRef);
+        if (!card) continue;
+        card.instances.push(inst);
+        placed.add(inst.relationshipId);
+    }
+    const loose = instances.filter((item) => !placed.has(item.relationshipId));
+    if (loose.length && cards.length === 1) {
+        cards[0].instances.push(...loose);
+        loose.length = 0;
+    }
+    return { cards, loose };
+}
+
+function formatWhen(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const now = new Date();
+    const hm = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (date.toDateString() === now.toDateString()) return hm;
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return `昨天 ${hm}`;
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`;
+}
+
+function avatarHtml(name, url, className) {
+    const face = url
+        ? `<img alt="" src="${esc(url)}">`
+        : esc(initial(name));
+    return `<span class="${className}">${face}</span>`;
+}
+
+function instanceRows(items, state) {
+    if (!items.length) return '<p>还没有陪伴实例</p>';
+    return items.map((item) => {
+        const current = !state.creating && item.relationshipId === state.selectedRelationshipId;
+        const when = formatWhen(item.lastAt);
+        return `<button type="button" class="vc-cell" data-action="select-instance" data-id="${esc(item.relationshipId)}" aria-current="${current ? 'true' : 'false'}"><span class="vc-grow"><strong>${esc(item.name)}</strong>${when ? `<span class="vc-meta vc-num">${esc(when)}</span>` : ''}${current ? '<span class="vc-instance-badge">正在编辑</span>' : ''}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button>`;
+    }).join('');
+}
+
+function nameForm(state) {
+    const dirty = state.draftName !== state.savedName && (state.creating || state.selectedRelationshipId);
+    return `<form class="vc-instance-form" data-form="instance"><label>实例名称<input name="displayName" value="${esc(state.draftName || '')}" maxlength="64"></label>${dirty ? `<p class="vc-footnote">${UNSAVED_INSTANCE_COPY}</p>` : ''}${state.nameError ? `<p role="alert">${esc(state.nameError)}</p>` : ''}<div class="vc-instance-form-actions"><button type="button" class="vc-btn vc-btn-text" data-action="cancel-edit">取消</button><button type="submit" class="vc-btn vc-btn-fill">${state.creating ? '创建实例' : '保存更改'}</button></div></form>`;
+}
+
+export function renderCharactersTab(state, options = {}) {
+    const screen = options.screen === 'detail' ? 'detail' : 'list';
+    const model = characterModel(state);
+    const detail = model.cards.find((card) => card.characterRef === (options.detailRef || '')) || model.cards[0];
+    if (options.loading) {
+        return `<header class="vc-navbar"><div class="vc-nav-title">角色</div><div class="vc-nav-spacer"></div></header><div class="vc-scroll" aria-busy="true"><h1 class="vc-large-title">角色</h1><div class="vc-roles">${[0, 1, 2, 3].map(() => `<div class="vc-role" aria-hidden="true"><span class="vc-skeleton vc-skeleton-avatar"></span><span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span></div>`).join('')}</div></div>`;
+    }
+    if (screen === 'detail' && detail) {
+        const showForm = state.creating || detail.instances.some((item) => item.relationshipId === state.selectedRelationshipId);
+        const count = `${detail.instances.length} 个实例`;
+        return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="back" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(detail.name)}</h1><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="edit-card" aria-label="编辑角色卡">${icon('pencil')}</button></header><div class="vc-scroll"><div class="vc-poster" style="--vc-tint:${NEUTRAL_TINT}" data-tint="${esc(detail.avatar)}">${avatarHtml(detail.name, detail.avatar, 'vc-poster-avatar')}<b>${esc(detail.name)}</b><span class="vc-instance-badge">模板</span><span class="vc-meta">${esc(count)}</span>${detail.description ? `<p class="vc-instance-secondary">${esc(detail.description)}</p>` : ''}</div>${detail.worldName ? `<div class="vc-group"><div class="vc-cell"><span class="vc-grow"><span class="vc-instance-world">关联世界书 · ${esc(detail.worldName)}</span></span></div></div>` : ''}<div class="vc-group" aria-label="陪伴实例">${instanceRows(detail.instances, state)}</div>${detail.instances.length && !state.creating ? `<button type="button" class="vc-btn vc-btn-text vc-instance-create" data-action="create">创建实例</button>` : ''}${!detail.instances.length && !showForm ? `<button type="button" class="vc-btn vc-btn-fill vc-instance-create vc-instance-primary" data-action="create">创建实例</button>` : ''}${showForm ? nameForm(state) : `<button type="button" class="vc-btn vc-btn-text" data-action="edit-name">编辑</button>`}${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}</div>`;
+    }
+    const alerts = `${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p><button type="button" class="vc-btn vc-btn-fill" data-action="retry">重试</button>` : ''}`;
+    const body = model.cards.length
+        ? `<div class="vc-roles">${model.cards.map((card) => `<button type="button" class="vc-role" data-action="select-template" data-ref="${esc(card.characterRef)}" data-tint="${esc(card.avatar)}" style="--vc-tint:${NEUTRAL_TINT}" aria-current="${card.characterRef === state.selectedCharacterRef ? 'true' : 'false'}">${avatarHtml(card.name, card.avatar, 'vc-role-avatar')}<b>${esc(card.name || '未命名角色卡')}</b><span>${card.instances.length} 个实例</span></button>`).join('')}</div>${model.loose.length ? `<div class="vc-group" aria-label="陪伴实例">${instanceRows(model.loose, state)}</div>` : ''}`
+        : `<div class="vc-empty">${icon('users-round', { size: 32 })}<p>还没有角色卡模板</p><button type="button" class="vc-btn vc-btn-fill" data-action="import">导入角色卡</button></div>`;
+    return `<header class="vc-navbar"><div class="vc-nav-title">角色</div><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="import" aria-label="导入角色卡">${icon('plus')}</button></header><div class="vc-scroll"><h1 class="vc-large-title" tabindex="-1">角色</h1>${alerts}${body}</div>`;
+}
+
+export function openHostCharacterPanel(doc = globalThis.document) {
+    const panel = doc?.getElementById?.('right-nav-panel');
+    const iconButton = doc?.getElementById?.('rightNavDrawerIcon');
+    const closed = !panel || panel.classList.contains('closedDrawer') || !panel.classList.contains('openDrawer');
+    if (iconButton && closed) {
+        iconButton.click();
+        return true;
+    }
+    const characters = doc?.getElementById?.('rm_button_characters');
+    if (characters) {
+        characters.click();
+        return true;
+    }
+    if (!panel) return false;
+    panel.classList.remove('closedDrawer');
+    panel.classList.add('openDrawer');
+    return true;
+}
+
+const spriteLoads = new Map();
+
+function hydrateIcons(scope) {
+    const doc = scope?.ownerDocument;
+    if (!doc || typeof fetch !== 'function') return;
+    const groups = new Map();
+    for (const use of scope.querySelectorAll('use[href]')) {
+        const href = use.getAttribute('href') || '';
+        const hash = href.indexOf('#');
+        if (hash <= 0) continue;
+        const url = href.slice(0, hash);
+        const id = href.slice(hash + 1);
+        if (!url.endsWith('.svg') || !id) continue;
+        if (!groups.has(url)) groups.set(url, []);
+        groups.get(url).push({ use, id });
+    }
+    for (const [url, items] of groups) {
+        const task = spriteLoads.get(url) || fetch(url).then((response) => {
+            if (!response.ok) throw new Error('sprite');
+            return response.text();
+        }).then((text) => {
+            if (!text.includes('<symbol')) throw new Error('sprite');
+            let host = doc.getElementById('vc-icon-sprite');
+            if (!host) {
+                host = doc.createElement('div');
+                host.id = 'vc-icon-sprite';
+                host.setAttribute('aria-hidden', 'true');
+                host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+                doc.body.append(host);
+            }
+            if (host.dataset.url !== url) {
+                host.innerHTML = text.replace(/<\?xml[\s\S]*?\?>/, '').trim();
+                host.dataset.url = url;
+            }
+            return true;
+        }).catch(() => false);
+        spriteLoads.set(url, task);
+        task.then((ok) => {
+            if (!ok) return;
+            for (const item of items) {
+                if (item.use.isConnected) item.use.setAttribute('href', `#${item.id}`);
+            }
+        });
+    }
+}
+
+function applyTints(root) {
+    for (const el of root.querySelectorAll('[data-tint]')) {
+        const src = el.dataset.tint;
+        if (!src) continue;
+        tintOf(src).then((value) => {
+            if (el.isConnected) el.style.setProperty('--vc-tint', value);
+        });
+    }
+}
+
+function rememberField(root) {
+    const active = root.ownerDocument?.activeElement;
+    if (!active || !root.contains(active) || active.name !== 'displayName') return null;
+    return { name: active.name, start: active.selectionStart, end: active.selectionEnd };
+}
+
+function restoreField(root, mark) {
+    if (!mark) return;
+    const next = root.querySelector(`[name="${mark.name}"]`);
+    next?.focus();
+    if (mark.start != null && next?.setSelectionRange) next.setSelectionRange(mark.start, mark.end);
+}
+
+export function mountCharactersTab(container, options = {}) {
+    ensureInstanceStyles();
+    if (!isVcUiOn()) return { async refresh() {}, destroy() {} };
+    if (!container) throw new Error('mountCharactersTab requires a container');
+    const root = container.ownerDocument.createElement('div');
+    root.className = 'vc-characters';
+    root.setAttribute('aria-label', '角色');
+    container.append(root);
+    const file = container.ownerDocument.createElement('input');
+    file.type = 'file';
+    file.accept = '.json,.png,application/json,image/png';
+    file.hidden = true;
+    root.append(file);
+    const nav = createNav(root);
+    const list = container.ownerDocument.createElement('section');
+    list.className = 'vc-screen vc-characters-list';
+    root.append(list);
+    let detailEl = null;
+    let detailRef = '';
+    const avatarByRef = new Map();
+    const timeById = new Map();
+    let dead = false;
+    let suppress = false;
+    let alertOpen = false;
+    let loading = true;
+    const page = createInstancePage({
+        ...options,
+        importCard: options.importCard || ((spec) => importNativeCharacterFile({ ...spec, getContext: options.getContext })),
+        getCards: () => {
+            const cards = typeof options.getCards === 'function' ? options.getCards() : [];
+            let context;
+            try { context = options.getContext?.(); } catch { context = null; }
+            const characters = context?.characters || [];
+            return (Array.isArray(cards) ? cards : []).map((card) => {
+                const raw = characters.find((item) => item?.data?.extensions?.vc_character_ref === card?.characterRef)
+                    || characters.find((item) => item?.name && item.name === card?.name);
+                const avatar = typeof raw?.avatar === 'string' ? raw.avatar : (card?.avatar || '');
+                const url = !avatar ? '' : (/^(https?:|data:|\/)/.test(avatar) ? avatar : `/characters/${avatar}`);
+                if (card?.characterRef) avatarByRef.set(card.characterRef, url);
+                return { ...card, avatar: url };
+            });
+        },
+        onChange() {
+            if (dead || suppress) return;
+            loading = false;
+            paint();
+            void maybeUnsaved();
+        },
+    });
+    function findInstance(id) {
+        const model = characterModel(page.state);
+        for (const card of model.cards) {
+            const inst = card.instances.find((item) => item.relationshipId === String(id));
+            if (inst) return { inst, characterRef: card.characterRef };
+        }
+        const loose = model.loose.find((item) => item.relationshipId === String(id));
+        return loose ? { inst: loose, characterRef: '' } : null;
+    }
+    function notifyOpen(id) {
+        if (typeof options.onOpenInstance !== 'function') return;
+        const found = findInstance(id);
+        if (!found) return;
+        options.onOpenInstance({
+            relationshipId: found.inst.relationshipId,
+            characterRef: found.characterRef,
+            name: found.inst.name,
+            chatIdentity: found.inst.chatIdentity || '',
+        });
+    }
+    function decorate(state) {
+        return {
+            ...state,
+            cards: (state.cards || []).map((card) => ({ ...card, avatar: avatarByRef.get(card.characterRef) || card.avatar || '' })),
+            relationships: (state.relationships || []).map((row) => ({
+                ...row,
+                lastChatAt: row.lastChatAt || row.lastMessageAt || timeById.get(String(row.relationshipId)) || '',
+            })),
+        };
+    }
+    function readTimes() {
+        try {
+            const ctx = options.getContext?.();
+            const id = ctx?.chatMetadata?.vc_binding?.relationshipId;
+            const chat = ctx?.chat;
+            const last = Array.isArray(chat) && chat.length ? chat[chat.length - 1] : null;
+            const stamp = last?.send_date || last?.timestamp || '';
+            if (id && stamp) timeById.set(String(id), String(stamp));
+        } catch {
+            /* 当前没有可显示的会话时间。 */
+        }
+    }
+    function fill(el, screen) {
+        const mark = rememberField(el);
+        el.innerHTML = renderCharactersTab(decorate(page.state), { screen, detailRef, loading: screen === 'list' && loading });
+        hydrateIcons(el);
+        restoreField(el, mark);
+        applyTints(el);
+        const scroll = el.querySelector('.vc-scroll');
+        const bar = el.querySelector('.vc-navbar');
+        if (scroll && bar && !bar.style.getPropertyValue('--vc-nav-p')) {
+            scroll.addEventListener('scroll', () => {
+                bar.style.setProperty('--vc-nav-p', String(Math.min(1, scroll.scrollTop / 48)));
+            }, { passive: true });
+        }
+    }
+    function paint() {
+        fill(list, 'list');
+        if (detailEl?.isConnected) fill(detailEl, 'detail');
+    }
+    async function maybeUnsaved() {
+        if (!page.state.unsaved || alertOpen || dead) return;
+        alertOpen = true;
+        const pending = page.state.unsaved;
+        const choice = confirmAlert({
+            title: '放弃更改？',
+            message: UNSAVED_INSTANCE_COPY,
+            action: '放弃更改',
+            root,
+        });
+        const stamp = () => {
+            const dialog = root.querySelector('.vc-alert');
+            dialog?.querySelector('[data-vc-cancel]')?.setAttribute('data-action', 'keep-editing');
+            dialog?.querySelector('[data-vc-ok]')?.setAttribute('data-action', 'discard');
+        };
+        stamp();
+        requestAnimationFrame(stamp);
+        const ok = await choice;
+        alertOpen = false;
+        if (dead || !page.state.unsaved) return;
+        if (ok) {
+            page.confirmDiscard();
+            if (pending?.type === 'select') notifyOpen(pending.id);
+        } else page.cancelUnsaved();
+    }
+    function openDetail(ref, from) {
+        detailRef = ref;
+        suppress = true;
+        page.selectTemplate(ref);
+        suppress = false;
+        if (detailEl?.isConnected && detailEl.dataset.ref === ref) {
+            fill(detailEl, 'detail');
+            fill(list, 'list');
+            return;
+        }
+        const el = container.ownerDocument.createElement('section');
+        el.className = 'vc-screen';
+        el.dataset.ref = ref;
+        fill(el, 'detail');
+        const fromAvatar = from?.querySelector?.('.vc-role-avatar img, .vc-role-avatar');
+        nav.push(el, {
+            fly: fromAvatar ? { from: fromAvatar, to: (node) => node.querySelector('.vc-poster-avatar img, .vc-poster-avatar') } : undefined,
+        });
+        detailEl = el;
+        fill(list, 'list');
+    }
+    async function goBack() {
+        const dirty = page.state.draftName !== page.state.savedName && (page.state.creating || page.state.selectedRelationshipId);
+        if (dirty) {
+            const choice = confirmAlert({
+                title: '放弃更改？',
+                message: UNSAVED_INSTANCE_COPY,
+                action: '放弃更改',
+                root,
+            });
+            const stamp = () => {
+                const dialog = root.querySelector('.vc-alert');
+                dialog?.querySelector('[data-vc-cancel]')?.setAttribute('data-action', 'keep-editing');
+                dialog?.querySelector('[data-vc-ok]')?.setAttribute('data-action', 'discard');
+            };
+            stamp();
+            requestAnimationFrame(stamp);
+            const ok = await choice;
+            if (!ok || dead) return;
+            page.state.draftName = page.state.savedName;
+            page.state.creating = false;
+            page.state.nameError = '';
+            page.state.unsaved = null;
+        }
+        if (nav.pop()) detailEl = null;
+    }
+    root.addEventListener('click', (event) => {
+        const target = event.target?.closest?.('button');
+        if (!target || target.disabled || !root.contains(target)) return;
+        const action = target.dataset.action;
+        if (action === 'import') file.click();
+        if (action === 'retry') void refresh();
+        if (action === 'select-template') openDetail(target.dataset.ref || '', target);
+        if (action === 'back') void goBack();
+        if (action === 'edit-card') openHostCharacterPanel(root.ownerDocument);
+        if (action === 'edit-name') {
+            if (!(page.state.creating || page.state.selectedRelationshipId)) page.startCreate();
+            queueMicrotask(() => root.querySelector('[name="displayName"]')?.focus());
+        }
+        if (action === 'create') page.startCreate();
+        if (action === 'select-instance') {
+            const id = target.dataset.id;
+            if (page.selectInstance(id)) notifyOpen(id);
+        }
+        if (action === 'cancel-edit') {
+            if (page.state.draftName !== page.state.savedName) {
+                page.state.unsaved = { type: 'close' };
+                void maybeUnsaved();
+            } else if (page.state.creating) page.confirmDiscard();
+        }
+    });
+    root.addEventListener('input', (event) => {
+        if (event.target?.name === 'displayName') page.setName(event.target.value);
+    });
+    root.addEventListener('submit', (event) => {
+        if (event.target?.dataset?.form !== 'instance') return;
+        event.preventDefault();
+        void page.save();
+    });
+    file.addEventListener('change', async () => {
+        const chosen = file.files?.[0];
+        file.value = '';
+        if (!chosen) return;
+        const bytes = new Uint8Array(await chosen.arrayBuffer());
+        await page.importFile({ name: chosen.name, bytes });
+    });
+    async function refresh() {
+        if (dead) return;
+        loading = true;
+        suppress = true;
+        readTimes();
+        paint();
+        try {
+            await page.open();
+            readTimes();
+        } finally {
+            suppress = false;
+            loading = false;
+            if (!dead) paint();
+        }
+    }
+    function destroy() {
+        dead = true;
+        detailEl = null;
+        root.remove();
+    }
+    void refresh();
+    return { refresh, destroy };
 }

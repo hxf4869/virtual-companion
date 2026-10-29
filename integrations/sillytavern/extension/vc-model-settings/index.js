@@ -302,3 +302,6 @@ async function openCreatedChat({ characterRef, chatIdentity } = {}) {
     armSilentF2Conflict();
     try { await saveCurrentChat(); } finally { disarmSilentF2Conflict(); }
 }
+
+export { mountCharactersTab } from './instance-page.js';
+export { mountStoryTab } from './story-page.js';

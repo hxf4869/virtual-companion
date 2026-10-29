@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>F4b 角色与剧情</title>
+<link rel="stylesheet" href="/vc-model-settings/vc-ui.css">
+<style>
+    html, body, #app { height: 100%; margin: 0; }
+    body { background: var(--vc-canvas, #f5f5f7); }
+</style>
+</head>
+<body class="vc-ui">
+    <button type="button" id="rightNavDrawerIcon" hidden>角色抽屉</button>
+    <div id="right-nav-panel" class="closedDrawer" hidden></div>
+    <button type="button" id="vc_models_menu_button" hidden>模型设置</button>
+    <div id="app"></div>
+    <script type="module">
+        const params = new URLSearchParams(location.search);
+        const scenario = params.get('scenario') || 'roles';
+        const STORY_ID = '9007199254740993';
+        window.__ready = '';
+        window.__opened = null;
+        window.__imported = '';
+        window.__host = 0;
+        window.__configured = 0;
+        document.getElementById('rightNavDrawerIcon').addEventListener('click', () => { window.__host += 1; });
+        document.getElementById('vc_models_menu_button').addEventListener('click', () => { window.__configured += 1; });
+
+        const swatch = (red, green, blue) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 8;
+            canvas.height = 8;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = `rgb(${red},${green},${blue})`;
+            ctx.fillRect(0, 0, 8, 8);
+            return canvas.toDataURL('image/png');
+        };
+        const RED = swatch(210, 64, 64);
+        const TEAL = swatch(32, 128, 128);
+        const prefs = {
+            replyLength: 'MEDIUM', initiative: 'LOW', humor: 'LIGHT', advicePref: 'ASK_FIRST',
+            remindersAllowed: false, memoryShareScope: 'RELATIONSHIP', avoidTopics: [], gender: 'NEUTRAL',
+            avatarRef: 'AVATAR_NEUTRAL_01', userAddressAs: null,
+        };
+        const longCopy = '沿湖的路灯一盏接一盏，风把水面吹出细纹。她把外套领口拢紧，说今晚只散步，不谈明天的安排。'.repeat(8);
+
+        function cardsFor() {
+            if (scenario === 'roles-empty') return [];
+            if (scenario === 'roles-long') {
+                return [{
+                    characterRef: 'card-1',
+                    name: '澄夏·沿湖散步到很远的那一头仍然要完整显示的名字',
+                    description: longCopy,
+                    worldName: '湖畔日常与一整个季节的旁注',
+                    avatar: RED,
+                }];
+            }
+            return [
+                { characterRef: 'card-1', name: '澄夏', description: '沿湖散步', worldName: '湖畔日常', avatar: RED },
+                { characterRef: 'card-2', name: '林岚', description: '旅馆掌柜', worldName: '雨夜登记', avatar: TEAL },
+            ];
+        }
+        function relationshipsFor() {
+            if (scenario === 'roles-empty') return [];
+            if (scenario === 'roles-long') {
+                return Array.from({ length: 8 }, (_, index) => ({
+                    relationshipId: String(30 + index),
+                    personaRef: 'st-character',
+                    companionName: `澄夏·第${index + 1}段很长的实例名，用来占满一行`,
+                    characterRef: 'card-1',
+                    lastChatAt: '2026-10-28T21:05:00',
+                    ...prefs,
+                }));
+            }
+            return [
+                { relationshipId: '11', personaRef: 'st-character', companionName: '澄夏·日常', characterRef: 'card-1', lastChatAt: '2026-10-29T10:30:00', ...prefs },
+                { relationshipId: '12', personaRef: 'st-character', companionName: '澄夏·旅行', characterRef: 'card-1', lastChatAt: '2026-10-28T18:00:00', ...prefs },
+                { relationshipId: '21', personaRef: 'st-character', companionName: '林岚·夜班', characterRef: 'card-2', lastChatAt: '2026-10-27T22:10:00', ...prefs },
+            ];
+        }
+        function bindingsFor() {
+            return relationshipsFor().map((row) => ({
+                relationshipId: row.relationshipId,
+                characterRef: row.characterRef,
+                chatIdentity: `chat-${row.relationshipId}`,
+                mode: 'COMPANION',
+            }));
+        }
+
+        const view = (worldVersion) => ({
+            conversationId: STORY_ID,
+            runId: '11',
+            branchId: '13',
+            actorId: 'player',
+            worldVersion,
+            publicLore: {
+                setting: scenario === 'story-long' ? longCopy : '雨夜，小旅馆的一枚展柜怀表失踪。玩家受邀调查。',
+                locations: ['lobby', 'kitchen', 'workshop'],
+                knownEvent: '20:20 老板发现怀表不见了。',
+            },
+            knowledge: [{ id: 'empty-case', fact: '大堂展柜是空的' }],
+            events: worldVersion >= 1 ? [{
+                eventId: '31',
+                worldVersion: 1,
+                body: {
+                    clueName: '钥匙借用记录',
+                    text: scenario === 'story-long' ? longCopy : '林岚出示了借用记录',
+                    phase: worldVersion >= 7 ? 'resolved' : 'investigation',
+                },
+            }] : [],
+            participants: [
+                { actorId: 'player', name: '调查者', role: 'player' },
+                { actorId: 'lin', name: '林岚', role: 'npc', publicPersona: '旅馆掌柜，记得借用登记。' },
+                { actorId: 'zhou', name: '周澈', role: 'npc', publicPersona: '住店维修工。' },
+                { actorId: 'su', name: '苏禾', role: 'npc', publicPersona: '当晚在大堂。' },
+            ],
+        });
+        const json = (body, status = 200) => new Response(JSON.stringify(body), {
+            status,
+            headers: { 'content-type': 'application/json' },
+        });
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = async (input, init = {}) => {
+            const url = String(input?.url || input);
+            if (url.includes('.svg')) return nativeFetch(input, init);
+            const method = init.method || 'GET';
+            if (scenario === 'story-loading' && url.endsWith('/model-purposes')) return new Promise(() => {});
+            if (scenario === 'story-offline' && url.endsWith('/story/runs') && method === 'POST') {
+                throw new TypeError('offline');
+            }
+            if (url.endsWith('/auth/session')) return json({ accountId: STORY_ID, sessionId: '42' });
+            if (url.endsWith('/model-purposes')) {
+                return json(scenario === 'story-missing'
+                    ? [{ purpose: 'STORY_DIRECTOR', status: 'PENDING_CONFIGURATION' }, { purpose: 'NPC_DIALOGUE', status: 'DISABLED' }]
+                    : [{ purpose: 'STORY_DIRECTOR', status: 'READY' }, { purpose: 'NPC_DIALOGUE', status: 'READY' }]);
+            }
+            if (url.endsWith('/story/runs') && method === 'POST') {
+                return json({
+                    conversationId: STORY_ID, runId: '11', branchId: '13', caseId: 'rainy-inn-v1',
+                    worldVersion: 0, stage: 'investigation',
+                    participants: [
+                        { actorId: 'player', name: '调查者', role: 'player' },
+                        { actorId: 'lin', name: '林岚', role: 'npc' },
+                        { actorId: 'zhou', name: '周澈', role: 'npc' },
+                        { actorId: 'su', name: '苏禾', role: 'npc' },
+                    ],
+                });
+            }
+            if (url.includes('/actors/player/view')) {
+                const worldVersion = Number(new URL(url, location.origin).searchParams.get('worldVersion') || '0');
+                return json(view(worldVersion));
+            }
+            if (url.endsWith('/actions') && method === 'POST') {
+                if (scenario === 'story-generating') return new Promise(() => {});
+                if (scenario === 'story-rejected') return json({ accepted: false, replayed: false, reason: 'precondition_failed', worldVersion: 0, branchId: '13', stage: 'investigation', ended: false });
+                if (scenario === 'story-conflict') return json({ code: 'REVISION_CONFLICT', message: 'story world conflict' }, 409);
+                if (scenario === 'story-ended') return json({ accepted: true, replayed: false, worldVersion: 7, worldEventId: '70', branchId: '13', stage: 'resolved', ended: true });
+                return json({ accepted: true, replayed: false, worldVersion: 1, worldEventId: '31', branchId: '13', stage: 'investigation', ended: false });
+            }
+            if (url.endsWith('/rewind')) return json({ branchId: '21', worldVersion: 0, stage: 'investigation' });
+            if (url.endsWith('/epilogue')) return json({ decision: 'discard' });
+            if (url.includes('/participants/')) return json({ runId: '11', actorId: 'lin', relationshipId: '8' });
+            if (url.endsWith('/relationships')) return json([]);
+            return json({ code: 'UNEXPECTED' }, 500);
+        };
+
+        const { enableVcUi } = await import('/vc-model-settings/ui/theme.js');
+        enableVcUi();
+        const app = document.getElementById('app');
+        if (scenario.startsWith('story')) {
+            const { mountStoryTab } = await import('/vc-model-settings/story-page.js');
+            mountStoryTab(app, {
+                getConversation: () => ({ conversationId: STORY_ID, mode: 'STORY' }),
+                getChatIdentity: () => '10000000-0000-4000-8000-000000000042',
+                project: () => new Promise((resolve) => { setTimeout(() => resolve({ confirmed: true }), 1600); }),
+            });
+        } else {
+            const { mountCharactersTab } = await import('/vc-model-settings/instance-page.js');
+            const cards = cardsFor();
+            mountCharactersTab(app, {
+                onOpenInstance(payload) { window.__opened = payload; },
+                getCards: () => cards,
+                getBindings: () => bindingsFor(),
+                loadRelationships: () => {
+                    if (scenario === 'roles-loading') return new Promise(() => {});
+                    if (scenario === 'roles-error') return Promise.reject(new Error('offline'));
+                    return Promise.resolve(relationshipsFor());
+                },
+                importCard: async ({ bytes }) => {
+                    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+                    window.__imported = parsed.name || '';
+                    return { characterRef: 'card-new', name: parsed.name || '导入的角色', description: '', worldName: '' };
+                },
+                getContext: () => ({
+                    characters: cards.map((card) => ({ name: card.name, avatar: card.avatar, data: { extensions: { vc_character_ref: card.characterRef } } })),
+                    chatMetadata: { vc_binding: { relationshipId: '11' } },
+                    chat: [{ send_date: '2026-10-29T10:30:00' }],
+                }),
+            });
+        }
+        const hanging = scenario === 'roles-loading' || scenario === 'story-loading';
+        if (!hanging) {
+            const start = Date.now();
+            while (Date.now() - start < 4000) {
+                const busy = document.querySelector('[aria-busy="true"]');
+                const ready = scenario.startsWith('story')
+                    ? document.querySelector('[data-action="start"], [data-action="enter"], .vc-story [role="alert"]')
+                    : document.querySelector('.vc-role, .vc-empty, [data-action="retry"]');
+                if (ready && !busy) break;
+                await new Promise((resolve) => setTimeout(resolve, 16));
+            }
+        }
+        window.__ready = scenario;
+    </script>
+</body>
+</html>
