@@ -93,6 +93,7 @@ function setup(t, protocol) {
             const parsed = new URL(target);
             const actor = parsed.pathname.split('/').at(-2);
             state.views.push({ url: target, headers: init.headers, actor });
+            if (state.viewStatus) return new Response('secret-echo-must-not-leak', { status: state.viewStatus });
             return Response.json({
                 conversationId: '7', runId: '11', branchId: parsed.searchParams.get('branchId'),
                 actorId: state.viewActor ?? actor, worldVersion: Number(parsed.searchParams.get('worldVersion')),
@@ -136,6 +137,7 @@ function setup(t, protocol) {
             const body = JSON.parse(init.body);
             state.checks.push({ url: target, headers: init.headers, body });
             if (state.checkMode === 'http') return new Response('secret-echo-must-not-leak', { status: 500 });
+            if (state.checkMode === 'not-found') return new Response('secret-echo-must-not-leak', { status: 404 });
             if (state.checkMode === 'fail') return Response.json({ passed: false, message: ZHOU_PRIVATE });
             const corpus = JSON.stringify(body);
             if (SECRETS.some((secret) => corpus.includes(secret)) || body.hasPreviousResponseId || body.hasConversation) {
@@ -609,6 +611,48 @@ test('Chat：previous_response_id 与 conversation 仍要报告给核对并拒�
     assert.equal(state.checks.at(-1).body.hasPreviousResponseId, true);
     assert.equal(state.checks.at(-1).body.hasConversation, true);
     assert.equal(JSON.parse(result.res.body()).error.code, 'VC_STORY_OUTBOUND_REJECTED');
+});
+
+test('ActorView 返回 404 时按视角不可用拒绝，不调用 outbound-check，不出站', async (t) => {
+    for (const protocol of ['OPENAI_CHAT_COMPLETIONS', 'OPENAI_RESPONSES']) {
+        await t.test(protocol, async (t) => {
+            const state = setup(t, protocol);
+            state.viewStatus = 404;
+            const finalBody = protocol === 'OPENAI_CHAT_COMPLETIONS' ? chatFinal() : null;
+            const result = await runTurn(state, protocol, generateBody(protocol), finalBody);
+            if (protocol === 'OPENAI_RESPONSES') assert.equal(result.handled, true);
+            else assert.equal(result.guard, true);
+            assert.equal(state.views.length, 1);
+            assert.equal(state.checks.length, 0);
+            assert.equal(state.upstream.length, 0);
+            assert.equal(JSON.parse(result.res.body()).error.code, 'VC_STORY_VIEW_UNAVAILABLE');
+            assertNoSecret(result.res.body());
+            if (finalBody) {
+                const left = JSON.stringify(finalBody);
+                assert.equal(left.includes(WORLD), false);
+                assert.equal(left.includes(CARD), false);
+                assert.equal(left.includes(PLAYER), false);
+            }
+        });
+    }
+});
+
+test('outbound-check 返回 404 时按核对未通过拒绝，不出站且不回显正文', async (t) => {
+    for (const protocol of ['OPENAI_CHAT_COMPLETIONS', 'OPENAI_RESPONSES']) {
+        await t.test(protocol, async (t) => {
+            const state = setup(t, protocol);
+            state.checkMode = 'not-found';
+            const finalBody = protocol === 'OPENAI_CHAT_COMPLETIONS' ? chatFinal() : null;
+            const result = await runTurn(state, protocol, generateBody(protocol), finalBody);
+            if (protocol === 'OPENAI_RESPONSES') assert.equal(result.handled, true);
+            else assert.equal(result.guard, true);
+            assert.equal(state.checks.length, 1);
+            assert.equal(state.upstream.length, 0);
+            assert.equal(JSON.parse(result.res.body()).error.code, 'VC_STORY_OUTBOUND_REJECTED');
+            assertNoSecret(result.res.body());
+            if (finalBody) assert.equal(JSON.stringify(finalBody).includes(WORLD), false);
+        });
+    }
 });
 
 test('核对非 200 或 passed 不为 true 时拒绝，且不回显核对正文', async (t) => {
