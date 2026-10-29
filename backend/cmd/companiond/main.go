@@ -186,6 +186,7 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 	}
 	hub := realtime.New()
 	loop := jobs.NewLoop(log, jobs.PolicyFrom(cfg), app.TurnBudget(cfg))
+	loop.UseRestoreGate(cfg.RestoreGateFile)
 	loop.Use(nil, nil, hub, blobs)
 	factory := modelprovider.Factory{
 		ConnectTimeout:    cfg.Provider.ConnectTimeout,

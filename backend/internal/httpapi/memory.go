@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/memoryengine"
+	"github.com/hxf4869/virtual-companion/internal/restoregate"
 	"net/http"
 	"strconv"
 	"strings"
@@ -148,7 +149,18 @@ func (s *Server) managedMemories(w http.ResponseWriter) managedMemoryStore {
 	}
 	return st
 }
+func (s *Server) restoreGateClosed(w http.ResponseWriter) bool {
+	if s == nil || !restoregate.Closed(s.cfg.RestoreGateFile) {
+		return false
+	}
+	s.writeAPIError(w, http.StatusServiceUnavailable, "RESTORE_GATE_CLOSED", "restore cleanup is not finished")
+	return true
+}
+
 func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
+	if s.restoreGateClosed(w) {
+		return
+	}
 	p := s.corePrincipal(w, r, false)
 	if p == nil {
 		return
@@ -183,6 +195,9 @@ func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, 200, rows)
 }
 func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
+	if s.restoreGateClosed(w) {
+		return
+	}
 	p := s.corePrincipal(w, r, false)
 	if p == nil {
 		return
@@ -324,6 +339,9 @@ func (s *Server) handleRejectMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListMemoryEvidence(w http.ResponseWriter, r *http.Request) {
+	if s.restoreGateClosed(w) {
+		return
+	}
 	p := s.corePrincipal(w, r, false)
 	if p == nil {
 		return
