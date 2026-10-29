@@ -183,6 +183,22 @@
       --check` PASS。合并时保留 W13 的 guardUnmanagedGeneration 与 W10 的 attemptInboxDelivery 两个桥方法。
       执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W11` 有限工具与统一调用计量。用例：A03、MODEL01–MODEL05。
+      结果：READY_FOR_OWNER（2026-10-29）；提交 `092929b3..95dead13`（链分支 `v2/w11`，合并 main 后快进入 main `76b052cc`）。
+      V190 工具执行事实（两阶段提交、幂等键、FORCE RLS）；`POST /api/v1/st/tools/execute` 只认会话绑定的 chat，
+      仅查询跟进与创建/取消提醒，模型台词与越权关系记失败执行。V191–V195 前台、MemoryCore、问候与工具回合共用
+      月度预留池：按 min(单次天花板, 估算) 预留，超时记 UNKNOWN 不按 0 释放，缺价/缺预算/超限不发送。ST 插件
+      有界工具循环（每步先问 Go，出站工具内容等于 Go 结果，8 步上限，未验证 toolCalls 与未计量 MVU 额外生成在
+      发送前拒绝；剧情回合剥离陪伴工具且不因工具能力未验证被拒）。预留失败即关闭 `VC_USAGE_CLOSED`；原生
+      Chat/Claude 用 node-fetch，补丁在响应后结算、抛错按 UNKNOWN 取消，再武装时取消旧预留（Go 不回收 HELD）。
+      受管 custom 源按界面值发送推理等级（ST 会把 max 收成 high 且只给 OpenAI 名单写该字段）。
+      用例：A03 合成子项 PASS（`w11-tool-meter` 三协议工具续接、入账、取消后不再发下一步）；MODEL01–MODEL05
+      合成子项 PASS（四用途同池、并发预留不超帽、无价零调用、超时 UNKNOWN、受管结束无 HELD 残留）；真实模型
+      计量旁证 PASS（`story-real` 4 轮 reasoning_effort=max、FOREGROUND_CHAT 均 SETTLED，测试单价与供应商
+      usage.cost 吻合）。READY_FOR_OWNER：各用途正式绑定、单价与月度预算属 V2-OWNER-MODELS；合入后无单价的模型
+      一律被 NO_PRICE 拒绝。
+      验证：`bash scripts/check.sh` PASS（31s）；RLS 全量 PASS；integration 三包 PASS；ST 离线测试 477/477；
+      受管 `story-outbound,w11-tool-meter`、`story-real` PASS；`git diff --check` PASS。
+      执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [x] `V2-W12` 世界、角色视图与样例。用例：S01（世界与视图子项）。
       结果：DONE（2026-10-29）；提交 `517a2922..4eab850c`（链分支 `v2/w12`，经合并 main 后快进入 main）。
       V170 新增剧情局/根分支/参与者/事件表（FORCE RLS，写入经 go_assert_owner，局只能绑定同 owner 的 STORY
@@ -214,7 +230,19 @@
       `assemble-managed` 补丁 SHA 复核 PASS；`git diff --check` PASS。
       已知取舍：剧情回合不带历史对话（同一聊天含他人 NPC 回复会泄露知情），对话连贯性由 W14 以带可见性的
       已提交对话事件经 ActorView 投影恢复，列为 W14 必做。执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
-- [ ] `V2-W14` 行动、分支、结局与陪伴角色入局。用例：S02–S05。
+- [x] `V2-W14` 行动、分支、结局与陪伴角色入局。用例：S02–S05。
+      结果：DONE（2026-10-29）；提交 `02a8477d..8c6953fe`（链分支 `v2/w12` 续做，经 `v2/w11` 合入 main）。
+      雨夜客栈规则引擎为纯函数（嵌入 JSON 唯一真源），行动/陈述按 (owner, run, action_id) 幂等，在当前分支头
+      且 expectedWorldVersion 相等时与 STORY_PROJECTION 同事务提交；拒绝与重放不改状态。V200–V203：回档恢复
+      该版本世界并取消此后未完成投影，旧头迟到提交冲突；参与者 relationship_id 改 ON DELETE SET NULL，删号屏障
+      只放行置空；结局摘要放弃不写记忆，保存只建待确认共同经历。剧情页行动、回档、按 world_event_id 幂等补写
+      聊天投影（用户删除的墓碑不补回）。NPC 台词不作为世界事件提交（批准方案：事件只来自行动）。
+      用例：S02–S05 合成子项 PASS（`story-play` 受管七步 a1–a7 到 resolved、钥匙与怀表只转移一次、回档与投影
+      补写含回执丢失）；S04 真实叙事 PASS（`story-real` 林岚/周澈各 2 轮，出站仅当前 actor 视图与本轮玩家话语，
+      无泄露，4 次真实调用）。
+      验证：`bash scripts/check.sh` PASS；RLS 全量 PASS（含 230–234）；integration 三包 PASS；ST 离线测试 PASS；
+      `git diff --check` PASS。遗留到 W15：投影补写重试期间 F2 冲突对话框会弹出并阻塞页面。
+      执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W15` 完整界面、手机与性能；删除旧 Vue / uni-app 前端。用例：UI01–UI03。
 - [ ] `V2-W16` 保护、恢复与运行说明。用例：D06、O01；最终报告。
 
