@@ -312,6 +312,82 @@ func (s *Store) LoadNotificationDelivery(ctx context.Context, owner, id int64, n
 	return row, nil
 }
 
+// ClaimNotificationSend locks the delivery, re-reads consent, deletion and
+// quiet hours, and only then moves pending to sending. The withdrawal
+// trigger updates the same row, so a committed withdrawal stays stopped and
+// a claim that wins the lock is no longer pending when the trigger runs.
+func (s *Store) ClaimNotificationSend(ctx context.Context, owner, id int64, now time.Time) (NotificationDecision, error) {
+	var decision NotificationDecision
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		var locked string
+		err := tx.QueryRow(ctx, `SELECT vc.lock_notification_delivery($1, $2)`, owner, id).Scan(&locked)
+		if err != nil {
+			return err
+		}
+		row, err := loadNotificationDeliveryTx(ctx, tx, owner, id, now)
+		if err != nil {
+			return err
+		}
+		decision = DecideNotificationSend(now, row)
+		if decision.Action != NotificationSend || locked != "pending" {
+			if locked != "pending" {
+				decision = NotificationDecision{Action: NotificationSkip}
+			}
+			return nil
+		}
+		var marked bool
+		if err := tx.QueryRow(ctx, `SELECT vc.mark_notification_delivery_sending($1, $2)`, owner, id).Scan(&marked); err != nil {
+			return err
+		}
+		if !marked {
+			decision = NotificationDecision{Action: NotificationSkip}
+		}
+		return nil
+	})
+	if err != nil {
+		return NotificationDecision{}, mapNotificationErr(err)
+	}
+	return decision, nil
+}
+
+func loadNotificationDeliveryTx(ctx context.Context, tx pgx.Tx, owner, id int64, now time.Time) (NotificationDelivery, error) {
+	var row NotificationDelivery
+	var follow *string
+	err := tx.QueryRow(ctx, `
+		SELECT out_id, out_event_id, out_channel, out_configured_target, out_status,
+		       out_attempt_count, out_next_attempt_at, out_intent, out_body, out_preview,
+		       out_relationship, out_channel_enabled, out_policy_enabled,
+		       out_quiet_start, out_quiet_end, out_quiet_timezone, out_daily_limit,
+		       out_consent, out_deletion, out_sent_today, out_trigger_at,
+		       out_follow_status, out_st_delivered, out_expires_at
+		  FROM vc.load_notification_delivery($1, $2, $3)`, owner, id, now).Scan(
+		&row.ID, &row.EventID, &row.Channel, &row.ConfiguredTarget, &row.Status,
+		&row.AttemptCount, &row.NextAttemptAt, &row.Intent, &row.Body, &row.Preview,
+		&row.RelationshipID, &row.ChannelEnabled, &row.PolicyEnabled,
+		&row.QuietHoursStart, &row.QuietHoursEnd, &row.QuietHoursTimezone, &row.DailyLimit,
+		&row.ConsentGranted, &row.DeletionActive, &row.SentToday, &row.TriggerAt,
+		&follow, &row.STDelivered, &row.ExpiresAt,
+	)
+	if err != nil {
+		return NotificationDelivery{}, err
+	}
+	if follow != nil {
+		row.FollowStatus = *follow
+	}
+	row.OwnerID = owner
+	row.DailyLimit = DefaultNotificationDailyLimit
+	err = tx.QueryRow(ctx, `
+		SELECT i.conversation_id
+		  FROM vc.notification_delivery d
+		  JOIN vc.inbox_event i
+		    ON i.owner_user_id = d.owner_user_id AND i.event_id = d.event_id
+		 WHERE d.owner_user_id = $1 AND d.id = $2`, owner, id).Scan(&row.ConversationID)
+	if err != nil {
+		return NotificationDelivery{}, err
+	}
+	return row, nil
+}
+
 // RecordNotificationOutcome stores a terminal channel result. accepted is not
 // an inbox ACK. The inbox row is left as it is.
 func (s *Store) RecordNotificationOutcome(ctx context.Context, owner, id int64, outcome, failureCode, correlation string) (string, error) {
@@ -335,6 +411,25 @@ func (s *Store) ScheduleNotificationDelivery(ctx context.Context, owner, id int6
 		return err
 	})
 	return mapNotificationErr(err)
+}
+
+// SweepStaleNotificationSending marks sending rows older than olderThan as
+// unknown. The channel may already have accepted the message, so the row is
+// not returned to pending. The bound is the caller's channel send limit
+// plus margin; this method does not choose it.
+func (s *Store) SweepStaleNotificationSending(ctx context.Context, olderThan time.Duration) (int, error) {
+	seconds := int(olderThan.Seconds())
+	if seconds < 1 {
+		return 0, ErrInvalid
+	}
+	var n int
+	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT vc.sweep_stale_notification_sending($1)`, seconds).Scan(&n)
+	})
+	if err != nil {
+		return 0, mapNotificationErr(err)
+	}
+	return n, nil
 }
 
 // StopNotificationDeliveries stops pending deliveries for one event, or for

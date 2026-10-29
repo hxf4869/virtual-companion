@@ -536,6 +536,36 @@ func followClaim() postgres.JobClaim {
 	return postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindFollowUp, RefID: 42, Token: "token", Fence: "fence"}
 }
 
+type streamCounter struct{ n int }
+
+func (s *streamCounter) Stream(context.Context, companion.ModelRequest, func(companion.OutputDelta) error) (companion.AttemptResult, error) {
+	s.n++
+	return companion.AttemptResult{}, nil
+}
+
+func TestReusedHeldDoesNotStreamOrRelease(t *testing.T) {
+	fake := newFollowGenFake(scheduledFollowRow(), greetPurpose("https://example.test"))
+	fake.held = true
+	counter := &streamCounter{}
+	err := generateFollowUp(context.Background(), fake, func(modelprovider.Route) (companion.Provider, error) {
+		return counter, nil
+	}, safety.New(), followClaim())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counter.n != 0 {
+		t.Fatalf("REUSED_HELD streamed %d times", counter.n)
+	}
+	for _, kind := range fake.settleKinds {
+		if kind.disposition == "NOT_SENT" || kind.disposition == "USAGE_REPORTED" {
+			t.Fatalf("REUSED_HELD settled %s", kind.disposition)
+		}
+	}
+	if fake.finishCount != 0 || len(fake.jobs) != 0 {
+		t.Fatalf("REUSED_HELD finished %d jobs %d", fake.finishCount, len(fake.jobs))
+	}
+}
+
 func scheduledFollowRow() postgres.FollowUpGeneration {
 	name := "小南"
 	return postgres.FollowUpGeneration{

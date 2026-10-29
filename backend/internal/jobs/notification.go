@@ -20,9 +20,27 @@ var errNotificationStore = errors.New("notification store is unavailable")
 // message the peer already has.
 const MaxNotificationAttempts = 5
 
+// NotificationSendingUnknown is the decision recorded when a sending row
+// outlives the channel send. The peer may already have the message, so the
+// row becomes unknown and is not returned to pending. vc.abandon_notification_sending
+// returns the same code.
+const NotificationSendingUnknown = "NOTIFICATION_SENDING_UNKNOWN"
+
+// NotificationSendingSweepAge is notify.DefaultSendTimeout plus
+// holdReservationMargin. DefaultSendTimeout is the 10s bound NewSMTP applies
+// when SMTPConfig.Timeout is unset and NewFeishu applies when no HTTP client
+// is injected; companiond leaves both unset (cmd/companiond/main.go).
+// holdReservationMargin is the 30s slack PolicyFrom adds when
+// Budget.TotalTimeout becomes GenerationLease. A send still inside this
+// window stays sending.
+func NotificationSendingSweepAge() time.Duration {
+	return notify.DefaultSendTimeout + holdReservationMargin
+}
+
 type notificationStore interface {
 	ListDueNotificationDeliveries(context.Context, time.Time) ([]postgres.NotificationDue, error)
 	LoadNotificationDelivery(context.Context, int64, int64, time.Time) (postgres.NotificationDelivery, error)
+	ClaimNotificationSend(context.Context, int64, int64, time.Time) (postgres.NotificationDecision, error)
 	LoadNotificationCredential(context.Context, int64, string, string) (string, error)
 	RecordNotificationOutcome(context.Context, int64, int64, string, string, string) (string, error)
 	ScheduleNotificationDelivery(context.Context, int64, int64, int, time.Time) error
@@ -90,6 +108,22 @@ func deliverNotification(ctx context.Context, store notificationStore, sender no
 		logNotificationCode(logger, notify.CodeSafetyBlocked)
 		_, err = store.RecordNotificationOutcome(ctx, row.OwnerID, row.ID, "failed", notify.CodeSafetyBlocked, "")
 		return err
+	}
+	claimed, err := store.ClaimNotificationSend(ctx, row.OwnerID, row.ID, now)
+	if err != nil {
+		return err
+	}
+	switch claimed.Action {
+	case postgres.NotificationSkip:
+		return nil
+	case postgres.NotificationStop:
+		_, err = store.StopNotificationDeliveries(ctx, row.OwnerID, &row.EventID, claimed.StopReason)
+		return err
+	case postgres.NotificationDefer:
+		if claimed.NextAttempt == nil {
+			return nil
+		}
+		return store.ScheduleNotificationDelivery(ctx, row.OwnerID, row.ID, claimed.AttemptCount, *claimed.NextAttempt)
 	}
 	result, sendErr := sender.Send(ctx, notify.Request{
 		Channel:      row.Channel,

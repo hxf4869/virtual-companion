@@ -36,7 +36,7 @@ type Feishu struct {
 func NewFeishu(cfg FeishuConfig) *Feishu {
 	client := cfg.HTTP
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = &http.Client{Timeout: DefaultSendTimeout}
 	}
 	client = cloneClient(client)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error {

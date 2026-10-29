@@ -1,13 +1,18 @@
 package jobs
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/config"
+	"github.com/hxf4869/virtual-companion/internal/notify"
 )
 
 func TestCancelsInvokesRegisteredFunc(t *testing.T) {
@@ -158,6 +163,73 @@ func TestPolicyFromUsesBudgetTotalPlusFinalizeMargin(t *testing.T) {
 	}
 	if p.HoldReservationMaxAge != HoldReservationMaxAge(cfg.Budget.TotalTimeout) {
 		t.Fatalf("hold sweep age %s", p.HoldReservationMaxAge)
+	}
+}
+
+func TestNotificationSendingSweepAgeUsesChannelTimeout(t *testing.T) {
+	t.Parallel()
+	if notify.DefaultSendTimeout != 10*time.Second {
+		t.Fatalf("channel timeout %s", notify.DefaultSendTimeout)
+	}
+	if got := NotificationSendingSweepAge(); got != notify.DefaultSendTimeout+holdReservationMargin {
+		t.Fatalf("sweep age %s", got)
+	}
+	if got := NotificationSendingSweepAge(); got != 40*time.Second {
+		t.Fatalf("sweep age %s", got)
+	}
+}
+
+func TestRecoverOnceRecordsStaleNotificationSending(t *testing.T) {
+	t.Parallel()
+	store := newSchedulerTestStore()
+	store.notificationSweepN = 2
+	var buf bytes.Buffer
+	loop := NewLoop(slog.New(slog.NewTextHandler(&buf, nil)), testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, nil, nil, nil)
+	if err := loop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	ages := append([]time.Duration(nil), store.notificationSweepAges...)
+	store.mu.Unlock()
+	if len(ages) != 1 || ages[0] != NotificationSendingSweepAge() {
+		t.Fatalf("sweep ages %+v", ages)
+	}
+	if got := loop.Stats().Recoveries; got != 2 {
+		t.Fatalf("recoveries %d", got)
+	}
+	if !strings.Contains(buf.String(), "decision_code="+NotificationSendingUnknown) || strings.Contains(buf.String(), "planted-pass") {
+		t.Fatalf("log %s", buf.String())
+	}
+
+	quiet := newSchedulerTestStore()
+	var quietBuf bytes.Buffer
+	quietLoop := NewLoop(slog.New(slog.NewTextHandler(&quietBuf, nil)), testLoopPolicy(1), testTurnBudget())
+	quietLoop.Use(quiet, nil, nil, nil)
+	if err := quietLoop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(quietBuf.String(), NotificationSendingUnknown) {
+		t.Fatalf("empty sweep logged %s", quietBuf.String())
+	}
+
+	failing := newSchedulerTestStore()
+	failing.notificationSweepErr = errors.New("synthetic unavailable")
+	var failBuf bytes.Buffer
+	failLoop := NewLoop(slog.New(slog.NewTextHandler(&failBuf, nil)), testLoopPolicy(1), testTurnBudget())
+	failLoop.Use(failing, nil, nil, nil)
+	if err := failLoop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	failing.mu.Lock()
+	held := len(failing.sweptAges)
+	failing.mu.Unlock()
+	if held != 1 {
+		t.Fatalf("hold sweep did not run after notification sweep error")
+	}
+	text := failBuf.String()
+	if !strings.Contains(text, "error_code=RECOVER_FAILED") || strings.Contains(text, "decision_code="+NotificationSendingUnknown) || strings.Contains(text, "synthetic unavailable") {
+		t.Fatalf("error log %s", text)
 	}
 }
 

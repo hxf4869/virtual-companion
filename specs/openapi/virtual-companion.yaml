@@ -3502,8 +3502,10 @@ paths:
       operationId: listNotificationDeliveries
       summary: List notification deliveries
       description: >-
-        Lists channel delivery rows owned by the caller. accepted, failed and
-        unknown are channel outcomes. unknown means the peer may already have
+        Lists channel delivery rows owned by the caller. sending means the
+        pre-send checks have passed and the row is being handed to the
+        channel; the outcome is not yet known. accepted, failed and unknown
+        are channel outcomes. unknown means the peer may already have
         received the message. None of these outcomes means SillyTavern delivered,
         in-app read, or that the linked message is still present. Requires a
         server-verified authentication context.
@@ -8698,13 +8700,16 @@ components:
     NotificationDeliveryStatus:
       type: string
       description: >-
-        Channel delivery state. pending is unsent. accepted, failed and unknown
-        are terminal channel outcomes and do not substitute for SillyTavern
-        delivered, in-app read, or link status. unknown means the peer may
-        already have received the message. stopped means an unsent row was
-        halted and was not sent.
+        Channel delivery state. pending is unsent. sending means the pre-send
+        checks have passed and the row is being handed to the channel; the
+        outcome is not yet known. accepted, failed and unknown are terminal
+        channel outcomes and do not substitute for SillyTavern delivered,
+        in-app read, or link status. unknown means the peer may already have
+        received the message. stopped means an unsent row was halted and was
+        not sent.
       enum:
         - pending
+        - sending
         - accepted
         - failed
         - unknown

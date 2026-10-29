@@ -12,23 +12,26 @@ import (
 
 type schedulerTestStore struct {
 	Store
-	mu                 sync.Mutex
-	objects            []postgres.ExportObject
-	clearCalls         int
-	clearFailures      int
-	expiredExtracts    []postgres.JobClaim
-	extractListErr     error
-	recoverAction      string
-	recoverErr         error
-	recoverFailures    int
-	recoveredExtracts  []int64
-	expiredExports     []postgres.JobClaim
-	recoveredExports   []int64
-	expiredFollowUps   []postgres.JobClaim
-	recoveredFollowUps []int64
-	sweptAges          []time.Duration
-	uploads            []postgres.ExportUploadCleanup
-	cleanedUploads     []int64
+	mu                    sync.Mutex
+	objects               []postgres.ExportObject
+	clearCalls            int
+	clearFailures         int
+	expiredExtracts       []postgres.JobClaim
+	extractListErr        error
+	recoverAction         string
+	recoverErr            error
+	recoverFailures       int
+	recoveredExtracts     []int64
+	expiredExports        []postgres.JobClaim
+	recoveredExports      []int64
+	expiredFollowUps      []postgres.JobClaim
+	recoveredFollowUps    []int64
+	sweptAges             []time.Duration
+	notificationSweepAges []time.Duration
+	notificationSweepN    int
+	notificationSweepErr  error
+	uploads               []postgres.ExportUploadCleanup
+	cleanedUploads        []int64
 }
 
 func (s *schedulerTestStore) ClaimExportUploadCleanup(context.Context) ([]postgres.ExportUploadCleanup, error) {
@@ -155,6 +158,16 @@ func (s *schedulerTestStore) SweepExpiredModelCostHolds(_ context.Context, age t
 	defer s.mu.Unlock()
 	s.sweptAges = append(s.sweptAges, age)
 	return 0, nil
+}
+
+func (s *schedulerTestStore) SweepStaleNotificationSending(_ context.Context, age time.Duration) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notificationSweepAges = append(s.notificationSweepAges, age)
+	if s.notificationSweepErr != nil {
+		return 0, s.notificationSweepErr
+	}
+	return s.notificationSweepN, nil
 }
 
 func (*schedulerTestStore) ExpireQueuedGenerations(context.Context, time.Duration) (int, error) {

@@ -188,7 +188,7 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 	}
 
 	prompt := greetingPrompt(row)
-	attempt := followAttemptID(claim.JobID)
+	attempt := followAttemptID(claim.JobID, row.AttemptCount)
 	decision, err := store.PrepareFollowUpModelCall(ctx, claim.OwnerID, claim.JobID, attempt, route.ProviderID, route.ModelID, companion.EstimateTokens(prompt), route.MaxOutputTokens)
 	if err != nil {
 		reason := "ADMISSION_FAILED"
@@ -205,16 +205,23 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "ALREADY_CHARGED", nil)
 	case "REUSED_RELEASED":
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "COST_RELEASED", nil)
-	case "HELD", "REUSED_HELD":
+	case "REUSED_HELD":
+		// This attempt already has a hold. Another Stream would be a second
+		// provider call settled on the same row. Leave the hold for lease
+		// recovery, which marks it UNKNOWN and retries on the next attempt key.
+		return nil
+	case "HELD":
 	default:
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "ADMISSION_FAILED", nil)
 	}
 
 	settled := false
+	abandoned := false
 	defer func() {
-		if !settled {
-			_ = store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil)
+		if settled || abandoned {
+			return
 		}
+		_ = store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil)
 	}()
 	if err := refreshFollowCredential(ctx, store, &route, resolved.ProviderRevision); err != nil {
 		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil); settleErr != nil {
@@ -247,6 +254,10 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		written.WriteString(delta.Text)
 		return nil
 	})
+	if callErr == nil && followUpAbandonAfterSend != nil && followUpAbandonAfterSend() {
+		abandoned = true
+		return errFollowUpSendAbandoned
+	}
 	if callErr != nil {
 		disposition := "UNKNOWN"
 		if pe := companion.AsError(callErr); pe != nil && pe.Delivery == companion.DeliveryNotSent {
@@ -460,8 +471,24 @@ func followUsageSettlement(usage companion.Usage) (string, *int64, *int64) {
 	return "UNKNOWN", nil, nil
 }
 
-func followAttemptID(jobID int64) string {
-	return "follow-up:" + strconv.FormatInt(jobID, 10)
+// followUpAbandonAfterSend, when it returns true, stops the handler after
+// Stream has already been issued and before finish or settlement. Tests use
+// it to imitate a process exit. Production leaves it nil.
+var followUpAbandonAfterSend func() bool
+
+var errFollowUpSendAbandoned = errors.New("follow-up send abandoned")
+
+// followAttemptID is the ledger key for one greeting try. attempt is the
+// work item's attempt_count while that try is claimed. Lease recovery marks
+// follow-up:{jobID}:{attempt} UNKNOWN when the greeting was not stored, then
+// increments attempt_count, so the next claim uses a different key. The
+// unsuffixed legacy key is marked as well. This format must match
+// go_recover_expired_follow_up.
+func followAttemptID(jobID int64, attempt int) string {
+	if attempt < 0 {
+		attempt = 0
+	}
+	return "follow-up:" + strconv.FormatInt(jobID, 10) + ":" + strconv.Itoa(attempt)
 }
 
 func followGenTerminal(outcome string) bool {

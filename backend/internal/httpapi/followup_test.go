@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,34 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
+
+func TestProactivePolicyRejectsUnparsedTimezone(t *testing.T) {
+	store := newFollowHTTPStore()
+	rel := mustFollowRel(t, store, 1)
+	srv := newCoreServer(t, "full", store)
+	path := "/api/v1/relationships/" + idString(rel) + "/proactive-policy"
+	body := func(zone string) string {
+		return fmt.Sprintf(`{"enabled":true,"dailyLimit":3,"recentInteractionMinutes":0,"allowedModes":["COMPANION"],"offlineCapable":false,"quietHoursStart":"22:00","quietHoursEnd":"08:00","quietHoursTimezone":%q}`, zone)
+	}
+	for _, zone := range []string{"asia/shanghai", "UTC+8"} {
+		rec := followRequest(t, srv, store, http.MethodPut, path, body(zone), 1, followCall{reauth: true})
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s status %d %s", zone, rec.Code, rec.Body.String())
+		}
+		assertEnvelope(t, rec, "INVALID_REQUEST")
+	}
+	rec := followRequest(t, srv, store, http.MethodPut, path, body("Asia/Shanghai"), 1, followCall{reauth: true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Asia/Shanghai %d %s", rec.Code, rec.Body.String())
+	}
+	var policy proactivePolicyJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &policy); err != nil {
+		t.Fatal(err)
+	}
+	if policy.QuietHoursTimezone == nil || *policy.QuietHoursTimezone != "Asia/Shanghai" {
+		t.Fatalf("stored zone = %v", policy.QuietHoursTimezone)
+	}
+}
 
 func TestFollowUpOperations(t *testing.T) {
 	if operation("/api/v1/relationships/10/proactive-policy") != "proactive_policy" {

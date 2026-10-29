@@ -1,9 +1,14 @@
 package postgres
 
 import (
+	"archive/zip"
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -211,16 +216,112 @@ func followUpModeAllowed(mode string, allowed []string) bool {
 	return false
 }
 
+// quietUnparsedDefer is how long a stored zone Go cannot parse postpones a
+// send. The window end is unknown, so the row is not treated as outside
+// quiet hours.
+const quietUnparsedDefer = time.Hour
+
+// CanonicalQuietHoursZone accepts a zone only when time.LoadLocation can
+// read it, and returns that location's name. A blank zone is stored as nil.
+// Local is rejected because it is the process zone, not a saved name.
+func CanonicalQuietHoursZone(zone *string) (*string, error) {
+	if zone == nil {
+		return nil, nil
+	}
+	name := strings.TrimSpace(*zone)
+	if name == "" {
+		return nil, nil
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil || !acceptedZoneName(name) {
+		return nil, ErrInvalid
+	}
+	canonical := loc.String()
+	if canonical == "" || canonical == "Local" || canonical != name {
+		return nil, ErrInvalid
+	}
+	return &canonical, nil
+}
+
+// acceptedZoneName is true only for the exact zoneinfo entry. LoadLocation
+// on a case-insensitive filesystem also opens Asia/Shanghai for
+// asia/shanghai, and String() keeps the caller's spelling. Quiet hours must
+// store and read the zoneinfo name.
+func acceptedZoneName(name string) bool {
+	if name == "UTC" {
+		return true
+	}
+	_, ok := zoneinfoNames()[name]
+	return ok
+}
+
+var zoneinfoNames = sync.OnceValue(func() map[string]struct{} {
+	names := make(map[string]struct{})
+	if zone, ok := os.LookupEnv("ZONEINFO"); ok && zone != "" {
+		if strings.HasSuffix(strings.ToLower(zone), ".zip") {
+			addZoneinfoZip(zone, names)
+		} else {
+			addZoneinfoTree(zone, names)
+		}
+	}
+	if root := runtime.GOROOT(); root != "" {
+		addZoneinfoZip(filepath.Join(root, "lib", "time", "zoneinfo.zip"), names)
+	}
+	for _, dir := range []string{"/usr/share/zoneinfo", "/usr/share/lib/zoneinfo", "/usr/lib/locale/TZ"} {
+		addZoneinfoTree(dir, names)
+	}
+	return names
+})
+
+func addZoneinfoTree(root string, names map[string]struct{}) {
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "" || strings.HasPrefix(rel, "../") {
+			return nil
+		}
+		names[rel] = struct{}{}
+		return nil
+	})
+}
+
+func addZoneinfoZip(path string, names map[string]struct{}) {
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		return
+	}
+	defer reader.Close()
+	for _, file := range reader.File {
+		name := filepath.ToSlash(file.Name)
+		if file.FileInfo().IsDir() || name == "" || strings.HasSuffix(name, "/") {
+			continue
+		}
+		names[name] = struct{}{}
+	}
+}
+
 // followUpQuietUntil reports whether now is inside the user's quiet hours and
 // the absolute instant those hours end. A window that starts after it ends
-// crosses midnight. The end minute is outside the window.
+// crosses midnight. The end minute is outside the window. A zone Go cannot
+// parse postpones the send.
 func followUpQuietUntil(now time.Time, start, end, zone *string) (bool, time.Time) {
 	if start == nil || end == nil || zone == nil {
 		return false, time.Time{}
 	}
-	loc, err := time.LoadLocation(strings.TrimSpace(*zone))
-	if err != nil {
-		return false, time.Time{}
+	trimmed := strings.TrimSpace(*zone)
+	loc, err := time.LoadLocation(trimmed)
+	if err != nil || !acceptedZoneName(trimmed) {
+		return true, now.Add(quietUnparsedDefer)
 	}
 	sh, sm, okStart := followUpHourMinute(*start)
 	eh, em, okEnd := followUpHourMinute(*end)

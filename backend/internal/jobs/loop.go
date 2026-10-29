@@ -51,6 +51,10 @@ type Store interface {
 	// bound as UNKNOWN. The reserved amount stays in the monthly unsettled
 	// total; it is not released as zero.
 	SweepExpiredModelCostHolds(ctx context.Context, olderThan time.Duration) (int, error)
+	// SweepStaleNotificationSending marks sending deliveries older than
+	// olderThan as unknown. The channel may already have accepted the
+	// message, so the row is not returned to pending.
+	SweepStaleNotificationSending(ctx context.Context, olderThan time.Duration) (int, error)
 	ExpireQueuedGenerations(ctx context.Context, timeout time.Duration) (int, error)
 	PurgeExpiredOpaqueSessions(ctx context.Context) (int, error)
 	ExpireStaleExports(ctx context.Context) (int, error)
@@ -687,6 +691,27 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 			slog.String("operation", "follow_up_recover"),
 			slog.String("outcome", "ok"),
 			slog.String("event_type", action),
+		)
+	}
+	// A process that exits after mark_notification_delivery_sending and
+	// before the channel outcome leaves the row sending. Once the channel
+	// send timeout plus margin has passed (NotificationSendingSweepAge),
+	// the peer may already have the message, so the row becomes unknown
+	// and is not returned to pending.
+	sweptSending, sendSweepErr := l.store.SweepStaleNotificationSending(ctx, NotificationSendingSweepAge())
+	if sendSweepErr != nil {
+		l.log.Info("notification sending sweep",
+			slog.String("operation", "notification_sending_sweep"),
+			slog.String("outcome", "error"),
+			slog.String("error_code", "RECOVER_FAILED"),
+		)
+	} else if sweptSending > 0 {
+		l.recoveries.Add(uint64(sweptSending))
+		l.log.Info("notification sending sweep",
+			slog.String("operation", "notification_sending_sweep"),
+			slog.String("outcome", "ok"),
+			slog.String("event_type", "unknown"),
+			slog.String("decision_code", NotificationSendingUnknown),
 		)
 	}
 	// A killed plugin never settles. HELD rows older than the longest call

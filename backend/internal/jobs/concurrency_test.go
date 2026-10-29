@@ -1079,6 +1079,10 @@ func (s *leaseClaimStore) SweepExpiredModelCostHolds(context.Context, time.Durat
 	return 0, nil
 }
 
+func (s *leaseClaimStore) SweepStaleNotificationSending(context.Context, time.Duration) (int, error) {
+	return 0, nil
+}
+
 // TestLoopExpiredExtractRequeueFencesOldHolder pins the expiry coordination:
 // an extraction whose claim lease elapsed mid-provider-call is requeued by
 // recovery; the old holder may finish its already-started commit but its Go publication
