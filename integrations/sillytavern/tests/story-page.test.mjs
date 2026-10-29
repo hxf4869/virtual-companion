@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import { createStoryPage, renderStoryPage, STORY_CONFLICT } from '../extension/vc-model-settings/story-page.js';
+import { createStoryProjection } from '../extension/vc-model-settings/story-projection.js';
 import { STORY_UI_ROUTES } from '../server-plugin/virtual-companion/lib/story-ui-routes.js';
 
 const MARKERS = ['PRIVATE_LIN_LOAN_31', 'PRIVATE_ZHOU_WATCH_44', 'PRIVATE_SU_WITNESS_57', 'GM_ONLY_WATCH_TRUTH_92'];
@@ -270,6 +271,7 @@ test('入口、手机单列与桥接范围', async () => {
     assert.equal(allows('POST', '/api/v1/story/runs/11/actions'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/rewind'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/projections/101/confirm'), true);
+    assert.equal(allows('GET', '/api/v1/story/runs/11/projections'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/participants/lin'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/epilogue'), true);
     assert.equal(allows('GET', '/api/v1/story/runs/11/actors/lin/view'), false);
@@ -600,11 +602,93 @@ test('发现证据时用过渡状态标出玩家可见线索名', async () => {
     page.close();
 });
 
+test('刷新后重新开局把未确认投影补写一次', async () => {
+    const projected = [];
+    const base = route;
+    route = (url, init) => {
+        if (url.includes('/projections?state=PENDING')) {
+            return {
+                body: {
+                    projections: [
+                        { worldEventId: '101', worldVersion: 1, text: '钥匙借用记录\n出示借据' },
+                        { worldEventId: '202', worldVersion: 2, text: 'PRIVATE_LIN_LOAN_31' },
+                        { worldEventId: '303', worldVersion: 3, text: 'GM_ONLY_WATCH_TRUTH_92' },
+                    ],
+                },
+            };
+        }
+        return base(url, init);
+    };
+    const page = createStoryPage({
+        getConversation: storyConversation,
+        project: async (job) => {
+            projected.push({ worldEventId: job.worldEventId, runId: job.runId, text: job.text });
+            return { confirmed: true, appended: true };
+        },
+    });
+    await page.open();
+    await page.start();
+    assert.equal(projected.length, 1);
+    assert.deepEqual(projected[0], { worldEventId: '101', runId: '11', text: '钥匙借用记录\n出示借据' });
+    const listed = calls.filter((call) => call.url.includes('/projections?state=PENDING'));
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].method, 'GET');
+    page.close();
+});
+
+test('已确认投影在刷新后不会再次补写', async () => {
+    const projected = [];
+    const base = route;
+    route = (url, init) => {
+        if (url.includes('/projections?state=PENDING')) return { body: { projections: [] } };
+        return base(url, init);
+    };
+    const page = createStoryPage({
+        getConversation: storyConversation,
+        project: async (job) => {
+            projected.push(job.worldEventId);
+            return { confirmed: true, appended: false };
+        },
+    });
+    await page.open();
+    await page.start();
+    assert.deepEqual(projected, []);
+    assert.equal(calls.filter((call) => call.url.includes('/projections?state=PENDING')).length, 1);
+    page.close();
+});
+
+test('用户删除的墓碑在刷新后不会补回', async () => {
+    const saves = [];
+    const projection = createStoryProjection({
+        readChat: async () => ({ metadata: { vc_story_projected: ['101'] }, messages: [{ mes: '别的消息' }] }),
+        saveChat: async (snapshot) => { saves.push(snapshot); },
+        confirm: async () => { throw new Error('墓碑不应确认'); },
+    });
+    const base = route;
+    route = (url, init) => {
+        if (url.includes('/projections?state=PENDING')) {
+            return { body: { projections: [{ worldEventId: '101', worldVersion: 1, text: '钥匙借用记录' }] } };
+        }
+        return base(url, init);
+    };
+    const page = createStoryPage({
+        getConversation: storyConversation,
+        project: (job) => projection.project(job),
+    });
+    await page.open();
+    await page.start();
+    assert.equal(calls.filter((call) => call.url.includes('/projections?state=PENDING')).length, 1);
+    assert.equal(saves.length, 0);
+    assert.equal(page.state.syncPending, false);
+    page.close();
+});
+
 test('剧情页路由常量覆盖行动、回档、投影、入局、结局和用途', () => {
     const allows = (method, path) => STORY_UI_ROUTES.some((item) => item.method === method && item.path.test(path));
     assert.equal(allows('POST', '/api/v1/story/runs/11/actions'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/rewind'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/projections/101/confirm'), true);
+    assert.equal(allows('GET', '/api/v1/story/runs/11/projections'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/participants/lin'), true);
     assert.equal(allows('POST', '/api/v1/story/runs/11/epilogue'), true);
     assert.equal(allows('GET', '/api/v1/admin/model-purposes'), true);

@@ -25,6 +25,7 @@
     "checkStoryOutbound",
     "commitStoryAction",
     "rewindStory",
+    "listPendingStoryProjections",
     "confirmStoryProjection",
     "mapStoryParticipant",
     "decideStoryEpilogue",
@@ -164,6 +165,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "a47e3e7552065fd561df7ad1cd8fb8665b194a7efcb25a6ed37ceffe3e583952"
+    "sha256": "c856fa3d29dd3634eea1af2a148e7fccee92bc5f4e7e2ff49838341cdbee10ab"
   }
 }

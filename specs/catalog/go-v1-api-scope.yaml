@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 101
+  KEEP: 102
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 38
@@ -253,6 +253,19 @@ operations:
     and returns the new branch. The browser session is the owner. A target that
     is not before the current version is rejected. This operation does not call
     a model.
+- operationId: listPendingStoryProjections
+  method: GET
+  path: /api/v1/story/runs/{runId}/projections
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W16 lists pending projections the player can see on
+    the current branch head so the story page can backfill chat after a
+    refresh. The browser session is the owner. The read returns the chat line
+    only and does not change projection state. This operation does not call a
+    model.
 - operationId: confirmStoryProjection
   method: POST
   path: /api/v1/story/runs/{runId}/projections/{eventId}/confirm

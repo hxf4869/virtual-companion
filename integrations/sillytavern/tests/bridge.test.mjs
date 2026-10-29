@@ -178,6 +178,7 @@ test('管理桥：并入聊天、主动陪伴与剧情路由；claim/ack 与账�
             { method: 'POST', url: '/api/v1/story/runs/11/actions' },
             { method: 'POST', url: '/api/v1/story/runs/11/rewind' },
             { method: 'POST', url: '/api/v1/story/runs/11/projections/3/confirm' },
+            { method: 'GET', url: '/api/v1/story/runs/11/projections' },
             { method: 'POST', url: '/api/v1/story/runs/11/participants/lin' },
             { method: 'POST', url: '/api/v1/story/runs/11/epilogue' },
             { method: 'POST', url: '/api/v1/auth/password' },

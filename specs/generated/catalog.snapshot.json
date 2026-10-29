@@ -1082,7 +1082,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 101,
+          "KEEP": 102,
           "RETIRE": 38,
           "SIMPLIFY": 6
         },
@@ -1354,6 +1354,18 @@
             "operationId": "rewindStory",
             "path": "/api/v1/story/runs/{runId}/rewind",
             "replacementOrImpact": "V2-W14 forks the current head at an earlier world version and returns the new branch. The browser session is the owner. A target that is not before the current version is rejected. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "listPendingStoryProjections",
+            "path": "/api/v1/story/runs/{runId}/projections",
+            "replacementOrImpact": "V2-W16 lists pending projections the player can see on the current branch head so the story page can backfill chat after a refresh. The browser session is the owner. The read returns the chat line only and does not change projection state. This operation does not call a model."
           },
           {
             "currentH5Callers": [],
@@ -2743,7 +2755,7 @@
           }
         ]
       },
-      "sha256": "e92acceba894652c5b8377d985371e6b9b09133f43141b8e433455b7e4324afb"
+      "sha256": "53e1b8fb13ad345ab476da0d0e6f547e2fca78fd6c2df8b60abd81b11f09f409"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

@@ -1144,6 +1144,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/projections:
+    get:
+      operationId: listPendingStoryProjections
+      summary: List pending player-visible story projections
+      description: >-
+        Returns projections on the current branch head whose projection state
+        is PENDING and whose audience includes the player. Each item carries
+        the world event id, the event's world version, and the chat line the
+        story page writes. That line is built from the same player-visible
+        fields the page reads after commitStoryAction (clue name, text, note,
+        and qualification). GM truth, other actors' private facts, credentials,
+        and the stored event body are not returned. state must be PENDING.
+        Cookie identity is the owner. This read does not change projection
+        state and does not call a model.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoryRunId'
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+            const: PENDING
+      responses:
+        '200':
+          description: Pending player-visible projections, or an empty list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryPendingProjectionList'
+        '400':
+          description: Invalid run id or a state other than PENDING
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run absent, owned by someone else, or deletion is in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/story/runs/{runId}/projections/{eventId}/confirm:
     post:
       operationId: confirmStoryProjection
@@ -7616,6 +7665,34 @@ components:
           type: string
           maxLength: 4000
           description: Dialogue text. Ignored by action rules that do not use it.
+    StoryPendingProjectionList:
+      type: object
+      additionalProperties: false
+      description: >-
+        Pending projections the player can backfill into the current chat.
+        The list is empty when every current-head projection is already
+        confirmed, cancelled, user-deleted, or not visible to the player.
+      required: [projections]
+      properties:
+        projections:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [worldEventId, worldVersion, text]
+            properties:
+              worldEventId:
+                type: string
+                pattern: '^[1-9][0-9]{0,18}$'
+              worldVersion:
+                type: integer
+                format: int64
+                minimum: 0
+              text:
+                type: string
+                description: >-
+                  Chat line built from the player-visible clue name, text,
+                  note, and qualification. Hidden markers are omitted.
     StoryActionResult:
       type: object
       additionalProperties: false
