@@ -314,8 +314,13 @@
       按重排分数排序；不可用、超时或无效时回退原门槛。结果：DONE（2026-10-29）；提交 `c282b915`（合并 `204dc941`），部署配置 `da6a05a4`。
       校准集正例 78/78、负例 22/22 空、top-1 69/78（原门槛 67/78）；第 10 轮真实评估 H1–H4 PASS，正例 6/8，持久化到可召回 P50 48.3s。
       验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级见 `V2-DEPLOY` 待办。
+- [x] `V2-F04` 聊天发送链路提速（Owner 2026-10-30 授权）。结果：DONE（2026-10-30）；提交 `17948db3`（合并 `4871d104`）。
+      重排分数缓存 60 秒（出站复核热路径约 189ms→1ms）、召回检索并行、同一嵌入并发去重、embedding `keep_alive -1` 与部署
+      `OLLAMA_KEEP_ALIVE=-1`；Go 只读查找并行，来源快照写回保持串行（避免锁序死锁，审查时改回）。召回语义不变（并集 78/78、负例全空、
+      top-1 69/78）。评估：记忆块保持在最后一条用户消息前（不改）；输入预取待 F2 定稿后再议。远端收益需下次升级后实测。
 - [ ] `V2-F03` 前端 Apple 风格重设计（Owner 2026-10-29 确认交互原型为基线）。设计真源 `DESIGN.md` 第 2 版（`6bf76812`），
-      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F4a（记忆+陪伴，`7b01ffec`）、F4b（角色+剧情，`ca9e6c16`）DONE（vc-ui 开启时生效，新增 fe4a-ui / fe4b-ui 场景）；F1、F2、F3 进行中。
+      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F1 外壳（`4a397a56`）、F3 设置与酒馆（`d4548671`）、F4a 记忆+陪伴（`7b01ffec`）、F4b 角色+剧情（`ca9e6c16`）已合并（vc-ui 开启时生效）；
+      F2 聊天返工中；集成验收发现 `w15-ui` 计价样本保存 HTTP 400 与抽屉页被外壳覆盖，INT 任务修复中。
       待查：`story-real`（真实模型，默认关闭的旧剧情对话框）两次在“NPC 对白提交”等待超时（日志 `npc_reply_not_auto_committed`，林岚/周澈各一次）；
       F4b 对 `story-page.js` 只有新增、旧路径未改，判断为真实模型行为或既有问题，需在 main 上单独复查。
       Owner 2026-10-29 决定：embedding 与重排作为默认本机模型在模型页显示名称与状态、重排可一键开关，暂不提供更换；
