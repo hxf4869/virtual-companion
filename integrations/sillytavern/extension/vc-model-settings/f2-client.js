@@ -127,27 +127,242 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
     };
 }
 
-/** Keep the rejected snapshot only in the page; never log it or upload it. */
-export function showF2Draft(serialized, error) {
-    if (typeof document === 'undefined') return;
-    let panel = document.querySelector('#vc-f2-conflict');
-    if (!panel) {
-        panel = document.createElement('dialog'); panel.id = 'vc-f2-conflict';
-        panel.style.cssText = 'width:min(720px,94vw);max-height:85dvh;overflow:auto;color:var(--SmartThemeBodyColor,#eff3fa);background:var(--SmartThemeBlurTintColor,#1c222c);border:1px solid var(--SmartThemeBorderColor,#394453);border-radius:12px;padding:20px';
-        const heading = document.createElement('h2'); heading.textContent = '聊天未保存';
-        const note = document.createElement('p'); note.dataset.f2Note = 'true'; note.setAttribute('role', 'alert');
-        const draft = document.createElement('textarea'); draft.readOnly = true; draft.setAttribute('aria-label', '保留的聊天草稿');
-        draft.style.cssText = 'width:100%;min-height:220px;font-size:16px';
-        const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = '复制草稿';
-        copy.addEventListener('click', async () => { await navigator.clipboard.writeText(draft.value); copy.textContent = '已复制'; });
-        const reload = document.createElement('button'); reload.type = 'button'; reload.textContent = '重新加载最新版本';
-        reload.addEventListener('click', () => location.reload());
-        const close = document.createElement('button'); close.type = 'button'; close.textContent = '继续查看本页'; close.addEventListener('click', () => panel.close());
-        for (const button of [copy, reload, close]) button.style.cssText = 'min-height:44px;margin:8px 8px 0 0';
-        panel.append(heading, note, draft, copy, reload, close); document.body.append(panel);
+export const F2_CONFLICT_COPY = '这段对话已在另一处更新。你的输入已保留，请加载最新内容后继续。';
+
+let f2Draft = null;
+let f2Opener = null;
+let f2UserInput = '';
+
+/** Rejected snapshot stays in this module closure. It is not written into the DOM. */
+export function readF2Draft() {
+    return f2Draft;
+}
+
+const MESSAGE_KEYS = ['chat', 'messages', 'message', 'source'];
+
+function collectMessages(value, out = [], seen = new Set()) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return out;
+    seen.add(value);
+    if (Array.isArray(value)) {
+        for (const item of value) collectMessages(item, out, seen);
+        return out;
     }
-    panel.querySelector('[data-f2-note]').textContent = error.message;
-    panel.querySelector('textarea').value = serialized;
+    if (typeof value.mes === 'string') out.push(value);
+    for (const key of MESSAGE_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(value, key)) collectMessages(value[key], out, seen);
+    }
+    return out;
+}
+
+function isUserMessage(message) {
+    return message?.is_user === true || message?.role === 'user';
+}
+
+function usableMessages(value) {
+    return collectMessages(value).filter((message) => message.is_system !== true && message.mes.length > 0);
+}
+
+/** Texts present in the rejected snapshot. With a latest chat, only those the latest does not already have. */
+export function extractUnsavedUserInput(serialized, latest) {
+    let data = serialized;
+    if (typeof serialized === 'string') {
+        if (!serialized) return '';
+        try { data = JSON.parse(serialized); } catch { return ''; }
+    }
+    const local = usableMessages(data);
+    if (latest === undefined || latest === null) {
+        const user = local.filter(isUserMessage);
+        return (user.length ? user : local).map((message) => message.mes).join('\n');
+    }
+    const counts = new Map();
+    for (const message of usableMessages(latest)) counts.set(message.mes, (counts.get(message.mes) || 0) + 1);
+    const missing = [];
+    for (const message of local) {
+        const left = counts.get(message.mes) || 0;
+        if (left > 0) counts.set(message.mes, left - 1);
+        else missing.push(message.mes);
+    }
+    return missing.join('\n');
+}
+
+function stContext() {
+    try {
+        const getContext = globalThis.SillyTavern?.getContext;
+        return typeof getContext === 'function' ? getContext() : null;
+    } catch {
+        return null;
+    }
+}
+
+function insideNode(node, ancestor) {
+    let current = node;
+    while (current) {
+        if (current === ancestor) return true;
+        current = current.parentElement || current.parent || null;
+    }
+    return false;
+}
+
+function readSendBox() {
+    return typeof document === 'undefined' ? null : document.querySelector('#send_textarea');
+}
+
+function mergeInput(current, text) {
+    if (!text) return current;
+    if (!current) return text;
+    if (current === text || current.endsWith(`\n${text}`)) return current;
+    return `${current}\n${text}`;
+}
+
+function focusSendBox(box) {
+    if (!box || typeof box.focus !== 'function') return;
+    box.focus();
+    const again = () => {
+        const current = readSendBox();
+        if (current && current === box && typeof current.focus === 'function') current.focus();
+    };
+    if (typeof queueMicrotask === 'function') queueMicrotask(again);
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(again);
+}
+
+function placeUserInput(text, existing, { focus = false } = {}) {
+    const box = readSendBox();
+    if (!box || !text) {
+        if (focus) focusSendBox(box);
+        return;
+    }
+    const current = existing != null ? String(existing) : String(box.value ?? '');
+    box.value = mergeInput(current, text);
+    if (focus) focusSendBox(box);
+}
+
+function ensureRecall() {
+    let button = document.querySelector('#vc-f2-recall');
+    if (!button) {
+        button = document.createElement('button');
+        button.id = 'vc-f2-recall';
+        button.type = 'button';
+        button.setAttribute('data-action', 'copy-input');
+        button.textContent = '复制未保存输入';
+        button.hidden = true;
+        button.setAttribute('hidden', '');
+        button.addEventListener('click', () => { void copyUserInput(); });
+        document.body.append(button);
+    }
+    return button;
+}
+
+function showRecall(visible) {
+    if (typeof document === 'undefined') return;
+    const button = ensureRecall();
+    button.hidden = !visible;
+    if (visible) button.removeAttribute('hidden');
+    else button.setAttribute('hidden', '');
+}
+
+async function copyUserInput() {
+    const text = f2UserInput;
+    if (!text) return;
+    const clipboard = globalThis.navigator?.clipboard;
+    const write = clipboard?.writeText;
+    if (typeof write === 'function') {
+        try {
+            await write.call(clipboard, text);
+            return;
+        } catch {
+            // Clipboard can be denied. The same text is still placed in the send box.
+        }
+    }
+    placeUserInput(text, undefined, { focus: true });
+}
+
+function ensureF2Styles() {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return;
+    const links = typeof document.querySelectorAll === 'function' ? document.querySelectorAll('link') : [];
+    if ([...links].some((node) => node.getAttribute?.('data-vc-chat-shell') != null)) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.setAttribute('data-vc-chat-shell', '');
+    const relative = String(import.meta.url).includes('/vc-runtime/')
+        ? '../extensions/third-party/vc-model-settings/chat-shell.css'
+        : './chat-shell.css';
+    link.href = new URL(relative, import.meta.url).href;
+    (document.head || document.documentElement).append(link);
+}
+
+function closeF2Panel(panel, { focusInput = false } = {}) {
+    const existing = String(readSendBox()?.value ?? '');
+    panel.close();
+    showRecall(Boolean(f2UserInput));
+    placeUserInput(f2UserInput, existing, { focus: focusInput });
+    if (!focusInput && f2Opener && typeof f2Opener.focus === 'function') f2Opener.focus();
+}
+
+async function viewLatest(panel) {
+    const existing = String(readSendBox()?.value ?? '');
+    const reload = stContext()?.reloadCurrentChat;
+    if (typeof reload !== 'function') return;
+    try {
+        await reload();
+    } catch {
+        return;
+    }
+    const latest = stContext()?.chat;
+    const recovered = Array.isArray(latest) ? extractUnsavedUserInput(f2Draft, latest) : '';
+    if (recovered) f2UserInput = recovered;
+    panel.close();
+    showRecall(Boolean(f2UserInput));
+    placeUserInput(recovered, existing, { focus: true });
+}
+
+/** Keep the rejected snapshot only in the page; never log it or upload it. */
+export function showF2Draft(serialized) {
+    if (typeof document === 'undefined') return;
+    f2Draft = typeof serialized === 'string' ? serialized : '';
+    f2UserInput = extractUnsavedUserInput(f2Draft);
+    ensureF2Styles();
+    let panel = document.querySelector('#vc-f2-conflict');
+    const active = document.activeElement;
+    if (!panel || !insideNode(active, panel)) f2Opener = active;
+    if (!panel) {
+        panel = document.createElement('dialog');
+        panel.id = 'vc-f2-conflict';
+        panel.setAttribute('aria-labelledby', 'vc-f2-title');
+        const wrap = document.createElement('div');
+        wrap.className = 'vc-f2-panel';
+        const heading = document.createElement('h2');
+        heading.id = 'vc-f2-title';
+        heading.textContent = '对话已更新';
+        const note = document.createElement('p');
+        note.setAttribute('role', 'alert');
+        note.textContent = F2_CONFLICT_COPY;
+        const actions = document.createElement('div');
+        actions.className = 'vc-f2-actions';
+        const latest = document.createElement('button');
+        latest.type = 'button';
+        latest.setAttribute('data-action', 'view-latest');
+        latest.textContent = '查看最新';
+        latest.addEventListener('click', () => { void viewLatest(panel); });
+        const keep = document.createElement('button');
+        keep.type = 'button';
+        keep.setAttribute('data-action', 'keep-draft');
+        keep.textContent = '保留草稿';
+        keep.addEventListener('click', () => closeF2Panel(panel, { focusInput: true }));
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.setAttribute('data-action', 'copy-input');
+        copy.textContent = '复制';
+        copy.addEventListener('click', () => { void copyUserInput(); });
+        actions.append(latest, keep, copy);
+        wrap.append(heading, note, actions);
+        panel.append(wrap);
+        panel.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeF2Panel(panel);
+        });
+        document.body.append(panel);
+    }
+    showRecall(false);
     if (!panel.open) panel.showModal();
 }
 
