@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/story"
+	"github.com/hxf4869/virtual-companion/internal/stsource"
 )
 
 type storyWorldStore interface {
@@ -111,6 +114,121 @@ func (s *Server) handleStoryActorView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, view)
+}
+
+type storyOutboundRequest struct {
+	OwnerAccountID        string   `json:"ownerAccountId"`
+	BranchID              string   `json:"branchId"`
+	WorldVersion          *int64   `json:"worldVersion"`
+	ChatIdentity          string   `json:"chatIdentity"`
+	Protocol              string   `json:"protocol"`
+	Messages              []string `json:"messages"`
+	System                []string `json:"system"`
+	Instructions          []string `json:"instructions"`
+	ToolDefinitions       []string `json:"toolDefinitions"`
+	ToolResults           []string `json:"toolResults"`
+	HasPreviousResponseID *bool    `json:"hasPreviousResponseId"`
+	HasConversation       *bool    `json:"hasConversation"`
+}
+
+type storyOutboundPass struct {
+	Passed bool `json:"passed"`
+}
+
+// handleStoryOutboundCheck is the service-token second line for one actor.
+// The handler does not log the body, a matched fact, or a marker.
+func (s *Server) handleStoryOutboundCheck(w http.ResponseWriter, r *http.Request) {
+	if !s.serviceCaller(w, r) {
+		return
+	}
+	runID, runOK := parsePathID(r.PathValue("runId"))
+	actorID := r.PathValue("actorId")
+	var body storyOutboundRequest
+	if !s.decodeStrictJSON(w, r, &body) {
+		return
+	}
+	branchID, branchOK := parsePathID(body.BranchID)
+	ownerID, ownerOK := parsePathID(body.OwnerAccountID)
+	if !runOK || !branchOK || !ownerOK || !validActorID(actorID) || !validOutboundProtocol(body.Protocol) ||
+		!stsource.ValidIdentity(body.ChatIdentity) || idString(branchID) != body.BranchID || idString(ownerID) != body.OwnerAccountID ||
+		body.WorldVersion == nil || *body.WorldVersion < 0 || body.HasPreviousResponseID == nil || body.HasConversation == nil ||
+		body.Messages == nil || body.System == nil || body.Instructions == nil || body.ToolDefinitions == nil || body.ToolResults == nil {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	store, ok := s.core.Store.(storyWorldStore)
+	if !ok {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "story world is unavailable")
+		return
+	}
+	facts, err := store.LoadStoryActor(r.Context(), ownerID, runID, branchID, actorID, *body.WorldVersion)
+	if err != nil {
+		s.writeStoryErr(w, err)
+		return
+	}
+	if facts.ActorID != actorID || facts.RunID != runID || facts.ConversationID <= 0 {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	if facts.BranchID != branchID || facts.WorldVersion != *body.WorldVersion {
+		s.writeAPIError(w, http.StatusConflict, "REVISION_CONFLICT", "story world conflict")
+		return
+	}
+	// 局已装入但会话身份对不上：与世界版本冲突同一类，409，不回显任何身份。
+	// 会话不是 STORY 或身份为空时，store 返回 ErrNotFound，上面已经写成 404。
+	if facts.ChatIdentity == "" {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	if facts.ChatIdentity != body.ChatIdentity {
+		s.writeAPIError(w, http.StatusConflict, "REVISION_CONFLICT", "story world conflict")
+		return
+	}
+	texts := make([]string, 0, len(body.Messages)+len(body.System)+len(body.Instructions)+len(body.ToolDefinitions)+len(body.ToolResults))
+	texts = append(texts, body.Messages...)
+	texts = append(texts, body.System...)
+	texts = append(texts, body.Instructions...)
+	texts = append(texts, body.ToolDefinitions...)
+	texts = append(texts, body.ToolResults...)
+	err = story.CheckOutbound(facts.CaseID, facts.ActorID, texts, *body.HasPreviousResponseID || *body.HasConversation)
+	if errors.Is(err, story.ErrOutboundRejected) {
+		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "story outbound rejected")
+		return
+	}
+	if errors.Is(err, story.ErrUnknownActor) {
+		s.writeAPIError(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN", "not found")
+		return
+	}
+	if err != nil {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, storyOutboundPass{Passed: true})
+}
+
+func (s *Server) decodeStrictJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxCoreBodyBytes)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return false
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return false
+	}
+	return true
+}
+
+func validOutboundProtocol(protocol string) bool {
+	switch protocol {
+	case "OPENAI_CHAT_COMPLETIONS", "OPENAI_RESPONSES", "ANTHROPIC_MESSAGES":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) writeStoryErr(w http.ResponseWriter, err error) {

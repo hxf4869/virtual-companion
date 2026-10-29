@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,6 +73,7 @@ func (m *storyWorldHTTPStore) LoadStoryActor(_ context.Context, owner, runID, br
 	return postgres.StoryActorFacts{
 		ConversationID: 7, RunID: 11, BranchID: 13, ActorID: actorID,
 		CaseID: "rainy-inn-v1", WorldVersion: 0, Events: storyProbeEvents(),
+		ChatIdentity: "10000000-0000-4000-8000-000000000007",
 	}, nil
 }
 
@@ -344,6 +347,372 @@ func rainyInnNPCPublic(t *testing.T) (personas, goals []string) {
 		t.Fatalf("personas=%d goals=%d", len(personas), len(goals))
 	}
 	return personas, goals
+}
+
+const storyOutboundToken = "synthetic-service-token-0123456789"
+
+func newStoryOutboundServer(t *testing.T) (*Server, *storyWorldHTTPStore, *bytes.Buffer) {
+	t.Helper()
+	m := &storyWorldHTTPStore{memStore: newMemStore()}
+	s := newCoreServer(t, "full", m)
+	s.cfg.STPlugin.ServiceToken = storyOutboundToken
+	logs := &bytes.Buffer{}
+	s.log = slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	return s, m, logs
+}
+
+func storyOutboundPayload(t *testing.T, replace map[string]any) string {
+	t.Helper()
+	body := map[string]any{
+		"ownerAccountId":        "1",
+		"branchId":              "13",
+		"worldVersion":          0,
+		"chatIdentity":          "10000000-0000-4000-8000-000000000007",
+		"protocol":              "OPENAI_CHAT_COMPLETIONS",
+		"messages":              []string{"玩家：怀表是什么时候不见的？"},
+		"system":                []string{"雨夜，小旅馆的一枚展柜怀表失踪。玩家受邀调查。"},
+		"instructions":          []string{"只回答你知道的事。"},
+		"toolDefinitions":       []string{"ask"},
+		"toolResults":           []string{},
+		"hasPreviousResponseId": false,
+		"hasConversation":       false,
+	}
+	for key, value := range replace {
+		body[key] = value
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func postStoryOutbound(t *testing.T, s *Server, actor, token, origin, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/story/runs/11/actors/"+actor+"/outbound-check", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func assertStoryOutboundClean(t *testing.T, body string) {
+	t.Helper()
+	for _, secret := range outboundHTTPSecrets(t) {
+		if secret != "" && strings.Contains(body, secret) {
+			t.Fatalf("body contains %s: %s", secret, body)
+		}
+	}
+}
+
+func outboundHTTPSecrets(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile("../story/cases/rainy-inn-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Actors []struct {
+			Goal string `json:"goal"`
+		} `json:"actors"`
+		GM struct {
+			Marker        string `json:"marker"`
+			Motive        string `json:"motive"`
+			WatchLocation string `json:"watch_location"`
+			Timeline      []struct {
+				Fact string `json:"fact"`
+			} `json:"timeline"`
+		} `json:"gm_truth"`
+		Private []struct {
+			Fact   string `json:"fact"`
+			Marker string `json:"marker"`
+		} `json:"initial_private_knowledge"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	out := []string{doc.GM.Marker, doc.GM.Motive, doc.GM.WatchLocation}
+	for _, item := range doc.GM.Timeline {
+		out = append(out, item.Fact)
+	}
+	for _, item := range doc.Private {
+		out = append(out, item.Fact, item.Marker)
+	}
+	for _, actor := range doc.Actors {
+		if actor.Goal != "" {
+			out = append(out, actor.Goal)
+		}
+	}
+	return out
+}
+
+func TestStoryOutboundCheckRejectsHiddenFactVariants(t *testing.T) {
+	s, m, logs := newStoryOutboundServer(t)
+	zhou := "自己把怀表藏在维修柜，钥匙还在自己手里。"
+	gm := "周澈因维修报酬争议擅自暂藏怀表。"
+	for _, hidden := range []string{
+		zhou,
+		spaceEveryHTTP(zhou),
+		strings.ReplaceAll(strings.ReplaceAll(zhou, "，", ","), "。", "."),
+		insertRuneHTTP(zhou, '\u3000'),
+		insertRuneHTTP(zhou, '\u200b'),
+		fullwidthASCIIHTTP(zhou),
+		gm,
+		spaceEveryHTTP(gm),
+		"PRIVATE_ZHOU_WATCH_44",
+		fullwidthASCIIHTTP("PRIVATE_ZHOU_WATCH_44"),
+		"GM_ONLY_WATCH_TRUTH_92",
+	} {
+		logs.Reset()
+		before := m.views
+		rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+			"messages": []string{hidden},
+		}))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("hidden %q status=%d body=%s", hidden, rec.Code, rec.Body.String())
+		}
+		assertEnvelope(t, rec, "ACCESS_DENIED")
+		if !strings.Contains(rec.Body.String(), "story outbound rejected") {
+			t.Fatalf("hidden %q body=%s", hidden, rec.Body.String())
+		}
+		assertStoryOutboundClean(t, rec.Body.String())
+		assertStoryOutboundClean(t, logs.String())
+		if m.views != before+1 {
+			t.Fatalf("hidden check did not load the actor: before=%d after=%d", before, m.views)
+		}
+	}
+}
+
+func TestStoryOutboundCheckAllowsLinPrivateKnowledge(t *testing.T) {
+	s, _, _ := newStoryOutboundServer(t)
+	lin := "19:55把维修柜钥匙借给周澈，并有借用记录。"
+	for _, protocol := range []string{"OPENAI_CHAT_COMPLETIONS", "OPENAI_RESPONSES", "ANTHROPIC_MESSAGES"} {
+		rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+			"protocol":     protocol,
+			"messages":     []string{lin, spaceEveryHTTP(lin), fullwidthASCIIHTTP(lin)},
+			"system":       []string{"PRIVATE_LIN_LOAN_31", "雨夜，小旅馆的一枚展柜怀表失踪。玩家受邀调查。"},
+			"instructions": []string{"20:20老板发现怀表不见了。"},
+		}))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", protocol, rec.Code, rec.Body.String())
+		}
+		if strings.TrimSpace(rec.Body.String()) != `{"passed":true}` {
+			t.Fatalf("%s body=%s", protocol, rec.Body.String())
+		}
+		assertStoryOutboundClean(t, rec.Body.String())
+	}
+}
+
+func TestStoryOutboundCheckRejectsToolResultFact(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"toolResults": []string{"工具回传：" + "自己把怀表藏在维修柜，钥匙还在自己手里。"},
+	}))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("tool result status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "ACCESS_DENIED")
+	assertStoryOutboundClean(t, rec.Body.String())
+	assertStoryOutboundClean(t, logs.String())
+}
+
+func TestStoryOutboundCheckRejectsRemoteHistory(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	for _, flag := range []string{"hasPreviousResponseId", "hasConversation"} {
+		rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+			flag: true,
+		}))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s status=%d body=%s", flag, rec.Code, rec.Body.String())
+		}
+		assertEnvelope(t, rec, "ACCESS_DENIED")
+		if !strings.Contains(rec.Body.String(), "story outbound rejected") {
+			t.Fatalf("%s body=%s", flag, rec.Body.String())
+		}
+		assertStoryOutboundClean(t, rec.Body.String())
+		assertStoryOutboundClean(t, logs.String())
+	}
+}
+
+func TestStoryOutboundCheckWorldVersionConflict(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"worldVersion": 1,
+	}))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "REVISION_CONFLICT")
+	assertStoryOutboundClean(t, rec.Body.String())
+	assertStoryOutboundClean(t, logs.String())
+}
+
+func TestStoryOutboundCheckOtherOwnerNotFound(t *testing.T) {
+	s, _, _ := newStoryOutboundServer(t)
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"ownerAccountId": "2",
+	}))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "NOT_FOUND_OR_FORBIDDEN")
+	assertStoryOutboundClean(t, rec.Body.String())
+}
+
+func TestStoryOutboundCheckRejectsBrowserOrigin(t *testing.T) {
+	s, m, logs := newStoryOutboundServer(t)
+	body := storyOutboundPayload(t, map[string]any{
+		"messages": []string{"自己把怀表藏在维修柜，钥匙还在自己手里。", "GM_ONLY_WATCH_TRUTH_92"},
+	})
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "https://vc.test", body)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("origin status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "ACCESS_DENIED")
+	if !strings.Contains(rec.Body.String(), "browser origin rejected") {
+		t.Fatalf("origin body=%s", rec.Body.String())
+	}
+	if m.views != 0 {
+		t.Fatalf("browser origin reached the store: views=%d", m.views)
+	}
+	assertStoryOutboundClean(t, rec.Body.String())
+	assertStoryOutboundClean(t, logs.String())
+
+	missing := postStoryOutbound(t, s, "lin", "", "", body)
+	if missing.Code != http.StatusUnauthorized {
+		t.Fatalf("missing token=%d", missing.Code)
+	}
+	assertEnvelope(t, missing, "AUTHENTICATION_REQUIRED")
+	assertStoryOutboundClean(t, missing.Body.String())
+	if m.views != 0 {
+		t.Fatal("missing token reached the store")
+	}
+}
+
+func TestStoryOutboundCheckSchemaDoesNotCarryFacts(t *testing.T) {
+	raw, err := os.ReadFile("../../../specs/openapi/virtual-companion.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	const key = "\n    StoryOutboundCheckResult:"
+	i := strings.Index(text, key)
+	if i < 0 {
+		t.Fatal("OpenAPI schema StoryOutboundCheckResult is missing")
+	}
+	rest := text[i+1:]
+	section := rest
+	if loc := regexp.MustCompile(`\n    [A-Z]`).FindStringIndex(rest[len("    StoryOutboundCheckResult:"):]); loc != nil {
+		section = rest[:len("    StoryOutboundCheckResult:")+loc[0]]
+	}
+	if !strings.Contains(section, "passed") {
+		t.Fatalf("schema missing passed: %s", section)
+	}
+	for _, forbidden := range outboundHTTPSecrets(t) {
+		if forbidden != "" && strings.Contains(section, forbidden) {
+			t.Fatalf("schema contains %s", forbidden)
+		}
+	}
+	for _, name := range []string{"gmTruth:", "messages:", "toolResults:", "fact:", "marker:"} {
+		if strings.Contains(section, name) {
+			t.Fatalf("result schema contains %s", name)
+		}
+	}
+}
+
+func TestStoryOutboundCheckRejectsOtherNPCGoal(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	zhouGoal := "避免承认擅自拿走怀表；证据充分时可归还钥匙。"
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"messages": []string{zhouGoal},
+	}))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("lin seeing zhou goal status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "ACCESS_DENIED")
+	if !strings.Contains(rec.Body.String(), "story outbound rejected") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+	assertStoryOutboundClean(t, rec.Body.String())
+	assertStoryOutboundClean(t, logs.String())
+}
+
+func TestStoryOutboundCheckAllowsOwnNPCGoal(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	zhouGoal := "避免承认擅自拿走怀表；证据充分时可归还钥匙。"
+	rec := postStoryOutbound(t, s, "zhou", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"messages": []string{zhouGoal},
+	}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("zhou own goal status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.TrimSpace(rec.Body.String()) != `{"passed":true}` {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+	assertStoryOutboundClean(t, logs.String())
+}
+
+func TestStoryOutboundCheckChatIdentityMustMatchRun(t *testing.T) {
+	s, _, logs := newStoryOutboundServer(t)
+	const wrong = "10000000-0000-4000-8000-000000000099"
+	const bound = "10000000-0000-4000-8000-000000000007"
+	rec := postStoryOutbound(t, s, "lin", storyOutboundToken, "", storyOutboundPayload(t, map[string]any{
+		"chatIdentity": wrong,
+	}))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("mismatched chatIdentity status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	assertEnvelope(t, rec, "REVISION_CONFLICT")
+	if !strings.Contains(rec.Body.String(), "story world conflict") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+	for _, id := range []string{wrong, bound} {
+		if strings.Contains(rec.Body.String(), id) || strings.Contains(logs.String(), id) {
+			t.Fatalf("chat identity echoed: %s", id)
+		}
+	}
+	assertStoryOutboundClean(t, rec.Body.String())
+	assertStoryOutboundClean(t, logs.String())
+}
+
+func spaceEveryHTTP(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func insertRuneHTTP(s string, extra rune) string {
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 {
+			b.WriteRune(extra)
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func fullwidthASCIIHTTP(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '!' && r <= '~' {
+			b.WriteRune(r + 0xFEE0)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func mustJSONMap(t *testing.T, raw []byte) map[string]any {

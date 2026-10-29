@@ -313,7 +313,22 @@ func operation(path string) string {
 			return "admin_model_purpose"
 		}
 		if strings.HasPrefix(path, "/api/v1/story/") {
-			return "story_actor_view"
+			switch {
+			case strings.HasSuffix(path, "/outbound-check"):
+				return "story_outbound_check"
+			case strings.HasSuffix(path, "/actions"):
+				return "story_action"
+			case strings.HasSuffix(path, "/rewind"):
+				return "story_rewind"
+			case strings.Contains(path, "/projections/"):
+				return "story_projection"
+			case strings.Contains(path, "/participants/"):
+				return "story_participant"
+			case strings.HasSuffix(path, "/epilogue"):
+				return "story_epilogue"
+			default:
+				return "story_actor_view"
+			}
 		}
 		if strings.HasPrefix(path, "/api/v1/service/model-purposes/") {
 			return "service_model_purpose_resolve"
@@ -427,6 +442,26 @@ func operation(path string) string {
 		}
 		if strings.HasPrefix(path, "/api/v1/generations/") {
 			return "generation"
+		}
+		if path == "/api/v1/inbox" {
+			return "inbox"
+		}
+		if strings.HasPrefix(path, "/api/v1/inbox/") {
+			switch {
+			case strings.HasSuffix(path, "/claim"):
+				return "inbox_claim"
+			case strings.HasSuffix(path, "/ack"):
+				return "inbox_ack"
+			case strings.HasSuffix(path, "/read"):
+				return "inbox_read"
+			}
+			return "inbox"
+		}
+		if path == "/api/v1/notification-channels" {
+			return "notification_channels"
+		}
+		if path == "/api/v1/notification-deliveries" {
+			return "notification_deliveries"
 		}
 		return "unmapped"
 	}

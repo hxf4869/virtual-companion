@@ -507,7 +507,7 @@ DECLARE
     keys jsonb;
     item jsonb;
     got jsonb;
-    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","instances","memoryAutoSave","memoryTimes","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
+    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","inbox","instances","memoryAutoSave","memoryTimes","notificationChannels","notificationDeliveries","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
     reminder_keys jsonb := '["cancelledAt","executionId","idempotencyKey","recurrence","relationshipId","remindAt","reminderId","status","text"]'::jsonb;
     n integer := 0;
 BEGIN
@@ -575,7 +575,7 @@ DECLARE
     n integer;
     doc jsonb;
     keys jsonb;
-    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","instances","memoryAutoSave","memoryTimes","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
+    expected jsonb := '["bindings","capturedAt","consents","evidence","extractionResults","followUps","inbox","instances","memoryAutoSave","memoryTimes","notificationChannels","notificationDeliveries","proactivePolicies","reminders","sources","sourceTimes","storyRuns","summaries","summarySources","tasks"]'::jsonb;
 BEGIN
     SELECT count(*) INTO n FROM vc.tool_execution;
     IF n <> 0 THEN RAISE EXCEPTION 'cross owner executions %', n; END IF;

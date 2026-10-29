@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 88
+  KEEP: 101
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 38
@@ -216,6 +216,81 @@ operations:
     knowledge and events already visible to that actor. A mismatched worldVersion
     conflicts. World truth and other actors' private knowledge are omitted.
     This read does not call a model.
+- operationId: checkStoryOutbound
+  method: POST
+  path: /api/v1/story/runs/{runId}/actors/{actorId}/outbound-check
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  - safety-or-data-rights
+  replacementOrImpact: V2-W13 second line for the SillyTavern server plugin.
+    The plugin submits extracted final-request text for one actor. Hidden
+    private facts, GM truth text, sample markers, and remote history
+    references are refused with a fixed error and are not echoed. A
+    mismatched worldVersion conflicts. This operation does not call a model.
+- operationId: commitStoryAction
+  method: POST
+  path: /api/v1/story/runs/{runId}/actions
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W14 submits one action or dialogue statement for the
+    owned run. The browser session is the owner. Repeating an actionId returns
+    the original event. A stale world version or branch conflicts and writes
+    nothing. A refused command returns accepted false and writes nothing.
+    This operation does not call a model.
+- operationId: rewindStory
+  method: POST
+  path: /api/v1/story/runs/{runId}/rewind
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W14 forks the current head at an earlier world version
+    and returns the new branch. The browser session is the owner. A target that
+    is not before the current version is rejected. This operation does not call
+    a model.
+- operationId: confirmStoryProjection
+  method: POST
+  path: /api/v1/story/runs/{runId}/projections/{eventId}/confirm
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W14 marks one owned world event's pending chat
+    projection confirmed. A cancelled or user-deleted projection stays unchanged
+    and returns confirmed false. The browser session is the owner. This
+    operation does not call a model.
+- operationId: mapStoryParticipant
+  method: POST
+  path: /api/v1/story/runs/{runId}/participants/{actorId}
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W14 maps one owned companion onto lin, zhou, or su.
+    The player cannot be mapped. Deleting the companion later clears only the
+    relationship id. The browser session is the owner. This operation does not
+    call a model.
+- operationId: decideStoryEpilogue
+  method: POST
+  path: /api/v1/story/runs/{runId}/epilogue
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: V2-W14 saves or discards one shared-play summary after
+    the run has ended. Discard writes no memory. Save creates one pending
+    memory candidate and does not confirm it. The browser session is the owner.
+    This operation does not call a model.
 - operationId: createRelationship
   method: POST
   path: /api/v1/relationships
@@ -615,7 +690,8 @@ operations:
   replacementOrImpact: >-
     W09 read of follow-ups Go created from a published memory whose source was
     verified again and from the saved MemoryTime. There is no create API.
-    V39 reminders stay DEFER. Inbox delivery is W10. Model tools are W11.
+    V39 reminders stay DEFER. This read does not create an inbox event. Inbox
+    claim, ACK and channel delivery are separate operations. Model tools are W11.
 - operationId: getFollowUp
   method: GET
   path: /api/v1/follow-ups/{followUpId}
@@ -634,6 +710,79 @@ operations:
   replacementOrImpact: >-
     Cancel one owned follow-up. This does not write MemoryCore, create an inbox
     event, or let model wording decide the cancellation.
+- operationId: listInboxEvents
+  method: GET
+  path: /api/v1/inbox
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    List the caller's inbox events. Persisted, SillyTavern delivered, in-app
+    read and link status are separate facts. This read does not create an inbox
+    event or a channel delivery.
+- operationId: claimInboxEvent
+  method: POST
+  path: /api/v1/inbox/{eventId}/claim
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Take a short lease to attempt one SillyTavern save. The lease token is not
+    a session or an API key. A live lease is not replaced. Claiming does not
+    mark the event delivered.
+- operationId: ackInboxEvent
+  method: POST
+  path: /api/v1/inbox/{eventId}/ack
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Acknowledge a SillyTavern save after the saved message is read back. An
+    expired lease cannot ACK. ACK does not change in-app read or link status
+    and is not a channel outcome.
+- operationId: markInboxEventRead
+  method: POST
+  path: /api/v1/inbox/{eventId}/read
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Record in-app read. It does not mark SillyTavern delivered, change link
+    status, or record a channel outcome.
+- operationId: listNotificationChannels
+  method: GET
+  path: /api/v1/notification-channels
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    List email and Feishu channel configuration for the caller. SMTP passwords,
+    webhook URLs and signing secrets are never returned.
+- operationId: putNotificationChannel
+  method: PUT
+  path: /api/v1/notification-channels
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Upsert one email or Feishu target. A credential in the request is stored as
+    field ciphertext and is not echoed. The target is a label, not a URL.
+- operationId: listNotificationDeliveries
+  method: GET
+  path: /api/v1/notification-deliveries
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Read delivery status. accepted, failed and unknown are channel outcomes.
+    They do not mean SillyTavern delivered, in-app read, or link present.
 - operationId: createReport
   method: POST
   path: /api/v1/reports

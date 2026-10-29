@@ -22,6 +22,12 @@
     "executeTool",
     "startStoryRun",
     "getStoryActorView",
+    "checkStoryOutbound",
+    "commitStoryAction",
+    "rewindStory",
+    "confirmStoryProjection",
+    "mapStoryParticipant",
+    "decideStoryEpilogue",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -72,6 +78,13 @@
     "listFollowUps",
     "getFollowUp",
     "cancelFollowUp",
+    "listInboxEvents",
+    "claimInboxEvent",
+    "ackInboxEvent",
+    "markInboxEventRead",
+    "listNotificationChannels",
+    "putNotificationChannel",
+    "listNotificationDeliveries",
     "createReport",
     "listReports",
     "getReport",
@@ -151,6 +164,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "bb9b93c7c5f225851d691959ffe0294f2641fa88e071fb5c075f54e6b2708811"
+    "sha256": "536de93d96e169cd3d504ec1cd46a9cc0cb3677f0d777bfdc4c434c12a519e7d"
   }
 }

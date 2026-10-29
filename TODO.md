@@ -165,6 +165,23 @@
       全量 PASS；Go 单测与 ST 离线测试 PASS；`git diff --check` PASS。合并 W12 时修正 V160 导出函数包装名
       （与 V170 同名冲突）与 RLS 200 的合并后导出键期望。执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W10` Inbox 与邮箱＋飞书通知。用例：C08、B04、N01–N03、A04。
+      结果：READY_FOR_OWNER（2026-10-29）；提交 `f46cb148..857b969f`（链分支 `v2/w10`，合并 main 后快进入 main）。
+      V180–V181：inbox（ST 投递、已读、链接 present/removed/invalidated 分列）、渠道配置（凭据仅字段密文、不进
+      导出）、投递（pending/accepted/failed/unknown/stopped，唯一键含 owner），FORCE RLS，删除意图下函数与触发器
+      双重拒绝；撤回 PUSH_NOTIFICATION、取消与过期只停未发送投递。inbox 领取只决定谁尝试写入，经 F2 当前基线保存
+      并在消息 metadata 写入 inbox_event_id、读回后才 ACK，ACK 前崩溃按已有事件关联不重复，删除/回档不补投，
+      WAITING_HOST 不写聊天。邮箱用 go-mail v0.8.1（MIT，隐式 TLS、强制证书校验），飞书群 Webhook 用标准库（官方
+      签名，HTTP 与业务结果分判，不跟随重定向）；发送前检查渠道开关、安静时段、通知日上限（独立常量 20）、删除意图
+      与当前同意，正文经本地安全策略，默认无正文预览，飞书注明群成员可见；凭据按渠道行解密，缺失不回退；接收后连接
+      中断有界重试后记 unknown 并承认可能重复；accepted 不充当 ST ACK。.gitattributes 令 vendor 逐字保存。
+      用例：B04 PASS（ACK 后旧整份快照被 F2 拒绝且链接仍 present，离线与受管端到端）；N01–N03 合成子项 PASS
+      （`w10-inbox-notify` 受管场景用本地 SMTP 与本地 Webhook：两渠道 accepted、无正文预览、含受登录保护会话链接、
+      删除后 removed 不补投、WAITING_HOST 只发「有待继续的互动」、安静时段保持 pending、撤回同意后停发）；C08 合成
+      子项 PASS；真实邮件/飞书发送与手机显示 NOT_RUN（真实发送未授权，属 V2-OWNER-NOTIFY）；A04 NOT_RUN（需 Owner
+      配置真实目标并在手机关闭网页后观察，属 V2-OWNER-NOTIFY / V2-OWNER-DEVICE）。
+      验证：`bash scripts/check.sh` PASS；RLS 全量 PASS；integration 三包全量 PASS；ST 离线测试 423/423；`git diff
+      --check` PASS。合并时保留 W13 的 guardUnmanagedGeneration 与 W10 的 attemptInboxDelivery 两个桥方法。
+      执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W11` 有限工具与统一调用计量。用例：A03、MODEL01–MODEL05。
 - [x] `V2-W12` 世界、角色视图与样例。用例：S01（世界与视图子项）。
       结果：DONE（2026-10-29）；提交 `517a2922..4eab850c`（链分支 `v2/w12`，经合并 main 后快进入 main）。
@@ -181,7 +198,22 @@
       integration PASS；ST 离线测试 364/364 PASS；`story-view-browser` PASS；`git diff --check` PASS。
       遗留到 W14：participant.relationship_id 当前 ON DELETE CASCADE（SET NULL 会触发 V103 删号屏障），映射陪伴
       实例时需重定删除语义。执行：Claude 调度，Grok Build（grok-4.7-build-fast / xhigh）实现，调度者逐项审查复跑。
-- [ ] `V2-W13` 三协议最终请求控制。用例：S01、MODEL07（剧情子项）。
+- [x] `V2-W13` 三协议最终请求控制。用例：S01、MODEL07（剧情子项）。
+      结果：DONE（2026-10-29）；提交 `5084e099..30b40f1d`（链分支 `v2/w12` 续做，合并 main 后快进入 main）。
+      主防线：插件在 Chat/Anthropic 的最终出站钩子与 Responses 适配后的 body 上，把剧情回合整体重写为当前
+      actor 的 ActorView 规范文本 + 本轮玩家话语 + 本轮工具记录，角色卡、世界书、宏、EJS、历史与晚注册追加
+      一律不出站；缺 vc_story 的剧情请求拒绝且不回退原文。第二道防线：Go outbound-check（服务令牌，浏览器
+      Origin 拒绝）对重写前后与原始 body 文本桶并集规范化后比对他人私密 fact/goal、标记与 GM 真相，拒绝体不
+      回显；chatIdentity 必须是该局绑定会话。Responses 推理续接绑定 run/branch/actor/worldVersion。text
+      completions、kobold、horde、novelai 四条未受校验出口以集中可重放补丁在联系上游前拒绝（每处 7 行，锁定
+      上游不变，ADR-0009 §2 停止条件未触发）。前台在 EJS 之后写入单一 actor 的 vc_story，剧情不注入陪伴记忆。
+      用例：S01 三协议最终请求子项 PASS、MODEL07 剧情子项 PASS（固定 provider，`story-outbound` 受管浏览器
+      验收：三协议各 4 次上游请求/50 条断言，含工具后续轮与 Responses 续接不跨角色；世界书混入他人私密与缺
+      身份时上游请求 0；DOM/localStorage 无标记）；真实模型叙事、流式取消与 usage 不在本项（MODEL 计量属 W11）。
+      验证：`bash scripts/check.sh` PASS；RLS 全量 PASS；integration 三包全量 PASS；ST 离线测试 410/410；
+      `assemble-managed` 补丁 SHA 复核 PASS；`git diff --check` PASS。
+      已知取舍：剧情回合不带历史对话（同一聊天含他人 NPC 回复会泄露知情），对话连贯性由 W14 以带可见性的
+      已提交对话事件经 ActorView 投影恢复，列为 W14 必做。执行：Claude 调度，Grok Build 实现，调度者逐项审查复跑。
 - [ ] `V2-W14` 行动、分支、结局与陪伴角色入局。用例：S02–S05。
 - [ ] `V2-W15` 完整界面、手机与性能；删除旧 Vue / uni-app 前端。用例：UI01–UI03。
 - [ ] `V2-W16` 保护、恢复与运行说明。用例：D06、O01；最终报告。

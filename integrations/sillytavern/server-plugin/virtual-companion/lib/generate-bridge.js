@@ -19,6 +19,7 @@ import { authSession, resolveModelPurpose } from './go-client.js';
 import { finalRequestUrl, nativeBaseUrl } from './url-normalize.js';
 import { checkContextBudget, resolveOutputTokens, writeBackOutputTokens } from './context-guard.js';
 import { refreshMemorySlot } from './memory-guard.js';
+import { enforceStoryOutbound, isStorySession, requireStoryIdentity } from './story-guard.js';
 import {
     buildResponsesRequest, convertResponsesToChatCompletion, bridgeResponsesStream, extractRoundFromOutput,
 } from './responses-adapter.js';
@@ -225,99 +226,114 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             settled = true;
         };
         try {
-            controller.signal.throwIfAborted();
-            const { requestBody, outputTokens } = buildResponsesRequest({ body, model });
-            const continuationAnchor = requestBody.input.findLast((item) => item.type === 'function_call'
-                && String(item.call_id) === round.calls[0]?.id);
-            const memorySnapshot = await refreshMemorySlot({ config, request, response,
-                finalBody: requestBody, signal: controller.signal });
-            controller.signal.throwIfAborted();
-            // Opaque reasoning may contain previously recalled facts. Compare
-            // the actual final memory snapshot before admitting any such item.
-            const continuationItems = round.callIds.length
-                ? continuationStore.take({ user, fingerprint, scope, round, memorySnapshot })
-                : [];
-            if (continuationItems.length) {
-                requestBody.input.splice(requestBody.input.indexOf(continuationAnchor), 0, ...continuationItems);
-            }
-            const budget = checkContextBudget({ model, finalBody: requestBody, outputTokens, counter: tokenCounter });
-            controller.signal.throwIfAborted();
-            const reserved = await reserveSend(config, {
-                ownerAccountId,
-                purpose: 'FOREGROUND_CHAT',
-                attemptId: crypto.randomUUID(),
-                providerId: provider.providerId,
-                modelId: model.modelId,
-                estimatedInputTokens: Math.max(0, Math.round(Number(budget.estimatedInputTokens) || 0)),
-                estimatedOutputTokens: outputTokens,
-            });
-            if (reserved?.reservationId) hold = { reservationId: reserved.reservationId };
-            controller.signal.throwIfAborted();
-
-            const startedAt = now();
-            sent = true;
-            const upstream = await fetchImpl(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: body.stream ? 'text/event-stream' : 'application/json',
-                    Authorization: `Bearer ${provider.credential}`,
-                },
-                body: JSON.stringify(requestBody),
-                signal: AbortSignal.any([controller.signal, AbortSignal.timeout(config.timeoutMs)]),
-            });
-
-            if (!upstream.ok) {
-                await cancelHold('UNKNOWN');
-                log.warn(`Responses 上游失败：HTTP ${upstream.status}（model=${model.modelId}，正文不读取不回显）`);
-                writeErrorResponse(response, 502, 'VC_UPSTREAM_ERROR', upstreamErrorText(upstream.status, upstream.statusText));
-                return true;
-            }
-
-            const commitRound = (finished) => {
-                if (!finished?.ok || controller.signal.aborted) return;
-                continuationStore.commit({
-                    user, fingerprint, scope, memorySnapshot,
-                    calls: finished.calls,
-                    reasoningItems: finished.reasoningItems,
-                });
-            };
-
-            if (body.stream === true) {
-                await bridgeResponsesStream({
-                    upstream, res: response,
-                    onRoundFinished: async (finished) => {
-                        commitRound(finished);
-                        try {
-                            await closeHold(finished?.usage);
-                        } catch {
-                            await cancelHold('UNKNOWN');
-                        }
-                    },
-                });
-            } else {
-                const json = await upstream.json();
+            // 身份无效时还不能取用续接条目，否则一次坏请求会吃掉另一回合的 reasoning。
+            const story = isStorySession(body) ? requireStoryIdentity(body) : null;
+            try {
                 controller.signal.throwIfAborted();
-                await closeHold(json?.usage);
-                const round2 = extractRoundFromOutput(json.output);
-                continuationStore.commit({
-                    user, fingerprint, scope, memorySnapshot,
-                    calls: round2.toolCalls.map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments })),
-                    reasoningItems: round2.reasoningItems,
+                const { requestBody, outputTokens } = buildResponsesRequest({ body, model });
+                let memorySnapshot = null;
+                if (story) {
+                    const continuationItems = round.callIds.length
+                        ? continuationStore.take({ user, fingerprint, scope, round, memorySnapshot: null, story })
+                        : [];
+                    await enforceStoryOutbound({
+                        config, request, finalBody: requestBody, protocol: 'OPENAI_RESPONSES',
+                        ownerAccountId, continuationItems, signal: controller.signal,
+                    });
+                } else {
+                    const continuationAnchor = requestBody.input.findLast((item) => item.type === 'function_call'
+                        && String(item.call_id) === round.calls[0]?.id);
+                    memorySnapshot = await refreshMemorySlot({ config, request, response,
+                        finalBody: requestBody, signal: controller.signal });
+                    controller.signal.throwIfAborted();
+                    // Opaque reasoning may contain previously recalled facts. Compare
+                    // the actual final memory snapshot before admitting any such item.
+                    const continuationItems = round.callIds.length
+                        ? continuationStore.take({ user, fingerprint, scope, round, memorySnapshot })
+                        : [];
+                    if (continuationItems.length) {
+                        requestBody.input.splice(requestBody.input.indexOf(continuationAnchor), 0, ...continuationItems);
+                    }
+                }
+                const budget = checkContextBudget({ model, finalBody: requestBody, outputTokens, counter: tokenCounter });
+                controller.signal.throwIfAborted();
+                const reserved = await reserveSend(config, {
+                    ownerAccountId,
+                    purpose: 'FOREGROUND_CHAT',
+                    attemptId: crypto.randomUUID(),
+                    providerId: provider.providerId,
+                    modelId: model.modelId,
+                    estimatedInputTokens: Math.max(0, Math.round(Number(budget.estimatedInputTokens) || 0)),
+                    estimatedOutputTokens: outputTokens,
                 });
-                response.statusCode = 200;
-                response.setHeader('Content-Type', 'application/json');
-                response.setHeader('Cache-Control', 'no-store');
-                response.end(JSON.stringify(convertResponsesToChatCompletion(json)));
+                if (reserved?.reservationId) hold = { reservationId: reserved.reservationId };
+                controller.signal.throwIfAborted();
+
+                const startedAt = now();
+                sent = true;
+                const upstream = await fetchImpl(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: body.stream ? 'text/event-stream' : 'application/json',
+                        Authorization: `Bearer ${provider.credential}`,
+                    },
+                    body: JSON.stringify(requestBody),
+                    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(config.timeoutMs)]),
+                });
+
+                if (!upstream.ok) {
+                    await cancelHold('UNKNOWN');
+                    log.warn(`Responses 上游失败：HTTP ${upstream.status}（model=${model.modelId}，正文不读取不回显）`);
+                    writeErrorResponse(response, 502, 'VC_UPSTREAM_ERROR', upstreamErrorText(upstream.status, upstream.statusText));
+                    return true;
+                }
+
+                const commitRound = (finished) => {
+                    if (!finished?.ok || controller.signal.aborted) return;
+                    continuationStore.commit({
+                        user, fingerprint, scope, memorySnapshot, story,
+                        calls: finished.calls,
+                        reasoningItems: finished.reasoningItems,
+                    });
+                };
+
+                if (body.stream === true) {
+                    await bridgeResponsesStream({
+                        upstream, res: response,
+                        onRoundFinished: async (finished) => {
+                            commitRound(finished);
+                            try {
+                                await closeHold(finished?.usage);
+                            } catch {
+                                await cancelHold('UNKNOWN');
+                            }
+                        },
+                    });
+                } else {
+                    const json = await upstream.json();
+                    controller.signal.throwIfAborted();
+                    await closeHold(json?.usage);
+                    const round2 = extractRoundFromOutput(json.output);
+                    continuationStore.commit({
+                        user, fingerprint, scope, memorySnapshot, story,
+                        calls: round2.toolCalls.map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments })),
+                        reasoningItems: round2.reasoningItems,
+                    });
+                    response.statusCode = 200;
+                    response.setHeader('Content-Type', 'application/json');
+                    response.setHeader('Cache-Control', 'no-store');
+                    response.end(JSON.stringify(convertResponsesToChatCompletion(json)));
+                }
+                log.info(`Responses 出站完成：model=${model.modelId} stream=${body.stream === true} 耗时${now() - startedAt}ms estimator=${tokenCounter.estimator}`);
+                return true;
+            } catch (error) {
+                await cancelHold(sent ? 'UNKNOWN' : 'NOT_SENT');
+                // A failed/aborted source check cannot leave an old opaque round
+                // available for a later retry that happens to reuse its call IDs.
+                if (round.callIds.length) continuationStore.discard({ round });
+                throw error;
             }
-            log.info(`Responses 出站完成：model=${model.modelId} stream=${body.stream === true} 耗时${now() - startedAt}ms estimator=${tokenCounter.estimator}`);
-            return true;
-        } catch (error) {
-            await cancelHold(sent ? 'UNKNOWN' : 'NOT_SENT');
-            // A failed/aborted source check cannot leave an old opaque round
-            // available for a later retry that happens to reuse its call IDs.
-            if (round.callIds.length) continuationStore.discard({ round });
-            throw error;
         } finally {
             request.socket.removeListener('close', onClose);
         }
@@ -391,8 +407,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             return await runResponsesProtocol({
                 body, request, response, resolved,
                 url: finalRequestUrl(protocol, resolved.provider),
-                user, fingerprint, scope: marker.scope,
-                ownerAccountId: session.accountId,
+                user, fingerprint, scope: marker.scope, ownerAccountId: session.accountId,
             });
         }
 
@@ -418,6 +433,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                 expectedUrl: finalRequestUrl(protocol, resolved.provider),
                 counter: tokenCounter,
                 outputTokens,
+                protocol,
                 ownerAccountId: session.accountId,
                 providerId: resolved.provider.providerId,
                 modelId: resolved.model.modelId,
@@ -451,6 +467,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                 expectedUrl: finalRequestUrl(protocol, resolved.provider),
                 counter: tokenCounter,
                 outputTokens,
+                protocol,
                 ownerAccountId: session.accountId,
                 providerId: resolved.provider.providerId,
                 modelId: resolved.model.modelId,
@@ -491,7 +508,15 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
         const managed = request?.vcManaged;
         if (!managed) return false; // 非受管请求（受管宿主下不应出现）不干预
         try {
-            await refreshMemorySlot({ config, request, response, finalBody });
+            if (isStorySession(request.body)) {
+                await enforceStoryOutbound({
+                    config, request, finalBody,
+                    protocol: managed.protocol,
+                    ownerAccountId: managed.ownerAccountId,
+                });
+            } else {
+                await refreshMemorySlot({ config, request, response, finalBody });
+            }
             if (typeof url === 'string' && url.replace(/\/+$/, '') !== managed.expectedUrl.replace(/\/+$/, '')) {
                 throw new BridgeError(409, 'VC_OUTBOUND_URL_DRIFT', '最终出站地址与 Go 登记的规范化地址不一致，已拒绝发送');
             }

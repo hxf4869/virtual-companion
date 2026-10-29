@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/pquerna/otp v1.5.0
+	github.com/wneessen/go-mail v0.8.1
 	golang.org/x/crypto v0.55.0
 )
 

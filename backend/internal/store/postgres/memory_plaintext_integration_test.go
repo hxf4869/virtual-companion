@@ -44,13 +44,19 @@ func TestMemoryPlaintextStorageAndLiteralEnvelopePrefixes(t *testing.T) {
 		t.Fatal("stored temporal object did not round-trip")
 	}
 	profileEngineFixture(t, b, ref, text)
-	digests, err := testEnv.store.stSummaries(ctx, 1, b.ConversationID, []stSummaryChat{{id: b.ConversationID, chat: sourceChat}})
-	if err != nil || len(digests) != 1 {
-		t.Fatalf("plaintext summary read: count=%d err=%v", len(digests), err)
+	var persona string
+	if err := testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT out_persona FROM vc.memory_profile_current(1,$1,$2)`, b.RelationshipID, b.ConversationID).Scan(&persona)
+	}); err != nil || persona != text {
+		t.Fatalf("plaintext profile read: %q err=%v", persona, err)
 	}
-	var storedDigest string
-	if err := super.QueryRow(ctx, `SELECT summary FROM vc.conversation_summary WHERE owner_user_id=1 AND id=$1`, digests[0].id).Scan(&storedDigest); err != nil || storedDigest != digests[0].text {
-		t.Fatal("conversation summary is not stored as plaintext")
+	var storedPersona string
+	if err := super.QueryRow(ctx, `SELECT persona FROM vc.memory_profile WHERE owner_user_id=1 AND relationship_id=$1 AND valid`, b.RelationshipID).Scan(&storedPersona); err != nil || storedPersona != text {
+		t.Fatal("memory profile is not stored as plaintext")
+	}
+	var retired int
+	if err := super.QueryRow(ctx, `SELECT count(*) FROM vc.conversation_summary WHERE owner_user_id=1 AND prompt_version='st-memorycore-profile-v1' AND btrim(summary)<>''`).Scan(&retired); err != nil || retired != 0 {
+		t.Fatalf("retired engine profile still stored in conversation_summary: n=%d err=%v", retired, err)
 	}
 	updated := "enc1:这是新的明文偏好"
 	if m, err = testEnv.store.UpdateMemory(ctx, 1, m.ID, updated, nil, nil, nil); err != nil || m.Summary != updated {

@@ -16,6 +16,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// lastEngineSearch is the most recent /internal/search body from the fixture.
+var lastEngineSearch map[string]any
+
 // This transport double ranks only the trusted allowlist. SQLite/search/model
 // behavior is covered separately by memorycore-native; these tests exercise the
 // production Go source, date, branch and final-publication gates.
@@ -34,19 +37,29 @@ func memoryEngineFixture(t *testing.T) {
 			w.WriteHeader(404)
 			return
 		}
-		var input struct {
-			Allowed []string `json:"allowedRecordIds"`
-			Limit   int      `json:"topK"`
-		}
+		var input map[string]any
 		if json.NewDecoder(r.Body).Decode(&input) != nil {
 			w.WriteHeader(400)
 			return
 		}
-		sort.Strings(input.Allowed)
+		lastEngineSearch = input
+		var allowed []string
+		if list, ok := input["allowedRecordIds"].([]any); ok {
+			for _, id := range list {
+				if s, ok := id.(string); ok {
+					allowed = append(allowed, s)
+				}
+			}
+		}
+		limit := 0
+		if n, ok := input["topK"].(float64); ok {
+			limit = int(n)
+		}
+		sort.Strings(allowed)
 		out := []map[string]string{}
-		for _, id := range input.Allowed {
+		for _, id := range allowed {
 			out = append(out, map[string]string{"record_id": id})
-			if input.Limit > 0 && len(out) >= input.Limit {
+			if limit > 0 && len(out) >= limit {
 				break
 			}
 		}
@@ -68,7 +81,7 @@ func projectEngineFixture(t *testing.T, m Memory) {
 		t.Fatal(err)
 	}
 }
-func profileEngineFixture(t *testing.T, b STBinding, ref, text string) {
+func prepareEngineProfileJob(t *testing.T, b STBinding, ref string) int64 {
 	t.Helper()
 	ctx := context.Background()
 	var source, job, revision int64
@@ -92,13 +105,50 @@ func profileEngineFixture(t *testing.T, b STBinding, ref, text string) {
 	if err = IsolationSuperExec(ctx, `INSERT INTO vc.memorycore_operation(owner_user_id,job_id,relationship_id,source_id,operation_id,scope,revision,state) VALUES(1,$1,$2,$3,$4,'{}',$5,'PUBLISHED') ON CONFLICT(owner_user_id,job_id) DO UPDATE SET state='PUBLISHED',revision=excluded.revision`, job, b.RelationshipID, source, fmt.Sprintf("fixture-profile-%d", job), revision); err != nil {
 		t.Fatal(err)
 	}
-	err = testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
-		_, e := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile(1,$1,'profile-token','profile-fence',$2,$3)`, job, []string{ref}, text)
-		return e
+	return job
+}
+func recordEngineProfile(t *testing.T, conv, job int64, token, fence string, refs []string, persona string) {
+	t.Helper()
+	ctx := context.Background()
+	err := testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		var rel int64
+		var fingerprint string
+		if err := tx.QueryRow(ctx, `SELECT relationship_id FROM vc.conversation WHERE owner_user_id=1 AND id=$1`, conv).Scan(&rel); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `SELECT vc.memory_profile_fingerprint(1,$1,$2)`, rel, conv).Scan(&fingerprint); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `SELECT DISTINCT record_id FROM vc.memory_profile_allowlist(1,$1,$2) WHERE record_id<>'' ORDER BY record_id`, rel, conv)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		ids := []string{}
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				return err
+			}
+			ids = append(ids, id)
+		}
+		if err = rows.Err(); err != nil {
+			return err
+		}
+		if fingerprint == "" || len(ids) == 0 {
+			return fmt.Errorf("profile allowlist empty")
+		}
+		_, err = tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile(1,$1,$2,$3,$4,$5,'[]'::jsonb,$6,$7)`, job, token, fence, refs, persona, ids, fingerprint)
+		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+func profileEngineFixture(t *testing.T, b STBinding, ref, text string) {
+	t.Helper()
+	job := prepareEngineProfileJob(t, b, ref)
+	recordEngineProfile(t, b.ConversationID, job, "profile-token", "profile-fence", []string{ref}, text)
 }
 func nativeSourceRecall(ctx context.Context, b STBinding, revision int64) ([]Memory, error) {
 	result, err := testEnv.store.RecallSTMemory(ctx, 1, STMemoryRequest{ChatIdentity: b.ChatIdentity, Revision: revision, Enabled: true, BudgetTokens: 1024})

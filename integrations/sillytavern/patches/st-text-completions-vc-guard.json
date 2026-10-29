@@ -1,0 +1,24 @@
+{
+  "id": "st-text-completions-vc-guard",
+  "kind": "deterministic-string-replacement",
+  "reason": "V2-W13（ADR-0009 §2、执行计划 §6.2 text completion）：ST 1.19.0 的 POST /api/backends/text-completions/generate（本文件 router.post('/generate')）是独立文本补全出口，不经过聊天三协议的 finalOutboundGuard。server plugin 只能挂 /api/plugins/* 且位于核心路由之后，无法拦截原生路由。公开扩展点也不能覆盖这条服务端出口。补丁只在空 body 判断之后、联系上游之前插入同一桥接钩子 guardUnmanagedGeneration：桥存在则拒绝且不回显正文，桥不存在则为空操作。不改提示词组装。",
+  "upstream": {
+    "component": "sillytavern",
+    "repo": "https://github.com/SillyTavern/SillyTavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+    "version": "1.19.0"
+  },
+  "target": "src/endpoints/backends/text-completions.js",
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改",
+  "removal_condition": "上游关闭该独立文本生成路由，或提供与三协议最终出站核对等价且可覆盖本路由的公开钩子并被 V2 启用；或 V2 放弃 ST 前台受管生成链。升级 ST 版本必须重算 expected_input_sha256 / expected_output_sha256 并复核锚点只命中一次。",
+  "expected_input_sha256": "877b2b6279091c70495e561c00ce021592205e1d42ea4fe5f20f23dd67071971",
+  "expected_output_sha256": "e9e1c43d130f38711084e66fdc84283e498cd7f6c23b8f36f93d264625a2d765",
+  "replacements": [
+    {
+      "from": "router.post('/generate', async function (request, response) {\n    if (!request.body) return response.sendStatus(400);\n\n    try {",
+      "to": "router.post('/generate', async function (request, response) {\n    if (!request.body) return response.sendStatus(400);\n\n    // virtual-companion bridge hook (patch st-text-completions-vc-guard; W13 unvalidated exit)\n    const vcBridge = globalThis[Symbol.for('virtual-companion.bridge')];\n    if (vcBridge) {\n        await vcBridge.guardUnmanagedGeneration(request, response);\n        return;\n    }\n\n    try {",
+      "count": 1,
+      "where": "/generate：空 body 判断之后、try 与任何上游 fetch 之前（textgenerationwebui 与 custom-request 的文本补全都进这条路由）"
+    }
+  ]
+}

@@ -203,6 +203,7 @@ components:
       - ACCOUNT_METADATA
       - AGE_VERIFICATION_RESULT
       - USAGE_METADATA
+      - NOTIFICATION_TEXT
     ProcessingPurpose:
       type: string
       enum:
@@ -215,6 +216,7 @@ components:
       - BACKGROUND_GREETING
       - FOREGROUND_CHAT
       - TOOL_TURN
+      - NOTIFICATION_DELIVERY
     ErrorCode:
       type: string
       enum:

@@ -12,6 +12,10 @@ export function memorySettings(context) {
         budgetTokens: Number.isInteger(budget) && budget >= 128 && budget <= 2048 ? budget : 1024 };
 }
 
+function storyChat(context) {
+    return context?.chatMetadata?.vc_binding?.mode === 'STORY';
+}
+
 export function createMemoryInjection({ getContext, recall, ensureBinding, onStatus = () => {} }) {
     let ready = null;
     let epoch = 0;
@@ -29,6 +33,8 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
         if (type === 'quiet' || type === 'impersonate') return;
         const initial = getContext();
         if (initial.groupId || !initial.chatMetadata?.vc_f2) return;
+        // 剧情回合不召回、不挂陪伴记忆块。拦截器已先清空槽。
+        if (storyChat(initial)) return;
         try { await ensureBinding?.(); } catch { onStatus('长期记忆暂不可用，本轮已跳过。'); return; }
         if (run !== epoch || getContext().chatMetadata !== initial.chatMetadata) { abort(true); return; }
         const c = getContext();
@@ -51,6 +57,7 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
         onStatus(result.status === 'skipped' ? '长期记忆暂不可用，本轮已跳过。' : input.enabled ? '' : '长期记忆已关闭');
     }
     function attach(data) {
+        if (storyChat(getContext())) { ready = null; clear(); return; }
         const pending = ready;
         ready = null;
         if (!pending || !same(pending.snapshot)) { clear(); return; }

@@ -108,7 +108,7 @@ func TestStoryActorViewReadsOnlyVisibleEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if facts.ConversationID != conversationID || facts.RunID != run.RunID || facts.BranchID != run.BranchID || facts.WorldVersion != 0 || facts.CaseID != "rainy-inn-v1" {
+		if facts.ConversationID != conversationID || facts.RunID != run.RunID || facts.BranchID != run.BranchID || facts.WorldVersion != 0 || facts.CaseID != "rainy-inn-v1" || facts.ChatIdentity != "w12-story-view" {
 			t.Fatalf("facts = %+v", facts)
 		}
 		blob := string(mustJSON(t, facts.Events))
@@ -142,13 +142,60 @@ func TestStoryActorViewReadsOnlyVisibleEvents(t *testing.T) {
 	}
 }
 
+func TestStartStoryRunReloadsCurrentBranchAfterRewind(t *testing.T) {
+	resetFixtures(t)
+	ctx := context.Background()
+	run := mustOpenStory(t, ctx, "w14-current-head")
+	root := run.BranchID
+	mustCommitStep(t, ctx, run, 0, story.Command{ActionID: "a1", ActorID: "player", Action: "request_evidence", Target: "lin"})
+	mustCommitStep(t, ctx, run, 1, story.Command{ActionID: "a2", ActorID: "player", Action: "request_evidence", Target: "su"})
+	rewound, err := testEnv.store.RewindStory(ctx, 1, StoryRewind{
+		RunID: run.RunID, ToWorldVersion: 1, ChatIdentity: "w14-current-head",
+	})
+	if err != nil || rewound.BranchID == root || rewound.WorldVersion != 1 {
+		t.Fatalf("rewind = %+v, %v", rewound, err)
+	}
+	branches := storySQL(t, run.RunID, `SELECT count(*) FROM vc.story_branch WHERE run_id=`+sqlID(run.RunID))
+	again, err := testEnv.store.StartStoryRun(ctx, 1, run.ConversationID, "rainy-inn-v1")
+	if err != nil || again.RunID != run.RunID || again.BranchID != rewound.BranchID || again.BranchID == root || again.WorldVersion != 1 {
+		t.Fatalf("reload head = %+v, rewind %+v, root %d, err %v", again, rewound, root, err)
+	}
+	lin := mustActorFacts(t, ctx, again.RunID, again.BranchID, "lin", 1)
+	zhou := mustActorFacts(t, ctx, again.RunID, again.BranchID, "zhou", 1)
+	if !strings.Contains(string(mustJSON(t, lin.Events)), "loan_note") || strings.Contains(string(mustJSON(t, zhou.Events)), "loan_note") {
+		t.Fatalf("current head view lin=%s zhou=%s", mustJSON(t, lin.Events), mustJSON(t, zhou.Events))
+	}
+	next, err := testEnv.store.CommitStoryCommand(ctx, 1, StoryCommit{
+		RunID: again.RunID, BranchID: again.BranchID, ExpectedWorldVersion: again.WorldVersion,
+		ActionID: "on-head", ActorID: "player", Action: "request_evidence", Target: "su",
+	})
+	if err != nil || !next.Accepted || next.Replay || next.BranchID != again.BranchID || next.WorldVersion != 2 {
+		t.Fatalf("head commit = %+v, %v", next, err)
+	}
+	_, err = testEnv.store.CommitStoryCommand(ctx, 1, StoryCommit{
+		RunID: run.RunID, BranchID: root, ExpectedWorldVersion: 1,
+		ActionID: "late-root", ActorID: "player", Action: "request_evidence", Target: "su",
+	})
+	if !errors.Is(err, ErrStoryWorldVersion) {
+		t.Fatalf("root commit after rewind = %v", err)
+	}
+	if got := storySQL(t, run.RunID, `SELECT count(*) FROM vc.story_branch WHERE run_id=`+sqlID(run.RunID)); got != branches {
+		t.Fatalf("late root commit added a branch: %s, after rewind %s", got, branches)
+	}
+}
+
 func TestStartStoryRunConflictsWhenConversationAlreadyHasAnotherCase(t *testing.T) {
 	resetFixtures(t)
 	ctx := context.Background()
 	conversationID := mustStoryConversation(t, ctx, 1, "w12-story-conflict")
-	if _, err := psqlSuper(
-		`INSERT INTO vc.story_run(owner_user_id, id, case_id, world_version, stage, conversation_id)
-		 VALUES (1, 9001, 'other-case', 0, 'investigation', ` + itoa(conversationID) + `)`); err != nil {
+	if _, err := psqlSuper(`BEGIN;
+		INSERT INTO vc.story_run(owner_user_id, id, case_id, world_version, stage, conversation_id)
+		 VALUES (1, 9001, 'other-case', 0, 'investigation', ` + itoa(conversationID) + `);
+		INSERT INTO vc.story_branch(owner_user_id, id, run_id)
+		 VALUES (1, 9002, 9001);
+		UPDATE vc.story_run SET current_branch_id = 9002
+		 WHERE owner_user_id = 1 AND id = 9001;
+		COMMIT;`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := testEnv.store.StartStoryRun(ctx, 1, conversationID, "rainy-inn-v1"); !errors.Is(err, ErrConflict) {

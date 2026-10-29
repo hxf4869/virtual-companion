@@ -1,0 +1,24 @@
+{
+  "id": "st-kobold-vc-guard",
+  "kind": "deterministic-string-replacement",
+  "reason": "V2-W13（ADR-0009 §2、执行计划 §6.2）：ST 1.19.0 前台 main_api=kobold 走 POST /api/backends/kobold/generate（public/script.js getGenerateUrl 与 kai-settings.js generateKoboldWithStreaming）。该路由在空 body 判断后直接向上游 api_server 发 /v1/generate 或 /extra/generate/stream，不经过三协议最终核对。server plugin 不能拦截已注册的核心路由。补丁只在空 body 判断之后、联系上游之前插入同一桥接钩子；桥存在则拒绝且不回显正文，桥不存在则为空操作。不改提示词组装。",
+  "upstream": {
+    "component": "sillytavern",
+    "repo": "https://github.com/SillyTavern/SillyTavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+    "version": "1.19.0"
+  },
+  "target": "src/endpoints/backends/kobold.js",
+  "applies_to": "assemble-managed 的派生 ST 运行副本；upstream 原始检出不修改",
+  "removal_condition": "上游关闭该独立文本生成路由，或提供与三协议最终出站核对等价且可覆盖本路由的公开钩子并被 V2 启用；或 V2 放弃 ST 前台受管生成链。升级 ST 版本必须重算 expected_input_sha256 / expected_output_sha256 并复核锚点只命中一次。",
+  "expected_input_sha256": "ce23d72599580d5822d17fda14c8413882237c1ab984b1be63ee063256286801",
+  "expected_output_sha256": "2f4612642484dc4c71e8ecdd27ddaddd9f7e9d57d7cb4ad971a405c944a0e15c",
+  "replacements": [
+    {
+      "from": "router.post('/generate', async function (request, response_generate) {\n    if (!request.body) return response_generate.sendStatus(400);\n\n    if (request.body.api_server.indexOf('localhost') != -1) {",
+      "to": "router.post('/generate', async function (request, response_generate) {\n    if (!request.body) return response_generate.sendStatus(400);\n\n    // virtual-companion bridge hook (patch st-kobold-vc-guard; W13 unvalidated exit)\n    const vcBridge = globalThis[Symbol.for('virtual-companion.bridge')];\n    if (vcBridge) {\n        await vcBridge.guardUnmanagedGeneration(request, response_generate);\n        return;\n    }\n\n    if (request.body.api_server.indexOf('localhost') != -1) {",
+      "count": 1,
+      "where": "/generate：空 body 判断之后、改写 api_server 与上游 fetch 之前"
+    }
+  ]
+}

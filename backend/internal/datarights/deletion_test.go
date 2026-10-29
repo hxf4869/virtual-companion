@@ -44,3 +44,40 @@ func TestDeletionWaitsForMemoryCoreAndResumesSameIntent(t *testing.T) {
 		t.Fatalf("completed=%+v err=%v", p, err)
 	}
 }
+
+type deletionDomainStore struct {
+	*deletionFixture
+	notificationDone  bool
+	inboxDone         bool
+	notificationCalls int
+	inboxCalls        int
+}
+
+func (d *deletionDomainStore) ClearNotificationDomain(context.Context, int64) (bool, error) {
+	d.notificationCalls++
+	return d.notificationDone, nil
+}
+
+func (d *deletionDomainStore) ClearInboxDomain(context.Context, int64) (bool, error) {
+	d.inboxCalls++
+	return d.inboxDone, nil
+}
+
+func TestDeletionNamesNotificationBeforeInbox(t *testing.T) {
+	base := &deletionFixture{engineDone: true}
+	store := &deletionDomainStore{deletionFixture: base}
+	p, err := ContinueDeletion(context.Background(), 7, store, nil)
+	if err != nil || p.Status != "PENDING" || len(p.PendingDomains) != 1 || p.PendingDomains[0] != "NOTIFICATION" || store.inboxCalls != 0 || base.deleted {
+		t.Fatalf("notification pending=%+v err=%v inbox=%d deleted=%v", p, err, store.inboxCalls, base.deleted)
+	}
+	store.notificationDone = true
+	p, err = ContinueDeletion(context.Background(), 7, store, nil)
+	if err != nil || p.Status != "PENDING" || p.PendingDomains[0] != "INBOX" || store.inboxCalls != 1 || base.deleted {
+		t.Fatalf("inbox pending=%+v err=%v", p, err)
+	}
+	store.inboxDone = true
+	p, err = ContinueDeletion(context.Background(), 7, store, nil)
+	if err != nil || p.Status != "COMPLETED" || !base.deleted {
+		t.Fatalf("completed=%+v err=%v deleted=%v", p, err, base.deleted)
+	}
+}

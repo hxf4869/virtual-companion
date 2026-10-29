@@ -275,3 +275,8 @@ export function fetchStoryActorView({ runId, branchId, worldVersion } = {}) {
     const query = new URLSearchParams({ branchId, worldVersion: version });
     return request('GET', `/api/v1/story/runs/${runId}/actors/player/view?${query}`);
 }
+
+/** 剧情写接口与开局共用会话头。request 保持模块私有。 */
+export function storyRequest(method, goPath, body) {
+    return request(method, goPath, body);
+}

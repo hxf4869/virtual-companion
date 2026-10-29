@@ -238,7 +238,216 @@ test('入口、手机单列与桥接范围', async () => {
     const allows = (method, path) => ADMIN_BRIDGE_ROUTES.some((route) => route.method === method && route.path.test(path));
     assert.equal(allows('POST', '/api/v1/story/runs'), true);
     assert.equal(allows('GET', '/api/v1/story/runs/11/actors/player/view'), true);
-    assert.equal(allows('POST', '/api/v1/story/runs/11/actions'), false);
-    assert.equal(allows('POST', '/api/v1/story/runs/11/rewind'), false);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/actions'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/rewind'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/projections/101/confirm'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/participants/lin'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/epilogue'), true);
+    assert.equal(allows('GET', '/api/v1/story/runs/11/actors/lin/view'), false);
+    assert.equal(allows('GET', '/api/v1/story/runs/11/actors/gm/view'), false);
+    assert.equal(allows('DELETE', '/api/v1/relationships/8'), false);
     assert.equal(allows('GET', '/api/v1/story/runs/../admin/providers'), false);
+    assert.match(entry, /createStoryProjection/);
+    assert.match(entry, /onAdvance/);
+});
+
+test('无钥匙检查维修柜只显示条件不足，世界版本不变，也不补写', async () => {
+    let projected = 0;
+    const base = route;
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/actions')) {
+            return { body: { accepted: false, replayed: false, reason: 'precondition_failed', worldVersion: 0, branchId: '13', stage: 'investigation', ended: false, message: '拿到了在维修柜找回怀表' } };
+        }
+        return base(url, init);
+    };
+    const page = createStoryPage({ getConversation: storyConversation, project: async () => { projected += 1; return { confirmed: true }; } });
+    await page.open();
+    await page.start();
+    await page.act('a6');
+    const html = renderStoryPage(page.state);
+    document.body.innerHTML = html;
+    assert.match(html, /条件还不足，世界没有变化。/);
+    assert.equal(page.state.turn.worldVersion, 0);
+    assert.equal(projected, 0);
+    assert.doesNotMatch(html, /找回怀表|拿到|在维修柜找回怀表/);
+    assert.doesNotMatch(html, /workshop_cabinet|执行行动|确认回档|结局/);
+    assertNoSecrets('拒绝', html);
+    assertNoSecrets('拒绝 JSON', JSON.stringify(page.state));
+    page.close();
+});
+
+test('回档先写明阶段和对后续行动、分支记忆的影响，确认后才提交', async () => {
+    const base = route;
+    route = (url, init) => {
+        if (url.endsWith('/story/runs') && init?.method === 'POST') {
+            return { body: { ...runBody, worldVersion: 2 } };
+        }
+        if (url.includes('/actors/player/view')) {
+            const parsed = new URL(url, 'https://example.invalid');
+            const worldVersion = Number(parsed.searchParams.get('worldVersion'));
+            return { body: poisonedView({
+                branchId: parsed.searchParams.get('branchId'),
+                worldVersion,
+                events: [{ eventId: '4', worldVersion: 1, body: { note: '已问过林岚', phase: 'investigation' } }],
+            }) };
+        }
+        if (init?.method === 'POST' && url.endsWith('/rewind')) {
+            return { body: { branchId: '21', worldVersion: 1, stage: 'investigation' } };
+        }
+        return base(url, init);
+    };
+    const page = createStoryPage({
+        getConversation: storyConversation,
+        getChatIdentity: () => '',
+    });
+    await page.open();
+    await page.start();
+    await page.askRewind(1);
+    let html = renderStoryPage(page.state);
+    assert.match(html, /回到世界版本 1，阶段为调查中。此版本之后的行动不会留在当前分支，需要重新提交才会再次发生。该阶段之后形成的分支记忆会失效，不会并入当前进度。/);
+    assert.match(html, /确认回档/);
+    assert.equal(calls.some((call) => call.url.endsWith('/rewind')), false);
+    await page.confirmRewind();
+    assert.match(renderStoryPage(page.state), /当前聊天还不能回档/);
+    assert.equal(calls.some((call) => call.url.endsWith('/rewind')), false);
+    page.close();
+    const ready = createStoryPage({
+        getConversation: storyConversation,
+        getChatIdentity: () => '10000000-0000-4000-8000-000000000042',
+    });
+    await ready.open();
+    await ready.start();
+    calls = calls.filter((call) => !call.url.endsWith('/rewind'));
+    await ready.askRewind(1);
+    await ready.confirmRewind();
+    const rewind = calls.find((call) => call.url.endsWith('/rewind'));
+    assert.equal(rewind.method, 'POST');
+    assert.deepEqual(JSON.parse(rewind.body), { toWorldVersion: 1, chatIdentity: '10000000-0000-4000-8000-000000000042' });
+    assert.equal(ready.state.turn.branchId, '21');
+    assert.equal(ready.state.turn.worldVersion, 1);
+    ready.close();
+});
+
+test('结局可保存或放弃；保存后提示到记忆页确认，页面不确认记忆', async () => {
+    const base = route;
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/actions')) {
+            return { body: { accepted: true, replayed: false, worldVersion: 7, worldEventId: '70', branchId: '13', stage: 'resolved', ended: true } };
+        }
+        if (url.includes('/actors/player/view') && url.includes('worldVersion=7')) {
+            return { body: poisonedView({ worldVersion: 7 }) };
+        }
+        if (url.endsWith('/relationships')) return { body: [{ relationshipId: 8, personaRef: 'gentle-listener', companionName: '阿兰' }] };
+        if (init?.method === 'POST' && url.includes('/participants/lin')) return { body: { runId: '11', actorId: 'lin', relationshipId: '8' } };
+        if (init?.method === 'POST' && url.endsWith('/epilogue')) return { body: JSON.parse(init.body).decision === 'save'
+            ? { decision: 'save', relationshipId: '8', memoryId: '90', memoryStatus: 'PENDING_CONFIRMATION', summary: JSON.parse(init.body).summary }
+            : { decision: 'discard' } };
+        return base(url, init);
+    };
+    const page = createStoryPage({ getConversation: storyConversation, project: async () => ({ confirmed: true }) });
+    await page.open();
+    await page.start();
+    await page.act('a7');
+    let html = renderStoryPage(page.state);
+    assert.match(html, /data-state="ended"/);
+    assert.match(html, /结局/);
+    await page.discardEpilogue();
+    html = renderStoryPage(page.state);
+    assert.match(html, /已放弃共同游玩摘要，不会写入日常记忆。/);
+    const discard = calls.find((call) => call.url.endsWith('/epilogue'));
+    assert.deepEqual(JSON.parse(discard.body), { decision: 'discard' });
+    page.close();
+
+    const saving = createStoryPage({ getConversation: storyConversation, project: async () => ({ confirmed: true }) });
+    await saving.open();
+    await saving.start();
+    await saving.act('a7');
+    await saving.saveEpilogue('一起查过怀表');
+    assert.match(renderStoryPage(saving.state), /请先让一位陪伴入局/);
+    assert.equal(calls.filter((call) => call.url.endsWith('/epilogue')).length, 1);
+    await saving.showCompanions();
+    html = renderStoryPage(saving.state);
+    assert.match(html, /阿兰/);
+    assert.doesNotMatch(html, /<img/i);
+    await saving.mapCompanion('lin', '8');
+    const mapped = calls.find((call) => call.url.includes('/participants/lin'));
+    assert.deepEqual(JSON.parse(mapped.body), { relationshipId: '8' });
+    await saving.mapCompanion('player', '8');
+    assert.equal(calls.filter((call) => call.url.includes('/participants/')).length, 1);
+    await saving.saveEpilogue('一起查过怀表');
+    const save = calls.filter((call) => call.url.endsWith('/epilogue')).at(-1);
+    assert.deepEqual(JSON.parse(save.body), { decision: 'save', relationshipId: '8', summary: '一起查过怀表' });
+    assert.match(renderStoryPage(saving.state), /已保存共同游玩摘要，请到记忆页确认后才会写入日常记忆。/);
+    assert.equal(calls.some((call) => call.url.includes('/memories/')), false);
+    saving.close();
+});
+
+test('世界已生效但投影未确认时显示待同步，动态文本被转义', async () => {
+    const base = route;
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/actions')) {
+            return { body: { accepted: true, replayed: false, worldVersion: 1, worldEventId: '31', branchId: '13', stage: 'investigation', ended: false } };
+        }
+        if (url.includes('worldVersion=1')) {
+            return { body: poisonedView({
+                worldVersion: 1,
+                events: [{ eventId: '31', worldVersion: 1, body: { clueName: '<script>钥匙借用记录</script>', text: '<img src=x onerror=alert(1)>' } }],
+            }) };
+        }
+        return base(url, init);
+    };
+    const page = createStoryPage({ getConversation: storyConversation, project: async () => ({ confirmed: false }) });
+    await page.open();
+    await page.start();
+    await page.act('a1');
+    const html = renderStoryPage(page.state);
+    assert.match(html, /行动已生效，聊天记录待同步/);
+    assert.match(html, /发现证据：/);
+    assert.match(html, /&lt;script/);
+    assert.match(html, /&lt;img/);
+    assert.doesNotMatch(html, /<script|<img/i);
+    assert.equal(page.state.syncPending, true);
+    assertNoSecrets('投影', html);
+    assert.equal(storage.size, 0);
+    page.close();
+});
+
+test('重放不采用旧分支，换了剧情对话会重新开局', async () => {
+    let runs = 0;
+    const base = route;
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/story/runs')) {
+            runs += 1;
+            return { body: { ...runBody, branchId: runs === 1 ? '13' : '13', worldVersion: runs === 1 ? 0 : 2 } };
+        }
+        if (init?.method === 'POST' && url.endsWith('/actions')) {
+            return { body: { accepted: true, replayed: true, worldVersion: 1, worldEventId: '4', branchId: '99', stage: 'investigation', ended: false } };
+        }
+        if (url.includes('worldVersion=2')) return { body: poisonedView({ worldVersion: 2 }) };
+        return base(url, init);
+    };
+    let projected = 0;
+    let conversation = storyConversation();
+    const page = createStoryPage({
+        getConversation: () => conversation,
+        project: async () => { projected += 1; return { confirmed: true }; },
+    });
+    await page.open();
+    await page.start();
+    await page.act('a1');
+    assert.equal(page.state.turn.branchId, '13');
+    assert.equal(page.state.turn.worldVersion, 2);
+    assert.equal(page.state.notice, '');
+    assert.equal(projected, 0);
+    conversation = { conversationId: '77', mode: 'STORY' };
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/story/runs')) return { body: { ...runBody, conversationId: '77', runId: '12', branchId: '14', worldVersion: 0 } };
+        if (url.includes('/actors/player/view')) return { body: poisonedView({ runId: '12', branchId: '14', conversationId: '77' }) };
+        return base(url, init);
+    };
+    await page.start();
+    const restarted = calls.filter((call) => call.method === 'POST' && call.url.endsWith('/story/runs')).at(-1);
+    assert.equal(JSON.parse(restarted.body).conversationId, '77');
+    assert.equal(page.state.turn.runId, '12');
+    page.close();
 });

@@ -9,6 +9,7 @@ import { checkContextBudget, resolveOutputTokens } from './context-guard.js';
 import { refreshMemorySlot } from './memory-guard.js';
 import { finalRequestUrl } from './url-normalize.js';
 import { buildResponsesRequest, extractRoundFromOutput, applyToolOutputs } from './responses-adapter.js';
+import { isStorySession } from './story-guard.js';
 import { log } from './log.js';
 
 export const MAX_TOOL_STEPS = 8;
@@ -49,7 +50,7 @@ export function readChatIdentity(body) {
 }
 
 function storyMode(body) {
-    return body?.vc_mode === 'STORY' || body?.vc_binding?.mode === 'STORY';
+    return isStorySession(body) || body?.vc_mode === 'STORY' || body?.vc_binding?.mode === 'STORY';
 }
 
 function assertNoForgedToolResult(messages) {
@@ -81,7 +82,11 @@ export function prepareToolPolicy(body, model) {
     }
     if (!story) assertNoForgedToolResult(body?.messages);
     const capability = model?.capabilities?.toolCalls;
-    if (capability === 'UNKNOWN' || capability === 'UNSUPPORTED') {
+    const unverified = capability === 'UNKNOWN' || capability === 'UNSUPPORTED';
+    // 剧情回合不依赖陪伴工具。UNKNOWN/UNSUPPORTED 只在非剧情回合无条件拒绝；
+    // 剧情回合去掉陪伴工具后若仍有其他工具，同样拒绝。
+    const remainingTools = Array.isArray(body?.tools) && body.tools.length > 0;
+    if (unverified && (!story || remainingTools)) {
         throw new BridgeError(409, 'VC_TOOL_CALLS_UNVERIFIED', '工具调用能力未验证，已拒绝发送');
     }
     const companion = Array.isArray(body?.tools)

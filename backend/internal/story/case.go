@@ -1,5 +1,5 @@
-// Package story loads the versioned world definition and projects an ActorView.
-// PostgreSQL stores the run. This package never calls a model.
+// Package story loads the versioned world definition, applies its action rules,
+// and projects an ActorView. PostgreSQL stores the run. This package never calls a model.
 package story
 
 import (
@@ -37,8 +37,10 @@ type Spec struct {
 }
 
 // Event is one committed world event. Visibility is a server-side filter.
+// ActionID is the idempotency key of the command that wrote the event.
 type Event struct {
 	ID           int64
+	ActionID     string
 	ActorID      string
 	Visibility   []string
 	WorldVersion int64
@@ -108,9 +110,15 @@ type definition struct {
 		Name          string `json:"name"`
 		Role          string `json:"role"`
 		PublicPersona string `json:"public_persona"`
+		Goal          string `json:"goal"`
 	} `json:"actors"`
 	GM struct {
-		Marker string `json:"marker"`
+		Marker        string `json:"marker"`
+		Motive        string `json:"motive"`
+		WatchLocation string `json:"watch_location"`
+		Timeline      []struct {
+			Fact string `json:"fact"`
+		} `json:"timeline"`
 	} `json:"gm_truth"`
 	Private []struct {
 		ID      string   `json:"id"`

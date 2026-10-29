@@ -84,6 +84,34 @@ func TestDatesAndClockUseSourceTimezone(t *testing.T) {
 	}
 }
 
+func TestMonthDayMarkerAndChineseNumerals(t *testing.T) {
+	base := timestamp(t, "2026-10-27T20:00:00+08:00")
+	cases := []struct{ text, date, status string }{
+		{"10月30号有什么安排", "2026-10-30", StatusNormalized},
+		{"十月三十号我打算去哪", "2026-10-30", StatusNormalized},
+		{"十一月六日我在哪里举行婚礼？", "2026-11-06", StatusNormalized},
+		{"11月6号我要做什么", "2026-11-06", StatusNormalized},
+		{"2026年十月三十日去厦门", "2026-10-30", StatusExplicitDate},
+		{"2026年10月30号去厦门。", "2026-10-30", StatusExplicitDate},
+	}
+	for _, tt := range cases {
+		t.Run(tt.text, func(t *testing.T) {
+			got := Normalize(tt.text, base, "Asia/Shanghai")
+			if got.NormalizationStatus != tt.status || got.EventDate == nil || *got.EventDate != tt.date || got.ReminderAt != nil {
+				t.Fatalf("result: %+v", got)
+			}
+		})
+	}
+	for _, text := range []string{"10号", "十月三十号左右", "十月十十号"} {
+		t.Run(text, func(t *testing.T) {
+			got := Normalize(text, base, "Asia/Shanghai")
+			if got.NormalizationStatus != StatusNeedsClarification || got.EventDate != nil || got.ReminderAt != nil {
+				t.Fatalf("invented a date: %+v", got)
+			}
+		})
+	}
+}
+
 func TestUncertainExpressionsDoNotInventDatesOrReminders(t *testing.T) {
 	base := timestamp(t, "2026-10-20T16:30:00Z")
 	cases := []struct{ expression, zone string }{

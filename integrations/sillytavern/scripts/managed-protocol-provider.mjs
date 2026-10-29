@@ -58,6 +58,10 @@ export const FIXTURE_MODELS = [
  *   delay           {firstMs, perChunkMs} 可控延迟（测取消）
  *   chunks          文本分片数（缺省 3）
  *   abortAfterChunks 写完 N 片后主动断流（测取消）
+ *   toolOnce        为 true 且本剧本有 tool 时：请求尚无工具结果则只回这一次工具
+ *                   （Responses 保留 reasoning，文本清空）；已有工具结果则只回 followUpText，
+ *                   不再带 tool 或新的 reasoning。未设置时剧本保持原样。
+ *   followUpText    toolOnce 后续轮的纯文本（缺省「合成工具后续已核对。」）
  */
 export const SCRIPTS = {
     'vc03m-chat': { text: '收到。这是受管验收的合成回复，内容固定可断言。' },
@@ -168,16 +172,27 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
     const merged = { ...base, ...(ctlOverride || {}), ...(headerDirective || {}), ...(bodyDirective || {}) };
     const usage = { ...DEFAULT_USAGE, ...(merged.usage || {}) };
     let text = Array.isArray(merged.memorycoreDocuments) ? memorycoreFixture(body, merged.memorycoreDocuments) : typeof merged.text === 'string' ? merged.text : base.text ?? '';
+    let reasoning = merged.reasoning ?? null;
     let tool = merged.tool ?? null;
     // 只在显式打开时，把「已带工具结果的后续请求」收成纯文本。默认剧本保持原样。
     if (merged.stopAfterToolResult === true && requestHasToolResult(body)) {
         tool = null;
         if (!text) text = '已根据工具结果回复。';
     }
+    // 只服务受管验收的一次工具后续。默认剧本不读请求正文，避免把工具模型变成回显器。
+    if (merged.toolOnce === true && tool && !Array.isArray(merged.memorycoreDocuments)) {
+        if (requestHasToolResult(body)) {
+            tool = null;
+            reasoning = null;
+            text = typeof merged.followUpText === 'string' ? merged.followUpText : '合成工具后续已核对。';
+        } else {
+            text = '';
+        }
+    }
     return {
         model,
         text,
-        reasoning: merged.reasoning ?? null,
+        reasoning,
         tool,
         usage,
         error: merged.error ?? null,

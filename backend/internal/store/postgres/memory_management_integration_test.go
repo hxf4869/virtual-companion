@@ -271,14 +271,11 @@ func TestForgetDropsDerivedProfileAcrossSharedSessionsUntilRebuild(t *testing.T)
 	profileEngineFixture(t, b, refB, "画像：兄弟会话仍保留的周日阅读")
 	var jobB int64
 	if err = testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `SELECT id FROM vc.work_item WHERE owner_user_id=1 AND kind='ST_MEMORY_EXTRACT' AND st_source_ref=$1`, refB).Scan(&jobB); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile(1,$1,'profile-token','profile-fence',$2,$3)`, jobB, []string{refA, refB}, "兄弟会话摘要："+secret)
-		return err
+		return tx.QueryRow(ctx, `SELECT id FROM vc.work_item WHERE owner_user_id=1 AND kind='ST_MEMORY_EXTRACT' AND st_source_ref=$1`, refB).Scan(&jobB)
 	}); err != nil {
 		t.Fatal(err)
 	}
+	recordEngineProfile(t, b.ConversationID, jobB, "profile-token", "profile-fence", []string{refA, refB}, "兄弟会话摘要："+secret)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {

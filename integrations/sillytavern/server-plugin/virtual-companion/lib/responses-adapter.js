@@ -573,15 +573,28 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
 }
 
 // ---------------------------------------------------------------------------
-// 受控工具回合的短生命周期续接存储（进程内；W03 范围）
+// 受控工具回合的短生命周期续接存储（进程内；W03 范围，W13 补剧情身份）
 // 键 = 回合指纹（该回合 assistant function_call 的完整调用清单）；
-// 条目绑定 user（ST handle + Go 账号）、配置指纹、scope（projection 携带的当前会话标识）。
+// 条目绑定 user（ST handle + Go 账号）、配置指纹、scope（projection 携带的当前会话标识），
+// 以及剧情身份（runId/branchId/actorId/worldVersion；COMPANION 为 null）。
 // 一次性消费：取用即删除；取消/失败不提交；新用户回合（尾部不再是工具回合）不查表；
-// 切换 chat/角色 → scope 变化或回合指纹不匹配 → 不注入。跨回合远端会话平台不存在。
+// 切换 chat/角色/actor/分支/世界版本 → 不注入另一条 reasoning。跨回合远端会话平台不存在。
 // ---------------------------------------------------------------------------
 
 function roundKey(calls) {
     return JSON.stringify(calls.map((c) => [c.id, c.name, c.arguments]));
+}
+
+function storyIdentity(story) {
+    if (!story) return null;
+    return { runId: story.runId, branchId: story.branchId, actorId: story.actorId, worldVersion: story.worldVersion };
+}
+
+function sameStory(left, right) {
+    const a = left ?? null;
+    const b = right ?? null;
+    if (a === null || b === null) return a === b;
+    return a.runId === b.runId && a.branchId === b.branchId && a.actorId === b.actorId && a.worldVersion === b.worldVersion;
 }
 
 export class ToolContinuationStore {
@@ -589,33 +602,34 @@ export class ToolContinuationStore {
     constructor({ ttlMs = 10 * 60_000, maxEntries = 64 } = {}) {
         this.ttlMs = ttlMs;
         this.maxEntries = maxEntries;
-        /** @type {Map<string, {user: string, fingerprint: string, scope: string|undefined, items: Array, memorySnapshot: object|null, expiresAt: number}>} */
+        /** @type {Map<string, {user: string, fingerprint: string, scope: string|undefined, items: Array, memorySnapshot: object|null, story: object|null, expiresAt: number}>} */
         this.entries = new Map();
     }
 
     /** 仅当本回合产生了工具调用与 reasoning 项时写入一条（按回合指纹键控）。 */
-    commit({ user, fingerprint, scope, calls, reasoningItems, memorySnapshot = null }) {
+    commit({ user, fingerprint, scope, calls, reasoningItems, memorySnapshot = null, story = null }) {
         if (!Array.isArray(calls) || calls.length === 0 || !Array.isArray(reasoningItems) || reasoningItems.length === 0) return;
         this.sweep();
         while (this.entries.size >= this.maxEntries) {
             this.entries.delete(this.entries.keys().next().value);
         }
         this.entries.set(roundKey(calls), { user, fingerprint, scope, items: reasoningItems,
-            memorySnapshot: structuredClone(memorySnapshot), expiresAt: Date.now() + this.ttlMs });
+            memorySnapshot: structuredClone(memorySnapshot), story: storyIdentity(story), expiresAt: Date.now() + this.ttlMs });
     }
 
     /**
      * 取出并一次性消费。当前请求的尾部工具回合必须与提交时的调用清单逐项完全一致
-     * （id、name、arguments），且 user/配置指纹/scope 匹配；任一不符即丢弃不注入。
+     * （id、name、arguments），且 user/配置指纹/scope/剧情身份匹配；任一不符即丢弃不注入。
+     * 剧情身份不一致时不抛记忆错误，避免把另一 actor 的拒绝说成记忆变化。
      */
-    take({ user, fingerprint, scope, round, memorySnapshot = null }) {
+    take({ user, fingerprint, scope, round, memorySnapshot = null, story = null }) {
         this.sweep();
         const key = roundKey(round.calls);
         const entry = this.entries.get(key);
         if (!entry) return [];
         this.entries.delete(key);
-        if (entry.user !== user || entry.fingerprint !== fingerprint || entry.scope !== scope) {
-            log.info('工具回合续接状态因用户/会话/配置变化被丢弃（不注入）');
+        if (entry.user !== user || entry.fingerprint !== fingerprint || entry.scope !== scope || !sameStory(entry.story, story)) {
+            log.info('工具回合续接状态因用户/会话/配置/剧情身份变化被丢弃（不注入）');
             return [];
         }
         if (entry.memorySnapshot?.status === 'skipped' || memorySnapshot?.status === 'skipped'

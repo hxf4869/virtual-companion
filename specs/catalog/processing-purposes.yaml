@@ -21,7 +21,8 @@ entries:
     BACKGROUND_GREETINGS pinned binding and revision, never the legacy global
     route order. An in-progress run keeps the snapshot taken when it started.
     Missing authorization, price or budget performs no real call. Inbox and
-    notification delivery belong to W10.
+    notification delivery belong to W10. Notification delivery is a separate
+    processing purpose and is not a model purpose.
 - code: FOREGROUND_CHAT
   order: 7
   modelPurpose: FOREGROUND_CHAT
@@ -34,3 +35,10 @@ entries:
   note: >-
     Tool follow-up turn. The reservation purpose is TOOL_TURN. Model resolution
     uses the FOREGROUND_CHAT binding, not a separate model purpose.
+- code: NOTIFICATION_DELIVERY
+  order: 9
+  note: >-
+    Deliver an already prepared inbox event by email or Feishu. This purpose
+    does not call a model and is not a ModelPurpose. A current PUSH_NOTIFICATION
+    grant is required before an outbound delivery. Withdrawal stops only
+    deliveries that have not been sent.

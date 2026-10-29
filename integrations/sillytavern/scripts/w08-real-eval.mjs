@@ -108,6 +108,14 @@ export function latencyStats(values) {
     return { p50Ms: nums[Math.ceil(nums.length * 0.5) - 1], maxMs: nums.at(-1), n: nums.length };
 }
 
+// A late profile response must not discard the remaining recall matrix.
+// A new extraction attempt would write the question back into memory, so that still stops the run.
+export function queryPhaseStop({ callsNow, cap, stages = [] } = {}) {
+    if (Number.isFinite(callsNow) && Number.isFinite(cap) && callsNow >= cap) return 'call-budget';
+    if (stages.some((stage) => stage === 'l1-extraction' || stage === 'l1-conflict-detection')) return 'query-called-model';
+    return null;
+}
+
 export function zipCost(attempts, calls) {
     const rows = [];
     const count = Math.min(attempts.length, calls.length);
@@ -470,15 +478,23 @@ export async function sceneMemoryRealEval(ctx) {
         const enabled = purposesNow.find((item) => item.purpose === 'MEMORY_EXTRACTION_DEDUP_SUMMARY');
         if (enabled) expectStatus(await ctx.admin.savePurpose(enabled.purpose, { providerId: 'vc08-real', profileKey: 'memory', state: 'DISABLED', expectedRevision: enabled.revision }), 200, 'purpose-off');
         const callsAtQueries = meter.snapshot().length;
+        const attemptsAtQueries = ctx.w08.realAttempts().length;
         let queryProviderCalls = 0;
         for (const query of QUERIES) {
             if (query.needs.some((id) => !written.some((sample) => sample.id === id && sample.ready))) {
                 skipped.push({ id: query.id, reason: 'source-not-ready' });
                 continue;
             }
-            if (meter.snapshot().length > callsAtQueries) {
+            const stopReason = queryPhaseStop({
+                callsNow: meter.snapshot().length,
+                cap: meterCap,
+                stages: ctx.w08.realAttempts().slice(attemptsAtQueries).map((row) => row.stage || ''),
+            });
+            if (stopReason) {
                 budgetStop = true;
-                skipped.push({ id: query.id, reason: 'query-called-model' });
+                for (const pending of QUERIES.slice(QUERIES.indexOf(query))) {
+                    if (!queries.some((done) => done.queryId === pending.id) && !skipped.some((item) => item.id === pending.id)) skipped.push({ id: pending.id, reason: stopReason });
+                }
                 break;
             }
             const group = query.group;
@@ -506,7 +522,6 @@ export async function sceneMemoryRealEval(ctx) {
             const saved = expectStatus(await st.call('POST', '/api/chats/get', { avatar_url: card.avatar, file_name: file }), 200, query.id);
             const probed = await recall(ctx, saved[0].chat_metadata.vc_f2, query.at, query.zone);
             queryProviderCalls = meter.snapshot().length - callsAtQueries;
-            if (queryProviderCalls > 0) budgetStop = true;
             const sources = written.filter((sample) => query.needs.includes(sample.id));
             const expected = sources.flatMap((sample) => sample.memoryIds);
             const source = sources[0];
@@ -534,7 +549,6 @@ export async function sceneMemoryRealEval(ctx) {
                     hit, extracted: expected.length > 0, dateGated, recallEligible: memory?.recallEligible === true, inRecall,
                 }) : null,
             }));
-            if (queryProviderCalls > 0) break;
         }
         const direct = queries.find((query) => query.queryId === 'M02-direct');
         const forgottenIds = written.find((sample) => sample.id === 'M05')?.memoryIds || [];
@@ -545,13 +559,13 @@ export async function sceneMemoryRealEval(ctx) {
             forget.outboundAbsent = afterForget ? absent : null;
             forget.recallAbsent = forget.outboundAbsent;
         }
-        const correction = {
+        const correction = direct ? {
             caseId: 'M02',
             outboundSurface: 'st-memory-recall-block',
-            currentFactOnly: Boolean(direct?.tokenSeen) && !direct?.leaked,
-            currentFactRecalled: Boolean(direct?.tokenSeen),
-            oldFactInOutbound: Boolean(direct?.leaked),
-        };
+            currentFactOnly: Boolean(direct.tokenSeen) && !direct.leaked,
+            currentFactRecalled: Boolean(direct.tokenSeen),
+            oldFactInOutbound: Boolean(direct.leaked),
+        } : { caseId: 'M02', skipped: true, outboundSurface: 'st-memory-recall-block' };
         const zipped = zipCost(ctx.w08.realAttempts(), meter.snapshot());
         const cost = summarizeCost(zipped.rows, userMessages);
         const dates = ['M01', 'M11', 'M12'].map((caseId) => {

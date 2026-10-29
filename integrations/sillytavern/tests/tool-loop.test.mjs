@@ -514,6 +514,48 @@ test('toolCalls 未验证或剧情回合不把陪伴工具发给上游', async (
     });
 });
 
+test('剧情回合 toolCalls UNKNOWN 且无工具时正常出站，不含陪伴工具', async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        capabilities: { toolCalls: 'UNKNOWN' },
+        scripts: [chatText('剧情可以出站')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        const body = requestBody('OPENAI_CHAT_COMPLETIONS', {
+            vc_story: {
+                runId: '11', branchId: '13', actorId: 'lin', worldVersion: 0,
+                chatIdentity: '10000000-0000-4000-8000-000000000042',
+            },
+        });
+        delete body.tools;
+        const req = mockReq(body);
+        assert.equal(await bridge.interceptGenerate(req, res), false);
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body(), '');
+        const names = (body.tools || []).map((tool) => tool?.function?.name || tool?.name);
+        assert.equal(names.includes('query_scheduled_follow_ups') || names.includes('manage_reminder'), false);
+        assert.ok(req.vcManaged);
+        assert.equal(state.executes.length, 0);
+    });
+});
+
+test('剧情回合 toolCalls UNKNOWN 且仍有非陪伴工具时拒绝，上游 0 次', async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        capabilities: { toolCalls: 'UNKNOWN' },
+        scripts: [chatText('不应发送')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        const body = requestBody('OPENAI_CHAT_COMPLETIONS', {
+            vc_binding: { mode: 'STORY' },
+            tools: [{ type: 'function', function: { name: 'lookup_weather', description: '查天气', parameters: { type: 'object', properties: {} } } }],
+        });
+        assert.equal(await bridge.interceptGenerate(mockReq(body), res), true);
+        assert.equal(JSON.parse(res.body()).error.code, 'VC_TOOL_CALLS_UNVERIFIED');
+        assert.equal(state.providerReqs.length, 0);
+    });
+});
+
 test('未计量的额外生成与原生搜索不发出', async () => {
     await withStack({
         protocol: 'OPENAI_CHAT_COMPLETIONS',

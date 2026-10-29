@@ -112,14 +112,15 @@ export async function sceneMemorycoreNative(ctx) {
             const hits = await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: ids, query: item.query, eventDate: item.eventDate });
             calibration.push({ kind: item.kind, expected: item.expected, hit: item.expected ? hits.some(h => h.record_id === idsByLabel[item.expected]) : hits.length === 0,
                 candidates: hits.map(h => ({ label: fixture.documents.find(d => idsByLabel[d.id] === h.record_id)?.id, cosine: h.cosine, ftsScore: h.ftsScore })) });
-            if (!item.expected) assert.equal(hits.length, 0, `negative ${item.kind}`);
-            if (item.eventDate === '2026-11-06') assert.ok(hits.every(h => h.record_id !== idsByLabel.wedding && h.record_id !== idsByLabel['friend-wedding']));
+            if (!item.expected) assert.equal(hits.length, 0, `negative ${item.kind} ${item.query}`);
+            if (item.expected) assert.ok(hits.some(h => h.record_id === idsByLabel[item.expected]), `${item.query} => ${hits.map(h => fixture.documents.find(d => idsByLabel[d.id] === h.record_id)?.id).join(',')}`);
+            if (item.eventDate === '2026-11-06') assert.ok(hits.every(h => h.record_id !== idsByLabel.wedding && h.record_id !== idsByLabel['friend-wedding'] && h.record_id !== idsByLabel['dated-summary']));
             if (item.kind === 'multi-question') assert.ok(hits.some(h => h.record_id === idsByLabel[item.expected]), 'independent valid question must survive multi-topic embedding dilution');
         }
         const inherited = await engine.invoke('search', { scope: { ...scope, profileScopeId: 'branch-b' }, embedding: snapshot, allowedRecordIds: [idsByLabel.wedding], query: '我的婚礼什么时候举行？' });
         assert.deepEqual(inherited.map(h => h.record_id), [idsByLabel.wedding]); checks.push('M07-branch-inherits-only-Go-allowed-IDs');
         const positives = calibration.filter(r => r.expected), negatives = calibration.filter(r => !r.expected);
-        assert.ok(positives.filter(r => r.hit).length >= 14); checks.push('calibration-positive-paraphrase-no-answer-distractor-M11');
+        assert.equal(positives.filter(r => r.hit).length, positives.length); checks.push('calibration-positive-paraphrase-no-answer-distractor-M11');
         const staged = await engine.invoke('rebuild-profile', { ...base, operationId: 'profile1', allowedRecordIds: ids });
         assert.equal(staged.status, 'staged');
         assert.equal((await fs.readdir(path.join(paths.data, 'owners/101/profiles'))).length, 0);
