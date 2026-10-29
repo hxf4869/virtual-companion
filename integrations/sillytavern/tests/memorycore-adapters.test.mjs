@@ -19,6 +19,8 @@ test('embedding pins artifact, query preprocessing, dimensions and normalization
     await embedding.embedQuery('我喜欢什么');
     assert.equal(inputs[0].input, '你好');
     assert.equal(inputs[1].input, 'Instruct: Given a question, retrieve relevant personal memories that answer the question.\nQuery: 我喜欢什么');
+    assert.deepEqual([...await embedding.embed('你好')], [Math.fround(.6), Math.fround(.8)]);
+    assert.equal(inputs.length, 2, '同一模型输入的第二次嵌入必须复用已计算向量');
     assert.equal(embedding.spaceId, snapshot.spaceId);
     await assert.rejects(createOllamaEmbedding({ ...snapshot, endpoint: 'http://evil.test' }), /CONFIG/);
     await assert.rejects(createOllamaEmbedding(snapshot, { fetchImpl: async () => Response.json({ models: [] }) }), /ARTIFACT/);
@@ -113,6 +115,50 @@ test('native recall keeps independent questions above their own relevance gate a
     assert.equal(hits[0].cosine, 0.63, 'same record retains its strongest accepted candidate, not the later weaker hit');
 });
 
+test('conflict recall keeps the user-search accepts and adds the paraphrase band', async () => {
+    const { createNativeFactory, RELEVANCE } = await import('../memorycore-service/native-engine.mjs');
+    let relevance;
+    const native = await (await createNativeFactory({
+        VectorStore: class { async init() {} getSpace() { return { rebuilding: false }; } },
+        async extractL1Memories(input) {
+            relevance = input.options.relevance;
+            return { success: true, proposal: { records: [], targets: [{ id: 'old-city', version: 1 }] } };
+        },
+    }))('/synthetic-unused');
+    const proposal = await native.prepare({ messages: [{ id: 'm', content: 'new city', timestamp: '2026-10-20T12:00:00Z' }],
+        scope: { teamId: 'owner:1' }, allowedRecordIds: ['old-city'], runner: {}, embedding: { embed: async () => new Float32Array([1, 0]) }, recordedAt: '2026-10-20T12:00:00Z' });
+    assert.equal(relevance.minCosine, RELEVANCE.minCosine);
+    assert.equal(relevance.minFtsScore, RELEVANCE.minFtsScore);
+    assert.equal(relevance.cosineFloor, 0.50);
+    assert.equal(relevance.ftsFloor, 0.58);
+    assert.deepEqual(proposal.targets, [{ id: 'old-city', version: 1 }]);
+});
+
+test('summary text uses the same cosine floor, date floor and both-lane band as memories', async () => {
+    const { summaryPassesGate } = await import('../memorycore-service/native-engine.mjs');
+    const embedding = { embedBatch: async () => [new Float32Array([1, 0]), new Float32Array([0.2, Math.sqrt(1 - 0.04)])] };
+    assert.equal(await summaryPassesGate('我的幸运颜色是什么？', '用户将去厦门参加婚礼。', embedding, false), false);
+    const same = { embedBatch: async () => [new Float32Array([1, 0]), new Float32Array([1, 0])] };
+    assert.equal(await summaryPassesGate('我的幸运颜色是什么？', '用户将去厦门参加婚礼。', same, false), true);
+    const dated = { embedBatch: async () => [new Float32Array([1, 0]), new Float32Array([0.35, Math.sqrt(1 - 0.35 * 0.35)])] };
+    assert.equal(await summaryPassesGate('10月30日我要去哪里？', '用户将去厦门参加婚礼。', dated, true), true);
+    assert.equal(await summaryPassesGate('我的现实职业是什么？', '用户将去厦门参加婚礼。', dated, false), false);
+    const band = { embedBatch: async () => [new Float32Array([1, 0]), new Float32Array([0.52, Math.sqrt(1 - 0.52 * 0.52)])] };
+    assert.equal(await summaryPassesGate('读书计划', '蓝窗书店的读书计划还没选定下一本。', band, false), true);
+    assert.equal(await summaryPassesGate('现实职业', '蓝窗书店的读书计划还没选定下一本。', band, false), false);
+    const mixed = { embedBatch: async ([query]) => (query.includes('读书计划') && !query.includes('2026年10月30日')
+        ? [new Float32Array([1, 0]), new Float32Array([1, 0])]
+        : [new Float32Array([1, 0]), new Float32Array([0, 1])]) };
+    assert.equal(await summaryPassesGate('我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？', '我们决定暂停读书计划，等下次再选书。', mixed, true), true);
+    assert.equal(await summaryPassesGate('我在2026年10月30日准备去哪里，为什么？', '我们决定暂停读书计划，等下次再选书。', mixed, true), false);
+    const wrapped = { embedBatch: async ([, text]) => (text.includes('暂停读书计划') && [...text].length < 40
+        ? [new Float32Array([1, 0]), new Float32Array([1, 0])]
+        : [new Float32Array([1, 0]), new Float32Array([0, 1])]) };
+    const persona = '# 合成画像\n我们决定暂停读书计划，等下次再选书。\n\n## 其他\n这是画像模板里的说明，不要当成另一条事实。';
+    assert.equal(await summaryPassesGate('我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？', persona, wrapped, true), true);
+    assert.equal(await summaryPassesGate('我的现实职业是什么？', persona, wrapped, true), false);
+});
+
 test('dated generic schedule sets the date floor and a date-free lexical query', async () => {
     const { createNativeFactory, RELEVANCE, isGenericSchedule } = await import('../memorycore-service/native-engine.mjs');
     assert.equal(isGenericSchedule('10月30号有什么安排'), true);
@@ -135,6 +181,12 @@ test('dated generic schedule sets the date floor and a date-free lexical query',
     assert.equal(seen[1].filter.genericSchedule, false);
     assert.equal(seen[1].filter.lexicalQuery.includes('举行婚礼'), true);
     assert.equal(seen[1].query.includes('十一月六日'), true);
+    const empty = await native.search({ query: '我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？',
+        topK: 5, scope: {}, allowedRecordIds: [], dateRestricted: true,
+        embedding: { embedBatch: async ([query]) => (query.includes('读书计划') && !query.includes('2026年10月30日')
+            ? [new Float32Array([1, 0]), new Float32Array([1, 0])] : [new Float32Array([1, 0]), new Float32Array([0, 1])]) },
+        gateTexts: [{ id: 'persona', text: '我们决定暂停读书计划，等下次再选书。' }] });
+    assert.deepEqual(empty, { hits: [], gated: ['persona'] });
 });
 
 function sceneRunner(dir, stage, fetchImpl) {

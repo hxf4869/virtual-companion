@@ -368,8 +368,13 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                     } catch (e) {
                         await serial(input.scope.ownerId, async () => {
                             const current = await readJSON(file);
-                            if (current?.status === 'preparing' && native.getScope(key).revision === input.revision)
-                                await writeJSON(file, { ...current, scope: input.scope, request, status: 'failed' });
+                            if (current?.status === 'preparing' && native.getScope(key).revision === input.revision) {
+                                const message = e instanceof Error ? e.message : '';
+                                const replayable = message === 'MEMORYCORE_CALLBACK_TIMEOUT' || message === 'MEMORYCORE_UPSTREAM_TIMEOUT' || message === 'MEMORYCORE_CALLBACK_FAILED';
+                                const failed = { scope: input.scope, request, status: 'failed' };
+                                if (replayable && Array.isArray(current.calls)) failed.calls = current.calls;
+                                await writeJSON(file, failed);
+                            }
                         });
                         throw e;
                     } finally {
@@ -437,7 +442,9 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         if (action === 'search') {
             if (await readJSON(path.join(dir, 'cleanup.json'))) return [];
             const revision = native.getScope(key).revision;
-            const ids = allowed(input); if (!ids.length) return [];
+            const ids = allowed(input);
+            const gateTexts = Array.isArray(input.gateTexts) ? input.gateTexts : undefined;
+            if (!ids.length && !gateTexts?.length) return [];
             await configure(ctx, input.embedding);
             const published = new Set();
             for (const { op } of await operationEntries(ctx)) {
@@ -446,10 +453,12 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             const eligible = ids.filter(id => published.has(id));
             // An empty hit list is still a successful read of this revision.
             // Re-check the saved snapshot so an older revision cannot return
-            // after a newer one has been committed.
-            const embedding = eligible.length && !native.getSpace().rebuilding ? await embeddingFactory(input.embedding) : undefined;
-            const results = eligible.length ? await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
-                allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true }) : [];
+            // after a newer one has been committed. Summary text is scored
+            // even when no L1 row shares the question's date.
+            const embedding = (eligible.length || gateTexts?.length) && !native.getSpace().rebuilding ? await embeddingFactory(input.embedding) : undefined;
+            const results = (eligible.length || gateTexts?.length) ? await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
+                allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true, gateTexts })
+                : [];
             return currentSpace(ctx, input.embedding, async () =>
                 !(await readJSON(path.join(dir, 'cleanup.json'))) && native.getScope(key).revision === revision ? results : []);
         }

@@ -7,6 +7,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -95,8 +96,16 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 					rebound = true
 					break
 				}
+				// A finished propose already returned an engine code. Reading the
+				// empty failed operation and labeling it PENDING hides that code.
+				if code := memoryengine.ClosedCode(err); code != "" {
+					return l.finishExtract(ctx, c, code)
+				}
 				if e = s.EngineCall(ctx, "operation-status", request, &status); e != nil {
 					return l.failExtract(ctx, c, "MEMORYCORE_STATUS")
+				}
+				if status.Status == "preparing" {
+					return l.failExtract(ctx, c, "MEMORYCORE_PENDING")
 				}
 				proposal = status.Proposal
 			}
@@ -117,7 +126,11 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 			continue
 		}
 		if len(proposal) == 0 {
-			return l.failExtract(ctx, c, "MEMORYCORE_PENDING")
+			code := "MEMORYCORE_OPERATION_FAILED"
+			if status.Status == "preparing" {
+				code = "MEMORYCORE_PENDING"
+			}
+			return l.failExtract(ctx, c, code)
 		}
 		if _, err = s.ValidateEngineProposal(ctx, c, op, proposal); err != nil {
 			if failed, ok := l.store.(interface {
@@ -224,6 +237,34 @@ func (l *Loop) rebindEngineOperation(ctx context.Context, c postgres.JobClaim, o
 
 func (l *Loop) enqueueMemoryExtract(ctx context.Context, owner, generationID int64) {
 	// Retired: ST persisted sources are the only production extraction input.
+}
+
+func deterministicExtractCode(code string) bool {
+	if strings.HasPrefix(code, "MEMORYCORE_ENGINE_") {
+		return true
+	}
+	switch code {
+	case "MEMORYCORE_OPERATION_CONFLICT", "MEMORYCORE_TARGET_NOT_ALLOWED", "MEMORYCORE_RECORD_ID":
+		return true
+	default:
+		return false
+	}
+}
+
+// finishExtract records a closed propose code. A deterministic engine or
+// request error is terminal: retrying would replay the same journaled model
+// output and dead-letter. Timeouts and unknown transport failures still retry.
+func (l *Loop) finishExtract(ctx context.Context, c postgres.JobClaim, code string) error {
+	if !deterministicExtractCode(code) {
+		return l.failExtract(ctx, c, code)
+	}
+	l.log.Info("memory extract closed",
+		slog.String("operation", "memory_extract"),
+		slog.String("outcome", "failed"),
+		slog.String("event_type", "FAILED"),
+		slog.String("decision_code", code),
+	)
+	return l.closeExtract(ctx, c, "FAILED", code)
 }
 
 func (l *Loop) failExtract(ctx context.Context, c postgres.JobClaim, code string) error {

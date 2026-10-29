@@ -34,6 +34,79 @@ export function isGenericSchedule(question) {
     return text.replace(SCHEDULE_FUNCTION, '').length === 0;
 }
 export const OWNER_DATABASE_FILES = Object.freeze(['vectors.db', 'vectors.db-wal', 'vectors.db-shm']);
+function cosine(left, right) {
+    if (!left || !right || left.length !== right.length || left.length === 0) return 0;
+    let dot = 0, leftNorm = 0, rightNorm = 0;
+    for (let i = 0; i < left.length; i++) {
+        dot += left[i] * right[i];
+        leftNorm += left[i] * left[i];
+        rightNorm += right[i] * right[i];
+    }
+    if (leftNorm === 0 || rightNorm === 0) return 0;
+    return dot / Math.sqrt(leftNorm * rightNorm);
+}
+function lexicalOverlap(query, text) {
+    const tokens = [];
+    let ascii = '';
+    const han = [];
+    const flush = () => { if (ascii.length >= 2) tokens.push(ascii.toLowerCase()); ascii = ''; };
+    for (const ch of query) {
+        if (/[A-Za-z0-9]/u.test(ch)) ascii += ch;
+        else flush();
+        if (/[\u4e00-\u9fff]/u.test(ch)) {
+            han.push(ch);
+            if (han.length >= 2) tokens.push(han.slice(-2).join(''));
+        } else han.length = 0;
+    }
+    flush();
+    if (tokens.length === 0) return 0;
+    const folded = text.toLowerCase();
+    return tokens.filter((token) => folded.includes(token)).length / tokens.length;
+}
+function sharedHanSpan(query, text, length) {
+    const han = [];
+    for (const ch of query) {
+        if (/[\u4e00-\u9fff]/u.test(ch)) {
+            han.push(ch);
+            if (han.length > length) han.shift();
+            if (han.length === length && text.includes(han.join(''))) return true;
+        } else han.length = 0;
+    }
+    return false;
+}
+// Same absolute cosine, dated generic floor, and both-lane band as L1 recall.
+// The summary is not an L1 row, so its lexical lane is token overlap.
+function queryParts(query) {
+    const parts = String(query).split(/[。？！!?；;]/u).map(part => part.trim())
+        .filter(part => part && !/^[（(][^？?]*[)）]$/u.test(part));
+    return parts.length >= 2 && parts.length <= 4 ? parts : [query];
+}
+async function summaryPartPasses(query, text, embedding, dated) {
+    const embed = embedding?.embedQuery || embedding?.embed;
+    if ((typeof embedding?.embedBatch !== 'function' && typeof embed !== 'function') || typeof text !== 'string' || !text.trim()) return false;
+    const vectors = typeof embedding.embedBatch === 'function' ? await embedding.embedBatch([query, text]) : [await embed(query), await embed(text)];
+    const score = cosine(vectors[0], vectors[1]);
+    if (score >= RELEVANCE.minCosine) return true;
+    if (dated && isGenericSchedule(query) && score >= RELEVANCE.dateCosineFloor) return true;
+    return score >= RELEVANCE.cosineFloor && lexicalOverlap(query, text) >= RELEVANCE.ftsFloor;
+}
+// A persona template dilutes one fact below the cosine floor. Score a content
+// line that shares a word with the question before scoring the whole file.
+function summarySegments(question, text) {
+    const lines = String(text).split(/\n/u).map(line => line.trim())
+        .filter(line => [...line].length >= 8 && sharedHanSpan(question, line, 4));
+    return lines.length ? lines : [text];
+}
+// Independent questions are scored separately. One dated clause must not
+// dilute an undated topic that the summary actually answers.
+export async function summaryPassesGate(query, text, embedding, dated) {
+    for (const question of queryParts(query)) {
+        for (const segment of summarySegments(question, text)) {
+            if (await summaryPartPasses(question, segment, embedding, dated)) return true;
+        }
+    }
+    return false;
+}
 function toRecord(row) {
     return { id: row.record_id, content: row.content, type: row.type, priority: row.priority,
         scene_name: row.scene_name, metadata: JSON.parse(row.metadata_json || '{}'), version: row.version,
@@ -59,12 +132,12 @@ export async function createNativeFactory(api) {
                     embedBatch: async texts => { const out = []; for (const text of texts) out.push(await (embedding.embedQuery || embedding.embed)(text)); return out; } };
                 const result = await api.extractL1Memories({ messages, ...scope, baseDir: dir, config: {},
                     options: { prepareOnly: true, allowedRecordIds, recordedAt,
-                        relevance: { minCosine: RELEVANCE.minCosine, minFtsScore: RELEVANCE.minFtsScore }, vectorStore: store,
+                        relevance: { ...RELEVANCE }, vectorStore: store,
                         embeddingService: store.getSpace()?.rebuilding ? undefined : queryEmbedding, llmRunner: runner } });
                 if (!result.success) throw new Error('MEMORYCORE_EXTRACTION_FAILED');
                 return JSON.parse(JSON.stringify(result.proposal || { records: [], targets: [] }));
             },
-            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false }) {
+            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts }) {
                 if (typeof query !== 'string' || !query || query.length > 20000) throw new Error('MEMORYCORE_QUERY');
                 // Go already dropped other days when dateRestricted is set. Passing
                 // eventDate again would drop records whose summary omits metadata.
@@ -74,13 +147,18 @@ export async function createNativeFactory(api) {
                     ids = list(ids, scope).filter(r => (r.metadata.eventDate || r.metadata.activity_start_time?.slice(0, 10)) === eventDate).map(r => r.id);
                     dated = true;
                 }
-                if (!ids.length) return [];
+                if (!ids.length) {
+                    if (!Array.isArray(gateTexts) || gateTexts.length === 0) return [];
+                    const gated = [];
+                    for (const item of gateTexts) {
+                        if (item && typeof item.id === 'string' && typeof item.text === 'string' && await summaryPassesGate(query, item.text, embedding, dated)) gated.push(item.id);
+                    }
+                    return { hits: [], gated };
+                }
                 // Independent questions are embedded separately so one topic cannot
                 // dilute another. Each part uses the same gates. Only a dated
                 // generic schedule question may use the lower cosine floor.
-                const parts = query.split(/[。？！!?；;]/u).map(part => part.trim())
-                    .filter(part => part && !/^[（(][^？?]*[)）]$/u.test(part));
-                const queries = parts.length >= 2 && parts.length <= 4 ? parts : [query];
+                const queries = queryParts(query);
                 const hits = new Map();
                 for (const question of queries) {
                     const genericSchedule = dated && isGenericSchedule(question);
@@ -97,7 +175,13 @@ export async function createNativeFactory(api) {
                         if (!prior || hit.score > prior.score) hits.set(hit.record_id, hit);
                     }
                 }
-                return [...hits.values()].sort((a, b) => b.score - a.score).slice(0, topK);
+                const ranked = [...hits.values()].sort((a, b) => b.score - a.score).slice(0, topK);
+                if (!Array.isArray(gateTexts) || gateTexts.length === 0) return ranked;
+                const gated = [];
+                for (const item of gateTexts) {
+                    if (item && typeof item.id === 'string' && typeof item.text === 'string' && await summaryPassesGate(query, item.text, embedding, dated)) gated.push(item.id);
+                }
+                return { hits: ranked, gated };
             },
             async rebuildProfile({ records, stagingDir, scope, runner }) {
                 const storage = new api.StorageAdapter(new api.LocalStorageBackend({ rootDir: stagingDir }));

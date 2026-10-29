@@ -14,9 +14,10 @@ import (
 // recallQuery is shared by the native ST path and the remaining Go context
 // builder. Scope is enforced in SQL before any text reaches the ranker.
 type recallQuery struct {
-	Text  string
-	Date  *string
-	Limit int
+	Text      string
+	Date      *string
+	Limit     int
+	GateTexts []engineGateText
 }
 type recallCandidate struct {
 	Memory

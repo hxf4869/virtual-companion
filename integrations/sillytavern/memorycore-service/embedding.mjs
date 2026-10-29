@@ -1,4 +1,30 @@
 // A trusted Go snapshot is the only authority for vector-space identity.
+// One native send recalls twice (browser, then the final outbound guard).
+// The model input is pinned by artifact digest, so a short process-local
+// cache returns the same vector without a second Ollama round trip.
+const recentEmbeddings = new Map();
+const RECENT_EMBEDDING_LIMIT = 128;
+
+function embeddingCacheKey(snapshot, modelInput) {
+    return [snapshot.model, snapshot.artifactVersion, String(snapshot.dimensions), snapshot.normalization, modelInput].join('\0');
+}
+
+function cachedEmbedding(key) {
+    const hit = recentEmbeddings.get(key);
+    if (!hit) return undefined;
+    recentEmbeddings.delete(key);
+    recentEmbeddings.set(key, hit);
+    return Float32Array.from(hit);
+}
+
+function storeEmbedding(key, vector) {
+    recentEmbeddings.set(key, Float32Array.from(vector));
+    while (recentEmbeddings.size > RECENT_EMBEDDING_LIMIT) {
+        const oldest = recentEmbeddings.keys().next().value;
+        recentEmbeddings.delete(oldest);
+    }
+}
+
 export async function createOllamaEmbedding(snapshot, { fetchImpl = fetch, verifyArtifact = true } = {}) {
     const c = structuredClone(snapshot);
     if (c.provider !== 'OLLAMA' || c.endpoint !== 'http://127.0.0.1:11438' || c.state !== 'ENABLED' ||
@@ -13,6 +39,9 @@ export async function createOllamaEmbedding(snapshot, { fetchImpl = fetch, verif
     }
     async function embed(text, { timeoutMs = 30000 } = {}) {
         if (typeof text !== 'string' || !text || text.length > 100000) throw new Error('MEMORYCORE_EMBEDDING_INPUT');
+        const key = embeddingCacheKey(c, text);
+        const hit = cachedEmbedding(key);
+        if (hit) return hit;
         let response;
         try { response = await fetchImpl(c.endpoint + '/api/embed', { method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ model: c.model, input: text, truncate: false }), signal: AbortSignal.timeout(Math.min(timeoutMs, 60000)) }); }
@@ -22,7 +51,9 @@ export async function createOllamaEmbedding(snapshot, { fetchImpl = fetch, verif
         if (!Array.isArray(v) || v.length !== c.dimensions || !v.every(Number.isFinite)) throw new Error('MEMORYCORE_EMBEDDING_DIMENSIONS');
         const norm = Math.hypot(...v);
         if (!Number.isFinite(norm) || norm === 0) throw new Error('MEMORYCORE_EMBEDDING_ZERO');
-        return Float32Array.from(c.normalization === 'l2' ? v.map(x => x / norm) : v);
+        const out = Float32Array.from(c.normalization === 'l2' ? v.map(x => x / norm) : v);
+        storeEmbedding(key, out);
+        return Float32Array.from(out);
     }
     return {
         spaceId: c.spaceId, snapshot: Object.freeze(c), embed,

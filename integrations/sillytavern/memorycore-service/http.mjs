@@ -46,8 +46,11 @@ export function createMemoryCoreServer({ token, engine, commit }) {
                 if (message === 'MEMORYCORE_REVISION_CONFLICT') return send(409, { code: 'MEMORYCORE_REVISION_CONFLICT' });
                 const conflict = /(?:REVISION|SPACE|OPERATION|PROPOSAL|PROFILE_VERIFICATION)/.test(message);
                 if (conflict) return send(409, { code: 'MEMORYCORE_CONFLICT' });
-                const closed = /^MEMORYCORE_[A-Z0-9_]+$/.test(message) ? message : 'MEMORYCORE_OPERATION_FAILED';
-                return send(422, { code: closed });
+                // A closed engine token stays visible. Bare upstream tokens such as
+                // DEDUP_INVALID become MEMORYCORE_ENGINE_<TOKEN>. Free text never leaves.
+                if (/^MEMORYCORE_[A-Z0-9_]+$/.test(message) && message.length <= 64) return send(422, { code: message });
+                if (message.length > 0 && message.length <= 45 && /^[A-Z][A-Z0-9_]*$/.test(message)) return send(422, { code: `MEMORYCORE_ENGINE_${message}` });
+                return send(422, { code: 'MEMORYCORE_OPERATION_FAILED' });
             }
         }
         req.resume();

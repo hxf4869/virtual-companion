@@ -6,6 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { stripTypeScriptTypes } from 'node:module';
 import { applySpecToText, validateSpec } from '../scripts/lib/patcher.mjs';
+import { MEMORYCORE_DIR } from '../scripts/lib/paths.mjs';
 
 // Exact MIT upstream source at 084bed45cad6bb7f877455082cee82835d65671a.
 // This one consumer fixture makes real patched ranking runnable offline;
@@ -97,6 +98,44 @@ test('date-restricted lexical search does not reuse the calendar expression', as
     input.filter = { lexicalQuery: '参加什么' };
     await recall(input);
     assert.equal(seen, '参加什么');
+});
+test('strict conflict parse keeps an update target when a sibling store omits target_ids', async t => {
+    const spec = JSON.parse(await fs.readFile(new URL('03-dedup.json', patchDir), 'utf8'));
+    const source = await fs.readFile(path.join(MEMORYCORE_DIR, 'MemoryCore/src/core/record/l1-dedup.ts'), 'utf8');
+    const patched = applySpecToText(source, spec);
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vc-memorycore-dedup-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const write = async (rel, text) => {
+        const file = path.join(root, rel);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, text);
+    };
+    await write('package.json', '{"type":"module"}');
+    await write('core/prompts/l1-dedup.js', 'export const formatBatchConflictPrompt = () => "prompt"; export const getConflictDetectionSystemPrompt = () => "system";');
+    await write('utils/clean-context-runner.js', 'export class CleanContextRunner {}');
+    await write('utils/sanitize.js', 'export const sanitizeJsonForParse = text => text;');
+    await write('core/store/embedding.js', 'export const hasClientEmbedding = () => false;');
+    await write('core/types.js', 'export const buildTraceParams = () => ({});');
+    await write('core/tools/l1-candidate-recall.js', 'export const recallL1Candidates = async () => ({ hits: [{ record_id: "old-city", content: "old", type: "persona", priority: 50, scene_name: "", timestamp_str: "", metadata_json: "{}", session_key: "daily", session_id: "daily" }] });');
+    await write('core/record/l1-dedup.js', stripTypeScriptTypes(patched.output, { mode: 'transform' }));
+    const { batchDedup } = await import(pathToFileURL(path.join(root, 'core/record/l1-dedup.js')).href);
+    const memories = [{ record_id: 'new-city', content: 'new city' }, { record_id: 'extra', content: 'extra fact' }];
+    const vectorStore = { countL1: async () => 1, isFtsAvailable: () => false };
+    const run = async (body) => batchDedup({ memories, vectorStore, strict: true, llmRunner: { run: async () => JSON.stringify(body) } });
+    const decisions = await run([
+        { record_id: 'new-city', action: 'update', target_ids: ['old-city'], merged_content: 'new city', merged_type: 'persona' },
+        { record_id: 'extra', action: 'store' },
+    ]);
+    assert.deepEqual(decisions.map(d => ({ record_id: d.record_id, action: d.action, target_ids: d.target_ids })), [
+        { record_id: 'new-city', action: 'update', target_ids: ['old-city'] },
+        { record_id: 'extra', action: 'store', target_ids: [] },
+    ]);
+    const skipped = await run([{ record_id: 'new-city', action: 'skip' }, { record_id: 'extra', action: 'store', target_ids: [] }]);
+    assert.deepEqual(skipped.map(d => d.action), ['skip', 'store']);
+    await assert.rejects(run([{ record_id: 'new-city', action: 'update' }, { record_id: 'extra', action: 'store' }]), /DEDUP_INVALID/);
+    await assert.rejects(run([{ record_id: 'new-city', action: 'merge', target_ids: [] }, { record_id: 'extra', action: 'store' }]), /DEDUP_INVALID/);
+    await assert.rejects(run([{ record_id: 'new-city', action: 'invented' }, { record_id: 'extra', action: 'store' }]), /DEDUP_INVALID/);
+    await assert.rejects(run([{ record_id: 'missing', action: 'store' }]), /DEDUP_INVALID|DEDUP_INCOMPLETE/);
 });
 test('rejected candidates do not consume RRF ranks or gain weight from the other lane', async t => {
     const recall = await loadRecall(t);

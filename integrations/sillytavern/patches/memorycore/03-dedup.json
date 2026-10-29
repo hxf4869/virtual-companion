@@ -1,7 +1,7 @@
 {
   "id": "vc-memorycore-03-dedup",
   "group": "proposal-commit",
-  "reason": "Reject extraction dedup timeout/malformed/partial decisions instead of silently storing duplicates.",
+  "reason": "Reject extraction dedup timeout/malformed/partial decisions instead of silently storing duplicates. store/skip may omit target_ids; update/merge still require targets.",
   "upstream": {
     "commit": "084bed45cad6bb7f877455082cee82835d65671a",
     "version": "1.0.2-beta.1"
@@ -9,9 +9,9 @@
   "removal_condition": "Upstream offers strict failure propagation and complete decision validation.",
   "target": "MemoryCore/src/core/record/l1-dedup.ts",
   "expected_input_sha256": "359cae39a3b2659760b4bf2656b7753a2c3c4dce7d0b180ee6ded6a1649204f7",
-  "expected_output_sha256": "cb47ca2d392ccdf9129871e1baf2c43b4b7483ea0a969976d46ac6189bf3fa26",
+  "expected_output_sha256": "4f74fc6ada2c5c2bdc57902a6d8143619846f2f1c7f64c5354ba573951ef445b",
   "changed_lines": {
-    "added": 15,
+    "added": 18,
     "removed": 7
   },
   "validation": [
@@ -56,7 +56,7 @@
     },
     {
       "from": "      const action = String(d.action ?? \"store\");",
-      "to": "      const action = String((d.action ?? \"store\"));\n      if (strict && (!memories.some(m => m.record_id === recordId) || decisions.some(d => d.record_id === recordId) || !validActions.includes(action) || !Array.isArray(d.target_ids))) throw new Error(\"DEDUP_INVALID\");",
+      "to": "      const action = String((d.action ?? \"store\"));\n      const rawTargets = d.target_ids;\n      const targets = Array.isArray(rawTargets) ? rawTargets : (rawTargets == null || rawTargets === \"\" ? [] : null);\n      const needsTargets = action === \"update\" || action === \"merge\";\n      if (strict && (!memories.some(m => m.record_id === recordId) || decisions.some(item => item.record_id === recordId) || !validActions.includes(action) || targets === null || (needsTargets && targets.length === 0))) throw new Error(\"DEDUP_INVALID\");",
       "count": 1
     },
     {

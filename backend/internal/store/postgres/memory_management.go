@@ -405,9 +405,13 @@ func (s *Store) continueMemoryCleanup(ctx context.Context, owner, id int64) erro
 	}
 	switch gate {
 	case "PENDING":
-		// The engine copy is already forgotten. Cleanup stays open until the
-		// replacement profile is published, or until that rebuild gives up.
-		return nil
+		// A published replacement profile is required before DONE. A cleanup
+		// that already failed to erase files must still be recorded as
+		// PARTIAL; otherwise an in-flight rebuild hides the failure and the
+		// memory stays PENDING.
+		if state != "PARTIAL" {
+			return nil
+		}
 	case "DEAD":
 		state = "PARTIAL"
 	}

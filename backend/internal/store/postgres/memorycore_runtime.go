@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"time"
 
@@ -104,11 +105,18 @@ func (s *Store) engineAllowed(ctx context.Context, owner, rel, conv int64) ([]st
 	if e != nil {
 		return nil, e
 	}
-	ids := []string{}
+	return allowlistIDs(candidates), nil
+}
+
+// allowlistIDs sorts record ids. Map iteration would make the same set look
+// like a different propose request and fail OPERATION_CONFLICT on retry.
+func allowlistIDs(candidates map[string]Memory) []string {
+	ids := make([]string, 0, len(candidates))
 	for id := range candidates {
 		ids = append(ids, id)
 	}
-	return ids, nil
+	slices.Sort(ids)
+	return ids
 }
 func (s *Store) PrepareEngineOperation(ctx context.Context, c JobClaim) (EngineOperation, error) {
 	var op EngineOperation

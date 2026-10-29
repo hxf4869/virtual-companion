@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createControlledEngine, mapScope } from '../memorycore-service/business.mjs';
+import { createCallbackRunner, forgetCallbackResume } from '../memorycore-service/llm-runner.mjs';
 
 const scope = { ownerId: '1', instanceId: '7', mode: 'COMPANION', domainId: 'daily-7', profileScopeId: 'main' };
 const embedding = { provider: 'OLLAMA', endpoint: 'http://127.0.0.1:11438', model: 'synthetic-model',
@@ -48,6 +49,42 @@ test('trusted identity maps logical memory domain, never real chat', () => {
     assert.equal(s.sessionId, s.sessionKey); assert.equal(s.sessionId, 'daily-7');
     assert.throws(() => mapScope({ ...scope, ownerId: '../bad' }));
     assert.throws(() => mapScope({ ...scope, mode: 'DAILY' }));
+});
+test('deterministic dedup failure drops journaled calls while a timeout keeps them', async t => {
+    let fetches = 0;
+    const text = JSON.stringify([{ record_id: 'm1', action: 'store' }]);
+    const fetchImpl = async () => { fetches += 1; return Response.json({ text }); };
+    const runnerFactory = (token) => createCallbackRunner({ baseURL: 'http://127.0.0.1:9', token: 'k'.repeat(32), operationToken: token, stage: 'l1-extraction', fetchImpl, counter: { value: 0 } });
+    const { engine, native, root } = await fixture(t, { runnerFactory });
+    const token = 'journal-dedup';
+    t.after(() => forgetCallbackResume(token));
+    native.prepare = async ({ runner }) => {
+        await runner.run({ prompt: 'p', systemPrompt: 's', taskId: 'l1-extraction' });
+        throw new Error('DEDUP_INVALID');
+    };
+    const input = { ...proposalInput(), operationId: 'op-dedup', operationToken: token };
+    await assert.rejects(engine.invoke('propose', input), /DEDUP_INVALID/);
+    const stored = JSON.parse(await fs.readFile(path.join(root, 'owners', '1', 'operations', 'op-dedup.json'), 'utf8'));
+    assert.equal(stored.status, 'failed');
+    assert.equal(stored.calls, undefined);
+    assert.equal(JSON.stringify(stored).includes(text), false);
+    fetches = 0;
+    await assert.rejects(engine.invoke('propose', input), /DEDUP_INVALID/);
+    assert.equal(fetches, 1);
+    native.prepare = async ({ runner }) => {
+        await runner.run({ prompt: 'p', systemPrompt: 's', taskId: 'l1-extraction' });
+        throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
+    };
+    const timeoutToken = 'journal-timeout';
+    t.after(() => forgetCallbackResume(timeoutToken));
+    const timeoutInput = { ...proposalInput(), operationId: 'op-timeout', operationToken: timeoutToken };
+    await assert.rejects(engine.invoke('propose', timeoutInput), /MEMORYCORE_CALLBACK_TIMEOUT/);
+    const kept = JSON.parse(await fs.readFile(path.join(root, 'owners', '1', 'operations', 'op-timeout.json'), 'utf8'));
+    assert.equal(kept.calls.length, 1);
+    assert.equal(kept.calls[0].status, 'ok');
+    fetches = 0;
+    await assert.rejects(engine.invoke('propose', timeoutInput), /MEMORYCORE_CALLBACK_TIMEOUT/);
+    assert.equal(fetches, 0);
 });
 test('proposal does not publish; commit and replay are idempotent; allowlist empty remains empty', async t => {
     const { engine, native } = await fixture(t); const p = proposalInput();
@@ -110,6 +147,16 @@ test('rebuild-profile HTTP returns a closed tool code and drops free-form errors
     assert.equal(open.status, 422);
     assert.equal(open.json.code, 'MEMORYCORE_OPERATION_FAILED');
     assert.equal(JSON.stringify(open.json).includes(leaked), false);
+    native.rebuildProfile = async () => { throw new Error('DEDUP_INVALID'); };
+    const bare = await post('profile-bare');
+    assert.equal(bare.status, 422);
+    assert.equal(bare.json.code, 'MEMORYCORE_ENGINE_DEDUP_INVALID');
+    assert.equal(JSON.stringify(bare.json).includes('DEDUP_INVALID detail'), false);
+    native.rebuildProfile = async () => { throw new Error(`DEDUP_INVALID ${leaked}`); };
+    const mixed = await post('profile-mixed');
+    assert.equal(mixed.status, 422);
+    assert.equal(mixed.json.code, 'MEMORYCORE_OPERATION_FAILED');
+    assert.equal(JSON.stringify(mixed.json).includes(leaked), false);
 });
 test('HTTP business operations reject missing token and browser Origin', async t => {
     const { createMemoryCoreServer } = await import('../memorycore-service/http.mjs');

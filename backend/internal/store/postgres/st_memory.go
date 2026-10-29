@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -113,10 +114,19 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		queryZone = in.QueryTimezone
 	}
 	queryTime := memorytime.Normalize(querySource.text, queryAt, queryZone)
-	memories, err := s.searchEngineMemories(ctx, owner, b.relationship, b.id, recallQuery{Text: querySource.text, Date: queryTime.EventDate, Limit: 20})
+	profile, err := s.currentMemoryProfile(ctx, owner, b.relationship, b.id)
 	if err != nil {
 		return out, err
 	}
+	recall := recallQuery{Text: querySource.text, Date: queryTime.EventDate, Limit: 20}
+	if profile != nil && strings.TrimSpace(profile.Persona) != "" {
+		recall.GateTexts = []engineGateText{{ID: "persona", Text: profile.Persona}}
+	}
+	found, err := s.searchEngineRecall(ctx, owner, b.relationship, b.id, recall)
+	if err != nil {
+		return out, err
+	}
+	memories := found.Memories
 	// Only engine-derived profiles with verified dependencies may be injected.
 	chats, err := s.stSummaryChats(ctx, owner, b)
 	if err != nil {
@@ -177,10 +187,6 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 	if err := s.verifySTMemoryTarget(ctx, owner, b); err != nil {
 		return out, err
 	}
-	profile, err := s.currentMemoryProfile(ctx, owner, b.relationship, b.id)
-	if err != nil {
-		return out, err
-	}
 	profileExists := false
 	if profile == nil {
 		profileExists, err = s.validMemoryProfileExists(ctx, owner, b.relationship)
@@ -229,10 +235,19 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		// The managed acceptance still identifies the engine summary by this
 		// label. The stored persona stays the raw impression; only the block
 		// line carries it. Retired profile rows are not read back.
-		if strings.TrimSpace(profile.Persona) != "" && add("会话摘要（引擎归纳）："+profile.Persona) {
+		// Story chats return before this point. A dated question keeps a
+		// summary whose sources survived the same date gate as L1. A question
+		// that also asks an undated topic may keep a summary sourced only
+		// from undated records, still subject to the engine relevance gate.
+		// An older array response has no relevance decision.
+		if personaAllowed(profile.Persona, querySource.text, queryTime.EventDate != nil, profile.RecordIDs, found.DateIDs, found.UndatedIDs, found.OtherDayIDs, found.Gated, found.GateKnown) && add("会话摘要（引擎归纳）："+profile.Persona) {
 			out.SummaryIDs = append(out.SummaryIDs, fmt.Sprint(profile.ID))
 		}
-		for _, scene := range relevantProfileScenes(querySource.text, profile.Scenes, profile.RecordIDs) {
+		scenes := profile.Scenes
+		if queryTime.EventDate != nil {
+			scenes = datedScenes(scenes, found.DateIDs)
+		}
+		for _, scene := range relevantProfileScenes(querySource.text, scenes, profile.RecordIDs) {
 			if strings.TrimSpace(scene.Summary) == "" {
 				continue
 			}
@@ -274,6 +289,98 @@ func (s *Store) reconcileProfileChats(ctx context.Context, owner int64, refs []s
 		out = append(out, checked...)
 	}
 	return out, nil
+}
+
+// Same split and schedule residual as the MemoryCore summary gate. Phrases are
+// longest-first so a shorter phrase cannot consume part of a longer one.
+var schedulePhrases = []string{"有没有", "怎么样", "下周五", "下周一", "下周二", "下周三", "下周四", "下周六", "下周天", "下周日", "哪里", "哪儿", "什么", "安排", "打算", "准备", "事情", "行程", "活动", "计划", "如何", "哪天", "时候", "有何", "要去", "去哪", "何时", "几点", "干嘛", "干吗", "一下", "我们", "用户", "我的", "现在", "上次", "之前", "记得", "那个", "这个", "今天", "明天", "后天"}
+var scheduleDate = regexp.MustCompile(`(?:\d{4}年)?\d{1,2}月\d{1,2}[日号]|\d{4}-\d{2}-\d{2}|下周[一二三四五六日天]|今天|明天|后天|(?:\d{4}年)?[一二三四五六七八九十]{1,3}月[一二三四五六七八九十]{1,3}[日号]`)
+var scheduleFunction = regexp.MustCompile(`[我要去有的了在是和就不人都一上也很到说你会着看自己这他她它们那哪啥谁何吗吧呢啊呀哦嗯，。？！、：；“”""''（）()\s]`)
+var querySplit = regexp.MustCompile(`[。？！!?；;]`)
+var parentheticalOnly = regexp.MustCompile(`^[（(][^？?]*[)）]$`)
+
+func genericScheduleQuestion(question string) bool {
+	text := scheduleDate.ReplaceAllString(question, " ")
+	for _, phrase := range schedulePhrases {
+		text = strings.ReplaceAll(text, phrase, "")
+	}
+	return scheduleFunction.ReplaceAllString(text, "") == ""
+}
+func queryParts(query string) []string {
+	parts := []string{}
+	for _, part := range querySplit.Split(query, -1) {
+		part = strings.TrimSpace(part)
+		if part == "" || parentheticalOnly.MatchString(part) {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) >= 2 && len(parts) <= 4 {
+		return parts
+	}
+	return []string{query}
+}
+func queryHasUndatedTopic(query string) bool {
+	parts := queryParts(query)
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts {
+		if !scheduleDate.MatchString(part) && !genericScheduleQuestion(part) {
+			return true
+		}
+	}
+	return false
+}
+func undatedSummaryAllowed(query string, sources, undatedIDs, otherDayIDs []string) bool {
+	return queryHasUndatedTopic(query) && stringOverlap(sources, undatedIDs) && !stringOverlap(sources, otherDayIDs)
+}
+func personaAllowed(persona, query string, dated bool, sources, dateIDs, undatedIDs, otherDayIDs, gated []string, gateKnown bool) bool {
+	if strings.TrimSpace(persona) == "" {
+		return false
+	}
+	if dated && !stringOverlap(sources, dateIDs) && !undatedSummaryAllowed(query, sources, undatedIDs, otherDayIDs) {
+		return false
+	}
+	if gateKnown {
+		for _, id := range gated {
+			if id == "persona" {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+func datedScenes(scenes []profileScene, dateIDs []string) []profileScene {
+	allowed := map[string]bool{}
+	for _, id := range dateIDs {
+		allowed[id] = true
+	}
+	out := []profileScene{}
+	for _, scene := range scenes {
+		for _, id := range scene.RecordIDs {
+			if allowed[id] {
+				out = append(out, scene)
+				break
+			}
+		}
+	}
+	return out
+}
+func stringOverlap(left, right []string) bool {
+	seen := map[string]bool{}
+	for _, id := range left {
+		if id != "" {
+			seen[id] = true
+		}
+	}
+	for _, id := range right {
+		if seen[id] {
+			return true
+		}
+	}
+	return false
 }
 func relevantProfileScenes(query string, scenes []profileScene, allow []string) []profileScene {
 	allowed := map[string]bool{}

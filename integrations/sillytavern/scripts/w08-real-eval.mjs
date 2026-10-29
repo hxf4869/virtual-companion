@@ -377,11 +377,15 @@ export async function sceneMemoryRealEval(ctx) {
         cards.story = await importSyntheticCard(st, 'W08 评估剧情');
         cards.private = await importSyntheticCard(st, 'W08 评估私有');
         cards['story-b'] = await importSyntheticCard(st, 'W08 评估剧情乙');
-        const queue = [...SOURCE_SAMPLES, ...OPTIONAL_SAMPLES];
+        const probeIds = String(process.env.VC_W08_PROBE_SAMPLES || '').split(',').map((id) => id.trim()).filter(Boolean);
+        const queue = probeIds.length
+            ? [...SOURCE_SAMPLES, ...OPTIONAL_SAMPLES].filter((sample) => probeIds.includes(sample.id))
+            : [...SOURCE_SAMPLES, ...OPTIONAL_SAMPLES];
         for (const sample of queue) {
             const story = sample.mode === 'STORY';
             const calls = meter.snapshot().length;
-            if (!story && (budgetStop || !canAddSample(calls, { cap: Math.max(1, meterCap - 8), peak }))) {
+            const budget = probeIds.length ? { cap: meterCap, floor: 2, peak: 0 } : { cap: Math.max(1, meterCap - 8), peak };
+            if (!story && (budgetStop || !canAddSample(calls, budget))) {
                 budgetStop = true;
                 skipped.push({ id: sample.id, reason: 'call-budget' });
                 continue;
@@ -476,6 +480,28 @@ export async function sceneMemoryRealEval(ctx) {
             }
             if (callsNow >= meterCap) budgetStop = true;
         }
+        if (probeIds.length) {
+            const codes = await decisionText(ctx.artifactsDir);
+            const probeBody = {
+                probe: true,
+                model: MODEL_ID,
+                providerCalls: meter.snapshot().length,
+                decisionCodes: [...new Set(codes)],
+                usage: ctx.w08.realUsage(),
+                attempts: ctx.w08.realAttempts().map((row) => ({
+                    id: row.id, stage: row.stage, status: row.status, failure: row.failure,
+                    inputTokens: row.input_tokens, outputTokens: row.output_tokens,
+                })),
+                jobs: ctx.w08.extractJobs().map((job) => ({ id: job.id, status: job.status, attemptCount: job.attempt_count })),
+                memories: JSON.parse(ctx.w10.psql(`SELECT coalesce(json_agg(x ORDER BY x.id),'[]'::json) FROM (SELECT id, status, (superseded_at IS NOT NULL) AS superseded FROM vc.memory_item WHERE owner_user_id=${BigInt(ctx.w05.ownerId)}) x;`).trim() || '[]'),
+                samples: written.map((sample) => ({
+                    id: sample.id, extracted: sample.extracted, ready: sample.ready, providerCalls: sample.providerCalls,
+                    memoryIds: sample.memoryIds, eventDate: sample.eventDate, normalizationStatus: sample.normalizationStatus,
+                })),
+                skipped,
+            };
+            Object.assign(report, sealReport(probeBody, [credential]));
+        } else {
         const profilesBeforeForget = await profileLayers(ctx.w05.ownerId);
         const judgments = judgeSamples(written, profilesBeforeForget);
         const forget = await forgetSample(ctx, written, profilesBeforeForget);
@@ -635,6 +661,7 @@ export async function sceneMemoryRealEval(ctx) {
             } catch {
                 Object.assign(report, { providerCalls: calls.length, completed: false, sealStripped: true, budgetStop, queryProviderCalls, callbackFailures: callbackFailures.length });
             }
+        }
         }
     } finally {
         try {

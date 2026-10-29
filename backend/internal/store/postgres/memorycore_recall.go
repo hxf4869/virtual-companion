@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -63,30 +64,59 @@ func (s *Store) engineCandidates(ctx context.Context, owner, rel, conv int64) (m
 	})
 	return out, mapStoreErr(e)
 }
+
+type engineGateText struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+type engineRecall struct {
+	Memories    []Memory
+	DateIDs     []string
+	UndatedIDs  []string
+	OtherDayIDs []string
+	Gated       []string
+	GateKnown   bool
+}
+
 func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64, q recallQuery) ([]Memory, error) {
-	candidates, e := s.engineCandidates(ctx, owner, rel, conv)
+	found, e := s.searchEngineRecall(ctx, owner, rel, conv, q)
 	if e != nil {
 		return nil, e
 	}
+	return found.Memories, nil
+}
+
+func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, q recallQuery) (engineRecall, error) {
+	candidates, e := s.engineCandidates(ctx, owner, rel, conv)
+	if e != nil {
+		return engineRecall{}, e
+	}
 	ids := []string{}
+	undated, otherDay := []string{}, []string{}
 	allowed := map[string]Memory{}
 	for id, m := range candidates {
-		if q.Date != nil && (m.Time == nil || m.Time.EventDate == nil || *m.Time.EventDate != *q.Date) {
+		if q.Date != nil && (m.Time == nil || m.Time.EventDate == nil) {
+			undated = append(undated, id)
+			continue
+		}
+		if q.Date != nil && *m.Time.EventDate != *q.Date {
+			otherDay = append(otherDay, id)
 			continue
 		}
 		allowed[id] = m
 		ids = append(ids, id)
 	}
-	if len(ids) == 0 {
-		return []Memory{}, nil
+	found := engineRecall{Memories: []Memory{}, DateIDs: append([]string{}, ids...), UndatedIDs: undated, OtherDayIDs: otherDay}
+	// No same-day memory. A pure schedule question has nothing to inject.
+	// A question that also asks an undated topic still needs the summary gate.
+	if len(ids) == 0 && (len(q.GateTexts) == 0 || !queryHasUndatedTopic(q.Text)) {
+		found.GateKnown = true
+		return found, nil
 	}
 	embedding, e := s.ResolveEmbeddingConfig(ctx, owner)
 	if e != nil {
-		return nil, e
-	}
-	var hits []struct {
-		RecordID string `json:"record_id"`
-		ID       string `json:"id"`
+		return engineRecall{}, e
 	}
 	// The allowlist above is already limited to q.Date. MemoryCore must not
 	// apply that date again: a merged summary can omit metadata.eventDate
@@ -95,11 +125,17 @@ func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64
 	if q.Date != nil {
 		payload["dateRestricted"] = true
 	}
-	e = s.memoryEngine.Call(ctx, "search", payload, &hits)
-	if e != nil {
-		return nil, e
+	if len(q.GateTexts) > 0 {
+		payload["gateTexts"] = q.GateTexts
 	}
-	out := []Memory{}
+	var raw json.RawMessage
+	e = s.memoryEngine.Call(ctx, "search", payload, &raw)
+	if e != nil {
+		return engineRecall{}, e
+	}
+	hits, gated, known := decodeEngineSearch(raw)
+	found.Gated = gated
+	found.GateKnown = known
 	seen := map[string]bool{}
 	for _, hit := range hits {
 		id := hit.RecordID
@@ -108,8 +144,28 @@ func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64
 		}
 		if m, ok := allowed[id]; ok && !seen[m.Summary] {
 			seen[m.Summary] = true
-			out = append(out, m)
+			found.Memories = append(found.Memories, m)
 		}
 	}
-	return out, nil
+	return found, nil
+}
+
+type engineHit struct {
+	RecordID string `json:"record_id"`
+	ID       string `json:"id"`
+}
+
+func decodeEngineSearch(raw json.RawMessage) (hits []engineHit, gated []string, known bool) {
+	if len(raw) == 0 || raw[0] == '[' {
+		_ = json.Unmarshal(raw, &hits)
+		return hits, nil, false
+	}
+	var body struct {
+		Hits  []engineHit `json:"hits"`
+		Gated []string    `json:"gated"`
+	}
+	if json.Unmarshal(raw, &body) != nil {
+		return nil, nil, false
+	}
+	return body.Hits, body.Gated, true
 }

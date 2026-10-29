@@ -303,3 +303,75 @@ func TestEngineFailedProposesAgainInsteadOfRevoking(t *testing.T) {
 		t.Fatalf("failed operation revoked instead of retrying propose: abandoned=%v publishes=%d retries=%d calls=%v", s.abandoned, s.publishes, s.retryCalls, s.calls)
 	}
 }
+
+type closedProposeStore struct {
+	*recoveryEngineStore
+	proposeErr error
+	proposes   int
+}
+
+func (s *closedProposeStore) EngineCall(ctx context.Context, action string, in any, out any) error {
+	if action == "propose" {
+		s.proposes++
+		return s.proposeErr
+	}
+	return s.recoveryEngineStore.EngineCall(ctx, action, in, out)
+}
+
+func TestProposeClosedEngineCodeIsRecordedInsteadOfPending(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(`{"code":"MEMORYCORE_ENGINE_DEDUP_INVALID","detail":"secret dialogue"}`))
+	}))
+	defer srv.Close()
+	client, err := memoryengine.New(srv.URL, "private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposeErr := client.Call(context.Background(), "propose", map[string]string{}, nil)
+	if memoryengine.ClosedCode(proposeErr) != "MEMORYCORE_ENGINE_DEDUP_INVALID" {
+		t.Fatalf("transport code %q err %v", memoryengine.ClosedCode(proposeErr), proposeErr)
+	}
+	var buf bytes.Buffer
+	s := &closedProposeStore{recoveryEngineStore: &recoveryEngineStore{extractTestStore: &extractTestStore{retryAction: "RETRY_SCHEDULED"}, statuses: []string{"unknown", "failed"}, bareStatus: true}, proposeErr: proposeErr}
+	l := newExtractTestLoop(s.extractTestStore, nil)
+	l.log = slog.New(slog.NewTextHandler(&buf, nil))
+	l.store = s
+	l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+	if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	line := buf.String()
+	closes := s.closeCalls()
+	if !strings.Contains(line, "decision_code=MEMORYCORE_ENGINE_DEDUP_INVALID") || strings.Contains(line, "MEMORYCORE_PENDING") || strings.Contains(line, "secret") || strings.Contains(line, "dead_lettered") || s.proposes != 1 || s.publishes != 0 || s.retryCalls != 0 || len(closes) != 1 || closes[0].status != "FAILED" || closes[0].reason != "MEMORYCORE_ENGINE_DEDUP_INVALID" {
+		t.Fatalf("closed propose code collapsed: proposes=%d publishes=%d retries=%d closes=%v calls=%v log=%q", s.proposes, s.publishes, s.retryCalls, closes, s.calls, line)
+	}
+}
+
+func TestProposeWithoutClosedCodeIsPendingOnlyWhilePreparing(t *testing.T) {
+	var buf bytes.Buffer
+	s := &closedProposeStore{recoveryEngineStore: &recoveryEngineStore{extractTestStore: &extractTestStore{retryAction: "RETRY_SCHEDULED"}, statuses: []string{"failed", "failed"}, bareStatus: true}, proposeErr: errors.New("timeout")}
+	l := newExtractTestLoop(s.extractTestStore, nil)
+	l.log = slog.New(slog.NewTextHandler(&buf, nil))
+	l.store = s
+	l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+	if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	line := buf.String()
+	if !strings.Contains(line, "decision_code=MEMORYCORE_OPERATION_FAILED") || strings.Contains(line, "MEMORYCORE_PENDING") || strings.Contains(line, "timeout") || s.retryCalls != 1 || s.publishes != 0 {
+		t.Fatalf("empty failed proposal labeled pending: retries=%d publishes=%d log=%q calls=%v", s.retryCalls, s.publishes, line, s.calls)
+	}
+	preparing := &recoveryEngineStore{extractTestStore: &extractTestStore{retryAction: "RETRY_SCHEDULED"}, statuses: []string{"preparing"}}
+	buf.Reset()
+	l = newExtractTestLoop(preparing.extractTestStore, nil)
+	l.log = slog.New(slog.NewTextHandler(&buf, nil))
+	l.store = preparing
+	l.UseMemoryCore(memorycore.New(nil, nil))
+	if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(buf.String(), "decision_code=MEMORYCORE_PENDING") || preparing.retryCalls != 1 || len(preparing.calls) != 1 {
+		t.Fatalf("preparing lost: retries=%d calls=%v log=%q", preparing.retryCalls, preparing.calls, buf.String())
+	}
+}
