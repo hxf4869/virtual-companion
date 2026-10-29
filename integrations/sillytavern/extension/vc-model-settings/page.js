@@ -155,9 +155,33 @@ export function mountModelSettings() {
         render();
     }
 
+    function clearProviderDraft() {
+        state.creatingNew = false;
+        state.draft = null;
+        state.originalDraft = null;
+        state.selectedProfileKey = null;
+        state.keyEditing = false;
+        state.keyClearing = false;
+        state.conflict = null;
+        state.stash = null;
+        state.stashBanner = false;
+        state.impact = null;
+        state.cloneFor = null;
+        state.deleteFor = null;
+        state.saveError = null;
+        state.discoverError = null;
+        state.check = { busy: false, error: null, result: null };
+    }
+
     function selectProvider(providerId, { silent = false } = {}) {
         state.selectedProviderId = providerId;
         const found = state.providers.find((p) => p.providerId === providerId) ?? null;
+        // 目录为空时不是「正在新建」。空状态由列表自己呈现，点「新建」才进入草稿。
+        if (!found && (providerId == null || providerId === '')) {
+            clearProviderDraft();
+            if (!silent) render();
+            return;
+        }
         state.creatingNew = !found;
         state.draft = found ? logic.providerDraftFromApi(found) : logic.newProviderDraft();
         state.originalDraft = deepClone(state.draft);
@@ -246,7 +270,7 @@ export function mountModelSettings() {
     // ---------- 保存 ----------
 
     async function doSaveProvider() {
-        if (state.saving) return;
+        if (state.saving || !state.draft) return;
         normalizeDraftKeys();
         const errors = collectErrors();
         if (hasErrors(errors)) {

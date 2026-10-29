@@ -1,4 +1,5 @@
 export const BACKUP_COPY = '备份状态独立，策略在 W16';
+export const RESTORE_LIMIT_COPY = '删除前的离线快照不能恢复为可用环境；恢复须先应用最新删除状态，具体策略在 W16。';
 export const EXPORT_PARTIAL_COPY = '部分完成';
 export const PASSWORD_CHANGED_COPY = '密码已修改，请重新登录。';
 export const AUTH_RESET_COPY = '验证器已重置。下次登录需要重新绑定。';
