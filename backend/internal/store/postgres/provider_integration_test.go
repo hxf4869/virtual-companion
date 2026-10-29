@@ -49,6 +49,18 @@ func catalogModel(profileKey, modelID string, window *int) ProviderModel {
 	}
 }
 
+// seedPricedModel matches the suite's hand-written ledger row: 0.001/0.002 USD
+// per 1K token is 1/2 USD per million tokens.
+func seedPricedModel(profileKey, modelID string, window *int) ProviderModel {
+	model := catalogModel(profileKey, modelID, window)
+	model.Pricing = &ModelPricing{
+		Currency:               strPtr("USD"),
+		InputPerMillionTokens:  f64Ptr(1),
+		OutputPerMillionTokens: f64Ptr(2),
+	}
+	return model
+}
+
 func intPtr(n int) *int       { return &n }
 func int64Ptr(n int64) *int64 { return &n }
 func strPtr(s string) *string { return &s }

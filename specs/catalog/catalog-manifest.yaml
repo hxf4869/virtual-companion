@@ -33,6 +33,9 @@ catalogs:
 - file: model-purpose-binding-statuses.yaml
   kind: enum
   typeName: ModelPurposeBindingStatus
+- file: model-ledger-price-statuses.yaml
+  kind: enum
+  typeName: ModelLedgerPriceStatus
 - file: model-capability-statuses.yaml
   kind: enum
   typeName: ModelCapabilityStatus
