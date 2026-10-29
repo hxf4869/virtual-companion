@@ -302,8 +302,14 @@
       Responses 工具续接为进程内存态，重启不可续；远端部署（V2-OWNER-DEPLOY）；generation/realtime 旧链是否退役另案。
       执行：Claude 调度与审查；Grok Build 与 Cursor grok-4.7 实现。
 
-- [ ] `V2-F01` 计费单价与预算可选、用量统计（Owner 2026-10-29 决定，见 V2-OWNER-MODELS）。未配单价放行并记 token（费用未知不记 0），
+- [x] `V2-F01` 计费单价与预算可选、用量统计（Owner 2026-10-29 决定，见 V2-OWNER-MODELS）。未配单价放行并记 token（费用未知不记 0），
       未设预算不设上限，有价有预算时维持原预留与拒绝；记录输入/输出/缓存命中 token；模型页用量区按月、按用途展示。
+      结果：DONE（2026-10-29）；提交 `5b55fec2`（合并 `04c73bc9`）。月度上限只来自 `VC_MONTHLY_COST_LIMIT`（micro-USD），未设或 0 即不设上限。
+      V240：预留单价列可空、未定价行 reserved 0、新增 `cached_input_tokens`；三协议与 Go provider 读取缓存 token（Chat `prompt_tokens_details.cached_tokens`、
+      Responses `input_tokens_details.cached_tokens`、Anthropic `cache_read_input_tokens + cache_creation_input_tokens`）。管理用量汇总支持 `month=YYYY-MM`，
+      返回未定价调用、缓存 token 与命中率；模型页用量区经 ADMIN 桥只读访问。改变语义的 14 条旧断言（缺价/缺预算拒绝）已按新决定改写，其余断言不变。
+      验证：Go 单测与 postgres/jobs/httpapi/migrate 集成 PASS；RLS 全量 PASS（含 270）；ST 离线测试 569/569；受管 ui03-browser、w11-tool-meter、
+      story-outbound、w15-ui PASS（固定 provider，未调用真实模型）；`bash scripts/check.sh` PASS。
 
 ### V2 Owner 项与运行配置（缺失只阻塞相关真实调用或验收）
 
