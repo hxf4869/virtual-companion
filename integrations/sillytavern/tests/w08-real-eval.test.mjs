@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { SCENES, resolveSceneFilter } from '../scripts/managed-lib.mjs';
 import { REPO_ROOT } from '../scripts/lib/paths.mjs';
 import {
-    RESULT_RELATIVE, SOURCE_SAMPLES, OPTIONAL_SAMPLES,
+    RESULT_RELATIVE, SOURCE_SAMPLES, OPTIONAL_SAMPLES, QUERIES,
     callCap, canAddSample, cleanupSettled, classifyMiss, judgeAcross, latencyStats, queryPhaseStop, zipCost, summarizeCost,
     decodeRefusalHint, publicQuery, recallHit, runCap, sealReport,
 } from '../scripts/w08-real-eval.mjs';
@@ -143,7 +143,29 @@ test('memory-real-eval 只在显式过滤时运行，产物在忽略目录', () 
     assert.equal(ignore.includes('integrations/sillytavern/.local/'), true);
     assert.equal(RESULT_RELATIVE.startsWith('integrations/sillytavern/.local/'), true);
     const fixture = fs.readFileSync(new URL('../../../docs/source/v2-r3/fixtures/memory_cases.json', import.meta.url), 'utf8');
-    for (const sample of [...SOURCE_SAMPLES, ...OPTIONAL_SAMPLES]) assert.equal(fixture.includes(sample.text), true, sample.id);
+    for (const sample of [...SOURCE_SAMPLES, ...OPTIONAL_SAMPLES]) {
+        if (sample.id === 'M11') {
+            assert.equal(sample.text, '下周五去杭州看望外婆。');
+            assert.equal(sample.at, '2026-10-20T20:00:00+08:00');
+            assert.equal(sample.zone, 'Asia/Shanghai');
+            assert.equal(fixture.includes(sample.text), false, sample.id);
+            continue;
+        }
+        assert.equal(fixture.includes(sample.text), true, sample.id);
+    }
+    const direct = QUERIES.find((query) => query.id === 'M11-direct');
+    const rewrite = QUERIES.find((query) => query.id === 'M11-rewrite');
+    const otherWeek = QUERIES.find((query) => query.id === 'M11-other-week');
+    assert.equal(direct.text, '10月30日我要去哪里？');
+    assert.deepEqual(direct.tokens, ['杭州']);
+    assert.equal(rewrite.text, '去杭州看望外婆是哪一天的安排？');
+    assert.deepEqual(rewrite.tokens, ['外婆']);
+    for (const token of ['杭州', '外婆', '厦门', '婚礼']) assert.equal(otherWeek.absentTokens.includes(token), true, token);
+    const script = fs.readFileSync(new URL('../scripts/w08-real-eval.mjs', import.meta.url), 'utf8');
+    assert.equal(script.includes("required: ['杭州', '外婆', '2026-10-30']"), true);
+    assert.equal(script.includes('测试环境价格，不是 Owner 价格，也不代表供应商账单'), true);
+    assert.equal(script.includes("provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k, active, effective_from"), true);
+    assert.equal(script.includes("'vc08-real'"), true);
     const noiseInFixture = [...fixture.matchAll(/"id": "noise-\d+"/g)].length;
     assert.ok(noiseInFixture > OPTIONAL_SAMPLES.filter((sample) => sample.id.startsWith('noise-')).length);
     assert.equal(fs.existsSync(new URL(`file://${REPO_ROOT}/AGENTS.md`)), true); // 指向仓库根（worktree 目录名可不同）

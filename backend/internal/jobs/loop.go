@@ -524,16 +524,44 @@ func (l *Loop) dispatchGeneration(ctx context.Context, c postgres.JobClaim) {
 	l.dispatch(ctx, c)
 }
 
+type extractSlotReleaseKey struct{}
+
+func withExtractSlotRelease(ctx context.Context, release func()) context.Context {
+	if release == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, extractSlotReleaseKey{}, release)
+}
+
+func releaseExtractSlot(ctx context.Context) {
+	release, _ := ctx.Value(extractSlotReleaseKey{}).(func())
+	if release != nil {
+		release()
+	}
+}
+
 func (l *Loop) dispatchExtract(ctx context.Context, c postgres.JobClaim) {
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			<-l.extractSlots
+			select {
+			case l.wake <- struct{}{}:
+			default:
+			}
+		})
+	}
 	defer func() {
-		<-l.extractSlots
+		release()
 		l.handlers.Done()
 		select {
 		case l.wake <- struct{}{}:
 		default:
 		}
 	}()
-	l.dispatch(ctx, c)
+	// Profile rebuild keeps this handler, but the extract slot is free so the
+	// next claim can run L1 while L2/L3 is still in flight.
+	l.dispatch(withExtractSlotRelease(ctx, release), c)
 }
 
 func (l *Loop) RecoverOnce(ctx context.Context) error {

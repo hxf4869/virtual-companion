@@ -142,14 +142,21 @@ func (a *Adapter) Stream(ctx context.Context, request companion.ModelRequest, em
 
 	start := time.Now()
 	totalDeadline := start.Add(timeouts.Total)
-	connectDeadline := start.Add(timeouts.Connect)
-	connectWait := timeouts.Connect
-	connectPhase := companion.TimeoutConnect
-	if !connectDeadline.Before(totalDeadline) {
-		connectWait = time.Until(totalDeadline)
-		connectPhase = companion.TimeoutTotal
+	// Streaming can see the response head as soon as the connection is up.
+	// A non-streaming head is the finished completion, so it waits on the
+	// first-token budget. Connect stays the TCP dial limit either way.
+	headerWait := timeouts.Connect
+	headerPhase := companion.TimeoutConnect
+	if !request.Stream {
+		headerWait = timeouts.FirstToken
+		headerPhase = companion.TimeoutFirstToken
 	}
-	if connectWait <= 0 {
+	headerDeadline := start.Add(headerWait)
+	if !headerDeadline.Before(totalDeadline) {
+		headerWait = time.Until(totalDeadline)
+		headerPhase = companion.TimeoutTotal
+	}
+	if headerWait <= 0 {
 		return companion.AttemptResult{}, companion.Timeout(companion.TimeoutTotal, companion.DeliveryNotSent)
 	}
 
@@ -163,13 +170,13 @@ func (a *Adapter) Stream(ctx context.Context, request companion.ModelRequest, em
 		ch <- doResult{resp, doErr}
 	}()
 
-	timer := time.NewTimer(connectWait)
+	timer := time.NewTimer(headerWait)
 	var res doResult
 	select {
 	case res = <-ch:
 		timer.Stop()
 	case <-timer.C:
-		cancel(timeoutErr{phase: connectPhase, delivery: deliveryNow()})
+		cancel(timeoutErr{phase: headerPhase, delivery: deliveryNow()})
 		res = <-ch
 		if res.resp != nil {
 			closeBody(res.resp.Body)

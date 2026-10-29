@@ -101,12 +101,16 @@ func (profilePurposeStore) RecordMemoryExtractOutcome(context.Context, int64, in
 type profileCodeStore struct {
 	*recoveryEngineStore
 	profileErr error
+	onBuild    func()
 }
 
 func (s *profileCodeStore) PrepareEngineOperation(context.Context, postgres.JobClaim) (postgres.EngineOperation, error) {
 	return postgres.EngineOperation{ID: "job-8", ProfileOperationID: "profile-1", State: "PUBLISHED", Proposal: json.RawMessage(`{"records":[{"id":"r1"}],"targets":[]}`)}, nil
 }
 func (s *profileCodeStore) BuildEngineProfile(context.Context, postgres.JobClaim, postgres.EngineOperation, string) error {
+	if s.onBuild != nil {
+		s.onBuild()
+	}
 	return s.profileErr
 }
 func profileFailureLog(t *testing.T, err error) string {
@@ -156,6 +160,22 @@ func TestProfileFailureUsesClosedDecisionCode(t *testing.T) {
 		t.Fatalf("open log %q", openLog)
 	}
 }
+func TestProfileRebuildReleasesExtractSlot(t *testing.T) {
+	released := false
+	sawRelease := false
+	s := &profileCodeStore{recoveryEngineStore: &recoveryEngineStore{extractTestStore: &extractTestStore{}}, onBuild: func() { sawRelease = released }}
+	l := newExtractTestLoop(s.extractTestStore, nil)
+	l.store = s
+	l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+	ctx := withExtractSlotRelease(context.Background(), func() { released = true })
+	if e := l.handleEngineExtract(ctx, extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	if !sawRelease {
+		t.Fatal("profile rebuild held the extract slot")
+	}
+}
+
 func TestEnginePreparingDoesNotResubmit(t *testing.T) {
 	s := &recoveryEngineStore{extractTestStore: &extractTestStore{}, statuses: []string{"preparing"}}
 	l := newExtractTestLoop(s.extractTestStore, nil)

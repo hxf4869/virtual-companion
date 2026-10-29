@@ -561,4 +561,33 @@ test('publishing a new profile retires the previous profile-published directory'
     assert.equal(afterForget.includes('profile-published'), false);
     assert.equal(afterForget.includes('persona-old-beijing'), false);
     assert.equal(afterForget.includes('persona-new-shanghai'), false);
+    await assert.rejects(fs.access(path.join(root, 'owners/1/retired-profiles/profile-old/persona.md')));
+    await assert.rejects(fs.access(path.join(root, 'owners/1/retired-profiles/profile-new/persona.md')));
+});
+
+test('forget keeps the replacement profile operation and erases retired copies', async t => {
+    const { engine, native, root } = await fixture(t);
+    native.prepare = async ({ scope: mapped }) => ({ records: ['record1', 'record2'].map(id => ({ id, content: id, ...mapped })), targets: [] });
+    native.rebuildProfile = async ({ stagingDir }) => {
+        const marker = stagingDir.endsWith('forget-3-profile') ? 'persona-keeps-record2' : 'persona-old-badge';
+        await fs.writeFile(path.join(stagingDir, 'persona.md'), marker);
+    };
+    await engine.invoke('propose', proposalInput());
+    await engine.invoke('commit', { scope, revision: 0, operationId: 'op1' });
+    const retired = { scope, revision: 0, operationId: 'profile-old', allowedRecordIds: ['record1', 'record2'] };
+    await engine.invoke('rebuild-profile', retired);
+    await engine.invoke('rebuild-profile', { ...retired, publish: true, verifiedDependencies: ['message1'] });
+    const replacement = { scope, revision: 0, operationId: 'forget-3-profile', allowedRecordIds: ['record1', 'record2'] };
+    await engine.invoke('rebuild-profile', replacement);
+    assert.equal((await engine.invoke('forget', { scope, revision: 0, recordIds: ['record1'] })).status, 'cleared');
+    await assert.rejects(fs.readFile(path.join(root, 'owners/1/operations/forget-3-profile.json'), 'utf8').then(text => {
+        if (JSON.parse(text).status === 'revoked') throw new Error('revoked');
+    }));
+    await assert.rejects(fs.access(path.join(root, 'owners/1/retired-profiles/profile-old/persona.md')));
+    const again = { scope, revision: 1, operationId: 'forget-3-profile', allowedRecordIds: ['record2'] };
+    await engine.invoke('rebuild-profile', again);
+    await engine.invoke('rebuild-profile', { ...again, publish: true, verifiedDependencies: ['message1'] });
+    const published = JSON.parse(await fs.readFile(path.join(root, 'owners/1/operations/forget-3-profile.json'), 'utf8'));
+    assert.equal(published.status, 'profile-published');
+    assert.equal(await fs.readFile(path.join(root, 'owners/1/profiles/forget-3-profile/persona.md'), 'utf8'), 'persona-keeps-record2');
 });

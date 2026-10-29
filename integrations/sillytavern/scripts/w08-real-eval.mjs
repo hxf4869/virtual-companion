@@ -32,7 +32,7 @@ export const SOURCE_SAMPLES = [
     { id: 'M02-new', caseId: 'M02', group: 'daily', text: '我已经搬到上海了，以后说我现在的城市请用上海。', at: '2026-10-21T10:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M05', caseId: 'M05', group: 'daily', text: '我收藏过一枚蓝色帆船徽章。', at: '2026-10-18T10:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M01', caseId: 'M01', group: 'daily', text: '用户计划于2026年10月30日去厦门参加朋友婚礼。', at: '2026-10-20T20:00:00+08:00', zone: 'Asia/Shanghai' },
-    { id: 'M11', caseId: 'M11', group: 'daily', text: '下周五去厦门参加朋友婚礼。', at: '2026-10-20T20:00:00+08:00', zone: 'Asia/Shanghai' },
+    { id: 'M11', caseId: 'M11', group: 'daily', text: '下周五去杭州看望外婆。', at: '2026-10-20T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M12', caseId: 'M12', group: 'daily', text: '明天晚上提醒我带书。', at: '2026-10-20T16:30:00Z', zone: '' },
     { id: 'M09', caseId: 'M09', group: 'daily', text: '我们正在讨论一份蓝窗书店的读书计划，下一步还没决定读哪一本。', at: '2026-10-19T15:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M06', caseId: 'M06', group: 'story', mode: 'STORY', text: '在这局故事中，我扮演一名钟表修复师。', at: '2026-10-19T12:00:00+08:00', zone: 'Asia/Shanghai' },
@@ -49,11 +49,11 @@ export const QUERIES = [
     { id: 'M01-rewrite', caseId: 'M01', kind: 'positive', group: 'daily', needs: ['M01'], text: '十月三十号我打算去哪、参加什么？', tokens: ['厦门', '婚礼'], queryDate: null, at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M02-direct', caseId: 'M02', kind: 'positive', group: 'daily', needs: ['M02-new'], text: '我现在住哪儿？', tokens: ['上海'], forbid: ['北京'], queryDate: null, at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M02-rewrite', caseId: 'M02', kind: 'positive', group: 'daily', needs: ['M02-new'], text: '目前我定居的城市是哪一座？', tokens: ['上海'], forbid: ['北京'], queryDate: null, at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
-    { id: 'M11-direct', caseId: 'M11', kind: 'positive', group: 'daily', needs: ['M11'], text: '10月30日我要去哪里？', tokens: ['厦门'], queryDate: '2026-10-30', at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
-    { id: 'M11-rewrite', caseId: 'M11', kind: 'positive', group: 'daily', needs: ['M11'], text: '那个厦门的婚礼是哪一天的安排？', tokens: ['婚礼'], queryDate: null, at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
+    { id: 'M11-direct', caseId: 'M11', kind: 'positive', group: 'daily', needs: ['M11'], text: '10月30日我要去哪里？', tokens: ['杭州'], queryDate: '2026-10-30', at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
+    { id: 'M11-rewrite', caseId: 'M11', kind: 'positive', group: 'daily', needs: ['M11'], text: '去杭州看望外婆是哪一天的安排？', tokens: ['外婆'], queryDate: null, at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M09-direct', caseId: 'M09', kind: 'positive', group: 'daily', needs: ['M09'], text: '我们上次谈到哪一步了？', tokens: ['读书', '蓝窗'], queryDate: null, at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M09-rewrite', caseId: 'M09', kind: 'positive', group: 'daily', needs: ['M09'], text: '上次的阅读计划进展如何？', tokens: ['读书', '蓝窗'], queryDate: null, at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
-    { id: 'M11-other-week', caseId: 'M11', kind: 'negative', group: 'daily', needs: ['M11'], text: '我下周五有什么安排？', absentTokens: ['厦门', '婚礼'], excludeSamples: ['M01', 'M11'], queryDate: '2026-11-06', at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
+    { id: 'M11-other-week', caseId: 'M11', kind: 'negative', group: 'daily', needs: ['M11'], text: '我下周五有什么安排？', absentTokens: ['杭州', '外婆', '厦门', '婚礼'], excludeSamples: ['M01', 'M11'], queryDate: '2026-11-06', at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M04-other', caseId: 'M04', kind: 'negative', group: 'other', needs: ['M04'], text: '我们之前一起做的旅行计划叫什么？', absentTokens: ['海鸥'], at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M06-daily', caseId: 'M06', kind: 'negative', group: 'daily', needs: ['M06'], text: '我的现实职业是什么？', absentTokens: ['钟表'], at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
     { id: 'M05-after', caseId: 'M05', kind: 'negative', group: 'daily', needs: ['M05'], text: '我收藏过什么徽章？', absentTokens: ['帆船', '徽章'], at: '2026-10-27T20:00:00+08:00', zone: 'Asia/Shanghai' },
@@ -354,6 +354,12 @@ export async function sceneMemoryRealEval(ctx) {
         const embedding = (await (await fetch('http://127.0.0.1:11438/api/tags')).json()).models.find((model) => model.name === 'qwen3-embedding:0.6b');
         assert.ok(embedding, '本机 embedding 不可用');
         ctx.w08.seedRealEstimate();
+        if (typeof ctx.w10?.psql !== 'function') throw new Error('受管数据库入口不可用');
+        // 测试环境价格，不是 Owner 价格，也不代表供应商账单。
+        ctx.w10.psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k, active, effective_from)
+            VALUES ('vc08-real', '${MODEL_ID}', 1, 0.01, 0.02, true, now())
+            ON CONFLICT (provider_id, model_id, price_version) DO UPDATE
+            SET input_usd_per_1k = EXCLUDED.input_usd_per_1k, output_usd_per_1k = EXCLUDED.output_usd_per_1k, active = true, effective_from = now();`);
         for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
             expectStatus(await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'w08-real-eval', granted: true }), 200, 'consent');
         }
@@ -651,7 +657,7 @@ function judgeSamples(written, layers) {
     const specs = [
         { sampleId: 'M02-new', caseId: 'M02', required: ['上海'], forbidden: ['北京'], mode: 'all', expect: 'hold' },
         { sampleId: 'M01', caseId: 'M01', required: ['厦门', '婚礼'], forbidden: [], mode: 'all', l3: 'may-omit' },
-        { sampleId: 'M11', caseId: 'M11', required: ['厦门', '2026-10-30'], forbidden: [], mode: 'all', l3: 'may-omit' },
+        { sampleId: 'M11', caseId: 'M11', required: ['杭州', '外婆', '2026-10-30'], forbidden: [], mode: 'all', l3: 'may-omit' },
         { sampleId: 'M12', caseId: 'M12', required: [], forbidden: ['2026-10-21', '2026-10-22'], mode: 'all', expect: 'hold' },
         { sampleId: 'M05', caseId: 'M05', required: ['帆船', '徽章'], forbidden: [], mode: 'any', l3: 'may-omit' },
         { sampleId: 'M09', caseId: 'M09', required: ['蓝窗', '读书'], forbidden: [], mode: 'any', l3: 'may-omit' },

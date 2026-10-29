@@ -2,6 +2,9 @@ package postgres
 
 import (
 	"context"
+	"strconv"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -29,8 +32,13 @@ func (s *Store) PrepareMemoryCoreCall(ctx context.Context, in MemoryCoreCall) (M
 		if out.Decision == "REPLAY" {
 			return ErrConflict
 		}
-		if out.AttemptID > 0 && out.Decision == "EXTRACTABLE" {
-			return s.reserveModelCostPurpose(ctx, tx, in.Owner, in.Job, memoryExtractCostKey(out.AttemptID), in.ProviderID, in.ModelID, PurposeMemoryExtraction, in.InputTokens, in.OutputTokens, s.maxReservedCost)
+		if out.AttemptID > 0 && (out.Decision == "EXTRACTABLE" || out.Decision == "RETRY_TIMEOUT") {
+			key := memoryExtractCostKey(out.AttemptID)
+			if out.Decision == "RETRY_TIMEOUT" {
+				// The timed-out hold is already UNKNOWN and cannot be reused.
+				key += ":retry:" + strconv.FormatInt(time.Now().UnixNano(), 10)
+			}
+			return s.reserveModelCostPurpose(ctx, tx, in.Owner, in.Job, key, in.ProviderID, in.ModelID, PurposeMemoryExtraction, in.InputTokens, in.OutputTokens, s.maxReservedCost)
 		}
 		return nil
 	})

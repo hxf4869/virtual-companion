@@ -32,6 +32,7 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 		return l.failExtract(ctx, c, "MEMORYCORE_SOURCE")
 	}
 	if op.State == "PUBLISHED" {
+		releaseExtractSlot(ctx)
 		return l.buildEngineProfile(ctx, c, op)
 	}
 	request := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision}
@@ -95,6 +96,7 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 		return l.failExtract(ctx, c, "MEMORYCORE_PUBLICATION")
 	}
 	op.Proposal = proposal
+	releaseExtractSlot(ctx)
 	return l.buildEngineProfile(ctx, c, op)
 }
 

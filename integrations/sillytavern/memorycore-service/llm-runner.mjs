@@ -114,6 +114,24 @@ async function callbackFailureCode(response) {
 // inside the six-minute extract lease. The previous three-minute cap cancelled
 // the call before the provider budget did.
 export const CALL_DEADLINE_CAP_MS = 330000;
+
+const resumes = new Map();
+
+export function rememberCallbackResume(token, calls, onSettle) {
+    if (typeof token !== 'string' || token.length === 0) return;
+    const stored = Array.isArray(calls) ? calls.filter(item => item && typeof item === 'object').map(item => ({ ...item })) : [];
+    resumes.set(token, { calls: stored, onSettle: typeof onSettle === 'function' ? onSettle : null });
+}
+
+export function callbackResumeCalls(token) {
+    const found = resumes.get(token);
+    return found ? found.calls.map(item => ({ ...item })) : [];
+}
+
+export function forgetCallbackResume(token) {
+    resumes.delete(token);
+}
+
 export function createCallbackRunner({ baseURL, token, operationToken, stage, stagingDir, fetchImpl = fetch, counter = { value: 0 }, maxSteps = 12 }) {
     const url = new URL(baseURL);
     if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password ||
@@ -124,27 +142,56 @@ export function createCallbackRunner({ baseURL, token, operationToken, stage, st
         const messages = [{ role: 'system', content: (params.systemPrompt || '') + (tools ? '\n' + TOOL_INSTRUCTION : '') },
             { role: 'user', content: params.prompt }];
         const deadline = Date.now() + Math.min(params.timeoutMs || CALL_DEADLINE_CAP_MS, CALL_DEADLINE_CAP_MS);
+        const journal = !tools ? resumes.get(operationToken) : null;
+        const prior = journal ? journal.calls.findLast(item => !item.stage || item.stage === stage) : null;
+        if (prior?.status === 'ok' && typeof prior.text === 'string') {
+            if (Number.isInteger(prior.sequence)) counter.value = Math.max(counter.value, prior.sequence);
+            return prior.text;
+        }
         for (let step = 0; step < (tools ? maxSteps : 1); step++) {
             const remaining = deadline - Date.now();
             if (remaining <= 0) throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
+            let sequence;
+            if (!tools && prior?.status === 'timeout' && Number.isInteger(prior.sequence) && prior.sequence >= 1) {
+                sequence = prior.sequence;
+                counter.value = Math.max(counter.value, sequence);
+            } else sequence = ++counter.value;
+            const note = async (status, text) => {
+                if (!journal) return;
+                const entry = { sequence, stage, status, ...(typeof text === 'string' ? { text } : {}) };
+                const at = journal.calls.findIndex(item => item.stage === stage && item.sequence === sequence && item.status === 'timeout');
+                if (at >= 0) journal.calls[at] = entry;
+                else journal.calls.push(entry);
+                if (journal.onSettle) await journal.onSettle(journal.calls);
+            };
             let response;
             try {
                 response = await fetchImpl(url.origin + '/api/v1/service/memorycore/llm', {
                     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-                    body: JSON.stringify({ operationToken, stage, callSequence: ++counter.value, messages }), signal: AbortSignal.timeout(remaining),
+                    body: JSON.stringify({ operationToken, stage, callSequence: sequence, messages }), signal: AbortSignal.timeout(remaining),
                 });
             } catch (error) {
                 const name = error && error.name;
-                if (name === 'AbortError' || name === 'TimeoutError') throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
+                if (name === 'AbortError' || name === 'TimeoutError') {
+                    await note('timeout');
+                    throw new Error('MEMORYCORE_CALLBACK_TIMEOUT');
+                }
                 throw new Error('MEMORYCORE_CALLBACK_FAILED');
             }
-            if (!response.ok) throw new Error(await callbackFailureCode(response));
+            if (!response.ok) {
+                const code = await callbackFailureCode(response);
+                if (!tools && code === 'MEMORYCORE_UPSTREAM_TIMEOUT') await note('timeout');
+                throw new Error(code);
+            }
             let result;
             try {
                 result = await response.json();
             } catch { throw new Error('MEMORYCORE_CALLBACK_FAILED'); }
             if (typeof result.text !== 'string' || result.text.length > 200000) throw new Error('MEMORYCORE_CALLBACK_FAILED');
-            if (!tools) return result.text;
+            if (!tools) {
+                await note('ok', result.text);
+                return result.text;
+            }
             const action = parseModelAction(result.text);
             if (!action.tool && typeof action.text === 'string') return action.text;
             const output = await fileTool(stagingDir, stage, action.tool);

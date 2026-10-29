@@ -57,6 +57,15 @@ export async function sceneMemoryBrowser(ctx) {
     expect(await ctx.admin.savePurpose('FOREGROUND_CHAT', { providerId: 'vc03m-chat', profileKey: 'chat',
         state: 'ENABLED', expectedRevision: current.revision }), 200, '绑定本地合成前台模型');
     ctx.w08.seedSyntheticPrice();
+    // 测试环境价格，不是 Owner 价格，也不代表供应商账单。W11 后前台生成也要预留。
+    if (typeof ctx.w10?.psql !== 'function') throw new Error('受管数据库入口不可用');
+    ctx.w10.psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
+        VALUES ('vc03m-chat', 'vc03m-chat', 1, 0.001, 0.002)
+        ON CONFLICT (provider_id, model_id, price_version) DO UPDATE
+        SET input_usd_per_1k = EXCLUDED.input_usd_per_1k,
+            output_usd_per_1k = EXCLUDED.output_usd_per_1k,
+            active = true,
+            effective_from = now();`);
     for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
         expect(await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'w08-synthetic', granted: true }), 200, '合成账号模型处理授权');
     }
@@ -67,7 +76,7 @@ export async function sceneMemoryBrowser(ctx) {
         dimensions: 1024, queryPreprocessingVersion: 'qwen3-retrieval-v1', documentPreprocessingVersion: 'identity-v1', normalization: 'l2',
         state: 'ENABLED', expectedRevision: existingEmbedding.status === 200 ? existingEmbedding.json.revision : 0 }), 200, '配置本机 embedding');
     expect(await ctx.admin.saveProvider('vc08-memory', { displayName: 'W08 合成提取', protocol: 'OPENAI_CHAT_COMPLETIONS',
-        baseUrl: 'http://127.0.0.1:8753/v1', credential: ctx.secrets.fixtureKey, state: 'ENABLED', expectedRevision: 0,
+        baseUrl: `http://127.0.0.1:${process.env.VC_W03_FIXTURE_PORT || 8753}/v1`, credential: ctx.secrets.fixtureKey, state: 'ENABLED', expectedRevision: 0,
         models: [{ profileKey: 'memory', modelId: 'vc08-memory', displayName: 'MemoryCore 合成提取', contextWindowTokens: 32768,
             maxOutputTokens: 4096, state: 'ENABLED', capabilities: { systemMessage: 'DECLARED' }, reasoningLevels: [], generationParams: {} }] }), 200, '登记独立提取用途模型');
     await ctx.fixtureHttp.setOverride('vc08-memory', { memorycoreDocuments: [{ content: wedding, eventDate: '2026-10-30' },

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { ownerDirectory, privateDirectory } from './storage.mjs';
 import { OWNER_DATABASE_FILES } from './native-engine.mjs';
+import { forgetCallbackResume, rememberCallbackResume } from './llm-runner.mjs';
 
 const fail = code => { throw new Error(`MEMORYCORE_${code}`); };
 const safeId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,120}$/.test(value);
@@ -104,10 +105,18 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         checkRevision(ctx.native, scope, revision);
         if ((await readJSON(file))?.status !== status) fail('REVISION_CONFLICT');
     }
+    const replacementProfile = id => /^forget-[1-9][0-9]*-profile$/.test(id);
     async function scrubOperation(ctx, id, op, removed, revokeAll = false) {
         const file = path.join(ctx.dir, 'operations', id + '.json'), shard = path.join(ctx.dir, 'records', id + '.jsonl');
+        if (!revokeAll && replacementProfile(id) && op.status === 'profile-published') return;
         await fs.rm(path.join(ctx.dir, 'profiles', id), { recursive: true, force: true });
         await fs.rm(path.join(ctx.dir, 'staging', id), { recursive: true, force: true });
+        await fs.rm(path.join(ctx.dir, 'retired-profiles', id), { recursive: true, force: true });
+        if (replacementProfile(id)) {
+            await fs.rm(shard, { force: true });
+            await fs.rm(file, { force: true });
+            return;
+        }
         const retained = (op.proposal?.records || []).filter(r => !removed.has(r.id));
         if (!revokeAll && retained.length && op.status === 'published') {
             const temp = shard + '.tmp';
@@ -167,6 +176,12 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             for (const { id } of cleanup.operations) {
                 const op = await readJSON(path.join(ctx.dir, 'operations', id + '.json'));
                 if (op) await scrubOperation(ctx, id, op, new Set(cleanup.removed), request.action === 'clear-owner');
+            }
+            if (request.action === 'forget') {
+                for (const { id, op } of await operationEntries(ctx)) {
+                    if (!sameScope(op.scope, request.scope) || (op.status !== 'revoked' && op.status !== 'profile-retired')) continue;
+                    await fs.rm(path.join(ctx.dir, 'retired-profiles', id), { recursive: true, force: true });
+                }
             }
             // An outstanding model tool can still recreate its staging directory.
             // Keep the cleanup intent until that bounded task has ended.
@@ -318,8 +333,15 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                     if (stored.status === 'preparing' && pending.has(file)) return { work: pending.get(file) };
                     if (stored.status !== 'failed' && !(stored.status === 'preparing' && !pending.has(file))) fail('OPERATION_NOT_PROPOSABLE');
                 }
-                await writeJSON(file, { scope: input.scope, request, status: 'preparing' });
+                const priorCalls = Array.isArray(stored?.calls) ? stored.calls : [];
+                await writeJSON(file, { scope: input.scope, request, status: 'preparing', ...(priorCalls.length ? { calls: priorCalls } : {}) });
                 const work = (async () => {
+                    if (input.operationToken) rememberCallbackResume(input.operationToken, priorCalls, async (calls) => {
+                        await serial(input.scope.ownerId, async () => {
+                            const current = await readJSON(file);
+                            if (current?.status === 'preparing') await writeJSON(file, { ...current, calls });
+                        });
+                    });
                     try {
                         const embedding = await embeddingFactory(input.embedding);
                         const proposal = await native.prepare({ messages: input.messages, scope: mapped, allowedRecordIds: ids,
@@ -347,10 +369,13 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                         await serial(input.scope.ownerId, async () => {
                             const current = await readJSON(file);
                             if (current?.status === 'preparing' && native.getScope(key).revision === input.revision)
-                                await writeJSON(file, { scope: input.scope, request, status: 'failed' });
+                                await writeJSON(file, { ...current, scope: input.scope, request, status: 'failed' });
                         });
                         throw e;
-                    } finally { pending.delete(file); }
+                    } finally {
+                        pending.delete(file);
+                        if (input.operationToken) forgetCallbackResume(input.operationToken);
+                    }
                 })();
                 pending.set(file, work); return { work };
             });
@@ -387,7 +412,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             if (!stored) return { status: 'unknown' };
             if (['preparing', 'building-profile'].includes(stored.status) && !pending.has(file)) {
                 await fs.rm(path.join(dir, 'staging', input.operationId), { recursive: true, force: true });
-                await writeJSON(file, { scope: stored.scope, ...(stored.request ? { request: stored.request } : {}), status: 'failed' });
+                await writeJSON(file, { scope: stored.scope, ...(stored.request ? { request: stored.request } : {}), ...(stored.calls ? { calls: stored.calls } : {}), status: 'failed' });
                 return { status: 'failed' };
             }
             const nativeReceipt = native.getOperation(input.operationId);

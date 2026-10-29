@@ -123,7 +123,9 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 	if op.revoked || !op.scope.ExpiresAt.After(time.Now()) {
 		return Response{}, ErrCapability
 	}
-	if req.CallSequence != op.last+1 || req.CallSequence > 32 {
+	// A new token may resend the timed-out sequence. The same token still
+	// refuses any sequence it has already handed to the provider.
+	if req.CallSequence < 1 || req.CallSequence > 32 || (op.last > 0 && req.CallSequence != op.last+1) {
 		return Response{}, ErrReplay
 	}
 	plan := companion.ModelRequest{Stream: false, MaxTokens: min(4096, op.purpose.Model.MaxOutputTokens)}
@@ -185,7 +187,7 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 		}
 		return Response{}, err
 	}
-	if prep.Decision != "EXTRACTABLE" || prep.AttemptID <= 0 {
+	if (prep.Decision != "EXTRACTABLE" && prep.Decision != "RETRY_TIMEOUT") || prep.AttemptID <= 0 {
 		return Response{}, ErrCapability
 	}
 	op.last = req.CallSequence // Never replay a potentially sent call, even after timeout.

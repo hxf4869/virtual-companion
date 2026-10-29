@@ -18,6 +18,9 @@ type fakeStore struct {
 	outcomes           []postgres.MemoryExtractOutcome
 	resolves           int
 	next               func(postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
+	decision           string
+	fixedAttempt       int64
+	recordedAttempt    int64
 }
 
 func (s *fakeStore) ResolvePurpose(_ context.Context, in postgres.ResolvePurpose) (postgres.ResolvedPurpose, error) {
@@ -43,10 +46,14 @@ func (s *fakeStore) PrepareMemoryCoreCall(_ context.Context, in postgres.MemoryC
 		return postgres.MemoryExtractPreparation{}, postgres.ErrConflict
 	}
 	s.prepared++
+	if s.decision != "" {
+		return postgres.MemoryExtractPreparation{AttemptID: s.fixedAttempt, Decision: s.decision}, nil
+	}
 	return postgres.MemoryExtractPreparation{AttemptID: int64(s.prepared), Decision: "EXTRACTABLE"}, nil
 }
-func (s *fakeStore) RecordMemoryExtractOutcome(_ context.Context, _, _, _ int64, out postgres.MemoryExtractOutcome) (int64, error) {
+func (s *fakeStore) RecordMemoryExtractOutcome(_ context.Context, _, _, attempt int64, out postgres.MemoryExtractOutcome) (int64, error) {
 	s.recorded++
+	s.recordedAttempt = attempt
 	s.outcomes = append(s.outcomes, out)
 	return 1, nil
 }
@@ -267,6 +274,26 @@ func TestCallUsesRemainingOperationBudget(t *testing.T) {
 	}
 	if p.last.Timeouts.FirstToken < 60*time.Second || p.last.Timeouts.Total < 60*time.Second || p.last.Timeouts.Total > 90*time.Second {
 		t.Fatalf("call budget %+v is not the time remaining until the operation expires", p.last.Timeouts)
+	}
+}
+
+func TestFreshCapabilityAcceptsResumedSequence(t *testing.T) {
+	st := &fakeStore{}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	out, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-conflict-detection", CallSequence: 2, Messages: []Message{{Role: "user", Content: "synthetic"}}})
+	if err != nil || out.Text != "synthetic" || p.calls != 1 {
+		t.Fatalf("resumed sequence refused: %v calls=%d", err, p.calls)
+	}
+}
+
+func TestTimeoutRetryReusesAttemptAndSendsOriginalSequence(t *testing.T) {
+	st := &fakeStore{decision: "RETRY_TIMEOUT", fixedAttempt: 9}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-conflict-detection", CallSequence: 2, Messages: []Message{{Role: "user", Content: "synthetic"}}})
+	if err != nil || p.calls != 1 || st.recordedAttempt != 9 || st.prepared != 1 {
+		t.Fatalf("timeout retry was a new failure: err=%v calls=%d attempt=%d prepared=%d", err, p.calls, st.recordedAttempt, st.prepared)
 	}
 }
 

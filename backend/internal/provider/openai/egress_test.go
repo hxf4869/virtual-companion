@@ -43,6 +43,33 @@ func TestResponseHeaderTimeoutAfterWriteIsNotReplayable(t *testing.T) {
 	}
 }
 
+func TestNonStreamingHeaderWaitUsesFirstTokenNotConnect(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(120 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"chat.completion","choices":[{"index":0,"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer srv.Close()
+	a, err := New(Config{
+		Endpoint: strings.TrimSuffix(srv.URL, "/") + "/v1/chat/completions",
+		BearerToken: "offline-token-sentinel", Model: "offline-model-sentinel",
+		ConnectTimeout: 40 * time.Millisecond, FirstTokenTimeout: time.Second,
+		TotalTimeout: time.Second, MaxResponseBytes: 4096, AllowLoopbackHTTP: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	result, err := a.Stream(context.Background(), companion.ModelRequest{
+		Messages: []companion.Message{{Role: companion.RoleUser, Content: "hi"}},
+		Stream:   false,
+	}, nil)
+	if err != nil || result.Finish != companion.FinishStop {
+		t.Fatalf("non-streaming header wait was charged to connect: %v %+v", err, result)
+	}
+}
+
 func TestStreamFailsClosedOnBlockedDNS(t *testing.T) {
 	t.Parallel()
 	a, err := newAdapter(Config{

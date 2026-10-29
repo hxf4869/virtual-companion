@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createOllamaEmbedding } from '../memorycore-service/embedding.mjs';
-import { createCallbackRunner, CALL_DEADLINE_CAP_MS } from '../memorycore-service/llm-runner.mjs';
+import { createCallbackRunner, CALL_DEADLINE_CAP_MS, rememberCallbackResume, forgetCallbackResume } from '../memorycore-service/llm-runner.mjs';
 
 const snapshot = { provider: 'OLLAMA', endpoint: 'http://127.0.0.1:11438', model: 'qwen3-embedding:0.6b',
     artifactVersion: 'sha256:fixture', dimensions: 2, queryPreprocessingVersion: 'qwen3-retrieval-v1',
@@ -60,6 +60,32 @@ test('callback uses fixed destination and capability; tools stay in staging and 
 
 test('callback runner deadline covers reasoning max inside the extract lease', () => {
     assert.equal(CALL_DEADLINE_CAP_MS, 330000);
+});
+
+test('timeout retry sends the original sequence and a settled call is not sent again', async () => {
+    const calls = [];
+    let failOnce = true;
+    const token = 'resume-capability';
+    rememberCallbackResume(token, []);
+    const fetchImpl = async (_url, init) => {
+        const body = JSON.parse(init.body);
+        calls.push(body.callSequence);
+        if (failOnce) {
+            failOnce = false;
+            const error = new Error('timed out');
+            error.name = 'TimeoutError';
+            throw error;
+        }
+        return Response.json({ text: 'synthetic-l1' });
+    };
+    const runner = createCallbackRunner({ baseURL: 'http://127.0.0.1:8095', token: 'x'.repeat(32), operationToken: token, stage: 'l1-extraction', counter: { value: 0 }, fetchImpl });
+    await assert.rejects(runner.run({ prompt: 'x', taskId: 'l1-extraction' }), /MEMORYCORE_CALLBACK_TIMEOUT/);
+    const again = createCallbackRunner({ baseURL: 'http://127.0.0.1:8095', token: 'x'.repeat(32), operationToken: token, stage: 'l1-extraction', counter: { value: 0 }, fetchImpl });
+    assert.equal(await again.run({ prompt: 'x', taskId: 'l1-extraction' }), 'synthetic-l1');
+    const cached = createCallbackRunner({ baseURL: 'http://127.0.0.1:8095', token: 'x'.repeat(32), operationToken: token, stage: 'l1-extraction', counter: { value: 0 }, fetchImpl });
+    assert.equal(await cached.run({ prompt: 'x', taskId: 'l1-extraction' }), 'synthetic-l1');
+    assert.deepEqual(calls, [1, 1]);
+    forgetCallbackResume(token);
 });
 
 test('native recall keeps independent questions above their own relevance gate and preserves the same allowlist', async () => {

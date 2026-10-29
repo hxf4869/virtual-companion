@@ -77,15 +77,26 @@ func TestMemoryCoreCallAccountingAndReplay(t *testing.T) {
 	}); err != nil || attempts != 2 {
 		t.Fatalf("attempt count %d %v", attempts, err)
 	}
-	var ledger int
+	retried, err := s.PrepareMemoryCoreCall(ctx, in)
+	if err != nil || retried.Decision != "RETRY_TIMEOUT" || retried.AttemptID != second.AttemptID {
+		t.Fatalf("timeout retry %+v %v", retried, err)
+	}
+	if n, err := s.RecordMemoryExtractOutcome(ctx, 1, job.JobID, retried.AttemptID, MemoryExtractOutcome{Status: "SUCCEEDED", InputTokens: &input, OutputTokens: &output}); err != nil || n != 1 {
+		t.Fatalf("retry outcome %d %v", n, err)
+	}
+	if err := s.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT count(*) FROM vc.memory_extract_attempt WHERE owner_user_id=1 AND work_item_id=$1 AND memorycore_operation_id='synthetic-op'`, job.JobID).Scan(&attempts)
+	}); err != nil || attempts != 2 {
+		t.Fatalf("retry inserted a new attempt: %d %v", attempts, err)
+	}
+	var ledger, unknown, held int
 	db, err := pgx.Connect(ctx, IsolationSuperDSN())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close(ctx)
-	var unknown int
-	if err := db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE status='SETTLED'), count(*) FILTER (WHERE status='UNKNOWN' AND actual_usd IS NULL AND reserved_usd > 0) FROM vc.model_cost_reservation WHERE owner_user_id=1 AND work_item_id=$1`, job.JobID).Scan(&ledger, &unknown); err != nil || ledger != 1 || unknown != 1 {
-		t.Fatalf("ledger settled=%d unknown=%d err=%v", ledger, unknown, err)
+	if err := db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE status='SETTLED'), count(*) FILTER (WHERE status='UNKNOWN' AND actual_usd IS NULL AND reserved_usd > 0), count(*) FILTER (WHERE status='HELD') FROM vc.model_cost_reservation WHERE owner_user_id=1 AND work_item_id=$1`, job.JobID).Scan(&ledger, &unknown, &held); err != nil || ledger != 2 || unknown != 1 || held != 0 {
+		t.Fatalf("ledger settled=%d unknown=%d held=%d err=%v", ledger, unknown, held, err)
 	}
 	in.CallSequence = 3
 	in.ClaimFence = "stale"
