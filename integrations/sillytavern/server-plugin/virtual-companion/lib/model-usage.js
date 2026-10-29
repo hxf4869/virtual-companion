@@ -16,7 +16,9 @@ const REFUSAL = {
 
 let installed = false;
 let originalFetch = null;
-let hold = null;
+let epoch = 0;
+/** @type {WeakMap<object, object>} 预留绑定到发起它的 request，避免进程级单槽串单。 */
+const holdsByRequest = new WeakMap();
 
 /** 没有 usage 对象时返回 undefined。显式 0 仍是用量。 */
 export function readUsageTokens(usage) {
@@ -117,20 +119,10 @@ export function installUsageFetch() {
     if (installed) return;
     originalFetch = globalThis.fetch;
     installed = true;
-    hold = null;
-    globalThis.fetch = async function usageFetch(input, init) {
-        const url = requestUrl(input);
-        const armed = hold && sameUrl(url, hold.expectedUrl) ? hold : null;
-        if (armed) hold = null;
-        let response;
-        try {
-            response = await originalFetch(input, init);
-        } catch (error) {
-            if (armed) await cancelQuiet(armed, 'UNKNOWN');
-            throw error;
-        }
-        if (armed) scheduleSettle(armed, response);
-        return response;
+    epoch += 1;
+    // 原生 Chat/Claude 走 node-fetch，不经过这里。预留按 request 结算，包装只保持安装标记。
+    globalThis.fetch = function usageFetch(input, init) {
+        return originalFetch(input, init);
     };
 }
 
@@ -138,47 +130,47 @@ export function uninstallUsageFetch() {
     if (!installed) return;
     globalThis.fetch = originalFetch;
     originalFetch = null;
-    hold = null;
     installed = false;
+    epoch += 1;
 }
 
-/** 包装未安装时为空操作，避免单测把预留留在进程里。
- * 槽里还有未结算的旧预留时，先按 UNKNOWN 取消，再武装新的。 */
+/** 包装未安装、缺少 reservationId 或 request 时为空操作。
+ * 同一 request 上还有未结算的旧预留时，先按 UNKNOWN 取消，再武装新的。其他 request 不动。 */
 export async function armUsageHold(spec) {
-    if (!installed || !spec?.reservationId) return;
-    const previous = hold;
-    hold = spec;
-    if (previous && previous.reservationId !== spec.reservationId) {
+    if (!installed || !spec?.reservationId || !spec.request) return;
+    const previous = holdsByRequest.get(spec.request);
+    const armed = { ...spec, generation: epoch };
+    holdsByRequest.set(spec.request, armed);
+    if (previous && previous.generation === epoch && previous.reservationId !== spec.reservationId) {
         await cancelQuiet(previous, 'UNKNOWN');
     }
 }
 
 /**
- * ST 1.19 的 Chat/Claude 最终发送用的是模块内的 node-fetch，不会经过上面的 global fetch。
- * 补丁在那次响应返回后调用这里：地址与武装预留一致才结算，并立刻松开，避免下一请求串单。
+ * ST 1.19 的 Chat/Claude 最终发送用的是模块内的 node-fetch，不会经过 global fetch。
+ * 补丁在那次响应返回后调用这里，并传入当前 request：只结算这一请求的预留。
  */
-export function settleArmedResponse(response, url) {
-    if (!installed || !hold || !response) return;
-    if (url && !sameUrl(url, hold.expectedUrl)) return;
-    const armed = hold;
-    hold = null;
+export function settleArmedResponse(response, url, request) {
+    if (!response) return;
+    const armed = takeRequestHold(request, url);
+    if (!armed) return;
     scheduleSettle(armed, response);
 }
 
-/** 原生 fetch 抛错，或预留成功后在发出前就抛错时，按 UNKNOWN 取消这次武装。地址不一致则不动。 */
-export async function abandonOutbound(url) {
-    if (!installed || !hold || !url) return;
-    if (!sameUrl(url, hold.expectedUrl)) return;
-    const armed = hold;
-    hold = null;
+/** 原生 fetch 抛错，或预留成功后在发出前就抛错时，按 UNKNOWN 取消这一请求的武装。地址不一致则不动。 */
+export async function abandonOutbound(url, request) {
+    const armed = takeRequestHold(request, url);
+    if (!armed) return;
     await cancelQuiet(armed, 'UNKNOWN');
 }
 
-function requestUrl(input) {
-    if (typeof input === 'string') return input;
-    if (input instanceof URL) return input.toString();
-    if (input && typeof input.url === 'string') return input.url;
-    return '';
+function takeRequestHold(request, url) {
+    if (!installed || !request || !url) return null;
+    const armed = holdsByRequest.get(request);
+    if (!armed || armed.generation !== epoch) return null;
+    if (!sameUrl(url, armed.expectedUrl)) return null;
+    holdsByRequest.delete(request);
+    return armed;
 }
 
 function sameUrl(left, right) {
