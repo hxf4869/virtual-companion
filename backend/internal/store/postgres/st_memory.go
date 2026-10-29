@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
@@ -48,8 +49,16 @@ type stDigest struct {
 
 // RecallSTMemory is an authenticated native context consumer. The browser
 // chooses a bound chat, not an owner, relationship or raw source text.
-func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequest) (STMemoryResult, error) {
-	out := STMemoryResult{Status: "ok", Sources: []STSourceState{}, MemoryIDs: []string{}, SummaryIDs: []string{}}
+func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequest) (out STMemoryResult, err error) {
+	out = STMemoryResult{Status: "ok", Sources: []STSourceState{}, MemoryIDs: []string{}, SummaryIDs: []string{}}
+	started := time.Now()
+	var contextMs, sourceMs, engineMs int64
+	defer func() {
+		out.Observe.ContextMs = int(contextMs)
+		out.Observe.SourceMs = int(sourceMs)
+		out.Observe.EngineMs = int(engineMs)
+		out.Observe.RecallMs = int(time.Since(started).Milliseconds())
+	}()
 	if !stsource.ValidIdentity(in.ChatIdentity) || in.Revision < 0 {
 		return out, ErrInvalid
 	}
@@ -60,7 +69,8 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		return out, ErrInvalid
 	}
 	var b stMemoryBinding
-	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+	contextStarted := time.Now()
+	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT c.id,c.relationship_id,c.st_mode,COALESCE(c.st_branch_root,c.st_chat_identity),c.incognito,r.memory_share_scope
             FROM vc.conversation c JOIN vc.relationship r ON (r.owner_user_id,r.id)=(c.owner_user_id,c.relationship_id)
             WHERE c.owner_user_id=$1 AND c.st_chat_identity=$2`, owner, in.ChatIdentity).Scan(&b.id, &b.relationship, &b.mode, &b.root, &b.incognito, &b.scope)
@@ -71,11 +81,14 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 	if err != nil {
 		return out, mapStoreErr(err)
 	}
+	contextMs += time.Since(contextStarted).Milliseconds()
 	if !in.Enabled || b.incognito || b.mode != "COMPANION" {
 		out.Status = "disabled"
 		return out, nil
 	}
+	sourceStarted := time.Now()
 	states, err := s.ReconcileSTSources(ctx, owner, []string{in.ChatIdentity})
+	sourceMs += time.Since(sourceStarted).Milliseconds()
 	if err != nil {
 		return out, err
 	}
@@ -95,13 +108,29 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 	}); err != nil {
 		return out, mapStoreErr(err)
 	}
-	querySource, err := s.stQuerySource(ctx, owner, b.id)
-	if err != nil {
-		return out, err
+	var querySource stDigestSource
+	var profile *memoryProfile
+	var queryErr, profileErr error
+	var ready sync.WaitGroup
+	ready.Add(2)
+	go func() {
+		defer ready.Done()
+		querySource, queryErr = s.stQuerySource(ctx, owner, b.id)
+	}()
+	go func() {
+		defer ready.Done()
+		profile, profileErr = s.currentMemoryProfile(ctx, owner, b.relationship, b.id)
+	}()
+	ready.Wait()
+	if queryErr != nil {
+		return out, queryErr
 	}
 	if querySource.text == "" {
 		out.Status = "skipped"
 		return out, nil
+	}
+	if profileErr != nil {
+		return out, profileErr
 	}
 	var queryAt time.Time
 	queryZone := valueOrEmpty(querySource.timezone)
@@ -115,13 +144,11 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		queryZone = in.QueryTimezone
 	}
 	queryTime := memorytime.Normalize(querySource.text, queryAt, queryZone)
-	profile, err := s.currentMemoryProfile(ctx, owner, b.relationship, b.id)
-	if err != nil {
-		return out, err
-	}
 	recall := recallQuery{Text: querySource.text, Date: queryTime.EventDate, Limit: 20}
 	recall.GateTexts = profileGateTexts(profile)
+	engineStarted := time.Now()
 	found, err := s.searchEngineRecall(ctx, owner, b.relationship, b.id, recall)
+	engineMs += time.Since(engineStarted).Milliseconds()
 	if err != nil {
 		return out, err
 	}
@@ -137,7 +164,9 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		chatIDs = append(chatIDs, chat.chat)
 	}
 	if len(chatIDs) > 0 {
+		sourceStarted = time.Now()
 		checked, err := s.ReconcileSTSources(ctx, owner, chatIDs)
+		sourceMs += time.Since(sourceStarted).Milliseconds()
 		if err != nil {
 			return out, err
 		}
@@ -163,7 +192,9 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 	}
 	deps := sourceChats(refs)
 	for start := 0; start < len(deps); start += 64 {
+		sourceStarted = time.Now()
 		checked, err := s.ReconcileSTSources(ctx, owner, deps[start:min(start+64, len(deps))])
+		sourceMs += time.Since(sourceStarted).Milliseconds()
 		if err != nil {
 			return out, err
 		}
@@ -195,7 +226,9 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		}
 	}
 	if profile != nil {
+		sourceStarted = time.Now()
 		checked, err := s.reconcileProfileChats(ctx, owner, profile.Refs)
+		sourceMs += time.Since(sourceStarted).Milliseconds()
 		if err != nil {
 			return out, err
 		}

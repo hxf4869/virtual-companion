@@ -3,12 +3,20 @@
 // The model input is pinned by artifact digest, so a short process-local
 // cache returns the same vector without a second Ollama round trip.
 const recentEmbeddings = new Map();
+const inflightEmbeddings = new Map();
 const RECENT_EMBEDDING_LIMIT = 128;
 let embeddingCacheHits = 0;
 let embeddingCacheMisses = 0;
 
 export function embeddingCacheStats() {
     return { hits: embeddingCacheHits, misses: embeddingCacheMisses };
+}
+
+export function resetEmbeddingCaches() {
+    recentEmbeddings.clear();
+    inflightEmbeddings.clear();
+    embeddingCacheHits = 0;
+    embeddingCacheMisses = 0;
 }
 
 function embeddingCacheKey(snapshot, modelInput) {
@@ -49,19 +57,35 @@ export async function createOllamaEmbedding(snapshot, { fetchImpl = fetch, verif
         const key = embeddingCacheKey(c, text);
         const hit = cachedEmbedding(key);
         if (hit) return hit;
+        const pending = inflightEmbeddings.get(key);
+        if (pending) {
+            embeddingCacheHits++;
+            return Float32Array.from(await pending);
+        }
         embeddingCacheMisses++;
-        let response;
-        try { response = await fetchImpl(c.endpoint + '/api/embed', { method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ model: c.model, input: text, truncate: false }), signal: AbortSignal.timeout(Math.min(timeoutMs, 60000)) }); }
-        catch { throw new Error('MEMORYCORE_EMBEDDING_FAILED'); }
-        if (!response.ok) throw new Error('MEMORYCORE_EMBEDDING_FAILED');
-        const v = (await response.json()).embeddings?.[0];
-        if (!Array.isArray(v) || v.length !== c.dimensions || !v.every(Number.isFinite)) throw new Error('MEMORYCORE_EMBEDDING_DIMENSIONS');
-        const norm = Math.hypot(...v);
-        if (!Number.isFinite(norm) || norm === 0) throw new Error('MEMORYCORE_EMBEDDING_ZERO');
-        const out = Float32Array.from(c.normalization === 'l2' ? v.map(x => x / norm) : v);
-        storeEmbedding(key, out);
-        return Float32Array.from(out);
+        // keep_alive -1 pins the model for the life of the Ollama process.
+        // The server default unloads after about five idle minutes.
+        const work = (async () => {
+            let response;
+            try { response = await fetchImpl(c.endpoint + '/api/embed', { method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ model: c.model, input: text, truncate: false, keep_alive: -1 }), signal: AbortSignal.timeout(Math.min(timeoutMs, 60000)) }); }
+            catch { throw new Error('MEMORYCORE_EMBEDDING_FAILED'); }
+            if (!response.ok) throw new Error('MEMORYCORE_EMBEDDING_FAILED');
+            const v = (await response.json()).embeddings?.[0];
+            if (!Array.isArray(v) || v.length !== c.dimensions || !v.every(Number.isFinite)) throw new Error('MEMORYCORE_EMBEDDING_DIMENSIONS');
+            const norm = Math.hypot(...v);
+            if (!Number.isFinite(norm) || norm === 0) throw new Error('MEMORYCORE_EMBEDDING_ZERO');
+            const out = Float32Array.from(c.normalization === 'l2' ? v.map(x => x / norm) : v);
+            storeEmbedding(key, out);
+            return out;
+        })();
+        inflightEmbeddings.set(key, work);
+        // Attach both handlers so a rejected embed does not surface as an
+        // unhandled rejection from the cleanup promise.
+        void work.then(() => {}, () => {}).then(() => {
+            if (inflightEmbeddings.get(key) === work) inflightEmbeddings.delete(key);
+        });
+        return Float32Array.from(await work);
     }
     return {
         spaceId: c.spaceId, snapshot: Object.freeze(c), embed,

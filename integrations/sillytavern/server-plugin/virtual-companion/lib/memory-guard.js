@@ -1,5 +1,6 @@
 // W07: revalidate the named native extension slot immediately before sending.
 import { BridgeError } from './errors.js';
+import { log } from './log.js';
 const SLOT = /<vc-long-term-memory>[\s\S]*?<\/vc-long-term-memory>/g;
 const START = '<vc-long-term-memory>';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -78,6 +79,15 @@ function snapshot(input, result, block) {
 }
 
 export async function refreshMemorySlot({ config, request, response, finalBody, signal, fetchImpl = fetch }) {
+    const started = Date.now();
+    try {
+        return await refreshMemorySlotBody({ config, request, response, finalBody, signal, fetchImpl });
+    } finally {
+        log.info(`memory_recheck_ms=${Date.now() - started}`);
+    }
+}
+
+async function refreshMemorySlotBody({ config, request, response, finalBody, signal, fetchImpl }) {
     signal?.throwIfAborted();
     const input = memoryRequest(request.body?.vc_memory);
     // Raw/helper calls without a native interception cannot carry a stale slot.

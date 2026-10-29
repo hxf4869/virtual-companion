@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"github.com/hxf4869/virtual-companion/internal/observability"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"net/http"
 	"net/http/httptest"
@@ -57,5 +59,43 @@ func TestSTMemoryRecallUsesCookieIdentityAndRejectsStalePage(t *testing.T) {
 	}
 	if m.calls != calls {
 		t.Fatal("untrusted page reached recall store")
+	}
+}
+
+func TestRecallMetricsKeepStageDurations(t *testing.T) {
+	t.Parallel()
+	stats := recallMetrics(postgres.RecallObserve{
+		QueryEmbeddingMs: 15, LooseRetrievalMs: 20, OriginalGateMs: 9,
+		KeywordRecoveryMs: 4, RerankMs: 30, SummaryProfileGateMs: 8,
+		RerankCacheHit: 7, RerankCacheMiss: 2, SourceMs: 11, RecallMs: 80,
+	})
+	if stats.QueryEmbeddingMs != 15 || stats.RerankCacheHit != 7 || stats.RerankCacheMiss != 2 || stats.SourceMs != 11 || stats.RecallMs != 80 {
+		t.Fatalf("%+v", stats)
+	}
+	reg := observability.NewRegistry()
+	reg.ObserveMemoryRecall(stats)
+	var buf bytes.Buffer
+	if err := reg.WritePrometheus(&buf); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"vc_memory_rerank_cache_hit_total 7.000000000",
+		"vc_memory_rerank_cache_miss_total 2.000000000",
+		"vc_memory_embedding_stage_seconds_sum 0.015000000",
+		"vc_memory_loose_retrieval_seconds_sum 0.020000000",
+		"vc_memory_original_gate_seconds_sum 0.009000000",
+		"vc_memory_keyword_recovery_seconds_sum 0.004000000",
+		"vc_memory_rerank_seconds_sum 0.030000000",
+		"vc_memory_summary_profile_gate_seconds_sum 0.008000000",
+		"vc_memory_source_check_seconds_sum 0.011000000",
+		"vc_memory_recall_seconds_sum 0.080000000",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+	if strings.Contains(body, "合成") || strings.Contains(body, "owner") || strings.Contains(body, "query") {
+		t.Fatalf("stage metrics leaked text: %s", body)
 	}
 }

@@ -128,6 +128,9 @@ services:
       HOME: /tmp
       OLLAMA_HOST: 127.0.0.1:11438
       OLLAMA_MODELS: /models
+      # Ollama unloads a model after about five idle minutes. -1 keeps the
+      # embedding resident; MemoryCore also sends keep_alive -1 on each embed.
+      OLLAMA_KEEP_ALIVE: "-1"
     volumes: ["${VC_EMBEDDING_MODELS_DIR:?set in /etc/virtual-companion/compose.env}:/models:ro"]
     tmpfs: [/tmp]
     network_mode: service:ingress

@@ -28,22 +28,32 @@ type Registry struct {
 // MemoryRecallStats counts gate outcomes and embedding-cache traffic.
 // Values are counts only: no owner, record id, or text.
 type MemoryRecallStats struct {
-	SummaryAllow       int
-	SummaryReject      int
-	ProfileAllow       int
-	ProfileReject      int
-	EmbeddingCacheHit  int
-	EmbeddingCacheMiss int
-	RecallEmpty        int
-	RerankApplied      int
-	RerankUnavailable  int
-	RerankTimeout      int
-	RerankInvalid      int
-	RerankDisabled     int
-	RerankFallback     int
-	RerankCandidates   int
-	RerankKept         int
-	RerankOnly         int
+	SummaryAllow         int
+	SummaryReject        int
+	ProfileAllow         int
+	ProfileReject        int
+	EmbeddingCacheHit    int
+	EmbeddingCacheMiss   int
+	RecallEmpty          int
+	RerankApplied        int
+	RerankUnavailable    int
+	RerankTimeout        int
+	RerankInvalid        int
+	RerankDisabled       int
+	RerankFallback       int
+	RerankCandidates     int
+	RerankKept           int
+	RerankOnly           int
+	RerankCacheHit       int
+	RerankCacheMiss      int
+	QueryEmbeddingMs     int
+	LooseRetrievalMs     int
+	OriginalGateMs       int
+	KeywordRecoveryMs    int
+	RerankMs             int
+	SummaryProfileGateMs int
+	SourceMs             int
+	RecallMs             int
 }
 
 // JobsStats is a low-cardinality worker snapshot. No owner or job id.
@@ -118,6 +128,16 @@ func (r *Registry) ObserveMemoryRecall(stats MemoryRecallStats) {
 	r.memoryRecall.RerankCandidates += stats.RerankCandidates
 	r.memoryRecall.RerankKept += stats.RerankKept
 	r.memoryRecall.RerankOnly += stats.RerankOnly
+	r.memoryRecall.RerankCacheHit += stats.RerankCacheHit
+	r.memoryRecall.RerankCacheMiss += stats.RerankCacheMiss
+	r.memoryRecall.QueryEmbeddingMs += stats.QueryEmbeddingMs
+	r.memoryRecall.LooseRetrievalMs += stats.LooseRetrievalMs
+	r.memoryRecall.OriginalGateMs += stats.OriginalGateMs
+	r.memoryRecall.KeywordRecoveryMs += stats.KeywordRecoveryMs
+	r.memoryRecall.RerankMs += stats.RerankMs
+	r.memoryRecall.SummaryProfileGateMs += stats.SummaryProfileGateMs
+	r.memoryRecall.SourceMs += stats.SourceMs
+	r.memoryRecall.RecallMs += stats.RecallMs
 	r.mu.Unlock()
 }
 
@@ -250,6 +270,16 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 	writeCounter(&buf, "vc_memory_rerank_candidates_total", "Candidates sent to the reranker.", float64(memory.RerankCandidates))
 	writeCounter(&buf, "vc_memory_rerank_kept_total", "Candidates kept after the rerank threshold.", float64(memory.RerankKept))
 	writeCounter(&buf, "vc_memory_rerank_only_total", "Candidates injected only because the rerank logit passed.", float64(memory.RerankOnly))
+	writeCounter(&buf, "vc_memory_rerank_cache_hit_total", "Rerank logit cache hits during memory recall.", float64(memory.RerankCacheHit))
+	writeCounter(&buf, "vc_memory_rerank_cache_miss_total", "Rerank logit cache misses during memory recall.", float64(memory.RerankCacheMiss))
+	writeCounter(&buf, "vc_memory_embedding_stage_seconds_sum", "Seconds spent embedding during memory recall.", float64(memory.QueryEmbeddingMs)/1000)
+	writeCounter(&buf, "vc_memory_loose_retrieval_seconds_sum", "Seconds spent on loose candidate retrieval.", float64(memory.LooseRetrievalMs)/1000)
+	writeCounter(&buf, "vc_memory_original_gate_seconds_sum", "Seconds spent on the original cosine and FTS gates.", float64(memory.OriginalGateMs)/1000)
+	writeCounter(&buf, "vc_memory_keyword_recovery_seconds_sum", "Seconds spent recovering keyword matches.", float64(memory.KeywordRecoveryMs)/1000)
+	writeCounter(&buf, "vc_memory_rerank_seconds_sum", "Seconds spent waiting for rerank scores.", float64(memory.RerankMs)/1000)
+	writeCounter(&buf, "vc_memory_summary_profile_gate_seconds_sum", "Seconds spent on summary and profile gates.", float64(memory.SummaryProfileGateMs)/1000)
+	writeCounter(&buf, "vc_memory_source_check_seconds_sum", "Seconds spent reconciling memory sources.", float64(memory.SourceMs)/1000)
+	writeCounter(&buf, "vc_memory_recall_seconds_sum", "Seconds spent in one memory recall.", float64(memory.RecallMs)/1000)
 
 	buf.WriteString("# HELP vc_http_requests_total HTTP requests handled by companiond.\n")
 	buf.WriteString("# TYPE vc_http_requests_total counter\n")
