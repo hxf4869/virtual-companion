@@ -1242,7 +1242,8 @@ body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormat
 
 body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel) input[type="checkbox"]:disabled { opacity: 0.35; }
 
-@media (min-width: 744px) {
+/* 桌面且为鼠标指针时按钮降到 36；触屏平板保持 44 触控高度。 */
+@media (min-width: 744px) and (pointer: fine) {
   body.vc-ui .vc-btn-fill,
   body.vc-ui .vc-btn-light,
   body.vc-ui .vc-btn-gray,
@@ -1270,4 +1271,29 @@ body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormat
 @keyframes vc-shimmer {
   from { background-position: 100% 0; }
   to { background-position: -100% 0; }
+}
+
+/* 宿主 Font Awesome 图标：按钮等规则改了 font-family / font-weight，图标类必须还原，
+   否则同一元素上的 .menu_button.fa-solid 会显示成方块或错字。 */
+body.vc-ui :is(.fa, .fas, .fa-solid, .far, .fa-regular),
+body.vc-ui :is(.fa, .fas, .fa-solid, .far, .fa-regular)::before {
+  font-family: var(--fa-style-family, "Font Awesome 6 Free") !important;
+}
+body.vc-ui :is(.fa, .fas, .fa-solid),
+body.vc-ui :is(.fa, .fas, .fa-solid)::before { font-weight: 900 !important; }
+body.vc-ui :is(.far, .fa-regular),
+body.vc-ui :is(.far, .fa-regular)::before { font-weight: 400 !important; }
+body.vc-ui :is(.fab, .fa-brands),
+body.vc-ui :is(.fab, .fa-brands)::before {
+  font-family: "Font Awesome 6 Brands" !important;
+  font-weight: 400 !important;
+}
+
+/* 剧情开场（F4b）：黑幕颜色与时长。 */
+body.vc-ui {
+  --vc-letterbox: #000000;
+  --vc-dur-letterbox: 900ms;
+  --vc-dur-title-track: 1600ms;
+  --vc-dur-title-fade: 420ms;
+  --vc-dur-evidence-flip: 800ms;
 }
