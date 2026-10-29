@@ -302,3 +302,6 @@ async function openCreatedChat({ characterRef, chatIdentity } = {}) {
     armSilentF2Conflict();
     try { await saveCurrentChat(); } finally { disarmSilentF2Conflict(); }
 }
+
+export { mountMemoryTab } from './memory-page.js';
+export { mountInboxTab } from './inbox-page.js';
