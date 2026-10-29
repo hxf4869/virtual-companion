@@ -23,6 +23,19 @@ type Registry struct {
 	realtimeStats func() RealtimeStats
 	jobsStats     func() JobsStats
 	coreWrites    uint64
+	memoryRecall  MemoryRecallStats
+}
+
+// MemoryRecallStats counts gate outcomes and embedding-cache traffic.
+// Values are counts only: no owner, record id, or text.
+type MemoryRecallStats struct {
+	SummaryAllow       int
+	SummaryReject      int
+	ProfileAllow       int
+	ProfileReject      int
+	EmbeddingCacheHit  int
+	EmbeddingCacheMiss int
+	RecallEmpty        int
 }
 
 // JobsStats is a low-cardinality worker snapshot. No owner or job id.
@@ -94,6 +107,21 @@ func (r *Registry) SetJobsStatsSource(fn func() JobsStats) {
 
 // ObserveCoreWrite counts a G7 command/writer invocation. api-migration
 // never registers those routes, so production stays at 0.
+func (r *Registry) ObserveMemoryRecall(stats MemoryRecallStats) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.memoryRecall.SummaryAllow += stats.SummaryAllow
+	r.memoryRecall.SummaryReject += stats.SummaryReject
+	r.memoryRecall.ProfileAllow += stats.ProfileAllow
+	r.memoryRecall.ProfileReject += stats.ProfileReject
+	r.memoryRecall.EmbeddingCacheHit += stats.EmbeddingCacheHit
+	r.memoryRecall.EmbeddingCacheMiss += stats.EmbeddingCacheMiss
+	r.memoryRecall.RecallEmpty += stats.RecallEmpty
+	r.mu.Unlock()
+}
+
 func (r *Registry) ObserveCoreWrite() {
 	if r == nil {
 		return
@@ -219,6 +247,19 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 		r.mu.Unlock()
 	}
 	writeCounter(&buf, "vc_core_write_requests_total", "G7 relationship/conversation/message writer invocations. Production api-migration must stay at 0.", float64(writes))
+	var memory MemoryRecallStats
+	if r != nil {
+		r.mu.Lock()
+		memory = r.memoryRecall
+		r.mu.Unlock()
+	}
+	writeCounter(&buf, "vc_memory_summary_gate_allow_total", "Summary gate passes during memory recall.", float64(memory.SummaryAllow))
+	writeCounter(&buf, "vc_memory_summary_gate_reject_total", "Summary gate rejections during memory recall.", float64(memory.SummaryReject))
+	writeCounter(&buf, "vc_memory_profile_gate_allow_total", "Profile gate passes during memory recall.", float64(memory.ProfileAllow))
+	writeCounter(&buf, "vc_memory_profile_gate_reject_total", "Profile gate rejections during memory recall.", float64(memory.ProfileReject))
+	writeCounter(&buf, "vc_memory_embedding_cache_hit_total", "Embedding cache hits observed during memory recall.", float64(memory.EmbeddingCacheHit))
+	writeCounter(&buf, "vc_memory_embedding_cache_miss_total", "Embedding cache misses observed during memory recall.", float64(memory.EmbeddingCacheMiss))
+	writeCounter(&buf, "vc_memory_recall_empty_total", "Memory recalls that returned no record.", float64(memory.RecallEmpty))
 
 	buf.WriteString("# HELP vc_http_requests_total HTTP requests handled by companiond.\n")
 	buf.WriteString("# TYPE vc_http_requests_total counter\n")

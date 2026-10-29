@@ -57,9 +57,10 @@ type EngineTarget struct {
 	Version int64  `json:"version"`
 }
 type EngineProposal struct {
-	Records      []EngineRecord `json:"records"`
-	Targets      []EngineTarget `json:"targets"`
-	Dependencies []string       `json:"dependencies"`
+	Records          []EngineRecord `json:"records"`
+	Targets          []EngineTarget `json:"targets"`
+	Dependencies     []string       `json:"dependencies"`
+	EmptyDisposition string         `json:"emptyDisposition,omitempty"`
 }
 type EngineOperation struct {
 	ProfileOperationID   string
@@ -484,6 +485,13 @@ func (s *Store) clarificationMemory(ctx context.Context, tx pgx.Tx, c JobClaim, 
 func (s *Store) AbandonEngineOperation(ctx context.Context, c JobClaim) error {
 	return s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
 		_, e := tx.Exec(ctx, `SELECT vc.go_memorycore_failed($1,$2,$3,$4)`, c.OwnerID, c.JobID, c.Token, c.Fence)
+		return e
+	})
+}
+
+func (s *Store) RecordEmptyExtractDecision(ctx context.Context, owner, job int64, code string) error {
+	return s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		_, e := tx.Exec(ctx, `SELECT vc.go_record_memorycore_empty_decision($1,$2,$3)`, owner, job, code)
 		return e
 	})
 }

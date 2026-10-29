@@ -80,6 +80,46 @@ func TestJobsMetrics(t *testing.T) {
 	}
 }
 
+func TestMemoryRecallMetrics(t *testing.T) {
+	t.Parallel()
+	reg := NewRegistry()
+	reg.ObserveMemoryRecall(MemoryRecallStats{
+		SummaryAllow: 1, SummaryReject: 2,
+		ProfileAllow: 3, ProfileReject: 4,
+		EmbeddingCacheHit: 5, EmbeddingCacheMiss: 6,
+		RecallEmpty: 7,
+	})
+	var buf bytes.Buffer
+	if err := reg.WritePrometheus(&buf); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"vc_memory_summary_gate_allow_total",
+		"vc_memory_summary_gate_reject_total",
+		"vc_memory_profile_gate_allow_total",
+		"vc_memory_profile_gate_reject_total",
+		"vc_memory_embedding_cache_hit_total",
+		"vc_memory_embedding_cache_miss_total",
+		"vc_memory_recall_empty_total",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+	if strings.Contains(body, "owner") || strings.Contains(body, "secret") {
+		t.Fatalf("memory metrics leaked a label: %s", body)
+	}
+	reg.SetJobsStatsSource(func() JobsStats { return JobsStats{Claims: 7, ActiveGenerations: 3, PeakGenerations: 4} })
+	buf.Reset()
+	if err := reg.WritePrometheus(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "vc_generation_active 3") || !strings.Contains(buf.String(), "vc_job_claims_total") {
+		t.Fatal("memory metrics changed generation counters")
+	}
+}
+
 func TestDBPoolMetrics(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry()

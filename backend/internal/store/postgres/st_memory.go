@@ -27,6 +27,7 @@ type STMemoryResult struct {
 	Sources    []STSourceState `json:"sources"`
 	MemoryIDs  []string        `json:"memoryIds"`
 	SummaryIDs []string        `json:"summaryIds"`
+	Observe    RecallObserve   `json:"-"`
 }
 type stMemoryBinding struct {
 	id, relationship, revision int64
@@ -126,6 +127,7 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 	if err != nil {
 		return out, err
 	}
+	out.Observe = found.Observe
 	memories := found.Memories
 	// Only engine-derived profiles with verified dependencies may be injected.
 	chats, err := s.stSummaryChats(ctx, owner, b)
@@ -247,6 +249,9 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		if queryTime.EventDate != nil {
 			scenes = datedScenes(scenes, found.DateIDs)
 		}
+		sceneAllow, sceneReject := countSceneGate(querySource.text, scenes, profile.RecordIDs)
+		out.Observe.SummaryAllow += sceneAllow
+		out.Observe.SummaryReject += sceneReject
 		for _, scene := range relevantProfileScenes(querySource.text, scenes, profile.RecordIDs) {
 			if strings.TrimSpace(scene.Summary) == "" {
 				continue
@@ -381,6 +386,34 @@ func stringOverlap(left, right []string) bool {
 		}
 	}
 	return false
+}
+func countSceneGate(query string, scenes []profileScene, allow []string) (int, int) {
+	allowed := map[string]bool{}
+	for _, id := range allow {
+		allowed[id] = true
+	}
+	var allowN, rejectN int
+	for _, scene := range scenes {
+		if len(scene.RecordIDs) == 0 || strings.TrimSpace(scene.Summary) == "" {
+			continue
+		}
+		trusted := true
+		for _, id := range scene.RecordIDs {
+			if !allowed[id] {
+				trusted = false
+				break
+			}
+		}
+		if !trusted {
+			continue
+		}
+		if sceneMatchesQuery(query, scene.Summary) {
+			allowN++
+		} else {
+			rejectN++
+		}
+	}
+	return allowN, rejectN
 }
 func relevantProfileScenes(query string, scenes []profileScene, allow []string) []profileScene {
 	allowed := map[string]bool{}

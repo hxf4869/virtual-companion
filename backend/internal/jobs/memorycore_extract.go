@@ -164,6 +164,19 @@ func (l *Loop) buildEngineProfile(ctx context.Context, c postgres.JobClaim, op p
 	// rebuild still has to read the current allowlist; its proposal belongs to
 	// the job that was reused as a marker.
 	if !postgres.IsForgetProfile(op.ProfileOperationID) && len(op.Proposal) > 0 && json.Unmarshal(op.Proposal, &proposal) == nil && len(proposal.Records) == 0 && len(proposal.Targets) == 0 {
+		code := emptyExtractDecision(proposal.EmptyDisposition)
+		logger := l.log
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Info("memory extract published empty", "decision_code", code)
+		if rec, ok := l.store.(interface {
+			RecordEmptyExtractDecision(context.Context, int64, int64, string) error
+		}); ok {
+			if e := rec.RecordEmptyExtractDecision(ctx, c.OwnerID, c.JobID, code); e != nil {
+				return l.failExtract(ctx, c, "MEMORYCORE_EMPTY_DECISION")
+			}
+		}
 		return l.closeExtract(ctx, c, "DONE", "")
 	}
 
@@ -205,6 +218,19 @@ func (l *Loop) buildEngineProfile(ctx context.Context, c postgres.JobClaim, op p
 		return l.closeExtract(ctx, c, "DONE", "")
 	}
 	return l.failExtract(ctx, c, "MEMORYCORE_REVISION_CONFLICT")
+}
+
+func emptyExtractDecision(disposition string) string {
+	switch disposition {
+	case "NO_NEW_FACT":
+		return "MEMORYCORE_EMPTY_NO_NEW_FACT"
+	case "DEDUP_MERGED":
+		return "MEMORYCORE_EMPTY_DEDUP_MERGED"
+	case "DROPPED_GATE":
+		return "MEMORYCORE_EMPTY_DROPPED_GATE"
+	default:
+		return "MEMORYCORE_EMPTY_DROPPED_GATE"
+	}
 }
 
 func profileDecision(err error) string {

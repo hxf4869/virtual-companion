@@ -84,7 +84,7 @@ export async function sceneMemorycoreNative(ctx) {
         messages: [{ id: 'source1', role: 'user', content: '这是隔离合成验收输入，记录测试记忆，不是真实用户的个人信息。', timestamp: '2026-10-28T00:00:00Z' }] };
     try {
         extracted = fixture.documents;
-        // Upstream default max memories is 10; use two bounded batches.
+        // Upstream default max memories is 10; publish in bounded batches of ten.
         extracted = fixture.documents.slice(0, 10);
         const p = await engine.invoke('propose', { ...base, operationId: 'calibration1' });
         const pAgain = await engine.invoke('propose', { ...base, operationId: 'calibration1' }); assert.deepEqual(pAgain, p);
@@ -96,10 +96,14 @@ export async function sceneMemorycoreNative(ctx) {
         checks.push('unpublished-records-never-searchable');
         const receipt = await engine.invoke('commit', { scope, revision: 0, operationId: 'calibration1' });
         assert.equal(receipt.status, 'published'); checks.push('partial-publication-resume');
-        extracted = fixture.documents.slice(10);
-        const p2 = await engine.invoke('propose', { ...base, operationId: 'calibration2' });
-        await engine.invoke('commit', { scope, revision: 0, operationId: 'calibration2' });
-        const all = [...p.records, ...p2.records];
+        const stored = [...p.records];
+        for (let offset = 10, n = 2; offset < fixture.documents.length; offset += 10, n++) {
+            extracted = fixture.documents.slice(offset, offset + 10);
+            const proposal = await engine.invoke('propose', { ...base, operationId: 'calibration' + n });
+            await engine.invoke('commit', { scope, revision: 0, operationId: 'calibration' + n });
+            stored.push(...proposal.records);
+        }
+        const all = stored;
         const ids = all.map(r => r.id), idsByLabel = Object.fromEntries(fixture.documents.map(d => [d.id, all.find(r => r.content === d.content).id]));
         assert.deepEqual(await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: [], query: '婚礼' }), []);
         for (const changed of [{ ownerId: '102' }, { instanceId: '8' }, { mode: 'STORY' }]) {
@@ -109,11 +113,14 @@ export async function sceneMemorycoreNative(ctx) {
         checks.push('M03-M07-owner-instance-mode-branch-empty-scope');
         const calibration = [];
         for (const item of fixture.queries) {
-            const hits = await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: ids, query: item.query, eventDate: item.eventDate });
+            const omitted = new Set(item.omit || []);
+            const allowed = ids.filter(id => !omitted.has(fixture.documents.find(d => idsByLabel[d.id] === id)?.id));
+            const hits = await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: allowed, query: item.query, eventDate: item.eventDate });
             calibration.push({ kind: item.kind, expected: item.expected, hit: item.expected ? hits.some(h => h.record_id === idsByLabel[item.expected]) : hits.length === 0,
                 candidates: hits.map(h => ({ label: fixture.documents.find(d => idsByLabel[d.id] === h.record_id)?.id, cosine: h.cosine, ftsScore: h.ftsScore })) });
             if (!item.expected) assert.equal(hits.length, 0, `negative ${item.kind} ${item.query}`);
             if (item.expected) assert.ok(hits.some(h => h.record_id === idsByLabel[item.expected]), `${item.query} => ${hits.map(h => fixture.documents.find(d => idsByLabel[d.id] === h.record_id)?.id).join(',')}`);
+            for (const label of item.forbid || []) assert.equal(hits.some(h => h.record_id === idsByLabel[label]), false, `${item.query} forbid ${label}`);
             if (item.eventDate === '2026-11-06') assert.ok(hits.every(h => h.record_id !== idsByLabel.wedding && h.record_id !== idsByLabel['friend-wedding'] && h.record_id !== idsByLabel['dated-summary']));
             if (item.kind === 'multi-question') assert.ok(hits.some(h => h.record_id === idsByLabel[item.expected]), 'independent valid question must survive multi-topic embedding dilution');
         }

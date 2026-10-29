@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { createControlledEngine } from './business.mjs';
-import { createOllamaEmbedding } from './embedding.mjs';
+import { createOllamaEmbedding, embeddingCacheStats } from './embedding.mjs';
 import { createCallbackRunner } from './llm-runner.mjs';
 
 // Calibrated on fixtures/memorycore-calibration.json (88 synthetic Chinese
@@ -82,9 +82,14 @@ function queryParts(query) {
     return parts.length >= 2 && parts.length <= 4 ? parts : [query];
 }
 async function summaryPartPasses(query, text, embedding, dated) {
-    const embed = embedding?.embedQuery || embedding?.embed;
-    if ((typeof embedding?.embedBatch !== 'function' && typeof embed !== 'function') || typeof text !== 'string' || !text.trim()) return false;
-    const vectors = typeof embedding.embedBatch === 'function' ? await embedding.embedBatch([query, text]) : [await embed(query), await embed(text)];
+    if (typeof text !== 'string' || !text.trim()) return false;
+    // A question and a stored summary are not the same embedding input. When
+    // both sides exist, do not let a single embedBatch treat them alike.
+    let vectors;
+    if (typeof embedding?.embedQuery === 'function' && typeof embedding?.embed === 'function') vectors = [await embedding.embedQuery(query), await embedding.embed(text)];
+    else if (typeof embedding?.embedBatch === 'function') vectors = await embedding.embedBatch([query, text]);
+    else if (typeof embedding?.embed === 'function') vectors = [await embedding.embed(query), await embedding.embed(text)];
+    else return false;
     const score = cosine(vectors[0], vectors[1]);
     if (score >= RELEVANCE.minCosine) return true;
     if (dated && isGenericSchedule(query) && score >= RELEVANCE.dateCosineFloor) return true;
@@ -106,6 +111,65 @@ export async function summaryPassesGate(query, text, embedding, dated) {
         }
     }
     return false;
+}
+const CONTENT_FUNCTION = new Set('的了我你他她它是在有不了吗呢吧啊呀这那和与或而就都也很到说会着看还要去把被给让从对向跟及');
+function contentNgrams(text, length) {
+    const out = [];
+    const han = [];
+    for (const ch of String(text)) {
+        if (!/[\u4e00-\u9fff]/u.test(ch)) { han.length = 0; continue; }
+        han.push(ch);
+        if (han.length > length) han.shift();
+        if (han.length === length && han.every(item => !CONTENT_FUNCTION.has(item))) out.push(han.join(''));
+    }
+    return out;
+}
+function keywordClauses(query) {
+    const parts = String(query).split(/[，,。？！!?；;]/u).map(part => part.trim()).filter(Boolean);
+    return parts.length ? parts : [String(query)];
+}
+// Second path for a record both lanes already rejected. It does not lower
+// minCosine or minFtsScore. Two distinctive content bigrams, or one content
+// trigram, plus cosine at the existing floor, are required. Comma clauses are
+// scored separately so an unrelated tail cannot dilute the matching clause.
+async function keywordRecover(questions, records, embedding, taken) {
+    if (typeof embedding?.embedQuery !== 'function' || typeof embedding?.embed !== 'function') return [];
+    const found = [];
+    for (const record of records) {
+        if (!record || taken.has(record.id) || typeof record.content !== 'string') continue;
+        const bigrams = new Set(contentNgrams(record.content, 2));
+        const trigrams = new Set(contentNgrams(record.content, 3));
+        let best = 0;
+        let matched = false;
+        for (const question of questions) {
+            for (const clause of keywordClauses(question)) {
+                const shared = new Set(contentNgrams(clause, 2).filter(gram => bigrams.has(gram)));
+                const trigram = contentNgrams(clause, 3).some(gram => trigrams.has(gram));
+                if (shared.size < 2 && !trigram) continue;
+                const score = cosine(await embedding.embedQuery(clause), await embedding.embed(record.content));
+                if (score >= RELEVANCE.cosineFloor && score > best) { best = score; matched = true; }
+            }
+        }
+        if (matched) found.push({ record_id: record.id, score: 1e-6, cosine: best, ftsScore: null });
+    }
+    return found;
+}
+function emptyRecallStats() {
+    return { summaryGateAllow: 0, summaryGateReject: 0, profileGateAllow: 0, profileGateReject: 0, embeddingCacheHit: 0, embeddingCacheMiss: 0, recallEmpty: 0 };
+}
+async function collectGates(query, gateTexts, embedding, dated, stats) {
+    const gated = [];
+    if (!Array.isArray(gateTexts)) return gated;
+    for (const item of gateTexts) {
+        if (!item || typeof item.id !== 'string' || typeof item.text !== 'string') continue;
+        const allowed = await summaryPassesGate(query, item.text, embedding, dated);
+        if (stats) {
+            const profile = item.id === 'persona';
+            stats[allowed ? (profile ? 'profileGateAllow' : 'summaryGateAllow') : (profile ? 'profileGateReject' : 'summaryGateReject')]++;
+        }
+        if (allowed) gated.push(item.id);
+    }
+    return gated;
 }
 function toRecord(row) {
     return { id: row.record_id, content: row.content, type: row.type, priority: row.priority,
@@ -143,10 +207,14 @@ export async function createNativeFactory(api) {
                         relevance: { ...RELEVANCE }, vectorStore: store,
                         embeddingService: store.getSpace()?.rebuilding ? undefined : queryEmbedding, llmRunner: runner } });
                 if (!result.success) throw new Error('MEMORYCORE_EXTRACTION_FAILED');
-                return JSON.parse(JSON.stringify(result.proposal || { records: [], targets: [] }));
+                const proposal = JSON.parse(JSON.stringify(result.proposal || { records: [], targets: [] }));
+                if (typeof result.emptyDisposition === 'string' && /^[A-Z0-9_]+$/u.test(result.emptyDisposition)) proposal.emptyDisposition = result.emptyDisposition;
+                return proposal;
             },
-            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts }) {
+            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false }) {
                 if (typeof query !== 'string' || !query || query.length > 20000) throw new Error('MEMORYCORE_QUERY');
+                const cacheBefore = observe ? embeddingCacheStats() : null;
+                const stats = observe ? emptyRecallStats() : null;
                 // Go already dropped other days when dateRestricted is set. Passing
                 // eventDate again would drop records whose summary omits metadata.
                 let ids = allowedRecordIds;
@@ -155,14 +223,16 @@ export async function createNativeFactory(api) {
                     ids = list(ids, scope).filter(r => (r.metadata.eventDate || r.metadata.activity_start_time?.slice(0, 10)) === eventDate).map(r => r.id);
                     dated = true;
                 }
-                if (!ids.length) {
-                    if (!Array.isArray(gateTexts) || gateTexts.length === 0) return [];
-                    const gated = [];
-                    for (const item of gateTexts) {
-                        if (item && typeof item.id === 'string' && typeof item.text === 'string' && await summaryPassesGate(query, item.text, embedding, dated)) gated.push(item.id);
-                    }
-                    return { hits: [], gated };
-                }
+                const finish = async (ranked, searched) => {
+                    const gated = await collectGates(query, gateTexts, embedding, dated, stats);
+                    if (!stats) return Array.isArray(gateTexts) && gateTexts.length > 0 ? { hits: ranked, gated } : ranked;
+                    const cacheAfter = embeddingCacheStats();
+                    stats.embeddingCacheHit = cacheAfter.hits - cacheBefore.hits;
+                    stats.embeddingCacheMiss = cacheAfter.misses - cacheBefore.misses;
+                    stats.recallEmpty = searched && ranked.length === 0 ? 1 : 0;
+                    return { hits: ranked, gated, stats };
+                };
+                if (!ids?.length) return finish([], false);
                 // Independent questions are embedded separately so one topic cannot
                 // dilute another. Each part uses the same gates. Only a dated
                 // generic schedule question may use the lower cosine floor.
@@ -183,13 +253,9 @@ export async function createNativeFactory(api) {
                         if (!prior || hit.score > prior.score) hits.set(hit.record_id, hit);
                     }
                 }
+                for (const hit of await keywordRecover(queries, list(ids, scope), embedding, new Set(hits.keys()))) hits.set(hit.record_id, hit);
                 const ranked = [...hits.values()].sort((a, b) => b.score - a.score).slice(0, topK);
-                if (!Array.isArray(gateTexts) || gateTexts.length === 0) return ranked;
-                const gated = [];
-                for (const item of gateTexts) {
-                    if (item && typeof item.id === 'string' && typeof item.text === 'string' && await summaryPassesGate(query, item.text, embedding, dated)) gated.push(item.id);
-                }
-                return { hits: ranked, gated };
+                return finish(ranked, true);
             },
             async rebuildProfile({ records, stagingDir, scope, runner }) {
                 const storage = new api.StorageAdapter(new api.LocalStorageBackend({ rootDir: stagingDir }));

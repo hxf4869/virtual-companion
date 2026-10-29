@@ -23,8 +23,18 @@ type recoveryEngineStore struct {
 	invalid     bool
 	commitError bool
 	publishes   int
-	abandoned   bool
-	bareStatus  bool
+	abandoned    bool
+	bareStatus   bool
+	proposalBody string
+	emptyCode    string
+}
+
+func (s *recoveryEngineStore) RecordEmptyExtractDecision(_ context.Context, _, _ int64, code string) error {
+	s.emptyCode = code
+	if strings.Contains(code, "secret") {
+		return errors.New("decision carried text")
+	}
+	return nil
 }
 
 func (s *recoveryEngineStore) PrepareEngineOperation(context.Context, postgres.JobClaim) (postgres.EngineOperation, error) {
@@ -35,7 +45,11 @@ func (s *recoveryEngineStore) EngineCall(_ context.Context, action string, _ any
 	if action == "operation-status" {
 		v := s.statuses[0]
 		s.statuses = s.statuses[1:]
-		raw := `{"status":"` + v + `","proposal":{"records":[],"targets":[],"dependencies":["source-1"]}}`
+		proposal := `{"records":[],"targets":[],"dependencies":["source-1"]}`
+		if s.proposalBody != "" {
+			proposal = s.proposalBody
+		}
+		raw := `{"status":"` + v + `","proposal":` + proposal + `}`
 		if s.bareStatus {
 			raw = `{"status":"` + v + `"}`
 		}
@@ -73,6 +87,38 @@ func TestEngineCommitTimeoutChecksStatusBeforePublishing(t *testing.T) {
 		}
 	}
 }
+func TestEmptyPublishWritesDecisionCode(t *testing.T) {
+	for _, tc := range []struct{ disp, code string }{
+		{"NO_NEW_FACT", "MEMORYCORE_EMPTY_NO_NEW_FACT"},
+		{"DEDUP_MERGED", "MEMORYCORE_EMPTY_DEDUP_MERGED"},
+		{"DROPPED_GATE", "MEMORYCORE_EMPTY_DROPPED_GATE"},
+	} {
+		t.Run(tc.disp, func(t *testing.T) {
+			body := `{"records":[],"targets":[],"dependencies":["source-1"],"emptyDisposition":"` + tc.disp + `","note":"secret dialogue"}`
+			s := &recoveryEngineStore{extractTestStore: &extractTestStore{}, statuses: []string{"proposed"}, proposalBody: body}
+			var buf bytes.Buffer
+			l := newExtractTestLoop(s.extractTestStore, nil)
+			l.log = slog.New(slog.NewTextHandler(&buf, nil))
+			l.store = s
+			l.UseMemoryCore(memorycore.New(nil, nil))
+			if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+				t.Fatal(e)
+			}
+			line := buf.String()
+			if !strings.Contains(line, "decision_code="+tc.code) || strings.Contains(line, "secret") {
+				t.Fatalf("log %q", line)
+			}
+			if s.emptyCode != tc.code {
+				t.Fatalf("attempt field %q", s.emptyCode)
+			}
+			closes := s.extractTestStore.closeCalls()
+			if len(closes) != 1 || closes[0].status != "DONE" || closes[0].reason != "" {
+				t.Fatalf("close %+v", closes)
+			}
+		})
+	}
+}
+
 func TestEngineUnpublishedLateResultNeverPublishes(t *testing.T) {
 	s := &recoveryEngineStore{extractTestStore: &extractTestStore{}, statuses: []string{"published"}, invalid: true}
 	l := newExtractTestLoop(s.extractTestStore, nil)

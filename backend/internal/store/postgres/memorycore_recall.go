@@ -70,6 +70,17 @@ type engineGateText struct {
 	Text string `json:"text"`
 }
 
+type RecallObserve struct {
+	SummaryAllow       int  `json:"summaryGateAllow"`
+	SummaryReject      int  `json:"summaryGateReject"`
+	ProfileAllow       int  `json:"profileGateAllow"`
+	ProfileReject      int  `json:"profileGateReject"`
+	EmbeddingCacheHit  int  `json:"embeddingCacheHit"`
+	EmbeddingCacheMiss int  `json:"embeddingCacheMiss"`
+	RecallEmpty        int  `json:"recallEmpty"`
+	Searched           bool `json:"-"`
+}
+
 type engineRecall struct {
 	Memories    []Memory
 	DateIDs     []string
@@ -77,6 +88,7 @@ type engineRecall struct {
 	OtherDayIDs []string
 	Gated       []string
 	GateKnown   bool
+	Observe     RecallObserve
 }
 
 func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64, q recallQuery) ([]Memory, error) {
@@ -121,7 +133,7 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 	// The allowlist above is already limited to q.Date. MemoryCore must not
 	// apply that date again: a merged summary can omit metadata.eventDate
 	// while the Go record still carries the verified source date.
-	payload := map[string]any{"scope": EngineScope(owner, rel), "allowedRecordIds": ids, "embedding": embedding, "query": q.Text, "topK": q.Limit}
+	payload := map[string]any{"scope": EngineScope(owner, rel), "allowedRecordIds": ids, "embedding": embedding, "query": q.Text, "topK": q.Limit, "observe": true}
 	if q.Date != nil {
 		payload["dateRestricted"] = true
 	}
@@ -133,9 +145,11 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 	if e != nil {
 		return engineRecall{}, e
 	}
-	hits, gated, known := decodeEngineSearch(raw)
+	hits, gated, known, observed := decodeEngineSearch(raw)
 	found.Gated = gated
 	found.GateKnown = known
+	found.Observe = observed
+	found.Observe.Searched = true
 	seen := map[string]bool{}
 	for _, hit := range hits {
 		id := hit.RecordID
@@ -147,6 +161,11 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 			found.Memories = append(found.Memories, m)
 		}
 	}
+	if len(found.Memories) == 0 {
+		found.Observe.RecallEmpty = 1
+	} else {
+		found.Observe.RecallEmpty = 0
+	}
 	return found, nil
 }
 
@@ -155,17 +174,18 @@ type engineHit struct {
 	ID       string `json:"id"`
 }
 
-func decodeEngineSearch(raw json.RawMessage) (hits []engineHit, gated []string, known bool) {
+func decodeEngineSearch(raw json.RawMessage) (hits []engineHit, gated []string, known bool, observed RecallObserve) {
 	if len(raw) == 0 || raw[0] == '[' {
 		_ = json.Unmarshal(raw, &hits)
-		return hits, nil, false
+		return hits, nil, false, RecallObserve{}
 	}
 	var body struct {
-		Hits  []engineHit `json:"hits"`
-		Gated []string    `json:"gated"`
+		Hits  []engineHit   `json:"hits"`
+		Gated []string      `json:"gated"`
+		Stats RecallObserve `json:"stats"`
 	}
 	if json.Unmarshal(raw, &body) != nil {
-		return nil, nil, false
+		return nil, nil, false, RecallObserve{}
 	}
-	return body.Hits, body.Gated, true
+	return body.Hits, body.Gated, true, body.Stats
 }

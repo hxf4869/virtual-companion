@@ -4,6 +4,12 @@
 // cache returns the same vector without a second Ollama round trip.
 const recentEmbeddings = new Map();
 const RECENT_EMBEDDING_LIMIT = 128;
+let embeddingCacheHits = 0;
+let embeddingCacheMisses = 0;
+
+export function embeddingCacheStats() {
+    return { hits: embeddingCacheHits, misses: embeddingCacheMisses };
+}
 
 function embeddingCacheKey(snapshot, modelInput) {
     return [snapshot.model, snapshot.artifactVersion, String(snapshot.dimensions), snapshot.normalization, modelInput].join('\0');
@@ -12,6 +18,7 @@ function embeddingCacheKey(snapshot, modelInput) {
 function cachedEmbedding(key) {
     const hit = recentEmbeddings.get(key);
     if (!hit) return undefined;
+    embeddingCacheHits++;
     recentEmbeddings.delete(key);
     recentEmbeddings.set(key, hit);
     return Float32Array.from(hit);
@@ -42,6 +49,7 @@ export async function createOllamaEmbedding(snapshot, { fetchImpl = fetch, verif
         const key = embeddingCacheKey(c, text);
         const hit = cachedEmbedding(key);
         if (hit) return hit;
+        embeddingCacheMisses++;
         let response;
         try { response = await fetchImpl(c.endpoint + '/api/embed', { method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ model: c.model, input: text, truncate: false }), signal: AbortSignal.timeout(Math.min(timeoutMs, 60000)) }); }

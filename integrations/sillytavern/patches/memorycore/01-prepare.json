@@ -9,10 +9,10 @@
   "removal_condition": "Upstream exposes an equivalent prepare API with strict errors and trusted target versions.",
   "target": "MemoryCore/src/core/record/l1-extractor.ts",
   "expected_input_sha256": "eb354b4571ed088398ccd1885baee7800933d4005b4dad4e42b755d0d3ef7e7b",
-  "expected_output_sha256": "c9898daac24d13c66a5ee7b3b7801894e3d907145d4ce829ebd20b1eea8e64e4",
+  "expected_output_sha256": "1722f62844a370463e04e26482aed01fddff33286ea1c6d347f39b7502fe99a3",
   "changed_lines": {
-    "added": 32,
-    "removed": 5
+    "added": 38,
+    "removed": 7
   },
   "validation": [
     "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
@@ -26,7 +26,7 @@
     },
     {
       "from": "  lastSceneName?: string;\n}",
-      "to": "  lastSceneName?: string;\n  proposal?: { records: MemoryRecord[]; targets: Array<{ id: string; version: number }> };\n}",
+      "to": "  lastSceneName?: string;\n  proposal?: { records: MemoryRecord[]; targets: Array<{ id: string; version: number }>; emptyDisposition?: string };\n  emptyDisposition?: string;\n}",
       "count": 1
     },
     {
@@ -46,7 +46,22 @@
     },
     {
       "from": "  // Step 2: Batch Conflict Detection + Write\n",
-      "to": "  // Controlled prepare has no live storage or generation-log effects.\n  if (options.prepareOnly) {\n    if (!options.llmRunner || !options.vectorStore || !options.allowedRecordIds || !options.recordedAt) throw new Error(\"PREPARE_CONTEXT_REQUIRED\");\n    const filter = { teamId, userId, agentId, sessionId, taskId, sessionKey, allowedRecordIds: options.allowedRecordIds, ...options.relevance };\n    const decisions = await batchDedup({ memories: memoriesWithIds, config, llmRunner: options.llmRunner,\n      vectorStore: options.vectorStore, embeddingService: options.embeddingService, filter, strict: true });\n    const targetIds = [...new Set(decisions.filter(d => d.action === \"update\" || d.action === \"merge\").flatMap(d => d.target_ids))];\n    if (targetIds.some(id => !options.allowedRecordIds!.includes(id))) throw new Error(\"TARGET_OUTSIDE_ALLOWLIST\");\n    const targets = targetIds.length ? await options.vectorStore.queryL1Records({ ...filter, recordIds: targetIds }) : [];\n    if (targets.length !== targetIds.length) throw new Error(\"TARGET_MISSING\");\n    const records = decisions.filter(d => d.action !== \"skip\").map(d => {\n      const memory = memoriesWithIds.find(m => m.record_id === d.record_id);\n      if (!memory) throw new Error(\"UNKNOWN_DECISION_RECORD\");\n      const version = Math.max(0, ...targets.filter(t => d.target_ids.includes(t.record_id)).map(t => t.version ?? 0)) + 1;\n      return prepareMemoryRecord(memory, d, { sessionKey, sessionId: sessionId!, teamId, userId, agentId, taskId }, options.recordedAt!, version);\n    });\n    return { success: true, extractedCount: extracted.length, storedCount: 0, records: [], sceneNames,\n      proposal: { records, targets: targets.map(t => ({ id: t.record_id, version: t.version ?? 0 })) } };\n  }\n\n  // Original immediate-write path (unused by the controlled service).\n",
+      "to": "  // Controlled prepare has no live storage or generation-log effects.\n  if (options.prepareOnly) {\n    if (!options.llmRunner || !options.vectorStore || !options.allowedRecordIds || !options.recordedAt) throw new Error(\"PREPARE_CONTEXT_REQUIRED\");\n    const filter = { teamId, userId, agentId, sessionId, taskId, sessionKey, allowedRecordIds: options.allowedRecordIds, ...options.relevance };\n    const decisions = await batchDedup({ memories: memoriesWithIds, config, llmRunner: options.llmRunner,\n      vectorStore: options.vectorStore, embeddingService: options.embeddingService, filter, strict: true });\n    const targetIds = [...new Set(decisions.filter(d => d.action === \"update\" || d.action === \"merge\").flatMap(d => d.target_ids))];\n    if (targetIds.some(id => !options.allowedRecordIds!.includes(id))) throw new Error(\"TARGET_OUTSIDE_ALLOWLIST\");\n    const targets = targetIds.length ? await options.vectorStore.queryL1Records({ ...filter, recordIds: targetIds }) : [];\n    if (targets.length !== targetIds.length) throw new Error(\"TARGET_MISSING\");\n    const records = decisions.filter(d => d.action !== \"skip\").map(d => {\n      const memory = memoriesWithIds.find(m => m.record_id === d.record_id);\n      if (!memory) throw new Error(\"UNKNOWN_DECISION_RECORD\");\n      const version = Math.max(0, ...targets.filter(t => d.target_ids.includes(t.record_id)).map(t => t.version ?? 0)) + 1;\n      return prepareMemoryRecord(memory, d, { sessionKey, sessionId: sessionId!, teamId, userId, agentId, taskId }, options.recordedAt!, version);\n    });\n    const emptyDisposition = records.length > 0 ? undefined : (decisions.length > 0 && decisions.every(d => d.action === \"skip\") ? \"DEDUP_MERGED\" : \"DROPPED_GATE\");\n    return { success: true, extractedCount: extracted.length, storedCount: 0, records: [], sceneNames,\n      ...(emptyDisposition ? { emptyDisposition } : {}),\n      proposal: { records, targets: targets.map(t => ({ id: t.record_id, version: t.version ?? 0 })), ...(emptyDisposition ? { emptyDisposition } : {}) } };\n  }\n\n  // Original immediate-write path (unused by the controlled service).\n",
+      "count": 1
+    },
+    {
+      "from": "  if (messages.length === 0) {\n    logger?.debug?.(`${TAG} No messages to extract from`);\n    return { success: true, extractedCount: 0, storedCount: 0, records: [], sceneNames: [] };\n  }",
+      "to": "  if (messages.length === 0) {\n    logger?.debug?.(`${TAG} No messages to extract from`);\n    return { success: true, extractedCount: 0, storedCount: 0, records: [], sceneNames: [], emptyDisposition: \"NO_NEW_FACT\" };\n  }",
+      "count": 1
+    },
+    {
+      "from": "  if (qualifiedMessages.length === 0) {\n    logger?.debug?.(`${TAG} All messages filtered out by L1 quality gate`);\n    return { success: true, extractedCount: 0, storedCount: 0, records: [], sceneNames: [] };\n  }",
+      "to": "  if (qualifiedMessages.length === 0) {\n    logger?.debug?.(`${TAG} All messages filtered out by L1 quality gate`);\n    return { success: true, extractedCount: 0, storedCount: 0, records: [], sceneNames: [], emptyDisposition: \"DROPPED_GATE\" };\n  }",
+      "count": 1
+    },
+    {
+      "from": "    return {\n      success: true,\n      extractedCount: 0,\n      storedCount: 0,\n      records: [],\n      sceneNames,\n      lastSceneName: sceneNames[sceneNames.length - 1],\n    };",
+      "to": "    return {\n      success: true,\n      extractedCount: 0,\n      storedCount: 0,\n      records: [],\n      sceneNames,\n      lastSceneName: sceneNames[sceneNames.length - 1],\n      emptyDisposition: finalReason === \"normalized_all_dropped\" ? \"DROPPED_GATE\" : \"NO_NEW_FACT\",\n    };",
       "count": 1
     }
   ]

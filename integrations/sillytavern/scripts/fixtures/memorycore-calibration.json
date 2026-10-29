@@ -75,6 +75,36 @@
       "id": "dated-summary",
       "content": "用户将去厦门参加朋友婚礼。",
       "eventDate": "2026-10-30"
+    },
+    {
+      "id": "bike",
+      "content": "我把折叠自行车锁在地铁站B口的共享车位。"
+    },
+    {
+      "id": "pastry",
+      "content": "我妹妹最喜欢的点心是桂花糕，不吃巧克力。"
+    },
+    {
+      "id": "market",
+      "content": "2026年12月18日我要去成都逛夜市。",
+      "eventDate": "2026-12-18"
+    },
+    {
+      "id": "clinic",
+      "content": "2026年12月18日我预约了中医推拿。",
+      "eventDate": "2026-12-18"
+    },
+    {
+      "id": "opener",
+      "content": "我打开话题时先问今晚喝什么。"
+    },
+    {
+      "id": "metro-gloss",
+      "content": "校对备注只出现地铁二字，后面是空行。"
+    },
+    {
+      "id": "fold-gloss",
+      "content": "校对备注只出现折叠二字，后面是空行。"
     }
   ],
   "queries": [
@@ -529,6 +559,88 @@
       "expected": null,
       "kind": "wrong-date",
       "eventDate": "2026-12-03"
+    },
+    {
+      "query": "今晚喝什么呀，折叠车停在地铁口",
+      "expected": "bike",
+      "kind": "gap",
+      "set": "holdout"
+    },
+    {
+      "query": "今晚喝什么，折叠车停地铁口了没",
+      "expected": "bike",
+      "kind": "gap",
+      "set": "holdout"
+    },
+    {
+      "query": "折叠车停在地铁口，今晚喝什么",
+      "expected": "bike",
+      "kind": "segment",
+      "set": "holdout"
+    },
+    {
+      "query": "那个桂花的还在吗",
+      "expected": "pastry",
+      "kind": "anaphora",
+      "set": "holdout"
+    },
+    {
+      "query": "我提过一种点心。那个桂花的还在吗",
+      "expected": "pastry",
+      "kind": "anaphora",
+      "set": "holdout"
+    },
+    {
+      "query": "妹妹最喜欢哪种糕？",
+      "expected": "pastry",
+      "kind": "reword",
+      "set": "holdout"
+    },
+    {
+      "query": "成都的夜市是哪一天的安排",
+      "expected": "market",
+      "kind": "pick-one",
+      "set": "holdout",
+      "forbid": [
+        "clinic"
+      ]
+    },
+    {
+      "query": "折叠车通常停在地铁哪个口？",
+      "expected": "bike",
+      "kind": "paraphrase",
+      "set": "holdout"
+    },
+    {
+      "query": "我每天喝多少毫升水？",
+      "expected": null,
+      "kind": "same-relationship-unrelated",
+      "set": "holdout"
+    },
+    {
+      "query": "十二月二十号我有什么安排？",
+      "expected": null,
+      "kind": "wrong-date",
+      "set": "holdout",
+      "eventDate": "2026-12-20"
+    },
+    {
+      "query": "折叠车停在地铁哪个口",
+      "expected": null,
+      "kind": "forgotten",
+      "set": "holdout",
+      "omit": [
+        "bike"
+      ]
+    },
+    {
+      "query": "桂花糕是谁爱吃的",
+      "expected": null,
+      "kind": "cross-relationship",
+      "set": "holdout",
+      "omit": [
+        "pastry"
+      ]
     }
   ]
 }
