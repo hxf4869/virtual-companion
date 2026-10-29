@@ -116,6 +116,9 @@ function toRecord(row) {
 export async function createNativeFactory(api) {
     return async dir => {
         const store = new api.VectorStore(path.join(dir, OWNER_DATABASE_FILES[0]), 0);
+        // The connection is opened inside VectorStore. Same-database FTS5 and
+        // sqlite-vec shadow tables share it, so this covers their freed pages.
+        if (typeof store.getRawDb === 'function') store.getRawDb().exec('PRAGMA secure_delete = ON');
         await store.init();
         const list = (ids, scope) => store.queryL1Records({ ...scope, ...(ids ? { recordIds: ids } : {}) }).map(toRecord);
         return {
@@ -124,7 +127,12 @@ export async function createNativeFactory(api) {
             finishSpaceRebuild: (id, failures) => store.finishSpaceRebuild(id, failures),
             rebuildVector: (r, vector, id) => store.writeRebuiltVector(r.id, vector, id),
             getOperation: id => store.getOperation(id), invalidateScope: key => store.invalidateScope(key),
-            commitPrepared: p => store.commitPrepared(p), forgetRecords: (ids, scope) => store.forgetRecords(ids, scope), list,
+            commitPrepared: p => store.commitPrepared(p), forgetRecords: (ids, scope) => store.forgetRecords(ids, scope),
+            checkpoint() {
+                const row = store.getRawDb().prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+                if (!row || Number(row.busy) !== 0) throw new Error('MEMORYCORE_WAL_CHECKPOINT');
+            },
+            list,
             listSources: () => store.getRawDb().prepare('SELECT * FROM l0_conversations ORDER BY record_id').all(),
             forgetSources: (ids, scope) => store.forgetSources(ids, scope),
             async prepare({ messages, scope, allowedRecordIds, runner, embedding, recordedAt }) {

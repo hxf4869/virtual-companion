@@ -148,6 +148,8 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             await scrubOperation(ctx, id, op, removed, Boolean(op.dependencies));
     }
     async function physicallyEraseOwner(ctx, ownerId) {
+        try { if (typeof ctx.native.checkpoint === 'function') ctx.native.checkpoint(); }
+        catch { /* erasure still has to drop the files */ }
         try { await ctx.native.close(); } catch { /* a closed handle must not keep the database files */ }
         owners.delete(String(ownerId));
         for (const name of await entries(ctx.dir)) {
@@ -173,6 +175,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             native.forgetRecords(cleanup.removed, request.action === 'forget' ? mapScope(request.scope) : undefined);
             const retainedSources = new Set(native.list().flatMap(r => r.metadata?.vcDependencies || []));
             native.forgetSources(cleanup.sourceIds.filter(id => !retainedSources.has(id)), request.action === 'forget' ? mapScope(request.scope) : undefined);
+            if (typeof native.checkpoint === 'function') native.checkpoint();
             for (const { id } of cleanup.operations) {
                 const op = await readJSON(path.join(ctx.dir, 'operations', id + '.json'));
                 if (op) await scrubOperation(ctx, id, op, new Set(cleanup.removed), request.action === 'clear-owner');
