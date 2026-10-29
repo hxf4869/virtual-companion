@@ -23,7 +23,7 @@ body.vc-ui :is(
   #right-nav-panel
 ).vc-drawer-leave {
   position: fixed !important;
-  z-index: 4800 !important;
+  z-index: var(--vc-z-drawer) !important;
   inset: 0 !important;
   left: 0 !important;
   right: 0 !important;
@@ -165,7 +165,7 @@ body.vc-ui:has(.vc-drawer-page.openDrawer) #top-settings-holder,
 body.vc-ui:has(.vc-drawer-leave) #top-settings-holder {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 100000 !important;
+  z-index: var(--vc-z-drawer) !important;
   width: 100dvw !important;
   height: 100dvh !important;
   max-width: none !important;
@@ -202,7 +202,7 @@ body.vc-ui:has(:is(
 
 body.vc-ui #character_popup.open {
   position: fixed !important;
-  z-index: 4700 !important;
+  z-index: var(--vc-z-popup) !important;
   inset: 0 !important;
   left: 0 !important;
   right: 0 !important;
@@ -466,7 +466,7 @@ body.vc-ui #rm_extensions_block.vc-drawer-page.openDrawer,
 body.vc-ui #PersonaManagement.vc-drawer-page.openDrawer,
 body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer {
   position: fixed !important;
-  z-index: 100001 !important;
+  z-index: var(--vc-z-drawer) !important;
   inset: 0 !important;
   top: 0 !important;
   right: 0 !important;

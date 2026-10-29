@@ -364,6 +364,10 @@ test('抽屉、模型和对话菜单在模块缺失时退回', async () => {
     assert.match(index, /inbox: \(container\) => mountInboxTab\(container, \{/);
     assert.match(index, /onOpenConversation: \(payload\) => navigation\.openInstance/);
     assert.match(index, /navigation\.openInstance = \(instance, opener\) => shell\?\.openConversation\?\.\(instance, opener\)/);
+    assert.match(index, /surface:\s*async\s*\(\)\s*=>\s*\(\{/);
+    assert.match(index, /openDrawerPage\(entry \? entry\.panel : id\)/);
+    assert.match(index, /openModelSettings,/);
+    assert.match(index, /openAccountData,/);
 });
 
 test('注册表挂载优先于缺失模块', async () => {

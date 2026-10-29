@@ -2,7 +2,7 @@
 
 body.vc-ui #vc-model-settings-root .vcms-overlay:not([hidden]) {
   position: fixed !important;
-  z-index: 4600 !important;
+  z-index: var(--vc-z-page) !important;
   inset: 0 !important;
   left: 0 !important;
   right: 0 !important;
@@ -397,7 +397,7 @@ body.vc-ui #vc-model-settings-root .vcms-skeleton .vcms-sk-line {
 
 body.vc-ui .vc-data-dialog[open] {
   position: fixed;
-  z-index: 4600;
+  z-index: var(--vc-z-page);
   inset: 0;
   left: 0;
   right: 0;
@@ -444,7 +444,7 @@ body.vc-ui .vc-data-dialog [data-vc-account-nav] .vc-nav-title {
 body.vc-ui .vc-data-dialog > .vc-scrim,
 body.vc-ui .vc-data-dialog > .vc-alert {
   position: fixed !important;
-  z-index: 100002 !important;
+  z-index: var(--vc-z-alert) !important;
 }
 
 body.vc-ui .vc-data-dialog > .vc-alert {

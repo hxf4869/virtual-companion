@@ -166,6 +166,10 @@ const ARTIFACTS_ROOT = path.join(DEV_MANAGED, 'artifacts');
 const ST_PORT = Number(process.env.VC_W03_ST_PORT || 8752);
 const FIXTURE_PORT = Number(process.env.VC_W03_FIXTURE_PORT || 8753);
 const GO_PORT = Number(process.env.VC_W03_GO_PORT || 8095);
+// 场景在运行时读这些变量。写回解析后的端口，避免未导出时拼出 undefined，被 Go 当成非法 base URL 返回 400。
+process.env.VC_W03_ST_PORT = String(ST_PORT);
+process.env.VC_W03_FIXTURE_PORT = String(FIXTURE_PORT);
+process.env.VC_W03_GO_PORT = String(GO_PORT);
 const GO_BASE = `http://127.0.0.1:${GO_PORT}`;
 const ST_BASE = `http://127.0.0.1:${ST_PORT}`;
 const FIXTURE_BASE = `http://127.0.0.1:${FIXTURE_PORT}`;

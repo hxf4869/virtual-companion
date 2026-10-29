@@ -9,6 +9,14 @@
 
 body.vc-ui {
   overflow: hidden;
+  /* 叠层只在这里取值。抽屉成页高于外壳；页面与提示再按其关系排在两侧。 */
+  --vc-z-content: 1;
+  --vc-z-shell: 20;
+  --vc-z-fly: 30;
+  --vc-z-page: 40;
+  --vc-z-drawer: 50;
+  --vc-z-popup: 55;
+  --vc-z-alert: 60;
 }
 
 body.vc-ui #vc-chat-nav,
@@ -58,7 +66,7 @@ body.vc-ui #top-settings-holder .drawer-content.openDrawer {
 
 body.vc-ui #vc-shell {
   position: fixed;
-  z-index: 25;
+  z-index: var(--vc-z-shell);
   left: 0;
   right: 0;
   top: 0;
@@ -451,7 +459,7 @@ body.vc-ui #sheld {
   overflow: hidden !important;
   transform: none !important;
   resize: none !important;
-  z-index: auto !important;
+  z-index: var(--vc-z-content) !important;
   background: var(--vc-surface);
 }
 
@@ -563,7 +571,7 @@ body.vc-ui .vc-side-foot {
 }
 
 body.vc-ui.vc-host-drawer #top-settings-holder {
-  z-index: 80 !important;
+  z-index: var(--vc-z-drawer) !important;
 }
 
 @media (max-width: 1000px) {

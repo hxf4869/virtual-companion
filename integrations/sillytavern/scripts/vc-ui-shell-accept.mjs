@@ -20,6 +20,46 @@ const TABS = [
     { name: 'story', kind: 'page', root: '.vc-story-tab', dialog: '.vc-story-dialog[open]' },
 ];
 
+function secondStamp(value) {
+    const parsed = Date.parse(String(value ?? '').trim().replace('@', ' '));
+    if (Number.isNaN(parsed)) return '';
+    try {
+        return new Intl.DateTimeFormat('zh-CN', {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+        }).format(new Date(parsed));
+    } catch {
+        return '';
+    }
+}
+
+// 外壳只用创建时间的秒来区分同名、且没有最后消息的实例。前面的场景加载默认角色时，
+// 欢迎会话和替换出来的新会话可能在同一秒各绑一条。这里只删掉这种无法区分的多余行，
+// 创建时间不同的会话全部保留。
+async function dropSameSecondTwins(ctx, keepIds = []) {
+    const keep = new Set(keepIds.map((id) => String(id)).filter(Boolean));
+    const listed = await ctx.admin.call('GET', '/api/v1/relationships');
+    if (listed.status !== 200 || !Array.isArray(listed.json)) throw new Error(`列出会话 HTTP ${listed.status}`);
+    const ids = [...String(listed.text || '').matchAll(/"relationshipId"\s*:\s*(\d+)/g)].map((match) => match[1]);
+    if (ids.length !== listed.json.length) throw new Error('会话编号无法按原文读取');
+    const groups = new Map();
+    listed.json.forEach((row, index) => {
+        if (row?.personaRef !== 'st-character') return;
+        const name = String(row?.companionName || '未命名实例');
+        const key = `${name}\n${secondStamp(row?.createdAt)}`;
+        const list = groups.get(key) || [];
+        list.push(ids[index]);
+        groups.set(key, list);
+    });
+    for (const list of groups.values()) {
+        const victims = list.some((id) => keep.has(id)) ? list.filter((id) => !keep.has(id)) : list.slice(1);
+        for (const id of victims) {
+            const removed = await ctx.admin.call('DELETE', `/api/v1/relationships/${id}`);
+            if (removed.status !== 200) throw new Error(`清理同时创建的会话 HTTP ${removed.status}`);
+        }
+    }
+}
+
 export async function sceneVcUiShell(ctx) {
     const dir = path.join(ctx.artifactsDir, 'vc-ui-shell');
     fs.mkdirSync(dir, { recursive: true });
@@ -232,6 +272,18 @@ export async function sceneVcUiShell(ctx) {
                 const binding = window.SillyTavern.getContext().chatMetadata?.vc_binding;
                 return Boolean(binding?.relationshipId) && Boolean(document.querySelector('#vc-shell .vc-convo'));
             }), { timeoutMs: 30000, label: '会话行' });
+            const boundNow = await page.evaluate(() => String(window.SillyTavern.getContext().chatMetadata?.vc_binding?.relationshipId || ''));
+            await dropSameSecondTwins(ctx, [boundNow]);
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            await page.evaluate(() => {
+                const context = window.SillyTavern.getContext();
+                context.eventSource.emit(context.eventTypes.CHAT_CHANGED);
+            });
+            await waitFor(async () => {
+                const labels = await page.evaluate(() => [...document.querySelectorAll('#vc-shell .vc-convo')].map((el) => el.getAttribute('aria-label') || ''));
+                const dupes = labels.filter((label, index) => labels.indexOf(label) !== index);
+                return labels.length > 0 && dupes.length === 0;
+            }, { timeoutMs: 10000, label: '去掉同时创建的重复会话' });
 
             for (const theme of THEMES) {
                 await page.evaluate((mode) => {

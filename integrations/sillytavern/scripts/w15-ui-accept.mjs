@@ -26,6 +26,11 @@ const NAV = [
     ['account', '账户'],
 ];
 
+function fixtureBase() {
+    const port = process.env.VC_W03_FIXTURE_PORT || '8753';
+    return `http://127.0.0.1:${port}`;
+}
+
 function ledgerModel(profileKey, displayName, pricing) {
     const model = {
         profileKey,
@@ -49,7 +54,7 @@ async function ensureLedgerProfiles(ctx) {
     const body = {
         displayName: '计价样本',
         protocol: 'OPENAI_CHAT_COMPLETIONS',
-        baseUrl: `http://127.0.0.1:${process.env.VC_W03_FIXTURE_PORT}/v1`,
+        baseUrl: `${fixtureBase()}/v1`,
         credential: ctx.secrets.fixtureKey,
         state: 'ENABLED',
         models: [
@@ -202,13 +207,27 @@ export async function sceneW15Ui(ctx) {
             await waitFor(async () => page.evaluate(() => document.querySelector('#vc-chat-nav') && document.querySelector('#send_textarea')), { timeoutMs: 60000, label: '七页导航' });
             const openChat = async (file) => {
                 await waitFor(async () => page.evaluate((name) => window.SillyTavern.getContext().characters.some((item) => item.avatar === name), avatar), { timeoutMs: 30000, label: '合成角色出现' });
-                await page.evaluate(async ({ name, chatFile }) => {
+                await page.evaluate(async (name) => {
                     const native = await import('/script.js');
                     const index = native.characters.findIndex((item) => item.avatar === name);
                     if (index < 0) throw new Error('合成角色未加载');
                     await native.selectCharacterById(index);
+                }, avatar);
+                // 选中角色会先绑定当前聊天，紧接着打开目标文件会在同一秒再绑一条。
+                // 外壳只把创建时间精确到秒，未打开的会话又没有最后消息，两条会显示成同一个标签。
+                const selectedHasIdentity = await page.evaluate(() => Boolean(window.SillyTavern.getContext().chatMetadata?.vc_f2?.id));
+                if (selectedHasIdentity) {
+                    await waitFor(async () => page.evaluate(() => {
+                        const id = window.SillyTavern.getContext().chatMetadata?.vc_binding?.relationshipId;
+                        return id != null && String(id) !== '';
+                    }), { timeoutMs: 30000, label: '当前会话绑定' });
+                    const now = await page.evaluate(() => Date.now());
+                    await new Promise((resolve) => setTimeout(resolve, 1100 - (now % 1000) + 50));
+                }
+                await page.evaluate(async (chatFile) => {
+                    const native = await import('/script.js');
                     await native.openCharacterChat(chatFile);
-                }, { name: avatar, chatFile: file });
+                }, file);
             };
             const closeIf = async (selector, action) => {
                 const open = page.locator(selector);
@@ -570,7 +589,7 @@ export async function sceneW15Ui(ctx) {
                     worktree: 'w15d',
                     st: ctx.w05.stBase,
                     goPort: process.env.VC_W03_GO_PORT || '',
-                    fixturePort: process.env.VC_W03_FIXTURE_PORT || '',
+                    fixturePort: process.env.VC_W03_FIXTURE_PORT || '8753',
                     browser: 'headless chromium',
                     node: process.version,
                     platform: process.platform,
