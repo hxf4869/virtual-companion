@@ -109,7 +109,7 @@ test('native recall keeps independent questions above their own relevance gate a
         },
     }))('/synthetic-unused');
     const hits = await native.search({ query: '我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？（第一轮合成验证）',
-        topK: 2, scope: {}, allowedRecordIds: ['wedding', 'book'] });
+        topK: 2, scope: {}, allowedRecordIds: ['wedding', 'book'], rerank: false });
     assert.deepEqual(queries, ['我在2026年10月30日准备去哪里，为什么', '我们上次读书计划谈到哪一步了']);
     assert.deepEqual(hits.map(h => h.record_id), ['wedding', 'book']);
     assert.equal(hits[0].cosine, 0.63, 'same record retains its strongest accepted candidate, not the later weaker hit');
@@ -172,8 +172,8 @@ test('dated generic schedule sets the date floor and a date-free lexical query',
         },
         async recallL1Candidates(input) { seen.push(input); return { hits: [] }; },
     }))('/synthetic-unused');
-    await native.search({ query: '10月30号有什么安排', topK: 5, scope: {}, allowedRecordIds: ['wedding', 'dentist'], eventDate: '2026-10-30' });
-    await native.search({ query: '十一月六日我在哪里举行婚礼？', topK: 5, scope: {}, allowedRecordIds: ['dentist'], dateRestricted: true });
+    await native.search({ query: '10月30号有什么安排', topK: 5, scope: {}, allowedRecordIds: ['wedding', 'dentist'], eventDate: '2026-10-30', rerank: false });
+    await native.search({ query: '十一月六日我在哪里举行婚礼？', topK: 5, scope: {}, allowedRecordIds: ['dentist'], dateRestricted: true, rerank: false });
     assert.equal(seen[0].filter.genericSchedule, true);
     assert.equal(seen[0].filter.dateCosineFloor, RELEVANCE.dateCosineFloor);
     assert.equal(seen[0].filter.lexicalQuery.includes('10月30'), false);
@@ -182,7 +182,7 @@ test('dated generic schedule sets the date floor and a date-free lexical query',
     assert.equal(seen[1].filter.lexicalQuery.includes('举行婚礼'), true);
     assert.equal(seen[1].query.includes('十一月六日'), true);
     const empty = await native.search({ query: '我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？',
-        topK: 5, scope: {}, allowedRecordIds: [], dateRestricted: true,
+        topK: 5, scope: {}, allowedRecordIds: [], dateRestricted: true, rerank: false,
         embedding: { embedBatch: async ([query]) => (query.includes('读书计划') && !query.includes('2026年10月30日')
             ? [new Float32Array([1, 0]), new Float32Array([1, 0])] : [new Float32Array([1, 0]), new Float32Array([0, 1])]) },
         gateTexts: [{ id: 'persona', text: '我们决定暂停读书计划，等下次再选书。' }] });

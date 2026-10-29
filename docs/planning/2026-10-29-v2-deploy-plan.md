@@ -16,8 +16,8 @@
 
 ## 1. 待 Owner 决定（执行前确认）
 
-1. **目标主机**：京东云现有服务器（ssh-skill 中已配置，已运行 Ollama 0.33.2 + `qwen3-embedding:0.6b`），或另一台主机。
-   最低资源：2 vCPU、4 GB 内存（PG + MinIO + Ollama 0.6b + ST + MemoryCore + companiond），20 GB 以上磁盘。
+1. **目标主机**：由 `VC_DEPLOY_HOST` 指定。不在本文件记录厂商、公网地址或现网已安装的软件版本。
+   最低资源：2 vCPU、约 4.5 GB 内存（PG + MinIO + embedding + ST + MemoryCore + companiond，再加本机重排约 0.5GB），20 GB 以上磁盘。
 2. **访问方式**（二选一）：
    - A. 公网子域名 + HTTPS：Owner 提供已解析到该主机的子域名；Caddy 自动签发证书；只暴露 443。
    - B. 私有网络：Tailscale 等，不暴露公网端口。风险更低，手机需装客户端。
@@ -32,17 +32,23 @@
                                    │   ▲                    └─▶ MinIO（容器，仅本机，导出对象）
                                    ▼   │ 回调令牌
                                MemoryCore 127.0.0.1:8754 ──▶ Ollama qwen3-embedding 127.0.0.1:11438
+                                              └──▶ llama.cpp bge-reranker-v2-m3 127.0.0.1:11439
 ```
 
 - 只有 Caddy 对外。ST、Go、MemoryCore、PG、MinIO、Ollama 全部只绑定 `127.0.0.1`。浏览器的扩展请求都经 ST 插件的管理桥转发到 Go，
   不需要对外暴露 Go。部署后用外部端口扫描确认只开放 443（方式 B 则无公网端口）。
-- embedding 地址在代码中固定为 `http://127.0.0.1:11438`（`memorycore-service/embedding.mjs`）。若复用京东云现有 Ollama，
-  需确认它在本机 11438 可达且模型为 `qwen3-embedding:0.6b`、1024 维；否则另起一个 `ollama/ollama:0.33.2` 容器映射到 `127.0.0.1:11438`。
+- embedding 地址在代码中固定为 `http://127.0.0.1:11438`（`memorycore-service/embedding.mjs`）。若复用 `VC_DEPLOY_HOST` 上已有的 embedding 服务，
+  需确认它在本机 11438 可达且模型为 `qwen3-embedding:0.6b`、1024 维；否则另起 embedding 容器并只映射到 `127.0.0.1:11438`。
+- 重排与 embedding 同级，只绑定 `127.0.0.1:11439`，容器名 `vc-rerank`。镜像为
+  `ghcr.io/ggml-org/llama.cpp@sha256:01c2bc28d51291536df2ccebe5c6af1cdec9ea9b2bd98ac59556408caf96d3f8`，
+  模型文件 `bge-reranker-v2-m3-Q8_0.gguf`（SHA256 `a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3`）放在仓库外数据目录，
+  只读挂进容器。进程参数 `-t 4 -c 8192 -b 2048 -ub 2048 --reranking --pooling rank -ngl 0`。常驻约 0.5GB 内存。
+  服务不可用、超过 2 秒或返回异常时，召回回退到余弦与 FTS 门槛，聊天不中断。
 - `ops/deploy` 的 Compose 不是 V2 栈（不含 ST 与 MemoryCore），不要直接拿来部署 V2；其 Caddy 配置可参考 TLS 与反向代理写法。
 
 ## 3. 部署步骤
 
-1. **只读盘点**：OS、CPU/内存/磁盘、已占用端口、Docker 版本、现有服务（尤其京东云上已有的 embedding 部署）、防火墙与安全组。
+1. **只读盘点**：OS、CPU/内存/磁盘、已占用端口、Docker 版本、`VC_DEPLOY_HOST` 上已有的 embedding 部署、防火墙与安全组。
    结果写回给 Owner，资源不足或端口冲突时停下。
 2. **准备运行时**：Docker；Node 22.13+；Go 1.26.10（或在本机交叉编译 `companiond` 后上传二进制，二选一，推荐交叉编译以免服务器装工具链）；
    Python 3 与 openssl（备份脚本使用）；Caddy（方式 A）或 Tailscale（方式 B）。
@@ -51,6 +57,8 @@
    不手改 `upstream/` 与 vendored 文件。
 4. **数据服务**：按「本机运行说明」的约定启动 `pgvector/pgvector:0.8.5-pg18` 与 MinIO 容器，但使用持久卷（不要用验收时的临时容器），
    端口只绑 `127.0.0.1`；创建导出桶；执行 `companiond migrate` 与 `companiond bootstrap`（创建 Owner 账号，口令与 TOTP 由 Owner 首次登录设置）。
+   同时启动重排容器 `vc-rerank`：模型文件放在仓库外目录，容器只发布 `127.0.0.1:11439`，镜像使用上一节的 digest。
+   受管验收由 `accept-managed.mjs` 按 `VC_RERANK_PORT` / `VC_RERANK_CONTAINER` 复用已健康的容器，缺省时再启动。
 5. **环境文件**（0600，仓库外，例如 `/etc/virtual-companion/*.env`），变量名以「本机运行说明」和 `backend/internal/config/config.go` 为准：
    - Go：`VC_MODE=full`、`VC_HTTP_ADDR=127.0.0.1:8095`、`VC_HTTP_ORIGINS`（对外 ST 的 origin，例如 `https://<子域名>`）、`VC_DB_DSN`、
      `VC_CRYPTO_REST_KEY`、`VC_EXPORT_S3_*`、`VC_ST_PLUGIN_SERVICE_TOKEN`、`VC_ST_HOST_BASE_URL=http://127.0.0.1:8752`、

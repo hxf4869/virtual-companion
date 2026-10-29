@@ -8,6 +8,8 @@ import { assembleMemorycore, verifyMemorycoreUpstream, memorycorePaths } from '.
 import { verifyNativeStore } from './w08-native-store-checks.mjs';
 import { createCallbackRunner } from '../memorycore-service/llm-runner.mjs';
 import { createOllamaEmbedding } from '../memorycore-service/embedding.mjs';
+import { ensureRerankContainer } from './lib/rerank-container.mjs';
+import { RERANK, calibrationReport } from '../memorycore-service/rerank.mjs';
 
 function prefilterGate() {
     const db = new DatabaseSync(':memory:', { allowExtension: true }); loadVec(db);
@@ -82,6 +84,7 @@ export async function sceneMemorycoreNative(ctx) {
     const fixture = JSON.parse(await fs.readFile(new URL('./fixtures/memorycore-calibration.json', import.meta.url), 'utf8'));
     const base = { scope, revision: 0, embedding: snapshot, allowedRecordIds: [], operationToken: 'synthetic-capability',
         messages: [{ id: 'source1', role: 'user', content: '这是隔离合成验收输入，记录测试记忆，不是真实用户的个人信息。', timestamp: '2026-10-28T00:00:00Z' }] };
+    const lexicalSearch = (input) => engine.invoke('search', { ...input, rerankEnabled: false });
     try {
         extracted = fixture.documents;
         // Upstream default max memories is 10; publish in bounded batches of ten.
@@ -92,7 +95,7 @@ export async function sceneMemorycoreNative(ctx) {
         failPublication = true;
         await assert.rejects(engine.invoke('commit', { scope, revision: 0, operationId: 'calibration1' }), /PUBLICATION/);
         assert.equal((await engine.invoke('operation-status', { scope, operationId: 'calibration1' })).status, 'publishing');
-        assert.deepEqual(await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: p.records.map(r => r.id), query: '我的婚礼什么时候举行？' }), [], '引擎未完成发布不能进入检索');
+        assert.deepEqual(await lexicalSearch( { scope, embedding: snapshot, allowedRecordIds: p.records.map(r => r.id), query: '我的婚礼什么时候举行？' }), [], '引擎未完成发布不能进入检索');
         checks.push('unpublished-records-never-searchable');
         const receipt = await engine.invoke('commit', { scope, revision: 0, operationId: 'calibration1' });
         assert.equal(receipt.status, 'published'); checks.push('partial-publication-resume');
@@ -105,17 +108,17 @@ export async function sceneMemorycoreNative(ctx) {
         }
         const all = stored;
         const ids = all.map(r => r.id), idsByLabel = Object.fromEntries(fixture.documents.map(d => [d.id, all.find(r => r.content === d.content).id]));
-        assert.deepEqual(await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: [], query: '婚礼' }), []);
+        assert.deepEqual(await lexicalSearch( { scope, embedding: snapshot, allowedRecordIds: [], query: '婚礼' }), []);
         for (const changed of [{ ownerId: '102' }, { instanceId: '8' }, { mode: 'STORY' }]) {
-            assert.deepEqual(await engine.invoke('search', { scope: { ...scope, ...changed }, embedding: snapshot, allowedRecordIds: ids, query: '我的婚礼什么时候举行？' }), []);
+            assert.deepEqual(await lexicalSearch( { scope: { ...scope, ...changed }, embedding: snapshot, allowedRecordIds: ids, query: '我的婚礼什么时候举行？' }), []);
         }
-        assert.deepEqual(await engine.invoke('search', { scope: { ...scope, profileScopeId: 'branch-b' }, embedding: snapshot, allowedRecordIds: [], query: '我的婚礼什么时候举行？' }), []);
+        assert.deepEqual(await lexicalSearch( { scope: { ...scope, profileScopeId: 'branch-b' }, embedding: snapshot, allowedRecordIds: [], query: '我的婚礼什么时候举行？' }), []);
         checks.push('M03-M07-owner-instance-mode-branch-empty-scope');
         const calibration = [];
         for (const item of fixture.queries) {
             const omitted = new Set(item.omit || []);
             const allowed = ids.filter(id => !omitted.has(fixture.documents.find(d => idsByLabel[d.id] === id)?.id));
-            const hits = await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: allowed, query: item.query, eventDate: item.eventDate });
+            const hits = await lexicalSearch( { scope, embedding: snapshot, allowedRecordIds: allowed, query: item.query, eventDate: item.eventDate });
             calibration.push({ kind: item.kind, expected: item.expected, hit: item.expected ? hits.some(h => h.record_id === idsByLabel[item.expected]) : hits.length === 0,
                 candidates: hits.map(h => ({ label: fixture.documents.find(d => idsByLabel[d.id] === h.record_id)?.id, cosine: h.cosine, ftsScore: h.ftsScore })) });
             if (!item.expected) assert.equal(hits.length, 0, `negative ${item.kind} ${item.query}`);
@@ -124,7 +127,49 @@ export async function sceneMemorycoreNative(ctx) {
             if (item.eventDate === '2026-11-06') assert.ok(hits.every(h => h.record_id !== idsByLabel.wedding && h.record_id !== idsByLabel['friend-wedding'] && h.record_id !== idsByLabel['dated-summary']));
             if (item.kind === 'multi-question') assert.ok(hits.some(h => h.record_id === idsByLabel[item.expected]), 'independent valid question must survive multi-topic embedding dilution');
         }
-        const inherited = await engine.invoke('search', { scope: { ...scope, profileScopeId: 'branch-b' }, embedding: snapshot, allowedRecordIds: [idsByLabel.wedding], query: '我的婚礼什么时候举行？' });
+        await ensureRerankContainer();
+        const rerankRows = [];
+        let unionPositive = 0;
+        let unionTop1 = 0;
+        let unionNegative = 0;
+        for (let index = 0; index < fixture.queries.length; index += 1) {
+            const item = fixture.queries[index];
+            const omitted = new Set(item.omit || []);
+            const allowed = ids.filter(id => !omitted.has(fixture.documents.find(d => idsByLabel[d.id] === id)?.id));
+            const result = await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: allowed, query: item.query, eventDate: item.eventDate, topK: 20, observe: true });
+            const hits = Array.isArray(result) ? result : (result.hits || []);
+            const stats = Array.isArray(result) ? {} : (result.stats || {});
+            const rank = Array.isArray(result?.rerankRank) ? result.rerankRank : [];
+            assert.ok((stats.rerankCandidates || 0) <= 20, `rerank candidate cap ${index}`);
+            if ((stats.rerankCandidates || 0) > 0) assert.equal(stats.rerankDecision, 'applied', `rerank decision ${index}`);
+            assert.equal(stats.rerankFallback || 0, 0, `rerank fallback ${index}`);
+            if (!item.expected) {
+                assert.equal(hits.length, 0, `rerank negative ${index}`);
+                if (hits.length) unionNegative += 1;
+            } else if (hits.some((hit) => hit.record_id === idsByLabel[item.expected])) {
+                unionPositive += 1;
+                if (hits[0]?.record_id === idsByLabel[item.expected]) unionTop1 += 1;
+            }
+            const scores = {};
+            const pooled = [];
+            for (const entry of rank) {
+                const label = fixture.documents.find(d => idsByLabel[d.id] === entry.id)?.id;
+                if (!label || !Number.isFinite(entry.score)) continue;
+                scores[label] = entry.score;
+                pooled.push(label);
+            }
+            rerankRows.push({ expected: item.expected || null, pooled, scores });
+        }
+        const rerankReport = calibrationReport(rerankRows, RERANK.threshold);
+        assert.equal(rerankReport.negativeNonEmpty, 0);
+        assert.equal(rerankReport.positiveHits, RERANK.calibration.positiveHits);
+        assert.equal(rerankReport.top1Hits, RERANK.calibration.top1Hits);
+        assert.equal(unionNegative, 0);
+        assert.equal(unionPositive, RERANK.calibration.unionPositiveHits);
+        assert.equal(unionTop1, RERANK.calibration.unionTop1Hits);
+        checks.push(`calibration-rerank-recall-${rerankReport.positiveHits}/${rerankReport.positives}-top1-${rerankReport.top1Hits}`);
+        checks.push(`calibration-union-${unionPositive}/${rerankReport.positives}-top1-${unionTop1}`);
+        const inherited = await lexicalSearch( { scope: { ...scope, profileScopeId: 'branch-b' }, embedding: snapshot, allowedRecordIds: [idsByLabel.wedding], query: '我的婚礼什么时候举行？' });
         assert.deepEqual(inherited.map(h => h.record_id), [idsByLabel.wedding]); checks.push('M07-branch-inherits-only-Go-allowed-IDs');
         const positives = calibration.filter(r => r.expected), negatives = calibration.filter(r => !r.expected);
         assert.equal(positives.filter(r => r.hit).length, positives.length); checks.push('calibration-positive-paraphrase-no-answer-distractor-M11');
@@ -154,18 +199,18 @@ export async function sceneMemorycoreNative(ctx) {
             partial = await engine.invoke('forget', forgetRequest);
         } finally { api.VectorStore.prototype.forgetRecords = originalForget; }
         assert.equal(partial.status, 'pending', 'SQLite失败不能误报完成');
-        assert.deepEqual(await engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: [corrected.records[0].id], query: '我喜欢喝什么茶？' }), [], '部分清理时立即停止召回');
+        assert.deepEqual(await lexicalSearch( { scope, embedding: snapshot, allowedRecordIds: [corrected.records[0].id], query: '我喜欢喝什么茶？' }), [], '部分清理时立即停止召回');
         const forgotten = await engine.invoke('forget', forgetRequest);
         assert.equal(forgotten.revision, partial.revision, '同一清理意图恢复不得重复提高revision');
         checks.push('partial-cleanup-stays-suppressed-and-resumes');
         await assert.rejects(engine.invoke('commit', { scope, revision: 0, operationId: 'late' }), /REVISION/);
         assert.equal(forgotten.status, 'cleared'); checks.push('M04-forget-revokes-late-commit');
         const changedSpace = { ...snapshot, spaceId: 'synthetic-space-2', revision: 2 };
-        const during = await engine.invoke('search', { scope, embedding: changedSpace, allowedRecordIds: [idsByLabel.book], query: '我最近在读哪本小说？' });
+        const during = await lexicalSearch( { scope, embedding: changedSpace, allowedRecordIds: [idsByLabel.book], query: '我最近在读哪本小说？' });
         assert.ok(during.every(h => h.cosine === undefined)); checks.push('MODEL05-rebuilding-lexical-only');
-        await assert.rejects(engine.invoke('search', { scope, embedding: snapshot, allowedRecordIds: [idsByLabel.book], query: '我最近在读哪本小说？' }), /SPACE_CONFIG_REVISION/);
+        await assert.rejects(lexicalSearch( { scope, embedding: snapshot, allowedRecordIds: [idsByLabel.book], query: '我最近在读哪本小说？' }), /SPACE_CONFIG_REVISION/);
         assert.equal((await engine.invoke('rebuild-space', { scope, embedding: changedSpace })).ready, true);
-        const rebuilt = await engine.invoke('search', { scope, embedding: changedSpace, allowedRecordIds: [idsByLabel.book], query: '我最近在读哪本小说？' });
+        const rebuilt = await lexicalSearch( { scope, embedding: changedSpace, allowedRecordIds: [idsByLabel.book], query: '我最近在读哪本小说？' });
         assert.ok(rebuilt.some(h => h.cosine >= RELEVANCE.minCosine)); checks.push('MODEL05-complete-rebuild-restores-vectors');
         assert.equal((await engine.invoke('clear-owner', { scope, revision: forgotten.revision })).status, 'cleared');
         const cleared = await engine.invoke('export-owner', { scope });
@@ -173,6 +218,8 @@ export async function sceneMemorycoreNative(ctx) {
         await assert.rejects(engine.invoke('propose', { ...base, operationId: 'resurrect' }), /REVISION/); checks.push('clear-owner-all-domains-and-no-resurrection');
         ctx.results.memorycoreNative = { gate, checks, passed: checks.length, ms: Date.now() - started, thresholds: RELEVANCE,
             calibration: { positives: positives.length, positiveHits: positives.filter(r => r.hit).length, negatives: negatives.length,
-                negativeEmpty: negatives.filter(r => r.hit).length, rows: calibration }, productionAuthority: false };
+                negativeEmpty: negatives.filter(r => r.hit).length, rows: calibration },
+            rerank: { threshold: RERANK.threshold, summaryUnit: RERANK.summaryUnit, positiveHits: unionPositive, positives: rerankReport.positives, top1Hits: unionTop1, negativeNonEmpty: unionNegative, purePositiveHits: rerankReport.positiveHits, pureTop1Hits: rerankReport.top1Hits },
+            productionAuthority: false };
     } finally { await engine.close(); await fs.rm(paths.data, { recursive: true, force: true }); }
 }

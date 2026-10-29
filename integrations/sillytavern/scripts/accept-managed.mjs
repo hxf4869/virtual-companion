@@ -66,6 +66,7 @@ import { sceneMemoryRealModel } from './w08-real-accept.mjs';
 import { sceneMemoryRealEval } from './w08-real-eval.mjs';
 import { sceneMemoryBrowser } from './w07-accept.mjs';
 import { sceneMemorycoreNative } from './w08-native-accept.mjs';
+import { ensureRerankContainer } from './lib/rerank-container.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
 import { sceneInboxNotify, startW10Capture, stopW10Capture } from './w10-accept.mjs';
 import { sceneStoryReal } from './story-real-accept.mjs';
@@ -3135,6 +3136,12 @@ async function runFull() {
                 extraCookies: `vc_session=${secrets.session.vcSession}; vc_csrf=${secrets.session.vcCsrf}`,
                 expectedIdentity: secrets.session,
             });
+        }
+
+        const needsRerank = selected.some((id) => ['memorycore-native', 'memory-browser', 'memory-real-eval', 'memory-real-model'].includes(id));
+        if (needsRerank) {
+            const runtime = await ensureRerankContainer();
+            log.ok(`重排服务 ${runtime.reused ? '复用' : '已启动'} 127.0.0.1:${runtime.port} 容器 ${runtime.container}`);
         }
 
         for (const id of selected) {

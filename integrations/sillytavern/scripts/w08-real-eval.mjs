@@ -197,6 +197,7 @@ export function publicQuery(row) {
         summaryIds: [...(row.summaryIds || [])],
         missReason: row.missReason || null,
         datedFactsExcluded: row.datedFactsExcluded ?? null,
+        recallMs: Number.isFinite(row.recallMs) ? row.recallMs : null,
     };
 }
 
@@ -547,7 +548,9 @@ export async function sceneMemoryRealEval(ctx) {
             }), 200, query.id);
             assert.equal(String(binding.relationshipId), String(rel[group]));
             const saved = expectStatus(await st.call('POST', '/api/chats/get', { avatar_url: card.avatar, file_name: file }), 200, query.id);
+            const recallStarted = Date.now();
             const probed = await recall(ctx, saved[0].chat_metadata.vc_f2, query.at, query.zone);
+            const recallMs = Date.now() - recallStarted;
             queryProviderCalls = meter.snapshot().length - callsAtQueries;
             const sources = written.filter((sample) => query.needs.includes(sample.id));
             const expected = sources.flatMap((sample) => sample.memoryIds);
@@ -575,6 +578,7 @@ export async function sceneMemoryRealEval(ctx) {
                 missReason: query.kind === 'positive' ? classifyMiss({
                     hit, extracted: expected.length > 0, dateGated, recallEligible: memory?.recallEligible === true, inRecall,
                 }) : null,
+                recallMs,
             }));
         }
         const direct = queries.find((query) => query.queryId === 'M02-direct');
@@ -627,6 +631,7 @@ export async function sceneMemoryRealEval(ctx) {
             queryProviderCalls,
             engineModes: scopeNotes(profilesBeforeForget, written),
             latency: latencyStats(written.map((sample) => sample.recallableMs).filter((value) => value != null)),
+            recallLatency: latencyStats(queries.map((query) => query.recallMs)),
             recall: {
                 positive: { executed: positive.length, hits: positive.filter((query) => query.hit).length, rate: positive.length ? positive.filter((query) => query.hit).length / positive.length : null },
                 negative: { executed: negative.length, empty: negative.filter((query) => query.empty).length, rate: negative.length ? negative.filter((query) => query.empty).length / negative.length : null },

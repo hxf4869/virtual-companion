@@ -35,6 +35,15 @@ type MemoryRecallStats struct {
 	EmbeddingCacheHit  int
 	EmbeddingCacheMiss int
 	RecallEmpty        int
+	RerankApplied      int
+	RerankUnavailable  int
+	RerankTimeout      int
+	RerankInvalid      int
+	RerankDisabled     int
+	RerankFallback     int
+	RerankCandidates   int
+	RerankKept         int
+	RerankOnly         int
 }
 
 // JobsStats is a low-cardinality worker snapshot. No owner or job id.
@@ -100,6 +109,15 @@ func (r *Registry) ObserveMemoryRecall(stats MemoryRecallStats) {
 	r.memoryRecall.EmbeddingCacheHit += stats.EmbeddingCacheHit
 	r.memoryRecall.EmbeddingCacheMiss += stats.EmbeddingCacheMiss
 	r.memoryRecall.RecallEmpty += stats.RecallEmpty
+	r.memoryRecall.RerankApplied += stats.RerankApplied
+	r.memoryRecall.RerankUnavailable += stats.RerankUnavailable
+	r.memoryRecall.RerankTimeout += stats.RerankTimeout
+	r.memoryRecall.RerankInvalid += stats.RerankInvalid
+	r.memoryRecall.RerankDisabled += stats.RerankDisabled
+	r.memoryRecall.RerankFallback += stats.RerankFallback
+	r.memoryRecall.RerankCandidates += stats.RerankCandidates
+	r.memoryRecall.RerankKept += stats.RerankKept
+	r.memoryRecall.RerankOnly += stats.RerankOnly
 	r.mu.Unlock()
 }
 
@@ -223,6 +241,15 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 	writeCounter(&buf, "vc_memory_embedding_cache_hit_total", "Embedding cache hits observed during memory recall.", float64(memory.EmbeddingCacheHit))
 	writeCounter(&buf, "vc_memory_embedding_cache_miss_total", "Embedding cache misses observed during memory recall.", float64(memory.EmbeddingCacheMiss))
 	writeCounter(&buf, "vc_memory_recall_empty_total", "Memory recalls that returned no record.", float64(memory.RecallEmpty))
+	writeCounter(&buf, "vc_memory_rerank_applied_total", "Memory recalls scored by the reranker.", float64(memory.RerankApplied))
+	writeCounter(&buf, "vc_memory_rerank_unavailable_total", "Memory recalls that fell back because the reranker was unavailable.", float64(memory.RerankUnavailable))
+	writeCounter(&buf, "vc_memory_rerank_timeout_total", "Memory recalls that fell back because the reranker timed out.", float64(memory.RerankTimeout))
+	writeCounter(&buf, "vc_memory_rerank_invalid_total", "Memory recalls that fell back because the reranker response was invalid.", float64(memory.RerankInvalid))
+	writeCounter(&buf, "vc_memory_rerank_disabled_total", "Memory recalls that used cosine and FTS because rerank was disabled.", float64(memory.RerankDisabled))
+	writeCounter(&buf, "vc_memory_rerank_fallback_total", "Memory recalls that fell back to cosine and FTS gates.", float64(memory.RerankFallback))
+	writeCounter(&buf, "vc_memory_rerank_candidates_total", "Candidates sent to the reranker.", float64(memory.RerankCandidates))
+	writeCounter(&buf, "vc_memory_rerank_kept_total", "Candidates kept after the rerank threshold.", float64(memory.RerankKept))
+	writeCounter(&buf, "vc_memory_rerank_only_total", "Candidates injected only because the rerank logit passed.", float64(memory.RerankOnly))
 
 	buf.WriteString("# HELP vc_http_requests_total HTTP requests handled by companiond.\n")
 	buf.WriteString("# TYPE vc_http_requests_total counter\n")
