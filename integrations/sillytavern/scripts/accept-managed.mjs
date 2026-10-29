@@ -73,6 +73,7 @@ import { sceneStoryReal } from './story-real-accept.mjs';
 import { sceneW15Ui } from './w15-ui-accept.mjs';
 import { sceneFe4aUi } from './fe4a-ui-accept.mjs';
 import { sceneFe4bUi } from './fe4b-ui-accept.mjs';
+import { sceneVcUiShell } from './vc-ui-shell-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -133,6 +134,13 @@ SCENES.push({
     id: 'fe4b-ui',
     title: 'F4b 角色与剧情新界面：网格、详情、开局转场与回档取消',
     needs: ['browser'],
+    default: false,
+});
+// F1 外壳不进默认集。显式 --filter vc-ui-shell 才运行。
+SCENES.push({
+    id: 'vc-ui-shell',
+    title: 'F1 外壳：导航、会话列表、对话页与设置',
+    needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
 
@@ -3048,6 +3056,7 @@ const SCENE_IMPLS = {
     'w15-ui': sceneW15Ui,
     'fe4a-ui': sceneFe4aUi,
     'fe4b-ui': sceneFe4bUi,
+    'vc-ui-shell': sceneVcUiShell,
 };
 
 async function runFull() {

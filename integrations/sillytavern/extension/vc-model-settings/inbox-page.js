@@ -1077,7 +1077,7 @@ export function renderInboxTab(state) {
         ? `<div class="vc-empty">${icon('wifi-off', { size: 32 })}<p role="alert">${esc(state.error)}</p><button type="button" class="vc-btn vc-btn-text" data-action="retry-open">重试</button></div>`
         : messages
             ? `<div class="vc-group">${messages}</div>`
-            : `<div class="vc-empty">${icon('heart', { size: 32 })}<p role="status">没有消息</p><button type="button" class="vc-btn vc-btn-text" data-action="${state.inboxFilter === 'all' ? 'retry-open' : 'filter-inbox'}" ${state.inboxFilter === 'all' ? '' : 'data-filter="all"'}>${state.inboxFilter === 'all' ? '重试' : '全部'}</button></div>`;
+            : `<div class="vc-empty">${icon('heart', { size: 32 })}<p role="status">没有消息</p>${state.inboxFilter === 'all' ? '' : '<button type="button" class="vc-btn vc-btn-text" data-action="filter-inbox" data-filter="all">全部</button>'}</div>`;
     const follows = state.followUps.map((item) => {
         const name = state.relationships.find((row) => row.relationshipId === item.relationshipId)?.name || '';
         const whenText = triggerText(item);
@@ -1110,7 +1110,7 @@ export function renderInboxTab(state) {
         </section>
         <section aria-label="跟进">
             <h2 class="vc-group-title">跟进</h2>
-            <div class="vc-group">${follows || '<p role="status">没有跟进</p>'}</div>
+            <div class="vc-group">${follows || '<div class="vc-cell" role="status">没有跟进</div>'}</div>
             <div class="vc-group vc-inbox-summary">
                 <div class="vc-cell"><span class="vc-grow">静默时段</span><span class="vc-value vc-num">${esc(quiet)}</span></div>
                 <label class="vc-cell"><span class="vc-grow">开始</span><input data-field="quietHoursStart" aria-label="开始" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"></label>
