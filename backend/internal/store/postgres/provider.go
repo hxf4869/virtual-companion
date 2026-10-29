@@ -80,6 +80,14 @@ type ModelPricing struct {
 	VerifiedOn             *string  `json:"verifiedOn"`
 }
 
+// Ledger status of one profile against vc.model_unit_price. The ledger is
+// USD per 1K tokens. These values are derived on read and are not inputs.
+const (
+	LedgerPriceActive              = "ACTIVE"
+	LedgerPriceMissing             = "MISSING"
+	LedgerPriceUnsupportedCurrency = "UNSUPPORTED_CURRENCY"
+)
+
 // ProviderModel is one profile: a configured use of a remote model. On input a
 // nil Capabilities / ReasoningLevels / GenerationParams / Pricing keeps the
 // stored document (new profiles start empty). Priority is global across
@@ -98,6 +106,7 @@ type ProviderModel struct {
 	Pricing             *ModelPricing
 	BoundPurposes       []string
 	UpdatedAt           time.Time
+	LedgerPrice         string
 }
 
 // ProviderConfig is the secret-free administrator view.
@@ -285,7 +294,8 @@ func (s *Store) ListProviderConfigs(ctx context.Context, actingAccountID int64) 
 			       out_provider_updated_at, out_profile_key, out_model_id,
 			       out_model_display_name, out_context_window_tokens, out_max_output_tokens,
 			       out_priority, out_model_state, out_capabilities, out_reasoning_levels,
-			       out_generation_params, out_pricing, out_bound_purposes, out_model_updated_at
+			       out_generation_params, out_pricing, out_bound_purposes, out_model_updated_at,
+			       out_ledger_price
 			  FROM vc.go_admin_list_provider_models($1)`, actingAccountID)
 		if err != nil {
 			return err
@@ -302,12 +312,13 @@ func (s *Store) ListProviderConfigs(ctx context.Context, actingAccountID int64) 
 			var docs modelDocuments
 			var bound []string
 			var modelUpdated pgtype.Timestamptz
+			var ledgerPrice pgtype.Text
 			if err := rows.Scan(
 				&providerID, &displayName, &protocol, &baseURL,
 				&credentialConfigured, &state, &revision, &providerUpdated,
 				&profileKey, &modelID, &modelDisplay, &contextTokens, &maxOutput,
 				&priority, &modelState, &docs.capabilities, &docs.levels,
-				&docs.params, &docs.pricing, &bound, &modelUpdated,
+				&docs.params, &docs.pricing, &bound, &modelUpdated, &ledgerPrice,
 			); err != nil {
 				return err
 			}
@@ -342,6 +353,9 @@ func (s *Store) ListProviderConfigs(ctx context.Context, actingAccountID int64) 
 			}
 			if modelUpdated.Valid {
 				model.UpdatedAt = modelUpdated.Time.UTC()
+			}
+			if ledgerPrice.Valid {
+				model.LedgerPrice = ledgerPrice.String
 			}
 			if err := docs.decode(&model); err != nil {
 				return errStore

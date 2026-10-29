@@ -394,6 +394,7 @@ func TestProviderAdminListExposesProfileFieldsWithoutSecrets(t *testing.T) {
 	store.configs[0].Models[0].GenerationParams = &postgres.GenerationParams{ReasoningEffort: &effort}
 	store.configs[0].Models[0].Pricing = &postgres.ModelPricing{}
 	store.configs[0].Models[0].BoundPurposes = []string{"FOREGROUND_CHAT"}
+	store.configs[0].Models[0].LedgerPrice = postgres.LedgerPriceActive
 	rec := providerRequest(t, server, store, http.MethodGet, "/api/v1/admin/providers", "", 9, false)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list %d %s", rec.Code, rec.Body.String())
@@ -405,7 +406,8 @@ func TestProviderAdminListExposesProfileFieldsWithoutSecrets(t *testing.T) {
 	item := payload[0]
 	if item.Revision != 4 || item.EndpointURL != "https://gateway.example/v1/responses" ||
 		item.Models[0].ProfileKey != "m1" || item.Models[0].Capabilities["toolCalls"] != "DECLARED" ||
-		item.Models[0].BoundPurposes[0] != "FOREGROUND_CHAT" || item.Models[0].Pricing.Currency != nil {
+		item.Models[0].BoundPurposes[0] != "FOREGROUND_CHAT" || item.Models[0].Pricing.Currency != nil ||
+		item.Models[0].LedgerPrice != postgres.LedgerPriceActive {
 		t.Fatalf("list payload %s", rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), "credential\"") || strings.Contains(rec.Body.String(), "cipher") {
@@ -491,7 +493,7 @@ func TestServiceResolveChannel(t *testing.T) {
 		Model: postgres.ProviderModel{
 			ProfileKey: "m1", ModelID: "m1", DisplayName: "Primary", ContextWindowTokens: &window,
 			MaxOutputTokens: 4096, State: postgres.ProviderEnabled,
-			Capabilities: postgres.ModelCapabilities{"toolCalls": postgres.CapabilityDeclared},
+			Capabilities:    postgres.ModelCapabilities{"toolCalls": postgres.CapabilityDeclared},
 			ReasoningLevels: []string{}, GenerationParams: &postgres.GenerationParams{},
 			Pricing: &postgres.ModelPricing{}, BoundPurposes: []string{},
 		},

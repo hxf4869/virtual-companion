@@ -163,6 +163,11 @@
       "VERIFIED",
       "UNSUPPORTED"
     ],
+    "ModelLedgerPriceStatus": [
+      "ACTIVE",
+      "MISSING",
+      "UNSUPPORTED_CURRENCY"
+    ],
     "ModelProtocol": [
       "OPENAI_CHAT_COMPLETIONS",
       "OPENAI_RESPONSES",
@@ -459,6 +464,11 @@
             "typeName": "ModelPurposeBindingStatus"
           },
           {
+            "file": "model-ledger-price-statuses.yaml",
+            "kind": "enum",
+            "typeName": "ModelLedgerPriceStatus"
+          },
+          {
             "file": "model-capability-statuses.yaml",
             "kind": "enum",
             "typeName": "ModelCapabilityStatus"
@@ -544,7 +554,7 @@
         "generatorVersion": "1.0.0",
         "schemaVersion": 1
       },
-      "sha256": "0a502838cc3d4254b38ae9cb9662274d75550d4dfe7d00f26db5f157e9f24ed5"
+      "sha256": "c81997ea6a7346f7358ab5d487833f25bbdcdd818366f81534c8da1713aabafd"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -3111,6 +3121,28 @@
         "schemaVersion": 1
       },
       "sha256": "fcb9d33fb18a508fdea281313c94937d0724f4a657fe97b6194d38d1a7c879e9"
+    },
+    "model-ledger-price-statuses.yaml": {
+      "document": {
+        "catalogId": "model-ledger-price-statuses",
+        "entries": [
+          {
+            "code": "ACTIVE",
+            "order": 0
+          },
+          {
+            "code": "MISSING",
+            "order": 1
+          },
+          {
+            "code": "UNSUPPORTED_CURRENCY",
+            "order": 2
+          }
+        ],
+        "note": "Derived per profile from its state, currency and the current effective vc.model_unit_price row. The ledger is USD per 1K tokens, converted from the catalog's USD per million tokens. ACTIVE is that match. MISSING leaves a reservation NO_PRICE. UNSUPPORTED_CURRENCY is any currency other than USD.",
+        "schemaVersion": 1
+      },
+      "sha256": "365c4b861fa03b0f8da2d1df145b361214ca3c5de903a898cce6804229cc774f"
     },
     "model-protocols.yaml": {
       "document": {

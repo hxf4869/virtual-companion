@@ -10602,6 +10602,7 @@ components:
         - generationParams
         - pricing
         - boundPurposes
+        - ledgerPrice
       properties:
         profileKey:
           type: string
@@ -10642,6 +10643,17 @@ components:
           $ref: '#/components/schemas/ModelGenerationParams'
         pricing:
           $ref: '#/components/schemas/ModelPricing'
+        ledgerPrice:
+          $ref: '#/components/schemas/ModelLedgerPriceStatus'
+          description: >-
+            Derived from this profile and the current effective
+            vc.model_unit_price row for (providerId, modelId). ACTIVE: every
+            enabled profile of that model agrees on a USD price and the ledger
+            matches it (USD per 1K tokens, converted from per million).
+            MISSING: no effective price, so a reservation is NO_PRICE; this
+            includes an empty price, a disabled model, and enabled profiles
+            that disagree. UNSUPPORTED_CURRENCY: the profile states a currency
+            other than USD, which is not written. Not an input.
         boundPurposes:
           type: array
           maxItems: 6
@@ -10956,6 +10968,17 @@ components:
         spaceId:
           type: string
           format: uuid
+    ModelLedgerPriceStatus:
+      type: string
+      description: >-
+        Catalog-to-ledger status of one model profile. ACTIVE matches the
+        current effective USD-per-1K row. MISSING leaves reservations
+        NO_PRICE. UNSUPPORTED_CURRENCY is a non-USD currency and is not
+        treated as free.
+      enum:
+        - ACTIVE
+        - MISSING
+        - UNSUPPORTED_CURRENCY
     ModelPurposeBindingStatus:
       type: string
       description: >-
