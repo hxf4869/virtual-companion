@@ -69,6 +69,60 @@ jobs:
       - name: Build and test
         run: GOPROXY=off go test -C backend -mod=vendor -count=1 ./...
 
+  st-offline:
+    name: SillyTavern offline tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        # actions/checkout@v6 -> d23441a48e516b6c34aea4fa41551a30e30af803
+        # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Set up Node
+        # actions/setup-node@v7.1.0 -> 949feb2413d6458794dcd2491c4babbbce0c15c1
+        # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
+        # 仓库要求 Node >=22.13（integrations/sillytavern/package.json engines）。
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "22"
+      - name: Pull PostgreSQL test image
+        # backup-pg.test.mjs 的真库用例要求本地已有该镜像，且测试自己不拉取。
+        run: docker pull pgvector/pgvector:0.8.5-pg18
+      - name: Run SillyTavern offline tests
+        # integrations/sillytavern/upstream/ 与 node_modules/ 被 gitignore。
+        # bootstrap.mjs 发现上游目录缺失即退出，且明确不克隆（避免隐式网络写），
+        # 仓库里没有检出脚本。下列用例因此不进本 job，也不靠测试内的 t.skip 放过：
+        # - patches-generation-guard.test.mjs：读取 upstream/SillyTavern 源文件并校验补丁 SHA。
+        # - memorycore-secure-delete.test.mjs：memorycoreBuild() 校验锁定的 MemoryCore 检出，
+        #   再符号链接 integrations/sillytavern/node_modules（sqlite-vec、@node-rs/jieba、crc-32）。
+        #   只跑 npm ci 仍缺上游源码。
+        # - memorycore-patches.test.mjs 里「strict conflict parse keeps an update target…」
+        #   读取 upstream MemoryCore 的 l1-dedup.ts。同文件其余用例使用仓库内 fixture，仍运行。
+        # - bridge.test.mjs 里两条「补丁规格 st-chat-completions-vc-bridge.json /
+        #   st-util-stream-error-log.json」：缺文件时调用 t.skip。Node 22 仍执行后续断言，
+        #   但把整条标成 skipped，断言失败时退出码仍为 0。显式不跑这两条，避免这种静默跳过。
+        #   同文件其余用例不读 upstream，仍运行。
+        run: |
+          set -euo pipefail
+          echo "不运行 patches-generation-guard.test.mjs：读取 gitignore 的 upstream/SillyTavern；bootstrap.mjs 不克隆上游"
+          echo "不运行 memorycore-secure-delete.test.mjs：需要锁定的 MemoryCore 检出，以及 integrations/sillytavern/node_modules"
+          echo "按名称排除 memorycore-patches 的 strict conflict parse：读取上游 l1-dedup.ts；该文件其余用例仍运行"
+          echo "按名称排除 bridge 的两条补丁规格：缺文件时 t.skip 会把后续断言失败仍记为退出码 0；该文件其余用例仍运行"
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find integrations/sillytavern/tests -maxdepth 1 -name '*.test.mjs' \
+            ! -name 'patches-generation-guard.test.mjs' \
+            ! -name 'memorycore-secure-delete.test.mjs' \
+            -print0 | sort -z)
+          if [ "${#files[@]}" -lt 50 ]; then
+            echo "offline suite shrank to ${#files[@]} files" >&2
+            exit 1
+          fi
+          node --test \
+            --test-skip-pattern 'strict conflict parse keeps an update target|补丁规格 st-chat-completions-vc-bridge\.json|补丁规格 st-util-stream-error-log\.json' \
+            "${files[@]}"
+
   database:
     name: Database (PostgreSQL 18 + pgvector) - Linux-only reference platform
     runs-on: ubuntu-latest

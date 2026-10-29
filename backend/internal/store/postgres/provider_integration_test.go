@@ -474,3 +474,132 @@ func TestModelSamplingCapabilitiesRoundTrip(t *testing.T) {
 		t.Fatal("administrator forged verified sampling capability")
 	}
 }
+
+func TestExplicitToolCallVerificationDowngradesWhenTheBindingChanges(t *testing.T) {
+	store := resetCatalogFixtures(t)
+	ctx := context.Background()
+	const admin = int64(7)
+	model := catalogModel("m@chat", "remote-a", intPtr(8192))
+	model.Capabilities = ModelCapabilities{"toolCalls": CapabilityDeclared}
+	in := SaveProvider{
+		ProviderID: "acme", DisplayName: "Acme", Protocol: ProtocolOpenAIChat,
+		BaseURL: "https://chat.example/v1", Credential: "plain-api-key-1", State: ProviderEnabled,
+		Models: []ProviderModel{model},
+	}
+	if _, err := store.SaveProviderConfig(ctx, admin, in); err != nil {
+		t.Fatal(err)
+	}
+	forged := in
+	forged.Credential = ""
+	forgedModel := model
+	forgedModel.Capabilities = ModelCapabilities{"toolCalls": CapabilityVerified}
+	forged.Models = []ProviderModel{forgedModel}
+	if _, err := store.SaveProviderConfig(ctx, admin, forged); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("direct VERIFIED err=%v", err)
+	}
+	marked, err := store.MarkModelToolCallsVerified(ctx, admin, "acme", "m@chat")
+	if err != nil || marked.Protocol != ProtocolOpenAIChat || marked.VerifiedAt.IsZero() {
+		t.Fatalf("mark %+v err=%v", marked, err)
+	}
+	assertToolVerification(t, ctx, CapabilityVerified, ProtocolOpenAIChat, "https://chat.example/v1", "remote-a", true)
+	if _, err := store.MarkModelToolCallsVerified(ctx, 1, "acme", "m@chat"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("non-admin mark err=%v", err)
+	}
+	assertToolVerification(t, ctx, CapabilityVerified, ProtocolOpenAIChat, "https://chat.example/v1", "remote-a", true)
+	var before string
+	if err := superPool(t, ctx).QueryRow(ctx, `SELECT tool_calls_verified_at::text FROM vc.provider_model WHERE profile_key = 'm@chat'`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+
+	renamed := in
+	renamed.Credential = ""
+	renamed.DisplayName = "Acme Renamed"
+	echo := model
+	echo.Capabilities = ModelCapabilities{"toolCalls": CapabilityVerified, "pdfInput": CapabilityDeclared}
+	renamed.Models = []ProviderModel{echo}
+	if _, err := store.SaveProviderConfig(ctx, admin, renamed); err != nil {
+		t.Fatalf("display rename err=%v", err)
+	}
+	assertToolVerification(t, ctx, CapabilityVerified, ProtocolOpenAIChat, "https://chat.example/v1", "remote-a", true)
+	var after string
+	if err := superPool(t, ctx).QueryRow(ctx, `SELECT tool_calls_verified_at::text FROM vc.provider_model WHERE profile_key = 'm@chat'`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatalf("verification time changed %s -> %s", before, after)
+	}
+	configs, err := store.ListProviderConfigs(ctx, admin)
+	if err != nil || configs[0].Models[0].Capabilities["pdfInput"] != CapabilityDeclared {
+		t.Fatalf("rename caps %+v err=%v", configs, err)
+	}
+
+	moved := renamed
+	moved.BaseURL = "https://other.example/v1"
+	if _, err := store.SaveProviderConfig(ctx, admin, moved); err != nil {
+		t.Fatalf("base url downgrade err=%v", err)
+	}
+	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
+
+	if _, err := store.MarkModelToolCallsVerified(ctx, admin, "acme", "m@chat"); err != nil {
+		t.Fatal(err)
+	}
+	changedID := moved
+	changedID.Credential = ""
+	idModel := echo
+	idModel.ModelID = "remote-b"
+	idModel.Capabilities = ModelCapabilities{"toolCalls": CapabilityVerified}
+	changedID.Models = []ProviderModel{idModel}
+	if _, err := store.SaveProviderConfig(ctx, admin, changedID); err != nil {
+		t.Fatalf("model id downgrade err=%v", err)
+	}
+	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
+
+	if _, err := store.MarkModelToolCallsVerified(ctx, admin, "acme", "m@chat"); err != nil {
+		t.Fatal(err)
+	}
+	changedProtocol := changedID
+	changedProtocol.Protocol = ProtocolOpenAIResponses
+	protocolModel := idModel
+	protocolModel.ModelID = "remote-b"
+	protocolModel.Capabilities = ModelCapabilities{"toolCalls": CapabilityVerified}
+	changedProtocol.Models = []ProviderModel{protocolModel}
+	if _, err := store.SaveProviderConfig(ctx, admin, changedProtocol); err != nil {
+		t.Fatalf("protocol downgrade err=%v", err)
+	}
+	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
+
+	// A historical VERIFIED row has no verification metadata. Changing the
+	// base URL still downgrades it; echoing VERIFIED is not an upgrade.
+	if _, err := superPool(t, ctx).Exec(ctx, `UPDATE vc.provider_model
+		SET capabilities = jsonb_set(capabilities, '{toolCalls}', '"VERIFIED"', true)
+		WHERE profile_key = 'm@chat'`); err != nil {
+		t.Fatal(err)
+	}
+	historical := changedProtocol
+	historical.BaseURL = "https://third.example/v1"
+	historical.Credential = ""
+	if _, err := store.SaveProviderConfig(ctx, admin, historical); err != nil {
+		t.Fatalf("historical downgrade err=%v", err)
+	}
+	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
+}
+
+func assertToolVerification(t *testing.T, ctx context.Context, toolCalls, protocol, baseURL, modelID string, present bool) {
+	t.Helper()
+	var gotCalls, gotProtocol, gotBase, gotModel string
+	var gotPresent bool
+	err := superPool(t, ctx).QueryRow(ctx, `
+		SELECT capabilities->>'toolCalls',
+		       COALESCE(tool_calls_verified_protocol, ''),
+		       COALESCE(tool_calls_verified_base_url, ''),
+		       COALESCE(tool_calls_verified_model_id, ''),
+		       tool_calls_verified_at IS NOT NULL
+		  FROM vc.provider_model
+		 WHERE profile_key = 'm@chat'`).Scan(&gotCalls, &gotProtocol, &gotBase, &gotModel, &gotPresent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotCalls != toolCalls || gotProtocol != protocol || gotBase != baseURL || gotModel != modelID || gotPresent != present {
+		t.Fatalf("verification got calls=%s protocol=%s base=%s model=%s present=%v", gotCalls, gotProtocol, gotBase, gotModel, gotPresent)
+	}
+}

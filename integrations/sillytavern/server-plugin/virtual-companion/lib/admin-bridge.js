@@ -18,6 +18,8 @@ import { STORY_UI_ROUTES } from './story-ui-routes.js';
 
 // 路径段字符集：字母数字与有限符号；显式排除 %、/、..，防编码穿越。
 const SEG = '[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,200})';
+// 配置标识允许 @（如 m@chat）。仍排除 % 与 /，避免编码穿越。
+const PROFILE = '[A-Za-z0-9@](?:[A-Za-z0-9@._:-]{0,200})';
 
 // 白名单：模型设置页真实所需 + 既有会话/登录。新增路径在这里加一行并注明消费者；
 // 权限判断全部由 Go 决定，本桥不做角色判定。
@@ -46,6 +48,7 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/admin\/providers$/, where: '供应商列表' },
     { method: 'PUT', path: new RegExp(`^/api/v1/admin/providers/${SEG}$`), where: '保存供应商（含凭据引用与 expectedRevision）' },
     { method: 'POST', path: new RegExp(`^/api/v1/admin/providers/${SEG}/models/discover$`), where: '拉取模型列表（辅助，显式操作）' },
+    { method: 'POST', path: new RegExp(`^/api/v1/admin/providers/${SEG}/models/${PROFILE}/verify-tool-calls$`), where: '验证工具调用（真实调用一次该模型）' },
     { method: 'GET', path: /^\/api\/v1\/auth\/admin\/usage$/, where: '模型页用量区（只读，ADMIN 由 Go 判定）' },
     { method: 'GET', path: /^\/api\/v1\/admin\/model-purposes$/, where: '用途绑定列表' },
     { method: 'PUT', path: new RegExp(`^/api/v1/admin/model-purposes/${SEG}$`), where: '保存用途绑定' },

@@ -1921,13 +1921,26 @@ async function sceneStoryViewBrowser(ctx) {
 }
 
 async function sceneW11ToolMeter(ctx) {
-    // 管理 API 不能把 DECLARED 升成 VERIFIED（V140）。目录场景写完后只在库里改能力。
-    const verified = psql(`UPDATE vc.provider_model
-        SET capabilities = jsonb_set(capabilities, '{toolCalls}', '"VERIFIED"', true)
-        WHERE provider_id IN ('vc03m-chat', 'vc03m-resp', 'vc03m-claude')
-        RETURNING provider_id;`);
-    const verifiedCount = verified.split('\n').map((line) => line.trim()).filter(Boolean).length;
-    if (verifiedCount < 3) throw new Error(`toolCalls VERIFIED 更新行数不足：${verifiedCount}`);
+    // 管理保存仍不能把能力写成 VERIFIED。这里走显式验证：固定 provider 回一次合成工具调用。
+    const probes = [
+        { providerId: 'vc03m-chat', profileKey: 'chat', modelId: 'vc03m-chat' },
+        { providerId: 'vc03m-resp', profileKey: 'reasoning', modelId: 'vc03m-reasoning' },
+        { providerId: 'vc03m-claude', profileKey: 'chat', modelId: 'vc03m-chat' },
+    ];
+    for (const probe of probes) {
+        await ctx.fixtureHttp.setOverride(probe.modelId, {
+            tool: { name: 'get_current_weather', argumentsPieces: ['{"city":"北京"}'] },
+        });
+        try {
+            const verified = await ctx.admin.verifyToolCalls(probe.providerId, probe.profileKey);
+            const body = String(verified.text ?? '');
+            if (verified.status !== 200 || verified.json?.toolCalls !== 'VERIFIED' || body.includes('北京') || body.includes('get_current_weather')) {
+                throw new Error(`${probe.providerId} 工具验证失败：HTTP ${verified.status} ${body.slice(0, 240)}`);
+            }
+        } finally {
+            await ctx.fixtureHttp.setOverride(probe.modelId, null);
+        }
+    }
     const chatIdentity = crypto.randomUUID();
     const bound = await ctx.admin.call('POST', '/api/v1/st/bindings', {
         chatIdentity,

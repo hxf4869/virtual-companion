@@ -206,7 +206,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		r.releaseLease(ctx)
 		return err
 	}
-	api := httpapi.New(r.cfg, r.log, r, r.metrics, r.realtime(), core)
+	api := httpapi.New(r.cfg, r.log, r, r.metrics, core)
 	ln, err := net.Listen("tcp", r.cfg.HTTP.Addr)
 	if err != nil {
 		_ = r.stopPprof(ctx)
@@ -360,14 +360,11 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 			loop.UseMemoryCore(core.MemoryCore)
 		}
 		core.Cancels = loop.Cancels()
-		core.Hub = loop.Hub()
 		r.metrics.SetJobsStatsSource(func() observability.JobsStats {
 			st := loop.Stats()
 			return observability.JobsStats{
-				Claims:            st.Claims,
-				Recoveries:        st.Recoveries,
-				ActiveGenerations: st.ActiveGenerations,
-				PeakGenerations:   st.PeakGenerations,
+				Claims:     st.Claims,
+				Recoveries: st.Recoveries,
 			}
 		})
 	}
@@ -383,14 +380,6 @@ func (r *Runtime) bindStore() {
 			b.BindStore(r.store)
 		}
 	}
-}
-
-func (r *Runtime) realtime() *httpapi.Realtime {
-	loop, ok := r.deps.Jobs.(*jobs.Loop)
-	if !ok || loop == nil || loop.Hub() == nil || r.store == nil {
-		return nil
-	}
-	return &httpapi.Realtime{Hub: loop.Hub(), Sessions: r.store, Snapshots: r.store}
 }
 
 func (r *Runtime) closeStore() {

@@ -131,6 +131,7 @@
     "listModelProviders",
     "saveModelProvider",
     "discoverProviderModels",
+    "verifyModelToolCalls",
     "reorderModelRoutes",
     "getEmbeddingConfiguration",
     "saveEmbeddingConfiguration",
@@ -165,6 +166,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "875151eec6dcaf854a09c5c94d75d571d1fa2e1044a415a3d287c195dc195fdc"
+    "sha256": "e92b777a1072fdc471edc7001463e9557550069e2860bb30559ff761910104f1"
   }
 }

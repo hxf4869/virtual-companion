@@ -955,6 +955,14 @@ body.vc-chat-shell #send_textarea { min-height: 44px; font-size: max(16px, var(-
     min-height: 44px;
 }
 
+.vcms-root .vcms-tool-verify {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--vcms-space-1, 4px);
+    margin: 0 0 var(--vcms-space-2);
+}
+
 .vcms-root .vcms-capname {
     font-size: 15px;
     min-width: 110px;

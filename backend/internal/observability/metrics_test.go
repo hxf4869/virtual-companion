@@ -35,22 +35,29 @@ func TestProcessSnapshotAndPrometheus(t *testing.T) {
 	}
 }
 
-func TestRealtimeMetrics(t *testing.T) {
+func TestRetiredGenerationRealtimeMetricsAreAbsent(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry()
-	reg.SetRealtimeStatsSource(func() RealtimeStats {
-		return RealtimeStats{Subscribers: 2, SlowDisconnects: 3, SnapshotResumes: 4}
+	reg.SetJobsStatsSource(func() JobsStats {
+		return JobsStats{Claims: 7, Recoveries: 2}
 	})
 	var buf bytes.Buffer
 	if err := reg.WritePrometheus(&buf); err != nil {
 		t.Fatal(err)
 	}
 	body := buf.String()
-	for _, want := range []string{
+	for _, banned := range []string{
+		"vc_generation_active",
+		"vc_generation_peak",
 		"vc_realtime_subscribers",
 		"vc_realtime_slow_disconnect_total",
 		"vc_realtime_snapshot_resume_total",
 	} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("retired metric %s still exported:\n%s", banned, body)
+		}
+	}
+	for _, want := range []string{"vc_job_claims_total", "vc_job_recoveries_total"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
@@ -61,7 +68,7 @@ func TestJobsMetrics(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry()
 	reg.SetJobsStatsSource(func() JobsStats {
-		return JobsStats{Claims: 7, Recoveries: 2, ActiveGenerations: 3, PeakGenerations: 4}
+		return JobsStats{Claims: 7, Recoveries: 2}
 	})
 	var buf bytes.Buffer
 	if err := reg.WritePrometheus(&buf); err != nil {
@@ -71,12 +78,13 @@ func TestJobsMetrics(t *testing.T) {
 	for _, want := range []string{
 		"vc_job_claims_total",
 		"vc_job_recoveries_total",
-		"vc_generation_active 3",
-		"vc_generation_peak 4",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
+	}
+	if strings.Contains(body, "vc_generation_active") || strings.Contains(body, "vc_realtime_subscribers") {
+		t.Fatalf("retired metrics still exported:\n%s", body)
 	}
 }
 
@@ -110,13 +118,13 @@ func TestMemoryRecallMetrics(t *testing.T) {
 	if strings.Contains(body, "owner") || strings.Contains(body, "secret") {
 		t.Fatalf("memory metrics leaked a label: %s", body)
 	}
-	reg.SetJobsStatsSource(func() JobsStats { return JobsStats{Claims: 7, ActiveGenerations: 3, PeakGenerations: 4} })
+	reg.SetJobsStatsSource(func() JobsStats { return JobsStats{Claims: 7} })
 	buf.Reset()
 	if err := reg.WritePrometheus(&buf); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "vc_generation_active 3") || !strings.Contains(buf.String(), "vc_job_claims_total") {
-		t.Fatal("memory metrics changed generation counters")
+	if !strings.Contains(buf.String(), "vc_job_claims_total 7") {
+		t.Fatal("memory metrics changed job counters")
 	}
 }
 

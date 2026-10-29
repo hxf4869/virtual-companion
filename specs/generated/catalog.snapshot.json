@@ -1082,9 +1082,9 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 102,
-          "RETIRE": 38,
-          "SIMPLIFY": 6
+          "KEEP": 100,
+          "RETIRE": 42,
+          "SIMPLIFY": 5
         },
         "note": "The API consumer matrix remains the deletion/scope source. KEEP requires core-outcome, current H5 production caller, safety/data-rights, or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations are removed with H5 in a later slice, not in G0.",
         "operations": [
@@ -1612,15 +1612,11 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "KEEP",
-            "keepBecause": [
-              "core-outcome",
-              "h5-caller"
-            ],
+            "decision": "RETIRE",
             "method": "POST",
             "operationId": "sendGeneration",
             "path": "/api/v1/conversations/{conversationId}/generations",
-            "replacementOrImpact": "Keep send as StartTurn. One turn, one final assistant message; no version select."
+            "replacementOrImpact": "Retired 2026-10-29. The Vue/H5 caller was removed in W15 (051585fb); SillyTavern uses its own outbound, follow-up uses provider.Stream, and memory extraction is ST_MEMORY_EXTRACT. companiond no longer registers this route. Historical generation rows stay exportable; generation_usage and MODEL metering stay on the remaining accounting path."
           },
           {
             "currentH5Callers": [],
@@ -1674,27 +1670,19 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "KEEP",
-            "keepBecause": [
-              "core-outcome",
-              "h5-caller"
-            ],
+            "decision": "RETIRE",
             "method": "POST",
             "operationId": "cancelGeneration",
             "path": "/api/v1/generations/{generationId}/cancel",
-            "replacementOrImpact": "Keep cancel. SSE disconnect must not imply cancel."
+            "replacementOrImpact": "Retired 2026-10-29 with sendGeneration. The only caller was the deleted Vue/H5 frontend. companiond no longer registers this route. Historical rows stay exportable."
           },
           {
             "currentH5Callers": [],
-            "decision": "KEEP",
-            "keepBecause": [
-              "core-outcome",
-              "h5-caller"
-            ],
+            "decision": "RETIRE",
             "method": "GET",
             "operationId": "getGenerationSnapshot",
             "path": "/api/v1/generations/{generationId}/snapshot",
-            "replacementOrImpact": "Keep durable snapshot for reconnect. Go v1 resume is snapshot-only."
+            "replacementOrImpact": "Retired 2026-10-29 with sendGeneration. Snapshot reconnect served the deleted Vue/H5 SSE client. companiond no longer registers this route. Historical rows stay exportable."
           },
           {
             "currentH5Callers": [],
@@ -1717,11 +1705,11 @@
           },
           {
             "currentH5Callers": [],
-            "decision": "SIMPLIFY",
+            "decision": "RETIRE",
             "method": "GET",
             "operationId": "openRealtimeStream",
             "path": "/api/v1/realtime/streams/{generationId}",
-            "replacementOrImpact": "Keep authenticated SSE. Drop ticket/gap/reset query binding; reconnect uses snapshot. Same path, new auth at Phase 5."
+            "replacementOrImpact": "Retired 2026-10-29 with sendGeneration. The Fetch-SSE hub served only the deleted Vue/H5 frontend. companiond no longer registers this route. SillyTavern does not consume it."
           },
           {
             "currentH5Callers": [],
@@ -2456,6 +2444,18 @@
               "h5-caller",
               "owner-instruction"
             ],
+            "method": "POST",
+            "operationId": "verifyModelToolCalls",
+            "path": "/api/v1/admin/providers/{providerId}/models/{profileKey}/verify-tool-calls",
+            "replacementOrImpact": "Keep the only ADMIN path that records toolCalls=VERIFIED. It sends one small forced tool call, meters it as FOREGROUND_CHAT, and never echoes the upstream body. Saving a model still cannot set VERIFIED."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "owner-instruction"
+            ],
             "method": "PUT",
             "operationId": "reorderModelRoutes",
             "path": "/api/v1/admin/model-routing-order",
@@ -2755,7 +2755,7 @@
           }
         ]
       },
-      "sha256": "53e1b8fb13ad345ab476da0d0e6f547e2fca78fd6c2df8b60abd81b11f09f409"
+      "sha256": "a4afb2bb61ff30a5ab162e769dde74b32e923683c6853589881d242d55d4419b"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

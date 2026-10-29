@@ -16,6 +16,9 @@ type schedulerTestStore struct {
 	objects               []postgres.ExportObject
 	clearCalls            int
 	clearFailures         int
+	expiredGenerations    []postgres.JobClaim
+	recoveredGenerations  []int64
+	generationLimits      []int
 	expiredExtracts       []postgres.JobClaim
 	extractListErr        error
 	recoverAction         string
@@ -95,8 +98,24 @@ func (*schedulerTestStore) RunRetentionCategory(context.Context, string, bool) e
 	return nil
 }
 
-func (*schedulerTestStore) ListExpiredGenerationJobs(context.Context, int) ([]postgres.JobClaim, error) {
-	return []postgres.JobClaim{}, nil
+func (s *schedulerTestStore) ListExpiredGenerationJobs(context.Context, int) ([]postgres.JobClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]postgres.JobClaim(nil), s.expiredGenerations...), nil
+}
+
+func (s *schedulerTestStore) RecoverExpiredGeneration(_ context.Context, _, jobID int64) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recoveredGenerations = append(s.recoveredGenerations, jobID)
+	return "REQUEUED", nil
+}
+
+func (s *schedulerTestStore) ClaimJobs(_ context.Context, _, _, _ time.Duration, _, generationLimit, _ int) ([]postgres.JobClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.generationLimits = append(s.generationLimits, generationLimit)
+	return nil, nil
 }
 
 func (s *schedulerTestStore) ListExpiredMemoryExtractJobs(context.Context, int) ([]postgres.JobClaim, error) {
@@ -202,7 +221,7 @@ func newSchedulerTestStore() *schedulerTestStore {
 func runSchedulerOnce(t *testing.T, store *schedulerTestStore, blob BlobStore) {
 	t.Helper()
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, blob)
+	loop.Use(store, nil, blob)
 	if err := NewScheduler(loop).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +250,7 @@ func (f *followUpDueFake) ApplyFollowUpDue(context.Context, int64, int64, postgr
 func TestSchedulerRunsFollowUpDueOnce(t *testing.T) {
 	store := &followUpDueFake{schedulerTestStore: newSchedulerTestStore()}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 	if err := NewScheduler(loop).RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +334,7 @@ func TestRecoverOnceRequeuesExpiredMemoryExtractJobs(t *testing.T) {
 	}
 	store.recoverAction = "REQUEUED"
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 
 	if err := loop.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
@@ -345,7 +364,7 @@ func TestRecoverOnceDeadLettersExpiredMemoryExtractJobs(t *testing.T) {
 	// The first recover fails, then the store heals for the second.
 	store.recoverFailures = 1
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 
 	if err := loop.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
@@ -370,7 +389,7 @@ func TestRecoverOnceRequeuesExpiredFollowUpsAndSweepsHolds(t *testing.T) {
 	policy := testLoopPolicy(1)
 	policy.HoldReservationMaxAge = 6 * time.Minute
 	loop := NewLoop(nil, policy, testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 	if err := loop.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +415,7 @@ func TestRecoverOnceFailsExpiredExportJobs(t *testing.T) {
 	}
 	store.recoverAction = "FAILED"
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 
 	if err := loop.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
@@ -422,7 +441,7 @@ func TestRecoverOnceFailsExpiredExportJobs(t *testing.T) {
 	isolated.recoverErr = errors.New("guarded")
 	isolated.recoverFailures = 1
 	failing := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	failing.Use(isolated, nil, nil, nil)
+	failing.Use(isolated, nil, nil)
 
 	if err := failing.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
@@ -434,5 +453,49 @@ func TestRecoverOnceFailsExpiredExportJobs(t *testing.T) {
 	}
 	if got := failing.Stats().Recoveries; got != 1 {
 		t.Fatalf("recoveries %d want 1", got)
+	}
+}
+
+func TestRecoverOnceSkipsRetiredGenerationAndStillRecoversOtherKinds(t *testing.T) {
+	t.Parallel()
+	store := newSchedulerTestStore()
+	store.expiredGenerations = []postgres.JobClaim{{OwnerID: 1, JobID: 9, Kind: KindGeneration}}
+	store.expiredExtracts = []postgres.JobClaim{{OwnerID: 1, JobID: 11, Kind: KindSTMemoryExtract}}
+	store.expiredExports = []postgres.JobClaim{{OwnerID: 1, JobID: 12, Kind: KindExport}}
+	store.expiredFollowUps = []postgres.JobClaim{{OwnerID: 1, JobID: 13, Kind: KindFollowUp}}
+	store.recoverAction = "REQUEUED"
+	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
+	loop.Use(store, nil, nil)
+	if err := loop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.recoveredGenerations) != 0 {
+		t.Fatalf("generation recoveries %+v", store.recoveredGenerations)
+	}
+	if len(store.recoveredExtracts) != 1 || store.recoveredExtracts[0] != 11 {
+		t.Fatalf("extract recoveries %+v", store.recoveredExtracts)
+	}
+	if len(store.recoveredExports) != 1 || store.recoveredExports[0] != 12 {
+		t.Fatalf("export recoveries %+v", store.recoveredExports)
+	}
+	if len(store.recoveredFollowUps) != 1 || store.recoveredFollowUps[0] != 13 {
+		t.Fatalf("follow-up recoveries %+v", store.recoveredFollowUps)
+	}
+}
+
+func TestClaimOnceDoesNotAskForGenerationCapacity(t *testing.T) {
+	t.Parallel()
+	store := newSchedulerTestStore()
+	loop := NewLoop(nil, testLoopPolicy(2), testTurnBudget())
+	loop.Use(store, nil, nil)
+	if n := loop.ClaimOnce(context.Background()); n != 0 {
+		t.Fatalf("claims %d", n)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.generationLimits) != 1 || store.generationLimits[0] != 0 {
+		t.Fatalf("generation claim limit %#v, want [0]", store.generationLimits)
 	}
 }

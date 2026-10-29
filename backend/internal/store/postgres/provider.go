@@ -109,6 +109,12 @@ type ProviderModel struct {
 	LedgerPrice         string
 }
 
+// ToolCallVerification is the record written only by the explicit probe.
+type ToolCallVerification struct {
+	VerifiedAt time.Time
+	Protocol   string
+}
+
 // ProviderConfig is the secret-free administrator view.
 type ProviderConfig struct {
 	ProviderID           string
@@ -479,6 +485,27 @@ func (s *Store) SaveProviderConfig(ctx context.Context, actingAccountID int64, i
 		return 0, mapStoreErr(err)
 	}
 	return revision, nil
+}
+
+// MarkModelToolCallsVerified records a successful synthetic tool-call probe.
+// Administrator saves cannot take this path.
+func (s *Store) MarkModelToolCallsVerified(ctx context.Context, actingAccountID int64, providerID, profileKey string) (ToolCallVerification, error) {
+	providerID = strings.TrimSpace(providerID)
+	profileKey = strings.TrimSpace(profileKey)
+	if !validProviderID(providerID) || !validProfileKey(profileKey) {
+		return ToolCallVerification{}, ErrInvalid
+	}
+	var out ToolCallVerification
+	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT out_verified_at, out_protocol
+			  FROM vc.go_admin_mark_model_tool_calls_verified($1,$2,$3)`,
+			actingAccountID, providerID, profileKey).Scan(&out.VerifiedAt, &out.Protocol)
+	})
+	if err != nil {
+		return ToolCallVerification{}, mapStoreErr(err)
+	}
+	return out, nil
 }
 
 func (s *Store) ReorderProviderModels(ctx context.Context, actingAccountID int64, order []RouteRef) error {

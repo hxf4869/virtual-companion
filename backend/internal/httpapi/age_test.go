@@ -174,21 +174,20 @@ func TestGenerationRequiresAdultVerificationBeforePersistence(t *testing.T) {
 	body := `{"idempotencyKey":"age-gate","userContent":"hello","mode":"AUTO"}`
 
 	blocked := doJSON(t, s, http.MethodPost, "/api/v1/conversations/1/generations", body, 1)
-	if blocked.Code != http.StatusForbidden {
-		t.Fatalf("unknown age status %d: %s", blocked.Code, blocked.Body.String())
+	if blocked.Code != http.StatusNotFound && blocked.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("retired generation route %d: %s", blocked.Code, blocked.Body.String())
 	}
-	assertEnvelope(t, blocked, "AGE_VERIFICATION_REQUIRED")
 	if store.starts != 0 {
-		t.Fatalf("StartTurn called before adult verification: %d", store.starts)
+		t.Fatalf("StartTurn called on retired route: %d", store.starts)
 	}
 
 	store.ages[1] = postgres.AgeState{State: postgres.AgeAdultVerified}
 	accepted := doJSON(t, s, http.MethodPost, "/api/v1/conversations/1/generations", body, 1)
-	if accepted.Code != http.StatusAccepted {
-		t.Fatalf("adult status %d: %s", accepted.Code, accepted.Body.String())
+	if accepted.Code != http.StatusNotFound && accepted.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("adult still reached retired route %d: %s", accepted.Code, accepted.Body.String())
 	}
-	if store.starts != 1 {
-		t.Fatalf("StartTurn calls = %d, want 1", store.starts)
+	if store.starts != 0 {
+		t.Fatalf("StartTurn calls = %d, want 0", store.starts)
 	}
 }
 
@@ -213,10 +212,9 @@ func TestGenerationRejectsEveryNonVerifiedAgeState(t *testing.T) {
 			body := `{"idempotencyKey":"age-state","userContent":"hello","mode":"AUTO"}`
 
 			rec := doJSON(t, s, http.MethodPost, "/api/v1/conversations/1/generations", body, 1)
-			if rec.Code != http.StatusForbidden {
+			if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
 				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 			}
-			assertEnvelope(t, rec, "AGE_VERIFICATION_REQUIRED")
 			if store.starts != 0 {
 				t.Fatalf("StartTurn called for %s: %d", state, store.starts)
 			}
@@ -234,10 +232,9 @@ func TestGenerationAgeReadFailureFailsClosed(t *testing.T) {
 	body := `{"idempotencyKey":"age-read-failure","userContent":"hello","mode":"AUTO"}`
 
 	rec := doJSON(t, s, http.MethodPost, "/api/v1/conversations/1/generations", body, 1)
-	if rec.Code != http.StatusServiceUnavailable {
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
-	assertEnvelope(t, rec, "INVALID_REQUEST")
 	if store.starts != 0 {
 		t.Fatalf("StartTurn called after failed age read: %d", store.starts)
 	}

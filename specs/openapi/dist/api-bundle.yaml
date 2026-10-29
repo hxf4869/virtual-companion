@@ -1926,10 +1926,12 @@ paths:
   /api/v1/conversations/{conversationId}/generations:
     post:
       operationId: sendGeneration
+      deprecated: true
       summary: Idempotently send a Chat turn (create or rejoin a generation)
-      description: Creates a new generation for the conversation or rejoins the existing one for the supplied idempotency
-        key (vc.receive_generation). The caller identity is the owner; owner_user_id is never a request field. Requires a
-        server-verified authentication context. Cross-conversation or cross-owner references never disclose existence.
+      description: Retired 2026-10-29 (catalog RETIRE). The Vue/H5 caller was removed in W15 (051585fb); companiond no longer
+        registers this route. SillyTavern uses its own outbound, follow-up uses provider.Stream, and memory extraction is
+        ST_MEMORY_EXTRACT. Historical generation rows stay exportable. The former contract created a generation or rejoined
+        one for the supplied idempotency key (vc.receive_generation).
       security:
       - cookieAuth: []
       parameters:
@@ -2166,10 +2168,11 @@ paths:
   /api/v1/generations/{generationId}/cancel:
     post:
       operationId: cancelGeneration
+      deprecated: true
       summary: Cancel a non-terminal generation
-      description: Transitions a cancellable non-terminal generation to CANCELLED (vc.cancel_generation via the catalog double-hop
-        CANCEL_REQUESTED then CANCELLED). Terminal states and COMMITTING are not cancellable. A foreign or absent id maps
-        to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+      description: Retired 2026-10-29 (catalog RETIRE) with sendGeneration. The only caller was the deleted Vue/H5 frontend;
+        companiond no longer registers this route. Historical rows stay exportable. The former contract transitioned a cancellable
+        non-terminal generation to CANCELLED.
       security:
       - cookieAuth: []
       parameters:
@@ -2196,11 +2199,10 @@ paths:
   /api/v1/generations/{generationId}/snapshot:
     get:
       operationId: getGenerationSnapshot
+      deprecated: true
       summary: Read a consistent generation snapshot
-      description: Returns the generation status, the final assistant message id (if any), settled provider usage and the
-        authoritative terminal event once the generation settles. Completed snapshots include the final text before chat.completed;
-        failed, blocked and cancelled snapshots expose only their terminal event. A foreign or absent id never discloses existence.
-        Requires a server-verified authentication context.
+      description: Retired 2026-10-29 (catalog RETIRE) with sendGeneration. Snapshot reconnect served the deleted Vue/H5 SSE
+        client; companiond no longer registers this route. Historical rows stay exportable.
       security:
       - cookieAuth: []
       parameters:
@@ -2312,17 +2314,10 @@ paths:
   /api/v1/realtime/streams/{generationId}:
     get:
       operationId: openRealtimeStream
+      deprecated: true
       summary: Open the authenticated Fetch-SSE stream for a generation
-      description: 'Go v1 (ADR-0007, catalog SIMPLIFY): authenticated SSE with snapshot reconnect — same path, no ticket.
-        Authentication is the opaque session cookie; the owner is the server-verified principal, never a request field; transport
-        is fixed to FETCH_SSE. On open, a generation with a live hub entry sends the in-memory snapshot catch-up first and
-        then live deltas; a generation with no live entry replays the durable snapshot, plus its terminal event when the generation
-        already ended. On a live terminal the server re-reads the committed snapshot and, only when that read succeeds, replays
-        it before the single terminal event. Reconnect by re-issuing this GET and consuming the snapshot again; there is no
-        durable resume cursor and no guaranteed frame set — a stream opened mid-generation may never carry chat.accepted,
-        and a dropped connection ends without a terminal event. Errors are returned only before the stream opens; afterwards
-        the connection simply ends. Retired pre-cutover: single-use tickets (POST /api/v1/realtime/tickets) with ticket query
-        binding and stream.gap/stream.reset/stream.denied events.'
+      description: Retired 2026-10-29 (catalog RETIRE) with sendGeneration. The Fetch-SSE hub served only the deleted Vue/H5
+        frontend; companiond no longer registers this route. SillyTavern does not consume it. Historical rows stay exportable.
       security:
       - cookieAuth: []
       parameters:
@@ -4957,6 +4952,85 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '502':
           description: Provider catalog could not be read or validated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/providers/{providerId}/models/{profileKey}/verify-tool-calls:
+    post:
+      operationId: verifyModelToolCalls
+      summary: Verify that one saved model can call a tool
+      description: Explicit Go v1 ADMIN action requiring fresh reauthentication and CSRF. This is the only path that records
+        toolCalls=VERIFIED. It sends one non-streaming request with a single synthetic get_current_weather tool, a forced
+        tool choice, and a 64-token output cap. A correctly shaped call records the verification time and protocol. Any failure
+        leaves the stored capability unchanged and returns a reason code without the upstream body. The call is metered as
+        FOREGROUND_CHAT, including when the model has no price. Saving a provider still cannot set VERIFIED. Changing the
+        provider base URL, protocol, or the profile model id returns a verified capability to DECLARED.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ProviderId'
+      - $ref: '#/components/parameters/ProfileKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The model returned the required tool call and is now VERIFIED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolCallVerificationResult'
+        '400':
+          description: INVALID_REQUEST, or CREDENTIAL_MISSING when the provider has no usable credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ADMIN role, CSRF or fresh reauthentication requirement failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: MODEL_NOT_FOUND — no saved profile for this provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: USAGE_REJECTED — the probe was not recorded as VERIFIED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: TOOL_CALL_MISMATCH or UPSTREAM_MALFORMED. The stored capability is unchanged and the response does
+            not include the upstream body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: UPSTREAM_UNAVAILABLE. The stored capability is unchanged and the response does not include the upstream
+            body.
           content:
             application/json:
               schema:
@@ -10399,6 +10473,26 @@ components:
           maxLength: 4096
           writeOnly: true
           description: Optional only when providerId already has an encrypted credential.
+    ToolCallVerificationResult:
+      type: object
+      additionalProperties: false
+      required:
+      - ok
+      - toolCalls
+      - verifiedAt
+      - protocol
+      properties:
+        ok:
+          type: boolean
+          const: true
+        toolCalls:
+          type: string
+          const: VERIFIED
+        verifiedAt:
+          type: string
+          format: date-time
+        protocol:
+          $ref: '#/components/schemas/ModelProviderProtocol'
     DiscoveredProviderModel:
       type: object
       additionalProperties: false
@@ -11860,6 +11954,15 @@ components:
         type: string
         pattern: ^[a-z][a-z0-9-]{0,63}$
       description: Stable administrator-defined provider identifier
+    ProfileKey:
+      name: profileKey
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+      description: Saved model profile key. The value may contain @.
     ModelPurposeId:
       name: purpose
       in: path

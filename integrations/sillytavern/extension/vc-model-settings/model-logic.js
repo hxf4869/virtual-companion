@@ -38,6 +38,26 @@ export const CAPABILITY_STATE_LABELS = {
     UNSUPPORTED: '不支持',
 };
 
+export const TOOL_CALLS_UNVERIFIED_NOTE = '未验证：角色暂不能帮你建提醒/查跟进';
+export const TOOL_CALLS_VERIFY_ACTION = '验证工具调用';
+export const TOOL_CALLS_VERIFY_HINT = '会真实调用一次该模型。';
+export const TOOL_CALLS_VERIFIED_NOTE = '已验证';
+
+const TOOL_CALL_VERIFICATION_FAILURES = {
+    TOOL_CALL_MISMATCH: '未通过：模型没有按要求调用指定工具',
+    UPSTREAM_MALFORMED: '未通过：模型返回的工具调用无法识别',
+    UPSTREAM_UNAVAILABLE: '未通过：模型服务暂时不可用',
+    CREDENTIAL_MISSING: '未通过：供应商密钥未配置',
+    MODEL_NOT_FOUND: '未通过：找不到这个模型配置',
+    USAGE_REJECTED: '未通过：这次调用的用量没有记上',
+};
+
+/** 验证失败只展示原因码对应的短句，不使用上游正文。 */
+export function toolCallVerificationFailure(err) {
+    const mapped = TOOL_CALL_VERIFICATION_FAILURES[err?.code];
+    return mapped || '未通过：这次没有完成验证';
+}
+
 // capabilities 对象的字段清单（契约固定键名），kind 仅用于分组展示。
 export const CAPABILITY_FIELDS = [
     { key: 'imageInput', label: '图片输入', kind: 'inputType' },

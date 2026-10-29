@@ -185,7 +185,7 @@ func TestRecoverOnceRecordsStaleNotificationSending(t *testing.T) {
 	store.notificationSweepN = 2
 	var buf bytes.Buffer
 	loop := NewLoop(slog.New(slog.NewTextHandler(&buf, nil)), testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 	if err := loop.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestRecoverOnceRecordsStaleNotificationSending(t *testing.T) {
 	quiet := newSchedulerTestStore()
 	var quietBuf bytes.Buffer
 	quietLoop := NewLoop(slog.New(slog.NewTextHandler(&quietBuf, nil)), testLoopPolicy(1), testTurnBudget())
-	quietLoop.Use(quiet, nil, nil, nil)
+	quietLoop.Use(quiet, nil, nil)
 	if err := quietLoop.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestRecoverOnceRecordsStaleNotificationSending(t *testing.T) {
 	failing.notificationSweepErr = errors.New("synthetic unavailable")
 	var failBuf bytes.Buffer
 	failLoop := NewLoop(slog.New(slog.NewTextHandler(&failBuf, nil)), testLoopPolicy(1), testTurnBudget())
-	failLoop.Use(failing, nil, nil, nil)
+	failLoop.Use(failing, nil, nil)
 	if err := failLoop.RecoverOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}

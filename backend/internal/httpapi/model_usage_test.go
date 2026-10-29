@@ -20,6 +20,7 @@ func (m *memStore) ReserveModelUsage(_ context.Context, in postgres.ModelUsageRe
 		return postgres.ModelUsageHold{}, m.usageErr
 	}
 	m.usageLastAttempt = in.AttemptID
+	m.usageLastPurpose = in.Purpose
 	return postgres.ModelUsageHold{
 		ReservationID: 41, Purpose: in.Purpose, Status: "HELD",
 		AttemptID: in.AttemptID, ReservedUSD: "1.000000",
@@ -30,6 +31,9 @@ func (m *memStore) SettleModelUsage(_ context.Context, _, reservationID, input, 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.usageCalls++
+	if m.settleErr != nil {
+		return postgres.ModelUsageSettlement{}, m.settleErr
+	}
 	m.usageSettles++
 	idempotent := m.usageSettles > 1
 	return postgres.ModelUsageSettlement{
@@ -42,6 +46,7 @@ func (m *memStore) CancelModelUsage(_ context.Context, _, reservationID int64, d
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.usageCalls++
+	m.usageLastCancel = disposition
 	status := "RELEASED"
 	if disposition == "UNKNOWN" {
 		status = "UNKNOWN"

@@ -226,6 +226,15 @@ export function discoverProviderModels(providerId, { protocol, baseUrl, credenti
 }
 
 /**
+ * POST /api/v1/admin/providers/{providerId}/models/{profileKey}/verify-tool-calls
+ * 显式操作：真实调用一次该模型。profileKey 里的 @ 保持原样，桥白名单不接受百分号编码。
+ */
+export function verifyModelToolCalls(providerId, profileKey) {
+    const key = encodeURIComponent(profileKey).replace(/%40/gi, '@');
+    return request('POST', `${GO_PREFIX}/providers/${encodeURIComponent(providerId)}/models/${key}/verify-tool-calls`, {});
+}
+
+/**
  * POST /api/v1/auth/reauth → {ok:true}；body {password}。
  * 写操作 403（FreshReauth 过期）后的最小再验证；成功后由页面重试保存。
  * 请求形状依据 backend/internal/httpapi/auth.go handleReauth（已认证 + CSRF 双提交）。

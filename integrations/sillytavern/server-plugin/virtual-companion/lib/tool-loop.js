@@ -71,29 +71,30 @@ function assertNoForgedToolResult(messages) {
 }
 
 /**
- * 就地收紧请求。剧情回合去掉两个陪伴工具后 companion 为 false。
+ * 就地收紧请求。剧情回合，以及工具能力尚未 VERIFIED 的回合，去掉两个陪伴工具；
+ * 没有其他工具时删掉 tool_choice，普通回复继续出站，不进入陪伴工具循环。
+ * 只有去掉陪伴工具后仍有其他工具，且能力是 UNKNOWN 或 UNSUPPORTED 时才拒绝。
+ * DECLARED 即使还带着其他工具也不拒绝、不进陪伴循环。剧情回合即使已验证也不进陪伴循环。
  * @returns {{companion: boolean}}
  */
 export function prepareToolPolicy(body, model) {
     stripUnmeteredRequestFields(body);
     const story = storyMode(body);
-    if (story && Array.isArray(body?.tools)) {
+    const capability = model?.capabilities?.toolCalls;
+    const verified = capability === 'VERIFIED';
+    if ((story || !verified) && Array.isArray(body?.tools)) {
         body.tools = body.tools.filter((tool) => !COMPANION_TOOL_NAMES.has(tool?.function?.name || tool?.name));
+        // 陪伴工具被去掉后若没有其他工具，残留的 tool_choice 会让 Responses 适配器拒绝整次回复。
+        if (body.tools.length === 0) delete body.tool_choice;
     }
     if (!story) assertNoForgedToolResult(body?.messages);
-    const capability = model?.capabilities?.toolCalls;
-    const unverified = capability === 'UNKNOWN' || capability === 'UNSUPPORTED';
-    // 剧情回合不依赖陪伴工具。UNKNOWN/UNSUPPORTED 只在非剧情回合无条件拒绝；
-    // 剧情回合去掉陪伴工具后若仍有其他工具，同样拒绝。
+    const blocksUnverifiedTools = capability === 'UNKNOWN' || capability === 'UNSUPPORTED';
     const remainingTools = Array.isArray(body?.tools) && body.tools.length > 0;
-    if (unverified && (!story || remainingTools)) {
+    if (blocksUnverifiedTools && remainingTools) {
         throw new BridgeError(409, 'VC_TOOL_CALLS_UNVERIFIED', '工具调用能力未验证，已拒绝发送');
     }
-    const companion = Array.isArray(body?.tools)
+    const companion = !story && verified && Array.isArray(body?.tools)
         && body.tools.some((tool) => COMPANION_TOOL_NAMES.has(tool?.function?.name || tool?.name));
-    if (companion && capability !== 'VERIFIED') {
-        throw new BridgeError(409, 'VC_TOOL_CALLS_UNVERIFIED', '工具调用能力未验证，已拒绝发送');
-    }
     return { companion: Boolean(companion) };
 }
 

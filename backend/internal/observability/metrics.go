@@ -17,13 +17,12 @@ import (
 // Registry holds low-cardinality process and HTTP metrics. Labels are handler
 // names and status codes only — never owner, id, or error text.
 type Registry struct {
-	mu            sync.Mutex
-	http          map[httpKey]httpStat
-	dbStats       func() DBStats
-	realtimeStats func() RealtimeStats
-	jobsStats     func() JobsStats
-	coreWrites    uint64
-	memoryRecall  MemoryRecallStats
+	mu           sync.Mutex
+	http         map[httpKey]httpStat
+	dbStats      func() DBStats
+	jobsStats    func() JobsStats
+	coreWrites   uint64
+	memoryRecall MemoryRecallStats
 }
 
 // MemoryRecallStats counts gate outcomes and embedding-cache traffic.
@@ -40,17 +39,8 @@ type MemoryRecallStats struct {
 
 // JobsStats is a low-cardinality worker snapshot. No owner or job id.
 type JobsStats struct {
-	Claims            uint64
-	Recoveries        uint64
-	ActiveGenerations int64
-	PeakGenerations   int64
-}
-
-// RealtimeStats is a low-cardinality hub snapshot. No owner or generation id.
-type RealtimeStats struct {
-	Subscribers     int64
-	SlowDisconnects uint64
-	SnapshotResumes uint64
+	Claims     uint64
+	Recoveries uint64
 }
 
 // DBStats is a low-cardinality pool snapshot. No owner, SQL, or error text.
@@ -84,15 +74,6 @@ func (r *Registry) SetDBStatsSource(fn func() DBStats) {
 	}
 	r.mu.Lock()
 	r.dbStats = fn
-	r.mu.Unlock()
-}
-
-func (r *Registry) SetRealtimeStatsSource(fn func() RealtimeStats) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	r.realtimeStats = fn
 	r.mu.Unlock()
 }
 
@@ -207,22 +188,6 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 		writeCounter(&buf, "vc_db_tx_total", "Short owner-bound transactions opened by companiond.", float64(db.TxCount))
 		writeCounter(&buf, "vc_db_tx_duration_seconds_sum", "Total owner-bound transaction duration in seconds.", db.TxSeconds)
 	}
-	var rt RealtimeStats
-	var hasRT bool
-	if r != nil {
-		r.mu.Lock()
-		fn := r.realtimeStats
-		r.mu.Unlock()
-		if fn != nil {
-			rt = fn()
-			hasRT = true
-		}
-	}
-	if hasRT {
-		writeGauge(&buf, "vc_realtime_subscribers", "Live realtime SSE subscribers.", float64(rt.Subscribers))
-		writeCounter(&buf, "vc_realtime_slow_disconnect_total", "Subscribers dropped for exceeding the live queue bound.", float64(rt.SlowDisconnects))
-		writeCounter(&buf, "vc_realtime_snapshot_resume_total", "SSE opens that used a durable snapshot instead of live fan-out.", float64(rt.SnapshotResumes))
-	}
 	var jobs JobsStats
 	var hasJobs bool
 	if r != nil {
@@ -235,10 +200,8 @@ func (r *Registry) WritePrometheus(w io.Writer) error {
 		}
 	}
 	if hasJobs {
-		writeCounter(&buf, "vc_job_claims_total", "Generation/export jobs atomically claimed by the worker loop.", float64(jobs.Claims))
-		writeCounter(&buf, "vc_job_recoveries_total", "Expired generation jobs converged by the recovery scan.", float64(jobs.Recoveries))
-		writeGauge(&buf, "vc_generation_active", "Generation handlers currently executing.", float64(jobs.ActiveGenerations))
-		writeGauge(&buf, "vc_generation_peak", "Peak generation handlers observed since process start.", float64(jobs.PeakGenerations))
+		writeCounter(&buf, "vc_job_claims_total", "Jobs atomically claimed by the worker loop.", float64(jobs.Claims))
+		writeCounter(&buf, "vc_job_recoveries_total", "Expired jobs converged by the recovery scan.", float64(jobs.Recoveries))
 	}
 	var writes uint64
 	if r != nil {

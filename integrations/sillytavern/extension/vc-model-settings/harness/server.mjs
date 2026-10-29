@@ -204,6 +204,12 @@ const server = http.createServer(async (req, res) => {
         if (scenario === 'unauth') return bad(res, 401, 'AUTHENTICATION_REQUIRED', 'authentication required');
         if (scenario === 'error') return bad(res, 500, 'INTERNAL', 'synthetic failure');
 
+        if (req.method === 'GET' && goPath === '/api/v1/auth/session') {
+            return ok(res, 200, { accountId: '9', sessionId: '1', role: 'ADMIN' });
+        }
+        if (req.method === 'GET' && goPath.startsWith('/api/v1/auth/admin/usage')) {
+            return ok(res, 200, { month: '2026-10', purposes: [] });
+        }
         if (req.method === 'GET' && goPath === `${GO}/providers`) {
             return ok(res, 200, state.providers.map((p) => providerView(state, p)));
         }
@@ -286,6 +292,26 @@ const server = http.createServer(async (req, res) => {
             binding.updatedAt = now;
             recomputeStatuses(state);
             return ok(res, 200, binding);
+        }
+
+        const verify = goPath.match(new RegExp(`^${GO}/providers/([^/]+)/models/([^/]+)/verify-tool-calls$`));
+        if (req.method === 'POST' && verify) {
+            const providerId = decodeURIComponent(verify[1]);
+            const profileKey = decodeURIComponent(verify[2]);
+            const provider = state.providers.find((p) => p.providerId === providerId);
+            const model = provider?.models.find((m) => m.profileKey === profileKey);
+            if (!provider || !model) return bad(res, 404, 'MODEL_NOT_FOUND', 'model profile not found');
+            // 长上下文固定失败，用来看原因码；不回显任何上游正文。
+            if (profileKey === 'long-context') {
+                return bad(res, 422, 'TOOL_CALL_MISMATCH', 'tool call verification failed');
+            }
+            model.capabilities = { ...(model.capabilities ?? {}), toolCalls: 'VERIFIED' };
+            return ok(res, 200, {
+                ok: true,
+                toolCalls: 'VERIFIED',
+                verifiedAt: '2026-10-29T11:00:00.000Z',
+                protocol: provider.protocol,
+            });
         }
 
         const discover = goPath.match(new RegExp(`^${GO}/providers/([^/]+)/models/discover$`));

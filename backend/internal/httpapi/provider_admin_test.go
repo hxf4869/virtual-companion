@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -27,10 +28,42 @@ type providerMemStore struct {
 	resolved   postgres.ResolvedPurpose
 	resolveErr error
 	resolveIn  []postgres.ResolvePurpose
+	verified   []string
+	markErr    error
 }
 
 func (m *providerMemStore) ListProviderConfigs(context.Context, int64) ([]postgres.ProviderConfig, error) {
 	return append([]postgres.ProviderConfig(nil), m.configs...), nil
+}
+
+func (m *providerMemStore) MarkModelToolCallsVerified(_ context.Context, _ int64, providerID, profileKey string) (postgres.ToolCallVerification, error) {
+	if m.markErr != nil {
+		return postgres.ToolCallVerification{}, m.markErr
+	}
+	for i := range m.configs {
+		if m.configs[i].ProviderID != providerID {
+			continue
+		}
+		for j := range m.configs[i].Models {
+			key := m.configs[i].Models[j].ProfileKey
+			if key == "" {
+				key = m.configs[i].Models[j].ModelID
+			}
+			if key != profileKey {
+				continue
+			}
+			if m.configs[i].Models[j].Capabilities == nil {
+				m.configs[i].Models[j].Capabilities = postgres.ModelCapabilities{}
+			}
+			m.configs[i].Models[j].Capabilities["toolCalls"] = postgres.CapabilityVerified
+			m.verified = append(m.verified, profileKey)
+			return postgres.ToolCallVerification{
+				VerifiedAt: time.Unix(1_700_000_000, 0).UTC(),
+				Protocol:   m.configs[i].Protocol,
+			}, nil
+		}
+	}
+	return postgres.ToolCallVerification{}, postgres.ErrNotFound
 }
 
 func (m *providerMemStore) GetProviderCredential(context.Context, int64, string) (string, error) {
@@ -565,5 +598,92 @@ func TestServiceResolveChannel(t *testing.T) {
 	server.Handler().ServeHTTP(admin, req)
 	if admin.Code != http.StatusUnauthorized {
 		t.Fatalf("service token on admin surface %d %s", admin.Code, admin.Body.String())
+	}
+}
+
+func TestVerifyModelToolCallsProbesOnceAndDoesNotEchoUpstream(t *testing.T) {
+	t.Parallel()
+	const marker = "UPSTREAM_SECRET_MARKER"
+	var seen [][]byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		seen = append(seen, body)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(string(body), `"model":"mismatch"`) {
+			_, _ = w.Write([]byte(`{"note":"` + marker + `","output":[{"type":"function_call","name":"leak_marker_xyz","arguments":"{\"city\":\"北京\"}"}],"usage":{"input_tokens":2,"output_tokens":3}}`))
+			return
+		}
+		if strings.Contains(string(body), `"model":"down"`) {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(marker))
+			return
+		}
+		_, _ = w.Write([]byte(`{"note":"` + marker + `","output":[{"type":"function_call","name":"get_current_weather","arguments":"{\"city\":\"北京\"}"}],"usage":{"input_tokens":4,"output_tokens":5}}`))
+	}))
+	defer upstream.Close()
+
+	server, store := newProviderServer(t)
+	server.cfg.Provider.AllowLoopbackHTTP = true
+	store.configs[0].Protocol = postgres.ProtocolOpenAIResponses
+	store.configs[0].BaseURL = upstream.URL + "/v1"
+	store.configs[0].Models[0].ProfileKey = "m@chat"
+	store.configs[0].Models[0].ModelID = "remote-a"
+	store.configs[0].Models[0].Capabilities = postgres.ModelCapabilities{"toolCalls": postgres.CapabilityDeclared}
+	path := "/api/v1/admin/providers/acme/models/m@chat/verify-tool-calls"
+
+	user := providerRequest(t, server, store, http.MethodPost, path, "{}", 1, true)
+	if user.Code != http.StatusForbidden || len(seen) != 0 || len(store.verified) != 0 {
+		t.Fatalf("user %d calls=%d body=%s", user.Code, len(seen), user.Body.String())
+	}
+	stale := providerRequest(t, server, store, http.MethodPost, path, "{}", 9, false)
+	if stale.Code != http.StatusForbidden || len(seen) != 0 {
+		t.Fatalf("stale reauth %d calls=%d", stale.Code, len(seen))
+	}
+
+	store.configs[0].Models[0].ModelID = "mismatch"
+	mismatch := providerRequest(t, server, store, http.MethodPost, path, "{}", 9, true)
+	if mismatch.Code != http.StatusUnprocessableEntity || decodeBody(t, mismatch)["code"] != "TOOL_CALL_MISMATCH" ||
+		strings.Contains(mismatch.Body.String(), marker) || strings.Contains(mismatch.Body.String(), "北京") ||
+		strings.Contains(mismatch.Body.String(), "leak_marker_xyz") || len(store.verified) != 0 ||
+		store.configs[0].Models[0].Capabilities["toolCalls"] != postgres.CapabilityDeclared ||
+		store.usageLastPurpose != postgres.PurposeForegroundChat || store.usageSettles != 1 {
+		t.Fatalf("mismatch %d settles=%d caps=%v body=%s", mismatch.Code, store.usageSettles, store.configs[0].Models[0].Capabilities, mismatch.Body.String())
+	}
+
+	store.configs[0].Models[0].ModelID = "down"
+	down := providerRequest(t, server, store, http.MethodPost, path, "{}", 9, true)
+	if down.Code != http.StatusBadGateway || decodeBody(t, down)["code"] != "UPSTREAM_UNAVAILABLE" ||
+		strings.Contains(down.Body.String(), marker) || store.usageLastCancel != "UNKNOWN" || len(store.verified) != 0 {
+		t.Fatalf("down %d cancel=%s body=%s", down.Code, store.usageLastCancel, down.Body.String())
+	}
+
+	store.configs[0].Models[0].ModelID = "remote-a"
+	store.settleErr = postgres.ErrInvalid
+	rejected := providerRequest(t, server, store, http.MethodPost, path, "{}", 9, true)
+	if rejected.Code != http.StatusConflict || decodeBody(t, rejected)["code"] != "USAGE_REJECTED" || len(store.verified) != 0 {
+		t.Fatalf("settle rejected %d verified=%v body=%s", rejected.Code, store.verified, rejected.Body.String())
+	}
+	store.settleErr = nil
+
+	ok := providerRequest(t, server, store, http.MethodPost, path, "{}", 9, true)
+	payload := decodeBody(t, ok)
+	if ok.Code != http.StatusOK || payload["toolCalls"] != postgres.CapabilityVerified ||
+		payload["protocol"] != postgres.ProtocolOpenAIResponses || payload["ok"] != true ||
+		strings.Contains(ok.Body.String(), marker) || strings.Contains(ok.Body.String(), "北京") ||
+		len(store.verified) != 1 || store.verified[0] != "m@chat" ||
+		store.configs[0].Models[0].Capabilities["toolCalls"] != postgres.CapabilityVerified ||
+		!strings.HasPrefix(store.usageLastAttempt, "tool-probe-") || store.usageLastPurpose != postgres.PurposeForegroundChat {
+		t.Fatalf("verify %d %+v caps=%v attempt=%s body=%s", ok.Code, payload, store.configs[0].Models[0].Capabilities, store.usageLastAttempt, ok.Body.String())
+	}
+	var probe map[string]any
+	if err := json.Unmarshal(seen[len(seen)-1], &probe); err != nil {
+		t.Fatal(err)
+	}
+	if probe["max_output_tokens"] != float64(64) || probe["model"] != "remote-a" {
+		t.Fatalf("probe payload %#v", probe)
+	}
+	choice, _ := probe["tool_choice"].(map[string]any)
+	if choice["type"] != "function" || choice["name"] != "get_current_weather" {
+		t.Fatalf("tool_choice %#v", probe["tool_choice"])
 	}
 }

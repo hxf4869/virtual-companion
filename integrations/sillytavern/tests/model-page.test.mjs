@@ -29,6 +29,11 @@ import {
     extraReasoningLevels,
     reasoningLevelLabel,
     CAPABILITY_FIELDS,
+    TOOL_CALLS_UNVERIFIED_NOTE,
+    TOOL_CALLS_VERIFY_ACTION,
+    TOOL_CALLS_VERIFY_HINT,
+    TOOL_CALLS_VERIFIED_NOTE,
+    toolCallVerificationFailure,
 } from '../extension/vc-model-settings/model-logic.js';
 
 // ---------- endpoint 规范化（真源：ResolveEndpoint） ----------
@@ -398,6 +403,17 @@ test('unrecordedModels：筛出未收录模型；已收录 / 重复条目 / 空 
     assert.deepEqual(unrecordedModels([], []), []);
 });
 
+test('工具调用验证失败只按原因码显示短句', () => {
+    assert.equal(toolCallVerificationFailure({ code: 'TOOL_CALL_MISMATCH', message: '北京 leak_marker_xyz' }), '未通过：模型没有按要求调用指定工具');
+    assert.equal(toolCallVerificationFailure({ code: 'UPSTREAM_MALFORMED' }), '未通过：模型返回的工具调用无法识别');
+    assert.equal(toolCallVerificationFailure({ code: 'UPSTREAM_UNAVAILABLE' }), '未通过：模型服务暂时不可用');
+    assert.equal(toolCallVerificationFailure({ code: 'CREDENTIAL_MISSING' }), '未通过：供应商密钥未配置');
+    assert.equal(toolCallVerificationFailure({ code: 'MODEL_NOT_FOUND' }), '未通过：找不到这个模型配置');
+    assert.equal(toolCallVerificationFailure({ code: 'USAGE_REJECTED' }), '未通过：这次调用的用量没有记上');
+    assert.equal(toolCallVerificationFailure({ code: 'NO_SUCH', message: 'upstream body' }), '未通过：这次没有完成验证');
+    assert.equal(TOOL_CALLS_VERIFIED_NOTE, '已验证');
+});
+
 test('采样参数能力在其他能力编辑中保留 VERIFIED，克隆降为 DECLARED', () => {
     const source = modelDraftFromApi({ profileKey: 'sampling', modelId: 'sampling', displayName: 'sampling', maxOutputTokens: 10,
         capabilities: { temperature: 'VERIFIED', topP: 'VERIFIED', toolCalls: 'UNKNOWN' } });
@@ -492,6 +508,9 @@ test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、�
         assert.match(overlay.innerHTML, /缺密钥/);
         assert.match(overlay.innerHTML, /该供应商尚未配置 API Key。可以先保存为停用草稿；配置密钥并启用后才能用于生成。/);
         assert.match(overlay.innerHTML, /aria-pressed="true">未知/);
+        assert.match(overlay.innerHTML, new RegExp(TOOL_CALLS_UNVERIFIED_NOTE));
+        assert.match(overlay.innerHTML, new RegExp(TOOL_CALLS_VERIFY_ACTION));
+        assert.match(overlay.innerHTML, new RegExp(TOOL_CALLS_VERIFY_HINT));
         assert.match(overlay.innerHTML, /该配置正被这些用途使用：前台聊天、剧情 NPC。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。/);
         assert.equal(overlay.innerHTML.includes('检查中…'), false);
 
