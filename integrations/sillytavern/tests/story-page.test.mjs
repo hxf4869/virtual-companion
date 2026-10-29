@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import { createStoryPage, renderStoryPage, STORY_CONFLICT } from '../extension/vc-model-settings/story-page.js';
+import { STORY_UI_ROUTES } from '../server-plugin/virtual-companion/lib/story-ui-routes.js';
 
 const MARKERS = ['PRIVATE_LIN_LOAN_31', 'PRIVATE_ZHOU_WATCH_44', 'PRIVATE_SU_WITNESS_57', 'GM_ONLY_WATCH_TRUTH_92'];
 const STORY_ID = '9007199254740993';
@@ -305,8 +306,15 @@ test('回档先写明阶段和对后续行动、分支记忆的影响，确认�
     await page.askRewind(1);
     let html = renderStoryPage(page.state);
     assert.match(html, /回到世界版本 1，阶段为调查中。此版本之后的行动不会留在当前分支，需要重新提交才会再次发生。该阶段之后形成的分支记忆会失效，不会并入当前进度。/);
+    assert.match(html, /公开线索和角色私密知情范围会重新计算。备份不会因此全部删除。/);
+    assert.match(html, /同一局的其他设备需要加载最新状态，不会自动合并。/);
     assert.match(html, /确认回档/);
+    assert.match(html, /vc-story-rewind-dialog/);
     assert.equal(calls.some((call) => call.url.endsWith('/rewind')), false);
+    page.cancelRewind();
+    assert.equal(page.state.rewindAsk, null);
+    assert.doesNotMatch(renderStoryPage(page.state), /确认回档/);
+    await page.askRewind(1);
     await page.confirmRewind();
     assert.match(renderStoryPage(page.state), /当前聊天还不能回档/);
     assert.equal(calls.some((call) => call.url.endsWith('/rewind')), false);
@@ -450,4 +458,129 @@ test('重放不采用旧分支，换了剧情对话会重新开局', async () =>
     assert.equal(JSON.parse(restarted.body).conversationId, '77');
     assert.equal(page.state.turn.runId, '12');
     page.close();
+});
+
+test('行动版本冲突后重查当前进度，不采用冲突响应里的分支，也不回显正文', async () => {
+    let runs = 0;
+    let projected = 0;
+    const base = route;
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/story/runs')) {
+            runs += 1;
+            return { body: { ...runBody, worldVersion: runs === 1 ? 0 : 2, branchId: '13' } };
+        }
+        if (init?.method === 'POST' && url.endsWith('/actions')) {
+            return { status: 409, body: { code: 'REVISION_CONFLICT', message: 'story world conflict PRIVATE_LIN_LOAN_31', branchId: '99', worldVersion: 5 } };
+        }
+        if (url.includes('/actors/player/view')) {
+            const worldVersion = Number(new URL(url, 'https://example.invalid').searchParams.get('worldVersion'));
+            return { body: poisonedView({ worldVersion, branchId: '13' }) };
+        }
+        return base(url, init);
+    };
+    const page = createStoryPage({
+        getConversation: storyConversation,
+        project: async () => { projected += 1; return { confirmed: true }; },
+    });
+    await page.open();
+    await page.start();
+    await page.act('a1');
+    const html = renderStoryPage(page.state);
+    document.body.innerHTML = html;
+    assert.match(html, /data-state="conflict"/);
+    assert.match(html, /这步行动与当前进度不一致，没有另开分支。/);
+    assert.equal(page.state.turn.branchId, '13');
+    assert.equal(page.state.turn.worldVersion, 2);
+    assert.equal(projected, 0);
+    assert.equal(runs >= 2, true);
+    assert.equal(calls.some((call) => call.url.includes('/actors/player/view') && call.url.includes('worldVersion=2')), true);
+    assertNoSecrets('冲突重查', html);
+    assertNoSecrets('冲突重查 JSON', JSON.stringify(page.state));
+    page.close();
+});
+
+test('导演或 NPC 未就绪时只显示固定缺配置文案，不写入用途载荷', async () => {
+    const base = route;
+    route = (url, init) => {
+        if (url.endsWith('/model-purposes')) {
+            return { body: [
+                { purpose: 'STORY_DIRECTOR', status: 'PENDING_CONFIGURATION', note: 'PRIVATE_LIN_LOAN_31 GM_ONLY_WATCH_TRUTH_92' },
+                { purpose: 'NPC_DIALOGUE', status: 'DISABLED', secret: 'sk-test-secret' },
+            ] };
+        }
+        return base(url, init);
+    };
+    const page = await started();
+    const html = renderStoryPage(page.state);
+    document.body.innerHTML = html;
+    assert.match(html, /data-config="missing"/);
+    assert.match(html, /剧情导演或 NPC 尚未绑定可用模型。/);
+    assert.match(html, /打开模型设置/);
+    assert.doesNotMatch(html, /STORY_DIRECTOR|NPC_DIALOGUE|PENDING_CONFIGURATION|sk-test-secret/);
+    assertNoSecrets('缺配置', html);
+    assertNoSecrets('缺配置 JSON', JSON.stringify(page.state));
+    assert.equal(storage.size, 0);
+    page.close();
+});
+
+test('行动请求未返回时显示正在生成，并停用这一步的按钮', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const base = route;
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/actions')) return gate;
+        return base(url, init);
+    };
+    const page = createStoryPage({ getConversation: storyConversation, project: async () => ({ confirmed: true }) });
+    await page.open();
+    await page.start();
+    const pending = page.act('a1');
+    const html = renderStoryPage(page.state);
+    assert.match(html, /data-state="generating"/);
+    assert.match(html, /正在生成这一步/);
+    assert.match(html, /data-action="act"[^>]*disabled/);
+    assert.doesNotMatch(html, /发现证据：|结局|确认回档/);
+    release({ body: { accepted: false, replayed: false, reason: 'bad_command', worldVersion: 0, branchId: '13', stage: 'investigation', ended: false } });
+    await pending;
+    assert.match(renderStoryPage(page.state), /data-state="rejected"/);
+    page.close();
+});
+
+test('发现证据时用过渡状态标出玩家可见线索名', async () => {
+    const base = route;
+    route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/actions')) {
+            return { body: { accepted: true, replayed: false, worldVersion: 1, worldEventId: '31', branchId: '13', stage: 'investigation', ended: false } };
+        }
+        if (url.includes('worldVersion=1')) {
+            return { body: poisonedView({
+                worldVersion: 1,
+                events: [{ eventId: '31', worldVersion: 1, body: { clueName: '钥匙借用记录', text: '林岚出示了借用记录' } }],
+            }) };
+        }
+        return base(url, init);
+    };
+    const page = createStoryPage({ getConversation: storyConversation, project: async () => ({ confirmed: false }) });
+    await page.open();
+    await page.start();
+    await page.act('a1');
+    const html = renderStoryPage(page.state);
+    assert.match(html, /data-state="evidence"/);
+    assert.match(html, /data-evidence="show"/);
+    assert.match(html, /发现证据：钥匙借用记录/);
+    assertNoSecrets('证据过渡', html);
+    page.close();
+});
+
+test('剧情页路由常量覆盖行动、回档、投影、入局、结局和用途', () => {
+    const allows = (method, path) => STORY_UI_ROUTES.some((item) => item.method === method && item.path.test(path));
+    assert.equal(allows('POST', '/api/v1/story/runs/11/actions'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/rewind'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/projections/101/confirm'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/participants/lin'), true);
+    assert.equal(allows('POST', '/api/v1/story/runs/11/epilogue'), true);
+    assert.equal(allows('GET', '/api/v1/admin/model-purposes'), true);
+    assert.equal(allows('GET', '/api/v1/story/runs/11/actors/lin/view'), false);
+    assert.equal(allows('GET', '/api/v1/story/runs/11/actors/gm/view'), false);
+    assert.equal(allows('DELETE', '/api/v1/story/runs/11'), false);
 });

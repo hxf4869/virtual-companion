@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VC 剧情页 · harness</title>
+<link rel="stylesheet" href="/vc-model-settings/style.css">
+<style>
+    body { margin: 0; background: #101318; color: #d8dee9; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .host-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; background: #171b22; border-bottom: 1px solid #2a3140; }
+    .host-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #3a4453; background: transparent; color: #d8dee9; font-size: 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+    <div class="host-bar">
+        <button type="button" class="host-btn" id="open-story">剧情</button>
+        <button type="button" class="host-btn" id="vc_models_menu_button">模型设置</button>
+    </div>
+    <script type="module">
+        const params = new URLSearchParams(location.search);
+        const scenario = params.get('scenario') || 'playing';
+        const STORY_ID = '9007199254740993';
+        window.__fetches = [];
+        window.__configured = 0;
+        let runs = 0;
+
+        const view = (worldVersion) => ({
+            conversationId: STORY_ID,
+            runId: '11',
+            branchId: '13',
+            actorId: 'player',
+            worldVersion,
+            publicLore: {
+                setting: '雨夜，小旅馆的一枚展柜怀表失踪。玩家受邀调查。',
+                locations: ['lobby', 'kitchen', 'workshop'],
+                knownEvent: '20:20 老板发现怀表不见了。',
+            },
+            knowledge: [{ id: 'empty-case', fact: '大堂展柜是空的' }],
+            events: worldVersion >= 1 ? [{
+                eventId: '31',
+                worldVersion: 1,
+                body: { clueName: '钥匙借用记录', text: '林岚出示了借用记录', phase: worldVersion >= 7 ? 'resolved' : 'investigation' },
+            }] : [],
+            participants: [
+                { actorId: 'lin', name: '林岚', publicPersona: '旅馆掌柜，记得借用登记。' },
+                { actorId: 'zhou', name: '周澈', publicPersona: '住店维修工。' },
+                { actorId: 'su', name: '苏禾', publicPersona: '当晚在大堂。' },
+            ],
+        });
+
+        const json = (body, status = 200) => new Response(JSON.stringify(body), {
+            status,
+            headers: { 'content-type': 'application/json' },
+        });
+
+        window.fetch = async (input, init = {}) => {
+            const url = String(input?.url || input);
+            window.__fetches.push({ url, method: init.method || 'GET' });
+            if (url.endsWith('/auth/session')) return json({ accountId: STORY_ID, sessionId: '42' });
+            if (url.endsWith('/model-purposes')) {
+                return json(scenario === 'missing'
+                    ? [{ purpose: 'STORY_DIRECTOR', status: 'PENDING_CONFIGURATION' }, { purpose: 'NPC_DIALOGUE', status: 'DISABLED' }]
+                    : [{ purpose: 'STORY_DIRECTOR', status: 'READY' }, { purpose: 'NPC_DIALOGUE', status: 'READY' }]);
+            }
+            if (url.endsWith('/story/runs') && (init.method || 'GET') === 'POST') {
+                runs += 1;
+                const worldVersion = scenario === 'rewind' ? 2 : (scenario === 'conflict' && runs > 1 ? 2 : 0);
+                return json({
+                    conversationId: STORY_ID, runId: '11', branchId: '13', caseId: 'rainy-inn-v1',
+                    worldVersion, stage: 'investigation',
+                    participants: [
+                        { actorId: 'player', name: '调查者', role: 'player' },
+                        { actorId: 'lin', name: '林岚', role: 'npc' },
+                        { actorId: 'zhou', name: '周澈', role: 'npc' },
+                        { actorId: 'su', name: '苏禾', role: 'npc' },
+                    ],
+                });
+            }
+            if (url.includes('/actors/player/view')) {
+                const worldVersion = Number(new URL(url, location.origin).searchParams.get('worldVersion') || '0');
+                return json(view(worldVersion));
+            }
+            if (url.endsWith('/actions') && (init.method || 'GET') === 'POST') {
+                if (scenario === 'generating') return new Promise(() => {});
+                if (scenario === 'rejected') return json({ accepted: false, replayed: false, reason: 'precondition_failed', worldVersion: 0, branchId: '13', stage: 'investigation', ended: false });
+                if (scenario === 'conflict') return json({ code: 'REVISION_CONFLICT', message: 'story world conflict' }, 409);
+                if (scenario === 'evidence') return json({ accepted: true, replayed: false, worldVersion: 1, worldEventId: '31', branchId: '13', stage: 'investigation', ended: false });
+                if (scenario === 'ended') return json({ accepted: true, replayed: false, worldVersion: 7, worldEventId: '70', branchId: '13', stage: 'resolved', ended: true });
+                return json({ accepted: false, replayed: false, reason: 'bad_command', worldVersion: 0, branchId: '13', stage: 'investigation', ended: false });
+            }
+            if (url.endsWith('/rewind')) return json({ branchId: '21', worldVersion: 1, stage: 'investigation' });
+            if (url.endsWith('/epilogue')) return json({ decision: 'discard' });
+            if (url.includes('/participants/')) return json({ runId: '11', actorId: 'lin', relationshipId: '8' });
+            if (url.endsWith('/relationships')) return json([]);
+            return json({ code: 'UNEXPECTED' }, 500);
+        };
+
+        const { mountStoryPage } = await import('/vc-model-settings/story-page.js');
+        const ui = mountStoryPage({
+            getConversation: () => ({ conversationId: STORY_ID, mode: 'STORY' }),
+            getChatIdentity: () => '10000000-0000-4000-8000-000000000042',
+            project: async () => ({ confirmed: scenario !== 'evidence' }),
+            onConfigure: () => { window.__configured += 1; },
+        });
+        const opener = document.getElementById('open-story');
+        opener.addEventListener('click', () => ui.open(opener));
+
+        const waitFor = (check) => new Promise((resolve, reject) => {
+            const start = Date.now();
+            const tick = () => {
+                if (check()) resolve();
+                else if (Date.now() - start > 4000) reject(new Error('harness timeout'));
+                else setTimeout(tick, 16);
+            };
+            tick();
+        });
+
+        if (params.get('autostart') === '1') {
+            ui.open(opener);
+            if (scenario !== 'unstarted') {
+                await waitFor(() => document.querySelector('[data-action="start"]'));
+                document.querySelector('[data-action="start"]').click();
+                await waitFor(() => document.querySelector('.vc-story[data-state="playing"]'));
+                const step = scenario === 'rejected' ? 'a6' : (scenario === 'playing' || scenario === 'missing' || scenario === 'rewind' ? '' : 'a1');
+                if (scenario === 'ended') {
+                    document.querySelector('[data-step="a7"]').click();
+                    await waitFor(() => document.querySelector('.vc-story[data-state="ended"]'));
+                } else if (step) {
+                    document.querySelector(`[data-step="${step}"]`).click();
+                    const expect = scenario === 'generating' ? 'generating' : scenario;
+                    await waitFor(() => document.querySelector(`.vc-story[data-state="${expect}"]`));
+                }
+            }
+            window.__ready = scenario;
+        }
+    </script>
+</body>
+</html>
