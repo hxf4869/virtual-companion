@@ -68,6 +68,7 @@ import { sceneMemoryBrowser } from './w07-accept.mjs';
 import { sceneMemorycoreNative } from './w08-native-accept.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
 import { sceneInboxNotify, startW10Capture, stopW10Capture } from './w10-accept.mjs';
+import { sceneStoryReal } from './story-real-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -93,6 +94,13 @@ SCENES.push({
 SCENES.push({
     id: 'story-play',
     title: 'W14 剧情行动、回档、投影补写、陪伴入局与结局',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+});
+// W14 真实叙事不进默认集。显式 --filter story-real 才运行，并先跑 catalog-admin。
+SCENES.push({
+    id: 'story-real',
+    title: 'W14 真实模型叙事：雨夜客栈出站与角色隔离',
     needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
@@ -2834,6 +2842,7 @@ const SCENE_IMPLS = {
     'w10-inbox-notify': sceneInboxNotify,
     'story-outbound': sceneStoryOutbound,
     'story-play': sceneStoryPlay,
+    'story-real': sceneStoryReal,
 };
 
 async function runFull() {
