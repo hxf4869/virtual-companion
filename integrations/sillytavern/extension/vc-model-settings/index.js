@@ -29,6 +29,7 @@ import { mountStoryPage } from './story-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
 import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 import { createStoryContext } from './story-context.js';
+import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 
 function requestUrl(input) {
     if (typeof input === 'string') return input;
@@ -56,7 +57,19 @@ function installGenerateBudgetWatch(onSignal) {
     globalThis.fetch = wrapped;
 }
 
+function mountVcUi() {
+    if (!readVcUiFlag()) return;
+    enableVcUi();
+    if (!document.head || document.getElementById('vc-ui-css')) return;
+    const link = document.createElement('link');
+    link.id = 'vc-ui-css';
+    link.rel = 'stylesheet';
+    link.href = new URL('./vc-ui.css', import.meta.url).href;
+    document.head.append(link);
+}
+
 export async function init() {
+    mountVcUi();
     setStHeadersProvider(() => {
         const headers = getRequestHeaders();
         // 浏览器侧桥约定：X-CSRF-Token 用 ST 令牌；Go 令牌经 X-VC-CSRF-Token 由 api.js 附加。

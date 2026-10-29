@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>组件</title>
+  <link rel="stylesheet" href="../vc-ui.css">
+  <style>
+    body.vc-ui { margin: 0; }
+    body.vc-ui .vc-kit { padding: 12px 0 40px; }
+    body.vc-ui .vc-kit-note {
+      margin: 0 20px 8px;
+      color: var(--vc-ink-2);
+      font-size: var(--vc-fs-footnote);
+    }
+    body.vc-ui .vc-kit-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      padding: 0 16px 16px;
+    }
+    body.vc-ui .vc-kit-frame {
+      position: relative;
+      margin: 0 16px 16px;
+      overflow: hidden;
+      border-radius: var(--vc-radius-md);
+      background: var(--vc-raise);
+    }
+    body.vc-ui .vc-kit-frame :is(.vc-sheet, .vc-menu, .vc-alert, .vc-toast, .vc-tabbar, .vc-scrim, .popup) {
+      position: absolute;
+    }
+    body.vc-ui .vc-kit-sides {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: stretch;
+      padding: 0 16px 16px;
+    }
+    body.vc-ui .vc-kit-sides .vc-sidebar {
+      min-height: 280px;
+      border-radius: var(--vc-radius-md);
+    }
+    body.vc-ui .vc-kit-toasts {
+      background:
+        linear-gradient(90deg, var(--vc-fill) 0 18px, transparent 18px) 0 0 / 36px 100%,
+        var(--vc-canvas);
+    }
+    body.vc-ui .vc-kit-toasts #toast-container {
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body class="vc-ui">
+  <main class="vc-kit">
+    <h1 class="vc-large-title">组件</h1>
+    <div class="vc-segment" id="theme-seg">
+      <i class="vc-segment-thumb"></i>
+      <button type="button" aria-pressed="true" aria-checked="true">自动</button>
+      <button type="button" aria-pressed="false">浅色</button>
+      <button type="button" aria-pressed="false">深色</button>
+    </div>
+
+    <p class="vc-kit-note">导航</p>
+    <div class="vc-navbar" style="--vc-nav-p:1">
+      <button type="button" class="vc-circle vc-glass" aria-label="返回"><i data-icon="chevron-left"></i></button>
+      <span class="vc-nav-title">对话</span>
+      <span class="vc-nav-spacer"></span>
+      <span class="vc-capsule vc-glass">
+        <button type="button" aria-label="更多"><i data-icon="ellipsis"></i></button>
+        <button type="button" class="is-pressed" aria-label="新建"><i data-icon="plus"></i></button>
+      </span>
+    </div>
+
+    <p class="vc-kit-note">按钮</p>
+    <div class="vc-kit-row">
+      <button type="button" class="vc-btn vc-btn-fill">继续</button>
+      <button type="button" class="vc-btn vc-btn-fill is-pressed">按下</button>
+      <button type="button" class="vc-btn vc-btn-fill" disabled>禁用</button>
+      <button type="button" class="vc-btn vc-btn-light">浅色</button>
+      <button type="button" class="vc-btn vc-btn-gray">灰色</button>
+      <button type="button" class="vc-btn vc-btn-text">文字</button>
+      <button type="button" class="vc-btn vc-btn-text is-danger">删除</button>
+      <button type="button" class="vc-btn vc-btn-danger">删除</button>
+    </div>
+
+    <label class="vc-search is-focus"><i data-icon="search" data-size="18"></i><input type="search" placeholder="搜索" aria-label="搜索"></label>
+
+    <p class="vc-group-title">分组</p>
+    <div class="vc-group">
+      <div class="vc-cell">
+        <span class="vc-tile vc-tile-blue"><i data-icon="sliders-horizontal" data-size="18"></i></span>
+        <span class="vc-grow">模型<span class="vc-meta" style="display:block">已验证</span></span>
+        <span class="vc-value vc-select-value">默认 <span class="vc-chevron"><i data-icon="chevrons-up-down" data-size="16"></i></span></span>
+      </div>
+      <div class="vc-cell is-pressed">
+        <span class="vc-tile vc-tile-orange"><i data-icon="bell" data-size="18"></i></span>
+        <span class="vc-grow">通知</span>
+        <span class="vc-chevron"><i data-icon="chevron-right" data-size="16"></i></span>
+      </div>
+      <div class="vc-cell">
+        <span class="vc-grow">回复</span>
+        <button type="button" class="vc-switch" aria-checked="true" aria-label="回复"></button>
+      </div>
+      <div class="vc-cell">
+        <span class="vc-grow">静音</span>
+        <button type="button" class="vc-switch is-pressed" aria-checked="false" aria-label="静音"></button>
+      </div>
+      <div class="vc-cell">
+        <span class="vc-grow">锁定</span>
+        <button type="button" class="vc-switch" aria-checked="true" disabled aria-label="锁定"></button>
+      </div>
+      <label class="vc-cell vc-slider">
+        <span class="vc-grow">温度</span>
+        <span class="vc-num">0.70</span>
+        <input class="vc-range is-pressed" type="range" min="0" max="100" value="70" aria-label="温度">
+      </label>
+    </div>
+    <p class="vc-footnote">删除后原文仍保留。</p>
+
+    <div class="vc-segment" id="filter-seg">
+      <i class="vc-segment-thumb"></i>
+      <button type="button" aria-pressed="false">全部</button>
+      <button type="button" aria-pressed="true" aria-checked="true">待核验</button>
+      <button type="button" aria-pressed="false">已失效</button>
+    </div>
+
+    <p class="vc-kit-note">状态、空、骨架</p>
+    <div class="vc-kit-row">
+      <span class="vc-status vc-status-ok"><i class="vc-dot vc-dot-ok"></i>已验证</span>
+      <span class="vc-status vc-status-warn"><i class="vc-dot vc-dot-warn"></i>待核验</span>
+      <span class="vc-status vc-status-danger"><i class="vc-dot vc-dot-danger"></i>失败</span>
+      <span class="vc-status"><i class="vc-dot vc-dot-neutral"></i>离线</span>
+    </div>
+    <div class="vc-empty">
+      <i data-icon="wifi-off" data-size="32"></i>
+      <p>没有会话</p>
+      <button type="button" class="vc-btn vc-btn-fill">新建</button>
+    </div>
+    <div class="vc-group">
+      <div class="vc-skeleton-row">
+        <i class="vc-skeleton vc-skeleton-avatar"></i>
+        <span class="vc-grow"><i class="vc-skeleton vc-skeleton-line"></i><i class="vc-skeleton vc-skeleton-line is-short"></i></span>
+      </div>
+    </div>
+
+    <p class="vc-kit-note">标签栏</p>
+    <div class="vc-kit-frame" style="height:96px">
+      <nav class="vc-tabbar vc-glass" aria-label="目的地">
+        <i class="vc-tab-lens" style="transform:translateX(100%)"></i>
+        <button type="button" class="vc-tab"><i data-icon="message-circle" data-size="24"></i>聊天</button>
+        <button type="button" class="vc-tab" aria-current="page"><i data-icon="users-round" data-size="24"></i>角色<span class="vc-badge">2</span></button>
+        <button type="button" class="vc-tab is-pressed"><i data-icon="brain" data-size="24"></i>记忆</button>
+        <button type="button" class="vc-tab"><i data-icon="heart" data-size="24"></i>陪伴</button>
+        <button type="button" class="vc-tab"><i data-icon="book-open" data-size="24"></i>剧情</button>
+      </nav>
+    </div>
+
+    <p class="vc-kit-note">侧边栏</p>
+    <div class="vc-kit-sides">
+      <nav class="vc-sidebar" aria-label="目的地">
+        <button type="button" class="vc-side-link" aria-current="page"><i data-icon="message-circle" data-size="24"></i><span class="vc-side-label">聊天</span></button>
+        <button type="button" class="vc-side-link"><i data-icon="users-round" data-size="24"></i><span class="vc-side-label">角色</span><span class="vc-badge" style="position:static">2</span></button>
+        <button type="button" class="vc-side-link"><i data-icon="brain" data-size="24"></i><span class="vc-side-label">记忆</span></button>
+        <button type="button" class="vc-side-link"><i data-icon="heart" data-size="24"></i><span class="vc-side-label">陪伴</span></button>
+        <button type="button" class="vc-side-link"><i data-icon="book-open" data-size="24"></i><span class="vc-side-label">剧情</span></button>
+        <span class="vc-side-foot"></span>
+        <button type="button" class="vc-side-link"><i data-icon="settings" data-size="24"></i><span class="vc-side-label">设置</span></button>
+      </nav>
+      <nav class="vc-sidebar is-collapsed" aria-label="收起">
+        <button type="button" class="vc-side-link" aria-current="page" aria-label="聊天"><i data-icon="message-circle" data-size="24"></i><span class="vc-side-label">聊天</span></button>
+        <button type="button" class="vc-side-link" aria-label="角色"><i data-icon="users-round" data-size="24"></i></button>
+      </nav>
+    </div>
+
+    <p class="vc-kit-note">菜单</p>
+    <div class="vc-kit-frame" style="height:280px">
+      <div class="vc-scrim is-on is-clear"></div>
+      <div class="vc-menu vc-glass" role="menu" style="top:36px;left:24px">
+        <button type="button" role="menuitem" aria-checked="true"><span class="vc-menu-label">铺开</span><span class="vc-menu-mark"><i data-icon="check" data-size="19"></i></span></button>
+        <button type="button" role="menuitem"><span class="vc-menu-label">复制</span><span class="vc-menu-mark"><i data-icon="copy" data-size="19"></i></span></button>
+        <hr>
+        <button type="button" role="menuitem" class="is-danger is-pressed"><span class="vc-menu-label">删除</span><span class="vc-menu-mark"><i data-icon="trash-2" data-size="19"></i></span></button>
+      </div>
+    </div>
+
+    <p class="vc-kit-note">半屏</p>
+    <div class="vc-kit-frame" data-sheet="half" style="height:520px">
+      <div class="vc-scrim is-on"></div>
+      <div class="vc-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-half-title">
+        <div class="vc-sheet-grab"></div>
+        <div class="vc-sheet-head"><h3 id="sheet-half-title">外观</h3><button type="button" class="vc-sheet-done">完成</button></div>
+        <div class="vc-sheet-body">
+          <div class="vc-group">
+            <div class="vc-cell"><span class="vc-grow">浅色</span><span class="vc-chevron"><i data-icon="check" data-size="16"></i></span></div>
+            <div class="vc-cell"><span class="vc-grow">深色</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="vc-kit-note">下一层</p>
+    <div class="vc-kit-frame" data-sheet="full" style="height:420px">
+      <div class="vc-scrim is-on"></div>
+      <div class="vc-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-full-title">
+        <div class="vc-sheet-grab"></div>
+        <div class="vc-sheet-head"><h3 id="sheet-full-title">设置</h3><button type="button" class="vc-sheet-done">完成</button></div>
+        <div class="vc-sheet-body">
+          <div class="vc-sheet-pane">
+            <div class="vc-sheet-head"><button type="button" class="vc-btn vc-btn-text vc-sheet-back"><i data-icon="chevron-left" data-size="22"></i><span>设置</span></button><h3>模型</h3></div>
+            <div class="vc-group"><div class="vc-cell"><span class="vc-tile vc-tile-indigo"><i data-icon="key-round" data-size="18"></i></span><span class="vc-grow">密钥</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="vc-kit-note">确认</p>
+    <div class="vc-kit-frame" style="height:240px">
+      <div class="vc-scrim is-on"></div>
+      <div class="vc-alert vc-glass" role="alertdialog" aria-labelledby="alert-title" aria-describedby="alert-text">
+        <div class="vc-alert-copy"><h4 id="alert-title">删除这条记忆？</h4><p id="alert-text">删除后原文仍保留。</p></div>
+        <div class="vc-alert-actions"><button type="button">取消</button><button type="button" class="is-danger">删除</button></div>
+      </div>
+    </div>
+
+    <p class="vc-kit-note">提示</p>
+    <div class="vc-kit-frame" style="height:140px">
+      <div class="vc-toast vc-glass is-on" role="status"><i data-icon="check" data-size="18"></i><span>已保存</span></div>
+      <div class="vc-toast vc-glass is-on is-failure" role="alert" style="top:72px"><i data-icon="circle-alert" data-size="18"></i><span>发送失败</span><button type="button" class="vc-toast-close" aria-label="关闭"><i data-icon="x" data-size="16"></i></button></div>
+    </div>
+
+    <p class="vc-kit-note">宿主控件</p>
+    <div class="vc-form" style="padding:0 0 16px">
+      <div class="vc-kit-row">
+        <div class="menu_button">菜单</div>
+        <div class="menu_button popup-button-ok">确定</div>
+        <div class="menu_button popup-button-cancel">取消</div>
+      </div>
+      <div class="vc-group">
+        <input class="text_pole" type="text" value="文本" aria-label="文本" style="width:100%">
+        <textarea aria-label="多行">多行</textarea>
+        <select aria-label="选择"><option>选项</option></select>
+        <input type="range" min="0" max="100" value="40" aria-label="范围">
+        <label class="vc-cell">勾选<input type="checkbox" checked aria-label="勾选"></label>
+      </div>
+    </div>
+
+    <div class="vc-kit-frame" style="height:220px">
+      <div class="popup" style="inset:16px;display:flex;flex-direction:column;justify-content:space-between;padding:16px">
+        <h3 class="popup-header" style="margin:0">提示</h3>
+        <div class="popup-content">宿主弹窗只换外观。</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <div class="menu_button popup-button-cancel">取消</div>
+          <div class="menu_button popup-button-ok">确定</div>
+        </div>
+      </div>
+    </div>
+    <div class="vc-kit-frame vc-kit-toasts" style="height:248px">
+      <div id="toast-container">
+        <div class="toast toast-success" aria-live="polite"><div class="toast-title">已保存</div><div class="toast-message">写入完成</div></div>
+        <div class="toast toast-info" aria-live="polite"><div class="toast-title">通知</div><div class="toast-message">有一条新消息</div></div>
+        <div class="toast toast-warning" aria-live="polite"><div class="toast-title">待核验</div><div class="toast-message">还不能发送</div></div>
+        <div class="toast toast-error" aria-live="assertive"><div class="toast-title">失败</div><div class="toast-message">没有发出去</div></div>
+      </div>
+    </div>
+  </main>
+  <script type="module">
+    import { icon } from '../ui/icons.js';
+    import { setThemeMode } from '../ui/theme.js';
+    import { bindSegment, bindSwitch, syncRangePct } from '../ui/controls.js';
+
+    for (const el of document.querySelectorAll('[data-icon]')) {
+      const size = Number(el.dataset.size) || 22;
+      const label = el.dataset.label;
+      const html = icon(el.dataset.icon, { size, label: label || undefined });
+      el.insertAdjacentHTML('afterend', html);
+      el.remove();
+    }
+    const themeModes = ['auto', 'light', 'dark'];
+    const themeEl = document.querySelector('#theme-seg');
+    const themeSeg = bindSegment(themeEl, {
+      onChange(index) { setThemeMode(themeModes[index]); },
+    });
+    const syncThemeSegment = () => {
+      const mode = document.documentElement.getAttribute('data-vc-theme') || 'auto';
+      const index = Math.max(0, themeModes.indexOf(mode));
+      for (const [i, btn] of [...themeEl.querySelectorAll(':scope > button')].entries()) {
+        btn.setAttribute('aria-pressed', i === index ? 'true' : 'false');
+      }
+      themeSeg.sync();
+    };
+    syncThemeSegment();
+    new MutationObserver(syncThemeSegment).observe(document.documentElement, { attributes: true, attributeFilter: ['data-vc-theme'] });
+    bindSegment(document.querySelector('#filter-seg'));
+    for (const el of document.querySelectorAll('.vc-switch')) bindSwitch(el);
+    for (const el of document.querySelectorAll('input[type="range"]')) syncRangePct(el);
+    for (const frame of document.querySelectorAll('[data-sheet]')) {
+      const sheet = frame.querySelector('.vc-sheet');
+      const height = frame.clientHeight;
+      const H = height - 54;
+      const M = Math.round(height * 0.56);
+      sheet.style.height = `${H}px`;
+      sheet.style.transform = `translateY(${frame.dataset.sheet === 'full' ? 0 : H - M}px)`;
+    }
+    document.body.dataset.vcKit = 'ready';
+  </script>
+</body>
+</html>
