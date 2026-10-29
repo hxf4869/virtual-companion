@@ -3,7 +3,6 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -121,7 +120,7 @@ func (s *concurrencyStore) GetExport(context.Context, int64, int64) (postgres.Ex
 // DATA_EXPORT job must still be claimed and completed — the V129 claim
 // contract caps DATA_EXPORT by the overall batch limit only, never by the
 // gen/extract slots, and the loop must not pre-emptively return 0.
-func TestLoopClaimsExportWhileGenerationAndExtractSlotsFull(t *testing.T) {
+func TestLoopClaimsExportWhileExtractSlotFull(t *testing.T) {
 	store := newConcurrencyStore(1)
 	armExtractInput(store)
 	store.claims = append([]postgres.JobClaim{extractClaim(900, 500)}, store.claims...)
@@ -131,25 +130,27 @@ func TestLoopClaimsExportWhileGenerationAndExtractSlotsFull(t *testing.T) {
 	}
 	generation := newConcurrencyProvider()
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, generation, nil, nil)
+	loop.Use(store, generation, nil)
 	attachConcurrencyEngine(loop, store, extract)
 
-	// Both kind slots fill up with blocked jobs.
-	if got := loop.ClaimOnce(context.Background()); got != 2 {
-		t.Fatalf("claim %d want 2 (generation + extract)", got)
+	// GENERATION is not claimed. The extract slot can be full without blocking export.
+	if got := loop.ClaimOnce(context.Background()); got != 1 {
+		t.Fatalf("claim %d want 1 extract", got)
 	}
-	waitFor(t, "both kind slots busy", func() bool {
-		return generation.active.Load() == 1 && extract.active.Load() == 1
+	if got := store.pendingByKind(KindGeneration); got != 1 {
+		t.Fatalf("pending generations %d, want the retired claim left unleased", got)
+	}
+	waitFor(t, "extract slot busy", func() bool {
+		return extract.active.Load() == 1 && generation.active.Load() == 0
 	})
 
-	// The export arrives while both slots are held.
 	store.mu.Lock()
 	store.claims = append(store.claims, postgres.JobClaim{
 		OwnerID: 1, JobID: 990, Kind: KindExport, RefID: 980, Token: "tk-exp", Fence: "fk-exp",
 	})
 	store.mu.Unlock()
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
-		t.Fatalf("export claim while both slots full %d, want 1", got)
+		t.Fatalf("export claim while extract slot full %d, want 1", got)
 	}
 	waitFor(t, "export job completed", func() bool {
 		store.mu.Lock()
@@ -164,11 +165,13 @@ func TestLoopClaimsExportWhileGenerationAndExtractSlotsFull(t *testing.T) {
 	if got := store.pendingByKind(KindExport); got != 0 {
 		t.Fatalf("pending exports %d, want 0 (claimed and completed)", got)
 	}
+	if generation.calls.Load() != 0 {
+		t.Fatalf("retired generation provider calls %d", generation.calls.Load())
+	}
 
-	close(generation.release)
 	close(extract.release)
-	waitFor(t, "blocked handlers drained", func() bool {
-		return generation.completed.Load() == 1 && extract.done.Load() == 1
+	waitFor(t, "blocked extract drained", func() bool {
+		return extract.done.Load() == 1
 	})
 }
 
@@ -282,21 +285,6 @@ func (p *blockingExtractProvider) Stream(ctx context.Context, _ companion.ModelR
 	return companion.AttemptResult{Finish: companion.FinishStop}, nil
 }
 
-// kindSplitProvider routes each request by call shape: extraction is the
-// bounded non-streaming call with the extract token budget; generation uses
-// the turn budget. One loop instance holds one provider for both handlers.
-type kindSplitProvider struct {
-	extract    *blockingExtractProvider
-	generation *concurrencyProvider
-}
-
-func (p *kindSplitProvider) Stream(ctx context.Context, req companion.ModelRequest, emit func(companion.OutputDelta) error) (companion.AttemptResult, error) {
-	if req.MaxTokens == extractMaxTokens {
-		return p.extract.Stream(ctx, req, emit)
-	}
-	return p.generation.Stream(ctx, req, emit)
-}
-
 // extractClaim builds one MEMORY_EXTRACT claim and arms the extract input so
 // the handler reaches the provider call.
 func extractClaim(jobID, refID int64) postgres.JobClaim {
@@ -366,40 +354,48 @@ func (p *concurrencyProvider) Stream(ctx context.Context, _ companion.ModelReque
 }
 
 func TestLoopCancelOwnerStopsOnlyMatchingProvider(t *testing.T) {
-	store := newConcurrencyStore(2)
-	store.claims[1].OwnerID = 2
-	provider := newConcurrencyProvider()
-	loop := NewLoop(nil, testLoopPolicy(2), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
+	store := newConcurrencyStore(0)
+	armExtractInput(store)
+	first := extractClaim(101, 501)
+	second := extractClaim(102, 502)
+	second.OwnerID = 2
+	store.claims = []postgres.JobClaim{first, second}
+	extract := &blockingExtractProvider{
+		release: make(chan struct{}),
+		output:  `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`,
+	}
+	policy := testLoopPolicy(2)
+	policy.MaxConcurrentExtracts = 2
+	loop := NewLoop(nil, policy, testTurnBudget())
+	loop.Use(store, nil, nil)
+	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 2 {
 		t.Fatalf("claim %d want 2", got)
 	}
-	waitFor(t, "two active providers", func() bool { return provider.active.Load() == 2 })
+	waitFor(t, "two active extractions", func() bool { return extract.active.Load() == 2 })
 	if got := loop.Cancels().CancelOwner(1); got != 1 {
 		t.Fatalf("owner 1 cancels %d want 1", got)
 	}
-	waitFor(t, "owner 1 provider cancellation", func() bool {
-		return provider.cancelled.Load() == 1 && provider.active.Load() == 1
-	})
-	select {
-	case err := <-provider.cancelErr:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("provider cancellation error %v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("provider did not report cancellation")
-	}
+	waitFor(t, "owner 1 extraction cancelled", func() bool { return extract.active.Load() == 1 })
 	if got := loop.Cancels().CancelOwner(1); got != 0 {
 		t.Fatalf("repeated owner 1 cancels %d want 0", got)
 	}
+	if got := extract.active.Load(); got != 1 {
+		t.Fatalf("owner 2 still active %d want 1", got)
+	}
 
-	close(provider.release)
-	waitFor(t, "owner 2 provider completion", func() bool {
-		return provider.completed.Load() == 2 && provider.active.Load() == 0
+	close(extract.release)
+	waitFor(t, "both extractions drained", func() bool {
+		return extract.done.Load() == 2 && extract.active.Load() == 0
 	})
-	if got := provider.cancelled.Load(); got != 1 {
-		t.Fatalf("cancelled providers %d want 1", got)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.retryCalls != 1 {
+		t.Fatalf("retry calls %d, want 1 (only owner 1 requeued)", store.retryCalls)
+	}
+	if len(store.extractSaved) != 1 {
+		t.Fatalf("saved extracts %d want 1 (owner 2 only)", len(store.extractSaved))
 	}
 }
 
@@ -440,89 +436,7 @@ func waitFor(t *testing.T, message string, fn func() bool) {
 	}
 	t.Fatalf("timed out waiting for %s", message)
 }
-
-func TestLoopBoundsConcurrentGenerationsAndDoesNotOverclaim(t *testing.T) {
-	store := newConcurrencyStore(4)
-	provider := newConcurrencyProvider()
-	loop := NewLoop(nil, testLoopPolicy(2), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
-
-	// Per-kind capacity: only the two free generation slots authorise claims.
-	// The idle extract slot can no longer be spent on a third generation.
-	if got := loop.ClaimOnce(context.Background()); got != 2 {
-		t.Fatalf("first claim %d want 2 (free generation slots)", got)
-	}
-	waitFor(t, "two active providers", func() bool { return provider.active.Load() == 2 })
-	// No free slot for the kinds on offer: nothing is claimed, nothing waits.
-	if got := loop.ClaimOnce(context.Background()); got != 0 {
-		t.Fatalf("claim while full %d want 0", got)
-	}
-	if got := store.ClaimCalls(); got != 2 {
-		t.Fatalf("store claim calls while full %d want 2", got)
-	}
-
-	close(provider.release)
-	waitFor(t, "first pair completes", func() bool {
-		return provider.completed.Load() == 2 && loop.Stats().ActiveGenerations == 0
-	})
-	if got := provider.peak.Load(); got != 2 {
-		t.Fatalf("provider peak %d want 2", got)
-	}
-	// The held-back generations are not lost: freed slots re-open claims.
-	if got := loop.ClaimOnce(context.Background()); got != 2 {
-		t.Fatalf("second round claim %d want 2", got)
-	}
-	waitFor(t, "all providers complete", func() bool {
-		return provider.completed.Load() == 4 && loop.Stats().ActiveGenerations == 0
-	})
-	stats := loop.Stats()
-	if stats.PeakGenerations != 2 || stats.Claims != 4 {
-		t.Fatalf("loop stats %+v", stats)
-	}
-}
-
-func TestLoopStopCancelsAndDrainsGeneration(t *testing.T) {
-	store := newConcurrencyStore(1)
-	provider := newConcurrencyProvider()
-	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
-	if err := loop.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, "active provider", func() bool { return provider.active.Load() == 1 })
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	if err := loop.Stop(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if stats := loop.Stats(); stats.ActiveGenerations != 0 {
-		t.Fatalf("active after stop %+v", stats)
-	}
-}
-
-func TestLoopDeniedOutboundNeverCallsProvider(t *testing.T) {
-	store := newConcurrencyStore(1)
-	store.gate = postgres.OutboundDecision{Allow: false, Code: "CONSENT_WITHDRAWN", Categories: []string{}}
-	provider := newConcurrencyProvider()
-	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
-
-	if got := loop.ClaimOnce(context.Background()); got != 1 {
-		t.Fatalf("claim %d want 1", got)
-	}
-	waitFor(t, "denied handler drain", func() bool {
-		return len(loop.generationSlots) == 0
-	})
-	if got := provider.calls.Load(); got != 0 {
-		t.Fatalf("provider calls %d want 0", got)
-	}
-}
-
-// TestLoopExtractDoesNotBlockGenerationClaiming pins defect 8: a hung
-// extraction model call must not stop the single ClaimOnce loop from
-// claiming and completing later GENERATION jobs.
-func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
+func TestLoopHungExtractStillFinishesWithoutRunningGeneration(t *testing.T) {
 	store := newConcurrencyStore(1)
 	armExtractInput(store)
 	store.claims = append([]postgres.JobClaim{extractClaim(900, 500)}, store.claims...)
@@ -532,20 +446,18 @@ func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
 		output:  `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`,
 	}
 	generation := newConcurrencyProvider()
-	close(generation.release) // generation completes immediately
+	close(generation.release)
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, generation, nil, nil)
+	loop.Use(store, generation, nil)
 	attachConcurrencyEngine(loop, store, extract)
 
-	if got := loop.ClaimOnce(context.Background()); got != 2 {
-		t.Fatalf("claim %d want 2 (extract + generation)", got)
+	if got := loop.ClaimOnce(context.Background()); got != 1 {
+		t.Fatalf("claim %d want 1 extract", got)
 	}
 	waitFor(t, "blocked extraction active", func() bool { return extract.active.Load() == 1 })
-	// While the extraction call hangs, the generation must still be claimed,
-	// executed and finalized.
-	waitFor(t, "generation completed during blocked extract", func() bool {
-		return generation.completed.Load() == 1
-	})
+	if generation.calls.Load() != 0 {
+		t.Fatalf("retired generation provider calls %d", generation.calls.Load())
+	}
 	store.mu.Lock()
 	enqueued := store.enqueueCalls
 	saved := len(store.extractSaved)
@@ -558,8 +470,6 @@ func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
 	}
 
 	close(extract.release)
-	// done 在模型返回时置位，而 extractSlots 要等完整 dispatch（含保存）返回
-	// 才释放：排空见证需同时要求槽已空，保存断言才不被时序提前。
 	waitFor(t, "extraction drained", func() bool {
 		return extract.done.Load() == 1 && len(loop.extractSlots) == 0
 	})
@@ -571,10 +481,6 @@ func TestLoopExtractDoesNotBlockGenerationClaiming(t *testing.T) {
 	}
 }
 
-// TestLoopBoundsConcurrentExtracts pins the per-kind extract capacity and the
-// claim-takes-the-slot contract: with one slot, only the first extraction is
-// claimed; the second stays PENDING in the store until the slot frees, so no
-// claimed-but-waiting handler ever exists.
 func TestLoopBoundsConcurrentExtracts(t *testing.T) {
 	store := newConcurrencyStore(0)
 	armExtractInput(store)
@@ -585,7 +491,7 @@ func TestLoopBoundsConcurrentExtracts(t *testing.T) {
 		output:  `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`,
 	}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, extract, nil, nil)
+	loop.Use(store, extract, nil)
 	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
@@ -629,7 +535,7 @@ func TestLoopStopCancelsInFlightExtract(t *testing.T) {
 
 	extract := &blockingExtractProvider{release: make(chan struct{})}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, extract, nil, nil)
+	loop.Use(store, extract, nil)
 	attachConcurrencyEngine(loop, store, extract)
 	if err := loop.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -666,7 +572,7 @@ func TestLoopCancelOwnerStopsInFlightExtract(t *testing.T) {
 
 	extract := &blockingExtractProvider{release: make(chan struct{})}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, extract, nil, nil)
+	loop.Use(store, extract, nil)
 	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
@@ -692,12 +598,9 @@ func TestLoopCancelOwnerStopsInFlightExtract(t *testing.T) {
 	}
 }
 
-// TestLoopClaimsExtractOnlyWithinFreeSlots pins the Codex audit finding 4
-// repro: with one generation slot and one extract slot, a hung extraction
-// must not turn the idle generation slot into MEMORY_EXTRACT claims. Under
-// the old kind-blind sum budget, continuous polling claimed all queued
-// extractions and piled up waiting goroutines; now it claims none, the
-// generation still flows, and the held-back extractions stay claimable.
+// TestLoopClaimsExtractOnlyWithinFreeSlots pins per-kind extract capacity:
+// one hung extraction must not turn later polls into more MEMORY_EXTRACT
+// claims, and a queued GENERATION stays unclaimed because that kind is retired.
 func TestLoopClaimsExtractOnlyWithinFreeSlots(t *testing.T) {
 	store := newConcurrencyStore(1)
 	armExtractInput(store)
@@ -705,27 +608,25 @@ func TestLoopClaimsExtractOnlyWithinFreeSlots(t *testing.T) {
 	for i := int64(1); i <= 12; i++ {
 		queued = append(queued, extractClaim(900+i, 500+i))
 	}
-	queued = append(queued, store.claims...) // the generation claim
+	queued = append(queued, store.claims...) // the retired generation claim
 	store.claims = queued
 
 	extract := &blockingExtractProvider{
 		release: make(chan struct{}),
 		output:  `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`,
 	}
-	generation := newConcurrencyProvider()
-	close(generation.release) // generation completes immediately
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, generation, nil, nil)
+	loop.Use(store, nil, nil)
 	attachConcurrencyEngine(loop, store, extract)
 
 	before := runtime.NumGoroutine()
-	if got := loop.ClaimOnce(context.Background()); got != 2 {
-		t.Fatalf("first claim %d want 2 (blocked extract + generation)", got)
+	if got := loop.ClaimOnce(context.Background()); got != 1 {
+		t.Fatalf("first claim %d want 1 (blocked extract; generation stays queued)", got)
 	}
 	waitFor(t, "blocked extraction active", func() bool { return extract.active.Load() == 1 })
-	waitFor(t, "generation completed during blocked extract", func() bool {
-		return generation.completed.Load() == 1
-	})
+	if got := store.pendingByKind(KindGeneration); got != 1 {
+		t.Fatalf("pending generations %d, want the retired claim left unclaimed", got)
+	}
 	// Continuous polling while the extraction hangs: the extract slot is busy,
 	// so no further MEMORY_EXTRACT claim is issued and nothing waits.
 	for i := 0; i < 12; i++ {
@@ -739,8 +640,8 @@ func TestLoopClaimsExtractOnlyWithinFreeSlots(t *testing.T) {
 	if got := store.pendingByKind(KindSTMemoryExtract); got != 12 {
 		t.Fatalf("pending extracts %d, want 12 unclaimed", got)
 	}
-	if stats := loop.Stats(); stats.Claims != 2 {
-		t.Fatalf("claimed jobs %d, want 2 (extract + generation)", stats.Claims)
+	if stats := loop.Stats(); stats.Claims != 1 {
+		t.Fatalf("claimed jobs %d, want 1 extract", stats.Claims)
 	}
 	if grew := runtime.NumGoroutine() - before; grew > 3 {
 		t.Fatalf("goroutines grew by %d while polling, want bounded (no waiting dispatch)", grew)
@@ -1097,7 +998,7 @@ func TestLoopExpiredExtractRequeueFencesOldHolder(t *testing.T) {
 		output:  `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`,
 	}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, extract, nil, nil)
+	loop.Use(store, extract, nil)
 	attachConcurrencyEngine(loop, store, extract)
 
 	if got := loop.ClaimOnce(context.Background()); got != 1 {
@@ -1147,67 +1048,6 @@ func TestLoopExpiredExtractRequeueFencesOldHolder(t *testing.T) {
 		t.Fatalf("recoveries after retry %d want 1", got)
 	}
 }
-
-// TestLoopExpiredGenerationClaimCannotStartAfterRequeue pins the not-yet-
-// started holder case: a claimed generation parked before its first fence
-// check must abort there once recovery requeued the job — it never calls the
-// provider — and the requeued claim runs exactly once.
-func TestLoopExpiredGenerationClaimCannotStartAfterRequeue(t *testing.T) {
-	store := newLeaseClaimStore()
-	store.enqueue(postgres.JobClaim{OwnerID: 1, JobID: 950, Kind: KindGeneration, RefID: 700})
-	store.promoteGate = make(chan struct{})
-	armExtractInput(store.concurrencyStore)
-	store.mem.PutSeed(turn.ContextSeed{
-		TurnID:             "700",
-		CurrentUserMessage: "今天有点累。",
-		AllowedCategories:  []turn.DataCategory{turn.CategoryMessage},
-		ConfigVersion:      "concurrency-test-v1",
-	})
-
-	provider := newConcurrencyProvider()
-	close(provider.release)
-	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
-
-	if got := loop.ClaimOnce(context.Background()); got != 1 {
-		t.Fatalf("claim %d want 1", got)
-	}
-	waitFor(t, "old holder parked at fence check", func() bool { return store.promotesWaitingCount() == 1 })
-
-	// Lease elapses while the holder has not started executing; recovery
-	// requeues and the retried claim runs to completion.
-	store.advance(2 * time.Minute)
-	if err := loop.RecoverOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if got := store.recoveryCount(); got != 1 {
-		t.Fatalf("recoveries %d want 1", got)
-	}
-	close(store.promoteGate)
-	// The stale holder aborts at the fence check and releases its slot before
-	// the requeued claim can fit the pool again.
-	waitFor(t, "stale holder aborted and slot released", func() bool {
-		return store.promoteConflictCount() == 1 && len(loop.generationSlots) == 0
-	})
-	if got := loop.ClaimOnce(context.Background()); got != 1 {
-		t.Fatalf("retry claim %d want 1", got)
-	}
-	waitFor(t, "retried generation completes", func() bool {
-		return provider.completed.Load() == 1 && loop.Stats().ActiveGenerations == 0
-	})
-
-	// The stale holder was refused at the fence check and never went outbound.
-	if got := provider.calls.Load(); got != 1 {
-		t.Fatalf("provider calls %d want 1 (stale holder must not go outbound)", got)
-	}
-	if got := store.promoteConflictCount(); got != 1 {
-		t.Fatalf("fenced promotes %d want 1", got)
-	}
-}
-
-// attachConcurrencyEngine uses the production ST orchestration. The engine has
-// an existing proposal, so no model callback is needed; its commit transport is
-// blocked to exercise worker slots, cancellation and lease expiry independently.
 func attachConcurrencyEngine(loop *Loop, store any, engine *blockingExtractProvider) {
 	switch s := store.(type) {
 	case *concurrencyStore:

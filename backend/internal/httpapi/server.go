@@ -13,7 +13,6 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
-	"github.com/hxf4869/virtual-companion/internal/realtime"
 )
 
 const maxBodyBytes = 1 << 20
@@ -23,54 +22,31 @@ type Probes interface {
 	Ready() bool
 }
 
-// Realtime is the G6 SSE surface. All three fields are required to register
-// the stream route. companiond leaves this nil until generation cutover.
-type Realtime struct {
-	Hub       *realtime.Hub
-	Sessions  auth.Sessions
-	Snapshots realtime.Snapshots
-}
-
 type Server struct {
-	cfg      config.Config
-	log      *slog.Logger
-	probes   Probes
-	metrics  *observability.Registry
-	mux      *http.ServeMux
-	realtime *Realtime
-	core     *Core
+	cfg     config.Config
+	log     *slog.Logger
+	probes  Probes
+	metrics *observability.Registry
+	mux     *http.ServeMux
+	core    *Core
 }
 
-func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry, rt *Realtime, core *Core) *Server {
+func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry, core *Core) *Server {
 	if log == nil {
 		log = observability.NewLogger(cfg.Log.Level, nil)
 	}
 	s := &Server{
-		cfg:      cfg,
-		log:      log,
-		probes:   probes,
-		metrics:  metrics,
-		mux:      http.NewServeMux(),
-		realtime: rt,
+		cfg:     cfg,
+		log:     log,
+		probes:  probes,
+		metrics: metrics,
+		mux:     http.NewServeMux(),
 	}
 	s.mux.HandleFunc("GET /actuator/health", s.handleHealth)
 	s.mux.HandleFunc("GET /actuator/health/liveness", s.handleLiveness)
 	s.mux.HandleFunc("GET /actuator/health/readiness", s.handleReadiness)
 	s.mux.HandleFunc("GET /actuator/prometheus", s.handlePrometheus)
 	s.mux.HandleFunc("GET /api/v1/version", s.handleVersion)
-	if rt != nil && rt.Hub != nil && rt.Sessions != nil && rt.Snapshots != nil {
-		s.mux.HandleFunc("GET /api/v1/realtime/streams/{generationId}", s.handleRealtimeStream)
-		if metrics != nil {
-			metrics.SetRealtimeStatsSource(func() observability.RealtimeStats {
-				st := rt.Hub.Stats()
-				return observability.RealtimeStats{
-					Subscribers:     st.Subscribers,
-					SlowDisconnects: st.SlowDisconnects,
-					SnapshotResumes: st.SnapshotResumes,
-				}
-			})
-		}
-	}
 	// Phase 4: writers stay off in api-migration. Isolation/cutover uses full.
 	// G9 opaque auth is registered only with those writers; production traffic
 	// is not switched here.
@@ -92,6 +68,13 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 
 func (s *Server) Handler() http.Handler {
 	return http.MaxBytesHandler(http.HandlerFunc(s.serve), maxBodyBytes)
+}
+
+func (s *Server) writeAPIError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"code": code, "message": message})
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {

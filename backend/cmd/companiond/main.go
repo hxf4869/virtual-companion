@@ -22,7 +22,6 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/provider/openai"
-	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
@@ -184,10 +183,9 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 	if err != nil {
 		return app.Deps{}, err
 	}
-	hub := realtime.New()
 	loop := jobs.NewLoop(log, jobs.PolicyFrom(cfg), app.TurnBudget(cfg))
 	loop.UseRestoreGate(cfg.RestoreGateFile)
-	loop.Use(nil, nil, hub, blobs)
+	loop.Use(nil, nil, blobs)
 	factory := modelprovider.Factory{
 		ConnectTimeout:    cfg.Provider.ConnectTimeout,
 		FirstTokenTimeout: cfg.Provider.FirstTokenTimeout,
@@ -213,7 +211,7 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 		if err != nil {
 			return app.Deps{}, err
 		}
-		loop.Use(nil, ad, hub, blobs)
+		loop.Use(nil, ad, blobs)
 	}
 	// Channel credentials stay in the channel row. Process config only names
 	// the SMTP server. An empty host still runs deliveries so a missing

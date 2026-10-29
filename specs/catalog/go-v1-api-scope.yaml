@@ -9,10 +9,10 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 102
-  SIMPLIFY: 6
+  KEEP: 99
+  SIMPLIFY: 5
   DEFER: 15
-  RETIRE: 38
+  RETIRE: 42
 operations:
 - operationId: callMemoryCoreModel
   method: POST
@@ -465,11 +465,8 @@ operations:
   method: POST
   path: /api/v1/conversations/{conversationId}/generations
   currentH5Callers: []
-  decision: KEEP
-  keepBecause:
-  - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep send as StartTurn. One turn, one final assistant message; no version select.
+  decision: RETIRE
+  replacementOrImpact: Retired 2026-10-29. The Vue/H5 caller was removed in W15 (051585fb); SillyTavern uses its own outbound, follow-up uses provider.Stream, and memory extraction is ST_MEMORY_EXTRACT. companiond no longer registers this route. Historical generation rows stay exportable; generation_usage and MODEL metering stay on the remaining accounting path.
 - operationId: listMessages
   method: GET
   path: /api/v1/conversations/{conversationId}/messages
@@ -519,20 +516,14 @@ operations:
   method: POST
   path: /api/v1/generations/{generationId}/cancel
   currentH5Callers: []
-  decision: KEEP
-  keepBecause:
-  - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep cancel. SSE disconnect must not imply cancel.
+  decision: RETIRE
+  replacementOrImpact: Retired 2026-10-29 with sendGeneration. The only caller was the deleted Vue/H5 frontend. companiond no longer registers this route. Historical rows stay exportable.
 - operationId: getGenerationSnapshot
   method: GET
   path: /api/v1/generations/{generationId}/snapshot
   currentH5Callers: []
-  decision: KEEP
-  keepBecause:
-  - core-outcome
-  - h5-caller
-  replacementOrImpact: Keep durable snapshot for reconnect. Go v1 resume is snapshot-only.
+  decision: RETIRE
+  replacementOrImpact: Retired 2026-10-29 with sendGeneration. Snapshot reconnect served the deleted Vue/H5 SSE client. companiond no longer registers this route. Historical rows stay exportable.
 - operationId: recordGenerationFeedback
   method: POST
   path: /api/v1/generations/{generationId}/feedback
@@ -551,9 +542,8 @@ operations:
   method: GET
   path: /api/v1/realtime/streams/{generationId}
   currentH5Callers: []
-  decision: SIMPLIFY
-  replacementOrImpact: Keep authenticated SSE. Drop ticket/gap/reset query binding; reconnect uses snapshot.
-    Same path, new auth at Phase 5.
+  decision: RETIRE
+  replacementOrImpact: Retired 2026-10-29 with sendGeneration. The Fetch-SSE hub served only the deleted Vue/H5 frontend. companiond no longer registers this route. SillyTavern does not consume it.
 - operationId: createMemoryCandidate
   method: POST
   path: /api/v1/relationships/{relationshipId}/memories/candidates

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
-	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/turn"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -211,29 +210,6 @@ func (s *Store) loadSnapshot(ctx context.Context, owner, generationID int64) (Ge
 		return GenerationSnapshot{}, false, mapStoreErr(err)
 	}
 	return out, found, nil
-}
-
-func (s *Store) Load(ctx context.Context, ownerUserID int64, generationID string) (realtime.Snapshot, bool, error) {
-	id, err := parseTurnID(generationID)
-	if err != nil {
-		return realtime.Snapshot{}, false, nil
-	}
-	row, ok, err := s.loadSnapshot(ctx, ownerUserID, id)
-	if err != nil || !ok {
-		return realtime.Snapshot{}, ok, err
-	}
-	snap := realtime.Snapshot{Text: ""}
-	if row.Status == "COMPLETED" || row.Status == "COMPLETED_FALLBACK" {
-		snap.Terminal = companion.EventCompleted
-		snap.Text = row.AssistantContent
-	} else if row.Status == "INPUT_BLOCKED" || row.Status == "OUTPUT_BLOCKED" {
-		snap.Terminal = companion.EventBlocked
-	} else if row.Status == "CANCELLED" {
-		snap.Terminal = companion.EventCancelled
-	} else if row.Status == "FAILED_FINAL" {
-		snap.Terminal = companion.EventFailed
-	}
-	return snap, true, nil
 }
 
 func (s *Store) RecordGenerationFeedback(ctx context.Context, owner, generationID int64, kind, note string) (GenerationFeedback, error) {
@@ -720,4 +696,3 @@ func deref(s *string) string {
 }
 
 var _ turn.Store = (*Store)(nil)
-var _ realtime.Snapshots = (*Store)(nil)

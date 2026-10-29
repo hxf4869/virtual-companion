@@ -630,7 +630,7 @@ func newCoreServer(t *testing.T, mode string, store CompanionStore) *Server {
 	providers, _ := store.(ProviderAdminStore)
 	turns, _ := store.(GenerationAPI)
 	authFlow, _ := store.(AuthFlowStore)
-	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
+	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), &Core{
 		Store: store, Sessions: sessions, Passwords: pw, Limiter: auth.NewLimiter(), Providers: providers, Turns: turns,
 		AuthFlow: authFlow,
 	})

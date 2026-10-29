@@ -53,7 +53,7 @@ func newCatalogServer(t *testing.T, store *postgres.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
+	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), &Core{
 		Store: store, Sessions: store, Passwords: pw, Limiter: auth.NewLimiter(), Turns: store, AuthFlow: store, Providers: store,
 	})
 }

@@ -2091,13 +2091,15 @@ paths:
   /api/v1/conversations/{conversationId}/generations:
     post:
       operationId: sendGeneration
+      deprecated: true
       summary: Idempotently send a Chat turn (create or rejoin a generation)
       description: >-
-        Creates a new generation for the conversation or rejoins the existing
-        one for the supplied idempotency key (vc.receive_generation). The caller
-        identity is the owner; owner_user_id is never a request field. Requires a
-        server-verified authentication context. Cross-conversation or cross-owner
-        references never disclose existence.
+        Retired 2026-10-29 (catalog RETIRE). The Vue/H5 caller was removed in
+        W15 (051585fb); companiond no longer registers this route. SillyTavern
+        uses its own outbound, follow-up uses provider.Stream, and memory
+        extraction is ST_MEMORY_EXTRACT. Historical generation rows stay
+        exportable. The former contract created a generation or rejoined one
+        for the supplied idempotency key (vc.receive_generation).
       security:
         - cookieAuth: []
       parameters:
@@ -2354,12 +2356,13 @@ paths:
   /api/v1/generations/{generationId}/cancel:
     post:
       operationId: cancelGeneration
+      deprecated: true
       summary: Cancel a non-terminal generation
       description: >-
-        Transitions a cancellable non-terminal generation to CANCELLED
-        (vc.cancel_generation via the catalog double-hop CANCEL_REQUESTED then
-        CANCELLED). Terminal states and COMMITTING are not cancellable. A foreign
-        or absent id maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+        Retired 2026-10-29 (catalog RETIRE) with sendGeneration. The only caller
+        was the deleted Vue/H5 frontend; companiond no longer registers this
+        route. Historical rows stay exportable. The former contract transitioned
+        a cancellable non-terminal generation to CANCELLED.
       security:
         - cookieAuth: []
       parameters:
@@ -2386,14 +2389,12 @@ paths:
   /api/v1/generations/{generationId}/snapshot:
     get:
       operationId: getGenerationSnapshot
+      deprecated: true
       summary: Read a consistent generation snapshot
       description: >-
-        Returns the generation status, the final assistant message id (if any),
-        settled provider usage and the authoritative terminal event once the
-        generation settles. Completed snapshots include the final text before
-        chat.completed; failed, blocked and cancelled snapshots expose only
-        their terminal event. A foreign or absent id never discloses existence.
-        Requires a server-verified authentication context.
+        Retired 2026-10-29 (catalog RETIRE) with sendGeneration. Snapshot
+        reconnect served the deleted Vue/H5 SSE client; companiond no longer
+        registers this route. Historical rows stay exportable.
       security:
         - cookieAuth: []
       parameters:
@@ -2513,25 +2514,13 @@ paths:
   /api/v1/realtime/streams/{generationId}:
     get:
       operationId: openRealtimeStream
+      deprecated: true
       summary: Open the authenticated Fetch-SSE stream for a generation
       description: >-
-        Go v1 (ADR-0007, catalog SIMPLIFY): authenticated SSE with snapshot
-        reconnect — same path, no ticket. Authentication is the opaque session
-        cookie; the owner is the server-verified principal, never a request
-        field; transport is fixed to FETCH_SSE. On open, a generation with a
-        live hub entry sends the in-memory snapshot catch-up first and then
-        live deltas; a generation with no live entry replays the durable
-        snapshot, plus its terminal event when the generation already ended.
-        On a live terminal the server re-reads the committed snapshot and,
-        only when that read succeeds, replays it before the single terminal
-        event. Reconnect by re-issuing this GET and
-        consuming the snapshot again; there is no durable resume cursor and no
-        guaranteed frame set — a stream opened mid-generation may never carry
-        chat.accepted, and a dropped connection ends without a terminal event.
-        Errors are returned only before the stream opens; afterwards the
-        connection simply ends. Retired pre-cutover: single-use tickets
-        (POST /api/v1/realtime/tickets) with ticket query binding and
-        stream.gap/stream.reset/stream.denied events.
+        Retired 2026-10-29 (catalog RETIRE) with sendGeneration. The Fetch-SSE
+        hub served only the deleted Vue/H5 frontend; companiond no longer
+        registers this route. SillyTavern does not consume it. Historical rows
+        stay exportable.
       security:
         - cookieAuth: []
       parameters:
