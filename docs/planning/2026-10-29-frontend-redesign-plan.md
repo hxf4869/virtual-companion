@@ -57,7 +57,7 @@
 | F0 地基 | `vc-ui.css`（tokens 明暗、材质、宿主覆盖、通用控件、`.popup` / toastr 重绘）；`ui/` 组件脚本（推入 / 返回、头像飞行、弹出菜单、sheet 拖拽、alert、提示条、分段控件、开关、弹簧）；Lucide sprite 与图标函数；`body.vc-ui` 开关、`theme-color`、`visualViewport` | 新增 `vc-ui.css`、`ui/*.js`、`icons/`；`index.js` 只加挂载 | — |
 | F1 外壳 | 标签栏 / 侧边栏、一级页面容器与大标题、设置 sheet / 页、会话列表；三档断点布局 | `chat-shell.js`、`chat-shell.css`、`index.js` | F0 |
 | F2 聊天 | 消息铺开 / 气泡、输入区、流式渐清、长按菜单、海报与氛围色、对话状态胶囊、F2 冲突 sheet、对话内记忆检视 | `chat-shell.*`（F1 交接后）、`f2-client.js`、新 `chat-view.*` | F1 |
-| F3 设置与酒馆 | 九个抽屉原位成页、模型页、账户与数据、外观 | `page.js`、`style.css` 模型段、`data-rights.js`、`account.css`、新 `drawers.*` | F1 |
+| F3 设置与酒馆 | 九个抽屉原位成页、模型页（含“本机模型”区：embedding 与重排的名称、运行状态、重排开关，接口由 LM 任务提供）、账户与数据、外观 | `page.js`、`style.css` 模型段、`data-rights.js`、`account.css`、新 `drawers.*` | F1 |
 | F4a 记忆 | 记忆标签页 | `memory-page.js`、记忆样式迁出 `style.css` 到 `memory.css` | F1 |
 | F4b 陪伴 | 陪伴标签页 | `inbox-page.js`、`inbox.css` | F1 |
 | F4c 角色 | 角色标签页 | `instance-page.js`、`instance.css` | F1 |
