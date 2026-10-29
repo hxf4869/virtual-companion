@@ -1,0 +1,734 @@
+/* 模型页与账户页在 body.vc-ui 下的设置页外观。关闭新外观时不加载本文件。 */
+
+body.vc-ui #vc-model-settings-root .vcms-overlay:not([hidden]) {
+  position: fixed !important;
+  z-index: 4600 !important;
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 0 calc(var(--vc-space-xxl) + env(safe-area-inset-bottom, 0px)) !important;
+  overflow: auto !important;
+  background: var(--vc-canvas) !important;
+  color: var(--vc-ink) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-panel {
+  display: block !important;
+  width: min(100%, var(--vc-read));
+  height: auto !important;
+  min-height: 100%;
+  margin: 0 auto;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--vc-ink);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-body {
+  display: block !important;
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-layout,
+body.vc-ui #vc-model-settings-root .vcms-local,
+body.vc-ui #vc-model-settings-root .vcms-usage,
+body.vc-ui #vc-model-settings-root .vcms-main {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-providers {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  flex: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-provider-list {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) var(--vc-space-sm) 0;
+  background: var(--vc-canvas);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-header {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  overflow: hidden !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-header .vc-nav-title {
+  position: static;
+  transform: none;
+  flex: 1;
+  min-width: 0;
+  opacity: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-title,
+body.vc-ui #vc-model-settings-root .vcms-subtitle,
+body.vc-ui #vc-model-settings-root .vcms-section-note,
+body.vc-ui #vc-model-settings-root .vcms-update-meta,
+body.vc-ui #vc-model-settings-root .vcms-keybox .vcms-muted,
+body.vc-ui #vc-model-settings-root .vcms-field > p.vcms-muted,
+body.vc-ui #vc-model-settings-root .vcms-model-form > p.vcms-muted {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-footer { display: none !important; }
+
+body.vc-ui #vc-model-settings-root #vcms-save,
+body.vc-ui #vc-model-settings-root #vcms-discard {
+  height: auto;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--vc-accent-text) !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-header [data-action="close"] {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 22px !important;
+  color: var(--vc-ink) !important;
+  background: var(--vc-glass) !important;
+  box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge), 0 8px 28px var(--vc-glass-shadow) !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-layout {
+  display: block;
+  width: min(100%, var(--vc-read));
+  margin: 0 auto;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-tabs,
+body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="provider"] :is(.vcms-local, .vcms-usage, .vcms-providers, .vcms-tabs, .vcms-model-form),
+body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="model"] :is(.vcms-local, .vcms-usage, .vcms-providers, .vcms-tabs, .vcms-model-list, .vcms-section-head, .vcms-section-note, .vcms-empty-models, .vcms-testbox, .vcms-update-meta) {
+  display: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="model"] .vcms-form > .vcms-section:not(:has(.vcms-model-form)) {
+  display: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-providers-head {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 var(--vc-space-md) var(--vc-space-xs);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-providers-head .vcms-section-label,
+body.vc-ui #vc-model-settings-root .vcms-provider-meta,
+body.vc-ui #vc-model-settings-root .vcms-provider-sub {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-provider-list,
+body.vc-ui #vc-model-settings-root .vcms-usage,
+body.vc-ui #vc-model-settings-root .vcms-local .vc-group,
+body.vc-ui #vc-model-settings-root .vc-group {
+  margin: 0 var(--vc-space-md) var(--vc-space-xl);
+  background: var(--vc-group);
+  border: 0;
+  border-radius: var(--vc-radius-md);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-provider-card {
+  display: flex !important;
+  align-items: center;
+  gap: var(--vc-space-sm);
+  width: 100% !important;
+  min-height: 48px;
+  padding: 0 var(--vc-space-md);
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--vc-ink) !important;
+  text-align: left;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-provider-name,
+body.vc-ui #vc-model-settings-root .vcms-local .vc-grow b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-local .vc-cell {
+  gap: 8px;
+  min-width: 0;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-local .vc-grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-local .vc-grow b {
+  display: block;
+  max-width: 100%;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-local .vc-status,
+body.vc-ui #vc-model-settings-root .vcms-local .vc-switch {
+  flex: none;
+  white-space: nowrap;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-section-title {
+  margin: var(--vc-space-sm) var(--vc-space-md);
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+}
+
+body.vc-ui #vc-model-settings-root :is(input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), select, textarea),
+body.vc-ui .vc-data-dialog :is(input:not([type="radio"]):not([type="checkbox"]), select, textarea) {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--vc-fill) !important;
+  color: var(--vc-ink) !important;
+  border: 0 !important;
+  border-radius: var(--vc-radius-sm) !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-section {
+  margin: 0 0 12px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-field > label,
+body.vc-ui #vc-model-settings-root .vcms-field > .vcms-field-label {
+  color: var(--vc-ink) !important;
+  opacity: 1 !important;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocols {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 12px;
+  background: var(--vc-group);
+  border-radius: var(--vc-radius-md);
+  overflow: hidden;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocol {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name check" "path check";
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-height: 48px;
+  margin: 0 !important;
+  padding: 10px var(--vc-space-md) !important;
+  background: transparent !important;
+  color: var(--vc-ink) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocol.is-selected {
+  background: transparent !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocol input {
+  position: absolute;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocol-name {
+  grid-area: name;
+  min-width: 0;
+  color: var(--vc-ink) !important;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocol .vc-icon {
+  grid-area: check;
+  justify-self: end;
+  align-self: center;
+  margin-left: 8px;
+  color: var(--vc-accent);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocol-endpoint {
+  grid-area: path;
+  min-width: 0;
+  overflow: visible;
+  color: var(--vc-ink-2) !important;
+  font-size: var(--vc-fs-footnote);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage > p.vcms-muted,
+body.vc-ui #vc-model-settings-root .vcms-tool-verify .vcms-muted,
+body.vc-ui #vc-model-settings-root [data-ledger] {
+  margin: 6px var(--vc-space-xxl) var(--vc-space-xl);
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage {
+  overflow: visible;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage-scroll {
+  overflow-x: auto;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage-cards { display: none; }
+
+body.vc-ui #vc-model-settings-root .vcms-usage-card .vc-grow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage-meta {
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+  white-space: normal;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-empty-providers .vcms-muted {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-empty-providers.vc-empty,
+body.vc-ui #vc-model-settings-root .vcms-stateblock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vc-space-sm);
+  padding: var(--vc-space-xxl) var(--vc-space-md);
+  color: var(--vc-ink-2);
+  text-align: center;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-skeleton .vcms-sk-card,
+body.vc-ui #vc-model-settings-root .vcms-skeleton .vcms-sk-line {
+  background: linear-gradient(90deg, var(--vc-fill) 25%, var(--vc-fill-2) 50%, var(--vc-fill) 75%);
+  background-size: 200% 100%;
+  animation: vc-shimmer 1.2s linear infinite;
+}
+
+body.vc-ui .vc-data-dialog[open] {
+  position: fixed;
+  z-index: 4600;
+  inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  width: auto;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0 0 calc(var(--vc-space-xxl) + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  background: var(--vc-canvas);
+  color: var(--vc-ink);
+  overflow: auto;
+}
+
+body.vc-ui .vc-data-dialog:has([data-vc-account-nav]) > .vcms-header { display: none; }
+
+body.vc-ui .vc-data-dialog [data-vc-account-nav] {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--vc-canvas);
+}
+
+body.vc-ui .vc-data-dialog [data-vc-account-nav] {
+  display: flex;
+  align-items: center;
+}
+
+body.vc-ui .vc-data-dialog [data-vc-account-nav] .vc-nav-title {
+  position: static;
+  transform: none;
+  flex: 1;
+  min-width: 0;
+  opacity: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+body.vc-ui .vc-data-dialog > .vc-scrim,
+body.vc-ui .vc-data-dialog > .vc-alert {
+  position: fixed !important;
+  z-index: 100002 !important;
+}
+
+body.vc-ui .vc-data-dialog > .vc-alert {
+  left: 50% !important;
+  top: 50% !important;
+  opacity: 1 !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-keybox,
+body.vc-ui #vc-model-settings-root #vcms-endpoint-line {
+  background: transparent !important;
+  color: var(--vc-ink) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui #vc-model-settings-root #vcms-endpoint-line,
+body.vc-ui #vc-model-settings-root #vcms-endpoint-line * {
+  background: transparent !important;
+  color: var(--vc-ink-2) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: var(--vc-fs-footnote);
+}
+
+body.vc-ui .vc-data-dialog .vc-data-body {
+  width: min(100%, var(--vc-read));
+  margin: 0 auto;
+}
+
+body.vc-ui .vc-account-cards,
+body.vc-ui .vc-account-security { display: flex; flex-direction: column; gap: 0; }
+
+body.vc-ui .vc-account-card {
+  margin: 0 var(--vc-space-md) var(--vc-space-xl);
+  padding: var(--vc-space-xs) 0 var(--vc-space-md);
+  border: 0;
+  border-radius: var(--vc-radius-md);
+  background: var(--vc-group);
+  box-shadow: none;
+}
+
+body.vc-ui .vc-data-root .vc-account-card h2 {
+  margin: 0;
+  padding: var(--vc-space-sm) var(--vc-space-md) 0;
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+}
+
+body.vc-ui .vc-data-dialog .vc-account-card[aria-label="导出数据"] > p,
+body.vc-ui .vc-data-dialog .vc-data-delete p,
+body.vc-ui .vc-data-dialog .vc-data-scope:last-of-type {
+  margin: 6px var(--vc-space-xxl) var(--vc-space-xl);
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+}
+
+body.vc-ui .vc-data-dialog .vc-data-scope:not(:last-of-type) {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui .vc-data-dialog [data-delete] .vcms-btn-danger {
+  background: var(--vc-danger-fill);
+  color: var(--vc-on-accent);
+  border-radius: var(--vc-radius-pill);
+}
+
+body.vc-ui .vc-account-reauth { background: var(--vc-scrim); }
+
+body.vc-ui .vc-account-reauth form {
+  border: 0;
+  border-radius: 22px;
+  background: var(--vc-glass);
+  box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge), 0 8px 28px var(--vc-glass-shadow);
+}
+
+body.vc-ui:has(#vc-model-settings-root .vcms-overlay:not([hidden])) :is(#vc-chat-nav, .vc-tabbar),
+body.vc-ui:has(.vc-data-dialog[open]) :is(#vc-chat-nav, .vc-tabbar) {
+  display: none !important;
+}
+
+@media (min-width: 744px) {
+  body.vc-ui #vc-model-settings-root .vcms-overlay:not([hidden]),
+  body.vc-ui .vc-data-dialog[open] {
+    left: var(--vc-sidebar, 240px) !important;
+    width: auto !important;
+  }
+}
+
+@media screen and (max-width: 1000px) {
+  body.vc-ui:has(#vc-model-settings-root .vcms-overlay:not([hidden])),
+  body.vc-ui:has(.vc-data-dialog[open]) {
+    position: static !important;
+    touch-action: auto !important;
+    overflow: hidden !important;
+    width: auto !important;
+    height: auto !important;
+  }
+}
+
+body.vc-ui #vc-model-settings-root .vcms-body,
+body.vc-ui .vc-data-dialog .vc-data-body {
+  box-sizing: border-box;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+body.vc-ui #vc-model-settings-root .vc-group,
+body.vc-ui .vc-data-dialog .vc-group,
+body.vc-ui .vc-data-dialog[data-vc-screen] .vc-account-card {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-section-title {
+  margin: 16px 0 8px;
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+  background: none !important;
+  border: 0 !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-grid2 {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  margin: 0 0 12px;
+  background: var(--vc-group);
+  border-radius: var(--vc-radius-md);
+  overflow: hidden;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-grid2 .vcms-field {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px;
+  min-height: 48px;
+  margin: 0 !important;
+  padding: 8px 16px !important;
+  background: transparent !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-grid2 .vcms-field input {
+  width: min(58%, 240px) !important;
+  text-align: right;
+  background: transparent !important;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-form .vcms-section > .vcms-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin: 0 0 12px;
+  padding: 10px 16px;
+  background: var(--vc-group);
+  border-radius: var(--vc-radius-md);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-field:has([data-action="toggle-provider-state"]) {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-field:has([data-action="toggle-provider-state"]) .vcms-switch-row {
+  width: auto;
+  margin-left: auto;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-field:has([data-action="toggle-provider-state"]) .vcms-field-err,
+body.vc-ui #vc-model-settings-root .vcms-field:has(.vcms-protocols) {
+  flex: 1 0 100%;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-field:has(.vcms-protocols) {
+  margin: 0 0 12px;
+  padding: 0;
+  background: transparent;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-protocols { margin: 0 0 12px; }
+
+@media (max-width: 743px) {
+  body.vc-ui #vc-model-settings-root .vcms-usage-cards:not(:empty) { display: block; }
+  body.vc-ui #vc-model-settings-root .vcms-usage-scroll:has(table) { display: none; }
+}
+
+body.vc-ui [data-vc-account-home] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-xl);
+}
+
+body.vc-ui .vc-data-dialog[data-vc-screen="home"] .vc-account-cards,
+body.vc-ui .vc-data-dialog[data-vc-screen="home"] .vc-data-scope,
+body.vc-ui .vc-data-dialog:not([data-vc-screen="home"]) [data-vc-account-home],
+body.vc-ui .vc-data-dialog[data-vc-screen="password"] .vc-account-card:not([aria-label="修改密码"]),
+body.vc-ui .vc-data-dialog[data-vc-screen="auth"] .vc-account-card:not([aria-label="验证器"]),
+body.vc-ui .vc-data-dialog[data-vc-screen="sessions"] .vc-account-card:not([aria-label="当前会话"]),
+body.vc-ui .vc-data-dialog[data-vc-screen="export"] .vc-account-card:not([aria-label="导出数据"]),
+body.vc-ui .vc-data-dialog[data-vc-screen="delete"] .vc-account-card:not([aria-label="删除账号及在线数据"]),
+body.vc-ui .vc-data-dialog:not([data-vc-screen="delete"]) .vc-data-scope {
+  display: none !important;
+}
+
+body.vc-ui .vc-data-dialog[data-vc-screen] .vc-account-card h2,
+body.vc-ui .vc-data-dialog[data-vc-screen="delete"] .vc-data-delete summary {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui .vc-data-dialog[data-vc-screen="delete"] .vc-data-scope {
+  position: static !important;
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 6px 0 12px !important;
+  overflow: visible !important;
+  clip: auto !important;
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  font-weight: 400;
+}
+
+body.vc-ui [data-vc-account-go="delete"],
+body.vc-ui [data-vc-account-go="delete"] .vc-grow { color: var(--vc-danger); }
+
+body.vc-ui .vc-data-dialog[data-vc-screen="export"] .vc-data-actions,
+body.vc-ui .vc-data-dialog[data-vc-screen="sessions"] .vc-data-actions,
+body.vc-ui .vc-data-dialog[data-vc-screen="password"] form,
+body.vc-ui .vc-data-dialog[data-vc-screen="auth"] .vc-account-card,
+body.vc-ui .vc-data-dialog[data-vc-screen="delete"] form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+body.vc-ui .vc-data-dialog[data-vc-screen="export"] [data-export],
+body.vc-ui .vc-data-dialog[data-vc-screen="password"] button[type="submit"],
+body.vc-ui .vc-data-dialog[data-vc-screen="delete"] button[type="submit"] { width: 100%; }
+
+body.vc-ui .vc-data-dialog[data-vc-screen="export"] [data-recover],
+body.vc-ui .vc-data-dialog[data-vc-screen="sessions"] .vc-data-actions button,
+body.vc-ui .vc-data-dialog[data-vc-screen="auth"] [data-reset] {
+  width: 100%;
+  justify-content: flex-start;
+  background: var(--vc-group);
+  border-radius: var(--vc-radius-md);
+}
+
+body.vc-ui .vc-data-dialog [data-sessions] {
+  margin: 0 0 12px;
+  background: var(--vc-group);
+  border-radius: var(--vc-radius-md);
+  overflow: hidden;
+}
+
+body.vc-ui .vc-data-dialog [data-sessions] .vc-account-session {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  margin: 0;
+  padding: 8px 16px;
+}
+
+@media (min-width: 744px) {
+  body.vc-ui #vc-model-settings-root .vcms-body,
+  body.vc-ui .vc-data-dialog .vc-data-body {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}

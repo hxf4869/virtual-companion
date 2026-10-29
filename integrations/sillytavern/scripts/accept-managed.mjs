@@ -73,6 +73,7 @@ import { sceneStoryReal } from './story-real-accept.mjs';
 import { sceneW15Ui } from './w15-ui-accept.mjs';
 import { sceneFe4aUi } from './fe4a-ui-accept.mjs';
 import { sceneFe4bUi } from './fe4b-ui-accept.mjs';
+import { sceneF3Settings } from './f3-settings-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -133,6 +134,12 @@ SCENES.push({
     id: 'fe4b-ui',
     title: 'F4b 角色与剧情新界面：网格、详情、开局转场与回档取消',
     needs: ['browser'],
+    default: false,
+});
+SCENES.push({
+    id: 'f3-settings',
+    title: 'F3 设置与酒馆抽屉页',
+    needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
 
@@ -3048,6 +3055,7 @@ const SCENE_IMPLS = {
     'w15-ui': sceneW15Ui,
     'fe4a-ui': sceneFe4aUi,
     'fe4b-ui': sceneFe4bUi,
+    'f3-settings': sceneF3Settings,
 };
 
 async function runFull() {
