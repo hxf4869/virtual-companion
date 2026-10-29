@@ -81,7 +81,10 @@ try {
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         return { page, context, leaks };
     }
-    async function inspect(page, scenario) {
+    // ≤900px hides the identity line (style.css); the model state is still asserted through the banner text.
+    const IDENTITY_ONLY = new Set(['模型待配置']);
+    async function inspect(page, scenario, width) {
+        const expected = width <= 900 ? expects[scenario].filter((piece) => !IDENTITY_ONLY.has(piece)) : expects[scenario];
         return page.evaluate((expected) => {
             const problems = [];
             const overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
@@ -113,7 +116,7 @@ try {
             }
             if (small.length) problems.push(`触控目标小于 44px：${small.join('；')}`);
             return problems;
-        }, expects[scenario]);
+        }, expected);
     }
     for (const viewport of viewports) {
         for (const scenario of scenarios) {
@@ -123,7 +126,7 @@ try {
             try {
                 await opened.page.screenshot({ path: join(OUT, `${name}.png`) });
                 shots.push(`${name}.png`);
-                const problems = await inspect(opened.page, scenario);
+                const problems = await inspect(opened.page, scenario, viewport.width);
                 if (opened.leaks.length) problems.push(`网络外呼 ${opened.leaks.join(' ')}`);
                 if (problems.length) failures.push(`${name}: ${problems.join(' | ')}`);
             } finally {

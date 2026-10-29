@@ -4,7 +4,7 @@ import {
     changePassword, listSessions, revokeSession, logoutCurrent, resetAuthenticator, reauth, fetchSession,
 } from './api.js';
 import {
-    AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY,
+    AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, RESTORE_LIMIT_COPY,
     authenticatorStatusText, deletionProgressText, otherSessions, sessionLabel,
 } from './account-logic.js';
 
@@ -46,6 +46,7 @@ export function mountDataRights() {
           <div class="vc-data-status" role="status" aria-live="polite" data-delete-status></div>
         </details></section>
         <p class="vc-data-scope">${BACKUP_COPY}</p>
+        <p class="vc-data-scope" data-restore-limit>${RESTORE_LIMIT_COPY}</p>
         <p class="vc-data-scope">删除长期记忆会保留聊天原文，原文仍可能用于当前对话；删除聊天不影响其他独立分支。</p>
       </main></dialog>`;
     document.body.append(root);

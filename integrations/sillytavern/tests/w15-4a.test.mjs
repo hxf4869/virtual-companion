@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { interpretUsageBudget, modelPriceMissing, NO_PRICE_COPY, BUDGET_COPY, budgetSignalFromGenerateBody, isGenerateRequestUrl } from '../extension/vc-model-settings/model-logic.js';
 import {
-    BACKUP_COPY, EXPORT_PARTIAL_COPY, authenticatorStatusText, deletionProgressText, otherSessions, sessionLabel,
+    BACKUP_COPY, EXPORT_PARTIAL_COPY, RESTORE_LIMIT_COPY, authenticatorStatusText, deletionProgressText, otherSessions, sessionLabel,
 } from '../extension/vc-model-settings/account-logic.js';
 import { planOpenCreatedChat } from '../extension/vc-model-settings/instance-open.js';
 import { mountChatShell } from '../extension/vc-model-settings/chat-shell.js';
+import { mountDataRights } from '../extension/vc-model-settings/data-rights.js';
 import { buttonByText, installMiniDom } from './mini-dom.mjs';
 
 test('用量摘要不能当成预算不足；显式原因才关闭测试与发送', () => {
@@ -91,6 +92,7 @@ test('账户状态只描述验证器、删除进度和备份，不生成密钥',
     assert.equal(deletionProgressText({ status: 'PARTIAL' }).includes('部分完成'), false);
     assert.equal(EXPORT_PARTIAL_COPY, '部分完成');
     assert.equal(BACKUP_COPY, '备份状态独立，策略在 W16');
+    assert.equal(RESTORE_LIMIT_COPY, '删除前的离线快照不能恢复为可用环境；恢复须先应用最新删除状态，具体策略在 W16。');
     const sessions = [
         { id: '9007199254740993', current: true },
         { id: '12', current: false },
@@ -100,6 +102,37 @@ test('账户状态只描述验证器、删除进度和备份，不生成密钥',
     assert.equal(sessionLabel(sessions[0]), '当前会话');
     assert.equal(sessionLabel(sessions[1]), '其他会话');
     assert.equal(JSON.stringify(sessions).includes('otpauth'), false);
+});
+
+test('数据页说明删除前快照不能恢复，导出处理中显示副本生成中', async () => {
+    const document = installMiniDom();
+    const realFetch = globalThis.fetch;
+    const realFrame = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = (fn) => { fn(); return 0; };
+    globalThis.fetch = async () => new Response(JSON.stringify({
+        accountId: '7', sessionId: '8', authenticatorEnabled: false,
+    }), { status: 200 });
+    let account;
+    try {
+        account = mountDataRights();
+        account.open();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        account.showExportState({ status: 'PENDING', exportId: 'ex-1', errorMessage: 'ST_UNAVAILABLE' });
+        const status = document.querySelector('[data-export-status]');
+        assert.match(status.textContent, /聊天存储暂不可用，恢复后会继续生成/);
+        assert.equal(status.textContent.includes('副本生成中'), false);
+        account.showExportState({ status: 'PENDING', exportId: 'ex-1' });
+        assert.match(status.textContent, /副本生成中。关闭页面后任务会继续，你可以稍后取回最近副本。/);
+        assert.match(document.body.textContent, /删除前的离线快照不能恢复为可用环境/);
+        assert.match(document.body.textContent, /恢复须先应用最新删除状态，具体策略在 W16/);
+        assert.equal(/可恢复为可用环境/.test(document.body.textContent.replace('不能恢复为可用环境', '')), false);
+        assert.match(document.body.textContent, new RegExp(RESTORE_LIMIT_COPY.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    } finally {
+        account?.close();
+        globalThis.fetch = realFetch;
+        if (realFrame) globalThis.requestAnimationFrame = realFrame;
+        else delete globalThis.requestAnimationFrame;
+    }
 });
 
 test('创建实例后只打开同一角色引用下、token 匹配的会话', () => {

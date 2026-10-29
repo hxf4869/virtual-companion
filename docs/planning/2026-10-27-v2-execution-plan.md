@@ -119,7 +119,7 @@ W00–W16 均为 `DONE`，或只因 Owner 项保持 `READY_FOR_OWNER` / `BLOCKED
 | 5 | 模型目录唯一权威在 Go；Go 已有三协议 adapter（`backend/internal/provider/factory.go`），ST 前台补齐自身三协议，不新增第三条模型链 | 避免两套配置与第三条调用链 |
 | 6 | 邮件发送需新引入实现（仓库没有 SMTP 代码），W10 直接选型引入 | 快照假设“复用现有发信能力”，本仓库不成立 |
 | 7 | Stitch 稿由 Owner 提供或在具备 Stitch 访问的会话生成；缺失时页面实现项 `BLOCKED`，后端与兼容验证继续 | 当前 Agent 环境不保证有 Stitch |
-| 8 | 引入 ST 栈的工作项扩展许可清单（`scripts/checks/license-inventory.yaml` 等） | 现有许可门禁只扫描 `backend/go.mod` 与 `frontend/package.json` |
+| 8 | 引入 ST 栈的工作项扩展许可清单（`scripts/checks/license-inventory.yaml` 等） | 许可门禁已扫描 `backend/go.mod` 与 `integrations/sillytavern/package.json`；`frontend/package.json` 已随旧前端删除，不再扫描 |
 | 9 | 旧数据不保留：W01 清理 V2 前的旧业务数据与本地备份。B03 改为验证旧数据已清理且未进入 V2；D02–D04 不再包含旧 Go 数据域 | Owner 2026-10-27 决定，替代快照 E3 中“保管、导出与删除责任”的要求 |
 | 10 | W01 在 W00 结论为可行后执行（快照允许并行） | W01 含不可逆清理，应在确认方向可行后进行 |
 
@@ -562,7 +562,7 @@ C04（复杂状态卡）全案属 W04 验收，本轮只证明最小合成卡链
 | 删除（账号删除 / tombstone） | 保留并改造：durable deletion intent 与 manifest 机制保留为参考 | 同上 | `httpapi/account.go`（handleDeleteAccount）；`V103__durable_account_deletion_intent.sql`；备份脚本 tombstone 导出链 | W06、W16 |
 | provider | 保留：三协议 adapter 复用；W03 改造为模型目录 + Provider → Model → 用途绑定 | 第 3 节调整 5（明文引用 factory.go）、第 5 节 W03 | `provider/factory.go` 与 anthropic / openai / responses 三 adapter；`httpapi/provider_admin.go`；V119 | W03、W09（G2）、W11（计量） |
 | realtime（SSE Hub） | 旧 Vue 专用流式链路候选退役（判断：W15 须先确认替代路径就绪且无剩余消费者；不提前删除可复用部件） | ADR-0009 §2 / A1；审计 §8 | `realtime/hub.go`、`event.go`；`httpapi/realtime.go`；`server.go` 路由注册；`turn/coordinator.go` 喂流 | W10（inbox 替代投递）、W15（随旧前端删除） |
-| Vue 前端 | 删除：W15 随 ST 页面可用后退役；此前冻结，不再新增功能 | ADR-0009 §1 A1、§5；第 5 节 W15 | `frontend/src/pages/*`（chat / login / memory 等）；`frontend/package.json`（uni-app + Vue3） | W15（替代：W02 设计，W04 / W15 ST 页面） |
+| Vue 前端 | 已删除：W15 已移除旧 Vue / uni-app 前端 | ADR-0009 §1 A1、§5；第 5 节 W15 | 仓库已无 `frontend/` 与 `.vue` 源文件 | W15（已完成；页面在 ST 扩展） |
 
 ### 7.2 本机环境盘点（2026-10-28，只读）
 

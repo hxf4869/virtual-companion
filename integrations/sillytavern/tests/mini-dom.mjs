@@ -22,6 +22,8 @@ export function installMiniDom() {
         if (sel.startsWith('.')) return node.className.split(/\s+/).includes(sel.slice(1));
         const attr = /^\[([^\]=]+)="([^"]*)"\]$/.exec(sel);
         if (attr) return node.attributes[attr[1]] === attr[2];
+        const presence = /^\[([^\]=\s]+)\]$/.exec(sel);
+        if (presence) return Object.hasOwn(node.attributes, presence[1]);
         return node.tag === sel;
     }
     function query(node, sel) {
@@ -40,6 +42,51 @@ export function installMiniDom() {
             queryAll(child, sel, out);
         }
         return out;
+    }
+    const voidTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
+    function applyAttrs(node, raw) {
+        const re = /([^\s=/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+        let match;
+        while ((match = re.exec(raw))) {
+            const key = match[1];
+            if (key === '/') continue;
+            const value = match[2] ?? match[3] ?? match[4] ?? '';
+            node.setAttribute(key, value);
+            if (key === 'class') {
+                node._classes = value.split(/\s+/).filter(Boolean);
+                node.className = node._classes.join(' ');
+            }
+            if (key === 'type') node.type = value;
+            if (key === 'name') node.name = value;
+        }
+    }
+    function parseHTML(html, parent) {
+        const stack = [parent];
+        const re = /<!--[\s\S]*?-->|<\/([a-zA-Z][\w:-]*)\s*>|<([a-zA-Z][\w:-]*)([^>]*?)(\/?)>|([^<]+)/g;
+        let match;
+        while ((match = re.exec(html))) {
+            if (match[0].startsWith('<!--')) continue;
+            if (match[1]) {
+                const tag = match[1].toLowerCase();
+                while (stack.length > 1 && stack.at(-1).tag !== tag) stack.pop();
+                if (stack.length > 1) stack.pop();
+                continue;
+            }
+            if (match[2]) {
+                const tag = match[2].toLowerCase();
+                const node = make(tag);
+                applyAttrs(node, match[3] || '');
+                const host = stack.at(-1);
+                node.parent = host;
+                host.children.push(node);
+                if (match[4] !== '/' && !voidTags.has(tag)) stack.push(node);
+                continue;
+            }
+            if (match[5]) {
+                const host = stack.at(-1);
+                host.children.push({ nodeType: 3, textContent: match[5], children: [], parent: host });
+            }
+        }
     }
     function make(tag) {
         const node = {
@@ -98,6 +145,7 @@ export function installMiniDom() {
             focus() { document.activeElement = this; },
             showModal() { this.open = true; },
             close() { this.open = false; },
+            reset() {},
             click() { this.dispatch('click'); },
         };
         node.classList = {
@@ -121,6 +169,7 @@ export function installMiniDom() {
                 node._html = String(value);
                 node.children = [];
                 node._text = null;
+                parseHTML(node._html, node);
             },
         });
         Object.defineProperty(node, 'dataset', {
