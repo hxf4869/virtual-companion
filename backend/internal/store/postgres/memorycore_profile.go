@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"sort"
 	"strings"
+
+	"github.com/hxf4869/virtual-companion/internal/memoryengine"
+	"github.com/jackc/pgx/v5"
 )
 
 type profileScene struct {
@@ -59,6 +61,11 @@ func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOpe
 		return e
 	}
 	if status.Status == "failed" || status.Status == "revoked" {
+		// go_retry_memorycore_profile drops the forget- prefix. A replacement
+		// profile has to keep that id or cleanup can no longer see the rebuild.
+		if IsForgetProfile(id) {
+			return memoryengine.RevisionConflictError()
+		}
 		if e := s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
 			_, e := tx.Exec(ctx, `SELECT vc.go_retry_memorycore_profile($1,$2)`, c.OwnerID, c.JobID)
 			return e

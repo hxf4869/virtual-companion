@@ -3,13 +3,30 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"github.com/hxf4869/virtual-companion/internal/memorytime"
 	"github.com/jackc/pgx/v5"
 )
+
+var forgetProfilePattern = regexp.MustCompile(`^forget-[1-9][0-9]*-profile(?:-a[1-9][0-9]*)?$`)
+var forgetProfileBasePattern = regexp.MustCompile(`^(forget-[1-9][0-9]*-profile)(?:-a[1-9][0-9]*)?$`)
+
+// IsForgetProfile reports a profile operation created to replace a forgotten fact.
+func IsForgetProfile(id string) bool { return forgetProfilePattern.MatchString(id) }
+
+func forgetProfileBase(id string) string {
+	match := forgetProfileBasePattern.FindStringSubmatch(id)
+	if match == nil {
+		return id
+	}
+	return match[1]
+}
 
 func (s *Store) UseMemoryEngine(c *memoryengine.Client) { s.memoryEngine = c }
 func EngineScope(owner, relationship int64) memoryengine.Scope {
@@ -143,6 +160,155 @@ func (s *Store) PrepareEngineOperation(ctx context.Context, c JobClaim) (EngineO
 	})
 	return op, mapStoreErr(e)
 }
+
+// PrepareForgetProfile loads a forget-rebuild marker without the source
+// eligibility gate. The marker may sit on a source that forgetting suppressed.
+func (s *Store) PrepareForgetProfile(ctx context.Context, c JobClaim) (EngineOperation, bool, error) {
+	var op EngineOperation
+	var profile, sourceRef string
+	var proposal []byte
+	var rel, conv int64
+	err := s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT op.operation_id, COALESCE(op.profile_operation_id,''), op.revision, op.state,
+			COALESCE(op.proposal, 'null'::jsonb), op.relationship_id, src.conversation_id, src.source_ref,
+			COALESCE(src.source_timestamp, clock_timestamp())
+			FROM vc.memorycore_operation op
+			JOIN vc.st_message_source src ON (src.owner_user_id, src.id) = (op.owner_user_id, op.source_id)
+			WHERE op.owner_user_id=$1 AND op.job_id=$2`, c.OwnerID, c.JobID).Scan(
+			&op.ID, &profile, &op.Revision, &op.State, &proposal, &rel, &conv, &sourceRef, &op.Timestamp)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return EngineOperation{}, false, nil
+	}
+	if err != nil {
+		return EngineOperation{}, false, mapStoreErr(err)
+	}
+	if !IsForgetProfile(profile) {
+		return EngineOperation{}, false, nil
+	}
+	op.ProfileOperationID = profile
+	if string(proposal) != "null" {
+		op.Proposal = json.RawMessage(proposal)
+	}
+	op.Input.RelationshipID = rel
+	op.Input.ConversationID = conv
+	op.SourceRef = sourceRef
+	op.Scope = EngineScope(c.OwnerID, rel)
+	native := int64(0)
+	if s.memoryEngine != nil {
+		var status struct {
+			Revision int64 `json:"revision"`
+		}
+		if e := s.memoryEngine.Call(ctx, "scope-status", map[string]any{"scope": op.Scope}, &status); e == nil && status.Revision > 0 {
+			native = status.Revision
+		}
+	}
+	if native > op.Revision || op.State != "PUBLISHED" {
+		next, e := s.applyMemorycoreRebind(ctx, c, op, "", "", native)
+		if e != nil {
+			return EngineOperation{}, true, e
+		}
+		next.Input = op.Input
+		next.SourceRef = op.SourceRef
+		next.Timestamp = op.Timestamp
+		next.Embedding = op.Embedding
+		next.Allowed = op.Allowed
+		if len(next.Proposal) == 0 {
+			next.Proposal = op.Proposal
+		}
+		if next.Scope.OwnerID == "" {
+			next.Scope = op.Scope
+		}
+		return next, true, nil
+	}
+	if s.memoryEngine != nil {
+		if e := s.memoryEngine.Call(ctx, "invalidate-scope", map[string]any{"scope": op.Scope, "revision": op.Revision}, nil); e != nil {
+			return EngineOperation{}, true, e
+		}
+	}
+	return op, true, nil
+}
+
+// RebindEngineOperation adopts the current scope revision. A published or
+// forget profile keeps its extract operation and rotates only the profile id.
+// An unpublished extract gets a new operation id so the next propose is not
+// rejected as a stale request.
+func (s *Store) RebindEngineOperation(ctx context.Context, c JobClaim, op EngineOperation) (EngineOperation, error) {
+	native := int64(0)
+	if s.memoryEngine != nil && op.Scope.OwnerID != "" {
+		var status struct {
+			Revision int64 `json:"revision"`
+		}
+		if e := s.memoryEngine.Call(ctx, "scope-status", map[string]any{"scope": op.Scope}, &status); e == nil && status.Revision > 0 {
+			native = status.Revision
+		}
+	}
+	nextOperation := ""
+	nextProfile := ""
+	if op.State == "PUBLISHED" || IsForgetProfile(op.ProfileOperationID) {
+		nextProfile = rotatedProfileID(op)
+	} else {
+		rev := op.Revision
+		if native > rev {
+			rev = native
+		}
+		nextOperation = fmt.Sprintf("job-%d-r%d-b%d", c.JobID, rev, time.Now().UnixNano())
+	}
+	return s.applyMemorycoreRebind(ctx, c, op, nextOperation, nextProfile, native)
+}
+
+func rotatedProfileID(op EngineOperation) string {
+	stamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+	if IsForgetProfile(op.ProfileOperationID) {
+		return forgetProfileBase(op.ProfileOperationID) + "-a" + stamp
+	}
+	base := op.ID
+	if base == "" {
+		base = "profile"
+	}
+	return fmt.Sprintf("%s-profile-a%s", base, stamp)
+}
+
+func (s *Store) applyMemorycoreRebind(ctx context.Context, c JobClaim, op EngineOperation, nextOperation, nextProfile string, native int64) (EngineOperation, error) {
+	var operationID, profileID, state string
+	var revision, rel, conv int64
+	err := s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT out_operation, out_profile, out_revision, out_state, out_relationship, out_conversation
+			FROM vc.go_memorycore_rebind($1,$2,$3,$4,$5,$6,$7)`,
+			c.OwnerID, c.JobID, c.Token, c.Fence, nextOperation, nextProfile, native).Scan(
+			&operationID, &profileID, &revision, &state, &rel, &conv)
+	})
+	if err != nil {
+		return EngineOperation{}, mapStoreErr(err)
+	}
+	if op.Input.RelationshipID == 0 {
+		op.Input.RelationshipID = rel
+	}
+	if op.Input.ConversationID == 0 {
+		op.Input.ConversationID = conv
+	}
+	op.ID = operationID
+	op.Revision = revision
+	op.State = state
+	if profileID != "" {
+		op.ProfileOperationID = profileID
+	} else if state == "NEW" && operationID != "" {
+		op.ProfileOperationID = operationID + "-profile"
+	}
+	if state == "NEW" {
+		op.Proposal = nil
+	}
+	if op.Scope.OwnerID == "" {
+		op.Scope = EngineScope(c.OwnerID, rel)
+	}
+	if s.memoryEngine != nil {
+		if e := s.memoryEngine.Call(ctx, "invalidate-scope", map[string]any{"scope": op.Scope, "revision": revision}, nil); e != nil {
+			return EngineOperation{}, e
+		}
+	}
+	return op, nil
+}
+
 func (s *Store) EngineCall(ctx context.Context, action string, in, out any) error {
 	return s.memoryEngine.Call(ctx, action, in, out)
 }

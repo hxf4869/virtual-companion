@@ -22,11 +22,25 @@ type closedError struct{ code string }
 
 func (e *closedError) Error() string { return e.code }
 
+// revisionConflictError is the propose/profile failure that must not be logged as a still-running extraction.
+type revisionConflictError struct{ closedError }
+
+func (e *revisionConflictError) Unwrap() error { return ErrConflict }
+
+// RevisionConflictError is the observable engine result of a scope revision moving under an in-flight operation.
+func RevisionConflictError() error {
+	return &revisionConflictError{closedError: closedError{code: "MEMORYCORE_REVISION_CONFLICT"}}
+}
+
 // ClosedCode returns a closed engine code carried by err. Any other text is discarded.
 func ClosedCode(err error) string {
 	var closed *closedError
 	if errors.As(err, &closed) && len(closed.code) <= 64 && closedCodePattern.MatchString(closed.code) {
 		return closed.code
+	}
+	var revision *revisionConflictError
+	if errors.As(err, &revision) && len(revision.code) <= 64 && closedCodePattern.MatchString(revision.code) {
+		return revision.code
 	}
 	return ""
 }
@@ -75,7 +89,7 @@ func (c *Client) Call(ctx context.Context, action string, input, out any) error 
 	}
 	defer res.Body.Close()
 	if res.StatusCode == 409 {
-		return ErrConflict
+		return conflictStatus(res.Body)
 	}
 	if res.StatusCode != 200 {
 		return closedStatus(res.Body)
@@ -88,6 +102,15 @@ func (c *Client) Call(ctx context.Context, action string, input, out any) error 
 		return ErrUnavailable
 	}
 	return nil
+}
+func conflictStatus(body io.Reader) error {
+	var payload struct {
+		Code string `json:"code"`
+	}
+	if json.NewDecoder(io.LimitReader(body, 512)).Decode(&payload) != nil || payload.Code != "MEMORYCORE_REVISION_CONFLICT" {
+		return ErrConflict
+	}
+	return RevisionConflictError()
 }
 func closedStatus(body io.Reader) error {
 	var payload struct {

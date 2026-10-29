@@ -122,6 +122,49 @@ test('HTTP business operations reject missing token and browser Origin', async t
     assert.equal((await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${token}`, origin: 'http://browser.test' }, body: '{}' })).status, 403);
     assert.equal((await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(proposalInput()) })).status, 200);
 });
+test('revision advance during propose is a distinct conflict and a stale retry makes no model call', async t => {
+    const { createMemoryCoreServer } = await import('../memorycore-service/http.mjs');
+    const { engine, native } = await fixture(t);
+    let prepares = 0;
+    native.prepare = async ({ messages, scope: mapped }) => {
+        prepares++;
+        native.invalidateScope('7:COMPANION:daily-7:main');
+        return { records: [{ id: 'record-advanced', content: messages[0].content, metadata: {}, ...mapped }], targets: [] };
+    };
+    const token = 't'.repeat(32), server = createMemoryCoreServer({ engine, token, commit: 'fixed' });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+    const post = async (body) => {
+        const res = await fetch(`http://127.0.0.1:${server.address().port}/internal/propose`, {
+            method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        return { status: res.status, json: await res.json() };
+    };
+    const first = await post(proposalInput());
+    assert.equal(first.status, 409);
+    assert.equal(first.json.code, 'MEMORYCORE_REVISION_CONFLICT');
+    assert.equal(JSON.stringify(first.json).includes('synthetic content'), false);
+    const beforeRetry = prepares;
+    const retry = await post(proposalInput());
+    assert.equal(retry.status, 409);
+    assert.equal(retry.json.code, 'MEMORYCORE_REVISION_CONFLICT');
+    assert.equal(prepares, beforeRetry);
+    const running = deferred();
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    native.prepare = async ({ messages, scope: mapped }) => {
+        prepares++;
+        running.resolve();
+        await gate;
+        return { records: [{ id: 'record-live', content: messages[0].content, metadata: {}, ...mapped }], targets: [] };
+    };
+    const live = engine.invoke('propose', { ...proposalInput(), operationId: 'op-live', revision: native.getScope('7:COMPANION:daily-7:main').revision });
+    await running.promise;
+    assert.equal((await engine.invoke('operation-status', { scope, operationId: 'op-live' })).status, 'preparing');
+    release();
+    await live;
+});
 
 function deferred() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
 const searchInput = ids => ({ scope, embedding, allowedRecordIds: ids, query: 'content' });

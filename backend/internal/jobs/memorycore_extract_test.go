@@ -194,6 +194,103 @@ func (s *recoveryEngineStore) AbandonEngineOperation(context.Context, postgres.J
 	return nil
 }
 
+type revisionConflictStore struct {
+	*recoveryEngineStore
+	rebinds      int
+	proposes     int
+	failProposes int
+	rebindErr    error
+}
+
+func (s *revisionConflictStore) EngineCall(ctx context.Context, action string, in any, out any) error {
+	if action == "propose" {
+		s.proposes++
+		if s.proposes <= s.failProposes {
+			return memoryengine.RevisionConflictError()
+		}
+		return json.Unmarshal([]byte(`{"records":[{"id":"r1","content":"kept fact","version":1}],"targets":[],"dependencies":["source-1"]}`), out)
+	}
+	return s.recoveryEngineStore.EngineCall(ctx, action, in, out)
+}
+func (s *revisionConflictStore) RebindEngineOperation(context.Context, postgres.JobClaim, postgres.EngineOperation) (postgres.EngineOperation, error) {
+	s.rebinds++
+	if s.rebindErr != nil {
+		return postgres.EngineOperation{}, s.rebindErr
+	}
+	return postgres.EngineOperation{ID: "job-8-r2", State: "NEW", Revision: 2, Scope: postgres.EngineOperation{}.Scope}, nil
+}
+
+func TestRevisionConflictRebindsAndReproposesInsteadOfPending(t *testing.T) {
+	var buf bytes.Buffer
+	s := &revisionConflictStore{recoveryEngineStore: &recoveryEngineStore{extractTestStore: &extractTestStore{}, statuses: []string{"unknown", "failed"}, bareStatus: true}, failProposes: 1}
+	l := newExtractTestLoop(s.extractTestStore, nil)
+	l.log = slog.New(slog.NewTextHandler(&buf, nil))
+	l.store = s
+	l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+	if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	line := buf.String()
+	if s.publishes != 1 || s.proposes != 2 || s.rebinds != 1 || s.retryCalls != 0 || strings.Contains(line, "MEMORYCORE_PENDING") {
+		t.Fatalf("revision conflict dead-lettered without a rebound propose: publishes=%d proposes=%d rebinds=%d retries=%d log=%q calls=%v", s.publishes, s.proposes, s.rebinds, s.retryCalls, line, s.calls)
+	}
+}
+
+func TestRevisionConflictStaysObservableWhenRebindIsExhausted(t *testing.T) {
+	var buf bytes.Buffer
+	s := &revisionConflictStore{recoveryEngineStore: &recoveryEngineStore{extractTestStore: &extractTestStore{retryAction: "RETRY_SCHEDULED"}, statuses: []string{"unknown", "failed", "failed", "failed"}, bareStatus: true}, failProposes: 8}
+	l := newExtractTestLoop(s.extractTestStore, nil)
+	l.log = slog.New(slog.NewTextHandler(&buf, nil))
+	l.store = s
+	l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+	if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	line := buf.String()
+	if !strings.Contains(line, "decision_code=MEMORYCORE_REVISION_CONFLICT") || strings.Contains(line, "MEMORYCORE_PENDING") || s.proposes > 3 || s.rebinds > 2 || s.retryCalls != 1 || s.publishes != 0 {
+		t.Fatalf("unbounded or mislabeled revision conflict: proposes=%d rebinds=%d retries=%d publishes=%d log=%q", s.proposes, s.rebinds, s.retryCalls, s.publishes, line)
+	}
+}
+
+type forgetProfileStore struct {
+	*profileCodeStore
+	prepareErr error
+	forgetOp   postgres.EngineOperation
+	built      int
+}
+
+func (s *forgetProfileStore) PrepareEngineOperation(context.Context, postgres.JobClaim) (postgres.EngineOperation, error) {
+	return postgres.EngineOperation{}, s.prepareErr
+}
+func (s *forgetProfileStore) PrepareForgetProfile(context.Context, postgres.JobClaim) (postgres.EngineOperation, bool, error) {
+	return s.forgetOp, true, nil
+}
+func (s *forgetProfileStore) BuildEngineProfile(context.Context, postgres.JobClaim, postgres.EngineOperation, string) error {
+	s.built++
+	return nil
+}
+
+func TestForgetProfileRebuildIgnoresSuppressedSource(t *testing.T) {
+	var buf bytes.Buffer
+	s := &forgetProfileStore{
+		profileCodeStore: &profileCodeStore{recoveryEngineStore: &recoveryEngineStore{extractTestStore: &extractTestStore{}}},
+		prepareErr:       postgres.ErrInvalid,
+		forgetOp:         postgres.EngineOperation{ID: "job-8", ProfileOperationID: "forget-9-profile", State: "PUBLISHED", Revision: 2, Proposal: json.RawMessage(`{"records":[{"id":"kept"}],"targets":[]}`)},
+	}
+	l := newExtractTestLoop(s.extractTestStore, nil)
+	l.log = slog.New(slog.NewTextHandler(&buf, nil))
+	l.store = s
+	l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+	if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	line := buf.String()
+	closes := s.closeCalls()
+	if s.built != 1 || s.retryCalls != 0 || strings.Contains(line, "MEMORYCORE_SOURCE") || strings.Contains(line, "MEMORYCORE_PENDING") || len(closes) != 1 || closes[0].status != "DONE" {
+		t.Fatalf("forgotten source dead-lettered the profile rebuild: built=%d retries=%d closes=%v log=%q", s.built, s.retryCalls, closes, line)
+	}
+}
+
 func TestEngineFailedProposesAgainInsteadOfRevoking(t *testing.T) {
 	s := &recoveryEngineStore{extractTestStore: &extractTestStore{}, statuses: []string{"failed"}, bareStatus: true}
 	l := newExtractTestLoop(s.extractTestStore, nil)

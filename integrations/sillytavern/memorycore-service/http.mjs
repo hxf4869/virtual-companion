@@ -41,6 +41,9 @@ export function createMemoryCoreServer({ token, engine, commit }) {
             } catch (e) {
                 // No upstream exception text: it may contain model content/paths.
                 const message = typeof e?.message === 'string' ? e.message : '';
+                // Scope revision moved under an in-flight propose. Callers rebind;
+                // this must stay distinct from a still-running preparation.
+                if (message === 'MEMORYCORE_REVISION_CONFLICT') return send(409, { code: 'MEMORYCORE_REVISION_CONFLICT' });
                 const conflict = /(?:REVISION|SPACE|OPERATION|PROPOSAL|PROFILE_VERIFICATION)/.test(message);
                 if (conflict) return send(409, { code: 'MEMORYCORE_CONFLICT' });
                 const closed = /^MEMORYCORE_[A-Z0-9_]+$/.test(message) ? message : 'MEMORYCORE_OPERATION_FAILED';

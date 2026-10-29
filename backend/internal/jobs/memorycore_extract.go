@@ -18,6 +18,12 @@ type engineExtractStore interface {
 }
 
 func (l *Loop) UseMemoryCore(b *memorycore.Broker) { l.memoryCore = b }
+
+// revisionRebinds is the number of times one claim may adopt a newer scope
+// revision and submit a new engine operation. A still-running preparation is
+// not one of those attempts.
+const revisionRebinds = 2
+
 func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) error {
 	callCtx, cancel := context.WithTimeout(ctx, memorycore.ExtractJob)
 	l.cancels.Register(KindSTMemoryExtract, c.OwnerID, c.JobID, cancel)
@@ -29,80 +35,122 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 	}
 	op, err := s.PrepareEngineOperation(ctx, c)
 	if err != nil {
-		return l.failExtract(ctx, c, "MEMORYCORE_SOURCE")
+		// A forget rebuild is marked on a published job whose source may have
+		// been suppressed. That source gate must not dead-letter the profile.
+		next, matched, ferr := l.prepareForgetProfile(ctx, c)
+		if !matched {
+			return l.failExtract(ctx, c, "MEMORYCORE_SOURCE")
+		}
+		if ferr != nil {
+			return l.failExtract(ctx, c, profileDecision(ferr))
+		}
+		op = next
 	}
 	if op.State == "PUBLISHED" {
 		releaseExtractSlot(ctx)
 		return l.buildEngineProfile(ctx, c, op)
 	}
-	request := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision}
-	var status struct {
-		Status   string          `json:"status"`
-		Proposal json.RawMessage `json:"proposal"`
-	}
-	// Every attempt checks durable engine state before any model call. A timeout
-	// never changes the operation ID or replays the retired extraction payload.
-	if err = s.EngineCall(ctx, "operation-status", request, &status); err != nil {
-		return l.failExtract(ctx, c, "MEMORYCORE_STATUS")
-	}
-	proposal := status.Proposal
-	switch status.Status {
-	case "unknown", "failed":
-		token, e := l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ID, ExpiresAt: time.Now().Add(memorycore.ExtractOpen)})
-		if e != nil {
-			return l.failExtract(ctx, c, "MEMORYCORE_CAPABILITY")
+	var token string
+	defer func() {
+		if token != "" {
+			l.memoryCore.Revoke(token)
 		}
-		defer l.memoryCore.Revoke(token)
-		input := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision, "operationToken": token, "embedding": op.Embedding, "allowedRecordIds": op.Allowed,
-			"messages": []map[string]any{{"id": op.SourceKey, "content": op.Input.UserContent, "role": "user", "timestamp": op.Timestamp.Format(time.RFC3339Nano)}}}
-		if err = s.EngineCall(ctx, "propose", input, &proposal); err != nil {
-			if e = s.EngineCall(ctx, "operation-status", request, &status); e != nil {
-				return l.failExtract(ctx, c, "MEMORYCORE_STATUS")
+	}()
+	for attempt := 0; attempt <= revisionRebinds; attempt++ {
+		request := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision}
+		var status struct {
+			Status   string          `json:"status"`
+			Proposal json.RawMessage `json:"proposal"`
+		}
+		// Every attempt checks durable engine state before any model call. A timeout
+		// never changes the operation ID or replays the retired extraction payload.
+		if err = s.EngineCall(ctx, "operation-status", request, &status); err != nil {
+			return l.failExtract(ctx, c, "MEMORYCORE_STATUS")
+		}
+		proposal := status.Proposal
+		rebound := false
+		switch status.Status {
+		case "unknown", "failed":
+			if token != "" {
+				l.memoryCore.Revoke(token)
+				token = ""
 			}
-			proposal = status.Proposal
+			var e error
+			token, e = l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ID, ExpiresAt: time.Now().Add(memorycore.ExtractOpen)})
+			if e != nil {
+				return l.failExtract(ctx, c, "MEMORYCORE_CAPABILITY")
+			}
+			input := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision, "operationToken": token, "embedding": op.Embedding, "allowedRecordIds": op.Allowed,
+				"messages": []map[string]any{{"id": op.SourceKey, "content": op.Input.UserContent, "role": "user", "timestamp": op.Timestamp.Format(time.RFC3339Nano)}}}
+			if err = s.EngineCall(ctx, "propose", input, &proposal); err != nil {
+				if memoryengine.ClosedCode(err) == "MEMORYCORE_REVISION_CONFLICT" {
+					if attempt == revisionRebinds {
+						return l.failExtract(ctx, c, "MEMORYCORE_REVISION_CONFLICT")
+					}
+					next, re := l.rebindEngineOperation(ctx, c, op)
+					if re != nil {
+						return l.failExtract(ctx, c, "MEMORYCORE_REVISION_CONFLICT")
+					}
+					op = next
+					rebound = true
+					break
+				}
+				if e = s.EngineCall(ctx, "operation-status", request, &status); e != nil {
+					return l.failExtract(ctx, c, "MEMORYCORE_STATUS")
+				}
+				proposal = status.Proposal
+			}
+		case "proposed", "publishing", "published":
+		case "preparing":
+			return l.failExtract(ctx, c, "MEMORYCORE_PENDING")
+		default:
+			if failed, ok := l.store.(interface {
+				AbandonEngineOperation(context.Context, postgres.JobClaim) error
+			}); ok {
+				if e := failed.AbandonEngineOperation(ctx, c); e != nil {
+					return l.failExtract(ctx, c, "MEMORYCORE_RECOVERY")
+				}
+			}
+			return l.failExtract(ctx, c, "MEMORYCORE_REVOKED")
 		}
-	case "proposed", "publishing", "published":
-	case "preparing":
-		return l.failExtract(ctx, c, "MEMORYCORE_PENDING")
-	default:
-		if failed, ok := l.store.(interface {
-			AbandonEngineOperation(context.Context, postgres.JobClaim) error
-		}); ok {
-			if e := failed.AbandonEngineOperation(ctx, c); e != nil {
-				return l.failExtract(ctx, c, "MEMORYCORE_RECOVERY")
+		if rebound {
+			continue
+		}
+		if len(proposal) == 0 {
+			return l.failExtract(ctx, c, "MEMORYCORE_PENDING")
+		}
+		if _, err = s.ValidateEngineProposal(ctx, c, op, proposal); err != nil {
+			if failed, ok := l.store.(interface {
+				AbandonEngineOperation(context.Context, postgres.JobClaim) error
+			}); ok {
+				if e := failed.AbandonEngineOperation(ctx, c); e != nil {
+					return l.failExtract(ctx, c, "MEMORYCORE_RECOVERY")
+				}
+			}
+			return l.failExtract(ctx, c, "MEMORYCORE_VALIDATION")
+		}
+		if err = s.EngineCall(ctx, "commit", request, nil); err != nil {
+			if e := s.EngineCall(ctx, "operation-status", request, &status); e != nil || status.Status != "published" {
+				return l.failExtract(ctx, c, "MEMORYCORE_COMMIT")
 			}
 		}
-		return l.failExtract(ctx, c, "MEMORYCORE_REVOKED")
-	}
-	if len(proposal) == 0 {
-		return l.failExtract(ctx, c, "MEMORYCORE_PENDING")
-	}
-	if _, err = s.ValidateEngineProposal(ctx, c, op, proposal); err != nil {
-		if failed, ok := l.store.(interface {
-			AbandonEngineOperation(context.Context, postgres.JobClaim) error
-		}); ok {
-			if e := failed.AbandonEngineOperation(ctx, c); e != nil {
-				return l.failExtract(ctx, c, "MEMORYCORE_RECOVERY")
-			}
+		if err = s.PublishEngineProposal(ctx, c, op, proposal); err != nil {
+			return l.failExtract(ctx, c, "MEMORYCORE_PUBLICATION")
 		}
-		return l.failExtract(ctx, c, "MEMORYCORE_VALIDATION")
+		op.Proposal = proposal
+		op.State = "PUBLISHED"
+		releaseExtractSlot(ctx)
+		return l.buildEngineProfile(ctx, c, op)
 	}
-	if err = s.EngineCall(ctx, "commit", request, nil); err != nil {
-		if e := s.EngineCall(ctx, "operation-status", request, &status); e != nil || status.Status != "published" {
-			return l.failExtract(ctx, c, "MEMORYCORE_COMMIT")
-		}
-	}
-	if err = s.PublishEngineProposal(ctx, c, op, proposal); err != nil {
-		return l.failExtract(ctx, c, "MEMORYCORE_PUBLICATION")
-	}
-	op.Proposal = proposal
-	releaseExtractSlot(ctx)
-	return l.buildEngineProfile(ctx, c, op)
+	return l.failExtract(ctx, c, "MEMORYCORE_REVISION_CONFLICT")
 }
 
 func (l *Loop) buildEngineProfile(ctx context.Context, c postgres.JobClaim, op postgres.EngineOperation) error {
 	var proposal postgres.EngineProposal
-	if len(op.Proposal) > 0 && json.Unmarshal(op.Proposal, &proposal) == nil && len(proposal.Records) == 0 && len(proposal.Targets) == 0 {
+	// An empty extract proposal means there is nothing to publish. A forget
+	// rebuild still has to read the current allowlist; its proposal belongs to
+	// the job that was reused as a marker.
+	if !postgres.IsForgetProfile(op.ProfileOperationID) && len(op.Proposal) > 0 && json.Unmarshal(op.Proposal, &proposal) == nil && len(proposal.Records) == 0 && len(proposal.Targets) == 0 {
 		return l.closeExtract(ctx, c, "DONE", "")
 	}
 
@@ -112,19 +160,66 @@ func (l *Loop) buildEngineProfile(ctx context.Context, c postgres.JobClaim, op p
 	if !ok {
 		return l.closeExtract(ctx, c, "DONE", "")
 	}
-	token, e := l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ProfileOperationID, ExpiresAt: time.Now().Add(memorycore.ExtractOpen)})
-	if e != nil {
-		return l.failExtract(ctx, c, "MEMORYCORE_PROFILE_CAPABILITY")
-	}
-	defer l.memoryCore.Revoke(token)
-	if e = s.BuildEngineProfile(ctx, c, op, token); e != nil {
-		code := memoryengine.ClosedCode(e)
-		if code == "" {
-			code = "MEMORYCORE_PROFILE"
+	var token string
+	defer func() {
+		if token != "" {
+			l.memoryCore.Revoke(token)
 		}
-		return l.failExtract(ctx, c, code)
+	}()
+	for attempt := 0; attempt < 2; attempt++ {
+		if token != "" {
+			l.memoryCore.Revoke(token)
+			token = ""
+		}
+		if op.ProfileOperationID == "" {
+			op.ProfileOperationID = op.ID + "-profile"
+		}
+		var e error
+		token, e = l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ProfileOperationID, ExpiresAt: time.Now().Add(memorycore.ExtractOpen)})
+		if e != nil {
+			return l.failExtract(ctx, c, "MEMORYCORE_PROFILE_CAPABILITY")
+		}
+		if e = s.BuildEngineProfile(ctx, c, op, token); e != nil {
+			if memoryengine.ClosedCode(e) == "MEMORYCORE_REVISION_CONFLICT" && attempt == 0 {
+				next, re := l.rebindEngineOperation(ctx, c, op)
+				if re == nil {
+					op = next
+					continue
+				}
+			}
+			return l.failExtract(ctx, c, profileDecision(e))
+		}
+		return l.closeExtract(ctx, c, "DONE", "")
 	}
-	return l.closeExtract(ctx, c, "DONE", "")
+	return l.failExtract(ctx, c, "MEMORYCORE_REVISION_CONFLICT")
+}
+
+func profileDecision(err error) string {
+	code := memoryengine.ClosedCode(err)
+	if code == "" {
+		return "MEMORYCORE_PROFILE"
+	}
+	return code
+}
+
+func (l *Loop) prepareForgetProfile(ctx context.Context, c postgres.JobClaim) (postgres.EngineOperation, bool, error) {
+	s, ok := l.store.(interface {
+		PrepareForgetProfile(context.Context, postgres.JobClaim) (postgres.EngineOperation, bool, error)
+	})
+	if !ok {
+		return postgres.EngineOperation{}, false, nil
+	}
+	return s.PrepareForgetProfile(ctx, c)
+}
+
+func (l *Loop) rebindEngineOperation(ctx context.Context, c postgres.JobClaim, op postgres.EngineOperation) (postgres.EngineOperation, error) {
+	s, ok := l.store.(interface {
+		RebindEngineOperation(context.Context, postgres.JobClaim, postgres.EngineOperation) (postgres.EngineOperation, error)
+	})
+	if !ok {
+		return postgres.EngineOperation{}, postgres.ErrConflict
+	}
+	return s.RebindEngineOperation(ctx, c, op)
 }
 
 func (l *Loop) enqueueMemoryExtract(ctx context.Context, owner, generationID int64) {

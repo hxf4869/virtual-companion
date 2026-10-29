@@ -105,7 +105,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         checkRevision(ctx.native, scope, revision);
         if ((await readJSON(file))?.status !== status) fail('REVISION_CONFLICT');
     }
-    const replacementProfile = id => /^forget-[1-9][0-9]*-profile$/.test(id);
+    const replacementProfile = id => /^forget-[1-9][0-9]*-profile(?:-a[1-9][0-9]*)?$/.test(id);
     async function scrubOperation(ctx, id, op, removed, revokeAll = false) {
         const file = path.join(ctx.dir, 'operations', id + '.json'), shard = path.join(ctx.dir, 'records', id + '.jsonl');
         if (!revokeAll && replacementProfile(id) && op.status === 'profile-published') return;

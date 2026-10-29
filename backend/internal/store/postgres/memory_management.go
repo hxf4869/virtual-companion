@@ -396,6 +396,21 @@ func (s *Store) continueMemoryCleanup(ctx context.Context, owner, id int64) erro
 			state = "PARTIAL"
 		}
 	}
+	var gate string
+	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT vc.memory_forget_profile_gate($1,$2)`, owner, id).Scan(&gate)
+	})
+	if err != nil {
+		return err
+	}
+	switch gate {
+	case "PENDING":
+		// The engine copy is already forgotten. Cleanup stays open until the
+		// replacement profile is published, or until that rebuild gives up.
+		return nil
+	case "DEAD":
+		state = "PARTIAL"
+	}
 	return s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		_, e := tx.Exec(ctx, `SELECT vc.memory_cleanup_finish($1,$2,$3)`, owner, id, state)
 		return e
