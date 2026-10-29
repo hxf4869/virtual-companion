@@ -19,7 +19,7 @@ type engineExtractStore interface {
 
 func (l *Loop) UseMemoryCore(b *memorycore.Broker) { l.memoryCore = b }
 func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) error {
-	callCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	callCtx, cancel := context.WithTimeout(ctx, memorycore.ExtractJob)
 	l.cancels.Register(KindSTMemoryExtract, c.OwnerID, c.JobID, cancel)
 	defer func() { cancel(); l.cancels.Unregister(KindSTMemoryExtract, c.JobID) }()
 	ctx = callCtx
@@ -46,8 +46,8 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 	}
 	proposal := status.Proposal
 	switch status.Status {
-	case "unknown":
-		token, e := l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ID, ExpiresAt: time.Now().Add(5 * time.Minute)})
+	case "unknown", "failed":
+		token, e := l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ID, ExpiresAt: time.Now().Add(memorycore.ExtractOpen)})
 		if e != nil {
 			return l.failExtract(ctx, c, "MEMORYCORE_CAPABILITY")
 		}
@@ -110,7 +110,7 @@ func (l *Loop) buildEngineProfile(ctx context.Context, c postgres.JobClaim, op p
 	if !ok {
 		return l.closeExtract(ctx, c, "DONE", "")
 	}
-	token, e := l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ProfileOperationID, ExpiresAt: time.Now().Add(5 * time.Minute)})
+	token, e := l.memoryCore.Open(ctx, memorycore.Scope{Owner: c.OwnerID, Job: c.JobID, Source: c.RefID, ClaimToken: c.Token, ClaimFence: c.Fence, OperationID: op.ProfileOperationID, ExpiresAt: time.Now().Add(memorycore.ExtractOpen)})
 	if e != nil {
 		return l.failExtract(ctx, c, "MEMORYCORE_PROFILE_CAPABILITY")
 	}
@@ -132,9 +132,13 @@ func (l *Loop) enqueueMemoryExtract(ctx context.Context, owner, generationID int
 func (l *Loop) failExtract(ctx context.Context, c postgres.JobClaim, code string) error {
 	action, err := l.store.RetryMemoryExtract(ctx, c.OwnerID, c.JobID, c.Token, c.Fence)
 	if err == nil {
+		outcome := "requeued"
+		if action == "DEAD_LETTERED" {
+			outcome = "dead_lettered"
+		}
 		l.log.Info("memory extract retry",
 			slog.String("operation", "memory_extract"),
-			slog.String("outcome", "requeued"),
+			slog.String("outcome", outcome),
 			slog.String("event_type", action),
 			slog.String("decision_code", code),
 		)

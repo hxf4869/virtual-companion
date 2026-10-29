@@ -23,6 +23,8 @@ type recoveryEngineStore struct {
 	invalid     bool
 	commitError bool
 	publishes   int
+	abandoned   bool
+	bareStatus  bool
 }
 
 func (s *recoveryEngineStore) PrepareEngineOperation(context.Context, postgres.JobClaim) (postgres.EngineOperation, error) {
@@ -34,6 +36,9 @@ func (s *recoveryEngineStore) EngineCall(_ context.Context, action string, _ any
 		v := s.statuses[0]
 		s.statuses = s.statuses[1:]
 		raw := `{"status":"` + v + `","proposal":{"records":[],"targets":[],"dependencies":["source-1"]}}`
+		if s.bareStatus {
+			raw = `{"status":"` + v + `"}`
+		}
 		return json.Unmarshal([]byte(raw), out)
 	}
 	if action == "commit" && s.commitError {
@@ -161,5 +166,23 @@ func TestEnginePreparingDoesNotResubmit(t *testing.T) {
 	}
 	if s.publishes != 0 || len(s.calls) != 1 || s.retryCalls != 1 {
 		t.Fatal("preparing operation was replayed")
+	}
+}
+
+func (s *recoveryEngineStore) AbandonEngineOperation(context.Context, postgres.JobClaim) error {
+	s.abandoned = true
+	return nil
+}
+
+func TestEngineFailedProposesAgainInsteadOfRevoking(t *testing.T) {
+	s := &recoveryEngineStore{extractTestStore: &extractTestStore{}, statuses: []string{"failed"}, bareStatus: true}
+	l := newExtractTestLoop(s.extractTestStore, nil)
+	l.store = s
+	l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+	if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+		t.Fatal(e)
+	}
+	if s.abandoned || s.publishes != 0 || s.retryCalls != 1 || len(s.calls) != 2 || s.calls[0] != "operation-status" || s.calls[1] != "propose" {
+		t.Fatalf("failed operation revoked instead of retrying propose: abandoned=%v publishes=%d retries=%d calls=%v", s.abandoned, s.publishes, s.retryCalls, s.calls)
 	}
 }

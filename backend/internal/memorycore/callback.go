@@ -127,6 +127,11 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 		return Response{}, ErrReplay
 	}
 	plan := companion.ModelRequest{Stream: false, MaxTokens: min(4096, op.purpose.Model.MaxOutputTokens)}
+	if remaining := time.Until(op.scope.ExpiresAt); remaining > 0 {
+		// The factory clamps this down to its own ceiling. Zero would keep
+		// the chat defaults, which are shorter than a reasoning-max call.
+		plan.Timeouts = companion.TimeoutBudget{FirstToken: remaining, Total: remaining}
+	}
 	tokens := 0
 	for _, m := range req.Messages {
 		plan.Messages = append(plan.Messages, companion.Message{Role: companion.Role(m.Role), Content: m.Content})

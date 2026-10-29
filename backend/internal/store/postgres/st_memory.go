@@ -241,22 +241,11 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 			}
 		}
 	} else if profileExists {
+		// The current fingerprint does not match, so the old persona is not
+		// injectable. Requeue a bounded rebuild, but do not concatenate every
+		// allowlisted memory: that path ignored both the date gate and relevance.
 		if err := s.enqueueProfileRebuild(ctx, owner, b.relationship); err != nil {
 			return out, err
-		}
-		fallback, err := s.profileFallbackMemories(ctx, owner, b.relationship, b.id)
-		if err != nil {
-			return out, err
-		}
-		for _, m := range fallback {
-			id := fmt.Sprint(m.ID)
-			if seenMemory[id] {
-				continue
-			}
-			if add("记忆：" + m.Summary) {
-				out.MemoryIDs = append(out.MemoryIDs, id)
-				seenMemory[id] = true
-			}
 		}
 	} else {
 		summaries, err = s.stSummaries(ctx, owner, b.id, chats)

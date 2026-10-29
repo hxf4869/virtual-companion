@@ -4,7 +4,7 @@ import { createControlledEngine } from './business.mjs';
 import { createOllamaEmbedding } from './embedding.mjs';
 import { createCallbackRunner } from './llm-runner.mjs';
 
-// Calibrated on fixtures/memorycore-calibration.json (85 synthetic Chinese
+// Calibrated on fixtures/memorycore-calibration.json (88 synthetic Chinese
 // questions, 18 memories) with local qwen3-embedding:0.6b and
 // qwen3-retrieval-v1. Gates run on each lane BEFORE upstream RRF.
 // minCosine 0.58 stays: "我养的猫叫什么名字？" reaches 0.529 and an anniversary

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/memoryengine"
+	"github.com/hxf4869/virtual-companion/internal/memorytime"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -261,6 +262,15 @@ func (s *Store) PublishEngineProposal(ctx context.Context, c JobClaim, op Engine
 		if e != nil {
 			return e
 		}
+		if len(ids) == 0 {
+			var clarified int64
+			if clarified, e = s.clarificationMemory(ctx, tx, c, op); e != nil {
+				return e
+			}
+			if clarified > 0 {
+				ids = append(ids, clarified)
+			}
+		}
 		for _, id := range ids {
 			if e = s.writeVerifiedSourceTime(ctx, tx, c.OwnerID, id, op.Input.UserContent, c.RefID); e != nil {
 				return e
@@ -268,6 +278,33 @@ func (s *Store) PublishEngineProposal(ctx context.Context, c JobClaim, op Engine
 		}
 		return nil
 	}))
+}
+
+// clarificationMemory records one needs_clarification row when the engine
+// publishes no record for an ambiguous verified source. A clear "no new fact"
+// proposal stays empty. The same operation never inserts a second row.
+func (s *Store) clarificationMemory(ctx context.Context, tx pgx.Tx, c JobClaim, op EngineOperation) (int64, error) {
+	var at *time.Time
+	var zone *string
+	if e := tx.QueryRow(ctx, `SELECT source_timestamp, source_timezone FROM vc.st_message_source WHERE owner_user_id=$1 AND id=$2`, c.OwnerID, c.RefID).Scan(&at, &zone); e != nil {
+		return 0, e
+	}
+	var stamp time.Time
+	var name string
+	if at != nil {
+		stamp = *at
+	}
+	if zone != nil {
+		name = *zone
+	}
+	if memorytime.Normalize(op.Input.UserContent, stamp, name).NormalizationStatus != memorytime.StatusNeedsClarification {
+		return 0, nil
+	}
+	var id int64
+	if e := tx.QueryRow(ctx, `SELECT vc.go_memorycore_clarification($1,$2,$3,$4,$5)`, c.OwnerID, c.JobID, c.Token, c.Fence, op.Input.UserContent).Scan(&id); e != nil {
+		return 0, e
+	}
+	return id, nil
 }
 
 func (s *Store) AbandonEngineOperation(ctx context.Context, c JobClaim) error {

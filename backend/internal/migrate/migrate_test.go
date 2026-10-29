@@ -13,8 +13,8 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 166 {
-		t.Fatalf("migration count = %d, want 166", len(items))
+	if len(items) != 167 {
+		t.Fatalf("migration count = %d, want 167", len(items))
 	}
 	// Versions must be strictly ascending.
 	for i := 1; i < len(items); i++ {
