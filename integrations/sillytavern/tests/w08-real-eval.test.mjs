@@ -116,6 +116,8 @@ test('回调解码只指出结构拒绝点', () => {
 
 test('公开查询去掉正文，封存先剥离字段名再丢掉过长或敏感字符串', () => {
     const query = publicQuery({ id: 'M02-direct', caseId: 'M02', kind: 'positive', text: '我现在住哪儿？', hit: true, empty: false, leaked: false, tokenSeen: true, count: 1, memoryIds: ['9'], summaryIds: [], missReason: null, datedFactsExcluded: null });
+    assert.equal(query.recallMs, null);
+    assert.equal(publicQuery({ id: 'M02-direct', caseId: 'M02', kind: 'positive', recallMs: 12 }).recallMs, 12);
     assert.equal(Object.hasOwn(query, 'text'), false);
     assert.equal(JSON.stringify(query).includes('我现在住哪儿'), false);
     assert.equal(query.tokenSeen, true);

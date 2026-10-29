@@ -66,19 +66,25 @@ func (s *Store) engineCandidates(ctx context.Context, owner, rel, conv int64) (m
 }
 
 type engineGateText struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ID        string   `json:"id"`
+	Text      string   `json:"text"`
+	RecordIDs []string `json:"-"`
 }
 
 type RecallObserve struct {
-	SummaryAllow       int  `json:"summaryGateAllow"`
-	SummaryReject      int  `json:"summaryGateReject"`
-	ProfileAllow       int  `json:"profileGateAllow"`
-	ProfileReject      int  `json:"profileGateReject"`
-	EmbeddingCacheHit  int  `json:"embeddingCacheHit"`
-	EmbeddingCacheMiss int  `json:"embeddingCacheMiss"`
-	RecallEmpty        int  `json:"recallEmpty"`
-	Searched           bool `json:"-"`
+	SummaryAllow       int    `json:"summaryGateAllow"`
+	SummaryReject      int    `json:"summaryGateReject"`
+	ProfileAllow       int    `json:"profileGateAllow"`
+	ProfileReject      int    `json:"profileGateReject"`
+	EmbeddingCacheHit  int    `json:"embeddingCacheHit"`
+	EmbeddingCacheMiss int    `json:"embeddingCacheMiss"`
+	RecallEmpty        int    `json:"recallEmpty"`
+	RerankDecision     string `json:"rerankDecision"`
+	RerankCandidates   int    `json:"rerankCandidates"`
+	RerankKept         int    `json:"rerankKept"`
+	RerankOnly         int    `json:"rerankOnly"`
+	RerankFallback     int    `json:"rerankFallback"`
+	Searched           bool   `json:"-"`
 }
 
 type engineRecall struct {
@@ -89,6 +95,33 @@ type engineRecall struct {
 	Gated       []string
 	GateKnown   bool
 	Observe     RecallObserve
+}
+
+func dateFilteredGateTexts(texts []engineGateText, sameDay []string, dated bool) []engineGateText {
+	if len(texts) == 0 {
+		return nil
+	}
+	if !dated {
+		return texts
+	}
+	allowed := map[string]bool{}
+	for _, id := range sameDay {
+		allowed[id] = true
+	}
+	out := make([]engineGateText, 0, len(texts))
+	for _, text := range texts {
+		if len(text.RecordIDs) == 0 {
+			out = append(out, text)
+			continue
+		}
+		for _, id := range text.RecordIDs {
+			if allowed[id] {
+				out = append(out, text)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64, q recallQuery) ([]Memory, error) {
@@ -137,8 +170,8 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 	if q.Date != nil {
 		payload["dateRestricted"] = true
 	}
-	if len(q.GateTexts) > 0 {
-		payload["gateTexts"] = q.GateTexts
+	if texts := dateFilteredGateTexts(q.GateTexts, ids, q.Date != nil); len(texts) > 0 {
+		payload["gateTexts"] = texts
 	}
 	var raw json.RawMessage
 	e = s.memoryEngine.Call(ctx, "search", payload, &raw)

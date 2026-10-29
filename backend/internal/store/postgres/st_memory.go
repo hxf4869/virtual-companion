@@ -120,9 +120,7 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		return out, err
 	}
 	recall := recallQuery{Text: querySource.text, Date: queryTime.EventDate, Limit: 20}
-	if profile != nil && strings.TrimSpace(profile.Persona) != "" {
-		recall.GateTexts = []engineGateText{{ID: "persona", Text: profile.Persona}}
-	}
+	recall.GateTexts = profileGateTexts(profile)
 	found, err := s.searchEngineRecall(ctx, owner, b.relationship, b.id, recall)
 	if err != nil {
 		return out, err
@@ -245,14 +243,16 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		if personaAllowed(profile.Persona, querySource.text, queryTime.EventDate != nil, profile.RecordIDs, found.DateIDs, found.UndatedIDs, found.OtherDayIDs, found.Gated, found.GateKnown) && add("会话摘要（引擎归纳）："+profile.Persona) {
 			out.SummaryIDs = append(out.SummaryIDs, fmt.Sprint(profile.ID))
 		}
-		scenes := profile.Scenes
+		visible := profile.Scenes
 		if queryTime.EventDate != nil {
-			scenes = datedScenes(scenes, found.DateIDs)
+			visible = datedScenes(visible, found.DateIDs)
 		}
-		sceneAllow, sceneReject := countSceneGate(querySource.text, scenes, profile.RecordIDs)
-		out.Observe.SummaryAllow += sceneAllow
-		out.Observe.SummaryReject += sceneReject
-		for _, scene := range relevantProfileScenes(querySource.text, scenes, profile.RecordIDs) {
+		if !found.GateKnown {
+			sceneAllow, sceneReject := countSceneGate(querySource.text, visible, profile.RecordIDs)
+			out.Observe.SummaryAllow += sceneAllow
+			out.Observe.SummaryReject += sceneReject
+		}
+		for _, scene := range chooseProfileScenes(querySource.text, profile.Scenes, profile.RecordIDs, found.DateIDs, found.Gated, queryTime.EventDate != nil, found.GateKnown) {
 			if strings.TrimSpace(scene.Summary) == "" {
 				continue
 			}
@@ -340,6 +340,83 @@ func queryHasUndatedTopic(query string) bool {
 func undatedSummaryAllowed(query string, sources, undatedIDs, otherDayIDs []string) bool {
 	return queryHasUndatedTopic(query) && stringOverlap(sources, undatedIDs) && !stringOverlap(sources, otherDayIDs)
 }
+func profileGateTexts(profile *memoryProfile) []engineGateText {
+	if profile == nil {
+		return nil
+	}
+	out := []engineGateText{}
+	if strings.TrimSpace(profile.Persona) != "" {
+		out = append(out, engineGateText{ID: "persona", Text: profile.Persona})
+	}
+	for i, scene := range profile.Scenes {
+		if !trustedScene(scene, profile.RecordIDs) {
+			continue
+		}
+		out = append(out, engineGateText{ID: fmt.Sprintf("scene-%d", i), Text: scene.Summary, RecordIDs: scene.RecordIDs})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func trustedScene(scene profileScene, allow []string) bool {
+	if len(scene.RecordIDs) == 0 || strings.TrimSpace(scene.Summary) == "" {
+		return false
+	}
+	allowed := map[string]bool{}
+	for _, id := range allow {
+		if id != "" {
+			allowed[id] = true
+		}
+	}
+	for _, id := range scene.RecordIDs {
+		if !allowed[id] {
+			return false
+		}
+	}
+	return true
+}
+
+func sceneOverlapsDate(scene profileScene, dateIDs []string) bool {
+	allowed := map[string]bool{}
+	for _, id := range dateIDs {
+		allowed[id] = true
+	}
+	for _, id := range scene.RecordIDs {
+		if allowed[id] {
+			return true
+		}
+	}
+	return false
+}
+
+func chooseProfileScenes(query string, scenes []profileScene, allow, dateIDs, gated []string, dated, gateKnown bool) []profileScene {
+	accepted := map[string]bool{}
+	for _, id := range gated {
+		accepted[id] = true
+	}
+	out := []profileScene{}
+	for i, scene := range scenes {
+		if dated && !sceneOverlapsDate(scene, dateIDs) {
+			continue
+		}
+		if !trustedScene(scene, allow) {
+			continue
+		}
+		if gateKnown {
+			if accepted[fmt.Sprintf("scene-%d", i)] {
+				out = append(out, scene)
+			}
+			continue
+		}
+		if sceneMatchesQuery(query, scene.Summary) {
+			out = append(out, scene)
+		}
+	}
+	return out
+}
+
 func personaAllowed(persona, query string, dated bool, sources, dateIDs, undatedIDs, otherDayIDs, gated []string, gateKnown bool) bool {
 	if strings.TrimSpace(persona) == "" {
 		return false

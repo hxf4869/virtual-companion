@@ -29,7 +29,7 @@ test('keyword overlap keeps a paraphrase at the existing cosine floor when both 
         embedQuery: async (text) => (text.includes('折叠') && text.includes('地铁') && !text.includes('喝') ? unit(1, 0) : unit(0, 1)),
         embed: async (text) => (text.includes('折叠自行车') ? unit(0.52, Math.sqrt(1 - 0.52 * 0.52)) : unit(0, 1)),
     };
-    const hits = await native.search({ query: '折叠车通常停在地铁哪个口？', topK: 5, scope: {}, allowedRecordIds: ['bike', 'clinic'], embedding });
+    const hits = await native.search({ query: '折叠车通常停在地铁哪个口？', topK: 5, scope: {}, allowedRecordIds: ['bike', 'clinic'], embedding, rerank: false });
     assert.ok(hits.some((hit) => hit.record_id === 'bike'), 'distinctive overlap is a second path, not a lower cosine accept');
     assert.equal(hits.some((hit) => hit.record_id === 'clinic'), false);
 });
@@ -51,7 +51,7 @@ test('a diluted question keeps the clause whose overlap clears the same cosine f
         embedQuery: async (text) => (text.includes('折叠') && text.includes('地铁') && !text.includes('喝') ? unit(1, 0) : unit(0, 1)),
         embed: async (text) => (text.includes('折叠自行车') ? unit(0.55, Math.sqrt(1 - 0.55 * 0.55)) : unit(0, 1)),
     };
-    const hits = await native.search({ query: '折叠车停在地铁口，今晚喝什么', topK: 5, scope: {}, allowedRecordIds: ['bike', 'flute'], embedding });
+    const hits = await native.search({ query: '折叠车停在地铁口，今晚喝什么', topK: 5, scope: {}, allowedRecordIds: ['bike', 'flute'], embedding, rerank: false });
     assert.deepEqual(hits.map((hit) => hit.record_id), ['bike']);
 });
 
@@ -75,9 +75,9 @@ test('one shared bigram and an omitted record stay out of the keyword path', asy
         embedQuery: async () => unit(1, 0),
         embed: async () => unit(0.9, Math.sqrt(1 - 0.81)),
     };
-    const ownCat = await native.search({ query: '我自己养的猫叫什么？', topK: 5, scope: {}, allowedRecordIds: ['coworker-cat'], embedding });
+    const ownCat = await native.search({ query: '我自己养的猫叫什么？', topK: 5, scope: {}, allowedRecordIds: ['coworker-cat'], embedding, rerank: false });
     assert.deepEqual(ownCat, []);
-    const forgotten = await native.search({ query: '团子是什么动物？', topK: 5, scope: {}, allowedRecordIds: [], embedding });
+    const forgotten = await native.search({ query: '团子是什么动物？', topK: 5, scope: {}, allowedRecordIds: [], embedding, rerank: false });
     assert.deepEqual(forgotten, []);
 });
 
@@ -119,7 +119,7 @@ test('observed search counts gate outcomes, cache traffic and empty recall witho
         embedBatch: async (texts) => texts.map(() => unit(0, 1)),
     };
     const result = await native.search({
-        query: '我每天喝多少毫升水？', topK: 5, scope: {}, allowedRecordIds: ['bike'], embedding, observe: true,
+        query: '我每天喝多少毫升水？', topK: 5, scope: {}, allowedRecordIds: ['bike'], embedding, observe: true, rerank: false,
         gateTexts: [{ id: 'persona', text: '合成画像不含饮水事实。' }, { id: 'summary-1', text: '合成摘要不含饮水事实。' }],
     });
     assert.equal(result.stats.recallEmpty, 1);

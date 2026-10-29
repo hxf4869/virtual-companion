@@ -460,7 +460,8 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             // even when no L1 row shares the question's date.
             const embedding = (eligible.length || gateTexts?.length) && !native.getSpace().rebuilding ? await embeddingFactory(input.embedding) : undefined;
             const results = (eligible.length || gateTexts?.length) ? await native.search({ query: input.query, topK: Math.min(input.topK || 5, 50), scope: mapped,
-                allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true, gateTexts, observe: input.observe === true })
+                allowedRecordIds: eligible, embedding, eventDate: input.eventDate, dateRestricted: input.dateRestricted === true, gateTexts, observe: input.observe === true,
+                rerank: input.rerankEnabled === false ? false : input.rerank })
                 : [];
             return currentSpace(ctx, input.embedding, async () =>
                 !(await readJSON(path.join(dir, 'cleanup.json'))) && native.getScope(key).revision === revision ? results : []);

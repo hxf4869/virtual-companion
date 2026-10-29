@@ -118,6 +118,26 @@ func TestMemoryRecallMetrics(t *testing.T) {
 	if strings.Contains(body, "owner") || strings.Contains(body, "secret") {
 		t.Fatalf("memory metrics leaked a label: %s", body)
 	}
+	reg.ObserveMemoryRecall(MemoryRecallStats{RerankTimeout: 1, RerankFallback: 1, RerankCandidates: 4, RerankKept: 0, RerankOnly: 2})
+	buf.Reset()
+	if err := reg.WritePrometheus(&buf); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"vc_memory_rerank_timeout_total 1.000000000",
+		"vc_memory_rerank_fallback_total 1.000000000",
+		"vc_memory_rerank_candidates_total 4.000000000",
+		"vc_memory_rerank_kept_total 0.000000000",
+		"vc_memory_rerank_only_total 2.000000000",
+		"vc_memory_rerank_applied_total",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Fatalf("missing %q in %s", want, buf.String())
+		}
+	}
+	if strings.Contains(buf.String(), "候选") || strings.Contains(buf.String(), "query") {
+		t.Fatalf("rerank metrics leaked text: %s", buf.String())
+	}
 	reg.SetJobsStatsSource(func() JobsStats { return JobsStats{Claims: 7} })
 	buf.Reset()
 	if err := reg.WritePrometheus(&buf); err != nil {

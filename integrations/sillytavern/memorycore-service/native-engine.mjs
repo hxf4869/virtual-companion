@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { createControlledEngine } from './business.mjs';
 import { createOllamaEmbedding, embeddingCacheStats } from './embedding.mjs';
 import { createCallbackRunner } from './llm-runner.mjs';
+import { engineRerank, looseRetrievalFilter, summaryUnits } from './rerank.mjs';
 
 // Calibrated on fixtures/memorycore-calibration.json (88 synthetic Chinese
 // questions, 18 memories) with local qwen3-embedding:0.6b and
@@ -76,7 +77,7 @@ function sharedHanSpan(query, text, length) {
 }
 // Same absolute cosine, dated generic floor, and both-lane band as L1 recall.
 // The summary is not an L1 row, so its lexical lane is token overlap.
-function queryParts(query) {
+export function queryParts(query) {
     const parts = String(query).split(/[。？！!?；;]/u).map(part => part.trim())
         .filter(part => part && !/^[（(][^？?]*[)）]$/u.test(part));
     return parts.length >= 2 && parts.length <= 4 ? parts : [query];
@@ -104,7 +105,20 @@ function summarySegments(question, text) {
 }
 // Independent questions are scored separately. One dated clause must not
 // dilute an undated topic that the summary actually answers.
-export async function summaryPassesGate(query, text, embedding, dated) {
+export async function summaryPassesGate(query, text, embedding, dated, rerank) {
+    if (rerank?.enabled && typeof rerank.rank === 'function') {
+        try {
+            for (const question of queryParts(query)) {
+                const units = summaryUnits(text, rerank.summaryUnit, rerank.candidateLimit || 20);
+                if (!units.length) continue;
+                const scores = await rerank.rank(question, units);
+                if (scores.some((score) => Number.isFinite(score) && score >= rerank.threshold)) return true;
+            }
+            // Union with the original gate below, same as L1 candidates.
+        } catch (error) {
+            if (typeof rerank.onGateFallback === 'function') rerank.onGateFallback(error);
+        }
+    }
     for (const question of queryParts(query)) {
         for (const segment of summarySegments(question, text)) {
             if (await summaryPartPasses(question, segment, embedding, dated)) return true;
@@ -155,14 +169,62 @@ async function keywordRecover(questions, records, embedding, taken) {
     return found;
 }
 function emptyRecallStats() {
-    return { summaryGateAllow: 0, summaryGateReject: 0, profileGateAllow: 0, profileGateReject: 0, embeddingCacheHit: 0, embeddingCacheMiss: 0, recallEmpty: 0 };
+    return { summaryGateAllow: 0, summaryGateReject: 0, profileGateAllow: 0, profileGateReject: 0, embeddingCacheHit: 0, embeddingCacheMiss: 0, recallEmpty: 0,
+        rerankDecision: 'disabled', rerankCandidates: 0, rerankKept: 0, rerankOnly: 0, rerankFallback: 0, rerankGateFallback: 0 };
 }
-async function collectGates(query, gateTexts, embedding, dated, stats) {
+function rerankFailureCode(error) {
+    if (error?.code === 'timeout' || error?.code === 'invalid' || error?.code === 'unavailable') return error.code;
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
+    return 'unavailable';
+}
+function resolveRerank(explicit) {
+    if (explicit === false || explicit?.enabled === false) return { enabled: false };
+    if (explicit && typeof explicit.rank === 'function') return { candidateLimit: 20, summaryUnit: 'line', ...explicit, enabled: true };
+    return engineRerank();
+}
+export async function looseCandidateHits(api, store, questions, ids, scope, embedding, dated, limit) {
+    const merged = new Map();
+    for (const question of questions) {
+        const filter = { ...scope, allowedRecordIds: ids, ...looseRetrievalFilter() };
+        if (dated) filter.lexicalQuery = stripDate(question);
+        const result = await api.recallL1Candidates({ query: question, topK: limit, vectorStore: store,
+            embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined, filter });
+        for (const hit of result.hits || []) {
+            if (!hit?.record_id || typeof hit.content !== 'string' || !hit.content) continue;
+            const prior = merged.get(hit.record_id);
+            if (!prior || hit.score > prior.score) merged.set(hit.record_id, hit);
+        }
+    }
+    return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+}
+// The current cosine/FTS gates, including keyword recovery. This is the injection
+// set used when the reranker is off, and one side of the union when it is on.
+async function originalGateHits(api, store, queries, ids, scope, embedding, dated, topK) {
+    const hits = new Map();
+    for (const question of queries) {
+        const genericSchedule = dated && isGenericSchedule(question);
+        const filter = { ...scope, allowedRecordIds: ids, ...RELEVANCE, genericSchedule };
+        if (dated) filter.lexicalQuery = stripDate(question);
+        const result = await api.recallL1Candidates({ query: question, topK, vectorStore: store,
+            embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined,
+            filter });
+        for (const hit of result.hits) {
+            const prior = hits.get(hit.record_id);
+            if (!prior || hit.score > prior.score) hits.set(hit.record_id, hit);
+        }
+    }
+    for (const hit of await keywordRecover(queries, listRecords(store, ids, scope), embedding, new Set(hits.keys()))) hits.set(hit.record_id, hit);
+    return [...hits.values()].sort((a, b) => b.score - a.score);
+}
+function listRecords(store, ids, scope) {
+    return store.queryL1Records({ ...scope, ...(ids ? { recordIds: ids } : {}) }).map(toRecord);
+}
+async function collectGates(query, gateTexts, embedding, dated, stats, rerank) {
     const gated = [];
     if (!Array.isArray(gateTexts)) return gated;
     for (const item of gateTexts) {
         if (!item || typeof item.id !== 'string' || typeof item.text !== 'string') continue;
-        const allowed = await summaryPassesGate(query, item.text, embedding, dated);
+        const allowed = await summaryPassesGate(query, item.text, embedding, dated, rerank);
         if (stats) {
             const profile = item.id === 'persona';
             stats[allowed ? (profile ? 'profileGateAllow' : 'summaryGateAllow') : (profile ? 'profileGateReject' : 'summaryGateReject')]++;
@@ -211,10 +273,12 @@ export async function createNativeFactory(api) {
                 if (typeof result.emptyDisposition === 'string' && /^[A-Z0-9_]+$/u.test(result.emptyDisposition)) proposal.emptyDisposition = result.emptyDisposition;
                 return proposal;
             },
-            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false }) {
+            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false, rerank }) {
                 if (typeof query !== 'string' || !query || query.length > 20000) throw new Error('MEMORYCORE_QUERY');
                 const cacheBefore = observe ? embeddingCacheStats() : null;
                 const stats = observe ? emptyRecallStats() : null;
+                const client = resolveRerank(rerank);
+                let gateFallback = 0;
                 // Go already dropped other days when dateRestricted is set. Passing
                 // eventDate again would drop records whose summary omits metadata.
                 let ids = allowedRecordIds;
@@ -223,38 +287,74 @@ export async function createNativeFactory(api) {
                     ids = list(ids, scope).filter(r => (r.metadata.eventDate || r.metadata.activity_start_time?.slice(0, 10)) === eventDate).map(r => r.id);
                     dated = true;
                 }
-                const finish = async (ranked, searched) => {
-                    const gated = await collectGates(query, gateTexts, embedding, dated, stats);
+                const finish = async (ranked, searched, gateRerank) => {
+                    const gated = await collectGates(query, gateTexts, embedding, dated, stats, gateRerank);
                     if (!stats) return Array.isArray(gateTexts) && gateTexts.length > 0 ? { hits: ranked, gated } : ranked;
                     const cacheAfter = embeddingCacheStats();
                     stats.embeddingCacheHit = cacheAfter.hits - cacheBefore.hits;
                     stats.embeddingCacheMiss = cacheAfter.misses - cacheBefore.misses;
                     stats.recallEmpty = searched && ranked.length === 0 ? 1 : 0;
+                    stats.rerankGateFallback = gateFallback;
                     return { hits: ranked, gated, stats };
                 };
-                if (!ids?.length) return finish([], false);
+                if (!ids?.length) return finish([], false, null);
                 // Independent questions are embedded separately so one topic cannot
                 // dilute another. Each part uses the same gates. Only a dated
                 // generic schedule question may use the lower cosine floor.
                 const queries = queryParts(query);
-                const hits = new Map();
-                for (const question of queries) {
-                    const genericSchedule = dated && isGenericSchedule(question);
-                    const filter = { ...scope, allowedRecordIds: ids, ...RELEVANCE, genericSchedule };
-                    // The date gate already consumed the calendar expression, so it
-                    // must not also satisfy the lexical gate ("11月6日我去厦门吗？"
-                    // otherwise matches the dentist row on the date tokens alone).
-                    if (dated) filter.lexicalQuery = stripDate(question);
-                    const result = await api.recallL1Candidates({ query: question, topK, vectorStore: store,
-                        embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined,
-                        filter });
-                    for (const hit of result.hits) {
-                        const prior = hits.get(hit.record_id);
-                        if (!prior || hit.score > prior.score) hits.set(hit.record_id, hit);
+                if (client.enabled) {
+                    try {
+                        const limit = client.candidateLimit || 20;
+                        const capped = await looseCandidateHits(api, store, queries, ids, scope, embedding, dated, limit);
+                        if (stats) stats.rerankCandidates = capped.length;
+                        const scores = capped.length ? await client.rank(query, capped.map((hit) => hit.content)) : [];
+                        if (scores.length !== capped.length || scores.some((score) => !Number.isFinite(score))) {
+                            throw Object.assign(new Error('RERANK_INVALID'), { code: 'invalid' });
+                        }
+                        const original = await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK);
+                        const originalIds = new Set(original.map((hit) => hit.record_id));
+                        const rankedScore = new Map(capped.map((hit, index) => [hit.record_id, scores[index]]));
+                        const injected = [];
+                        const seen = new Set();
+                        for (let index = 0; index < capped.length; index += 1) {
+                            const byRank = scores[index] >= client.threshold;
+                            const byGate = originalIds.has(capped[index].record_id);
+                            if (!byRank && !byGate) continue;
+                            seen.add(capped[index].record_id);
+                            injected.push({ hit: { ...capped[index], score: scores[index], rerankScore: scores[index] }, score: scores[index], only: byRank && !byGate });
+                        }
+                        for (const hit of original) {
+                            if (seen.has(hit.record_id)) continue;
+                            const score = rankedScore.get(hit.record_id);
+                            injected.push({ hit: { ...hit, ...(Number.isFinite(score) ? { score, rerankScore: score } : {}) }, score: Number.isFinite(score) ? score : Number.NEGATIVE_INFINITY, only: false });
+                        }
+                        injected.sort((a, b) => b.score - a.score);
+                        const limited = (Number.isFinite(topK) && topK > 0 ? injected.slice(0, topK) : injected).map((item) => item.hit);
+                        if (stats) {
+                            stats.rerankDecision = 'applied';
+                            stats.rerankKept = limited.length;
+                            stats.rerankOnly = (Number.isFinite(topK) && topK > 0 ? injected.slice(0, topK) : injected).filter((item) => item.only).length;
+                            stats.rerankFallback = 0;
+                        }
+                        const gateRerank = { ...client, onGateFallback() { gateFallback = 1; } };
+                        const body = await finish(limited, true, gateRerank);
+                        if (body && !Array.isArray(body)) {
+                            body.rerankRank = capped.map((hit, index) => ({ id: hit.record_id, score: scores[index] }));
+                            body.rerankOriginal = original.map((hit) => hit.record_id);
+                        }
+                        return body;
+                    } catch (error) {
+                        if (stats) {
+                            stats.rerankDecision = rerankFailureCode(error);
+                            stats.rerankFallback = 1;
+                            stats.rerankKept = 0;
+                        }
                     }
+                } else if (stats) {
+                    stats.rerankDecision = 'disabled';
+                    stats.rerankFallback = 0;
                 }
-                for (const hit of await keywordRecover(queries, list(ids, scope), embedding, new Set(hits.keys()))) hits.set(hit.record_id, hit);
-                const ranked = [...hits.values()].sort((a, b) => b.score - a.score).slice(0, topK);
+                const ranked = (await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK)).slice(0, topK);
                 return finish(ranked, true);
             },
             async rebuildProfile({ records, stagingDir, scope, runner }) {
