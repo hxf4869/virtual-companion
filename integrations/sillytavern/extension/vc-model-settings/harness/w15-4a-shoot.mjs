@@ -10,16 +10,17 @@ const PORT = Number(process.env.VC_W15_HARNESS_PORT || 9364);
 const BASE = `http://127.0.0.1:${PORT}`;
 const OUT = process.env.VC_W15_SHOTS
     || '/private/tmp/claude-501/-Users-hxf-projects-virtual-companion/67c91cf9-5973-42e2-bbc0-514b65af332e/scratchpad/w15-shots/w15-4a';
-const scenarios = ['nav', 'more', 'model-budget', 'model-noprice', 'model-savebar', 'account', 'account-partial', 'account-delete'];
+const scenarios = ['nav', 'more', 'model-budget', 'model-noprice', 'model-savebar', 'account', 'account-partial', 'account-pending', 'account-delete'];
 const expects = {
     nav: ['聊天', '角色', '记忆', '主动陪伴', '剧情', '模型', '账户'],
     more: ['记忆', '主动陪伴', '剧情', '账户', '返回'],
     'model-budget': ['当月可用额度不足，测试与发送暂不可用。设置仍可保存。', '未配置单价，无法发送'],
     'model-noprice': ['未配置单价，无法发送'],
     'model-savebar': ['保存配置', '未配置单价，无法发送'],
-    account: ['修改密码', '重置验证器', '登出其他会话', '验证器已启用', '当前会话', '其他会话', '备份状态独立，策略在 W16'],
-    'account-partial': ['部分完成', '备份状态独立，策略在 W16'],
-    'account-delete': ['账号删除未完成，聊天已暂停。', 'ST、MEMORYCORE'],
+    account: ['修改密码', '重置验证器', '登出其他会话', '验证器已启用', '当前会话', '其他会话', '备份状态独立，策略在 W16', '删除前的离线快照不能恢复为可用环境；恢复须先应用最新删除状态，具体策略在 W16。'],
+    'account-partial': ['部分完成', '备份状态独立，策略在 W16', '删除前的离线快照不能恢复为可用环境；恢复须先应用最新删除状态，具体策略在 W16。'],
+    'account-pending': ['副本生成中。关闭页面后任务会继续，你可以稍后取回最近副本。', '删除前的离线快照不能恢复为可用环境；恢复须先应用最新删除状态，具体策略在 W16。'],
+    'account-delete': ['账号删除未完成，聊天已暂停。', 'ST、MEMORYCORE', '删除前的离线快照不能恢复为可用环境；恢复须先应用最新删除状态，具体策略在 W16。'],
 };
 const absent = ['手机已收到', 'ADMIN', 'otpauth', '9007199254740993', 'vc_csrf', 'owner@example.test'];
 const viewports = [

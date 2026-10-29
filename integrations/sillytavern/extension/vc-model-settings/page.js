@@ -155,9 +155,33 @@ export function mountModelSettings() {
         render();
     }
 
+    function clearProviderDraft() {
+        state.creatingNew = false;
+        state.draft = null;
+        state.originalDraft = null;
+        state.selectedProfileKey = null;
+        state.keyEditing = false;
+        state.keyClearing = false;
+        state.conflict = null;
+        state.stash = null;
+        state.stashBanner = false;
+        state.impact = null;
+        state.cloneFor = null;
+        state.deleteFor = null;
+        state.saveError = null;
+        state.discoverError = null;
+        state.check = { busy: false, error: null, result: null };
+    }
+
     function selectProvider(providerId, { silent = false } = {}) {
         state.selectedProviderId = providerId;
         const found = state.providers.find((p) => p.providerId === providerId) ?? null;
+        // 目录为空时不是「正在新建」。空状态由列表自己呈现，点「新建」才进入草稿。
+        if (!found && (providerId == null || providerId === '')) {
+            clearProviderDraft();
+            if (!silent) render();
+            return;
+        }
         state.creatingNew = !found;
         state.draft = found ? logic.providerDraftFromApi(found) : logic.newProviderDraft();
         state.originalDraft = deepClone(state.draft);
@@ -246,7 +270,7 @@ export function mountModelSettings() {
     // ---------- 保存 ----------
 
     async function doSaveProvider() {
-        if (state.saving) return;
+        if (state.saving || !state.draft) return;
         normalizeDraftKeys();
         const errors = collectErrors();
         if (hasErrors(errors)) {
@@ -852,7 +876,7 @@ export function mountModelSettings() {
         const isShared = m.boundPurposes?.length > 0;
         return `
         <div class="vcms-model-form" data-profile="${esc(m.profileKey)}">
-            ${logic.modelPriceMissing(m.pricing) ? `<p class="vcms-callout vcms-callout-warning" role="status" id="vcms-no-price">${logic.NO_PRICE_COPY}</p>` : ''}
+            ${logic.ledgerCalloutHtml(m)}
             ${isShared ? `<div class="vcms-callout vcms-callout-info"><i class="fa-solid fa-share-nodes"></i><div>该配置正被这些用途使用：${m.boundPurposes.map((p) => esc(logic.purposeMeta(p).label)).join('、')}。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。</div></div>` : ''}
             <div class="vcms-grid2">
                 <div class="vcms-field">
@@ -1252,16 +1276,19 @@ export function mountModelSettings() {
             if (ctxNote) ctxNote.hidden = !isBlank(model.contextWindowTokens);
             const form = overlay.querySelector('.vcms-model-form');
             if (form) {
-                let callout = form.querySelector('#vcms-no-price');
-                if (logic.modelPriceMissing(model.pricing)) {
+                const status = logic.normalizeLedgerPrice(model.ledgerPrice);
+                const copy = logic.ledgerPriceCopy(status);
+                let callout = form.querySelector('[data-ledger]');
+                if (copy) {
                     if (!callout) {
                         callout = document.createElement('p');
-                        callout.className = 'vcms-callout vcms-callout-warning';
-                        callout.id = 'vcms-no-price';
-                        callout.setAttribute('role', 'status');
-                        callout.textContent = logic.NO_PRICE_COPY;
                         form.prepend(callout);
                     }
+                    callout.className = 'vcms-callout vcms-callout-warn';
+                    callout.id = status === 'UNSUPPORTED_CURRENCY' ? 'vcms-currency-price' : 'vcms-no-price';
+                    callout.setAttribute('role', 'status');
+                    callout.setAttribute('data-ledger', status);
+                    callout.textContent = copy;
                 } else if (callout) {
                     callout.remove();
                 }

@@ -181,18 +181,18 @@ export async function sceneStoryReal(ctx) {
     };
     try {
         if (typeof ctx.w10?.psql !== 'function') throw new Error('受管数据库入口不可用');
-        // 测试环境价格，不是 Owner 价格，也不代表供应商账单。
-        // 连通探针两次 usage.cost：38/32 → 0.0000498，38/55 → 0.0000774，
-        // 反解为输入 0.0003、输出 0.0012 USD/1K。
-        ctx.w10.psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
-            VALUES ('vc14-real', '${sqlModel}', 1, 0.0003, 0.0012)
-            ON CONFLICT DO NOTHING;`);
         capture = await startStoryCapture(upstreamBase, { maxCalls: 8 });
         spec.baseUrl = capture.baseUrl;
         const saved = await ctx.admin.saveProvider('vc14-real', { ...spec, credential, expectedRevision: 0 });
         const savedCode = typeof saved.json?.code === 'string' ? saved.json.code : '';
         if (saved.status !== 200 || !Number.isInteger(saved.json?.revision)) throw new Error(`注入真实模型失败：HTTP ${saved.status}${savedCode ? ` ${savedCode}` : ''}`);
         providerRevision = saved.json.revision;
+        // 测试环境价格，不是 Owner 价格，也不代表供应商账单。
+        // 连通探针两次 usage.cost：38/32 → 0.0000498，38/55 → 0.0000774，
+        // 反解为输入 0.0003、输出 0.0012 USD/1K。模型不写目录价，保存会停用已有手写单价，所以写在保存之后。
+        ctx.w10.psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
+            VALUES ('vc14-real', '${sqlModel}', 1, 0.0003, 0.0012)
+            ON CONFLICT DO NOTHING;`);
         const purposes = await ctx.admin.listPurposes();
         const purpose = purposes.status === 200 && Array.isArray(purposes.json) ? purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT') : null;
         if (!purpose) throw new Error('FOREGROUND_CHAT 不在用途列表');

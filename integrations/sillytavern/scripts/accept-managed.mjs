@@ -689,6 +689,8 @@ function providerCatalogSpec(fixtureKey) {
         capabilities: { toolCalls: 'DECLARED', systemMessage: 'DECLARED' },
         reasoningLevels: [],
         generationParams: { temperature: 0.3 },
+        // USD / 百万 token。保存目录时同步为账本每 1K token 0.001 / 0.002。
+        pricing: { currency: 'USD', inputPerMillionTokens: 1, outputPerMillionTokens: 2 },
         ...extra,
     });
     return [
@@ -895,17 +897,6 @@ async function sceneCatalogAdmin(ctx) {
     const modelsCapture = await readFixtureCapture(ctx, { protocol: 'models' });
     if (modelsCapture.auth.matched !== true) throw new Error('discover 的 /models 请求 auth 未匹配合成 key');
     log.ok('discover 通过（真实 fixture /models，auth 匹配）');
-
-    // W11 之后没有账本单价的前台/剧情预留会 409。本场景不改 toolCalls。
-    // 除 w11 的四行外，补上 UI03 原生发送用的 Responses 用量档。
-    psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
-        VALUES
-            ('vc03m-chat', 'vc03m-chat', 1, 0.001, 0.002),
-            ('vc03m-chat', 'vc03m-tools', 1, 0.001, 0.002),
-            ('vc03m-resp', 'vc03m-reasoning', 1, 0.001, 0.002),
-            ('vc03m-resp', 'vc03m-usage', 1, 0.001, 0.002),
-            ('vc03m-claude', 'vc03m-chat', 1, 0.001, 0.002)
-        ON CONFLICT DO NOTHING;`);
 }
 
 async function sceneZeroUpstreamOnSave(ctx) {
@@ -1937,13 +1928,6 @@ async function sceneW11ToolMeter(ctx) {
         RETURNING provider_id;`);
     const verifiedCount = verified.split('\n').map((line) => line.trim()).filter(Boolean).length;
     if (verifiedCount < 3) throw new Error(`toolCalls VERIFIED 更新行数不足：${verifiedCount}`);
-    psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
-        VALUES
-            ('vc03m-chat', 'vc03m-chat', 1, 0.001, 0.002),
-            ('vc03m-chat', 'vc03m-tools', 1, 0.001, 0.002),
-            ('vc03m-resp', 'vc03m-reasoning', 1, 0.001, 0.002),
-            ('vc03m-claude', 'vc03m-chat', 1, 0.001, 0.002)
-        ON CONFLICT DO NOTHING;`);
     const chatIdentity = crypto.randomUUID();
     const bound = await ctx.admin.call('POST', '/api/v1/st/bindings', {
         chatIdentity,
@@ -2115,10 +2099,6 @@ async function sceneStoryOutbound(ctx) {
     };
     await ctx.fixtureHttp.setOverride('vc03m-tools', directive);
     await ctx.fixtureHttp.setOverride('vc03m-reasoning', directive);
-    // 剧情回合走 FOREGROUND_CHAT 预留。Claude 工具档 model_id 是 vc03m-tools，与已有单价的主档不同。
-    psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
-        VALUES ('vc03m-claude', 'vc03m-tools', 1, 0.001, 0.002)
-        ON CONFLICT DO NOTHING;`);
     await bindForeground(ctx, 'vc03m-chat', 'chat-tools', 'vc03m-tools');
     const cardName = `W13 剧情 ${crypto.randomUUID().slice(0, 8)}`;
     const card = {
@@ -2322,7 +2302,8 @@ async function sceneStoryOutbound(ctx) {
             await page.waitForSelector('.vcms-overlay', { state: 'hidden', timeout: 10000 });
         };
         const bindProfile = async (optionValue, markerPred) => {
-            const count0 = await ctx.fixtureHttp.count();
+            // 记忆提取会继续打 vc08-memory。绑定本身不应再打目录模型或 /models。
+            const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
             if (!(await page.locator('.vcms-overlay').isVisible())) {
                 if (!(await page.locator('#vc_models_menu_button').isVisible())) await page.click('#extensionsMenuButton');
                 await page.click('#vc_models_menu_button');
@@ -2343,7 +2324,8 @@ async function sceneStoryOutbound(ctx) {
                     ? String(oai.reverse_proxy ?? '').includes(pred.slice('reverse:'.length))
                     : String(oai.custom_url ?? '').includes(pred);
             }, markerPred), { timeoutMs: 20000, label: `投影 ${optionValue}` });
-            if ((await ctx.fixtureHttp.count()) !== count0) throw new Error(`绑定 ${optionValue} 期间出现上游请求`);
+            const leaked = (await ctx.fixtureHttp.captures({ since })).filter((row) => row.model !== 'vc08-memory');
+            if (leaked.length) throw new Error(`绑定 ${optionValue} 期间出现上游请求`);
             await closePanel();
         };
         const confirmProxy = async (marker) => {

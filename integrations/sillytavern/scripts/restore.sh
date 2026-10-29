@@ -4,7 +4,12 @@
 #
 # 用法：bash scripts/restore.sh <archive.vcbae1> <target-dir（不存在或为空）>
 # 口令：VC_ST_BACKUP_PASSPHRASE 或 VC_ST_BACKUP_PASSPHRASE_FILE（0600），与 backup.sh 相同。
-# 退出码：0 成功 | 1 用法/守卫 | 3 认证失败（MAC 不匹配/口令错误/被篡改/截断） | 4 解密失败 | 5 解包失败 | 6 环境缺依赖
+# 退出码：0 成功 | 1 用法/守卫 | 3 认证失败（MAC 不匹配/口令错误/被篡改/截断） | 4 解密失败
+#         | 5 解包失败，或当前删除状态/MemoryCore 权利不可达（副本保持 blocked） | 6 环境缺依赖
+# 解包后先写 restore-gate.json {"blocked":true}。清理使用当前库，不用归档里的旧账号/F2 状态；
+# 并与归档外的 deletion-manifest 取并集（备份时另存，不随 PG 快照回滚，也不写回现有库）。
+# 当前库不可达则退出 5 并留下 blocked。成功后删除该标记，companiond 才领取任务、开放检索。
+# 离线归档本身仍保留，保留期未设定（V2-OWNER-PROTECTION），不把在线删除写成备份已消失。
 set -euo pipefail
 umask 077
 
@@ -51,13 +56,44 @@ echo "== [2/3] 解密 openssl enc -d"
 openssl enc -d -aes-256-cbc -pbkdf2 "${PASS_ARGS[@]}" -in "$WORK/body" -out "$WORK/plain.tar" || { echo "FAIL: 解密失败" >&2; exit 4; }
 echo "== [3/3] 解包到 $TARGET 并收紧权限（目录 0700 / 文件 0600）"
 tar -xpf "$WORK/plain.tar" -C "$TARGET" || { echo "FAIL: 解包失败" >&2; exit 5; }
+printf '%s\n' '{"blocked":true}' > "$TARGET/restore-gate.json"
+chmod 600 "$TARGET/restore-gate.json"
 if [ -d "$TARGET/_memorycore" ]; then
     # The service remains blocked if current Go deletion/suppression state cannot
     # be obtained. Never trust the rights snapshot contained in the old archive.
     printf '{"blocked":true}\n' > "$TARGET/_memorycore/restore-pending.json"
     python3 "$SCRIPT_DIR/lib/memorycore-backup.py" restore "$TARGET/_memorycore" || exit 5
 fi
+st_deletion_required() {
+    if [ -n "${VC_ST_DATABASE_URL:-}" ] || [ -n "${VC_ST_PG_CONTAINER:-}" ] || [ -n "${VC_ST_CURRENT_DATA_ROOT:-}" ] || [ -n "${VC_ST_DELETION_MANIFEST:-}" ]; then
+        return 0
+    fi
+    if [ -f "$(cd "$(dirname "$ARCHIVE")" && pwd -P)/deletion-manifest.json" ]; then
+        return 0
+    fi
+    if [ -e "$TARGET/_vc_accounts" ]; then
+        return 0
+    fi
+    local dir
+    for dir in "$TARGET"/*/.vc-f2; do
+        if [ -d "$dir" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+if st_deletion_required; then
+    if [ -z "${VC_ST_DELETION_MANIFEST:-}" ]; then
+        sibling="$(cd "$(dirname "$ARCHIVE")" && pwd -P)/deletion-manifest.json"
+        if [ -f "$sibling" ]; then
+            export VC_ST_DELETION_MANIFEST="$sibling"
+        fi
+    fi
+    python3 "$SCRIPT_DIR/lib/deletion-state.py" apply "$TARGET" || exit 5
+fi
+rm -f "$TARGET/restore-gate.json"
 find "$TARGET" -type d -exec chmod 700 {} + || { echo "FAIL: 收紧目录权限失败" >&2; exit 5; }
 find "$TARGET" -type f -exec chmod 600 {} + || { echo "FAIL: 收紧文件权限失败" >&2; exit 5; }
 ENTRIES=$(tar -tf "$WORK/plain.tar" | wc -l | tr -d ' ')
 echo "OK    恢复完成：${TARGET}（${ENTRIES} 条目，目录 0700/文件 0600；未触碰原 dataRoot）"
+echo "RETAINED_BACKUP name=$(basename "$ARCHIVE") expires=unset reason=V2-OWNER-PROTECTION retained=true"
