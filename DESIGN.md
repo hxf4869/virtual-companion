@@ -282,7 +282,7 @@ macOS），不是 apple.com 的营销版式。
 | 状态元信息 | 8px 状态色圆点 + 状态文字（13px） | 成功、警告、危险、中性 |
 
 图标：Lucide（Owner 2026-10-29 同意新增依赖），描边 1.75，圆角端点，常规 22px、标签栏 24、工具行 18。
-ST 原有 Font Awesome 图标在被重排的界面里替换；角色卡与第三方扩展内部的图标不替换。
+我们自己的模板一律用 Lucide；宿主模板与第三方扩展内部的 Font Awesome 保留，只按 token 着色（见第 12 节）。
 
 ## 10. 聊天细则
 
@@ -311,14 +311,32 @@ ST 原有 Font Awesome 图标在被重排的界面里替换；角色卡与第三
 
 ## 12. SillyTavern 宿主映射
 
-- 新外观通过根类 `body.vc-ui` 启用，所有样式在一个作用域样式层里，CSS 变量统一以 `--vc-` 为前缀，
-  避免与 ST 的 `--SmartTheme*` 冲突；去掉该类即回到 ST 原生外观，作为排错手段。
-- ST 抽屉的内容节点整体迁入新页面容器，保留原有 id、事件绑定与扩展挂载点；不复制表单、不重写其逻辑。
-  第三方扩展的设置区只套用 token（颜色、字体、圆角、控件样式），不重排。
-- ST 通用控件统一重绘：`.menu_button` → 按钮体系；`.text_pole` / `textarea` / `select` → 表单行；
+对照表与分批计划见 [docs/planning/2026-10-29-frontend-redesign-plan.md](docs/planning/2026-10-29-frontend-redesign-plan.md)。
+
+- **开关与样式层**：根类 `body.vc-ui` 启用新外观；样式写在扩展里一张后加载、不放进 `@layer` 的样式表，
+  变量统一 `--vc-` 前缀。需要压过宿主 `!important` 的地方（`body.no-blur` 去模糊、文档 / 气泡模式、
+  头像形状）用同等或更高优先级显式覆盖。去掉该类即回到 ST 原生外观，作为排错手段。
+- **宿主设置的处理**：新外观固定自己的颜色、消息布局与头像形状，不读 ST 主题色；ST 的字号滑杆
+  （`--fontScale`）作为整套字号刻度的倍率，输入框不低于 17px；聊天背景图层 `#bg1` 在新外观下隐藏。
+- **抽屉原位打开**：ST 九个抽屉的节点不搬动。设置里的入口触发原来的 `.drawer-toggle`，打开后的
+  `.drawer-content` 在 `body.vc-ui` 下按 id 改成全屏推入页（手机）或内容区页面（桌面），并在其内部
+  插入本系统的导航栏（返回 + 标题）。开关、Esc、点外部关闭、锁定、跨抽屉联动全部沿用宿主逻辑。
+  样式只按九个内容根的 id 写，不写通配的 `.drawer-content`（其他浮动面板也用这个类）。
+- **聊天节点只换外观**：`#chat`、`#sheld`、`#send_form` 内的宿主节点（`#send_textarea`、`#send_but`、
+  `#mes_stop`、`#options_button`、`#extensionsMenuButton` 等）与 `.mes` 结构原样保留；`.mes` 仍是 `#chat`
+  的直接子节点，滚动仍发生在 `#chat` 上。新 UI 通过 ST 事件（`CHAT_CHANGED`、`GENERATION_*`、
+  `CHARACTER_MESSAGE_RENDERED` 等）挂钩，不自建生成链。
+- **流式渐清**：使用宿主的 `stream_fade_in`（把新文字包成 `.text_segment` 并保留），由本系统把其动画改为
+  “模糊渐清”；不在 `.mes_text` 子树里插入自己的节点。
+- **角色卡内容**：`.mes_text` 只设置字体、字号、行高、颜色与链接色；不给 Tavern Helper 的 `.TH-render`、
+  iframe 设高度限制或 `overflow: hidden`。
+- **弹窗**：宿主的 `Popup` / `toastr` 继续使用，只在 `body.vc-ui` 下重绘外观；我们自己的 sheet / alert
+  用独立 `<dialog>`。
+- **通用控件**：`.menu_button` → 按钮体系；`.text_pole` / `textarea` / `select` → 表单行；
   `input[type=range]` → 滑杆；设置页里的 `input[type=checkbox]` → 开关。
-- `.mes_text` 内部只设置字体、字号、行高、颜色与链接色，不给通用元素加规则。
-- 宿主行为改动集中在既有补丁机制，不在页面脚本里散落猴子补丁；实现阶段产出 DOM 映射表，升级 ST 时逐项核对。
+- **图标**：Lucide 以静态 SVG 放在扩展目录（由 Git 管理，不进 `vendor.lock.json`），只用于我们自己的模板；
+  宿主模板中的 Font Awesome 保留，按 token 着色。
+- **宿主补丁**：外观改动全部放在扩展；只有必须改宿主脚本时才新增 JS 补丁规格（宿主 HTML / CSS 不能打补丁）。
 
 ## 13. 禁止项
 

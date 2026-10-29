@@ -310,6 +310,12 @@
       返回未定价调用、缓存 token 与命中率；模型页用量区经 ADMIN 桥只读访问。改变语义的 14 条旧断言（缺价/缺预算拒绝）已按新决定改写，其余断言不变。
       验证：Go 单测与 postgres/jobs/httpapi/migrate 集成 PASS；RLS 全量 PASS（含 270）；ST 离线测试 569/569；受管 ui03-browser、w11-tool-meter、
       story-outbound、w15-ui PASS（固定 provider，未调用真实模型）；`bash scripts/check.sh` PASS。
+- [x] `V2-F02` 记忆召回接入本机重排（bge-reranker-v2-m3，llama.cpp，127.0.0.1:11439）。注入为原余弦/FTS 门槛与校准 logit 阈值的并集，
+      按重排分数排序；不可用、超时或无效时回退原门槛。结果：DONE（2026-10-29）；提交 `c282b915`（合并 `204dc941`），部署配置 `da6a05a4`。
+      校准集正例 78/78、负例 22/22 空、top-1 69/78（原门槛 67/78）；第 10 轮真实评估 H1–H4 PASS，正例 6/8，持久化到可召回 P50 48.3s。
+      验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级见 `V2-DEPLOY` 待办。
+- [ ] `V2-F03` 前端 Apple 风格重设计（Owner 2026-10-29 确认交互原型为基线）。设计真源 `DESIGN.md` 第 2 版（`6bf76812`），
+      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：计划完成，待开始 F0。
 
 ### V2 Owner 项与运行配置（缺失只阻塞相关真实调用或验收）
 
@@ -355,7 +361,7 @@
       - 部署方式：Codex 按 `docs/planning/2026-10-29-v2-deploy-plan.md` 部署到京东云 Docker Compose（`ops/deploy/v2/`），复用现有 Nginx 与证书；
         V2 容器不发布宿主端口，ST/Go/MemoryCore/embedding 共享 loopback 命名空间，PG/MinIO 仅 internal 网络，Go 运行角色 NOBYPASSRLS，
         私有环境文件 root/0600，ST 启用 Host 白名单；域名与主机细节只在服务器 `/etc/virtual-companion/`，不入公开仓库。证书需手动续期。
-      - 待办：R2（bge 重排）合入后再按 README 升级一次，新增重排容器。
+      - 待办：R2 已合入（`V2-F02`）；按 `ops/deploy/v2/README.md` 升级到 `da6a05a4` 或之后，新增 rerank 容器与 `VC_RERANK_MODELS_DIR`。
 
 ## 当前状态（2026-10-21，V2 前实现快照）
 
