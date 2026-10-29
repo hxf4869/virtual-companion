@@ -187,7 +187,8 @@ test('index 只在标志打开时挂载外壳', async () => {
     assert.equal([...src.matchAll(/enableVcUi\(\)/g)].length, 1);
     assert.match(src, /if \(readVcUiFlag\(\)\) \{\n\s+const navigation = \{\n\s+openInstance\(\) \{\},\n\s+\};\n\s+registerShellTabs\(\{/);
     assert.ok(src.indexOf('mountShell({') > src.indexOf('registerShellTabs({'));
-    const ui = src.indexOf("new URL('./vc-ui.css'");
+    // mountVcUi 以列表加载 vc-ui.css、drawers.css 等；仍须在外壳挂载之前。
+    const ui = src.indexOf("'./vc-ui.css'");
     const call = src.indexOf('mountShell({');
     assert.ok(ui !== -1 && call > ui);
 });
