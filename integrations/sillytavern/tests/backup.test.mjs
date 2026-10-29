@@ -17,7 +17,7 @@ const PASS = `synthetic-${crypto.randomBytes(12).toString('hex')}`;
 
 function sh(script, args, env = {}) {
     const base = { ...process.env, VC_MEMORYCORE_DATA_ROOT: path.join(T || os.tmpdir(), 'no-engine') };
-    for (const key of ['VC_ST_BACKUP_PASSPHRASE', 'VC_ST_BACKUP_PASSPHRASE_FILE', 'VC_ST_DATABASE_URL', 'VC_ST_PG_CONTAINER', 'VC_ST_CURRENT_DATA_ROOT', 'VC_ST_DELETION_MANIFEST', 'VC_RESTORE_GATE_FILE', 'VC_TEST_PSQL_FAIL']) delete base[key];
+    for (const key of ['VC_ST_BACKUP_PASSPHRASE', 'VC_ST_BACKUP_PASSPHRASE_FILE', 'VC_ST_DATABASE_URL', 'VC_ST_PG_CONTAINER', 'VC_ST_CURRENT_DATA_ROOT', 'VC_ST_DELETION_MANIFEST', 'VC_RESTORE_GATE_FILE', 'VC_TEST_PSQL_FAIL', 'VC_BACKUP_PG_DSN', 'VC_BACKUP_PG_CONTAINER', 'VC_BACKUP_PG_USER', 'VC_BACKUP_PG_DATABASE', 'PGPASSFILE', 'PGPASSWORD']) delete base[key];
     return spawnSync('bash', [script, ...args], { encoding: 'utf8', env: { ...base, ...env } });
 }
 function walkFiles(root) {

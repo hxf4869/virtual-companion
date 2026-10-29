@@ -18,6 +18,13 @@
 # 删除清单不进归档：VC_ST_DATABASE_URL 或 VC_ST_PG_CONTAINER 恰好设置其一时，另写
 # VC_ST_DELETION_MANIFEST（默认与归档同目录的 deletion-manifest.json）。恢复读这份最新清单，
 # 不把它打进会被回滚的快照，也不写回 PostgreSQL。
+# PostgreSQL（可选，恰好其一；口令不进 argv）：
+#   VC_BACKUP_PG_DSN         libpq URL。口令写入临时 0600 PGPASSFILE。
+#   VC_BACKUP_PG_CONTAINER   在容器内执行 pg_dump -Fc（自定义格式）。
+#   VC_BACKUP_PG_USER        容器内用户，默认 postgres
+#   VC_BACKUP_PG_DATABASE    容器内库名，默认 vc
+# 两者都未设置时不导出数据库，并输出「未含 PostgreSQL」。
+# MinIO 不备份：导出对象约 24 小时过期，是对话与记忆的临时下载副本。
 # 不打包：明确列出的自托管派生文件与 extensions/（上游锁 + 补丁 + vendor.lock 可重放）；任何 keyfile / .env。
 # 守卫：输出不能落在 dataRoot 内；keyfile 不能在 dataRoot 内，也不能与归档同目录。产物 0600。
 #       只对本次新建的输出目录设 0700，已存在的父目录权限不动。
@@ -32,6 +39,10 @@ AEAD="$REPO_ROOT/infra/db/backup/vc_aead.py"
 
 [ $# -eq 3 ] || { echo "用法: bash scripts/backup.sh <dataRoot> <config.yaml|-> <out.vcbae1>" >&2; exit 1; }
 DATA="$1"; CONFIG="$2"; OUT="$3"
+if [ -n "${VC_BACKUP_PG_DSN:-}" ] && [ -n "${VC_BACKUP_PG_CONTAINER:-}" ]; then
+    echo "FAIL: VC_BACKUP_PG_DSN 与 VC_BACKUP_PG_CONTAINER 只能设一个" >&2
+    exit 1
+fi
 
 command -v openssl >/dev/null || { echo "FAIL: 需要 openssl" >&2; exit 6; }
 command -v python3 >/dev/null || { echo "FAIL: 需要 python3（vc_aead.py）" >&2; exit 6; }
@@ -154,7 +165,19 @@ if [ -n "${VC_ST_DATABASE_URL:-}" ] || [ -n "${VC_ST_PG_CONTAINER:-}" ]; then
     fi
 fi
 
-echo "== [1/4] 打包保护清单（$(printf '%s, ' "${INCLUDE[@]}" | sed 's/, $//')${CONFIG:+, _config/config.yaml}）"
+PG_INCLUDED=0
+if [ -n "${VC_BACKUP_PG_DSN:-}" ] || [ -n "${VC_BACKUP_PG_CONTAINER:-}" ]; then
+    mkdir -p "$WORK/stage/_postgres"
+    chmod 700 "$WORK/stage" "$WORK/stage/_postgres"
+    python3 "$SCRIPT_DIR/lib/postgres-backup.py" dump "$WORK/stage/_postgres" || exit 2
+    TAR_ARGS+=(-C "$WORK/stage" "_postgres")
+    PG_INCLUDED=1
+fi
+
+PACKED="$(printf '%s, ' "${INCLUDE[@]}" | sed 's/, $//')"
+if [ "$CONFIG" != "-" ]; then PACKED="${PACKED}, _config/config.yaml"; fi
+if [ "$PG_INCLUDED" -eq 1 ]; then PACKED="${PACKED}, _postgres/db.dump"; fi
+echo "== [1/4] 打包保护清单（${PACKED}）"
 [ ${#MISSING[@]} -eq 0 ] || echo "      未出现（跳过）：${MISSING[*]}"
 tar -cf "$WORK/plain.tar" "${TAR_ARGS[@]}" || { echo "FAIL: tar 打包失败" >&2; exit 2; }
 ENTRIES=$(tar -tf "$WORK/plain.tar" | wc -l | tr -d ' ')
@@ -174,4 +197,8 @@ cmp -s "$WORK/plain.tar" "$WORK/verify.tar" || { echo "FAIL: 自校验字节不�
 
 mv "$WORK/out.vcbae1" "$OUT"; chmod 600 "$OUT"
 OUT_BYTES=$(stat -f '%z' "$OUT" 2>/dev/null || stat -c '%s' "$OUT")
+if [ "$PG_INCLUDED" -eq 0 ]; then
+    echo "POSTGRESQL 未含 PostgreSQL"
+fi
+echo "MinIO 未备份：导出对象约 24 小时过期，是对话与记忆的临时下载副本，不纳入归档"
 echo "OK    备份完成：${OUT}（0600，${OUT_BYTES}B；明文 tar ${BYTES}B / ${ENTRIES} 条目；密钥来源：${KF_REAL:-环境变量}）"

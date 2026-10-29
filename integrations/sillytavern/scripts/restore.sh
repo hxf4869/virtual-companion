@@ -8,7 +8,11 @@
 #         | 5 解包失败，或当前删除状态/MemoryCore 权利不可达（副本保持 blocked） | 6 环境缺依赖
 # 解包后先写 restore-gate.json {"blocked":true}。清理使用当前库，不用归档里的旧账号/F2 状态；
 # 并与归档外的 deletion-manifest 取并集（备份时另存，不随 PG 快照回滚，也不写回现有库）。
-# 当前库不可达则退出 5 并留下 blocked。成功后删除该标记，companiond 才领取任务、开放检索。
+# 归档含 _postgres/db.dump 时，用 VC_BACKUP_PG_DSN 或 VC_BACKUP_PG_CONTAINER（恰好其一）
+# 在同一实例上 CREATE DATABASE 一个新的 vc_restore_* 库并 pg_restore。不覆盖、不改名当前库。
+# 恢复进新库之后、撤掉 blocked 之前，把同一删除并集应用到该新库：删除被删账号、关系、会话和记忆行。
+# 成功时输出 RESTORED_DATABASE，switched=false。当前库不可达、新库创建失败或清理失败则退出 5，
+# 留下 blocked，并丢掉未完成的新库。成功后删除该标记，companiond 才领取任务、开放检索。
 # 离线归档本身仍保留，保留期未设定（V2-OWNER-PROTECTION），不把在线删除写成备份已消失。
 set -euo pipefail
 umask 077
@@ -82,6 +86,23 @@ st_deletion_required() {
     done
     return 1
 }
+if [ -z "${VC_ST_DELETION_MANIFEST:-}" ]; then
+    sibling="$(cd "$(dirname "$ARCHIVE")" && pwd -P)/deletion-manifest.json"
+    if [ -f "$sibling" ]; then
+        export VC_ST_DELETION_MANIFEST="$sibling"
+    fi
+fi
+if [ -f "$TARGET/_postgres/db.dump" ]; then
+    if [ -n "${VC_BACKUP_PG_DSN:-}" ] && [ -n "${VC_BACKUP_PG_CONTAINER:-}" ]; then
+        echo "FAIL: VC_BACKUP_PG_DSN 与 VC_BACKUP_PG_CONTAINER 只能设一个；恢复门保持 blocked" >&2
+        exit 5
+    fi
+    if [ -z "${VC_BACKUP_PG_DSN:-}" ] && [ -z "${VC_BACKUP_PG_CONTAINER:-}" ]; then
+        echo "FAIL: 归档含 PostgreSQL，但未设置 VC_BACKUP_PG_DSN 或 VC_BACKUP_PG_CONTAINER；恢复门保持 blocked" >&2
+        exit 5
+    fi
+    python3 "$SCRIPT_DIR/lib/postgres-backup.py" restore "$TARGET/_postgres" "$TARGET/restore-gate.json" || exit 5
+fi
 if st_deletion_required; then
     if [ -z "${VC_ST_DELETION_MANIFEST:-}" ]; then
         sibling="$(cd "$(dirname "$ARCHIVE")" && pwd -P)/deletion-manifest.json"
@@ -91,6 +112,7 @@ if st_deletion_required; then
     fi
     python3 "$SCRIPT_DIR/lib/deletion-state.py" apply "$TARGET" || exit 5
 fi
+rm -rf "$TARGET/_postgres"
 rm -f "$TARGET/restore-gate.json"
 find "$TARGET" -type d -exec chmod 700 {} + || { echo "FAIL: 收紧目录权限失败" >&2; exit 5; }
 find "$TARGET" -type f -exec chmod 600 {} + || { echo "FAIL: 收紧文件权限失败" >&2; exit 5; }
