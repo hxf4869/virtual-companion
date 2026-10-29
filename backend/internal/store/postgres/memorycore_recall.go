@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -72,19 +74,32 @@ type engineGateText struct {
 }
 
 type RecallObserve struct {
-	SummaryAllow       int    `json:"summaryGateAllow"`
-	SummaryReject      int    `json:"summaryGateReject"`
-	ProfileAllow       int    `json:"profileGateAllow"`
-	ProfileReject      int    `json:"profileGateReject"`
-	EmbeddingCacheHit  int    `json:"embeddingCacheHit"`
-	EmbeddingCacheMiss int    `json:"embeddingCacheMiss"`
-	RecallEmpty        int    `json:"recallEmpty"`
-	RerankDecision     string `json:"rerankDecision"`
-	RerankCandidates   int    `json:"rerankCandidates"`
-	RerankKept         int    `json:"rerankKept"`
-	RerankOnly         int    `json:"rerankOnly"`
-	RerankFallback     int    `json:"rerankFallback"`
-	Searched           bool   `json:"-"`
+	SummaryAllow         int    `json:"summaryGateAllow"`
+	SummaryReject        int    `json:"summaryGateReject"`
+	ProfileAllow         int    `json:"profileGateAllow"`
+	ProfileReject        int    `json:"profileGateReject"`
+	EmbeddingCacheHit    int    `json:"embeddingCacheHit"`
+	EmbeddingCacheMiss   int    `json:"embeddingCacheMiss"`
+	RecallEmpty          int    `json:"recallEmpty"`
+	RerankDecision       string `json:"rerankDecision"`
+	RerankCandidates     int    `json:"rerankCandidates"`
+	RerankKept           int    `json:"rerankKept"`
+	RerankOnly           int    `json:"rerankOnly"`
+	RerankFallback       int    `json:"rerankFallback"`
+	QueryEmbeddingMs     int    `json:"queryEmbeddingMs"`
+	LooseRetrievalMs     int    `json:"looseRetrievalMs"`
+	OriginalGateMs       int    `json:"originalGateMs"`
+	KeywordRecoveryMs    int    `json:"keywordRecoveryMs"`
+	RerankMs             int    `json:"rerankMs"`
+	SummaryProfileGateMs int    `json:"summaryProfileGateMs"`
+	RerankCacheHit       int    `json:"rerankCacheHit"`
+	RerankCacheMiss      int    `json:"rerankCacheMiss"`
+	ContextMs            int    `json:"-"`
+	SourceMs             int    `json:"-"`
+	EngineMs             int    `json:"-"`
+	AuthMs               int    `json:"-"`
+	RecallMs             int    `json:"-"`
+	Searched             bool   `json:"-"`
 }
 
 type engineRecall struct {
@@ -133,9 +148,43 @@ func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64
 }
 
 func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, q recallQuery) (engineRecall, error) {
-	candidates, e := s.engineCandidates(ctx, owner, rel, conv)
-	if e != nil {
-		return engineRecall{}, e
+	// Candidate SQL, the embedding snapshot and the rerank switch do not
+	// depend on each other. A failure cancels the rest; a canceled sibling
+	// does not hide the first real error.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var candidates map[string]Memory
+	var embedding EmbeddingConfig
+	var rerankOn bool
+	errc := make(chan error, 3)
+	go func() {
+		var err error
+		candidates, err = s.engineCandidates(ctx, owner, rel, conv)
+		errc <- err
+	}()
+	go func() {
+		var err error
+		embedding, err = s.ResolveEmbeddingConfig(ctx, owner)
+		errc <- err
+	}()
+	go func() {
+		var err error
+		rerankOn, err = s.ResolveOwnerMemoryRerank(ctx, owner)
+		errc <- err
+	}()
+	var first error
+	for range 3 {
+		err := <-errc
+		if err == nil {
+			continue
+		}
+		if first == nil || (errors.Is(first, context.Canceled) && !errors.Is(err, context.Canceled)) {
+			first = err
+		}
+		cancel()
+	}
+	if first != nil {
+		return engineRecall{}, first
 	}
 	ids := []string{}
 	undated, otherDay := []string{}, []string{}
@@ -159,10 +208,6 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 		found.GateKnown = true
 		return found, nil
 	}
-	embedding, e := s.ResolveEmbeddingConfig(ctx, owner)
-	if e != nil {
-		return engineRecall{}, e
-	}
 	// The allowlist above is already limited to q.Date. MemoryCore must not
 	// apply that date again: a merged summary can omit metadata.eventDate
 	// while the Go record still carries the verified source date.
@@ -175,15 +220,11 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 	}
 	// An omitted flag leaves MemoryCore on engineRerank, so VC_RERANK_ENABLED=0
 	// still disables rerank. Only an explicit false turns the owner switch off.
-	rerankOn, e := s.ResolveOwnerMemoryRerank(ctx, owner)
-	if e != nil {
-		return engineRecall{}, e
-	}
 	if !rerankOn {
 		payload["rerankEnabled"] = false
 	}
 	var raw json.RawMessage
-	e = s.memoryEngine.Call(ctx, "search", payload, &raw)
+	e := s.memoryEngine.Call(ctx, "search", payload, &raw)
 	if e != nil {
 		return engineRecall{}, e
 	}

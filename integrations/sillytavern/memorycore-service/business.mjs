@@ -89,13 +89,13 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
         return { file, stored };
     }
     async function operationEntries(ctx) {
-        const out = [];
-        for (const name of await entries(path.join(ctx.dir, 'operations'))) {
-            if (!name.endsWith('.json')) continue;
-            const file = path.join(ctx.dir, 'operations', name), op = await readJSON(file);
-            if (op) out.push({ file, id: name.slice(0, -5), op });
-        }
-        return out;
+        const names = (await entries(path.join(ctx.dir, 'operations'))).filter((name) => name.endsWith('.json'));
+        const rows = await Promise.all(names.map(async (name) => {
+            const file = path.join(ctx.dir, 'operations', name);
+            const op = await readJSON(file);
+            return op ? { file, id: name.slice(0, -5), op } : null;
+        }));
+        return rows.filter(Boolean);
     }
     async function noCleanup(ctx) {
         if (await readJSON(path.join(ctx.dir, 'deleted.json'))) fail('OWNER_DELETED');

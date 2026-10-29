@@ -7,6 +7,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 type stMemoryStore interface {
@@ -14,7 +15,9 @@ type stMemoryStore interface {
 }
 
 func (s *Server) handleSTMemoryRecall(w http.ResponseWriter, r *http.Request) {
+	authStarted := time.Now()
 	p := s.corePrincipal(w, r, true)
+	authMs := time.Since(authStarted).Milliseconds()
 	if p == nil {
 		return
 	}
@@ -41,6 +44,7 @@ func (s *Server) handleSTMemoryRecall(w http.ResponseWriter, r *http.Request) {
 		if logger == nil {
 			logger = slog.Default()
 		}
+		out.Observe.AuthMs = int(authMs)
 		logger.Info("memory recall",
 			"summary_gate_allow", out.Observe.SummaryAllow,
 			"summary_gate_reject", out.Observe.SummaryReject,
@@ -53,7 +57,20 @@ func (s *Server) handleSTMemoryRecall(w http.ResponseWriter, r *http.Request) {
 			"rerank_candidates", out.Observe.RerankCandidates,
 			"rerank_kept", out.Observe.RerankKept,
 			"rerank_only", out.Observe.RerankOnly,
-			"rerank_fallback", out.Observe.RerankFallback)
+			"rerank_fallback", out.Observe.RerankFallback,
+			"rerank_cache_hit", out.Observe.RerankCacheHit,
+			"rerank_cache_miss", out.Observe.RerankCacheMiss,
+			"embedding_stage_ms", out.Observe.QueryEmbeddingMs,
+			"loose_retrieval_ms", out.Observe.LooseRetrievalMs,
+			"original_gate_ms", out.Observe.OriginalGateMs,
+			"keyword_recovery_ms", out.Observe.KeywordRecoveryMs,
+			"rerank_ms", out.Observe.RerankMs,
+			"summary_profile_gate_ms", out.Observe.SummaryProfileGateMs,
+			"auth_ms", out.Observe.AuthMs,
+			"context_ms", out.Observe.ContextMs,
+			"source_ms", out.Observe.SourceMs,
+			"engine_ms", out.Observe.EngineMs,
+			"recall_ms", out.Observe.RecallMs)
 		if s.metrics != nil {
 			s.metrics.ObserveMemoryRecall(recallMetrics(out.Observe))
 		}
@@ -68,7 +85,12 @@ func recallMetrics(observed postgres.RecallObserve) observability.MemoryRecallSt
 		EmbeddingCacheHit: observed.EmbeddingCacheHit, EmbeddingCacheMiss: observed.EmbeddingCacheMiss,
 		RecallEmpty: observed.RecallEmpty, RerankFallback: observed.RerankFallback,
 		RerankCandidates: observed.RerankCandidates, RerankKept: observed.RerankKept,
-		RerankOnly: observed.RerankOnly,
+		RerankOnly: observed.RerankOnly, RerankCacheHit: observed.RerankCacheHit,
+		RerankCacheMiss: observed.RerankCacheMiss, QueryEmbeddingMs: observed.QueryEmbeddingMs,
+		LooseRetrievalMs: observed.LooseRetrievalMs, OriginalGateMs: observed.OriginalGateMs,
+		KeywordRecoveryMs: observed.KeywordRecoveryMs, RerankMs: observed.RerankMs,
+		SummaryProfileGateMs: observed.SummaryProfileGateMs, SourceMs: observed.SourceMs,
+		RecallMs: observed.RecallMs,
 	}
 	switch observed.RerankDecision {
 	case "applied":

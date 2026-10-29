@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { createControlledEngine } from './business.mjs';
 import { createOllamaEmbedding, embeddingCacheStats } from './embedding.mjs';
 import { createCallbackRunner } from './llm-runner.mjs';
-import { engineRerank, looseRetrievalFilter, summaryUnits } from './rerank.mjs';
+import { engineRerank, looseRetrievalFilter, rerankCacheStats, summaryUnits } from './rerank.mjs';
 
 // Calibrated on fixtures/memorycore-calibration.json (88 synthetic Chinese
 // questions, 18 memories) with local qwen3-embedding:0.6b and
@@ -148,29 +148,56 @@ function keywordClauses(query) {
 // scored separately so an unrelated tail cannot dilute the matching clause.
 async function keywordRecover(questions, records, embedding, taken) {
     if (typeof embedding?.embedQuery !== 'function' || typeof embedding?.embed !== 'function') return [];
-    const found = [];
+    const jobs = [];
     for (const record of records) {
         if (!record || taken.has(record.id) || typeof record.content !== 'string') continue;
         const bigrams = new Set(contentNgrams(record.content, 2));
         const trigrams = new Set(contentNgrams(record.content, 3));
-        let best = 0;
-        let matched = false;
+        const clauses = [];
         for (const question of questions) {
             for (const clause of keywordClauses(question)) {
                 const shared = new Set(contentNgrams(clause, 2).filter(gram => bigrams.has(gram)));
                 const trigram = contentNgrams(clause, 3).some(gram => trigrams.has(gram));
                 if (shared.size < 2 && !trigram) continue;
-                const score = cosine(await embedding.embedQuery(clause), await embedding.embed(record.content));
-                if (score >= RELEVANCE.cosineFloor && score > best) { best = score; matched = true; }
+                clauses.push(clause);
             }
         }
-        if (matched) found.push({ record_id: record.id, score: 1e-6, cosine: best, ftsScore: null });
+        if (clauses.length) jobs.push({ record, clauses });
     }
-    return found;
+    // Clause order is preserved so an equal cosine keeps the earlier clause,
+    // matching the previous sequential scan.
+    const found = await Promise.all(jobs.map(async ({ record, clauses }) => {
+        const scores = await Promise.all(clauses.map(async (clause) => cosine(await embedding.embedQuery(clause), await embedding.embed(record.content))));
+        let best = 0;
+        let matched = false;
+        for (const score of scores) {
+            if (score >= RELEVANCE.cosineFloor && score > best) { best = score; matched = true; }
+        }
+        return matched ? { record_id: record.id, score: 1e-6, cosine: best, ftsScore: null } : null;
+    }));
+    return found.filter(Boolean);
 }
 function emptyRecallStats() {
     return { summaryGateAllow: 0, summaryGateReject: 0, profileGateAllow: 0, profileGateReject: 0, embeddingCacheHit: 0, embeddingCacheMiss: 0, recallEmpty: 0,
-        rerankDecision: 'disabled', rerankCandidates: 0, rerankKept: 0, rerankOnly: 0, rerankFallback: 0, rerankGateFallback: 0 };
+        rerankDecision: 'disabled', rerankCandidates: 0, rerankKept: 0, rerankOnly: 0, rerankFallback: 0, rerankGateFallback: 0,
+        queryEmbeddingMs: 0, looseRetrievalMs: 0, originalGateMs: 0, keywordRecoveryMs: 0, rerankMs: 0, summaryProfileGateMs: 0,
+        rerankCacheHit: 0, rerankCacheMiss: 0 };
+}
+function took(start) {
+    return Math.max(0, Math.round(performance.now() - start));
+}
+function timeQueryEmbedding(embedding, stages) {
+    if (!stages || !embedding) return embedding;
+    const query = embedding.embedQuery || embedding.embed;
+    if (typeof query !== 'function') return embedding;
+    return {
+        ...embedding,
+        embedQuery: async (...args) => {
+            const started = performance.now();
+            try { return await query.apply(embedding, args); }
+            finally { stages.queryEmbeddingMs += took(started); }
+        },
+    };
 }
 function rerankFailureCode(error) {
     if (error?.code === 'timeout' || error?.code === 'invalid' || error?.code === 'unavailable') return error.code;
@@ -184,38 +211,58 @@ function resolveRerank(explicit) {
     if (explicit && typeof explicit.rank === 'function') return { candidateLimit: 20, summaryUnit: 'line', ...explicit, enabled: true };
     return deployed;
 }
-export async function looseCandidateHits(api, store, questions, ids, scope, embedding, dated, limit) {
-    const merged = new Map();
-    for (const question of questions) {
-        const filter = { ...scope, allowedRecordIds: ids, ...looseRetrievalFilter() };
-        if (dated) filter.lexicalQuery = stripDate(question);
-        const result = await api.recallL1Candidates({ query: question, topK: limit, vectorStore: store,
-            embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined, filter });
-        for (const hit of result.hits || []) {
-            if (!hit?.record_id || typeof hit.content !== 'string' || !hit.content) continue;
-            const prior = merged.get(hit.record_id);
-            if (!prior || hit.score > prior.score) merged.set(hit.record_id, hit);
+export async function looseCandidateHits(api, store, questions, ids, scope, embedding, dated, limit, stages) {
+    const started = performance.now();
+    try {
+        // Sub-questions do not depend on each other. Merge in question order so
+        // an equal score keeps the earlier question's hit.
+        const parts = await Promise.all(questions.map(async (question) => {
+            const filter = { ...scope, allowedRecordIds: ids, ...looseRetrievalFilter() };
+            if (dated) filter.lexicalQuery = stripDate(question);
+            const result = await api.recallL1Candidates({ query: question, topK: limit, vectorStore: store,
+                embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined, filter });
+            return result.hits || [];
+        }));
+        const merged = new Map();
+        for (const hits of parts) {
+            for (const hit of hits) {
+                if (!hit?.record_id || typeof hit.content !== 'string' || !hit.content) continue;
+                const prior = merged.get(hit.record_id);
+                if (!prior || hit.score > prior.score) merged.set(hit.record_id, hit);
+            }
         }
+        return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+    } finally {
+        if (stages) stages.looseRetrievalMs += took(started);
     }
-    return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
 // The current cosine/FTS gates, including keyword recovery. This is the injection
 // set used when the reranker is off, and one side of the union when it is on.
-async function originalGateHits(api, store, queries, ids, scope, embedding, dated, topK) {
-    const hits = new Map();
-    for (const question of queries) {
+async function originalGateHits(api, store, queries, ids, scope, embedding, dated, topK, stages) {
+    const started = performance.now();
+    const parts = await Promise.all(queries.map(async (question) => {
         const genericSchedule = dated && isGenericSchedule(question);
         const filter = { ...scope, allowedRecordIds: ids, ...RELEVANCE, genericSchedule };
         if (dated) filter.lexicalQuery = stripDate(question);
         const result = await api.recallL1Candidates({ query: question, topK, vectorStore: store,
             embeddingService: embedding ? { ...embedding, embed: embedding.embedQuery || embedding.embed } : undefined,
             filter });
-        for (const hit of result.hits) {
+        return result.hits || [];
+    }));
+    const hits = new Map();
+    for (const part of parts) {
+        for (const hit of part) {
             const prior = hits.get(hit.record_id);
             if (!prior || hit.score > prior.score) hits.set(hit.record_id, hit);
         }
     }
-    for (const hit of await keywordRecover(queries, listRecords(store, ids, scope), embedding, new Set(hits.keys()))) hits.set(hit.record_id, hit);
+    if (stages) stages.originalGateMs += took(started);
+    const keywordStarted = performance.now();
+    try {
+        for (const hit of await keywordRecover(queries, listRecords(store, ids, scope), embedding, new Set(hits.keys()))) hits.set(hit.record_id, hit);
+    } finally {
+        if (stages) stages.keywordRecoveryMs += took(keywordStarted);
+    }
     return [...hits.values()].sort((a, b) => b.score - a.score);
 }
 function listRecords(store, ids, scope) {
@@ -224,16 +271,21 @@ function listRecords(store, ids, scope) {
 async function collectGates(query, gateTexts, embedding, dated, stats, rerank) {
     const gated = [];
     if (!Array.isArray(gateTexts)) return gated;
-    for (const item of gateTexts) {
-        if (!item || typeof item.id !== 'string' || typeof item.text !== 'string') continue;
-        const allowed = await summaryPassesGate(query, item.text, embedding, dated, rerank);
-        if (stats) {
-            const profile = item.id === 'persona';
-            stats[allowed ? (profile ? 'profileGateAllow' : 'summaryGateAllow') : (profile ? 'profileGateReject' : 'summaryGateReject')]++;
+    const started = performance.now();
+    try {
+        for (const item of gateTexts) {
+            if (!item || typeof item.id !== 'string' || typeof item.text !== 'string') continue;
+            const allowed = await summaryPassesGate(query, item.text, embedding, dated, rerank);
+            if (stats) {
+                const profile = item.id === 'persona';
+                stats[allowed ? (profile ? 'profileGateAllow' : 'summaryGateAllow') : (profile ? 'profileGateReject' : 'summaryGateReject')]++;
+            }
+            if (allowed) gated.push(item.id);
         }
-        if (allowed) gated.push(item.id);
+        return gated;
+    } finally {
+        if (stats) stats.summaryProfileGateMs += took(started);
     }
-    return gated;
 }
 function toRecord(row) {
     return { id: row.record_id, content: row.content, type: row.type, priority: row.priority,
@@ -278,7 +330,9 @@ export async function createNativeFactory(api) {
             async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false, rerank }) {
                 if (typeof query !== 'string' || !query || query.length > 20000) throw new Error('MEMORYCORE_QUERY');
                 const cacheBefore = observe ? embeddingCacheStats() : null;
+                const rerankBefore = observe ? rerankCacheStats() : null;
                 const stats = observe ? emptyRecallStats() : null;
+                if (stats && embedding) embedding = timeQueryEmbedding(embedding, stats);
                 const client = resolveRerank(rerank);
                 let gateFallback = 0;
                 // Go already dropped other days when dateRestricted is set. Passing
@@ -293,8 +347,11 @@ export async function createNativeFactory(api) {
                     const gated = await collectGates(query, gateTexts, embedding, dated, stats, gateRerank);
                     if (!stats) return Array.isArray(gateTexts) && gateTexts.length > 0 ? { hits: ranked, gated } : ranked;
                     const cacheAfter = embeddingCacheStats();
+                    const rerankAfter = rerankCacheStats();
                     stats.embeddingCacheHit = cacheAfter.hits - cacheBefore.hits;
                     stats.embeddingCacheMiss = cacheAfter.misses - cacheBefore.misses;
+                    stats.rerankCacheHit = rerankAfter.hits - rerankBefore.hits;
+                    stats.rerankCacheMiss = rerankAfter.misses - rerankBefore.misses;
                     stats.recallEmpty = searched && ranked.length === 0 ? 1 : 0;
                     stats.rerankGateFallback = gateFallback;
                     return { hits: ranked, gated, stats };
@@ -305,15 +362,26 @@ export async function createNativeFactory(api) {
                 // generic schedule question may use the lower cosine floor.
                 const queries = queryParts(query);
                 if (client.enabled) {
+                    const limit = client.candidateLimit || 20;
+                    // Loose retrieval, the original gate, and each sub-question are
+                    // independent. Rerank starts as soon as the loose hits exist and
+                    // overlaps the rest of the original gate.
+                    const looseP = looseCandidateHits(api, store, queries, ids, scope, embedding, dated, limit, stats);
+                    const originalP = originalGateHits(api, store, queries, ids, scope, embedding, dated, topK, stats);
                     try {
-                        const limit = client.candidateLimit || 20;
-                        const capped = await looseCandidateHits(api, store, queries, ids, scope, embedding, dated, limit);
+                        const capped = await looseP;
                         if (stats) stats.rerankCandidates = capped.length;
-                        const scores = capped.length ? await client.rank(query, capped.map((hit) => hit.content)) : [];
+                        const rankStarted = performance.now();
+                        let scores = [];
+                        try {
+                            scores = capped.length ? await client.rank(query, capped.map((hit) => hit.content)) : [];
+                        } finally {
+                            if (stats) stats.rerankMs += took(rankStarted);
+                        }
                         if (scores.length !== capped.length || scores.some((score) => !Number.isFinite(score))) {
                             throw Object.assign(new Error('RERANK_INVALID'), { code: 'invalid' });
                         }
-                        const original = await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK);
+                        const original = await originalP;
                         const originalIds = new Set(original.map((hit) => hit.record_id));
                         const rankedScore = new Map(capped.map((hit, index) => [hit.record_id, scores[index]]));
                         const injected = [];
@@ -351,12 +419,16 @@ export async function createNativeFactory(api) {
                             stats.rerankFallback = 1;
                             stats.rerankKept = 0;
                         }
+                        let original;
+                        try { original = await originalP; }
+                        catch { original = await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK, stats); }
+                        return finish(original.slice(0, topK), true);
                     }
                 } else if (stats) {
                     stats.rerankDecision = 'disabled';
                     stats.rerankFallback = 0;
                 }
-                const ranked = (await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK)).slice(0, topK);
+                const ranked = (await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK, stats)).slice(0, topK);
                 return finish(ranked, true);
             },
             async rebuildProfile({ records, stagingDir, scope, runner }) {

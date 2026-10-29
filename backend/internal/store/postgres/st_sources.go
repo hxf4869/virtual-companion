@@ -65,6 +65,9 @@ func (s *Store) ReconcileSTSources(ctx context.Context, owner int64, chats []str
 			byID[snap.ChatIdentity] = snap
 		}
 		pending = nil
+		// Applying snapshots writes source and memory rows that several chats
+		// can share; keep these transactions sequential to avoid lock-order
+		// deadlocks. Only the snapshot reads above run in parallel.
 		for _, base := range bases {
 			snap, ok := byID[base.ChatIdentity]
 			if !ok || snap.State == "UNKNOWN" {

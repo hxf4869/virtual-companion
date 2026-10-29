@@ -12,8 +12,10 @@
 
 `172.24.0.0/24` 是部署时确认空闲的专用网段。embedding 使用 Ollama 0.33.2 CPU 镜像（`VC_EMBEDDING_IMAGE`），
 只读挂载已有的 `qwen3-embedding:0.6b` 模型目录（`VC_EMBEDDING_MODELS_DIR`），单独运行服务。
+Compose 设置 `OLLAMA_KEEP_ALIVE=-1`，MemoryCore 的每次嵌入请求也带 `keep_alive: -1`，模型在进程活着时保持加载。
+Ollama 自身的默认是空闲约 5 分钟后卸载；卸载后的下一次嵌入要重新把模型载入内存。
 rerank 使用代码中固定 digest 的 llama.cpp 镜像（多架构，含 amd64），只读挂载 `VC_RERANK_MODELS_DIR` 中的
-`bge-reranker-v2-m3-Q8_0.gguf`，只监听共享命名空间内的 `127.0.0.1:11439`，常驻约 0.5 GB 内存。它不可用、超时或返回异常时，
+`bge-reranker-v2-m3-Q8_0.gguf`，只监听共享命名空间内的 `127.0.0.1:11439`，进程启动时加载模型并常驻约 0.5 GB 内存，没有空闲卸载。它不可用、超时或返回异常时，
 MemoryCore 回退到余弦 / FTS 门槛，聊天不中断。
 `db-data`、`minio-data`、`st-data`、`memorycore-data` 是持久卷。不要执行 `down -v`。
 

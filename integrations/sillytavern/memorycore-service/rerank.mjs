@@ -96,40 +96,110 @@ function rerankError(code) {
     return error;
 }
 
-export function createRerankClient({ endpoint, timeoutMs = RERANK.timeoutMs, fetchImpl = fetch, threshold = RERANK.threshold, summaryUnit = RERANK.summaryUnit, enabled = true, candidateLimit = RERANK.candidateLimit } = {}) {
+// Process-local logits. The key is the raw model id, query and document
+// joined by NUL — not a hash — so a changed memory text misses on its own.
+// Sixty seconds covers the second recall of the same send. Least-recently
+// used pairs past the cap are dropped; expiry does not move on a hit.
+export const RERANK_CACHE_TTL_MS = 60_000;
+export const RERANK_CACHE_LIMIT = 256;
+const rerankScoreCache = new Map();
+let rerankCacheHits = 0;
+let rerankCacheMisses = 0;
+
+export function rerankScoreKey(model, query, document) {
+    return `${model}\0${query}\0${document}`;
+}
+
+export function rerankCacheStats() {
+    return { hits: rerankCacheHits, misses: rerankCacheMisses };
+}
+
+export function resetRerankCache() {
+    rerankScoreCache.clear();
+    rerankCacheHits = 0;
+    rerankCacheMisses = 0;
+}
+
+function readRerankScore(key, now) {
+    const hit = rerankScoreCache.get(key);
+    if (!hit) return undefined;
+    if (now - hit.at >= RERANK_CACHE_TTL_MS) {
+        rerankScoreCache.delete(key);
+        return undefined;
+    }
+    rerankScoreCache.delete(key);
+    rerankScoreCache.set(key, hit);
+    return hit.score;
+}
+
+function storeRerankScore(key, score, now) {
+    rerankScoreCache.set(key, { score, at: now });
+    while (rerankScoreCache.size > RERANK_CACHE_LIMIT) {
+        const oldest = rerankScoreCache.keys().next().value;
+        rerankScoreCache.delete(oldest);
+    }
+}
+
+async function requestRerankScores({ endpoint, timeoutMs, fetchImpl, query, documents }) {
+    let response;
+    try {
+        response = await fetchImpl(`${String(endpoint).replace(/\/$/u, '')}/v1/rerank`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ model: RERANK.model, query, documents, top_n: documents.length }),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+    } catch (error) {
+        const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+        throw rerankError(timedOut ? 'timeout' : 'unavailable');
+    }
+    if (!response?.ok) throw rerankError('invalid');
+    let body;
+    try { body = await response.json(); }
+    catch { throw rerankError('invalid'); }
+    const results = body?.results;
+    if (!Array.isArray(results)) throw rerankError('invalid');
+    const scores = new Array(documents.length).fill(null);
+    for (const item of results) {
+        const index = item?.index;
+        const score = item?.relevance_score;
+        if (!Number.isInteger(index) || index < 0 || index >= documents.length || !Number.isFinite(score) || scores[index] !== null) {
+            throw rerankError('invalid');
+        }
+        scores[index] = score;
+    }
+    if (scores.some((score) => score === null)) throw rerankError('invalid');
+    return scores;
+}
+
+export function createRerankClient({ endpoint, timeoutMs = RERANK.timeoutMs, fetchImpl = fetch, threshold = RERANK.threshold, summaryUnit = RERANK.summaryUnit, enabled = true, candidateLimit = RERANK.candidateLimit, now = () => Date.now() } = {}) {
     return {
         enabled, threshold, timeoutMs, summaryUnit, candidateLimit,
         async rank(query, documents) {
             if (!Array.isArray(documents) || documents.some((text) => typeof text !== 'string')) throw rerankError('invalid');
             if (documents.length === 0) return [];
-            let response;
-            try {
-                response = await fetchImpl(`${String(endpoint).replace(/\/$/u, '')}/v1/rerank`, {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({ model: RERANK.model, query, documents, top_n: documents.length }),
-                    signal: AbortSignal.timeout(timeoutMs),
-                });
-            } catch (error) {
-                const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
-                throw rerankError(timedOut ? 'timeout' : 'unavailable');
-            }
-            if (!response?.ok) throw rerankError('invalid');
-            let body;
-            try { body = await response.json(); }
-            catch { throw rerankError('invalid'); }
-            const results = body?.results;
-            if (!Array.isArray(results)) throw rerankError('invalid');
-            const scores = new Array(documents.length).fill(null);
-            for (const item of results) {
-                const index = item?.index;
-                const score = item?.relevance_score;
-                if (!Number.isInteger(index) || index < 0 || index >= documents.length || !Number.isFinite(score) || scores[index] !== null) {
-                    throw rerankError('invalid');
+            const clock = now();
+            const scores = new Array(documents.length);
+            const missing = [];
+            for (let index = 0; index < documents.length; index += 1) {
+                const key = rerankScoreKey(RERANK.model, query, documents[index]);
+                const cached = readRerankScore(key, clock);
+                if (cached === undefined) {
+                    rerankCacheMisses += 1;
+                    missing.push(index);
+                } else {
+                    rerankCacheHits += 1;
+                    scores[index] = cached;
                 }
-                scores[index] = score;
             }
-            if (scores.some((score) => score === null)) throw rerankError('invalid');
+            if (!missing.length) return scores;
+            const fresh = await requestRerankScores({
+                endpoint, timeoutMs, fetchImpl, query, documents: missing.map((index) => documents[index]),
+            });
+            for (let index = 0; index < missing.length; index += 1) {
+                scores[missing[index]] = fresh[index];
+                storeRerankScore(rerankScoreKey(RERANK.model, query, documents[missing[index]]), fresh[index], clock);
+            }
             return scores;
         },
     };
