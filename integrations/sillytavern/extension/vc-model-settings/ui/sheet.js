@@ -159,7 +159,7 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
             { opacity: 1, transform: 'none' },
         ], { duration: 560 });
         back.addEventListener('click', () => popLayer());
-        back.focus();
+        back.focus({ preventScroll: true });
         return { el: pane, close: () => popLayer() };
     }
 
@@ -184,10 +184,10 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         const outside = active === el || !el.contains(active);
         if (event.shiftKey && (active === first || outside)) {
             event.preventDefault();
-            last.focus();
+            last.focus({ preventScroll: true });
         } else if (!event.shiftKey && (active === last || outside)) {
             event.preventDefault();
-            first.focus();
+            first.focus({ preventScroll: true });
         }
     }, { signal: ac.signal });
 
@@ -204,6 +204,9 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         pending = true;
         drag = false;
         stopSpring();
+        if (event.pointerId != null) {
+            try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 指针已经释放 */ }
+        }
         sy = event.clientY;
         st = y;
         lastY = event.clientY;
@@ -216,7 +219,6 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         if (!drag) {
             if (Math.abs(dy) < DRAG_SLOP) return;
             drag = true;
-            event.currentTarget.setPointerCapture?.(event.pointerId);
         }
         let next = st + dy;
         if (next < 0) next = -Math.pow(-next, 0.7);
@@ -249,6 +251,7 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     set(H);
     scrim.style.transition = 'none';
     to(openAt);
-    el.focus();
+    // 宿主若还能滚动，focus 会把 scrollTop 加到和 translateY 一样，半档被拉回全高，拖动也被抵消。
+    el.focus({ preventScroll: true });
     return { el, scrim, close, push };
 }

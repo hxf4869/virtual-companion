@@ -11,6 +11,7 @@ import { finalRequestUrl } from './url-normalize.js';
 import { buildResponsesRequest, extractRoundFromOutput, applyToolOutputs } from './responses-adapter.js';
 import { isStorySession } from './story-guard.js';
 import { log } from './log.js';
+import { absorbStreamAbort } from './stream-abort.js';
 
 export const MAX_TOOL_STEPS = 8;
 export const MAX_TOOL_TIMEOUT_MS = 120_000;
@@ -451,6 +452,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
                 body: JSON.stringify(outbound),
                 signal: stepSignal(),
             });
+            absorbStreamAbort(upstream?.body);
         } catch (error) {
             await cancelQuiet(config, reservation, 'UNKNOWN');
             if (error instanceof BridgeError) throw error;

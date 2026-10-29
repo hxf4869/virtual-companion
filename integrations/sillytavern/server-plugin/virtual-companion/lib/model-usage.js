@@ -6,6 +6,7 @@
 import { BridgeError } from './errors.js';
 import { reserveModelUsage, settleModelUsage, cancelModelUsage } from './go-client.js';
 import { log } from './log.js';
+import { absorbStreamAbort } from './stream-abort.js';
 
 const REFUSAL = {
     NO_PRICE: '当前模型没有单价，本次生成未发送',
@@ -175,6 +176,7 @@ export async function armUsageHold(spec) {
  * 补丁在那次响应返回后调用这里，并传入当前 request：只结算这一请求的预留。
  */
 export function settleArmedResponse(response, url, request) {
+    absorbStreamAbort(response?.body);
     if (!response) return;
     const armed = takeRequestHold(request, url);
     if (!armed) return;

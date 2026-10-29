@@ -25,6 +25,7 @@ import {
 } from './responses-adapter.js';
 import { prepareToolPolicy, runBoundedToolLoop, stripUnmeteredRequestFields } from './tool-loop.js';
 import { reserveSend, armUsageHold, settleArmedResponse, abandonOutbound, usageFetchInstalled, readUsageTokens, settleUsage, cancelUsage } from './model-usage.js';
+import { absorbStreamAbort } from './stream-abort.js';
 
 export const BRIDGE_SYMBOL = Symbol.for('virtual-companion.bridge');
 const PURPOSES_ALLOWED = new Set(['FOREGROUND_CHAT']);
@@ -281,6 +282,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                     body: JSON.stringify(requestBody),
                     signal: AbortSignal.any([controller.signal, AbortSignal.timeout(config.timeoutMs)]),
                 });
+                absorbStreamAbort(upstream.body);
 
                 if (!upstream.ok) {
                     await cancelHold('UNKNOWN');
@@ -581,6 +583,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
         interceptGenerate,
         finalOutboundGuard,
         settleOutboundResponse: settleArmedResponse,
+        absorbStreamAbort,
         abandonOutbound,
     };
 }

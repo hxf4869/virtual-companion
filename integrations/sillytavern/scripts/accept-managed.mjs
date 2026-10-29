@@ -77,6 +77,7 @@ import { sceneF3Settings } from './f3-settings-accept.mjs';
 import { sceneVcUiShell } from './vc-ui-shell-accept.mjs';
 import { sceneVcUiWalkthrough } from './vc-ui-walkthrough.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
+import { sceneF2ChatUi } from './f2-chat-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -156,6 +157,12 @@ SCENES.push({
 SCENES.push({
     id: 'vc-ui-walkthrough',
     title: 'F5 新外观全站走查截图',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+});
+SCENES.push({
+    id: 'f2-chat-ui',
+    title: 'F2 聊天新外观：发送、流式、停止、滑动、长按、冲突与复杂卡状态栏',
     needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
@@ -3086,6 +3093,7 @@ const SCENE_IMPLS = {
     'f3-settings': sceneF3Settings,
     'vc-ui-shell': sceneVcUiShell,
     'vc-ui-walkthrough': sceneVcUiWalkthrough,
+    'f2-chat-ui': sceneF2ChatUi,
 };
 
 async function runFull() {

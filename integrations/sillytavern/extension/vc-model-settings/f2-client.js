@@ -312,21 +312,45 @@ function closeF2Panel(panel, { focusInput = false } = {}) {
     if (!focusInput && f2Opener && typeof f2Opener.focus === 'function') f2Opener.focus();
 }
 
+function applyLatest(panel, existing) {
+    const latest = stContext()?.chat;
+    const recovered = Array.isArray(latest) ? extractUnsavedUserInput(f2Draft, latest) : '';
+    if (recovered) f2UserInput = recovered;
+    if (panel.open) panel.close();
+    showRecall(Boolean(f2UserInput));
+    placeUserInput(recovered, existing, { focus: true });
+}
+
 async function viewLatest(panel) {
     const existing = String(readSendBox()?.value ?? '');
     const reload = stContext()?.reloadCurrentChat;
     if (typeof reload !== 'function') return;
+    const chat = stContext()?.chat;
+    const originalSplice = Array.isArray(chat) ? chat.splice : null;
+    let applied = false;
+    const finish = () => {
+        if (applied) return;
+        applied = true;
+        applyLatest(panel, existing);
+    };
+    // getChat 用 splice 换上新消息后还会 await 渲染。输入必须在这次 splice 返回前写回，
+    // 否则页面已经能读到新消息时，草稿还停在重载完成之后。
+    if (typeof originalSplice === 'function') {
+        chat.splice = function (...args) {
+            const result = originalSplice.apply(this, args);
+            if (args.length > 2) finish();
+            return result;
+        };
+    }
     try {
         await reload();
     } catch {
+        if (applied && !panel.open) panel.showModal();
         return;
+    } finally {
+        if (typeof originalSplice === 'function') chat.splice = originalSplice;
     }
-    const latest = stContext()?.chat;
-    const recovered = Array.isArray(latest) ? extractUnsavedUserInput(f2Draft, latest) : '';
-    if (recovered) f2UserInput = recovered;
-    panel.close();
-    showRecall(Boolean(f2UserInput));
-    placeUserInput(recovered, existing, { focus: true });
+    finish();
 }
 
 /** Keep the rejected snapshot only in the page; never log it or upload it. */
@@ -377,7 +401,95 @@ export function showF2Draft(serialized) {
         document.body.append(panel);
     }
     showRecall(false);
+    presentConflict(panel);
     if (!panel.open) panel.showModal();
+}
+
+function nodeParent(node) {
+    return node?.parentElement || node?.parent || null;
+}
+
+function prependNode(parent, node) {
+    if (!parent || !node) return;
+    if (typeof parent.prepend === 'function') {
+        parent.prepend(node);
+        return;
+    }
+    const first = parent.children?.[0];
+    if (first && Array.isArray(parent.children)) {
+        node.parent = parent;
+        parent.children.unshift(node);
+        return;
+    }
+    parent.append(node);
+}
+
+function replaceNode(target, node) {
+    const parent = nodeParent(target);
+    if (!parent) return;
+    if (typeof target.replaceWith === 'function') {
+        target.replaceWith(node);
+        return;
+    }
+    const index = parent.children.indexOf(target);
+    node.parent = parent;
+    if (index >= 0) parent.children.splice(index, 1, node);
+    else parent.children.push(node);
+    target.parent = null;
+}
+
+function moveNode(parent, node) {
+    const old = nodeParent(node);
+    if (old && old !== parent && Array.isArray(old.children)) {
+        const index = old.children.indexOf(node);
+        if (index >= 0) old.children.splice(index, 1);
+    }
+    parent.append(node);
+}
+
+/** vc-ui 下把既有三个动作收成 sheet：上「我的草稿」，下「最新版本」。不写入草稿正文。 */
+function presentConflict(panel) {
+    if (!document.body?.classList?.contains('vc-ui') || !panel || panel.querySelector('[data-vc-draft]')) return;
+    panel.classList.add('vc-sheet');
+    const wrap = panel.querySelector('.vc-f2-panel') || panel;
+    if (!wrap.querySelector('.vc-sheet-grab')) {
+        const grab = document.createElement('div');
+        grab.className = 'vc-sheet-grab';
+        prependNode(wrap, grab);
+    }
+    const heading = panel.querySelector('#vc-f2-title');
+    if (heading && !heading.parentElement?.classList?.contains('vc-sheet-head') && !heading.parent?.classList?.contains('vc-sheet-head')) {
+        const head = document.createElement('div');
+        head.className = 'vc-sheet-head';
+        const parent = nodeParent(heading);
+        if (parent) {
+            if (typeof heading.replaceWith === 'function') heading.replaceWith(head);
+            else replaceNode(heading, head);
+            head.append(heading);
+        }
+    }
+    const actions = panel.querySelector('.vc-f2-actions');
+    const latest = panel.querySelector('[data-action="view-latest"]');
+    const keep = panel.querySelector('[data-action="keep-draft"]');
+    const copy = panel.querySelector('[data-action="copy-input"]');
+    if (!actions || !latest || !keep || !copy) return;
+    const stack = document.createElement('div');
+    stack.className = 'vc-f2-stack';
+    const draft = document.createElement('section');
+    draft.setAttribute('data-vc-draft', '');
+    const draftTitle = document.createElement('h3');
+    draftTitle.textContent = '我的草稿';
+    draft.append(draftTitle);
+    moveNode(draft, keep);
+    moveNode(draft, copy);
+    const fresh = document.createElement('section');
+    fresh.setAttribute('data-vc-latest', '');
+    const freshTitle = document.createElement('h3');
+    freshTitle.textContent = '最新版本';
+    fresh.append(freshTitle);
+    moveNode(fresh, latest);
+    stack.append(draft, fresh);
+    replaceNode(actions, stack);
 }
 
 export const vcF2 = createF2Client({ onConflict: showF2Draft });
