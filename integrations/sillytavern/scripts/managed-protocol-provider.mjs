@@ -86,7 +86,41 @@ export const SCRIPTS = {
     'vc03m-huge': { text: '大输入用例：' + '很长'.repeat(120) + '。', chunks: 2 },
 };
 
-const DEFAULT_USAGE = { prompt: 21, completion: 13 };
+const DEFAULT_USAGE = { prompt: 21, completion: 13, cached: 8 };
+
+function openAiChatUsage(plan) {
+    const prompt = plan.usage.prompt;
+    const completion = plan.usage.completion;
+    const cached = plan.usage.cached ?? DEFAULT_USAGE.cached;
+    return {
+        prompt_tokens: prompt,
+        completion_tokens: completion,
+        total_tokens: prompt + completion,
+        prompt_tokens_details: { cached_tokens: cached },
+    };
+}
+
+function openAiResponsesUsage(plan) {
+    const prompt = plan.usage.prompt;
+    const completion = plan.usage.completion;
+    const cached = plan.usage.cached ?? DEFAULT_USAGE.cached;
+    return {
+        input_tokens: prompt,
+        output_tokens: completion,
+        total_tokens: prompt + completion,
+        input_tokens_details: { cached_tokens: cached },
+    };
+}
+
+function anthropicUsage(plan, output = plan.usage.completion) {
+    const cached = plan.usage.cached ?? DEFAULT_USAGE.cached;
+    return {
+        input_tokens: plan.usage.prompt,
+        output_tokens: output,
+        cache_read_input_tokens: cached,
+        cache_creation_input_tokens: 0,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // 工具
@@ -266,11 +300,7 @@ function renderChatNonStream(plan, res) {
         type: 'function',
         function: { name: plan.tool.name, arguments: (plan.tool.argumentsPieces || []).join('') },
     }];
-    const usage = {
-        prompt_tokens: plan.usage.prompt,
-        completion_tokens: plan.usage.completion,
-        total_tokens: plan.usage.prompt + plan.usage.completion,
-    };
+    const usage = openAiChatUsage(plan);
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
         id, object: 'chat.completion', created, model: plan.model,
@@ -308,11 +338,7 @@ async function renderChatStream(plan, res) {
             }
         }
         // 非流式响应带 usage。流式结束块同样带上，账本才能结算；缺用量会被标成 UNKNOWN。
-        yield () => res.write(chunk({}, plan.tool ? 'tool_calls' : 'stop', {
-            prompt_tokens: plan.usage.prompt,
-            completion_tokens: plan.usage.completion,
-            total_tokens: plan.usage.prompt + plan.usage.completion,
-        }));
+        yield () => res.write(chunk({}, plan.tool ? 'tool_calls' : 'stop', openAiChatUsage(plan)));
         yield () => res.write('data: [DONE]\n\n');
     });
 }
@@ -367,11 +393,7 @@ function renderResponsesNonStream(plan, res) {
         status: 'completed',
         model: plan.model,
         output,
-        usage: {
-            input_tokens: plan.usage.prompt,
-            output_tokens: plan.usage.completion,
-            total_tokens: plan.usage.prompt + plan.usage.completion,
-        },
+        usage: openAiResponsesUsage(plan),
     }));
 }
 
@@ -424,11 +446,7 @@ async function renderResponsesStream(plan, res) {
             response: {
                 id, object: 'response', status: 'completed', model: plan.model,
                 output: responsesItems(plan, plan.seq),
-                usage: {
-                    input_tokens: plan.usage.prompt,
-                    output_tokens: plan.usage.completion,
-                    total_tokens: plan.usage.prompt + plan.usage.completion,
-                },
+                usage: openAiResponsesUsage(plan),
             },
         });
     });
@@ -465,7 +483,7 @@ function renderAnthropicNonStream(plan, res) {
         content: blocks,
         stop_reason: plan.tool ? 'tool_use' : 'end_turn',
         stop_sequence: null,
-        usage: { input_tokens: plan.usage.prompt, output_tokens: plan.usage.completion },
+        usage: anthropicUsage(plan),
     }));
 }
 
@@ -481,7 +499,7 @@ async function renderAnthropicStream(plan, res) {
             message: {
                 id: `msg-vc03m-${plan.seq}`, type: 'message', role: 'assistant',
                 model: plan.model, content: [], stop_reason: null,
-                usage: { input_tokens: plan.usage.prompt, output_tokens: 1 },
+                usage: anthropicUsage(plan, 1),
             },
         });
         let index = 0;

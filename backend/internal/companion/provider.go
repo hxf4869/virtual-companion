@@ -76,6 +76,9 @@ type Usage struct {
 	InputTokens  int64
 	OutputTokens int64
 	TotalTokens  int64
+	// CachedInputTokens is nil when the provider omitted cache counters.
+	// A reported zero is a non-nil pointer, never a substitute for omission.
+	CachedInputTokens *int64
 }
 
 // AttemptResult is returned only on a successful provider stream.

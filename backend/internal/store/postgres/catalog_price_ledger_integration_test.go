@@ -130,7 +130,7 @@ ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', role = 'USER';`); err != nil {
 	if err != nil || other.ReservedUSD != "0.009000" {
 		t.Fatalf("other owner hold %+v err=%v", other, err)
 	}
-	if _, err := store.SettleModelUsage(ctx, 3, held.ReservationID, 1000, 1000); !errors.Is(err, ErrNotFound) {
+	if _, err := store.SettleModelUsage(ctx, 3, held.ReservationID, 1000, 1000, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other owner settle err=%v", err)
 	}
 	if got := reservationStatus(t, "priced-v1"); got != "HELD" {
@@ -143,8 +143,9 @@ ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', role = 'USER';`); err != nil {
 	if status("chat") != LedgerPriceUnsupportedCurrency {
 		t.Fatalf("cny ledgerPrice=%s", status("chat"))
 	}
-	if _, err := reserve(1, "priced-cny"); usageReason(err) != ModelUsageNoPrice {
-		t.Fatalf("cny reserve err=%v", err)
+	cny, err := reserve(1, "priced-cny")
+	if err != nil || cny.ReservedUSD != "0.000000" {
+		t.Fatalf("cny unpriced hold %+v err=%v", cny, err)
 	}
 	if got := activeLedgerCount(t, "priced", "chat"); got != "0" {
 		t.Fatalf("cny left %s active prices", got)
@@ -154,8 +155,9 @@ ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', role = 'USER';`); err != nil {
 	if status("chat") != LedgerPriceMissing {
 		t.Fatalf("empty ledgerPrice=%s", status("chat"))
 	}
-	if _, err := reserve(1, "priced-empty"); usageReason(err) != ModelUsageNoPrice {
-		t.Fatalf("empty reserve err=%v", err)
+	empty, err := reserve(1, "priced-empty")
+	if err != nil || empty.ReservedUSD != "0.000000" {
+		t.Fatalf("empty unpriced hold %+v err=%v", empty, err)
 	}
 	if got := activeLedgerCount(t, "priced", "chat"); got != "0" {
 		t.Fatalf("empty price left %s active prices", got)
@@ -178,8 +180,9 @@ ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', role = 'USER';`); err != nil {
 	if status("chat") != LedgerPriceMissing {
 		t.Fatalf("disabled ledgerPrice=%s", status("chat"))
 	}
-	if _, err := reserve(1, "priced-disabled"); usageReason(err) != ModelUsageNoPrice {
-		t.Fatalf("disabled reserve err=%v", err)
+	disabled, err := reserve(1, "priced-disabled")
+	if err != nil || disabled.ReservedUSD != "0.000000" {
+		t.Fatalf("disabled unpriced hold %+v err=%v", disabled, err)
 	}
 	if got := activeLedgerCount(t, "priced", "chat"); got != "0" {
 		t.Fatalf("disabled model left %s active prices", got)
@@ -205,11 +208,12 @@ ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', role = 'USER';`); err != nil {
 	if status("shared") == LedgerPriceActive || status("shared-b") == LedgerPriceActive {
 		t.Fatalf("disagreeing profiles shared=%s shared-b=%s", status("shared"), status("shared-b"))
 	}
-	if _, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
+	shared, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
 		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "priced-shared",
 		ProviderID: "priced", ModelID: "shared", InputTokens: 1000, OutputTokens: 1000,
-	}); usageReason(err) != ModelUsageNoPrice {
-		t.Fatalf("disagreeing model ids must stay NO_PRICE, err=%v", err)
+	})
+	if err != nil || shared.ReservedUSD != "0.000000" {
+		t.Fatalf("disagreeing model ids hold %+v err=%v", shared, err)
 	}
 }
 

@@ -21,8 +21,8 @@ const expects = {
     'account-partial': ['部分完成', '备份状态独立，策略在 W16'],
     'account-delete': ['账号删除未完成，聊天已暂停。', 'ST、MEMORYCORE'],
     'model-ledger-active': ['美元价', '计价样本'],
-    'model-ledger-missing': ['未配置单价，无法发送', '空价'],
-    'model-ledger-currency': ['仅美元计价可用于发送', '人民币价'],
+    'model-ledger-missing': ['未配置单价：照常发送，费用记为未知', '空价'],
+    'model-ledger-currency': ['非美元单价：照常发送，费用记为未知', '人民币价'],
     'model-resave': ['空价', '计价样本'],
 };
 const absent = ['手机已收到', 'ADMIN', 'otpauth', '9007199254740993', 'vc_csrf', 'revoke-all'];
@@ -94,13 +94,13 @@ try {
                 const rows = document.querySelector('[data-sessions]')?.innerText || '';
                 if (!rows.includes('当前会话 ·')) problems.push('当前会话没有时间');
             }
-            if (scenarioName === 'model-ledger-active' && (text.includes('未配置单价，无法发送') || text.includes('仅美元计价可用于发送'))) {
+            if (scenarioName === 'model-ledger-active' && (text.includes('未配置单价：照常发送，费用记为未知') || text.includes('非美元单价：照常发送，费用记为未知'))) {
                 problems.push('有效美元价不应额外提示');
             }
-            if (scenarioName === 'model-ledger-missing' && text.includes('仅美元计价可用于发送')) problems.push('空价显示了币种提示');
-            if (scenarioName === 'model-ledger-currency' && text.includes('未配置单价，无法发送')) problems.push('非美元价显示成未配置单价');
+            if (scenarioName === 'model-ledger-missing' && text.includes('非美元单价：照常发送，费用记为未知')) problems.push('空价显示了币种提示');
+            if (scenarioName === 'model-ledger-currency' && text.includes('未配置单价：照常发送，费用记为未知')) problems.push('非美元价显示成未配置单价');
             if (scenarioName === 'model-resave') {
-                if (text.includes('未配置单价，无法发送') || text.includes('仅美元计价可用于发送')) problems.push('保存后仍显示发送限制');
+                if (text.includes('未配置单价：照常发送，费用记为未知') || text.includes('非美元单价：照常发送，费用记为未知')) problems.push('保存后仍显示发送限制');
                 if ((window.__vcProviderGets || 0) < 2) problems.push('保存后没有重新拉取列表');
                 if (window.__vcPutHasLedger !== false) problems.push('保存请求写回了 ledgerPrice');
             }

@@ -333,7 +333,7 @@ func addedPlaintextColumn(table, key string, got any) error {
 		}
 	case "attempt":
 		switch key {
-		case "memorycore_operation_id", "memorycore_stage", "memorycore_call_sequence":
+		case "memorycore_operation_id", "memorycore_stage", "memorycore_call_sequence", "cached_input_tokens":
 			if got != nil {
 				return fmt.Errorf("new column %s = %#v, want null", key, got)
 			}

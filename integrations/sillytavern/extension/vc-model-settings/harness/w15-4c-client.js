@@ -145,11 +145,11 @@ if (scenario.startsWith('model')) {
         await waitFor(() => {
             const name = document.querySelector('#vcms-m-display')?.value || '';
             const text = document.querySelector('.vcms-model-form')?.innerText || '';
-            return name === '美元价' && !document.querySelector('#vcms-no-price') && !document.querySelector('#vcms-currency-price') && !text.includes('未配置单价，无法发送') && !text.includes('仅美元计价可用于发送');
+            return name === '美元价' && !document.querySelector('#vcms-no-price') && !document.querySelector('#vcms-currency-price') && !text.includes('未配置单价：照常发送，费用记为未知') && !text.includes('非美元单价：照常发送，费用记为未知');
         });
     }
-    if (scenario === 'model-ledger-missing') await waitFor(() => document.querySelector('#vcms-no-price')?.textContent.includes('未配置单价，无法发送'));
-    if (scenario === 'model-ledger-currency') await waitFor(() => document.querySelector('#vcms-currency-price')?.textContent.includes('仅美元计价可用于发送'));
+    if (scenario === 'model-ledger-missing') await waitFor(() => document.querySelector('#vcms-no-price')?.textContent.includes('未配置单价：照常发送，费用记为未知'));
+    if (scenario === 'model-ledger-currency') await waitFor(() => document.querySelector('#vcms-currency-price')?.textContent.includes('非美元单价：照常发送，费用记为未知'));
     if (scenario === 'model-resave') {
         await waitFor(() => document.querySelector('#vcms-no-price'));
         const currency = document.querySelector('#vcms-m-currency');

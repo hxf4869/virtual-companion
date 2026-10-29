@@ -3,8 +3,10 @@ catalogId: model-ledger-price-statuses
 note: >-
   Derived per profile from its state, currency and the current effective
   vc.model_unit_price row. The ledger is USD per 1K tokens, converted from
-  the catalog's USD per million tokens. ACTIVE is that match. MISSING leaves
-  a reservation NO_PRICE. UNSUPPORTED_CURRENCY is any currency other than USD.
+  the catalog's USD per million tokens. ACTIVE is that match. MISSING and
+  UNSUPPORTED_CURRENCY have no effective USD price: the send is admitted and
+  the fee is null, never zero. UNSUPPORTED_CURRENCY is any currency other
+  than USD and is not treated as free.
 entries:
 - code: ACTIVE
   order: 0

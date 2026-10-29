@@ -20,19 +20,43 @@ let epoch = 0;
 /** @type {WeakMap<object, object>} 预留绑定到发起它的 request，避免进程级单槽串单。 */
 const holdsByRequest = new WeakMap();
 
-/** 没有 usage 对象时返回 undefined。显式 0 仍是用量。 */
+/** 上游没给缓存字段时返回 null。显式 0 仍是 0。非法数字返回 undefined，调用方不结算。 */
+export function readCachedInputTokens(usage) {
+    if (!usage || typeof usage !== 'object') return null;
+    const hasRead = Object.prototype.hasOwnProperty.call(usage, 'cache_read_input_tokens');
+    const hasCreate = Object.prototype.hasOwnProperty.call(usage, 'cache_creation_input_tokens');
+    if (hasRead || hasCreate) {
+        const read = hasRead ? Number(usage.cache_read_input_tokens) : 0;
+        const create = hasCreate ? Number(usage.cache_creation_input_tokens) : 0;
+        if (!Number.isInteger(read) || !Number.isInteger(create) || read < 0 || create < 0) return undefined;
+        return read + create;
+    }
+    const details = usage.prompt_tokens_details ?? usage.input_tokens_details;
+    if (!details || typeof details !== 'object' || !Object.prototype.hasOwnProperty.call(details, 'cached_tokens')) {
+        return null;
+    }
+    const cached = Number(details.cached_tokens);
+    if (!Number.isInteger(cached) || cached < 0) return undefined;
+    return cached;
+}
+
+/** 没有 usage 对象时返回 undefined。显式 0 仍是用量。cachedInputTokens 缺省为 null。 */
 export function readUsageTokens(usage) {
     if (!usage || typeof usage !== 'object') return undefined;
+    const cachedInputTokens = readCachedInputTokens(usage);
+    if (cachedInputTokens === undefined) return undefined;
     if ('prompt_tokens' in usage || 'completion_tokens' in usage) {
         return {
             inputTokens: Number(usage.prompt_tokens ?? 0),
             outputTokens: Number(usage.completion_tokens ?? 0),
+            cachedInputTokens,
         };
     }
     if ('input_tokens' in usage || 'output_tokens' in usage) {
         return {
             inputTokens: Number(usage.input_tokens ?? 0),
             outputTokens: Number(usage.output_tokens ?? 0),
+            cachedInputTokens,
         };
     }
     return undefined;
@@ -205,11 +229,15 @@ function scheduleSettle(armed, response) {
                 await cancelQuiet(armed, 'UNKNOWN');
                 return;
             }
-            await settleUsage(armed.config, armed.reservationId, {
+            const payload = {
                 ownerAccountId: armed.ownerAccountId,
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
-            });
+            };
+            if (usage.cachedInputTokens !== null && usage.cachedInputTokens !== undefined) {
+                payload.cachedInputTokens = usage.cachedInputTokens;
+            }
+            await settleUsage(armed.config, armed.reservationId, payload);
         } catch {
             await cancelQuiet(armed, 'UNKNOWN');
         }
@@ -229,9 +257,13 @@ async function readSseUsage(response) {
     const text = await response.text();
     let input;
     let output;
+    let cached = null;
     let saw = false;
     const take = (usage, kind) => {
         if (!usage || typeof usage !== 'object') return;
+        const cache = readCachedInputTokens(usage);
+        if (cache === undefined) return;
+        if (cache !== null) cached = cache;
         if (kind === 'chat' && ('prompt_tokens' in usage || 'completion_tokens' in usage)) {
             input = Number(usage.prompt_tokens ?? input ?? 0);
             output = Number(usage.completion_tokens ?? output ?? 0);
@@ -265,5 +297,5 @@ async function readSseUsage(response) {
         }
     }
     if (!saw) return undefined;
-    return { inputTokens: input ?? 0, outputTokens: output ?? 0 };
+    return { inputTokens: input ?? 0, outputTokens: output ?? 0, cachedInputTokens: cached };
 }

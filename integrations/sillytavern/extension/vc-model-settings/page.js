@@ -75,6 +75,7 @@ export function mountModelSettings() {
         toast: null,
         check: { busy: false, error: null, result: null }, // 连接检查（check-only，不改草稿）
         budget: { known: false, insufficient: false },
+        usage: { month: logic.currentUsageMonth(), rows: [], error: null, loading: false },
         reauth: { open: false, busy: false, error: null, password: '', retry: null }, // 403 再验证；retry: 'provider' | 'bindings'
     };
 
@@ -126,11 +127,23 @@ export function mountModelSettings() {
         try {
             // 会话上下文快照与目录同批取得：load（含显式重新加载）是唯一刷新快照的入口，
             // 写请求前绝不静默重取（core.go VC-R169 跨账号/旧会话防护）。
-            const [, providers, purposes] = await Promise.all([
+            const usageMonth = state.usage.month || logic.currentUsageMonth();
+            const [, providers, purposes, usageResult] = await Promise.all([
                 api.captureSessionContext(),
                 api.fetchProviders(),
                 api.fetchModelPurposes(),
+                api.fetchUsageSummary(usageMonth).then((data) => ({ data }), (error) => ({ error })),
             ]);
+            if (usageResult.error) {
+                state.usage = { month: usageMonth, rows: [], error: usageResult.error.message || '用量暂时无法读取', loading: false };
+            } else {
+                state.usage = {
+                    month: usageResult.data?.month || usageMonth,
+                    rows: Array.isArray(usageResult.data?.purposes) ? usageResult.data.purposes : [],
+                    error: null,
+                    loading: false,
+                };
+            }
             state.providers = Array.isArray(providers) ? providers : [];
             state.purposes = Array.isArray(purposes) ? purposes : [];
             state.bindingsDraft = new Map(
@@ -609,8 +622,67 @@ export function mountModelSettings() {
         </div>`;
     }
 
+    function renderUsagePanel() {
+        const rows = Array.isArray(state.usage.rows) ? state.usage.rows : [];
+        const table = rows.length === 0
+            ? '<p class="vcms-muted">这个月还没有用量。</p>'
+            : `<table class="vcms-usage-table">
+                <thead><tr>
+                    <th>用途</th><th>调用</th><th>未定价</th><th>输入</th><th>输出</th><th>缓存命中</th><th>命中率</th><th>费用</th>
+                </tr></thead>
+                <tbody>
+                ${rows.map((row) => `<tr>
+                    <td>${esc(logic.usagePurposeLabel(row.purpose))}</td>
+                    <td>${esc(row.calls ?? 0)}</td>
+                    <td>${esc(row.unpricedCalls ?? 0)}</td>
+                    <td>${esc(logic.formatTokenCount(row.inputTokens))}</td>
+                    <td>${esc(logic.formatTokenCount(row.outputTokens))}</td>
+                    <td>${esc(logic.formatTokenCount(row.cachedInputTokens))}</td>
+                    <td>${esc(logic.formatCacheHitRate(row.cacheHitRate))}</td>
+                    <td>${esc(logic.formatUsageFee(row))}</td>
+                </tr>`).join('')}
+                </tbody>
+            </table>`;
+        const body = state.usage.loading
+            ? '<p class="vcms-muted">正在读取用量…</p>'
+            : state.usage.error
+                ? `<p class="vcms-callout vcms-callout-warn" role="status">${esc(state.usage.error)}</p>`
+                : table;
+        return `
+        <section class="vcms-usage" aria-label="用量">
+            <div class="vcms-usage-head">
+                <span class="vcms-section-label">用量</span>
+                <div class="vcms-usage-month">
+                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="-1">上个月</button>
+                    <span data-usage-month-label>${esc(state.usage.month)}</span>
+                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="1">下个月</button>
+                </div>
+            </div>
+            <p class="vcms-muted">默认当月（UTC）。未配置单价时照常发送，费用显示为未知，不记为 0。预算不足只在已设置月度预算并且超出时出现。</p>
+            ${body}
+        </section>`;
+    }
+
+    async function reloadUsage(month) {
+        state.usage = { ...state.usage, month, loading: true, error: null };
+        render();
+        try {
+            const data = await api.fetchUsageSummary(month);
+            state.usage = {
+                month: data?.month || month,
+                rows: Array.isArray(data?.purposes) ? data.purposes : [],
+                error: null,
+                loading: false,
+            };
+        } catch (err) {
+            state.usage = { month, rows: [], error: err?.message || '用量暂时无法读取', loading: false };
+        }
+        render();
+    }
+
     function renderContent() {
         return `
+        ${renderUsagePanel()}
         <div class="vcms-layout">
             <aside class="vcms-providers" aria-label="供应商列表">
                 <div class="vcms-providers-head">
@@ -1465,6 +1537,11 @@ export function mountModelSettings() {
             case 'discard-close':
                 close();
                 break;
+            case 'usage-month': {
+                const delta = Number(el.getAttribute('data-delta'));
+                if (delta === 1 || delta === -1) reloadUsage(logic.shiftUsageMonth(state.usage.month, delta));
+                break;
+            }
             case 'tab':
                 state.tab = el.getAttribute('data-tab');
                 render();

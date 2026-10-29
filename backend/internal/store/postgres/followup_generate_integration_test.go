@@ -105,15 +105,17 @@ func TestFollowUpGenerationStore(t *testing.T) {
 	if count != 1 || reserved != "0.000042" {
 		t.Fatalf("reservation count=%d reserved=%s", count, reserved)
 	}
-	if _, err := testEnv.store.PrepareFollowUpModelCall(ctx, 1, ready.ID, attempt+"-missing", "greet-prov", "missing-model", 10, 16); !errors.Is(err, ErrFollowUpNoPrice) {
-		t.Fatalf("missing price = %v", err)
+	missingDecision, err := testEnv.store.PrepareFollowUpModelCall(ctx, 1, ready.ID+1_000_000, attempt+"-missing", "greet-prov", "missing-model", 10, 16)
+	if err != nil || missingDecision != "HELD" {
+		t.Fatalf("missing price = %s %v", missingDecision, err)
 	}
 	var missing int
-	if err := db.QueryRow(ctx, `SELECT count(*)::int FROM vc.model_cost_reservation WHERE provider_attempt_id = $1`, attempt+"-missing").Scan(&missing); err != nil {
+	var missingReserved string
+	if err := db.QueryRow(ctx, `SELECT count(*)::int, coalesce(sum(reserved_usd), 0)::text FROM vc.model_cost_reservation WHERE provider_attempt_id = $1`, attempt+"-missing").Scan(&missing, &missingReserved); err != nil {
 		t.Fatal(err)
 	}
-	if missing != 0 {
-		t.Fatalf("missing price reservations = %d", missing)
+	if missing != 1 || missingReserved != "0.000000" {
+		t.Fatalf("missing price reservations = %d reserved=%s", missing, missingReserved)
 	}
 	testEnv.store.UseCostLimits(0, 1_000_000_000)
 	t.Cleanup(func() { testEnv.store.UseCostLimits(1_000_000, 1_000_000_000) })

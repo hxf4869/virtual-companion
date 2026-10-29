@@ -56,7 +56,7 @@ type Config struct {
 	// process starts. Callers re-read it. An empty path leaves jobs and
 	// retrieval open.
 	RestoreGateFile string
-	// MonthlyCostLimit is the global model-cost admission cap in micro-USD. Zero refuses outbound calls.
+	// MonthlyCostLimit is VC_MONTHLY_COST_LIMIT in micro-USD. Zero or unset means no monthly cap.
 	MonthlyCostLimit int64
 	Mode             Mode
 	HTTP             HTTP

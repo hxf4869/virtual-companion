@@ -15,11 +15,11 @@ test('用量摘要不能当成预算不足；显式原因才关闭测试与发�
     }), { known: false, insufficient: false });
     assert.deepEqual(interpretUsageBudget(null), { known: false, insufficient: false });
     assert.deepEqual(interpretUsageBudget({ budgetInsufficient: true }), { known: true, insufficient: true });
-    assert.deepEqual(interpretUsageBudget({ reason: 'NO_BUDGET' }), { known: true, insufficient: true });
+    assert.deepEqual(interpretUsageBudget({ reason: 'NO_BUDGET' }), { known: false, insufficient: false });
     assert.deepEqual(interpretUsageBudget({ details: { reason: 'OVER_LIMIT' } }), { known: true, insufficient: true });
     assert.equal(BUDGET_COPY.includes('设置仍可保存'), true);
     assert.deepEqual(budgetSignalFromGenerateBody({ error: { code: 'VC_USAGE_REFUSED', message: '本月额度已用完，本次生成未发送' } }), { reason: 'OVER_LIMIT' });
-    assert.deepEqual(budgetSignalFromGenerateBody({ error: { code: 'VC_USAGE_REFUSED', message: '未配置预算，本次生成未发送' } }), { reason: 'NO_BUDGET' });
+    assert.equal(budgetSignalFromGenerateBody({ error: { code: 'VC_USAGE_REFUSED', message: '未配置预算，本次生成未发送' } }), null);
     assert.equal(budgetSignalFromGenerateBody({ error: { code: 'VC_USAGE_REFUSED', message: '当前模型没有单价，本次生成未发送' } }), null);
     assert.equal(budgetSignalFromGenerateBody({ error: { code: 'VC_USAGE_REFUSED', reason: 'NO_PRICE', message: '本月额度已用完，本次生成未发送' } }), null);
     assert.deepEqual(budgetSignalFromGenerateBody({ error: { code: 'VC_USAGE_REFUSED', details: { reason: 'OVER_LIMIT' }, message: '其他' } }), { reason: 'OVER_LIMIT' });
@@ -75,12 +75,12 @@ test('预算不足门禁对宿主发送控件标 aria-disabled，并拦住点击
     }
 });
 
-test('缺输入或输出单价即无法发送，保存文案不把未知价格当免费', () => {
+test('缺输入或输出单价仍可发送，费用文案不把未知价格当免费', () => {
     assert.equal(modelPriceMissing(null), true);
     assert.equal(modelPriceMissing({ currency: 'USD', inputPerMillionTokens: 1 }), true);
     assert.equal(modelPriceMissing({ currency: 'USD', outputPerMillionTokens: 2 }), true);
     assert.equal(modelPriceMissing({ inputPerMillionTokens: 0, outputPerMillionTokens: 0 }), false);
-    assert.equal(NO_PRICE_COPY, '未配置单价，无法发送');
+    assert.equal(NO_PRICE_COPY, '未配置单价：照常发送，费用记为未知');
 });
 
 test('账户状态只描述验证器、删除进度和备份，不生成密钥', () => {

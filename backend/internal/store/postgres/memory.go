@@ -676,11 +676,13 @@ type MemoryExtractPreparation struct {
 // success or when nothing more specific is known). OutputPayload — the minimal
 // accepted entries of a successful call — is persisted as plaintext JSON.
 type MemoryExtractOutcome struct {
-	Status        string // SUCCEEDED, FAILED, CANCELLED
-	InputTokens   *int64
-	OutputTokens  *int64
-	FailureCode   string
-	OutputPayload string
+	Status       string // SUCCEEDED, FAILED, CANCELLED
+	InputTokens  *int64
+	OutputTokens *int64
+	// CachedInputTokens is nil when the provider omitted cache counters.
+	CachedInputTokens *int64
+	FailureCode       string
+	OutputPayload     string
 }
 
 // PrepareMemoryExtractAttempt runs the claim-fenced pre-flight transaction:
@@ -743,9 +745,12 @@ func (s *Store) RecordMemoryExtractOutcome(ctx context.Context, owner, jobID, at
 	default:
 		return 0, ErrInvalid
 	}
-	var tokensIn, tokensOut any
+	var tokensIn, tokensOut, cached any
 	if out.InputTokens != nil && out.OutputTokens != nil {
 		tokensIn, tokensOut = *out.InputTokens, *out.OutputTokens
+		if out.CachedInputTokens != nil {
+			cached = *out.CachedInputTokens
+		}
 	}
 	var failure any
 	if out.FailureCode != "" {
@@ -758,8 +763,8 @@ func (s *Store) RecordMemoryExtractOutcome(ctx context.Context, owner, jobID, at
 	var rows int64
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
-			`SELECT vc.go_record_memory_extract_outcome($1,$2,$3,$4,$5,$6,$7,$8)`,
-			owner, jobID, attemptID, out.Status, tokensIn, tokensOut, failure, payload,
+			`SELECT vc.go_record_memory_extract_outcome($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+			owner, jobID, attemptID, out.Status, tokensIn, tokensOut, failure, payload, cached,
 		).Scan(&rows)
 	})
 	if err != nil {

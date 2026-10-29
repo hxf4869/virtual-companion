@@ -173,12 +173,12 @@ func TestFollowUpBudgetOrMissingPriceMakesNoRequest(t *testing.T) {
 		if err := generateFollowUp(context.Background(), fake, factory, safety.New(), followClaim()); err != nil {
 			t.Fatal(err)
 		}
-		if requests != 0 || fake.builds != 0 || fake.prepares != 0 || fake.holds != 0 {
-			t.Fatalf("missing price requests=%d builds=%d prepares=%d holds=%d", requests, fake.builds, fake.prepares, fake.holds)
+		if requests != 1 || fake.builds != 1 || fake.prepares != 1 || fake.holds != 1 || fake.settles != 1 {
+			t.Fatalf("missing price still sends requests=%d builds=%d prepares=%d holds=%d settles=%d", requests, fake.builds, fake.prepares, fake.holds, fake.settles)
 		}
-		assertFollowOutcome(t, fake, "NOT_GENERATED", "NO_PRICE")
-		if fake.row.Greeting != nil || fake.row.Status == "BODY_READY" {
-			t.Fatalf("missing price looked generated: %+v", fake.row)
+		assertFollowOutcome(t, fake, "BODY_READY", "BODY_READY")
+		if fake.row.Greeting == nil || *fake.row.Greeting != "下周见" {
+			t.Fatalf("missing price did not keep the greeting: %+v", fake.row)
 		}
 	})
 	t.Run("unbound", func(t *testing.T) {
@@ -726,7 +726,7 @@ func (f *followGenFake) PrepareFollowUpModelCall(_ context.Context, _, _ int64, 
 	return "HELD", nil
 }
 
-func (f *followGenFake) SettleFollowUpModelCall(_ context.Context, _ int64, _, disposition string, input, output *int64) error {
+func (f *followGenFake) SettleFollowUpModelCall(_ context.Context, _ int64, _, disposition string, input, output, _ *int64) error {
 	f.settles++
 	kind := followSettle{disposition: disposition}
 	if input != nil {

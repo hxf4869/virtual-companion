@@ -158,6 +158,12 @@ async function request(method, goPath, body, { page = false } = {}) {
  * Number 安全整数，全程字符串处理）。只在页面 load / 显式重新加载时调用，
  * 绝不在写请求前静默刷新——快照过期应由服务端 409 拒绝，由用户显式重载解决。
  */
+/** GET /api/v1/auth/admin/usage?month=YYYY-MM。只读；非 ADMIN 由 Go 返回 403。 */
+export async function fetchUsageSummary(month) {
+    const query = month ? `?month=${encodeURIComponent(month)}` : '';
+    return request('GET', `/api/v1/auth/admin/usage${query}`);
+}
+
 export async function captureSessionContext() {
     const data = await request('GET', '/api/v1/auth/session');
     const accountId = data?.accountId;

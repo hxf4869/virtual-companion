@@ -63,10 +63,15 @@ type streamDelta struct {
 	Content json.RawMessage `json:"content"`
 }
 
+type promptTokenDetails struct {
+	CachedTokens *tokenCount `json:"cached_tokens"`
+}
+
 type usagePayload struct {
-	PromptTokens     tokenCount `json:"prompt_tokens"`
-	CompletionTokens tokenCount `json:"completion_tokens"`
-	TotalTokens      tokenCount `json:"total_tokens"`
+	PromptTokens        tokenCount          `json:"prompt_tokens"`
+	CompletionTokens    tokenCount          `json:"completion_tokens"`
+	TotalTokens         tokenCount          `json:"total_tokens"`
+	PromptTokensDetails *promptTokenDetails `json:"prompt_tokens_details"`
 }
 
 type tokenCount struct {
@@ -279,7 +284,15 @@ func mapUsage(u *usagePayload) (companion.Usage, error) {
 	if in > (1<<63-1)-out || in+out != total {
 		return companion.Usage{}, errMalformed
 	}
-	return companion.Usage{InputTokens: in, OutputTokens: out, TotalTokens: total}, nil
+	var cached *int64
+	if u.PromptTokensDetails != nil && u.PromptTokensDetails.CachedTokens != nil {
+		if !u.PromptTokensDetails.CachedTokens.set {
+			return companion.Usage{}, errMalformed
+		}
+		n := u.PromptTokensDetails.CachedTokens.n
+		cached = &n
+	}
+	return companion.Usage{InputTokens: in, OutputTokens: out, TotalTokens: total, CachedInputTokens: cached}, nil
 }
 
 func mediaType(v string) string {

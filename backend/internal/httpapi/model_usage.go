@@ -15,10 +15,10 @@ import (
 // assertion so CompanionStore stays unchanged.
 type modelUsageStore interface {
 	ReserveModelUsage(context.Context, postgres.ModelUsageReserve) (postgres.ModelUsageHold, error)
-	SettleModelUsage(context.Context, int64, int64, int64, int64) (postgres.ModelUsageSettlement, error)
+	SettleModelUsage(context.Context, int64, int64, int64, int64, *int64) (postgres.ModelUsageSettlement, error)
 	CancelModelUsage(context.Context, int64, int64, string) (postgres.ModelUsageCancellation, error)
 	RecordLocalEmbeddingCall(context.Context, int64) error
-	AdminModelUsageSummary(context.Context, int64, time.Time) ([]postgres.ModelUsagePurposeRow, error)
+	AdminModelUsageSummary(context.Context, int64, time.Time, time.Time) ([]postgres.ModelUsagePurposeRow, error)
 }
 
 type modelUsageReserveJSON struct {
@@ -36,6 +36,8 @@ type modelUsageSettleJSON struct {
 	OwnerAccountID string `json:"ownerAccountId"`
 	InputTokens    int64  `json:"inputTokens"`
 	OutputTokens   int64  `json:"outputTokens"`
+	// CachedInputTokens is omitted or null when the provider did not report cache tokens.
+	CachedInputTokens *int64 `json:"cachedInputTokens"`
 }
 
 type modelUsageCancelJSON struct {
@@ -109,7 +111,7 @@ func (s *Server) handleSettleModelUsage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	owner, ok := parseOwnerAccountID(body.OwnerAccountID)
-	if !ok {
+	if !ok || (body.CachedInputTokens != nil && *body.CachedInputTokens < 0) {
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
@@ -117,7 +119,7 @@ func (s *Server) handleSettleModelUsage(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	out, err := store.SettleModelUsage(r.Context(), owner, reservationID, body.InputTokens, body.OutputTokens)
+	out, err := store.SettleModelUsage(r.Context(), owner, reservationID, body.InputTokens, body.OutputTokens, body.CachedInputTokens)
 	if err != nil {
 		s.writeModelUsageErr(w, err)
 		return
@@ -125,20 +127,30 @@ func (s *Server) handleSettleModelUsage(w http.ResponseWriter, r *http.Request) 
 	var actual any
 	var input any
 	var output any
+	var cached any
 	if out.Status == "UNKNOWN" {
 		// A late settle after the hold was swept does not book usage.
-		actual, input, output = nil, nil, nil
+		actual, input, output, cached = nil, nil, nil, nil
 	} else {
-		actual, input, output = out.ActualUSD, out.InputTokens, out.OutputTokens
+		if out.ActualUSD == "" {
+			actual = nil
+		} else {
+			actual = out.ActualUSD
+		}
+		input, output = out.InputTokens, out.OutputTokens
+		if out.CachedInputTokens != nil {
+			cached = *out.CachedInputTokens
+		}
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"reservationId": strconv.FormatInt(out.ReservationID, 10),
-		"purpose":       out.Purpose,
-		"status":        out.Status,
-		"actualUsd":     actual,
-		"inputTokens":   input,
-		"outputTokens":  output,
-		"idempotent":    out.Idempotent,
+		"reservationId":     strconv.FormatInt(out.ReservationID, 10),
+		"purpose":           out.Purpose,
+		"status":            out.Status,
+		"actualUsd":         actual,
+		"inputTokens":       input,
+		"outputTokens":      output,
+		"cachedInputTokens": cached,
+		"idempotent":        out.Idempotent,
 	})
 }
 
@@ -212,43 +224,73 @@ func (s *Server) handleAdminModelUsage(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, http.StatusForbidden, "ACCESS_DENIED", "access denied")
 		return
 	}
-	days := 14
-	if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
-		n, err := strconv.Atoi(raw)
+	month := strings.TrimSpace(r.URL.Query().Get("month"))
+	var since, until time.Time
+	if month != "" {
+		parsed, err := time.Parse("2006-01", month)
 		if err != nil {
 			s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 			return
 		}
-		if n < 1 {
-			n = 1
+		since = time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, time.UTC)
+		until = since.AddDate(0, 1, 0)
+	}
+	days := 14
+	if month == "" {
+		if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil {
+				s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+				return
+			}
+			if n < 1 {
+				n = 1
+			}
+			if n > 90 {
+				n = 90
+			}
+			days = n
 		}
-		if n > 90 {
-			n = 90
-		}
-		days = n
+		since = time.Now().UTC().AddDate(0, 0, -days)
 	}
 	store, ok := s.modelUsage(w)
 	if !ok {
 		return
 	}
-	rows, err := store.AdminModelUsageSummary(r.Context(), p.AccountID, time.Now().UTC().AddDate(0, 0, -days))
+	rows, err := store.AdminModelUsageSummary(r.Context(), p.AccountID, since, until)
 	if err != nil {
 		s.writeModelUsageErr(w, err)
 		return
 	}
 	purposes := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
+		var cached any
+		var rate any
+		if row.CachedInputTokens != nil {
+			cached = *row.CachedInputTokens
+			if row.InputTokens > 0 {
+				rate = float64(*row.CachedInputTokens) / float64(row.InputTokens)
+			}
+		}
 		purposes = append(purposes, map[string]any{
-			"purpose":      row.Purpose,
-			"calls":        row.Calls,
-			"actualUsd":    row.ActualUSD,
-			"estimatedUsd": row.EstimatedUSD,
-			"unsettledUsd": row.UnsettledUSD,
-			"inputTokens":  row.InputTokens,
-			"outputTokens": row.OutputTokens,
+			"purpose":           row.Purpose,
+			"calls":             row.Calls,
+			"unpricedCalls":     row.UnpricedCalls,
+			"actualUsd":         row.ActualUSD,
+			"estimatedUsd":      row.EstimatedUSD,
+			"unsettledUsd":      row.UnsettledUSD,
+			"inputTokens":       row.InputTokens,
+			"outputTokens":      row.OutputTokens,
+			"cachedInputTokens": cached,
+			"cacheHitRate":      rate,
+			"includesUnpriced":  row.IncludesUnpriced,
 		})
 	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"purposes": purposes})
+	body := map[string]any{"purposes": purposes}
+	if month != "" {
+		body["month"] = month
+	}
+	s.writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) writeModelUsageErr(w http.ResponseWriter, err error) {

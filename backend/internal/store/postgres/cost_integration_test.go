@@ -51,16 +51,24 @@ func TestCostAdmissionFailsClosedBeforeAttemptReturns(t *testing.T) {
 	if _, err := prepareCost(c, "synthetic-go-model"); err == nil {
 		t.Fatal("unset ceiling allowed model call")
 	}
-	testEnv.store.UseCostLimits(1000000, 0)
-	if _, err := prepareCost(c, "synthetic-go-model"); err == nil {
-		t.Fatal("unset monthly cap allowed model call")
-	}
-	testEnv.store.UseCostLimits(1000000, 1000000)
-	if _, err := prepareCost(c, "unpriced-model"); err == nil {
-		t.Fatal("unknown price allowed model call")
-	}
 	costAssertSQL(t, "SELECT count(*) FROM vc.attempt_intent", "0")
 	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation", "0")
+	testEnv.store.UseCostLimits(1000000, 0)
+	uncapped := costClaim(t, 1, 10, "cost-uncapped")
+	if _, err := prepareCost(uncapped, "synthetic-go-model"); err != nil {
+		t.Fatalf("unset monthly cap refused a priced call: %v", err)
+	}
+	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "9024")
+	testEnv.store.UseCostLimits(1000000, 1000000)
+	unpriced := costClaim(t, 1, 10, "cost-unpriced")
+	if _, err := prepareCost(unpriced, "unpriced-model"); err != nil {
+		t.Fatalf("unknown price refused a call: %v", err)
+	}
+	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation WHERE model_id = 'unpriced-model' AND price_version IS NULL AND reserved_usd = 0 AND actual_usd IS NULL", "1")
+	costAssertSQL(t, "SELECT round(sum(reserved_usd)*1000000)::bigint FROM vc.month_cost_budget", "9024")
+	if _, err := psqlSuper(`DELETE FROM vc.model_cost_reservation; DELETE FROM vc.attempt_intent; UPDATE vc.month_cost_budget SET reserved_usd = 0, settled_usd = 0, unsettled_usd = 0`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := prepareCost(c, "synthetic-go-model"); err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,8 @@ import (
 )
 
 // UseCostLimits binds deployment admission limits before workers start. Amounts
-// are micro-USD. An unset limit deliberately leaves model I/O unavailable.
+// are micro-USD. monthlyCostLimit 0 means VC_MONTHLY_COST_LIMIT is unset and
+// there is no monthly cap. A positive cap still requires the per-call ceiling.
 func (s *Store) UseCostLimits(maxReservedCost, monthlyCostLimit int64) {
 	s.maxReservedCost = maxReservedCost
 	s.monthlyCostLimit = monthlyCostLimit

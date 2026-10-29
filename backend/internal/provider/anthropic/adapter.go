@@ -336,7 +336,18 @@ func normalizeUsage(u usage) (companion.Usage, error) {
 	if in > (1<<63-1)-out {
 		return companion.Usage{}, modelhttp.ErrMalformed
 	}
-	return companion.Usage{InputTokens: in, OutputTokens: out, TotalTokens: in + out}, nil
+	var cached *int64
+	if u.CacheCreationInputTokens != nil || u.CacheReadInputTokens != nil {
+		sum := int64(0)
+		if u.CacheCreationInputTokens != nil {
+			sum += *u.CacheCreationInputTokens
+		}
+		if u.CacheReadInputTokens != nil {
+			sum += *u.CacheReadInputTokens
+		}
+		cached = &sum
+	}
+	return companion.Usage{InputTokens: in, OutputTokens: out, TotalTokens: in + out, CachedInputTokens: cached}, nil
 }
 
 func decodeOne(r io.Reader, dst any) error {

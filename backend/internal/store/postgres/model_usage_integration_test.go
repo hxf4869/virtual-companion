@@ -157,7 +157,7 @@ func TestModelUsageSecondSendHasItsOwnReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SettleModelUsage(ctx, 1, first.ReservationID, 10, 4); err != nil {
+	if _, err := store.SettleModelUsage(ctx, 1, first.ReservationID, 10, 4, nil); err != nil {
 		t.Fatal(err)
 	}
 	second, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
@@ -177,23 +177,71 @@ func TestModelUsageSecondSendHasItsOwnReservation(t *testing.T) {
 	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation", "2")
 }
 
-func TestModelUsageNoPriceMakesNoProviderCall(t *testing.T) {
+func TestModelUsageNoPriceStillReservesAndSettlesUnknownFee(t *testing.T) {
 	resetFixtures(t)
 	meterIdentity(t)
 	store := testEnv.store
 	store.UseCostLimits(1_000_000, 4_000_000)
-	providerCalls := 0
-	_, err := store.ReserveModelUsage(context.Background(), ModelUsageReserve{
+	ctx := context.Background()
+	held, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
 		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-no-price",
 		ProviderID: "prov-a", ModelID: "missing-price", InputTokens: 10, OutputTokens: 10,
 	})
-	if err == nil {
-		providerCalls++
+	if err != nil || held.Status != "HELD" || held.ReservedUSD != "0.000000" {
+		t.Fatalf("unpriced hold %+v err=%v", held, err)
 	}
-	if providerCalls != 0 || usageReason(err) != ModelUsageNoPrice {
-		t.Fatalf("calls=%d err=%v", providerCalls, err)
+	again, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
+		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-no-price",
+		ProviderID: "prov-a", ModelID: "missing-price", InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil || again.ReservationID != held.ReservationID {
+		t.Fatalf("idempotent unpriced hold %+v err=%v", again, err)
 	}
-	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation WHERE provider_attempt_id='fg-no-price'", "0")
+	cached := int64(4)
+	settled, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 12, 7, &cached)
+	if err != nil || settled.Status != "SETTLED" || settled.ActualUSD != "" || settled.InputTokens != 12 || settled.OutputTokens != 7 || settled.CachedInputTokens == nil || *settled.CachedInputTokens != 4 {
+		t.Fatalf("unpriced settle %+v err=%v", settled, err)
+	}
+	costAssertSQL(t, "SELECT coalesce(actual_usd::text, 'null') || ':' || coalesce(cached_input_tokens::text, 'null') FROM vc.model_cost_reservation WHERE provider_attempt_id='fg-no-price'", "null:4")
+	costAssertSQL(t, "SELECT coalesce(round(sum(settled_usd)*1000000)::bigint, 0)::text FROM vc.month_cost_budget", "0")
+	unknown, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
+		Owner: 1, Purpose: PurposeToolTurn, AttemptID: "tool-no-price",
+		ProviderID: "prov-a", ModelID: "missing-price", InputTokens: 3, OutputTokens: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := store.CancelModelUsage(ctx, 1, unknown.ReservationID, "UNKNOWN")
+	if err != nil || cancelled.Status != "UNKNOWN" || cancelled.ActualUSD != nil || cancelled.ReservedUSD != "0.000000" {
+		t.Fatalf("unpriced unknown %+v err=%v", cancelled, err)
+	}
+	costAssertSQL(t, "SELECT coalesce(round(sum(unsettled_usd)*1000000)::bigint, 0)::text FROM vc.month_cost_budget", "0")
+}
+
+func TestModelUsageUnsetMonthlyCapDoesNotReject(t *testing.T) {
+	resetFixtures(t)
+	meterIdentity(t)
+	store := testEnv.store
+	store.UseCostLimits(1_000_000, 0)
+	t.Cleanup(func() { store.UseCostLimits(1_000_000, 4_000_000) })
+	ctx := context.Background()
+	held, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
+		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-no-cap",
+		ProviderID: "prov-a", ModelID: "model-a", InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil || held.Status != "HELD" || held.ReservedUSD != "0.000030" {
+		t.Fatalf("priced without monthly cap %+v err=%v", held, err)
+	}
+	if _, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
+		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-no-cap-2",
+		ProviderID: "prov-a", ModelID: "model-a", InputTokens: 10, OutputTokens: 10,
+	}); err != nil {
+		t.Fatalf("second priced send without a cap: %v", err)
+	}
+	settled, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 10, 4, nil)
+	if err != nil || settled.ActualUSD != "0.000018" || settled.CachedInputTokens != nil {
+		t.Fatalf("priced settle without cap %+v err=%v", settled, err)
+	}
 }
 
 // TestModelUsageLateSettleOfUnknownKeepsUnsettled pins the service path after
@@ -219,7 +267,7 @@ func TestModelUsageLateSettleOfUnknownKeepsUnsettled(t *testing.T) {
 	}
 	costAssertSQL(t, "SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", "0:0:30")
 
-	late, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 10, 4)
+	late, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 10, 4, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +292,7 @@ VALUES (2, 'w11-meter-other', 'synthetic', 'USER', 'ACTIVE', 'other')
 ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE';`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SettleModelUsage(ctx, 2, held.ReservationID, 10, 4); !errors.Is(err, ErrNotFound) {
+	if _, err := store.SettleModelUsage(ctx, 2, held.ReservationID, 10, 4, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-owner late settle %v", err)
 	}
 	costAssertSQL(t, "SELECT round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", "30")
@@ -263,11 +311,11 @@ func TestModelUsageSettleIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 1000, 1000)
+	first, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 1000, 1000, nil)
 	if err != nil || first.Idempotent || first.ActualUSD != "0.003000" {
 		t.Fatalf("first %+v %v", first, err)
 	}
-	second, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 5000, 5000)
+	second, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 5000, 5000, nil)
 	if err != nil || !second.Idempotent || second.ActualUSD != first.ActualUSD || second.InputTokens != 1000 || second.OutputTokens != 1000 {
 		t.Fatalf("second %+v %v", second, err)
 	}
@@ -287,7 +335,7 @@ func TestModelUsageSummaryDoesNotDoubleCountGenerationUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 1000, 1000); err != nil {
+	if _, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 1000, 1000, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := IsolationSuperExec(ctx, `
@@ -321,7 +369,7 @@ END $$;`); err != nil {
 	if err != nil || after != before {
 		t.Fatalf("embedding moved the month budget %q -> %q (%v)", before, after, err)
 	}
-	rows, err := store.AdminModelUsageSummary(ctx, 910077, time.Now().UTC().Add(-time.Hour))
+	rows, err := store.AdminModelUsageSummary(ctx, 910077, time.Now().UTC().Add(-time.Hour), time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}

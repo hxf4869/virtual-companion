@@ -399,8 +399,8 @@ export const KEY_STATE_LABELS = {
 
 // ---------- 计价显示（未知 ≠ 免费） ----------
 
-export const NO_PRICE_COPY = '未配置单价，无法发送';
-export const UNSUPPORTED_CURRENCY_COPY = '仅美元计价可用于发送';
+export const NO_PRICE_COPY = '未配置单价：照常发送，费用记为未知';
+export const UNSUPPORTED_CURRENCY_COPY = '非美元单价：照常发送，费用记为未知';
 export const BUDGET_COPY = '当月可用额度不足，测试与发送暂不可用。设置仍可保存。';
 
 const LEDGER_PRICES = new Set(['ACTIVE', 'MISSING', 'UNSUPPORTED_CURRENCY']);
@@ -441,7 +441,8 @@ export function modelPriceMissing(pricing) {
 export function interpretUsageBudget(payload) {
     if (!payload || typeof payload !== 'object') return { known: false, insufficient: false };
     const reason = payload.reason || payload.details?.reason;
-    if (payload.budgetInsufficient === true || reason === 'NO_BUDGET' || reason === 'OVER_LIMIT') {
+    // 未设置月度预算不再拒绝。只有已设预算且超限才提示预算不足。
+    if (reason === 'OVER_LIMIT' || (payload.budgetInsufficient === true && reason !== 'NO_BUDGET')) {
         return { known: true, insufficient: true };
     }
     return { known: false, insufficient: false };
@@ -457,8 +458,54 @@ export function budgetSignalFromGenerateBody(body) {
     const error = body?.error;
     if (!error || typeof error !== 'object' || error.code !== 'VC_USAGE_REFUSED') return null;
     const reason = error.reason || error.details?.reason || GENERATE_REFUSAL[error.message];
-    if (reason !== 'NO_BUDGET' && reason !== 'OVER_LIMIT') return null;
+    if (reason !== 'OVER_LIMIT') return null;
     return { reason };
+}
+
+const USAGE_LABELS = {
+    FOREGROUND_CHAT: '前台聊天',
+    MEMORY_EXTRACTION_DEDUP_SUMMARY: '记忆提取',
+    BACKGROUND_GREETINGS: '后台问候',
+    TOOL_TURN: '工具回合',
+    LEGACY_CHAT: '旧聊天',
+    LEGACY_GENERATION: '旧生成',
+    EMBEDDING: '本地向量',
+};
+
+export function usagePurposeLabel(purpose) {
+    return USAGE_LABELS[purpose] || purpose;
+}
+
+/** UTC 年月，与服务端 month_start 一致。 */
+export function currentUsageMonth(now = new Date()) {
+    const year = now.getUTCFullYear();
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+}
+
+export function shiftUsageMonth(month, delta) {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(month || ''));
+    if (!match) return currentUsageMonth();
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + delta, 1));
+    return currentUsageMonth(date);
+}
+
+/** 已定价费用；未定价且没有已定价金额时显示未知，绝不显示 0。 */
+export function formatUsageFee(row) {
+    if (!row) return '—';
+    const priced = row.actualUsd != null && row.actualUsd !== '';
+    if (!priced) return row.includesUnpriced || row.unpricedCalls > 0 ? '未知' : '—';
+    return row.includesUnpriced || row.unpricedCalls > 0 ? `${row.actualUsd}；未定价费用未知` : String(row.actualUsd);
+}
+
+export function formatCacheHitRate(rate) {
+    if (rate == null || rate === '' || !Number.isFinite(Number(rate))) return '—';
+    return `${(Number(rate) * 100).toFixed(1)}%`;
+}
+
+export function formatTokenCount(value) {
+    if (value == null || value === '') return '—';
+    return String(value);
 }
 
 export function isGenerateRequestUrl(url) {

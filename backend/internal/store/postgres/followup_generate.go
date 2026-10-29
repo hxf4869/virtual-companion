@@ -168,7 +168,11 @@ func (s *Store) FinishFollowUpGeneration(ctx context.Context, owner, id int64, i
 }
 
 func (s *Store) PrepareFollowUpModelCall(ctx context.Context, owner, jobID int64, attempt, provider, model string, inputTokens, outputTokens int) (string, error) {
-	if s == nil || s.maxReservedCost <= 0 || s.monthlyCostLimit <= 0 {
+	// monthlyCostLimit <= 0 means VC_MONTHLY_COST_LIMIT is unset. SQL then
+	// records a priced fee without a cap, or an unpriced row when the ledger
+	// has no effective USD price. A positive cap with no per-call ceiling is
+	// still ErrFollowUpBudget.
+	if s == nil {
 		return "", ErrFollowUpBudget
 	}
 	var decision string
@@ -184,12 +188,12 @@ func (s *Store) PrepareFollowUpModelCall(ctx context.Context, owner, jobID int64
 	return decision, nil
 }
 
-func (s *Store) SettleFollowUpModelCall(ctx context.Context, owner int64, attempt, disposition string, inputTokens, outputTokens *int64) error {
+func (s *Store) SettleFollowUpModelCall(ctx context.Context, owner int64, attempt, disposition string, inputTokens, outputTokens, cachedInputTokens *int64) error {
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		var paid pgtype.Int8
 		return tx.QueryRow(ctx, `
-			SELECT vc.settle_follow_up_model_call($1,$2,$3,$4,$5)`,
-			owner, attempt, disposition, inputTokens, outputTokens).Scan(&paid)
+			SELECT vc.settle_follow_up_model_call($1,$2,$3,$4,$5,$6)`,
+			owner, attempt, disposition, inputTokens, outputTokens, cachedInputTokens).Scan(&paid)
 	})
 	return mapFollowUpGenErr(err)
 }

@@ -205,6 +205,7 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 	if callErr == nil {
 		outcome.InputTokens = &result.Usage.InputTokens
 		outcome.OutputTokens = &result.Usage.OutputTokens
+		outcome.CachedInputTokens = result.Usage.CachedInputTokens
 	} else {
 		outcome.Status = "FAILED"
 		if pe := companion.AsError(callErr); pe != nil {

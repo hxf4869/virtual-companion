@@ -174,7 +174,12 @@ test('responses 文本剧本（vc03m-usage）：output_text delta 与固定用�
     const events = await readSSE(res);
     const collected = collectResponsesStream(events);
     assert.ok(collected.content.length > 0);
-    assert.deepEqual(collected.completedUsage, { input_tokens: 101, output_tokens: 37, total_tokens: 138 });
+    assert.deepEqual(collected.completedUsage, {
+        input_tokens: 101,
+        output_tokens: 37,
+        total_tokens: 138,
+        input_tokens_details: { cached_tokens: 8 },
+    });
 });
 
 test('responses 指令化错误：error 事件前的 HTTP 状态', async () => {

@@ -5022,27 +5022,38 @@ paths:
       operationId: getAdminUsageSummary
       summary: Purpose usage summary (ADMIN only)
       description: >-
-        W11-3 purpose summary since the days floor (vc.admin_model_usage_summary).
-        days is clamped to 1..90 by the server (default 14); a non-integer days
-        is 400. The seven purposes are always returned, in order: foreground,
-        memory extraction, background greetings, tool turns, legacy chat
-        reservations, unlinked generation_usage, and local embeddings. Actual,
-        estimated, and unsettled dollars are six-decimal strings, or null when
-        that purpose has no dollar amount. Embedding calls stay a count with
-        null dollars. A generation_usage row whose provider_ref matches a
-        reservation is kept and is not added again. Authenticated by the
-        HttpOnly vc_session cookie of an ACTIVE ADMIN. This read does not
-        require Origin or CSRF. X-VC-Expected-Account-ID and
-        X-VC-Expected-Session-ID are compared only when the caller sends them.
+        Purpose summary (vc.admin_model_usage_summary). month=YYYY-MM selects
+        one UTC calendar month and is the model-page default. Without month,
+        days is clamped to 1..90 (default 14); a non-integer days or a bad
+        month is 400. The seven purposes are always returned, in order:
+        foreground, memory extraction, background greetings, tool turns, legacy
+        chat reservations, unlinked generation_usage, and local embeddings.
+        actualUsd sums priced settlements only. Unpriced calls keep a null fee
+        and set includesUnpriced; they are never shown as zero. cachedInputTokens
+        is null when no row reported a cache count. cacheHitRate is
+        cachedInputTokens / inputTokens, or null when the input total is 0 or
+        no cache count was reported. Embedding calls stay a count with null
+        dollars. A generation_usage row whose provider_ref matches a reservation
+        is kept and is not added again. Authenticated by the HttpOnly vc_session
+        cookie of an ACTIVE ADMIN. This read does not require Origin or CSRF.
+        X-VC-Expected-Account-ID and X-VC-Expected-Session-ID are compared only
+        when the caller sends them.
       security:
         - cookieAuth: []
       parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}$'
+          description: UTC calendar month YYYY-MM. When present, days is ignored.
         - name: days
           in: query
           required: false
           schema:
             type: integer
-          description: Days to cover, clamped to 1..90 (default 14).
+          description: Days to cover when month is absent, clamped to 1..90 (default 14).
       responses:
         '200':
           description: One row for every usage purpose
@@ -5791,15 +5802,19 @@ paths:
         W11-3 private service channel, same authentication as resolveModelPurpose.
         The SillyTavern plugin sends the owner account it already verified.
         purpose is FOREGROUND_CHAT or TOOL_TURN. estimatedOutputTokens is this
-        request's max output, not an expected length. The server reserves
-        min(per-call ceiling, priced token cap) against the shared month cap.
-        A timeout keeps that estimate. Settlement uses actual usage. A still-HELD reservation
-        for the same owner, purpose, provider, and model returns that
-        reservation. A settled, released, or unknown attempt is not reused.
-        Missing price or budget is 409 MODEL_NO_ELIGIBLE_DEPLOYMENT with
-        details.reason NO_PRICE or NO_BUDGET. Over the monthly cap is 429
-        RATE_LIMITED with details.reason OVER_LIMIT and Retry-After 2. Those
-        refusals perform no provider call. An inactive owner is 403.
+        request's max output, not an expected length. An effective USD price
+        with VC_MONTHLY_COST_LIMIT set reserves min(per-call ceiling, priced
+        token cap) against that cap. A timeout keeps that estimate. Settlement
+        uses actual usage. The same attempt while still HELD for the same
+        owner, purpose, provider, and model returns that reservation. A
+        settled, released, or unknown attempt is not reused. No effective USD
+        price still inserts one unpriced HELD row and does not reject the send;
+        its fee stays null. VC_MONTHLY_COST_LIMIT of 0 or unset is no monthly
+        cap. A positive cap with no per-call ceiling is 409
+        MODEL_NO_ELIGIBLE_DEPLOYMENT with details.reason NO_BUDGET. Over the
+        monthly cap is 429 RATE_LIMITED with details.reason OVER_LIMIT and
+        Retry-After 2. Those refusals perform no provider call. An inactive
+        owner is 403.
       security:
         - serviceToken: []
       requestBody:
@@ -5835,8 +5850,10 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
           description: >-
-            MODEL_NO_ELIGIBLE_DEPLOYMENT when details.reason is NO_PRICE or
-            NO_BUDGET. INVALID_REQUEST when details.reason is ATTEMPT_REUSED.
+            MODEL_NO_ELIGIBLE_DEPLOYMENT when details.reason is NO_BUDGET
+            (a monthly cap is set and the per-call ceiling is not).
+            INVALID_REQUEST when details.reason is ATTEMPT_REUSED. A missing
+            price is not a 409.
           content:
             application/json:
               schema:
@@ -10732,10 +10749,11 @@ components:
             vc.model_unit_price row for (providerId, modelId). ACTIVE: every
             enabled profile of that model agrees on a USD price and the ledger
             matches it (USD per 1K tokens, converted from per million).
-            MISSING: no effective price, so a reservation is NO_PRICE; this
-            includes an empty price, a disabled model, and enabled profiles
-            that disagree. UNSUPPORTED_CURRENCY: the profile states a currency
-            other than USD, which is not written. Not an input.
+            MISSING: no effective USD price. The send is still admitted and the
+            fee is null, never zero. This includes an empty price, a disabled
+            model, and enabled profiles that disagree. UNSUPPORTED_CURRENCY:
+            the profile states a currency other than USD, which is not written
+            and is not treated as free. Not an input.
         boundPurposes:
           type: array
           maxItems: 6
@@ -11054,9 +11072,9 @@ components:
       type: string
       description: >-
         Catalog-to-ledger status of one model profile. ACTIVE matches the
-        current effective USD-per-1K row. MISSING leaves reservations
-        NO_PRICE. UNSUPPORTED_CURRENCY is a non-USD currency and is not
-        treated as free.
+        current effective USD-per-1K row. MISSING and UNSUPPORTED_CURRENCY
+        have no effective USD price: the send is admitted and the fee is null,
+        never zero. UNSUPPORTED_CURRENCY is not treated as free.
       enum:
         - ACTIVE
         - MISSING
@@ -12041,10 +12059,17 @@ components:
           type: integer
           format: int64
           minimum: 0
+        cachedInputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Cache tokens from the provider usage object. Omit or null when the
+            provider did not report them. An explicit 0 is stored as 0.
     ModelUsageSettlement:
       type: object
       additionalProperties: false
-      required: [reservationId, purpose, status, actualUsd, inputTokens, outputTokens, idempotent]
+      required: [reservationId, purpose, status, actualUsd, inputTokens, outputTokens, cachedInputTokens, idempotent]
       properties:
         reservationId:
           type: string
@@ -12058,7 +12083,8 @@ components:
           nullable: true
           description: >-
             Six-decimal USD from the first reported usage. Null when status is
-            UNKNOWN: a late settle does not book an actual and does not book zero.
+            UNKNOWN, and null for an unpriced settlement. A missing price is
+            never stored as zero. A late settle does not book an actual.
           example: '0.003000'
         inputTokens:
           type: integer
@@ -12070,6 +12096,13 @@ components:
           format: int64
           nullable: true
           description: Null when status is UNKNOWN. The late token counts are not stored.
+        cachedInputTokens:
+          type: integer
+          format: int64
+          nullable: true
+          description: >-
+            Null when the provider omitted cache tokens or when status is UNKNOWN.
+            An explicit 0 is not rewritten to null.
         idempotent:
           type: boolean
           description: >-
@@ -12121,7 +12154,7 @@ components:
     ModelUsagePurposeRow:
       type: object
       additionalProperties: false
-      required: [purpose, calls, actualUsd, estimatedUsd, unsettledUsd, inputTokens, outputTokens]
+      required: [purpose, calls, actualUsd, estimatedUsd, unsettledUsd, inputTokens, outputTokens, unpricedCalls, cachedInputTokens, cacheHitRate, includesUnpriced]
       properties:
         purpose:
           type: string
@@ -12150,11 +12183,33 @@ components:
           type: integer
           format: int64
           minimum: 0
+        unpricedCalls:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Settled or held calls with no effective price. Their fee is null, never zero.
+        cachedInputTokens:
+          type: integer
+          format: int64
+          nullable: true
+          description: Sum of reported cache tokens. Null when none of the rows reported a cache count.
+        cacheHitRate:
+          type: number
+          format: double
+          nullable: true
+          description: cachedInputTokens / inputTokens. Null when inputTokens is 0 or no cache count was reported.
+        includesUnpriced:
+          type: boolean
+          description: True when this purpose has at least one unpriced call. Dollar totals exclude those calls.
     ModelUsageSummaryResponse:
       type: object
       additionalProperties: false
       required: [purposes]
       properties:
+        month:
+          type: string
+          pattern: '^[0-9]{4}-[0-9]{2}$'
+          description: Present when the request selected a UTC month.
         purposes:
           type: array
           minItems: 7

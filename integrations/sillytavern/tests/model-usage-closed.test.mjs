@@ -9,11 +9,23 @@ import { ToolContinuationStore } from '../server-plugin/virtual-companion/lib/re
 test('供应商信封里的 usage 可结算，且不带回正文', () => {
     assert.deepEqual(
         readProviderUsage({ success: true, data: { usage: { prompt_tokens: 38, completion_tokens: 32 } } }),
-        { inputTokens: 38, outputTokens: 32 },
+        { inputTokens: 38, outputTokens: 32, cachedInputTokens: null },
     );
     assert.deepEqual(
         readProviderUsage({ usage: { prompt_tokens: 1, completion_tokens: 2 } }),
-        { inputTokens: 1, outputTokens: 2 },
+        { inputTokens: 1, outputTokens: 2, cachedInputTokens: null },
+    );
+    assert.deepEqual(
+        readProviderUsage({ usage: { prompt_tokens: 20, completion_tokens: 4, prompt_tokens_details: { cached_tokens: 8 } } }),
+        { inputTokens: 20, outputTokens: 4, cachedInputTokens: 8 },
+    );
+    assert.deepEqual(
+        readProviderUsage({ usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: { cached_tokens: 0 } } }),
+        { inputTokens: 10, outputTokens: 2, cachedInputTokens: 0 },
+    );
+    assert.deepEqual(
+        readProviderUsage({ usage: { input_tokens: 9, output_tokens: 1, cache_read_input_tokens: 3, cache_creation_input_tokens: 2 } }),
+        { inputTokens: 9, outputTokens: 1, cachedInputTokens: 5 },
     );
     assert.equal(readProviderUsage({ success: true, data: { choices: [] } }), undefined);
     const packed = JSON.stringify(readProviderUsage({

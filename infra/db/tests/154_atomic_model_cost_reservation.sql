@@ -1,5 +1,5 @@
 -- 154_atomic_model_cost_reservation: S0-29 versioned prices, idempotent retry,
--- settle/release, fixed thresholds, unknown-price refusal and concurrent cap.
+-- settle/release, fixed thresholds, unpriced zero-hold and concurrent cap.
 
 \set ON_ERROR_STOP on
 
@@ -41,7 +41,6 @@ DECLARE
     v_actual numeric;
     v_changed boolean;
     v_ok boolean;
-    v_denied boolean := false;
     v_budget record;
 BEGIN
     SELECT out_reservation_id, out_reserved_usd, out_threshold, out_inserted
@@ -100,15 +99,18 @@ BEGIN
     END IF;
     PERFORM vc.release_model_cost('attempt-cost-3');
 
-    BEGIN
-        PERFORM * FROM vc.reserve_model_cost(
-            current_setting('t.user')::bigint, 104, 'attempt-unknown-price',
-            'unknown-provider', 'unknown-model', 1, 1, 1.00);
-    EXCEPTION WHEN others THEN
-        v_denied := SQLERRM LIKE '%unit price is unknown%';
-    END;
-    IF NOT v_denied THEN
-        RAISE EXCEPTION 'unknown price must fail closed';
+    SELECT out_reservation_id, out_reserved_usd, out_inserted
+      INTO v_id, v_reserved, v_inserted
+      FROM vc.reserve_model_cost(
+          current_setting('t.user')::bigint, 104, 'attempt-unknown-price',
+          'unknown-provider', 'unknown-model', 1, 1, 1.00);
+    IF NOT v_inserted OR v_reserved <> 0 THEN
+        RAISE EXCEPTION 'unknown price must reserve 0, got % inserted %', v_reserved, v_inserted;
+    END IF;
+    SELECT * INTO v_budget FROM vc.model_cost_budget_snapshot();
+    IF v_budget.out_reserved_usd <> 0 OR v_budget.out_settled_usd <> 0.150000 THEN
+        RAISE EXCEPTION 'unknown price moved the budget: % %',
+            v_budget.out_reserved_usd, v_budget.out_settled_usd;
     END IF;
 END $$;
 COMMIT;

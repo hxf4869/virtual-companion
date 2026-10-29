@@ -170,7 +170,7 @@ func TestExpiredHoldBecomesUnknownAndLateSettleStaysUnsettled(t *testing.T) {
 	if got := w16Count(t, `SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget`); got != "0:30:30" {
 		t.Fatalf("month %s", got)
 	}
-	late, err := store.SettleModelUsage(ctx, 1, aged.ReservationID, 10, 4)
+	late, err := store.SettleModelUsage(ctx, 1, aged.ReservationID, 10, 4, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestExpiredHoldBecomesUnknownAndLateSettleStaysUnsettled(t *testing.T) {
 	if got := w16Count(t, `SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget`); got != "0:30:30" {
 		t.Fatalf("month after late settle %s", got)
 	}
-	if _, err := store.SettleModelUsage(ctx, 2, aged.ReservationID, 10, 4); !errors.Is(err, postgres.ErrNotFound) {
+	if _, err := store.SettleModelUsage(ctx, 2, aged.ReservationID, 10, 4, nil); !errors.Is(err, postgres.ErrNotFound) {
 		t.Fatalf("cross-owner settle %v", err)
 	}
 	_, err = store.ReserveModelUsage(ctx, postgres.ModelUsageReserve{

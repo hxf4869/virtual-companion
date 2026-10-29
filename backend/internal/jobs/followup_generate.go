@@ -68,7 +68,7 @@ type followUpStore interface {
 	LoadFollowUpGeneration(ctx context.Context, owner, id int64) (postgres.FollowUpGeneration, error)
 	FinishFollowUpGeneration(ctx context.Context, owner, id int64, in postgres.FollowUpGenerationFinish) error
 	PrepareFollowUpModelCall(ctx context.Context, owner, jobID int64, attempt, provider, model string, inputTokens, outputTokens int) (string, error)
-	SettleFollowUpModelCall(ctx context.Context, owner int64, attempt, disposition string, inputTokens, outputTokens *int64) error
+	SettleFollowUpModelCall(ctx context.Context, owner int64, attempt, disposition string, inputTokens, outputTokens, cachedInputTokens *int64) error
 	FollowUpProviderCredential(ctx context.Context, providerID string, revision int64) (string, error)
 	ResolvePurpose(ctx context.Context, in postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
 	CompleteJob(ctx context.Context, owner, jobID int64, token, fence, status, reason string) error
@@ -180,9 +180,6 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 	if err != nil {
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "PARAMETERS_REJECTED", nil)
 	}
-	if !followPriceKnown(resolved.Model.Pricing) {
-		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "NO_PRICE", nil)
-	}
 	if err := refreshFollowCredential(ctx, store, &route, resolved.ProviderRevision); err != nil {
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, "CREDENTIAL_REVOKED", nil)
 	}
@@ -221,10 +218,10 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		if settled || abandoned {
 			return
 		}
-		_ = store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil)
+		_ = store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil, nil)
 	}()
 	if err := refreshFollowCredential(ctx, store, &route, resolved.ProviderRevision); err != nil {
-		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil); settleErr != nil {
+		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil, nil); settleErr != nil {
 			return settleErr
 		}
 		settled = true
@@ -232,7 +229,7 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 	}
 	provider, err := factory(route)
 	if err != nil {
-		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil); settleErr != nil {
+		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, "NOT_SENT", nil, nil, nil); settleErr != nil {
 			return settleErr
 		}
 		settled = true
@@ -263,7 +260,7 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		if pe := companion.AsError(callErr); pe != nil && pe.Delivery == companion.DeliveryNotSent {
 			disposition = "NOT_SENT"
 		}
-		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, nil, nil); settleErr != nil {
+		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, nil, nil, nil); settleErr != nil {
 			return settleErr
 		}
 		settled = true
@@ -274,13 +271,13 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, reason, nil)
 	}
 	outcome, reason, greeting := reviewGreeting(reviewer, written.String())
-	disposition, inTokens, outTokens := followUsageSettlement(result.Usage)
+	disposition, inTokens, outTokens, cachedTokens := followUsageSettlement(result.Usage)
 	if err := finishFollowUp(ctx, store, claim, snapshotFollowFinish(resolved, outcome, reason, greeting)); err != nil {
-		_ = store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, inTokens, outTokens)
+		_ = store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, inTokens, outTokens, cachedTokens)
 		settled = true
 		return err
 	}
-	if err := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, inTokens, outTokens); err != nil {
+	if err := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, inTokens, outTokens, cachedTokens); err != nil {
 		return err
 	}
 	settled = true
@@ -430,14 +427,6 @@ func greetingRoute(p postgres.ResolvedPurpose) (modelprovider.Route, error) {
 	return route, nil
 }
 
-func followPriceKnown(price *postgres.ModelPricing) bool {
-	if price == nil || price.InputPerMillionTokens == nil || price.OutputPerMillionTokens == nil {
-		return false
-	}
-	in, out := *price.InputPerMillionTokens, *price.OutputPerMillionTokens
-	return !math.IsNaN(in) && !math.IsNaN(out) && !math.IsInf(in, 0) && !math.IsInf(out, 0) && in >= 0 && out >= 0
-}
-
 func reviewGreeting(reviewer *safety.Policy, text string) (string, string, *string) {
 	if strings.Contains(text, "\x00") {
 		return followGenNotGenerated, "INVALID_OUTPUT", nil
@@ -463,12 +452,12 @@ func reviewGreeting(reviewer *safety.Policy, text string) (string, string, *stri
 	return followGenBodyReady, followGenBodyReady, &trimmed
 }
 
-func followUsageSettlement(usage companion.Usage) (string, *int64, *int64) {
+func followUsageSettlement(usage companion.Usage) (string, *int64, *int64, *int64) {
 	if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.TotalTokens > 0 {
 		in, out := usage.InputTokens, usage.OutputTokens
-		return "USAGE_REPORTED", &in, &out
+		return "USAGE_REPORTED", &in, &out, usage.CachedInputTokens
 	}
-	return "UNKNOWN", nil, nil
+	return "UNKNOWN", nil, nil, nil
 }
 
 // followUpAbandonAfterSend, when it returns true, stops the handler after

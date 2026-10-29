@@ -15,7 +15,7 @@ import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admi
 test('发送提示只看 ledgerPrice，目录缺价不再单独拦发送', () => {
     assert.equal(ledgerPriceCopy('MISSING'), NO_PRICE_COPY);
     assert.equal(ledgerPriceCopy('UNSUPPORTED_CURRENCY'), UNSUPPORTED_CURRENCY_COPY);
-    assert.equal(UNSUPPORTED_CURRENCY_COPY, '仅美元计价可用于发送');
+    assert.equal(UNSUPPORTED_CURRENCY_COPY, '非美元单价：照常发送，费用记为未知');
     assert.equal(ledgerPriceCopy('ACTIVE'), '');
     assert.equal(ledgerPriceCopy(''), '');
     assert.equal(ledgerPriceCopy('FREE'), '');
@@ -33,14 +33,14 @@ test('发送提示只看 ledgerPrice，目录缺价不再单独拦发送', () =>
     });
     assert.equal(modelPriceMissing(missing.pricing), false);
     assert.match(ledgerCalloutHtml(missing), /id="vcms-no-price"/);
-    assert.match(ledgerCalloutHtml(missing), /未配置单价，无法发送/);
+    assert.match(ledgerCalloutHtml(missing), /未配置单价：照常发送，费用记为未知/);
     const cny = modelDraftFromApi({
         profileKey: 'cny', modelId: 'cny', displayName: '人民币', maxOutputTokens: 128,
         pricing: { currency: 'CNY', inputPerMillionTokens: 1, outputPerMillionTokens: 1 },
         ledgerPrice: 'UNSUPPORTED_CURRENCY',
     });
     assert.match(ledgerCalloutHtml(cny), /id="vcms-currency-price"/);
-    assert.match(ledgerCalloutHtml(cny), /仅美元计价可用于发送/);
+    assert.match(ledgerCalloutHtml(cny), /非美元单价：照常发送，费用记为未知/);
     assert.equal(ledgerCalloutHtml(cny).includes('未配置单价'), false);
 });
 

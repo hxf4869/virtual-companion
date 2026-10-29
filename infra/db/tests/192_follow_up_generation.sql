@@ -155,15 +155,11 @@ BEGIN
     IF v_decision <> 'HELD' OR v_again <> 'REUSED_HELD' THEN
         RAISE EXCEPTION 'cost prepare decisions were % then %', v_decision, v_again;
     END IF;
-    BEGIN
-        PERFORM vc.prepare_follow_up_model_call(
-            19201, 19291, 'follow-up:19291', 'greet-prov', 'missing-model', 10, 16, 1000000, 100000000000);
-        RAISE EXCEPTION 'unknown price unexpectedly held';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM <> 'model cost unit price is unknown' THEN
-            RAISE;
-        END IF;
-    END;
+    v_decision := vc.prepare_follow_up_model_call(
+        19201, 19291, 'follow-up:19291', 'greet-prov', 'missing-model', 10, 16, 1000000, 100000000000);
+    IF v_decision <> 'HELD' THEN
+        RAISE EXCEPTION 'unknown price decision %', v_decision;
+    END IF;
 END $$;
 COMMIT;
 RESET ROLE;
@@ -182,8 +178,10 @@ BEGIN
     IF v_count <> 1 OR v_reserved <> '0.000042' THEN
         RAISE EXCEPTION 'reservation was doubled: count % reserved %', v_count, v_reserved;
     END IF;
-    IF (SELECT count(*) FROM vc.model_cost_reservation WHERE provider_attempt_id = 'follow-up:19291') <> 0 THEN
-        RAISE EXCEPTION 'unknown price inserted a reservation';
+    IF (SELECT count(*) FROM vc.model_cost_reservation
+         WHERE provider_attempt_id = 'follow-up:19291'
+           AND price_version IS NULL AND reserved_usd = 0 AND status = 'HELD') <> 1 THEN
+        RAISE EXCEPTION 'unknown price did not insert an unpriced hold';
     END IF;
 END $$;
 

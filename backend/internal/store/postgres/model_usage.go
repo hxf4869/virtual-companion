@@ -58,7 +58,9 @@ type ModelUsageSettlement struct {
 	ActualUSD     string
 	InputTokens   int64
 	OutputTokens  int64
-	Idempotent    bool
+	// CachedInputTokens is nil when the provider did not report cache tokens.
+	CachedInputTokens *int64
+	Idempotent        bool
 }
 
 type ModelUsageCancellation struct {
@@ -71,17 +73,25 @@ type ModelUsageCancellation struct {
 }
 
 type ModelUsagePurposeRow struct {
-	Purpose      string
-	Calls        int64
-	ActualUSD    *string
-	EstimatedUSD *string
-	UnsettledUSD *string
-	InputTokens  int64
-	OutputTokens int64
+	Purpose       string
+	Calls         int64
+	ActualUSD     *string
+	EstimatedUSD  *string
+	UnsettledUSD  *string
+	InputTokens   int64
+	OutputTokens  int64
+	UnpricedCalls int64
+	// CachedInputTokens is nil when no settled or held row reported a cache count.
+	CachedInputTokens *int64
+	IncludesUnpriced  bool
 }
 
 func (s *Store) ReserveModelUsage(ctx context.Context, in ModelUsageReserve) (ModelUsageHold, error) {
-	if s == nil || s.maxReservedCost <= 0 || s.monthlyCostLimit <= 0 {
+	// monthlyCostLimit is VC_MONTHLY_COST_LIMIT in micro-USD. Zero means the
+	// monthly cap is unset, which admits the send. A positive cap still needs
+	// the per-call ceiling; SQL reports that as NO_BUDGET. A missing unit
+	// price is not a refusal.
+	if s == nil {
 		return ModelUsageHold{}, &ModelUsageError{Reason: ModelUsageNoBudget}
 	}
 	in.Purpose = strings.TrimSpace(in.Purpose)
@@ -109,21 +119,21 @@ func (s *Store) ReserveModelUsage(ctx context.Context, in ModelUsageReserve) (Mo
 	return out, nil
 }
 
-func (s *Store) SettleModelUsage(ctx context.Context, owner, reservationID, inputTokens, outputTokens int64) (ModelUsageSettlement, error) {
-	if owner <= 0 || reservationID <= 0 || inputTokens < 0 || outputTokens < 0 {
+func (s *Store) SettleModelUsage(ctx context.Context, owner, reservationID, inputTokens, outputTokens int64, cachedInputTokens *int64) (ModelUsageSettlement, error) {
+	if owner <= 0 || reservationID <= 0 || inputTokens < 0 || outputTokens < 0 || (cachedInputTokens != nil && *cachedInputTokens < 0) {
 		return ModelUsageSettlement{}, ErrInvalid
 	}
 	var out ModelUsageSettlement
 	var actual pgtype.Text
-	var inTok, outTok pgtype.Int8
+	var inTok, outTok, cached pgtype.Int8
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
 			SELECT out_reservation_id, out_purpose, out_status, out_actual_usd,
-			       out_input_tokens, out_output_tokens, out_idempotent
-			  FROM vc.settle_model_usage_reservation($1,$2,$3,$4)`,
-			owner, reservationID, inputTokens, outputTokens).
+			       out_input_tokens, out_output_tokens, out_cached_input_tokens, out_idempotent
+			  FROM vc.settle_model_usage_reservation($1,$2,$3,$4,$5)`,
+			owner, reservationID, inputTokens, outputTokens, cachedInputTokens).
 			Scan(&out.ReservationID, &out.Purpose, &out.Status, &actual,
-				&inTok, &outTok, &out.Idempotent)
+				&inTok, &outTok, &cached, &out.Idempotent)
 	})
 	if err != nil {
 		return ModelUsageSettlement{}, mapStoreErr(err)
@@ -136,6 +146,10 @@ func (s *Store) SettleModelUsage(ctx context.Context, owner, reservationID, inpu
 	}
 	if outTok.Valid {
 		out.OutputTokens = outTok.Int64
+	}
+	if cached.Valid {
+		v := cached.Int64
+		out.CachedInputTokens = &v
 	}
 	return out, nil
 }
@@ -189,29 +203,38 @@ func (s *Store) RecordLocalEmbeddingCall(ctx context.Context, owner int64) error
 	return mapStoreErr(err)
 }
 
-func (s *Store) AdminModelUsageSummary(ctx context.Context, actingAccountID int64, since time.Time) ([]ModelUsagePurposeRow, error) {
+func (s *Store) AdminModelUsageSummary(ctx context.Context, actingAccountID int64, since, until time.Time) ([]ModelUsagePurposeRow, error) {
 	if actingAccountID <= 0 {
 		return nil, ErrInvalid
 	}
-	var sinceArg any
+	var sinceArg, untilArg any
 	if !since.IsZero() {
 		sinceArg = since.UTC()
+	}
+	if !until.IsZero() {
+		untilArg = until.UTC()
 	}
 	var out []ModelUsagePurposeRow
 	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT out_purpose, out_calls, out_actual_usd, out_estimated_usd, out_unsettled_usd,
-			       out_input_tokens, out_output_tokens
-			  FROM vc.admin_model_usage_summary($1,$2)`, actingAccountID, sinceArg)
+			       out_input_tokens, out_output_tokens, out_unpriced_calls,
+			       out_cached_input_tokens, out_includes_unpriced
+			  FROM vc.admin_model_usage_summary($1,$2,$3)`, actingAccountID, sinceArg, untilArg)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var row ModelUsagePurposeRow
+			var cached pgtype.Int8
 			if err := rows.Scan(&row.Purpose, &row.Calls, &row.ActualUSD, &row.EstimatedUSD, &row.UnsettledUSD,
-				&row.InputTokens, &row.OutputTokens); err != nil {
+				&row.InputTokens, &row.OutputTokens, &row.UnpricedCalls, &cached, &row.IncludesUnpriced); err != nil {
 				return err
+			}
+			if cached.Valid {
+				v := cached.Int64
+				row.CachedInputTokens = &v
 			}
 			if row.ActualUSD != nil {
 				v := strings.TrimSpace(*row.ActualUSD)

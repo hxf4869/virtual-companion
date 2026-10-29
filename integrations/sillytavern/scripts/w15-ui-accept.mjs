@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
 
+const F01_SHOTS = '/private/tmp/claude-501/-Users-hxf-projects-virtual-companion/67c91cf9-5973-42e2-bbc0-514b65af332e/scratchpad/f01-shots';
 const SHOTS = process.env.VC_W15_SHOTS
     || '/private/tmp/claude-501/-Users-hxf-projects-virtual-companion/67c91cf9-5973-42e2-bbc0-514b65af332e/scratchpad/w15-shots/w15-4c';
 const GREETING = '这是一次合成测试对话。';
@@ -454,12 +455,12 @@ export async function sceneW15Ui(ctx) {
                     }, { profile: key, want: includes, block: excludes }), { timeoutMs: 10000, label: `ledger ${key}` });
                 };
                 await page.locator('[data-action="select-provider"][data-id="w15-ledger"]').click();
-                await showLedger('usd', ['美元价'], ['未配置单价，无法发送', '仅美元计价可用于发送']);
+                await showLedger('usd', ['美元价'], ['未配置单价：照常发送，费用记为未知', '非美元单价：照常发送，费用记为未知']);
                 await shot(`${viewport.name}-model-ledger-active.png`);
-                await showLedger('empty', ['未配置单价，无法发送'], ['仅美元计价可用于发送']);
+                await showLedger('empty', ['未配置单价：照常发送，费用记为未知'], ['非美元单价：照常发送，费用记为未知']);
                 if (await page.locator('#vcms-currency-price').count()) throw new Error('空价模型显示了币种提示');
                 await shot(`${viewport.name}-model-ledger-missing.png`);
-                await showLedger('cny', ['仅美元计价可用于发送'], ['未配置单价，无法发送']);
+                await showLedger('cny', ['非美元单价：照常发送，费用记为未知'], ['未配置单价：照常发送，费用记为未知']);
                 await shot(`${viewport.name}-model-ledger-currency.png`);
                 await assertLayout(viewport.width);
                 await assertSurface(`ledger-${viewport.name}`);
@@ -491,7 +492,7 @@ export async function sceneW15Ui(ctx) {
             await waitFor(async () => page.evaluate(() => {
                 const pressed = document.querySelector('[data-action="select-model"][data-key="empty"]')?.getAttribute('aria-pressed') === 'true';
                 const text = document.querySelector('.vcms-model-form')?.innerText || '';
-                return pressed && !document.querySelector('#vcms-no-price') && !text.includes('未配置单价，无法发送') && !text.includes('仅美元计价可用于发送');
+                return pressed && !document.querySelector('#vcms-no-price') && !text.includes('未配置单价：照常发送，费用记为未知') && !text.includes('非美元单价：照常发送，费用记为未知');
             }), { timeoutMs: 20000, label: '保存后空价变为可发送' });
             const savedList = await ctx.admin.listProviders();
             const savedEmpty = savedList.json?.find((item) => item.providerId === 'w15-ledger')?.models?.find((model) => model.profileKey === 'empty');
@@ -586,6 +587,62 @@ export async function sceneW15Ui(ctx) {
             fs.writeFileSync(samplePath, `${JSON.stringify(sample, null, 2)}\n`, { mode: 0o600 });
             await shot('1440-perf.png');
             console.log(`[w15-ui] perf ${JSON.stringify(sample)}`);
+            const pricedVersions = ctx.w10.psql(`SELECT price_version::text FROM vc.model_unit_price
+                WHERE provider_id = 'vc03m-chat' AND active;`)
+                .split('\n').map((line) => line.trim()).filter((line) => /^[0-9]+$/.test(line));
+            if (pricedVersions.length) {
+                ctx.w10.psql(`UPDATE vc.model_unit_price SET active = false
+                    WHERE provider_id = 'vc03m-chat' AND price_version IN (${pricedVersions.join(',')});`);
+            }
+            try {
+                const unpricedSince = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
+                const unpricedPrompt = `w15-unpriced-${crypto.randomUUID().slice(0, 8)}`;
+                await page.locator('#send_textarea').fill(unpricedPrompt);
+                await page.locator('#send_but').click();
+                const unpricedPopup = page.locator('dialog[open].popup').first();
+                try {
+                    await unpricedPopup.waitFor({ timeout: 4000 });
+                    await unpricedPopup.locator('.popup-button-ok').click();
+                    await unpricedPopup.waitFor({ state: 'hidden', timeout: 10000 });
+                } catch { /* 这一档没有代理确认 */ }
+                await page.waitForFunction((reply) => {
+                    const nodes = [...document.querySelectorAll('#chat .mes')];
+                    const text = nodes.at(-1)?.querySelector('.mes_text')?.textContent || '';
+                    const stop = document.querySelector('#mes_stop');
+                    const idle = !stop || getComputedStyle(stop).display === 'none';
+                    return idle && text.includes(reply);
+                }, REPLY, { timeout: 90000 });
+                const unpricedRows = await ctx.fixtureHttp.captures({ since: unpricedSince });
+                if (!unpricedRows.some((item) => item.protocol === 'chat')) throw new Error('未定价模型没有发到固定 provider');
+                await openNav('models', '模型', 1440);
+                await page.locator('.vcms-usage').waitFor();
+                const usageMonth = async () => page.locator('[data-usage-month-label]').innerText();
+                const shownMonth = (await usageMonth()).trim();
+                await page.locator('[data-action="usage-month"][data-delta="-1"]').click();
+                await waitFor(async () => {
+                    const text = await page.locator('.vcms-usage').innerText();
+                    return (await usageMonth()).trim() !== shownMonth && !text.includes('正在读取用量');
+                }, { timeoutMs: 20000, label: '用量切到上个月' });
+                await page.locator('[data-action="usage-month"][data-delta="1"]').click();
+                await waitFor(async () => page.evaluate((month) => {
+                    const root = document.querySelector('.vcms-usage');
+                    const text = root?.innerText || '';
+                    const label = root?.querySelector('[data-usage-month-label]')?.textContent?.trim();
+                    return label === month && !text.includes('正在读取用量')
+                        && text.includes('未知') && text.includes('前台聊天') && /\d/.test(text) && text.includes('%');
+                }, shownMonth), { timeoutMs: 20000, label: '用量区未定价费用' });
+                fs.mkdirSync(F01_SHOTS, { recursive: true });
+                const usageShot = path.join(F01_SHOTS, 'usage-unpriced.png');
+                await page.locator('.vcms-usage').screenshot({ path: usageShot });
+                await page.screenshot({ path: path.join(F01_SHOTS, 'model-page-usage.png') });
+                console.log(`[w15-ui] unpriced usage ${usageShot}`);
+                await closeIf('.vcms-overlay:not([hidden])', '[data-action="close"]');
+            } finally {
+                if (pricedVersions.length) {
+                    ctx.w10.psql(`UPDATE vc.model_unit_price SET active = true
+                        WHERE provider_id = 'vc03m-chat' AND price_version IN (${pricedVersions.join(',')});`);
+                }
+            }
             const exhausted = ctx.w10.psql(`INSERT INTO vc.month_cost_budget(month_start, settled_usd)
                 VALUES (date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC')::date, 11)
                 ON CONFLICT (month_start) DO UPDATE

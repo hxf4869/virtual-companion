@@ -26,7 +26,7 @@ func (m *memStore) ReserveModelUsage(_ context.Context, in postgres.ModelUsageRe
 	}, nil
 }
 
-func (m *memStore) SettleModelUsage(_ context.Context, _, reservationID, input, output int64) (postgres.ModelUsageSettlement, error) {
+func (m *memStore) SettleModelUsage(_ context.Context, _, reservationID, input, output int64, _ *int64) (postgres.ModelUsageSettlement, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.usageCalls++
@@ -59,7 +59,7 @@ func (m *memStore) RecordLocalEmbeddingCall(context.Context, int64) error {
 	return nil
 }
 
-func (m *memStore) AdminModelUsageSummary(context.Context, int64, time.Time) ([]postgres.ModelUsagePurposeRow, error) {
+func (m *memStore) AdminModelUsageSummary(context.Context, int64, time.Time, time.Time) ([]postgres.ModelUsagePurposeRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.usageSummaryCalls++

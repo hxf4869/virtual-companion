@@ -138,10 +138,15 @@ type responseContent struct {
 	Text string `json:"text"`
 }
 
+type inputTokenDetails struct {
+	CachedTokens *int64 `json:"cached_tokens"`
+}
+
 type responseUsage struct {
-	InputTokens  int64 `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
-	TotalTokens  int64 `json:"total_tokens"`
+	InputTokens        int64              `json:"input_tokens"`
+	OutputTokens       int64              `json:"output_tokens"`
+	TotalTokens        int64              `json:"total_tokens"`
+	InputTokensDetails *inputTokenDetails `json:"input_tokens_details"`
 }
 
 type incompleteDetails struct {
@@ -280,8 +285,17 @@ func completePayload(payload *responsePayload) (string, companion.FinishReason, 
 		u.InputTokens+u.OutputTokens != u.TotalTokens {
 		return "", "", companion.Usage{}, modelhttp.ErrMalformed
 	}
+	var cached *int64
+	if u.InputTokensDetails != nil && u.InputTokensDetails.CachedTokens != nil {
+		if *u.InputTokensDetails.CachedTokens < 0 {
+			return "", "", companion.Usage{}, modelhttp.ErrMalformed
+		}
+		n := *u.InputTokensDetails.CachedTokens
+		cached = &n
+	}
 	return b.String(), finish, companion.Usage{
 		InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, TotalTokens: u.TotalTokens,
+		CachedInputTokens: cached,
 	}, nil
 }
 

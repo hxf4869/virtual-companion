@@ -1,8 +1,8 @@
 -- W11-3: the admin summary counts a reservation once. A generation_usage row
 -- with the same provider_ref is kept and is not added again. An unlinked
 -- generation_usage row is legacy only. Local embedding is a call count with
--- null money and does not move the month budget. A missing price inserts no
--- reservation.
+-- null money and does not move the month budget. A missing price still inserts
+-- one unpriced reservation with a zero hold.
 
 \set ON_ERROR_STOP on
 
@@ -77,18 +77,12 @@ BEGIN
        OR v_emb_estimated IS NOT NULL OR v_emb_unsettled IS NOT NULL THEN
         RAISE EXCEPTION 'embedding % % % %', v_emb_calls, v_emb_actual, v_emb_estimated, v_emb_unsettled;
     END IF;
-    BEGIN
-        PERFORM 1 FROM vc.reserve_model_usage(
-            22401, 'FOREGROUND_CHAT', 'fg-224-noprice', 'w11-meter', 'missing', 10, 10, 1000000, 8000000);
-        RAISE EXCEPTION 'missing price reserved';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%missing price reserved%' THEN RAISE; END IF;
-        IF SQLERRM NOT LIKE '%unit price is unknown%' THEN
-            RAISE EXCEPTION 'price denial %', SQLERRM;
-        END IF;
-    END;
-    SELECT count(*) INTO n FROM vc.model_cost_reservation WHERE provider_attempt_id = 'fg-224-noprice';
-    IF n <> 0 THEN RAISE EXCEPTION 'missing price inserted %', n; END IF;
+    PERFORM 1 FROM vc.reserve_model_usage(
+        22401, 'FOREGROUND_CHAT', 'fg-224-noprice', 'w11-meter', 'missing', 10, 10, 1000000, 8000000);
+    SELECT count(*) INTO n FROM vc.model_cost_reservation
+     WHERE provider_attempt_id = 'fg-224-noprice'
+       AND price_version IS NULL AND reserved_usd = 0 AND actual_usd IS NULL AND status = 'HELD';
+    IF n <> 1 THEN RAISE EXCEPTION 'missing price hold %', n; END IF;
     BEGIN
         PERFORM 1 FROM vc.admin_model_usage_summary(22401, now() - interval '1 day');
         RAISE EXCEPTION 'non-admin read the summary';

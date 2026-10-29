@@ -3063,10 +3063,10 @@
             "order": 2
           }
         ],
-        "note": "Derived per profile from its state, currency and the current effective vc.model_unit_price row. The ledger is USD per 1K tokens, converted from the catalog's USD per million tokens. ACTIVE is that match. MISSING leaves a reservation NO_PRICE. UNSUPPORTED_CURRENCY is any currency other than USD.",
+        "note": "Derived per profile from its state, currency and the current effective vc.model_unit_price row. The ledger is USD per 1K tokens, converted from the catalog's USD per million tokens. ACTIVE is that match. MISSING and UNSUPPORTED_CURRENCY have no effective USD price: the send is admitted and the fee is null, never zero. UNSUPPORTED_CURRENCY is any currency other than USD and is not treated as free.",
         "schemaVersion": 1
       },
-      "sha256": "365c4b861fa03b0f8da2d1df145b361214ca3c5de903a898cce6804229cc774f"
+      "sha256": "7a5388d84eaa83a48325e7fb20b463b2d72d83f1bce9ad398e85389bebd44937"
     },
     "model-protocols.yaml": {
       "document": {
