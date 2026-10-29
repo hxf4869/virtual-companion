@@ -305,3 +305,5 @@ async function openCreatedChat({ characterRef, chatIdentity } = {}) {
 
 export { mountMemoryTab } from './memory-page.js';
 export { mountInboxTab } from './inbox-page.js';
+export { mountCharactersTab } from './instance-page.js';
+export { mountStoryTab } from './story-page.js';

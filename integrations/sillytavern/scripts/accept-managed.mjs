@@ -72,6 +72,7 @@ import { sceneInboxNotify, startW10Capture, stopW10Capture } from './w10-accept.
 import { sceneStoryReal } from './story-real-accept.mjs';
 import { sceneW15Ui } from './w15-ui-accept.mjs';
 import { sceneFe4aUi } from './fe4a-ui-accept.mjs';
+import { sceneFe4bUi } from './fe4b-ui-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -124,6 +125,13 @@ SCENES.push({
 SCENES.push({
     id: 'fe4a-ui',
     title: 'F4a 记忆与陪伴新界面',
+    needs: ['browser'],
+    default: false,
+});
+// F4b 新界面不进默认集。显式 --filter fe4b-ui 才运行，只开本地静态页与浏览器。
+SCENES.push({
+    id: 'fe4b-ui',
+    title: 'F4b 角色与剧情新界面：网格、详情、开局转场与回档取消',
     needs: ['browser'],
     default: false,
 });
@@ -3039,6 +3047,7 @@ const SCENE_IMPLS = {
     'story-real': sceneStoryReal,
     'w15-ui': sceneW15Ui,
     'fe4a-ui': sceneFe4aUi,
+    'fe4b-ui': sceneFe4bUi,
 };
 
 async function runFull() {

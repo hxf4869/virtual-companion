@@ -291,3 +291,215 @@
     .vc-instance-bar-actions button { flex: 1 1 auto; }
     .vc-instance-columns { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 新外观角色页。只在 body.vc-ui 下生效，旧对话框不受影响。 */
+body.vc-ui .vc-characters {
+    position: relative;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--vc-canvas);
+    color: var(--vc-ink);
+    font-family: var(--vc-font);
+}
+
+body.vc-ui .vc-characters .vc-screen {
+    background: var(--vc-canvas);
+    color: var(--vc-ink);
+}
+
+body.vc-ui .vc-characters .vc-scroll {
+    height: 100%;
+    overflow: auto;
+    padding-bottom: calc(var(--vc-space-xxl) + env(safe-area-inset-bottom));
+}
+
+body.vc-ui .vc-characters .vc-navbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 4;
+}
+
+body.vc-ui .vc-characters .vc-scroll {
+    padding-top: calc(56px + env(safe-area-inset-top));
+}
+
+body.vc-ui .vc-roles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--vc-space-sm);
+    max-width: var(--vc-list);
+    margin: 0 auto;
+    padding: 0 var(--vc-page-pad) var(--vc-space-xl);
+}
+
+body.vc-ui .vc-role {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--vc-space-xxs);
+    min-width: 0;
+    min-height: var(--vc-touch);
+    padding: var(--vc-space-lg) var(--vc-space-sm) var(--vc-space-md);
+    border: 0;
+    border-radius: var(--vc-radius-lg);
+    background:
+        radial-gradient(120% 80% at 50% 0%, rgba(var(--vc-tint, 140, 140, 150), var(--vc-tint-alpha)), transparent 75%),
+        var(--vc-group);
+    color: var(--vc-ink);
+    text-align: center;
+    transition: transform var(--vc-dur-press) var(--vc-spring);
+}
+
+body.vc-ui .vc-role:active { transform: scale(0.96); }
+
+body.vc-ui .vc-role-avatar,
+body.vc-ui .vc-poster-avatar {
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: var(--vc-radius-pill);
+    background: var(--vc-fill);
+    color: var(--vc-ink);
+    font-weight: 600;
+}
+
+body.vc-ui .vc-role-avatar {
+    width: 72px;
+    height: 72px;
+    margin-bottom: var(--vc-space-xs);
+    font-size: var(--vc-fs-title-2);
+    box-shadow: 0 8px 20px rgba(var(--vc-tint, 140, 140, 150), var(--vc-tint-alpha));
+}
+
+body.vc-ui .vc-role-avatar img,
+body.vc-ui .vc-poster-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+body.vc-ui .vc-role b {
+    max-width: 100%;
+    font-size: var(--vc-fs-body);
+    font-weight: 600;
+    line-height: var(--vc-lh-body);
+    overflow-wrap: anywhere;
+}
+
+body.vc-ui .vc-role > span {
+    color: var(--vc-ink-2);
+    font-size: var(--vc-fs-footnote);
+    line-height: var(--vc-lh-footnote);
+}
+
+body.vc-ui .vc-characters .vc-skeleton-avatar {
+    width: 72px;
+    height: 72px;
+}
+
+body.vc-ui .vc-poster {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--vc-space-xs);
+    padding: var(--vc-space-lg) var(--vc-page-pad) var(--vc-space-xl);
+    text-align: center;
+}
+
+body.vc-ui .vc-poster-avatar {
+    width: 112px;
+    height: 112px;
+    font-size: var(--vc-fs-title-1);
+    box-shadow:
+        0 0 0 4px var(--vc-canvas),
+        0 8px 20px rgba(var(--vc-tint, 140, 140, 150), var(--vc-tint-alpha));
+}
+
+body.vc-ui .vc-poster b {
+    font-size: var(--vc-fs-title-1);
+    font-weight: 700;
+    line-height: var(--vc-lh-title);
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
+body.vc-ui .vc-poster .vc-instance-secondary,
+body.vc-ui .vc-characters .vc-instance-secondary {
+    max-width: var(--vc-read);
+    margin: var(--vc-space-xs) 0 0;
+    color: var(--vc-ink);
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-reading);
+    overflow-wrap: anywhere;
+}
+
+body.vc-ui .vc-characters .vc-instance-badge {
+    border: 0;
+    background: transparent;
+    color: var(--vc-ink-2);
+    font-size: var(--vc-fs-footnote);
+}
+
+body.vc-ui .vc-characters .vc-instance-badge::before { content: none; }
+
+body.vc-ui .vc-characters .vc-instance-world {
+    color: var(--vc-ink);
+    font-size: var(--vc-fs-body);
+}
+
+body.vc-ui .vc-characters .vc-instance-alert {
+    max-width: var(--vc-read);
+    margin: 0 var(--vc-page-pad) var(--vc-space-md);
+    padding: var(--vc-space-sm) var(--vc-space-md);
+    border: 0;
+    border-radius: var(--vc-radius-md);
+    background: var(--vc-group);
+    color: var(--vc-danger);
+}
+
+body.vc-ui .vc-characters .vc-instance-form {
+    max-width: var(--vc-read);
+    margin: 0 auto var(--vc-space-xl);
+    padding: 0 var(--vc-page-pad);
+}
+
+body.vc-ui .vc-characters .vc-instance-form label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-xs);
+    color: var(--vc-ink-2);
+    font-size: var(--vc-fs-footnote);
+}
+
+body.vc-ui .vc-characters input {
+    width: 100%;
+    min-height: var(--vc-touch);
+    padding: var(--vc-space-xs) var(--vc-space-sm);
+    border: 0;
+    border-radius: var(--vc-radius-sm);
+    background: var(--vc-fill);
+    color: var(--vc-ink);
+    font: inherit;
+    font-size: var(--vc-fs-input);
+}
+
+body.vc-ui .vc-characters .vc-instance-create {
+    display: flex;
+    width: calc(100% - 2 * var(--vc-page-pad));
+    max-width: var(--vc-read);
+    margin: 0 auto var(--vc-space-md);
+}
+
+body.vc-ui .vc-characters .vc-empty .vc-btn,
+body.vc-ui .vc-characters [data-action="retry"] {
+    min-width: 120px;
+}
+
+@media (min-width: 744px) {
+    body.vc-ui .vc-characters .vc-scroll {
+        padding-inline: var(--vc-space-xxl);
+    }
+}

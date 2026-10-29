@@ -2,6 +2,11 @@
 import * as api from './api.js';
 import * as actions from './story-action.js';
 import { STORY_SYNC_PENDING } from './story-projection.js';
+import { confirmAlert } from './ui/alert.js';
+import { icon } from './ui/icons.js';
+import { popMenu } from './ui/menu.js';
+import { animate, EASE_IN_OUT, EASE_OUT, prefersReducedMotion, SPRING } from './ui/motion.js';
+import { showToast } from './ui/toast.js';
 
 export { STORY_SYNC_PENDING };
 export const STORY_CONFLICT = '这一局与当前对话冲突，开局未完成。';
@@ -47,6 +52,19 @@ const ACTION_GROUPS = [
     { id: 'zhou', title: '周澈' },
     { id: 'place', title: '地点' },
 ];
+// 黑幕色与开场时长。组件库补上对应 token 之前，页面只从这里取。
+const STAGE_MOTION = {
+    letterbox: '#000000',
+    barMs: 900,
+    titleDelayMs: 650,
+    titleMs: 1600,
+    openMs: 900,
+    titleOutMs: 420,
+    holdMs: 800,
+    flipMs: 800,
+    reducedMs: 150,
+};
+const spriteLoads = new Map();
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -725,4 +743,533 @@ export function mountStoryPage({
         },
         close,
     };
+}
+
+function isVcUiOn() {
+    try {
+        if (globalThis.document?.body?.classList?.contains('vc-ui')) return true;
+        return globalThis.localStorage?.getItem('vc-ui') === 'on';
+    } catch {
+        return false;
+    }
+}
+
+function storyMode(state) {
+    if (!state.run || !state.view) return 'unstarted';
+    return viewState(state);
+}
+
+function storyAttrs(state) {
+    const mode = storyMode(state);
+    const version = state.turn?.worldVersion ?? 0;
+    const held = mode === 'unstarted' ? '' : ` data-world-version="${version}"`;
+    return `class="vc-story" data-state="${mode}"${held}`;
+}
+
+function rewindTargets(state) {
+    const version = state.turn?.worldVersion ?? 0;
+    const versions = new Set();
+    if (version > 0) versions.add(0);
+    for (const event of state.view?.events || []) {
+        if (typeof event.worldVersion === 'number' && event.worldVersion < version) versions.add(event.worldVersion);
+    }
+    return [...versions].sort((a, b) => a - b);
+}
+
+function evidenceIcon(name) {
+    const text = String(name);
+    if (text.includes('表')) return 'watch';
+    if (text.includes('钥匙')) return 'key-round';
+    if (text.includes('画')) return 'image';
+    return 'sparkles';
+}
+
+function evidenceItems(state) {
+    const items = [];
+    const seen = new Set();
+    const add = (name, detail) => {
+        const label = shown(name);
+        if (!label || seen.has(label)) return;
+        seen.add(label);
+        items.push({ name: label, detail: shown(detail) });
+    };
+    for (const fact of state.view?.knowledge || []) add(fact, '');
+    for (const event of state.view?.events || []) add(event.clueName, '');
+    return items;
+}
+
+function freshClueName(state) {
+    const notice = typeof state.notice === 'string' ? state.notice : '';
+    const prefix = '发现证据：';
+    return notice.startsWith(prefix) ? notice.slice(prefix.length) : '';
+}
+
+function coverPeople(state) {
+    const people = (state.view?.participants || []).filter((person) => person.actorId && person.actorId !== 'player');
+    if (people.length) return people.slice(0, 3);
+    return ACTION_GROUPS.filter((group) => group.id !== 'place').map((group) => ({ actorId: group.id, name: group.title }));
+}
+
+function progressPercent(state) {
+    if (state.run?.stage === 'resolved') return 100;
+    const version = state.turn?.worldVersion ?? 0;
+    return Math.max(0, Math.min(100, Math.round((version / STEPS.length) * 100)));
+}
+
+function narrativeBlocks(state, fresh) {
+    const setting = state.view?.setting ? `<p class="vc-dim vc-story-setting">${esc(state.view.setting)}</p>` : '';
+    const known = state.view?.knownEvent ? `<p class="vc-story-known">${esc(state.view.knownEvent)}</p>` : '';
+    const events = state.view?.events || [];
+    const lines = events.map((event, index) => {
+        const say = /[“"「]/.test(event.line);
+        const mark = fresh && index === events.length - 1 ? ' vc-stream' : '';
+        return `<li class="${say ? 'vc-say' : ''}${mark}">${esc(event.line)}</li>`;
+    }).join('');
+    return { setting, known, lines };
+}
+
+export function renderStoryTab(state, options = {}) {
+    const view = options.view === 'stage' && state.run && state.view ? 'stage' : 'gate';
+    const loading = options.loading === true;
+    const mode = storyMode(state);
+    const stage = stageWord(state.run?.stage);
+    const people = coverPeople(state);
+    const percent = progressPercent(state);
+    const config = configBanner(state).replace('class="vc-story-config"', 'class="vc-story-config vc-note vc-glass"');
+    const error = state.error ? `<p class="vc-note vc-glass" role="alert">${esc(state.error)}</p>` : '';
+    const faces = people.map((person) => `<span class="vc-case-face" aria-label="${esc(person.name)}">${esc(initial(person.name))}</span>`).join('');
+    const gateButton = state.run
+        ? `<button type="button" class="vc-btn vc-btn-fill" data-action="enter" ${state.busy ? 'disabled' : ''}>${icon('play', { size: 18 })}继续</button>`
+        : `<button type="button" class="vc-btn vc-btn-fill" data-action="start" ${state.busy ? 'disabled' : ''}>${icon('play', { size: 18 })}开局</button>`;
+    if (loading || view === 'gate') {
+        const skeleton = loading
+            ? `<div class="vc-skeleton-row" aria-busy="true"><span class="vc-skeleton vc-skeleton-avatar"></span><span class="vc-grow"><span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span></span></div>`
+            : '';
+        return `<header class="vc-navbar"><div class="vc-nav-title">剧情</div><div class="vc-nav-spacer"></div></header><div class="vc-scroll"><h1 class="vc-large-title" tabindex="-1">剧情</h1><div ${storyAttrs(loading ? { run: null, view: null } : state)}>${config}${error}${skeleton}<article class="vc-case"><div class="vc-case-cover"><div class="vc-case-fog"></div>${faces}</div><div class="vc-case-info"><h3>${esc(CASE_TITLE)}</h3>${stage ? `<span class="vc-meta">${esc(stage)}</span>` : ''}<div class="vc-case-bar" aria-hidden="true"><i style="width:${percent}%"></i></div>${loading ? '' : gateButton}</div></article></div></div>`;
+    }
+    const hold = state.busy ? ' disabled' : '';
+    const selected = state.view.participants.find((person) => person.actorId === state.actorId);
+    const focused = state.view.participants.some((person) => person.actorId === state.actorId);
+    const npcs = state.view.participants.filter((person) => person.actorId !== 'player').map((person) => {
+        const pressed = state.actorId === person.actorId;
+        const accessible = person.persona ? `${person.name}，${person.persona}` : person.name;
+        return `<button type="button" class="vc-npc vc-story-person${pressed ? ' is-on' : ''}" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}" aria-label="${esc(accessible)}"><span class="vc-npc-avatar" aria-hidden="true">${esc(initial(person.name))}</span><span class="vc-npc-name">${esc(person.name)}</span></button>`;
+    }).join('');
+    const versions = rewindTargets(state);
+    const primary = versions[0];
+    const extraRewind = versions.map((item) => `<button type="button" class="vc-cell" data-action="ask-rewind" data-version="${item}"${hold}>回到版本 ${item}</button>`).join('');
+    const blocks = narrativeBlocks(state, options.fresh === true);
+    const clue = freshClueName(state);
+    const cards = evidenceItems(state).map((item) => {
+        const fresh = item.name === clue;
+        return `<article class="vc-evi${fresh ? ' is-back' : ''}" ${fresh ? 'data-evidence="show"' : ''}><div class="vc-evi-face">${icon(evidenceIcon(item.name), { size: 18 })}<b>${esc(item.name)}</b>${item.detail ? `<span>${esc(item.detail)}</span>` : ''}</div><div class="vc-evi-back">${icon('sparkles', { size: 22 })}</div></article>`;
+    }).join('');
+    const steps = state.run.stage === 'resolved' ? '' : STEPS.map((step) => {
+        const visible = Boolean(selected) && step.target === selected.actorId;
+        const face = step.action === 'accuse' ? 'vc-btn vc-btn-danger' : 'vc-btn vc-btn-gray';
+        return `<button type="button" class="${face}" data-action="act" data-step="${esc(step.id)}"${visible ? '' : ' hidden'}${hold}>${esc(step.label)}</button>`;
+    }).join('');
+    const sayPlaceholder = selected ? `对${selected.name}说` : '先选择一位角色';
+    const sayValue = esc(options.draftSay || '');
+    const thinking = mode === 'generating'
+        ? `<p class="vc-note vc-glass vc-story-generating" role="status"><span class="vc-thinking" aria-hidden="true"><i></i><i></i><i></i></span>${esc(GENERATING)}</p>`
+        : '';
+    const sync = state.syncPending ? `<p class="vc-note vc-glass vc-story-sync" role="status">${esc(STORY_SYNC_PENDING)}</p>` : '';
+    const reason = state.reason ? `<p class="vc-note vc-glass" role="alert">${esc(state.reason)}</p>` : '';
+    const notes = `${config}<div class="vc-story-notes">${thinking}${sync}${reason}</div>`;
+    const field = `<label class="vc-story-say-row vc-field"><textarea data-field="say" maxlength="4000" rows="1" aria-label="对所选角色说" placeholder="${esc(sayPlaceholder)}"${hold}>${sayValue}</textarea><button type="button" class="vc-send" data-action="${mode === 'generating' ? 'stop' : 'say'}" aria-label="${mode === 'generating' ? '停止' : '发送'}"${mode === 'generating' || !String(options.draftSay || '').trim() ? ' disabled' : ''}>${icon(mode === 'generating' ? 'square' : 'arrow-up', { size: 18 })}</button></label>`;
+    const dock = state.run.stage === 'resolved' ? '' : `<div class="vc-dock vc-glass"><div class="vc-acts">${steps}</div><div class="vc-story-say">${field}</div></div>`;
+    const companions = state.companions
+        ? state.companions.map((row) => CASTABLE.map((actorId) => {
+            const person = state.view.participants.find((item) => item.actorId === actorId);
+            const label = person?.name || actorId;
+            return `<button type="button" class="vc-cell" data-action="map-companion" data-actor="${esc(actorId)}" data-relationship="${esc(row.relationshipId)}">${esc(row.name)} 入局为${esc(label)}</button>`;
+        }).join('')).join('')
+        : '<button type="button" class="vc-cell" data-action="show-companions">选择陪伴入局</button>';
+    const ending = state.run.stage === 'resolved'
+        ? `<section class="vc-group vc-story-ending"><h2>结局</h2>${state.epilogue ? `<p>${esc(state.epilogue)}</p>` : ''}<textarea data-field="summary" maxlength="2000" aria-label="共同游玩摘要">${esc(options.draftSummary || '')}</textarea><div class="vc-ending-actions"><button type="button" class="vc-btn vc-btn-fill" data-action="save-epilogue">保存共同游玩摘要</button><button type="button" class="vc-btn vc-btn-text is-danger" data-action="discard-epilogue">放弃共同游玩摘要</button></div></section>`
+        : '';
+    const rewindButton = primary == null
+        ? `<button type="button" class="vc-circle vc-glass" aria-label="回档" disabled>${icon('history')}</button>`
+        : `<button type="button" class="vc-circle vc-glass" data-action="ask-rewind" data-version="${primary}" aria-label="回档"${hold}>${icon('history')}</button>`;
+    return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="close" aria-label="离开剧情">${icon('x')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(state.run.caseId === 'rainy-inn-v1' ? '雨夜旅馆' : '剧情')}${stage ? `<span class="vc-meta">${esc(stage)}</span>` : ''}</h1><div class="vc-nav-spacer"></div>${rewindButton}</header><div class="vc-scroll"><div ${storyAttrs(state)}><p class="vc-sr">${esc(CASE_TITLE)}</p>${notes}<div class="vc-npcs${focused ? ' is-focus' : ''}">${npcs}</div><div class="vc-narr"><section aria-label="公开设定">${blocks.setting}${blocks.known}</section><section aria-label="地点"><ul class="vc-story-places">${list(state.view.locations)}</ul></section><section aria-label="公开时间线"><ul class="vc-story-events">${blocks.lines}</ul></section></div><section aria-label="线索"><div class="vc-meta vc-evi-label">证物</div><div class="vc-evis">${cards}</div></section>${ending}${extraRewind ? `<section class="vc-group" aria-label="回档">${extraRewind}</section>` : ''}<section class="vc-group" aria-label="陪伴">${companions}</section></div></div>${dock}`;
+}
+
+function stampAlert(root, cancelAction, okAction) {
+    const dialog = root.querySelector('.vc-alert');
+    if (!dialog) return;
+    dialog.querySelector('[data-vc-cancel]')?.setAttribute('data-action', cancelAction);
+    dialog.querySelector('[data-vc-ok]')?.setAttribute('data-action', okAction);
+    const title = dialog.querySelector('h4');
+    if (title && okAction === 'confirm-rewind') {
+        title.id = 'vc-story-rewind-title';
+        dialog.setAttribute('aria-labelledby', 'vc-story-rewind-title');
+    }
+}
+
+function animationDone(anim) {
+    return anim?.finished || Promise.resolve();
+}
+
+function wait(ms) {
+    return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+function beginLetterbox(host, title, stageLabel) {
+    const doc = host.ownerDocument;
+    const box = doc.createElement('div');
+    box.className = 'vc-letterbox';
+    box.style.setProperty('--vc-letterbox', STAGE_MOTION.letterbox);
+    box.innerHTML = '<i class="vc-letterbox-bar is-top"></i><i class="vc-letterbox-bar is-bottom"></i><div class="vc-letterbox-card"><b></b><span></span></div>';
+    box.querySelector('b').textContent = title;
+    const stage = box.querySelector('span');
+    stage.textContent = stageLabel || '';
+    host.append(box);
+    const top = box.querySelector('.is-top');
+    const bottom = box.querySelector('.is-bottom');
+    const card = box.querySelector('.vc-letterbox-card');
+    let ready;
+    let finish;
+    if (prefersReducedMotion()) {
+        ready = animationDone(animate(box, [{ opacity: 0 }, { opacity: 1 }], { duration: STAGE_MOTION.reducedMs }));
+        finish = async () => {
+            await animationDone(animate(box, [{ opacity: 1 }, { opacity: 0 }], { duration: STAGE_MOTION.reducedMs }));
+            box.remove();
+        };
+    } else {
+        const bars = Promise.all([
+            animationDone(animate(top, [{ opacity: 0, transform: 'translateY(-100%)' }, { opacity: 1, transform: 'none' }], { duration: STAGE_MOTION.barMs, easing: EASE_IN_OUT })),
+            animationDone(animate(bottom, [{ opacity: 0, transform: 'translateY(100%)' }, { opacity: 1, transform: 'none' }], { duration: STAGE_MOTION.barMs, easing: EASE_IN_OUT })),
+        ]);
+        const titleIn = wait(STAGE_MOTION.titleDelayMs).then(() => animationDone(animate(card, [
+            { opacity: 0, letterSpacing: '0.02em' },
+            { opacity: 1, letterSpacing: '0.14em' },
+        ], { duration: STAGE_MOTION.titleMs, easing: EASE_OUT })));
+        ready = Promise.all([bars, titleIn]).then(async () => {
+            box.dataset.pose = 'hold';
+            await wait(STAGE_MOTION.holdMs);
+        });
+        finish = async () => {
+            if (!box.isConnected) return;
+            await Promise.all([
+                animationDone(animate(top, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-100%)' }], { duration: STAGE_MOTION.openMs, easing: EASE_IN_OUT })),
+                animationDone(animate(bottom, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(100%)' }], { duration: STAGE_MOTION.openMs, easing: EASE_IN_OUT })),
+                animationDone(animate(card, [{ opacity: 1 }, { opacity: 0 }], { duration: STAGE_MOTION.titleOutMs, easing: EASE_OUT })),
+            ]);
+            box.remove();
+        };
+    }
+    return {
+        box,
+        ready,
+        setStage(value) { stage.textContent = value || ''; },
+        finish,
+    };
+}
+
+function flipEvidence(card) {
+    if (!card) return;
+    if (prefersReducedMotion()) {
+        card.classList.remove('is-back');
+        if (!card.querySelector('.vc-evi-new')) card.insertAdjacentHTML('beforeend', '<span class="vc-evi-new">+1</span>');
+        return;
+    }
+    const anim = animate(card, [
+        { transform: 'rotateY(180deg)' },
+        { transform: 'rotateY(0deg)' },
+    ], { duration: STAGE_MOTION.flipMs, easing: SPRING });
+    animationDone(anim).then(() => {
+        if (!card.isConnected) return;
+        card.classList.remove('is-back');
+        if (!card.querySelector('.vc-evi-new')) card.insertAdjacentHTML('beforeend', '<span class="vc-evi-new">+1</span>');
+    });
+}
+
+function hydrateIcons(scope) {
+    const doc = scope?.ownerDocument;
+    if (!doc || typeof fetch !== 'function') return;
+    const groups = new Map();
+    for (const use of scope.querySelectorAll('use[href]')) {
+        const href = use.getAttribute('href') || '';
+        const hash = href.indexOf('#');
+        if (hash <= 0) continue;
+        const url = href.slice(0, hash);
+        const id = href.slice(hash + 1);
+        if (!url.endsWith('.svg') || !id) continue;
+        if (!groups.has(url)) groups.set(url, []);
+        groups.get(url).push({ use, id });
+    }
+    for (const [url, items] of groups) {
+        const task = spriteLoads.get(url) || fetch(url).then((response) => {
+            if (!response.ok) throw new Error('sprite');
+            return response.text();
+        }).then((text) => {
+            if (!text.includes('<symbol')) throw new Error('sprite');
+            let host = doc.getElementById('vc-icon-sprite');
+            if (!host) {
+                host = doc.createElement('div');
+                host.id = 'vc-icon-sprite';
+                host.setAttribute('aria-hidden', 'true');
+                host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+                doc.body.append(host);
+            }
+            if (host.dataset.url !== url) {
+                host.innerHTML = text.replace(/<\?xml[\s\S]*?\?>/, '').trim();
+                host.dataset.url = url;
+            }
+            return true;
+        }).catch(() => false);
+        spriteLoads.set(url, task);
+        task.then((ok) => {
+            if (!ok) return;
+            for (const item of items) {
+                if (item.use.isConnected) item.use.setAttribute('href', `#${item.id}`);
+            }
+        });
+    }
+}
+
+export function mountStoryTab(container, options = {}) {
+    const doc = container?.ownerDocument || globalThis.document;
+    if (doc && typeof doc.createElement === 'function' && !doc.querySelector?.('link[data-vc-story]')) {
+        const style = doc.createElement('link');
+        style.rel = 'stylesheet';
+        style.href = new URL('./story.css', import.meta.url).href;
+        style.setAttribute('data-vc-story', '');
+        (doc.head || doc.documentElement).append(style);
+    }
+    if (!isVcUiOn()) return { async refresh() {}, destroy() {} };
+    if (!container) throw new Error('mountStoryTab requires a container');
+    const root = doc.createElement('div');
+    root.className = 'vc-story-tab';
+    root.style.setProperty('--vc-letterbox', STAGE_MOTION.letterbox);
+    root.setAttribute('aria-label', '剧情');
+    container.append(root);
+    const body = doc.createElement('div');
+    body.className = 'vc-story-body';
+    root.append(body);
+    let dead = false;
+    let suppress = false;
+    let loading = true;
+    let view = 'gate';
+    let entering = false;
+    let alertOpen = false;
+    let seenVersion = -1;
+    const flipped = new Set();
+    let draftSay = '';
+    let draftSummary = '';
+    let letterbox = null;
+    let lastNotice = '';
+    let holdTimer = 0;
+    const page = createStoryPage({
+        getConversation: options.getConversation,
+        onRun: options.onRun,
+        onActor: options.onActor,
+        onAdvance: options.onAdvance,
+        getChatIdentity: options.getChatIdentity,
+        project: options.project,
+        onChange(state) {
+            if (dead || suppress) return;
+            loading = false;
+            paint(state);
+            void maybeRewind(state);
+        },
+    });
+    function paint(state = page.state) {
+        root.dataset.view = view;
+        const version = state.turn?.worldVersion ?? -1;
+        const fresh = seenVersion >= 0 && version > seenVersion;
+        if (version >= 0) seenVersion = version;
+        body.innerHTML = renderStoryTab(state, { view, loading, fresh, draftSay, draftSummary });
+        hydrateIcons(body);
+        if (state.notice && state.notice !== lastNotice) {
+            lastNotice = state.notice;
+            showToast(state.notice, { root, icon: 'sparkles' });
+            hydrateIcons(root);
+        } else if (!state.notice) lastNotice = '';
+        const scroll = body.querySelector('.vc-scroll');
+        const bar = body.querySelector('.vc-navbar');
+        if (scroll && bar && view === 'gate') {
+            scroll.addEventListener('scroll', () => {
+                bar.style.setProperty('--vc-nav-p', String(Math.min(1, scroll.scrollTop / 48)));
+            }, { passive: true });
+        }
+        const card = body.querySelector('.vc-evi.is-back');
+        const name = card?.querySelector('b')?.textContent || '';
+        if (card && name && !flipped.has(name)) {
+            flipped.add(name);
+            flipEvidence(card);
+        } else if (card && flipped.has(name)) {
+            card.classList.remove('is-back');
+            if (!card.querySelector('.vc-evi-new')) card.insertAdjacentHTML('beforeend', '<span class="vc-evi-new">+1</span>');
+        }
+    }
+    async function maybeRewind(state) {
+        if (!state.rewindAsk || alertOpen || dead) return;
+        alertOpen = true;
+        const ask = state.rewindAsk;
+        const title = ask.version === 0 ? '回到调查开始？' : `回到版本 ${ask.version}？`;
+        const pending = confirmAlert({
+            title,
+            message: '之后的行动与新发现的证物会被撤销。',
+            action: '回档',
+            root,
+        });
+        stampAlert(root, 'cancel-rewind', 'confirm-rewind');
+        requestAnimationFrame(() => stampAlert(root, 'cancel-rewind', 'confirm-rewind'));
+        const ok = await pending;
+        alertOpen = false;
+        if (dead) return;
+        if (ok) await page.confirmRewind();
+        else page.cancelRewind();
+    }
+    async function enterStage() {
+        if (entering || dead) return;
+        entering = true;
+        const intro = beginLetterbox(root, '雨夜旅馆', stageWord(page.state.run?.stage));
+        letterbox = intro.box;
+        try {
+            if (!page.state.run) await page.start();
+            intro.setStage(stageWord(page.state.run?.stage));
+            await intro.ready;
+            if (dead || !page.state.run || !page.state.view) {
+                intro.box.remove();
+                view = 'gate';
+                paint();
+                return;
+            }
+            view = 'stage';
+            paint();
+            await intro.finish();
+        } finally {
+            entering = false;
+            letterbox = null;
+        }
+    }
+    function leaveStage() {
+        view = 'gate';
+        draftSay = '';
+        paint();
+    }
+    function configure() {
+        if (typeof options.onConfigure === 'function') options.onConfigure();
+        else root.ownerDocument.getElementById('vc_models_menu_button')?.click();
+    }
+    function openPersona(btn) {
+        const name = btn.querySelector('.vc-npc-name')?.textContent || '';
+        const label = btn.getAttribute('aria-label') || '';
+        const persona = label.startsWith(name) ? label.slice(name.length).replace(/^，/, '') : '';
+        if (!persona) return;
+        popMenu(btn, [{ label: persona }], { root });
+    }
+    async function confirmAccuse(step) {
+        if (alertOpen || dead) return;
+        alertOpen = true;
+        const who = page.state.view?.participants?.find((person) => person.actorId === step.target)?.name || '';
+        const ok = await confirmAlert({
+            title: who ? `指认${who}？` : '指认这一位？',
+            message: '指认之后不能撤回。',
+            action: '指认',
+            root,
+        });
+        alertOpen = false;
+        if (ok && !dead) await page.act(step.id);
+    }
+    root.addEventListener('pointerdown', (event) => {
+        const btn = event.target?.closest?.('.vc-npc');
+        if (!btn || event.button !== 0) return;
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+            holdTimer = 0;
+            btn.dataset.held = '1';
+            openPersona(btn);
+        }, 480);
+    });
+    const clearHold = () => { clearTimeout(holdTimer); holdTimer = 0; };
+    root.addEventListener('pointerup', clearHold);
+    root.addEventListener('pointercancel', clearHold);
+    root.addEventListener('pointermove', (event) => {
+        if (Math.abs(event.movementX) + Math.abs(event.movementY) > 8) clearHold();
+    });
+    root.addEventListener('contextmenu', (event) => {
+        const btn = event.target?.closest?.('.vc-npc');
+        if (!btn || !root.contains(btn)) return;
+        event.preventDefault();
+        openPersona(btn);
+    });
+    root.addEventListener('click', (event) => {
+        const target = event.target?.closest?.('button');
+        if (!target || target.disabled || !root.contains(target)) return;
+        const action = target.dataset.action;
+        if (action === 'start' || action === 'enter') void enterStage();
+        if (action === 'close') leaveStage();
+        if (action === 'select-actor') {
+            if (target.dataset.held === '1') {
+                delete target.dataset.held;
+                return;
+            }
+            page.selectActor(target.dataset.actor);
+        }
+        if (action === 'act') {
+            const step = STEPS.find((item) => item.id === target.dataset.step);
+            if (step?.action === 'accuse') void confirmAccuse(step);
+            else void page.act(target.dataset.step);
+        }
+        if (action === 'say') {
+            const text = draftSay;
+            if (!text.trim()) return;
+            draftSay = '';
+            const pending = page.say(text);
+            if (!page.state.busy) {
+                draftSay = text;
+                paint();
+            }
+            void pending;
+        }
+        if (action === 'ask-rewind') page.askRewind(target.dataset.version);
+        if (action === 'cancel-rewind') page.cancelRewind();
+        if (action === 'confirm-rewind') void page.confirmRewind();
+        if (action === 'show-companions') void page.showCompanions();
+        if (action === 'map-companion') void page.mapCompanion(target.dataset.actor, target.dataset.relationship);
+        if (action === 'save-epilogue') void page.saveEpilogue(draftSummary);
+        if (action === 'discard-epilogue') void page.discardEpilogue();
+        if (action === 'configure') configure();
+    });
+    root.addEventListener('input', (event) => {
+        const field = event.target?.dataset?.field;
+        if (field === 'say') {
+            draftSay = event.target.value;
+            const send = event.target.closest('.vc-field')?.querySelector('.vc-send');
+            if (send && page.state && storyMode(page.state) !== 'generating') send.disabled = !draftSay.trim();
+        }
+        if (field === 'summary') draftSummary = event.target.value;
+    });
+    root.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+        if (event.target?.dataset?.field !== 'say') return;
+        event.preventDefault();
+        const send = event.target.closest('.vc-field')?.querySelector('[data-action="say"]');
+        if (send && !send.disabled) send.click();
+    });
+    async function refresh() {
+        if (dead) return;
+        loading = true;
+        view = 'gate';
+        suppress = true;
+        paint();
+        try {
+            await page.open();
+        } finally {
+            suppress = false;
+            loading = false;
+            if (!dead) paint();
+        }
+    }
+    function destroy() {
+        dead = true;
+        page.close();
+        root.remove();
+    }
+    void refresh();
+    return { refresh, destroy };
 }
