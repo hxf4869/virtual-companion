@@ -7,7 +7,9 @@ runtimeAfterCutover: Go companiond serves the KEEP/SIMPLIFY surface after the 20
 note: 'The API consumer matrix remains the deletion/scope source. KEEP requires core-outcome, current H5 production caller, safety/data-rights,
   or Owner instruction. DEFER/RETIRE with H5 callers must hide or delete that entry in the same later
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
-  are removed with H5 in a later slice, not in G0.'
+  are removed with H5 in a later slice, not in G0. Operational routes stay outside this catalog and
+  the OpenAPI surface: GET /actuator/health, GET /actuator/health/liveness, GET /actuator/health/readiness,
+  GET /actuator/prometheus.'
 counts:
   KEEP: 102
   SIMPLIFY: 5
@@ -29,8 +31,9 @@ operations:
   decision: KEEP
   keepBecause:
   - core-outcome
-  replacementOrImpact: Keep public version identity. Liveness/readiness stay outside this OpenAPI surface
-    (actuator/health).
+  replacementOrImpact: Keep public version identity. Operational probes stay outside this OpenAPI
+    surface and this catalog (GET /actuator/health, GET /actuator/health/liveness,
+    GET /actuator/health/readiness, GET /actuator/prometheus).
 - operationId: getServiceMode
   method: GET
   path: /api/v1/service-mode
@@ -1078,9 +1081,10 @@ operations:
   keepBecause:
   - core-outcome
   replacementOrImpact: >-
-    W11-3 admin summary of foreground, extraction, greeting, and tool turns,
-    plus legacy reservations, unlinked generation_usage, and non-billed local
-    embeddings. Old generation_usage rows stay and are not counted twice.
+    W11-3 admin summary of the acting owner's foreground, extraction, greeting,
+    and tool turns, plus that owner's legacy reservations, unlinked
+    generation_usage, and non-billed local embeddings. Another admin does not
+    see those rows. Old generation_usage rows stay and are not counted twice.
 - operationId: getAdminProviderPlan
   method: GET
   path: /api/v1/auth/admin/provider-plan

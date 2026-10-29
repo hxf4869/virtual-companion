@@ -137,7 +137,7 @@ type ProviderAdminStore interface {
 	ListPurposeBindings(ctx context.Context, actingAccountID int64) ([]postgres.PurposeBinding, error)
 	SavePurposeBinding(ctx context.Context, actingAccountID int64, in postgres.SavePurposeBinding) (postgres.PurposeBinding, error)
 	ResolvePurpose(ctx context.Context, in postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
-	MarkModelToolCallsVerified(ctx context.Context, actingAccountID int64, providerID, profileKey string) (postgres.ToolCallVerification, error)
+	MarkModelToolCallsVerified(ctx context.Context, actingAccountID int64, providerID, profileKey, protocol, baseURL, modelID string, revision int64) (postgres.ToolCallVerification, error)
 }
 
 // AuthFlowStore owns the short-lived login challenge, authenticator and

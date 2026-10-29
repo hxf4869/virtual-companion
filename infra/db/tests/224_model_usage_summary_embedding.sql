@@ -12,10 +12,12 @@ VALUES ('w11-meter', 'priced', 1, 0.001, 0.002)
 ON CONFLICT (provider_id, model_id, price_version) DO NOTHING;
 INSERT INTO vc.vc_user(id, display_name) VALUES
     (22401, 'w11 summary owner'),
+    (22408, 'w11 summary user'),
     (22409, 'w11 summary admin')
 ON CONFLICT (id) DO NOTHING;
 INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name) VALUES
-    (22401, 'w11-224-owner', 'synthetic', 'USER', 'ACTIVE', 'owner'),
+    (22401, 'w11-224-owner', 'synthetic', 'ADMIN', 'ACTIVE', 'owner'),
+    (22408, 'w11-224-user', 'synthetic', 'USER', 'ACTIVE', 'user'),
     (22409, 'w11-224-admin', 'synthetic', 'ADMIN', 'ACTIVE', 'admin')
 ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', role = EXCLUDED.role;
 INSERT INTO vc.relationship(owner_user_id, id, persona_ref) VALUES (22401, 22410, 'persona-meter');
@@ -49,10 +51,10 @@ BEGIN
     INSERT INTO vc.generation_usage(owner_user_id, id, generation_id, provider_ref, input_tokens, output_tokens, actual_cost, currency)
     VALUES (22401, 22401, v_gen1, 'fg-linked', 10, 10, 9.990000, 'USD'),
            (22401, 22402, v_gen2, 'legacy-only', 20, 20, 1.250000, 'USD');
-    SELECT out_actual_usd INTO v_fg FROM vc.admin_model_usage_summary(22409, now() - interval '1 day')
+    SELECT out_actual_usd INTO v_fg FROM vc.admin_model_usage_summary(22401, now() - interval '1 day')
      WHERE out_purpose = 'FOREGROUND_CHAT';
     SELECT out_calls, out_actual_usd INTO v_legacy_calls, v_legacy
-      FROM vc.admin_model_usage_summary(22409, now() - interval '1 day')
+      FROM vc.admin_model_usage_summary(22401, now() - interval '1 day')
      WHERE out_purpose = 'LEGACY_GENERATION';
     IF v_fg IS DISTINCT FROM '0.003000' OR v_legacy_calls IS DISTINCT FROM 1 OR v_legacy IS DISTINCT FROM '1.250000' THEN
         RAISE EXCEPTION 'summary fg=% legacy calls=% actual=%', v_fg, v_legacy_calls, v_legacy;
@@ -71,11 +73,22 @@ BEGIN
     END IF;
     SELECT out_calls, out_actual_usd, out_estimated_usd, out_unsettled_usd
       INTO v_emb_calls, v_emb_actual, v_emb_estimated, v_emb_unsettled
-      FROM vc.admin_model_usage_summary(22409, now() - interval '1 day')
+      FROM vc.admin_model_usage_summary(22401, now() - interval '1 day')
      WHERE out_purpose = 'EMBEDDING';
     IF v_emb_calls IS DISTINCT FROM 2 OR v_emb_actual IS NOT NULL
        OR v_emb_estimated IS NOT NULL OR v_emb_unsettled IS NOT NULL THEN
         RAISE EXCEPTION 'embedding % % % %', v_emb_calls, v_emb_actual, v_emb_estimated, v_emb_unsettled;
+    END IF;
+    SELECT out_actual_usd INTO v_fg FROM vc.admin_model_usage_summary(22409, now() - interval '1 day')
+     WHERE out_purpose = 'FOREGROUND_CHAT';
+    SELECT out_calls INTO v_legacy_calls
+      FROM vc.admin_model_usage_summary(22409, now() - interval '1 day')
+     WHERE out_purpose = 'LEGACY_GENERATION';
+    SELECT out_calls INTO v_emb_calls
+      FROM vc.admin_model_usage_summary(22409, now() - interval '1 day')
+     WHERE out_purpose = 'EMBEDDING';
+    IF v_fg IS NOT NULL OR v_legacy_calls IS DISTINCT FROM 0 OR v_emb_calls IS DISTINCT FROM 0 THEN
+        RAISE EXCEPTION 'other admin saw owner rows fg=% legacy=% embedding=%', v_fg, v_legacy_calls, v_emb_calls;
     END IF;
     PERFORM 1 FROM vc.reserve_model_usage(
         22401, 'FOREGROUND_CHAT', 'fg-224-noprice', 'w11-meter', 'missing', 10, 10, 1000000, 8000000);
@@ -84,7 +97,7 @@ BEGIN
        AND price_version IS NULL AND reserved_usd = 0 AND actual_usd IS NULL AND status = 'HELD';
     IF n <> 1 THEN RAISE EXCEPTION 'missing price hold %', n; END IF;
     BEGIN
-        PERFORM 1 FROM vc.admin_model_usage_summary(22401, now() - interval '1 day');
+        PERFORM 1 FROM vc.admin_model_usage_summary(22408, now() - interval '1 day');
         RAISE EXCEPTION 'non-admin read the summary';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE '%non-admin read the summary%' THEN RAISE; END IF;

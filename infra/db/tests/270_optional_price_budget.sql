@@ -135,8 +135,8 @@ BEGIN
           date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC'),
           date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC') + interval '1 month')
      WHERE out_purpose = 'FOREGROUND_CHAT';
-    IF v_unpriced < 1 OR v_cached IS DISTINCT FROM 4 OR NOT v_includes OR v_actual IS NOT NULL THEN
-        RAISE EXCEPTION 'summary unpriced=% cached=% includes=% actual=%', v_unpriced, v_cached, v_includes, v_actual;
+    IF v_unpriced IS DISTINCT FROM 0 OR v_cached IS NOT NULL OR v_includes OR v_actual IS NOT NULL THEN
+        RAISE EXCEPTION 'other admin saw owner rows unpriced=% cached=% includes=% actual=%', v_unpriced, v_cached, v_includes, v_actual;
     END IF;
     BEGIN
         PERFORM 1 FROM vc.admin_model_usage_summary(27001, now() - interval '1 day');

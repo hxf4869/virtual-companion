@@ -369,7 +369,13 @@ END $$;`); err != nil {
 	if err != nil || after != before {
 		t.Fatalf("embedding moved the month budget %q -> %q (%v)", before, after, err)
 	}
-	rows, err := store.AdminModelUsageSummary(ctx, 910077, time.Now().UTC().Add(-time.Hour), time.Time{})
+	if _, err := psqlSuper(`UPDATE vc.identity_account SET role = 'ADMIN' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = psqlSuper(`UPDATE vc.identity_account SET role = 'USER' WHERE id = 1 AND username = 'w11-meter-owner'`)
+	})
+	rows, err := store.AdminModelUsageSummary(ctx, 1, time.Now().UTC().Add(-time.Hour), time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,5 +404,17 @@ END $$;`); err != nil {
 				t.Fatalf("linked generation_usage was counted again: %+v", row)
 			}
 		}
+	}
+	otherRows, err := store.AdminModelUsageSummary(ctx, 910077, time.Now().UTC().Add(-time.Hour), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := map[string]ModelUsagePurposeRow{}
+	for _, row := range otherRows {
+		other[row.Purpose] = row
+	}
+	if other[PurposeForegroundChat].Calls != 0 || other[PurposeForegroundChat].ActualUSD != nil ||
+		other["LEGACY_GENERATION"].Calls != 0 || other[PurposeEmbedding].Calls != 0 {
+		t.Fatalf("other admin saw owner rows %+v", other)
 	}
 }

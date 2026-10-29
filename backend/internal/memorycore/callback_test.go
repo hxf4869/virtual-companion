@@ -15,6 +15,7 @@ type fakeStore struct {
 	prepared, recorded int
 	denied             bool
 	budget             bool
+	prepareErr         error
 	outcomes           []postgres.MemoryExtractOutcome
 	resolves           int
 	next               func(postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
@@ -39,6 +40,9 @@ func (s *fakeStore) ResolvePurpose(_ context.Context, in postgres.ResolvePurpose
 	return postgres.ResolvedPurpose{ProviderID: "fixture", ProviderName: "Fixture", Protocol: postgres.ProtocolOpenAIChat, Model: postgres.ProviderModel{ModelID: "fixture", MaxOutputTokens: 64, Capabilities: postgres.ModelCapabilities{"systemMessage": postgres.CapabilityVerified}}}, nil
 }
 func (s *fakeStore) PrepareMemoryCoreCall(_ context.Context, in postgres.MemoryCoreCall) (postgres.MemoryExtractPreparation, error) {
+	if s.prepareErr != nil {
+		return postgres.MemoryExtractPreparation{}, s.prepareErr
+	}
 	if s.budget {
 		return postgres.MemoryExtractPreparation{}, postgres.ErrRateLimited
 	}
@@ -304,6 +308,18 @@ func TestCallBudgetRefusalDoesNotSend(t *testing.T) {
 	_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l2-scene", CallSequence: 1, Messages: []Message{{Role: "user", Content: "synthetic"}}})
 	if !errors.Is(err, ErrBudget) || DecisionCode(err) != "MEMORYCORE_BUDGET_DENIED" || p.calls != 0 || st.prepared != 0 {
 		t.Fatalf("budget refusal sent or misclassified: %v calls=%d prepared=%d", err, p.calls, st.prepared)
+	}
+}
+
+func TestCallUsageBudgetRefusalDoesNotSend(t *testing.T) {
+	for _, reason := range []string{postgres.ModelUsageNoBudget, postgres.ModelUsageOverLimit} {
+		st := &fakeStore{prepareErr: &postgres.ModelUsageError{Reason: reason}}
+		p := &fakeProvider{}
+		b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+		_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l2-scene", CallSequence: 1, Messages: []Message{{Role: "user", Content: "synthetic"}}})
+		if !errors.Is(err, ErrBudget) || DecisionCode(err) != "MEMORYCORE_BUDGET_DENIED" || p.calls != 0 || st.prepared != 0 {
+			t.Fatalf("%s refusal sent or misclassified: %v calls=%d prepared=%d", reason, err, p.calls, st.prepared)
+		}
 	}
 }
 

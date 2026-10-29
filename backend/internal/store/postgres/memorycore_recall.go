@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -151,40 +150,19 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 	// Candidate SQL, the embedding snapshot and the rerank switch do not
 	// depend on each other. A failure cancels the rest; a canceled sibling
 	// does not hide the first real error.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	var candidates map[string]Memory
-	var embedding EmbeddingConfig
-	var rerankOn bool
-	errc := make(chan error, 3)
-	go func() {
-		var err error
-		candidates, err = s.engineCandidates(ctx, owner, rel, conv)
-		errc <- err
-	}()
-	go func() {
-		var err error
-		embedding, err = s.ResolveEmbeddingConfig(ctx, owner)
-		errc <- err
-	}()
-	go func() {
-		var err error
-		rerankOn, err = s.ResolveOwnerMemoryRerank(ctx, owner)
-		errc <- err
-	}()
-	var first error
-	for range 3 {
-		err := <-errc
-		if err == nil {
-			continue
-		}
-		if first == nil || (errors.Is(first, context.Canceled) && !errors.Is(err, context.Canceled)) {
-			first = err
-		}
-		cancel()
-	}
-	if first != nil {
-		return engineRecall{}, first
+	candidates, embedding, rerankOn, err := loadEngineRecallParts(ctx,
+		func(ctx context.Context) (map[string]Memory, error) {
+			return s.engineCandidates(ctx, owner, rel, conv)
+		},
+		func(ctx context.Context) (EmbeddingConfig, error) {
+			return s.ResolveEmbeddingConfig(ctx, owner)
+		},
+		func(ctx context.Context) (bool, error) {
+			return s.ResolveOwnerMemoryRerank(ctx, owner)
+		},
+	)
+	if err != nil {
+		return engineRecall{}, err
 	}
 	ids := []string{}
 	undated, otherDay := []string{}, []string{}

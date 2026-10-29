@@ -26,6 +26,11 @@ SELECT vc.go_admin_upsert_provider(
     29501, 'p295', 'Probe', 'OPENAI_CHAT_COMPLETIONS', 'https://probe.example/v1',
     'KEEP', NULL, 'ENABLED', NULL, true);
 
+CREATE TEMP TABLE t295_revision(revision bigint);
+INSERT INTO t295_revision
+SELECT revision FROM vc.provider_config WHERE provider_id = 'p295';
+GRANT SELECT ON t295_revision TO vc_api;
+
 BEGIN;
 SET LOCAL ROLE vc_api;
 DO $$
@@ -38,7 +43,8 @@ END $$;
 
 DO $$
 BEGIN
-    PERFORM 1 FROM vc.go_admin_mark_model_tool_calls_verified(29502, 'p295', 'm@chat');
+    PERFORM 1 FROM vc.go_admin_mark_model_tool_calls_verified(
+        29502, 'p295', 'm@chat', 'OPENAI_CHAT_COMPLETIONS', 'https://probe.example/v1', 'remote-a', 0);
     RAISE EXCEPTION 'user marked verified';
 EXCEPTION WHEN OTHERS THEN
     IF SQLERRM LIKE '%user marked verified%' THEN RAISE; END IF;
@@ -52,10 +58,13 @@ DECLARE
     v_at timestamptz;
     v_protocol text;
     v_calls text;
+    v_revision bigint;
 BEGIN
+    SELECT revision INTO v_revision FROM t295_revision;
     SELECT out_verified_at, out_protocol
       INTO v_at, v_protocol
-      FROM vc.go_admin_mark_model_tool_calls_verified(29501, 'p295', 'm@chat');
+      FROM vc.go_admin_mark_model_tool_calls_verified(
+          29501, 'p295', 'm@chat', 'OPENAI_CHAT_COMPLETIONS', 'https://probe.example/v1', 'remote-a', v_revision);
     IF v_at IS NULL OR v_protocol IS DISTINCT FROM 'OPENAI_CHAT_COMPLETIONS' THEN
         RAISE EXCEPTION 'admin mark % %', v_at, v_protocol;
     END IF;
@@ -141,7 +150,8 @@ BEGIN;
 SET LOCAL ROLE vc_worker;
 DO $$
 BEGIN
-    PERFORM 1 FROM vc.go_admin_mark_model_tool_calls_verified(29501, 'p295', 'm@chat');
+    PERFORM 1 FROM vc.go_admin_mark_model_tool_calls_verified(
+        29501, 'p295', 'm@chat', 'OPENAI_CHAT_COMPLETIONS', 'https://third.example/v1', 'remote-a', 0);
     RAISE EXCEPTION 'worker executed mark';
 EXCEPTION WHEN insufficient_privilege THEN
     NULL;
@@ -149,6 +159,7 @@ END $$;
 COMMIT;
 RESET ROLE;
 
+DROP TABLE IF EXISTS t295_revision;
 DELETE FROM vc.provider_model WHERE provider_id = 'p295';
 DELETE FROM vc.provider_deployment WHERE provider_id = 'p295';
 DELETE FROM vc.provider_config WHERE provider_id = 'p295';

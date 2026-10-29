@@ -232,8 +232,9 @@ func mapFollowUpGenErr(err error) error {
 		case strings.Contains(pgErr.Message, "unit price is unknown"):
 			return ErrFollowUpNoPrice
 		case strings.Contains(pgErr.Message, "limits are not configured"),
-			strings.Contains(pgErr.Message, "ceiling is too small"),
-			strings.Contains(pgErr.Message, "monthly cost hard cap"):
+			strings.Contains(pgErr.Message, "ceiling is too small"):
+			return errors.Join(ErrFollowUpBudget, &ModelUsageError{Reason: ModelUsageNoBudget})
+		case strings.Contains(pgErr.Message, "monthly cost hard cap"):
 			return ErrFollowUpBudget
 		}
 	}

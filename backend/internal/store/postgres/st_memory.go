@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
@@ -108,29 +107,16 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 	}); err != nil {
 		return out, mapStoreErr(err)
 	}
-	var querySource stDigestSource
-	var profile *memoryProfile
-	var queryErr, profileErr error
-	var ready sync.WaitGroup
-	ready.Add(2)
-	go func() {
-		defer ready.Done()
-		querySource, queryErr = s.stQuerySource(ctx, owner, b.id)
-	}()
-	go func() {
-		defer ready.Done()
-		profile, profileErr = s.currentMemoryProfile(ctx, owner, b.relationship, b.id)
-	}()
-	ready.Wait()
-	if queryErr != nil {
-		return out, queryErr
-	}
-	if querySource.text == "" {
+	querySource, profile, queryErr, profileErr := loadSTRecallParts(
+		func() (stDigestSource, error) { return s.stQuerySource(ctx, owner, b.id) },
+		func() (*memoryProfile, error) { return s.currentMemoryProfile(ctx, owner, b.relationship, b.id) },
+	)
+	if skipped, err := stRecallLoadError(querySource, queryErr, profileErr); err != nil || skipped {
+		if err != nil {
+			return out, err
+		}
 		out.Status = "skipped"
 		return out, nil
-	}
-	if profileErr != nil {
-		return out, profileErr
 	}
 	var queryAt time.Time
 	queryZone := valueOrEmpty(querySource.timezone)

@@ -28,15 +28,23 @@ type providerMemStore struct {
 	resolved   postgres.ResolvedPurpose
 	resolveErr error
 	resolveIn  []postgres.ResolvePurpose
-	verified   []string
-	markErr    error
+	verified     []string
+	markErr      error
+	markProtocol string
+	markBaseURL  string
+	markModelID  string
+	markRevision int64
 }
 
 func (m *providerMemStore) ListProviderConfigs(context.Context, int64) ([]postgres.ProviderConfig, error) {
 	return append([]postgres.ProviderConfig(nil), m.configs...), nil
 }
 
-func (m *providerMemStore) MarkModelToolCallsVerified(_ context.Context, _ int64, providerID, profileKey string) (postgres.ToolCallVerification, error) {
+func (m *providerMemStore) MarkModelToolCallsVerified(_ context.Context, _ int64, providerID, profileKey, protocol, baseURL, modelID string, revision int64) (postgres.ToolCallVerification, error) {
+	m.markProtocol = protocol
+	m.markBaseURL = baseURL
+	m.markModelID = modelID
+	m.markRevision = revision
 	if m.markErr != nil {
 		return postgres.ToolCallVerification{}, m.markErr
 	}
@@ -51,6 +59,10 @@ func (m *providerMemStore) MarkModelToolCallsVerified(_ context.Context, _ int64
 			}
 			if key != profileKey {
 				continue
+			}
+			if m.configs[i].Protocol != protocol || m.configs[i].BaseURL != baseURL ||
+				m.configs[i].Models[j].ModelID != modelID || m.configs[i].Revision != revision {
+				return postgres.ToolCallVerification{}, postgres.ErrToolVerificationStale
 			}
 			if m.configs[i].Models[j].Capabilities == nil {
 				m.configs[i].Models[j].Capabilities = postgres.ModelCapabilities{}

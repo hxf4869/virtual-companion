@@ -497,12 +497,12 @@ func TestExplicitToolCallVerificationDowngradesWhenTheBindingChanges(t *testing.
 	if _, err := store.SaveProviderConfig(ctx, admin, forged); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("direct VERIFIED err=%v", err)
 	}
-	marked, err := store.MarkModelToolCallsVerified(ctx, admin, "acme", "m@chat")
+	marked, err := markCurrentToolVerification(t, ctx, store, admin, "acme", "m@chat")
 	if err != nil || marked.Protocol != ProtocolOpenAIChat || marked.VerifiedAt.IsZero() {
 		t.Fatalf("mark %+v err=%v", marked, err)
 	}
 	assertToolVerification(t, ctx, CapabilityVerified, ProtocolOpenAIChat, "https://chat.example/v1", "remote-a", true)
-	if _, err := store.MarkModelToolCallsVerified(ctx, 1, "acme", "m@chat"); !errors.Is(err, ErrInvalid) {
+	if _, err := store.MarkModelToolCallsVerified(ctx, 1, "acme", "m@chat", ProtocolOpenAIChat, "https://chat.example/v1", "remote-a", 1); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("non-admin mark err=%v", err)
 	}
 	assertToolVerification(t, ctx, CapabilityVerified, ProtocolOpenAIChat, "https://chat.example/v1", "remote-a", true)
@@ -540,7 +540,7 @@ func TestExplicitToolCallVerificationDowngradesWhenTheBindingChanges(t *testing.
 	}
 	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
 
-	if _, err := store.MarkModelToolCallsVerified(ctx, admin, "acme", "m@chat"); err != nil {
+	if _, err := markCurrentToolVerification(t, ctx, store, admin, "acme", "m@chat"); err != nil {
 		t.Fatal(err)
 	}
 	changedID := moved
@@ -554,7 +554,7 @@ func TestExplicitToolCallVerificationDowngradesWhenTheBindingChanges(t *testing.
 	}
 	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
 
-	if _, err := store.MarkModelToolCallsVerified(ctx, admin, "acme", "m@chat"); err != nil {
+	if _, err := markCurrentToolVerification(t, ctx, store, admin, "acme", "m@chat"); err != nil {
 		t.Fatal(err)
 	}
 	changedProtocol := changedID
@@ -582,6 +582,69 @@ func TestExplicitToolCallVerificationDowngradesWhenTheBindingChanges(t *testing.
 		t.Fatalf("historical downgrade err=%v", err)
 	}
 	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
+}
+
+func markCurrentToolVerification(t *testing.T, ctx context.Context, store *Store, admin int64, providerID, profileKey string) (ToolCallVerification, error) {
+	t.Helper()
+	configs, err := store.ListProviderConfigs(ctx, admin)
+	if err != nil {
+		return ToolCallVerification{}, err
+	}
+	for _, cfg := range configs {
+		if cfg.ProviderID != providerID {
+			continue
+		}
+		for _, model := range cfg.Models {
+			key := model.ProfileKey
+			if key == "" {
+				key = model.ModelID
+			}
+			if key != profileKey {
+				continue
+			}
+			return store.MarkModelToolCallsVerified(ctx, admin, providerID, profileKey, cfg.Protocol, cfg.BaseURL, model.ModelID, cfg.Revision)
+		}
+	}
+	return ToolCallVerification{}, ErrNotFound
+}
+
+func TestMarkModelToolCallsVerifiedRejectsStaleProbe(t *testing.T) {
+	store := resetCatalogFixtures(t)
+	ctx := context.Background()
+	const admin = int64(7)
+	model := catalogModel("m@chat", "remote-a", intPtr(8192))
+	model.Capabilities = ModelCapabilities{"toolCalls": CapabilityDeclared}
+	in := SaveProvider{
+		ProviderID: "acme", DisplayName: "Acme", Protocol: ProtocolOpenAIChat,
+		BaseURL: "https://chat.example/v1", Credential: "plain-api-key-1", State: ProviderEnabled,
+		Models: []ProviderModel{model},
+	}
+	if _, err := store.SaveProviderConfig(ctx, admin, in); err != nil {
+		t.Fatal(err)
+	}
+	configs, err := store.ListProviderConfigs(ctx, admin)
+	if err != nil || len(configs) != 1 || configs[0].Models[0].ModelID != "remote-a" {
+		t.Fatalf("list %+v %v", configs, err)
+	}
+	probedProtocol := configs[0].Protocol
+	probedBase := configs[0].BaseURL
+	probedModel := configs[0].Models[0].ModelID
+	probedRevision := configs[0].Revision
+	renamed := in
+	renamed.Credential = ""
+	renamed.Models[0].ModelID = "remote-b"
+	if _, err := store.SaveProviderConfig(ctx, admin, renamed); err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.MarkModelToolCallsVerified(ctx, admin, "acme", "m@chat", probedProtocol, probedBase, probedModel, probedRevision)
+	if !errors.Is(err, ErrToolVerificationStale) {
+		t.Fatalf("stale mark err=%v", err)
+	}
+	assertToolVerification(t, ctx, CapabilityDeclared, "", "", "", false)
+	if _, err := markCurrentToolVerification(t, ctx, store, admin, "acme", "m@chat"); err != nil {
+		t.Fatal(err)
+	}
+	assertToolVerification(t, ctx, CapabilityVerified, ProtocolOpenAIChat, "https://chat.example/v1", "remote-b", true)
 }
 
 func assertToolVerification(t *testing.T, ctx context.Context, toolCalls, protocol, baseURL, modelID string, present bool) {

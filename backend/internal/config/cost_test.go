@@ -11,6 +11,7 @@ func TestModelCostLimits(t *testing.T) {
 		{"configured", "1000000", "10000000", true},
 		{"negative-monthly", "1", "-1", false},
 		{"ceiling-above-monthly", "100", "99", false},
+		{"monthly-without-per-call-ceiling", "0", "1000000", false},
 		{"overflow", "1", "9223372036854775808", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

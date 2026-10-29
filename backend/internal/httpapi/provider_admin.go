@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -434,14 +435,16 @@ func (s *Server) handleVerifyModelToolCalls(w http.ResponseWriter, r *http.Reque
 		InputTokens: 32, OutputTokens: modelprovider.ToolProbeMaxTokens,
 	})
 	if err != nil {
-		s.writeAPIError(w, http.StatusConflict, "USAGE_REJECTED", "usage was not recorded")
+		s.writeModelUsageErr(w, err)
 		return
 	}
-	probe, probeErr := s.providerFactory().ProbeToolCalls(r.Context(), modelprovider.Route{
+	probed := modelprovider.Route{
 		ProviderID: providerID, SupplierName: cfg.DisplayName, Protocol: cfg.Protocol,
 		BaseURL: cfg.BaseURL, Credential: credential, ModelID: model.ModelID,
 		MaxOutputTokens: model.MaxOutputTokens,
-	})
+	}
+	probedRevision := cfg.Revision
+	probe, probeErr := s.providerFactory().ProbeToolCalls(r.Context(), probed)
 	if probeErr != nil {
 		s.meterToolProbe(r.Context(), usage, p.AccountID, hold.ReservationID, probe, false)
 		code := modelprovider.ToolProbeCodeUnavailable
@@ -460,7 +463,12 @@ func (s *Server) handleVerifyModelToolCalls(w http.ResponseWriter, r *http.Reque
 		s.writeAPIError(w, http.StatusConflict, "USAGE_REJECTED", "usage was not recorded")
 		return
 	}
-	marked, err := s.core.Providers.MarkModelToolCallsVerified(r.Context(), p.AccountID, providerID, profileKey)
+	marked, err := s.core.Providers.MarkModelToolCallsVerified(
+		r.Context(), p.AccountID, providerID, profileKey, probed.Protocol, probed.BaseURL, probed.ModelID, probedRevision)
+	if errors.Is(err, postgres.ErrToolVerificationStale) {
+		s.writeAPIError(w, http.StatusConflict, "REVISION_CONFLICT", "tool call verification is stale")
+		return
+	}
 	if err != nil {
 		s.writeStoreErr(w, err)
 		return
@@ -476,11 +484,18 @@ func (s *Server) handleVerifyModelToolCalls(w http.ResponseWriter, r *http.Reque
 // without usage is cancelled as UNKNOWN and still counts. A failed settle of
 // a successful probe refuses verification. Metering failures on a rejected
 // probe are best-effort and do not change the reason code.
+const (
+	toolProbeMeterTimeout   = 5 * time.Second
+	toolProbeCancelAttempts = 3
+)
+
 func (s *Server) meterToolProbe(ctx context.Context, usage modelUsageStore, owner, reservationID int64, probe modelprovider.ToolProbeResult, accept bool) bool {
+	meterCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), toolProbeMeterTimeout)
+	defer cancel()
 	if probe.HasUsage {
 		cached := probe.CachedInputTokens
-		if _, err := usage.SettleModelUsage(ctx, owner, reservationID, probe.InputTokens, probe.OutputTokens, cached); err != nil {
-			_, _ = usage.CancelModelUsage(ctx, owner, reservationID, "UNKNOWN")
+		if _, err := usage.SettleModelUsage(meterCtx, owner, reservationID, probe.InputTokens, probe.OutputTokens, cached); err != nil {
+			_ = s.cancelModelUsage(meterCtx, usage, owner, reservationID, "UNKNOWN")
 			return !accept
 		}
 		return true
@@ -489,8 +504,31 @@ func (s *Server) meterToolProbe(ctx context.Context, usage modelUsageStore, owne
 	if probe.Sent {
 		disposition = "UNKNOWN"
 	}
-	_, _ = usage.CancelModelUsage(ctx, owner, reservationID, disposition)
+	_ = s.cancelModelUsage(meterCtx, usage, owner, reservationID, disposition)
 	return !accept || probe.Sent
+}
+
+func (s *Server) cancelModelUsage(ctx context.Context, usage modelUsageStore, owner, reservationID int64, disposition string) error {
+	var err error
+	for attempt := 1; attempt <= toolProbeCancelAttempts; attempt++ {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+			break
+		}
+		if _, err = usage.CancelModelUsage(ctx, owner, reservationID, disposition); err == nil {
+			return nil
+		}
+	}
+	if s.log != nil {
+		s.log.Info("model usage cancel",
+			slog.String("operation", "tool_probe_meter"),
+			slog.String("outcome", "error"),
+			slog.String("error_code", "CANCEL_FAILED"),
+			slog.String("disposition", disposition),
+			slog.Int("attempts", toolProbeCancelAttempts),
+		)
+	}
+	return err
 }
 
 func (s *Server) handleReorderProviderModels(w http.ResponseWriter, r *http.Request) {

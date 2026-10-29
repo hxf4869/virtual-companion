@@ -13,20 +13,30 @@ import (
 
 type localModelMemStore struct {
 	*embeddingMemStore
-	setting   postgres.OwnerMemoryRerank
-	saved     int
-	status    memoryengine.LocalModelStatus
-	statusErr error
-	configErr error
+	setting    postgres.OwnerMemoryRerank
+	saved      int
+	status     memoryengine.LocalModelStatus
+	statusErr  error
+	configErr  error
+	model      string
+	dimensions int
 }
 
 func (m *localModelMemStore) GetEmbeddingConfig(context.Context, int64) (postgres.EmbeddingConfig, error) {
 	if m.configErr != nil {
 		return postgres.EmbeddingConfig{}, m.configErr
 	}
+	model := m.model
+	if model == "" {
+		model = "qwen3-embedding:0.6b"
+	}
+	dimensions := m.dimensions
+	if dimensions == 0 {
+		dimensions = 1024
+	}
 	return postgres.EmbeddingConfig{
-		Provider: "OLLAMA", Endpoint: postgres.EmbeddingEndpoint, Model: "qwen3-embedding:0.6b",
-		Dimensions: 1024, State: postgres.ProviderEnabled, Revision: 4,
+		Provider: "OLLAMA", Endpoint: postgres.EmbeddingEndpoint, Model: model,
+		Dimensions: dimensions, State: postgres.ProviderEnabled, Revision: 4,
 	}, nil
 }
 
@@ -133,5 +143,26 @@ func TestLocalModelsStayReadableWhenProbeFails(t *testing.T) {
 		!strings.Contains(body, `"deploymentEnabled":false`) || !strings.Contains(body, `"enabled":true`) ||
 		!strings.Contains(body, `"revision":0`) {
 		t.Fatalf("fallback status %s", body)
+	}
+}
+
+func TestLocalModelsUnhealthyWhenConfigDisagreesWithProbe(t *testing.T) {
+	s, base := newProviderServer(t)
+	store := &localModelMemStore{
+		embeddingMemStore: &embeddingMemStore{providerMemStore: base},
+		setting:           postgres.OwnerMemoryRerank{Enabled: true, Revision: 2},
+		model:             "other-model",
+		dimensions:        768,
+		status: memoryengine.LocalModelStatus{
+			Embedding: memoryengine.EmbeddingProbe{Model: memoryengine.LocalEmbeddingModel, Dimensions: memoryengine.LocalEmbeddingDimensions, Healthy: true},
+			Rerank:    memoryengine.RerankProbe{Model: memoryengine.LocalRerankModel, DeploymentEnabled: true, Healthy: true},
+		},
+	}
+	s.core.Providers = store
+	rec := providerRequest(t, s, base, http.MethodGet, "/api/v1/admin/local-models", "", 9, false)
+	body := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(body, `"model":"other-model"`) || !strings.Contains(body, `"dimensions":768`) ||
+		!strings.Contains(body, `"healthy":false`) || strings.Contains(body, "127.0.0.1") {
+		t.Fatalf("mismatch status %d %s", rec.Code, body)
 	}
 }

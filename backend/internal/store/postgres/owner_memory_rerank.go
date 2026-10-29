@@ -37,7 +37,7 @@ func (s *Store) SaveOwnerMemoryRerank(ctx context.Context, actor int64, enabled 
 
 func (s *Store) ResolveOwnerMemoryRerank(ctx context.Context, owner int64) (bool, error) {
 	var enabled bool
-	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT vc.go_service_resolve_owner_memory_rerank($1)`, owner).Scan(&enabled)
 	})
 	return enabled, mapStoreErr(err)

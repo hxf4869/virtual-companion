@@ -53,8 +53,9 @@ func TestProbeToolCallsAcceptsThreeProtocolsAndRejectsABadCall(t *testing.T) {
 				t.Fatalf("probe %+v err=%v", result, err)
 			}
 			if tc.protocol == "ANTHROPIC_MESSAGES" {
-				if header != "probe-secret" || result.CachedInputTokens == nil || *result.CachedInputTokens != 2 {
-					t.Fatalf("anthropic header %q cached %v", header, result.CachedInputTokens)
+				if header != "probe-secret" || result.CachedInputTokens == nil || *result.CachedInputTokens != 2 ||
+					result.InputTokens != 10 || result.OutputTokens != 9 {
+					t.Fatalf("anthropic header %q usage in=%d out=%d cached %v", header, result.InputTokens, result.OutputTokens, result.CachedInputTokens)
 				}
 			} else if header != "Bearer probe-secret" {
 				t.Fatalf("authorization %q", header)
@@ -89,5 +90,14 @@ func TestProbeToolCallsAcceptsThreeProtocolsAndRejectsABadCall(t *testing.T) {
 	if probe == nil || probe.Code != ToolProbeCodeMismatch || !result.HasUsage || !result.Sent ||
 		strings.Contains(err.Error(), marker) || strings.Contains(err.Error(), "北京") {
 		t.Fatalf("mismatch %+v err=%v", result, err)
+	}
+}
+
+func TestParseAnthropicToolProbeBillsCacheLikeChat(t *testing.T) {
+	t.Parallel()
+	result, err := parseAnthropicToolProbe([]byte(`{"content":[{"type":"tool_use","name":"get_current_weather","input":{"city":"x"}}],"usage":{"input_tokens":100,"output_tokens":5,"cache_creation_input_tokens":20,"cache_read_input_tokens":30}}`))
+	if err != nil || !result.HasUsage || result.InputTokens != 150 || result.OutputTokens != 5 ||
+		result.CachedInputTokens == nil || *result.CachedInputTokens != 50 {
+		t.Fatalf("normalized %+v err=%v", result, err)
 	}
 }

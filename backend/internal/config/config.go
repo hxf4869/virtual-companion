@@ -727,6 +727,9 @@ func (c Config) Validate() error {
 	if c.MonthlyCostLimit < 0 || c.MonthlyCostLimit > hardMaxReservedCost {
 		return fmt.Errorf("VC_MONTHLY_COST_LIMIT must be in [0, %d]", hardMaxReservedCost)
 	}
+	if c.MonthlyCostLimit > 0 && c.Budget.MaxReservedCost <= 0 {
+		return fmt.Errorf("VC_BUDGET_MAX_RESERVED_COST must be positive when VC_MONTHLY_COST_LIMIT is set")
+	}
 	if c.MonthlyCostLimit > 0 && c.Budget.MaxReservedCost > c.MonthlyCostLimit {
 		return fmt.Errorf("VC_BUDGET_MAX_RESERVED_COST must not exceed VC_MONTHLY_COST_LIMIT")
 	}

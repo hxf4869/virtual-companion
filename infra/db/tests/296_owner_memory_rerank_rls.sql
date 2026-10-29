@@ -114,24 +114,90 @@ BEGIN
     IF v_enabled IS NOT TRUE OR v_revision IS DISTINCT FROM 0 THEN
         RAISE EXCEPTION 'other owner saw % %', v_enabled, v_revision;
     END IF;
+END $$;
+COMMIT;
+RESET ROLE;
+
+BEGIN;
+SET LOCAL ROLE vc_api;
+DO $$
+BEGIN
+    PERFORM vc.go_service_resolve_owner_memory_rerank(29601);
+    RAISE EXCEPTION 'unbound resolve accepted';
+EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE '%unbound resolve accepted%' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%does not match server-trusted current_owner_id%' THEN
+        RAISE EXCEPTION 'unbound denial %', SQLERRM;
+    END IF;
+END $$;
+COMMIT;
+RESET ROLE;
+
+BEGIN;
+SELECT vc.set_owner_context(29601, 'r296a', encode(vc.hmac(convert_to(
+    'vc-owner-binding-v1|29601|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|r296a',
+    'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
+DO $$
+BEGIN
     IF vc.go_service_resolve_owner_memory_rerank(29601) IS NOT FALSE THEN
         RAISE EXCEPTION 'resolve ignored the saved switch';
     END IF;
+    BEGIN
+        PERFORM vc.go_service_resolve_owner_memory_rerank(29602);
+        RAISE EXCEPTION 'cross owner resolve accepted';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cross owner resolve accepted%' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%does not match server-trusted current_owner_id%' THEN
+            RAISE EXCEPTION 'cross owner denial %', SQLERRM;
+        END IF;
+    END;
+END $$;
+COMMIT;
+RESET ROLE;
+
+BEGIN;
+SELECT vc.set_owner_context(29602, 'r296b', encode(vc.hmac(convert_to(
+    'vc-owner-binding-v1|29602|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|r296b',
+    'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
+DO $$
+BEGIN
     IF vc.go_service_resolve_owner_memory_rerank(29602) IS NOT TRUE THEN
         RAISE EXCEPTION 'other owner resolve was not the default';
     END IF;
+END $$;
+COMMIT;
+RESET ROLE;
+
+BEGIN;
+SELECT vc.set_owner_context(29603, 'r296c', encode(vc.hmac(convert_to(
+    'vc-owner-binding-v1|29603|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|r296c',
+    'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
+DO $$
+BEGIN
     IF vc.go_service_resolve_owner_memory_rerank(29603) IS NOT TRUE THEN
         RAISE EXCEPTION 'active user resolve was not the default';
     END IF;
-    BEGIN
-        PERFORM vc.go_service_resolve_owner_memory_rerank(29604);
-        RAISE EXCEPTION 'disabled owner resolved';
-    EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM LIKE '%disabled owner resolved%' THEN RAISE; END IF;
-        IF SQLERRM NOT LIKE '%not an active account%' THEN
-            RAISE EXCEPTION 'disabled denial %', SQLERRM;
-        END IF;
-    END;
+END $$;
+COMMIT;
+RESET ROLE;
+
+BEGIN;
+SELECT vc.set_owner_context(29604, 'r296d', encode(vc.hmac(convert_to(
+    'vc-owner-binding-v1|29604|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|r296d',
+    'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
+DO $$
+BEGIN
+    PERFORM vc.go_service_resolve_owner_memory_rerank(29604);
+    RAISE EXCEPTION 'disabled owner resolved';
+EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE '%disabled owner resolved%' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%not an active account%' THEN
+        RAISE EXCEPTION 'disabled denial %', SQLERRM;
+    END IF;
 END $$;
 COMMIT;
 RESET ROLE;

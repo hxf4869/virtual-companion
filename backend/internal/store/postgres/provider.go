@@ -488,19 +488,24 @@ func (s *Store) SaveProviderConfig(ctx context.Context, actingAccountID int64, i
 }
 
 // MarkModelToolCallsVerified records a successful synthetic tool-call probe.
-// Administrator saves cannot take this path.
-func (s *Store) MarkModelToolCallsVerified(ctx context.Context, actingAccountID int64, providerID, profileKey string) (ToolCallVerification, error) {
+// Administrator saves cannot take this path. protocol, baseURL, modelID, and
+// revision are the identity that was probed; a later save makes this ErrToolVerificationStale
+// and does not change the capability bits.
+func (s *Store) MarkModelToolCallsVerified(ctx context.Context, actingAccountID int64, providerID, profileKey, protocol, baseURL, modelID string, revision int64) (ToolCallVerification, error) {
 	providerID = strings.TrimSpace(providerID)
 	profileKey = strings.TrimSpace(profileKey)
-	if !validProviderID(providerID) || !validProfileKey(profileKey) {
+	protocol = strings.TrimSpace(protocol)
+	baseURL = strings.TrimSpace(baseURL)
+	modelID = strings.TrimSpace(modelID)
+	if !validProviderID(providerID) || !validProfileKey(profileKey) || protocol == "" || baseURL == "" || modelID == "" || revision < 0 {
 		return ToolCallVerification{}, ErrInvalid
 	}
 	var out ToolCallVerification
 	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
 			SELECT out_verified_at, out_protocol
-			  FROM vc.go_admin_mark_model_tool_calls_verified($1,$2,$3)`,
-			actingAccountID, providerID, profileKey).Scan(&out.VerifiedAt, &out.Protocol)
+			  FROM vc.go_admin_mark_model_tool_calls_verified($1,$2,$3,$4,$5,$6,$7)`,
+			actingAccountID, providerID, profileKey, protocol, baseURL, modelID, revision).Scan(&out.VerifiedAt, &out.Protocol)
 	})
 	if err != nil {
 		return ToolCallVerification{}, mapStoreErr(err)

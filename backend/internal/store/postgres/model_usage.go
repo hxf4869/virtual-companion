@@ -81,9 +81,12 @@ type ModelUsagePurposeRow struct {
 	InputTokens   int64
 	OutputTokens  int64
 	UnpricedCalls int64
-	// CachedInputTokens is nil when no settled or held row reported a cache count.
+	// CachedInputTokens is nil when no settled row reported a cache count.
 	CachedInputTokens *int64
 	IncludesUnpriced  bool
+	// CacheBasisInputTokens is the settled input total of rows that reported a
+	// cache count. It is the cacheHitRate denominator and is not a response field.
+	CacheBasisInputTokens int64
 }
 
 func (s *Store) ReserveModelUsage(ctx context.Context, in ModelUsageReserve) (ModelUsageHold, error) {
@@ -219,7 +222,7 @@ func (s *Store) AdminModelUsageSummary(ctx context.Context, actingAccountID int6
 		rows, err := tx.Query(ctx, `
 			SELECT out_purpose, out_calls, out_actual_usd, out_estimated_usd, out_unsettled_usd,
 			       out_input_tokens, out_output_tokens, out_unpriced_calls,
-			       out_cached_input_tokens, out_includes_unpriced
+			       out_cached_input_tokens, out_includes_unpriced, out_cache_basis_input_tokens
 			  FROM vc.admin_model_usage_summary($1,$2,$3)`, actingAccountID, sinceArg, untilArg)
 		if err != nil {
 			return err
@@ -229,7 +232,8 @@ func (s *Store) AdminModelUsageSummary(ctx context.Context, actingAccountID int6
 			var row ModelUsagePurposeRow
 			var cached pgtype.Int8
 			if err := rows.Scan(&row.Purpose, &row.Calls, &row.ActualUSD, &row.EstimatedUSD, &row.UnsettledUSD,
-				&row.InputTokens, &row.OutputTokens, &row.UnpricedCalls, &cached, &row.IncludesUnpriced); err != nil {
+				&row.InputTokens, &row.OutputTokens, &row.UnpricedCalls, &cached, &row.IncludesUnpriced,
+				&row.CacheBasisInputTokens); err != nil {
 				return err
 			}
 			if cached.Valid {

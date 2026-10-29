@@ -168,8 +168,8 @@ ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', role = 'USER';`); err != nil {
 		t.Fatalf("explicit zero ledgerPrice=%s", status("chat"))
 	}
 	zero, err := reserve(1, "priced-zero")
-	if err != nil || zero.ReservedUSD != "0.000000" {
-		t.Fatalf("zero hold %+v err=%v", zero, err)
+	if err != nil || zero.ReservedUSD != "0.000000" || reservationStatus(t, "priced-zero") != "HELD" {
+		t.Fatalf("explicit zero unit price %+v err=%v", zero, err)
 	}
 
 	save(ProviderEnabled, ProviderEnabled, usd(1.5, 3))

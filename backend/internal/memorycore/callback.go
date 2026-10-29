@@ -185,6 +185,10 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 		if errors.Is(err, postgres.ErrRateLimited) {
 			return Response{}, ErrBudget
 		}
+		var usage *postgres.ModelUsageError
+		if errors.As(err, &usage) && (usage.Reason == postgres.ModelUsageNoBudget || usage.Reason == postgres.ModelUsageOverLimit) {
+			return Response{}, ErrBudget
+		}
 		return Response{}, err
 	}
 	if (prep.Decision != "EXTRACTABLE" && prep.Decision != "RETRY_TIMEOUT") || prep.AttemptID <= 0 {

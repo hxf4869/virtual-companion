@@ -19,6 +19,10 @@ var ErrInvalid = errors.New("invalid request")
 // ErrConflict is a state clash that is safe to disclose (in-flight export).
 var ErrConflict = errors.New("conflict")
 
+// ErrToolVerificationStale means the probed protocol, base URL, model id, or
+// provider revision no longer matches the row. The capability bits stay as they were.
+var ErrToolVerificationStale = errors.New("tool call verification identity changed")
+
 // ErrRateLimited is an admission rejection. HTTP maps it to 429.
 var ErrRateLimited = errors.New("rate limited")
 
@@ -119,8 +123,12 @@ func mapRaise(msg string) error {
 	case strings.Contains(msg, "model usage unit price is unknown"):
 		return &ModelUsageError{Reason: ModelUsageNoPrice}
 	case strings.Contains(msg, "model usage limits are not configured"),
-		strings.Contains(msg, "model usage ceiling is too small"):
+		strings.Contains(msg, "model usage ceiling is too small"),
+		strings.Contains(msg, "model cost limits are not configured"),
+		strings.Contains(msg, "model cost reservation ceiling is too small"):
 		return &ModelUsageError{Reason: ModelUsageNoBudget}
+	case strings.Contains(msg, "tool call verification identity changed"):
+		return ErrToolVerificationStale
 	case strings.Contains(msg, "model usage monthly cap exceeded"):
 		return &ModelUsageError{Reason: ModelUsageOverLimit}
 	case strings.Contains(msg, "model usage reservation is not reusable"):

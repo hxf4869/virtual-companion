@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,10 +43,22 @@ func (m *memStore) SettleModelUsage(_ context.Context, _, reservationID, input, 
 	}, nil
 }
 
-func (m *memStore) CancelModelUsage(_ context.Context, _, reservationID int64, disposition string) (postgres.ModelUsageCancellation, error) {
+func (m *memStore) CancelModelUsage(ctx context.Context, _, reservationID int64, disposition string) (postgres.ModelUsageCancellation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.usageCalls++
+	m.usageCancelTries++
+	if ctx.Err() != nil {
+		m.usageCancelSawCanceled = true
+	}
+	if m.usageCancelFailures > 0 {
+		m.usageCancelFailures--
+		err := m.usageCancelErr
+		if err == nil {
+			err = errors.New("cancel failed")
+		}
+		return postgres.ModelUsageCancellation{}, err
+	}
 	m.usageLastCancel = disposition
 	status := "RELEASED"
 	if disposition == "UNKNOWN" {
@@ -68,6 +81,9 @@ func (m *memStore) AdminModelUsageSummary(context.Context, int64, time.Time, tim
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.usageSummaryCalls++
+	if len(m.usageSummary) > 0 {
+		return append([]postgres.ModelUsagePurposeRow(nil), m.usageSummary...), nil
+	}
 	return []postgres.ModelUsagePurposeRow{{
 		Purpose: postgres.PurposeForegroundChat, Calls: 1,
 	}}, nil
@@ -174,5 +190,32 @@ func TestAdminModelUsageRequiresAdmin(t *testing.T) {
 	s.Handler().ServeHTTP(unauth, bare)
 	if unauth.Code != http.StatusUnauthorized || store.usageSummaryCalls != 1 {
 		t.Fatalf("anonymous %d calls=%d", unauth.Code, store.usageSummaryCalls)
+	}
+}
+
+func TestAdminUsageCacheHitRateUsesSettledReportedInput(t *testing.T) {
+	store := newMemStore()
+	store.identities["admin@example.com"] = postgres.Identity{AccountID: 9, Role: "ADMIN", Status: "ACTIVE", Username: "admin"}
+	cached := int64(800)
+	store.usageSummary = []postgres.ModelUsagePurposeRow{{
+		Purpose: postgres.PurposeForegroundChat, Calls: 2, InputTokens: 101500,
+		CachedInputTokens: &cached, CacheBasisInputTokens: 1000,
+	}}
+	s := newUsageServer(t, store)
+	rec := doJSON(t, s, http.MethodGet, "/api/v1/auth/admin/usage", "", 9)
+	var body struct {
+		Purposes []map[string]any `json:"purposes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK || len(body.Purposes) != 1 {
+		t.Fatalf("summary %d %s %v", rec.Code, rec.Body.String(), err)
+	}
+	row := body.Purposes[0]
+	if row["inputTokens"] != float64(101500) || row["cachedInputTokens"] != float64(800) || row["cacheHitRate"] != 0.8 {
+		t.Fatalf("rate %#v", row)
+	}
+	store.usageSummary[0].CacheBasisInputTokens = 0
+	rec = doJSON(t, s, http.MethodGet, "/api/v1/auth/admin/usage", "", 9)
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || len(body.Purposes) != 1 || body.Purposes[0]["cacheHitRate"] != nil {
+		t.Fatalf("empty basis %s %v", rec.Body.String(), err)
 	}
 }

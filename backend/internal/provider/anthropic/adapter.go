@@ -313,6 +313,20 @@ func finishReason(raw *string) (companion.FinishReason, error) {
 	}
 }
 
+// NormalizeReportedUsage bills a Messages API usage object the same way a chat
+// stream does. Input tokens include cache creation and cache read. The cached
+// total is their sum when either field is present.
+func NormalizeReportedUsage(raw json.RawMessage) (companion.Usage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return companion.Usage{}, modelhttp.ErrMalformed
+	}
+	var reported usage
+	if err := json.Unmarshal(raw, &reported); err != nil {
+		return companion.Usage{}, modelhttp.ErrMalformed
+	}
+	return normalizeUsage(reported)
+}
+
 func normalizeUsage(u usage) (companion.Usage, error) {
 	if u.InputTokens == nil || u.OutputTokens == nil {
 		return companion.Usage{}, modelhttp.ErrMalformed

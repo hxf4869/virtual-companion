@@ -268,8 +268,8 @@ func (s *Server) handleAdminModelUsage(w http.ResponseWriter, r *http.Request) {
 		var rate any
 		if row.CachedInputTokens != nil {
 			cached = *row.CachedInputTokens
-			if row.InputTokens > 0 {
-				rate = float64(*row.CachedInputTokens) / float64(row.InputTokens)
+			if row.CacheBasisInputTokens > 0 {
+				rate = float64(*row.CachedInputTokens) / float64(row.CacheBasisInputTokens)
 			}
 		}
 		purposes = append(purposes, map[string]any{

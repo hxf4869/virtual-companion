@@ -60,8 +60,13 @@ type memStore struct {
 	usageLastAttempt  string
 	usageLastPurpose  string
 	usageLastCancel   string
-	usageErr          error
-	settleErr         error
+	usageErr               error
+	settleErr              error
+	usageCancelErr         error
+	usageCancelTries       int
+	usageCancelFailures    int
+	usageCancelSawCanceled bool
+	usageSummary           []postgres.ModelUsagePurposeRow
 }
 
 type memSession struct {

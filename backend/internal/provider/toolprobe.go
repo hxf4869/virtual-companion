@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/hxf4869/virtual-companion/internal/provider/anthropic"
 	"github.com/hxf4869/virtual-companion/internal/provider/modelhttp"
 )
 
@@ -268,21 +269,21 @@ func parseAnthropicToolProbe(body []byte) (ToolProbeResult, error) {
 			Name  string          `json:"name"`
 			Input json.RawMessage `json:"input"`
 		} `json:"content"`
-		Usage *struct {
-			InputTokens          int64  `json:"input_tokens"`
-			OutputTokens         int64  `json:"output_tokens"`
-			CacheReadInputTokens *int64 `json:"cache_read_input_tokens"`
-		} `json:"usage"`
+		Usage json.RawMessage `json:"usage"`
 	}
 	out := ToolProbeResult{}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return out, &ToolProbeError{Code: ToolProbeCodeMalformed}
 	}
-	if payload.Usage != nil {
+	if len(payload.Usage) > 0 && string(payload.Usage) != "null" {
+		normalized, err := anthropic.NormalizeReportedUsage(payload.Usage)
+		if err != nil {
+			return out, &ToolProbeError{Code: ToolProbeCodeMalformed}
+		}
 		out.HasUsage = true
-		out.InputTokens = payload.Usage.InputTokens
-		out.OutputTokens = payload.Usage.OutputTokens
-		out.CachedInputTokens = payload.Usage.CacheReadInputTokens
+		out.InputTokens = normalized.InputTokens
+		out.OutputTokens = normalized.OutputTokens
+		out.CachedInputTokens = normalized.CachedInputTokens
 	}
 	var name string
 	var input json.RawMessage

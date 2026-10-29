@@ -4616,12 +4616,14 @@ paths:
         model-page default. Without month, days is clamped to 1..90 (default 14); a non-integer days or a bad month is 400.
         The seven purposes are always returned, in order: foreground, memory extraction, background greetings, tool turns,
         legacy chat reservations, unlinked generation_usage, and local embeddings. actualUsd sums priced settlements only.
-        Unpriced calls keep a null fee and set includesUnpriced; they are never shown as zero. cachedInputTokens is null when
-        no row reported a cache count. cacheHitRate is cachedInputTokens / inputTokens, or null when the input total is 0
-        or no cache count was reported. Embedding calls stay a count with null dollars. A generation_usage row whose provider_ref
-        matches a reservation is kept and is not added again. Authenticated by the HttpOnly vc_session cookie of an ACTIVE
-        ADMIN. This read does not require Origin or CSRF. X-VC-Expected-Account-ID and X-VC-Expected-Session-ID are compared
-        only when the caller sends them.'
+        Unpriced calls keep a null fee and set includesUnpriced; they are never shown as zero. The summary is the acting admin''s
+        own owner rows, not a deployment-wide total. cachedInputTokens sums cache tokens on settled rows that reported a cache
+        count, and is null when none did. cacheHitRate divides that sum by the settled input tokens of those same rows. It
+        is null when that basis is 0 or no cache count was reported, and it is not cachedInputTokens / inputTokens. inputTokens
+        still includes held and unknown estimates. Embedding calls stay a count with null dollars. A generation_usage row
+        whose provider_ref matches a reservation is kept and is not added again. Authenticated by the HttpOnly vc_session
+        cookie of an ACTIVE ADMIN. This read does not require Origin or CSRF. X-VC-Expected-Account-ID and X-VC-Expected-Session-ID
+        are compared only when the caller sends them.'
       security:
       - cookieAuth: []
       parameters:
@@ -5490,8 +5492,10 @@ paths:
         while still HELD for the same owner, purpose, provider, and model returns that reservation. A settled, released, or
         unknown attempt is not reused. No effective USD price still inserts one unpriced HELD row and does not reject the
         send; its fee stays null. VC_MONTHLY_COST_LIMIT of 0 or unset is no monthly cap. A positive cap with no per-call ceiling
-        is 409 MODEL_NO_ELIGIBLE_DEPLOYMENT with details.reason NO_BUDGET. Over the monthly cap is 429 RATE_LIMITED with details.reason
-        OVER_LIMIT and Retry-After 2. Those refusals perform no provider call. An inactive owner is 403.
+        is 409 MODEL_NO_ELIGIBLE_DEPLOYMENT with details.reason NO_BUDGET. Both unit prices of 0 reserve 0 and settle at 0
+        without consuming the monthly cap. A non-zero unit price whose estimate rounds to 0 reserves 0.000001 USD and then
+        uses the same ceiling and monthly checks. Over the monthly cap is 429 RATE_LIMITED with details.reason OVER_LIMIT
+        and Retry-After 2. Those refusals perform no provider call. An inactive owner is 403.
       security:
       - serviceToken: []
       requestBody:
@@ -11957,12 +11961,14 @@ components:
           type: integer
           format: int64
           nullable: true
-          description: Sum of reported cache tokens. Null when none of the rows reported a cache count.
+          description: Sum of cache tokens on settled rows that reported a cache count. Null when none did. Held estimates
+            are excluded.
         cacheHitRate:
           type: number
           format: double
           nullable: true
-          description: cachedInputTokens / inputTokens. Null when inputTokens is 0 or no cache count was reported.
+          description: cachedInputTokens divided by the settled input tokens of rows that reported a cache count. Null when
+            that basis is 0 or no cache count was reported. Not cachedInputTokens / inputTokens.
         includesUnpriced:
           type: boolean
           description: True when this purpose has at least one unpriced call. Dollar totals exclude those calls.

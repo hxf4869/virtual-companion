@@ -85,6 +85,9 @@ func (s *Server) handleGetLocalModels(w http.ResponseWriter, r *http.Request) {
 		view.Rerank.Model = memoryengine.LocalRerankModel
 	}
 	if configured {
+		if cfg.Model != view.Embedding.Model || cfg.Dimensions != view.Embedding.Dimensions {
+			view.Embedding.Healthy = false
+		}
 		view.Embedding.Model = cfg.Model
 		view.Embedding.Dimensions = cfg.Dimensions
 		view.Embedding.State = cfg.State
