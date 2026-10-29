@@ -1,13 +1,13 @@
 /* UI-P04 主动陪伴 / 通知。本模块自行插入，不改 style.css。 */
 .vc-inbox-root {
-    --vcms-bg: #14181F;
-    --vcms-surface: #1C222C;
-    --vcms-raised: #252D39;
-    --vcms-border: #394453;
-    --vcms-text: #EFF3FA;
-    --vcms-text-2: #B7C1D2;
-    --vcms-primary: #9AB9FF;
-    --vcms-on-primary: #131C30;
+    --vcms-bg: var(--SmartThemeBlurTintColor, #14181F);
+    --vcms-surface: var(--SmartThemeChatTintColor, #1C222C);
+    --vcms-raised: var(--SmartThemeUserMesBlurTintColor, #252D39);
+    --vcms-border: var(--SmartThemeBorderColor, #394453);
+    --vcms-text: var(--SmartThemeBodyColor, #EFF3FA);
+    --vcms-text-2: var(--SmartThemeEmColor, #B7C1D2);
+    --vcms-primary: var(--SmartThemeQuoteColor, #9AB9FF);
+    --vcms-on-primary: var(--SmartThemeBlurTintColor, #131C30);
     --vcms-success: #8FD5AD;
     --vcms-warning: #F6C581;
     --vcms-danger: #FFAAA6;
@@ -70,17 +70,34 @@
 .vc-inbox-root .vc-inbox-card-head,
 .vc-inbox-root .vc-inbox-inline,
 .vc-inbox-root .vc-inbox-actions,
-.vc-inbox-root .vc-inbox-filters {
+.vc-inbox-root .vc-inbox-filters,
+.vc-inbox-root .vc-inbox-savebar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
 }
 
-.vc-inbox-root .vc-inbox-bar { justify-content: space-between; margin-bottom: 20px; }
-.vc-inbox-root .vc-inbox-bar h1 { flex: 1 1 160px; min-width: 0; }
-.vc-inbox-root .vc-inbox-bar label { flex: 1 1 180px; max-width: 320px; }
-.vc-inbox-root .vc-inbox-bar select { width: 100%; }
+.vc-inbox-root .vc-inbox-bar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(140px, 280px);
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 20px;
+}
+.vc-inbox-root .vc-inbox-bar h1 { min-width: 0; text-align: center; }
+.vc-inbox-root .vc-inbox-character {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    max-width: none;
+    min-width: 0;
+    white-space: nowrap;
+}
+.vc-inbox-root.vcms-root .vc-inbox-character select { flex: 1 1 auto; width: auto; min-width: 44px; min-height: 44px; }
+.vc-inbox-root .vc-inbox-close { justify-self: start; }
 
 .vc-inbox-root .vc-inbox-grid {
     display: grid;
@@ -125,7 +142,7 @@
 .vc-inbox-root button {
     border: 1px solid var(--vcms-border);
     border-radius: 8px;
-    background: #10151c;
+    background: var(--vcms-bg);
     color: var(--vcms-text);
     font: inherit;
     padding: 0 12px;
@@ -133,6 +150,12 @@
 
 .vc-inbox-root button { background: transparent; cursor: pointer; }
 .vc-inbox-root button[aria-pressed="true"] { border-color: var(--vcms-primary); color: var(--vcms-primary); }
+.vc-inbox-root .vc-inbox-filters button[aria-pressed="true"],
+.vc-inbox-root button[data-mode][aria-pressed="true"] {
+    background: var(--vcms-primary);
+    border-color: var(--vcms-primary);
+    color: var(--vcms-on-primary);
+}
 .vc-inbox-root button:disabled { opacity: 0.55; cursor: not-allowed; }
 .vc-inbox-root button:focus-visible,
 .vc-inbox-root input:focus-visible,
@@ -145,11 +168,46 @@
 }
 
 .vc-inbox-root .vc-inbox-fields,
-.vc-inbox-root .vc-inbox-quiet {
+.vc-inbox-root .vc-inbox-quiet,
+.vc-inbox-root .vc-inbox-summary {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
     margin: 12px 0;
+}
+
+.vc-inbox-root .vc-inbox-summary-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--vcms-border);
+    border-radius: 12px;
+    background: var(--vcms-raised);
+}
+
+.vc-inbox-root .vc-inbox-summary-card h3 { font-size: 14px; color: var(--vcms-text-2); }
+.vc-inbox-root .vc-inbox-summary-card input,
+.vc-inbox-root .vc-inbox-range { width: 100%; min-width: 0; }
+.vc-inbox-root .vc-inbox-range { display: flex; align-items: center; gap: 6px; }
+.vc-inbox-root.vcms-root .vc-inbox-range input {
+    flex: 1 1 0;
+    width: auto;
+    min-width: calc(4.6ch + 12px);
+    padding: 0 4px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.vc-inbox-root .vc-inbox-range-sep { flex: 0 0 auto; color: var(--vcms-text-2); }
+.vc-inbox-root .vc-inbox-savebar { justify-content: flex-end; margin: 8px 0 16px; }
+.vc-inbox-root .vc-inbox-switches {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    width: 100%;
+    margin: 0 0 4px;
 }
 
 .vc-inbox-root .vc-inbox-quiet label:last-child,
@@ -174,9 +232,110 @@
     margin-top: 8px;
 }
 
-.vc-inbox-root [data-tone="ok"] { color: var(--vcms-success); }
-.vc-inbox-root [data-tone="warn"] { color: var(--vcms-warning); }
-.vc-inbox-root [data-tone="danger"] { color: var(--vcms-danger); }
+.vc-inbox-root [data-tone="ok"] { --vc-tone: var(--vcms-success); }
+.vc-inbox-root [data-tone="warn"] { --vc-tone: var(--vcms-warning); }
+.vc-inbox-root [data-tone="danger"] { --vc-tone: var(--vcms-danger); }
+
+.vc-inbox-root .vc-inbox-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--vc-tone, var(--vcms-border)) 55%, var(--vcms-border));
+    background: color-mix(in srgb, var(--vc-tone, var(--vcms-text-2)) 18%, var(--vcms-surface));
+    color: var(--vcms-text);
+    font-size: 14px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.vc-inbox-root .vc-inbox-badge::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vc-tone, var(--vcms-text-2));
+    flex: 0 0 auto;
+}
+
+.vc-inbox-root.vcms-root button.vc-inbox-switch,
+.vc-inbox-root.vcms-root button.vc-inbox-switch[aria-pressed="true"] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 2px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--vcms-text);
+    text-align: start;
+    appearance: none;
+    caret-color: transparent;
+}
+
+.vc-inbox-root .vc-inbox-channel > .vc-inbox-switch { margin-top: 4px; }
+
+.vc-inbox-root .vc-inbox-switch-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+    line-height: 1.4;
+}
+
+/* span 默认 inline，宽高无效，左右边框会叠成竖线。轨道必须是定宽块。 */
+.vc-inbox-root .vc-inbox-switch-track {
+    position: relative;
+    display: block;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 26px;
+    box-sizing: border-box;
+    border-radius: 13px;
+    border: 1px solid var(--vcms-border);
+    background: color-mix(in srgb, var(--vcms-text-2) 35%, var(--vcms-bg));
+}
+
+.vc-inbox-root .vc-inbox-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--vcms-text-2);
+    transform: none;
+}
+
+.vc-inbox-root .vc-inbox-switch[aria-checked="true"] .vc-inbox-switch-track {
+    border-color: var(--vcms-primary);
+    background: var(--vcms-primary);
+}
+
+.vc-inbox-root .vc-inbox-switch[aria-checked="true"] .vc-inbox-switch-knob {
+    transform: translateX(18px);
+    background: var(--vcms-on-primary);
+}
+
+.vc-inbox-root .vc-inbox-credential-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.vc-inbox-root .vc-inbox-delivery {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
 
 .vc-inbox-root .vc-inbox-channel-row {
     display: grid;
@@ -187,13 +346,22 @@
 .vc-inbox-root .vc-inbox-channel label,
 .vc-inbox-root .vc-inbox-channel .vc-inbox-actions { margin-top: 12px; }
 
-.vc-inbox-root [role="alert"] { color: var(--vcms-danger); margin: 8px 0; }
+.vc-inbox-root [role="alert"] { color: color-mix(in srgb, var(--vcms-danger) 65%, var(--vcms-text)); margin: 8px 0; }
 .vc-inbox-root [role="status"] { color: var(--vcms-text-2); margin: 8px 0; }
+.vc-inbox-root input::placeholder { color: var(--vcms-text-2); }
 
 @media (max-width: 800px) {
     .vc-inbox-root .vc-inbox-grid,
     .vc-inbox-root .vc-inbox-channel-row,
     .vc-inbox-root .vc-inbox-fields,
-    .vc-inbox-root .vc-inbox-quiet { grid-template-columns: minmax(0, 1fr); }
+    .vc-inbox-root .vc-inbox-quiet,
+    .vc-inbox-root .vc-inbox-summary { grid-template-columns: minmax(0, 1fr); }
     .vc-inbox-root .vc-inbox-page { padding: 16px 12px 32px; }
+    .vc-inbox-root .vc-inbox-bar {
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas: "close title" "character character";
+    }
+    .vc-inbox-root .vc-inbox-close { grid-area: close; }
+    .vc-inbox-root .vc-inbox-bar h1 { grid-area: title; }
+    .vc-inbox-root .vc-inbox-character { grid-area: character; }
 }

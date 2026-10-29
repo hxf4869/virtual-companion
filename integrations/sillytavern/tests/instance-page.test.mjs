@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
 import {
     IMPORT_FAILED_COPY, UNSAVED_INSTANCE_COPY,
@@ -60,6 +61,36 @@ test('区分角色卡模板和陪伴实例，不展示其他 persona 或内部�
     for (const absent of ['<澄夏>', '旧关系', 'gentle-listener', 'st-character', 'credential', '手机已收到']) {
         assert.equal(html.includes(absent), false, absent);
     }
+});
+
+test('正在编辑的实例、模板卡和主次按钮可区分', async () => {
+    const html = renderInstancePage({
+        cards: [{ ...card, worldName: '湖畔日常' }],
+        relationships: [daily, trip],
+        bindings: [],
+        selectedCharacterRef: 'card-1',
+        selectedRelationshipId: '11',
+        draftName: '澄夏·日常',
+        savedName: '澄夏·日常',
+        creating: false,
+        importError: '',
+        unsaved: null,
+        nameError: '',
+    });
+    assert.match(html, /vc-instance-avatar/);
+    assert.match(html, /vc-instance-avatar" aria-hidden="true">澄</);
+    assert.match(html, /沿湖散步/);
+    assert.match(html, /关联世界书 · 湖畔日常/);
+    assert.match(html, /data-action="select-instance" data-id="11" aria-current="true"[\s\S]*?正在编辑[\s\S]*?<\/button>/);
+    assert.match(html, /正在编辑 · 澄夏·日常/);
+    assert.match(html, /data-action="create" class="vc-instance-create"/);
+    assert.doesNotMatch(html, /data-action="create"[^>]*vc-instance-primary/);
+    assert.match(html, /class="vc-instance-primary">保存更改/);
+    const css = await readFile(new URL('../extension/vc-model-settings/instance.css', import.meta.url), 'utf8');
+    assert.match(css, /--SmartThemeBlurTintColor/);
+    assert.match(css, /--SmartThemeBodyColor/);
+    assert.match(css, /#14181F/);
+    assert.match(css, /#9AB9FF/);
 });
 
 test('首次没有陪伴实例', () => {

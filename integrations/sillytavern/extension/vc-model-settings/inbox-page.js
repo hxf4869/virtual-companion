@@ -257,6 +257,10 @@ function credentialText(draft) {
     return '未配置';
 }
 
+function credentialPlaceholder(draft) {
+    return draft.credentialState === 'missing' ? '未配置' : '已配置，留空不修改';
+}
+
 function channelText(draft) {
     if (!draft.exists) return '未配置';
     return draft.enabled ? '已启用' : '已关闭';
@@ -284,25 +288,31 @@ function button(action, text, extra = '', primary = false) {
     return `<button type="button" class="${primary ? 'vc-inbox-primary' : ''}" data-action="${action}" ${extra}>${text}</button>`;
 }
 
+function badge(text, tone = '') {
+    return `<span class="vc-inbox-badge"${tone ? ` data-tone="${tone}"` : ''}>${esc(text)}</span>`;
+}
+
+function switchControl(action, label, extra, on) {
+    const pressed = on ? 'true' : 'false';
+    return `<button type="button" class="vc-inbox-switch" role="switch" data-action="${action}" ${extra} aria-checked="${pressed}" aria-pressed="${pressed}"><span class="vc-inbox-switch-label">${label}</span><span class="vc-inbox-switch-track" aria-hidden="true"><span class="vc-inbox-switch-knob"></span></span></button>`;
+}
+
 function channelCard(draft, relationships) {
     const preview = draft.previewBody ? 'true' : 'false';
     const people = relationships.map((item) => {
         const pressed = draft.relationshipIds.includes(item.relationshipId);
         return `<button type="button" data-action="toggle-relationship" data-key="${esc(draft.key)}" data-relationship-id="${esc(item.relationshipId)}" aria-pressed="${pressed ? 'true' : 'false'}">${esc(item.name)}</button>`;
     }).join('');
+    const credentialTone = draft.credentialState === 'configured' ? 'ok' : 'warn';
     return `<article class="vc-inbox-channel" data-channel-card data-key="${esc(draft.key)}" data-channel="${esc(draft.channel)}" data-preview="${preview}">
-        <div class="vc-inbox-card-head"><h3>${draft.channel === 'FEISHU' ? '飞书' : '邮箱'}</h3><span data-tone="${draft.exists && draft.enabled ? 'ok' : 'warn'}">${esc(channelText(draft))}</span></div>
+        <div class="vc-inbox-card-head"><h3>${draft.channel === 'FEISHU' ? '飞书' : '邮箱'}</h3>${badge(channelText(draft), draft.exists && draft.enabled ? 'ok' : 'warn')}</div>
         ${draft.channel === 'FEISHU' ? '<p>群成员可见</p>' : ''}
         <label class="vc-inbox-wide">${draft.channel === 'FEISHU' ? '群名称' : '收件地址'}<input data-field="configuredTarget" maxlength="320" autocomplete="off" value="${esc(safeTarget(draft.configuredTarget))}"></label>
-        <p>凭据 <span>${esc(credentialText(draft))}</span></p>
-        <label class="vc-inbox-wide"><input type="password" data-field="credential" aria-label="凭据" autocomplete="off" spellcheck="false"></label>
-        <div class="vc-inbox-actions">
-            ${button('toggle-channel', draft.enabled ? '已启用' : '已关闭', `data-key="${esc(draft.key)}" data-field="channel-enabled" aria-pressed="${draft.enabled ? 'true' : 'false'}"`)}
-            ${button('toggle-preview', `正文预览 ${draft.previewBody ? '开' : '关'}`, `data-key="${esc(draft.key)}" data-field="previewBody" aria-pressed="${preview}"`)}
-            ${button('clear-credential', '清除凭据', `data-key="${esc(draft.key)}"`)}
-        </div>
-        <div class="vc-inbox-actions">${people}</div>
-        <div class="vc-inbox-actions">${button('save-channel', '保存渠道', `data-key="${esc(draft.key)}"`, true)}</div>
+        <label class="vc-inbox-wide vc-inbox-credential"><span class="vc-inbox-credential-label">凭据 ${badge(credentialText(draft), credentialTone)}</span><input type="password" data-field="credential" aria-label="凭据" placeholder="${esc(credentialPlaceholder(draft))}" autocomplete="off" spellcheck="false"></label>
+        ${switchControl('toggle-channel', '启用', `data-key="${esc(draft.key)}" data-field="channel-enabled"`, draft.enabled)}
+        ${switchControl('toggle-preview', '正文预览', `data-key="${esc(draft.key)}" data-field="previewBody"`, draft.previewBody)}
+        <div class="vc-inbox-actions">${button('clear-credential', '清除凭据', `data-key="${esc(draft.key)}"`)}${people}</div>
+        <div class="vc-inbox-actions vc-inbox-savebar">${button('save-channel', '保存渠道', `data-key="${esc(draft.key)}"`, true)}</div>
     </article>`;
 }
 
@@ -313,7 +323,7 @@ export function renderInboxPage(state) {
     const draft = state.policyDraft;
     const options = state.relationships.map((item) => `<option value="${esc(item.relationshipId)}" ${item.relationshipId === state.relationshipId ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
     const follows = state.followUps.map((item) => `<article class="vc-inbox-card vc-inbox-follow" data-follow-up-id="${esc(item.followUpId)}" data-status="${esc(item.status)}">
-        <div class="vc-inbox-card-head"><h3>${esc(item.body)}</h3><span>${esc(FOLLOW[item.status] || '状态未知')}</span></div>
+        <div class="vc-inbox-card-head"><h3>${esc(item.body)}</h3>${badge(FOLLOW[item.status] || '状态未知', item.status === 'CANCELLED' ? '' : 'warn')}</div>
         ${when(item) ? `<p>${esc(when(item))}</p>` : ''}
         ${item.status === 'CANCELLED' ? '' : `<div class="vc-inbox-actions">${button('ask-cancel', '取消跟进', `data-follow-up-id="${esc(item.followUpId)}"`)}</div>`}
     </article>`).join('');
@@ -321,15 +331,16 @@ export function renderInboxPage(state) {
         const name = state.relationships.find((row) => row.relationshipId === item.relationshipId)?.name || '';
         const deliveries = state.deliveries.filter((row) => row.eventId === item.eventId).map((row) => {
             const label = deliveryLabel(row);
-            return `<li class="vc-inbox-delivery" data-status="${esc(label.status)}"><span>${row.channel === 'FEISHU' ? '飞书' : '邮箱'}</span><span data-tone="${label.tone}">${esc(label.text)}</span></li>`;
+            return `<li class="vc-inbox-delivery" data-status="${esc(label.status)}"><span>${row.channel === 'FEISHU' ? '飞书' : '邮箱'}</span>${badge(label.text, label.tone)}</li>`;
         }).join('');
-        const extra = item.linkStatus !== 'present' && item.stDelivered ? '<span data-tone="ok">已写入</span>' : '';
+        const writeTone = item.linkStatus === 'present' && item.stDelivered ? 'ok' : 'warn';
+        const extra = item.linkStatus !== 'present' && item.stDelivered ? badge('已写入', 'ok') : '';
         const waiting = item.intent === 'WAITING_HOST' ? '<p>需要打开此会话继续</p>' : (item.body ? `<p>${esc(item.body)}</p>` : '');
         const open = item.linkStatus === 'present' ? button('open-conversation', '打开此会话', `data-event-id="${esc(item.eventId)}"`, true) : '';
         return `<article class="vc-inbox-card" data-event-id="${esc(item.eventId)}" data-link="${esc(item.linkStatus)}" data-write="${item.stDelivered ? 'written' : 'pending'}">
-            <div class="vc-inbox-card-head"><h3>${esc(name)}</h3></div>
+            <div class="vc-inbox-card-head"><h3>${esc(name)}</h3>${badge(writeLabel(item), writeTone)}</div>
             ${waiting}
-            <p class="vc-inbox-states"><span data-tone="${item.linkStatus === 'present' && item.stDelivered ? 'ok' : 'warn'}">${esc(writeLabel(item))}</span><span>${item.read ? '应用已读' : '应用未读'}</span>${extra}</p>
+            <p class="vc-inbox-states">${badge(item.read ? '应用已读' : '应用未读', item.read ? 'ok' : '')}${extra}</p>
             ${deliveries ? `<ul class="vc-inbox-states">${deliveries}</ul>` : ''}
             ${open ? `<div class="vc-inbox-actions">${open}</div>` : ''}
         </article>`;
@@ -341,27 +352,23 @@ export function renderInboxPage(state) {
     const waitingHost = draft.enabled && !draft.offlineCapable ? '<p>需要打开此会话继续</p>' : '';
     return `<div class="vc-inbox-page">
         ${reauthLayer}${cancel}${conflict}
-        <header class="vc-inbox-bar"><h1 tabindex="-1">主动陪伴</h1><label>角色<select data-field="character" aria-label="角色">${options}</select></label>${button('close', '关闭')}</header>
+        <header class="vc-inbox-bar"><button type="button" class="vc-inbox-close" data-action="close">关闭</button><h1 tabindex="-1">主动陪伴</h1><label class="vc-inbox-character">角色<select data-field="character" aria-label="角色">${options}</select></label></header>
         ${state.error ? `<p role="alert">${esc(state.error)}</p>` : ''}
         <div class="vc-inbox-grid">
             <section class="vc-inbox-section" aria-label="跟进">
                 <h2>跟进</h2>
-                <div class="vc-inbox-actions">${button('toggle-enabled', draft.enabled ? '主动问候开' : '主动问候关', `data-field="enabled" aria-pressed="${draft.enabled ? 'true' : 'false'}"`)}${button('toggle-offline', draft.offlineCapable ? '离线生成开' : '离线生成关', `data-field="offlineCapable" aria-pressed="${draft.offlineCapable ? 'true' : 'false'}"`)}</div>
+                <div class="vc-inbox-switches">${switchControl('toggle-enabled', '主动问候', 'data-field="enabled"', draft.enabled)}${switchControl('toggle-offline', '离线生成', 'data-field="offlineCapable"', draft.offlineCapable)}</div>
                 ${waitingHost}
-                <div class="vc-inbox-quiet">
-                    <label>开始<input data-field="quietHoursStart" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"></label>
-                    <label>结束<input data-field="quietHoursEnd" value="${esc(draft.quietHoursEnd)}" inputmode="numeric" maxlength="5"></label>
-                    <label>时区<input data-field="quietHoursTimezone" value="${esc(draft.quietHoursTimezone)}" maxlength="64"></label>
-                </div>
-                <div class="vc-inbox-fields">
-                    <label>每日上限<input data-field="dailyLimit" inputmode="numeric" value="${esc(draft.dailyLimit)}"></label>
-                    <label>间隔（分钟）<input data-field="recentInteractionMinutes" inputmode="numeric" value="${esc(draft.recentInteractionMinutes)}"></label>
+                <div class="vc-inbox-summary">
+                    <article class="vc-inbox-summary-card"><h3>静默时段</h3><div class="vc-inbox-range"><input data-field="quietHoursStart" aria-label="开始" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"><span class="vc-inbox-range-sep" aria-hidden="true">–</span><input data-field="quietHoursEnd" aria-label="结束" value="${esc(draft.quietHoursEnd)}" inputmode="numeric" maxlength="5"></div></article>
+                    <article class="vc-inbox-summary-card"><h3>时区</h3><input data-field="quietHoursTimezone" aria-label="时区" value="${esc(draft.quietHoursTimezone)}" maxlength="64"></article>
+                    <article class="vc-inbox-summary-card"><h3>每日上限</h3><input data-field="dailyLimit" aria-label="每日上限" inputmode="numeric" value="${esc(draft.dailyLimit)}"><label>间隔（分钟）<input data-field="recentInteractionMinutes" aria-label="间隔（分钟）" inputmode="numeric" value="${esc(draft.recentInteractionMinutes)}"></label></article>
                 </div>
                 <div class="vc-inbox-actions">${button('toggle-mode', '日常', `data-mode="COMPANION" aria-pressed="${draft.allowedModes.includes('COMPANION') ? 'true' : 'false'}"`)}${button('toggle-mode', '剧情', `data-mode="STORY" aria-pressed="${draft.allowedModes.includes('STORY') ? 'true' : 'false'}"`)}</div>
                 ${state.policyError ? `<p role="alert">${esc(state.policyError)}</p>` : ''}
                 ${state.policyNotice ? `<p role="status">${esc(state.policyNotice)}</p>` : ''}
+                <div class="vc-inbox-savebar">${button('save-policy', '保存', state.policyConflict || state.busy ? 'disabled' : '', true)}</div>
                 ${follows || '<p role="status">没有跟进</p>'}
-                <div class="vc-inbox-actions">${button('save-policy', '保存', state.policyConflict || state.busy ? 'disabled' : '', true)}</div>
             </section>
             <section class="vc-inbox-section" aria-label="消息">
                 <h2>消息</h2>

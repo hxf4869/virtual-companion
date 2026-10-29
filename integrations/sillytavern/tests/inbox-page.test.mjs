@@ -1,6 +1,7 @@
 // W15-2：通知与 inbox 页。假 fetch，不启浏览器、不发真实邮件或飞书。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import * as inboxRoutes from '../server-plugin/virtual-companion/lib/inbox-ui-routes.js';
@@ -303,6 +304,31 @@ test('未配置的渠道默认关闭正文预览，空凭据不覆盖已保存�
     assert.equal(body.previewBody, false);
     assert.equal(body.enabled, false);
     assert.match(html(page), /已关闭/);
+    page.close();
+});
+
+test('开关、状态徽标、静默摘要卡和凭据占位表达当前状态', async () => {
+    const page = await opened();
+    const text = html(page);
+    assert.match(text, /class="vc-inbox-switch" role="switch" data-action="toggle-enabled" data-field="enabled" aria-checked="true" aria-pressed="true"/);
+    assert.match(text, /class="vc-inbox-switch" role="switch" data-action="toggle-preview" data-key="7" data-field="previewBody" aria-checked="false" aria-pressed="false"/);
+    assert.match(text, /主动问候<\/span>/);
+    assert.match(text, /正文预览<\/span>/);
+    assert.doesNotMatch(text, /主动问候开|主动问候关|正文预览 开|正文预览 关/);
+    assert.match(text, /class="vc-inbox-badge"[^>]*>渠道已接受</);
+    assert.match(text, /class="vc-inbox-badge"[^>]*>待写入</);
+    assert.match(text, /class="vc-inbox-badge"[^>]*>不回显</);
+    assert.match(text, /class="vc-inbox-summary"/);
+    assert.match(text, /静默时段/);
+    assert.match(text, /<h3>时区<\/h3>/);
+    assert.match(text, /<h3>每日上限<\/h3>/);
+    assert.match(text, /placeholder="已配置，留空不修改"/);
+    assert.match(text, /aria-label="凭据"/);
+    const css = await readFile(new URL('../extension/vc-model-settings/inbox.css', import.meta.url), 'utf8');
+    assert.match(css, /--SmartThemeBlurTintColor/);
+    assert.match(css, /--SmartThemeBodyColor/);
+    assert.match(css, /#14181F/);
+    assert.match(css, /#9AB9FF/);
     page.close();
 });
 

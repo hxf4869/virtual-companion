@@ -19,6 +19,11 @@ const ID = /^[1-9][0-9]{0,18}$/;
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
+function initial(name) {
+    const text = String(name || '').replace(/[^\p{L}\p{N}]/gu, '');
+    return [...text][0] || '角';
+}
+
 export function sanitizeInstanceName(value) {
     const raw = String(value ?? '');
     if ([...raw].some((char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f)) {
@@ -149,20 +154,28 @@ export function renderInstancePage(state) {
     const instances = instancesFrom(state.relationships);
     const dirty = state.draftName !== state.savedName && (state.creating || state.selectedRelationshipId);
     const form = state.creating || state.selectedRelationshipId;
+    const editing = instances.find((item) => item.relationshipId === state.selectedRelationshipId);
+    const editingName = editing?.name || state.savedName || '未命名实例';
+    const createClass = instances.length ? 'vc-instance-create' : 'vc-instance-create vc-instance-primary';
     return `<div class="vc-instance-page">
-      <header class="vc-instance-bar"><h1>角色</h1><button type="button" data-action="import">导入角色卡</button><button type="button" data-action="close">关闭</button></header>
+      <header class="vc-instance-bar"><h1>角色</h1><div class="vc-instance-bar-actions"><button type="button" data-action="import">导入角色卡</button><button type="button" data-action="close">关闭</button></div></header>
       ${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}
       ${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}
       <div class="vc-instance-columns">
         <section aria-label="角色卡模板"><h2>角色卡模板</h2>
-          ${cards.length ? `<ul class="vc-instance-list">${cards.map((item) => `<li><button type="button" data-action="select-template" data-ref="${esc(item.characterRef)}" aria-current="${item.characterRef === state.selectedCharacterRef ? 'true' : 'false'}"><strong>${esc(item.name || '未命名角色卡')}</strong>${item.description ? `<span class="vc-instance-secondary">${esc(item.description)}</span>` : ''}${item.worldName ? `<span class="vc-instance-secondary">${esc(item.worldName)}</span>` : ''}</button></li>`).join('')}</ul>` : '<p>还没有角色卡模板</p>'}
+          ${cards.length ? `<ul class="vc-instance-list">${cards.map((item) => `<li><button type="button" class="vc-instance-template" data-action="select-template" data-ref="${esc(item.characterRef)}" aria-current="${item.characterRef === state.selectedCharacterRef ? 'true' : 'false'}"><span class="vc-instance-avatar" aria-hidden="true">${esc(initial(item.name))}</span><span class="vc-instance-template-copy"><strong>${esc(item.name || '未命名角色卡')}</strong><span class="vc-instance-badge">模板</span>${item.description ? `<span class="vc-instance-secondary">${esc(item.description)}</span>` : ''}${item.worldName ? `<span class="vc-instance-world">关联世界书 · ${esc(item.worldName)}</span>` : ''}</span></button></li>`).join('')}</ul>` : '<p>还没有角色卡模板</p>'}
         </section>
-        <section aria-label="陪伴实例"><h2>陪伴实例</h2>
-          ${instances.length ? `<ul class="vc-instance-list">${instances.map((item) => `<li><button type="button" data-action="select-instance" data-id="${esc(item.relationshipId)}" aria-current="${!state.creating && item.relationshipId === state.selectedRelationshipId ? 'true' : 'false'}">${esc(item.name)}</button></li>`).join('')}</ul>` : '<p>还没有陪伴实例</p>'}
-          <button type="button" data-action="create">创建实例</button>
-        </section>
+        <div class="vc-instance-main">
+          <section aria-label="陪伴实例"><h2>陪伴实例</h2>
+            ${instances.length ? `<ul class="vc-instance-list">${instances.map((item) => {
+                const current = !state.creating && item.relationshipId === state.selectedRelationshipId;
+                return `<li><button type="button" class="vc-instance-choice" data-action="select-instance" data-id="${esc(item.relationshipId)}" aria-current="${current ? 'true' : 'false'}"><span class="vc-instance-avatar" aria-hidden="true">${esc(initial(item.name))}</span><span class="vc-instance-choice-copy"><strong>${esc(item.name)}</strong>${current ? '<span class="vc-instance-badge">正在编辑</span>' : ''}</span></button></li>`;
+            }).join('')}</ul>` : '<p>还没有陪伴实例</p>'}
+            <button type="button" data-action="create" class="${createClass}">创建实例</button>
+          </section>
+          ${form ? `<form class="vc-instance-form" data-form="instance"><h2>${state.creating ? '新建实例' : `正在编辑 · ${esc(editingName)}`}</h2><label>实例名称<input name="displayName" value="${esc(state.draftName || '')}" maxlength="64"></label>${dirty ? `<p>${UNSAVED_INSTANCE_COPY}</p>` : ''}${state.nameError ? `<p role="alert">${esc(state.nameError)}</p>` : ''}<div class="vc-instance-form-actions"><button type="button" data-action="cancel-edit">取消</button><button type="submit" class="vc-instance-primary">${state.creating ? '创建实例' : '保存更改'}</button></div></form>` : ''}
+        </div>
       </div>
-      ${form ? `<form class="vc-instance-form" data-form="instance"><label>实例名称<input name="displayName" value="${esc(state.draftName || '')}" maxlength="64"></label>${dirty ? `<p>${UNSAVED_INSTANCE_COPY}</p>` : ''}${state.nameError ? `<p role="alert">${esc(state.nameError)}</p>` : ''}<div class="vc-instance-form-actions"><button type="button" data-action="cancel-edit">取消</button><button type="submit" class="vc-instance-primary">${state.creating ? '创建实例' : '保存更改'}</button></div></form>` : ''}
       ${state.unsaved ? `<dialog class="vc-instance-unsaved"><p>${UNSAVED_INSTANCE_COPY}</p><div class="vc-instance-actions"><button type="button" data-action="keep-editing">继续编辑</button><button type="button" data-action="discard">放弃更改</button></div></dialog>` : ''}
     </div>`;
 }

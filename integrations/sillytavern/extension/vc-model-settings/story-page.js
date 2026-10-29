@@ -41,6 +41,12 @@ const STEPS = [
     { id: 'a6', label: '检查维修柜', action: 'inspect', target: 'workshop_cabinet' },
     { id: 'a7', label: '指认周澈', action: 'accuse', target: 'zhou' },
 ];
+const ACTION_GROUPS = [
+    { id: 'lin', title: '林岚' },
+    { id: 'su', title: '苏禾' },
+    { id: 'zhou', title: '周澈' },
+    { id: 'place', title: '地点' },
+];
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -118,6 +124,23 @@ function list(items) {
     return items.map((item) => `<li>${esc(item)}</li>`).join('');
 }
 
+function initial(name) {
+    const text = String(name || '').replace(/[^\p{L}\p{N}]/gu, '');
+    return [...text][0] || '人';
+}
+
+function actionGroup(step) {
+    if (step.id === 'a6') return 'place';
+    if (step.target === 'lin' || step.target === 'su' || step.target === 'zhou') return step.target;
+    return 'place';
+}
+
+function actionClass(step) {
+    if (step.id === 'a6') return 'vcms-btn vcms-btn-primary';
+    if (step.id === 'a7') return 'vcms-btn vcms-btn-danger-ghost';
+    return 'vcms-btn vcms-btn-ghost';
+}
+
 function storyTurn(run, view, conversationId) {
     const runId = typeof run?.runId === 'string' && DECIMAL_ID.test(run.runId) ? run.runId : '';
     const branchId = typeof run?.branchId === 'string' && DECIMAL_ID.test(run.branchId) ? run.branchId : '';
@@ -178,9 +201,10 @@ export function renderStoryPage(state) {
     const stage = stageWord(state.run.stage);
     const version = state.turn?.worldVersion ?? 0;
     const hold = state.busy ? ' disabled' : '';
+    const selected = state.view.participants.find((person) => person.actorId === state.actorId);
     const people = state.view.participants.map((person) => {
         const pressed = state.actorId === person.actorId;
-        return `<button type="button" class="vc-story-person" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}"><h3>${esc(person.name)}</h3>${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</button>`;
+        return `<button type="button" class="vc-story-person" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}"><span class="vc-story-person-mark" aria-hidden="true">${esc(initial(person.name))}</span><span class="vc-story-person-copy"><h3>${esc(person.name)}</h3>${pressed ? '<span class="vc-story-badge">当前</span>' : ''}${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</span></button>`;
     }).join('');
     const versions = new Set();
     if (version > 0) versions.add(0);
@@ -188,7 +212,11 @@ export function renderStoryPage(state) {
         if (typeof event.worldVersion === 'number' && event.worldVersion < version) versions.add(event.worldVersion);
     }
     const rewind = [...versions].sort((a, b) => a - b).map((item) => `<button type="button" class="vcms-btn" data-action="ask-rewind" data-version="${item}"${hold}>回到版本 ${item}</button>`).join('');
-    const steps = ended ? '' : STEPS.map((step) => `<button type="button" class="vcms-btn" data-action="act" data-step="${esc(step.id)}"${hold}>${esc(step.label)}</button>`).join('');
+    const steps = ended ? '' : ACTION_GROUPS.map((group) => {
+        const buttons = STEPS.filter((step) => actionGroup(step) === group.id).map((step) => `<button type="button" class="${actionClass(step)}" data-action="act" data-step="${esc(step.id)}"${hold}>${esc(step.label)}</button>`).join('');
+        return buttons ? `<div class="vc-story-action-group" data-group="${group.id}"><h3>${esc(group.title)}</h3>${buttons}</div>` : '';
+    }).join('');
+    const sayPlaceholder = selected ? `对${selected.name}说` : '先选择一位角色';
     const companions = state.companions ? state.companions.map((row) => CASTABLE.map((actorId) => {
         const person = state.view.participants.find((item) => item.actorId === actorId);
         const label = person?.name || actorId;
@@ -196,19 +224,18 @@ export function renderStoryPage(state) {
     }).join('')).join('') : '<button type="button" class="vcms-btn" data-action="show-companions">选择陪伴入局</button>';
     const evidence = state.notice ? `<p class="vc-story-evidence" data-evidence="show">${esc(state.notice)}</p>` : '';
     return `<div class="vc-story" data-state="${mode}" data-world-version="${version}">
-      <header class="vc-story-bar"><h1 tabindex="-1">${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage">${esc(stage)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
+      <header class="vc-story-bar"><h1 tabindex="-1">${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage"><span class="vc-story-badge">${esc(stage)}</span></p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost vc-story-close" data-action="close">关闭</button></header>
       ${configBanner(state)}
       ${mode === 'generating' ? `<p class="vc-story-generating" role="status">${esc(GENERATING)}</p>` : ''}
       ${state.syncPending ? `<p class="vc-story-sync">${esc(STORY_SYNC_PENDING)}</p>` : ''}
       ${state.reason ? `<p role="alert">${esc(state.reason)}</p>` : ''}
       ${evidence}
-      <p class="vc-story-setting">${esc(state.view.setting)}</p>
-      <p class="vc-story-known">${esc(state.view.knownEvent)}</p>
+      <section class="vc-story-panel" aria-label="公开设定"><h2>公开设定</h2><p class="vc-story-setting">${esc(state.view.setting)}</p></section>
       <section class="vc-story-cast">${people}</section>
-      <ul class="vc-story-places">${list(state.view.locations)}</ul>
-      <ul class="vc-story-clues">${list(state.view.knowledge)}</ul>
-      <ul class="vc-story-events">${list(state.view.events.map((event) => event.line))}</ul>
-      ${ended ? '' : `<section class="vc-story-actions">${steps}<label class="vc-story-say-row"><input data-field="say" maxlength="4000" aria-label="对所选角色说"${hold}><button type="button" class="vcms-btn" data-action="say"${hold}>对所选角色说</button></label></section>`}
+      <section class="vc-story-panel" aria-label="地点"><h2>地点</h2><ul class="vc-story-places">${list(state.view.locations)}</ul></section>
+      <section class="vc-story-panel" aria-label="线索"><h2>线索</h2><ul class="vc-story-clues">${list(state.view.knowledge)}</ul></section>
+      <section class="vc-story-panel" aria-label="公开时间线"><h2>公开时间线</h2>${state.view.knownEvent ? `<p class="vc-story-known">${esc(state.view.knownEvent)}</p>` : ''}<ul class="vc-story-events">${list(state.view.events.map((event) => event.line))}</ul></section>
+      ${ended ? '' : `<section class="vc-story-actions">${steps}<div class="vc-story-say"><label class="vc-story-say-row"><input data-field="say" maxlength="4000" aria-label="对所选角色说" placeholder="${esc(sayPlaceholder)}"${hold}><button type="button" class="vcms-btn vcms-btn-primary" data-action="say"${hold}>对所选角色说</button></label></div></section>`}
       ${rewind ? `<section class="vc-story-rewind">${rewind}</section>` : ''}
       ${rewindDialog(state.rewindAsk)}
       <section class="vc-story-companions">${companions}</section>

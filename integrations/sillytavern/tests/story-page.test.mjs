@@ -228,6 +228,34 @@ test('动态文本转义，不能把线索或名字写成 HTML', async () => {
     page.close();
 });
 
+test('地点、线索与时间线分区，行动按对象分组，所选角色可见', async () => {
+    const page = await started();
+    page.selectActor('lin');
+    const html = renderStoryPage(page.state);
+    assert.match(html, /aria-label="公开设定"/);
+    assert.match(html, /aria-label="地点"/);
+    assert.match(html, /aria-label="线索"/);
+    assert.match(html, /aria-label="公开时间线"/);
+    assert.match(html, /class="vc-story-known"/);
+    assert.match(html, /data-group="lin"[\s\S]*data-step="a1"/);
+    assert.match(html, /data-group="su"[\s\S]*data-step="a2"/);
+    assert.match(html, /data-group="zhou"[\s\S]*data-step="a7"/);
+    assert.match(html, /data-group="place"[\s\S]*data-step="a6"/);
+    assert.match(html, /class="vcms-btn vcms-btn-primary" data-action="act" data-step="a6"/);
+    assert.match(html, /class="vcms-btn vcms-btn-danger-ghost" data-action="act" data-step="a7"/);
+    assert.match(html, /placeholder="对林岚说"/);
+    assert.match(html, /data-actor="lin"[^>]*aria-pressed="true"/);
+    assert.match(html, /vc-story-badge[^>]*>当前</);
+    assert.match(html, /vc-story-badge[^>]*>调查中</);
+    assert.doesNotMatch(html, /workshop_cabinet|执行行动|确认回档|结局/);
+    const css = await readFile(new URL('../extension/vc-model-settings/story.css', import.meta.url), 'utf8');
+    assert.match(css, /--SmartThemeBlurTintColor/);
+    assert.match(css, /--SmartThemeBodyColor/);
+    assert.match(css, /#14181F/);
+    assert.match(css, /#9AB9FF/);
+    page.close();
+});
+
 test('入口、手机单列与桥接范围', async () => {
     const css = await readFile(new URL('../extension/vc-model-settings/story.css', import.meta.url), 'utf8');
     assert.match(css, /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);

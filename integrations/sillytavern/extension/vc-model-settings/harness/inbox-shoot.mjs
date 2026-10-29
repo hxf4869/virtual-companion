@@ -87,11 +87,61 @@ async function assertLayout(page, name) {
             const rect = el.getBoundingClientRect();
             return rect.width > 0 && rect.right > box.right + 1;
         }).slice(0, 8).map((el) => el.className || el.tagName);
+        const clippedInputs = [...dialog.querySelectorAll('input')].flatMap((el) => {
+            const style = getComputedStyle(el);
+            const pad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+            const probe = document.createElement('span');
+            probe.textContent = el.value;
+            probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${style.font};letter-spacing:${style.letterSpacing};font-variant-numeric:${style.fontVariantNumeric};`;
+            document.body.appendChild(probe);
+            const textWidth = probe.getBoundingClientRect().width;
+            probe.remove();
+            const content = el.clientWidth - pad;
+            const scrollClipped = el.scrollWidth > el.clientWidth;
+            const textClipped = el.value !== '' && textWidth > content + 0.5;
+            if (!scrollClipped && !textClipped) return [];
+            return [{
+                field: el.dataset.field || el.getAttribute('aria-label') || el.type,
+                value: el.value,
+                scrollWidth: el.scrollWidth,
+                clientWidth: el.clientWidth,
+                textWidth: Math.round(textWidth * 10) / 10,
+                content: Math.round(content * 10) / 10,
+            }];
+        });
+        const timeMissing = ['quietHoursStart', 'quietHoursEnd'].filter((field) => !dialog.querySelector(`input[data-field="${field}"]`));
+        const switches = [...dialog.querySelectorAll('.vc-inbox-switch')].flatMap((el) => {
+            const label = el.querySelector('.vc-inbox-switch-label')?.getBoundingClientRect();
+            const track = el.querySelector('.vc-inbox-switch-track')?.getBoundingClientRect();
+            const knob = el.querySelector('.vc-inbox-switch-knob')?.getBoundingClientRect();
+            const row = el.getBoundingClientRect();
+            const checked = el.getAttribute('aria-checked');
+            const problems = [];
+            if (el.getAttribute('role') !== 'switch') problems.push('role');
+            if (checked !== 'true' && checked !== 'false') problems.push('aria-checked');
+            if (row.height < 44) problems.push('height');
+            if (!label || !track || !knob) problems.push('parts');
+            if (label && track && track.left + 1 < label.right) problems.push('track-not-right');
+            if (track && (track.width < 36 || track.height < 20)) problems.push('track-collapsed');
+            if (knob && track) {
+                const knobCenter = knob.left + knob.width / 2;
+                const trackCenter = track.left + track.width / 2;
+                const onRight = knobCenter > trackCenter + 2;
+                const onLeft = knobCenter < trackCenter - 2;
+                if (checked === 'true' ? !onRight : !onLeft) problems.push('knob-side');
+            }
+            if (label && label.left - row.left > 20) problems.push('label-not-left');
+            if (!problems.length) return [];
+            return [{ field: el.dataset.field || el.dataset.action, problems, h: Math.round(row.height) }];
+        });
         const stored = [...Array(localStorage.length)].map((_, i) => localStorage.key(i)).join('\n');
         const text = `${document.body.innerText}\n${document.body.innerHTML}\n${stored}`;
-        return { small, overflow, wide, banned: banned.filter((item) => text.includes(item)), storage: localStorage.length };
+        return {
+            small, overflow, wide, clippedInputs, timeMissing, switches,
+            banned: banned.filter((item) => text.includes(item)), storage: localStorage.length,
+        };
     }, BANNED);
-    if (report.small.length || report.overflow.length || report.wide.length || report.banned.length || report.storage !== 0) {
+    if (report.small.length || report.overflow.length || report.wide.length || report.clippedInputs.length || report.timeMissing.length || report.switches.length || report.banned.length || report.storage !== 0) {
         throw new Error(`${name} 布局或泄密断言失败 ${JSON.stringify(report)}`);
     }
     console.log(`PASS layout ${name}`);

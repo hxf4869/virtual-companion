@@ -2,14 +2,14 @@
 
 .vc-instance-root,
 .vc-instance-unsaved {
-    --vc-bg: #14181F;
-    --vc-surface: #1C222C;
-    --vc-raised: #252D39;
-    --vc-border: #394453;
-    --vc-text: #EFF3FA;
-    --vc-text-2: #B7C1D2;
-    --vc-primary: #9AB9FF;
-    --vc-on-primary: #131C30;
+    --vc-bg: var(--SmartThemeBlurTintColor, #14181F);
+    --vc-surface: var(--SmartThemeChatTintColor, #1C222C);
+    --vc-raised: var(--SmartThemeUserMesBlurTintColor, #252D39);
+    --vc-border: var(--SmartThemeBorderColor, #394453);
+    --vc-text: var(--SmartThemeBodyColor, #EFF3FA);
+    --vc-text-2: var(--SmartThemeEmColor, #B7C1D2);
+    --vc-primary: var(--SmartThemeQuoteColor, #9AB9FF);
+    --vc-on-primary: var(--SmartThemeBlurTintColor, #131C30);
     --vc-warning: #F6C581;
     --vc-danger: #FFAAA6;
 }
@@ -41,6 +41,7 @@
 }
 
 .vc-instance-bar,
+.vc-instance-bar-actions,
 .vc-instance-actions,
 .vc-instance-form-actions {
     display: flex;
@@ -49,6 +50,9 @@
     gap: 8px;
     min-width: 0;
 }
+
+.vc-instance-bar { justify-content: space-between; margin-bottom: 16px; }
+.vc-instance-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
 .vc-instance-bar h1 {
     flex: 1 1 160px;
@@ -99,8 +103,67 @@
     list-style: none;
 }
 
-.vc-instance-list button {
+.vc-instance-list button,
+.vc-instance-template,
+.vc-instance-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
     text-align: left;
+}
+
+.vc-instance-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--vc-raised);
+    color: var(--vc-primary);
+    font-size: 18px;
+    font-weight: 650;
+}
+
+.vc-instance-template-copy,
+.vc-instance-choice-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+}
+
+.vc-instance-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--vc-primary) 50%, var(--vc-border));
+    background: color-mix(in srgb, var(--vc-primary) 16%, var(--vc-surface));
+    color: var(--vc-text);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.vc-instance-badge::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vc-primary);
+}
+
+.vc-instance-world { color: var(--vc-text-2); font-size: 14px; }
+
+.vc-instance-page .vc-instance-create {
+    width: 100%;
+    margin-top: 8px;
+    border-style: dashed;
+    color: var(--vc-text-2);
 }
 
 .vc-instance-page .vc-instance-secondary {
@@ -128,7 +191,8 @@
 
 .vc-instance-page button[aria-current="true"] {
     border-color: var(--vc-primary);
-    color: var(--vc-primary);
+    color: var(--vc-text);
+    box-shadow: inset 0 0 0 1px var(--vc-primary);
 }
 
 .vc-instance-page .vc-instance-primary {
@@ -150,6 +214,8 @@
     color: var(--vc-text-2);
 }
 
+.vc-instance-form { border-color: var(--vc-primary); }
+.vc-instance-form h2 { display: flex; flex-wrap: wrap; gap: 8px; }
 .vc-instance-form label {
     display: flex;
     flex-direction: column;
@@ -220,6 +286,8 @@
 
 @media (max-width: 800px) {
     .vc-instance-page { padding: 16px 12px 24px; }
-    .vc-instance-bar h1 { font-size: 22px; }
+    .vc-instance-bar h1 { flex-basis: 100%; font-size: 22px; }
+    .vc-instance-bar-actions { width: 100%; }
+    .vc-instance-bar-actions button { flex: 1 1 auto; }
     .vc-instance-columns { grid-template-columns: minmax(0, 1fr); }
 }
