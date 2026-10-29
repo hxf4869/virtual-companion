@@ -177,6 +177,8 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/service/memorycore/llm", s.handleMemoryCoreLLM)
 	s.mux.HandleFunc("GET /api/v1/admin/embedding-config", s.handleGetEmbeddingConfig)
 	s.mux.HandleFunc("PUT /api/v1/admin/embedding-config", s.handleSaveEmbeddingConfig)
+	s.mux.HandleFunc("GET /api/v1/admin/local-models", s.handleGetLocalModels)
+	s.mux.HandleFunc("PUT /api/v1/admin/local-models/rerank", s.handleSaveLocalModelRerank)
 	s.mux.HandleFunc("POST /api/v1/st/bindings", s.handleResolveSTBinding)
 	s.mux.HandleFunc("POST /api/v1/st/sources/reconcile", s.handleReconcileSTSources)
 	s.mux.HandleFunc("POST /api/v1/st/memory/recall", s.handleSTMemoryRecall)

@@ -98,6 +98,20 @@ test('proposal does not publish; commit and replay are idempotent; allowlist emp
     assert.deepEqual(await engine.invoke('search', { scope, embedding, allowedRecordIds: [], query: 'content' }), []);
     assert.equal((await engine.invoke('search', { scope, embedding, allowedRecordIds: ['record1'], query: 'content' })).length, 1);
 });
+test('search passes rerankEnabled false through to native search', async (t) => {
+    const { engine, native } = await fixture(t);
+    const p = proposalInput();
+    await engine.invoke('propose', p);
+    await engine.invoke('commit', { scope, revision: 0, operationId: p.operationId });
+    let seen;
+    const original = native.search.bind(native);
+    native.search = async (input) => { seen = input.rerank; return original(input); };
+    const found = await engine.invoke('search', {
+        scope, embedding, allowedRecordIds: ['record1'], query: 'content', rerankEnabled: false,
+    });
+    assert.equal(found.length, 1);
+    assert.equal(seen, false);
+});
 test('forget advances revision, revokes derived work and rejects late proposal', async t => {
     const { engine, native } = await fixture(t); const p = proposalInput(); await engine.invoke('propose', p);
     await engine.invoke('forget', { scope, revision: 0, recordIds: [] });

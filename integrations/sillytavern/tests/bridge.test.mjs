@@ -593,3 +593,38 @@ test('W08 memory management routes preserve cursor, conflict and cleanup respons
         assert.equal(state.upstream[1].search, '?q=hello&cursor=9&limit=2');
     } finally { server.close(); }
 });
+
+test('管理桥放行本机模型状态与重排开关，拒绝改地址的方法', async () => {
+    const allows = (method, path) => ADMIN_BRIDGE_ROUTES.some((route) => route.method === method && route.path.test(path));
+    assert.equal(allows('GET', '/api/v1/admin/local-models'), true);
+    assert.equal(allows('PUT', '/api/v1/admin/local-models/rerank'), true);
+    assert.equal(allows('POST', '/api/v1/admin/local-models'), false);
+    assert.equal(allows('PUT', '/api/v1/admin/local-models'), false);
+    assert.equal(allows('GET', '/api/v1/admin/local-models/rerank/endpoint'), false);
+    const state = { upstream: [], responses: {
+        'GET /api/v1/admin/local-models': { status: 200, body: { embedding: { model: 'qwen3-embedding:0.6b' } } },
+        'PUT /api/v1/admin/local-models/rerank': { status: 200, body: { enabled: false, revision: 1 } },
+    } };
+    const { server, port } = await startServer(fakeGo(state));
+    const handler = createAdminBridge({ config: baseConfig(port) });
+    try {
+        for (const call of [
+            { method: 'GET', url: '/api/v1/admin/local-models' },
+            { method: 'PUT', url: '/api/v1/admin/local-models/rerank', body: { enabled: false, expectedRevision: 0 } },
+            { method: 'PUT', url: '/api/v1/admin/local-models', body: { endpoint: 'http://127.0.0.1:1' } },
+        ]) {
+            const res = mockRes();
+            await handler(bridgeReq(call), res);
+            if (call.url.endsWith('/rerank') || call.method === 'GET') {
+                assert.equal(res.statusCode, 200, call.method + ' ' + call.url);
+            } else {
+                assert.equal(res.statusCode, 404, call.url);
+                assert.equal(JSON.parse(res.body()).error.code, 'VC_BRIDGE_ROUTE_NOT_ALLOWED');
+            }
+        }
+        assert.deepEqual(state.upstream.map((item) => `${item.method} ${item.path}`), [
+            'GET /api/v1/admin/local-models',
+            'PUT /api/v1/admin/local-models/rerank',
+        ]);
+    } finally { server.close(); }
+});

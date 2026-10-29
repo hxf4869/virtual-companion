@@ -295,3 +295,41 @@ func TestSTMemoryRejectsTargetChangedDuringDependencyReads(t *testing.T) {
 		})
 	}
 }
+
+func TestRecallSearchOmitsRerankUntilTheOwnerTurnsItOff(t *testing.T) {
+	b, snapshots := stMemoryFixture(t)
+	ctx := context.Background()
+	at := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	snapshots[sourceChat] = stMemorySnapshot(sourceChat, "我们上次谈到哪一步了？", at)
+	if _, err := testEnv.store.ReconcileSTSources(ctx, 1, []string{sourceChat}); err != nil {
+		t.Fatal(err)
+	}
+	addSTMemory(t, b, "上次谈到金色钟摆。", refForChat(t, sourceChat))
+	query := recallQuery{Text: "我们上次谈到哪一步了？", Limit: 20}
+	lastEngineSearch = nil
+	if _, err := testEnv.store.searchEngineMemories(ctx, 1, b.RelationshipID, b.ConversationID, query); err != nil {
+		t.Fatal(err)
+	}
+	if lastEngineSearch == nil {
+		t.Fatal("default recall did not reach MemoryCore")
+	}
+	if _, ok := lastEngineSearch["rerankEnabled"]; ok {
+		t.Fatalf("default recall forced rerank off: %#v", lastEngineSearch["rerankEnabled"])
+	}
+	if _, ok := lastEngineSearch["rerank"]; ok {
+		t.Fatal("default recall supplied a rerank override")
+	}
+	if err := IsolationSuperExec(ctx, `UPDATE vc.identity_account SET role='ADMIN' WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := testEnv.store.SaveOwnerMemoryRerank(ctx, 1, false, 0)
+	if err != nil || saved.Enabled || saved.Revision != 1 {
+		t.Fatalf("switch %+v %v", saved, err)
+	}
+	if _, err := testEnv.store.searchEngineMemories(ctx, 1, b.RelationshipID, b.ConversationID, query); err != nil {
+		t.Fatal(err)
+	}
+	if lastEngineSearch["rerankEnabled"] != false {
+		t.Fatalf("disabled recall payload %#v", lastEngineSearch["rerankEnabled"])
+	}
+}

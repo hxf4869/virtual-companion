@@ -52,6 +52,37 @@ type Scope struct {
 	DomainID       string `json:"domainId"`
 	ProfileScopeID string `json:"profileScopeId"`
 }
+
+const (
+	LocalEmbeddingModel      = "qwen3-embedding:0.6b"
+	LocalEmbeddingDimensions = 1024
+	LocalRerankModel         = "bge-reranker-v2-m3"
+)
+
+type EmbeddingProbe struct {
+	Model      string `json:"model"`
+	Dimensions int    `json:"dimensions"`
+	Healthy    bool   `json:"healthy"`
+}
+
+type RerankProbe struct {
+	Model             string `json:"model"`
+	DeploymentEnabled bool   `json:"deploymentEnabled"`
+	Healthy           bool   `json:"healthy"`
+}
+
+type LocalModelStatus struct {
+	Embedding EmbeddingProbe `json:"embedding"`
+	Rerank    RerankProbe    `json:"rerank"`
+}
+
+func UnavailableLocalModels() LocalModelStatus {
+	return LocalModelStatus{
+		Embedding: EmbeddingProbe{Model: LocalEmbeddingModel, Dimensions: LocalEmbeddingDimensions},
+		Rerank:    RerankProbe{Model: LocalRerankModel},
+	}
+}
+
 type Client struct {
 	base, token string
 	http        *http.Client
@@ -103,6 +134,32 @@ func (c *Client) Call(ctx context.Context, action string, input, out any) error 
 	}
 	return nil
 }
+
+func (c *Client) LocalModels(ctx context.Context) (LocalModelStatus, error) {
+	if c == nil {
+		return LocalModelStatus{}, ErrUnavailable
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/internal/local-models", nil)
+	if err != nil {
+		return LocalModelStatus{}, ErrUnavailable
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	res, err := c.http.Do(req)
+	if err != nil {
+		return LocalModelStatus{}, ErrUnavailable
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 512))
+		return LocalModelStatus{}, ErrUnavailable
+	}
+	var out LocalModelStatus
+	if json.NewDecoder(io.LimitReader(res.Body, 1<<16)).Decode(&out) != nil {
+		return LocalModelStatus{}, ErrUnavailable
+	}
+	return out, nil
+}
+
 func conflictStatus(body io.Reader) error {
 	var payload struct {
 		Code string `json:"code"`

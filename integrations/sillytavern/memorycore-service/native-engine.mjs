@@ -178,9 +178,11 @@ function rerankFailureCode(error) {
     return 'unavailable';
 }
 function resolveRerank(explicit) {
+    const deployed = engineRerank();
+    if (!deployed.enabled) return { enabled: false };
     if (explicit === false || explicit?.enabled === false) return { enabled: false };
     if (explicit && typeof explicit.rank === 'function') return { candidateLimit: 20, summaryUnit: 'line', ...explicit, enabled: true };
-    return engineRerank();
+    return deployed;
 }
 export async function looseCandidateHits(api, store, questions, ids, scope, embedding, dated, limit) {
     const merged = new Map();
