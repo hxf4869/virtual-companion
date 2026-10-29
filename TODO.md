@@ -315,9 +315,9 @@
       校准集正例 78/78、负例 22/22 空、top-1 69/78（原门槛 67/78）；第 10 轮真实评估 H1–H4 PASS，正例 6/8，持久化到可召回 P50 48.3s。
       验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级见 `V2-DEPLOY` 待办。
 - [ ] `V2-F03` 前端 Apple 风格重设计（Owner 2026-10-29 确认交互原型为基线）。设计真源 `DESIGN.md` 第 2 版（`6bf76812`），
-      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F1 进行中。
+      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F1、F2、F3、F4a（记忆+陪伴）、F4b（角色+剧情）并行进行中。
       Owner 2026-10-29 决定：embedding 与重排作为默认本机模型在模型页显示名称与状态、重排可一键开关，暂不提供更换；
-      后端状态接口与开关由 LM 任务实现，页面在 F3。日后更换模型须带记忆向量重建与重排阈值重新校准的完整流程。
+      后端状态接口与开关已完成（LM，2026-10-30；V266 `vc.owner_memory_rerank`，GET/PUT `/api/v1/admin/local-models*`），页面在 F3。日后更换模型须带记忆向量重建与重排阈值重新校准的完整流程。
 
 ### V2 Owner 项与运行配置（缺失只阻塞相关真实调用或验收）
 
@@ -359,11 +359,35 @@
         外部端口范围保持不变，服务重启后健康与持久化配置核对通过。
       - PASS：Owner 账号保留且原密码校验成功；Owner 人工确认已成功登录并进入主界面。
       - PASS：通知渠道仍为 2 条，渠道和正文预览均关闭，投递记录仍为 0。
-      - NOT_RUN：Owner 改初始口令与 TOTP 绑定、真实模型调用、真实通知发送、手机真机和整机重启。
-      - 部署方式：Codex 按 `docs/planning/2026-10-29-v2-deploy-plan.md` 部署到京东云 Docker Compose（`ops/deploy/v2/`），复用现有 Nginx 与证书；
-        V2 容器不发布宿主端口，ST/Go/MemoryCore/embedding 共享 loopback 命名空间，PG/MinIO 仅 internal 网络，Go 运行角色 NOBYPASSRLS，
-        私有环境文件 root/0600，ST 启用 Host 白名单；域名与主机细节只在服务器 `/etc/virtual-companion/`，不入公开仓库。证书需手动续期。
-      - 待办：R2 已合入（`V2-F02`）；按 `ops/deploy/v2/README.md` 升级到 `da6a05a4` 或之后，新增 rerank 容器与 `VC_RERANK_MODELS_DIR`。
+      - 该次 NOT_RUN：Owner 改初始口令与 TOTP 绑定操作、真实模型调用、真实通知发送、手机真机和整机重启；后续升级与真实聊天验收见 `V2-DEPLOY`。
+- [x] `V2-DEPLOY`：2026-10-29 从 `da2d6586` 升级至本次开始时 main 最新提交 `09d85132`（包含 `da6a05a4`），新增 rerank，完成本次部署验收。
+      - PASS：资源检查；包含 PostgreSQL 的手动加密备份及解密后逐字节自校验。
+      - PASS：指定 GGUF 的大小与固定 SHA256 在传输前后均匹配；`compose.env` 更新 `VC_IMAGE_TAG`、`VC_RERANK_MODELS_DIR`，`VC_RERANK_THREADS` 沿用默认值。
+      - PASS：本机 linux/amd64 构建 ST/runtime，固定 digest 的 rerank 镜像经本机拉取、传输、导入；导入后补取注册表清单恢复固定 digest 引用。
+      - PASS：五个锁定上游、vendor、补丁和受管扩展校验；整体强制重建与健康等待；目标版本全部 186 个迁移已应用。
+      - PASS：最终 Compose 状态中常驻服务运行正常，设有健康检查的服务（含 rerank）全部健康；三个一次性任务退出码均为 0。
+      - PASS：V2 服务重启恢复，Go health/readiness、MemoryCore readyz 三项及 HTTPS 登录页正常；既有 Nginx 未重启。
+      - PASS：Owner 登录会话保留；经授权创建专用合成角色/会话与三条仅限该会话的可召回记忆，使用真实聊天来源，并完成本机向量化与发布。
+      - PASS：网页真实聊天共八轮（准备一轮、开启/关闭各三轮、恢复验证一轮）；开启阶段 `vc_memory_rerank_applied_total` 从 0 增至 6，
+        关闭阶段 `vc_memory_rerank_disabled_total` 从 0 增至 6；删除临时开关恢复后 applied 从 6 增至 8；fallback、unavailable、timeout、invalid 全程为 0。
+      - PASS：关闭与恢复均只重建 MemoryCore，其他服务容器标识未变；`VC_RERANK_ENABLED` 临时覆盖已删除，最终恢复开启。
+      - PASS：rerank 的 `docker stats --no-stream` 单次内存快照为 **142.7 MiB**（Docker stats 口径）；通知渠道仍为两条且关闭，投递记录为 0；临时导入与测试准备文件已清理。
+      - 召回耗时对比（同一会话、同一模型配置，开/关各三条相同问题，均成功回复）：
+
+        | 重排 | 序号 | 发送至首个正文字符（秒） | 前置召回 HTTP（ms） | 出站复核召回 HTTP（ms） |
+        | --- | --- | --- | --- | --- |
+        | 开 | 1 | 7.049 | 2477 | 876 |
+        | 开 | 2 | 12.255 | 1712 | 582 |
+        | 开 | 3 | 6.264 | 1303 | 655 |
+        | 关 | 1 | 4.254 | 1305 | 76 |
+        | 关 | 2 | 3.986 | 1130 | 63 |
+        | 关 | 3 | 3.917 | 775 | 61 |
+
+      - 测量口径：首字为点击发送前至浏览器 DOM 首次检测到新回复正文，按约 100 ms 间隔轮询，包含工具/客户端调度开销；
+        companiond 无独立的引擎内部召回计时字段，采用 `operation=st_memory_recall` 日志的 `duration_ms`，包含鉴权、来源核对和检索等处理。
+        每条消息记录前置召回与出站复核两次 HTTP 耗时。两次合计的平均耗时为开 2535 ms、关 1136.7 ms；首字均值为开 8.523 秒、关 4.052 秒。
+        这是小样本顺序对比，首字还受模型推理、历史与缓存影响，不能将全部差值归因于重排。
+      - NOT_RUN：整机重启、真实通知发送和手机真机验收（不在本次执行范围）。
 
 ## 当前状态（2026-10-21，V2 前实现快照）
 
