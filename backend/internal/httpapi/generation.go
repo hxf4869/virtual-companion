@@ -2,12 +2,7 @@ package httpapi
 
 import (
 	"net/http"
-	"strings"
 	"unicode/utf8"
-
-	"github.com/hxf4869/virtual-companion/internal/companion"
-	"github.com/hxf4869/virtual-companion/internal/jobs"
-	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
 var feedbackKinds = map[string]struct{}{
@@ -16,28 +11,6 @@ var feedbackKinds = map[string]struct{}{
 	"CROSSED_BOUNDARY": {},
 	"FACTUAL_ERROR":    {},
 	"UNSAFE":           {},
-}
-
-type generationJSON struct {
-	GenerationID        string `json:"generationId"`
-	ConversationID      string `json:"conversationId"`
-	LogicalGenerationID string `json:"logicalGenerationId"`
-	Status              string `json:"status"`
-	Mode                string `json:"mode"`
-	CreatedAt           string `json:"createdAt,omitempty"`
-}
-
-type generationSnapshotJSON struct {
-	Status             string           `json:"status"`
-	AssistantMessageID *string          `json:"assistantMessageId,omitempty"`
-	SourceMessageID    *string          `json:"sourceUserMessageId,omitempty"`
-	Events             []map[string]any `json:"events"`
-	Usage              *usageJSON       `json:"usage,omitempty"`
-}
-
-type usageJSON struct {
-	InputTokens  int64 `json:"inputTokens"`
-	OutputTokens int64 `json:"outputTokens"`
 }
 
 type feedbackJSON struct {
@@ -51,181 +24,7 @@ func (s *Server) registerGeneration() {
 	if s.core == nil || s.core.Turns == nil {
 		return
 	}
-	s.mux.HandleFunc("POST /api/v1/conversations/{conversationId}/generations", s.handleSendGeneration)
-	s.mux.HandleFunc("POST /api/v1/generations/{generationId}/cancel", s.handleCancelGeneration)
-	s.mux.HandleFunc("GET /api/v1/generations/{generationId}/snapshot", s.handleGenerationSnapshot)
 	s.mux.HandleFunc("POST /api/v1/generations/{generationId}/feedback", s.handleGenerationFeedback)
-}
-
-func (s *Server) handleSendGeneration(w http.ResponseWriter, r *http.Request) {
-	p := s.corePrincipal(w, r, true)
-	if p == nil {
-		return
-	}
-	convID, ok := parsePathID(r.PathValue("conversationId"))
-	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
-		return
-	}
-	var body struct {
-		IdempotencyKey      string  `json:"idempotencyKey"`
-		UserContent         string  `json:"userContent"`
-		Mode                string  `json:"mode"`
-		SourceUserMessageID *wireID `json:"sourceUserMessageId"`
-	}
-	if !s.decodeJSON(w, r, &body) {
-		return
-	}
-	if body.IdempotencyKey == "" || utf8.RuneCountInString(body.IdempotencyKey) > 128 {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
-		return
-	}
-	if len(body.UserContent) > companion.MaxMessageBytes {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
-		return
-	}
-	// Beta generation is server-gated: the H5 next-step flow is explanatory,
-	// never the authorization authority. Fail closed before StartTurn persists
-	// either the user message or a generation/job row.
-	if s.core.Store == nil {
-		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
-		return
-	}
-	age, err := s.core.Store.GetAgeState(r.Context(), p.AccountID)
-	if err != nil {
-		s.writeStoreErr(w, err)
-		return
-	}
-	if age.State != postgres.AgeAdultVerified {
-		s.writeAPIError(w, http.StatusForbidden, "AGE_VERIFICATION_REQUIRED", "adult verification required")
-		return
-	}
-	in := postgres.StartTurn{
-		ConversationID: convID,
-		IdempotencyKey: body.IdempotencyKey,
-		UserContent:    body.UserContent,
-		Mode:           body.Mode,
-		MaxOutstanding: s.cfg.Concurrency.MaxOutstandingTurns,
-	}
-	if body.SourceUserMessageID != nil && body.SourceUserMessageID.Set {
-		id := body.SourceUserMessageID.V
-		in.SourceMessageID = &id
-	}
-	view, err := s.core.Turns.StartTurn(r.Context(), p.AccountID, in)
-	if err != nil {
-		s.writeStoreErr(w, err)
-		return
-	}
-	// §19.5: intake and idempotent replay both answer 202 Accepted.
-	s.writeJSON(w, http.StatusAccepted, generationJSONFrom(view))
-}
-
-func (s *Server) handleCancelGeneration(w http.ResponseWriter, r *http.Request) {
-	p := s.corePrincipal(w, r, true)
-	if p == nil {
-		return
-	}
-	id, ok := parsePathID(r.PathValue("generationId"))
-	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
-		return
-	}
-	view, err := s.core.Turns.CancelTurn(r.Context(), p.AccountID, id)
-	if err != nil {
-		s.writeStoreErr(w, err)
-		return
-	}
-	if s.core.Cancels != nil {
-		s.core.Cancels.Cancel(jobs.KindGeneration, id)
-	}
-	if s.core.Hub != nil {
-		s.core.Hub.Cancelled(idString(id))
-	}
-	s.writeJSON(w, http.StatusOK, generationJSONFrom(view))
-}
-
-func (s *Server) handleGenerationSnapshot(w http.ResponseWriter, r *http.Request) {
-	p := s.corePrincipal(w, r, false)
-	if p == nil {
-		return
-	}
-	id, ok := parsePathID(r.PathValue("generationId"))
-	if !ok {
-		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
-		return
-	}
-	snap, err := s.core.Turns.GenerationSnapshot(r.Context(), p.AccountID, id)
-	if err != nil {
-		s.writeStoreErr(w, err)
-		return
-	}
-	out := generationSnapshotJSONFrom(snap)
-	s.writeJSON(w, http.StatusOK, out)
-}
-
-// generationSnapshotJSONFrom maps the store snapshot to the wire shape. The
-// source user message id rides along (N-06) so a retried turn after an
-// explicit terminal failure can reuse its persisted input message.
-func generationSnapshotJSONFrom(snap postgres.GenerationSnapshot) generationSnapshotJSON {
-	out := generationSnapshotJSON{Status: snap.Status, Events: generationSnapshotEvents(snap)}
-	if snap.AssistantMessageID != nil {
-		s := idString(*snap.AssistantMessageID)
-		out.AssistantMessageID = &s
-	}
-	if snap.SourceMessageID != nil {
-		s := idString(*snap.SourceMessageID)
-		out.SourceMessageID = &s
-	}
-	if snap.InputTokens != nil && snap.OutputTokens != nil &&
-		(snap.Status == "COMPLETED" || snap.Status == "COMPLETED_FALLBACK") {
-		out.Usage = &usageJSON{InputTokens: *snap.InputTokens, OutputTokens: *snap.OutputTokens}
-	}
-	return out
-}
-
-func generationSnapshotEvents(snap postgres.GenerationSnapshot) []map[string]any {
-	var terminal string
-	switch snap.Status {
-	case "COMPLETED", "COMPLETED_FALLBACK":
-		terminal = string(companion.EventCompleted)
-	case "INPUT_BLOCKED", "OUTPUT_BLOCKED":
-		terminal = string(companion.EventBlocked)
-	case "CANCELLED":
-		terminal = string(companion.EventCancelled)
-	case "FAILED_FINAL":
-		terminal = string(companion.EventFailed)
-	default:
-		return []map[string]any{}
-	}
-
-	events := make([]map[string]any, 0, 2)
-	if terminal == string(companion.EventCompleted) {
-		events = append(events, map[string]any{
-			"event": string(companion.EventSnapshot),
-			"text":  snap.AssistantContent,
-		})
-	}
-	terminalEvent := map[string]any{"event": terminal}
-	if terminal == string(companion.EventFailed) {
-		if fault := generationFailureFault(snap.FailureCode); fault != "" {
-			terminalEvent["fault"] = fault
-		}
-	}
-	return append(events, terminalEvent)
-}
-
-func generationFailureFault(failureCode string) string {
-	code := strings.TrimSpace(failureCode)
-	if code == "" {
-		return ""
-	}
-	if strings.HasPrefix(code, "TIMEOUT_") || code == "TIMEOUT" {
-		return "external-timed_out"
-	}
-	if code == "PROVIDER_DISABLED" {
-		return "model-providers-disabled"
-	}
-	return "external-failed"
 }
 
 func (s *Server) handleGenerationFeedback(w http.ResponseWriter, r *http.Request) {
@@ -264,15 +63,4 @@ func (s *Server) handleGenerationFeedback(w http.ResponseWriter, r *http.Request
 		Note:         rec.Note,
 		CreatedAt:    rfc3339(rec.CreatedAt),
 	})
-}
-
-func generationJSONFrom(v postgres.GenerationView) generationJSON {
-	return generationJSON{
-		GenerationID:        idString(v.ID),
-		ConversationID:      idString(v.ConversationID),
-		LogicalGenerationID: v.LogicalGenerationID,
-		Status:              v.Status,
-		Mode:                v.Mode,
-		CreatedAt:           rfc3339(v.CreatedAt),
-	}
 }

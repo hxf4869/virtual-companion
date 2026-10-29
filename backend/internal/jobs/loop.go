@@ -16,7 +16,6 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/notify"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
-	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/restoregate"
 	"github.com/hxf4869/virtual-companion/internal/safety"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
@@ -257,7 +256,6 @@ type Loop struct {
 	provider        companion.Provider
 	providerFactory func(modelprovider.Route) (companion.Provider, error)
 	memoryCore      *memorycore.Broker
-	hub             *realtime.Hub
 	cancels         *Cancels
 	blobs           BlobStore
 	metrics         *observability.Registry
@@ -266,7 +264,6 @@ type Loop struct {
 	notifyMu          sync.Mutex
 	notifySender      notify.Sender
 	notifyMaxAttempts int
-	generationSlots   chan struct{}
 	extractSlots      chan struct{}
 	followSlots       chan struct{}
 	handlers          sync.WaitGroup
@@ -281,10 +278,8 @@ type Loop struct {
 	// path from startup configuration; restore.sh deletes the marker to open it.
 	restoreGateFile string
 
-	claims            atomic.Uint64
-	recoveries        atomic.Uint64
-	activeGenerations atomic.Int64
-	peakGenerations   atomic.Int64
+	claims     atomic.Uint64
+	recoveries atomic.Uint64
 
 	stop context.CancelFunc
 	done chan struct{}
@@ -313,15 +308,14 @@ func NewLoop(log *slog.Logger, policy Policy, budget companion.TurnBudget) *Loop
 		policy.SupplierName = policy.ProviderID
 	}
 	return &Loop{
-		log:             log,
-		policy:          policy,
-		budget:          budget,
-		cancels:         NewCancels(),
-		generationSlots: make(chan struct{}, policy.MaxConcurrentTurns),
-		extractSlots:    make(chan struct{}, policy.MaxConcurrentExtracts),
-		followSlots:     make(chan struct{}, 1),
-		wake:            make(chan struct{}, 1),
-		done:            make(chan struct{}),
+		log:          log,
+		policy:       policy,
+		budget:       budget,
+		cancels:      NewCancels(),
+		extractSlots: make(chan struct{}, policy.MaxConcurrentExtracts),
+		followSlots:  make(chan struct{}, 1),
+		wake:         make(chan struct{}, 1),
+		done:         make(chan struct{}),
 	}
 }
 
@@ -359,18 +353,35 @@ func (l *Loop) restoreBlocked() bool {
 	return l != nil && restoregate.Closed(l.restoreGateFile)
 }
 
-func (l *Loop) Use(store Store, provider companion.Provider, hub *realtime.Hub, blobs BlobStore) {
+func (l *Loop) Use(store Store, provider companion.Provider, blobs BlobStore) {
 	if l == nil {
 		return
 	}
 	l.store = store
 	l.provider = provider
-	l.hub = hub
 	l.blobs = blobs
 }
 
 // UseProviderFactory enables database-configured routes. The route list is
 // resolved once per generation; the factory is a closed protocol switch.
+type routeStore interface {
+	ResolveProviderRoutes(ctx context.Context) ([]postgres.ProviderRoute, error)
+}
+
+// resolveGenerationRoutes reads the configured provider routes. Memory
+// extraction and any remaining model call share this lookup; it is not the
+// retired generation worker.
+func (l *Loop) resolveGenerationRoutes(ctx context.Context) ([]postgres.ProviderRoute, error) {
+	if l == nil || l.store == nil {
+		return nil, nil
+	}
+	store, ok := l.store.(routeStore)
+	if !ok {
+		return nil, nil
+	}
+	return store.ResolveProviderRoutes(ctx)
+}
+
 func (l *Loop) UseProviderFactory(factory func(modelprovider.Route) (companion.Provider, error)) {
 	if l != nil {
 		l.providerFactory = factory
@@ -384,19 +395,10 @@ func (l *Loop) Cancels() *Cancels {
 	return l.cancels
 }
 
-func (l *Loop) Hub() *realtime.Hub {
-	if l == nil {
-		return nil
-	}
-	return l.hub
-}
-
 // Stats is a low-cardinality worker snapshot for the metrics registry.
 type Stats struct {
-	Claims            uint64
-	Recoveries        uint64
-	ActiveGenerations int64
-	PeakGenerations   int64
+	Claims     uint64
+	Recoveries uint64
 }
 
 func (l *Loop) Stats() Stats {
@@ -404,10 +406,8 @@ func (l *Loop) Stats() Stats {
 		return Stats{}
 	}
 	return Stats{
-		Claims:            l.claims.Load(),
-		Recoveries:        l.recoveries.Load(),
-		ActiveGenerations: l.activeGenerations.Load(),
-		PeakGenerations:   l.peakGenerations.Load(),
+		Claims:     l.claims.Load(),
+		Recoveries: l.recoveries.Load(),
 	}
 }
 
@@ -483,7 +483,6 @@ func (l *Loop) run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			_ = l.RecoverOnce(ctx)
-			_, _ = l.store.ExpireQueuedGenerations(ctx, l.policy.QueueTimeout)
 		default:
 		}
 		wait := idle
@@ -514,23 +513,20 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 	}
 	l.claimMu.Lock()
 	defer l.claimMu.Unlock()
-	// Per-kind capacity: GENERATION and MEMORY_EXTRACT are claimed only while
-	// they have a free slot, and the slot is taken while the claim is still
-	// held under claimMu (slots are released by handlers, never stolen, so the
-	// send below cannot block). A claimed job is therefore always inside
-	// capacity — claimed per kind per round never exceeds that kind's slots,
-	// claimed-but-waiting goroutines cannot pile up, and a full pool of one
-	// kind never blocks the other. DATA_EXPORT has no dedicated slots: the
-	// V129 claim contract caps it by the overall batch limit only, so claims
-	// still flow when both kind pools are full (audit L2) — the per-kind
-	// limits are then simply 0.
-	generationFree := cap(l.generationSlots) - len(l.generationSlots)
+	// Per-kind capacity: MEMORY_EXTRACT is claimed only while it has a free
+	// slot, and the slot is taken while the claim is still held under claimMu
+	// (slots are released by handlers, never stolen, so the send below cannot
+	// block). A claimed job is therefore always inside capacity. DATA_EXPORT
+	// has no dedicated slots: the V129 claim contract caps it by the overall
+	// batch limit only, so claims still flow when the extract pool is full.
+	// GENERATION is retired: the claim limit stays 0 so historical rows are
+	// not leased or failed.
 	extractFree := cap(l.extractSlots) - len(l.extractSlots)
 	limit := l.policy.ClaimLimit
 	if limit < 1 {
 		limit = 8
 	}
-	claims, err := l.store.ClaimJobs(ctx, l.policy.GenerationLease, l.policy.ExportLease, l.policy.DefaultLease, limit, generationFree, extractFree)
+	claims, err := l.store.ClaimJobs(ctx, l.policy.GenerationLease, l.policy.ExportLease, l.policy.DefaultLease, limit, 0, extractFree)
 	if err != nil {
 		l.log.Info("job claim",
 			slog.String("operation", "job_claim"),
@@ -543,14 +539,13 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 		l.claims.Add(1)
 		switch c.Kind {
 		case KindGeneration:
-			select {
-			case l.generationSlots <- struct{}{}:
-				l.handlers.Add(1)
-				go l.dispatchGeneration(ctx, c)
-			case <-ctx.Done():
-				// Shutdown raced the slot handoff; the abandoned claim is
-				// left to lease-expiry recovery.
-			}
+			// Retired with the Vue generation route. Do not execute, and do
+			// not CompleteJob: a stray claim must not rewrite the historical row.
+			l.log.Info("job skipped",
+				slog.String("operation", "job_dispatch"),
+				slog.String("outcome", "ignored"),
+				slog.String("event_type", c.Kind),
+			)
 		case KindMemoryExtract, KindSTMemoryExtract:
 			select {
 			case l.extractSlots <- struct{}{}:
@@ -571,29 +566,6 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 		}
 	}
 	return len(claims)
-}
-
-// dispatchGeneration runs one claimed generation inside its pool slot. The
-// slot is held for the whole handler: a claim that never starts executing
-// (aborted run) stays bounded by the claim lease and lease-expiry recovery.
-func (l *Loop) dispatchGeneration(ctx context.Context, c postgres.JobClaim) {
-	active := l.activeGenerations.Add(1)
-	for {
-		peak := l.peakGenerations.Load()
-		if active <= peak || l.peakGenerations.CompareAndSwap(peak, active) {
-			break
-		}
-	}
-	defer func() {
-		l.activeGenerations.Add(-1)
-		<-l.generationSlots
-		l.handlers.Done()
-		select {
-		case l.wake <- struct{}{}:
-		default:
-		}
-	}()
-	l.dispatch(ctx, c)
 }
 
 type extractSlotReleaseKey struct{}
@@ -651,27 +623,6 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 	}
 	if l.restoreBlocked() {
 		return nil
-	}
-	expired, err := l.store.ListExpiredGenerationJobs(ctx, l.policy.ClaimLimit)
-	if err != nil {
-		return err
-	}
-	for _, c := range expired {
-		action, recErr := l.store.RecoverExpiredGeneration(ctx, c.OwnerID, c.JobID)
-		if recErr != nil {
-			l.log.Info("job recover",
-				slog.String("operation", "job_recover"),
-				slog.String("outcome", "error"),
-				slog.String("error_code", "RECOVER_FAILED"),
-			)
-			continue
-		}
-		l.recoveries.Add(1)
-		l.log.Info("job recover",
-			slog.String("operation", "job_recover"),
-			slog.String("outcome", "ok"),
-			slog.String("event_type", action),
-		)
 	}
 	// Expired CLAIMED extractions (crashed worker mid-call) requeue through
 	// the same guarded recovery; retries stay bounded and dead-letter.
@@ -844,7 +795,12 @@ func (l *Loop) dispatch(ctx context.Context, c postgres.JobClaim) {
 	var err error
 	switch c.Kind {
 	case KindGeneration:
-		err = l.handleGeneration(ctx, c, runID)
+		log.Info("job skipped",
+			slog.String("operation", "job_dispatch"),
+			slog.String("outcome", "ignored"),
+			slog.String("event_type", c.Kind),
+		)
+		return
 	case KindExport:
 		err = l.handleExport(ctx, c)
 	case KindSTMemoryExtract:

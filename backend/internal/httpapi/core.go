@@ -15,7 +15,6 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
-	"github.com/hxf4869/virtual-companion/internal/realtime"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
@@ -172,7 +171,6 @@ type Core struct {
 	Providers  ProviderAdminStore
 	AuthFlow   AuthFlowStore
 	Cancels    *jobs.Cancels
-	Hub        *realtime.Hub
 }
 
 func (s *Server) registerCore() {

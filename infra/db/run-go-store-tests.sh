@@ -6,7 +6,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if ! command -v go >/dev/null; then
-  echo "need Go (backend/go.mod locks go1.26.7)" >&2
+  echo "need Go (backend/go.mod locks go1.26.10)" >&2
   exit 1
 fi
 if ! command -v docker >/dev/null; then

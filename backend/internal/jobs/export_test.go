@@ -224,7 +224,7 @@ func TestExportObjectKeyMatchesV114AndAttemptsDoNotReuse(t *testing.T) {
 func TestExportRandomFailureFailsJobBeforeIntentOrPut(t *testing.T) {
 	store := &exportTestStore{}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, &exportTestBlob{store: store})
+	loop.Use(store, nil, &exportTestBlob{store: store})
 	claim := postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindExport, RefID: 9, Token: "token", Fence: "fence"}
 	wantErr := errors.New("random unavailable")
 	err := loop.handleExportWithKey(context.Background(), claim, func(int64, int64) (string, error) {
@@ -250,7 +250,7 @@ func TestExportObjectOrderIsIntentPutSeal(t *testing.T) {
 	store := &exportTestStore{}
 	blob := &exportTestBlob{store: store, storedBytes: 777}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, blob)
+	loop.Use(store, nil, blob)
 	claim := postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindExport, RefID: 9, Token: "token", Fence: "fence"}
 	err := loop.handleExportWithKey(context.Background(), claim, func(int64, int64) (string, error) {
 		return "exports/7/9-0123456789abcdef.json", nil
@@ -281,7 +281,7 @@ func TestExportPutFailureDoesNotSeal(t *testing.T) {
 	store := &exportTestStore{}
 	wantErr := errors.New("put failed")
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, &exportTestBlob{store: store, putErr: wantErr})
+	loop.Use(store, nil, &exportTestBlob{store: store, putErr: wantErr})
 	claim := postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindExport, RefID: 9, Token: "token", Fence: "fence"}
 	err := loop.handleExportWithKey(context.Background(), claim, func(int64, int64) (string, error) {
 		return "exports/7/9-0123456789abcdef.json", nil
@@ -330,7 +330,7 @@ func decodeExportEnvelope(t *testing.T, payload []byte) exportEnvelope {
 
 func newExportBuildLoop(store *exportTestStore) *Loop {
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 	return loop
 }
 
@@ -493,7 +493,7 @@ func TestExportConversationCursorStallFailsWithoutSealing(t *testing.T) {
 	}
 	blob := &exportTestBlob{store: store}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, blob)
+	loop.Use(store, nil, blob)
 	claim := postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindExport, RefID: 9, Token: "token", Fence: "fence"}
 	err := loop.handleExportWithKey(context.Background(), claim, func(int64, int64) (string, error) {
 		return "exports/7/9-0123456789abcdef.json", nil
@@ -534,7 +534,7 @@ func TestExportMessageCursorStallFailsWithoutSealing(t *testing.T) {
 	}
 	blob := &exportTestBlob{store: store}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, blob)
+	loop.Use(store, nil, blob)
 	claim := postgres.JobClaim{OwnerID: 7, JobID: 8, Kind: KindExport, RefID: 9, Token: "token", Fence: "fence"}
 	err := loop.handleExportWithKey(context.Background(), claim, func(int64, int64) (string, error) {
 		return "exports/7/9-0123456789abcdef.json", nil

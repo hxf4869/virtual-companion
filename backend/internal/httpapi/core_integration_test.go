@@ -198,10 +198,9 @@ func TestG7IsolationLifecycle(t *testing.T) {
 	}
 
 	gen := doJSON(t, s, http.MethodPost, "/api/v1/conversations/1/generations", `{"idempotencyKey":"k"}`, 1)
-	if gen.Code != http.StatusForbidden {
-		t.Fatalf("generation admission %d %s", gen.Code, gen.Body.String())
+	if gen.Code != http.StatusNotFound && gen.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("retired generation route %d %s", gen.Code, gen.Body.String())
 	}
-	assertEnvelope(t, gen, "AGE_VERIFICATION_REQUIRED")
 
 	st := store.Stats()
 	if st.Acquired != 0 {
@@ -223,7 +222,7 @@ func TestG7IsolationDoesNotServeWritesInAPIMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
+	s := New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), &Core{
 		Store:    postgres.IsolationStore(),
 		Sessions: postgres.IsolationStore(),
 	})
@@ -440,7 +439,7 @@ func newIsoServer(t *testing.T, store *postgres.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), nil, &Core{
+	return New(cfg, observability.NewLogger("error", io.Discard), staticProbes{live: true, ready: true}, observability.NewRegistry(), &Core{
 		Store: store, Sessions: store, Passwords: pw, Limiter: auth.NewLimiter(), Turns: store, AuthFlow: store,
 	})
 }

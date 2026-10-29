@@ -153,7 +153,7 @@ func newServer(t *testing.T, probes Probes) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(cfg, observability.NewLogger("error", io.Discard), probes, observability.NewRegistry(), nil, nil)
+	return New(cfg, observability.NewLogger("error", io.Discard), probes, observability.NewRegistry(), nil)
 }
 
 func assertStatus(t *testing.T, s *Server, path string, code int, contains string) {

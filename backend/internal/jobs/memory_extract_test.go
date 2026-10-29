@@ -253,7 +253,7 @@ func extractTestInput() postgres.MemoryExtractInput {
 
 func newExtractTestLoop(store *extractTestStore, provider companion.Provider) *Loop {
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
+	loop.Use(store, provider, nil)
 	return loop
 }
 
@@ -499,17 +499,38 @@ func TestMemoryExtractSkipsSuppressedTurns(t *testing.T) {
 	}
 }
 
-// The retired Go enqueue path must never run, even if its storage entrypoint
-// would fail. Foreground generation completion remains successful.
+type routeProvider struct {
+	err   error
+	text  string
+	calls int
+}
+
+func (p *routeProvider) Stream(_ context.Context, _ companion.ModelRequest, emit func(companion.OutputDelta) error) (companion.AttemptResult, error) {
+	p.calls++
+	if p.err != nil {
+		return companion.AttemptResult{}, p.err
+	}
+	if err := emit(companion.OutputDelta{Text: p.text}); err != nil {
+		return companion.AttemptResult{}, err
+	}
+	return companion.AttemptResult{
+		Finish: companion.FinishStop,
+		Usage:  companion.Usage{InputTokens: 2, OutputTokens: 2, TotalTokens: 4},
+	}, nil
+}
+
+// The retired generation worker must not enqueue legacy extraction, even when
+// the storage entrypoint would fail.
 func TestRetiredEnqueueFailureCannotAffectCompletedGeneration(t *testing.T) {
 	t.Parallel()
 	store := newConcurrencyStore(1)
 	store.enqueueErr = errors.New("enqueue unavailable")
 	provider := &routeProvider{text: "我在。"}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
-	if err := loop.handleGeneration(context.Background(), store.claims[0], "enqueue-fail"); err != nil {
-		t.Fatalf("completed generation returned error: %v", err)
+	loop.Use(store, provider, nil)
+	loop.dispatch(context.Background(), store.claims[0])
+	if provider.calls != 0 {
+		t.Fatalf("retired generation called the provider %d times", provider.calls)
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -525,9 +546,10 @@ func TestGenerationCompletionDoesNotEnqueueRetiredExtractor(t *testing.T) {
 	store := newConcurrencyStore(1)
 	provider := &routeProvider{text: "我在。"}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
-	if err := loop.handleGeneration(context.Background(), store.claims[0], "enqueue-count"); err != nil {
-		t.Fatal(err)
+	loop.Use(store, provider, nil)
+	loop.dispatch(context.Background(), store.claims[0])
+	if provider.calls != 0 {
+		t.Fatalf("retired generation called the provider %d times", provider.calls)
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -552,7 +574,7 @@ func TestFailExtractLogsSwallowedCloseFailure(t *testing.T) {
 	}
 	provider := &extractTestProvider{err: companion.UpstreamUnavailable()}
 	loop := NewLoop(log, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, provider, nil, nil)
+	loop.Use(store, provider, nil)
 	if err := loop.handleMemoryExtract(context.Background(), extractTestClaim()); err != nil {
 		t.Fatal(err)
 	}
@@ -947,7 +969,7 @@ func TestMemoryExtractUsesDatabaseRouteWhenEnvProviderDisabled(t *testing.T) {
 	}
 	routed := &routeCaptureProvider{text: `[{"summary":"用户喜欢安静","category":"PREFERENCE","evidence":"喜欢安静"}]`}
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil) // env provider disabled
+	loop.Use(store, nil, nil) // env provider disabled
 	var gotRoute modelprovider.Route
 	loop.UseProviderFactory(func(route modelprovider.Route) (companion.Provider, error) {
 		gotRoute = route
@@ -1001,7 +1023,7 @@ func TestMemoryExtractRouteConfigFailures(t *testing.T) {
 				store.routes = []postgres.ProviderRoute{{ProviderID: "route-a"}}
 			}
 			loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-			loop.Use(store, nil, nil, nil)
+			loop.Use(store, nil, nil)
 			if tc.factory != nil {
 				loop.UseProviderFactory(tc.factory)
 			}

@@ -437,7 +437,7 @@ func TestFollowUpDispatchDoesNotHoldClaimLock(t *testing.T) {
 	store := newLeaseClaimStore()
 	store.enqueue(postgres.JobClaim{OwnerID: 1, JobID: 1, Kind: KindFollowUp, RefID: 9})
 	loop := NewLoop(nil, testLoopPolicy(1), testTurnBudget())
-	loop.Use(store, nil, nil, nil)
+	loop.Use(store, nil, nil)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan struct{})

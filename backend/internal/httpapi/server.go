@@ -13,7 +13,6 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
-	"github.com/hxf4869/virtual-companion/internal/realtime"
 )
 
 const maxBodyBytes = 1 << 20
@@ -23,54 +22,31 @@ type Probes interface {
 	Ready() bool
 }
 
-// Realtime is the G6 SSE surface. All three fields are required to register
-// the stream route. companiond leaves this nil until generation cutover.
-type Realtime struct {
-	Hub       *realtime.Hub
-	Sessions  auth.Sessions
-	Snapshots realtime.Snapshots
-}
-
 type Server struct {
-	cfg      config.Config
-	log      *slog.Logger
-	probes   Probes
-	metrics  *observability.Registry
-	mux      *http.ServeMux
-	realtime *Realtime
-	core     *Core
+	cfg     config.Config
+	log     *slog.Logger
+	probes  Probes
+	metrics *observability.Registry
+	mux     *http.ServeMux
+	core    *Core
 }
 
-func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry, rt *Realtime, core *Core) *Server {
+func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observability.Registry, core *Core) *Server {
 	if log == nil {
 		log = observability.NewLogger(cfg.Log.Level, nil)
 	}
 	s := &Server{
-		cfg:      cfg,
-		log:      log,
-		probes:   probes,
-		metrics:  metrics,
-		mux:      http.NewServeMux(),
-		realtime: rt,
+		cfg:     cfg,
+		log:     log,
+		probes:  probes,
+		metrics: metrics,
+		mux:     http.NewServeMux(),
 	}
 	s.mux.HandleFunc("GET /actuator/health", s.handleHealth)
 	s.mux.HandleFunc("GET /actuator/health/liveness", s.handleLiveness)
 	s.mux.HandleFunc("GET /actuator/health/readiness", s.handleReadiness)
 	s.mux.HandleFunc("GET /actuator/prometheus", s.handlePrometheus)
 	s.mux.HandleFunc("GET /api/v1/version", s.handleVersion)
-	if rt != nil && rt.Hub != nil && rt.Sessions != nil && rt.Snapshots != nil {
-		s.mux.HandleFunc("GET /api/v1/realtime/streams/{generationId}", s.handleRealtimeStream)
-		if metrics != nil {
-			metrics.SetRealtimeStatsSource(func() observability.RealtimeStats {
-				st := rt.Hub.Stats()
-				return observability.RealtimeStats{
-					Subscribers:     st.Subscribers,
-					SlowDisconnects: st.SlowDisconnects,
-					SnapshotResumes: st.SnapshotResumes,
-				}
-			})
-		}
-	}
 	// Phase 4: writers stay off in api-migration. Isolation/cutover uses full.
 	// G9 opaque auth is registered only with those writers; production traffic
 	// is not switched here.
@@ -92,6 +68,13 @@ func New(cfg config.Config, log *slog.Logger, probes Probes, metrics *observabil
 
 func (s *Server) Handler() http.Handler {
 	return http.MaxBytesHandler(http.HandlerFunc(s.serve), maxBodyBytes)
+}
+
+func (s *Server) writeAPIError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"code": code, "message": message})
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
@@ -266,6 +249,8 @@ func operation(path string) string {
 		return "chat_wipe"
 	case "/api/v1/incognito-pref":
 		return "incognito_pref"
+	case "/api/v1/memory-auto-save-pref":
+		return "memory_auto_save_pref"
 	case "/api/v1/consents":
 		return "consents"
 	case "/api/v1/reports":
@@ -296,16 +281,26 @@ func operation(path string) string {
 		return "auth_trusted_devices"
 	case "/api/v1/admin/providers":
 		return "admin_providers"
+	case "/api/v1/admin/accounts":
+		return "admin_accounts"
 	case "/api/v1/admin/model-routing-order":
 		return "admin_model_routing_order"
 	case "/api/v1/admin/embedding-config":
 		return "admin_embedding_config"
 	case "/api/v1/service/memorycore/llm":
 		return "service_memorycore_llm"
+	case "/api/v1/service/st/profile":
+		return "service_st_profile"
 	case "/api/v1/admin/model-purposes":
 		return "admin_model_purposes"
 	case "/api/v1/story/runs":
 		return "story_run"
+	case "/api/v1/st/bindings":
+		return "st_binding"
+	case "/api/v1/st/sources/reconcile":
+		return "st_source_reconcile"
+	case "/api/v1/st/memory/recall":
+		return "st_memory_recall"
 	case "/api/v1/st/tools/execute":
 		return "tool_execute"
 	default:
@@ -356,8 +351,13 @@ func operation(path string) string {
 		if strings.HasPrefix(path, "/api/v1/auth/trusted-devices/") {
 			return "auth_trusted_device"
 		}
-		if strings.HasPrefix(path, "/api/v1/admin/accounts/") && strings.HasSuffix(path, "/authenticator-reset") {
-			return "admin_authenticator_reset"
+		if strings.HasPrefix(path, "/api/v1/admin/accounts/") {
+			switch {
+			case strings.HasSuffix(path, "/authenticator-reset"):
+				return "admin_authenticator_reset"
+			case strings.HasSuffix(path, "/review"):
+				return "admin_account_review"
+			}
 		}
 		if strings.HasPrefix(path, "/api/v1/admin/providers/") {
 			if strings.HasSuffix(path, "/models/discover") {
