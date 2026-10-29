@@ -29,6 +29,7 @@ const providers = [{
             maxOutputTokens: 2048,
             state: 'ENABLED',
             pricing: { currency: 'USD' },
+            ledgerPrice: 'MISSING',
         },
         {
             profileKey: 'priced',
@@ -38,6 +39,7 @@ const providers = [{
             maxOutputTokens: 1024,
             state: 'ENABLED',
             pricing: { currency: 'USD', inputPerMillionTokens: 1, outputPerMillionTokens: 2 },
+            ledgerPrice: 'ACTIVE',
         },
     ],
 }];
@@ -56,6 +58,7 @@ window.fetch = async (url) => {
     if (path.endsWith('/api/v1/auth/session')) return json(session);
     if (path.endsWith('/api/v1/admin/providers')) return json(providers);
     if (path.endsWith('/api/v1/admin/model-purposes')) return json([]);
+    if (path.includes('/api/v1/exports/')) return json({ status: 'PENDING', exportId: 'ex-1' });
     if (path.startsWith('/api')) return json({ code: 'HARNESS_BLOCKED' }, 599);
     throw new Error(`harness blocked ${path}`);
 };
@@ -128,6 +131,10 @@ if (scenario.startsWith('account')) {
     account.open(nav('account'));
     await waitFor(() => document.querySelector('.vc-data-dialog[open]'));
     if (scenario === 'account-partial') account.showExportState({ status: 'PARTIAL', exportId: '1' });
+    if (scenario === 'account-pending') {
+        account.showExportState({ status: 'PENDING', exportId: 'ex-1' });
+        await waitFor(() => document.body.innerText.includes('副本生成中'));
+    }
     if (scenario === 'account-delete') {
         account.showDeletionProgress({ status: 'PENDING', pendingDomains: ['ST', 'MEMORYCORE'] });
         await waitFor(() => {

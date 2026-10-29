@@ -451,6 +451,7 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
 
     const callIndexByOutputIndex = new Map();
     let callCounter = 0;
+    let latestUsage;
     /** @type {Map<string, {id: string, name: string, arguments: string}>} */
     const trackedCalls = new Map();
     let sawToolCall = false;
@@ -498,6 +499,8 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
                 } catch {
                     continue;
                 }
+                const seen = trustedUsage(event?.response?.usage) || trustedUsage(event?.usage);
+                if (seen) latestUsage = seen;
                 switch (event?.type) {
                     case 'response.output_text.delta':
                         write(chunk({ content: event.delta }));
@@ -563,13 +566,28 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
         await failRound('上游 SSE 流未发送终止事件即结束');
     } catch (error) {
         if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
+            const already = roundCommitted;
             roundCommitted = true; // 取消不提交续接状态
-            res.end();
+            try {
+                if (!res.writableEnded) res.end();
+            } catch { /* 客户端已断开 */ }
             log.info('上游请求被取消，续接状态未提交');
+            if (!already && onRoundFinished) {
+                await onRoundFinished({
+                    ok: false, reasoningItems: [], calls: [], finishReason: 'error', usage: latestUsage,
+                });
+            }
             return;
         }
         throw error;
     }
+}
+
+function trustedUsage(usage) {
+    if (!usage || typeof usage !== 'object') return undefined;
+    if ('input_tokens' in usage || 'output_tokens' in usage) return usage;
+    if ('prompt_tokens' in usage || 'completion_tokens' in usage) return usage;
+    return undefined;
 }
 
 // ---------------------------------------------------------------------------

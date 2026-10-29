@@ -28,13 +28,13 @@ class CatalogToolSafetyTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, work, True)
         self.work = work
         self.repo = work / "repo"
-        # validate() is coupled to the real catalog/contract/OpenAPI content
-        # and to caller files existing under frontend/ and backend/: copy the
-        # specs subtree and alias the code trees read-only.
+        # validate() is coupled to the real catalog/contract/OpenAPI content.
+        # Copy the specs subtree and alias any still-present code trees read-only.
         for sub in ("specs/catalog", "specs/contracts", "specs/openapi"):
             shutil.copytree(REPO / sub, self.repo / sub)
-        for tree in ("frontend", "backend"):
-            (self.repo / tree).symlink_to(REPO / tree)
+        for tree in ("backend",):
+            if (REPO / tree).exists():
+                (self.repo / tree).symlink_to(REPO / tree)
 
     def generate(self, *args):
         return subprocess.run(

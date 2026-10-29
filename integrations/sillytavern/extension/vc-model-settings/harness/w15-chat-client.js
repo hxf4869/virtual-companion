@@ -26,10 +26,12 @@ const context = {
     chat: withMessages ? [{ mes: '沿湖的风还停在上一句。', is_user: false }] : [],
     mainApi: 'openai',
     getChatCompletionModel: () => null,
+    onlineStatus: scenario === 'offline' ? 'no_connection' : 'Valid',
     eventSource: { on() {} },
     eventTypes: {
         CHAT_CHANGED: 'chat', CHAT_COMPLETION_SETTINGS_READY: 'ready',
         SETTINGS_UPDATED: 'settings', OAI_PRESET_CHANGED_AFTER: 'preset',
+        ONLINE_STATUS_CHANGED: 'online_status_changed',
     },
     chatMetadata: { vc_f2: { id: 'chat-a' }, vc_binding: { relationshipId: '11', mode: 'COMPANION' } },
 };
@@ -96,7 +98,6 @@ const shell = mountChatShell({
     openCharacters(opener) { return characters.open(opener); },
 });
 
-if (scenario === 'offline') shell.setChannel({ online: false });
 if (scenario === 'inbox') {
     shell.setInboxEvents([
         { intent: 'BODY', stDelivered: false, linkStatus: 'present', conversationId: '20', relationshipId: '11', body: 'SECRET_BODY_SHOULD_NOT_RENDER' },

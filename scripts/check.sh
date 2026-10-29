@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 唯一日常检查入口：秒级仓库检查 + Go 单元测试 + ST 集成 Node 测试 + 前端测试与类型检查。
+# 唯一日常检查入口：秒级仓库检查 + Go 单元测试 + ST 集成 Node 测试。
 # 用法：bash scripts/check.sh          全量（约 1 分钟内）
 #       bash scripts/check.sh --quick  仅秒级仓库检查（CI checks job 使用）
 set -u
@@ -50,12 +50,6 @@ run licenses         "${PY[@]}" scripts/checks/check_licenses.py
 if [ "$QUICK" -eq 0 ]; then
   run go-test          bash -c 'command -v go >/dev/null || { echo "需要 Go（版本以 backend/go.mod 为准，当前 go 1.26.10）" >&2; exit 1; }; GOPROXY=off go test -C backend -count=1 ./... >&2'
   run st-integration-test bash -c 'command -v node >/dev/null || { echo "需要 Node 22（integrations/sillytavern 测试）" >&2; exit 1; }; node --test "integrations/sillytavern/tests/*.test.mjs" >&2'
-  if ! command -v pnpm >/dev/null 2>&1; then
-    echo "FAIL  环境：全量检查需要 pnpm（或用 --quick 跳过前端）" >&2
-    exit 1
-  fi
-  run frontend-test       pnpm --dir frontend test:run
-  run frontend-type-check pnpm --dir frontend type-check
 fi
 
 if [ "$fail" -eq 0 ]; then

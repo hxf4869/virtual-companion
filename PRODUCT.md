@@ -1,8 +1,8 @@
 # 产品定义：Virtual Companion V2
 
 > 状态：2026-10-27 V2 方向（ADR-0009）。2026-09-01 的消费者 H5 / 小程序基线已被替代，
-> 旧内容见 Git 历史；`docs/product/frontend-redesign.md` 与 `frontend/DESIGN.md` 只约束旧 Vue
-> 前端在退役前的维护。需求细节见 `docs/source/v2-r3/`，执行顺序见
+> 旧内容见 Git 历史。旧 Vue 前端与 `frontend/DESIGN.md` 已在 W15 删除；
+> `docs/product/frontend-redesign.md` 只作历史。需求细节见 `docs/source/v2-r3/`，执行顺序见
 > `docs/planning/2026-10-27-v2-execution-plan.md`。
 
 ## 一句话产品

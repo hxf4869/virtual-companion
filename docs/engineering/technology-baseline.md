@@ -8,9 +8,8 @@
 | 数据库 | PostgreSQL 18 + pgvector 0.8.5 | `ops/deploy/docker-compose.yml` |
 | 数据访问 | pgx/v5，短事务 + RLS | `backend/internal/store/postgres/` |
 | 迁移 | `companiond migrate`，嵌入式顺序迁移，当前版本以目录为真源 | `backend/internal/migrate/` |
-| 前端 | uni-app + Vue 3 + TypeScript + Pinia | `frontend/package.json` |
-| Node.js | 22 | `.github/workflows/ci.yml` |
-| pnpm | 11.9.0 | `packageManager` / CI |
+| 前台 | SillyTavern 宿主 + 扩展 | `integrations/sillytavern/` |
+| Node.js | 22.13+（ST 集成单测与受管宿主） | `integrations/sillytavern/README.md` |
 | 部署 | Go image + PostgreSQL + MinIO + Caddy | `ops/deploy/` |
 
 Major 版本升级必须同时更新机器真源、契约、构建镜像和相关测试。叙述性文档与
@@ -25,11 +24,8 @@ bash scripts/check.sh
 # 后端离线验证
 GOPROXY=off go test -C backend -mod=vendor -count=1 ./...
 
-# 前端
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend test:run
-pnpm --dir frontend type-check
-pnpm --dir frontend build
+# ST 集成离线单测
+node --test "integrations/sillytavern/tests/*.test.mjs"
 
 # 数据库/RLS
 bash infra/db/run-rls-tests.sh

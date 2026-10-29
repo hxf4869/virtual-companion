@@ -1,23 +1,25 @@
 # Go-only 部署
 
-默认部署只运行 Go `companiond`。常驻拓扑为 PostgreSQL 18 + pgvector、
-`companiond`、MinIO 和 Caddy；`migrate` 与 `bootstrap` 是启动前的一次性任务，
-成功后退出。旧后端技术链已从仓库与部署中移除。
+本目录的 Compose 不是 V2 栈。它只运行 Go `companiond`、PostgreSQL 18 + pgvector、
+MinIO 和 Caddy，不含 SillyTavern，不含 MemoryCore。V2 只在本机受管栈运行，启动、停止、
+日志、备份与恢复见 [`integrations/sillytavern/README.md`](../../integrations/sillytavern/README.md)
+「本机运行说明」。远端部署未授权（`TODO.md` 的 `V2-OWNER-DEPLOY`）。
+
+`migrate` 与 `bootstrap` 是这份 Compose 启动前的一次性任务，成功后退出。旧后端技术链已从仓库与部署中移除。
+下面的 Compose 命令是这份 Go-only 栈的既有说明；W16-2 没有重跑它们。
 
 ## 前置条件
 
 - OrbStack/Docker 与 Compose v2；
-- Go 版本由 `backend/go.mod` 锁定，前端使用 Node 22 + pnpm 11；
-- H5 与 API 使用同一个 `VC_DOMAIN`，由 Caddy 终止 TLS。
+- Go 版本由 `backend/go.mod` 锁定；
+- API 使用 `VC_DOMAIN`，由 Caddy 终止 TLS。浏览器前台是 SillyTavern 受管宿主，
+  见 [`integrations/sillytavern/README.md`](../../integrations/sillytavern/README.md)，不由本 Compose 提供静态页。
 
 ## 首次启动
 
 ```bash
 cp ops/deploy/.env.example ops/deploy/.env.local
 # 编辑 .env.local；数据库密码使用 URL-safe 随机值，密钥不要提交。
-
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend build
 
 cd ops/deploy
 docker compose --env-file .env.local up -d --build
@@ -95,7 +97,7 @@ docker top deploy-runtime-1 -eo pid,comm,args
 ## 模型配置
 
 模型供应商不通过部署 profile、YAML override 或环境变量注入。管理员登录后，
-在“管理 → 模型供应商”页面完成：
+在 SillyTavern 受管宿主的模型页完成（Go API 仍是目录权威）：
 
 1. 新增供应商并选择 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages；
 2. 填写 Base URL 和 API Key；Key 只加密保存，不回显；
@@ -128,6 +130,8 @@ usage 结算并释放未用余额，明确未发送时释放全部，取消、�
 本地合成测试使用显式的合成正价格和独立额度，不复用真实账单数据。
 
 ## 数据库与升级
+
+本节只针对上面的 Go-only Compose。V2 受管栈没有单独的升级命令；改 `upstream.lock.json` 后重装配的步骤见集成 README，且该步骤本轮未执行。
 
 - `vc_migrator` 只供一次性 `migrate`/`bootstrap` 使用；
 - `vc_runtime_login` 无 DDL、SUPERUSER 或 BYPASSRLS 权限，只注入常驻 runtime；

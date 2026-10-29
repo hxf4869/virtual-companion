@@ -13,10 +13,10 @@ volume names frozen as `deploy_*`, so a "renamed" project silently kept the
 production names. validate_render() additionally rejects any non-project
 volume/network name, external resources, non-loopback published ports,
 relative binds, and privilege escalations. Both pure functions are unit
-tested in test_collector.py. Two production callers share this renderer:
-run.sh (G12 measurement) and scripts/dev/e2e-tls-stack.sh (VC-R79 TLS E2E),
-which only substitutes the fake-provider fixture script and env — every
-ownership/safety guard is identical for both.
+tested in test_collector.py. run.sh is the measurement caller. The Vue TLS
+launcher that also called this renderer was removed with the old frontend;
+script/extra_env still covers that fixture substitution in test_collector.py.
+Every ownership/safety guard is identical for that substitution.
 """
 
 import argparse
@@ -75,10 +75,10 @@ def fake_provider_service(repo_root: str, fake_port: int, nonce=None, *,
     B components; /g12/stats is reached through the observer container that
     shares the same netns, so nothing is published.
 
-    script/extra_env serve the TLS E2E launcher (VC-R79): it swaps in the
-    journey-dialect scripts/dev/e2e-provider.mjs and its request-log env while
-    keeping the same netns/isolation shape. The G12 timing knobs stay on the
-    default fake_provider.mjs fixture only.
+    script/extra_env swaps in another fixture (the unit test uses
+    scripts/dev/e2e-provider.mjs and its request-log env) while keeping the
+    same netns/isolation shape. The G12 timing knobs stay on the default
+    fake_provider.mjs fixture only.
     """
     default_fixture = script is None
     script = script or "scripts/measure/g12-go-capacity/fake_provider.mjs"

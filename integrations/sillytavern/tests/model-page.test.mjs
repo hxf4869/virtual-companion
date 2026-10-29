@@ -408,3 +408,116 @@ test('采样参数能力在其他能力编辑中保留 VERIFIED，克隆降为 D
     const cloned = buildProviderPut(providerDraftWithModels([clone])).models[0];
     assert.equal(cloned.capabilities.temperature, 'DECLARED'); assert.equal(cloned.capabilities.topP, 'DECLARED');
 });
+
+test('模型页呈现空供应商、停用徽章、缺密钥、未知能力、检查中和共享配置提示', async () => {
+    const listeners = new Map();
+    const overlay = {
+        innerHTML: '',
+        hidden: true,
+        isConnected: true,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        contains: () => true,
+        addEventListener(type, fn) { listeners.set(type, fn); },
+        dispatch(type, event) { listeners.get(type)?.(event); },
+    };
+    const previousDocument = globalThis.document;
+    const previousFetch = globalThis.fetch;
+    globalThis.document = {
+        cookie: 'vc_csrf=token',
+        addEventListener() {},
+        querySelector() { return null; },
+        querySelectorAll() { return []; },
+        createElement() {
+            return {
+                id: '',
+                className: '',
+                innerHTML: '',
+                querySelector: (sel) => (sel === '.vcms-overlay' ? overlay : null),
+                querySelectorAll: () => [],
+            };
+        },
+        body: { appendChild() {}, classList: { add() {}, remove() {} } },
+    };
+    let providers = [];
+    let hangDiscover = false;
+    globalThis.fetch = async (url) => {
+        const path = String(url);
+        if (hangDiscover && path.includes('/models/discover')) return new Promise(() => {});
+        let body = [];
+        if (path.endsWith('/api/v1/auth/session')) body = { accountId: '7', sessionId: '8', nextStep: 'ACTIVE' };
+        else if (path.endsWith('/api/v1/admin/providers')) body = providers;
+        else if (path.endsWith('/api/v1/admin/model-purposes')) body = [];
+        return {
+            ok: true,
+            status: 200,
+            headers: { get() { return null; } },
+            text: async () => JSON.stringify(body),
+        };
+    };
+    const provider = (extra) => ({
+        providerId: 'relay',
+        displayName: '停用中转',
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        baseUrl: 'https://relay.example.com/v1',
+        credentialConfigured: false,
+        state: 'DISABLED',
+        revision: 2,
+        models: [{
+            profileKey: 'daily',
+            modelId: 'daily-chat',
+            displayName: '日常',
+            contextWindowTokens: 8192,
+            maxOutputTokens: 1024,
+            state: 'ENABLED',
+            capabilities: { toolCalls: 'UNKNOWN' },
+            boundPurposes: ['FOREGROUND_CHAT', 'NPC_DIALOGUE'],
+        }],
+        ...extra,
+    });
+    try {
+        const { mountModelSettings } = await import('../extension/vc-model-settings/page.js');
+        const page = mountModelSettings();
+        const ready = async (pred) => {
+            for (let i = 0; i < 30; i += 1) {
+                if (pred()) return;
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+            assert.ok(pred(), overlay.innerHTML.slice(0, 180));
+        };
+        providers = [provider()];
+        page.open();
+        await ready(() => page._state.phase === 'ready' && page._state.draft?.providerId === 'relay');
+        assert.match(overlay.innerHTML, /已停用/);
+        assert.match(overlay.innerHTML, /缺密钥/);
+        assert.match(overlay.innerHTML, /该供应商尚未配置 API Key。可以先保存为停用草稿；配置密钥并启用后才能用于生成。/);
+        assert.match(overlay.innerHTML, /aria-pressed="true">未知/);
+        assert.match(overlay.innerHTML, /该配置正被这些用途使用：前台聊天、剧情 NPC。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。/);
+        assert.equal(overlay.innerHTML.includes('检查中…'), false);
+
+        providers = [provider({ credentialConfigured: true, state: 'ENABLED', displayName: '已接通' })];
+        hangDiscover = true;
+        page._state.phase = 'idle';
+        page.open();
+        await ready(() => page._state.phase === 'ready' && page._state.draft?.credentialConfigured === true);
+        overlay.dispatch('click', {
+            target: {
+                closest: (sel) => (sel === '[data-action]'
+                    ? { getAttribute: (name) => (name === 'data-action' ? 'check-connection' : null) }
+                    : null),
+            },
+        });
+        assert.match(overlay.innerHTML, /检查中…/);
+
+        providers = [];
+        hangDiscover = false;
+        page._state.phase = 'idle';
+        page.open();
+        await ready(() => page._state.phase === 'ready' && page._state.providers.length === 0);
+        assert.match(overlay.innerHTML, /还没有供应商/);
+        assert.match(overlay.innerHTML, /新建供应商，选择一种接口协议并填写 Base URL 与密钥，再添加模型配置。/);
+    } finally {
+        globalThis.document = previousDocument;
+        globalThis.fetch = previousFetch;
+    }
+});

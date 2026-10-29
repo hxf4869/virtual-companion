@@ -863,3 +863,103 @@ test('端到端：取消（socket close）中止上游且不提交续接状态',
         go.close(); provider.close();
     }
 });
+
+async function responsesAbortLedger(events, assertLedger) {
+    const ledger = { reserves: [], settles: [], cancels: [] };
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const { server: provider, port: providerPort } = await startServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''));
+        req.on('close', () => { try { res.end(); } catch { /* 客户端已断开 */ } });
+        gate.then(() => { try { res.end(); } catch { /* 已断开 */ } });
+    });
+    const { server: go, port: goPort } = await startServer(async (req, res) => {
+        const url = new URL(req.url, 'http://go.local');
+        const raw = await new Promise((resolve) => {
+            let data = '';
+            req.on('data', (chunk) => { data += chunk; });
+            req.on('end', () => resolve(data));
+        });
+        const body = raw ? JSON.parse(raw) : null;
+        if (req.method === 'GET' && url.pathname === '/api/v1/auth/session') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ nextStep: 'ACTIVE', accountId: '7', sessionId: '11', role: 'OWNER' }));
+        }
+        if (req.method === 'POST' && url.pathname === '/api/v1/service/model-purposes/FOREGROUND_CHAT/resolve') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(resolveOk({ provider: { endpointUrl: `http://127.0.0.1:${providerPort}/v1` } })));
+        }
+        if (req.method === 'POST' && url.pathname === '/api/v1/service/model-usage/reservations') {
+            ledger.reserves.push(body);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+                reservationId: '41', purpose: body?.purpose ?? 'FOREGROUND_CHAT', status: 'HELD',
+                reservedUsd: '1.000000', attemptId: body?.attemptId ?? '41',
+            }));
+        }
+        const usageAction = url.pathname.match(/^\/api\/v1\/service\/model-usage\/reservations\/([^/]+)\/(settle|cancel)$/);
+        if (req.method === 'POST' && usageAction) {
+            const row = { id: usageAction[1], body };
+            if (usageAction[2] === 'settle') ledger.settles.push(row);
+            else ledger.cancels.push(row);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            const status = usageAction[2] === 'settle' ? 'SETTLED' : (body?.disposition === 'NOT_SENT' ? 'RELEASED' : 'UNKNOWN');
+            return res.end(JSON.stringify({
+                reservationId: usageAction[1], purpose: 'FOREGROUND_CHAT', status,
+                actualUsd: usageAction[2] === 'settle' ? '0.003000' : null,
+                inputTokens: body?.inputTokens ?? 0, outputTokens: body?.outputTokens ?? 0, idempotent: false,
+            }));
+        }
+        res.writeHead(404);
+        res.end('{}');
+    });
+    const bridge = createGenerateBridge({
+        config: { goBaseUrl: `http://127.0.0.1:${goPort}`, serviceToken: 'T'.repeat(40), timeoutMs: 5000 },
+        continuationStore: new ToolContinuationStore(), counter,
+    });
+    try {
+        const req = mockReq({ body: baseBody({ custom_url: MARKER, stream: true }), headers: { cookie: 'vc_session=s1' } });
+        const res = mockRes();
+        const pending = bridge.interceptGenerate(req, res);
+        const deadline = Date.now() + 2000;
+        while (!res.body().includes('部分') && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.match(res.body(), /部分/);
+        req.socket.emit('close');
+        release();
+        await pending;
+        assert.equal(ledger.reserves.length, 1);
+        await assertLedger(ledger, res);
+    } finally {
+        go.closeAllConnections();
+        provider.closeAllConnections();
+        go.close();
+        provider.close();
+    }
+}
+
+test('Responses 流已开始后中止且无可信 usage：预留立即按 UNKNOWN 取消', async () => {
+    await responsesAbortLedger([
+        { type: 'response.output_text.delta', delta: '部分' },
+    ], async (ledger) => {
+        assert.equal(ledger.settles.length, 0);
+        assert.equal(ledger.cancels.length, 1);
+        assert.equal(ledger.cancels[0].id, '41');
+        assert.equal(ledger.cancels[0].body.disposition, 'UNKNOWN');
+    });
+});
+
+test('Responses 流已开始后中止且已有可信 usage：按该 usage 结算，不取消', async () => {
+    await responsesAbortLedger([
+        { type: 'response.in_progress', response: { id: 'resp_abort', usage: { input_tokens: 12, output_tokens: 3 } } },
+        { type: 'response.output_text.delta', delta: '部分' },
+    ], async (ledger) => {
+        assert.equal(ledger.cancels.length, 0);
+        assert.equal(ledger.settles.length, 1);
+        assert.equal(ledger.settles[0].id, '41');
+        assert.deepEqual(
+            { inputTokens: ledger.settles[0].body.inputTokens, outputTokens: ledger.settles[0].body.outputTokens },
+            { inputTokens: 12, outputTokens: 3 },
+        );
+    });
+});

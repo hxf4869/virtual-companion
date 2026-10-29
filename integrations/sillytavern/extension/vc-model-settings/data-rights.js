@@ -5,7 +5,7 @@ import {
     changePassword, listSessions, revokeSession, logoutCurrent, resetAuthenticator, reauth, fetchSession,
 } from './api.js';
 import {
-    AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, SESSION_EMPTY_COPY,
+    AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, RESTORE_LIMIT_COPY, SESSION_EMPTY_COPY,
     authenticatorStatusText, deletionProgressText, otherSessions, sessionRowText,
 } from './account-logic.js';
 
@@ -66,6 +66,7 @@ export function renderAccountShell() {
           </section>
         </div>
         <p class="vc-data-scope">${BACKUP_COPY}</p>
+        <p class="vc-data-scope" data-restore-limit>${RESTORE_LIMIT_COPY}</p>
         <p class="vc-data-scope">删除长期记忆会保留聊天原文，原文仍可能用于当前对话；删除聊天不影响其他独立分支。</p>
       </main>
       <div class="vc-account-reauth" role="dialog" aria-modal="true" aria-label="重新验证身份" hidden>

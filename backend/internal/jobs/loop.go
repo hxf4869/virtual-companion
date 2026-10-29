@@ -17,6 +17,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/observability"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/realtime"
+	"github.com/hxf4869/virtual-companion/internal/restoregate"
 	"github.com/hxf4869/virtual-companion/internal/safety"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/turn"
@@ -272,6 +273,10 @@ type Loop struct {
 	// and handleFollowUp resolves the greeting itself.
 	followGenerate func(context.Context, postgres.JobClaim) error
 
+	// restoreGateFile is read on each claim and recovery. companiond stores the
+	// path from startup configuration; restore.sh deletes the marker to open it.
+	restoreGateFile string
+
 	claims            atomic.Uint64
 	recoveries        atomic.Uint64
 	activeGenerations atomic.Int64
@@ -336,6 +341,18 @@ func (l *Loop) UseNotification(sender notify.Sender, maxAttempts int) {
 	l.notifySender = sender
 	l.notifyMaxAttempts = maxAttempts
 	l.notifyMu.Unlock()
+}
+
+// UseRestoreGate installs the marker path read at process start.
+func (l *Loop) UseRestoreGate(path string) {
+	if l == nil {
+		return
+	}
+	l.restoreGateFile = path
+}
+
+func (l *Loop) restoreBlocked() bool {
+	return l != nil && restoregate.Closed(l.restoreGateFile)
 }
 
 func (l *Loop) Use(store Store, provider companion.Provider, hub *realtime.Hub, blobs BlobStore) {
@@ -488,6 +505,9 @@ func (l *Loop) ClaimOnce(ctx context.Context) int {
 	if l == nil || l.store == nil {
 		return 0
 	}
+	if l.restoreBlocked() {
+		return 0
+	}
 	l.claimMu.Lock()
 	defer l.claimMu.Unlock()
 	// Per-kind capacity: GENERATION and MEMORY_EXTRACT are claimed only while
@@ -595,6 +615,9 @@ func (l *Loop) holdSweepAge() time.Duration {
 
 func (l *Loop) RecoverOnce(ctx context.Context) error {
 	if l == nil || l.store == nil {
+		return nil
+	}
+	if l.restoreBlocked() {
 		return nil
 	}
 	expired, err := l.store.ListExpiredGenerationJobs(ctx, l.policy.ClaimLimit)
@@ -728,6 +751,9 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 // and is not taken by anything this method calls.
 func (l *Loop) RunInboxAndNotifications(ctx context.Context) {
 	if l == nil || l.store == nil {
+		return
+	}
+	if l.restoreBlocked() {
 		return
 	}
 	l.notifyMu.Lock()

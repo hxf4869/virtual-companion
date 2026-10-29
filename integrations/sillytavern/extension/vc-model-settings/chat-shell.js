@@ -156,6 +156,18 @@ export function mountChatShell({
     button('账户', 'fa-user-shield', 'account', (opener) => openAccount?.(opener));
     button('更多', 'fa-ellipsis', 'more', openMore);
     document.body.append(nav, moreDialog);
+    // 断线只认两路真实信号：宿主 online_status === 'no_connection'
+    // （st-context onlineStatus，变更经 ONLINE_STATUS_CHANGED），以及浏览器 offline。
+    // 生成失败本身不会把 online_status 写成 no_connection，不在这里当成断线。
+    const readBrowserOnline = () => {
+        try {
+            return typeof navigator === 'undefined' || navigator.onLine !== false;
+        } catch {
+            return true;
+        }
+    };
+    let browserOnline = readBrowserOnline();
+    let apiStatus;
     let online = true;
     let inboxCount = 0;
     let budgetInsufficient = false;
@@ -232,10 +244,32 @@ export function mountChatShell({
         paintStatus();
     };
     const context = getContext();
+    apiStatus = context.onlineStatus;
+    online = browserOnline && apiStatus !== 'no_connection';
+    const applyChannel = () => {
+        online = browserOnline && apiStatus !== 'no_connection';
+        paintStatus();
+    };
     context.eventSource.on(context.eventTypes.CHAT_CHANGED, refresh);
     context.eventSource.on(context.eventTypes.CHAT_COMPLETION_SETTINGS_READY, refresh);
     context.eventSource.on(context.eventTypes.SETTINGS_UPDATED, refresh);
     context.eventSource.on(context.eventTypes.OAI_PRESET_CHANGED_AFTER, refresh);
+    if (context.eventTypes?.ONLINE_STATUS_CHANGED) {
+        context.eventSource.on(context.eventTypes.ONLINE_STATUS_CHANGED, (status) => {
+            apiStatus = status;
+            applyChannel();
+        });
+    }
+    if (typeof globalThis.addEventListener === 'function') {
+        globalThis.addEventListener('offline', () => {
+            browserOnline = false;
+            applyChannel();
+        });
+        globalThis.addEventListener('online', () => {
+            browserOnline = true;
+            applyChannel();
+        });
+    }
     refresh();
     updateHeight();
     return {

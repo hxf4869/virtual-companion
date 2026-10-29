@@ -39,11 +39,13 @@ test('node-fetch 响应结算已武装预留：SSE usage 入账，正文不入�
     installUsageFetch();
     try {
         const expectedUrl = 'http://127.0.0.1:9/v1/chat/completions';
+        const request = {};
         armUsageHold({
             reservationId: '7',
             ownerAccountId: '1',
             expectedUrl,
             config: { goBaseUrl: `http://127.0.0.1:${port}`, serviceToken: 'synthetic', timeoutMs: 2000 },
+            request,
         });
         const sse = [
             'data: {"choices":[{"delta":{"content":"secret-body"}}]}',
@@ -53,9 +55,9 @@ test('node-fetch 响应结算已武装预留：SSE usage 入账，正文不入�
             'data: [DONE]',
             '',
         ].join('\n');
-        settleArmedResponse(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }), 'http://127.0.0.1:9/elsewhere');
+        settleArmedResponse(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }), 'http://127.0.0.1:9/elsewhere', request);
         assert.equal(hits.length, 0);
-        settleArmedResponse(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }), expectedUrl);
+        settleArmedResponse(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }), expectedUrl, request);
         const deadline = Date.now() + 2000;
         while (hits.length === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
         assert.equal(hits.length, 1);
@@ -112,13 +114,14 @@ test('Claude SSE 与非流式 JSON 的用量都能结算，正文不入账', asy
     const expectedUrl = 'http://127.0.0.1:9/v1/messages';
     installUsageFetch();
     try {
+        const request = {};
         armUsageHold({
-            reservationId: '21', ownerAccountId: '1', expectedUrl, config: ledger.config,
+            reservationId: '21', ownerAccountId: '1', expectedUrl, config: ledger.config, request,
         });
         settleArmedResponse(new Response(claudeSse('secret-claude'), {
             status: 200,
             headers: { 'content-type': 'text/event-stream' },
-        }), expectedUrl);
+        }), expectedUrl, request);
         const deadline = Date.now() + 2000;
         while (!ledger.hits.some((hit) => hit.path.includes('/21/settle')) && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 20));
@@ -133,14 +136,14 @@ test('Claude SSE 与非流式 JSON 的用量都能结算，正文不入账', asy
         assert.equal(sseHit.body.includes('secret-claude'), false);
 
         armUsageHold({
-            reservationId: '22', ownerAccountId: '1', expectedUrl, config: ledger.config,
+            reservationId: '22', ownerAccountId: '1', expectedUrl, config: ledger.config, request,
         });
         settleArmedResponse(Response.json({
             id: 'msg_2',
             type: 'message',
             content: [{ type: 'text', text: 'secret-json' }],
             usage: { input_tokens: 10, output_tokens: 4 },
-        }), expectedUrl);
+        }), expectedUrl, request);
         while (!ledger.hits.some((hit) => hit.path.includes('/22/settle')) && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 20));
         }
@@ -163,23 +166,24 @@ test('原生 fetch 抛错时按 UNKNOWN 取消已武装预留，地址不符不�
     const expectedUrl = 'http://127.0.0.1:9/v1/messages';
     installUsageFetch();
     try {
+        const request = {};
         await armUsageHold({
-            reservationId: '9', ownerAccountId: '1', expectedUrl, config: ledger.config,
+            reservationId: '9', ownerAccountId: '1', expectedUrl, config: ledger.config, request,
         });
-        await abandonOutbound('http://127.0.0.1:9/elsewhere');
+        await abandonOutbound('http://127.0.0.1:9/elsewhere', request);
         assert.equal(ledger.hits.length, 0);
         await Promise.resolve().then(() => {
             const error = new Error('socket hang up');
             error.name = 'AbortError';
             throw error;
         }).catch(async (error) => {
-            await abandonOutbound(expectedUrl);
+            await abandonOutbound(expectedUrl, request);
             throw error;
         }).then(() => assert.fail('fetch 抛错必须继续抛出'), () => {});
         assert.equal(ledger.hits.length, 1);
         assert.match(ledger.hits[0].path, /\/reservations\/9\/cancel$/);
         assert.equal(JSON.parse(ledger.hits[0].body).disposition, 'UNKNOWN');
-        settleArmedResponse(Response.json({ usage: { input_tokens: 1, output_tokens: 1 } }), expectedUrl);
+        settleArmedResponse(Response.json({ usage: { input_tokens: 1, output_tokens: 1 } }), expectedUrl, request);
         await new Promise((resolve) => setTimeout(resolve, 40));
         assert.equal(ledger.hits.length, 1, '取消后不能再结算同一预留');
     } finally {
@@ -193,17 +197,18 @@ test('再次武装时按 UNKNOWN 取消仍未结算的旧预留', async () => {
     const expectedUrl = 'http://127.0.0.1:9/v1/chat/completions';
     installUsageFetch();
     try {
+        const request = {};
         await armUsageHold({
-            reservationId: '11', ownerAccountId: '1', expectedUrl, config: ledger.config,
+            reservationId: '11', ownerAccountId: '1', expectedUrl, config: ledger.config, request,
         });
         await armUsageHold({
-            reservationId: '12', ownerAccountId: '1', expectedUrl, config: ledger.config,
+            reservationId: '12', ownerAccountId: '1', expectedUrl, config: ledger.config, request,
         });
         const cancelled = ledger.hits.find((hit) => hit.path.includes('/11/cancel'));
         assert.ok(cancelled, '旧预留必须取消');
         assert.equal(JSON.parse(cancelled.body).disposition, 'UNKNOWN');
         assert.equal(ledger.hits.some((hit) => hit.path.includes('/12/')), false);
-        settleArmedResponse(Response.json({ usage: { input_tokens: 3, output_tokens: 4 } }), expectedUrl);
+        settleArmedResponse(Response.json({ usage: { input_tokens: 3, output_tokens: 4 } }), expectedUrl, request);
         const deadline = Date.now() + 2000;
         while (!ledger.hits.some((hit) => hit.path.includes('/12/settle')) && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 20));
@@ -215,6 +220,53 @@ test('再次武装时按 UNKNOWN 取消仍未结算的旧预留', async () => {
             { inputTokens: 3, outputTokens: 4 },
         );
         assert.equal(ledger.hits.some((hit) => hit.path.includes('/11/settle')), false);
+    } finally {
+        uninstallUsageFetch();
+        await ledger.close();
+    }
+});
+
+test('两路重叠且上游 URL 相同：各自结算自己的用量，互不取消', async () => {
+    const ledger = await listenLedger();
+    const expectedUrl = 'http://127.0.0.1:9/v1/chat/completions';
+    installUsageFetch();
+    try {
+        const requestA = { id: 'A' };
+        const requestB = { id: 'B' };
+        await armUsageHold({
+            reservationId: '31', ownerAccountId: '1', expectedUrl, config: ledger.config, request: requestA,
+        });
+        await armUsageHold({
+            reservationId: '32', ownerAccountId: '1', expectedUrl, config: ledger.config, request: requestB,
+        });
+        assert.equal(ledger.hits.some((hit) => hit.path.includes('/cancel')), false, '后到的预留不得取消先到的预留');
+        settleArmedResponse(Response.json({
+            usage: { prompt_tokens: 10, completion_tokens: 1 },
+            choices: [{ message: { content: 'secret-a' } }],
+        }), expectedUrl, requestA);
+        settleArmedResponse(Response.json({
+            usage: { prompt_tokens: 20, completion_tokens: 2 },
+            choices: [{ message: { content: 'secret-b' } }],
+        }), expectedUrl, requestB);
+        const deadline = Date.now() + 2000;
+        while (ledger.hits.filter((hit) => hit.path.includes('/settle')).length < 2 && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const settleA = ledger.hits.find((hit) => hit.path.includes('/31/settle'));
+        const settleB = ledger.hits.find((hit) => hit.path.includes('/32/settle'));
+        assert.ok(settleA, '第一路必须按自己的预留结算');
+        assert.ok(settleB, '第二路必须按自己的预留结算');
+        assert.deepEqual(
+            { inputTokens: JSON.parse(settleA.body).inputTokens, outputTokens: JSON.parse(settleA.body).outputTokens },
+            { inputTokens: 10, outputTokens: 1 },
+        );
+        assert.deepEqual(
+            { inputTokens: JSON.parse(settleB.body).inputTokens, outputTokens: JSON.parse(settleB.body).outputTokens },
+            { inputTokens: 20, outputTokens: 2 },
+        );
+        assert.equal(ledger.hits.some((hit) => hit.path.includes('/cancel')), false);
+        assert.equal(settleA.body.includes('secret-a'), false);
+        assert.equal(settleB.body.includes('secret-b'), false);
     } finally {
         uninstallUsageFetch();
         await ledger.close();

@@ -179,24 +179,6 @@ def main() -> int:
                 f"backend/go.mod: direct module {module} has disallowed license family '{family}'"
             )
 
-    frontend_inventory = {
-        str(entry.get("name", "")).strip(): str(entry.get("licenseFamily", "")).strip()
-        for entry in inventory.get("frontendDirectDependencies", [])
-        if str(entry.get("name", "")).strip()
-    }
-    package_json = ROOT / "frontend/package.json"
-    frontend_dependencies = extract_frontend_dependencies(package_json)
-    for name, scope in sorted(frontend_dependencies):
-        family = frontend_inventory.get(name)
-        if not family:
-            errors.append(
-                f"frontend/package.json: {scope} '{name}' is not in license-inventory.yaml"
-            )
-        elif family not in allowed:
-            errors.append(
-                f"frontend/package.json: {scope} '{name}' has disallowed license family '{family}'"
-            )
-
     st_checked = check_st_integration(policy, inventory, errors)
 
     if errors:
@@ -204,10 +186,10 @@ def main() -> int:
             print(f"ERROR: {item}", file=sys.stderr)
         return 1
 
-    total = len(go_dependencies) + len(frontend_dependencies)
+    total = len(go_dependencies)
     print(
         f"License inventory check: PASS ({total} direct dependencies: "
-        f"{len(go_dependencies)} Go, {len(frontend_dependencies)} frontend; "
+        f"{len(go_dependencies)} Go; "
         f"stIntegration domain {st_checked} items)"
     )
     return 0

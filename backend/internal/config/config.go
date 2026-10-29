@@ -52,6 +52,10 @@ type Config struct {
 	MemoryCoreCallbackToken string
 	MemoryCoreBaseURL       string
 	MemoryCoreServiceToken  string
+	// RestoreGateFile is the marker path taken from the environment when the
+	// process starts. Callers re-read it. An empty path leaves jobs and
+	// retrieval open.
+	RestoreGateFile string
 	// MonthlyCostLimit is the global model-cost admission cap in micro-USD. Zero refuses outbound calls.
 	MonthlyCostLimit int64
 	Mode             Mode
@@ -300,6 +304,7 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 		MemoryCoreCallbackToken: strings.TrimSpace(getenv("VC_MEMORYCORE_CALLBACK_TOKEN")),
 		MemoryCoreBaseURL:       strings.TrimSpace(getenv("VC_MEMORYCORE_BASE_URL")),
 		MemoryCoreServiceToken:  strings.TrimSpace(getenv("VC_MEMORYCORE_SERVICE_TOKEN")),
+		RestoreGateFile:         strings.TrimSpace(getenv("VC_RESTORE_GATE_FILE")),
 		STPlugin:                STPlugin{ServiceToken: strings.TrimSpace(getenv("VC_ST_PLUGIN_SERVICE_TOKEN")), HostBaseURL: strings.TrimSpace(getenv("VC_ST_HOST_BASE_URL"))},
 		Concurrency: Concurrency{
 			// §19.5 Owner-only product defaults: serial worker, 8 outstanding,

@@ -1,13 +1,14 @@
 # Stitch 设计参考与验收记录
 
-> 状态：2026-09-01
+> 状态：2026-09-01。2026-10-29：`frontend/DESIGN.md` 已随旧 Vue 前端删除；本文只保留当时的 Stitch 登记。
+> V2 视觉以 `docs/product/v2-design.md` 为准。
 > 本文件只登记可以用于新版实现的 Stitch 项目、代表页面和已发现的生成缺陷。未列出的 Stitch 页面都属于
 > 探索稿，不能直接交给 AI 实现。
 
 ## 使用规则
 
 - Stitch 负责探索视觉方向和代表页面构图，不负责定义产品能力。
-- 颜色、字体、间距、圆角和组件规则以 `frontend/DESIGN.md` 的精确令牌为准。
+- 当时的颜色、字体、间距、圆角和组件规则写在已删除的 `frontend/DESIGN.md`；不要再按该路径取令牌。
 - 页面职责、动作与状态以 `docs/product/frontend-redesign.md` 为准。
 - 不复制 Stitch 自动生成的 HTML/CSS；在 uni-app 中使用 Wot UI 基础层与自有产品组件重建。
 - 截图中出现溢出、裁切、图标连字、中英文混排、假数据或不可理解术语时，该页面自动失去实现资格，
