@@ -1,6 +1,13 @@
 // UI-P04 主动陪伴 / 通知。跟进、静默、角色开关、inbox 与邮箱 / 飞书状态。
 // 凭据只在本次输入里存在，不回显、不写 localStorage。渠道接受不写成手机已收到。
 import { ApiError, captureSessionContext, fetchRelationships, reauth, storyRequest } from './api.js';
+import { confirmAlert } from './ui/alert.js';
+import { bindSegment } from './ui/controls.js';
+import { icon } from './ui/icons.js';
+import { popMenu } from './ui/menu.js';
+import { createNav } from './ui/nav.js';
+import { openSheet } from './ui/sheet.js';
+import { readVcUiFlag } from './ui/theme.js';
 
 const DECIMAL = /^[1-9][0-9]{0,18}$/;
 const EVENT = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -107,7 +114,9 @@ export async function listDeliveries() {
 function allowRelationship(raw) {
     const relationshipId = decimalId(raw?.relationshipId);
     if (!relationshipId) return null;
-    return { relationshipId, name: shown(raw?.companionName) || '未命名角色' };
+    const row = { relationshipId, name: shown(raw?.companionName) || '未命名角色' };
+    if (raw?.mode === 'COMPANION' || raw?.mode === 'STORY') row.mode = raw.mode;
+    return row;
 }
 
 function allowPolicy(raw, relationshipId) {
@@ -928,5 +937,485 @@ export function mountInboxPage({ onOpenConversation } = {}) {
             void page.open().then(() => dialog.querySelector('h1')?.focus());
         },
         close,
+    };
+}
+
+// F4a：vc-ui 开启时把陪伴渲染进外壳容器。关闭时不渲染，仍走上面的对话框。
+function inboxVcUi() {
+    const body = globalThis.document?.body;
+    if (!body?.classList) return false;
+    try {
+        if (readVcUiFlag()) body.classList.add('vc-ui');
+    } catch { /* 存储不可用时只看类名 */ }
+    return body.classList.contains('vc-ui') === true;
+}
+
+function ensureInboxStyles() {
+    const head = document.head || document.documentElement;
+    if (!document.getElementById('vc-ui-css')) {
+        const ui = document.createElement('link');
+        ui.id = 'vc-ui-css';
+        ui.rel = 'stylesheet';
+        ui.href = new URL('./vc-ui.css', import.meta.url).href;
+        head.append(ui);
+    }
+    if (!document.querySelector('link[data-vc-inbox]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = new URL('./inbox.css', import.meta.url).href;
+        link.setAttribute('data-vc-inbox', '');
+        head.append(link);
+    }
+}
+
+function initialOf(name) {
+    const chars = [...String(name || '')];
+    return chars[0] || '·';
+}
+
+function toneName(tone) {
+    if (tone === 'ok') return 'ok';
+    if (tone === 'danger') return 'danger';
+    return tone === 'warn' ? 'warn' : 'neutral';
+}
+
+function statusLine(text, tone, extra = '') {
+    const name = toneName(tone);
+    return `<span class="vc-status vc-status-${name}"><i class="vc-dot vc-dot-${name}" aria-hidden="true"></i><span class="vc-inbox-badge"${tone ? ` data-tone="${esc(tone)}"` : ''}${extra}>${esc(text)}</span></span>`;
+}
+
+function uiSwitch(action, label, extra, on) {
+    const pressed = on ? 'true' : 'false';
+    return `<div class="vc-cell"><span class="vc-grow">${esc(label)}</span><button type="button" class="vc-inbox-switch vc-switch" role="switch" data-action="${action}" ${extra} aria-checked="${pressed}" aria-pressed="${pressed}" aria-label="${esc(label)}"><span class="vc-clip">${esc(label)}</span></button></div>`;
+}
+
+function inboxSkeleton() {
+    return `<div class="vc-group" aria-hidden="true">${Array.from({ length: 3 }, () => '<div class="vc-skeleton-row"><span class="vc-skeleton vc-skeleton-avatar"></span><span class="vc-grow"><span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span></span></div>').join('')}</div><p class="vc-clip" role="status">正在加载</p>`;
+}
+
+function triggerText(item) {
+    if (item.triggerAt) {
+        const date = new Date(item.triggerAt);
+        if (!Number.isNaN(date.getTime())) {
+            try { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date); }
+            catch { /* 落到事件日期 */ }
+        }
+    }
+    return when(item);
+}
+
+
+function instanceLabel(item, relationships) {
+    const name = item?.name || '未命名角色';
+    if (item?.mode === 'STORY') return `${name} · 剧情`;
+    if (item?.mode === 'COMPANION') return `${name} · 日常`;
+    const same = (relationships || []).filter((row) => (row?.name || '未命名角色') === name);
+    if (same.length < 2) return name;
+    const index = same.findIndex((row) => row.relationshipId === item.relationshipId);
+    return index < 0 ? name : `${name} · ${index + 1}`;
+}
+
+function metaBit(text, tone, dot) {
+    const name = tone === 'danger' ? 'danger' : tone === 'warn' ? 'warn' : 'quiet';
+    const badge = tone === 'danger' || tone === 'warn' ? ` data-tone="${esc(tone)}"` : '';
+    return `<span class="vc-status vc-status-${name}"><i class="vc-dot vc-dot-${dot}" aria-hidden="true"></i><span class="vc-inbox-badge"${badge}>${esc(text)}</span></span>`;
+}
+
+function contractClip(text) {
+    return `<span class="vc-clip" aria-hidden="true">${esc(text)}</span>`;
+}
+
+function deliveryBit(row) {
+    const label = deliveryLabel(row);
+    const short = {
+        accepted: '已接受', pending: '待发送', sending: '发送中', failed: '失败',
+        unknown: '结果未知', expired: '过期', stopped: '已停止',
+    }[label.status] || label.text;
+    const channel = row.channel === 'FEISHU' ? '飞书' : '邮箱';
+    const danger = label.status === 'failed';
+    const warn = label.status === 'unknown';
+    const tone = danger ? 'danger' : warn ? 'warn' : 'quiet';
+    const dot = danger ? 'danger' : warn ? 'warn' : (label.status === 'accepted' ? 'ok' : 'neutral');
+    const hidden = label.text !== short ? contractClip(label.text) : '';
+    return `<span class="vc-inbox-delivery" data-status="${esc(label.status)}">${metaBit(`${channel} ${short}`, tone, dot)}${hidden}</span>`;
+}
+
+function messageMeta(item, deliveries) {
+    const write = writeLabel(item);
+    const writeWarn = write === '链接失效' || write === '当前链接已移除';
+    const bits = [metaBit(write, writeWarn ? 'warn' : 'quiet', writeWarn ? 'warn' : (write === '已写入' ? 'ok' : 'neutral'))];
+    if (write !== '已写入' && item.linkStatus !== 'present' && item.stDelivered) bits.push(metaBit('已写入', 'quiet', 'ok'));
+    bits.push(metaBit(item.read ? '已读' : '未读', 'quiet', item.read ? 'ok' : 'neutral') + contractClip(item.read ? '应用已读' : '应用未读'));
+    for (const row of deliveries) bits.push(deliveryBit(row));
+    return `<span class="vc-inbox-meta">${bits.map((bit, index) => `<span class="vc-inbox-meta-item">${index ? '<span class="vc-inbox-sep" aria-hidden="true">·</span>' : ''}${bit}</span>`).join('')}</span>`;
+}
+
+function credentialStateLabel(draft) {
+    return draft.credentialState === 'missing' ? '未配置' : '已配置';
+}
+
+export function renderInboxTab(state) {
+    if (state.loading && state.relationships.length === 0 && state.inbox.length === 0 && !state.error) {
+        return `<div class="vc-column"><h1 class="vc-large-title" tabindex="-1" data-vc-owned-title>陪伴</h1>${inboxSkeleton()}</div>`;
+    }
+    const draft = state.policyDraft;
+    const current = state.relationships.find((item) => item.relationshipId === state.relationshipId);
+    const options = state.relationships.map((item) => `<option value="${esc(item.relationshipId)}" ${item.relationshipId === state.relationshipId ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
+    const character = state.relationships.length ? `<div class="vc-group"><button type="button" class="vc-cell" data-action="pick-character" aria-haspopup="menu" aria-label="角色" ${state.busy ? 'disabled' : ''}><span class="vc-grow">角色</span><span class="vc-value vc-select-value">${esc(current?.name || '未命名角色')}${icon('chevrons-up-down', { size: 16 })}</span></button><select class="vc-clip" data-field="character" aria-label="角色" tabindex="-1" aria-hidden="true">${options}</select></div>` : '';
+    const filters = FILTERS.map(([value, label]) => `<button type="button" data-action="filter-inbox" data-filter="${value}" aria-pressed="${state.inboxFilter === value ? 'true' : 'false'}">${label}</button>`).join('');
+    const events = state.inbox.filter((item) => passesFilter(item, state.inboxFilter));
+    const messages = events.map((item) => {
+        const name = state.relationships.find((row) => row.relationshipId === item.relationshipId)?.name || '未命名角色';
+        const deliveries = state.deliveries.filter((row) => row.eventId === item.eventId);
+        const body = item.intent === 'WAITING_HOST' ? '需要打开此会话继续' : item.body;
+        const open = item.linkStatus === 'present';
+        const tag = open ? 'button' : 'div';
+        const action = open ? ' type="button" data-action="open-conversation"' : '';
+        return `<${tag} class="vc-cell vc-inbox-card vc-inbox-msg" data-event-id="${esc(item.eventId)}" data-link="${esc(item.linkStatus)}" data-write="${item.stDelivered ? 'written' : 'pending'}"${action}><span class="vc-avatar" aria-hidden="true">${esc(initialOf(name))}</span><span class="vc-grow"><span class="vc-line"><b>${esc(name)}</b></span>${body ? `<span class="vc-inbox-body">${esc(body)}</span>` : ''}${messageMeta(item, deliveries)}${open ? '<span class="vc-clip">打开此会话</span>' : ''}</span></${tag}>`;
+    }).join('');
+    const messageBlock = state.error && !events.length && !state.inbox.length
+        ? `<div class="vc-empty">${icon('wifi-off', { size: 32 })}<p role="alert">${esc(state.error)}</p><button type="button" class="vc-btn vc-btn-text" data-action="retry-open">重试</button></div>`
+        : messages
+            ? `<div class="vc-group">${messages}</div>`
+            : `<div class="vc-empty">${icon('heart', { size: 32 })}<p role="status">没有消息</p><button type="button" class="vc-btn vc-btn-text" data-action="${state.inboxFilter === 'all' ? 'retry-open' : 'filter-inbox'}" ${state.inboxFilter === 'all' ? '' : 'data-filter="all"'}>${state.inboxFilter === 'all' ? '重试' : '全部'}</button></div>`;
+    const follows = state.followUps.map((item) => {
+        const name = state.relationships.find((row) => row.relationshipId === item.relationshipId)?.name || '';
+        const whenText = triggerText(item);
+        const meta = [name, whenText].filter(Boolean).join(' · ');
+        const cancelled = item.status === 'CANCELLED';
+        const tone = item.status === 'WAITING_HOST' || item.status === 'NEEDS_CLARIFICATION' ? 'warn' : '';
+        const main = `<span class="vc-grow"><span class="vc-inbox-body">${esc(item.body)}</span>${meta ? `<span class="vc-meta">${esc(meta)}</span>` : ''}</span><span class="vc-value">${statusLine(FOLLOW[item.status] || '状态未知', tone)}</span>`;
+        const control = cancelled
+            ? `<div class="vc-inbox-follow-main">${main}</div>`
+            : `<button type="button" class="vc-inbox-follow-main" data-action="open-follow" data-follow-up-id="${esc(item.followUpId)}" aria-haspopup="menu">${main}</button><button type="button" class="vc-clip" data-action="ask-cancel" data-follow-up-id="${esc(item.followUpId)}">取消跟进</button>`;
+        return `<article class="vc-cell vc-inbox-follow" data-follow-up-id="${esc(item.followUpId)}" data-status="${esc(item.status)}">${control}</article>`;
+    }).join('');
+    const waitingHost = draft.enabled && !draft.offlineCapable ? '<p class="vc-footnote" role="status">需要打开此会话继续</p>' : '';
+    const quiet = [draft.quietHoursStart, draft.quietHoursEnd].filter(Boolean).join(' – ');
+    const cancel = state.cancelAsk ? `<div hidden data-vc-layer role="dialog" aria-label="取消跟进"><p>取消这条跟进？</p><button type="button" data-action="confirm-cancel">取消跟进</button><button type="button" data-action="dismiss-cancel">返回</button></div>` : '';
+    const conflict = state.policyConflict ? `<div hidden data-vc-layer role="dialog" aria-label="保存冲突"><p data-tone="warn">这些设置已在另一处更新。你的输入已保留。</p><button type="button" data-action="view-latest-policy">查看最新</button><button type="button" data-action="keep-policy-draft">保留草稿</button></div>` : '';
+    const reauth = state.reauth.open ? `<div hidden data-vc-layer role="dialog" aria-label="重新验证身份"><p>需要重新验证身份。</p><button type="button" data-action="reauth-submit">验证并继续</button><button type="button" data-action="reauth-cancel">取消</button></div>` : '';
+    const channels = state.channelDrafts.map((item) => {
+        const title = item.channel === 'FEISHU' ? '飞书' : '邮箱';
+        const glyph = item.channel === 'FEISHU' ? 'link' : 'bell';
+        return `<button type="button" class="vc-cell vc-inbox-channel-link" data-action="open-channel" data-key="${esc(item.key)}" data-channel="${esc(item.channel)}" data-preview="${item.previewBody ? 'true' : 'false'}"><span class="vc-tile ${item.channel === 'FEISHU' ? 'vc-tile-teal' : 'vc-tile-blue'}">${icon(glyph, { size: 18 })}</span><span class="vc-grow"><span class="vc-inbox-name">${title}</span><span class="vc-meta">${esc(channelText(item))}</span></span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button>`;
+    }).join('');
+    return `<div class="vc-column">${reauth}${cancel}${conflict}
+        <h1 class="vc-large-title" tabindex="-1" data-vc-owned-title>陪伴</h1>
+        ${state.error ? `<p role="alert">${esc(state.error)}</p>` : ''}
+        ${character}
+        <section aria-label="消息">
+            <div class="vc-segment" data-vc-inbox-segment><i class="vc-segment-thumb"></i>${filters}</div>
+            ${messageBlock}
+        </section>
+        <section aria-label="跟进">
+            <h2 class="vc-group-title">跟进</h2>
+            <div class="vc-group">${follows || '<p role="status">没有跟进</p>'}</div>
+            <div class="vc-group vc-inbox-summary">
+                <div class="vc-cell"><span class="vc-grow">静默时段</span><span class="vc-value vc-num">${esc(quiet)}</span></div>
+                <label class="vc-cell"><span class="vc-grow">开始</span><input data-field="quietHoursStart" aria-label="开始" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"></label>
+                <label class="vc-cell"><span class="vc-grow">结束</span><input data-field="quietHoursEnd" aria-label="结束" value="${esc(draft.quietHoursEnd)}" inputmode="numeric" maxlength="5"></label>
+                <label class="vc-cell"><span class="vc-grow">时区</span><input data-field="quietHoursTimezone" aria-label="时区" value="${esc(draft.quietHoursTimezone)}" maxlength="64"></label>
+                <label class="vc-cell"><span class="vc-grow">每日上限</span><input data-field="dailyLimit" aria-label="每日上限" inputmode="numeric" value="${esc(draft.dailyLimit)}"></label>
+                <label class="vc-cell"><span class="vc-grow">间隔（分钟）</span><input data-field="recentInteractionMinutes" aria-label="间隔（分钟）" inputmode="numeric" value="${esc(draft.recentInteractionMinutes)}"></label>
+                ${uiSwitch('toggle-enabled', '主动问候', 'data-field="enabled"', draft.enabled)}
+                ${uiSwitch('toggle-offline', '离线生成', 'data-field="offlineCapable"', draft.offlineCapable)}
+                ${uiSwitch('toggle-mode', '日常', 'data-mode="COMPANION"', draft.allowedModes.includes('COMPANION'))}
+                ${uiSwitch('toggle-mode', '剧情', 'data-mode="STORY"', draft.allowedModes.includes('STORY'))}
+                ${state.policyError ? `<p role="alert">${esc(state.policyError)}</p>` : ''}
+                ${state.policyNotice ? `<p role="status">${esc(state.policyNotice)}</p>` : ''}
+            </div>
+            ${waitingHost}
+        </section>
+        <section aria-label="渠道">
+            <h2 class="vc-group-title">渠道</h2>
+            ${state.channelError ? `<p role="alert">${esc(state.channelError)}</p>` : ''}
+            <div class="vc-group vc-inbox-channel-row">${channels}</div>
+        </section>
+    </div>`;
+}
+
+export function renderInboxChannel(state, key) {
+    const draft = state.channelDrafts.find((item) => item.key === key);
+    if (!draft) return '';
+    const title = draft.channel === 'FEISHU' ? '飞书' : '邮箱';
+    const preview = draft.previewBody ? 'true' : 'false';
+    const people = state.relationships.map((item) => uiSwitch(
+        'toggle-relationship',
+        instanceLabel(item, state.relationships),
+        `data-key="${esc(draft.key)}" data-relationship-id="${esc(item.relationshipId)}"`,
+        draft.relationshipIds.includes(item.relationshipId),
+    )).join('');
+    const field = draft.channel === 'FEISHU' ? '群名称' : '收件地址';
+    return `<header class="vc-navbar is-solid"><button type="button" class="vc-circle" data-action="pop-channel" aria-label="返回">${icon('chevron-left')}</button><div class="vc-nav-title">${title}</div><div class="vc-nav-spacer"></div></header>
+        <div class="vc-scroll"><div class="vc-column">
+            <h1 class="vc-large-title">${title}</h1>
+            <article class="vc-inbox-channel" data-channel-card data-key="${esc(draft.key)}" data-channel="${esc(draft.channel)}" data-preview="${preview}">
+                <div class="vc-group">
+                    <label class="vc-cell vc-inbox-wide"><span class="vc-grow">${field}</span><input data-field="configuredTarget" maxlength="320" autocomplete="off" value="${esc(safeTarget(draft.configuredTarget))}" aria-label="${field}"></label>
+                    <label class="vc-cell vc-inbox-wide vc-inbox-credential"><span class="vc-grow"><span>凭据</span><span class="vc-meta">${esc(credentialStateLabel(draft))}</span>${contractClip(credentialText(draft))}</span><input type="password" data-field="credential" aria-label="凭据" placeholder="${esc(credentialPlaceholder(draft))}" autocomplete="off" spellcheck="false"></label>
+                    ${uiSwitch('toggle-channel', '启用', `data-key="${esc(draft.key)}" data-field="channel-enabled"`, draft.enabled)}
+                    ${uiSwitch('toggle-preview', '正文预览', `data-key="${esc(draft.key)}" data-field="previewBody"`, draft.previewBody)}
+                </div>
+                ${people ? `<h2 class="vc-group-title">角色</h2><div class="vc-group">${people}</div>` : ''}
+                <div class="vc-inbox-actions"><button type="button" class="vc-btn vc-btn-text" data-action="clear-credential" data-key="${esc(draft.key)}">清除凭据</button><button type="button" class="vc-btn vc-btn-fill" data-action="save-channel" data-key="${esc(draft.key)}" ${state.busy ? 'disabled' : ''}>保存渠道</button></div>
+                ${draft.channel === 'FEISHU' ? '<p class="vc-footnote">群成员可见</p>' : ''}
+                ${state.channelError ? `<p role="alert">${esc(state.channelError)}</p>` : ''}
+            </article>
+        </div></div>`;
+}
+
+export function mountInboxTab(container, { onOpenConversation } = {}) {
+    if (!inboxVcUi()) return { active: false, refresh() {}, destroy() {} };
+    if (!container || typeof container.append !== 'function') throw new Error('mountInboxTab requires a container');
+    ensureInboxStyles();
+    container.classList.add('vc-inbox-tab');
+    container.setAttribute('data-vc-page', 'inbox');
+    container.replaceChildren();
+    const listScreen = document.createElement('div');
+    listScreen.className = 'vc-screen';
+    container.append(listScreen);
+    const nav = createNav(container);
+    const ac = new AbortController();
+    let channelKey = '';
+    let channelEl = null;
+    let menuHandle = null;
+    let stopped = false;
+    let conflictSheet = null;
+    let conflictOpen = false;
+    let reauthSheet = null;
+    const signal = ac.signal;
+
+    const page = createInboxPage({
+        onOpenConversation,
+        onChange(next) {
+            paint(next);
+        },
+    });
+
+    function paint(state) {
+        if (stopped || !state.open) return;
+        const top = listScreen.querySelector('.vc-scroll')?.scrollTop || 0;
+        const saveDisabled = !state.relationshipId || state.policyConflict || state.busy || state.loading;
+        listScreen.innerHTML = `<header class="vc-navbar"><div class="vc-nav-spacer"></div><button type="button" class="vc-nav-save" data-action="save-policy" ${saveDisabled ? 'disabled' : ''}>保存</button></header><div class="vc-scroll">${renderInboxTab(state)}</div>`;
+        const segment = listScreen.querySelector('[data-vc-inbox-segment]');
+        if (segment) {
+            bindSegment(segment, {
+                onChange(index) {
+                    page.applyForm(readForm(container));
+                    page.setInboxFilter(FILTERS[index]?.[0] || 'all');
+                },
+            });
+        }
+        const next = listScreen.querySelector('.vc-scroll');
+        if (next) next.scrollTop = top;
+        if (channelKey) {
+            const html = renderInboxChannel(state, channelKey);
+            if (!html) {
+                channelKey = '';
+                if (channelEl) {
+                    nav.pop();
+                    channelEl = null;
+                }
+            } else if (!channelEl?.isConnected) {
+                channelEl = document.createElement('section');
+                channelEl.className = 'vc-screen';
+                channelEl.setAttribute('aria-label', '渠道');
+                channelEl.innerHTML = html;
+                nav.push(channelEl);
+                restoreSecrets(container, state);
+            } else {
+                const secret = channelEl.querySelector('[data-field="credential"]')?.value || '';
+                channelEl.innerHTML = html;
+                restoreSecrets(container, state);
+                const input = channelEl.querySelector('[data-field="credential"]');
+                if (input && secret && !input.value) input.value = secret;
+            }
+        }
+        syncConflict(state);
+        syncReauth(state);
+    }
+
+    function syncConflict(state) {
+        if (!state.policyConflict) {
+            if (conflictSheet) {
+                const current = conflictSheet;
+                conflictSheet = null;
+                conflictOpen = false;
+                current.close();
+            }
+            return;
+        }
+        if (conflictOpen) return;
+        conflictOpen = true;
+        let handled = false;
+        const body = document.createElement('div');
+        body.innerHTML = `<p data-tone="warn">这些设置已在另一处更新。你的输入已保留。</p><div class="vc-inbox-actions"><button type="button" class="vc-btn vc-btn-text" data-action="view-latest-policy">查看最新</button><button type="button" class="vc-btn vc-btn-fill" data-action="keep-policy-draft">保留草稿</button></div>`;
+        const sheet = openSheet({
+            title: '保存冲突',
+            body,
+            onDone() {
+                conflictSheet = null;
+                conflictOpen = false;
+                if (!handled && page.state.policyConflict) page.keepPolicyDraft();
+            },
+        });
+        sheet.el.setAttribute('aria-label', '保存冲突');
+        conflictSheet = sheet;
+        body.addEventListener('click', (event) => {
+            const button = event.target.closest('button');
+            if (!button) return;
+            if (button.dataset.action === 'view-latest-policy') {
+                handled = true;
+                sheet.close();
+                void page.viewLatestPolicy().then(() => {
+                    if (page.state.policyConflict && !stopped) {
+                        handled = false;
+                        conflictOpen = false;
+                        syncConflict(page.state);
+                    }
+                });
+            }
+            if (button.dataset.action === 'keep-policy-draft') {
+                handled = true;
+                sheet.close();
+                page.keepPolicyDraft();
+            }
+        });
+    }
+
+    function syncReauth(state) {
+        if (!state.reauth.open) {
+            if (reauthSheet) {
+                const current = reauthSheet;
+                reauthSheet = null;
+                current.close();
+            }
+            return;
+        }
+        if (reauthSheet) {
+            const note = reauthSheet.el.querySelector('[data-reauth-error]');
+            if (note) note.textContent = state.policyError || state.channelError || '';
+            return;
+        }
+        const body = document.createElement('div');
+        body.innerHTML = `<p>需要重新验证身份。</p><label class="vc-cell">当前密码<input type="password" data-field="reauth-password" autocomplete="current-password" spellcheck="false"></label><p data-reauth-error role="alert"></p><div class="vc-inbox-actions"><button type="button" class="vc-btn vc-btn-text" data-action="reauth-cancel">取消</button><button type="button" class="vc-btn vc-btn-fill" data-action="reauth-submit">验证并继续</button></div>`;
+        const sheet = openSheet({
+            title: '重新验证身份',
+            body,
+            onDone() {
+                const current = reauthSheet;
+                reauthSheet = null;
+                if (current && page.state.reauth.open) page.cancelReauth();
+            },
+        });
+        sheet.el.setAttribute('aria-label', '重新验证身份');
+        reauthSheet = sheet;
+        const note = body.querySelector('[data-reauth-error]');
+        if (note) note.textContent = state.policyError || state.channelError || '';
+        body.querySelector('[data-action="reauth-cancel"]').addEventListener('click', () => page.cancelReauth());
+        body.querySelector('[data-action="reauth-submit"]').addEventListener('click', () => {
+            const input = body.querySelector('[data-field="reauth-password"]');
+            page.setReauthPassword(input?.value || '');
+            if (input) input.value = '';
+            void page.authenticate();
+        });
+    }
+
+    container.addEventListener('change', (event) => {
+        if (event.target?.dataset?.field === 'character') void page.selectRelationship(event.target.value);
+    }, { signal });
+    container.addEventListener('click', async (event) => {
+        const target = event.target.closest('button');
+        if (!target || !container.contains(target) || target.disabled) return;
+        if (target.closest('[data-vc-layer]')) return;
+        page.applyForm(readForm(container));
+        const action = target.dataset.action;
+        const key = target.dataset.key;
+        if (action === 'pick-character') {
+            menuHandle?.close();
+            menuHandle = popMenu(target, page.state.relationships.map((item) => ({
+                label: item.name,
+                check: item.relationshipId === page.state.relationshipId,
+                run: () => { void page.selectRelationship(item.relationshipId); },
+            })), { below: true });
+        }
+        if (action === 'toggle-enabled') page.togglePolicy('enabled');
+        if (action === 'toggle-offline') page.togglePolicy('offlineCapable');
+        if (action === 'toggle-mode') page.toggleMode(target.dataset.mode);
+        if (action === 'save-policy') void page.savePolicy();
+        if (action === 'view-latest-policy') void page.viewLatestPolicy();
+        if (action === 'keep-policy-draft') page.keepPolicyDraft();
+        if (action === 'toggle-channel') page.toggleChannel(key, 'enabled');
+        if (action === 'toggle-preview') page.toggleChannel(key, 'previewBody');
+        if (action === 'toggle-relationship') page.toggleRelationship(key, target.dataset.relationshipId);
+        if (action === 'clear-credential') page.clearCredential(key);
+        if (action === 'save-channel') void page.saveChannel(key);
+        if (action === 'open-follow') {
+            const followUpId = target.dataset.followUpId;
+            const row = page.state.followUps.find((item) => item.followUpId === followUpId);
+            if (!row || row.status === 'CANCELLED') return;
+            menuHandle?.close();
+            const selectorId = globalThis.CSS?.escape ? CSS.escape(String(followUpId)) : String(followUpId).replace(/["\\]/g, '');
+            menuHandle = popMenu(target, [{
+                label: '取消跟进',
+                danger: true,
+                run: () => container.querySelector(`[data-action="ask-cancel"][data-follow-up-id="${selectorId}"]`)?.click(),
+            }], { below: true });
+        }
+        if (action === 'ask-cancel') {
+            const followUpId = target.dataset.followUpId;
+            const ok = await confirmAlert({
+                title: '取消这条跟进？',
+                message: '取消后不会再对外发送。',
+                action: '取消跟进',
+                opener: target,
+            });
+            if (!ok || stopped) return;
+            page.askCancel(followUpId);
+            await page.confirmCancel();
+        }
+        if (action === 'confirm-cancel') void page.confirmCancel();
+        if (action === 'dismiss-cancel') page.dismissCancel();
+        if (action === 'filter-inbox') page.setInboxFilter(target.dataset.filter);
+        if (action === 'open-conversation') void page.openConversation(target.dataset.eventId);
+        if (action === 'retry-open') await page.open();
+        if (action === 'open-channel') {
+            channelKey = key || '';
+            paint(page.state);
+        }
+        if (action === 'pop-channel') {
+            channelKey = '';
+            if (nav.depth) nav.pop();
+            channelEl = null;
+        }
+        if (action === 'reauth-submit') {
+            page.setReauthPassword(container.querySelector('[data-field="reauth-password"]')?.value || '');
+            void page.authenticate();
+        }
+        if (action === 'reauth-cancel') page.cancelReauth();
+    }, { signal });
+
+    void page.open().then(() => {
+        if (!stopped) container.querySelector('h1')?.focus();
+    });
+
+    return {
+        active: true,
+        async refresh() {
+            if (stopped) return;
+            await page.open();
+        },
+        destroy() {
+            stopped = true;
+            menuHandle?.close();
+            conflictSheet?.close();
+            reauthSheet?.close();
+            ac.abort();
+            page.close();
+            channelEl = null;
+            container.replaceChildren();
+            container.classList.remove('vc-inbox-tab');
+        },
     };
 }

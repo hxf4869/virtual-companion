@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-vc-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>F4a</title>
+  <link rel="stylesheet" href="../vc-ui.css" id="vc-ui-css">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #slot { height: 100%; }
+  </style>
+</head>
+<body class="vc-ui">
+  <div id="slot"></div>
+  <script type="module">
+    const params = new URLSearchParams(location.search);
+    const pageName = params.get('page') === 'inbox' ? 'inbox' : 'memory';
+    const shot = params.get('shot') || 'ready';
+    const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+    localStorage.setItem('vc-ui', 'on');
+    document.documentElement.dataset.vcTheme = theme;
+    document.body.classList.add('vc-ui');
+    document.cookie = 'vc_csrf=fe4a-harness';
+    window.__fe4a = { policyPuts: 0, cancels: 0, forgets: 0 };
+    window.addEventListener('error', (event) => {
+      document.body.dataset.vcError = String(event.message || 'error').slice(0, 180);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      document.body.dataset.vcError = String(event.reason?.message || event.reason || 'rejection').slice(0, 180);
+    });
+
+    const memory = (extra = {}) => ({
+      memoryId: '101', version: 2, summary: '喜欢傍晚沿湖散步', type: 'PREFERENCE', mode: 'DAILY',
+      relationshipId: '11', lifecycle: 'ACTIVE', sourceStatus: 'VALID', recallEligible: true,
+      time: { eventDate: '2026-10-27', eventTime: null, eventTimezone: null, recordedAt: '2026-10-28T06:20:00Z' },
+      history: [], cleanup: { state: 'NONE' }, ...extra,
+    });
+    const LONG = '这是一段用于验收换行的合成记忆文本。'.repeat(12);
+    let forgotten = false;
+    let conflicted = false;
+
+    function json(body, status = 200, headers = {}) {
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json', ...headers },
+      });
+    }
+
+    function memoryRows() {
+      if (shot === 'empty' || shot === 'unbound') return [];
+      if (shot === 'long') {
+        return [memory({ summary: LONG })];
+      }
+      return [
+        memory(),
+        memory({ memoryId: '102', summary: '待核验的合成记忆', sourceStatus: 'PENDING_VERIFICATION' }),
+        memory({ memoryId: '103', summary: '已失效的合成记忆', sourceStatus: 'INVALID', mode: 'STORY' }),
+      ];
+    }
+
+    function policy() {
+      return {
+        enabled: true, quietHoursStart: '22:00', quietHoursEnd: '07:00', quietHoursTimezone: 'Asia/Shanghai',
+        dailyLimit: 3, recentInteractionMinutes: 30, allowedModes: ['COMPANION'], offlineCapable: false,
+      };
+    }
+
+    function inboxRows() {
+      if (shot === 'empty') return [];
+      const body = shot === 'long' ? LONG : '合成问候：傍晚见。';
+      return [
+        { eventId: 'evt-1', relationshipId: '11', conversationId: '21', linkStatus: 'present', intent: 'BODY', body, stDelivered: true, read: true },
+        { eventId: 'evt-2', relationshipId: '11', conversationId: '21', linkStatus: 'present', intent: 'BODY', body: '合成问候：尚未写入。', stDelivered: false, read: false },
+        { eventId: 'evt-3', relationshipId: '11', conversationId: '21', linkStatus: 'invalidated', intent: 'BODY', body: '合成问候：链接已失效。', stDelivered: true, read: false },
+      ];
+    }
+
+    const follow = {
+      followUpId: '41', relationshipId: '11', status: 'SCHEDULED', eventId: 'evt-1',
+      body: '合成跟进', eventDate: '2026-10-30', eventTime: '09:30', triggerAt: '2026-10-30T01:30:00Z',
+    };
+
+    globalThis.fetch = async (url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      const parsed = new URL(String(url), location.origin);
+      const path = parsed.pathname;
+      if (path.endsWith('/auth/session')) return json({ accountId: '9007199254740993', sessionId: '42' });
+      if (path.endsWith('/auth/reauth')) return json({ ok: true });
+      if (pageName === 'memory' && shot === 'offline' && path.includes('/memories')) return Promise.reject(new TypeError('Failed to fetch'));
+      if (pageName === 'inbox' && shot === 'offline' && path.endsWith('/inbox')) return Promise.reject(new TypeError('Failed to fetch'));
+      if (pageName === 'memory' && shot === 'loading' && path.includes('/memories')) return new Promise(() => {});
+      if (pageName === 'inbox' && shot === 'loading' && path.endsWith('/inbox')) return new Promise(() => {});
+      if (pageName === 'memory' && shot === 'error' && path.includes('/memories')) return json({ code: 'SERVER' }, 500);
+      if (pageName === 'inbox' && shot === 'error' && path.endsWith('/inbox')) return json({ code: 'SERVER' }, 500);
+      if (path.endsWith('/relationships')) {
+        if (pageName === 'memory' && shot === 'unbound') return json([]);
+        return json([
+          { relationshipId: '11', companionName: '澄夏', mode: 'COMPANION' },
+          { relationshipId: '12', companionName: '澄夏', mode: 'STORY' },
+        ]);
+      }
+      if (path.includes('/memories') && !/\/memories\/[^/]+/.test(path)) {
+        let items = memoryRows();
+        if (forgotten) {
+          items = items.map((item) => item.memoryId === '101'
+            ? { ...item, lifecycle: 'FORGETTING', recallEligible: false, cleanup: { state: 'PENDING' } }
+            : item);
+        }
+        const q = parsed.searchParams.get('q') || '';
+        const status = parsed.searchParams.get('status') || '';
+        if (q) items = items.filter((item) => String(item.summary).includes(q));
+        if (status === 'PENDING_VERIFICATION' || status === 'INVALID') items = items.filter((item) => item.sourceStatus === status);
+        else if (status) items = items.filter((item) => item.lifecycle === status);
+        return json(items);
+      }
+      if (path.endsWith('/evidence')) {
+        if (shot === 'source-error') return json({ code: 'SERVER' }, 500);
+        return json([{
+          chatDisplayName: '湖边散步', messageId: 'm1', revision: 3, status: 'VALID',
+          sourceTimestamp: '2026-10-27T10:00:00Z', sourceTimezone: 'Asia/Shanghai', excerpt: '喜欢散步',
+        }]);
+      }
+      const one = /\/memories\/([^/]+)$/.exec(path);
+      if (one && method === 'GET') {
+        const row = memoryRows().find((item) => item.memoryId === decodeURIComponent(one[1])) || memory();
+        return json({
+          ...row,
+          history: [{ version: 1, lifecycle: 'ACTIVE', summary: '更早的合成记录', time: { recordedAt: '2026-10-01T00:00:00Z' } }],
+        });
+      }
+      if (one && method === 'PATCH') {
+        if (!conflicted) {
+          conflicted = true;
+          return json({ code: 'MEMORY_VERSION_CONFLICT', message: 'conflict' }, 409);
+        }
+        const body = JSON.parse(init.body || '{}');
+        return json(memory({ memoryId: '201', version: 3, summary: body.summary || '改为早上散步' }));
+      }
+      if (one && method === 'DELETE') {
+        forgotten = true;
+        window.__fe4a.forgets += 1;
+        return json({ cleanup: { state: 'PENDING' } });
+      }
+      if (path.endsWith('/proactive-policy') && method === 'PUT') {
+        window.__fe4a.policyPuts += 1;
+        return json(JSON.parse(init.body || '{}'));
+      }
+      if (path.endsWith('/proactive-policy')) return json(policy());
+      if (path.endsWith('/follow-ups')) return json(shot === 'empty' ? [] : [follow]);
+      if (path.endsWith('/cancel') && method === 'POST') {
+        window.__fe4a.cancels += 1;
+        return json({ ...follow, status: 'CANCELLED' });
+      }
+      if (path.endsWith('/inbox')) return json(inboxRows());
+      if (path.endsWith('/notification-channels')) {
+        return json([
+          { channelId: '7', channel: 'EMAIL', configuredTarget: 'owner@example.test', enabled: true, previewBody: false, relationshipIds: ['11'], credential: 'super-secret-value' },
+          { channelId: '8', channel: 'FEISHU', configuredTarget: '合成群', enabled: false, previewBody: false, relationshipIds: ['11'], credential: 'super-secret-value' },
+        ]);
+      }
+      if (path.endsWith('/notification-deliveries')) {
+        return json([
+          { deliveryId: '31', eventId: 'evt-1', channel: 'EMAIL', configuredTarget: 'owner@example.test', status: 'accepted', stoppedReason: '' },
+          { deliveryId: '32', eventId: 'evt-2', channel: 'FEISHU', configuredTarget: '合成群', status: 'failed', stoppedReason: '' },
+          { deliveryId: '33', eventId: 'evt-1', channel: 'FEISHU', configuredTarget: '合成群', status: 'unknown', stoppedReason: '' },
+          { deliveryId: '34', eventId: 'evt-2', channel: 'EMAIL', configuredTarget: 'owner@example.test', status: 'pending', stoppedReason: '' },
+        ]);
+      }
+      return json({ code: 'NOT_FOUND' }, 404);
+    };
+
+    const { setStHeadersProvider } = await import('../api.js');
+    setStHeadersProvider(() => ({ 'X-CSRF-Token': 'fe4a-harness' }));
+    const slot = document.querySelector('#slot');
+    if (pageName === 'inbox') {
+      const { mountInboxTab } = await import('../inbox-page.js');
+      const handle = mountInboxTab(slot);
+      if (shot === 'loading') {
+        const started = performance.now();
+        while (!slot.querySelector('[role="status"]') && performance.now() - started < 4000) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      } else {
+        await handle.refresh();
+      }
+    } else {
+      const { mountMemoryTab } = await import('../memory-page.js');
+      const handle = mountMemoryTab(slot);
+      if (shot === 'loading') {
+        const started = performance.now();
+        while (!slot.querySelector('[role="status"]') && performance.now() - started < 4000) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      } else {
+        await handle.refresh();
+      }
+    }
+    slot.dataset.vcReady = '1';
+  </script>
+</body>
+</html>

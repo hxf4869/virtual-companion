@@ -1,6 +1,13 @@
 // UI-P03：沿用扩展深色 tokens；桌面阅读分栏，手机列表/详情独立呈现。
 // Go 为唯一数据入口。发生时间使用 time，不从记录时间推算；关闭/切换会废弃迟到响应。
 import * as api from './api.js';
+import { confirmAlert } from './ui/alert.js';
+import { bindSegment } from './ui/controls.js';
+import { icon } from './ui/icons.js';
+import { popMenu } from './ui/menu.js';
+import { animate } from './ui/motion.js';
+import { createNav } from './ui/nav.js';
+import { readVcUiFlag } from './ui/theme.js';
 
 if (typeof globalThis.addEventListener !== 'function' || typeof globalThis.dispatchEvent !== 'function') {
     const bus = new EventTarget();
@@ -308,4 +315,476 @@ export function mountMemoryPage({ getRelationshipId = () => '' } = {}) {
     };
     bindOpenMemory((target) => controller.open(target));
     return controller;
+}
+
+// F4a：vc-ui 开启时把记忆渲染进外壳容器。关闭时不渲染，仍走上面的对话框。
+const MEMORY_SEGMENTS = [
+    ['', '全部'],
+    ['PENDING_VERIFICATION', '待核验'],
+    ['INVALID', '已失效'],
+];
+const STATUS_OPTIONS = [['', '全部状态'], ...Object.entries(lifecycleLabels), ['PENDING_VERIFICATION', '来源待核验'], ['INVALID', '来源已失效']];
+
+function vcUiEnabled() {
+    const body = globalThis.document?.body;
+    if (!body?.classList) return false;
+    try {
+        if (readVcUiFlag()) body.classList.add('vc-ui');
+    } catch { /* 存储不可用时只看类名 */ }
+    return body.classList.contains('vc-ui') === true;
+}
+
+function ensureMemoryStyles() {
+    const head = document.head || document.documentElement;
+    if (!document.getElementById('vc-ui-css')) {
+        const ui = document.createElement('link');
+        ui.id = 'vc-ui-css';
+        ui.rel = 'stylesheet';
+        ui.href = new URL('./vc-ui.css', import.meta.url).href;
+        head.append(ui);
+    }
+    if (!document.querySelector('link[data-vc-memory-css]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = new URL('./memory.css', import.meta.url).href;
+        link.setAttribute('data-vc-memory-css', '');
+        head.append(link);
+    }
+}
+
+function relationshipLabel(rel, relationships) {
+    const name = rel?.companionName || '未命名角色';
+    const same = (relationships || []).filter((item) => (item.companionName || '未命名角色') === name);
+    if (same.length < 2) return name;
+    const index = same.findIndex((item) => String(item.relationshipId) === String(rel.relationshipId));
+    if (index < 0) return name;
+    return `${name} ${index + 1}`;
+}
+
+function modeLabel(mode) {
+    if (mode === 'STORY') return '剧情';
+    if (mode === 'DAILY') return '日常';
+    return '模式未知';
+}
+
+function dayLabel(value) {
+    if (!value) return '日期未知';
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return '日期未知';
+    try { return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(date); }
+    catch { return String(value); }
+}
+
+function toneForLifecycle(lifecycle) {
+    if (lifecycle === 'ACTIVE') return 'ok';
+    if (lifecycle === 'SUPERSEDED') return 'warn';
+    if (lifecycle === 'FORGETTING' || lifecycle === 'FORGOTTEN') return 'danger';
+    return 'neutral';
+}
+
+function toneForSource(status) {
+    if (status === 'VALID') return 'ok';
+    if (status === 'PENDING_VERIFICATION') return 'warn';
+    if (status === 'INVALID') return 'danger';
+    return 'neutral';
+}
+
+function dotStatus(cls, state, tone, text) {
+    return `<span class="vc-status vc-status-${tone} ${cls}" data-state="${esc(state)}"><i class="vc-dot vc-dot-${tone}" aria-hidden="true"></i>${esc(text)}</span>`;
+}
+
+function memoryStatuses(item) {
+    const life = lifecycleLabels[item.lifecycle] || '状态未知';
+    const source = sourceLabels[item.sourceStatus] || '来源状态未知';
+    return `${dotStatus('vc-memory-state', item.lifecycle, toneForLifecycle(item.lifecycle), life)}${dotStatus('vc-memory-source', item.sourceStatus, toneForSource(item.sourceStatus), source)}`;
+}
+
+function listStatus(item) {
+    const life = item?.lifecycle;
+    const source = item?.sourceStatus;
+    if (life === 'FORGETTING' || item?.cleanup?.state === 'PENDING') return dotStatus('vc-memory-state', life || 'FORGETTING', 'danger', lifecycleLabels.FORGETTING);
+    if (life === 'FORGOTTEN') return dotStatus('vc-memory-state', life, 'danger', lifecycleLabels.FORGOTTEN);
+    if (life === 'SUPERSEDED') return dotStatus('vc-memory-state', life, 'warn', lifecycleLabels.SUPERSEDED);
+    if (source === 'INVALID') return dotStatus('vc-memory-source', source, 'danger', sourceLabels.INVALID);
+    if (source === 'PENDING_VERIFICATION') return dotStatus('vc-memory-source', source, 'warn', sourceLabels.PENDING_VERIFICATION);
+    return '';
+}
+
+function tabBtn(action, text, { disabled = false, fill = false, danger = false, extra = '' } = {}) {
+    const cls = fill ? 'vc-btn vc-btn-fill' : `vc-btn vc-btn-text${danger ? ' is-danger' : ''}`;
+    return `<button type="button" class="${cls}" data-action="${action}" ${extra} ${disabled ? 'disabled' : ''}>${text}</button>`;
+}
+
+function skeletonRows(count = 3) {
+    return `<div class="vc-group" aria-hidden="true">${Array.from({ length: count }, () => '<div class="vc-skeleton-row"><span class="vc-grow"><span class="vc-skeleton vc-skeleton-line"></span><span class="vc-skeleton vc-skeleton-line is-short"></span></span></div>').join('')}</div>`;
+}
+
+function emptyBlock(glyph, text, action, label) {
+    return `<div class="vc-empty">${icon(glyph, { size: 32 })}<p class="vc-memory-empty" role="status">${text}</p>${action ? tabBtn(action, label, { fill: true }) : ''}</div>`;
+}
+
+export function renderMemoryTab(s) {
+    const locked = s.busy || s.editing;
+    const current = (s.relationships || []).find((item) => String(item.relationshipId) === String(s.relationshipId));
+    const segment = MEMORY_SEGMENTS.findIndex(([value]) => value === (s.filters?.status || ''));
+    const pressed = segment >= 0 ? segment : 0;
+    const statusSelect = STATUS_OPTIONS.map(([value, label]) => `<option value="${esc(value)}" ${(s.filterDraft?.status || '') === value ? 'selected' : ''}>${label}</option>`).join('');
+    const instanceOptions = (s.relationships || []).map((item) => `<option value="${esc(item.relationshipId)}" ${String(item.relationshipId) === String(s.relationshipId) ? 'selected' : ''}>${esc(relationshipLabel(item, s.relationships))}</option>`).join('');
+    const segments = MEMORY_SEGMENTS.map(([value, label], index) => `<button type="button" data-status="${esc(value)}" aria-pressed="${index === pressed ? 'true' : 'false'}">${label}</button>`).join('');
+    const disableField = locked ? 'disabled' : '';
+    const instanceRow = (s.relationships || []).length ? `<div class="vc-group"><button type="button" class="vc-cell" id="vc-memory-instance" data-action="pick-instance" aria-haspopup="menu" ${locked || s.loading ? 'disabled' : ''}><span class="vc-grow">实例</span><span class="vc-value vc-select-value">${esc(current ? relationshipLabel(current, s.relationships) : '未命名角色')}${icon('chevrons-up-down', { size: 16 })}</span></button></div>` : '';
+    let results = '';
+    if (s.listError) {
+        results = `<div class="vc-empty">${icon('wifi-off', { size: 32 })}<p role="alert">${esc(s.listError)}</p>${tabBtn('retry-list', '重试', { fill: true })}</div>`;
+    } else if (s.loading && !(s.items || []).length) {
+        results = `${skeletonRows()}<p class="vc-clip" role="status">正在加载记忆…</p>`;
+    } else if (!(s.relationships || []).length) {
+        results = emptyBlock('brain', '还没有角色实例，请先在聊天中绑定角色。', 'retry-list', '重试');
+    } else if (!(s.items || []).length) {
+        results = `<div class="vc-empty">${icon('brain', { size: 32 })}<p class="vc-memory-empty" role="status">没有找到记忆。试试其他关键词或筛选条件。</p>${tabBtn('clear-filters', '清除筛选', { fill: true })}</div>`;
+    } else {
+        const rows = s.items.map((item) => {
+            const rel = (s.relationships || []).find((row) => String(row.relationshipId) === String(item.relationshipId));
+            const meta = `${rel?.companionName || '未命名角色'} · ${modeLabel(item.mode)} · ${dayLabel(item.time?.eventDate)}`;
+            const status = listStatus(item);
+            const currentRow = s.detail && idOf(s.detail) === idOf(item);
+            return `<li><button type="button" class="vc-cell vc-memory-row" data-memory-id="${esc(item.memoryId)}" aria-current="${currentRow ? 'true' : 'false'}" ${locked ? 'disabled' : ''}><span class="vc-grow"><span class="vc-memory-summary vc-memory-content">${esc(item.summary)}</span><span class="vc-meta">${esc(meta)}</span>${status}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button></li>`;
+        }).join('');
+        results = `<div class="vc-group"><ul class="vc-memory-list">${rows}</ul></div>${s.loading ? '<p role="status">正在加载记忆…</p>' : ''}${s.nextCursor ? tabBtn('more', '加载更多', { disabled: s.loading || locked }) : ''}`;
+    }
+    return `<div class="vc-column">
+        <h1 class="vc-large-title" tabindex="-1" data-vc-owned-title>记忆</h1>
+        <form class="vc-memory-filters" data-form="filters">
+            <select class="vc-clip" name="relationshipId" aria-label="角色实例" tabindex="-1" aria-hidden="true" ${locked || s.loading ? 'disabled' : ''}>${instanceOptions}</select>
+            <select class="vc-clip" name="status" aria-label="记忆状态" tabindex="-1" aria-hidden="true" ${disableField}>${statusSelect}</select>
+            ${instanceRow}
+            <label class="vc-search"><span class="vc-clip">搜索记忆</span>${icon('search', { size: 18 })}<input type="search" name="q" aria-label="搜索记忆" placeholder="搜索记忆" value="${esc(s.filterDraft?.q || '')}" ${disableField}><button class="vc-clip" type="submit" ${disableField}>搜索</button></label>
+            <div class="vc-segment" data-vc-memory-segment aria-label="记忆状态"><i class="vc-segment-thumb"></i>${segments}</div>
+            <div class="vc-group"><details><summary class="vc-cell"><span class="vc-grow">发生日期</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></summary><div class="vc-memory-dates"><label>从<input type="date" name="eventDateFrom" value="${esc(s.filterDraft?.eventDateFrom || '')}" ${disableField}></label><label>至<input type="date" name="eventDateTo" value="${esc(s.filterDraft?.eventDateTo || '')}" ${disableField}></label><button class="vc-btn vc-btn-text" type="submit" ${disableField}>应用日期</button></div></details></div>
+        </form>
+        <div class="vc-memory-results" aria-busy="${s.loading ? 'true' : 'false'}" aria-label="记忆列表">${results}</div>
+    </div>`;
+}
+
+export function renderMemoryDetailTab(s) {
+    const backDisabled = s.busy || s.editing;
+    const refreshDisabled = s.busy || s.detailLoading || s.editing;
+    return `<header class="vc-navbar is-solid"><button type="button" class="vc-circle" data-action="back" aria-label="返回列表" ${backDisabled ? 'disabled' : ''}>${icon('chevron-left')}</button><div class="vc-nav-title">记忆详情</div><div class="vc-nav-spacer"></div><button type="button" class="vc-circle" data-action="refresh-detail" aria-label="刷新详情" ${refreshDisabled ? 'disabled' : ''}>${icon('refresh-cw')}</button></header><div class="vc-scroll"><div class="vc-column">${renderMemoryDetailBody(s)}</div></div>`;
+}
+
+function renderMemoryDetailBody(s) {
+    if (!s.detail) {
+        if (s.detailLoading) return `${skeletonRows()}<p class="vc-clip" role="status">正在加载记忆…</p>`;
+        return `<div class="vc-empty">${icon(s.detailError ? 'wifi-off' : 'brain', { size: 32 })}<p class="vc-memory-empty" role="${s.detailError ? 'alert' : 'status'}">${esc(s.detailError || '选择一条记忆，查看来源与修订。')}</p>${s.detailError ? tabBtn('refresh-detail', '重试详情', { fill: true, disabled: s.detailLoading }) : ''}</div>`;
+    }
+    const m = s.detail;
+    const time = m.time || {};
+    const instance = (s.relationships || []).find((item) => String(item.relationshipId) === String(m.relationshipId));
+    const evidence = s.evidenceError
+        ? `<p role="alert">${esc(s.evidenceError)}</p>`
+        : s.detailLoading
+            ? '<p role="status">正在核对来源…</p>'
+            : !(s.evidence || []).length
+                ? '<p>暂无可展示的来源。</p>'
+                : (s.evidence || []).map((item) => `<article class="vc-cell vc-memory-evidence"><strong>${esc(item.chatDisplayName || '来源会话')}</strong><span class="vc-memory-source" data-state="${esc(item.status)}">${esc(sourceLabels[item.status] || '来源状态未知')}</span><p class="vc-memory-secondary">消息 ${esc(item.messageId)} · 修订 ${esc(item.revision)} · ${esc(stamp(item.sourceTimestamp, item.sourceTimezone))}${item.sourceTimezone ? ` · ${esc(item.sourceTimezone)}` : ''}</p>${item.excerpt ? `<blockquote>${esc(item.excerpt)}</blockquote>` : '<p>原文片段不可用。</p>'}</article>`).join('');
+    const history = m.history?.length
+        ? `<ol class="vc-memory-history">${m.history.map((item) => `<li class="vc-cell vc-memory-rev"><strong>修订 ${esc(item.version)}</strong><span class="vc-meta">${esc(lifecycleLabels[item.lifecycle] || '状态未知')} · ${esc(stamp(item.time?.recordedAt))}</span><p>${esc(item.summary)}</p></li>`).join('')}</ol>`
+        : '<p>暂无更早的修订。</p>';
+    const editing = s.editing ? `<form class="vc-group" data-form="edit"><label class="vc-cell" for="vc-memory-draft"><span class="vc-grow">纠正记忆</span></label><textarea id="vc-memory-draft" name="summary" rows="5" required ${s.busy ? 'disabled' : ''}>${esc(s.draft)}</textarea><div class="vc-memory-actions">${tabBtn('cancel-edit', '取消编辑', { disabled: s.busy })}<button class="vc-btn vc-btn-fill" type="submit" ${s.busy || s.conflict || s.detailLoading || !canEdit(m) ? 'disabled' : ''}>${s.busy ? '保存中…' : '保存修订'}</button></div></form>` : '';
+    const actions = s.editing ? '' : `<div class="vc-memory-actions vc-memory-detail-actions">${canEdit(m) ? tabBtn('edit', '纠正', { fill: true, disabled: s.busy || s.detailLoading }) : ''}${!['FORGETTING', 'FORGOTTEN'].includes(m.lifecycle) ? tabBtn('confirm-forget', '删除长期记忆', { danger: true, disabled: s.busy || s.detailLoading }) : ''}</div>`;
+    return `<h1 class="vc-memory-title" tabindex="-1">${esc(m.summary)}</h1>
+        <p class="vc-meta">${memoryStatuses(m)}<span>修订 ${esc(m.version)}</span></p>
+        <dl class="vc-group vc-memory-facts"><div class="vc-cell"><dt>发生日期</dt><dd>${esc(time.eventDate || '未知')}${time.eventTime ? ` ${esc(time.eventTime)}` : ''}${time.eventTimezone ? ` · ${esc(time.eventTimezone)}` : ''}</dd></div>
+        <div class="vc-cell"><dt>记录时间</dt><dd>${esc(stamp(time.recordedAt))}</dd></div>
+        <div class="vc-cell"><dt>作用范围</dt><dd>${esc(instance?.companionName || '当前角色')} · ${modeLabel(m.mode)} · 仅此角色实例</dd></div>
+        <div class="vc-cell"><dt>召回资格</dt><dd>${m.recallEligible ? '具备资格，实际使用取决于会话与分支' : '当前不参与召回'}</dd></div>
+        ${typeLabels[m.type] ? `<div class="vc-cell"><dt>类型</dt><dd>${typeLabels[m.type]}</dd></div>` : ''}</dl>
+        ${m.sourceStatus === 'PENDING_VERIFICATION' ? '<p class="vc-memory-notice">来源待核验，暂不能作为已确认事实。</p>' : ''}
+        ${m.sourceStatus === 'INVALID' ? '<p class="vc-memory-notice">来源已失效，不用于后续召回。</p>' : ''}
+        ${cleanupMarkup(m.cleanup)}
+        <h3 class="vc-group-title">来源</h3><div class="vc-group">${evidence}</div>
+        <h3 class="vc-group-title">修订历史</h3><div class="vc-group">${history}</div>
+        ${s.conflict ? '<div class="vc-memory-notice" role="alert">这条记忆已在另一处更新。你的输入已保留，请刷新详情后继续。</div>' : ''}
+        ${s.detailError ? `<p role="alert">${esc(s.detailError)}</p>` : ''}${s.notice ? `<p role="status">${esc(s.notice)}</p>` : ''}
+        ${editing}
+        ${actions}
+        <p class="vc-footnote">将停止召回这条记忆并清理相关派生内容，不会自动删除聊天原文或全部备份。</p>
+        <dialog class="vc-memory-confirm" data-forget-dialog aria-labelledby="vc-memory-forget-title"><h2 id="vc-memory-forget-title">删除这条长期记忆？</h2><p>${FORGET_NOTICE}</p><p>将停止召回这条记忆并清理相关派生内容，不会自动删除聊天原文或全部备份。</p><div class="vc-memory-actions">${button('cancel-forget', '取消')}${button('forget', '删除长期记忆', false, 'danger')}</div></dialog>
+        ${s.reauthAction ? `<div class="vc-group" data-reauth-dialog role="dialog" aria-labelledby="vc-memory-reauth-title"><h2 id="vc-memory-reauth-title">重新验证身份</h2><form data-form="reauth"><label>当前密码<input type="password" name="password" autocomplete="current-password" required ${s.busy ? 'disabled' : ''}></label>${s.detailError ? `<p role="alert">${esc(s.detailError)}</p>` : ''}<div class="vc-memory-actions">${tabBtn('cancel-reauth', '取消', { disabled: s.busy })}<button class="vc-btn vc-btn-fill" type="submit" ${s.busy ? 'disabled' : ''}>验证并继续</button></div></form></div>` : ''}`;
+}
+
+function cssEscape(value) {
+    const text = String(value ?? '');
+    if (globalThis.CSS?.escape) return CSS.escape(text);
+    return text.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+}
+
+function captureFocus(root) {
+    const active = document.activeElement;
+    if (!active || !root.contains(active)) return null;
+    return {
+        id: active.id || '',
+        action: active.dataset?.action || '',
+        name: active.name || '',
+        memoryId: active.dataset?.memoryId || '',
+        status: active.dataset?.status || '',
+        start: typeof active.selectionStart === 'number' ? active.selectionStart : null,
+        end: typeof active.selectionEnd === 'number' ? active.selectionEnd : null,
+    };
+}
+
+function restoreFocus(root, saved) {
+    if (!saved) return;
+    let el = null;
+    if (saved.id) el = root.querySelector(`#${cssEscape(saved.id)}`);
+    else if (saved.memoryId) el = root.querySelector(`[data-memory-id="${cssEscape(saved.memoryId)}"]`);
+    else if (saved.status) el = root.querySelector(`[data-status="${cssEscape(saved.status)}"]`);
+    else if (saved.action) el = root.querySelector(`[data-action="${cssEscape(saved.action)}"]`);
+    else if (saved.name) el = root.querySelector(`[name="${cssEscape(saved.name)}"]`);
+    if (!el || typeof el.focus !== 'function') return;
+    el.focus();
+    if (saved.start != null && typeof el.setSelectionRange === 'function') {
+        try { el.setSelectionRange(saved.start, saved.end); } catch { /* 日期框没有选区 */ }
+    }
+}
+
+function forgettingNow(previous, lifecycle) {
+    return previous && !['FORGETTING', 'FORGOTTEN'].includes(previous) && ['FORGETTING', 'FORGOTTEN'].includes(lifecycle);
+}
+
+export function mountMemoryTab(container, { getRelationshipId = () => '' } = {}) {
+    if (!vcUiEnabled()) return { active: false, refresh() {}, destroy() {} };
+    if (!container || typeof container.append !== 'function') throw new Error('mountMemoryTab requires a container');
+    ensureMemoryStyles();
+    container.classList.add('vc-memory-tab');
+    container.setAttribute('data-vc-page', 'memory');
+    container.replaceChildren();
+    const listScreen = document.createElement('div');
+    listScreen.className = 'vc-screen';
+    container.append(listScreen);
+    const nav = createNav(container);
+    const ac = new AbortController();
+    const page = createMemoryPage({ onChange: (state) => paint(state) });
+    let detailEl = null;
+    let stopped = false;
+    let menuHandle = null;
+    let datesOpen = false;
+    const life = new Map();
+    const pendingCollapse = new Set();
+    const started = new Set();
+    const gone = new Set();
+    const signal = ac.signal;
+
+    function noteLife(state) {
+        const seen = [];
+        for (const item of state.items || []) seen.push(item);
+        if (state.detail) seen.push(state.detail);
+        for (const item of seen) {
+            const id = idOf(item);
+            if (forgettingNow(life.get(id), item.lifecycle)) pendingCollapse.add(id);
+            if (!['FORGETTING', 'FORGOTTEN'].includes(item.lifecycle)) pendingCollapse.delete(id);
+            life.set(id, item.lifecycle);
+        }
+    }
+
+    function beginCollapse(id) {
+        if (started.has(id) || gone.has(id) || page.state.view !== 'list') return;
+        const row = listScreen.querySelector(`.vc-memory-row[data-memory-id="${cssEscape(id)}"]`);
+        const item = row?.closest('li');
+        if (!item) return;
+        started.add(id);
+        pendingCollapse.delete(id);
+        item.classList.add('is-collapsing');
+        item.dataset.collapseId = id;
+        item.style.overflow = 'hidden';
+        const height = item.offsetHeight;
+        const motion = animate(item, [
+            { height: `${height}px`, opacity: 1 },
+            { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px' },
+        ], { duration: 420 });
+        const finish = () => {
+            started.delete(id);
+            gone.add(id);
+            item.remove();
+        };
+        motion.finished?.then(finish, finish);
+    }
+
+    function paint(state) {
+        if (stopped || !state.open) return;
+        noteLife(state);
+        const saved = captureFocus(container);
+        datesOpen = listScreen.querySelector('.vc-memory-filters details')?.open || datesOpen;
+        const parked = [...listScreen.querySelectorAll('li.is-collapsing')];
+        for (const item of parked) item.remove();
+        const scrollTop = listScreen.querySelector('.vc-scroll')?.scrollTop || 0;
+        const visible = {
+            ...state,
+            items: (state.items || []).filter((item) => !gone.has(idOf(item)) && !started.has(idOf(item))),
+        };
+        listScreen.innerHTML = `<div class="vc-scroll">${renderMemoryTab(visible)}</div>`;
+        if (datesOpen) {
+            const details = listScreen.querySelector('.vc-memory-filters details');
+            if (details) details.open = true;
+        }
+        const list = listScreen.querySelector('.vc-memory-list');
+        for (const item of parked) {
+            if (!item.isConnected) list?.append(item);
+        }
+        const nextScroll = listScreen.querySelector('.vc-scroll');
+        if (nextScroll) nextScroll.scrollTop = scrollTop;
+        const segment = listScreen.querySelector('[data-vc-memory-segment]');
+        if (segment) {
+            bindSegment(segment, {
+                onChange(index) {
+                    const status = MEMORY_SEGMENTS[index]?.[0] ?? '';
+                    const select = listScreen.querySelector('select[name="status"]');
+                    if (select) select.value = status;
+                    page.setFilterDraft('status', status);
+                    select?.form?.requestSubmit();
+                },
+            });
+        }
+        if (state.view === 'detail') {
+            const html = renderMemoryDetailTab(state);
+            if (!detailEl?.isConnected) {
+                detailEl = document.createElement('section');
+                detailEl.className = 'vc-screen vc-memory-detail-screen';
+                detailEl.setAttribute('aria-label', '记忆详情');
+                detailEl.setAttribute('aria-busy', state.detailLoading ? 'true' : 'false');
+                detailEl.innerHTML = html;
+                nav.push(detailEl);
+            } else {
+                detailEl.setAttribute('aria-busy', state.detailLoading ? 'true' : 'false');
+                detailEl.innerHTML = html;
+            }
+        } else if (detailEl) {
+            nav.pop();
+            detailEl = null;
+        }
+        if (state.view === 'list') {
+            for (const id of [...pendingCollapse]) beginCollapse(id);
+        }
+        restoreFocus(container, saved);
+    }
+
+    container.addEventListener('input', (event) => {
+        const name = event.target?.name;
+        if (name === 'summary') page.setDraft(event.target.value);
+        if (['q', 'status', 'eventDateFrom', 'eventDateTo'].includes(name)) page.setFilterDraft(name, event.target.value);
+        if (['eventDateFrom', 'eventDateTo'].includes(name) && event.target.form?.elements?.eventDateTo) {
+            event.target.form.elements.eventDateTo.setCustomValidity('');
+        }
+    }, { signal });
+    container.addEventListener('change', (event) => {
+        if (event.target?.name === 'relationshipId') {
+            gone.clear();
+            void page.changeRelationship(event.target.value);
+        }
+        if (event.target?.name === 'status') {
+            page.setFilterDraft('status', event.target.value);
+            event.target.form?.requestSubmit();
+        }
+    }, { signal });
+    container.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || !container.contains(form)) return;
+        event.preventDefault();
+        if (form.dataset.form === 'edit') void page.save();
+        if (form.dataset.form === 'filters') {
+            const data = Object.fromEntries(new FormData(form));
+            const end = form.elements.eventDateTo;
+            if (end) end.setCustomValidity(data.eventDateFrom && data.eventDateTo && data.eventDateFrom > data.eventDateTo ? '结束日期不能早于开始日期。' : '');
+            if (form.reportValidity()) {
+                gone.clear();
+                void page.filter({ q: data.q || '', status: data.status || '', eventDateFrom: data.eventDateFrom || '', eventDateTo: data.eventDateTo || '' });
+            }
+        }
+        if (form.dataset.form === 'reauth') {
+            const password = form.elements.password.value;
+            form.elements.password.value = '';
+            void page.authenticate(password);
+        }
+    }, { signal });
+    container.addEventListener('click', async (event) => {
+        const target = event.target.closest('button');
+        if (!target || !container.contains(target) || target.disabled) return;
+        if (target.dataset.memoryId) {
+            await page.select(target.dataset.memoryId);
+            container.querySelector('.vc-memory-detail-screen .vc-memory-title')?.focus();
+            return;
+        }
+        const action = target.dataset.action;
+        if (action === 'pick-instance') {
+            menuHandle?.close();
+            const relationships = page.state.relationships || [];
+            menuHandle = popMenu(target, relationships.map((item) => ({
+                label: relationshipLabel(item, relationships),
+                check: String(item.relationshipId) === String(page.state.relationshipId),
+                run: () => {
+                    gone.clear();
+                    void page.changeRelationship(item.relationshipId);
+                },
+            })), { below: true });
+        }
+        if (action === 'back') {
+            page.back();
+            container.querySelector('.vc-memory-row[aria-current="true"]')?.focus();
+        }
+        if (action === 'more') await page.more();
+        if (action === 'retry-list') {
+            if (!page.state.relationships.length) await page.open(getRelationshipId());
+            else await page.loadList();
+        }
+        if (action === 'clear-filters') await page.filter({ q: '', status: '', eventDateFrom: '', eventDateTo: '' });
+        if (action === 'refresh-detail') await page.refreshDetail();
+        if (action === 'edit') {
+            page.edit();
+            container.querySelector('#vc-memory-draft')?.focus();
+        }
+        if (action === 'cancel-edit') page.cancelEdit();
+        if (action === 'cancel-reauth') page.cancelReauth();
+        if (action === 'confirm-forget') {
+            const ok = await confirmAlert({
+                title: '删除这条长期记忆？',
+                message: FORGET_NOTICE,
+                action: '删除',
+                opener: target,
+            });
+            if (!ok || stopped) return;
+            await page.forget();
+            const removed = page.state.detail && ['FORGETTING', 'FORGOTTEN'].includes(page.state.detail.lifecycle);
+            if (removed && !page.state.reauthAction) page.back();
+        }
+        if (action === 'cancel-forget') container.querySelector('[data-forget-dialog]')?.close();
+        if (action === 'forget') {
+            container.querySelector('[data-forget-dialog]')?.close();
+            await page.forget();
+            if (page.state.detail && ['FORGETTING', 'FORGOTTEN'].includes(page.state.detail.lifecycle) && !page.state.reauthAction) page.back();
+        }
+    }, { signal });
+
+    void page.open(getRelationshipId()).then(() => {
+        if (!stopped) container.querySelector('h1')?.focus();
+    });
+
+    return {
+        active: true,
+        async refresh() {
+            if (stopped) return;
+            gone.clear();
+            pendingCollapse.clear();
+            const preferred = page.state.relationshipId || getRelationshipId() || '';
+            await page.open(preferred);
+        },
+        destroy() {
+            stopped = true;
+            menuHandle?.close();
+            ac.abort();
+            page.close();
+            detailEl = null;
+            container.replaceChildren();
+            container.classList.remove('vc-memory-tab');
+        },
+    };
 }
