@@ -6,12 +6,15 @@
 ## 网络和数据
 
 现有 Nginx 终止公网域名（`VC_PUBLIC_HOST`）的 TLS，加入 `vc-v2-edge` 后访问
-`172.24.0.2:8080`。私有 ingress、companiond、ST、MemoryCore、embedding 共享网络命名空间，
+`172.24.0.2:8080`。私有 ingress、companiond、ST、MemoryCore、embedding、rerank 共享网络命名空间，
 业务服务保持监听 `127.0.0.1`。PostgreSQL 和 MinIO 只在 Docker internal 网络可达。
 本 Compose 没有 `ports`，不增加公网监听；现有站点和 SSH 端口保留。
 
 `172.24.0.0/24` 是部署时确认空闲的专用网段。embedding 使用 Ollama 0.33.2 CPU 镜像（`VC_EMBEDDING_IMAGE`），
 只读挂载已有的 `qwen3-embedding:0.6b` 模型目录（`VC_EMBEDDING_MODELS_DIR`），单独运行服务。
+rerank 使用代码中固定 digest 的 llama.cpp 镜像（多架构，含 amd64），只读挂载 `VC_RERANK_MODELS_DIR` 中的
+`bge-reranker-v2-m3-Q8_0.gguf`，只监听共享命名空间内的 `127.0.0.1:11439`，常驻约 0.5 GB 内存。它不可用、超时或返回异常时，
+MemoryCore 回退到余弦 / FTS 门槛，聊天不中断。
 `db-data`、`minio-data`、`st-data`、`memorycore-data` 是持久卷。不要执行 `down -v`。
 
 ## 私有配置
@@ -24,7 +27,7 @@
 - `minio.env`、`minio-init.env`：对象存储及建桶任务。
 
 Compose 级变量放在 `/etc/virtual-companion/compose.env`（root、0600，不入库）：`VC_PUBLIC_HOST`、
-`VC_EMBEDDING_IMAGE`、`VC_EMBEDDING_MODELS_DIR`。所有 `docker compose` 命令都带 `--env-file /etc/virtual-companion/compose.env`，
+`VC_EMBEDDING_IMAGE`、`VC_EMBEDDING_MODELS_DIR`、`VC_RERANK_MODELS_DIR`，可选 `VC_RERANK_THREADS`（默认 4，按 vCPU 数设置）。所有 `docker compose` 命令都带 `--env-file /etc/virtual-companion/compose.env`，
 systemd 单元同样如此；构建 ST 镜像时 `VC_PUBLIC_HOST` 写入 SillyTavern 的 Host 白名单，未设置即构建失败。
 `nginx-site.conf` 是模板，安装前把 `__VC_PUBLIC_HOST__` 替换为该域名。
 
@@ -68,7 +71,7 @@ Owner 用所提供的初始口令登录，完成改密和 TOTP；模型可在模
 ## 更新、停止和验收
 
 `/etc/virtual-companion/compose.env` 必须含 `VC_IMAGE_TAG`（应用提交短哈希）、`VC_PUBLIC_HOST`、`VC_EMBEDDING_IMAGE`、
-`VC_EMBEDDING_MODELS_DIR`。首次从旧版（镜像标签写死在 Compose 中）升级时先创建该文件，值取当前实际部署，并把仓库里新的
+`VC_EMBEDDING_MODELS_DIR`、`VC_RERANK_MODELS_DIR`。首次从旧版（镜像标签写死在 Compose 中）升级时先创建该文件，值取当前实际部署，并把仓库里新的
 `virtual-companion-v2.service` 安装到 `/etc/systemd/system/` 后 `systemctl daemon-reload`。
 
 升级步骤（命令都带 `--env-file /etc/virtual-companion/compose.env`）：
@@ -78,6 +81,15 @@ Owner 用所提供的初始口令登录，完成改密和 TOTP；模型可在模
 3. 把 `VC_IMAGE_TAG` 改为目标提交短哈希，构建（或在本机按 `--platform linux/amd64` 构建后传输并 `docker load`）新的 ST 与 runtime 镜像。
 4. `docker compose ... up -d --force-recreate --wait`：`migrate` 与 `bootstrap` 一次性服务会先执行新迁移；共享网络命名空间的服务一起重建，不单独删除 ingress。
 5. 验收 Go health、MemoryCore readyz、ST 登录页，并核对 `docker compose ... ps` 全部健康。旧镜像确认无误后再清理。
+
+首次升级到含 rerank 的版本（204dc941 及之后）时另加：
+
+1. 在仓库外的模型目录（例如 `/srv/virtual-companion/rerank-models`，UID/GID 1000 可读）放入 Hugging Face
+   `gpustack/bge-reranker-v2-m3-GGUF` 的 `bge-reranker-v2-m3-Q8_0.gguf`，核对 SHA256
+   `a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3`（635676416 字节），不一致不得使用。
+2. `compose.env` 增加 `VC_RERANK_MODELS_DIR=<该目录>`；服务器 vCPU 少于 4 时设 `VC_RERANK_THREADS` 为 vCPU 数。
+3. 拉取 compose 中固定 digest 的 llama.cpp 镜像；服务器拉取不稳时在本机 `docker pull --platform linux/amd64` 后 `docker save` 传输再 `docker load`。
+4. 升级后核对 `rerank` 健康，并在 companiond 指标中看到 `vc_memory_rerank_applied_total` 随召回增长、`vc_memory_rerank_fallback_total` 不持续增长。
 
 停止只针对本 Compose，不重启宿主机或现有 Nginx，不删除持久卷。回退：把 `VC_IMAGE_TAG` 改回上一版本后 `up -d --force-recreate`；
 PostgreSQL 迁移不承诺降级，回退到早于已执行迁移的版本前须先评估，必要时从备份恢复到隔离库。

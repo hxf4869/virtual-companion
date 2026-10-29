@@ -142,6 +142,27 @@ services:
     restart: unless-stopped
     logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
 
+  # Same digest and arguments as integrations/sillytavern/memorycore-service/rerank.mjs
+  # and scripts/lib/rerank-container.mjs. MemoryCore falls back to cosine/FTS if it is down.
+  rerank:
+    image: ghcr.io/ggml-org/llama.cpp@sha256:01c2bc28d51291536df2ccebe5c6af1cdec9ea9b2bd98ac59556408caf96d3f8
+    user: "1000:1000"
+    command: [-m, /models/bge-reranker-v2-m3-Q8_0.gguf, --host, 127.0.0.1, --port, "11439",
+      -t, "${VC_RERANK_THREADS:-4}", -c, "8192", -b, "2048", -ub, "2048", --reranking, --pooling, rank, -ngl, "0", --fit, "off", --no-op-offload]
+    volumes: ["${VC_RERANK_MODELS_DIR:?set in /etc/virtual-companion/compose.env}:/models:ro"]
+    tmpfs: [/tmp]
+    network_mode: service:ingress
+    depends_on: {ingress: {condition: service_started}}
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:11439/health]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+
   memorycore:
     <<: *node
     env_file: [{path: /etc/virtual-companion/memorycore.env, format: raw}]
@@ -150,6 +171,7 @@ services:
     depends_on:
       runtime: {condition: service_healthy}
       embedding: {condition: service_healthy}
+      rerank: {condition: service_started}
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:8754/readyz',{headers:{authorization:'Bearer '+process.env.VC_MEMORYCORE_SERVICE_TOKEN}}).then(async r=>{const b=await r.json();process.exit(r.ok&&b.foundation&&b.storageReady&&b.businessReady?0:1)}).catch(()=>process.exit(1))"]
       interval: 5s
