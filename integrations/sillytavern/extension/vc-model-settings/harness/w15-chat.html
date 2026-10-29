@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>W15-1 聊天与角色</title>
+<link rel="stylesheet" href="/vc-model-settings/style.css">
+<style>
+    :root { --topBarBlockSize: 0px; --mainFontSize: 16px; }
+    html, body { margin: 0; background: #14181f; color: #eff3fa; }
+    #sheld { box-sizing: border-box; min-width: 0; }
+    #chat { min-height: 180px; padding: 12px 16px 96px; }
+    #chat .mes { margin: 0 0 12px; padding: 12px; border-radius: 12px; background: #1c222c; line-height: 1.6; overflow-wrap: anywhere; }
+    #send_form { display: flex; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+    #send_textarea { flex: 1; min-width: 0; }
+    #openai_api { box-sizing: border-box; max-width: 100%; padding: 8px 16px 0; }
+    body.vc-chat-shell #sheld { margin-left: 240px; }
+    @media (max-width: 900px) {
+        body.vc-chat-shell #sheld { margin-left: 0; padding-top: var(--vc-chat-nav-height, 96px); }
+    }
+</style>
+</head>
+<body>
+    <div id="sheld">
+        <div id="openai_api"></div>
+        <div id="chat"></div>
+        <form id="send_form">
+            <textarea id="send_textarea" aria-label="消息"></textarea>
+            <button type="button" id="mes_stop">停止</button>
+        </form>
+    </div>
+    <script type="module" src="/vc-model-settings/harness/w15-chat-client.js"></script>
+</body>
+</html>

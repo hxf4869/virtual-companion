@@ -1,0 +1,293 @@
+/* UI-P02 角色卡模板与陪伴实例。 */
+
+.vc-instance-root,
+.vc-instance-unsaved {
+    --vc-bg: var(--SmartThemeBlurTintColor, #14181F);
+    --vc-surface: var(--SmartThemeChatTintColor, #1C222C);
+    --vc-raised: var(--SmartThemeUserMesBlurTintColor, #252D39);
+    --vc-border: var(--SmartThemeBorderColor, #394453);
+    --vc-text: var(--SmartThemeBodyColor, #EFF3FA);
+    --vc-text-2: var(--SmartThemeEmColor, #B7C1D2);
+    --vc-primary: var(--SmartThemeQuoteColor, #9AB9FF);
+    --vc-on-primary: var(--SmartThemeBlurTintColor, #131C30);
+    --vc-warning: #F6C581;
+    --vc-danger: #FFAAA6;
+}
+
+.vc-instance-root .vc-instance-dialog {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: var(--vc-bg);
+    color: var(--vc-text);
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.vc-instance-root .vc-instance-dialog::backdrop {
+    background: var(--vc-bg);
+}
+
+.vc-instance-page {
+    box-sizing: border-box;
+    width: min(1080px, 100%);
+    margin: 0 auto;
+    padding: 24px 16px 32px;
+}
+
+.vc-instance-bar,
+.vc-instance-bar-actions,
+.vc-instance-actions,
+.vc-instance-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.vc-instance-bar { justify-content: space-between; margin-bottom: 16px; }
+.vc-instance-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.vc-instance-bar h1 {
+    flex: 1 1 160px;
+    min-width: 0;
+    margin: 0;
+    font-size: 28px;
+    line-height: 1.3;
+}
+
+.vc-instance-page h2 {
+    margin: 0 0 12px;
+    font-size: 20px;
+    line-height: 1.4;
+}
+
+.vc-instance-page p {
+    margin: 0 0 12px;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}
+
+.vc-instance-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+    gap: 16px;
+    min-width: 0;
+}
+
+.vc-instance-columns > section,
+.vc-instance-form,
+.vc-instance-card,
+.vc-instance-row {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    padding: 16px;
+    border: 1px solid var(--vc-border);
+    border-radius: 12px;
+    background: var(--vc-surface);
+}
+
+.vc-instance-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.vc-instance-list button,
+.vc-instance-template,
+.vc-instance-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+}
+
+.vc-instance-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--vc-raised);
+    color: var(--vc-primary);
+    font-size: 18px;
+    font-weight: 650;
+}
+
+.vc-instance-template-copy,
+.vc-instance-choice-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+}
+
+.vc-instance-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--vc-primary) 50%, var(--vc-border));
+    background: color-mix(in srgb, var(--vc-primary) 16%, var(--vc-surface));
+    color: var(--vc-text);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.vc-instance-badge::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vc-primary);
+}
+
+.vc-instance-world { color: var(--vc-text-2); font-size: 14px; }
+
+.vc-instance-page .vc-instance-create {
+    width: 100%;
+    margin-top: 8px;
+    border-style: dashed;
+    color: var(--vc-text-2);
+}
+
+.vc-instance-page .vc-instance-secondary {
+    display: block;
+}
+
+.vc-instance-page button,
+.vc-instance-page input {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-height: 44px;
+    min-width: 44px;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 16px;
+}
+
+.vc-instance-page button {
+    padding: 8px 12px;
+    border: 1px solid var(--vc-border);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.vc-instance-page button[aria-current="true"] {
+    border-color: var(--vc-primary);
+    color: var(--vc-text);
+    box-shadow: inset 0 0 0 1px var(--vc-primary);
+}
+
+.vc-instance-page .vc-instance-primary {
+    border: 0;
+    background: var(--vc-primary);
+    color: var(--vc-on-primary);
+    font-weight: 600;
+}
+
+.vc-instance-page button:focus-visible,
+.vc-instance-page input:focus-visible {
+    outline: 2px solid var(--vc-primary);
+    outline-offset: 2px;
+}
+
+.vc-instance-card p,
+.vc-instance-row span,
+.vc-instance-form label {
+    color: var(--vc-text-2);
+}
+
+.vc-instance-form { border-color: var(--vc-primary); }
+.vc-instance-form h2 { display: flex; flex-wrap: wrap; gap: 8px; }
+.vc-instance-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.vc-instance-form input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--vc-border);
+    background: var(--vc-bg);
+    color: var(--vc-text);
+}
+
+.vc-instance-alert,
+.vc-instance-unsaved p {
+    color: var(--vc-warning);
+}
+
+.vc-instance-alert {
+    padding: 12px;
+    border: 1px solid var(--vc-warning);
+    border-radius: 12px;
+    background: var(--vc-raised);
+}
+
+.vc-instance-form-actions {
+    position: sticky;
+    bottom: 0;
+    margin-top: 12px;
+    padding-top: 8px;
+    background: var(--vc-surface);
+}
+
+.vc-instance-unsaved {
+    box-sizing: border-box;
+    width: min(420px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    padding: 16px;
+    border: 1px solid var(--vc-warning);
+    border-radius: 16px;
+    background: var(--vc-raised);
+    color: var(--vc-text);
+}
+
+.vc-instance-unsaved button {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 1px solid var(--vc-border, #394453);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 16px;
+}
+
+.vc-instance-unsaved::backdrop {
+    background: rgba(8, 10, 14, 0.55);
+}
+
+.vc-instance-page .vc-instance-secondary {
+    color: var(--vc-text-2);
+    font-size: 14px;
+}
+
+@media (max-width: 800px) {
+    .vc-instance-page { padding: 16px 12px 24px; }
+    .vc-instance-bar h1 { flex-basis: 100%; font-size: 22px; }
+    .vc-instance-bar-actions { width: 100%; }
+    .vc-instance-bar-actions button { flex: 1 1 auto; }
+    .vc-instance-columns { grid-template-columns: minmax(0, 1fr); }
+}
