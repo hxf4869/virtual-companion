@@ -1,7 +1,7 @@
 name: vc-v2
 
 x-node: &node
-  image: virtual-companion-st:12eaee94
+  image: virtual-companion-st:${VC_IMAGE_TAG:?set in /etc/virtual-companion/compose.env}
   build:
     context: ../../..
     dockerfile: ops/deploy/v2/Dockerfile.st
@@ -16,7 +16,7 @@ x-node: &node
   logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
 
 x-go: &go
-  image: virtual-companion-runtime:12eaee94
+  image: virtual-companion-runtime:${VC_IMAGE_TAG:?set in /etc/virtual-companion/compose.env}
   build: {context: ../../../backend, dockerfile: Dockerfile}
   user: "1000:1000"
   cap_drop: [ALL]

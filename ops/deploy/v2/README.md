@@ -1,7 +1,7 @@
 # Owner V2 Docker 部署
 
 这是 V2 栈；同级旧 Compose 不包含 ST 和 MemoryCore。所有服务器命令通过 ssh-skill 执行。
-应用基线为 main `12eaee94`，仅供 Owner 非商业使用，不开放注册。
+应用版本由 `compose.env` 的 `VC_IMAGE_TAG` 决定，仅供 Owner 非商业使用，不开放注册。
 
 ## 网络和数据
 
@@ -67,10 +67,20 @@ Owner 用所提供的初始口令登录，完成改密和 TOTP；模型可在模
 
 ## 更新、停止和验收
 
-升级前按需手动备份。应用更新按锁定版本重新构建，执行迁移后更新整个 V2 栈。
-共享网络命名空间的服务需要一起重建，不单独删除 ingress；必要时执行
-`docker compose -f ops/deploy/v2/compose.yaml up -d --force-recreate --wait`。
-停止只针对本 Compose，不重启宿主机或现有 Nginx，不删除持久卷。
+`/etc/virtual-companion/compose.env` 必须含 `VC_IMAGE_TAG`（应用提交短哈希）、`VC_PUBLIC_HOST`、`VC_EMBEDDING_IMAGE`、
+`VC_EMBEDDING_MODELS_DIR`。首次从旧版（镜像标签写死在 Compose 中）升级时先创建该文件，值取当前实际部署，并把仓库里新的
+`virtual-companion-v2.service` 安装到 `/etc/systemd/system/` 后 `systemctl daemon-reload`。
+
+升级步骤（命令都带 `--env-file /etc/virtual-companion/compose.env`）：
+
+1. 按需手动备份（`integrations/sillytavern/scripts/backup.sh`，可设 `VC_BACKUP_PG_CONTAINER` 纳入 PostgreSQL）。
+2. 同步代码到目标提交，准备该提交 `upstream.lock.json` 对应的上游浅克隆。
+3. 把 `VC_IMAGE_TAG` 改为目标提交短哈希，构建（或在本机按 `--platform linux/amd64` 构建后传输并 `docker load`）新的 ST 与 runtime 镜像。
+4. `docker compose ... up -d --force-recreate --wait`：`migrate` 与 `bootstrap` 一次性服务会先执行新迁移；共享网络命名空间的服务一起重建，不单独删除 ingress。
+5. 验收 Go health、MemoryCore readyz、ST 登录页，并核对 `docker compose ... ps` 全部健康。旧镜像确认无误后再清理。
+
+停止只针对本 Compose，不重启宿主机或现有 Nginx，不删除持久卷。回退：把 `VC_IMAGE_TAG` 改回上一版本后 `up -d --force-recreate`；
+PostgreSQL 迁移不承诺降级，回退到早于已执行迁移的版本前须先评估，必要时从备份恢复到隔离库。
 
 验收 Go health、MemoryCore readyz、ST 登录页、未登录拒绝私有资源、HTTPS、限流和公网端口，
 并重启 V2 容器核对持久化配置。完整主机重启、真实模型调用、真实通知和手机真机验收另行记录；
