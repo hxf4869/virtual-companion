@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VC 主动陪伴 · harness</title>
+<style>
+    body { margin: 0; background: #101318; color: #d8dee9; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .host-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #171b22; border-bottom: 1px solid #2a3140; }
+    .host-btn { min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #3a4453; background: transparent; color: #d8dee9; font-size: 16px; cursor: pointer; }
+    .host-note { font-size: 14px; color: #8a93a5; }
+    .host-chat { padding: 24px 16px 96px; max-width: 720px; }
+    .host-msg { padding: 10px 14px; border-radius: 12px; margin-bottom: 12px; background: #1a2028; font-size: 15px; line-height: 1.6; }
+</style>
+</head>
+<body>
+    <div class="host-bar">
+        <button type="button" class="host-btn" id="open-inbox">主动陪伴</button>
+        <span class="host-note" id="scenario-note">scenario=sample</span>
+    </div>
+    <div class="host-chat">
+        <div class="host-msg">宿主聊天保持可见。主动陪伴是可关闭的一层，不替换会话。</div>
+    </div>
+    <script type="module">
+        document.cookie = 'vc_csrf=synthetic-csrf; path=/';
+        const params = new URLSearchParams(location.search);
+        const scenario = params.get('scenario') ?? 'sample';
+        document.getElementById('scenario-note').textContent = `scenario=${scenario}`;
+        const { setStHeadersProvider } = await import('/vc-model-settings/api.js');
+        setStHeadersProvider(() => ({
+            'X-CSRF-Token': 'st-harness-token',
+            'X-Vc-Harness-Scenario': scenario,
+        }));
+        const { mountInboxPage } = await import('/vc-model-settings/inbox-page.js');
+        const ui = mountInboxPage();
+        const opener = document.getElementById('open-inbox');
+        opener.addEventListener('click', () => ui.open(opener));
+    </script>
+</body>
+</html>
