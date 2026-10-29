@@ -1,7 +1,7 @@
 // 会话列表：陪伴实例来自 instance-page 同一接口（GET /api/v1/relationships → instancesFrom）。
 // 最后一条消息和时间只在调用方已经拿到时附上，不编造预览。
 // 头像优先用当前会话快照，否则用同名或同角色引用的角色卡头像；都没有才用首字。
-// 同一关系只保留一行。两个实例看起来一样时，用角色名加实例名，或角色名加创建时间区分，不显示内部 ID。
+// 同一关系只保留一行。两个实例看起来一样时，只在确实重名时加序号（外壳 · 2），不显示创建时间或内部 ID。
 import { instancesFrom } from './instance-page.js';
 import { pendingInboxWrites } from './chat-shell.js';
 
@@ -104,55 +104,19 @@ function matchingCard(characters, row) {
     return cards.find((card) => names.has(textField(card?.name))) || null;
 }
 
-function createdStamp(value) {
-    if (value == null || value === '') return '';
-    const parsed = Date.parse(String(value).trim().replace('@', ' '));
-    if (Number.isNaN(parsed)) return formatConversationTime(value);
-    try {
-        return new Intl.DateTimeFormat('zh-CN', {
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-        }).format(new Date(parsed));
-    } catch {
-        return formatConversationTime(value);
-    }
-}
-
-function baseKey(row) {
-    const name = textField(row?.name);
-    const inst = textField(row?.instanceName);
-    const second = name && inst && name !== inst ? inst : '';
-    return `${name || inst}\n${second}`;
-}
-
 function applyDisambiguators(rows) {
     const groups = new Map();
     for (const row of rows) {
-        const key = baseKey(row);
+        const key = `${textField(row?.name)}\n${textField(row?.instanceName)}`;
         const list = groups.get(key) || [];
         list.push(row);
         groups.set(key, list);
     }
     for (const list of groups.values()) {
         if (list.length < 2) continue;
-        for (const row of list) {
-            const when = createdStamp(row.createdAt);
-            if (when) row.disambiguator = when;
-        }
-        const counts = new Map();
-        for (const row of list) {
-            const key = row.disambiguator || '';
-            counts.set(key, (counts.get(key) || 0) + 1);
-        }
-        for (const row of list) {
-            if ((counts.get(row.disambiguator || '') || 0) < 2) continue;
-            const extra = row.time ? `最近 ${row.time}` : '还没有消息';
-            row.disambiguator = [row.disambiguator, extra].filter(Boolean).join(' · ');
-        }
+        list.forEach((row, index) => {
+            if (index > 0) row.disambiguator = String(index + 1);
+        });
     }
 }
 
@@ -207,9 +171,10 @@ export function conversationRows(relationships, { chats = [], inboxRows = [], ch
 export function conversationTitle(row) {
     const name = textField(row?.name);
     const inst = textField(row?.instanceName);
-    const when = textField(row?.disambiguator);
-    const instLine = name && inst && name !== inst ? inst : '';
-    return { name: name || inst, inst: [instLine, when].filter(Boolean).join(' · ') };
+    const mark = textField(row?.disambiguator);
+    const title = name || inst;
+    if (!inst) return { name: mark ? `${title} · ${mark}` : title, inst: '' };
+    return { name: title, inst: mark ? `${inst} · ${mark}` : inst };
 }
 
 function avatarHtml(row, title) {

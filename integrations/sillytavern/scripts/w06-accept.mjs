@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { createStClient } from './managed-lib.mjs';
+import { pinVcUi } from './vc-ui-pin.mjs';
 import { importSyntheticCard } from './w05-accept.mjs';
 import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
 const expect = (r,status,label) => { assert.equal(r.status,status,`${label}: HTTP ${r.status} (${r.json?.code||'native'})`); return r.json; };
@@ -68,6 +69,7 @@ export async function sceneRightsBrowser(ctx){
     const browser=await chromium.launch({headless:true,...(process.env.VC_W03_CHROMIUM_PATH?{executablePath:process.env.VC_W03_CHROMIUM_PATH}:{})});
     try{
         const bc=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
+        await pinVcUi(bc, 'off');
         await bc.addCookies([{name:'vc_session',value:ctx.secrets.session.vcSession,url:ctx.w05.stBase},{name:'vc_csrf',value:ctx.secrets.session.vcCsrf,url:ctx.w05.stBase}]);
         const page=await bc.newPage();const errors=[];page.on('pageerror',()=>errors.push('pageerror'));
         await page.goto(ctx.w05.stBase,{waitUntil:'domcontentloaded'});

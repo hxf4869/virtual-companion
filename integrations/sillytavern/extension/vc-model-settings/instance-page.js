@@ -2,6 +2,7 @@
 import { fetchRelationships, resolveSTBinding, storyRequest } from './api.js';
 import { confirmAlert } from './ui/alert.js';
 import { icon } from './ui/icons.js';
+import { readVcUiFlag } from './ui/theme.js';
 import { createNav } from './ui/nav.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 
@@ -552,10 +553,10 @@ export function mountInstancePage(options = {}) {
 function isVcUiOn() {
     try {
         if (globalThis.document?.body?.classList?.contains('vc-ui')) return true;
-        return globalThis.localStorage?.getItem('vc-ui') === 'on';
     } catch {
-        return false;
+        /* 文档不可用时只看存储标志。 */
     }
+    return readVcUiFlag();
 }
 
 function characterModel(state) {
@@ -625,7 +626,11 @@ function instanceRows(items, state) {
     return items.map((item) => {
         const current = !state.creating && item.relationshipId === state.selectedRelationshipId;
         const when = formatWhen(item.lastAt);
-        return `<button type="button" class="vc-cell" data-action="select-instance" data-id="${esc(item.relationshipId)}" aria-current="${current ? 'true' : 'false'}"><span class="vc-grow"><strong>${esc(item.name)}</strong>${when ? `<span class="vc-meta vc-num">${esc(when)}</span>` : ''}${current ? '<span class="vc-instance-badge">正在编辑</span>' : ''}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button>`;
+        const meta = [
+            when ? `<span class="vc-meta vc-num">${esc(when)}</span>` : '',
+            current ? '<span class="vc-instance-badge">正在编辑</span>' : '',
+        ].filter(Boolean).join('');
+        return `<button type="button" class="vc-cell" data-action="select-instance" data-id="${esc(item.relationshipId)}" aria-current="${current ? 'true' : 'false'}"><span class="vc-grow"><strong>${esc(item.name)}</strong>${meta ? `<span class="vc-instance-sub">${meta}</span>` : ''}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button>`;
     }).join('');
 }
 
@@ -741,6 +746,30 @@ function restoreField(root, mark) {
     if (mark.start != null && next?.setSelectionRange) next.setSelectionRange(mark.start, mark.end);
 }
 
+function attachShellImport(container, root, file) {
+    const page = container.closest?.('.vc-shell-page');
+    const bar = page?.querySelector?.(':scope > .vc-navbar');
+    const doc = container.ownerDocument;
+    if (!bar || !doc) return () => {};
+    root.classList.add('is-shell-list');
+    const button = doc.createElement('button');
+    button.type = 'button';
+    button.className = 'vc-circle vc-glass';
+    button.dataset.action = 'import';
+    button.dataset.vcCharacterImport = '';
+    button.setAttribute('aria-label', '导入角色卡');
+    button.innerHTML = icon('plus');
+    const settings = bar.querySelector('[data-settings]');
+    if (settings) bar.insertBefore(button, settings);
+    else bar.append(button);
+    const onClick = () => file.click();
+    button.addEventListener('click', onClick);
+    return () => {
+        button.removeEventListener('click', onClick);
+        button.remove();
+    };
+}
+
 export function mountCharactersTab(container, options = {}) {
     ensureInstanceStyles();
     if (!isVcUiOn()) return { async refresh() {}, destroy() {} };
@@ -754,6 +783,7 @@ export function mountCharactersTab(container, options = {}) {
     file.accept = '.json,.png,application/json,image/png';
     file.hidden = true;
     root.append(file);
+    const releaseImport = attachShellImport(container, root, file);
     const nav = createNav(root);
     const list = container.ownerDocument.createElement('section');
     list.className = 'vc-screen vc-characters-list';
@@ -979,6 +1009,7 @@ export function mountCharactersTab(container, options = {}) {
     function destroy() {
         dead = true;
         detailEl = null;
+        releaseImport();
         root.remove();
     }
     void refresh();

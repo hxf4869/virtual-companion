@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import { MANAGED_MEMORYCORE_DATA } from './lib/paths.mjs';
+import { pinVcUi } from './vc-ui-pin.mjs';
 import path from 'node:path';
 import { createStClient, waitFor } from './managed-lib.mjs';
 import { importSyntheticCard } from './w05-accept.mjs';
@@ -99,6 +100,7 @@ export async function sceneMemoryBrowser(ctx) {
     const step = (name) => { phase = name; console.log(`[memory-browser] ${name}`); };
     try {
         const bc = await browser.newContext({ viewport: { width: 1440, height: 1000 }, timezoneId: 'Asia/Shanghai' });
+        await pinVcUi(bc, 'off');
         await bc.addCookies([{ name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase }]);
         page = await bc.newPage();

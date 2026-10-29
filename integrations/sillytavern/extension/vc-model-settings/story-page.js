@@ -4,6 +4,7 @@ import * as actions from './story-action.js';
 import { STORY_SYNC_PENDING } from './story-projection.js';
 import { confirmAlert } from './ui/alert.js';
 import { icon } from './ui/icons.js';
+import { readVcUiFlag } from './ui/theme.js';
 import { popMenu } from './ui/menu.js';
 import { animate, EASE_IN_OUT, EASE_OUT, prefersReducedMotion, SPRING } from './ui/motion.js';
 import { showToast } from './ui/toast.js';
@@ -748,10 +749,10 @@ export function mountStoryPage({
 function isVcUiOn() {
     try {
         if (globalThis.document?.body?.classList?.contains('vc-ui')) return true;
-        return globalThis.localStorage?.getItem('vc-ui') === 'on';
     } catch {
-        return false;
+        /* 文档不可用时只看存储标志。 */
     }
+    return readVcUiFlag();
 }
 
 function storyMode(state) {

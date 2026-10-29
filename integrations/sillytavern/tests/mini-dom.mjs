@@ -126,6 +126,19 @@ export function installMiniDom() {
                 this._text = null;
                 this._html = null;
             },
+            remove() {
+                const list = this.parent?.children;
+                if (!list) return;
+                const index = list.indexOf(this);
+                if (index >= 0) list.splice(index, 1);
+                this.parent = null;
+            },
+            replaceChildren(...items) {
+                this.children = [];
+                this._html = null;
+                this._text = null;
+                if (items.length) this.append(...items);
+            },
             addEventListener(type, fn) {
                 (this.listeners[type] ||= []).push(fn);
             },
@@ -152,6 +165,18 @@ export function installMiniDom() {
             add: (...names) => {
                 node._classes.push(...names);
                 node.className = node._classes.join(' ');
+            },
+            remove: (...names) => {
+                node._classes = node._classes.filter((item) => !names.includes(item));
+                node.className = node._classes.join(' ');
+            },
+            toggle: (name, force) => {
+                const has = node._classes.includes(name);
+                const next = force === undefined ? !has : Boolean(force);
+                if (next && !has) node._classes.push(name);
+                if (!next && has) node._classes = node._classes.filter((item) => item !== name);
+                node.className = node._classes.join(' ');
+                return next;
             },
             contains: (name) => node._classes.includes(name),
         };

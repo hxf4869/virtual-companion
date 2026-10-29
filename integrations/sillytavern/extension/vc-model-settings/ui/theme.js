@@ -38,10 +38,21 @@ export function writeThemeMode(mode, storage) {
 export function readVcUiFlag(storage) {
     try {
         const store = storage ?? globalThis.localStorage;
-        return store?.getItem?.(UI_FLAG_KEY) === 'on';
+        return store?.getItem?.(UI_FLAG_KEY) !== 'off';
     } catch {
-        return false;
+        return true;
     }
+}
+
+export function writeVcUiFlag(value, storage) {
+    const flag = value === 'off' || value === false ? 'off' : 'on';
+    try {
+        const store = storage ?? globalThis.localStorage;
+        store?.setItem?.(UI_FLAG_KEY, flag);
+    } catch {
+        /* 存储不可用时不抛出；调用方仍按传入值理解开关。 */
+    }
+    return flag;
 }
 
 export function prefersDark(win = globalThis) {

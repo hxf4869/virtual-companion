@@ -72,12 +72,27 @@ function playing(extra = {}) {
 }
 
 test('关闭 vc-ui 时角色与剧情挂载不创建新界面', async () => {
-    const characters = mountCharactersTab(null, { onOpenInstance() {} });
-    const story = mountStoryTab(null, {});
-    await characters.refresh();
-    await story.refresh();
-    characters.destroy();
-    story.destroy();
+    const previous = globalThis.localStorage;
+    const body = globalThis.document?.body;
+    const hadClass = body?.classList?.contains?.('vc-ui') === true;
+    body?.classList?.remove?.('vc-ui');
+    const mem = new Map([['vc-ui', 'off']]);
+    globalThis.localStorage = {
+        getItem(key) { return mem.has(key) ? mem.get(key) : null; },
+        setItem(key, value) { mem.set(key, value); },
+        removeItem(key) { mem.delete(key); },
+    };
+    try {
+        const characters = mountCharactersTab(null, { onOpenInstance() {} });
+        const story = mountStoryTab(null, {});
+        await characters.refresh();
+        await story.refresh();
+        characters.destroy();
+        story.destroy();
+    } finally {
+        if (hadClass) body.classList.add('vc-ui');
+        globalThis.localStorage = previous;
+    }
 });
 
 test('角色网格、空状态、加载、错误与详情保留 data-action', () => {
@@ -110,6 +125,8 @@ test('角色网格、空状态、加载、错误与详情保留 data-action', ()
     assert.match(detail, /aria-label="编辑角色卡"/);
     assert.match(detail, /关联世界书 · 湖畔日常/);
     assert.match(detail, /data-action="select-instance"/);
+    assert.match(detail, /vc-instance-sub/);
+    assert.match(detail, /正在编辑/);
     assert.match(detail, /data-id="11"/);
     assert.match(detail, /name="displayName"/);
     assert.match(detail, new RegExp(UNSAVED_INSTANCE_COPY.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

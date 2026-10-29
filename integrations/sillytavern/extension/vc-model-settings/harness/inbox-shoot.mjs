@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { pinVcUi } from '../../../scripts/vc-ui-pin.mjs';
 
 const PORT = Number(process.argv.includes('--port') ? process.argv[process.argv.indexOf('--port') + 1] : 9465);
 const OUT = process.argv.includes('--out')
@@ -49,6 +50,7 @@ const shots = [];
 
 async function newPage(browser, width, height) {
     const context = await browser.newContext({ viewport: { width, height } });
+    await pinVcUi(context, 'off');
     const page = await context.newPage();
     page.on('console', (msg) => {
         if (msg.type() === 'error' && !/status of (409|403)/.test(msg.text())) consoleErrors.push(msg.text());
@@ -134,14 +136,18 @@ async function assertLayout(page, name) {
             if (!problems.length) return [];
             return [{ field: el.dataset.field || el.dataset.action, problems, h: Math.round(row.height) }];
         });
-        const stored = [...Array(localStorage.length)].map((_, i) => localStorage.key(i)).join('\n');
+        const keys = [...Array(localStorage.length)].map((_, i) => localStorage.key(i));
+        const extra = keys.filter((key) => key !== 'vc-ui');
+        const stored = keys.join('\n');
         const text = `${document.body.innerText}\n${document.body.innerHTML}\n${stored}`;
+        let vcUi = null;
+        try { vcUi = localStorage.getItem('vc-ui'); } catch { vcUi = null; }
         return {
             small, overflow, wide, clippedInputs, timeMissing, switches,
-            banned: banned.filter((item) => text.includes(item)), storage: localStorage.length,
+            banned: banned.filter((item) => text.includes(item)), storage: extra.length, vcUi,
         };
     }, BANNED);
-    if (report.small.length || report.overflow.length || report.wide.length || report.clippedInputs.length || report.timeMissing.length || report.switches.length || report.banned.length || report.storage !== 0) {
+    if (report.small.length || report.overflow.length || report.wide.length || report.clippedInputs.length || report.timeMissing.length || report.switches.length || report.banned.length || report.storage !== 0 || report.vcUi !== 'off') {
         throw new Error(`${name} 布局或泄密断言失败 ${JSON.stringify(report)}`);
     }
     console.log(`PASS layout ${name}`);

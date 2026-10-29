@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { waitFor } from './managed-lib.mjs';
+import { pinVcUi } from './vc-ui-pin.mjs';
 import { REPO_ROOT } from './lib/paths.mjs';
 import {
     decodeAgentFile, parseAgentLines, publicModelConfig, storyCanonicalView,
@@ -219,6 +220,7 @@ export async function sceneStoryReal(ctx) {
         const { chromium } = await import('playwright-core');
         browser = await chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
         const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        await pinVcUi(context, 'off');
         await context.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },

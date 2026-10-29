@@ -461,8 +461,6 @@ body.vc-ui .vc-inbox-tab .vc-inbox-meta-item {
 
 body.vc-ui .vc-inbox-tab .vc-inbox-meta .vc-status-quiet { color: var(--vc-ink-2); }
 
-body.vc-ui .vc-inbox-tab .vc-inbox-sep { color: var(--vc-ink-3); }
-
 body.vc-ui .vc-inbox-tab .vc-inbox-follow {
   padding: 0;
   align-items: stretch;

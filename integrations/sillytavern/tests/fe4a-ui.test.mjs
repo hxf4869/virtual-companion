@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createMemoryPage, renderMemoryPage, renderMemoryTab, renderMemoryDetailTab, mountMemoryTab } from '../extension/vc-model-settings/memory-page.js';
-import { createInboxPage, renderInboxPage, renderInboxTab, renderInboxChannel, mountInboxTab } from '../extension/vc-model-settings/inbox-page.js';
+import { createInboxPage, inboxPolicyDirty, renderInboxPage, renderInboxTab, renderInboxChannel, mountInboxTab } from '../extension/vc-model-settings/inbox-page.js';
 
 const root = fileURLToPath(new URL('../extension/vc-model-settings/', import.meta.url));
 
@@ -85,7 +85,9 @@ test('记忆新界面保留搜索、分段、状态与详情合同', () => {
     const loading = renderMemoryTab(memoryState({ loading: true, items: [] }));
     assert.match(loading, /role="status">正在加载记忆…/);
     const empty = renderMemoryTab(memoryState({ items: [] }));
-    assert.match(empty, /没有找到记忆。试试其他关键词或筛选条件。/);
+    assert.match(empty, /没有找到记忆/);
+    assert.doesNotMatch(empty, /试试其他关键词或筛选条件/);
+    assert.match(renderMemoryPage(memoryState({ items: [] })), /没有找到记忆。试试其他关键词或筛选条件。/);
     assert.match(empty, /data-action="clear-filters"[^>]*>清除筛选/);
     assert.doesNotMatch(empty, /retry-list/);
     const unbound = renderMemoryTab(memoryState({ relationships: [], relationshipId: '', items: [] }));
@@ -148,15 +150,27 @@ test('记忆详情保留来源、修订、纠正、删除与再验证合同', ()
     assert.match(cleanup, /data-action="refresh-detail"/);
 });
 
+test('陪伴策略没有未保存修改时不算脏', () => {
+    const page = createInboxPage();
+    assert.equal(inboxPolicyDirty(page.state), false);
+    page.state.relationshipId = '11';
+    assert.equal(inboxPolicyDirty(page.state), false);
+    page.setPolicy({ quietHoursStart: '23:00' });
+    assert.equal(inboxPolicyDirty(page.state), true);
+});
+
 test('关闭 vc-ui 时挂载不改容器，旧记忆对话框仍是 select', () => {
     const previous = globalThis.document;
     const stored = globalThis.localStorage;
     const body = previous?.body;
     const hadClass = body?.classList?.contains?.('vc-ui') === true;
-    let previousFlag;
-    try { previousFlag = stored?.getItem?.('vc-ui'); } catch { previousFlag = undefined; }
     body?.classList?.remove?.('vc-ui');
-    try { stored?.removeItem?.('vc-ui'); } catch { /* 存储不可用 */ }
+    const mem = new Map([['vc-ui', 'off']]);
+    globalThis.localStorage = {
+        getItem(key) { return mem.has(key) ? mem.get(key) : null; },
+        setItem(key, value) { mem.set(key, value); },
+        removeItem(key) { mem.delete(key); },
+    };
     const container = {
         mutated: false,
         append() { this.mutated = true; },
@@ -177,10 +191,7 @@ test('关闭 vc-ui 时挂载不改容器，旧记忆对话框仍是 select', () 
         assert.equal(container.mutated, false);
     } finally {
         if (hadClass) body.classList.add('vc-ui');
-        try {
-            if (previousFlag == null) stored?.removeItem?.('vc-ui');
-            else stored?.setItem?.('vc-ui', previousFlag);
-        } catch { /* 存储不可用 */ }
+        globalThis.localStorage = stored;
         globalThis.document = previous;
     }
     const legacy = renderMemoryPage(memoryState());

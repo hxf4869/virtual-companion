@@ -840,8 +840,12 @@ async function main() {
     const { chromium } = await import('playwright-core');
     const browser = await chromium.launch({ executablePath: pre.browser, headless: true });
     result.browserVersion = browser.version();
-    const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'zh-CN',
-        ...(process.env.VC_ST_ACCEPT_STORAGE_STATE ? { storageState: process.env.VC_ST_ACCEPT_STORAGE_STATE } : {}) })).newPage();
+    const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'zh-CN',
+        ...(process.env.VC_ST_ACCEPT_STORAGE_STATE ? { storageState: process.env.VC_ST_ACCEPT_STORAGE_STATE } : {}) });
+    await context.addInitScript(() => {
+        try { localStorage.setItem('vc-ui', 'off'); } catch { /* 旧验收保持关闭新外观 */ }
+    });
+    const page = await context.newPage();
     page.on('console', (m) => { if (m.type() === 'error' && consoleErrors.length < 30) { const l = m.location(); consoleErrors.push({ t: tms(), text: m.text().slice(0, 240), at: l?.url ? `${l.url.replace(ST_URL, '')}:${l.lineNumber}:${l.columnNumber}` : null, during: current?.running ?? current?.id ?? null }); } });
     page.on('pageerror', (e) => { if (pageErrors.length < 30) pageErrors.push({ t: tms(), message: String(e?.message || e).slice(0, 240), stack: String(e?.stack || '').split('\n').slice(0, 8).map((s) => s.trim().replace(ST_URL, '')).join(' | ').slice(0, 900), during: current?.running ?? current?.id ?? null }); });
     const only = (() => { const i = process.argv.indexOf('--only'); return i >= 0 ? String(process.argv[i + 1] || '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) : null; })();

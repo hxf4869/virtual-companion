@@ -170,15 +170,18 @@ test('外观偏好读写兜底', () => {
     }), 'spread');
 });
 
-test('新外观关闭时不挂载外壳', () => {
+test('新外观默认挂载，仅 off 时不挂载外壳', () => {
     const doc = installMiniDom();
     const before = doc.body.children.length;
-    const quiet = { getItem() { return null; }, setItem() {} };
-    assert.equal(mountShell({ document: doc, storage: quiet }), null);
-    assert.equal(mountShell({ document: doc, storage: { getItem() { throw new Error('closed'); } } }), null);
+    assert.equal(mountShell({ document: doc, storage: { getItem() { return 'off'; }, setItem() {} } }), null);
     assert.equal(doc.body.children.length, before);
     assert.equal(doc.querySelector('#vc-shell'), null);
     assert.equal(doc.querySelector('#vc-shell-css'), null);
+    const opened = mountShell({ document: doc, storage: { getItem() { return null; }, setItem() {} } });
+    assert.equal(opened?.id, 'vc-shell');
+    const second = installMiniDom();
+    const thrown = mountShell({ document: second, storage: { getItem() { throw new Error('closed'); } } });
+    assert.equal(thrown?.id, 'vc-shell');
 });
 
 test('index 只在标志打开时挂载外壳', async () => {
@@ -211,7 +214,7 @@ test('shell.css 只在 body.vc-ui 下生效', async () => {
     assert.deepEqual(errors, []);
 });
 
-test('同名实例去重、用角色卡头像，并用创建时间区分', () => {
+test('同名实例去重、用角色卡头像，并用序号区分', () => {
     const duplicated = conversationRows([
         { relationshipId: '9', personaRef: 'st-character', companionName: '晨间' },
         { relationshipId: '9', personaRef: 'st-character', companionName: '晨间' },
@@ -232,8 +235,8 @@ test('同名实例去重、用角色卡头像，并用创建时间区分', () =>
     assert.equal(html.includes('>rel-2<'), false);
     assert.equal(html.includes('>rel-3<'), false);
     const inst = [...html.matchAll(/vc-convo-inst">([^<]+)</g)].map((item) => item[1]);
-    assert.equal(inst.length, 2);
-    assert.notEqual(inst[0], inst[1]);
+    assert.deepEqual(inst, ['外壳', '外壳 · 2']);
+    assert.equal(html.includes('2026'), false);
     const tied = conversationRows([
         { relationshipId: 'a', personaRef: 'st-character', companionName: '外壳', createdAt: '2026-10-30T00:55:01Z' },
         { relationshipId: 'b', personaRef: 'st-character', companionName: '外壳', createdAt: '2026-10-30T00:55:01Z' },
@@ -242,12 +245,25 @@ test('同名实例去重、用角色卡头像，并用创建时间区分', () =>
         chats: [{ relationshipId: 'b', characterName: '外壳', preview: '你好', time: '2026-10-30T00:54:00Z' }],
     });
     const tiedHtml = renderConversationRows(tied);
-    assert.match(tiedHtml, /还没有消息/);
+    const tiedInst = [...tiedHtml.matchAll(/vc-convo-inst">([^<]+)</g)].map((item) => item[1]);
+    assert.deepEqual(tiedInst, ['外壳', '外壳 · 2']);
+    assert.equal(tiedHtml.includes('还没有消息'), false);
+    assert.equal(tiedHtml.includes('2026'), false);
     assert.equal(new Set([...tiedHtml.matchAll(/aria-label="([^"]+)"/g)].map((item) => item[1])).size, 2);
     const named = renderConversationRow({ relationshipId: 'rel-9', name: '林', instanceName: '晨间' });
     assert.match(named, /vc-convo-name">林/);
     assert.match(named, /vc-convo-inst">晨间/);
     assert.equal(named.includes('>rel-9<'), false);
+});
+
+test('走查场景默认不进套件', async () => {
+    const managed = await readFile(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
+    assert.match(managed, /id: 'vc-ui-walkthrough'[\s\S]{0,240}default: false/);
+    assert.match(managed, /'vc-ui-walkthrough': sceneVcUiWalkthrough/);
+    const scene = await readFile(new URL('../scripts/vc-ui-walkthrough.mjs', import.meta.url), 'utf8');
+    assert.match(scene, /pinVcUi\(context, 'on'\)/);
+    assert.match(scene, /walkthrough-/);
+    assert.match(scene, /index\.html/);
 });
 
 test('页签首次挂载、再次刷新，离开不销毁', async () => {

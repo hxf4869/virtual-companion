@@ -316,6 +316,16 @@ body.vc-ui .vc-story-tab[data-view="stage"] .vc-scroll {
     background: var(--vc-surface);
 }
 
+body.vc-ui .vc-story-tab[data-view="stage"] .vc-group {
+    background: var(--vc-raise);
+}
+
+body.vc-ui .vc-story-tab > .vc-toast {
+    position: absolute;
+    top: calc(56px + var(--vc-space-xs) + env(safe-area-inset-top, 0px));
+    z-index: 6;
+}
+
 body.vc-ui .vc-story-tab .vc-navbar {
     position: absolute;
     top: 0;

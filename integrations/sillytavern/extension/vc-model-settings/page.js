@@ -3,6 +3,7 @@
 // 样式作用域 .vcms-*；主题 tokens 见 style.css（v2-design §3）。
 import * as logic from './model-logic.js';
 import * as api from './api.js';
+import { bindSwitch } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 import { registerModelOpener, vcUiEnabled } from './drawers.js';
 
@@ -569,6 +570,8 @@ export function mountModelSettings() {
         overlay.innerHTML = renderShell();
         refreshFeedback();
         syncSendGate();
+        const providerSwitch = overlay.querySelector('[data-action="toggle-provider-state"].vc-switch');
+        if (providerSwitch) bindSwitch(providerSwitch);
     }
 
     function renderShell() {
@@ -922,9 +925,9 @@ export function mountModelSettings() {
                 <div class="vcms-field">
                     <span class="vcms-field-label">状态</span>
                     <div class="vcms-switch-row">
-                        <button type="button" class="vcms-switch ${d.state === 'ENABLED' ? 'is-on' : ''}" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商">
-                            <span class="vcms-switch-knob"></span>
-                        </button>
+                        ${vcUiEnabled()
+        ? `<button type="button" class="vc-switch" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"></button>`
+        : `<button type="button" class="vcms-switch ${d.state === 'ENABLED' ? 'is-on' : ''}" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"><span class="vcms-switch-knob"></span></button>`}
                         <span>${logic.PROVIDER_STATE_LABELS[d.state] ?? d.state}</span>
                     </div>
                     <p class="vcms-field-err" data-err-for="state"></p>
@@ -1782,7 +1785,11 @@ export function mountModelSettings() {
                 break;
             }
             case 'toggle-provider-state':
-                state.draft.state = state.draft.state === 'ENABLED' ? 'DISABLED' : 'ENABLED';
+                if (el.classList.contains('vc-switch')) {
+                    state.draft.state = el.getAttribute('aria-checked') === 'true' ? 'ENABLED' : 'DISABLED';
+                } else {
+                    state.draft.state = state.draft.state === 'ENABLED' ? 'DISABLED' : 'ENABLED';
+                }
                 render();
                 break;
             case 'discard':

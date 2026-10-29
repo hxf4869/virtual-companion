@@ -215,6 +215,19 @@ function draftsFromChannels(rows, relationshipId) {
     return drafts;
 }
 
+function policyKey(draft) {
+    return JSON.stringify(policyBody(draft));
+}
+
+function noteInboxPolicy(state) {
+    state.policyBaseline = policyKey(state.policyDraft);
+}
+
+export function inboxPolicyDirty(state) {
+    if (!state?.relationshipId) return false;
+    return policyKey(state.policyDraft) !== state.policyBaseline;
+}
+
 function policyBody(draft) {
     const startBlank = blank(draft.quietHoursStart);
     const endBlank = blank(draft.quietHoursEnd);
@@ -395,9 +408,10 @@ export function renderInboxPage(state) {
 }
 
 function freshState() {
+    const policyDraft = allowPolicy({}, '');
     return {
         open: false, loading: false, error: '', busy: false, relationships: [], relationshipId: '',
-        policyDraft: allowPolicy({}, ''), policyError: '', policyConflict: false, policyStash: null, policyNotice: '',
+        policyDraft, policyBaseline: policyKey(policyDraft), policyError: '', policyConflict: false, policyStash: null, policyNotice: '',
         followUps: [], cancelAsk: '', inbox: [], deliveries: [], inboxFilter: 'all', channels: [], channelDrafts: [],
         channelError: '', reauth: { open: false, action: '', password: '', key: '' },
     };
@@ -415,6 +429,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
         if (!relationshipId) {
             state.followUps = [];
             state.policyDraft = allowPolicy({}, '');
+            noteInboxPolicy(state);
             return;
         }
         const [policyRow, followRows] = await Promise.all([
@@ -423,6 +438,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
         ]);
         if (!alive(ticket) || state.relationshipId !== relationshipId) return;
         state.policyDraft = allowPolicy(policyRow, relationshipId);
+        noteInboxPolicy(state);
         state.policyConflict = false;
         state.policyStash = null;
         state.policyError = '';
@@ -559,6 +575,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
                 const saved = allowPolicy(await putProactivePolicy(state.relationshipId, body), state.relationshipId);
                 if (!alive(ticket)) return;
                 state.policyDraft = saved;
+                noteInboxPolicy(state);
                 state.policyConflict = false;
                 state.policyStash = null;
             } catch (error) {
@@ -579,6 +596,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
             try {
                 state.policyDraft = allowPolicy(await getProactivePolicy(state.relationshipId), state.relationshipId);
                 if (!alive(ticket)) return;
+                noteInboxPolicy(state);
                 state.policyConflict = false;
                 state.policyNotice = '已加载最新设置。你的输入已保留。';
             } catch (error) {
@@ -1047,7 +1065,7 @@ function messageMeta(item, deliveries) {
     if (write !== '已写入' && item.linkStatus !== 'present' && item.stDelivered) bits.push(metaBit('已写入', 'quiet', 'ok'));
     bits.push(metaBit(item.read ? '已读' : '未读', 'quiet', item.read ? 'ok' : 'neutral') + contractClip(item.read ? '应用已读' : '应用未读'));
     for (const row of deliveries) bits.push(deliveryBit(row));
-    return `<span class="vc-inbox-meta">${bits.map((bit, index) => `<span class="vc-inbox-meta-item">${index ? '<span class="vc-inbox-sep" aria-hidden="true">·</span>' : ''}${bit}</span>`).join('')}</span>`;
+    return `<span class="vc-inbox-meta">${bits.map((bit) => `<span class="vc-inbox-meta-item">${bit}</span>`).join('')}</span>`;
 }
 
 function credentialStateLabel(draft) {
@@ -1197,7 +1215,10 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
         if (stopped || !state.open) return;
         const top = listScreen.querySelector('.vc-scroll')?.scrollTop || 0;
         const saveDisabled = !state.relationshipId || state.policyConflict || state.busy || state.loading;
-        listScreen.innerHTML = `<header class="vc-navbar"><div class="vc-nav-spacer"></div><button type="button" class="vc-nav-save" data-action="save-policy" ${saveDisabled ? 'disabled' : ''}>保存</button></header><div class="vc-scroll">${renderInboxTab(state)}</div>`;
+        const saveButton = inboxPolicyDirty(state)
+            ? `<button type="button" class="vc-nav-save" data-action="save-policy" ${saveDisabled ? 'disabled' : ''}>保存</button>`
+            : '';
+        listScreen.innerHTML = `<header class="vc-navbar"><div class="vc-nav-spacer"></div>${saveButton}</header><div class="vc-scroll">${renderInboxTab(state)}</div>`;
         const segment = listScreen.querySelector('[data-vc-inbox-segment]');
         if (segment) {
             bindSegment(segment, {
@@ -1322,6 +1343,29 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
         });
     }
 
+    const policyFields = new Set(['quietHoursStart', 'quietHoursEnd', 'quietHoursTimezone', 'dailyLimit', 'recentInteractionMinutes']);
+    container.addEventListener('input', (event) => {
+        const field = event.target?.dataset?.field;
+        if (!policyFields.has(field)) return;
+        page.applyForm(readForm(container));
+        const bar = listScreen.querySelector('.vc-navbar');
+        if (!bar) return;
+        let button = bar.querySelector('[data-action="save-policy"]');
+        if (!inboxPolicyDirty(page.state)) {
+            button?.remove();
+            return;
+        }
+        const saveDisabled = !page.state.relationshipId || page.state.policyConflict || page.state.busy || page.state.loading;
+        if (!button) {
+            button = bar.ownerDocument.createElement('button');
+            button.type = 'button';
+            button.className = 'vc-nav-save';
+            button.dataset.action = 'save-policy';
+            button.textContent = '保存';
+            bar.append(button);
+        }
+        button.disabled = saveDisabled;
+    }, { signal });
     container.addEventListener('change', (event) => {
         if (event.target?.dataset?.field === 'character') void page.selectRelationship(event.target.value);
     }, { signal });

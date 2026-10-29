@@ -75,6 +75,8 @@ import { sceneFe4aUi } from './fe4a-ui-accept.mjs';
 import { sceneFe4bUi } from './fe4b-ui-accept.mjs';
 import { sceneF3Settings } from './f3-settings-accept.mjs';
 import { sceneVcUiShell } from './vc-ui-shell-accept.mjs';
+import { sceneVcUiWalkthrough } from './vc-ui-walkthrough.mjs';
+import { pinVcUi } from './vc-ui-pin.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -147,6 +149,13 @@ SCENES.push({
 SCENES.push({
     id: 'vc-ui-shell',
     title: 'F1 外壳：导航、会话列表、对话页与设置',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+});
+// 全站走查不进默认集。显式 --filter vc-ui-walkthrough 才运行。
+SCENES.push({
+    id: 'vc-ui-walkthrough',
+    title: 'F5 新外观全站走查截图',
     needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
@@ -1466,7 +1475,10 @@ async function sceneUi04Browser(ctx) {
     const cookies = [['vc_session', ctx.secrets.session.vcSession], ['vc_csrf', ctx.secrets.session.vcCsrf]].map(([name, value]) => ({
         name, value, domain: '127.0.0.1', path: '/', expires: -1, httpOnly: name === 'vc_session', secure: false, sameSite: 'Lax',
     }));
-    fs.writeFileSync(state, JSON.stringify({ cookies, origins: [] }), { mode: 0o600 });
+    fs.writeFileSync(state, JSON.stringify({
+        cookies,
+        origins: [{ origin: ST_BASE, localStorage: [{ name: 'vc-ui', value: 'off' }] }],
+    }), { mode: 0o600 });
     try {
         // 异步 child：本进程的合成 provider 必须继续响应，不能使用 spawnSync。
         await new Promise((resolve, reject) => {
@@ -1503,6 +1515,7 @@ async function sceneUi03Browser(ctx) {
     const browser = await chromium.launch(launchOpts);
     try {
         const browserContext = await browser.newContext();
+        await pinVcUi(browserContext, 'off');
         await browserContext.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ST_BASE },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ST_BASE },
@@ -1860,6 +1873,7 @@ async function sceneStoryViewBrowser(ctx) {
     let watchModel = false;
     try {
         const bc = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        await pinVcUi(bc, 'off');
         await bc.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, domain: '127.0.0.1', path: '/', httpOnly: true, secure: false, sameSite: 'Lax' },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, domain: '127.0.0.1', path: '/', httpOnly: false, secure: false, sameSite: 'Lax' },
@@ -2191,6 +2205,7 @@ async function sceneStoryOutbound(ctx) {
             ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}),
         });
         const bc = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        await pinVcUi(bc, 'off');
         await bc.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ST_BASE },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ST_BASE },
@@ -2706,6 +2721,7 @@ async function sceneStoryPlay(ctx) {
             ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}),
         });
         const bc = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        await pinVcUi(bc, 'off');
         await bc.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ST_BASE },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ST_BASE },
@@ -3069,6 +3085,7 @@ const SCENE_IMPLS = {
     'fe4b-ui': sceneFe4bUi,
     'f3-settings': sceneF3Settings,
     'vc-ui-shell': sceneVcUiShell,
+    'vc-ui-walkthrough': sceneVcUiWalkthrough,
 };
 
 async function runFull() {

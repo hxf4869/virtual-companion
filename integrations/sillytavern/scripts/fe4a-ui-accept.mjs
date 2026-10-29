@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pinVcUi } from './vc-ui-pin.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXT = path.resolve(HERE, '../extension');
@@ -71,6 +72,7 @@ export async function sceneFe4aUi(ctx = {}) {
         const port = server.address().port;
         const base = `http://127.0.0.1:${port}`;
         const context = await browser.newContext({ viewport: VIEWPORTS[0] });
+        await pinVcUi(context, 'on');
         const page = await context.newPage();
         page.setDefaultTimeout(20000);
         const consoleLines = [];

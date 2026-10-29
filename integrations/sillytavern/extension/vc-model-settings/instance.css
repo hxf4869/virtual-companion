@@ -326,12 +326,32 @@ body.vc-ui .vc-characters .vc-scroll {
     padding-top: calc(56px + env(safe-area-inset-top));
 }
 
+body.vc-ui .vc-characters.is-shell-list .vc-characters-list > .vc-navbar {
+    display: none;
+}
+
+body.vc-ui .vc-characters.is-shell-list .vc-characters-list > .vc-scroll {
+    padding-top: env(safe-area-inset-top);
+}
+
+body.vc-ui .vc-characters .vc-cell > .vc-grow {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--vc-space-xxs);
+}
+
+body.vc-ui .vc-instance-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--vc-space-xxs);
+}
+
 body.vc-ui .vc-roles {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: var(--vc-space-sm);
-    max-width: var(--vc-list);
-    margin: 0 auto;
     padding: 0 var(--vc-page-pad) var(--vc-space-xl);
 }
 
@@ -340,6 +360,9 @@ body.vc-ui .vc-role {
     flex-direction: column;
     align-items: center;
     gap: var(--vc-space-xxs);
+    width: 100%;
+    max-width: 280px;
+    justify-self: center;
     min-width: 0;
     min-height: var(--vc-touch);
     padding: var(--vc-space-lg) var(--vc-space-sm) var(--vc-space-md);
