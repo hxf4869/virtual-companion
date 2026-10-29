@@ -19,6 +19,9 @@ const (
 	// memoryExtractMaxAttempts bounds extraction job retries via the V29
 	// requeue path: 1 initial run + 2 retries, then DEAD_LETTERED.
 	memoryExtractMaxAttempts = 3
+	// followUpMaxAttempts bounds expired FOLLOW_UP lease recovery the same
+	// way: two requeues, then DEAD_LETTERED.
+	followUpMaxAttempts = 3
 )
 
 // Memory is one plaintext candidate or canonical row.

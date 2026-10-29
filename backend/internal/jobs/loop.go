@@ -45,6 +45,12 @@ type Store interface {
 	RecoverExpiredMemoryExtract(ctx context.Context, owner, jobID int64) (string, error)
 	ListExpiredExportJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)
 	RecoverExpiredExport(ctx context.Context, owner, jobID int64) (string, error)
+	ListExpiredFollowUpJobs(ctx context.Context, limit int) ([]postgres.JobClaim, error)
+	RecoverExpiredFollowUp(ctx context.Context, owner, jobID int64) (string, error)
+	// SweepExpiredModelCostHolds marks HELD reservations older than the
+	// bound as UNKNOWN. The reserved amount stays in the monthly unsettled
+	// total; it is not released as zero.
+	SweepExpiredModelCostHolds(ctx context.Context, olderThan time.Duration) (int, error)
 	ExpireQueuedGenerations(ctx context.Context, timeout time.Duration) (int, error)
 	PurgeExpiredOpaqueSessions(ctx context.Context) (int, error)
 	ExpireStaleExports(ctx context.Context) (int, error)
@@ -91,6 +97,47 @@ type Policy struct {
 	QueueTimeout          time.Duration
 	PollIdle              time.Duration
 	PollBusy              time.Duration
+	// HoldReservationMaxAge is how long a HELD model-cost reservation may
+	// stay open before RecoverOnce marks it UNKNOWN. PolicyFrom sets it
+	// from HoldReservationMaxAge.
+	HoldReservationMaxAge time.Duration
+}
+
+const (
+	// toolTurnTimeout is MAX_TOOL_TIMEOUT_MS in
+	// integrations/sillytavern/server-plugin/virtual-companion/lib/tool-loop.js.
+	// The plugin bounds one tool turn by min(that cap, its HTTP timeout).
+	// Go does not import the plugin.
+	toolTurnTimeout = 120 * time.Second
+	// holdReservationMargin is the slack PolicyFrom already adds when it
+	// turns Budget.TotalTimeout into GenerationLease.
+	holdReservationMargin = 30 * time.Second
+)
+
+// HoldReservationMaxAge is the longest one model call is allowed to run,
+// plus the lease margin, before a still-HELD reservation is treated as
+// abandoned. The inputs are the existing call limits, not a new budget:
+//   - foreground: config.Budget.TotalTimeout (VC_BUDGET_TOTAL_TIMEOUT,
+//     default 240s, hard max 10 minutes)
+//   - tool: toolTurnTimeout (120s)
+//   - memory: memorycore.ExtractTotal (5m30s; stays inside the six-minute
+//     extract lease)
+//
+// The sweep age is the maximum of those three plus holdReservationMargin.
+// With the defaults that is 6 minutes. A foreground budget raised to the
+// 10-minute hard max makes the age 10m30s, so a live call is not swept.
+func HoldReservationMaxAge(foregroundTotal time.Duration) time.Duration {
+	max := foregroundTotal
+	if toolTurnTimeout > max {
+		max = toolTurnTimeout
+	}
+	if memorycore.ExtractTotal > max {
+		max = memorycore.ExtractTotal
+	}
+	if max < 0 {
+		max = 0
+	}
+	return max + holdReservationMargin
 }
 
 func PolicyFrom(cfg config.Config) Policy {
@@ -110,6 +157,7 @@ func PolicyFrom(cfg config.Config) Policy {
 		QueueTimeout:          cfg.Concurrency.QueueTimeout,
 		PollIdle:              time.Second,
 		PollBusy:              50 * time.Millisecond,
+		HoldReservationMaxAge: HoldReservationMaxAge(cfg.Budget.TotalTimeout),
 	}
 }
 
@@ -536,6 +584,15 @@ func (l *Loop) dispatchExtract(ctx context.Context, c postgres.JobClaim) {
 	l.dispatch(ctx, c)
 }
 
+// holdSweepAge is the policy value, or the default foreground budget when a
+// test loop never went through PolicyFrom. Zero would sweep every fresh hold.
+func (l *Loop) holdSweepAge() time.Duration {
+	if l != nil && l.policy.HoldReservationMaxAge >= time.Second {
+		return l.policy.HoldReservationMaxAge
+	}
+	return HoldReservationMaxAge(240 * time.Second)
+}
+
 func (l *Loop) RecoverOnce(ctx context.Context) error {
 	if l == nil || l.store == nil {
 		return nil
@@ -606,6 +663,47 @@ func (l *Loop) RecoverOnce(ctx context.Context) error {
 			slog.String("operation", "export_recover"),
 			slog.String("outcome", "ok"),
 			slog.String("event_type", action),
+		)
+	}
+	// Expired CLAIMED follow-ups (crashed worker after claim) requeue on the
+	// same job id so the greeting attempt key stays stable. Retries are
+	// bounded; an exhausted job dead-letters.
+	expiredFollowUps, err := l.store.ListExpiredFollowUpJobs(ctx, l.policy.ClaimLimit)
+	if err != nil {
+		return err
+	}
+	for _, c := range expiredFollowUps {
+		action, recErr := l.store.RecoverExpiredFollowUp(ctx, c.OwnerID, c.JobID)
+		if recErr != nil {
+			l.log.Info("follow-up recover",
+				slog.String("operation", "follow_up_recover"),
+				slog.String("outcome", "error"),
+				slog.String("error_code", "RECOVER_FAILED"),
+			)
+			continue
+		}
+		l.recoveries.Add(1)
+		l.log.Info("follow-up recover",
+			slog.String("operation", "follow_up_recover"),
+			slog.String("outcome", "ok"),
+			slog.String("event_type", action),
+		)
+	}
+	// A killed plugin never settles. HELD rows older than the longest call
+	// plus margin become UNKNOWN and keep their priced hold in unsettled.
+	swept, sweepErr := l.store.SweepExpiredModelCostHolds(ctx, l.holdSweepAge())
+	if sweepErr != nil {
+		l.log.Info("model cost hold sweep",
+			slog.String("operation", "model_cost_hold_sweep"),
+			slog.String("outcome", "error"),
+			slog.String("error_code", "RECOVER_FAILED"),
+		)
+	} else if swept > 0 {
+		l.recoveries.Add(uint64(swept))
+		l.log.Info("model cost hold sweep",
+			slog.String("operation", "model_cost_hold_sweep"),
+			slog.String("outcome", "ok"),
+			slog.String("event_type", "UNKNOWN"),
 		)
 	}
 	if err := l.recoverAccountDeletions(ctx); err != nil {

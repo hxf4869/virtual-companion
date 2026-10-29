@@ -156,6 +156,20 @@ func TestPolicyFromUsesBudgetTotalPlusFinalizeMargin(t *testing.T) {
 	if p.ProviderID != cfg.Provider.ID || p.SupplierName != cfg.Provider.SupplierName || p.ModelID != cfg.Provider.Model {
 		t.Fatalf("provider identity %+v", p)
 	}
+	if p.HoldReservationMaxAge != HoldReservationMaxAge(cfg.Budget.TotalTimeout) {
+		t.Fatalf("hold sweep age %s", p.HoldReservationMaxAge)
+	}
+}
+
+func TestHoldReservationMaxAgeUsesLongestCall(t *testing.T) {
+	t.Parallel()
+	// Defaults: foreground 240s, tool 120s, memory ExtractTotal 5m30s, plus 30s.
+	if got := HoldReservationMaxAge(240 * time.Second); got != 6*time.Minute {
+		t.Fatalf("default age %s", got)
+	}
+	if got := HoldReservationMaxAge(10 * time.Minute); got != 10*time.Minute+30*time.Second {
+		t.Fatalf("raised foreground age %s", got)
+	}
 }
 
 func TestNamedPlanesDoNotStartWork(t *testing.T) {

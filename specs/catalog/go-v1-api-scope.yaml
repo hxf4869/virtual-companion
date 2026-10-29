@@ -1262,7 +1262,9 @@ operations:
   - core-outcome
   replacementOrImpact: >-
     W11-3 settlement of one reservation from reported usage. Repeating the same
-    reservationId keeps the first actual and does not add it again.
+    reservationId keeps the first actual and does not add it again. A reservation
+    already UNKNOWN returns idempotent true, leaves actualUsd null, and does not
+    move the monthly unsettled total.
 - operationId: cancelModelUsage
   method: POST
   path: /api/v1/service/model-usage/reservations/{reservationId}/cancel

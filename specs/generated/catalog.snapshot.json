@@ -2602,7 +2602,7 @@
             "method": "POST",
             "operationId": "settleModelUsage",
             "path": "/api/v1/service/model-usage/reservations/{reservationId}/settle",
-            "replacementOrImpact": "W11-3 settlement of one reservation from reported usage. Repeating the same reservationId keeps the first actual and does not add it again."
+            "replacementOrImpact": "W11-3 settlement of one reservation from reported usage. Repeating the same reservationId keeps the first actual and does not add it again. A reservation already UNKNOWN returns idempotent true, leaves actualUsd null, and does not move the monthly unsettled total."
           },
           {
             "currentH5Callers": [],
@@ -2821,7 +2821,7 @@
           }
         ]
       },
-      "sha256": "6c904650336fdce19de6d076f951067074e151c50742fdb0d83b9285da2fe342"
+      "sha256": "8a934dcf926fa558168f26792706f2caa987b44583b12c4de63611e78d689f72"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

@@ -5370,8 +5370,10 @@ paths:
       operationId: settleModelUsage
       summary: Settle one reservation from reported usage
       description: The first reported usage wins. Repeating the same reservationId returns idempotent true and the original
-        actualUsd, inputTokens, and outputTokens. It does not add the actual to the month again. Another owner's reservation
-        is 404 NOT_FOUND_OR_FORBIDDEN.
+        actualUsd, inputTokens, and outputTokens. It does not add the actual to the month again. A reservation already UNKNOWN
+        (a crashed caller, or the restart sweep) returns idempotent true, status UNKNOWN, and null actualUsd, inputTokens,
+        and outputTokens. It does not move the monthly unsettled total and it does not book the late tokens. Another owner's
+        reservation is 404 NOT_FOUND_OR_FORBIDDEN.
       security:
       - serviceToken: []
       parameters:
@@ -11464,20 +11466,28 @@ components:
           type: string
         status:
           type: string
-          const: SETTLED
+          enum:
+          - SETTLED
+          - UNKNOWN
         actualUsd:
           type: string
-          description: Six-decimal USD from the first reported usage.
+          nullable: true
+          description: 'Six-decimal USD from the first reported usage. Null when status is UNKNOWN: a late settle does not
+            book an actual and does not book zero.'
           example: '0.003000'
         inputTokens:
           type: integer
           format: int64
+          nullable: true
+          description: Null when status is UNKNOWN. The late token counts are not stored.
         outputTokens:
           type: integer
           format: int64
+          nullable: true
+          description: Null when status is UNKNOWN. The late token counts are not stored.
         idempotent:
           type: boolean
-          description: False on the first settlement. True when this reservationId was already settled.
+          description: False on the first settlement. True when this reservationId was already settled or was already UNKNOWN.
     ModelUsageCancelRequest:
       type: object
       additionalProperties: false

@@ -196,6 +196,60 @@ func TestModelUsageNoPriceMakesNoProviderCall(t *testing.T) {
 	costAssertSQL(t, "SELECT count(*) FROM vc.model_cost_reservation WHERE provider_attempt_id='fg-no-price'", "0")
 }
 
+// TestModelUsageLateSettleOfUnknownKeepsUnsettled pins the service path after
+// a hold has already become UNKNOWN (cancel, or the restart sweep). A late
+// settle of that same attempt must match REUSED_UNKNOWN: the row stays
+// UNKNOWN, actual stays NULL, and the priced hold stays in the monthly
+// unsettled total. It is not booked as zero and not settled from the late tokens.
+func TestModelUsageLateSettleOfUnknownKeepsUnsettled(t *testing.T) {
+	resetFixtures(t)
+	meterIdentity(t)
+	store := testEnv.store
+	store.UseCostLimits(1_000_000, 4_000_000)
+	ctx := context.Background()
+	held, err := store.ReserveModelUsage(ctx, ModelUsageReserve{
+		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-late-unknown",
+		ProviderID: "prov-a", ModelID: "model-a", InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CancelModelUsage(ctx, 1, held.ReservationID, "UNKNOWN"); err != nil {
+		t.Fatal(err)
+	}
+	costAssertSQL(t, "SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", "0:0:30")
+
+	late, err := store.SettleModelUsage(ctx, 1, held.ReservationID, 10, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if late.Status != "UNKNOWN" || !late.Idempotent || late.ActualUSD != "" || late.ReservationID != held.ReservationID {
+		t.Fatalf("late settle %+v", late)
+	}
+	costAssertSQL(t, "SELECT status || ':' || coalesce(actual_usd::text, 'null') || ':' || round(reserved_usd*1000000)::bigint FROM vc.model_cost_reservation WHERE provider_attempt_id = 'fg-late-unknown'", "UNKNOWN:null:30")
+	costAssertSQL(t, "SELECT round(settled_usd*1000000)::bigint || ':' || round(reserved_usd*1000000)::bigint || ':' || round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", "0:0:30")
+	_, err = store.ReserveModelUsage(ctx, ModelUsageReserve{
+		Owner: 1, Purpose: PurposeForegroundChat, AttemptID: "fg-late-unknown",
+		ProviderID: "prov-a", ModelID: "model-a", InputTokens: 10, OutputTokens: 10,
+	})
+	if usageReason(err) != ModelUsageAttemptReused {
+		t.Fatalf("second send of an unknown attempt %v", err)
+	}
+	// Owner 2 is a live account that does not own the reservation. The settle
+	// path checks the account is ACTIVE before it looks up the row, so the
+	// cross-owner result is not-found only once that account exists.
+	if err := IsolationSuperExec(ctx, `
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (2, 'w11-meter-other', 'synthetic', 'USER', 'ACTIVE', 'other')
+ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE';`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SettleModelUsage(ctx, 2, held.ReservationID, 10, 4); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-owner late settle %v", err)
+	}
+	costAssertSQL(t, "SELECT round(unsettled_usd*1000000)::bigint FROM vc.month_cost_budget", "30")
+}
+
 func TestModelUsageSettleIsIdempotent(t *testing.T) {
 	resetFixtures(t)
 	meterIdentity(t)

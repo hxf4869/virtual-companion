@@ -1067,6 +1067,18 @@ func (s *leaseClaimStore) RecoverExpiredExport(_ context.Context, _, jobID int64
 	return "FAILED", nil
 }
 
+func (s *leaseClaimStore) ListExpiredFollowUpJobs(context.Context, int) ([]postgres.JobClaim, error) {
+	return nil, nil
+}
+
+func (s *leaseClaimStore) RecoverExpiredFollowUp(context.Context, int64, int64) (string, error) {
+	return "", nil
+}
+
+func (s *leaseClaimStore) SweepExpiredModelCostHolds(context.Context, time.Duration) (int, error) {
+	return 0, nil
+}
+
 // TestLoopExpiredExtractRequeueFencesOldHolder pins the expiry coordination:
 // an extraction whose claim lease elapsed mid-provider-call is requeued by
 // recovery; the old holder may finish its already-started commit but its Go publication

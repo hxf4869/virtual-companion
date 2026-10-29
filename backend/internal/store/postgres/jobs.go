@@ -336,3 +336,50 @@ func (s *Store) RecoverExpiredExport(ctx context.Context, owner, jobID int64) (s
 	}
 	return action, nil
 }
+
+// ListExpiredFollowUpJobs returns claimed FOLLOW_UP work items whose lease
+// elapsed without completion. The loop hands each to RecoverExpiredFollowUp.
+func (s *Store) ListExpiredFollowUpJobs(ctx context.Context, limit int) ([]JobClaim, error) {
+	var out []JobClaim
+	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT out_owner_user_id, out_job_id FROM vc.go_list_expired_follow_up_jobs($1)`, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c JobClaim
+			if err := rows.Scan(&c.OwnerID, &c.JobID); err != nil {
+				return err
+			}
+			c.Kind = "FOLLOW_UP"
+			out = append(out, c)
+		}
+		if out == nil {
+			out = []JobClaim{}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoreErr(err)
+	}
+	return out, nil
+}
+
+// RecoverExpiredFollowUp requeues an expired FOLLOW_UP claim on the same job
+// id (V220). The greeting attempt key stays follow-up:{jobID}. An exhausted
+// retry dead-letters and, when no greeting was stored, leaves the follow-up
+// SILENT so the due pass cannot enqueue a replacement.
+func (s *Store) RecoverExpiredFollowUp(ctx context.Context, owner, jobID int64) (string, error) {
+	var action string
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx,
+			`SELECT vc.go_recover_expired_follow_up($1,$2,$3)`,
+			owner, jobID, followUpMaxAttempts,
+		).Scan(&action)
+	})
+	if err != nil {
+		return "", mapStoreErr(err)
+	}
+	return action, nil
+}
