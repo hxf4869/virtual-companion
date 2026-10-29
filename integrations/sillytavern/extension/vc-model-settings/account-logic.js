@@ -23,3 +23,20 @@ export function otherSessions(sessions) {
 export function sessionLabel(session) {
     return session?.current === true ? '当前会话' : '其他会话';
 }
+
+export const SESSION_EMPTY_COPY = '没有进行中的会话';
+
+export function sessionTimeText(session) {
+    const raw = session?.createdAt;
+    if (typeof raw !== 'string' || raw.length === 0) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
+/** 列表只有创建时间与当前标记。接口不返回设备名，不编造设备。 */
+export function sessionRowText(session) {
+    const label = sessionLabel(session);
+    const time = sessionTimeText(session);
+    return time ? `${label} · ${time}` : label;
+}

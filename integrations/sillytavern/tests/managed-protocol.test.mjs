@@ -108,6 +108,7 @@ test('chat/completions 流式：分片重组与 [DONE]', async () => {
     assert.equal(collected.content, SCRIPTS['vc03m-chat'].text);
     assert.equal(collected.finish, 'stop');
     assert.equal(collected.sawDone, true);
+    assert.equal(collected.usage.total_tokens, collected.usage.prompt_tokens + collected.usage.completion_tokens);
 });
 
 test('chat/completions 指令化错误：状态码与 Retry-After', async () => {

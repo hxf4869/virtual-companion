@@ -1,64 +1,148 @@
-// Native data-rights and account controls. Credentials stay in the form until submit, then are cleared.
+// Native data-rights and account controls. The current password lives only in the
+// reauth submit handler, then the field is cleared. It is never written to attributes or storage.
 import {
     captureSessionContext, createDataExport, recoverDataExport, getDataExport, downloadDataExport, deleteOwnAccount,
     changePassword, listSessions, revokeSession, logoutCurrent, resetAuthenticator, reauth, fetchSession,
 } from './api.js';
 import {
-    AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY,
-    authenticatorStatusText, deletionProgressText, otherSessions, sessionLabel,
+    AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, SESSION_EMPTY_COPY,
+    authenticatorStatusText, deletionProgressText, otherSessions, sessionRowText,
 } from './account-logic.js';
 
-export function mountDataRights() {
-    const root = document.createElement('div'); root.className = 'vcms-root vc-data-root';
-    root.innerHTML = `<dialog class="vc-data-dialog" aria-labelledby="vc-data-title">
+function ensureAccountStyles() {
+    if (typeof document === 'undefined' || document.querySelector('link[data-vc-account]')) return;
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = new URL('./account.css', import.meta.url).href;
+    style.setAttribute('data-vc-account', '');
+    (document.head || document.documentElement).append(style);
+}
+
+/** 五个分区卡片。当前密码只出现在文末的重新验证层。 */
+export function renderAccountShell() {
+    return `<dialog class="vc-data-dialog" aria-labelledby="vc-data-title">
       <header class="vcms-header"><h1 id="vc-data-title" class="vcms-title" tabindex="-1">数据与账户</h1><button class="vcms-btn vcms-btn-ghost" type="button" data-close>返回聊天</button></header>
       <main class="vc-data-body">
-        <section class="vc-account" aria-label="账户">
-          <h2>账户</h2>
-          <p data-auth>验证器未启用</p>
-          <form data-password>
-            <label>当前密码<input type="password" name="currentPassword" autocomplete="current-password" required maxlength="1024"></label>
-            <label>新密码<input type="password" name="newPassword" autocomplete="new-password" required maxlength="1024"></label>
-            <button class="vcms-btn vcms-btn-primary" type="submit">修改密码</button>
-          </form>
-          <div class="vc-data-status" role="status" aria-live="polite" data-password-status></div>
-          <form data-reset>
-            <label>当前密码<input type="password" name="password" autocomplete="current-password" required maxlength="1024"></label>
-            <button class="vcms-btn" type="submit">重置验证器</button>
-          </form>
-          <div class="vc-data-status" role="status" aria-live="polite" data-auth-status></div>
-          <div data-sessions></div>
-          <div class="vc-data-actions"><button class="vcms-btn" type="button" data-revoke-others>登出其他会话</button><button class="vcms-btn" type="button" data-logout>登出</button></div>
-          <div class="vc-data-status" role="status" aria-live="polite" data-session-status></div>
-        </section>
-        <form data-export><h2>导出数据</h2><p>包含当前聊天、角色、世界书、记忆和来源；密钥与历史备份不进入副本。</p>
-          <label>当前密码<input type="password" name="password" autocomplete="current-password" required maxlength="1024"></label>
-          <div class="vc-data-actions"><button class="vcms-btn vcms-btn-primary" type="submit">生成副本</button><button class="vcms-btn vcms-btn-ghost" type="button" data-recover>取回最近副本</button></div>
-        </form>
-        <div class="vc-data-status" role="status" aria-live="polite" data-export-status></div>
-        <button class="vcms-btn vcms-btn-primary" type="button" data-download hidden>下载副本</button>
-        <section class="vc-data-delete"><details><summary>删除账号及在线数据</summary>
-          <form data-delete><p>在线聊天、角色、世界书、记忆、导出文件和私有备份将一并清除。离线备份另行清理。</p>
-            <label>当前密码<input type="password" name="password" autocomplete="current-password" required maxlength="1024"></label>
-            <label class="vc-data-confirm"><input type="checkbox" required>我确认删除当前账号及其在线私有数据</label>
-            <button class="vcms-btn vcms-btn-danger" type="submit">删除账号及在线数据</button>
-          </form>
-          <div class="vc-data-status" role="status" aria-live="polite" data-delete-status></div>
-        </details></section>
+        <div class="vc-account-cards">
+          <div class="vc-account-security">
+            <section class="vc-account-card" aria-label="修改密码">
+              <h2>修改密码</h2>
+              <form data-password>
+                <label>新密码<input type="password" name="newPassword" autocomplete="new-password" required maxlength="1024"></label>
+                <button class="vcms-btn vcms-btn-primary" type="submit">修改密码</button>
+              </form>
+              <div class="vc-data-status" role="status" aria-live="polite" data-password-status></div>
+            </section>
+            <section class="vc-account-card" aria-label="验证器">
+              <h2>验证器</h2>
+              <p data-auth>验证器未启用</p>
+              <button class="vcms-btn" type="button" data-reset>重置验证器</button>
+              <div class="vc-data-status" role="status" aria-live="polite" data-auth-status></div>
+            </section>
+          </div>
+          <section class="vc-account-card" aria-label="当前会话">
+            <h2>当前会话</h2>
+            <div data-sessions></div>
+            <div class="vc-data-actions"><button class="vcms-btn" type="button" data-revoke-others>登出其他会话</button><button class="vcms-btn" type="button" data-logout>登出</button></div>
+            <div class="vc-data-status" role="status" aria-live="polite" data-session-status></div>
+          </section>
+          <section class="vc-account-card" aria-label="导出数据">
+            <h2>导出数据</h2>
+            <p>包含当前聊天、角色、世界书、记忆和来源；密钥与历史备份不进入副本。</p>
+            <div class="vc-data-actions"><button class="vcms-btn vcms-btn-primary" type="button" data-export>生成副本</button><button class="vcms-btn vcms-btn-ghost" type="button" data-recover>取回最近副本</button></div>
+            <div class="vc-data-status" role="status" aria-live="polite" data-export-status></div>
+            <button class="vcms-btn vcms-btn-primary" type="button" data-download hidden>下载副本</button>
+          </section>
+          <section class="vc-account-card vc-data-delete" aria-label="删除账号及在线数据">
+            <details>
+              <summary>删除账号及在线数据</summary>
+              <form data-delete>
+                <p>在线聊天、角色、世界书、记忆、导出文件和私有备份将一并清除。离线备份另行清理。</p>
+                <label class="vc-data-confirm"><input type="checkbox" required>我确认删除当前账号及其在线私有数据</label>
+                <button class="vcms-btn vcms-btn-danger" type="submit">删除账号及在线数据</button>
+              </form>
+              <div class="vc-data-status" role="status" aria-live="polite" data-delete-status></div>
+            </details>
+          </section>
+        </div>
         <p class="vc-data-scope">${BACKUP_COPY}</p>
         <p class="vc-data-scope">删除长期记忆会保留聊天原文，原文仍可能用于当前对话；删除聊天不影响其他独立分支。</p>
-      </main></dialog>`;
+      </main>
+      <div class="vc-account-reauth" role="dialog" aria-modal="true" aria-label="重新验证身份" hidden>
+        <form data-reauth>
+          <p>需要重新验证身份。</p>
+          <label>当前密码<input type="password" autocomplete="current-password" required maxlength="1024" data-reauth-password></label>
+          <div class="vc-data-status" role="status" aria-live="polite" data-reauth-status></div>
+          <div class="vc-data-actions"><button class="vcms-btn vcms-btn-primary" type="submit">验证并继续</button><button class="vcms-btn vcms-btn-ghost" type="button" data-reauth-cancel>取消</button></div>
+        </form>
+      </div>
+    </dialog>`;
+}
+
+/** 敏感操作一律先 reauth。当前密码只传给 reauth，以及仍要求 currentPassword 的原接口。 */
+export async function executeSensitiveAction({ action, password, newPassword, accountId, deps }) {
+    await deps.reauth(password);
+    if (action === 'password') return deps.changePassword(password, newPassword);
+    if (action === 'reset') return deps.resetAuthenticator(accountId);
+    if (action === 'export') return deps.createDataExport(password);
+    if (action === 'recover') return deps.recoverDataExport(password);
+    if (action === 'delete') return deps.deleteOwnAccount(password);
+    throw new Error('未知账户操作');
+}
+
+export function mountDataRights() {
+    ensureAccountStyles();
+    const root = document.createElement('div');
+    root.className = 'vcms-root vc-data-root';
+    root.innerHTML = renderAccountShell();
     document.body.append(root);
-    const dialog = root.querySelector('dialog'), exportForm = root.querySelector('[data-export]'), deleteForm = root.querySelector('[data-delete]');
-    const exportStatus = root.querySelector('[data-export-status]'), deleteStatus = root.querySelector('[data-delete-status]'), download = root.querySelector('[data-download]');
-    const passwordForm = root.querySelector('[data-password]'), resetForm = root.querySelector('[data-reset]');
-    const authLine = root.querySelector('[data-auth]'), authStatus = root.querySelector('[data-auth-status]');
-    const passwordStatus = root.querySelector('[data-password-status]'), sessionStatus = root.querySelector('[data-session-status]');
+    const dialog = root.querySelector('dialog');
+    const deleteForm = root.querySelector('[data-delete]');
+    const exportStatus = root.querySelector('[data-export-status]');
+    const deleteStatus = root.querySelector('[data-delete-status]');
+    const download = root.querySelector('[data-download]');
+    const passwordForm = root.querySelector('[data-password]');
+    const authLine = root.querySelector('[data-auth]');
+    const authStatus = root.querySelector('[data-auth-status]');
+    const passwordStatus = root.querySelector('[data-password-status]');
+    const sessionStatus = root.querySelector('[data-session-status]');
     const sessionList = root.querySelector('[data-sessions]');
-    let version = 0, timer, currentExport, downloadUrl, busy = false, deleted = false, opener = null, accountId = '', sessions = [], deleteDomains = [];
+    const reauthLayer = root.querySelector('.vc-account-reauth');
+    const reauthForm = root.querySelector('[data-reauth]');
+    const reauthInput = root.querySelector('[data-reauth-password]');
+    const reauthStatus = root.querySelector('[data-reauth-status]');
+    let version = 0;
+    let timer;
+    let currentExport;
+    let downloadUrl;
+    let busy = false;
+    let deleted = false;
+    let opener = null;
+    let accountId = '';
+    let sessions = [];
+    let sessionsLoaded = false;
+    let deleteDomains = [];
+    let pending = null;
     const clearSecrets = () => root.querySelectorAll('input[type=password]').forEach((input) => { input.value = ''; });
-    const setBusy = (value) => { busy = value; root.querySelectorAll('form input, form button, [data-download], [data-revoke-others], [data-logout]').forEach((control) => { control.disabled = value || deleted; }); };
+    const setBusy = (value) => {
+        busy = value;
+        root.querySelectorAll('form input, form button, [data-download], [data-revoke-others], [data-logout], [data-reset], [data-export], [data-recover]').forEach((control) => {
+            control.disabled = value || deleted;
+        });
+        const revoke = root.querySelector('[data-revoke-others]');
+        if (revoke && !value && !deleted) revoke.disabled = otherSessions(sessions).length === 0;
+    };
     const errorText = (error) => error?.kind === 'unauthenticated' ? '请重新登录后重试。' : error?.kind === 'context-changed' ? '登录状态已变化，请重新加载页面。' : '操作尚未完成，请稍后重试。';
+    function placeFocus(target, guard) {
+        const place = () => {
+            if (guard && !guard()) return;
+            if (!target || typeof target.focus !== 'function') return;
+            try { target.focus(); } catch { /* 入口尚未可聚焦 */ }
+        };
+        place();
+        queueMicrotask(place);
+        requestAnimationFrame(place);
+    }
     function restoreOpener() {
         const target = opener;
         if (!target || typeof target.focus !== 'function') return;
@@ -66,16 +150,33 @@ export function mountDataRights() {
         if (host && host !== dialog && host.open !== true && typeof host.showModal === 'function') {
             try { host.showModal(); } catch { /* 上一个模态还在关闭 */ }
         }
-        const place = () => {
-            if (host && host !== dialog && host.open !== true) return;
-            try { target.focus(); } catch { /* 入口尚未可聚焦 */ }
-        };
-        place();
-        queueMicrotask(place);
-        requestAnimationFrame(place);
+        placeFocus(target, () => !host || host === dialog || host.open === true);
+    }
+    function closeReauth(restore = true) {
+        const trigger = pending?.trigger || null;
+        pending = null;
+        reauthInput.value = '';
+        reauthStatus.textContent = '';
+        reauthLayer.hidden = true;
+        if (restore) placeFocus(trigger, () => reauthLayer.hidden);
+    }
+    function openReauth(action, trigger, extra = {}) {
+        pending = { action, trigger, newPassword: extra.newPassword || '' };
+        reauthStatus.textContent = '';
+        reauthInput.value = '';
+        reauthLayer.hidden = false;
+        placeFocus(reauthInput, () => !reauthLayer.hidden);
     }
     function close() {
-        version++; clearTimeout(timer); clearSecrets(); currentExport = null; downloadUrl = null; download.hidden = true;
+        version += 1;
+        clearTimeout(timer);
+        clearSecrets();
+        pending = null;
+        reauthLayer.hidden = true;
+        reauthStatus.textContent = '';
+        currentExport = null;
+        downloadUrl = null;
+        download.hidden = true;
         if (deleted) { location.assign('/auth/'); return; }
         dialog.close();
         restoreOpener();
@@ -85,7 +186,16 @@ export function mountDataRights() {
         if (details) details.open = true;
     }
     root.querySelector('[data-close]').addEventListener('click', close);
-    dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
+    dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        if (busy) return;
+        if (!reauthLayer.hidden) { closeReauth(true); return; }
+        close();
+    });
+    root.querySelector('[data-reauth-cancel]').addEventListener('click', () => {
+        if (busy) return;
+        closeReauth(true);
+    });
     function showExport(result, epoch) {
         if (!dialog.open || epoch !== version) return;
         if (result.downloadUrl) downloadUrl = result.downloadUrl;
@@ -94,27 +204,41 @@ export function mountDataRights() {
         if (result.status === 'PARTIAL') {
             exportStatus.textContent = EXPORT_PARTIAL_COPY;
         } else if (result.status === 'READY') {
-            const expires = result.expiresAt ? new Intl.DateTimeFormat('zh-CN', { dateStyle:'short', timeStyle:'short' }).format(new Date(result.expiresAt)) : '';
+            const expires = result.expiresAt ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(result.expiresAt)) : '';
             exportStatus.textContent = `副本已生成，下载链接仅可使用一次。${expires ? `有效至 ${expires}。` : ''}`;
         } else if (result.status === 'PENDING') {
             exportStatus.textContent = result.errorMessage === 'ST_UNAVAILABLE' ? '聊天存储暂不可用，恢复后会继续生成。你可以稍后取回最近副本。' : '副本生成中。关闭页面后任务会继续，你可以稍后取回最近副本。';
             clearTimeout(timer);
             timer = setTimeout(async () => {
-                try { const next = await getDataExport(result.exportId); if (currentExport === result.exportId) showExport(next, epoch); }
-                catch (error) { if (epoch === version && dialog.open) exportStatus.textContent = errorText(error); }
+                try {
+                    const next = await getDataExport(result.exportId);
+                    if (currentExport === result.exportId) showExport(next, epoch);
+                } catch (error) {
+                    if (epoch === version && dialog.open) exportStatus.textContent = errorText(error);
+                }
             }, 2000);
-        } else { exportStatus.textContent = result.errorMessage === 'ST_EXPORT_TOO_LARGE' ? '当前私有内容超过导出上限，未生成副本。请减少文件数量或大小后重试。' : '副本未完成或已失效，请重新生成。'; }
+        } else {
+            exportStatus.textContent = result.errorMessage === 'ST_EXPORT_TOO_LARGE' ? '当前私有内容超过导出上限，未生成副本。请减少文件数量或大小后重试。' : '副本未完成或已失效，请重新生成。';
+        }
     }
     function paintSessions() {
         sessionList.textContent = '';
-        for (const item of Array.isArray(sessions) ? sessions : []) {
-            const row = document.createElement('p');
-            row.textContent = sessionLabel(item);
-            sessionList.append(row);
+        const items = Array.isArray(sessions) ? sessions : [];
+        if (sessionsLoaded && items.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'vc-account-empty';
+            empty.textContent = SESSION_EMPTY_COPY;
+            sessionList.append(empty);
+        } else {
+            for (const item of items) {
+                const row = document.createElement('p');
+                row.className = 'vc-account-session';
+                row.textContent = sessionRowText(item);
+                sessionList.append(row);
+            }
         }
-        const others = otherSessions(sessions);
         const revoke = root.querySelector('[data-revoke-others]');
-        if (revoke) revoke.disabled = busy || deleted || others.length === 0;
+        if (revoke) revoke.disabled = busy || deleted || otherSessions(sessions).length === 0;
     }
     function watchDeletion(epoch) {
         clearTimeout(timer);
@@ -126,11 +250,35 @@ export function mountDataRights() {
                 const session = await fetchSession();
                 if (!dialog.open || epoch !== version) return;
                 if (session?.deletionPending) watchDeletion(epoch);
-                else { deleted = true; root.querySelector('[data-close]').textContent = '返回登录'; deleteStatus.textContent = '在线数据已删除。离线备份按保留策略另行清理。'; }
+                else {
+                    deleted = true;
+                    root.querySelector('[data-close]').textContent = '返回登录';
+                    deleteStatus.textContent = '在线数据已删除。离线备份按保留策略另行清理。';
+                }
             } catch {
                 if (dialog.open && epoch === version) watchDeletion(epoch);
             }
         }, 2000);
+    }
+    function applySensitiveResult(action, result, epoch) {
+        if (epoch !== version || !dialog.open) return;
+        if (action === 'password') passwordStatus.textContent = PASSWORD_CHANGED_COPY;
+        else if (action === 'reset') {
+            authLine.textContent = '验证器未启用';
+            authStatus.textContent = AUTH_RESET_COPY;
+        } else if (action === 'export' || action === 'recover') showExport(result, epoch);
+        else if (action === 'delete') {
+            if (result?.ok === true && result?.status !== 'PENDING') {
+                deleted = true;
+                root.querySelector('[data-close]').textContent = '返回登录';
+                download.hidden = true;
+                deleteStatus.textContent = '在线数据已删除。离线备份按保留策略另行清理。';
+            } else {
+                deleteDomains = Array.isArray(result?.pendingDomains) ? result.pendingDomains : [];
+                deleteForm.hidden = true;
+                watchDeletion(epoch);
+            }
+        }
     }
     async function loadAccount() {
         const epoch = version;
@@ -141,66 +289,100 @@ export function mountDataRights() {
             if (epoch !== version || !dialog.open) return;
             authLine.textContent = authenticatorStatusText(full);
             sessions = Array.isArray(listed) ? listed : [];
+            sessionsLoaded = true;
             paintSessions();
         } catch {
             if (epoch === version && dialog.open) sessionStatus.textContent = '账户信息暂不可用';
         }
     }
-    async function exportAction(recover) {
-        if (busy || !exportForm.reportValidity()) return;
-        const epoch = version, password = exportForm.elements.password.value;
-        setBusy(true); exportStatus.textContent = recover ? '正在取回…' : '正在提交…';
-        try { showExport(await (recover ? recoverDataExport(password) : createDataExport(password)), epoch); }
-        catch (error) { if (epoch === version && dialog.open) exportStatus.textContent = errorText(error); }
-        finally { clearSecrets(); setBusy(false); }
-    }
-    exportForm.addEventListener('submit', (event) => { event.preventDefault(); void exportAction(false); });
-    root.querySelector('[data-recover]').addEventListener('click', () => { void exportAction(true); });
+    passwordForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (busy || !passwordForm.reportValidity()) return;
+        const newPassword = passwordForm.elements.newPassword.value;
+        passwordForm.elements.newPassword.value = '';
+        openReauth('password', event.submitter || passwordForm.querySelector('button[type=submit]'), { newPassword });
+    });
+    root.querySelector('[data-reset]').addEventListener('click', () => {
+        if (busy || !accountId) return;
+        openReauth('reset', root.querySelector('[data-reset]'));
+    });
+    root.querySelector('[data-export]').addEventListener('click', () => {
+        if (busy) return;
+        openReauth('export', root.querySelector('[data-export]'));
+    });
+    root.querySelector('[data-recover]').addEventListener('click', () => {
+        if (busy) return;
+        openReauth('recover', root.querySelector('[data-recover]'));
+    });
+    deleteForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (busy || !deleteForm.reportValidity()) return;
+        openReauth('delete', event.submitter || deleteForm.querySelector('button[type=submit]'));
+    });
+    reauthForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (busy || !pending || !reauthForm.reportValidity()) return;
+        const password = reauthInput.value;
+        const action = pending.action;
+        const newPassword = pending.newPassword;
+        const trigger = pending.trigger;
+        reauthInput.value = '';
+        const epoch = version;
+        setBusy(true);
+        reauthStatus.textContent = '正在验证…';
+        let focusAfter = null;
+        try {
+            const result = await executeSensitiveAction({
+                action,
+                password,
+                newPassword,
+                accountId,
+                deps: { reauth, changePassword, resetAuthenticator, createDataExport, recoverDataExport, deleteOwnAccount },
+            });
+            if (epoch !== version || !dialog.open) return;
+            pending = null;
+            reauthLayer.hidden = true;
+            reauthStatus.textContent = '';
+            applySensitiveResult(action, result, epoch);
+            focusAfter = deleteForm.hidden ? root.querySelector('.vc-data-delete summary') : trigger;
+        } catch (error) {
+            if (epoch === version && dialog.open && action === 'delete' && Array.isArray(error?.pendingDomains) && error.pendingDomains.length) {
+                pending = null;
+                reauthLayer.hidden = true;
+                reauthStatus.textContent = '';
+                deleteDomains = error.pendingDomains;
+                deleteForm.hidden = true;
+                watchDeletion(epoch);
+                focusAfter = root.querySelector('.vc-data-delete summary');
+            } else if (epoch === version && dialog.open && !reauthLayer.hidden) {
+                reauthStatus.textContent = errorText(error);
+                focusAfter = reauthInput;
+            }
+        } finally {
+            reauthInput.value = '';
+            setBusy(false);
+            if (focusAfter) placeFocus(focusAfter, () => epoch === version);
+        }
+    });
     download.addEventListener('click', async () => {
         if (busy || !downloadUrl) return;
-        const epoch = version; setBusy(true);
+        const epoch = version;
+        setBusy(true);
         try {
             const blob = await downloadDataExport(downloadUrl);
             if (epoch !== version || !dialog.open) return;
-            const url = URL.createObjectURL(blob), link = document.createElement('a');
-            link.href = url; link.download = 'virtual-companion-data.json'; link.click();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'virtual-companion-data.json';
+            link.click();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-            downloadUrl = null; download.hidden = true; exportStatus.textContent = '副本已下载；请妥善保存。';
-        } catch (error) { if (epoch === version && dialog.open) exportStatus.textContent = errorText(error); }
-        finally { setBusy(false); }
-    });
-    passwordForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (busy || !passwordForm.reportValidity()) return;
-        const epoch = version;
-        const currentPassword = passwordForm.elements.currentPassword.value;
-        const newPassword = passwordForm.elements.newPassword.value;
-        clearSecrets();
-        setBusy(true);
-        try {
-            await changePassword(currentPassword, newPassword);
-            if (epoch === version && dialog.open) passwordStatus.textContent = PASSWORD_CHANGED_COPY;
+            downloadUrl = null;
+            download.hidden = true;
+            exportStatus.textContent = '副本已下载；请妥善保存。';
         } catch (error) {
-            if (epoch === version && dialog.open) passwordStatus.textContent = errorText(error);
-        } finally { clearSecrets(); setBusy(false); }
-    });
-    resetForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (busy || !resetForm.reportValidity() || !accountId) return;
-        const epoch = version;
-        const password = resetForm.elements.password.value;
-        clearSecrets();
-        setBusy(true);
-        try {
-            await reauth(password);
-            await resetAuthenticator(accountId);
-            if (epoch === version && dialog.open) {
-                authLine.textContent = '验证器未启用';
-                authStatus.textContent = AUTH_RESET_COPY;
-            }
-        } catch (error) {
-            if (epoch === version && dialog.open) authStatus.textContent = errorText(error);
-        } finally { clearSecrets(); setBusy(false); }
+            if (epoch === version && dialog.open) exportStatus.textContent = errorText(error);
+        } finally { setBusy(false); }
     });
     root.querySelector('[data-revoke-others]').addEventListener('click', async () => {
         if (busy) return;
@@ -224,38 +406,25 @@ export function mountDataRights() {
         try { await logoutCurrent(); location.assign('/auth/'); }
         catch (error) { sessionStatus.textContent = errorText(error); setBusy(false); }
     });
-    deleteForm.addEventListener('submit', async (event) => {
-        event.preventDefault(); if (busy || !deleteForm.reportValidity()) return;
-        const epoch = version, password = deleteForm.elements.password.value;
-        clearTimeout(timer); setBusy(true); deleteStatus.textContent = '正在提交删除…';
-        try {
-            const result = await deleteOwnAccount(password);
-            if (epoch !== version || !dialog.open) return;
-            if (result.ok === true && result.status !== 'PENDING') {
-                deleted = true; root.querySelector('[data-close]').textContent = '返回登录'; download.hidden = true;
-                deleteStatus.textContent = '在线数据已删除。离线备份按保留策略另行清理。';
-            } else {
-                deleteDomains = Array.isArray(result.pendingDomains) ? result.pendingDomains : [];
-                deleteForm.hidden = true;
-                watchDeletion(epoch);
-            }
-            clearSecrets();
-        } catch (error) {
-            if (epoch === version && dialog.open) {
-                if (Array.isArray(error.pendingDomains) && error.pendingDomains.length) {
-                    deleteDomains = error.pendingDomains;
-                    deleteForm.hidden = true;
-                    watchDeletion(epoch);
-                } else deleteStatus.textContent = errorText(error);
-            }
-        }
-        finally { clearSecrets(); setBusy(false); }
-    });
     return {
         open(returnFocus = document.activeElement) {
             opener = returnFocus || opener;
-            version++; exportStatus.textContent = ''; deleteStatus.textContent = ''; passwordStatus.textContent = ''; authStatus.textContent = ''; sessionStatus.textContent = '';
-            deleteForm.hidden = false; deleteForm.reset(); clearSecrets();
+            version += 1;
+            exportStatus.textContent = '';
+            deleteStatus.textContent = '';
+            passwordStatus.textContent = '';
+            authStatus.textContent = '';
+            sessionStatus.textContent = '';
+            reauthStatus.textContent = '';
+            deleteForm.hidden = false;
+            deleteForm.reset();
+            clearSecrets();
+            pending = null;
+            reauthLayer.hidden = true;
+            sessions = [];
+            sessionsLoaded = false;
+            accountId = '';
+            paintSessions();
             if (!dialog.open) dialog.showModal();
             root.querySelector('h1').focus();
             void loadAccount();

@@ -287,10 +287,11 @@ async function renderChatStream(plan, res) {
     });
     const id = `chatcmpl-vc03m-${plan.seq}`;
     const created = Math.floor(Date.now() / 1000);
-    const chunk = (delta, finish = null) =>
+    const chunk = (delta, finish = null, usage = null) =>
         `data: ${JSON.stringify({
             id, object: 'chat.completion.chunk', created, model: plan.model,
             choices: [{ index: 0, delta, finish_reason: finish }],
+            ...(usage ? { usage } : {}),
         })}\n\n`;
     return streamOut(res, plan, async function* write() {
         let first = true;
@@ -306,7 +307,12 @@ async function renderChatStream(plan, res) {
                 yield () => res.write(chunk({ tool_calls: [{ index: 0, function: { arguments: part } }] }));
             }
         }
-        yield () => res.write(chunk({}, plan.tool ? 'tool_calls' : 'stop'));
+        // 非流式响应带 usage。流式结束块同样带上，账本才能结算；缺用量会被标成 UNKNOWN。
+        yield () => res.write(chunk({}, plan.tool ? 'tool_calls' : 'stop', {
+            prompt_tokens: plan.usage.prompt,
+            completion_tokens: plan.usage.completion,
+            total_tokens: plan.usage.prompt + plan.usage.completion,
+        }));
         yield () => res.write('data: [DONE]\n\n');
     });
 }

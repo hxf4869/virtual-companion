@@ -353,11 +353,11 @@ export async function sceneMemoryRealEval(ctx) {
     try {
         const embedding = (await (await fetch('http://127.0.0.1:11438/api/tags')).json()).models.find((model) => model.name === 'qwen3-embedding:0.6b');
         assert.ok(embedding, '本机 embedding 不可用');
-        ctx.w08.seedRealEstimate();
         for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
             expectStatus(await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'w08-real-eval', granted: true }), 200, 'consent');
         }
         provider = expectStatus(await ctx.admin.saveProvider('vc08-real', { ...spec, credential, expectedRevision: 0 }), 200, 'provider');
+        ctx.w08.seedRealEstimate();
         const previous = await ctx.admin.call('GET', '/api/v1/admin/embedding-config');
         expectStatus(await ctx.admin.call('PUT', '/api/v1/admin/embedding-config', {
             model: embedding.name, artifactVersion: embedding.digest, dimensions: 1024, queryPreprocessingVersion: 'qwen3-retrieval-v1',
