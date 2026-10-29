@@ -135,6 +135,8 @@
     "reorderModelRoutes",
     "getEmbeddingConfiguration",
     "saveEmbeddingConfiguration",
+    "getLocalModels",
+    "saveLocalModelRerank",
     "listModelPurposes",
     "saveModelPurpose",
     "callMemoryCoreModel",
@@ -166,6 +168,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "e92b777a1072fdc471edc7001463e9557550069e2860bb30559ff761910104f1"
+    "sha256": "2854dfc1e2f1aac66f9540072298519098d12a697a03052bcb4ed60cfd1059c2"
   }
 }

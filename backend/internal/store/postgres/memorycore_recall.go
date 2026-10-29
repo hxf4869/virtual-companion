@@ -173,6 +173,15 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 	if texts := dateFilteredGateTexts(q.GateTexts, ids, q.Date != nil); len(texts) > 0 {
 		payload["gateTexts"] = texts
 	}
+	// An omitted flag leaves MemoryCore on engineRerank, so VC_RERANK_ENABLED=0
+	// still disables rerank. Only an explicit false turns the owner switch off.
+	rerankOn, e := s.ResolveOwnerMemoryRerank(ctx, owner)
+	if e != nil {
+		return engineRecall{}, e
+	}
+	if !rerankOn {
+		payload["rerankEnabled"] = false
+	}
 	var raw json.RawMessage
 	e = s.memoryEngine.Call(ctx, "search", payload, &raw)
 	if e != nil {

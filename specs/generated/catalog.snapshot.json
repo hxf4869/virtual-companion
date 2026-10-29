@@ -1082,7 +1082,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 100,
+          "KEEP": 102,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -2511,6 +2511,28 @@
             "keepBecause": [
               "owner-instruction"
             ],
+            "method": "GET",
+            "operationId": "getLocalModels",
+            "path": "/api/v1/admin/local-models",
+            "replacementOrImpact": "Owner 2026-10-29 local model page. Merges the embedding snapshot, the MemoryCore probe of the fixed local embedding and rerank processes, and the owner rerank switch. Names and health only; no address and no memory text."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "PUT",
+            "operationId": "saveLocalModelRerank",
+            "path": "/api/v1/admin/local-models/rerank",
+            "replacementOrImpact": "Owner rerank switch with the same ADMIN reauthentication and expectedRevision check as other catalog writes. VC_RERANK_ENABLED=0 on MemoryCore still disables rerank. The model and its address cannot be changed here."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
             "method": "POST",
             "operationId": "resolveModelPurpose",
             "path": "/api/v1/service/model-purposes/{purpose}/resolve",
@@ -2755,7 +2777,7 @@
           }
         ]
       },
-      "sha256": "a4afb2bb61ff30a5ab162e769dde74b32e923683c6853589881d242d55d4419b"
+      "sha256": "ca83c7e9b2241d43c0ec6c32f935a028cb87248ee111fe8a8e13aba93d156063"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

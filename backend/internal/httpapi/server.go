@@ -287,6 +287,10 @@ func operation(path string) string {
 		return "admin_model_routing_order"
 	case "/api/v1/admin/embedding-config":
 		return "admin_embedding_config"
+	case "/api/v1/admin/local-models":
+		return "admin_local_models"
+	case "/api/v1/admin/local-models/rerank":
+		return "admin_local_model_rerank"
 	case "/api/v1/service/memorycore/llm":
 		return "service_memorycore_llm"
 	case "/api/v1/service/st/profile":

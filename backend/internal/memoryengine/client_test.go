@@ -71,6 +71,50 @@ func TestClientKeepsOnlyClosedEngineCodes(t *testing.T) {
 		})
 	}
 }
+func TestLocalModelsReadsBoundedStatus(t *testing.T) {
+	var method, path, auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path, auth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"embedding":{"model":"qwen3-embedding:0.6b","dimensions":1024,"healthy":true,"endpoint":"http://127.0.0.1:11438"},"rerank":{"model":"bge-reranker-v2-m3","deploymentEnabled":false,"healthy":false},"note":"folded bicycle downstairs"}`))
+	}))
+	defer srv.Close()
+	c, err := New(srv.URL, "private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.LocalModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodGet || path != "/internal/local-models" || auth != "Bearer private" {
+		t.Fatalf("request %s %s %s", method, path, auth)
+	}
+	if got.Embedding.Model != LocalEmbeddingModel || got.Embedding.Dimensions != LocalEmbeddingDimensions || !got.Embedding.Healthy {
+		t.Fatalf("embedding %+v", got.Embedding)
+	}
+	if got.Rerank.Model != LocalRerankModel || got.Rerank.DeploymentEnabled || got.Rerank.Healthy {
+		t.Fatalf("rerank %+v", got.Rerank)
+	}
+}
+
+func TestLocalModelsDropsUpstreamFailureText(t *testing.T) {
+	secret := "private memory sentence"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(secret))
+	}))
+	defer srv.Close()
+	c, err := New(srv.URL, "private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.LocalModels(context.Background())
+	if !errors.Is(err, ErrUnavailable) || strings.Contains(err.Error(), secret) {
+		t.Fatalf("err %v", err)
+	}
+}
+
 func TestClientRejectsRemoteEndpoint(t *testing.T) {
 	if _, err := New("https://example.org", "private"); err == nil {
 		t.Fatal("remote engine accepted")

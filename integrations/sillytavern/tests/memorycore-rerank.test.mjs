@@ -215,6 +215,27 @@ test('threshold selection keeps every negative empty and records recall and top-
     assert.equal(report.negatives, 2);
 });
 
+test('deployment disable wins over an explicit ranker', async () => {
+    const previous = process.env.VC_RERANK_ENABLED;
+    process.env.VC_RERANK_ENABLED = '0';
+    try {
+        let ranked = 0;
+        const native = await engine(() => ({ hits: hits(1) }));
+        const result = await native.search({
+            query: '问句', topK: 5, scope: {}, allowedRecordIds: ['c0'], observe: true,
+            rerank: {
+                enabled: true, threshold: -1, candidateLimit: 20, summaryUnit: 'line',
+                async rank() { ranked += 1; return [2]; },
+            },
+        });
+        assert.equal(ranked, 0);
+        assert.equal(result.stats.rerankDecision, 'disabled');
+    } finally {
+        if (previous === undefined) delete process.env.VC_RERANK_ENABLED;
+        else process.env.VC_RERANK_ENABLED = previous;
+    }
+});
+
 test('production rerank config is the calibration point that keeps negatives empty', async () => {
     const { RERANK, selectRerankThreshold } = await import('../memorycore-service/rerank.mjs');
     assert.equal(RERANK.summaryUnit, 'line');

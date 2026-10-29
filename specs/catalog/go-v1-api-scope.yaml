@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 100
+  KEEP: 102
   SIMPLIFY: 5
   DEFER: 15
   RETIRE: 42
@@ -1193,6 +1193,28 @@ operations:
   keepBecause:
   - owner-instruction
   replacementOrImpact: W08 ADMIN snapshot update with revision checks and new spaceId when embedding semantics change.
+- operationId: getLocalModels
+  method: GET
+  path: /api/v1/admin/local-models
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Owner 2026-10-29 local model page. Merges the embedding snapshot, the
+    MemoryCore probe of the fixed local embedding and rerank processes, and
+    the owner rerank switch. Names and health only; no address and no memory text.
+- operationId: saveLocalModelRerank
+  method: PUT
+  path: /api/v1/admin/local-models/rerank
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Owner rerank switch with the same ADMIN reauthentication and expectedRevision
+    check as other catalog writes. VC_RERANK_ENABLED=0 on MemoryCore still disables
+    rerank. The model and its address cannot be changed here.
 - operationId: resolveModelPurpose
   method: POST
   path: /api/v1/service/model-purposes/{purpose}/resolve

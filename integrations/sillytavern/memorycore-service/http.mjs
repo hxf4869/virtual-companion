@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
+import { readLocalModels as defaultReadLocalModels } from './local-models.mjs';
 
 export function requireServiceToken(value) {
     if (typeof value !== 'string' || Buffer.byteLength(value) < 32 || /\s/.test(value)) {
@@ -10,7 +11,7 @@ export function requireServiceToken(value) {
 
 // Health is public; all internal operations require the dedicated Go service token.
 // Browser Origin requests are rejected, including callers with a stolen session cookie.
-export function createMemoryCoreServer({ token, engine, commit }) {
+export function createMemoryCoreServer({ token, engine, commit, readLocalModels = defaultReadLocalModels }) {
     const expected = Buffer.from(`Bearer ${requireServiceToken(token)}`);
     return http.createServer({ maxHeaderSize: 8192 }, async (req, res) => {
         const send = (status, body) => {
@@ -22,6 +23,12 @@ export function createMemoryCoreServer({ token, engine, commit }) {
         if (route !== '/healthz') {
             const actual = Buffer.from(req.headers.authorization || '');
             if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return send(401, { code: 'UNAUTHORIZED' });
+        }
+        if (route === '/internal/local-models') {
+            if (req.method !== 'GET') { req.resume(); return send(405, { code: 'METHOD_NOT_ALLOWED' }); }
+            req.resume();
+            try { return send(200, await readLocalModels()); }
+            catch { return send(200, { embedding: { model: 'qwen3-embedding:0.6b', dimensions: 1024, healthy: false }, rerank: { model: 'bge-reranker-v2-m3', deploymentEnabled: false, healthy: false } }); }
         }
         if (!['/healthz', '/readyz'].includes(route)) {
             const action = route?.startsWith('/internal/') ? route.slice('/internal/'.length) : '';

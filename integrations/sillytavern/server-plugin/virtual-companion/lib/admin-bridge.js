@@ -52,6 +52,8 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/auth\/admin\/usage$/, where: '模型页用量区（只读，ADMIN 由 Go 判定）' },
     { method: 'GET', path: /^\/api\/v1\/admin\/model-purposes$/, where: '用途绑定列表' },
     { method: 'PUT', path: new RegExp(`^/api/v1/admin/model-purposes/${SEG}$`), where: '保存用途绑定' },
+    { method: 'GET', path: /^\/api\/v1\/admin\/local-models$/, where: '本机 embedding 与重排的名称和运行状态' },
+    { method: 'PUT', path: /^\/api\/v1\/admin\/local-models\/rerank$/, where: 'Owner 重排开关（expectedRevision；部署级关闭仍优先）' },
     { method: 'POST', path: /^\/api\/v1\/auth\/password$/, where: 'W15 账户改密' },
     { method: 'GET', path: /^\/api\/v1\/auth\/sessions$/, where: 'W15 当前会话列表' },
     { method: 'DELETE', path: /^\/api\/v1\/auth\/sessions\/[1-9][0-9]*$/, where: 'W15 撤销单个会话' },

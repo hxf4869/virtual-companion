@@ -5143,6 +5143,60 @@ paths:
           description: REVISION_CONFLICT
         '503':
           description: Configuration store unavailable
+  /api/v1/admin/local-models:
+    get:
+      operationId: getLocalModels
+      summary: Read local embedding and rerank status
+      description: ADMIN-only. Merges the embedding snapshot, a short MemoryCore probe of the fixed local embedding and rerank
+        processes, and the owner rerank switch. A missing switch is enabled at revision 0. Health is false when a probe fails.
+        The response has model names, dimensions, health and the switch. It does not include service addresses or memory text.
+        VC_RERANK_ENABLED=0 on MemoryCore still disables rerank regardless of the owner switch.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Local model status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalModelsStatus'
+        '401':
+          description: No valid session
+        '403':
+          description: ADMIN role required
+        '503':
+          description: Status store unavailable
+  /api/v1/admin/local-models/rerank:
+    put:
+      operationId: saveLocalModelRerank
+      summary: Turn the owner rerank switch on or off
+      description: Requires ADMIN, CSRF and fresh reauthentication. expectedRevision is 0 before the first save. This does
+        not change the model or its address. A deployment with VC_RERANK_ENABLED=0 stays off even when this switch is on.
+      security:
+      - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalRerankSaveRequest'
+      responses:
+        '200':
+          description: Saved owner switch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerMemoryRerank'
+        '400':
+          description: Invalid switch
+        '401':
+          description: No valid session
+        '403':
+          description: ADMIN, CSRF or recent reauthentication missing
+        '409':
+          description: REVISION_CONFLICT
+        '503':
+          description: Status store unavailable
   /api/v1/admin/model-purposes:
     get:
       operationId: listModelPurposes
@@ -10668,6 +10722,94 @@ components:
         spaceId:
           type: string
           format: uuid
+    LocalModelsStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - embedding
+      - rerank
+      properties:
+        embedding:
+          $ref: '#/components/schemas/LocalEmbeddingStatus'
+        rerank:
+          $ref: '#/components/schemas/LocalRerankStatus'
+    LocalEmbeddingStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - model
+      - dimensions
+      - healthy
+      description: Name and dimensions come from the embedding snapshot when one exists, otherwise from the fixed local model.
+        State is omitted until a snapshot exists.
+      properties:
+        model:
+          type: string
+          examples:
+          - qwen3-embedding:0.6b
+        dimensions:
+          type: integer
+          examples:
+          - 1024
+        healthy:
+          type: boolean
+        state:
+          type: string
+          enum:
+          - ENABLED
+          - DISABLED
+    LocalRerankStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - model
+      - deploymentEnabled
+      - healthy
+      - enabled
+      - revision
+      properties:
+        model:
+          type: string
+          examples:
+          - bge-reranker-v2-m3
+        deploymentEnabled:
+          type: boolean
+          description: False when MemoryCore has VC_RERANK_ENABLED=0 or false. That deployment flag wins over the owner switch.
+        healthy:
+          type: boolean
+          description: Short-timeout probe of the local rerank process /health.
+        enabled:
+          type: boolean
+          description: Owner switch. Defaults to true.
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+    LocalRerankSaveRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - enabled
+      - expectedRevision
+      properties:
+        enabled:
+          type: boolean
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+    OwnerMemoryRerank:
+      type: object
+      additionalProperties: false
+      required:
+      - enabled
+      - revision
+      properties:
+        enabled:
+          type: boolean
+        revision:
+          type: integer
+          format: int64
     ModelLedgerPriceStatus:
       type: string
       description: 'Catalog-to-ledger status of one model profile. ACTIVE matches the current effective USD-per-1K row. MISSING
