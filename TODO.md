@@ -315,7 +315,7 @@
       校准集正例 78/78、负例 22/22 空、top-1 69/78（原门槛 67/78）；第 10 轮真实评估 H1–H4 PASS，正例 6/8，持久化到可召回 P50 48.3s。
       验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级见 `V2-DEPLOY` 待办。
 - [ ] `V2-F03` 前端 Apple 风格重设计（Owner 2026-10-29 确认交互原型为基线）。设计真源 `DESIGN.md` 第 2 版（`6bf76812`），
-      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 进行中（2026-10-29）。
+      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F1 进行中。
       Owner 2026-10-29 决定：embedding 与重排作为默认本机模型在模型页显示名称与状态、重排可一键开关，暂不提供更换；
       后端状态接口与开关由 LM 任务实现，页面在 F3。日后更换模型须带记忆向量重建与重排阈值重新校准的完整流程。
 
