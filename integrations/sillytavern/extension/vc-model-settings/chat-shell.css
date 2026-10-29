@@ -1,0 +1,183 @@
+/* UI-P01 增量：空会话、断线、待写入条、冲突面板、记忆入口。导航本体仍在 style.css。 */
+
+#vc-chat-nav .vc-chat-memory,
+.vc-chat-inbox button,
+#vc-f2-conflict button {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+#vc-chat-nav .vc-chat-memory {
+    align-self: flex-start;
+    flex: 0 0 auto;
+    border: 1px solid var(--SmartThemeBorderColor, #394453);
+    background: transparent;
+    color: inherit;
+}
+
+#vc-chat-status,
+#vc-chat-empty,
+.vc-chat-offline,
+.vc-chat-inbox {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+}
+
+#vc-chat-nav #vc-chat-status {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+.vc-chat-offline,
+.vc-chat-inbox,
+#vc-chat-empty {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 12px;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+}
+
+.vc-chat-offline,
+.vc-chat-inbox {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid #F6C581;
+    background: #252D39;
+    color: #F6C581;
+}
+
+.vc-chat-inbox span,
+.vc-chat-offline {
+    min-width: 0;
+}
+
+#vc-chat-nav .vc-chat-inbox button,
+.vc-chat-inbox button {
+    flex: 0 0 auto;
+    min-width: 44px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+}
+
+#vc-chat-empty {
+    color: var(--SmartThemeQuoteColor, #B7C1D2);
+}
+
+#chat > #vc-chat-empty {
+    margin: 12px;
+}
+
+#vc-f2-conflict {
+    box-sizing: border-box;
+    width: min(560px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    margin: auto auto 12px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #EFF3FA;
+    overflow: hidden;
+}
+
+#vc-f2-conflict::backdrop {
+    background: rgba(8, 10, 14, 0.55);
+}
+
+#vc-f2-conflict .vc-f2-panel {
+    box-sizing: border-box;
+    max-width: 100%;
+    padding: 16px;
+    border: 1px solid #F6C581;
+    border-radius: 16px;
+    background: #252D39;
+}
+
+#vc-f2-conflict h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    line-height: 1.4;
+}
+
+#vc-f2-conflict p {
+    margin: 0 0 16px;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}
+
+#vc-f2-conflict .vc-f2-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#vc-f2-conflict .vc-f2-actions button {
+    flex: 1 1 140px;
+}
+
+#vc-f2-conflict [data-action="view-latest"] {
+    border: 0;
+    background: #F6C581;
+    color: #131C30;
+    font-weight: 600;
+}
+
+#vc-f2-conflict [data-action="keep-draft"],
+#vc-f2-conflict [data-action="copy-input"] {
+    border: 1px solid #394453;
+    background: #1C222C;
+    color: #EFF3FA;
+}
+
+#vc-f2-recall {
+    position: fixed;
+    z-index: 40;
+    left: 12px;
+    bottom: 12px;
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 1px solid #394453;
+    border-radius: 8px;
+    background: #1C222C;
+    color: #EFF3FA;
+    font: inherit;
+    font-size: 16px;
+}
+
+#vc-f2-recall[hidden] {
+    display: none;
+}
+
+#vc_foreground_banner .vcfg-banner-btn {
+    min-height: 44px;
+}
+
+@media (max-width: 900px) {
+    #vc-chat-nav .vc-chat-identity {
+        min-width: 0;
+    }
+    #vc-chat-nav .vc-chat-memory {
+        margin-left: auto;
+    }
+    .vc-chat-inbox,
+    .vc-chat-offline,
+    #vc-chat-empty {
+        width: 100%;
+    }
+}

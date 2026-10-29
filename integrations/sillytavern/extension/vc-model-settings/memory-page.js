@@ -2,7 +2,27 @@
 // Go 为唯一数据入口。发生时间使用 time，不从记录时间推算；关闭/切换会废弃迟到响应。
 import * as api from './api.js';
 
+if (typeof globalThis.addEventListener !== 'function' || typeof globalThis.dispatchEvent !== 'function') {
+    const bus = new EventTarget();
+    globalThis.addEventListener = (type, listener, options) => bus.addEventListener(type, listener, options);
+    globalThis.removeEventListener = (type, listener, options) => bus.removeEventListener(type, listener, options);
+    globalThis.dispatchEvent = (event) => bus.dispatchEvent(event);
+}
+
 export const FORGET_NOTICE = '聊天原文仍保留，可能继续用于当前对话。';
+export const OPEN_MEMORY_EVENT = 'vc-open-memory';
+let memoryOpener = null;
+
+export function bindOpenMemory(open) {
+    memoryOpener = typeof open === 'function' ? open : null;
+}
+
+export function requestOpenMemory(opener) {
+    const detail = { opener };
+    globalThis.dispatchEvent(new CustomEvent(OPEN_MEMORY_EVENT, { detail }));
+    if (typeof memoryOpener === 'function') memoryOpener(opener);
+    return detail;
+}
 const lifecycleLabels = { ACTIVE: '生效中', SUPERSEDED: '已被替代', FORGETTING: '清理中', FORGOTTEN: '已遗忘' };
 const sourceLabels = { VALID: '来源已核验', PENDING_VERIFICATION: '来源待核验', INVALID: '来源已失效' };
 const typeLabels = { FACT: '事实', PREFERENCE: '偏好', EVENT: '经历', GOAL: '目标', COMMITMENT: '承诺', SUMMARY: '摘要' };
@@ -276,5 +296,16 @@ export function mountMemoryPage({ getRelationshipId = () => '' } = {}) {
             case 'cancel-reauth': page.cancelReauth(); break;
         }
     });
-    return { open(returnFocusTarget = document.activeElement) { if (dialog.open) return; opener = returnFocusTarget; dialog.showModal(); void page.open(getRelationshipId()); dialog.querySelector('h1')?.focus(); }, close };
+    const controller = {
+        open(returnFocusTarget = document.activeElement) {
+            if (dialog.open) return;
+            opener = returnFocusTarget;
+            dialog.showModal();
+            void page.open(getRelationshipId());
+            dialog.querySelector('h1')?.focus();
+        },
+        close,
+    };
+    bindOpenMemory((target) => controller.open(target));
+    return controller;
 }

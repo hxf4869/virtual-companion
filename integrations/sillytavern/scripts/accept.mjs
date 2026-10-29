@@ -627,16 +627,33 @@ async function caseUI02(page) {
             await panelTrust(page, complex.replyId, 8);
             await shot(page, `UI02-${width}`);
         }
+        await page.evaluate(() => {
+            window.__vcNativeCharacters = 0;
+            document.querySelector('#rm_button_characters')?.addEventListener('click', () => { window.__vcNativeCharacters += 1; }, true);
+        });
+        const nativeClosed = () => page.evaluate(() => {
+            const panel = document.querySelector('#right-nav-panel');
+            const icon = document.querySelector('#rightNavDrawerIcon');
+            return panel?.classList.contains('closedDrawer') === true
+                && panel.classList.contains('openDrawer') === false
+                && icon?.classList.contains('closedIcon') === true
+                && icon.classList.contains('openIcon') === false;
+        });
+        if (!await nativeClosed()) throw new Error('窄屏验收开始时原生角色抽屉不是关闭的');
         await page.locator('#vc-chat-nav').getByRole('button', { name: '角色', exact: true }).click();
-        await page.locator('#right-nav-panel').waitFor({ state: 'visible' });
-        await page.locator('#rightNavDrawerIcon').click();
-        await poll(() => page.evaluate(() => getComputedStyle(document.querySelector('#right-nav-panel')).display === 'none'
-            && document.querySelector('#rightNavDrawerIcon').classList.contains('closedIcon')), 10000, '原生角色抽屉关闭动画结束');
+        await page.locator('.vc-instance-dialog[open] .vc-instance-page').waitFor({ state: 'visible' });
+        const characterPage = await page.locator('.vc-instance-page').innerText();
+        if (!characterPage.includes('角色卡模板') || !characterPage.includes('陪伴实例')) throw new Error(`角色页未打开: ${characterPage.slice(0, 120)}`);
+        if (!await nativeClosed()) throw new Error('点击角色打开了原生角色抽屉');
+        if (await page.evaluate(() => window.__vcNativeCharacters) !== 0) throw new Error('点击角色触发了 #rm_button_characters');
+        await page.locator('.vc-instance-dialog [data-action="close"]').click();
+        await poll(() => page.evaluate(() => document.querySelector('.vc-instance-dialog')?.open !== true), 10000, '角色页关闭');
+        if (!await nativeClosed()) throw new Error('关闭角色页时打开了原生角色抽屉');
         await page.locator('#vc-chat-nav').getByRole('button', { name: '模型设置', exact: true }).click();
         await page.locator('.vcms-overlay').waitFor({ state: 'visible' });
         await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
         if (await page.locator('#send_textarea').inputValue() !== '尚未发送的窄屏草稿') throw new Error('导航丢失输入草稿');
-        return '390/360 无横溢，主发送目标≥44px；角色抽屉/模型页开关保持草稿';
+        return '390/360 无横溢，主发送目标≥44px；角色页开关保持草稿且不打开原生角色管理';
     });
     ok = await step('UI02.3 缩短视口保留输入，原生发送与停止仍可操作', ok, async () => {
         await page.setViewportSize({ width: 390, height: 450 });

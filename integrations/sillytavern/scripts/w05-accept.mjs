@@ -219,14 +219,51 @@ export async function sceneF2Browser(ctx) {
         });
         assert.equal(outcome, 'VC_REVISION_CONFLICT');
         await pages[1].waitForSelector('#vc-f2-conflict[open]');
-        assert.match(await pages[1].locator('#vc-f2-conflict textarea').inputValue(), /页面B冲突草稿/);
+        assert.equal(await pages[1].locator('#vc-f2-conflict textarea').count(), 0);
+        assert.equal(await pages[1].locator('#vc-f2-conflict button').filter({ hasText: '重新加载最新版本' }).count(), 0);
+        assert.equal(await pages[1].locator('#vc-f2-conflict button').filter({ hasText: '强制覆盖' }).count(), 0);
         assert.equal(await pages[1].evaluate(() => window.SillyTavern.getContext().chat[0].mes), '页面B冲突草稿');
+        const copied = await pages[1].evaluate(async () => {
+            let written = '';
+            const stub = { writeText: async (text) => { written = text; } };
+            const clipboard = navigator.clipboard;
+            let restore = () => {};
+            try {
+                Object.defineProperty(navigator, 'clipboard', { configurable: true, value: stub });
+                restore = () => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: clipboard });
+            } catch {
+                if (clipboard) clipboard.writeText = stub.writeText;
+            }
+            document.querySelector('#vc-f2-conflict [data-action="copy-input"]').click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            restore();
+            return written;
+        });
+        assert.match(copied, /页面B冲突草稿/);
+        assert.equal(copied.includes('chat_metadata'), false);
+        assert.equal(copied.includes('{'), false);
         await pages[1].screenshot({ path: path.join(ctx.artifactsDir, 'B07-draft-conflict.png') }); ctx.screenshots.push('B07-draft-conflict.png');
         const persisted = expect(await st.call('POST', '/api/chats/get', { avatar_url: card.avatar, file_name: file }), 200, '确认服务端赢家');
         assert.equal(persisted[1].mes, '页面A新编辑');
-        await pages[1].locator('#vc-f2-conflict button').filter({ hasText: '重新加载最新版本' }).click(); await nativeReady(pages[1]);
-        await pages[1].evaluate(async ({ avatar, file }) => { const s = await import('/script.js'); await s.selectCharacterById(s.characters.findIndex((c) => c.avatar === avatar)); await s.openCharacterChat(file); }, { avatar: card.avatar, file });
-        assert.equal(await pages[1].evaluate(() => window.SillyTavern.getContext().chat[0].mes), '页面A新编辑');
+        await pages[1].evaluate(() => {
+            window.__vcStay = 1;
+            const box = document.querySelector('#send_textarea');
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, '已有输入');
+        });
+        await pages[1].locator('#vc-f2-conflict [data-action="view-latest"]').click();
+        await pages[1].waitForFunction(() => window.__vcStay === 1 && window.SillyTavern.getContext().chat[0]?.mes === '页面A新编辑');
+        const kept = await pages[1].evaluate(() => ({
+            stay: window.__vcStay,
+            input: document.querySelector('#send_textarea').value,
+            mes: window.SillyTavern.getContext().chat[0].mes,
+            open: document.querySelector('#vc-f2-conflict')?.open === true,
+        }));
+        assert.equal(kept.stay, 1, '查看最新不应整页刷新');
+        assert.equal(kept.open, false);
+        assert.equal(kept.mes, '页面A新编辑');
+        assert.match(kept.input, /已有输入/);
+        assert.match(kept.input, /页面B冲突草稿/);
+        assert.ok(kept.input.indexOf('已有输入') < kept.input.indexOf('页面B冲突草稿'), kept.input);
         // Run the real shipped Helper callback, holding its awaited updater across a swipe.
         const delayed = await pages[1].evaluate(async () => {
             const helper = window.TavernHelper;
