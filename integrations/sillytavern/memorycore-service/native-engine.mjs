@@ -109,7 +109,7 @@ export async function summaryPassesGate(query, text, embedding, dated, rerank) {
     if (rerank?.enabled && typeof rerank.rank === 'function') {
         try {
             for (const question of queryParts(query)) {
-                const units = summaryUnits(text, rerank.summaryUnit, rerank.candidateLimit || 20);
+                const units = summaryUnits(text, rerank.summaryUnit, rerank.candidateLimit || 20, question);
                 if (!units.length) continue;
                 const scores = await rerank.rank(question, units);
                 if (scores.some((score) => Number.isFinite(score) && score >= rerank.threshold)) return true;
@@ -265,6 +265,51 @@ async function originalGateHits(api, store, queries, ids, scope, embedding, date
     }
     return [...hits.values()].sort((a, b) => b.score - a.score);
 }
+async function rankDocuments(client, query, documents) {
+    const parts = queryParts(query);
+    const batches = await Promise.all(parts.map((part) => client.rank(part, documents)));
+    const best = new Array(documents.length).fill(Number.NEGATIVE_INFINITY);
+    for (const scores of batches) {
+        if (!Array.isArray(scores) || scores.length !== documents.length || scores.some((score) => !Number.isFinite(score))) {
+            throw Object.assign(new Error('RERANK_INVALID'), { code: 'invalid' });
+        }
+        for (let index = 0; index < scores.length; index += 1) {
+            if (scores[index] > best[index]) best[index] = scores[index];
+        }
+    }
+    return best;
+}
+// Original-gate hits keep their own order and take topK first. Logit-only
+// hits fill whatever room is left. An original hit outside the loose window
+// stays in that reserved set instead of being scored as -Infinity and cut.
+function selectUnion(capped, scores, original, threshold, topK) {
+    const scoreById = new Map(capped.map((hit, index) => [hit.record_id, scores[index]]));
+    const originalIds = new Set(original.map((hit) => hit.record_id));
+    const mandatory = original.map((hit) => {
+        const score = scoreById.get(hit.record_id);
+        const finite = Number.isFinite(score);
+        return {
+            hit: finite ? { ...hit, score, rerankScore: score } : { ...hit },
+            sortScore: finite ? score : Number.NEGATIVE_INFINITY,
+            only: false,
+        };
+    });
+    const extras = [];
+    for (let index = 0; index < capped.length; index += 1) {
+        if (!(scores[index] >= threshold) || originalIds.has(capped[index].record_id)) continue;
+        extras.push({
+            hit: { ...capped[index], score: scores[index], rerankScore: scores[index] },
+            sortScore: scores[index],
+            only: true,
+        });
+    }
+    extras.sort((left, right) => right.sortScore - left.sortScore);
+    const limit = Number.isFinite(topK) && topK > 0 ? topK : Number.POSITIVE_INFINITY;
+    const kept = mandatory.slice(0, limit);
+    if (kept.length < limit) kept.push(...extras.slice(0, limit - kept.length));
+    kept.sort((left, right) => right.sortScore - left.sortScore);
+    return kept;
+}
 function listRecords(store, ids, scope) {
     return store.queryL1Records({ ...scope, ...(ids ? { recordIds: ids } : {}) }).map(toRecord);
 }
@@ -327,7 +372,7 @@ export async function createNativeFactory(api) {
                 if (typeof result.emptyDisposition === 'string' && /^[A-Z0-9_]+$/u.test(result.emptyDisposition)) proposal.emptyDisposition = result.emptyDisposition;
                 return proposal;
             },
-            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false, rerank }) {
+            async search({ query, topK, scope, allowedRecordIds, embedding, eventDate, dateRestricted = false, gateTexts, observe = false, rerank, cacheOwnerId = '', cacheScope = '' }) {
                 if (typeof query !== 'string' || !query || query.length > 20000) throw new Error('MEMORYCORE_QUERY');
                 const cacheBefore = observe ? embeddingCacheStats() : null;
                 const rerankBefore = observe ? rerankCacheStats() : null;
@@ -362,67 +407,56 @@ export async function createNativeFactory(api) {
                 // generic schedule question may use the lower cosine floor.
                 const queries = queryParts(query);
                 if (client.enabled) {
+                    if (cacheOwnerId) client.ownerId = cacheOwnerId;
+                    if (cacheScope) client.scope = cacheScope;
                     const limit = client.candidateLimit || 20;
                     // Loose retrieval, the original gate, and each sub-question are
                     // independent. Rerank starts as soon as the loose hits exist and
-                    // overlaps the rest of the original gate.
+                    // overlaps the rest of the original gate. Only rank and its
+                    // score check are rerank failures; the other stages throw as
+                    // themselves.
                     const looseP = looseCandidateHits(api, store, queries, ids, scope, embedding, dated, limit, stats);
                     const originalP = originalGateHits(api, store, queries, ids, scope, embedding, dated, topK, stats);
+                    let consumedOriginal = false;
+                    const takeOriginal = async () => {
+                        consumedOriginal = true;
+                        return originalP;
+                    };
                     try {
                         const capped = await looseP;
                         if (stats) stats.rerankCandidates = capped.length;
                         const rankStarted = performance.now();
                         let scores = [];
                         try {
-                            scores = capped.length ? await client.rank(query, capped.map((hit) => hit.content)) : [];
+                            if (capped.length) scores = await rankDocuments(client, query, capped.map((hit) => hit.content));
+                        } catch (error) {
+                            if (stats) {
+                                stats.rerankDecision = rerankFailureCode(error);
+                                stats.rerankFallback = 1;
+                                stats.rerankKept = 0;
+                            }
+                            const original = await takeOriginal();
+                            return finish(original.slice(0, topK), true);
                         } finally {
                             if (stats) stats.rerankMs += took(rankStarted);
                         }
-                        if (scores.length !== capped.length || scores.some((score) => !Number.isFinite(score))) {
-                            throw Object.assign(new Error('RERANK_INVALID'), { code: 'invalid' });
-                        }
-                        const original = await originalP;
-                        const originalIds = new Set(original.map((hit) => hit.record_id));
-                        const rankedScore = new Map(capped.map((hit, index) => [hit.record_id, scores[index]]));
-                        const injected = [];
-                        const seen = new Set();
-                        for (let index = 0; index < capped.length; index += 1) {
-                            const byRank = scores[index] >= client.threshold;
-                            const byGate = originalIds.has(capped[index].record_id);
-                            if (!byRank && !byGate) continue;
-                            seen.add(capped[index].record_id);
-                            injected.push({ hit: { ...capped[index], score: scores[index], rerankScore: scores[index] }, score: scores[index], only: byRank && !byGate });
-                        }
-                        for (const hit of original) {
-                            if (seen.has(hit.record_id)) continue;
-                            const score = rankedScore.get(hit.record_id);
-                            injected.push({ hit: { ...hit, ...(Number.isFinite(score) ? { score, rerankScore: score } : {}) }, score: Number.isFinite(score) ? score : Number.NEGATIVE_INFINITY, only: false });
-                        }
-                        injected.sort((a, b) => b.score - a.score);
-                        const limited = (Number.isFinite(topK) && topK > 0 ? injected.slice(0, topK) : injected).map((item) => item.hit);
+                        const original = await takeOriginal();
+                        const kept = selectUnion(capped, scores, original, client.threshold, topK);
                         if (stats) {
                             stats.rerankDecision = 'applied';
-                            stats.rerankKept = limited.length;
-                            stats.rerankOnly = (Number.isFinite(topK) && topK > 0 ? injected.slice(0, topK) : injected).filter((item) => item.only).length;
+                            stats.rerankKept = kept.length;
+                            stats.rerankOnly = kept.filter((item) => item.only).length;
                             stats.rerankFallback = 0;
                         }
                         const gateRerank = { ...client, onGateFallback() { gateFallback = 1; } };
-                        const body = await finish(limited, true, gateRerank);
+                        const body = await finish(kept.map((item) => item.hit), true, gateRerank);
                         if (body && !Array.isArray(body)) {
                             body.rerankRank = capped.map((hit, index) => ({ id: hit.record_id, score: scores[index] }));
                             body.rerankOriginal = original.map((hit) => hit.record_id);
                         }
                         return body;
-                    } catch (error) {
-                        if (stats) {
-                            stats.rerankDecision = rerankFailureCode(error);
-                            stats.rerankFallback = 1;
-                            stats.rerankKept = 0;
-                        }
-                        let original;
-                        try { original = await originalP; }
-                        catch { original = await originalGateHits(api, store, queries, ids, scope, embedding, dated, topK, stats); }
-                        return finish(original.slice(0, topK), true);
+                    } finally {
+                        if (!consumedOriginal) void originalP.then(() => {}, () => {});
                     }
                 } else if (stats) {
                     stats.rerankDecision = 'disabled';

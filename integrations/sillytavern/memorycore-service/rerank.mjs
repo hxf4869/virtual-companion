@@ -54,11 +54,44 @@ export function selectRerankThreshold(negativeMax) {
     return nextUp(negativeMax);
 }
 
-export function summaryUnits(text, unit, limit = RERANK.candidateLimit) {
+function hanBigrams(text) {
+    const grams = new Set();
+    let han = '';
+    for (const ch of String(text)) {
+        if (/[\u4e00-\u9fff]/u.test(ch)) {
+            han += ch;
+            if (han.length > 2) han = han.slice(-2);
+            if (han.length === 2) grams.add(han);
+        } else han = '';
+    }
+    return grams;
+}
+
+function sharesHanBigram(wanted, line) {
+    if (wanted.size === 0) return false;
+    let han = '';
+    for (const ch of String(line)) {
+        if (/[\u4e00-\u9fff]/u.test(ch)) {
+            han += ch;
+            if (han.length > 2) han = han.slice(-2);
+            if (han.length === 2 && wanted.has(han)) return true;
+        } else han = '';
+    }
+    return false;
+}
+
+// Short summaries keep every non-empty line. A longer summary is filtered to
+// lines that share a Han bigram with the question, then capped at the rerank
+// window so a late matching line is not dropped unread.
+export function summaryUnits(text, unit, limit = RERANK.candidateLimit, query = '') {
     const whole = String(text ?? '');
     if (unit === 'whole') return [whole];
     const lines = whole.split(/\n/u).map((line) => line.trim()).filter(Boolean);
-    return (lines.length ? lines : [whole]).slice(0, limit);
+    const body = lines.length ? lines : [whole];
+    if (body.length <= limit) return body;
+    const wanted = hanBigrams(query);
+    if (wanted.size === 0) return body.slice(0, limit);
+    return body.filter((line) => sharesHanBigram(wanted, line)).slice(0, limit);
 }
 
 export function calibrationReport(rows, threshold) {
@@ -96,18 +129,22 @@ function rerankError(code) {
     return error;
 }
 
-// Process-local logits. The key is the raw model id, query and document
-// joined by NUL — not a hash — so a changed memory text misses on its own.
-// Sixty seconds covers the second recall of the same send. Least-recently
-// used pairs past the cap are dropped; expiry does not move on a hit.
+// Process-local logits. The key is the raw model id, owner, scope, query and
+// document joined by NUL — not a hash — so a changed memory text misses on
+// its own, and another owner does not reuse this score. Sixty seconds covers
+// the second recall of the same send. Least-recently used pairs past the cap
+// are dropped; expiry does not move on a hit. Expired rows are removed before
+// an insert so they do not occupy a slot. One in-flight promise is shared per
+// key, and the stored time is the moment the score is ready.
 export const RERANK_CACHE_TTL_MS = 60_000;
 export const RERANK_CACHE_LIMIT = 256;
 const rerankScoreCache = new Map();
+const inflightRerank = new Map();
 let rerankCacheHits = 0;
 let rerankCacheMisses = 0;
 
-export function rerankScoreKey(model, query, document) {
-    return `${model}\0${query}\0${document}`;
+export function rerankScoreKey(model, query, document, ownerId = '', scope = '') {
+    return [model, ownerId, scope, query, document].join('\0');
 }
 
 export function rerankCacheStats() {
@@ -116,6 +153,7 @@ export function rerankCacheStats() {
 
 export function resetRerankCache() {
     rerankScoreCache.clear();
+    inflightRerank.clear();
     rerankCacheHits = 0;
     rerankCacheMisses = 0;
 }
@@ -132,7 +170,15 @@ function readRerankScore(key, now) {
     return hit.score;
 }
 
+function evictExpiredRerankScores(now) {
+    for (const [key, hit] of rerankScoreCache) {
+        if (now - hit.at >= RERANK_CACHE_TTL_MS) rerankScoreCache.delete(key);
+    }
+}
+
 function storeRerankScore(key, score, now) {
+    evictExpiredRerankScores(now);
+    rerankScoreCache.delete(key);
     rerankScoreCache.set(key, { score, at: now });
     while (rerankScoreCache.size > RERANK_CACHE_LIMIT) {
         const oldest = rerankScoreCache.keys().next().value;
@@ -172,34 +218,68 @@ async function requestRerankScores({ endpoint, timeoutMs, fetchImpl, query, docu
     return scores;
 }
 
-export function createRerankClient({ endpoint, timeoutMs = RERANK.timeoutMs, fetchImpl = fetch, threshold = RERANK.threshold, summaryUnit = RERANK.summaryUnit, enabled = true, candidateLimit = RERANK.candidateLimit, now = () => Date.now() } = {}) {
+export function createRerankClient({ endpoint, timeoutMs = RERANK.timeoutMs, fetchImpl = fetch, threshold = RERANK.threshold, summaryUnit = RERANK.summaryUnit, enabled = true, candidateLimit = RERANK.candidateLimit, now = () => Date.now(), ownerId = '', scope = '' } = {}) {
     return {
-        enabled, threshold, timeoutMs, summaryUnit, candidateLimit,
+        enabled, threshold, timeoutMs, summaryUnit, candidateLimit, ownerId, scope,
         async rank(query, documents) {
             if (!Array.isArray(documents) || documents.some((text) => typeof text !== 'string')) throw rerankError('invalid');
             if (documents.length === 0) return [];
+            const cacheOwner = this?.ownerId || '';
+            const cacheScope = this?.scope || '';
             const clock = now();
             const scores = new Array(documents.length);
             const missing = [];
+            const waiters = [];
             for (let index = 0; index < documents.length; index += 1) {
-                const key = rerankScoreKey(RERANK.model, query, documents[index]);
+                const key = rerankScoreKey(RERANK.model, query, documents[index], cacheOwner, cacheScope);
                 const cached = readRerankScore(key, clock);
-                if (cached === undefined) {
-                    rerankCacheMisses += 1;
-                    missing.push(index);
-                } else {
+                if (cached !== undefined) {
                     rerankCacheHits += 1;
                     scores[index] = cached;
+                    continue;
+                }
+                const inflight = inflightRerank.get(key);
+                if (inflight) {
+                    rerankCacheHits += 1;
+                    waiters.push(inflight.then((score) => { scores[index] = score; }));
+                    continue;
+                }
+                rerankCacheMisses += 1;
+                missing.push({ index, key });
+            }
+            if (missing.length) {
+                const resolvers = missing.map(() => {
+                    let resolve;
+                    let reject;
+                    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+                    void promise.then(() => {}, () => {});
+                    return { promise, resolve, reject };
+                });
+                missing.forEach((item, offset) => inflightRerank.set(item.key, resolvers[offset].promise));
+                const batch = (async () => {
+                    const fresh = await requestRerankScores({
+                        endpoint, timeoutMs, fetchImpl, query, documents: missing.map((item) => documents[item.index]),
+                    });
+                    const completed = now();
+                    for (let offset = 0; offset < missing.length; offset += 1) {
+                        storeRerankScore(missing[offset].key, fresh[offset], completed);
+                        resolvers[offset].resolve(fresh[offset]);
+                    }
+                    return fresh;
+                })();
+                try {
+                    const fresh = await batch;
+                    for (let offset = 0; offset < missing.length; offset += 1) scores[missing[offset].index] = fresh[offset];
+                } catch (error) {
+                    for (const resolver of resolvers) resolver.reject(error);
+                    throw error;
+                } finally {
+                    for (let offset = 0; offset < missing.length; offset += 1) {
+                        if (inflightRerank.get(missing[offset].key) === resolvers[offset].promise) inflightRerank.delete(missing[offset].key);
+                    }
                 }
             }
-            if (!missing.length) return scores;
-            const fresh = await requestRerankScores({
-                endpoint, timeoutMs, fetchImpl, query, documents: missing.map((index) => documents[index]),
-            });
-            for (let index = 0; index < missing.length; index += 1) {
-                scores[missing[index]] = fresh[index];
-                storeRerankScore(rerankScoreKey(RERANK.model, query, documents[missing[index]]), fresh[index], clock);
-            }
+            if (waiters.length) await Promise.all(waiters);
             return scores;
         },
     };

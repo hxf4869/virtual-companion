@@ -118,7 +118,7 @@ func TestMemoryRecallMetrics(t *testing.T) {
 	if strings.Contains(body, "owner") || strings.Contains(body, "secret") {
 		t.Fatalf("memory metrics leaked a label: %s", body)
 	}
-	reg.ObserveMemoryRecall(MemoryRecallStats{RerankTimeout: 1, RerankFallback: 1, RerankCandidates: 4, RerankKept: 0, RerankOnly: 2})
+	reg.ObserveMemoryRecall(MemoryRecallStats{RerankTimeout: 1, RerankFallback: 1, RerankGateFallback: 1, RerankCandidates: 4, RerankKept: 0, RerankOnly: 2})
 	buf.Reset()
 	if err := reg.WritePrometheus(&buf); err != nil {
 		t.Fatal(err)
@@ -126,6 +126,7 @@ func TestMemoryRecallMetrics(t *testing.T) {
 	for _, want := range []string{
 		"vc_memory_rerank_timeout_total 1.000000000",
 		"vc_memory_rerank_fallback_total 1.000000000",
+		"vc_memory_rerank_gate_fallback_total 1.000000000",
 		"vc_memory_rerank_candidates_total 4.000000000",
 		"vc_memory_rerank_kept_total 0.000000000",
 		"vc_memory_rerank_only_total 2.000000000",

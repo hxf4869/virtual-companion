@@ -24,8 +24,10 @@ const embeddingSnapshot = {
 test('rerank logits are cached by the raw model, query and document text', async () => {
     const { createRerankClient, resetRerankCache, rerankCacheStats, rerankScoreKey, RERANK_CACHE_TTL_MS, RERANK_CACHE_LIMIT } = await import('../memorycore-service/rerank.mjs');
     resetRerankCache();
-    assert.equal(rerankScoreKey('bge-m3', '问句', '文档'), 'bge-m3\0问句\0文档');
-    assert.equal(rerankScoreKey('bge-m3', '问句', '文档').includes('文档'), true);
+    const ownerKey = rerankScoreKey('bge-m3', '问句', '文档', '101', '7:COMPANION:daily-7:main');
+    assert.equal(ownerKey, ['bge-m3', '101', '7:COMPANION:daily-7:main', '问句', '文档'].join('\0'));
+    assert.equal(ownerKey.includes('文档'), true);
+    assert.notEqual(rerankScoreKey('bge-m3', '问句', '文档', '101', '7:COMPANION:daily-7:main'), rerankScoreKey('bge-m3', '问句', '文档', '102', '7:COMPANION:daily-7:main'));
     assert.equal(RERANK_CACHE_TTL_MS, 60_000);
     assert.equal(RERANK_CACHE_LIMIT >= 64 && RERANK_CACHE_LIMIT <= 1024, true);
     let calls = 0;
@@ -60,6 +62,113 @@ test('rerank logits are cached by the raw model, query and document text', async
     assert.equal(calls, 3, '超过 TTL 后必须重新打分');
     await client.rank('另一问', ['丙']);
     assert.equal(calls, 4);
+});
+
+test('rerank cache shares one in-flight score and stores it at completion', async () => {
+    const { createRerankClient, resetRerankCache, RERANK_CACHE_TTL_MS } = await import('../memorycore-service/rerank.mjs');
+    resetRerankCache();
+    let clock = 1_000;
+    let calls = 0;
+    let release = () => {};
+    const gate = new Promise((resolve) => { release = resolve; });
+    const client = createRerankClient({
+        endpoint: 'http://127.0.0.1:9',
+        now: () => clock,
+        fetchImpl: async (_url, init) => {
+            calls += 1;
+            const body = JSON.parse(init.body);
+            if (body.documents[0] === '慢') clock += 5_000;
+            await gate;
+            return Response.json({ results: body.documents.map((_text, index) => ({ index, relevance_score: 0.5 })) });
+        },
+    });
+    const first = client.rank('问句', ['慢']);
+    const second = client.rank('问句', ['慢']);
+    assert.equal(calls, 1);
+    release();
+    assert.deepEqual(await first, [0.5]);
+    assert.deepEqual(await second, [0.5]);
+    clock = 1_000 + RERANK_CACHE_TTL_MS;
+    await client.rank('问句', ['慢']);
+    assert.equal(calls, 1, '完成时刻写入后，开始时刻加 TTL 仍应命中');
+});
+
+test('rerank cache drops expired entries before they consume a slot', async () => {
+    const { createRerankClient, resetRerankCache, RERANK_CACHE_TTL_MS, RERANK_CACHE_LIMIT } = await import('../memorycore-service/rerank.mjs');
+    resetRerankCache();
+    let clock = 0;
+    let calls = 0;
+    const client = createRerankClient({
+        endpoint: 'http://127.0.0.1:9',
+        now: () => clock,
+        fetchImpl: async (_url, init) => {
+            calls += 1;
+            const body = JSON.parse(init.body);
+            return Response.json({ results: body.documents.map((_text, index) => ({ index, relevance_score: 0.25 })) });
+        },
+    });
+    for (let index = 0; index < RERANK_CACHE_LIMIT - 1; index += 1) await client.rank('过期', [`z${index}`]);
+    clock = 50_000;
+    await client.rank('过期', ['valid']);
+    clock = 59_000;
+    for (let index = 0; index < RERANK_CACHE_LIMIT - 1; index += 1) await client.rank('过期', [`z${index}`]);
+    clock = RERANK_CACHE_TTL_MS;
+    const beforeFresh = calls;
+    await client.rank('过期', ['fresh']);
+    assert.equal(calls, beforeFresh + 1);
+    const beforeValid = calls;
+    await client.rank('过期', ['valid']);
+    assert.equal(calls, beforeValid, '仍在 TTL 内的条目不能被已过期条目挤出');
+});
+
+test('rerank and embedding caches are separated by owner and scope', async () => {
+    const { createRerankClient, resetRerankCache } = await import('../memorycore-service/rerank.mjs');
+    const { createOllamaEmbedding, resetEmbeddingCaches, embeddingCacheKey } = await import('../memorycore-service/embedding.mjs');
+    resetRerankCache();
+    resetEmbeddingCaches();
+    let calls = 0;
+    const fetchImpl = async (_url, init) => {
+        calls += 1;
+        const body = JSON.parse(init.body);
+        return Response.json({ results: body.documents.map((_text, index) => ({ index, relevance_score: 0.75 })) });
+    };
+    const ownerA = createRerankClient({ endpoint: 'http://127.0.0.1:9', ownerId: '1', scope: '7:COMPANION:daily-7:main', fetchImpl });
+    const ownerB = createRerankClient({ endpoint: 'http://127.0.0.1:9', ownerId: '2', scope: '7:COMPANION:daily-7:main', fetchImpl });
+    const otherScope = createRerankClient({ endpoint: 'http://127.0.0.1:9', ownerId: '1', scope: '8:STORY:other:branch', fetchImpl });
+    await ownerA.rank('问句', ['文档']);
+    await ownerB.rank('问句', ['文档']);
+    assert.equal(calls, 2);
+    await ownerA.rank('问句', ['文档']);
+    assert.equal(calls, 2);
+    await otherScope.rank('问句', ['文档']);
+    assert.equal(calls, 3);
+
+    let tags = 0;
+    let embeds = 0;
+    const embedFetch = async (url) => {
+        if (String(url).endsWith('/api/tags')) {
+            tags += 1;
+            return Response.json({ models: [{ name: embeddingSnapshot.model, digest: embeddingSnapshot.artifactVersion }] });
+        }
+        embeds += 1;
+        return Response.json({ embeddings: [[1, 0]] });
+    };
+    const key = embeddingCacheKey(embeddingSnapshot, '同一句', '1', '7:COMPANION:daily-7:main');
+    assert.equal(key, [embeddingSnapshot.model, embeddingSnapshot.artifactVersion, '2', embeddingSnapshot.normalization, '1', '7:COMPANION:daily-7:main', '同一句'].join('\0'));
+    assert.notEqual(key, embeddingCacheKey(embeddingSnapshot, '同一句', '2', '7:COMPANION:daily-7:main'));
+    const first = await createOllamaEmbedding(embeddingSnapshot, { fetchImpl: embedFetch, ownerId: '1', scope: '7:COMPANION:daily-7:main' });
+    const second = await createOllamaEmbedding(embeddingSnapshot, { fetchImpl: embedFetch, ownerId: '1', scope: '7:COMPANION:daily-7:main' });
+    assert.equal(tags, 1, '同一 snapshot 身份不应再次请求 /api/tags');
+    await first.embed('同一句');
+    await second.embed('同一句');
+    assert.equal(embeds, 1);
+    const otherOwner = await createOllamaEmbedding(embeddingSnapshot, { fetchImpl: embedFetch, ownerId: '2', scope: '7:COMPANION:daily-7:main' });
+    assert.equal(tags, 1);
+    await otherOwner.embed('同一句');
+    assert.equal(embeds, 2);
+    const branch = await createOllamaEmbedding(embeddingSnapshot, { fetchImpl: embedFetch, ownerId: '1', scope: '8:STORY:other:branch' });
+    await branch.embed('同一句');
+    assert.equal(embeds, 3);
 });
 
 test('rerank cache evicts the least recently used pair at the capacity limit', async () => {
@@ -113,7 +222,7 @@ test('rerank overlaps the original gate and loose sub-questions overlap each oth
             enabled: true, threshold: -1, candidateLimit: 20, summaryUnit: 'line',
             async rank() {
                 await new Promise((resolve) => setTimeout(resolve, 30));
-                rankSawOriginal = originalEntered && !originalFinished;
+                if (originalEntered && !originalFinished) rankSawOriginal = true;
                 release();
                 return [2];
             },

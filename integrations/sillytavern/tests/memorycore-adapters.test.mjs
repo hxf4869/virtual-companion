@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createOllamaEmbedding } from '../memorycore-service/embedding.mjs';
+import { createOllamaEmbedding, resetEmbeddingCaches } from '../memorycore-service/embedding.mjs';
 import { createCallbackRunner, CALL_DEADLINE_CAP_MS, rememberCallbackResume, forgetCallbackResume } from '../memorycore-service/llm-runner.mjs';
 
 const snapshot = { provider: 'OLLAMA', endpoint: 'http://127.0.0.1:11438', model: 'qwen3-embedding:0.6b',
@@ -23,6 +23,7 @@ test('embedding pins artifact, query preprocessing, dimensions and normalization
     assert.equal(inputs.length, 2, '同一模型输入的第二次嵌入必须复用已计算向量');
     assert.equal(embedding.spaceId, snapshot.spaceId);
     await assert.rejects(createOllamaEmbedding({ ...snapshot, endpoint: 'http://evil.test' }), /CONFIG/);
+    resetEmbeddingCaches();
     await assert.rejects(createOllamaEmbedding(snapshot, { fetchImpl: async () => Response.json({ models: [] }) }), /ARTIFACT/);
     const wrong = await createOllamaEmbedding(snapshot, { verifyArtifact: false, fetchImpl: async () => Response.json({ embeddings: [[1]] }) });
     await assert.rejects(wrong.embed('x'), /DIMENSIONS/);

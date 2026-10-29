@@ -4,6 +4,7 @@
 // cache returns the same vector without a second Ollama round trip.
 const recentEmbeddings = new Map();
 const inflightEmbeddings = new Map();
+const artifactChecks = new Map();
 const RECENT_EMBEDDING_LIMIT = 128;
 let embeddingCacheHits = 0;
 let embeddingCacheMisses = 0;
@@ -15,12 +16,38 @@ export function embeddingCacheStats() {
 export function resetEmbeddingCaches() {
     recentEmbeddings.clear();
     inflightEmbeddings.clear();
+    artifactChecks.clear();
     embeddingCacheHits = 0;
     embeddingCacheMisses = 0;
 }
 
-function embeddingCacheKey(snapshot, modelInput) {
-    return [snapshot.model, snapshot.artifactVersion, String(snapshot.dimensions), snapshot.normalization, modelInput].join('\0');
+function artifactIdentity(snapshot) {
+    return [snapshot.provider, snapshot.endpoint, snapshot.model, snapshot.artifactVersion, String(snapshot.dimensions),
+        snapshot.queryPreprocessingVersion, snapshot.documentPreprocessingVersion, snapshot.normalization, snapshot.state, snapshot.spaceId].join('\0');
+}
+
+// Owner and scope keep one process from serving another directory's vector
+// for the same text. The value is still only that text's vector.
+export function embeddingCacheKey(snapshot, modelInput, ownerId = '', scope = '') {
+    return [snapshot.model, snapshot.artifactVersion, String(snapshot.dimensions), snapshot.normalization, ownerId, scope, modelInput].join('\0');
+}
+
+async function verifyArtifactOnce(snapshot, fetchImpl) {
+    const identity = artifactIdentity(snapshot);
+    let pending = artifactChecks.get(identity);
+    if (!pending) {
+        pending = (async () => {
+            const response = await fetchImpl(snapshot.endpoint + '/api/tags', { signal: AbortSignal.timeout(5000) });
+            if (!response.ok) throw new Error('MEMORYCORE_EMBEDDING_ARTIFACT');
+            const { models } = await response.json();
+            if (!models?.some(m => m.name === snapshot.model && m.digest === snapshot.artifactVersion)) throw new Error('MEMORYCORE_EMBEDDING_ARTIFACT');
+        })();
+        artifactChecks.set(identity, pending);
+        void pending.then(() => {}, () => {
+            if (artifactChecks.get(identity) === pending) artifactChecks.delete(identity);
+        });
+    }
+    await pending;
 }
 
 function cachedEmbedding(key) {
@@ -40,21 +67,16 @@ function storeEmbedding(key, vector) {
     }
 }
 
-export async function createOllamaEmbedding(snapshot, { fetchImpl = fetch, verifyArtifact = true } = {}) {
+export async function createOllamaEmbedding(snapshot, { fetchImpl = fetch, verifyArtifact = true, ownerId = '', scope = '' } = {}) {
     const c = structuredClone(snapshot);
     if (c.provider !== 'OLLAMA' || c.endpoint !== 'http://127.0.0.1:11438' || c.state !== 'ENABLED' ||
         !c.spaceId || !c.artifactVersion || !c.model || !Number.isInteger(c.dimensions) || c.dimensions < 1 || c.dimensions > 8192 ||
         !['qwen3-retrieval-v1', 'identity-v1'].includes(c.queryPreprocessingVersion) ||
         c.documentPreprocessingVersion !== 'identity-v1' || !['l2', 'none'].includes(c.normalization)) throw new Error('MEMORYCORE_EMBEDDING_CONFIG');
-    if (verifyArtifact) {
-        const response = await fetchImpl(c.endpoint + '/api/tags', { signal: AbortSignal.timeout(5000) });
-        if (!response.ok) throw new Error('MEMORYCORE_EMBEDDING_ARTIFACT');
-        const { models } = await response.json();
-        if (!models?.some(m => m.name === c.model && m.digest === c.artifactVersion)) throw new Error('MEMORYCORE_EMBEDDING_ARTIFACT');
-    }
+    if (verifyArtifact) await verifyArtifactOnce(c, fetchImpl);
     async function embed(text, { timeoutMs = 30000 } = {}) {
         if (typeof text !== 'string' || !text || text.length > 100000) throw new Error('MEMORYCORE_EMBEDDING_INPUT');
-        const key = embeddingCacheKey(c, text);
+        const key = embeddingCacheKey(c, text, ownerId, scope);
         const hit = cachedEmbedding(key);
         if (hit) return hit;
         const pending = inflightEmbeddings.get(key);

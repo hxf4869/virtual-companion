@@ -249,3 +249,181 @@ test('production rerank config is the calibration point that keeps negatives emp
     assert.equal(RERANK.calibration.positives, 78);
     assert.equal(RERANK.calibration.negatives, 22);
 });
+
+test('original and keyword hits outside a full logit window stay inside topK', async () => {
+    const windowHits = hits(20);
+    const outside = { record_id: 'outside', content: '窗外原门槛', score: 0.42, cosine: 0.8, ftsScore: 0.9 };
+    const keyword = { record_id: 'keyword', content: '关键词命中', score: 1e-6, cosine: 0.55, ftsScore: null };
+    const native = await engine((input) => {
+        if (input.filter.minCosine < 0) return { hits: windowHits };
+        return { hits: [outside, keyword] };
+    });
+    const result = await native.search({
+        query: '窗口外也要留下', topK: 20, scope: {}, allowedRecordIds: [...windowHits.map((hit) => hit.record_id), 'outside', 'keyword'], observe: true,
+        rerank: {
+            enabled: true, threshold: -1, candidateLimit: 20, summaryUnit: 'line',
+            async rank(_query, documents) {
+                assert.equal(documents.length, 20);
+                return documents.map(() => 1);
+            },
+        },
+    });
+    const ids = result.hits.map((hit) => hit.record_id);
+    assert.equal(ids.length, 20);
+    assert.equal(ids.includes('outside'), true);
+    assert.equal(ids.includes('keyword'), true);
+    assert.equal(ids.filter((id) => id.startsWith('c')).length, 18);
+    assert.equal(result.hits.find((hit) => hit.record_id === 'keyword').score, 1e-6);
+    assert.equal(result.stats.rerankDecision, 'applied');
+    assert.equal(result.stats.rerankFallback, 0);
+    assert.equal(result.stats.rerankOnly, 18);
+});
+
+test('original-gate hits fill topK before logit-only hits', async () => {
+    const loose = hits(20).map((hit) => ({ ...hit, record_id: `loose-${hit.record_id}` }));
+    const originals = Array.from({ length: 21 }, (_, index) => ({
+        record_id: `o${index}`, content: `原门槛${index}`, score: 1 - index / 100, cosine: 0.8, ftsScore: 0.9,
+    }));
+    const native = await engine((input) => {
+        if (input.filter.minCosine < 0) return { hits: loose };
+        return { hits: originals };
+    });
+    const result = await native.search({
+        query: '原门槛先留', topK: 20, scope: {}, allowedRecordIds: [...loose.map((hit) => hit.record_id), ...originals.map((hit) => hit.record_id)], observe: true,
+        rerank: {
+            enabled: true, threshold: 0, candidateLimit: 20, summaryUnit: 'line',
+            async rank() { return loose.map(() => 5); },
+        },
+    });
+    assert.deepEqual(result.hits.map((hit) => hit.record_id), originals.slice(0, 20).map((hit) => hit.record_id));
+    assert.equal(result.stats.rerankOnly, 0);
+    assert.equal(result.stats.rerankDecision, 'applied');
+});
+
+test('each query clause is ranked and the same memory keeps the highest logit', async () => {
+    const seen = [];
+    const native = await engine((input) => {
+        if (input.filter.minCosine < 0) return { hits: [{ record_id: 'mem', content: '读书计划还在选下一本', score: 0.2, cosine: 0.2, ftsScore: 0.1 }] };
+        return { hits: [] };
+    });
+    const result = await native.search({
+        query: '我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？',
+        topK: 5, scope: {}, allowedRecordIds: ['mem'], observe: true,
+        rerank: {
+            enabled: true, threshold: 0, candidateLimit: 20, summaryUnit: 'line',
+            async rank(query) {
+                seen.push(query);
+                return [query.includes('读书计划') ? 1.2 : -3];
+            },
+        },
+    });
+    assert.deepEqual(seen.slice().sort(), ['我在2026年10月30日准备去哪里，为什么', '我们上次读书计划谈到哪一步了'].sort());
+    assert.equal(seen.includes('我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？'), false);
+    assert.equal(result.hits[0].record_id, 'mem');
+    assert.equal(result.hits[0].rerankScore, 1.2);
+    assert.equal(result.stats.rerankDecision, 'applied');
+    assert.equal(result.stats.rerankFallback, 0);
+});
+
+test('loose retrieval and original-gate errors are not rerank failures', async () => {
+    let ranked = 0;
+    const loose = await engine(async (input) => {
+        if (input.filter.minCosine < 0) throw new Error('LOOSE_BROKEN');
+        return { hits: [{ record_id: 'kept', content: '原门槛', score: 0.4, cosine: 0.7, ftsScore: 0.9 }] };
+    });
+    await assert.rejects(loose.search({
+        query: '松检索失败', topK: 5, scope: {}, allowedRecordIds: ['kept'], observe: true,
+        rerank: {
+            enabled: true, threshold: 0, candidateLimit: 20, summaryUnit: 'line',
+            async rank() { ranked += 1; return [2]; },
+        },
+    }), (error) => error.message === 'LOOSE_BROKEN');
+    assert.equal(ranked, 0);
+
+    let originalCalls = 0;
+    const original = await engine(async (input) => {
+        if (input.filter.minCosine < 0) return { hits: hits(1) };
+        originalCalls += 1;
+        if (originalCalls === 1) throw new Error('ORIGINAL_BROKEN');
+        return { hits: [{ record_id: 'kept', content: '重试才有', score: 0.4, cosine: 0.7, ftsScore: 0.9 }] };
+    });
+    await assert.rejects(original.search({
+        query: '原门槛失败', topK: 5, scope: {}, allowedRecordIds: ['c0', 'kept'], observe: true,
+        rerank: {
+            enabled: true, threshold: -1, candidateLimit: 20, summaryUnit: 'line',
+            async rank() { ranked += 1; return [2]; },
+        },
+    }), (error) => error.message === 'ORIGINAL_BROKEN');
+    assert.equal(originalCalls, 1);
+});
+
+test('summary embedding errors stay embedding errors and summary rerank failure only counts the gate', async () => {
+    let embeds = 0;
+    const failing = await engine((input) => {
+        if (input.filter.minCosine < 0) return { hits: [{ record_id: 'c0', content: '候选', score: 0.2, cosine: 0.2, ftsScore: 0 }] };
+        return { hits: [] };
+    });
+    await assert.rejects(failing.search({
+        query: '摘要向量失败', topK: 5, scope: {}, allowedRecordIds: ['c0'], observe: true,
+        embedding: {
+            async embed() { embeds += 1; if (embeds === 1) throw new Error('EMBED_BROKEN'); return new Float32Array([1, 0]); },
+            async embedQuery() { embeds += 1; if (embeds === 1) throw new Error('EMBED_BROKEN'); return new Float32Array([1, 0]); },
+            async embedBatch() { embeds += 1; if (embeds === 1) throw new Error('EMBED_BROKEN'); return [new Float32Array([1, 0]), new Float32Array([1, 0])]; },
+        },
+        gateTexts: [{ id: 'summary-1', text: '用户将去厦门参加朋友婚礼。' }],
+        rerank: {
+            enabled: true, threshold: 0, candidateLimit: 20, summaryUnit: 'line',
+            async rank() { return [-4]; },
+        },
+    }), (error) => error.message === 'EMBED_BROKEN');
+
+    let calls = 0;
+    const native = await engine((input) => {
+        if (input.filter.minCosine < 0) return { hits: [{ record_id: 'c0', content: '候选', score: 0.2, cosine: 0.2, ftsScore: 0 }] };
+        return { hits: [] };
+    });
+    const result = await native.search({
+        query: '摘要回退', topK: 5, scope: {}, allowedRecordIds: ['c0'], observe: true,
+        embedding: { embedBatch: async () => [new Float32Array([0, 1]), new Float32Array([1, 0])] },
+        gateTexts: [{ id: 'persona', text: '用户将去厦门参加朋友婚礼。' }],
+        rerank: {
+            enabled: true, threshold: 0, candidateLimit: 20, summaryUnit: 'line',
+            async rank() {
+                calls += 1;
+                if (calls > 1) throw Object.assign(new Error('slow'), { code: 'timeout' });
+                return [2];
+            },
+        },
+    });
+    assert.equal(result.stats.rerankDecision, 'applied');
+    assert.equal(result.stats.rerankFallback, 0);
+    assert.equal(result.stats.rerankGateFallback, 1);
+});
+
+test('summary lines past the first twenty are reranked when they share han with the question', async () => {
+    const { summaryPassesGate } = await import('../memorycore-service/native-engine.mjs');
+    const { summaryUnits } = await import('../memorycore-service/rerank.mjs');
+    const fillers = Array.from({ length: 24 }, (_, index) => `空白条目补充说明文字${index}`);
+    const late = '用户将去厦门参加朋友婚礼。';
+    const persona = [...fillers, late].join('\n');
+    const query = '我要去哪里参加婚礼？';
+    const units = summaryUnits(persona, 'line', 20, query);
+    assert.equal(units.length <= 20, true);
+    assert.equal(units.includes(late), true);
+    assert.equal(units.some((line) => line.startsWith('空白条目')), false);
+    let seen = [];
+    const passed = await summaryPassesGate(query, persona, {
+        embedBatch: async () => [new Float32Array([1, 0]), new Float32Array([0, 1])],
+    }, false, {
+        enabled: true, threshold: 0, summaryUnit: 'line', candidateLimit: 20,
+        async rank(_query, documents) {
+            seen = documents;
+            return documents.map((text) => (text.includes('厦门') ? 2 : -4));
+        },
+    });
+    assert.equal(passed, true);
+    assert.equal(seen.length <= 20, true);
+    assert.equal(seen.includes(late), true);
+    const many = Array.from({ length: 25 }, (_, index) => `参加婚礼的记录${index}`).join('\n');
+    assert.equal(summaryUnits(many, 'line', 20, query).length, 20);
+});
