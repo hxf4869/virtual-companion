@@ -249,6 +249,8 @@ func operation(path string) string {
 		return "chat_wipe"
 	case "/api/v1/incognito-pref":
 		return "incognito_pref"
+	case "/api/v1/memory-auto-save-pref":
+		return "memory_auto_save_pref"
 	case "/api/v1/consents":
 		return "consents"
 	case "/api/v1/reports":
@@ -279,16 +281,26 @@ func operation(path string) string {
 		return "auth_trusted_devices"
 	case "/api/v1/admin/providers":
 		return "admin_providers"
+	case "/api/v1/admin/accounts":
+		return "admin_accounts"
 	case "/api/v1/admin/model-routing-order":
 		return "admin_model_routing_order"
 	case "/api/v1/admin/embedding-config":
 		return "admin_embedding_config"
 	case "/api/v1/service/memorycore/llm":
 		return "service_memorycore_llm"
+	case "/api/v1/service/st/profile":
+		return "service_st_profile"
 	case "/api/v1/admin/model-purposes":
 		return "admin_model_purposes"
 	case "/api/v1/story/runs":
 		return "story_run"
+	case "/api/v1/st/bindings":
+		return "st_binding"
+	case "/api/v1/st/sources/reconcile":
+		return "st_source_reconcile"
+	case "/api/v1/st/memory/recall":
+		return "st_memory_recall"
 	case "/api/v1/st/tools/execute":
 		return "tool_execute"
 	default:
@@ -339,8 +351,13 @@ func operation(path string) string {
 		if strings.HasPrefix(path, "/api/v1/auth/trusted-devices/") {
 			return "auth_trusted_device"
 		}
-		if strings.HasPrefix(path, "/api/v1/admin/accounts/") && strings.HasSuffix(path, "/authenticator-reset") {
-			return "admin_authenticator_reset"
+		if strings.HasPrefix(path, "/api/v1/admin/accounts/") {
+			switch {
+			case strings.HasSuffix(path, "/authenticator-reset"):
+				return "admin_authenticator_reset"
+			case strings.HasSuffix(path, "/review"):
+				return "admin_account_review"
+			}
 		}
 		if strings.HasPrefix(path, "/api/v1/admin/providers/") {
 			if strings.HasSuffix(path, "/models/discover") {

@@ -4,7 +4,7 @@
 
 | 层 | 基线 | 机器真源 |
 | --- | --- | --- |
-| 后端 | Go 1.26.7，单体 `companiond` | `backend/go.mod` |
+| 后端 | Go 1.26.10，单体 `companiond` | `backend/go.mod` |
 | 数据库 | PostgreSQL 18 + pgvector 0.8.5 | `ops/deploy/docker-compose.yml` |
 | 数据访问 | pgx/v5，短事务 + RLS | `backend/internal/store/postgres/` |
 | 迁移 | `companiond migrate`，嵌入式顺序迁移，当前版本以目录为真源 | `backend/internal/migrate/` |
