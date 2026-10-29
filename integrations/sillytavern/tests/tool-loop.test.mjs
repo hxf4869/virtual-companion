@@ -492,14 +492,20 @@ test('toolCalls 未验证或剧情回合不把陪伴工具发给上游', async (
     await withStack({
         protocol: 'OPENAI_CHAT_COMPLETIONS',
         capabilities: { toolCalls: 'UNKNOWN' },
-        scripts: [chatText('不应发送')],
+        scripts: [chatText('普通回复仍应发出')],
     }, async ({ bridge, state }) => {
         const res = mockRes();
         const body = requestBody('OPENAI_CHAT_COMPLETIONS');
-        delete body.tools;
-        assert.equal(await bridge.interceptGenerate(mockReq(body), res), true);
-        assert.equal(JSON.parse(res.body()).error.code, 'VC_TOOL_CALLS_UNVERIFIED');
+        body.tool_choice = 'auto';
+        const req = mockReq(body);
+        assert.equal(await bridge.interceptGenerate(req, res), false);
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body(), '');
+        assert.deepEqual(body.tools ?? [], []);
+        assert.equal(body.tool_choice, undefined);
+        assert.ok(req.vcManaged);
         assert.equal(state.providerReqs.length, 0);
+        assert.equal(state.executes.length, 0);
     });
     await withStack({
         protocol: 'OPENAI_CHAT_COMPLETIONS',
@@ -512,6 +518,69 @@ test('toolCalls 未验证或剧情回合不把陪伴工具发给上游', async (
         assert.ok(!body.tools.some((tool) => tool.function.name === 'query_scheduled_follow_ups' || tool.function.name === 'manage_reminder'));
         assert.equal(state.executes.length, 0);
         assert.equal(state.providerReqs.length, 0);
+    });
+});
+
+test('toolCalls 为 UNKNOWN 且去掉陪伴工具后仍有其他工具时拒绝', async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        capabilities: { toolCalls: 'UNKNOWN' },
+        scripts: [chatText('不应发送')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        const body = requestBody('OPENAI_CHAT_COMPLETIONS', {
+            tools: [
+                ...TOOLS,
+                { type: 'function', function: { name: 'lookup_weather', description: '查天气', parameters: { type: 'object', properties: {} } } },
+            ],
+        });
+        assert.equal(await bridge.interceptGenerate(mockReq(body), res), true);
+        assert.equal(JSON.parse(res.body()).error.code, 'VC_TOOL_CALLS_UNVERIFIED');
+        assert.equal(state.providerReqs.length, 0);
+    });
+});
+
+test('toolCalls 为 UNSUPPORTED 的陪伴回合去掉陪伴工具后仍出站', async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        capabilities: { toolCalls: 'UNSUPPORTED' },
+        scripts: [chatText('普通回复仍应发出')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        const body = requestBody('OPENAI_CHAT_COMPLETIONS');
+        body.tool_choice = 'auto';
+        const req = mockReq(body);
+        assert.equal(await bridge.interceptGenerate(req, res), false);
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body(), '');
+        assert.deepEqual(body.tools ?? [], []);
+        assert.equal(body.tool_choice, undefined);
+        assert.ok(req.vcManaged);
+        assert.equal(state.providerReqs.length, 0);
+    });
+});
+
+test('toolCalls 为 DECLARED 且仍有其他工具时不拒绝也不进入陪伴工具循环', async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        capabilities: { toolCalls: 'DECLARED' },
+        scripts: [chatText('普通回复仍应发出')],
+    }, async ({ bridge, state }) => {
+        const res = mockRes();
+        const body = requestBody('OPENAI_CHAT_COMPLETIONS', {
+            tools: [
+                ...TOOLS,
+                { type: 'function', function: { name: 'lookup_weather', description: '查天气', parameters: { type: 'object', properties: {} } } },
+            ],
+        });
+        const req = mockReq(body);
+        assert.equal(await bridge.interceptGenerate(req, res), false);
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body(), '');
+        assert.deepEqual((body.tools || []).map((tool) => tool.function.name), ['lookup_weather']);
+        assert.equal(state.providerReqs.length, 0);
+        assert.equal(state.executes.length, 0);
+        assert.ok(req.vcManaged);
     });
 });
 

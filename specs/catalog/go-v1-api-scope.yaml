@@ -9,7 +9,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   slice that removes the OpenAPI operation. This file is the OpenAPI deletion list: RETIRE operations
   are removed with H5 in a later slice, not in G0.'
 counts:
-  KEEP: 102
+  KEEP: 103
   SIMPLIFY: 6
   DEFER: 15
   RETIRE: 38
@@ -1143,6 +1143,18 @@ operations:
   - h5-caller
   - owner-instruction
   replacementOrImpact: Keep explicit bounded model-catalog discovery; results remain unsaved draft candidates.
+- operationId: verifyModelToolCalls
+  method: POST
+  path: /api/v1/admin/providers/{providerId}/models/{profileKey}/verify-tool-calls
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - h5-caller
+  - owner-instruction
+  replacementOrImpact: >-
+    Keep the only ADMIN path that records toolCalls=VERIFIED. It sends one
+    small forced tool call, meters it as FOREGROUND_CHAT, and never echoes the
+    upstream body. Saving a model still cannot set VERIFIED.
 - operationId: reorderModelRoutes
   method: PUT
   path: /api/v1/admin/model-routing-order

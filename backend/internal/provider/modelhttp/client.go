@@ -223,6 +223,46 @@ func (c *Client) GetJSON(ctx context.Context, headers http.Header) ([]byte, erro
 	return body, nil
 }
 
+// PostJSON performs one bounded non-streaming POST. The returned body is only
+// the success payload; failures discard the upstream bytes and report whether
+// the request was written.
+func (c *Client) PostJSON(ctx context.Context, payload []byte, headers http.Header) ([]byte, bool, error) {
+	if c == nil || c.client == nil {
+		return nil, false, errors.New("provider HTTP client is unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	callCtx, cancel := context.WithTimeout(ctx, c.cfg.TotalTimeout)
+	defer cancel()
+	var wrote atomic.Bool
+	callCtx = httptrace.WithClientTrace(callCtx, &httptrace.ClientTrace{
+		WroteRequest: func(httptrace.WroteRequestInfo) { wrote.Store(true) },
+	})
+	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, c.cfg.Endpoint.String(), bytes.NewReader(payload))
+	if err != nil || !sameEndpoint(c.cfg.Endpoint, req.URL) {
+		return nil, false, errors.New("provider request is invalid")
+	}
+	req.Header = headers.Clone()
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.client.Do(req)
+	sent := wrote.Load()
+	if err != nil {
+		return nil, sent, errors.New("provider is unavailable")
+	}
+	defer closeBody(resp.Body)
+	if resp.StatusCode != http.StatusOK || mediaType(resp.Header.Get("Content-Type")) != "application/json" {
+		drainLimited(resp.Body, c.cfg.MaxResponseBytes)
+		return nil, true, errors.New("provider is unavailable")
+	}
+	body, err := io.ReadAll(NewBoundReader(resp.Body, c.cfg.MaxResponseBytes))
+	if err != nil {
+		return nil, true, errors.New("provider response is invalid")
+	}
+	return body, true, nil
+}
+
 func (c *Client) clampTimeouts(req companion.TimeoutBudget) companion.TimeoutBudget {
 	out := companion.TimeoutBudget{
 		Connect: c.cfg.ConnectTimeout, FirstToken: c.cfg.FirstTokenTimeout,

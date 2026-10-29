@@ -58,7 +58,10 @@ type memStore struct {
 	usageSettles      int
 	usageSummaryCalls int
 	usageLastAttempt  string
+	usageLastPurpose  string
+	usageLastCancel   string
 	usageErr          error
+	settleErr         error
 }
 
 type memSession struct {

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/hxf4869/virtual-companion/internal/auth"
 	"github.com/hxf4869/virtual-companion/internal/config"
 	"github.com/hxf4869/virtual-companion/internal/observability"
@@ -222,5 +224,131 @@ func TestModelCatalogEndToEnd(t *testing.T) {
 	s.Handler().ServeHTTP(admin, req)
 	if admin.Code != http.StatusUnauthorized {
 		t.Fatalf("service token on admin surface %d", admin.Code)
+	}
+}
+
+func TestVerifyModelToolCallsAgainstTheIsolationDatabase(t *testing.T) {
+	resetIsolation(t)
+	ctx := context.Background()
+	const marker = "UPSTREAM_SECRET_MARKER"
+	mode := "mismatch"
+	var requests [][]byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, body)
+		w.Header().Set("Content-Type", "application/json")
+		if mode == "mismatch" {
+			_, _ = io.WriteString(w, `{"note":"`+marker+`","choices":[{"message":{"tool_calls":[{"function":{"name":"leak_marker_xyz","arguments":"{\"city\":\"北京\"}"}}]}}],"usage":{"prompt_tokens":2,"completion_tokens":3}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"note":"`+marker+`","choices":[{"message":{"tool_calls":[{"function":{"name":"get_current_weather","arguments":"{\"city\":\"北京\"}"}}]}}],"usage":{"prompt_tokens":4,"completion_tokens":5}}`)
+	}))
+	defer upstream.Close()
+
+	for _, stmt := range []string{
+		`TRUNCATE vc.provider_model, vc.provider_config, vc.model_cost_reservation CASCADE`,
+		`INSERT INTO vc.model_purpose_binding(purpose, state, updated_by)
+		 VALUES ('FOREGROUND_CHAT', 'DISABLED', 0), ('MEMORY_EXTRACTION_DEDUP_SUMMARY', 'DISABLED', 0),
+		        ('BACKGROUND_GREETINGS', 'DISABLED', 0), ('STORY_DIRECTOR', 'DISABLED', 0),
+		        ('NPC_DIALOGUE', 'DISABLED', 0), ('EMBEDDING', 'DISABLED', 0)
+		 ON CONFLICT (purpose) DO UPDATE
+		    SET provider_id = NULL, profile_key = NULL, state = 'DISABLED', revision = 1`,
+		`INSERT INTO vc.vc_user(id, display_name) VALUES (3, 'admin')`,
+	} {
+		if err := postgres.IsolationSuperExec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := postgres.IsolationSuperExec(ctx,
+		`INSERT INTO vc.identity_account(id, username, email, email_verified_at, reviewed_at, password_hash, role, status, display_name)
+		 VALUES (3, 'probe-admin', 'probe-admin@example.com', now(), now(), $1, 'ADMIN', 'ACTIVE', 'admin')`, isoPasswordHash); err != nil {
+		t.Fatal(err)
+	}
+	store := postgres.IsolationStore()
+	ciph, err := postgres.NewDefaultFieldCipher(isoRestKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.UseCipher(ciph)
+	s := newCatalogServer(t, store)
+	s.cfg.Provider.AllowLoopbackHTTP = true
+
+	save := `{"displayName":"Probe","protocol":"OPENAI_CHAT_COMPLETIONS","baseUrl":"` + upstream.URL + `/v1","credential":"probe-secret","state":"ENABLED","models":[{"profileKey":"m@chat","modelId":"probe-model","displayName":"Probe","maxOutputTokens":128,"state":"ENABLED","capabilities":{"toolCalls":"DECLARED"}}]}`
+	if rec := adminJSON(t, s, http.MethodPut, "/api/v1/admin/providers/probeacme", save, 3); rec.Code != http.StatusOK {
+		t.Fatalf("save %d %s", rec.Code, rec.Body.String())
+	}
+	path := "/api/v1/admin/providers/probeacme/models/m@chat/verify-tool-calls"
+	if rec := adminJSON(t, s, http.MethodPost, path, "{}", 1); rec.Code != http.StatusForbidden || len(requests) != 0 {
+		t.Fatalf("user %d calls=%d %s", rec.Code, len(requests), rec.Body.String())
+	}
+	mismatch := adminJSON(t, s, http.MethodPost, path, "{}", 3)
+	if mismatch.Code != http.StatusUnprocessableEntity || !strings.Contains(mismatch.Body.String(), `"code":"TOOL_CALL_MISMATCH"`) ||
+		strings.Contains(mismatch.Body.String(), marker) || strings.Contains(mismatch.Body.String(), "北京") ||
+		strings.Contains(mismatch.Body.String(), "leak_marker_xyz") {
+		t.Fatalf("mismatch %d %s", mismatch.Code, mismatch.Body.String())
+	}
+	list := adminJSON(t, s, http.MethodGet, "/api/v1/admin/providers", "", 3)
+	if !strings.Contains(list.Body.String(), `"toolCalls":"DECLARED"`) {
+		t.Fatalf("failure changed capability %s", list.Body.String())
+	}
+
+	mode = "ok"
+	ok := adminJSON(t, s, http.MethodPost, path, "{}", 3)
+	if ok.Code != http.StatusOK || !strings.Contains(ok.Body.String(), `"toolCalls":"VERIFIED"`) ||
+		strings.Contains(ok.Body.String(), marker) || strings.Contains(ok.Body.String(), "北京") {
+		t.Fatalf("verify %d %s", ok.Code, ok.Body.String())
+	}
+	if len(requests) != 2 || !strings.Contains(string(requests[1]), `"max_tokens":64`) ||
+		!strings.Contains(string(requests[1]), `"get_current_weather"`) {
+		t.Fatalf("probe requests %d %s", len(requests), requests)
+	}
+
+	conn, err := pgx.Connect(ctx, postgres.IsolationSuperDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	rows, err := conn.Query(ctx, `
+		SELECT id, purpose, status, actual_usd IS NULL, actual_input_tokens, actual_output_tokens
+		  FROM vc.model_cost_reservation
+		 WHERE provider_id = 'probeacme'
+		 ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type hold struct {
+		id              int64
+		purpose, status string
+		unpriced        bool
+		input, output   int64
+	}
+	var holds []hold
+	for rows.Next() {
+		var row hold
+		if err := rows.Scan(&row.id, &row.purpose, &row.status, &row.unpriced, &row.input, &row.output); err != nil {
+			t.Fatal(err)
+		}
+		holds = append(holds, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(holds) != 2 || holds[0].purpose != postgres.PurposeForegroundChat || holds[1].purpose != postgres.PurposeForegroundChat ||
+		holds[0].status != "SETTLED" || holds[1].status != "SETTLED" || !holds[0].unpriced || !holds[1].unpriced ||
+		holds[0].input != 2 || holds[0].output != 3 || holds[1].input != 4 || holds[1].output != 5 {
+		t.Fatalf("usage %+v", holds)
+	}
+	if _, err := store.SettleModelUsage(ctx, 2, holds[1].id, 1, 1, nil); err == nil {
+		t.Fatal("other owner settled the admin probe")
+	}
+
+	moved := `{"displayName":"Probe","protocol":"OPENAI_CHAT_COMPLETIONS","baseUrl":"https://moved.example/v1","state":"ENABLED","models":[{"profileKey":"m@chat","modelId":"probe-model","displayName":"Probe","maxOutputTokens":128,"state":"ENABLED","capabilities":{"toolCalls":"VERIFIED"}}]}`
+	if rec := adminJSON(t, s, http.MethodPut, "/api/v1/admin/providers/probeacme", moved, 3); rec.Code != http.StatusOK {
+		t.Fatalf("downgrade save %d %s", rec.Code, rec.Body.String())
+	}
+	list = adminJSON(t, s, http.MethodGet, "/api/v1/admin/providers", "", 3)
+	if !strings.Contains(list.Body.String(), `"toolCalls":"DECLARED"`) || strings.Contains(list.Body.String(), `"toolCalls":"VERIFIED"`) {
+		t.Fatalf("after base url change %s", list.Body.String())
 	}
 }

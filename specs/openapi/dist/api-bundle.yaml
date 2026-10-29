@@ -4967,6 +4967,85 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/admin/providers/{providerId}/models/{profileKey}/verify-tool-calls:
+    post:
+      operationId: verifyModelToolCalls
+      summary: Verify that one saved model can call a tool
+      description: Explicit Go v1 ADMIN action requiring fresh reauthentication and CSRF. This is the only path that records
+        toolCalls=VERIFIED. It sends one non-streaming request with a single synthetic get_current_weather tool, a forced
+        tool choice, and a 64-token output cap. A correctly shaped call records the verification time and protocol. Any failure
+        leaves the stored capability unchanged and returns a reason code without the upstream body. The call is metered as
+        FOREGROUND_CHAT, including when the model has no price. Saving a provider still cannot set VERIFIED. Changing the
+        provider base URL, protocol, or the profile model id returns a verified capability to DECLARED.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/ProviderId'
+      - $ref: '#/components/parameters/ProfileKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: The model returned the required tool call and is now VERIFIED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolCallVerificationResult'
+        '400':
+          description: INVALID_REQUEST, or CREDENTIAL_MISSING when the provider has no usable credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid opaque session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: ADMIN role, CSRF or fresh reauthentication requirement failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: MODEL_NOT_FOUND — no saved profile for this provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: USAGE_REJECTED — the probe was not recorded as VERIFIED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: TOOL_CALL_MISMATCH or UPSTREAM_MALFORMED. The stored capability is unchanged and the response does
+            not include the upstream body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: UPSTREAM_UNAVAILABLE. The stored capability is unchanged and the response does not include the upstream
+            body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Provider configuration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/admin/model-routing-order:
     put:
       operationId: reorderModelRoutes
@@ -10399,6 +10478,26 @@ components:
           maxLength: 4096
           writeOnly: true
           description: Optional only when providerId already has an encrypted credential.
+    ToolCallVerificationResult:
+      type: object
+      additionalProperties: false
+      required:
+      - ok
+      - toolCalls
+      - verifiedAt
+      - protocol
+      properties:
+        ok:
+          type: boolean
+          const: true
+        toolCalls:
+          type: string
+          const: VERIFIED
+        verifiedAt:
+          type: string
+          format: date-time
+        protocol:
+          $ref: '#/components/schemas/ModelProviderProtocol'
     DiscoveredProviderModel:
       type: object
       additionalProperties: false
@@ -11860,6 +11959,15 @@ components:
         type: string
         pattern: ^[a-z][a-z0-9-]{0,63}$
       description: Stable administrator-defined provider identifier
+    ProfileKey:
+      name: profileKey
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+      description: Saved model profile key. The value may contain @.
     ModelPurposeId:
       name: purpose
       in: path

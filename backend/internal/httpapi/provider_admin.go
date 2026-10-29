@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -341,6 +343,154 @@ func (s *Server) handleDiscoverProviderModels(w http.ResponseWriter, r *http.Req
 		out = append(out, discoveredModelJSON{ModelID: model.ModelID, DisplayName: model.DisplayName})
 	}
 	s.writeJSON(w, http.StatusOK, out)
+}
+
+type toolCallVerificationJSON struct {
+	OK         bool   `json:"ok"`
+	ToolCalls  string `json:"toolCalls"`
+	VerifiedAt string `json:"verifiedAt"`
+	Protocol   string `json:"protocol"`
+}
+
+func (s *Server) providerFactory() modelprovider.Factory {
+	return modelprovider.Factory{
+		ConnectTimeout: s.cfg.Provider.ConnectTimeout, FirstTokenTimeout: s.cfg.Provider.FirstTokenTimeout,
+		TotalTimeout: s.cfg.Provider.TotalTimeout, MaxResponseBytes: s.cfg.Provider.MaxResponseBytes,
+		AllowLoopbackHTTP: s.cfg.Provider.AllowLoopbackHTTP,
+	}
+}
+
+func toolProbeAttemptID() (string, error) {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return "tool-probe-" + hex.EncodeToString(buf[:]), nil
+}
+
+func findProviderProfile(configs []postgres.ProviderConfig, providerID, profileKey string) (postgres.ProviderConfig, postgres.ProviderModel, bool) {
+	for _, cfg := range configs {
+		if cfg.ProviderID != providerID {
+			continue
+		}
+		for _, model := range cfg.Models {
+			key := model.ProfileKey
+			if key == "" {
+				key = model.ModelID
+			}
+			if key == profileKey {
+				return cfg, model, true
+			}
+		}
+	}
+	return postgres.ProviderConfig{}, postgres.ProviderModel{}, false
+}
+
+// handleVerifyModelToolCalls is the only administrator path that writes
+// toolCalls=VERIFIED. The probe is one small forced tool call. Usage is
+// reserved as FOREGROUND_CHAT so an unpriced model still records tokens.
+func (s *Server) handleVerifyModelToolCalls(w http.ResponseWriter, r *http.Request) {
+	p := s.providerAdminPrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	providerID := strings.TrimSpace(r.PathValue("providerId"))
+	profileKey := strings.TrimSpace(r.PathValue("profileKey"))
+	if modelprovider.ValidateProviderID(providerID) != nil || profileKey == "" || len(profileKey) > 200 {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
+	configs, err := s.core.Providers.ListProviderConfigs(r.Context(), p.AccountID)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	cfg, model, ok := findProviderProfile(configs, providerID, profileKey)
+	if !ok || strings.TrimSpace(model.ModelID) == "" {
+		s.writeAPIError(w, http.StatusNotFound, "MODEL_NOT_FOUND", "model profile not found")
+		return
+	}
+	credential, err := s.core.Providers.GetProviderCredential(r.Context(), p.AccountID, providerID)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) || errors.Is(err, postgres.ErrInvalid) {
+			s.writeAPIError(w, http.StatusBadRequest, "CREDENTIAL_MISSING", "provider credential is not configured")
+			return
+		}
+		s.writeStoreErr(w, err)
+		return
+	}
+	usage, ok := s.modelUsage(w)
+	if !ok {
+		return
+	}
+	attempt, err := toolProbeAttemptID()
+	if err != nil {
+		s.writeAPIError(w, http.StatusServiceUnavailable, "INVALID_REQUEST", "temporarily unavailable")
+		return
+	}
+	hold, err := usage.ReserveModelUsage(r.Context(), postgres.ModelUsageReserve{
+		Owner: p.AccountID, Purpose: postgres.PurposeForegroundChat, AttemptID: attempt,
+		ProviderID: providerID, ModelID: model.ModelID,
+		InputTokens: 32, OutputTokens: modelprovider.ToolProbeMaxTokens,
+	})
+	if err != nil {
+		s.writeAPIError(w, http.StatusConflict, "USAGE_REJECTED", "usage was not recorded")
+		return
+	}
+	probe, probeErr := s.providerFactory().ProbeToolCalls(r.Context(), modelprovider.Route{
+		ProviderID: providerID, SupplierName: cfg.DisplayName, Protocol: cfg.Protocol,
+		BaseURL: cfg.BaseURL, Credential: credential, ModelID: model.ModelID,
+		MaxOutputTokens: model.MaxOutputTokens,
+	})
+	if probeErr != nil {
+		s.meterToolProbe(r.Context(), usage, p.AccountID, hold.ReservationID, probe, false)
+		code := modelprovider.ToolProbeCodeUnavailable
+		var coded *modelprovider.ToolProbeError
+		if errors.As(probeErr, &coded) && coded.Code != "" {
+			code = coded.Code
+		}
+		status := http.StatusBadGateway
+		if code == modelprovider.ToolProbeCodeMismatch || code == modelprovider.ToolProbeCodeMalformed {
+			status = http.StatusUnprocessableEntity
+		}
+		s.writeAPIError(w, status, code, "tool call verification failed")
+		return
+	}
+	if !s.meterToolProbe(r.Context(), usage, p.AccountID, hold.ReservationID, probe, true) {
+		s.writeAPIError(w, http.StatusConflict, "USAGE_REJECTED", "usage was not recorded")
+		return
+	}
+	marked, err := s.core.Providers.MarkModelToolCallsVerified(r.Context(), p.AccountID, providerID, profileKey)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, toolCallVerificationJSON{
+		OK: true, ToolCalls: postgres.CapabilityVerified,
+		VerifiedAt: marked.VerifiedAt.UTC().Format(time.RFC3339Nano),
+		Protocol:   marked.Protocol,
+	})
+}
+
+// meterToolProbe settles a probe that reported usage. A successful probe
+// without usage is cancelled as UNKNOWN and still counts. A failed settle of
+// a successful probe refuses verification. Metering failures on a rejected
+// probe are best-effort and do not change the reason code.
+func (s *Server) meterToolProbe(ctx context.Context, usage modelUsageStore, owner, reservationID int64, probe modelprovider.ToolProbeResult, accept bool) bool {
+	if probe.HasUsage {
+		cached := probe.CachedInputTokens
+		if _, err := usage.SettleModelUsage(ctx, owner, reservationID, probe.InputTokens, probe.OutputTokens, cached); err != nil {
+			_, _ = usage.CancelModelUsage(ctx, owner, reservationID, "UNKNOWN")
+			return !accept
+		}
+		return true
+	}
+	disposition := "NOT_SENT"
+	if probe.Sent {
+		disposition = "UNKNOWN"
+	}
+	_, _ = usage.CancelModelUsage(ctx, owner, reservationID, disposition)
+	return !accept || probe.Sent
 }
 
 func (s *Server) handleReorderProviderModels(w http.ResponseWriter, r *http.Request) {

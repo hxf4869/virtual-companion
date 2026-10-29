@@ -1082,7 +1082,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 102,
+          "KEEP": 103,
           "RETIRE": 38,
           "SIMPLIFY": 6
         },
@@ -2456,6 +2456,18 @@
               "h5-caller",
               "owner-instruction"
             ],
+            "method": "POST",
+            "operationId": "verifyModelToolCalls",
+            "path": "/api/v1/admin/providers/{providerId}/models/{profileKey}/verify-tool-calls",
+            "replacementOrImpact": "Keep the only ADMIN path that records toolCalls=VERIFIED. It sends one small forced tool call, meters it as FOREGROUND_CHAT, and never echoes the upstream body. Saving a model still cannot set VERIFIED."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "h5-caller",
+              "owner-instruction"
+            ],
             "method": "PUT",
             "operationId": "reorderModelRoutes",
             "path": "/api/v1/admin/model-routing-order",
@@ -2755,7 +2767,7 @@
           }
         ]
       },
-      "sha256": "53e1b8fb13ad345ab476da0d0e6f547e2fca78fd6c2df8b60abd81b11f09f409"
+      "sha256": "463ee2b69874e0bb354e510a5993f2f1a27aa30b41048387dafffa547b1b3cae"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

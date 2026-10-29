@@ -138,6 +138,7 @@ type ProviderAdminStore interface {
 	ListPurposeBindings(ctx context.Context, actingAccountID int64) ([]postgres.PurposeBinding, error)
 	SavePurposeBinding(ctx context.Context, actingAccountID int64, in postgres.SavePurposeBinding) (postgres.PurposeBinding, error)
 	ResolvePurpose(ctx context.Context, in postgres.ResolvePurpose) (postgres.ResolvedPurpose, error)
+	MarkModelToolCallsVerified(ctx context.Context, actingAccountID int64, providerID, profileKey string) (postgres.ToolCallVerification, error)
 }
 
 // AuthFlowStore owns the short-lived login challenge, authenticator and
@@ -269,6 +270,7 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/admin/accounts/{accountId}/authenticator-reset", s.handleAdminResetAuthenticator)
 	s.mux.HandleFunc("PUT /api/v1/admin/providers/{providerId}", s.handleSaveProvider)
 	s.mux.HandleFunc("POST /api/v1/admin/providers/{providerId}/models/discover", s.handleDiscoverProviderModels)
+	s.mux.HandleFunc("POST /api/v1/admin/providers/{providerId}/models/{profileKey}/verify-tool-calls", s.handleVerifyModelToolCalls)
 	s.mux.HandleFunc("PUT /api/v1/admin/model-routing-order", s.handleReorderProviderModels)
 	s.mux.HandleFunc("GET /api/v1/admin/model-purposes", s.handleListPurposeBindings)
 	s.mux.HandleFunc("PUT /api/v1/admin/model-purposes/{purpose}", s.handleSavePurposeBinding)

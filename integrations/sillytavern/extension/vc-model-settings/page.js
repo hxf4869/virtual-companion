@@ -76,7 +76,9 @@ export function mountModelSettings() {
         check: { busy: false, error: null, result: null }, // 连接检查（check-only，不改草稿）
         budget: { known: false, insufficient: false },
         usage: { month: logic.currentUsageMonth(), rows: [], error: null, loading: false },
-        reauth: { open: false, busy: false, error: null, password: '', retry: null }, // 403 再验证；retry: 'provider' | 'bindings'
+        reauth: { open: false, busy: false, error: null, password: '', retry: null }, // 403 再验证；retry: 'provider' | 'bindings' | 'verify-tool-calls'
+        toolVerify: { busy: false, profileKey: null, error: null },
+        advancedOpen: false,
     };
 
     function isDirty() {
@@ -985,7 +987,7 @@ export function mountModelSettings() {
             <p class="vcms-muted">上下文窗口包含历史消息、角色卡、世界书、记忆与工具结果；输出与工具结果需要预留空间。</p>
             <p class="vcms-callout vcms-callout-warn vcms-inline-note" data-note="ctx" role="alert"><i class="fa-solid fa-triangle-exclamation"></i>未填写上下文窗口：配置不完整，绑定前台聊天前需要补齐。</p>
 
-            <details class="vcms-advanced">
+            <details class="vcms-advanced"${state.advancedOpen ? ' open' : ''}>
                 <summary>高级设置（推理 · 参数 · 能力 · 计价）</summary>
                 <div class="vcms-advanced-body">
                     <h4 class="vcms-subsection-title">推理</h4>
@@ -1037,7 +1039,8 @@ export function mountModelSettings() {
             return `<button type="button" class="vcms-seg-btn vcms-cap-${s.toLowerCase()} ${active ? 'is-active' : ''}" data-action="cap" data-cap-key="${f.key}" data-cap-state="${s}" ${isVerified && !active ? 'disabled' : ''} title="${isVerified ? '已验证状态来自后端核验，不能手动设置' : ''}" aria-pressed="${active}">${logic.CAPABILITY_STATE_LABELS[s]}</button>`;
         }).join('')}
                             </div>
-                        </div>`;
+                        </div>
+                        ${f.key === 'toolCalls' ? renderToolCallVerification(m, value) : ''}`;
     }).join('')}
                     </div>
 
@@ -1076,6 +1079,22 @@ export function mountModelSettings() {
                 <button type="button" class="vcms-btn vcms-btn-danger-ghost vcms-btn-sm" data-action="delete-model" ${m.boundPurposes?.length ? 'disabled title="该配置仍被用途绑定引用，先解除绑定"' : ''}><i class="fa-solid fa-trash-can"></i> 删除</button>`}
             </div>
             ${state.cloneFor?.profileKey === m.profileKey ? renderCloneForm(m) : ''}
+        </div>`;
+    }
+
+    function renderToolCallVerification(model, value) {
+        if (value === 'VERIFIED') {
+            return `<p class="vcms-muted vcms-tool-verify" data-tool-calls-note>${esc(logic.TOOL_CALLS_VERIFIED_NOTE)}</p>`;
+        }
+        const mine = state.toolVerify.profileKey === model.profileKey;
+        const busy = mine && state.toolVerify.busy;
+        const failure = mine && state.toolVerify.error ? `<p class="vcms-field-err is-visible" data-tool-calls-error>${esc(state.toolVerify.error)}</p>` : '';
+        return `
+        <div class="vcms-tool-verify" data-tool-calls-note>
+            <p>${esc(logic.TOOL_CALLS_UNVERIFIED_NOTE)}</p>
+            <p class="vcms-muted">${esc(logic.TOOL_CALLS_VERIFY_HINT)}</p>
+            <button type="button" class="vcms-btn vcms-btn-primary-outline vcms-btn-sm" data-action="verify-tool-calls" ${busy ? 'disabled' : ''}>${busy ? '验证中…' : esc(logic.TOOL_CALLS_VERIFY_ACTION)}</button>
+            ${failure}
         </div>`;
     }
 
@@ -1152,13 +1171,13 @@ export function mountModelSettings() {
         <div class="vcms-reauth-bar" role="alertdialog" aria-label="重新验证身份">
             <div class="vcms-reauth-main">
                 <i class="fa-solid fa-user-shield"></i>
-                <p>写入前需要重新验证身份。输入当前登录密码完成验证，验证成功后将继续未完成的保存。</p>
+                <p>写入前需要重新验证身份。输入当前登录密码完成验证，${r.retry === 'verify-tool-calls' ? '验证成功后将继续验证工具调用。' : '验证成功后将继续未完成的保存。'}</p>
             </div>
             <div class="vcms-reauth-form">
                 <input id="vcms-reauth-password" type="password" data-bind="reauth.password" value="${esc(r.password)}" placeholder="当前登录密码" autocomplete="current-password" spellcheck="false">
                 ${r.error ? `<p class="vcms-field-err is-visible">${esc(r.error)}</p>` : ''}
                 <div class="vcms-callout-actions">
-                    <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="reauth-submit" ${r.busy ? 'disabled' : ''}>${r.busy ? '验证中…' : '验证并继续保存'}</button>
+                    <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="reauth-submit" ${r.busy ? 'disabled' : ''}>${r.busy ? '验证中…' : (r.retry === 'verify-tool-calls' ? '验证并继续' : '验证并继续保存')}</button>
                     <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="reauth-cancel" ${r.busy ? 'disabled' : ''}>取消</button>
                 </div>
             </div>
@@ -1396,6 +1415,12 @@ export function mountModelSettings() {
         ev.preventDefault();
         requestClose();
     });
+
+    overlay.addEventListener('toggle', (ev) => {
+        const details = ev.target;
+        if (!details?.classList?.contains('vcms-advanced')) return;
+        state.advancedOpen = Boolean(details.open);
+    }, true);
 
     overlay.addEventListener('click', (ev) => {
         const actionEl = ev.target.closest('[data-action]');
@@ -1729,6 +1754,9 @@ export function mountModelSettings() {
             case 'discover':
                 doDiscover();
                 break;
+            case 'verify-tool-calls':
+                doVerifyToolCalls();
+                break;
             case 'check-connection':
                 doCheckConnection();
                 break;
@@ -1831,6 +1859,47 @@ export function mountModelSettings() {
             i += 1;
         }
         return key;
+    }
+
+    async function doVerifyToolCalls() {
+        const model = currentModel();
+        if (!model || state.toolVerify.busy) return;
+        if (state.creatingNew || model.isNew) {
+            state.toolVerify = { busy: false, profileKey: model.profileKey, error: '请先保存该模型，再验证工具调用。' };
+            render();
+            return;
+        }
+        if (state.draft && state.originalDraft && logic.draftDiffers(state.draft, state.originalDraft)) {
+            state.toolVerify = { busy: false, profileKey: model.profileKey, error: '请先保存当前配置，再验证工具调用。' };
+            render();
+            return;
+        }
+        const providerId = state.draft.providerId;
+        const profileKey = model.profileKey;
+        state.toolVerify = { busy: true, profileKey, error: null };
+        render();
+        try {
+            await api.verifyModelToolCalls(providerId, profileKey);
+            state.providers = await api.fetchProviders();
+            selectProvider(providerId, { silent: true });
+            if (state.draft?.models.some((row) => row.profileKey === profileKey)) {
+                state.selectedProfileKey = profileKey;
+            }
+            state.toolVerify = { busy: false, profileKey, error: null };
+            toast('已验证', 'success');
+        } catch (err) {
+            state.toolVerify = { busy: false, profileKey, error: null };
+            if (err instanceof api.ApiError && err.kind === 'forbidden') {
+                state.reauth = { open: true, busy: false, error: null, password: '', retry: 'verify-tool-calls' };
+            } else if (err instanceof api.ApiError && err.kind === 'context-changed') {
+                state.contextChanged = '登录会话已变更（可能在别处登录或退出），为避免写入错误的账号上下文，这次没有完成验证。你的输入已保留；请重新加载页面数据后再继续。';
+            } else if (err instanceof api.ApiError && err.kind === 'unauthenticated') {
+                state.contextChanged = '登录已过期，这次没有完成验证。你的输入已保留；请重新登录后，再重新加载页面数据。';
+            } else {
+                state.toolVerify = { busy: false, profileKey, error: logic.toolCallVerificationFailure(err) };
+            }
+        }
+        render();
     }
 
     async function doDiscover() {
@@ -1976,10 +2045,11 @@ export function mountModelSettings() {
         try {
             await api.reauth(password);
             state.reauth = { open: false, busy: false, error: null, password: '', retry: null };
-            toast('身份验证已更新，继续保存。', 'success');
+            toast(retry === 'verify-tool-calls' ? '身份验证已更新，继续验证工具调用。' : '身份验证已更新，继续保存。', 'success');
             render();
             if (retry === 'provider') doSaveProvider();
             else if (retry === 'bindings') doSaveBindings();
+            else if (retry === 'verify-tool-calls') doVerifyToolCalls();
         } catch (err) {
             if (err instanceof api.ApiError && err.kind === 'context-changed') {
                 // 会话已换，密码再验证无法救回旧快照：转为显式重新加载提示。

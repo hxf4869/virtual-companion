@@ -244,6 +244,11 @@ export function createGoAdminClient({ baseUrl, session, origin }) {
         listProviders: () => call('GET', '/api/v1/admin/providers'),
         saveProvider: (providerId, body) => call('PUT', `/api/v1/admin/providers/${encodeURIComponent(providerId)}`, body),
         discover: (providerId, body) => call('POST', `/api/v1/admin/providers/${encodeURIComponent(providerId)}/models/discover`, body),
+        verifyToolCalls: (providerId, profileKey) => call(
+            'POST',
+            `/api/v1/admin/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(profileKey).replace(/%40/gi, '@')}/verify-tool-calls`,
+            {},
+        ),
         listPurposes: () => call('GET', '/api/v1/admin/model-purposes'),
         savePurpose: (purpose, body) => call('PUT', `/api/v1/admin/model-purposes/${encodeURIComponent(purpose)}`, body),
         sessionIdentity: () => call('GET', '/api/v1/auth/session'),
