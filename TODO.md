@@ -148,7 +148,24 @@
       `git diff --check` PASS；测试进程与专用 PG/MinIO 已清理。真实模型连通与京东云 embedding 调查见 Owner 项，
       本项未启用外部记忆引擎、embedding 或常驻付费后台任务；私有模型配置未提交，原有 ZIP 保留。
       按 Owner 最新“准备收尾”要求在 W07 收尾后暂停 Goal，W08–W16 未开始，整体 V2 尚未完成。
-- [ ] `V2-W08` 记忆实现对照与管理闭环。用例：M01–M12、MODEL05。
+- [x] `V2-W08` 记忆实现对照与管理闭环。用例：M01–M12、MODEL05。
+      结果：DONE（2026-10-29）；提交 `d473ae98..db225522`（主线与链分支 `v2/w08e` 交替推进，经合并快进入 main）。
+      决定：记忆域采用 MemoryCore（TencentDB-Agent-Memory@084bed45，MIT）作为本机独立服务，经适配层与少量补丁接入；
+      记忆域明文（Owner 决定）；embedding 为本机 OrbStack `qwen3-embedding:0.6b`（1024 维，127.0.0.1:11438），抽取用私有
+      agents.txt 模型。写路径 propose→Go 核验→commit→publish，Go 回调走能力令牌；检索在 KNN/FTS 前按允许集预过滤，
+      低相关拒绝先于融合；画像按允许集指纹跨会话累积；会话摘要/画像经与记忆相同的相关度门（按行计分）与日期门。
+      可靠性修复（7 轮真实评估驱动）：非流式等待用首 token 预算、超时同 attempt 重开与 journal、范围 revision 前进时换新
+      operation 重提、引擎闭合码可见（去重解析缺陷 DEDUP_INVALID 已修）、遗忘画像按当前允许集重建、清理写失败记 PARTIAL、
+      遗忘与删号后引擎库 secure_delete + WAL checkpoint，被删内容字节不留在 vectors.db / -wal。
+      用例：第 7 轮真实评估（49 次真实调用，`cline-pass/deepseek-v4.1-flash-1017` 思考 max）硬门槛 H1 负例 6/6 为空、
+      H2 日期门禁、H3 遗忘（DONE、所有层不含原事实、新画像已发布且保留其余事实）、H4 提取（无死信、无卡住操作，M12 为
+      needs_clarification 且不调度提醒）全部 PASS；M01/M11/M12 日期 PASS；M02 改口新事实落库、旧引擎记录移出 L1，画像为
+      「当前居住地：上海；曾居住地：北京」（评估以关键词判错，已核对原文为正确现状加历史）；正例命中 5/8（留出集，阈值偏精确，
+      第 3 轮按留出问句调参曾过拟合，未再调）。受管 `memorycore-native`、`memory-browser` PASS。
+      成本（usage.cost，币种未声明）：第 7 轮 0.0697，每条消息约 0.0063，每天 100 条约 0.63；持久化到可召回 P50 约 58s。
+      验证：`bash scripts/check.sh` PASS；RLS 全量 PASS；integration 四包 PASS；ST 离线测试 569/569；`git diff --check` PASS。
+      遗留：两条噪声来源空发布无决策码（与去重丢弃不可区分）；摘要门禁拒绝无计数日志；Responses/Anthropic 真实抽取未测。
+      执行：Claude 调度与审查；Grok Build 与 Cursor grok-4.7 实现与评估。
 - [x] `V2-W09` 跟进、时间与 G2 后台配置。用例：A01、A02、MODEL01–MODEL04（后台子项）。
       结果：DONE（2026-10-29）；提交 `639dc9ca..8d43b354`（链分支 `v2/w09`，合并 main 后快进入 main）。
       V160–V162、V166–V167：跟进与主动策略表（FORCE RLS），可触发跟进必须带记忆与来源且写入前核验；
@@ -260,6 +277,30 @@
       遗留：真机/软键盘（V2-OWNER-DEVICE）、真实模型与时延（V2-OWNER-MODELS）；generation/realtime Go 路由与 Hub 是否退役另案（catalog 仍为 core-outcome）。
       执行：Claude 调度与审查；Grok Build 与 Cursor grok-4.7-xhigh-fast 实现。
 - [ ] `V2-W16` 保护、恢复与运行说明。用例：D06、O01；最终报告。
+      结果：READY_FOR_OWNER（2026-10-29）；提交 `fb340d90`、`6beb7489`、`e58a83c8`、`455bbc44`、`643a22c6`、`badf96be`、`eb186a5d`
+      与各自合并提交。运行说明（`integrations/sillytavern/README.md`「本机运行说明」）中启动/状态/停止/日志/备份/恢复到空目录均在本机
+      合成环境实测，升级/回退只描述未执行；根 README 与 ops/deploy 标明 Compose 不是 V2 栈、远端部署未授权。
+      D06：备份纳入 `_vc_accounts/`、`.vc-f2/` 并在归档外另存最新删除清单；恢复先关恢复门，按「当前库 ∪ 当前数据根 ∪ 清单」删除
+      已删内容，MemoryCore 权利只取交集，当前库不可达退出 5 且保持关闭；companiond 恢复门关闭时不领取任务、不开放记忆读取。
+      演练（含把库回滚到删除前再恢复）被删内容不复活，合成 PASS。O01：重启演练 `scripts/w16-restart-accept.mjs` 15/15 PASS
+      （聊天、绑定、记忆、inbox 不重投、通知不倒退不重发、跟进过期租约回收、HELD 超时转 UNKNOWN、剧情世界一致与未确认投影补写、删除屏障）。
+      聚焦审查（ST 插件边界与 Go 权利/计费两组）修复：剧情身份未齐拒绝出站、原生预留按请求隔离、流式与工具循环中止收口、删除意图
+      期间拒绝计费/跟进/剧情读、跟进同尝试不重发、时区校验、通知发送前锁内复核与 sending 崩溃回收。
+      最终报告（截至 `db225522`）：
+      - 用例状态：W00–W02、W05–W09、W12–W14 DONE；W03、W04、W10、W11、W15、W16 READY_FOR_OWNER（依赖下列 Owner 项）。
+      - 三协议：Chat Completions / Responses / Anthropic 固定 provider 合成 PASS（含剧情出站与工具续接）；真实模型仅 Chat Completions
+        （`cline-pass/deepseek-v4.1-flash-1017`）：连通、W08 记忆 7 轮评估、剧情 `story-real`；Responses / Anthropic 真实供应商 NOT_RUN。
+      - 两渠道：本地 SMTP 与本地飞书 Webhook 合成 PASS（N01–N03）；真实邮件 / 飞书 / 手机显示 NOT_RUN（V2-OWNER-NOTIFY / DEVICE）。
+      - 真实费用（usage.cost 汇总，币种未声明，不含早期未读到 usage 的诊断调用与 G19 单样本探针）：W08 第 2–7 轮约 0.343，`story-real` 两次约 0.0048，
+        连通约 0.0001，合计约 0.35；后台日预算与正式用途绑定、单价属 V2-OWNER-MODELS（无 USD 单价的模型一律 NO_PRICE 拒发）。
+      - 时延：W15 固定 provider n=1（发送→上游约 0.43s，首字→完成约 3.6s），W08 持久化→可召回 P50 约 58s；无 p95 与容量结论。
+      - E3 旧数据：V2 不迁移、不保留旧业务数据；W01 已删除 `~/.virtual-companion/backups` 6 份与 `deletion-manifests` 5 份，
+        配置、口令与日志保留，未做全机审计；不提供旧聊天导入。
+      - 验证（main `b49b058c`，其后仅 W08 引擎 JS 变更另跑 ST 测试与受管 memorycore 场景）：`bash scripts/check.sh` 8 项 PASS（18s）；
+        `infra/db/run-rls-tests.sh` ALL PASS；integration postgres/jobs/httpapi/migrate PASS；ST 离线测试 569/569。
+      遗留：备份位置 / 保留期 / 口令存放 / FileVault（V2-OWNER-PROTECTION）；MinIO 导出对象不在备份内；restore.sh 不恢复 PostgreSQL；
+      Responses 工具续接为进程内存态，重启不可续；远端部署（V2-OWNER-DEPLOY）；generation/realtime 旧链是否退役另案。
+      执行：Claude 调度与审查；Grok Build 与 Cursor grok-4.7 实现。
 
 ### V2 Owner 项与运行配置（缺失只阻塞相关真实调用或验收）
 
