@@ -71,6 +71,7 @@ import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
 import { sceneInboxNotify, startW10Capture, stopW10Capture } from './w10-accept.mjs';
 import { sceneStoryReal } from './story-real-accept.mjs';
 import { sceneW15Ui } from './w15-ui-accept.mjs';
+import { sceneF3Settings } from './f3-settings-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -116,6 +117,12 @@ SCENES.push({
 SCENES.push({
     id: 'w15-ui',
     title: 'W15 七页导航、模型预算与账户',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+});
+SCENES.push({
+    id: 'f3-settings',
+    title: 'F3 设置与酒馆抽屉页',
     needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
@@ -3030,6 +3037,7 @@ const SCENE_IMPLS = {
     'story-play': sceneStoryPlay,
     'story-real': sceneStoryReal,
     'w15-ui': sceneW15Ui,
+    'f3-settings': sceneF3Settings,
 };
 
 async function runFull() {

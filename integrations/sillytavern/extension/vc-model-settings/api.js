@@ -202,6 +202,16 @@ export function saveProvider(providerId, payload) {
     return request('PUT', `${GO_PREFIX}/providers/${encodeURIComponent(providerId)}`, payload);
 }
 
+/** GET /api/v1/admin/local-models → { embedding, rerank } */
+export function fetchLocalModels() {
+    return request('GET', `${GO_PREFIX}/local-models`);
+}
+
+/** PUT /api/v1/admin/local-models/rerank → { enabled, revision }；body { enabled, expectedRevision } */
+export function saveLocalModelRerank(payload) {
+    return request('PUT', `${GO_PREFIX}/local-models/rerank`, payload);
+}
+
 /** GET /api/v1/admin/model-purposes → 固定 6 条用途绑定 */
 export function fetchModelPurposes() {
     return request('GET', `${GO_PREFIX}/model-purposes`);

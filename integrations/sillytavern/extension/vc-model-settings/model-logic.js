@@ -813,6 +813,86 @@ export function cloneModelDraft(source, { profileKey, displayName }) {
 }
 
 // 草稿是否有未保存修改（用于关闭保护 / 放弃按钮）。
+/** GET /api/v1/admin/local-models；重排开关 PUT /api/v1/admin/local-models/rerank，body `{ enabled, expectedRevision }`。 */
+export const LOCAL_MODELS_PATH = '/api/v1/admin/local-models';
+export const LOCAL_RERANK_PATH = '/api/v1/admin/local-models/rerank';
+export const LOCAL_EMBEDDING_MODEL = 'qwen3-embedding:0.6b';
+export const LOCAL_RERANK_MODEL = 'bge-reranker-v2-m3';
+
+export const LOCAL_RUNTIME_LABELS = {
+    RUNNING: '运行中',
+    UNAVAILABLE: '不可用',
+    DEPLOYMENT_OFF: '已在部署中关闭',
+    LOADING: '加载中',
+};
+
+function localName(value, fallback) {
+    return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+export function localHealthView({ healthy, deploymentEnabled } = {}) {
+    if (deploymentEnabled === false) {
+        return { label: LOCAL_RUNTIME_LABELS.DEPLOYMENT_OFF, tone: 'neutral', switchDisabled: true };
+    }
+    if (healthy === true) return { label: LOCAL_RUNTIME_LABELS.RUNNING, tone: 'ok', switchDisabled: false };
+    return { label: LOCAL_RUNTIME_LABELS.UNAVAILABLE, tone: 'danger', switchDisabled: false };
+}
+
+export function localModelsUnavailable() {
+    return {
+        phase: 'ready',
+        embedding: {
+            name: LOCAL_EMBEDDING_MODEL,
+            label: LOCAL_RUNTIME_LABELS.UNAVAILABLE,
+            tone: 'danger',
+            healthy: false,
+        },
+        rerank: {
+            name: LOCAL_RERANK_MODEL,
+            label: LOCAL_RUNTIME_LABELS.UNAVAILABLE,
+            tone: 'danger',
+            healthy: false,
+            enabled: false,
+            revision: 0,
+            deploymentEnabled: true,
+            switchDisabled: true,
+        },
+    };
+}
+
+export function localModelsFromPayload(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !payload.embedding || !payload.rerank) {
+        return localModelsUnavailable();
+    }
+    const embedding = payload.embedding;
+    const rerank = payload.rerank;
+    const embeddingStatus = localHealthView({ healthy: embedding.healthy === true });
+    const deploymentEnabled = rerank.deploymentEnabled !== false;
+    const rerankStatus = localHealthView({ healthy: rerank.healthy === true, deploymentEnabled });
+    const revision = Number(rerank.revision);
+    return {
+        phase: 'ready',
+        embedding: {
+            name: localName(embedding.model, LOCAL_EMBEDDING_MODEL),
+            label: embeddingStatus.label,
+            tone: embeddingStatus.tone,
+            healthy: embedding.healthy === true,
+            dimensions: Number(embedding.dimensions) || 0,
+            state: typeof embedding.state === 'string' ? embedding.state : '',
+        },
+        rerank: {
+            name: localName(rerank.model, LOCAL_RERANK_MODEL),
+            label: rerankStatus.label,
+            tone: rerankStatus.tone,
+            healthy: rerank.healthy === true,
+            enabled: rerank.enabled === true,
+            revision: Number.isFinite(revision) ? revision : 0,
+            deploymentEnabled,
+            switchDisabled: rerankStatus.switchDisabled,
+        },
+    };
+}
+
 export function draftDiffers(draft, original) {
     if (!original) return true;
     if (draft.displayName !== original.displayName) return true;

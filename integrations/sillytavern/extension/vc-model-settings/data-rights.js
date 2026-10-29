@@ -8,6 +8,9 @@ import {
     AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, RESTORE_LIMIT_COPY, SESSION_EMPTY_COPY,
     authenticatorStatusText, deletionProgressText, otherSessions, sessionRowText,
 } from './account-logic.js';
+import { confirmAlert } from './ui/alert.js';
+import { icon } from './ui/icons.js';
+import { registerAccountOpener, vcUiEnabled } from './drawers.js';
 
 function ensureAccountStyles() {
     if (typeof document === 'undefined' || document.querySelector('link[data-vc-account]')) return;
@@ -225,9 +228,14 @@ export function mountDataRights() {
     function paintSessions() {
         sessionList.textContent = '';
         const items = Array.isArray(sessions) ? sessions : [];
-        if (sessionsLoaded && items.length === 0) {
+        if (vcUiEnabled() && !sessionsLoaded) {
+            const pending = document.createElement('div');
+            pending.className = 'vc-skeleton-row';
+            pending.setAttribute('aria-busy', 'true');
+            sessionList.append(pending);
+        } else if (sessionsLoaded && items.length === 0) {
             const empty = document.createElement('p');
-            empty.className = 'vc-account-empty';
+            empty.className = vcUiEnabled() ? 'vc-account-empty vc-empty' : 'vc-account-empty';
             empty.textContent = SESSION_EMPTY_COPY;
             sessionList.append(empty);
         } else {
@@ -240,6 +248,7 @@ export function mountDataRights() {
         }
         const revoke = root.querySelector('[data-revoke-others]');
         if (revoke) revoke.disabled = busy || deleted || otherSessions(sessions).length === 0;
+        syncAccountHome();
     }
     function watchDeletion(epoch) {
         clearTimeout(timer);
@@ -267,6 +276,7 @@ export function mountDataRights() {
         else if (action === 'reset') {
             authLine.textContent = '验证器未启用';
             authStatus.textContent = AUTH_RESET_COPY;
+            syncAccountHome();
         } else if (action === 'export' || action === 'recover') showExport(result, epoch);
         else if (action === 'delete') {
             if (result?.ok === true && result?.status !== 'PENDING') {
@@ -292,6 +302,7 @@ export function mountDataRights() {
             sessions = Array.isArray(listed) ? listed : [];
             sessionsLoaded = true;
             paintSessions();
+            syncAccountHome();
         } catch {
             if (epoch === version && dialog.open) sessionStatus.textContent = '账户信息暂不可用';
         }
@@ -315,10 +326,26 @@ export function mountDataRights() {
         if (busy) return;
         openReauth('recover', root.querySelector('[data-recover]'));
     });
-    deleteForm.addEventListener('submit', (event) => {
+    deleteForm.addEventListener('submit', async (event) => {
         event.preventDefault();
-        if (busy || !deleteForm.reportValidity()) return;
-        openReauth('delete', event.submitter || deleteForm.querySelector('button[type=submit]'));
+        if (busy) return;
+        const trigger = event.submitter || deleteForm.querySelector('button[type=submit]');
+        if (vcUiEnabled()) {
+            const box = deleteForm.querySelector('input[type="checkbox"]');
+            if (box) box.checked = true;
+            const ok = await confirmAlert({
+                title: '删除账号及在线数据',
+                message: '在线聊天、角色、世界书、记忆、导出文件和私有备份将一并清除。离线备份另行清理。',
+                action: '删除',
+                root: dialog,
+                opener: trigger,
+            });
+            if (!ok) {
+                if (box) box.checked = false;
+                return;
+            }
+        } else if (!deleteForm.reportValidity()) return;
+        openReauth('delete', trigger);
     });
     reauthForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -407,9 +434,111 @@ export function mountDataRights() {
         try { await logoutCurrent(); location.assign('/auth/'); }
         catch (error) { sessionStatus.textContent = errorText(error); setBusy(false); }
     });
-    return {
+    function accountTitle(screen) {
+        return {
+            home: '账户与数据',
+            password: '修改密码',
+            auth: '验证器',
+            sessions: '当前会话',
+            export: '导出数据',
+            delete: '删除账号及在线数据',
+        }[screen] || '账户与数据';
+    }
+    function setAccountScreen(screen) {
+        dialog.setAttribute('data-vc-screen', screen);
+        const titleEl = dialog.querySelector('[data-vc-account-nav] .vc-nav-title');
+        if (titleEl) titleEl.textContent = accountTitle(screen);
+        const backLabel = dialog.querySelector('[data-vc-account-back] span');
+        if (backLabel) backLabel.textContent = screen === 'home' ? '设置' : '';
+        const backBtn = dialog.querySelector('[data-vc-account-back]');
+        if (backBtn) backBtn.setAttribute('aria-label', screen === 'home' ? '返回设置' : '返回账户与数据');
+        const details = dialog.querySelector('.vc-data-delete details');
+        if (details && screen === 'delete') details.open = true;
+    }
+    function syncAccountHome() {
+        const auth = dialog.querySelector('[data-vc-auth-summary]');
+        if (auth) {
+            const text = authLine.textContent || '';
+            auth.textContent = text.includes('未启用') ? '未启用' : (text.includes('已启用') ? '已启用' : text);
+        }
+        const count = dialog.querySelector('[data-vc-session-count]');
+        if (count) count.textContent = sessionsLoaded ? `${sessions.length} 个` : '';
+    }
+    function applyAccountButtons() {
+        const pairs = [
+            ['[data-password] button[type="submit"]', ['vc-btn', 'vc-btn-fill']],
+            ['[data-reset]', ['vc-btn', 'vc-btn-text']],
+            ['[data-revoke-others]', ['vc-btn', 'vc-btn-text']],
+            ['[data-logout]', ['vc-btn', 'vc-btn-text']],
+            ['[data-export]', ['vc-btn', 'vc-btn-fill']],
+            ['[data-recover]', ['vc-btn', 'vc-btn-text']],
+            ['[data-download]', ['vc-btn', 'vc-btn-fill']],
+            ['[data-delete] button[type="submit"]', ['vc-btn', 'vc-btn-danger']],
+            ['[data-reauth] button[type="submit"]', ['vc-btn', 'vc-btn-fill']],
+            ['[data-reauth-cancel]', ['vc-btn', 'vc-btn-text']],
+        ];
+        for (const [selector, classes] of pairs) {
+            const el = dialog.querySelector(selector);
+            if (!el) continue;
+            for (const name of classes) el.classList.add(name);
+        }
+    }
+    function ensureAccountHome() {
+        if (dialog.querySelector('[data-vc-account-home]')) return;
+        const home = document.createElement('div');
+        home.setAttribute('data-vc-account-home', '');
+        const chevron = icon('chevron-right', { size: 18 });
+        home.innerHTML = `<div class="vc-group">
+            <button type="button" class="vc-cell" data-vc-account-go="password"><span class="vc-grow">修改密码</span>${chevron}</button>
+            <button type="button" class="vc-cell" data-vc-account-go="auth"><span class="vc-grow">验证器</span><span class="vc-value" data-vc-auth-summary>未启用</span>${chevron}</button>
+            <button type="button" class="vc-cell" data-vc-account-go="sessions"><span class="vc-grow">当前会话</span><span class="vc-value" data-vc-session-count></span>${chevron}</button>
+            <button type="button" class="vc-cell" data-vc-account-go="export"><span class="vc-grow">导出数据</span>${chevron}</button>
+        </div>
+        <div class="vc-group">
+            <button type="button" class="vc-cell is-danger" data-vc-account-go="delete"><span class="vc-grow">删除账号及在线数据</span>${chevron}</button>
+        </div>`;
+        const body = dialog.querySelector('.vc-data-body');
+        if (body && typeof body.prepend === 'function') body.prepend(home);
+        else if (body && typeof body.insertBefore === 'function' && body.firstChild) body.insertBefore(home, body.firstChild);
+        else dialog.append(home);
+        home.addEventListener('click', (event) => {
+            const go = event.target?.closest?.('[data-vc-account-go]');
+            if (!go || busy) return;
+            setAccountScreen(go.getAttribute('data-vc-account-go'));
+        });
+        applyAccountButtons();
+    }
+    function ensureVcChrome() {
+        if (!vcUiEnabled()) return;
+        if (!dialog.querySelector('[data-vc-account-nav]')) {
+            const nav = document.createElement('div');
+            nav.className = 'vc-navbar';
+            nav.setAttribute('data-vc-account-nav', '');
+            nav.style.setProperty('--vc-nav-p', '1');
+            nav.innerHTML = `<button type="button" class="vc-btn vc-btn-text" data-vc-account-back aria-label="返回设置">${icon('chevron-left', { size: 22 })}<span>设置</span></button><div class="vc-nav-title">账户与数据</div><div class="vc-nav-spacer"></div>`;
+            if (typeof dialog.prepend === 'function') dialog.prepend(nav);
+            else if (typeof dialog.insertBefore === 'function' && dialog.firstChild) dialog.insertBefore(nav, dialog.firstChild);
+            else dialog.append(nav);
+            nav.querySelector('[data-vc-account-back]')?.addEventListener('click', () => {
+                if (busy) return;
+                const screen = dialog.getAttribute('data-vc-screen');
+                if (screen && screen !== 'home') {
+                    setAccountScreen('home');
+                    return;
+                }
+                close();
+            });
+        }
+        ensureAccountHome();
+        const box = deleteForm.querySelector('input[type="checkbox"]');
+        if (box) box.required = false;
+        setAccountScreen('home');
+        syncAccountHome();
+    }
+    const controller = {
         open(returnFocus = document.activeElement) {
             opener = returnFocus || opener;
+            ensureVcChrome();
             version += 1;
             exportStatus.textContent = '';
             deleteStatus.textContent = '';
@@ -438,4 +567,6 @@ export function mountDataRights() {
             revealDeletion();
         },
     };
+    registerAccountOpener((returnFocus) => controller.open(returnFocus));
+    return controller;
 }

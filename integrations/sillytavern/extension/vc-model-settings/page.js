@@ -3,6 +3,8 @@
 // 样式作用域 .vcms-*；主题 tokens 见 style.css（v2-design §3）。
 import * as logic from './model-logic.js';
 import * as api from './api.js';
+import { icon } from './ui/icons.js';
+import { registerModelOpener, vcUiEnabled } from './drawers.js';
 
 const ROOT_ID = 'vc-model-settings-root';
 const NEW_KEY_PLACEHOLDER_RE = /^__new_\d+__$/;
@@ -78,6 +80,8 @@ export function mountModelSettings() {
         usage: { month: logic.currentUsageMonth(), rows: [], error: null, loading: false },
         reauth: { open: false, busy: false, error: null, password: '', retry: null }, // 403 再验证；retry: 'provider' | 'bindings' | 'verify-tool-calls'
         toolVerify: { busy: false, profileKey: null, error: null },
+        vcScreen: 'home', // 仅 body.vc-ui：home | provider | model
+        localModels: { phase: 'idle' },
         advancedOpen: false,
     };
 
@@ -469,7 +473,13 @@ export function mountModelSettings() {
     let returnFocus = null;
 
     function open(opener) {
+        const opening = overlay.hidden !== false;
         if (opener && typeof opener.focus === 'function') returnFocus = opener;
+        if (vcUiEnabled() && opening) {
+            state.vcScreen = 'home';
+            state.tab = 'bindings';
+            if (state.localModels.phase === 'idle') void loadLocalModels();
+        }
         overlay.hidden = false;
         document.body.classList.add('vcms-no-scroll');
         // 会话上下文已变更时，重新进入本页也视为显式重新加载（重新捕获快照）。
@@ -562,8 +572,9 @@ export function mountModelSettings() {
     }
 
     function renderShell() {
+        const vcAttr = vcUiEnabled() ? ` data-vc-screen="${esc(state.vcScreen || 'home')}"` : '';
         return `
-        <div class="vcms-panel" tabindex="-1" role="dialog" aria-modal="true" aria-label="模型设置">
+        <div class="vcms-panel"${vcAttr} tabindex="-1" role="dialog" aria-modal="true" aria-label="模型设置">
             ${renderHeader()}
             <div class="vcms-body">
                 ${state.reauth.open ? renderReauthBar() : ''}
@@ -578,9 +589,39 @@ export function mountModelSettings() {
         `;
     }
 
+    function vcNavCopy() {
+        const screen = state.vcScreen || 'home';
+        if (screen === 'model') {
+            const model = currentModel();
+            return {
+                back: state.draft?.displayName || '模型',
+                title: model?.displayName || model?.modelId || '模型',
+            };
+        }
+        if (screen === 'provider') {
+            return { back: '模型', title: state.draft?.displayName || '供应商' };
+        }
+        return { back: '设置', title: '模型' };
+    }
+
     function renderHeader() {
         const providerCount = state.providers.length;
         const modelCount = state.providers.reduce((sum, p) => sum + (p.models?.length ?? 0), 0);
+        if (vcUiEnabled()) {
+            const nav = vcNavCopy();
+            return `
+        <header class="vcms-header vc-navbar" style="--vc-nav-p:1">
+            <button type="button" class="vc-btn vc-btn-text" data-action="vc-back">${icon('chevron-left', { size: 22 })}<span>${esc(nav.back)}</span></button>
+            <div class="vc-nav-title">${esc(nav.title)}</div>
+            <div class="vc-nav-spacer"></div>
+            <span class="vcms-dirty" id="vcms-dirty" hidden><span class="vcms-dot"></span>未保存的修改</span>
+            <button type="button" class="vc-btn vc-btn-text" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
+            <button type="button" class="vc-btn vc-btn-text" id="vcms-save" data-action="save">保存更改</button>
+            <button type="button" class="vc-circle vc-glass" data-action="close" aria-label="关闭模型设置" title="关闭（Esc）">${icon('x', { size: 22 })}</button>
+            <h2 class="vcms-title">模型设置</h2>
+            <p class="vcms-subtitle">供应商 ${providerCount} · 模型配置 ${modelCount} · 用途绑定 ${state.purposes.length}</p>
+        </header>`;
+        }
         return `
         <header class="vcms-header">
             <div class="vcms-header-titles">
@@ -624,6 +665,10 @@ export function mountModelSettings() {
         </div>`;
     }
 
+    function usageMeta(row) {
+        return `调用 ${row.calls ?? 0} · 输入 ${logic.formatTokenCount(row.inputTokens)} · 输出 ${logic.formatTokenCount(row.outputTokens)} · 缓存命中率 ${logic.formatCacheHitRate(row.cacheHitRate)} · 费用 ${logic.formatUsageFee(row)}`;
+    }
+
     function renderUsagePanel() {
         const rows = Array.isArray(state.usage.rows) ? state.usage.rows : [];
         const table = rows.length === 0
@@ -645,11 +690,13 @@ export function mountModelSettings() {
                 </tr>`).join('')}
                 </tbody>
             </table>`;
+        const cards = `<div class="vc-group vcms-usage-cards">${rows.map((row) => `<div class="vc-cell vcms-usage-card"><span class="vc-grow"><b>${esc(logic.usagePurposeLabel(row.purpose))}</b><span class="vcms-usage-meta">${esc(usageMeta(row))}</span></span></div>`).join('')}</div>`;
+        const ready = vcUiEnabled() ? `${cards}<div class="vcms-usage-scroll">${table}</div>` : table;
         const body = state.usage.loading
             ? '<p class="vcms-muted">正在读取用量…</p>'
             : state.usage.error
                 ? `<p class="vcms-callout vcms-callout-warn" role="status">${esc(state.usage.error)}</p>`
-                : table;
+                : ready;
         return `
         <section class="vcms-usage" aria-label="用量">
             <div class="vcms-usage-head">
@@ -683,6 +730,11 @@ export function mountModelSettings() {
     }
 
     function renderContent() {
+        if (vcUiEnabled()) return renderContentVc();
+        return renderContentClassic();
+    }
+
+    function renderContentClassic() {
         return `
         ${renderUsagePanel()}
         <div class="vcms-layout">
@@ -705,25 +757,129 @@ export function mountModelSettings() {
         </div>`;
     }
 
+    function renderContentVc() {
+        const screen = state.vcScreen || 'home';
+        const pane = screen === 'provider' || screen === 'model' ? renderProviderPane() : renderBindingsPane();
+        return `
+        ${renderLocalModels()}
+        ${renderUsagePanel()}
+        <div class="vcms-layout">
+            <aside class="vcms-providers" aria-label="供应商列表">
+                <div class="vcms-providers-head">
+                    <span class="vcms-section-label">接入的供应商</span>
+                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="new-provider"><i class="fa-solid fa-plus"></i> 新建</button>
+                </div>
+                <div class="vcms-provider-list" id="vcms-provider-list">${renderProviderCards()}</div>
+            </aside>
+            <main class="vcms-main">
+                <div class="vcms-tabs" role="tablist">
+                    <button type="button" role="tab" class="vcms-tab ${state.tab === 'provider' ? 'is-active' : ''}" aria-selected="${state.tab === 'provider'}" data-action="tab" data-tab="provider">供应商与模型</button>
+                    <button type="button" role="tab" class="vcms-tab ${state.tab === 'bindings' ? 'is-active' : ''}" aria-selected="${state.tab === 'bindings'}" data-action="tab" data-tab="bindings">用途绑定</button>
+                </div>
+                <div class="vcms-tabpanes">${pane}</div>
+            </main>
+        </div>`;
+    }
+
+    function localRow(kind, service, extra = '') {
+        const fallback = kind === '向量' ? logic.LOCAL_EMBEDDING_MODEL : logic.LOCAL_RERANK_MODEL;
+        const name = service?.name || fallback;
+        const label = service?.label || logic.LOCAL_RUNTIME_LABELS.UNAVAILABLE;
+        const tone = service?.tone || 'danger';
+        return `<div class="vc-cell" style="--vc-inset:16px"><span class="vc-grow"><b>${esc(kind)} · ${esc(name)}</b></span><span class="vc-status vc-status-${tone}"><i class="vc-dot vc-dot-${tone}"></i>${esc(label)}</span>${extra}</div>`;
+    }
+
+    function renderLocalModels() {
+        if (!vcUiEnabled()) return '';
+        const local = state.localModels;
+        const loading = !local || local.phase === 'idle' || local.phase === 'loading';
+        const view = loading
+            ? {
+                embedding: { name: logic.LOCAL_EMBEDDING_MODEL, label: logic.LOCAL_RUNTIME_LABELS.LOADING, tone: 'neutral' },
+                rerank: { name: logic.LOCAL_RERANK_MODEL, label: logic.LOCAL_RUNTIME_LABELS.LOADING, tone: 'neutral', enabled: false, switchDisabled: true },
+            }
+            : (local.embedding && local.rerank ? local : logic.localModelsUnavailable());
+        const disabled = view.rerank?.switchDisabled ? ' disabled aria-disabled="true"' : '';
+        const toggle = `<button type="button" class="vc-switch" role="switch" data-action="local-rerank" aria-checked="${view.rerank?.enabled === true ? 'true' : 'false'}" aria-label="重排"${disabled}></button>`;
+        return `
+        <section class="vcms-local" aria-label="本机模型">
+            <div class="vc-group-title">本机模型</div>
+            <div class="vc-group">
+                ${localRow('向量', view.embedding)}
+                ${localRow('重排', view.rerank, toggle)}
+            </div>
+        </section>`;
+    }
+
+    async function loadLocalModels({ quiet = false } = {}) {
+        if (!vcUiEnabled()) return;
+        if (!quiet) {
+            state.localModels = { phase: 'loading' };
+            if (overlay && !overlay.hidden) render();
+        }
+        try {
+            state.localModels = logic.localModelsFromPayload(await api.fetchLocalModels());
+        } catch {
+            state.localModels = logic.localModelsUnavailable();
+        }
+        if (overlay && !overlay.hidden) render();
+    }
+
+    async function saveLocalRerank(enabled) {
+        const previous = state.localModels?.rerank ? { ...state.localModels.rerank } : null;
+        if (previous?.switchDisabled) return;
+        const revision = Number.isFinite(previous?.revision) ? previous.revision : 0;
+        if (state.localModels?.rerank) state.localModels.rerank.enabled = enabled;
+        render();
+        try {
+            await api.saveLocalModelRerank({ enabled, expectedRevision: revision });
+            await loadLocalModels({ quiet: true });
+        } catch (err) {
+            if (state.localModels && previous) state.localModels.rerank = previous;
+            if (err instanceof api.ApiError && err.kind === 'conflict-revision') {
+                toast('这段配置已在另一处更新。', 'error');
+                await loadLocalModels({ quiet: true });
+                return;
+            }
+            if (err instanceof api.ApiError && err.kind === 'forbidden') {
+                state.pendingRerank = enabled;
+                state.reauth = { open: true, busy: false, error: null, password: '', retry: 'local-rerank' };
+                render();
+                return;
+            }
+            toast(err?.message || '本机模型不可用', 'error');
+            render();
+        }
+    }
+
     function renderProviderCards() {
         const creatingNew = state.creatingNew;
         if (!state.providers.length && !creatingNew) {
             return `
-            <div class="vcms-empty-providers">
+            <div class="vcms-empty-providers${vcUiEnabled() ? ' vc-empty' : ''}">
                 <p>还没有供应商。</p>
                 <p class="vcms-muted">新建供应商，选择一种接口协议并填写 Base URL 与密钥，再添加模型配置。</p>
                 <button type="button" class="vcms-btn vcms-btn-primary vcms-btn-sm" data-action="new-provider"><i class="fa-solid fa-plus"></i> 新建供应商</button>
             </div>`;
         }
-        const cards = state.providers.map((p) => `
-            <button type="button" class="vcms-provider-card ${p.providerId === state.selectedProviderId ? 'is-selected' : ''} ${p.state === 'DISABLED' ? 'is-disabled' : ''}" data-action="select-provider" data-id="${esc(p.providerId)}">
+        const cards = state.providers.map((p) => {
+            const keyMissing = !p.credentialConfigured;
+            const tone = keyMissing ? 'danger' : (p.state === 'ENABLED' ? 'ok' : 'warn');
+            const status = keyMissing ? '缺密钥' : (logic.PROVIDER_STATE_LABELS[p.state] ?? p.state);
+            const vcStatus = vcUiEnabled()
+                ? `<span class="vc-status vc-status-${tone}"><i class="vc-dot vc-dot-${tone}"></i>${esc(status)}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span>`
+                : '';
+            return `
+            <button type="button" class="vcms-provider-card${vcUiEnabled() ? ' vc-cell' : ''} ${p.providerId === state.selectedProviderId ? 'is-selected' : ''} ${p.state === 'DISABLED' ? 'is-disabled' : ''}" data-action="select-provider" data-id="${esc(p.providerId)}">
                 <span class="vcms-provider-name">${esc(p.displayName || p.providerId)}</span>
+                ${vcStatus}
                 <span class="vcms-provider-meta">
                     <span class="vcms-badge ${p.state === 'ENABLED' ? 'vcms-badge-ok' : 'vcms-badge-muted'}">${logic.PROVIDER_STATE_LABELS[p.state] ?? p.state}</span>
                     <span class="vcms-badge ${p.credentialConfigured ? 'vcms-badge-ok' : 'vcms-badge-warn'}">${p.credentialConfigured ? '密钥已配置' : '缺密钥'}</span>
                 </span>
                 <span class="vcms-provider-sub">${esc(logic.protocolMeta(p.protocol)?.label ?? p.protocol)} · ${p.models?.length ?? 0} 个模型</span>
-            </button>`).join('');
+            </button>`;
+        }).join('');
         const newCard = creatingNew
             ? `<button type="button" class="vcms-provider-card is-selected is-new" data-action="select-provider" data-id="">
                    <span class="vcms-provider-name">新建供应商（未保存）</span>
@@ -786,6 +942,7 @@ export function mountModelSettings() {
                             <input type="radio" name="vcms-protocol" value="${p.id}" ${d.protocol === p.id ? 'checked' : ''} data-bind="provider.protocol">
                             <span class="vcms-protocol-name">${esc(p.label)}</span>
                             <span class="vcms-protocol-endpoint vcms-mono">${esc(p.endpoint)}</span>
+                            ${vcUiEnabled() && d.protocol === p.id ? icon('check', { size: 18 }) : ''}
                         </label>`).join('')}
                     </div>
                     <p class="vcms-field-err" data-err-for="protocol"></p>
@@ -1555,6 +1712,22 @@ export function mountModelSettings() {
             case 'close':
                 requestClose();
                 break;
+            case 'vc-back':
+                if (!vcUiEnabled()) break;
+                if (state.vcScreen === 'model') state.vcScreen = 'provider';
+                else if (state.vcScreen === 'provider') {
+                    state.vcScreen = 'home';
+                    state.tab = 'bindings';
+                } else requestClose();
+                render();
+                break;
+            case 'local-models-retry':
+                void loadLocalModels();
+                break;
+            case 'local-rerank':
+                if (!vcUiEnabled() || state.localModels?.rerank?.switchDisabled) break;
+                void saveLocalRerank(state.localModels.rerank?.enabled !== true);
+                break;
             case 'keep-editing':
                 state.closing = false;
                 render();
@@ -1580,6 +1753,7 @@ export function mountModelSettings() {
                 state.originalDraft = deepClone(state.draft);
                 state.creatingNew = true;
                 state.tab = 'provider';
+                if (vcUiEnabled()) state.vcScreen = 'provider';
                 render();
                 overlay.querySelector('#vcms-f-display')?.focus();
                 break;
@@ -1590,9 +1764,11 @@ export function mountModelSettings() {
                     state.draft = logic.newProviderDraft();
                     state.originalDraft = deepClone(state.draft);
                     state.creatingNew = true;
+                    if (vcUiEnabled()) state.vcScreen = 'provider';
                     render();
                     break;
                 }
+                if (vcUiEnabled()) state.vcScreen = 'provider';
                 selectProvider(id);
                 break;
             }
@@ -1676,6 +1852,7 @@ export function mountModelSettings() {
                 model.profileKey = `__new_${state.draft.models.length + 1}__`;
                 state.draft.models.push(model);
                 state.selectedProfileKey = model.profileKey;
+                if (vcUiEnabled()) state.vcScreen = 'model';
                 render();
                 overlay.querySelector('#vcms-m-id')?.focus();
                 break;
@@ -1684,6 +1861,7 @@ export function mountModelSettings() {
                 state.selectedProfileKey = el.getAttribute('data-key');
                 state.cloneFor = null;
                 state.deleteFor = null;
+                if (vcUiEnabled()) state.vcScreen = 'model';
                 render();
                 break;
             case 'delete-model':
@@ -2050,6 +2228,7 @@ export function mountModelSettings() {
             if (retry === 'provider') doSaveProvider();
             else if (retry === 'bindings') doSaveBindings();
             else if (retry === 'verify-tool-calls') doVerifyToolCalls();
+            else if (retry === 'local-rerank') saveLocalRerank(state.pendingRerank);
         } catch (err) {
             if (err instanceof api.ApiError && err.kind === 'context-changed') {
                 // 会话已换，密码再验证无法救回旧快照：转为显式重新加载提示。
@@ -2067,6 +2246,9 @@ export function mountModelSettings() {
         }
     }
 
+    registerModelOpener((opener) => {
+        if (overlay.hidden) open(opener);
+    });
     mounted = controller;
     return controller;
 }

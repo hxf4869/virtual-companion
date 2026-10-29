@@ -30,6 +30,8 @@ import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from '
 import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 import { createStoryContext } from './story-context.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
+import { mountDrawerPages } from './drawers.js';
+export { openDrawerPage, openModelSettings, openAccountData } from './drawers.js';
 
 function requestUrl(input) {
     if (typeof input === 'string') return input;
@@ -60,16 +62,24 @@ function installGenerateBudgetWatch(onSignal) {
 function mountVcUi() {
     if (!readVcUiFlag()) return;
     enableVcUi();
-    if (!document.head || document.getElementById('vc-ui-css')) return;
-    const link = document.createElement('link');
-    link.id = 'vc-ui-css';
-    link.rel = 'stylesheet';
-    link.href = new URL('./vc-ui.css', import.meta.url).href;
-    document.head.append(link);
+    if (!document.head) return;
+    for (const [id, file] of [
+        ['vc-ui-css', './vc-ui.css'],
+        ['vc-drawers-css', './drawers.css'],
+        ['vc-settings-pages-css', './settings-pages.css'],
+    ]) {
+        if (document.getElementById(id)) continue;
+        const link = document.createElement('link');
+        link.id = id;
+        link.rel = 'stylesheet';
+        link.href = new URL(file, import.meta.url).href;
+        document.head.append(link);
+    }
 }
 
 export async function init() {
     mountVcUi();
+    mountDrawerPages();
     setStHeadersProvider(() => {
         const headers = getRequestHeaders();
         // 浏览器侧桥约定：X-CSRF-Token 用 ST 令牌；Go 令牌经 X-VC-CSRF-Token 由 api.js 附加。

@@ -1,0 +1,738 @@
+/* 九个抽屉内容根原位成页。不写 .drawer-content 通配，避免波及浮动面板。 */
+
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page.openDrawer,
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-leave {
+  position: fixed !important;
+  z-index: 4800 !important;
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  width: 100dvw !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 16px calc(var(--vc-space-xxl) + env(safe-area-inset-bottom, 0px)) !important;
+  display: block !important;
+  overflow: auto !important;
+  resize: none !important;
+  transform: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: var(--vc-canvas) !important;
+  color: var(--vc-ink) !important;
+  font-family: var(--vc-font);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page > [data-vc-drawer-nav] {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--vc-canvas);
+}
+
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page > [data-vc-drawer-nav] .vc-nav-title {
+  opacity: 1;
+}
+
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page :is(.drag-grabber, #lm_button_panel_pin_div, #WI_panel_pin_div, #rm_button_panel_pin_div, #clickSlidersTips) {
+  display: none !important;
+}
+
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page > h3,
+body.vc-ui #rm_api_block.vc-drawer-page #title_api {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page .inline-drawer,
+body.vc-ui :is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page .range-block {
+  margin: 0 0 var(--vc-space-xl) !important;
+  padding: var(--vc-space-xs) var(--vc-space-md) !important;
+  background: var(--vc-group) !important;
+  border: 0 !important;
+  border-radius: var(--vc-radius-md) !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui #rm_extensions_block.vc-drawer-page [id^="extensions_settings"],
+body.vc-ui #rm_extensions_block.vc-drawer-page [id^="extensions_settings"] .inline-drawer,
+body.vc-ui #rm_extensions_block.vc-drawer-page [id^="extensions_settings"] .range-block {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: var(--vc-ink);
+  font-family: var(--vc-font);
+}
+
+body.vc-ui:has(.vc-drawer-page.openDrawer) #top-settings-holder,
+body.vc-ui:has(.vc-drawer-leave) #top-settings-holder {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 100000 !important;
+  width: 100dvw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  transform: none !important;
+  filter: none !important;
+  pointer-events: none !important;
+}
+
+body.vc-ui :is(.vc-drawer-page.openDrawer, .vc-drawer-leave) {
+  pointer-events: auto !important;
+}
+
+body.vc-ui:has(.vc-drawer-page.openDrawer) .drawer-toggle,
+body.vc-ui:has(.vc-drawer-leave) .drawer-toggle {
+  display: none !important;
+}
+
+body.vc-ui:has(:is(
+  #left-nav-panel,
+  #rm_api_block,
+  #AdvancedFormatting,
+  #WorldInfo,
+  #user-settings-block,
+  #Backgrounds,
+  #rm_extensions_block,
+  #PersonaManagement,
+  #right-nav-panel
+).vc-drawer-page) :is(#vc-chat-nav, .vc-tabbar) {
+  display: none !important;
+}
+
+body.vc-ui #character_popup.open {
+  position: fixed !important;
+  z-index: 4700 !important;
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: var(--vc-canvas) !important;
+  color: var(--vc-ink) !important;
+}
+
+@media (min-width: 744px) {
+  body.vc-ui :is(
+    #left-nav-panel,
+    #rm_api_block,
+    #AdvancedFormatting,
+    #WorldInfo,
+    #user-settings-block,
+    #Backgrounds,
+    #rm_extensions_block,
+    #PersonaManagement,
+    #right-nav-panel
+  ).vc-drawer-page.openDrawer,
+  body.vc-ui :is(
+    #left-nav-panel,
+    #rm_api_block,
+    #AdvancedFormatting,
+    #WorldInfo,
+    #user-settings-block,
+    #Backgrounds,
+    #rm_extensions_block,
+    #PersonaManagement,
+    #right-nav-panel
+  ).vc-drawer-leave,
+  body.vc-ui #character_popup.open {
+    left: var(--vc-sidebar, 240px) !important;
+    width: auto !important;
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+  }
+}
+
+@media screen and (max-width: 1000px) {
+  body.vc-ui:has(:is(
+    #left-nav-panel,
+    #rm_api_block,
+    #AdvancedFormatting,
+    #WorldInfo,
+    #user-settings-block,
+    #Backgrounds,
+    #rm_extensions_block,
+    #PersonaManagement,
+    #right-nav-panel
+  ).vc-drawer-page) {
+    position: static !important;
+    touch-action: auto !important;
+    overflow: hidden !important;
+    width: auto !important;
+    height: auto !important;
+  }
+}
+
+body.vc-ui .vc-drawer-page :is(.standoutHeader, #user-settings-block h4, #ai_response_configuration .title_restorable):not(.inline-drawer-header) {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  margin: 16px 0 8px !important;
+  padding: 0 !important;
+  color: var(--vc-ink-2) !important;
+  font-size: var(--vc-fs-footnote) !important;
+  font-weight: 400;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page h4 {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  margin: 16px 0 8px !important;
+  padding: 0 !important;
+  color: var(--vc-ink-2) !important;
+  font-size: var(--vc-fs-footnote) !important;
+  font-weight: 400;
+}
+
+body.vc-ui .vc-drawer-page .inline-drawer {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+body.vc-ui .vc-drawer-page .inline-drawer-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  min-height: 48px;
+  margin: 0 !important;
+  padding: 0 16px !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  color: var(--vc-ink) !important;
+  font-size: var(--vc-fs-body) !important;
+  font-weight: 400;
+}
+
+body.vc-ui .vc-drawer-page .inline-drawer-content,
+body.vc-ui .vc-drawer-page .standoutHeader ~ .inline-drawer-content {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body.vc-ui .vc-drawer-page .inline-drawer-icon {
+  width: 8px;
+  height: 8px;
+  margin: 0 2px 0 0;
+  border-right: 1.5px solid var(--vc-ink-3);
+  border-bottom: 1.5px solid var(--vc-ink-3);
+  background: none !important;
+  filter: none !important;
+  font-size: 0 !important;
+  transform: rotate(45deg);
+  transition: transform var(--vc-dur-standard) var(--vc-spring);
+}
+
+body.vc-ui .vc-drawer-page .inline-drawer-icon::before { content: none !important; }
+
+body.vc-ui .vc-drawer-page .inline-drawer-icon.up { transform: rotate(-135deg); }
+
+body.vc-ui .vc-drawer-page .toggle-description {
+  display: block !important;
+  margin: 4px 0 8px !important;
+  color: var(--vc-ink-2) !important;
+  font-size: var(--vc-fs-footnote) !important;
+  font-weight: 400 !important;
+  line-height: 1.35 !important;
+  opacity: 1 !important;
+}
+
+body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer,
+body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer .scrollableInner,
+body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer .right_menu {
+  background-color: var(--vc-canvas) !important;
+  background-image: none !important;
+  opacity: 1 !important;
+}
+
+body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer .scrollableInner {
+  min-height: calc(100dvh - 56px);
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #user-settings-block-content,
+body.vc-ui #user-settings-block.vc-drawer-page #user-settings-block-content > div,
+body.vc-ui #user-settings-block.vc-drawer-page [name="FontBlurChatWidthBlock"] {
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="FontBlurChatWidthBlock"] > div {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label readout" "slider slider";
+  align-items: center;
+  flex: none !important;
+  flex-basis: auto !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 0 12px !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="FontBlurChatWidthBlock"] small,
+body.vc-ui #user-settings-block.vc-drawer-page [name="FontBlurChatWidthBlock"] small span {
+  grid-area: label;
+  width: 100%;
+  color: var(--vc-ink) !important;
+  opacity: 1 !important;
+  font-size: 15px !important;
+  font-weight: 400 !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="FontBlurChatWidthBlock"] .opacity50p {
+  width: auto;
+  color: var(--vc-ink-2) !important;
+  opacity: 0.5 !important;
+  font-size: 13px !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="FontBlurChatWidthBlock"] input[type="number"] {
+  grid-area: readout;
+  width: 72px !important;
+  min-height: 32px !important;
+  margin: 0 !important;
+  color: var(--vc-ink-2) !important;
+  opacity: 1 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: 15px !important;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="FontBlurChatWidthBlock"] input[type="range"] {
+  grid-area: slider;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="themeToggles"] {
+  display: flex !important;
+  flex-direction: column !important;
+  margin: 0 0 var(--vc-space-xl);
+  background: var(--vc-group);
+  border-radius: var(--vc-radius-md);
+  overflow: hidden;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page .checkbox_label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px;
+  width: 100% !important;
+  min-height: 48px;
+  margin: 0 !important;
+  padding: 8px 16px !important;
+  box-sizing: border-box;
+}
+
+body.vc-ui:has(.vc-drawer-page.openDrawer) :is(#sheld, #top-bar) {
+  visibility: hidden !important;
+}
+
+body.vc-ui #left-nav-panel.vc-drawer-page.openDrawer,
+body.vc-ui #rm_api_block.vc-drawer-page.openDrawer,
+body.vc-ui #AdvancedFormatting.vc-drawer-page.openDrawer,
+body.vc-ui #WorldInfo.vc-drawer-page.openDrawer,
+body.vc-ui #user-settings-block.vc-drawer-page.openDrawer,
+body.vc-ui #Backgrounds.vc-drawer-page.openDrawer,
+body.vc-ui #rm_extensions_block.vc-drawer-page.openDrawer,
+body.vc-ui #PersonaManagement.vc-drawer-page.openDrawer,
+body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer {
+  position: fixed !important;
+  z-index: 100001 !important;
+  inset: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 100dvw !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+  background-color: var(--vc-canvas) !important;
+  background-image: none !important;
+}
+
+@media (min-width: 744px) {
+  body.vc-ui #left-nav-panel.vc-drawer-page.openDrawer,
+  body.vc-ui #rm_api_block.vc-drawer-page.openDrawer,
+  body.vc-ui #AdvancedFormatting.vc-drawer-page.openDrawer,
+  body.vc-ui #WorldInfo.vc-drawer-page.openDrawer,
+  body.vc-ui #user-settings-block.vc-drawer-page.openDrawer,
+  body.vc-ui #Backgrounds.vc-drawer-page.openDrawer,
+  body.vc-ui #rm_extensions_block.vc-drawer-page.openDrawer,
+  body.vc-ui #PersonaManagement.vc-drawer-page.openDrawer,
+  body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer,
+  body.vc-ui #character_popup.open {
+    left: var(--vc-sidebar, 240px) !important;
+    width: auto !important;
+  }
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner.vcfg-banner {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  flex-wrap: nowrap !important;
+  gap: 8px;
+  flex: 1 0 100% !important;
+  align-self: stretch !important;
+  grid-column: 1 / -1;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 0 var(--vc-space-xl) !important;
+  padding: 12px 16px !important;
+  background: var(--vc-group) !important;
+  color: var(--vc-ink) !important;
+  border: 0 !important;
+  border-radius: var(--vc-radius-md) !important;
+  box-shadow: none !important;
+  box-sizing: border-box;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-main {
+  display: grid !important;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 4px;
+  width: 100% !important;
+  min-width: 0 !important;
+  flex: none !important;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-main > div {
+  display: contents;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-main > i {
+  grid-column: 1;
+  grid-row: 1;
+  width: 8px !important;
+  height: 8px !important;
+  margin: 6px 0 0 !important;
+  border-radius: 50%;
+  background: var(--vc-success);
+  font-size: 0 !important;
+  line-height: 0 !important;
+  overflow: hidden;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-main > i::before {
+  content: none !important;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-title {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  margin: 0 !important;
+  color: var(--vc-ink) !important;
+  font-size: 15px !important;
+  font-weight: 400 !important;
+  line-height: 1.35 !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-detail,
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-meta {
+  grid-column: 1 / -1;
+  margin: 0 !important;
+  color: var(--vc-ink-2) !important;
+  opacity: 1 !important;
+  font-size: var(--vc-fs-footnote) !important;
+  font-weight: 400 !important;
+  line-height: 1.35 !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner.vcfg-banner-pending .vcfg-banner-main > i {
+  background: var(--vc-warning);
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner.vcfg-banner-pending .vcfg-banner-title {
+  color: var(--vc-warning) !important;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner.vcfg-banner-drift .vcfg-banner-main > i {
+  background: var(--vc-danger);
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner.vcfg-banner-drift .vcfg-banner-title {
+  color: var(--vc-danger) !important;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 8px;
+  width: 100%;
+  margin: 0 !important;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-actions:not(:has(button)) {
+  display: none !important;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  margin: 0 !important;
+  padding: 0 12px !important;
+  border: 0 !important;
+  border-radius: var(--vc-radius-sm) !important;
+  background: color-mix(in srgb, var(--vc-ink) 8%, transparent) !important;
+  color: var(--vc-ink) !important;
+  box-shadow: none !important;
+  font-size: 15px !important;
+  font-weight: 400 !important;
+  white-space: nowrap;
+}
+
+body.vc-ui #rm_api_block #vc_foreground_banner .vcfg-banner-btn[data-vcfg-action="reproject"] {
+  flex: 0 0 auto;
+  background: transparent !important;
+  color: var(--vc-accent-text) !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page .flexFlowColumn:has([name="userSettingsRowOne"]) {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  margin: 0 0 var(--vc-space-xl) !important;
+  padding: 4px 0 !important;
+  position: relative;
+  background: var(--vc-group) !important;
+  border-radius: var(--vc-radius-md) !important;
+  overflow: hidden;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="userSettingsRowOne"],
+body.vc-ui #user-settings-block.vc-drawer-page [name="UserSettingsRowTwo"] {
+  display: contents !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page [name="userSettingsRowOne"] > div:first-child {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #UI-language-block {
+  order: 1;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  margin: 0 !important;
+  padding: 8px 16px !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #UI-language-block > span {
+  flex: none;
+  color: var(--vc-ink) !important;
+  opacity: 1 !important;
+  font-size: 15px !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #ui_language_select {
+  width: auto !important;
+  max-width: 58%;
+  min-height: 36px !important;
+  margin: 0 !important;
+  background: transparent !important;
+  color: var(--vc-ink-2) !important;
+  text-align: right;
+  text-align-last: right;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #settingsSearch {
+  order: 2;
+  align-self: stretch;
+  width: auto !important;
+  margin: 4px 16px 8px !important;
+  resize: none;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #account_controls {
+  order: 3;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  margin: 0 !important;
+  gap: 0 !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #logout_button {
+  display: flex !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  min-height: 48px;
+  margin: 0 !important;
+  padding: 0 16px !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--vc-danger) !important;
+  box-shadow: none !important;
+  font-weight: 400 !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #logout_button i {
+  display: none !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #logout_button span {
+  color: var(--vc-danger) !important;
+}
+
+body.vc-ui #user-settings-block.vc-drawer-page #version_display {
+  order: 4;
+  display: block !important;
+  float: none !important;
+  margin: 0 !important;
+  padding: 0 16px 10px !important;
+  color: var(--vc-ink-2) !important;
+  opacity: 1 !important;
+  font-size: var(--vc-fs-footnote) !important;
+}
