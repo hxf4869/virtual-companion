@@ -166,6 +166,7 @@ export function inspectChatUpstream(body, expected = {}) {
         forbiddenHits: hitsOf(JSON.stringify(body ?? {}), Array.isArray(expected.forbidden) ? expected.forbidden : []),
         roles,
         reasoningEffort: typeof body?.reasoning_effort === 'string' ? body.reasoning_effort : null,
+        reasoningEffortMax: body?.reasoning_effort === 'max',
         modelMatched: body?.model === expected.modelId,
     };
 }
@@ -238,7 +239,7 @@ function parseSse(raw) {
 }
 
 function emptyInspection() {
-    return { onlyCurrentSlots: false, systemMatchesView: false, userIsCurrentPlayerLine: false, toolRecordsMatch: false, forbiddenHits: [], roles: [], reasoningEffort: null, modelMatched: false };
+    return { onlyCurrentSlots: false, systemMatchesView: false, userIsCurrentPlayerLine: false, toolRecordsMatch: false, forbiddenHits: [], roles: [], reasoningEffort: null, reasoningEffortMax: false, modelMatched: false };
 }
 
 function replyCharacter(actorId, content, reasoning, forbidden) {

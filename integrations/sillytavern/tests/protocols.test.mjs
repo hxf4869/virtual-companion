@@ -774,13 +774,21 @@ test('钉住 reasoningEffort=max：请求 max 放行；请求 high 仍 VC_NATIVE
     });
     try {
         const okBody = baseBody({ custom_url: MARKER, reasoning_effort: 'max', max_tokens: 500 });
+        const okReq = mockReq({ body: okBody, headers: { cookie: 'vc_session=s1' } });
         const resOk = mockRes();
         assert.equal(
-            await bridge.interceptGenerate(mockReq({ body: okBody, headers: { cookie: 'vc_session=s1' } }), resOk),
+            await bridge.interceptGenerate(okReq, resOk),
             false,
             '请求 max 与钉住值一致，Chat 交回原生链',
         );
         assert.equal(okBody.reasoning_effort, 'max');
+        const converted = { model: okBody.model, messages: okBody.messages, max_tokens: 500 };
+        const endpoint = 'http://127.0.0.1:9/v1/chat/completions';
+        assert.equal(await bridge.finalOutboundGuard(okReq, mockRes(), converted, endpoint), false);
+        assert.equal(converted.reasoning_effort, 'max', 'custom 转换丢掉的 reasoning_effort 按已核对的请求值补上');
+        const mapped = { ...converted, reasoning_effort: 'high' };
+        assert.equal(await bridge.finalOutboundGuard(okReq, mockRes(), mapped, endpoint), false);
+        assert.equal(mapped.reasoning_effort, 'max');
 
         const highBody = baseBody({ custom_url: MARKER, reasoning_effort: 'high', max_tokens: 500 });
         const resHigh = mockRes();

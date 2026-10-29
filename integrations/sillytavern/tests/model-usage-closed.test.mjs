@@ -3,7 +3,223 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { createGenerateBridge } from '../server-plugin/virtual-companion/lib/generate-bridge.js';
+import { abandonOutbound, armUsageHold, installUsageFetch, readProviderUsage, settleArmedResponse, uninstallUsageFetch } from '../server-plugin/virtual-companion/lib/model-usage.js';
 import { ToolContinuationStore } from '../server-plugin/virtual-companion/lib/responses-adapter.js';
+
+test('供应商信封里的 usage 可结算，且不带回正文', () => {
+    assert.deepEqual(
+        readProviderUsage({ success: true, data: { usage: { prompt_tokens: 38, completion_tokens: 32 } } }),
+        { inputTokens: 38, outputTokens: 32 },
+    );
+    assert.deepEqual(
+        readProviderUsage({ usage: { prompt_tokens: 1, completion_tokens: 2 } }),
+        { inputTokens: 1, outputTokens: 2 },
+    );
+    assert.equal(readProviderUsage({ success: true, data: { choices: [] } }), undefined);
+    const packed = JSON.stringify(readProviderUsage({
+        success: true,
+        data: { usage: { prompt_tokens: 1, completion_tokens: 0 }, choices: [{ message: { content: 'secret-body' } }] },
+    }));
+    assert.equal(packed.includes('secret-body'), false);
+});
+
+test('node-fetch 响应结算已武装预留：SSE usage 入账，正文不入账', async () => {
+    const hits = [];
+    const server = http.createServer((req, res) => {
+        const chunks = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', () => {
+            hits.push({ path: req.url || '', body: Buffer.concat(chunks).toString('utf8') });
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end('{"reservationId":"7","status":"SETTLED","idempotent":false}');
+        });
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address();
+    installUsageFetch();
+    try {
+        const expectedUrl = 'http://127.0.0.1:9/v1/chat/completions';
+        armUsageHold({
+            reservationId: '7',
+            ownerAccountId: '1',
+            expectedUrl,
+            config: { goBaseUrl: `http://127.0.0.1:${port}`, serviceToken: 'synthetic', timeoutMs: 2000 },
+        });
+        const sse = [
+            'data: {"choices":[{"delta":{"content":"secret-body"}}]}',
+            '',
+            'data: {"choices":[],"usage":{"prompt_tokens":263,"completion_tokens":283}}',
+            '',
+            'data: [DONE]',
+            '',
+        ].join('\n');
+        settleArmedResponse(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }), 'http://127.0.0.1:9/elsewhere');
+        assert.equal(hits.length, 0);
+        settleArmedResponse(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }), expectedUrl);
+        const deadline = Date.now() + 2000;
+        while (hits.length === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+        assert.equal(hits.length, 1);
+        assert.match(hits[0].path, /\/reservations\/7\/settle$/);
+        const payload = JSON.parse(hits[0].body);
+        assert.deepEqual(
+            { inputTokens: payload.inputTokens, outputTokens: payload.outputTokens },
+            { inputTokens: 263, outputTokens: 283 },
+        );
+        assert.equal(hits[0].body.includes('secret-body'), false);
+    } finally {
+        uninstallUsageFetch();
+        await new Promise((resolve) => server.close(resolve));
+    }
+});
+
+function claudeSse(secret) {
+    const ev = (type, payload) => `event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`;
+    return [
+        ev('message_start', {
+            message: {
+                id: 'msg_1', type: 'message', role: 'assistant', content: [],
+                usage: { input_tokens: 25, output_tokens: 1 },
+            },
+        }),
+        ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: secret } }),
+        ev('message_delta', { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 15 } }),
+        ev('message_stop', {}),
+    ].join('');
+}
+
+async function listenLedger() {
+    const hits = [];
+    const server = http.createServer((req, res) => {
+        const chunks = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', () => {
+            hits.push({ path: req.url || '', body: Buffer.concat(chunks).toString('utf8') });
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end('{"reservationId":"1","status":"SETTLED","idempotent":false}');
+        });
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const config = { goBaseUrl: `http://127.0.0.1:${server.address().port}`, serviceToken: 'synthetic', timeoutMs: 2000 };
+    return {
+        hits,
+        config,
+        close: () => new Promise((resolve) => server.close(resolve)),
+    };
+}
+
+test('Claude SSE 与非流式 JSON 的用量都能结算，正文不入账', async () => {
+    const ledger = await listenLedger();
+    const expectedUrl = 'http://127.0.0.1:9/v1/messages';
+    installUsageFetch();
+    try {
+        armUsageHold({
+            reservationId: '21', ownerAccountId: '1', expectedUrl, config: ledger.config,
+        });
+        settleArmedResponse(new Response(claudeSse('secret-claude'), {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+        }), expectedUrl);
+        const deadline = Date.now() + 2000;
+        while (!ledger.hits.some((hit) => hit.path.includes('/21/settle')) && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const sseHit = ledger.hits.find((hit) => hit.path.includes('/21/settle'));
+        assert.ok(sseHit, 'message_start 与 message_delta 应结算');
+        const ssePayload = JSON.parse(sseHit.body);
+        assert.deepEqual(
+            { inputTokens: ssePayload.inputTokens, outputTokens: ssePayload.outputTokens },
+            { inputTokens: 25, outputTokens: 15 },
+        );
+        assert.equal(sseHit.body.includes('secret-claude'), false);
+
+        armUsageHold({
+            reservationId: '22', ownerAccountId: '1', expectedUrl, config: ledger.config,
+        });
+        settleArmedResponse(Response.json({
+            id: 'msg_2',
+            type: 'message',
+            content: [{ type: 'text', text: 'secret-json' }],
+            usage: { input_tokens: 10, output_tokens: 4 },
+        }), expectedUrl);
+        while (!ledger.hits.some((hit) => hit.path.includes('/22/settle')) && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const jsonHit = ledger.hits.find((hit) => hit.path.includes('/22/settle'));
+        assert.ok(jsonHit, '非流式 usage 应结算');
+        const jsonPayload = JSON.parse(jsonHit.body);
+        assert.deepEqual(
+            { inputTokens: jsonPayload.inputTokens, outputTokens: jsonPayload.outputTokens },
+            { inputTokens: 10, outputTokens: 4 },
+        );
+        assert.equal(jsonHit.body.includes('secret-json'), false);
+    } finally {
+        uninstallUsageFetch();
+        await ledger.close();
+    }
+});
+
+test('原生 fetch 抛错时按 UNKNOWN 取消已武装预留，地址不符不取消', async () => {
+    const ledger = await listenLedger();
+    const expectedUrl = 'http://127.0.0.1:9/v1/messages';
+    installUsageFetch();
+    try {
+        await armUsageHold({
+            reservationId: '9', ownerAccountId: '1', expectedUrl, config: ledger.config,
+        });
+        await abandonOutbound('http://127.0.0.1:9/elsewhere');
+        assert.equal(ledger.hits.length, 0);
+        await Promise.resolve().then(() => {
+            const error = new Error('socket hang up');
+            error.name = 'AbortError';
+            throw error;
+        }).catch(async (error) => {
+            await abandonOutbound(expectedUrl);
+            throw error;
+        }).then(() => assert.fail('fetch 抛错必须继续抛出'), () => {});
+        assert.equal(ledger.hits.length, 1);
+        assert.match(ledger.hits[0].path, /\/reservations\/9\/cancel$/);
+        assert.equal(JSON.parse(ledger.hits[0].body).disposition, 'UNKNOWN');
+        settleArmedResponse(Response.json({ usage: { input_tokens: 1, output_tokens: 1 } }), expectedUrl);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        assert.equal(ledger.hits.length, 1, '取消后不能再结算同一预留');
+    } finally {
+        uninstallUsageFetch();
+        await ledger.close();
+    }
+});
+
+test('再次武装时按 UNKNOWN 取消仍未结算的旧预留', async () => {
+    const ledger = await listenLedger();
+    const expectedUrl = 'http://127.0.0.1:9/v1/chat/completions';
+    installUsageFetch();
+    try {
+        await armUsageHold({
+            reservationId: '11', ownerAccountId: '1', expectedUrl, config: ledger.config,
+        });
+        await armUsageHold({
+            reservationId: '12', ownerAccountId: '1', expectedUrl, config: ledger.config,
+        });
+        const cancelled = ledger.hits.find((hit) => hit.path.includes('/11/cancel'));
+        assert.ok(cancelled, '旧预留必须取消');
+        assert.equal(JSON.parse(cancelled.body).disposition, 'UNKNOWN');
+        assert.equal(ledger.hits.some((hit) => hit.path.includes('/12/')), false);
+        settleArmedResponse(Response.json({ usage: { input_tokens: 3, output_tokens: 4 } }), expectedUrl);
+        const deadline = Date.now() + 2000;
+        while (!ledger.hits.some((hit) => hit.path.includes('/12/settle')) && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const settled = ledger.hits.find((hit) => hit.path.includes('/12/settle'));
+        assert.ok(settled);
+        assert.deepEqual(
+            { inputTokens: JSON.parse(settled.body).inputTokens, outputTokens: JSON.parse(settled.body).outputTokens },
+            { inputTokens: 3, outputTokens: 4 },
+        );
+        assert.equal(ledger.hits.some((hit) => hit.path.includes('/11/settle')), false);
+    } finally {
+        uninstallUsageFetch();
+        await ledger.close();
+    }
+});
 
 const marker = 'vc-go://model-purposes/FOREGROUND_CHAT?provider=p&profile=m&pr=1&br=1&scope=fixture-chat-1';
 const resolveBody = {

@@ -451,6 +451,19 @@ for (const name of ['st-chat-completions-vc-bridge.json', 'st-util-stream-error-
             const result = applySpecToText(input, spec);
             assert.equal(result.inputSha256, spec.expected_input_sha256);
             assert.equal(result.outputSha256, spec.expected_output_sha256);
+            if (name === 'st-chat-completions-vc-bridge.json') {
+                const count = (needle) => result.output.split(needle).length - 1;
+                assert.equal(count('settleOutboundResponse?.('), 2, 'Chat 与 Claude 各结算一次');
+                assert.equal(count('abandonOutbound?.('), 2, 'Chat 与 Claude 各在抛错时取消一次');
+                const chatSettle = result.output.indexOf('settleOutboundResponse?.(fetchResponse, endpointUrl)');
+                const claudeSettle = result.output.indexOf("settleOutboundResponse?.(generateResponse, apiUrl + '/messages')");
+                const chatAbandon = result.output.indexOf('abandonOutbound?.(endpointUrl)');
+                const claudeAbandon = result.output.indexOf("abandonOutbound?.(apiUrl + '/messages')");
+                assert.ok(chatAbandon > 0 && chatAbandon < chatSettle, 'Chat 取消在结算之前');
+                assert.ok(claudeAbandon > 0 && claudeAbandon < claudeSettle, 'Claude 取消在结算之前');
+                assert.match(result.output.slice(chatSettle - 700, chatSettle), /JSON\.stringify\(requestBody\)/);
+                assert.match(result.output.slice(claudeSettle - 800, claudeSettle), /JSON\.stringify\(requestBody\)/);
+            }
         }
         // 语义 fixture：按规格自身构造含锚点的输入，验证替换语义
         const fixture = spec.replacements.map((r) => r.from).join('\n/*…*/\n');
@@ -467,6 +480,13 @@ test('补丁钩子形态：最终防线与拦截钩子都以可选链调用，�
     const spec = JSON.parse(src);
     const guard = spec.replacements.find((r) => r.to.includes('finalOutboundGuard') && r.to.includes('generateResponse')).to;
     assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.finalOutboundGuard\?\.\(request, response, requestBody, apiUrl \+ '\/messages'\)/);
+    const chat = spec.replacements.find((r) => r.to.includes('fetchResponse') && r.to.includes('endpointUrl')).to;
+    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(fetchResponse, endpointUrl\)/);
+    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(endpointUrl\)/);
+    assert.match(chat, /\.catch\(async \(error\) => \{[\s\S]*throw error;\s*\}\)/);
+    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(generateResponse, apiUrl \+ '\/messages'\)/);
+    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(apiUrl \+ '\/messages'\)/);
+    assert.match(guard, /\.catch\(async \(error\) => \{[\s\S]*throw error;\s*\}\)/);
     const hook1 = spec.replacements[0].to;
     assert.match(hook1, /vcBridge\.interceptGenerate\(request, response\)/);
 });

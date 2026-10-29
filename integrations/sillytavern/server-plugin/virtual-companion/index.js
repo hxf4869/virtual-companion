@@ -65,7 +65,9 @@ export async function init(router) {
     const { interceptStatus } = createStatusBridge({ config });
     // 补丁钩子对端：① interceptGenerate（/generate 分发前）② finalOutboundGuard（Chat/Claude 最终发送前）
     // ③ interceptStatus（/status 路由开头；受管标记用真实上游模型列表应答，不篡改 online_status）。
-    // 包装在桥创建之后安装，陪伴循环仍使用当时的 fetch；原生出站才走一次性预留结算。
+    // 包装在桥创建之后安装，陪伴循环仍使用当时的 fetch。
+    // 原生 Chat/Claude 用 node-fetch，不进这个包装；补丁在响应返回后调用 settleOutboundResponse，
+    // fetch 或发送前序列化抛错时调用 abandonOutbound，按 UNKNOWN 取消。
     installUsageFetch();
     // ④ guardUnmanagedGeneration（text-completions / kobold / horde generate-text / novel；不改 generate-bridge）。
     const f2 = createF2Hooks({ getUserDirectories: users.getUserDirectories });

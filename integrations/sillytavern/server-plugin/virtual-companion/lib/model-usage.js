@@ -36,6 +36,15 @@ export function readUsageTokens(usage) {
     return undefined;
 }
 
+/** 顶层 usage，或 {success,data} 信封内的 usage。没有用量对象时返回 undefined。 */
+export function readProviderUsage(json) {
+    if (!json || typeof json !== 'object') return undefined;
+    const direct = readUsageTokens(json.usage);
+    if (direct) return direct;
+    if (json.data && typeof json.data === 'object') return readUsageTokens(json.data.usage);
+    return undefined;
+}
+
 const HELD_ID = /^[1-9][0-9]*$/;
 const LEDGER_ATTEMPTS = 3;
 
@@ -133,10 +142,36 @@ export function uninstallUsageFetch() {
     installed = false;
 }
 
-/** 包装未安装时为空操作，避免单测把预留留在进程里。 */
-export function armUsageHold(spec) {
+/** 包装未安装时为空操作，避免单测把预留留在进程里。
+ * 槽里还有未结算的旧预留时，先按 UNKNOWN 取消，再武装新的。 */
+export async function armUsageHold(spec) {
     if (!installed || !spec?.reservationId) return;
+    const previous = hold;
     hold = spec;
+    if (previous && previous.reservationId !== spec.reservationId) {
+        await cancelQuiet(previous, 'UNKNOWN');
+    }
+}
+
+/**
+ * ST 1.19 的 Chat/Claude 最终发送用的是模块内的 node-fetch，不会经过上面的 global fetch。
+ * 补丁在那次响应返回后调用这里：地址与武装预留一致才结算，并立刻松开，避免下一请求串单。
+ */
+export function settleArmedResponse(response, url) {
+    if (!installed || !hold || !response) return;
+    if (url && !sameUrl(url, hold.expectedUrl)) return;
+    const armed = hold;
+    hold = null;
+    scheduleSettle(armed, response);
+}
+
+/** 原生 fetch 抛错，或预留成功后在发出前就抛错时，按 UNKNOWN 取消这次武装。地址不一致则不动。 */
+export async function abandonOutbound(url) {
+    if (!installed || !hold || !url) return;
+    if (!sameUrl(url, hold.expectedUrl)) return;
+    const armed = hold;
+    hold = null;
+    await cancelQuiet(armed, 'UNKNOWN');
 }
 
 function requestUrl(input) {
@@ -192,7 +227,7 @@ function scheduleSettle(armed, response) {
 async function readJsonUsage(response) {
     const text = await response.text();
     try {
-        return readUsageTokens(JSON.parse(text)?.usage);
+        return readProviderUsage(JSON.parse(text));
     } catch {
         return undefined;
     }

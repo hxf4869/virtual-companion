@@ -24,7 +24,7 @@ import {
     buildResponsesRequest, convertResponsesToChatCompletion, bridgeResponsesStream, extractRoundFromOutput,
 } from './responses-adapter.js';
 import { prepareToolPolicy, runBoundedToolLoop, stripUnmeteredRequestFields } from './tool-loop.js';
-import { reserveSend, armUsageHold, usageFetchInstalled, readUsageTokens, settleUsage, cancelUsage } from './model-usage.js';
+import { reserveSend, armUsageHold, settleArmedResponse, abandonOutbound, usageFetchInstalled, readUsageTokens, settleUsage, cancelUsage } from './model-usage.js';
 
 export const BRIDGE_SYMBOL = Symbol.for('virtual-companion.bridge');
 const PURPOSES_ALLOWED = new Set(['FOREGROUND_CHAT']);
@@ -534,6 +534,15 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
             if (request.body?.vc_mvu_extra === true) {
                 throw new BridgeError(409, 'VC_UNMETERED_EXTRA', '未计量的额外生成已关闭，本次未发送');
             }
+            // ST 1.19 的 custom 转换只给 OpenAI 名单和 koboldcpp 写 reasoning_effort。
+            // 界面值已在 SETTINGS_READY 写回 request.body，并经 enforcePinnedParams 核对。
+            // 不补到转换后的 body，上游就收不到钉住等级。
+            if (managed.protocol === 'OPENAI_CHAT_COMPLETIONS' && finalBody && typeof finalBody === 'object') {
+                const effort = request.body?.reasoning_effort;
+                if (typeof effort === 'string' && effort !== '' && finalBody.reasoning_effort !== effort) {
+                    finalBody.reasoning_effort = effort;
+                }
+            }
             stripUnmeteredRequestFields(finalBody);
             if (managed.ownerAccountId && managed.providerId && managed.modelId) {
                 const reserved = await reserveSend(config, {
@@ -546,7 +555,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                     estimatedOutputTokens: managed.outputTokens,
                 });
                 if (reserved?.reservationId && usageFetchInstalled()) {
-                    armUsageHold({
+                    await armUsageHold({
                         reservationId: reserved.reservationId,
                         ownerAccountId: managed.ownerAccountId,
                         expectedUrl: url,
@@ -567,5 +576,10 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
         }
     }
 
-    return { interceptGenerate, finalOutboundGuard };
+    return {
+        interceptGenerate,
+        finalOutboundGuard,
+        settleOutboundResponse: settleArmedResponse,
+        abandonOutbound,
+    };
 }

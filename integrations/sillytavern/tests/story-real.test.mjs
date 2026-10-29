@@ -80,6 +80,7 @@ test('出站检查只接受当前视图、本轮玩家话语和本轮工具记�
     assert.equal(ok.toolRecordsMatch, true);
     assert.deepEqual(ok.forbiddenHits, []);
     assert.equal(ok.reasoningEffort, 'max');
+    assert.equal(ok.reasoningEffortMax, true);
     assert.equal(JSON.stringify(ok).includes(PLAYER), false);
     assert.equal(JSON.stringify(ok).includes(LIN_FACT), false);
     assert.equal(JSON.stringify(ok).includes('上一轮对白'), false);
@@ -94,7 +95,21 @@ test('出站检查只接受当前视图、本轮玩家话语和本轮工具记�
     }, { viewText, playerLine: PLAYER, toolRecords: [], forbidden, modelId: MODEL_ID });
     assert.equal(leaked.onlyCurrentSlots, false);
     assert.deepEqual(leaked.forbiddenHits, ['ZHOU_FACT']);
+    assert.equal(leaked.reasoningEffort, null);
+    assert.equal(leaked.reasoningEffortMax, false);
     assert.equal(JSON.stringify(leaked).includes(ZHOU_FACT), false);
+
+    const high = inspectChatUpstream({
+        model: MODEL_ID,
+        reasoning_effort: 'high',
+        messages: [
+            { role: 'system', content: viewText },
+            { role: 'user', content: PLAYER },
+        ],
+    }, { viewText, playerLine: PLAYER, toolRecords: [], forbidden, modelId: MODEL_ID });
+    assert.equal(high.reasoningEffort, 'high');
+    assert.equal(high.reasoningEffortMax, false);
+    assert.equal(JSON.stringify(high).includes(PLAYER), false);
 
     const world = inspectChatUpstream({
         model: MODEL_ID,
@@ -204,6 +219,10 @@ test('捕获代理只留下结构、判定和用量', async () => {
         assert.equal(snapshot[0].usage.totalTokens, 25);
         assert.equal(snapshot[0].usage.cost, 0.0003);
         assert.equal(snapshot[0].onlyCurrentSlots, true);
+        assert.equal(snapshot[0].reasoningEffort, 'max');
+        assert.equal(snapshot[0].reasoningEffortMax, true);
+        assert.equal(snapshot[1].reasoningEffort, null);
+        assert.equal(snapshot[1].reasoningEffortMax, false);
         assert.equal(snapshot[0].character.inCharacter, true);
         assert.equal(snapshot[1].stream, true);
         assert.equal(snapshot[1].usage.cost, 0.00021);
@@ -239,4 +258,20 @@ test('story-real 只在显式 filter 注册，不进入默认场景', () => {
     assert.match(src, /'story-real':\s*sceneStoryReal/);
     assert.equal(SCENES.some((scene) => scene.id === 'story-real'), false);
     assert.equal(resolveSceneFilter().includes('story-real'), false);
+});
+
+test('story-real 写入测试单价、钉住 max，并核对每轮预留结算', () => {
+    const src = fs.readFileSync(new URL('../scripts/story-real-accept.mjs', import.meta.url), 'utf8');
+    assert.match(src, /reasoningLevels:\s*\['max'\]/);
+    assert.match(src, /generationParams:\s*\{\s*reasoningEffort:\s*'max'\s*\}/);
+    assert.match(src, /测试环境价格/);
+    assert.match(src, /不是 Owner 价格/);
+    assert.match(src, /model_unit_price/);
+    assert.match(src, /0\.0003,\s*0\.0012/);
+    assert.match(src, /reasoningEffortMax/);
+    assert.match(src, /FOREGROUND_CHAT/);
+    assert.match(src, /SETTLED/);
+    assert.match(src, /actual_input_tokens IS NULL/);
+    assert.match(src, /actual_output_tokens IS NULL/);
+    assert.doesNotMatch(src, /st_custom_maps_max_to_high/);
 });

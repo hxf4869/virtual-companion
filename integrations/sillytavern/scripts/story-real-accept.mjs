@@ -122,9 +122,8 @@ export async function sceneStoryReal(ctx) {
             maxOutputTokens: 4096,
             state: 'ENABLED',
             capabilities: { systemMessage: 'DECLARED' },
-            // ST custom 源会把 max 收成 high，钉住 max 会在出站前被 VC_NATIVE_DRIFT 拒绝。
-            // 不钉采样参数，让供应商账户默认思考等级生效，并在报告里核对实际上游字段。
             reasoningLevels: ['max'],
+            generationParams: { reasoningEffort: 'max' },
         }],
     };
     const note = (id) => defects.add(id);
@@ -134,11 +133,60 @@ export async function sceneStoryReal(ctx) {
         report.usage = summarizeUsage(report.rounds);
         const efforts = report.rounds.map((round) => round.upstream?.reasoningEffort).filter((item) => item != null);
         report.reasoningEffort = efforts[0] ?? null;
-        if (report.rounds.some((round) => round.upstream?.reasoningEffort !== 'max')) note('reasoning_effort_not_forwarded');
+        if (report.rounds.some((round) => round.upstream?.reasoningEffort !== 'max' || round.upstream?.reasoningEffortMax !== true)) note('reasoning_effort_not_forwarded');
         if (report.rounds.some((round) => !round.usage?.present)) note('usage_missing');
+        if (report.rounds.some((round) => round.reservation?.count !== 1 || round.reservation?.purpose !== 'FOREGROUND_CHAT' || round.reservation?.status !== 'SETTLED' || round.reservation?.inputPresent !== 1 || round.reservation?.outputPresent !== 1)) note('reservation_not_settled');
+        report.reservations = {
+            count: report.rounds.reduce((sum, round) => sum + (round.reservation?.count ?? 0), 0),
+            settled: report.rounds.filter((round) => round.reservation?.status === 'SETTLED' && round.reservation?.count === 1).length,
+            foreground: report.rounds.filter((round) => round.reservation?.purpose === 'FOREGROUND_CHAT' && round.reservation?.count === 1).length,
+        };
         report.defects = [...defects];
     };
+    const sqlModel = MODEL_ID.replaceAll("'", '');
+    const listReservations = () => {
+        const raw = ctx.w10.psql(`SELECT purpose || ' ' || status || ' ' ||
+            CASE WHEN actual_input_tokens IS NULL THEN '0' ELSE '1' END || ' ' ||
+            CASE WHEN actual_output_tokens IS NULL THEN '0' ELSE '1' END
+            FROM vc.model_cost_reservation
+            WHERE provider_id = 'vc14-real' AND model_id = '${sqlModel}'
+            ORDER BY id;`);
+        return raw.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+            const [purpose, status, inputPresent, outputPresent] = line.split(' ');
+            return { purpose, status, inputPresent: inputPresent === '1', outputPresent: outputPresent === '1' };
+        });
+    };
+    const reservationAfter = async (beforeCount, waitMs) => {
+        const deadline = Date.now() + waitMs;
+        let rows = listReservations();
+        while (Date.now() < deadline) {
+            rows = listReservations();
+            const added = rows.slice(beforeCount);
+            if (added.length > 0 && added.every((row) => row.status !== 'HELD')) break;
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        const added = rows.slice(beforeCount);
+        return {
+            purpose: added.length === 1 ? added[0].purpose : null,
+            status: added.length === 1 ? added[0].status : null,
+            count: added.length,
+            inputPresent: added.filter((row) => row.inputPresent).length,
+            outputPresent: added.filter((row) => row.outputPresent).length,
+        };
+    };
+    const assertReservation = (actor, index, meter) => {
+        if (meter.count === 1 && meter.purpose === 'FOREGROUND_CHAT' && meter.status === 'SETTLED' && meter.inputPresent === 1 && meter.outputPresent === 1) return;
+        note('reservation_not_settled');
+        throw new Error(`${actor} 第 ${index} 轮预留未结算：count=${meter.count} purpose=${meter.purpose ?? ''} status=${meter.status ?? ''} input=${meter.inputPresent} output=${meter.outputPresent}`);
+    };
     try {
+        if (typeof ctx.w10?.psql !== 'function') throw new Error('受管数据库入口不可用');
+        // 测试环境价格，不是 Owner 价格，也不代表供应商账单。
+        // 连通探针两次 usage.cost：38/32 → 0.0000498，38/55 → 0.0000774，
+        // 反解为输入 0.0003、输出 0.0012 USD/1K。
+        ctx.w10.psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
+            VALUES ('vc14-real', '${sqlModel}', 1, 0.0003, 0.0012)
+            ON CONFLICT DO NOTHING;`);
         capture = await startStoryCapture(upstreamBase, { maxCalls: 8 });
         spec.baseUrl = capture.baseUrl;
         const saved = await ctx.admin.saveProvider('vc14-real', { ...spec, credential, expectedRevision: 0 });
@@ -226,7 +274,7 @@ export async function sceneStoryReal(ctx) {
             const url = String(settings.custom_url ?? '');
             return settings.chat_completion_source === 'custom' && settings.custom_model === modelId && url.includes('provider=vc14-real');
         }, MODEL_ID), { timeoutMs: 30000, label: '真实模型投影' });
-        note('st_custom_maps_max_to_high');
+        await waitFor(async () => page.evaluate(() => window.SillyTavern.getContext().chatCompletionSettings?.reasoning_effort === 'max'), { timeoutMs: 30000, label: '推理等级 max 已投影' });
         const bookName = `w14-real-${crypto.randomUUID().slice(0, 8)}`;
         await page.evaluate(async ({ name, content }) => {
             const wi = await import('/scripts/world-info.js');
@@ -358,6 +406,9 @@ export async function sceneStoryReal(ctx) {
                     && String(settings.custom_url ?? '').includes('provider=vc14-real');
             }, MODEL_ID);
             if (!projected) throw new Error(`${actor} 第 ${index} 轮发送前真实模型投影丢失`);
+            const uiEffort = await page.evaluate(() => window.SillyTavern.getContext().chatCompletionSettings?.reasoning_effort ?? null);
+            if (uiEffort !== 'max') throw new Error(`${actor} 第 ${index} 轮发送前界面推理等级不是 max`);
+            const reservedBefore = listReservations().length;
             await page.locator('#send_textarea').fill(playerLine);
             await page.locator('#send_but').click();
             await dismissPopup();
@@ -379,7 +430,8 @@ export async function sceneStoryReal(ctx) {
             }
             if (generated !== 'ok') {
                 const added = capture.snapshot().slice(before);
-                if (added[0]) report.rounds.push(roundOf(actor, index, afterShowClue, added[0], 0));
+                const meter = await reservationAfter(reservedBefore, added[0] ? 30000 : 2000);
+                if (added[0]) report.rounds.push(roundOf(actor, index, afterShowClue, added[0], 0, meter));
                 const status = genStatus.value >= 400 ? ` HTTP ${genStatus.value}${genStatus.code ? ` ${genStatus.code}` : ''}` : '';
                 throw new Error(`${actor} 第 ${index} 轮生成未完成${status}`);
             }
@@ -391,12 +443,18 @@ export async function sceneStoryReal(ctx) {
             });
             replies.push(reply);
             const call = added[0];
-            report.rounds.push(roundOf(actor, index, afterShowClue, call, [...reply].length));
+            const meter = await reservationAfter(reservedBefore, 30000);
+            report.rounds.push(roundOf(actor, index, afterShowClue, call, [...reply].length, meter));
             if (added.length !== 1) throw new Error(`${actor} 第 ${index} 轮出站请求数为 ${added.length}`);
             if (!call?.modelMatched) throw new Error(`${actor} 第 ${index} 轮出站模型不符`);
             if (call.forbiddenHits?.length) throw new Error(`${actor} 第 ${index} 轮出站含 ${call.forbiddenHits.join(',')}`);
             if (!call.onlyCurrentSlots) throw new Error(`${actor} 第 ${index} 轮出站槽位不符`);
             if (call.status !== 200) throw new Error(`${actor} 第 ${index} 轮上游状态 ${call.status}`);
+            if (call.reasoningEffort !== 'max' || call.reasoningEffortMax !== true) {
+                note('reasoning_effort_not_forwarded');
+                throw new Error(`${actor} 第 ${index} 轮上游 reasoning_effort=${call.reasoningEffort ?? 'absent'}`);
+            }
+            assertReservation(actor, index, meter);
             await commitLine(actor, playerLine);
             const own = await actorView(actor);
             const other = await actorView(otherActor(actor));
@@ -461,7 +519,7 @@ export async function sceneStoryReal(ctx) {
     return { calls: report.calls, defects: report.defects };
 }
 
-function roundOf(actor, round, afterShowClue, call, stChars) {
+function roundOf(actor, round, afterShowClue, call, stChars, reservation) {
     return {
         actor,
         round,
@@ -476,7 +534,15 @@ function roundOf(actor, round, afterShowClue, call, stChars) {
             forbiddenHits: [...(call?.forbiddenHits ?? [])],
             roles: [...(call?.roles ?? [])],
             reasoningEffort: call?.reasoningEffort ?? null,
+            reasoningEffortMax: call?.reasoningEffortMax === true,
             modelMatched: call?.modelMatched === true,
+        },
+        reservation: {
+            purpose: reservation?.purpose ?? null,
+            status: reservation?.status ?? null,
+            count: reservation?.count ?? 0,
+            inputPresent: reservation?.inputPresent ?? 0,
+            outputPresent: reservation?.outputPresent ?? 0,
         },
         character: {
             inCharacter: call?.character?.inCharacter === true,

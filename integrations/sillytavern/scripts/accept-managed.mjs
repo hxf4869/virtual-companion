@@ -2516,6 +2516,24 @@ async function sceneStoryOutbound(ctx) {
         report.missingIdentity.rejected = true;
         pass(report.missingIdentity, 3);
         await scanSurface('结束后');
+        // 原生出站的结算在响应返回后异步入账。Go 不回收 HELD，场景结束时本 owner 不能留下。
+        const heldDeadline = Date.now() + 5000;
+        let foregroundLedger = '';
+        let heldForeground = '1';
+        do {
+            foregroundLedger = psql(`SELECT status || '=' || count(*)::text
+                FROM vc.model_cost_reservation
+                WHERE owner_user_id = ${BigInt(OWNER_ACCOUNT_ID)} AND purpose = 'FOREGROUND_CHAT'
+                GROUP BY status ORDER BY status;`).trim();
+            const heldRow = foregroundLedger.split('\n').map((line) => line.trim()).find((line) => line.startsWith('HELD='));
+            heldForeground = heldRow ? heldRow.slice('HELD='.length) : '0';
+            if (heldForeground === '0') break;
+            await new Promise((resolve) => setTimeout(resolve, 200));
+        } while (Date.now() < heldDeadline);
+        report.foregroundReservation = foregroundLedger;
+        report.heldForeground = Number(heldForeground);
+        if (heldForeground !== '0') throw new Error(`本 owner 的 FOREGROUND_CHAT 仍有 HELD 预留 ${heldForeground}：${foregroundLedger}`);
+        log.ok(`本 owner FOREGROUND_CHAT 预留 ${foregroundLedger || '无'}；HELD 残留 ${heldForeground}`);
         fs.writeFileSync(path.join(ctx.artifactsDir, 'story-outbound-summary.json'), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
         log.ok(`story-outbound 计数 ${JSON.stringify(report)}`);
         return report;
