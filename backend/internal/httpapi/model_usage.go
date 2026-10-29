@@ -122,13 +122,22 @@ func (s *Server) handleSettleModelUsage(w http.ResponseWriter, r *http.Request) 
 		s.writeModelUsageErr(w, err)
 		return
 	}
+	var actual any
+	var input any
+	var output any
+	if out.Status == "UNKNOWN" {
+		// A late settle after the hold was swept does not book usage.
+		actual, input, output = nil, nil, nil
+	} else {
+		actual, input, output = out.ActualUSD, out.InputTokens, out.OutputTokens
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"reservationId": strconv.FormatInt(out.ReservationID, 10),
 		"purpose":       out.Purpose,
 		"status":        out.Status,
-		"actualUsd":     out.ActualUSD,
-		"inputTokens":   out.InputTokens,
-		"outputTokens":  out.OutputTokens,
+		"actualUsd":     actual,
+		"inputTokens":   input,
+		"outputTokens":  output,
 		"idempotent":    out.Idempotent,
 	})
 }

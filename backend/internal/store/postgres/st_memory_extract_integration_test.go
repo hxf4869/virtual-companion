@@ -19,7 +19,7 @@ func TestSTMemoryExtractQueueAttemptAndLateWriteFence(t *testing.T) {
 	if err := IsolationSuperExec(ctx, `INSERT INTO vc.model_unit_price(provider_id,model_id,price_version,input_usd_per_1k,output_usd_per_1k) VALUES ('prov-a','model-a',1,0.001,0.002) ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SaveProviderConfig(ctx, 7, SaveProvider{ProviderID: "prov-a", DisplayName: "Source extraction", Protocol: ProtocolOpenAIChat, BaseURL: "https://example.test/v1", Credential: "synthetic", State: ProviderEnabled, Models: []ProviderModel{catalogModel("memory", "model-a", intPtr(32768))}}); err != nil {
+	if _, err := store.SaveProviderConfig(ctx, 7, SaveProvider{ProviderID: "prov-a", DisplayName: "Source extraction", Protocol: ProtocolOpenAIChat, BaseURL: "https://example.test/v1", Credential: "synthetic", State: ProviderEnabled, Models: []ProviderModel{seedPricedModel("memory", "model-a", intPtr(32768))}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.SavePurposeBinding(ctx, 7, SavePurposeBinding{Purpose: "MEMORY_EXTRACTION_DEDUP_SUMMARY", ProviderID: "prov-a", ProfileKey: "memory", State: ProviderEnabled}); err != nil {

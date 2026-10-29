@@ -1144,6 +1144,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/story/runs/{runId}/projections:
+    get:
+      operationId: listPendingStoryProjections
+      summary: List pending player-visible story projections
+      description: >-
+        Returns projections on the current branch head whose projection state
+        is PENDING and whose audience includes the player. Each item carries
+        the world event id, the event's world version, and the chat line the
+        story page writes. That line is built from the same player-visible
+        fields the page reads after commitStoryAction (clue name, text, note,
+        and qualification). GM truth, other actors' private facts, credentials,
+        and the stored event body are not returned. state must be PENDING.
+        Cookie identity is the owner. This read does not change projection
+        state and does not call a model.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoryRunId'
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+            const: PENDING
+      responses:
+        '200':
+          description: Pending player-visible projections, or an empty list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryPendingProjectionList'
+        '400':
+          description: Invalid run id or a state other than PENDING
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Run absent, owned by someone else, or deletion is in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/story/runs/{runId}/projections/{eventId}/confirm:
     post:
       operationId: confirmStoryProjection
@@ -3502,8 +3551,10 @@ paths:
       operationId: listNotificationDeliveries
       summary: List notification deliveries
       description: >-
-        Lists channel delivery rows owned by the caller. accepted, failed and
-        unknown are channel outcomes. unknown means the peer may already have
+        Lists channel delivery rows owned by the caller. sending means the
+        pre-send checks have passed and the row is being handed to the
+        channel; the outcome is not yet known. accepted, failed and unknown
+        are channel outcomes. unknown means the peer may already have
         received the message. None of these outcomes means SillyTavern delivered,
         in-app read, or that the linked message is still present. Requires a
         server-verified authentication context.
@@ -5814,8 +5865,12 @@ paths:
       description: >-
         The first reported usage wins. Repeating the same reservationId returns
         idempotent true and the original actualUsd, inputTokens, and
-        outputTokens. It does not add the actual to the month again. Another
-        owner's reservation is 404 NOT_FOUND_OR_FORBIDDEN.
+        outputTokens. It does not add the actual to the month again. A
+        reservation already UNKNOWN (a crashed caller, or the restart sweep)
+        returns idempotent true, status UNKNOWN, and null actualUsd,
+        inputTokens, and outputTokens. It does not move the monthly unsettled
+        total and it does not book the late tokens. Another owner's
+        reservation is 404 NOT_FOUND_OR_FORBIDDEN.
       security:
         - serviceToken: []
       parameters:
@@ -7612,6 +7667,34 @@ components:
           type: string
           maxLength: 4000
           description: Dialogue text. Ignored by action rules that do not use it.
+    StoryPendingProjectionList:
+      type: object
+      additionalProperties: false
+      description: >-
+        Pending projections the player can backfill into the current chat.
+        The list is empty when every current-head projection is already
+        confirmed, cancelled, user-deleted, or not visible to the player.
+      required: [projections]
+      properties:
+        projections:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [worldEventId, worldVersion, text]
+            properties:
+              worldEventId:
+                type: string
+                pattern: '^[1-9][0-9]{0,18}$'
+              worldVersion:
+                type: integer
+                format: int64
+                minimum: 0
+              text:
+                type: string
+                description: >-
+                  Chat line built from the player-visible clue name, text,
+                  note, and qualification. Hidden markers are omitted.
     StoryActionResult:
       type: object
       additionalProperties: false
@@ -8694,13 +8777,16 @@ components:
     NotificationDeliveryStatus:
       type: string
       description: >-
-        Channel delivery state. pending is unsent. accepted, failed and unknown
-        are terminal channel outcomes and do not substitute for SillyTavern
-        delivered, in-app read, or link status. unknown means the peer may
-        already have received the message. stopped means an unsent row was
-        halted and was not sent.
+        Channel delivery state. pending is unsent. sending means the pre-send
+        checks have passed and the row is being handed to the channel; the
+        outcome is not yet known. accepted, failed and unknown are terminal
+        channel outcomes and do not substitute for SillyTavern delivered,
+        in-app read, or link status. unknown means the peer may already have
+        received the message. stopped means an unsent row was halted and was
+        not sent.
       enum:
         - pending
+        - sending
         - accepted
         - failed
         - unknown
@@ -10598,6 +10684,7 @@ components:
         - generationParams
         - pricing
         - boundPurposes
+        - ledgerPrice
       properties:
         profileKey:
           type: string
@@ -10638,6 +10725,17 @@ components:
           $ref: '#/components/schemas/ModelGenerationParams'
         pricing:
           $ref: '#/components/schemas/ModelPricing'
+        ledgerPrice:
+          $ref: '#/components/schemas/ModelLedgerPriceStatus'
+          description: >-
+            Derived from this profile and the current effective
+            vc.model_unit_price row for (providerId, modelId). ACTIVE: every
+            enabled profile of that model agrees on a USD price and the ledger
+            matches it (USD per 1K tokens, converted from per million).
+            MISSING: no effective price, so a reservation is NO_PRICE; this
+            includes an empty price, a disabled model, and enabled profiles
+            that disagree. UNSUPPORTED_CURRENCY: the profile states a currency
+            other than USD, which is not written. Not an input.
         boundPurposes:
           type: array
           maxItems: 6
@@ -10952,6 +11050,17 @@ components:
         spaceId:
           type: string
           format: uuid
+    ModelLedgerPriceStatus:
+      type: string
+      description: >-
+        Catalog-to-ledger status of one model profile. ACTIVE matches the
+        current effective USD-per-1K row. MISSING leaves reservations
+        NO_PRICE. UNSUPPORTED_CURRENCY is a non-USD currency and is not
+        treated as free.
+      enum:
+        - ACTIVE
+        - MISSING
+        - UNSUPPORTED_CURRENCY
     ModelPurposeBindingStatus:
       type: string
       description: >-
@@ -11943,20 +12052,29 @@ components:
           type: string
         status:
           type: string
-          const: SETTLED
+          enum: [SETTLED, UNKNOWN]
         actualUsd:
           type: string
-          description: Six-decimal USD from the first reported usage.
+          nullable: true
+          description: >-
+            Six-decimal USD from the first reported usage. Null when status is
+            UNKNOWN: a late settle does not book an actual and does not book zero.
           example: '0.003000'
         inputTokens:
           type: integer
           format: int64
+          nullable: true
+          description: Null when status is UNKNOWN. The late token counts are not stored.
         outputTokens:
           type: integer
           format: int64
+          nullable: true
+          description: Null when status is UNKNOWN. The late token counts are not stored.
         idempotent:
           type: boolean
-          description: False on the first settlement. True when this reservationId was already settled.
+          description: >-
+            False on the first settlement. True when this reservationId was
+            already settled or was already UNKNOWN.
     ModelUsageCancelRequest:
       type: object
       additionalProperties: false

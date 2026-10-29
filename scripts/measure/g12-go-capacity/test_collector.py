@@ -196,10 +196,11 @@ class ApplyOverridesTest(unittest.TestCase):
 
 
 class ProviderParameterizationTest(unittest.TestCase):
-    """VC-R79: scripts/dev/e2e-tls-stack.sh substitutes the journey-dialect
-    provider script and env through the same fake-provider service; the G12
-    default render (fixture script + timing knobs) stays pinned, and the
-    substituted bind must live inside the repo like every other bind."""
+    """The journey-dialect provider script and env can be substituted through
+    the same fake-provider service. The Vue TLS launcher that used this seam
+    was removed with the old frontend. The G12 default render (fixture script
+    + timing knobs) stays pinned, and the substituted bind must live inside
+    the repo like every other bind."""
 
     def test_default_provider_fixture_unchanged(self):
         fp = render_stack.fake_provider_service(REPO, 19091)

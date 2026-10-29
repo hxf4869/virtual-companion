@@ -1,5 +1,5 @@
-# DEPLOY edge image: Caddy + the built H5 bundle + the edge Caddyfile.
-# Build AFTER `pnpm --dir frontend build` so frontend/dist exists.
+# DEPLOY edge image: Caddy TLS termination for the Go API.
+# The old Vue H5 bundle is not part of this image (removed in W15).
 
 # Rebuild the same Caddy v2.11.7 (official standard modules, no plugins) from
 # source so the pinned Go toolchain and golang.org/x/net v0.60.0 apply; the
@@ -16,4 +16,3 @@ COPY --from=caddy-build /out/caddy /usr/bin/caddy
 # restore exactly that capability with the base image's own setcap.
 RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
 COPY ops/deploy/Caddyfile /etc/caddy/Caddyfile
-COPY frontend/dist/build/h5/ /srv/h5

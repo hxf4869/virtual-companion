@@ -11,6 +11,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EventEmitter } from 'node:events';
 
 import { createAdminBridge, ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
+import { CHAT_UI_ROUTES } from '../extension/vc-model-settings/chat-ui-routes.js';
+import { INBOX_UI_ROUTES } from '../server-plugin/virtual-companion/lib/inbox-ui-routes.js';
+import { STORY_UI_ROUTES } from '../server-plugin/virtual-companion/lib/story-ui-routes.js';
 import { createGenerateBridge, BRIDGE_SYMBOL } from '../server-plugin/virtual-companion/lib/generate-bridge.js';
 import { createStatusBridge } from '../server-plugin/virtual-companion/lib/status-bridge.js';
 import { ToolContinuationStore } from '../server-plugin/virtual-companion/lib/responses-adapter.js';
@@ -142,6 +145,71 @@ test('管理桥：白名单外路径/方法/编码穿越一律 404，且不触�
         }
         assert.equal(state.upstream.length, 0, '白名单外请求不得触达 Go');
         assert.equal(ADMIN_BRIDGE_ROUTES.some((r) => r.path.test('/api/v1/service/model-purposes/X/resolve')), false);
+    } finally {
+        server.close();
+    }
+});
+
+test('管理桥：并入聊天、主动陪伴与剧情路由；claim/ack 与账号列表仍拒绝', async () => {
+    const normalize = (route) => `${route.method} ${String(route.path.source).replace(/\\\//g, '/')}`;
+    const allowed = new Set(ADMIN_BRIDGE_ROUTES.map(normalize));
+    for (const route of [...CHAT_UI_ROUTES, ...INBOX_UI_ROUTES, ...STORY_UI_ROUTES]) {
+        assert.equal(allowed.has(normalize(route)), true, `${route.method} ${route.where}`);
+    }
+    const upstream = [];
+    const { server, port } = await startServer(async (req, res) => {
+        upstream.push(`${req.method} ${new URL(req.url, 'http://go.local').pathname}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{"ok":true}');
+    });
+    const handler = createAdminBridge({ config: baseConfig(port) });
+    try {
+        for (const c of [
+            { method: 'GET', url: '/api/v1/inbox' },
+            { method: 'PATCH', url: '/api/v1/relationships/11' },
+            { method: 'GET', url: '/api/v1/relationships/11/proactive-policy' },
+            { method: 'PUT', url: '/api/v1/relationships/11/proactive-policy' },
+            { method: 'GET', url: '/api/v1/relationships/11/follow-ups' },
+            { method: 'POST', url: '/api/v1/follow-ups/11/cancel' },
+            { method: 'POST', url: '/api/v1/inbox/evt-1/read' },
+            { method: 'GET', url: '/api/v1/notification-channels' },
+            { method: 'PUT', url: '/api/v1/notification-channels' },
+            { method: 'GET', url: '/api/v1/notification-deliveries' },
+            { method: 'POST', url: '/api/v1/story/runs/11/actions' },
+            { method: 'POST', url: '/api/v1/story/runs/11/rewind' },
+            { method: 'POST', url: '/api/v1/story/runs/11/projections/3/confirm' },
+            { method: 'GET', url: '/api/v1/story/runs/11/projections' },
+            { method: 'POST', url: '/api/v1/story/runs/11/participants/lin' },
+            { method: 'POST', url: '/api/v1/story/runs/11/epilogue' },
+            { method: 'POST', url: '/api/v1/auth/password' },
+            { method: 'GET', url: '/api/v1/auth/sessions' },
+            { method: 'DELETE', url: '/api/v1/auth/sessions/12' },
+            { method: 'POST', url: '/api/v1/auth/logout' },
+            { method: 'POST', url: '/api/v1/admin/accounts/7/authenticator-reset' },
+        ]) {
+            const before = upstream.length;
+            const res = mockRes();
+            await handler(bridgeReq({ ...c, headers: { 'content-type': 'application/json' }, body: c.method === 'GET' ? undefined : {} }), res);
+            assert.equal(res.statusCode, 200, `${c.method} ${c.url}`);
+            assert.equal(upstream.length, before + 1, `${c.method} ${c.url} 应转发`);
+            assert.equal(upstream.at(-1), `${c.method} ${c.url}`);
+        }
+        const deniedBefore = upstream.length;
+        for (const c of [
+            { method: 'POST', url: '/api/v1/inbox/evt-1/claim' },
+            { method: 'POST', url: '/api/v1/inbox/evt-1/ack' },
+            { method: 'GET', url: '/api/v1/story/runs/11/actors/lin/view' },
+            { method: 'GET', url: '/api/v1/story/runs/11/actors/gm/view' },
+            { method: 'DELETE', url: '/api/v1/relationships/8' },
+            { method: 'GET', url: '/api/v1/admin/accounts' },
+            { method: 'GET', url: '/api/v1/auth/admin/usage' },
+        ]) {
+            const res = mockRes();
+            await handler(bridgeReq(c), res);
+            assert.equal(res.statusCode, 404, `${c.method} ${c.url}`);
+            assert.equal(JSON.parse(res.body()).error.code, 'VC_BRIDGE_ROUTE_NOT_ALLOWED');
+        }
+        assert.equal(upstream.length, deniedBefore, 'claim/ack 与未登记账户路径不得触达 Go');
     } finally {
         server.close();
     }
@@ -455,10 +523,10 @@ for (const name of ['st-chat-completions-vc-bridge.json', 'st-util-stream-error-
                 const count = (needle) => result.output.split(needle).length - 1;
                 assert.equal(count('settleOutboundResponse?.('), 2, 'Chat 与 Claude 各结算一次');
                 assert.equal(count('abandonOutbound?.('), 2, 'Chat 与 Claude 各在抛错时取消一次');
-                const chatSettle = result.output.indexOf('settleOutboundResponse?.(fetchResponse, endpointUrl)');
-                const claudeSettle = result.output.indexOf("settleOutboundResponse?.(generateResponse, apiUrl + '/messages')");
-                const chatAbandon = result.output.indexOf('abandonOutbound?.(endpointUrl)');
-                const claudeAbandon = result.output.indexOf("abandonOutbound?.(apiUrl + '/messages')");
+                const chatSettle = result.output.indexOf('settleOutboundResponse?.(fetchResponse, endpointUrl, request)');
+                const claudeSettle = result.output.indexOf("settleOutboundResponse?.(generateResponse, apiUrl + '/messages', request)");
+                const chatAbandon = result.output.indexOf('abandonOutbound?.(endpointUrl, request)');
+                const claudeAbandon = result.output.indexOf("abandonOutbound?.(apiUrl + '/messages', request)");
                 assert.ok(chatAbandon > 0 && chatAbandon < chatSettle, 'Chat 取消在结算之前');
                 assert.ok(claudeAbandon > 0 && claudeAbandon < claudeSettle, 'Claude 取消在结算之前');
                 assert.match(result.output.slice(chatSettle - 700, chatSettle), /JSON\.stringify\(requestBody\)/);
@@ -481,11 +549,11 @@ test('补丁钩子形态：最终防线与拦截钩子都以可选链调用，�
     const guard = spec.replacements.find((r) => r.to.includes('finalOutboundGuard') && r.to.includes('generateResponse')).to;
     assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.finalOutboundGuard\?\.\(request, response, requestBody, apiUrl \+ '\/messages'\)/);
     const chat = spec.replacements.find((r) => r.to.includes('fetchResponse') && r.to.includes('endpointUrl')).to;
-    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(fetchResponse, endpointUrl\)/);
-    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(endpointUrl\)/);
+    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(fetchResponse, endpointUrl, request\)/);
+    assert.match(chat, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(endpointUrl, request\)/);
     assert.match(chat, /\.catch\(async \(error\) => \{[\s\S]*throw error;\s*\}\)/);
-    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(generateResponse, apiUrl \+ '\/messages'\)/);
-    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(apiUrl \+ '\/messages'\)/);
+    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.settleOutboundResponse\?\.\(generateResponse, apiUrl \+ '\/messages', request\)/);
+    assert.match(guard, /globalThis\[Symbol\.for\('virtual-companion\.bridge'\)\]\?\.abandonOutbound\?\.\(apiUrl \+ '\/messages', request\)/);
     assert.match(guard, /\.catch\(async \(error\) => \{[\s\S]*throw error;\s*\}\)/);
     const hook1 = spec.replacements[0].to;
     assert.match(hook1, /vcBridge\.interceptGenerate\(request, response\)/);

@@ -145,7 +145,9 @@ async function request(method, goPath, body, { page = false } = {}) {
         }
     }
     if (!response.ok) {
-        throw classify(response.status, data ?? {});
+        const error = classify(response.status, data ?? {});
+        if (Array.isArray(data?.pendingDomains)) error.pendingDomains = data.pendingDomains;
+        throw error;
     }
     return page ? { items: data, nextCursor: response.headers.get('X-Next-Cursor') || null } : data;
 }
@@ -225,6 +227,13 @@ export function discoverProviderModels(providerId, { protocol, baseUrl, credenti
 export function reauth(password) {
     return request('POST', '/api/v1/auth/reauth', { password });
 }
+
+export const fetchSession = () => request('GET', '/api/v1/auth/session');
+export const changePassword = (currentPassword, newPassword) => request('POST', '/api/v1/auth/password', { currentPassword, newPassword });
+export const listSessions = () => request('GET', '/api/v1/auth/sessions');
+export const revokeSession = (sessionId) => request('DELETE', `/api/v1/auth/sessions/${encodeURIComponent(sessionId)}`);
+export const logoutCurrent = () => request('POST', '/api/v1/auth/logout', {});
+export const resetAuthenticator = (accountId) => request('POST', `/api/v1/admin/accounts/${encodeURIComponent(accountId)}/authenticator-reset`, {});
 
 export const createDataExport = (currentPassword) => request('POST', '/api/v1/exports', { currentPassword });
 export const recoverDataExport = (currentPassword) => request('POST', '/api/v1/exports/recover', { currentPassword });

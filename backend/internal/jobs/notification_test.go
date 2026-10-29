@@ -260,6 +260,15 @@ func (s *noteStore) LoadNotificationDelivery(context.Context, int64, int64, time
 	return s.row, nil
 }
 
+func (s *noteStore) ClaimNotificationSend(_ context.Context, _, _ int64, now time.Time) (postgres.NotificationDecision, error) {
+	decision := postgres.DecideNotificationSend(now, s.row)
+	if decision.Action != postgres.NotificationSend {
+		return decision, nil
+	}
+	s.row.Status = "sending"
+	return decision, nil
+}
+
 func (s *noteStore) LoadNotificationCredential(context.Context, int64, string, string) (string, error) {
 	if s.omitCredential {
 		return "", nil

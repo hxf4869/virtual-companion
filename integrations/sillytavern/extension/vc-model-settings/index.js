@@ -11,19 +11,50 @@
 // 相对导入主脚本要走四层（内置扩展的三层在这里会落到不存在的 /scripts/script.js）
 import { getRequestHeaders, getChat, saveChat as saveCurrentChat } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
+import { budgetSignalFromGenerateBody, isGenerateRequestUrl } from './model-logic.js';
 import { mountModelSettings } from './page.js';
 import { setStHeadersProvider, fetchProviders, fetchModelPurposes, captureSessionContext, resolveSTBinding, reconcileSTSources, recallSTMemory } from './api.js';
 import { confirmStoryProjection } from './story-action.js';
 import { createStoryProjection } from './story-projection.js';
-import { installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
+import { armSilentF2Conflict, disarmSilentF2Conflict, installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
-import { mountChatShell } from './chat-shell.js';
+import { loadInboxEvents, mountChatShell } from './chat-shell.js';
 import { mountDataRights } from './data-rights.js';
 import { mountMemoryPage } from './memory-page.js';
+import { mountInboxPage } from './inbox-page.js';
+import { cardsFromContext, createCompanionInstance, mountInstancePage } from './instance-page.js';
+import { planOpenCreatedChat } from './instance-open.js';
+import { commitStoryProjectionSave } from './projection-save.js';
 import { mountStoryPage } from './story-page.js';
 import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from './memory-injection.js';
 import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 import { createStoryContext } from './story-context.js';
+
+function requestUrl(input) {
+    if (typeof input === 'string') return input;
+    if (input instanceof URL) return input.href;
+    if (input && typeof input.url === 'string') return input.url;
+    return '';
+}
+
+function installGenerateBudgetWatch(onSignal) {
+    const current = globalThis.fetch;
+    if (typeof current !== 'function' || current.vcBudgetWatch) return;
+    const wrapped = async function vcBudgetFetch(input, init) {
+        const response = await current.call(globalThis, input, init);
+        const type = response?.headers?.get?.('content-type') || '';
+        if (isGenerateRequestUrl(requestUrl(input)) && response && !response.ok && type.includes('json') && typeof response.clone === 'function') {
+            const copy = response.clone();
+            void copy.json().then((body) => {
+                const signal = budgetSignalFromGenerateBody(body);
+                if (signal) onSignal(signal);
+            }).catch(() => { /* 宿主继续展示原始失败 */ });
+        }
+        return response;
+    };
+    wrapped.vcBudgetWatch = true;
+    globalThis.fetch = wrapped;
+}
 
 export async function init() {
     setStHeadersProvider(() => {
@@ -34,7 +65,27 @@ export async function init() {
 
     // 页面控制器（单例，立即挂载但保持隐藏；横幅「打开模型设置」与菜单共用同一实例）。
     const pageController = mountModelSettings();
-    mountChatShell({ getContext, openModels: () => pageController.open() });
+    let inboxPage = null;
+    let storyPage = null;
+    let dataRights = null;
+    let memoryPage = null;
+    let charactersPage = null;
+    const shell = mountChatShell({
+        getContext,
+        openModels: (opener) => { if (!pageController.isOpen()) pageController.open(opener); },
+        openCharacters: (opener) => charactersPage?.open(opener),
+        openInbox: (opener) => inboxPage?.open(opener),
+        openStory: (opener) => storyPage?.open(opener),
+        openAccount: (opener) => dataRights?.open(opener),
+        openMemory: (opener) => memoryPage?.open(opener),
+    });
+    globalThis.addEventListener('vc-view-inbox', (event) => inboxPage?.open(event.detail?.opener));
+    const applyBudgetState = (payload) => {
+        const budget = pageController.applyBudget?.(payload);
+        shell.setBudgetInsufficient?.(budget?.insufficient === true);
+    };
+    globalThis.addEventListener('vc-apply-budget', (event) => applyBudgetState(event.detail));
+    installGenerateBudgetWatch(applyBudgetState);
 
     // 前台投影：Go FOREGROUND_CHAT 绑定 → ST 原生 chatCompletionSettings。
     // 初始化即刷新一次；页面保存目录成功后经 onCatalogSaved 再刷新。
@@ -65,7 +116,26 @@ export async function init() {
     globalThis[MEMORY_INTERCEPTOR] = memory.intercept;
     const story = createStoryContext({ getContext });
     const events = getContext();
+    let inboxScopeKey = '';
+    async function pullInbox() {
+        let binding = {};
+        let chatId = '';
+        try {
+            const ctx = getContext();
+            binding = ctx.chatMetadata?.vc_binding || {};
+            chatId = ctx.chatId || '';
+        } catch { return; }
+        const key = `${chatId}|${binding.conversationId || ''}|${binding.relationshipId || ''}`;
+        if (key === inboxScopeKey) return;
+        inboxScopeKey = key;
+        try {
+            const rows = await loadInboxEvents();
+            shell.setInboxEvents(rows, { conversationId: binding.conversationId, relationshipId: binding.relationshipId });
+        } catch { inboxScopeKey = ''; }
+    }
+    events.eventSource.on(events.eventTypes.CHAT_CHANGED, () => { void pullInbox(); });
     events.eventSource.on(events.eventTypes.CHAT_CHANGED, memory.reset);
+    void pullInbox();
     events.eventSource.on(events.eventTypes.CHAT_COMPLETION_SETTINGS_READY, memory.attach);
     events.eventSource.on(events.eventTypes.CHAT_COMPLETION_SETTINGS_READY, (generateData) => {
         attachCompanionIdentity(generateData, getContext);
@@ -92,8 +162,27 @@ export async function init() {
     story.install(events.eventSource, events.eventTypes.CHAT_COMPLETION_SETTINGS_READY);
     globalThis.addEventListener('vc-memory-status', (event) => memory.finalStatus(event.detail));
 
-    const dataRights = mountDataRights();
-    const memoryPage = mountMemoryPage({ getRelationshipId: () => getContext().chatMetadata?.vc_binding?.relationshipId });
+    dataRights = mountDataRights();
+    memoryPage = mountMemoryPage({ getRelationshipId: () => getContext().chatMetadata?.vc_binding?.relationshipId });
+    inboxPage = mountInboxPage({
+        onOpenConversation: ({ conversationId } = {}) => {
+            const binding = getContext().chatMetadata?.vc_binding || {};
+            if (conversationId && String(binding.conversationId) === String(conversationId)) {
+                document.querySelector('#send_textarea')?.focus();
+            }
+        },
+    });
+    charactersPage = mountInstancePage({
+        getContext,
+        getCards: () => {
+            try { return cardsFromContext(getContext()); } catch { return []; }
+        },
+        createBinding: async (args) => {
+            const created = await createCompanionInstance(args);
+            try { await openCreatedChat(args); } catch { /* 实例已创建；打不开会话时不回滚绑定 */ }
+            return created;
+        },
+    });
     const storyProjection = createStoryProjection({
         readChat: async () => {
             await getChat();
@@ -105,8 +194,8 @@ export async function init() {
         },
         saveChat: async (snapshot) => {
             const ctx = getContext();
-            if (ctx.chatMetadata && snapshot.metadata) Object.assign(ctx.chatMetadata, snapshot.metadata);
-            if (Array.isArray(ctx.chat)) ctx.chat.splice(0, ctx.chat.length, ...snapshot.messages);
+            commitStoryProjectionSave(ctx, snapshot);
+            armSilentF2Conflict();
             try {
                 await saveCurrentChat();
             } catch (error) {
@@ -115,11 +204,14 @@ export async function init() {
                 wrapped.code = 'VC_SAVE_FAILED';
                 wrapped.name = 'F2ConflictError';
                 throw wrapped;
+            } finally {
+                disarmSilentF2Conflict();
             }
         },
         confirm: ({ runId, worldEventId }) => confirmStoryProjection({ runId, worldEventId }),
     });
-    const storyPage = mountStoryPage({
+    storyPage = mountStoryPage({
+        onConfigure: () => { if (!pageController.isOpen()) pageController.open(); },
         getConversation: () => {
             try {
                 const binding = getContext().chatMetadata?.vc_binding || {};
@@ -174,4 +266,26 @@ export async function init() {
     button.addEventListener('click', () => {
         if (!pageController.isOpen()) pageController.open();
     });
+}
+
+async function openCreatedChat({ characterRef, chatIdentity } = {}) {
+    const native = await import('../../../../script.js');
+    const ctx = getContext();
+    const plan = planOpenCreatedChat({
+        characters: ctx.characters || native.characters || [],
+        characterRef,
+        chatIdentity,
+        currentMetadata: ctx.chatMetadata,
+    });
+    if (plan.characterIndex < 0 || typeof native.selectCharacterById !== 'function') return;
+    await native.selectCharacterById(plan.characterIndex);
+    if (plan.file && typeof native.openCharacterChat === 'function') {
+        await native.openCharacterChat(plan.file);
+        return;
+    }
+    const metadata = getContext().chatMetadata;
+    if (!plan.writeToken || !metadata || metadata.vc_f2) return;
+    metadata.vc_f2 = { id: chatIdentity, revision: 0 };
+    armSilentF2Conflict();
+    try { await saveCurrentChat(); } finally { disarmSilentF2Conflict(); }
 }

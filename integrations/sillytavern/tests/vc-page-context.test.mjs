@@ -43,6 +43,8 @@ function makeOverlay() {
 
 globalThis.document = {
     cookie: '',
+    addEventListener() {},
+    querySelector() { return null; },
     createElement: () => {
         const overlay = makeOverlay();
         // page.js 只查询 .vcms-overlay 一个子节点；其余查询在 stub 下安全返回 null。

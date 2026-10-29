@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const (
@@ -113,20 +114,48 @@ func (s *Store) SettleModelUsage(ctx context.Context, owner, reservationID, inpu
 		return ModelUsageSettlement{}, ErrInvalid
 	}
 	var out ModelUsageSettlement
+	var actual pgtype.Text
+	var inTok, outTok pgtype.Int8
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
 			SELECT out_reservation_id, out_purpose, out_status, out_actual_usd,
 			       out_input_tokens, out_output_tokens, out_idempotent
 			  FROM vc.settle_model_usage_reservation($1,$2,$3,$4)`,
 			owner, reservationID, inputTokens, outputTokens).
-			Scan(&out.ReservationID, &out.Purpose, &out.Status, &out.ActualUSD,
-				&out.InputTokens, &out.OutputTokens, &out.Idempotent)
+			Scan(&out.ReservationID, &out.Purpose, &out.Status, &actual,
+				&inTok, &outTok, &out.Idempotent)
 	})
 	if err != nil {
 		return ModelUsageSettlement{}, mapStoreErr(err)
 	}
-	out.ActualUSD = strings.TrimSpace(out.ActualUSD)
+	if actual.Valid {
+		out.ActualUSD = strings.TrimSpace(actual.String)
+	}
+	if inTok.Valid {
+		out.InputTokens = inTok.Int64
+	}
+	if outTok.Valid {
+		out.OutputTokens = outTok.Int64
+	}
 	return out, nil
+}
+
+// SweepExpiredModelCostHolds marks HELD reservations older than olderThan as
+// UNKNOWN. The SQL moves the priced hold from reserved to unsettled and does
+// not write an actual of zero. younger holds are left HELD.
+func (s *Store) SweepExpiredModelCostHolds(ctx context.Context, olderThan time.Duration) (int, error) {
+	seconds := int(olderThan.Seconds())
+	if seconds < 1 {
+		return 0, ErrInvalid
+	}
+	var n int
+	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT vc.sweep_expired_model_cost_holds($1)`, seconds).Scan(&n)
+	})
+	if err != nil {
+		return 0, mapStoreErr(err)
+	}
+	return n, nil
 }
 
 func (s *Store) CancelModelUsage(ctx context.Context, owner, reservationID int64, disposition string) (ModelUsageCancellation, error) {

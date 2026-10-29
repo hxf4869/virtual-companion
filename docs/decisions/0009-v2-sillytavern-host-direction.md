@@ -66,8 +66,9 @@ PostgreSQL。数据权威划分见快照 `MASTER_PLAN.md` §4，要点：
   转为商业或向付费用户提供服务，须先替换该依赖并重新决策。
 - ST 与 EJS 为 AGPL-3.0：仓库自有 Go 代码保持 Apache-2.0；ST 补丁与插件代码放在独立目录
   并标明许可；向 Owner 以外的人提供网络服务时须按 AGPL 提供对应源码。
-- 现有许可门禁 `scripts/checks/check_licenses.py` 只扫描 `backend/go.mod` 与
-  `frontend/package.json`；引入 ST 栈的工作项须把新组件纳入许可清单，不得绕过门禁。
+- 许可门禁 `scripts/checks/check_licenses.py` 扫描 `backend/go.mod` 与
+  `integrations/sillytavern`（`domainPolicies.stIntegration`）。旧 `frontend/package.json`
+  扫描已随 W15 删除 Vue 前端移除。引入新组件仍须纳入许可清单，不得绕过门禁。
 - 其他生产依赖（MemoryCore、邮件库、飞书 SDK 等）按需直接引入，不需 Owner 逐项确认
   （2026-10-27 Owner 授权）；条件是许可允许非商业自用、版本固定，并登记到上游版本锁或许可清单。
 

@@ -1,0 +1,43 @@
+export const BACKUP_COPY = '备份状态独立，策略在 W16';
+export const RESTORE_LIMIT_COPY = '删除前的离线快照不能恢复为可用环境；恢复须先应用最新删除状态，具体策略在 W16。';
+export const EXPORT_PARTIAL_COPY = '部分完成';
+export const PASSWORD_CHANGED_COPY = '密码已修改，请重新登录。';
+export const AUTH_RESET_COPY = '验证器已重置。下次登录需要重新绑定。';
+
+export function authenticatorStatusText(session) {
+    return session?.authenticatorEnabled === true ? '验证器已启用' : '验证器未启用';
+}
+
+export function deletionProgressText(progress = {}) {
+    const domains = Array.isArray(progress?.pendingDomains)
+        ? progress.pendingDomains.filter((item) => typeof item === 'string' && item.length > 0)
+        : [];
+    const pending = domains.length ? `尚未完成：${domains.join('、')}。` : '尚未确认清理的数据会在服务恢复后继续处理。';
+    return `账号删除未完成，聊天已暂停。${pending}`;
+}
+
+export function otherSessions(sessions) {
+    if (!Array.isArray(sessions)) return [];
+    return sessions.filter((item) => item && item.current !== true && typeof item.id === 'string' && /^[1-9][0-9]*$/.test(item.id));
+}
+
+export function sessionLabel(session) {
+    return session?.current === true ? '当前会话' : '其他会话';
+}
+
+export const SESSION_EMPTY_COPY = '没有进行中的会话';
+
+export function sessionTimeText(session) {
+    const raw = session?.createdAt;
+    if (typeof raw !== 'string' || raw.length === 0) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
+/** 列表只有创建时间与当前标记。接口不返回设备名，不编造设备。 */
+export function sessionRowText(session) {
+    const label = sessionLabel(session);
+    const time = sessionTimeText(session);
+    return time ? `${label} · ${time}` : label;
+}

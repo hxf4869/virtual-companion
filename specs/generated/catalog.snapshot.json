@@ -163,6 +163,11 @@
       "VERIFIED",
       "UNSUPPORTED"
     ],
+    "ModelLedgerPriceStatus": [
+      "ACTIVE",
+      "MISSING",
+      "UNSUPPORTED_CURRENCY"
+    ],
     "ModelProtocol": [
       "OPENAI_CHAT_COMPLETIONS",
       "OPENAI_RESPONSES",
@@ -459,6 +464,11 @@
             "typeName": "ModelPurposeBindingStatus"
           },
           {
+            "file": "model-ledger-price-statuses.yaml",
+            "kind": "enum",
+            "typeName": "ModelLedgerPriceStatus"
+          },
+          {
             "file": "model-capability-statuses.yaml",
             "kind": "enum",
             "typeName": "ModelCapabilityStatus"
@@ -544,7 +554,7 @@
         "generatorVersion": "1.0.0",
         "schemaVersion": 1
       },
-      "sha256": "0a502838cc3d4254b38ae9cb9662274d75550d4dfe7d00f26db5f157e9f24ed5"
+      "sha256": "c81997ea6a7346f7358ab5d487833f25bbdcdd818366f81534c8da1713aabafd"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -1072,7 +1082,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 101,
+          "KEEP": 102,
           "RETIRE": 38,
           "SIMPLIFY": 6
         },
@@ -1090,9 +1100,7 @@
             "replacementOrImpact": "Bounded internal MemoryCore callback with Go-issued operation capability and per-call accounting; no browser authority."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/admin-runtime.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome"
@@ -1103,9 +1111,7 @@
             "replacementOrImpact": "Keep public version identity. Liveness/readiness stay outside this OpenAPI surface (actuator/health)."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/admin-runtime.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "h5-caller"
@@ -1356,6 +1362,18 @@
               "owner-instruction",
               "core-outcome"
             ],
+            "method": "GET",
+            "operationId": "listPendingStoryProjections",
+            "path": "/api/v1/story/runs/{runId}/projections",
+            "replacementOrImpact": "V2-W16 lists pending projections the player can see on the current branch head so the story page can backfill chat after a refresh. The browser session is the owner. The read returns the chat line only and does not change projection state. This operation does not call a model."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
             "method": "POST",
             "operationId": "confirmStoryProjection",
             "path": "/api/v1/story/runs/{runId}/projections/{eventId}/confirm",
@@ -1397,9 +1415,7 @@
             "replacementOrImpact": "Retain the existing persona-template consumer and default companion setup. Creation preserves other active instances; ST card binding uses resolveSTBinding."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/relationship.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "h5-caller"
@@ -1508,9 +1524,7 @@
             "replacementOrImpact": "Import is DEFER and has no current frontend entry."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/chat.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1522,11 +1536,7 @@
             "replacementOrImpact": "Keep creating or continuing a conversation."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/chat.ts",
-              "frontend/src/pages/index/index.vue",
-              "frontend/src/pages/conversations/conversations.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1601,9 +1611,7 @@
             "replacementOrImpact": "Retain the server conversation lifecycle without a current frontend entry."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/chat.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1615,9 +1623,7 @@
             "replacementOrImpact": "Keep send as StartTurn. One turn, one final assistant message; no version select."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/chat.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1667,9 +1673,7 @@
             "replacementOrImpact": "The current frontend has no generation-version list."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/chat.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1681,10 +1685,7 @@
             "replacementOrImpact": "Keep cancel. SSE disconnect must not imply cancel."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/realtime-transport.ts",
-              "frontend/src/stores/chat.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -1715,10 +1716,7 @@
             "replacementOrImpact": "SSE now uses the opaque session cookie; the H5 ticket helper has been removed."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/realtime-transport.ts",
-              "frontend/src/stores/chat.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "SIMPLIFY",
             "method": "GET",
             "operationId": "openRealtimeStream",
@@ -2062,10 +2060,7 @@
             "replacementOrImpact": "Keep listing consent state."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/data-export.ts",
-              "frontend/src/components/account/DataExportPanel.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2077,10 +2072,7 @@
             "replacementOrImpact": "Keep export create. MinIO/object lifecycle stays until a later dedicated slice."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/data-export.ts",
-              "frontend/src/components/account/DataExportPanel.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2092,10 +2084,7 @@
             "replacementOrImpact": "Keep export status."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/data-export.ts",
-              "frontend/src/components/account/DataExportPanel.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2107,10 +2096,7 @@
             "replacementOrImpact": "Keep one-time application download. No reusable presigned URL."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/api/data-export.ts",
-              "frontend/src/components/account/DataExportPanel.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2122,10 +2108,7 @@
             "replacementOrImpact": "Keep explicit recovery of the most recent unclaimed export copy — the selected request is re-armed in place with a fresh one-time token and the earlier link dies; no new copy, the server cannot prove it is a specific lost attempt, and no status poll ever carries a token."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts",
-              "frontend/src/pages/login/login.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "SIMPLIFY",
             "method": "POST",
             "operationId": "login",
@@ -2133,10 +2116,7 @@
             "replacementOrImpact": "Keep account/password as step one; account accepts username or email. It returns a five-minute TOTP/setup challenge, or issues opaque vc_session only when a valid trusted-device cookie skips TOTP. No JWT login."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts",
-              "frontend/src/pages/login/login.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "owner-instruction"
@@ -2158,9 +2138,7 @@
             "replacementOrImpact": "Keep a fail-closed launch endpoint. It accepts no account while email delivery is unconfigured and registration remains closed."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2172,10 +2150,7 @@
             "replacementOrImpact": "Page refresh restores ACTIVE account state from the opaque cookie; H5 must not infer admission from local storage."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts",
-              "frontend/src/pages/login/login.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "owner-instruction"
@@ -2186,10 +2161,7 @@
             "replacementOrImpact": "Return one stable encrypted pending TOTP setup for the live first-login challenge."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts",
-              "frontend/src/pages/login/login.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2201,10 +2173,7 @@
             "replacementOrImpact": "First valid TOTP atomically enables the factor, returns ten one-time recovery codes, creates the default relationship, and issues the session."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts",
-              "frontend/src/pages/login/login.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2216,10 +2185,7 @@
             "replacementOrImpact": "Daily second factor. An optional default-off choice issues a fixed 90-day trusted device."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts",
-              "frontend/src/pages/login/login.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2239,9 +2205,7 @@
             "replacementOrImpact": "Refresh rotation is retired. H5 restores the opaque cookie through getAuthSession."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/stores/auth.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "SIMPLIFY",
             "method": "POST",
             "operationId": "logout",
@@ -2273,9 +2237,7 @@
             "replacementOrImpact": "Retain revoke-all as a backend security capability without a current frontend entry. The success response sets no cookies (revocation stays server-side), so a delayed response cannot expire a newer login's vc_session/vc_csrf (VC-R17)."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/account/account.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "owner-instruction"
@@ -2286,9 +2248,7 @@
             "replacementOrImpact": "Account security lists active device labels and timestamps without tokens or fingerprints."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/account/account.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "owner-instruction"
@@ -2299,9 +2259,7 @@
             "replacementOrImpact": "Revoke one owner-scoped trusted-device TOTP bypass."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/account/account.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2313,12 +2271,7 @@
             "replacementOrImpact": "Keep password change. Existing BCrypt hashes remain."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin/admin.vue",
-              "frontend/src/pages/admin-accounts/admin-accounts.vue",
-              "frontend/src/pages/admin-models/admin-models.vue",
-              "frontend/src/pages/admin-routing/admin-routing.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome"
@@ -2329,9 +2282,7 @@
             "replacementOrImpact": "Keep fresh reauth for high-risk operations. Admin reset is not the Go consumer; account delete/export already require current password."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin-accounts/admin-accounts.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "owner-instruction"
@@ -2342,10 +2293,7 @@
             "replacementOrImpact": "A recently reauthenticated ADMIN clears TOTP and recovery codes and revokes the target's sessions, challenges and trusted devices so next login must set up again."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin/admin.vue",
-              "frontend/src/pages/admin-accounts/admin-accounts.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "h5-caller",
@@ -2357,9 +2305,7 @@
             "replacementOrImpact": "Secret-free account facts support the real registration-review and account-security pages."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin/admin.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2380,9 +2326,7 @@
             "replacementOrImpact": "The redesigned admin console does not expose password reset. My uses changeAuthPassword."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/account/account.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "core-outcome",
@@ -2470,11 +2414,7 @@
             "replacementOrImpact": "The retired deployment-registry projection is replaced with the administrator-owned provider/model configuration and global route order below."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin-models/admin-models.vue",
-              "frontend/src/pages/admin-routing/admin-routing.vue",
-              "frontend/src/api/admin-runtime.ts"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "h5-caller",
@@ -2486,9 +2426,7 @@
             "replacementOrImpact": "Keep the secret-free ADMIN configuration view for multiple providers and models."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin-models/admin-models.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "h5-caller",
@@ -2500,9 +2438,7 @@
             "replacementOrImpact": "Keep atomic provider/model snapshot save; credentials are write-only and encrypted."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin-models/admin-models.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "h5-caller",
@@ -2514,9 +2450,7 @@
             "replacementOrImpact": "Keep explicit bounded model-catalog discovery; results remain unsaved draft candidates."
           },
           {
-            "currentH5Callers": [
-              "frontend/src/pages/admin-routing/admin-routing.vue"
-            ],
+            "currentH5Callers": [],
             "decision": "KEEP",
             "keepBecause": [
               "h5-caller",
@@ -2602,7 +2536,7 @@
             "method": "POST",
             "operationId": "settleModelUsage",
             "path": "/api/v1/service/model-usage/reservations/{reservationId}/settle",
-            "replacementOrImpact": "W11-3 settlement of one reservation from reported usage. Repeating the same reservationId keeps the first actual and does not add it again."
+            "replacementOrImpact": "W11-3 settlement of one reservation from reported usage. Repeating the same reservationId keeps the first actual and does not add it again. A reservation already UNKNOWN returns idempotent true, leaves actualUsd null, and does not move the monthly unsettled total."
           },
           {
             "currentH5Callers": [],
@@ -2821,7 +2755,7 @@
           }
         ]
       },
-      "sha256": "6c904650336fdce19de6d076f951067074e151c50742fdb0d83b9285da2fe342"
+      "sha256": "53e1b8fb13ad345ab476da0d0e6f547e2fca78fd6c2df8b60abd81b11f09f409"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -3111,6 +3045,28 @@
         "schemaVersion": 1
       },
       "sha256": "fcb9d33fb18a508fdea281313c94937d0724f4a657fe97b6194d38d1a7c879e9"
+    },
+    "model-ledger-price-statuses.yaml": {
+      "document": {
+        "catalogId": "model-ledger-price-statuses",
+        "entries": [
+          {
+            "code": "ACTIVE",
+            "order": 0
+          },
+          {
+            "code": "MISSING",
+            "order": 1
+          },
+          {
+            "code": "UNSUPPORTED_CURRENCY",
+            "order": 2
+          }
+        ],
+        "note": "Derived per profile from its state, currency and the current effective vc.model_unit_price row. The ledger is USD per 1K tokens, converted from the catalog's USD per million tokens. ACTIVE is that match. MISSING leaves a reservation NO_PRICE. UNSUPPORTED_CURRENCY is any currency other than USD.",
+        "schemaVersion": 1
+      },
+      "sha256": "365c4b861fa03b0f8da2d1df145b361214ca3c5de903a898cce6804229cc774f"
     },
     "model-protocols.yaml": {
       "document": {

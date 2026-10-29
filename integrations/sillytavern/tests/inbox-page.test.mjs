@@ -82,6 +82,7 @@ const deliveries = [
     { deliveryId: '4', eventId: 'evt-removed', channel: 'EMAIL', configuredTarget: 'owner@example.invalid', status: 'failed', attemptCount: 2, failureCode: 'SMTP_REJECTED' },
     { deliveryId: '5', eventId: 'evt-invalid', channel: 'EMAIL', configuredTarget: 'owner@example.invalid', status: 'stopped', attemptCount: 0, stoppedReason: 'cancelled' },
     { deliveryId: '6', eventId: 'evt-wait', channel: 'FEISHU', configuredTarget: WEBHOOK, status: 'stopped', attemptCount: 0, stoppedReason: 'expired' },
+    { deliveryId: '7', eventId: 'evt-pending', channel: 'EMAIL', configuredTarget: 'owner@example.invalid', status: 'sending', attemptCount: 1 },
 ];
 
 function install(next) {
@@ -173,7 +174,7 @@ test('路由常量只覆盖本页需要放行的方法与路径', () => {
 test('打开页面读取策略、跟进、inbox、渠道与投递，凭据不进页面、状态或 localStorage', async () => {
     const page = await opened();
     const text = html(page);
-    for (const item of ['澄夏', '22:00', '08:00', 'Asia/Shanghai', '周末散步待跟进', '待跟进', '取消跟进', '已取消', '待写入', '已写入', '当前链接已移除', '链接失效', '需要打开此会话继续', '渠道已接受', '结果未知', '待发送', '失败', '已停止', '过期', '已启用', '已关闭', '不回显', '群成员可见', '应用未读', '应用已读']) {
+    for (const item of ['澄夏', '22:00', '08:00', 'Asia/Shanghai', '周末散步待跟进', '待跟进', '取消跟进', '已取消', '待写入', '已写入', '当前链接已移除', '链接失效', '需要打开此会话继续', '渠道已接受', '结果未知', '待发送', '发送中', '失败', '已停止', '过期', '已启用', '已关闭', '不回显', '群成员可见', '应用未读', '应用已读']) {
         assert.ok(text.includes(item), item);
     }
     assert.match(text, /data-preview="false"/);
@@ -316,6 +317,9 @@ test('开关、状态徽标、静默摘要卡和凭据占位表达当前状态',
     assert.match(text, /正文预览<\/span>/);
     assert.doesNotMatch(text, /主动问候开|主动问候关|正文预览 开|正文预览 关/);
     assert.match(text, /class="vc-inbox-badge"[^>]*>渠道已接受</);
+    assert.match(text, /data-status="sending"/);
+    assert.match(text, /class="vc-inbox-badge"[^>]*>发送中</);
+    assert.doesNotMatch(text, /手机已收到/);
     assert.match(text, /class="vc-inbox-badge"[^>]*>待写入</);
     assert.match(text, /class="vc-inbox-badge"[^>]*>不回显</);
     assert.match(text, /class="vc-inbox-summary"/);

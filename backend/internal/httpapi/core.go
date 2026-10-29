@@ -185,6 +185,7 @@ func (s *Server) registerCore() {
 	s.mux.HandleFunc("POST /api/v1/story/runs", s.handleStartStoryRun)
 	s.mux.HandleFunc("POST /api/v1/story/runs/{runId}/actions", s.handleStoryAction)
 	s.mux.HandleFunc("POST /api/v1/story/runs/{runId}/rewind", s.handleStoryRewind)
+	s.mux.HandleFunc("GET /api/v1/story/runs/{runId}/projections", s.handleListPendingStoryProjections)
 	s.mux.HandleFunc("POST /api/v1/story/runs/{runId}/projections/{eventId}/confirm", s.handleStoryProjectionConfirm)
 	s.mux.HandleFunc("POST /api/v1/story/runs/{runId}/participants/{actorId}", s.handleStoryParticipant)
 	s.mux.HandleFunc("POST /api/v1/story/runs/{runId}/epilogue", s.handleStoryEpilogue)

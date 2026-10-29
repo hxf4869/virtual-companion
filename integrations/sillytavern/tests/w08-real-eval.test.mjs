@@ -164,8 +164,11 @@ test('memory-real-eval 只在显式过滤时运行，产物在忽略目录', () 
     const script = fs.readFileSync(new URL('../scripts/w08-real-eval.mjs', import.meta.url), 'utf8');
     assert.equal(script.includes("required: ['杭州', '外婆', '2026-10-30']"), true);
     assert.equal(script.includes('测试环境价格，不是 Owner 价格，也不代表供应商账单'), true);
-    assert.equal(script.includes("provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k, active, effective_from"), true);
-    assert.equal(script.includes("'vc08-real'"), true);
+    const providerSaved = script.indexOf("saveProvider('vc08-real'");
+    const priceSeeded = script.indexOf('ctx.w08.seedRealEstimate()');
+    assert.ok(providerSaved > 0 && priceSeeded > providerSaved, '测试单价在保存供应商之后写入');
+    const managed = fs.readFileSync(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
+    assert.match(managed, /seedRealEstimate: \(\) => psql\("INSERT INTO vc\.model_unit_price\([^"]*VALUES \('vc08-real'/);
     const noiseInFixture = [...fixture.matchAll(/"id": "noise-\d+"/g)].length;
     assert.ok(noiseInFixture > OPTIONAL_SAMPLES.filter((sample) => sample.id.startsWith('noise-')).length);
     assert.equal(fs.existsSync(new URL(`file://${REPO_ROOT}/AGENTS.md`)), true); // 指向仓库根（worktree 目录名可不同）

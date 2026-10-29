@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { createF2Client, createSourceGuard, F2ConflictError } from '../extension/vc-model-settings/f2-client.js';
+import { armSilentF2Conflict, createF2Client, createSourceGuard, F2ConflictError, installInstanceBinding } from '../extension/vc-model-settings/f2-client.js';
 const token = (revision = 1, id = 'synthetic-chat') => ({ id, revision });
 const document = (t, mes) => ({ chat: [{ chat_metadata: { vc_f2: t } }, { mes }] });
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
@@ -80,4 +80,69 @@ test('真实MVU handleVariablesInMessage产物：事件await后改revision，不
     const update = vm.runInContext(`(${actual})`, context);
     const pending = update(0); c.chatMetadata.vc_f2.revision++; gate.resolve();
     await assert.rejects(pending, { code: 'VC_STALE_SOURCE' }); assert.equal(writes, 0);
+});
+
+test('conflict silent 仍拒绝且不调用 onConflict，下一次普通失败才交给对话框', async () => {
+    let calls = 0;
+    const client = createF2Client({ onConflict() { calls += 1; } });
+    client.loaded('main', { vc_f2: token() });
+    const send = async () => new Response(JSON.stringify({ code: 'VC_REVISION_CONFLICT' }), { status: 409, headers: { 'content-type': 'application/json' } });
+    await assert.rejects(
+        client.save('main', document(token(), '投影'), { live: true, send, conflict: 'silent' }),
+        { name: 'F2ConflictError', code: 'VC_REVISION_CONFLICT' },
+    );
+    assert.equal(calls, 0);
+    await assert.rejects(client.save('main', document(token(), '用户'), { live: true, send }), { name: 'F2ConflictError' });
+    assert.equal(calls, 1);
+});
+
+test('无效 token 的 silent 保存不弹框；arm 只被下一次 save 同步消费', async () => {
+    let calls = 0;
+    const client = createF2Client({ onConflict() { calls += 1; } });
+    await assert.rejects(
+        client.save('main', { chat: [{ chat_metadata: {} }] }, { conflict: 'silent' }),
+        { name: 'F2ConflictError', code: 'VC_REVISION_REQUIRED' },
+    );
+    assert.equal(calls, 0);
+    armSilentF2Conflict();
+    client.loaded('main', { vc_f2: token() });
+    const send = async () => { throw new Error('network'); };
+    const pending = client.save('main', document(token(), '投影补写'), { live: true, send });
+    const user = createF2Client({ onConflict() { calls += 1; } });
+    await assert.rejects(
+        user.save('other', document(token(1, 'other'), '用户自己的保存'), { send }),
+        { code: 'VC_SAVE_UNCONFIRMED' },
+    );
+    assert.equal(calls, 1);
+    await assert.rejects(pending, { code: 'VC_SAVE_UNCONFIRMED' });
+    assert.equal(calls, 1);
+});
+
+test('绑定 404 不丢弃 relationshipId，也不再分配新关系', async () => {
+    const calls = [];
+    const metadata = {
+        vc_f2: token(),
+        vc_binding: { relationshipId: '11', conversationId: '21', mode: 'COMPANION' },
+    };
+    const card = { name: '澄夏', data: { extensions: { vc_character_ref: 'card-1' } } };
+    const context = {
+        characters: [card], characterId: 0, groupId: null, chatMetadata: metadata,
+        chat: [{ mes: 'hi' }], chatId: 'main',
+        eventSource: { on() {} }, eventTypes: { CHAT_CHANGED: 'chat_changed' },
+        saveChat: async () => { throw new Error('should not save'); },
+    };
+    const error = Object.assign(new Error('gone'), { status: 404, code: 'NOT_FOUND' });
+    await assert.rejects(
+        installInstanceBinding({
+            getContext: () => context,
+            resolveBinding: async (snapshot) => { calls.push(snapshot); throw error; },
+            writeExtensionField: async () => { throw new Error('should not write ref'); },
+            captureSessionContext: async () => {},
+        }),
+        (err) => err === error,
+    );
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].relationshipId, '11');
+    assert.equal(metadata.vc_binding.relationshipId, '11');
+    assert.equal(metadata.vc_binding.conversationId, '21');
 });

@@ -54,19 +54,17 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 
 | 命令 | 实测 | 覆盖 |
 |---|---|---|
-| `bash scripts/check.sh` | ~21s | 下述全部（Go 1.26.10、Node 22.23.1；2026-10-28 W08-1 实测） |
-| `bash scripts/check.sh --quick` | ~1.5s | catalog / OpenAPI / paid-features / licenses，不要求 Go 或 pnpm |
+| `bash scripts/check.sh` | ~19s | 下述全部（本机 go 1.27.1，模块 Go 1.26.10、Node 22.23.1；2026-10-29 W15-5 实测） |
+| `bash scripts/check.sh --quick` | ~2s | catalog / OpenAPI / paid-features / licenses，不要求 Go 或 Node |
 | ├ catalog validate/drift | ~1s | `specs/catalog` 契约（含 Go v1 API scope 对账 OpenAPI）与 `specs/generated` 漂移 |
 | ├ openapi validate/drift | <1s | `specs/openapi` 合同与生成物漂移 |
 | ├ paid-features | <1s | 依赖/配置中禁止付费运行时前提 |
-| ├ licenses | <1s | Go/前端直接依赖许可证清单核对；ST 集成域（`upstream.lock`/`vendor.lock`/`package.json`）按 `domainPolicies.stIntegration` 门禁 |
-| ├ go-test | ~10s | `backend/` vendor 离线 `go test ./...`（runtime、crypto、provider、core、HTTP、jobs、realtime 与迁移） |
-| ├ st-integration-test | ~5s | `integrations/sillytavern/tests/*.test.mjs` 离线单测（含 MemoryCore foundation 鉴权/装配/归属，S1 config/backup/patcher/lock 与 S3/S4 扩展、协议测试，`node --test`；浏览器验收 `scripts/accept.mjs` 不在本表，见该目录 README） |
-| ├ frontend-test | ~10s | vitest 全量 |
-| └ frontend-type-check | ~4s | vue-tsc |
+| ├ licenses | <1s | Go 直接依赖许可证清单核对；ST 集成域（`upstream.lock`/`vendor.lock`/`package.json`）按 `domainPolicies.stIntegration` 门禁 |
+| ├ go-test | ~13s | `backend/` vendor 离线 `go test ./...`（runtime、crypto、provider、core、HTTP、jobs、realtime 与迁移） |
+| └ st-integration-test | ~5s | `integrations/sillytavern/tests/*.test.mjs` 离线单测（含 MemoryCore foundation 鉴权/装配/归属，S1 config/backup/patcher/lock 与 S3/S4 扩展、协议测试，`node --test`；浏览器验收 `scripts/accept.mjs` 不在本表，见该目录 README） |
 | `bash infra/db/run-rls-tests.sh` | Docker | SQL/RLS/并发测试 |
 | `bash infra/db/run-go-store-tests.sh` | Docker | G3 Go pgx owner tx / RLS / least-privilege 与 G7 Relationship/Conversation/Message 隔离 E2E（`-tags=integration`） |
-| CI（5 个 job） | — | checks / backend / database / frontend / supply-chain |
+| CI（4 个 job） | — | checks / backend / database / supply-chain |
 
 生成物重生成：`python scripts/checks/catalog_tool.py generate`（catalog）、`scripts/dev/openapi_tool.py`（openapi）。
 

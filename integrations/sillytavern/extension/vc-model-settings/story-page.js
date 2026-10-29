@@ -328,17 +328,44 @@ export function createStoryPage({
         state.notice = '';
     }
     async function projectEvent(result, text) {
-        if (typeof project !== 'function' || !result?.worldEventId) return;
+        if (typeof project !== 'function' || !result?.worldEventId) return { confirmed: false, appended: false };
         const job = { runId: state.turn.runId, worldEventId: String(result.worldEventId), text, cancelled: false };
         jobs.add(job);
         try {
             const done = await project(job);
             if (done?.confirmed) state.syncPending = false;
+            return done || { confirmed: false, appended: false };
         } catch {
             // 世界已经生效。补写失败时留下待同步，不把错误冒泡成开局失败。
+            return { confirmed: false, appended: false };
         } finally {
             jobs.delete(job);
         }
+    }
+    async function syncPendingProjections(ticket) {
+        if (typeof project !== 'function' || !state.turn?.runId) return;
+        let body;
+        try {
+            body = await api.storyRequest('GET', `/api/v1/story/runs/${state.turn.runId}/projections?state=PENDING`);
+        } catch {
+            return;
+        }
+        if (!alive(ticket)) return;
+        const rows = Array.isArray(body?.projections) ? body.projections : [];
+        let saw = false;
+        let stuck = false;
+        for (const item of rows) {
+            if (!alive(ticket)) return;
+            const worldEventId = decimalOf(item?.worldEventId);
+            const text = shown(item?.text);
+            if (!worldEventId || !text) continue;
+            saw = true;
+            state.syncPending = true;
+            const done = await projectEvent({ worldEventId }, text);
+            if (!alive(ticket)) return;
+            if (!done?.confirmed && done?.skipped !== 'deleted') stuck = true;
+        }
+        if (alive(ticket) && saw) state.syncPending = stuck;
     }
     async function applyCommand(command) {
         const ticket = epoch;
@@ -393,6 +420,7 @@ export function createStoryPage({
         state,
         async open() {
             state.open = true;
+            const ticket = epoch;
             const current = currentStoryId();
             if (state.turn && current && state.turn.conversationId !== current) resetRun();
             emit();
@@ -402,6 +430,9 @@ export function createStoryPage({
                 // start() 会再取会话；不把服务端原文放进页面。
             }
             await refreshConfig();
+            if (state.turn && state.turn.conversationId === currentStoryId()) {
+                await syncPendingProjections(ticket);
+            }
             if (state.open) emit();
         },
         close() {
@@ -575,6 +606,7 @@ export function createStoryPage({
                 state.rewindAsk = null;
                 state.epilogue = '';
                 onRun(state.turn);
+                await syncPendingProjections(ticket);
             } catch (error) {
                 if (!alive(ticket)) return;
                 fail(error);

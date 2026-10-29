@@ -129,6 +129,11 @@ func (s *Server) handlePutProactivePolicy(w http.ResponseWriter, r *http.Request
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
 	}
+	zone, err := postgres.CanonicalQuietHoursZone(body.QuietHoursTimezone)
+	if err != nil {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
 	st := s.followUps(w)
 	if st == nil {
 		return
@@ -137,7 +142,7 @@ func (s *Server) handlePutProactivePolicy(w http.ResponseWriter, r *http.Request
 		Enabled:                  *body.Enabled,
 		QuietHoursStart:          blankable(body.QuietHoursStart),
 		QuietHoursEnd:            blankable(body.QuietHoursEnd),
-		QuietHoursTimezone:       blankable(body.QuietHoursTimezone),
+		QuietHoursTimezone:       zone,
 		DailyLimit:               *body.DailyLimit,
 		RecentInteractionMinutes: *body.RecentInteractionMinutes,
 		AllowedModes:             body.AllowedModes,

@@ -172,7 +172,7 @@ function allowDelivery(raw) {
     const deliveryId = decimalId(raw?.deliveryId);
     const eventId = eventIdOf(raw?.eventId);
     const channel = raw?.channel === 'EMAIL' || raw?.channel === 'FEISHU' ? raw.channel : '';
-    const status = ['pending', 'accepted', 'failed', 'unknown', 'stopped'].includes(raw?.status) ? raw.status : '';
+    const status = ['pending', 'sending', 'accepted', 'failed', 'unknown', 'stopped'].includes(raw?.status) ? raw.status : '';
     if (!deliveryId || !eventId || !channel || !status) return null;
     let configuredTarget = typeof raw?.configuredTarget === 'string' ? raw.configuredTarget.trim() : '';
     if (configuredTarget.toLowerCase().includes('://')) configuredTarget = '';
@@ -245,6 +245,7 @@ function deliveryLabel(row) {
     if (row.status === 'stopped' && row.stoppedReason === 'expired') return { text: '过期', tone: 'warn', status: 'expired' };
     if (row.status === 'accepted') return { text: '渠道已接受', tone: 'ok', status: 'accepted' };
     if (row.status === 'pending') return { text: '待发送', tone: 'warn', status: 'pending' };
+    if (row.status === 'sending') return { text: '发送中', tone: 'warn', status: 'sending' };
     if (row.status === 'failed') return { text: '失败', tone: 'danger', status: 'failed' };
     if (row.status === 'unknown') return { text: '结果未知', tone: 'warn', status: 'unknown' };
     if (row.status === 'stopped') return { text: '已停止', tone: 'warn', status: 'stopped' };

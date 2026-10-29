@@ -441,8 +441,13 @@ func (s *Store) GetProactivePolicy(ctx context.Context, owner, relationshipID in
 }
 
 func (s *Store) PutProactivePolicy(ctx context.Context, owner, relationshipID int64, in ProactivePolicyWrite) (ProactivePolicy, error) {
+	zone, err := CanonicalQuietHoursZone(in.QuietHoursTimezone)
+	if err != nil {
+		return ProactivePolicy{}, err
+	}
+	in.QuietHoursTimezone = zone
 	var out ProactivePolicy
-	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
 			SELECT vc.put_proactive_policy($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 			owner, relationshipID, in.Enabled, nullIfBlankPtr(in.QuietHoursStart), nullIfBlankPtr(in.QuietHoursEnd),

@@ -54,6 +54,9 @@ type FollowUpGeneration struct {
 	ProviderRevision *int64
 	BindingRevision  *int64
 	Params           json.RawMessage
+	// AttemptCount is the live FOLLOW_UP work item's attempt_count. The
+	// greeting ledger key includes it. Zero means no PENDING or CLAIMED job.
+	AttemptCount int
 	// Deferrals is how many generation holds are already stored. DeferredUntil
 	// is set only while the latest hold is still waiting.
 	Deferrals     int
@@ -124,7 +127,16 @@ func (s *Store) LoadFollowUpGeneration(ctx context.Context, owner, id int64) (Fo
 		if len(params) > 0 {
 			out.Params = json.RawMessage(params)
 		}
-		return nil
+		return tx.QueryRow(ctx, `
+			SELECT COALESCE((
+				SELECT wi.attempt_count
+				  FROM vc.work_item wi
+				 WHERE wi.owner_user_id = $1
+				   AND wi.kind = 'FOLLOW_UP'
+				   AND wi.ref_id = $2
+				   AND wi.status IN ('PENDING', 'CLAIMED')
+				 ORDER BY wi.id DESC
+				 LIMIT 1), 0)`, owner, id).Scan(&out.AttemptCount)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return FollowUpGeneration{}, ErrNotFound

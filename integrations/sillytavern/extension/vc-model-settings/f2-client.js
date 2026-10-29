@@ -18,6 +18,18 @@ function validToken(token) {
 
 /** Queue only snapshots captured from one live load. Detached snapshots keep
  * their original token: they cannot borrow a later ACK to overwrite history. */
+let silentArmed = false;
+
+/** 下一次 save 同步消费。投影补写用来避免原生保存路径弹出冲突框。 */
+export function armSilentF2Conflict() { silentArmed = true; }
+export function disarmSilentF2Conflict() { silentArmed = false; }
+
+function consumeSilent(options) {
+    const armed = silentArmed;
+    silentArmed = false;
+    return options?.conflict === 'silent' || armed;
+}
+
 export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = () => {} } = {}) {
     const sources = new Map();
     const observed = new Map();
@@ -57,7 +69,9 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
                 mode: metadata.vc_binding.mode || 'COMPANION',
             } } : {}) };
     }
-    function save(path, payload, { live = false, send, apply = () => {} } = {}) {
+    function save(path, payload, options = {}) {
+        const silent = consumeSilent(options);
+        const { live = false, send, apply = () => {} } = options;
         // This clone and serialization run synchronously, before compression,
         // queue waits or network IO can observe a different chat/swipe.
         if (prepareSource) prepareSource(payload.chat);
@@ -66,7 +80,7 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
         const serialized = JSON.stringify(frozen);
         if (!validToken(original)) {
             const error = new F2ConflictError('VC_REVISION_REQUIRED');
-            onConflict(serialized, error);
+            if (!silent) onConflict(serialized, error);
             return Promise.reject(error);
         }
         let source = sources.get(path);
@@ -114,7 +128,7 @@ export function createF2Client({ uuid = () => crypto.randomUUID(), onConflict = 
         }).catch((error) => {
             source.blocked = true;
             const failure = error instanceof F2ConflictError ? error : new F2ConflictError('VC_SAVE_UNCONFIRMED');
-            onConflict(serialized, failure);
+            if (!silent) onConflict(serialized, failure);
             throw failure;
         });
         source.tail = pending.catch(() => {}); // queue bookkeeping; caller still receives the rejection
@@ -486,8 +500,8 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
         const current = source();
         if (!current?.characterRef) throw new F2ConflictError('VC_CHARACTER_REF_UNCONFIRMED');
         const existing = metadata.vc_binding;
-        const result = await binding.ensure({ ...current, relationshipId: existing?.relationshipId || null,
-            displayName: Array.from(card.name || '').slice(0, 32).join('') });
+        const displayName = Array.from(card.name || '').slice(0, 32).join('');
+        const result = await binding.ensure({ ...current, relationshipId: existing?.relationshipId || null, displayName });
         if (getContext().chatMetadata !== metadata) throw new StaleBindingError();
         if (JSON.stringify(existing) !== JSON.stringify(result)) {
             metadata.vc_binding = result;

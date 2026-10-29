@@ -1,7 +1,7 @@
 schemaVersion: 1
 policyId: NO_PAID_SOFTWARE_RUNTIME_PREREQUISITE
 description: >-
-  预录 license 清单：声明 Go 与 frontend 直接依赖的 license family，
+  预录 license 清单：声明 Go 直接依赖的 license family，
   供 scripts/checks/check_licenses.py 与 scripts/checks/license-policy.yaml allowlist 比对。
   传递依赖不在此清单（由 CI SBOM 与依赖审计覆盖）。
 # Go 直接依赖（backend/go.mod，排除 // indirect）
@@ -16,85 +16,6 @@ goDirectDependencies:
     licenseFamily: Apache-2.0
   - module: golang.org/x/crypto
     licenseFamily: BSD-3-Clause
-# frontend 直接依赖（package.json dependencies + devDependencies 去重）
-# 实际 = 7 dependencies + 16 devDependencies = 23
-frontendDirectDependencies:
-  # --- @dcloudio (uni-app, Apache-2.0) ---
-  - name: "@dcloudio/uni-app"
-    licenseFamily: Apache-2.0
-  - name: "@dcloudio/uni-components"
-    licenseFamily: Apache-2.0
-  - name: "@dcloudio/uni-h5"
-    licenseFamily: Apache-2.0
-  # --- Wot UI v2（MIT） ---
-  - name: "@wot-ui/ui"
-    licenseFamily: MIT
-  - name: "@dcloudio/types"
-    licenseFamily: Apache-2.0
-    scope: dev
-  - name: "@dcloudio/uni-cli-shared"
-    licenseFamily: Apache-2.0
-    scope: dev
-  - name: "@dcloudio/uni-stacktracey"
-    licenseFamily: Apache-2.0
-    scope: dev
-  - name: "@dcloudio/vite-plugin-uni"
-    licenseFamily: Apache-2.0
-    scope: dev
-  # --- Vue (MIT) ---
-  - name: vue
-    licenseFamily: MIT
-  - name: vue-i18n
-    licenseFamily: MIT
-  - name: "@vue/runtime-core"
-    licenseFamily: MIT
-    scope: dev
-  - name: "@vue/tsconfig"
-    licenseFamily: MIT
-    scope: dev
-  - name: "@vue/test-utils"
-    licenseFamily: MIT
-    scope: dev
-  - name: "@vitejs/plugin-vue"
-    licenseFamily: MIT
-    scope: dev
-  # --- Pinia (MIT) ---
-  - name: pinia
-    licenseFamily: MIT
-  # --- TypeScript (Apache-2.0) ---
-  - name: typescript
-    licenseFamily: Apache-2.0
-    scope: dev
-  - name: "@types/node"
-    licenseFamily: MIT
-    scope: dev
-  # --- Vite (MIT，R1 P2 修正) / Vitest (MIT) ---
-  - name: vite
-    licenseFamily: MIT
-    scope: dev
-  - name: vitest
-    licenseFamily: MIT
-    scope: dev
-  # --- vue-tsc (MIT，R1 P2 修正) ---
-  - name: vue-tsc
-    licenseFamily: MIT
-    scope: dev
-  # --- happy-dom (MIT) ---
-  - name: happy-dom
-    licenseFamily: MIT
-    scope: dev
-  # --- Sass（MIT；Wot UI 样式编译） ---
-  - name: sass
-    licenseFamily: MIT
-    scope: dev
-  # --- Playwright browser E2E (Apache-2.0) ---
-  - name: "@playwright/test"
-    licenseFamily: Apache-2.0
-    scope: dev
-  # --- DOGFOOD-09: axe 自动化可访问性检查（axe-core 及 wrapper 均 MPL-2.0） ---
-  - name: "@axe-core/playwright"
-    licenseFamily: MPL-2.0
-    scope: dev
 # 例外账本（有到期日的受控接受；check_licenses.py 校验 expiresAt > 今天才生效）
 exceptions: []
 # integrations/sillytavern/package.json 直接依赖（按 license-policy.yaml domainPolicies.stIntegration 核对；

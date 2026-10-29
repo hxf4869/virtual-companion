@@ -36,7 +36,7 @@ func NewSMTP(cfg SMTPConfig) (*SMTP, error) {
 		return nil, errors.New("smtp tls verification must stay enabled")
 	}
 	if cfg.Timeout <= 0 {
-		cfg.Timeout = 10 * time.Second
+		cfg.Timeout = DefaultSendTimeout
 	}
 	return &SMTP{cfg: cfg}, nil
 }

@@ -647,9 +647,6 @@ if ! python3 "$HERE/resources.py" require-absent --project "$PROJECT" \
     --tag "$MINIO_IMAGE" --tag "$RUNTIME_IMAGE" --tag "$CADDY_IMAGE"; then
   die "expected-absent resources exist (or absence could not be proven); refusing"
 fi
-echo "  frontend bundle for the production Caddy image"
-pnpm --dir "$ROOT/frontend" build >/dev/null || die "frontend build failed"
-
 VC_MIGRATOR_DB_PASSWORD=$(openssl rand -hex 32)
 VC_RUNTIME_DB_PASSWORD=$(openssl rand -hex 32)
 VC_CRYPTO_REST_KEY=$(openssl rand -base64 32 | tr -d '\n')
@@ -854,9 +851,9 @@ export G12_SESSION="$RAW" G12_CSRF="$CSRF" G12_ACCOUNT="$G12_ACCOUNT_ID" G12_SES
 echo "  session fabricated"
 
 # §19.1 S9 (VC-R128): two dedicated login-only synthetic accounts with a
-# REAL BCrypt password — the same committed synthetic pool credential as
-# scripts/dev/e2e-stack.sh / frontend/e2e/helpers.ts (fixed cost-10 hash;
-# never a real secret). Seeded only when S9 will actually run. The
+# REAL BCrypt password — the same committed synthetic pool credential the
+# retired Vue e2e helper used (fixed cost-10 hash; never a real secret).
+# Seeded only when S9 will actually run. The
 # per-trial database is always fresh, so the accounts carry no prior
 # TOTP/trusted-device/session or login-rate-limit state. The password
 # travels to workload.py by environment only, never argv or logs, and

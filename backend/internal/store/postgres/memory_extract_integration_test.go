@@ -47,7 +47,7 @@ DELETE FROM vc.provider_config WHERE provider_id = 'prov-a'`); err != nil {
 	if _, err := store.SaveProviderConfig(ctx, 7, SaveProvider{
 		ProviderID: "prov-a", DisplayName: "Source extraction", Protocol: ProtocolOpenAIChat,
 		BaseURL: "https://example.test/v1", Credential: "synthetic", State: ProviderEnabled,
-		Models: []ProviderModel{catalogModel("memory", "model-a", intPtr(32768))},
+		Models: []ProviderModel{seedPricedModel("memory", "model-a", intPtr(32768))},
 	}); err != nil {
 		t.Fatal(err)
 	}

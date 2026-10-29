@@ -67,6 +67,14 @@ type StoryEpilogue struct {
 	Summary        string
 }
 
+// PendingStoryProjection is one player-visible projection still waiting on the
+// current branch head. Text is the chat line, not the stored event body.
+type PendingStoryProjection struct {
+	EventID      int64
+	WorldVersion int64
+	Text         string
+}
+
 // StoryEpilogueResult is the stored decision. MemoryID is zero when nothing was written.
 type StoryEpilogueResult struct {
 	Decision       string
@@ -255,6 +263,37 @@ func (s *Store) RewindStory(ctx context.Context, owner int64, in StoryRewind) (S
 	})
 	if err != nil {
 		return StoryRewindResult{}, mapStoryErr(err)
+	}
+	return out, nil
+}
+
+// ListPendingStoryProjections reads pending projections the player can see on
+// the run's current branch head. It does not confirm them or change world state.
+func (s *Store) ListPendingStoryProjections(ctx context.Context, owner, runID int64) ([]PendingStoryProjection, error) {
+	if runID <= 0 {
+		return nil, ErrInvalid
+	}
+	out := []PendingStoryProjection{}
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT out_event_id, out_world_version, out_clue_name, out_text, out_note, out_qualification
+			FROM vc.list_pending_player_story_projections($1,$2)`, owner, runID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var item PendingStoryProjection
+			var clue, text, note, qualification string
+			if err := rows.Scan(&item.EventID, &item.WorldVersion, &clue, &text, &note, &qualification); err != nil {
+				return err
+			}
+			item.Text = story.PlayerProjectionLine(clue, text, note, qualification)
+			out = append(out, item)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, mapStoryErr(err)
 	}
 	return out, nil
 }

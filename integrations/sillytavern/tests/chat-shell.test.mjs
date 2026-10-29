@@ -112,6 +112,10 @@ test('聊天壳挂载空会话、断线、待写入条，不拉 inbox，记忆�
     assert.equal(document.body.textContent.includes('另一条也不可见'), false);
     shell.setChannel({ online: true });
     assert.equal(document.body.textContent.includes(CHAT_OFFLINE_COPY), false);
+    shell.setBudgetInsufficient(true);
+    assert.match(document.querySelector('#vc-chat-budget')?.textContent || '', /当月可用额度不足/);
+    shell.setBudgetInsufficient(false);
+    assert.equal(document.querySelector('#vc-chat-budget'), null);
     buttonByText(document, '记忆').click();
     assert.equal(memoryEvents.length, 1);
     assert.equal(memoryEvents[0].opener, buttonByText(document, '记忆'));
@@ -120,6 +124,74 @@ test('聊天壳挂载空会话、断线、待写入条，不拉 inbox，记忆�
     assert.equal(charactersOpener, buttonByText(document, '角色'));
     assert.equal(document.body.textContent.includes('强制覆盖'), false);
     globalThis.fetch = realFetch;
+});
+
+function createEventSource() {
+    const listeners = new Map();
+    return {
+        on(type, fn) {
+            const list = listeners.get(type) || [];
+            list.push(fn);
+            listeners.set(type, list);
+        },
+        emit(type, ...args) {
+            for (const fn of listeners.get(type) || []) fn(...args);
+        },
+    };
+}
+
+function shellContext(events, onlineStatus) {
+    return {
+        groups: [], groupId: null, characters: [{ name: '澄夏' }], characterId: 0, chat: [],
+        mainApi: 'openai', getChatCompletionModel: () => null, onlineStatus,
+        eventSource: events,
+        eventTypes: {
+            CHAT_CHANGED: 'chat', CHAT_COMPLETION_SETTINGS_READY: 'ready',
+            SETTINGS_UPDATED: 'settings', OAI_PRESET_CHANGED_AFTER: 'preset',
+            ONLINE_STATUS_CHANGED: 'online_status_changed',
+        },
+    };
+}
+
+test('聊天断线跟随宿主在线状态和浏览器离线，恢复后清除', () => {
+    const previousAdd = globalThis.addEventListener;
+    const previousRemove = globalThis.removeEventListener;
+    const bus = { offline: [], online: [] };
+    globalThis.addEventListener = (type, fn) => {
+        if (type === 'offline' || type === 'online') bus[type].push(fn);
+    };
+    globalThis.removeEventListener = () => {};
+    const fire = (type) => { for (const fn of bus[type]) fn(); };
+    try {
+        installMiniDom();
+        const events = createEventSource();
+        const ctx = shellContext(events, 'Valid');
+        mountChatShell({ getContext: () => ctx, openModels() {} });
+        assert.equal(document.body.textContent.includes(CHAT_OFFLINE_COPY), false);
+        events.emit('online_status_changed', 'no_connection');
+        assert.match(document.body.textContent, new RegExp(CHAT_OFFLINE_COPY));
+        events.emit('online_status_changed', 'Valid');
+        assert.equal(document.body.textContent.includes(CHAT_OFFLINE_COPY), false);
+        fire('offline');
+        assert.match(document.body.textContent, new RegExp(CHAT_OFFLINE_COPY));
+        fire('online');
+        assert.equal(document.body.textContent.includes(CHAT_OFFLINE_COPY), false);
+        events.emit('online_status_changed', 'no_connection');
+        fire('offline');
+        fire('online');
+        assert.match(document.body.textContent, new RegExp(CHAT_OFFLINE_COPY));
+        events.emit('online_status_changed', 'Valid');
+        assert.equal(document.body.textContent.includes(CHAT_OFFLINE_COPY), false);
+
+        installMiniDom();
+        mountChatShell({ getContext: () => shellContext(createEventSource(), 'no_connection'), openModels() {} });
+        assert.match(document.body.textContent, new RegExp(CHAT_OFFLINE_COPY));
+    } finally {
+        if (previousAdd) globalThis.addEventListener = previousAdd;
+        else delete globalThis.addEventListener;
+        if (previousRemove) globalThis.removeEventListener = previousRemove;
+        else delete globalThis.removeEventListener;
+    }
 });
 
 test('子任务 4 需要并入的聊天路由还没在本文件之外写死实现', () => {

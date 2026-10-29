@@ -23,7 +23,7 @@ type providerRouteResolver interface {
 // providerModelJSON is one profile in both directions. On input a nil
 // capabilities / reasoningLevels / generationParams / pricing keeps the stored
 // document; profileKey defaults to modelId. Responses always carry all four
-// documents and boundPurposes, so they are not omitempty.
+// documents, boundPurposes and ledgerPrice. A save ignores ledgerPrice.
 type providerModelJSON struct {
 	ProfileKey          string                     `json:"profileKey,omitempty"`
 	ModelID             string                     `json:"modelId"`
@@ -38,6 +38,7 @@ type providerModelJSON struct {
 	Pricing             *postgres.ModelPricing     `json:"pricing"`
 	BoundPurposes       []string                   `json:"boundPurposes"`
 	UpdatedAt           string                     `json:"updatedAt,omitempty"`
+	LedgerPrice         string                     `json:"ledgerPrice"`
 }
 
 // resolveModelJSON is the pinned profile as the plugin applies it.
@@ -211,7 +212,7 @@ func modelToJSON(model postgres.ProviderModel) providerModelJSON {
 		State: model.State, Capabilities: model.Capabilities,
 		ReasoningLevels: model.ReasoningLevels, GenerationParams: model.GenerationParams,
 		Pricing: model.Pricing, BoundPurposes: model.BoundPurposes,
-		UpdatedAt: rfc3339(model.UpdatedAt),
+		UpdatedAt: rfc3339(model.UpdatedAt), LedgerPrice: model.LedgerPrice,
 	}
 }
 

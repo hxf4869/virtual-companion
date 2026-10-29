@@ -649,7 +649,7 @@ async function caseUI02(page) {
         await page.locator('.vc-instance-dialog [data-action="close"]').click();
         await poll(() => page.evaluate(() => document.querySelector('.vc-instance-dialog')?.open !== true), 10000, '角色页关闭');
         if (!await nativeClosed()) throw new Error('关闭角色页时打开了原生角色抽屉');
-        await page.locator('#vc-chat-nav').getByRole('button', { name: '模型设置', exact: true }).click();
+        await page.locator('#vc-chat-nav [data-nav="models"]').click();
         await page.locator('.vcms-overlay').waitFor({ state: 'visible' });
         await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
         if (await page.locator('#send_textarea').inputValue() !== '尚未发送的窄屏草稿') throw new Error('导航丢失输入草稿');

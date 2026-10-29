@@ -1,7 +1,9 @@
 # Owner-only Go dogfood
 
-本手册只适用于本机/受控局域网的单 Owner 环境。默认 runtime 是 Go
-`companiond`；旧后端不再参与构建、迁移后的常驻运行或回滚。
+本手册只适用于本机/受控局域网的单 Owner 环境，描述的是 `ops/deploy` 这份 Go-only Compose。
+它只含 `companiond`、PostgreSQL、MinIO 和 Caddy，不含 SillyTavern，不含 MemoryCore，不是 V2 栈。
+V2 的本机步骤见 [`integrations/sillytavern/README.md`](../../integrations/sillytavern/README.md)「本机运行说明」。
+远端部署未授权（`V2-OWNER-DEPLOY`）。默认 runtime 是 Go `companiond`；旧后端不再参与构建、迁移后的常驻运行或回滚。
 
 ## 1. 准备私有配置
 
@@ -25,7 +27,6 @@ chmod 600 ops/deploy/.env.local
 
 ```bash
 bash scripts/check.sh
-pnpm --dir frontend build
 
 cd ops/deploy
 docker compose --env-file .env.local up -d --build
@@ -51,19 +52,20 @@ docker ps --filter label=com.docker.compose.project=deploy \
 
 ## 4. 浏览器与证书
 
-H5 和 API 都从 `https://$VC_DOMAIN` 访问。局域网 IP 使用 Caddy 本地 CA 时，
-需要在测试设备上显式信任 Caddy 根证书；遇到浏览器证书告警时不要绕过。
-证书位于 Compose 的 `caddy-data` volume，可按 Caddy 官方方式导出后由 Owner
-在受控设备上安装。
+API 与健康检查从 `https://$VC_DOMAIN` 访问。产品前台是 SillyTavern 受管宿主，
+入口见 [`integrations/sillytavern/README.md`](../../integrations/sillytavern/README.md)。
+局域网 IP 使用 Caddy 本地 CA 时，需要在测试设备上显式信任 Caddy 根证书；
+遇到浏览器证书告警时不要绕过。证书位于 Compose 的 `caddy-data` volume，
+可按 Caddy 官方方式导出后由 Owner 在受控设备上安装。
 
 ## 5. 在页面配置模型
 
-1. 用管理员种子账号登录；
-2. 打开“管理 → 模型供应商”；
+1. 按 SillyTavern 受管宿主文档启动宿主，并用管理员种子账号登录；
+2. 打开宿主里的模型页；
 3. 新增供应商，填写协议、Base URL、API Key；
 4. 执行模型发现或手工添加模型；
 5. 启用模型并调整全局路由顺序；
-6. 回到聊天页做一轮短对话，检查 SSE 完成事件和最终消息。
+6. 回到聊天做一轮短对话，检查回复完成。
 
 API Key 仅在保存时提交，服务端使用 `VC_CRYPTO_REST_KEY` 加密存储，列表接口不回显。
 本机 HTTP 模型服务仅允许 loopback 地址，并需显式设置

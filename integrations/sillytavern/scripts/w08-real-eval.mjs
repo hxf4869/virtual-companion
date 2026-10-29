@@ -353,17 +353,12 @@ export async function sceneMemoryRealEval(ctx) {
     try {
         const embedding = (await (await fetch('http://127.0.0.1:11438/api/tags')).json()).models.find((model) => model.name === 'qwen3-embedding:0.6b');
         assert.ok(embedding, '本机 embedding 不可用');
-        ctx.w08.seedRealEstimate();
-        if (typeof ctx.w10?.psql !== 'function') throw new Error('受管数据库入口不可用');
-        // 测试环境价格，不是 Owner 价格，也不代表供应商账单。
-        ctx.w10.psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k, active, effective_from)
-            VALUES ('vc08-real', '${MODEL_ID}', 1, 0.01, 0.02, true, now())
-            ON CONFLICT (provider_id, model_id, price_version) DO UPDATE
-            SET input_usd_per_1k = EXCLUDED.input_usd_per_1k, output_usd_per_1k = EXCLUDED.output_usd_per_1k, active = true, effective_from = now();`);
         for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
             expectStatus(await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'w08-real-eval', granted: true }), 200, 'consent');
         }
         provider = expectStatus(await ctx.admin.saveProvider('vc08-real', { ...spec, credential, expectedRevision: 0 }), 200, 'provider');
+        // 测试环境价格，不是 Owner 价格，也不代表供应商账单；在保存供应商之后写入，避免被目录账本同步停用。
+        ctx.w08.seedRealEstimate();
         const previous = await ctx.admin.call('GET', '/api/v1/admin/embedding-config');
         expectStatus(await ctx.admin.call('PUT', '/api/v1/admin/embedding-config', {
             model: embedding.name, artifactVersion: embedding.digest, dimensions: 1024, queryPreprocessingVersion: 'qwen3-retrieval-v1',

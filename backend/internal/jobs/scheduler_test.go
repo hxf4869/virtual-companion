@@ -12,20 +12,26 @@ import (
 
 type schedulerTestStore struct {
 	Store
-	mu                sync.Mutex
-	objects           []postgres.ExportObject
-	clearCalls        int
-	clearFailures     int
-	expiredExtracts   []postgres.JobClaim
-	extractListErr    error
-	recoverAction     string
-	recoverErr        error
-	recoverFailures   int
-	recoveredExtracts []int64
-	expiredExports    []postgres.JobClaim
-	recoveredExports  []int64
-	uploads           []postgres.ExportUploadCleanup
-	cleanedUploads    []int64
+	mu                    sync.Mutex
+	objects               []postgres.ExportObject
+	clearCalls            int
+	clearFailures         int
+	expiredExtracts       []postgres.JobClaim
+	extractListErr        error
+	recoverAction         string
+	recoverErr            error
+	recoverFailures       int
+	recoveredExtracts     []int64
+	expiredExports        []postgres.JobClaim
+	recoveredExports      []int64
+	expiredFollowUps      []postgres.JobClaim
+	recoveredFollowUps    []int64
+	sweptAges             []time.Duration
+	notificationSweepAges []time.Duration
+	notificationSweepN    int
+	notificationSweepErr  error
+	uploads               []postgres.ExportUploadCleanup
+	cleanedUploads        []int64
 }
 
 func (s *schedulerTestStore) ClaimExportUploadCleanup(context.Context) ([]postgres.ExportUploadCleanup, error) {
@@ -128,6 +134,40 @@ func (s *schedulerTestStore) RecoverExpiredExport(_ context.Context, _, jobID in
 	}
 	s.recoveredExports = append(s.recoveredExports, jobID)
 	return s.recoverAction, nil
+}
+
+func (s *schedulerTestStore) ListExpiredFollowUpJobs(context.Context, int) ([]postgres.JobClaim, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]postgres.JobClaim(nil), s.expiredFollowUps...), nil
+}
+
+func (s *schedulerTestStore) RecoverExpiredFollowUp(_ context.Context, _, jobID int64) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recoverFailures > 0 {
+		s.recoverFailures--
+		return "", s.recoverErr
+	}
+	s.recoveredFollowUps = append(s.recoveredFollowUps, jobID)
+	return s.recoverAction, nil
+}
+
+func (s *schedulerTestStore) SweepExpiredModelCostHolds(_ context.Context, age time.Duration) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sweptAges = append(s.sweptAges, age)
+	return 0, nil
+}
+
+func (s *schedulerTestStore) SweepStaleNotificationSending(_ context.Context, age time.Duration) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notificationSweepAges = append(s.notificationSweepAges, age)
+	if s.notificationSweepErr != nil {
+		return 0, s.notificationSweepErr
+	}
+	return s.notificationSweepN, nil
 }
 
 func (*schedulerTestStore) ExpireQueuedGenerations(context.Context, time.Duration) (int, error) {
@@ -317,6 +357,30 @@ func TestRecoverOnceDeadLettersExpiredMemoryExtractJobs(t *testing.T) {
 	}
 	if got := loop.Stats().Recoveries; got != 1 {
 		t.Fatalf("recoveries %d want 1", got)
+	}
+}
+
+func TestRecoverOnceRequeuesExpiredFollowUpsAndSweepsHolds(t *testing.T) {
+	t.Parallel()
+	store := newSchedulerTestStore()
+	store.expiredFollowUps = []postgres.JobClaim{
+		{OwnerID: 1, JobID: 91, Kind: KindFollowUp},
+	}
+	store.recoverAction = "REQUEUED"
+	policy := testLoopPolicy(1)
+	policy.HoldReservationMaxAge = 6 * time.Minute
+	loop := NewLoop(nil, policy, testTurnBudget())
+	loop.Use(store, nil, nil, nil)
+	if err := loop.RecoverOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.recoveredFollowUps) != 1 || store.recoveredFollowUps[0] != 91 {
+		t.Fatalf("recovered %+v", store.recoveredFollowUps)
+	}
+	if len(store.sweptAges) != 1 || store.sweptAges[0] != 6*time.Minute {
+		t.Fatalf("sweep ages %+v", store.sweptAges)
 	}
 }
 

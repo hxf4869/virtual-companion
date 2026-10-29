@@ -1,6 +1,15 @@
 package notify
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// DefaultSendTimeout is the limit of one channel send when the caller does
+// not set one. NewSMTP applies it when SMTPConfig.Timeout is unset.
+// NewFeishu applies it when FeishuConfig.HTTP is nil. companiond leaves
+// both unset, so email and Feishu share this bound.
+const DefaultSendTimeout = 10 * time.Second
 
 // Sender delivers one already reviewed notification.
 type Sender interface {

@@ -26,7 +26,7 @@ DEPENDENCY_NAMES = {
     "go.sum",
 }
 CONFIG_SUFFIXES = {".properties", ".toml"}
-CONFIG_DIR_PREFIXES = ("backend/", "frontend/", "ops/")
+CONFIG_DIR_PREFIXES = ("backend/", "ops/")
 PRUNED_DIRS = {
     ".git",
     ".idea",

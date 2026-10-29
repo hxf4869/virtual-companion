@@ -69,6 +69,7 @@ import { sceneMemorycoreNative } from './w08-native-accept.mjs';
 import { sceneMemorycoreFoundation } from './w08-foundation-accept.mjs';
 import { sceneInboxNotify, startW10Capture, stopW10Capture } from './w10-accept.mjs';
 import { sceneStoryReal } from './story-real-accept.mjs';
+import { sceneW15Ui } from './w15-ui-accept.mjs';
 
 // W12 玩家剧情页不进默认集。注册表在 managed-lib，本链只在入口追加，避免改共享场景表。
 SCENES.push({
@@ -107,6 +108,13 @@ SCENES.push({
 SCENES.push({
     id: 'story-real',
     title: 'W14 真实模型叙事：雨夜客栈出站与角色隔离',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+});
+// W15 汇合页不进默认集。显式 --filter w15-ui 才运行。
+SCENES.push({
+    id: 'w15-ui',
+    title: 'W15 七页导航、模型预算与账户',
     needs: ['catalog', 'stack', 'browser'],
     default: false,
 });
@@ -496,6 +504,47 @@ const fixtureHttp = {
  *   → start-managed.mjs（需 VC_ST_GO_BASE_URL + VC_ST_PLUGIN_SERVICE_TOKEN，硬校验）。
  * stop 由 stop-managed.mjs（st.pid 命令行核对）负责，见 cleanupManaged。
  */
+/** 持久 dataRoot 里的 relationshipId / conversationId 属于上一轮数据库。新库会 404。只删带这些编号的 vc_binding。 */
+function clearStaleVcBindings(dataRoot) {
+    let files = 0;
+    const walk = (dir) => {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+            if (entry.name === 'backups' || entry.name === 'node_modules') continue;
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) { walk(full); continue; }
+            if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+            const rel = full.split(path.sep).join('/');
+            if (!rel.includes('/chats/') && !rel.includes('/group chats/')) continue;
+            let text;
+            try { text = fs.readFileSync(full, 'utf8'); } catch { continue; }
+            let changed = false;
+            const next = text.split('\n').map((line) => {
+                const raw = line.endsWith('\r') ? line.slice(0, -1) : line;
+                if (!raw.trim()) return line;
+                let row;
+                try { row = JSON.parse(raw); } catch { return line; }
+                const binding = row?.chat_metadata?.vc_binding;
+                if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return line;
+                const present = (value) => value != null && String(value) !== '';
+                if (!present(binding.relationshipId) && !present(binding.conversationId)) return line;
+                const meta = { ...row.chat_metadata };
+                delete meta.vc_binding;
+                row.chat_metadata = meta;
+                changed = true;
+                return JSON.stringify(row);
+            });
+            if (!changed) continue;
+            fs.writeFileSync(full, next.join('\n'), { mode: 0o600 });
+            fs.chmodSync(full, 0o600);
+            files += 1;
+        }
+    };
+    if (fs.existsSync(dataRoot)) walk(dataRoot);
+    return files;
+}
+
 async function startManagedStack(secrets, artifactsDir) {
     const nativeDevOk = path.join(INTEG, 'dev', 'bootstrap-ok');
     if (!fs.existsSync(nativeDevOk)) {
@@ -541,6 +590,8 @@ async function startManagedStack(secrets, artifactsDir) {
         fs.mkdirSync(path.dirname(defaultSettingsPath), { recursive: true, mode: 0o700 });
         fs.writeFileSync(defaultSettingsPath, JSON.stringify(defaultSettings), { mode: 0o600 });
     }
+    const clearedBindings = clearStaleVcBindings(path.join(DEV_MANAGED, 'data'));
+    log.info(`已清除持久 dataRoot 中旧库实例绑定 ${clearedBindings} 个聊天文件`);
     runChecked(process.execPath, [path.join(SCRIPTS, 'start-managed.mjs')], {
         cwd: INTEG,
         env: {
@@ -638,6 +689,8 @@ function providerCatalogSpec(fixtureKey) {
         capabilities: { toolCalls: 'DECLARED', systemMessage: 'DECLARED' },
         reasoningLevels: [],
         generationParams: { temperature: 0.3 },
+        // USD / 百万 token。保存目录时同步为账本每 1K token 0.001 / 0.002。
+        pricing: { currency: 'USD', inputPerMillionTokens: 1, outputPerMillionTokens: 2 },
         ...extra,
     });
     return [
@@ -1875,13 +1928,6 @@ async function sceneW11ToolMeter(ctx) {
         RETURNING provider_id;`);
     const verifiedCount = verified.split('\n').map((line) => line.trim()).filter(Boolean).length;
     if (verifiedCount < 3) throw new Error(`toolCalls VERIFIED 更新行数不足：${verifiedCount}`);
-    psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
-        VALUES
-            ('vc03m-chat', 'vc03m-chat', 1, 0.001, 0.002),
-            ('vc03m-chat', 'vc03m-tools', 1, 0.001, 0.002),
-            ('vc03m-resp', 'vc03m-reasoning', 1, 0.001, 0.002),
-            ('vc03m-claude', 'vc03m-chat', 1, 0.001, 0.002)
-        ON CONFLICT DO NOTHING;`);
     const chatIdentity = crypto.randomUUID();
     const bound = await ctx.admin.call('POST', '/api/v1/st/bindings', {
         chatIdentity,
@@ -2053,10 +2099,6 @@ async function sceneStoryOutbound(ctx) {
     };
     await ctx.fixtureHttp.setOverride('vc03m-tools', directive);
     await ctx.fixtureHttp.setOverride('vc03m-reasoning', directive);
-    // 剧情回合走 FOREGROUND_CHAT 预留。Claude 工具档 model_id 是 vc03m-tools，与已有单价的主档不同。
-    psql(`INSERT INTO vc.model_unit_price(provider_id, model_id, price_version, input_usd_per_1k, output_usd_per_1k)
-        VALUES ('vc03m-claude', 'vc03m-tools', 1, 0.001, 0.002)
-        ON CONFLICT DO NOTHING;`);
     await bindForeground(ctx, 'vc03m-chat', 'chat-tools', 'vc03m-tools');
     const cardName = `W13 剧情 ${crypto.randomUUID().slice(0, 8)}`;
     const card = {
@@ -2260,7 +2302,8 @@ async function sceneStoryOutbound(ctx) {
             await page.waitForSelector('.vcms-overlay', { state: 'hidden', timeout: 10000 });
         };
         const bindProfile = async (optionValue, markerPred) => {
-            const count0 = await ctx.fixtureHttp.count();
+            // 记忆提取会继续打 vc08-memory。绑定本身不应再打目录模型或 /models。
+            const since = (await ctx.fixtureHttp.captures({})).at(-1)?.seq ?? 0;
             if (!(await page.locator('.vcms-overlay').isVisible())) {
                 if (!(await page.locator('#vc_models_menu_button').isVisible())) await page.click('#extensionsMenuButton');
                 await page.click('#vc_models_menu_button');
@@ -2281,7 +2324,8 @@ async function sceneStoryOutbound(ctx) {
                     ? String(oai.reverse_proxy ?? '').includes(pred.slice('reverse:'.length))
                     : String(oai.custom_url ?? '').includes(pred);
             }, markerPred), { timeoutMs: 20000, label: `投影 ${optionValue}` });
-            if ((await ctx.fixtureHttp.count()) !== count0) throw new Error(`绑定 ${optionValue} 期间出现上游请求`);
+            const leaked = (await ctx.fixtureHttp.captures({ since })).filter((row) => row.model !== 'vc08-memory');
+            if (leaked.length) throw new Error(`绑定 ${optionValue} 期间出现上游请求`);
             await closePanel();
         };
         const confirmProxy = async (marker) => {
@@ -2838,7 +2882,7 @@ async function sceneStoryPlay(ctx) {
             for (const [step, version] of steps) await act(step, version);
             await waitStory(() => {
                 const root = document.querySelector('.vc-story');
-                return root?.getAttribute('data-state') === 'ended' && root.querySelector('h2')?.textContent === '结局';
+                return root?.getAttribute('data-state') === 'ended' && root.querySelector('.vc-story-ending h2')?.textContent === '结局';
             }, '第一局结局');
             const rootBefore = storyRow(firstConversation);
             if (rootBefore.worldVersion !== 8 || rootBefore.stage !== 'resolved' || rootBefore.events !== 8 || rootBefore.branches !== 1) {
@@ -2857,22 +2901,25 @@ async function sceneStoryPlay(ctx) {
             if (afterDelete.participants !== 4 || afterDelete.linRel !== null || !names.includes('林岚') || !names.includes('周澈') || !names.includes('苏禾')) {
                 throw new Error('删除陪伴后这一局不完整');
             }
+            const beforeDiscard = storyRow(firstConversation);
             await page.locator('.vc-story-dialog [data-action="discard-epilogue"]').click();
             await waitStory(() => document.querySelector('.vc-story')?.innerText.includes('已放弃共同游玩摘要，不会写入日常记忆。'), '放弃结局');
             const discarded = storyRow(firstConversation);
-            if (discarded.epilogue !== 'discard' || discarded.memory !== null || discarded.accepted !== 0) throw new Error('放弃结局写入了记忆');
+            if (discarded.epilogue !== 'discard' || discarded.memory !== null || discarded.accepted !== beforeDiscard.accepted) {
+                throw new Error(`放弃结局写入了记忆：epilogue=${discarded.epilogue} memory=${discarded.memory} accepted=${beforeDiscard.accepted}->${discarded.accepted}`);
+            }
             let rewindPosts = 0;
             const onRewind = (req) => {
                 if (req.method() === 'POST' && req.url().includes('/rewind')) rewindPosts += 1;
             };
             page.on('request', onRewind);
             await page.locator('.vc-story-dialog [data-action="ask-rewind"][data-version="1"]').click();
-            const rewindText = await page.locator('.vc-story').innerText();
+            const rewindText = await page.locator('.vc-story-rewind-dialog').innerText();
             if (!rewindText.includes('回到世界版本 1，阶段为调查中。此版本之后的行动不会留在当前分支，需要重新提交才会再次发生。该阶段之后形成的分支记忆会失效，不会并入当前进度。')) {
                 throw new Error('回档确认没有写明阶段和影响');
             }
             if (rewindPosts !== 0) throw new Error('确认前就提交了回档');
-            await page.locator('.vc-story-dialog [data-action="confirm-rewind"]').click();
+            await page.locator('.vc-story-rewind-dialog [data-action="confirm-rewind"]').click();
             await waitStory(() => document.querySelector('.vc-story')?.getAttribute('data-world-version') === '1', '回档到版本 1');
             page.off('request', onRewind);
             const rewound = storyRow(firstConversation);
@@ -2913,11 +2960,12 @@ async function sceneStoryPlay(ctx) {
             await page.locator(`.vc-story-dialog [data-action="map-companion"][data-actor="lin"][data-relationship="${secondRelationship}"]`).click();
             await waitFor(async () => storyRow(secondConversation).linRel === secondRelationship, { timeoutMs: 15000, label: '第二局林岚入局' });
             await page.locator('.vc-story-dialog [data-field="summary"]').fill('一起查过怀表');
+            const beforeSave = storyRow(secondConversation);
             await page.locator('.vc-story-dialog [data-action="save-epilogue"]').click();
             await waitStory(() => document.querySelector('.vc-story')?.innerText.includes('已保存共同游玩摘要，请到记忆页确认后才会写入日常记忆。'), '保存结局');
             const saved = storyRow(secondConversation);
-            if (saved.worldVersion !== 7 || saved.epilogue !== 'save' || saved.memory !== 'PENDING_CONFIRMATION' || saved.accepted !== 0 || memoryConfirms.length !== 0) {
-                throw new Error('保存结局没有停在待确认记忆');
+            if (saved.worldVersion !== 7 || saved.epilogue !== 'save' || saved.memory !== 'PENDING_CONFIRMATION' || saved.accepted !== beforeSave.accepted || memoryConfirms.length !== 0) {
+                throw new Error(`保存结局没有停在待确认记忆：version=${saved.worldVersion} epilogue=${saved.epilogue} memory=${saved.memory} accepted=${beforeSave.accepted}->${saved.accepted} confirms=${memoryConfirms.length}`);
             }
             if (actorHits.length) throw new Error('页面请求了其他角色视图');
             await scanSurface('结束后');
@@ -2967,6 +3015,7 @@ const SCENE_IMPLS = {
     'story-outbound': sceneStoryOutbound,
     'story-play': sceneStoryPlay,
     'story-real': sceneStoryReal,
+    'w15-ui': sceneW15Ui,
 };
 
 async function runFull() {

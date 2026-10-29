@@ -12,11 +12,13 @@ const ACTOR = /^[a-z][a-z0-9_-]{0,63}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROTOCOLS = new Set(['OPENAI_CHAT_COMPLETIONS', 'OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES']);
 
-/** 有 vc_story，或显式声明 STORY 会话。两者都没有则按 COMPANION 处理。 */
+/** 有 vc_story，或 vc_session_mode / vc_mode / vc_binding.mode 为 STORY。都没有则按 COMPANION 处理。 */
 export function isStorySession(body) {
     if (!body || typeof body !== 'object') return false;
     if (Object.prototype.hasOwnProperty.call(body, 'vc_story')) return true;
-    return body.vc_session_mode === 'STORY';
+    return body.vc_session_mode === 'STORY'
+        || body.vc_mode === 'STORY'
+        || body.vc_binding?.mode === 'STORY';
 }
 
 /** 剧情回合身份。缺字段、多角色或类型不对都拒绝，不回退原始正文。 */

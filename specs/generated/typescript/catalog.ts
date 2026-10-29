@@ -27,6 +27,9 @@ export type ModelPurpose = typeof ModelPurposeValues[number]
 export const ModelPurposeBindingStatusValues = ["PENDING_CONFIGURATION", "DISABLED", "UNAVAILABLE", "READY"] as const
 export type ModelPurposeBindingStatus = typeof ModelPurposeBindingStatusValues[number]
 
+export const ModelLedgerPriceStatusValues = ["ACTIVE", "MISSING", "UNSUPPORTED_CURRENCY"] as const
+export type ModelLedgerPriceStatus = typeof ModelLedgerPriceStatusValues[number]
+
 export const ModelCapabilityStatusValues = ["UNKNOWN", "DECLARED", "VERIFIED", "UNSUPPORTED"] as const
 export type ModelCapabilityStatus = typeof ModelCapabilityStatusValues[number]
 

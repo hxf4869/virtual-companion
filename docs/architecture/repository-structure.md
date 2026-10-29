@@ -2,7 +2,7 @@
 
 ```text
 virtual-companion/
-├── .github/workflows/         GitHub CI（backend / database / frontend / supply-chain / checks）
+├── .github/workflows/         GitHub CI（checks / backend / database / supply-chain）
 ├── specs/
 │   ├── catalog/               Catalog 唯一机器真源
 │   ├── contracts/             Generation、事务、实时等技术契约
@@ -11,7 +11,7 @@ virtual-companion/
 ├── backend/
 │   ├── cmd/companiond/        唯一后端进程与 migrate/bootstrap 子命令
 │   └── internal/              HTTP、业务、任务、供应商、持久化与迁移实现
-├── frontend/                  uni-app H5
+├── integrations/sillytavern/  V2 SillyTavern 宿主、扩展与 server plugin
 ├── scripts/
 │   ├── checks/                秒级仓库检查（catalog/licenses/paid）及其数据文件
 │   ├── check.sh               日常检查唯一入口

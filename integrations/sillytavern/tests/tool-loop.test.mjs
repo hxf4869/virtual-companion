@@ -211,6 +211,7 @@ async function withStack(options, run) {
             assert.equal(req.headers.authorization, `Bearer ${'T'.repeat(40)}`);
             assert.equal(req.headers.origin, undefined);
             state.reserves.push(body);
+            if (options.holdReserve) await options.holdReserve(state);
             if (state.reserveMode === 'no-price') {
                 res.writeHead(409, { 'Content-Type': 'application/json' });
                 return res.end(JSON.stringify({ code: 'MODEL_NO_ELIGIBLE_DEPLOYMENT', message: 'no price', details: { reason: 'NO_PRICE' } }));
@@ -591,4 +592,64 @@ test('同一 reservationId 再次结算被接受', async () => {
         go.server.closeAllConnections();
         go.server.close();
     }
+});
+
+test('客户端在预留之后、发送之前断开：不再请求上游，未发送预留按 NOT_SENT 取消', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        timeoutMs: 15000,
+        scripts: [
+            chatTool('query_scheduled_follow_ups', '{}', 'call-1'),
+            chatText('不应再请求模型'),
+        ],
+        holdReserve: async (state) => {
+            if (state.reserves.length === 2) await gate;
+        },
+    }, async ({ bridge, state }) => {
+        const req = mockReq(requestBody('OPENAI_CHAT_COMPLETIONS'));
+        const res = mockRes();
+        const pending = bridge.interceptGenerate(req, res);
+        const deadline = Date.now() + 2000;
+        while (state.reserves.length < 2 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(state.reserves.length, 2);
+        assert.equal(state.providerReqs.length, 1);
+        req.aborted = true;
+        req.socket.emit('close');
+        release();
+        await pending;
+        assert.equal(state.providerReqs.length, 1, '断开后不得再发起上游调用');
+        assert.equal(state.settles.length, 1);
+        assert.equal(state.settles[0].id, '1');
+        const unsent = state.cancels.find((row) => row.id === '2');
+        assert.ok(unsent, '未发送的第二笔预留必须取消');
+        assert.equal(unsent.body.disposition, 'NOT_SENT');
+    });
+});
+
+test('客户端在上游已发送但尚无 usage 时断开：按 UNKNOWN 取消，且不再发起下一跳', async () => {
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        timeoutMs: 20000,
+        scripts: ['hang'],
+    }, async ({ bridge, state }) => {
+        const req = mockReq(requestBody('OPENAI_CHAT_COMPLETIONS'));
+        const res = mockRes();
+        const pending = bridge.interceptGenerate(req, res);
+        const started = Date.now() + 2000;
+        while (state.providerReqs.length < 1 && Date.now() < started) await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(state.providerReqs.length, 1);
+        req.aborted = true;
+        req.socket.emit('close');
+        const outcome = await Promise.race([
+            pending.then(() => 'done', () => 'done'),
+            new Promise((resolve) => setTimeout(() => resolve('still-running'), 800)),
+        ]);
+        assert.equal(outcome, 'done', '客户端断开后工具循环应停止，而不是继续等待上游');
+        assert.equal(state.providerReqs.length, 1);
+        assert.equal(state.settles.length, 0);
+        assert.equal(state.cancels.length, 1);
+        assert.equal(state.cancels[0].body.disposition, 'UNKNOWN');
+    });
 });

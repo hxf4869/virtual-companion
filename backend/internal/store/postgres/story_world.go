@@ -195,6 +195,15 @@ func (s *Store) LoadStoryActor(ctx context.Context, owner, runID, branchID int64
 	}
 	var out StoryActorFacts
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		// Session writes answer an active deletion intent with not-found.
+		// ActorView and the service-token outbound check share this read.
+		var deleting bool
+		if err := tx.QueryRow(ctx, `SELECT vc.account_deletion_intent_active_current()`).Scan(&deleting); err != nil {
+			return err
+		}
+		if deleting {
+			return ErrNotFound
+		}
 		var mode string
 		err := tx.QueryRow(ctx, `SELECT r.conversation_id, r.case_id, r.world_version,
 				COALESCE(c.st_chat_identity, ''), COALESCE(c.st_mode, '')

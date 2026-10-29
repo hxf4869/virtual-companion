@@ -149,6 +149,49 @@ export async function createCompanionInstance({ characterRef, displayName, chatI
     return resolveSTBinding({ characterRef, displayName, chatIdentity, mode });
 }
 
+/** SillyTavern 1.19 的 importCharacter 未导出。processDroppedFiles 是会调用它的公开入口。 */
+export async function importNativeCharacterFile({
+    name = '',
+    bytes,
+    format,
+    getContext,
+    loadNative = () => import('/script.js'),
+    newRef = () => crypto.randomUUID(),
+} = {}) {
+    if (typeof getContext !== 'function') throw new Error('no context');
+    const kind = format === 'png' ? 'png' : 'json';
+    const type = kind === 'png' ? 'image/png' : 'application/json';
+    let fileName = String(name || `card.${kind}`);
+    if (!fileName.toLowerCase().endsWith(`.${kind}`)) fileName += `.${kind}`;
+    const file = new File([bytes], fileName, { type });
+    const before = new Set((getContext().characters || []).map((card) => card?.avatar).filter(Boolean));
+    const native = await loadNative();
+    if (typeof native?.processDroppedFiles !== 'function') throw new Error('native import unavailable');
+    await native.processDroppedFiles([file]);
+    const ctx = getContext();
+    const characters = ctx.characters || [];
+    const characterId = characters.findIndex((card) => card?.avatar && !before.has(card.avatar));
+    if (characterId < 0) throw new Error('import did not add a character');
+    const card = characters[characterId];
+    let ref = card?.data?.extensions?.vc_character_ref;
+    if (typeof ref !== 'string' || !ref.trim()) {
+        ref = newRef();
+        if (typeof ctx.writeExtensionField !== 'function') throw new Error('writeExtensionField missing');
+        await ctx.writeExtensionField(characterId, 'vc_character_ref', ref);
+    }
+    const book = card?.data?.character_book?.name;
+    const world = card?.data?.extensions?.world;
+    const description = typeof card?.description === 'string'
+        ? card.description
+        : (typeof card?.data?.description === 'string' ? card.data.description : '');
+    return {
+        characterRef: ref,
+        name: card?.name || '未命名角色卡',
+        description,
+        worldName: typeof book === 'string' ? book : (typeof world === 'string' ? world : ''),
+    };
+}
+
 export function renderInstancePage(state) {
     const cards = Array.isArray(state.cards) ? state.cards : [];
     const instances = instancesFrom(state.relationships);
@@ -333,7 +376,7 @@ export function createInstancePage({
                 return;
             }
             try {
-                const created = await importCard({ name, format: inspected.format });
+                const created = await importCard({ name, format: inspected.format, bytes });
                 if (created?.name) {
                     state.cards = [...state.cards, {
                         characterRef: created.characterRef || '',
@@ -386,6 +429,7 @@ export function mountInstancePage(options = {}) {
     let opener = null;
     const page = createInstancePage({
         ...options,
+        importCard: options.importCard || ((spec) => importNativeCharacterFile({ ...spec, getContext: options.getContext })),
         onChange(state) {
             if (!dialog.open) return;
             for (const node of document.querySelectorAll('body > .vc-instance-unsaved')) node.remove();

@@ -399,6 +399,73 @@ export const KEY_STATE_LABELS = {
 
 // ---------- 计价显示（未知 ≠ 免费） ----------
 
+export const NO_PRICE_COPY = '未配置单价，无法发送';
+export const UNSUPPORTED_CURRENCY_COPY = '仅美元计价可用于发送';
+export const BUDGET_COPY = '当月可用额度不足，测试与发送暂不可用。设置仍可保存。';
+
+const LEDGER_PRICES = new Set(['ACTIVE', 'MISSING', 'UNSUPPORTED_CURRENCY']);
+
+export function normalizeLedgerPrice(value) {
+    return LEDGER_PRICES.has(value) ? value : '';
+}
+
+/** 发送是否可用只看服务端 ledgerPrice。ACTIVE 与未知值都不额外提示。 */
+export function ledgerPriceCopy(status) {
+    if (status === 'MISSING') return NO_PRICE_COPY;
+    if (status === 'UNSUPPORTED_CURRENCY') return UNSUPPORTED_CURRENCY_COPY;
+    return '';
+}
+
+export function ledgerCalloutHtml(model) {
+    const status = normalizeLedgerPrice(model?.ledgerPrice);
+    const copy = ledgerPriceCopy(status);
+    if (!copy) return '';
+    const id = status === 'UNSUPPORTED_CURRENCY' ? 'vcms-currency-price' : 'vcms-no-price';
+    return `<p class="vcms-callout vcms-callout-warn" role="status" id="${id}" data-ledger="${status}">${copy}</p>`;
+}
+
+function pricePresent(value) {
+    return value !== '' && value !== null && value !== undefined && !(typeof value === 'number' && !Number.isFinite(value));
+}
+
+/** 输入或输出单价缺失即 W11 的 NO_PRICE。0 是已配置的价格，不是缺失。 */
+export function modelPriceMissing(pricing) {
+    if (!pricing || typeof pricing !== 'object') return true;
+    return !pricePresent(pricing.inputPerMillionTokens) || !pricePresent(pricing.outputPerMillionTokens);
+}
+
+/**
+ * GET /api/v1/auth/admin/usage 只有用途花费，没有剩余额度。
+ * 真实摘要必须返回 known:false，不能用花费反推「预算不足」。
+ */
+export function interpretUsageBudget(payload) {
+    if (!payload || typeof payload !== 'object') return { known: false, insufficient: false };
+    const reason = payload.reason || payload.details?.reason;
+    if (payload.budgetInsufficient === true || reason === 'NO_BUDGET' || reason === 'OVER_LIMIT') {
+        return { known: true, insufficient: true };
+    }
+    return { known: false, insufficient: false };
+}
+
+const GENERATE_REFUSAL = {
+    '未配置预算，本次生成未发送': 'NO_BUDGET',
+    '本月额度已用完，本次生成未发送': 'OVER_LIMIT',
+};
+
+/** 插件拒绝体没有 reason 字段，只带这两句中文。缺单价不是预算不足。 */
+export function budgetSignalFromGenerateBody(body) {
+    const error = body?.error;
+    if (!error || typeof error !== 'object' || error.code !== 'VC_USAGE_REFUSED') return null;
+    const reason = error.reason || error.details?.reason || GENERATE_REFUSAL[error.message];
+    if (reason !== 'NO_BUDGET' && reason !== 'OVER_LIMIT') return null;
+    return { reason };
+}
+
+export function isGenerateRequestUrl(url) {
+    const value = String(url || '');
+    return value.includes('/api/backends/') && value.includes('/generate');
+}
+
 export function formatPricing(pricing) {
     if (!pricing) return '未配置';
     const { currency, inputPerMillionTokens, outputPerMillionTokens, verifiedOn } = pricing;
@@ -613,6 +680,7 @@ export function modelDraftFromApi(model) {
             outputPerMillionTokens: model.pricing?.outputPerMillionTokens ?? '',
             verifiedOn: model.pricing?.verifiedOn ?? null,
         },
+        ledgerPrice: normalizeLedgerPrice(model.ledgerPrice),
         boundPurposes: [...(model.boundPurposes ?? [])],
         updatedAt: model.updatedAt ?? null,
         editedSubs: new Set(),
@@ -652,6 +720,7 @@ export function newModelDraft() {
         reasoningLevels: [],
         generationParams: { temperature: '', topP: '', reasoningEffort: '' },
         pricing: { currency: '', inputPerMillionTokens: '', outputPerMillionTokens: '', verifiedOn: null },
+        ledgerPrice: '',
         boundPurposes: [],
         updatedAt: null,
         editedSubs: new Set(),
@@ -666,6 +735,7 @@ export function cloneModelDraft(source, { profileKey, displayName }) {
         ...structuredClone({ ...source, editedSubs: null, touchedCaps: null }),
         profileKey,
         displayName,
+        ledgerPrice: '',
         boundPurposes: [],
         updatedAt: null,
         editedSubs: new Set(['capabilities', 'reasoningLevels', 'generationParams', 'pricing']),

@@ -1,7 +1,6 @@
 # DEPLOY edge: TLS termination (Caddy automatic HTTPS — ACME for public
-# domains, local CA for localhost), H5 static bundle, and the API slice.
-# Cache policy completes H5-HARDEN (§21.7): hashed assets immutable,
-# the SPA shell no-cache, security headers everywhere.
+# domains, local CA for localhost) and the Go API slice.
+# The old Vue H5 static site is no longer served from this edge.
 
 {
 	# LAN/IP dogfood (ADR-0006): browsers never send SNI for plain IP
@@ -37,19 +36,4 @@
 		}
 	}
 
-	# Hashed build assets: cache forever (filename changes on change).
-	@build_assets path /static/* /assets/*
-	handle @build_assets {
-		root * /srv/h5
-		header Cache-Control "public, max-age=31536000, immutable"
-		file_server
-	}
-
-	# SPA shell + assets fallback: revalidate always.
-	handle {
-		root * /srv/h5
-		header Cache-Control "no-cache"
-		try_files {path} /index.html
-		file_server
-	}
 }
