@@ -1417,7 +1417,7 @@ N-00～N-08（对应评审发现 F-01～F-08）为在途修复，逐项状态与
 
 实施基线：`docs/planning/2026-08-30-go-companion-runtime-redesign.md`。一次一个可验证 slice。
 
-      2026-10-29 Owner 表示也要在手机上使用：需部署方案（目标服务器、访问方式、TLS、数据位置）经 Owner 授权后执行，授权前不改远端。
+      2026-10-29 Owner 表示也要在手机上使用，部署由 Codex 执行；方案见 `docs/planning/2026-10-29-v2-deploy-plan.md`（执行前 Owner 确认目标主机与访问方式）。
 - [x] `G0` ADR/Catalog/OpenAPI scope 与 API consumer matrix（catalog/openapi check；不写 Go 业务代码）
 - [x] `G1` 旧后端资源/事务基线与 benchmark workload（历史报告：`docs/planning/g1-java-resource-baseline.md`；不再复跑）
 - [x] `G2` Go module、config、health、logging、metrics、shutdown、`api-migration/full` 硬隔离（unit/check；migration 模式无法启动 provider/jobs；不含 DB 业务 API）
