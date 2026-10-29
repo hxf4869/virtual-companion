@@ -35,8 +35,10 @@ export function createStoryProjection({ readChat, saveChat, confirm }) {
             if (known.includes(worldEventId)) return { skipped: 'deleted', confirmed: false, appended: false };
             const nextIds = known.concat(worldEventId);
             try {
+                // 不回写读到的 vc_f2：调用方会把 metadata 合并进当前聊天，旧基线会让原生保存判冲突。
+                // 失败照常抛出，用当次读到的消息重试；不关闭、不屏蔽宿主打开的冲突框。
                 await saveChat({
-                    metadata: { ...metadata, vc_story_projected: nextIds },
+                    metadata: { vc_story_projected: nextIds },
                     messages: messages.concat([{
                         name: '剧情',
                         is_user: false,

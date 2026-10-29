@@ -9,6 +9,10 @@ const SESSION_CHANGED = '登录状态已变化，请重新打开剧情页。';
 const START_FAILED = '开局未完成，请重试。';
 const ACTION_FAILED = '这步行动没有完成，请重试。';
 const ACTION_CONFLICT = '这步行动与当前进度不一致，没有另开分支。';
+const CONFIG_MISSING = '剧情导演或 NPC 尚未绑定可用模型。';
+const GENERATING = '正在生成这一步';
+const REWIND_RECALC = '公开线索和角色私密知情范围会重新计算。备份不会因此全部删除。';
+const REWIND_DEVICES = '同一局的其他设备需要加载最新状态，不会自动合并。';
 const REWIND_BLOCKED = '当前聊天还不能回档';
 const REWIND_FAILED = '回档没有完成，请重试。';
 const NEED_CAST = '请先让一位陪伴入局，再保存共同游玩摘要。';
@@ -139,17 +143,41 @@ function rewindCopy(ask) {
     return `回到世界版本 ${ask.version}，阶段为${ask.stage}。此版本之后的行动不会留在当前分支，需要重新提交才会再次发生。该阶段之后形成的分支记忆会失效，不会并入当前进度。`;
 }
 
+function viewState(state) {
+    if (!state.run || !state.view) return 'unstarted';
+    if (state.busy && state.run.stage !== 'resolved') return 'generating';
+    if (state.run.stage === 'resolved') return 'ended';
+    if (state.reason === ACTION_CONFLICT) return 'conflict';
+    if (state.reason) return 'rejected';
+    if (state.notice) return 'evidence';
+    return 'playing';
+}
+
+function configBanner(state) {
+    if (!state.configNote) return '';
+    return `<div class="vc-story-config" data-config="missing" role="status"><p>${esc(state.configNote)}</p><button type="button" class="vcms-btn" data-action="configure">打开模型设置</button></div>`;
+}
+
+function rewindDialog(ask) {
+    if (!ask) return '';
+    const title = ask.version === 0 ? '回到调查开始？' : `回到版本 ${ask.version}？`;
+    return `<dialog class="vc-story-rewind-dialog" aria-labelledby="vc-story-rewind-title"><h2 id="vc-story-rewind-title" tabindex="-1">${esc(title)}</h2><p>${esc(rewindCopy(ask))}</p><p>${esc(REWIND_RECALC)}</p><p>${esc(REWIND_DEVICES)}</p><div class="vc-story-rewind-actions"><button type="button" class="vcms-btn" data-action="cancel-rewind">取消</button><button type="button" class="vcms-btn" data-action="confirm-rewind">确认回档</button></div></dialog>`;
+}
+
 export function renderStoryPage(state) {
     const playing = Boolean(state.run && state.view);
     if (!playing) {
         return `<div class="vc-story" data-state="unstarted">
-      <header class="vc-story-bar"><h1>雨夜旅馆</h1><button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
+      <header class="vc-story-bar"><h1 tabindex="-1">雨夜旅馆</h1><button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
+      ${configBanner(state)}
       <section class="vc-story-gate"><h2>${CASE_TITLE}</h2>${state.error ? `<p role="alert">${esc(state.error)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-primary" data-action="start" ${state.busy ? 'disabled' : ''}>开局</button></section>
     </div>`;
     }
+    const mode = viewState(state);
     const ended = state.run.stage === 'resolved';
     const stage = stageWord(state.run.stage);
     const version = state.turn?.worldVersion ?? 0;
+    const hold = state.busy ? ' disabled' : '';
     const people = state.view.participants.map((person) => {
         const pressed = state.actorId === person.actorId;
         return `<button type="button" class="vc-story-person" data-action="select-actor" data-actor="${esc(person.actorId)}" aria-pressed="${pressed ? 'true' : 'false'}"><h3>${esc(person.name)}</h3>${person.persona ? `<p>${esc(person.persona)}</p>` : ''}</button>`;
@@ -159,28 +187,32 @@ export function renderStoryPage(state) {
     for (const event of state.view.events) {
         if (typeof event.worldVersion === 'number' && event.worldVersion < version) versions.add(event.worldVersion);
     }
-    const rewind = [...versions].sort((a, b) => a - b).map((item) => `<button type="button" class="vcms-btn" data-action="ask-rewind" data-version="${item}">回到版本 ${item}</button>`).join('');
-    const steps = ended ? '' : STEPS.map((step) => `<button type="button" class="vcms-btn" data-action="act" data-step="${esc(step.id)}">${esc(step.label)}</button>`).join('');
+    const rewind = [...versions].sort((a, b) => a - b).map((item) => `<button type="button" class="vcms-btn" data-action="ask-rewind" data-version="${item}"${hold}>回到版本 ${item}</button>`).join('');
+    const steps = ended ? '' : STEPS.map((step) => `<button type="button" class="vcms-btn" data-action="act" data-step="${esc(step.id)}"${hold}>${esc(step.label)}</button>`).join('');
     const companions = state.companions ? state.companions.map((row) => CASTABLE.map((actorId) => {
         const person = state.view.participants.find((item) => item.actorId === actorId);
         const label = person?.name || actorId;
         return `<button type="button" class="vcms-btn" data-action="map-companion" data-actor="${esc(actorId)}" data-relationship="${esc(row.relationshipId)}">${esc(row.name)} 入局为${esc(label)}</button>`;
     }).join('')).join('') : '<button type="button" class="vcms-btn" data-action="show-companions">选择陪伴入局</button>';
-    return `<div class="vc-story" data-state="${ended ? 'ended' : 'playing'}" data-world-version="${version}">
-      <header class="vc-story-bar"><h1>${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage">${esc(stage)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
+    const evidence = state.notice ? `<p class="vc-story-evidence" data-evidence="show">${esc(state.notice)}</p>` : '';
+    return `<div class="vc-story" data-state="${mode}" data-world-version="${version}">
+      <header class="vc-story-bar"><h1 tabindex="-1">${esc(state.run.caseId === 'rainy-inn-v1' ? CASE_TITLE : '剧情')}</h1>${stage ? `<p class="vc-story-stage">${esc(stage)}</p>` : ''}<button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">关闭</button></header>
+      ${configBanner(state)}
+      ${mode === 'generating' ? `<p class="vc-story-generating" role="status">${esc(GENERATING)}</p>` : ''}
       ${state.syncPending ? `<p class="vc-story-sync">${esc(STORY_SYNC_PENDING)}</p>` : ''}
       ${state.reason ? `<p role="alert">${esc(state.reason)}</p>` : ''}
-      ${state.notice ? `<p class="vc-story-evidence">${esc(state.notice)}</p>` : ''}
+      ${evidence}
       <p class="vc-story-setting">${esc(state.view.setting)}</p>
       <p class="vc-story-known">${esc(state.view.knownEvent)}</p>
       <section class="vc-story-cast">${people}</section>
       <ul class="vc-story-places">${list(state.view.locations)}</ul>
       <ul class="vc-story-clues">${list(state.view.knowledge)}</ul>
       <ul class="vc-story-events">${list(state.view.events.map((event) => event.line))}</ul>
-      ${ended ? '' : `<section class="vc-story-actions">${steps}<label class="vc-story-say-row"><input data-field="say" maxlength="4000"><button type="button" class="vcms-btn" data-action="say">对所选角色说</button></label></section>`}
-      ${rewind || state.rewindAsk ? `<section class="vc-story-rewind">${rewind}${state.rewindAsk ? `<p>${esc(rewindCopy(state.rewindAsk))}</p><button type="button" class="vcms-btn" data-action="confirm-rewind">确认回档</button>` : ''}</section>` : ''}
+      ${ended ? '' : `<section class="vc-story-actions">${steps}<label class="vc-story-say-row"><input data-field="say" maxlength="4000" aria-label="对所选角色说"${hold}><button type="button" class="vcms-btn" data-action="say"${hold}>对所选角色说</button></label></section>`}
+      ${rewind ? `<section class="vc-story-rewind">${rewind}</section>` : ''}
+      ${rewindDialog(state.rewindAsk)}
       <section class="vc-story-companions">${companions}</section>
-      ${ended ? `<section class="vc-story-ending"><h2>结局</h2>${state.epilogue ? `<p>${esc(state.epilogue)}</p>` : ''}<textarea data-field="summary" maxlength="2000"></textarea><button type="button" class="vcms-btn" data-action="save-epilogue">保存共同游玩摘要</button><button type="button" class="vcms-btn" data-action="discard-epilogue">放弃共同游玩摘要</button></section>` : ''}
+      ${ended ? `<section class="vc-story-ending"><h2>结局</h2>${state.epilogue ? `<p>${esc(state.epilogue)}</p>` : ''}<textarea data-field="summary" maxlength="2000" aria-label="共同游玩摘要"></textarea><button type="button" class="vcms-btn" data-action="save-epilogue">保存共同游玩摘要</button><button type="button" class="vcms-btn" data-action="discard-epilogue">放弃共同游玩摘要</button></section>` : ''}
     </div>`;
 }
 
@@ -196,6 +228,7 @@ export function createStoryPage({
     const state = {
         open: false, busy: false, error: '', conflict: false, run: null, view: null, turn: null, actorId: '',
         reason: '', notice: '', syncPending: false, rewindAsk: null, epilogue: '', companions: null, mapped: {},
+        configNote: '',
     };
     let epoch = 0;
     let remembered = '';
@@ -220,6 +253,22 @@ export function createStoryPage({
         state.companions = null;
         state.mapped = {};
         onRun(null);
+    }
+    async function refreshConfig() {
+        try {
+            const rows = await api.fetchModelPurposes();
+            if (!Array.isArray(rows)) {
+                state.configNote = CONFIG_MISSING;
+                return;
+            }
+            const missing = ['STORY_DIRECTOR', 'NPC_DIALOGUE'].some((id) => {
+                const row = rows.find((item) => item?.purpose === id);
+                return !row || row.status !== 'READY';
+            });
+            state.configNote = missing ? CONFIG_MISSING : '';
+        } catch {
+            // 用途检查失败不打断开局，也不把响应写进页面。
+        }
     }
     function fail(error) {
         resetRun();
@@ -320,12 +369,13 @@ export function createStoryPage({
             const current = currentStoryId();
             if (state.turn && current && state.turn.conversationId !== current) resetRun();
             emit();
-            if (state.run) return;
             try {
                 await api.captureSessionContext();
             } catch {
                 // start() 会再取会话；不把服务端原文放进页面。
             }
+            await refreshConfig();
+            if (state.open) emit();
         },
         close() {
             epoch += 1;
@@ -346,6 +396,11 @@ export function createStoryPage({
             const resolved = state.view?.events?.some((event) => event.worldVersion === target && event.phase === 'resolved');
             state.rewindAsk = { version: target, stage: resolved ? '已结束' : '调查中' };
             state.reason = '';
+            emit();
+        },
+        cancelRewind() {
+            if (!state.rewindAsk) return;
+            state.rewindAsk = null;
             emit();
         },
         async confirmRewind() {
@@ -499,6 +554,7 @@ export function createStoryPage({
             } finally {
                 if (alive(ticket)) {
                     state.busy = false;
+                    await refreshConfig();
                     emit();
                 }
             }
@@ -513,6 +569,7 @@ export function mountStoryPage({
     onAdvance = () => {},
     getChatIdentity = () => '',
     project = null,
+    onConfigure = null,
 } = {}) {
     const style = document.createElement('link');
     style.rel = 'stylesheet';
@@ -527,19 +584,54 @@ export function mountStoryPage({
     root.append(dialog);
     document.body.append(root);
     let opener;
+    let rewindVersion = null;
+    const sheetOf = () => root.querySelector('.vc-story-rewind-dialog');
     const render = (next) => {
         if (!next.open) return;
+        const previous = rewindVersion;
+        const stale = sheetOf();
+        if (stale?.open) stale.close();
+        stale?.remove();
         dialog.innerHTML = `<div class="vc-story-page">${renderStoryPage(next)}</div>`;
+        const sheet = dialog.querySelector('.vc-story-rewind-dialog');
+        if (next.rewindAsk && sheet) {
+            root.append(sheet);
+            sheet.addEventListener('cancel', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                page.cancelRewind();
+            });
+            if (!sheet.open) sheet.showModal();
+            sheet.querySelector('#vc-story-rewind-title')?.focus();
+            rewindVersion = next.rewindAsk.version;
+            return;
+        }
+        rewindVersion = null;
+        if (previous !== null && !next.rewindAsk) {
+            const back = dialog.querySelector(`[data-action="ask-rewind"][data-version="${previous}"]`);
+            (back || dialog.querySelector('h1'))?.focus();
+        }
     };
     const page = createStoryPage({ getConversation, onRun, onActor, onAdvance, getChatIdentity, project, onChange: render });
     const close = () => {
+        const sheet = sheetOf();
+        if (sheet?.open) sheet.close();
+        sheet?.remove();
+        rewindVersion = null;
         page.close();
         dialog.close();
         dialog.innerHTML = '';
         opener?.focus();
     };
-    dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
-    dialog.addEventListener('click', (event) => {
+    dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        if (sheetOf()?.open) {
+            page.cancelRewind();
+            return;
+        }
+        close();
+    });
+    root.addEventListener('click', (event) => {
         const target = event.target.closest('button');
         if (!target || target.disabled) return;
         const action = target.dataset.action;
@@ -549,19 +641,28 @@ export function mountStoryPage({
         if (action === 'act') void page.act(target.dataset.step);
         if (action === 'say') void page.say(dialog.querySelector('[data-field="say"]')?.value || '');
         if (action === 'ask-rewind') page.askRewind(target.dataset.version);
+        if (action === 'cancel-rewind') page.cancelRewind();
         if (action === 'confirm-rewind') void page.confirmRewind();
         if (action === 'show-companions') void page.showCompanions();
         if (action === 'map-companion') void page.mapCompanion(target.dataset.actor, target.dataset.relationship);
         if (action === 'save-epilogue') void page.saveEpilogue(dialog.querySelector('[data-field="summary"]')?.value || '');
         if (action === 'discard-epilogue') void page.discardEpilogue();
+        if (action === 'configure') {
+            if (typeof onConfigure === 'function') onConfigure();
+            else document.getElementById('vc_models_menu_button')?.click();
+        }
     });
     return {
         open(returnFocusTarget = document.activeElement) {
             if (dialog.open) return;
             opener = returnFocusTarget;
             dialog.showModal();
-            void page.open();
             dialog.querySelector('h1')?.focus();
+            void page.open().then(() => {
+                if (!dialog.open || sheetOf()?.open) return;
+                const active = document.activeElement;
+                if (!active || active === document.body || !root.contains(active)) dialog.querySelector('h1')?.focus();
+            });
         },
         close,
     };
