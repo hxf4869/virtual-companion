@@ -7,17 +7,15 @@
 ## 前置条件
 
 - OrbStack/Docker 与 Compose v2；
-- Go 版本由 `backend/go.mod` 锁定，前端使用 Node 22 + pnpm 11；
-- H5 与 API 使用同一个 `VC_DOMAIN`，由 Caddy 终止 TLS。
+- Go 版本由 `backend/go.mod` 锁定；
+- API 使用 `VC_DOMAIN`，由 Caddy 终止 TLS。浏览器前台是 SillyTavern 受管宿主，
+  见 [`integrations/sillytavern/README.md`](../../integrations/sillytavern/README.md)，不由本 Compose 提供静态页。
 
 ## 首次启动
 
 ```bash
 cp ops/deploy/.env.example ops/deploy/.env.local
 # 编辑 .env.local；数据库密码使用 URL-safe 随机值，密钥不要提交。
-
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend build
 
 cd ops/deploy
 docker compose --env-file .env.local up -d --build
@@ -95,7 +93,7 @@ docker top deploy-runtime-1 -eo pid,comm,args
 ## 模型配置
 
 模型供应商不通过部署 profile、YAML override 或环境变量注入。管理员登录后，
-在“管理 → 模型供应商”页面完成：
+在 SillyTavern 受管宿主的模型页完成（Go API 仍是目录权威）：
 
 1. 新增供应商并选择 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages；
 2. 填写 Base URL 和 API Key；Key 只加密保存，不回显；

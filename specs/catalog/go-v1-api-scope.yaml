@@ -25,8 +25,7 @@ operations:
 - operationId: getVersion
   method: GET
   path: /api/v1/version
-  currentH5Callers:
-  - frontend/src/api/admin-runtime.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -35,8 +34,7 @@ operations:
 - operationId: getServiceMode
   method: GET
   path: /api/v1/service-mode
-  currentH5Callers:
-  - frontend/src/api/admin-runtime.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -303,8 +301,7 @@ operations:
 - operationId: listRelationships
   method: GET
   path: /api/v1/relationships
-  currentH5Callers:
-  - frontend/src/stores/relationship.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -387,8 +384,7 @@ operations:
 - operationId: createConversation
   method: POST
   path: /api/v1/conversations
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -397,10 +393,7 @@ operations:
 - operationId: listConversations
   method: GET
   path: /api/v1/conversations
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
-  - frontend/src/pages/index/index.vue
-  - frontend/src/pages/conversations/conversations.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -458,8 +451,7 @@ operations:
 - operationId: sendGeneration
   method: POST
   path: /api/v1/conversations/{conversationId}/generations
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -468,8 +460,7 @@ operations:
 - operationId: listMessages
   method: GET
   path: /api/v1/conversations/{conversationId}/messages
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -514,8 +505,7 @@ operations:
 - operationId: cancelGeneration
   method: POST
   path: /api/v1/generations/{generationId}/cancel
-  currentH5Callers:
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -524,9 +514,7 @@ operations:
 - operationId: getGenerationSnapshot
   method: GET
   path: /api/v1/generations/{generationId}/snapshot
-  currentH5Callers:
-  - frontend/src/api/realtime-transport.ts
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -549,9 +537,7 @@ operations:
 - operationId: openRealtimeStream
   method: GET
   path: /api/v1/realtime/streams/{generationId}
-  currentH5Callers:
-  - frontend/src/api/realtime-transport.ts
-  - frontend/src/stores/chat.ts
+  currentH5Callers: []
   decision: SIMPLIFY
   replacementOrImpact: Keep authenticated SSE. Drop ticket/gap/reset query binding; reconnect uses snapshot.
     Same path, new auth at Phase 5.
@@ -836,9 +822,7 @@ operations:
 - operationId: createExport
   method: POST
   path: /api/v1/exports
-  currentH5Callers:
-  - frontend/src/api/data-export.ts
-  - frontend/src/components/account/DataExportPanel.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -847,9 +831,7 @@ operations:
 - operationId: getExportStatus
   method: GET
   path: /api/v1/exports/{exportId}
-  currentH5Callers:
-  - frontend/src/api/data-export.ts
-  - frontend/src/components/account/DataExportPanel.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -858,9 +840,7 @@ operations:
 - operationId: downloadExport
   method: GET
   path: /api/v1/exports/{exportId}/download
-  currentH5Callers:
-  - frontend/src/api/data-export.ts
-  - frontend/src/components/account/DataExportPanel.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -869,9 +849,7 @@ operations:
 - operationId: recoverExport
   method: POST
   path: /api/v1/exports/recover
-  currentH5Callers:
-  - frontend/src/api/data-export.ts
-  - frontend/src/components/account/DataExportPanel.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -882,9 +860,7 @@ operations:
 - operationId: login
   method: POST
   path: /api/v1/auth/login
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
-  - frontend/src/pages/login/login.vue
+  currentH5Callers: []
   decision: SIMPLIFY
   replacementOrImpact: Keep account/password as step one; account accepts username or email. It returns
     a five-minute TOTP/setup challenge, or issues opaque vc_session only when a valid trusted-device cookie
@@ -892,9 +868,7 @@ operations:
 - operationId: getRegistrationStatus
   method: GET
   path: /api/v1/auth/registration-status
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
-  - frontend/src/pages/login/login.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - owner-instruction
@@ -912,8 +886,7 @@ operations:
 - operationId: getAuthSession
   method: GET
   path: /api/v1/auth/session
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -923,9 +896,7 @@ operations:
 - operationId: getAuthenticatorSetup
   method: POST
   path: /api/v1/auth/challenges/{challengeId}/authenticator-setup
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
-  - frontend/src/pages/login/login.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - owner-instruction
@@ -933,9 +904,7 @@ operations:
 - operationId: confirmAuthenticator
   method: POST
   path: /api/v1/auth/challenges/{challengeId}/authenticator-confirm
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
-  - frontend/src/pages/login/login.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -945,9 +914,7 @@ operations:
 - operationId: verifyAuthenticatorCode
   method: POST
   path: /api/v1/auth/challenges/{challengeId}/totp
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
-  - frontend/src/pages/login/login.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -956,9 +923,7 @@ operations:
 - operationId: verifyRecoveryCode
   method: POST
   path: /api/v1/auth/challenges/{challengeId}/recovery-code
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
-  - frontend/src/pages/login/login.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -973,8 +938,7 @@ operations:
 - operationId: logout
   method: POST
   path: /api/v1/auth/logout
-  currentH5Callers:
-  - frontend/src/stores/auth.ts
+  currentH5Callers: []
   decision: SIMPLIFY
   replacementOrImpact: Revoke only current vc_session; the response sets no cookies so a delayed logout
     cannot expire a newer login's vc_session/vc_csrf (VC-R12). Ordinary logout preserves the independent
@@ -1004,8 +968,7 @@ operations:
 - operationId: listTrustedDevices
   method: GET
   path: /api/v1/auth/trusted-devices
-  currentH5Callers:
-  - frontend/src/pages/account/account.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - owner-instruction
@@ -1013,8 +976,7 @@ operations:
 - operationId: revokeTrustedDevice
   method: DELETE
   path: /api/v1/auth/trusted-devices/{deviceId}
-  currentH5Callers:
-  - frontend/src/pages/account/account.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - owner-instruction
@@ -1022,8 +984,7 @@ operations:
 - operationId: changeAuthPassword
   method: POST
   path: /api/v1/auth/password
-  currentH5Callers:
-  - frontend/src/pages/account/account.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -1032,11 +993,7 @@ operations:
 - operationId: reauthAuth
   method: POST
   path: /api/v1/auth/reauth
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
-  - frontend/src/pages/admin-accounts/admin-accounts.vue
-  - frontend/src/pages/admin-models/admin-models.vue
-  - frontend/src/pages/admin-routing/admin-routing.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -1045,8 +1002,7 @@ operations:
 - operationId: adminResetAuthenticator
   method: POST
   path: /api/v1/admin/accounts/{accountId}/authenticator-reset
-  currentH5Callers:
-  - frontend/src/pages/admin-accounts/admin-accounts.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - owner-instruction
@@ -1055,9 +1011,7 @@ operations:
 - operationId: listAdminAccounts
   method: GET
   path: /api/v1/admin/accounts
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
-  - frontend/src/pages/admin-accounts/admin-accounts.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -1066,8 +1020,7 @@ operations:
 - operationId: reviewAdminAccount
   method: POST
   path: /api/v1/admin/accounts/{accountId}/review
-  currentH5Callers:
-  - frontend/src/pages/admin/admin.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -1083,8 +1036,7 @@ operations:
 - operationId: deleteAccount
   method: DELETE
   path: /api/v1/auth/account
-  currentH5Callers:
-  - frontend/src/pages/account/account.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - core-outcome
@@ -1154,10 +1106,7 @@ operations:
 - operationId: listModelProviders
   method: GET
   path: /api/v1/admin/providers
-  currentH5Callers:
-  - frontend/src/pages/admin-models/admin-models.vue
-  - frontend/src/pages/admin-routing/admin-routing.vue
-  - frontend/src/api/admin-runtime.ts
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -1166,8 +1115,7 @@ operations:
 - operationId: saveModelProvider
   method: PUT
   path: /api/v1/admin/providers/{providerId}
-  currentH5Callers:
-  - frontend/src/pages/admin-models/admin-models.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -1176,8 +1124,7 @@ operations:
 - operationId: discoverProviderModels
   method: POST
   path: /api/v1/admin/providers/{providerId}/models/discover
-  currentH5Callers:
-  - frontend/src/pages/admin-models/admin-models.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - h5-caller
@@ -1186,8 +1133,7 @@ operations:
 - operationId: reorderModelRoutes
   method: PUT
   path: /api/v1/admin/model-routing-order
-  currentH5Callers:
-  - frontend/src/pages/admin-routing/admin-routing.vue
+  currentH5Callers: []
   decision: KEEP
   keepBecause:
   - h5-caller

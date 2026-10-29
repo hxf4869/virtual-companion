@@ -1,14 +1,14 @@
 # Virtual Companion
 
 AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前后端运行时为 Go 1.26.10
-`companiond`，前端为 uni-app + Vue 3 + TypeScript，数据层为 PostgreSQL 18 +
+`companiond`，前台为 SillyTavern 宿主（`integrations/sillytavern/`），数据层为 PostgreSQL 18 +
 pgvector。Generation、Realtime、Memory、数据权利与管理员模型配置已接入 Go
 runtime；项目尚未达到真实用户或公开生产发布条件。
 
 > 2026-10-27 起目标方向改为 V2：原生 SillyTavern 宿主 + Go 长期服务，Owner 本人非商业使用
 > （[ADR-0009](docs/decisions/0009-v2-sillytavern-host-direction.md)、
 > [执行计划](docs/planning/2026-10-27-v2-execution-plan.md)、[PRODUCT.md](PRODUCT.md)）。
-> 下文描述的是 V2 实施前的现有实现。
+> 旧 Vue / uni-app H5 已在 W15 删除。下文中的 H5 旅程数字是删除前的历史验证记录。
 
 ## 当前状态（2026-10-22）
 
@@ -17,6 +17,9 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 [`TODO.md`](TODO.md)「当前状态」，不在此复写。
 
 ### 用户现在能完成什么（本地栈、合成数据）
+
+当前前台是 SillyTavern 受管宿主，入口见 [`integrations/sillytavern/README.md`](integrations/sillytavern/README.md)。
+下列页面流程属于已删除的 Vue H5，只保留为当时能力记录：
 
 - 受控账号密码登录 → 验证器挑战 → 会话；可信设备勾选后 90 天内再次
   密码登录免重复挑战；公开注册关闭；
@@ -29,12 +32,12 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 
 ### 实际验证范围与检查入口
 
-- 统一检查入口 `bash scripts/check.sh`（仓库约束 + Go 单测 + 前端测试与
-  type-check），SQL/RLS 隔离脚本在 `infra/db/`；各轮改动按影响范围定向
+- 统一检查入口 `bash scripts/check.sh`（仓库约束 + Go 单测 + ST 集成单测），
+  SQL/RLS 隔离脚本在 `infra/db/`；各轮改动按影响范围定向
   验证，结果记录在对应提交与 [`TODO.md`](TODO.md)，历史全量结果只按
   当时输入范围有效，不升级为当前整仓保证；
-- 前端全量测试（735 项）与 type-check 随 VC-R52 改动验证；
-- 真实隔离栈 E2E（[`frontend/e2e/journeys/`](frontend/e2e/journeys/)）：
+- 已删除的 Vue 前端曾在 VC-R52 记录全量测试 735 项与 type-check；
+- 已删除的 Vue 隔离栈 E2E（当时路径 `frontend/e2e/journeys/`）：
   2026-10-22 VC-R41 无过滤一次跑完当时核心 18 实例（3 projects/10 files）
   18/18 PASS（历史记录按当时输入保留）；同日 VC-R52 落地跨 Tab 错账号修复后
   同入口复跑 20 实例（18 + 新 R48 跨 Tab 用例双引擎）20/20 通过（1.9m）。
@@ -80,8 +83,8 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
   仍待 Owner 决策或执行，具体清单见 [`TODO.md`](TODO.md)。
 
 项目仍未达到公开生产可发布条件，未决清单以 [`TODO.md`](TODO.md) 为真源；
-产品范围以 [`PRODUCT.md`](PRODUCT.md) 与 [`frontend/DESIGN.md`](frontend/DESIGN.md)
-为准，API 范围见 [`specs/catalog/go-v1-api-scope.yaml`](specs/catalog/go-v1-api-scope.yaml)。
+产品范围以 [`PRODUCT.md`](PRODUCT.md) 为准，API 范围见
+[`specs/catalog/go-v1-api-scope.yaml`](specs/catalog/go-v1-api-scope.yaml)。
 
 ## 2026-09-06 修复轮状态（历史快照）
 
@@ -94,18 +97,17 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 ## 快速开始
 
 ```bash
-# 日常检查：契约/生成物、Go 单测、前端测试与类型检查
+# 日常检查：契约/生成物、Go 单测、ST 集成单测
 bash scripts/check.sh
 
-# 启动真实本地栈
+# 启动 Go API 与数据栈（不再构建已删除的 Vue H5）
 cp ops/deploy/.env.example ops/deploy/.env.local
 # 填写 ops/deploy/.env.local，真实 Secret 不入库
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend build
 cd ops/deploy
 docker compose --env-file .env.local up -d --build
 ```
 
+浏览器前台用 SillyTavern 受管宿主，见 [`integrations/sillytavern/README.md`](integrations/sillytavern/README.md)。
 部署、证书与验证步骤见 [`ops/deploy/README.md`](ops/deploy/README.md)，
 Owner-only 联调见 [`ops/deploy/DOGFOOD.md`](ops/deploy/DOGFOOD.md)。
 
@@ -114,13 +116,14 @@ Owner-only 联调见 [`ops/deploy/DOGFOOD.md`](ops/deploy/DOGFOOD.md)。
 - `backend/`：Go `companiond`，包含配置、opaque cookie auth、CSRF/Origin、
   PostgreSQL/RLS store、三类模型协议适配器、generation worker、Realtime SSE、
   Memory/Consent/Report/Export 和管理员 provider/model routing；
-- `frontend/`：uni-app H5，Vue 3 + TypeScript + Pinia；
+- `integrations/sillytavern/`：V2 SillyTavern 宿主、扩展与 server plugin；
 - `backend/internal/migrate/sql/`：嵌入式顺序迁移真源，当前版本以该目录为准，由 `companiond migrate` 执行；
 - `ops/deploy/`：Go-only Compose、Caddy、数据库/bootstrap 与 MinIO；
 - `specs/`：Catalog、OpenAPI 与关键协议契约；
 - `infra/db/`：迁移、RLS、最小权限与升级验证。
 
-默认 Compose 常驻进程只有 `companiond`、PostgreSQL、MinIO 和 Caddy。
+默认 Compose 常驻进程只有 `companiond`、PostgreSQL、MinIO 和 Caddy（API 的 TLS 边缘）。
+浏览器前台不由 Caddy 提供静态页。
 `migrate` 与 `bootstrap` 是同一 Go 镜像的一次性启动任务。仓库不再包含旧后端源码、
 构建工具或运行脚本。
 
@@ -147,7 +150,8 @@ Go v1 的明确范围与退役接口见
 
 ## 页面配置模型
 
-管理员登录后进入“管理 → 模型供应商”，可完成：
+模型目录的权威在 Go。浏览器里的供应商页面在 SillyTavern 扩展中，不在已删除的 Vue 管理页。
+管理员完成：
 
 1. 新增 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages 供应商；
 2. 保存 Base URL 与 API Key；
@@ -163,16 +167,8 @@ API Key 使用 `VC_CRYPTO_REST_KEY` 加密落库，读取接口不会返回明�
 # Go 后端（vendor 离线依赖）
 GOPROXY=off go test -C backend -mod=vendor -count=1 ./...
 
-# 前端
-pnpm --dir frontend test:run
-pnpm --dir frontend type-check
-pnpm --dir frontend build
-
-# 默认 HTTP 全旅程（可选长检查；Go 1.26.10+ 在 PATH、Node 22、pnpm 11、OrbStack）
-pnpm --dir frontend test:e2e
-
-# 真实 TLS 全旅程（可选长检查；Node 22、pnpm 11、OrbStack）
-E2E_STACK_KIND=tls E2E_RELEASE_MODE=full pnpm --dir frontend test:e2e
+# ST 集成离线单测（Node 22.13+；浏览器验收不在此命令）
+node --test "integrations/sillytavern/tests/*.test.mjs"
 
 # PostgreSQL 18 + pgvector / RLS
 bash infra/db/run-rls-tests.sh
@@ -183,34 +179,13 @@ cd ops/deploy
 docker compose --env-file .env.local config --quiet
 ```
 
-默认 HTTP E2E 使用当前 PATH 的 Go，在独立测试数据卷和容器上运行；宿主
-provider、runtime 与 Vite 进程记录 OS 启动时间，Docker 资源按本轮实际创建
-收据回收。日志 HTTP_STACK_STATE/STACK_READY 给出状态文件和私有运行目录。
-HTTP 状态使用 v4；旧记录缺少归属信息时显式失败并保留。E2E_STACK_KEEP=1
-用于保留调试现场；synthetic-eval 只有核验恢复 SYNTHETIC/eval=false 后才解除
-保留义务，恢复失败时即使启动器停止也保留本轮进程、容器和恢复记录。
-
-显式关闭完整的 HTTP v4 保留栈（Node 22，使用日志中该轮的绝对状态文件路径）：
-
-```bash
-node --experimental-strip-types scripts/dev/close-http-e2e-stack.mjs --state /absolute/path/to/state.json
-```
-
-命令核对本轮收据、实际容器归属与运行目录后关闭进程及 Docker 资源；
-synthetic-eval 若仍为该轮 BETA 会先恢复并核验，若已回到 SYNTHETIC 则直接
-关闭，无需重新激活 BETA。恢复或归属核验失败时保留现场并返回非零；旧版、
-不完整或缺失的记录不会自动关闭。关闭成功不改变原有 E2E 的验收结果。
-
-TLS E2E 每轮从当前源码重建 H5 与生产派生镜像，在
-`https://localhost:18457` 启动独立合成栈；可用 `E2E_TLS_PORT` 改端口。
-启动器先用本轮 CA 验证证书链、主机名与实际 HTTP/2，再执行全部浏览器旅程。
-它不读取部署 `.env`，也不继承 `VC_*` 生产配置；退出按本轮资源收据清理，
-清理失败时保留日志给出的 state 与收据供恢复。这不是容量或真实 provider 验收。
+Vue HTTP/TLS Playwright 栈和 `scripts/dev/close-http-e2e-stack.mjs` 已随旧前端删除。
+受管浏览器验收入口在 [`integrations/sillytavern/README.md`](integrations/sillytavern/README.md)，不进 `scripts/check.sh`。
 
 ## 当前边界
 
 - Technical Alpha 严格单 runtime；PostgreSQL advisory lock 会拒绝第二个活跃实例；
-- H5 与 API 只支持同源 HTTPS cookie 会话；
+- Go API 使用 opaque cookie 会话；浏览器前台是 SillyTavern 受管宿主；
 - 真实 provider 调用、费用和数据外发由 Owner 显式配置并自行核验；
 - 不支持公开注册、真实支付或未完成合规准备的真实用户 Beta；
 - 项目现状与后续项见 [`TODO.md`](TODO.md)，Agent 规则见 [`AGENTS.md`](AGENTS.md)。

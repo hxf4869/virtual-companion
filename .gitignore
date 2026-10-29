@@ -8,14 +8,6 @@
 *.pfx
 secrets/
 
-# Node / uni-app
-frontend/node_modules/
-frontend/dist/
-frontend/.hbuilderx/
-frontend/.vite/
-frontend/test-results/
-frontend/playwright-report/
-
 # IDEs
 .idea/
 .vscode/
@@ -81,9 +73,6 @@ ops/deploy/.local/
 /.impeccable/mocks/decision/admin-language-correction.prompt.txt
 /.impeccable/mocks/decision/admin-resource-explorer.png
 /.impeccable/mocks/decision/admin-state-bands.png
-/frontend/.impeccable/review/
-/frontend/src/static/quiet-loom/*.png.json
-
 # Capacity measurement local run (synthetic secrets, docker env, raw snapshots)
 scripts/measure/g12-go-capacity/.run/
 

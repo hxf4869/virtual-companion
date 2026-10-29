@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Disposable production-topology smoke: Go migrator/bootstrap/runtime, H5, DB and MinIO.
+# Disposable production-topology smoke: Go migrator/bootstrap/runtime, DB and MinIO.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -51,9 +51,6 @@ if ! expected_history="$(awk '
   exit 10
 fi
 
-echo "== build H5 =="
-pnpm --dir "$ROOT/frontend" build >/dev/null
-
 MIGRATOR_PASSWORD=$(openssl rand -hex 32)
 RUNTIME_PASSWORD=$(openssl rand -hex 32)
 OWNER_SECRET=$(openssl rand -base64 32 | tr -d '\n')
@@ -83,7 +80,7 @@ umask 022
 echo "== Go-only stack up =="
 "${COMPOSE[@]}" up -d --build
 
-echo "== health + H5 + API probes =="
+echo "== health + API probes =="
 ready=0
 for _ in $(seq 1 90); do
   if curl -sk -m 3 https://localhost:18443/actuator/health | grep -q '"UP"'; then
@@ -97,8 +94,6 @@ done
   "${COMPOSE[@]}" logs --no-color runtime migrate bootstrap >&2 || true
   exit 7
 }
-curl -sk -m 3 https://localhost:18443/ | grep -q '<div id="app">' \
-  || { echo "FAIL: H5 shell not served" >&2; exit 8; }
 code=$(curl -sk -m 3 -o /dev/null -w '%{http_code}' https://localhost:18443/api/v1/version)
 [ "$code" = 200 ] || { echo "FAIL: /api/v1/version got $code" >&2; exit 9; }
 
