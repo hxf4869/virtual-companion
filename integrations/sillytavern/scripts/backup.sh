@@ -13,7 +13,11 @@
 #   default-user/OpenAI Settings（原生 Chat Completion 预设，C03 消费）
 #   default-user/user（persona/头像与 CHARX 导入 misc 资源 user/images/**，C06 消费；仅排除确定的自托管
 #     mvu-bundle-d03b7dc8.js，该文件由 vendor/upstream 锁 + bootstrap 确定性再生，不泛称 user/ 可再生）
+#   _vc_accounts/ 与各用户根下 .vc-f2/（删除/身份状态，不含对话正文）
 #   + 传入的 config.yaml（归档内 _config/config.yaml）
+# 删除清单不进归档：VC_ST_DATABASE_URL 或 VC_ST_PG_CONTAINER 恰好设置其一时，另写
+# VC_ST_DELETION_MANIFEST（默认与归档同目录的 deletion-manifest.json）。恢复读这份最新清单，
+# 不把它打进会被回滚的快照，也不写回 PostgreSQL。
 # 不打包：明确列出的自托管派生文件与 extensions/（上游锁 + 补丁 + vendor.lock 可重放）；任何 keyfile / .env。
 # 守卫：输出不能落在 dataRoot 内；keyfile 不能在 dataRoot 内，也不能与归档同目录。产物 0600。
 #       只对本次新建的输出目录设 0700，已存在的父目录权限不动。
@@ -83,10 +87,24 @@ PROTECTED=(
     "default-user/backups"
     "default-user/OpenAI Settings"
     "default-user/user"
+    "_vc_accounts"
 )
 INCLUDE=(); MISSING=()
 for rel in "${PROTECTED[@]}"; do
     if [ -e "$DATA/$rel" ]; then INCLUDE+=("$rel"); else MISSING+=("$rel"); fi
+done
+if [ -L "$DATA/_vc_accounts" ]; then
+    echo "FAIL: _vc_accounts 不能是符号链接" >&2
+    exit 1
+fi
+for dir in "$DATA"/*/.vc-f2; do
+    if [ -L "$dir" ]; then
+        echo "FAIL: .vc-f2 不能是符号链接" >&2
+        exit 1
+    fi
+    if [ -d "$dir" ]; then
+        INCLUDE+=("${dir#"$DATA/"}")
+    fi
 done
 [ ${#INCLUDE[@]} -gt 0 ] || { echo "FAIL: dataRoot 内没有任何保护清单条目" >&2; exit 2; }
 
@@ -106,6 +124,34 @@ if [ -d "$MEMORYCORE_DATA/owners" ]; then
     mkdir -p "$WORK/stage"
     python3 "$SCRIPT_DIR/lib/memorycore-backup.py" snapshot "$MEMORYCORE_DATA" "$WORK/stage/_memorycore" || exit 2
     TAR_ARGS+=(-C "$WORK/stage" "_memorycore")
+fi
+
+# 最新删除清单放在归档外。快照回滚 PostgreSQL 时，恢复仍与这份清单取并集。
+if [ -n "${VC_ST_DATABASE_URL:-}" ] || [ -n "${VC_ST_PG_CONTAINER:-}" ]; then
+    if [ -n "${VC_ST_DATABASE_URL:-}" ] && [ -n "${VC_ST_PG_CONTAINER:-}" ]; then
+        echo "FAIL: VC_ST_DATABASE_URL 与 VC_ST_PG_CONTAINER 只能设一个" >&2
+        exit 1
+    fi
+    MANIFEST="${VC_ST_DELETION_MANIFEST:-$OUT_DIR_REAL/deletion-manifest.json}"
+    MANIFEST_PARENT="$(dirname "$MANIFEST")"
+    if [ ! -d "$MANIFEST_PARENT" ]; then
+        mkdir -p "$MANIFEST_PARENT"
+        chmod 700 "$MANIFEST_PARENT"
+    fi
+    MANIFEST_REAL="$(cd "$MANIFEST_PARENT" && pwd -P)/$(basename "$MANIFEST")"
+    case "$MANIFEST_REAL" in
+        "$DATA_REAL"|"$DATA_REAL"/*) echo "FAIL: 删除清单不能落在 dataRoot 内" >&2; exit 1;;
+    esac
+    OUT_REAL="$OUT_DIR_REAL/$(basename "$OUT")"
+    if [ "$MANIFEST_REAL" = "$OUT_REAL" ]; then
+        echo "FAIL: 删除清单不能覆盖归档" >&2
+        exit 1
+    fi
+    if [ -f "$WORK/stage/_memorycore/go-rights.json" ]; then
+        python3 "$SCRIPT_DIR/lib/deletion-state.py" export "$MANIFEST_REAL" "$DATA_REAL" "$WORK/stage/_memorycore/go-rights.json" || exit 2
+    else
+        python3 "$SCRIPT_DIR/lib/deletion-state.py" export "$MANIFEST_REAL" "$DATA_REAL" || exit 2
+    fi
 fi
 
 echo "== [1/4] 打包保护清单（$(printf '%s, ' "${INCLUDE[@]}" | sed 's/, $//')${CONFIG:+, _config/config.yaml}）"
