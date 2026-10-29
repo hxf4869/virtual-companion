@@ -343,19 +343,19 @@
       2026-10-29 Owner 决定：不开启 FileVault，已知并接受磁盘明文（聊天、角色、记忆）在设备丢失/送修时可被读取的风险；
       不设定期备份，仅按需手动执行 `backup.sh`。
 - [ ] `V2-OWNER-DEPLOY`：服务器常驻部署的目标与授权（1A；授权前在本机开发与验证）。
-      2026-10-29 基础部署已上线（PASS），完整业务/人工验收未完成，故本条暂不勾选。Owner 授权由 Codex 部署到京东云服务器
-      （Docker Compose，复用现有 Nginx 与 Owner 提供的证书，公网 HTTPS 域名；域名与主机细节只记在服务器 `/etc/virtual-companion/`，不入公开仓库）。
-      - 部署配置见 `ops/deploy/v2/`（Compose、ST 镜像、私有 ingress、systemd 单元、Nginx 站点模板）。所有 V2 容器不发布宿主端口，
-        ST/Go/MemoryCore/embedding 共享网络命名空间并只监听 loopback，PG/MinIO 只在 Docker internal 网络；Go 运行角色为
-        NOSUPERUSER / NOBYPASSRLS；私有环境文件 root/0600；ST 启用 Host 白名单。
-      - 应用版本 main `12eaee94`；上游、vendor 与核心补丁校验 PASS；迁移、Owner 初始化、MinIO 建桶 PASS。
-      - 验收 PASS：HTTPS 证书、HTTP→HTTPS、未登录跳转登录、私有脚本 401、非法 Origin 403、登录限流 429；
-        `systemctl restart` 后 Go health、MemoryCore readyz 三项、ST 登录页恢复，Owner 与通知渠道配置保留；
-        外部端口只开放 HTTP/HTTPS 与原有 SSH，V2 内部端口均不可达。
-      - NOT_RUN：Owner 首次登录改密与 TOTP 绑定、模型页真实配置与前台发送、记忆提取/遗忘、剧情行动/回档、手机真机、真实通知、整机重启。
-      - 证书需手动续期（到期日记在服务器运维记录）。
-      - 待升级：部署版本早于 Q5（DECLARED 陪伴回合 409 修复）、T1（工具调用验证）、Q1、Q3、Q4 与 R2（bge 重排）；
-        R2 合入后按 `ops/deploy/v2/README.md` 升级，并先在服务器补齐 `/etc/virtual-companion/compose.env`。
+      2026-10-29 基础部署上线（main `12eaee94`），同日升级至 `da2d6586`；本次升级、自动检查及 Owner 人工登录验收 PASS，其余未执行项保留，故本条暂不勾选。
+      - PASS：首次升级配置准备、服务单元安装与重载；手动加密备份包含 PostgreSQL，并通过解密后的逐字节自校验。
+      - PASS：本机 linux/amd64 构建、传输与镜像导入；上游锁、vendor 和核心补丁校验；受管设置扩展更新并逐文件核对。
+      - PASS：整体强制重建与健康等待；新增 V250、V265 迁移成功，目标版本全部 186 个迁移已应用；常驻服务健康，一次性任务退出码均为 0。
+      - PASS：Go health/readiness、MemoryCore readyz 三项、登录页、HTTPS 与跳转、未登录私有资源 401、非法 Origin 403、登录限流 429；
+        外部端口范围保持不变，服务重启后健康与持久化配置核对通过。
+      - PASS：Owner 账号保留且原密码校验成功；Owner 人工确认已成功登录并进入主界面。
+      - PASS：通知渠道仍为 2 条，渠道和正文预览均关闭，投递记录仍为 0。
+      - NOT_RUN：Owner 改初始口令与 TOTP 绑定、真实模型调用、真实通知发送、手机真机和整机重启。
+      - 部署方式：Codex 按 `docs/planning/2026-10-29-v2-deploy-plan.md` 部署到京东云 Docker Compose（`ops/deploy/v2/`），复用现有 Nginx 与证书；
+        V2 容器不发布宿主端口，ST/Go/MemoryCore/embedding 共享 loopback 命名空间，PG/MinIO 仅 internal 网络，Go 运行角色 NOBYPASSRLS，
+        私有环境文件 root/0600，ST 启用 Host 白名单；域名与主机细节只在服务器 `/etc/virtual-companion/`，不入公开仓库。证书需手动续期。
+      - 待办：R2（bge 重排）合入后再按 README 升级一次，新增重排容器。
 
 ## 当前状态（2026-10-21，V2 前实现快照）
 
