@@ -1,8 +1,12 @@
 # Go-only 部署
 
-默认部署只运行 Go `companiond`。常驻拓扑为 PostgreSQL 18 + pgvector、
-`companiond`、MinIO 和 Caddy；`migrate` 与 `bootstrap` 是启动前的一次性任务，
-成功后退出。旧后端技术链已从仓库与部署中移除。
+本目录的 Compose 不是 V2 栈。它只运行 Go `companiond`、PostgreSQL 18 + pgvector、
+MinIO 和 Caddy，不含 SillyTavern，不含 MemoryCore。V2 只在本机受管栈运行，启动、停止、
+日志、备份与恢复见 [`integrations/sillytavern/README.md`](../../integrations/sillytavern/README.md)
+「本机运行说明」。远端部署未授权（`TODO.md` 的 `V2-OWNER-DEPLOY`）。
+
+`migrate` 与 `bootstrap` 是这份 Compose 启动前的一次性任务，成功后退出。旧后端技术链已从仓库与部署中移除。
+下面的 Compose 命令是这份 Go-only 栈的既有说明；W16-2 没有重跑它们。
 
 ## 前置条件
 
@@ -126,6 +130,8 @@ usage 结算并释放未用余额，明确未发送时释放全部，取消、�
 本地合成测试使用显式的合成正价格和独立额度，不复用真实账单数据。
 
 ## 数据库与升级
+
+本节只针对上面的 Go-only Compose。V2 受管栈没有单独的升级命令；改 `upstream.lock.json` 后重装配的步骤见集成 README，且该步骤本轮未执行。
 
 - `vc_migrator` 只供一次性 `migrate`/`bootstrap` 使用；
 - `vc_runtime_login` 无 DDL、SUPERUSER 或 BYPASSRLS 权限，只注入常驻 runtime；

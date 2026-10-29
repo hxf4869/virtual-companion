@@ -1,7 +1,9 @@
 # Owner-only Go dogfood
 
-本手册只适用于本机/受控局域网的单 Owner 环境。默认 runtime 是 Go
-`companiond`；旧后端不再参与构建、迁移后的常驻运行或回滚。
+本手册只适用于本机/受控局域网的单 Owner 环境，描述的是 `ops/deploy` 这份 Go-only Compose。
+它只含 `companiond`、PostgreSQL、MinIO 和 Caddy，不含 SillyTavern，不含 MemoryCore，不是 V2 栈。
+V2 的本机步骤见 [`integrations/sillytavern/README.md`](../../integrations/sillytavern/README.md)「本机运行说明」。
+远端部署未授权（`V2-OWNER-DEPLOY`）。默认 runtime 是 Go `companiond`；旧后端不再参与构建、迁移后的常驻运行或回滚。
 
 ## 1. 准备私有配置
 

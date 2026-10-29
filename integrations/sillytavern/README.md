@@ -52,6 +52,127 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 运行产物，gitignored）、`upstream/`（gitignored）、`extension/`（S3 扩展，另见其目录）。
 `.local/` 是 W00 调试遗留，gitignored，不是交付物。
 
+## 本机运行说明（W16-2）
+
+V2 只在本机受管栈运行：本目录的 SillyTavern 与 MemoryCore，加上 Go `companiond`、PostgreSQL、MinIO。
+`ops/deploy` 的 Compose 只含 `companiond`、PostgreSQL、MinIO、Caddy，不含 SillyTavern，不含 MemoryCore，不是 V2 栈。
+远端部署未授权（`TODO.md` 的 `V2-OWNER-DEPLOY`）。
+
+并行 worktree 在仓库根先执行 `set -a; . ./.vc-wt.env; set +a`，只用该文件里的端口和容器名。
+没有该文件时，脚本默认是 ST `127.0.0.1:8752`、Go `8095`、MemoryCore `8754`，容器 `vc-w03-managed-pg` / `vc-w03-managed-minio`。
+口令、DSN、服务令牌与 S3 凭据只放进程环境或 0600 文件，不写入仓库、argv 或说明。
+
+除「升级与回退」标明未执行外，下面写出的命令都在 2026-10-29 于本机合成环境执行并成功。工作树为 `v2/w16`（`051585fb`）。环境文件把 ST 放到 `9852`、Go 放到 `9195`、MemoryCore 放到 `9854`，容器名为 `vc-w16-managed-pg` 与 `vc-w16-managed-minio`。时间为 CST。
+
+### 启动
+
+`bootstrap.mjs` 写原生 `integrations/sillytavern/dev`。环境里若已把 `VC_ST_DEV_DIR` 指到受管目录，这条命令必须改回原生目录。
+
+```bash
+VC_ST_DEV_DIR="$PWD/integrations/sillytavern/dev" node integrations/sillytavern/scripts/bootstrap.mjs
+```
+
+2026-10-29 13:12:16–13:12:23，退出码 0。五个上游 HEAD 与 `upstream.lock.json` 一致，生产依赖 667 个包与锁一致，vendor 18 个文件校验通过。本工作树的 `upstream/` 指向主检出，未执行 `npm ci`。
+
+加载本链 `.vc-wt.env` 后：
+
+```bash
+node integrations/sillytavern/scripts/assemble-managed.mjs
+```
+
+13:13:46–13:13:47，退出码 0。重建 `dev-managed/st-run` 与 `memorycore-run`，18 个核心补丁的输入/输出 SHA 通过，扩展 28 个文件（排除 `harness/`）。装配保留已有数据目录；本轮目录是新建的。
+
+Go、PostgreSQL、MinIO 不由 `start-managed` 拉起。现有编排在 `scripts/accept-managed.mjs`：标签 `com.vc.w03=managed`，容器名取 `VC_W03_PG_CONTAINER` / `VC_W03_MINIO_CONTAINER`，镜像为 `pgvector/pgvector:0.8.5-pg18` 与本机已有的 `vc-g12-minio-tools:local`（不自动拉取），端口是随机的 `127.0.0.1` 高端口。本轮按同一约定执行，均成功：
+
+- 13:13:04 `docker run -d --name "$VC_W03_PG_CONTAINER" --label com.vc.w03=managed -e POSTGRES_PASSWORD="$PG_PASSWORD" -e POSTGRES_DB=vc -p 127.0.0.1::5432 pgvector/pgvector:0.8.5-pg18`。13:13:21 容器内 `pg_isready -h 127.0.0.1 -p 5432 -U postgres -d vc` 通过。本轮发布端口 33396。
+- 13:13:21–13:13:28 `GOTOOLCHAIN=go1.26.10 GOPROXY=off go run -C backend -mod=vendor ./cmd/companiond migrate`（`VC_MIGRATE_DB_DSN`），输出 `companiond migrate complete`。
+- 13:13:28–13:13:29 同一工具链 `./cmd/companiond bootstrap`（`VC_BOOTSTRAP_DB_DSN`、`VC_OWNER_BINDING_SECRET`），输出 `companiond bootstrap complete`。
+- 13:13:29 `docker run -d --name "$VC_W03_MINIO_CONTAINER" --label com.vc.w03=managed -e MINIO_ROOT_USER="$MINIO_USER" -e MINIO_ROOT_PASSWORD="$MINIO_PASS" -p 127.0.0.1::9000 vc-g12-minio-tools:local server /data`。13:13:31 `GET /minio/health/live` 成功。本轮发布端口 33397。
+- 13:13:31–13:13:32 用同一镜像的 `mc`，经 `--network container:<MinIO>` 和用完即删的 0600 配置执行 `mb --ignore-existing w03/$VC_W03_S3_BUCKET`。输出 `Bucket created successfully`。
+- 13:13:32 `GOTOOLCHAIN=go1.26.10 GOPROXY=off go build -C backend -mod=vendor -o <仓库外临时路径> ./cmd/companiond`，随即以前台环境启动该二进制（`VC_MODE=full`、`VC_HTTP_ADDR=127.0.0.1:$VC_W03_GO_PORT`、`VC_HTTP_ORIGINS` 为受管 ST 的 origin、`VC_DB_DSN`、`VC_CRYPTO_REST_KEY`、`VC_EXPORT_S3_*`、`VC_ST_PLUGIN_SERVICE_TOKEN`、`VC_ST_HOST_BASE_URL`、`VC_MEMORYCORE_BASE_URL`、`VC_MEMORYCORE_SERVICE_TOKEN`）。13:13:33 `GET /actuator/health` 为 `{"status":"UP"}`，`/api/v1/version` 返回本轮设置的 `w16-runbook`。`accept-managed.mjs` 把二进制和 `go.log` 放在当轮 `dev-managed/run` 与 `dev-managed/artifacts/accept-<时间>/`，本轮为避免把验收产物写进仓库，二进制和 Go 日志放在仓库外。
+
+桥接环境就绪后（`VC_ST_GO_BASE_URL`、至少 32 字节的 `VC_ST_PLUGIN_SERVICE_TOKEN`、非空 `VC_ST_ACCOUNT_HANDLES`、至少 32 字节的 `VC_MEMORYCORE_SERVICE_TOKEN`）：
+
+```bash
+node integrations/sillytavern/scripts/start-managed.mjs
+```
+
+13:13:47–13:13:53，退出码 0。ST `http://127.0.0.1:9852/auth/` 返回 HTTP 200 与 HTML，pid 81818。本轮未设置 MemoryCore callback token，`/readyz` 为 `foundation=true`、`storageReady=true`、`businessReady=false`。
+
+### 状态、停止与日志
+
+```bash
+node integrations/sillytavern/scripts/status-managed.mjs
+```
+
+13:13:53，退出码 0。ST `auth.ready=true`，MemoryCore pid 存活且 health HTTP 200；输出只有 token 与映射是否已配置，没有值。
+
+```bash
+node integrations/sillytavern/scripts/stop-managed.mjs
+```
+
+13:14:30，退出码 0。先停 MemoryCore，再停受管 ST，并确认端口 9852 已释放。该命令不停 Go、PostgreSQL 或 MinIO。
+
+停止后再次执行 `status-managed.mjs`（13:14:30，退出码 0）：`memorycore.alive=false`，`st.alive=false`。
+
+日志：
+
+- ST：`$VC_ST_DEV_DIR/run/st.log`。13:13:53 为 0600、33243 字节。
+- MemoryCore：`$VC_ST_DEV_DIR/run/memorycore.log`。13:13:53 为 0600、28 字节，内容是 `MEMORYCORE_FOUNDATION_READY`。
+- Go 不由 `start-managed` 写固定日志。本轮把进程标准输出重定向到仓库外临时文件（13:13:33 为 1182 字节）。未把上游 ST 日志逐行审计一遍。这些日志都不在 `backup.sh` 清单内。
+
+### 备份与恢复
+
+先停 MemoryCore。服务持有 `memorycore-data/runtime.lock` 时，快照会拒绝。口令用 `VC_ST_BACKUP_PASSPHRASE` 或 0600 的 `VC_ST_BACKUP_PASSPHRASE_FILE`，只能设一个，不能放在 dataRoot 内，也不能与归档同目录。`owners/` 存在时会纳入 MemoryCore，此时 `VC_MEMORYCORE_DATABASE_URL` 与 `VC_MEMORYCORE_PG_CONTAINER` 必须恰好设置一个。MemoryCore 数据根默认是脚本旁的 `dev-managed/memorycore-data`，不读 `VC_ST_DEV_DIR`；目录被环境改掉时要另设 `VC_MEMORYCORE_DATA_ROOT`。
+
+本轮停止后写入合成聊天 `data/default-user/chats/w16-synthetic/marker.jsonl` 和合成 `memorycore-data/owners/1/vectors.db`，再执行：
+
+```bash
+bash integrations/sillytavern/scripts/backup.sh \
+  "$VC_ST_DEV_DIR/data" \
+  "$VC_ST_DEV_DIR/config.yaml" \
+  "$OUT"
+```
+
+13:14:31，退出码 0。归档在仓库外，模式 0600，4432071 字节；明文 tar 4431872 字节、59 个条目；自校验与原始 tar 字节一致；密钥来源为环境变量。打包清单含 `cookie-secret.txt`、`settings.json`、`chats`、`group chats`、`groups`、`characters`、`worlds`、`backups`、`OpenAI Settings`、`user` 与 `_config/config.yaml`。本轮没有 `secrets.json`，脚本跳过。`_memorycore/owners/1/vectors.db` 在随后的恢复副本中，行内容与合成标记一致。没有保留期剪枝，也没有定时任务。
+
+```bash
+bash integrations/sillytavern/scripts/restore.sh "$ARCHIVE" "$EMPTY_DIR"
+```
+
+13:14:31，退出码 0。目标是新建空目录。59 个条目，目录 0700、文件 0600。合成聊天与 `vectors.db` 在副本中可读，原 dataRoot 里的同名文件仍在。副本没有 `_vc_accounts/`，也没有 `.vc-f2/`。`_memorycore/restore-pending.json` 已由当前 PostgreSQL 重写（95 字节）。归档里的 `go-rights.json` 不作为恢复后门禁。这次只证明解包到空目录成功，不是 D06 恢复演练，没有把副本切成可检索、可跑任务的环境。
+
+`backup.sh` 不导出 PostgreSQL，也不复制 MinIO。`restore.sh` 不恢复这两个存储。旧的 `infra/db/backup/run-daily-backup.sh` 仍是 Go 库与对象存储那条历史链路，不含 ST dataRoot 与 MemoryCore，本轮没有执行它。
+
+### 升级与回退（未执行，仅说明）
+
+没有单独的升级或回退命令。五个上游 commit 记在 `upstream.lock.json`。应用升级是修改锁中的 commit 与对应产物 SHA256，再执行 `assemble-managed.mjs`：重建 `st-run` 与 `memorycore-run`，保留 `data/` 与 `memorycore-data/`。回退应用是把锁改回上一组 commit 后重新装配。PostgreSQL 迁移不承诺降级。本轮没有修改锁，也没有为升级或回退重跑装配。
+
+### C1 数据清单
+
+记忆域明文是 Owner 已决定项（ADR-0009 §2）。磁盘加密、备份放在哪、留多久、密钥放在哪、ST 聊天留多久，仍是 `V2-OWNER-PROTECTION`。2026-10-29 13:12 `fdesetup status` 的结果是 `FileVault is Off`。目录 0700/0600 和备份加密都没有满足 D01.a。
+
+| 数据 | 位置 | 正文或私密 | 加密 | 备份是否覆盖 |
+| --- | --- | --- | --- | --- |
+| ST 聊天、群聊、角色、世界书、自动备份、secrets、设置与 cookie secret | 受管 `dev-managed/data`（`VC_ST_DEV_DIR`）；原生在 `dev/data`。清单见 `backup.sh` | 含。jsonl 与 secrets 在 dataRoot 内可被 ST 进程读取 | 静态明文。只在 `backup.sh` 打成 VCBAE1（openssl aes-256-cbc，再经 `vc_aead.py` 封装） | 覆盖清单内已存在的路径。排除 `extensions/` 与锁定的 MVU bundle。无保留期 |
+| ST 身份墓碑 | 用户根下 `.vc-f2/*.json` | 身份、路径、revision，不含正文副本 | 明文 | 不在 `backup.sh` 清单。本轮恢复副本中不存在 |
+| 账号映射与删除状态 | `DATA_ROOT/_vc_accounts/<id>.json` | 账号到 handle，以及 ACTIVE/DELETING/DELETED | 明文 | 不在清单。本轮恢复副本中不存在 |
+| Go PostgreSQL `vc.*` | 受管验收容器或本机合成容器中的库 | 记忆、摘要、来源快照含正文。凭据、TOTP、通知渠道凭据、导出口令仍走字段加密 | 记忆域明文（`V146__memory_plaintext.sql`，列名仍是 `content_cipher` / `temporal_cipher`）。其余为 AES-256-GCM `enc2` | `backup.sh` 不打 PG dump。旧每日备份不是 V2 入口，本轮未执行 |
+| 删除意图 | `vc.account_deletion_intent` | digest，不是正文 | 不是字段加密 | 不随 `backup.sh` 导出。MemoryCore 快照里的 `go-rights.json` 只是当时读到的权利，恢复时改读当前库 |
+| MemoryCore | `dev-managed/memorycore-data/owners/<十进制 owner>/` | 含。`vectors.db`、jsonl、画像与操作记录可含派生文本 | 明文，目录 0700、文件 0600。Owner 决定不加密 | `owners/` 存在时纳入，排除 wal/shm 与 `runtime.lock`。本轮已验证。无保留期 |
+| MinIO 导出对象 | `exports/<owner>/<id>-<hex>.json` | 含对话与记忆副本 | 上传前字段加密 | 对象约 24 小时后由 scheduler 清理。不在 `backup.sh` 内。本轮只建了空桶，没有导出对象 |
+| 本机 embedding | 约定 `127.0.0.1:11438` 的 `qwen3-embedding:0.6b`，容器名 `vc-w08-embedding` | 请求瞬时可能含记忆文本；容器内是模型权重 | 无应用层加密 | 无备份。仓库没有创建该容器的脚本。本轮未启动 |
+| 日志 | `dev-managed/run/st.log`、`memorycore.log`；Go 为进程自身输出 | 插件约定禁止正文与令牌。本轮 MemoryCore 日志只有固定就绪码 | 明文。MemoryCore 日志文件为 0600 | 不进备份 |
+
+### 已知缺口
+
+下列各项留在 W16 后续，本轮没有实现，也不能把这次空目录解包写成恢复演练已通过：
+
+- 备份不含 `_vc_accounts/` 与 `.vc-f2/`，隔离副本没有 ST 侧删除状态。
+- PostgreSQL 与 MinIO 不由 `restore.sh` 恢复。
+- D06 的跨存储顺序尚未实现：先在隔离副本保持查询和任务关闭，应用不随旧快照回滚的最新删除，清理后再开放检索和任务。恢复出来的 ST jsonl、角色、世界书和 secrets 会原样放回。
+- 备份位置、保留期、密钥存放位置、FileVault 或等价卷加密、ST 聊天留存期限仍待 Owner（`V2-OWNER-PROTECTION`）。远端常驻部署仍待 Owner（`V2-OWNER-DEPLOY`）。
+
 ## 受管（managed）运行装配
 
 W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后端（Go 为模型目录与凭据唯一权威），
@@ -101,10 +222,10 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 - **桥接语义**：ST 侧的模型保存、用途绑定与仅配置投影零上游请求；受控取用（显式连接检查/目录拉取）
   与生成是分开的显式动作。写请求携带 Go 会话身份快照头（`X-VC-Expected-Account-ID` /
   `X-VC-Expected-Session-ID`），revision 冲突返回 409 且界面草稿保留；模型 Key 不回显，界面只显示状态。
-- **生命周期边界**：`assemble-managed` / `start-managed` 负责 ST 与 MemoryCore 基础服务装配／运行，不拉起完整 Go/PG/S3；
-  PG（容器 `vc-w03-managed-pg`）与 Go 进程由验收侧脚本管理，手工运行受管栈需自备已就绪的 Go 服务与
-  桥接配置（`VC_ST_GO_BASE_URL` / `VC_ST_PLUGIN_SERVICE_TOKEN`）。原生实例（8742/8743）与受管实例
-  （8752）互不接管，`stop`/`stop-managed` 各按自己 pid 文件收口。
+- **生命周期边界**：`assemble-managed` / `start-managed` 负责 ST 与 MemoryCore，不拉起 Go、PostgreSQL 或 MinIO。
+  这三项按 `accept-managed.mjs` 的容器与环境约定启动，命令和 2026-10-29 的执行结果见上文「本机运行说明」。
+  默认容器名是 `vc-w03-managed-pg` 与 `vc-w03-managed-minio`；并行 worktree 用 `.vc-wt.env` 覆盖。
+  原生实例（8742/8743）与受管实例互不接管，`stop`/`stop-managed` 各按自己的 pid 文件收口，也不停 Go 与数据库容器。
 - 冻结端口约定：受管 ST=8752、合成 provider=8753、Go=8095；Go 侧 `VC_HTTP_ORIGINS` 需含
   `http://127.0.0.1:8752`。
 
@@ -214,9 +335,10 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   `VC_ST_PLUGIN_SERVICE_TOKEN` 与 `VC_ST_ACCOUNT_HANDLES` 只经进程环境注入，不落盘、不进日志与
   status 输出。
 - Tavern Helper 为 PolyForm-Noncommercial：禁止商业使用，禁止向 Owner 以外的人提供本服务（ADR-0009 §3/§4）。
-- 备份只打包显式保护清单（chats、group chats、groups、characters、worlds、backups、OpenAI Settings、
-  user 资源、settings/secrets、cookie-secret、config.yaml），排除可确定性再生的自托管派生文件与
-  `extensions/`；keyfile 不得位于 dataRoot 内、不得与归档同目录。
+- 备份打包显式保护清单（chats、group chats、groups、characters、worlds、backups、OpenAI Settings、
+  user 资源、settings/secrets、cookie-secret、config.yaml）；`memorycore-data/owners/` 存在时另打 MemoryCore 快照。
+  排除可确定性再生的自托管派生文件与 `extensions/`，也不包含 `_vc_accounts/`、`.vc-f2/`、PostgreSQL 与 MinIO。
+  keyfile 不得位于 dataRoot 内、不得与归档同目录。保留期未定，见「本机运行说明」。
 
 ### W06 持久来源对账
 
@@ -257,8 +379,9 @@ ST JSONL 的 F2 revision 是持久权威；`vc_message_id` 与每个 swipe 的 `
   MemoryCore 阶段提交；旧 `MEMORY_EXTRACT` 不再入队、领取、消费或重放 payload。
   用途固定为 `MEMORY_EXTRACTION_DEDUP_SUMMARY`，缺失即失败，不回落前台/全局 provider。
   Go Broker 显式映射已声明支持的 temperature/topP/reasoningEffort，配置变更使旧能力失效。
-- **边界**：MemoryCore 自 W08 纳入必需在线导出/删除域；恢复屏障亦见下文 W08 说明。
-  离线备份保留策略仍属 W16；inbox/通知尚未投产，不在当前清单声称范围。
+- **边界**：MemoryCore 自 W08 纳入必需在线导出/删除域；离线快照与恢复门禁见「本机运行说明」和下面的 W08 备份段。
+  离线备份没有保留期，`backup.sh` 不剪枝，存放位置与期限属 `V2-OWNER-PROTECTION`。
+  Inbox 与邮箱／飞书的合成验收在 W10（本地 SMTP 与本地 Webhook，N01–N03 已做）。真实邮箱、真实飞书和手机关网页后的送达未做，属 `V2-OWNER-NOTIFY` 与 `V2-OWNER-DEVICE`。
 - **验收入口**：`node scripts/accept-managed.mjs --filter source-native,rights-browser,rights-native`；
   浏览器路径使用上文 `VC_W03_CHROMIUM_PATH`。覆盖实际来源读回、桌面/手机宽度页面、一次性副本、
   ST 不可用后的同任务恢复与独立合成账号清理，不使用真实 Owner 数据。
@@ -301,7 +424,7 @@ MemoryCore 作为独立 Node 进程运行，默认只监听 `127.0.0.1:8754`（`
   `patches/memorycore/index.json` 登记提案/严格提交、检索前隔离、清理与向量空间四组补丁；
   通过现有 `scripts/lib/patcher.mjs` 校验输入/输出再应用，不修改上游检出。
 - 数据在 `dev-managed/memorycore-data/owners/<可信十进制 owner ID>/`；目录 0700、文件 0600、umask 077。
-  装配只重建运行副本，保留数据；运行中的服务拒绝重新装配。此目录尚未纳入跨域数据权利／备份，正式数据接入留到后续步骤。
+  装配只重建运行副本，保留数据；运行中的服务拒绝重新装配。`owners/` 存在时 `backup.sh` 会打进加密归档，备份前必须先停服务。在线导出／删除自 W08 起包含该引擎。正式备份位置、保留期与磁盘加密仍属 `V2-OWNER-PROTECTION`。
 - 独立服务令牌通过私有运行环境 `VC_MEMORYCORE_SERVICE_TOKEN` 注入（至少 32 字节、无空白），不写入锁、配置、manifest、PID 或日志。
   不与 ST 桥接令牌共用；默认受管启动也不会把它传给 ST。无 CORS，带 Origin 的请求被拒绝。
 - `run/memorycore.pid` 与 `memorycore.log` 均 0600。停止只处理 PID 文件所记且入口绝对路径和 dataRoot 匹配的进程，
@@ -392,7 +515,7 @@ L2/L3 的 Go 摘要投影按来源会话独立构建，跨会话召回再组合�
 含 `_memorycore` 的 `restore.sh` 必须连接当前权威 PostgreSQL，生成最新删除/来源 allowlist 恢复门禁；
 数据库不可达退出 5 并保留 blocked 标记。全部 owner 清理、来源对账完成前不开放引擎读取。
 恢复产物 `_memorycore` 应作为引擎 dataRoot；PG 本体仍用现有 PG 备份流程恢复，历史归档的 `go-rights`
-不能替代最新删除意图。离线备份保留策略仍属 W16。
+不能替代最新删除意图。离线备份没有保留期，也没有定时清理，这两项仍是 `V2-OWNER-PROTECTION`。
 
 已有 Owner 授权时，`--filter memory-real-model` 可单独验证 3 条合成来源（中文偏好、跨会话改口、
 相对日期）和 API 遗忘。它仅在内存中以 GB18030 读取根目录 gitignored `agents.txt`，使用指定

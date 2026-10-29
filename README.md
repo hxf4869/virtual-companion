@@ -99,8 +99,17 @@ runtime；项目尚未达到真实用户或公开生产发布条件。
 ```bash
 # 日常检查：契约/生成物、Go 单测、ST 集成单测
 bash scripts/check.sh
+```
 
-# 启动 Go API 与数据栈（不再构建已删除的 Vue H5）
+V2 在本机受管栈运行。启动、停止、状态、日志、备份、恢复，以及未执行的升级／回退说明，写在
+[`integrations/sillytavern/README.md`](integrations/sillytavern/README.md)「本机运行说明」。
+2026-10-29 已在本工作树的合成环境执行那些命令（ST `9852`、Go `9195`、MemoryCore `9854`，容器 `vc-w16-*`）。
+远端部署未授权（[`TODO.md`](TODO.md) 的 `V2-OWNER-DEPLOY`）。
+
+`ops/deploy` 的 Compose 只运行 `companiond`、PostgreSQL、MinIO 和 Caddy，不含 SillyTavern，不含 MemoryCore，不是 V2 栈。
+W16-2 没有重跑下面的 Compose 命令：
+
+```bash
 cp ops/deploy/.env.example ops/deploy/.env.local
 # 填写 ops/deploy/.env.local，真实 Secret 不入库
 cd ops/deploy
@@ -108,8 +117,8 @@ docker compose --env-file .env.local up -d --build
 ```
 
 浏览器前台用 SillyTavern 受管宿主，见 [`integrations/sillytavern/README.md`](integrations/sillytavern/README.md)。
-部署、证书与验证步骤见 [`ops/deploy/README.md`](ops/deploy/README.md)，
-Owner-only 联调见 [`ops/deploy/DOGFOOD.md`](ops/deploy/DOGFOOD.md)。
+Go-only Compose 的证书与验证步骤见 [`ops/deploy/README.md`](ops/deploy/README.md)，
+同一 Compose 的 Owner-only 联调见 [`ops/deploy/DOGFOOD.md`](ops/deploy/DOGFOOD.md)。
 
 ## 当前架构
 
@@ -118,12 +127,13 @@ Owner-only 联调见 [`ops/deploy/DOGFOOD.md`](ops/deploy/DOGFOOD.md)。
   Memory/Consent/Report/Export 和管理员 provider/model routing；
 - `integrations/sillytavern/`：V2 SillyTavern 宿主、扩展与 server plugin；
 - `backend/internal/migrate/sql/`：嵌入式顺序迁移真源，当前版本以该目录为准，由 `companiond migrate` 执行；
-- `ops/deploy/`：Go-only Compose、Caddy、数据库/bootstrap 与 MinIO；
+- `ops/deploy/`：Go-only Compose（`companiond`、PostgreSQL、MinIO、Caddy）。不含 SillyTavern 与 MemoryCore，不是 V2 栈；
 - `specs/`：Catalog、OpenAPI 与关键协议契约；
 - `infra/db/`：迁移、RLS、最小权限与升级验证。
 
-默认 Compose 常驻进程只有 `companiond`、PostgreSQL、MinIO 和 Caddy（API 的 TLS 边缘）。
-浏览器前台不由 Caddy 提供静态页。
+`ops/deploy` 的常驻进程只有 `companiond`、PostgreSQL、MinIO 和 Caddy（API 的 TLS 边缘）。
+它不启动 SillyTavern 或 MemoryCore。V2 的浏览器前台是本机受管宿主，不由这份 Compose 或 Caddy 提供。
+远端部署未授权（`V2-OWNER-DEPLOY`）。
 `migrate` 与 `bootstrap` 是同一 Go 镜像的一次性启动任务。仓库不再包含旧后端源码、
 构建工具或运行脚本。
 
