@@ -755,6 +755,11 @@ async function runFull() {
             await startGoService(secrets, artifactsDir);
             await seedSyntheticOwner(secrets);
             ctx.admin = createGoAdminClient({ baseUrl: GO_BASE, origin: ST_BASE, session: secrets.session });
+            // 合成 Owner 默认已同意五项，浏览器场景不被首次同意页挡住；consent-ui 自己先撤回再测。
+            for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
+                const granted = await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'accept-managed', granted: true });
+                if (granted.status !== 200) throw new Error(`预置同意 ${consentType} HTTP ${granted.status}`);
+            }
         }
         if (needsFixture) {
             await startFixtureProvider(secrets, artifactsDir);
