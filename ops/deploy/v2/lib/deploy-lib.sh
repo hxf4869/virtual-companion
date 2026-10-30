@@ -220,6 +220,23 @@ print_plan() {
   cat "$REMOTE_BODY"
 }
 
+# Dockerfile.st 需要按 upstream.lock.json 的干净上游克隆（gitignore，不在提交里）。
+# 从本机已核验的检出各取当前 HEAD 做 depth 1 克隆，不带 node_modules；镜像内 bootstrap 再核对锁定 commit。
+prepare_upstream_clones() {
+  local wt="$1" src_root="${VC_DEPLOY_UPSTREAM_DIR:-$REPO_ROOT/integrations/sillytavern/upstream}" src dest
+  [ -d "$src_root" ] || { echo "FAIL: 缺少上游检出目录" >&2; exit 1; }
+  rm -rf "$wt/integrations/sillytavern/upstream"
+  mkdir -p "$wt/integrations/sillytavern/upstream"
+  for src in "$src_root"/*/; do
+    src=${src%/}
+    [ -d "$src/.git" ] || [ -f "$src/.git" ] || continue
+    dest="$wt/integrations/sillytavern/upstream/$(basename "$src")"
+    git init -q "$dest"
+    git -C "$dest" fetch -q --depth 1 "file://$src" HEAD
+    git -C "$dest" checkout -q --detach FETCH_HEAD
+  done
+}
+
 build_images() {
   local st_image="$1" rt_image="$2" need_st="$3" need_rt="$4"
   if [ "$need_st" -eq 0 ] && [ "$need_rt" -eq 0 ]; then
@@ -229,6 +246,7 @@ build_images() {
   chmod 700 "$WT"
   git -C "$REPO_ROOT" worktree add --detach "$WT" "$FULL"
   if [ "$need_st" -eq 1 ]; then
+    prepare_upstream_clones "$WT"
     echo "构建 ${st_image}"
     "$VC_DEPLOY_DOCKER" buildx build --platform linux/amd64 --load \
       -t "$st_image" \
