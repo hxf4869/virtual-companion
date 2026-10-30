@@ -110,10 +110,11 @@ test('登录页视觉规格：版式、分组、验证码格、主按钮与令�
     assert.match(css, /\.thumb\s*\{[^}]*position:\s*fixed/);
     assert.match(css, /min-width:\s*744px[\s\S]*\.auth-panel\s*\{[^}]*var\(--vc-card\)/);
     assert.match(css, /min-width:\s*744px[\s\S]*border-radius:\s*var\(--vc-radius-lg\)/);
-    assert.match(css, /min-width:\s*744px[\s\S]*box-shadow:\s*var\(--vc-shadow\)/);
     assert.match(css, /min-width:\s*744px[\s\S]*\.thumb\s*\{[^}]*position:\s*static/);
     assert.match(css, /\.primary\s*\{[^}]*height:\s*var\(--vc-btn\)/);
-    assert.match(css, /\.primary\s*\{[^}]*border-radius:\s*var\(--vc-radius-sm\)/);
+    assert.match(css, /\.primary\s*\{[^}]*border-radius:\s*var\(--vc-radius-pill\)/);
+    // DESIGN：页面与分组平面无阴影，按钮都是胶囊。
+    assert.doesNotMatch(css, /\.auth-panel\s*\{[^}]*box-shadow/);
     assert.match(css, /\.primary\s*\{[^}]*font-size:\s*var\(--vc-fs-body\)/);
     assert.match(css, /\.primary\s*\{[^}]*font-weight:\s*600/);
     assert.match(css, /\.primary\[aria-busy="true"\]\s*\{\s*opacity:\s*1/);

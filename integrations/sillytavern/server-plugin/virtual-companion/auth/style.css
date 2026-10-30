@@ -362,7 +362,7 @@ input[aria-invalid="true"]:not(.otp-input) {
   width: 100%;
   height: var(--vc-btn);
   margin-bottom: var(--vc-space-sm);
-  border-radius: var(--vc-radius-sm);
+  border-radius: var(--vc-radius-pill);
   background: var(--vc-fill-2);
   color: var(--vc-accent-text);
   font-size: var(--vc-fs-body);
@@ -472,7 +472,7 @@ input[aria-invalid="true"]:not(.otp-input) {
   height: var(--vc-btn);
   padding: 0 var(--vc-space-sm);
   border: 0;
-  border-radius: var(--vc-radius-sm);
+  border-radius: var(--vc-radius-pill);
   background: var(--vc-fill-2);
   color: var(--vc-ink);
   font: inherit;
@@ -521,7 +521,7 @@ input[aria-invalid="true"]:not(.otp-input) {
   width: 100%;
   height: var(--vc-btn);
   border: 0;
-  border-radius: var(--vc-radius-sm);
+  border-radius: var(--vc-radius-pill);
   background: var(--vc-accent);
   color: var(--vc-on-accent);
   font-size: var(--vc-fs-body);
@@ -629,7 +629,6 @@ button:disabled,
     padding: var(--vc-space-xxl);
     background: var(--vc-group);
     border-radius: var(--vc-radius-lg);
-    box-shadow: var(--vc-shadow);
   }
 
   .group-card,
