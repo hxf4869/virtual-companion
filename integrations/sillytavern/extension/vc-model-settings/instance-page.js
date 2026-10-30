@@ -1046,7 +1046,7 @@ export function mountCharactersTab(container, options = {}) {
         if (action === 'edit-card') openHostCharacterPanel(root.ownerDocument);
         if (action === 'edit-persona') openPersona(detailRef);
         if(action==='edit-voice'){
-            const card=decorate(page.state).cards.find((item)=>item.characterRef===detailRef);
+            const card=characterModel(page.state).cards.find((item)=>item.characterRef===detailRef);
             const instances=card?.instances||[];
             if(instances.length===1)void openRelationshipVoiceSettings(instances[0].relationshipId,{opener:target});
             else if(instances.length>1)popMenu(target,instances.map((item)=>({label:item.name,run:()=>void openRelationshipVoiceSettings(item.relationshipId,{opener:target})})));
