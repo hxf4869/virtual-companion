@@ -221,12 +221,15 @@ sys.stdout.buffer.write(b'PGDMP-synthetic')
     fs.writeFileSync(path.join(bin, 'psql'), `#!/usr/bin/env python3
 import os, sys
 open(os.environ['VC_TEST_ARGV_LOG'], 'a').write('psql\\t' + '\\t'.join(sys.argv[1:]) + '\\n')
+sql = sys.stdin.read()
+if 'to_regclass' in sql:
+    sys.stdout.write('f\\n')
+    sys.exit(0)
 pw = os.environ.get('PGPASSFILE', '')
 open(os.environ['VC_TEST_ARGV_LOG'], 'a').write('stpass\\t' + (open(pw).read() if pw else '') + '\\n')
 if pw:
     open(os.environ['VC_TEST_ARGV_LOG'], 'a').write('stmode\\t' + oct(os.stat(pw).st_mode & 0o777) + '\\n')
-sql = sys.stdin.read()
-sys.stdout.write('f\\n' if 'to_regclass' in sql else '{"version":1,"accounts":[],"conversations":[],"relationships":[]}\\n')
+sys.stdout.write('{"version":1,"accounts":[],"conversations":[],"relationships":[]}\\n')
 `, { mode: 0o700 });
     const both = sh(BACKUP, [data, '-', archive], {
         VC_ST_BACKUP_PASSPHRASE: pass,
