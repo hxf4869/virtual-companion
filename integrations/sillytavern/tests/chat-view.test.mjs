@@ -12,6 +12,8 @@ import {
     isNearBottom,
     markSpeakers,
     mountChatView,
+    isDirectChat,
+    syncDirectChat,
     pressExceeded,
     readReplyStyle,
     recalledItems,
@@ -658,4 +660,37 @@ test('记忆正常提示不占玻璃条，持续不可用只留一行小号说�
     assert.equal(note.className.includes('vc-glass'), false);
     downDoc.body.dispatch('vc-memory-notice', { detail: { text: '' } });
     assert.equal(downDoc.querySelector('#vc-memory-note').textContent, '');
+});
+
+test('最后一条角色头像不被宿主的下内边距拉成胶囊', async () => {
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    assert.match(css, /#chat > \.mes \.mesAvatarWrapper \{[^}]*padding:\s*0\s*!important/);
+    assert.match(css, /#chat > \.mes\.vc-speaker \.mesAvatarWrapper \{[^}]*height:\s*24px\s*!important/);
+    assert.match(css, /#chat > \.mes \.avatar \{[^}]*flex:\s*none\s*!important/);
+});
+
+test('深色消息头像和海报头像不用变亮混合', async () => {
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    const shell = fs.readFileSync(new URL('../extension/vc-model-settings/shell.css', import.meta.url), 'utf8');
+    assert.match(css, /\.vc-poster-avatar \{[^}]*mix-blend-mode:\s*normal/);
+    assert.match(shell, /#chat > \.mes \.avatar img \{[^}]*mix-blend-mode:\s*normal/);
+    assert.match(shell, /\[data-who-avatar\] img \{[^}]*mix-blend-mode:\s*normal/);
+    assert.match(shell, /img\.vc-convo-avatar[\s\S]{0,220}mix-blend-mode:\s*var\(--vc-avatar-blend/);
+});
+
+test('一对一不显示发送者名字，群聊仍标记发言人', () => {
+    assert.equal(isDirectChat({ groupId: '' }), true);
+    assert.equal(isDirectChat({}), true);
+    assert.equal(isDirectChat({ groupId: 'g1' }), false);
+    const doc = installMiniDom();
+    stage(doc, { ui: true });
+    syncDirectChat(doc, { groupId: '' });
+    assert.equal(doc.body.classList.contains('vc-direct'), true);
+    syncDirectChat(doc, { groupId: 'room' });
+    assert.equal(doc.body.classList.contains('vc-direct'), false);
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    const speakerAt = css.search(/\.vc-speaker \.name_text \{[^}]*display:\s*inline\s*!important/);
+    const directAt = css.search(/body\.vc-ui\.vc-direct #chat > \.mes \.name_text \{[^}]*display:\s*none\s*!important/);
+    assert.ok(speakerAt >= 0 && directAt > speakerAt);
+    assert.match(css, /body\.vc-ui\.vc-direct #chat > \.mes \.ch_name \{[^}]*display:\s*none\s*!important/);
 });

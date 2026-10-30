@@ -310,8 +310,18 @@ function iconEl(name, size = 22) {
     return holder.firstElementChild || holder;
 }
 
+export function subtitleBeside(name, inst) {
+    const title = String(name ?? '').trim();
+    const sub = String(inst ?? '').trim();
+    if (!sub || sub === title) return '';
+    const prefix = `${title} · `;
+    if (title && sub.startsWith(prefix) && /^\d+$/.test(sub.slice(prefix.length))) return '';
+    return sub;
+}
+
 function titlesOf(row) {
-    return conversationTitle(row);
+    const title = conversationTitle(row);
+    return { name: title.name, inst: subtitleBeside(title.name, title.inst) };
 }
 
 function ensureFlyLayer(doc) {
@@ -756,6 +766,7 @@ export function mountShell(options = {}) {
         }
         el.style?.removeProperty?.('transform');
         el.style?.removeProperty?.('filter');
+        el.style?.removeProperty?.('opacity');
     }
 
     function applyChrome() {
@@ -832,8 +843,9 @@ export function mountShell(options = {}) {
         }
         for (const page of root.querySelectorAll('.vc-shell-page')) {
             const on = page.getAttribute('data-page') === nav;
+            const wasOn = page.classList.contains('is-on');
             page.classList.toggle('is-on', on);
-            if (on) {
+            if (on && !wasOn) {
                 page.classList.remove('is-enter');
                 if (page.offsetWidth >= 0) page.classList.add('is-enter');
             }

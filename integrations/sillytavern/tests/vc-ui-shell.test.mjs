@@ -25,6 +25,7 @@ import {
     registerShellTabs,
     settingOpener,
     sidebarCssWidth,
+    subtitleBeside,
     writeReplyStyle,
 } from '../extension/vc-model-settings/shell.js';
 
@@ -195,6 +196,21 @@ test('index 只在标志打开时挂载外壳', async () => {
     const ui = src.indexOf("'./vc-ui.css'");
     const call = src.indexOf('mountShell({');
     assert.ok(ui !== -1 && call > ui);
+});
+
+test('页头副标题与标题重复时不显示', () => {
+    assert.equal(subtitleBeside('回复流水线 2b43c618', '回复流水线 2b43c618'), '');
+    assert.equal(subtitleBeside('回复流水线 2b43c618', '回复流水线 2b43c618 · 2'), '');
+    assert.equal(subtitleBeside('回复流水线', ''), '');
+    assert.equal(subtitleBeside('回复流水线', '合成实例'), '合成实例');
+    assert.equal(subtitleBeside('回复流水线', '合成实例 · 2'), '合成实例 · 2');
+});
+
+test('打开桌面聊天时会话列表保持不透明，标签栏页面滚动区让出底栏', async () => {
+    const css = stripComments(await readFile(cssUrl, 'utf8'));
+    assert.match(css, /\[data-chrome="sidebar"\]\[data-chat="open"\] \.vc-shell-pages \{[^}]*opacity:\s*1\s*!important/);
+    assert.match(css, /\[data-chrome="sidebar"\]\[data-chat="open"\] \.vc-shell-pages \{[^}]*isolation:\s*isolate/);
+    assert.match(css, /\[data-chrome="tabbar"\] \.vc-shell-page:not\(\[data-page="story"\]\) \.vc-scroll \{[^}]*padding-bottom:\s*var\(--vc-detail-pad\)/);
 });
 
 test('shell.css 只在 body.vc-ui 下生效', async () => {

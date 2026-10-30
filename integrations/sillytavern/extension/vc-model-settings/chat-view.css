@@ -15,9 +15,11 @@ body.vc-ui {
 
 body.vc-ui #sheld {
   overflow: hidden;
-  background:
-    radial-gradient(120% 42% at 50% 0%, rgb(var(--vc-tint) / var(--vc-tint-alpha)), transparent 68%),
-    var(--vc-canvas) !important;
+  /* 颜色和渐变必须拆开。带斜杠的 rgb(var(--vc-tint) / alpha) 在简写里会整段失效，
+     把 !important 背景算成透明，聊天打开后这一列就没有底色。 */
+  background-color: var(--vc-canvas) !important;
+  background-image: radial-gradient(120% 42% at 50% 0%, color-mix(in srgb, rgb(var(--vc-tint)) calc(var(--vc-tint-alpha) * 100%), transparent), transparent 68%) !important;
+  background-repeat: no-repeat !important;
 }
 
 body.vc-ui #chat {
@@ -99,7 +101,7 @@ body.vc-ui .vc-poster-avatar {
   border-radius: var(--vc-radius-pill);
   object-fit: cover;
   background: transparent;
-  mix-blend-mode: var(--vc-avatar-blend, normal);
+  mix-blend-mode: normal;
 }
 
 body.vc-ui #vc-chat-poster h2 {
@@ -184,8 +186,21 @@ body.vc-ui #chat > .mes.vc-speaker .mesAvatarWrapper {
   grid-column: 1;
   grid-row: 1;
   width: 24px;
-  height: 24px;
+  height: 24px !important;
   margin: 0;
+}
+
+/* 宿主 .last_mes .mesAvatarWrapper 有 padding-bottom: var(--avatar-base-height)（50px）。
+   全局 border-box 下这块内边距会把 24px 的圆头像拉成竖胶囊。 */
+body.vc-ui #chat > .mes .mesAvatarWrapper {
+  padding: 0 !important;
+  align-self: start;
+  flex: none !important;
+}
+
+body.vc-ui #chat > .mes .avatar {
+  flex: none !important;
+  align-self: start;
 }
 
 body.vc-ui #chat > .mes.vc-speaker .avatar,
@@ -238,6 +253,18 @@ body.vc-ui #chat > .mes.vc-speaker .name_text {
   font-size: var(--vc-fs-footnote);
   font-weight: 600;
   line-height: var(--vc-lh-footnote);
+}
+
+body.vc-ui.vc-direct #chat > .mes .name_text {
+  display: none !important;
+}
+
+body.vc-ui.documentstyle.vc-direct #chat > .mes.vc-speaker .name_text {
+  display: none !important;
+}
+
+body.vc-ui.vc-direct #chat > .mes .ch_name {
+  display: none !important;
 }
 
 body.vc-ui #chat .mes_text {

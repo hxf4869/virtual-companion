@@ -214,6 +214,10 @@ body.vc-ui #vc-shell[data-chrome="tabbar"] :is(.vc-inbox-tab.is-detail) .vc-scro
   padding-bottom: var(--vc-detail-pad);
 }
 
+body.vc-ui #vc-shell[data-chrome="tabbar"] .vc-shell-page:not([data-page="story"]) .vc-scroll {
+  padding-bottom: var(--vc-detail-pad);
+}
+
 body.vc-ui .vc-shell-settings .vc-large-title,
 body.vc-ui .vc-shell-page .vc-large-title {
   opacity: calc(1 - var(--vc-nav-p, 0));
@@ -221,6 +225,25 @@ body.vc-ui .vc-shell-page .vc-large-title {
 
 body.vc-ui #vc-shell[data-wide="1"][data-destination="chat"] .vc-shell-page[data-page="chat"] {
   box-shadow: inset -0.5px 0 var(--vc-separator);
+}
+
+/* 进入动画把整页透明度从 0 拉到 1。桌面聊天已经打开时列表必须停在不透明，
+   否则这一列会停在半透明，深色下文字和头像一起变暗，侧栏和对话列不受影响。 */
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-chat="open"] .vc-shell-pages {
+  opacity: 1 !important;
+  filter: none !important;
+  isolation: isolate;
+  mix-blend-mode: normal;
+  background: var(--vc-canvas);
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-chat="open"] .vc-shell-page[data-page="chat"] {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"] .vc-shell-chat {
+  isolation: isolate;
 }
 
 body.vc-ui .vc-tab-lens {
@@ -690,6 +713,16 @@ body.vc-ui img.vc-convo-avatar,
 body.vc-ui [data-who-avatar] img,
 body.vc-ui #chat .avatar img {
   mix-blend-mode: var(--vc-avatar-blend, normal);
+}
+
+/* 深色 --vc-avatar-blend 是 lighten。黑剪影头像叠在深色底上会被抹掉，只剩 fill-2 灰圆。
+   会话列表仍用上面的混合；消息、页头和海报改回正常混合。 */
+body.vc-ui #chat > .mes .avatar img {
+  mix-blend-mode: normal;
+}
+
+body.vc-ui [data-who-avatar] img {
+  mix-blend-mode: normal;
 }
 
 body.vc-ui #vc-shell[data-cover="story"] .vc-shell-page[data-page="story"] {

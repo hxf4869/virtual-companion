@@ -106,6 +106,17 @@ export function pressExceeded(dx, dy, slop = PRESS_SLOP) {
     return Math.hypot(Number(dx) || 0, Number(dy) || 0) > slop;
 }
 
+export function isDirectChat(ctx) {
+    return !String(ctx?.groupId ?? '').trim();
+}
+
+export function syncDirectChat(doc, ctx) {
+    const body = doc?.body;
+    if (!body?.classList) return;
+    if (isDirectChat(ctx)) body.classList.add('vc-direct');
+    else body.classList.remove('vc-direct');
+}
+
 export function markSpeakers(rows) {
     let previous = null;
     return rows.map((row) => {
@@ -540,6 +551,7 @@ function isSystem(mes) {
 }
 
 function refreshMessages() {
+    syncDirectChat(document, safeContext());
     const chat = document.querySelector('#chat');
     if (!chat) return;
     const list = childMes(chat);
