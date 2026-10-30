@@ -1182,7 +1182,7 @@ export function mountModelSettings() {
                 </div>
             </div>
             <p class="vcms-muted">上下文窗口包含历史消息、角色卡、世界书、记忆与工具结果；输出与工具结果需要预留空间。</p>
-            <p class="vcms-callout vcms-callout-warn vcms-inline-note" data-note="ctx" role="alert"><i class="fa-solid fa-triangle-exclamation"></i>未填写上下文窗口：配置不完整，绑定前台聊天前需要补齐。</p>
+            <p class="vcms-callout vcms-callout-warn vcms-inline-note" data-note="ctx" role="alert"${logic.contextWindowMissing(m) ? '' : ' hidden'}><i class="fa-solid fa-triangle-exclamation"></i>未填写上下文窗口：配置不完整，绑定前台聊天前需要补齐。</p>
 
             <details class="vcms-advanced"${state.advancedOpen ? ' open' : ''}>
                 <summary>高级设置（推理 · 参数 · 能力 · 计价）</summary>
@@ -1561,7 +1561,7 @@ export function mountModelSettings() {
                 el.classList.toggle('is-visible', Boolean(msg));
             });
             const ctxNote = overlay.querySelector('.vcms-model-form [data-note="ctx"]');
-            if (ctxNote) ctxNote.hidden = !isBlank(model.contextWindowTokens);
+            if (ctxNote) ctxNote.hidden = !logic.contextWindowMissing(model);
             const form = overlay.querySelector('.vcms-model-form');
             if (form) {
                 const status = logic.normalizeLedgerPrice(model.ledgerPrice);
