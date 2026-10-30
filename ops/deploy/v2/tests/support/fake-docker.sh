@@ -25,6 +25,11 @@ if [ "${1:-}" = "buildx" ]; then
   exit 0
 fi
 
+if [ "${1:-}" = "run" ]; then
+  note smoke
+  exit 0
+fi
+
 if [ "${1:-}" = "save" ]; then
   printf 'FAKEIMAGE'
   exit 0

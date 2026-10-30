@@ -206,6 +206,7 @@ print_plan() {
   if [ "$need_st" -eq 1 ]; then
     echo "构建 ${st_image}"
     echo "docker buildx build --platform linux/amd64 --load -t ${st_image} --build-arg VC_PUBLIC_HOST=<redacted> -f <目标提交>/ops/deploy/v2/Dockerfile.st <目标提交>"
+    echo "冒烟: docker run --rm ${st_image} 以 node 用户解析 ST 依赖"
   fi
   if [ "$need_rt" -eq 1 ]; then
     echo "构建 ${rt_image}"
@@ -244,15 +245,23 @@ build_images() {
   fi
   WT=$(mktemp -d "${TMPDIR:-/tmp}/vc-deploy-src.XXXXXX")
   chmod 700 "$WT"
-  git -C "$REPO_ROOT" worktree add --detach "$WT" "$FULL"
+  # 镜像以 node 用户运行：构建上下文不能沿用 deploy.sh 的 umask 077，否则 COPY 进镜像的目录只有 root 可读。
+  (umask 022 && git -C "$REPO_ROOT" worktree add --detach "$WT" "$FULL")
   if [ "$need_st" -eq 1 ]; then
-    prepare_upstream_clones "$WT"
+    (umask 022 && prepare_upstream_clones "$WT")
+    chmod -R a+rX "$WT/integrations" "$WT/infra" "$WT/ops"
     echo "构建 ${st_image}"
     "$VC_DEPLOY_DOCKER" buildx build --platform linux/amd64 --load \
       -t "$st_image" \
       --build-arg "VC_PUBLIC_HOST=${VC_PUBLIC_HOST}" \
       -f "$WT/ops/deploy/v2/Dockerfile.st" \
       "$WT"
+  fi
+  if [ "$need_st" -eq 1 ]; then
+    # 上线前冒烟：以镜像默认用户解析 ST 入口依赖，读不到就停在本机。
+    "$VC_DEPLOY_DOCKER" run --rm --platform linux/amd64 --entrypoint node "$st_image" \
+      -e "import('/srv/vc-managed/st-run/node_modules/yargs/index.mjs').then(()=>process.exit(0),()=>process.exit(1))" \
+      || { echo "FAIL: ST 镜像冒烟失败（依赖不可读），已停止" >&2; exit 1; }
   fi
   if [ "$need_rt" -eq 1 ]; then
     echo "构建 ${rt_image}"
