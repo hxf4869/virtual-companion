@@ -204,6 +204,11 @@ test('shell.css 只在 body.vc-ui 下生效', async () => {
     assert.equal(css.includes('grid-template-columns: 72px minmax(0, 1fr)'), true);
     assert.match(css, /\[data-chat="closed"\] \.vc-shell-chat > \.vc-navbar \{\s*display: none;/);
     assert.equal(css.includes('minmax(180px, 320px)'), false);
+    assert.match(css, /#vc-shell\[data-chrome="sidebar"\] \.vc-navbar \[data-settings\] \{\s*display: none;/);
+    assert.match(css, /\[data-page="inbox"\] \.vc-inbox-tab > \.vc-screen > \.vc-navbar:not\(\.is-solid\) \{\s*position: absolute;/);
+    assert.match(css, /\[data-page="story"\] \.vc-story-tab:not\(\[data-view="stage"\]\) \.vc-scroll \{\s*padding-top: env\(safe-area-inset-top\);/);
+    assert.match(css, /\[data-page="story"\] \.vc-story-tab:not\(\[data-view="stage"\]\) \.vc-navbar \{\s*display: none;/);
+    assert.match(css, /\[data-page="memory"\] \.vc-memory-tab:not\(\.is-detail\) \.vc-column,\s*body\.vc-ui \.vc-shell-page\[data-page="inbox"\] \.vc-inbox-tab:not\(\.is-detail\) \.vc-column \{\s*padding-top: 0;/);
     const errors = [];
     walkCss(css, (selector) => {
         for (const part of selector.split(',')) {
@@ -212,6 +217,14 @@ test('shell.css 只在 body.vc-ui 下生效', async () => {
         }
     });
     assert.deepEqual(errors, []);
+});
+
+test('键盘焦点环只给可交互控件，标题不显示焦点框', async () => {
+    const ui = await readFile(new URL('../extension/vc-model-settings/vc-ui.css', import.meta.url), 'utf8');
+    assert.equal(/body\.vc-ui :focus-visible \{/.test(ui), false);
+    assert.match(ui, /body\.vc-ui :is\([^)]*button[^)]*\):focus-visible/);
+    assert.match(ui, /body\.vc-ui :is\(h1, h2, h3\)\[tabindex="-1"\]:focus/);
+    assert.match(ui, /outline:\s*none/);
 });
 
 test('同名实例去重、用角色卡头像，并用序号区分', () => {

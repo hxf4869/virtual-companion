@@ -252,9 +252,18 @@ body.vc-ui *::-webkit-scrollbar-thumb {
 }
 body.vc-ui *::-webkit-scrollbar-track { background: transparent; }
 
-body.vc-ui :focus-visible {
+body.vc-ui :focus {
+  outline: none;
+}
+
+body.vc-ui :is(a[href], button, input, select, textarea, summary, [role="button"], [role="switch"], [role="tab"], [role="checkbox"], [role="radio"], [role="menuitem"], [tabindex="0"]):focus-visible {
   outline: 2px solid var(--vc-accent);
   outline-offset: 2px;
+}
+
+body.vc-ui :is(h1, h2, h3)[tabindex="-1"]:focus,
+body.vc-ui :is(h1, h2, h3)[tabindex="-1"]:focus-visible {
+  outline: none;
 }
 
 body.vc-ui #bg1 { display: none !important; }

@@ -501,3 +501,91 @@ test('聊天样式把滚动交给 #chat，气泡用同等优先级压过外壳',
     assert.match(css, /animation-duration:\s*var\(--vc-dur-stream\)/);
     assert.equal(css.includes('0.5s'), false);
 });
+
+test('打开或切换会话在可见后贴底，宿主恢复旧位置会被拉回，上翻后保持', () => {
+    const document = installMiniDom();
+    const queued = [];
+    const ros = [];
+    const observed = [];
+    const handlers = {};
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevRO = globalThis.ResizeObserver;
+    const prevMO = globalThis.MutationObserver;
+    globalThis.requestAnimationFrame = (fn) => {
+        queued.push(fn);
+        return queued.length;
+    };
+    globalThis.ResizeObserver = class {
+        constructor(fn) { this.fn = fn; ros.push(this); }
+        observe(node) { this.node = node; }
+        disconnect() {}
+    };
+    globalThis.MutationObserver = class {
+        constructor(fn) { this.fn = fn; observed.push(this); }
+        observe(node, options) { this.node = node; this.options = options; }
+        disconnect() {}
+    };
+    const flush = () => { while (queued.length) queued.shift()(); };
+    try {
+        const { chat } = stage(document, { ui: true });
+        let top = 320;
+        let height = 1800;
+        let client = 0;
+        Object.defineProperty(chat, 'scrollHeight', { configurable: true, get: () => height });
+        Object.defineProperty(chat, 'clientHeight', { configurable: true, get: () => client });
+        Object.defineProperty(chat, 'scrollTop', {
+            configurable: true,
+            get: () => top,
+            set(value) {
+                if (client < 48) return;
+                top = Number(value);
+            },
+        });
+        chat.append(mes(document, { text: '旧' }), mes(document, { user: true, text: '问' }));
+        mountChatView({
+            getContext() {
+                return {
+                    powerUserSettings: {},
+                    characters: [{ name: '甲' }],
+                    characterId: 0,
+                    chatId: 'a',
+                    eventTypes: { CHAT_CHANGED: 'CHAT_CHANGED' },
+                    eventSource: { on(name, fn) { (handlers[name] ||= []).push(fn); } },
+                };
+            },
+        });
+        flush();
+        assert.equal(top, 320, '会话还没布局时不能改掉旧 scrollTop');
+        client = 640;
+        const box = ros.find((item) => item.node === chat);
+        assert.ok(box, '聊天列尺寸变化后要补一次贴底');
+        box.fn();
+        flush();
+        assert.equal(top, height, '打开会话并完成布局后应停在最新一条');
+        top = 400;
+        chat.dispatch('scroll');
+        flush();
+        assert.equal(top, height, '宿主在渲染后写回旧 scrollTop 时仍应贴底');
+        top = 80;
+        chat.dispatch('wheel');
+        chat.dispatch('scroll');
+        flush();
+        assert.equal(top, 80);
+        height = 2600;
+        const chatObs = observed.find((item) => item.options?.characterData);
+        assert.ok(chatObs);
+        chatObs.fn();
+        flush();
+        assert.equal(top, 80, '用户上翻后，后续内容增长保持当前位置');
+        for (const fn of handlers.CHAT_CHANGED || []) fn();
+        flush();
+        assert.equal(top, height, '切换会话后重新贴底');
+    } finally {
+        if (prevRaf) globalThis.requestAnimationFrame = prevRaf;
+        else delete globalThis.requestAnimationFrame;
+        if (prevRO) globalThis.ResizeObserver = prevRO;
+        else delete globalThis.ResizeObserver;
+        if (prevMO) globalThis.MutationObserver = prevMO;
+        else delete globalThis.MutationObserver;
+    }
+});
