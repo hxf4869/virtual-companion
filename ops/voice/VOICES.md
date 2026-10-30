@@ -20,3 +20,9 @@ speech tokenizer 和 campplus；只运行 frontend-only，不重设现有模型�
 `GET /healthz` 的音色列表是客户端真源。新 ID 的 `open_female_` / `open_male_` 前缀只补充性别，
 音色仍须由引擎实际返回才可选；不在客户端造列表。Go 缓存最长十分钟，统一部署重启后立即刷新。
 [提取接口依据](https://github.com/Lourdle/cosyvoice.cpp/blob/main/docs/TOOLS.md#c-frontend-only-mode-generate-prompt_speech-and-exit)。
+
+服务器无法访问发布源时，可在可连通的机器按本清单固定 URL 取原始文件，明确传入 `--reference-dir`；
+不做失败后自动换源。目录内以 `<voice-id>.LICENSE` 保存同一固定版本的许可说明，
+`<voice-id>-0.wav`（以及需要拼接时的 `-1.wav`）保存原始 WAV。提取仍在服务器执行，
+继续验证 CC0、PCM 格式、3–30 秒长度与输出 GGUF；不修改推理参数。
+原始参考目录只用于本次提取，成功、失败排障结束后两端删除；只保留两份当前 prompt 与对应许可。

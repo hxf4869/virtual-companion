@@ -18,6 +18,16 @@ def download(url):
     return data
 
 
+def reference(directory,name,url):
+    if directory is None:
+        return download(url)
+    with (directory/name).open('rb') as file:
+        data=file.read((32<<20)+1)
+    if len(data)>32<<20:
+        raise ValueError('public reference exceeds limit')
+    return data
+
+
 def combine_recordings(parts):
     frames=[]
     shape=None
@@ -45,6 +55,7 @@ def main():
     parser.add_argument('--speech-tokenizer',required=True)
     parser.add_argument('--campplus',required=True)
     parser.add_argument('--output-dir',type=Path,required=True)
+    parser.add_argument('--reference-dir',type=Path,help='Explicit offline references downloaded from the pinned manifest URLs')
     args=parser.parse_args()
     manifest=json.loads(Path(__file__).with_name('open-voices.json').read_text())
     args.output_dir.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -53,12 +64,12 @@ def main():
         # Existing valid prompts are intentionally not regenerated.
         if target.exists() and target.read_bytes()[:4]==b'GGUF':
             continue
-        license_text=download(voice['licenseUrl'])
+        license_text=reference(args.reference_dir,voice['id']+'.LICENSE',voice['licenseUrl'])
         if b'CC0' not in license_text:
             raise ValueError('reference license changed')
         with tempfile.TemporaryDirectory(prefix='vc-voice-extract-') as tmp:
             sample=Path(tmp)/'reference.wav'
-            sample.write_bytes(combine_recordings([download(url) for url in voice['audioUrls']]))
+            sample.write_bytes(combine_recordings([reference(args.reference_dir,voice['id']+'-'+str(index)+'.wav',url) for index,url in enumerate(voice['audioUrls'])]))
             generated=Path(tmp)/'prompt.gguf'
             # No synthesis, model, quantization, sampling, thread or diffusion
             # parameters are changed. Instruct-mode consumers do not need a
