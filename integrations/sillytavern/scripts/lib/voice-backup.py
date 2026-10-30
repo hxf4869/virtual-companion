@@ -133,7 +133,7 @@ class Objects:
             if result.returncode:raise RuntimeError('VOICE_S3_CONTAINER_UNAVAILABLE')
             self.copy_container='vc-voice-copy-'+self.local.name
             self.prefix=PG.deletion().docker_base()+['run','--rm','-i','--name',self.copy_container,
-                '--label','com.vc.voice-backup=managed','--network','container:'+self.container,'--entrypoint','/bin/mc',
+                '--label','com.vc.voice-backup=managed','--network','container:'+self.container,'--entrypoint','mc',
                 '-e','MC_UPDATE=off','-v',str(self.local/'config.json')+':/mc-config/config.json:ro',
                 result.stdout.strip(),'--config-dir','/mc-config']
         return self
