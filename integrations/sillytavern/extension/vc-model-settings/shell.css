@@ -200,8 +200,18 @@ body.vc-ui .vc-shell-scroll {
   overflow: auto;
 }
 
+body.vc-ui #vc-shell[data-chrome="tabbar"] {
+  --vc-detail-pad: calc(84px + env(safe-area-inset-bottom, 0px));
+}
+
 body.vc-ui #vc-shell[data-chrome="tabbar"] .vc-shell-scroll {
-  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--vc-detail-pad);
+}
+
+body.vc-ui #vc-shell[data-chrome="tabbar"] :is(.vc-characters.is-detail) .vc-scroll,
+body.vc-ui #vc-shell[data-chrome="tabbar"] :is(.vc-memory-tab.is-detail) .vc-scroll,
+body.vc-ui #vc-shell[data-chrome="tabbar"] :is(.vc-inbox-tab.is-detail) .vc-scroll {
+  padding-bottom: var(--vc-detail-pad);
 }
 
 body.vc-ui .vc-shell-page .vc-large-title {
@@ -493,7 +503,6 @@ body.vc-ui #chat {
 }
 
 body.vc-ui #chat .mes,
-body.vc-ui #chat .mes_block,
 body.vc-ui #chat .mes_text {
   box-sizing: border-box !important;
   max-width: 100% !important;
@@ -505,8 +514,8 @@ body.vc-ui #chat .mes {
 }
 
 body.vc-ui #chat .mes_block {
-  flex: 1 1 auto !important;
-  width: auto !important;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 body.vc-ui #chat .mes_text {
@@ -559,6 +568,19 @@ body.vc-ui .vc-settings-account {
   flex: none;
   background: var(--vc-fill);
   color: var(--vc-ink);
+}
+
+body.vc-ui .vc-settings-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+body.vc-ui .vc-settings-name,
+body.vc-ui .vc-settings-meta {
+  display: block;
+  max-width: 100%;
 }
 
 body.vc-ui .vc-settings-form .vc-group .vc-cell {

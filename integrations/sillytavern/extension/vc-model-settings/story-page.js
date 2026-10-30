@@ -1030,6 +1030,13 @@ function hydrateIcons(scope) {
     }
 }
 
+export function focusIfDetached(opener, title) {
+    const live = opener?.isConnected === true || (opener?.isConnected == null && opener?.parent);
+    if (live) return false;
+    title?.focus?.();
+    return true;
+}
+
 export function mountStoryTab(container, options = {}) {
     const doc = container?.ownerDocument || globalThis.document;
     if (doc && typeof doc.createElement === 'function' && !doc.querySelector?.('link[data-vc-story]')) {
@@ -1083,6 +1090,17 @@ export function mountStoryTab(container, options = {}) {
         else if (shell.dataset.cover === 'story') delete shell.dataset.cover;
     }
     function paint(state = page.state) {
+        const prevScroll = body.querySelector('.vc-scroll');
+        const scrollTop = prevScroll ? prevScroll.scrollTop : 0;
+        const active = doc.activeElement;
+        const savedFocus = active && active !== doc.body && body.contains(active)
+            ? {
+                field: active.getAttribute?.('data-field') || '',
+                action: active.getAttribute?.('data-action') || '',
+                start: Number.isInteger(active.selectionStart) ? active.selectionStart : null,
+                end: Number.isInteger(active.selectionEnd) ? active.selectionEnd : null,
+            }
+            : null;
         const pushing = view === 'stage' && root.dataset.view !== 'stage';
         root.dataset.view = view;
         syncCover();
@@ -1095,18 +1113,22 @@ export function mountStoryTab(container, options = {}) {
         if (version >= 0) seenVersion = version;
         body.innerHTML = renderStoryTab(state, { view, loading, fresh, draftSay, draftSummary });
         hydrateIcons(body);
+        const scroll = body.querySelector('.vc-scroll');
+        if (scroll && prevScroll) scroll.scrollTop = scrollTop;
+        if (savedFocus && (savedFocus.field || savedFocus.action)) {
+            const next = savedFocus.field
+                ? body.querySelector(`[data-field="${savedFocus.field}"]`)
+                : body.querySelector(`[data-action="${savedFocus.action}"]`);
+            next?.focus?.();
+            if (next && Number.isInteger(savedFocus.start) && Number.isInteger(savedFocus.end) && typeof next.setSelectionRange === 'function') {
+                next.setSelectionRange(savedFocus.start, savedFocus.end);
+            }
+        }
         if (state.notice && state.notice !== lastNotice) {
             lastNotice = state.notice;
             showToast(state.notice, { root, icon: 'sparkles' });
             hydrateIcons(root);
         } else if (!state.notice) lastNotice = '';
-        const scroll = body.querySelector('.vc-scroll');
-        const bar = body.querySelector('.vc-navbar');
-        if (scroll && bar && view === 'gate') {
-            scroll.addEventListener('scroll', () => {
-                bar.style.setProperty('--vc-nav-p', String(Math.min(1, scroll.scrollTop / 48)));
-            }, { passive: true });
-        }
         const card = body.querySelector('.vc-evi.is-back');
         const name = card?.querySelector('b')?.textContent || '';
         if (card && name && !flipped.has(name)) {
@@ -1122,17 +1144,20 @@ export function mountStoryTab(container, options = {}) {
         alertOpen = true;
         const ask = state.rewindAsk;
         const title = ask.version === 0 ? '回到调查开始？' : `回到版本 ${ask.version}？`;
+        const opener = body.querySelector('[data-action="ask-rewind"]');
         const pending = confirmAlert({
             title,
             message: '之后的行动与新发现的证物会被撤销。',
             action: '回档',
             root,
+            opener,
         });
         stampAlert(root, 'cancel-rewind', 'confirm-rewind');
         requestAnimationFrame(() => stampAlert(root, 'cancel-rewind', 'confirm-rewind'));
         const ok = await pending;
         alertOpen = false;
         if (dead) return;
+        focusIfDetached(opener, body.querySelector('.vc-nav-title'));
         if (ok) await page.confirmRewind();
         else page.cancelRewind();
     }
@@ -1188,6 +1213,14 @@ export function mountStoryTab(container, options = {}) {
         alertOpen = false;
         if (ok && !dead) await page.act(step.id);
     }
+    root.addEventListener('scroll', (event) => {
+        if (root.dataset.view !== 'gate') return;
+        const scroll = event.target;
+        if (!scroll?.classList?.contains?.('vc-scroll')) return;
+        const bar = body.querySelector('.vc-navbar');
+        if (!bar) return;
+        bar.style.setProperty('--vc-nav-p', String(Math.min(1, scroll.scrollTop / 48)));
+    }, { capture: true, passive: true });
     root.addEventListener('pointerdown', (event) => {
         const btn = event.target?.closest?.('.vc-npc');
         if (!btn || event.button !== 0) return;
@@ -1279,6 +1312,8 @@ export function mountStoryTab(container, options = {}) {
         }
     }
     function destroy() {
+        clearTimeout(holdTimer);
+        holdTimer = 0;
         dead = true;
         syncCover('gate');
         page.close();

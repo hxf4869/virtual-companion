@@ -102,7 +102,11 @@ export function installMiniDom() {
             parent: null,
             value: '',
             open: false,
-            style: { setProperty(key, value) { this[key] = value; } },
+            style: {
+                setProperty(key, value) { this[key] = value; },
+                getPropertyValue(key) { return this[key] || ''; },
+                removeProperty(key) { delete this[key]; },
+            },
             classList: null,
             dataset: null,
             setAttribute(key, value) {
@@ -116,6 +120,24 @@ export function installMiniDom() {
                 if (key === 'hidden') this.hidden = false;
             },
             getAttribute(key) { return this.attributes[key]; },
+            hasAttribute(key) { return Object.hasOwn(this.attributes, key); },
+            contains(node) {
+                let cur = node;
+                while (cur) {
+                    if (cur === this) return true;
+                    cur = cur.parent;
+                }
+                return false;
+            },
+            closest(sel) {
+                const parts = String(sel).split(',').map((part) => part.trim()).filter(Boolean);
+                let cur = this;
+                while (cur && cur.nodeType === 1) {
+                    if (parts.some((part) => matches(cur, part))) return cur;
+                    cur = cur.parent;
+                }
+                return null;
+            },
             append(...items) {
                 for (const item of items) {
                     if (item == null) continue;
@@ -202,13 +224,33 @@ export function installMiniDom() {
                 parseHTML(node._html, node);
             },
         });
+        const dataName = (prop) => `data-${String(prop).replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`)}`;
+        Object.defineProperty(node, 'isConnected', {
+            get() {
+                let cur = node;
+                while (cur) {
+                    if (cur === document.body || cur === document.documentElement) return true;
+                    cur = cur.parent;
+                }
+                return false;
+            },
+        });
         Object.defineProperty(node, 'dataset', {
             get() {
-                const out = {};
-                for (const [key, value] of Object.entries(node.attributes)) {
-                    if (key.startsWith('data-')) out[key.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
-                }
-                return out;
+                return new Proxy({}, {
+                    get(_target, prop) {
+                        if (typeof prop !== 'string') return undefined;
+                        return node.getAttribute(dataName(prop));
+                    },
+                    set(_target, prop, value) {
+                        node.setAttribute(dataName(prop), value == null ? '' : String(value));
+                        return true;
+                    },
+                    deleteProperty(_target, prop) {
+                        node.removeAttribute(dataName(prop));
+                        return true;
+                    },
+                });
             },
         });
         nodes.push(node);

@@ -42,6 +42,10 @@ body.vc-ui .vc-memory-tab .vc-clip {
 
 body.vc-ui .vc-memory-tab .vc-navbar.is-solid { --vc-nav-p: 1; }
 
+body.vc-ui .vc-shell-page:has(.vc-memory-tab.is-detail) > .vc-navbar {
+  display: none;
+}
+
 body.vc-ui .vc-memory-tab .vc-memory-row {
   align-items: flex-start;
   cursor: pointer;

@@ -614,11 +614,36 @@ function formatWhen(value) {
     return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`;
 }
 
+export function safeImageUrl(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (/^data:image\/(png|jpeg|webp|gif)([;,].*)?$/i.test(raw)) return raw;
+    if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+    return '';
+}
+
+export function characterAvatarSrc(avatar) {
+    const safe = safeImageUrl(avatar);
+    if (safe) return safe;
+    const file = String(avatar ?? '').trim();
+    if (!file) return '';
+    return `/characters/${file}`;
+}
+
 function avatarHtml(name, url, className) {
-    const face = url
-        ? `<img alt="" src="${esc(url)}">`
+    const src = characterAvatarSrc(url);
+    const face = src
+        ? `<img alt="" src="${esc(src)}">`
         : esc(initial(name));
     return `<span class="${className}">${face}</span>`;
+}
+
+function descriptionBlock(detail, options) {
+    const text = detail?.description;
+    if (!text) return '';
+    const open = options?.descriptionOpen === true;
+    return `<section class="vc-group vc-card-description${open ? ' is-open' : ''}" data-vc-description><p class="vc-card-description-text">${esc(text)}</p><button type="button" class="vc-btn vc-btn-text" data-action="toggle-description" aria-expanded="${open ? 'true' : 'false'}">${open ? '收起' : '展开'}</button></section>`;
 }
 
 function instanceRows(items, state) {
@@ -649,7 +674,7 @@ export function renderCharactersTab(state, options = {}) {
     if (screen === 'detail' && detail) {
         const showForm = state.creating || detail.instances.some((item) => item.relationshipId === state.selectedRelationshipId);
         const count = `${detail.instances.length} 个实例`;
-        return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="back" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(detail.name)}</h1><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="edit-card" aria-label="编辑角色卡">${icon('pencil')}</button></header><div class="vc-scroll"><div class="vc-poster" style="--vc-tint:${NEUTRAL_TINT}" data-tint="${esc(detail.avatar)}">${avatarHtml(detail.name, detail.avatar, 'vc-poster-avatar')}<b>${esc(detail.name)}</b><span class="vc-instance-badge">模板</span><span class="vc-meta">${esc(count)}</span>${detail.description ? `<p class="vc-instance-secondary">${esc(detail.description)}</p>` : ''}</div>${detail.worldName ? `<div class="vc-group"><div class="vc-cell"><span class="vc-grow"><span class="vc-instance-world">关联世界书 · ${esc(detail.worldName)}</span></span></div></div>` : ''}<div class="vc-group" aria-label="陪伴实例">${instanceRows(detail.instances, state)}</div>${detail.instances.length && !state.creating ? `<button type="button" class="vc-btn vc-btn-text vc-instance-create" data-action="create">创建实例</button>` : ''}${!detail.instances.length && !showForm ? `<button type="button" class="vc-btn vc-btn-fill vc-instance-create vc-instance-primary" data-action="create">创建实例</button>` : ''}${showForm ? nameForm(state) : ''}${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}</div>`;
+        return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="back" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(detail.name)}</h1><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="edit-card" aria-label="编辑角色卡">${icon('pencil')}</button></header><div class="vc-scroll"><div class="vc-poster" style="--vc-tint:${NEUTRAL_TINT}" data-tint="${esc(detail.avatar)}">${avatarHtml(detail.name, detail.avatar, 'vc-poster-avatar')}<b>${esc(detail.name)}</b><span class="vc-instance-badge">模板</span><span class="vc-meta">${esc(count)}</span></div>${descriptionBlock(detail, options)}${detail.worldName ? `<div class="vc-group"><div class="vc-cell"><span class="vc-grow"><span class="vc-instance-world">关联世界书 · ${esc(detail.worldName)}</span></span></div></div>` : ''}<div class="vc-group" aria-label="陪伴实例">${instanceRows(detail.instances, state)}</div>${detail.instances.length && !state.creating ? `<button type="button" class="vc-btn vc-btn-text vc-instance-create" data-action="create">创建实例</button>` : ''}${!detail.instances.length && !showForm ? `<button type="button" class="vc-btn vc-btn-fill vc-instance-create vc-instance-primary" data-action="create">创建实例</button>` : ''}${showForm ? nameForm(state) : ''}${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}</div>`;
     }
     const alerts = `${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p><button type="button" class="vc-btn vc-btn-fill" data-action="retry">重试</button>` : ''}`;
     const body = model.cards.length
@@ -790,6 +815,7 @@ export function mountCharactersTab(container, options = {}) {
     root.append(list);
     let detailEl = null;
     let detailRef = '';
+    let descriptionOpen = false;
     const avatarByRef = new Map();
     const timeById = new Map();
     let dead = false;
@@ -808,7 +834,7 @@ export function mountCharactersTab(container, options = {}) {
                 const raw = characters.find((item) => item?.data?.extensions?.vc_character_ref === card?.characterRef)
                     || characters.find((item) => item?.name && item.name === card?.name);
                 const avatar = typeof raw?.avatar === 'string' ? raw.avatar : (card?.avatar || '');
-                const url = !avatar ? '' : (/^(https?:|data:|\/)/.test(avatar) ? avatar : `/characters/${avatar}`);
+                const url = characterAvatarSrc(avatar);
                 if (card?.characterRef) avatarByRef.set(card.characterRef, url);
                 return { ...card, avatar: url };
             });
@@ -864,7 +890,7 @@ export function mountCharactersTab(container, options = {}) {
     }
     function fill(el, screen) {
         const mark = rememberField(el);
-        el.innerHTML = renderCharactersTab(decorate(page.state), { screen, detailRef, loading: screen === 'list' && loading });
+        el.innerHTML = renderCharactersTab(decorate(page.state), { screen, detailRef, loading: screen === 'list' && loading, descriptionOpen: screen === 'detail' && descriptionOpen });
         hydrateIcons(el);
         restoreField(el, mark);
         applyTints(el);
@@ -906,6 +932,7 @@ export function mountCharactersTab(container, options = {}) {
         } else page.cancelUnsaved();
     }
     function openDetail(ref, from) {
+        if (detailRef !== ref) descriptionOpen = false;
         detailRef = ref;
         suppress = true;
         page.selectTemplate(ref);
@@ -952,6 +979,7 @@ export function mountCharactersTab(container, options = {}) {
             page.state.unsaved = null;
         }
         if (nav.pop()) detailEl = null;
+        descriptionOpen = false;
         root.classList.toggle('is-detail', Boolean(detailEl?.isConnected));
     }
     root.addEventListener('click', (event) => {
@@ -962,6 +990,10 @@ export function mountCharactersTab(container, options = {}) {
         if (action === 'retry') void refresh();
         if (action === 'select-template') openDetail(target.dataset.ref || '', target);
         if (action === 'back') void goBack();
+        if (action === 'toggle-description') {
+            descriptionOpen = target.getAttribute('aria-expanded') !== 'true';
+            if (detailEl?.isConnected) fill(detailEl, 'detail');
+        }
         if (action === 'edit-card') openHostCharacterPanel(root.ownerDocument);
         if (action === 'edit-name') {
             if (!(page.state.creating || page.state.selectedRelationshipId)) page.startCreate();

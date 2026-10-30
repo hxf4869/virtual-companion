@@ -7,6 +7,43 @@ import { bindSwitch } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 import { registerModelOpener, vcUiEnabled } from './drawers.js';
 
+let extensionInitClaimed = false;
+
+export function claimExtensionInit() {
+    if (extensionInitClaimed) return false;
+    extensionInitClaimed = true;
+    return true;
+}
+
+export function observeGenerateBudget(response, onSignal) {
+    const type = response?.headers?.get?.('content-type') || '';
+    if (!response || response.ok || !type.includes('json') || typeof response.clone !== 'function') return response;
+    try {
+        const copy = response.clone();
+        void copy.json().then((body) => {
+            const signal = logic.budgetSignalFromGenerateBody(body);
+            if (signal) onSignal?.(signal);
+        }).catch(() => {});
+    } catch {
+        return response;
+    }
+    return response;
+}
+
+export function guardSameTurn(run) {
+    let pending = false;
+    return (...args) => {
+        if (pending) return;
+        pending = true;
+        queueMicrotask(() => { pending = false; });
+        return run(...args);
+    };
+}
+
+export function legacyDialogAllowed(doc = globalThis.document) {
+    return doc?.body?.classList?.contains?.('vc-ui') !== true;
+}
+
 const ROOT_ID = 'vc-model-settings-root';
 const NEW_KEY_PLACEHOLDER_RE = /^__new_\d+__$/;
 

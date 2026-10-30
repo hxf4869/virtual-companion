@@ -408,6 +408,10 @@ body.vc-ui .vc-inbox-tab .vc-clip {
 }
 
 body.vc-ui .vc-inbox-tab .vc-navbar.is-solid { --vc-nav-p: 1; }
+
+body.vc-ui .vc-shell-page:has(.vc-inbox-tab.is-detail) > .vc-navbar {
+  display: none;
+}
 body.vc-ui .vc-inbox-tab .vc-btn { min-width: var(--vc-touch); }
 
 body.vc-ui .vc-inbox-tab .vc-avatar {
