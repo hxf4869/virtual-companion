@@ -187,6 +187,8 @@ test('管理桥：并入聊天、主动陪伴与剧情路由；claim/ack 与账�
             { method: 'GET', url: '/api/v1/auth/sessions' },
             { method: 'DELETE', url: '/api/v1/auth/sessions/12' },
             { method: 'POST', url: '/api/v1/auth/logout' },
+            { method: 'GET', url: '/api/v1/auth/trusted-devices' },
+            { method: 'DELETE', url: '/api/v1/auth/trusted-devices/12' },
             { method: 'POST', url: '/api/v1/admin/accounts/7/authenticator-reset' },
             { method: 'GET', url: '/api/v1/auth/admin/usage' },
         ]) {

@@ -3,10 +3,12 @@
 // response body is included in diagnostics or artifacts.
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { createStClient } from './managed-lib.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { failClosedWaitMs } from './lib/fail-closed-wait.mjs';
+import { deviceNameFromUA } from '../server-plugin/virtual-companion/auth/index.js';
 const base = () => ({ id: crypto.randomUUID(), revision: 0 });
 const rows = (token, text = '合成测试消息', extra = {}) => [{ user_name: 'unused', character_name: 'unused', chat_metadata: { vc_f2: token, ...extra } }, { name: '合成角色', is_user: false, mes: text, swipe_id: 0, swipes: [text, '合成候选二'] }];
 const expect = (result, status, label) => { assert.equal(result.status, status, `${label}: HTTP ${result.status} (${result.json?.code || 'native'})`); return result.json; };
@@ -102,8 +104,32 @@ async function launchBrowser() {
     const { chromium } = await import('playwright-core');
     return chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
 }
+async function logoutFromPage(page, stBase) {
+    const status = await page.evaluate(async () => {
+        const csrfPair = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith('vc_csrf='));
+        const response = await fetch('/auth/api/logout', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfPair ? csrfPair.slice('vc_csrf='.length) : '',
+                'X-VC-Expected-Account-ID': document.querySelector('meta[name="vc-account-id"]')?.getAttribute('content') || '',
+                'X-VC-Expected-Session-ID': document.querySelector('meta[name="vc-session-id"]')?.getAttribute('content') || '',
+            },
+            body: '{}',
+        });
+        return response.status;
+    });
+    assert.equal(status, 200);
+    await page.goto(`${stBase}/auth/`);
+    await page.waitForSelector('#login-form:not([hidden])');
+}
 async function nativeReady(page) {
-    await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.()?.eventSource));
+    await page.waitForFunction(() => {
+        try { return Boolean(window.SillyTavern?.getContext?.()?.eventSource); }
+        catch { return false; }
+    });
     await page.waitForSelector('#send_textarea', { state: 'attached' });
     await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'));
     const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
@@ -116,7 +142,12 @@ async function nativeReady(page) {
     await page.waitForSelector('#preloader', { state: 'hidden' });
 }
 export async function sceneAuthBrowser(ctx) {
-    const { stBase, secondId, ownerId, totpCode } = ctx.w05;
+    const { stBase, secondId, ownerId, totpCode, dataRoot } = ctx.w05;
+    // 扩展只装配在 default-user。第二账号的账户页从自己的 extensions 目录提供同一份扩展。
+    const extensionSrc = path.join(dataRoot, 'default-user/extensions/vc-model-settings');
+    const extensionDest = path.join(dataRoot, 'vc-w05-second/extensions/vc-model-settings');
+    fs.mkdirSync(path.dirname(extensionDest), { recursive: true });
+    fs.cpSync(extensionSrc, extensionDest, { recursive: true });
     const st = client(ctx), privateFile = `W05-private-${crypto.randomUUID()}`;
     const privateToken = expect(await st.call('POST', '/api/chats/save', { avatar_url: 'B01-private.png', file_name: privateFile, chat: rows(base(), '仅第一个账号可见的合成消息') }), 200, '账号隔离种子').vc_f2;
     const browser = await launchBrowser();
@@ -135,12 +166,56 @@ export async function sceneAuthBrowser(ctx) {
         await page.fill('#account', 'w05-accept-second'); await page.fill('#password', ctx.secrets.password); await page.click('#login-form button[type=submit]');
         await page.waitForFunction(() => document.querySelector('#setup-secret')?.textContent?.length > 10);
         assert.equal((await bc.request.get(stBase + '/script.js')).status(), 401, '未完成TOTP仍拒绝');
-        const key = await page.locator('#setup-secret').textContent();
-        const code = totpCode(key);
-        await page.fill('#code', String((Number(code) + 1) % 1000000).padStart(6, '0')); await page.click('#verify-form button');
-        await page.waitForSelector('#auth-error:not([hidden])');
-        await page.fill('#code', totpCode(key)); await page.click('#verify-form button');
+        const key = await page.evaluate(() => (document.querySelector('#setup-secret')?.textContent || '').replace(/[^A-Z2-7]/gi, ''));
+        const grouped = await page.evaluate(() => /[A-Z2-7]{4}( [A-Z2-7]{4})+/.test(document.querySelector('#setup-secret')?.textContent || ''));
+        assert.equal(grouped, true);
+        assert.equal(key.length > 10, true);
+        await page.setViewportSize({ width: 390, height: 844 });
+        assert.equal(await page.locator('#add-authenticator').isVisible(), true);
+        assert.equal(await page.locator('#setup-qr-frame').isVisible(), false);
+        await page.click('#show-qr');
+        assert.equal(await page.locator('#setup-qr-frame').isVisible(), true);
+        await page.click('#show-qr');
+        assert.equal(await page.locator('#setup-qr-frame').isVisible(), false);
+        for (const [name, width, height, scheme] of [
+            ['B01-verify-390-light.png', 390, 844, 'light'],
+            ['B01-verify-390-dark.png', 390, 844, 'dark'],
+            ['B01-verify-1440-light.png', 1440, 900, 'light'],
+            ['B01-verify-1440-dark.png', 1440, 900, 'dark'],
+        ]) {
+            await page.setViewportSize({ width, height });
+            await page.emulateMedia({ colorScheme: scheme });
+            await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+            if (width >= 1440) {
+                assert.equal(await page.locator('#setup-qr-frame').isVisible(), true);
+                assert.equal(await page.locator('#add-authenticator').isVisible(), false);
+            }
+            await page.screenshot({ path: path.join(ctx.artifactsDir, name) });
+            ctx.screenshots.push(name);
+        }
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.emulateMedia({ colorScheme: 'light' });
+        await bc.grantPermissions(['clipboard-read', 'clipboard-write']);
+        await page.click('#copy-secret');
+        await page.waitForFunction(() => document.querySelector('#copy-secret')?.textContent === '已复制');
+        await page.fill('#code', String((Number(totpCode(key)) + 1) % 1000000).padStart(6, '0'));
+        await page.waitForFunction(() => {
+            const error = document.querySelector('#auth-error');
+            return Boolean(error && !error.hidden && document.querySelector('#code')?.value === '' && document.activeElement?.id === 'code');
+        });
+        const confirmWait = page.waitForRequest((request) => request.method() === 'POST' && request.url().endsWith('/authenticator-confirm'));
+        const enrolledAt = Date.now();
+        await page.fill('#code', totpCode(key, enrolledAt));
+        const confirmBody = (await confirmWait).postDataJSON();
+        assert.equal(confirmBody.trustDevice, false);
+        assert.equal(Object.hasOwn(confirmBody, 'deviceName'), false);
         await page.waitForSelector('#recovery-step:not([hidden])');
+        assert.equal(await page.locator('#finish-login').isDisabled(), true);
+        const downloadPromise = page.waitForEvent('download');
+        await page.click('#download-recovery');
+        const download = await downloadPromise;
+        assert.equal(download.suggestedFilename(), 'recovery-codes.txt');
+        assert.equal(await page.locator('#finish-login').isDisabled(), false);
         await page.click('#finish-login'); await page.waitForURL(stBase + '/'); await nativeReady(page);
         assert.equal(await page.locator('meta[name=vc-account-id]').getAttribute('content'), secondId);
         const isolated = await page.evaluate(async (file) => {
@@ -163,9 +238,67 @@ export async function sceneAuthBrowser(ctx) {
         await page.click('#logout_button'); assert.equal((await logoutResponse).status(), 200);
         await page.waitForURL(stBase + '/auth/');
         assert.equal((await bc.request.get(stBase + '/script.js')).status(), 401, '旧ST cookie不能绕过Go注销');
+        await page.goto(`${stBase}/auth/`);
+        await page.waitForSelector('#login-form:not([hidden])');
+        await page.fill('#account', 'w05-accept-second');
+        await page.fill('#password', ctx.secrets.password);
+        await page.click('#login-form button[type=submit]');
+        await page.waitForSelector('#verify-step:not([hidden])');
+        assert.equal(await page.locator('#trust-device').isChecked(), false);
+        const expectedName = deviceNameFromUA(await page.evaluate(() => navigator.userAgent));
+        await page.getByText('信任此设备 90 天', { exact: true }).click();
+        assert.equal(await page.locator('#trust-device').isChecked(), true);
+        const enrolledStep = Math.floor(enrolledAt / 30000);
+        while (Math.floor(Date.now() / 30000) <= enrolledStep) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        const trustedWait = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/totp'));
+        const [, trustedResponse] = await Promise.all([
+            page.fill('#code', totpCode(key)),
+            trustedWait,
+        ]);
+        const trustedBody = trustedResponse.request().postDataJSON();
+        assert.equal(trustedResponse.status(), 200);
+        assert.equal(trustedBody.trustDevice, true);
+        assert.equal(trustedBody.deviceName, expectedName);
+        assert.equal([...String(trustedBody.deviceName || '')].length <= 120, true);
+        await page.waitForFunction(() => Boolean(document.querySelector('meta[name="vc-account-id"]')));
+        await logoutFromPage(page, stBase);
+        await page.fill('#account', 'w05-accept-second');
+        await page.fill('#password', ctx.secrets.password);
+        await page.click('#login-form button[type=submit]');
+        await page.waitForFunction(() => Boolean(document.querySelector('meta[name="vc-account-id"]')));
+        assert.equal(await page.locator('#verify-step').count(), 0);
+        await nativeReady(page);
+        const accountState = await page.waitForFunction(async () => {
+            try {
+                const mod = await import('/scripts/extensions/third-party/vc-model-settings/index.js');
+                mod.openAccountData();
+                return document.querySelector('.vc-data-dialog') ? 'ok' : false;
+            } catch (error) {
+                return `fail:${error.message}`;
+            }
+        });
+        assert.equal(await accountState.jsonValue(), 'ok');
+        await page.locator('.vc-data-dialog[open] [data-trusted-devices]:not([hidden])').waitFor();
+        const deviceText = await page.locator('[data-trusted-devices]').innerText();
+        assert.equal(deviceText.includes(expectedName), true);
+        assert.equal(deviceText.includes('最近使用'), true);
+        assert.equal(deviceText.includes('到期'), true);
+        await page.locator('[data-revoke-device]').click();
+        await page.locator('.vc-alert [data-vc-ok]').click();
+        await page.locator('[data-trusted-devices]').waitFor({ state: 'hidden' });
+        await page.locator('[data-logout]').click();
+        await page.waitForURL(`${stBase}/auth/`);
+        await page.fill('#account', 'w05-accept-second');
+        await page.fill('#password', ctx.secrets.password);
+        await page.click('#login-form button[type=submit]');
+        await page.waitForSelector('#verify-step:not([hidden])');
+        await page.click('#back-login');
+        await page.waitForSelector('#login-form:not([hidden])');
         await page.goto(stBase + '/auth/'); await page.fill('#account', 'w03-accept-owner'); await page.fill('#password', ctx.secrets.password); await page.click('#login-form button[type=submit]');
         await page.waitForSelector('#use-recovery:not([hidden])'); await page.click('#use-recovery');
-        await page.fill('#code', ctx.secrets.recoveryCodes.shift()); await page.click('#verify-form button');
+        await page.fill('#code', ctx.secrets.recoveryCodes.shift()); await page.click('#verify-submit');
         await page.waitForURL(stBase + '/'); await nativeReady(page);
         assert.equal(await page.locator('meta[name=vc-account-id]').getAttribute('content'), ownerId);
         const own = await page.evaluate(async (file) => {
