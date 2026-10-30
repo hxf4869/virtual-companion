@@ -9,7 +9,7 @@
 //     eventSource / eventTypes（CHAT_COMPLETION_SETTINGS_READY、CHAT_CHANGED）。
 // third-party 扩展被装载在 /scripts/extensions/third-party/<name>/（比内置扩展深一层），
 // 相对导入主脚本要走四层（内置扩展的三层在这里会落到不存在的 /scripts/script.js）
-import { getRequestHeaders, getChat, saveChat as saveCurrentChat } from '../../../../script.js';
+import { getRequestHeaders, getChat, saveChat as saveCurrentChat, saveChatDebounced } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
 import { isGenerateRequestUrl } from './model-logic.js';
 import { claimExtensionInit, guardSameTurn, legacyDialogAllowed, mountModelSettings, observeGenerateBudget } from './page.js';
@@ -37,6 +37,7 @@ import { mountConsentGate } from './consent.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
 import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
+import { installStickers } from './stickers.js';
 export { openAccountData, openDrawerPage, openModelSettings };
 export { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget };
 
@@ -69,6 +70,7 @@ function mountVcUi() {
         ['vc-drawers-css', './drawers.css'],
         ['vc-settings-pages-css', './settings-pages.css'],
         ['vc-companion-persona-css', './companion-persona.css'],
+        ['vc-stickers-css', './stickers.css'],
     ]) {
         if (document.getElementById(id)) continue;
         const link = document.createElement('link');
@@ -82,6 +84,7 @@ function mountVcUi() {
 export async function init() {
     if (!claimExtensionInit()) return;
     mountVcUi();
+    void installStickers({ getContext, getRequestHeaders, saveChat: saveChatDebounced });
     mountDrawerPages();
     setStHeadersProvider(() => {
         const headers = getRequestHeaders();
