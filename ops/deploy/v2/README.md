@@ -11,6 +11,10 @@
 只把重启策略更新为 `unless-stopped`；不修改线程、步数、模型或量化。自检在 runtime 内探测三个已配置引擎。
 生产首次启用前必须完成 VO-12 的语音加密备份 / 恢复验收；批次末使用合成账号经 Go API 联调，不直接暴露引擎。
 
+启用语音覆盖时，宿主 systemd drop-in 的 `ExecStart` / `ExecStop` 也须携带私有 `deploy.env` 和同一份
+`voice.override.yaml`；先校验 Compose 配置，再执行 `daemon-reload`，确保开机编排保留语音网络。
+实际命令与网络名记在服务器私有运行手册，仓库只保留通用模板。
+
 ## 网络和数据
 
 现有 Nginx 终止公网域名（`VC_PUBLIC_HOST`）的 TLS，加入 `vc-v2-edge` 后访问
