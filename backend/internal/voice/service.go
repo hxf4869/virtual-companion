@@ -248,6 +248,12 @@ func (s *Service) create(ctx context.Context, owner, relationshipID int64, in Cr
 		}
 	}
 	if in.Purpose == "proactive" {
+		if rel.ProactiveEngine != nil && *rel.ProactiveEngine == CosyVoice {
+			engine, voiceID = CosyVoice, "default"
+			if rel.CosyVoice != nil {
+				voiceID = *rel.CosyVoice
+			}
+		}
 		if rel.ProactiveEngine != nil && *rel.ProactiveEngine == Kokoro {
 			engine, voiceID = Kokoro, "zf_001"
 			if rel.Gender == "MALE" {

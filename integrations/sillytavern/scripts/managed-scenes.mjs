@@ -15,6 +15,7 @@ import { voiceBackendScene } from './voice-backend-accept.mjs';
 import { voiceChatScene } from './voice-chat-accept.mjs';
 import { voiceProactiveScene } from './voice-proactive-accept.mjs';
 import { voiceInputScene } from './voice-input-accept.mjs';
+import { voiceSettingsScene } from './voice-settings-accept.mjs';
 import { storyOutboundScene } from './story-outbound-accept.mjs';
 import { storyPlayScene } from './story-play-accept.mjs';
 import { storyRealScene } from './story-real-accept.mjs';
@@ -67,6 +68,7 @@ export const ACCEPT_SCENES = [
     voiceChatScene,
     voiceProactiveScene,
     voiceInputScene,
+    voiceSettingsScene,
     storyOutboundScene,
     storyPlayScene,
     storyRealScene,

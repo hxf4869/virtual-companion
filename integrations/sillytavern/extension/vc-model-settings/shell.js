@@ -372,7 +372,7 @@ function bindNavScroll(scroll, navbar, host = navbar) {
     paint();
 }
 
-function buildSettings(doc, { accountName, theme, reply, onTheme, onReply, onAction }) {
+function buildSettings(doc, { accountName, theme, reply, onTheme, onReply, onAction, voiceAvailable }) {
     const form = doc.createElement('div');
     form.className = 'vc-settings-form';
 
@@ -427,6 +427,7 @@ function buildSettings(doc, { accountName, theme, reply, onTheme, onReply, onAct
         link('companion-style', '陪伴风格', 'heart', 'pink'),
         link('data', '账户与数据', 'shield', 'gray'),
     );
+    if(voiceAvailable)links.append(link('voice','语音','volume-2','blue'));
 
     const appearance = doc.createElement('div');
     appearance.className = 'vc-group-title';
@@ -1052,6 +1053,7 @@ export function mountShell(options = {}) {
 
     function openSettings(opener) {
         const form = buildSettings(doc, {
+            voiceAvailable: options.voiceAvailable?.()===true,
             accountName: accountLabel(getContext()),
             theme: readThemeMode(options.storage),
             reply: readReplyStyle(options.storage),
@@ -1062,6 +1064,7 @@ export function mountShell(options = {}) {
                     options.openCompanionStyle?.(button);
                     return;
                 }
+                if(action==='voice'){void options.openVoiceSettings?.(button);return;}
                 const target = settingOpener(action);
                 const surface = () => loadSeam('surface');
                 if (target === 'account') {

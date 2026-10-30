@@ -24,6 +24,18 @@ body.vc-ui #vc-voice-input-note { grid-column: 1 / -1; display: flex; align-item
 body.vc-ui #vc-voice-input-note[hidden] { display: none; }
 body.vc-ui .vc-voice-input-level { width: var(--vc-touch); height: var(--vc-space-xxs); background: var(--vc-accent); transform: scaleX(var(--vc-voice-level,0)); transform-origin: left; border-radius: var(--vc-radius-pill); }
 body.vc-ui #vc-voice-input:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
+body.vc-ui .vc-voice-settings { display: flex; flex-direction: column; gap: var(--vc-space-lg); padding-bottom: var(--vc-space-xl); }
+body.vc-ui .vc-voice-settings .vc-cell { gap: var(--vc-space-xs); }
+body.vc-ui .vc-voice-settings input[type="number"] { width: calc(var(--vc-touch) * 2); min-width: 0; min-height: var(--vc-touch); border: 0; color: var(--vc-accent-text); background: transparent; text-align: end; font: inherit; font-variant-numeric: tabular-nums; }
+body.vc-ui .vc-voice-settings select { max-width: 60%; min-width: 0; min-height: var(--vc-touch); border: 0; color: var(--vc-accent-text); background: transparent; font: inherit; text-overflow: ellipsis; }
+body.vc-ui .vc-voice-settings details { border: 0; }
+body.vc-ui .vc-voice-settings summary { cursor: pointer; min-height: var(--vc-touch); padding-inline: var(--vc-space-md); color: var(--vc-ink); align-content: center; }
+body.vc-ui .vc-voice-settings .vc-voice-setting-text { flex-direction: column; align-items: stretch; }
+body.vc-ui .vc-voice-settings textarea { width: 100%; min-height: calc(var(--vc-touch) * 2); padding: 0; border: 0; color: var(--vc-ink); background: transparent; font: inherit; resize: vertical; }
+body.vc-ui .vc-voice-settings input[type="range"] { width: 35%; min-width: 0; }
+body.vc-ui .vc-voice-settings output { font-variant-numeric: tabular-nums; font-size: var(--vc-fs-subhead); }
+body.vc-ui .vc-voice-settings [hidden] { display: none; }
+body.vc-ui .vc-voice-settings :is(input,select,textarea,summary):focus-visible { outline: 2px solid var(--vc-accent); outline-offset: var(--vc-space-xxs); }
 body.vc-ui .vc-voice :is(button):focus-visible { outline: 2px solid var(--vc-accent); outline-offset: var(--vc-space-xxs); }
 @keyframes vc-voice-wave { to { transform: scaleY(.45); } }
 @media (prefers-reduced-motion: reduce) {

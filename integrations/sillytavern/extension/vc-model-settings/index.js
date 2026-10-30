@@ -41,6 +41,7 @@ import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } fr
 import { installStickers } from './stickers.js';
 import { installChatVoice } from './voice-chat.js';
 import { installVoiceInput } from './voice-input.js';
+import { openGlobalVoiceSettings, refreshVoiceAvailability, voiceSettingsAvailable } from './voice-settings.js';
 export { openAccountData, openDrawerPage, openModelSettings };
 export { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget };
 
@@ -157,6 +158,7 @@ export async function init() {
     });
     bindingReady.catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
     installChatVoice({ getContext, saveChat: saveCurrentChat });
+    void refreshVoiceAvailability();
     installVoiceInput({getContext,async sendText(text,metadata){
         const message=await sendMessageAsUser(text);
         message.extra.vc_voice_input=metadata;
@@ -358,6 +360,8 @@ export async function init() {
             openAccount: (opener) => dataRights?.open(opener),
             openMemory: openMemoryLegacy,
             openCompanionStyle: (opener) => openCompanionStyle({ getContext, opener }),
+            openVoiceSettings: (opener)=>openGlobalVoiceSettings({opener}),
+            voiceAvailable: voiceSettingsAvailable,
             seams: {
                 chat: () => ({ mountChatView, openMemoryInspector, openChatMoreMenu, posterTarget }),
                 surface: async () => ({

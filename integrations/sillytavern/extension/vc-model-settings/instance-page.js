@@ -6,6 +6,8 @@ import { icon } from './ui/icons.js';
 import { readVcUiFlag } from './ui/theme.js';
 import { createNav } from './ui/nav.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
+import { openRelationshipVoiceSettings, voiceSettingsAvailable } from './voice-settings.js';
+import { popMenu } from './ui/menu.js';
 
 export const IMPORT_FAILED_COPY = '文件不是受支持的角色卡格式，原有角色未发生变动。请核对 JSON / PNG 角色元数据规范。';
 export const UNSAVED_INSTANCE_COPY = '当前存在未保存更改，切换实例前请先保存。';
@@ -691,7 +693,7 @@ export function renderCharactersTab(state, options = {}) {
     if (screen === 'detail' && detail) {
         const showForm = state.creating || detail.instances.some((item) => item.relationshipId === state.selectedRelationshipId);
         const count = `${detail.instances.length} 个实例`;
-        return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="back" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(detail.name)}</h1><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="edit-card" aria-label="编辑角色卡">${icon('pencil')}</button></header><div class="vc-scroll"><div class="vc-column"><div class="vc-poster" style="--vc-tint:${NEUTRAL_TINT}" data-tint="${esc(detail.avatar)}">${avatarHtml(detail.name, detail.avatar, 'vc-poster-avatar')}<span class="vc-instance-badge">模板</span><span class="vc-meta">${esc(count)}</span></div>${descriptionBlock(detail, options)}${detail.worldName ? `<div class="vc-group"><div class="vc-cell"><span class="vc-grow"><span class="vc-instance-world">关联世界书 · ${esc(detail.worldName)}</span></span></div></div>` : ''}<div class="vc-group"><button type="button" class="vc-cell" data-action="edit-persona"><span class="vc-grow">人设</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button></div><div class="vc-group" aria-label="陪伴实例">${instanceRows(detail.instances, state)}</div>${detail.instances.length && !state.creating ? `<button type="button" class="vc-btn vc-btn-text vc-instance-create" data-action="create">创建实例</button>` : ''}${!detail.instances.length && !showForm ? `<button type="button" class="vc-btn vc-btn-fill vc-instance-create vc-instance-primary" data-action="create">创建实例</button>` : ''}${showForm ? nameForm(state) : ''}${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}</div></div>`;
+        return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="back" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(detail.name)}</h1><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="edit-card" aria-label="编辑角色卡">${icon('pencil')}</button></header><div class="vc-scroll"><div class="vc-column"><div class="vc-poster" style="--vc-tint:${NEUTRAL_TINT}" data-tint="${esc(detail.avatar)}">${avatarHtml(detail.name, detail.avatar, 'vc-poster-avatar')}<span class="vc-instance-badge">模板</span><span class="vc-meta">${esc(count)}</span></div>${descriptionBlock(detail, options)}${detail.worldName ? `<div class="vc-group"><div class="vc-cell"><span class="vc-grow"><span class="vc-instance-world">关联世界书 · ${esc(detail.worldName)}</span></span></div></div>` : ''}<div class="vc-group"><button type="button" class="vc-cell" data-action="edit-persona"><span class="vc-grow">人设</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button></div>${detail.instances.length && voiceSettingsAvailable() ? `<div class="vc-group"><button type="button" class="vc-cell" data-action="edit-voice"><span class="vc-grow">声音</span><span class="vc-chevron">${icon('chevron-right', {size:16})}</span></button></div>` : ''}<div class="vc-group" aria-label="陪伴实例">${instanceRows(detail.instances, state)}</div>${detail.instances.length && !state.creating ? `<button type="button" class="vc-btn vc-btn-text vc-instance-create" data-action="create">创建实例</button>` : ''}${!detail.instances.length && !showForm ? `<button type="button" class="vc-btn vc-btn-fill vc-instance-create vc-instance-primary" data-action="create">创建实例</button>` : ''}${showForm ? nameForm(state) : ''}${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}</div></div>`;
     }
     const alerts = `${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p><button type="button" class="vc-btn vc-btn-fill" data-action="retry">重试</button>` : ''}`;
     const body = model.cards.length
@@ -1043,6 +1045,12 @@ export function mountCharactersTab(container, options = {}) {
         }
         if (action === 'edit-card') openHostCharacterPanel(root.ownerDocument);
         if (action === 'edit-persona') openPersona(detailRef);
+        if(action==='edit-voice'){
+            const card=decorate(page.state).cards.find((item)=>item.characterRef===detailRef);
+            const instances=card?.instances||[];
+            if(instances.length===1)void openRelationshipVoiceSettings(instances[0].relationshipId,{opener:target});
+            else if(instances.length>1)popMenu(target,instances.map((item)=>({label:item.name,run:()=>void openRelationshipVoiceSettings(item.relationshipId,{opener:target})})));
+        }
         if (action === 'close-persona') {
             nav.pop();
             personaEl = null;
