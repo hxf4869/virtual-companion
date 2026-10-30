@@ -57,7 +57,7 @@ test('会话行缺字段不编造', () => {
     const bare = renderConversationRow({ relationshipId: '9', instanceName: '晨间' });
     assert.match(bare, /data-relationship-id="9"/);
     assert.match(bare, /晨间/);
-    assert.equal(bare.includes('vc-convo-preview'), false);
+    assert.match(bare, /vc-convo-preview">暂无消息/);
     assert.equal(bare.includes('vc-convo-time'), false);
     assert.equal(bare.includes('vc-convo-unread'), false);
     assert.equal(bare.includes('刚刚'), false);
@@ -103,7 +103,7 @@ test('会话行缺字段不编造', () => {
     const html = renderConversationRows(rows);
     assert.equal(html.includes('SECRET-BODY'), false);
     assert.equal(html.includes('不该出现'), false);
-    assert.equal(html.includes('vc-convo-preview'), false);
+    assert.match(html, /vc-convo-preview">暂无消息/);
 
     const snap = chatSnapshotFromContext({
         chatMetadata: { vc_binding: { relationshipId: '3' } },

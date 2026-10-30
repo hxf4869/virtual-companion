@@ -433,6 +433,21 @@ body.vc-ui .vc-role > span {
     line-height: var(--vc-lh-footnote);
 }
 
+body.vc-ui .vc-role > .vc-role-avatar {
+    background: var(--vc-fill);
+    color: var(--vc-ink);
+    font-weight: 600;
+}
+
+body.vc-ui .vc-characters .vc-column {
+    width: min(100%, var(--vc-list));
+    margin-inline: auto;
+}
+
+body.vc-ui .vc-characters.is-detail .vc-column {
+    width: min(100%, var(--vc-read));
+}
+
 body.vc-ui .vc-characters .vc-skeleton-avatar {
     width: 72px;
     height: 72px;

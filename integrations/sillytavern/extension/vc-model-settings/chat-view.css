@@ -54,6 +54,10 @@ body.vc-ui #vc-chat-poster {
   text-align: center;
 }
 
+body.vc-ui #sheld:has(> #vc-chat-status:not(:empty)) #vc-chat-poster {
+  top: max(var(--vc-status-space, 0px), 68px);
+}
+
 body.vc-ui #vc-chat-poster button,
 body.vc-ui #vc-chat-poster a { pointer-events: auto; }
 
@@ -429,6 +433,19 @@ body.vc-ui .vc-lift.is-up {
   box-shadow: 0 18px 50px var(--vc-glass-shadow);
 }
 
+body.vc-ui .vc-lift .mesAvatarWrapper,
+body.vc-ui .vc-lift .avatar,
+body.vc-ui .vc-lift .timestamp,
+body.vc-ui .vc-lift .mes_buttons,
+body.vc-ui .vc-lift .swipe_left,
+body.vc-ui .vc-lift .swipe_right,
+body.vc-ui .vc-lift .swipes-counter,
+body.vc-ui .vc-lift .vc-mes-tools,
+body.vc-ui .vc-lift .ch_name,
+body.vc-ui .vc-lift .mesIDDisplay {
+  display: none !important;
+}
+
 body.vc-ui .vc-lift-source { visibility: hidden; }
 
 body.vc-ui #form_sheld {
@@ -442,15 +459,7 @@ body.vc-ui #form_sheld {
 }
 
 body.vc-ui #form_sheld::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: var(--vc-glass);
-  box-shadow: inset 0 0.5px 0 var(--vc-glass-hi);
-  pointer-events: none;
-  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
-  backdrop-filter: blur(22px) saturate(180%) !important;
+  content: none;
 }
 
 body.vc-ui #send_form,
@@ -516,10 +525,10 @@ body.vc-ui #send_textarea {
   padding: 10px 48px 10px 16px;
   border: 0 !important;
   border-top: 0 !important;
-  border-radius: 22px !important;
-  background: var(--vc-fill) !important;
-  background-color: var(--vc-fill) !important;
-  box-shadow: none !important;
+  border-radius: var(--vc-radius-pill) !important;
+  background: var(--vc-glass) !important;
+  background-color: var(--vc-glass) !important;
+  box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge), 0 8px 28px var(--vc-glass-shadow) !important;
   clip-path: none !important;
   field-sizing: fixed !important;
   resize: none;
@@ -528,8 +537,8 @@ body.vc-ui #send_textarea {
   font-size: 17px !important;
   line-height: var(--vc-lh-body);
   white-space: pre-wrap;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
+  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
+  backdrop-filter: blur(22px) saturate(180%) !important;
 }
 
 body.vc-ui #send_textarea::placeholder { color: var(--vc-ink-3) !important; }
@@ -565,7 +574,14 @@ body.vc-ui #mes_impersonate {
 
 body.vc-ui #send_but {
   display: inline-flex;
+  box-sizing: content-box !important;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 4px !important;
+  margin: 0 !important;
+  align-self: center;
   background: var(--vc-accent) !important;
+  background-clip: content-box !important;
   color: var(--vc-on-accent);
 }
 
@@ -573,7 +589,14 @@ body.vc-ui #mes_stop {
   position: relative;
   z-index: 3;
   display: none !important;
+  box-sizing: content-box !important;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 4px !important;
+  margin: 0 !important;
+  align-self: center;
   background: var(--vc-ink) !important;
+  background-clip: content-box !important;
   color: var(--vc-canvas);
   pointer-events: auto;
 }
@@ -670,7 +693,7 @@ body.vc-ui #sheld > #vc-chat-status,
 body.vc-ui #sheld > #toast-container {
   position: absolute !important;
   z-index: 8;
-  top: 8px;
+  top: 12px;
   left: 50% !important;
   right: auto !important;
   bottom: auto !important;
@@ -698,15 +721,16 @@ body.vc-ui #sheld > #vc-chat-status .vc-chat-inbox,
 body.vc-ui #vc-chat-unconfigured,
 body.vc-ui #toast-container > .toast {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  height: 48px;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
   max-width: 100%;
-  height: auto !important;
   min-height: 44px;
+  box-sizing: border-box;
   margin: 0;
-  padding: 10px 8px 10px 16px;
+  padding: 0 8px 0 16px;
   border: 0 !important;
   border-radius: var(--vc-radius-pill);
   background: var(--vc-glass) !important;

@@ -405,7 +405,7 @@ function syncStatusSpace() {
         if (!sheld?.style?.setProperty) return;
         const status = document.querySelector('#sheld > #vc-chat-status');
         const toast = document.querySelector('#toast-container .toast');
-        const statusHeight = status && status.childElementCount ? Math.ceil(status.getBoundingClientRect?.().height || 0) + 12 : 0;
+        const statusHeight = status && status.childElementCount ? 12 + Math.ceil(status.getBoundingClientRect?.().height || 0) + 8 : 0;
         const toastBox = toast ? Math.ceil(toast.getBoundingClientRect?.().height || 0) : 0;
         const toastHeight = toast ? Math.max(56, toastBox) + 12 : 0;
         sheld.style.setProperty('--vc-status-block', `${statusHeight}px`);
@@ -647,15 +647,41 @@ function messageFrom(target) {
     return parent?.id === 'chat' ? mes : null;
 }
 
+const LIFT_CHROME = [
+    '.vc-mes-tools',
+    '.mes_buttons',
+    '.swipe_left',
+    '.swipe_right',
+    '.swipes-counter',
+    '.swipeRightBlock',
+    '.mes_edit_buttons',
+    '.timestamp',
+    '.timestamp-icon',
+    '.mes_ghost',
+    '.mesAvatarWrapper',
+    '.avatar',
+    '.ch_name',
+    '.mesIDDisplay',
+];
+
+export function prepareLiftGhost(ghost, rect, viewportWidth) {
+    const pad = 16;
+    const width = Math.max(0, Number(viewportWidth) - pad * 2);
+    ghost.style.left = `${pad}px`;
+    ghost.style.top = `${rect?.top ?? 0}px`;
+    ghost.style.width = `${width}px`;
+    for (const selector of LIFT_CHROME) {
+        for (const node of [...(ghost.querySelectorAll?.(selector) || [])]) node.remove?.();
+    }
+    return ghost;
+}
+
 function liftMessage(mes) {
     if (typeof mes.getBoundingClientRect !== 'function') return;
     const rect = mes.getBoundingClientRect();
     const ghost = mes.cloneNode(true);
-    ghost.querySelector?.('.vc-mes-tools')?.remove?.();
     ghost.classList?.add?.('vc-lift');
-    ghost.style.left = `${rect.left}px`;
-    ghost.style.top = `${rect.top}px`;
-    ghost.style.width = `${rect.width}px`;
+    prepareLiftGhost(ghost, rect, globalThis.innerWidth || rect.width + 32);
     document.body.append(ghost);
     addClass(mes, 'vc-lift-source');
     const frame = globalThis.requestAnimationFrame;
@@ -960,7 +986,8 @@ function applyPosterFrame() {
     if (!poster?.style) return;
     const top = Number(chat?.scrollTop) || 0;
     const shift = height ? Math.min(Math.max(0, top), height) : 0;
-    poster.style.transform = shift ? `translateY(${-shift}px)` : '';
+    const away = height && shift >= height - 1 ? shift + height : shift;
+    poster.style.transform = away ? `translateY(${-away}px)` : '';
 }
 
 function followIfNeeded() {
