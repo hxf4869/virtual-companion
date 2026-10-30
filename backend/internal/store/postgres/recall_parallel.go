@@ -52,6 +52,115 @@ func loadEngineRecallParts(
 	return candidates, embedding, rerankOn, nil
 }
 
+// engineRecallLoad is the parallel prelude to a MemoryCore search.
+// Search is false when the allowlist has nothing to inject; embedding and
+// rerank errors are then irrelevant and must not fail the recall.
+type engineRecallLoad struct {
+	found     engineRecall
+	allowed   map[string]Memory
+	ids       []string
+	embedding EmbeddingConfig
+	rerankOn  bool
+	search    bool
+}
+
+// runEngineRecallLoad starts candidate, embedding and rerank reads together.
+// Embedding and rerank each have their own cancel scope. When the allowlist
+// needs no search, their errors are ignored and those reads are canceled.
+// A candidate failure still cancels the other two and is returned as-is.
+func runEngineRecallLoad(
+	ctx context.Context,
+	q recallQuery,
+	candidatesFn func(context.Context) (map[string]Memory, error),
+	embeddingFn func(context.Context) (EmbeddingConfig, error),
+	rerankFn func(context.Context) (bool, error),
+) (engineRecallLoad, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	candCtx, candCancel := context.WithCancel(ctx)
+	embCtx, embCancel := context.WithCancel(ctx)
+	rerankCtx, rerankCancel := context.WithCancel(ctx)
+	defer candCancel()
+	defer embCancel()
+	defer rerankCancel()
+	type candOut struct {
+		items map[string]Memory
+		err   error
+	}
+	type embOut struct {
+		cfg EmbeddingConfig
+		err error
+	}
+	type rerankOut struct {
+		on  bool
+		err error
+	}
+	candCh := make(chan candOut, 1)
+	embCh := make(chan embOut, 1)
+	rerankCh := make(chan rerankOut, 1)
+	go func() {
+		items, err := candidatesFn(candCtx)
+		candCh <- candOut{items, err}
+	}()
+	go func() {
+		cfg, err := embeddingFn(embCtx)
+		embCh <- embOut{cfg, err}
+	}()
+	go func() {
+		on, err := rerankFn(rerankCtx)
+		rerankCh <- rerankOut{on, err}
+	}()
+	cand := <-candCh
+	if cand.err != nil {
+		embCancel()
+		rerankCancel()
+		return engineRecallLoad{}, cand.err
+	}
+	found, allowed, ids, search := splitEngineCandidates(cand.items, q)
+	if !search {
+		embCancel()
+		rerankCancel()
+		return engineRecallLoad{found: found}, nil
+	}
+	emb := <-embCh
+	rerank := <-rerankCh
+	if emb.err != nil {
+		return engineRecallLoad{}, emb.err
+	}
+	if rerank.err != nil {
+		return engineRecallLoad{}, rerank.err
+	}
+	return engineRecallLoad{
+		found: found, allowed: allowed, ids: ids,
+		embedding: emb.cfg, rerankOn: rerank.on, search: true,
+	}, nil
+}
+
+func splitEngineCandidates(candidates map[string]Memory, q recallQuery) (engineRecall, map[string]Memory, []string, bool) {
+	ids := []string{}
+	undated, otherDay := []string{}, []string{}
+	allowed := map[string]Memory{}
+	for id, m := range candidates {
+		if q.Date != nil && (m.Time == nil || m.Time.EventDate == nil) {
+			undated = append(undated, id)
+			continue
+		}
+		if q.Date != nil && *m.Time.EventDate != *q.Date {
+			otherDay = append(otherDay, id)
+			continue
+		}
+		allowed[id] = m
+		ids = append(ids, id)
+	}
+	found := engineRecall{Memories: []Memory{}, DateIDs: append([]string{}, ids...), UndatedIDs: undated, OtherDayIDs: otherDay}
+	search := len(ids) != 0 || (len(q.GateTexts) > 0 && queryHasUndatedTopic(q.Text))
+	if !search {
+		found.GateKnown = true
+	}
+	return found, allowed, ids, search
+}
+
 func loadSTRecallParts(
 	query func() (stDigestSource, error),
 	profile func() (*memoryProfile, error),
