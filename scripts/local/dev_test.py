@@ -242,7 +242,7 @@ exit 99
         (backup / "minio" / "object.bin").write_bytes(b"obj")
         crypto = "cHJvZC1jcnlwdG8ta2V5LWZpeHR1cmUtMzJieXRlcyE="
         binding = "prod-owner-binding-secret-0123456789abcdef"
-        smtp = "prod-smtp-password-must-stay"
+        smtp = "prod-smtp-password-copied-for-parity"
         leaked_token = "prod-plugin-token-must-not-replace-local-one"
         handles = '{"9":"owner"}'
         secrets = backup / "secrets.env"
@@ -255,6 +255,8 @@ exit 99
                 "VC_CRYPTO_PREVIOUS_REST_KEY=cHJldmlvdXMta2V5LWZpeHR1cmUtMzJieXRlcyEhISE=",
                 f"VC_ST_ACCOUNT_HANDLES={handles}",
                 f"VC_SMTP_PASSWORD={smtp}",
+                "VC_SMTP_HOST=smtp.example.invalid",
+                "VC_MONTHLY_COST_LIMIT=12.5",
                 f"VC_ST_PLUGIN_SERVICE_TOKEN={leaked_token}",
                 "",
             ])
@@ -276,7 +278,10 @@ exit 99
         self.assertIn("VC_CRYPTO_REST_KEY_VERSION=4", runtime)
         self.assertIn("VC_CRYPTO_PREVIOUS_REST_KEY=cHJldmlvdXMta2V5LWZpeHR1cmUtMzJieXRlcyEhISE=", runtime)
         self.assertIn(handles, st_env)
-        self.assertNotIn(smtp, runtime)
+        # 通知凭据与行为配置按线上复制，只进 runtime.env。
+        self.assertIn(f"VC_SMTP_PASSWORD={smtp}", runtime)
+        self.assertIn("VC_SMTP_HOST=smtp.example.invalid", runtime)
+        self.assertIn("VC_MONTHLY_COST_LIMIT=12.5", runtime)
         self.assertNotIn(smtp, bootstrap)
         self.assertNotIn(leaked_token, runtime)
         self.assertIn(f"VC_ST_PLUGIN_SERVICE_TOKEN={local_token}", runtime)
@@ -290,7 +295,7 @@ exit 99
             "VC_ST_ACCOUNT_HANDLES",
         ):
             self.assertIn(name, blob)
-        self.assertNotIn("VC_SMTP_PASSWORD", blob)
+        self.assertIn("VC_SMTP_PASSWORD", blob)
         self.assertNotIn("VC_ST_PLUGIN_SERVICE_TOKEN", blob.split("synced secret names:", 1)[-1])
         self.assert_no_secret_leak(result, crypto, binding, smtp, leaked_token, local_token)
         sql = self.docker_stdin.read_text()

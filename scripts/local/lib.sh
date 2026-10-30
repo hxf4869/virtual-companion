@@ -528,7 +528,7 @@ parse_ssh_json() {
 apply_secret_file() {
     local file="$1" line key val
     local crypto="" binding="" key_id="" key_ver="" prev="" prev_id="" prev_ver="" handles=""
-    local -a names=()
+    local -a names=() parity=()
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "$line" || "$line" == \#* ]] && continue
         key=${line%%=*}
@@ -542,6 +542,9 @@ apply_secret_file() {
             VC_CRYPTO_PREVIOUS_REST_KEY_ID) prev_id=$val ;;
             VC_CRYPTO_PREVIOUS_REST_KEY_VERSION) prev_ver=$val ;;
             VC_ST_ACCOUNT_HANDLES) handles=$val ;;
+            # 与线上行为一致：通知渠道凭据、模型开关、预算与会话时长。
+            VC_SMTP_FROM|VC_SMTP_HOST|VC_SMTP_PORT|VC_SMTP_USERNAME|VC_SMTP_PASSWORD|VC_FEISHU_WEBHOOK_URL|VC_FEISHU_SIGN_SECRET|VC_NOTIFY_MAX_ATTEMPTS|VC_PROVIDER_ENABLED|VC_BUDGET_*|VC_MONTHLY_COST_LIMIT|VC_SESSION_TTL|VC_SESSION_REAUTH_WINDOW)
+                [[ "$key" =~ ^VC_[A-Z_]+$ ]] && parity+=("$key=$val") ;;
         esac
     done < "$file"
     [[ -n "$crypto" && -n "$binding" ]] || { echo "secrets.env 缺少解密所需的键" >&2; exit 1; }
@@ -589,6 +592,11 @@ apply_secret_file() {
         env_set "$STATE/st.env" VC_ST_ACCOUNT_HANDLES "$handles"
         names+=(VC_ST_ACCOUNT_HANDLES)
     fi
+    local pair
+    for pair in ${parity[@]+"${parity[@]}"}; do
+        env_set "$STATE/runtime.env" "${pair%%=*}" "${pair#*=}"
+        names+=("${pair%%=*}")
+    done
     chmod 600 "$STATE/runtime.env" "$STATE/bootstrap.env" "$STATE/st.env"
     printf 'synced secret names: %s\n' "${names[*]}"
 }
