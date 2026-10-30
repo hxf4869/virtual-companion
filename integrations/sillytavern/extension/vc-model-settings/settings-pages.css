@@ -805,3 +805,33 @@ body.vc-ui #vc-model-settings-root .vcms-model-row.is-selected {
 body.vc-ui .vc-data-root .vc-data-dialog::backdrop {
   background: transparent;
 }
+
+body.vc-ui #vc-model-settings-root .vcms-callout-info {
+  color: var(--vc-accent-text);
+  background: color-mix(in srgb, var(--vc-accent) 10%, var(--vc-group));
+  border-color: color-mix(in srgb, var(--vc-accent) 32%, transparent);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-callout-info > div {
+  color: var(--vc-ink);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-callout-warn {
+  color: var(--vc-warning);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-advanced summary {
+  color: var(--vc-ink-2);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-subsection-title {
+  color: var(--vc-ink-2);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-section-label {
+  color: var(--vc-ink-2);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-model-form:has(#vcms-m-ctx:not(:placeholder-shown)) [data-note="ctx"] {
+  display: none !important;
+}

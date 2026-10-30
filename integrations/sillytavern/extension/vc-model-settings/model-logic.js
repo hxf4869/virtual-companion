@@ -116,6 +116,14 @@ function isBlank(v) {
     return v === '' || v === null || v === undefined;
 }
 
+/** 未填写只看正在编辑的这份模型配置的 contextWindowTokens，不看宿主上下文或别的配置。 */
+export function contextWindowMissing(model) {
+    const value = model?.contextWindowTokens;
+    if (typeof value === 'number') return !Number.isFinite(value);
+    if (value === null || value === undefined) return true;
+    return String(value).trim() === '';
+}
+
 export function protocolMeta(protocolId) {
     return PROTOCOLS.find((p) => p.id === protocolId) || null;
 }

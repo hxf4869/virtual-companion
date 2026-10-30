@@ -54,13 +54,19 @@ export function cardsFromContext(context) {
     });
 }
 
+function nonEmptyRef(value) {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
 export function bindingsFromContext(context) {
     const binding = context?.chatMetadata?.vc_binding;
     if (binding?.relationshipId == null || binding.relationshipId === '') return [];
     const card = context?.characters?.[context.characterId];
+    const stored = nonEmptyRef(binding.characterRef);
+    const fromCard = nonEmptyRef(card?.data?.extensions?.vc_character_ref);
     return [{
         relationshipId: String(binding.relationshipId),
-        characterRef: typeof card?.data?.extensions?.vc_character_ref === 'string' ? card.data.extensions.vc_character_ref : '',
+        characterRef: stored || fromCard,
         chatIdentity: typeof context?.chatMetadata?.vc_f2?.id === 'string' ? context.chatMetadata.vc_f2.id : '',
         mode: binding.mode || 'COMPANION',
     }];
@@ -244,6 +250,7 @@ export function createInstancePage({
     };
     const emit = () => onChange(state);
     const dirty = () => state.draftName !== state.savedName && (state.creating || state.selectedRelationshipId);
+    let loadGeneration = 0;
     function applyInstance(id) {
         const row = instancesFrom(state.relationships).find((item) => item.relationshipId === String(id));
         state.creating = false;
@@ -257,12 +264,14 @@ export function createInstancePage({
     return {
         state,
         async open() {
+            const ticket = ++loadGeneration;
             state.open = true;
             state.loadError = '';
             try {
                 const [relationships, cards, bindings] = await Promise.all([
                     loadRelationships(), Promise.resolve(getCards()), Promise.resolve(getBindings()),
                 ]);
+                if (ticket !== loadGeneration) return;
                 state.relationships = Array.isArray(relationships) ? relationships : [];
                 state.cards = (Array.isArray(cards) ? cards : []).map((item) => ({
                     characterRef: item?.characterRef || '', name: item?.name || '未命名角色卡',
@@ -280,8 +289,10 @@ export function createInstancePage({
                 state.savedName = source?.companionName || '';
                 state.draftName = state.savedName;
             } catch {
+                if (ticket !== loadGeneration) return;
                 state.loadError = '加载失败，请重试。';
             }
+            if (ticket !== loadGeneration) return;
             emit();
         },
         setName(value) { state.draftName = String(value ?? ''); emit(); },
@@ -568,19 +579,24 @@ function characterModel(state) {
         avatar: typeof card?.avatar === 'string' ? card.avatar : '',
         instances: [],
     }));
-    const byRef = new Map(cards.map((card) => [card.characterRef, card]));
+    const byRef = new Map();
+    for (const card of cards) {
+        const ref = nonEmptyRef(card.characterRef);
+        if (ref) byRef.set(ref, card);
+    }
     const instances = instancesFrom(state.relationships).map((item) => {
         const row = (state.relationships || []).find((rel) => String(rel?.relationshipId) === item.relationshipId) || {};
         return {
             ...item,
-            characterRef: typeof row.characterRef === 'string' ? row.characterRef : '',
+            characterRef: nonEmptyRef(row.characterRef),
             lastAt: row.lastChatAt || row.lastMessageAt || '',
             chatIdentity: '',
         };
     });
     const placed = new Set();
     for (const binding of Array.isArray(state.bindings) ? state.bindings : []) {
-        const card = byRef.get(binding?.characterRef || '');
+        const ref = nonEmptyRef(binding?.characterRef);
+        const card = ref ? byRef.get(ref) : undefined;
         const inst = instances.find((item) => item.relationshipId === String(binding?.relationshipId ?? ''));
         if (!card || !inst || placed.has(inst.relationshipId)) continue;
         card.instances.push({ ...inst, chatIdentity: typeof binding.chatIdentity === 'string' ? binding.chatIdentity : '' });
@@ -588,7 +604,7 @@ function characterModel(state) {
     }
     for (const inst of instances) {
         if (placed.has(inst.relationshipId)) continue;
-        const card = byRef.get(inst.characterRef);
+        const card = inst.characterRef ? byRef.get(inst.characterRef) : undefined;
         if (!card) continue;
         card.instances.push(inst);
         placed.add(inst.relationshipId);
