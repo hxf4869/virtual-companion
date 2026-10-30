@@ -9,6 +9,8 @@ export const ACCOUNT_UI_ROUTES = Object.freeze([
     { method: 'GET', path: /^\/api\/v1\/auth\/sessions$/, sample: '/api/v1/auth/sessions', where: 'W15 会话列表' },
     { method: 'DELETE', path: new RegExp(`^/api/v1/auth/sessions/${ID}$`), sample: '/api/v1/auth/sessions/12', where: 'W15 逐条登出其他会话' },
     { method: 'POST', path: /^\/api\/v1\/auth\/logout$/, sample: '/api/v1/auth/logout', where: 'W15 登出当前会话' },
+    { method: 'GET', path: /^\/api\/v1\/auth\/trusted-devices$/, sample: '/api/v1/auth/trusted-devices', where: 'LOGIN-UX 已信任设备列表' },
+    { method: 'DELETE', path: new RegExp(`^/api/v1/auth/trusted-devices/${ID}$`), sample: '/api/v1/auth/trusted-devices/12', where: 'LOGIN-UX 撤销已信任设备' },
     { method: 'POST', path: /^\/api\/v1\/exports$/, sample: '/api/v1/exports', where: 'W15 生成副本' },
     { method: 'POST', path: /^\/api\/v1\/exports\/recover$/, sample: '/api/v1/exports/recover', where: 'W15 取回最近副本' },
     { method: 'DELETE', path: /^\/api\/v1\/auth\/account$/, sample: '/api/v1/auth/account', where: 'W15 删除账号；浏览器走 /auth/api/account' },

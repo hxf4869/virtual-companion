@@ -59,6 +59,8 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'DELETE', path: /^\/api\/v1\/auth\/sessions\/[1-9][0-9]*$/, where: 'W15 撤销单个会话' },
     { method: 'POST', path: /^\/api\/v1\/auth\/sessions\/revoke-all$/, where: 'W15 撤销全部会话' },
     { method: 'POST', path: /^\/api\/v1\/auth\/logout$/, where: 'W15 登出当前会话' },
+    { method: 'GET', path: /^\/api\/v1\/auth\/trusted-devices$/, where: 'LOGIN-UX 已信任设备列表' },
+    { method: 'DELETE', path: /^\/api\/v1\/auth\/trusted-devices\/[1-9][0-9]*$/, where: 'LOGIN-UX 撤销已信任设备' },
     { method: 'POST', path: /^\/api\/v1\/admin\/accounts\/[1-9][0-9]*\/authenticator-reset$/, where: 'W15 重置验证器（响应不回密钥）' },
     // 聊天页常量在扩展里。插件运行时不能跨目录导入，这里按同一路径并入。
     { method: 'GET', path: /^\/api\/v1\/inbox$/, where: 'W15 聊天页待写入会话条' },

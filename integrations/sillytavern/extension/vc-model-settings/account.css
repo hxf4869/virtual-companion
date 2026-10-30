@@ -20,6 +20,31 @@
 .vc-account-reauth input[type="password"] { min-height: 44px; }
 .vc-account-session,
 .vc-account-empty { margin: 0 0 8px; }
+.vc-account-card[hidden] { display: none !important; }
+.vc-account-device {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
+    margin: 0;
+    padding: 8px 0;
+}
+.vc-account-device + .vc-account-device { border-top: 0.5px solid var(--vcms-border, var(--SmartThemeBorderColor, #394453)); }
+.vc-account-device-name { font-size: 17px; }
+.vc-account-device-meta { margin-top: 2px; color: var(--vcms-muted, #6e6e73); font-size: 13px; }
+.vc-account-device button { flex: none; min-height: 44px; }
+.vc-data-dialog > .vc-scrim,
+.vc-data-dialog > .vc-alert {
+    position: fixed !important;
+    z-index: 40;
+}
+.vc-data-dialog > .vc-scrim { inset: 0; }
+.vc-data-dialog > .vc-alert {
+    top: 50% !important;
+    left: 50% !important;
+    width: min(280px, calc(100vw - 32px));
+}
 .vc-account-reauth {
     position: absolute;
     inset: 0;

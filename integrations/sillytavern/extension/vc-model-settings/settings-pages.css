@@ -690,6 +690,7 @@ body.vc-ui .vc-data-dialog:not([data-vc-screen="home"]) [data-vc-account-home],
 body.vc-ui .vc-data-dialog[data-vc-screen="password"] .vc-account-card:not([aria-label="修改密码"]),
 body.vc-ui .vc-data-dialog[data-vc-screen="auth"] .vc-account-card:not([aria-label="验证器"]),
 body.vc-ui .vc-data-dialog[data-vc-screen="sessions"] .vc-account-card:not([aria-label="当前会话"]),
+body.vc-ui .vc-data-dialog[data-vc-screen="devices"] .vc-account-card:not([aria-label="已信任的设备"]),
 body.vc-ui .vc-data-dialog[data-vc-screen="export"] .vc-account-card:not([aria-label="导出数据"]),
 body.vc-ui .vc-data-dialog[data-vc-screen="delete"] .vc-account-card:not([aria-label="删除账号及在线数据"]),
 body.vc-ui .vc-data-dialog:not([data-vc-screen="delete"]) .vc-data-scope {
@@ -758,6 +759,40 @@ body.vc-ui .vc-data-dialog [data-sessions] .vc-account-session {
   min-height: 48px;
   margin: 0;
   padding: 8px 16px;
+}
+
+body.vc-ui .vc-data-dialog [data-trusted-list] {
+  margin: 0;
+  background: var(--vc-group);
+  border-radius: var(--vc-radius-md);
+  overflow: hidden;
+}
+
+body.vc-ui .vc-data-dialog .vc-account-device {
+  min-height: 48px;
+  margin: 0;
+  padding: 8px 16px;
+}
+
+body.vc-ui .vc-data-dialog .vc-account-device + .vc-account-device { border-top: 0; }
+
+body.vc-ui .vc-data-dialog .vc-account-device + .vc-account-device::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 0;
+  top: 0;
+  height: 0.5px;
+  background: var(--vc-separator);
+}
+
+body.vc-ui .vc-data-dialog .vc-account-device { position: relative; }
+
+body.vc-ui .vc-data-dialog .vc-account-device-name { color: var(--vc-ink); font-size: var(--vc-fs-body); }
+
+body.vc-ui .vc-data-dialog .vc-account-device-meta {
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
 }
 
 @media (min-width: 744px) {

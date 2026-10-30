@@ -3,6 +3,7 @@
 import {
     captureSessionContext, createDataExport, recoverDataExport, getDataExport, downloadDataExport, deleteOwnAccount,
     changePassword, listSessions, revokeSession, logoutCurrent, resetAuthenticator, reauth, fetchSession,
+    listTrustedDevices, revokeTrustedDevice,
 } from './api.js';
 import {
     AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, RESTORE_LIMIT_COPY, SESSION_EMPTY_COPY,
@@ -11,6 +12,26 @@ import {
 import { confirmAlert } from './ui/alert.js';
 import { icon } from './ui/icons.js';
 import { registerAccountOpener, vcUiEnabled } from './drawers.js';
+
+export function trustedDeviceGroupVisible(devices) {
+    return Array.isArray(devices) && devices.length > 0;
+}
+
+export function formatTrustedWhen(value) {
+    if (typeof value !== 'string' || value.length === 0) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
+export function formatTrustedDeviceLine(device) {
+    const name = typeof device?.displayName === 'string' ? device.displayName.trim() : '';
+    return {
+        name: name || '当前设备',
+        lastUsed: formatTrustedWhen(device?.lastUsedAt),
+        expires: formatTrustedWhen(device?.expiresAt),
+    };
+}
 
 function ensureAccountStyles() {
     if (typeof document === 'undefined' || document.querySelector('link[data-vc-account]')) return;
@@ -48,6 +69,11 @@ export function renderAccountShell() {
             <div data-sessions></div>
             <div class="vc-data-actions"><button class="vcms-btn" type="button" data-revoke-others>登出其他会话</button><button class="vcms-btn" type="button" data-logout>登出</button></div>
             <div class="vc-data-status" role="status" aria-live="polite" data-session-status></div>
+          </section>
+          <section class="vc-account-card" aria-label="已信任的设备" data-trusted-devices hidden>
+            <h2>已信任的设备</h2>
+            <div data-trusted-list></div>
+            <div class="vc-data-status" role="status" aria-live="polite" data-device-status></div>
           </section>
           <section class="vc-account-card" aria-label="导出数据">
             <h2>导出数据</h2>
@@ -125,12 +151,14 @@ export function mountDataRights() {
     let accountId = '';
     let sessions = [];
     let sessionsLoaded = false;
+    let trustedDevices = [];
+    let deviceConfirm = false;
     let deleteDomains = [];
     let pending = null;
     const clearSecrets = () => root.querySelectorAll('input[type=password]').forEach((input) => { input.value = ''; });
     const setBusy = (value) => {
         busy = value;
-        root.querySelectorAll('form input, form button, [data-download], [data-revoke-others], [data-logout], [data-reset], [data-export], [data-recover]').forEach((control) => {
+        root.querySelectorAll('form input, form button, [data-download], [data-revoke-others], [data-logout], [data-reset], [data-export], [data-recover], [data-revoke-device]').forEach((control) => {
             control.disabled = value || deleted;
         });
         const revoke = root.querySelector('[data-revoke-others]');
@@ -250,6 +278,43 @@ export function mountDataRights() {
         if (revoke) revoke.disabled = busy || deleted || otherSessions(sessions).length === 0;
         syncAccountHome();
     }
+    function paintDevices() {
+        const section = root.querySelector('[data-trusted-devices]');
+        const host = root.querySelector('[data-trusted-list]');
+        const nav = root.querySelector('[data-vc-account-go="devices"]');
+        if (!section || !host) return;
+        host.textContent = '';
+        const items = (Array.isArray(trustedDevices) ? trustedDevices : []).filter((item) => /^[1-9][0-9]*$/.test(String(item?.id || '')));
+        const show = trustedDeviceGroupVisible(items);
+        section.hidden = !show;
+        if (nav) nav.hidden = !show;
+        if (!show) {
+            if (dialog.getAttribute('data-vc-screen') === 'devices') setAccountScreen('home');
+            return;
+        }
+        for (const item of items) {
+            const line = formatTrustedDeviceLine(item);
+            const row = document.createElement('div');
+            row.className = 'vc-account-device';
+            const copy = document.createElement('div');
+            const name = document.createElement('div');
+            name.className = 'vc-account-device-name';
+            name.textContent = line.name;
+            const meta = document.createElement('div');
+            meta.className = 'vc-account-device-meta';
+            meta.textContent = `最近使用 ${line.lastUsed} · 到期 ${line.expires}`;
+            copy.append(name, meta);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'vcms-btn';
+            if (vcUiEnabled()) button.classList.add('vc-btn', 'vc-btn-text');
+            button.textContent = '撤销';
+            button.setAttribute('data-revoke-device', String(item.id));
+            button.disabled = busy || deleted;
+            row.append(copy, button);
+            host.append(row);
+        }
+    }
     function watchDeletion(epoch) {
         clearTimeout(timer);
         deleteStatus.textContent = deletionProgressText({ pendingDomains: deleteDomains });
@@ -296,12 +361,14 @@ export function mountDataRights() {
         try {
             const session = await captureSessionContext();
             accountId = session.accountId;
-            const [full, listed] = await Promise.all([fetchSession(), listSessions()]);
+            const [full, listed, trusted] = await Promise.all([fetchSession(), listSessions(), listTrustedDevices()]);
             if (epoch !== version || !dialog.open) return;
             authLine.textContent = authenticatorStatusText(full);
             sessions = Array.isArray(listed) ? listed : [];
             sessionsLoaded = true;
+            trustedDevices = Array.isArray(trusted) ? trusted : [];
             paintSessions();
+            paintDevices();
             syncAccountHome();
         } catch {
             if (epoch === version && dialog.open) sessionStatus.textContent = '账户信息暂不可用';
@@ -428,6 +495,39 @@ export function mountDataRights() {
             if (epoch === version && dialog.open) sessionStatus.textContent = errorText(error);
         } finally { setBusy(false); }
     });
+    root.querySelector('[data-trusted-list]').addEventListener('click', async (event) => {
+        const button = event.target?.closest?.('[data-revoke-device]');
+        if (!button || busy || deleted || deviceConfirm) return;
+        const id = button.getAttribute('data-revoke-device') || '';
+        if (!/^[1-9][0-9]*$/.test(id)) return;
+        deviceConfirm = true;
+        const status = root.querySelector('[data-device-status]');
+        try {
+            const ok = await confirmAlert({
+                title: '撤销此设备',
+                message: '此设备下次登录需要验证码。',
+                action: '撤销',
+                root: dialog,
+                opener: button,
+            });
+            if (!ok || busy || !dialog.open) return;
+            const epoch = version;
+            setBusy(true);
+            try {
+                await revokeTrustedDevice(id);
+                if (epoch !== version || !dialog.open) return;
+                trustedDevices = trustedDevices.filter((item) => String(item?.id) !== id);
+                if (status) status.textContent = '';
+                paintDevices();
+            } catch (error) {
+                if (epoch === version && dialog.open && status) status.textContent = errorText(error);
+            } finally {
+                setBusy(false);
+            }
+        } finally {
+            deviceConfirm = false;
+        }
+    });
     root.querySelector('[data-logout]').addEventListener('click', async () => {
         if (busy) return;
         setBusy(true);
@@ -440,6 +540,7 @@ export function mountDataRights() {
             password: '修改密码',
             auth: '验证器',
             sessions: '当前会话',
+            devices: '已信任的设备',
             export: '导出数据',
             delete: '删除账号及在线数据',
         }[screen] || '账户与数据';
@@ -492,6 +593,7 @@ export function mountDataRights() {
             <button type="button" class="vc-cell" data-vc-account-go="password"><span class="vc-grow">修改密码</span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="auth"><span class="vc-grow">验证器</span><span class="vc-value" data-vc-auth-summary>未启用</span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="sessions"><span class="vc-grow">当前会话</span><span class="vc-value" data-vc-session-count></span>${chevron}</button>
+            <button type="button" class="vc-cell" data-vc-account-go="devices" hidden><span class="vc-grow">已信任的设备</span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="export"><span class="vc-grow">导出数据</span>${chevron}</button>
         </div>
         <div class="vc-group">
@@ -553,8 +655,12 @@ export function mountDataRights() {
             reauthLayer.hidden = true;
             sessions = [];
             sessionsLoaded = false;
+            trustedDevices = [];
             accountId = '';
+            const deviceStatus = root.querySelector('[data-device-status]');
+            if (deviceStatus) deviceStatus.textContent = '';
             paintSessions();
+            paintDevices();
             if (!dialog.open) dialog.showModal();
             root.querySelector('h1').focus();
             void loadAccount();

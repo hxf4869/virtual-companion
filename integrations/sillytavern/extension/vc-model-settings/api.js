@@ -257,6 +257,13 @@ export const fetchSession = () => request('GET', '/api/v1/auth/session');
 export const changePassword = (currentPassword, newPassword) => request('POST', '/api/v1/auth/password', { currentPassword, newPassword });
 export const listSessions = () => request('GET', '/api/v1/auth/sessions');
 export const revokeSession = (sessionId) => request('DELETE', `/api/v1/auth/sessions/${encodeURIComponent(sessionId)}`);
+export const listTrustedDevices = () => request('GET', '/api/v1/auth/trusted-devices');
+export const revokeTrustedDevice = (deviceId) => {
+    if (!/^[1-9][0-9]{0,18}$/.test(String(deviceId || ''))) {
+        throw new ApiError('invalid', '请求内容未通过校验，请检查表单。', { status: 0, code: 'INVALID_REQUEST' });
+    }
+    return request('DELETE', `/api/v1/auth/trusted-devices/${deviceId}`);
+};
 export const logoutCurrent = () => request('POST', '/api/v1/auth/logout', {});
 export const resetAuthenticator = (accountId) => request('POST', `/api/v1/admin/accounts/${encodeURIComponent(accountId)}/authenticator-reset`, {});
 
