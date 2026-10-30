@@ -63,6 +63,14 @@ start 预检 / status 与 `tests/patcher.test.mjs` 都按该值校验，输出�
   `type===aborted` 安静返回；其他错误记录 `name` 与 `code` 后 `destroy` 响应，不把上游正文写入日志。
 - **应用与校验**：同上（assemble-managed 应用，start-managed / status-managed 复核）。
 
+## st-fetch-wasm-realpath.json（受管核心补丁）
+
+- **对象**：SillyTavern 1.19.0（commit `7e8663cd`）`src/fetch-patch.js`（只作用于 `dev-managed/st-run` 副本）。
+- **理由**：缩略图把原图读进内存后交给 Jimp。PNG/JPEG/WebP 编解码初始化会 `fetch(new URL('*.wasm', import.meta.url))`。受管装配把 `node_modules` 符号链接到运行副本之外，Node 把该模块 URL 解析成真实路径，上游补丁只允许 `serverDirectory`，于是抛出 `Requested file path is outside of the server directory`。日志里的头像文件名是 `generateThumbnail` 的参数，不是被 `file://` 读取的那个文件。
+- **改法**：目录判断额外放行 `serverDirectory/node_modules` 的真实路径；扩展名仍只允许 `.wasm`。数据根和其他路径继续拒绝。符号链接指向文件系统根时也不放行。
+- **应用与校验**：列入 `CORE_PATCH_SPECS`。线上镜像在构建时执行 `assemble-managed`，因此要重建 ST 镜像后才会生效；数据卷仍在 `/srv/vc-managed/data`，不必挪进程序目录。
+- **可去除条件**：见规格 `removal_condition`。
+
 ## 未受校验文本生成出口（W13，四份同形规格）
 
 | 规格 | 目标 | 路由 |

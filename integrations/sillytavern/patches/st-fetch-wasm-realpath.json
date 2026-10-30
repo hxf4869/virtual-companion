@@ -1,0 +1,30 @@
+{
+  "id": "st-fetch-wasm-realpath",
+  "kind": "deterministic-string-replacement",
+  "reason": "受管运行副本把 node_modules 符号链接到锁定上游安装（本地 dev-managed/st-run，线上 /srv/vc-managed/st-run → /opt/vc/.../node_modules），数据根另放在程序目录外。缩略图 processSingleImage 用 fs 读头像缓冲后交给 Jimp；PNG/JPEG/WebP 编解码在 init 时执行 fetch(new URL(*.wasm, import.meta.url))。Node 把符号链接模块的 import.meta.url 解析成真实路径，该路径不在 serverDirectory 下，上游 fetch 补丁抛出 Requested file path is outside of the server directory，generateThumbnail 记在头像文件名上并回退原图。补丁只额外放行 serverDirectory/node_modules 的真实目录，扩展名仍只允许 .wasm；数据根和其他路径继续拒绝。",
+  "upstream": {
+    "component": "sillytavern",
+    "repo": "https://github.com/SillyTavern/SillyTavern",
+    "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9",
+    "version": "1.19.0"
+  },
+  "target": "src/fetch-patch.js",
+  "applies_to": "锁定 commit 7e8663cd 的该文件。assemble-managed 应用到 dev-managed/st-run 运行副本；upstream/ 原始检出不修改。线上同一补丁随 ST 镜像构建时的 assemble-managed 进入 /srv/vc-managed/st-run。",
+  "removal_condition": "上游 fetch 补丁允许读取运行副本 node_modules 符号链接的真实路径，或 V2 改为把 node_modules 以真实目录放进 serverDirectory 且不再经符号链接解析到目录外。升级 ST 必须重算两个 SHA 并复核锚点只命中一次。",
+  "expected_input_sha256": "4521a5fcce038f7b8f5e40f3425bd82e3629da291036b7d45ffdf57433e812fc",
+  "expected_output_sha256": "f7ebcec99af76b1124759ac1e7fe8ee000b64e242e75f814200bee6764433273",
+  "replacements": [
+    {
+      "from": "// Patched fetch function that handles file URLs\nglobalThis.fetch = async",
+      "to": "// vc patch: st-run/node_modules is a symlink to the locked install outside serverDirectory.\n// Node realpaths import.meta.url, so WASM codecs fetch that real file:// path.\n// Allow only that realpath plus serverDirectory. The .wasm allowlist still applies.\nfunction isAllowedFileRoot(filePath) {\n    if (isPathUnderParent(serverDirectory, filePath)) return true;\n    let realModules;\n    try {\n        realModules = fs.realpathSync(path.join(serverDirectory, 'node_modules'));\n    } catch {\n        return false;\n    }\n    if (realModules === path.parse(realModules).root) return false;\n    return isPathUnderParent(realModules, filePath);\n}\n\n// Patched fetch function that handles file URLs.\nglobalThis.fetch = async",
+      "count": 1,
+      "where": "在 file:// 处理前增加 isAllowedFileRoot：serverDirectory 或 node_modules 真实路径"
+    },
+    {
+      "from": "    const isUnderServerDirectory = isPathUnderParent(serverDirectory, filePath);",
+      "to": "    const isUnderServerDirectory = isAllowedFileRoot(filePath); // vc patch: symlink realpath",
+      "count": 1,
+      "where": "目录判断改为 isAllowedFileRoot；错误文案与 .wasm 扩展名限制保持不变"
+    }
+  ]
+}

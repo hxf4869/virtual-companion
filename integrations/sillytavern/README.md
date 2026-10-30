@@ -186,7 +186,9 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 
 - **运行副本 `dev-managed/st-run`**：ST 源码树复制品（顶层排除 `.git`/`node_modules`/`data`/`backups`/`colab`）；
   `node_modules` 用符号链接指向 `upstream/SillyTavern/node_modules`（原生 bootstrap 已按锁定 package-lock
-  重建并校验，受管只复用不重建）。`assemble-managed` 按集中规格（`scripts/lib/paths.mjs` 的
+  重建并校验，受管只复用不重建）。该符号链接的真实路径在运行副本外；`st-fetch-wasm-realpath`
+  只为 Jimp 的 WASM `file://` 放行这一真实目录（仍仅 `.wasm`），数据根不在放行范围内。
+  `assemble-managed` 按集中规格（`scripts/lib/paths.mjs` 的
   `CORE_PATCH_SPECS`）对副本应用核心补丁：app 级单点登录钩子（`st-host-auth`）、登录客户端与
   F2 全链 CAS 系列、`/generate` 桥与 provider 正文日志收口（输入/输出 SHA256 硬校验，不匹配即
   失败；清单以 `CORE_PATCH_SPECS` 为准，不在此固定数量）。副本整体重建，重跑逐字节一致。

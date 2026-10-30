@@ -94,6 +94,8 @@ Owner 用所提供的初始口令登录，完成改密和 TOTP；模型可在模
    embedding 继续使用 Compose 里的 `OLLAMA_KEEP_ALIVE=-1`（MemoryCore 每次嵌入请求也带 `keep_alive: -1`）。重排参数与模型目录变量名见上文，变量名是 `VC_RERANK_MODELS_DIR`。
 5. 验收 Go health、MemoryCore readyz、ST 登录页，并核对 `docker compose ... ps` 全部健康。旧镜像确认无误后再清理。
 
+头像缩略图依赖 ST 镜像里的 `st-fetch-wasm-realpath` 补丁：`st-run/node_modules` 是指向镜像内锁定安装的符号链接，WASM 的 `file://` 真实路径在程序目录外。补丁只放行该真实目录下的 `.wasm`，不放行数据根。`st-data` 卷继续挂在 `/srv/vc-managed/data`。只重启旧镜像不会带上这个补丁，必须按上面的步骤重建并加载新的 ST 镜像。
+
 首次升级到含 rerank 的版本（204dc941 及之后）时另加：
 
 1. 在仓库外的模型目录（例如 `/srv/virtual-companion/rerank-models`，UID/GID 1000 可读）放入 Hugging Face

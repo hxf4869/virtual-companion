@@ -67,6 +67,7 @@ export const CORE_PATCH_SPECS = [
     path.join(INTEG, 'patches', 'st-novel-vc-guard.json'),
     path.join(INTEG, 'patches', 'st-memory-status-client.json'),
     path.join(INTEG, 'patches', 'st-util-stream-error-log.json'),
+    path.join(INTEG, 'patches', 'st-fetch-wasm-realpath.json'),
 ];
 
 /** 受管部署源：本仓库自有的 server plugin 与用户扩展（扩展部署必须排除 harness/）。 */
