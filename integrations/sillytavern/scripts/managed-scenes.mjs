@@ -21,6 +21,7 @@ import { vcUiShellScene } from './vc-ui-shell-accept.mjs';
 import { vcUiWalkthroughScene } from './vc-ui-walkthrough.mjs';
 import { f2ChatUiScene } from './f2-chat-accept.mjs';
 import { consentUiScene } from './consent-accept.mjs';
+import { hlStickersScene } from './hl-stickers-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -65,4 +66,5 @@ export const ACCEPT_SCENES = [
     vcUiWalkthroughScene,
     f2ChatUiScene,
     consentUiScene,
+    hlStickersScene,
 ];

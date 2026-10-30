@@ -1,0 +1,85 @@
+/* 表情包页与表情气泡。尺寸和颜色只引用 --vc- token。 */
+
+body.vc-ui .vc-sticker-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vc-space-sm);
+    min-width: 0;
+}
+
+/* 桌面聊天目的地的对话列选择器比设置页更具体，设置层会被挤到下一行。表情包页打开时盖住这一列。 */
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-settings="page"] .vc-shell-settings:has(.vc-sticker-page) {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: var(--vc-canvas);
+}
+
+body.vc-ui .vc-sticker-page .vc-large-title {
+    margin: var(--vc-space-xs) 0 var(--vc-space-sm);
+}
+
+body.vc-ui .vc-sticker-row {
+    gap: var(--vc-space-sm);
+    min-width: 0;
+}
+
+body.vc-ui .vc-sticker-thumb {
+    width: calc(var(--vc-space-xxl) + var(--vc-space-sm));
+    height: calc(var(--vc-space-xxl) + var(--vc-space-sm));
+    border-radius: var(--vc-radius-sm);
+    object-fit: cover;
+    background: var(--vc-fill);
+    flex: none;
+}
+
+body.vc-ui .vc-sticker-tag {
+    flex: 1;
+    width: calc(var(--vc-space-xxl) * 3);
+    max-width: 100%;
+    min-width: 0;
+    min-height: var(--vc-touch);
+    box-sizing: border-box;
+    border: 0;
+    border-radius: var(--vc-radius-sm);
+    padding: 0 var(--vc-space-sm);
+    background: var(--vc-fill);
+    color: var(--vc-ink);
+    font-family: var(--vc-font);
+    font-size: var(--vc-fs-input);
+    line-height: var(--vc-lh-body);
+}
+
+body.vc-ui .vc-sticker-file {
+    display: none;
+}
+
+body.vc-ui .vc-sticker-upload {
+    margin-top: var(--vc-space-sm);
+}
+
+body.vc-ui .vc-sticker-bubble {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    margin-top: var(--vc-space-xs);
+}
+
+body.vc-ui .vc-sticker-bubble img {
+    display: block;
+    width: calc(var(--vc-space-xxl) * 5);
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--vc-radius-md);
+    background: var(--vc-bubble-char);
+}
+
+body.vc-ui .vc-sticker-kaomoji {
+    font-family: var(--vc-font);
+    font-size: var(--vc-fs-bubble);
+    line-height: var(--vc-lh-bubble);
+    color: var(--vc-ink);
+    background: var(--vc-bubble-char);
+    border-radius: var(--vc-radius-lg) var(--vc-radius-lg) var(--vc-radius-lg) var(--vc-radius-xs);
+    padding: var(--vc-space-xs) var(--vc-space-sm);
+}
