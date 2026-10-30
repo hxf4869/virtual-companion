@@ -30,7 +30,7 @@ export function renderGlobalVoiceSettings(settings,engines){
         +group([row('语音频率',select('voiceFrequency',settings.voiceFrequency,{LOW:'少',STANDARD:'标准',HIGH:'多'}))])
         +`<details><summary>场景指令</summary>${group(Object.entries(scenes).map(([id,label])=>`<label class="vc-cell vc-voice-setting-text"><span>${label}</span><textarea data-voice-instruction="${id}" maxlength="1000" required>${esc(settings.cosyVoiceInstructions[id])}</textarea></label>`))}</details>`
         +`<details><summary>发送比例</summary>${group(Object.entries(scenes).map(([id,label])=>row(`${label}（%）`,number(`rate:${id}`,Math.round(settings.proactiveVoiceRates[id]*100),0,100))))}</details>`
-        +`<details><summary>心情语速</summary>${group(moodNames.map((mood)=>row(mood,number(`mood:${mood}`,settings.kokoroMoodSpeeds[mood]??1,.5,2,.05))))}</details>`;
+        +`<details><summary>心情语速</summary>${group(moodNames.map((mood)=>row(mood,number(`mood:${mood}`,settings.kokoroMoodSpeeds[mood]??1,.5,2,.01))))}</details>`;
 }
 
 export function readGlobalVoiceSettings(form,settings){
