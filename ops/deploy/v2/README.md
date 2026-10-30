@@ -109,3 +109,17 @@ PostgreSQL 迁移不承诺降级，回退到早于已执行迁移的版本前须
 验收 Go health、MemoryCore readyz、ST 登录页、未登录拒绝私有资源、HTTPS、限流和公网端口，
 并重启 V2 容器核对持久化配置。完整主机重启、真实模型调用、真实通知和手机真机验收另行记录；
 未执行的项目不记通过。状态和执行结果回填根 `TODO.md`，不另建证据目录。
+
+## 一条命令部署
+
+在仓库根目录执行。服务器别名和源码目录从环境变量或本机 `~/.config/virtual-companion/deploy.env` 读取，不另存进仓库。未设置时别名是 `hxf4869`，源码目录是 `/opt/virtual-companion/source`。
+
+```bash
+bash ops/deploy/v2/deploy.sh <提交>
+bash ops/deploy/v2/deploy.sh --dry-run <提交>
+bash ops/deploy/v2/deploy.sh --skip-build <提交>
+```
+
+`--dry-run` 只打印步骤和远端命令。`--skip-build` 使用本机已有镜像。本机已有同标签镜像时也会跳过构建。失败时打印回退命令（把 `VC_IMAGE_TAG` 改回升级前的值再 `up`），不自动回退。
+
+构建 ST 镜像需要 `VC_PUBLIC_HOST`，只作为构建参数，不写入日志。备份口令文件默认 `/etc/virtual-companion/st-backup.pass`（0600）。
