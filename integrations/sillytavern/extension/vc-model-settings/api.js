@@ -287,6 +287,7 @@ export async function downloadDataExport(url) {
 export const fetchRelationships = () => request('GET', '/api/v1/relationships');
 export const fetchVoiceEngines = () => request('GET', '/api/v1/voice/engines');
 export const fetchVoiceSettings = () => request('GET', '/api/v1/voice/settings');
+export const fetchVoiceUsage = () => request('GET', '/api/v1/voice/usage');
 export const saveVoiceSettings = (values) => request('PUT', '/api/v1/voice/settings', values);
 export const createVoiceClip = (relationshipId, values) => request('POST', `/api/v1/relationships/${encodeURIComponent(relationshipId)}/voice-clips`, values);
 export const fetchVoiceClip = (id) => request('GET', `/api/v1/voice-clips/${encodeURIComponent(id)}`);

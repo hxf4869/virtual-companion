@@ -311,6 +311,8 @@ func operation(path string) string {
 		return "voice_engines"
 	case "/api/v1/voice/settings":
 		return "voice_settings"
+	case "/api/v1/voice/usage":
+		return "voice_usage"
 	case "/api/v1/voice/preview":
 		return "voice_preview"
 	case "/api/v1/voice/asr":

@@ -4,6 +4,7 @@ import {
     captureSessionContext, createDataExport, recoverDataExport, getDataExport, downloadDataExport, deleteOwnAccount,
     changePassword, listSessions, revokeSession, logoutCurrent, resetAuthenticator, reauth, fetchSession,
     listTrustedDevices, revokeTrustedDevice, listConsents, recordConsent,
+    fetchVoiceUsage,
 } from './api.js';
 import { CONSENT_VERSION, ensureConsentStyles, renderConsentAccount, REQUIRED_CONSENTS } from './consent.js';
 import {
@@ -13,6 +14,14 @@ import {
 import { confirmAlert } from './ui/alert.js';
 import { icon } from './ui/icons.js';
 import { registerAccountOpener, vcUiEnabled } from './drawers.js';
+
+export function formatVoiceStorage(bytes) {
+    const size=Number(bytes);if(!Number.isFinite(size)||size<0)return '暂不可用';
+    if(size<1024)return `${Math.round(size)} B`;
+    if(size<1024*1024)return `${(size/1024).toFixed(1)} KB`;
+    if(size<1024*1024*1024)return `${(size/(1024*1024)).toFixed(1)} MB`;
+    return `${(size/(1024*1024*1024)).toFixed(1)} GB`;
+}
 
 export function trustedDeviceGroupVisible(devices) {
     return Array.isArray(devices) && devices.length > 0;
@@ -640,6 +649,7 @@ export function mountDataRights() {
         home.setAttribute('data-vc-account-home', '');
         const chevron = icon('chevron-right', { size: 18 });
         home.innerHTML = `<div class="vc-group">
+            <div class="vc-cell"><span class="vc-grow">语音存储</span><span class="vc-value vc-num" data-vc-voice-usage></span></div>
             <button type="button" class="vc-cell" data-vc-account-go="password"><span class="vc-grow">修改密码</span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="auth"><span class="vc-grow">验证器</span><span class="vc-value" data-vc-auth-summary>未启用</span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="sessions"><span class="vc-grow">当前会话</span><span class="vc-value" data-vc-session-count></span>${chevron}</button>
@@ -693,6 +703,9 @@ export function mountDataRights() {
             opener = returnFocus || opener;
             ensureVcChrome();
             version += 1;
+            const usageVersion=version;
+            const voiceUsage=dialog.querySelector('[data-vc-voice-usage]');
+            if(voiceUsage){voiceUsage.textContent='';void fetchVoiceUsage().then((usage)=>{if(version===usageVersion && dialog.open)voiceUsage.textContent=formatVoiceStorage(usage.storageBytes);}).catch(()=>{if(version===usageVersion && dialog.open)voiceUsage.textContent='暂不可用';});}
             exportStatus.textContent = '';
             deleteStatus.textContent = '';
             passwordStatus.textContent = '';

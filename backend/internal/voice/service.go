@@ -45,6 +45,12 @@ func (s *Service) BindStore(store Store) { s.store = store }
 func (s *Service) Settings(ctx context.Context, owner int64) (Settings, error) {
 	return s.store.GetVoiceSettings(ctx, owner)
 }
+func (s *Service) Usage(ctx context.Context, owner int64) (Usage, error) {
+	if restoregate.Closed(s.gate) {
+		return Usage{}, ErrUnavailable
+	}
+	return s.store.VoiceUsage(ctx, owner)
+}
 func (s *Service) SaveSettings(ctx context.Context, owner int64, in SettingsWrite) (Settings, error) {
 	if err := in.Validate(); err != nil {
 		return Settings{}, err
@@ -425,7 +431,7 @@ func (s *Service) process(ctx context.Context, clip Clip) {
 			if s.blobs == nil {
 				err = ErrStore
 			} else {
-				_, err = s.blobs.Put(jobCtx, clip.ObjectKey, audio)
+				completion.StorageBytes, err = s.blobs.Put(jobCtx, clip.ObjectKey, audio)
 			}
 			if err == nil {
 				completion.Status = "ready"
@@ -465,6 +471,9 @@ func (s *Service) process(ctx context.Context, clip Clip) {
 }
 
 func (s *Service) cleanup(ctx context.Context) {
+	if s.store.ExpireVoiceClips(ctx) != nil {
+		return
+	}
 	if s.blobs == nil {
 		return
 	}

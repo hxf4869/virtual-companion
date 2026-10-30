@@ -1116,7 +1116,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 112,
+          "KEEP": 113,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -2893,6 +2893,18 @@
             "operationId": "getVoiceClipAudio",
             "path": "/api/v1/voice-clips/{clipId}/audio",
             "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getVoiceUsage",
+            "path": "/api/v1/voice/usage",
+            "replacementOrImpact": "VO-10 account/data page shows only the authenticated owner's retained voice bytes and duration."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -2929,7 +2941,7 @@
           }
         ]
       },
-      "sha256": "c6b4da3e5cb1a63b7d41214b4bb264fe4be15d01cd10e1fbc4be23b57778fb08"
+      "sha256": "00d10de19f4436b984f08b3d0add729077893bd60f151f2036f20da7f9a2644d"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

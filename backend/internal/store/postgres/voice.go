@@ -187,9 +187,31 @@ func (s *Store) ClaimVoiceClip(ctx context.Context, engine string) (voice.Clip, 
 func (s *Store) CompleteVoiceClip(ctx context.Context, clip voice.Clip, in voice.Completion) (bool, error) {
 	var accepted bool
 	err := s.WithOwner(ctx, clip.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT vc.complete_voice_clip($1,$2,$3,$4,$5,$6,$7,$8)`, clip.OwnerID, clip.ID, clip.StartedAt, in.Status, in.ErrorKind, in.DurationMS, in.GenerationMS, int(in.RetryAfter.Seconds())).Scan(&accepted)
+		if err := tx.QueryRow(ctx, `SELECT vc.complete_voice_clip($1,$2,$3,$4,$5,$6,$7,$8)`, clip.OwnerID, clip.ID, clip.StartedAt, in.Status, in.ErrorKind, in.DurationMS, in.GenerationMS, int(in.RetryAfter.Seconds())).Scan(&accepted); err != nil {
+			return err
+		}
+		if accepted && in.Status == "ready" {
+			_, err := tx.Exec(ctx, `SELECT vc.record_voice_size($1,$2,$3)`, clip.OwnerID, clip.ID, in.StorageBytes)
+			return err
+		}
+		return nil
 	})
 	return accepted, voiceStoreErr(err)
+}
+
+func (s *Store) ExpireVoiceClips(ctx context.Context) error {
+	err := s.withoutOwner(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `SELECT vc.expire_voice_clips()`)
+		return err
+	})
+	return voiceStoreErr(err)
+}
+func (s *Store) VoiceUsage(ctx context.Context, owner int64) (voice.Usage, error) {
+	var out voice.Usage
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT count(*),coalesce(sum(storage_bytes),0)::bigint,coalesce(sum(duration_ms),0)::bigint FROM vc.voice_clip WHERE owner_user_id=$1 AND status='ready'`, owner).Scan(&out.Clips, &out.StorageBytes, &out.DurationMS)
+	})
+	return out, voiceStoreErr(err)
 }
 
 func (s *Store) ListVoiceCleanup(ctx context.Context) ([]voice.CleanupObject, error) {

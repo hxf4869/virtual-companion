@@ -168,6 +168,7 @@
     "confirmEmergencyContactVerification",
     "revokeEmergencyContact",
     "getVoiceEngines",
+    "getVoiceUsage",
     "getVoiceSettings",
     "putVoiceSettings",
     "createVoiceClip",
@@ -178,6 +179,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "34cdbc4e4629d7f433566718717cb68def902ab659b64b7d6e8e859bde5b51f5"
+    "sha256": "be515d29efa7cf8f2f624ed19b9cb838822b8a9de7275a8b4e104d355430b8c8"
   }
 }

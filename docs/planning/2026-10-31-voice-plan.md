@@ -47,6 +47,7 @@ Owner 决定（2026-10-31 问答）：日常问候等允许等待的语音用 Co
 - 配置：`VC_TTS_KOKORO_URL`、`VC_TTS_COSYVOICE_URL`、`VC_ASR_URL`（含 `/v1`），写在部署 `runtime.env`；未配置则对应能力整体关闭、界面隐藏入口。
   部署 compose 通过服务器侧覆盖文件让 runtime 加入 TTS/ASR 所在 Docker 网络（网络名只写在服务器 `deploy.env`，不入库）。
 - 存储：音频存 MinIO（已有），键按 `owner/relationship/clip`；随消息删除、关系删除、账号删除级联清理；纳入现有备份与保留策略。
+- VO-10 保留：固定文案试听按 owner / relationship / 引擎 / 音色 / 语速 / 指令复用 queued、running 或 ready 片段，缓存 24 小时；不跨账号复用。试听与失败 / 未完成的残留元数据超过 24 小时后清理。聊天 / 主动 ready 音频跟随消息保留，不按任意年龄删除；来源删除、关系删除、账号删除仍立即撤销访问并排队清对象。账户显示当前 ready 音频的实际加密对象字节与时长。
 - 日志与指标：只记引擎、时长、状态、耗时，不记文本、不记音频、不记稳定用户标识（AGENTS 红线）。
 
 ## 3. 数据与接口（V272 迁移；OpenAPI/catalog 同步，`specs/generated` 只用工具生成）

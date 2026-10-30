@@ -25,6 +25,7 @@ const PROFILE = '[A-Za-z0-9@](?:[A-Za-z0-9@._:-]{0,200})';
 // 权限判断全部由 Go 决定，本桥不做角色判定。
 const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/voice\/engines$/, where: 'VO-2 语音能力与音色' },
+    { method: 'GET', path: /^\/api\/v1\/voice\/usage$/, where: 'VO-10 本人语音存储用量' },
     { method: 'GET', path: /^\/api\/v1\/voice\/settings$/, where: 'VO-2 语音设置' },
     { method: 'PUT', path: /^\/api\/v1\/voice\/settings$/, where: 'VO-2 revision 保护的语音设置' },
     { method: 'POST', path: /^\/api\/v1\/voice\/preview$/, where: 'VO-2 固定文案试听' },

@@ -6565,6 +6565,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/voice/usage:
+    get:
+      operationId: getVoiceUsage
+      summary: Current owner's retained ready voice storage
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Ready clips, encrypted object bytes and audio duration; no text or keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceUsage'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Voice storage or restore gate unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/voice/settings:
     get:
       operationId: getVoiceSettings
@@ -8423,6 +8448,26 @@ components:
         durationMs:
           type: integer
           minimum: 1
+    VoiceUsage:
+      type: object
+      additionalProperties: false
+      required:
+      - clips
+      - storageBytes
+      - durationMs
+      properties:
+        clips:
+          type: integer
+          format: int64
+          minimum: 0
+        storageBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        durationMs:
+          type: integer
+          format: int64
+          minimum: 0
     VoiceSettings:
       type: object
       additionalProperties: false

@@ -189,6 +189,7 @@ type PreviewRequest struct {
 }
 
 type Completion struct {
+	StorageBytes int64
 	Status       string
 	ErrorKind    string
 	DurationMS   int
@@ -207,6 +208,8 @@ type CleanupObject struct {
 }
 
 type Store interface {
+	ExpireVoiceClips(context.Context) error
+	VoiceUsage(context.Context, int64) (Usage, error)
 	GetVoiceSettings(context.Context, int64) (Settings, error)
 	SaveVoiceSettings(context.Context, int64, SettingsWrite) (Settings, error)
 	GetVoiceRelationship(context.Context, int64, int64) (Relationship, error)
@@ -218,6 +221,12 @@ type Store interface {
 	CompleteVoiceClip(context.Context, Clip, Completion) (bool, error)
 	ListVoiceCleanup(context.Context) ([]CleanupObject, error)
 	CompleteVoiceCleanup(context.Context, string) error
+}
+
+type Usage struct {
+	Clips        int64 `json:"clips"`
+	StorageBytes int64 `json:"storageBytes"`
+	DurationMS   int64 `json:"durationMs"`
 }
 
 // BlobStore reuses the configured encrypted MinIO adapter.

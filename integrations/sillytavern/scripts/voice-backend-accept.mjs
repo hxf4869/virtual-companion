@@ -99,7 +99,8 @@ export async function sceneVoiceBackend(ctx) {
     assert.equal(response.status, 206); assert.equal((await response.arrayBuffer()).byteLength, 4);
     assert.equal((await audio(created.clipId, 'bytes=999999-')).status, 416);
     assert.equal((await audio(created.clipId, '', true)).status, 401);
-    const preview = (engine = 'kokoro') => call('POST', '/api/v1/voice/preview', { relationshipId, engine, voice: engine === 'kokoro' ? 'zf_001' : 'default', speed: 1 }, 202);
+    let previewTurn=0;
+    const preview = (engine = 'kokoro') => call('POST', '/api/v1/voice/preview', { relationshipId, engine, voice: engine === 'kokoro' ? 'zf_001' : 'default', speed: 1+(previewTurn++)/100 }, 202);
     await saveSettings({ kokoroEnabled: false });
     const disabledDuplicate = await call('POST', `/api/v1/relationships/${relationshipId}/voice-clips`, { messageRef: source, text: sourceText, purpose: 'chat' }, 202);
     assert.equal(disabledDuplicate.clipId, created.clipId, 'engine switch does not break idempotency');
@@ -153,6 +154,13 @@ export async function sceneVoiceBackend(ctx) {
     // Previews remain available with chat quota zero.
     await control('kokoro');
     const lastPreview = await preview(); await ready(lastPreview.clipId);
+    const cachedPayload={relationshipId,engine:'kokoro',voice:'zf_001',speed:1+(previewTurn-1)/100};
+    const cached=await Promise.all([1,2].map(()=>call('POST','/api/v1/voice/preview',cachedPayload,202)));
+    assert.ok(cached.every((row)=>row.clipId===lastPreview.clipId),'same preview reuses ready audio');
+    assert.equal((await fixtureState()).kokoro.calls,1,'cached preview does not invoke engine');
+    const usage=await call('GET','/api/v1/voice/usage');assert.ok(usage.clips>0 && usage.storageBytes>=48044 && usage.durationMs>=1000,'actual encrypted audio usage');
+    ctx.w10.psql(`UPDATE vc.voice_clip SET created_at=clock_timestamp()-interval '25 hours' WHERE owner_user_id=${owner} AND id=${lastPreview.clipId};`);
+    await waitFor(async()=>{const result=await ctx.admin.call('GET',`/api/v1/voice-clips/${lastPreview.clipId}`);return result.status===404;},{label:'expired preview cleanup',timeoutMs:10000});
     await call('DELETE', `/api/v1/relationships/${relationshipId}`);
     assert.equal((await audio(lastPreview.clipId)).status, 404, 'relationship cascade removes audio access');
     await waitFor(() => ctx.w10.psql(`SELECT count(*) FROM vc.voice_object_cleanup WHERE object_key='${owner}/${relationshipId}/${lastPreview.clipId}.wav';`).trim() === '0', { label: 'relationship audio cleanup consumed', timeoutMs: 10000 });

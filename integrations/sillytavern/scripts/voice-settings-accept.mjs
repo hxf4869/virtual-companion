@@ -30,6 +30,10 @@ export async function sceneVoiceSettings(ctx){
         await form.locator('[data-preview-engine="kokoro"]').click();await page.waitForFunction(()=>document.querySelector('[data-preview-engine="kokoro"]')?.disabled===false);
         await voiceShots(page,ctx,'VO-8','relationship');
         await page.evaluate(async(base)=>(await import(`${base}/voice.js`)).voicePlayer.stop(),voiceExtension);
+        await page.evaluate(()=>{document.querySelectorAll('.vc-sheet-done').forEach((node)=>node.click());[...document.querySelectorAll('#vc-shell [data-settings]')].find((node)=>node.getClientRects().length)?.click();});
+        await page.locator('.vc-settings-form [data-action="data"]').click();
+        await page.waitForFunction(()=>/\d/.test(document.querySelector('[data-vc-voice-usage]')?.textContent||''));
+        await voiceShots(page,ctx,'VO-10','voice-storage');
     }finally{await browser.close();}
 }
 export const voiceSettingsScene={id:'voice-settings',title:'VO-8 设置读回、revision 冲突、角色音色与试听',needs:['catalog','stack','fixture','browser'],default:false,run:sceneVoiceSettings};

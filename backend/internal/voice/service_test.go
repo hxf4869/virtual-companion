@@ -56,6 +56,7 @@ func (s *testStore) ClaimVoiceClip(context.Context, string) (Clip, error) {
 	return Clip{}, ErrNotFound
 }
 func (s *testStore) ListVoiceCleanup(context.Context) ([]CleanupObject, error) { return nil, nil }
+func (s *testStore) ExpireVoiceClips(context.Context) error                    { return nil }
 
 type testEngine struct {
 	onlyDefault bool

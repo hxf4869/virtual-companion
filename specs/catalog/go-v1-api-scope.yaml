@@ -11,7 +11,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   the OpenAPI surface: GET /actuator/health, GET /actuator/health/liveness, GET /actuator/health/readiness,
   GET /actuator/prometheus.'
 counts:
-  KEEP: 112
+  KEEP: 113
   SIMPLIFY: 5
   DEFER: 15
   RETIRE: 42
@@ -1494,6 +1494,15 @@ operations:
   - core-outcome
   replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
     in VO-7. ST consumers use Go only; no browser engine access.
+- operationId: getVoiceUsage
+  method: GET
+  path: /api/v1/voice/usage
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-10 account/data page shows only the authenticated owner's retained voice bytes and duration.
 undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites
   method: POST
