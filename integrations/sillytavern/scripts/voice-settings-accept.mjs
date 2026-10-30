@@ -23,7 +23,9 @@ export async function sceneVoiceSettings(ctx){
         await page.locator('[data-action="edit-voice"]').click();
         form=page.locator('[data-voice-settings="relationship"]');
         await form.locator('[data-voice-field="kokoroVoice"]').selectOption('zm_010');
-        await form.locator('[data-voice-field="speed"]').fill('1.1');await form.locator('[data-voice-field="voiceFrequency"]').selectOption('HIGH');await form.locator('[data-voice-field="proactiveEngine"]').selectOption('kokoro');
+        const speed=form.locator('[data-voice-field="speed"]');await speed.focus();await speed.press('ArrowRight');await speed.press('ArrowRight');
+        assert.equal(await speed.inputValue(),'1.1','keyboard adjusts speed slider');
+        await form.locator('[data-voice-field="voiceFrequency"]').selectOption('HIGH');await form.locator('[data-voice-field="proactiveEngine"]').selectOption('kokoro');
         await form.locator('button[type="submit"]').click();await form.getByText('已保存',{exact:true}).waitFor();
         const rel=(await voiceCall(ctx,'GET','/api/v1/relationships')).find((row)=>String(row.relationshipId)===relationship);
         assert.equal(rel.kokoroVoice,'zm_010');assert.equal(rel.speed,1.1);assert.equal(rel.voiceFrequency,'HIGH');assert.equal(rel.proactiveEngine,'kokoro');
