@@ -32,6 +32,8 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/auth\/session$/, where: '会话核验（生成与页面）' },
     { method: 'POST', path: /^\/api\/v1\/auth\/login$/, where: '既有登录入口（合成登录，不新造平台）' },
     { method: 'POST', path: /^\/api\/v1\/auth\/reauth$/, where: '既有写入再认证（FreshReauth）' },
+    { method: 'GET', path: /^\/api\/v1\/consents$/, where: '同意状态' },
+    { method: 'PUT', path: /^\/api\/v1\/consents$/, where: '同意与撤回' },
     { method: 'POST', path: /^\/api\/v1\/st\/bindings$/, where: 'W05 原生聊天的角色实例与会话绑定' },
     { method: 'POST', path: /^\/api\/v1\/st\/sources\/reconcile$/, where: 'W06 打开、重连与保存后的持久来源核对' },
     { method: 'POST', path: /^\/api\/v1\/st\/memory\/recall$/, where: 'W07 当前已绑定聊天的相关记忆与摘要' },

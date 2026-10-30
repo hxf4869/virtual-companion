@@ -1,0 +1,262 @@
+/* 首次同意全屏层，以及账户里的隐私与同意。不下滑关闭。 */
+#vc-consent {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--vc-sheet, Canvas);
+  color: var(--vc-ink, CanvasText);
+  font: inherit;
+}
+
+#vc-consent[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+#vc-consent::backdrop {
+  background: var(--vc-sheet, Canvas);
+}
+
+#vc-consent .vc-consent-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--vc-space-md, 1rem) var(--vc-page-pad, 1rem) var(--vc-space-xl, 1.5rem);
+}
+
+#vc-consent .vc-consent-bar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--vc-space-xs, 0.5rem);
+  padding: var(--vc-space-sm, 0.75rem) var(--vc-page-pad, 1rem) max(var(--vc-space-md, 1rem), env(safe-area-inset-bottom));
+  background: var(--vc-sheet, Canvas);
+}
+
+#vc-consent .vc-consent-item + .vc-consent-item {
+  border-top: 0.5px solid var(--vc-separator, CanvasText);
+}
+
+#vc-consent .vc-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-sm, 0.75rem);
+  width: 100%;
+  min-height: var(--vc-touch, 44px);
+  padding: 10px var(--vc-page-pad, 1rem);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+#vc-consent .vc-grow { flex: 1; min-width: 0; }
+
+#vc-consent .vc-consent-copy {
+  margin: 0;
+  padding: 0 var(--vc-page-pad, 1rem) var(--vc-space-sm, 0.75rem) calc(var(--vc-page-pad, 1rem) + 22px + var(--vc-space-sm, 0.75rem));
+  color: var(--vc-ink-2, CanvasText);
+  font-size: var(--vc-fs-subhead, 1rem);
+  line-height: var(--vc-lh-subhead, 1.45);
+}
+
+#vc-consent .vc-consent-copy[hidden] { display: none; }
+
+#vc-consent .vc-consent-chevron {
+  display: inline-flex;
+  color: var(--vc-ink-3, CanvasText);
+}
+
+#vc-consent .vc-consent-item.is-open .vc-consent-chevron {
+  transform: rotate(90deg);
+}
+
+#vc-consent .vc-consent-error {
+  margin: var(--vc-space-sm, 0.75rem) 0 0;
+  color: var(--vc-danger, CanvasText);
+  font-size: var(--vc-fs-footnote, 0.8rem);
+  line-height: var(--vc-lh-footnote, 1.4);
+}
+
+#vc-consent .vc-consent-error[hidden] { display: none; }
+
+#vc-consent [data-consent-reauth] {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--vc-space-sm, 0.75rem);
+  margin: 0;
+  padding: var(--vc-space-md, 1rem);
+  padding-bottom: max(var(--vc-space-md, 1rem), env(safe-area-inset-bottom));
+  background: var(--vc-scrim, Canvas);
+}
+
+#vc-consent [data-consent-reauth][hidden] { display: none; }
+
+#vc-consent [data-consent-reauth] h2 {
+  margin: 0;
+  font-size: var(--vc-fs-headline, 1.05rem);
+  font-weight: 600;
+}
+
+#vc-consent [data-consent-reauth] input {
+  width: 100%;
+  min-height: var(--vc-touch, 44px);
+  margin-top: var(--vc-space-xs, 0.5rem);
+  padding: 0 var(--vc-space-sm, 0.75rem);
+  border: 0;
+  border-radius: var(--vc-radius-sm, 0.75rem);
+  background: var(--vc-fill, Canvas);
+  color: var(--vc-ink, CanvasText);
+  font: inherit;
+  font-size: var(--vc-fs-input, 1.05rem);
+}
+
+body.vc-ui #vc-consent {
+  z-index: var(--vc-z-alert);
+  background: var(--vc-sheet);
+  color: var(--vc-ink);
+}
+
+body.vc-ui #vc-consent::backdrop { background: var(--vc-sheet); }
+
+body.vc-ui #vc-consent .vc-large-title {
+  width: min(100%, 560px);
+  margin: var(--vc-space-sm) auto var(--vc-space-xl);
+}
+
+body.vc-ui #vc-consent .vc-group {
+  background: var(--vc-sheet-group);
+  border-radius: var(--vc-radius-md);
+  overflow: hidden;
+}
+
+body.vc-ui #vc-consent [data-consent-accept] {
+  width: min(100%, 560px);
+  height: 50px;
+  margin-inline: auto;
+}
+
+body.vc-ui #vc-consent [data-consent-logout] {
+  width: min(100%, 560px);
+  margin-inline: auto;
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] {
+  background: var(--vc-scrim);
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] h2,
+body.vc-ui #vc-consent [data-consent-reauth] label,
+body.vc-ui #vc-consent [data-consent-reauth] input,
+body.vc-ui #vc-consent [data-consent-reauth] .vc-consent-error {
+  background: var(--vc-sheet-group);
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] {
+  gap: 0;
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] h2,
+body.vc-ui #vc-consent [data-consent-reauth] label,
+body.vc-ui #vc-consent [data-consent-reauth] .vc-consent-error,
+body.vc-ui #vc-consent [data-consent-reauth] .vc-btn {
+  margin-left: auto;
+  margin-right: auto;
+  width: min(100%, var(--vc-read));
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] h2 {
+  margin: 0;
+  padding: var(--vc-space-md) var(--vc-page-pad) 0;
+  border-radius: var(--vc-radius-lg) var(--vc-radius-lg) 0 0;
+  background: var(--vc-sheet-group);
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] label {
+  display: block;
+  padding: var(--vc-space-sm) var(--vc-page-pad);
+  background: var(--vc-sheet-group);
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] input {
+  background: var(--vc-fill);
+}
+
+body.vc-ui #vc-consent [data-consent-reauth] .vc-consent-error {
+  margin: 0;
+  padding: 0 var(--vc-page-pad) var(--vc-space-sm);
+  background: var(--vc-sheet-group);
+}
+
+body.vc-ui .vc-data-dialog[data-vc-screen="consent"] .vc-account-card:not([aria-label="隐私与同意"]),
+body.vc-ui .vc-data-dialog[data-vc-screen="consent"] .vc-data-scope {
+  display: none !important;
+}
+
+.vc-consent-account-row {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-sm, 0.75rem);
+  min-height: var(--vc-touch, 44px);
+  padding: 10px var(--vc-page-pad, 1rem);
+}
+
+.vc-consent-account-row + .vc-consent-account-row {
+  border-top: 0.5px solid var(--vc-separator, CanvasText);
+}
+
+.vc-consent-name {
+  display: block;
+  font-size: var(--vc-fs-body, 1.05rem);
+  line-height: var(--vc-lh-body, 1.47);
+}
+
+.vc-consent-meta {
+  display: block;
+  color: var(--vc-ink-2, CanvasText);
+  font-size: var(--vc-fs-footnote, 0.8rem);
+  line-height: var(--vc-lh-footnote, 1.4);
+}
+
+.vc-consent-account-row .vc-grow { flex: 1; min-width: 0; }
+
+.vc-consent-account-row [data-consent-revoke] { flex: none; }
+
+/* 宽屏收成居中一栏；顶部与登录页同样留白 */
+#vc-consent .vc-consent-scroll {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8vh);
+}
+
+#vc-consent .vc-consent-scroll > *,
+#vc-consent .vc-consent-bar > * {
+  width: min(100%, 560px);
+  margin-inline: auto;
+}
+
+#vc-consent #vc-consent-title:focus { outline: none; }
+
+/* 撤回是红色文字按钮，不是填充块 */
+.vc-consent-account-row [data-consent-revoke] {
+  min-height: var(--vc-touch, 44px);
+  padding: 0 var(--vc-space-xs, 0.5rem);
+  border: 0;
+  background: transparent !important;
+  color: var(--vc-danger) !important;
+  font: inherit;
+  font-size: var(--vc-fs-body, 1.05rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #vc-consent .vc-consent-chevron { transform: none; }
+}

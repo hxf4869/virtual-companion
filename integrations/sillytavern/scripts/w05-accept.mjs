@@ -130,6 +130,16 @@ async function launchBrowser() {
     const { chromium } = await import('playwright-core');
     return chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
 }
+async function acceptConsentGate(page) {
+    const gate = page.locator('#vc-consent[open]');
+    try {
+        await gate.waitFor({ state: 'visible', timeout: 15000 });
+    } catch {
+        return;
+    }
+    await page.locator('#vc-consent [data-consent-accept]').click();
+    await gate.waitFor({ state: 'hidden', timeout: 20000 });
+}
 async function logoutFromPage(page, stBase) {
     const status = await page.evaluate(async () => {
         const csrfPair = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith('vc_csrf='));
@@ -255,6 +265,7 @@ export async function sceneAuthBrowser(ctx) {
         });
         assert.equal(oldStatus, 200);
         // Go logout revokes access even while the signed native ST cookie still exists.
+        await acceptConsentGate(page);
         await page.click('#user-settings-button .drawer-toggle');
         await page.waitForSelector('#logout_button', { state: 'visible' });
         const logoutResponse = page.waitForResponse((r) => r.url().endsWith('/auth/api/logout') && r.request().method() === 'POST');
