@@ -519,6 +519,17 @@ export function renderStickerPage(doc, options = {}) {
         button.addEventListener('click', () => file.click?.());
     };
 
+    const makeUpload = () => {
+        const upload = doc.createElement('button');
+        upload.type = 'button';
+        upload.className = 'vc-btn vc-btn-fill vc-sticker-upload';
+        upload.setAttribute('data-vc-sticker-upload', '');
+        upload.textContent = '上传';
+        armUpload(upload);
+        return upload;
+    };
+    const notes = [];
+    const seenNotes = new Set();
     if (!rows.length) {
         const empty = doc.createElement('div');
         empty.className = 'vc-empty';
@@ -527,15 +538,10 @@ export function renderStickerPage(doc, options = {}) {
         mark.innerHTML = icon('image', { size: 32 });
         const copy = doc.createElement('p');
         copy.textContent = '还没有表情包';
-        const upload = doc.createElement('button');
-        upload.type = 'button';
-        upload.className = 'vc-btn vc-btn-fill vc-sticker-upload';
-        upload.setAttribute('data-vc-sticker-upload', '');
-        upload.textContent = '上传';
-        armUpload(upload);
-        empty.append(mark, copy, upload);
+        empty.append(mark, copy, makeUpload());
         list.append(empty);
     } else {
+        list.append(makeUpload());
         for (const row of rows) {
             const cell = doc.createElement('div');
             cell.className = 'vc-cell vc-sticker-row';
@@ -555,12 +561,6 @@ export function renderStickerPage(doc, options = {}) {
             if (row.builtin) input.setAttribute('readonly', '');
             input.addEventListener('change', () => options.onTag?.(row.id, input.value));
             cell.append(input);
-            if (!row.tag || row.attribution) {
-                const meta = doc.createElement('span');
-                meta.className = 'vc-meta';
-                meta.textContent = row.attribution || '未标注';
-                cell.append(meta);
-            }
             if (!row.builtin) {
                 const del = doc.createElement('button');
                 del.type = 'button';
@@ -576,17 +576,23 @@ export function renderStickerPage(doc, options = {}) {
                 cell.append(del);
             }
             list.append(cell);
+            const note = String(row.attribution || '').trim();
+            if (note && !seenNotes.has(note)) {
+                seenNotes.add(note);
+                notes.push(note);
+            }
         }
-        const upload = doc.createElement('button');
-        upload.type = 'button';
-        upload.className = 'vc-btn vc-btn-fill vc-sticker-upload';
-        upload.setAttribute('data-vc-sticker-upload', '');
-        upload.textContent = '上传';
-        armUpload(upload);
-        list.append(upload);
     }
 
-    page.append(nav, sendGroup, freqTitle, segment, list, file);
+    page.append(nav, sendGroup, freqTitle, segment, list);
+    for (const note of notes) {
+        const meta = doc.createElement('p');
+        meta.className = 'vc-footnote';
+        meta.setAttribute('data-vc-sticker-attribution', '');
+        meta.textContent = note;
+        page.append(meta);
+    }
+    page.append(file);
     return page;
 }
 

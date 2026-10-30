@@ -34,10 +34,10 @@ body.vc-ui .vc-sticker-thumb {
 }
 
 body.vc-ui .vc-sticker-tag {
-    flex: 1;
-    width: calc(var(--vc-space-xxl) * 3);
+    flex: 1 1 auto;
+    width: auto;
     max-width: 100%;
-    min-width: 0;
+    min-width: 6em;
     min-height: var(--vc-touch);
     box-sizing: border-box;
     border: 0;
@@ -48,6 +48,19 @@ body.vc-ui .vc-sticker-tag {
     font-family: var(--vc-font);
     font-size: var(--vc-fs-input);
     line-height: var(--vc-lh-body);
+}
+
+body.vc-ui .vc-sticker-tag[readonly] {
+    color: var(--vc-ink);
+    opacity: 1;
+}
+
+body.vc-ui .vc-sticker-row > .vc-btn {
+    flex: none;
+}
+
+body.vc-ui .vc-sticker-page .vc-footnote {
+    overflow-wrap: anywhere;
 }
 
 body.vc-ui .vc-sticker-file {
