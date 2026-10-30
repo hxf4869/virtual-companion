@@ -4,6 +4,8 @@ const ID = '[1-9][0-9]*';
 
 export const ACCOUNT_UI_ROUTES = Object.freeze([
     { method: 'POST', path: /^\/api\/v1\/auth\/reauth$/, sample: '/api/v1/auth/reauth', where: 'W15 重新验证身份' },
+    { method: 'GET', path: /^\/api\/v1\/consents$/, sample: '/api/v1/consents', where: '同意状态' },
+    { method: 'PUT', path: /^\/api\/v1\/consents$/, sample: '/api/v1/consents', where: '同意与撤回' },
     { method: 'POST', path: /^\/api\/v1\/auth\/password$/, sample: '/api/v1/auth/password', where: 'W15 修改密码' },
     { method: 'GET', path: /^\/api\/v1\/auth\/session$/, sample: '/api/v1/auth/session', where: 'W15 当前登录' },
     { method: 'GET', path: /^\/api\/v1\/auth\/sessions$/, sample: '/api/v1/auth/sessions', where: 'W15 会话列表' },

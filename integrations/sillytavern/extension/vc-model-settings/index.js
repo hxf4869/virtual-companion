@@ -30,6 +30,7 @@ import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from '
 import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 import { createStoryContext } from './story-context.js';
 import { TAVERN_ENTRIES, mountShell, registerShellTabs } from './shell.js';
+import { mountConsentGate } from './consent.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
 import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
@@ -344,6 +345,7 @@ export async function init() {
         });
         navigation.openInstance = (instance, opener) => shell?.openConversation?.(instance, opener);
     }
+    void mountConsentGate();
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {
         console.warn('[vc-model-settings] 未找到扩展菜单挂载点 #extensionsMenu');

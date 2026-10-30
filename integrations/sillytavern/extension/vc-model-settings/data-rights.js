@@ -3,8 +3,9 @@
 import {
     captureSessionContext, createDataExport, recoverDataExport, getDataExport, downloadDataExport, deleteOwnAccount,
     changePassword, listSessions, revokeSession, logoutCurrent, resetAuthenticator, reauth, fetchSession,
-    listTrustedDevices, revokeTrustedDevice,
+    listTrustedDevices, revokeTrustedDevice, listConsents, recordConsent,
 } from './api.js';
+import { CONSENT_VERSION, ensureConsentStyles, renderConsentAccount, REQUIRED_CONSENTS } from './consent.js';
 import {
     AUTH_RESET_COPY, BACKUP_COPY, EXPORT_PARTIAL_COPY, PASSWORD_CHANGED_COPY, RESTORE_LIMIT_COPY, SESSION_EMPTY_COPY,
     authenticatorStatusText, deletionProgressText, otherSessions, sessionRowText,
@@ -75,6 +76,11 @@ export function renderAccountShell() {
             <div data-trusted-list></div>
             <div class="vc-data-status" role="status" aria-live="polite" data-device-status></div>
           </section>
+          <section class="vc-account-card" aria-label="隐私与同意">
+            <h2>隐私与同意</h2>
+            <div data-consent-account-list></div>
+            <div class="vc-data-status" role="status" aria-live="polite" data-consent-account-status></div>
+          </section>
           <section class="vc-account-card" aria-label="导出数据">
             <h2>导出数据</h2>
             <p>包含当前聊天、角色、世界书、记忆和来源；密钥与历史备份不进入副本。</p>
@@ -110,18 +116,27 @@ export function renderAccountShell() {
 }
 
 /** 敏感操作一律先 reauth。当前密码只传给 reauth，以及仍要求 currentPassword 的原接口。 */
-export async function executeSensitiveAction({ action, password, newPassword, accountId, deps }) {
+export async function executeSensitiveAction({ action, password, newPassword, accountId, consentType, deps }) {
     await deps.reauth(password);
     if (action === 'password') return deps.changePassword(password, newPassword);
     if (action === 'reset') return deps.resetAuthenticator(accountId);
     if (action === 'export') return deps.createDataExport(password);
     if (action === 'recover') return deps.recoverDataExport(password);
     if (action === 'delete') return deps.deleteOwnAccount(password);
+    if (action === 'consent-revoke') {
+        return deps.recordConsent({
+            consentType,
+            version: CONSENT_VERSION,
+            granted: false,
+            currentPassword: password,
+        });
+    }
     throw new Error('未知账户操作');
 }
 
 export function mountDataRights() {
     ensureAccountStyles();
+    ensureConsentStyles();
     const root = document.createElement('div');
     root.className = 'vcms-root vc-data-root';
     root.innerHTML = renderAccountShell();
@@ -158,7 +173,7 @@ export function mountDataRights() {
     const clearSecrets = () => root.querySelectorAll('input[type=password]').forEach((input) => { input.value = ''; });
     const setBusy = (value) => {
         busy = value;
-        root.querySelectorAll('form input, form button, [data-download], [data-revoke-others], [data-logout], [data-reset], [data-export], [data-recover], [data-revoke-device]').forEach((control) => {
+        root.querySelectorAll('form input, form button, [data-download], [data-revoke-others], [data-logout], [data-reset], [data-export], [data-recover], [data-revoke-device], [data-consent-revoke]').forEach((control) => {
             control.disabled = value || deleted;
         });
         const revoke = root.querySelector('[data-revoke-others]');
@@ -173,7 +188,8 @@ export function mountDataRights() {
         };
         place();
         queueMicrotask(place);
-        requestAnimationFrame(place);
+        const frame = globalThis.requestAnimationFrame;
+        if (typeof frame === 'function') frame(place);
     }
     function restoreOpener() {
         const target = opener;
@@ -193,7 +209,7 @@ export function mountDataRights() {
         if (restore) placeFocus(trigger, () => reauthLayer.hidden);
     }
     function openReauth(action, trigger, extra = {}) {
-        pending = { action, trigger, newPassword: extra.newPassword || '' };
+        pending = { action, trigger, newPassword: extra.newPassword || '', consentType: extra.consentType || '' };
         reauthStatus.textContent = '';
         reauthInput.value = '';
         reauthLayer.hidden = false;
@@ -370,6 +386,7 @@ export function mountDataRights() {
             paintSessions();
             paintDevices();
             syncAccountHome();
+            await paintConsentAccount();
         } catch {
             if (epoch === version && dialog.open) sessionStatus.textContent = '账户信息暂不可用';
         }
@@ -427,18 +444,21 @@ export function mountDataRights() {
         reauthStatus.textContent = '正在验证…';
         let focusAfter = null;
         try {
+            const consentType = pending.consentType;
             const result = await executeSensitiveAction({
                 action,
                 password,
                 newPassword,
                 accountId,
-                deps: { reauth, changePassword, resetAuthenticator, createDataExport, recoverDataExport, deleteOwnAccount },
+                consentType,
+                deps: { reauth, changePassword, resetAuthenticator, createDataExport, recoverDataExport, deleteOwnAccount, recordConsent },
             });
             if (epoch !== version || !dialog.open) return;
             pending = null;
             reauthLayer.hidden = true;
             reauthStatus.textContent = '';
             applySensitiveResult(action, result, epoch);
+            if (action === 'consent-revoke') await paintConsentAccount();
             focusAfter = deleteForm.hidden ? root.querySelector('.vc-data-delete summary') : trigger;
         } catch (error) {
             if (epoch === version && dialog.open && action === 'delete' && Array.isArray(error?.pendingDomains) && error.pendingDomains.length) {
@@ -528,6 +548,21 @@ export function mountDataRights() {
             deviceConfirm = false;
         }
     });
+    dialog.addEventListener('click', async (event) => {
+        const button = event.target?.closest?.('[data-consent-revoke]');
+        if (!button || busy || deleted) return;
+        const consentType = button.getAttribute('data-consent-revoke') || '';
+        if (!REQUIRED_CONSENTS.some((item) => item.type === consentType)) return;
+        const ok = await confirmAlert({
+            title: '撤回这项同意',
+            message: '撤回后，下次进入需要重新同意。',
+            action: '撤回',
+            root: dialog,
+            opener: button,
+        });
+        if (!ok || busy || !dialog.open) return;
+        openReauth('consent-revoke', button, { consentType });
+    });
     root.querySelector('[data-logout]').addEventListener('click', async () => {
         if (busy) return;
         setBusy(true);
@@ -541,6 +576,7 @@ export function mountDataRights() {
             auth: '验证器',
             sessions: '当前会话',
             devices: '已信任的设备',
+            consent: '隐私与同意',
             export: '导出数据',
             delete: '删除账号及在线数据',
         }[screen] || '账户与数据';
@@ -555,6 +591,20 @@ export function mountDataRights() {
         if (backBtn) backBtn.setAttribute('aria-label', screen === 'home' ? '返回设置' : '返回账户与数据');
         const details = dialog.querySelector('.vc-data-delete details');
         if (details && screen === 'delete') details.open = true;
+        if (screen === 'consent') void paintConsentAccount();
+    }
+    async function paintConsentAccount() {
+        const host = dialog.querySelector('[data-consent-account-list]');
+        const status = dialog.querySelector('[data-consent-account-status]');
+        if (!host) return;
+        try {
+            const rows = await listConsents();
+            if (!dialog.open) return;
+            host.innerHTML = renderConsentAccount(rows);
+            if (status) status.textContent = '';
+        } catch (error) {
+            if (dialog.open && status) status.textContent = errorText(error);
+        }
     }
     function syncAccountHome() {
         const auth = dialog.querySelector('[data-vc-auth-summary]');
@@ -594,6 +644,7 @@ export function mountDataRights() {
             <button type="button" class="vc-cell" data-vc-account-go="auth"><span class="vc-grow">验证器</span><span class="vc-value" data-vc-auth-summary>未启用</span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="sessions"><span class="vc-grow">当前会话</span><span class="vc-value" data-vc-session-count></span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="devices" hidden><span class="vc-grow">已信任的设备</span>${chevron}</button>
+            <button type="button" class="vc-cell" data-vc-account-go="consent"><span class="vc-grow">隐私与同意</span>${chevron}</button>
             <button type="button" class="vc-cell" data-vc-account-go="export"><span class="vc-grow">导出数据</span>${chevron}</button>
         </div>
         <div class="vc-group">

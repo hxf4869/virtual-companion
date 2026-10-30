@@ -265,6 +265,8 @@ export const revokeTrustedDevice = (deviceId) => {
     return request('DELETE', `/api/v1/auth/trusted-devices/${deviceId}`);
 };
 export const logoutCurrent = () => request('POST', '/api/v1/auth/logout', {});
+export const listConsents = () => request('GET', '/api/v1/consents');
+export const recordConsent = (body) => request('PUT', '/api/v1/consents', body);
 export const resetAuthenticator = (accountId) => request('POST', `/api/v1/admin/accounts/${encodeURIComponent(accountId)}/authenticator-reset`, {});
 
 export const createDataExport = (currentPassword) => request('POST', '/api/v1/exports', { currentPassword });

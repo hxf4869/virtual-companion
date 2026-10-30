@@ -145,7 +145,11 @@ export function installMiniDom() {
                     this.children.push(item);
                 }
                 this._text = null;
-                this._html = null;
+                let cur = this;
+                while (cur) {
+                    if (cur._html != null) cur._html = null;
+                    cur = cur.parent;
+                }
             },
             remove() {
                 const list = this.parent?.children;
@@ -225,6 +229,7 @@ export function installMiniDom() {
             },
         });
         const dataName = (prop) => `data-${String(prop).replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`)}`;
+        Object.defineProperty(node, 'parentNode', { get() { return node.parent || null; } });
         Object.defineProperty(node, 'isConnected', {
             get() {
                 let cur = node;
