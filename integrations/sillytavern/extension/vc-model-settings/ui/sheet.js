@@ -79,26 +79,40 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     let y = 0;
     let stopSpring = () => {};
     let closed = false;
+    let springToken = 0;
     const layers = [];
     const ac = new AbortController();
 
-    const set = (value) => {
+    const set = (value, token) => {
+        if (token != null && token !== springToken) return;
         y = value;
-        const { H, M } = geometry();
+        const { containerHeight, H, M } = geometry();
+        // 宿主 html 有 -webkit-transform，fixed 包含块高度会变成 0。
+        // 这时 bottom: 0 把整张 sheet 摆到视口上方，弹簧停稳后就看不见。
+        el.style.top = `${SHEET_TOP_GAP}px`;
+        el.style.bottom = 'auto';
+        el.style.left = '0';
+        el.style.right = '0';
         el.style.height = `${Math.max(0, H)}px`;
         el.style.transform = `translateY(${Math.max(value, -60)}px)`;
         const opacity = M > 0 ? Math.max(0, Math.min(1, 1 - (value - (H - M)) / M)) : 1;
+        scrim.style.top = '0';
+        scrim.style.right = '0';
+        scrim.style.bottom = 'auto';
+        scrim.style.left = '0';
+        scrim.style.height = `${Math.max(0, containerHeight)}px`;
         scrim.style.opacity = String(opacity);
         scrim.classList.add('is-on');
     };
     const to = (target, v0 = 0, done) => {
+        const token = ++springToken;
         stopSpring();
         if (prefersReducedMotion()) {
-            set(target);
+            set(target, token);
             done?.();
             return;
         }
-        stopSpring = spring(y, target, v0, set, done);
+        stopSpring = spring(y, target, v0, (value) => set(value, token), done);
     };
 
     function finish() {

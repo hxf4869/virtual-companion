@@ -1076,8 +1076,20 @@ export function mountStoryTab(container, options = {}) {
             void maybeRewind(state);
         },
     });
+    function syncCover(next = view) {
+        const shell = root.closest?.('#vc-shell');
+        if (!shell) return;
+        if (next === 'stage') shell.dataset.cover = 'story';
+        else if (shell.dataset.cover === 'story') delete shell.dataset.cover;
+    }
     function paint(state = page.state) {
+        const pushing = view === 'stage' && root.dataset.view !== 'stage';
         root.dataset.view = view;
+        syncCover();
+        if (pushing) {
+            root.classList.add('is-push');
+            root.addEventListener('animationend', () => root.classList.remove('is-push'), { once: true });
+        }
         const version = state.turn?.worldVersion ?? -1;
         const fresh = seenVersion >= 0 && version > seenVersion;
         if (version >= 0) seenVersion = version;
@@ -1268,6 +1280,7 @@ export function mountStoryTab(container, options = {}) {
     }
     function destroy() {
         dead = true;
+        syncCover('gate');
         page.close();
         root.remove();
     }

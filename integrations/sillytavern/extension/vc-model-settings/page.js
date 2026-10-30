@@ -705,9 +705,9 @@ export function mountModelSettings() {
             <div class="vcms-usage-head">
                 <span class="vcms-section-label">用量</span>
                 <div class="vcms-usage-month">
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="-1">上个月</button>
-                    <span data-usage-month-label>${esc(state.usage.month)}</span>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="1">下个月</button>
+                    ${vcUiEnabled()
+        ? `<button type="button" class="vc-circle" data-action="usage-month" data-delta="-1" aria-label="上个月">${icon('chevron-left', { size: 22 })}</button><span class="vc-num" data-usage-month-label>${esc(state.usage.month)}</span><button type="button" class="vc-circle" data-action="usage-month" data-delta="1" aria-label="下个月">${icon('chevron-right', { size: 22 })}</button>`
+        : `<button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="-1">上个月</button><span data-usage-month-label>${esc(state.usage.month)}</span><button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="1">下个月</button>`}
                 </div>
             </div>
             <p class="vcms-muted">默认当月（UTC）。未配置单价时照常发送，费用显示为未知，不记为 0。预算不足只在已设置月度预算并且超出时出现。</p>

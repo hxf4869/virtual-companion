@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { waitFor } from './managed-lib.mjs';
 
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const MANAGED = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
 const WIDTHS = [
     { width: 360, height: 780 },
     { width: 390, height: 844 },
@@ -27,6 +27,15 @@ const DRAWERS = [
     { id: 'sys-settings-button', panel: 'rm_api_block', page: 'tavern-api' },
     { id: 'rightNavHolder', panel: 'right-nav-panel', page: 'tavern-card' },
 ];
+
+function selectedWidths() {
+    const raw = process.env.VC_WALKTHROUGH_WIDTHS;
+    if (!raw) return WIDTHS;
+    const wanted = new Set(raw.split(',').map((item) => Number(item.trim())).filter((item) => Number.isFinite(item)));
+    const picked = WIDTHS.filter((item) => wanted.has(item.width));
+    if (!picked.length) throw new Error(`没有匹配的走查宽度 ${raw}`);
+    return picked;
+}
 
 function stamp() {
     return new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, 'Z');
@@ -82,7 +91,7 @@ ${cards}
 }
 
 export async function sceneVcUiWalkthrough(ctx) {
-    const dir = path.join(REPO, 'dev-managed', 'artifacts', `walkthrough-${stamp()}`);
+    const dir = path.join(MANAGED, 'artifacts', `walkthrough-${stamp()}`);
     fs.mkdirSync(dir, { recursive: true });
     const shots = [];
     const notes = [];
@@ -179,11 +188,22 @@ export async function sceneVcUiWalkthrough(ctx) {
                     if (done) { done.click(); return false; }
                     const sheet = document.querySelector('.vc-sheet-done');
                     if (sheet) { sheet.click(); return false; }
+                    const stage = document.querySelector('.vc-story-tab[data-view="stage"] [data-action="close"]');
+                    if (stage) { stage.click(); return false; }
                     return true;
                 });
                 if (idle) return;
                 await sleep(250);
             }
+            await dismissSheet();
+        };
+        const dismissSheet = async () => {
+            await page.evaluate(() => {
+                document.querySelectorAll('.vc-sheet, .vc-scrim').forEach((el) => {
+                    el.style.pointerEvents = 'none';
+                    el.remove();
+                });
+            });
         };
         const leaveChat = async () => {
             const open = await page.evaluate(() => document.querySelector('#vc-shell')?.dataset.chat === 'open' && window.innerWidth < 744);
@@ -195,33 +215,67 @@ export async function sceneVcUiWalkthrough(ctx) {
             }
         };
         const go = async (nav) => {
+            await dismissSheet();
             await leaveChat();
             await page.locator(`#vc-shell [data-nav="${nav}"]:visible`).first().click();
             await page.waitForFunction((name) => document.querySelector('#vc-shell')?.dataset.destination === name, nav, { timeout: 8000 });
         };
-        const settingsVisible = () => page.evaluate(() => {
-            const shown = (el) => {
-                if (!el) return false;
-                const style = getComputedStyle(el);
-                if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-                const rect = el.getBoundingClientRect();
-                return rect.width > 8 && rect.height > 8 && rect.bottom > 0 && rect.top < window.innerHeight;
-            };
+        const settingsOpen = () => page.evaluate(() => {
+            const y = Math.min(window.innerHeight * 0.42, window.innerHeight - 120);
+            const probe = document.elementFromPoint(window.innerWidth / 2, y);
+            const narrow = window.innerWidth < 744;
+            if (narrow) {
+                const sheet = [...document.querySelectorAll('.vc-sheet')].find((el) => {
+                    const rect = el.getBoundingClientRect();
+                    const title = el.querySelector('.vc-sheet-head h3')?.textContent?.trim() || '';
+                    return Boolean(el.querySelector('.vc-settings-form')) && title === '设置'
+                        && rect.top < window.innerHeight * 0.22 && rect.bottom > window.innerHeight * 0.72;
+                });
+                return Boolean(sheet && probe?.closest?.('.vc-sheet') === sheet);
+            }
             const shell = document.querySelector('#vc-shell');
-            if (shell?.dataset.settings === 'page' && shown(shell.querySelector('.vc-shell-settings .vc-settings-form'))) return true;
-            return shown(document.querySelector('.vc-sheet .vc-settings-form'));
+            return shell?.dataset.settings === 'page' && Boolean(probe?.closest?.('.vc-shell-settings'));
         });
         const ensureSettings = async () => {
-            if (await settingsVisible()) return;
-            await leaveChat();
-            await page.locator('#vc-shell [data-settings]:visible').first().click();
+            if (await page.evaluate(() => window.innerWidth < 744 && document.querySelector('#vc-shell')?.dataset.chat === 'open')) {
+                await page.locator('#vc-shell [data-back]:visible').click();
+                await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.chat !== 'open', null, { timeout: 8000 });
+            }
+            if (!(await settingsOpen())) {
+                await page.evaluate(() => {
+                    document.querySelectorAll('.openDrawer [data-vc-drawer-back]').forEach((el) => el.click());
+                    document.querySelectorAll('.openDrawer').forEach((el) => el.classList.remove('openDrawer'));
+                    document.body.classList.remove('vc-host-drawer');
+                    document.querySelectorAll('.vc-scrim').forEach((el) => {
+                        if (!el.nextElementSibling?.classList?.contains('vc-sheet')) el.remove();
+                    });
+                    const buttons = [...document.querySelectorAll('#vc-shell [data-settings]')];
+                    const visible = buttons.find((el) => {
+                        const style = getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                    });
+                    (visible || buttons[0])?.click();
+                });
+            }
             await page.waitForFunction(() => {
-                const shown = (el) => el && el.getClientRects().length > 0;
+                const y = Math.min(window.innerHeight * 0.42, window.innerHeight - 120);
+                const probe = document.elementFromPoint(window.innerWidth / 2, y);
+                const narrow = window.innerWidth < 744;
+                if (narrow) {
+                    const sheet = [...document.querySelectorAll('.vc-sheet')].find((el) => {
+                        const rect = el.getBoundingClientRect();
+                        const title = el.querySelector('.vc-sheet-head h3')?.textContent?.trim() || '';
+                        return Boolean(el.querySelector('.vc-settings-form')) && title === '设置'
+                            && rect.top < window.innerHeight * 0.22 && rect.bottom > window.innerHeight * 0.72;
+                    });
+                    return Boolean(sheet && probe?.closest?.('.vc-sheet') === sheet);
+                }
                 const shell = document.querySelector('#vc-shell');
-                return (shell?.dataset.settings === 'page' && shown(shell.querySelector('.vc-shell-settings .vc-settings-form')))
-                    || shown(document.querySelector('.vc-sheet .vc-settings-form'));
+                return shell?.dataset.settings === 'page' && Boolean(probe?.closest?.('.vc-shell-settings'));
             }, null, { timeout: 8000 });
             await settle(page);
+            if (!(await settingsOpen())) throw new Error('设置没有停在可见的页面或 sheet');
         };
         const clickSettings = async (action) => {
             await ensureSettings();
@@ -239,7 +293,7 @@ export async function sceneVcUiWalkthrough(ctx) {
         };
 
         for (const theme of THEMES) {
-            for (const viewport of WIDTHS) {
+            for (const viewport of selectedWidths()) {
                 console.log(`[vc-ui-walkthrough] ${theme} ${viewport.width}`);
                 try {
                 await closeLayers();
@@ -263,6 +317,21 @@ export async function sceneVcUiWalkthrough(ctx) {
                     await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.chat === 'open', null, { timeout: 8000 }).catch(() => {});
                 }
                 await record(page, viewport.width, theme, 'chat');
+                if (theme === 'light' && viewport.width === 390) {
+                    await page.evaluate(() => {
+                        try { localStorage.setItem('vc-reply-style', 'spread'); } catch { /* 铺开仍去掉气泡类 */ }
+                        document.body.classList.remove('vc-reply-bubble');
+                    });
+                    await record(page, viewport.width, theme, 'chat-spread');
+                    const message = page.locator('#chat .mes .mes_text').first();
+                    if (await message.count()) {
+                        await message.click({ button: 'right' });
+                        const menu = await page.waitForFunction(() => [...document.querySelectorAll('.vc-menu')].some((el) => el.getClientRects().length > 0), null, { timeout: 4000 }).then(() => true).catch(() => false);
+                        if (menu) await record(page, viewport.width, theme, 'chat-press');
+                        else notes.push('390 light chat-press：长按菜单没有出现');
+                        await page.keyboard.press('Escape').catch(() => {});
+                    } else notes.push('390 light chat-spread：没有消息可长按');
+                }
 
                 await ensureSettings();
                 await record(page, viewport.width, theme, 'settings');
@@ -278,6 +347,15 @@ export async function sceneVcUiWalkthrough(ctx) {
                         notes.push(`${viewport.width} ${theme} ${drawer.page}：${error.message}`);
                     }
                     await page.evaluate((panelId) => document.querySelector(`#${panelId} [data-vc-drawer-back]`)?.click(), drawer.panel);
+                    await page.waitForFunction((panelId) => !document.getElementById(panelId)?.classList.contains('openDrawer'), drawer.panel, { timeout: 3000 }).catch(() => {});
+                    await page.evaluate((panelId) => {
+                        const panel = document.getElementById(panelId);
+                        panel?.classList.remove('openDrawer');
+                        if (!document.querySelector('.openDrawer')) document.body.classList.remove('vc-host-drawer');
+                        document.querySelectorAll('.vc-scrim').forEach((el) => {
+                            if (!el.nextElementSibling?.classList?.contains('vc-sheet')) el.remove();
+                        });
+                    }, drawer.panel);
                     await sleep(200);
                 }
 
@@ -322,10 +400,12 @@ export async function sceneVcUiWalkthrough(ctx) {
                 await go('memory');
                 await page.waitForSelector('[data-vc-page="memory"]', { timeout: 15000 });
                 await record(page, viewport.width, theme, 'memory-list');
+                await dismissSheet();
                 let memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
                 if (!(await memory.count())) {
                     const pick = page.locator('[data-vc-page="memory"] [data-action="pick-instance"]:visible');
                     if (await pick.count()) {
+                        await dismissSheet();
                         await pick.click();
                         const options = page.locator('.vc-menu button:visible');
                         const total = await options.count();

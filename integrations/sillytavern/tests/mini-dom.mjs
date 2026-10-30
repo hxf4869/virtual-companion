@@ -93,7 +93,6 @@ export function installMiniDom() {
             tag,
             nodeType: 1,
             id: '',
-            className: '',
             _classes: [],
             _text: null,
             _html: null,
@@ -163,23 +162,29 @@ export function installMiniDom() {
         };
         node.classList = {
             add: (...names) => {
-                node._classes.push(...names);
-                node.className = node._classes.join(' ');
+                for (const name of names) {
+                    if (!name || node._classes.includes(name)) continue;
+                    node._classes.push(name);
+                }
             },
             remove: (...names) => {
                 node._classes = node._classes.filter((item) => !names.includes(item));
-                node.className = node._classes.join(' ');
             },
             toggle: (name, force) => {
                 const has = node._classes.includes(name);
                 const next = force === undefined ? !has : Boolean(force);
                 if (next && !has) node._classes.push(name);
                 if (!next && has) node._classes = node._classes.filter((item) => item !== name);
-                node.className = node._classes.join(' ');
                 return next;
             },
             contains: (name) => node._classes.includes(name),
         };
+        Object.defineProperty(node, 'className', {
+            get() { return node._classes.join(' '); },
+            set(value) {
+                node._classes = String(value ?? '').split(/\s+/).filter(Boolean);
+            },
+        });
         Object.defineProperty(node, 'textContent', {
             get() { return textOf(node); },
             set(value) {

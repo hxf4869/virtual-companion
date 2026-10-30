@@ -348,9 +348,13 @@ body.vc-ui .vc-instance-sub {
     gap: var(--vc-space-xxs);
 }
 
+body.vc-ui .vc-shell-page:has(.vc-characters.is-detail) > .vc-navbar {
+    display: none;
+}
+
 body.vc-ui .vc-roles {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: var(--vc-space-sm);
     padding: 0 var(--vc-page-pad) var(--vc-space-xl);
 }
@@ -361,8 +365,8 @@ body.vc-ui .vc-role {
     align-items: center;
     gap: var(--vc-space-xxs);
     width: 100%;
-    max-width: 280px;
-    justify-self: center;
+    max-width: none;
+    justify-self: stretch;
     min-width: 0;
     min-height: var(--vc-touch);
     padding: var(--vc-space-lg) var(--vc-space-sm) var(--vc-space-md);
@@ -374,6 +378,17 @@ body.vc-ui .vc-role {
     color: var(--vc-ink);
     text-align: center;
     transition: transform var(--vc-dur-press) var(--vc-spring);
+}
+
+@media (min-width: 744px) {
+    body.vc-ui .vc-roles {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+
+    body.vc-ui .vc-role {
+        max-width: 280px;
+        justify-self: center;
+    }
 }
 
 body.vc-ui .vc-role:active { transform: scale(0.96); }

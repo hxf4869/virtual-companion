@@ -369,6 +369,41 @@ body.vc-ui #vc-model-settings-root .vcms-usage-meta {
   white-space: normal;
 }
 
+body.vc-ui #vc-model-settings-root .vcms-usage-head {
+  position: relative;
+  min-height: 44px;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage-month {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage-month .vc-circle {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body.vc-ui #vc-model-settings-root .vcms-usage-month [data-usage-month-label] {
+  min-width: 7.5ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--vc-ink);
+}
+
 body.vc-ui #vc-model-settings-root .vcms-empty-providers .vcms-muted {
   position: absolute !important;
   width: 1px !important;

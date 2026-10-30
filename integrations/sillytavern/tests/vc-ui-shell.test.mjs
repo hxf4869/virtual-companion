@@ -262,7 +262,8 @@ test('走查场景默认不进套件', async () => {
     assert.match(managed, /'vc-ui-walkthrough': sceneVcUiWalkthrough/);
     const scene = await readFile(new URL('../scripts/vc-ui-walkthrough.mjs', import.meta.url), 'utf8');
     assert.match(scene, /pinVcUi\(context, 'on'\)/);
-    assert.match(scene, /walkthrough-/);
+    assert.match(scene, /'\.\.\/dev-managed'\)/);
+    assert.match(scene, /path\.join\(MANAGED, 'artifacts', `walkthrough-/);
     assert.match(scene, /index\.html/);
 });
 

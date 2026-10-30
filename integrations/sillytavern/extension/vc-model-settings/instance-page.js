@@ -649,7 +649,7 @@ export function renderCharactersTab(state, options = {}) {
     if (screen === 'detail' && detail) {
         const showForm = state.creating || detail.instances.some((item) => item.relationshipId === state.selectedRelationshipId);
         const count = `${detail.instances.length} 个实例`;
-        return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="back" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(detail.name)}</h1><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="edit-card" aria-label="编辑角色卡">${icon('pencil')}</button></header><div class="vc-scroll"><div class="vc-poster" style="--vc-tint:${NEUTRAL_TINT}" data-tint="${esc(detail.avatar)}">${avatarHtml(detail.name, detail.avatar, 'vc-poster-avatar')}<b>${esc(detail.name)}</b><span class="vc-instance-badge">模板</span><span class="vc-meta">${esc(count)}</span>${detail.description ? `<p class="vc-instance-secondary">${esc(detail.description)}</p>` : ''}</div>${detail.worldName ? `<div class="vc-group"><div class="vc-cell"><span class="vc-grow"><span class="vc-instance-world">关联世界书 · ${esc(detail.worldName)}</span></span></div></div>` : ''}<div class="vc-group" aria-label="陪伴实例">${instanceRows(detail.instances, state)}</div>${detail.instances.length && !state.creating ? `<button type="button" class="vc-btn vc-btn-text vc-instance-create" data-action="create">创建实例</button>` : ''}${!detail.instances.length && !showForm ? `<button type="button" class="vc-btn vc-btn-fill vc-instance-create vc-instance-primary" data-action="create">创建实例</button>` : ''}${showForm ? nameForm(state) : `<button type="button" class="vc-btn vc-btn-text" data-action="edit-name">编辑</button>`}${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}</div>`;
+        return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="back" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">${esc(detail.name)}</h1><div class="vc-nav-spacer"></div><button type="button" class="vc-circle vc-glass" data-action="edit-card" aria-label="编辑角色卡">${icon('pencil')}</button></header><div class="vc-scroll"><div class="vc-poster" style="--vc-tint:${NEUTRAL_TINT}" data-tint="${esc(detail.avatar)}">${avatarHtml(detail.name, detail.avatar, 'vc-poster-avatar')}<b>${esc(detail.name)}</b><span class="vc-instance-badge">模板</span><span class="vc-meta">${esc(count)}</span>${detail.description ? `<p class="vc-instance-secondary">${esc(detail.description)}</p>` : ''}</div>${detail.worldName ? `<div class="vc-group"><div class="vc-cell"><span class="vc-grow"><span class="vc-instance-world">关联世界书 · ${esc(detail.worldName)}</span></span></div></div>` : ''}<div class="vc-group" aria-label="陪伴实例">${instanceRows(detail.instances, state)}</div>${detail.instances.length && !state.creating ? `<button type="button" class="vc-btn vc-btn-text vc-instance-create" data-action="create">创建实例</button>` : ''}${!detail.instances.length && !showForm ? `<button type="button" class="vc-btn vc-btn-fill vc-instance-create vc-instance-primary" data-action="create">创建实例</button>` : ''}${showForm ? nameForm(state) : ''}${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p>` : ''}</div>`;
     }
     const alerts = `${state.importError ? `<p class="vc-instance-alert" role="alert">${esc(state.importError)}</p>` : ''}${state.loadError ? `<p class="vc-instance-alert" role="alert">${esc(state.loadError)}</p><button type="button" class="vc-btn vc-btn-fill" data-action="retry">重试</button>` : ''}`;
     const body = model.cards.length
@@ -913,6 +913,7 @@ export function mountCharactersTab(container, options = {}) {
         if (detailEl?.isConnected && detailEl.dataset.ref === ref) {
             fill(detailEl, 'detail');
             fill(list, 'list');
+            root.classList.add('is-detail');
             return;
         }
         const el = container.ownerDocument.createElement('section');
@@ -924,6 +925,7 @@ export function mountCharactersTab(container, options = {}) {
             fly: fromAvatar ? { from: fromAvatar, to: (node) => node.querySelector('.vc-poster-avatar img, .vc-poster-avatar') } : undefined,
         });
         detailEl = el;
+        root.classList.add('is-detail');
         fill(list, 'list');
     }
     async function goBack() {
@@ -950,6 +952,7 @@ export function mountCharactersTab(container, options = {}) {
             page.state.unsaved = null;
         }
         if (nav.pop()) detailEl = null;
+        root.classList.toggle('is-detail', Boolean(detailEl?.isConnected));
     }
     root.addEventListener('click', (event) => {
         const target = event.target?.closest?.('button');
