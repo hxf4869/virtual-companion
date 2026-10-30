@@ -21,6 +21,7 @@ import {
 } from './reply-pipeline.js';
 import { openSheet } from './ui/sheet.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
+import { clearMessageVoice, renderMessageVoice, voicePlayer } from './voice.js';
 
 export const REPLY_STYLE_KEY = 'vc-reply-style';
 export const PRESS_MS = 420;
@@ -361,6 +362,7 @@ function subscribe(doc) {
     const types = ctx?.eventTypes || {};
     const on = (name, fn) => { if (name && events?.on) events.on(name, fn); };
     on(types.CHAT_CHANGED, () => {
+        voicePlayer.stop();
         rewriteCount = 0;
         revealMesId = '';
         const id = String(safeContext()?.chatId ?? '');
@@ -846,12 +848,19 @@ export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule 
 
 function paintReplyMessages(list) {
     if (!companionMode()) {
-        for (const mes of list) clearReplyBubbles(mes);
+        for (const mes of list) { clearReplyBubbles(mes); clearMessageVoice(mes); }
         return;
     }
     const streaming = document.body?.getAttribute?.('data-generating') === 'true';
     const live = streaming ? [...list].reverse().find((mes) => !isUser(mes) && !isSystem(mes)) : null;
     for (const mes of list) {
+        const message = safeContext()?.chat?.[Number(mes.getAttribute?.('mesid'))];
+        if (!(streaming && mes === live) && message && renderMessageVoice(mes, message, { onPlayed: () => safeContext()?.saveChat?.() })) {
+            clearReplyBubbles(mes);
+            mes.querySelector?.('.mes_text')?.setAttribute?.('aria-hidden', 'true');
+            continue;
+        }
+        clearMessageVoice(mes);
         if (isUser(mes) || isSystem(mes)) {
             clearReplyBubbles(mes);
             continue;

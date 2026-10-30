@@ -72,6 +72,7 @@ function mountVcUi() {
         ['vc-settings-pages-css', './settings-pages.css'],
         ['vc-companion-persona-css', './companion-persona.css'],
         ['vc-stickers-css', './stickers.css'],
+        ['vc-voice-css', './voice.css'],
     ]) {
         if (document.getElementById(id)) continue;
         const link = document.createElement('link');

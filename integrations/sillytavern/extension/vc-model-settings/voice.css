@@ -1,0 +1,23 @@
+body.vc-ui .vc-voice-message .mes_text { display: none !important; }
+body.vc-ui .vc-voice { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: var(--vc-space-xxs); }
+body.vc-ui .vc-voice-bar { display: flex; align-items: center; gap: var(--vc-space-xs); min-height: var(--vc-touch); min-width: calc(var(--vc-space-xxl) * 2 + var(--vc-space-xs)); width: var(--vc-voice-width); max-width: 70%; padding: var(--vc-space-xs) var(--vc-space-sm); border: 0; border-radius: var(--vc-radius-lg); color: var(--vc-ink); background: var(--vc-bubble-char); font: inherit; cursor: pointer; }
+body.vc-ui .mes[is_user="true"] .vc-voice { align-items: flex-end; }
+body.vc-ui .mes[is_user="true"] .vc-voice-bar { background: var(--vc-bubble-user); cursor: default; }
+body.vc-ui .vc-voice-glyph { display: flex; flex-shrink: 0; }
+body.vc-ui .vc-voice-duration { margin-inline-start: auto; font-variant-numeric: tabular-nums; font-size: var(--vc-fs-subhead); }
+body.vc-ui .vc-voice-wave { display: flex; align-items: center; gap: var(--vc-space-xxs); height: var(--vc-space-lg); }
+body.vc-ui .vc-voice-wave i { width: calc(var(--vc-space-xxs) / 2); height: 40%; border-radius: var(--vc-radius-pill); background: currentColor; }
+body.vc-ui .vc-voice-wave i:nth-child(2n) { height: 75%; }
+body.vc-ui .vc-voice-wave i:nth-child(3) { height: 100%; }
+body.vc-ui .vc-voice-playing .vc-voice-wave i { animation: vc-voice-wave var(--vc-dur-emphasized) ease-in-out infinite alternate; }
+body.vc-ui .vc-voice-playing .vc-voice-wave i:nth-child(2n) { animation-direction: alternate-reverse; }
+body.vc-ui .vc-voice-unread { width: var(--vc-space-xs); height: var(--vc-space-xs); border-radius: var(--vc-radius-pill); background: var(--vc-danger); flex-shrink: 0; }
+body.vc-ui .vc-voice-transcribe { border: 0; background: transparent; color: var(--vc-accent-text); font: inherit; font-size: var(--vc-fs-footnote); min-height: var(--vc-touch); padding: 0 var(--vc-space-xs); cursor: pointer; }
+body.vc-ui .vc-voice-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--vc-lh-reading); }
+body.vc-ui .vc-voice-text[hidden] { display: none; }
+body.vc-ui .vc-voice-pending { min-height: var(--vc-touch); justify-content: center; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+body.vc-ui .vc-voice :is(button):focus-visible { outline: 2px solid var(--vc-accent); outline-offset: var(--vc-space-xxs); }
+@keyframes vc-voice-wave { to { transform: scaleY(.45); } }
+@media (prefers-reduced-motion: reduce) {
+  body.vc-ui .vc-voice-playing .vc-voice-wave i { animation: none; }
+}
