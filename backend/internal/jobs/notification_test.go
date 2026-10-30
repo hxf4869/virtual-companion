@@ -193,6 +193,19 @@ func TestDeliveryTextLinksTheConversationWithoutPreview(t *testing.T) {
 	}
 }
 
+func TestVoiceNotificationKeepsGenericSubjectAndPrivateBody(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	store := &noteStore{row: readyDelivery()}
+	store.row.ConversationID, store.row.Voice, store.row.Preview = 9, true, false
+	sender := &noteSender{kind: notify.KindAccepted}
+	if err := RunNotificationDeliveries(context.Background(), store, sender, nil, now, nil, MaxNotificationAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if sender.calls != 1 || sender.last.Subject != notify.Title || !strings.Contains(sender.last.Text, notify.VoiceNotice) || !strings.Contains(sender.last.Text, "/api/v1/conversations/9") || strings.Contains(sender.last.Text, noteBody) {
+		t.Fatal("voice notification lost its marker/link or exposed private body")
+	}
+}
+
 func TestDailyLimitDefersWithoutSpendingAttempt(t *testing.T) {
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	store := &noteStore{row: readyDelivery()}
