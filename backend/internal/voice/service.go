@@ -151,6 +151,9 @@ func (s *Service) ValidateRelationshipPatch(ctx context.Context, patch map[strin
 }
 
 func (s *Service) Create(ctx context.Context, owner, relationshipID int64, in CreateRequest) (Clip, error) {
+	if restoregate.Closed(s.gate) {
+		return Clip{}, ErrUnavailable
+	}
 	if in.Purpose != "chat" && in.Purpose != "proactive" || strings.TrimSpace(in.MessageRef) == "" || utf8.RuneCountInString(in.MessageRef) > 512 || strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > 4000 {
 		return Clip{}, ErrInvalid
 	}
@@ -226,6 +229,9 @@ func (s *Service) Create(ctx context.Context, owner, relationshipID int64, in Cr
 }
 
 func (s *Service) Preview(ctx context.Context, owner int64, in PreviewRequest) (Clip, error) {
+	if restoregate.Closed(s.gate) {
+		return Clip{}, ErrUnavailable
+	}
 	if in.RelationshipID <= 0 || in.Engine != Kokoro && in.Engine != CosyVoice {
 		return Clip{}, ErrInvalid
 	}
@@ -258,6 +264,9 @@ func (s *Service) Preview(ctx context.Context, owner int64, in PreviewRequest) (
 }
 
 func (s *Service) Get(ctx context.Context, owner, id int64) (Clip, error) {
+	if restoregate.Closed(s.gate) {
+		return Clip{}, ErrUnavailable
+	}
 	return s.store.GetVoiceClip(ctx, owner, id)
 }
 func (s *Service) Audio(ctx context.Context, clip Clip) ([]byte, error) {
@@ -269,7 +278,7 @@ func (s *Service) Audio(ctx context.Context, clip Clip) ([]byte, error) {
 		return nil, ErrUnavailable
 	}
 	// Storage I/O can outlive a concurrent source or account deletion.
-	current, err := s.store.GetVoiceClip(ctx, clip.OwnerID, clip.ID)
+	current, err := s.Get(ctx, clip.OwnerID, clip.ID)
 	if err != nil {
 		return nil, err
 	}

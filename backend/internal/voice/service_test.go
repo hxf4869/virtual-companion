@@ -235,6 +235,15 @@ func TestRestoreGateAndWorkerShutdown(t *testing.T) {
 	s.BindStore(store)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
+	if _, err := s.Get(ctx, 1, 1); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("voice transcript crossed closed restore gate")
+	}
+	if _, err := s.Create(ctx, 1, 2, CreateRequest{}); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("voice enqueue crossed closed restore gate")
+	}
+	if _, err := s.Preview(ctx, 1, PreviewRequest{}); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("voice preview crossed closed restore gate")
+	}
 	s.Run(ctx)
 	if store.claims.Load() != 0 {
 		t.Fatal("voice work crossed closed restore gate")
