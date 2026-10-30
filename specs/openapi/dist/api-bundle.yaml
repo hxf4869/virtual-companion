@@ -6543,6 +6543,392 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/voice/engines:
+    get:
+      operationId: getVoiceEngines
+      summary: Read configured voice capabilities and available voices
+      description: Go alone queries engine health and voices, caching the result for ten minutes. No engine address or credential
+        is returned. An unconfigured capability reports configured=false, enabled=false and healthy=false; its UI entry stays
+        hidden.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Read configured voice capabilities and available voices
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceEngines'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/voice/settings:
+    get:
+      operationId: getVoiceSettings
+      summary: Read the authenticated owner's voice settings
+      description: A missing row returns documented defaults with revision=0. Effective availability also requires the corresponding
+        server-side URL. This read does not synthesize speech.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Read the authenticated owner's voice settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceSettings'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: putVoiceSettings
+      summary: Replace voice settings with a revision comparison
+      description: expectedRevision=0 creates the first row; otherwise it must equal the stored revision. A successful save
+        increments revision by one. A stale revision returns 409 REVISION_CONFLICT and writes nothing. Settings never contain
+        service URLs or credentials.
+      security:
+      - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoiceSettingsWriteRequest'
+      responses:
+        '200':
+          description: Replace voice settings with a revision comparison
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceSettings'
+        '400':
+          description: Invalid input; INVALID_REQUEST, without echoing text or audio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Current resource state conflicts with this request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/voice-clips:
+    post:
+      operationId: createVoiceClip
+      summary: Queue an owned message for speech synthesis
+      description: Accepts chat or proactive purpose only. messageRef identifies a persisted ST assistant source_ref or proactive:<messageId>
+        under this relationship; Go verifies the source and text. The same owner/relationship/purpose/messageRef returns the
+        existing clip without another job or daily charge. Engine, voice and parameters come from server-side settings, never
+        browser URLs or instructions. Jobs persist in PostgreSQL, serialize per engine, and retry only upstream 429 at most
+        three times with backoff. Other failures become failed and fall back to text.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoiceClipCreateRequest'
+      responses:
+        '202':
+          description: Queue an owned message for speech synthesis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceClipAccepted'
+        '400':
+          description: Invalid input; INVALID_REQUEST, without echoing text or audio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned; NOT_FOUND_OR_FORBIDDEN does not disclose existence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Daily limit or bounded queue capacity reached; RATE_LIMITED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Required engine is unconfigured, disabled or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/voice-clips/{clipId}:
+    get:
+      operationId: getVoiceClip
+      summary: Read an owned voice clip's status and transcript
+      description: Returns only the authenticated owner's clip, including original text for transcript display. Never returns
+        an object-store key, public URL, engine URL or upstream error body. Clients keep a text fallback once a chat clip
+        has waited fifteen seconds; late readiness does not replace already displayed text.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/VoiceClipId'
+      responses:
+        '200':
+          description: Read an owned voice clip's status and transcript
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceClip'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned; NOT_FOUND_OR_FORBIDDEN does not disclose existence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/voice/preview:
+    post:
+      operationId: previewVoice
+      summary: Queue or reuse a fixed-text voice preview
+      description: Uses the owned relationship and a server-controlled fixed sample; arbitrary text and engine URLs are rejected.
+        The voice must exist in the engine list. Matching previews may reuse a ready clip and never consume daily chat/proactive
+        limits. Previews use the same serial queue.
+      security:
+      - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoicePreviewRequest'
+      responses:
+        '202':
+          description: Queue or reuse a fixed-text voice preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceClipAccepted'
+        '400':
+          description: Invalid input; INVALID_REQUEST, without echoing text or audio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned; NOT_FOUND_OR_FORBIDDEN does not disclose existence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Daily limit or bounded queue capacity reached; RATE_LIMITED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Required engine is unconfigured, disabled or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/voice/asr:
+    post:
+      operationId: transcribeVoice
+      summary: Transcribe one bounded recording without storing audio
+      description: Go alone calls SenseVoice, with application concurrency one and the configured timeout (default thirty
+        seconds). The multipart file must be 16 kHz mono signed 16-bit PCM WAV, no longer than maxRecordingSeconds (at most
+        sixty). Audio is processed in memory and not persisted. Text, audio and stable owner identifiers must not enter logs.
+        Result text enters the ordinary chat pipeline; emotion is an optional cue, never an instruction.
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: Transcribe one bounded recording without storing audio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceTranscription'
+        '400':
+          description: Invalid input; INVALID_REQUEST, without echoing text or audio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '413':
+          description: Recording exceeds the bounded upload size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '415':
+          description: Only 16 kHz mono signed 16-bit PCM WAV is accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Daily limit or bounded queue capacity reached; RATE_LIMITED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Required engine is unconfigured, disabled or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 16 kHz mono signed 16-bit PCM WAV, at most the configured duration
+  /api/v1/voice-clips/{clipId}/audio:
+    get:
+      operationId: getVoiceClipAudio
+      summary: Stream an owned ready clip as WAV
+      description: Authenticates every full or ranged read. Object keys remain private; no public store redirect is issued.
+        Supports a single byte range. Queued, running or failed clips return 409; expired clips return 410. No audio or transcript
+        is logged.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/VoiceClipId'
+      - name: Range
+        in: header
+        required: false
+        schema:
+          type: string
+        description: A single bytes=start-end, bytes=start- or bytes=-suffix range
+      responses:
+        '200':
+          description: Complete WAV
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Content-Length:
+              schema:
+                type: integer
+                format: int64
+                minimum: 0
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Requested single byte range
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Content-Length:
+              schema:
+                type: integer
+                format: int64
+                minimum: 0
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+            Content-Range:
+              schema:
+                type: string
+              description: bytes start-end/total
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned; NOT_FOUND_OR_FORBIDDEN does not disclose existence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Current resource state conflicts with this request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '410':
+          description: The owned clip has expired; keep the text fallback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '416':
+          description: Unsatisfiable or multiple ranges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          headers:
+            Content-Range:
+              schema:
+                type: string
+              description: bytes */total
 components:
   securitySchemes:
     bearerAuth:
@@ -7685,10 +8071,40 @@ components:
           type: string
           description: companion-presentation CompanionAvatar code referencing a platform-curated, reviewed asset (no photo
             upload in v1)
+        kokoroVoice:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 128
+          description: Null resolves to zm_010 for MALE and zf_001 otherwise.
+        cosyVoice:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 128
+          description: Null uses default; male relationships fall back to Kokoro if no suitable male CosyVoice voice exists.
+        speed:
+          type: number
+          minimum: 0.5
+          maximum: 2.0
+          default: 1.0
+          description: Relationship voice_speed before the Kokoro mood multiplier; clamp final speed to 0.5–2.0.
+        voiceFrequency:
+          anyOf:
+          - $ref: '#/components/schemas/VoiceFrequency'
+          - type: 'null'
+          description: Null inherits owner settings. LOW/STANDARD/HIGH allow at most one voice per 10/6/3 assistant replies;
+            OFF disables relationship voice.
+        proactiveVoice:
+          type: boolean
+          default: true
     RelationshipPrefsUpdate:
       type: object
-      description: Full replacement of structured Companion preferences (FR-COMP-003). Names are optional labels; an omitted
-        or empty name clears the stored label. Enum fields and avoidTopics must be approved catalog codes.
+      description: Full replacement of structured Companion preferences (FR-COMP-003). Voice fields are optional; omitted
+        voice fields retain their stored values. Names are optional labels; an omitted or empty name clears the stored label.
+        Enum fields and avoidTopics must be approved catalog codes.
       required:
       - replyLength
       - initiative
@@ -7739,6 +8155,467 @@ components:
           type: string
           description: companion-presentation CompanionAvatar code referencing a platform-curated, reviewed asset (no photo
             upload in v1)
+        kokoroVoice:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 128
+          description: Null resolves to zm_010 for MALE and zf_001 otherwise.
+        cosyVoice:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 128
+          description: Null uses default; male relationships fall back to Kokoro if no suitable male CosyVoice voice exists.
+        speed:
+          type: number
+          minimum: 0.5
+          maximum: 2.0
+          default: 1.0
+          description: Relationship voice_speed before the Kokoro mood multiplier; clamp final speed to 0.5–2.0.
+        voiceFrequency:
+          anyOf:
+          - $ref: '#/components/schemas/VoiceFrequency'
+          - type: 'null'
+          description: Null inherits owner settings. LOW/STANDARD/HIGH allow at most one voice per 10/6/3 assistant replies;
+            OFF disables relationship voice.
+        proactiveVoice:
+          type: boolean
+          default: true
+    VoiceEngine:
+      type: string
+      enum:
+      - kokoro
+      - cosyvoice
+      description: voice catalog VoiceEngine code
+    VoiceClipPurpose:
+      type: string
+      enum:
+      - chat
+      - proactive
+      - preview
+      description: voice catalog VoiceClipPurpose code
+    VoiceClipStatus:
+      type: string
+      enum:
+      - queued
+      - running
+      - ready
+      - failed
+      - expired
+      description: voice catalog VoiceClipStatus code
+    VoiceErrorKind:
+      type: string
+      enum:
+      - bad_request
+      - rate_limited
+      - upstream_error
+      - timeout
+      - unavailable
+      - storage_error
+      description: voice catalog VoiceErrorKind code
+    VoiceFrequency:
+      type: string
+      enum:
+      - 'OFF'
+      - LOW
+      - STANDARD
+      - HIGH
+      description: voice catalog VoiceFrequency code
+    VoiceOption:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        gender:
+          type: string
+          enum:
+          - FEMALE
+          - MALE
+          - NEUTRAL
+    VoiceEngineState:
+      type: object
+      additionalProperties: false
+      required:
+      - engine
+      - configured
+      - enabled
+      - healthy
+      - voices
+      properties:
+        engine:
+          $ref: '#/components/schemas/VoiceEngine'
+        configured:
+          type: boolean
+        enabled:
+          type: boolean
+        healthy:
+          type: boolean
+        voices:
+          type: array
+          items:
+            $ref: '#/components/schemas/VoiceOption'
+    VoiceEngines:
+      type: object
+      additionalProperties: false
+      required:
+      - tts
+      - asr
+      properties:
+        tts:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/VoiceEngineState'
+        asr:
+          type: object
+          additionalProperties: false
+          required:
+          - configured
+          - enabled
+          - healthy
+          properties:
+            configured:
+              type: boolean
+            enabled:
+              type: boolean
+            healthy:
+              type: boolean
+    CosyVoiceInstructions:
+      type: object
+      additionalProperties: false
+      required:
+      - morning
+      - night
+      - care
+      - share
+      - default
+      properties:
+        morning:
+          type: string
+          maxLength: 1000
+          pattern: ^You are a helpful assistant\.
+          default: You are a helpful assistant. 请用刚睡醒、有点慵懒又温柔的语气说。
+        night:
+          type: string
+          maxLength: 1000
+          pattern: ^You are a helpful assistant\.
+          default: You are a helpful assistant. 请轻声、温柔、放慢一点地说。
+        care:
+          type: string
+          maxLength: 1000
+          pattern: ^You are a helpful assistant\.
+          default: You are a helpful assistant. 请温柔关切地说。
+        share:
+          type: string
+          maxLength: 1000
+          pattern: ^You are a helpful assistant\.
+          default: You are a helpful assistant. 请开心、轻快地说。
+        default:
+          type: string
+          maxLength: 1000
+          pattern: ^You are a helpful assistant\.
+          default: You are a helpful assistant.
+    KokoroMoodSpeeds:
+      type: object
+      additionalProperties:
+        type: number
+        minimum: 0.5
+        maximum: 2.0
+      default:
+        开心: 1.05
+        得意: 1.05
+        懒洋洋: 0.92
+        有点累: 0.92
+        困: 0.92
+      description: Mood vibe to speed; unlisted moods use 1.0. Kokoro never receives instructions.
+    VoiceSettings:
+      type: object
+      additionalProperties: false
+      required:
+      - kokoroEnabled
+      - cosyVoiceEnabled
+      - asrEnabled
+      - kokoroTimeoutSeconds
+      - cosyVoiceTimeoutSeconds
+      - asrTimeoutSeconds
+      - dailyChatLimit
+      - dailyProactiveLimit
+      - voiceFrequency
+      - cosyVoiceInstructions
+      - kokoroMoodSpeeds
+      - maxRecordingSeconds
+      - revision
+      properties:
+        kokoroEnabled:
+          type: boolean
+          default: true
+        cosyVoiceEnabled:
+          type: boolean
+          default: true
+        asrEnabled:
+          type: boolean
+          default: true
+        kokoroTimeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 60
+        cosyVoiceTimeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 300
+        asrTimeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 30
+        dailyChatLimit:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 60
+        dailyProactiveLimit:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 8
+        voiceFrequency:
+          type: string
+          enum:
+          - LOW
+          - STANDARD
+          - HIGH
+          default: STANDARD
+          description: Non-OFF subset of VoiceFrequency; relationships may override to OFF.
+        cosyVoiceInstructions:
+          $ref: '#/components/schemas/CosyVoiceInstructions'
+        kokoroMoodSpeeds:
+          $ref: '#/components/schemas/KokoroMoodSpeeds'
+        maxRecordingSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 60
+          default: 60
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Zero for virtual defaults; stored revisions start at one.
+        updatedAt:
+          type: string
+          format: date-time
+    VoiceSettingsWriteRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - kokoroEnabled
+      - cosyVoiceEnabled
+      - asrEnabled
+      - kokoroTimeoutSeconds
+      - cosyVoiceTimeoutSeconds
+      - asrTimeoutSeconds
+      - dailyChatLimit
+      - dailyProactiveLimit
+      - voiceFrequency
+      - cosyVoiceInstructions
+      - kokoroMoodSpeeds
+      - maxRecordingSeconds
+      - expectedRevision
+      properties:
+        kokoroEnabled:
+          type: boolean
+          default: true
+        cosyVoiceEnabled:
+          type: boolean
+          default: true
+        asrEnabled:
+          type: boolean
+          default: true
+        kokoroTimeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 60
+        cosyVoiceTimeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 300
+        asrTimeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 30
+        dailyChatLimit:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 60
+        dailyProactiveLimit:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 8
+        voiceFrequency:
+          type: string
+          enum:
+          - LOW
+          - STANDARD
+          - HIGH
+          default: STANDARD
+          description: Non-OFF subset of VoiceFrequency; relationships may override to OFF.
+        cosyVoiceInstructions:
+          $ref: '#/components/schemas/CosyVoiceInstructions'
+        kokoroMoodSpeeds:
+          $ref: '#/components/schemas/KokoroMoodSpeeds'
+        maxRecordingSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 60
+          default: 60
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+    VoiceClipCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - messageRef
+      - text
+      - purpose
+      properties:
+        messageRef:
+          type: string
+          minLength: 1
+          maxLength: 512
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Original persisted assistant text; Go cleans a synthesis copy and retains the original for transcript
+            display.
+        purpose:
+          type: string
+          enum:
+          - chat
+          - proactive
+          description: Non-preview subset of VoiceClipPurpose.
+    VoiceClipAccepted:
+      type: object
+      additionalProperties: false
+      required:
+      - clipId
+      - status
+      properties:
+        clipId:
+          type: string
+          pattern: ^[1-9][0-9]*$
+        status:
+          $ref: '#/components/schemas/VoiceClipStatus'
+    VoiceClip:
+      type: object
+      additionalProperties: false
+      required:
+      - clipId
+      - relationshipId
+      - purpose
+      - engine
+      - voice
+      - text
+      - status
+      - createdAt
+      properties:
+        clipId:
+          type: string
+          pattern: ^[1-9][0-9]*$
+        relationshipId:
+          type: string
+          pattern: ^[1-9][0-9]*$
+        messageRef:
+          type: string
+          maxLength: 512
+        purpose:
+          $ref: '#/components/schemas/VoiceClipPurpose'
+        engine:
+          $ref: '#/components/schemas/VoiceEngine'
+        voice:
+          type: string
+          minLength: 1
+          maxLength: 128
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        status:
+          $ref: '#/components/schemas/VoiceClipStatus'
+        errorKind:
+          $ref: '#/components/schemas/VoiceErrorKind'
+        durationMs:
+          type: integer
+          minimum: 1
+        generationMs:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        readyAt:
+          type: string
+          format: date-time
+      description: messageRef is absent for previews. errorKind is present only for failed clips. Ready clips have durationMs,
+        generationMs and readyAt. Audio uses the authenticated audio endpoint.
+    VoicePreviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - relationshipId
+      - engine
+      - voice
+      properties:
+        relationshipId:
+          type: string
+          pattern: ^[1-9][0-9]*$
+        engine:
+          $ref: '#/components/schemas/VoiceEngine'
+        voice:
+          type: string
+          minLength: 1
+          maxLength: 128
+        speed:
+          type: number
+          minimum: 0.5
+          maximum: 2.0
+          default: 1.0
+    VoiceTranscription:
+      type: object
+      additionalProperties: false
+      required:
+      - text
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        emotion:
+          type: string
+          maxLength: 32
     RelationshipClearancePreview:
       type: object
       description: Factual scope of relationship-domain rows a reset or delete would clear (FR-COMP-004). Counts cover every
@@ -12331,6 +13208,14 @@ components:
       schema:
         type: string
       description: Owner-scoped trusted-device identifier
+    VoiceClipId:
+      name: clipId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^[1-9][0-9]*$
+      description: Owner-scoped voice clip identifier
     RelationshipId:
       name: relationshipId
       in: path

@@ -276,6 +276,36 @@
       "PERSISTED",
       "DELETE_PENDING",
       "DELETED"
+    ],
+    "VoiceClipPurpose": [
+      "chat",
+      "proactive",
+      "preview"
+    ],
+    "VoiceClipStatus": [
+      "queued",
+      "running",
+      "ready",
+      "failed",
+      "expired"
+    ],
+    "VoiceEngine": [
+      "kokoro",
+      "cosyvoice"
+    ],
+    "VoiceErrorKind": [
+      "bad_request",
+      "rate_limited",
+      "upstream_error",
+      "timeout",
+      "unavailable",
+      "storage_error"
+    ],
+    "VoiceFrequency": [
+      false,
+      "LOW",
+      "STANDARD",
+      "HIGH"
     ]
   },
   "generatorVersion": "1.0.0",
@@ -549,12 +579,16 @@
           {
             "file": "companion-presentation.yaml",
             "kind": "multi-enum"
+          },
+          {
+            "file": "voice.yaml",
+            "kind": "multi-enum"
           }
         ],
         "generatorVersion": "1.0.0",
         "schemaVersion": 1
       },
-      "sha256": "c81997ea6a7346f7358ab5d487833f25bbdcdd818366f81534c8da1713aabafd"
+      "sha256": "8eea06253882cc6f97affcb4815c037848b910a9c594b7b44620ef71d8f24ae0"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -1082,7 +1116,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 104,
+          "KEEP": 112,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -2763,6 +2797,102 @@
             "operationId": "revokeEmergencyContact",
             "path": "/api/v1/emergency-contact/revoke",
             "replacementOrImpact": "Contact revoke has no current frontend entry. Crisis copy may show real-world resources without claiming notification."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getVoiceEngines",
+            "path": "/api/v1/voice/engines",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getVoiceSettings",
+            "path": "/api/v1/voice/settings",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "PUT",
+            "operationId": "putVoiceSettings",
+            "path": "/api/v1/voice/settings",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "createVoiceClip",
+            "path": "/api/v1/relationships/{relationshipId}/voice-clips",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getVoiceClip",
+            "path": "/api/v1/voice-clips/{clipId}",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "previewVoice",
+            "path": "/api/v1/voice/preview",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "POST",
+            "operationId": "transcribeVoice",
+            "path": "/api/v1/voice/asr",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction",
+              "core-outcome"
+            ],
+            "method": "GET",
+            "operationId": "getVoiceClipAudio",
+            "path": "/api/v1/voice-clips/{clipId}/audio",
+            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -2799,7 +2929,7 @@
           }
         ]
       },
-      "sha256": "01800c329f4d3b375ebe8b07f5efe1fb11c57f2d9e31e0022c42c6d434658550"
+      "sha256": "d9ef12a1a72ef369516fd01a0cc47fb82fefbc51655c86fa8729d770c5c0a9ae"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
@@ -3786,6 +3916,120 @@
         "schemaVersion": 1
       },
       "sha256": "0af1ef5a8c02f644beea396503bf0ad07b7445833996c69666076970ad28a451"
+    },
+    "voice.yaml": {
+      "document": {
+        "catalogId": "voice",
+        "enums": [
+          {
+            "entries": [
+              {
+                "code": "kokoro",
+                "order": 0
+              },
+              {
+                "code": "cosyvoice",
+                "order": 1
+              }
+            ],
+            "typeName": "VoiceEngine"
+          },
+          {
+            "entries": [
+              {
+                "code": "chat",
+                "order": 0
+              },
+              {
+                "code": "proactive",
+                "order": 1
+              },
+              {
+                "code": "preview",
+                "order": 2
+              }
+            ],
+            "typeName": "VoiceClipPurpose"
+          },
+          {
+            "entries": [
+              {
+                "code": "queued",
+                "order": 0
+              },
+              {
+                "code": "running",
+                "order": 1
+              },
+              {
+                "code": "ready",
+                "order": 2
+              },
+              {
+                "code": "failed",
+                "order": 3
+              },
+              {
+                "code": "expired",
+                "order": 4
+              }
+            ],
+            "typeName": "VoiceClipStatus"
+          },
+          {
+            "entries": [
+              {
+                "code": "bad_request",
+                "order": 0
+              },
+              {
+                "code": "rate_limited",
+                "order": 1
+              },
+              {
+                "code": "upstream_error",
+                "order": 2
+              },
+              {
+                "code": "timeout",
+                "order": 3
+              },
+              {
+                "code": "unavailable",
+                "order": 4
+              },
+              {
+                "code": "storage_error",
+                "order": 5
+              }
+            ],
+            "typeName": "VoiceErrorKind"
+          },
+          {
+            "entries": [
+              {
+                "code": false,
+                "order": 0
+              },
+              {
+                "code": "LOW",
+                "order": 1
+              },
+              {
+                "code": "STANDARD",
+                "order": 2
+              },
+              {
+                "code": "HIGH",
+                "order": 3
+              }
+            ],
+            "typeName": "VoiceFrequency"
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "0486842e1ea80e5062aa3eb4ede049d03aa575b6065aaec87969e2b858232ed6"
     }
   }
 }

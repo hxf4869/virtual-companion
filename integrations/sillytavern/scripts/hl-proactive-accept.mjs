@@ -70,6 +70,20 @@ export async function sceneHlProactive(ctx) {
     const relationshipId = String(binding.json.relationshipId);
     if (!decimalId.test(relationshipId)) throw new Error('关系编号无效');
 
+    // VO-1: the contract-only migration must preserve existing host binding
+    // and proactive behavior while installing owner-isolated voice storage.
+    const voiceContract = JSON.parse(ctx.w10.psql(`SELECT json_build_object(
+        'tables', (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'vc' AND c.relname IN ('voice_clip', 'voice_settings')
+              AND c.relrowsecurity AND c.relforcerowsecurity),
+        'defaults', (SELECT kokoro_voice IS NULL AND cosy_voice IS NULL
+            AND voice_speed = 1.0 AND voice_frequency IS NULL AND proactive_voice
+            FROM vc.relationship WHERE owner_user_id = ${owner} AND id = ${relationshipId})
+    )::text;`).trim());
+    if (voiceContract.tables !== 2 || voiceContract.defaults !== true) {
+        throw new Error('VO-1 语音存储隔离或关系默认值不符');
+    }
+
     const reconcile = async () => {
         const current = (await read())[0]?.chat_metadata?.vc_f2;
         const result = await ctx.admin.call('POST', '/api/v1/st/sources/reconcile', { chatIdentities: [current?.id || token.id] });

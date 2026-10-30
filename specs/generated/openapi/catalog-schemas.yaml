@@ -316,3 +316,38 @@ components:
       - AVATAR_FEMALE_01
       - AVATAR_MALE_01
       - AVATAR_NEUTRAL_01
+    VoiceEngine:
+      type: string
+      enum:
+      - kokoro
+      - cosyvoice
+    VoiceClipPurpose:
+      type: string
+      enum:
+      - chat
+      - proactive
+      - preview
+    VoiceClipStatus:
+      type: string
+      enum:
+      - queued
+      - running
+      - ready
+      - failed
+      - expired
+    VoiceErrorKind:
+      type: string
+      enum:
+      - bad_request
+      - rate_limited
+      - upstream_error
+      - timeout
+      - unavailable
+      - storage_error
+    VoiceFrequency:
+      type: string
+      enum:
+      - false
+      - LOW
+      - STANDARD
+      - HIGH

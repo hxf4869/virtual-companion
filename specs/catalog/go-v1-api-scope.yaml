@@ -11,7 +11,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   the OpenAPI surface: GET /actuator/health, GET /actuator/health/liveness, GET /actuator/health/readiness,
   GET /actuator/prometheus.'
 counts:
-  KEEP: 104
+  KEEP: 112
   SIMPLIFY: 5
   DEFER: 15
   RETIRE: 42
@@ -1414,6 +1414,86 @@ operations:
   decision: RETIRE
   replacementOrImpact: Contact revoke has no current frontend entry. Crisis copy may show real-world resources without claiming
     notification.
+- operationId: getVoiceEngines
+  method: GET
+  path: /api/v1/voice/engines
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
+- operationId: getVoiceSettings
+  method: GET
+  path: /api/v1/voice/settings
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
+- operationId: putVoiceSettings
+  method: PUT
+  path: /api/v1/voice/settings
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
+- operationId: createVoiceClip
+  method: POST
+  path: /api/v1/relationships/{relationshipId}/voice-clips
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
+- operationId: getVoiceClip
+  method: GET
+  path: /api/v1/voice-clips/{clipId}
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
+- operationId: previewVoice
+  method: POST
+  path: /api/v1/voice/preview
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
+- operationId: transcribeVoice
+  method: POST
+  path: /api/v1/voice/asr
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
+- operationId: getVoiceClipAudio
+  method: GET
+  path: /api/v1/voice-clips/{clipId}/audio
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  - core-outcome
+  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
+    ST consumers use Go only; no browser engine access.
 undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites
   method: POST

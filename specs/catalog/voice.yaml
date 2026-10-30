@@ -1,0 +1,53 @@
+schemaVersion: 1
+catalogId: voice
+enums:
+- typeName: VoiceEngine
+  entries:
+  - code: kokoro
+    order: 0
+  - code: cosyvoice
+    order: 1
+- typeName: VoiceClipPurpose
+  entries:
+  - code: chat
+    order: 0
+  - code: proactive
+    order: 1
+  - code: preview
+    order: 2
+- typeName: VoiceClipStatus
+  entries:
+  - code: queued
+    order: 0
+  - code: running
+    order: 1
+  - code: ready
+    order: 2
+  - code: failed
+    order: 3
+  - code: expired
+    order: 4
+- typeName: VoiceErrorKind
+  entries:
+  - code: bad_request
+    order: 0
+  - code: rate_limited
+    order: 1
+  - code: upstream_error
+    order: 2
+  - code: timeout
+    order: 3
+  - code: unavailable
+    order: 4
+  - code: storage_error
+    order: 5
+- typeName: VoiceFrequency
+  entries:
+  - code: OFF
+    order: 0
+  - code: LOW
+    order: 1
+  - code: STANDARD
+    order: 2
+  - code: HIGH
+    order: 3

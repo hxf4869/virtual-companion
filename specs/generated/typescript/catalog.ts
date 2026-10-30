@@ -98,3 +98,18 @@ export type CompanionGender = typeof CompanionGenderValues[number]
 
 export const CompanionAvatarValues = ["AVATAR_FEMALE_01", "AVATAR_MALE_01", "AVATAR_NEUTRAL_01"] as const
 export type CompanionAvatar = typeof CompanionAvatarValues[number]
+
+export const VoiceEngineValues = ["kokoro", "cosyvoice"] as const
+export type VoiceEngine = typeof VoiceEngineValues[number]
+
+export const VoiceClipPurposeValues = ["chat", "proactive", "preview"] as const
+export type VoiceClipPurpose = typeof VoiceClipPurposeValues[number]
+
+export const VoiceClipStatusValues = ["queued", "running", "ready", "failed", "expired"] as const
+export type VoiceClipStatus = typeof VoiceClipStatusValues[number]
+
+export const VoiceErrorKindValues = ["bad_request", "rate_limited", "upstream_error", "timeout", "unavailable", "storage_error"] as const
+export type VoiceErrorKind = typeof VoiceErrorKindValues[number]
+
+export const VoiceFrequencyValues = [false, "LOW", "STANDARD", "HIGH"] as const
+export type VoiceFrequency = typeof VoiceFrequencyValues[number]

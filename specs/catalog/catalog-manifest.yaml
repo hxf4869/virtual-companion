@@ -84,3 +84,5 @@ catalogs:
   kind: multi-enum
 - file: companion-presentation.yaml
   kind: multi-enum
+- file: voice.yaml
+  kind: multi-enum
