@@ -164,6 +164,17 @@ db_name=$(docker inspect --format '{{.Name}}' "$db_id")
 db_name=${db_name#/}
 safe_token "$db_name" || die "数据库容器名无效"
 
+# 先切到目标提交再备份：备份用目标提交里的 backup.sh。运行中的服务到 compose up 才换。
+if [ -n "$(git status --porcelain)" ]; then
+  echo "FAIL: 工作区不干净，已停止" >&2
+  exit 1
+fi
+[ -f "$VC_SRC_BUNDLE" ] || die "找不到源码包"
+git fetch -q "$VC_SRC_BUNDLE" "refs/vc-deploy/${VC_NEW_IMAGE_TAG}"
+rm -f "$VC_SRC_BUNDLE"
+prev_head=$(git rev-parse HEAD)
+git checkout --detach "$VC_COMMIT"
+
 mkdir -p "$VC_DEPLOY_BACKUP_DIR"
 chmod 700 "$VC_DEPLOY_BACKUP_DIR"
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -175,17 +186,10 @@ if ! bash integrations/sillytavern/scripts/backup.sh \
   "$st_root" \
   "$VC_DEPLOY_ST_CONFIG" \
   "$VC_DEPLOY_BACKUP_DIR/vc-${stamp}.vcbae1"; then
-  die "备份失败，已停止"
+  git checkout -q --detach "$prev_head"
+  die "备份失败，已停止（源码已切回原版本）"
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
-  echo "FAIL: 工作区不干净，已停止" >&2
-  exit 1
-fi
-[ -f "$VC_SRC_BUNDLE" ] || die "找不到源码包"
-git fetch -q "$VC_SRC_BUNDLE" "refs/vc-deploy/${VC_NEW_IMAGE_TAG}"
-rm -f "$VC_SRC_BUNDLE"
-git checkout --detach "$VC_COMMIT"
 
 [ -f "$VC_DEPLOY_COMPOSE_ENV" ] || die "缺少 compose.env"
 require_compose "$VC_DEPLOY_COMPOSE_ENV"

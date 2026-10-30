@@ -40,7 +40,7 @@ compose() {
 }
 
 mode_of() {
-    stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+    stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
 
 write_600() {
@@ -192,7 +192,7 @@ validate_models() {
         exit 1
     fi
     VC_RERANK_MODELS_DIR=$dir
-    size=$(stat -f '%z' "$gguf" 2>/dev/null || stat -c '%s' "$gguf")
+    size=$(stat -c '%s' "$gguf" 2>/dev/null || stat -f '%z' "$gguf")
     if [[ "$size" != "$RERANK_BYTES" ]]; then
         echo "重排模型大小不符" >&2
         exit 1

@@ -10,6 +10,7 @@ case "${1:-}" in
     exit 0
     ;;
   fetch) exit 0 ;;
+  rev-parse) printf '%s\n' prevhead; exit 0 ;;
   checkout)
     if [ "${2:-}" != "--detach" ] || [ -z "${3:-}" ]; then
       echo "bad checkout $*" >&2

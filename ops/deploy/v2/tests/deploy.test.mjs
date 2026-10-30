@@ -269,7 +269,7 @@ test('compose.env 缺变量时停在升级前且不输出值', () => {
   const dockerLog = fs.existsSync(server.dockerLog) ? fs.readFileSync(server.dockerLog, 'utf8') : '';
   assert.doesNotMatch(dockerLog, / up /);
   const order = fs.readFileSync(server.orderLog, 'utf8').trim().split('\n');
-  assert.deepEqual(order, ['load', 'backup', HEAD]);
+  assert.deepEqual(order, ['load', HEAD, 'backup']);
 });
 
 test('本机替身跑通完整流程', () => {
@@ -299,7 +299,7 @@ test('本机替身跑通完整流程', () => {
   assert.equal(fs.statSync(server.composeEnv).mode & 0o777, 0o600);
   assert.equal(fs.readFileSync(server.checkoutFile, 'utf8').trim(), HEAD);
   const order = fs.readFileSync(server.orderLog, 'utf8').trim().split('\n');
-  assert.deepEqual(order, ['load', 'backup', HEAD, 'up']);
+  assert.deepEqual(order, ['load', HEAD, 'backup', 'up']);
   const dockerLog = fs.readFileSync(server.dockerLog, 'utf8');
   assert.equal(dockerLog.split('\n').filter((line) => line.includes(' up ')).length, 1);
   assert.match(dockerLog, /--force-recreate/);

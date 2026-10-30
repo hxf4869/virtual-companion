@@ -60,7 +60,7 @@ elif [ -n "${VC_ST_BACKUP_PASSPHRASE_FILE:-}" ]; then
     [ -f "$KF" ] || { echo "FAIL: keyfile 不存在" >&2; exit 1; }
     KF_REAL="$(cd "$(dirname "$KF")" && pwd -P)/$(basename "$KF")"
     case "$KF_REAL" in "$DATA_REAL"/*) echo "FAIL: keyfile 位于 dataRoot 内（密钥必须在备份对象外）" >&2; exit 1;; esac
-    [ "$(stat -f '%Lp' "$KF" 2>/dev/null || stat -c '%a' "$KF")" = "600" ] || { echo "FAIL: keyfile 必须是 0600" >&2; exit 1; }
+    [ "$(stat -c '%a' "$KF" 2>/dev/null || stat -f '%Lp' "$KF")" = "600" ] || { echo "FAIL: keyfile 必须是 0600" >&2; exit 1; }
     PASS_ARGS=(-pass "file:$KF"); PASS_SRC=(--pass-file "$KF")
 elif [ -n "${VC_ST_BACKUP_PASSPHRASE:-}" ]; then
     export VC_ST_BACKUP_PASSPHRASE
@@ -181,7 +181,7 @@ echo "== [1/4] 打包保护清单（${PACKED}）"
 [ ${#MISSING[@]} -eq 0 ] || echo "      未出现（跳过）：${MISSING[*]}"
 tar -cf "$WORK/plain.tar" "${TAR_ARGS[@]}" || { echo "FAIL: tar 打包失败" >&2; exit 2; }
 ENTRIES=$(tar -tf "$WORK/plain.tar" | wc -l | tr -d ' ')
-BYTES=$(stat -f '%z' "$WORK/plain.tar" 2>/dev/null || stat -c '%s' "$WORK/plain.tar")
+BYTES=$(stat -c '%s' "$WORK/plain.tar" 2>/dev/null || stat -f '%z' "$WORK/plain.tar")
 
 echo "== [2/4] 加密 openssl enc -aes-256-cbc -pbkdf2 -salt"
 openssl enc -aes-256-cbc -pbkdf2 -salt "${PASS_ARGS[@]}" -in "$WORK/plain.tar" -out "$WORK/body" || { echo "FAIL: openssl enc 失败" >&2; exit 3; }
@@ -196,7 +196,7 @@ openssl enc -d -aes-256-cbc -pbkdf2 "${PASS_ARGS[@]}" -in "$WORK/verify.body" -o
 cmp -s "$WORK/plain.tar" "$WORK/verify.tar" || { echo "FAIL: 自校验字节不一致" >&2; exit 5; }
 
 mv "$WORK/out.vcbae1" "$OUT"; chmod 600 "$OUT"
-OUT_BYTES=$(stat -f '%z' "$OUT" 2>/dev/null || stat -c '%s' "$OUT")
+OUT_BYTES=$(stat -c '%s' "$OUT" 2>/dev/null || stat -f '%z' "$OUT")
 if [ "$PG_INCLUDED" -eq 0 ]; then
     echo "POSTGRESQL 未含 PostgreSQL"
 fi
