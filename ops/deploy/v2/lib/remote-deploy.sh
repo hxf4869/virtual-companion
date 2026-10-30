@@ -182,12 +182,19 @@ export VC_ST_BACKUP_PASSPHRASE_FILE="$VC_DEPLOY_BACKUP_PASSPHRASE_FILE"
 export VC_BACKUP_PG_CONTAINER="$db_name"
 export VC_BACKUP_PG_DATABASE=vc
 export VC_MEMORYCORE_DATA_ROOT="$mc_root"
+export VC_MEMORYCORE_PG_CONTAINER="$db_name"
+export VC_MEMORYCORE_PG_USER=vc_migrator
+export VC_BACKUP_PG_USER=vc_migrator
+# MemoryCore 运行时持有 runtime.lock（容器内 pid），备份前先停服务再清锁；部署随后整体重建。
+compose stop memorycore >/dev/null
+rm -f "$mc_root/runtime.lock"
 if ! bash integrations/sillytavern/scripts/backup.sh \
   "$st_root" \
   "$VC_DEPLOY_ST_CONFIG" \
   "$VC_DEPLOY_BACKUP_DIR/vc-${stamp}.vcbae1"; then
   git checkout -q --detach "$prev_head"
-  die "备份失败，已停止（源码已切回原版本）"
+  compose start memorycore >/dev/null || true
+  die "备份失败，已停止（源码已切回原版本，MemoryCore 已重新启动）"
 fi
 
 

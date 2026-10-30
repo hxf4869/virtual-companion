@@ -85,6 +85,10 @@ if [ "${1:-}" = "compose" ]; then
   done
   case "$sub" in
     config) exit 0 ;;
+    stop|start)
+      note "$sub-${extras[0]:-}"
+      exit 0
+      ;;
     up)
       note up
       exit 0

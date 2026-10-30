@@ -37,7 +37,9 @@ def rights():
         env['PGDATABASE'] = connection
         command = ['psql', '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1']
     else:
-        command = ['docker', '--context', 'orbstack', 'exec', '-i', container, 'psql',
+        # 本机默认 context 即 OrbStack；服务器上没有该 context，用默认 docker。
+        context = ['--context', os.environ['VC_DOCKER_CONTEXT']] if os.environ.get('VC_DOCKER_CONTEXT') else []
+        command = ['docker', *context, 'exec', '-i', container, 'psql',
                    '-U', os.environ.get('VC_MEMORYCORE_PG_USER', 'postgres'),
                    '-d', os.environ.get('VC_MEMORYCORE_PG_DATABASE', 'vc'),
                    '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1']
