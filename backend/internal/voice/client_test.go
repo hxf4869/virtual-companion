@@ -1,11 +1,13 @@
 package voice
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,6 +31,50 @@ func fixtureWAV() []byte {
 	copy(b[36:], "data")
 	binary.LittleEndian.PutUint32(b[40:], 48000)
 	return b
+}
+
+func fixtureFloatWAV(samples []float32) []byte {
+	b := make([]byte, 44+len(samples)*4)
+	copy(b, fixtureWAV()[:44])
+	binary.LittleEndian.PutUint32(b[4:], uint32(len(b)-8))
+	binary.LittleEndian.PutUint16(b[20:], 3)
+	binary.LittleEndian.PutUint32(b[28:], 96000)
+	binary.LittleEndian.PutUint16(b[32:], 4)
+	binary.LittleEndian.PutUint16(b[34:], 32)
+	binary.LittleEndian.PutUint32(b[40:], uint32(len(samples)*4))
+	for i, value := range samples {
+		binary.LittleEndian.PutUint32(b[44+i*4:], math.Float32bits(value))
+	}
+	return b
+}
+
+func TestCosyFloatWAVToPCM16(t *testing.T) {
+	input := fixtureFloatWAV([]float32{-2, -1, -.5, 0, .5, 1, 2})
+	pcm, err := cosyWAVToPCM16(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duration, err := WAVDuration(pcm); err != nil || duration != 1 {
+		t.Fatalf("normalized duration=%d err=%v", duration, err)
+	}
+	for i, want := range []int16{-32768, -32768, -16384, 0, 16383, 32767, 32767} {
+		if got := int16(binary.LittleEndian.Uint16(pcm[44+i*2:])); got != want {
+			t.Fatalf("sample %d=%d want %d", i, got, want)
+		}
+	}
+	for _, invalid := range [][]byte{input[:len(input)-1], fixtureFloatWAV([]float32{float32(math.NaN())}), fixtureFloatWAV([]float32{float32(math.Inf(1))})} {
+		if _, err := cosyWAVToPCM16(invalid); err == nil {
+			t.Fatal("invalid float WAV accepted")
+		}
+	}
+	binary.LittleEndian.PutUint32(input[24:], 16000)
+	if _, err := cosyWAVToPCM16(input); err == nil {
+		t.Fatal("wrong sample rate accepted")
+	}
+	original := fixtureWAV()
+	if got, err := cosyWAVToPCM16(original); err != nil || !bytes.Equal(got, original) {
+		t.Fatal("PCM16 output changed")
+	}
 }
 
 func TestHTTPClientEngineProtocols(t *testing.T) {
@@ -74,7 +120,11 @@ func TestHTTPClientEngineProtocols(t *testing.T) {
 					t.Error("CosyVoice protocol mismatch")
 				}
 				w.Header().Set("Content-Type", "audio/wav")
-				_, _ = w.Write(fixtureWAV())
+				if engine == CosyVoice {
+					_, _ = w.Write(fixtureFloatWAV(make([]float32, 24000)))
+				} else {
+					_, _ = w.Write(fixtureWAV())
+				}
 			}))
 			defer srv.Close()
 			client, err := NewHTTPClient(engine, srv.URL+"/v1")

@@ -139,6 +139,12 @@ func (c *HTTPClient) Synthesize(ctx context.Context, text, voice string, params 
 	if err != nil {
 		return nil, engineFailure(ctx, err)
 	}
+	if c.engine == CosyVoice {
+		data, err = cosyWAVToPCM16(data)
+		if err != nil {
+			return nil, &EngineError{Kind: "upstream_error"}
+		}
+	}
 	return data, nil
 }
 

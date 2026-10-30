@@ -26,7 +26,11 @@ Owner 决定（2026-10-31 问答）：日常问候等允许等待的语音用 Co
 | 接口 | `POST {base}/audio/speech`，`GET {base}/voices` | `POST {base}/audio/speech`，`GET /healthz` 的 `voices` | 计划 `POST {base}/audio/transcriptions` |
 | 参数 | `model: kokoro-zh-v1.1`、`voice`（100 个中文音色）、`speed` 0.5–2.0、`response_format` wav/pcm；**不得**带 `instructions` | `model: cosyvoice3-q8`、`voice`、`speed` 0.5–2.0、`response_format:wav`（显式指定；API 默认 MP3，本机构建无该编码器）、`instructions`（情绪）、`seed`、`stream:false` | 语言、是否返回情绪标签 |
 | 并发 | 单并发，忙时 429 | 单并发 | 单并发 |
-| 输出 | 24 kHz 单声道 16-bit | 同左 | — |
+| 输出 | 24 kHz 单声道 PCM16 WAV | 当前实测为 24 kHz 单声道 Float32 WAV；Go 转为 PCM16 后再校验、加密入库 | — |
+
+VO-13 联调以真实响应头为准：带音频编码器的构建可输出 Float32 WAV，无该编码器的构建也可输出 PCM16；
+Go 保留有效 PCM16，转换当前实际的标准 Float32 WAV，存储和浏览器接口仍只有 PCM16 WAV。
+参见 [上游 API 音频封装](https://github.com/Lourdle/cosyvoice.cpp/blob/main/tools/server/server_common.cpp)。
 
 硬约束：
 - 只对宿主机回环与 Docker 网络开放，无鉴权。**浏览器永远不直连**，只经 Go 后端代理。不得把端口发布到公网。
