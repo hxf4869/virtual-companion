@@ -39,6 +39,13 @@ export async function sceneVoiceChat(ctx) {
         await page.waitForFunction(() => SillyTavern.getContext().chat.at(-1).extra?.vc_voice?.status === 'failed', null, { timeout: 18000 });
         await voiceControl('kokoro'); // Waits for the real late response before asserting.
         assert.equal(await page.evaluate(() => SillyTavern.getContext().chat.at(-1).extra.vc_voice.status), 'failed', 'late audio never replaces text');
+        await sendVoiceTurn(page,ctx,{text:'讲一段合成示例文字',reply:'这是一段用于朗读验收的合成文字。'.repeat(7)});
+        const read=page.locator('#chat > .mes').last().locator('[data-vc-act="read"]');await read.waitFor({state:'visible'});
+        const original=await page.evaluate(()=>SillyTavern.getContext().chat.at(-1).mes);
+        await read.click();await page.waitForFunction(()=>document.querySelector('#chat > .mes:last-child [data-vc-act="read"]')?.getAttribute('aria-pressed')==='true');
+        assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.at(-1).mes),original,'read aloud retains original');
+        assert.equal(await page.locator('#chat > .mes').last().locator('.vc-voice').count(),0,'text reply stays text');
+        await voiceShots(page,ctx,'VO-11','read-aloud');
         await page.evaluate(async (base) => (await import(`${base}/voice.js`)).voicePlayer.stop(), voiceExtension);
     } finally { await browser.close(); await ctx.fixtureHttp.setOverride('vc03m-chat', null); }
 }

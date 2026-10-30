@@ -22,7 +22,7 @@ import {
 import { openSheet } from './ui/sheet.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 import { clearMessageVoice, renderMessageVoice, voicePlayer } from './voice.js';
-import { requestChatVoice } from './voice-chat.js';
+import { chatVoiceAvailable, readReplyAloud, requestChatVoice } from './voice-chat.js';
 
 export const REPLY_STYLE_KEY = 'vc-reply-style';
 export const PRESS_MS = 420;
@@ -620,6 +620,7 @@ function ensureTools(mes, { character }) {
     ensureAct(tools, 'regen', 'refresh-cw', '重新生成', character);
     ensureAct(tools, 'edit', 'pencil', '编辑', true);
     ensureAct(tools, 'copy', 'copy', '复制', true);
+    ensureAct(tools,'read','volume-2','朗读',character && companionMode() && chatVoiceAvailable(safeContext()));
     if (!tools.querySelector('.vc-mes-gap')) {
         const gap = document.createElement('span');
         gap.className = 'vc-mes-gap';
@@ -664,6 +665,7 @@ function bindActions(chat) {
 }
 
 function runAction(act, mes) {
+    if(act==='read'){void readReplyAloud(Number(mes.getAttribute('mesid')),mes.querySelector('[data-vc-act="read"]'));return;}
     if (act === 'swipe-prev') {
         animateSwipe(mes, -1);
         mes.querySelector('.swipe_left')?.click();

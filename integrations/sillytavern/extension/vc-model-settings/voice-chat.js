@@ -49,11 +49,14 @@ export async function loadVoicePolicy(context) {
     const id = String(context?.chatMetadata?.vc_binding?.relationshipId || '');
     if (!id) return null;
     if (policyCache?.id === id && policyCache.until > Date.now()) return policyCache.promise;
+    const entry={id,until:Date.now()+30000};
     const promise = Promise.all([fetchVoiceEngines(), fetchVoiceSettings(), fetchRelationships()]).then(([engines, settings, relationships]) => {
         const relationship = relationships.find((row) => String(row.relationshipId) === id);
-        return { engines, settings, relationship, available: engines.tts.some((row) => row.engine === 'kokoro' && row.configured && row.enabled && row.healthy) };
+        const value={ engines, settings, relationship, available: Boolean(relationship) && engines.tts.some((row) => row.engine === 'kokoro' && row.configured && row.enabled && row.healthy) };
+        if(policyCache===entry){entry.value=value;globalThis.document?.dispatchEvent(new Event('vc-chat-retry'));}
+        return value;
     }).catch(() => null);
-    policyCache = { id, until: Date.now() + 30000, promise };
+    entry.promise=promise;policyCache=entry;
     return promise;
 }
 
@@ -87,7 +90,37 @@ export async function waitForVoiceClip(id, { timeoutMs = VOICE_REPLY_WAIT_MS, fe
     finally { finished = true; clearTimeout(deadline); wake?.(); }
 }
 
-export function installChatVoice(options) { integration = options; }
+export function chatVoiceAvailable(context){return policyCache?.id===String(context?.chatMetadata?.vc_binding?.relationshipId||'') && policyCache?.value?.available && policyCache.value.relationship.voiceFrequency!=='OFF';}
+export function installChatVoice(options) {
+    integration = options;
+    const refresh=async()=>{try{await options.ready;await loadVoicePolicy(options.getContext());}catch{ /* Capability remains hidden while unavailable. */ }};
+    void refresh();const context=options.getContext();context.eventSource?.on(context.eventTypes.CHAT_CHANGED,()=>void refresh());
+    globalThis.addEventListener?.('vc-voice-settings-changed',()=>{invalidateVoicePolicy();void refresh();});
+}
+
+export async function readReplyAloud(index,button){
+    if(!integration || button.disabled)return;
+    const context=integration.getContext();const message=context.chat?.[index];const text=message?.mes;
+    if(!message || message.is_user || message.is_system || context.chatMetadata?.vc_binding?.mode!=='COMPANION')return;
+    const active=()=>integration.getContext().chat===context.chat && context.chat[index]===message && message.mes===text;
+    const {voicePlayer}=await import('./voice.js');const {icon}=await import('./ui/icons.js');
+    const state=(playing)=>{button.setAttribute('aria-label',playing?'暂停语音':'朗读');button.setAttribute('aria-pressed',String(playing));button.innerHTML=icon(playing?'pause':'volume-2',{size:18});};
+    const failure=()=>{state(false);button.title='没有完成，请重试。';button.vcRead=null;};
+    if(button.vcRead?.message===message && button.vcRead.text===text){await voicePlayer.toggle(button.vcRead.clipId,{onState:state,onError:failure});return;}
+    button.disabled=true;button.setAttribute('aria-busy','true');button.setAttribute('aria-label','正在录音…');
+    try{
+        const policy=await loadVoicePolicy(context);if(!active() || !policy?.available)return;
+        await integration.saveChat();if(!active())return;
+        const identity=context.chatMetadata.vc_f2?.id,source=message.extra?.vc_source;
+        if(!identity || !source?.id || !message.vc_message_id)return;
+        await reconcileSTSources([identity]);if(!active())return;
+        const queued=await createVoiceClip(String(policy.relationship.relationshipId),{messageRef:`stmsg:${identity}:${message.vc_message_id}:${source.id}`,text,purpose:'chat'});
+        const clip=await waitForVoiceClip(queued.clipId,{timeoutMs:policy.settings.kokoroTimeoutSeconds*1000+5000});
+        if(!active())return;if(!clip)throw new Error('voice');
+        button.vcRead={clipId:clip.clipId,message,text};await voicePlayer.toggle(clip.clipId,{onState:state,onError:failure});
+    }catch{failure();}
+    finally{button.disabled=false;button.removeAttribute('aria-busy');if(button.getAttribute('aria-pressed')!=='true')state(false);}
+}
 
 export async function requestChatVoice(index) {
     if (!integration) return;

@@ -157,7 +157,7 @@ export async function init() {
         writeExtensionField: (...args) => getContext().writeExtensionField(...args), captureSessionContext,
     });
     bindingReady.catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
-    installChatVoice({ getContext, saveChat: saveCurrentChat });
+    installChatVoice({ getContext, saveChat: saveCurrentChat,ready:bindingReady });
     void refreshVoiceAvailability();
     installVoiceInput({getContext,async sendText(text,metadata){
         const message=await sendMessageAsUser(text);
