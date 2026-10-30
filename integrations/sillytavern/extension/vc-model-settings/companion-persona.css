@@ -26,6 +26,7 @@ body.vc-ui .vc-onboarding-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  padding-bottom: calc(var(--vc-touch) + var(--vc-space-xxl));
 }
 
 body.vc-ui .vc-onboarding .vc-column,
@@ -49,10 +50,20 @@ body.vc-ui .vc-onboarding .vc-btn-fill {
 
 body.vc-ui .vc-style-page .vc-btn-text {
   margin-top: var(--vc-space-md);
+  margin-inline: 0;
+  padding-inline: 0;
+  align-self: flex-start;
 }
 
 body.vc-ui .vc-style-rule {
-  display: block;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: calc(var(--vc-touch) * 8);
+  margin: 0;
+  padding: var(--vc-space-md);
+  border-radius: var(--vc-radius-md);
+  background: var(--vc-sheet-group);
 }
 
 body.vc-ui [data-action="set-proactive-mode"][aria-pressed="true"] {
@@ -71,14 +82,46 @@ body.vc-ui .vc-persona-field textarea {
   line-height: var(--vc-lh-body);
 }
 
+body.vc-ui .vc-onboarding .vc-group:has(input[name="name"]) > .vc-cell {
+  padding: 0;
+}
+
 body.vc-ui .vc-onboarding input[name="name"] {
+  display: block;
+  width: 100%;
   min-height: var(--vc-touch);
+  margin: 0;
+  padding: 0 var(--vc-space-md);
+  border: 0;
+  border-radius: var(--vc-radius-md);
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+body.vc-ui .vc-onboarding input[name="name"]:focus,
+body.vc-ui .vc-onboarding input[name="name"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+body.vc-ui .vc-onboarding .vc-group:has(input[name="name"]:focus-visible) {
+  box-shadow: 0 0 0 2px var(--vc-accent);
 }
 
 body.vc-ui .vc-style-rule textarea {
   display: block;
-  min-height: calc(var(--vc-touch) * 8);
-  resize: vertical;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 100%;
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  resize: none;
+  field-sizing: content;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 body.vc-ui .vc-persona-field textarea {
@@ -100,7 +143,46 @@ body.vc-ui .vc-screen:has([data-action="save-persona"]) .vc-scroll {
 }
 
 body.vc-ui .vc-choice[aria-pressed="true"] {
-  color: var(--vc-accent-text);
+  color: var(--vc-ink);
+}
+
+body.vc-ui .vc-choice-mark {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  color: var(--vc-accent);
+}
+
+body.vc-ui .vc-sheet:has(.vc-style-page) .vc-sheet-head {
+  width: min(100%, var(--vc-read));
+  margin-inline: auto;
+  padding-inline: var(--vc-space-md);
+  box-sizing: border-box;
+  align-items: center;
+}
+
+body.vc-ui .vc-sheet:has(.vc-style-page) .vc-sheet-body {
+  width: min(100%, var(--vc-read));
+  margin-inline: auto;
+  padding-inline: var(--vc-space-md);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+body.vc-ui .vc-sheet:has(.vc-style-page) .vc-sheet-done,
+body.vc-ui .vc-sheet:has(.vc-style-page) .vc-sheet-back {
+  align-self: center;
+}
+
+body.vc-ui .vc-sheet:has(.vc-style-page) .vc-style-page {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
 }
 
 body.vc-ui .vc-persona-field {

@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { installMiniDom } from './mini-dom.mjs';
 import { installInstanceBinding } from '../extension/vc-model-settings/f2-client.js';
 import { armOnboardingBinding, bindingCoalesceKey, coalesceBinding, holdCompanionBinding, resetBindingCoalesce } from '../extension/vc-model-settings/instance-binding.js';
 import {
@@ -10,6 +12,7 @@ import {
     moodGuidance,
     pronounFor,
     readGlobalRules,
+    renderCompanionStyle,
     restoreDefaultRules,
 } from '../extension/vc-model-settings/persona.js';
 import { injectCompanionPrompt } from '../extension/vc-model-settings/companion-prompt.js';
@@ -352,6 +355,96 @@ test('无陪伴实例时引导文案原样，完成后走原生导入并开聊�
     assert.equal(bound[0].mode, 'COMPANION');
     assert.equal(opened[0].chatIdentity, 'chat-fixed');
     assert.equal(result.card.first_mes, imported[0].first_mes);
+});
+
+test('引导单选和说话风格多选都用行尾对勾，未选行没有对勾', () => {
+    const doc = installMiniDom();
+    const host = doc.createElement('div');
+    host.innerHTML = renderOnboarding({
+        name: '',
+        relation: '好朋友',
+        gender: '男生',
+        styles: ['口语短句，偶尔表情', '分享自己的日常'],
+    });
+    const checks = (button) => button.querySelectorAll('use').filter((node) => String(node.getAttribute('href') || '').includes('#check'));
+    const relations = host.querySelectorAll('button').filter((button) => button.getAttribute('data-choice') === 'relation');
+    const pickedRelation = relations.find((button) => button.getAttribute('aria-pressed') === 'true');
+    assert.equal(pickedRelation.getAttribute('data-value'), '好朋友');
+    assert.equal(checks(pickedRelation).length, 1);
+    const relationMark = pickedRelation.querySelector('.vc-choice-mark');
+    assert.ok(relationMark);
+    assert.equal(pickedRelation.children.indexOf(pickedRelation.querySelector('.vc-grow')) < pickedRelation.children.indexOf(relationMark), true);
+    for (const button of relations) {
+        if (button === pickedRelation) continue;
+        assert.equal(button.getAttribute('aria-pressed'), 'false');
+        assert.equal(button.querySelector('.vc-choice-mark'), null);
+        assert.equal(checks(button).length, 0);
+    }
+    const styles = host.querySelectorAll('button').filter((button) => button.hasAttribute('data-style'));
+    const on = styles.filter((button) => button.getAttribute('aria-pressed') === 'true');
+    const off = styles.filter((button) => button.getAttribute('aria-pressed') !== 'true');
+    assert.deepEqual(on.map((button) => button.getAttribute('data-style')), ['口语短句，偶尔表情', '分享自己的日常']);
+    assert.equal(off.length, 2);
+    for (const button of on) assert.equal(checks(button).length, 1);
+    for (const button of off) {
+        assert.equal(button.querySelector('.vc-choice-mark'), null);
+        assert.equal(checks(button).length, 0);
+    }
+    assert.match(host.textContent, /给 TA 起个名字/);
+    assert.match(host.innerHTML, /placeholder="比如：小满"/);
+    assert.match(host.textContent, /开始聊天/);
+});
+
+test('引导名字输入跟随卡片圆角，滚动区给开始聊天留出底部空白', async () => {
+    const css = await readFile(new URL('../extension/vc-model-settings/companion-persona.css', import.meta.url), 'utf8');
+    assert.match(css, /\.vc-onboarding input\[name="name"\] \{[\s\S]*?border-radius:\s*var\(--vc-radius-md\)/);
+    assert.match(css, /\.vc-onboarding input\[name="name"\]:focus-visible \{[\s\S]*?outline:\s*none/);
+    assert.match(css, /:has\(input\[name="name"\]:focus-visible\)[\s\S]*?box-shadow:[^;]*var\(--vc-accent\)/);
+    assert.match(css, /\.vc-onboarding-body \{[^}]*padding-bottom:\s*calc\(/);
+    assert.match(css, /\.vc-choice-mark \{[\s\S]*?color:\s*var\(--vc-accent\)/);
+    assert.match(css, /\.vc-choice\[aria-pressed="true"\] \{[\s\S]*?color:\s*var\(--vc-ink\)/);
+});
+
+test('陪伴风格编辑框是圆角卡片，高度随内容填满，恢复默认与表头同宽', async () => {
+    const doc = installMiniDom();
+    const host = doc.createElement('div');
+    host.className = 'vc-style-page';
+    host.innerHTML = renderCompanionStyle(DEFAULT_GLOBAL_RULES);
+    const card = host.querySelector('.vc-style-rule');
+    const area = card.querySelector('textarea');
+    const restore = host.querySelector('[data-action="restore-rules"]');
+    assert.equal(area.getAttribute('aria-label'), '陪伴风格');
+    assert.equal(area.value.includes('你正在和{{user}}用手机聊天') || area.textContent.includes('你正在和{{user}}用手机聊天'), true);
+    assert.equal(restore.textContent, '恢复默认');
+    assert.equal(restore.parent, card.parent);
+    const css = await readFile(new URL('../extension/vc-model-settings/companion-persona.css', import.meta.url), 'utf8');
+    assert.match(css, /\.vc-style-rule \{[\s\S]*?background:\s*var\(--vc-sheet-group\)/);
+    assert.match(css, /\.vc-style-rule \{[\s\S]*?border-radius:\s*var\(--vc-radius-md\)/);
+    assert.match(css, /\.vc-style-rule textarea \{[\s\S]*?max-height:\s*none/);
+    assert.match(css, /\.vc-style-rule textarea \{[\s\S]*?overflow:\s*hidden/);
+    assert.match(css, /\.vc-style-rule textarea \{[\s\S]*?field-sizing:\s*content/);
+    assert.match(css, /\.vc-style-page \.vc-btn-text \{[\s\S]*?padding-inline:\s*0/);
+    assert.match(css, /\.vc-sheet:has\(\.vc-style-page\) \.vc-sheet-head \{[\s\S]*?width:\s*min\(100%,\s*var\(--vc-read\)\)/);
+    assert.match(css, /\.vc-sheet:has\(\.vc-style-page\) \.vc-sheet-body \{[\s\S]*?width:\s*min\(100%,\s*var\(--vc-read\)\)/);
+    const { fitStyleField } = await import('../extension/vc-model-settings/persona.js');
+    assert.equal(typeof fitStyleField, 'function');
+    const page = {
+        parentElement: { clientHeight: 700 },
+        querySelector(sel) { return String(sel).includes('restore-rules') ? { offsetHeight: 44 } : null; },
+    };
+    const field = {
+        style: {},
+        scrollHeight: 200,
+        parentElement: { clientHeight: 80 },
+        closest(sel) { return sel === '.vc-style-page' ? page : null; },
+    };
+    fitStyleField(field);
+    assert.equal(field.style.overflow, 'hidden');
+    assert.equal(field.style.maxHeight, 'none');
+    assert.equal(field.style.height, '656px');
+    field.scrollHeight = 1200;
+    fitStyleField(field);
+    assert.equal(field.style.height, '1200px');
 });
 
 test('角色详情有人设入口', () => {

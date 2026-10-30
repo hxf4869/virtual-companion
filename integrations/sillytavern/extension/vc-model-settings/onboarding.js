@@ -3,6 +3,7 @@ import { listConsents } from './api.js';
 import { armOnboardingBinding, holdCompanionBinding } from './instance-binding.js';
 import { consentOutstanding } from './consent.js';
 import { buildCharacterCard, ensureCompanionStyles, GENDERS, RELATIONS, STYLE_OPTIONS } from './persona.js';
+import { icon } from './ui/icons.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
@@ -17,14 +18,22 @@ export function shouldOfferOnboarding(relationships) {
     return !relationshipRows(relationships).some((row) => (row?.personaRef || row?.persona_ref) === 'st-character');
 }
 
+function choiceMark(on) {
+    if (!on) return '';
+    return `<span class="vc-choice-mark" aria-hidden="true">${icon('check', { size: 22 })}</span>`;
+}
+
 function choice(name, value, current) {
-    const pressed = value === current ? 'true' : 'false';
-    return `<button type="button" class="vc-cell vc-choice" data-choice="${name}" data-value="${esc(value)}" aria-pressed="${pressed}"><span class="vc-grow">${esc(value)}</span></button>`;
+    const pressed = value === current;
+    return `<button type="button" class="vc-cell vc-choice" data-choice="${name}" data-value="${esc(value)}" aria-pressed="${pressed ? 'true' : 'false'}"><span class="vc-grow">${esc(value)}</span>${choiceMark(pressed)}</button>`;
 }
 
 export function renderOnboarding(state = {}) {
     const styles = new Set(Array.isArray(state.styles) ? state.styles : STYLE_OPTIONS);
-    const styleButtons = STYLE_OPTIONS.map((item) => `<button type="button" class="vc-cell vc-choice" data-style="${esc(item)}" aria-pressed="${styles.has(item) ? 'true' : 'false'}"><span class="vc-grow">${esc(item)}</span></button>`).join('');
+    const styleButtons = STYLE_OPTIONS.map((item) => {
+        const on = styles.has(item);
+        return `<button type="button" class="vc-cell vc-choice" data-style="${esc(item)}" aria-pressed="${on ? 'true' : 'false'}"><span class="vc-grow">${esc(item)}</span>${choiceMark(on)}</button>`;
+    }).join('');
     return `<div class="vc-onboarding-body"><div class="vc-column">
       <h1 class="vc-large-title" tabindex="-1">给 TA 起个名字</h1>
       <div class="vc-group"><label class="vc-cell"><input name="name" aria-label="给 TA 起个名字" placeholder="比如：小满" value="${esc(state.name || '')}" maxlength="32"></label></div>

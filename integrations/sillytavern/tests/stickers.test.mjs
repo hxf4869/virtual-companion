@@ -418,3 +418,54 @@ test('表情样式不写死色值和字号', async () => {
     assert.equal(/\d+px/.test(body), false);
     assert.equal(/\d+ms/.test(body), false);
 });
+
+const FLUENT_NOTE = 'Microsoft Fluent Emoji, Copyright (c) Microsoft Corporation, MIT License, https://github.com/microsoft/fluentui-emoji';
+
+test('表情包行内是缩略图、可读标签和删除，许可署名按包在列表底部只出现一次', () => {
+    const doc = installMiniDom();
+    const page = renderStickerPage(doc, {
+        settings: { enabled: true, frequency: 'normal' },
+        rows: [
+            { id: 'b1', tag: '开心', src: '/a.png', builtin: true, attribution: FLUENT_NOTE },
+            { id: 'b2', tag: '害羞', src: '/b.png', builtin: true, attribution: FLUENT_NOTE },
+            { id: 'c1', tag: '晚安', src: '/c.png', builtin: true, attribution: '自定义包，MIT' },
+            { id: 'u1', tag: '抱抱', name: '抱抱.png', src: '/u.png', builtin: false, attribution: '' },
+        ],
+    });
+    const list = page.querySelector('[data-vc-sticker-list]');
+    const upload = list.querySelector('[data-vc-sticker-upload]');
+    const rows = list.querySelectorAll('[data-vc-sticker-id]');
+    assert.equal(upload.textContent, '上传');
+    assert.equal(list.children.indexOf(upload) < list.children.indexOf(rows[0]), true);
+    assert.deepEqual(rows.map((row) => row.querySelector('[data-vc-sticker-tag]').value), ['开心', '害羞', '晚安', '抱抱']);
+    for (const row of rows) {
+        assert.ok(row.querySelector('.vc-sticker-thumb'));
+        assert.equal(row.querySelector('.vc-meta'), null);
+        assert.equal(row.textContent.includes('Microsoft'), false);
+        assert.equal(row.textContent.includes('MIT'), false);
+    }
+    assert.equal(rows[0].querySelector('[data-vc-sticker-tag]').hasAttribute('readonly'), true);
+    assert.equal(rows[3].querySelector('[data-vc-sticker-tag]').hasAttribute('readonly'), false);
+    assert.equal(rows[0].querySelector('[data-vc-sticker-delete]'), null);
+    assert.ok(rows[3].querySelector('[data-vc-sticker-delete]'));
+    const notes = page.querySelectorAll('[data-vc-sticker-attribution]');
+    assert.equal(notes.length, 2);
+    assert.equal(notes[0].classList.contains('vc-footnote'), true);
+    assert.match(notes[0].textContent, /Microsoft/);
+    assert.match(notes[0].textContent, /MIT/);
+    assert.equal(notes[1].textContent, '自定义包，MIT');
+    assert.equal(page.innerHTML.split(FLUENT_NOTE).length - 1, 1);
+    assert.equal(list.children.indexOf(rows.at(-1)) < page.children.indexOf(notes[0]), true);
+});
+
+test('表情标签输入在行内伸展，不会被压成空胶囊', async () => {
+    const css = await readFile(new URL('../extension/vc-model-settings/stickers.css', import.meta.url), 'utf8');
+    const block = css.match(/body\.vc-ui \.vc-sticker-tag \{([\s\S]*?)\n\}/);
+    assert.ok(block, '缺少 .vc-sticker-tag 规则');
+    const body = block[1];
+    assert.match(body, /flex:\s*1\s+1\s+auto/);
+    assert.match(body, /min-height:\s*var\(--vc-touch\)/);
+    assert.equal(/\bmin-width:\s*0\b/.test(body), false);
+    assert.equal(/width:\s*calc\(var\(--vc-space-xxl\)\s*\*\s*3\)/.test(body), false);
+    assert.match(css, /\.vc-sticker-page \.vc-footnote \{[\s\S]*?overflow-wrap:\s*anywhere/);
+});

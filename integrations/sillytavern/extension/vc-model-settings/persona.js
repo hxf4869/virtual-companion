@@ -125,6 +125,22 @@ export function renderCompanionStyle(text) {
     return `<label class="vc-style-rule"><textarea data-field="rules" aria-label="陪伴风格">${esc(text)}</textarea></label><button type="button" class="vc-btn vc-btn-text" data-action="restore-rules">恢复默认</button>`;
 }
 
+export function fitStyleField(area) {
+    if (!area?.style) return;
+    area.style.height = 'auto';
+    area.style.maxHeight = 'none';
+    area.style.overflow = 'hidden';
+    const content = Number(area.scrollHeight) || 0;
+    const page = typeof area.closest === 'function' ? area.closest('.vc-style-page') : null;
+    const scroller = page?.parentElement;
+    const button = page?.querySelector?.('[data-action="restore-rules"]');
+    const buttonHeight = Number(button?.offsetHeight) || 0;
+    const scrollerHeight = Number(scroller?.clientHeight) || 0;
+    const room = scrollerHeight > 0 ? Math.max(0, scrollerHeight - buttonHeight) : Number(area.parentElement?.clientHeight) || 0;
+    const next = Math.max(content, room);
+    if (next > 0) area.style.height = `${next}px`;
+}
+
 export function renderPersonaEditor(fields = {}) {
     const row = (key, label) => `<label class="vc-cell vc-persona-field"><span class="vc-grow">${label}</span><textarea data-persona="${key}" aria-label="${label}">${esc(fields[key] || '')}</textarea></label>`;
     return `<header class="vc-navbar" style="--vc-nav-p:1"><button type="button" class="vc-circle vc-glass" data-action="close-persona" aria-label="返回">${icon('chevron-left')}</button><h1 class="vc-nav-title" tabindex="-1">人设</h1><div class="vc-nav-spacer"></div></header><div class="vc-scroll"><div class="vc-column"><div class="vc-group">${row('description', '介绍')}${row('personality', '性格')}${row('scenario', '情景')}${row('first_mes', '开场')}${row('mes_example', '例句')}</div><p data-persona-error role="alert"></p><button type="button" class="vc-btn vc-btn-fill" data-action="save-persona">保存</button></div></div>`;
@@ -154,15 +170,21 @@ export function openCompanionStyle({ getContext, opener, document: doc = globalT
         root: doc.body,
     });
     const area = box.querySelector('[data-field="rules"]');
+    const fit = () => fitStyleField(area);
     area?.addEventListener('input', () => {
         context.extensionSettings[RULES_KEY] = area.value;
         context.saveSettingsDebounced?.();
+        fit();
     });
     box.querySelector('[data-action="restore-rules"]')?.addEventListener('click', () => {
         restoreDefaultRules(context.extensionSettings);
         context.saveSettingsDebounced?.();
         if (area) area.value = DEFAULT_GLOBAL_RULES;
+        fit();
     });
+    const view = doc.defaultView || globalThis;
+    if (typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(() => view.requestAnimationFrame(fit));
+    else fit();
     return sheet;
 }
 
