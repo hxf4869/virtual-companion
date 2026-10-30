@@ -18,7 +18,7 @@ import { confirmStoryProjection } from './story-action.js';
 import { createStoryProjection } from './story-projection.js';
 import { armSilentF2Conflict, disarmSilentF2Conflict, installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
-import { loadInboxEvents, mountChatShell } from './chat-shell.js';
+import { loadInboxEvents, mountChatShell, requestShellDestination } from './chat-shell.js';
 import { mountDataRights } from './data-rights.js';
 import { mountMemoryPage, mountMemoryTab } from './memory-page.js';
 import { mountInboxPage, mountInboxTab } from './inbox-page.js';
@@ -366,15 +366,20 @@ export async function init() {
     dataButton.innerHTML = '<i class="fa-solid fa-file-shield" aria-hidden="true"></i><span class="vcms-menu-label">数据副本与删除</span>';
     dataButton.addEventListener('click', () => dataRights.open());
     dataContainer.append(dataButton); wand.append(dataContainer);
+    const openFromWand = (destination, legacyPage) => {
+        const opener = document.getElementById('extensionsMenuButton');
+        if (legacyDialogAllowed()) legacyPage.open(opener);
+        else requestShellDestination(destination, opener);
+    };
     const memoryContainer = document.createElement('div'); memoryContainer.className = 'extension_container';
     const memoryButton = document.createElement('button'); memoryButton.type = 'button'; memoryButton.id = 'vc_memory_menu_button'; memoryButton.className = 'menu_button';
     memoryButton.innerHTML = '<i class="fa-solid fa-brain" aria-hidden="true"></i><span class="vcms-menu-label">记忆</span>';
-    memoryButton.addEventListener('click', () => memoryPage.open(document.getElementById('extensionsMenuButton')));
+    memoryButton.addEventListener('click', () => openFromWand('memory', memoryPage));
     memoryContainer.append(memoryButton); wand.append(memoryContainer);
     const storyContainer = document.createElement('div'); storyContainer.className = 'extension_container';
     const storyButton = document.createElement('button'); storyButton.type = 'button'; storyButton.id = 'vc_story_menu_button'; storyButton.className = 'menu_button';
     storyButton.innerHTML = '<i class="fa-solid fa-book-open" aria-hidden="true"></i><span class="vcms-menu-label">剧情</span>';
-    storyButton.addEventListener('click', () => storyPage.open(document.getElementById('extensionsMenuButton')));
+    storyButton.addEventListener('click', () => openFromWand('story', storyPage));
     storyContainer.append(storyButton); wand.append(storyContainer);
 
     button.addEventListener('click', () => {
