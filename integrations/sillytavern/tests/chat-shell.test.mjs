@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import * as api from '../extension/vc-model-settings/api.js';
 import { CHAT_UI_ROUTES } from '../extension/vc-model-settings/chat-ui-routes.js';
 import {
@@ -192,6 +193,58 @@ test('聊天断线跟随宿主在线状态和浏览器离线，恢复后清除',
         if (previousRemove) globalThis.removeEventListener = previousRemove;
         else delete globalThis.removeEventListener;
     }
+});
+
+test('旧导航主动陪伴只打开一次，新外观改为目的地事件', () => {
+    installMiniDom();
+    const events = createEventSource();
+    const ctx = shellContext(events, 'Valid');
+    let opens = 0;
+    let legacy = 0;
+    const navs = [];
+    globalThis.addEventListener('vc-view-inbox', () => { legacy += 1; });
+    globalThis.addEventListener('vc-shell-navigate', (event) => navs.push(event.detail));
+    const shell = mountChatShell({
+        getContext: () => ctx,
+        openModels() {},
+        openInbox() { opens += 1; },
+    });
+    buttonByText(document, '主动陪伴').click();
+    assert.equal(opens, 1);
+    assert.equal(legacy, 0);
+    assert.deepEqual(navs, []);
+    shell.setInboxEvents([event()], { conversationId: '20' });
+    buttonByText(document, '查看').click();
+    assert.equal(opens, 1);
+    assert.equal(legacy, 1);
+    assert.deepEqual(navs, []);
+
+    installMiniDom();
+    document.body.classList.add('vc-ui');
+    opens = 0;
+    legacy = 0;
+    navs.length = 0;
+    const next = mountChatShell({
+        getContext: () => shellContext(createEventSource(), 'Valid'),
+        openModels() {},
+        openInbox() { opens += 1; },
+        openCharacters() { opens += 1; },
+    });
+    buttonByText(document, '主动陪伴').click();
+    buttonByText(document, '角色').click();
+    next.setInboxEvents([event()], { conversationId: '20' });
+    buttonByText(document, '查看').click();
+    assert.equal(opens, 0);
+    assert.equal(legacy, 0);
+    assert.deepEqual(navs.map((detail) => detail.destination), ['inbox', 'characters', 'inbox']);
+    assert.equal(navs[2].opener, buttonByText(document, '查看'));
+});
+
+test('新外观空状态不复用旧 #vc-chat-empty 字面色', () => {
+    const css = fs.readFileSync(new URL('../extension/vc-model-settings/chat-shell.css', import.meta.url), 'utf8');
+    const at = css.indexOf('#B7C1D2');
+    assert.notEqual(at, -1);
+    assert.match(css.slice(Math.max(0, at - 240), at), /body:not\(\.vc-ui\) #vc-chat-empty/);
 });
 
 test('子任务 4 需要并入的聊天路由还没在本文件之外写死实现', () => {

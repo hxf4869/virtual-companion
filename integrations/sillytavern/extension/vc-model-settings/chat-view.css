@@ -25,9 +25,9 @@ body.vc-ui #chat {
   background-color: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  padding-top: calc(var(--vc-poster-pad) + var(--vc-status-space, 0px));
+  padding-top: calc(var(--vc-poster-pad) + var(--vc-status-space, 0px)) !important;
   z-index: 1 !important;
-  pointer-events: none !important;
+  pointer-events: auto !important;
 }
 
 body.vc-ui #chat > * { pointer-events: auto; }
@@ -226,8 +226,8 @@ body.vc-ui #chat > .mes[is_user="true"] {
 }
 
 body.vc-ui #chat > .mes[is_user="true"] > .mes_block {
-  width: fit-content;
-  max-width: 80%;
+  width: fit-content !important;
+  max-width: 80% !important;
   margin-left: auto;
   padding: var(--vc-space-sm) var(--vc-space-md);
   background: var(--vc-bubble-user);
@@ -241,10 +241,10 @@ body.vc-ui #chat > .mes[is_user="true"] .mes_text {
 }
 
 body.vc-ui.vc-reply-bubble #chat > .mes:not([is_user="true"]):not([is_system="true"]) > .mes_block {
-  width: fit-content;
-  max-width: 80%;
+  width: fit-content !important;
+  max-width: 80% !important;
   padding: var(--vc-space-sm) var(--vc-space-md);
-  background: var(--vc-bubble-char);
+  background: color-mix(in srgb, rgb(var(--vc-tint)) 10%, var(--vc-bubble-char));
   border-radius: var(--vc-radius-lg);
   border-bottom-left-radius: 6px;
 }
@@ -352,16 +352,16 @@ body.vc-ui #chat > .mes.vc-arrive {
 }
 
 body.vc-ui #chat > .mes.vc-swipe-out .mes_text {
-  animation: vc-swipe-out 160ms var(--vc-ease-out) both;
+  animation: vc-swipe-out var(--vc-dur-swipe) var(--vc-ease-out) both;
 }
 
 body.vc-ui #chat > .mes.vc-swipe-in .mes_text {
-  animation: vc-swipe-in 160ms var(--vc-ease-out) both;
+  animation: vc-swipe-in var(--vc-dur-swipe) var(--vc-ease-out) both;
 }
 
 body.vc-ui .mes_text .text_segment {
   animation-name: vc-stream-clear !important;
-  animation-duration: 0.5s !important;
+  animation-duration: var(--vc-dur-stream) !important;
   animation-timing-function: var(--vc-ease-out) !important;
   animation-fill-mode: both !important;
 }
@@ -399,7 +399,7 @@ body.vc-ui .vc-sr {
 
 body.vc-ui .vc-lift {
   position: fixed;
-  z-index: 70;
+  z-index: var(--vc-z-lift);
   margin: 0;
   pointer-events: none;
   background: var(--vc-group);
@@ -449,8 +449,8 @@ body.vc-ui #form_sheld::before {
   background: var(--vc-glass);
   box-shadow: inset 0 0.5px 0 var(--vc-glass-hi);
   pointer-events: none;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
+  backdrop-filter: blur(22px) saturate(180%) !important;
 }
 
 body.vc-ui #send_form,
@@ -495,8 +495,8 @@ body.vc-ui #options_button {
   color: var(--vc-ink);
   opacity: 1 !important;
   box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge);
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
+  backdrop-filter: blur(22px) saturate(180%) !important;
 }
 
 body.vc-ui #options_button.fa-solid::before,
@@ -733,9 +733,18 @@ body.vc-ui #vc-chat-empty-wrap {
   margin: var(--vc-space-xl) auto;
 }
 
+body.vc-ui #vc-chat-empty {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vc-ink-2);
+  border-radius: 0;
+}
+
 body.vc-ui #vc-f2-conflict.vc-sheet {
   position: fixed;
-  z-index: 40;
+  z-index: var(--vc-z-sheet);
   left: 0;
   right: 0;
   bottom: 0;
@@ -815,10 +824,10 @@ body.vc-ui #vc-f2-conflict [data-action="view-latest"] {
   color: var(--vc-on-accent);
 }
 
-body.vc-ui .vc-scrim { z-index: var(--vc-z-popup); }
+body.vc-ui .vc-scrim { z-index: var(--vc-z-scrim); }
 
 body.vc-ui .vc-sheet {
-  z-index: var(--vc-z-alert);
+  z-index: var(--vc-z-sheet);
   color: var(--vc-ink);
   background: var(--vc-sheet);
 }
@@ -842,7 +851,7 @@ body.vc-ui #vc-memory-sheet-host:popover-open {
 
 body.vc-ui #vc-memory-rail {
   position: fixed;
-  z-index: 35;
+  z-index: var(--vc-z-rail);
   top: 0;
   right: 0;
   bottom: 0;
@@ -903,8 +912,10 @@ body.vc-ui:has(#vc-memory-rail) #sheld { margin-right: 320px; }
   body.vc-ui .vc-lift,
   body.vc-ui #vc-new-reply,
   body.vc-ui[data-generating="true"] #mes_stop {
+    animation-name: vc-fade !important;
     animation-duration: 150ms !important;
     animation-iteration-count: 1 !important;
+    transition-property: opacity !important;
     transition-duration: 150ms !important;
   }
 }

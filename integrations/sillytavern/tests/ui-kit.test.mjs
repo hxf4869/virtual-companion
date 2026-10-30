@@ -13,6 +13,8 @@ import { NEUTRAL_TINT, tintFromPixels } from '../extension/vc-model-settings/ui/
 import { icon, iconSpriteUrl } from '../extension/vc-model-settings/ui/icons.js';
 import { readViewport } from '../extension/vc-model-settings/ui/viewport.js';
 import { bindSegment } from '../extension/vc-model-settings/ui/controls.js';
+import { popMenu } from '../extension/vc-model-settings/ui/menu.js';
+import { installMiniDom } from './mini-dom.mjs';
 
 const cssUrl = new URL('../extension/vc-model-settings/vc-ui.css', import.meta.url);
 const indexUrl = new URL('../extension/vc-model-settings/index.js', import.meta.url);
@@ -202,6 +204,22 @@ test('vc-ui.css 的每条规则都挂在 body.vc-ui、:root 或 html[data-vc-the
     assert.match(css, /\.vc-search::before \{ top: -3px; \}/);
     assert.match(css, /\.vc-segment button::after/);
     assert.match(css, /\.vc-sheet-back/);
+    assert.equal(css.includes('animation-duration: 1ms'), false);
+    assert.match(css, /--vc-z-scrim:\s*30/);
+    assert.match(css, /--vc-z-menu:\s*32/);
+    assert.match(css, /--vc-z-sheet:\s*40/);
+    assert.match(css, /--vc-z-alert:\s*60/);
+    assert.match(css, /--vc-z-toast:\s*70/);
+    assert.match(css, /\.vc-scrim \{[^}]*z-index:\s*var\(--vc-z-scrim\)/);
+    assert.match(css, /\.vc-menu \{[^}]*z-index:\s*var\(--vc-z-menu\)/);
+    assert.match(css, /\.vc-sheet \{[^}]*z-index:\s*var\(--vc-z-sheet\)/);
+    assert.match(css, /\.vc-alert \{[^}]*z-index:\s*var\(--vc-z-alert\)/);
+    assert.match(css, /\.vc-toast \{[^}]*z-index:\s*var\(--vc-z-toast\)/);
+    const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    assert.match(reduced, /transition-property:\s*opacity\s*!important/);
+    assert.match(reduced, /transition-duration:\s*150ms\s*!important/);
+    assert.match(reduced, /vc-shell-chat\.is-push[\s\S]*animation-name:\s*none\s*!important/);
+    assert.equal(reduced.includes('1ms'), false);
 
     const errors = [];
     walkCss(stripComments(css), (selector) => {
@@ -275,10 +293,68 @@ test('分段控件按 aria-pressed 定位，外部同步与窗口变化不播动
     assert.equal(checkedOnly.thumb.style.transform, 'translateX(100%)');
 });
 
+test('分段控件 dispose 后不再听窗口缩放', () => {
+    const { root, thumb, view } = makeSegment({ pressed: 0 });
+    const api = bindSegment(root);
+    assert.equal(typeof api.dispose, 'function');
+    api.dispose();
+    thumb.style.transform = 'translateX(40%)';
+    view.dispatch('resize');
+    assert.equal(thumb.style.transform, 'translateX(40%)');
+    api.dispose();
+});
+
+test('弹出菜单把 Tab 圈在菜单项里', () => {
+    const document = installMiniDom();
+    const keys = [];
+    document.addEventListener = (type, fn) => { if (type === 'keydown') keys.push(fn); };
+    document.removeEventListener = () => {};
+    document.defaultView = { innerWidth: 800, innerHeight: 600 };
+    const prevRaf = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = (fn) => { fn(); return 1; };
+    try {
+        const anchor = document.createElement('button');
+        anchor.getBoundingClientRect = () => ({ left: 20, top: 20, right: 64, bottom: 64, width: 44, height: 44 });
+        document.body.append(anchor);
+        const opened = popMenu(anchor, [
+            { label: '复制', run() {} },
+            { label: '删除', danger: true, run() {} },
+        ]);
+        const items = opened.menu.querySelectorAll('[role="menuitem"]');
+        assert.equal(items.length, 2);
+        items[1].focus();
+        let prevented = false;
+        keys.at(-1)({
+            key: 'Tab',
+            shiftKey: false,
+            preventDefault() { prevented = true; },
+            stopPropagation() {},
+        });
+        assert.equal(prevented, true);
+        assert.equal(document.activeElement, items[0]);
+        prevented = false;
+        keys.at(-1)({
+            key: 'Tab',
+            shiftKey: true,
+            preventDefault() { prevented = true; },
+            stopPropagation() {},
+        });
+        assert.equal(prevented, true);
+        assert.equal(document.activeElement, items[1]);
+    } finally {
+        if (prevRaf) globalThis.requestAnimationFrame = prevRaf;
+        else delete globalThis.requestAnimationFrame;
+    }
+});
+
 function makeSegment({ pressed = -1, checked = -1 } = {}) {
     const listeners = [];
     const view = {
         addEventListener(type, fn) { listeners.push({ type, fn }); },
+        removeEventListener(type, fn) {
+            const index = listeners.findIndex((item) => item.type === type && item.fn === fn);
+            if (index >= 0) listeners.splice(index, 1);
+        },
         dispatch(type) {
             for (const item of listeners) if (item.type === type) item.fn();
         },

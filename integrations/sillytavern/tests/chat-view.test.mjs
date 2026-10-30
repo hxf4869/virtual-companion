@@ -7,15 +7,20 @@ import {
     NEAR_BOTTOM_PX,
     applyReplyStyle,
     armStreamFade,
+    commitHostDelete,
+    inspectorOverlayRoot,
     isNearBottom,
-    shouldShowNewReply,
     markSpeakers,
     mountChatView,
     pressExceeded,
     readReplyStyle,
     recalledItems,
+    refreshIndexes,
+    safeAvatarUrl,
+    shouldShowNewReply,
     writeReplyStyle,
 } from '../extension/vc-model-settings/chat-view.js';
+import { CHAT_PICK_COPY } from '../extension/vc-model-settings/chat-shell.js';
 import { installMiniDom } from './mini-dom.mjs';
 
 const CSS_PATH = new URL('../extension/vc-model-settings/chat-view.css', import.meta.url);
@@ -235,4 +240,264 @@ test('冲突面板在新外观下收成上下两段，关闭时保持原按钮�
     const latest = panel.querySelector('[data-vc-latest]');
     assert.ok(draft.querySelector('[data-action="keep-draft"]'));
     assert.ok(latest.querySelector('[data-action="view-latest"]'));
+});
+
+const VIEW_SRC = new URL('../extension/vc-model-settings/chat-view.js', import.meta.url);
+
+test('聊天视图不再用 jQuery 的 fromSlashCommand 删消息', () => {
+    const src = fs.readFileSync(VIEW_SRC, 'utf8');
+    assert.equal(src.includes('fromSlashCommand'), false);
+    assert.equal(src.includes('jQuery'), false);
+    assert.match(src, /commitHostDelete\(/);
+    assert.match(src, /safeAvatarUrl\(/);
+    assert.match(src, /inspectorOverlayRoot\(/);
+    assert.match(src, /vc-shell-navigate|requestShellDestination\(/);
+});
+
+test('头像地址只放行 http(s)、站内路径和位图 data', () => {
+    assert.equal(safeAvatarUrl(''), '');
+    assert.equal(safeAvatarUrl('  //evil.example/a.png'), '');
+    assert.equal(safeAvatarUrl('javascript:alert(1)'), '');
+    assert.equal(safeAvatarUrl('data:image/svg+xml;base64,PHN2Zy8+'), '');
+    assert.equal(safeAvatarUrl('data:text/html,hi'), '');
+    assert.equal(safeAvatarUrl('/thumbnail?type=avatar&file=a.png'), '/thumbnail?type=avatar&file=a.png');
+    assert.equal(safeAvatarUrl('https://cdn.example/a.png'), 'https://cdn.example/a.png');
+    assert.equal(safeAvatarUrl('HTTP://cdn.example/a.png'), 'HTTP://cdn.example/a.png');
+    assert.equal(safeAvatarUrl('http://cdn.example/a.png'), 'http://cdn.example/a.png');
+    assert.equal(safeAvatarUrl('data:image/png;base64,aaaa'), 'data:image/png;base64,aaaa');
+    assert.equal(safeAvatarUrl('data:image/jpeg;base64,aaaa'), 'data:image/jpeg;base64,aaaa');
+    assert.equal(safeAvatarUrl('data:image/webp;base64,aaaa'), 'data:image/webp;base64,aaaa');
+    assert.equal(safeAvatarUrl('data:image/gif;base64,aaaa'), 'data:image/gif;base64,aaaa');
+    assert.equal(safeAvatarUrl('face.png'), '/thumbnail?type=avatar&file=face.png');
+});
+
+test('删消息走宿主 deleteMessage，没有该函数就明确失败', async () => {
+    const mes = { getAttribute(name) { return name === 'mesid' ? '4' : null; } };
+    const calls = [];
+    const jq = () => { throw new Error('jquery'); };
+    globalThis.jQuery = jq;
+    globalThis.$ = jq;
+    try {
+        const planned = commitHostDelete(mes, {
+            deleteMessage(...args) {
+                calls.push(args);
+                return Promise.resolve('gone');
+            },
+        });
+        assert.equal(planned.ok, true);
+        assert.equal(await planned.run(), 'gone');
+        assert.deepEqual(calls, [[4, undefined, false, true]]);
+        assert.equal(commitHostDelete(mes, {}).ok, false);
+        assert.equal(commitHostDelete(mes, {}).reason, 'missing-delete');
+        assert.equal(commitHostDelete({ getAttribute() { return '//nope'; } }, { deleteMessage() {} }).ok, false);
+        assert.equal(commitHostDelete({ getAttribute() { return '0'; } }, {
+            deleteMessage(id) { return id; },
+        }).run(), 0);
+    } finally {
+        delete globalThis.jQuery;
+        delete globalThis.$;
+    }
+});
+
+test('记忆检视确认框挂到当前 sheet 宿主', () => {
+    const document = installMiniDom();
+    assert.equal(inspectorOverlayRoot(document), null);
+    const rail = document.createElement('aside');
+    rail.id = 'vc-memory-rail';
+    document.body.append(rail);
+    assert.equal(inspectorOverlayRoot(document), rail);
+    const host = document.createElement('div');
+    host.id = 'vc-memory-sheet-host';
+    document.body.append(host);
+    assert.equal(inspectorOverlayRoot(document), host);
+});
+
+test('流式只刷新最后一条，变更合并到一帧', () => {
+    assert.deepEqual(refreshIndexes(0, true), []);
+    assert.deepEqual(refreshIndexes(4, false), [0, 1, 2, 3]);
+    assert.deepEqual(refreshIndexes(4, true), [3]);
+    const document = installMiniDom();
+    const queued = [];
+    const observed = [];
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevMO = globalThis.MutationObserver;
+    globalThis.requestAnimationFrame = (fn) => {
+        queued.push(fn);
+        return queued.length;
+    };
+    globalThis.MutationObserver = class {
+        constructor(fn) { this.fn = fn; observed.push(this); }
+        observe(node, options) { this.node = node; this.options = options; }
+        disconnect() {}
+    };
+    try {
+        const { chat } = stage(document, { ui: true });
+        let top = 0;
+        let writes = 0;
+        Object.defineProperty(chat, 'scrollHeight', { configurable: true, get: () => 400 });
+        Object.defineProperty(chat, 'clientHeight', { configurable: true, get: () => 100 });
+        Object.defineProperty(chat, 'scrollTop', {
+            configurable: true,
+            get: () => top,
+            set(value) { top = Number(value); writes += 1; },
+        });
+        chat.append(mes(document, { name: '甲', text: '开场' }), mes(document, { user: true, name: '我', text: '问' }));
+        mountChatView({
+            getContext() {
+                return { powerUserSettings: {}, characters: [{ name: '甲' }], characterId: 0 };
+            },
+        });
+        const chatObs = observed.filter((obs) => obs.options?.characterData);
+        assert.equal(chatObs.length, 1);
+        while (queued.length) queued.shift()();
+        const rows = chat.children.filter((node) => node.className.split(/\s+/).includes('mes'));
+        rows[0]._classes = rows[0]._classes.filter((name) => name !== 'vc-speaker');
+        rows[0].className = rows[0]._classes.join(' ');
+        document.body.setAttribute('data-generating', 'true');
+        writes = 0;
+        top = 0;
+        chatObs[0].fn();
+        chatObs[0].fn();
+        chatObs[0].fn();
+        assert.equal(writes, 0);
+        assert.equal(queued.length, 1);
+        queued.shift()();
+        assert.equal(writes, 1);
+        assert.equal(rows[0].className.split(/\s+/).includes('vc-speaker'), false);
+        document.body.setAttribute('data-generating', 'false');
+        queued.length = 0;
+        chatObs[0].fn();
+        while (queued.length) queued.shift()();
+        assert.equal(rows[0].className.split(/\s+/).includes('vc-speaker'), true);
+    } finally {
+        if (prevRaf) globalThis.requestAnimationFrame = prevRaf;
+        else delete globalThis.requestAnimationFrame;
+        if (prevMO) globalThis.MutationObserver = prevMO;
+        else delete globalThis.MutationObserver;
+    }
+});
+
+test('海报高度留给消息，滚动读取合并到一帧', () => {
+    const document = installMiniDom();
+    const queued = [];
+    const ros = [];
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevRO = globalThis.ResizeObserver;
+    globalThis.requestAnimationFrame = (fn) => {
+        queued.push(fn);
+        return queued.length;
+    };
+    globalThis.ResizeObserver = class {
+        constructor(fn) { this.fn = fn; ros.push(this); }
+        observe(node) { this.node = node; }
+        disconnect() { this.dead = true; }
+    };
+    try {
+        const { chat } = stage(document, { ui: true });
+        chat.append(mes(document, { name: '甲', text: '合成开场。' }));
+        mountChatView({
+            getContext() {
+                return { powerUserSettings: {}, characters: [{ name: '甲', avatar: 'https://cdn.example/a.png' }], characterId: 0 };
+            },
+        });
+        const poster = document.querySelector('#vc-chat-poster');
+        let height = 360;
+        let reads = 0;
+        Object.defineProperty(poster, 'offsetHeight', {
+            configurable: true,
+            get() { reads += 1; return height; },
+        });
+        while (queued.length) queued.shift()();
+        assert.equal(document.body.style['--vc-poster-pad'], '360px');
+        assert.equal(document.querySelector('#vc-poster-avatar').getAttribute('src'), 'https://cdn.example/a.png');
+        const watched = ros.find((item) => item.node === poster);
+        assert.ok(watched);
+        height = 420;
+        reads = 0;
+        queued.length = 0;
+        watched.fn();
+        while (queued.length) queued.shift()();
+        assert.equal(document.body.style['--vc-poster-pad'], '420px');
+        reads = 0;
+        queued.length = 0;
+        chat.dispatch('scroll');
+        chat.dispatch('scroll');
+        chat.dispatch('scroll');
+        assert.equal(reads, 0);
+        assert.equal(queued.length, 1);
+        queued.shift()();
+        assert.equal(reads, 1);
+    } finally {
+        if (prevRaf) globalThis.requestAnimationFrame = prevRaf;
+        else delete globalThis.requestAnimationFrame;
+        if (prevRO) globalThis.ResizeObserver = prevRO;
+        else delete globalThis.ResizeObserver;
+    }
+});
+
+test('新外观打开角色和模型只发目的地事件', () => {
+    const document = installMiniDom();
+    const { chat } = stage(document, { ui: true });
+    const empty = document.createElement('p');
+    empty.id = 'vc-chat-empty';
+    empty.textContent = CHAT_PICK_COPY;
+    chat.append(empty);
+    const status = document.createElement('div');
+    status.id = 'vc-chat-status';
+    const model = document.createElement('span');
+    model.className = 'vc-chat-model';
+    model.textContent = '模型待配置';
+    document.body.append(status, model);
+    let navClicks = 0;
+    for (const name of ['characters', 'models']) {
+        const decoy = document.createElement('button');
+        decoy.setAttribute('data-nav', name);
+        decoy.addEventListener('click', () => { navClicks += 1; });
+        document.body.append(decoy);
+    }
+    const navs = [];
+    globalThis.addEventListener('vc-shell-navigate', (event) => navs.push(event.detail));
+    mountChatView({
+        getContext() {
+            return { powerUserSettings: {}, characters: [], characterId: null };
+        },
+    });
+    const poster = document.querySelector('#vc-chat-poster');
+    poster.querySelectorAll('button').find((button) => button.getAttribute('data-vc-poster') === 'character').click();
+    const pick = document.querySelectorAll('button').find((button) => button.textContent === '选择角色');
+    pick.click();
+    const config = document.querySelectorAll('button').find((button) => button.textContent === '配置');
+    config.click();
+    assert.equal(navClicks, 0);
+    assert.deepEqual(navs.map((detail) => detail.destination), ['characters', 'characters', 'models']);
+    const box = document.querySelector('#send_textarea');
+    assert.equal(box.getAttribute('placeholder'), '发消息');
+});
+
+test('关闭新外观时不改输入占位', () => {
+    const document = installMiniDom();
+    const { box } = stage(document);
+    box.setAttribute('placeholder', '宿主占位');
+    mountChatView({ getContext: () => ({ powerUserSettings: {} }) });
+    assert.equal(box.getAttribute('placeholder'), '宿主占位');
+});
+
+test('聊天样式把滚动交给 #chat，气泡用同等优先级压过外壳', () => {
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    const chatBlock = css.match(/body\.vc-ui #chat \{[^}]+\}/)[0];
+    assert.equal(chatBlock.includes('pointer-events: none'), false);
+    assert.match(chatBlock, /pointer-events:\s*auto\s*!important/);
+    assert.match(chatBlock, /padding-top:[^;]*var\(--vc-poster-pad\)[^;]*!important/);
+    assert.match(css, /#vc-chat-poster \{[^}]*pointer-events:\s*none/);
+    assert.match(css, /#vc-chat-poster button,\s*body\.vc-ui #vc-chat-poster a \{ pointer-events:\s*auto/);
+    assert.match(css, /width:\s*fit-content\s*!important/);
+    assert.match(css, /max-width:\s*80%\s*!important/);
+    assert.match(css, /color-mix\(in srgb, rgb\(var\(--vc-tint\)\) 10%, var\(--vc-bubble-char\)\)/);
+    assert.equal(css.includes('blur(24px)'), false);
+    assert.match(css, /blur\(22px\) saturate\(180%\)/);
+    assert.match(css, /body\.vc-ui #vc-chat-empty \{[^}]*color:\s*var\(--vc-ink-2\)/);
+    assert.match(css, /z-index:\s*var\(--vc-z-scrim\)/);
+    assert.match(css, /z-index:\s*var\(--vc-z-sheet\)/);
+    assert.match(css, /animation-duration:\s*var\(--vc-dur-stream\)/);
+    assert.equal(css.includes('0.5s'), false);
 });

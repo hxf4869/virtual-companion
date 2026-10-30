@@ -80,12 +80,22 @@ export function bindSegment(root, { onChange } = {}) {
 
     sync();
     const onResize = () => place(Math.max(0, currentIndex()), false);
-    root.ownerDocument?.defaultView?.addEventListener?.('resize', onResize);
+    const view = root.ownerDocument?.defaultView;
+    view?.addEventListener?.('resize', onResize);
+    let observer = null;
     if (typeof globalThis.ResizeObserver === 'function') {
-        const observer = new globalThis.ResizeObserver(onResize);
+        observer = new globalThis.ResizeObserver(onResize);
         observer.observe(root);
     }
-    return { select: (index) => apply(index, { animate: true, notify: true }), sync };
+    return {
+        select: (index) => apply(index, { animate: true, notify: true }),
+        sync,
+        dispose() {
+            view?.removeEventListener?.('resize', onResize);
+            observer?.disconnect?.();
+            observer = null;
+        },
+    };
 }
 
 export function bindSwitch(el, { onChange } = {}) {

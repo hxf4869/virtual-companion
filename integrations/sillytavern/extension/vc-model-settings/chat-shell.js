@@ -8,6 +8,22 @@ export const CHAT_EMPTY_COPY = '这段会话还没有消息。';
 export const CHAT_OFFLINE_COPY = '聊天通道已断开';
 export const CHAT_PICK_COPY = '选择一位角色';
 
+// 新外观目的地事件。detail.destination：
+// chat | characters | memory | inbox | story | models | account。
+// detail.opener 是触发元素或 null。外壳在 shell.js 监听后切换目的地；
+// models / account 不在五个标签里，下一轮改走设置页。body.vc-ui 时本文件只发这个事件。
+export const SHELL_NAVIGATE_EVENT = 'vc-shell-navigate';
+
+export function requestShellDestination(destination, opener, target = globalThis) {
+    const name = String(destination || '');
+    if (!name) return null;
+    const event = new CustomEvent(SHELL_NAVIGATE_EVENT, {
+        detail: { destination: name, opener: opener ?? null },
+    });
+    target.dispatchEvent?.(event);
+    return event;
+}
+
 export function pendingInboxWrites(rows, scope = {}) {
     if (!Array.isArray(rows)) return [];
     const conversationId = scope?.conversationId;
@@ -133,27 +149,33 @@ export function mountChatShell({
     back.addEventListener('click', closeMore);
     moreDialog.append(back);
     const openMemoryPage = (opener) => (typeof openMemory === 'function' ? openMemory(opener) : requestOpenMemory(opener));
-    moreItem('记忆', openMemoryPage);
-    moreItem('主动陪伴', (opener) => openInbox?.(opener));
-    moreItem('剧情', (opener) => openStory?.(opener));
-    moreItem('账户', (opener) => openAccount?.(opener));
+    function legacyOrShell(destination, opener, legacy) {
+        if (document.body?.classList?.contains('vc-ui')) {
+            requestShellDestination(destination, opener);
+            return;
+        }
+        legacy?.(opener);
+    }
+    moreItem('记忆', (opener) => legacyOrShell('memory', opener, openMemoryPage));
+    moreItem('主动陪伴', (opener) => legacyOrShell('inbox', opener, (control) => openInbox?.(control)));
+    moreItem('剧情', (opener) => legacyOrShell('story', opener, (control) => openStory?.(control)));
+    moreItem('账户', (opener) => legacyOrShell('account', opener, (control) => openAccount?.(control)));
     moreDialog.addEventListener('cancel', (event) => {
         event.preventDefault();
         closeMore();
     });
     button('聊天', 'fa-comments', 'chat', () => document.querySelector('#send_textarea')?.focus());
     button('角色', 'fa-address-card', 'characters', (opener) => {
-        globalThis.dispatchEvent(new CustomEvent('vc-open-characters', { detail: { opener } }));
-        (typeof openCharacters === 'function' ? openCharacters : fallbackOpenCharacters)(opener);
+        legacyOrShell('characters', opener, (control) => {
+            globalThis.dispatchEvent(new CustomEvent('vc-open-characters', { detail: { opener: control } }));
+            (typeof openCharacters === 'function' ? openCharacters : fallbackOpenCharacters)(control);
+        });
     });
-    button('记忆', 'fa-brain', 'memory', openMemoryPage);
-    button('主动陪伴', 'fa-bell', 'inbox', (opener) => {
-        globalThis.dispatchEvent(new CustomEvent('vc-view-inbox', { detail: { opener } }));
-        openInbox?.(opener);
-    });
-    button('剧情', 'fa-book-open', 'story', (opener) => openStory?.(opener));
-    button('模型', 'fa-microchip', 'models', (opener) => openModels?.(opener));
-    button('账户', 'fa-user-shield', 'account', (opener) => openAccount?.(opener));
+    button('记忆', 'fa-brain', 'memory', (opener) => legacyOrShell('memory', opener, openMemoryPage));
+    button('主动陪伴', 'fa-bell', 'inbox', (opener) => legacyOrShell('inbox', opener, (control) => openInbox?.(control)));
+    button('剧情', 'fa-book-open', 'story', (opener) => legacyOrShell('story', opener, (control) => openStory?.(control)));
+    button('模型', 'fa-microchip', 'models', (opener) => legacyOrShell('models', opener, (control) => openModels?.(control)));
+    button('账户', 'fa-user-shield', 'account', (opener) => legacyOrShell('account', opener, (control) => openAccount?.(control)));
     button('更多', 'fa-ellipsis', 'more', openMore);
     document.body.append(nav, moreDialog);
     // 断线只认两路真实信号：宿主 online_status === 'no_connection'
@@ -224,6 +246,10 @@ export function mountChatShell({
             view.setAttribute('data-action', 'view-inbox');
             view.textContent = '查看';
             view.addEventListener('click', () => {
+                if (document.body?.classList?.contains('vc-ui')) {
+                    requestShellDestination('inbox', view);
+                    return;
+                }
                 globalThis.dispatchEvent(new CustomEvent('vc-view-inbox', { detail: { count: inboxCount, opener: view } }));
             });
             row.append(label, view);

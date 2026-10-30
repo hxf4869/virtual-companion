@@ -88,6 +88,21 @@ body.vc-ui {
   --vc-dur-quick: 220ms;
   --vc-dur-standard: 420ms;
   --vc-dur-emphasized: 560ms;
+  --vc-dur-stream: 500ms;
+  --vc-dur-swipe: 160ms;
+  --vc-z-content: 1;
+  --vc-z-shell: 20;
+  --vc-z-scrim: 30;
+  --vc-z-menu: 32;
+  --vc-z-fly: 30;
+  --vc-z-rail: 35;
+  --vc-z-page: 40;
+  --vc-z-sheet: 40;
+  --vc-z-drawer: 50;
+  --vc-z-popup: 55;
+  --vc-z-alert: 60;
+  --vc-z-toast: 70;
+  --vc-z-lift: 80;
   --vc-nav-p: 0;
   --vc-keyboard: 0px;
   --vc-vh: 100dvh;
@@ -804,7 +819,7 @@ body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormat
 
 body.vc-ui .vc-menu {
   position: fixed;
-  z-index: 32;
+  z-index: var(--vc-z-menu);
   min-width: 220px;
   padding: 6px;
   border-radius: 18px;
@@ -843,7 +858,7 @@ body.vc-ui .vc-menu hr {
 body.vc-ui .vc-scrim {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: var(--vc-z-scrim);
   background: var(--vc-scrim);
   opacity: 0;
   transition: opacity var(--vc-dur-quick) ease;
@@ -858,7 +873,7 @@ body.vc-ui .vc-scrim.is-blur {
 
 body.vc-ui .vc-sheet {
   position: fixed;
-  z-index: 40;
+  z-index: var(--vc-z-sheet);
   left: 0;
   right: 0;
   bottom: var(--vc-keyboard, 0px);
@@ -933,7 +948,7 @@ body.vc-ui .vc-sheet-pane {
 
 body.vc-ui .vc-alert {
   position: fixed;
-  z-index: 50;
+  z-index: var(--vc-z-alert);
   left: 50%;
   top: 50%;
   width: min(280px, calc(100vw - 32px));
@@ -978,7 +993,7 @@ body.vc-ui .vc-alert-actions .vc-btn-danger {
 
 body.vc-ui .vc-toast {
   position: fixed;
-  z-index: 60;
+  z-index: var(--vc-z-toast);
   left: 50%;
   top: calc(12px + env(safe-area-inset-top, 0px));
   height: 44px;
@@ -1261,11 +1276,25 @@ body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormat
   body.vc-ui *,
   body.vc-ui *::before,
   body.vc-ui *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
+    transition-property: opacity !important;
     transition-duration: 150ms !important;
     scroll-behavior: auto !important;
   }
+  body.vc-ui .vc-shell-page.is-enter,
+  body.vc-ui .vc-shell-chat.is-push,
+  body.vc-ui .vc-shell-chat.is-pop,
+  body.vc-ui .vc-evi,
+  body.vc-ui .vc-evi.is-back,
+  body.vc-ui .vc-letterbox-bar {
+    animation-name: none !important;
+    animation-duration: 150ms !important;
+    transition: none !important;
+  }
+}
+
+@keyframes vc-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes vc-shimmer {
