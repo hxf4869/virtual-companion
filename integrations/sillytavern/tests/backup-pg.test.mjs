@@ -74,7 +74,7 @@ function assertLabelOwned(name) {
 
 function removeContainer(name) {
     if (!assertLabelOwned(name)) return;
-    const removed = docker(['rm', '-f', name]);
+    const removed = docker(['rm', '-f', '-v', name]);
     assert.equal(removed.status, 0, removed.stderr);
 }
 
