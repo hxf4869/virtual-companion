@@ -193,13 +193,19 @@ macOS），不是 apple.com 的营销版式。
 |---|---|---|
 | `--vc-z-content` | 1 | 阅读列里的内容 |
 | `--vc-z-shell` | 20 | 外壳：侧边栏、标签栏、导航 |
+| `--vc-z-scrim` | 30 | sheet 与菜单下的遮罩 |
 | `--vc-z-fly` | 30 | 飞行中的头像 |
+| `--vc-z-menu` | 32 | 弹出菜单 |
+| `--vc-z-rail` | 35 | 聊天检视栏（记忆侧栏） |
 | `--vc-z-page` | 40 | 推入的设置页 |
+| `--vc-z-sheet` | 40 | sheet、冲突面板 |
 | `--vc-z-drawer` | 50 | 酒馆抽屉成页 |
-| `--vc-z-popup` | 55 | 弹出层与遮罩 |
+| `--vc-z-popup` | 55 | 宿主弹出层与遮罩 |
 | `--vc-z-alert` | 60 | alert、确认框，以及要压过抽屉的 sheet |
+| `--vc-z-toast` | 70 | 提示条 |
+| `--vc-z-lift` | 80 | 长按抬起的消息 |
 
-确认框与它所遮住的层使用同一套 token。`vc-ui.css` 里尚未改成 token 的字面叠层（遮罩、菜单、sheet、alert、提示条）以本表为准对齐。
+确认框与它所遮住的层使用同一套 token。新增叠层先在本表登记，再写进 `body.vc-ui` 的定义。
 
 ## 5. 材质
 
