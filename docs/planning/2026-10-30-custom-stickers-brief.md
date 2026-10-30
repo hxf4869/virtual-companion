@@ -63,14 +63,15 @@ chibi sticker of the same character as the reference sheet: young woman, chestnu
 
 - 尺寸：512×512 PNG，透明背景；另导出一份 256×256 缩略版放 `thumbs/` 同名。
 - 目录：`integrations/sillytavern/extension/vc-model-settings/stickers/custom/`（缩略图在 `custom/thumbs/`）。
-- 在同目录写 `manifest.json`（格式与内置包一致）：
+- 在同目录写 `manifest.json`（格式与 `stickers/builtin-manifest.json` 一致，图片路径相对 `custom/` 目录；扩展会自动加载这个包，不存在则跳过）：
 
 ```json
 {
   "name": "专属表情包",
   "license": "Owner 所有",
   "attribution": "",
-  "tags": { "开心": ["custom/开心-1.png", "custom/开心-2.png"], "在吗": ["custom/在吗-1.png"] }
+  "stickers": { "开心": ["开心-1.png", "开心-2.png"], "在吗": ["在吗-1.png"] },
+  "kaomoji": {}
 }
 ```
 

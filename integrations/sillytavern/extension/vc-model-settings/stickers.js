@@ -825,16 +825,23 @@ function watchSettings(doc) {
     observer.observe(doc.body, { childList: true, subtree: true });
 }
 
+// 内置包 + 可选的专属包（docs/planning/2026-10-30-custom-stickers-brief.md），缺哪个跳过哪个。
+const BUNDLED_MANIFESTS = ['./stickers/builtin-manifest.json', './stickers/custom/manifest.json'];
+
 async function loadBundledManifest() {
-    try {
-        const url = new URL('./stickers/example-manifest.json', import.meta.url);
-        const response = await fetch(url);
-        if (!response?.ok) return;
-        const manifest = loadManifest(await response.json());
-        builtinAssets = assetsFromManifest(manifest, new URL('./stickers/', import.meta.url).href);
-    } catch {
-        builtinAssets = [];
+    const assets = [];
+    for (const rel of BUNDLED_MANIFESTS) {
+        try {
+            const url = new URL(rel, import.meta.url);
+            const response = await fetch(url);
+            if (!response?.ok) continue;
+            const manifest = loadManifest(await response.json());
+            assets.push(...assetsFromManifest(manifest, new URL('./', url).href));
+        } catch {
+            /* 单个包坏了不影响其他包。 */
+        }
     }
+    builtinAssets = assets;
 }
 
 export async function installStickers(deps = {}) {

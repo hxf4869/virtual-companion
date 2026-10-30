@@ -1,0 +1,161 @@
+{
+ "name": "内置表情（Fluent Emoji 3D 精选 + 手选颜文字）",
+ "license": "图片：MIT（Microsoft Fluent Emoji）；颜文字：通用短符号，自行挑选归类",
+ "attribution": "Microsoft Fluent Emoji, Copyright (c) Microsoft Corporation, MIT License, https://github.com/microsoft/fluentui-emoji",
+ "stickers": {
+  "开心": [
+   "fluent/smiling_face_with_smiling_eyes.png",
+   "fluent/grinning_squinting_face.png"
+  ],
+  "害羞": [
+   "fluent/flushed_face.png",
+   "fluent/face_with_hand_over_mouth.png"
+  ],
+  "委屈": [
+   "fluent/face_holding_back_tears.png",
+   "fluent/pleading_face.png"
+  ],
+  "生气": [
+   "fluent/pouting_face.png",
+   "fluent/face_with_steam_from_nose.png"
+  ],
+  "得意": [
+   "fluent/smirking_face.png"
+  ],
+  "困": [
+   "fluent/sleepy_face.png",
+   "fluent/yawning_face.png"
+  ],
+  "抱抱": [
+   "fluent/hugging_face.png"
+  ],
+  "晚安": [
+   "fluent/sleeping_face.png"
+  ],
+  "哭哭": [
+   "fluent/loudly_crying_face.png",
+   "fluent/smiling_face_with_tear.png"
+  ],
+  "惊讶": [
+   "fluent/face_with_open_mouth.png",
+   "fluent/star-struck.png"
+  ],
+  "无语": [
+   "fluent/expressionless_face.png",
+   "fluent/face_with_rolling_eyes.png"
+  ],
+  "加油": [
+   "fluent/flexed_biceps.png",
+   "fluent/saluting_face.png"
+  ],
+  "比心": [
+   "fluent/heart_hands.png",
+   "fluent/face_blowing_a_kiss.png"
+  ],
+  "摸摸头": [
+   "fluent/smiling_face_with_hearts.png"
+  ]
+ },
+ "kaomoji": {
+  "开心": [
+   "(๑•̀ㅂ•́)و✧",
+   "(≧▽≦)",
+   "ヽ(✿ﾟ▽ﾟ)ノ",
+   "(＾▽＾)",
+   "(*^▽^*)",
+   "o(*￣▽￣*)o",
+   "٩(ˊᗜˋ*)و"
+  ],
+  "害羞": [
+   "(〃∀〃)",
+   "(*/ω＼*)",
+   "(⁄ ⁄•⁄ω⁄•⁄ ⁄)",
+   "(///▽///)",
+   "(〃ﾉωﾉ)"
+  ],
+  "委屈": [
+   "(｡•́︿•̀｡)",
+   "(´；ω；`)",
+   "(ಥ_ಥ)",
+   "(._.)",
+   "(´･_･`)"
+  ],
+  "生气": [
+   "(╬￣皿￣)",
+   "(｀へ´)",
+   "(╯°□°）╯",
+   "(￣^￣)",
+   "(▼皿▼#)"
+  ],
+  "得意": [
+   "(￣▽￣)~*",
+   "( •̀ ω •́ )✧",
+   "(๑¯∀¯๑)",
+   "(•̀ᴗ•́)و ̑̑",
+   "( ￣ー￣)"
+  ],
+  "困": [
+   "(￣o￣) . z Z",
+   "(－_－) zzZ",
+   "(´-ω-`)",
+   "(¦3[▓▓]",
+   "(。-ω-)zzz"
+  ],
+  "抱抱": [
+   "(つ≧▽≦)つ",
+   "(っ´▽`)っ",
+   "⊂(´・ω・｀⊂)",
+   "(づ｡◕‿‿◕｡)づ",
+   "(つ´ω`)つ"
+  ],
+  "晚安": [
+   "(｡･ω･｡)ﾉ♡",
+   "(￣ω￣) zzz",
+   "(´-ω-`)💤",
+   "(=´ω`=)",
+   "(˘ω˘)"
+  ],
+  "哭哭": [
+   "(╥﹏╥)",
+   "(T_T)",
+   "(；´д｀)ゞ",
+   "(ToT)",
+   "(っ˘̩╭╮˘̩)っ"
+  ],
+  "惊讶": [
+   "(°ロ°)",
+   "Σ(っ °Д °;)っ",
+   "(⊙_⊙)",
+   "(ﾟДﾟ*)",
+   "w(ﾟДﾟ)w"
+  ],
+  "无语": [
+   "(￣_￣)",
+   "(-_-;)",
+   "(＿　＿)",
+   "(￣、￣)",
+   "(・_・;)"
+  ],
+  "加油": [
+   "(ง •_•)ง",
+   "(ง'̀-'́)ง",
+   "ᕦ(ò_óˇ)ᕤ",
+   "(๑•̀ㅂ•́)و",
+   "ψ(｀∇´)ψ"
+  ],
+  "比心": [
+   "(づ￣ 3￣)づ",
+   "(っ˘з(˘⌣˘ )",
+   "(*˘︶˘*).｡.:*♡",
+   "(♡˙︶˙♡)",
+   "(๑′ᴗ‵๑)♡"
+  ],
+  "摸摸头": [
+   "(＾･ｪ･＾)",
+   "(´｡• ω •｡`)",
+   "(*´∀`)~♥",
+   "(´▽`ʃ♡ƪ)",
+   "(｡･ω･)ﾉﾞ"
+  ]
+ }
+}

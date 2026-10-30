@@ -4,6 +4,7 @@ import test from 'node:test';
 import { installMiniDom } from './mini-dom.mjs';
 import {
     FREQUENCIES,
+    isSendableTag,
     GATE_KEY,
     applyStickerDom,
     assetsFromManifest,
@@ -177,6 +178,21 @@ test('空示例 manifest 带许可与署名字段且没有素材', async () => {
     assert.equal(manifest.license, '');
     assert.equal(manifest.attribution, '');
     assert.deepEqual(assetsFromManifest(manifest, 'file:///stickers/'), []);
+});
+
+test('内置表情包：许可与署名齐全，标签可发送，图片文件都存在', async () => {
+    const { existsSync } = await import('node:fs');
+    const base = new URL('../extension/vc-model-settings/stickers/', import.meta.url);
+    const manifest = loadManifest(JSON.parse(await readFile(new URL('builtin-manifest.json', base), 'utf8')));
+    assert.match(manifest.license, /MIT/);
+    assert.match(manifest.attribution, /Microsoft/);
+    assert.ok(existsSync(new URL('fluent/LICENSE', base)));
+    const assets = assetsFromManifest(manifest, base.href);
+    const images = assets.filter((item) => item.kind === 'image');
+    assert.ok(images.length >= 20);
+    assert.ok(assets.some((item) => item.kind === 'kaomoji'));
+    for (const item of images) assert.ok(existsSync(new URL(item.src)), item.src);
+    for (const item of assets) assert.ok(isSendableTag(item.tag), item.tag);
 });
 
 test('transformer 把标签变成表情段；流水线缺失则不注册', async () => {
