@@ -22,6 +22,7 @@ import {
     writeReplyStyle,
 } from '../extension/vc-model-settings/chat-view.js';
 import { CHAT_PICK_COPY } from '../extension/vc-model-settings/chat-shell.js';
+import { clearBubbleTransformers, registerBubbleTransformer } from '../extension/vc-model-settings/reply-pipeline.js';
 import { installMiniDom } from './mini-dom.mjs';
 
 const CSS_PATH = new URL('../extension/vc-model-settings/chat-view.css', import.meta.url);
@@ -175,6 +176,20 @@ test('多句回复只改显示，原文仍留在同一条消息里', () => {
     assert.equal(segs[1].textContent, '想早点睡');
     assert.equal(node.querySelector('.mes_text').textContent, '今天好累。想早点睡。');
     assert.equal(node.className.includes('vc-segmented'), true);
+});
+
+test('表情段渲染成表情气泡，而不是对象文本', () => {
+    clearBubbleTransformers();
+    registerBubbleTransformer(() => ['在呢', { type: 'sticker', tag: '开心', kind: 'kaomoji', text: '(≧▽≦)' }]);
+    try {
+        const document = installMiniDom();
+        const node = mes(document, { text: '在呢<sticker tag="开心"/>' });
+        renderReplyBubbles(node, '在呢<sticker tag="开心"/>', { reducedMotion: true });
+        assert.equal(node.querySelector('[data-vc-sticker]')?.textContent, '(≧▽≦)');
+        assert.equal(node.textContent.includes('[object Object]'), false);
+    } finally {
+        clearBubbleTransformers();
+    }
 });
 
 test('关闭新外观时不挂海报、不改宿主节点', () => {

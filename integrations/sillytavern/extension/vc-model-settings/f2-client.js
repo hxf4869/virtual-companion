@@ -1,4 +1,10 @@
-import { bindingCoalesceKey, coalesceBinding, StaleBindingError } from './instance-binding.js';
+import { bindingCoalesceKey, clearOnboardingBinding, coalesceBinding, companionBindingHeld, StaleBindingError, takeOnboardingBinding } from './instance-binding.js';
+
+let kickCompanionImpl = async () => {};
+
+export function kickCompanionBinding() {
+    return kickCompanionImpl();
+}
 
 export class F2ConflictError extends Error {
     constructor(code = 'VC_REVISION_CONFLICT') {
@@ -595,7 +601,46 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
         return { chatIdentity: c.chatMetadata.vc_f2.id, characterRef: card.data?.extensions?.vc_character_ref,
             mode: c.chatMetadata.vc_binding?.mode || 'COMPANION' };
     };
+    function liveBinding() {
+        const c = getContext();
+        const card = c.characters?.[c.characterId];
+        return {
+            metadata: c.chatMetadata,
+            card,
+            chatId: c.chatId,
+            groupId: c.groupId || null,
+            characterId: c.characterId,
+            identity: c.chatMetadata?.vc_f2?.id,
+            mode: c.chatMetadata?.vc_binding?.mode || 'COMPANION',
+        };
+    }
+    function sameBinding(left, right) {
+        return Boolean(left && right)
+            && left.metadata === right.metadata
+            && left.card === right.card
+            && left.chatId === right.chatId
+            && left.groupId === right.groupId
+            && String(left.characterId) === String(right.characterId)
+            && left.identity === right.identity
+            && left.mode === right.mode;
+    }
+    function applyOnboardingBinding() {
+        const c = getContext();
+        const card = c.characters?.[c.characterId];
+        const pending = takeOnboardingBinding(card?.data?.extensions?.vc_character_ref || '');
+        const metadata = c.chatMetadata;
+        if (!pending || !metadata?.vc_f2?.id) return;
+        if (metadata.vc_binding?.relationshipId && String(metadata.vc_binding.relationshipId) !== String(pending.binding.relationshipId)) return;
+        metadata.vc_binding = {
+            ...pending.binding,
+            chatIdentity: metadata.vc_f2.id,
+            mode: pending.binding.mode || metadata.vc_binding?.mode || 'COMPANION',
+        };
+        clearOnboardingBinding();
+    }
     async function ensureBound() {
+        if (companionBindingHeld()) return;
+        applyOnboardingBinding();
         const c = getContext();
         const card = c.characters?.[c.characterId];
         if (c.groupId || !card || !c.chatMetadata?.vc_f2) return;
@@ -608,25 +653,29 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
         return coalesceBinding(key, () => ensureBoundOnce());
     }
     async function ensureBoundOnce() {
-        const c = getContext();
-        const card = c.characters?.[c.characterId];
-        if (c.groupId || !card || !c.chatMetadata?.vc_f2) return;
-        const metadata = c.chatMetadata;
+        const started = liveBinding();
+        if (started.groupId || !started.card || !started.metadata?.vc_f2) return;
+        const metadata = started.metadata;
+        const card = started.card;
         let write = cardWrites.get(card);
         if (!write && !card.data?.extensions?.vc_character_ref) {
             const ref = crypto.randomUUID();
-            write = Promise.resolve().then(() => writeExtensionField(c.characterId, 'vc_character_ref', ref));
+            write = Promise.resolve().then(() => writeExtensionField(started.characterId, 'vc_character_ref', ref));
             cardWrites.set(card, write);
         }
         if (write) await write;
-        if (getContext().chatMetadata !== metadata || getContext().characters?.[getContext().characterId] !== card) throw new StaleBindingError();
+        if (!sameBinding(started, liveBinding())) throw new StaleBindingError();
         const current = source();
         if (!current?.characterRef) throw new F2ConflictError('VC_CHARACTER_REF_UNCONFIRMED');
+        if (current.chatIdentity !== started.identity || current.mode !== started.mode) throw new StaleBindingError();
         const existing = metadata.vc_binding;
         const displayName = Array.from(card.name || '').slice(0, 32).join('');
         const snapshot = { ...current, relationshipId: existing?.relationshipId || null, displayName };
         const result = await resolveBinding(snapshot);
-        if (getContext().chatMetadata !== metadata || getContext().characters?.[getContext().characterId] !== card) throw new StaleBindingError();
+        const live = liveBinding();
+        if (!sameBinding(started, live)) throw new StaleBindingError();
+        if (result?.chatIdentity && result.chatIdentity !== live.identity) throw new StaleBindingError();
+        if (result?.mode && result.mode !== live.mode) throw new StaleBindingError();
         if (JSON.stringify(existing) !== JSON.stringify(result)) {
             metadata.vc_binding = result;
             await getContext().saveChat();
@@ -650,11 +699,22 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
         const states = await reconcileSources([token.id]);
         if (source()?.chatIdentity === token.id) onSourceStatus(states);
     });
-    const changed = () => ensureBound().catch((error) => {
-        if (error instanceof StaleBindingError) return;
-        showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error);
-        throw error;
-    }).then(() => reconcileCurrent().catch(() => {}));
+    const attemptBind = async () => {
+        try {
+            return await ensureBound();
+        } catch (error) {
+            if (error instanceof StaleBindingError) return null;
+            showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error);
+            throw error;
+        }
+    };
+    const changed = async () => {
+        await attemptBind();
+        const meta = getContext().chatMetadata;
+        if (meta?.vc_f2?.id && !meta.vc_binding?.conversationId) await attemptBind();
+        await reconcileCurrent().catch(() => {});
+    };
+    kickCompanionImpl = changed;
     const c = getContext(); c.eventSource.on(c.eventTypes.CHAT_CHANGED, changed);
     globalThis.addEventListener?.('online', () => { void changed().catch(() => {}); });
     await changed();

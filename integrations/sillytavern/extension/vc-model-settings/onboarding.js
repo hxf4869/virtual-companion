@@ -1,13 +1,20 @@
 // 没有陪伴实例时的首次引导。完成后用角色卡 V2 走宿主导入，再建实例并打开聊天。
 import { listConsents } from './api.js';
+import { armOnboardingBinding, holdCompanionBinding } from './instance-binding.js';
 import { consentOutstanding } from './consent.js';
 import { buildCharacterCard, ensureCompanionStyles, GENDERS, RELATIONS, STYLE_OPTIONS } from './persona.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
+function relationshipRows(relationships) {
+    if (Array.isArray(relationships)) return relationships;
+    if (Array.isArray(relationships?.items)) return relationships.items;
+    if (Array.isArray(relationships?.relationships)) return relationships.relationships;
+    return [];
+}
+
 export function shouldOfferOnboarding(relationships) {
-    const rows = Array.isArray(relationships) ? relationships : [];
-    return !rows.some((row) => row?.personaRef === 'st-character');
+    return !relationshipRows(relationships).some((row) => (row?.personaRef || row?.persona_ref) === 'st-character');
 }
 
 function choice(name, value, current) {
@@ -51,14 +58,23 @@ export async function finishOnboarding(choices, {
         styles: Array.isArray(choices.styles) ? choices.styles : [],
     });
     const bytes = new TextEncoder().encode(JSON.stringify(card));
-    const imported = await importCard({ name: `${name}.json`, bytes, format: 'json' });
-    const chatIdentity = newId();
-    const binding = await createBinding({
-        characterRef: imported.characterRef,
-        displayName: name,
-        chatIdentity,
-        mode: 'COMPANION',
-    });
+    holdCompanionBinding(true);
+    let imported;
+    let chatIdentity;
+    let binding;
+    try {
+        imported = await importCard({ name: `${name}.json`, bytes, format: 'json' });
+        chatIdentity = newId();
+        binding = await createBinding({
+            characterRef: imported.characterRef,
+            displayName: name,
+            chatIdentity,
+            mode: 'COMPANION',
+        });
+        armOnboardingBinding({ characterRef: imported.characterRef, chatIdentity, binding });
+    } finally {
+        holdCompanionBinding(false);
+    }
     await openChat?.({ characterRef: imported.characterRef, chatIdentity, binding });
     return { card, imported, binding, chatIdentity };
 }

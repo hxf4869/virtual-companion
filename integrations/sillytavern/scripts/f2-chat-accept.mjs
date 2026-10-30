@@ -8,6 +8,7 @@ import { complexCard } from './lib/complex-card.mjs';
 import { createStClient } from './managed-lib.mjs';
 import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
+import { openStCharacterChat } from './lib/open-st-chat.mjs';
 import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
 
 let shotBudget = createShotBudget();
@@ -66,12 +67,7 @@ async function confirmHostPopup(page) {
 
 async function openComplex(page, fileName) {
     let settled = false;
-    const done = page.evaluate(async (avatar) => {
-        const script = await import('/script.js');
-        const index = script.characters.findIndex((item) => item.avatar === avatar);
-        if (index < 0) throw new Error('复杂卡不在角色列表');
-        await script.selectCharacterById(index, { switchMenu: false });
-    }, fileName).finally(() => { settled = true; });
+    const done = openStCharacterChat(page, { avatar: fileName, switchMenu: false }).finally(() => { settled = true; });
     const deadline = Date.now() + 25000;
     while (!settled && Date.now() < deadline) {
         await confirmHostPopup(page);
@@ -111,13 +107,7 @@ async function revealShellChat(page) {
 }
 
 async function openChat(page, avatar, file) {
-    await page.evaluate(async ({ avatar: fileName, file: chatFile }) => {
-        const script = await import('/script.js');
-        const index = script.characters.findIndex((item) => item.avatar === fileName);
-        if (index < 0) throw new Error('合成卡不在角色列表');
-        await script.selectCharacterById(index);
-        if (chatFile) await script.openCharacterChat(chatFile);
-    }, { avatar, file });
+    await openStCharacterChat(page, { avatar, file });
     await revealShellChat(page);
 }
 

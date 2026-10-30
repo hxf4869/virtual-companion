@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
+import { openStCharacterChat } from './lib/open-st-chat.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -148,13 +149,7 @@ async function closeSettings(page) {
 }
 
 async function revealChat(page, avatar, file) {
-    await page.evaluate(async ({ avatar: fileName, file: chatFile }) => {
-        const script = await import('/script.js');
-        const index = script.characters.findIndex((item) => item.avatar === fileName);
-        if (index < 0) throw new Error('合成卡不在角色列表');
-        await script.selectCharacterById(index, { switchMenu: false });
-        if (chatFile) await script.openCharacterChat(chatFile);
-    }, { avatar, file });
+    await openStCharacterChat(page, { avatar, file, switchMenu: false });
     await page.waitForFunction(() => typeof document.querySelector('#vc-shell')?.openConversation === 'function', null, { timeout: 20000 });
     const status = await page.evaluate(async () => {
         const root = document.querySelector('#vc-shell');
