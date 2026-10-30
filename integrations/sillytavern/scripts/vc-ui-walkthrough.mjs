@@ -298,7 +298,12 @@ export async function sceneVcUiWalkthrough(ctx) {
         await waitFor(async () => page.evaluate(() => document.body.classList.contains('vc-ui') && document.querySelector('#vc-shell')), { timeoutMs: 60000, label: '外壳' });
         await page.evaluate(async ({ name, file }) => {
             const native = await import('/script.js');
-            const index = native.characters.findIndex((item) => item.avatar === name);
+            // settingsReady 早于角色列表加载完；角色多时要等一会儿。
+            let index = -1;
+            for (let i = 0; i < 100 && index < 0; i += 1) {
+                index = native.characters.findIndex((item) => item.avatar === name);
+                if (index < 0) await new Promise((resolve) => setTimeout(resolve, 200));
+            }
             if (index < 0) throw new Error('合成角色未加载');
             await native.selectCharacterById(index);
             await native.openCharacterChat(file);
@@ -658,7 +663,11 @@ export async function sceneVcUiWalkthrough(ctx) {
                 await chatLock(async () => {
                     await groupPage.evaluate(async ({ name, file }) => {
                         const native = await import('/script.js');
-                        const index = native.characters.findIndex((item) => item.avatar === name);
+                        let index = -1;
+                        for (let i = 0; i < 100 && index < 0; i += 1) {
+                            index = native.characters.findIndex((item) => item.avatar === name);
+                            if (index < 0) await new Promise((resolve) => setTimeout(resolve, 200));
+                        }
                         if (index < 0) throw new Error('合成角色未加载');
                         await native.selectCharacterById(index);
                         await native.openCharacterChat(file);
