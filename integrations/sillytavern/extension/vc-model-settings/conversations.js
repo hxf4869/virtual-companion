@@ -1,5 +1,5 @@
 // 会话列表：陪伴实例来自 instance-page 同一接口（GET /api/v1/relationships → instancesFrom）。
-// 最后一条消息和时间只在调用方已经拿到时附上，不编造预览。
+// 最后一条消息和时间只在调用方已经拿到时附上。没有预览时列表显示「暂无消息」，不写入快照。
 // 头像优先用当前会话快照，否则用同名或同角色引用的角色卡头像；都没有才用首字。
 // 同一关系只保留一行。两个实例看起来一样时，只在确实重名时加序号（外壳 · 2），不显示创建时间或内部 ID。
 import { instancesFrom, safeImageUrl } from './instance-page.js';
@@ -189,8 +189,8 @@ export function renderConversationRow(row) {
     const title = conversationTitle(row);
     const label = [title.name, title.inst, row?.unread ? '未读' : ''].filter(Boolean).join('，');
     const time = textField(row?.time);
-    const preview = textField(row?.preview);
-    return `<button type="button" class="vc-cell vc-convo" data-relationship-id="${esc(row?.relationshipId || '')}" aria-label="${esc(label)}"><span class="vc-convo-avatar-slot">${avatarHtml(row, title)}</span><span class="vc-grow"><span class="vc-convo-top"><span class="vc-convo-name">${esc(title.name)}</span>${title.inst ? `<span class="vc-convo-inst">${esc(title.inst)}</span>` : ''}${time ? `<span class="vc-convo-time vc-num">${esc(time)}</span>` : ''}</span>${preview ? `<span class="vc-convo-preview">${esc(preview)}</span>` : ''}</span>${row?.unread ? '<i class="vc-convo-unread" aria-hidden="true"></i>' : ''}</button>`;
+    const preview = textField(row?.preview) || '暂无消息';
+    return `<button type="button" class="vc-cell vc-convo" data-relationship-id="${esc(row?.relationshipId || '')}" aria-label="${esc(label)}"><span class="vc-convo-avatar-slot">${avatarHtml(row, title)}</span><span class="vc-grow"><span class="vc-convo-top"><span class="vc-convo-name">${esc(title.name)}</span>${title.inst ? `<span class="vc-convo-inst">${esc(title.inst)}</span>` : ''}${time ? `<span class="vc-convo-time vc-num">${esc(time)}</span>` : ''}</span><span class="vc-convo-preview">${esc(preview)}</span></span>${row?.unread ? '<i class="vc-convo-unread" aria-hidden="true"></i>' : ''}</button>`;
 }
 
 export function renderConversationRows(rows) {

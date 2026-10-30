@@ -744,13 +744,17 @@ body.vc-ui .vc-ending-actions {
 
 body.vc-ui .vc-field {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: var(--vc-space-xs);
     width: 100%;
     max-width: var(--vc-read);
     margin: 0 auto;
     padding: var(--vc-space-xxs) var(--vc-space-xxs) var(--vc-space-xxs) var(--vc-space-md);
     border-radius: var(--vc-radius-pill);
+    background: var(--vc-glass);
+    box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge), 0 8px 28px var(--vc-glass-shadow);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    backdrop-filter: blur(22px) saturate(180%);
 }
 
 body.vc-ui .vc-field textarea,
@@ -773,8 +777,8 @@ body.vc-ui .vc-field textarea::placeholder { color: var(--vc-ink-3); }
 body.vc-ui .vc-send {
     display: grid;
     place-items: center;
-    width: var(--vc-touch);
-    height: var(--vc-touch);
+    width: 36px;
+    height: 36px;
     flex: none;
     border: 0;
     border-radius: var(--vc-radius-pill);
@@ -783,6 +787,14 @@ body.vc-ui .vc-send {
 }
 
 body.vc-ui .vc-send:disabled { opacity: 0.35; }
+
+body.vc-ui .vc-story-tab .vc-send {
+    box-sizing: content-box;
+    width: 36px;
+    height: 36px;
+    padding: 4px;
+    background-clip: content-box;
+}
 
 body.vc-ui .vc-story-tab .vc-story-config,
 body.vc-ui .vc-story-tab .vc-story-generating,
@@ -924,4 +936,72 @@ body.vc-ui .vc-story-tab .vc-story-badge::before { content: none; }
 @keyframes vc-story-dot {
     from { opacity: 0.35; }
     to { opacity: 1; }
+}
+
+body.vc-ui .vc-story-tab .vc-scroll > .vc-large-title,
+body.vc-ui .vc-story {
+    width: min(100%, var(--vc-read));
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+}
+
+body.vc-ui .vc-story {
+    padding-inline: var(--vc-page-pad);
+}
+
+body.vc-ui .vc-story .vc-case,
+body.vc-ui .vc-story .vc-note,
+body.vc-ui .vc-story .vc-npcs,
+body.vc-ui .vc-story .vc-narr,
+body.vc-ui .vc-story .vc-evis,
+body.vc-ui .vc-story .vc-evi-label,
+body.vc-ui .vc-story .vc-group,
+body.vc-ui .vc-story .vc-story-config,
+body.vc-ui .vc-story .vc-story-actions,
+body.vc-ui .vc-story .vc-story-ending,
+body.vc-ui .vc-story .vc-story-companions,
+body.vc-ui .vc-story .vc-story-notes {
+    width: auto;
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+body.vc-ui .vc-story .vc-npcs,
+body.vc-ui .vc-story .vc-narr {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+body.vc-ui .vc-story-tab .vc-dock.vc-glass {
+    width: min(100%, var(--vc-read));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    box-sizing: border-box;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.vc-ui .vc-story-tab .vc-note {
+    align-items: center;
+    height: 48px;
+    min-height: 44px;
+    box-sizing: border-box;
+    margin-top: var(--vc-space-xs);
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+body.vc-ui .vc-story-tab .vc-note p {
+    margin: 0;
+}
+
+body.vc-ui .vc-story-tab .vc-scroll > .vc-large-title {
+    margin-top: var(--vc-space-xs);
+    padding-inline: var(--vc-page-pad);
+    box-sizing: border-box;
 }

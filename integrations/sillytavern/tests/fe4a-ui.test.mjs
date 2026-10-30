@@ -292,7 +292,10 @@ test('陪伴新界面保留分段、开关、投递状态与渠道合同', () =>
     assert.match(feishu, /群成员可见/);
     assert.match(feishu, /不回显/);
     assert.doesNotMatch(feishu, /vc-meta">不回显/);
-    assert.match(feishu, /vc-meta">已配置</);
+    assert.doesNotMatch(feishu, /<span>凭据<\/span><span class="vc-meta">/);
+    assert.doesNotMatch(email, /<span>凭据<\/span><span class="vc-meta">/);
+    // 副标题删掉后，凭据状态仍以右侧值显示。
+    assert.match(feishu, /已配置/);
     assert.match(feishu, /澄夏 · 日常/);
     assert.match(feishu, /澄夏 · 剧情/);
     assert.match(feishu, /data-action="toggle-relationship"/);

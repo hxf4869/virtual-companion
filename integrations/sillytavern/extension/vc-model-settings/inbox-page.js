@@ -55,6 +55,26 @@ function zoneOf(value) {
     return typeof value === 'string' && ZONE.test(value.trim()) ? value.trim() : '';
 }
 
+function zoneDisplayName(zone) {
+    const value = String(zone || '').trim();
+    if (!value) return '';
+    try {
+        const parts = new Intl.DateTimeFormat('zh-CN', { timeZone: value, timeZoneName: 'long' }).formatToParts(new Date());
+        return parts.find((part) => part.type === 'timeZoneName')?.value || value;
+    } catch {
+        return value;
+    }
+}
+
+export function quietZoneValue(shown, stored) {
+    const text = String(shown ?? '').trim();
+    const zone = String(stored ?? '').trim();
+    if (!text) return '';
+    if (ZONE.test(text)) return text;
+    if (zone && text === zoneDisplayName(zone)) return zone;
+    return text;
+}
+
 function intIn(value, min, max) {
     const number = typeof value === 'number' ? value : Number(String(value ?? '').trim());
     if (!Number.isInteger(number) || number < min || number > max) return null;
@@ -801,6 +821,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
 
 function readForm(dialog) {
     const value = (field) => dialog.querySelector(`[data-field="${field}"]`)?.value ?? '';
+    const zoneInput = dialog.querySelector('[data-field="quietHoursTimezone"]');
     const pressed = (field) => dialog.querySelector(`[data-field="${field}"]`)?.getAttribute('aria-pressed') === 'true';
     const modes = ['COMPANION', 'STORY'].filter((mode) => dialog.querySelector(`[data-mode="${mode}"]`)?.getAttribute('aria-pressed') === 'true');
     const channels = [...dialog.querySelectorAll('[data-channel-card]')].map((card) => {
@@ -820,7 +841,7 @@ function readForm(dialog) {
             offlineCapable: pressed('offlineCapable'),
             quietHoursStart: value('quietHoursStart'),
             quietHoursEnd: value('quietHoursEnd'),
-            quietHoursTimezone: value('quietHoursTimezone'),
+            quietHoursTimezone: quietZoneValue(zoneInput?.value, zoneInput?.getAttribute('data-zone')),
             dailyLimit: value('dailyLimit'),
             recentInteractionMinutes: value('recentInteractionMinutes'),
             allowedModes: modes.length ? modes : undefined,
@@ -1071,10 +1092,6 @@ function messageMeta(item, deliveries) {
     return `<span class="vc-inbox-meta">${bits.map((bit) => `<span class="vc-inbox-meta-item">${bit}</span>`).join('')}</span>`;
 }
 
-function credentialStateLabel(draft) {
-    return draft.credentialState === 'missing' ? '未配置' : '已配置';
-}
-
 export function renderInboxTab(state) {
     if (state.loading && state.relationships.length === 0 && state.inbox.length === 0 && !state.error) {
         return `<div class="vc-column"><h1 class="vc-large-title" tabindex="-1" data-vc-owned-title>陪伴</h1>${inboxSkeleton()}</div>`;
@@ -1112,7 +1129,7 @@ export function renderInboxTab(state) {
         return `<article class="vc-cell vc-inbox-follow" data-follow-up-id="${esc(item.followUpId)}" data-status="${esc(item.status)}">${control}</article>`;
     }).join('');
     const waitingHost = draft.enabled && !draft.offlineCapable ? '<p class="vc-footnote" role="status">需要打开此会话继续</p>' : '';
-    const quiet = [draft.quietHoursStart, draft.quietHoursEnd].filter(Boolean).join(' – ');
+    const zoneName = zoneDisplayName(draft.quietHoursTimezone);
     const cancel = state.cancelAsk ? `<div hidden data-vc-layer role="dialog" aria-label="取消跟进"><p>取消这条跟进？</p><button type="button" data-action="confirm-cancel">取消跟进</button><button type="button" data-action="dismiss-cancel">返回</button></div>` : '';
     const conflict = state.policyConflict ? `<div hidden data-vc-layer role="dialog" aria-label="保存冲突"><p data-tone="warn">这些设置已在另一处更新。你的输入已保留。</p><button type="button" data-action="view-latest-policy">查看最新</button><button type="button" data-action="keep-policy-draft">保留草稿</button></div>` : '';
     const reauth = state.reauth.open ? `<div hidden data-vc-layer role="dialog" aria-label="重新验证身份"><p>需要重新验证身份。</p><button type="button" data-action="reauth-submit">验证并继续</button><button type="button" data-action="reauth-cancel">取消</button></div>` : '';
@@ -1132,11 +1149,13 @@ export function renderInboxTab(state) {
         <section aria-label="跟进">
             <h2 class="vc-group-title">跟进</h2>
             <div class="vc-group">${follows || '<div class="vc-cell" role="status">没有跟进</div>'}</div>
+            <h2 class="vc-group-title">静默时段</h2>
+            <div class="vc-group">
+                <label class="vc-cell"><span class="vc-grow">开始</span><input data-field="quietHoursStart" aria-label="开始" placeholder="22:00" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"></label>
+                <label class="vc-cell"><span class="vc-grow">结束</span><input data-field="quietHoursEnd" aria-label="结束" placeholder="22:00" value="${esc(draft.quietHoursEnd)}" inputmode="numeric" maxlength="5"></label>
+                <label class="vc-cell"><span class="vc-grow">时区</span><input data-field="quietHoursTimezone" data-zone="${esc(draft.quietHoursTimezone)}" aria-label="时区" placeholder="中国标准时间" value="${esc(zoneName)}" maxlength="64"></label>
+            </div>
             <div class="vc-group vc-inbox-summary">
-                <div class="vc-cell"><span class="vc-grow">静默时段</span><span class="vc-value vc-num">${esc(quiet)}</span></div>
-                <label class="vc-cell"><span class="vc-grow">开始</span><input data-field="quietHoursStart" aria-label="开始" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"></label>
-                <label class="vc-cell"><span class="vc-grow">结束</span><input data-field="quietHoursEnd" aria-label="结束" value="${esc(draft.quietHoursEnd)}" inputmode="numeric" maxlength="5"></label>
-                <label class="vc-cell"><span class="vc-grow">时区</span><input data-field="quietHoursTimezone" aria-label="时区" value="${esc(draft.quietHoursTimezone)}" maxlength="64"></label>
                 <label class="vc-cell"><span class="vc-grow">每日上限</span><input data-field="dailyLimit" aria-label="每日上限" inputmode="numeric" value="${esc(draft.dailyLimit)}"></label>
                 <label class="vc-cell"><span class="vc-grow">间隔（分钟）</span><input data-field="recentInteractionMinutes" aria-label="间隔（分钟）" inputmode="numeric" value="${esc(draft.recentInteractionMinutes)}"></label>
                 ${uiSwitch('toggle-enabled', '主动问候', 'data-field="enabled"', draft.enabled)}
@@ -1170,11 +1189,10 @@ export function renderInboxChannel(state, key) {
     const field = draft.channel === 'FEISHU' ? '群名称' : '收件地址';
     return `<header class="vc-navbar is-solid"><button type="button" class="vc-circle" data-action="pop-channel" aria-label="返回">${icon('chevron-left')}</button><div class="vc-nav-title">${title}</div><div class="vc-nav-spacer"></div></header>
         <div class="vc-scroll"><div class="vc-column">
-            <h1 class="vc-large-title">${title}</h1>
             <article class="vc-inbox-channel" data-channel-card data-key="${esc(draft.key)}" data-channel="${esc(draft.channel)}" data-preview="${preview}">
                 <div class="vc-group">
-                    <label class="vc-cell vc-inbox-wide"><span class="vc-grow">${field}</span><input data-field="configuredTarget" maxlength="320" autocomplete="off" value="${esc(safeTarget(draft.configuredTarget))}" aria-label="${field}"></label>
-                    <label class="vc-cell vc-inbox-wide vc-inbox-credential"><span class="vc-grow"><span>凭据</span><span class="vc-meta">${esc(credentialStateLabel(draft))}</span>${contractClip(credentialText(draft))}</span><input type="password" data-field="credential" aria-label="凭据" placeholder="${esc(credentialPlaceholder(draft))}" autocomplete="off" spellcheck="false"></label>
+                    <label class="vc-cell vc-inbox-wide"><span class="vc-grow">${field}</span><input data-field="configuredTarget" maxlength="320" autocomplete="off" value="${esc(safeTarget(draft.configuredTarget))}" aria-label="${field}" placeholder="未填写"></label>
+                    <label class="vc-cell vc-inbox-wide vc-inbox-credential"><span class="vc-grow"><span>凭据</span>${contractClip(credentialText(draft))}</span><input type="password" data-field="credential" aria-label="凭据" placeholder="${esc(credentialPlaceholder(draft))}" autocomplete="off" spellcheck="false"></label>
                     ${uiSwitch('toggle-channel', '启用', `data-key="${esc(draft.key)}" data-field="channel-enabled"`, draft.enabled)}
                     ${uiSwitch('toggle-preview', '正文预览', `data-key="${esc(draft.key)}" data-field="previewBody"`, draft.previewBody)}
                 </div>

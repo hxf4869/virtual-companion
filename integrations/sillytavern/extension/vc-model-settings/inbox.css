@@ -515,17 +515,25 @@ body.vc-ui .vc-inbox-tab .vc-nav-save {
 body.vc-ui .vc-inbox-tab .vc-nav-save:disabled { opacity: 0.35; }
 
 body.vc-ui .vc-inbox-tab .vc-cell input {
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 7.5rem;
+  max-width: 58%;
+  margin-left: auto;
   min-height: var(--vc-touch);
   border: 0;
   background: transparent;
-  color: var(--vc-ink);
+  color: var(--vc-ink-2);
   font: inherit;
   font-size: var(--vc-fs-input);
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+body.vc-ui .vc-inbox-tab .vc-cell input::placeholder {
+  color: var(--vc-ink-2);
+  opacity: 1;
 }
 
 body.vc-ui .vc-inbox-tab .vc-inbox-credential { align-items: center; }

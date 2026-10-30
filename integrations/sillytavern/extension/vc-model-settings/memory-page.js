@@ -406,6 +406,14 @@ function memoryStatuses(item) {
     return `${dotStatus('vc-memory-state', item.lifecycle, toneForLifecycle(item.lifecycle), life)}${dotStatus('vc-memory-source', item.sourceStatus, toneForSource(item.sourceStatus), source)}`;
 }
 
+function dateFilterLabel(draft) {
+    const from = draft?.eventDateFrom || '';
+    const to = draft?.eventDateTo || '';
+    if (from && to) return `${from} – ${to}`;
+    if (from || to) return [from, to].filter(Boolean).join(' – ');
+    return '全部';
+}
+
 function listStatus(item) {
     const life = item?.lifecycle;
     const source = item?.sourceStatus;
@@ -467,7 +475,7 @@ export function renderMemoryTab(s) {
             ${instanceRow}
             <label class="vc-search"><span class="vc-clip">搜索记忆</span>${icon('search', { size: 18 })}<input type="search" name="q" aria-label="搜索记忆" placeholder="搜索记忆" value="${esc(s.filterDraft?.q || '')}" ${disableField}><button class="vc-clip" type="submit" ${disableField}>搜索</button></label>
             <div class="vc-segment" data-vc-memory-segment aria-label="记忆状态"><i class="vc-segment-thumb"></i>${segments}</div>
-            <div class="vc-group"><details><summary class="vc-cell"><span class="vc-grow">发生日期</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></summary><div class="vc-memory-dates"><label>从<input type="date" name="eventDateFrom" value="${esc(s.filterDraft?.eventDateFrom || '')}" ${disableField}></label><label>至<input type="date" name="eventDateTo" value="${esc(s.filterDraft?.eventDateTo || '')}" ${disableField}></label><button class="vc-btn vc-btn-text" type="submit" ${disableField}>应用日期</button></div></details></div>
+            <div class="vc-group"><details><summary class="vc-cell"><span class="vc-grow">发生日期</span><span class="vc-value vc-select-value">${esc(dateFilterLabel(s.filterDraft))}${icon('chevrons-up-down', { size: 16 })}</span></summary><div class="vc-memory-dates"><label>从<input type="date" name="eventDateFrom" value="${esc(s.filterDraft?.eventDateFrom || '')}" ${disableField}></label><label>至<input type="date" name="eventDateTo" value="${esc(s.filterDraft?.eventDateTo || '')}" ${disableField}></label><button class="vc-btn vc-btn-text" type="submit" ${disableField}>应用日期</button></div></details></div>
         </form>
         <div class="vc-memory-results" aria-busy="${s.loading ? 'true' : 'false'}" aria-label="记忆列表">${results}</div>
     </div>`;
@@ -493,14 +501,14 @@ function renderMemoryDetailBody(s) {
             ? '<p role="status">正在核对来源…</p>'
             : !(s.evidence || []).length
                 ? '<p>暂无可展示的来源。</p>'
-                : (s.evidence || []).map((item) => `<article class="vc-cell vc-memory-evidence"><strong>${esc(item.chatDisplayName || '来源会话')}</strong><span class="vc-memory-source" data-state="${esc(item.status)}">${esc(sourceLabels[item.status] || '来源状态未知')}</span><p class="vc-memory-secondary">消息 ${esc(item.messageId)} · 修订 ${esc(item.revision)} · ${esc(stamp(item.sourceTimestamp, item.sourceTimezone))}${item.sourceTimezone ? ` · ${esc(item.sourceTimezone)}` : ''}</p>${item.excerpt ? `<blockquote>${esc(item.excerpt)}</blockquote>` : '<p>原文片段不可用。</p>'}</article>`).join('');
+                : (s.evidence || []).map((item) => `<article class="vc-cell vc-memory-evidence"><strong>${esc(item.chatDisplayName || '来源会话')}</strong><p class="vc-memory-secondary">消息 ${esc(item.messageId)} · 修订 ${esc(item.revision)} · ${esc(stamp(item.sourceTimestamp, item.sourceTimezone))}${item.sourceTimezone ? ` · ${esc(item.sourceTimezone)}` : ''}</p>${item.excerpt ? `<blockquote>${esc(item.excerpt)}</blockquote>` : '<p>原文片段不可用。</p>'}</article>`).join('');
     const history = m.history?.length
         ? `<ol class="vc-memory-history">${m.history.map((item) => `<li class="vc-cell vc-memory-rev"><strong>修订 ${esc(item.version)}</strong><span class="vc-meta">${esc(lifecycleLabels[item.lifecycle] || '状态未知')} · ${esc(stamp(item.time?.recordedAt))}</span><p>${esc(item.summary)}</p></li>`).join('')}</ol>`
         : '<p>暂无更早的修订。</p>';
     const editing = s.editing ? `<form class="vc-group" data-form="edit"><label class="vc-cell" for="vc-memory-draft"><span class="vc-grow">纠正记忆</span></label><textarea id="vc-memory-draft" name="summary" rows="5" required ${s.busy ? 'disabled' : ''}>${esc(s.draft)}</textarea><div class="vc-memory-actions">${tabBtn('cancel-edit', '取消编辑', { disabled: s.busy })}<button class="vc-btn vc-btn-fill" type="submit" ${s.busy || s.conflict || s.detailLoading || !canEdit(m) ? 'disabled' : ''}>${s.busy ? '保存中…' : '保存修订'}</button></div></form>` : '';
     const actions = s.editing ? '' : `<div class="vc-memory-actions vc-memory-detail-actions">${canEdit(m) ? tabBtn('edit', '纠正', { fill: true, disabled: s.busy || s.detailLoading }) : ''}${!['FORGETTING', 'FORGOTTEN'].includes(m.lifecycle) ? tabBtn('confirm-forget', '删除长期记忆', { danger: true, disabled: s.busy || s.detailLoading }) : ''}</div>`;
     return `<h1 class="vc-memory-title" tabindex="-1">${esc(m.summary)}</h1>
-        <p class="vc-meta">${memoryStatuses(m)}<span>修订 ${esc(m.version)}</span></p>
+        <p class="vc-meta vc-memory-status">${memoryStatuses(m)}<span>修订 ${esc(m.version)}</span></p>
         <dl class="vc-group vc-memory-facts"><div class="vc-cell"><dt>发生日期</dt><dd>${esc(time.eventDate || '未知')}${time.eventTime ? ` ${esc(time.eventTime)}` : ''}${time.eventTimezone ? ` · ${esc(time.eventTimezone)}` : ''}</dd></div>
         <div class="vc-cell"><dt>记录时间</dt><dd>${esc(stamp(time.recordedAt))}</dd></div>
         <div class="vc-cell"><dt>作用范围</dt><dd>${esc(instance?.companionName || '当前角色')} · ${modeLabel(m.mode)} · 仅此角色实例</dd></div>
