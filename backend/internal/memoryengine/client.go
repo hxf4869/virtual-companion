@@ -164,10 +164,24 @@ func conflictStatus(body io.Reader) error {
 	var payload struct {
 		Code string `json:"code"`
 	}
-	if json.NewDecoder(io.LimitReader(body, 512)).Decode(&payload) != nil || payload.Code != "MEMORYCORE_REVISION_CONFLICT" {
+	if json.NewDecoder(io.LimitReader(body, 512)).Decode(&payload) != nil || len(payload.Code) > 64 || !closedCodePattern.MatchString(payload.Code) {
 		return ErrConflict
 	}
-	return RevisionConflictError()
+	if payload.Code == "MEMORYCORE_REVISION_CONFLICT" {
+		return RevisionConflictError()
+	}
+	return &closedError{code: payload.Code}
+}
+
+// ClosedError is a body-free engine code. Callers may log ClosedCode and nothing else.
+func ClosedError(code string) error {
+	if len(code) > 64 || !closedCodePattern.MatchString(code) {
+		return ErrUnavailable
+	}
+	if code == "MEMORYCORE_REVISION_CONFLICT" {
+		return RevisionConflictError()
+	}
+	return &closedError{code: code}
 }
 func closedStatus(body io.Reader) error {
 	var payload struct {

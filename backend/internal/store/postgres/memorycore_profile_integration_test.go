@@ -88,6 +88,9 @@ func TestEngineProfileExcludesOtherChatAndMergedDependencies(t *testing.T) {
 				}
 			} else {
 				built = true
+				if !reflect.DeepEqual(input.VerifiedDependencies, expectedDependencies) {
+					t.Errorf("profile staging omitted verified dependencies: %v", input.VerifiedDependencies)
+				}
 			}
 			json.NewEncoder(w).Encode(map[string]any{"status": "staged", "dependencies": expectedDependencies})
 		case "/internal/read-profile":

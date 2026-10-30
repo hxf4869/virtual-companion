@@ -205,6 +205,20 @@ func TestProfileFailureUsesClosedDecisionCode(t *testing.T) {
 	if !strings.Contains(openLog, "decision_code=MEMORYCORE_PROFILE") || strings.Contains(openLog, "not-a-closed-code") {
 		t.Fatalf("open log %q", openLog)
 	}
+	conflictSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(409)
+		_, _ = w.Write([]byte(`{"code":"MEMORYCORE_PROFILE_VERIFICATION","detail":"secret dialogue"}`))
+	}))
+	defer conflictSrv.Close()
+	conflictClient, err := memoryengine.New(conflictSrv.URL, "private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflictErr := conflictClient.Call(context.Background(), "rebuild-profile", map[string]string{}, nil)
+	conflictLog := profileFailureLog(t, conflictErr)
+	if !strings.Contains(conflictLog, "decision_code=MEMORYCORE_PROFILE_VERIFICATION") || strings.Contains(conflictLog, "secret") {
+		t.Fatalf("verification log %q", conflictLog)
+	}
 }
 func TestProfileRebuildReleasesExtractSlot(t *testing.T) {
 	released := false

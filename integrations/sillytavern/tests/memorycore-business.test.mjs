@@ -328,6 +328,32 @@ test('branch inherits only trusted allowlisted records in the same logical domai
     assert.deepEqual(await engine.invoke('search', { ...searchInput(['record1']), scope: { ...branch, domainId: 'other-domain' } }), []);
 });
 
+test('profile omits records whose dependencies were not verified by Go', async t => {
+    const { engine, native } = await fixture(t);
+    const p = proposalInput();
+    await engine.invoke('propose', p);
+    await engine.invoke('commit', { scope, revision: 0, operationId: p.operationId });
+    const mapped = mapScope(scope);
+    native.records.set('seed', { id: 'seed', content: 'seed fact', ...mapped, version: 1, metadata: { vcDependencies: ['deployment-source'], vcScopeKey: 'seed' } });
+    let profiled;
+    native.rebuildProfile = async ({ records, stagingDir }) => {
+        profiled = records.map(record => record.id).sort();
+        await fs.writeFile(path.join(stagingDir, 'persona.md'), 'synthetic profile');
+    };
+    const staged = await engine.invoke('rebuild-profile', { scope, revision: 0, operationId: 'profile-mixed', allowedRecordIds: ['record1', 'seed'], verifiedDependencies: ['message1'] });
+    assert.deepEqual(profiled, ['record1']);
+    assert.deepEqual(staged.dependencies, ['message1']);
+    const published = await engine.invoke('rebuild-profile', { scope, revision: 0, operationId: 'profile-mixed', allowedRecordIds: ['record1', 'seed'], publish: true, verifiedDependencies: ['message1'] });
+    assert.deepEqual(published.dependencies, ['message1']);
+    let called = false;
+    native.rebuildProfile = async () => { called = true; };
+    const empty = await engine.invoke('rebuild-profile', { scope, revision: 0, operationId: 'profile-foreign', allowedRecordIds: ['seed'], verifiedDependencies: ['message1'] });
+    assert.equal(called, false);
+    assert.deepEqual(empty.dependencies, []);
+    const publishedEmpty = await engine.invoke('rebuild-profile', { scope, revision: 0, operationId: 'profile-foreign', allowedRecordIds: ['seed'], publish: true, verifiedDependencies: ['message1'] });
+    assert.deepEqual(publishedEmpty.dependencies, []);
+});
+
 test('profile refuses missing allowed records instead of publishing incomplete dependencies', async t => {
     const { engine, native } = await fixture(t); let calls = 0;
     native.rebuildProfile = async () => { calls++; };

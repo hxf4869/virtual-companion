@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -31,7 +32,7 @@ type memoryProfile struct {
 func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOperation, token string) error {
 	fingerprint, ids, refs, cached, e := s.profileBuildInput(ctx, c.OwnerID, op.Input.RelationshipID, op.Input.ConversationID)
 	if e != nil {
-		return e
+		return profileFailure(e)
 	}
 	if fingerprint == "" || len(ids) == 0 || cached {
 		return nil
@@ -50,15 +51,15 @@ func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOpe
 		return nil
 	})
 	if e != nil {
-		return e
+		return profileFailure(e)
 	}
 	id := op.ProfileOperationID
-	request := map[string]any{"scope": op.Scope, "revision": op.Revision, "operationId": id, "allowedRecordIds": ids, "operationToken": token}
+	request := map[string]any{"scope": op.Scope, "revision": op.Revision, "operationId": id, "allowedRecordIds": ids, "operationToken": token, "verifiedDependencies": deps}
 	var status struct {
 		Status string `json:"status"`
 	}
 	if e = s.memoryEngine.Call(ctx, "operation-status", request, &status); e != nil {
-		return e
+		return profileFailure(e)
 	}
 	if status.Status == "failed" || status.Status == "revoked" {
 		// go_retry_memorycore_profile drops the forget- prefix. A replacement
@@ -70,42 +71,60 @@ func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOpe
 			_, e := tx.Exec(ctx, `SELECT vc.go_retry_memorycore_profile($1,$2)`, c.OwnerID, c.JobID)
 			return e
 		}); e != nil {
-			return e
+			return profileFailure(e)
 		}
-		return ErrConflict
+		if status.Status == "revoked" {
+			return memoryengine.ClosedError("MEMORYCORE_PROFILE_REVOKED")
+		}
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_FAILED")
 	}
-	if status.Status == "unknown" {
+	// A staged profile from before this filter can still list an unverified
+	// seed dependency. Rebuilding lets the engine drop that record instead of
+	// failing the same publish check on every retry.
+	if status.Status == "unknown" || status.Status == "staged" {
 		if e = s.memoryEngine.Call(ctx, "rebuild-profile", request, nil); e != nil {
-			return e
+			return profileFailure(e)
 		}
 	}
 	if e = s.reconcileSTEvidence(ctx, c.OwnerID, refs); e != nil {
-		return e
+		return profileFailure(e)
 	}
 	// The final definer write repeats revision/source/lease checks. A raced
 	// publish cannot enter the Go summary projection.
 	request["publish"] = true
-	request["verifiedDependencies"] = deps
-	if e = s.memoryEngine.Call(ctx, "rebuild-profile", request, nil); e != nil {
-		return e
+	var published struct {
+		Dependencies []string `json:"dependencies"`
+	}
+	if e = s.memoryEngine.Call(ctx, "rebuild-profile", request, &published); e != nil {
+		if memoryengine.ClosedCode(e) == "MEMORYCORE_PROFILE_VERIFICATION" && !IsForgetProfile(id) {
+			if retryErr := s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, `SELECT vc.go_retry_memorycore_profile($1,$2)`, c.OwnerID, c.JobID)
+				return err
+			}); retryErr != nil {
+				return profileFailure(retryErr)
+			}
+		}
+		return profileFailure(e)
+	}
+	// No verified source survived the filter. Completing without a persona
+	// keeps unverified seed text out of the profile.
+	if len(published.Dependencies) == 0 {
+		return nil
 	}
 	var profile struct {
 		Dependencies []string          `json:"dependencies"`
 		Files        map[string]string `json:"files"`
 	}
 	if e = s.memoryEngine.Call(ctx, "read-profile", request, &profile); e != nil {
-		return e
+		return profileFailure(e)
 	}
 	trusted := map[string]bool{}
 	for _, d := range deps {
 		trusted[d] = true
 	}
-	if len(profile.Dependencies) == 0 {
-		return ErrConflict
-	}
 	for _, d := range profile.Dependencies {
 		if !trusted[d] {
-			return ErrConflict
+			return memoryengine.ClosedError("MEMORYCORE_PROFILE_DEPENDENCY")
 		}
 	}
 	refs = refs[:0]
@@ -115,23 +134,55 @@ func (s *Store) BuildEngineProfile(ctx context.Context, c JobClaim, op EngineOpe
 	sort.Strings(refs)
 	persona := profile.Files["persona.md"]
 	if strings.TrimSpace(persona) == "" {
-		return ErrInvalid
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_INVALID")
 	}
 	if len([]rune(persona)) > 16000 {
 		persona = string([]rune(persona)[:16000])
 	}
 	scenes, e := profileScenes(profile.Files, ids)
 	if e != nil {
-		return e
+		return profileFailure(e)
 	}
 	encoded, e := json.Marshal(scenes)
 	if e != nil {
-		return e
+		return profileFailure(e)
 	}
-	return mapStoreErr(s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
+	return profileFailure(s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
 		_, e := tx.Exec(ctx, `SELECT vc.go_record_memorycore_profile($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)`, c.OwnerID, c.JobID, c.Token, c.Fence, refs, persona, string(encoded), ids, fingerprint)
 		return e
 	}))
+}
+
+// profileFailure keeps a closed engine code and otherwise assigns one. A bare
+// store or transport error used to be logged as MEMORYCORE_PROFILE.
+func profileFailure(err error) error {
+	if err == nil || memoryengine.ClosedCode(err) != "" {
+		return err
+	}
+	switch {
+	case errors.Is(err, pgx.ErrNoRows), errors.Is(err, ErrNotFound):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_SOURCE")
+	case errors.Is(err, ErrInvalid):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_INVALID")
+	case errors.Is(err, ErrConflict):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_CONFLICT")
+	case errors.Is(err, memoryengine.ErrUnavailable):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_UNAVAILABLE")
+	}
+	mapped := mapStoreErr(err)
+	if memoryengine.ClosedCode(mapped) != "" {
+		return mapped
+	}
+	switch {
+	case errors.Is(mapped, pgx.ErrNoRows), errors.Is(mapped, ErrNotFound):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_SOURCE")
+	case errors.Is(mapped, ErrInvalid):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_INVALID")
+	case errors.Is(mapped, ErrConflict):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_CONFLICT")
+	default:
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_STORE")
+	}
 }
 func (s *Store) profileBuildInput(ctx context.Context, owner, rel, conv int64) (string, []string, []string, bool, error) {
 	var fingerprint string

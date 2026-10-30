@@ -71,6 +71,22 @@ func TestClientKeepsOnlyClosedEngineCodes(t *testing.T) {
 		})
 	}
 }
+func TestConflictResponseKeepsClosedProfileCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(409)
+		_, _ = w.Write([]byte(`{"code":"MEMORYCORE_PROFILE_VERIFICATION","detail":"secret dialogue"}`))
+	}))
+	defer srv.Close()
+	c, err := New(srv.URL, "private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.Call(context.Background(), "rebuild-profile", map[string]string{}, nil)
+	if ClosedCode(err) != "MEMORYCORE_PROFILE_VERIFICATION" || errors.Is(err, ErrConflict) || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("code %q err %v", ClosedCode(err), err)
+	}
+}
+
 func TestLocalModelsReadsBoundedStatus(t *testing.T) {
 	var method, path, auth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/hxf4869/virtual-companion/internal/memoryengine"
 	"github.com/hxf4869/virtual-companion/internal/turn"
 )
 
@@ -139,6 +140,8 @@ func mapRaise(msg string) error {
 		return &RevisionConflictError{Current: raisedInt(msg, "revision conflict (current ")}
 	case strings.Contains(msg, "profile in use: "):
 		return &ProfileInUseError{Purposes: strings.Split(raisedTail(msg, "profile in use: "), ",")}
+	case strings.HasPrefix(strings.TrimSpace(msg), "profile "):
+		return profileSQLError(msg)
 	case strings.Contains(msg, "owner is not an active account"):
 		return ErrServiceOwnerRejected
 	case strings.Contains(msg, "go_admin_purpose: profile not found"):
@@ -178,6 +181,29 @@ func mapRaise(msg string) error {
 		return ErrInvalid
 	default:
 		return errStore
+	}
+}
+
+// profileSQLError maps go_record_memorycore_profile exceptions. Shared
+// "memorycore *" messages stay on their existing callers.
+func profileSQLError(msg string) error {
+	switch {
+	case strings.Contains(msg, "fingerprint"):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_FINGERPRINT")
+	case strings.Contains(msg, "scene record"):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_SCENE_RECORD")
+	case strings.Contains(msg, "scenes"):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_SCENES")
+	case strings.Contains(msg, "claim"):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_CLAIM")
+	case strings.Contains(msg, "source"):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_SOURCE")
+	case strings.Contains(msg, "record set"):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_RECORDS")
+	case strings.Contains(msg, "operation"):
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_OPERATION")
+	default:
+		return memoryengine.ClosedError("MEMORYCORE_PROFILE_INVALID")
 	}
 }
 

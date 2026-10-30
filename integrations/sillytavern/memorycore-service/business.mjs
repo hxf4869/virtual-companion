@@ -506,12 +506,32 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
             const slot = await serial(input.scope.ownerId, async () => {
                 await noCleanup(ctx); checkRevision(native, input.scope, input.revision);
                 const { file, stored } = await operation(ctx, input);
-                if (stored) fail('OPERATION_CONFLICT');
-                const records = native.list(ids, mapped);
-                if (ids.some(id => !records.some(record => record.id === id)) || records.some(record =>
-                    !Array.isArray(record.metadata?.vcDependencies) || !record.metadata.vcDependencies.length || !record.metadata.vcDependencies.every(safeId))) fail('PROFILE_INPUT');
-                const dependencies = [...new Set(records.flatMap(r => r.metadata?.vcDependencies || []))];
+                // Go's verified set is the only source identity allowed into the
+                // profile. A deployment seed can carry a dependency Go never
+                // issued; publishing that id fails closed and used to dead-letter
+                // the whole extract. Keep records that still have a verified
+                // source, and drop the others before any model call.
+                const verified = Array.isArray(input.verifiedDependencies) ? input.verifiedDependencies.filter(safeId) : null;
+                const covered = dependencies => !verified || dependencies.every(id => verified.includes(id));
+                if (stored) {
+                    const previous = Array.isArray(stored.dependencies) ? stored.dependencies : [];
+                    if (stored.status === 'staged' && covered(previous)) return { work: Promise.resolve({ status: 'staged', dependencies: previous }) };
+                    // Only a staged profile with an unverified dependency is rebuilt.
+                    // failed and revoked stay conflicts so an in-flight forget can
+                    // still reject the finishing write.
+                    if (stored.status !== 'staged') fail('OPERATION_CONFLICT');
+                    await fs.rm(path.join(dir, 'staging', input.operationId), { recursive: true, force: true });
+                }
+                const listed = native.list(ids, mapped);
+                if (ids.some(id => !listed.some(record => record.id === id))) fail('PROFILE_INPUT');
+                const records = verified ? listed.filter(record => Array.isArray(record.metadata?.vcDependencies) && record.metadata.vcDependencies.some(id => verified.includes(id))) : listed;
+                if (records.some(record => !Array.isArray(record.metadata?.vcDependencies) || !record.metadata.vcDependencies.length || !record.metadata.vcDependencies.every(safeId))) fail('PROFILE_INPUT');
+                const dependencies = [...new Set(records.flatMap(r => (r.metadata?.vcDependencies || []).filter(id => !verified || verified.includes(id))))];
                 const stagingDir = path.join(dir, 'staging', input.operationId); privateDirectory(stagingDir);
+                if (verified && !records.length) {
+                    await writeJSON(file, { scope: input.scope, status: 'staged', revision: input.revision, dependencies: [] });
+                    return { work: Promise.resolve({ status: 'staged', dependencies: [] }) };
+                }
                 await writeJSON(file, { scope: input.scope, status: 'building-profile', revision: input.revision, dependencies });
                 const work = (async () => {
                     try {

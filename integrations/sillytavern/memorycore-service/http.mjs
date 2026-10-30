@@ -51,11 +51,14 @@ export function createMemoryCoreServer({ token, engine, commit, readLocalModels 
                 // Scope revision moved under an in-flight propose. Callers rebind;
                 // this must stay distinct from a still-running preparation.
                 if (message === 'MEMORYCORE_REVISION_CONFLICT') return send(409, { code: 'MEMORYCORE_REVISION_CONFLICT' });
+                // A closed engine token stays visible, including profile verification.
+                // The conflict scan used to run first and collapse that token into a
+                // generic 409 because the name contains PROFILE_VERIFICATION.
+                if (/^MEMORYCORE_[A-Z0-9_]+$/.test(message) && message.length <= 64) return send(422, { code: message });
                 const conflict = /(?:REVISION|SPACE|OPERATION|PROPOSAL|PROFILE_VERIFICATION)/.test(message);
                 if (conflict) return send(409, { code: 'MEMORYCORE_CONFLICT' });
-                // A closed engine token stays visible. Bare upstream tokens such as
-                // DEDUP_INVALID become MEMORYCORE_ENGINE_<TOKEN>. Free text never leaves.
-                if (/^MEMORYCORE_[A-Z0-9_]+$/.test(message) && message.length <= 64) return send(422, { code: message });
+                // Bare upstream tokens such as DEDUP_INVALID become MEMORYCORE_ENGINE_<TOKEN>.
+                // Free text never leaves.
                 if (message.length > 0 && message.length <= 45 && /^[A-Z][A-Z0-9_]*$/.test(message)) return send(422, { code: `MEMORYCORE_ENGINE_${message}` });
                 return send(422, { code: 'MEMORYCORE_OPERATION_FAILED' });
             }

@@ -116,6 +116,9 @@ export async function sceneMemoryExtractProd(ctx) {
         const idList = fresh.map((job) => BigInt(job.id)).join(',');
         const models = ctx.w10.psql(`SELECT COALESCE(string_agg(DISTINCT model_id, ','), '') FROM vc.memory_extract_attempt WHERE work_item_id IN (${idList});`).trim();
         assert.equal(models, modelId, '提取尝试必须走线上形状模型');
+        assert.match(String(binding.relationshipId), /^[1-9][0-9]*$/);
+        const profiles = ctx.w10.psql(`SELECT count(*) FROM vc.memory_profile WHERE relationship_id = ${binding.relationshipId} AND valid AND btrim(persona) <> '';`).trim();
+        assert.ok(Number(profiles) >= 1, '画像应写入当前关系且 persona 非空');
         const calls = (await ctx.fixtureHttp.captures({ protocol: 'chat' })).filter((row) => row.body?.model === modelId);
         assert.ok(calls.length >= 1, '提取请求应到达模型，而不是在回调里 4ms 被拒');
         for (const row of calls) {
