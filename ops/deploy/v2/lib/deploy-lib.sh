@@ -329,6 +329,8 @@ deploy_main() {
   git -C "$REPO_ROOT" update-ref "refs/vc-deploy/${TAG}" "$FULL"
   git -C "$REPO_ROOT" bundle create -q "$local_bundle" "refs/vc-deploy/${TAG}"
   git -C "$REPO_ROOT" update-ref -d "refs/vc-deploy/${TAG}"
+  # 上传带 --resume：小文件先删远端旧件，避免按旧文件长度续传成新旧混合。
+  run_remote "rm -f $(printf '%q' "$remote_bundle") $(printf '%q' "$remote_script")"
   run_upload "$local_bundle" "$remote_bundle"
   run_upload "$REMOTE_BODY" "$remote_script"
   remote_cmd=$(printf 'chmod 700 %q && VC_NEW_IMAGE_TAG=%q VC_COMMIT=%q VC_IMAGE_ARCHIVE=%q VC_SRC_BUNDLE=%q VC_DEPLOY_SOURCE_DIR=%q VC_DEPLOY_COMPOSE_ENV=%q VC_DEPLOY_BACKUP_DIR=%q VC_DEPLOY_BACKUP_PASSPHRASE_FILE=%q VC_DEPLOY_ST_CONFIG=%q VC_DEPLOY_PREVIOUS_TAG_FILE=%q bash %q' \
