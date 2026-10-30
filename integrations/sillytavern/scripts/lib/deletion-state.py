@@ -241,6 +241,9 @@ def load_manifest(path):
     rights = value.get('engineRights')
     if rights is not None and (not isinstance(rights, dict) or rights.get('version') != 1 or not isinstance(rights.get('owners'), dict)):
         fail('DELETION_STATE_INVALID')
+    voice=value.get('voiceRights')
+    if voice is not None and (not isinstance(voice,dict) or voice.get('version')!=1 or not isinstance(voice.get('keys'),list)):
+        fail('DELETION_STATE_INVALID')
     return value
 
 
@@ -435,6 +438,13 @@ def publish_manifest(path, state, rights):
     }
     if rights is not None:
         body['engineRights'] = rights
+    voice_index=os.environ.get('VC_VOICE_BACKUP_INDEX','')
+    if voice_index:
+        file=Path(voice_index)
+        if file.is_symlink() or not file.is_file():fail('DELETION_STATE_INVALID')
+        voice=json.loads(file.read_text())
+        if voice.get('version')!=1 or not isinstance(voice.get('keys'),list):fail('DELETION_STATE_INVALID')
+        body['voiceRights']=voice
     write_json(path, body)
 
 

@@ -225,7 +225,8 @@ pw = os.environ.get('PGPASSFILE', '')
 open(os.environ['VC_TEST_ARGV_LOG'], 'a').write('stpass\\t' + (open(pw).read() if pw else '') + '\\n')
 if pw:
     open(os.environ['VC_TEST_ARGV_LOG'], 'a').write('stmode\\t' + oct(os.stat(pw).st_mode & 0o777) + '\\n')
-sys.stdout.write('{"version":1,"accounts":[],"conversations":[],"relationships":[]}\\n')
+sql = sys.stdin.read()
+sys.stdout.write('f\\n' if 'to_regclass' in sql else '{"version":1,"accounts":[],"conversations":[],"relationships":[]}\\n')
 `, { mode: 0o700 });
     const both = sh(BACKUP, [data, '-', archive], {
         VC_ST_BACKUP_PASSPHRASE: pass,

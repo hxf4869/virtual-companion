@@ -24,7 +24,7 @@
 #   VC_BACKUP_PG_USER        容器内用户，默认 postgres
 #   VC_BACKUP_PG_DATABASE    容器内库名，默认 vc
 # 两者都未设置时不导出数据库，并输出「未含 PostgreSQL」。
-# MinIO 不备份：导出对象约 24 小时过期，是对话与记忆的临时下载副本。
+# MinIO：随 PostgreSQL 自动纳入当前有效聊天 / 主动语音密文，排除临时导出与试听缓存。
 # 不打包：明确列出的自托管派生文件与 extensions/（上游锁 + 补丁 + vendor.lock 可重放）；任何 keyfile / .env。
 # 守卫：输出不能落在 dataRoot 内；keyfile 不能在 dataRoot 内，也不能与归档同目录。产物 0600。
 #       只对本次新建的输出目录设 0700，已存在的父目录权限不动。
@@ -137,6 +137,17 @@ if [ -d "$MEMORYCORE_DATA/owners" ]; then
     TAR_ARGS+=(-C "$WORK/stage" "_memorycore")
 fi
 
+# VO-12: only canonical voice objects referenced by retained sources are copied.
+# Credentials remain in the private runtime.env or named process environment.
+if [ -n "${VC_BACKUP_PG_DSN:-}" ] || [ -n "${VC_BACKUP_PG_CONTAINER:-}" ]; then
+    mkdir -p "$WORK/stage"
+    python3 "$SCRIPT_DIR/lib/voice-backup.py" snapshot "$WORK/stage/_voice" || exit 2
+    if [ -f "$WORK/stage/_voice/index.json" ]; then
+        TAR_ARGS+=(-C "$WORK/stage" "_voice")
+        export VC_VOICE_BACKUP_INDEX="$WORK/stage/_voice/index.json"
+    fi
+fi
+
 # 最新删除清单放在归档外。快照回滚 PostgreSQL 时，恢复仍与这份清单取并集。
 if [ -n "${VC_ST_DATABASE_URL:-}" ] || [ -n "${VC_ST_PG_CONTAINER:-}" ]; then
     if [ -n "${VC_ST_DATABASE_URL:-}" ] && [ -n "${VC_ST_PG_CONTAINER:-}" ]; then
@@ -200,5 +211,9 @@ OUT_BYTES=$(stat -c '%s' "$OUT" 2>/dev/null || stat -f '%z' "$OUT")
 if [ "$PG_INCLUDED" -eq 0 ]; then
     echo "POSTGRESQL 未含 PostgreSQL"
 fi
-echo "MinIO 未备份：导出对象约 24 小时过期，是对话与记忆的临时下载副本，不纳入归档"
+if [ -f "$WORK/stage/_voice/index.json" ]; then
+    echo "MinIO：有效语音随 PostgreSQL 备份；临时导出与试听缓存未备份"
+else
+    echo "MinIO 未备份：未配置 PostgreSQL 或数据库不含语音"
+fi
 echo "OK    备份完成：${OUT}（0600，${OUT_BYTES}B；明文 tar ${BYTES}B / ${ENTRIES} 条目；密钥来源：${KF_REAL:-环境变量}）"

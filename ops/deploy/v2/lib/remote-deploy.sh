@@ -192,6 +192,13 @@ export VC_MEMORYCORE_DATA_ROOT="$mc_root"
 export VC_MEMORYCORE_PG_CONTAINER="$db_name"
 export VC_MEMORYCORE_PG_USER=vc_migrator
 export VC_BACKUP_PG_USER=vc_migrator
+export VC_ST_PG_CONTAINER="$db_name"
+export VC_ST_PG_USER=vc_migrator
+export VC_ST_PG_DATABASE=vc
+export VC_ST_CURRENT_DATA_ROOT="$st_root"
+export VC_ST_DELETION_MANIFEST="$VC_DEPLOY_BACKUP_DIR/deletion-manifest.json"
+export VC_VOICE_MINIO_CONTAINER="$(compose ps -q minio)"
+export VC_VOICE_S3_ENV_FILE="$(dirname "$VC_DEPLOY_COMPOSE_ENV")/runtime.env"
 # MemoryCore 运行时持有 runtime.lock（容器内 pid），备份前先停服务再清锁；部署随后整体重建。
 compose stop memorycore >/dev/null
 rm -f "$mc_root/runtime.lock"

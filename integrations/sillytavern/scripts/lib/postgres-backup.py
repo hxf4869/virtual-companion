@@ -561,6 +561,7 @@ def apply_deletions(database):
         % (len(accounts), len(relationships), len(conversations), len(memories)),
         flush=True,
     )
+    return state
 
 
 def restore(directory, gate):
@@ -572,7 +573,12 @@ def restore(directory, gate):
         psql('postgres', f'CREATE DATABASE {name}')
         created = name
         pg_restore(name, dump_path)
-        apply_deletions(name)
+        state=apply_deletions(name)
+        voice_root=Path(directory).parent/'_voice'
+        if voice_root.exists():
+            spec=importlib.util.spec_from_file_location('vc_voice_backup',Path(__file__).with_name('voice-backup.py'))
+            voice=importlib.util.module_from_spec(spec);spec.loader.exec_module(voice)
+            voice.filter_database(name,voice_root,state)
     except Exception:
         if created:
             try:

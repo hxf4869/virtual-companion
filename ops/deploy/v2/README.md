@@ -102,6 +102,8 @@ Owner 用所提供的初始口令登录，完成改密和 TOTP；模型可在模
    embedding 继续使用 Compose 里的 `OLLAMA_KEEP_ALIVE=-1`（MemoryCore 每次嵌入请求也带 `keep_alive: -1`）。重排参数与模型目录变量名见上文，变量名是 `VC_RERANK_MODELS_DIR`。
 5. 验收 Go health、MemoryCore readyz、ST 登录页，并核对 `docker compose ... ps` 全部健康。旧镜像确认无误后再清理。
 
+VO-12 后部署前备份包含仍有效的聊天 / 主动语音密文，排除临时导出和试听缓存。部署入口从私有 `runtime.env` 读取既有 S3 连接，并在当前 MinIO 容器中使用临时 0600 `mc` 配置；不输出配置值。最新删除状态和语音 allowlist 写入归档外的同一份 `deletion-manifest.json`。恢复先创建隔离数据库、套用最新删除状态，再向独立空桶导入相同规范键，详见 [备份与恢复](../../../integrations/sillytavern/README.md#备份与恢复)。临时对象目录退出清理，加密归档沿用下文成功部署后只留最新一份的规则；恢复演练的目录、隔离数据库和桶用后删除。
+
 头像缩略图依赖 ST 镜像里的 `st-fetch-wasm-realpath` 补丁：`st-run/node_modules` 是指向镜像内锁定安装的符号链接，WASM 的 `file://` 真实路径在程序目录外。补丁只放行该真实目录下的 `.wasm`，不放行数据根。`st-data` 卷继续挂在 `/srv/vc-managed/data`。只重启旧镜像不会带上这个补丁，必须按上面的步骤重建并加载新的 ST 镜像。
 
 首次升级到含 rerank 的版本（204dc941 及之后）时另加：

@@ -92,6 +92,10 @@ if [ -z "${VC_ST_DELETION_MANIFEST:-}" ]; then
         export VC_ST_DELETION_MANIFEST="$sibling"
     fi
 fi
+if [ -d "$TARGET/_voice" ] && [ ! -f "$TARGET/_postgres/db.dump" ]; then
+    echo "FAIL: 语音恢复必须关联隔离 PostgreSQL 快照；恢复门保持 blocked" >&2
+    exit 5
+fi
 if [ -f "$TARGET/_postgres/db.dump" ]; then
     if [ -n "${VC_BACKUP_PG_DSN:-}" ] && [ -n "${VC_BACKUP_PG_CONTAINER:-}" ]; then
         echo "FAIL: VC_BACKUP_PG_DSN 与 VC_BACKUP_PG_CONTAINER 只能设一个；恢复门保持 blocked" >&2

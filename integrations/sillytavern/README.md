@@ -144,7 +144,9 @@ bash integrations/sillytavern/scripts/restore.sh "$ARCHIVE" "$EMPTY_DIR"
 
 需要把 PostgreSQL 打进同一份归档时，设置 `VC_BACKUP_PG_DSN` 或 `VC_BACKUP_PG_CONTAINER`，恰好一个。脚本用 `pg_dump -Fc`（自定义格式）写入归档内的 `_postgres/db.dump`，并附带不含口令的 `_postgres/source.json`。DSN 的口令只写入临时 0600 `PGPASSFILE`；容器模式在容器内执行。两者都不设置时不导出数据库，输出标明「未含 PostgreSQL」。
 
-MinIO 不备份。应用对象是 `exports/<owner>/<id>-<hex>.json`，约 24 小时过期，是对话与记忆的临时下载副本，由 scheduler 清理。权威数据在 PostgreSQL 与 ST 文件里。过期副本不进归档，恢复也不会把它们复活；需要时重新导出。
+VO-12 起，同一加密归档自动纳入 PostgreSQL 当前仍有效的聊天 / 主动语音密文，保留 `owner/relationship/clip.wav` 键。`exports/` 临时下载副本与 24 小时试听缓存仍排除。数据库存在语音表且有有效片段时，缺对象或对象存储配置即备份失败，不能默默生成不完整备份。对象连接复用 `VC_EXPORT_S3_ENDPOINT` / `VC_EXPORT_S3_ACCESS_KEY` / `VC_EXPORT_S3_SECRET_KEY` / `VC_EXPORT_S3_BUCKET`；也可从 0600 的 `VC_VOICE_S3_ENV_FILE` 读取这四项。`VC_VOICE_MINIO_CONTAINER` 使 helper 在已有 MinIO 容器中运行 `mc`，凭据只经 stdin 写到临时私有配置并在退出时删除。
+
+恢复时，`_voice` 只能随隔离 PostgreSQL 库恢复。归档内索引先与当前权威来源、账号删除、ST tombstone、外部最新 `voiceRights` 清单取交集；不再有效的数据库行和密文一起移除，失败保持 blocked。`restore.sh` 不向现用桶写入对象；先准备独立空桶，将上述 S3 环境指向它，再运行 `python3 integrations/sillytavern/scripts/lib/voice-backup.py import "$EMPTY_DIR/_voice" <RESTORED_DATABASE>`。导入前重新套用最新删除状态，要求库名为隔离的 `vc_restore_*`，空桶以外的目标拒绝写入；任何失败保留恢复门。不要切换应用连接，直到数据库与对象导入均完成。此入口不恢复导出对象，也不恢复用户录音（原始录音不落盘）。
 
 `restore.sh` 发现 `_postgres/db.dump` 时，在同一实例上 `CREATE DATABASE` 一个新的 `vc_restore_*` 库并 `pg_restore`。不覆盖、不改名当前库，也不自动切换。成功时输出 `RESTORED_DATABASE name=... source=... switched=false`，由 Owner 决定是否改连接。新库装入快照之后、删除 `restore-gate.json` 之前，先把删除并集应用到该库：当前库删除意图 ∪ 归档外删除清单 ∪ 当前数据根。顺序是删除列出的记忆行、列出的会话、已经没有会话且不属于被删账号的关系、再删除账号（`vc.vc_user`），最后把当前库里这些账号的 `account_deletion_intent` 复制进新库。任一步失败则退出 5，恢复门保持 blocked，并丢掉未完成的新库。文件侧仍用同一并集清理，且不写回当前库。数据库不可达时同样失败并保持 blocked。
 
@@ -346,7 +348,7 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
 - 备份打包显式保护清单（chats、group chats、groups、characters、worlds、backups、OpenAI Settings、
   user 资源、settings/secrets、cookie-secret、config.yaml，以及存在的 `_vc_accounts/` 与各用户 `.vc-f2/`）；
   `memorycore-data/owners/` 存在时另打 MemoryCore 快照。排除可确定性再生的自托管派生文件与 `extensions/`。
-  MinIO 不纳入。设置 `VC_BACKUP_PG_DSN` 或 `VC_BACKUP_PG_CONTAINER` 之一时，同一归档纳入 `pg_dump -Fc`；都不设置则不含数据库。删除清单在归档外，不随快照回滚。
+  设置 `VC_BACKUP_PG_DSN` 或 `VC_BACKUP_PG_CONTAINER` 之一时，同一归档纳入 `pg_dump -Fc` 与有效语音密文；都不设置则不含数据库与语音。MinIO 导出副本与试听缓存排除。删除清单在归档外，不随快照回滚。
   keyfile 不得位于 dataRoot 内、不得与归档同目录。保留期未定，见「本机运行说明」。
 
 ### W06 持久来源对账
