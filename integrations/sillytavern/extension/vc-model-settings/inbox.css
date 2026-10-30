@@ -395,6 +395,16 @@ body.vc-ui .vc-inbox-tab .vc-column {
   margin-inline: auto;
 }
 
+body.vc-ui .vc-inbox-tab.is-detail .vc-column {
+  padding-top: var(--vc-space-xl);
+}
+
+body.vc-ui .vc-inbox-tab .vc-cell.is-danger {
+  color: var(--vc-danger);
+  font-size: var(--vc-fs-body);
+  font-weight: 600;
+}
+
 body.vc-ui .vc-inbox-tab .vc-clip {
   position: absolute;
   width: 1px;
