@@ -26,7 +26,7 @@ if [ "${1:-}" = "buildx" ]; then
 fi
 
 if [ "${1:-}" = "run" ]; then
-  note smoke
+  if [ -n "${VC_TEST_REMOTE:-}" ]; then note remote-run; else note smoke; fi
   exit 0
 fi
 

@@ -206,6 +206,17 @@ printf '%s\n' "$old_tag" > "$VC_DEPLOY_PREVIOUS_TAG_FILE"
 chmod 600 "$VC_DEPLOY_PREVIOUS_TAG_FILE"
 rewrite_tag "$VC_DEPLOY_COMPOSE_ENV" "$VC_NEW_IMAGE_TAG"
 
+# st-data 卷挂在镜像的数据目录上，镜像里的新扩展只在卷首次创建时复制一次。
+# 每次部署把镜像自带的三个扩展同步进卷（旧版先打包备份），否则前端代码不会更新。
+ext_img="virtual-companion-st:${VC_NEW_IMAGE_TAG}"
+docker run --rm -v "${st_vol}:/data:ro" --entrypoint tar "$ext_img" -C /data/default-user -czf - extensions \
+  > "$VC_DEPLOY_BACKUP_DIR/extensions-before-${VC_NEW_IMAGE_TAG}.tgz" || die "扩展备份失败"
+chmod 600 "$VC_DEPLOY_BACKUP_DIR/extensions-before-${VC_NEW_IMAGE_TAG}.tgz"
+docker run --rm --entrypoint tar "$ext_img" -C /srv/vc-managed/data/default-user/extensions -cf - . \
+  | docker run --rm -i --user 1000:1000 -v "${st_vol}:/data" --entrypoint sh "$ext_img" -c \
+    'set -e; d=/data/default-user/extensions; mkdir -p "$d"; for n in vc-model-settings JS-Slash-Runner ST-Prompt-Template; do rm -rf "$d/$n"; done; tar -xf - -C "$d"' \
+  || die "扩展同步失败"
+
 if ! compose config -q >/dev/null; then
   echo "FAIL: compose config 未通过" >&2
   print_rollback
