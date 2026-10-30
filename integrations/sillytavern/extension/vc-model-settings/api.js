@@ -19,6 +19,8 @@
 // Go 响应解包：writeJSON 直接输出原始 body（无 data 包裹）；
 // 错误为 {code, message, details?}。
 
+import { bindingCoalesceKey, coalesceBinding } from './instance-binding.js';
+
 export const BRIDGE_PREFIX = '/api/plugins/virtual-companion/go';
 export const GO_PREFIX = '/api/v1/admin';
 
@@ -186,7 +188,7 @@ export function fetchProviders() {
 
 /** POST /api/v1/st/bindings → 稳定实例/会话绑定（ID 保持十进制字符串）。 */
 export function resolveSTBinding(payload) {
-    return request('POST', '/api/v1/st/bindings', payload);
+    return coalesceBinding(bindingCoalesceKey(payload), () => request('POST', '/api/v1/st/bindings', payload));
 }
 
 export function recallSTMemory(payload) {

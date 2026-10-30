@@ -414,6 +414,7 @@ function buildSettings(doc, { accountName, theme, reply, onTheme, onReply, onAct
     links.append(
         link('models', '模型', 'layers', 'blue'),
         link('notifications', '通知', 'bell', 'red'),
+        link('companion-style', '陪伴风格', 'heart', 'pink'),
         link('data', '账户与数据', 'shield', 'gray'),
     );
 
@@ -1045,6 +1046,10 @@ export function mountShell(options = {}) {
             onTheme: (value) => setThemeMode(value, options.storage, doc),
             onReply: (value) => writeReplyStyle(value, options.storage),
             onAction: (action, button) => {
+                if (action === 'companion-style') {
+                    options.openCompanionStyle?.(button);
+                    return;
+                }
                 const target = settingOpener(action);
                 const surface = () => loadSeam('surface');
                 if (target === 'account') {

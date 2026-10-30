@@ -1,0 +1,109 @@
+body.vc-ui .vc-onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: var(--vc-z-page);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  background: var(--vc-canvas);
+  color: var(--vc-ink);
+  padding: var(--vc-space-md);
+  padding-bottom: calc(var(--vc-space-md) + env(safe-area-inset-bottom, 0px));
+}
+
+body.vc-ui .vc-onboarding::backdrop {
+  background: var(--vc-canvas);
+}
+
+body.vc-ui .vc-onboarding-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+body.vc-ui .vc-onboarding .vc-column,
+body.vc-ui .vc-style-page {
+  width: min(100%, var(--vc-read));
+  margin-inline: auto;
+}
+
+body.vc-ui .vc-onboarding .vc-group,
+body.vc-ui .vc-style-page .vc-group,
+body.vc-ui .vc-persona-field {
+  margin-top: var(--vc-space-sm);
+}
+
+body.vc-ui .vc-onboarding .vc-btn-fill {
+  flex: none;
+  width: min(100%, var(--vc-read));
+  margin-top: var(--vc-space-md);
+  margin-inline: auto;
+}
+
+body.vc-ui .vc-style-page .vc-btn-text {
+  margin-top: var(--vc-space-md);
+}
+
+body.vc-ui .vc-style-rule {
+  display: block;
+}
+
+body.vc-ui [data-action="set-proactive-mode"][aria-pressed="true"] {
+  color: var(--vc-accent-text);
+}
+
+body.vc-ui .vc-onboarding input[name="name"],
+body.vc-ui .vc-style-rule textarea,
+body.vc-ui .vc-persona-field textarea {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-fs-input);
+  line-height: var(--vc-lh-body);
+}
+
+body.vc-ui .vc-onboarding input[name="name"] {
+  min-height: var(--vc-touch);
+}
+
+body.vc-ui .vc-style-rule textarea {
+  display: block;
+  min-height: calc(var(--vc-touch) * 8);
+  resize: vertical;
+}
+
+body.vc-ui .vc-persona-field textarea {
+  min-height: calc(var(--vc-touch) * 3);
+  resize: vertical;
+}
+
+body.vc-ui .vc-screen:has([data-action="save-persona"]) {
+  display: flex;
+  flex-direction: column;
+}
+
+body.vc-ui .vc-screen:has([data-action="save-persona"]) .vc-scroll {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  overflow: auto;
+  padding-bottom: calc(var(--vc-space-xxl) + env(safe-area-inset-bottom, 0px));
+}
+
+body.vc-ui .vc-choice[aria-pressed="true"] {
+  color: var(--vc-accent-text);
+}
+
+body.vc-ui .vc-persona-field {
+  align-items: stretch;
+  flex-direction: column;
+}
