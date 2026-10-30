@@ -66,6 +66,43 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function iconUsesReady(uses) {
+    const visible = (uses || []).filter((item) => item && item.visible);
+    if (!visible.length) return true;
+    return visible.every((item) => Number(item.width) > 0);
+}
+
+export function noteForIconSettleTimeouts(count) {
+    const n = Number(count) || 0;
+    return n > 0 ? [`图标未在时限内就绪 ${n}`] : [];
+}
+
+export function createMutex() {
+    let tail = Promise.resolve();
+    return function exclusive(task) {
+        const run = tail.then(() => task());
+        tail = run.then(() => {}, () => {});
+        return run;
+    };
+}
+
+export function walkthroughGroups(widths, themes = THEMES) {
+    return themes.flatMap((theme) => widths.map((viewport) => ({ theme, viewport })));
+}
+
+let iconSettleTimeouts = 0;
+
+async function until(check, ms) {
+    const deadline = Date.now() + ms;
+    do {
+        if (await check()) return true;
+        const left = deadline - Date.now();
+        if (left <= 0) return false;
+        await sleep(Math.min(16, left));
+    } while (Date.now() <= deadline);
+    return false;
+}
+
 async function settle(page) {
     await page.evaluate(async () => {
         const fonts = document.fonts?.ready ?? Promise.resolve();
@@ -79,11 +116,29 @@ async function settle(page) {
         await Promise.all([...document.images].map((img) => (img.complete ? null : img.decode().catch(() => {}))));
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     });
-    await page.waitForFunction(() => {
-        const uses = [...document.querySelectorAll('.vc-icon use')];
-        if (!uses.length) return true;
-        return uses.every((node) => String(node.getAttribute('href') || '').startsWith('#'));
-    }, null, { timeout: 8000 }).catch(() => {});
+    let ready = false;
+    try {
+        await page.waitForFunction(() => {
+            const uses = [...document.querySelectorAll('.vc-icon use')].map((node) => {
+                const svg = node.closest('svg') || node;
+                const style = getComputedStyle(svg);
+                const rect = svg.getBoundingClientRect();
+                const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                let width = 0;
+                if (visible) {
+                    try { width = node.getBBox().width; } catch { width = 0; }
+                }
+                return { visible, width };
+            });
+            const shown = uses.filter((item) => item.visible);
+            if (!shown.length) return true;
+            return shown.every((item) => item.width > 0);
+        }, null, { timeout: 8000 });
+        ready = true;
+    } catch {
+        ready = false;
+    }
+    if (!ready) iconSettleTimeouts += 1;
 }
 
 function writeIndex(dir, shots, notes) {
@@ -112,10 +167,12 @@ ${cards}
 }
 
 export async function sceneVcUiWalkthrough(ctx) {
+    const startedAt = Date.now();
+    iconSettleTimeouts = 0;
     const dir = path.join(MANAGED, 'artifacts', `walkthrough-${stamp()}`);
     fs.mkdirSync(dir, { recursive: true });
-    const shots = [];
     const notes = [];
+    const buckets = [];
     for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
         const granted = await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'vc-ui-walkthrough', granted: true });
         if (granted.status !== 200) throw new Error(`授权 ${consentType} HTTP ${granted.status}`);
@@ -141,7 +198,7 @@ export async function sceneVcUiWalkthrough(ctx) {
         headless: true,
         ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}),
     });
-    const record = async (page, width, theme, pageName) => {
+    const record = async (page, width, theme, pageName, bucket) => {
         await settle(page);
         const allowed = allowedOverlays(pageName);
         try {
@@ -169,7 +226,7 @@ export async function sceneVcUiWalkthrough(ctx) {
             }
             if (!allowed.includes('dialog')) await closeAccountDialog(page);
             if (!allowed.includes('sheet') && !allowed.includes('drawer')) await removeSheets(page);
-            const names = await page.evaluate((allowDrawer) => {
+            const names = await page.evaluate(({ allowDrawer, pageName: shot }) => {
                 const visible = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
                 const found = [];
                 const openDrawer = document.querySelector('.openDrawer');
@@ -190,8 +247,23 @@ export async function sceneVcUiWalkthrough(ctx) {
                 if (model) found.push('model');
                 if (dialog) found.push('dialog');
                 if (scrim && !drawer && !sheet && !model && !dialog) found.push('scrim');
+                const shell = document.querySelector('#vc-shell');
+                if (shell?.getAttribute('data-settings') === 'page') found.push('settings');
+                const destination = shell?.getAttribute('data-destination') || '';
+                const foreignPage = [...document.querySelectorAll('[data-vc-page]')].some((el) => {
+                    if (!visible(el)) return false;
+                    const name = el.getAttribute('data-vc-page') || '';
+                    return name !== destination;
+                });
+                if (foreignPage) found.push('page');
+                if (shot === 'story-stage') {
+                    const stage = document.querySelector('.vc-story-tab[data-view="stage"]');
+                    const rect = stage?.getBoundingClientRect();
+                    const onScreen = Boolean(rect && rect.width > 80 && rect.height > 80 && rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth);
+                    if (!onScreen) found.push('stage-hidden');
+                }
                 return found;
-            }, allowed.includes('drawer'));
+            }, { allowDrawer: allowed.includes('drawer'), pageName });
             const extra = unexpectedOverlays(names, allowed);
             if (extra.length) throw new Error(`截图前残留浮层 ${width} ${theme} ${pageName}: ${extra.join(',')}`);
         } catch (error) {
@@ -200,7 +272,7 @@ export async function sceneVcUiWalkthrough(ctx) {
         }
         const file = path.join(dir, `${width}-${theme}-${pageName}.png`);
         await page.screenshot({ path: file });
-        shots.push({ file, caption: `${width} ${theme} ${pageName}` });
+        bucket.shots.push({ file, caption: `${width} ${theme} ${pageName}` });
         if (Array.isArray(ctx.screenshots)) ctx.screenshots.push(file);
     };
     try {
@@ -251,6 +323,11 @@ export async function sceneVcUiWalkthrough(ctx) {
             } else notes.push(`记忆候选 HTTP ${created.status}`);
         } else notes.push('没有关系，跳过记忆种子');
 
+        const storageState = await context.storageState();
+        const chatLock = createMutex();
+        const storyLock = createMutex();
+        async function captureGroup(page, bucket, theme, viewport) {
+        const notes = bucket.notes;
         const closeLayers = async () => {
             for (let i = 0; i < 6; i += 1) {
                 const idle = await page.evaluate(() => {
@@ -269,7 +346,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                     return true;
                 });
                 if (idle) return;
-                await sleep(250);
+                await until(async () => page.evaluate(() => !document.querySelector('.openDrawer [data-vc-drawer-back], .vcms-overlay:not([hidden]) [data-action="close"], .vc-data-dialog[open] [data-close], #vc-shell[data-settings="page"] [data-settings-done], .vc-sheet-done, .vc-story-tab[data-view="stage"] [data-action="close"]')), 250);
             }
             await dismissSheet();
         };
@@ -361,8 +438,6 @@ export async function sceneVcUiWalkthrough(ctx) {
             if (!ok) throw new Error(`没有设置项 ${action}`);
         };
 
-        for (const theme of THEMES) {
-            for (const viewport of selectedWidths()) {
                 console.log(`[vc-ui-walkthrough] ${theme} ${viewport.width}`);
                 try {
                 await closeLayers();
@@ -379,24 +454,24 @@ export async function sceneVcUiWalkthrough(ctx) {
                     const shell = document.querySelector('#vc-shell');
                     if (shell?.dataset.list === 'hidden') shell.dataset.list = 'open';
                 });
-                await record(page, viewport.width, theme, 'chat-list');
+                await record(page, viewport.width, theme, 'chat-list', bucket);
                 const row = page.locator('#vc-shell .vc-convo:visible').first();
                 if (await row.count()) {
                     await row.click();
                     await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.chat === 'open', null, { timeout: 8000 }).catch(() => {});
                 }
-                await record(page, viewport.width, theme, 'chat');
+                await record(page, viewport.width, theme, 'chat', bucket);
                 if (theme === 'light' && viewport.width === 390) {
                     await page.evaluate(() => {
                         try { localStorage.setItem('vc-reply-style', 'spread'); } catch { /* 铺开仍去掉气泡类 */ }
                         document.body.classList.remove('vc-reply-bubble');
                     });
-                    await record(page, viewport.width, theme, 'chat-spread');
+                    await record(page, viewport.width, theme, 'chat-spread', bucket);
                     const message = page.locator('#chat .mes .mes_text').first();
                     if (await message.count()) {
                         await message.click({ button: 'right' });
                         const menu = await page.waitForFunction(() => [...document.querySelectorAll('.vc-menu')].some((el) => el.getClientRects().length > 0), null, { timeout: 4000 }).then(() => true).catch(() => false);
-                        if (menu) await record(page, viewport.width, theme, 'chat-press');
+                        if (menu) await record(page, viewport.width, theme, 'chat-press', bucket);
                         else notes.push('390 light chat-press：长按菜单没有出现');
                         await page.keyboard.press('Escape');
                         await page.waitForFunction(() => ![...document.querySelectorAll('.vc-menu')].some((el) => el.getClientRects().length > 0), null, { timeout: 4000 });
@@ -404,7 +479,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 }
 
                 await ensureSettings();
-                await record(page, viewport.width, theme, 'settings');
+                await record(page, viewport.width, theme, 'settings', bucket);
                 for (const drawer of DRAWERS) {
                     try {
                         await clickSettings(drawer.id);
@@ -412,7 +487,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                             const root = document.getElementById(panelId);
                             return root?.classList.contains('openDrawer') && root.querySelector('[data-vc-drawer-nav]');
                         }, drawer.panel, { timeout: 8000 });
-                        await record(page, viewport.width, theme, drawer.page);
+                        await record(page, viewport.width, theme, drawer.page, bucket);
                     } catch (error) {
                         if (String(error?.message || error).includes('残留浮层')) throw error;
                         notes.push(`${viewport.width} ${theme} ${drawer.page}：${error.message}`);
@@ -425,12 +500,12 @@ export async function sceneVcUiWalkthrough(ctx) {
                 try {
                     await clickSettings('models');
                     await page.waitForSelector('.vcms-overlay:not([hidden]) #vcms-provider-list', { timeout: 20000 });
-                    await record(page, viewport.width, theme, 'model-home');
+                    await record(page, viewport.width, theme, 'model-home', bucket);
                     const provider = page.locator('#vcms-provider-list [data-action="select-provider"]').first();
                     if (await provider.count()) {
                         await provider.click();
                         await page.waitForSelector('#vcms-f-display', { timeout: 8000 });
-                        await record(page, viewport.width, theme, 'model-provider');
+                        await record(page, viewport.width, theme, 'model-provider', bucket);
                     } else notes.push(`${viewport.width} ${theme} model-provider：没有供应商行`);
                 } catch (error) {
                     if (String(error?.message || error).includes('残留浮层')) throw error;
@@ -443,7 +518,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 try {
                     await clickSettings('data');
                     await page.waitForSelector('.vc-data-dialog[open], [data-vc-account-home]', { timeout: 15000 });
-                    await record(page, viewport.width, theme, 'account');
+                    await record(page, viewport.width, theme, 'account', bucket);
                 } catch (error) {
                     if (String(error?.message || error).includes('残留浮层')) throw error;
                     notes.push(`${viewport.width} ${theme} account：${error.message}`);
@@ -457,19 +532,19 @@ export async function sceneVcUiWalkthrough(ctx) {
 
                 await go('characters');
                 await page.waitForSelector('.vc-characters', { timeout: 15000 });
-                await record(page, viewport.width, theme, 'characters');
+                await record(page, viewport.width, theme, 'characters', bucket);
                 const withInstances = page.locator('.vc-characters .vc-role:visible').filter({ hasNotText: '0 个实例' });
                 const card = (await withInstances.count()) ? withInstances.first() : page.locator('.vc-characters .vc-role:visible').first();
                 if (await card.count()) {
                     await card.click();
                     await page.waitForSelector('.vc-characters [data-action="back"]', { timeout: 8000 });
-                    await record(page, viewport.width, theme, 'character-detail');
+                    await record(page, viewport.width, theme, 'character-detail', bucket);
                     await page.locator('.vc-characters [data-action="back"]').click();
                 } else notes.push(`${viewport.width} ${theme} character-detail：没有角色卡`);
 
                 await go('memory');
                 await page.waitForSelector('[data-vc-page="memory"]', { timeout: 15000 });
-                await record(page, viewport.width, theme, 'memory-list');
+                await record(page, viewport.width, theme, 'memory-list', bucket);
                 try {
                     await dismissSheet();
                     let memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
@@ -489,8 +564,8 @@ export async function sceneVcUiWalkthrough(ctx) {
                                     return true;
                                 }, i);
                                 if (!picked) break;
-                                await sleep(400);
                                 memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
+                                await until(async () => (await memory.count()) > 0, 400);
                                 if (await memory.count()) break;
                                 if (i + 1 < total) await pick.click();
                             }
@@ -499,7 +574,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                     if (await memory.count()) {
                         await memory.click();
                         await page.waitForSelector('[data-vc-page="memory"] [data-action="back"], .vc-memory-title', { timeout: 8000 });
-                        await record(page, viewport.width, theme, 'memory-detail');
+                        await record(page, viewport.width, theme, 'memory-detail', bucket);
                         const back = page.locator('[data-vc-page="memory"] [data-action="back"]');
                         if (await back.count()) await back.first().click();
                     } else notes.push(`${viewport.width} ${theme} memory-detail：没有记忆行`);
@@ -511,46 +586,103 @@ export async function sceneVcUiWalkthrough(ctx) {
 
                 await go('inbox');
                 await page.waitForSelector('[data-vc-page="inbox"]', { timeout: 15000 });
-                await record(page, viewport.width, theme, 'inbox');
+                await record(page, viewport.width, theme, 'inbox', bucket);
                 const channel = page.locator('[data-vc-page="inbox"] [data-action="open-channel"]:visible').first();
                 if (await channel.count()) {
                     await channel.click();
                     await page.waitForSelector('[data-action="pop-channel"]', { timeout: 8000 });
-                    await record(page, viewport.width, theme, 'inbox-channel');
+                    await record(page, viewport.width, theme, 'inbox-channel', bucket);
                     await page.locator('[data-action="pop-channel"]').click();
                 } else notes.push(`${viewport.width} ${theme} inbox-channel：没有渠道`);
 
+                await storyLock(async () => {
                 await go('story');
                 await page.waitForSelector('.vc-story-tab', { timeout: 15000 });
                 const storyView = await page.evaluate(() => document.querySelector('.vc-story-tab')?.dataset.view || '');
                 if (storyView === 'stage') {
-                    await record(page, viewport.width, theme, 'story-stage');
+                    await record(page, viewport.width, theme, 'story-stage', bucket);
                     notes.push(`${viewport.width} ${theme} story-gate：这一局已经在舞台`);
                 } else {
-                    await record(page, viewport.width, theme, 'story-gate');
+                    await record(page, viewport.width, theme, 'story-gate', bucket);
                     const start = page.locator('.vc-story-tab [data-action="start"]:visible, .vc-story-tab [data-action="enter"]:visible').first();
                     if (await start.count()) {
                         await start.click();
                         const staged = await page.waitForFunction(() => document.querySelector('.vc-story-tab')?.dataset.view === 'stage', null, { timeout: 12000 }).then(() => true).catch(() => false);
-                        await record(page, viewport.width, theme, 'story-stage');
+                        await record(page, viewport.width, theme, 'story-stage', bucket);
                         if (!staged) notes.push(`${viewport.width} ${theme} story-stage：开局后仍不是舞台`);
                     } else {
                         notes.push(`${viewport.width} ${theme} story-stage：没有开局按钮`);
                     }
                 }
+                });
                 } catch (error) {
                     if (String(error?.message || error).includes('残留浮层')) throw error;
                     notes.push(`${viewport.width} ${theme}：${error.message || error}`);
                 }
-            }
         }
+        const groups = walkthroughGroups(selectedWidths());
+        groups.forEach(() => buckets.push({ shots: [], notes: [] }));
+        await Promise.all(groups.map(async (group, index) => {
+            const bucket = buckets[index];
+            if (index === 0) {
+                try {
+                    await captureGroup(page, bucket, group.theme, group.viewport);
+                } finally {
+                    await context.close();
+                }
+                return;
+            }
+            const groupContext = await browser.newContext({
+                viewport: { width: group.viewport.width, height: group.viewport.height },
+                storageState,
+            });
+            await pinVcUi(groupContext, 'on');
+            await groupContext.addInitScript((mode) => {
+                try { localStorage.setItem('vc-theme', mode); } catch { /* 主题在截图前再写一次 */ }
+            }, group.theme);
+            const groupPage = await groupContext.newPage();
+            groupPage.setDefaultTimeout(8000);
+            try {
+                await groupPage.goto(ctx.w05.stBase, { waitUntil: 'domcontentloaded' });
+                await waitFor(async () => groupPage.evaluate(async () => (await import('/script.js')).settingsReady || Boolean(document.querySelector('dialog[open] .onboarding'))), { timeoutMs: 60000, label: 'ST 设置或欢迎页' });
+                const onboarding = groupPage.locator('dialog[open].popup').filter({ has: groupPage.locator('.onboarding') });
+                if (await onboarding.count()) {
+                    await chatLock(async () => {
+                        if (!(await onboarding.count())) return;
+                        await onboarding.locator('textarea').fill('vc-ui-walkthrough');
+                        await onboarding.locator('.popup-button-ok').click();
+                        await onboarding.waitFor({ state: 'hidden' });
+                    });
+                }
+                await waitFor(async () => groupPage.evaluate(() => document.body.classList.contains('vc-ui') && document.querySelector('#vc-shell')), { timeoutMs: 60000, label: '外壳' });
+                await chatLock(async () => {
+                    await groupPage.evaluate(async ({ name, file }) => {
+                        const native = await import('/script.js');
+                        const index = native.characters.findIndex((item) => item.avatar === name);
+                        if (index < 0) throw new Error('合成角色未加载');
+                        await native.selectCharacterById(index);
+                        await native.openCharacterChat(file);
+                    }, { name: avatar, file: chatFile });
+                    await waitFor(async () => groupPage.evaluate(() => Boolean(window.SillyTavern.getContext().chatMetadata?.vc_binding?.relationshipId)), { timeoutMs: 30000, label: '会话绑定' });
+                });
+                await captureGroup(groupPage, bucket, group.theme, group.viewport);
+            } finally {
+                await groupContext.close();
+            }
+        }));
+        const shots = buckets.flatMap((bucket) => bucket.shots);
+        notes.push(...buckets.flatMap((bucket) => bucket.notes));
+        notes.push(...noteForIconSettleTimeouts(iconSettleTimeouts));
         writeIndex(dir, shots, notes);
         console.log(`WALKTHROUGH ${dir}`);
+        console.log(`WALKTHROUGH_MS ${Date.now() - startedAt}`);
         console.log(`WALKTHROUGH_INDEX ${path.join(dir, 'index.html')}`);
         if (notes.length) console.log(`[vc-ui-walkthrough] notes\n${notes.join('\n')}`);
         return { dir, index: path.join(dir, 'index.html'), shots: shots.length, notes };
     } catch (error) {
-        writeIndex(dir, shots, notes.concat(String(error.message || error)));
+        const shots = buckets.flatMap((bucket) => bucket.shots);
+        const extra = buckets.flatMap((bucket) => bucket.notes);
+        writeIndex(dir, shots, notes.concat(extra, noteForIconSettleTimeouts(iconSettleTimeouts), String(error.message || error)));
         console.log(`WALKTHROUGH ${dir}`);
         throw error;
     } finally {

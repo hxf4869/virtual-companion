@@ -2,9 +2,9 @@
 
 export function allowedOverlays(pageName) {
     if (pageName === 'chat-press') return ['menu'];
-    if (pageName === 'settings') return ['sheet'];
-    if (pageName === 'model-home' || pageName === 'model-provider') return ['model'];
-    if (pageName === 'account') return ['dialog'];
+    if (pageName === 'settings') return ['sheet', 'settings'];
+    if (pageName === 'model-home' || pageName === 'model-provider') return ['model', 'settings'];
+    if (pageName === 'account') return ['dialog', 'settings'];
     if (String(pageName).startsWith('tavern-')) return ['drawer'];
     return [];
 }

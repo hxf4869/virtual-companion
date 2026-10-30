@@ -736,3 +736,38 @@ body.vc-ui #user-settings-block.vc-drawer-page #version_display {
   opacity: 1 !important;
   font-size: var(--vc-fs-footnote) !important;
 }
+
+body.vc-ui #Backgrounds.vc-drawer-page :is(#bg-header-fixed, #bg_tabs, .ui-widget-content) {
+  background: var(--vc-canvas) !important;
+  background-image: none !important;
+  color: var(--vc-ink) !important;
+  border-color: var(--vc-separator) !important;
+}
+
+body.vc-ui #Backgrounds.vc-drawer-page #bg-header-fixed h3 {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+}
+
+body.vc-ui #Backgrounds.vc-drawer-page :is(.ui-widget-header, .ui-tabs-nav, .ui-tabs-nav a, .ui-tabs-nav button, .ui-tabs-tab) {
+  background: var(--vc-canvas) !important;
+  background-image: none !important;
+  color: var(--vc-ink) !important;
+  border-color: var(--vc-separator) !important;
+}
+
+body.vc-ui #AdvancedFormatting #advanced-formatting-cc-notice {
+  background: var(--vc-group) !important;
+  color: var(--vc-warning) !important;
+  border-color: var(--vc-warning) !important;
+  opacity: 1 !important;
+}
+
+body.vc-ui #AdvancedFormatting #advanced-formatting-cc-notice :is(span, i, p, div, a) {
+  color: var(--vc-warning) !important;
+  opacity: 1 !important;
+}

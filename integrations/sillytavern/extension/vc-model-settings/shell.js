@@ -820,7 +820,7 @@ export function mountShell(options = {}) {
         if (index < 0) return;
         const previous = root.dataset.destination || '';
         if (previous && previous !== nav) listHeld = false;
-        if (root.dataset.settings === 'page') root.dataset.settings = '';
+        if (root.dataset.settings === 'page') delete root.dataset.settings;
         root.dataset.destination = nav;
         tabbar.style.setProperty('--vc-tab', String(index));
         for (const button of root.querySelectorAll('[data-nav]')) {
@@ -1006,7 +1006,7 @@ export function mountShell(options = {}) {
     function closeSettings() {
         sheetHandle?.close?.();
         sheetHandle = null;
-        root.dataset.settings = '';
+        delete root.dataset.settings;
     }
 
     function openSettings(opener) {
@@ -1079,7 +1079,7 @@ export function mountShell(options = {}) {
             closeSettings();
             return;
         }
-        if (node.hasAttribute('data-settings')) {
+        if (node !== root && node.hasAttribute('data-settings')) {
             openSettings(node);
             return;
         }

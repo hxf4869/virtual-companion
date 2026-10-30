@@ -767,3 +767,41 @@ body.vc-ui .vc-data-dialog [data-sessions] .vc-account-session {
     padding-right: 32px;
   }
 }
+
+body.vc-ui #vc-model-settings-root .vcms-btn-ghost,
+body.vc-ui #vc-model-settings-root .vcms-btn-ghost:hover:not(:disabled) {
+  background: transparent;
+  color: var(--vc-ink);
+  border-color: var(--vc-separator);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-btn-primary-outline,
+body.vc-ui #vc-model-settings-root .vcms-btn-primary-outline:hover:not(:disabled) {
+  background: transparent;
+  color: var(--vc-accent-text);
+  border-color: var(--vc-accent);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-btn-danger-ghost,
+body.vc-ui #vc-model-settings-root .vcms-btn-danger-ghost:hover:not(:disabled) {
+  background: transparent;
+  color: var(--vc-danger);
+  border-color: var(--vc-separator);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-model-row,
+body.vc-ui #vc-model-settings-root .vcms-model-row:hover {
+  background: var(--vc-group);
+  color: var(--vc-ink);
+  border-color: var(--vc-separator);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-model-row.is-selected {
+  background: var(--vc-group);
+  color: var(--vc-ink);
+  border-color: var(--vc-accent);
+}
+
+body.vc-ui .vc-data-root .vc-data-dialog::backdrop {
+  background: transparent;
+}

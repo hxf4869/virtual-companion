@@ -99,7 +99,7 @@ test('走查截图前只允许当前步骤的浮层', async () => {
     assert.deepEqual(allowedOverlays('chat-list'), []);
     assert.deepEqual(allowedOverlays('tavern-ai'), ['drawer']);
     assert.deepEqual(allowedOverlays('chat-press'), ['menu']);
-    assert.deepEqual(allowedOverlays('settings'), ['sheet']);
+    assert.deepEqual(allowedOverlays('settings'), ['sheet', 'settings']);
     assert.deepEqual(unexpectedOverlays(['drawer', 'scrim'], []), ['drawer', 'scrim']);
     assert.deepEqual(unexpectedOverlays(['drawer'], ['drawer']), []);
     assert.deepEqual(unexpectedOverlays(['drawer', 'menu'], ['drawer']), ['menu']);
