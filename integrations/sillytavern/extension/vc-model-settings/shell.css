@@ -601,6 +601,29 @@ body.vc-ui.vc-host-drawer #top-settings-holder {
   to { opacity: 1; transform: none; }
 }
 
+body.vc-ui #vc-shell[data-cover="story"] > .vc-tabbar {
+  display: none;
+}
+
+body.vc-ui #vc-shell[data-cover="story"] .vc-shell-page[data-page="story"] {
+  position: relative;
+}
+
+body.vc-ui #vc-shell[data-cover="story"] .vc-shell-page[data-page="story"] > .vc-navbar {
+  display: none;
+}
+
+body.vc-ui #vc-shell[data-cover="story"] .vc-story-tab[data-view="stage"] {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: var(--vc-canvas);
+}
+
+body.vc-ui #vc-shell[data-cover="story"] .vc-story-tab[data-view="stage"].is-push {
+  animation: vc-shell-push var(--vc-dur-emphasized) var(--vc-spring);
+}
+
 @keyframes vc-shell-push {
   from { transform: translateX(100%); }
   to { transform: none; }

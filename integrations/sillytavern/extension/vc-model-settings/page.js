@@ -3,6 +3,7 @@
 // 样式作用域 .vcms-*；主题 tokens 见 style.css（v2-design §3）。
 import * as logic from './model-logic.js';
 import * as api from './api.js';
+import { bindSwitch } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 import { registerModelOpener, vcUiEnabled } from './drawers.js';
 
@@ -569,6 +570,8 @@ export function mountModelSettings() {
         overlay.innerHTML = renderShell();
         refreshFeedback();
         syncSendGate();
+        const providerSwitch = overlay.querySelector('[data-action="toggle-provider-state"].vc-switch');
+        if (providerSwitch) bindSwitch(providerSwitch);
     }
 
     function renderShell() {
@@ -702,9 +705,9 @@ export function mountModelSettings() {
             <div class="vcms-usage-head">
                 <span class="vcms-section-label">用量</span>
                 <div class="vcms-usage-month">
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="-1">上个月</button>
-                    <span data-usage-month-label>${esc(state.usage.month)}</span>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="1">下个月</button>
+                    ${vcUiEnabled()
+        ? `<button type="button" class="vc-circle" data-action="usage-month" data-delta="-1" aria-label="上个月">${icon('chevron-left', { size: 22 })}</button><span class="vc-num" data-usage-month-label>${esc(state.usage.month)}</span><button type="button" class="vc-circle" data-action="usage-month" data-delta="1" aria-label="下个月">${icon('chevron-right', { size: 22 })}</button>`
+        : `<button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="-1">上个月</button><span data-usage-month-label>${esc(state.usage.month)}</span><button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="1">下个月</button>`}
                 </div>
             </div>
             <p class="vcms-muted">默认当月（UTC）。未配置单价时照常发送，费用显示为未知，不记为 0。预算不足只在已设置月度预算并且超出时出现。</p>
@@ -922,9 +925,9 @@ export function mountModelSettings() {
                 <div class="vcms-field">
                     <span class="vcms-field-label">状态</span>
                     <div class="vcms-switch-row">
-                        <button type="button" class="vcms-switch ${d.state === 'ENABLED' ? 'is-on' : ''}" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商">
-                            <span class="vcms-switch-knob"></span>
-                        </button>
+                        ${vcUiEnabled()
+        ? `<button type="button" class="vc-switch" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"></button>`
+        : `<button type="button" class="vcms-switch ${d.state === 'ENABLED' ? 'is-on' : ''}" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"><span class="vcms-switch-knob"></span></button>`}
                         <span>${logic.PROVIDER_STATE_LABELS[d.state] ?? d.state}</span>
                     </div>
                     <p class="vcms-field-err" data-err-for="state"></p>
@@ -1782,7 +1785,11 @@ export function mountModelSettings() {
                 break;
             }
             case 'toggle-provider-state':
-                state.draft.state = state.draft.state === 'ENABLED' ? 'DISABLED' : 'ENABLED';
+                if (el.classList.contains('vc-switch')) {
+                    state.draft.state = el.getAttribute('aria-checked') === 'true' ? 'ENABLED' : 'DISABLED';
+                } else {
+                    state.draft.state = state.draft.state === 'ENABLED' ? 'DISABLED' : 'ENABLED';
+                }
                 render();
                 break;
             case 'discard':

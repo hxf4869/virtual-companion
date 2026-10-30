@@ -17,6 +17,8 @@ if (typeof globalThis.addEventListener !== 'function' || typeof globalThis.dispa
 }
 
 export const FORGET_NOTICE = '聊天原文仍保留，可能继续用于当前对话。';
+export const MEMORY_EMPTY_DIALOG = '没有找到记忆。试试其他关键词或筛选条件。';
+export const MEMORY_EMPTY_TAB = '没有找到记忆';
 export const OPEN_MEMORY_EVENT = 'vc-open-memory';
 let memoryOpener = null;
 
@@ -225,7 +227,7 @@ export function renderMemoryPage(s) {
         <div class="vc-memory-search"><input type="search" name="q" aria-label="搜索记忆" placeholder="搜索记忆" value="${esc(s.filterDraft.q)}" ${locked ? 'disabled' : ''}><button class="vcms-btn vcms-btn-ghost" type="submit" ${locked ? 'disabled' : ''}>搜索</button></div>
         <div class="vc-memory-filter-row"><select name="status" aria-label="记忆状态" ${locked ? 'disabled' : ''}>${[['', '全部状态'], ...Object.entries(lifecycleLabels), ['PENDING_VERIFICATION', '来源待核验'], ['INVALID', '来源已失效']].map(([value, label]) => `<option value="${value}" ${s.filterDraft.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select><details><summary>发生日期</summary><div class="vc-memory-dates"><label>从<input type="date" name="eventDateFrom" value="${esc(s.filterDraft.eventDateFrom)}" ${locked ? 'disabled' : ''}></label><label>至<input type="date" name="eventDateTo" value="${esc(s.filterDraft.eventDateTo)}" ${locked ? 'disabled' : ''}></label><button class="vcms-btn vcms-btn-ghost" type="submit" ${locked ? 'disabled' : ''}>应用日期</button></div></details></div>
       </form>
-      <div class="vc-memory-results" aria-busy="${s.loading}">${s.listError ? `<p role="alert">${esc(s.listError)}</p>${button('retry-list', '重试')}` : ''}${!s.relationships.length && !s.loading && !s.listError ? '<p class="vc-memory-empty">还没有角色实例，请先在聊天中绑定角色。</p>' : !s.items.length && !s.loading && !s.listError ? '<p class="vc-memory-empty" role="status">没有找到记忆。试试其他关键词或筛选条件。</p>' : ''}
+      <div class="vc-memory-results" aria-busy="${s.loading}">${s.listError ? `<p role="alert">${esc(s.listError)}</p>${button('retry-list', '重试')}` : ''}${!s.relationships.length && !s.loading && !s.listError ? '<p class="vc-memory-empty">还没有角色实例，请先在聊天中绑定角色。</p>' : !s.items.length && !s.loading && !s.listError ? `<p class="vc-memory-empty" role="status">${MEMORY_EMPTY_DIALOG}</p>` : ''}
       <ul class="vc-memory-list">${s.items.map(m => `<li><button type="button" class="vc-memory-row" data-memory-id="${esc(m.memoryId)}" aria-current="${s.detail && idOf(s.detail) === idOf(m) ? 'true' : 'false'}" ${locked ? 'disabled' : ''}><span class="vc-memory-meta">${statuses(m)}${typeLabels[m.type] ? `<span>${typeLabels[m.type]}</span>` : ''}</span><span class="vc-memory-content">${esc(m.summary)}</span><span class="vc-memory-secondary">发生 ${esc(m.time?.eventDate || '日期未知')} · 记录 ${esc(stamp(m.time?.recordedAt))}</span></button></li>`).join('')}</ul>
       ${s.loading ? '<p role="status">正在加载记忆…</p>' : ''}${s.nextCursor ? button('more', '加载更多', s.loading || locked) : ''}</div></section>
       <section class="vc-memory-detail" aria-label="记忆详情" aria-busy="${s.detailLoading}"><header class="vc-memory-detail-header">${button('back', '返回列表', s.busy || s.editing)}<h2 tabindex="-1">记忆详情</h2></header>${renderDetail(s)}</section>
@@ -441,7 +443,7 @@ export function renderMemoryTab(s) {
     } else if (!(s.relationships || []).length) {
         results = emptyBlock('brain', '还没有角色实例，请先在聊天中绑定角色。', 'retry-list', '重试');
     } else if (!(s.items || []).length) {
-        results = `<div class="vc-empty">${icon('brain', { size: 32 })}<p class="vc-memory-empty" role="status">没有找到记忆。试试其他关键词或筛选条件。</p>${tabBtn('clear-filters', '清除筛选', { fill: true })}</div>`;
+        results = `<div class="vc-empty">${icon('brain', { size: 32 })}<p class="vc-memory-empty" role="status">${MEMORY_EMPTY_TAB}</p>${tabBtn('clear-filters', '清除筛选', { fill: true })}</div>`;
     } else {
         const rows = s.items.map((item) => {
             const rel = (s.relationships || []).find((row) => String(row.relationshipId) === String(item.relationshipId));

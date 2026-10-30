@@ -1,4 +1,4 @@
-// F1 外壳：五目的地导航、会话列表、对话页定位、设置入口。新外观关闭时不挂载。
+// F1 外壳：五目的地导航、会话列表、对话页定位、设置入口。vc-ui 为 off 时不挂载。
 import { icon } from './ui/icons.js';
 import { flyAvatar } from './ui/nav.js';
 import { openSheet } from './ui/sheet.js';

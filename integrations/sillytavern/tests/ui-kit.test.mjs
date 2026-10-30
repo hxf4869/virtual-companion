@@ -7,7 +7,7 @@ import {
 } from '../extension/vc-model-settings/ui/motion.js';
 import { selectDetent, SHEET_HALF_RATIO, SHEET_TOP_GAP } from '../extension/vc-model-settings/ui/sheet.js';
 import {
-    parseThemeMode, readThemeMode, readVcUiFlag, resolveTheme, writeThemeMode,
+    parseThemeMode, readThemeMode, readVcUiFlag, resolveTheme, writeThemeMode, writeVcUiFlag,
 } from '../extension/vc-model-settings/ui/theme.js';
 import { NEUTRAL_TINT, tintFromPixels } from '../extension/vc-model-settings/ui/tint.js';
 import { icon, iconSpriteUrl } from '../extension/vc-model-settings/ui/icons.js';
@@ -122,7 +122,20 @@ test('明暗模式解析，存储失败时保持自动且不抛出', () => {
     assert.equal(readThemeMode(broken), 'auto');
     assert.equal(readVcUiFlag({ getItem: () => 'on' }), true);
     assert.equal(readVcUiFlag({ getItem: () => 'off' }), false);
-    assert.equal(readVcUiFlag({ getItem() { throw new Error('denied'); } }), false);
+    assert.equal(readVcUiFlag({ getItem: () => null }), true);
+    assert.equal(readVcUiFlag({ getItem: () => '' }), true);
+    assert.equal(readVcUiFlag({}), true);
+    assert.equal(readVcUiFlag({ getItem() { throw new Error('denied'); } }), true);
+    const uiStore = new Map();
+    const uiStorage = {
+        getItem(key) { return uiStore.has(key) ? uiStore.get(key) : null; },
+        setItem(key, value) { uiStore.set(key, value); },
+    };
+    assert.equal(writeVcUiFlag('off', uiStorage), 'off');
+    assert.equal(readVcUiFlag(uiStorage), false);
+    assert.equal(writeVcUiFlag(true, uiStorage), 'on');
+    assert.equal(readVcUiFlag(uiStorage), true);
+    assert.equal(writeVcUiFlag(false, broken), 'off');
 });
 
 test('氛围色按饱和像素加权，读不到像素时返回中性灰', () => {
@@ -204,7 +217,7 @@ test('vc-ui.css 的每条规则都挂在 body.vc-ui、:root 或 html[data-vc-the
     assert.deepEqual(errors, []);
 });
 
-test('index.js 默认不启用新外观', async () => {
+test('index.js 在 vc-ui 为 off 时跳过新外观', async () => {
     const src = await readFile(indexUrl, 'utf8');
     assert.match(src, /function mountVcUi\(\) \{\n    if \(!readVcUiFlag\(\)\) return;\n    enableVcUi\(\);/);
     assert.equal([...src.matchAll(/enableVcUi\(\)/g)].length, 1);

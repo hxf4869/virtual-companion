@@ -1,6 +1,7 @@
-// W15-3 剧情页截图与手机交互验收。不改 harness.html / shoot.mjs / server.mjs。
+// W15-3 剧情页截图与手机交互验收。不改 harness.html / server.mjs。打开页面前把 vc-ui 写成 off。
 // 运行：node story-shoot.mjs [--port 9563] [--out <dir>]
 import { chromium } from 'playwright-core';
+import { pinVcUi } from '../../../scripts/vc-ui-pin.mjs';
 import { mkdirSync } from 'node:fs';
 
 const PORT = Number(process.argv.includes('--port') ? process.argv[process.argv.indexOf('--port') + 1] : 9563);
@@ -56,7 +57,8 @@ async function measure(page) {
             offenders,
             small,
             secrets: /PRIVATE_|GM_ONLY_|sk-test|sk-/.test(document.body.innerText),
-            storage: localStorage.length,
+            storage: [...Array(localStorage.length)].map((_, i) => localStorage.key(i)).filter((key) => key !== 'vc-ui').length,
+            vcUi: (() => { try { return localStorage.getItem('vc-ui'); } catch { return null; } })(),
         };
     });
 }
@@ -81,6 +83,7 @@ try {
     for (const width of [1440, 390, 360]) {
         for (const scenario of STATES) {
             const context = await browser.newContext({ viewport: { width, height: 900 } });
+            await pinVcUi(context, 'off');
             const page = await context.newPage();
             page.on('request', (req) => {
                 const url = new URL(req.url());
@@ -96,7 +99,7 @@ try {
             if (layout.docOverflow || layout.offenders.length) fail(`${name} 横向溢出 ${JSON.stringify(layout.offenders)}`);
             if (layout.small.length) fail(`${name} 触控目标不足 44px ${layout.small.join('; ')}`);
             if (layout.secrets) fail(`${name} 页面出现私密或凭据文本`);
-            if (layout.storage !== 0) fail(`${name} localStorage 有写入`);
+            if (layout.storage !== 0 || layout.vcUi !== 'off') fail(`${name} localStorage 有预期外的写入`);
             await context.close();
         }
     }
@@ -107,6 +110,7 @@ try {
         ['rewind', '.vc-story-rewind-dialog', ''],
     ]) {
         const context = await browser.newContext({ viewport: { width: 390, height: 450 } });
+        await pinVcUi(context, 'off');
         const page = await context.newPage();
         page.on('request', (req) => {
             const url = new URL(req.url());
@@ -124,12 +128,13 @@ try {
         const layout = await measure(page);
         if (layout.docOverflow || layout.offenders.length) fail(`${name} 横向溢出 ${JSON.stringify(layout.offenders)}`);
         if (layout.small.length) fail(`${name} 触控目标不足 44px ${layout.small.join('; ')}`);
-        if (layout.secrets || layout.storage !== 0) fail(`${name} 出现私密文本或 localStorage`);
+        if (layout.secrets || layout.storage !== 0 || layout.vcUi !== 'off') fail(`${name} 出现私密文本或预期外的 localStorage`);
         await context.close();
     }
 
     {
         const context = await browser.newContext({ viewport: { width: 390, height: 800 } });
+        await pinVcUi(context, 'off');
         const page = await context.newPage();
         page.on('request', (req) => {
             const url = new URL(req.url());

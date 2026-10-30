@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
+import { pinVcUi } from './vc-ui-pin.mjs';
 
 const F01_SHOTS = '/private/tmp/claude-501/-Users-hxf-projects-virtual-companion/67c91cf9-5973-42e2-bbc0-514b65af332e/scratchpad/f01-shots';
 const SHOTS = process.env.VC_W15_SHOTS
@@ -128,6 +129,7 @@ export async function sceneW15Ui(ctx) {
     const shots = [];
     try {
         const bc = await browser.newContext({ viewport: VIEWPORTS[0] });
+        await pinVcUi(bc, 'off');
         await bc.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },

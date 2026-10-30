@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { createStClient } from './managed-lib.mjs';
+import { pinVcUi } from './vc-ui-pin.mjs';
 const base = () => ({ id: crypto.randomUUID(), revision: 0 });
 const rows = (token, text = '合成测试消息', extra = {}) => [{ user_name: 'unused', character_name: 'unused', chat_metadata: { vc_f2: token, ...extra } }, { name: '合成角色', is_user: false, mes: text, swipe_id: 0, swipes: [text, '合成候选二'] }];
 const expect = (result, status, label) => { assert.equal(result.status, status, `${label}: HTTP ${result.status} (${result.json?.code || 'native'})`); return result.json; };
@@ -120,6 +121,7 @@ export async function sceneAuthBrowser(ctx) {
     const browser = await launchBrowser();
     try {
         const bc = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        await pinVcUi(bc, 'off');
         const page = await bc.newPage();
         await page.goto(stBase); await page.waitForSelector('#login-form:not([hidden])');
         assert.equal(new URL(page.url()).pathname, '/auth/');
@@ -193,6 +195,7 @@ export async function sceneF2Browser(ctx) {
     const browser = await launchBrowser();
     try {
         const bc = await browser.newContext();
+        await pinVcUi(bc, 'off');
         await bc.addCookies([{ name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase }, { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase }]);
         const pages = [await bc.newPage(), await bc.newPage()];
         for (const page of pages) {
@@ -251,7 +254,10 @@ export async function sceneF2Browser(ctx) {
             Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, '已有输入');
         });
         await pages[1].locator('#vc-f2-conflict [data-action="view-latest"]').click();
-        await pages[1].waitForFunction(() => window.__vcStay === 1 && window.SillyTavern.getContext().chat[0]?.mes === '页面A新编辑');
+        // 正文在 reload 中途就换上，对话框要等 reload 返回后才关闭。
+        await pages[1].waitForFunction(() => window.__vcStay === 1
+            && window.SillyTavern.getContext().chat[0]?.mes === '页面A新编辑'
+            && document.querySelector('#vc-f2-conflict')?.open !== true);
         const kept = await pages[1].evaluate(() => ({
             stay: window.__vcStay,
             input: document.querySelector('#send_textarea').value,
