@@ -1086,8 +1086,10 @@ export function mountStoryTab(container, options = {}) {
     function syncCover(next = view) {
         const shell = root.closest?.('#vc-shell');
         if (!shell) return;
-        if (next === 'stage') shell.dataset.cover = 'story';
-        else if (shell.dataset.cover === 'story') delete shell.dataset.cover;
+        if (next === 'stage') {
+            shell.dataset.cover = 'story';
+            if (shell.dataset.settings === 'page') delete shell.dataset.settings;
+        } else if (shell.dataset.cover === 'story') delete shell.dataset.cover;
     }
     function paint(state = page.state) {
         const prevScroll = body.querySelector('.vc-scroll');

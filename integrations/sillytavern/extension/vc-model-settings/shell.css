@@ -629,6 +629,15 @@ body.vc-ui #vc-shell[data-cover="story"] > .vc-tabbar {
 
 body.vc-ui #vc-shell[data-cover="story"] .vc-shell-page[data-page="story"] {
   position: relative;
+  z-index: var(--vc-z-page);
+}
+
+body.vc-ui #vc-shell[data-cover="story"] .vc-shell-settings {
+  display: none !important;
+}
+
+body.vc-ui #vc-shell[data-cover="story"] .vc-shell-pages {
+  display: flex !important;
 }
 
 body.vc-ui #vc-shell[data-cover="story"] .vc-shell-page[data-page="story"] > .vc-navbar {
