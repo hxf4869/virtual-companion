@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -125,21 +124,23 @@ class Objects:
             '--access-key-env','VC_EXPORT_S3_ACCESS_KEY','--secret-key-env','VC_EXPORT_S3_SECRET_KEY'],env=env,capture_output=True)
         if result.returncode:self.tmp.cleanup();raise RuntimeError('VOICE_S3_CONFIG_INVALID')
         self.env=env
-        self.remote='/tmp/'+self.local.name
         self.prefix=['mc','--config-dir',str(self.local)]
         if self.container:
-            # Secret bytes are stdin, never argv or logs. The config stays outside
-            # the archived tree and is removed on success, failure and signals.
-            command=PG.deletion().docker_base()+['exec','-i',self.container,'/bin/sh','-c',
-                'umask 077; mkdir -m 700 '+self.remote+'; cat > '+self.remote+'/config.json']
-            result=subprocess.run(command,input=(self.local/'config.json').read_bytes(),capture_output=True)
-            if result.returncode:self.tmp.cleanup();raise RuntimeError('VOICE_S3_CONFIG_FAILED')
-            self.prefix=PG.deletion().docker_base()+['exec',self.container,'mc','--config-dir',self.remote]
+            # The existing pinned MinIO tools image is scratch (no shell/rm).
+            # Reuse its mc in a temporary container and network namespace, as
+            # the existing bucket bootstrap does; credentials are a private bind.
+            result=subprocess.run(PG.deletion().docker_base()+['inspect','-f','{{.Image}}',self.container],capture_output=True,text=True)
+            if result.returncode:raise RuntimeError('VOICE_S3_CONTAINER_UNAVAILABLE')
+            self.copy_container='vc-voice-copy-'+self.local.name
+            self.prefix=PG.deletion().docker_base()+['run','--rm','-i','--name',self.copy_container,
+                '--label','com.vc.voice-backup=managed','--network','container:'+self.container,'--entrypoint','/bin/mc',
+                '-e','MC_UPDATE=off','-v',str(self.local/'config.json')+':/mc-config/config.json:ro',
+                result.stdout.strip(),'--config-dir','/mc-config']
         return self
 
     def __exit__(self,*_args):
-        if getattr(self,'container','') and getattr(self,'remote',''):
-            subprocess.run(PG.deletion().docker_base()+['exec',self.container,'rm','-rf',self.remote],capture_output=True)
+        if getattr(self,'copy_container',''):
+            subprocess.run(PG.deletion().docker_base()+['rm','-f','-v',self.copy_container],capture_output=True)
         if getattr(self,'tmp',None):self.tmp.cleanup()
 
     def get(self,key,destination):
@@ -156,9 +157,6 @@ class Objects:
     def put(self,key,source):
         data=source.read_bytes()
         command=self.prefix+['pipe','voice/'+self.values['VC_EXPORT_S3_BUCKET']+'/'+key]
-        if self.container:
-            # docker exec needs stdin for the mc pipe command.
-            command=PG.deletion().docker_base()+['exec','-i',self.container,'mc','--config-dir',self.remote,'pipe','voice/'+self.values['VC_EXPORT_S3_BUCKET']+'/'+key]
         result=subprocess.run(command,input=data,capture_output=True,env=self.env)
         if result.returncode:raise RuntimeError('VOICE_S3_WRITE_FAILED')
 
@@ -229,6 +227,7 @@ def main():
 
 if __name__=='__main__':
     try:main()
-    except Exception:
-        print('VOICE_BACKUP_OR_RESTORE_FAILED',file=sys.stderr)
+    except Exception as error:
+        code=str(error)
+        print(code if re.fullmatch(r'VOICE_[A-Z_]{1,90}',code) else 'VOICE_BACKUP_OR_RESTORE_FAILED',file=sys.stderr)
         sys.exit(1)

@@ -33,7 +33,7 @@ export async function sceneVoiceBackup(ctx) {
     const run=(bin,args,extra={})=>{
         const result=spawnSync(bin,args,{encoding:'utf8',env:{...env,...extra},timeout:90000,maxBuffer:4<<20});
         // Fixed diagnostic only: SQL, source paths and secret-bearing child output stay private.
-        if(result.status!==0)throw new Error(`voice backup ${path.basename(bin)} failed (${result.status})`);
+        if(result.status!==0)throw new Error(`voice backup ${path.basename(bin)} failed (${result.status}; ${result.stderr?.match(/^VOICE_[A-Z_]+$/m)?.[0]||'BACKUP_STEP_FAILED'})`);
         for(const secret of [pass,ctx.secrets.s3.accessKey,ctx.secrets.s3.secretKey])assert.ok(!`${result.stdout}${result.stderr}`.includes(secret),'backup output excludes credentials');
         return result.stdout;
     };
