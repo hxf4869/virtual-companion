@@ -83,8 +83,7 @@
 }
 
 .vc-chat-offline,
-.vc-chat-inbox,
-#vc-chat-empty {
+.vc-chat-inbox {
     margin: 0;
     padding: 8px 12px;
     border-radius: 12px;
@@ -117,11 +116,16 @@
     color: inherit;
 }
 
-#vc-chat-empty {
+body:not(.vc-ui) #vc-chat-empty {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 12px;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
     color: var(--SmartThemeQuoteColor, #B7C1D2);
 }
 
-#chat > #vc-chat-empty {
+body:not(.vc-ui) #chat > #vc-chat-empty {
     margin: 12px;
 }
 

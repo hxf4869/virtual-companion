@@ -6,6 +6,15 @@ function esc(value) {
     return String(value ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 }
 
+function holds(root, node) {
+    let current = node;
+    while (current) {
+        if (current === root) return true;
+        current = current.parentElement || current.parent || null;
+    }
+    return false;
+}
+
 function isSeparator(item) {
     return item === '-' || item?.separator === true || item?.type === 'separator';
 }
@@ -80,6 +89,24 @@ export function popMenu(anchor, items, { blur = false, below = true, root } = {}
             event.preventDefault();
             event.stopPropagation();
             close(true);
+            return;
+        }
+        if (event.key === 'Tab') {
+            const list = buttons();
+            const first = list[0];
+            const last = list[list.length - 1];
+            if (!first || !last) {
+                event.preventDefault();
+                return;
+            }
+            const active = doc.activeElement;
+            if (event.shiftKey && (active === first || !holds(menu, active))) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (active === last || !holds(menu, active))) {
+                event.preventDefault();
+                first.focus();
+            }
             return;
         }
         const list = buttons();

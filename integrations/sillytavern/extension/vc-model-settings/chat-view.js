@@ -1,7 +1,7 @@
 // F2 聊天外观。只在 body.vc-ui 时挂载；关闭时不改宿主节点。
 // 海报是 #chat 的前一个兄弟（在 #sheld 内绝对定位）。clearChat 只移除 #chat 的子节点。
 // 流式渐清：把宿主 powerUserSettings.stream_fade_in 设为 true，不同步设置里的 input 事件，因此不调用 saveSettingsDebounced。
-import { CHAT_PICK_COPY } from './chat-shell.js';
+import { CHAT_PICK_COPY, requestShellDestination } from './chat-shell.js';
 import { FORGET_NOTICE, createMemoryPage, requestOpenMemory } from './memory-page.js';
 import { confirmAlert } from './ui/alert.js';
 import { bindSegment } from './ui/controls.js';
@@ -27,6 +27,13 @@ let seenScrollHeight = 0;
 let pendingReply = false;
 let lastChatId;
 let arrivalsPrimed = false;
+let inspectorSegment = null;
+let posterFrame = 0;
+let scrollFrame = 0;
+let chatFrame = 0;
+let statusFrame = 0;
+let shellFrame = 0;
+let generatingMes = null;
 const seenMessages = new WeakSet();
 
 export function readReplyStyle(storage) {
@@ -81,6 +88,58 @@ export function markSpeakers(rows) {
         previous = key;
         return show;
     });
+}
+
+export function refreshIndexes(count, streaming) {
+    const total = Number(count) || 0;
+    if (total <= 0) return [];
+    if (streaming) return [total - 1];
+    return Array.from({ length: total }, (_, index) => index);
+}
+
+const DATA_IMAGE = /^data:image\/(png|jpeg|webp|gif)(;|,)/i;
+
+export function safeAvatarUrl(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw.startsWith('//')) return '';
+    if (raw.startsWith('/')) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (DATA_IMAGE.test(raw)) return raw;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return '';
+    return `/thumbnail?type=avatar&file=${encodeURIComponent(raw)}`;
+}
+
+function nodeConnected(node, doc) {
+    if (!node) return false;
+    if (node.isConnected === true) return true;
+    if (node.isConnected === false) return false;
+    let current = node;
+    while (current) {
+        if (current === doc.body || current === doc.documentElement) return true;
+        current = current.parentElement || current.parent || null;
+    }
+    return false;
+}
+
+export function inspectorOverlayRoot(doc = document) {
+    const host = doc.querySelector?.('#vc-memory-sheet-host');
+    if (nodeConnected(host, doc)) return host;
+    const rail = doc.querySelector?.('#vc-memory-rail');
+    if (nodeConnected(rail, doc)) return rail;
+    return null;
+}
+
+export function commitHostDelete(mes, ctx) {
+    const raw = mes?.getAttribute?.('mesid');
+    const id = typeof raw === 'string' && /^(0|[1-9]\d*)$/.test(raw) ? Number(raw) : Number.NaN;
+    const remove = ctx?.deleteMessage;
+    if (typeof remove !== 'function' || !Number.isInteger(id)) {
+        return { ok: false, reason: 'missing-delete' };
+    }
+    return {
+        ok: true,
+        run: () => remove(id, undefined, false, true),
+    };
 }
 
 export function recalledItems(items, block) {
@@ -153,14 +212,9 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
         enhanceEmpty();
     };
     syncShell();
-    watch(doc.body, { childList: true, subtree: true }, syncShell);
+    watch(doc.body, { childList: true, subtree: true }, () => scheduleShell(syncShell));
     if (chat) {
-        watch(chat, { childList: true, subtree: true, characterData: true }, () => {
-            refreshMessages();
-            syncGenerating();
-            followIfNeeded();
-            enhanceEmpty();
-        });
+        watch(chat, { childList: true, subtree: true, characterData: true }, scheduleChatMutations);
     }
     watch(doc.body, { attributes: true, attributeFilter: ['data-generating'] }, syncGenerating);
     const toasts = doc.querySelector('#toast-container');
@@ -265,6 +319,7 @@ function placePoster(chat) {
         acts.append(button);
     }
     insertBefore(parent, poster, chat);
+    watchPoster(poster);
     return poster;
 }
 
@@ -295,21 +350,30 @@ function refreshPoster(ctx) {
     } else if (!src) {
         document.body?.style?.setProperty?.('--vc-tint', NEUTRAL_TINT);
     }
-    const space = poster.offsetHeight || 0;
-    if (space) document.body?.style?.setProperty?.('--vc-poster-pad', `${space}px`);
+    schedulePoster();
 }
 
 function avatarSrc(ctx, character) {
-    const fromMes = document.querySelector('#chat .mes .avatar img')?.getAttribute?.('src');
+    const fromMes = safeAvatarUrl(document.querySelector('#chat .mes .avatar img')?.getAttribute?.('src'));
     if (fromMes) return fromMes;
-    const file = character?.avatar || ctx?.characters?.[ctx?.characterId]?.avatar;
-    if (!file) return '';
-    return `/thumbnail?type=avatar&file=${encodeURIComponent(file)}`;
+    return safeAvatarUrl(character?.avatar || ctx?.characters?.[ctx?.characterId]?.avatar);
+}
+
+function openPage(destination, opener) {
+    if (document.body?.classList?.contains('vc-ui')) {
+        requestShellDestination(destination, opener);
+        return;
+    }
+    if (destination === 'characters') {
+        globalThis.dispatchEvent?.(new CustomEvent('vc-open-characters', { detail: { opener } }));
+        document.querySelector('[data-nav="characters"]')?.click();
+        return;
+    }
+    if (destination === 'models') document.querySelector('[data-nav="models"]')?.click();
 }
 
 function openCharacters(button) {
-    globalThis.dispatchEvent?.(new CustomEvent('vc-open-characters', { detail: { opener: button } }));
-    document.querySelector('[data-nav="characters"]')?.click();
+    openPage('characters', button);
 }
 
 function placeStatus(doc) {
@@ -324,9 +388,11 @@ function placeStatus(doc) {
 }
 
 function syncStatusSpace() {
-    const sheld = document.querySelector('#sheld');
-    if (!sheld?.style?.setProperty) return;
+    if (statusFrame) return;
     const apply = () => {
+        statusFrame = 0;
+        const sheld = document.querySelector('#sheld');
+        if (!sheld?.style?.setProperty) return;
         const status = document.querySelector('#sheld > #vc-chat-status');
         const toast = document.querySelector('#toast-container .toast');
         const statusHeight = status && status.childElementCount ? Math.ceil(status.getBoundingClientRect?.().height || 0) + 12 : 0;
@@ -335,9 +401,9 @@ function syncStatusSpace() {
         sheld.style.setProperty('--vc-status-block', `${statusHeight}px`);
         sheld.style.setProperty('--vc-status-space', `${statusHeight + toastHeight}px`);
     };
-    apply();
     const frame = globalThis.requestAnimationFrame;
-    if (typeof frame === 'function') frame(() => frame(apply));
+    if (typeof frame === 'function') statusFrame = frame(apply) || 1;
+    else apply();
 }
 
 function placeJump(chat) {
@@ -389,13 +455,16 @@ function refreshMessages() {
     const chat = document.querySelector('#chat');
     if (!chat) return;
     const list = childMes(chat);
+    const streaming = document.body?.getAttribute?.('data-generating') === 'true';
+    const indexes = refreshIndexes(list.length, streaming);
     const flags = markSpeakers(list.map((mes) => ({
         user: isUser(mes),
         system: isSystem(mes),
         name: mes.getAttribute?.('ch_name') || mes.querySelector?.('.name_text')?.textContent || '',
     })));
     const pin = [...list].reverse().find((mes) => !isUser(mes) && !isSystem(mes));
-    list.forEach((mes, index) => {
+    for (const index of indexes) {
+        const mes = list[index];
         toggleClass(mes, 'vc-speaker', flags[index] === true);
         toggleClass(mes, 'vc-system', isSystem(mes));
         toggleClass(mes, 'vc-tools-pin', mes === pin);
@@ -404,8 +473,8 @@ function refreshMessages() {
             if (arrivalsPrimed && isUser(mes)) addClass(mes, 'vc-arrive');
         }
         ensureTools(mes, { character: !isUser(mes) && !isSystem(mes) });
-    });
-    arrivalsPrimed = true;
+    }
+    if (!streaming) arrivalsPrimed = true;
     syncGenerating();
 }
 
@@ -624,17 +693,32 @@ async function deleteMessage(mes) {
         title: '删除这条消息？',
         message: '删除后无法恢复。',
         action: '删除',
+        opener: document.activeElement,
     });
     if (!ok) return;
-    mes.querySelector('.mes_edit')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const del = mes.querySelector('.mes_edit_delete');
-    const jq = globalThis.jQuery || globalThis.$;
-    if (jq && del) jq(del).trigger('click', [{ fromSlashCommand: true }]);
-    else del?.click();
+    const planned = commitHostDelete(mes, safeContext());
+    if (!planned.ok) {
+        reportDeleteFailure();
+        return;
+    }
+    try {
+        await planned.run();
+    } catch {
+        reportDeleteFailure();
+    }
+}
+
+function reportDeleteFailure() {
+    const line = document.querySelector('#vc-chat-gen');
+    if (!line) return;
+    clearChildren(line);
+    line.textContent = '这条消息没有删掉';
+    show(line);
 }
 
 function dressComposer(doc) {
+    const box = doc.querySelector('#send_textarea');
+    if (box && doc.body?.classList?.contains('vc-ui')) box.setAttribute('placeholder', '发消息');
     const plus = doc.querySelector('#options_button');
     if (plus) {
         addClass(plus, 'vc-glass');
@@ -708,13 +792,9 @@ function readMaxHeight(box) {
 
 function bindScroll(chat) {
     if (!chat?.addEventListener) return;
-    const onScroll = () => {
-        const poster = document.querySelector('#vc-chat-poster');
-        const top = Number(chat.scrollTop) || 0;
-        if (poster?.style) {
-            const limit = poster.offsetHeight || top;
-            poster.style.transform = `translateY(${-Math.min(top, limit)}px)`;
-        }
+    const run = () => {
+        scrollFrame = 0;
+        applyPosterFrame();
         stickToBottom = isNearBottom(chat);
         seenScrollHeight = Number(chat.scrollHeight) || 0;
         if (stickToBottom) pendingReply = false;
@@ -723,7 +803,70 @@ function bindScroll(chat) {
         toggleClass(jump, 'is-on', show);
         toggleClass(chat, 'vc-jump-pad', show);
     };
-    chat.addEventListener('scroll', onScroll);
+    chat.addEventListener('scroll', () => {
+        if (scrollFrame) return;
+        const raf = globalThis.requestAnimationFrame;
+        if (typeof raf === 'function') scrollFrame = raf(run) || 1;
+        else run();
+    });
+}
+
+function scheduleFrame(slot, run) {
+    if (slot.current) return;
+    const raf = globalThis.requestAnimationFrame;
+    const fire = () => {
+        slot.current = 0;
+        run();
+    };
+    if (typeof raf === 'function') slot.current = raf(fire) || 1;
+    else fire();
+}
+
+function scheduleChatMutations() {
+    scheduleFrame({
+        get current() { return chatFrame; },
+        set current(value) { chatFrame = value; },
+    }, () => {
+        refreshMessages();
+        syncGenerating();
+        followIfNeeded();
+        enhanceEmpty();
+    });
+}
+
+function scheduleShell(syncShell) {
+    scheduleFrame({
+        get current() { return shellFrame; },
+        set current(value) { shellFrame = value; },
+    }, syncShell);
+}
+
+function schedulePoster() {
+    scheduleFrame({
+        get current() { return posterFrame; },
+        set current(value) { posterFrame = value; },
+    }, applyPosterFrame);
+}
+
+function watchPoster(poster) {
+    if (!poster || poster.getAttribute?.('data-vc-poster-watch') === 'on') return;
+    poster.setAttribute('data-vc-poster-watch', 'on');
+    if (typeof globalThis.ResizeObserver === 'function') {
+        const observer = new globalThis.ResizeObserver(() => schedulePoster());
+        observer.observe(poster);
+    }
+    schedulePoster();
+}
+
+function applyPosterFrame() {
+    const poster = document.querySelector('#vc-chat-poster');
+    const chat = document.querySelector('#chat');
+    const height = Number(poster?.offsetHeight) || 0;
+    if (height) document.body?.style?.setProperty?.('--vc-poster-pad', `${height}px`);
+    if (!poster?.style) return;
+    const top = Number(chat?.scrollTop) || 0;
+    const shift = height ? Math.min(Math.max(0, top), height) : 0;
+    poster.style.transform = shift ? `translateY(${-shift}px)` : '';
 }
 
 function followIfNeeded() {
@@ -759,7 +902,11 @@ function syncGenerating() {
     const chat = document.querySelector('#chat');
     const list = childMes(chat);
     const last = [...list].reverse().find((mes) => !isUser(mes) && !isSystem(mes));
-    for (const mes of list) {
+    const targets = on ? [generatingMes, last].filter(Boolean) : list;
+    const seen = new Set();
+    for (const mes of targets) {
+        if (seen.has(mes)) continue;
+        seen.add(mes);
         const active = on && mes === last;
         toggleClass(mes, 'vc-generating', active);
         const text = mes.querySelector?.('.mes_text')?.textContent?.trim() || '';
@@ -774,6 +921,7 @@ function syncGenerating() {
             }
         } else if (label) removeNode(label);
     }
+    generatingMes = on ? last : null;
     const line = document.querySelector('#vc-chat-gen');
     if (!line) return;
     clearChildren(line);
@@ -911,7 +1059,7 @@ function enhanceStatus() {
 }
 
 function openModels() {
-    document.querySelector('[data-nav="models"]')?.click();
+    openPage('models');
 }
 
 function wrapStatusCopy(row) {
@@ -967,10 +1115,7 @@ function presentInspector(opener) {
         root = document.createElement('div');
         root.id = 'vc-memory-inspector';
         root.innerHTML = '<div class="vc-segment"><i class="vc-segment-thumb"></i><button type="button" aria-pressed="true">本次召回</button><button type="button">全部</button></div><div data-vc-memory-list></div>';
-        const segment = root.querySelector('.vc-segment');
-        if (segment && typeof bindSegment === 'function') {
-            bindSegment(segment, { onChange: (index) => { inspectorMode = index === 1 ? 'all' : 'recall'; paintInspector(); } });
-        }
+        bindInspectorSegment(root.querySelector('.vc-segment'));
     }
     if (wide) {
         let rail = document.querySelector('#vc-memory-rail');
@@ -1004,7 +1149,21 @@ function presentInspector(opener) {
     return Promise.resolve(task).then(() => { paintInspector(); return root; }).catch(() => { paintInspector(); return root; });
 }
 
+function bindInspectorSegment(segment) {
+    inspectorSegment?.dispose?.();
+    inspectorSegment = null;
+    if (!segment || typeof bindSegment !== 'function') return;
+    inspectorSegment = bindSegment(segment, {
+        onChange: (index) => {
+            inspectorMode = index === 1 ? 'all' : 'recall';
+            paintInspector();
+        },
+    });
+}
+
 function closeInspector() {
+    inspectorSegment?.dispose?.();
+    inspectorSegment = null;
     removeNode(document.querySelector('#vc-memory-rail'));
     inspectorMode = 'recall';
 }
@@ -1099,7 +1258,13 @@ async function beginCorrect(id) {
 }
 
 async function beginForget(id) {
-    const ok = await confirmAlert({ title: '删除这条记忆？', message: FORGET_NOTICE, action: '删除' });
+    const ok = await confirmAlert({
+        title: '删除这条记忆？',
+        message: FORGET_NOTICE,
+        action: '删除',
+        root: inspectorOverlayRoot() || undefined,
+        opener: document.activeElement,
+    });
     if (!ok) return;
     const ctl = inspectorPage();
     await ctl.select(id);
