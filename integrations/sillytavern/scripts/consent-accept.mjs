@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStClient, waitFor } from './managed-lib.mjs';
+import { openStCharacterChat } from './lib/open-st-chat.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { importSyntheticCard } from './w05-accept.mjs';
@@ -191,13 +192,7 @@ export async function sceneConsentUi(ctx) {
         prepareSourceIdentities(sourceRows, { settled: true, sourceTimezone: 'Asia/Shanghai' });
         expect(await st.call('POST', '/api/chats/save', { avatar_url: card.avatar, file_name: sourceFile, chat: sourceRows }), 200, '保存会写记忆的聊天');
         await page.waitForFunction((avatar) => window.SillyTavern.getContext().characters.some((item) => item.avatar === avatar), card.avatar);
-        await page.evaluate(async ({ avatar, file }) => {
-            const native = await import('/script.js');
-            const index = native.characters.findIndex((item) => item.avatar === avatar);
-            if (index < 0) throw new Error('合成角色未加载');
-            await native.selectCharacterById(index);
-            await native.openCharacterChat(file);
-        }, { avatar: card.avatar, file: sourceFile });
+        await openStCharacterChat(page, { avatar: card.avatar, file: sourceFile });
         await page.waitForFunction(() => typeof window.SillyTavern.getContext().chatMetadata?.vc_binding?.conversationId === 'string');
         await page.evaluate(() => window.SillyTavern.getContext().saveChat());
         const binding = await page.evaluate(() => window.SillyTavern.getContext().chatMetadata.vc_binding);

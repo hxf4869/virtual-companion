@@ -188,7 +188,8 @@ export function fetchProviders() {
 
 /** POST /api/v1/st/bindings → 稳定实例/会话绑定（ID 保持十进制字符串）。 */
 export function resolveSTBinding(payload) {
-    return coalesceBinding(bindingCoalesceKey(payload), () => request('POST', '/api/v1/st/bindings', payload));
+    // 外层 ensureBound 占用 bindingCoalesceKey 本身。这里加前缀，避免同一次解析等到自己。
+    return coalesceBinding(`http:${bindingCoalesceKey(payload)}`, () => request('POST', '/api/v1/st/bindings', payload));
 }
 
 export function recallSTMemory(payload) {

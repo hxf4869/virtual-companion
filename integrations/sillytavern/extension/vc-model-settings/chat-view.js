@@ -737,6 +737,39 @@ function clearReplyBubbles(mes) {
     mes.querySelector?.('.mes_text')?.removeAttribute?.('aria-hidden');
 }
 
+function segmentMark(segment) {
+    if (segment && typeof segment === 'object' && segment.type === 'sticker') {
+        return `sticker:${segment.tag || ''}:${segment.kind || ''}:${segment.text || segment.src || ''}`;
+    }
+    return String(segment ?? '');
+}
+
+function appendReplySegment(box, segment) {
+    if (segment && typeof segment === 'object' && segment.type === 'sticker') {
+        const node = document.createElement('div');
+        node.className = 'vc-sticker-bubble';
+        node.setAttribute('data-vc-sticker', segment.tag || '');
+        if (segment.kind === 'kaomoji') {
+            const span = document.createElement('span');
+            span.className = 'vc-sticker-kaomoji';
+            span.textContent = segment.text || '';
+            node.append(span);
+        } else {
+            const img = document.createElement('img');
+            img.alt = segment.tag || '';
+            img.src = segment.src || '';
+            node.append(img);
+        }
+        box.append(node);
+        return;
+    }
+    const text = String(segment ?? '');
+    const seg = document.createElement('p');
+    seg.className = text.startsWith('<sticker') ? 'vc-seg vc-seg-sticker' : 'vc-seg';
+    seg.textContent = text;
+    box.append(seg);
+}
+
 export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule = setTimeout } = {}) {
     if (!mes) return;
     const segments = splitReply(String(text ?? ''));
@@ -744,7 +777,7 @@ export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule 
         clearReplyBubbles(mes);
         return;
     }
-    const key = segments.join('\u0001');
+    const key = segments.map(segmentMark).join('\u0001');
     const existing = mes.querySelector?.('.vc-segs');
     if (mes.getAttribute?.('data-vc-segs') === key && existing) return;
     clearReplyBubbles(mes);
@@ -759,12 +792,7 @@ export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule 
     else parent.append?.(box);
     const paint = (count, typing) => {
         clearChildren(box);
-        for (let index = 0; index < count; index += 1) {
-            const seg = document.createElement('p');
-            seg.className = segments[index].startsWith('<sticker') ? 'vc-seg vc-seg-sticker' : 'vc-seg';
-            seg.textContent = segments[index];
-            box.append(seg);
-        }
+        for (let index = 0; index < count; index += 1) appendReplySegment(box, segments[index]);
         if (typing) {
             const note = document.createElement('p');
             note.className = 'vc-typing';
@@ -782,7 +810,7 @@ export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule 
         if (mes.getAttribute?.('data-vc-segs') !== key) return;
         paint(index + 1, index + 1 < segments.length);
         if (index + 1 >= segments.length) return;
-        const delay = typingDelay(segments[index + 1], index + 1, { spentMs: spent });
+        const delay = typingDelay(segmentMark(segments[index + 1]), index + 1, { spentMs: spent });
         spent += delay;
         schedule(() => step(index + 1), delay);
     };

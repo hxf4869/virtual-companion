@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { trackPageErrors } from './lib/page-errors.mjs';
+import { reauthForWrite } from './lib/reauth-write.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 
 const FIRST_MES = '在吗～ 刚下班，累瘫了。对了，以后我怎么叫你比较好？';
@@ -26,13 +27,24 @@ async function dismissWelcome(page) {
 }
 
 async function acceptConsent(page) {
-    const dialog = page.locator('#vc-consent');
-    if (await dialog.count() && await dialog.isVisible()) {
-        await page.locator('[data-consent-accept]').click();
-        await page.waitForFunction(() => {
-            const node = document.getElementById('vc-consent');
-            return !node || node.open === false;
-        }, undefined, { timeout: 15000 });
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+        const which = await page.evaluate(() => {
+            const consent = document.getElementById('vc-consent');
+            if (consent?.open) return 'consent';
+            if (document.querySelector('.vc-onboarding input[name="name"]')) return 'onboarding';
+            return '';
+        });
+        if (which === 'onboarding') return;
+        if (which === 'consent') {
+            await page.locator('[data-consent-accept]').click();
+            await page.waitForFunction(() => {
+                const node = document.getElementById('vc-consent');
+                return !node || node.open === false;
+            }, undefined, { timeout: 15000 });
+            return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
     }
 }
 
@@ -67,7 +79,52 @@ function relationshipRows(body) {
     return [];
 }
 
+async function clearStCharacters(ctx) {
+    if (typeof ctx.st?.call !== 'function') throw new Error('宿主客户端缺失');
+    const listed = await ctx.st.call('POST', '/api/characters/all');
+    if (listed.status !== 200 || !Array.isArray(listed.json)) throw new Error(`角色列表 HTTP ${listed.status}`);
+    for (const card of listed.json) {
+        const avatar = card?.avatar;
+        if (!avatar) continue;
+        const chats = await ctx.st.call('POST', '/api/characters/chats', { avatar_url: avatar, simple: true });
+        const files = Array.isArray(chats.json) ? chats.json : [];
+        const baselines = [];
+        for (const item of files) {
+            const fileName = String(item?.file_id || item?.file_name || '').replace(/\.jsonl$/, '');
+            if (!fileName) continue;
+            const got = await ctx.st.call('POST', '/api/chats/get', { avatar_url: avatar, file_name: fileName });
+            if (got.status !== 200 || !Array.isArray(got.json)) throw new Error(`读取角色聊天 HTTP ${got.status}`);
+            const token = got.json[0]?.chat_metadata?.vc_f2;
+            if (!token?.id) throw new Error('角色聊天缺少读取基线');
+            baselines.push({
+                path: `chats/${String(avatar).replace(/\.png$/, '')}/${fileName}.jsonl`,
+                expected: token,
+            });
+        }
+        const deleted = await ctx.st.call('POST', '/api/characters/delete', {
+            avatar_url: avatar,
+            delete_chats: true,
+            vc_f2_chats: baselines,
+        });
+        if (deleted.status !== 200) throw new Error(`清掉已有角色 HTTP ${deleted.status}`);
+    }
+}
+
+async function clearCompanionInstances(ctx) {
+    await reauthForWrite(ctx);
+    const listed = await ctx.admin.call('GET', '/api/v1/relationships');
+    if (listed.status !== 200) throw new Error(`读取关系 HTTP ${listed.status}`);
+    const rows = relationshipRows(listed.json).filter((row) => row?.personaRef === 'st-character' || row?.persona_ref === 'st-character');
+    for (const row of rows) {
+        const id = row.relationshipId ?? row.relationship_id;
+        const deleted = await ctx.admin.call('DELETE', `/api/v1/relationships/${id}?retainImportable=false`);
+        if (deleted.status !== 200) throw new Error(`清掉已有陪伴 HTTP ${deleted.status}`);
+    }
+}
+
 export async function sceneHlPersona(ctx) {
+    await clearStCharacters(ctx);
+    await clearCompanionInstances(ctx);
     let chromium;
     try {
         ({ chromium } = await import('playwright-core'));

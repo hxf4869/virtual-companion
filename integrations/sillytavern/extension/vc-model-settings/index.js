@@ -16,7 +16,7 @@ import { claimExtensionInit, guardSameTurn, legacyDialogAllowed, mountModelSetti
 import { setStHeadersProvider, fetchProviders, fetchModelPurposes, fetchRelationships, captureSessionContext, resolveSTBinding, reconcileSTSources, recallSTMemory } from './api.js';
 import { confirmStoryProjection } from './story-action.js';
 import { createStoryProjection } from './story-projection.js';
-import { armSilentF2Conflict, disarmSilentF2Conflict, installInstanceBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
+import { armSilentF2Conflict, disarmSilentF2Conflict, installInstanceBinding, kickCompanionBinding, showF2Draft } from '/scripts/vc-runtime/f2-client.js';
 import { createProjectionController } from './projection.js';
 import { loadInboxEvents, mountChatShell, requestShellDestination } from './chat-shell.js';
 import { mountDataRights } from './data-rights.js';
@@ -26,6 +26,7 @@ import { bindingsFromContext, cardsFromContext, createCompanionInstance, importN
 import { openCompanionStyle, saveNativePersona } from './persona.js';
 import { maybeStartOnboarding } from './onboarding.js';
 import { injectCompanionPrompt } from './companion-prompt.js';
+import { armOnboardingBinding } from './instance-binding.js';
 import { planOpenCreatedChat } from './instance-open.js';
 import { commitStoryProjectionSave } from './projection-save.js';
 import { mountStoryPage, mountStoryTab } from './story-page.js';
@@ -412,7 +413,8 @@ export async function init() {
     });
 }
 
-async function openCreatedChat({ characterRef, chatIdentity } = {}) {
+async function openCreatedChat({ characterRef, chatIdentity, binding } = {}) {
+    if (binding?.relationshipId) armOnboardingBinding({ characterRef, chatIdentity, binding });
     const native = await import('../../../../script.js');
     const ctx = getContext();
     const plan = planOpenCreatedChat({
@@ -423,15 +425,16 @@ async function openCreatedChat({ characterRef, chatIdentity } = {}) {
     });
     if (plan.characterIndex < 0 || typeof native.selectCharacterById !== 'function') return;
     await native.selectCharacterById(plan.characterIndex);
-    if (plan.file && typeof native.openCharacterChat === 'function') {
-        await native.openCharacterChat(plan.file);
-        return;
+    if (plan.file && typeof native.openCharacterChat === 'function') await native.openCharacterChat(plan.file);
+    else {
+        const metadata = getContext().chatMetadata;
+        if (plan.writeToken && metadata && !metadata.vc_f2) {
+            metadata.vc_f2 = { id: chatIdentity, revision: 0 };
+            armSilentF2Conflict();
+            try { await saveCurrentChat(); } finally { disarmSilentF2Conflict(); }
+        }
     }
-    const metadata = getContext().chatMetadata;
-    if (!plan.writeToken || !metadata || metadata.vc_f2) return;
-    metadata.vc_f2 = { id: chatIdentity, revision: 0 };
-    armSilentF2Conflict();
-    try { await saveCurrentChat(); } finally { disarmSilentF2Conflict(); }
+    await kickCompanionBinding();
 }
 
 export { mountMemoryTab } from './memory-page.js';

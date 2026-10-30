@@ -24,7 +24,6 @@ const IMAGE_FORMATS = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
 let runtime = {};
 let builtinAssets = [];
 let catalogOverride;
-let pipelineActive = false;
 
 export function isSendableTag(value) {
     return /^[\u4e00-\u9fff]{2,4}$/u.test(String(value || '').trim());
@@ -338,7 +337,6 @@ export async function registerBubbleTransformerIfPresent({ importPipeline } = {}
     }
     if (typeof mod?.registerBubbleTransformer !== 'function') return false;
     mod.registerBubbleTransformer((segments, ctx) => transformSegments(segments, ctx));
-    pipelineActive = true;
     return true;
 }
 
@@ -774,7 +772,7 @@ function bindChat(attempt = 0) {
         }
     });
     on(types.CHARACTER_MESSAGE_RENDERED, (id, type) => {
-        if (type === 'first_message' || pipelineActive) return;
+        if (type === 'first_message') return;
         try {
             const context = runtime.getContext?.() || {};
             const message = context.chat?.[id];

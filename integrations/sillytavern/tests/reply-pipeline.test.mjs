@@ -48,6 +48,12 @@ test('气泡变换由注册函数处理，失败的变换不改上一步结果',
     const off = registerBubbleTransformer((segments) => segments.map((item) => item === '<sticker tag="开心"/>' ? '表情:开心' : item));
     assert.deepEqual(splitReply('在。<sticker tag="开心"/>'), ['在', '表情:开心']);
     off();
+    registerBubbleTransformer(() => ['在', { type: 'sticker', tag: '开心', kind: 'kaomoji', text: '(≧▽≦)' }]);
+    const mixed = applyBubbleTransformers(['在']);
+    assert.equal(mixed[0], '在');
+    assert.equal(mixed[1].type, 'sticker');
+    assert.equal(mixed[1].tag, '开心');
+    clearBubbleTransformers();
     registerBubbleTransformer(() => { throw new Error('坏变换'); });
     assert.deepEqual(applyBubbleTransformers(['在']), ['在']);
     clearBubbleTransformers();

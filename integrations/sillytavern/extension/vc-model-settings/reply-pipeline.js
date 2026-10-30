@@ -53,7 +53,9 @@ export function applyBubbleTransformers(segments, ctx = {}) {
     for (const fn of [...bubbleTransformers]) {
         try {
             const out = fn(next, ctx);
-            if (Array.isArray(out)) next = out.map((item) => (typeof item === 'string' ? item : String(item ?? '')));
+            if (Array.isArray(out)) {
+                next = out.map((item) => (typeof item === 'string' || (item && typeof item === 'object' && item.type === 'sticker') ? item : String(item ?? '')));
+            }
         } catch { /* 单个变换失败时保留上一步。 */ }
     }
     return next;

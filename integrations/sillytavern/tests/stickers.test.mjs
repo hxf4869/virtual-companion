@@ -8,6 +8,7 @@ import {
     GATE_KEY,
     applyStickerDom,
     assetsFromManifest,
+    installStickers,
     listTags,
     loadManifest,
     mountStickerSettingsEntry,
@@ -237,6 +238,54 @@ test('transformer 把标签变成表情段；流水线缺失则不注册', async
         random: () => 0,
     });
     assert.equal(viaPipeline.at(-1).type, 'sticker');
+});
+
+test('流水线已注册时，新回复仍剥离标签并画出表情气泡', async () => {
+    const doc = installMiniDom();
+    setStickerCatalog({ enabled: true, frequency: 'high', assets: [happy] });
+    const handlers = {};
+    const metadata = {};
+    const message = { mes: '在呢<sticker tag="开心"/>', is_user: false, swipe_id: 0, extra: {} };
+    const row = doc.createElement('div');
+    row.className = 'mes';
+    row.setAttribute('mesid', '1');
+    const block = doc.createElement('div');
+    block.className = 'mes_block';
+    const body = doc.createElement('div');
+    body.className = 'mes_text';
+    body.textContent = message.mes;
+    block.append(body);
+    row.append(block);
+    doc.body.append(row);
+    const context = {
+        eventSource: { on(name, fn) { (handlers[name] ||= []).push(fn); } },
+        eventTypes: {
+            GENERATION_STARTED: 'gen-start',
+            GENERATION_STOPPED: 'gen-stop',
+            CHARACTER_MESSAGE_RENDERED: 'gen-rendered',
+            CHAT_CHANGED: 'gen-changed',
+        },
+        chat: [null, message],
+        chatMetadata: metadata,
+        chatId: 'hl',
+        extensionSettings: {},
+        saveSettingsDebounced() {},
+    };
+    try {
+        await installStickers({
+            document: doc,
+            getContext: () => context,
+            getRequestHeaders: () => ({}),
+            saveChat() {},
+        });
+        for (const fn of handlers['gen-start'] || []) fn('normal');
+        for (const fn of handlers['gen-rendered'] || []) fn(1, 'normal');
+        assert.equal(message.mes.includes('<sticker'), false);
+        assert.equal(row.querySelector('[data-vc-sticker]')?.textContent, '(≧▽≦)');
+        assert.equal(Number(metadata.vc_sticker_gate?.assistantCount) >= 1, true);
+    } finally {
+        setStickerCatalog(null);
+    }
 });
 
 test('表情气泡跟在文字后面，冷却内第二次不出现', () => {

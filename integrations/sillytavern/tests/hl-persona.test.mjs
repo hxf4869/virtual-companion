@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installInstanceBinding } from '../extension/vc-model-settings/f2-client.js';
-import { bindingCoalesceKey, coalesceBinding, resetBindingCoalesce } from '../extension/vc-model-settings/instance-binding.js';
+import { armOnboardingBinding, bindingCoalesceKey, coalesceBinding, holdCompanionBinding, resetBindingCoalesce } from '../extension/vc-model-settings/instance-binding.js';
 import {
     DEFAULT_GLOBAL_RULES,
     MES_EXAMPLE,
@@ -62,14 +62,121 @@ test('同一聊天 0.5 秒内绑定两次只向服务端解析一次', async () 
     });
     await Promise.resolve();
     await Promise.resolve();
-    metadata.vc_f2 = { id: 'id-2', revision: 0 };
     handlers[0]();
     gate.resolve();
     await pending;
     assert.equal(calls, 1);
-    assert.equal(identities[0], 'id-1');
+    assert.deepEqual(identities, ['id-1']);
+    assert.equal(context.chatMetadata.vc_f2.id, 'id-1');
+    assert.equal(context.chatMetadata.vc_binding.chatIdentity, 'id-1');
     assert.equal(context.chatMetadata.vc_binding.relationshipId, '7');
-    assert.equal(bindingCoalesceKey({ characterRef: 'card', mode: 'COMPANION', chatIdentity: 'id-2' }), bindingCoalesceKey({ characterRef: 'card', mode: 'COMPANION', chatIdentity: 'id-1' }));
+    assert.notEqual(
+        bindingCoalesceKey({ characterRef: 'card', mode: 'COMPANION', chatIdentity: 'id-2' }),
+        bindingCoalesceKey({ characterRef: 'card', mode: 'COMPANION', chatIdentity: 'id-1' }),
+    );
+});
+
+test('换了聊天身份不能套用上一次未绑定解析，当前身份要单独建会话', async () => {
+    resetBindingCoalesce();
+    const handlers = [];
+    const metadata = { vc_f2: { id: 'id-1', revision: 0 } };
+    const context = {
+        characters: [{ name: '小满', data: { extensions: { vc_character_ref: 'card' } } }],
+        characterId: 0,
+        groupId: null,
+        chatId: 'main.jsonl',
+        chatMetadata: metadata,
+        chat: [{ mes: '在吗', is_user: true }],
+        eventSource: { on(_type, fn) { handlers.push(fn); } },
+        eventTypes: { CHAT_CHANGED: 'chat_changed' },
+        saveChat: async () => {},
+    };
+    const gate = deferred();
+    let calls = 0;
+    const identities = [];
+    const pending = installInstanceBinding({
+        getContext: () => context,
+        resolveBinding: async (snapshot) => {
+            calls += 1;
+            identities.push(snapshot.chatIdentity);
+            await gate.promise;
+            return {
+                relationshipId: '7',
+                conversationId: `c-${snapshot.chatIdentity}`,
+                chatIdentity: snapshot.chatIdentity,
+                characterRef: snapshot.characterRef,
+                mode: snapshot.mode,
+            };
+        },
+        writeExtensionField: async () => { throw new Error('should not write ref'); },
+        captureSessionContext: async () => {},
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    metadata.vc_f2 = { id: 'id-2', revision: 0 };
+    const second = handlers[0]();
+    gate.resolve();
+    await pending;
+    await second;
+    assert.deepEqual(identities, ['id-1', 'id-2']);
+    assert.equal(calls, 2);
+    assert.equal(context.chatMetadata.vc_f2.id, 'id-2');
+    assert.equal(context.chatMetadata.vc_binding.chatIdentity, 'id-2');
+    assert.equal(context.chatMetadata.vc_binding.conversationId, 'c-id-2');
+});
+
+test('引导导入期间不解析，放开后新聊天沿用已有关系', async () => {
+    resetBindingCoalesce();
+    armOnboardingBinding(null);
+    holdCompanionBinding(false);
+    const handlers = [];
+    const metadata = { vc_f2: { id: 'file-id', revision: 1 } };
+    const context = {
+        characters: [{ name: '小满', data: { extensions: { vc_character_ref: 'card' } } }],
+        characterId: 0,
+        groupId: null,
+        chatId: 'main.jsonl',
+        chatMetadata: metadata,
+        chat: [{ mes: '在吗', is_user: true }],
+        eventSource: { on(_type, fn) { handlers.push(fn); } },
+        eventTypes: { CHAT_CHANGED: 'chat_changed' },
+        saveChat: async () => {},
+    };
+    const calls = [];
+    holdCompanionBinding(true);
+    const pending = installInstanceBinding({
+        getContext: () => context,
+        resolveBinding: async (snapshot) => {
+            calls.push(snapshot);
+            return {
+                relationshipId: snapshot.relationshipId || 'new',
+                conversationId: `c-${snapshot.chatIdentity}`,
+                chatIdentity: snapshot.chatIdentity,
+                characterRef: snapshot.characterRef,
+                mode: snapshot.mode,
+            };
+        },
+        writeExtensionField: async () => { throw new Error('should not write ref'); },
+        captureSessionContext: async () => {},
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const skipped = handlers[0]();
+    await pending;
+    await skipped;
+    assert.equal(calls.length, 0);
+    armOnboardingBinding({
+        characterRef: 'card',
+        chatIdentity: 'chat-fixed',
+        binding: { relationshipId: '9', conversationId: '4', chatIdentity: 'chat-fixed', mode: 'COMPANION' },
+    });
+    holdCompanionBinding(false);
+    await handlers[0]();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].chatIdentity, 'file-id');
+    assert.equal(String(calls[0].relationshipId), '9');
+    assert.equal(String(context.chatMetadata.vc_binding.relationshipId), '9');
+    assert.equal(context.chatMetadata.vc_binding.chatIdentity, 'file-id');
 });
 
 test('未绑定的合并结果超过 0.5 秒后重新解析', async () => {
@@ -196,6 +303,8 @@ test('无陪伴实例时引导文案原样，完成后走原生导入并开聊�
     assert.equal(shouldOfferOnboarding([]), true);
     assert.equal(shouldOfferOnboarding([{ personaRef: 'story' }]), true);
     assert.equal(shouldOfferOnboarding([{ personaRef: 'st-character', relationshipId: '1' }]), false);
+    assert.equal(shouldOfferOnboarding([{ persona_ref: 'st-character', relationshipId: '2' }]), false);
+    assert.equal(shouldOfferOnboarding({ items: [{ personaRef: 'st-character', relationshipId: '3' }] }), false);
     const html = renderOnboarding({
         name: '',
         relation: '好朋友',
