@@ -148,10 +148,11 @@ func (s *Store) searchEngineMemories(ctx context.Context, owner, rel, conv int64
 }
 
 func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, q recallQuery) (engineRecall, error) {
-	// Candidate SQL, the embedding snapshot and the rerank switch do not
-	// depend on each other. A failure cancels the rest; a canceled sibling
-	// does not hide the first real error.
-	candidates, embedding, rerankOn, err := loadEngineRecallParts(ctx,
+	// Candidate SQL overlaps the embedding snapshot and the rerank switch.
+	// A miss on those two must not fail a turn that has nothing to search:
+	// the browser treats a failed recall as "do not attach vc_memory", and
+	// the outbound recheck then returns without X-VC-Memory-Status.
+	load, err := runEngineRecallLoad(ctx, q,
 		func(ctx context.Context) (map[string]Memory, error) {
 			return s.engineCandidates(ctx, owner, rel, conv)
 		},
@@ -165,28 +166,11 @@ func (s *Store) searchEngineRecall(ctx context.Context, owner, rel, conv int64, 
 	if err != nil {
 		return engineRecall{}, err
 	}
-	ids := []string{}
-	undated, otherDay := []string{}, []string{}
-	allowed := map[string]Memory{}
-	for id, m := range candidates {
-		if q.Date != nil && (m.Time == nil || m.Time.EventDate == nil) {
-			undated = append(undated, id)
-			continue
-		}
-		if q.Date != nil && *m.Time.EventDate != *q.Date {
-			otherDay = append(otherDay, id)
-			continue
-		}
-		allowed[id] = m
-		ids = append(ids, id)
+	if !load.search {
+		return load.found, nil
 	}
-	found := engineRecall{Memories: []Memory{}, DateIDs: append([]string{}, ids...), UndatedIDs: undated, OtherDayIDs: otherDay}
-	// No same-day memory. A pure schedule question has nothing to inject.
-	// A question that also asks an undated topic still needs the summary gate.
-	if len(ids) == 0 && (len(q.GateTexts) == 0 || !queryHasUndatedTopic(q.Text)) {
-		found.GateKnown = true
-		return found, nil
-	}
+	ids, allowed, found := load.ids, load.allowed, load.found
+	embedding, rerankOn := load.embedding, load.rerankOn
 	// The allowlist above is already limited to q.Date. MemoryCore must not
 	// apply that date again: a merged summary can omit metadata.eventDate
 	// while the Go record still carries the verified source date.
