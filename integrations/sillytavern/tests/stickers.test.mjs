@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { installMiniDom } from './mini-dom.mjs';
+import { renderReplyBubbles } from '../extension/vc-model-settings/chat-view.js';
+import { clearBubbleTransformers, registerBubbleTransformer } from '../extension/vc-model-settings/reply-pipeline.js';
 import {
     FREQUENCIES,
     isSendableTag,
@@ -318,6 +320,38 @@ test('表情气泡跟在文字后面，冷却内第二次不出现', () => {
     assert.equal(second.row.querySelector('[data-vc-sticker]'), null);
     assert.equal(second.message.mes.includes('<sticker'), false);
     assert.equal(doc.querySelectorAll('[data-vc-sticker]').length, 1);
+});
+
+test('流水线按已剥离文本再次排版后，表情气泡还在', () => {
+    setStickerCatalog({ enabled: true, frequency: 'high', assets: [happy] });
+    clearBubbleTransformers();
+    registerBubbleTransformer((segments, ctx) => transformSegments(segments, ctx));
+    try {
+        const doc = installMiniDom();
+        const metadata = {};
+        const row = doc.createElement('div');
+        row.className = 'mes';
+        const block = doc.createElement('div');
+        block.className = 'mes_block';
+        const body = doc.createElement('div');
+        body.className = 'mes_text';
+        const message = { mes: '在呢<sticker tag="开心"/>', is_user: false, extra: {} };
+        body.textContent = message.mes;
+        block.append(body);
+        row.append(block);
+        doc.body.append(row);
+        renderReplyBubbles(row, message.mes, { reducedMotion: true });
+        assert.equal(row.querySelectorAll('[data-vc-sticker]').length, 1);
+        applyStickerDom(row, message, gateCtx(metadata, 'live-1', message.mes, { assets: [happy] }));
+        assert.equal(message.mes.includes('<sticker'), false);
+        assert.equal(metadata[GATE_KEY].lastStickerAt, 1);
+        renderReplyBubbles(row, message.mes, { reducedMotion: true });
+        assert.equal(row.querySelectorAll('[data-vc-sticker]').length, 1);
+        assert.equal(row.querySelector('[data-vc-sticker]').textContent, '(≧▽≦)');
+    } finally {
+        clearBubbleTransformers();
+        setStickerCatalog(null);
+    }
 });
 
 test('表情包设置页可以开关、改频率、上传、改标签和删除', async () => {

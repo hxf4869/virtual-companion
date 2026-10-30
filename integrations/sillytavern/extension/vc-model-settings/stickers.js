@@ -340,6 +340,16 @@ export async function registerBubbleTransformerIfPresent({ importPipeline } = {}
     return true;
 }
 
+function insideReplySegs(node) {
+    let current = node;
+    while (current) {
+        const name = String(current.className || '');
+        if (name.split(/\s+/).includes('vc-segs')) return true;
+        current = current.parentElement || current.parent || null;
+    }
+    return false;
+}
+
 function paintBubble(mesEl, sticker) {
     if (!mesEl?.querySelector) return;
     const host = mesEl.querySelector('.mes_block') || mesEl;
@@ -349,6 +359,8 @@ function paintBubble(mesEl, sticker) {
         node?.remove();
         return;
     }
+    // 流水线把表情画在分段容器里。按已剥离的纯文本重排时会删掉该容器，气泡必须挂在消息块上。
+    if (node && insideReplySegs(node)) host.append(node);
     if (!node) {
         node = doc.createElement('div');
         node.className = 'vc-sticker-bubble';
