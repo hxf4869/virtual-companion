@@ -300,7 +300,7 @@ test('本机替身跑通完整流程', () => {
   assert.equal(fs.readFileSync(server.checkoutFile, 'utf8').trim(), HEAD);
   const order = fs.readFileSync(server.orderLog, 'utf8').trim().split('\n');
   // 备份后、启动前：扩展旧版打包 + 新扩展同步进 st-data 卷。
-  assert.deepEqual(order, ['load', HEAD, 'stop-memorycore', 'backup', 'remote-run', 'remote-run', 'up']);
+  assert.deepEqual(order, ['load', HEAD, 'stop-memorycore', 'backup', 'remote-run', 'remote-run', 'remote-run', 'up']);
   const dockerLog = fs.readFileSync(server.dockerLog, 'utf8');
   assert.equal(dockerLog.split('\n').filter((line) => line.includes(' up ')).length, 1);
   assert.match(dockerLog, /--force-recreate/);
