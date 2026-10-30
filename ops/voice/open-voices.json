@@ -8,7 +8,11 @@
       "source": "https://github.com/rhasspy/dataset-voice-kathleen",
       "revision": "c51cb971036a127359b43c621f26ca5081eab13e",
       "licenseUrl": "https://raw.githubusercontent.com/rhasspy/dataset-voice-kathleen/c51cb971036a127359b43c621f26ca5081eab13e/LICENSE",
-      "audioUrls": ["https://raw.githubusercontent.com/rhasspy/dataset-voice-kathleen/c51cb971036a127359b43c621f26ca5081eab13e/data/arctic_a0001_1592748574.wav"]
+      "audioUrls": [
+        "https://raw.githubusercontent.com/rhasspy/dataset-voice-kathleen/c51cb971036a127359b43c621f26ca5081eab13e/data/arctic_a0001_1592748574.wav"
+      ],
+      "referenceText": "Author of the danger trail, Philip Steels, etc.",
+      "transcriptUrl": "https://raw.githubusercontent.com/rhasspy/dataset-voice-kathleen/c51cb971036a127359b43c621f26ca5081eab13e/data/arctic_a0001_1592748574.txt"
     },
     {
       "id": "open_male_thorsten",
@@ -21,7 +25,9 @@
       "audioUrls": [
         "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27/docs/samples/sample01-gt.wav",
         "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27/docs/samples/sample02-gt.wav"
-      ]
+      ],
+      "referenceText": "Eure Schoko-Bonbons sind sagenhaft lecker. Eure Tröte nervt.",
+      "transcriptUrl": "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27/docs/audio_compare.md"
     }
   ]
 }

@@ -26,3 +26,7 @@ speech tokenizer 和 campplus；只运行 frontend-only，不重设现有模型�
 `<voice-id>-0.wav`（以及需要拼接时的 `-1.wav`）保存原始 WAV。提取仍在服务器执行，
 继续验证 CC0、PCM 格式、3–30 秒长度与输出 GGUF；不修改推理参数。
 原始参考目录只用于本次提取，成功、失败排障结束后两端删除；只保留两份当前 prompt 与对应许可。
+
+清单另固定两组原发布者的逐字稿与链接：Kathleen 的同名 `.txt`、Thorsten 的 `docs/audio_compare.md`
+原始录音行。提取时传给 `--prompt-text`，避免现有 CLI 将空稿作为零长度 / 空指针 tensor 写入 GGUF
+时触发断言；不修改已安装引擎或模型。指令合成仍使用后端的场景指令。

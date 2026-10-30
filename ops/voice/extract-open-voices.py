@@ -72,10 +72,11 @@ def main():
             sample.write_bytes(combine_recordings([reference(args.reference_dir,voice['id']+'-'+str(index)+'.wav',url) for index,url in enumerate(voice['audioUrls'])]))
             generated=Path(tmp)/'prompt.gguf'
             # No synthesis, model, quantization, sampling, thread or diffusion
-            # parameters are changed. Instruct-mode consumers do not need a
-            # reference transcript; this extracts prompt features only.
+            # parameters are changed. Supply the publisher's transcript because
+            # the installed GGUF writer cannot serialize its empty text tensor.
             result=subprocess.run([args.extractor,'--frontend-only','--speech-tokenizer',args.speech_tokenizer,
-                '--campplus',args.campplus,'--prompt-audio',str(sample),'--prompt-speech-output',str(generated),'--quiet'],capture_output=True,timeout=300)
+                '--campplus',args.campplus,'--prompt-audio',str(sample),'--prompt-text',voice['referenceText'],
+                '--prompt-speech-output',str(generated),'--quiet'],capture_output=True,timeout=300)
             if result.returncode or not generated.exists() or generated.read_bytes()[:4]!=b'GGUF':
                 raise ValueError('voice extraction failed')
             target.write_bytes(generated.read_bytes());target.chmod(0o600)
