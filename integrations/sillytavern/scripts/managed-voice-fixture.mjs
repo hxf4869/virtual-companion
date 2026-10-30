@@ -24,11 +24,26 @@ export function createVoiceFixtureHandler() {
         }
         if (path === '/__voice/ctl' && req.method === 'POST') {
             const input = await body(req);
-            if (!['kokoro', 'cosyvoice'].includes(input.engine)) { json(res, 400, { error: 'invalid engine' }); return true; }
+            if (!['kokoro', 'cosyvoice', 'asr'].includes(input.engine)) { json(res, 400, { error: 'invalid engine' }); return true; }
             const state = stateFor(input.engine);
             if (state.active) { json(res, 409, { error: 'fixture still active' }); return true; }
             states.set(input.engine, { calls: 0, active: 0, maxActive: 0, status: input.status ?? 200, failures: input.failures ?? 0, delayMs: input.delayMs ?? 0, requests: [] });
             json(res, 200, { ok: true }); return true;
+        }
+        if (path === '/voice-fixture/asr/healthz' && req.method === 'GET') {json(res,200,{ready:true});return true;}
+        if (path === '/voice-fixture/asr/v1/audio/transcriptions' && req.method === 'POST') {
+            const state=stateFor('asr');state.calls++;state.active++;state.maxActive=Math.max(state.maxActive,state.active);
+            try {
+                const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>2000000){json(res,413,{error:'size'});return true;}chunks.push(chunk);}
+                const data=Buffer.concat(chunks);const start=data.indexOf('RIFF');
+                const rate=start>=0?data.readUInt32LE(start+24):0,channels=start>=0?data.readUInt16LE(start+22):0,bits=start>=0?data.readUInt16LE(start+34):0;
+                state.requests.push({sampleRate:rate,channels,bits});if(state.requests.length>32)state.requests.shift();
+                if(rate!==16000 || channels!==1 || bits!==16){json(res,415,{error:'format'});return true;}
+                if(state.delayMs)await new Promise((done)=>{const timer=setTimeout(done,state.delayMs);res.once('close',()=>{clearTimeout(timer);done();});});
+                if(res.destroyed)return true;
+                if(state.failures<0 || state.calls<=state.failures){json(res,state.status,{error:'synthetic'});return true;}
+                json(res,200,{text:'合成语音识别结果',emotion:'HAPPY',language:'zh'});return true;
+            } finally {state.active--;}
         }
         const match = /^\/voice-fixture\/(kokoro|cosyvoice)(\/.*)$/.exec(path);
         if (!match) return false;

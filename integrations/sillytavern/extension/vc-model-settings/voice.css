@@ -16,6 +16,14 @@ body.vc-ui .vc-voice-transcribe { border: 0; background: transparent; color: var
 body.vc-ui .vc-voice-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--vc-lh-reading); }
 body.vc-ui .vc-voice-text[hidden] { display: none; }
 body.vc-ui .vc-voice-pending { min-height: var(--vc-touch); justify-content: center; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+body.vc-ui #send_form.vc-voice-input-available #send_but { display: none !important; }
+body.vc-ui #vc-voice-input { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; border: 0; background: var(--vc-accent); color: var(--vc-on-accent); border-radius: var(--vc-radius-pill); min-width: var(--vc-touch); min-height: var(--vc-touch); display: inline-flex; align-items: center; justify-content: center; padding: var(--vc-space-xs); cursor: pointer; }
+body.vc-ui #vc-voice-input[hidden] { display: none; }
+body.vc-ui #vc-voice-input:disabled { opacity: .5; }
+body.vc-ui #vc-voice-input-note { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--vc-space-xs); padding: var(--vc-space-xs); font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
+body.vc-ui #vc-voice-input-note[hidden] { display: none; }
+body.vc-ui .vc-voice-input-level { width: var(--vc-touch); height: var(--vc-space-xxs); background: var(--vc-accent); transform: scaleX(var(--vc-voice-level,0)); transform-origin: left; border-radius: var(--vc-radius-pill); }
+body.vc-ui #vc-voice-input:focus-visible { outline: 2px solid var(--vc-accent-text); outline-offset: var(--vc-space-xxs); }
 body.vc-ui .vc-voice :is(button):focus-visible { outline: 2px solid var(--vc-accent); outline-offset: var(--vc-space-xxs); }
 @keyframes vc-voice-wave { to { transform: scaleY(.45); } }
 @media (prefers-reduced-motion: reduce) {

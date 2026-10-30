@@ -41,7 +41,7 @@ export async function sceneVoiceBackend(ctx) {
     assert.equal(engines.tts.length, 2);
     assert.ok(engines.tts.every((engine) => engine.configured && engine.healthy && engine.enabled));
     assert.ok(!JSON.stringify(engines).includes('127.0.0.1'), 'private engine URL hidden');
-    assert.equal(engines.asr.enabled, false, 'ASR stays outside VO-2');
+    assert.equal(engines.asr.enabled, Boolean(ctx.secrets.needsASR), 'ASR matches fixture configuration');
 
     let nativeAudioHeaders = null;
     const st = createStClient({ baseUrl: ctx.w05.stBase, expectedIdentity: ctx.secrets.session,

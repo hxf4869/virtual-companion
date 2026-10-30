@@ -21,21 +21,23 @@ type cachedVoices struct {
 }
 
 type Service struct {
-	store         Store
-	blobs         BlobStore
-	engines       map[string]Engine
-	asrConfigured bool
-	log           *slog.Logger
-	gate          string
-	cacheMu       sync.Mutex
-	cache         map[string]cachedVoices
+	store   Store
+	blobs   BlobStore
+	engines map[string]Engine
+	asr     ASREngine
+	asrBusy chan struct{}
+	slots   chan struct{}
+	log     *slog.Logger
+	gate    string
+	cacheMu sync.Mutex
+	cache   map[string]cachedVoices
 }
 
-func New(engines map[string]Engine, blobs BlobStore, log *slog.Logger, gate string, asrConfigured bool) *Service {
+func New(engines map[string]Engine, blobs BlobStore, log *slog.Logger, gate string, asr ASREngine) *Service {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Service{engines: engines, blobs: blobs, log: log, gate: gate, asrConfigured: asrConfigured, cache: map[string]cachedVoices{}}
+	return &Service{engines: engines, blobs: blobs, log: log, gate: gate, asr: asr, asrBusy: make(chan struct{}, 1), slots: make(chan struct{}, 2), cache: map[string]cachedVoices{}}
 }
 
 func (s *Service) BindStore(store Store) { s.store = store }
@@ -76,7 +78,7 @@ func (s *Service) Engines(ctx context.Context, owner int64) (Engines, error) {
 	if err != nil {
 		return Engines{}, err
 	}
-	out := Engines{TTS: make([]EngineState, 0, 2), ASR: CapabilityState{Configured: s.asrConfigured}}
+	out := Engines{TTS: make([]EngineState, 0, 2), ASR: CapabilityState{Configured: s.asr != nil, Enabled: s.asr != nil && settings.ASREnabled}}
 	for _, engine := range []string{Kokoro, CosyVoice} {
 		cached := s.voices(ctx, engine)
 		enabled := settings.KokoroEnabled
@@ -85,7 +87,9 @@ func (s *Service) Engines(ctx context.Context, owner int64) (Engines, error) {
 		}
 		out.TTS = append(out.TTS, EngineState{Engine: engine, Configured: s.engines[engine] != nil, Enabled: s.engines[engine] != nil && enabled, Healthy: cached.healthy, Voices: cached.voices})
 	}
-	// ASR execution and health probing are introduced together in VO-7.
+	if s.asr != nil {
+		out.ASR.Healthy = s.asr.Healthy(ctx)
+	}
 	return out, nil
 }
 
@@ -393,6 +397,10 @@ func (s *Service) process(ctx context.Context, clip Clip) {
 	}
 	jobCtx, cancel := context.WithDeadline(ctx, clip.StartedAt.Add(time.Duration(clip.Params.TimeoutSeconds)*time.Second+30*time.Second))
 	defer cancel()
+	if err := s.acquire(jobCtx); err != nil {
+		return
+	}
+	defer s.release()
 	completion := Completion{Status: "failed", ErrorKind: "unavailable"}
 	var audio []byte
 	engine := s.engines[clip.Engine]

@@ -313,6 +313,8 @@ func operation(path string) string {
 		return "voice_settings"
 	case "/api/v1/voice/preview":
 		return "voice_preview"
+	case "/api/v1/voice/asr":
+		return "voice_asr"
 	default:
 		if strings.HasPrefix(path, "/api/v1/voice-clips/") {
 			if strings.HasSuffix(path, "/audio") {

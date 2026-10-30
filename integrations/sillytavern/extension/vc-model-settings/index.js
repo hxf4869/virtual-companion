@@ -9,7 +9,7 @@
 //     eventSource / eventTypes（CHAT_COMPLETION_SETTINGS_READY、CHAT_CHANGED）。
 // third-party 扩展被装载在 /scripts/extensions/third-party/<name>/（比内置扩展深一层），
 // 相对导入主脚本要走四层（内置扩展的三层在这里会落到不存在的 /scripts/script.js）
-import { getRequestHeaders, getChat, saveChat as saveCurrentChat, saveChatDebounced } from '../../../../script.js';
+import { getRequestHeaders, getChat, sendMessageAsUser, saveChat as saveCurrentChat, saveChatDebounced } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
 import { isGenerateRequestUrl } from './model-logic.js';
 import { claimExtensionInit, guardSameTurn, legacyDialogAllowed, mountModelSettings, observeGenerateBudget } from './page.js';
@@ -40,6 +40,7 @@ import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } 
 import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
 import { installStickers } from './stickers.js';
 import { installChatVoice } from './voice-chat.js';
+import { installVoiceInput } from './voice-input.js';
 export { openAccountData, openDrawerPage, openModelSettings };
 export { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget };
 
@@ -156,6 +157,13 @@ export async function init() {
     });
     bindingReady.catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
     installChatVoice({ getContext, saveChat: saveCurrentChat });
+    installVoiceInput({getContext,async sendText(text,metadata){
+        const message=await sendMessageAsUser(text);
+        message.extra.vc_voice_input=metadata;
+        await saveCurrentChat();
+        document.dispatchEvent(new Event('vc-chat-retry'));
+        await getContext().generate('normal');
+    }});
     let reportMemory = () => {};
     const memory = createMemoryInjection({ getContext, recall: recallSTMemory,
         ensureBinding: async () => (await bindingReady).ensureBound(),

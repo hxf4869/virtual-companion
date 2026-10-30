@@ -95,7 +95,7 @@ func (b *testBlobs) Delete(context.Context, string) error        { b.deletes++; 
 func TestServiceDefaultsRoutingCacheAndIdempotency(t *testing.T) {
 	store := &testStore{settings: DefaultSettings(), rel: Relationship{ID: 2, Gender: "MALE", RelationshipPrefs: RelationshipPrefs{Speed: 1, ProactiveVoice: true}, Mood: "开心"}}
 	koko, cosy := &testEngine{}, &testEngine{onlyDefault: true}
-	s := New(map[string]Engine{Kokoro: koko, CosyVoice: cosy}, nil, nil, "", false)
+	s := New(map[string]Engine{Kokoro: koko, CosyVoice: cosy}, nil, nil, "", nil)
 	s.BindStore(store)
 	for n := 0; n < 2; n++ {
 		if _, err := s.Engines(context.Background(), 1); err != nil {
@@ -143,7 +143,7 @@ func TestWorkerRetriesOnly429AndFallsBackWithoutPrivateLogs(t *testing.T) {
 				engine.data = nil
 			}
 			blobs := &testBlobs{failure: kind == "storage_error"}
-			s := New(map[string]Engine{Kokoro: engine}, blobs, slog.New(slog.NewJSONHandler(&logs, nil)), "", false)
+			s := New(map[string]Engine{Kokoro: engine}, blobs, slog.New(slog.NewJSONHandler(&logs, nil)), "", nil)
 			s.BindStore(store)
 			at := time.Now()
 			clip := Clip{OwnerID: 991234, ID: 2, Engine: Kokoro, Voice: "zf_001", Text: "PRIVATE_VOICE_PAYLOAD", ObjectKey: "PRIVATE_OBJECT_KEY", StartedAt: &at, Params: Params{Speed: 1, TimeoutSeconds: 1}}
@@ -214,7 +214,7 @@ func TestSettingsAndRelationshipPatchValidation(t *testing.T) {
 	if b.KokoroMoodSpeeds["开心"] != 1.05 {
 		t.Fatal("defaults shared mutable maps")
 	}
-	s := New(nil, nil, nil, "", false)
+	s := New(nil, nil, nil, "", nil)
 	for _, patch := range []map[string]json.RawMessage{{"speed": json.RawMessage(`null`)}, {"speed": json.RawMessage(`0.1`)}, {"proactiveVoice": json.RawMessage(`null`)}, {"voiceFrequency": json.RawMessage(`"wrong"`)}} {
 		if s.ValidateRelationshipPatch(context.Background(), patch) == nil {
 			t.Fatal("invalid patch accepted")
@@ -231,7 +231,7 @@ func TestRestoreGateAndWorkerShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &testStore{}
-	s := New(nil, nil, nil, path, false)
+	s := New(nil, nil, nil, path, nil)
 	s.BindStore(store)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()

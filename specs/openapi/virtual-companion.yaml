@@ -8016,6 +8016,10 @@ components:
             Optional timestamp of the current query, interpreted separately from
             historical source time. Omission uses the persisted query's snapshot;
             this field never rebases a stored event date on extraction/retry time.
+        voiceEmotion:
+          type: string
+          enum: [HAPPY, SAD, ANGRY]
+          description: Optional voice-input cue for the existing per-turn affect update; never memory query text or an instruction.
         queryTimezone:
           type: string
           description: >-
@@ -9140,9 +9144,12 @@ components:
           type: string
           minLength: 1
           maxLength: 4000
+        language:
+          type: string
+          enum: [zh, en, ja, ko, yue]
         emotion:
           type: string
-          maxLength: 32
+          enum: [HAPPY, SAD, ANGRY, NEUTRAL]
     RelationshipClearancePreview:
       type: object
       description: >-

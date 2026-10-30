@@ -7485,6 +7485,13 @@ components:
           format: date-time
           description: Optional timestamp of the current query, interpreted separately from historical source time. Omission
             uses the persisted query's snapshot; this field never rebases a stored event date on extraction/retry time.
+        voiceEmotion:
+          type: string
+          enum:
+          - HAPPY
+          - SAD
+          - ANGRY
+          description: Optional voice-input cue for the existing per-turn affect update; never memory query text or an instruction.
         queryTimezone:
           type: string
           description: Optional IANA timezone snapshot for the current query (for example Asia/Shanghai). Omission uses its
@@ -8702,9 +8709,21 @@ components:
           type: string
           minLength: 1
           maxLength: 4000
+        language:
+          type: string
+          enum:
+          - zh
+          - en
+          - ja
+          - ko
+          - yue
         emotion:
           type: string
-          maxLength: 32
+          enum:
+          - HAPPY
+          - SAD
+          - ANGRY
+          - NEUTRAL
     RelationshipClearancePreview:
       type: object
       description: Factual scope of relationship-domain rows a reset or delete would clear (FR-COMP-004). Counts cover every

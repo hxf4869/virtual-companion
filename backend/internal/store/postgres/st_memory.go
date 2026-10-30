@@ -20,6 +20,7 @@ type STMemoryRequest struct {
 	BudgetTokens   int        `json:"budgetTokens"`
 	QueryTimestamp *time.Time `json:"queryTimestamp,omitempty"`
 	QueryTimezone  string     `json:"queryTimezone,omitempty"`
+	VoiceEmotion   string     `json:"voiceEmotion,omitempty"`
 }
 type STMemoryResult struct {
 	Status     string          `json:"status"`
@@ -59,6 +60,9 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		out.Observe.RecallMs = int(time.Since(started).Milliseconds())
 	}()
 	if !stsource.ValidIdentity(in.ChatIdentity) || in.Revision < 0 {
+		return out, ErrInvalid
+	}
+	if in.VoiceEmotion != "" && in.VoiceEmotion != "HAPPY" && in.VoiceEmotion != "SAD" && in.VoiceEmotion != "ANGRY" {
 		return out, ErrInvalid
 	}
 	if in.BudgetTokens == 0 {
@@ -116,7 +120,16 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		if querySource.at != nil {
 			at = *querySource.at
 		}
-		if err := s.ObserveCompanionUserText(ctx, owner, b.relationship, querySource.ref, querySource.text, at); err != nil {
+		observedText := querySource.text
+		switch in.VoiceEmotion {
+		case "HAPPY":
+			observedText += " 开心"
+		case "SAD":
+			observedText += " 难过"
+		case "ANGRY":
+			observedText += " 生气"
+		}
+		if err := s.ObserveCompanionUserText(ctx, owner, b.relationship, querySource.ref, observedText, at); err != nil {
 			return out, err
 		}
 	}

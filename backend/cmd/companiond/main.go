@@ -198,7 +198,15 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 		}
 		voiceEngines[engine] = client
 	}
-	loop.UseVoice(voice.New(voiceEngines, blobs, log, cfg.RestoreGateFile, cfg.Voice.ASRURL != ""))
+	var asr voice.ASREngine
+	if cfg.Voice.ASRURL != "" {
+		client, err := voice.NewHTTPClient("asr", cfg.Voice.ASRURL)
+		if err != nil {
+			return app.Deps{}, fmt.Errorf("ASR configuration is invalid")
+		}
+		asr = client
+	}
+	loop.UseVoice(voice.New(voiceEngines, blobs, log, cfg.RestoreGateFile, asr))
 	factory := modelprovider.Factory{
 		ConnectTimeout:    cfg.Provider.ConnectTimeout,
 		FirstTokenTimeout: cfg.Provider.FirstTokenTimeout,

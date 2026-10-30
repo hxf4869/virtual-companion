@@ -28,6 +28,7 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/voice\/settings$/, where: 'VO-2 语音设置' },
     { method: 'PUT', path: /^\/api\/v1\/voice\/settings$/, where: 'VO-2 revision 保护的语音设置' },
     { method: 'POST', path: /^\/api\/v1\/voice\/preview$/, where: 'VO-2 固定文案试听' },
+    { method: 'POST', path: /^\/api\/v1\/voice\/asr$/, where: 'VO-7 内存中转录音' },
     { method: 'POST', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/voice-clips$/, where: 'VO-2 已持久化消息入队' },
     { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*$/, where: 'VO-2 语音状态与转文字' },
     { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/, where: 'VO-2 鉴权 WAV 与单范围下载' },
@@ -135,6 +136,7 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
 
             const headers = { Accept: 'application/json' };
             const voiceAudio = /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/.test(path);
+            const voiceASR = method === 'POST' && path === '/api/v1/voice/asr';
             const voiceRoute = voiceAudio || path.startsWith('/api/v1/voice/') || path.startsWith('/api/v1/voice-clips/') || path.endsWith('/voice-clips');
             if (voiceAudio) {
                 headers.Accept = 'audio/wav';
@@ -143,11 +145,14 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
             const contentType = req.headers['content-type'];
             const hasBody = method !== 'GET' && method !== 'HEAD';
             if (hasBody) {
-                if (contentType && !String(contentType).toLowerCase().includes('application/json')) {
+                if (voiceASR && !/^multipart\/form-data;\s*boundary=/i.test(contentType || '')) {
+                    writeErrorResponse(res,415,'VC_BRIDGE_BODY_UNSUPPORTED','需要录音文件');return;
+                }
+                if (!voiceASR && contentType && !String(contentType).toLowerCase().includes('application/json')) {
                     writeErrorResponse(res, 415, 'VC_BRIDGE_BODY_UNSUPPORTED', '管理桥只转发 application/json 请求体');
                     return;
                 }
-                headers['Content-Type'] = 'application/json';
+                headers['Content-Type'] = voiceASR ? contentType : 'application/json';
             }
             const vcCsrf = req.headers['x-vc-csrf-token'];
             if (typeof vcCsrf === 'string' && vcCsrf) headers['X-CSRF-Token'] = vcCsrf;
@@ -161,7 +166,15 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
             if (cookie) headers.Cookie = cookie;
 
             let body;
-            if (hasBody && req.body !== undefined && req.body !== null) {
+            if (voiceASR) {
+                const chunks=[];let size=0;
+                for await (const chunk of req) {
+                    size+=chunk.length;
+                    if (size>60*32000+4096+65536) {writeErrorResponse(res,413,'INVALID_REQUEST','录音过长');return;}
+                    chunks.push(chunk);
+                }
+                body=Buffer.concat(chunks);
+            } else if (hasBody && req.body !== undefined && req.body !== null) {
                 body = JSON.stringify(req.body);
             }
 
@@ -169,7 +182,7 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
                 method,
                 headers,
                 ...(body !== undefined ? { body } : {}),
-                signal: AbortSignal.timeout(voiceRoute ? Math.max(config.timeoutMs, 15000) : config.timeoutMs),
+                signal: AbortSignal.timeout(voiceASR ? 125000 : voiceRoute ? Math.max(config.timeoutMs, 15000) : config.timeoutMs),
             });
 
             const buffer = Buffer.from(await upstream.arrayBuffer());

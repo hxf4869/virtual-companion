@@ -338,7 +338,7 @@ function goServiceSpec(secrets) {
         env: {
             VC_TTS_KOKORO_URL: secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/kokoro/v1` : '',
             VC_TTS_COSYVOICE_URL: secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/cosyvoice/v1` : '',
-            VC_ASR_URL: '',
+            VC_ASR_URL: secrets.needsASR ? `${FIXTURE_BASE}/voice-fixture/asr/v1` : '',
             VC_MODE: 'full',
             VC_VERSION: 'w03-accept',
             VC_LOG_LEVEL: 'info',
@@ -681,6 +681,7 @@ async function runFull() {
 
     const secrets = {
         needsVoice: selected.some((id) => id.startsWith('voice-')),
+        needsASR: selected.includes('voice-input'),
         needsRights: selected.some((id) => id.startsWith('rights-')),
         needsMemory: selected.some(id => id.startsWith('memory-')),
         pgPassword: synthSecret(18),

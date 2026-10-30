@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,48 @@ func (s *Server) registerVoice() {
 	s.mux.HandleFunc("GET /api/v1/voice-clips/{clipId}", s.handleVoiceClip)
 	s.mux.HandleFunc("GET /api/v1/voice-clips/{clipId}/audio", s.handleVoiceAudio)
 	s.mux.HandleFunc("POST /api/v1/voice/preview", s.handleVoicePreview)
+	s.mux.HandleFunc("POST /api/v1/voice/asr", s.handleVoiceASR)
+}
+
+func (s *Server) handleVoiceASR(w http.ResponseWriter, r *http.Request) {
+	p := s.corePrincipal(w, r, true)
+	if p == nil {
+		return
+	}
+	service := s.voiceService(w)
+	if service == nil {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, voice.MaxASRUploadBytes)
+	reader, err := r.MultipartReader()
+	if err != nil {
+		s.writeAPIError(w, 415, "INVALID_REQUEST", "expected WAV multipart file")
+		return
+	}
+	part, err := reader.NextPart()
+	if err != nil || part.FormName() != "file" || part.FileName() == "" {
+		s.writeVoiceError(w, voice.ErrInvalid)
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(part, voice.MaxRecordingBytes+1))
+	if err != nil || len(data) > voice.MaxRecordingBytes {
+		s.writeAPIError(w, 413, "INVALID_REQUEST", "recording too large")
+		return
+	}
+	if _, err = reader.NextPart(); err != io.EOF {
+		s.writeVoiceError(w, voice.ErrInvalid)
+		return
+	}
+	out, err := service.Transcribe(r.Context(), p.AccountID, data)
+	if errors.Is(err, voice.ErrInvalid) {
+		s.writeAPIError(w, 415, "INVALID_REQUEST", "expected bounded 16 kHz mono PCM WAV")
+		return
+	}
+	if err != nil {
+		s.writeVoiceError(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) voiceService(w http.ResponseWriter) *voice.Service {

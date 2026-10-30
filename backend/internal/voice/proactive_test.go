@@ -8,7 +8,7 @@ import (
 
 func TestProactiveLeadTimeSceneAndFastSelection(t *testing.T) {
 	store := &testStore{settings: DefaultSettings(), rel: Relationship{ID: 2, Gender: "FEMALE", RelationshipPrefs: RelationshipPrefs{Speed: 1, ProactiveVoice: true}}}
-	s := New(map[string]Engine{Kokoro: &testEngine{}, CosyVoice: &testEngine{onlyDefault: true}}, nil, nil, "", false)
+	s := New(map[string]Engine{Kokoro: &testEngine{}, CosyVoice: &testEngine{onlyDefault: true}}, nil, nil, "", nil)
 	s.BindStore(store)
 	now := time.Now()
 	in := CreateRequest{MessageRef: "proactive:1", Purpose: "proactive", Text: "合成主动消息"}

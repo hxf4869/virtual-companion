@@ -23,7 +23,7 @@ type HTTPClient struct {
 
 func NewHTTPClient(engine, base string) (*HTTPClient, error) {
 	u, err := url.Parse(base)
-	if (engine != Kokoro && engine != CosyVoice) || err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(strings.TrimRight(u.Path, "/"), "/v1") {
+	if (engine != Kokoro && engine != CosyVoice && engine != "asr") || err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(strings.TrimRight(u.Path, "/"), "/v1") {
 		return nil, ErrInvalid
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()

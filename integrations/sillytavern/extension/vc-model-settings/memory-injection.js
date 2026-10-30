@@ -128,6 +128,8 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
         // The persisted user message owns the query clock. Regeneration and
         // tool continuation must not reinterpret it using this execution time.
         const input = { chatIdentity: token.id, revision: token.revision, ...memorySettings(c) };
+        const voiceEmotion=[...(c.chat || [])].reverse().find((message)=>message?.is_user)?.extra?.vc_voice_input?.emotion;
+        if (['HAPPY','SAD','ANGRY'].includes(voiceEmotion)) input.voiceEmotion=voiceEmotion;
         let result;
         try { result = await recall(input); }
         catch {

@@ -38,7 +38,7 @@ func TestVoiceAudioAuthenticationOwnershipAndRanges(t *testing.T) {
 	srv := newCoreServer(t, "full", newMemStore())
 	store := &voiceHTTPStore{clip: voice.Clip{OwnerID: 1, ID: 7, Status: "ready", ObjectKey: "private-key"}}
 	blobs := &voiceHTTPBlobs{}
-	service := voice.New(nil, blobs, nil, "", false)
+	service := voice.New(nil, blobs, nil, "", nil)
 	service.BindStore(store)
 	srv.core.Voice = service
 	request := func(owner int64, rangeHeader string) *httptest.ResponseRecorder {

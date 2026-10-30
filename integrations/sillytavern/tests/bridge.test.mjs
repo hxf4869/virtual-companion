@@ -9,6 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 
 import { createAdminBridge, ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import { CHAT_UI_ROUTES } from '../extension/vc-model-settings/chat-ui-routes.js';
@@ -76,6 +77,17 @@ function fakeGo(state) {
 }
 
 const baseConfig = (goPort) => ({ goBaseUrl: `http://127.0.0.1:${goPort}`, serviceToken: 'S'.repeat(40), timeoutMs: 5000 });
+
+test('ASR 桥只向固定路径转发有界 multipart，保持本人会话而不附服务令牌', async()=>{
+    const payload=Buffer.from('--synthetic\r\nContent-Disposition: form-data; name="file"; filename="recording.wav"\r\n\r\nRIFF_SYNTHETIC\r\n--synthetic--\r\n');
+    const req=Readable.from([payload]);Object.assign(req,{method:'POST',url:'/api/v1/voice/asr',headers:{'content-type':'multipart/form-data; boundary=synthetic','x-vc-csrf-token':'synthetic-csrf',cookie:'vc_session=synthetic; other=private'}});
+    let calls=0;
+    const handler=createAdminBridge({config:baseConfig(9999),fetchImpl:async(url,init)=>{
+        calls++;assert.equal(url,'http://127.0.0.1:9999/api/v1/voice/asr');assert.deepEqual(init.body,payload);assert.equal(init.headers['Content-Type'],req.headers['content-type']);assert.equal(init.headers.Authorization,undefined);assert.equal(init.headers.Cookie,'vc_session=synthetic');
+        return new Response(JSON.stringify({text:'合成识别',emotion:'HAPPY'}),{status:200,headers:{'content-type':'application/json'}});
+    }});
+    const res=mockRes();await handler(req,res);assert.equal(res.statusCode,200);assert.equal(calls,1);
+});
 
 // ---------------------------------------------------------------------------
 // 管理桥

@@ -49,6 +49,7 @@ services:
     environment:
       VC_TTS_KOKORO_URL: http://127.0.0.1:8757/voice-fixture/kokoro/v1
       VC_TTS_COSYVOICE_URL: http://127.0.0.1:8757/voice-fixture/cosyvoice/v1
+      VC_ASR_URL: http://127.0.0.1:8757/voice-fixture/asr/v1
     depends_on:
       voice-fixture: {condition: service_healthy}
 

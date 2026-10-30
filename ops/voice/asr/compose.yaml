@@ -1,0 +1,19 @@
+# Set the private network/container/image values only in the server deploy.env.
+services:
+  asr:
+    image: ${VC_ASR_IMAGE:?set in private deploy.env}
+    container_name: ${VC_VOICE_ASR_CONTAINER:?set in private deploy.env}
+    build: {context: .}
+    user: "1000:1000"
+    read_only: true
+    mem_limit: 2g
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    networks: [voice]
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+networks:
+  voice:
+    external: true
+    name: ${VC_VOICE_NETWORK:?set in private deploy.env}

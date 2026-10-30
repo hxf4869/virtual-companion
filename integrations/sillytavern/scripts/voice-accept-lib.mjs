@@ -34,7 +34,7 @@ export async function voiceShots(page, ctx, id, name) {
     }
     fs.writeFileSync(path.join(dir, 'NOTES.md'), `# ${id}\n\n语音条与设置沿用现有组件、语义颜色和 44px 触控区。截图只含合成验收数据。\n390/1440 浅深色、横向溢出及对应场景交互断言已检查；请结合本批次受管结果复核。\n`);
 }
-export async function openVoiceChat(ctx, label = '语音验收') {
+export async function openVoiceChat(ctx, label = '语音验收', {fakeAudio=false}={}) {
     await reauthForWrite(ctx);
     const purposes = await ctx.admin.listPurposes();
     const purpose = purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT');
@@ -57,9 +57,9 @@ export async function openVoiceChat(ctx, label = '语音验收') {
             { name: card.name, is_user: false, mes: '合成语音验收。', extra: {} }], force: false });
     assert.equal(result.status, 200);
     const { chromium } = await import('playwright-core');
-    const browser = await chromium.launch({ headless: true, ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
+    const browser = await chromium.launch({ headless: true,args:fakeAudio?['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']:[], ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}) });
     try {
-        const bc = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        const bc = await browser.newContext({ viewport: { width: 390, height: 844 },hasTouch:fakeAudio,permissions:fakeAudio?['microphone']:[] });
         await bc.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },
