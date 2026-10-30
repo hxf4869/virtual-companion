@@ -3,6 +3,9 @@
 import { ApiError, captureSessionContext, fetchRelationships, reauth, storyRequest } from './api.js';
 import { confirmAlert } from './ui/alert.js';
 import { bindSegment } from './ui/controls.js';
+import { releaseSegment } from './memory-page.js';
+
+export { releaseSegment };
 import { icon } from './ui/icons.js';
 import { popMenu } from './ui/menu.js';
 import { createNav } from './ui/nav.js';
@@ -1199,6 +1202,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
     let channelEl = null;
     let menuHandle = null;
     let stopped = false;
+    let segmentBinding = null;
     let conflictSheet = null;
     let conflictOpen = false;
     let reauthSheet = null;
@@ -1220,8 +1224,10 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
             : '';
         listScreen.innerHTML = `<header class="vc-navbar"><div class="vc-nav-spacer"></div>${saveButton}</header><div class="vc-scroll">${renderInboxTab(state)}</div>`;
         const segment = listScreen.querySelector('[data-vc-inbox-segment]');
+        releaseSegment(segmentBinding);
+        segmentBinding = null;
         if (segment) {
-            bindSegment(segment, {
+            segmentBinding = bindSegment(segment, {
                 onChange(index) {
                     page.applyForm(readForm(container));
                     page.setInboxFilter(FILTERS[index]?.[0] || 'all');
@@ -1253,6 +1259,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
                 if (input && secret && !input.value) input.value = secret;
             }
         }
+        container.classList.toggle('is-detail', Boolean(channelEl?.isConnected));
         syncConflict(state);
         syncReauth(state);
     }
@@ -1432,6 +1439,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
             channelKey = '';
             if (nav.depth) nav.pop();
             channelEl = null;
+            container.classList.remove('is-detail');
         }
         if (action === 'reauth-submit') {
             page.setReauthPassword(container.querySelector('[data-field="reauth-password"]')?.value || '');
@@ -1452,6 +1460,8 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
         },
         destroy() {
             stopped = true;
+            releaseSegment(segmentBinding);
+            segmentBinding = null;
             menuHandle?.close();
             conflictSheet?.close();
             reauthSheet?.close();

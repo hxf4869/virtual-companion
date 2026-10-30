@@ -11,8 +11,8 @@
 // 相对导入主脚本要走四层（内置扩展的三层在这里会落到不存在的 /scripts/script.js）
 import { getRequestHeaders, getChat, saveChat as saveCurrentChat } from '../../../../script.js';
 import { getContext } from '../../../../scripts/st-context.js';
-import { budgetSignalFromGenerateBody, isGenerateRequestUrl } from './model-logic.js';
-import { mountModelSettings } from './page.js';
+import { isGenerateRequestUrl } from './model-logic.js';
+import { claimExtensionInit, guardSameTurn, legacyDialogAllowed, mountModelSettings, observeGenerateBudget } from './page.js';
 import { setStHeadersProvider, fetchProviders, fetchModelPurposes, fetchRelationships, captureSessionContext, resolveSTBinding, reconcileSTSources, recallSTMemory } from './api.js';
 import { confirmStoryProjection } from './story-action.js';
 import { createStoryProjection } from './story-projection.js';
@@ -48,14 +48,7 @@ function installGenerateBudgetWatch(onSignal) {
     if (typeof current !== 'function' || current.vcBudgetWatch) return;
     const wrapped = async function vcBudgetFetch(input, init) {
         const response = await current.call(globalThis, input, init);
-        const type = response?.headers?.get?.('content-type') || '';
-        if (isGenerateRequestUrl(requestUrl(input)) && response && !response.ok && type.includes('json') && typeof response.clone === 'function') {
-            const copy = response.clone();
-            void copy.json().then((body) => {
-                const signal = budgetSignalFromGenerateBody(body);
-                if (signal) onSignal(signal);
-            }).catch(() => { /* 宿主继续展示原始失败 */ });
-        }
+        if (isGenerateRequestUrl(requestUrl(input))) observeGenerateBudget(response, onSignal);
         return response;
     };
     wrapped.vcBudgetWatch = true;
@@ -82,6 +75,7 @@ function mountVcUi() {
 }
 
 export async function init() {
+    if (!claimExtensionInit()) return;
     mountVcUi();
     mountDrawerPages();
     setStHeadersProvider(() => {
@@ -97,16 +91,32 @@ export async function init() {
     let dataRights = null;
     let memoryPage = null;
     let charactersPage = null;
+    function openCharactersLegacy(opener) {
+        if (!legacyDialogAllowed()) return;
+        charactersPage?.open(opener);
+    }
+    function openMemoryLegacy(opener) {
+        if (!legacyDialogAllowed()) return;
+        memoryPage?.open(opener);
+    }
+    function openStoryLegacy(opener) {
+        if (!legacyDialogAllowed()) return;
+        storyPage?.open(opener);
+    }
+    const openInboxOnce = guardSameTurn((opener) => {
+        if (!legacyDialogAllowed()) return;
+        inboxPage?.open(opener);
+    });
     const shell = mountChatShell({
         getContext,
         openModels: (opener) => { if (!pageController.isOpen()) pageController.open(opener); },
-        openCharacters: (opener) => charactersPage?.open(opener),
-        openInbox: (opener) => inboxPage?.open(opener),
-        openStory: (opener) => storyPage?.open(opener),
+        openCharacters: openCharactersLegacy,
+        openInbox: openInboxOnce,
+        openStory: openStoryLegacy,
         openAccount: (opener) => dataRights?.open(opener),
-        openMemory: (opener) => memoryPage?.open(opener),
+        openMemory: openMemoryLegacy,
     });
-    globalThis.addEventListener('vc-view-inbox', (event) => inboxPage?.open(event.detail?.opener));
+    globalThis.addEventListener('vc-view-inbox', (event) => openInboxOnce(event.detail?.opener));
     const applyBudgetState = (payload) => {
         const budget = pageController.applyBudget?.(payload);
         shell.setBudgetInsufficient?.(budget?.insufficient === true);
@@ -315,11 +325,11 @@ export async function init() {
         const shell = mountShell({
             getContext,
             openModels: (opener) => { if (!pageController.isOpen()) pageController.open(opener); },
-            openCharacters: (opener) => charactersPage?.open(opener),
-            openInbox: (opener) => inboxPage?.open(opener),
-            openStory: (opener) => storyPage?.open(opener),
+            openCharacters: openCharactersLegacy,
+            openInbox: openInboxOnce,
+            openStory: openStoryLegacy,
             openAccount: (opener) => dataRights?.open(opener),
-            openMemory: (opener) => memoryPage?.open(opener),
+            openMemory: openMemoryLegacy,
             seams: {
                 chat: () => ({ mountChatView, openMemoryInspector, openChatMoreMenu, posterTarget }),
                 surface: async () => ({

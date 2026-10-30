@@ -26,9 +26,14 @@ export function bindOpenMemory(open) {
     memoryOpener = typeof open === 'function' ? open : null;
 }
 
+export function releaseSegment(handle) {
+    if (typeof handle?.dispose === 'function') handle.dispose();
+}
+
 export function requestOpenMemory(opener) {
     const detail = { opener };
     globalThis.dispatchEvent(new CustomEvent(OPEN_MEMORY_EVENT, { detail }));
+    if (globalThis.document?.body?.classList?.contains('vc-ui') === true) return detail;
     if (typeof memoryOpener === 'function') memoryOpener(opener);
     return detail;
 }
@@ -569,6 +574,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
     const page = createMemoryPage({ onChange: (state) => paint(state) });
     let detailEl = null;
     let stopped = false;
+    let segmentBinding = null;
     let menuHandle = null;
     let datesOpen = false;
     const life = new Map();
@@ -636,8 +642,10 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
         const nextScroll = listScreen.querySelector('.vc-scroll');
         if (nextScroll) nextScroll.scrollTop = scrollTop;
         const segment = listScreen.querySelector('[data-vc-memory-segment]');
+        releaseSegment(segmentBinding);
+        segmentBinding = null;
         if (segment) {
-            bindSegment(segment, {
+            segmentBinding = bindSegment(segment, {
                 onChange(index) {
                     const status = MEMORY_SEGMENTS[index]?.[0] ?? '';
                     const select = listScreen.querySelector('select[name="status"]');
@@ -647,6 +655,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
                 },
             });
         }
+        container.classList.toggle('is-detail', state.view === 'detail');
         if (state.view === 'detail') {
             const html = renderMemoryDetailTab(state);
             if (!detailEl?.isConnected) {
@@ -781,12 +790,14 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
         },
         destroy() {
             stopped = true;
+            releaseSegment(segmentBinding);
+            segmentBinding = null;
             menuHandle?.close();
             ac.abort();
             page.close();
             detailEl = null;
             container.replaceChildren();
-            container.classList.remove('vc-memory-tab');
+            container.classList.remove('vc-memory-tab', 'is-detail');
         },
     };
 }

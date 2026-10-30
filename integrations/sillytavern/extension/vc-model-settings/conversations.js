@@ -2,7 +2,7 @@
 // 最后一条消息和时间只在调用方已经拿到时附上，不编造预览。
 // 头像优先用当前会话快照，否则用同名或同角色引用的角色卡头像；都没有才用首字。
 // 同一关系只保留一行。两个实例看起来一样时，只在确实重名时加序号（外壳 · 2），不显示创建时间或内部 ID。
-import { instancesFrom } from './instance-page.js';
+import { instancesFrom, safeImageUrl } from './instance-page.js';
 import { pendingInboxWrites } from './chat-shell.js';
 
 export const EMPTY_CONVERSATIONS_COPY = '还没有会话';
@@ -17,7 +17,8 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
 export function avatarUrl(file) {
     const value = String(file || '').trim();
     if (!value) return '';
-    if (value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) return value;
+    const safe = safeImageUrl(value);
+    if (safe) return safe;
     return `/thumbnail?type=avatar&file=${encodeURIComponent(value)}`;
 }
 

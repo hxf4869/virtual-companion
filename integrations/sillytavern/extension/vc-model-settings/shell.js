@@ -41,6 +41,12 @@ export const TAVERN_ENTRIES = [
     { id: 'rightNavHolder', panel: 'right-nav-panel', label: '角色卡', icon: 'square-pen', tile: 'blue' },
 ];
 
+export function whoTintBackground(raw) {
+    const value = String(raw ?? '').trim();
+    if (!/^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$/.test(value)) return '';
+    return `color-mix(in srgb, rgb(${value}) 6%, var(--vc-glass))`;
+}
+
 export function chromeForWidth(width) {
     const value = Number(width);
     const w = Number.isFinite(value) ? value : 0;
@@ -366,11 +372,12 @@ function buildSettings(doc, { accountName, theme, reply, onTheme, onReply, onAct
     face.className = 'vc-settings-account';
     face.append(iconEl('user-round', 28));
     const accountCopy = doc.createElement('span');
-    accountCopy.className = 'vc-grow';
+    accountCopy.className = 'vc-grow vc-settings-copy';
     const accountTitle = doc.createElement('span');
+    accountTitle.className = 'vc-settings-name';
     accountTitle.textContent = accountName || '账户';
     const accountMeta = doc.createElement('span');
-    accountMeta.className = 'vc-meta';
+    accountMeta.className = 'vc-meta vc-settings-meta';
     accountMeta.textContent = '密码与身份验证器';
     accountCopy.append(accountTitle, accountMeta);
     const accountChev = doc.createElement('span');
@@ -679,6 +686,8 @@ export function mountShell(options = {}) {
 
     let collapsed = readSidebarCollapsed(options.storage);
     let entered = false;
+    let listHeld = false;
+    let listHeldFor = '';
     let leavingChat = false;
     let destinationHost = null;
     let keyboardOn = false;
@@ -751,8 +760,11 @@ export function mountShell(options = {}) {
         const chrome = chromeForWidth(globalThis.innerWidth);
         root.dataset.chrome = chrome.nav;
         root.dataset.wide = chrome.wide ? '1' : '0';
-        if (chrome.wide || root.dataset.destination !== 'chat' || !entered) root.dataset.list = 'open';
+        const mediumChat = !chrome.wide && root.dataset.destination === 'chat' && entered;
+        if (!mediumChat) root.dataset.list = 'open';
+        else if (listHeld) root.dataset.list = 'open';
         else root.dataset.list = 'hidden';
+        listToggle.setAttribute('aria-label', root.dataset.list === 'hidden' ? '显示会话列表' : '隐藏会话列表');
         sidebar.classList.toggle('is-collapsed', chrome.collapsible && collapsed);
         collapse.setAttribute('aria-label', collapsed && chrome.collapsible ? '展开侧边栏' : '收起侧边栏');
         const iconName = collapsed && chrome.collapsible ? 'chevron-right' : 'chevron-left';
@@ -807,6 +819,7 @@ export function mountShell(options = {}) {
         const index = DESTINATIONS.findIndex((item) => item.nav === nav);
         if (index < 0) return;
         const previous = root.dataset.destination || '';
+        if (previous && previous !== nav) listHeld = false;
         if (root.dataset.settings === 'page') root.dataset.settings = '';
         root.dataset.destination = nav;
         tabbar.style.setProperty('--vc-tab', String(index));
@@ -836,19 +849,7 @@ export function mountShell(options = {}) {
     }
 
     function openLegacy(nav, opener) {
-        const emit = (type) => globalThis.dispatchEvent?.(new CustomEvent(type, { detail: { opener } }));
-        if (nav === 'characters') {
-            emit('vc-open-characters');
-            options.openCharacters?.(opener);
-        } else if (nav === 'memory') {
-            emit('vc-open-memory');
-            options.openMemory?.(opener);
-        } else if (nav === 'inbox') {
-            emit('vc-view-inbox');
-            options.openInbox?.(opener);
-        } else if (nav === 'story') {
-            options.openStory?.(opener);
-        }
+        selectDestination(nav, opener);
     }
 
     function hideChat() {
@@ -912,6 +913,11 @@ export function mountShell(options = {}) {
     }
 
     function openChatColumn(row, fromButton) {
+        const nextId = row?.relationshipId == null || row.relationshipId === '' ? '' : String(row.relationshipId);
+        if (nextId !== listHeldFor) {
+            listHeld = false;
+            listHeldFor = nextId;
+        }
         entered = true;
         paintIdentity(row);
         const phone = chromeForWidth(globalThis.innerWidth).nav === 'tabbar';
@@ -1084,7 +1090,9 @@ export function mountShell(options = {}) {
         }
         if (node.hasAttribute('data-list-toggle')) {
             if (root.dataset.wide === '1') return;
-            root.dataset.list = root.dataset.list === 'hidden' ? 'open' : 'hidden';
+            const opening = root.dataset.list === 'hidden';
+            root.dataset.list = opening ? 'open' : 'hidden';
+            listHeld = opening && root.dataset.destination === 'chat' && entered;
             listToggle.setAttribute('aria-label', root.dataset.list === 'hidden' ? '显示会话列表' : '隐藏会话列表');
             return;
         }
@@ -1177,10 +1185,39 @@ export function mountShell(options = {}) {
         enabled: true,
         registry: true,
         load: loadSeam,
-        onFallback(nav, args) {
-            if (nav !== 'chat') openLegacy(nav, args?.opener);
+        onFallback() {
+            // 新外观不退回旧对话框。
         },
     });
+    function syncWhoTint() {
+        const raw = doc.body?.style?.getPropertyValue?.('--vc-tint')
+            || doc.documentElement?.style?.getPropertyValue?.('--vc-tint')
+            || '';
+        const next = whoTintBackground(raw);
+        if (next) who.style.background = next;
+        else if (typeof who.style.removeProperty === 'function') who.style.removeProperty('background');
+    }
+    const routeExternal = (nav, opener) => {
+        if (!DESTINATIONS.some((item) => item.nav === nav)) return;
+        selectDestination(nav, opener);
+    };
+    globalThis.addEventListener?.('vc-shell-navigate', (event) => {
+        routeExternal(event.detail?.destination, event.detail?.opener);
+    });
+    globalThis.addEventListener?.('vc-open-characters', (event) => {
+        routeExternal('characters', event.detail?.opener);
+    });
+    globalThis.addEventListener?.('vc-open-memory', (event) => {
+        routeExternal('memory', event.detail?.opener);
+    });
+    globalThis.addEventListener?.('vc-view-inbox', (event) => {
+        routeExternal('inbox', event.detail?.opener);
+    });
+    if (typeof MutationObserver === 'function' && doc.body) {
+        const tintObserver = new MutationObserver(syncWhoTint);
+        tintObserver.observe(doc.body, { attributes: true, attributeFilter: ['style'] });
+    }
+    syncWhoTint();
     selectDestination('chat', null, { legacy: false });
     applyChrome();
     schedule();

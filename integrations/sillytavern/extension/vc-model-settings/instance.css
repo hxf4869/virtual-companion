@@ -447,6 +447,30 @@ body.vc-ui .vc-poster {
     text-align: center;
 }
 
+body.vc-ui .vc-card-description {
+    margin: 0 var(--vc-page-pad) var(--vc-space-lg);
+    padding: var(--vc-space-md) var(--vc-space-md) var(--vc-space-xs);
+    text-align: left;
+}
+
+body.vc-ui .vc-card-description-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    overflow: hidden;
+    margin: 0;
+    text-align: left;
+    white-space: pre-wrap;
+    color: var(--vc-ink);
+    font-size: var(--vc-fs-body);
+    line-height: var(--vc-lh-body);
+}
+
+body.vc-ui .vc-card-description.is-open .vc-card-description-text {
+    display: block;
+    -webkit-line-clamp: unset;
+}
+
 body.vc-ui .vc-poster-avatar {
     width: 112px;
     height: 112px;
