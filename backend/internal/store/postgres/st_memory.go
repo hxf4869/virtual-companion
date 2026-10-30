@@ -111,6 +111,15 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		func() (stDigestSource, error) { return s.stQuerySource(ctx, owner, b.id) },
 		func() (*memoryProfile, error) { return s.currentMemoryProfile(ctx, owner, b.relationship, b.id) },
 	)
+	if queryErr == nil && strings.TrimSpace(querySource.text) != "" {
+		at := time.Now()
+		if querySource.at != nil {
+			at = *querySource.at
+		}
+		if err := s.ObserveCompanionUserText(ctx, owner, b.relationship, querySource.ref, querySource.text, at); err != nil {
+			return out, err
+		}
+	}
 	if skipped, err := stRecallLoadError(querySource, queryErr, profileErr); err != nil || skipped {
 		if err != nil {
 			return out, err

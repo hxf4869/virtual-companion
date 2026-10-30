@@ -84,7 +84,7 @@ func TestFollowUpHTTPAuthAndOwner(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &policy); err != nil {
 		t.Fatal(err)
 	}
-	if policy.Enabled || policy.OfflineCapable || policy.DailyLimit != 0 || policy.RecentInteractionMinutes != 0 || len(policy.AllowedModes) != 1 || policy.AllowedModes[0] != "COMPANION" || policy.RelationshipID != idString(rel1) {
+	if policy.Enabled || policy.OfflineCapable || policy.DailyLimit != 0 || policy.RecentInteractionMinutes != 0 || len(policy.AllowedModes) != 1 || policy.AllowedModes[0] != "COMPANION" || policy.RelationshipID != idString(rel1) || policy.Mode != "OFF" || policy.CheckInAfterMinutes != 720 {
 		t.Fatalf("default = %+v", policy)
 	}
 
@@ -95,7 +95,7 @@ func TestFollowUpHTTPAuthAndOwner(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &policy); err != nil {
 		t.Fatal(err)
 	}
-	if !policy.Enabled || policy.OfflineCapable || policy.DailyLimit != 3 || policy.QuietHoursStart == nil || *policy.QuietHoursStart != "22:00" {
+	if !policy.Enabled || policy.OfflineCapable || policy.DailyLimit != 3 || policy.QuietHoursStart == nil || *policy.QuietHoursStart != "22:00" || policy.Mode != "FOLLOW_UP" || policy.CheckInAfterMinutes != 720 {
 		t.Fatalf("put body = %+v", policy)
 	}
 
@@ -289,7 +289,7 @@ func (f *followHTTPStore) GetProactivePolicy(_ context.Context, owner, rel int64
 	if row, ok := f.policies[rel]; ok {
 		return row, nil
 	}
-	return postgres.ProactivePolicy{RelationshipID: rel, AllowedModes: []string{"COMPANION"}}, nil
+	return postgres.ProactivePolicy{RelationshipID: rel, AllowedModes: []string{"COMPANION"}, Mode: "OFF", CheckInAfterMinutes: 720}, nil
 }
 
 func (f *followHTTPStore) PutProactivePolicy(_ context.Context, owner, rel int64, in postgres.ProactivePolicyWrite) (postgres.ProactivePolicy, error) {
@@ -303,6 +303,7 @@ func (f *followHTTPStore) PutProactivePolicy(_ context.Context, owner, rel int64
 		QuietHoursEnd: in.QuietHoursEnd, QuietHoursTimezone: in.QuietHoursTimezone,
 		DailyLimit: in.DailyLimit, RecentInteractionMinutes: in.RecentInteractionMinutes,
 		AllowedModes: append([]string(nil), in.AllowedModes...), OfflineCapable: in.OfflineCapable,
+		Mode: modeOr(in.Mode, "OFF"), CheckInAfterMinutes: checkOr(in.CheckInAfterMinutes, 720),
 	}
 	f.policies[rel] = row
 	return row, nil
@@ -347,3 +348,17 @@ func (f *followHTTPStore) CancelFollowUp(_ context.Context, owner, id int64) (po
 }
 
 func followStrHTTP(s string) *string { return &s }
+
+func modeOr(v *string, fallback string) string {
+	if v == nil || *v == "" {
+		return fallback
+	}
+	return *v
+}
+
+func checkOr(v *int, fallback int) int {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}

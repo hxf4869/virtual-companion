@@ -360,6 +360,7 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 			loop.UseMemoryCore(core.MemoryCore)
 		}
 		core.Cancels = loop.Cancels()
+		core.Proactive = loop
 		r.metrics.SetJobsStatsSource(func() observability.JobsStats {
 			st := loop.Stats()
 			return observability.JobsStats{

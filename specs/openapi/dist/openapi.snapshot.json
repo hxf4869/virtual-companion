@@ -76,6 +76,8 @@
     "deleteReminder",
     "getProactivePolicy",
     "putProactivePolicy",
+    "getCompanionState",
+    "runProactive",
     "listFollowUps",
     "getFollowUp",
     "cancelFollowUp",
@@ -168,6 +170,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "39b5a7c56abff0e58734564dc24329cad53390e9ff06dc80296f6f811c48f726"
+    "sha256": "685ebc19ad46d3b8ce85cf229dd5afe3d5867e8f6e1952c6bb8ea940aeb435bd"
   }
 }

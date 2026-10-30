@@ -391,6 +391,10 @@ func operation(path string) string {
 				return "relationship_deactivate"
 			case strings.HasSuffix(path, "/proactive-policy"):
 				return "proactive_policy"
+			case strings.HasSuffix(path, "/companion-state"):
+				return "companion_state"
+			case strings.HasSuffix(path, "/proactive-run"):
+				return "proactive_run"
 			case strings.HasSuffix(path, "/follow-ups"):
 				return "follow_ups"
 			}

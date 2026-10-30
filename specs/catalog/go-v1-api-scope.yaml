@@ -11,7 +11,7 @@ note: 'The API consumer matrix remains the deletion/scope source. KEEP requires 
   the OpenAPI surface: GET /actuator/health, GET /actuator/health/liveness, GET /actuator/health/readiness,
   GET /actuator/prometheus.'
 counts:
-  KEEP: 102
+  KEEP: 104
   SIMPLIFY: 5
   DEFER: 15
   RETIRE: 42
@@ -672,6 +672,27 @@ operations:
   replacementOrImpact: >-
     W09 policy write for one character instance. Default remains off. Importing
     a character does not enable it. No model call and no inbox write.
+- operationId: getCompanionState
+  method: GET
+  path: /api/v1/relationships/{relationshipId}/companion-state
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    Read today's stored mood, the decayed emotion line and busyUntil.
+    Mood is idempotent per relationship and local day. Emotion is updated
+    on companion memory recall, not by this read.
+- operationId: runProactive
+  method: POST
+  path: /api/v1/relationships/{relationshipId}/proactive-run
+  currentH5Callers: []
+  decision: KEEP
+  keepBecause:
+  - owner-instruction
+  replacementOrImpact: >-
+    One relationship pass of the proactive engine. now is the simulated clock.
+    Due ready text can enter the inbox. A judgment that fails to parse stays silent.
 - operationId: listFollowUps
   method: GET
   path: /api/v1/relationships/{relationshipId}/follow-ups

@@ -171,6 +171,7 @@ type Core struct {
 	Providers  ProviderAdminStore
 	AuthFlow   AuthFlowStore
 	Cancels    *jobs.Cancels
+	Proactive  ProactiveRunner
 }
 
 func (s *Server) registerCore() {
@@ -225,6 +226,8 @@ func (s *Server) registerCore() {
 
 	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/proactive-policy", s.handleGetProactivePolicy)
 	s.mux.HandleFunc("PUT /api/v1/relationships/{relationshipId}/proactive-policy", s.handlePutProactivePolicy)
+	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/companion-state", s.handleGetCompanionState)
+	s.mux.HandleFunc("POST /api/v1/relationships/{relationshipId}/proactive-run", s.handlePostProactiveRun)
 	s.mux.HandleFunc("GET /api/v1/relationships/{relationshipId}/follow-ups", s.handleListFollowUps)
 	s.mux.HandleFunc("GET /api/v1/follow-ups/{followUpId}", s.handleGetFollowUp)
 	s.mux.HandleFunc("POST /api/v1/follow-ups/{followUpId}/cancel", s.handleCancelFollowUp)

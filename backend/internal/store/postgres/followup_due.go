@@ -3,6 +3,7 @@ package postgres
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -55,6 +56,9 @@ type FollowUpDueFacts struct {
 	TopicResolved            bool
 	ConversationChanged      bool
 	AlreadyQueued            bool
+	Mode                     string
+	Unanswered               int
+	BusyUntil                time.Time
 }
 
 // FollowUpDueDecision is the stored plan plus the action to apply. Defer is
@@ -77,6 +81,17 @@ type FollowUpDueDecision struct {
 func DecideFollowUpDue(now time.Time, in FollowUpDueFacts) FollowUpDueDecision {
 	if followUpNotDue(now, in) || in.Asked || in.AlreadyQueued || !in.PolicyEnabled || in.TopicResolved {
 		return duePlan(FollowUpDueLeave, nil, in)
+	}
+	// DAILY and CLOSE_FRIEND are owned by the judgment engine, including due reminders.
+	if in.Mode == "DAILY" || in.Mode == "CLOSE_FRIEND" {
+		return duePlan(FollowUpDueLeave, nil, in)
+	}
+	if in.Unanswered >= 2 {
+		return duePlan(FollowUpDueLeave, nil, in)
+	}
+	if !in.BusyUntil.IsZero() && now.Before(in.BusyUntil) {
+		until := in.BusyUntil
+		return duePlan(FollowUpDueDefer, &until, in)
 	}
 	if in.ConversationChanged || !followUpModeAllowed(in.ConversationMode, in.AllowedModes) {
 		return duePlan(FollowUpDueSilent, nil, in)
@@ -157,6 +172,9 @@ func (s *Store) ListDueFollowUps(ctx context.Context, now time.Time) ([]FollowUp
 	}
 	for i := range out {
 		if err := s.enrichFollowUpDue(ctx, &out[i]); err != nil {
+			return nil, mapFollowUpErr(err)
+		}
+		if err := s.enrichProactiveGate(ctx, &out[i]); err != nil {
 			return nil, mapFollowUpErr(err)
 		}
 	}
@@ -395,4 +413,39 @@ func copyDueTime(value *time.Time) *time.Time {
 	}
 	copied := *value
 	return &copied
+}
+
+func (s *Store) enrichProactiveGate(ctx context.Context, row *FollowUpDueFacts) error {
+	if row == nil {
+		return nil
+	}
+	policy, err := s.GetProactivePolicy(ctx, row.OwnerID, row.RelationshipID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			row.Mode = "OFF"
+			return nil
+		}
+		return err
+	}
+	row.Mode = policy.Mode
+	affect, err := s.loadCompanionAffect(ctx, row.OwnerID, row.RelationshipID)
+	if err != nil {
+		return err
+	}
+	row.Unanswered = affect.Unanswered
+	row.BusyUntil = affect.BusyUntil
+	return nil
+}
+
+func (s *Store) loadCompanionAffect(ctx context.Context, owner, relationshipID int64) (CompanionAffect, error) {
+	var row CompanionAffect
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		loaded, err := loadCompanionAffectTx(ctx, tx, owner, relationshipID)
+		if err != nil {
+			return err
+		}
+		row = loaded
+		return nil
+	})
+	return row, err
 }

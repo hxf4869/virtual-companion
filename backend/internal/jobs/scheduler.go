@@ -151,6 +151,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) error {
 			)
 		}
 	}
+	s.loop.RunProactivePass(ctx, time.Now())
 	s.loop.RunInboxAndNotifications(ctx)
 	return nil
 }

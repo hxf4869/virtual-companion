@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/auth"
+	"github.com/hxf4869/virtual-companion/internal/proactive"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 )
 
@@ -49,6 +50,8 @@ type proactivePolicyJSON struct {
 	RecentInteractionMinutes int      `json:"recentInteractionMinutes"`
 	AllowedModes             []string `json:"allowedModes"`
 	OfflineCapable           bool     `json:"offlineCapable"`
+	Mode                     string   `json:"mode"`
+	CheckInAfterMinutes      int      `json:"checkInAfterMinutes"`
 }
 
 func (s *Server) followUps(w http.ResponseWriter) followUpStore {
@@ -117,6 +120,8 @@ func (s *Server) handlePutProactivePolicy(w http.ResponseWriter, r *http.Request
 		RecentInteractionMinutes *int     `json:"recentInteractionMinutes"`
 		AllowedModes             []string `json:"allowedModes"`
 		OfflineCapable           *bool    `json:"offlineCapable"`
+		Mode                     *string  `json:"mode"`
+		CheckInAfterMinutes      *int     `json:"checkInAfterMinutes"`
 	}
 	if !s.decodeJSON(w, r, &body) {
 		return
@@ -138,8 +143,26 @@ func (s *Server) handlePutProactivePolicy(w http.ResponseWriter, r *http.Request
 	if st == nil {
 		return
 	}
+	existing, err := st.GetProactivePolicy(r.Context(), p.AccountID, id)
+	if err != nil {
+		s.writeStoreErr(w, err)
+		return
+	}
+	modeText := ""
+	if body.Mode != nil {
+		modeText = *body.Mode
+	}
+	checkText := 0
+	if body.CheckInAfterMinutes != nil {
+		checkText = *body.CheckInAfterMinutes
+	}
+	mode, enabled, checkIn, err := proactive.ResolveWrite(existing.Mode, existing.CheckInAfterMinutes, *body.Enabled, body.Mode != nil, modeText, body.CheckInAfterMinutes != nil, checkText)
+	if err != nil {
+		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
+		return
+	}
 	row, err := st.PutProactivePolicy(r.Context(), p.AccountID, id, postgres.ProactivePolicyWrite{
-		Enabled:                  *body.Enabled,
+		Enabled:                  enabled,
 		QuietHoursStart:          blankable(body.QuietHoursStart),
 		QuietHoursEnd:            blankable(body.QuietHoursEnd),
 		QuietHoursTimezone:       zone,
@@ -147,6 +170,8 @@ func (s *Server) handlePutProactivePolicy(w http.ResponseWriter, r *http.Request
 		RecentInteractionMinutes: *body.RecentInteractionMinutes,
 		AllowedModes:             body.AllowedModes,
 		OfflineCapable:           *body.OfflineCapable,
+		Mode:                     &mode,
+		CheckInAfterMinutes:      &checkIn,
 	})
 	if err != nil {
 		s.writeStoreErr(w, err)
@@ -235,6 +260,7 @@ func proactivePolicyJSONFrom(row postgres.ProactivePolicy) proactivePolicyJSON {
 		QuietHoursStart: row.QuietHoursStart, QuietHoursEnd: row.QuietHoursEnd, QuietHoursTimezone: row.QuietHoursTimezone,
 		DailyLimit: row.DailyLimit, RecentInteractionMinutes: row.RecentInteractionMinutes,
 		AllowedModes: modes, OfflineCapable: row.OfflineCapable,
+		Mode: row.Mode, CheckInAfterMinutes: row.CheckInAfterMinutes,
 	}
 }
 

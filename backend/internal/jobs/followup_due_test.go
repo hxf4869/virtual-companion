@@ -374,3 +374,29 @@ func shanghaiTime(year int, month time.Month, day, hour, minute int) time.Time {
 }
 
 func sp(v string) *string { return &v }
+
+func TestCloseFriendDueLeavesTheLegacyPath(t *testing.T) {
+	for _, mode := range []string{"DAILY", "CLOSE_FRIEND"} {
+		facts := dueReady()
+		facts.Mode = mode
+		got := postgres.DecideFollowUpDue(facts.TriggerAt.Add(time.Minute), facts)
+		if got.Action != postgres.FollowUpDueLeave {
+			t.Fatalf("%s action = %s", mode, got.Action)
+		}
+	}
+}
+
+func TestUnansweredAndBusyGateTheLegacyPath(t *testing.T) {
+	facts := dueReady()
+	facts.Mode = "FOLLOW_UP"
+	facts.Unanswered = 2
+	if got := postgres.DecideFollowUpDue(facts.TriggerAt.Add(time.Minute), facts); got.Action != postgres.FollowUpDueLeave {
+		t.Fatalf("unanswered action = %s", got.Action)
+	}
+	facts.Unanswered = 0
+	facts.BusyUntil = facts.TriggerAt.Add(time.Hour)
+	got := postgres.DecideFollowUpDue(facts.TriggerAt.Add(time.Minute), facts)
+	if got.Action != postgres.FollowUpDueDefer || got.DeferredUntil == nil || !got.DeferredUntil.Equal(facts.BusyUntil) {
+		t.Fatalf("busy action = %+v", got)
+	}
+}
