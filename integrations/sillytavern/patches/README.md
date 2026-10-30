@@ -85,3 +85,11 @@ start 预检 / status 与 `tests/patcher.test.mjs` 都按该值校验，输出�
 - **不在本补丁内**：`/generate-image`、`/generate-voice`、嵌入、模型下载与状态查询。它们不是聊天文本生成旁路。
 - **应用与校验**：列入 `CORE_PATCH_SPECS`，由 assemble-managed 重放到 `dev-managed/st-run`；upstream 原始检出不改。输入/输出 SHA256 硬校验。
 - **可去除条件**：见各规格 `removal_condition`。升级 ST 必须重算两个 SHA 并复核锚点只命中一次。
+
+## st-host-auth.json 的 ASR 内存上传例外（VO-7）
+
+锁定宿主在插件前用全局 multer 将 `avatar` 写入磁盘，其他文件字段直接拒绝。只有
+`POST /api/plugins/virtual-companion/go/api/v1/voice/asr` 跳过这一步，保留原始 multipart
+给既有管理桥和 Go 的有界 WAV 解析；同一宿主认证、CSRF 和 Go 本人会话门禁继续生效。
+原始录音不进入 `.uploads`。规格仍校验锁定上游输入、每个替换次数和输出；升级上游提供
+等价的内存转发入口后可移除此例外。`voice-input` 受管场景同时核对 ASR 请求及磁盘上传目录不变。

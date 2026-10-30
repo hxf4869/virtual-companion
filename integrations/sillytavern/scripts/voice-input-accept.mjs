@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { openVoiceChat, voiceControl, voiceShots } from './voice-accept-lib.mjs';
 
 export async function sceneVoiceInput(ctx) {
     await voiceControl('asr');
     const {browser,page}=await openVoiceChat(ctx,'语音输入',{fakeAudio:true});
     let stage='recording start';
+    const uploads=path.join(ctx.w05.dataRoot,'default-user','.uploads');
+    const uploaded=()=>fs.existsSync(uploads)?fs.readdirSync(uploads).sort():[];
+    const uploadsBefore=uploaded();
     try {
         await page.evaluate(()=>{
             const probe=window.vcRecordingProbe={};const media=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -27,6 +32,7 @@ export async function sceneVoiceInput(ctx) {
         assert.equal(await page.locator('#chat .mes[is_user="true"] .vc-voice-text').last().isVisible(),true,'user transcription expanded');
         const state=await (await fetch(`http://127.0.0.1:${process.env.VC_W03_FIXTURE_PORT}/__voice/state`)).json();
         assert.equal(state.asr.calls,1);assert.equal(state.asr.maxActive,1);assert.deepEqual(state.asr.requests[0],{sampleRate:16000,channels:1,bits:16});
+        assert.deepEqual(uploaded(),uploadsBefore,'raw recording never enters native disk uploads');
         await voiceShots(page,ctx,'VO-7','voice-input');
         stage='touch cancellation';
         const before=await page.evaluate(()=>SillyTavern.getContext().chat.length);
