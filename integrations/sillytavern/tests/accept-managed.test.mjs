@@ -136,12 +136,11 @@ test('resolveSceneFilter：默认集不含 ui03-browser；e2e 依赖自动补 ca
 test('accept-managed.mjs 声明了全部场景实现（源文本契约检查）', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
+    const { ACCEPT_SCENES } = await import('../scripts/managed-scenes.mjs');
     const src = fs.readFileSync(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
     for (const s of SCENES) {
-        assert.ok(
-            src.includes(`'${s.id}': scene`) || src.includes(`"${s.id}": scene`),
-            `accept-managed.mjs 缺少场景实现入口：${s.id}`,
-        );
+        const scene = ACCEPT_SCENES.find((item) => item.id === s.id);
+        assert.equal(typeof scene?.run, 'function', `场景列表缺少实现：${s.id}`);
     }
     // 关键生命周期与红线存在性（源文本层面，防意外删除）
     assert.ok(src.includes('vc-w03-managed-pg') || src.includes('PG_CONTAINER'), 'PG 容器名');
@@ -155,21 +154,23 @@ test('accept-managed.mjs 声明了全部场景实现（源文本契约检查）'
 
 test('story-outbound 只在显式 filter 注册，不进入默认场景表', async () => {
     const fs = await import('node:fs');
-    const src = fs.readFileSync(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
+    const { ACCEPT_SCENES } = await import('../scripts/managed-scenes.mjs');
+    const src = fs.readFileSync(new URL('../scripts/story-outbound-accept.mjs', import.meta.url), 'utf8');
     const at = src.indexOf("id: 'story-outbound'");
-    assert.notEqual(at, -1, 'accept-managed 应追加 story-outbound');
+    assert.notEqual(at, -1, 'story-outbound 场景模块应注册该场景');
     const block = src.slice(at, at + 360);
     assert.match(block, /default:\s*false/);
     assert.match(block, /'catalog'/);
     assert.match(block, /'stack'/);
     assert.match(block, /'browser'/);
-    assert.match(src, /'story-outbound':\s*sceneStoryOutbound/);
+    assert.match(src, /run:\s*sceneStoryOutbound/);
+    assert.equal(ACCEPT_SCENES.find((scene) => scene.id === 'story-outbound')?.default, false);
     assert.equal(SCENES.some((scene) => scene.id === 'story-outbound'), false, '共享场景表不收录该场景');
     assert.equal(resolveSceneFilter().includes('story-outbound'), false);
     const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     assert.match(readme, /--filter story-outbound/);
     assert.match(readme, /\.vc-wt\.env/);
-    const scene = src.slice(src.indexOf('async function sceneStoryOutbound'), src.indexOf('const SCENE_IMPLS'));
+    const scene = src.slice(src.indexOf('async function sceneStoryOutbound'), src.indexOf('export const storyOutboundScene'));
     const armed = scene.slice(scene.indexOf('if (proxyArmed && spec.proxy)'));
     assert.notEqual(armed.indexOf('if (proxyArmed && spec.proxy)'), -1, 'Claude 首发须处理代理确认');
     assert.match(armed.slice(0, 700), /waitFor\(\{ timeout: 15000 \}\)/, '代理弹窗在点击发送后出现，必须等待而不是立刻视为没有');

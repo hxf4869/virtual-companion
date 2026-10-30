@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pinVcUi } from './vc-ui-pin.mjs';
+import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXT = path.resolve(HERE, '../extension');
@@ -87,7 +88,9 @@ export async function sceneFe4aUi(ctx = {}) {
             const reason = await page.locator('body').getAttribute('data-vc-error').catch(() => '');
             throw new Error(`${error.message}${reason ? ` page=${reason}` : ''}${consoleLines.length ? ` console=${consoleLines.slice(-3).join(' | ')}` : ''}`);
         };
+        const shotBudget = createShotBudget();
         const shot = async (name) => {
+            if (!keepSceneShot(shotBudget, name)) return;
             const file = path.join(OUT, name);
             await page.screenshot({ path: file });
             shots.push(file);
@@ -296,3 +299,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         process.exit(1);
     });
 }
+
+export const fe4aUiScene = {
+    id: 'fe4a-ui',
+    title: 'F4a 记忆与陪伴新界面',
+    needs: ['browser'],
+    default: false,
+    run: sceneFe4aUi,
+};
+export const scenes = [fe4aUiScene];

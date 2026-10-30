@@ -6,6 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { complexCard } from './lib/complex-card.mjs';
 import { createStClient } from './managed-lib.mjs';
+import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
+import { reauthForWrite } from './lib/reauth-write.mjs';
+import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
+
+let shotBudget = createShotBudget();
 
 const DEV = process.env.VC_W03_DEV_DIR
     || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
@@ -117,6 +122,7 @@ async function openChat(page, avatar, file) {
 }
 
 async function bindForeground(ctx) {
+    await reauthForWrite(ctx);
     const purposes = await ctx.admin.listPurposes();
     if (purposes.status !== 200) throw new Error(`用途列表 HTTP ${purposes.status}`);
     const row = purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT');
@@ -139,6 +145,7 @@ function importJson(st, card) {
 }
 
 async function shot(page, ctx, name) {
+    if (!keepSceneShot(shotBudget, name)) return;
     fs.mkdirSync(SHOTS, { recursive: true });
     const primary = path.join(SHOTS, name);
     await page.screenshot({ path: primary });
@@ -257,11 +264,9 @@ async function compose(page) {
 }
 
 export async function sceneF2ChatUi(ctx) {
+    shotBudget = createShotBudget();
     await bindForeground(ctx);
-    // 同一次受管验收里 W15 会把当月额度记满。这里只清本月计数，让后面的生成还能走通。
-    ctx.w10.psql(`UPDATE vc.month_cost_budget
-        SET settled_usd = 0, reserved_usd = 0, unsettled_usd = 0
-        WHERE month_start = date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC')::date;`);
+    ctx.w10.psql(ownerBudgetResetSql(ctx.w05.ownerId));
     const st = stClient(ctx);
     const cardName = `F2 聊天 ${crypto.randomUUID().slice(0, 8)}`;
     const imported = await importJson(st, {
@@ -571,6 +576,10 @@ export async function sceneF2ChatUi(ctx) {
         if (await page.locator('#vc-new-reply.is-on').count()) fail(new Error('已在底部时出现了新回复'));
         await page.setViewportSize({ width: 1440, height: 900 });
         await theme(page, 'light');
+        await page.waitForFunction(() => {
+            const chat = document.querySelector('#chat');
+            return Boolean(chat && chat.scrollHeight > chat.clientHeight + 40);
+        }, null, { timeout: 20000 });
         await page.evaluate(() => {
             const chat = document.querySelector('#chat');
             if (chat) chat.scrollTop = 0;
@@ -588,7 +597,7 @@ export async function sceneF2ChatUi(ctx) {
             if (chat) chat.scrollTop = chat.scrollHeight;
         });
         await page.waitForFunction(() => document.querySelector('#vc-new-reply')?.classList.contains('is-on') !== true, null, { timeout: 3000 });
-        const stoppedSave = page.waitForResponse((response) => response.url().includes('/api/chats/save'), { timeout: 20000 }).catch(() => null);
+        const stoppedSave = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/chats/save'), { timeout: 20000 });
         const diag = await page.evaluate(() => {
             const before = document.body.dataset.generating || '';
             const button = document.querySelector('#mes_stop');
@@ -621,17 +630,15 @@ export async function sceneF2ChatUi(ctx) {
             fail(new Error(`停止后状态不是已停止 ${JSON.stringify(state)} (${error.message.split('\n')[0]})`));
         }
         let stopped = await stoppedSave;
-        if (!stopped) {
-            const again = page.waitForResponse((response) => response.url().includes('/api/chats/save'), { timeout: 20000 }).catch(() => null);
+        if (stopped.status() !== 200) {
+            const again = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/api/chats/save'), { timeout: 20000 });
             await page.evaluate(async () => {
-                try {
-                    await window.SillyTavern?.getContext?.().saveChat?.();
-                } catch { /* 停止和宿主收尾可能撞修订；面板在截图前关掉 */ }
+                await window.SillyTavern?.getContext?.().saveChat?.();
             });
             stopped = await again;
         }
         await page.evaluate(() => document.querySelector('#vc-f2-conflict')?.close?.());
-        void stopped;
+        if (stopped.status() !== 200) fail(new Error(`停止后保存 HTTP ${stopped.status()}`));
         try {
             await shootPair(page, ctx, 'stopped', { scroll: 'top' });
         } catch (error) {
@@ -664,11 +671,10 @@ export async function sceneF2ChatUi(ctx) {
                     }
                     if (await menu.locator('button.is-danger').count() !== 1) fail(new Error('删除项不是危险操作'));
                 }
-                await page.waitForTimeout(320);
                 await page.evaluate(() => document.querySelector('#vc-f2-conflict')?.remove());
                 await shot(page, ctx, `menu-${viewport.name}-${mode}.png`);
                 await page.keyboard.press('Escape');
-                await menu.waitFor({ state: 'hidden' }).catch(() => {});
+                await menu.waitFor({ state: 'hidden' });
             }
         }
 
@@ -768,3 +774,12 @@ export async function sceneF2ChatUi(ctx) {
         await browser.close();
     }
 }
+
+export const f2ChatUiScene = {
+    id: 'f2-chat-ui',
+    title: 'F2 聊天新外观：发送、流式、停止、滑动、长按、冲突与复杂卡状态栏',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneF2ChatUi,
+};
+export const scenes = [f2ChatUiScene];

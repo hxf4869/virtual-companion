@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
+import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
 
 const VIEWPORTS = [
     { name: '360', width: 360, height: 780 },
@@ -118,7 +119,9 @@ export async function sceneVcUiShell(ctx) {
         const consoleLines = [];
         page.on('pageerror', (error) => consoleLines.push(String(error.message || '').slice(0, 180)));
         page.on('console', (msg) => { if (msg.type() === 'error') consoleLines.push(msg.text().slice(0, 180)); });
+        const shotBudget = createShotBudget();
         const shot = async (name) => {
+            if (!keepSceneShot(shotBudget, name)) return;
             await page.waitForFunction(() => {
                 const shell = document.querySelector('#vc-shell');
                 if (!shell) return false;
@@ -526,3 +529,12 @@ export async function sceneVcUiShell(ctx) {
         await browser.close();
     }
 }
+
+export const vcUiShellScene = {
+    id: 'vc-ui-shell',
+    title: 'F1 外壳：导航、会话列表、对话页与设置',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneVcUiShell,
+};
+export const scenes = [vcUiShellScene];

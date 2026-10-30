@@ -5,6 +5,7 @@ import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, copyF
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const INTEG = join(HERE, '..');
@@ -129,18 +130,21 @@ export async function sceneFe4bUi(ctx = {}) {
         }, null, { timeout: 8000 });
     }
 
+    const shotBudget = createShotBudget();
     async function shot(page, name, options = {}) {
         if (options.settle !== false) await settle(page);
         const file = join(out, `${prefix}-${name}.png`);
-        await page.screenshot({ path: file });
-        shots.push(file);
-        if (ctx.artifactsDir && ctx.artifactsDir !== out) {
-            const mirror = join(ctx.artifactsDir, 'fe4b', `${prefix}-${name}.png`);
-            mkdirSync(dirname(mirror), { recursive: true, mode: 0o700 });
-            copyFileSync(file, mirror);
-            ctx.screenshots?.push(mirror);
-        } else {
-            ctx.screenshots?.push(file);
+        if (keepSceneShot(shotBudget, file)) {
+            await page.screenshot({ path: file });
+            shots.push(file);
+            if (ctx.artifactsDir && ctx.artifactsDir !== out) {
+                const mirror = join(ctx.artifactsDir, 'fe4b', `${prefix}-${name}.png`);
+                mkdirSync(dirname(mirror), { recursive: true, mode: 0o700 });
+                copyFileSync(file, mirror);
+                ctx.screenshots?.push(mirror);
+            } else {
+                ctx.screenshots?.push(file);
+            }
         }
         const layout = await layoutOf(page);
         if (layout.overflow || layout.offenders.length) fail(`${prefix}-${name} 横向溢出 ${JSON.stringify(layout.offenders)}`);
@@ -372,3 +376,12 @@ export async function sceneFe4bUi(ctx = {}) {
     if (failures.length) throw new Error(failures.join('\n'));
     return { shots: shots.length, out };
 }
+
+export const fe4bUiScene = {
+    id: 'fe4b-ui',
+    title: 'F4b 角色与剧情新界面：网格、详情、开局转场与回档取消',
+    needs: ['browser'],
+    default: false,
+    run: sceneFe4bUi,
+};
+export const scenes = [fe4bUiScene];

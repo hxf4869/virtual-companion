@@ -797,3 +797,12 @@ async function decisionText(artifactsDir) {
         return [];
     }
 }
+
+export const memoryRealEvalScene = {
+    id: 'memory-real-eval',
+    title: 'W08 真实模型效果评估（显式选择，最多80次调用，不进默认集）',
+    needs: ['go', 'stack'],
+    default: false,
+    run: sceneMemoryRealEval,
+};
+export const scenes = [memoryRealEvalScene];

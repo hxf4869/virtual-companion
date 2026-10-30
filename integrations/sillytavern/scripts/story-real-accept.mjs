@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { waitFor } from './managed-lib.mjs';
+import { reauthForWrite } from './lib/reauth-write.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { REPO_ROOT } from './lib/paths.mjs';
 import {
@@ -197,6 +198,7 @@ export async function sceneStoryReal(ctx) {
         const purposes = await ctx.admin.listPurposes();
         const purpose = purposes.status === 200 && Array.isArray(purposes.json) ? purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT') : null;
         if (!purpose) throw new Error('FOREGROUND_CHAT 不在用途列表');
+        await reauthForWrite(ctx);
         const bound = await ctx.admin.savePurpose('FOREGROUND_CHAT', { providerId: 'vc14-real', profileKey: 'story', state: 'ENABLED', expectedRevision: purpose.revision });
         const boundCode = typeof bound.json?.code === 'string' ? bound.json.code : '';
         if (bound.status !== 200 || bound.json?.status !== 'READY') throw new Error(`绑定真实模型未就绪：HTTP ${bound.status}${boundCode ? ` ${boundCode}` : ''}`);
@@ -494,8 +496,12 @@ export async function sceneStoryReal(ctx) {
         try {
             const purposes = await ctx.admin.listPurposes();
             const row = purposes.status === 200 && Array.isArray(purposes.json) ? purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT' && item.providerId === 'vc14-real') : null;
-            if (row) await ctx.admin.savePurpose('FOREGROUND_CHAT', { providerId: 'vc14-real', profileKey: 'story', state: 'DISABLED', expectedRevision: row.revision });
+            if (row) {
+                await reauthForWrite(ctx);
+                await ctx.admin.savePurpose('FOREGROUND_CHAT', { providerId: 'vc14-real', profileKey: 'story', state: 'DISABLED', expectedRevision: row.revision });
+            }
             if (providerRevision != null) {
+                await reauthForWrite(ctx);
                 const clear = { ...spec, state: 'DISABLED', clearCredential: true, expectedRevision: providerRevision };
                 delete clear.credential;
                 await ctx.admin.saveProvider('vc14-real', clear);
@@ -557,3 +563,12 @@ function roundOf(actor, round, afterShowClue, call, stChars, reservation) {
         usage: usageOf(call),
     };
 }
+
+export const storyRealScene = {
+    id: 'story-real',
+    title: 'W14 真实模型叙事：雨夜客栈出站与角色隔离',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneStoryReal,
+};
+export const scenes = [storyRealScene];

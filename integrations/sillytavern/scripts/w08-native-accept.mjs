@@ -223,3 +223,12 @@ export async function sceneMemorycoreNative(ctx) {
             productionAuthority: false };
     } finally { await engine.close(); await fs.rm(paths.data, { recursive: true, force: true }); }
 }
+
+export const memorycoreNativeScene = {
+    id: 'memorycore-native',
+    title: 'W08 受控 MemoryCore 固定源码、SQLite、范围与本机 embedding',
+    needs: ['memorycore'],
+    default: false,
+    run: sceneMemorycoreNative,
+};
+export const scenes = [memorycoreNativeScene];

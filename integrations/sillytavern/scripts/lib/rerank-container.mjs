@@ -6,13 +6,26 @@ import { spawnSync } from 'node:child_process';
 import { RERANK_GGUF, RERANK_IMAGE } from '../../memorycore-service/rerank.mjs';
 
 const SERVER_ARGS = ['-t', '4', '-c', '8192', '-b', '2048', '-ub', '2048', '--reranking', '--pooling', 'rank', '-ngl', '0', '--fit', 'off', '--no-op-offload'];
+let warnedOldModelDir = false;
 
-export function rerankRuntime(env = process.env) {
+export function resetRerankDirWarning() {
+    warnedOldModelDir = false;
+}
+
+export function rerankRuntime(env = process.env, warn = console.warn) {
     const port = Number(env.VC_RERANK_PORT || 11439);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid rerank port');
     const container = env.VC_RERANK_CONTAINER || 'vc-rerank';
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('Invalid rerank container name');
-    const modelDir = env.VC_RERANK_MODEL_DIR || path.join(os.homedir(), '.local/share/virtual-companion/rerank');
+    let modelDir = env.VC_RERANK_MODELS_DIR;
+    if (!modelDir && env.VC_RERANK_MODEL_DIR) {
+        modelDir = env.VC_RERANK_MODEL_DIR;
+        if (!warnedOldModelDir) {
+            warnedOldModelDir = true;
+            warn('VC_RERANK_MODEL_DIR 已改名为 VC_RERANK_MODELS_DIR，旧名仍可用');
+        }
+    }
+    if (!modelDir) modelDir = path.join(os.homedir(), '.local/share/virtual-companion/rerank');
     return { port, container, modelDir, modelPath: path.join(modelDir, RERANK_GGUF.file), endpoint: `http://127.0.0.1:${port}` };
 }
 

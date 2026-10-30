@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { createStClient } from './managed-lib.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
+import { failClosedWaitMs } from './lib/fail-closed-wait.mjs';
 const base = () => ({ id: crypto.randomUUID(), revision: 0 });
 const rows = (token, text = '合成测试消息', extra = {}) => [{ user_name: 'unused', character_name: 'unused', chat_metadata: { vc_f2: token, ...extra } }, { name: '合成角色', is_user: false, mes: text, swipe_id: 0, swipes: [text, '合成候选二'] }];
 const expect = (result, status, label) => { assert.equal(result.status, status, `${label}: HTTP ${result.status} (${result.json?.code || 'native'})`); return result.json; };
@@ -178,7 +179,7 @@ export async function sceneAuthBrowser(ctx) {
         assert.equal(nativeLogin.status(), 403);
         // A read of an authenticated native resource must fail closed during Go failure.
         process.kill(ctx.secrets.goPid, 'SIGSTOP');
-        try { assert.equal((await bc.request.get(stBase + '/script.js', { timeout: 10000 })).status(), 503); }
+        try { assert.equal((await bc.request.get(stBase + '/script.js', { timeout: failClosedWaitMs() })).status(), 503); }
         finally { process.kill(ctx.secrets.goPid, 'SIGCONT'); }
         const activeSession = await page.locator('meta[name=vc-session-id]').getAttribute('content');
         ctx.w05.expireSession(activeSession);
@@ -285,3 +286,28 @@ export async function sceneF2Browser(ctx) {
         await bc.close();
     } finally { await browser.close(); }
 }
+
+export const authBrowserScene = {
+    id: 'auth-browser',
+    title: 'W05 B01 唯一登录、TOTP、全入口保护与账号切换',
+    needs: ['go', 'stack', 'browser'],
+    default: false,
+    run: sceneAuthBrowser,
+};
+
+export const f2NativeScene = {
+    id: 'f2-native',
+    title: 'W05 B05/B07 原生写入口CAS、删除身份与分支父版本',
+    needs: ['go', 'stack'],
+    default: false,
+    run: sceneF2Native,
+};
+
+export const f2BrowserScene = {
+    id: 'f2-browser',
+    title: 'W05 B07 两个真实页面冲突保留草稿与迟到脚本拒绝',
+    needs: ['go', 'stack', 'browser'],
+    default: false,
+    run: sceneF2Browser,
+};
+export const scenes = [authBrowserScene, f2NativeScene, f2BrowserScene];

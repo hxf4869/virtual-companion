@@ -9,6 +9,7 @@ import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/
 import { REPO_ROOT } from './lib/paths.mjs';
 import path from 'node:path';
 import { startMeter } from './lib/real-model-meter.mjs';
+import { reauthForWrite } from './lib/reauth-write.mjs';
 const expect = (r, status, label) => { assert.equal(r.status, status, `${label}: HTTP ${r.status} (${r.json?.code || 'native'})`); return r.json; };
 
 async function decisionCodes(artifactsDir) {
@@ -54,6 +55,7 @@ export async function sceneMemoryRealModel(ctx) {
     const spec = { displayName: 'Owner 已授权私有模型', protocol: 'OPENAI_CHAT_COMPLETIONS', baseUrl, state: 'ENABLED', models };
     let provider;
     try {
+        await reauthForWrite(ctx);
         for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING'])
             expect(await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'w08-authorized-real-sample', granted: true }), 200, '合成账号实际提取授权');
         provider = expect(await ctx.admin.saveProvider('vc08-real', { ...spec, credential, expectedRevision: 0 }), 200, '注入私有用途配置');
@@ -157,3 +159,12 @@ export async function sceneMemoryRealModel(ctx) {
         }
     }
 }
+
+export const memoryRealModelScene = {
+    id: 'memory-real-model',
+    title: 'W08 Owner授权私有模型少量实际提取（显式选择，最多3条来源）',
+    needs: ['go', 'stack'],
+    default: false,
+    run: sceneMemoryRealModel,
+};
+export const scenes = [memoryRealModelScene];

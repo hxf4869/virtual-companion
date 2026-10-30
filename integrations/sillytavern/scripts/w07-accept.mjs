@@ -8,6 +8,8 @@ import { MANAGED_MEMORYCORE_DATA } from './lib/paths.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import path from 'node:path';
 import { createStClient, waitFor } from './managed-lib.mjs';
+import { reauthForWrite } from './lib/reauth-write.mjs';
+import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
 import { importSyntheticCard } from './w05-accept.mjs';
 import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
 
@@ -50,11 +52,13 @@ function historyBlock(text) {
 }
 
 export async function sceneMemoryBrowser(ctx) {
+    const shotBudget = createShotBudget();
     const st = createStClient({ baseUrl: ctx.w05.stBase, expectedIdentity: ctx.secrets.session,
         extraCookies: `vc_session=${ctx.secrets.session.vcSession}; vc_csrf=${ctx.secrets.session.vcCsrf}` });
     const purposes = expect(await ctx.admin.listPurposes(), 200, '读取用途绑定');
     const current = purposes.find((row) => row.purpose === 'FOREGROUND_CHAT');
     assert.ok(current, '前台用途应已登记');
+    await reauthForWrite(ctx);
     expect(await ctx.admin.savePurpose('FOREGROUND_CHAT', { providerId: 'vc03m-chat', profileKey: 'chat',
         state: 'ENABLED', expectedRevision: current.revision }), 200, '绑定本地合成前台模型');
     for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
@@ -263,7 +267,8 @@ export async function sceneMemoryBrowser(ctx) {
         await dialog.locator('[data-action="edit"]').click();
         const draft = '用户计划于2026年10月30日去厦门参加朋友婚礼，穿绿色礼服。';
         await dialog.locator('#vc-memory-draft').fill(draft);
-        expect(await ctx.admin.call('PATCH', `/api/v1/memories/${memory.memoryId}`, { summary: '用户计划于2026年10月30日去厦门参加朋友婚礼，穿蓝色礼服。', expectedVersion: memory.version }), 200, '第二客户端并发纠正');
+        const conflictBody = { summary: draft.replace('绿色礼服', '蓝色礼服'), expectedVersion: memory.version };
+        await reauthForWrite(ctx); expect(await ctx.admin.call('PATCH', `/api/v1/memories/${memory.memoryId}`, conflictBody), 200, '第二客户端并发纠正');
         const conflictResponse = page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes(`/memories/${memory.memoryId}`));
         await dialog.locator('[data-form="edit"] button[type="submit"]').click();
         assert.equal((await conflictResponse).status(), 409, '陈旧版本必须返回409');
@@ -291,8 +296,11 @@ export async function sceneMemoryBrowser(ctx) {
             await page.keyboard.press('Escape');
             assert.equal(await dialog.locator('[data-forget-dialog]').evaluate(el => el.open), false, 'Escape关闭确认框');
             assert.equal(await dialog.locator('[data-action="confirm-forget"]').evaluate(el => el === document.activeElement), true, '确认框关闭返回原按钮焦点');
-            await page.screenshot({ path: path.join(ctx.artifactsDir, `W08-memory-${width}.png`) });
-            ctx.screenshots.push(`W08-memory-${width}.png`);
+            const shotName = `W08-memory-${width}.png`;
+            if (keepSceneShot(shotBudget, shotName)) {
+                await page.screenshot({ path: path.join(ctx.artifactsDir, shotName) });
+                ctx.screenshots.push(shotName);
+            }
         }
         await page.setViewportSize({ width: 1440, height: 1000 });
         await dialog.locator('[data-action="close"]').click();
@@ -309,6 +317,7 @@ export async function sceneMemoryBrowser(ctx) {
         // is made read-only, and finally always restores it before stack cleanup.
         restrictedRecords = path.join(MANAGED_MEMORYCORE_DATA, 'owners', ctx.secrets.session.accountId, 'records');
         await fs.chmod(restrictedRecords, 0o500);
+        await reauthForWrite(ctx);
         const forgetResponse = page.waitForResponse(r => r.request().method() === 'DELETE' && r.url().includes(`/memories/${memory.memoryId}`));
         await dialog.locator('[data-forget-dialog] [data-action="forget"]').click();
         assert.equal((await forgetResponse).status(), 202, '遗忘立即进入异步清理');
@@ -373,3 +382,12 @@ export async function sceneMemoryBrowser(ctx) {
         await browser.close();
     }
 }
+
+export const memoryBrowserScene = {
+    id: 'memory-browser',
+    title: 'W08 正式提取、管理纠正遗忘与W07原生最终请求',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneMemoryBrowser,
+};
+export const scenes = [memoryBrowserScene];

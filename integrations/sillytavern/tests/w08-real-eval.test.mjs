@@ -137,8 +137,9 @@ test('memory-real-eval 只在显式过滤时运行，产物在忽略目录', () 
     assert.equal(SCENES.find((scene) => scene.id === 'memory-real-eval').default, false);
     assert.equal(resolveSceneFilter().includes('memory-real-eval'), false);
     assert.deepEqual(resolveSceneFilter('memory-real-eval'), ['memory-real-eval']);
-    const accept = fs.readFileSync(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
-    assert.equal(accept.includes("'memory-real-eval': sceneMemoryRealEval"), true);
+    const accept = fs.readFileSync(new URL('../scripts/w08-real-eval.mjs', import.meta.url), 'utf8');
+    assert.equal(accept.includes("id: 'memory-real-eval'"), true);
+    assert.equal(accept.includes('run: sceneMemoryRealEval'), true);
     const check = fs.readFileSync(new URL('../../../scripts/check.sh', import.meta.url), 'utf8');
     assert.equal(check.includes('memory-real-eval'), false);
     const ignore = fs.readFileSync(new URL('../../../.gitignore', import.meta.url), 'utf8');
