@@ -223,6 +223,94 @@ test('进入剧情舞台时清掉推入的设置页，且不自动打开模型�
     }
 });
 
+test('桌面进入账户后关掉设置层，手机上的设置 sheet 仍留着', async () => {
+    const listeners = [];
+    const previousAdd = globalThis.addEventListener;
+    const previousRemove = globalThis.removeEventListener;
+    const previousWidth = globalThis.innerWidth;
+    const previousHeight = globalThis.innerHeight;
+    globalThis.addEventListener = (type, fn, ...rest) => {
+        listeners.push({ type, fn });
+        previousAdd?.call(globalThis, type, fn, ...rest);
+    };
+    globalThis.removeEventListener = (type, fn, ...rest) => {
+        previousRemove?.call(globalThis, type, fn, ...rest);
+    };
+    globalThis.innerHeight = 844;
+    function clickAction(doc, action) {
+        const button = [...doc.querySelectorAll('button')].find((el) => el.getAttribute('data-action') === action);
+        assert.ok(button, action);
+        const original = button.closest.bind(button);
+        button.closest = (sel) => (String(sel).includes('data-action') ? button : original(sel));
+        let node = button;
+        while (node && !(node.listeners?.click?.length)) node = node.parent;
+        assert.ok(node, action);
+        node.dispatch('click', { target: button, button: 0 });
+    }
+    function mount(doc, width) {
+        globalThis.innerWidth = width;
+        return mountShell({
+            document: doc,
+            storage: { getItem() { return null; }, setItem() {} },
+            getContext: () => ({ name1: '主人', eventSource: { on() {} }, eventTypes: {} }),
+            loadRelationships: async () => [],
+            loadInbox: async () => [],
+            seams: {
+                surface: async () => ({
+                    openAccountData() {
+                        const dialog = doc.createElement('dialog');
+                        dialog.className = 'vc-data-dialog';
+                        dialog.setAttribute('open', '');
+                        doc.body.append(dialog);
+                    },
+                }),
+            },
+        });
+    }
+    try {
+        const phone = installMiniDom();
+        phone.body.classList.add('vc-ui');
+        const narrow = mount(phone, 390);
+        click(narrow, narrow.querySelector('[data-settings]'));
+        assert.ok(phone.querySelector('.vc-sheet'));
+        clickAction(phone, 'data');
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assert.ok(phone.querySelector('.vc-sheet'), '手机上返回设置仍要留着 sheet');
+        const dialog = phone.createElement('dialog');
+        dialog.className = 'vc-data-dialog';
+        dialog.setAttribute('open', '');
+        phone.body.append(dialog);
+        globalThis.innerWidth = 1440;
+        for (const item of listeners) if (item.type === 'resize') item.fn();
+        assert.equal(phone.querySelector('.vc-sheet'), null);
+        assert.notEqual(narrow.dataset.settings, 'page');
+
+        const desk = installMiniDom();
+        desk.body.classList.add('vc-ui');
+        const wide = mount(desk, 1440);
+        click(wide, wide.querySelector('[data-settings]'));
+        assert.equal(wide.dataset.settings, 'page');
+        const pane = wide.querySelector('.vc-shell-settings');
+        assert.equal(pane.style.getPropertyValue('--vc-nav-p'), '0');
+        clickAction(desk, 'data');
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assert.notEqual(wide.dataset.settings, 'page');
+        assert.ok(desk.querySelector('.vc-data-dialog'));
+    } finally {
+        globalThis.addEventListener = previousAdd;
+        globalThis.removeEventListener = previousRemove;
+        globalThis.innerWidth = previousWidth;
+        globalThis.innerHeight = previousHeight;
+    }
+});
+
+test('酒馆横幅按钮改成用户语言，投影动作不变', async () => {
+    const src = await readFile(new URL('../extension/vc-model-settings/projection.js', import.meta.url), 'utf8');
+    assert.match(src, /data-vcfg-action="reproject">恢复为模型页设置</);
+    assert.equal(src.includes('${escHtml(model.revisions'), false);
+    assert.doesNotMatch(src, />重新投影</);
+});
+
 test('长按抬起层只用叠层表里的 lift', async () => {
     const css = await readFile(chatCssUrl, 'utf8');
     const design = await readFile(designUrl, 'utf8');

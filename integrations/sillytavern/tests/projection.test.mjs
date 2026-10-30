@@ -345,7 +345,8 @@ test('driftSummary：字段列表映射为中文标签', () => {
     assert.equal(driftSummary(['source', 'model']), '连接源、模型');
     assert.equal(driftSummary([]), '');
     assert.equal(driftSummary(['marker-residue']), '残留的旧绑定标记');
-    assert.equal(driftSummary(['reasoning-effort']), '推理等级（Go 已钉住）');
+    assert.equal(driftSummary(['reasoning-effort']), '推理等级');
+    assert.doesNotMatch(driftSummary(['temperature', 'top-p', 'reasoning-effort']), /Go|投影/);
 });
 
 // ---------- 钉住推理等级（custom 源始终发送 reasoning_effort，必须投影） ----------
@@ -561,7 +562,9 @@ test('bannerModel：ready / drift / pending 三态与固定测试说明', () => 
 
     const drift = bannerModel({ phase: 'ready', decision, drifts: ['source', 'model'] });
     assert.equal(drift.phase, 'drift');
+    assert.equal(drift.title, '这里的设置与模型页不一致');
     assert.ok(drift.detail.includes('连接源、模型'));
+    assert.doesNotMatch(`${drift.title}\n${drift.detail}\n${ready.title}`, /Go|投影|\bpr\b|\bbr\b/);
     assert.deepEqual(drift.actions, ['reproject', 'open-settings']);
 
     const pending = bannerModel({ phase: 'ready', decision: { eligible: false, reason: 'credential-missing' }, drifts: [] });

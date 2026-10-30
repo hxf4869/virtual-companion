@@ -41,7 +41,7 @@ function focusable(root) {
 export function openSheet({ title = '', body, root, large = false, initial, onDone, opener } = {}) {
     const doc = (root || document.body).ownerDocument || document;
     const host = root || doc.body;
-    const view = doc.defaultView || window;
+    const view = doc.defaultView || globalThis;
     const previous = opener || doc.activeElement;
     const scrim = doc.createElement('div');
     scrim.className = 'vc-scrim';
@@ -55,7 +55,8 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     el.innerHTML = `<div class="vc-sheet-grab"></div><div class="vc-sheet-head"><h3 id="${titleId}"></h3><button type="button" class="vc-sheet-done">完成</button></div><div class="vc-sheet-body"></div>`;
     el.querySelector('h3').textContent = title;
     const bodyEl = el.querySelector('.vc-sheet-body');
-    if (body instanceof Node) bodyEl.append(body);
+    const bodyNode = typeof Node === 'function' && body instanceof Node || body?.nodeType === 1;
+    if (bodyNode) bodyEl.append(body);
     else if (body != null) {
         const text = doc.createElement('p');
         text.textContent = String(body);
@@ -133,6 +134,15 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
             return;
         }
         to(H + 20, 0, finish);
+    }
+    function dismiss() {
+        if (closed) return;
+        closed = true;
+        ac.abort();
+        stopSpring();
+        el.remove();
+        scrim.remove();
+        onDone?.();
     }
     function popLayer() {
         const pane = layers.pop();
@@ -267,5 +277,5 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     to(openAt);
     // 宿主若还能滚动，focus 会把 scrollTop 加到和 translateY 一样，半档被拉回全高，拖动也被抵消。
     el.focus({ preventScroll: true });
-    return { el, scrim, close, push };
+    return { el, scrim, close, dismiss, push };
 }

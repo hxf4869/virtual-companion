@@ -72,3 +72,34 @@ test('浅色抽屉：对比度、数值胶囊、通栏导航、世界书与扩�
         assert.equal(body.includes('body.vc-ui'), true, body);
     }
 });
+
+test('1440 设置栈导航同一行，深色背景名称条与数值框可读', async () => {
+    const css = stripCssComments(await text('settings-pages.css'));
+    const drawers = stripCssComments(await text('drawers.css'));
+    const memory = stripCssComments(await text('memory.css'));
+    const shell = stripCssComments(await text('shell.css'));
+    const chat = stripCssComments(await text('chat-view.css'));
+    assert.match(css, /@media \(min-width: 744px\)[\s\S]*\.vcms-header > \*[\s\S]{0,80}grid-row:\s*1/);
+    assert.match(css, /\.vcms-provider-card\.is-disabled \.vcms-provider-name[\s\S]{0,160}color:\s*var\(--vc-ink-2\)/);
+    assert.match(shell, /\.vc-shell-settings \.vc-large-title[\s\S]{0,160}opacity:\s*calc\(1 - var\(--vc-nav-p/);
+    assert.match(shell, /\.vc-convo-avatar-slot[\s\S]{0,280}background:\s*var\(--vc-fill-2\)/);
+    assert.match(shell, /\.vc-convo-avatar-slot[\s\S]{0,320}isolation:\s*isolate/);
+    const tokens = stripCssComments(await text('vc-ui.css'));
+    assert.match(tokens, /html\[data-vc-theme="dark"\] body\.vc-ui[\s\S]{0,500}--vc-avatar-blend:\s*lighten/);
+    assert.match(shell, /body\.vc-ui img\.vc-convo-avatar[\s\S]{0,220}mix-blend-mode:\s*var\(--vc-avatar-blend/);
+    assert.match(shell, /#chat \.avatar[\s\S]{0,180}background:\s*var\(--vc-fill-2\)/);
+    assert.match(chat, /\.vc-poster-avatar-slot[\s\S]{0,220}background:\s*var\(--vc-fill-2\)/);
+    assert.match(drawers, /:is\(#PersonaManagement, #right-nav-panel\)\.vc-drawer-page \.avatar[\s\S]{0,420}background:\s*var\(--vc-fill-2\)/);
+    assert.match(drawers, /:is\(#PersonaManagement, #right-nav-panel\)\.vc-drawer-page \.avatar[\s\S]{0,220}flex:\s*none/);
+    assert.match(drawers, /body\.vc-ui #Backgrounds\.vc-drawer-page \.BGSampleTitle[\s\S]{0,280}background:/);
+    assert.doesNotMatch(drawers, /html\[data-vc-theme="light"\] body\.vc-ui #Backgrounds\.vc-drawer-page \.BGSampleTitle/);
+    assert.match(drawers, /html\[data-vc-theme="dark"\] body\.vc-ui #Backgrounds\.vc-drawer-page \.thumbnail-clipper[\s\S]{0,160}background-color:\s*var\(--vc-fill\)/);
+    assert.match(drawers, /html\[data-vc-theme="dark"\] body\.vc-ui #Backgrounds\.vc-drawer-page \.thumbnail-clipper[\s\S]{0,240}box-shadow:\s*inset 0 0 0 8px var\(--vc-fill\)/);
+    assert.match(drawers, /body\.vc-ui :is\(#PersonaManagement, #right-nav-panel\)\.vc-drawer-page \.avatar img[\s\S]{0,120}mix-blend-mode:\s*var\(--vc-avatar-blend/);
+    assert.match(drawers, /\.range-block-counter input[\s\S]{0,240}min-width:\s*9ch/);
+    assert.match(drawers, /\[data-memory-budget\][\s\S]{0,280}background:\s*var\(--vc-fill\)/);
+    assert.match(drawers, /\[data-memory-budget\][\s\S]{0,360}border-radius:\s*var\(--vc-radius-pill\)/);
+    assert.match(drawers, /\[data-memory-budget\][\s\S]{0,280}color:\s*var\(--vc-ink\)/);
+    assert.match(memory, /\.vc-memory-facts dt[\s\S]{0,180}white-space:\s*nowrap/);
+    assert.match(memory, /\.vc-memory-facts dd[\s\S]{0,220}text-align:\s*right/);
+});

@@ -164,6 +164,7 @@ html[data-vc-theme="light"] body.vc-ui {
     --vc-raise: #1c1c1e;
     --vc-fill: #2c2c2e;
     --vc-fill-2: #3a3a3c;
+    --vc-avatar-blend: lighten;
     --vc-ink: #f5f5f7;
     --vc-ink-2: #98989d;
     --vc-ink-3: #636366;
@@ -198,6 +199,7 @@ html[data-vc-theme="dark"] body.vc-ui {
   --vc-raise: #1c1c1e;
   --vc-fill: #2c2c2e;
   --vc-fill-2: #3a3a3c;
+  --vc-avatar-blend: lighten;
   --vc-ink: #f5f5f7;
   --vc-ink-2: #98989d;
   --vc-ink-3: #636366;

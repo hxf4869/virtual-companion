@@ -323,9 +323,9 @@ export const DRIFT_FIELD_LABELS = {
     model: '模型',
     'max-context': '上下文窗口',
     'max-tokens': '输出上限',
-    temperature: '温度（Go 已钉住）',
-    'top-p': 'top P（Go 已钉住）',
-    'reasoning-effort': '推理等级（Go 已钉住）',
+    temperature: '温度',
+    'top-p': 'top P',
+    'reasoning-effort': '推理等级',
 };
 
 export function driftSummary(drifts) {
@@ -376,7 +376,7 @@ export function bannerModel({ phase, decision, drifts, loadError } = {}) {
         return {
             phase: 'pending',
             title: '前台模型绑定待配置',
-            detail: `无法加载 Go 模型目录：${loadError ?? '服务暂不可用'}。`,
+            detail: `无法加载模型目录：${loadError ?? '服务暂不可用'}。`,
             revisions: null,
             actions: ['open-settings'],
         };
@@ -394,15 +394,15 @@ export function bannerModel({ phase, decision, drifts, loadError } = {}) {
     if (drifts?.length) {
         return {
             phase: 'drift',
-            title: '已偏离 Go 绑定',
-            detail: `已改动：${driftSummary(drifts)}。偏离状态下生成会被服务端拒绝；不会自动改回。`,
+            title: '这里的设置与模型页不一致',
+            detail: `和模型页不一致的有：${driftSummary(drifts)}。按现在的设置发送会被拒绝，也不会自动改回去。`,
             revisions,
             actions: ['reproject', 'open-settings'],
         };
     }
     return {
         phase: 'ready',
-        title: '前台聊天由 Go 绑定托管',
+        title: '前台聊天使用模型页的设置',
         detail: `绑定：${decision.providerLabel} · ${decision.profileLabel}（${decision.modelId}）`,
         revisions,
         actions: [],
@@ -660,11 +660,11 @@ export function createProjectionController(host) {
                 <div>
                     <p class="vcfg-banner-title">${escHtml(model.title)}</p>
                     <p class="vcfg-banner-detail">${escHtml(model.detail)}</p>
-                    <p class="vcfg-banner-meta">${escHtml(model.revisions ? `${model.revisions} ｜ ` : '')}${escHtml(BANNER_TEST_NOTE)}</p>
+                    <p class="vcfg-banner-meta">${escHtml(BANNER_TEST_NOTE)}</p>
                 </div>
             </div>
             <div class="vcfg-banner-actions">
-                ${model.actions.includes('reproject') ? '<button type="button" class="vcfg-banner-btn" data-vcfg-action="reproject">重新投影</button>' : ''}
+                ${model.actions.includes('reproject') ? '<button type="button" class="vcfg-banner-btn" data-vcfg-action="reproject">恢复为模型页设置</button>' : ''}
                 ${model.actions.includes('open-settings') ? '<button type="button" class="vcfg-banner-btn" data-vcfg-action="open-settings">打开模型设置</button>' : ''}
             </div>`;
         el.querySelector('[data-vcfg-action="reproject"]')?.addEventListener('click', () => {
@@ -724,7 +724,7 @@ export function createProjectionController(host) {
         onCatalogSaved() {
             return refresh();
         },
-        /** 重新投影（横幅「重新投影」按钮同款入口，供外部诊断调用）。 */
+        /** 恢复为模型页设置（横幅按钮同款入口，供外部诊断调用）。 */
         reproject() {
             applyProjection();
         },

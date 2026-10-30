@@ -61,15 +61,26 @@ body.vc-ui #sheld:has(> #vc-chat-status:not(:empty)) #vc-chat-poster {
 body.vc-ui #vc-chat-poster button,
 body.vc-ui #vc-chat-poster a { pointer-events: auto; }
 
+body.vc-ui .vc-poster-avatar-slot {
+  width: 112px;
+  height: 112px;
+  display: inline-grid;
+  overflow: hidden;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-fill-2);
+  isolation: isolate;
+  box-shadow:
+    0 0 0 4px var(--vc-canvas),
+    0 16px 40px rgb(var(--vc-tint) / var(--vc-tint-alpha));
+}
+
 body.vc-ui .vc-poster-avatar {
   width: 112px;
   height: 112px;
   border-radius: var(--vc-radius-pill);
   object-fit: cover;
-  background: var(--vc-fill);
-  box-shadow:
-    0 0 0 4px var(--vc-canvas),
-    0 16px 40px rgb(var(--vc-tint) / var(--vc-tint-alpha));
+  background: transparent;
+  mix-blend-mode: var(--vc-avatar-blend, normal);
 }
 
 body.vc-ui #vc-chat-poster h2 {

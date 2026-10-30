@@ -244,6 +244,10 @@ body.vc-ui #vc-model-settings-root .vcms-local .vc-grow b {
   font-weight: 400;
 }
 
+body.vc-ui #vc-model-settings-root .vcms-provider-card.is-disabled .vcms-provider-name {
+  color: var(--vc-ink-2) !important;
+}
+
 body.vc-ui #vc-model-settings-root .vcms-provider-card .vc-status,
 body.vc-ui #vc-model-settings-root .vcms-provider-card .vc-chevron {
   flex: none;
@@ -1117,5 +1121,11 @@ body.vc-ui [data-vc-account-home] .vc-icon {
     margin-right: auto;
     padding-left: 0;
     padding-right: 0;
+  }
+
+  body.vc-ui .vc-shell-settings > .vc-navbar > *,
+  body.vc-ui .vc-data-dialog [data-vc-account-nav] > *,
+  body.vc-ui #vc-model-settings-root .vcms-header > * {
+    grid-row: 1;
   }
 }

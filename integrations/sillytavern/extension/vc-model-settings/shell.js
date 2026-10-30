@@ -350,14 +350,15 @@ function ensureShellCss(doc) {
     (doc.head || doc.documentElement).append(link);
 }
 
-function bindNavScroll(scroll, navbar) {
+function bindNavScroll(scroll, navbar, host = navbar) {
     if (!scroll || !navbar) return;
     const paint = () => {
         const distance = Number(scroll.scrollTop) || 0;
         const amount = Math.min(1, Math.max(0, distance / 48));
-        navbar.style.setProperty('--vc-nav-p', String(amount));
+        host.style.setProperty('--vc-nav-p', String(amount));
     };
     scroll.addEventListener('scroll', paint, { passive: true });
+    paint();
 }
 
 function buildSettings(doc, { accountName, theme, reply, onTheme, onReply, onAction }) {
@@ -659,7 +660,6 @@ export function mountShell(options = {}) {
     settingsPane.setAttribute('aria-label', '设置');
     const settingsNav = doc.createElement('header');
     settingsNav.className = 'vc-navbar';
-    settingsNav.style.setProperty('--vc-nav-p', '1');
     const done = doc.createElement('button');
     done.type = 'button';
     done.className = 'vc-btn vc-btn-text';
@@ -678,7 +678,7 @@ export function mountShell(options = {}) {
     settingsHeading.textContent = '设置';
     settingsScroll.append(settingsHeading);
     settingsPane.append(settingsNav, settingsScroll);
-    bindNavScroll(settingsScroll, settingsNav);
+    bindNavScroll(settingsScroll, settingsNav, settingsPane);
 
     body.append(pages, chatPane, settingsPane);
     root.append(sidebar, body, tabbar);
@@ -778,6 +778,7 @@ export function mountShell(options = {}) {
         releaseMotion(chatPane);
         releaseMotion(pages);
         syncKeyboard();
+        releaseCoveredSettings();
     }
 
     function syncKeyboard() {
@@ -1003,10 +1004,26 @@ export function mountShell(options = {}) {
         for (const delay of [700, 2000, 5000]) timers.add(setTimeout(run, delay));
     }
 
-    function closeSettings() {
-        sheetHandle?.close?.();
+    function coveringPageOpen() {
+        const list = (sel) => (typeof doc.querySelectorAll === 'function' ? [...doc.querySelectorAll(sel)] : []);
+        if (list('.vc-data-dialog').some((node) => node.hasAttribute?.('open') || node.open === true)) return true;
+        return list('.vcms-overlay').some((node) => node.hidden !== true && node.getAttribute?.('hidden') == null);
+    }
+
+    function closeSettings({ immediate = false } = {}) {
+        const handle = sheetHandle;
         sheetHandle = null;
+        if (handle) {
+            if (immediate && typeof handle.dismiss === 'function') handle.dismiss();
+            else handle.close?.();
+        }
         delete root.dataset.settings;
+    }
+
+    function releaseCoveredSettings() {
+        if (chromeForWidth(globalThis.innerWidth).nav === 'tabbar') return;
+        if (!coveringPageOpen()) return;
+        closeSettings({ immediate: true });
     }
 
     function openSettings(opener) {
@@ -1024,6 +1041,9 @@ export function mountShell(options = {}) {
                         load: surface,
                         opener: button,
                         fallback: () => options.openAccount?.(button),
+                    }).then((result) => {
+                        if (result === 'off' || chromeForWidth(globalThis.innerWidth).nav === 'tabbar') return;
+                        closeSettings({ immediate: true });
                     });
                 } else if (target === 'models') {
                     void openSurfaceAction('models', {

@@ -314,7 +314,7 @@ function placePoster(chat) {
     if (!parent) return null;
     const poster = document.createElement('div');
     poster.id = 'vc-chat-poster';
-    poster.innerHTML = `<img id="vc-poster-avatar" class="vc-poster-avatar" alt=""><h2></h2><p class="vc-poster-instance" hidden></p><div class="vc-poster-acts"></div>`;
+    poster.innerHTML = `<span class="vc-poster-avatar-slot"><img id="vc-poster-avatar" class="vc-poster-avatar" alt=""></span><h2></h2><p class="vc-poster-instance" hidden></p><div class="vc-poster-acts"></div>`;
     const acts = poster.querySelector('.vc-poster-acts');
     for (const spec of [
         ['memory', 'brain', '记忆', (button) => openMemoryInspector(button)],

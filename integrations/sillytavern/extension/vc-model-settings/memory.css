@@ -126,8 +126,21 @@ body.vc-ui .vc-memory-tab .vc-memory-detail-actions {
 body.vc-ui .vc-memory-tab .vc-memory-facts { margin-bottom: var(--vc-space-xl); }
 
 body.vc-ui .vc-memory-tab .vc-memory-facts .vc-cell {
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--vc-space-md);
+}
+
+body.vc-ui .vc-memory-tab .vc-memory-facts dt {
+  flex: none;
+  white-space: nowrap;
+}
+
+body.vc-ui .vc-memory-tab .vc-memory-facts dd {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 body.vc-ui .vc-memory-tab dt { font-weight: 400; }
