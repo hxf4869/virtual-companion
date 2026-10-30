@@ -103,7 +103,7 @@ func (c *HTTPClient) Voices(ctx context.Context) ([]VoiceOption, error) {
 }
 
 func (c *HTTPClient) Synthesize(ctx context.Context, text, voice string, params Params) ([]byte, error) {
-	body := map[string]any{"input": text, "voice": voice}
+	body := map[string]any{"input": text, "voice": voice, "speed": params.Speed, "response_format": "wav"}
 	if c.engine == CosyVoice {
 		body["model"] = "cosyvoice3-q8"
 		body["stream"] = false
@@ -113,8 +113,6 @@ func (c *HTTPClient) Synthesize(ctx context.Context, text, voice string, params 
 		}
 	} else {
 		body["model"] = "kokoro-zh-v1.1"
-		body["speed"] = params.Speed
-		body["response_format"] = "wav"
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {

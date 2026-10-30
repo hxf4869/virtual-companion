@@ -55,10 +55,12 @@ func TestHTTPClientEngineProtocols(t *testing.T) {
 				if r.URL.Path != "/v1/audio/speech" || body["input"] != "synthetic input" || body["voice"] != "zf_001" {
 					t.Error("speech protocol mismatch")
 				}
+				// The deployed CosyVoice build rejects its default MP3 format.
+				if body["response_format"] != "wav" || body["speed"] != float64(1) {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
 				if engine == Kokoro {
-					if body["response_format"] != "wav" || body["speed"] != float64(1) {
-						t.Error("Kokoro output or speed mismatch")
-					}
 					if body["model"] != "kokoro-zh-v1.1" {
 						t.Error("Kokoro model alias mismatch")
 					}
