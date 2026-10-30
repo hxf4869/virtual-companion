@@ -313,7 +313,7 @@
 - [x] `V2-F02` 记忆召回接入本机重排（bge-reranker-v2-m3，llama.cpp，127.0.0.1:11439）。注入为原余弦/FTS 门槛与校准 logit 阈值的并集，
       按重排分数排序；不可用、超时或无效时回退原门槛。结果：DONE（2026-10-29）；提交 `c282b915`（合并 `204dc941`），部署配置 `da6a05a4`。
       校准集正例 78/78、负例 22/22 空、top-1 69/78（原门槛 67/78）；第 10 轮真实评估 H1–H4 PASS，正例 6/8，持久化到可召回 P50 48.3s。
-      验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级即已完成的 `V2-DEPLOY`（验收点 `09d85132`）；该提交之后的 main 尚未再部署。
+      验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级见 `V2-DEPLOY`，最新部署验收点为 `f3390857`（2026-10-30）；召回流量下的指标增长待验收。
 - [x] `V2-F04` 聊天发送链路提速（Owner 2026-10-30 授权）。结果：DONE（2026-10-30）；提交 `17948db3`（合并 `4871d104`）。
       重排分数缓存 60 秒（出站复核热路径约 189ms→1ms）、召回检索并行、同一嵌入并发去重、embedding `keep_alive -1` 与部署
       `OLLAMA_KEEP_ALIVE=-1`；Go 只读查找并行，来源快照写回保持串行（避免锁序死锁，审查时改回）。召回语义不变（并集 78/78、负例全空、
@@ -374,8 +374,25 @@
       - PASS：Owner 账号保留且原密码校验成功；Owner 人工确认已成功登录并进入主界面。
       - PASS：通知渠道仍为 2 条，渠道和正文预览均关闭，投递记录仍为 0。
       - 该次 NOT_RUN：Owner 改初始口令与 TOTP 绑定操作、真实模型调用、真实通知发送、手机真机和整机重启；后续升级与真实聊天验收见 `V2-DEPLOY`。
-- [x] `V2-DEPLOY`：2026-10-29 从 `da2d6586` 升级至本次开始时 main 最新提交 `09d85132`（包含 `da6a05a4`），新增 rerank，完成本次部署验收。
-      验收点就是 `09d85132`（当时 186 个迁移，不含 V266 及之后）。当前 main 在该提交之后还有 LM（`2bb78e8a`）、PERF、F0–F4、INT、F2、FIX-GO（`52d30932`）与 FIX-MC（`6c75e74c`），尚未再次部署。
+- [x] `V2-DEPLOY`：2026-10-30 从 `09d85132` 升级至 main `f3390857`，自动部署检查完成；Owner 人工验收待执行。
+      - PASS：升级前版本与镜像标签为 `09d85132`，迁移 186 个、最新 V265；包含 PostgreSQL 的手动加密备份及解密后逐字节自校验完成。
+      - PASS：`compose.env` 新增 `VC_EDGE_SUBNET`、`VC_EDGE_INGRESS_IP`，沿用现有网络实际值；`VC_IMAGE_TAG` 更新为 `f3390857`；
+        `VC_RERANK_MODELS_DIR` 已使用规范名称，无须改名。预算启动约束检查与 `docker compose ... config -q` 通过；文件保持 root、0600。
+      - PASS：本机 linux/amd64 构建并传输、导入 `virtual-companion-st:f3390857` 与 `virtual-companion-runtime:f3390857`；
+        锁定上游、vendor、核心补丁（含停止生成修补）及受管扩展校验通过。版本元数据同步，真实 provider 凭据未改。
+      - PASS：V2 整体 `up -d --force-recreate --wait`，V266–V270 执行成功，全部 191 个迁移已应用、最新 V270；
+        常驻服务运行，所有带健康检查的服务 healthy，三个一次性任务均 exit 0；V2 服务重启后复核通过。
+      - PASS：Go health/readiness、MemoryCore readyz 三项、HTTPS 登录页及未登录私有资源拒绝访问；外部访问方式保持不变。
+        现有 Nginx 地址与 `VC_EDGE_INGRESS_IP` 一致，配置未改、未 reload 或重启。
+      - PASS：embedding 与 rerank 健康，embedding 实际容器环境 `OLLAMA_KEEP_ALIVE=-1`；Owner 会话请求
+        `GET /api/v1/admin/local-models` 返回 200，两项均健康且启用，页面两项均显示运行中。
+      - PASS：现有登录会话保留；未设置覆盖时默认 `body.vc-ui`，临时设 `localStorage vc-ui=off` 可回退旧界面；
+        未清理浏览器数据，验收后已移除临时覆盖并恢复默认新界面。通知渠道仍为 2 条且关闭，投递记录为 0。
+      - NOT_RUN：召回流量下 applied 增长及 fallback 不持续增长；约 79 秒观察窗口内无召回流量，两次快照的 applied/fallback 均为 0，未据此判定通过。
+      - NOT_RUN（留给 Owner，手机与桌面各一次）：流式停止后可再次发送且宿主不崩；模型页本机状态与重排开关；深浅主题下设置、记忆、陪伴、剧情逐页检查。
+      - NOT_RUN：真实模型调用、真实通知发送、整机重启；未改 provider 凭据，未删除持久卷或旧备份，未提交或推送本次回填。
+      - 处理：备份辅助程序固定使用本机 Docker context，通过临时兼容入口适配后完成备份；浏览器扩展首次加载稍慢，初始化完成后界面验证通过。
+      以下为 2026-10-29 从 `da2d6586` 升级至 `09d85132`（包含 `da6a05a4`）、新增 rerank 的历史验收，当时为 186 个迁移、最新 V265：
       - PASS：资源检查；包含 PostgreSQL 的手动加密备份及解密后逐字节自校验。
       - PASS：指定 GGUF 的大小与固定 SHA256 在传输前后均匹配；`compose.env` 更新 `VC_IMAGE_TAG`、`VC_RERANK_MODELS_DIR`，`VC_RERANK_THREADS` 沿用默认值。
       - PASS：本机 linux/amd64 构建 ST/runtime，固定 digest 的 rerank 镜像经本机拉取、传输、导入；导入后补取注册表清单恢复固定 digest 引用。
@@ -405,6 +422,14 @@
       - NOT_RUN：整机重启、真实通知发送和手机真机验收（不在本次执行范围）。
 
 - [ ] 全项目审查修复（Owner 2026-10-30）：A/B/C 全部处理。FIX-GO 已合并（`52d30932`：工具验证竞态、预算边界、用量口径、隔离）。FIX-MC 已合并（`6c75e74c`：并集截断、错误归属、子句重排、缓存隔离）。F5、FIX-FE 第一/二轮已合并（`62c7e571`、`6f34eaf3`）。FIX-OPS 第二轮已合并（`24031186`：场景注册拆模块、受管提速、重排目录、写前重认证与验收断言）。FIX-FE 第三轮已合并。A/B/C 修复全部合入，待部署与 Owner 验收。本条不勾选。
+- [ ] 线上验收后续（Owner 2026-10-30，main `d78d0b9d` 起，尚未部署）：
+      - 登录：信任此设备 90 天（默认关）、二维码/一键添加验证器、六格验证码自动提交、恢复码复制/下载门控、登录页按 DESIGN 重做；账户页已信任设备与撤销（`ec016bcf`、`cf5d224f`、`a3f59594`）。登录有效期 30 天待部署时写入 `runtime.env` 的 `VC_SESSION_TTL=720h`。
+      - 五项必要同意：线上 `vc.consent_record` 为空导致记忆提取一直被拒；首次进入「开始之前」一键同意，账户页「隐私与同意」查看/撤回（`d78d0b9d`）。部署后 Owner 需同意一次。
+      - 记忆提取：systemMessage 未声明并入首条 user 消息、准入拒绝按具体原因关闭（`52219ecf`）；线上已有死信不重放。
+      - 召回：无候选时 embedding/重排预取失败不再拖垮召回（PERF 回归，`971a851d`；线上不受影响）。
+      - 剧情旧对话框保留未提交对白（`7cd7a00e`）；头像缩略图 WASM 补丁（`d70c2ee4`）；FIX-FE 第四轮 A/B（`4df2cfa6`、`36d2a075`）。
+      - 工具：一条命令部署 `ops/deploy/v2/deploy.sh`（`6ed9d527`，未真实执行；服务器缺 `/etc/virtual-companion/st-backup.pass`，首次部署前需建立）；本机常驻测试环境 `scripts/local/dev.sh`（`42504c23`，同步线上含通知凭据且不关闭通知，`edaac24b`）。
+      - 前端验收改为 Sonnet 初筛 + Claude 裁决；第一轮 39 条中确认问题由 UI-PAGES / UI-SETTINGS 两路修复中。待办：`memorycore-native` 偶发重排 timeout（第 72 条检索）。
 
 ## 当前状态（2026-10-21，V2 前实现快照）
 
