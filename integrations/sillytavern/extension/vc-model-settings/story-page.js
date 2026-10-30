@@ -663,7 +663,16 @@ export function mountStoryPage({
     document.body.append(root);
     let opener;
     let rewindVersion = null;
+    // 旧对话框整段重绘。已填对白记在 DOM 外面，否则 open() 后半段刷新会把还没提交的句子清掉。
+    let draftSay = '';
+    let draftSummary = '';
     const sheetOf = () => root.querySelector('.vc-story-rewind-dialog');
+    const restoreDrafts = () => {
+        const sayField = dialog.querySelector('[data-field="say"]');
+        if (sayField) sayField.value = draftSay;
+        const summaryField = dialog.querySelector('[data-field="summary"]');
+        if (summaryField) summaryField.value = draftSummary;
+    };
     const render = (next) => {
         if (!next.open) return;
         const previous = rewindVersion;
@@ -671,6 +680,7 @@ export function mountStoryPage({
         if (stale?.open) stale.close();
         stale?.remove();
         dialog.innerHTML = `<div class="vc-story-page">${renderStoryPage(next)}</div>`;
+        restoreDrafts();
         const sheet = dialog.querySelector('.vc-story-rewind-dialog');
         if (next.rewindAsk && sheet) {
             root.append(sheet);
@@ -709,6 +719,11 @@ export function mountStoryPage({
         }
         close();
     });
+    root.addEventListener('input', (event) => {
+        const field = event.target?.dataset?.field;
+        if (field === 'say') draftSay = event.target.value;
+        if (field === 'summary') draftSummary = event.target.value;
+    });
     root.addEventListener('click', (event) => {
         const target = event.target.closest('button');
         if (!target || target.disabled) return;
@@ -717,7 +732,16 @@ export function mountStoryPage({
         if (action === 'start') void page.start();
         if (action === 'select-actor') page.selectActor(target.dataset.actor);
         if (action === 'act') void page.act(target.dataset.step);
-        if (action === 'say') void page.say(dialog.querySelector('[data-field="say"]')?.value || '');
+        if (action === 'say') {
+            const text = dialog.querySelector('[data-field="say"]')?.value || '';
+            draftSay = '';
+            const pending = page.say(text);
+            if (!page.state.busy) {
+                draftSay = text;
+                render(page.state);
+            }
+            void pending;
+        }
         if (action === 'ask-rewind') page.askRewind(target.dataset.version);
         if (action === 'cancel-rewind') page.cancelRewind();
         if (action === 'confirm-rewind') void page.confirmRewind();

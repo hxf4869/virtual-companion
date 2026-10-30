@@ -260,6 +260,15 @@ test('story-real 只在显式 filter 注册，不进入默认场景', () => {
     assert.equal(resolveSceneFilter().includes('story-real'), false);
 });
 
+test('真实叙事不把 NPC 台词当成对白提交失败', () => {
+    const src = fs.readFileSync(new URL('../scripts/story-real-accept.mjs', import.meta.url), 'utf8');
+    assert.equal(src.includes('npc_reply_not_auto_committed'), false);
+    assert.match(src, /NPC 台词不作为世界事件提交/);
+    const wait = src.slice(src.indexOf('const waitVersion'), src.indexOf('const selectActor'));
+    assert.match(wait, /return Boolean\(version && version !== before && !pending\)/);
+    assert.match(wait, /剧情页拒绝了这一步/);
+});
+
 test('story-real 写入测试单价、钉住 max，并核对每轮预留结算', () => {
     const src = fs.readFileSync(new URL('../scripts/story-real-accept.mjs', import.meta.url), 'utf8');
     assert.match(src, /reasoningLevels:\s*\['max'\]/);

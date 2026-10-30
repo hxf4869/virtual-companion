@@ -8,7 +8,7 @@ import { log, psql, rt } from './lib/accept-runtime.mjs';
 import { bindForeground } from './lib/accept-scene-helpers.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
 import {
-    STORY_GREETING, STORY_ZHOU_FACT, storyCanonicalView, storySystemText,
+    STORY_GREETING, STORY_MARKERS, STORY_ZHOU_FACT, storyCanonicalView, storySystemText,
 } from './lib/story-accept-shared.mjs';
 
 export async function sceneStoryPlay(ctx) {
