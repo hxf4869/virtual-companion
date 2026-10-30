@@ -3,12 +3,14 @@ package postgres
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/hxf4869/virtual-companion/internal/proactive"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -249,10 +251,22 @@ func (s *Store) InsertProactiveWorkItem(ctx context.Context, owner, relationship
 
 func (s *Store) SaveProactivePlan(ctx context.Context, owner, relationshipID int64, plan proactive.Plan, body string, at time.Time) error {
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `
+		var messageID int64
+		if err := tx.QueryRow(ctx, `
 			SELECT vc.insert_proactive_message($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 			owner, relationshipID, plan.Trigger.Key, plan.Trigger.Kind, plan.Trigger.Cluster, plan.Trigger.Reminder,
-			body, "", plan.SendAt, nullTime(plan.ArmedAt)); err != nil {
+			body, "", plan.SendAt, nullTime(plan.ArmedAt)).Scan(&messageID); err != nil {
+			return err
+		}
+		var rates map[string]float64
+		err := tx.QueryRow(ctx, `SELECT proactive_voice_rates FROM vc.voice_settings WHERE owner_user_id=$1`, owner).Scan(&rates)
+		if errors.Is(err, pgx.ErrNoRows) {
+			rates = voice.DefaultSettings().ProactiveVoiceRates
+		} else if err != nil {
+			return err
+		}
+		selected := rand.Float64() < rates[voice.ProactiveScene(plan.Trigger.Key)]
+		if _, err := tx.Exec(ctx, `SELECT vc.select_proactive_voice($1,$2,$3)`, owner, messageID, selected); err != nil {
 			return err
 		}
 		if plan.Trigger.Cooldown > 0 {
@@ -267,10 +281,36 @@ func (s *Store) SaveProactivePlan(ctx context.Context, owner, relationshipID int
 				return err
 			}
 		}
-		_, err := tx.Exec(ctx, `SELECT vc.note_proactive_judgment($1,$2,$3)`, owner, relationshipID, at)
+		_, err = tx.Exec(ctx, `SELECT vc.note_proactive_judgment($1,$2,$3)`, owner, relationshipID, at)
 		return err
 	})
 	return mapFollowUpErr(err)
+}
+
+type ProactiveVoiceCandidate struct {
+	ID            int64
+	Body, Trigger string
+	PlannedAt     time.Time
+}
+
+func (s *Store) ListProactiveVoiceCandidates(ctx context.Context, owner, relationshipID int64) ([]ProactiveVoiceCandidate, error) {
+	var out []ProactiveVoiceCandidate
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT id,body,trigger_key,planned_at FROM vc.proactive_message WHERE owner_user_id=$1 AND relationship_id=$2 AND status='READY' AND voice_selected ORDER BY planned_at LIMIT 12`, owner, relationshipID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var item ProactiveVoiceCandidate
+			if err := rows.Scan(&item.ID, &item.Body, &item.Trigger, &item.PlannedAt); err != nil {
+				return err
+			}
+			out = append(out, item)
+		}
+		return rows.Err()
+	})
+	return out, mapStoreErr(err)
 }
 
 // DeliverDueProactive files the earliest due READY body. accept is the safety
@@ -372,6 +412,9 @@ func (s *Store) DeliverDueProactive(ctx context.Context, owner, relationshipID i
 			filed := "fu-" + strconv.FormatInt(followID, 10)
 			if _, err := tx.Exec(ctx, `SELECT vc.create_inbox_event($1,$2,$3,$4,NULL,NULL)`,
 				owner, filed, conversation, branch); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `SELECT vc.attach_inbox_voice($1,$2,$3)`, owner, filed, row.id); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(ctx, `SELECT vc.finish_proactive_message($1,$2,'INBOX',$3,$4,$5)`,

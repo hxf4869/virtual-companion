@@ -41,6 +41,7 @@ type NotificationTarget struct {
 // NotificationDelivery is the send-time view of one delivery. Credential
 // material is not loaded.
 type NotificationDelivery struct {
+	Voice              bool
 	OwnerID            int64
 	ID                 int64
 	EventID            string
@@ -300,11 +301,11 @@ func (s *Store) LoadNotificationDelivery(ctx context.Context, owner, id int64, n
 		// when that policy is absent. Notifications do not borrow it.
 		row.DailyLimit = DefaultNotificationDailyLimit
 		return tx.QueryRow(ctx, `
-			SELECT i.conversation_id
+			SELECT i.conversation_id, i.voice_clip_id IS NOT NULL
 			  FROM vc.notification_delivery d
 			  JOIN vc.inbox_event i
 			    ON i.owner_user_id = d.owner_user_id AND i.event_id = d.event_id
-			 WHERE d.owner_user_id = $1 AND d.id = $2`, owner, id).Scan(&row.ConversationID)
+			 WHERE d.owner_user_id = $1 AND d.id = $2`, owner, id).Scan(&row.ConversationID, &row.Voice)
 	})
 	if err != nil {
 		return NotificationDelivery{}, mapNotificationErr(err)
@@ -377,11 +378,11 @@ func loadNotificationDeliveryTx(ctx context.Context, tx pgx.Tx, owner, id int64,
 	row.OwnerID = owner
 	row.DailyLimit = DefaultNotificationDailyLimit
 	err = tx.QueryRow(ctx, `
-		SELECT i.conversation_id
+		SELECT i.conversation_id, i.voice_clip_id IS NOT NULL
 		  FROM vc.notification_delivery d
 		  JOIN vc.inbox_event i
 		    ON i.owner_user_id = d.owner_user_id AND i.event_id = d.event_id
-		 WHERE d.owner_user_id = $1 AND d.id = $2`, owner, id).Scan(&row.ConversationID)
+		 WHERE d.owner_user_id = $1 AND d.id = $2`, owner, id).Scan(&row.ConversationID, &row.Voice)
 	if err != nil {
 		return NotificationDelivery{}, err
 	}

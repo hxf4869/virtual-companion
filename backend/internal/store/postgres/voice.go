@@ -14,7 +14,7 @@ import (
 
 const voiceSettingsColumns = `kokoro_enabled,cosy_voice_enabled,asr_enabled,kokoro_timeout_seconds,
  cosy_voice_timeout_seconds,asr_timeout_seconds,daily_chat_limit,daily_proactive_limit,voice_frequency,
- cosy_voice_instructions,kokoro_mood_speeds,max_recording_seconds,revision,updated_at`
+ cosy_voice_instructions,proactive_voice_rates,kokoro_mood_speeds,max_recording_seconds,revision,updated_at`
 const voiceClipColumns = `owner_user_id,id,relationship_id,message_ref,purpose,engine,voice,params,text,status,
  error_kind,coalesce(object_key,''),duration_ms,generation_ms,created_at,ready_at,retry_count,started_at`
 
@@ -71,7 +71,7 @@ func scanVoiceSettings(row pgx.Row) (voice.Settings, error) {
 	var out voice.Settings
 	err := row.Scan(&out.KokoroEnabled, &out.CosyVoiceEnabled, &out.ASREnabled, &out.KokoroTimeoutSeconds,
 		&out.CosyVoiceTimeoutSeconds, &out.ASRTimeoutSeconds, &out.DailyChatLimit, &out.DailyProactiveLimit,
-		&out.VoiceFrequency, &out.CosyVoiceInstructions, &out.KokoroMoodSpeeds, &out.MaxRecordingSeconds, &out.Revision, &out.UpdatedAt)
+		&out.VoiceFrequency, &out.CosyVoiceInstructions, &out.ProactiveVoiceRates, &out.KokoroMoodSpeeds, &out.MaxRecordingSeconds, &out.Revision, &out.UpdatedAt)
 	return out, err
 }
 
@@ -118,10 +118,10 @@ func (s *Store) GetVoiceRelationship(ctx context.Context, owner, id int64) (voic
 	var out voice.Relationship
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `SELECT r.id,r.gender,r.kokoro_voice,r.cosy_voice,r.voice_speed,r.voice_frequency,r.proactive_voice,
- coalesce((SELECT m.vibe FROM vc.companion_daily_mood m WHERE m.owner_user_id=r.owner_user_id
+ r.proactive_engine,coalesce((SELECT m.vibe FROM vc.companion_daily_mood m WHERE m.owner_user_id=r.owner_user_id
  AND m.relationship_id=r.id AND m.local_date=(clock_timestamp() AT TIME ZONE coalesce(p.quiet_hours_timezone,'Asia/Shanghai'))::date),'')
  FROM vc.relationship r LEFT JOIN vc.proactive_policy p ON (p.owner_user_id,p.relationship_id)=(r.owner_user_id,r.id)
- WHERE r.owner_user_id=$1 AND r.id=$2`, owner, id).Scan(&out.ID, &out.Gender, &out.KokoroVoice, &out.CosyVoice, &out.Speed, &out.VoiceFrequency, &out.ProactiveVoice, &out.Mood)
+ WHERE r.owner_user_id=$1 AND r.id=$2`, owner, id).Scan(&out.ID, &out.Gender, &out.KokoroVoice, &out.CosyVoice, &out.Speed, &out.VoiceFrequency, &out.ProactiveVoice, &out.ProactiveEngine, &out.Mood)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}

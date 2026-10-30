@@ -8109,6 +8109,11 @@ components:
           - type: 'null'
           description: Null inherits owner settings. LOW/STANDARD/HIGH allow at most one voice per 10/6/3 assistant replies;
             OFF disables relationship voice.
+        proactiveEngine:
+          anyOf:
+          - $ref: '#/components/schemas/VoiceEngine'
+          - type: 'null'
+          description: Null selects CosyVoice, with the male default fallback. Kokoro explicitly selects fast proactive speech.
         proactiveVoice:
           type: boolean
           default: true
@@ -8193,6 +8198,11 @@ components:
           - type: 'null'
           description: Null inherits owner settings. LOW/STANDARD/HIGH allow at most one voice per 10/6/3 assistant replies;
             OFF disables relationship voice.
+        proactiveEngine:
+          anyOf:
+          - $ref: '#/components/schemas/VoiceEngine'
+          - type: 'null'
+          description: Null selects CosyVoice, with the male default fallback. Kokoro explicitly selects fast proactive speech.
         proactiveVoice:
           type: boolean
           default: true
@@ -8353,6 +8363,59 @@ components:
         有点累: 0.92
         困: 0.92
       description: Mood vibe to speed; unlisted moods use 1.0. Kokoro never receives instructions.
+    ProactiveVoiceRates:
+      type: object
+      additionalProperties: false
+      required:
+      - morning
+      - night
+      - care
+      - share
+      - default
+      properties:
+        morning:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1
+        night:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1
+        care:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.5
+        share:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.3
+        default:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0
+    VoiceAttachment:
+      type: object
+      additionalProperties: false
+      required:
+      - clipId
+      - status
+      - durationMs
+      properties:
+        clipId:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+        status:
+          type: string
+          enum:
+          - ready
+        durationMs:
+          type: integer
+          minimum: 1
     VoiceSettings:
       type: object
       additionalProperties: false
@@ -8367,6 +8430,7 @@ components:
       - dailyProactiveLimit
       - voiceFrequency
       - cosyVoiceInstructions
+      - proactiveVoiceRates
       - kokoroMoodSpeeds
       - maxRecordingSeconds
       - revision
@@ -8416,6 +8480,8 @@ components:
           - HIGH
           default: STANDARD
           description: Non-OFF subset of VoiceFrequency; relationships may override to OFF.
+        proactiveVoiceRates:
+          $ref: '#/components/schemas/ProactiveVoiceRates'
         cosyVoiceInstructions:
           $ref: '#/components/schemas/CosyVoiceInstructions'
         kokoroMoodSpeeds:
@@ -8448,6 +8514,7 @@ components:
       - dailyProactiveLimit
       - voiceFrequency
       - cosyVoiceInstructions
+      - proactiveVoiceRates
       - kokoroMoodSpeeds
       - maxRecordingSeconds
       - expectedRevision
@@ -8497,6 +8564,8 @@ components:
           - HIGH
           default: STANDARD
           description: Non-OFF subset of VoiceFrequency; relationships may override to OFF.
+        proactiveVoiceRates:
+          $ref: '#/components/schemas/ProactiveVoiceRates'
         cosyVoiceInstructions:
           $ref: '#/components/schemas/CosyVoiceInstructions'
         kokoroMoodSpeeds:
@@ -9354,6 +9423,8 @@ components:
           minimum: 0
         intent:
           $ref: '#/components/schemas/InboxIntent'
+        voice:
+          $ref: '#/components/schemas/VoiceAttachment'
         body:
           type:
           - string

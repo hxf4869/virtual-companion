@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/stsource"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -38,6 +40,7 @@ type InboxEvent struct {
 	LinkStatus      string
 	ReadAt          *time.Time
 	Persisted       bool
+	Voice           *voice.Attachment
 }
 
 // InboxClaim is the short save lease. It is not a session.
@@ -49,7 +52,9 @@ type InboxClaim struct {
 const inboxSelect = `
 SELECT id, event_id, relationship_id, conversation_id, branch, source_revision,
        intent, body, st_delivered, st_message_id, st_message_revision,
-       link_status, read_at
+       link_status, read_at,
+       (SELECT jsonb_build_object('clipId',v.id::text,'status',v.status,'durationMs',v.duration_ms)
+        FROM vc.voice_clip v WHERE v.owner_user_id=vc.inbox_event.owner_user_id AND v.id=vc.inbox_event.voice_clip_id AND v.status='ready')
   FROM vc.inbox_event`
 
 type inboxScanner interface {
@@ -65,10 +70,11 @@ func scanInbox(row inboxScanner) (InboxEvent, error) {
 	var branch, body, messageID pgtype.Text
 	var sourceRevision, messageRevision pgtype.Int8
 	var readAt pgtype.Timestamptz
+	var attachment []byte
 	err := row.Scan(
 		&out.ID, &out.EventID, &out.RelationshipID, &out.ConversationID,
 		&branch, &sourceRevision, &out.Intent, &body, &out.STDelivered,
-		&messageID, &messageRevision, &out.LinkStatus, &readAt)
+		&messageID, &messageRevision, &out.LinkStatus, &readAt, &attachment)
 	if err != nil {
 		return InboxEvent{}, err
 	}
@@ -79,6 +85,11 @@ func scanInbox(row inboxScanner) (InboxEvent, error) {
 	out.MessageRevision = int8Ptr(messageRevision)
 	out.ReadAt = tzPtr(readAt)
 	out.Persisted = true
+	if len(attachment) > 0 {
+		if err := json.Unmarshal(attachment, &out.Voice); err != nil {
+			return InboxEvent{}, err
+		}
+	}
 	return out, nil
 }
 

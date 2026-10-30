@@ -136,6 +136,7 @@ func (s *Store) deliverProjectedInbox(ctx context.Context, row inboxProjection) 
 			EventID:     event.EventID,
 			Intent:      event.Intent,
 			Body:        event.Body,
+			Voice:       event.Voice,
 			Branch:      event.Branch,
 			STDelivered: event.STDelivered,
 		},

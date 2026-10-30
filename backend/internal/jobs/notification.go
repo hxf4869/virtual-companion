@@ -104,6 +104,9 @@ func deliverNotification(ctx context.Context, store notificationStore, sender no
 		return err
 	}
 	msg := notify.ComposeWithLink(row.Channel, row.Intent, row.Body, row.Preview, row.ConversationID)
+	if row.Voice {
+		msg.Text = notify.VoiceNotice + "\n" + msg.Text
+	}
 	if !policy.ReviewOutput(msg.Subject + "\n" + msg.Text).Allow {
 		logNotificationCode(logger, notify.CodeSafetyBlocked)
 		_, err = store.RecordNotificationOutcome(ctx, row.OwnerID, row.ID, "failed", notify.CodeSafetyBlocked, "")

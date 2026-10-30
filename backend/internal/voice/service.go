@@ -138,6 +138,10 @@ func (s *Service) ValidateRelationshipPatch(ctx context.Context, patch map[strin
 			if string(raw) == "null" || json.Unmarshal(raw, &speed) != nil || !validSpeed(speed) {
 				return ErrInvalid
 			}
+		case "proactiveEngine":
+			if string(raw) != "null" && string(raw) != `"kokoro"` && string(raw) != `"cosyvoice"` {
+				return ErrInvalid
+			}
 		case "proactiveVoice":
 			var enabled bool
 			if string(raw) == "null" || json.Unmarshal(raw, &enabled) != nil {
@@ -151,6 +155,29 @@ func (s *Service) ValidateRelationshipPatch(ctx context.Context, patch map[strin
 }
 
 func (s *Service) Create(ctx context.Context, owner, relationshipID int64, in CreateRequest) (Clip, error) {
+	return s.create(ctx, owner, relationshipID, in, "default", time.Time{}, time.Time{})
+}
+
+func ProactiveScene(trigger string) string {
+	switch trigger {
+	case "morning", "good_morning":
+		return "morning"
+	case "night", "good_night":
+		return "night"
+	case "share", "share_day":
+		return "share"
+	case "care":
+		return trigger
+	default:
+		return "default"
+	}
+}
+
+func (s *Service) PrepareProactive(ctx context.Context, owner, relationshipID int64, in CreateRequest, trigger string, sendAt, now time.Time) (Clip, error) {
+	return s.create(ctx, owner, relationshipID, in, ProactiveScene(trigger), sendAt, now)
+}
+
+func (s *Service) create(ctx context.Context, owner, relationshipID int64, in CreateRequest, scene string, sendAt, now time.Time) (Clip, error) {
 	if restoregate.Closed(s.gate) {
 		return Clip{}, ErrUnavailable
 	}
@@ -216,6 +243,20 @@ func (s *Service) Create(ctx context.Context, owner, relationshipID int64, in Cr
 			}
 		}
 	}
+	if in.Purpose == "proactive" {
+		if rel.ProactiveEngine != nil && *rel.ProactiveEngine == Kokoro {
+			engine, voiceID = Kokoro, "zf_001"
+			if rel.Gender == "MALE" {
+				voiceID = "zm_010"
+			}
+			if rel.KokoroVoice != nil {
+				voiceID = *rel.KokoroVoice
+			}
+		}
+		if engine == CosyVoice && !sendAt.IsZero() && sendAt.Sub(now) < 5*time.Minute {
+			return Clip{}, ErrUnavailable
+		}
+	}
 	params := Params{Speed: rel.Speed, TimeoutSeconds: settings.KokoroTimeoutSeconds}
 	if engine == Kokoro {
 		if !settings.KokoroEnabled {
@@ -229,7 +270,7 @@ func (s *Service) Create(ctx context.Context, owner, relationshipID int64, in Cr
 			return Clip{}, ErrUnavailable
 		}
 		params.TimeoutSeconds = settings.CosyVoiceTimeoutSeconds
-		params.Instructions = settings.CosyVoiceInstructions["default"]
+		params.Instructions = settings.CosyVoiceInstructions[scene]
 	}
 	if err = s.validateVoice(ctx, engine, voiceID); err != nil {
 		return Clip{}, err

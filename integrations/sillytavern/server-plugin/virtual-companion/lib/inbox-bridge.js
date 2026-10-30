@@ -90,7 +90,9 @@ export async function attemptInboxDelivery({ store, file, event, lease, claim, n
     if (typeof beforeSave === 'function') await beforeSave();
     if (!leaseAlive(active, now)) return stopped('lease');
     const next = structuredClone(chat);
-    next.push({ is_user: false, mes: event.body, extra: { vc_source: { inbox_event_id: event.eventId } } });
+    const voice = event.voice?.status === 'ready' && /^[1-9][0-9]{0,18}$/.test(event.voice.clipId) && Number.isSafeInteger(event.voice.durationMs) && event.voice.durationMs > 0
+        ? { vc_voice: { clipId: event.voice.clipId, status: 'ready', durationMs: event.voice.durationMs } } : {};
+    next.push({ is_user: false, mes: event.body, extra: { vc_source: { inbox_event_id: event.eventId }, ...voice } });
     await store.save(file, next, { expected });
     const saved = await store.read(file);
     const message = findEvent(saved, event.eventId);

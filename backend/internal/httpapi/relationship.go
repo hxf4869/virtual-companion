@@ -225,6 +225,7 @@ func (s *Server) handleUpdateRelationshipPrefs(w http.ResponseWriter, r *http.Re
 		Speed            json.RawMessage `json:"speed"`
 		VoiceFrequency   json.RawMessage `json:"voiceFrequency"`
 		ProactiveVoice   json.RawMessage `json:"proactiveVoice"`
+		ProactiveEngine  json.RawMessage `json:"proactiveEngine"`
 	}
 	if !s.decodeJSON(w, r, &body) {
 		return
@@ -237,7 +238,7 @@ func (s *Server) handleUpdateRelationshipPrefs(w http.ResponseWriter, r *http.Re
 		return
 	}
 	prefs.VoicePatch = map[string]json.RawMessage{}
-	for key, raw := range map[string]json.RawMessage{"kokoroVoice": body.KokoroVoice, "cosyVoice": body.CosyVoice, "speed": body.Speed, "voiceFrequency": body.VoiceFrequency, "proactiveVoice": body.ProactiveVoice} {
+	for key, raw := range map[string]json.RawMessage{"kokoroVoice": body.KokoroVoice, "cosyVoice": body.CosyVoice, "speed": body.Speed, "voiceFrequency": body.VoiceFrequency, "proactiveVoice": body.ProactiveVoice, "proactiveEngine": body.ProactiveEngine} {
 		if len(raw) > 0 {
 			prefs.VoicePatch[key] = raw
 		}

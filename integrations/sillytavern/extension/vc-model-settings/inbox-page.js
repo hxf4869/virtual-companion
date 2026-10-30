@@ -11,6 +11,7 @@ import { popMenu } from './ui/menu.js';
 import { createNav } from './ui/nav.js';
 import { openSheet } from './ui/sheet.js';
 import { readVcUiFlag } from './ui/theme.js';
+import { createVoiceBubble } from './voice.js';
 
 const DECIMAL = /^[1-9][0-9]{0,18}$/;
 const EVENT = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -186,6 +187,13 @@ function allowFollowUp(raw) {
     };
 }
 
+export function mountInboxVoices(root,state) {
+    for (const slot of root.querySelectorAll('[data-vc-inbox-voice]')) {
+        const item=state.inbox.find((row)=>row.eventId===slot.getAttribute('data-vc-inbox-voice'));
+        if (item?.voice) slot.replaceChildren(createVoiceBubble({text:item.body,voice:item.voice}));
+    }
+}
+
 function allowInbox(raw) {
     const eventId = eventIdOf(raw?.eventId);
     const relationshipId = decimalId(raw?.relationshipId ?? raw?.link?.relationshipId);
@@ -196,6 +204,8 @@ function allowInbox(raw) {
     return {
         eventId, relationshipId, conversationId, linkStatus, intent,
         body: intent === 'WAITING_HOST' ? '' : shown(raw?.body),
+        voice: raw?.voice?.status === 'ready' && decimalId(raw.voice.clipId) && Number.isSafeInteger(raw.voice.durationMs) && raw.voice.durationMs > 0
+            ? { clipId: raw.voice.clipId, status: 'ready', durationMs: raw.voice.durationMs } : null,
         stDelivered: raw?.stDelivered === true,
         read: raw?.read === true,
     };
@@ -415,7 +425,7 @@ export function renderInboxPage(state) {
         }).join('');
         const writeTone = item.linkStatus === 'present' && item.stDelivered ? 'ok' : 'warn';
         const extra = item.linkStatus !== 'present' && item.stDelivered ? badge('已写入', 'ok') : '';
-        const waiting = item.intent === 'WAITING_HOST' ? '<p>需要打开此会话继续</p>' : (item.body ? `<p>${esc(item.body)}</p>` : '');
+        const waiting = item.voice ? `<div data-vc-inbox-voice="${esc(item.eventId)}"></div>` : item.intent === 'WAITING_HOST' ? '<p>需要打开此会话继续</p>' : (item.body ? `<p>${esc(item.body)}</p>` : '');
         const open = item.linkStatus === 'present' ? button('open-conversation', '打开此会话', `data-event-id="${esc(item.eventId)}"`, true) : '';
         return `<article class="vc-inbox-card" data-event-id="${esc(item.eventId)}" data-link="${esc(item.linkStatus)}" data-write="${item.stDelivered ? 'written' : 'pending'}">
             <div class="vc-inbox-card-head"><h3>${esc(name)}</h3>${badge(writeLabel(item), writeTone)}</div>
@@ -942,6 +952,7 @@ export function mountInboxPage({ onOpenConversation } = {}) {
             if (!next.open) return;
             const layer = Boolean(next.reauth.open || next.cancelAsk || next.policyConflict);
             dialog.innerHTML = renderInboxPage(next);
+            mountInboxVoices(dialog,next);
             restoreSecrets(dialog, next);
             if (layer) dialog.querySelector('.vc-inbox-layer button')?.focus();
             else if (layerOpen) focusRemembered();
@@ -1151,6 +1162,7 @@ export function renderInboxTab(state) {
         const deliveries = state.deliveries.filter((row) => row.eventId === item.eventId);
         const body = item.intent === 'WAITING_HOST' ? '需要打开此会话继续' : item.body;
         const open = item.linkStatus === 'present';
+        if (item.voice) return `<div class="vc-cell vc-inbox-card vc-inbox-msg" data-event-id="${esc(item.eventId)}"><span class="vc-avatar" aria-hidden="true">${esc(initialOf(name))}</span><div class="vc-grow"><b>${esc(name)}</b><div data-vc-inbox-voice="${esc(item.eventId)}"></div>${messageMeta(item,deliveries)}${open ? `<button type="button" class="vc-btn vc-btn-text" data-action="open-conversation" data-event-id="${esc(item.eventId)}">打开此会话</button>` : ''}</div></div>`;
         const tag = open ? 'button' : 'div';
         const action = open ? ' type="button" data-action="open-conversation"' : '';
         return `<${tag} class="vc-cell vc-inbox-card vc-inbox-msg" data-event-id="${esc(item.eventId)}" data-link="${esc(item.linkStatus)}" data-write="${item.stDelivered ? 'written' : 'pending'}"${action}><span class="vc-avatar" aria-hidden="true">${esc(initialOf(name))}</span><span class="vc-grow"><span class="vc-line"><b>${esc(name)}</b></span>${body ? `<span class="vc-inbox-body">${esc(body)}</span>` : ''}${messageMeta(item, deliveries)}${open ? '<span class="vc-clip">打开此会话</span>' : ''}</span></${tag}>`;
@@ -1287,6 +1299,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
             ? `<button type="button" class="vc-nav-save" data-action="save-policy" ${saveDisabled ? 'disabled' : ''}>保存</button>`
             : '';
         listScreen.innerHTML = `<header class="vc-navbar"><div class="vc-nav-spacer"></div>${saveButton}</header><div class="vc-scroll">${renderInboxTab(state)}</div>`;
+        mountInboxVoices(listScreen,state);
         const segment = listScreen.querySelector('[data-vc-inbox-segment]');
         releaseSegment(segmentBinding);
         segmentBinding = null;

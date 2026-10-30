@@ -14,6 +14,7 @@ import (
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/safety"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 )
 
 const proactiveJudgeGap = 15 * time.Minute
@@ -56,6 +57,7 @@ func (l *Loop) runProactive(ctx context.Context, store *postgres.Store, owner, r
 	if now.IsZero() {
 		now = time.Now()
 	}
+	l.prepareProactiveVoices(ctx, store, owner, relationshipID, now)
 	eventID, delivered, err := store.DeliverDueProactive(ctx, owner, relationshipID, now, postgres.FollowUpGenerationFinish{}, func(body string) bool {
 		_, _, kept := reviewGreeting(safety.New(), body)
 		return kept != nil
@@ -135,7 +137,44 @@ func (l *Loop) runProactive(ctx context.Context, store *postgres.Store, owner, r
 	if err := store.SaveProactivePlan(ctx, owner, relationshipID, next, *kept, now); err != nil {
 		return postgres.ProactiveRunResult{}, err
 	}
+	l.prepareProactiveVoices(ctx, store, owner, relationshipID, now)
 	return preferInbox(postgres.ProactiveRunResult{Outcome: proactive.OutcomeReady, Reason: next.Trigger.Key}), nil
+}
+
+func (l *Loop) prepareProactiveVoices(ctx context.Context, store *postgres.Store, owner, relationshipID int64, now time.Time) {
+	if l.voice == nil {
+		return
+	}
+	rows, err := store.ListProactiveVoiceCandidates(ctx, owner, relationshipID)
+	if err != nil {
+		l.proactiveLog("PROACTIVE_VOICE")
+		return
+	}
+	for _, row := range rows {
+		clip, err := l.voice.PrepareProactive(ctx, owner, relationshipID, voice.CreateRequest{MessageRef: "proactive:" + strconv.FormatInt(row.ID, 10), Text: row.Body, Purpose: "proactive"}, row.Trigger, row.PlannedAt, now)
+		if err != nil {
+			continue
+		} // Text delivery remains available on every synthesis failure.
+		if clip.Engine != voice.Kokoro || row.PlannedAt.After(now) || clip.Status == "ready" {
+			continue
+		}
+		waitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		waiting := true
+		for waiting {
+			select {
+			case <-waitCtx.Done():
+				waiting = false
+			case <-ticker.C:
+				current, err := l.voice.Get(waitCtx, owner, clip.ID)
+				if err != nil || current.Status == "ready" || current.Status == "failed" || current.Status == "expired" {
+					waiting = false
+				}
+			}
+		}
+		ticker.Stop()
+		cancel()
+	}
 }
 
 func (l *Loop) completeProactive(ctx context.Context, store *postgres.Store, owner, relationshipID int64, prompt string, route modelprovider.Route, suffix string) (string, string, error) {

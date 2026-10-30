@@ -12,7 +12,8 @@ import (
 
 const (
 	// Title is the generic subject and the body used when preview is off.
-	Title = "有一条新的陪伴消息"
+	Title       = "有一条新的陪伴消息"
+	VoiceNotice = "发来一条语音"
 	// LoginHint tells the reader the text is not the conversation itself.
 	LoginHint = "请登录后查看。"
 	// GroupVisible is the Feishu notice that the bot posts into a group.

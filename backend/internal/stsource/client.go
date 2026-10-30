@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 	"io"
 	"net/http"
 	"net/url"
@@ -174,12 +175,13 @@ var ownerAccountID = regexp.MustCompile(`^[1-9][0-9]{0,18}$`)
 // InboxDeliveryRequest is the private bridge body. OwnerAccountID is the
 // decimal account id. The file is the chat location from the source snapshot.
 type InboxDeliveryEvent struct {
-	EventID     string  `json:"eventId"`
-	Intent      string  `json:"intent,omitempty"`
-	Body        *string `json:"body,omitempty"`
-	Branch      *string `json:"branch,omitempty"`
-	STDelivered bool    `json:"stDelivered,omitempty"`
-	MessageID   string  `json:"messageId,omitempty"`
+	Voice       *voice.Attachment `json:"voice,omitempty"`
+	EventID     string            `json:"eventId"`
+	Intent      string            `json:"intent,omitempty"`
+	Body        *string           `json:"body,omitempty"`
+	Branch      *string           `json:"branch,omitempty"`
+	STDelivered bool              `json:"stDelivered,omitempty"`
+	MessageID   string            `json:"messageId,omitempty"`
 }
 
 type InboxDeliveryLease struct {

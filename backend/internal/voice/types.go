@@ -39,6 +39,7 @@ type SettingsValues struct {
 	DailyProactiveLimit     int                `json:"dailyProactiveLimit"`
 	VoiceFrequency          string             `json:"voiceFrequency"`
 	CosyVoiceInstructions   map[string]string  `json:"cosyVoiceInstructions"`
+	ProactiveVoiceRates     map[string]float64 `json:"proactiveVoiceRates"`
 	KokoroMoodSpeeds        map[string]float64 `json:"kokoroMoodSpeeds"`
 	MaxRecordingSeconds     int                `json:"maxRecordingSeconds"`
 }
@@ -66,7 +67,7 @@ func (s *SettingsWrite) UnmarshalJSON(data []byte) error {
 	if json.Unmarshal(data, &fields) != nil {
 		return ErrInvalid
 	}
-	for _, key := range []string{"kokoroEnabled", "cosyVoiceEnabled", "asrEnabled", "kokoroTimeoutSeconds", "cosyVoiceTimeoutSeconds", "asrTimeoutSeconds", "dailyChatLimit", "dailyProactiveLimit", "voiceFrequency", "cosyVoiceInstructions", "kokoroMoodSpeeds", "maxRecordingSeconds", "expectedRevision"} {
+	for _, key := range []string{"kokoroEnabled", "cosyVoiceEnabled", "asrEnabled", "kokoroTimeoutSeconds", "cosyVoiceTimeoutSeconds", "asrTimeoutSeconds", "dailyChatLimit", "dailyProactiveLimit", "voiceFrequency", "cosyVoiceInstructions", "proactiveVoiceRates", "kokoroMoodSpeeds", "maxRecordingSeconds", "expectedRevision"} {
 		if len(fields[key]) == 0 || string(fields[key]) == "null" {
 			return ErrInvalid
 		}
@@ -80,6 +81,7 @@ func DefaultSettings() Settings {
 		KokoroEnabled: true, CosyVoiceEnabled: true, ASREnabled: true,
 		KokoroTimeoutSeconds: 60, CosyVoiceTimeoutSeconds: 300, ASRTimeoutSeconds: 30,
 		DailyChatLimit: 60, DailyProactiveLimit: 8, VoiceFrequency: "STANDARD", MaxRecordingSeconds: 60,
+		ProactiveVoiceRates: map[string]float64{"morning": 1, "night": 1, "care": .5, "share": .3, "default": 0},
 		CosyVoiceInstructions: map[string]string{
 			"morning": "You are a helpful assistant. 请用刚睡醒、有点慵懒又温柔的语气说。",
 			"night":   "You are a helpful assistant. 请轻声、温柔、放慢一点地说。",
@@ -94,6 +96,15 @@ func DefaultSettings() Settings {
 func (s SettingsWrite) Validate() error {
 	if s.ExpectedRevision < 0 || s.KokoroTimeoutSeconds < 1 || s.KokoroTimeoutSeconds > 3600 || s.CosyVoiceTimeoutSeconds < 1 || s.CosyVoiceTimeoutSeconds > 3600 || s.ASRTimeoutSeconds < 1 || s.ASRTimeoutSeconds > 120 || s.DailyChatLimit < 0 || int64(s.DailyChatLimit) > math.MaxInt32 || s.DailyProactiveLimit < 0 || int64(s.DailyProactiveLimit) > math.MaxInt32 || s.MaxRecordingSeconds < 1 || s.MaxRecordingSeconds > 60 || !validFrequency(s.VoiceFrequency, false) {
 		return ErrInvalid
+	}
+	if len(s.ProactiveVoiceRates) != 5 {
+		return ErrInvalid
+	}
+	for _, key := range []string{"morning", "night", "care", "share", "default"} {
+		v, ok := s.ProactiveVoiceRates[key]
+		if !ok || math.IsNaN(v) || v < 0 || v > 1 {
+			return ErrInvalid
+		}
 	}
 	if len(s.CosyVoiceInstructions) != 5 {
 		return ErrInvalid
@@ -121,11 +132,12 @@ func validFrequency(f string, off bool) bool {
 }
 
 type RelationshipPrefs struct {
-	KokoroVoice    *string `json:"kokoroVoice"`
-	CosyVoice      *string `json:"cosyVoice"`
-	Speed          float64 `json:"speed"`
-	VoiceFrequency *string `json:"voiceFrequency"`
-	ProactiveVoice bool    `json:"proactiveVoice"`
+	KokoroVoice     *string `json:"kokoroVoice"`
+	CosyVoice       *string `json:"cosyVoice"`
+	Speed           float64 `json:"speed"`
+	VoiceFrequency  *string `json:"voiceFrequency"`
+	ProactiveVoice  bool    `json:"proactiveVoice"`
+	ProactiveEngine *string `json:"proactiveEngine"`
 }
 
 type Relationship struct {
@@ -182,6 +194,12 @@ type Completion struct {
 	DurationMS   int
 	GenerationMS int
 	RetryAfter   time.Duration
+}
+
+type Attachment struct {
+	ClipID     string `json:"clipId"`
+	Status     string `json:"status"`
+	DurationMS int    `json:"durationMs"`
 }
 
 type CleanupObject struct {

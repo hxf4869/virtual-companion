@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 )
 
 // inboxStore is the W10 inbox surface. Handlers bind it by type assertion so
@@ -26,22 +27,23 @@ type inboxLinkJSON struct {
 }
 
 type inboxEventJSON struct {
-	InboxID         string        `json:"inboxId"`
-	EventID         string        `json:"eventId"`
-	RelationshipID  string        `json:"relationshipId"`
-	ConversationID  string        `json:"conversationId"`
-	Branch          *string       `json:"branch"`
-	SourceRevision  *int64        `json:"sourceRevision"`
-	Intent          string        `json:"intent"`
-	Body            *string       `json:"body"`
-	Persisted       bool          `json:"persisted"`
-	STDelivered     bool          `json:"stDelivered"`
-	MessageID       *string       `json:"messageId"`
-	MessageRevision *int64        `json:"messageRevision"`
-	LinkStatus      string        `json:"linkStatus"`
-	Link            inboxLinkJSON `json:"link"`
-	ReadAt          *time.Time    `json:"readAt"`
-	Read            bool          `json:"read"`
+	InboxID         string            `json:"inboxId"`
+	EventID         string            `json:"eventId"`
+	RelationshipID  string            `json:"relationshipId"`
+	ConversationID  string            `json:"conversationId"`
+	Branch          *string           `json:"branch"`
+	SourceRevision  *int64            `json:"sourceRevision"`
+	Intent          string            `json:"intent"`
+	Body            *string           `json:"body"`
+	Persisted       bool              `json:"persisted"`
+	STDelivered     bool              `json:"stDelivered"`
+	MessageID       *string           `json:"messageId"`
+	MessageRevision *int64            `json:"messageRevision"`
+	LinkStatus      string            `json:"linkStatus"`
+	Link            inboxLinkJSON     `json:"link"`
+	ReadAt          *time.Time        `json:"readAt"`
+	Read            bool              `json:"read"`
+	Voice           *voice.Attachment `json:"voice,omitempty"`
 }
 
 type inboxClaimJSON struct {
@@ -71,6 +73,7 @@ func inboxEventJSONFrom(row postgres.InboxEvent) inboxEventJSON {
 		},
 		ReadAt: row.ReadAt,
 		Read:   row.ReadAt != nil,
+		Voice:  row.Voice,
 	}
 }
 

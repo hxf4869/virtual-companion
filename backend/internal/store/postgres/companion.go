@@ -16,7 +16,7 @@ const (
 		out_companion_name, out_user_address_as, out_reply_length,
 		out_initiative, out_humor, out_advice_pref, out_reminders_allowed,
 		out_memory_share_scope, out_avoid_topics, out_gender, out_avatar_ref,
-		out_kokoro_voice, out_cosy_voice, out_voice_speed, out_voice_frequency, out_proactive_voice `
+		out_kokoro_voice, out_cosy_voice, out_voice_speed, out_voice_frequency, out_proactive_voice, out_proactive_engine `
 	previewMaxRunes = 200
 )
 
@@ -670,7 +670,7 @@ func scanRelationshipRow(row relationshipRow) (Relationship, error) {
 		&rel.ID, &rel.PersonaRef, &rel.Active, &rel.CreatedAt,
 		&name, &addr, &rel.ReplyLength, &rel.Initiative, &rel.Humor, &rel.AdvicePref,
 		&rel.RemindersAllowed, &rel.MemoryShareScope, &topics, &rel.Gender, &rel.AvatarRef,
-		&rel.KokoroVoice, &rel.CosyVoice, &rel.Speed, &rel.VoiceFrequency, &rel.ProactiveVoice,
+		&rel.KokoroVoice, &rel.CosyVoice, &rel.Speed, &rel.VoiceFrequency, &rel.ProactiveVoice, &rel.ProactiveEngine,
 	); err != nil {
 		return Relationship{}, err
 	}
