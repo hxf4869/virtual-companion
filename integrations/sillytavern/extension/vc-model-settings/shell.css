@@ -669,3 +669,39 @@ body.vc-ui .vc-shell-scroll:has(.vc-large-title:not([data-shell-title])) > .vc-l
 body.vc-ui .vc-shell-scroll:has([data-vc-owned-title]) > .vc-large-title:not([data-vc-owned-title]) {
   display: none;
 }
+
+body.vc-ui #vc-shell[data-chrome="sidebar"] .vc-navbar [data-settings] {
+  display: none;
+}
+
+body.vc-ui .vc-shell-page[data-page="inbox"] .vc-inbox-tab > .vc-screen > .vc-navbar:not(.is-solid) {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: auto;
+  z-index: 4;
+  width: auto;
+  height: 56px;
+  padding: 0;
+  background: none;
+  pointer-events: none;
+}
+
+body.vc-ui .vc-shell-page[data-page="inbox"] .vc-inbox-tab > .vc-screen > .vc-navbar:not(.is-solid) .vc-nav-save {
+  pointer-events: auto;
+}
+
+body.vc-ui .vc-shell-page[data-page="story"] .vc-story-tab:not([data-view="stage"]) .vc-scroll {
+  padding-top: env(safe-area-inset-top);
+}
+
+body.vc-ui .vc-shell-page[data-page="story"] .vc-story-tab:not([data-view="stage"]) .vc-navbar {
+  display: none;
+}
+
+@media (min-width: 744px) {
+  body.vc-ui .vc-shell-page[data-page="memory"] .vc-memory-tab:not(.is-detail) .vc-column,
+  body.vc-ui .vc-shell-page[data-page="inbox"] .vc-inbox-tab:not(.is-detail) .vc-column {
+    padding-top: 0;
+  }
+}

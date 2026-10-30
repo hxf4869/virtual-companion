@@ -25,6 +25,16 @@ let generationFailed = false;
 let stickToBottom = true;
 let seenScrollHeight = 0;
 let pendingReply = false;
+let pinBottom = true;
+let pinTries = 0;
+let pinFrame = 0;
+let pinUntil = 0;
+let applyingScroll = 0;
+let userScroll = false;
+let chatWasLaidOut = false;
+const PIN_TRIES = 8;
+const PIN_MS = 600;
+const LAID_OUT_PX = 48;
 let lastChatId;
 let arrivalsPrimed = false;
 let inspectorSegment = null;
@@ -197,6 +207,8 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
     tuckWand(doc);
     bindComposer(doc);
     bindScroll(chat);
+    watchChatBox(chat);
+    watchChatColumn(doc);
     bindPress(chat);
     bindActions(chat);
     bindStop(doc);
@@ -265,9 +277,7 @@ function subscribe(doc) {
             generationFailed = false;
         }
         if (id) lastChatId = id;
-        stickToBottom = true;
-        pendingReply = false;
-        seenScrollHeight = 0;
+        armPin();
         refreshAll();
     });
     on(types.CHARACTER_MESSAGE_RENDERED, refreshAll);
@@ -790,12 +800,96 @@ function readMaxHeight(box) {
     return 140;
 }
 
+function nowMs() {
+    const clock = globalThis.performance?.now;
+    return typeof clock === 'function' ? clock.call(globalThis.performance) : Date.now();
+}
+
+function armPin() {
+    pinBottom = true;
+    stickToBottom = true;
+    pendingReply = false;
+    seenScrollHeight = 0;
+    pinTries = 0;
+    pinUntil = nowMs() + PIN_MS;
+}
+
+function pinActive() {
+    return pinBottom && nowMs() < pinUntil;
+}
+
+function chatLaidOut(chat) {
+    return (Number(chat?.clientHeight) || 0) >= LAID_OUT_PX;
+}
+
+function schedulePin() {
+    scheduleFrame({
+        get current() { return pinFrame; },
+        set current(value) { pinFrame = value; },
+    }, () => {
+        if (!pinBottom && !stickToBottom) return;
+        followIfNeeded();
+    });
+}
+
+function watchChatBox(chat) {
+    if (!chat || chat.getAttribute?.('data-vc-size-watch') === 'on') return;
+    if (typeof globalThis.ResizeObserver !== 'function') return;
+    chat.setAttribute('data-vc-size-watch', 'on');
+    const observer = new globalThis.ResizeObserver(() => {
+        const laidOut = chatLaidOut(chat);
+        if (laidOut && !chatWasLaidOut) {
+            armPin();
+            followIfNeeded();
+        } else if (laidOut && (pinBottom || stickToBottom)) {
+            followIfNeeded();
+        }
+        chatWasLaidOut = laidOut;
+    });
+    observer.observe(chat);
+    chatWasLaidOut = chatLaidOut(chat);
+}
+
+function watchChatColumn(doc) {
+    const shell = doc.querySelector?.('#vc-shell');
+    if (!shell) return;
+    watch(shell, { attributes: true, attributeFilter: ['data-chat'] }, () => {
+        if (shell.getAttribute?.('data-chat') !== 'open') {
+            chatWasLaidOut = false;
+            return;
+        }
+        armPin();
+        followIfNeeded();
+    });
+}
+
 function bindScroll(chat) {
     if (!chat?.addEventListener) return;
+    const markUserScroll = () => { userScroll = true; };
+    chat.addEventListener('wheel', markUserScroll, { passive: true });
+    chat.addEventListener('touchmove', markUserScroll, { passive: true });
+    chat.addEventListener('pointerdown', (event) => {
+        if (event.target === chat) markUserScroll();
+    });
     const run = () => {
         scrollFrame = 0;
         applyPosterFrame();
-        stickToBottom = isNearBottom(chat);
+        if (applyingScroll) {
+            seenScrollHeight = Number(chat.scrollHeight) || 0;
+            return;
+        }
+        if (userScroll) {
+            userScroll = false;
+            pinUntil = 0;
+            pinBottom = false;
+            stickToBottom = isNearBottom(chat);
+        } else if (pinActive() && chatLaidOut(chat) && !isNearBottom(chat) && pinTries < PIN_TRIES) {
+            schedulePin();
+            return;
+        } else {
+            stickToBottom = isNearBottom(chat);
+            if (!stickToBottom) pinBottom = false;
+        }
         seenScrollHeight = Number(chat.scrollHeight) || 0;
         if (stickToBottom) pendingReply = false;
         const show = shouldShowNewReply({ nearBottom: stickToBottom, pending: pendingReply });
@@ -875,12 +969,29 @@ function followIfNeeded() {
     const height = Number(chat.scrollHeight) || 0;
     const grew = height > seenScrollHeight + 1;
     const jump = document.querySelector('#vc-new-reply');
-    if (stickToBottom) {
-        if (height && chat.scrollTop !== height) chat.scrollTop = height;
+    if (stickToBottom || pinActive()) {
+        // 会话列在 display:none 或 1px 折叠时写 scrollTop 会被浏览器丢掉，旧位置会留到打开之后。
+        if (!chatLaidOut(chat)) {
+            if (pinActive() && pinTries < PIN_TRIES) {
+                pinTries += 1;
+                schedulePin();
+            }
+            return;
+        }
+        const top = Number(chat.scrollTop) || 0;
+        if (height && top < height - 1) {
+            applyingScroll += 1;
+            chat.scrollTop = height;
+            applyingScroll = Math.max(0, applyingScroll - 1);
+        }
         pendingReply = false;
         seenScrollHeight = Number(chat.scrollHeight) || height;
         removeClass(jump, 'is-on');
         toggleClass(chat, 'vc-jump-pad', false);
+        if (pinActive() && !isNearBottom(chat) && pinTries < PIN_TRIES) {
+            pinTries += 1;
+            schedulePin();
+        }
         return;
     }
     if (grew) pendingReply = true;

@@ -85,6 +85,21 @@ test('W07 最终出站核对使用原会话/CSRF/期望身份；来源不可用�
     await refreshMemorySlot({ request: req, response, finalBody: body, config: {}, fetchImpl: async () => assert.fail() });
     assert.deepEqual(body.messages, [{ role: 'user', content: '新问题' }]);
 });
+test('本轮召回成功但没有记忆时，不把空槽记成来源变化', async () => {
+    const h = host();
+    let block = '旧事实';
+    const c = h.controller(async () => ({ status: 'ok', block }));
+    await c.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    c.finalStatus({ chatIdentity: id, revision: 4, status: 'skipped' });
+    assert.match(h.status.at(-1), /来源已变化/);
+    block = '';
+    await c.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    c.finalStatus({ chatIdentity: id, revision: 4, status: 'skipped' });
+    assert.equal(h.status.at(-1), '');
+    assert.equal(h.status.filter((item) => String(item).includes('来源已变化')).length, 1);
+    c.finalStatus({ chatIdentity: id, revision: 4, status: 'ok' });
+    assert.equal(h.status.at(-1), '');
+});
 test('W07 请求身份改变中止生成；伪造recall输入拒绝', async () => {
     assert.throws(() => memoryRequest({ ...input, revision: -1, block: '' }), (e) => e.code === 'VC_MEMORY_REQUEST_INVALID');
     await assert.rejects(refreshMemorySlot({ config: { goBaseUrl: 'http://go', timeoutMs: 1000 },
