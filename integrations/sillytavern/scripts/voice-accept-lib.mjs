@@ -29,6 +29,10 @@ export async function voiceShots(page, ctx, id, name) {
         await page.evaluate((value) => { localStorage.setItem('vc-theme', value); document.documentElement.setAttribute('data-vc-theme', value); }, theme);
         await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth <= 1), 'voice viewport overflow');
+        assert.ok(await page.evaluate(()=>[...document.querySelectorAll('.vc-voice-bar')].every((bar)=>{
+            const duration=bar.querySelector('.vc-voice-duration')?.getBoundingClientRect(),bounds=bar.getBoundingClientRect();
+            return !duration || duration.right<=bounds.right+1 && duration.left>=bounds.left-1;
+        })),'short voice duration stays inside its bar');
         const file = path.join(dir, `${name}-${width}-${theme}.png`);
         await page.screenshot({ path: file }); ctx.screenshots?.push(file);
     }
