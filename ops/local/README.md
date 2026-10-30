@@ -28,6 +28,10 @@ VC_LOCAL_RESET_CONFIRM=WIPE-LOCAL-DATA bash scripts/local/dev.sh reset --confirm
 
 ## 模型
 
+本机镜像的语音使用同一份固定 WAV fixture：`voice-fixture` 与 runtime 共享私有网络命名空间，
+不发布端口、不下载 TTS 模型、不保存输入文本。浏览器仍只调用 Go；生产部署使用私有真实引擎。
+fixture 日志沿用 3×10 MB 的轮换上限，无持久数据卷。
+
 重排和嵌入模型复用本机已有文件，不自动下载。找不到时，`up` 会在错误输出里给出一条下载命令。
 
 ## 从已有数据恢复

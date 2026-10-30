@@ -3,6 +3,14 @@
 这是 V2 栈；同级旧 Compose 不包含 ST 和 MemoryCore。所有服务器命令通过 ssh-skill 执行。
 应用版本由 `compose.env` 的 `VC_IMAGE_TAG` 决定，仅供 Owner 非商业使用，不开放注册。
 
+语音接网：在服务器同目录私有 `deploy.env` 写入 `VC_VOICE_NETWORK` 与
+`VC_VOICE_KOKORO_CONTAINER` / `VC_VOICE_COSYVOICE_CONTAINER` / `VC_VOICE_ASR_CONTAINER`，
+只填写启用的引擎。实际网络名、容器名与地址不进仓库。`runtime.env` 写入含 `/v1` 的
+`VC_TTS_KOKORO_URL`、`VC_TTS_COSYVOICE_URL`、`VC_ASR_URL`；空值隐藏对应能力。
+部署自动用 `voice.override.yaml` 将共享网络命名空间的 ingress 接入私网，检查语音容器无非回环端口发布，
+只把重启策略更新为 `unless-stopped`；不修改线程、步数、模型或量化。自检在 runtime 内探测三个已配置引擎。
+生产首次启用前必须完成 VO-12 的语音加密备份 / 恢复验收；批次末使用合成账号经 Go API 联调，不直接暴露引擎。
+
 ## 网络和数据
 
 现有 Nginx 终止公网域名（`VC_PUBLIC_HOST`）的 TLS，加入 `vc-v2-edge` 后访问

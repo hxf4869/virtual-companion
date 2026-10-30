@@ -464,7 +464,7 @@ cmd_status() {
 cmd_logs() {
     [[ $# -eq 1 ]] || { usage; exit 2; }
     case "$1" in
-        ingress|db|minio|minio-init|migrate|bootstrap|runtime|embedding|rerank|memorycore|st) ;;
+        ingress|db|minio|minio-init|migrate|bootstrap|runtime|embedding|rerank|memorycore|st|voice-fixture) ;;
         *) echo "未知服务" >&2; exit 2 ;;
     esac
     common_init

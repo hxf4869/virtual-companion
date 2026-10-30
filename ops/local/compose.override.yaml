@@ -46,6 +46,33 @@ services:
     env_file: !override
       - path: ${VC_LOCAL_STATE:?local state}/runtime.env
         format: raw
+    environment:
+      VC_TTS_KOKORO_URL: http://127.0.0.1:8757/voice-fixture/kokoro/v1
+      VC_TTS_COSYVOICE_URL: http://127.0.0.1:8757/voice-fixture/cosyvoice/v1
+    depends_on:
+      voice-fixture: {condition: service_healthy}
+
+  voice-fixture:
+    image: virtual-companion-st:local
+    user: "1000:1000"
+    init: true
+    network_mode: service:ingress
+    command: [node, /opt/vc/integrations/sillytavern/scripts/local-voice-fixture.mjs]
+    volumes:
+      - ${VC_REPO_ROOT:?repo}/integrations/sillytavern/scripts/local-voice-fixture.mjs:/opt/vc/integrations/sillytavern/scripts/local-voice-fixture.mjs:ro
+      - ${VC_REPO_ROOT:?repo}/integrations/sillytavern/scripts/managed-voice-fixture.mjs:/opt/vc/integrations/sillytavern/scripts/managed-voice-fixture.mjs:ro
+    depends_on: {ingress: {condition: service_started}}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8757/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
 
   memorycore:
     build:

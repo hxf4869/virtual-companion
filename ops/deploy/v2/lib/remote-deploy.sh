@@ -101,7 +101,13 @@ rewrite_tag() {
 }
 
 compose() {
-  docker compose --env-file "$VC_DEPLOY_COMPOSE_ENV" -f ops/deploy/v2/compose.yaml "$@"
+  local voice_file="$(dirname "$VC_DEPLOY_COMPOSE_ENV")/deploy.env" voice_network=""
+  if [ -f "$voice_file" ]; then voice_network=$(compose_raw VC_VOICE_NETWORK "$voice_file" || true); fi
+  if [ -n "$voice_network" ]; then
+    VC_VOICE_NETWORK="$voice_network" docker compose --env-file "$VC_DEPLOY_COMPOSE_ENV" -f ops/deploy/v2/compose.yaml -f ops/deploy/v2/voice.override.yaml "$@"
+  else
+    docker compose --env-file "$VC_DEPLOY_COMPOSE_ENV" -f ops/deploy/v2/compose.yaml "$@"
+  fi
 }
 
 service_ok() {
@@ -206,6 +212,11 @@ safe_token "$old_tag" || die "VC_IMAGE_TAG 格式无效"
 printf '%s\n' "$old_tag" > "$VC_DEPLOY_PREVIOUS_TAG_FILE"
 chmod 600 "$VC_DEPLOY_PREVIOUS_TAG_FILE"
 rewrite_tag "$VC_DEPLOY_COMPOSE_ENV" "$VC_NEW_IMAGE_TAG"
+
+if ! python3 ops/deploy/v2/lib/voice-ops.py --settings "$(dirname "$VC_DEPLOY_COMPOSE_ENV")/deploy.env" --runtime "$(dirname "$VC_DEPLOY_COMPOSE_ENV")/runtime.env"; then
+  print_rollback
+  exit 1
+fi
 
 # st-data 卷挂在镜像的数据目录上，镜像里的新扩展只在卷首次创建时复制一次。
 # 每次部署把镜像自带的三个扩展同步进卷（旧版先打包备份），否则前端代码不会更新。
@@ -333,6 +344,24 @@ if [ "$rc" -ne 0 ] || [ "$model_body" != "healthy" ]; then
 else
   echo "重排: ok"
   echo "向量: ok"
+fi
+
+if ! compose exec -T runtime sh -c '
+  failed=0
+  for engine in kokoro cosyvoice asr; do
+    case "$engine" in
+      kokoro) base=${VC_TTS_KOKORO_URL:-}; path=/voices ;;
+      cosyvoice) base=${VC_TTS_COSYVOICE_URL:-}; path=/healthz ;;
+      asr) base=${VC_ASR_URL:-}; path=/healthz ;;
+    esac
+    if [ -z "$base" ]; then printf "%s: disabled\n" "$engine"; continue; fi
+    if [ "$engine" = kokoro ]; then url="${base%/}${path}"; else url="${base%/v1}${path}"; fi
+    if wget -T 5 -q -O /dev/null "$url" >/dev/null 2>&1; then printf "%s: ok\n" "$engine"; else printf "%s: failed\n" "$engine"; failed=1; fi
+  done
+  exit "$failed"
+'; then
+  echo "FAIL: 语音健康自检" >&2
+  health_fail=1
 fi
 
 if [ "$health_fail" -ne 0 ]; then

@@ -1,0 +1,10 @@
+# Only used when the server-side deploy.env supplies VC_VOICE_NETWORK.
+# runtime shares ingress's network namespace; attaching runtime itself is invalid.
+services:
+  ingress:
+    networks:
+      voice: {}
+networks:
+  voice:
+    external: true
+    name: ${VC_VOICE_NETWORK:?set only in server deploy.env}

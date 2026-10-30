@@ -32,6 +32,11 @@ function git(args) {
 const HEAD = git(['rev-parse', 'HEAD']);
 const SHORT = git(['rev-parse', '--short=8', 'HEAD']);
 
+test('语音部署仅接私网、拒绝公网端口且不改推理参数', () => {
+  const result=spawnSync('python3',[path.join(HERE,'voice_ops_test.py')],{encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+});
+
 function assertNoSecrets(text) {
   for (const secret of SECRETS) {
     assert.equal(text.includes(secret), false, `输出含有不应出现的值: ${secret}`);
@@ -72,6 +77,8 @@ function prepareServer(tmp, { omit = [], dirty = false } = {}) {
   fs.writeFileSync(path.join(source, 'backend', 'internal', 'migrate', 'sql', 'V1__a.sql'), '-- a\n');
   fs.writeFileSync(path.join(source, 'backend', 'internal', 'migrate', 'sql', 'V2__b.sql'), '-- b\n');
   fs.writeFileSync(path.join(source, 'ops', 'deploy', 'v2', 'compose.yaml'), 'name: vc-v2\n');
+  fs.mkdirSync(path.join(source,'ops','deploy','v2','lib'),{recursive:true});
+  fs.copyFileSync(path.join(ROOT,'ops','deploy','v2','lib','voice-ops.py'),path.join(source,'ops','deploy','v2','lib','voice-ops.py'));
   const orderLog = path.join(logs, 'order.log');
   const backup = `#!/usr/bin/env bash
 set -euo pipefail
