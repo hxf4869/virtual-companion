@@ -14,11 +14,11 @@ export function encodeMonoWAV(samples, sampleRate=16000) {
     return new Blob([data],{type:'audio/wav'});
 }
 
-export async function recordingWAV(blob, {AudioContext: Context=globalThis.AudioContext || globalThis.webkitAudioContext, OfflineAudioContext: Offline=globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext}={}) {
+export async function recordingWAV(blob, {maxSeconds=60,AudioContext: Context=globalThis.AudioContext || globalThis.webkitAudioContext, OfflineAudioContext: Offline=globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext}={}) {
     const decoder=new Context();
     try {
         const decoded=await decoder.decodeAudioData(await blob.arrayBuffer());
-        const frames=Math.min(60*16000,Math.ceil(decoded.duration*16000));
+        const frames=Math.min(maxSeconds*16000,Math.ceil(decoded.duration*16000));
         if (!frames || frames>60*16000) throw new Error('duration');
         const mono=decoder.createBuffer(1,decoded.length,decoded.sampleRate);
         const target=mono.getChannelData(0);
@@ -67,7 +67,7 @@ export function installVoiceInput({getContext,sendText,doc=globalThis.document,r
                 const raw=new Blob(chunks,{type:activeRecorder.mimeType});chunks.length=0;release();
                 if(cancelled || getContext().chat!==recordingChat){reset();return;}
                 try {
-                    const {wav,durationMs}=await recordingWAV(raw);
+                    const {wav,durationMs}=await recordingWAV(raw,{maxSeconds});
                     const result=await recognize(wav);
                     if(getContext().chat!==recordingChat){reset();return;}
                     const metadata={durationMs};if(['HAPPY','SAD','ANGRY'].includes(result.emotion))metadata.emotion=result.emotion;

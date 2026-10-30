@@ -26,6 +26,22 @@ test('声道先平均、OfflineAudioContext 完成抗混叠重采样，解码器
     assert.equal(frames,16000);assert.equal(rate,16000);assert.equal(sourceBuffer.getChannelData(0)[0],.25);assert.equal(result.durationMs,1000);assert.equal(closed,true);
 });
 
+test('编码器尾部填充按用户配置的录音上限裁切，避免自动发送被 ASR 拒绝',async()=>{
+    class Decoder {
+        async decodeAudioData(){return {duration:1.02,length:48960,sampleRate:48000,numberOfChannels:1,getChannelData:()=>new Float32Array(48960)};}
+        createBuffer(){return {getChannelData:()=>new Float32Array(48960)};}
+        async close(){}
+    }
+    class Offline {
+        constructor(channels,length,sampleRate){assert.equal(channels,1);assert.equal(sampleRate,16000);this.length=length;}
+        createBufferSource(){return {connect(){},start(){}};}
+        async startRendering(){return {duration:this.length/16000,getChannelData:()=>new Float32Array(this.length)};}
+    }
+    const {wav,durationMs}=await recordingWAV(new Blob(['synthetic']),{maxSeconds:1,AudioContext:Decoder,OfflineAudioContext:Offline});
+    const view=new DataView(await wav.arrayBuffer());
+    assert.equal(view.getUint32(40,true),16000*2);assert.equal(durationMs,1000);
+});
+
 test('ASR 容器解析仅接受一个有界单声道 WAV，不使用磁盘录音',()=>{
     const result=spawnSync('python3',[fileURLToPath(new URL('../../../ops/voice/asr/server_test.py',import.meta.url))],{encoding:'utf8'});
     assert.equal(result.status,0,result.stderr);
