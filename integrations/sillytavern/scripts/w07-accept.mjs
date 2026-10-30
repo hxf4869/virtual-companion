@@ -46,9 +46,11 @@ function finalText(capture) {
         : (m.content || []).map((part) => part.text || '').join('\n')).join('\n');
 }
 function historyBlock(text) {
-    const blocks = [...text.matchAll(/<vc-long-term-memory>\n([\s\S]*?)\n<\/vc-long-term-memory>/g)];
-    assert.equal(blocks.length, 1, '最终请求应恰有一个专用长期记忆块');
-    return blocks[0][1];
+    const topic = [...text.matchAll(/<vc-long-term-memory>\n([\s\S]*?)\n<\/vc-long-term-memory>/g)];
+    const core = [...text.matchAll(/<vc-core-memory>\n([\s\S]*?)\n<\/vc-core-memory>/g)];
+    assert.equal(topic.length, 1, '最终请求应恰有一个专用长期记忆块');
+    assert.ok(core.length <= 1, '常驻核心记忆最多一块');
+    return [topic[0][1], ...core.map((item) => item[1])].join('\n');
 }
 
 export async function sceneMemoryBrowser(ctx) {
@@ -306,7 +308,9 @@ export async function sceneMemoryBrowser(ctx) {
         await dialog.locator('[data-action="close"]').click();
         assert.equal(await page.locator('#extensionsMenuButton').evaluate(el => el === document.activeElement && el.getClientRects().length > 0), true, '记忆页关闭回到可见扩展菜单入口焦点');
         await setMemory(false);
-        assert.equal((await send('（关闭记忆合成验证）')).includes('<vc-long-term-memory>'), false, '关闭开关后实际出站不能保留旧块');
+        const disabled = await send('（关闭记忆合成验证）');
+        assert.equal(disabled.includes('<vc-long-term-memory>'), false, '关闭开关后实际出站不能保留旧块');
+        assert.equal(disabled.includes('<vc-core-memory>'), false, '关闭开关后不能保留常驻摘要');
         step('遗忘婚礼并编辑旧聊天来源');
                 await page.locator('#extensionsMenuButton').click();
         await page.locator('#vc_memory_menu_button').click();

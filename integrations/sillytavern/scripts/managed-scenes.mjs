@@ -20,6 +20,7 @@ import { f3SettingsScene } from './f3-settings-accept.mjs';
 import { vcUiShellScene } from './vc-ui-shell-accept.mjs';
 import { vcUiWalkthroughScene } from './vc-ui-walkthrough.mjs';
 import { f2ChatUiScene } from './f2-chat-accept.mjs';
+import { hlReplyScene } from './hl-reply-accept.mjs';
 import { consentUiScene } from './consent-accept.mjs';
 
 export const ACCEPT_SCENES = [
@@ -64,5 +65,6 @@ export const ACCEPT_SCENES = [
     vcUiShellScene,
     vcUiWalkthroughScene,
     f2ChatUiScene,
+    hlReplyScene,
     consentUiScene,
 ];

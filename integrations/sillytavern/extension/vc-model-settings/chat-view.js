@@ -9,6 +9,16 @@ import { bindSegment } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 import { popMenu } from './ui/menu.js';
 import { prefersReducedMotion } from './ui/motion.js';
+import {
+    TYPING_COPY,
+    armRewrite,
+    createSendBurst,
+    noteTurn,
+    planReplyAction,
+    shouldQueueSend,
+    splitReply,
+    typingDelay,
+} from './reply-pipeline.js';
 import { openSheet } from './ui/sheet.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 
@@ -47,6 +57,9 @@ let chatFrame = 0;
 let statusFrame = 0;
 let shellFrame = 0;
 let generatingMes = null;
+let generationLive = false;
+let rewriteCount = 0;
+let revealMesId = '';
 const seenMessages = new WeakSet();
 
 export function readReplyStyle(storage) {
@@ -217,6 +230,7 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
     dressComposer(doc);
     tuckWand(doc);
     bindComposer(doc);
+    installSendBurst(doc);
     bindScroll(chat);
     watchChatBox(chat);
     watchChatColumn(doc);
@@ -239,7 +253,10 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
     if (chat) {
         watch(chat, { childList: true, subtree: true, characterData: true }, scheduleChatMutations);
     }
-    watch(doc.body, { attributes: true, attributeFilter: ['data-generating'] }, syncGenerating);
+    watch(doc.body, { attributes: true, attributeFilter: ['data-generating'] }, () => {
+        syncGenerating();
+        if (document.body?.getAttribute?.('data-generating') !== 'true') refreshMessages();
+    });
     const toasts = doc.querySelector('#toast-container');
     if (toasts) watch(toasts, { childList: true, subtree: true }, () => { absorbMemoryToasts(); noteFailure(); syncStatusSpace(); });
     const onMemoryNotice = (event) => applyMemoryNotice(event?.detail?.text || '');
@@ -321,6 +338,8 @@ function subscribe(doc) {
     const types = ctx?.eventTypes || {};
     const on = (name, fn) => { if (name && events?.on) events.on(name, fn); };
     on(types.CHAT_CHANGED, () => {
+        rewriteCount = 0;
+        revealMesId = '';
         const id = String(safeContext()?.chatId ?? '');
         if (lastChatId && id && id !== lastChatId) {
             userStopped = false;
@@ -330,17 +349,26 @@ function subscribe(doc) {
         armPin();
         refreshAll();
     });
-    on(types.CHARACTER_MESSAGE_RENDERED, refreshAll);
+    on(types.MESSAGE_SENT, () => { rewriteCount = 0; });
+    on(types.CHARACTER_MESSAGE_RENDERED, (id, type) => {
+        const live = generationLive;
+        generationLive = false;
+        if (live && type !== 'first_message') settleReply(id);
+        refreshAll();
+    });
     on(types.MESSAGE_SWIPED, () => { refreshMessages(); followIfNeeded(); });
     on(types.GENERATION_STARTED, (type, _detail, dryRun) => {
+        noteTurn(type || 'normal');
         // 宿主 PromptManager 在生成结束后用 dryRun 的 Generate('normal') 重算上下文，
         // 仍会发出 GENERATION_STARTED。那不是用户新发的一轮，不能清掉「已停止」。
-        if (type === 'quiet' || dryRun) return;
+        if (type === 'quiet' || type === 'impersonate' || dryRun) return;
+        generationLive = true;
         userStopped = false;
         generationFailed = false;
         syncGenerating();
     });
     on(types.GENERATION_STOPPED, () => {
+        generationLive = false;
         userStopped = true;
         syncGenerating();
     });
@@ -536,6 +564,7 @@ function refreshMessages() {
     }
     if (!streaming) arrivalsPrimed = true;
     syncGenerating();
+    paintReplyMessages(list);
 }
 
 function ensureTools(mes, { character }) {
@@ -637,6 +666,177 @@ function regenerate() {
     }
     const generate = safeContext()?.generate;
     if (typeof generate === 'function') generate('regenerate');
+}
+
+function companionMode() {
+    const ctx = safeContext();
+    if (!ctx || ctx.groupId) return false;
+    return ctx.chatMetadata?.vc_binding?.mode === 'COMPANION';
+}
+
+function writeBox(box, value) {
+    const proto = globalThis.HTMLTextAreaElement && Object.getOwnPropertyDescriptor(globalThis.HTMLTextAreaElement.prototype, 'value');
+    if (proto?.set) proto.set.call(box, value);
+    else box.value = value;
+    box.dispatchEvent?.(new Event('input', { bubbles: true }));
+}
+
+function installSendBurst(doc) {
+    if (doc.body?.getAttribute?.('data-vc-reply-debounce') === 'on') return;
+    doc.body?.setAttribute?.('data-vc-reply-debounce', 'on');
+    const box = doc.querySelector('#send_textarea');
+    const send = doc.querySelector('#send_but');
+    if (!box || !send) return;
+    let bypass = false;
+    const burst = createSendBurst({
+        onFlush(text) {
+            bypass = true;
+            try {
+                writeBox(box, text);
+                send.click();
+            } finally {
+                bypass = false;
+            }
+        },
+    });
+    const queue = (event) => {
+        if (bypass || !companionMode()) return;
+        const text = String(box.value || '');
+        if (!shouldQueueSend(text, burst.pending())) return;
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        event.stopImmediatePropagation?.();
+        writeBox(box, '');
+        burst.push(text.trim());
+    };
+    send.addEventListener('click', queue, true);
+    doc.addEventListener?.('keydown', (event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
+        if (doc.activeElement !== box && event.target !== box) return;
+        queue(event);
+    }, true);
+}
+
+function messageSource(mes) {
+    const raw = mes?.getAttribute?.('mesid');
+    const id = typeof raw === 'string' && /^(0|[1-9]\d*)$/.test(raw) ? Number(raw) : NaN;
+    const chat = safeContext()?.chat;
+    if (!Number.isInteger(id) || !Array.isArray(chat)) return '';
+    const message = chat[id];
+    return typeof message?.mes === 'string' ? message.mes : '';
+}
+
+function richMessage(mes) {
+    return Boolean(mes.querySelector?.('.mes_text')?.querySelector?.('iframe, img, video, .TH-render'));
+}
+
+function clearReplyBubbles(mes) {
+    removeNode(mes.querySelector?.('.vc-segs'));
+    removeClass(mes, 'vc-segmented');
+    mes.removeAttribute?.('data-vc-segs');
+    mes.querySelector?.('.mes_text')?.removeAttribute?.('aria-hidden');
+}
+
+export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule = setTimeout } = {}) {
+    if (!mes) return;
+    const segments = splitReply(String(text ?? ''));
+    if (segments.length <= 1) {
+        clearReplyBubbles(mes);
+        return;
+    }
+    const key = segments.join('\u0001');
+    const existing = mes.querySelector?.('.vc-segs');
+    if (mes.getAttribute?.('data-vc-segs') === key && existing) return;
+    clearReplyBubbles(mes);
+    mes.setAttribute?.('data-vc-segs', key);
+    addClass(mes, 'vc-segmented');
+    const textEl = mes.querySelector?.('.mes_text');
+    textEl?.setAttribute?.('aria-hidden', 'true');
+    const box = document.createElement('div');
+    box.className = 'vc-segs';
+    const parent = textEl?.parentElement || textEl?.parent || mes;
+    if (textEl) insertBefore(parent, box, textEl.nextSibling || null);
+    else parent.append?.(box);
+    const paint = (count, typing) => {
+        clearChildren(box);
+        for (let index = 0; index < count; index += 1) {
+            const seg = document.createElement('p');
+            seg.className = segments[index].startsWith('<sticker') ? 'vc-seg vc-seg-sticker' : 'vc-seg';
+            seg.textContent = segments[index];
+            box.append(seg);
+        }
+        if (typing) {
+            const note = document.createElement('p');
+            note.className = 'vc-typing';
+            note.setAttribute('role', 'status');
+            note.textContent = TYPING_COPY;
+            box.append(note);
+        }
+    };
+    if (reducedMotion || prefersReducedMotion()) {
+        paint(segments.length, false);
+        return;
+    }
+    let spent = 0;
+    const step = (index) => {
+        if (mes.getAttribute?.('data-vc-segs') !== key) return;
+        paint(index + 1, index + 1 < segments.length);
+        if (index + 1 >= segments.length) return;
+        const delay = typingDelay(segments[index + 1], index + 1, { spentMs: spent });
+        spent += delay;
+        schedule(() => step(index + 1), delay);
+    };
+    const first = typingDelay(segments[0], 0, { spentMs: 0 });
+    paint(0, true);
+    spent = first;
+    schedule(() => step(0), first);
+}
+
+function paintReplyMessages(list) {
+    if (!companionMode()) {
+        for (const mes of list) clearReplyBubbles(mes);
+        return;
+    }
+    const streaming = document.body?.getAttribute?.('data-generating') === 'true';
+    const live = streaming ? [...list].reverse().find((mes) => !isUser(mes) && !isSystem(mes)) : null;
+    for (const mes of list) {
+        if (isUser(mes) || isSystem(mes)) {
+            clearReplyBubbles(mes);
+            continue;
+        }
+        const reveal = revealMesId !== '' && mes.getAttribute?.('mesid') === revealMesId;
+        if (richMessage(mes) || (streaming && mes === live)) {
+            clearReplyBubbles(mes);
+            continue;
+        }
+        const raw = messageSource(mes) || mes.querySelector?.('.mes_text')?.textContent || '';
+        renderReplyBubbles(mes, raw, { reducedMotion: reveal ? prefersReducedMotion() : true });
+    }
+}
+
+function settleReply(id) {
+    if (!companionMode()) return;
+    const index = Number(id);
+    const chat = safeContext()?.chat;
+    if (!Number.isInteger(index) || !Array.isArray(chat)) return;
+    const message = chat[index];
+    if (!message || message.is_user || message.is_system) return;
+    const plan = planReplyAction({ text: message.mes, rewritten: rewriteCount > 0 });
+    if (plan.action === 'rewrite') {
+        rewriteCount += 1;
+        armRewrite(plan.hint);
+        regenerate();
+        return;
+    }
+    if (plan.processed.text !== message.mes) {
+        message.mes = plan.processed.text;
+        if (Array.isArray(message.swipes)) {
+            const swipe = Number.isInteger(message.swipe_id) ? message.swipe_id : message.swipes.length - 1;
+            if (swipe >= 0 && swipe < message.swipes.length) message.swipes[swipe] = plan.processed.text;
+        }
+        try { safeContext()?.saveChat?.(); } catch { /* 保存失败时下一轮仍按当前文本显示。 */ }
+    }
+    revealMesId = String(index);
 }
 
 function animateSwipe(mes, direction) {

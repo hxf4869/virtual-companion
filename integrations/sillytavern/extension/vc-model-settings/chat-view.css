@@ -288,6 +288,56 @@ body.vc-ui.vc-reply-bubble #chat > .mes:not([is_user="true"]) .mes_text {
   line-height: var(--vc-lh-bubble);
 }
 
+body.vc-ui #chat > .mes.vc-segmented .mes_text {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+}
+
+body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not([is_user="true"]):not([is_system="true"]) > .mes_block {
+  width: 100% !important;
+  max-width: 80% !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+body.vc-ui #chat > .mes.vc-segmented .vc-segs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-xs);
+  width: 100%;
+}
+
+body.vc-ui #chat > .mes.vc-segmented .vc-seg {
+  margin: 0;
+  color: var(--vc-ink);
+  font-size: var(--vc-fs-reading);
+  line-height: var(--vc-lh-reading);
+}
+
+body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented .vc-seg {
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--vc-space-sm) var(--vc-space-md);
+  background: color-mix(in srgb, rgb(var(--vc-tint)) 10%, var(--vc-bubble-char));
+  border-radius: var(--vc-radius-lg);
+  border-bottom-left-radius: 6px;
+  font-size: var(--vc-fs-bubble);
+  line-height: var(--vc-lh-bubble);
+}
+
+body.vc-ui #chat > .mes.vc-segmented .vc-typing {
+  margin: 0;
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+  line-height: var(--vc-lh-footnote);
+}
+
 body.vc-ui #chat > .mes .mes_buttons,
 body.vc-ui #chat > .mes .swipe_left,
 body.vc-ui #chat > .mes .swipe_right,
