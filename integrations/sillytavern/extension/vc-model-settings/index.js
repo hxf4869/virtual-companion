@@ -23,6 +23,9 @@ import { mountDataRights } from './data-rights.js';
 import { mountMemoryPage, mountMemoryTab } from './memory-page.js';
 import { mountInboxPage, mountInboxTab } from './inbox-page.js';
 import { bindingsFromContext, cardsFromContext, createCompanionInstance, importNativeCharacterFile, mountCharactersTab, mountInstancePage } from './instance-page.js';
+import { openCompanionStyle, saveNativePersona } from './persona.js';
+import { maybeStartOnboarding } from './onboarding.js';
+import { injectCompanionPrompt } from './companion-prompt.js';
 import { planOpenCreatedChat } from './instance-open.js';
 import { commitStoryProjectionSave } from './projection-save.js';
 import { mountStoryPage, mountStoryTab } from './story-page.js';
@@ -65,6 +68,7 @@ function mountVcUi() {
         ['vc-ui-css', './vc-ui.css'],
         ['vc-drawers-css', './drawers.css'],
         ['vc-settings-pages-css', './settings-pages.css'],
+        ['vc-companion-persona-css', './companion-persona.css'],
     ]) {
         if (document.getElementById(id)) continue;
         const link = document.createElement('link');
@@ -151,7 +155,11 @@ export async function init() {
         onStatus: (message) => { reportMemory(message); if (message.includes('跳过')) globalThis.toastr?.warning(message); },
     });
     reportMemory = mountMemoryControls({ getContext, reset: memory.reset });
-    globalThis[MEMORY_INTERCEPTOR] = memory.intercept;
+    const memoryIntercept = memory.intercept.bind(memory);
+    globalThis[MEMORY_INTERCEPTOR] = async (...args) => {
+        await memoryIntercept(...args);
+        try { await injectCompanionPrompt({ getContext }); } catch { /* 状态接口缺失时不注入心情。 */ }
+    };
     const story = createStoryContext({ getContext });
     const events = getContext();
     let inboxScopeKey = '';
@@ -288,6 +296,9 @@ export async function init() {
                 loadRelationships: fetchRelationships,
                 importCard: (spec) => importNativeCharacterFile({ ...spec, getContext }),
                 createBinding,
+                savePersona: (characterRef, fields) => saveNativePersona({
+                    getContext, characterRef, fields, headers: getRequestHeaders(),
+                }),
                 onOpenInstance: (instance) => navigation.openInstance(instance),
             }),
             memory: (container) => mountMemoryTab(container, {
@@ -331,6 +342,7 @@ export async function init() {
             openStory: openStoryLegacy,
             openAccount: (opener) => dataRights?.open(opener),
             openMemory: openMemoryLegacy,
+            openCompanionStyle: (opener) => openCompanionStyle({ getContext, opener }),
             seams: {
                 chat: () => ({ mountChatView, openMemoryInspector, openChatMoreMenu, posterTarget }),
                 surface: async () => ({
@@ -346,6 +358,14 @@ export async function init() {
         navigation.openInstance = (instance, opener) => shell?.openConversation?.(instance, opener);
     }
     void mountConsentGate();
+    void maybeStartOnboarding({
+        getContext,
+        loadRelationships: fetchRelationships,
+        importCard: (spec) => importNativeCharacterFile({ ...spec, getContext }),
+        createBinding: (args) => createCompanionInstance(args),
+        openChat: (args) => openCreatedChat(args),
+        readUi: readVcUiFlag,
+    });
     const wand = document.querySelector('#extensionsMenu');
     if (!wand) {
         console.warn('[vc-model-settings] 未找到扩展菜单挂载点 #extensionsMenu');

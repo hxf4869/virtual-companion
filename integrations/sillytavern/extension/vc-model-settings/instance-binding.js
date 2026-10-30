@@ -39,3 +39,42 @@ export function createInstanceBinding({ resolveBinding, getSource }) {
 
     return { ensure };
 }
+
+/** 同一未绑定角色卡在 0.5 秒内的重复解析合并为一次。已绑定的会话按关系与聊天身份分开。 */
+const BINDING_WINDOW_MS = 500;
+const bindingSlots = new Map();
+
+export function resetBindingCoalesce() {
+    bindingSlots.clear();
+}
+
+export function bindingCoalesceKey(payload = {}) {
+    const mode = payload.mode === 'STORY' ? 'STORY' : 'COMPANION';
+    const ref = String(payload.characterRef || '');
+    const identity = String(payload.chatIdentity || '');
+    const relationshipId = payload.relationshipId == null || payload.relationshipId === '' ? '' : String(payload.relationshipId);
+    if (relationshipId) return `rel:${mode}:${relationshipId}:${identity}`;
+    if (mode === 'COMPANION') return `new:${mode}:${ref}`;
+    return `new:${mode}:${ref}:${identity}`;
+}
+
+export function coalesceBinding(key, run, now = Date.now) {
+    const slot = bindingSlots.get(key);
+    const stamp = now();
+    if (slot && (slot.pending || stamp - slot.doneAt < BINDING_WINDOW_MS)) return slot.promise;
+    const entry = { pending: true, doneAt: 0, promise: null };
+    entry.promise = Promise.resolve().then(run).then(
+        (value) => {
+            entry.pending = false;
+            entry.doneAt = now();
+            return value;
+        },
+        (error) => {
+            entry.pending = false;
+            if (bindingSlots.get(key) === entry) bindingSlots.delete(key);
+            throw error;
+        },
+    );
+    bindingSlots.set(key, entry);
+    return entry.promise;
+}

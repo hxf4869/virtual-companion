@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-vc-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HL-PERSONA</title>
+  <link rel="stylesheet" href="../vc-ui.css">
+  <link rel="stylesheet" href="../companion-persona.css">
+  <link rel="stylesheet" href="../inbox.css">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #slot { position: relative; height: 100%; }
+    body.vc-ui .vc-inbox-tab { overflow: auto; }
+  </style>
+</head>
+<body class="vc-ui">
+  <div id="slot"></div>
+  <script type="module">
+    const params = new URLSearchParams(location.search);
+    const pageName = params.get('page') || 'onboarding';
+    const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.vcTheme = theme;
+    document.body.classList.add('vc-ui');
+    window.addEventListener('error', (event) => {
+      document.body.dataset.vcError = String(event.message || 'error').slice(0, 180);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      document.body.dataset.vcError = String(event.reason?.message || event.reason || 'rejection').slice(0, 180);
+    });
+
+    const slot = document.getElementById('slot');
+    const { renderOnboarding } = await import('../onboarding.js');
+    const { buildCharacterCard, openCompanionStyle, renderPersonaEditor } = await import('../persona.js');
+    const { readProactivePolicy, renderInboxTab } = await import('../inbox-page.js');
+
+    if (pageName === 'onboarding') {
+      const host = document.createElement('section');
+      host.className = 'vc-onboarding';
+      host.innerHTML = renderOnboarding({});
+      document.body.append(host);
+    } else if (pageName === 'style') {
+      openCompanionStyle({
+        getContext: () => ({ extensionSettings: {}, saveSettingsDebounced() {} }),
+      });
+    } else if (pageName === 'persona') {
+      const card = buildCharacterCard({ name: '小满', relation: '好朋友', gender: '女生' });
+      const screen = document.createElement('section');
+      screen.className = 'vc-screen';
+      screen.innerHTML = renderPersonaEditor({
+        description: card.description,
+        personality: card.personality,
+        scenario: card.scenario,
+        first_mes: card.first_mes,
+        mes_example: card.mes_example,
+      });
+      slot.append(screen);
+    } else if (pageName === 'proactive') {
+      const draft = readProactivePolicy({
+        enabled: true,
+        mode: 'CLOSE_FRIEND',
+        checkInAfterMinutes: 720,
+        quietHoursStart: '23:00',
+        quietHoursEnd: '08:00',
+        quietHoursTimezone: 'Asia/Shanghai',
+        dailyLimit: 3,
+        recentInteractionMinutes: 120,
+        allowedModes: ['COMPANION'],
+        offlineCapable: false,
+      }, '11');
+      const inbox = document.createElement('div');
+      inbox.className = 'vc-inbox-tab';
+      inbox.innerHTML = renderInboxTab({
+        loading: false,
+        error: '',
+        relationships: [{ relationshipId: '11', name: '小满' }],
+        relationshipId: '11',
+        inbox: [],
+        inboxFilter: 'all',
+        followUps: [],
+        deliveries: [],
+        channelDrafts: [],
+        channelError: '',
+        policyDraft: draft,
+        policyError: '',
+        policyNotice: '',
+        policyConflict: false,
+        cancelAsk: null,
+        reauth: { open: false },
+        busy: false,
+      });
+      slot.append(inbox);
+    }
+    document.body.dataset.vcReady = '1';
+  </script>
+</body>
+</html>

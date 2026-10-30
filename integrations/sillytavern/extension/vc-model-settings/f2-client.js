@@ -1,4 +1,4 @@
-import { createInstanceBinding, StaleBindingError } from './instance-binding.js';
+import { bindingCoalesceKey, coalesceBinding, StaleBindingError } from './instance-binding.js';
 
 export class F2ConflictError extends Error {
     constructor(code = 'VC_REVISION_CONFLICT') {
@@ -595,8 +595,19 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
         return { chatIdentity: c.chatMetadata.vc_f2.id, characterRef: card.data?.extensions?.vc_character_ref,
             mode: c.chatMetadata.vc_binding?.mode || 'COMPANION' };
     };
-    const binding = createInstanceBinding({ resolveBinding, getSource: source });
     async function ensureBound() {
+        const c = getContext();
+        const card = c.characters?.[c.characterId];
+        if (c.groupId || !card || !c.chatMetadata?.vc_f2) return;
+        const key = bindingCoalesceKey({
+            chatIdentity: c.chatMetadata.vc_f2.id,
+            characterRef: card.data?.extensions?.vc_character_ref || `pending:${c.characterId}`,
+            mode: c.chatMetadata.vc_binding?.mode || 'COMPANION',
+            relationshipId: c.chatMetadata.vc_binding?.relationshipId || null,
+        });
+        return coalesceBinding(key, () => ensureBoundOnce());
+    }
+    async function ensureBoundOnce() {
         const c = getContext();
         const card = c.characters?.[c.characterId];
         if (c.groupId || !card || !c.chatMetadata?.vc_f2) return;
@@ -613,8 +624,9 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
         if (!current?.characterRef) throw new F2ConflictError('VC_CHARACTER_REF_UNCONFIRMED');
         const existing = metadata.vc_binding;
         const displayName = Array.from(card.name || '').slice(0, 32).join('');
-        const result = await binding.ensure({ ...current, relationshipId: existing?.relationshipId || null, displayName });
-        if (getContext().chatMetadata !== metadata) throw new StaleBindingError();
+        const snapshot = { ...current, relationshipId: existing?.relationshipId || null, displayName };
+        const result = await resolveBinding(snapshot);
+        if (getContext().chatMetadata !== metadata || getContext().characters?.[getContext().characterId] !== card) throw new StaleBindingError();
         if (JSON.stringify(existing) !== JSON.stringify(result)) {
             metadata.vc_binding = result;
             await getContext().saveChat();

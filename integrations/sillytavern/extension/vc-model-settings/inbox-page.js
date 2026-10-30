@@ -142,11 +142,21 @@ function allowRelationship(raw) {
     return row;
 }
 
+const PROACTIVE_MODES = ['OFF', 'FOLLOW_UP', 'DAILY', 'CLOSE_FRIEND'];
+const PROACTIVE_LABELS = { OFF: '关闭', FOLLOW_UP: '跟进', DAILY: '日常', CLOSE_FRIEND: '亲近' };
+
 function allowPolicy(raw, relationshipId) {
     const modes = Array.isArray(raw?.allowedModes) ? raw.allowedModes.filter((item) => item === 'COMPANION' || item === 'STORY').slice(0, 2) : [];
+    const supportsMode = !!raw && Object.hasOwn(raw, 'mode');
+    const supportsCheckIn = !!raw && Object.hasOwn(raw, 'checkInAfterMinutes');
+    const mode = PROACTIVE_MODES.includes(raw?.mode) ? raw.mode : 'OFF';
     return {
         relationshipId,
-        enabled: raw?.enabled === true,
+        enabled: supportsMode ? mode !== 'OFF' : raw?.enabled === true,
+        supportsMode,
+        supportsCheckIn,
+        mode: supportsMode ? mode : '',
+        checkInAfterMinutes: supportsCheckIn ? intIn(raw?.checkInAfterMinutes, 120, 4320) : null,
         quietHoursStart: timeOf(raw?.quietHoursStart),
         quietHoursEnd: timeOf(raw?.quietHoursEnd),
         quietHoursTimezone: zoneOf(raw?.quietHoursTimezone),
@@ -155,6 +165,10 @@ function allowPolicy(raw, relationshipId) {
         allowedModes: modes.length ? modes : ['COMPANION'],
         offlineCapable: raw?.offlineCapable === true,
     };
+}
+
+export function readProactivePolicy(raw, relationshipId) {
+    return allowPolicy(raw, relationshipId);
 }
 
 function allowFollowUp(raw) {
@@ -255,8 +269,8 @@ function policyBody(draft) {
     const startBlank = blank(draft.quietHoursStart);
     const endBlank = blank(draft.quietHoursEnd);
     const zoneBlank = blank(draft.quietHoursTimezone);
-    return {
-        enabled: draft.enabled === true,
+    const body = {
+        enabled: draft.supportsMode ? draft.mode !== 'OFF' : draft.enabled === true,
         quietHoursStart: startBlank ? null : String(draft.quietHoursStart).trim(),
         quietHoursEnd: endBlank ? null : String(draft.quietHoursEnd).trim(),
         quietHoursTimezone: zoneBlank ? null : String(draft.quietHoursTimezone).trim(),
@@ -265,6 +279,13 @@ function policyBody(draft) {
         allowedModes: Array.isArray(draft.allowedModes) ? draft.allowedModes.filter((item) => item === 'COMPANION' || item === 'STORY') : [],
         offlineCapable: draft.offlineCapable === true,
     };
+    if (draft.supportsMode) body.mode = draft.mode;
+    if (draft.supportsCheckIn) body.checkInAfterMinutes = intIn(draft.checkInAfterMinutes, 120, 4320);
+    return body;
+}
+
+export function proactivePolicyPayload(draft) {
+    return policyBody(draft);
 }
 
 function validatePolicy(draft) {
@@ -277,6 +298,8 @@ function validatePolicy(draft) {
         return '静默时段需要同时填写开始、结束和时区。';
     }
     if (body.dailyLimit === null || body.recentInteractionMinutes === null || body.allowedModes.length === 0) return '请检查每日上限和间隔。';
+    if (draft.supportsMode && !PROACTIVE_MODES.includes(draft.mode)) return '请检查模式。';
+    if (draft.supportsCheckIn && body.checkInAfterMinutes === null) return '请检查多久没聊。';
     return '';
 }
 
@@ -362,6 +385,17 @@ function channelCard(draft, relationships) {
     </article>`;
 }
 
+function proactiveControls(draft) {
+    if (!draft?.supportsMode && !draft?.supportsCheckIn) return '';
+    const modes = draft.supportsMode
+        ? `<h2 class="vc-group-title">模式</h2><div class="vc-group" aria-label="模式">${PROACTIVE_MODES.map((value) => `<button type="button" class="vc-cell" data-action="set-proactive-mode" data-mode="${value}" aria-pressed="${draft.mode === value ? 'true' : 'false'}"><span class="vc-grow">${PROACTIVE_LABELS[value]}</span></button>`).join('')}</div>`
+        : '';
+    const check = draft.supportsCheckIn
+        ? `<div class="vc-group"><label class="vc-cell"><span class="vc-grow">多久没聊</span><input data-field="checkInAfterMinutes" aria-label="多久没聊" inputmode="numeric" value="${esc(draft.checkInAfterMinutes ?? '')}"></label></div>`
+        : '';
+    return `${modes}${check}`;
+}
+
 export function renderInboxPage(state) {
     if (state.loading && state.relationships.length === 0 && state.inbox.length === 0) {
         return '<div class="vc-inbox-page"><p role="status">正在加载</p></div>';
@@ -403,7 +437,8 @@ export function renderInboxPage(state) {
         <div class="vc-inbox-grid">
             <section class="vc-inbox-section" aria-label="跟进">
                 <h2>跟进</h2>
-                <div class="vc-inbox-switches">${switchControl('toggle-enabled', '主动问候', 'data-field="enabled"', draft.enabled)}${switchControl('toggle-offline', '离线生成', 'data-field="offlineCapable"', draft.offlineCapable)}</div>
+                <div class="vc-inbox-switches">${draft.supportsMode ? '' : switchControl('toggle-enabled', '主动问候', 'data-field="enabled"', draft.enabled)}${switchControl('toggle-offline', '离线生成', 'data-field="offlineCapable"', draft.offlineCapable)}</div>
+                ${proactiveControls(draft)}
                 ${waitingHost}
                 <div class="vc-inbox-summary">
                     <article class="vc-inbox-summary-card"><h3>静默时段</h3><div class="vc-inbox-range"><input data-field="quietHoursStart" aria-label="开始" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"><span class="vc-inbox-range-sep" aria-hidden="true">–</span><input data-field="quietHoursEnd" aria-label="结束" value="${esc(draft.quietHoursEnd)}" inputmode="numeric" maxlength="5"></div></article>
@@ -568,6 +603,12 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
         },
         togglePolicy(name) {
             if (name === 'enabled' || name === 'offlineCapable') state.policyDraft[name] = !state.policyDraft[name];
+            emit();
+        },
+        setProactiveMode(mode) {
+            if (!state.policyDraft.supportsMode || !PROACTIVE_MODES.includes(mode)) return;
+            state.policyDraft.mode = mode;
+            state.policyDraft.enabled = mode !== 'OFF';
             emit();
         },
         toggleMode(mode) {
@@ -845,6 +886,8 @@ function readForm(dialog) {
             dailyLimit: value('dailyLimit'),
             recentInteractionMinutes: value('recentInteractionMinutes'),
             allowedModes: modes.length ? modes : undefined,
+            ...(dialog.querySelector('[data-action="set-proactive-mode"]') ? { mode: dialog.querySelector('[data-action="set-proactive-mode"][aria-pressed="true"]')?.dataset.mode || '' } : {}),
+            ...(dialog.querySelector('[data-field="checkInAfterMinutes"]') ? { checkInAfterMinutes: value('checkInAfterMinutes') } : {}),
         },
         channels,
     };
@@ -944,6 +987,7 @@ export function mountInboxPage({ onOpenConversation } = {}) {
         if (action === 'close') close();
         if (action === 'toggle-enabled') page.togglePolicy('enabled');
         if (action === 'toggle-offline') page.togglePolicy('offlineCapable');
+        if (action === 'set-proactive-mode') page.setProactiveMode(target.dataset.mode);
         if (action === 'toggle-mode') page.toggleMode(target.dataset.mode);
         if (action === 'save-policy') {
             rememberOpener(target);
@@ -1149,6 +1193,7 @@ export function renderInboxTab(state) {
         <section aria-label="跟进">
             <h2 class="vc-group-title">跟进</h2>
             <div class="vc-group">${follows || '<div class="vc-cell" role="status">没有跟进</div>'}</div>
+            ${proactiveControls(draft)}
             <h2 class="vc-group-title">静默时段</h2>
             <div class="vc-group">
                 <label class="vc-cell"><span class="vc-grow">开始</span><input data-field="quietHoursStart" aria-label="开始" placeholder="22:00" value="${esc(draft.quietHoursStart)}" inputmode="numeric" maxlength="5"></label>
@@ -1158,7 +1203,7 @@ export function renderInboxTab(state) {
             <div class="vc-group vc-inbox-summary">
                 <label class="vc-cell"><span class="vc-grow">每日上限</span><input data-field="dailyLimit" aria-label="每日上限" inputmode="numeric" value="${esc(draft.dailyLimit)}"></label>
                 <label class="vc-cell"><span class="vc-grow">间隔（分钟）</span><input data-field="recentInteractionMinutes" aria-label="间隔（分钟）" inputmode="numeric" value="${esc(draft.recentInteractionMinutes)}"></label>
-                ${uiSwitch('toggle-enabled', '主动问候', 'data-field="enabled"', draft.enabled)}
+                ${draft.supportsMode ? '' : uiSwitch('toggle-enabled', '主动问候', 'data-field="enabled"', draft.enabled)}
                 ${uiSwitch('toggle-offline', '离线生成', 'data-field="offlineCapable"', draft.offlineCapable)}
                 ${uiSwitch('toggle-mode', '日常', 'data-mode="COMPANION"', draft.allowedModes.includes('COMPANION'))}
                 ${uiSwitch('toggle-mode', '剧情', 'data-mode="STORY"', draft.allowedModes.includes('STORY'))}
@@ -1368,7 +1413,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
         });
     }
 
-    const policyFields = new Set(['quietHoursStart', 'quietHoursEnd', 'quietHoursTimezone', 'dailyLimit', 'recentInteractionMinutes']);
+    const policyFields = new Set(['quietHoursStart', 'quietHoursEnd', 'quietHoursTimezone', 'dailyLimit', 'recentInteractionMinutes', 'checkInAfterMinutes']);
     container.addEventListener('input', (event) => {
         const field = event.target?.dataset?.field;
         if (!policyFields.has(field)) return;
@@ -1411,6 +1456,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
         }
         if (action === 'toggle-enabled') page.togglePolicy('enabled');
         if (action === 'toggle-offline') page.togglePolicy('offlineCapable');
+        if (action === 'set-proactive-mode') page.setProactiveMode(target.dataset.mode);
         if (action === 'toggle-mode') page.toggleMode(target.dataset.mode);
         if (action === 'save-policy') void page.savePolicy();
         if (action === 'view-latest-policy') void page.viewLatestPolicy();
