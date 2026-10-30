@@ -611,7 +611,7 @@ async function cleanupManaged(secrets) {
             continue;
         }
         try {
-            runChecked('docker', ['rm', '-f', name], { label: `docker rm ${name}` });
+            runChecked('docker', ['rm', '-f', '-v', name], { label: `docker rm ${name}` });
             log.info(`已移除受管容器 ${name}（label ${PG_LABEL}）`);
         } catch (e) {
             log.warn(`容器 ${name} 移除失败：${e.message}`);
