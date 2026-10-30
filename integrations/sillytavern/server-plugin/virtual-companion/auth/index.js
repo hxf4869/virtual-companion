@@ -44,6 +44,15 @@ export function recoveryFinishEnabled(saved) {
     return saved === true;
 }
 
+export function verifySubmitEnabled(value, recovery) {
+    return recovery === true || normalizeTotpCode(value).length === 6;
+}
+
+export function otpActiveIndex(value) {
+    const digits = normalizeTotpCode(value);
+    return digits.length >= 6 ? -1 : digits.length;
+}
+
 let challenge = null;
 let identity = null;
 let useRecovery = false;
@@ -105,9 +114,10 @@ function clearSecrets() {
     clearTimeout(copyTimer);
     for (const [id, label] of [['copy-secret', '复制'], ['copy-recovery', '复制全部']]) {
         const button = $(id);
-        if (button && button.textContent === '已复制') button.textContent = label;
+        if (button && button.textContent === '已复制') restoreCopyLabel(button, label);
     }
     syncFinish();
+    paintCode();
 }
 
 function presentSetup(setup) {
@@ -171,6 +181,7 @@ async function run(action, { focusCode = false } = {}) {
     busy = true;
     message();
     $('code')?.removeAttribute('aria-invalid');
+    paintCode();
     const panel = document.querySelector('.auth-panel');
     panel?.classList.add('is-busy');
     visiblePrimary()?.setAttribute('aria-busy', 'true');
@@ -184,6 +195,7 @@ async function run(action, { focusCode = false } = {}) {
         if (focusCode && $('code')) {
             $('code').value = '';
             $('code').setAttribute('aria-invalid', 'true');
+            paintCode();
         }
     } finally {
         busy = false;
@@ -191,6 +203,7 @@ async function run(action, { focusCode = false } = {}) {
         document.querySelectorAll('.primary').forEach((el) => el.removeAttribute('aria-busy'));
         document.querySelectorAll('button').forEach((button) => { button.disabled = false; });
         syncFinish();
+        syncVerifySubmit();
         if (failed && focusCode && $('verify-step') && !$('verify-step').hidden) $('code').focus();
     }
 }
@@ -241,13 +254,14 @@ async function advance(data) {
     $('code').value = '';
     $('code').inputMode = 'numeric';
     $('code').setAttribute('autocomplete', 'one-time-code');
-    $('code-label').textContent = '验证码';
+    setCodePrompt(false);
     $('trust-device').checked = false;
     $('use-recovery').hidden = setup;
     $('use-recovery').textContent = '使用恢复码';
     $('verify-step').classList.remove('is-recovery');
     if (setup) presentSetup(await request('POST', `challenges/${data.challengeId}/authenticator-setup`, {}));
     else clearSetup();
+    paintCode();
     $('code').focus();
 }
 
@@ -274,12 +288,58 @@ async function writeClipboard(text) {
     }
 }
 
+function copyLabelNode(button) {
+    return button.querySelector('.copy-label');
+}
+
+function restoreCopyLabel(button, label) {
+    const text = copyLabelNode(button);
+    if (text) text.textContent = label;
+    else button.textContent = label;
+    button.classList.remove('is-copied');
+    button.setAttribute('aria-label', label);
+}
+
 function flashCopied(button, label) {
-    button.textContent = '已复制';
+    const text = copyLabelNode(button);
+    if (text) text.textContent = '已复制';
+    else button.textContent = '已复制';
+    button.classList.add('is-copied');
+    button.setAttribute('aria-label', '已复制');
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => {
-        if (button.isConnected && button.textContent === '已复制') button.textContent = label;
-    }, 1600);
+        if (button.isConnected && button.textContent === '已复制') restoreCopyLabel(button, label);
+    }, 1500);
+}
+
+function setCodePrompt(recovery) {
+    const label = recovery ? '恢复码' : '验证码';
+    const node = $('code-label');
+    if (node) node.textContent = label;
+    const input = $('code');
+    if (!input) return;
+    input.setAttribute('aria-label', label);
+    input.placeholder = label;
+}
+
+function syncVerifySubmit() {
+    const button = $('verify-submit');
+    if (!button) return;
+    button.disabled = busy || !verifySubmitEnabled($('code')?.value, useRecovery);
+}
+
+function paintCode() {
+    const input = $('code');
+    if (!input) return;
+    const recovery = useRecovery === true;
+    const digits = recovery ? '' : normalizeTotpCode(input.value);
+    const active = recovery ? -1 : otpActiveIndex(input.value);
+    document.querySelectorAll('.otp-cell').forEach((cell, index) => {
+        cell.textContent = digits[index] || '';
+        cell.classList.toggle('is-current', active === index);
+    });
+    input.closest('.otp')?.classList.toggle('is-invalid', !recovery && input.getAttribute('aria-invalid') === 'true');
+    syncVerifySubmit();
 }
 
 function markRecoverySaved() {
@@ -314,19 +374,23 @@ function boot() {
     $('code').addEventListener('input', () => {
         const input = $('code');
         input.removeAttribute('aria-invalid');
-        if (useRecovery) return;
-        const next = normalizeTotpCode(input.value);
-        if (input.value !== next) input.value = next;
-        if (!busy && shouldAutoSubmitTotp(next, false)) $('verify-form').requestSubmit();
+        if (!useRecovery) {
+            const next = normalizeTotpCode(input.value);
+            if (input.value !== next) input.value = next;
+        }
+        paintCode();
+        if (!useRecovery && !busy && shouldAutoSubmitTotp(input.value, false)) $('verify-form').requestSubmit();
     });
     $('use-recovery').addEventListener('click', () => {
         useRecovery = !useRecovery;
         $('code').value = '';
+        $('code').removeAttribute('aria-invalid');
         $('code').inputMode = useRecovery ? 'text' : 'numeric';
         $('code').setAttribute('autocomplete', useRecovery ? 'off' : 'one-time-code');
-        $('code-label').textContent = useRecovery ? '恢复码' : '验证码';
+        setCodePrompt(useRecovery);
         $('use-recovery').textContent = useRecovery ? '使用验证码' : '使用恢复码';
         $('verify-step').classList.toggle('is-recovery', useRecovery);
+        paintCode();
         $('code').focus();
     });
     $('back-login').addEventListener('click', () => {
@@ -392,6 +456,7 @@ function boot() {
             });
         }
     }).catch(() => message('登录服务暂不可用，请稍后重试'));
+    paintCode();
 }
 
 boot();

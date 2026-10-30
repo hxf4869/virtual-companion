@@ -9,6 +9,32 @@ import { createStClient } from './managed-lib.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { failClosedWaitMs } from './lib/fail-closed-wait.mjs';
 import { deviceNameFromUA } from '../server-plugin/virtual-companion/auth/index.js';
+const LOGIN_POLISH_STEPS = ['login', 'totp', 'setup', 'recovery-mode', 'recovery-codes', 'password'];
+async function shootLoginPolish(page, ctx, name) {
+    if (!LOGIN_POLISH_STEPS.includes(name)) throw new Error(`未知登录截图步骤 ${name}`);
+    const dir = path.resolve(ctx.artifactsDir, '..', 'login-polish');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const scheme of ['light', 'dark']) {
+        for (const [width, slot] of [[390, '390'], [1440, '1440']]) {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await page.emulateMedia({ colorScheme: scheme });
+            await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+            const file = `${name}-${slot}-${scheme}.png`;
+            await page.screenshot({ path: path.join(dir, file) });
+            ctx.screenshots.push(path.join('login-polish', file));
+        }
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: 'light' });
+}
+async function showAuthStep(page, step, title) {
+    await page.evaluate(({ step, title }) => {
+        for (const id of ['login-form', 'verify-step', 'password-step', 'recovery-step']) {
+            document.getElementById(id).hidden = id !== step;
+        }
+        document.getElementById('auth-title').textContent = title;
+    }, { step, title });
+}
 const base = () => ({ id: crypto.randomUUID(), revision: 0 });
 const rows = (token, text = '合成测试消息', extra = {}) => [{ user_name: 'unused', character_name: 'unused', chat_metadata: { vc_f2: token, ...extra } }, { name: '合成角色', is_user: false, mes: text, swipe_id: 0, swipes: [text, '合成候选二'] }];
 const expect = (result, status, label) => { assert.equal(result.status, status, `${label}: HTTP ${result.status} (${result.json?.code || 'native'})`); return result.json; };
@@ -161,6 +187,10 @@ export async function sceneAuthBrowser(ctx) {
             const r = await bc.request.get(stBase + url, { headers: { 'Remote-User': 'default-user', 'X-Authentik-Username': 'default-user' } });
             assert.equal(r.status(), 401, `匿名/伪造头 ${url}`);
         }
+        await showAuthStep(page, 'password-step', '修改密码');
+        await shootLoginPolish(page, ctx, 'password');
+        await showAuthStep(page, 'login-form', '登录');
+        await shootLoginPolish(page, ctx, 'login');
         await page.screenshot({ path: path.join(ctx.artifactsDir, 'B01-login-390.png') });
         ctx.screenshots.push('B01-login-390.png');
         await page.fill('#account', 'w05-accept-second'); await page.fill('#password', ctx.secrets.password); await page.click('#login-form button[type=submit]');
@@ -171,30 +201,21 @@ export async function sceneAuthBrowser(ctx) {
         assert.equal(grouped, true);
         assert.equal(key.length > 10, true);
         await page.setViewportSize({ width: 390, height: 844 });
+        await page.emulateMedia({ colorScheme: 'light' });
         assert.equal(await page.locator('#add-authenticator').isVisible(), true);
+        assert.equal(await page.locator('#verify-submit').isVisible(), true);
         assert.equal(await page.locator('#setup-qr-frame').isVisible(), false);
         await page.click('#show-qr');
         assert.equal(await page.locator('#setup-qr-frame').isVisible(), true);
+        await page.setViewportSize({ width: 1440, height: 900 });
+        assert.equal(await page.locator('#setup-qr-frame').isVisible(), true);
+        assert.equal(await page.locator('#add-authenticator').isVisible(), false);
+        assert.equal(await page.locator('#verify-submit').isVisible(), true);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await shootLoginPolish(page, ctx, 'setup');
+        assert.equal(await page.locator('#setup-qr-frame').isVisible(), true);
         await page.click('#show-qr');
         assert.equal(await page.locator('#setup-qr-frame').isVisible(), false);
-        for (const [name, width, height, scheme] of [
-            ['B01-verify-390-light.png', 390, 844, 'light'],
-            ['B01-verify-390-dark.png', 390, 844, 'dark'],
-            ['B01-verify-1440-light.png', 1440, 900, 'light'],
-            ['B01-verify-1440-dark.png', 1440, 900, 'dark'],
-        ]) {
-            await page.setViewportSize({ width, height });
-            await page.emulateMedia({ colorScheme: scheme });
-            await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-            if (width >= 1440) {
-                assert.equal(await page.locator('#setup-qr-frame').isVisible(), true);
-                assert.equal(await page.locator('#add-authenticator').isVisible(), false);
-            }
-            await page.screenshot({ path: path.join(ctx.artifactsDir, name) });
-            ctx.screenshots.push(name);
-        }
-        await page.setViewportSize({ width: 390, height: 844 });
-        await page.emulateMedia({ colorScheme: 'light' });
         await bc.grantPermissions(['clipboard-read', 'clipboard-write']);
         await page.click('#copy-secret');
         await page.waitForFunction(() => document.querySelector('#copy-secret')?.textContent === '已复制');
@@ -210,6 +231,8 @@ export async function sceneAuthBrowser(ctx) {
         assert.equal(confirmBody.trustDevice, false);
         assert.equal(Object.hasOwn(confirmBody, 'deviceName'), false);
         await page.waitForSelector('#recovery-step:not([hidden])');
+        assert.equal(await page.locator('#finish-login').isDisabled(), true);
+        await shootLoginPolish(page, ctx, 'recovery-codes');
         assert.equal(await page.locator('#finish-login').isDisabled(), true);
         const downloadPromise = page.waitForEvent('download');
         await page.click('#download-recovery');
@@ -244,6 +267,13 @@ export async function sceneAuthBrowser(ctx) {
         await page.fill('#password', ctx.secrets.password);
         await page.click('#login-form button[type=submit]');
         await page.waitForSelector('#verify-step:not([hidden])');
+        assert.equal(await page.locator('#trust-device').isChecked(), false);
+        await shootLoginPolish(page, ctx, 'totp');
+        await page.click('#use-recovery');
+        await page.waitForFunction(() => document.querySelector('#verify-step')?.classList.contains('is-recovery') === true);
+        await shootLoginPolish(page, ctx, 'recovery-mode');
+        await page.click('#use-recovery');
+        await page.waitForFunction(() => document.querySelector('#verify-step')?.classList.contains('is-recovery') !== true);
         assert.equal(await page.locator('#trust-device').isChecked(), false);
         const expectedName = deviceNameFromUA(await page.evaluate(() => navigator.userAgent));
         await page.getByText('信任此设备 90 天', { exact: true }).click();
