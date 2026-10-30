@@ -1,0 +1,318 @@
+// HL-REPLY 受管场景：多气泡、硬违规只重写一次、连发三条只生成一次。
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createStClient } from './managed-lib.mjs';
+import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
+import { reauthForWrite } from './lib/reauth-write.mjs';
+
+const DEV = process.env.VC_W03_DEV_DIR
+    || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
+const SHOTS = path.join(DEV, 'artifacts', 'hl-reply');
+const GREETING = '这是一次合成测试对话。';
+const BUBBLES = '今天有点累。想早点休息。明天再说';
+const BAD = '希望对你有帮助';
+const CALM = '到了就好';
+const LONG = '我想听你用平时聊天的口气，把今天从出门到回家遇到的小事按顺序讲两句，不要总结成清单。';
+const LONG_AGAIN = '再讲一件今天从出门到晚上回家的小事就好，用平时说话的方式，不要客套，也不要列清单。';
+const BURST = ['在吗', '吃了吗', '我到了'];
+const VIEWPORTS = [
+    { name: '1440', width: 1440, height: 900 },
+    { name: '390', width: 390, height: 844 },
+];
+
+function stClient(ctx) {
+    const session = ctx.secrets.session;
+    return createStClient({
+        baseUrl: ctx.w05.stBase,
+        expectedIdentity: session,
+        extraCookies: `vc_session=${session.vcSession}; vc_csrf=${session.vcCsrf}`,
+    });
+}
+
+async function launchBrowser() {
+    const { chromium } = await import('playwright-core');
+    return chromium.launch({
+        headless: true,
+        ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}),
+    });
+}
+
+async function nativeReady(page) {
+    await page.waitForFunction(() => Boolean(window.SillyTavern?.getContext?.()?.eventSource));
+    await page.waitForSelector('#send_textarea', { state: 'attached' });
+    await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'));
+    const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
+    if (await onboarding.count()) {
+        await onboarding.locator('textarea').fill('合成验收用户');
+        await onboarding.locator('.popup-button-ok').click();
+        await onboarding.waitFor({ state: 'hidden' });
+    }
+    await page.waitForFunction(async () => (await import('/script.js')).settingsReady);
+    await page.waitForSelector('#preloader', { state: 'hidden' });
+}
+
+async function revealShellChat(page) {
+    await page.waitForFunction(() => typeof document.querySelector('#vc-shell')?.openConversation === 'function', null, { timeout: 20000 });
+    const status = await page.evaluate(async () => {
+        const root = document.querySelector('#vc-shell');
+        const ctx = window.SillyTavern?.getContext?.() || {};
+        const id = ctx.characterId;
+        const characterIndex = typeof id === 'number' ? id : Number(id);
+        const character = ctx.characters?.[Number.isInteger(characterIndex) ? characterIndex : -1];
+        const opened = await root.openConversation({
+            relationshipId: ctx.chatMetadata?.vc_binding?.relationshipId || '',
+            file: ctx.chatId || '',
+            characterIndex: Number.isInteger(characterIndex) ? characterIndex : undefined,
+            name: character?.name || '',
+            avatar: character?.avatar || '',
+        });
+        const sheld = document.querySelector('#sheld')?.getBoundingClientRect();
+        return { opened: opened === true, width: Math.round(sheld?.width || 0), height: Math.round(sheld?.height || 0) };
+    });
+    if (status.width < 200 || status.height < 200) throw new Error(`对话列没有展开 ${JSON.stringify(status)}`);
+}
+
+async function openChat(page, avatar, file) {
+    await page.evaluate(async ({ avatar: fileName, file: chatFile }) => {
+        const script = await import('/script.js');
+        const index = script.characters.findIndex((item) => item.avatar === fileName);
+        if (index < 0) throw new Error('合成卡不在角色列表');
+        await script.selectCharacterById(index);
+        if (chatFile) await script.openCharacterChat(chatFile);
+    }, { avatar, file });
+    await revealShellChat(page);
+}
+
+async function bindForeground(ctx) {
+    await reauthForWrite(ctx);
+    const purposes = await ctx.admin.listPurposes();
+    if (purposes.status !== 200) throw new Error(`用途列表 HTTP ${purposes.status}`);
+    const row = purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT');
+    if (!row) throw new Error('FOREGROUND_CHAT 缺失');
+    const bound = await ctx.admin.savePurpose('FOREGROUND_CHAT', {
+        providerId: 'vc03m-chat', profileKey: 'chat', state: 'ENABLED', expectedRevision: row.revision,
+    });
+    if (bound.status !== 200) throw new Error(`前台绑定 HTTP ${bound.status}`);
+    for (const consentType of ['SERVICE_TERMS', 'PRIVACY_POLICY', 'AI_CONTENT_NOTICE', 'THIRD_PARTY_MODEL_PROCESSING', 'SENSITIVE_DATA_PROCESSING']) {
+        const granted = await ctx.admin.call('PUT', '/api/v1/consents', { consentType, version: 'hl-reply', granted: true });
+        if (granted.status !== 200) throw new Error(`授权 ${consentType} HTTP ${granted.status}`);
+    }
+}
+
+function importJson(st, card) {
+    const form = new FormData();
+    form.append('file_type', 'json');
+    form.append('avatar', new Blob([JSON.stringify(card)], { type: 'application/json' }), 'synthetic.json');
+    return st.call('POST', '/api/characters/import', form);
+}
+
+async function shot(page, ctx, name) {
+    fs.mkdirSync(SHOTS, { recursive: true });
+    const primary = path.join(SHOTS, name);
+    await page.screenshot({ path: primary });
+    ctx.screenshots.push(primary);
+    if (ctx.artifactsDir && path.resolve(ctx.artifactsDir) !== path.resolve(SHOTS)) {
+        fs.mkdirSync(ctx.artifactsDir, { recursive: true });
+        const copy = path.join(ctx.artifactsDir, name);
+        fs.copyFileSync(primary, copy);
+        ctx.screenshots.push(copy);
+    }
+}
+
+async function theme(page, mode) {
+    await page.evaluate((value) => {
+        localStorage.setItem('vc-theme', value);
+        document.documentElement.setAttribute('data-vc-theme', value);
+    }, mode);
+}
+
+async function closeHostChrome(page) {
+    await page.evaluate(() => {
+        document.querySelectorAll('#toast-container .toast').forEach((node) => node.remove());
+        for (const dialog of document.querySelectorAll('dialog[open]')) {
+            if (dialog.id === 'vc-f2-conflict') continue;
+            dialog.close?.();
+        }
+    }).catch(() => {});
+}
+
+async function chatCaptures(ctx, since) {
+    const rows = await ctx.fixtureHttp.captures({ protocol: 'chat', since });
+    return rows.filter((row) => Array.isArray(row.body?.messages) && row.body.model === 'vc03m-chat');
+}
+
+async function sendText(page, text) {
+    await page.evaluate((value) => {
+        const box = document.querySelector('#send_textarea');
+        const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+        set.call(box, value);
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('#send_but').click();
+    }, text);
+}
+
+async function waitReply(page, reply) {
+    await page.waitForFunction((text) => {
+        const chat = window.SillyTavern.getContext().chat || [];
+        return chat.at(-1)?.is_user === false && chat.at(-1)?.mes === text
+            && document.body.getAttribute('data-generating') !== 'true';
+    }, reply, { timeout: 60000 });
+}
+
+export async function sceneHlReply(ctx) {
+    if ([...LONG].length <= 40 || [...LONG_AGAIN].length <= 40) throw new Error('验收发送短于防抖阈值');
+    await bindForeground(ctx);
+    ctx.w10.psql(ownerBudgetResetSql(ctx.w05.ownerId));
+    const st = stClient(ctx);
+    const cardName = `回复流水线 ${crypto.randomUUID().slice(0, 8)}`;
+    const imported = await importJson(st, {
+        name: cardName,
+        description: '合成聊天卡，只供回复流水线验收。',
+        first_mes: GREETING,
+        personality: '',
+        scenario: '',
+        mes_example: '',
+    });
+    if (imported.status !== 200 || !imported.json?.file_name) throw new Error(`导入合成卡 HTTP ${imported.status}`);
+    const avatar = `${imported.json.file_name.replace(/\.png$/, '')}.png`;
+    const file = `HL-${crypto.randomUUID()}`;
+    const saved = await st.call('POST', '/api/chats/save', {
+        avatar_url: avatar,
+        file_name: file,
+        chat: [
+            {
+                user_name: 'unused',
+                character_name: cardName,
+                chat_metadata: { vc_f2: { id: crypto.randomUUID(), revision: 0 }, vc_binding: { mode: 'COMPANION', displayName: '合成实例' } },
+            },
+            { name: cardName, is_user: false, mes: GREETING, swipe_id: 0, swipes: [GREETING] },
+        ],
+    });
+    if (saved.status !== 200) throw new Error(`保存聊天 HTTP ${saved.status}`);
+
+    const browser = await launchBrowser();
+    try {
+        const bc = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        await bc.addCookies([
+            { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
+            { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },
+        ]);
+        await bc.addInitScript(() => {
+            localStorage.setItem('vc-ui', 'on');
+            localStorage.setItem('vc-theme', 'light');
+            localStorage.setItem('vc-reply-style', 'bubble');
+        });
+        const page = await bc.newPage();
+        page.setDefaultTimeout(120000);
+        console.log('[hl-reply] 打开宿主');
+        await page.goto(ctx.w05.stBase);
+        await nativeReady(page);
+        await openChat(page, avatar, file);
+        await page.waitForFunction(() => document.body.classList.contains('vc-ui') && document.body.classList.contains('vc-reply-bubble'));
+        await page.waitForFunction(() => !document.querySelector('#send_form')?.classList.contains('no-connection'));
+
+        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: BUBBLES, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
+        const before = await page.locator('#chat > .mes').count();
+        console.log('[hl-reply] 多气泡');
+        await sendText(page, LONG);
+        await page.waitForFunction((count) => document.querySelectorAll('#chat > .mes').length >= count + 2, before, { timeout: 60000 });
+        await waitReply(page, BUBBLES);
+        await page.waitForFunction(() => {
+            const last = [...document.querySelectorAll('#chat > .mes')].at(-1);
+            return last && last.querySelectorAll('.vc-seg').length >= 2 && !last.querySelector('.vc-typing');
+        }, null, { timeout: 20000 });
+        const shown = await page.evaluate((reply) => {
+            const chat = window.SillyTavern.getContext().chat || [];
+            const nodes = [...document.querySelectorAll('#chat > .mes')];
+            const last = nodes.at(-1);
+            return {
+                user: chat.at(-2)?.mes || '',
+                assistant: chat.at(-1)?.mes || '',
+                copies: chat.filter((item) => item?.mes === reply).length,
+                segs: [...(last?.querySelectorAll('.vc-seg') || [])].map((node) => node.textContent),
+                greetingSegs: nodes[0]?.querySelectorAll('.vc-seg').length || 0,
+            };
+        }, BUBBLES);
+        if (shown.user !== LONG) throw new Error('长消息被拆进了多条用户消息');
+        if (shown.assistant !== BUBBLES || shown.copies !== 1) throw new Error('多句回复没有保持为一条消息');
+        if (shown.segs.length < 2) throw new Error(`气泡数量不足 ${shown.segs.length}`);
+        if (shown.greetingSegs !== 0) throw new Error('旧的单句消息被改成了分段');
+
+        for (const mode of ['light', 'dark']) {
+            await theme(page, mode);
+            for (const viewport of VIEWPORTS) {
+                await page.setViewportSize(viewport);
+                await closeHostChrome(page);
+                await page.locator('#chat > .mes').last().locator('.vc-seg').first().scrollIntoViewIfNeeded();
+                const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+                if (overflow > 1) throw new Error(`bubbles ${viewport.name} 横向溢出 ${overflow}px`);
+                await shot(page, ctx, `bubbles-${viewport.name}-${mode}.png`);
+            }
+        }
+
+        console.log('[hl-reply] 硬违规只重写一次');
+        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: BAD, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
+        const sinceRewrite = (await ctx.fixtureHttp.captures()).at(-1)?.seq ?? 0;
+        await sendText(page, LONG_AGAIN);
+        const rewriteDeadline = Date.now() + 45000;
+        let rewriteRows = [];
+        while (Date.now() < rewriteDeadline) {
+            rewriteRows = await chatCaptures(ctx, sinceRewrite);
+            if (rewriteRows.length >= 2) break;
+            await page.waitForTimeout(300);
+        }
+        if (rewriteRows.length < 2) throw new Error(`硬违规没有触发重写，捕获 ${rewriteRows.length}`);
+        await page.waitForTimeout(3000);
+        const rewriteAfter = await chatCaptures(ctx, sinceRewrite);
+        if (rewriteAfter.length !== 2) throw new Error(`重写不是一次，捕获 ${rewriteAfter.length}`);
+        await waitReply(page, BAD);
+
+        console.log('[hl-reply] 连发三条只生成一次');
+        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: CALM, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
+        const sinceBurst = (await ctx.fixtureHttp.captures()).at(-1)?.seq ?? 0;
+        await page.evaluate(async (parts) => {
+            const box = document.querySelector('#send_textarea');
+            const send = document.querySelector('#send_but');
+            const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+            for (const text of parts) {
+                set.call(box, text);
+                box.dispatchEvent(new Event('input', { bubbles: true }));
+                send.click();
+                await new Promise((resolve) => setTimeout(resolve, 120));
+            }
+        }, BURST);
+        await page.waitForTimeout(700);
+        const early = await chatCaptures(ctx, sinceBurst);
+        if (early.length !== 0) throw new Error(`连发在安静窗口内就生成了 ${early.length} 次`);
+        const burstDeadline = Date.now() + 15000;
+        let burstRows = [];
+        while (Date.now() < burstDeadline) {
+            burstRows = await chatCaptures(ctx, sinceBurst);
+            if (burstRows.length >= 1) break;
+            await page.waitForTimeout(300);
+        }
+        if (burstRows.length !== 1) throw new Error(`连发应只生成一次，捕获 ${burstRows.length}`);
+        await page.waitForTimeout(1500);
+        const burstAfter = await chatCaptures(ctx, sinceBurst);
+        if (burstAfter.length !== 1) throw new Error(`连发之后又生成了，捕获 ${burstAfter.length}`);
+        await page.waitForFunction((text) => {
+            const chat = window.SillyTavern.getContext().chat || [];
+            return chat.some((item) => item?.is_user && item.mes === text);
+        }, BURST.join('\n'), { timeout: 15000 });
+        await bc.close();
+    } finally {
+        await ctx.fixtureHttp.setOverride('vc03m-chat', null);
+        await browser.close();
+    }
+}
+
+export const hlReplyScene = {
+    id: 'hl-reply',
+    title: '回复流水线：多气泡、硬违规只重写一次、连发三条只生成一次',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneHlReply,
+};
+export const scenes = [hlReplyScene];

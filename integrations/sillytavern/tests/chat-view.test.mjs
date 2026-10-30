@@ -16,6 +16,7 @@ import {
     readReplyStyle,
     recalledItems,
     refreshIndexes,
+    renderReplyBubbles,
     safeAvatarUrl,
     shouldShowNewReply,
     writeReplyStyle,
@@ -162,6 +163,18 @@ test('流式渐清只改内存开关，不派发 input', () => {
     assert.equal(inputs, 0);
     assert.equal(armStreamFade(power, document).already, true);
     assert.equal(armStreamFade(null, document).wrote, false);
+});
+
+test('多句回复只改显示，原文仍留在同一条消息里', () => {
+    const document = installMiniDom();
+    const node = mes(document, { text: '今天好累。想早点睡。' });
+    renderReplyBubbles(node, '今天好累。想早点睡。', { reducedMotion: true });
+    const segs = [...node.querySelectorAll('.vc-seg')];
+    assert.equal(segs.length, 2);
+    assert.equal(segs[0].textContent, '今天好累');
+    assert.equal(segs[1].textContent, '想早点睡');
+    assert.equal(node.querySelector('.mes_text').textContent, '今天好累。想早点睡。');
+    assert.equal(node.className.includes('vc-segmented'), true);
 });
 
 test('关闭新外观时不挂海报、不改宿主节点', () => {
