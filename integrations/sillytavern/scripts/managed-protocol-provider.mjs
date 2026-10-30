@@ -198,6 +198,41 @@ function requestHasToolResult(body) {
     return Array.isArray(body.input) && body.input.some((item) => item?.type === 'function_call_output');
 }
 
+function messageBlob(body) {
+    const parts = [];
+    const push = (value) => {
+        if (typeof value === 'string') parts.push(value);
+        else if (Array.isArray(value)) {
+            for (const part of value) {
+                if (typeof part === 'string') parts.push(part);
+                else if (part && typeof part.text === 'string') parts.push(part.text);
+            }
+        }
+    };
+    if (Array.isArray(body?.messages)) {
+        for (const message of body.messages) push(message?.content);
+    }
+    push(body?.input);
+    if (typeof body?.system === 'string') parts.push(body.system);
+    if (Array.isArray(body?.system)) push(body.system);
+    return parts.join('\n');
+}
+
+function proactiveFixtureText(blob) {
+    if (blob.includes('判断现在要不要主动找对方')) {
+        if (blob.includes('有一阵没聊了') || blob.includes('说声早') || blob.includes('道个晚安') || blob.includes('差不多该有结果了')) {
+            return '{"kind":"check_in","timing":"in_minutes"}';
+        }
+        if (blob.includes('还没说完')) return '{"kind":"continue_topic","timing":"in_minutes"}';
+        if (blob.includes('一件小事想分享')) return '{"kind":"share","timing":"in_minutes"}';
+        if (blob.includes('情绪不太好')) return '{"kind":"care","timing":"in_minutes"}';
+        return '{"kind":"stay_silent","timing":"in_minutes"}';
+    }
+    if (blob.includes('像平时发微信那样随口说一两句')) return '有一阵没聊，想来跟你说句话';
+    return '';
+}
+
+
 export function buildPlan(model, body, headerDirective, ctlOverride) {
     const base = SCRIPTS[model] || SCRIPTS['vc03m-chat'];
     const bodyDirective = body && typeof body === 'object' && body.vc_fixture && typeof body.vc_fixture === 'object'
@@ -222,6 +257,13 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
         } else {
             text = '';
         }
+    }
+    const explicitText = (bodyDirective && typeof bodyDirective.text === 'string')
+        || (headerDirective && typeof headerDirective.text === 'string')
+        || (ctlOverride && typeof ctlOverride.text === 'string');
+    if (!explicitText) {
+        const proactive = proactiveFixtureText(messageBlob(body));
+        if (proactive) text = proactive;
     }
     return {
         model,

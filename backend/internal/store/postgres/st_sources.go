@@ -153,6 +153,11 @@ func (s *Store) applySTSourceSnapshot(ctx context.Context, owner int64, base stS
 	if err != nil {
 		return out, mapStoreErr(err)
 	}
+	if snap.State == "PRESENT" && !snap.NotModified {
+		if err := s.SuppressProactiveSources(ctx, owner, base.ChatIdentity); err != nil {
+			return STSourceState{}, err
+		}
+	}
 	// A present or deleted snapshot may change the inbox link. It does not
 	// create a delivery. UNAVAILABLE and RETRY leave the link as stored.
 	if out.State != "RETRY" && (snap.State == "PRESENT" || snap.State == "DELETED") {

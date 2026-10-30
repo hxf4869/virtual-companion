@@ -56,6 +56,8 @@ type ProactivePolicy struct {
 	RecentInteractionMinutes int
 	AllowedModes             []string
 	OfflineCapable           bool
+	Mode                     string
+	CheckInAfterMinutes      int
 }
 
 // ProactivePolicyWrite replaces one character's policy. It does not start work.
@@ -68,6 +70,8 @@ type ProactivePolicyWrite struct {
 	RecentInteractionMinutes int
 	AllowedModes             []string
 	OfflineCapable           bool
+	Mode                     *string
+	CheckInAfterMinutes      *int
 }
 
 type followUpPlan struct {
@@ -449,9 +453,10 @@ func (s *Store) PutProactivePolicy(ctx context.Context, owner, relationshipID in
 	var out ProactivePolicy
 	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			SELECT vc.put_proactive_policy($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+			SELECT vc.put_proactive_policy($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 			owner, relationshipID, in.Enabled, nullIfBlankPtr(in.QuietHoursStart), nullIfBlankPtr(in.QuietHoursEnd),
-			nullIfBlankPtr(in.QuietHoursTimezone), in.DailyLimit, in.RecentInteractionMinutes, in.AllowedModes, in.OfflineCapable)
+			nullIfBlankPtr(in.QuietHoursTimezone), in.DailyLimit, in.RecentInteractionMinutes, in.AllowedModes, in.OfflineCapable,
+			modeArg(in.Mode), checkArg(in.CheckInAfterMinutes))
 		if err != nil {
 			return err
 		}
@@ -536,11 +541,11 @@ func scanProactivePolicy(ctx context.Context, tx pgx.Tx, owner, relationshipID i
 		       to_char(out_quiet_start, 'HH24:MI'),
 		       to_char(out_quiet_end, 'HH24:MI'),
 		       out_quiet_timezone, out_daily_limit, out_recent_interaction_minutes,
-		       out_allowed_modes, out_offline_capable
+		       out_allowed_modes, out_offline_capable, out_mode, out_check_in_after_minutes
 		  FROM vc.get_proactive_policy($1,$2)`, owner, relationshipID).
 		Scan(&out.RelationshipID, &out.Enabled, &out.QuietHoursStart, &out.QuietHoursEnd,
 			&out.QuietHoursTimezone, &out.DailyLimit, &out.RecentInteractionMinutes,
-			&out.AllowedModes, &out.OfflineCapable)
+			&out.AllowedModes, &out.OfflineCapable, &out.Mode, &out.CheckInAfterMinutes)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ProactivePolicy{}, ErrNotFound
 	}
@@ -614,10 +619,24 @@ func mapFollowUpErr(err error) error {
 			switch {
 			case strings.Contains(pgErr.Message, "not found"):
 				return ErrNotFound
-			case strings.Contains(pgErr.Message, "follow_up:"), strings.Contains(pgErr.Message, "proactive_policy:"):
+			case strings.Contains(pgErr.Message, "follow_up:"), strings.Contains(pgErr.Message, "proactive_policy:"), strings.Contains(pgErr.Message, "proactive:"):
 				return ErrInvalid
 			}
 		}
 	}
 	return mapStoreErr(err)
+}
+
+func modeArg(v *string) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+func checkArg(v *int) any {
+	if v == nil {
+		return nil
+	}
+	return *v
 }

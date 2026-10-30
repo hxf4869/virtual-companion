@@ -2983,6 +2983,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/companion-state:
+    get:
+      operationId: getCompanionState
+      summary: Read today's mood, decaying emotion and busy-until
+      description: Returns the caller's companion state for this relationship. Today's mood is chosen once per local day and
+        stored. Emotion and busyUntil decay or clear from the latest companion recall; this read does not accept chat text.
+        A missing mood row is created. Requires a server-verified authentication context.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: Mood, emotion and busy-until
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanionState'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Relationship absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/proactive-run:
+    post:
+      operationId: runProactive
+      summary: Deliver due proactive text and maybe pre-generate the next one
+      description: Uses the supplied instant as now. Delivers a ready body that is due and not more than two hours late, then
+        may ask the background-greetings model whether to pre-generate another. Parsing failure stays silent. Requires recent
+        reauthentication. Does not log prompt or reply text.
+      security:
+      - cookieAuth: []
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProactiveRunRequest'
+      responses:
+        '200':
+          description: Gate, silence, ready or inbox outcome
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProactiveRunResult'
+        '400':
+          description: now is not RFC3339
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Recent reauthentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Relationship absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships/{relationshipId}/follow-ups:
     get:
       operationId: listFollowUps
@@ -8594,6 +8672,8 @@ components:
       - recentInteractionMinutes
       - allowedModes
       - offlineCapable
+      - mode
+      - checkInAfterMinutes
       properties:
         relationshipId:
           type: string
@@ -8637,6 +8717,19 @@ components:
           type: boolean
           default: false
           description: Declares that this character may generate greeting text without the SillyTavern host.
+        mode:
+          type: string
+          enum:
+          - false
+          - FOLLOW_UP
+          - DAILY
+          - CLOSE_FRIEND
+          description: OFF, follow-ups only, daily greetings, or close-friend initiative.
+        checkInAfterMinutes:
+          type: integer
+          minimum: 120
+          maximum: 4320
+          description: Minimum gap before a social check-in. Mood scales it; it does not change dailyLimit.
     ProactivePolicyWriteRequest:
       type: object
       additionalProperties: false
@@ -8683,6 +8776,94 @@ components:
             - STORY
         offlineCapable:
           type: boolean
+        mode:
+          type: string
+          enum:
+          - false
+          - FOLLOW_UP
+          - DAILY
+          - CLOSE_FRIEND
+          description: Omitted mode keeps an existing DAILY or CLOSE_FRIEND value when enabled, otherwise FOLLOW_UP. enabled
+            false without mode stores OFF.
+        checkInAfterMinutes:
+          type: integer
+          minimum: 120
+          maximum: 4320
+    CompanionState:
+      type: object
+      additionalProperties: false
+      required:
+      - mood
+      - emotion
+      - busyUntil
+      properties:
+        mood:
+          type: object
+          additionalProperties: false
+          required:
+          - tier
+          - vibe
+          - line
+          properties:
+            tier:
+              type: string
+              enum:
+              - WANT_TO_CHAT
+              - JUST_CHILL
+              - LEAVE_ME
+            vibe:
+              type: string
+            line:
+              type: string
+        emotion:
+          type: object
+          additionalProperties: false
+          required:
+          - line
+          - closeness
+          - mood
+          - energy
+          properties:
+            line:
+              type: string
+            closeness:
+              type: integer
+              minimum: 0
+              maximum: 100
+            mood:
+              type: integer
+              minimum: 0
+              maximum: 100
+            energy:
+              type: integer
+              minimum: 0
+              maximum: 100
+        busyUntil:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    ProactiveRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        now:
+          type: string
+          format: date-time
+          description: Simulated instant used as "now" for gates, slots and delivery. Omitted means the server clock.
+    ProactiveRunResult:
+      type: object
+      additionalProperties: false
+      required:
+      - outcome
+      - reason
+      properties:
+        outcome:
+          type: string
+        reason:
+          type: string
+        eventId:
+          type: string
     ServiceClassAssignRequest:
       type: object
       description: ADMIN-only simulated service-class assignment (ENT-SNAP).

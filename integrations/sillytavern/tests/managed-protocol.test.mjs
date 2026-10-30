@@ -59,6 +59,17 @@ test('buildPlan：modelId 剧本为缺省，指令按 请求体 > 头 > __ctl �
     assert.equal(typeof unknownModel.text, 'string');
 });
 
+test('buildPlan：主动判断与预生成走固定合成回复，显式 text 仍优先', () => {
+    const judge = buildPlan('vc03m-chat', { messages: [{ role: 'user', content: '判断现在要不要主动找对方\n有一阵没聊了' }] }, null, null);
+    assert.equal(judge.text, '{"kind":"check_in","timing":"in_minutes"}');
+    const share = buildPlan('vc03m-chat', { messages: [{ role: 'user', content: '判断现在要不要主动找对方\n一件小事想分享' }] }, null, null);
+    assert.equal(share.text, '{"kind":"share","timing":"in_minutes"}');
+    const pre = buildPlan('vc03m-chat', { messages: [{ role: 'user', content: '像平时发微信那样随口说一两句' }] }, null, null);
+    assert.equal(pre.text, '有一阵没聊，想来跟你说句话');
+    const forced = buildPlan('vc03m-chat', { vc_fixture: { text: '体覆盖' }, messages: [{ role: 'user', content: '判断现在要不要主动找对方' }] }, null, null);
+    assert.equal(forced.text, '体覆盖');
+});
+
 // ---------------------------------------------------------------------------
 // /models 与捕获
 // ---------------------------------------------------------------------------

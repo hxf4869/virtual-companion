@@ -1082,7 +1082,7 @@
         "catalogId": "go-v1-api-scope",
         "counts": {
           "DEFER": 15,
-          "KEEP": 102,
+          "KEEP": 104,
           "RETIRE": 42,
           "SIMPLIFY": 5
         },
@@ -1868,6 +1868,28 @@
             "operationId": "putProactivePolicy",
             "path": "/api/v1/relationships/{relationshipId}/proactive-policy",
             "replacementOrImpact": "W09 policy write for one character instance. Default remains off. Importing a character does not enable it. No model call and no inbox write."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "GET",
+            "operationId": "getCompanionState",
+            "path": "/api/v1/relationships/{relationshipId}/companion-state",
+            "replacementOrImpact": "Read today's stored mood, the decayed emotion line and busyUntil. Mood is idempotent per relationship and local day. Emotion is updated on companion memory recall, not by this read."
+          },
+          {
+            "currentH5Callers": [],
+            "decision": "KEEP",
+            "keepBecause": [
+              "owner-instruction"
+            ],
+            "method": "POST",
+            "operationId": "runProactive",
+            "path": "/api/v1/relationships/{relationshipId}/proactive-run",
+            "replacementOrImpact": "One relationship pass of the proactive engine. now is the simulated clock. Due ready text can enter the inbox. A judgment that fails to parse stays silent."
           },
           {
             "currentH5Callers": [],
@@ -2777,7 +2799,7 @@
           }
         ]
       },
-      "sha256": "fb2c8eb03c8c3ba7d521e6674d032646ea44b2177d186a1d2b1738833dbf6d0a"
+      "sha256": "01800c329f4d3b375ebe8b07f5efe1fb11c57f2d9e31e0022c42c6d434658550"
     },
     "memory-candidate-statuses.yaml": {
       "document": {
