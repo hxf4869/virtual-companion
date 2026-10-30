@@ -34,6 +34,13 @@
 .vc-account-device-name { font-size: 17px; }
 .vc-account-device-meta { margin-top: 2px; color: var(--vcms-muted, #6e6e73); font-size: 13px; }
 .vc-account-device button { flex: none; min-height: 44px; }
+
+body.vc-ui [data-vc-account-home] .vc-icon {
+  color: var(--vc-ink-3);
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+}
 .vc-data-dialog > .vc-scrim,
 .vc-data-dialog > .vc-alert {
     position: fixed !important;

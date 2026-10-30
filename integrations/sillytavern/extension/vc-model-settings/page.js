@@ -651,13 +651,13 @@ export function mountModelSettings() {
             const nav = vcNavCopy();
             return `
         <header class="vcms-header vc-navbar" style="--vc-nav-p:1">
-            <button type="button" class="vc-btn vc-btn-text" data-action="vc-back">${icon('chevron-left', { size: 22 })}<span>${esc(nav.back)}</span></button>
+            <button type="button" class="vc-circle vc-glass" data-action="vc-back" aria-label="返回${esc(nav.back)}">${icon('chevron-left', { size: 22 })}</button>
             <div class="vc-nav-title">${esc(nav.title)}</div>
             <div class="vc-nav-spacer"></div>
             <span class="vcms-dirty" id="vcms-dirty" hidden><span class="vcms-dot"></span>未保存的修改</span>
             <button type="button" class="vc-btn vc-btn-text" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
-            <button type="button" class="vc-btn vc-btn-text" id="vcms-save" data-action="save">保存更改</button>
-            <button type="button" class="vc-circle vc-glass" data-action="close" aria-label="关闭模型设置" title="关闭（Esc）">${icon('x', { size: 22 })}</button>
+            <button type="button" class="vc-btn vc-btn-fill" id="vcms-save" data-action="save">保存更改</button>
+            <button type="button" class="vcms-dismiss" data-action="close" aria-hidden="true" tabindex="-1">关闭</button>
             <h2 class="vcms-title">模型设置</h2>
             <p class="vcms-subtitle">供应商 ${providerCount} · 模型配置 ${modelCount} · 用途绑定 ${state.purposes.length}</p>
         </header>`;
@@ -747,7 +747,7 @@ export function mountModelSettings() {
         : `<button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="-1">上个月</button><span data-usage-month-label>${esc(state.usage.month)}</span><button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="usage-month" data-delta="1">下个月</button>`}
                 </div>
             </div>
-            <p class="vcms-muted">默认当月（UTC）。未配置单价时照常发送，费用显示为未知，不记为 0。预算不足只在已设置月度预算并且超出时出现。</p>
+            <p class="vcms-muted vcms-usage-note">未配置单价时仍会发送，费用显示为未知。</p>
             ${body}
         </section>`;
     }
@@ -805,10 +805,6 @@ export function mountModelSettings() {
         ${renderUsagePanel()}
         <div class="vcms-layout">
             <aside class="vcms-providers" aria-label="供应商列表">
-                <div class="vcms-providers-head">
-                    <span class="vcms-section-label">接入的供应商</span>
-                    <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="new-provider"><i class="fa-solid fa-plus"></i> 新建</button>
-                </div>
                 <div class="vcms-provider-list" id="vcms-provider-list">${renderProviderCards()}</div>
             </aside>
             <main class="vcms-main">
@@ -926,7 +922,10 @@ export function mountModelSettings() {
                    <span class="vcms-provider-sub">草稿</span>
                </button>`
             : '';
-        return cards + newCard;
+        const addRow = vcUiEnabled() && !creatingNew
+            ? `<button type="button" class="vcms-provider-card vc-cell" data-action="new-provider"><span class="vcms-provider-name">新建供应商</span></button>`
+            : '';
+        return cards + newCard + addRow;
     }
 
     function renderProviderPane() {
@@ -959,13 +958,13 @@ export function mountModelSettings() {
                         <p class="vcms-field-err" data-err-for="providerId"></p>
                     </div>
                 </div>
-                <div class="vcms-field">
-                    <span class="vcms-field-label">状态</span>
+                <div class="vcms-field${vcUiEnabled() ? ' vcms-state-row' : ''}">
+                    <span class="vcms-field-label">${vcUiEnabled() ? esc(logic.PROVIDER_STATE_LABELS[d.state] ?? d.state) : '状态'}</span>
                     <div class="vcms-switch-row">
                         ${vcUiEnabled()
         ? `<button type="button" class="vc-switch" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"></button>`
         : `<button type="button" class="vcms-switch ${d.state === 'ENABLED' ? 'is-on' : ''}" data-action="toggle-provider-state" role="switch" aria-checked="${d.state === 'ENABLED'}" aria-label="启用或停用该供应商"><span class="vcms-switch-knob"></span></button>`}
-                        <span>${logic.PROVIDER_STATE_LABELS[d.state] ?? d.state}</span>
+                        ${vcUiEnabled() ? '' : `<span>${logic.PROVIDER_STATE_LABELS[d.state] ?? d.state}</span>`}
                     </div>
                     <p class="vcms-field-err" data-err-for="state"></p>
                 </div>

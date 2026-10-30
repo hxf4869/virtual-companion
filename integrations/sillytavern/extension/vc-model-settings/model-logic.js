@@ -495,9 +495,12 @@ const USAGE_LABELS = {
     MEMORY_EXTRACTION_DEDUP_SUMMARY: '记忆提取',
     BACKGROUND_GREETINGS: '后台问候',
     TOOL_TURN: '工具回合',
-    LEGACY_CHAT: '旧聊天',
-    LEGACY_GENERATION: '旧生成',
-    EMBEDDING: '本地向量',
+    // 用途拆分前记在账上、又不是记忆提取、问候或工具回合的对话。
+    LEGACY_CHAT: '更早的对话',
+    // 没有对应预扣记录的更早一次生成。
+    LEGACY_GENERATION: '更早的生成',
+    // 本机记忆编码次数，不计入在线费用。
+    EMBEDDING: '本机记忆',
 };
 
 export function usagePurposeLabel(purpose) {
