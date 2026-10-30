@@ -92,3 +92,7 @@ integrations/sillytavern/dev/
 integrations/sillytavern/node_modules/
 # V2-W03 受管（managed）运行装配目录（受管 dataRoot/st-run 运行副本/pid/日志/manifest）
 integrations/sillytavern/dev-managed/
+
+# Local stack state belongs in the home directory. Ignore accidental copies.
+ops/local/*.env
+ops/local/state/
