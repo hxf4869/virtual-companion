@@ -473,7 +473,8 @@ export async function sceneStoryReal(ctx) {
             };
             report.continuity.push(continuity);
             if (!continuity.playerLineInOwnView || continuity.playerLineInOtherView) throw new Error(`${actor} 第 ${index} 轮对白隔离不符`);
-            if (reply && !continuity.npcReplyInOwnView) note('npc_reply_not_auto_committed');
+            // W14：NPC 台词不作为世界事件提交，事件只来自行动。生成回复不在 ActorView
+            // 里是批准过的行为；用 JSON.stringify(events).includes(整段回复) 还会把引号和换行误判成没提交。
             if (continuity.npcReplyInOtherView) note('npc_reply_visible_to_other');
         };
         if (capture.snapshot().length !== 0) throw new Error('开局前出现上游请求');
