@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
+import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
 
 const F01_SHOTS = '/private/tmp/claude-501/-Users-hxf-projects-virtual-companion/67c91cf9-5973-42e2-bbc0-514b65af332e/scratchpad/f01-shots';
 const SHOTS = process.env.VC_W15_SHOTS
@@ -127,6 +128,7 @@ export async function sceneW15Ui(ctx) {
         ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}),
     });
     const shots = [];
+    const shotBudget = createShotBudget();
     try {
         const bc = await browser.newContext({ viewport: VIEWPORTS[0] });
         await pinVcUi(bc, 'off');
@@ -140,6 +142,7 @@ export async function sceneW15Ui(ctx) {
         page.on('pageerror', (error) => consoleLines.push(error.message.slice(0, 180)));
         page.on('console', (msg) => { if (msg.type() === 'error') consoleLines.push(msg.text().slice(0, 180)); });
         const shot = async (name) => {
+            if (!keepSceneShot(shotBudget, name)) return;
             const file = path.join(SHOTS, name);
             await page.screenshot({ path: file });
             shots.push(file);
@@ -664,7 +667,11 @@ export async function sceneW15Ui(ctx) {
                         WHERE provider_id = 'vc03m-chat' AND price_version IN (${pricedVersions.join(',')});`);
                 }
             }
-            const exhausted = ctx.w10.psql(`INSERT INTO vc.month_cost_budget(month_start, settled_usd)
+            const previousSettled = ctx.w10.psql(`SELECT COALESCE((SELECT settled_usd FROM vc.month_cost_budget WHERE month_start = date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC')::date), 0)::text;`).trim();
+            if (!/^\d+(\.\d+)?$/.test(previousSettled)) throw new Error('当月预算读数异常');
+            let exhausted;
+            try {
+            exhausted = ctx.w10.psql(`INSERT INTO vc.month_cost_budget(month_start, settled_usd)
                 VALUES (date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC')::date, 11)
                 ON CONFLICT (month_start) DO UPDATE
                 SET settled_usd = GREATEST(vc.month_cost_budget.settled_usd, 11)
@@ -699,6 +706,11 @@ export async function sceneW15Ui(ctx) {
             if (await page.locator('#send_but').isEnabled()) throw new Error('模型页打开后发送未门禁');
             await shot('1440-budget-refused.png');
             await closeIf('.vcms-overlay:not([hidden])', '[data-action="close"]');
+            } finally {
+                ctx.w10.psql(`INSERT INTO vc.month_cost_budget(month_start, settled_usd)
+                    VALUES (date_trunc('month', clock_timestamp() AT TIME ZONE 'UTC')::date, ${previousSettled})
+                    ON CONFLICT (month_start) DO UPDATE SET settled_usd = ${previousSettled};`);
+            }
             const importName = `W15合成导入${crypto.randomUUID().slice(0, 8)}`;
             await openNav('characters', '角色', 1440);
             await page.locator('.vc-instance-dialog[open] h1').waitFor();
@@ -737,3 +749,12 @@ export async function sceneW15Ui(ctx) {
         await browser.close();
     }
 }
+
+export const w15UiScene = {
+    id: 'w15-ui',
+    title: 'W15 七页导航、模型预算与账户',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneW15Ui,
+};
+export const scenes = [w15UiScene];

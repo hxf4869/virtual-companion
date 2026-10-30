@@ -246,16 +246,16 @@ test('验收产物拒绝对话正文和密钥', () => {
 });
 
 test('story-real 只在显式 filter 注册，不进入默认场景', () => {
-    const src = fs.readFileSync(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
+    const src = fs.readFileSync(new URL('../scripts/story-real-accept.mjs', import.meta.url), 'utf8');
     const at = src.indexOf("id: 'story-real'");
-    assert.notEqual(at, -1, 'accept-managed 应追加 story-real');
+    assert.notEqual(at, -1, 'story-real 场景模块应注册该场景');
     const block = src.slice(at, at + 420);
     assert.match(block, /default:\s*false/);
     assert.match(block, /'catalog'/);
     assert.match(block, /'stack'/);
     assert.match(block, /'browser'/);
     assert.match(src, /sceneStoryReal/);
-    assert.match(src, /'story-real':\s*sceneStoryReal/);
+    assert.match(src, /run:\s*sceneStoryReal/);
     assert.equal(SCENES.some((scene) => scene.id === 'story-real'), false);
     assert.equal(resolveSceneFilter().includes('story-real'), false);
 });

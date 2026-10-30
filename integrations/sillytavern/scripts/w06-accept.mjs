@@ -138,3 +138,28 @@ export async function sceneRightsNative(ctx){
     expect(await ctx.admin.call('GET','/api/v1/auth/session'),200,'删除不可影响另一账号');
     return {cases:['D03','D04'],sameExportResumed:true,deletionResumed:true,otherOwnerPreserved:true};
 }
+
+export const sourceNativeScene = {
+    id: 'source-native',
+    title: 'W06 ST→Go持久来源、漏报、迟到结果、读取故障和删除',
+    needs: ['go', 'stack'],
+    default: false,
+    run: sceneSourceNative,
+};
+
+export const rightsBrowserScene = {
+    id: 'rights-browser',
+    title: 'W06 D02/D05 原生数据权利页面、一次性下载与手机布局',
+    needs: ['go', 'stack'],
+    default: false,
+    run: sceneRightsBrowser,
+};
+
+export const rightsNativeScene = {
+    id: 'rights-native',
+    title: 'W06 D03/D04 离线重试与独立合成账号删号',
+    needs: ['go', 'stack'],
+    default: false,
+    run: sceneRightsNative,
+};
+export const scenes = [sourceNativeScene, rightsBrowserScene, rightsNativeScene];

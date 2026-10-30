@@ -1,6 +1,10 @@
 // F3 设置与酒馆：vc-ui 开启时的受管浏览器场景。默认不进场景集。
 import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
+import { trackPageErrors } from './lib/page-errors.mjs';
+import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
+
+let shotBudget = createShotBudget();
 
 const DRAWERS = [
     ['left-nav-panel', 'AI 回复配置'],
@@ -23,6 +27,7 @@ function fixtureBase() {
 }
 
 async function shot(page, file) {
+    if (!keepSceneShot(shotBudget, file)) return;
     await page.evaluate(async () => {
         const fonts = document.fonts?.ready ?? Promise.resolve();
         await Promise.race([fonts, new Promise((resolve) => setTimeout(resolve, 2000))]);
@@ -95,13 +100,16 @@ function chatModels() {
 async function dismissWelcome(page) {
     const welcomeDialog = page.locator('dialog[open].popup').first();
     if (await welcomeDialog.count()) {
-        await welcomeDialog.locator('textarea').fill('f3-owner');
+        const name = welcomeDialog.locator('textarea');
+        await name.waitFor({ state: 'visible', timeout: 15000 });
+        await name.fill('f3-owner');
         await welcomeDialog.locator('.popup-button-ok').click();
         await welcomeDialog.waitFor({ state: 'hidden', timeout: 10000 });
     }
 }
 
 export async function sceneF3Settings(ctx) {
+    shotBudget = createShotBudget();
     let chromium;
     try {
         ({ chromium } = await import('playwright-core'));
@@ -123,9 +131,14 @@ export async function sceneF3Settings(ctx) {
             { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: base },
         ]);
         const page = await browserContext.newPage();
-        page.on('pageerror', () => { /* 页面错误留在失败截图，不打印正文 */ });
+        const pageErrors = trackPageErrors(page);
         await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForTimeout(4000);
+        await page.waitForFunction(() => {
+            const area = document.querySelector('dialog[open].popup textarea');
+            const shown = area && area.getClientRects().length > 0 && getComputedStyle(area).visibility !== 'hidden';
+            const app = document.querySelector('#vc_models_menu_button') || document.body.classList.contains('vc-ui');
+            return shown || (app && !document.querySelector('dialog[open].popup'));
+        }, undefined, { timeout: 45000 });
         await dismissWelcome(page);
         await page.waitForSelector('#vc_models_menu_button', { state: 'attached', timeout: 45000 });
         await page.waitForFunction(() => document.body.classList.contains('vc-ui'), undefined, { timeout: 15000 });
@@ -305,6 +318,18 @@ export async function sceneF3Settings(ctx) {
         await page.click('[data-vc-account-back]');
         await page.waitForSelector('.vc-data-dialog', { state: 'hidden', timeout: 8000 });
 
+        await page.evaluate(() => {
+            document.querySelectorAll('.vc-sheet, .vc-scrim').forEach((el) => el.remove());
+            const menu = document.querySelector('#extensionsMenu');
+            const open = menu && getComputedStyle(menu).display !== 'none' && menu.getClientRects().length > 0;
+            if (open) document.body.click();
+        });
+        await page.waitForFunction(() => {
+            const menu = document.querySelector('#extensionsMenu');
+            if (!menu) return true;
+            const style = getComputedStyle(menu);
+            return style.display === 'none' || menu.getClientRects().length === 0;
+        }, null, { timeout: 8000 });
         const showRightView = async (view) => {
             await page.evaluate((name) => {
                 const map = { list: 'rm_characters_block', edit: 'rm_ch_create_block', import: 'rm_character_import' };
@@ -321,6 +346,11 @@ export async function sceneF3Settings(ctx) {
                 const tag = `${width}-${theme}`;
                 for (const [id] of DRAWERS) {
                     await openDrawer(page, id);
+                    await page.waitForFunction((drawerId) => {
+                        const el = document.getElementById(drawerId);
+                        const z = Number.parseFloat(getComputedStyle(el).zIndex);
+                        return el?.classList.contains('vc-drawer-page') && Number.isFinite(z);
+                    }, id, { timeout: 8000 });
                     const cover = await page.locator(`#${id}`).evaluate((el) => {
                         const style = getComputedStyle(el);
                         const sheld = document.getElementById('sheld');
@@ -340,12 +370,14 @@ export async function sceneF3Settings(ctx) {
                             x: box.x,
                             left: style.left,
                             hit: !!(hit && (hit === el || el.contains(hit))),
+                            hitName: hit ? `${hit.tagName}#${hit.id}.${String(hit.className).split(' ').slice(0, 4).join('.')}` : 'none',
+                            pointerEvents: style.pointerEvents,
                             sidebarClickable: !!(sidebar && sideHit && sidebar.contains(sideHit) && !el.contains(sideHit)),
                         };
                     });
                     const covered = cover.bg && cover.bg !== 'rgba(0, 0, 0, 0)' && cover.z > cover.sheldZ && cover.z > cover.shellZ && cover.hit;
                     if (!covered) {
-                        throw new Error(id === 'right-nav-panel' ? `角色卡页未盖住内容区 ${tag}` : `抽屉页未盖住内容区 ${id} ${tag}`);
+                        throw new Error(id === 'right-nav-panel' ? `角色卡页未盖住内容区 ${tag} ${JSON.stringify(cover)}` : `抽屉页未盖住内容区 ${id} ${tag} ${JSON.stringify(cover)}`);
                     }
                     if (width < 744 && (cover.x > 8 || cover.w < 360)) {
                         throw new Error(id === 'right-nav-panel' ? `角色卡页未铺满 ${tag}` : `抽屉页未铺满 ${id} ${tag}`);
@@ -452,8 +484,18 @@ export async function sceneF3Settings(ctx) {
                 await page.waitForSelector('.vc-data-dialog', { state: 'hidden', timeout: 8000 });
             }
         }
+        pageErrors.assertNone();
         console.log('[accept] ✓ F3 抽屉页、模型页与账户页截图完成');
     } finally {
         await browser.close();
     }
 }
+
+export const f3SettingsScene = {
+    id: 'f3-settings',
+    title: 'F3 设置与酒馆抽屉页',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneF3Settings,
+};
+export const scenes = [f3SettingsScene];

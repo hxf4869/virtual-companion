@@ -36,7 +36,7 @@ V2 方向（ADR-0009）的锁定 ST 宿主开发入口：真实上游栈 + 本�
 | `node scripts/start.mjs` | 预检（配置不变量 / 依赖树 / 补丁与 vendor SHA / 端口）后启动 ST（127.0.0.1:8742）与本地固定 provider mock（8743）；PID 记录在 `dev/run/*.pid` |
 | `node scripts/stop.mjs` | 只停 `dev/run/*.pid` 归属本实例的进程（核对进程命令行） |
 | `node scripts/status.mjs` | 只读汇报进程 / `/version` / dataRoot 权限 / 配置不变量 / 依赖树与补丁、vendor 完整性（JSON） |
-| `node scripts/assemble-managed.mjs` | 受管装配：校验 upstream 干净与依赖树 → 整体重建 `dev-managed/st-run`（复制源码树 + `node_modules` 符号链接 + 核心补丁）→ 部署 server plugin 与 `vc-model-settings` 扩展（排除 `harness/`）→ 写受管 `config.yaml`（`enableServerPlugins:true`、`enableUserAccounts:true`、SSO 头自动登录禁用）与 `derived-manifest.json`；幂等可重跑 |
+| `node scripts/assemble-managed.mjs` | 受管装配：校验 upstream 干净与依赖树 → 整体重建 `dev-managed/st-run`（复制源码树 + `node_modules` 符号链接 + 核心补丁）→ 部署 server plugin 与 `vc-model-settings` 扩展（排除 `harness/`）→ 写受管 `config.yaml`（`enableServerPlugins:true`、`enableUserAccounts:true`、SSO 头自动登录禁用）与 `derived-manifest.json`；幂等可重跑。源码内容戳与 `st-run`、`assemble-ok` 都未变时跳过重建 |
 | `node scripts/start-managed.mjs` | 受管启动（127.0.0.1:8752）：预检含核心补丁输入/输出 SHA、upstream 干净、部署完整性与 Go 桥接环境硬校验；缺独立 `VC_MEMORYCORE_SERVICE_TOKEN` 或 `VC_ST_GO_BASE_URL` / `VC_ST_PLUGIN_SERVICE_TOKEN`（>=32 字节）/ `VC_ST_ACCOUNT_HANDLES`（非空 Go 账号→ST handle 映射）即硬失败退出，绝不静默降级回原生 Key；健康等待公开 `/auth/`；PID/日志在 `dev-managed/run/` |
 | `node scripts/stop-managed.mjs` | 先停止核验归属的 `memorycore.pid`，再停 `dev-managed/run/st.pid` 归属受管实例的进程（核对命令行，不碰 8742/8743 原生实例） |
 | `node scripts/status-managed.mjs` | 只读汇报受管实例状态（JSON；登录入口 `/auth/` 探活、账号映射只报 configured 布尔，不输出密钥与映射值） |
@@ -168,7 +168,7 @@ MinIO 不备份。应用对象是 `exports/<owner>/<id>-<hex>.json`，约 24 小
 | MemoryCore | `dev-managed/memorycore-data/owners/<十进制 owner>/` | 含。`vectors.db`、jsonl、画像与操作记录可含派生文本 | 明文，目录 0700、文件 0600。Owner 决定不加密 | `owners/` 存在时纳入，排除 wal/shm 与 `runtime.lock`。本轮已验证。无保留期 |
 | MinIO 导出对象 | `exports/<owner>/<id>-<hex>.json` | 含对话与记忆副本 | 上传前字段加密 | 约 24 小时过期的临时下载副本。默认不进 `backup.sh`：权威数据在 PostgreSQL 与 ST 文件，过期副本不备份、不随恢复复活。本轮只建了空桶，没有导出对象 |
 | 本机 embedding | 约定 `127.0.0.1:11438` 的 `qwen3-embedding:0.6b`，容器名 `vc-w08-embedding` | 请求瞬时可能含记忆文本；容器内是模型权重 | 无应用层加密 | 无备份。仓库没有创建该容器的脚本。本轮未启动 |
-| 本机重排 | `127.0.0.1:11439`（`VC_RERANK_PORT`），容器名 `vc-rerank`（`VC_RERANK_CONTAINER`）。镜像按 digest 固定。部署目录变量是 `VC_RERANK_MODELS_DIR`；本机脚本当前仍读 `VC_RERANK_MODEL_DIR` | 请求瞬时含问句与候选记忆；容器内是 GGUF 权重 | 无应用层加密 | 无备份。约 0.5GB 内存。受管验收按需启动或复用 |
+| 本机重排 | `127.0.0.1:11439`（`VC_RERANK_PORT`），容器名 `vc-rerank`（`VC_RERANK_CONTAINER`）。镜像按 digest 固定。目录优先读 `VC_RERANK_MODELS_DIR`；只设置旧名 `VC_RERANK_MODEL_DIR` 时仍可用，并提示一次 | 请求瞬时含问句与候选记忆；容器内是 GGUF 权重 | 无应用层加密 | 无备份。约 0.5GB 内存。受管验收按需启动或复用 |
 | 日志 | `dev-managed/run/st.log`、`memorycore.log`；Go 为进程自身输出 | 插件约定禁止正文与令牌。本轮 MemoryCore 日志只有固定就绪码 | 明文。MemoryCore 日志文件为 0600 | 不进备份 |
 
 恢复门是副本里的 `restore-gate.json`。`companiond` 启动时读取 `VC_RESTORE_GATE_FILE` 指向的路径，每次领取任务和读取记忆时再读文件内容。文件为 `{"blocked":true}`、内容无效或无法读取时，不领取任务、不跑恢复、不投递通知，记忆列表/详情/证据返回 `503 RESTORE_GATE_CLOSED`。文件不存在或 `blocked` 为 false 时开放。`restore.sh` 在清理完成前留下 blocked，成功后删除该文件。上面 13:14 的空目录解包没有删除状态，不能代替 D06 演练；演练在 `tests/backup-d06.test.mjs`。
@@ -274,8 +274,8 @@ W03 集成收口的受管链路：ST 前台生成经 server plugin 桥接 Go 后
   专用 loopback 容器（label `com.vc.w03=managed`，随机 127.0.0.1 端口）：PG `vc-w03-managed-pg`
   （默认镜像 `pgvector/pgvector:0.8.5-pg18`）与 MinIO `vc-w03-managed-minio`（默认镜像
   `vc-g12-minio-tools:local`，本机按 `scripts/dev/Dockerfile.e2e-minio-tools` 构建的 pinned 产物，
-  脚本不自动拉取；容器名/镜像等以脚本 `VC_W03_*` 环境变量面为准）→ `companiond migrate` +
-  `bootstrap`（owner binding secret 种子）→ 运行 Go（8095）→ 合成账号真实密码/TOTP 登录 →
+  脚本不自动拉取；容器名/镜像等以脚本 `VC_W03_*` 环境变量面为准）→ 编译一次 `companiond`，同一二进制执行 `migrate` +
+  `bootstrap`（owner binding secret 种子）再启动 Go（8095）→ 合成账号真实密码/TOTP 登录 →
   受管 ST（8752）与 fixture provider（8753）。
 - **凭据与数据**：临时口令/令牌/Key 在进程内生成；登录口令复用已签入的公开 BCrypt 测试向量。
   仅使用合成材料，只进子进程环境与 gitignored 的 `dev-managed/`，
@@ -492,8 +492,7 @@ node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-nat
 保留 embedding 容器、重排镜像和模型文件。
 
 本机重排与 embedding 容器同级。模型文件放在仓库外（默认 `~/.local/share/virtual-companion/rerank/bge-reranker-v2-m3-Q8_0.gguf`），不放进 Git。
-目录变量统一叫 `VC_RERANK_MODELS_DIR`（部署 Compose 已使用这个名字）。本机受管脚本当前仍只读 `VC_RERANK_MODEL_DIR`；
-下一轮会让它优先认 `VC_RERANK_MODELS_DIR`，并在只看到旧名时提示一次。在那之前，本机继续设置 `VC_RERANK_MODEL_DIR`。
+目录变量统一叫 `VC_RERANK_MODELS_DIR`（部署 Compose 与本机 `lib/rerank-container.mjs` 都认这个名字）。只设置旧名 `VC_RERANK_MODEL_DIR` 时仍然可用，并打印一次改名提示。两个都设置时用新名，不提示。
 容器只绑定 `127.0.0.1:${VC_RERANK_PORT:-11439}`，名字
 `${VC_RERANK_CONTAINER:-vc-rerank}`。镜像 digest 与 GGUF SHA256 写在 `memorycore-service/rerank.mjs`。
 `memorycore-native`、`memory-browser`、`memory-real-eval` 会复用健康容器，否则用上述参数启动。常驻约 0.5GB 内存。

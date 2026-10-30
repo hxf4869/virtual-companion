@@ -432,25 +432,25 @@ export const SCENES = [
 ];
 
 /** 展开过滤器：具名场景 + 依赖闭包（needs 中的内部能力不算场景，'catalog' 由 catalog-admin 提供）。 */
-export function resolveSceneFilter(filterArg) {
+export function resolveSceneFilter(filterArg, scenes = SCENES) {
     const wanted = new Set();
     if (!filterArg) {
-        for (const s of SCENES) if (s.default) wanted.add(s.id);
+        for (const s of scenes) if (s.default) wanted.add(s.id);
         return [...wanted];
     }
     for (const name of String(filterArg).split(',').map((s) => s.trim()).filter(Boolean)) {
-        if (!SCENES.some((s) => s.id === name)) {
-            throw new Error(`未知场景：${name}（可用：${SCENES.map((s) => s.id).join(', ')}）`);
+        if (!scenes.some((s) => s.id === name)) {
+            throw new Error(`未知场景：${name}（可用：${scenes.map((s) => s.id).join(', ')}）`);
         }
         wanted.add(name);
     }
     // 依赖闭包：需要 catalog 的场景自动补 catalog-admin（提供 provider/绑定/标记快照）
     for (const id of [...wanted]) {
-        const scene = SCENES.find((s) => s.id === id);
+        const scene = scenes.find((s) => s.id === id);
         if (scene?.needs.includes('catalog')) wanted.add('catalog-admin');
     }
-    // 按 SCENES 声明序输出：依赖（catalog-admin 等）声明在前，必须先于依赖方执行
-    return SCENES.filter((s) => wanted.has(s.id)).map((s) => s.id);
+    // 按声明序输出：依赖（catalog-admin 等）声明在前，必须先于依赖方执行
+    return scenes.filter((s) => wanted.has(s.id)).map((s) => s.id);
 }
 
 // ---------------------------------------------------------------------------

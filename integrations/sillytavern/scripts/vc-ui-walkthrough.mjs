@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import { waitFor } from './managed-lib.mjs';
+import { allowedOverlays, unexpectedOverlays } from './lib/overlay-guard.mjs';
 
 const MANAGED = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
 const WIDTHS = [
@@ -16,6 +17,26 @@ const WIDTHS = [
     { width: 1440, height: 900 },
 ];
 const THEMES = ['light', 'dark'];
+
+async function closeAccountDialog(page) {
+    if (!(await page.locator('.vc-data-dialog[open]').count())) return;
+    await page.evaluate(() => {
+        const dialog = document.querySelector('.vc-data-dialog[open]');
+        if (!dialog) return;
+        dialog.querySelector('[data-close]')?.click();
+        if (dialog.open) dialog.close();
+    });
+    await page.waitForFunction(() => !document.querySelector('.vc-data-dialog[open]'), null, { timeout: 8000 });
+}
+
+async function removeSheets(page) {
+    await page.evaluate(() => {
+        document.querySelectorAll('.vc-sheet, .vc-scrim').forEach((el) => {
+            el.style.pointerEvents = 'none';
+            el.remove();
+        });
+    });
+}
 const DRAWERS = [
     { id: 'ai-config-button', panel: 'left-nav-panel', page: 'tavern-ai' },
     { id: 'advanced-formatting-button', panel: 'AdvancedFormatting', page: 'tavern-prompt' },
@@ -122,6 +143,61 @@ export async function sceneVcUiWalkthrough(ctx) {
     });
     const record = async (page, width, theme, pageName) => {
         await settle(page);
+        const allowed = allowedOverlays(pageName);
+        try {
+            if (!allowed.includes('drawer')) {
+                for (let i = 0; i < 4; i += 1) {
+                    const back = page.locator('.openDrawer [data-vc-drawer-back]').first();
+                    if (!(await back.count())) break;
+                    await back.click();
+                    await page.waitForFunction(() => !document.querySelector('.openDrawer'), null, { timeout: 8000 });
+                }
+            }
+            if (!allowed.includes('menu')) {
+                const menuOpen = await page.evaluate(() => [...document.querySelectorAll('.vc-menu')].some((el) => el.getClientRects().length > 0));
+                if (menuOpen) {
+                    await page.keyboard.press('Escape');
+                    await page.waitForFunction(() => ![...document.querySelectorAll('.vc-menu')].some((el) => el.getClientRects().length > 0), null, { timeout: 4000 });
+                }
+            }
+            if (!allowed.includes('model')) {
+                const modelClose = page.locator('.vcms-overlay:not([hidden]) [data-action="close"]').first();
+                if (await modelClose.count()) {
+                    await modelClose.click();
+                    await page.waitForFunction(() => !document.querySelector('.vcms-overlay:not([hidden])'), null, { timeout: 8000 });
+                }
+            }
+            if (!allowed.includes('dialog')) await closeAccountDialog(page);
+            if (!allowed.includes('sheet') && !allowed.includes('drawer')) await removeSheets(page);
+            const names = await page.evaluate((allowDrawer) => {
+                const visible = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
+                const found = [];
+                const openDrawer = document.querySelector('.openDrawer');
+                const drawer = Boolean(openDrawer);
+                const model = Boolean(document.querySelector('.vcms-overlay:not([hidden])'));
+                const dialog = Boolean(document.querySelector('dialog[open], .vc-data-dialog[open]'));
+                const sheet = [...document.querySelectorAll('.vc-sheet')].some((el) => {
+                    if (!visible(el)) return false;
+                    // 手机设置 sheet 是酒馆抽屉的宿主，抽屉步骤里它不是上一步残留。
+                    if (allowDrawer && openDrawer && el.querySelector('.vc-settings-form')) return false;
+                    return true;
+                });
+                const menu = [...document.querySelectorAll('.vc-menu')].some(visible);
+                const scrim = [...document.querySelectorAll('.vc-scrim')].some(visible);
+                if (drawer) found.push('drawer');
+                if (menu) found.push('menu');
+                if (sheet) found.push('sheet');
+                if (model) found.push('model');
+                if (dialog) found.push('dialog');
+                if (scrim && !drawer && !sheet && !model && !dialog) found.push('scrim');
+                return found;
+            }, allowed.includes('drawer'));
+            const extra = unexpectedOverlays(names, allowed);
+            if (extra.length) throw new Error(`截图前残留浮层 ${width} ${theme} ${pageName}: ${extra.join(',')}`);
+        } catch (error) {
+            if (String(error?.message || error).includes('残留浮层')) throw error;
+            throw new Error(`截图前残留浮层 ${width} ${theme} ${pageName}: ${String(error?.message || error).split('\n')[0]}`);
+        }
         const file = path.join(dir, `${width}-${theme}-${pageName}.png`);
         await page.screenshot({ path: file });
         shots.push({ file, caption: `${width} ${theme} ${pageName}` });
@@ -197,14 +273,7 @@ export async function sceneVcUiWalkthrough(ctx) {
             }
             await dismissSheet();
         };
-        const dismissSheet = async () => {
-            await page.evaluate(() => {
-                document.querySelectorAll('.vc-sheet, .vc-scrim').forEach((el) => {
-                    el.style.pointerEvents = 'none';
-                    el.remove();
-                });
-            });
-        };
+        const dismissSheet = () => removeSheets(page);
         const leaveChat = async () => {
             const open = await page.evaluate(() => document.querySelector('#vc-shell')?.dataset.chat === 'open' && window.innerWidth < 744);
             if (!open) return;
@@ -329,7 +398,8 @@ export async function sceneVcUiWalkthrough(ctx) {
                         const menu = await page.waitForFunction(() => [...document.querySelectorAll('.vc-menu')].some((el) => el.getClientRects().length > 0), null, { timeout: 4000 }).then(() => true).catch(() => false);
                         if (menu) await record(page, viewport.width, theme, 'chat-press');
                         else notes.push('390 light chat-press：长按菜单没有出现');
-                        await page.keyboard.press('Escape').catch(() => {});
+                        await page.keyboard.press('Escape');
+                        await page.waitForFunction(() => ![...document.querySelectorAll('.vc-menu')].some((el) => el.getClientRects().length > 0), null, { timeout: 4000 });
                     } else notes.push('390 light chat-spread：没有消息可长按');
                 }
 
@@ -344,19 +414,12 @@ export async function sceneVcUiWalkthrough(ctx) {
                         }, drawer.panel, { timeout: 8000 });
                         await record(page, viewport.width, theme, drawer.page);
                     } catch (error) {
+                        if (String(error?.message || error).includes('残留浮层')) throw error;
                         notes.push(`${viewport.width} ${theme} ${drawer.page}：${error.message}`);
                     }
-                    await page.evaluate((panelId) => document.querySelector(`#${panelId} [data-vc-drawer-back]`)?.click(), drawer.panel);
-                    await page.waitForFunction((panelId) => !document.getElementById(panelId)?.classList.contains('openDrawer'), drawer.panel, { timeout: 3000 }).catch(() => {});
-                    await page.evaluate((panelId) => {
-                        const panel = document.getElementById(panelId);
-                        panel?.classList.remove('openDrawer');
-                        if (!document.querySelector('.openDrawer')) document.body.classList.remove('vc-host-drawer');
-                        document.querySelectorAll('.vc-scrim').forEach((el) => {
-                            if (!el.nextElementSibling?.classList?.contains('vc-sheet')) el.remove();
-                        });
-                    }, drawer.panel);
-                    await sleep(200);
+                    const back = page.locator(`#${drawer.panel} [data-vc-drawer-back]`).first();
+                    if (await back.count()) await back.click();
+                    await page.waitForFunction((panelId) => !document.getElementById(panelId)?.classList.contains('openDrawer'), drawer.panel, { timeout: 8000 });
                 }
 
                 try {
@@ -370,19 +433,26 @@ export async function sceneVcUiWalkthrough(ctx) {
                         await record(page, viewport.width, theme, 'model-provider');
                     } else notes.push(`${viewport.width} ${theme} model-provider：没有供应商行`);
                 } catch (error) {
+                    if (String(error?.message || error).includes('残留浮层')) throw error;
                     notes.push(`${viewport.width} ${theme} model：${error.message}`);
                 }
-                await page.evaluate(() => document.querySelector('.vcms-overlay:not([hidden]) [data-action="close"]')?.click());
-                await sleep(200);
+                const modelClose = page.locator('.vcms-overlay:not([hidden]) [data-action="close"]').first();
+                if (await modelClose.count()) await modelClose.click();
+                await page.waitForFunction(() => !document.querySelector('.vcms-overlay:not([hidden])'), null, { timeout: 8000 });
 
                 try {
                     await clickSettings('data');
                     await page.waitForSelector('.vc-data-dialog[open], [data-vc-account-home]', { timeout: 15000 });
                     await record(page, viewport.width, theme, 'account');
                 } catch (error) {
+                    if (String(error?.message || error).includes('残留浮层')) throw error;
                     notes.push(`${viewport.width} ${theme} account：${error.message}`);
                 }
-                await page.evaluate(() => document.querySelector('.vc-data-dialog[open] [data-close]')?.click());
+                try {
+                    await closeAccountDialog(page);
+                } catch (error) {
+                    throw new Error(`截图前残留浮层 ${viewport.width} ${theme} account: ${String(error?.message || error).split('\n')[0]}`);
+                }
                 await closeLayers();
 
                 await go('characters');
@@ -400,31 +470,44 @@ export async function sceneVcUiWalkthrough(ctx) {
                 await go('memory');
                 await page.waitForSelector('[data-vc-page="memory"]', { timeout: 15000 });
                 await record(page, viewport.width, theme, 'memory-list');
-                await dismissSheet();
-                let memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
-                if (!(await memory.count())) {
-                    const pick = page.locator('[data-vc-page="memory"] [data-action="pick-instance"]:visible');
-                    if (await pick.count()) {
-                        await dismissSheet();
-                        await pick.click();
-                        const options = page.locator('.vc-menu button:visible');
-                        const total = await options.count();
-                        for (let i = 0; i < total; i += 1) {
-                            await options.nth(i).click();
-                            await sleep(400);
-                            memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
-                            if (await memory.count()) break;
-                            if (i + 1 < total) await pick.click();
+                try {
+                    await dismissSheet();
+                    let memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
+                    if (!(await memory.count())) {
+                        const pick = page.locator('[data-vc-page="memory"] [data-action="pick-instance"]:visible');
+                        if (await pick.count()) {
+                            await dismissSheet();
+                            await pick.click();
+                            const total = await page.locator('.vc-menu button:visible').count();
+                            for (let i = 0; i < total; i += 1) {
+                                await removeSheets(page);
+                                const picked = await page.evaluate((index) => {
+                                    const buttons = [...document.querySelectorAll('.vc-menu button')].filter((el) => el.getClientRects().length > 0);
+                                    const button = buttons[index];
+                                    if (!button) return false;
+                                    button.click();
+                                    return true;
+                                }, i);
+                                if (!picked) break;
+                                await sleep(400);
+                                memory = page.locator('[data-vc-page="memory"] [data-memory-id]:visible').first();
+                                if (await memory.count()) break;
+                                if (i + 1 < total) await pick.click();
+                            }
                         }
                     }
+                    if (await memory.count()) {
+                        await memory.click();
+                        await page.waitForSelector('[data-vc-page="memory"] [data-action="back"], .vc-memory-title', { timeout: 8000 });
+                        await record(page, viewport.width, theme, 'memory-detail');
+                        const back = page.locator('[data-vc-page="memory"] [data-action="back"]');
+                        if (await back.count()) await back.first().click();
+                    } else notes.push(`${viewport.width} ${theme} memory-detail：没有记忆行`);
+                } catch (error) {
+                    if (String(error?.message || error).includes('残留浮层')) throw error;
+                    notes.push(`${viewport.width} ${theme} memory-detail：${String(error?.message || error).split('\n')[0]}`);
+                    await removeSheets(page);
                 }
-                if (await memory.count()) {
-                    await memory.click();
-                    await page.waitForSelector('[data-vc-page="memory"] [data-action="back"], .vc-memory-title', { timeout: 8000 });
-                    await record(page, viewport.width, theme, 'memory-detail');
-                    const back = page.locator('[data-vc-page="memory"] [data-action="back"]');
-                    if (await back.count()) await back.first().click();
-                } else notes.push(`${viewport.width} ${theme} memory-detail：没有记忆行`);
 
                 await go('inbox');
                 await page.waitForSelector('[data-vc-page="inbox"]', { timeout: 15000 });
@@ -456,6 +539,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                     }
                 }
                 } catch (error) {
+                    if (String(error?.message || error).includes('残留浮层')) throw error;
                     notes.push(`${viewport.width} ${theme}：${error.message || error}`);
                 }
             }
@@ -473,3 +557,12 @@ export async function sceneVcUiWalkthrough(ctx) {
         await browser.close();
     }
 }
+
+export const vcUiWalkthroughScene = {
+    id: 'vc-ui-walkthrough',
+    title: 'F5 新外观全站走查截图',
+    needs: ['catalog', 'stack', 'browser'],
+    default: false,
+    run: sceneVcUiWalkthrough,
+};
+export const scenes = [vcUiWalkthroughScene];

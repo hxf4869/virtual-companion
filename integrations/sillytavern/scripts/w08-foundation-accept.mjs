@@ -78,3 +78,12 @@ export async function sceneMemorycoreFoundation(ctx) {
         ctx.results.memorycoreFoundation = { checks, passed: checks.length, ms: Date.now() - started, foundation: true, businessReady: false };
     } finally { if (owned) command('stop-managed.mjs'); }
 }
+
+export const memorycoreFoundationScene = {
+    id: 'memorycore-foundation',
+    title: 'W08 MemoryCore 固定源码基础服务、鉴权、重启与数据保留',
+    needs: ['memorycore'],
+    default: false,
+    run: sceneMemorycoreFoundation,
+};
+export const scenes = [memorycoreFoundationScene];

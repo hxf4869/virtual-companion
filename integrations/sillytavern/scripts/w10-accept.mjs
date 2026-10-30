@@ -315,3 +315,12 @@ export async function sceneInboxNotify(ctx) {
     if (withdrawn.status !== 200) throw new Error(`撤回通知同意失败 ${withdrawn.status}`);
     await poll(() => deliveries('w10-quiet').length === 2 && deliveries('w10-quiet').every((row) => row.status === 'stopped' && row.reason === 'consent_withdrawn'), '撤回后未发送投递没有停止');
 }
+
+export const w10InboxNotifyScene = {
+    id: 'w10-inbox-notify',
+    title: 'W10 Inbox 与本地邮箱飞书通知',
+    needs: ['go', 'stack'],
+    default: false,
+    run: sceneInboxNotify,
+};
+export const scenes = [w10InboxNotifyScene];

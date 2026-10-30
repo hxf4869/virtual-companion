@@ -257,9 +257,9 @@ test('同名实例去重、用角色卡头像，并用序号区分', () => {
 });
 
 test('走查场景默认不进套件', async () => {
-    const managed = await readFile(new URL('../scripts/accept-managed.mjs', import.meta.url), 'utf8');
+    const managed = await readFile(new URL('../scripts/vc-ui-walkthrough.mjs', import.meta.url), 'utf8');
     assert.match(managed, /id: 'vc-ui-walkthrough'[\s\S]{0,240}default: false/);
-    assert.match(managed, /'vc-ui-walkthrough': sceneVcUiWalkthrough/);
+    assert.match(managed, /run: sceneVcUiWalkthrough/);
     const scene = await readFile(new URL('../scripts/vc-ui-walkthrough.mjs', import.meta.url), 'utf8');
     assert.match(scene, /pinVcUi\(context, 'on'\)/);
     assert.match(scene, /'\.\.\/dev-managed'\)/);

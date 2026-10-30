@@ -16,9 +16,12 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import {
-    INTEG, UPSTREAM_LOCK, MANAGED_DEV, MANAGED_DATA_ROOT, MANAGED_USER_DIR, MANAGED_EXT_DIR,
-    MANAGED_RUN_DIR, MANAGED_CONFIG_PATH, MANAGED_MANIFEST, MANAGED_ST_PORT,
+    INTEG, UPSTREAM_LOCK, VENDOR_LOCK, MANAGED_DEV, MANAGED_DATA_ROOT, MANAGED_USER_DIR, MANAGED_EXT_DIR,
+    MANAGED_RUN_DIR, MANAGED_CONFIG_PATH, MANAGED_MANIFEST, MANAGED_ST_PORT, MANAGED_ST_RUN,
+    CORE_PATCH_SPECS, SERVER_PLUGIN_SRC, EXTENSION_SRC, MEMORYCORE_SERVICE_SRC,
+    ST_DIR, HELPER_DIR, EJS_DIR, MVU_DIR, MEMORYCORE_DIR,
 } from './lib/paths.mjs';
+import { assembleSourceStamp, shouldSkipAssemble } from './lib/assemble-stamp.mjs';
 import { readJson, writeJson, mkdirp, ok, fail } from './lib/util.mjs';
 import { renderConfig } from './lib/config.mjs';
 import { verifyStDependencyTree } from './lib/verify.mjs';
@@ -38,6 +41,21 @@ function main() {
     verifyMemorycoreUpstream();
     if (process.argv.includes('--memorycore-only')) {
         assembleMemorycore(); ok('MemoryCore foundation assembled; persistent data retained'); return;
+    }
+    const contentStamp = assembleSourceStamp({
+        dirs: [SERVER_PLUGIN_SRC, EXTENSION_SRC, MEMORYCORE_SERVICE_SRC, path.join(INTEG, 'patches'), path.join(INTEG, 'scripts/lib')],
+        files: [UPSTREAM_LOCK, VENDOR_LOCK, path.join(INTEG, 'scripts/assemble-managed.mjs'), path.join(INTEG, 'scripts/bootstrap.mjs'), ...CORE_PATCH_SPECS],
+        gitDirs: [ST_DIR, HELPER_DIR, EJS_DIR, MVU_DIR, MEMORYCORE_DIR],
+    });
+    const stampPath = path.join(MANAGED_DEV, 'assemble-content.stamp');
+    if (shouldSkipAssemble({
+        stamp: contentStamp,
+        stampPath,
+        okPath: path.join(MANAGED_DEV, 'assemble-ok'),
+        runPath: MANAGED_ST_RUN,
+    })) {
+        ok('assemble-managed 源码未变，按内容戳跳过重建');
+        return;
     }
     const lock = readJson(UPSTREAM_LOCK);
     const commit = verifyStUpstreamClean({ lock });
@@ -97,6 +115,7 @@ function main() {
         note: '原始产物 SHA256 只存于 upstream.lock.json（未改）；本文件是受管派生产物记录。',
     });
     fs.writeFileSync(path.join(MANAGED_DEV, 'assemble-ok'), new Date().toISOString(), { mode: 0o600 });
+    fs.writeFileSync(path.join(MANAGED_DEV, 'assemble-content.stamp'), `${contentStamp}\n`, { mode: 0o600 });
     ok(`受管 config.yaml（0600）与 derived-manifest.json 已写入 ${path.relative(INTEG, MANAGED_DEV)}/`);
     ok('assemble-managed 完成：启动用 VC_ST_GO_BASE_URL=… VC_ST_PLUGIN_SERVICE_TOKEN=… node scripts/start-managed.mjs');
 }
