@@ -11,6 +11,7 @@ export async function sceneVoiceInput(ctx) {
         await page.waitForFunction(()=>document.querySelector('#vc-voice-input-note')?.textContent.startsWith('1″'));
         await mic.click();
         await page.waitForFunction(()=>SillyTavern.getContext().chat.some((row)=>row.is_user && row.extra?.vc_voice_input?.durationMs>0));
+        assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.findLast((row)=>row.is_user).extra.vc_voice_input.emotion),'HAPPY','whitelisted emotion saved as this turn cue');
         await page.waitForFunction(()=>SillyTavern.getContext().chat.at(-1)?.extra?.vc_voice?.status==='ready',null,{timeout:30000});
         assert.equal(await page.locator('#chat .mes[is_user="true"] .vc-voice-text').last().isVisible(),true,'user transcription expanded');
         const state=await (await fetch(`http://127.0.0.1:${process.env.VC_W03_FIXTURE_PORT}/__voice/state`)).json();

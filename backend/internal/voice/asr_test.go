@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func inputWAV() []byte {
@@ -48,6 +49,56 @@ func TestASRAndTTSTogetherHaveTwoSlots(t *testing.T) {
 	cancel()
 	if err := s.acquire(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal("third engine exceeded two slots")
+	}
+	s.release()
+	s.release()
+}
+
+func TestWaitingChatPrecedesBackgroundSynthesis(t *testing.T) {
+	s := New(nil, nil, nil, "", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	for n := 0; n < 2; n++ {
+		if err := s.acquire(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := make(chan string, 2)
+	go func() {
+		if s.acquireTTS(ctx, CosyVoice) == nil {
+			done <- CosyVoice
+		}
+	}()
+	go func() {
+		if s.acquireTTS(ctx, Kokoro) == nil {
+			done <- Kokoro
+		}
+	}()
+	for s.kokoroWaiting.Load() == 0 {
+		select {
+		case <-ctx.Done():
+			t.Fatal("chat never queued")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	s.release()
+	select {
+	case first := <-done:
+		if first != Kokoro {
+			t.Fatal("background occupied the chat slot")
+		}
+	case <-ctx.Done():
+		t.Fatal("chat did not start")
+	}
+	s.release()
+	select {
+	case second := <-done:
+		if second != CosyVoice {
+			t.Fatal("background never resumed")
+		}
+	case <-ctx.Done():
+		t.Fatal("background did not start")
 	}
 	s.release()
 	s.release()

@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -21,16 +22,17 @@ type cachedVoices struct {
 }
 
 type Service struct {
-	store   Store
-	blobs   BlobStore
-	engines map[string]Engine
-	asr     ASREngine
-	asrBusy chan struct{}
-	slots   chan struct{}
-	log     *slog.Logger
-	gate    string
-	cacheMu sync.Mutex
-	cache   map[string]cachedVoices
+	store         Store
+	blobs         BlobStore
+	engines       map[string]Engine
+	asr           ASREngine
+	asrBusy       chan struct{}
+	slots         chan struct{}
+	kokoroWaiting atomic.Int32
+	log           *slog.Logger
+	gate          string
+	cacheMu       sync.Mutex
+	cache         map[string]cachedVoices
 }
 
 func New(engines map[string]Engine, blobs BlobStore, log *slog.Logger, gate string, asr ASREngine) *Service {
@@ -409,7 +411,7 @@ func (s *Service) process(ctx context.Context, clip Clip) {
 	}
 	jobCtx, cancel := context.WithDeadline(ctx, clip.StartedAt.Add(time.Duration(clip.Params.TimeoutSeconds)*time.Second+30*time.Second))
 	defer cancel()
-	if err := s.acquire(jobCtx); err != nil {
+	if err := s.acquireTTS(jobCtx, clip.Engine); err != nil {
 		return
 	}
 	defer s.release()

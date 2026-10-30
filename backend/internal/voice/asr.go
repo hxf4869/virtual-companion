@@ -133,3 +133,29 @@ func (s *Service) acquire(ctx context.Context) error {
 	}
 }
 func (s *Service) release() { <-s.slots }
+
+// Waiting background synthesis must leave the next free slot to chat audio.
+// Already running inference is never interrupted or reconfigured.
+func (s *Service) acquireTTS(ctx context.Context, engine string) error {
+	if engine == Kokoro {
+		s.kokoroWaiting.Add(1)
+		defer s.kokoroWaiting.Add(-1)
+		return s.acquire(ctx)
+	}
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if s.kokoroWaiting.Load() == 0 {
+			select {
+			case s.slots <- struct{}{}:
+				return nil
+			default:
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}

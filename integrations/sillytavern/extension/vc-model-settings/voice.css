@@ -17,7 +17,7 @@ body.vc-ui .vc-voice-text { margin: 0; white-space: pre-wrap; overflow-wrap: any
 body.vc-ui .vc-voice-text[hidden] { display: none; }
 body.vc-ui .vc-voice-pending { min-height: var(--vc-touch); justify-content: center; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
 body.vc-ui #send_form.vc-voice-input-available #send_but { display: none !important; }
-body.vc-ui #vc-voice-input { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; border: 0; background: var(--vc-accent); color: var(--vc-on-accent); border-radius: var(--vc-radius-pill); min-width: var(--vc-touch); min-height: var(--vc-touch); display: inline-flex; align-items: center; justify-content: center; padding: var(--vc-space-xs); cursor: pointer; }
+body.vc-ui #vc-voice-input { position: relative; z-index: 2; grid-column: 2; grid-row: 1; justify-self: end; align-self: center; border: 0; background: var(--vc-accent); color: var(--vc-on-accent); border-radius: var(--vc-radius-pill); min-width: var(--vc-touch); min-height: var(--vc-touch); display: inline-flex; align-items: center; justify-content: center; padding: var(--vc-space-xs); cursor: pointer; touch-action: none; }
 body.vc-ui #vc-voice-input[hidden] { display: none; }
 body.vc-ui #vc-voice-input:disabled { opacity: .5; }
 body.vc-ui #vc-voice-input-note { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--vc-space-xs); padding: var(--vc-space-xs); font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
