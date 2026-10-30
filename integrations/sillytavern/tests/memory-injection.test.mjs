@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMemoryInjection, memoryBlock, MEMORY_PROMPT } from '../extension/vc-model-settings/memory-injection.js';
+import { createMemoryInjection, memoryBlock, MEMORY_PROMPT, MEMORY_QUIET_COPY } from '../extension/vc-model-settings/memory-injection.js';
 import { memoryRequest, replaceMemorySlots, refreshMemorySlot } from '../server-plugin/virtual-companion/lib/memory-guard.js';
 const id = '20000000-0000-4000-8000-000000000001';
 const input = { chatIdentity: id, revision: 4, enabled: true, budgetTokens: 1024 };
@@ -8,9 +8,11 @@ function host() {
     let context = { chatMetadata: { vc_f2: { id, revision: 4 }, vc_binding: { relationshipId: '7' } },
         extensionSettings: {}, prompts: {}, setExtensionPrompt(key, ...value) { this.prompts[key] = value; } };
     const status = [];
-    return { get: () => context, set: (value) => { context = value; }, status,
-        controller(recall) { return createMemoryInjection({ getContext: () => context, recall, ensureBinding: async () => {},
-            onStatus: (s) => status.push(s) }); } };
+    const notice = [];
+    return { get: () => context, set: (value) => { context = value; }, status, notice,
+        controller(recall, ensureBinding) { return createMemoryInjection({ getContext: () => context, recall,
+            ensureBinding: ensureBinding || (async () => {}),
+            onStatus: (s) => status.push(s), onNotice: (s) => notice.push(s) }); } };
 }
 test('W07 原生专用USER历史资料槽、可关闭和预算；请求元数据仅一次使用', async () => {
     const h = host(), requests = [];
@@ -41,14 +43,18 @@ test('W07 切换/同聊天revision变化拒绝迟到召回，故障先清空旧�
     const h = host(); h.get().prompts[MEMORY_PROMPT] = ['旧资料'];
     const c = h.controller(async () => { throw new Error('offline'); });
     await c.intercept([], 8192, () => assert.fail(), 'normal');
-    assert.equal(h.get().prompts[MEMORY_PROMPT][0], ''); assert.match(h.status.at(-1), /跳过/);
+    assert.equal(h.get().prompts[MEMORY_PROMPT][0], '');
+    assert.equal(h.status.some((item) => String(item).includes('跳过')), false);
+    assert.equal(h.notice.at(-1), '');
 });
 test('W07 quiet、impersonate与无实例群聊不借用普通陪伴资料；末次状态只更新对应快照', async () => {
     const h = host(); const c = h.controller(async () => assert.fail('无普通召回'));
     for (const type of ['quiet', 'impersonate']) await c.intercept([], 1, () => assert.fail(), type);
     h.get().groupId = 'group'; await c.intercept([], 1, () => assert.fail(), 'normal');
     c.finalStatus({ chatIdentity: 'other', revision: 4, status: 'skipped' }); assert.equal(h.status.length, 0);
-    c.finalStatus({ chatIdentity: id, revision: 4, status: 'skipped' }); assert.match(h.status.at(-1), /已跳过/);
+    c.finalStatus({ chatIdentity: id, revision: 4, status: 'skipped' });
+    assert.equal(h.status.some((item) => String(item).includes('跳过')), false);
+    assert.equal(h.notice.length, 0);
 });
 test('W07 三协议实际内容槽替换不动卡、世界书、工具和图片；重复槽去重', () => {
     for (const protocol of ['chat', 'anthropic', 'responses']) {
@@ -91,14 +97,33 @@ test('本轮召回成功但没有记忆时，不把空槽记成来源变化', as
     const c = h.controller(async () => ({ status: 'ok', block }));
     await c.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
     c.finalStatus({ chatIdentity: id, revision: 4, status: 'skipped' });
-    assert.match(h.status.at(-1), /来源已变化/);
     block = '';
     await c.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
     c.finalStatus({ chatIdentity: id, revision: 4, status: 'skipped' });
-    assert.equal(h.status.at(-1), '');
-    assert.equal(h.status.filter((item) => String(item).includes('来源已变化')).length, 1);
+    assert.equal(h.status.filter((item) => String(item).includes('来源已变化') || String(item).includes('跳过') || String(item).includes('已关闭')).length, 0);
+    assert.equal(h.notice.filter(Boolean).length, 0);
     c.finalStatus({ chatIdentity: id, revision: 4, status: 'ok' });
-    assert.equal(h.status.at(-1), '');
+    assert.equal(h.notice.filter(Boolean).length, 0);
+});
+test('正常召回、跳过、关闭和空结果不提示；连续两次失败才留下一行安静说明', async () => {
+    const h = host();
+    const quiet = h.controller(async (value) => ({ status: value.enabled ? 'ok' : 'disabled', block: '' }));
+    await quiet.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    h.get().extensionSettings.vc_memory = { enabled: false, budgetTokens: 128 };
+    await quiet.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    const skipped = h.controller(async () => ({ status: 'skipped', block: '' }));
+    await skipped.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    assert.deepEqual(h.notice.filter(Boolean), []);
+    assert.equal(h.status.some((item) => String(item).includes('跳过') || String(item).includes('已关闭')), false);
+    const down = h.controller(async () => { throw new Error('offline'); });
+    await down.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    assert.equal(h.notice.at(-1), '');
+    await down.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    assert.equal(h.notice.at(-1), MEMORY_QUIET_COPY);
+    assert.equal(String(h.notice.at(-1)).includes('跳过'), false);
+    const back = h.controller(async () => ({ status: 'ok', block: '回来了' }));
+    await back.intercept([], 8192, () => assert.fail('不应中止'), 'normal');
+    assert.equal(h.notice.at(-1), '');
 });
 test('W07 请求身份改变中止生成；伪造recall输入拒绝', async () => {
     assert.throws(() => memoryRequest({ ...input, revision: -1, block: '' }), (e) => e.code === 'VC_MEMORY_REQUEST_INVALID');

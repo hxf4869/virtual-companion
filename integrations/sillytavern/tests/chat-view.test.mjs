@@ -589,3 +589,45 @@ test('打开或切换会话在可见后贴底，宿主恢复旧位置会被拉�
         else delete globalThis.MutationObserver;
     }
 });
+
+test('记忆正常提示不占玻璃条，持续不可用只留一行小号说明', async () => {
+    const { MEMORY_QUIET_COPY } = await import('../extension/vc-model-settings/memory-injection.js');
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    const noteCss = css.match(/body\.vc-ui #vc-memory-note \{[^}]+\}/)?.[0] || '';
+    assert.match(noteCss, /color:\s*var\(--vc-ink-3\)/);
+    assert.match(noteCss, /font-size:\s*var\(--vc-fs-caption\)/);
+    assert.equal(/position:\s*absolute/.test(noteCss), false);
+    assert.equal(noteCss.includes('vc-glass'), false);
+    assert.equal(noteCss.includes('--vc-glass'), false);
+
+    const skipDoc = installMiniDom();
+    stage(skipDoc, { ui: true });
+    const skipToasts = skipDoc.createElement('div');
+    skipToasts.id = 'toast-container';
+    const skip = skipDoc.createElement('div');
+    skip.className = 'toast toast-warning';
+    skip.textContent = '长期记忆来源已变化或暂不可用，本轮已跳过。';
+    skipToasts.append(skip);
+    skipDoc.body.append(skipToasts);
+    mountChatView({ getContext: () => ({ powerUserSettings: {}, characters: [], characterId: null }) });
+    assert.equal(skipToasts.querySelector('.toast'), null);
+    assert.equal(skipDoc.querySelector('#vc-memory-note')?.textContent || '', '');
+    assert.equal(skipDoc.querySelector('#vc-memory-note')?.className.includes('vc-glass'), false);
+
+    const downDoc = installMiniDom();
+    stage(downDoc, { ui: true });
+    const downToasts = downDoc.createElement('div');
+    downToasts.id = 'toast-container';
+    const down = downDoc.createElement('div');
+    down.className = 'toast toast-warning';
+    down.textContent = '部分长期记忆暂不可用；聊天仍可保存。';
+    downToasts.append(down);
+    downDoc.body.append(downToasts);
+    mountChatView({ getContext: () => ({ powerUserSettings: {}, characters: [], characterId: null }) });
+    assert.equal(downToasts.querySelector('.toast'), null);
+    const note = downDoc.querySelector('#vc-memory-note');
+    assert.equal(note?.textContent, MEMORY_QUIET_COPY);
+    assert.equal(note.className.includes('vc-glass'), false);
+    downDoc.body.dispatch('vc-memory-notice', { detail: { text: '' } });
+    assert.equal(downDoc.querySelector('#vc-memory-note').textContent, '');
+});

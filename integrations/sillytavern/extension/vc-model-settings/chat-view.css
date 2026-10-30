@@ -61,6 +61,25 @@ body.vc-ui #sheld:has(> #vc-chat-status:not(:empty)) #vc-chat-poster {
 body.vc-ui #vc-chat-poster button,
 body.vc-ui #vc-chat-poster a { pointer-events: auto; }
 
+body.vc-ui #vc-memory-note {
+  margin: var(--vc-space-xxs) 0 0;
+  max-width: 100%;
+  color: var(--vc-ink-3);
+  font-size: var(--vc-fs-caption);
+  line-height: var(--vc-lh-caption);
+  background: transparent;
+}
+
+body.vc-ui .vc-menu .vc-memory-note {
+  margin: 0 0 var(--vc-space-xs);
+  color: var(--vc-ink-3);
+  font-size: var(--vc-fs-caption);
+  line-height: var(--vc-lh-caption);
+  background: transparent;
+}
+
+body.vc-ui #vc-memory-note:empty { display: none; }
+
 body.vc-ui .vc-poster-avatar-slot {
   width: 112px;
   height: 112px;

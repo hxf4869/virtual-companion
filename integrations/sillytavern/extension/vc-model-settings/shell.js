@@ -13,6 +13,7 @@ import {
     chatSnapshotFromContext,
     conversationRows,
     conversationTitle,
+    loadRecentChatSnapshots,
     renderConversationEmpty,
     renderConversationError,
     renderConversationRows,
@@ -975,8 +976,18 @@ export function mountShell(options = {}) {
             if (token !== reloadToken) return;
             const context = getContext();
             const snap = chatSnapshotFromContext(context);
+            let discovered = [];
+            let chatsComplete = false;
+            try {
+                discovered = await loadRecentChatSnapshots(loadNative);
+                if (token !== reloadToken) return;
+                chatsComplete = true;
+            } catch {
+                // 聊天目录暂时列不出时仍按实例展示，避免把已有会话藏掉。
+            }
             const rows = conversationRows(relationships, {
-                chats: snap ? [snap] : [],
+                chats: [...discovered, ...(snap ? [snap] : [])],
+                chatsComplete,
                 inboxRows,
                 characters: context.characters,
             });
