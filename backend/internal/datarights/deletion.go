@@ -71,6 +71,14 @@ func ContinueDeletion(ctx context.Context, owner int64, store DeletionStore, del
 			return pending("INBOX"), err
 		}
 	}
+	if voices, ok := store.(interface {
+		ClearVoiceAccountData(context.Context, int64) (bool, error)
+	}); ok {
+		done, err := voices.ClearVoiceAccountData(ctx, owner)
+		if err != nil || !done {
+			return pending("VOICE"), err
+		}
+	}
 	if err := store.DeleteAccount(ctx, owner); err != nil {
 		return pending("GO"), err
 	}

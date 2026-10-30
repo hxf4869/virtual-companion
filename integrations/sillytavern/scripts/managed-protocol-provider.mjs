@@ -24,6 +24,7 @@
 //   默认端口 8753（受管冻结约定）；--expect-key 缺省用进程内合成值（与 accept-managed 生成逻辑解耦时显式传入）。
 // 也可作为模块导入：createProtocolFixtureServer({ port, expectKey, host })（tests 使用随机端口）。
 import http from 'node:http';
+import { createVoiceFixtureHandler } from './managed-voice-fixture.mjs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -608,10 +609,12 @@ export async function createProtocolFixtureServer(options = {}) {
         if (captures.length > MAX_CAPTURES) captures.shift();
     }
 
+    const voiceFixture = createVoiceFixtureHandler();
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url || '/', `http://${host}`);
         const p = url.pathname.replace(/\/+$/, '') || '/';
         const started = Date.now();
+        if (await voiceFixture(req, res, p)) return;
 
         // —— 管理/控制面（仅内存，不参与剧本） ——
         if (req.method === 'GET' && p === '/__health') {

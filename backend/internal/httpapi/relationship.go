@@ -1,13 +1,16 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 )
 
 type relationshipJSON struct {
+	voice.RelationshipPrefs
 	RelationshipID   int64    `json:"relationshipId"`
 	PersonaRef       string   `json:"personaRef"`
 	Active           bool     `json:"active"`
@@ -31,21 +34,22 @@ func relationshipJSONFrom(rel postgres.Relationship) relationshipJSON {
 		topics = []string{}
 	}
 	return relationshipJSON{
-		RelationshipID:   rel.ID,
-		PersonaRef:       rel.PersonaRef,
-		Active:           rel.Active,
-		CreatedAt:        rfc3339(rel.CreatedAt),
-		CompanionName:    rel.CompanionName,
-		UserAddressAs:    rel.UserAddressAs,
-		ReplyLength:      rel.ReplyLength,
-		Initiative:       rel.Initiative,
-		Humor:            rel.Humor,
-		AdvicePref:       rel.AdvicePref,
-		RemindersAllowed: rel.RemindersAllowed,
-		MemoryShareScope: rel.MemoryShareScope,
-		AvoidTopics:      topics,
-		Gender:           rel.Gender,
-		AvatarRef:        rel.AvatarRef,
+		RelationshipPrefs: rel.RelationshipPrefs,
+		RelationshipID:    rel.ID,
+		PersonaRef:        rel.PersonaRef,
+		Active:            rel.Active,
+		CreatedAt:         rfc3339(rel.CreatedAt),
+		CompanionName:     rel.CompanionName,
+		UserAddressAs:     rel.UserAddressAs,
+		ReplyLength:       rel.ReplyLength,
+		Initiative:        rel.Initiative,
+		Humor:             rel.Humor,
+		AdvicePref:        rel.AdvicePref,
+		RemindersAllowed:  rel.RemindersAllowed,
+		MemoryShareScope:  rel.MemoryShareScope,
+		AvoidTopics:       topics,
+		Gender:            rel.Gender,
+		AvatarRef:         rel.AvatarRef,
 	}
 }
 
@@ -205,17 +209,22 @@ func (s *Server) handleUpdateRelationshipPrefs(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var body struct {
-		CompanionName    *string  `json:"companionName"`
-		UserAddressAs    *string  `json:"userAddressAs"`
-		ReplyLength      string   `json:"replyLength"`
-		Initiative       string   `json:"initiative"`
-		Humor            string   `json:"humor"`
-		AdvicePref       string   `json:"advicePref"`
-		RemindersAllowed *bool    `json:"remindersAllowed"`
-		MemoryShareScope string   `json:"memoryShareScope"`
-		AvoidTopics      []string `json:"avoidTopics"`
-		Gender           string   `json:"gender"`
-		AvatarRef        string   `json:"avatarRef"`
+		CompanionName    *string         `json:"companionName"`
+		UserAddressAs    *string         `json:"userAddressAs"`
+		ReplyLength      string          `json:"replyLength"`
+		Initiative       string          `json:"initiative"`
+		Humor            string          `json:"humor"`
+		AdvicePref       string          `json:"advicePref"`
+		RemindersAllowed *bool           `json:"remindersAllowed"`
+		MemoryShareScope string          `json:"memoryShareScope"`
+		AvoidTopics      []string        `json:"avoidTopics"`
+		Gender           string          `json:"gender"`
+		AvatarRef        string          `json:"avatarRef"`
+		KokoroVoice      json.RawMessage `json:"kokoroVoice"`
+		CosyVoice        json.RawMessage `json:"cosyVoice"`
+		Speed            json.RawMessage `json:"speed"`
+		VoiceFrequency   json.RawMessage `json:"voiceFrequency"`
+		ProactiveVoice   json.RawMessage `json:"proactiveVoice"`
 	}
 	if !s.decodeJSON(w, r, &body) {
 		return
@@ -226,6 +235,22 @@ func (s *Server) handleUpdateRelationshipPrefs(w http.ResponseWriter, r *http.Re
 	if !ok {
 		s.writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request")
 		return
+	}
+	prefs.VoicePatch = map[string]json.RawMessage{}
+	for key, raw := range map[string]json.RawMessage{"kokoroVoice": body.KokoroVoice, "cosyVoice": body.CosyVoice, "speed": body.Speed, "voiceFrequency": body.VoiceFrequency, "proactiveVoice": body.ProactiveVoice} {
+		if len(raw) > 0 {
+			prefs.VoicePatch[key] = raw
+		}
+	}
+	if len(prefs.VoicePatch) > 0 {
+		if s.core.Voice == nil {
+			s.writeVoiceError(w, voice.ErrUnavailable)
+			return
+		}
+		if err := s.core.Voice.ValidateRelationshipPatch(r.Context(), prefs.VoicePatch); err != nil {
+			s.writeVoiceError(w, err)
+			return
+		}
 	}
 	rel, err := s.core.Store.UpdateRelationshipPrefs(r.Context(), p.AccountID, id, prefs)
 	if err != nil {

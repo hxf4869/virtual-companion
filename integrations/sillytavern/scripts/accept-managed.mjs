@@ -336,6 +336,9 @@ function goServiceSpec(secrets) {
     return {
         binary: path.join(RUN_DIR, 'companiond-accept'),
         env: {
+            VC_TTS_KOKORO_URL: secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/kokoro/v1` : '',
+            VC_TTS_COSYVOICE_URL: secrets.needsVoice ? `${FIXTURE_BASE}/voice-fixture/cosyvoice/v1` : '',
+            VC_ASR_URL: '',
             VC_MODE: 'full',
             VC_VERSION: 'w03-accept',
             VC_LOG_LEVEL: 'info',
@@ -677,6 +680,7 @@ async function runFull() {
     fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
 
     const secrets = {
+        needsVoice: selected.includes('voice-backend'),
         needsRights: selected.some((id) => id.startsWith('rights-')),
         needsMemory: selected.some(id => id.startsWith('memory-')),
         pgPassword: synthSecret(18),

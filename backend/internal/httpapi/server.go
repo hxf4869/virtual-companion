@@ -307,7 +307,19 @@ func operation(path string) string {
 		return "st_memory_recall"
 	case "/api/v1/st/tools/execute":
 		return "tool_execute"
+	case "/api/v1/voice/engines":
+		return "voice_engines"
+	case "/api/v1/voice/settings":
+		return "voice_settings"
+	case "/api/v1/voice/preview":
+		return "voice_preview"
 	default:
+		if strings.HasPrefix(path, "/api/v1/voice-clips/") {
+			if strings.HasSuffix(path, "/audio") {
+				return "voice_audio"
+			}
+			return "voice_clip"
+		}
 		if strings.HasPrefix(path, "/api/v1/admin/model-purposes/") {
 			return "admin_model_purpose"
 		}
@@ -387,6 +399,8 @@ func operation(path string) string {
 		}
 		if strings.HasPrefix(path, "/api/v1/relationships/") {
 			switch {
+			case strings.HasSuffix(path, "/voice-clips"):
+				return "voice_create"
 			case strings.HasSuffix(path, "/deactivate"):
 				return "relationship_deactivate"
 			case strings.HasSuffix(path, "/proactive-policy"):

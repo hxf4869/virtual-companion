@@ -8845,16 +8845,19 @@ components:
           type: integer
           format: int32
           minimum: 1
+          maximum: 3600
           default: 60
         cosyVoiceTimeoutSeconds:
           type: integer
           format: int32
           minimum: 1
+          maximum: 3600
           default: 300
         asrTimeoutSeconds:
           type: integer
           format: int32
           minimum: 1
+          maximum: 120
           default: 30
         dailyChatLimit:
           type: integer
@@ -8923,16 +8926,19 @@ components:
           type: integer
           format: int32
           minimum: 1
+          maximum: 3600
           default: 60
         cosyVoiceTimeoutSeconds:
           type: integer
           format: int32
           minimum: 1
+          maximum: 3600
           default: 300
         asrTimeoutSeconds:
           type: integer
           format: int32
           minimum: 1
+          maximum: 120
           default: 30
         dailyChatLimit:
           type: integer
@@ -11743,7 +11749,7 @@ components:
       type: object
       description: >-
         Deletion accepted and still in progress (W06): the SillyTavern host
-        has not yet confirmed the cleanup of the owner's private copy. A
+        or a private object store has not yet confirmed cleanup of the owner's copy. A
         background job retries the pending domains; a later call returns the
         confirmed 200 {"ok":true}.
       required:
@@ -11761,6 +11767,7 @@ components:
               - ST
               - MEMORYCORE
               - EXPORT_OBJECTS
+              - VOICE
               - GO
           description: Domains whose cleanup is not yet confirmed
     AccountDeletionPendingError:
@@ -11791,6 +11798,7 @@ components:
               - ST
               - MEMORYCORE
               - EXPORT_OBJECTS
+              - VOICE
               - GO
     TrialGrantRequest:
       type: object

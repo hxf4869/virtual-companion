@@ -630,3 +630,32 @@ test('管理桥放行本机模型状态与重排开关，拒绝改地址的方�
         ]);
     } finally { server.close(); }
 });
+
+test('VO-2 管理桥保留鉴权、Range 和 WAV 响应头，拒绝任意语音路径', async () => {
+    const upstream = [];
+    const { server, port } = await startServer(async (req, res) => {
+        upstream.push({ path: req.url, headers: req.headers });
+        if (req.url.endsWith('/audio')) {
+            res.writeHead(206, { 'content-type': 'audio/wav', 'content-range': 'bytes 0-3/48044', 'accept-ranges': 'bytes', 'content-length': '4' });
+            res.end(Buffer.from('RIFF')); return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}');
+    });
+    try {
+        const bridge = createAdminBridge({ config: baseConfig(port) });
+        const output = mockRes();
+        await bridge(bridgeReq({ url: '/api/v1/voice-clips/7/audio', headers: { range: 'bytes=0-3', cookie: 'vc_session=fixture; st_cookie=private', authorization: 'Bearer ignored' } }), output);
+        assert.equal(output.statusCode, 206); assert.equal(output.body(), 'RIFF');
+        assert.equal(output.headers['content-range'], 'bytes 0-3/48044');
+        assert.equal(output.headers['accept-ranges'], 'bytes'); assert.equal(output.headers['content-length'], '4');
+        assert.equal(output.headers['Cache-Control'], 'private, no-store');
+        assert.equal(upstream[0].headers.range, 'bytes=0-3'); assert.equal(upstream[0].headers.cookie, 'vc_session=fixture');
+        assert.equal(upstream[0].headers.authorization, undefined);
+        for (const [method, url] of [['GET', '/api/v1/voice/engines'], ['GET', '/api/v1/voice/settings'], ['PUT', '/api/v1/voice/settings'], ['POST', '/api/v1/voice/preview'], ['POST', '/api/v1/relationships/7/voice-clips'], ['GET', '/api/v1/voice-clips/7']]) {
+            const result = mockRes(); await bridge(bridgeReq({ method, url, body: method === 'GET' ? undefined : {} }), result);
+            assert.equal(result.statusCode, 200, 'fixed voice route');
+        }
+        const denied = mockRes(); await bridge(bridgeReq({ url: '/api/v1/voice/anything' }), denied);
+        assert.equal(denied.statusCode, 404);
+    } finally { server.close(); }
+});

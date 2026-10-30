@@ -1422,8 +1422,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 - operationId: getVoiceSettings
   method: GET
   path: /api/v1/voice/settings
@@ -1432,8 +1432,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 - operationId: putVoiceSettings
   method: PUT
   path: /api/v1/voice/settings
@@ -1442,8 +1442,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 - operationId: createVoiceClip
   method: POST
   path: /api/v1/relationships/{relationshipId}/voice-clips
@@ -1452,8 +1452,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 - operationId: getVoiceClip
   method: GET
   path: /api/v1/voice-clips/{clipId}
@@ -1462,8 +1462,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 - operationId: previewVoice
   method: POST
   path: /api/v1/voice/preview
@@ -1472,8 +1472,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 - operationId: transcribeVoice
   method: POST
   path: /api/v1/voice/asr
@@ -1482,8 +1482,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 - operationId: getVoiceClipAudio
   method: GET
   path: /api/v1/voice-clips/{clipId}/audio
@@ -1492,8 +1492,8 @@ operations:
   keepBecause:
   - owner-instruction
   - core-outcome
-  replacementOrImpact: VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated
-    ST consumers use Go only; no browser engine access.
+  replacementOrImpact: VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows
+    in VO-7. ST consumers use Go only; no browser engine access.
 undeclaredLegacyOperations:
 - path: /api/v1/auth/admin/invites
   method: POST

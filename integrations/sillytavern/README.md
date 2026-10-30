@@ -546,3 +546,16 @@ attempt 账本。该场景使用明确的保守验收估算费率（输入 0.01�
 费率不代表供应商价格，产物不宣称实际费用。首次任务失败即关闭用途，不继续增加样本；默认场景不运行真实模型。
 本轮已验证该 Owner 模型的 L1 实际提取与发布；L2 工具步骤未通过，真实改口/日期样本未继续执行。
 空场景目录的 list_files 已修复并有离线回归，但不把它宣称为实际 L2 失败的已证实根因。
+
+## 语音后端（VO-2）
+
+```bash
+node integrations/sillytavern/scripts/accept-managed.mjs --filter f2-native,hl-proactive,voice-backend
+```
+
+`voice-backend` 使用受管 Go / PostgreSQL / MinIO 与固定 PCM WAV 的本地 HTTP 引擎夹具，
+验证设置 revision、关系声音偏好、并发重复入队、串行合成、400 / 429 / 500 / 超时回落、
+Go 与宿主桥的鉴权 Range 下载，以及来源编辑、关系删除后的音频访问撤销和对象清理。
+夹具只捕获引擎、模型、音色、速度与请求计数，不记录合成文字或音频；不调用真实 TTS。
+运行配置只从 `VC_TTS_KOKORO_URL` / `VC_TTS_COSYVOICE_URL` 读取，未配置时能力关闭。
+生产网络接入与真实引擎联调由 VO-6 完成；ASR 接口由 VO-7 完成。

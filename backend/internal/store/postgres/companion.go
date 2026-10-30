@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,12 +15,14 @@ const (
 	relSelect = `SELECT out_id, out_persona_ref, out_active, out_created_at,
 		out_companion_name, out_user_address_as, out_reply_length,
 		out_initiative, out_humor, out_advice_pref, out_reminders_allowed,
-		out_memory_share_scope, out_avoid_topics, out_gender, out_avatar_ref `
+		out_memory_share_scope, out_avoid_topics, out_gender, out_avatar_ref,
+		out_kokoro_voice, out_cosy_voice, out_voice_speed, out_voice_frequency, out_proactive_voice `
 	previewMaxRunes = 200
 )
 
 // Relationship is one Companion row owned by the caller.
 type Relationship struct {
+	voice.RelationshipPrefs
 	ID               int64
 	PersonaRef       string
 	Active           bool
@@ -38,6 +42,7 @@ type Relationship struct {
 
 // RelationshipPrefs is a full replacement of structured Companion prefs.
 type RelationshipPrefs struct {
+	VoicePatch       map[string]json.RawMessage
 	CompanionName    *string
 	UserAddressAs    *string
 	ReplyLength      string
@@ -209,6 +214,7 @@ func (s *Store) DeactivateRelationship(ctx context.Context, owner, id int64) (Re
 		if !updated {
 			return ErrNotFound
 		}
+
 		rel, ok, err := scanRelationship(ctx, tx, owner, id)
 		if err != nil {
 			return err
@@ -243,6 +249,15 @@ func (s *Store) UpdateRelationshipPrefs(ctx context.Context, owner, id int64, pr
 		}
 		if !updated {
 			return ErrNotFound
+		}
+		if len(prefs.VoicePatch) > 0 {
+			patch, err := json.Marshal(prefs.VoicePatch)
+			if err != nil {
+				return ErrInvalid
+			}
+			if _, err := tx.Exec(ctx, `SELECT vc.put_relationship_voice($1,$2,$3::jsonb)`, owner, id, patch); err != nil {
+				return err
+			}
 		}
 		rel, ok, err := scanRelationship(ctx, tx, owner, id)
 		if err != nil {
@@ -655,6 +670,7 @@ func scanRelationshipRow(row relationshipRow) (Relationship, error) {
 		&rel.ID, &rel.PersonaRef, &rel.Active, &rel.CreatedAt,
 		&name, &addr, &rel.ReplyLength, &rel.Initiative, &rel.Humor, &rel.AdvicePref,
 		&rel.RemindersAllowed, &rel.MemoryShareScope, &topics, &rel.Gender, &rel.AvatarRef,
+		&rel.KokoroVoice, &rel.CosyVoice, &rel.Speed, &rel.VoiceFrequency, &rel.ProactiveVoice,
 	); err != nil {
 		return Relationship{}, err
 	}

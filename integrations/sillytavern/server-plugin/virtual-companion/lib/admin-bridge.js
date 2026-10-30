@@ -24,6 +24,13 @@ const PROFILE = '[A-Za-z0-9@](?:[A-Za-z0-9@._:-]{0,200})';
 // 白名单：模型设置页真实所需 + 既有会话/登录。新增路径在这里加一行并注明消费者；
 // 权限判断全部由 Go 决定，本桥不做角色判定。
 const ADMIN_BRIDGE_BASE = [
+    { method: 'GET', path: /^\/api\/v1\/voice\/engines$/, where: 'VO-2 语音能力与音色' },
+    { method: 'GET', path: /^\/api\/v1\/voice\/settings$/, where: 'VO-2 语音设置' },
+    { method: 'PUT', path: /^\/api\/v1\/voice\/settings$/, where: 'VO-2 revision 保护的语音设置' },
+    { method: 'POST', path: /^\/api\/v1\/voice\/preview$/, where: 'VO-2 固定文案试听' },
+    { method: 'POST', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/voice-clips$/, where: 'VO-2 已持久化消息入队' },
+    { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*$/, where: 'VO-2 语音状态与转文字' },
+    { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/, where: 'VO-2 鉴权 WAV 与单范围下载' },
     { method: 'GET', path: /^\/api\/v1\/relationships$/, where: 'W08 记忆页角色实例' },
     { method: 'GET', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/memories$/, where: 'W08 记忆列表' },
     { method: 'GET', path: /^\/api\/v1\/memories\/[1-9][0-9]*(?:\/evidence)?$/, where: 'W08 记忆详情与证据' },
@@ -127,6 +134,12 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
             }
 
             const headers = { Accept: 'application/json' };
+            const voiceAudio = /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/.test(path);
+            const voiceRoute = voiceAudio || path.startsWith('/api/v1/voice/') || path.startsWith('/api/v1/voice-clips/') || path.endsWith('/voice-clips');
+            if (voiceAudio) {
+                headers.Accept = 'audio/wav';
+                if (typeof req.headers.range === 'string') headers.Range = req.headers.range;
+            }
             const contentType = req.headers['content-type'];
             const hasBody = method !== 'GET' && method !== 'HEAD';
             if (hasBody) {
@@ -156,7 +169,7 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
                 method,
                 headers,
                 ...(body !== undefined ? { body } : {}),
-                signal: AbortSignal.timeout(config.timeoutMs),
+                signal: AbortSignal.timeout(voiceRoute ? Math.max(config.timeoutMs, 15000) : config.timeoutMs),
             });
 
             const buffer = Buffer.from(await upstream.arrayBuffer());
@@ -164,6 +177,13 @@ export function createAdminBridge({ config, fetchImpl = fetch }) {
             const respType = upstream.headers.get('content-type');
             if (respType) res.setHeader('Content-Type', respType);
             res.setHeader('Cache-Control', 'no-store');
+            if (voiceAudio) {
+                res.setHeader('Cache-Control', 'private, no-store');
+                for (const header of ['accept-ranges', 'content-range', 'content-length']) {
+                    const value = upstream.headers.get(header);
+                    if (value) res.setHeader(header, value);
+                }
+            }
             const cursor = upstream.headers.get('x-next-cursor');
             if (cursor) res.setHeader('X-Next-Cursor', cursor);
             for (const setCookie of upstream.headers.getSetCookie?.() ?? []) {

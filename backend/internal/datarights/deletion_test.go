@@ -81,3 +81,24 @@ func TestDeletionNamesNotificationBeforeInbox(t *testing.T) {
 		t.Fatalf("completed=%+v err=%v deleted=%v", p, err, base.deleted)
 	}
 }
+
+type voiceDeletionFixture struct {
+	*deletionFixture
+	voiceDone bool
+}
+
+func (f *voiceDeletionFixture) ClearVoiceAccountData(context.Context, int64) (bool, error) {
+	return f.voiceDone, nil
+}
+func TestDeletionWaitsForVoiceObjectCleanup(t *testing.T) {
+	f := &voiceDeletionFixture{deletionFixture: &deletionFixture{engineDone: true}}
+	progress, err := ContinueDeletion(context.Background(), 7, f, nil)
+	if err != nil || progress.Status != "PENDING" || len(progress.PendingDomains) != 1 || progress.PendingDomains[0] != "VOICE" || f.deleted {
+		t.Fatal("account completed while audio cleanup was pending")
+	}
+	f.voiceDone = true
+	progress, err = ContinueDeletion(context.Background(), 7, f, nil)
+	if err != nil || progress.Status != "COMPLETED" || !f.deleted {
+		t.Fatal("account did not finish after voice cleanup")
+	}
+}

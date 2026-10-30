@@ -74,6 +74,14 @@ type Config struct {
 	Concurrency      Concurrency
 	STPlugin         STPlugin
 	Notify           Notify
+	Voice            Voice
+}
+
+// Voice contains only private deployment URLs, never browser input.
+type Voice struct {
+	KokoroURL    string
+	CosyVoiceURL string
+	ASRURL       string
 }
 
 // STPlugin is the shared secret the SillyTavern server plugin presents on the
@@ -236,6 +244,11 @@ func LoadEnv(getenv func(string) string) (Config, error) {
 	}
 	cfg := Config{
 		Mode: Mode(strings.TrimSpace(getenv("VC_MODE"))),
+		Voice: Voice{
+			KokoroURL:    strings.TrimSpace(getenv("VC_TTS_KOKORO_URL")),
+			CosyVoiceURL: strings.TrimSpace(getenv("VC_TTS_COSYVOICE_URL")),
+			ASRURL:       strings.TrimSpace(getenv("VC_ASR_URL")),
+		},
 		HTTP: HTTP{
 			Addr:              valueOr(strings.TrimSpace(getenv("VC_HTTP_ADDR")), "127.0.0.1:8080"),
 			AllowedOrigins:    origins,

@@ -49,6 +49,9 @@ func (s *Store) ResetRelationship(ctx context.Context, owner, id int64, retainIm
 		if !reset {
 			return ErrNotFound
 		}
+		if _, err := tx.Exec(ctx, `SELECT vc.clear_relationship_voice($1,$2)`, owner, id); err != nil {
+			return err
+		}
 		rel, ok, err := scanRelationship(ctx, tx, owner, id)
 		if err != nil {
 			return err

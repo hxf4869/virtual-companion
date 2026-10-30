@@ -2808,7 +2808,7 @@
             "method": "GET",
             "operationId": "getVoiceEngines",
             "path": "/api/v1/voice/engines",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           },
           {
             "currentH5Callers": [],
@@ -2820,7 +2820,7 @@
             "method": "GET",
             "operationId": "getVoiceSettings",
             "path": "/api/v1/voice/settings",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           },
           {
             "currentH5Callers": [],
@@ -2832,7 +2832,7 @@
             "method": "PUT",
             "operationId": "putVoiceSettings",
             "path": "/api/v1/voice/settings",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           },
           {
             "currentH5Callers": [],
@@ -2844,7 +2844,7 @@
             "method": "POST",
             "operationId": "createVoiceClip",
             "path": "/api/v1/relationships/{relationshipId}/voice-clips",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           },
           {
             "currentH5Callers": [],
@@ -2856,7 +2856,7 @@
             "method": "GET",
             "operationId": "getVoiceClip",
             "path": "/api/v1/voice-clips/{clipId}",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           },
           {
             "currentH5Callers": [],
@@ -2868,7 +2868,7 @@
             "method": "POST",
             "operationId": "previewVoice",
             "path": "/api/v1/voice/preview",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           },
           {
             "currentH5Callers": [],
@@ -2880,7 +2880,7 @@
             "method": "POST",
             "operationId": "transcribeVoice",
             "path": "/api/v1/voice/asr",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           },
           {
             "currentH5Callers": [],
@@ -2892,7 +2892,7 @@
             "method": "GET",
             "operationId": "getVoiceClipAudio",
             "path": "/api/v1/voice-clips/{clipId}/audio",
-            "replacementOrImpact": "VO-1 voice contract; Go implementation follows in VO-2 (ASR in VO-7). Authenticated ST consumers use Go only; no browser engine access."
+            "replacementOrImpact": "VO-2 authenticated Go voice capability, settings and durable synthesis queue. ASR execution follows in VO-7. ST consumers use Go only; no browser engine access."
           }
         ],
         "runtimeAfterCutover": "Go companiond serves the KEEP/SIMPLIFY surface after the 2026-08-30 cutover; DEFER/RETIRE operations are not runtime fallbacks.",
@@ -2929,7 +2929,7 @@
           }
         ]
       },
-      "sha256": "d9ef12a1a72ef369516fd01a0cc47fb82fefbc51655c86fa8729d770c5c0a9ae"
+      "sha256": "c6b4da3e5cb1a63b7d41214b4bb264fe4be15d01cd10e1fbc4be23b57778fb08"
     },
     "memory-candidate-statuses.yaml": {
       "document": {

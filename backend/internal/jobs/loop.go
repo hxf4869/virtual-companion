@@ -20,6 +20,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/safety"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
 	"github.com/hxf4869/virtual-companion/internal/turn"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 )
 
 const (
@@ -258,6 +259,7 @@ type Loop struct {
 	memoryCore      *memorycore.Broker
 	cancels         *Cancels
 	blobs           BlobStore
+	voice           *voice.Service
 	metrics         *observability.Registry
 
 	claimMu           sync.Mutex
@@ -326,7 +328,13 @@ func (l *Loop) BindStore(store *postgres.Store) {
 		return
 	}
 	l.store = store
+	if l.voice != nil {
+		l.voice.BindStore(store)
+	}
 }
+
+func (l *Loop) UseVoice(service *voice.Service) { l.voice = service }
+func (l *Loop) Voice() *voice.Service           { return l.voice }
 
 // UseNotification installs the channel sender. A nil sender still projects
 // ready rows and does not call RunNotificationDeliveries. maxAttempts is the
@@ -423,6 +431,10 @@ func (l *Loop) Start(ctx context.Context) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	l.stop = cancel
+	if l.voice != nil {
+		l.handlers.Add(1)
+		go func() { defer l.handlers.Done(); l.voice.Run(runCtx) }()
+	}
 	go l.run(runCtx)
 	return nil
 }

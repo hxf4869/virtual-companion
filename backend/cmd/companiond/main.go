@@ -23,6 +23,7 @@ import (
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/provider/openai"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 )
 
 func main() {
@@ -186,6 +187,18 @@ func wireDeps(cfg config.Config, log *slog.Logger) (app.Deps, error) {
 	loop := jobs.NewLoop(log, jobs.PolicyFrom(cfg), app.TurnBudget(cfg))
 	loop.UseRestoreGate(cfg.RestoreGateFile)
 	loop.Use(nil, nil, blobs)
+	voiceEngines := map[string]voice.Engine{}
+	for engine, baseURL := range map[string]string{voice.Kokoro: cfg.Voice.KokoroURL, voice.CosyVoice: cfg.Voice.CosyVoiceURL} {
+		if baseURL == "" {
+			continue
+		}
+		client, err := voice.NewHTTPClient(engine, baseURL)
+		if err != nil {
+			return app.Deps{}, fmt.Errorf("voice configuration is invalid")
+		}
+		voiceEngines[engine] = client
+	}
+	loop.UseVoice(voice.New(voiceEngines, blobs, log, cfg.RestoreGateFile, cfg.Voice.ASRURL != ""))
 	factory := modelprovider.Factory{
 		ConnectTimeout:    cfg.Provider.ConnectTimeout,
 		FirstTokenTimeout: cfg.Provider.FirstTokenTimeout,

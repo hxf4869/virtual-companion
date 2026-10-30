@@ -24,7 +24,7 @@ Owner 决定（2026-10-31 问答）：日常问候等允许等待的语音用 Co
 | 用途 | 聊天语音、试听 | 主动问候等预生成语音 | 用户语音转文字 |
 | 速度 | 短句约 2 秒（RTF≈0.6） | 短句约 47–54 秒（RTF≈15） | 预计 1–2 秒/10 秒音频（待实测） |
 | 接口 | `POST {base}/audio/speech`，`GET {base}/voices` | `POST {base}/audio/speech`，`GET /healthz` 的 `voices` | 计划 `POST {base}/audio/transcriptions` |
-| 参数 | `model`、`voice`（100 个中文音色）、`speed` 0.5–2.0、`response_format` wav/pcm；**不得**带 `instructions` | `model`、`voice`、`instructions`（情绪）、`seed`、`stream:false` | 语言、是否返回情绪标签 |
+| 参数 | `model: kokoro-zh-v1.1`、`voice`（100 个中文音色）、`speed` 0.5–2.0、`response_format` wav/pcm；**不得**带 `instructions` | `model: cosyvoice3-q8`、`voice`、`instructions`（情绪）、`seed`、`stream:false` | 语言、是否返回情绪标签 |
 | 并发 | 单并发，忙时 429 | 单并发 | 单并发 |
 | 输出 | 24 kHz 单声道 16-bit | 同左 | — |
 

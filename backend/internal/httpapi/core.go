@@ -16,6 +16,7 @@ import (
 	"github.com/hxf4869/virtual-companion/internal/jobs"
 	"github.com/hxf4869/virtual-companion/internal/memorycore"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
+	"github.com/hxf4869/virtual-companion/internal/voice"
 )
 
 const maxPasswordRunes = 128
@@ -172,9 +173,11 @@ type Core struct {
 	AuthFlow   AuthFlowStore
 	Cancels    *jobs.Cancels
 	Proactive  ProactiveRunner
+	Voice      *voice.Service
 }
 
 func (s *Server) registerCore() {
+	s.registerVoice()
 	s.mux.HandleFunc("POST /api/v1/service/memorycore/llm", s.handleMemoryCoreLLM)
 	s.mux.HandleFunc("GET /api/v1/admin/embedding-config", s.handleGetEmbeddingConfig)
 	s.mux.HandleFunc("PUT /api/v1/admin/embedding-config", s.handleSaveEmbeddingConfig)

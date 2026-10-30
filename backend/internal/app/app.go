@@ -361,6 +361,7 @@ func (r *Runtime) buildCore() (*httpapi.Core, error) {
 		}
 		core.Cancels = loop.Cancels()
 		core.Proactive = loop
+		core.Voice = loop.Voice()
 		r.metrics.SetJobsStatsSource(func() observability.JobsStats {
 			st := loop.Stats()
 			return observability.JobsStats{
