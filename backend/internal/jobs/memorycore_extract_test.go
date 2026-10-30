@@ -18,11 +18,11 @@ import (
 
 type recoveryEngineStore struct {
 	*extractTestStore
-	calls       []string
-	statuses    []string
-	invalid     bool
-	commitError bool
-	publishes   int
+	calls        []string
+	statuses     []string
+	invalid      bool
+	commitError  bool
+	publishes    int
 	abandoned    bool
 	bareStatus   bool
 	proposalBody string
@@ -419,5 +419,41 @@ func TestProposeWithoutClosedCodeIsPendingOnlyWhilePreparing(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "decision_code=MEMORYCORE_PENDING") || preparing.retryCalls != 1 || len(preparing.calls) != 1 {
 		t.Fatalf("preparing lost: retries=%d calls=%v log=%q", preparing.retryCalls, preparing.calls, buf.String())
+	}
+}
+
+func TestAdmissionRefusalClosesWithoutRetry(t *testing.T) {
+	for _, tc := range []struct {
+		code, status string
+	}{
+		{"MEMORYCORE_CONSENT_WITHDRAWN", "DONE"},
+		{"MEMORYCORE_CLAIM_LOST", "FAILED"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(422)
+				_, _ = w.Write([]byte(`{"code":"` + tc.code + `"}`))
+			}))
+			defer srv.Close()
+			client, err := memoryengine.New(srv.URL, "private")
+			if err != nil {
+				t.Fatal(err)
+			}
+			proposeErr := client.Call(context.Background(), "propose", map[string]string{}, nil)
+			var buf bytes.Buffer
+			s := &closedProposeStore{recoveryEngineStore: &recoveryEngineStore{extractTestStore: &extractTestStore{retryAction: "RETRY_SCHEDULED"}, statuses: []string{"unknown"}, bareStatus: true}, proposeErr: proposeErr}
+			l := newExtractTestLoop(s.extractTestStore, nil)
+			l.log = slog.New(slog.NewTextHandler(&buf, nil))
+			l.store = s
+			l.UseMemoryCore(memorycore.New(profilePurposeStore{}, nil))
+			if e := l.handleEngineExtract(context.Background(), extractTestClaim()); e != nil {
+				t.Fatal(e)
+			}
+			closes := s.closeCalls()
+			line := buf.String()
+			if s.retryCalls != 0 || s.proposes != 1 || len(closes) != 1 || closes[0].status != tc.status || closes[0].reason != tc.code || !strings.Contains(line, "decision_code="+tc.code) || strings.Contains(line, "requeued") || strings.Contains(line, "dead_lettered") {
+				t.Fatalf("admission refusal retried: retries=%d proposes=%d closes=%v log=%q", s.retryCalls, s.proposes, closes, line)
+			}
+		})
 	}
 }

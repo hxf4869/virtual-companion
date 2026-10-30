@@ -770,7 +770,7 @@ async function runFull() {
             });
         }
 
-        const needsRerank = selected.some((id) => ['memorycore-native', 'memory-browser', 'memory-real-eval', 'memory-real-model'].includes(id));
+        const needsRerank = selected.some((id) => ['memorycore-native', 'memory-browser', 'memory-extract-prod', 'memory-real-eval', 'memory-real-model'].includes(id));
         if (needsRerank) {
             const runtime = await ensureRerankContainer();
             log.ok(`重排服务 ${runtime.reused ? '复用' : '已启动'} 127.0.0.1:${runtime.port} 容器 ${runtime.container}`);

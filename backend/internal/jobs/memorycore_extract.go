@@ -84,6 +84,11 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 			input := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision, "operationToken": token, "embedding": op.Embedding, "allowedRecordIds": op.Allowed,
 				"messages": []map[string]any{{"id": op.SourceKey, "content": op.Input.UserContent, "role": "user", "timestamp": op.Timestamp.Format(time.RFC3339Nano)}}}
 			if err = s.EngineCall(ctx, "propose", input, &proposal); err != nil {
+				if code := memoryengine.ClosedCode(err); code != "" {
+					if status, ok := admissionOutcome(code); ok {
+						return l.closeAdmission(ctx, c, status, code)
+					}
+				}
 				if memoryengine.ClosedCode(err) == "MEMORYCORE_REVISION_CONFLICT" {
 					if attempt == revisionRebinds {
 						return l.failExtract(ctx, c, "MEMORYCORE_REVISION_CONFLICT")
@@ -218,6 +223,32 @@ func (l *Loop) buildEngineProfile(ctx context.Context, c postgres.JobClaim, op p
 		return l.closeExtract(ctx, c, "DONE", "")
 	}
 	return l.failExtract(ctx, c, "MEMORYCORE_REVISION_CONFLICT")
+}
+
+func admissionOutcome(code string) (string, bool) {
+	switch code {
+	case "MEMORYCORE_CLAIM_LOST", "MEMORYCORE_LEGACY_REPLAY":
+		return "FAILED", true
+	case "MEMORYCORE_AUTO_SAVE_OFF", "MEMORYCORE_DELETION_IN_PROGRESS", "MEMORYCORE_CONSENT_WITHDRAWN",
+		"MEMORYCORE_MESSAGE_TEXT_NOT_AUTHORIZED", "MEMORYCORE_SOURCE_SUPPRESSED", "MEMORYCORE_PROVIDER_NOT_ADMITTED":
+		return "DONE", true
+	default:
+		return "", false
+	}
+}
+
+func (l *Loop) closeAdmission(ctx context.Context, c postgres.JobClaim, status, code string) error {
+	logger := l.log
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Info("memory extract closed",
+		slog.String("operation", "memory_extract"),
+		slog.String("outcome", "closed"),
+		slog.String("event_type", status),
+		slog.String("decision_code", code),
+	)
+	return l.closeExtract(ctx, c, status, code)
 }
 
 func emptyExtractDecision(disposition string) string {
