@@ -125,3 +125,9 @@ bash ops/deploy/v2/deploy.sh --skip-build <提交>
 `--dry-run` 只打印步骤和远端命令。`--skip-build` 使用本机已有镜像。本机已有同标签镜像时也会跳过构建。失败时打印回退命令（把 `VC_IMAGE_TAG` 改回升级前的值再 `up`），不自动回退。
 
 构建 ST 镜像需要 `VC_PUBLIC_HOST`，只作为构建参数，不写入日志。备份口令文件默认 `/etc/virtual-companion/st-backup.pass`（0600）。
+
+全部部署自检通过后，本机和服务器只保留当前提交的 ST / runtime 镜像，以及仍被容器引用的版本；
+本机的 `:local` 开发镜像、MinIO 和模型工具镜像继续保留。服务器备份目录保留本次已自校验的
+`vc-*.vcbae1` 和本次 `extensions-before-*.tgz`，删除同目录的旧同类备份；镜像传输包和源码 bundle
+用完即清理。失败部署不触发历史清理，不触碰数据卷或其他项目。
+成功后旧镜像已删除，如需回滚，须从上一个已知良好提交重新构建并部署。

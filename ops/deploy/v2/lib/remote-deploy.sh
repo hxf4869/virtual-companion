@@ -178,6 +178,7 @@ git checkout --detach "$VC_COMMIT"
 mkdir -p "$VC_DEPLOY_BACKUP_DIR"
 chmod 700 "$VC_DEPLOY_BACKUP_DIR"
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
+backup_file="$VC_DEPLOY_BACKUP_DIR/vc-${stamp}.vcbae1"
 export VC_ST_BACKUP_PASSPHRASE_FILE="$VC_DEPLOY_BACKUP_PASSPHRASE_FILE"
 export VC_BACKUP_PG_CONTAINER="$db_name"
 export VC_BACKUP_PG_DATABASE=vc
@@ -191,7 +192,7 @@ rm -f "$mc_root/runtime.lock"
 if ! bash integrations/sillytavern/scripts/backup.sh \
   "$st_root" \
   "$VC_DEPLOY_ST_CONFIG" \
-  "$VC_DEPLOY_BACKUP_DIR/vc-${stamp}.vcbae1"; then
+  "$backup_file"; then
   git checkout -q --detach "$prev_head"
   compose start memorycore >/dev/null || true
   die "备份失败，已停止（源码已切回原版本，MemoryCore 已重新启动）"
@@ -339,3 +340,7 @@ if [ "$health_fail" -ne 0 ]; then
   exit 1
 fi
 echo "部署完成: ${VC_COMMIT} 标签 ${VC_NEW_IMAGE_TAG}"
+# 仅在全部健康检查通过后执行；失败部署保留原镜像与历史备份用于恢复。
+python3 "$(dirname "$0")/cleanup-storage.py" "$VC_NEW_IMAGE_TAG" \
+  --backup-dir "$VC_DEPLOY_BACKUP_DIR" --keep-backup "$backup_file" \
+  --image-cache-dir "$(dirname "$VC_DEPLOY_SOURCE_DIR")/image-cache"

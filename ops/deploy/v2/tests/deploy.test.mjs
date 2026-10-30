@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../../../..');
 const DEPLOY = path.join(ROOT, 'ops/deploy/v2/deploy.sh');
+const CLEANUP = path.join(ROOT, 'ops/deploy/v2/lib/cleanup-storage.py');
 const SUPPORT = path.join(HERE, 'support');
 const SECRETS = [
   'canary-host.invalid',
@@ -275,6 +276,14 @@ test('compose.env 缺变量时停在升级前且不输出值', () => {
 test('本机替身跑通完整流程', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-deploy-full-'));
   const server = prepareServer(tmp);
+  const oldBackup = path.join(server.backupDir, 'vc-20200101T000000Z.vcbae1');
+  const oldExtensions = path.join(server.backupDir, 'extensions-before-deadbeef.tgz');
+  const imageCache = path.join(path.dirname(server.source), 'image-cache');
+  fs.mkdirSync(imageCache, { recursive: true });
+  const oldTransfer = path.join(imageCache, 'vc-images-deadbeef.tar.gz');
+  for (const file of [oldBackup, oldExtensions, oldTransfer]) fs.writeFileSync(file, 'old');
+  const unrelated = path.join(server.backupDir, 'other-project.vcbae1');
+  fs.writeFileSync(unrelated, 'keep');
   const beforeLines = fs.readFileSync(server.composeEnv, 'utf8').split('\n');
   const result = run(['--skip-build', HEAD], envFor(server));
   const text = `${result.stdout}${result.stderr}`;
@@ -287,6 +296,11 @@ test('本机替身跑通完整流程', () => {
   assert.match(text, /ST 登录页: ok/);
   assert.match(text, /重排: ok/);
   assert.match(text, /向量: ok/);
+  assert.equal((text.match(/存储清理:/g) || []).length, 2, '两端都执行成功后的清理');
+  for (const file of [oldBackup, oldExtensions, oldTransfer]) assert.equal(fs.existsSync(file), false);
+  assert.equal(fs.existsSync(unrelated), true);
+  assert.equal(fs.readdirSync(server.backupDir).filter((name) => /^vc-.*\.vcbae1$/.test(name)).length, 1);
+  assert.equal(fs.existsSync(path.join(server.backupDir, `extensions-before-${SHORT}.tgz`)), true);
   assert.match(text, new RegExp(SHORT));
   const afterLines = fs.readFileSync(server.composeEnv, 'utf8').split('\n');
   assert.deepEqual(
@@ -316,6 +330,8 @@ test('本机替身跑通完整流程', () => {
 test('验收失败时打印回退命令且不自动回退', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-deploy-fail-'));
   const server = prepareServer(tmp);
+  const oldBackup = path.join(server.backupDir, 'vc-20200101T000000Z.vcbae1');
+  fs.writeFileSync(oldBackup, 'keep for rollback');
   const result = run(['--skip-build', HEAD], envFor(server, { VC_TEST_FAIL_CHECK: 'runtime' }));
   const text = `${result.stdout}${result.stderr}`;
   assert.notEqual(result.status, 0);
@@ -325,10 +341,62 @@ test('验收失败时打印回退命令且不自动回退', () => {
   assert.match(text, /--force-recreate/);
   assert.match(text, /--wait/);
   assert.match(text, /未自动回退/);
+  assert.doesNotMatch(text, /存储清理:/);
+  assert.equal(fs.existsSync(oldBackup), true);
   assert.match(fs.readFileSync(server.composeEnv, 'utf8'), new RegExp(`^VC_IMAGE_TAG=${SHORT}$`, 'm'));
   assert.equal(fs.readFileSync(server.previous, 'utf8'), 'oldtag11\n');
   const dockerLog = fs.readFileSync(server.dockerLog, 'utf8');
   assert.equal(dockerLog.split('\n').filter((line) => line.includes(' up ')).length, 1);
+  assert.doesNotMatch(dockerLog, /^image rm /m);
+});
+
+test('清理仅删除本项目未引用的历史提交镜像，保留开发、工具及其他项目', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-deploy-clean-images-'));
+  const server = prepareServer(tmp);
+  const rows = [
+    ['virtual-companion-st', SHORT, 'current'],
+    ['virtual-companion-runtime', SHORT, 'current-runtime'],
+    ['virtual-companion-st', 'deadbeef', 'old'],
+    ['virtual-companion-runtime', 'deadbeef', 'referenced'],
+    ['virtual-companion-st', 'local', 'development'],
+    ['virtual-companion-minio', 'v2', 'minio'],
+    ['vc-g12-minio-tools', 'local', 'tools'],
+    ['other-project', 'deadbeef', 'other'],
+  ].map(([Repository, Tag, ID]) => JSON.stringify({ Repository, Tag, ID })).join('\n');
+  const result = spawnSync('python3', [CLEANUP, SHORT], {
+    env: envFor(server, {
+      VC_TEST_IMAGE_LIST: rows,
+      VC_TEST_CONTAINER_IDS: 'stopped-container\n',
+      VC_TEST_PROTECTED_IMAGES: 'referenced\n',
+    }), encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const removed = fs.readFileSync(server.dockerLog, 'utf8').split('\n').filter((line) => line.startsWith('image rm '));
+  assert.deepEqual(removed, ['image rm virtual-companion-st:deadbeef']);
+});
+
+test('本次备份缺失时不清理任何历史；符号链接和无关文件均保留', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-deploy-clean-backup-'));
+  const server = prepareServer(tmp);
+  const oldBackup = path.join(server.backupDir, 'vc-20200101T000000Z.vcbae1');
+  const latest = path.join(server.backupDir, 'vc-20260101T000000Z.vcbae1');
+  const external = path.join(tmp, 'keep-external');
+  const link = path.join(server.backupDir, 'vc-20210101T000000Z.vcbae1');
+  fs.writeFileSync(oldBackup, 'old');
+  fs.writeFileSync(external, 'external');
+  fs.symlinkSync(external, link);
+  const args = [CLEANUP, SHORT, '--backup-dir', server.backupDir, '--keep-backup', latest];
+  let result = spawnSync('python3', args, { env: envFor(server), encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.equal(fs.existsSync(oldBackup), true);
+  assert.equal(fs.existsSync(server.dockerLog), false, '备份守卫先于任何 Docker 删除');
+  fs.writeFileSync(latest, 'published and verified');
+  result = spawnSync('python3', args, { env: envFor(server), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(oldBackup), false);
+  assert.equal(fs.existsSync(latest), true);
+  assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+  assert.equal(fs.readFileSync(external, 'utf8'), 'external');
 });
 
 test('工作区不干净时停止且不改 VC_IMAGE_TAG', () => {

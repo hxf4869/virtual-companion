@@ -273,7 +273,7 @@ build_images() {
 }
 
 deploy_main() {
-  local st_image rt_image need_st need_rt miss image_cache remote_archive remote_script local_archive remote_cmd
+  local st_image rt_image need_st need_rt miss image_cache remote_archive remote_script local_archive remote_cmd remote_cleanup
   parse_args "$@"
   load_local_config
   apply_defaults
@@ -319,6 +319,7 @@ deploy_main() {
   image_cache="$(dirname "$VC_DEPLOY_SOURCE_DIR")/image-cache"
   remote_archive="${image_cache}/vc-images-${TAG}.tar.gz"
   remote_script="${image_cache}/remote-deploy.sh"
+  remote_cleanup="${image_cache}/cleanup-storage.py"
   remote_bundle="${image_cache}/vc-src-${TAG}.bundle"
   run_remote "mkdir -p $(printf '%q' "$image_cache") && chmod 700 $(printf '%q' "$image_cache")"
   # 服务器已有同标签镜像（上次中途失败）时不再构建和上传。
@@ -339,8 +340,9 @@ deploy_main() {
   git -C "$REPO_ROOT" bundle create -q "$local_bundle" "refs/vc-deploy/${TAG}"
   git -C "$REPO_ROOT" update-ref -d "refs/vc-deploy/${TAG}"
   # 上传带 --resume：小文件先删远端旧件，避免按旧文件长度续传成新旧混合。
-  run_remote "rm -f $(printf '%q' "$remote_bundle") $(printf '%q' "$remote_script")"
+  run_remote "rm -f $(printf '%q' "$remote_bundle") $(printf '%q' "$remote_script") $(printf '%q' "$remote_cleanup")"
   run_upload "$local_bundle" "$remote_bundle"
+  run_upload "$SCRIPT_DIR/lib/cleanup-storage.py" "$remote_cleanup"
   run_upload "$REMOTE_BODY" "$remote_script"
   remote_cmd=$(printf 'chmod 700 %q && VC_NEW_IMAGE_TAG=%q VC_COMMIT=%q VC_IMAGE_ARCHIVE=%q VC_SRC_BUNDLE=%q VC_DEPLOY_SOURCE_DIR=%q VC_DEPLOY_COMPOSE_ENV=%q VC_DEPLOY_BACKUP_DIR=%q VC_DEPLOY_BACKUP_PASSPHRASE_FILE=%q VC_DEPLOY_ST_CONFIG=%q VC_DEPLOY_PREVIOUS_TAG_FILE=%q bash %q' \
     "$remote_script" "$TAG" "$FULL" "$remote_archive" "$remote_bundle" \
@@ -348,6 +350,7 @@ deploy_main() {
     "$VC_DEPLOY_BACKUP_PASSPHRASE_FILE" "$VC_DEPLOY_ST_CONFIG" "$VC_DEPLOY_PREVIOUS_TAG_FILE" \
     "$remote_script")
   run_remote "$remote_cmd"
+  python3 "$SCRIPT_DIR/lib/cleanup-storage.py" "$TAG"
 }
 
 WORK=""

@@ -21,6 +21,21 @@ if [ "${1:-}" = "image" ] && [ "${2:-}" = "inspect" ]; then
   exit 0
 fi
 
+if [ "${1:-}" = "image" ] && [ "${2:-}" = "ls" ]; then
+  printf '%s' "${VC_TEST_IMAGE_LIST:-}"
+  exit 0
+fi
+
+if [ "${1:-}" = "image" ] && [ "${2:-}" = "rm" ]; then
+  note image-cleanup
+  exit 0
+fi
+
+if [ "${1:-}" = "ps" ]; then
+  printf '%s' "${VC_TEST_CONTAINER_IDS:-}"
+  exit 0
+fi
+
 if [ "${1:-}" = "buildx" ]; then
   exit 0
 fi
@@ -63,6 +78,10 @@ if [ "${1:-}" = "volume" ] && [ "${2:-}" = "inspect" ]; then
 fi
 
 if [ "${1:-}" = "inspect" ]; then
+  if [ "${3:-}" = '{{.Image}}' ]; then
+    printf '%s' "${VC_TEST_PROTECTED_IMAGES:-}"
+    exit 0
+  fi
   printf '%s\n' "/vc-v2-db-1"
   exit 0
 fi
