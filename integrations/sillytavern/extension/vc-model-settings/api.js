@@ -285,6 +285,12 @@ export async function downloadDataExport(url) {
 
 // UI-P03 沿用 Go 的 memoryId / summary / time.*，不另建响应信封。
 export const fetchRelationships = () => request('GET', '/api/v1/relationships');
+export const fetchVoiceEngines = () => request('GET', '/api/v1/voice/engines');
+export const fetchVoiceSettings = () => request('GET', '/api/v1/voice/settings');
+export const saveVoiceSettings = (values) => request('PUT', '/api/v1/voice/settings', values);
+export const createVoiceClip = (relationshipId, values) => request('POST', `/api/v1/relationships/${encodeURIComponent(relationshipId)}/voice-clips`, values);
+export const fetchVoiceClip = (id) => request('GET', `/api/v1/voice-clips/${encodeURIComponent(id)}`);
+export const previewVoice = (values) => request('POST', '/api/v1/voice/preview', values);
 export function fetchMemories(relationshipId, filters = {}) {
     const query = new URLSearchParams();
     for (const key of ['q', 'status', 'eventDateFrom', 'eventDateTo', 'cursor', 'limit']) {

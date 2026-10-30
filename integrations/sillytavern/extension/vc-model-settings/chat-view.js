@@ -22,6 +22,7 @@ import {
 import { openSheet } from './ui/sheet.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 import { clearMessageVoice, renderMessageVoice, voicePlayer } from './voice.js';
+import { requestChatVoice } from './voice-chat.js';
 
 export const REPLY_STYLE_KEY = 'vc-reply-style';
 export const PRESS_MS = 420;
@@ -898,6 +899,7 @@ function settleReply(id) {
         try { safeContext()?.saveChat?.(); } catch { /* 保存失败时下一轮仍按当前文本显示。 */ }
     }
     revealMesId = String(index);
+    void requestChatVoice(index);
 }
 
 function animateSwipe(mes, direction) {

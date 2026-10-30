@@ -116,7 +116,7 @@ function capSegments(segments) {
 }
 
 export function splitReply(text, ctx = {}) {
-    const raw = String(text ?? '').replace(/\r\n/g, '\n').trim();
+    const raw = String(text ?? '').replace(/<voice\s*\/>/gi, '').replace(/\r\n/g, '\n').trim();
     if (!raw) return applyBubbleTransformers([], ctx);
     const pieces = [];
     let last = 0;

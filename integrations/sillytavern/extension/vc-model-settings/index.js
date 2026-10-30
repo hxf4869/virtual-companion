@@ -39,6 +39,7 @@ import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
 import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
 import { installStickers } from './stickers.js';
+import { installChatVoice } from './voice-chat.js';
 export { openAccountData, openDrawerPage, openModelSettings };
 export { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget };
 
@@ -154,6 +155,7 @@ export async function init() {
         writeExtensionField: (...args) => getContext().writeExtensionField(...args), captureSessionContext,
     });
     bindingReady.catch((error) => showF2Draft(JSON.stringify({ chat_metadata: getContext().chatMetadata, chat: getContext().chat }), error));
+    installChatVoice({ getContext, saveChat: saveCurrentChat });
     let reportMemory = () => {};
     const memory = createMemoryInjection({ getContext, recall: recallSTMemory,
         ensureBinding: async () => (await bindingReady).ensureBound(),

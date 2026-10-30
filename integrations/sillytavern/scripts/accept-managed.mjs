@@ -680,7 +680,7 @@ async function runFull() {
     fs.mkdirSync(artifactsDir, { recursive: true, mode: 0o700 });
 
     const secrets = {
-        needsVoice: selected.includes('voice-backend'),
+        needsVoice: selected.some((id) => id.startsWith('voice-')),
         needsRights: selected.some((id) => id.startsWith('rights-')),
         needsMemory: selected.some(id => id.startsWith('memory-')),
         pgPassword: synthSecret(18),

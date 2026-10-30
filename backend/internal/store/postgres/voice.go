@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/hxf4869/virtual-companion/internal/stsource"
 	"github.com/hxf4869/virtual-companion/internal/voice"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -16,6 +17,22 @@ const voiceSettingsColumns = `kokoro_enabled,cosy_voice_enabled,asr_enabled,koko
  cosy_voice_instructions,kokoro_mood_speeds,max_recording_seconds,revision,updated_at`
 const voiceClipColumns = `owner_user_id,id,relationship_id,message_ref,purpose,engine,voice,params,text,status,
  error_kind,coalesce(object_key,''),duration_ms,generation_ms,created_at,ready_at,retry_count,started_at`
+
+func (s *Store) ResolveVoiceMessage(ctx context.Context, owner, relationship int64, ref string) (string, error) {
+	parts := strings.Split(ref, ":")
+	if len(parts) != 4 || parts[0] != "stmsg" || !stsource.ValidIdentity(parts[1]) || !stsource.ValidIdentity(parts[2]) || !stsource.ValidIdentity(parts[3]) {
+		return "", voice.ErrInvalid
+	}
+	var resolved string
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT s.source_ref FROM vc.st_message_source s JOIN vc.conversation c
+ ON (c.owner_user_id,c.id)=(s.owner_user_id,s.conversation_id)
+ WHERE s.owner_user_id=$1 AND c.relationship_id=$2 AND c.st_chat_identity=$3
+ AND s.message_id=$4::uuid AND s.candidate_id=$5::uuid AND s.role='assistant'
+ AND s.present AND s.settled AND c.st_source_state='PRESENT'`, owner, relationship, parts[1], parts[2], parts[3]).Scan(&resolved)
+	})
+	return resolved, voiceStoreErr(err)
+}
 
 func voiceStoreErr(err error) error {
 	if err == nil {

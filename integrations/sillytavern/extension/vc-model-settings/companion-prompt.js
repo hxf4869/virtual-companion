@@ -1,5 +1,6 @@
 // 拟人提示：全局规则在角色卡之后（IN_PROMPT），状态与篇幅档在最末（IN_CHAT depth 0）。仅陪伴模式。
 import { moodGuidance, readGlobalRules, STYLE_NOTE } from './persona.js';
+import { chatVoiceGuidance } from './voice-chat.js';
 
 export const COMPANION_RULES_PROMPT = 'vc_companion_rules';
 export const COMPANION_STATE_PROMPT = 'vc_companion_state';
@@ -69,7 +70,7 @@ async function stateFrom(context, fetchState) {
     }
 }
 
-export async function injectCompanionPrompt({ getContext, fetchState, listTags, pickLengthTier } = {}) {
+export async function injectCompanionPrompt({ getContext, fetchState, listTags, pickLengthTier, loadVoicePolicy } = {}) {
     const context = getContext();
     const set = (key, text, position, depth) => {
         context.setExtensionPrompt?.(key, text, position, depth, false, 0);
@@ -84,6 +85,8 @@ export async function injectCompanionPrompt({ getContext, fetchState, listTags, 
     if (name) rules = rules.replaceAll('{{user}}', name);
     const tags = await tagsFrom(listTags);
     const ruleParts = [rules, STYLE_NOTE];
+    const voiceGuide = await chatVoiceGuidance(context, loadVoicePolicy);
+    if (voiceGuide) ruleParts.push(voiceGuide);
     if (tags.length) ruleParts.push(`可用表情：${tags.join('、')}。需要时单独一行 <sticker tag="标签"/>。`);
     const companion = await stateFrom(context, fetchState);
     const tier = await tierFrom(lastUserText(context), pickLengthTier);

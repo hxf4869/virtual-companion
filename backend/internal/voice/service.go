@@ -157,6 +157,16 @@ func (s *Service) Create(ctx context.Context, owner, relationshipID int64, in Cr
 	if in.Purpose != "chat" && in.Purpose != "proactive" || strings.TrimSpace(in.MessageRef) == "" || utf8.RuneCountInString(in.MessageRef) > 512 || strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > 4000 {
 		return Clip{}, ErrInvalid
 	}
+	if in.Purpose == "chat" && strings.HasPrefix(in.MessageRef, "stmsg:") {
+		ref, err := s.store.ResolveVoiceMessage(ctx, owner, relationshipID, in.MessageRef)
+		if err != nil {
+			return Clip{}, err
+		}
+		in.MessageRef = ref
+	}
+	if CleanText(in.Text) == "" {
+		return Clip{}, ErrInvalid
+	}
 	if existing, err := s.store.FindVoiceClip(ctx, owner, relationshipID, in.Purpose, in.MessageRef); err == nil {
 		if existing.Text != in.Text {
 			return Clip{}, ErrInvalid
@@ -348,7 +358,7 @@ func (s *Service) process(ctx context.Context, clip Clip) {
 	settings, err := s.Settings(jobCtx, clip.OwnerID)
 	if err == nil && engine != nil && (clip.Engine == Kokoro && settings.KokoroEnabled || clip.Engine == CosyVoice && settings.CosyVoiceEnabled) {
 		callCtx, callCancel := context.WithTimeout(jobCtx, time.Duration(clip.Params.TimeoutSeconds)*time.Second)
-		audio, err = engine.Synthesize(callCtx, clip.Text, clip.Voice, clip.Params)
+		audio, err = engine.Synthesize(callCtx, CleanText(clip.Text), clip.Voice, clip.Params)
 		callCancel()
 		if err == nil {
 			completion.DurationMS, err = WAVDuration(audio)

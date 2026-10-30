@@ -195,6 +195,7 @@ type Store interface {
 	EnqueueVoiceClip(context.Context, Clip) (Clip, error)
 	GetVoiceClip(context.Context, int64, int64) (Clip, error)
 	FindVoiceClip(context.Context, int64, int64, string, string) (Clip, error)
+	ResolveVoiceMessage(context.Context, int64, int64, string) (string, error)
 	ClaimVoiceClip(context.Context, string) (Clip, error)
 	CompleteVoiceClip(context.Context, Clip, Completion) (bool, error)
 	ListVoiceCleanup(context.Context) ([]CleanupObject, error)

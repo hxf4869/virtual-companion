@@ -196,7 +196,7 @@ export function stripStickerTags(text) {
     return String(text || '').replace(new RegExp(TAG_RE.source, 'gi'), '');
 }
 
-function isSerious(userText) {
+export function isSerious(userText) {
     const text = String(userText || '');
     return SERIOUS_KEYWORDS.some((word) => text.includes(word));
 }

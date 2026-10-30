@@ -164,7 +164,7 @@ test('场景模块组成有序列表，入口不再 push 或维护实现表', as
     const ids = ACCEPT_SCENES.map((scene) => scene.id);
     assert.equal(new Set(ids).size, ids.length);
     const extra = [
-        'story-view-browser', 'w11-tool-meter', 'w10-inbox-notify', 'hl-proactive', 'voice-backend', 'story-outbound', 'story-play',
+        'story-view-browser', 'w11-tool-meter', 'w10-inbox-notify', 'hl-proactive', 'voice-backend', 'voice-chat', 'story-outbound', 'story-play',
         'story-real', 'w15-ui', 'fe4a-ui', 'fe4b-ui', 'f3-settings', 'vc-ui-shell', 'vc-ui-walkthrough', 'f2-chat-ui', 'hl-reply', 'consent-ui', 'hl-persona', 'hl-stickers',
     ];
     assert.deepEqual(new Set(ids), new Set([...SCENES.map((scene) => scene.id), ...extra]));
