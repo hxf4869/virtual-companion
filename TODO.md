@@ -421,8 +421,9 @@
         这是小样本顺序对比，首字还受模型推理、历史与缓存影响，不能将全部差值归因于重排。
       - NOT_RUN：整机重启、真实通知发送和手机真机验收（不在本次执行范围）。
 
-- [ ] 陪伴体验（Owner 2026-10-30）：默认女生「亲近的好朋友」可设置；首次引导起名；拟人全局规则（可编辑）；回复拆 1–3 条短消息 + 正在输入；主动互动 mode（OFF/FOLLOW_UP/DAILY/CLOSE_FRIEND）+ checkInAfterMinutes 频率（COMPANION-UI、PROACTIVE-BE 两路进行中）；绑定竞态根因（同一聊天 0.5s 内建出两条关系）随 COMPANION-UI 修。
-      待办：表情包（内置开源许可的一套 + 支持上传，角色按情绪标签挑选；等 COMPANION-UI 合并后做）；语音消息（暂缓，Owner 了解本地部署 TTS 后再定）；AI 生成照片（暂缓，生图服务本地部署或选模型待定）；备份后删除线上测试角色 vc-rerank-acceptance 及其会话与记忆（已同意）。
+- [x] 陪伴体验（Owner 2026-10-30）：默认女生「亲近的好朋友」可设置；首次引导起名；拟人全局规则（可编辑）；回复拆 1–3 条短消息 + 正在输入；主动引擎（mode OFF/FOLLOW_UP/DAILY/CLOSE_FRIEND + checkInAfterMinutes、7 触发、判断 JSON、预生成与失效、未回复上限 2，V271）；今日心情与情绪；表情包（内置 Fluent Emoji MIT + 72 颜文字 + 上传，代码限频）；绑定竞态修复。
+      设计 `docs/planning/2026-10-30-companion-humanlike-design.md`，文案 `2026-10-30-companion-copy.md`。合并 `32dd10ca`、`49ff62d6`，界面验收两轮修复 `3ca6bb69`、`2820cca3`；`check.sh` PASS，受管 9 场景 PASS（2026-10-31）。真实模型对话效果待 Owner 体验。已有关系被迁移为 FOLLOW_UP，需在陪伴页切到亲近好友（OP-5）。
+- [ ] 陪伴体验后续（2026-10-31 起由接手 agent 执行）：任务清单 `docs/planning/2026-10-31-handoff-backlog.md`，语音 `docs/planning/2026-10-31-voice-plan.md`，规则见 `AGENTS.md`「接手开发」。按 ID 在下方回填（提交、验证、`.review-queue/<ID>/`、是否已部署）。
 - [ ] 全项目审查修复（Owner 2026-10-30）：A/B/C 全部处理。FIX-GO 已合并（`52d30932`：工具验证竞态、预算边界、用量口径、隔离）。FIX-MC 已合并（`6c75e74c`：并集截断、错误归属、子句重排、缓存隔离）。F5、FIX-FE 第一/二轮已合并（`62c7e571`、`6f34eaf3`）。FIX-OPS 第二轮已合并（`24031186`：场景注册拆模块、受管提速、重排目录、写前重认证与验收断言）。FIX-FE 第三轮已合并。A/B/C 修复全部合入，待部署与 Owner 验收。本条不勾选。
 - [ ] 线上验收后续（Owner 2026-10-30）：2026-10-30 18:27 以一条命令部署 `e70e99fe` 上线（191 迁移/V270，全部健康，`VC_SESSION_TTL=720h` 生效）；首次真实部署修正了构建上下文缺 upstream、无标签数据卷、服务器访问 GitHub 超时（改为 bundle）、--resume 续传混合、Linux stat、MemoryCore 备份、镜像目录权限（中途一次 ST 起不来，已回退后重部署，中断约数分钟）。待 Owner 登录同意五项后确认首次记忆提取 DONE。
       - 登录：信任此设备 90 天（默认关）、二维码/一键添加验证器、六格验证码自动提交、恢复码复制/下载门控、登录页按 DESIGN 重做；账户页已信任设备与撤销（`ec016bcf`、`cf5d224f`、`a3f59594`）。登录有效期 30 天待部署时写入 `runtime.env` 的 `VC_SESSION_TTL=720h`。

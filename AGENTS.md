@@ -51,6 +51,31 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 - 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、
   机器真源和已对账的路线图条目，不恢复下述历史档案流程。
 
+## 接手开发（2026-10-31 起，Codex 等接手 agent 必读）
+
+- 任务来源只有 `docs/planning/2026-10-31-handoff-backlog.md` 中带 ID 的条目（语音细节见
+  `docs/planning/2026-10-31-voice-plan.md`）。不做清单外的功能、重构、改名或「顺便统一」；发现必要的新工作，
+  在清单末尾追加条目（写明原因）后再做。一次只做一个 ID，一个分支 / worktree，一个写入 owner；
+  同优先级可并行，但不得两条同时改同一文件。进度只按 ID 回填 `TODO.md`「陪伴体验后续」。
+- 动手前读该条目链接的设计文档，以及 `docs/planning/2026-10-30-companion-humanlike-design.md` §0 原则
+  （格式与频率由代码保证、允许沉默、状态落库幂等、从简）。面向用户的文案以 `2026-10-30-companion-copy.md`
+  为准，改文案先改该文档再同步代码。标 **[问]** 的条目先在条目下写问题，继续做其他条目，不自行拍板。
+- 契约先行：接口变化先改 OpenAPI / catalog（`specs/generated/**` 只用工具生成），迁移从当前最大版本号顺延、
+  一个条目最多一个迁移，同步 `backend/internal/migrate/migrate_test.go` 计数，并跑 `infra/db/run-rls-tests.sh`。
+- 语音：TTS / ASR 只能经 Go 后端调用，浏览器不得直连，不得把其端口发布到公网；应用端串行（每引擎并发 1）；
+  不改 TTS / ASR 容器的推理参数（线程、步数、模型、量化），要改先问 Owner。服务器地址、容器名、网络名
+  只写在服务器侧 `deploy.env` / 私有运行手册，不进仓库（仓库公开）。
+- 验证：按下表跑对应检查；新功能补受管场景或扩展已有场景（`integrations/sillytavern/scripts/`），
+  受影响场景整组通过才合并。改 UI 时用受管环境截 390 与 1440、浅色与深色，复制到仓库根目录
+  `.review-queue/<ID>/`（已忽略，不提交），附 `NOTES.md` 写改了什么、自查发现了什么；截图留给 Owner / Claude
+  事后复核，不阻塞合并。视觉须符合 `DESIGN.md`：Apple 应用语法、移动优先、不加多余次级标签与说明文字。
+- 合并与发布：Owner 2026-10-31 授权接手 agent 提交并推送 `main`，并在 `bash scripts/check.sh` 全量与受影响
+  受管场景在同一提交上通过后，用 `bash ops/deploy/v2/deploy.sh <commit>` 部署生产（仅限清单条目），部署后看
+  自检结果并记入 `TODO.md`；失败时部署上一个已知良好提交回滚，不手工改线上数据。服务器操作只用 ssh-skill；
+  允许按条目维护 TTS / ASR 容器（部署 ASR、重启策略、提取新音色），其他服务器变更先问 Owner。
+- 禁止：force push、改写历史、删测试、加 skip、削弱断言、手改生成物、提交密钥或真实用户数据、
+  读取或提交仓库根目录 `config.txt`、在日志 / 截图 / 提交中出现对话正文或凭据。
+
 ## 检查与工具链
 
 - 日常检查的统一编排入口仍为 `bash scripts/check.sh`；“唯一入口”指不建立第二套编排，

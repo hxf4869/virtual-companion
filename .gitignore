@@ -96,3 +96,6 @@ integrations/sillytavern/dev-managed/
 # Local stack state belongs in the home directory. Ignore accidental copies.
 ops/local/*.env
 ops/local/state/
+
+# 接手 agent 的 UI 截图复核队列（AGENTS.md「接手开发」）
+.review-queue/
