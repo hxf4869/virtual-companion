@@ -16,7 +16,6 @@ REPO = Path(__file__).resolve().parents[2]
 DEV = REPO / "scripts" / "local" / "dev.sh"
 README = REPO / "ops" / "local" / "README.md"
 OVERRIDE = REPO / "ops" / "local" / "compose.override.yaml"
-QUIESCE = REPO / "scripts" / "local" / "quiesce.sql"
 REMOTE = REPO / "scripts" / "local" / "remote-export.sh"
 RERANK_BYTES = 635676416
 RERANK_SHA = "a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3"
@@ -225,7 +224,7 @@ exit 99
         self.assertEqual(logs.returncode, 0, self.combined(logs))
         self.assertNotEqual(self.run_dev("logs", "postgres").returncode, 0)
 
-    def test_sync_from_dir_restores_without_ssh_and_quiesces(self):
+    def test_sync_from_dir_restores_without_ssh_and_keeps_prod_schedules(self):
         up = self.run_dev("up")
         self.assertEqual(up.returncode, 0, self.combined(up))
         runtime_before = (self.state / "runtime.env").read_text()
@@ -298,14 +297,11 @@ exit 99
         self.assertIn("VC_SMTP_PASSWORD", blob)
         self.assertNotIn("VC_ST_PLUGIN_SERVICE_TOKEN", blob.split("synced secret names:", 1)[-1])
         self.assert_no_secret_leak(result, crypto, binding, smtp, leaked_token, local_token)
+        # Owner 2026-10-30：本机与线上一致，通知渠道、主动问候与排队任务保持原状。
         sql = self.docker_stdin.read_text()
-        self.assertIn("vc.proactive_policy", sql)
-        self.assertIn("vc.notification_channel", sql)
-        self.assertIn("vc.notification_delivery", sql)
-        self.assertIn("vc.follow_up", sql)
-        self.assertIn("vc.work_item", sql)
-        self.assertIn("FOLLOW_UP", sql)
-        self.assertIn("enabled = false", sql)
+        self.assertNotIn("vc.proactive_policy", sql)
+        self.assertNotIn("vc.notification_channel", sql)
+        self.assertNotIn("enabled = false", sql)
         self.assertIn(str(backup / "postgres" / "vc.dump"), self.docker_log.read_text())
         self.assertIn("minio", self.docker_log.read_text())
         self.assertEqual(mode(self.state / "runtime.env"), 0o600)
@@ -373,9 +369,6 @@ exit 99
         self.assertIn("vc-model-settings", override)
         self.assertIn(":ro", override)
         self.assertNotIn("/etc/virtual-companion", override)
-        sql = QUIESCE.read_text()
-        self.assertIn("enabled = false", sql)
-        self.assertIn("FOLLOW_UP", sql)
         syntax = subprocess.run(["bash", "-n", str(DEV)], capture_output=True, text=True)
         self.assertEqual(syntax.returncode, 0, syntax.stderr)
         remote_syntax = subprocess.run(["bash", "-n", str(REMOTE)], capture_output=True, text=True)

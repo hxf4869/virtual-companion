@@ -641,7 +641,6 @@ cmd_sync_dir() {
             --entrypoint /bin/sh minio /minio-import.sh
     fi
     apply_secret_file "$src/secrets.env"
-    compose exec -T db psql -U vc_migrator -d vc -v ON_ERROR_STOP=1 -f - < "$ROOT/scripts/local/quiesce.sql"
     compose up -d --wait --wait-timeout 300
 }
 
