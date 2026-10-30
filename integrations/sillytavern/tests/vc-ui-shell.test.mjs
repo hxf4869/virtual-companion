@@ -4,6 +4,7 @@ import test from 'node:test';
 import { installMiniDom } from './mini-dom.mjs';
 import {
     chatSnapshotFromContext,
+    chatSnapshotsFromRecent,
     conversationRows,
     renderConversationRow,
     renderConversationRows,
@@ -267,6 +268,155 @@ test('同名实例去重、用角色卡头像，并用序号区分', () => {
     assert.match(named, /vc-convo-name">林/);
     assert.match(named, /vc-convo-inst">晨间/);
     assert.equal(named.includes('>rel-9<'), false);
+});
+
+test('同一个聊天文件只出现一行，紧挨着创建且没有文件的同名分身不占第二行', () => {
+    const relationships = [
+        { relationshipId: '2', personaRef: 'st-character', companionName: 'vc-rerank-acceptance', createdAt: '2026-10-29T15:18:48.944Z' },
+        { relationshipId: '3', personaRef: 'st-character', companionName: 'vc-rerank-acceptance', createdAt: '2026-10-29T15:18:49.421Z' },
+    ];
+    const characters = [{
+        name: 'vc-rerank-acceptance',
+        avatar: 'vc-rerank-acceptance.png',
+        data: { extensions: { vc_character_ref: 'ref-v' } },
+    }];
+    const chats = [{
+        relationshipId: '3',
+        file: 'vc-rerank-acceptance - 2026-10-29@15h17m31s371ms',
+        characterName: 'vc-rerank-acceptance',
+        characterRef: 'ref-v',
+        avatar: 'vc-rerank-acceptance.png',
+        preview: '同一句',
+        time: '2026-10-30T02:00:00Z',
+    }];
+    const open = conversationRows(relationships, { chats, characters });
+    assert.equal(open.length, 2);
+    const rows = conversationRows(relationships, { chats, characters, chatsComplete: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].relationshipId, '3');
+    assert.equal(rows[0].file, chats[0].file);
+    assert.equal(rows[0].preview, '同一句');
+    assert.equal(rows[0].disambiguator, undefined);
+    const html = renderConversationRows(rows);
+    assert.equal(html.includes('· 2'), false);
+    assert.equal((html.match(/class="vc-cell vc-convo"/g) || []).length, 1);
+});
+
+test('两个真实聊天文件各自一行，同名实例仍能区分', () => {
+    const rows = conversationRows([
+        { relationshipId: '2', personaRef: 'st-character', companionName: '外壳', createdAt: '2026-10-29T15:18:48.000Z' },
+        { relationshipId: '3', personaRef: 'st-character', companionName: '外壳', createdAt: '2026-10-29T15:18:49.000Z' },
+    ], {
+        chatsComplete: true,
+        characters: [{ name: '外壳', avatar: 'a.png', data: { extensions: { vc_character_ref: 'ref' } } }],
+        chats: [
+            { relationshipId: '2', file: 'chat-a', characterRef: 'ref', preview: '甲', time: '2026-10-30T01:00:00Z' },
+            { relationshipId: '3', file: 'chat-b', characterRef: 'ref', preview: '乙', time: '2026-10-30T02:00:00Z' },
+        ],
+    });
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map((row) => row.file), ['chat-a', 'chat-b']);
+    const html = renderConversationRows(rows);
+    const inst = [...html.matchAll(/vc-convo-inst">([^<]+)</g)].map((item) => item[1]);
+    assert.deepEqual(inst, ['外壳', '外壳 · 2']);
+    assert.equal(new Set([...html.matchAll(/aria-label="([^"]+)"/g)].map((item) => item[1])).size, 2);
+    assert.match(html, /vc-convo-preview">甲/);
+    assert.match(html, /vc-convo-preview">乙/);
+});
+
+test('几秒内连着创建、开场白相同的两份聊天只留后一条', () => {
+    const relationships = [
+        { relationshipId: '5', personaRef: 'st-character', companionName: '走查 13d72836', createdAt: '2026-10-30T11:16:58.360Z' },
+        { relationshipId: '6', personaRef: 'st-character', companionName: '走查 13d72836', createdAt: '2026-10-30T11:16:58.547Z' },
+    ];
+    const characters = [{
+        name: '走查 13d72836',
+        avatar: 'walk.png',
+        data: { extensions: { vc_character_ref: 'ref-w' } },
+    }];
+    const chats = [
+        { relationshipId: '5', file: '走查 13d72836 - 2026-10-30@19h16m58s360ms', characterRef: 'ref-w', preview: '合成开场。', time: '2026-10-30T11:16:58.100Z' },
+        { relationshipId: '6', file: 'vc-ui-walkthrough-fecc3e5f', characterRef: 'ref-w', preview: '合成开场。', time: '2026-10-30T11:16:58.200Z' },
+    ];
+    const rows = conversationRows(relationships, { chats, characters, chatsComplete: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].relationshipId, '6');
+    assert.equal(rows[0].file, 'vc-ui-walkthrough-fecc3e5f');
+    assert.equal(rows[0].preview, '合成开场。');
+    assert.equal(renderConversationRows(rows).includes('· 2'), false);
+    const later = conversationRows([
+        relationships[0],
+        { relationshipId: '9', personaRef: 'st-character', companionName: '走查 13d72836', createdAt: '2026-10-30T12:00:00.000Z' },
+    ], {
+        chatsComplete: true,
+        characters,
+        chats: [
+            chats[0],
+            { relationshipId: '9', file: 'another', characterRef: 'ref-w', preview: '合成开场。', time: '2026-10-30T12:00:01.000Z' },
+        ],
+    });
+    assert.equal(later.length, 2);
+    assert.deepEqual(later.map((row) => row.relationshipId), ['5', '9']);
+});
+
+test('过一会儿另建的实例没有聊天文件时仍然单独成行', () => {
+    const rows = conversationRows([
+        { relationshipId: '2', personaRef: 'st-character', companionName: '外壳', createdAt: '2026-10-29T15:18:48.000Z' },
+        { relationshipId: '9', personaRef: 'st-character', companionName: '外壳', createdAt: '2026-10-29T16:00:00.000Z' },
+    ], {
+        chatsComplete: true,
+        characters: [{ name: '外壳', avatar: 'a.png', data: { extensions: { vc_character_ref: 'ref' } } }],
+        chats: [{ relationshipId: '2', file: 'chat-a', characterRef: 'ref', preview: '甲', time: '2026-10-30T01:00:00Z' }],
+    });
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map((row) => row.relationshipId), ['2', '9']);
+    const html = renderConversationRows(rows);
+    assert.equal(new Set([...html.matchAll(/aria-label="([^"]+)"/g)].map((item) => item[1])).size, 2);
+});
+
+test('两个实例指向同一聊天文件时合并成一行', () => {
+    const rows = conversationRows([
+        { relationshipId: '2', personaRef: 'st-character', companionName: '外壳', createdAt: '2026-10-01T00:00:00Z' },
+        { relationshipId: '3', personaRef: 'st-character', companionName: '晚一些', createdAt: '2026-11-01T00:00:00Z' },
+    ], {
+        chats: [
+            { relationshipId: '2', file: 'same-chat', characterRef: 'ref', preview: '同一句' },
+            { relationshipId: '3', file: 'same-chat', characterRef: 'ref', preview: '同一句' },
+        ],
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].file, 'same-chat');
+    assert.equal(rows[0].preview, '同一句');
+    assert.equal(renderConversationRows(rows).includes('· 2'), false);
+});
+
+test('最近聊天快照只保留有绑定的文件，空占位不当成预览', () => {
+    const snaps = chatSnapshotsFromRecent([
+        {
+            file_id: 'kept',
+            file_name: 'kept.jsonl',
+            mes: '[The chat is empty]',
+            last_mes: '2026-10-30T00:00:00Z',
+            avatar: 'a.png',
+            chat_metadata: { vc_binding: { relationshipId: 3, characterRef: 'ref-v' } },
+        },
+        { file_id: 'loose', mes: '不该出现', chat_metadata: {} },
+        { file_name: 'named.jsonl', mes: '你好\n第二行', avatar: 'b.png', chat_metadata: { vc_binding: { relationshipId: '8' } } },
+    ]);
+    assert.equal(snaps.length, 2);
+    assert.equal(snaps[0].relationshipId, '3');
+    assert.equal(snaps[0].file, 'kept');
+    assert.equal(snaps[0].preview, undefined);
+    assert.equal(snaps[0].characterRef, 'ref-v');
+    assert.equal(snaps[0].avatar, 'a.png');
+    assert.equal(snaps[1].file, 'named');
+    assert.equal(snaps[1].preview, '你好');
+});
+
+test('外壳用完整聊天目录合并会话，避免只靠当前快照', async () => {
+    const src = await readFile(new URL('../extension/vc-model-settings/shell.js', import.meta.url), 'utf8');
+    assert.match(src, /loadRecentChatSnapshots\(/);
+    assert.match(src, /chatsComplete/);
 });
 
 test('走查场景默认不进套件', async () => {

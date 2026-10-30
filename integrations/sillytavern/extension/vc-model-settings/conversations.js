@@ -1,7 +1,10 @@
-// 会话列表：陪伴实例来自 instance-page 同一接口（GET /api/v1/relationships → instancesFrom）。
-// 最后一条消息和时间只在调用方已经拿到时附上。没有预览时列表显示「暂无消息」，不写入快照。
+// 会话列表：陪伴实例来自 instance-page 同一接口（GET /api/v1/relationships → instancesFrom），
+// 再与 ST 聊天文件合并。最后一条消息和时间只在调用方已经拿到时附上。没有预览时列表显示「暂无消息」。
 // 头像优先用当前会话快照，否则用同名或同角色引用的角色卡头像；都没有才用首字。
-// 同一关系只保留一行。两个实例看起来一样时，只在确实重名时加序号（外壳 · 2），不显示创建时间或内部 ID。
+// 同一关系只保留一行；同一个聊天文件也只保留一行。
+// 聊天目录已经列全时，几秒内连着创建的同名分身不再占第二行：没有自己的聊天文件，
+// 或者两份文件的最后一句相同（选中角色时自动开的聊天，和紧接着打开的那份）。
+// 隔开一段时间另建的实例，或最后一句已经不同的两份聊天，各自一行；看起来一样时才加序号（外壳 · 2）。
 import { instancesFrom, safeImageUrl } from './instance-page.js';
 import { pendingInboxWrites } from './chat-shell.js';
 
@@ -13,6 +16,10 @@ export const CONVERSATIONS_EMPTY_ACTION = '去角色页';
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[ch]));
+
+// 打开角色时可能在这一小段里连打两次绑定，后一次才写进聊天文件。
+const SHADOW_TWIN_MS = 5000;
+const EMPTY_PREVIEW = new Set(['[The chat is empty]', '[The message is empty]']);
 
 export function avatarUrl(file) {
     const value = String(file || '').trim();
@@ -46,6 +53,41 @@ function textField(value) {
     if (typeof value !== 'string') return '';
     const trimmed = value.trim();
     return trimmed;
+}
+
+export function chatSnapshotsFromRecent(list) {
+    const snaps = [];
+    for (const item of Array.isArray(list) ? list : []) {
+        const binding = item?.chat_metadata?.vc_binding;
+        if (binding?.relationshipId == null || binding.relationshipId === '') continue;
+        const snap = { relationshipId: String(binding.relationshipId) };
+        const file = textField(item.file_id) || textField(item.file_name).replace(/\.jsonl$/i, '');
+        if (file) snap.file = file;
+        const characterRef = textField(binding.characterRef);
+        if (characterRef) snap.characterRef = characterRef;
+        const avatar = textField(item.avatar);
+        if (avatar) snap.avatar = avatar;
+        const preview = textField(item.mes);
+        if (preview && !EMPTY_PREVIEW.has(preview)) snap.preview = preview.split('\n')[0].trim();
+        if (typeof item.last_mes === 'number' && Number.isFinite(item.last_mes)) snap.time = new Date(item.last_mes).toISOString();
+        else if (item.last_mes) snap.time = item.last_mes;
+        snaps.push(snap);
+    }
+    return snaps;
+}
+
+export async function loadRecentChatSnapshots(loadNative, fetchImpl = globalThis.fetch) {
+    const native = typeof loadNative === 'function' ? await loadNative() : {};
+    const headers = { 'Content-Type': 'application/json' };
+    if (typeof native?.getRequestHeaders === 'function') Object.assign(headers, native.getRequestHeaders());
+    const response = await fetchImpl('/api/chats/recent', {
+        method: 'POST',
+        headers,
+        credentials: 'same-origin',
+        body: JSON.stringify({ metadata: true }),
+    });
+    if (!response?.ok) throw new Error('recent chats unavailable');
+    return chatSnapshotsFromRecent(await response.json());
 }
 
 export function chatSnapshotFromContext(context) {
@@ -105,6 +147,91 @@ function matchingCard(characters, row) {
     return cards.find((card) => names.has(textField(card?.name))) || null;
 }
 
+function createdMs(value) {
+    const parsed = Date.parse(String(value ?? '').trim());
+    return Number.isNaN(parsed) ? NaN : parsed;
+}
+
+function sameShadow(left, right) {
+    const instLeft = textField(left?.instanceName);
+    const instRight = textField(right?.instanceName);
+    if (!instLeft || instLeft !== instRight) return false;
+    const refLeft = textField(left?.characterRef);
+    const refRight = textField(right?.characterRef);
+    if (refLeft && refRight) return refLeft === refRight;
+    const nameLeft = textField(left?.name);
+    const nameRight = textField(right?.name);
+    if (nameLeft && nameRight && nameLeft !== nameRight) return false;
+    return true;
+}
+
+function fileKey(row) {
+    const file = textField(row?.file);
+    if (!file) return '';
+    return `${textField(row.characterRef) || textField(row.avatar) || textField(row.name)}\n${file}`;
+}
+
+function dropSharedFiles(rows) {
+    const kept = [];
+    const indexByFile = new Map();
+    for (const row of rows) {
+        const key = fileKey(row);
+        if (!key) {
+            kept.push(row);
+            continue;
+        }
+        const index = indexByFile.get(key);
+        if (index == null) {
+            indexByFile.set(key, kept.length);
+            kept.push(row);
+            continue;
+        }
+        const prior = kept[index];
+        if (!textField(prior.preview) && textField(row.preview)) prior.preview = row.preview;
+        if (!textField(prior.time) && textField(row.time)) prior.time = row.time;
+    }
+    return kept;
+}
+
+function dropShadowTwins(rows) {
+    const backed = rows.filter((row) => textField(row.file));
+    return rows.filter((row) => {
+        if (textField(row.file)) return true;
+        const mine = createdMs(row.createdAt);
+        if (Number.isNaN(mine)) return true;
+        return !backed.some((other) => {
+            if (!sameShadow(row, other)) return false;
+            const theirs = createdMs(other.createdAt);
+            if (Number.isNaN(theirs)) return false;
+            return Math.abs(mine - theirs) <= SHADOW_TWIN_MS;
+        });
+    });
+}
+
+function echoTwin(left, right) {
+    const preview = textField(left?.preview);
+    if (!preview || preview !== textField(right?.preview)) return false;
+    if (!textField(left?.file) || !textField(right?.file)) return false;
+    if (!sameShadow(left, right)) return false;
+    const mine = createdMs(left?.createdAt);
+    const theirs = createdMs(right?.createdAt);
+    if (Number.isNaN(mine) || Number.isNaN(theirs)) return false;
+    return Math.abs(mine - theirs) <= SHADOW_TWIN_MS;
+}
+
+function dropEchoTwins(rows) {
+    const kept = [];
+    for (const row of rows) {
+        const index = kept.findIndex((other) => echoTwin(row, other));
+        if (index < 0) {
+            kept.push(row);
+            continue;
+        }
+        if (createdMs(row.createdAt) > createdMs(kept[index].createdAt)) kept[index] = row;
+    }
+    return kept;
+}
+
 function applyDisambiguators(rows) {
     const groups = new Map();
     for (const row of rows) {
@@ -121,11 +248,14 @@ function applyDisambiguators(rows) {
     }
 }
 
-export function conversationRows(relationships, { chats = [], inboxRows = [], characters = [] } = {}) {
+export function conversationRows(relationships, { chats = [], chatsComplete = false, inboxRows = [], characters = [] } = {}) {
     const byId = new Map();
     for (const chat of Array.isArray(chats) ? chats : []) {
         if (chat?.relationshipId == null || chat.relationshipId === '') continue;
-        byId.set(String(chat.relationshipId), chat);
+        const id = String(chat.relationshipId);
+        const prev = byId.get(id);
+        if (prev && textField(prev.file) && !textField(chat.file)) continue;
+        byId.set(id, chat);
     }
     const raw = rawRelationships(relationships);
     const seen = new Set();
@@ -165,8 +295,10 @@ export function conversationRows(relationships, { chats = [], inboxRows = [], ch
         if (pendingInboxWrites(inboxRows, { relationshipId: instance.relationshipId }).length > 0) row.unread = true;
         rows.push(row);
     }
-    applyDisambiguators(rows);
-    return rows;
+    const unique = dropSharedFiles(rows);
+    const visible = chatsComplete ? dropEchoTwins(dropShadowTwins(unique)) : unique;
+    applyDisambiguators(visible);
+    return visible;
 }
 
 export function conversationTitle(row) {

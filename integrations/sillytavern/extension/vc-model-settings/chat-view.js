@@ -3,6 +3,7 @@
 // 流式渐清：把宿主 powerUserSettings.stream_fade_in 设为 true，不同步设置里的 input 事件，因此不调用 saveSettingsDebounced。
 import { CHAT_PICK_COPY, requestShellDestination } from './chat-shell.js';
 import { FORGET_NOTICE, createMemoryPage, requestOpenMemory } from './memory-page.js';
+import { MEMORY_NOTICE_EVENT, MEMORY_QUIET_COPY } from './memory-injection.js';
 import { confirmAlert } from './ui/alert.js';
 import { bindSegment } from './ui/controls.js';
 import { icon } from './ui/icons.js';
@@ -18,6 +19,8 @@ export const NEAR_BOTTOM_PX = 80;
 const MEMORY_PROMPT = 'vc_long_term_memory';
 
 let contextGetter = null;
+let memoryNotice = '';
+const MEMORY_SKIP_TOAST = ['本轮已跳过', '长期记忆已关闭', '来源已变化'];
 let memoryPage = null;
 let inspectorMode = 'recall';
 let userStopped = false;
@@ -175,13 +178,21 @@ export function posterTarget() {
 export function openChatMoreMenu(anchorEl) {
     if (!anchorEl || !document.body?.classList?.contains('vc-ui')) return null;
     const bubble = readReplyStyle() === 'bubble';
-    return popMenu(anchorEl, [
+    const menu = popMenu(anchorEl, [
         { label: '回复铺开', check: !bubble, run: () => writeReplyStyle('spread') },
         { label: '回复气泡', check: bubble, run: () => writeReplyStyle('bubble') },
         '-',
         { label: '新对话', icon: 'square-pen', run: () => document.querySelector('#option_start_new_chat')?.click() },
         { label: '分支', icon: 'git-branch', run: () => lastCharacterMessage()?.querySelector('.mes_create_branch')?.click() },
     ], { below: true });
+    if (memoryNotice && menu?.menu) {
+        const note = document.createElement('p');
+        note.className = 'vc-memory-note';
+        note.textContent = memoryNotice;
+        if (typeof menu.menu.prepend === 'function') menu.menu.prepend(note);
+        else menu.menu.append(note);
+    }
+    return menu;
 }
 
 export function openMemoryInspector(opener) {
@@ -230,7 +241,10 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
     }
     watch(doc.body, { attributes: true, attributeFilter: ['data-generating'] }, syncGenerating);
     const toasts = doc.querySelector('#toast-container');
-    if (toasts) watch(toasts, { childList: true, subtree: true }, () => { noteFailure(); syncStatusSpace(); });
+    if (toasts) watch(toasts, { childList: true, subtree: true }, () => { absorbMemoryToasts(); noteFailure(); syncStatusSpace(); });
+    const onMemoryNotice = (event) => applyMemoryNotice(event?.detail?.text || '');
+    doc.addEventListener?.('vc-memory-notice', onMemoryNotice);
+    doc.body?.addEventListener?.(MEMORY_NOTICE_EVENT, onMemoryNotice);
     return liveApi();
 }
 
@@ -253,8 +267,44 @@ function safeContext() {
     }
 }
 
+function applyMemoryNotice(text) {
+    memoryNotice = String(text || '');
+    const note = ensureMemoryNote();
+    if (note) note.textContent = memoryNotice;
+    schedulePoster();
+}
+
+function ensureMemoryNote() {
+    const poster = document.querySelector('#vc-chat-poster');
+    if (!poster) return null;
+    let note = document.querySelector('#vc-memory-note');
+    if (!note) {
+        note = document.createElement('p');
+        note.id = 'vc-memory-note';
+        note.className = 'vc-memory-note';
+        poster.append(note);
+    }
+    return note;
+}
+
+function absorbMemoryToasts() {
+    const root = document.querySelector('#toast-container');
+    if (!root?.querySelectorAll) return;
+    for (const toast of [...root.querySelectorAll('.toast')]) {
+        const text = toast.textContent || '';
+        if (text.includes('部分长期记忆暂不可用')) {
+            applyMemoryNotice(MEMORY_QUIET_COPY);
+            removeNode(toast);
+            continue;
+        }
+        if (MEMORY_SKIP_TOAST.some((part) => text.includes(part))) removeNode(toast);
+    }
+}
+
 function refreshAll() {
     const ctx = safeContext();
+    absorbMemoryToasts();
+    ensureMemoryNote();
     refreshPoster(ctx);
     refreshMessages();
     enhanceStatus();
@@ -314,7 +364,7 @@ function placePoster(chat) {
     if (!parent) return null;
     const poster = document.createElement('div');
     poster.id = 'vc-chat-poster';
-    poster.innerHTML = `<span class="vc-poster-avatar-slot"><img id="vc-poster-avatar" class="vc-poster-avatar" alt=""></span><h2></h2><p class="vc-poster-instance" hidden></p><div class="vc-poster-acts"></div>`;
+    poster.innerHTML = `<span class="vc-poster-avatar-slot"><img id="vc-poster-avatar" class="vc-poster-avatar" alt=""></span><h2></h2><p class="vc-poster-instance" hidden></p><p id="vc-memory-note" class="vc-memory-note"></p><div class="vc-poster-acts"></div>`;
     const acts = poster.querySelector('.vc-poster-acts');
     for (const spec of [
         ['memory', 'brain', '记忆', (button) => openMemoryInspector(button)],
