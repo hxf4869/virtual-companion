@@ -13,8 +13,8 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 191 {
-		t.Fatalf("migration count = %d, want 191", len(items))
+	if len(items) != 192 {
+		t.Fatalf("migration count = %d, want 192", len(items))
 	}
 	// Versions must be strictly ascending.
 	for i := 1; i < len(items); i++ {
@@ -22,7 +22,7 @@ func TestEmbeddedMigrationsAreOrderedAndComplete(t *testing.T) {
 			t.Fatalf("migration[%d].Version = %d not after %d", i, items[i].Version, items[i-1].Version)
 		}
 	}
-	if items[len(items)-1].File != "V270__rerank_resolve_owner_assert.sql" {
+	if items[len(items)-1].File != "V271__companion_state_and_proactive_engine.sql" {
 		t.Fatalf("latest migration = %q", items[len(items)-1].File)
 	}
 }
