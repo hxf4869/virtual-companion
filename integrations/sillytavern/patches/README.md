@@ -59,7 +59,8 @@ start 预检 / status 与 `tests/patcher.test.mjs` 都按该值校验，输出�
 - **对象**：SillyTavern 1.19.0（commit `7e8663cd`）`src/util.js`（同样只作用于 `dev-managed/st-run` 副本）。
 - **理由**：`forwardFetchResponse` 流式失败分支把 provider 完整错误正文写入 console.warn（会落入
   st.log）；收口为只记录状态码与状态文本，浏览器收到的错误体保持原生行为。与上一个补丁的两处
-  日志收口配套（受管三协议流式路径都经过该函数）。
+  日志收口配套（受管三协议流式路径都经过该函数）。成功流在 `pipe` 之前只对 `AbortError` 或
+  `type===aborted` 安静返回；其他错误记录 `name` 与 `code` 后 `destroy` 响应，不把上游正文写入日志。
 - **应用与校验**：同上（assemble-managed 应用，start-managed / status-managed 复核）。
 
 ## 未受校验文本生成出口（W13，四份同形规格）

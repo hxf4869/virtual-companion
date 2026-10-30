@@ -168,7 +168,7 @@ MinIO 不备份。应用对象是 `exports/<owner>/<id>-<hex>.json`，约 24 小
 | MemoryCore | `dev-managed/memorycore-data/owners/<十进制 owner>/` | 含。`vectors.db`、jsonl、画像与操作记录可含派生文本 | 明文，目录 0700、文件 0600。Owner 决定不加密 | `owners/` 存在时纳入，排除 wal/shm 与 `runtime.lock`。本轮已验证。无保留期 |
 | MinIO 导出对象 | `exports/<owner>/<id>-<hex>.json` | 含对话与记忆副本 | 上传前字段加密 | 约 24 小时过期的临时下载副本。默认不进 `backup.sh`：权威数据在 PostgreSQL 与 ST 文件，过期副本不备份、不随恢复复活。本轮只建了空桶，没有导出对象 |
 | 本机 embedding | 约定 `127.0.0.1:11438` 的 `qwen3-embedding:0.6b`，容器名 `vc-w08-embedding` | 请求瞬时可能含记忆文本；容器内是模型权重 | 无应用层加密 | 无备份。仓库没有创建该容器的脚本。本轮未启动 |
-| 本机重排 | `127.0.0.1:11439`（`VC_RERANK_PORT`），容器名 `vc-rerank`（`VC_RERANK_CONTAINER`）。镜像按 digest 固定，模型在仓库外 `VC_RERANK_MODEL_DIR` | 请求瞬时含问句与候选记忆；容器内是 GGUF 权重 | 无应用层加密 | 无备份。约 0.5GB 内存。受管验收按需启动或复用 |
+| 本机重排 | `127.0.0.1:11439`（`VC_RERANK_PORT`），容器名 `vc-rerank`（`VC_RERANK_CONTAINER`）。镜像按 digest 固定。部署目录变量是 `VC_RERANK_MODELS_DIR`；本机脚本当前仍读 `VC_RERANK_MODEL_DIR` | 请求瞬时含问句与候选记忆；容器内是 GGUF 权重 | 无应用层加密 | 无备份。约 0.5GB 内存。受管验收按需启动或复用 |
 | 日志 | `dev-managed/run/st.log`、`memorycore.log`；Go 为进程自身输出 | 插件约定禁止正文与令牌。本轮 MemoryCore 日志只有固定就绪码 | 明文。MemoryCore 日志文件为 0600 | 不进备份 |
 
 恢复门是副本里的 `restore-gate.json`。`companiond` 启动时读取 `VC_RESTORE_GATE_FILE` 指向的路径，每次领取任务和读取记忆时再读文件内容。文件为 `{"blocked":true}`、内容无效或无法读取时，不领取任务、不跑恢复、不投递通知，记忆列表/详情/证据返回 `503 RESTORE_GATE_CLOSED`。文件不存在或 `blocked` 为 false 时开放。`restore.sh` 在清理完成前留下 blocked，成功后删除该文件。上面 13:14 的空目录解包没有删除状态，不能代替 D06 演练；演练在 `tests/backup-d06.test.mjs`。
@@ -491,8 +491,10 @@ node integrations/sillytavern/scripts/accept-managed.mjs --filter memorycore-nat
 遗忘、版本屏障与故障恢复；使用现有 `vc-w08-embedding`，并按需启动或复用 `vc-rerank`。结束删除本轮合成数据，
 保留 embedding 容器、重排镜像和模型文件。
 
-本机重排与 embedding 容器同级。模型文件放在仓库外（默认 `~/.local/share/virtual-companion/rerank/bge-reranker-v2-m3-Q8_0.gguf`，
-可用 `VC_RERANK_MODEL_DIR` 覆盖），不放进 Git。容器只绑定 `127.0.0.1:${VC_RERANK_PORT:-11439}`，名字
+本机重排与 embedding 容器同级。模型文件放在仓库外（默认 `~/.local/share/virtual-companion/rerank/bge-reranker-v2-m3-Q8_0.gguf`），不放进 Git。
+目录变量统一叫 `VC_RERANK_MODELS_DIR`（部署 Compose 已使用这个名字）。本机受管脚本当前仍只读 `VC_RERANK_MODEL_DIR`；
+下一轮会让它优先认 `VC_RERANK_MODELS_DIR`，并在只看到旧名时提示一次。在那之前，本机继续设置 `VC_RERANK_MODEL_DIR`。
+容器只绑定 `127.0.0.1:${VC_RERANK_PORT:-11439}`，名字
 `${VC_RERANK_CONTAINER:-vc-rerank}`。镜像 digest 与 GGUF SHA256 写在 `memorycore-service/rerank.mjs`。
 `memorycore-native`、`memory-browser`、`memory-real-eval` 会复用健康容器，否则用上述参数启动。常驻约 0.5GB 内存。
 

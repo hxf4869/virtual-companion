@@ -1,7 +1,7 @@
 {
   "id": "st-util-stream-error-log",
   "kind": "deterministic-string-replacement",
-  "reason": "V2-W03（外层核查第 4 条）：ST 1.19.0 src/util.js forwardFetchResponse 的流式失败分支把上游 provider 完整错误正文写入 console.warn（会落入 st.log）。受管三协议的流式路径（含交回原生链的 Chat/Claude 透传）都经过该函数，provider 错误体可能包含回显的请求内容或敏感值。收口为只记录状态码与状态文本，不记录正文；浏览器收到的错误体保持原生行为不变。与 st-chat-completions-vc-bridge.json 的两处日志收口配套。同一函数在客户端停止时还会把 node-fetch 的 AbortError 经 pipe 重发成未捕获异常并让宿主退出；成功流在 pipe 之前接住该错误。",
+  "reason": "V2-W03（外层核查第 4 条）：ST 1.19.0 src/util.js forwardFetchResponse 的流式失败分支把上游 provider 完整错误正文写入 console.warn（会落入 st.log）。受管三协议的流式路径（含交回原生链的 Chat/Claude 透传）都经过该函数，provider 错误体可能包含回显的请求内容或敏感值。收口为只记录状态码与状态文本，不记录正文；浏览器收到的错误体保持原生行为不变。与 st-chat-completions-vc-bridge.json 的两处日志收口配套。同一函数在客户端停止时还会把 node-fetch 的 AbortError 经 pipe 重发成未捕获异常并让宿主退出；成功流在 pipe 之前只对 AbortError 或 type===aborted 安静返回。其余错误（含连接被提前关掉）只记录 error.name 与 error.code，然后 destroy 响应，不把上游正文写入日志。",
   "upstream": {
     "component": "sillytavern",
     "repo": "https://github.com/SillyTavern/SillyTavern",
@@ -12,7 +12,7 @@
   "applies_to": "锁定 commit 7e8663cd 的该文件（bootstrap/start 的接线归 S1；upstream/ 原始检出不直接修改，补丁应用于运行副本）",
   "removal_condition": "上游自行停止在日志中输出上游错误正文，或 V2 放弃 ST 前台受控生成链。升级 ST 版本时须重算两个 SHA 并复核锚点命中次数。",
   "expected_input_sha256": "d33d67234af4e188bb7fcfac9c3ca7952c19e8c58791e96b19f9ad748dd168cd",
-  "expected_output_sha256": "450e06c4b0289c921953a5e0016f4049ad9812469c088e3dc8482aa8aeb1e2c1",
+  "expected_output_sha256": "0b1bfa2d22cd1a3ebfdfff8b9cc74b83f0011d6cf595c40ef62a5fbd1ee66774",
   "replacements": [
     {
       "from": "            console.warn(`Streaming request failed with status ${from.status} ${statusText}: ${detail}`);",
@@ -22,9 +22,9 @@
     },
     {
       "from": "    if (from.body && to.socket) {\n        from.body.pipe(to);\n\n        to.socket.on('close', function () {\n            if (from.body instanceof Readable) from.body.destroy(); // Close the remote stream\n\n            to.end(); // End the Express response\n        });",
-      "to": "    if (from.body && to.socket) {\n        // vc patch: client stop aborts node-fetch, which emits AbortError on the body.\n        // stream.pipe drops its own error listener and re-emits; with no other listener that\n        // becomes an uncaught exception and server-main exits. Keep one listener for the life of the body.\n        from.body.on('error', (error) => {\n            const aborted = error?.name === 'AbortError' || error?.code === 'ERR_STREAM_PREMATURE_CLOSE' || error?.code === 'ABORT_ERR' || error?.type === 'aborted';\n            if (aborted) return;\n            console.warn(`Streaming request stream error: ${error?.name || 'Error'}`);\n        });\n        from.body.pipe(to);\n\n        to.socket.on('close', function () {\n            try {\n                if (from.body instanceof Readable) from.body.destroy(); // Close the remote stream\n            } catch { /* client already gone */ }\n\n            try {\n                to.end(); // End the Express response\n            } catch { /* response already finished */ }\n        });",
+      "to": "    if (from.body && to.socket) {\n        // vc patch: client stop aborts node-fetch, which emits AbortError on the body.\n        // stream.pipe drops its own error listener and re-emits; with no other listener that\n        // becomes an uncaught exception and server-main exits. Keep one listener for the life of the body.\n        // Only a client stop returns quietly. Other errors log name and code, then destroy the response.\n        from.body.on('error', (error) => {\n            const aborted = error?.name === 'AbortError' || error?.type === 'aborted';\n            if (aborted) return;\n            console.warn(`Streaming request stream error: name=${error?.name || 'Error'} code=${error?.code || ''}`);\n            try {\n                to.destroy(error);\n            } catch { /* response already closed */ }\n        });\n        from.body.pipe(to);\n\n        to.socket.on('close', function () {\n            try {\n                if (from.body instanceof Readable) from.body.destroy(); // Close the remote stream\n            } catch { /* client already gone */ }\n\n            try {\n                to.end(); // End the Express response\n            } catch { /* response already finished */ }\n        });",
       "count": 1,
-      "where": "forwardFetchResponse 成功流：pipe 之前接住客户端中断，避免 AbortError 变成未捕获异常"
+      "where": "forwardFetchResponse 成功流：pipe 之前只安静接住客户端停止；其他错误记录 name 与 code 后 destroy 响应"
     }
   ]
 }

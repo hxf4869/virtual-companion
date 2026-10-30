@@ -61,6 +61,8 @@ ops/deploy/.local/
 
 # Local audit/acceptance tooling artifacts (never committed)
 /admin.txt
+# Repo-root local credentials. Do not read or commit this file.
+/config.txt
 /.acceptance/
 /.playwright-mcp/
 

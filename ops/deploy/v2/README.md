@@ -6,16 +6,19 @@
 ## 网络和数据
 
 现有 Nginx 终止公网域名（`VC_PUBLIC_HOST`）的 TLS，加入 `vc-v2-edge` 后访问
-`172.24.0.2:8080`。私有 ingress、companiond、ST、MemoryCore、embedding、rerank 共享网络命名空间，
-业务服务保持监听 `127.0.0.1`。PostgreSQL 和 MinIO 只在 Docker internal 网络可达。
+ingress 的 `__VC_EDGE_INGRESS__:8080`。这个地址来自 Compose 变量 `VC_EDGE_INGRESS_IP`
+（必须在 `compose.env` 中设置，无默认值）。私有 ingress、companiond、ST、
+MemoryCore、embedding、rerank 共享网络命名空间，业务服务保持监听 `127.0.0.1`。
+PostgreSQL 和 MinIO 只在 Docker internal 网络可达。
 本 Compose 没有 `ports`，不增加公网监听；现有站点和 SSH 端口保留。
 
-`172.24.0.0/24` 是部署时确认空闲的专用网段。embedding 使用 Ollama 0.33.2 CPU 镜像（`VC_EMBEDDING_IMAGE`），
+edge 网段是 `VC_EDGE_SUBNET`，必须在 `compose.env` 中设置（没有默认值，未设置时 Compose 拒绝启动）。已有部署在升级前把当时选定的网段和 ingress 地址写进 `compose.env`，保持与现有 Nginx 配置一致。embedding 使用 Ollama 0.33.2 CPU 镜像（`VC_EMBEDDING_IMAGE`），
 只读挂载已有的 `qwen3-embedding:0.6b` 模型目录（`VC_EMBEDDING_MODELS_DIR`），单独运行服务。
 Compose 设置 `OLLAMA_KEEP_ALIVE=-1`，MemoryCore 的每次嵌入请求也带 `keep_alive: -1`，模型在进程活着时保持加载。
 Ollama 自身的默认是空闲约 5 分钟后卸载；卸载后的下一次嵌入要重新把模型载入内存。
 rerank 使用代码中固定 digest 的 llama.cpp 镜像（多架构，含 amd64），只读挂载 `VC_RERANK_MODELS_DIR` 中的
-`bge-reranker-v2-m3-Q8_0.gguf`，只监听共享命名空间内的 `127.0.0.1:11439`，进程启动时加载模型并常驻约 0.5 GB 内存，没有空闲卸载。它不可用、超时或返回异常时，
+`bge-reranker-v2-m3-Q8_0.gguf`。进程参数与 `compose.yaml` 一致：`-m /models/bge-reranker-v2-m3-Q8_0.gguf --host 127.0.0.1 --port 11439 -t ${VC_RERANK_THREADS:-4} -c 8192 -b 2048 -ub 2048 --reranking --pooling rank -ngl 0 --fit off --no-op-offload`。
+模型目录变量名是 `VC_RERANK_MODELS_DIR`。它只监听共享命名空间内的 `127.0.0.1:11439`，进程启动时加载模型并常驻约 0.5 GB 内存，没有空闲卸载。它不可用、超时或返回异常时，
 MemoryCore 回退到余弦 / FTS 门槛，聊天不中断。
 `db-data`、`minio-data`、`st-data`、`memorycore-data` 是持久卷。不要执行 `down -v`。
 
@@ -29,9 +32,9 @@ MemoryCore 回退到余弦 / FTS 门槛，聊天不中断。
 - `minio.env`、`minio-init.env`：对象存储及建桶任务。
 
 Compose 级变量放在 `/etc/virtual-companion/compose.env`（root、0600，不入库）：`VC_PUBLIC_HOST`、
-`VC_EMBEDDING_IMAGE`、`VC_EMBEDDING_MODELS_DIR`、`VC_RERANK_MODELS_DIR`，可选 `VC_RERANK_THREADS`（默认 4，按 vCPU 数设置）。所有 `docker compose` 命令都带 `--env-file /etc/virtual-companion/compose.env`，
+`VC_EDGE_SUBNET`、`VC_EDGE_INGRESS_IP`、`VC_EMBEDDING_IMAGE`、`VC_EMBEDDING_MODELS_DIR`、`VC_RERANK_MODELS_DIR`，可选 `VC_RERANK_THREADS`（默认 4，按 vCPU 数设置）。所有 `docker compose` 命令都带 `--env-file /etc/virtual-companion/compose.env`，
 systemd 单元同样如此；构建 ST 镜像时 `VC_PUBLIC_HOST` 写入 SillyTavern 的 Host 白名单，未设置即构建失败。
-`nginx-site.conf` 是模板，安装前把 `__VC_PUBLIC_HOST__` 替换为该域名。
+`nginx-site.conf` 是模板，安装前把 `__VC_PUBLIC_HOST__` 替换为该域名，把 `__VC_EDGE_INGRESS__` 替换为 `VC_EDGE_INGRESS_IP`。
 
 运行环境文件使用每行 `NAME=原始值`，由 Compose 的 `env_file.format: raw` 读取，避免口令中
 的 `$`、引号被插值。不要输出 `docker compose config`、环境变量或完整 `docker inspect`；
@@ -72,7 +75,7 @@ Owner 用所提供的初始口令登录，完成改密和 TOTP；模型可在模
 
 ## 更新、停止和验收
 
-`/etc/virtual-companion/compose.env` 必须含 `VC_IMAGE_TAG`（应用提交短哈希）、`VC_PUBLIC_HOST`、`VC_EMBEDDING_IMAGE`、
+`/etc/virtual-companion/compose.env` 必须含 `VC_IMAGE_TAG`（应用提交短哈希）、`VC_PUBLIC_HOST`、`VC_EDGE_SUBNET`、`VC_EDGE_INGRESS_IP`、`VC_EMBEDDING_IMAGE`、
 `VC_EMBEDDING_MODELS_DIR`、`VC_RERANK_MODELS_DIR`。首次从旧版（镜像标签写死在 Compose 中）升级时先创建该文件，值取当前实际部署，并把仓库里新的
 `virtual-companion-v2.service` 安装到 `/etc/systemd/system/` 后 `systemctl daemon-reload`。
 
@@ -82,6 +85,13 @@ Owner 用所提供的初始口令登录，完成改密和 TOTP；模型可在模
 2. 同步代码到目标提交，准备该提交 `upstream.lock.json` 对应的上游浅克隆。
 3. 把 `VC_IMAGE_TAG` 改为目标提交短哈希，构建（或在本机按 `--platform linux/amd64` 构建后传输并 `docker load`）新的 ST 与 runtime 镜像。
 4. `docker compose ... up -d --force-recreate --wait`：`migrate` 与 `bootstrap` 一次性服务会先执行新迁移；共享网络命名空间的服务一起重建，不单独删除 ingress。
+   从验收点 `09d85132`（当时 186 个迁移，停在 V265）升到当前 main 时，这一步会带上 V266–V270，现在一共 191 个迁移：
+   - V266：Owner 重排开关 `vc.owner_memory_rerank`（缺行视为开启）。
+   - V267：工具调用标成已验证时，协议、基地址、模型与 provider revision 必须仍与探测时一致。
+   - V268：月度结算超出上限的部分记入 `overflow_usd`，不计入准入花费。
+   - V269：用量汇总只含当前 Owner；缓存命中率的分母是已结算且上报了缓存计数的输入 token。
+   - V270：服务端读取重排开关时断言调用者就是该 Owner。
+   embedding 继续使用 Compose 里的 `OLLAMA_KEEP_ALIVE=-1`（MemoryCore 每次嵌入请求也带 `keep_alive: -1`）。重排参数与模型目录变量名见上文，变量名是 `VC_RERANK_MODELS_DIR`。
 5. 验收 Go health、MemoryCore readyz、ST 登录页，并核对 `docker compose ... ps` 全部健康。旧镜像确认无误后再清理。
 
 首次升级到含 rerank 的版本（204dc941 及之后）时另加：

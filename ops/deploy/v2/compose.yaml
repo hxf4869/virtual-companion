@@ -37,7 +37,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     networks:
-      edge: {ipv4_address: 172.24.0.2}
+      edge: {ipv4_address: "${VC_EDGE_INGRESS_IP:?set in /etc/virtual-companion/compose.env}"}
       backend: {}
     restart: unless-stopped
     logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
@@ -202,7 +202,7 @@ services:
 networks:
   edge:
     name: vc-v2-edge
-    ipam: {config: [{subnet: 172.24.0.0/24}]}
+    ipam: {config: [{subnet: "${VC_EDGE_SUBNET:?set in /etc/virtual-companion/compose.env}"}]}
   backend:
     internal: true
 

@@ -490,7 +490,7 @@ export async function bridgeResponsesStream({ upstream, res, onRoundFinished }) 
         if (onRoundFinished) await onRoundFinished({ ok: false, reasoningItems: [], calls: [], finishReason: 'error', usage: undefined });
     };
 
-    absorbStreamAbort(upstream?.body);
+    absorbStreamAbort(upstream?.body, res);
     try {
         for await (const bytes of upstream.body) {
             for (const data of buffer.push(bytes)) {

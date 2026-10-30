@@ -1,6 +1,11 @@
-# V2 远端部署方案（供执行者使用）
+# V2 远端部署方案（历史）
 
-状态：方案，未执行（2026-10-29）。授权与范围：Owner 已决定由 Codex 执行部署（`TODO.md` 的 `V2-OWNER-DEPLOY`）；
+状态：历史记录（2026-10-30 起）。现行入口是 [ops/deploy/v2/README.md](../../ops/deploy/v2/README.md) 与同目录 `compose.yaml`。
+不要按本文的 Caddy、`127.0.0.1:8752` 或 systemd 直跑步骤升级现网；那会另起一套进程，而不是升级已经在跑的 Compose。
+`OLLAMA_KEEP_ALIVE`、重排进程参数（含 `--fit off --no-op-offload`）、模型目录变量 `VC_RERANK_MODELS_DIR`，以及 V266–V270 迁移，都以该 README 为准。
+本文下面的正文停在 2026-10-29 编写时的决定，当时写成「未执行」；其后的部署验收点见 `TODO.md` 的 `V2-DEPLOY`（`09d85132`）。
+
+授权与范围：Owner 已决定由 Codex 执行部署（`TODO.md` 的 `V2-OWNER-DEPLOY`）；
 执行前仍需 Owner 确认下方「待 Owner 决定」两项。本文件不授予任何超出 Owner 当次指令的权限。
 
 ## 0. 执行者必须遵守

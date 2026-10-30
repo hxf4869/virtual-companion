@@ -313,18 +313,22 @@
 - [x] `V2-F02` 记忆召回接入本机重排（bge-reranker-v2-m3，llama.cpp，127.0.0.1:11439）。注入为原余弦/FTS 门槛与校准 logit 阈值的并集，
       按重排分数排序；不可用、超时或无效时回退原门槛。结果：DONE（2026-10-29）；提交 `c282b915`（合并 `204dc941`），部署配置 `da6a05a4`。
       校准集正例 78/78、负例 22/22 空、top-1 69/78（原门槛 67/78）；第 10 轮真实评估 H1–H4 PASS，正例 6/8，持久化到可召回 P50 48.3s。
-      验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级见 `V2-DEPLOY` 待办。
+      验证：`bash scripts/check.sh` PASS；受管 memorycore-native / memory-browser PASS。远端升级即已完成的 `V2-DEPLOY`（验收点 `09d85132`）；该提交之后的 main 尚未再部署。
 - [x] `V2-F04` 聊天发送链路提速（Owner 2026-10-30 授权）。结果：DONE（2026-10-30）；提交 `17948db3`（合并 `4871d104`）。
       重排分数缓存 60 秒（出站复核热路径约 189ms→1ms）、召回检索并行、同一嵌入并发去重、embedding `keep_alive -1` 与部署
       `OLLAMA_KEEP_ALIVE=-1`；Go 只读查找并行，来源快照写回保持串行（避免锁序死锁，审查时改回）。召回语义不变（并集 78/78、负例全空、
       top-1 69/78）。评估：记忆块保持在最后一条用户消息前（不改）；输入预取待 F2 定稿后再议。远端收益需下次升级后实测。
 - [ ] `V2-F03` 前端 Apple 风格重设计（Owner 2026-10-29 确认交互原型为基线）。设计真源 `DESIGN.md` 第 2 版（`6bf76812`），
-      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（批次 F0–F5）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；F1 外壳（`4a397a56`）、F3 设置与酒馆（`d4548671`）、F4a 记忆+陪伴（`7b01ffec`）、F4b 角色+剧情（`ca9e6c16`）已合并（vc-ui 开启时生效）；
-      F2 聊天返工中；集成验收发现 `w15-ui` 计价样本保存 HTTP 400 与抽屉页被外壳覆盖，INT 任务修复中。
+      实现计划 `docs/planning/2026-10-29-frontend-redesign-plan.md`（第 4 节已改成实际批次）。状态：F0 DONE（`baa0f5ae`，合并 `6d547f3b`；新外观默认关闭，`localStorage vc-ui=on` 启用）；
+      F1 外壳已合并（`4a397a56`，合并 `1cb88083`；`≥1180` 三栏在这一批）；F2 聊天视图已合并（`d4c55ff4`）；F3 设置与酒馆已合并（`d4548671`，合并 `26a159b3`）；
+      F4a 记忆+陪伴已合并（`7b01ffec`，合并 `f64a588c`）；F4b 角色+剧情已合并（`ca9e6c16`，合并 `7b380996`）。以上在 vc-ui 开启时生效。
+      INT 已合并（`61666060`，合并 `169c25ae`）：抽屉页层级、设置入口接 F3、`w15-ui` 计价样本因端口变成 `:undefined` 而 HTTP 400。
+      F5 收尾进行中（全站走查与 DOM 映射；744–1179 进入对话后收起列表已写入 `DESIGN.md` 第 11 节，不是未做的两栏）。FIX-FE 与 FIX-OPS 进行中。整项不勾选。
       待查：`story-real`（真实模型，默认关闭的旧剧情对话框）两次在“NPC 对白提交”等待超时（日志 `npc_reply_not_auto_committed`，林岚/周澈各一次）；
       F4b 对 `story-page.js` 只有新增、旧路径未改，判断为真实模型行为或既有问题，需在 main 上单独复查。
       Owner 2026-10-29 决定：embedding 与重排作为默认本机模型在模型页显示名称与状态、重排可一键开关，暂不提供更换；
-      后端状态接口与开关已完成（LM，2026-10-30；V266 `vc.owner_memory_rerank`，GET/PUT `/api/v1/admin/local-models*`），页面在 F3。日后更换模型须带记忆向量重建与重排阈值重新校准的完整流程。
+      LM 已合并（`2bb78e8a`，合并 `862e22fa`；V266 `vc.owner_memory_rerank`，GET/PUT `/api/v1/admin/local-models*`），页面在 F3。日后更换模型须带记忆向量重建与重排阈值重新校准的完整流程。
+      PERF 即已勾选的 `V2-F04`（`17948db3`，合并 `4871d104`）。
 
 ### V2 Owner 项与运行配置（缺失只阻塞相关真实调用或验收）
 
@@ -368,6 +372,7 @@
       - PASS：通知渠道仍为 2 条，渠道和正文预览均关闭，投递记录仍为 0。
       - 该次 NOT_RUN：Owner 改初始口令与 TOTP 绑定操作、真实模型调用、真实通知发送、手机真机和整机重启；后续升级与真实聊天验收见 `V2-DEPLOY`。
 - [x] `V2-DEPLOY`：2026-10-29 从 `da2d6586` 升级至本次开始时 main 最新提交 `09d85132`（包含 `da6a05a4`），新增 rerank，完成本次部署验收。
+      验收点就是 `09d85132`（当时 186 个迁移，不含 V266 及之后）。当前 main 在该提交之后还有 LM（`2bb78e8a`）、PERF、F0–F4、INT、F2、FIX-GO（`52d30932`）与 FIX-MC（`6c75e74c`），尚未再次部署。
       - PASS：资源检查；包含 PostgreSQL 的手动加密备份及解密后逐字节自校验。
       - PASS：指定 GGUF 的大小与固定 SHA256 在传输前后均匹配；`compose.env` 更新 `VC_IMAGE_TAG`、`VC_RERANK_MODELS_DIR`，`VC_RERANK_THREADS` 沿用默认值。
       - PASS：本机 linux/amd64 构建 ST/runtime，固定 digest 的 rerank 镜像经本机拉取、传输、导入；导入后补取注册表清单恢复固定 digest 引用。
@@ -395,6 +400,8 @@
         每条消息记录前置召回与出站复核两次 HTTP 耗时。两次合计的平均耗时为开 2535 ms、关 1136.7 ms；首字均值为开 8.523 秒、关 4.052 秒。
         这是小样本顺序对比，首字还受模型推理、历史与缓存影响，不能将全部差值归因于重排。
       - NOT_RUN：整机重启、真实通知发送和手机真机验收（不在本次执行范围）。
+
+- [ ] 全项目审查修复（Owner 2026-10-30）：A/B/C 全部处理。FIX-GO 已合并（`52d30932`：工具验证竞态、预算边界、用量口径、隔离）。FIX-MC 已合并（`6c75e74c`：并集截断、错误归属、子句重排、缓存隔离）。F5、FIX-FE、FIX-OPS 进行中，本条不勾选。
 
 ## 当前状态（2026-10-21，V2 前实现快照）
 

@@ -52,19 +52,20 @@
 同一文件同时只有一个写入 owner。`vc-ui.css` 与组件脚本由 F0 建立后冻结，之后的增改经设计把关者
 （Claude）合入；各页只改自己的脚本与样式文件。
 
-| 批次 | 内容 | 主要文件 | 依赖 |
-|---|---|---|---|
-| F0 地基 | `vc-ui.css`（tokens 明暗、材质、宿主覆盖、通用控件、`.popup` / toastr 重绘）；`ui/` 组件脚本（推入 / 返回、头像飞行、弹出菜单、sheet 拖拽、alert、提示条、分段控件、开关、弹簧）；Lucide sprite 与图标函数；`body.vc-ui` 开关、`theme-color`、`visualViewport` | 新增 `vc-ui.css`、`ui/*.js`、`icons/`；`index.js` 只加挂载 | — |
-| F1 外壳 | 标签栏 / 侧边栏、一级页面容器与大标题、设置 sheet / 页、会话列表；三档断点布局 | `chat-shell.js`、`chat-shell.css`、`index.js` | F0 |
-| F2 聊天 | 消息铺开 / 气泡、输入区、流式渐清、长按菜单、海报与氛围色、对话状态胶囊、F2 冲突 sheet、对话内记忆检视 | `chat-shell.*`（F1 交接后）、`f2-client.js`、新 `chat-view.*` | F1 |
-| F3 设置与酒馆 | 九个抽屉原位成页、模型页（含“本机模型”区：embedding 与重排的名称、运行状态、重排开关，接口由 LM 任务提供）、账户与数据、外观 | `page.js`、`style.css` 模型段、`data-rights.js`、`account.css`、新 `drawers.*` | F1 |
-| F4a 记忆 | 记忆标签页 | `memory-page.js`、记忆样式迁出 `style.css` 到 `memory.css` | F1 |
-| F4b 陪伴 | 陪伴标签页 | `inbox-page.js`、`inbox.css` | F1 |
-| F4c 角色 | 角色标签页 | `instance-page.js`、`instance.css` | F1 |
-| F4d 剧情 | 剧情标签页与舞台 | `story-page.js`、`story.css` | F1 |
-| F5 收尾 | 桌面三栏与检视栏联动、全站走查、DOM 映射复核 | 按缺陷归属 | F2–F4 |
+原计划把 F4 拆成记忆、陪伴、角色、剧情四批，并把桌面三栏放到 F5。实际落地如下；不要再按 F4c / F4d 派工。
 
-F0、F1 串行；F2、F3、F4a–d 共六路并行。
+| 批次 | 实际内容 | 提交 | 依赖 |
+|---|---|---|---|
+| F0 地基 | `vc-ui.css`（tokens 明暗、材质、宿主覆盖、通用控件、`.popup` / toastr 重绘）；`ui/` 组件脚本（推入 / 返回、头像飞行、弹出菜单、sheet 拖拽、alert、提示条、分段控件、开关、弹簧）；Lucide sprite 与图标函数；`body.vc-ui` 开关、`theme-color`、`visualViewport` | `baa0f5ae`（合并 `6d547f3b`） | — |
+| F1 外壳 | 标签栏 / 侧边栏、一级页面容器与大标题、设置入口、会话列表；三档断点。`≥1180` 的「侧边栏 240 + 列表 320 + 对话」已在本批完成，不再留给 F5 | `4a397a56`（合并 `1cb88083`） | F0 |
+| F2 聊天 | 消息铺开 / 气泡、输入区、流式渐清、长按菜单、海报与氛围色、对话状态胶囊、冲突 sheet、对话内记忆检视 | `d4c55ff4` | F1 |
+| F3 设置与酒馆 | 九个抽屉原位成页、模型页（含本机模型区）、账户与数据、外观 | `d4548671`（合并 `26a159b3`） | F1 |
+| F4a 记忆与陪伴 | 记忆标签页与陪伴标签页（计划里的 F4b 并入本批） | `7b01ffec`（合并 `f64a588c`） | F1 |
+| F4b 角色与剧情 | 角色标签页与剧情舞台（计划里的 F4c、F4d 并入本批） | `ca9e6c16`（合并 `7b380996`） | F1 |
+| F5 收尾 | 全站走查与 DOM 映射复核。744–1179 进入对话后收起列表是 `DESIGN.md` 第 11 节已确认的布局，不是未做的两栏。进行中 | 按缺陷归属 | F2–F4 |
+
+F0、F1 已串行落地；F2、F3 与合并后的 F4a、F4b 已合入 main。F5 仍在进行。
+主要文件仍按页面归属：F2 为 `chat-view.*` 与 `f2-client.js`；F3 为 `page.js`、`data-rights.js`、`drawers.*`；F4a 为 `memory-page.js` 与 `inbox-page.js`；F4b 为 `instance-page.js` 与 `story-page.js`。外壳落地文件是 `shell.js` / `shell.css`。
 
 ## 5. 验收
 

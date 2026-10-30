@@ -282,7 +282,7 @@ export function createGenerateBridge({ config, continuationStore, counter, now =
                     body: JSON.stringify(requestBody),
                     signal: AbortSignal.any([controller.signal, AbortSignal.timeout(config.timeoutMs)]),
                 });
-                absorbStreamAbort(upstream.body);
+                absorbStreamAbort(upstream.body, response);
 
                 if (!upstream.ok) {
                     await cancelHold('UNKNOWN');
