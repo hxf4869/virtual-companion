@@ -14,6 +14,10 @@ if [ "${1:-}" = "image" ] && [ "${2:-}" = "inspect" ]; then
   if [ -n "${VC_TEST_IMAGES_MISSING:-}" ]; then
     exit 1
   fi
+  # 远端在 load 之前没有目标镜像。
+  if [ -n "${VC_TEST_REMOTE:-}" ] && [ ! -f "${LOG}.loaded" ]; then
+    exit 1
+  fi
   exit 0
 fi
 
@@ -28,6 +32,7 @@ fi
 
 if [ "${1:-}" = "load" ]; then
   cat >/dev/null
+  : > "${LOG}.loaded"
   note load
   exit 0
 fi

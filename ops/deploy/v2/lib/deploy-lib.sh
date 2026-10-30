@@ -307,19 +307,32 @@ deploy_main() {
 
   WORK=$(mktemp -d "${TMPDIR:-/tmp}/vc-deploy.XXXXXX")
   chmod 700 "$WORK"
-  build_images "$st_image" "$rt_image" "$need_st" "$need_rt"
-  "$VC_DEPLOY_DOCKER" image inspect "$st_image" "$rt_image" >/dev/null
-  local_archive="${WORK}/vc-images-${TAG}.tar.gz"
-  "$VC_DEPLOY_DOCKER" save "$st_image" "$rt_image" | gzip > "$local_archive"
-
   image_cache="$(dirname "$VC_DEPLOY_SOURCE_DIR")/image-cache"
   remote_archive="${image_cache}/vc-images-${TAG}.tar.gz"
   remote_script="${image_cache}/remote-deploy.sh"
+  remote_bundle="${image_cache}/vc-src-${TAG}.bundle"
   run_remote "mkdir -p $(printf '%q' "$image_cache") && chmod 700 $(printf '%q' "$image_cache")"
-  run_upload "$local_archive" "$remote_archive"
+  # 服务器已有同标签镜像（上次中途失败）时不再构建和上传。
+  remote_has=$(run_remote "docker image inspect $(printf '%q' "$st_image") $(printf '%q' "$rt_image") >/dev/null 2>&1 && echo present || echo missing") || remote_has=missing
+  if [ "$remote_has" = present ]; then
+    echo "服务器已有镜像 ${TAG}，跳过构建与上传"
+    remote_archive=""
+  else
+    build_images "$st_image" "$rt_image" "$need_st" "$need_rt"
+    "$VC_DEPLOY_DOCKER" image inspect "$st_image" "$rt_image" >/dev/null
+    local_archive="${WORK}/vc-images-${TAG}.tar.gz"
+    "$VC_DEPLOY_DOCKER" save "$st_image" "$rt_image" | gzip > "$local_archive"
+    run_upload "$local_archive" "$remote_archive"
+  fi
+  # 服务器访问 GitHub 不稳定：源码以 git bundle 随部署上传。
+  local_bundle="${WORK}/vc-src-${TAG}.bundle"
+  git -C "$REPO_ROOT" update-ref "refs/vc-deploy/${TAG}" "$FULL"
+  git -C "$REPO_ROOT" bundle create -q "$local_bundle" "refs/vc-deploy/${TAG}"
+  git -C "$REPO_ROOT" update-ref -d "refs/vc-deploy/${TAG}"
+  run_upload "$local_bundle" "$remote_bundle"
   run_upload "$REMOTE_BODY" "$remote_script"
-  remote_cmd=$(printf 'chmod 700 %q && VC_NEW_IMAGE_TAG=%q VC_COMMIT=%q VC_IMAGE_ARCHIVE=%q VC_DEPLOY_SOURCE_DIR=%q VC_DEPLOY_COMPOSE_ENV=%q VC_DEPLOY_BACKUP_DIR=%q VC_DEPLOY_BACKUP_PASSPHRASE_FILE=%q VC_DEPLOY_ST_CONFIG=%q VC_DEPLOY_PREVIOUS_TAG_FILE=%q bash %q' \
-    "$remote_script" "$TAG" "$FULL" "$remote_archive" \
+  remote_cmd=$(printf 'chmod 700 %q && VC_NEW_IMAGE_TAG=%q VC_COMMIT=%q VC_IMAGE_ARCHIVE=%q VC_SRC_BUNDLE=%q VC_DEPLOY_SOURCE_DIR=%q VC_DEPLOY_COMPOSE_ENV=%q VC_DEPLOY_BACKUP_DIR=%q VC_DEPLOY_BACKUP_PASSPHRASE_FILE=%q VC_DEPLOY_ST_CONFIG=%q VC_DEPLOY_PREVIOUS_TAG_FILE=%q bash %q' \
+    "$remote_script" "$TAG" "$FULL" "$remote_archive" "$remote_bundle" \
     "$VC_DEPLOY_SOURCE_DIR" "$VC_DEPLOY_COMPOSE_ENV" "$VC_DEPLOY_BACKUP_DIR" \
     "$VC_DEPLOY_BACKUP_PASSPHRASE_FILE" "$VC_DEPLOY_ST_CONFIG" "$VC_DEPLOY_PREVIOUS_TAG_FILE" \
     "$remote_script")

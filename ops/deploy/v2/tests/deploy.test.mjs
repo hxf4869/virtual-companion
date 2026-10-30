@@ -206,7 +206,10 @@ test('dry-run 只打印步骤且不输出秘密', () => {
   assert.match(text, /alias-test/);
   assert.match(text, /docker load/);
   assert.match(text, /backup\.sh/);
-  assert.match(text, /git fetch/);
+  assert.match(text, /git fetch -q "\$VC_SRC_BUNDLE"/);
+  // 服务器访问 GitHub 不稳定，源码只从随部署上传的 bundle 取。
+  assert.doesNotMatch(text, /git fetch origin/);
+  assert.match(text, /psql -U vc_migrator/);
   assert.match(text, /checkout/);
   assert.match(text, /VC_IMAGE_TAG/);
   assert.match(text, /config -q/);

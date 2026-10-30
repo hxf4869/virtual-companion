@@ -6,7 +6,8 @@ umask 077
 
 : "${VC_NEW_IMAGE_TAG:?}"
 : "${VC_COMMIT:?}"
-: "${VC_IMAGE_ARCHIVE:?}"
+: "${VC_IMAGE_ARCHIVE?}"
+: "${VC_SRC_BUNDLE:?}"
 : "${VC_DEPLOY_SOURCE_DIR:?}"
 : "${VC_DEPLOY_COMPOSE_ENV:?}"
 : "${VC_DEPLOY_BACKUP_DIR:?}"
@@ -126,12 +127,14 @@ case "$VC_COMMIT" in
   ''|*[!0-9a-f]*) die "目标提交无效" ;;
 esac
 
-[ -f "$VC_IMAGE_ARCHIVE" ] || die "找不到镜像包"
-gzip -dc "$VC_IMAGE_ARCHIVE" | docker load
+if [ -n "$VC_IMAGE_ARCHIVE" ]; then
+  [ -f "$VC_IMAGE_ARCHIVE" ] || die "找不到镜像包"
+  gzip -dc "$VC_IMAGE_ARCHIVE" | docker load
+  rm -f "$VC_IMAGE_ARCHIVE"
+fi
 docker image inspect \
   "virtual-companion-st:${VC_NEW_IMAGE_TAG}" \
-  "virtual-companion-runtime:${VC_NEW_IMAGE_TAG}" >/dev/null
-rm -f "$VC_IMAGE_ARCHIVE"
+  "virtual-companion-runtime:${VC_NEW_IMAGE_TAG}" >/dev/null || die "服务器缺少目标镜像"
 
 cd "$VC_DEPLOY_SOURCE_DIR"
 
@@ -139,8 +142,17 @@ cd "$VC_DEPLOY_SOURCE_DIR"
 [ "$(file_mode "$VC_DEPLOY_BACKUP_PASSPHRASE_FILE")" = "600" ] || die "VC_DEPLOY_BACKUP_PASSPHRASE_FILE 必须是 0600"
 [ -f "$VC_DEPLOY_ST_CONFIG" ] || die "缺少 VC_DEPLOY_ST_CONFIG"
 
-st_vol=$(docker volume ls -q --filter label=com.docker.compose.project=vc-v2 --filter label=com.docker.compose.volume=st-data)
-mc_vol=$(docker volume ls -q --filter label=com.docker.compose.project=vc-v2 --filter label=com.docker.compose.volume=memorycore-data)
+# 按 Compose 标签找卷；手动建过的卷没有标签，再按 Compose 默认卷名 <project>_<volume> 找。
+find_volume() {
+  local found
+  found=$(docker volume ls -q --filter label=com.docker.compose.project=vc-v2 --filter "label=com.docker.compose.volume=$1")
+  if [ -z "$found" ] && docker volume inspect "vc-v2_$1" >/dev/null 2>&1; then
+    found="vc-v2_$1"
+  fi
+  printf '%s' "$found"
+}
+st_vol=$(find_volume st-data)
+mc_vol=$(find_volume memorycore-data)
 [ -n "$st_vol" ] && [ -n "$mc_vol" ] || die "找不到数据卷"
 st_root=$(docker volume inspect --format '{{.Mountpoint}}' "$st_vol")
 mc_root=$(docker volume inspect --format '{{.Mountpoint}}' "$mc_vol")
@@ -170,7 +182,9 @@ if [ -n "$(git status --porcelain)" ]; then
   echo "FAIL: 工作区不干净，已停止" >&2
   exit 1
 fi
-git fetch origin
+[ -f "$VC_SRC_BUNDLE" ] || die "找不到源码包"
+git fetch -q "$VC_SRC_BUNDLE" "refs/vc-deploy/${VC_NEW_IMAGE_TAG}"
+rm -f "$VC_SRC_BUNDLE"
 git checkout --detach "$VC_COMMIT"
 
 [ -f "$VC_DEPLOY_COMPOSE_ENV" ] || die "缺少 compose.env"
@@ -248,7 +262,7 @@ if [ "$count" -eq 0 ]; then
   health_fail=1
 fi
 rc=0
-schema_line=$(compose exec -T db psql -d vc -Atc "SELECT count(*)::text || ' ' || coalesce(max(version),0)::text FROM public.vc_schema_history") || rc=$?
+schema_line=$(compose exec -T db psql -U vc_migrator -d vc -Atc "SELECT count(*)::text || ' ' || coalesce(max(version),0)::text FROM public.vc_schema_history") || rc=$?
 got_count=${schema_line%% *}
 got_latest=${schema_line##* }
 if [ "$count" -eq 0 ] || [ "$rc" -ne 0 ]; then

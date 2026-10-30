@@ -4,5 +4,6 @@ set -euo pipefail
 alias_name="${1:?}"
 cmd="${2:?}"
 export PATH="${VC_TEST_BIN:?}:$PATH"
+export VC_TEST_REMOTE=1
 printf '%s\n' "$alias_name $cmd" >> "${VC_TEST_REMOTE_LOG:?}"
 bash -c "$cmd"
