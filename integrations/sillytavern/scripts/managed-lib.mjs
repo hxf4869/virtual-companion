@@ -429,6 +429,7 @@ export const SCENES = [
     { id: 'rights-browser', title: 'W06 D02/D05 原生数据权利页面、一次性下载与手机布局', needs: ['go', 'stack'], default: false },
     { id: 'rights-native', title: 'W06 D03/D04 离线重试与独立合成账号删号', needs: ['go', 'stack'], default: false },
     { id: 'memory-browser', title: 'W08 正式提取、管理纠正遗忘与W07原生最终请求', needs: ['catalog', 'stack', 'browser'], default: false },
+    { id: 'memory-extract-prod', title: '线上形状提取模型：reasoning max、未声明采样、超大窗口，一轮聊天入库', needs: ['catalog', 'stack', 'browser'], default: false },
 ];
 
 /** 展开过滤器：具名场景 + 依赖闭包（needs 中的内部能力不算场景，'catalog' 由 catalog-admin 提供）。 */

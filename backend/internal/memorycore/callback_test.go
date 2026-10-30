@@ -3,11 +3,13 @@ package memorycore
 import (
 	"context"
 	"errors"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	modelprovider "github.com/hxf4869/virtual-companion/internal/provider"
 	"github.com/hxf4869/virtual-companion/internal/store/postgres"
-	"testing"
-	"time"
 )
 
 type fakeStore struct {
@@ -366,5 +368,95 @@ func TestSamplingCapabilityBeforeBudgetAndNetwork(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func productionExtractPurpose(system string) postgres.ResolvedPurpose {
+	effort := "max"
+	window := 1000000
+	return postgres.ResolvedPurpose{
+		ProviderID: "relay", ProviderName: "Relay", Protocol: postgres.ProtocolOpenAIChat, Credential: "frozen-credential",
+		Model: postgres.ProviderModel{
+			ProfileKey: "memory", ModelID: "deepseek-v4.1-flash", MaxOutputTokens: 262144, ContextWindowTokens: &window,
+			Capabilities: postgres.ModelCapabilities{
+				"systemMessage": system, "temperature": postgres.CapabilityUnknown, "topP": postgres.CapabilityUnknown,
+			},
+			ReasoningLevels:  []string{"max"},
+			GenerationParams: &postgres.GenerationParams{ReasoningEffort: &effort},
+		},
+	}
+}
+
+func TestUnknownSystemMessageFoldsIntoUser(t *testing.T) {
+	purpose := productionExtractPurpose(postgres.CapabilityUnknown)
+	st := &fakeStore{purpose: &purpose}
+	p := &fakeProvider{}
+	var route modelprovider.Route
+	b, token := openCall(t, st, func(r modelprovider.Route) (companion.Provider, error) {
+		route = r
+		return p, nil
+	})
+	out, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-extraction", CallSequence: 1, Messages: []Message{
+		{Role: "system", Content: "只抽取新事实。"}, {Role: "user", Content: "我计划去厦门。"},
+	}})
+	if err != nil || out.Text != "synthetic" || p.calls != 1 {
+		t.Fatalf("unknown system message refused: %v calls=%d", err, p.calls)
+	}
+	for _, m := range p.last.Messages {
+		if m.Role == companion.RoleSystem {
+			t.Fatal("unknown system capability still sent a system role")
+		}
+	}
+	if len(p.last.Messages) != 1 || p.last.Messages[0].Role != companion.RoleUser ||
+		!strings.Contains(p.last.Messages[0].Content, "只抽取新事实。") || !strings.Contains(p.last.Messages[0].Content, "我计划去厦门。") ||
+		strings.Index(p.last.Messages[0].Content, "只抽取新事实。") > strings.Index(p.last.Messages[0].Content, "我计划去厦门。") {
+		t.Fatalf("system instruction not folded into the user message: %+v", p.last.Messages)
+	}
+	if route.Temperature != nil || route.TopP != nil || route.ReasoningEffort == nil || *route.ReasoningEffort != "max" || route.MaxOutputTokens != 4096 {
+		t.Fatalf("production sampling shape changed: temp=%v topP=%v effort=%v max=%d", route.Temperature, route.TopP, route.ReasoningEffort, route.MaxOutputTokens)
+	}
+}
+
+func TestUnsupportedSystemMessageStaysRefused(t *testing.T) {
+	purpose := productionExtractPurpose(postgres.CapabilityUnsupported)
+	st := &fakeStore{purpose: &purpose}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-extraction", CallSequence: 1, Messages: []Message{
+		{Role: "system", Content: "指令"}, {Role: "user", Content: "事实"},
+	}})
+	if !errors.Is(err, ErrParameters) || DecisionCode(err) != "MEMORYCORE_PARAMETERS" || p.calls != 0 || st.prepared != 0 {
+		t.Fatalf("unsupported system message was sent: %v calls=%d prepared=%d", err, p.calls, st.prepared)
+	}
+}
+
+func TestDeclaredSystemMessageKeepsRole(t *testing.T) {
+	purpose := productionExtractPurpose(postgres.CapabilityDeclared)
+	st := &fakeStore{purpose: &purpose}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	if _, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-extraction", CallSequence: 1, Messages: []Message{
+		{Role: "system", Content: "只抽取新事实。"}, {Role: "user", Content: "我计划去厦门。"},
+	}}); err != nil || p.calls != 1 || len(p.last.Messages) != 2 || p.last.Messages[0].Role != companion.RoleSystem {
+		t.Fatalf("declared system role was rewritten: %v messages=%+v", err, p.last.Messages)
+	}
+	if p.last.MaxTokens != 4096 || p.last.Timeouts.FirstToken <= 0 {
+		t.Fatalf("output or timeout budget not applied: max=%d first=%s", p.last.MaxTokens, p.last.Timeouts.FirstToken)
+	}
+}
+
+func TestCallSurfacesAdmissionDecision(t *testing.T) {
+	purpose := productionExtractPurpose(postgres.CapabilityDeclared)
+	st := &fakeStore{purpose: &purpose, decision: "CONSENT_WITHDRAWN"}
+	p := &fakeProvider{}
+	b, token := openCall(t, st, func(modelprovider.Route) (companion.Provider, error) { return p, nil })
+	_, err := b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-extraction", CallSequence: 1, Messages: []Message{{Role: "user", Content: "事实"}}})
+	if DecisionCode(err) != "MEMORYCORE_CONSENT_WITHDRAWN" || errors.Is(err, ErrCapability) || p.calls != 0 || st.prepared != 1 {
+		t.Fatalf("admission collapsed: code=%s err=%v calls=%d prepared=%d", DecisionCode(err), err, p.calls, st.prepared)
+	}
+	st.decision = "CLAIM_LOST"
+	_, err = b.Call(context.Background(), Request{OperationToken: token, Stage: "l1-extraction", CallSequence: 2, Messages: []Message{{Role: "user", Content: "事实"}}})
+	if DecisionCode(err) != "MEMORYCORE_CLAIM_LOST" || p.calls != 0 {
+		t.Fatalf("claim loss collapsed: code=%s err=%v calls=%d", DecisionCode(err), err, p.calls)
 	}
 }

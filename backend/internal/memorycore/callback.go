@@ -134,9 +134,20 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 		// the chat defaults, which are shorter than a reasoning-max call.
 		plan.Timeouts = companion.TimeoutBudget{FirstToken: remaining, Total: remaining}
 	}
-	tokens := 0
+	raw := make([]companion.Message, 0, len(req.Messages))
 	for _, m := range req.Messages {
-		plan.Messages = append(plan.Messages, companion.Message{Role: companion.Role(m.Role), Content: m.Content})
+		raw = append(raw, companion.Message{Role: companion.Role(m.Role), Content: m.Content})
+	}
+	// OpenAI Chat Completions relays almost always accept a system role, but an
+	// UNKNOWN declaration must not block extraction. UNSUPPORTED stays refused.
+	// temperature and topP are unchanged: a set value still needs DECLARED or VERIFIED.
+	folded, foldErr := applySystemMessage(raw, op.purpose.Model.Capabilities["systemMessage"])
+	if foldErr != nil {
+		return Response{}, foldErr
+	}
+	tokens := 0
+	for _, m := range folded {
+		plan.Messages = append(plan.Messages, m)
 		tokens += companion.EstimateTokens(m.Content)
 	}
 	if modelhttp.ValidateRequest(plan) != nil || tokens > 32768 {
@@ -144,14 +155,6 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 	}
 	if op.purpose.Model.ContextWindowTokens != nil && tokens+plan.MaxTokens > *op.purpose.Model.ContextWindowTokens {
 		return Response{}, companion.InvalidRequest()
-	}
-	for _, m := range plan.Messages {
-		if m.Role == companion.RoleSystem {
-			c := op.purpose.Model.Capabilities["systemMessage"]
-			if c != postgres.CapabilityDeclared && c != postgres.CapabilityVerified {
-				return Response{}, ErrParameters
-			}
-		}
 	}
 	// MODEL01: the in-flight call keeps the snapshot frozen at Open. Sending
 	// still re-reads the purpose with no revision assertion, so a disable or
@@ -192,7 +195,7 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 		return Response{}, err
 	}
 	if (prep.Decision != "EXTRACTABLE" && prep.Decision != "RETRY_TIMEOUT") || prep.AttemptID <= 0 {
-		return Response{}, ErrCapability
+		return Response{}, admissionError(prep)
 	}
 	op.last = req.CallSequence // Never replay a potentially sent call, even after timeout.
 	callCtx, cancel := context.WithDeadline(ctx, op.scope.ExpiresAt)
@@ -240,6 +243,91 @@ func (b *Broker) Call(ctx context.Context, req Request) (Response, error) {
 	}
 	return Response{Text: out.String(), Usage: Usage{result.Usage.InputTokens, result.Usage.OutputTokens, result.Usage.TotalTokens}, FinishReason: result.Finish}, nil
 }
+
+// AdmissionError is a closed pre-model refusal from go_prepare_memorycore_call.
+// It is not a missing operation token. Collapsing it into ErrCapability made
+// every consent, source, or admission refusal look like a 4ms capability miss
+// and burned the extract retry budget.
+type AdmissionError struct{ Decision string }
+
+func (e *AdmissionError) Error() string { return "memorycore admission refused" }
+
+func admissionError(prep postgres.MemoryExtractPreparation) error {
+	decision := prep.Decision
+	if prep.AttemptID <= 0 && (decision == "EXTRACTABLE" || decision == "RETRY_TIMEOUT" || decision == "") {
+		decision = "LEGACY_REPLAY"
+	}
+	return &AdmissionError{Decision: decision}
+}
+
+func admissionCode(err error) string {
+	var admission *AdmissionError
+	if !errors.As(err, &admission) || admission == nil {
+		return ""
+	}
+	switch admission.Decision {
+	case "CLAIM_LOST", "AUTO_SAVE_OFF", "DELETION_IN_PROGRESS", "CONSENT_WITHDRAWN",
+		"MESSAGE_TEXT_NOT_AUTHORIZED", "SOURCE_SUPPRESSED", "PROVIDER_NOT_ADMITTED", "LEGACY_REPLAY":
+		return "MEMORYCORE_" + admission.Decision
+	default:
+		return "MEMORYCORE_CAPABILITY"
+	}
+}
+
+// applySystemMessage keeps a real system role only when the profile declares
+// it. UNKNOWN (including a missing key) is folded into the first user message
+// so the instruction still reaches the model. UNSUPPORTED is refused.
+func applySystemMessage(messages []companion.Message, capability string) ([]companion.Message, error) {
+	system := false
+	for _, m := range messages {
+		if m.Role == companion.RoleSystem {
+			system = true
+			break
+		}
+	}
+	if !system {
+		return messages, nil
+	}
+	switch capability {
+	case postgres.CapabilityDeclared, postgres.CapabilityVerified:
+		return messages, nil
+	case postgres.CapabilityUnsupported:
+		return nil, ErrParameters
+	default:
+		return foldSystemIntoUser(messages), nil
+	}
+}
+
+func foldSystemIntoUser(messages []companion.Message) []companion.Message {
+	var systems []string
+	rest := make([]companion.Message, 0, len(messages))
+	for _, m := range messages {
+		if m.Role == companion.RoleSystem {
+			if m.Content != "" {
+				systems = append(systems, m.Content)
+			}
+			continue
+		}
+		rest = append(rest, m)
+	}
+	if len(systems) == 0 {
+		return rest
+	}
+	prefix := strings.Join(systems, "\n")
+	for i, m := range rest {
+		if m.Role != companion.RoleUser {
+			continue
+		}
+		if m.Content == "" {
+			rest[i].Content = prefix
+		} else {
+			rest[i].Content = prefix + "\n\n" + m.Content
+		}
+		return rest
+	}
+	return append([]companion.Message{{Role: companion.RoleUser, Content: prefix}}, rest...)
+}
+
 func route(p postgres.ResolvedPurpose) (modelprovider.Route, error) {
 	r := modelprovider.Route{ProviderID: p.ProviderID, SupplierName: p.ProviderName, Protocol: p.Protocol, BaseURL: p.BaseURL, Credential: p.Credential, ModelID: p.Model.ModelID, MaxOutputTokens: min(4096, p.Model.MaxOutputTokens), UseProfileParams: true}
 	if p.Model.GenerationParams != nil {
@@ -278,6 +366,9 @@ func route(p postgres.ResolvedPurpose) (modelprovider.Route, error) {
 func DecisionCode(err error) string {
 	if err == nil {
 		return ""
+	}
+	if code := admissionCode(err); code != "" {
+		return code
 	}
 	switch {
 	case errors.Is(err, ErrReplay), errors.Is(err, postgres.ErrConflict):
