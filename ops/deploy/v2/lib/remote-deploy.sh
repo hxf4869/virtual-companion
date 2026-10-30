@@ -6,7 +6,7 @@ umask 077
 
 : "${VC_NEW_IMAGE_TAG:?}"
 : "${VC_COMMIT:?}"
-: "${VC_IMAGE_ARCHIVE?}"
+: "${VC_IMAGE_ARCHIVE:?}"
 : "${VC_SRC_BUNDLE:?}"
 : "${VC_DEPLOY_SOURCE_DIR:?}"
 : "${VC_DEPLOY_COMPOSE_ENV:?}"
@@ -127,7 +127,7 @@ case "$VC_COMMIT" in
   ''|*[!0-9a-f]*) die "目标提交无效" ;;
 esac
 
-if [ -n "$VC_IMAGE_ARCHIVE" ]; then
+if [ "$VC_IMAGE_ARCHIVE" != none ]; then
   [ -f "$VC_IMAGE_ARCHIVE" ] || die "找不到镜像包"
   gzip -dc "$VC_IMAGE_ARCHIVE" | docker load
   rm -f "$VC_IMAGE_ARCHIVE"

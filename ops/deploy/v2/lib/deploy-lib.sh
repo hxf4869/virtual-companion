@@ -316,7 +316,7 @@ deploy_main() {
   remote_has=$(run_remote "docker image inspect $(printf '%q' "$st_image") $(printf '%q' "$rt_image") >/dev/null 2>&1 && echo present || echo missing") || remote_has=missing
   if [ "$remote_has" = present ]; then
     echo "服务器已有镜像 ${TAG}，跳过构建与上传"
-    remote_archive=""
+    remote_archive=none
   else
     build_images "$st_image" "$rt_image" "$need_st" "$need_rt"
     "$VC_DEPLOY_DOCKER" image inspect "$st_image" "$rt_image" >/dev/null
