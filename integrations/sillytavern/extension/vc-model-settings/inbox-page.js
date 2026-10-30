@@ -1242,7 +1242,8 @@ export function renderInboxChannel(state, key) {
                     ${uiSwitch('toggle-preview', '正文预览', `data-key="${esc(draft.key)}" data-field="previewBody"`, draft.previewBody)}
                 </div>
                 ${people ? `<h2 class="vc-group-title">角色</h2><div class="vc-group">${people}</div>` : ''}
-                <div class="vc-inbox-actions"><button type="button" class="vc-btn vc-btn-text" data-action="clear-credential" data-key="${esc(draft.key)}">清除凭据</button><button type="button" class="vc-btn vc-btn-fill" data-action="save-channel" data-key="${esc(draft.key)}" ${state.busy ? 'disabled' : ''}>保存渠道</button></div>
+                <div class="vc-group"><button type="button" class="vc-cell is-danger" data-action="clear-credential" data-key="${esc(draft.key)}">清除凭据</button></div>
+                <div class="vc-inbox-actions"><button type="button" class="vc-btn vc-btn-fill" data-action="save-channel" data-key="${esc(draft.key)}" ${state.busy ? 'disabled' : ''}>保存渠道</button></div>
                 ${draft.channel === 'FEISHU' ? '<p class="vc-footnote">群成员可见</p>' : ''}
                 ${state.channelError ? `<p role="alert">${esc(state.channelError)}</p>` : ''}
             </article>

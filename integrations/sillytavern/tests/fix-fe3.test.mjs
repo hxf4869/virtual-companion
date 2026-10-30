@@ -72,6 +72,22 @@ function token(css, theme, name) {
     return found[1].toLowerCase();
 }
 
+test('走查聊天截图打开有消息的会话，不点空预览的第一行', async () => {
+    const { chatRowIndex } = await import('../scripts/vc-ui-walkthrough.mjs');
+    assert.equal(chatRowIndex(['暂无消息', '暂无消息', '合成开场。']), 2);
+    assert.equal(chatRowIndex(['合成开场。', '暂无消息']), 0);
+    assert.equal(chatRowIndex(['暂无消息', '   ', '']), -1);
+    assert.equal(chatRowIndex([]), -1);
+    const walk = await readFile(walkUrl, 'utf8');
+    const listAt = walk.indexOf("record(page, viewport.width, theme, 'chat-list'");
+    const chatAt = walk.indexOf("record(page, viewport.width, theme, 'chat',");
+    assert.ok(listAt > 0 && chatAt > listAt);
+    const between = walk.slice(listAt, chatAt);
+    assert.match(between, /chatRowIndex\(/);
+    assert.match(between, /#chat \.mes \.mes_text/);
+    assert.doesNotMatch(between, /\.vc-convo:visible'\)\.first\(\)/);
+});
+
 test('走查图标就绪看可见字形，超时要计数', async () => {
     const mod = await import('../scripts/vc-ui-walkthrough.mjs');
     assert.equal(mod.iconUsesReady([]), true);

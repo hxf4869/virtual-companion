@@ -6,7 +6,7 @@ import * as api from '../extension/vc-model-settings/api.js';
 import { ADMIN_BRIDGE_ROUTES } from '../server-plugin/virtual-companion/lib/admin-bridge.js';
 import * as inboxRoutes from '../server-plugin/virtual-companion/lib/inbox-ui-routes.js';
 const { INBOX_UI_ROUTES } = inboxRoutes;
-import { createInboxPage, renderInboxPage } from '../extension/vc-model-settings/inbox-page.js';
+import { createInboxPage, renderInboxChannel, renderInboxPage } from '../extension/vc-model-settings/inbox-page.js';
 
 const SECRET = 'super-secret-value';
 const WEBHOOK = 'https://hooks.example.test/secret-path';
@@ -365,4 +365,25 @@ test('写入被拒绝时保留草稿，重新验证后才再次提交', async ()
     assert.deepEqual(JSON.parse(reauth.body), { password: 'current-password-value' });
     assert.equal(calls.filter((call) => call.method === 'PUT').every((call) => !String(call.body).includes('current-password-value')), true);
     page.close();
+});
+
+test('渠道页清除凭据是整行危险按钮，内容与页头之间有顶部留白', async () => {
+    const page = createInboxPage();
+    page.state.channelDrafts = [{
+        key: '7', channelId: '7', channel: 'EMAIL', exists: true, enabled: true,
+        configuredTarget: 'owner@example.invalid', previewBody: false, relationshipIds: ['11'],
+        credential: '', credentialMode: 'keep', credentialState: 'withheld',
+    }];
+    page.state.relationships = [{ relationshipId: '11', name: '澄夏', mode: 'COMPANION' }];
+    const email = renderInboxChannel(page.state, '7');
+    assert.match(email, /<button type="button" class="vc-cell is-danger" data-action="clear-credential" data-key="7">清除凭据<\/button>/);
+    assert.doesNotMatch(email, /data-action="clear-credential"[^>]*class="[^"]*vc-btn-text/);
+    assert.doesNotMatch(email, /class="[^"]*vc-btn-text[^"]*"[^>]*data-action="clear-credential"/);
+    assert.match(email, /data-action="save-channel"[^>]*class="vc-btn vc-btn-fill"|class="vc-btn vc-btn-fill"[^>]*data-action="save-channel"/);
+    const css = await readFile(new URL('../extension/vc-model-settings/inbox.css', import.meta.url), 'utf8');
+    const ui = css.slice(css.indexOf('/* vc-ui: begin */'), css.indexOf('/* vc-ui: end */'));
+    assert.match(ui, /body\.vc-ui \.vc-inbox-tab \.vc-cell\.is-danger\s*\{[^}]*color:\s*var\(--vc-danger\)/);
+    assert.match(ui, /body\.vc-ui \.vc-inbox-tab\.is-detail \.vc-column\s*\{[^}]*padding-top:\s*var\(--vc-space-xl\)/);
+    const kit = await readFile(new URL('../extension/vc-model-settings/vc-ui.css', import.meta.url), 'utf8');
+    assert.match(kit, /body\.vc-ui \.vc-cell\s*\{[^}]*min-height:\s*48px/);
 });

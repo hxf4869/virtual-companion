@@ -90,6 +90,17 @@ export function walkthroughGroups(widths, themes = THEMES) {
     return themes.flatMap((theme) => widths.map((viewport) => ({ theme, viewport })));
 }
 
+const EMPTY_CONVO_PREVIEW = '暂无消息';
+
+/** 会话列表里第一条常常没有消息。聊天截图要打开预览不是空状态的那一行。 */
+export function chatRowIndex(previews) {
+    const list = Array.isArray(previews) ? previews : [];
+    return list.findIndex((text) => {
+        const value = String(text ?? '').trim();
+        return value.length > 0 && value !== EMPTY_CONVO_PREVIEW;
+    });
+}
+
 let iconSettleTimeouts = 0;
 
 async function until(check, ms) {
@@ -460,11 +471,23 @@ export async function sceneVcUiWalkthrough(ctx) {
                     if (shell?.dataset.list === 'hidden') shell.dataset.list = 'open';
                 });
                 await record(page, viewport.width, theme, 'chat-list', bucket);
-                const row = page.locator('#vc-shell .vc-convo:visible').first();
-                if (await row.count()) {
+                const previews = await page.locator('#vc-shell .vc-convo:visible .vc-convo-preview').allInnerTexts();
+                const rows = page.locator('#vc-shell .vc-convo:visible');
+                let openedChat = false;
+                for (let i = chatRowIndex(previews); i >= 0 && i < previews.length; i += 1) {
+                    const preview = String(previews[i] ?? '').trim();
+                    if (!preview || preview === '暂无消息') continue;
+                    const row = rows.nth(i);
+                    await row.scrollIntoViewIfNeeded();
                     await row.click();
-                    await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.chat === 'open', null, { timeout: 8000 }).catch(() => {});
+                    openedChat = await page.waitForFunction(() => {
+                        const shell = document.querySelector('#vc-shell');
+                        if (shell?.dataset.chat !== 'open') return false;
+                        return [...document.querySelectorAll('#chat .mes .mes_text')].some((el) => (el.textContent || '').trim());
+                    }, null, { timeout: 8000 }).then(() => true).catch(() => false);
+                    if (openedChat) break;
                 }
+                if (!openedChat) notes.push(`${viewport.width} ${theme} chat：没有打开有消息的会话`);
                 await record(page, viewport.width, theme, 'chat', bucket);
                 if (theme === 'light' && viewport.width === 390) {
                     await page.evaluate(() => {
