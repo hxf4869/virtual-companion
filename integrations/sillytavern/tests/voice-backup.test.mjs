@@ -31,6 +31,14 @@ class VoiceBackup(unittest.TestCase):
    with self.assertRaisesRegex(RuntimeError,'GATE_CLOSED'):m.import_objects(root,'vc_restore_fixture')
    gate.unlink()
    with self.assertRaisesRegex(RuntimeError,'ISOLATED_DATABASE'):m.import_objects(root,'vc')
+ def test_full_audio_cipher_size(self):
+  with tempfile.TemporaryDirectory(prefix='vc-voice-size-') as tmp:
+   root=Path(tmp);key='41/2/3.wav';m.write_index(root,[key]);file=root/'objects'/key;file.parent.mkdir(parents=True)
+   size=4*((32*1024*1024+12+16+2)//3)+58
+   with file.open('wb') as out:out.truncate(size)
+   self.assertEqual(m.filter_files(root,{key}),{key})
+   with file.open('ab') as out:out.write(b'x')
+   with self.assertRaises(RuntimeError):m.filter_files(root,{key})
 unittest.main(argv=['voice-backup'],verbosity=1)
 `,helper],{encoding:'utf8'});
     assert.equal(result.status,0,result.stderr);

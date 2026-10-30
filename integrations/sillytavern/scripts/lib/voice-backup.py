@@ -13,7 +13,9 @@ import urllib.parse
 
 HERE=Path(__file__).resolve().parent
 KEY=re.compile(r'^[1-9][0-9]{0,18}/[1-9][0-9]{0,18}/[1-9][0-9]{0,18}\.wav$')
-MAX_OBJECT=34<<20
+# Existing CRYPTO-REST enc2: 32 MiB WAV + 12-byte IV + 16-byte GCM tag,
+# padded Base64, then key ID (<=32) and positive 64-bit version in the prefix.
+MAX_OBJECT=4*(((32<<20)+12+16+2)//3)+58
 
 
 def load(name):
