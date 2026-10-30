@@ -16,7 +16,7 @@ import {
     restoreDefaultRules,
 } from '../extension/vc-model-settings/persona.js';
 import { injectCompanionPrompt } from '../extension/vc-model-settings/companion-prompt.js';
-import { finishOnboarding, renderOnboarding, shouldOfferOnboarding } from '../extension/vc-model-settings/onboarding.js';
+import { bindOnboardingDismiss, finishOnboarding, mountOnboarding, noteCompanionBound, renderOnboarding, shouldOfferOnboarding } from '../extension/vc-model-settings/onboarding.js';
 import { proactivePolicyPayload, readProactivePolicy, renderInboxTab } from '../extension/vc-model-settings/inbox-page.js';
 import { renderCharactersTab } from '../extension/vc-model-settings/instance-page.js';
 
@@ -308,6 +308,16 @@ test('无陪伴实例时引导文案原样，完成后走原生导入并开聊�
     assert.equal(shouldOfferOnboarding([{ personaRef: 'st-character', relationshipId: '1' }]), false);
     assert.equal(shouldOfferOnboarding([{ persona_ref: 'st-character', relationshipId: '2' }]), false);
     assert.equal(shouldOfferOnboarding({ items: [{ personaRef: 'st-character', relationshipId: '3' }] }), false);
+    const doc = installMiniDom();
+    const dialog = doc.createElement('dialog');
+    dialog.className = 'vc-onboarding';
+    doc.body.append(dialog);
+    bindOnboardingDismiss(doc);
+    noteCompanionBound(doc);
+    assert.equal(doc.querySelector('.vc-onboarding'), null);
+    const host = mountOnboarding(doc, {});
+    assert.equal(host.isConnected, false);
+    assert.equal(doc.querySelector('.vc-onboarding'), null);
     const html = renderOnboarding({
         name: '',
         relation: '好朋友',

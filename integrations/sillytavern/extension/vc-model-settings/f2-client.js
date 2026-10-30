@@ -1,4 +1,4 @@
-import { bindingCoalesceKey, clearOnboardingBinding, coalesceBinding, companionBindingHeld, StaleBindingError, takeOnboardingBinding } from './instance-binding.js';
+import { bindingCoalesceKey, clearOnboardingBinding, coalesceBinding, companionBindingHeld, noteCompanionBound, StaleBindingError, takeOnboardingBinding } from './instance-binding.js';
 
 let kickCompanionImpl = async () => {};
 
@@ -680,6 +680,7 @@ export async function installInstanceBinding({ getContext, resolveBinding, write
             metadata.vc_binding = result;
             await getContext().saveChat();
         }
+        noteCompanionBound(globalThis.document);
         return result;
     }
     const reconcileCurrent = async () => {

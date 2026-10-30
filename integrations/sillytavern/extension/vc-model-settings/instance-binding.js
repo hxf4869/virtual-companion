@@ -7,6 +7,14 @@ export class StaleBindingError extends Error {
     }
 }
 
+/** 扩展目录和 vc-runtime 各有一份模块，内存不共享。绑定完成后用 DOM 标记通知引导层收起。 */
+export function noteCompanionBound(doc = globalThis.document) {
+    const target = doc?.body || doc;
+    target?.setAttribute?.('data-vc-st-bound', '1');
+    if (typeof target?.dispatchEvent === 'function') target.dispatchEvent(new Event('vc-st-bound'));
+    else target?.dispatch?.('vc-st-bound');
+}
+
 export function createInstanceBinding({ resolveBinding, getSource }) {
     const inflight = new Map();
 

@@ -97,6 +97,18 @@ export function isNearBottom(metrics, threshold = NEAR_BOTTOM_PX) {
     return height - top - client <= threshold;
 }
 
+/** 打开后的短时贴底仍用 80px。人已经停在可滚列的最顶上时，即使总溢出还不到 80px，也不再拽回底部。 */
+export function keepsTail(metrics, { pin = false, threshold = NEAR_BOTTOM_PX } = {}) {
+    const height = Number(metrics?.scrollHeight);
+    const top = Number(metrics?.scrollTop);
+    const client = Number(metrics?.clientHeight);
+    if (![height, top, client].every(Number.isFinite)) return true;
+    const gap = height - top - client;
+    if (gap <= 1) return true;
+    if (!pin && top <= 1) return false;
+    return gap <= threshold;
+}
+
 export function shouldShowNewReply({ nearBottom, grew = false, pending = false } = {}) {
     if (nearBottom) return false;
     return Boolean(grew || pending);
@@ -1198,12 +1210,12 @@ function bindScroll(chat) {
             userScroll = false;
             pinUntil = 0;
             pinBottom = false;
-            stickToBottom = isNearBottom(chat);
+            stickToBottom = keepsTail(chat, { pin: false });
         } else if (pinActive() && chatLaidOut(chat) && !isNearBottom(chat) && pinTries < PIN_TRIES) {
             schedulePin();
             return;
         } else {
-            stickToBottom = isNearBottom(chat);
+            stickToBottom = keepsTail(chat, { pin: pinActive() });
             if (!stickToBottom) pinBottom = false;
         }
         seenScrollHeight = Number(chat.scrollHeight) || 0;
@@ -1286,7 +1298,14 @@ function followIfNeeded() {
     const height = Number(chat.scrollHeight) || 0;
     const grew = height > seenScrollHeight + 1;
     const jump = document.querySelector('#vc-new-reply');
-    if (stickToBottom || pinActive()) {
+    const pinning = pinActive();
+    const topNow = Number(chat.scrollTop) || 0;
+    const gapNow = height - topNow - (Number(chat.clientHeight) || 0);
+    // 溢出仍在跟随区内、人已经停在顶端：这一帧不要拽回底部。更长的距离仍按原贴底处理。
+    if ((stickToBottom || pinning) && !pinning && topNow <= 1 && gapNow > 1 && gapNow <= NEAR_BOTTOM_PX) {
+        stickToBottom = false;
+        pinBottom = false;
+    } else if (stickToBottom || pinning) {
         // 会话列在 display:none 或 1px 折叠时写 scrollTop 会被浏览器丢掉，旧位置会留到打开之后。
         if (!chatLaidOut(chat)) {
             if (pinActive() && pinTries < PIN_TRIES) {

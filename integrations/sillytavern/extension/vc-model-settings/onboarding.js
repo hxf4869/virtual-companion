@@ -1,9 +1,11 @@
 // 没有陪伴实例时的首次引导。完成后用角色卡 V2 走宿主导入，再建实例并打开聊天。
 import { listConsents } from './api.js';
-import { armOnboardingBinding, holdCompanionBinding } from './instance-binding.js';
+import { armOnboardingBinding, holdCompanionBinding, noteCompanionBound } from './instance-binding.js';
 import { consentOutstanding } from './consent.js';
 import { buildCharacterCard, ensureCompanionStyles, GENDERS, RELATIONS, STYLE_OPTIONS } from './persona.js';
 import { icon } from './ui/icons.js';
+
+export { noteCompanionBound };
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
@@ -16,6 +18,15 @@ function relationshipRows(relationships) {
 
 export function shouldOfferOnboarding(relationships) {
     return !relationshipRows(relationships).some((row) => (row?.personaRef || row?.persona_ref) === 'st-character');
+}
+
+export function bindOnboardingDismiss(doc = globalThis.document) {
+    const target = doc?.body || doc;
+    if (!target?.addEventListener || target.getAttribute?.('data-vc-onboarding-dismiss') === 'on') return;
+    target.setAttribute?.('data-vc-onboarding-dismiss', 'on');
+    target.addEventListener('vc-st-bound', () => {
+        doc?.querySelector?.('.vc-onboarding')?.remove?.();
+    });
 }
 
 function choiceMark(on) {
@@ -150,6 +161,7 @@ export function mountOnboarding(doc, deps) {
             return;
         }
         try { host.showModal(); } catch { try { host.show(); } catch { /* 已经打开。 */ } }
+        if ((doc.body || doc)?.getAttribute?.('data-vc-st-bound') === '1') host.remove();
     };
     openHost();
     host.querySelector('[name="name"]')?.focus?.();
@@ -178,6 +190,7 @@ async function waitForConsent(doc) {
 export async function maybeStartOnboarding(deps = {}) {
     if (typeof deps.readUi === 'function' && !deps.readUi()) return null;
     const doc = deps.document || globalThis.document;
+    bindOnboardingDismiss(doc);
     if (!doc?.body || doc.querySelector?.('.vc-onboarding')) return null;
     let rows = [];
     try {
@@ -193,5 +206,6 @@ export async function maybeStartOnboarding(deps = {}) {
         rows = [];
     }
     if (!shouldOfferOnboarding(rows) || doc.querySelector?.('.vc-onboarding')) return null;
+    if (doc.body?.getAttribute?.('data-vc-st-bound') === '1') return null;
     return mountOnboarding(doc, deps);
 }

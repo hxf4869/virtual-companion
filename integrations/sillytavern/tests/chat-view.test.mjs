@@ -10,6 +10,7 @@ import {
     commitHostDelete,
     inspectorOverlayRoot,
     isNearBottom,
+    keepsTail,
     markSpeakers,
     mountChatView,
     isDirectChat,
@@ -117,6 +118,95 @@ test('回复样式读写本机偏好，气泡类只加在 body 上', () => {
     assert.equal(document.body.classList.contains('vc-reply-bubble'), false);
     applyReplyStyle(document, 'bubble');
     assert.equal(document.body.classList.contains('vc-reply-bubble'), true);
+});
+
+test('整列只高出一截时，停在顶端不再算贴着底部', () => {
+    const metrics = { scrollHeight: 820, scrollTop: 0, clientHeight: 750 };
+    assert.equal(keepsTail(metrics), false);
+    assert.equal(keepsTail({ scrollHeight: 820, scrollTop: 70, clientHeight: 750 }), true);
+    assert.equal(keepsTail({ scrollHeight: 820, scrollTop: 40, clientHeight: 750 }), true);
+    assert.equal(keepsTail(metrics, { pin: true }), true);
+    assert.equal(keepsTail({ scrollHeight: 2000, scrollTop: 0, clientHeight: 750 }), false);
+});
+
+test('溢出只有 70px 时滚到顶端保持不动，后续长高才亮新回复', () => {
+    const document = installMiniDom();
+    const queued = [];
+    const ros = [];
+    const observed = [];
+    const prevRaf = globalThis.requestAnimationFrame;
+    const prevRO = globalThis.ResizeObserver;
+    const prevMO = globalThis.MutationObserver;
+    const prevNow = globalThis.performance.now.bind(globalThis.performance);
+    globalThis.requestAnimationFrame = (fn) => {
+        queued.push(fn);
+        return queued.length;
+    };
+    globalThis.ResizeObserver = class {
+        constructor(fn) { this.fn = fn; ros.push(this); }
+        observe(node) { this.node = node; }
+        disconnect() {}
+    };
+    globalThis.MutationObserver = class {
+        constructor(fn) { this.fn = fn; observed.push(this); }
+        observe(node, options) { this.node = node; this.options = options; }
+        disconnect() {}
+    };
+    const flush = () => { while (queued.length) queued.shift()(); };
+    try {
+        const { chat } = stage(document, { ui: true });
+        let top = 0;
+        let height = 820;
+        let client = 0;
+        Object.defineProperty(chat, 'scrollHeight', { configurable: true, get: () => height });
+        Object.defineProperty(chat, 'clientHeight', { configurable: true, get: () => client });
+        Object.defineProperty(chat, 'scrollTop', {
+            configurable: true,
+            get: () => top,
+            set(value) { if (client >= 48) top = Number(value); },
+        });
+        chat.append(mes(document, { text: '开场' }));
+        mountChatView({
+            getContext() {
+                return { powerUserSettings: {}, characters: [{ name: '甲' }], characterId: 0, groupId: '' };
+            },
+        });
+        flush();
+        client = 750;
+        ros.find((item) => item.node === chat)?.fn();
+        flush();
+        globalThis.performance.now = () => prevNow() + 5000;
+        top = 0;
+        observed.find((item) => item.options?.characterData)?.fn();
+        flush();
+        assert.equal(top, 0);
+        height = 900;
+        observed.find((item) => item.options?.characterData)?.fn();
+        flush();
+        assert.equal(top, 0);
+        assert.equal(document.querySelector('#vc-new-reply')?.classList.contains('is-on'), true);
+        height = 820;
+        top = 0;
+        chat.dispatch('scroll');
+        flush();
+        assert.equal(top, 0);
+        height = 900;
+        observed.find((item) => item.options?.characterData)?.fn();
+        flush();
+        assert.equal(top, 0);
+        assert.equal(document.querySelector('#vc-new-reply')?.classList.contains('is-on'), true);
+        top = height;
+        chat.dispatch('scroll');
+        flush();
+    } finally {
+        globalThis.performance.now = prevNow;
+        if (prevRaf) globalThis.requestAnimationFrame = prevRaf;
+        else delete globalThis.requestAnimationFrame;
+        if (prevRO) globalThis.ResizeObserver = prevRO;
+        else delete globalThis.ResizeObserver;
+        if (prevMO) globalThis.MutationObserver = prevMO;
+        else delete globalThis.MutationObserver;
+    }
 });
 
 test('跟随滚动以 80px 为界，长按超过 8px 取消', () => {
