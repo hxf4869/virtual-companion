@@ -1,0 +1,27 @@
+{
+  "voices": [
+    {
+      "id": "open_female_kathleen",
+      "name": "Kathleen",
+      "gender": "FEMALE",
+      "license": "CC0-1.0",
+      "source": "https://github.com/rhasspy/dataset-voice-kathleen",
+      "revision": "c51cb971036a127359b43c621f26ca5081eab13e",
+      "licenseUrl": "https://raw.githubusercontent.com/rhasspy/dataset-voice-kathleen/c51cb971036a127359b43c621f26ca5081eab13e/LICENSE",
+      "audioUrls": ["https://raw.githubusercontent.com/rhasspy/dataset-voice-kathleen/c51cb971036a127359b43c621f26ca5081eab13e/data/arctic_a0001_1592748574.wav"]
+    },
+    {
+      "id": "open_male_thorsten",
+      "name": "Thorsten",
+      "gender": "MALE",
+      "license": "CC0-1.0",
+      "source": "https://github.com/thorstenMueller/Thorsten-Voice",
+      "revision": "29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27",
+      "licenseUrl": "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27/LICENSE",
+      "audioUrls": [
+        "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27/docs/samples/sample01-gt.wav",
+        "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27/docs/samples/sample02-gt.wav"
+      ]
+    }
+  ]
+}

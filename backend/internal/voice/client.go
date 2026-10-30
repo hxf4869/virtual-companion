@@ -79,6 +79,16 @@ func (c *HTTPClient) Voices(ctx context.Context) ([]VoiceOption, error) {
 		if option.Gender != "FEMALE" && option.Gender != "MALE" && option.Gender != "NEUTRAL" {
 			option.Gender = "NEUTRAL"
 		}
+		if c.engine == CosyVoice {
+			if strings.HasPrefix(option.ID, "open_female_") {
+				option.Gender = "FEMALE"
+				option.Name = strings.TrimPrefix(option.ID, "open_female_")
+			}
+			if strings.HasPrefix(option.ID, "open_male_") {
+				option.Gender = "MALE"
+				option.Name = strings.TrimPrefix(option.ID, "open_male_")
+			}
+		}
 		if c.engine == Kokoro && len(option.ID) > 1 {
 			if option.ID[1] == 'f' {
 				option.Gender = "FEMALE"
