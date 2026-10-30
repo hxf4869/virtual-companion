@@ -1,0 +1,86 @@
+# Local differences from ops/deploy/v2/compose.yaml. The production file stays
+# the source of the service list; this file only binds loopback, relocates
+# secret files, and mounts the extension tree read-only.
+
+name: vc-local-dev
+
+services:
+  ingress:
+    container_name: vc-local-dev-ingress
+    ports:
+      - "127.0.0.1:${VC_LOCAL_HTTP_PORT:?local http port}:8080"
+    volumes: !override
+      - ${VC_LOCAL_STATE:?local state}/ingress.conf:/etc/nginx/nginx.conf:ro
+
+  db:
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/db.env
+        format: raw
+
+  migrate:
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/migrate.env
+        format: raw
+
+  bootstrap:
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/bootstrap.env
+        format: raw
+
+  minio:
+    image: virtual-companion-minio:local
+    build:
+      context: ${VC_REPO_ROOT:?repo}/ops/deploy/minio
+      dockerfile: Dockerfile
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/minio.env
+        format: raw
+
+  minio-init:
+    image: virtual-companion-minio:local
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/minio-init.env
+        format: raw
+
+  runtime:
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/runtime.env
+        format: raw
+
+  memorycore:
+    build:
+      context: ${VC_ST_BUILD_CONTEXT:?st build context}
+      dockerfile: ops/deploy/v2/Dockerfile.st
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/memorycore.env
+        format: raw
+
+  st:
+    build:
+      context: ${VC_ST_BUILD_CONTEXT:?st build context}
+      dockerfile: ops/deploy/v2/Dockerfile.st
+    env_file: !override
+      - path: ${VC_LOCAL_STATE:?local state}/st.env
+        format: raw
+    volumes: !override
+      - st-data:/srv/vc-managed/data
+      - ${VC_LOCAL_STATE:?local state}/config.yaml:/srv/vc-managed/config.yaml
+      - ${VC_REPO_ROOT:?repo}/integrations/sillytavern/extension/vc-model-settings:/srv/vc-managed/data/default-user/extensions/vc-model-settings:ro
+
+  embedding:
+    volumes: !override
+      - type: volume
+        source: local-embedding-models
+        target: /models
+        read_only: true
+        volume:
+          subpath: ${VC_EMBEDDING_SUBPATH:-models}
+
+volumes:
+  local-embedding-models:
+    name: ${VC_EMBEDDING_VOLUME:?embedding volume}
+    external: true
+
+networks:
+  edge:
+    name: vc-local-dev-edge
