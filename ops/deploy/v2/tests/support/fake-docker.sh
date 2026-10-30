@@ -92,6 +92,10 @@ if [ "${1:-}" = "compose" ]; then
   extras=()
   for a in "$@"; do
     [ "$a" = "compose" ] && continue
+    if [ "$prev" = "-f" ] && [ "${VC_TEST_NEW_VOICE_OVERRIDE:-}" = "1" ] && [ "${a##*/}" = "voice.override.yaml" ] && [ ! -f "$a" ]; then
+      echo "voice override referenced before source checkout" >&2
+      exit 1
+    fi
     if [ "$prev" = "--env-file" ] || [ "$prev" = "-f" ] || [ "$prev" = "--format" ]; then
       prev=""
       continue

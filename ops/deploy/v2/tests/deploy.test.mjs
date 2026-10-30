@@ -260,6 +260,21 @@ test('--skip-build 在镜像缺失时停止且不上传', () => {
   assertNoSecrets(text);
 });
 
+test('首次语音升级从旧 Compose 发现 DB，切换源码后再使用新覆盖文件', (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-deploy-first-voice-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const server = prepareServer(tmp);
+  fs.writeFileSync(path.join(path.dirname(server.composeEnv), 'deploy.env'), 'VC_VOICE_NETWORK=fixture-voice-network\n', { mode: 0o600 });
+  const override = path.join(server.source, 'ops', 'deploy', 'v2', 'voice.override.yaml');
+  assert.equal(fs.existsSync(override), false, 'old tree has no voice override');
+  const result = run(['--skip-build', HEAD], envFor(server, { VC_TEST_NEW_VOICE_OVERRIDE: '1' }));
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.status, 0, output);
+  assert.equal(fs.existsSync(override), true, 'checkout introduces target override');
+  assert.match(fs.readFileSync(server.dockerLog, 'utf8'), /voice\.override\.yaml/);
+  assertNoSecrets(output);
+});
+
 test('compose.env 缺变量时停在升级前且不输出值', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-deploy-missing-var-'));
   const server = prepareServer(tmp, { omit: ['VC_EDGE_SUBNET', 'VC_RERANK_MODELS_DIR'] });

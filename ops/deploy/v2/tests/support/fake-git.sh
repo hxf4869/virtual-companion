@@ -18,6 +18,9 @@ case "${1:-}" in
     fi
     printf '%s\n' "$3" >> "${VC_TEST_ORDER_LOG:?}"
     printf '%s\n' "$3" > "${VC_TEST_CHECKOUT_FILE:?}"
+    if [ "${VC_TEST_NEW_VOICE_OVERRIDE:-}" = "1" ]; then
+      printf '# fixture target override\n' > ops/deploy/v2/voice.override.yaml
+    fi
     exit 0
     ;;
   *)

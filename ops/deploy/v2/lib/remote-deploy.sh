@@ -164,7 +164,9 @@ st_root=$(docker volume inspect --format '{{.Mountpoint}}' "$st_vol")
 mc_root=$(docker volume inspect --format '{{.Mountpoint}}' "$mc_vol")
 [ -d "$st_root" ] && [ -d "$mc_root" ] || die "数据卷未挂载"
 
-db_id=$(compose ps -q db)
+# The deployed tree may predate voice.override.yaml. Discover the current DB
+# from its existing base file; target overrides become available after checkout.
+db_id=$(docker compose --env-file "$VC_DEPLOY_COMPOSE_ENV" -f ops/deploy/v2/compose.yaml ps -q db)
 [ -n "$db_id" ] || die "找不到数据库容器"
 db_name=$(docker inspect --format '{{.Name}}' "$db_id")
 db_name=${db_name#/}
