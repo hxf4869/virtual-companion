@@ -7,6 +7,8 @@ openTopic:
   clear: explicit completion or change-topic wording
   persistence: companion_affect.open_topic_source_ref; no duplicated conversation text
   validation: reconcile the referenced ST chat before planning; require current settled eligible unsuppressed user source in a present non-incognito companion conversation
+  delivery: persist the same reference in existing proactive_message.topic and recheck at plan publication and inbox delivery; changed or opted-out sources cancel the queued continuation
+  deliveryLock: owner-checked lock_ready_proactive definer; runtime roles retain read-only table privileges
   prompt: bounded historical topic data; never instructions
 enums:
 - typeName: CompanionReplyLength

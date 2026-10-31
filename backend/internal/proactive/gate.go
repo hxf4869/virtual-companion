@@ -48,6 +48,7 @@ type World struct {
 	HasReady        bool
 	DueFollowUp     bool
 	Topic           string
+	TopicRef        string
 	RecentTurns     string
 	RecentProactive string
 	CharName        string

@@ -703,6 +703,8 @@
         "openTopic": {
           "clear": "explicit completion or change-topic wording",
           "consumer": "CLOSE_FRIEND continue_topic trigger",
+          "delivery": "persist the same reference in existing proactive_message.topic and recheck at plan publication and inbox delivery; changed or opted-out sources cancel the queued continuation",
+          "deliveryLock": "owner-checked lock_ready_proactive definer; runtime roles retain read-only table privileges",
           "detection": "explicit unfinished / resume-later wording; never infer from the latest ordinary line",
           "persistence": "companion_affect.open_topic_source_ref; no duplicated conversation text",
           "prompt": "bounded historical topic data; never instructions",
@@ -711,7 +713,7 @@
         },
         "schemaVersion": 1
       },
-      "sha256": "8b66bd02cd1e9d44796da5db065f1933bb26aaf352d05822859ee80744cf6401"
+      "sha256": "c263f5dbc2e320d3e14b86632a868411bfd7190fc6e680d5c09d94241317f351"
     },
     "companion-presentation.yaml": {
       "document": {

@@ -14,6 +14,7 @@ type Plan struct {
 	Trigger     Trigger
 	SendAt      time.Time
 	ArmedAt     time.Time
+	TopicRef    string
 }
 
 const (
@@ -59,9 +60,13 @@ func AfterJudgment(w World, raw string) Plan {
 		return Plan{Outcome: OutcomeSilent, Reason: ReasonSilent}
 	}
 	chosen := pool[pickWeighted(pool, w.rand)]
+	topicRef := ""
+	if chosen.Kind == KindContinue {
+		topicRef = w.TopicRef
+	}
 	sendAt := Slot(w.Now, w.loc(), decision.Timing, w.rand, w.Policy.QuietStart, w.Policy.QuietEnd)
 	return Plan{
-		Outcome: OutcomePregen, Trigger: chosen, SendAt: sendAt, ArmedAt: w.LastUserAt,
+		Outcome: OutcomePregen, Trigger: chosen, SendAt: sendAt, ArmedAt: w.LastUserAt, TopicRef: topicRef,
 		Prompt: pregenPrompt(w, chosen), Temperature: 0,
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/hxf4869/virtual-companion/internal/proactive"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,45 @@ func stMemoryFixture(t *testing.T) (STBinding, map[string]*stsource.Snapshot) {
 }
 func stMemorySnapshot(chat, text string, at time.Time) *stsource.Snapshot {
 	return &stsource.Snapshot{ChatIdentity: chat, BranchRoot: chat, State: "PRESENT", Revision: 1, Location: "chats/card/" + chat + ".jsonl", Messages: []stsource.Message{{MessageID: sourceMessage, CandidateID: sourceCandidate, Revision: 1, Role: "user", Text: text, Eligible: true, Settled: true, SourceTimestamp: &at, SourceTimezone: "Asia/Shanghai"}}}
+}
+
+func TestOpenTopicSourceMustRemainValidThroughDelivery(t *testing.T) {
+	b, snapshots := stMemoryFixture(t)
+	ctx := context.Background()
+	at := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	snapshots[sourceChat] = stMemorySnapshot(sourceChat, "周末旅行路线还没聊完，回头接着说", at)
+	if _, err := testEnv.store.ReconcileSTSources(ctx, 1, []string{sourceChat}); err != nil {
+		t.Fatal(err)
+	}
+	ref := refForChat(t, sourceChat)
+	if err := testEnv.store.ObserveCompanionUserText(ctx, 1, b.RelationshipID, ref, snapshots[sourceChat].Messages[0].Text, at); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := testEnv.store.LoadProactiveContext(ctx, 1, b.RelationshipID, at.Add(3*time.Hour))
+	if err != nil || loaded.World.TopicRef != ref || loaded.World.Topic == "" {
+		t.Fatalf("pending topic missing: err=%v", err)
+	}
+	plan := proactive.Plan{Trigger: proactive.Trigger{Key: "continue_topic", Kind: proactive.KindContinue, Cluster: "topic"}, TopicRef: ref, SendAt: at.Add(3 * time.Hour), ArmedAt: at}
+	if err := testEnv.store.SaveProactivePlan(ctx, 1, b.RelationshipID, plan, "合成话题后续", at); err != nil {
+		t.Fatal(err)
+	}
+	snapshots[sourceChat].Revision++
+	snapshots[sourceChat].Messages[0].Eligible = false
+	if _, delivered, err := testEnv.store.DeliverDueProactive(ctx, 1, b.RelationshipID, plan.SendAt, FollowUpGenerationFinish{}, nil); err != nil || delivered {
+		t.Fatalf("invalidated topic delivered=%v err=%v", delivered, err)
+	}
+	var status string
+	if err := testEnv.store.WithOwner(ctx, 1, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT status FROM vc.proactive_message WHERE owner_user_id=1 AND relationship_id=$1`, b.RelationshipID).Scan(&status)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if status != "CANCELLED" {
+		t.Fatalf("invalid source status=%s", status)
+	}
+	if err := testEnv.store.SaveProactivePlan(ctx, 1, b.RelationshipID, plan, "合成话题后续", at); !errors.Is(err, ErrConflict) {
+		t.Fatalf("invalid source was republished: %v", err)
+	}
 }
 func addSTMemory(t *testing.T, b STBinding, summary, ref string) Memory {
 	t.Helper()

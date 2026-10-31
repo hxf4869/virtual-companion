@@ -131,6 +131,7 @@ DECLARE
     v_user text := 'st:27100000-0000-4000-8000-000000002710:27133333-3333-4333-8333-333333333333:27144444-4444-4444-8444-444444444444:1:1';
 BEGIN
     SELECT rel INTO v_rel FROM hl_ids;
+    PERFORM * FROM vc.lock_ready_proactive(27101,v_rel);
     PERFORM vc.set_companion_topic(27101,v_rel,v_user);
     PERFORM vc.set_companion_topic(27101,v_rel,v_user);
     IF (SELECT open_topic_source_ref FROM vc.companion_affect WHERE relationship_id=v_rel) IS DISTINCT FROM v_user THEN
@@ -175,6 +176,9 @@ DECLARE
     v_rel bigint;
 BEGIN
     SELECT rel INTO v_rel FROM hl_ids;
+    IF EXISTS(SELECT 1 FROM vc.lock_ready_proactive(27102,v_rel)) THEN
+        RAISE EXCEPTION 'other owner can lock proactive queue';
+    END IF;
     IF (SELECT count(*) FROM vc.companion_affect) <> 0
        OR (SELECT count(*) FROM vc.companion_daily_mood) <> 0
        OR (SELECT count(*) FROM vc.proactive_message) <> 0

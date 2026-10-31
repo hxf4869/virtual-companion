@@ -135,6 +135,9 @@ func (l *Loop) runProactive(ctx context.Context, store *postgres.Store, owner, r
 		return preferInbox(postgres.ProactiveRunResult{Outcome: proactive.OutcomeGated, Reason: "BLOCK"}), nil
 	}
 	if err := store.SaveProactivePlan(ctx, owner, relationshipID, next, *kept, now); err != nil {
+		if errors.Is(err, postgres.ErrConflict) {
+			return preferInbox(postgres.ProactiveRunResult{Outcome: proactive.OutcomeSilent, Reason: proactive.ReasonCancelled}), nil
+		}
 		return postgres.ProactiveRunResult{}, err
 	}
 	l.prepareProactiveVoices(ctx, store, owner, relationshipID, now)

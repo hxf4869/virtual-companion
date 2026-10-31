@@ -106,8 +106,7 @@ func (s *Store) GetCompanionState(ctx context.Context, owner, relationshipID int
 	return state, nil
 }
 
-func (s *Store) LoadProactiveContext(ctx context.Context, owner, relationshipID int64, now time.Time) (ProactiveContext, error) {
-	var out ProactiveContext
+func (s *Store) reconcileOpenTopic(ctx context.Context, owner, relationshipID int64) error {
 	var topicRef string
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `SELECT COALESCE(open_topic_source_ref,'') FROM vc.companion_affect WHERE owner_user_id=$1 AND relationship_id=$2`, owner, relationshipID).Scan(&topicRef)
@@ -117,14 +116,22 @@ func (s *Store) LoadProactiveContext(ctx context.Context, owner, relationshipID 
 		return err
 	})
 	if err != nil {
-		return out, mapFollowUpErr(err)
+		return mapFollowUpErr(err)
 	}
 	if chats := sourceChats([]string{topicRef}); len(chats) > 0 {
 		if _, err := s.ReconcileSTSources(ctx, owner, chats); err != nil {
-			return out, err
+			return err
 		}
 	}
-	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+	return nil
+}
+
+func (s *Store) LoadProactiveContext(ctx context.Context, owner, relationshipID int64, now time.Time) (ProactiveContext, error) {
+	var out ProactiveContext
+	if err := s.reconcileOpenTopic(ctx, owner, relationshipID); err != nil {
+		return out, err
+	}
+	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		policy, err := scanProactivePolicy(ctx, tx, owner, relationshipID)
 		if err != nil {
 			return err
@@ -176,17 +183,10 @@ func (s *Store) LoadProactiveContext(ctx context.Context, owner, relationshipID 
 		if err != nil {
 			return err
 		}
-		var topic string
-		err = tx.QueryRow(ctx, `SELECT s.content_cipher
-            FROM vc.companion_affect a JOIN vc.st_message_source s ON s.owner_user_id=a.owner_user_id AND s.source_ref=a.open_topic_source_ref
-            JOIN vc.conversation c ON (c.owner_user_id,c.id)=(s.owner_user_id,s.conversation_id)
-            WHERE a.owner_user_id=$1 AND a.relationship_id=$2 AND c.relationship_id=$2
-              AND s.role='user' AND s.present AND s.settled AND s.eligible AND NOT s.suppressed
-              AND NOT c.incognito AND c.st_mode='COMPANION' AND c.st_source_state='PRESENT'`, owner, relationshipID).Scan(&topic)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		topicRef, topic, err := openTopicTx(ctx, tx, owner, relationshipID)
+		if err != nil {
 			return err
 		}
-		topic = clipRunes(topic, 160)
 		recent, err := loadRecentProactiveTx(ctx, tx, owner, relationshipID)
 		if err != nil {
 			return err
@@ -210,7 +210,7 @@ func (s *Store) LoadProactiveContext(ctx context.Context, owner, relationshipID 
 			Mood: mood, Emotion: emotion,
 			LastUserAt: affect.LastUserAt, LastProactiveAt: affect.LastProactive,
 			SentToday: sent, Unanswered: affect.Unanswered, BusyUntil: affect.BusyUntil,
-			HasReady: ready, DueFollowUp: due, Topic: topic,
+			HasReady: ready, DueFollowUp: due, Topic: topic, TopicRef: topicRef,
 			RecentTurns: turns, RecentProactive: recent,
 			CharName: valueOrEmpty(charName), UserName: valueOrEmpty(userName),
 			Cooldown: cooldowns,
@@ -287,12 +287,26 @@ func (s *Store) InsertProactiveWorkItem(ctx context.Context, owner, relationship
 }
 
 func (s *Store) SaveProactivePlan(ctx context.Context, owner, relationshipID int64, plan proactive.Plan, body string, at time.Time) error {
+	if plan.Trigger.Kind == proactive.KindContinue {
+		if err := s.reconcileOpenTopic(ctx, owner, relationshipID); err != nil {
+			return err
+		}
+	}
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		if plan.Trigger.Kind == proactive.KindContinue {
+			ref, _, err := openTopicTx(ctx, tx, owner, relationshipID)
+			if err != nil {
+				return err
+			}
+			if ref == "" || ref != plan.TopicRef {
+				return ErrConflict
+			}
+		}
 		var messageID int64
 		if err := tx.QueryRow(ctx, `
 			SELECT vc.insert_proactive_message($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 			owner, relationshipID, plan.Trigger.Key, plan.Trigger.Kind, plan.Trigger.Cluster, plan.Trigger.Reminder,
-			body, "", plan.SendAt, nullTime(plan.ArmedAt)).Scan(&messageID); err != nil {
+			body, plan.TopicRef, plan.SendAt, nullTime(plan.ArmedAt)).Scan(&messageID); err != nil {
 			return err
 		}
 		var rates map[string]float64
@@ -355,32 +369,31 @@ func (s *Store) ListProactiveVoiceCandidates(ctx context.Context, owner, relatio
 func (s *Store) DeliverDueProactive(ctx context.Context, owner, relationshipID int64, now time.Time, snapshot FollowUpGenerationFinish, accept func(string) bool) (string, bool, error) {
 	var eventID string
 	var delivered bool
+	if err := s.reconcileOpenTopic(ctx, owner, relationshipID); err != nil {
+		return "", false, err
+	}
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		affect, err := loadCompanionAffectTx(ctx, tx, owner, relationshipID)
 		if err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `
-			SELECT id, reminder, body, planned_at, armed_at
-			  FROM vc.proactive_message
-			 WHERE owner_user_id=$1 AND relationship_id=$2 AND status='READY'
-			 ORDER BY planned_at
-			 FOR UPDATE`, owner, relationshipID)
+		rows, err := tx.Query(ctx, `SELECT * FROM vc.lock_ready_proactive($1,$2)`, owner, relationshipID)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		type readyRow struct {
-			id       int64
-			reminder bool
-			body     string
-			planned  time.Time
-			armed    *time.Time
+			id             int64
+			reminder       bool
+			body           string
+			planned        time.Time
+			armed          *time.Time
+			kind, topicRef string
 		}
 		var pending []readyRow
 		for rows.Next() {
 			var row readyRow
-			if err := rows.Scan(&row.id, &row.reminder, &row.body, &row.planned, &row.armed); err != nil {
+			if err := rows.Scan(&row.id, &row.reminder, &row.body, &row.planned, &row.armed, &row.kind, &row.topicRef); err != nil {
 				return err
 			}
 			pending = append(pending, row)
@@ -395,6 +408,15 @@ func (s *Store) DeliverDueProactive(ctx context.Context, owner, relationshipID i
 				armed = *row.armed
 			}
 			ok, reason := proactive.Delivery(now, row.planned, affect.LastUserAt, armed, row.reminder)
+			if row.kind == proactive.KindContinue {
+				ref, _, err := openTopicTx(ctx, tx, owner, relationshipID)
+				if err != nil {
+					return err
+				}
+				if ref == "" || ref != row.topicRef {
+					ok, reason = false, proactive.ReasonCancelled
+				}
+			}
 			switch reason {
 			case proactive.ReasonExpired, proactive.ReasonCancelled:
 				status := "EXPIRED"
@@ -573,6 +595,20 @@ func loadCooldownsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64
 		out[key] = until
 	}
 	return out, rows.Err()
+}
+
+func openTopicTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64) (string, string, error) {
+	var ref, text string
+	err := tx.QueryRow(ctx, `SELECT a.open_topic_source_ref,s.content_cipher
+        FROM vc.companion_affect a JOIN vc.st_message_source s ON s.owner_user_id=a.owner_user_id AND s.source_ref=a.open_topic_source_ref
+        JOIN vc.conversation c ON (c.owner_user_id,c.id)=(s.owner_user_id,s.conversation_id)
+        WHERE a.owner_user_id=$1 AND a.relationship_id=$2 AND c.relationship_id=$2
+          AND s.role='user' AND s.present AND s.settled AND s.eligible AND NOT s.suppressed
+          AND NOT c.incognito AND c.st_mode='COMPANION' AND c.st_source_state='PRESENT'`, owner, relationshipID).Scan(&ref, &text)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", nil
+	}
+	return ref, clipRunes(text, 160), err
 }
 
 func loadRecentTurnsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64) (string, error) {
