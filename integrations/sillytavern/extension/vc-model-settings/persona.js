@@ -164,15 +164,19 @@ export function openCompanionStyle({ getContext, opener, document: doc = globalT
     const box = doc.createElement('div');
     box.className = 'vc-column vc-style-page';
     box.innerHTML = renderCompanionStyle(readGlobalRules(context.extensionSettings), { plannerEnabled: context.extensionSettings[PLANNER_KEY] === true });
+    const view = doc.defaultView || globalThis;
+    let fit = () => {};
     const sheet = openSheet({
         title: '陪伴风格',
         large: true,
         body: box,
         opener,
         root: doc.body,
+        onDone: () => view.removeEventListener?.('resize', fit),
     });
     const area = box.querySelector('[data-field="rules"]');
-    const fit = () => fitStyleField(area);
+    fit = () => fitStyleField(area);
+    view.addEventListener?.('resize', fit);
     const planner = box.querySelector('[data-action="toggle-planner"]');
     planner?.addEventListener('click', () => {
         context.extensionSettings[PLANNER_KEY] = planner.getAttribute('aria-checked') !== 'true';
@@ -192,7 +196,6 @@ export function openCompanionStyle({ getContext, opener, document: doc = globalT
         if (area) area.value = DEFAULT_GLOBAL_RULES;
         fit();
     });
-    const view = doc.defaultView || globalThis;
     if (typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(() => view.requestAnimationFrame(fit));
     else fit();
     return sheet;

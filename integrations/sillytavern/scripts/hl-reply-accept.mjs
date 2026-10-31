@@ -367,8 +367,20 @@ export async function sceneHlReply(ctx) {
                 if((c.extensionSettings.vc_reply_planner===true)!==enabled)throw Error('planner setting not saved');
             },enabled);
             if(enabled) {
+                for(const width of [390,1440]) {
+                    await page.setViewportSize({width,height:width===390?844:900});
+                    await page.waitForFunction(()=>{
+                        const area=document.querySelector('[data-field="rules"]'),card=area?.parentElement;
+                        return area && area.scrollHeight<=area.clientHeight+1 && card.scrollHeight<=card.clientHeight+1;
+                    },null,{timeout:3000});
+                }
                 await voiceShots(page,ctx,'RQ-8','planner');
-                fs.writeFileSync(path.resolve('.review-queue/RQ-8/NOTES.md'),'# RQ-8\n\n设置 › 陪伴风格新增默认关闭的「先想再说」，沿用分组、开关与脚注。截图仅含合成数据。受管断言覆盖开关保存、恢复默认和实际调用数。\n');
+                for(const mode of ['light','dark']) {
+                    await page.setViewportSize({width:390,height:844});await theme(page,mode);
+                    await page.locator('[data-action="restore-rules"]').scrollIntoViewIfNeeded();
+                    const file=path.resolve(`.review-queue/RQ-8/planner-tail-390-${mode}.png`);await page.screenshot({path:file});ctx.screenshots.push(file);
+                }
+                fs.writeFileSync(path.resolve('.review-queue/RQ-8/NOTES.md'),'# RQ-8\n\n设置 › 陪伴风格新增默认关闭的「先想再说」，沿用分组、开关与脚注。截图仅含合成数据。受管断言覆盖开关保存、恢复默认、实际调用数、1440→390 重排和全文可达；两张手机 tail 图展示外层滚动后的规则末尾。\n');
             }
             await page.locator('.vc-sheet-done').last().click();
             await page.emulateMedia({reducedMotion:'no-preference'});
