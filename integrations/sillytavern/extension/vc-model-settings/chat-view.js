@@ -14,6 +14,7 @@ import {
     armRewrite,
     createSendBurst,
     noteTurn,
+    lengthTierFor,
     planReplyAction,
     shouldQueueSend,
     splitReply,
@@ -63,6 +64,7 @@ let generationLive = false;
 let rewriteCount = 0;
 let revealMesId = '';
 const seenMessages = new WeakSet();
+let foldSequence = 0;
 
 export function readReplyStyle(storage) {
     try {
@@ -802,7 +804,9 @@ function appendReplySegment(box, segment) {
 export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule = setTimeout } = {}) {
     if (!mes) return;
     const segments = splitReply(String(text ?? ''));
-    if (segments.length <= 1) {
+    const prose = segments.filter((item) => typeof item === 'string' && !item.startsWith('<sticker')).join('\n');
+    const foldable = [...prose].length > 360;
+    if (segments.length <= 1 && !foldable) {
         clearReplyBubbles(mes);
         return;
     }
@@ -819,6 +823,28 @@ export function renderReplyBubbles(mes, text, { reducedMotion = false, schedule 
     const parent = textEl?.parentElement || textEl?.parent || mes;
     if (textEl) insertBefore(parent, box, textEl.nextSibling || null);
     else parent.append?.(box);
+    if (foldable) {
+        const content = document.createElement('div');
+        content.className = 'vc-segs';
+        content.id = `vc-reply-full-${++foldSequence}`;
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'vc-btn vc-btn-text vc-reply-expand';
+        toggle.setAttribute('aria-controls', content.id);
+        let expanded = false;
+        const paintFold = () => {
+            clearChildren(content);
+            const visible = expanded ? segments : splitReply(`${[...prose].slice(0,180).join('')}…`);
+            for (const segment of visible) appendReplySegment(content, segment);
+            if (!expanded) for (const segment of segments.filter((item) => typeof item === 'object' || item.startsWith('<sticker'))) appendReplySegment(content, segment);
+            toggle.setAttribute('aria-expanded', String(expanded));
+            toggle.textContent = expanded ? '收起' : '展开全文';
+        };
+        toggle.addEventListener('click', () => { expanded = !expanded; paintFold(); });
+        box.append(content,toggle);
+        paintFold();
+        return;
+    }
     const paint = (count, typing) => {
         clearChildren(box);
         for (let index = 0; index < count; index += 1) appendReplySegment(box, segments[index]);
@@ -892,13 +918,19 @@ function settleReply(id) {
         regenerate();
         return;
     }
-    if (plan.processed.text !== message.mes) {
+    const textChanged = plan.processed.text !== message.mes;
+    if (textChanged) {
         message.mes = plan.processed.text;
         if (Array.isArray(message.swipes)) {
             const swipe = Number.isInteger(message.swipe_id) ? message.swipe_id : message.swipes.length - 1;
             if (swipe >= 0 && swipe < message.swipes.length) message.swipes[swipe] = plan.processed.text;
         }
-        try { safeContext()?.saveChat?.(); } catch { /* 保存失败时下一轮仍按当前文本显示。 */ }
+    }
+    const tier = lengthTierFor(chat);
+    if (tier) { message.extra ||= {}; message.extra.vc_reply_length_tier = tier; }
+    // MESSAGE_RECEIVED precedes the native save; the tier joins that same save.
+    if (textChanged) {
+        try { safeContext()?.saveChat?.(); } catch { /* 原生保存仍保留完整消息。 */ }
     }
     revealMesId = String(index);
     void requestChatVoice(index);

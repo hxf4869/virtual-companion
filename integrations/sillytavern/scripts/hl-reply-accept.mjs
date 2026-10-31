@@ -8,6 +8,7 @@ import { createStClient } from './managed-lib.mjs';
 import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
 import { voiceShots } from './voice-accept-lib.mjs';
+import { replyLengthStats } from '../../../scripts/reply-length-stats.mjs';
 
 const DEV = process.env.VC_W03_DEV_DIR
     || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
@@ -367,6 +368,29 @@ export async function sceneHlReply(ctx) {
         await page.locator('.vc-sheet-done').last().click();
         ctx.results.rq8Planner={provider:'managed synthetic fixture',samples,qualityComparison:'fixture validates routing only; no real-model quality claim'};
         fs.writeFileSync(path.join(ctx.artifactsDir,'rq8-planner.json'),JSON.stringify(ctx.results.rq8Planner,null,2));
+
+        console.log('[hl-reply] RQ-9 长回复折叠与实际篇幅统计');
+        const longReply='今天路过一家小店，门口的猫正趴在垫子上晒太阳。'.repeat(24);
+        await ctx.fixtureHttp.setOverride('vc03m-chat',{text:longReply,chunks:1});
+        await sendText(page,LONG);await waitReply(page,longReply);
+        const last=page.locator('#chat > .mes').last();
+        const expand=last.getByRole('button',{name:'展开全文'});await expand.waitFor();
+        assert.equal(await expand.getAttribute('aria-expanded'),'false');
+        for(const style of ['bubble','spread']) {
+            await page.evaluate(async(style)=>(await import('/scripts/extensions/third-party/vc-model-settings/chat-view.js')).writeReplyStyle(style),style);
+            await expand.scrollIntoViewIfNeeded();
+            await voiceShots(page,ctx,'RQ-9',`collapsed-${style}`);
+        }
+        await expand.click();
+        assert.equal(await last.getByRole('button',{name:'收起'}).getAttribute('aria-expanded'),'true');
+        assert.ok((await last.locator('.vc-segs').first().textContent()).length>360);
+        await last.getByRole('button',{name:'收起'}).click();
+        const actual=await page.evaluate(()=>SillyTavern.getContext().chat);
+        assert.equal(actual.at(-1).mes,longReply);
+        assert.ok(actual.at(-1).extra?.vc_reply_length_tier);
+        ctx.results.rq9Lengths={provider:'managed synthetic fixture',...replyLengthStats(actual)};
+        fs.writeFileSync(path.join(ctx.artifactsDir,'rq9-lengths.json'),JSON.stringify(ctx.results.rq9Lengths,null,2));
+        fs.writeFileSync(path.resolve('.review-queue/RQ-9/NOTES.md'),'# RQ-9\n\n普通陪伴长回复提供展开全文 / 收起，完整原文保持一条消息；卡片和 iframe 继续原生渲染。截图涵盖气泡 / 铺开、390 / 1440 与浅深色，仅含合成数据。交互断言覆盖可逆展开、存储完整与实际篇幅标签。\n');
         await bc.close();
     } finally {
         await ctx.fixtureHttp.setOverride('vc03m-chat', null);

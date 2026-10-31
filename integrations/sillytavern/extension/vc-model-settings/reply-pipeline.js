@@ -34,6 +34,8 @@ const TURN_RE = /但是|然而|不过|可是/;
 const bubbleTransformers = [];
 let turnType = 'normal';
 let rewriteHintText = '';
+let lastTier = null;
+export function lengthTierFor(chat) { return lastTier?.chat === chat ? lastTier.tier : null; }
 
 export function registerBubbleTransformer(fn) {
     if (typeof fn !== 'function') return () => {};
@@ -258,8 +260,7 @@ export function pickLengthTier(userText, { random = Math.random } = {}) {
     return '正常';
 }
 
-export function guidanceTail({ stateText = '', userText = '', hint = '', random } = {}) {
-    const tier = pickLengthTier(userText, { random });
+export function guidanceTail({ stateText = '', userText = '', hint = '', random, tier = pickLengthTier(userText, { random }) } = {}) {
     const lines = [];
     const state = String(stateText || '').trim();
     if (state) lines.push(state);
@@ -291,6 +292,7 @@ function lastUserText(context) {
 
 export function noteTurn(type) {
     turnType = type || 'normal';
+    if (turnType !== 'quiet') lastTier = null;
 }
 
 export function armRewrite(text) {
@@ -313,8 +315,11 @@ export function placeGuidance(generateData, context, options = {}) {
     const stateRaw = String(context?.extensionPrompts?.[REPLY_STATE_KEY]?.value || '').trim();
     const blob = generateData.messages.map((message) => (typeof message?.content === 'string' ? message.content : '')).join('\n');
     const stateText = stateRaw && !blob.includes(stateRaw) ? stateRaw : '';
+    const userText = lastUserText(context);
+    const tier = pickLengthTier(userText, { random: options.random });
+    lastTier = { chat: context.chat, tier };
     const body = guidanceTail({
-        stateText, userText: lastUserText(context), hint, random: options.random,
+        stateText, userText, hint, tier,
     });
     generateData.messages.push({ role: 'system', content: formatTail(body) });
     return true;

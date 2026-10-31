@@ -270,6 +270,21 @@ test('多句回复只改显示，原文仍留在同一条消息里', () => {
     assert.equal(node.className.includes('vc-segmented'), true);
 });
 
+test('长回复折叠只影响展示，展开和收起可逆，单个长句同样适用', () => {
+    const document=installMiniDom();
+    for(const text of ['这是一段合成普通对话。'.repeat(40),'长'.repeat(400)]) {
+        const node=mes(document,{text});renderReplyBubbles(node,text,{reducedMotion:true});
+        const toggle=node.querySelector('.vc-reply-expand');assert.ok(toggle);
+        assert.equal(toggle.getAttribute('aria-expanded'),'false');
+        assert.ok(node.querySelector('.vc-segs').textContent.length<250);
+        toggle.click();assert.equal(toggle.getAttribute('aria-expanded'),'true');
+        assert.ok(node.querySelector('.vc-segs').textContent.length>360);
+        toggle.click();assert.equal(toggle.getAttribute('aria-expanded'),'false');
+        assert.equal(node.querySelector('.mes_text').textContent,text);
+        renderReplyBubbles(node,text,{reducedMotion:true});assert.equal(node.querySelectorAll('.vc-reply-expand').length,1);
+    }
+});
+
 test('表情段渲染成表情气泡，而不是对象文本', () => {
     clearBubbleTransformers();
     registerBubbleTransformer(() => ['在呢', { type: 'sticker', tag: '开心', kind: 'kaomoji', text: '(≧▽≦)' }]);

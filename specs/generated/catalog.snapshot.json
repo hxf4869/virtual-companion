@@ -743,6 +743,13 @@
             "typeName": "CompanionAvatar"
           }
         ],
+        "longReplies": {
+          "collapseAboveCharacters": 360,
+          "consumer": "companion prose renderer; native rich cards and iframes remain native",
+          "lengthTier": "Record the final request's actual length tier in assistant extra.vc_reply_length_tier. Statistics exclude missing tiers instead of guessing historic settings.",
+          "persistence": "original message remains complete; collapse state is display-only",
+          "previewCharacters": 180
+        },
         "replyPlanner": {
           "call": "One bounded native generateRaw quiet request using the existing foreground provider binding, authentication, cancellation, context guard and usage ledger. No tools or memory snapshot are borrowed. Only a normal companion turn may plan; STORY, groups and auxiliary generations retain their existing path.",
           "consumer": "companion foreground generation interceptor",
@@ -754,7 +761,7 @@
         },
         "schemaVersion": 1
       },
-      "sha256": "3ef7e6906eb87a19abe0a208fe88a0fd0d1aacc4658b290850b5d0976da149d1"
+      "sha256": "0f8bf5c7939d951ae2ab4b882d041379e0ee3ad289656907e9a3f29bad0d4c3c"
     },
     "data-categories.yaml": {
       "document": {

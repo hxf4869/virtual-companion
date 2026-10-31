@@ -1,5 +1,13 @@
 schemaVersion: 1
 catalogId: companion-presentation
+longReplies:
+  consumer: companion prose renderer; native rich cards and iframes remain native
+  collapseAboveCharacters: 360
+  previewCharacters: 180
+  persistence: original message remains complete; collapse state is display-only
+  lengthTier: >-
+    Record the final request's actual length tier in assistant extra.vc_reply_length_tier.
+    Statistics exclude missing tiers instead of guessing historic settings.
 replyPlanner:
   setting: vc_reply_planner
   default: false

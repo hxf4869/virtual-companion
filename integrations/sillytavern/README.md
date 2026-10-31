@@ -551,6 +551,8 @@ attempt 账本。该场景使用明确的保守验收估算费率（输入 0.01�
 
 记忆规则 / 召回改动先跑仓库根 `node scripts/eval-memory.mjs`（RQ-3）。它复用锁定补丁构建，运行真实 L1 提取、提交和 SQLite / FTS / cosine 门控；LLM 输出与向量为固定合成 fixture，无外部模型调用，不评估模型本身的语义质量。五类合成数据与基线位于 `scripts/fixtures/memory-eval*.json`，按类别及既有通过用例拒绝退步，已由 ST 离线测试纳入 `check.sh`。临时库 / 派生模块成功、失败或中断均清理，不累积报告。`--record-baseline` 只用于明确接受新基线时，须审阅差异，不能用来掩盖退步。
 
+篇幅效果可在本机运行 `node scripts/reply-length-stats.mjs <chat.jsonl或目录>`（仓库根，RQ-9）。按新回复保存的实际 `extra.vc_reply_length_tier` 输出各档数量、最小 / 最大 / 平均与 P50 / P90 字符数；Unicode 字符含标点、去空白和语音 / 表情控制标记。历史无档位记录单列，不猜测。目录只读最多 30 个 JSONL，每文件上限 2 MiB；只输出统计，不创建报告或记录正文。
+
 ## 语音后端（VO-2）
 
 ```bash

@@ -340,6 +340,12 @@ body.vc-ui #chat > .mes.vc-segmented .vc-segs {
   width: 100%;
 }
 
+body.vc-ui #chat .vc-reply-expand {
+  align-self: flex-start;
+  min-height: var(--vc-touch);
+  padding-inline: 0;
+}
+
 body.vc-ui #chat > .mes.vc-segmented .vc-seg {
   margin: 0;
   color: var(--vc-ink);
