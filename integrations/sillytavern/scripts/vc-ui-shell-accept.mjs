@@ -224,8 +224,15 @@ export async function sceneVcUiShell(ctx) {
         };
         const fail = async (error) => {
             try { await shot('failure.png'); } catch { /* 截图失败不掩盖原错误 */ }
-            const text = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
-            throw new Error(`${error.message} body=${redact(text)} console=${redact(consoleLines.slice(-3).join(' | '))}`);
+            const state = await page.evaluate(() => {
+                const shell = document.querySelector('#vc-shell'), chat = document.querySelector('#chat');
+                return { width: innerWidth, theme: document.documentElement.getAttribute('data-vc-theme'),
+                    destination: shell?.dataset.destination, chat: shell?.dataset.chat,
+                    messageCount: window.SillyTavern?.getContext?.()?.chat?.length,
+                    renderedMessages: chat?.querySelectorAll(':scope > .mes').length,
+                    chatHeight: chat?.clientHeight, scrollHeight: chat?.scrollHeight };
+            }).catch(() => ({ unavailable: true }));
+            throw new Error(`${error.message} state=${JSON.stringify(state)} consoleErrors=${consoleLines.length}`);
         };
         const closeOpen = async (selector, action) => {
             const open = page.locator(selector);
@@ -377,7 +384,7 @@ export async function sceneVcUiShell(ctx) {
                     if (convoState.some((item) => item.named && !item.img)) throw new Error('角色卡头像未用上');
                     await shot(`${theme}-${viewport.name}-list.png`);
 
-                    const boundId = await page.evaluate(() => String(window.SillyTavern.getContext().chatMetadata?.vc_binding?.relationshipId || ''));
+                    const boundId = boundNow;
                     const boundRow = page.locator(`#vc-shell .vc-convo[data-relationship-id="${boundId}"]`);
                     if (!(await boundRow.count())) {
                         const ids = await page.evaluate(() => [...document.querySelectorAll('#vc-shell .vc-convo')].map((el) => el.getAttribute('data-relationship-id')));
@@ -411,6 +418,12 @@ export async function sceneVcUiShell(ctx) {
                         });
                         throw new Error(`未进入对话 ${JSON.stringify(state)} (${error.name})`);
                     }
+                    await page.waitForFunction(({ id, file }) => {
+                        const context = window.SillyTavern.getContext();
+                        return String(context.chatMetadata?.vc_binding?.relationshipId || '') === id
+                            && context.chatId === file && context.chat.length === 36
+                            && Boolean(document.querySelector('#chat > .mes[mesid="35"]'));
+                    }, { id: boundNow, file: chatFile }, { timeout: 15000 });
                     await assertChatFit(viewport);
                     await page.locator('.vc-shell-chat-body #send_textarea').focus();
                     const focused = await page.evaluate(() => document.activeElement?.id === 'send_textarea' && Boolean(document.activeElement.closest('.vc-shell-chat-body')));
@@ -522,7 +535,7 @@ export async function sceneVcUiShell(ctx) {
                                 details.matchesCard = currentRows.json?.filter((row) => row.characterRef === details.cardRef).length;
                                 throw new Error(`本场合成卡没有可进入的实例 ${JSON.stringify(details)}`);
                             }
-                            const instance = page.locator('#vc-shell .vc-characters > .vc-screen:not(.vc-characters-list) [data-action="select-instance"]').first();
+                            const instance = page.locator(`#vc-shell .vc-characters > .vc-screen:not(.vc-characters-list) [data-action="select-instance"][data-id="${boundNow}"]`);
                             await instance.waitFor({ timeout: 15000 });
                             const relationshipId = await instance.getAttribute('data-id');
                             await instance.click();
