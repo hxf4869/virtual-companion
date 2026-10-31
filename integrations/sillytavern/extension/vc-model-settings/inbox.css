@@ -627,6 +627,7 @@ body.vc-ui .vc-inbox-tab [role="alert"] { color: var(--vc-danger); }
   body.vc-ui .vc-inbox-preferences .vc-proactive-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 4px; }
   body.vc-ui .vc-inbox-preferences .vc-proactive-modes .vc-cell { justify-content: center; padding: 0 4px; min-height: 44px; border-radius: var(--vc-radius-sm); }
   body.vc-ui .vc-inbox-preferences .vc-proactive-modes .vc-grow { flex: none; }
+  body.vc-ui .vc-inbox-preferences .vc-proactive-modes .vc-cell::before,
   body.vc-ui .vc-inbox-preferences .vc-proactive-modes .vc-cell::after { display: none; }
   body.vc-ui .vc-inbox-preferences .vc-proactive-modes [aria-pressed="true"] { background: var(--vc-fill); color: var(--vc-accent-text); font-weight: 600; }
 }

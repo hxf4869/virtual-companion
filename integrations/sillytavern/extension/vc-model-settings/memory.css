@@ -245,7 +245,9 @@ body.vc-ui .vc-memory-tab .vc-search input { min-height: var(--vc-touch); }
     align-items: start;
     margin: 0 16px 24px;
   }
-  body.vc-ui .vc-memory-filters > :is(.vc-group, .vc-search, .vc-segment) { min-width: 0; margin: 0; }
+  body.vc-ui .vc-memory-filters > .vc-group,
+  body.vc-ui .vc-memory-filters > .vc-search,
+  body.vc-ui .vc-memory-filters > .vc-segment { min-width: 0; margin: 0; }
   body.vc-ui .vc-memory-filters > .vc-group:first-of-type { grid-column: 1; grid-row: 1; }
   body.vc-ui .vc-memory-filters > .vc-group:last-child { grid-column: 2; grid-row: 1; }
   body.vc-ui .vc-memory-filters > .vc-search { grid-column: 1; grid-row: 2; }

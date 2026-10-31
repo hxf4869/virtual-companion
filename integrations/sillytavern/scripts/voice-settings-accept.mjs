@@ -8,6 +8,14 @@ export async function sceneVoiceSettings(ctx){
         await page.evaluate(()=>[...document.querySelectorAll('#vc-shell [data-settings]')].find((node)=>node.getClientRects().length)?.click());
         await page.locator('.vc-settings-form [data-action="voice"]').click();
         let form=page.locator('[data-voice-settings="global"]');await form.locator('[data-voice-field="dailyChatLimit"]').waitFor();
+        await page.setViewportSize({width:1440,height:900});
+        const sheet=page.locator('.vc-sheet').last();
+        await page.waitForFunction(()=>{
+            const sheet=[...document.querySelectorAll('.vc-sheet')].at(-1);const r=sheet?.getBoundingClientRect();
+            return r && r.width<=721 && r.left>=31 && r.right<=innerWidth-31 && r.top>=31 && r.bottom<=innerHeight-31;
+        });
+        assert.equal(await sheet.locator('.vc-sheet-grab').isVisible(),false,'desktop dialog has no mobile drag handle');
+        await page.setViewportSize({width:390,height:844});
         await form.locator('[data-voice-field="dailyChatLimit"]').fill('61');await form.locator('button[type="submit"]').click();
         await form.getByText('已保存',{exact:true}).waitFor();
         const saved=await voiceCall(ctx,'GET','/api/v1/voice/settings');assert.equal(saved.dailyChatLimit,61);

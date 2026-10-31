@@ -72,9 +72,10 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         const containerHeight = fixed
             ? (view.visualViewport?.height || view.innerHeight)
             : host.clientHeight;
-        const H = containerHeight - SHEET_TOP_GAP;
-        const M = Math.round(containerHeight * SHEET_HALF_RATIO);
-        return { containerHeight, H, M };
+        const desktop = fixed && view.innerWidth >= 744;
+        const H = desktop ? Math.min(containerHeight - 64, large ? 760 : 560) : containerHeight - SHEET_TOP_GAP;
+        const M = desktop ? H : Math.round(containerHeight * SHEET_HALF_RATIO);
+        return { containerHeight, H, M, desktop };
     };
 
     let y = 0;
@@ -87,16 +88,20 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     const set = (value, token) => {
         if (token != null && token !== springToken) return;
         y = value;
-        const { containerHeight, H, M } = geometry();
+        const { containerHeight, H, M, desktop } = geometry();
         // 宿主 html 有 -webkit-transform，fixed 包含块高度会变成 0。
         // 这时 bottom: 0 把整张 sheet 摆到视口上方，弹簧停稳后就看不见。
-        el.style.top = `${SHEET_TOP_GAP}px`;
+        el.style.top = `${desktop ? (containerHeight - H) / 2 : SHEET_TOP_GAP}px`;
         el.style.bottom = 'auto';
-        el.style.left = '0';
-        el.style.right = '0';
+        el.style.left = desktop ? '50%' : '0';
+        el.style.right = desktop ? 'auto' : '0';
+        el.style.width = desktop ? 'min(720px, calc(100vw - 64px))' : 'auto';
         el.style.height = `${Math.max(0, H)}px`;
-        el.style.transform = `translateY(${Math.max(value, -60)}px)`;
+        el.style.transform = desktop
+            ? `translate(-50%, ${Math.max(-12, Math.min(24, value / H * 24))}px)`
+            : `translateY(${Math.max(value, -60)}px)`;
         const opacity = M > 0 ? Math.max(0, Math.min(1, 1 - (value - (H - M)) / M)) : 1;
+        el.style.opacity = desktop ? String(opacity) : '1';
         scrim.style.top = '0';
         scrim.style.right = '0';
         scrim.style.bottom = 'auto';
@@ -224,6 +229,7 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     let vel = 0;
     const handles = [el.querySelector('.vc-sheet-grab'), el.querySelector('.vc-sheet-head')];
     const down = (event) => {
+        if (geometry().desktop) return;
         if (event.button > 0 || event.target.closest('button')) return;
         pending = true;
         drag = false;
@@ -270,11 +276,19 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         handle.addEventListener('pointercancel', up, { signal: ac.signal });
     }
 
-    const { H, M } = geometry();
-    const openAt = large || initial === 'full' ? 0 : H - M;
+    const { H, M, desktop } = geometry();
+    const openAt = desktop || large || initial === 'full' ? 0 : H - M;
     set(H);
     scrim.style.transition = 'none';
     to(openAt);
+    const resize = () => {
+        stopSpring();
+        springToken += 1;
+        const next = geometry();
+        set(Math.min(y, Math.max(0, next.H - next.M)));
+    };
+    view.addEventListener('resize', resize, { signal: ac.signal });
+    view.visualViewport?.addEventListener('resize', resize, { signal: ac.signal });
     // 宿主若还能滚动，focus 会把 scrollTop 加到和 translateY 一样，半档被拉回全高，拖动也被抵消。
     el.focus({ preventScroll: true });
     return { el, scrim, close, dismiss, push };

@@ -896,6 +896,13 @@ body.vc-ui .vc-sheet {
   will-change: transform;
 }
 body.vc-ui .vc-sheet .vc-group { background: var(--vc-sheet-group); }
+@media (min-width: 744px) {
+  body.vc-ui .vc-sheet {
+    border-radius: var(--vc-radius-xl);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+  }
+  body.vc-ui .vc-sheet-grab { display: none; }
+}
 body.vc-ui .vc-sheet-grab { padding: 8px 0 4px; touch-action: none; cursor: grab; }
 body.vc-ui .vc-sheet-grab::before {
   content: "";

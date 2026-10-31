@@ -101,7 +101,7 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
         if(button.vcPreview?.voice===voice && button.vcPreview.speed===speed){
             await voicePlayer.toggle(button.vcPreview.clipId,{onState(playing){button.textContent=playing?'暂停语音':'试听';},onError(){button.vcPreview=null;status.textContent='没有完成，请重试。';}});return;
         }
-        button.disabled=true;button.textContent='正在录音…';
+        button.disabled=true;button.textContent='正在生成语音…';
         try{
             const queued=await previewVoice({relationshipId:String(relationshipId),engine,voice,speed});
             const clip=await waitForVoiceClip(queued.clipId,{timeoutMs:(engine==='kokoro'?settings.kokoroTimeoutSeconds:settings.cosyVoiceTimeoutSeconds)*1000+5000});
@@ -109,7 +109,7 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
             button.vcPreview={clipId:clip.clipId,voice,speed};
             await voicePlayer.toggle(clip.clipId,{onState(playing){button.textContent=playing?'暂停语音':'试听';},onError(){status.textContent='没有完成，请重试。';}});
         }catch{if(!closed)status.textContent='没有完成，请重试。';}
-        finally{if(!closed){button.disabled=false;if(button.textContent==='正在录音…')button.textContent='试听';}}
+        finally{if(!closed){button.disabled=false;if(button.textContent==='正在生成语音…')button.textContent='试听';}}
     });
     content.addEventListener('input',(event)=>{if(event.target.type==='range'){const output=event.target.parentElement.querySelector('output');if(output)output.textContent=`${Number(event.target.value).toFixed(2)}×`;}});
     form.addEventListener('submit',async(event)=>{

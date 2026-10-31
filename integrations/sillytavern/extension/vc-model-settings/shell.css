@@ -357,7 +357,7 @@ body.vc-ui .vc-shell-chat {
   overflow: hidden;
 }
 
-body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"] .vc-shell-chat,
+body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"]:not([data-settings="page"]) .vc-shell-chat,
 body.vc-ui #vc-shell[data-chrome="tabbar"][data-chat="open"] .vc-shell-chat {
   display: flex;
 }

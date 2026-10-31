@@ -1224,4 +1224,10 @@ body.vc-ui #vc-model-settings-root .vcms-providers-title { display: none; }
     font-weight: 400;
     line-height: 20px;
   }
+  body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-section-title {
+    margin: 0 0 12px;
+    min-height: 20px;
+    line-height: 20px;
+  }
+  body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-tabpanes { padding-top: 0 !important; }
 }

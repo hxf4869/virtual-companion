@@ -107,7 +107,7 @@ export async function readReplyAloud(index,button){
     const state=(playing)=>{button.setAttribute('aria-label',playing?'暂停语音':'朗读');button.setAttribute('aria-pressed',String(playing));button.innerHTML=icon(playing?'pause':'volume-2',{size:18});};
     const failure=()=>{state(false);button.title='没有完成，请重试。';button.vcRead=null;};
     if(button.vcRead?.message===message && button.vcRead.text===text){await voicePlayer.toggle(button.vcRead.clipId,{onState:state,onError:failure});return;}
-    button.disabled=true;button.setAttribute('aria-busy','true');button.setAttribute('aria-label','正在录音…');
+    button.disabled=true;button.setAttribute('aria-busy','true');button.setAttribute('aria-label','正在生成语音…');
     try{
         const policy=await loadVoicePolicy(context);if(!active() || !policy?.available)return;
         await integration.saveChat();if(!active())return;

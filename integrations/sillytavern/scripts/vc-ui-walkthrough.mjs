@@ -283,6 +283,13 @@ export async function sceneVcUiWalkthrough(ctx) {
             throw new Error(`截图前残留浮层 ${width} ${theme} ${pageName}: ${String(error?.message || error).split('\n')[0]}`);
         }
         const file = path.join(dir, `${width}-${theme}-${pageName}.png`);
+        if (pageName === 'settings' && width >= 744) {
+            const layout = await page.evaluate(() => ({
+                chatVisible: [...document.querySelectorAll('#vc-shell .vc-shell-chat')].some((el) => el.getClientRects().length > 0),
+                top: document.querySelector('.vc-shell-settings')?.getBoundingClientRect().top,
+            }));
+            assert.ok(!layout.chatVisible && Math.abs(layout.top) < 1, `桌面设置仍露出聊天 ${width}/${theme}: ${JSON.stringify(layout)}`);
+        }
         if (pageName === 'character-detail') {
             const forms = await page.locator('.vc-characters .vc-instance-form:visible').evaluateAll((els) => els.map((el) => {
                 const input = el.querySelector('input').getBoundingClientRect();
