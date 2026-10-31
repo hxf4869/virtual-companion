@@ -639,13 +639,13 @@ export function mountModelSettings() {
     }
 
     function desktopView() {
-        return vcUiEnabled() && document.documentElement?.getAttribute?.('data-vc-layout') === 'desktop';
+        return vcUiEnabled() && document.documentElement?.getAttribute?.('data-vc-layout') === 'desktop' && Boolean(overlay.closest?.('.vc-settings-shell'));
     }
 
     function renderShell() {
         const vcAttr = vcUiEnabled() ? ` data-vc-screen="${esc(state.vcScreen || 'home')}"` : '';
         return `
-        <div class="vcms-panel"${vcAttr} tabindex="-1" role="dialog" aria-modal="true" aria-label="模型设置">
+        <div class="vcms-panel"${vcAttr} tabindex="-1" ${overlay.closest?.('.vc-settings-shell') ? 'role="region"' : 'role="dialog" aria-modal="true"'} aria-label="模型设置">
             ${renderHeader()}
             <div class="vcms-body">
                 ${state.reauth.open ? renderReauthBar() : ''}
@@ -682,12 +682,13 @@ export function mountModelSettings() {
             const nav = vcNavCopy();
             return `
         <header class="vcms-header vc-navbar" style="--vc-nav-p:1">
+            ${overlay.closest?.('.vc-settings-shell') ? `<button type="button" class="vc-circle vc-settings-category-toggle" data-settings-categories aria-label="设置">${icon('settings')}</button>` : ''}
             <button type="button" class="vc-circle vc-glass" data-action="vc-back" aria-label="返回${esc(nav.back)}">${icon('chevron-left', { size: 22 })}</button>
             <div class="vc-nav-title" tabindex="-1">${esc(nav.title)}</div>
             <div class="vc-nav-spacer"></div>
 
             <button type="button" class="vc-btn vc-btn-text" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
-            <button type="button" class="vc-btn vc-btn-fill" id="vcms-save" data-action="save">保存更改</button>
+            <button type="button" class="vc-btn vc-btn-fill" id="vcms-save" data-action="save"${desktopView() && state.phase !== 'ready' ? ' disabled' : ''}>保存更改</button>
             <button type="button" class="vcms-dismiss" data-action="close" aria-hidden="true" tabindex="-1">关闭</button>
             <h2 class="vcms-title" tabindex="-1">模型设置</h2>
             <p class="vcms-subtitle">供应商 ${providerCount} · 模型配置 ${modelCount} · 用途绑定 ${state.purposes.length}</p>
@@ -702,7 +703,7 @@ export function mountModelSettings() {
             <div class="vcms-header-actions">
 
                 <button type="button" class="vcms-btn vcms-btn-ghost" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
-                <button type="button" class="vcms-btn vcms-btn-primary" id="vcms-save" data-action="save">保存更改</button>
+                <button type="button" class="vcms-btn vcms-btn-primary" id="vcms-save" data-action="save"${desktopView() && state.phase !== 'ready' ? ' disabled' : ''}>保存更改</button>
                 <button type="button" class="vcms-iconbtn" data-action="close" aria-label="关闭模型设置" title="关闭（Esc）"><i class="fa-solid fa-xmark"></i></button>
             </div>
         </header>`;
@@ -834,7 +835,7 @@ export function mountModelSettings() {
         return `
         <div class="vcms-layout">
             <aside class="vcms-providers" aria-label="供应商列表">
-                ${screen === 'home' ? '<h2 class="vcms-providers-title">供应商</h2>' : ''}
+                ${screen === 'home' && !desktopView() ? '<h2 class="vcms-providers-title">供应商</h2>' : ''}
                 <div class="vcms-provider-list" id="vcms-provider-list">${renderProviderCards()}</div>
             </aside>
             <main class="vcms-main">
@@ -871,8 +872,8 @@ export function mountModelSettings() {
         const toggle = `<button type="button" class="vc-switch" role="switch" data-action="local-rerank" aria-checked="${view.rerank?.enabled === true ? 'true' : 'false'}" aria-label="重排"${disabled}></button>`;
         return `
         <section class="vcms-local" aria-label="本机模型">
-            <div class="vc-group-title">本机模型</div>
-            <div class="vc-group">
+            ${desktopView() ? '' : '<div class="vc-group-title">本机模型</div>'}
+            <div class="vc-group">${desktopView() ? '<h2 class="vcms-desktop-group-title">本机模型</h2>' : ''}
                 ${localRow('向量', view.embedding)}
                 ${localRow('重排', view.rerank, toggle)}
             </div>
@@ -921,9 +922,10 @@ export function mountModelSettings() {
     }
 
     function renderProviderCards() {
+        const heading = desktopView() && state.vcScreen === 'home' ? '<h2 class="vcms-providers-title">供应商</h2>' : '';
         const creatingNew = state.creatingNew;
         if (!state.providers.length && !creatingNew) {
-            return `
+            return `${heading}
             <div class="vcms-empty-providers${vcUiEnabled() ? ' vc-empty' : ''}">
                 <p>还没有供应商。</p>
                 <p class="vcms-muted">新建供应商，选择一种接口协议并填写 Base URL 与密钥，再添加模型配置。</p>
@@ -957,7 +959,7 @@ export function mountModelSettings() {
         const addRow = vcUiEnabled() && !creatingNew
             ? `<button type="button" class="vcms-provider-card vc-cell" data-action="new-provider"><span class="vcms-provider-name">新建供应商</span></button>`
             : '';
-        return cards + newCard + addRow;
+        return heading + cards + newCard + addRow;
     }
 
     function renderProviderPane() {
@@ -965,7 +967,7 @@ export function mountModelSettings() {
         const d = state.draft;
         const isNew = state.creatingNew;
         const key = logic.keyPlan(d, d.credentialConfigured);
-        const providerIdField = `                    <div class="vcms-field">
+        const providerIdField = `                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                         <label for="vcms-f-id">供应商 ID</label>
                         ${isNew
             ? `<input id="vcms-f-id" type="text" data-bind="provider.providerId" value="${esc(d.providerId)}" placeholder="小写字母 / 数字 / - / _" autocomplete="off" spellcheck="false">`
@@ -981,17 +983,17 @@ export function mountModelSettings() {
                 <i class="fa-solid fa-triangle-exclamation"></i>
                 <div>该供应商尚未配置 API Key。可以先保存为停用草稿；配置密钥并启用后才能用于生成。</div>
             </div>` : ''}
-            <section class="vcms-section">
+            <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
                 <h3 class="vcms-section-title">基本信息</h3>
-                <div class="vcms-grid2">
-                    <div class="vcms-field">
+                <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
+                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                         <label for="vcms-f-display">显示名称</label>
                         <input id="vcms-f-display" type="text" data-bind="provider.displayName" value="${esc(d.displayName)}" placeholder="例如：我的模型服务" maxlength="60">
                         <p class="vcms-field-err" data-err-for="displayName"></p>
                     </div>
                     ${desktopView() ? '' : providerIdField}
                 </div>
-                <div class="vcms-field${vcUiEnabled() ? ' vcms-state-row' : ''}">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}${vcUiEnabled() ? ' vcms-state-row' : ''}">
                     <span class="vcms-field-label">${vcUiEnabled() ? esc(logic.PROVIDER_STATE_LABELS[d.state] ?? d.state) : '状态'}</span>
                     <div class="vcms-switch-row">
                         ${vcUiEnabled()
@@ -1001,12 +1003,12 @@ export function mountModelSettings() {
                     </div>
                     <p class="vcms-field-err" data-err-for="state"></p>
                 </div>
-                <div class="vcms-field">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <label for="vcms-f-base">Base URL</label>
                     <input id="vcms-f-base" type="url" data-bind="provider.baseUrl" value="${esc(d.baseUrl)}" placeholder="https://api.example.com" spellcheck="false">
                     <p class="vcms-field-err" data-err-for="baseUrl"></p>
                 </div>
-                <div class="vcms-field">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <span class="vcms-field-label">接口协议</span>
                     <div class="vcms-protocols" role="radiogroup" aria-label="接口协议">
                         ${logic.PROTOCOLS.map((p) => `
@@ -1022,12 +1024,12 @@ export function mountModelSettings() {
                 <div class="vcms-endpoint-line" id="vcms-endpoint-line"></div>
             </section>
 
-            <section class="vcms-section">
+            <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
                 <h3 class="vcms-section-title">API 密钥</h3>
                 ${renderKeySection(key)}
             </section>
 
-            <section class="vcms-section">
+            <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
                 <div class="vcms-section-head">
                     <h3 class="vcms-section-title">模型配置</h3>
                     <div class="vcms-section-tools">
@@ -1051,7 +1053,7 @@ export function mountModelSettings() {
             ${renderTestSection()}
 
             ${state.saveError ? `<div class="vcms-callout vcms-callout-danger" role="alert" id="vcms-save-error"><i class="fa-solid fa-triangle-exclamation"></i><div>${esc(state.saveError)} <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="save">重试保存</button></div></div>` : ''}
-            ${desktopView() ? `<details class="vcms-internal"${isNew ? ' open' : ''}><summary>${icon('chevron-right', { size: 16 })}高级</summary>${providerIdField}</details>` : ''}
+            ${desktopView() && state.vcScreen !== 'model' ? `<details class="vcms-internal"${isNew ? ' open' : ''}><summary>${icon('chevron-right', { size: 16 })}高级</summary>${providerIdField}</details>` : ''}
             <div class="vcms-update-meta vcms-muted">更新于 ${fmtTime(d.updatedAt)} · 配置版本 v${d.revision}${d.endpointUrl ? ` · 最终地址 ${esc(d.endpointUrl)}` : ''}</div>
         </div>`;
     }
@@ -1107,7 +1109,7 @@ export function mountModelSettings() {
         const d = state.draft;
         if (key.action === 'keep' && state.keyEditing) {
             return `
-            <div class="vcms-field">
+            <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                 <label for="vcms-f-key">新密钥（保存后替换）</label>
                 <input id="vcms-f-key" type="password" data-bind="provider.credential" value="" placeholder="粘贴新密钥；留空则不替换" autocomplete="new-password" spellcheck="false">
                 <p class="vcms-muted">保存后只显示“已配置”，不会回显原值，也不会写入聊天记录或日志。</p>
@@ -1146,7 +1148,7 @@ export function mountModelSettings() {
             </div>`;
         }
         return `
-            <div class="vcms-field">
+            <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                 <label for="vcms-f-key">${key.action === 'will-replace' ? '新密钥（保存后替换）' : 'API 密钥'}</label>
                 <input id="vcms-f-key" type="password" data-bind="provider.credential" value="${esc(d.credential)}" placeholder="粘贴服务方提供的密钥" autocomplete="new-password" spellcheck="false">
                 <p class="vcms-muted">保存后只显示“已配置”，不回显原值，也不会写入聊天记录或日志。</p>
@@ -1178,7 +1180,7 @@ export function mountModelSettings() {
         const errors = logic.validateModelForm(m);
         const err = (field) => `<p class="vcms-field-err" data-err-for="${field}">${esc(errors[field] ?? '')}</p>`;
         const isShared = m.boundPurposes?.length > 0;
-        const profileField = `            <div class="vcms-field">
+        const profileField = `            <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                 <label for="vcms-m-profile">配置标识</label>
                 ${m.isNew || m.isClone
         ? `<input id="vcms-m-profile" type="text" class="vcms-mono" data-bind="model.profileKey" value="${esc(m.profileKey)}" placeholder="默认同模型 ID">`
@@ -1189,27 +1191,27 @@ export function mountModelSettings() {
         return `
         <div class="vcms-model-form" data-profile="${esc(m.profileKey)}">
             ${logic.ledgerCalloutHtml(m)}
-            ${isShared ? desktopView() ? `<div class="vcms-field vcms-used-by"><span class="vcms-field-label">用于</span><span>${m.boundPurposes.map(p => esc(logic.purposeMeta(p).label)).join('、')}</span></div>` : `<div class="vcms-callout vcms-callout-info"><i class="fa-solid fa-share-nodes"></i><div>该配置正被这些用途使用：${m.boundPurposes.map((p) => esc(logic.purposeMeta(p).label)).join('、')}。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。</div></div>` : ''}
-            <div class="vcms-grid2">
-                <div class="vcms-field">
+            ${isShared ? desktopView() ? `<div class="vc-desk-field vcms-used-by"><span class="vcms-field-label">用于</span><span>${m.boundPurposes.map(p => esc(logic.purposeMeta(p).label)).join('、')}</span></div>` : `<div class="vcms-callout vcms-callout-info"><i class="fa-solid fa-share-nodes"></i><div>该配置正被这些用途使用：${m.boundPurposes.map((p) => esc(logic.purposeMeta(p).label)).join('、')}。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。</div></div>` : ''}
+            <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <label for="vcms-m-display">模型显示名称</label>
                     <input id="vcms-m-display" type="text" data-bind="model.displayName" value="${esc(m.displayName)}" maxlength="80">
                     ${err('displayName')}
                 </div>
-                <div class="vcms-field">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <label for="vcms-m-id">模型 ID</label>
                     <input id="vcms-m-id" type="text" class="vcms-mono" data-bind="model.modelId" value="${esc(m.modelId)}" placeholder="服务方的模型 ID，可手填" spellcheck="false">
                     ${err('modelId')}
                 </div>
             </div>
             ${desktopView() ? '' : profileField}
-            <div class="vcms-grid2">
-                <div class="vcms-field">
+            <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <label for="vcms-m-ctx">上下文窗口（token）</label>
                     <input id="vcms-m-ctx" type="number" min="1" step="1" data-bind="model.contextWindowTokens" value="${esc(m.contextWindowTokens)}" placeholder="例如 200000">
                     ${err('contextWindowTokens')}
                 </div>
-                <div class="vcms-field">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <label for="vcms-m-max">最大输出（token 预留）</label>
                     <input id="vcms-m-max" type="number" min="1" step="1" data-bind="model.maxOutputTokens" value="${esc(m.maxOutputTokens)}" placeholder="例如 8192">
                     ${err('maxOutputTokens')}
@@ -1222,7 +1224,7 @@ export function mountModelSettings() {
                 <summary>${desktopView() ? `${icon('chevron-right', { size: 16 })}高级设置` : '高级设置（推理 · 参数 · 能力 · 计价）'}</summary>
                 <div class="vcms-advanced-body">
                     <h4 class="vcms-subsection-title">推理</h4>
-                    <div class="vcms-field">
+                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                         <span class="vcms-field-label">声明可用推理等级</span>
                         <div class="vcms-checks">
                             ${logic.REASONING_LEVELS.map((lv) => `
@@ -1232,7 +1234,7 @@ export function mountModelSettings() {
                         </div>
                         <p class="vcms-muted">等级按当前协议映射为对应参数；未知映射保持待配置，不硬发统一字段。</p>
                     </div>
-                    <div class="vcms-field">
+                    <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                         <label for="vcms-m-effort">默认推理等级</label>
                         <select id="vcms-m-effort" data-bind="model.generationParams.reasoningEffort">
                             <option value="" ${!m.generationParams.reasoningEffort ? 'selected' : ''}>未设置</option>
@@ -1241,13 +1243,13 @@ export function mountModelSettings() {
                         ${err('reasoningEffort')}
                     </div>
                     <h4 class="vcms-subsection-title">生成参数</h4>
-                    <div class="vcms-grid2">
-                        <div class="vcms-field">
+                    <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
+                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                             <label for="vcms-m-temp">温度 temperature（0–2）</label>
                             <input id="vcms-m-temp" type="number" min="0" max="2" step="0.1" data-bind="model.generationParams.temperature" value="${esc(m.generationParams.temperature)}">
                             ${err('temperature')}
                         </div>
-                        <div class="vcms-field">
+                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                             <label for="vcms-m-topp">top P（0–1）</label>
                             <input id="vcms-m-topp" type="number" min="0" max="1" step="0.05" data-bind="model.generationParams.topP" value="${esc(m.generationParams.topP)}">
                             ${err('topP')}
@@ -1279,7 +1281,7 @@ export function mountModelSettings() {
                     <h4 class="vcms-subsection-title">计价（可选元数据）</h4>
                     <p class="vcms-muted">当前显示：${esc(logic.formatPricing(m.pricing))}。价格未知显示「未配置」，不会当作免费。</p>
                     <div class="vcms-grid3">
-                        <div class="vcms-field">
+                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                             <label for="vcms-m-currency">币种</label>
                             <select id="vcms-m-currency" data-bind="model.pricing.currency">
                                 <option value="" ${!m.pricing.currency ? 'selected' : ''}>未配置</option>
@@ -1287,12 +1289,12 @@ export function mountModelSettings() {
                             </select>
                             ${err('pricingCurrency')}
                         </div>
-                        <div class="vcms-field">
+                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                             <label for="vcms-m-pin">输入价格 / 百万 token</label>
                             <input id="vcms-m-pin" type="number" min="0" step="0.01" data-bind="model.pricing.inputPerMillionTokens" value="${esc(m.pricing.inputPerMillionTokens)}" placeholder="未知">
                             ${err('pricingInput')}
                         </div>
-                        <div class="vcms-field">
+                        <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                             <label for="vcms-m-pout">输出价格 / 百万 token</label>
                             <input id="vcms-m-pout" type="number" min="0" step="0.01" data-bind="model.pricing.outputPerMillionTokens" value="${esc(m.pricing.outputPerMillionTokens)}" placeholder="未知">
                             ${err('pricingOutput')}
@@ -1336,12 +1338,12 @@ export function mountModelSettings() {
         return `
         <div class="vcms-clone-form">
             <p class="vcms-field-label">另存为新配置（不影响现有用途绑定）</p>
-            <div class="vcms-grid2">
-                <div class="vcms-field">
+            <div class="${desktopView() ? 'vcms-desktop-grid' : 'vcms-grid2'}">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <label for="vcms-clone-key">新配置标识 profileKey</label>
                     <input id="vcms-clone-key" type="text" class="vcms-mono" data-bind="clone.newProfileKey" value="${esc(c.newProfileKey)}" spellcheck="false">
                 </div>
-                <div class="vcms-field">
+                <div class="${desktopView() ? 'vc-desk-field' : 'vcms-field'}">
                     <label for="vcms-clone-name">新显示名称</label>
                     <input id="vcms-clone-name" type="text" data-bind="clone.newDisplayName" value="${esc(c.newDisplayName)}" maxlength="80">
                 </div>
@@ -1374,7 +1376,7 @@ export function mountModelSettings() {
                 </div>` : '<p class="vcms-muted">返回的模型都已收录；如需其他模型可继续手填模型 ID。</p>'}
             </div>` : '';
         return `
-        <section class="vcms-section">
+        <section class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
             <h3 class="vcms-section-title">连接检查</h3>
             <div class="vcms-testbox">
                 <div class="vcms-test-target">
@@ -1514,7 +1516,7 @@ export function mountModelSettings() {
         return `
         ${renderBindingsConflict()}
         ${renderContextBanner()}
-        <div class="vcms-section">
+        <div class="${desktopView() ? 'vcms-desktop-section' : 'vcms-section'}">
             <h3 class="vcms-section-title">用途绑定</h3>
             ${desktopView() ? '' : '<p class="vcms-muted vcms-section-note">每个用途独立绑定自己的模型配置；可以共用同一配置，但切换某一用途不影响其他用途。待配置的用途不会自动回退到其他 Key 或模型。</p>'}
             <div class="vcms-table-wrap">

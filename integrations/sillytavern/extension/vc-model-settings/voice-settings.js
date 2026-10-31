@@ -53,7 +53,7 @@ function voiceOptions(engine,value){
 }
 export function renderRelationshipVoiceSettings(relationship,engines){
     const parts=[];
-    for(const [engine,key,label] of [['kokoro','kokoroVoice','聊天语音'],['cosyvoice','cosyVoice','主动语音']]){
+    for(const [engine,key,label] of [['kokoro','kokoroVoice','聊天语音'],['cosyvoice','cosyVoice','主动语音音色']]){
         const info=engines.tts.find((e)=>e.engine===engine);if(!info?.configured)continue;
         parts.push(group([row(label,`<select data-voice-field="${key}" aria-label="${label}">${voiceOptions(info,relationship[key])}</select>`),
             `<div class="vc-cell"><span class="vc-grow">${state(info)}</span><button type="button" class="vc-btn vc-btn-text" data-preview-engine="${engine}"${!info.enabled||!info.healthy?' disabled':''}>试听</button></div>`]));
@@ -61,7 +61,7 @@ export function renderRelationshipVoiceSettings(relationship,engines){
     parts.push(group([row('语速',`<input type="range" data-voice-field="speed" min="0.5" max="2" step="0.05" value="${esc(relationship.speed)}"><output>${Number(relationship.speed).toFixed(2)}×</output>`),
         row('语音频率',select('voiceFrequency',relationship.voiceFrequency,{'':'跟随全局',...frequencies})),
         row('主动语音引擎',select('proactiveEngine',relationship.proactiveEngine,{'':'默认',kokoro:'Kokoro',cosyvoice:'CosyVoice'})),
-        `<div class="vc-cell"><span class="vc-grow">主动语音</span>${toggle('proactiveVoice',relationship.proactiveVoice)}</div>`]));
+        `<div class="vc-cell"><span class="vc-grow">主动发送语音</span>${toggle('proactiveVoice',relationship.proactiveVoice)}</div>`]));
     return parts.join('');
 }
 export function relationshipVoicePayload(relationship,form){
