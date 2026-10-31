@@ -78,6 +78,9 @@ UX-11 选图定稿 + DESIGN.md v4 + ADR-0010（文档）
   4. 同一检查在输入不变的情况下连续失败两次。
 - Goal 完成条件：UX-12–UX-19 均已提交推送并回填 TODO，或每个未完成项都有明确的 [问] / 暂停原因；之后停下等待 Claude 复核与 Owner 的 UX-20，不自动开始 UX-20 / UX-21。
 
+- **整体合并约束**：UX-14 起部分生产样式已改为「桌面交给 `E/desktop/**`」，而 `E/desktop/**` 到 UX-21 才进入生产加载链。
+  因此 `ux-11-desktop-immersive` 上的任何提交都不得单独挑拣（cherry-pick）或部分合并到 main，只能在 UX-21 整体合并。
+
 ## 3. 文件与写入归属
 
 扩展根目录 `E = integrations/sillytavern/extension/vc-model-settings/`，样板目录 `S = docs/product/v2-redesign/ux11/`。
@@ -87,7 +90,7 @@ UX-11 选图定稿 + DESIGN.md v4 + ADR-0010（文档）
 | UX-11 | `DESIGN.md`、`docs/decisions/0010-*.md`、`docs/planning/2026-10-30-companion-copy.md`、`S/PICKS.md` 摘要 | 只改文档 |
 | UX-12 | `E/ui/alert.js`、`E/ui/toast.js`、`E/ui/sheet.js`、`E/page.js`、`E/style.css`、`E/settings-pages.css`、`E/voice-settings.js`、对应 `*.test.mjs`；受管场景 `integrations/sillytavern/scripts/` 下 ui03-browser、voice-settings 相关脚本与 `f3-settings-accept.mjs`（Owner 2026-11-01 追加：只把交互步骤更新到第 5 节新规则，原业务断言全部保留，并为新规则补断言） | 两端共用的交互修复；手机像素不变 |
 | UX-13 | `E/desktop/base.css`、`E/desktop/aurora.js`、`E/desktop/pointer-light.js`、`E/desktop/transition.js`、`E/shell.js`（只加 `data-vc-layout` 属性与桌面外壳类名）、`S/` 下的样板框架（`index.html`、`frame.html`、`serve.py`、`fixtures.js`、`preview.js` 骨架、`check.mjs`） | 桌面基础层；页面条目在此基础上写 |
-| UX-14 | `E/desktop/chat.css`、`E/desktop/character-panel.js`、`S/views/chat.js` | 聊天 |
+| UX-14 | `E/desktop/chat.css`、`E/desktop/character-panel.js`、`S/views/chat.js`；`E/chat-view.css` 仅限输入区背景 / 模糊的旧 `!important` 声明（Owner 2026-11-01 追加：只把这些声明的选择器收窄为 `html:not([data-vc-layout="desktop"])` 前缀，不改声明内容、不动其他规则） | 聊天 |
 | UX-15 | `E/desktop/characters.css`、`S/views/characters.js` | 角色 |
 | UX-16 | `E/desktop/memory.css`、`S/views/memory.js` | 记忆 |
 | UX-17 | `E/desktop/inbox.css`、`S/views/inbox.js` | 陪伴 |

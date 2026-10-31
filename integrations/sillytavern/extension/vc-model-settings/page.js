@@ -638,6 +638,10 @@ export function mountModelSettings() {
         if (oldScreen !== state.vcScreen || document.activeElement === document.body) overlay.querySelector('.vc-nav-title, .vcms-title')?.focus({ preventScroll: true });
     }
 
+    function desktopView() {
+        return vcUiEnabled() && document.documentElement?.getAttribute?.('data-vc-layout') === 'desktop';
+    }
+
     function renderShell() {
         const vcAttr = vcUiEnabled() ? ` data-vc-screen="${esc(state.vcScreen || 'home')}"` : '';
         return `
@@ -961,6 +965,13 @@ export function mountModelSettings() {
         const d = state.draft;
         const isNew = state.creatingNew;
         const key = logic.keyPlan(d, d.credentialConfigured);
+        const providerIdField = `                    <div class="vcms-field">
+                        <label for="vcms-f-id">供应商 ID</label>
+                        ${isNew
+            ? `<input id="vcms-f-id" type="text" data-bind="provider.providerId" value="${esc(d.providerId)}" placeholder="小写字母 / 数字 / - / _" autocomplete="off" spellcheck="false">`
+            : `<input id="vcms-f-id" type="text" class="vcms-mono" value="${esc(d.providerId)}" readonly aria-readonly="true">`}
+                        <p class="vcms-field-err" data-err-for="providerId"></p>
+                    </div>`;
         return `
         ${renderConflictBanners()}
         ${renderContextBanner()}
@@ -978,13 +989,7 @@ export function mountModelSettings() {
                         <input id="vcms-f-display" type="text" data-bind="provider.displayName" value="${esc(d.displayName)}" placeholder="例如：我的模型服务" maxlength="60">
                         <p class="vcms-field-err" data-err-for="displayName"></p>
                     </div>
-                    <div class="vcms-field">
-                        <label for="vcms-f-id">供应商 ID</label>
-                        ${isNew
-            ? `<input id="vcms-f-id" type="text" data-bind="provider.providerId" value="${esc(d.providerId)}" placeholder="小写字母 / 数字 / - / _" autocomplete="off" spellcheck="false">`
-            : `<input id="vcms-f-id" type="text" class="vcms-mono" value="${esc(d.providerId)}" readonly aria-readonly="true">`}
-                        <p class="vcms-field-err" data-err-for="providerId"></p>
-                    </div>
+                    ${desktopView() ? '' : providerIdField}
                 </div>
                 <div class="vcms-field${vcUiEnabled() ? ' vcms-state-row' : ''}">
                     <span class="vcms-field-label">${vcUiEnabled() ? esc(logic.PROVIDER_STATE_LABELS[d.state] ?? d.state) : '状态'}</span>
@@ -1046,6 +1051,7 @@ export function mountModelSettings() {
             ${renderTestSection()}
 
             ${state.saveError ? `<div class="vcms-callout vcms-callout-danger" role="alert" id="vcms-save-error"><i class="fa-solid fa-triangle-exclamation"></i><div>${esc(state.saveError)} <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="save">重试保存</button></div></div>` : ''}
+            ${desktopView() ? `<details class="vcms-internal"${isNew ? ' open' : ''}><summary>${icon('chevron-right', { size: 16 })}高级</summary>${providerIdField}</details>` : ''}
             <div class="vcms-update-meta vcms-muted">更新于 ${fmtTime(d.updatedAt)} · 配置版本 v${d.revision}${d.endpointUrl ? ` · 最终地址 ${esc(d.endpointUrl)}` : ''}</div>
         </div>`;
     }
@@ -1172,10 +1178,18 @@ export function mountModelSettings() {
         const errors = logic.validateModelForm(m);
         const err = (field) => `<p class="vcms-field-err" data-err-for="${field}">${esc(errors[field] ?? '')}</p>`;
         const isShared = m.boundPurposes?.length > 0;
+        const profileField = `            <div class="vcms-field">
+                <label for="vcms-m-profile">配置标识</label>
+                ${m.isNew || m.isClone
+        ? `<input id="vcms-m-profile" type="text" class="vcms-mono" data-bind="model.profileKey" value="${esc(m.profileKey)}" placeholder="默认同模型 ID">`
+        : `<input id="vcms-m-profile" type="text" class="vcms-mono" value="${esc(m.profileKey)}" readonly aria-readonly="true">`}
+                <p class="vcms-muted">同一模型 ID 可以有多份配置（不同参数 / 计价）；「另存为新配置」会生成新的配置标识，不覆盖原配置。</p>
+                ${err('profileKey')}
+            </div>`;
         return `
         <div class="vcms-model-form" data-profile="${esc(m.profileKey)}">
             ${logic.ledgerCalloutHtml(m)}
-            ${isShared ? `<div class="vcms-callout vcms-callout-info"><i class="fa-solid fa-share-nodes"></i><div>该配置正被这些用途使用：${m.boundPurposes.map((p) => esc(logic.purposeMeta(p).label)).join('、')}。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。</div></div>` : ''}
+            ${isShared ? desktopView() ? `<div class="vcms-field vcms-used-by"><span class="vcms-field-label">用于</span><span>${m.boundPurposes.map(p => esc(logic.purposeMeta(p).label)).join('、')}</span></div>` : `<div class="vcms-callout vcms-callout-info"><i class="fa-solid fa-share-nodes"></i><div>该配置正被这些用途使用：${m.boundPurposes.map((p) => esc(logic.purposeMeta(p).label)).join('、')}。此处的修改保存后会影响它们；如需不影响，请用「另存为新配置」。</div></div>` : ''}
             <div class="vcms-grid2">
                 <div class="vcms-field">
                     <label for="vcms-m-display">模型显示名称</label>
@@ -1188,14 +1202,7 @@ export function mountModelSettings() {
                     ${err('modelId')}
                 </div>
             </div>
-            <div class="vcms-field">
-                <label for="vcms-m-profile">配置标识</label>
-                ${m.isNew || m.isClone
-        ? `<input id="vcms-m-profile" type="text" class="vcms-mono" data-bind="model.profileKey" value="${esc(m.profileKey)}" placeholder="默认同模型 ID">`
-        : `<input id="vcms-m-profile" type="text" class="vcms-mono" value="${esc(m.profileKey)}" readonly aria-readonly="true">`}
-                <p class="vcms-muted">同一模型 ID 可以有多份配置（不同参数 / 计价）；「另存为新配置」会生成新的配置标识，不覆盖原配置。</p>
-                ${err('profileKey')}
-            </div>
+            ${desktopView() ? '' : profileField}
             <div class="vcms-grid2">
                 <div class="vcms-field">
                     <label for="vcms-m-ctx">上下文窗口（token）</label>
@@ -1212,7 +1219,7 @@ export function mountModelSettings() {
             <p class="vcms-callout vcms-callout-warn vcms-inline-note" data-note="ctx" role="alert"${logic.contextWindowMissing(m) ? '' : ' hidden'}><i class="fa-solid fa-triangle-exclamation"></i>未填写上下文窗口：配置不完整，绑定前台聊天前需要补齐。</p>
 
             <details class="vcms-advanced"${state.advancedOpen ? ' open' : ''}>
-                <summary>高级设置（推理 · 参数 · 能力 · 计价）</summary>
+                <summary>${desktopView() ? `${icon('chevron-right', { size: 16 })}高级设置` : '高级设置（推理 · 参数 · 能力 · 计价）'}</summary>
                 <div class="vcms-advanced-body">
                     <h4 class="vcms-subsection-title">推理</h4>
                     <div class="vcms-field">
@@ -1248,7 +1255,7 @@ export function mountModelSettings() {
                     </div>
 
                     <h4 class="vcms-subsection-title">能力与输入类型</h4>
-                    <p class="vcms-muted">每项独立标记；「已验证」只能来自后端核验，不能手动选择。声明不代表实际可用。</p>
+                    ${desktopView() ? '' : '<p class="vcms-muted">每项独立标记；「已验证」只能来自后端核验，不能手动选择。声明不代表实际可用。</p>'}
                     ${err('capabilities')}
                     <div class="vcms-capgrid">
                         ${logic.CAPABILITY_FIELDS.map((f) => {
@@ -1256,7 +1263,8 @@ export function mountModelSettings() {
         return `
                         <div class="vcms-caprow">
                             <span class="vcms-capname">${esc(f.label)}</span>
-                            <div class="vcms-seg" role="group" aria-label="${esc(f.label)}状态">
+                            <div class="vcms-seg${desktopView() ? ' vc-segment' : ''}" role="group" aria-label="${esc(f.label)}状态">
+                                ${desktopView() ? `<i class="vc-segment-thumb" style="width:calc((100% - 4px) / ${logic.CAPABILITY_STATES.length});transform:translateX(${Math.max(0, logic.CAPABILITY_STATES.indexOf(value)) * 100}%)"></i>` : ''}
                                 ${logic.CAPABILITY_STATES.map((s) => {
             const isVerified = s === 'VERIFIED';
             const active = value === s;
@@ -1293,6 +1301,7 @@ export function mountModelSettings() {
                 </div>
             </details>
 
+            ${desktopView() ? `<details class="vcms-internal"${m.isNew || m.isClone ? ' open' : ''}><summary>${icon('chevron-right', { size: 16 })}高级</summary>${profileField}</details>` : ''}
             <div class="vcms-model-actions">
                 <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="clone-model"><i class="fa-solid fa-copy"></i> 另存为新配置</button>
                 ${state.deleteFor === m.profileKey ? `
@@ -1484,19 +1493,18 @@ export function mountModelSettings() {
             return `
             <tr class="vcms-binding-row ${draft?.dirty ? 'is-dirty' : ''} ${!bindable ? 'is-embed' : ''}">
                 <td class="vcms-binding-purpose">
-                    <span class="vcms-binding-name">${esc(p.label)}</span>
-                    <span class="vcms-muted vcms-binding-desc">${esc(p.desc)}</span>
+                    <span class="vcms-binding-name">${esc(desktopView() && p.id === 'EMBEDDING' ? '向量检索' : p.label)}</span>
+                    ${desktopView() ? '' : `<span class="vcms-muted vcms-binding-desc">${esc(p.desc)}</span>`}
                 </td>
                 <td class="vcms-binding-select">
                     ${bindable ? `
-                    <select data-bind="binding.${p.id}" aria-label="${esc(p.label)}绑定的模型配置">
+                    <select data-bind="binding.${p.id}" aria-label="${esc(desktopView() && p.id === 'EMBEDDING' ? '向量检索' : p.label)}绑定的模型配置">
                         ${options.map((o) => `<option value="${esc(o.value)}" ${current === o.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
                     </select>
                     <label class="vcms-check vcms-binding-enabled"><input type="checkbox" data-bind="bindingState.${p.id}" ${draft?.state !== 'DISABLED' ? 'checked' : ''} ${!current ? 'disabled' : ''}>启用</label>` : `
-                    <span class="vcms-badge vcms-badge-warn">待配置</span>
-                    <span class="vcms-muted vcms-binding-embednote">Embedding 使用独立接口；本轮不可绑定，三种聊天协议不能用作 embedding。</span>`}
+                    ${desktopView() ? '' : '<span class="vcms-badge vcms-badge-warn">待配置</span><span class="vcms-muted vcms-binding-embednote">Embedding 使用独立接口；本轮不可绑定，三种聊天协议不能用作 embedding。</span>'}`}
                 </td>
-                <td class="vcms-binding-status"><span class="vcms-badge ${statusCls}">${statusLabel}</span></td>
+                <td class="vcms-binding-status">${desktopView() ? `<span class="vc-status"><i class="vc-dot vc-dot-${status === 'READY' ? 'ok' : 'warn'}"></i>${esc(statusLabel)}</span>` : `<span class="vcms-badge ${statusCls}">${statusLabel}</span>`}</td>
                 <td class="vcms-binding-revision vcms-mono">v ${original?.revision ?? '—'}${draft?.dirty ? ' *' : ''}</td>
                 <td class="vcms-binding-updated vcms-muted">${fmtTime(original?.updatedAt)}</td>
             </tr>
@@ -1508,7 +1516,7 @@ export function mountModelSettings() {
         ${renderContextBanner()}
         <div class="vcms-section">
             <h3 class="vcms-section-title">用途绑定</h3>
-            <p class="vcms-muted vcms-section-note">每个用途独立绑定自己的模型配置；可以共用同一配置，但切换某一用途不影响其他用途。待配置的用途不会自动回退到其他 Key 或模型。</p>
+            ${desktopView() ? '' : '<p class="vcms-muted vcms-section-note">每个用途独立绑定自己的模型配置；可以共用同一配置，但切换某一用途不影响其他用途。待配置的用途不会自动回退到其他 Key 或模型。</p>'}
             <div class="vcms-table-wrap">
                 <table class="vcms-bindings-table">
                     <thead>
@@ -1548,9 +1556,9 @@ export function mountModelSettings() {
                 endpointEl.classList.remove('is-error');
             } else if (errors.endpoint?.ok) {
                 endpointEl.innerHTML = `
-                <span class="vcms-muted">最终请求地址</span>
+                <span class="vcms-muted">${desktopView() ? '请求地址' : '最终请求地址'}</span>
                 <span class="vcms-mono vcms-endpoint-url">${esc(errors.endpoint.finalUrl)}</span>
-                <span class="vcms-muted">（${esc(errors.endpoint.hint)}；最终地址以保存后的结果为准）</span>`;
+                ${desktopView() ? '' : `<span class="vcms-muted">（${esc(errors.endpoint.hint)}；最终地址以保存后的结果为准）</span>`}`;
                 endpointEl.classList.remove('is-error');
             } else if (errors.endpoint?.kind === 'full-endpoint' && errors.endpoint.suggestedBaseUrl) {
                 endpointEl.innerHTML = `
