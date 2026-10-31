@@ -2,9 +2,20 @@
 
 body.vc-ui #vc-model-settings-root {
   --vcms-bg: var(--vc-group);
+  --vcms-surface: var(--vc-group);
+  --vcms-raised: var(--vc-fill);
+  --vcms-border: var(--vc-separator);
+  --vcms-text: var(--vc-ink);
   --vcms-text-2: var(--vc-ink-2);
   --vcms-border-soft: var(--vc-separator);
+  --vcms-primary: var(--vc-accent);
+  --vcms-on-primary: var(--vc-on-accent);
+  --vcms-success: var(--vc-success);
+  --vcms-warning: var(--vc-warning);
+  --vcms-danger: var(--vc-danger);
 }
+
+body.vc-ui #vc-model-settings-root .vcms-badge { color: var(--vc-ink); }
 
 body.vc-ui #vc-model-settings-root .vcms-table-wrap {
   border: 0;
