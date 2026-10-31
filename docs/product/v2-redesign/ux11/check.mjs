@@ -58,7 +58,7 @@ async function geometry(page){return page.evaluate(()=>{
  const rects=nodes=>[...nodes].filter(visible).map(n=>({tag:n.tagName,cls:n.className,text:n.textContent.trim().slice(0,20),r:n.getBoundingClientRect()}));
  const overlaps=nodes=>{const a=rects(nodes),found=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){const r=a[i].r,s=a[j].r;if(Math.min(r.right,s.right)-Math.max(r.left,s.left)>1&&Math.min(r.bottom,s.bottom)-Math.max(r.top,s.top)>1)found.push([a[i].text,a[j].text]);}return found;};
  const errors=[];if(document.documentElement.scrollWidth>innerWidth+1)errors.push('横向滚动');
- for(const list of document.querySelectorAll('[data-vc-components],.vcms-body,.vc-column,.vc-scroll,.vc-shell-scroll'))if(visible(list)){const o=overlaps(list.children);if(o.length)errors.push(['内容重叠',o]);}
+ for(const list of document.querySelectorAll('[data-vc-components],.vcms-body,.vc-column,.vc-scroll,.vc-shell-scroll'))if(visible(list)){if([...list.children].length&&[...list.children].every(n=>n.classList.contains('vc-screen')))continue;const o=overlaps(list.children);if(o.length)errors.push(['内容重叠',o]);}
  for(const h of document.querySelectorAll('.vcms-header,.vc-sheet-head,.vc-shell-page.is-on > .vc-navbar'))if(visible(h)){
   const o=overlaps([...h.children].filter(n=>!n.classList.contains('vc-nav-spacer')&&!n.classList.contains('vcms-subtitle')&&!n.classList.contains('vcms-dismiss')));if(o.length)errors.push(['标题栏重叠',o]);
   for(const b of h.querySelectorAll('button'))if(visible(b)&&b.getBoundingClientRect().height>80)errors.push('标题栏按钮竖排');

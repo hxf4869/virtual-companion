@@ -40,9 +40,11 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/companion-state'))data={mood:{vibe:'好奇'}};
   else if(path.endsWith('/follow-ups'))data=scenario==='empty'?[]:previewFollowUps;
   else if(path.includes('/follow-ups/')&&path.endsWith('/cancel')){data=previewFollowUps[0];data.status='CANCELLED';}
-  else if(/\/relationships\/\d+\/memories$/.test(path))data=scenario==='empty'?[]:previewMemories.map(row=>scenario==='long'?{...row,summary:row.summary.repeat(20)}:row);
+  else if(/\/relationships\/\d+\/memories$/.test(path)){
+   const q=url.searchParams,status=q.get('status');data=scenario==='empty'?[]:previewMemories.filter(row=>row.relationshipId===path.split('/').at(-2)&&(!q.get('q')||row.summary.includes(q.get('q')))&&(!status||[row.lifecycle,row.sourceStatus].includes(status))&&(!q.get('eventDateFrom')||row.time.eventDate>=q.get('eventDateFrom'))&&(!q.get('eventDateTo')||row.time.eventDate<=q.get('eventDateTo'))).map(row=>scenario==='long'?{...row,summary:row.summary.repeat(20)}:row);
+  }
   else if(path.endsWith('/evidence'))data=[];
-  else if(/\/memories\/\d+$/.test(path)){data=previewMemories.find(row=>row.memoryId===path.split('/').at(-1));if(method==='PATCH')Object.assign(data,JSON.parse(init.body),{version:data.version+1});if(method==='DELETE')Object.assign(data,{lifecycle:'FORGOTTEN'});}
+  else if(/\/memories\/\d+$/.test(path)){data=previewMemories.find(row=>row.memoryId===path.split('/').at(-1));if(scenario==='long'&&method==='GET')data={...data,summary:data.summary.repeat(20)};if(method==='PATCH'){const body=JSON.parse(init.body),previous=data;data={...previous,memoryId:String(Math.max(...previewMemories.map(row=>Number(row.memoryId)))+1),summary:body.summary,version:previous.version+1};Object.assign(previous,{lifecycle:'SUPERSEDED',recallEligible:false,supersededByMemoryId:data.memoryId});previewMemories.push(data);}if(method==='DELETE'){Object.assign(data,{lifecycle:'FORGOTTEN',recallEligible:false,cleanup:{state:'DONE'}});data={cleanup:{state:'DONE'}};}}
   else if(path.endsWith('/st/memory/recall'))data={items:previewMemories.slice(0,3),memories:previewMemories.slice(0,3)};
   else if(path.endsWith('/notification-channels')||path.endsWith('/notification-deliveries')||path.endsWith('/auth/sessions')||path.endsWith('/auth/trusted-devices')||path.endsWith('/consents'))data=[];
   else if(path.endsWith('/voice/usage'))data={storageBytes:0};
