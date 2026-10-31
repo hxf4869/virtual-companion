@@ -149,7 +149,7 @@ async function chatCaptures(ctx, since) {
 async function nativeIdle(page) {
     await page.waitForFunction(async()=>{
         const s=await import('/script.js');
-        return !s.isGenerating() && !s.swipesHidden && !s.isChatSaving && s.swipeState==='none'
+        return !window.vcSendMutex?.isBusy && !s.isGenerating() && !s.swipesHidden && !s.isChatSaving && s.swipeState==='none'
             && !(await import('/scripts/slash-commands.js')).isExecutingCommandsFromChatInput;
     },null,{timeout:15000});
 }
@@ -173,7 +173,7 @@ async function waitReply(page, reply) {
     }, reply, { timeout: 60000 }); await nativeIdle(page); } catch(error) {
         const state=await page.evaluate((expected)=>({chatLength:SillyTavern.getContext().chat.length,startLength:window.vcReplyStartLength,
             lastUser:SillyTavern.getContext().chat.at(-1)?.is_user,lastChars:SillyTavern.getContext().chat.at(-1)?.mes?.length,
-            expectedReply:SillyTavern.getContext().chat.at(-1)?.mes===expected,generating:document.body.getAttribute('data-generating'),events:window.vcReplyEvents}),reply);
+            expectedReply:SillyTavern.getContext().chat.at(-1)?.mes===expected,generating:document.body.getAttribute('data-generating'),events:window.vcReplyEvents,sendStarts:window.vcSendStarts,buttonDisabled:document.querySelector('#send_but')?.disabled}),reply);
         throw Error(`native reply wait ${JSON.stringify(state)}: ${error.message}`);
     }
 }
@@ -244,8 +244,15 @@ export async function sceneHlReply(ctx) {
         await page.locator('.vc-sheet-done').last().click();
         await page.emulateMedia({reducedMotion:'no-preference'});
 
-        await page.evaluate(() => {
+        await page.evaluate(async() => {
             const c=SillyTavern.getContext(); window.vcHistoryHookCalls=0; c.eventSource.on('vc-chat-history-ready',()=>{window.vcHistoryHookCalls++;});
+            const script=await import('/script.js'),commands=await import('/scripts/slash-commands.js');
+            const {SimpleMutex}=await import('/scripts/util/SimpleMutex.js');const update=SimpleMutex.prototype.update;
+            window.vcSendStarts=[];
+            SimpleMutex.prototype.update=function(...args){
+                if(this.callback===script.sendTextareaMessage){window.vcSendMutex=this;window.vcSendStarts.push({busy:this.isBusy,generating:script.isGenerating(),hidden:script.swipesHidden,saving:script.isChatSaving,swipe:script.swipeState,command:commands.isExecutingCommandsFromChatInput});window.vcSendStarts=window.vcSendStarts.slice(-6);}
+                return update.apply(this,args);
+            };
             window.vcReplyEvents=[];
             for(const name of ['GENERATION_STARTED','GENERATION_ENDED','CHARACTER_MESSAGE_RENDERED','GENERATION_STOPPED']) {
                 c.eventSource.on(c.eventTypes[name],(type,_options,dryRun)=>{window.vcReplyEvents.push({event:name,type:name==='GENERATION_STARTED'?type:undefined,dryRun:!!dryRun});window.vcReplyEvents=window.vcReplyEvents.slice(-12);});
