@@ -1,6 +1,7 @@
 // 新外观全站走查。默认不进场景集，只在 --filter vc-ui-walkthrough 时运行。
 // 合成角色与合成会话；不发真实消息，不记录凭据或对话正文。
 import crypto from 'node:crypto';
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -289,21 +290,28 @@ export async function sceneVcUiWalkthrough(ctx) {
                 const r = el.getBoundingClientRect();
                 return { overlap: input.bottom - actions.top, height: input.height, inset: Math.min(r.left, innerWidth - r.right) };
             }));
-            if (forms.some((r) => r.overlap > 0 || r.height < 44 || r.inset < 15)) throw new Error(`实例编辑框被裁切 ${width}/${theme}: ${JSON.stringify(forms)}`);
+            assert.ok(!forms.some((r) => r.overlap > 0 || r.height < 44 || r.inset < 15), `实例编辑框被裁切 ${width}/${theme}: ${JSON.stringify(forms)}`);
         }
         if (pageName === 'tavern-world') {
             const fields = await page.locator('#WorldInfo .select2-selection--multiple').evaluateAll((els) => els.map((el) => {
                 const r = el.getBoundingClientRect(), f = el.querySelector('.select2-search__field').getBoundingClientRect();
                 return { top: f.top - r.top, bottom: r.bottom - f.bottom, height: f.height, fits: f.left >= r.left && f.right <= r.right };
             }));
-            if (!fields.length || fields.some((r) => r.top < 0 || r.bottom < 0 || r.height < 28 || !r.fits)) throw new Error(`世界书输入框被裁切 ${width}/${theme}: ${JSON.stringify(fields)}`);
+            assert.ok(fields.length && !fields.some((r) => r.top < 0 || r.bottom < 0 || r.height < 28 || !r.fits), `世界书输入框被裁切 ${width}/${theme}: ${JSON.stringify(fields)}`);
+        }
+        if (pageName === 'tavern-extensions') {
+            const fits = await page.locator('#extensions_connect').evaluate((el) => {
+                const range = document.createRange(); range.selectNodeContents(el);
+                return range.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).fontSize) * 1.6;
+            });
+            assert.ok(fits, `扩展连接按钮文字换行 ${width}/${theme}`);
         }
         await page.screenshot({ path: file });
         bucket.shots.push({ file, caption: `${width} ${theme} ${pageName}` });
         if (Array.isArray(ctx.screenshots)) ctx.screenshots.push(file);
     };
     try {
-        const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'zh-CN' });
         await pinVcUi(context, 'on');
         await context.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
@@ -542,7 +550,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                         }, drawer.panel, { timeout: 8000 });
                         await record(page, viewport.width, theme, drawer.page, bucket);
                     } catch (error) {
-                        if (String(error?.message || error).includes('残留浮层')) throw error;
+                        if (error?.code === 'ERR_ASSERTION' || String(error?.message || error).includes('残留浮层')) throw error;
                         notes.push(`${viewport.width} ${theme} ${drawer.page}：${error.message}`);
                     }
                     const back = page.locator(`#${drawer.panel} [data-vc-drawer-back]`).first();
@@ -686,6 +694,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 return;
             }
             const groupContext = await browser.newContext({
+                locale: 'zh-CN',
                 viewport: { width: group.viewport.width, height: group.viewport.height },
                 storageState,
             });

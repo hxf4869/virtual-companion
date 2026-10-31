@@ -951,13 +951,29 @@ body.vc-ui #Backgrounds.vc-drawer-page .BGSampleTitle {
   margin: 0;
   padding: 3px 6px;
   overflow: hidden;
-  color: var(--vc-on-accent) !important;
+  color: var(--vc-ink) !important;
   opacity: 1 !important;
-  background: color-mix(in srgb, var(--vc-ink) 78%, transparent);
+  background: var(--vc-glass-strong);
   font-size: var(--vc-fs-caption);
   line-height: 1.35;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+body.vc-ui #rm_extensions_block.vc-drawer-page #extensions_connect {
+  width: auto !important;
+  min-width: max-content !important;
+  padding-inline: var(--vc-space-sm) !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+body.vc-ui #rm_api_block.vc-drawer-page .reverse_proxy_warning {
+  padding: var(--vc-space-md);
+  border: 0;
+  border-radius: var(--vc-radius-md);
+  color: var(--vc-warning);
+  background: var(--vc-group);
 }
 
 body.vc-ui #Backgrounds.vc-drawer-page .bg_example {
