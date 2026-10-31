@@ -98,7 +98,7 @@ test('聊天样式只写在 body.vc-ui 下，且不限制角色卡 iframe', () =
             keyframeDepth = depth;
         }
         if (!keyframe && line.includes('{') && !line.startsWith('@') && !line.startsWith('from') && !line.startsWith('to') && !/^\d+%/.test(line)) {
-            assert.equal(line.startsWith('body.vc-ui'), true, line);
+            assert.equal(line.startsWith('body.vc-ui') || line.startsWith('html:not([data-vc-layout="desktop"]) body.vc-ui'), true, line);
         }
         const opens = (line.match(/\{/g) || []).length;
         const closes = (line.match(/\}/g) || []).length;
