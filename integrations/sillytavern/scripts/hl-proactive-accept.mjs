@@ -200,12 +200,13 @@ export async function sceneHlProactive(ctx) {
     topicRow.extra.no_memory=true;
     prepareSourceIdentities(changedRows,{settled:true,sourceTimezone:'Asia/Shanghai'});
     if((await save(changedRows)).status!==200)throw Error('RQ-10 source opt-out save failed');
-    await speak('我回来了',at(0,'14:00:00'));
+    await speak('我回来了',at(0,'13:45:00'));
     const since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
-    // Before the greeting cluster's six-hour cooldown expires, the fixture
-    // selects sharing. At 16:00 a fresh greeting is also valid.
+    // Allow the full 120-minute interaction gap while staying before the
+    // greeting cluster's six-hour cooldown expires. At 16:00 a fresh greeting
+    // is also valid.
     const withoutTopic=await runAt(at(0,'15:50:00'));
-    if(withoutTopic.outcome!=='READY' || withoutTopic.reason!=='share_day')throw Error('RQ-10 invalid source remained a continuation candidate');
+    if(withoutTopic.outcome!=='READY' || withoutTopic.reason!=='share_day')throw Error(`RQ-10 source opt-out expected READY/share_day, got ${withoutTopic.outcome}/${withoutTopic.reason || ''}`);
     const after=await ctx.fixtureHttp.captures({protocol:'chat',since});
     if(JSON.stringify(after).includes('上次有个话题还没说完，见下方已记录话题'))throw Error('RQ-10 opted-out source leaked into continuation prompt');
     if(JSON.stringify(after).includes('<vc-open-topic>'))throw Error('RQ-10 opted-out source remained in topic data');
