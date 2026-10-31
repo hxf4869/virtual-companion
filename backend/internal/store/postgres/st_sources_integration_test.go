@@ -139,6 +139,48 @@ func TestSTSourcesUnavailableRecoversWithoutPermanentInvalidation(t *testing.T) 
 		t.Fatalf("deleted recall len=%d err=%v", len(mems), err)
 	}
 }
+
+func TestSTSourcesReconcileAcceptsNewerCommittedSnapshot(t *testing.T) {
+	for _, state := range []string{"PRESENT", "UNAVAILABLE", "DELETED"} {
+		t.Run(state, func(t *testing.T) {
+			_, template, _ := sourceFixture(t)
+			reads := 0
+			testEnv.store.UseSTSourceReader(sourceReaderFunc(func(ctx context.Context, owner int64, queries []stsource.Query) ([]stsource.Snapshot, error) {
+				reads++
+				query := queries[0]
+				revision := int64(1)
+				if query.Revision != nil {
+					revision = *query.Revision + 1
+				}
+				observed := *template
+				observed.Revision = revision
+				winner := observed
+				winner.Revision++
+				// A sibling reconciliation commits while this persisted read is in flight.
+				_, err := testEnv.store.applySTSourceSnapshot(ctx, owner, stSourceBase{Query: query}, winner)
+				if err != nil {
+					t.Fatalf("commit sibling snapshot: %v", err)
+				}
+				if state != "PRESENT" {
+					appliedRevision := winner.Revision
+					winner.Revision++
+					winner.State, winner.Messages = state, nil
+					if _, err := testEnv.store.applySTSourceSnapshot(ctx, owner, stSourceBase{Query: stsource.Query{ChatIdentity: sourceChat, Revision: &appliedRevision}}, winner); err != nil {
+						t.Fatalf("commit sibling availability decision: %v", err)
+					}
+				}
+				return []stsource.Snapshot{observed}, nil
+			}))
+			result, err := testEnv.store.ReconcileSTSources(context.Background(), 1, []string{sourceChat})
+			if err != nil {
+				t.Fatalf("newer committed state must satisfy reconciliation: %v", err)
+			}
+			if len(result) != 1 || result[0].State != state || result[0].Revision == nil || *result[0].Revision < 2 || reads != 1 {
+				t.Fatalf("state=%v reads=%d, want %s without repeated stale reads", result, reads, state)
+			}
+		})
+	}
+}
 func TestSTSourcesUnsettledAndSuppressedCannotBeEvidence(t *testing.T) {
 	binding, snapshot, _ := sourceFixture(t)
 	ctx := context.Background()

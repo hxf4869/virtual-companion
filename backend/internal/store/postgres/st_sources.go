@@ -143,15 +143,30 @@ func (s *Store) applySTSourceSnapshot(ctx context.Context, owner int64, base stS
 		}
 	}
 	out := STSourceState{ChatIdentity: base.ChatIdentity}
+	superseded := false
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, `SELECT vc.apply_st_source_snapshot($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
 			owner, base.ChatIdentity, base.Revision, revision, snap.State, snap.Location, payload, nullIfBlank(snap.BranchRoot)).Scan(&out.State); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, `SELECT st_applied_revision FROM vc.conversation WHERE owner_user_id=$1 AND st_chat_identity=$2`, owner, base.ChatIdentity).Scan(&out.Revision)
+		var appliedState string
+		if err := tx.QueryRow(ctx, `SELECT st_applied_revision,COALESCE(st_source_state,'UNAVAILABLE') FROM vc.conversation WHERE owner_user_id=$1 AND st_chat_identity=$2`, owner, base.ChatIdentity).Scan(&out.Revision, &appliedState); err != nil {
+			return err
+		}
+		// A sibling has already applied at least this persisted revision. Its
+		// current state satisfies the read; do not replay this older snapshot
+		// or overwrite a later deletion/availability decision in side effects.
+		if out.State == "RETRY" && snap.State == "PRESENT" && out.Revision != nil && *out.Revision >= snap.Revision {
+			out.State = appliedState
+			superseded = true
+		}
+		return nil
 	})
 	if err != nil {
 		return out, mapStoreErr(err)
+	}
+	if superseded {
+		return out, nil
 	}
 	if snap.State == "PRESENT" && !snap.NotModified {
 		if err := s.SuppressProactiveSources(ctx, owner, base.ChatIdentity); err != nil {
