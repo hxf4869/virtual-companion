@@ -432,6 +432,8 @@
         选型册已交付 93 项，手机 93 项选原版，桌面已选 89 项（原版 37、紧凑分组 48、标准网页 4），另 4 项待定；选择是方向参考。Owner 已确认先保留原版 UX，完善 DESIGN.md 第三版与双端组件样板，再看模型、语音、身份验证代表页。
         当前交付只含规范与本地合成样板，源码在 `docs/product/v2-redesign/ux10-v3/`；复用既有 UI 控件、模型与语音渲染，未修改生产加载入口。待 Owner 继续反馈后再迁移产品页面；生产仍为 `d1f19905`，继续暂停发布，UX-10 保持未勾选。
         加载观察：首次约 55s 未再复现持续卡死；连续采样的无缓存主界面就绪约 15.7s，先前 3.3s / 4.2s 是文档加载值。已补首屏状态和超过 20s 的手动重载入口，未宣称最初慢加载根因已全部解决。
+      - [ ] UX-11：Owner 2026-11-01 定桌面「沉浸玻璃」改版（方案 `docs/planning/2026-11-01-ux11-desktop-immersive-plan.md`，Backlog G 节 UX-11–UX-21）。UX-10 分支两个文档提交已快进合入 main 并删除分支，后续在 `ux-11-desktop-immersive`。
+        已完成：出图提示词、Owner 选 B 全站（`.review-queue/UX-11/images/PICKS.md`）、DESIGN.md v4 第 16 节桌面表现层、ADR-0010（App 为 uni-app 壳 + web-view）、文案文档 UX-11 节。待办：Owner 补 D1/D6/D7/D8 深色图后核对第 16 节深色数值。只改文档，`git diff --check` PASS；未运行应用检查，未部署。
       - [x] VO-1：`394988f3` 已合入并推送 main。OpenAPI 8 个操作、voice catalog 及生成物、V272 / 193 个迁移、账户语音设置与关系声音字段；owner RLS、重复消息唯一约束、每引擎最多一个 running 任务、持久化 429 退避字段。现有关系读写返回类型保持兼容，语音读写函数与 Go 实现归 VO-2，ASR 实现归 VO-7。
         验证 PASS：同一提交上 `bash scripts/check.sh` 全量（43s，含迁移计数、Go 与 ST 单测）、`infra/db/run-rls-tests.sh` 整组（含 `301_voice_contract_rls.sql` 的隔离 / 约束 / 级联）、`hl-proactive` 受管整组（含新语音表强制 RLS 与关系默认值，现有主动引擎行为通过）。无 UI 改动，截图目录不适用。
         2026-10-31 02:18（Asia/Shanghai）用 `bash ops/deploy/v2/deploy.sh 394988f3` 部署生产，部署前自动加密备份完成；自检 PASS：容器健康、193 迁移 / V272、Go health、MemoryCore readyz、ST 登录页、重排与向量。未调用真实语音引擎，本项未启用语音运行能力。
