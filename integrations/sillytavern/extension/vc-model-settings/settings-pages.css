@@ -1231,3 +1231,32 @@ body.vc-ui #vc-model-settings-root .vcms-providers-title { display: none; }
   }
   body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-tabpanes { padding-top: 0 !important; }
 }
+
+/* UX-12：只有修改态重新分配标题与操作宽度，干净状态沿用原布局。 */
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) .vc-nav-title {
+  position: static;
+  transform: none;
+  width: auto;
+  max-width: none;
+  flex: 1;
+  text-align: left;
+  grid-column: auto;
+}
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) .vc-nav-spacer { display: none; }
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) :is(#vcms-discard, #vcms-save) {
+  grid-column: auto;
+  margin: 0;
+  white-space: nowrap;
+}
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) .vc-circle { grid-column: 1; grid-row: 1; }
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) .vc-nav-title { grid-column: 2; grid-row: 1; justify-self: stretch; }
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) #vcms-discard { grid-column: 3; grid-row: 1; }
+body.vc-ui #vc-model-settings-root .vcms-header:has(#vcms-discard:not([hidden])) #vcms-save { grid-column: 4; grid-row: 1; }
+
+/* UX-12 §5：手机干净态保持原像素，禁用语义阻止无修改提交。 */
+@media (max-width: 743px) {
+  body.vc-ui #vc-model-settings-root #vcms-save:disabled[data-vc-clean] { opacity: 1; }
+}

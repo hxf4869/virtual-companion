@@ -1,6 +1,8 @@
 // Virtual Companion · 模型设置页 — 页面控制器（原生 DOM，无框架）。
 // 入口由 ST 扩展 index.js 或独立 harness 调用 mountModelSettings()。
 // 样式作用域 .vcms-*；主题 tokens 见 style.css（v2-design §3）。
+import { confirmAlert, confirmDiscard } from './ui/alert.js';
+import { showToast } from './ui/toast.js';
 import * as logic from './model-logic.js';
 import * as api from './api.js';
 import { bindSwitch } from './ui/controls.js';
@@ -125,8 +127,7 @@ export function mountModelSettings() {
     };
 
     function isDirty() {
-        if (!state.draft || !state.originalDraft) return false;
-        if (logic.draftDiffers(state.draft, state.originalDraft)) return true;
+        if (state.draft && state.originalDraft && logic.draftDiffers(state.draft, state.originalDraft)) return true;
         for (const b of state.bindingsDraft.values()) if (b.dirty) return true;
         return false;
     }
@@ -146,7 +147,8 @@ export function mountModelSettings() {
 
     const controller = {
         open,
-        close,
+        close: requestClose,
+        requestLeave,
         isOpen: () => !overlay.hidden,
         isDirty,
         onCatalogSaved(cb) {
@@ -338,10 +340,12 @@ export function mountModelSettings() {
             return;
         }
         const impacts = sharedImpactModels();
-        if (impacts.length && !state.impact) {
+        const usages = [...new Set(impacts.flatMap((item) => item.usages.map((usage) => usage.label)))];
+        if (usages.length > 1 && !state.impact) {
             state.impact = impacts;
-            render();
-            return;
+            const accepted = await confirmAlert({ title: `同时影响 ${usages.length} 个用途`, message: `${usages.join('、')} 会使用修改后的配置。`, cancel: '检查一下', action: '仍要保存' });
+            state.impact = null;
+            if (!accepted) return;
         }
         const isNew = state.creatingNew;
         const payload = logic.buildProviderPut(state.draft, { isNew });
@@ -357,7 +361,7 @@ export function mountModelSettings() {
             state.stash = null;
             state.stashBanner = false;
             state.conflict = null;
-            toast('已保存。', 'success');
+            toast('已保存', 'success');
             const keepId = providerId;
             state.providers = await api.fetchProviders();
             state.purposes = await api.fetchModelPurposes();
@@ -527,16 +531,32 @@ export function mountModelSettings() {
         } else {
             render();
         }
-        root.querySelector('.vcms-panel')?.focus();
+        root.querySelector('.vc-nav-title, .vcms-title')?.focus({ preventScroll: true });
     }
 
-    function requestClose({ toSettings = false } = {}) {
-        state.returnToSettings = toSettings;
-        if (isDirty()) {
-            state.closing = true;
-            render();
-            return;
+    function discardDrafts() {
+        selectProvider(state.selectedProviderId, { silent: true });
+        for (const [purpose, draft] of state.bindingsDraft) {
+            const saved = state.purposes.find((item) => item.purpose === purpose);
+            Object.assign(draft, { providerId: saved?.providerId ?? '', profileKey: saved?.profileKey ?? '', state: saved?.state ?? 'ENABLED', revision: saved?.revision ?? 0, dirty: false, error: null });
         }
+    }
+
+    let confirmingLeave = false;
+    async function requestLeave() {
+        if (state.saving || state.bindingsSaving || confirmingLeave) return false;
+        if (!isDirty()) return true;
+        confirmingLeave = true;
+        const discard = await confirmDiscard({ opener: document.activeElement });
+        confirmingLeave = false;
+        if (!discard) return false;
+        discardDrafts();
+        return true;
+    }
+
+    async function requestClose({ toSettings = false } = {}) {
+        if (!await requestLeave()) return;
+        state.returnToSettings = toSettings;
         close();
     }
 
@@ -554,15 +574,7 @@ export function mountModelSettings() {
     }
 
     function toast(message, kind) {
-        state.toast = { message, kind, at: Date.now() };
-        render();
-        const ttl = 3200;
-        setTimeout(() => {
-            if (state.toast && Date.now() - state.toast.at >= ttl) {
-                state.toast = null;
-                render();
-            }
-        }, ttl + 50);
+        showToast(message, { type: kind });
     }
 
     // ---------- 渲染 ----------
@@ -610,11 +622,20 @@ export function mountModelSettings() {
     }
 
     function render() {
+        const oldScreen = overlay.querySelector('[data-vc-screen]')?.getAttribute('data-vc-screen');
+        const active = document.activeElement;
+        const waitingWidth = active?.getBoundingClientRect?.().width;
+        const activeAction = active?.getAttribute?.('data-action');
         overlay.innerHTML = renderShell();
         refreshFeedback();
         syncSendGate();
         const providerSwitch = overlay.querySelector('[data-action="toggle-provider-state"].vc-switch');
         if (providerSwitch) bindSwitch(providerSwitch);
+        if (waitingWidth && activeAction && (state.saving || state.check.busy || state.discoverBusy)) {
+            const waiting = overlay.querySelector(`[data-action="${activeAction}"]`);
+            if (waiting) { waiting.style.width = `${waitingWidth}px`; waiting.style.minWidth = `${waitingWidth}px`; }
+        }
+        if (oldScreen !== state.vcScreen || document.activeElement === document.body) overlay.querySelector('.vc-nav-title, .vcms-title')?.focus({ preventScroll: true });
     }
 
     function renderShell() {
@@ -658,24 +679,24 @@ export function mountModelSettings() {
             return `
         <header class="vcms-header vc-navbar" style="--vc-nav-p:1">
             <button type="button" class="vc-circle vc-glass" data-action="vc-back" aria-label="返回${esc(nav.back)}">${icon('chevron-left', { size: 22 })}</button>
-            <div class="vc-nav-title">${esc(nav.title)}</div>
+            <div class="vc-nav-title" tabindex="-1">${esc(nav.title)}</div>
             <div class="vc-nav-spacer"></div>
-            <span class="vcms-dirty" id="vcms-dirty" hidden><span class="vcms-dot"></span>未保存的修改</span>
+
             <button type="button" class="vc-btn vc-btn-text" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
             <button type="button" class="vc-btn vc-btn-fill" id="vcms-save" data-action="save">保存更改</button>
             <button type="button" class="vcms-dismiss" data-action="close" aria-hidden="true" tabindex="-1">关闭</button>
-            <h2 class="vcms-title">模型设置</h2>
+            <h2 class="vcms-title" tabindex="-1">模型设置</h2>
             <p class="vcms-subtitle">供应商 ${providerCount} · 模型配置 ${modelCount} · 用途绑定 ${state.purposes.length}</p>
         </header>`;
         }
         return `
         <header class="vcms-header">
             <div class="vcms-header-titles">
-                <h2 class="vcms-title">模型设置</h2>
+                <h2 class="vcms-title" tabindex="-1">模型设置</h2>
                 <p class="vcms-subtitle">供应商 ${providerCount} · 模型配置 ${modelCount} · 用途绑定 ${state.purposes.length}</p>
             </div>
             <div class="vcms-header-actions">
-                <span class="vcms-dirty" id="vcms-dirty" hidden><span class="vcms-dot"></span>未保存的修改</span>
+
                 <button type="button" class="vcms-btn vcms-btn-ghost" id="vcms-discard" data-action="discard" hidden>放弃修改</button>
                 <button type="button" class="vcms-btn vcms-btn-primary" id="vcms-save" data-action="save">保存更改</button>
                 <button type="button" class="vcms-iconbtn" data-action="close" aria-label="关闭模型设置" title="关闭（Esc）"><i class="fa-solid fa-xmark"></i></button>
@@ -1023,7 +1044,7 @@ export function mountModelSettings() {
             </section>
 
             ${renderTestSection()}
-            ${renderImpactPanel()}
+
             ${state.saveError ? `<div class="vcms-callout vcms-callout-danger" role="alert" id="vcms-save-error"><i class="fa-solid fa-triangle-exclamation"></i><div>${esc(state.saveError)} <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="save">重试保存</button></div></div>` : ''}
             <div class="vcms-update-meta vcms-muted">更新于 ${fmtTime(d.updatedAt)} · 配置版本 v${d.revision}${d.endpointUrl ? ` · 最终地址 ${esc(d.endpointUrl)}` : ''}</div>
         </div>`;
@@ -1506,17 +1527,10 @@ export function mountModelSettings() {
     }
 
     function renderFooter() {
-        return `
-        <footer class="vcms-footer">
+        return `<footer class="vcms-footer">
             <button type="button" class="vcms-btn vcms-btn-ghost" data-action="close">取消并返回</button>
             <button type="button" class="vcms-btn vcms-btn-primary" id="vcms-save-footer" data-action="save">保存配置</button>
-        </footer>
-        ${state.closing ? `
-        <div class="vcms-unsaved-bar" role="alertdialog" aria-label="有未保存的修改">
-            <span>有未保存的修改，确定要关闭吗？关闭后本次输入将丢失。</span>
-            <button type="button" class="vcms-btn vcms-btn-ghost vcms-btn-sm" data-action="keep-editing">继续编辑</button>
-            <button type="button" class="vcms-btn vcms-btn-danger vcms-btn-sm" data-action="discard-close">放弃修改并关闭</button>
-        </div>` : ''}`;
+        </footer>`;
     }
 
     // ---------- 反馈刷新（不重渲染表单，避免丢焦点） ----------
@@ -1589,11 +1603,12 @@ export function mountModelSettings() {
             }
         }
 
-        const saveDisabled = anyError || state.saving;
+        const saveDisabled = !dirty || anyError || state.saving || state.bindingsSaving;
         for (const id of ['vcms-save', 'vcms-save-footer']) {
             const btn = overlay.querySelector(`#${id}`);
             if (btn) {
                 btn.disabled = saveDisabled;
+                btn.toggleAttribute('data-vc-clean', !dirty && !anyError && !state.saving && !state.bindingsSaving);
                 btn.textContent = state.saving ? '保存中…' : (id === 'vcms-save' ? '保存更改' : '保存配置');
                 if (anyError) btn.title = '存在校验错误，请先按提示修改';
                 else btn.removeAttribute('title');
@@ -1612,13 +1627,6 @@ export function mountModelSettings() {
 
     // ---------- 事件 ----------
 
-    document.addEventListener('keydown', (ev) => {
-        if (ev.key !== 'Escape' || overlay.hidden || ev.defaultPrevented) return;
-        if (document.querySelector('dialog[open]')) return;
-        ev.preventDefault();
-        requestClose();
-    });
-
     overlay.addEventListener('toggle', (ev) => {
         const details = ev.target;
         if (!details?.classList?.contains('vcms-advanced')) return;
@@ -1628,7 +1636,7 @@ export function mountModelSettings() {
     overlay.addEventListener('click', (ev) => {
         const actionEl = ev.target.closest('[data-action]');
         if (!actionEl || !overlay.contains(actionEl)) return;
-        handleAction(actionEl.getAttribute('data-action'), actionEl);
+        void handleAction(actionEl.getAttribute('data-action'), actionEl);
     });
 
     overlay.addEventListener('keydown', (ev) => {
@@ -1710,7 +1718,8 @@ export function mountModelSettings() {
                     d.providerId = '';
                     d.profileKey = '';
                 }
-                d.dirty = true;
+                const saved = state.purposes.find((item) => item.purpose === purpose);
+                d.dirty = d.providerId !== (saved?.providerId ?? '') || d.profileKey !== (saved?.profileKey ?? '');
             }
             return;
         }
@@ -1747,26 +1756,25 @@ export function mountModelSettings() {
         cur[parts[parts.length - 1]] = value;
     }
 
-    function guardDirtySwitch() {
-        if (!isDirty()) return false;
-        toast('有未保存的修改。请先保存，或点「放弃修改」后再切换。', 'info');
-        return true;
-    }
-
-    function handleAction(action, el) {
+    async function handleAction(action, el) {
+        if (['new-provider', 'select-provider', 'tab', 'vc-back', 'discard'].includes(action) && !await requestLeave()) return;
         switch (action) {
             case 'close':
                 requestClose();
                 break;
-            case 'vc-back':
+            case 'vc-back': {
                 if (!vcUiEnabled()) break;
-                if (state.vcScreen === 'model') state.vcScreen = 'provider';
-                else if (state.vcScreen === 'provider') {
-                    state.vcScreen = 'home';
-                    state.tab = 'bindings';
-                } else requestClose({ toSettings: true });
+                const from = state.vcScreen;
+                const provider = state.selectedProviderId;
+                const profile = state.selectedProfileKey;
+                if (from === 'model') state.vcScreen = 'provider';
+                else if (from === 'provider') { state.vcScreen = 'home'; state.tab = 'bindings'; }
+                else { void requestClose({ toSettings: true }); break; }
                 render();
+                const rows = overlay.querySelectorAll(`[data-action="${from === 'model' ? 'select-model' : 'select-provider'}"]`);
+                [...rows].find((row) => row.getAttribute(from === 'model' ? 'data-key' : 'data-id') === (from === 'model' ? profile : provider))?.focus({ preventScroll: true });
                 break;
+            }
             case 'local-models-retry':
                 void loadLocalModels();
                 break;
@@ -1795,17 +1803,15 @@ export function mountModelSettings() {
                 load();
                 break;
             case 'new-provider':
-                if (guardDirtySwitch()) break;
                 state.draft = logic.newProviderDraft();
                 state.originalDraft = deepClone(state.draft);
                 state.creatingNew = true;
                 state.tab = 'provider';
                 if (vcUiEnabled()) state.vcScreen = 'provider';
                 render();
-                overlay.querySelector('#vcms-f-display')?.focus();
+                overlay.querySelector('.vc-nav-title, .vcms-title')?.focus({ preventScroll: true });
                 break;
             case 'select-provider': {
-                if (guardDirtySwitch()) break;
                 const id = el.getAttribute('data-id');
                 if (!id) {
                     state.draft = logic.newProviderDraft();
@@ -1837,13 +1843,14 @@ export function mountModelSettings() {
                 render();
                 break;
             case 'discard':
-                selectProvider(state.selectedProviderId, { silent: true });
+                discardDrafts();
                 toast('已放弃未保存的修改。', 'info');
                 render();
                 break;
             case 'save':
             case 'save-anyway':
-                doSaveProvider();
+                if (vcUiEnabled() && state.vcScreen === 'home') void doSaveBindings();
+                else void doSaveProvider();
                 break;
             case 'impact-cancel':
                 state.impact = null;

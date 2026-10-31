@@ -1,5 +1,6 @@
 // 两档可拖拽 sheet：约 56% 与全高，内部可推入下一层，Esc 关闭并归还焦点。
 import { animate, prefersReducedMotion, spring, PROJECT_SECONDS } from './motion.js';
+import { confirmDiscard } from './alert.js';
 import { icon } from './icons.js';
 
 export const SHEET_TOP_GAP = 54;
@@ -38,7 +39,7 @@ function focusable(root) {
     });
 }
 
-export function openSheet({ title = '', body, root, large = false, initial, onDone, opener } = {}) {
+export function openSheet({ title = '', body, root, large = false, initial, onDone, opener, isDirty = () => false, onSubmit, canClose = () => true } = {}) {
     const doc = (root || document.body).ownerDocument || document;
     const host = root || doc.body;
     const view = doc.defaultView || globalThis;
@@ -127,7 +128,7 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         onDone?.();
         if (previous && typeof previous.focus === 'function') previous.focus();
     }
-    function close() {
+    function finishClose() {
         if (closed) return;
         closed = true;
         ac.abort();
@@ -139,6 +140,23 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
             return;
         }
         to(H + 20, 0, finish);
+    }
+    let confirming = false;
+    async function close() {
+        if (closed || confirming || !canClose()) return false;
+        if (isDirty()) {
+            confirming = true;
+            const discard = await confirmDiscard({ opener: doc.activeElement });
+            confirming = false;
+            if (!discard || closed) return false;
+        }
+        finishClose();
+        return true;
+    }
+    async function complete() {
+        if (onSubmit && isDirty()) {
+            if (await onSubmit()) finishClose();
+        } else await close();
     }
     function dismiss() {
         if (closed) return;
@@ -193,8 +211,9 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     }
 
     scrim.addEventListener('click', () => close(), { signal: ac.signal });
-    el.querySelector('.vc-sheet-done').addEventListener('click', () => close(), { signal: ac.signal });
+    el.querySelector('.vc-sheet-done').addEventListener('click', () => void complete(), { signal: ac.signal });
     el.addEventListener('keydown', (event) => {
+        if (event.defaultPrevented || doc.querySelector('.vc-alert')) return;
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
@@ -266,7 +285,7 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
         if (!moved) return;
         const { containerHeight } = geometry();
         const choice = selectDetent({ y, velocity: vel, containerHeight, large });
-        if (choice.action === 'close') close();
+        if (choice.action === 'close') { void close().then((didClose) => { if (!didClose && !closed) to(st); }); }
         else to(choice.translateY, vel);
     };
     for (const handle of handles) {
@@ -291,5 +310,5 @@ export function openSheet({ title = '', body, root, large = false, initial, onDo
     view.visualViewport?.addEventListener('resize', resize, { signal: ac.signal });
     // 宿主若还能滚动，focus 会把 scrollTop 加到和 translateY 一样，半档被拉回全高，拖动也被抵消。
     el.focus({ preventScroll: true });
-    return { el, scrim, close, dismiss, push };
+    return { el, scrim, close, dismiss, push, done: el.querySelector('.vc-sheet-done') };
 }

@@ -790,6 +790,8 @@ export function mountShell(options = {}) {
 
     function applyChrome() {
         const chrome = chromeForWidth(globalThis.innerWidth);
+        doc.documentElement.dataset.vcLayout = chrome.nav === 'tabbar' ? 'mobile' : 'desktop';
+        root.classList.toggle('vc-desktop-shell', chrome.nav !== 'tabbar');
         root.dataset.chrome = chrome.nav;
         root.dataset.wide = chrome.wide ? '1' : '0';
         const mediumChat = !chrome.wide && root.dataset.destination === 'chat' && entered;

@@ -10,10 +10,12 @@ function focusable(root) {
 export function confirmAlert({ title = '', message = '', action = '删除', cancel = '取消', root, opener } = {}) {
     const doc = (root || document.body).ownerDocument || document;
     const host = root || doc.body;
+    const keyTarget = doc.defaultView || doc;
     const previous = opener || doc.activeElement;
     return new Promise((resolve) => {
         const scrim = doc.createElement('div');
         scrim.className = 'vc-scrim';
+        scrim.style.zIndex = 'var(--vc-z-alert)';
         const dialog = doc.createElement('div');
         dialog.className = 'vc-alert vc-glass';
         dialog.setAttribute('role', 'alertdialog');
@@ -36,7 +38,7 @@ export function confirmAlert({ title = '', message = '', action = '删除', canc
         const finish = (value) => {
             if (settled) return;
             settled = true;
-            doc.removeEventListener('keydown', onKey, true);
+            keyTarget.removeEventListener('keydown', onKey, true);
             scrim.classList.remove('is-on');
             const done = () => {
                 dialog.remove();
@@ -59,6 +61,7 @@ export function confirmAlert({ title = '', message = '', action = '删除', canc
                 return;
             }
             if (event.key !== 'Tab') return;
+            event.stopImmediatePropagation();
             const items = focusable(dialog);
             if (!items.length) {
                 event.preventDefault();
@@ -75,7 +78,7 @@ export function confirmAlert({ title = '', message = '', action = '删除', canc
                 first.focus();
             }
         }
-        doc.addEventListener('keydown', onKey, true);
+        keyTarget.addEventListener('keydown', onKey, true);
         scrim.addEventListener('click', () => finish(false));
         dialog.querySelector('[data-vc-cancel]').addEventListener('click', () => finish(false));
         dialog.querySelector('[data-vc-ok]').addEventListener('click', () => finish(true));

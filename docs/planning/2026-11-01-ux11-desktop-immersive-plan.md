@@ -85,7 +85,7 @@ UX-11 选图定稿 + DESIGN.md v4 + ADR-0010（文档）
 | 条目 | 只能写这些文件 | 说明 |
 |---|---|---|
 | UX-11 | `DESIGN.md`、`docs/decisions/0010-*.md`、`docs/planning/2026-10-30-companion-copy.md`、`S/PICKS.md` 摘要 | 只改文档 |
-| UX-12 | `E/ui/alert.js`、`E/ui/toast.js`、`E/ui/sheet.js`、`E/page.js`、`E/style.css`、`E/settings-pages.css`、`E/voice-settings.js`、对应 `*.test.mjs` | 两端共用的交互修复；手机像素不变 |
+| UX-12 | `E/ui/alert.js`、`E/ui/toast.js`、`E/ui/sheet.js`、`E/page.js`、`E/style.css`、`E/settings-pages.css`、`E/voice-settings.js`、对应 `*.test.mjs`；受管场景 `integrations/sillytavern/scripts/` 下 ui03-browser、voice-settings 相关脚本与 `f3-settings-accept.mjs`（Owner 2026-11-01 追加：只把交互步骤更新到第 5 节新规则，原业务断言全部保留，并为新规则补断言） | 两端共用的交互修复；手机像素不变 |
 | UX-13 | `E/desktop/base.css`、`E/desktop/aurora.js`、`E/desktop/pointer-light.js`、`E/desktop/transition.js`、`E/shell.js`（只加 `data-vc-layout` 属性与桌面外壳类名）、`S/` 下的样板框架（`index.html`、`frame.html`、`serve.py`、`fixtures.js`、`preview.js` 骨架、`check.mjs`） | 桌面基础层；页面条目在此基础上写 |
 | UX-14 | `E/desktop/chat.css`、`E/desktop/character-panel.js`、`S/views/chat.js` | 聊天 |
 | UX-15 | `E/desktop/characters.css`、`S/views/characters.js` | 角色 |

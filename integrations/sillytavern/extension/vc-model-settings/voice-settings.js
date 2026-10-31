@@ -1,6 +1,8 @@
 import { fetchRelationships, fetchVoiceEngines, fetchVoiceSettings, previewVoice, saveVoiceSettings, storyRequest } from './api.js';
 import { invalidateVoicePolicy, waitForVoiceClip } from './voice-chat.js';
 import { voicePlayer } from './voice.js';
+import { confirmDiscard } from './ui/alert.js';
+import { showToast } from './ui/toast.js';
 import { openSheet } from './ui/sheet.js';
 
 const esc=(value)=>String(value??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -76,8 +78,23 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
     const content=doc.createElement('div');const status=doc.createElement('p');status.setAttribute('role','status');status.textContent='正在加载…';
     const latest=doc.createElement('button');latest.type='button';latest.className='vc-btn vc-btn-text';latest.textContent='加载最新';latest.hidden=true;
     const save=doc.createElement('button');save.type='submit';save.className='vc-btn vc-btn-fill';save.textContent='保存';save.disabled=true;
-    form.append(content,status,latest,save);let settings,relationship,engines,closed=false,working=false;
-    const sheet=openSheet({title:relationshipId?'声音':'语音',large:true,body:form,opener,onDone(){closed=true;voicePlayer.stop();}});
+    form.append(content,status,latest);let settings,relationship,engines,closed=false,working=false,baseline='',loaded=false;
+    const snapshot=()=>JSON.stringify(relationship?relationshipVoicePayload(relationship,content):readGlobalVoiceSettings(content,settings));
+    const isDirty=()=>loaded && snapshot()!==baseline;
+    const desktop=()=>doc.defaultView.innerWidth>=744;
+    const sheet=openSheet({title:relationshipId?'声音':'语音',large:true,body:form,opener,isDirty,canClose:()=>!working,onSubmit:submit,onDone(){closed=true;voicePlayer.stop();doc.defaultView.removeEventListener('resize',feedback);}});
+    const discard=doc.createElement('button');discard.type='button';discard.className='vc-btn vc-btn-text';discard.textContent='放弃修改';discard.hidden=true;
+    const cancel=doc.createElement('button');cancel.type='button';cancel.className='vc-btn vc-btn-text';cancel.textContent='取消';
+    sheet.done.before(discard,cancel);
+    cancel.addEventListener('click',()=>void sheet.close());
+    discard.addEventListener('click',async()=>{if(!await confirmDiscard({opener:discard}))return;content.innerHTML=relationship?renderRelationshipVoiceSettings(relationship,engines):renderGlobalVoiceSettings(settings,engines);feedback();});
+    function feedback(){
+        const dirty=isDirty();discard.hidden=!dirty;cancel.hidden=!desktop();
+        sheet.done.disabled=working || !loaded || (desktop() && !dirty);
+        sheet.done.textContent=working?'保存中…':desktop()?'保存':'完成';
+    }
+    doc.defaultView.addEventListener('resize',feedback);
+    feedback();
     const load=async()=>{
         try{
             const [values,caps,relationships]=await Promise.all([fetchVoiceSettings(),fetchVoiceEngines(),relationshipId?fetchRelationships():Promise.resolve([])]);
@@ -86,12 +103,12 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
             if(relationshipId && !relationship)throw new Error('missing');
             content.innerHTML=relationship?renderRelationshipVoiceSettings(relationship,engines):renderGlobalVoiceSettings(settings,engines);
             for(const control of content.querySelectorAll('[role="switch"]'))control.setAttribute('aria-label',control.parentElement.querySelector('.vc-grow')?.textContent||'语音');
-            status.textContent='';latest.hidden=true;save.disabled=false;
+            status.textContent='';latest.hidden=true;loaded=true;baseline=snapshot();feedback();
         }catch{if(!closed){status.textContent='没有完成，请重试。';latest.hidden=false;}}
     };
     latest.addEventListener('click',()=>void load());
     content.addEventListener('click',async(event)=>{
-        const field=event.target.closest('[role="switch"]');if(field && !field.disabled){field.setAttribute('aria-checked',String(field.getAttribute('aria-checked')!=='true'));return;}
+        const field=event.target.closest('[role="switch"]');if(field && !field.disabled){field.setAttribute('aria-checked',String(field.getAttribute('aria-checked')!=='true'));feedback();return;}
         const button=event.target.closest('[data-preview-engine]');if(!button || button.disabled || working)return;
         const engine=button.dataset.previewEngine;const key=engine==='kokoro'?'kokoroVoice':'cosyVoice';
         const choice=content.querySelector(`[data-voice-field="${key}"]`).value;
@@ -101,7 +118,7 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
         if(button.vcPreview?.voice===voice && button.vcPreview.speed===speed){
             await voicePlayer.toggle(button.vcPreview.clipId,{onState(playing){button.textContent=playing?'暂停语音':'试听';},onError(){button.vcPreview=null;status.textContent='没有完成，请重试。';}});return;
         }
-        button.disabled=true;button.textContent='正在生成语音…';
+        button.style.width=`${button.getBoundingClientRect().width}px`;button.style.minWidth=button.style.width;button.disabled=true;button.textContent='正在生成语音…';
         try{
             const queued=await previewVoice({relationshipId:String(relationshipId),engine,voice,speed});
             const clip=await waitForVoiceClip(queued.clipId,{timeoutMs:(engine==='kokoro'?settings.kokoroTimeoutSeconds:settings.cosyVoiceTimeoutSeconds)*1000+5000});
@@ -111,16 +128,21 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
         }catch{if(!closed)status.textContent='没有完成，请重试。';}
         finally{if(!closed){button.disabled=false;if(button.textContent==='正在生成语音…')button.textContent='试听';}}
     });
-    content.addEventListener('input',(event)=>{if(event.target.type==='range'){const output=event.target.parentElement.querySelector('output');if(output)output.textContent=`${Number(event.target.value).toFixed(2)}×`;}});
-    form.addEventListener('submit',async(event)=>{
-        event.preventDefault();if(working || !form.reportValidity())return;working=true;save.disabled=true;status.textContent='';
+    content.addEventListener('change',feedback);
+    content.addEventListener('input',(event)=>{feedback();if(event.target.type==='range'){const output=event.target.parentElement.querySelector('output');if(output)output.textContent=`${Number(event.target.value).toFixed(2)}×`;}});
+    async function submit(){
+        if(working || !isDirty() || !form.reportValidity())return false;
+        const width=sheet.done.getBoundingClientRect().width;sheet.done.style.width=`${width}px`;sheet.done.style.minWidth=`${width}px`;
+        working=true;feedback();status.textContent='';let saved=false;
         try{
             if(relationship)relationship=await storyRequest('PATCH',`/api/v1/relationships/${relationshipId}`,relationshipVoicePayload(relationship,content));
             else settings=await saveVoiceSettings(readGlobalVoiceSettings(content,settings));
-            if(closed)return;invalidateVoicePolicy();globalThis.dispatchEvent(new Event('vc-voice-settings-changed'));status.textContent='已保存';latest.hidden=true;
+            if(closed)return false;invalidateVoicePolicy();globalThis.dispatchEvent(new Event('vc-voice-settings-changed'));baseline=snapshot();latest.hidden=true;showToast('已保存');saved=true;
         }catch(error){if(!closed){status.textContent=error.kind==='conflict-revision'?'设置已在另一处更新。你的输入已保留。':'没有完成，请重试。';latest.hidden=error.kind!=='conflict-revision';}}
-        finally{working=false;if(!closed)save.disabled=false;}
-    });
+        finally{working=false;if(!closed){sheet.done.style.width='';sheet.done.style.minWidth='';feedback();}}
+        return saved;
+    }
+    form.addEventListener('submit',(event)=>{event.preventDefault();void submit();});
     void load();return sheet;
 }
 export const openGlobalVoiceSettings=(options)=>openVoiceForm(options);

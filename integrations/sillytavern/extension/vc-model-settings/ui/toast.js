@@ -15,7 +15,7 @@ export function showToast(message, { type = 'ok', icon: iconName, root, duration
     const host = root || doc.body;
     const sticky = failure(type);
     let toast = instances.get(doc);
-    if (toast && toast.parentElement !== host) host.append(toast);
+    if (toast && toast.parentNode !== host) { toast.remove(); host.append(toast); }
     if (!toast) {
         toast = doc.createElement('div');
         toast.className = 'vc-toast vc-glass';
@@ -24,6 +24,15 @@ export function showToast(message, { type = 'ok', icon: iconName, root, duration
     }
     const existing = timers.get(toast);
     if (existing) { clearTimeout(existing.expire); clearTimeout(existing.remove); }
+    if (doc.defaultView?.innerWidth >= 744) {
+        const panel = [...doc.querySelectorAll('.vcms-panel, [data-vc-content-panel], .vc-shell-page')].findLast((node) => node.getBoundingClientRect().width > 0);
+        const header = panel?.querySelector('.vcms-header, header, .vc-navbar');
+        const rect = panel?.getBoundingClientRect();
+        if (rect) {
+            toast.style.left = `${rect.left + rect.width / 2}px`;
+            toast.style.top = `calc(${header?.getBoundingClientRect().bottom ?? rect.top + 64}px + var(--vc-space-m))`;
+        }
+    } else { toast.style.left = ''; toast.style.top = ''; }
     toast.classList.toggle('is-failure', sticky);
     toast.setAttribute('role', sticky ? 'alert' : 'status');
     toast.replaceChildren();
