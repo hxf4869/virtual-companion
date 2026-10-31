@@ -7,6 +7,11 @@ note: >-
 retrievalPolicy:
   operationId: recallSTMemory
   querySource: last_persisted_user_message
+  gate: >-
+    Pure greetings, acknowledgements and emotional reactions up to 24 letters /
+    digits, or symbol-only emoji, skip long-term retrieval. Mixed factual queries
+    and short genuine questions still recall. Apply after authoritative source
+    reconciliation and affect observation, at both initial and final recall.
   selection: >-
     Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first;
     Build a trusted allowlist from published current Go projections. MemoryCore

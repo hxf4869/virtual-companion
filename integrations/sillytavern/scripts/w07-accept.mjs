@@ -208,12 +208,16 @@ export async function sceneMemoryBrowser(ctx) {
             await page.waitForFunction(() => !document.querySelector('#send_but')?.classList.contains('displayNone'));
             if (await page.locator('#api_button_openai').isVisible()) await page.locator('#API-status-top').click();
         }
+        let firstCharMs=0;
         const send = async (suffix, exactText) => {
             step(`原生发送 ${suffix}`);
             const text = exactText || `我在2026年10月30日准备去哪里，为什么？我们上次读书计划谈到哪一步了？${suffix}`;
             const since = (await ctx.fixtureHttp.captures()).at(-1)?.seq ?? 0;
             await page.locator('#send_textarea').fill(text);
+            const count=await page.locator('#chat > .mes').count();const started=performance.now();
             await page.locator('#send_but').click();
+            await page.waitForFunction(({count,first})=>{const nodes=document.querySelectorAll('#chat > .mes');return nodes.length>=count+2 && nodes[nodes.length-1]?.querySelector('.mes_text')?.textContent.includes(first);},{count,first:fixedReply[0]});
+            firstCharMs=Math.round(performance.now()-started);
             await page.waitForFunction(({ text, fixedReply }) => {
                 const chat = window.SillyTavern.getContext().chat;
                 const stop = document.querySelector('#mes_stop');
@@ -236,6 +240,15 @@ export async function sceneMemoryBrowser(ctx) {
             nativeMemory = rows.find(row => row.lifecycle === 'ACTIVE' && row.recallEligible && row.summary.includes('龙井'));
             return Boolean(nativeMemory);
         }, { timeoutMs: 90000, label: '原生发送后 MemoryCore 记忆可见' });
+        const searched=async()=>((await fs.readFile(path.join(ctx.artifactsDir,'go.log'),'utf8')).match(/msg="memory recall"|"msg"\s*:\s*"memory recall"/g)||[]).length;
+        const gateMeasurements=[];
+        for(const [kind,text] of [['greeting','你好'],['emotion','我好难过'],['emoji','😭']]){
+            const beforeSearch=await searched();await send('（RQ-4 合成门控测量）',text);
+            gateMeasurements.push({kind,searchCalls:(await searched())-beforeSearch,firstCharMs});
+        }
+        await fs.writeFile(path.join(ctx.artifactsDir,'rq4-recall.json'),JSON.stringify({samples:gateMeasurements})+'\n');
+        ctx.results.rq4Recall={samples:gateMeasurements};
+        assert.equal(gateMeasurements.reduce((sum,row)=>sum+row.searchCalls,0),0,'RQ-4 纯回应不能触发初次或出站复核检索');
         const first = historyBlock(await send('（第一轮合成验证）'));
         for (const fact of ['厦门', '朋友婚礼', '2026-10-30']) assert.ok(first.includes(fact), `M01 最终记忆块缺少 ${fact}`);
         assert.ok(first.includes('会话摘要（引擎归纳）：') && first.includes('蓝窗书店') && first.includes('下一步还没决定读哪一本'),

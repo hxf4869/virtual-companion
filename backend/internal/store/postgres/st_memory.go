@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/hxf4869/virtual-companion/internal/companion"
 	"github.com/hxf4869/virtual-companion/internal/memorytime"
@@ -132,6 +133,10 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		if err := s.ObserveCompanionUserText(ctx, owner, b.relationship, querySource.ref, observedText, at); err != nil {
 			return out, err
 		}
+	}
+	if queryErr == nil && !shouldRecallMemory(querySource.text) {
+		out.Status = "skipped"
+		return out, nil
 	}
 	if skipped, err := stRecallLoadError(querySource, queryErr, profileErr); err != nil || skipped {
 		if err != nil {
@@ -323,6 +328,22 @@ func (s *Store) RecallSTMemory(ctx context.Context, owner int64, in STMemoryRequ
 		out.Block = block
 	}
 	return out, nil
+}
+
+var smallTalkMemory = regexp.MustCompile(`^(?:你好|您好|嗨|哈喽|早|早安|早上好|晚上好|晚安|在吗|谢谢|谢啦|好的|好呀|好吧|收到|知道了|抱抱|笑死我了|好开心|好难过|我好难过|有点累|我累了|我困了|我饿了|累了|困了|饿了|(?:哈|嘿|嗯|哦|呜){1,12}|qaq|tt|orz)(?:呀|啊|呢|啦|吧|了)?$`)
+
+func shouldRecallMemory(text string) bool {
+	var normalized strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			normalized.WriteRune(r)
+		}
+	}
+	plain := normalized.String()
+	if plain == "" {
+		return false
+	}
+	return len([]rune(plain)) > 24 || !smallTalkMemory.MatchString(plain)
 }
 func (s *Store) reconcileProfileChats(ctx context.Context, owner int64, refs []string) ([]STSourceState, error) {
 	deps := sourceChats(refs)

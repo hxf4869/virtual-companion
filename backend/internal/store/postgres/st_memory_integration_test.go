@@ -333,3 +333,30 @@ func TestRecallSearchOmitsRerankUntilTheOwnerTurnsItOff(t *testing.T) {
 		t.Fatalf("disabled recall payload %#v", lastEngineSearch["rerankEnabled"])
 	}
 }
+
+func TestPureReactionSkipsEngineAfterSourceValidation(t *testing.T) {
+	b, snapshots := stMemoryFixture(t)
+	ctx := context.Background()
+	snapshot := stMemorySnapshot(sourceChat, "我长期居住在上海，平时在上海工作。", time.Now().UTC())
+	snapshots[sourceChat] = snapshot
+	if _, err := testEnv.store.ReconcileSTSources(ctx, 1, []string{sourceChat}); err != nil {
+		t.Fatal(err)
+	}
+	addSTMemory(t, b, "用户长期居住在上海。", refForChat(t, sourceChat))
+	for index, text := range []string{"你好", "我好难过", "😭", "你好，我住在哪里？"} {
+		snapshot.Revision++
+		snapshot.Messages = append(snapshot.Messages, stsource.Message{MessageID: fmt.Sprintf("20000000-0000-0000-0000-%012d", 100+index), CandidateID: fmt.Sprintf("30000000-0000-0000-0000-%012d", 100+index), Revision: 1, Role: "user", Text: text, Eligible: true, Settled: true})
+		lastEngineSearch = nil
+		out, err := testEnv.store.RecallSTMemory(ctx, 1, STMemoryRequest{ChatIdentity: sourceChat, Revision: snapshot.Revision, Enabled: true, BudgetTokens: 1024})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index < 3 {
+			if lastEngineSearch != nil || out.Status != "skipped" || out.Block != "" {
+				t.Fatal("pure reaction reached the memory engine")
+			}
+		} else if lastEngineSearch == nil || !strings.Contains(out.Block, "上海") {
+			t.Fatal("mixed factual question must still recall")
+		}
+	}
+}
