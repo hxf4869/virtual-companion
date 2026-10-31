@@ -6,6 +6,7 @@ import {
     IMPORT_FAILED_COPY, UNSAVED_INSTANCE_COPY,
     inspectCharacterFile, renderInstancePage, createInstancePage, cardsFromContext, bindingsFromContext,
     importNativeCharacterFile,
+    instanceLabel,
 } from '../extension/vc-model-settings/instance-page.js';
 
 const prefs = {
@@ -17,6 +18,11 @@ const card = { characterRef: 'card-1', name: '澄夏', description: '沿湖散�
 const daily = { relationshipId: '11', personaRef: 'st-character', companionName: '澄夏·日常', active: true, ...prefs };
 const trip = { relationshipId: '12', personaRef: 'st-character', companionName: '澄夏·旅行', active: false, ...prefs };
 const other = { relationshipId: '13', personaRef: 'gentle-listener', companionName: '旧关系', ...prefs };
+
+test('重名实例使用序号区分，唯一名称保持原样', () => {
+    const items = [{ relationshipId: '11', name: '小满' }, { relationshipId: '12', name: '日常' }, { relationshipId: '13', name: '小满' }];
+    assert.deepEqual(items.map((item) => instanceLabel(item, items)), ['小满 1', '日常', '小满 2']);
+});
 
 function pngChunk(type, data) {
     const out = new Uint8Array(12 + data.length);

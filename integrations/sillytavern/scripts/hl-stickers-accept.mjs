@@ -72,6 +72,7 @@ async function theme(page, mode) {
 }
 
 async function shot(page, dir, name, ctx) {
+    if (await page.locator('.vc-onboarding[open]').count()) throw new Error('表情包截图被首次引导遮挡');
     await page.evaluate(async () => {
         const fonts = document.fonts?.ready ?? Promise.resolve();
         await Promise.race([fonts, new Promise((resolve) => setTimeout(resolve, 2000))]);
@@ -206,6 +207,10 @@ async function stickerState(page) {
 }
 
 export async function sceneHlStickers(ctx) {
+    const initialized=await ctx.admin.call('POST','/api/v1/st/bindings',{
+        chatIdentity:crypto.randomUUID(),characterRef:crypto.randomUUID(),mode:'COMPANION',displayName:'表情设置合成前置',
+    });
+    if(initialized.status!==200)throw new Error(`表情设置前置 HTTP ${initialized.status}`);
     if (!Array.isArray(ctx.screenshots)) ctx.screenshots = [];
     await bindForeground(ctx);
     if (ctx.w10?.psql && ctx.w05?.ownerId) ctx.w10.psql(ownerBudgetResetSql(ctx.w05.ownerId));

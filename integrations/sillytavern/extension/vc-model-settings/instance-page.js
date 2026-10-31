@@ -124,6 +124,12 @@ export function instancesFrom(relationships) {
         }));
 }
 
+export function instanceLabel(item, items) {
+    const same = items.filter((row) => row.name === item.name);
+    if (same.length < 2) return item.name;
+    return `${item.name} ${same.findIndex((row) => row.relationshipId === item.relationshipId) + 1}`;
+}
+
 function prefsBody(relationship, name) {
     const id = String(relationship?.relationshipId ?? '');
     if (!ID.test(id) || typeof relationship?.remindersAllowed !== 'boolean' || !Array.isArray(relationship.avoidTopics)) return null;
@@ -597,6 +603,7 @@ function characterModel(state) {
         };
     });
     const placed = new Set();
+    const instanceOrder = new Map(instances.map((item, index) => [item.relationshipId, index]));
     for (const binding of Array.isArray(state.bindings) ? state.bindings : []) {
         const ref = nonEmptyRef(binding?.characterRef);
         const card = ref ? byRef.get(ref) : undefined;
@@ -612,6 +619,7 @@ function characterModel(state) {
         card.instances.push(inst);
         placed.add(inst.relationshipId);
     }
+    for (const card of cards) card.instances.sort((a, b) => instanceOrder.get(a.relationshipId) - instanceOrder.get(b.relationshipId));
     const loose = instances.filter((item) => !placed.has(item.relationshipId));
     if (loose.length && cards.length === 1) {
         cards[0].instances.push(...loose);
@@ -674,7 +682,7 @@ function instanceRows(items, state) {
             when ? `<span class="vc-meta vc-num">${esc(when)}</span>` : '',
             current ? '<span class="vc-instance-badge">正在编辑</span>' : '',
         ].filter(Boolean).join('');
-        return `<button type="button" class="vc-cell" data-action="select-instance" data-id="${esc(item.relationshipId)}" aria-current="${current ? 'true' : 'false'}"><span class="vc-grow"><strong>${esc(item.name)}</strong>${meta ? `<span class="vc-instance-sub">${meta}</span>` : ''}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button>`;
+        return `<button type="button" class="vc-cell" data-action="select-instance" data-id="${esc(item.relationshipId)}" aria-current="${current ? 'true' : 'false'}"><span class="vc-grow"><strong>${esc(instanceLabel(item, items))}</strong>${meta ? `<span class="vc-instance-sub">${meta}</span>` : ''}</span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button>`;
     }).join('');
 }
 
@@ -1049,7 +1057,7 @@ export function mountCharactersTab(container, options = {}) {
             const card=characterModel(page.state).cards.find((item)=>item.characterRef===detailRef);
             const instances=card?.instances||[];
             if(instances.length===1)void openRelationshipVoiceSettings(instances[0].relationshipId,{opener:target});
-            else if(instances.length>1)popMenu(target,instances.map((item)=>({label:item.name,run:()=>void openRelationshipVoiceSettings(item.relationshipId,{opener:target})})));
+            else if(instances.length>1)popMenu(target,instances.map((item)=>({label:instanceLabel(item,instances),run:()=>void openRelationshipVoiceSettings(item.relationshipId,{opener:target})})));
         }
         if (action === 'close-persona') {
             nav.pop();

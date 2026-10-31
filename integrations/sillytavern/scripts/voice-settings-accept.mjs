@@ -21,6 +21,17 @@ export async function sceneVoiceSettings(ctx){
         await page.evaluate(()=>{[...document.querySelectorAll('.vc-sheet-done,[data-settings-done]')].filter((el)=>el.getClientRects().length).forEach((el)=>el.click());window.dispatchEvent(new CustomEvent('vc-open-characters'));});
         await page.locator('[data-action="select-template"]').filter({hasText:card.name}).click();
         await page.locator('[data-action="edit-voice"]').click();
+        await page.waitForFunction(()=>document.querySelector('[data-voice-settings="relationship"]') || document.querySelector('.vc-menu[role="menu"]'));
+        if(await page.locator('.vc-menu[role="menu"]').count()){
+            const rows=await voiceCall(ctx,'GET','/api/v1/relationships');
+            const current=rows.find((row)=>String(row.relationshipId)===relationship);
+            const choices=rows.filter((row)=>row.characterRef===current.characterRef);
+            const index=choices.findIndex((row)=>String(row.relationshipId)===relationship);
+            assert.ok(index>=0,'声音菜单包含当前实例');
+            const names=await page.locator('.vc-menu [role="menuitem"]').allTextContents();
+            assert.equal(new Set(names).size,names.length,'同名实例在声音菜单中能区分');
+            await page.locator(`.vc-menu [data-i="${index}"]`).click();
+        }
         form=page.locator('[data-voice-settings="relationship"]');
         await form.locator('[data-voice-field="kokoroVoice"]').selectOption('zm_010');
         const speed=form.locator('[data-voice-field="speed"]');await speed.focus();await speed.press('ArrowRight');await speed.press('ArrowRight');
