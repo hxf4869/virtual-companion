@@ -147,22 +147,19 @@ async function chatCaptures(ctx, since) {
 }
 
 async function nativeIdle(page) {
-    await page.waitForFunction(async()=>{
-        const s=await import('/script.js');
-        return !window.vcSendMutex?.isBusy && !s.isGenerating() && !s.swipesHidden && !s.isChatSaving && s.swipeState==='none'
-            && !(await import('/scripts/slash-commands.js')).isExecutingCommandsFromChatInput;
-    },null,{timeout:15000});
+    await page.waitForFunction(()=>window.vcNativeIdle?.(),null,{timeout:15000});
 }
 async function sendText(page, text) {
-    await nativeIdle(page);
-    await page.evaluate((value) => {
+    await page.waitForFunction((value) => {
+        if(!window.vcNativeIdle())return false;
         window.vcReplyStartLength = SillyTavern.getContext().chat.length;
         const box = document.querySelector('#send_textarea');
         const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
         set.call(box, value);
         box.dispatchEvent(new Event('input', { bubbles: true }));
         document.querySelector('#send_but').click();
-    }, text);
+        return true;
+    }, text, {timeout:15000});
 }
 
 async function waitReply(page, reply) {
@@ -247,6 +244,8 @@ export async function sceneHlReply(ctx) {
         await page.evaluate(async() => {
             const c=SillyTavern.getContext(); window.vcHistoryHookCalls=0; c.eventSource.on('vc-chat-history-ready',()=>{window.vcHistoryHookCalls++;});
             const script=await import('/script.js'),commands=await import('/scripts/slash-commands.js');
+            window.vcNativeIdle=()=>!window.vcSendMutex?.isBusy && !script.isGenerating() && !script.swipesHidden && !script.isChatSaving
+                && script.swipeState==='none' && !commands.isExecutingCommandsFromChatInput;
             const {SimpleMutex}=await import('/scripts/util/SimpleMutex.js');const update=SimpleMutex.prototype.update;
             window.vcSendStarts=[];
             SimpleMutex.prototype.update=function(...args){
