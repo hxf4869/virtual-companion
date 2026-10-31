@@ -1,0 +1,15 @@
+{
+  "recordedAt": "2026-10-31T04:00:00Z",
+  "cases": [
+    {"id":"fact-city","category":"fact","source":"我已经在上海生活了三年，现在住在徐汇区，短期没有搬家的打算。","candidate":"用户长期住在上海徐汇区。","required":["上海","徐汇"],"query":"上海徐汇"},
+    {"id":"fact-unrelated","category":"fact","source":"我已经在上海生活了三年，现在住在徐汇区，短期没有搬家的打算。","candidate":"用户长期住在上海徐汇区。","required":["上海"],"query":"火星飞船燃料","expectRecall":false},
+    {"id":"preference-tea","category":"preference","source":"我平时最喜欢喝茉莉花茶，不加糖的那种，喝了咖啡会不舒服。","candidate":"用户最喜欢喝不加糖的茉莉花茶。","required":["茉莉花茶"],"query":"茉莉花茶"},
+    {"id":"preference-transient","category":"preference","source":"我今天刚下班感觉特别累，有点困了，今晚想赶紧回家睡觉。","candidate":"用户今天感觉很累很困。","required":[],"query":"感觉很累","expectStore":false,"expectRecall":false},
+    {"id":"relationship-sister","category":"relationship","source":"我有一个妹妹，她叫小芙，比我小三岁，我们经常一起出去吃饭。","candidate":"用户的妹妹叫小芙，比用户小三岁。","required":["妹妹","小芙"],"query":"妹妹小芙"},
+    {"id":"relationship-unrelated","category":"relationship","source":"我有一个妹妹，她叫小芙，比我小三岁，我们经常一起出去吃饭。","candidate":"用户的妹妹叫小芙，比用户小三岁。","required":["小芙"],"query":"同事结婚婚礼","expectRecall":false},
+    {"id":"event-date","category":"event","source":"我在2026年11月1日去苏州参加朋友婚礼，火车票已经买好了。","candidate":"用户将于2026年11月1日去苏州参加朋友婚礼。","type":"episodic","metadata":{"eventDate":"2026-11-01"},"required":["苏州","婚礼"],"query":"苏州婚礼","eventDate":"2026-11-01"},
+    {"id":"event-other-day","category":"event","source":"我在2026年11月1日去苏州参加朋友婚礼，火车票已经买好了。","candidate":"用户将于2026年11月1日去苏州参加朋友婚礼。","type":"episodic","metadata":{"eventDate":"2026-11-01"},"required":["婚礼"],"query":"婚礼","eventDate":"2026-11-02","expectRecall":false},
+    {"id":"replacement-city","category":"replacement","previous":"用户长期居住在杭州，已经在当地生活多年。","source":"我已经从杭州搬到了上海，以后说我现在住哪里请用上海，旧的住址不再用了。","candidate":"用户现在居住在上海，已从杭州搬走。","required":["上海"],"query":"居住上海"},
+    {"id":"replacement-drink","category":"replacement","previous":"用户最喜欢喝乌龙茶，平时经常买乌龙茶。","source":"我现在更喜欢茉莉花茶了，不再喝乌龙茶，以后买茶就选茉莉花茶。","candidate":"用户现在最喜欢茉莉花茶。","required":["茉莉花茶"],"forbidden":["乌龙茶"],"query":"茉莉花茶"}
+  ]
+}

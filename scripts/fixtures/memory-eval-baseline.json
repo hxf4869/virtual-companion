@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "mode": "offline-synthetic-llm-vectors-sqlite",
+  "categories": {
+    "fact": {
+      "passed": 4,
+      "total": 4
+    },
+    "preference": {
+      "passed": 2,
+      "total": 4
+    },
+    "relationship": {
+      "passed": 4,
+      "total": 4
+    },
+    "event": {
+      "passed": 4,
+      "total": 4
+    },
+    "replacement": {
+      "passed": 4,
+      "total": 4
+    }
+  },
+  "cases": [
+    {
+      "id": "fact-city",
+      "category": "fact",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "fact-unrelated",
+      "category": "fact",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "preference-tea",
+      "category": "preference",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "preference-transient",
+      "category": "preference",
+      "extraction": false,
+      "recall": false
+    },
+    {
+      "id": "relationship-sister",
+      "category": "relationship",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "relationship-unrelated",
+      "category": "relationship",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "event-date",
+      "category": "event",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "event-other-day",
+      "category": "event",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "replacement-city",
+      "category": "replacement",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "replacement-drink",
+      "category": "replacement",
+      "extraction": true,
+      "recall": true
+    }
+  ]
+}
