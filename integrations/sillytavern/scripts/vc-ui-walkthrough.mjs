@@ -556,6 +556,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                     const back = page.locator(`#${drawer.panel} [data-vc-drawer-back]`).first();
                     if (await back.count()) await back.click();
                     await page.waitForFunction((panelId) => !document.getElementById(panelId)?.classList.contains('openDrawer'), drawer.panel, { timeout: 8000 });
+                    assert.ok(await until(settingsOpen, 8000), `${viewport.width}/${theme} ${drawer.page} 未返回设置`);
                 }
 
                 try {

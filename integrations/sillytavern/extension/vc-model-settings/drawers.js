@@ -168,7 +168,9 @@ function bindBack(root, nav) {
     button?.addEventListener?.('click', (event) => {
         event.preventDefault?.();
         event.stopPropagation?.();
-        closeDrawerPage(root);
+        if (closeDrawerPage(root)) {
+            globalThis.dispatchEvent?.(new CustomEvent('vc-shell-navigate', { detail: { destination: 'settings' } }));
+        }
     });
 }
 

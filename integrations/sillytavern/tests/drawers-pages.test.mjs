@@ -101,8 +101,16 @@ test('打开抽屉只点原开关，导航留在内容根内', () => {
 
     let stopped = false;
     const back = root.querySelector('[data-vc-drawer-back]');
-    back.dispatch('click', { stopPropagation() { stopped = true; } });
+    const previousDispatch = globalThis.dispatchEvent;
+    const destinations = [];
+    globalThis.dispatchEvent = (event) => { if (event.type === 'vc-shell-navigate') destinations.push(event.detail.destination); };
+    try { back.dispatch('click', { stopPropagation() { stopped = true; } }); }
+    finally {
+        if (previousDispatch) globalThis.dispatchEvent = previousDispatch;
+        else delete globalThis.dispatchEvent;
+    }
     assert.equal(stopped, true);
+    assert.deepEqual(destinations, ['settings']);
     assert.equal(clicks, 2);
     assert.equal(closeDrawerPage(root), true);
     assert.equal(clicks, 3);
