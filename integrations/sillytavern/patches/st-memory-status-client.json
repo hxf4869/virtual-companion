@@ -8,7 +8,7 @@
   "removal_condition": "上游提供带原始请求上下文的生成响应事件，且可读取最终来源状态时移除此单点补丁。 历史预算事件须有等价的原生钩子后再移除此部分。",
   "target": "public/scripts/openai.js",
   "expected_input_sha256": "0b77c30282825540265d5a09e681e5ccacf6760b05111ec880ffe237a9250604",
-  "expected_output_sha256": "733e8c641dbfbdc450657d25fac0804cc7c66fe7aaf48fa4b636bffb1a9bf1be",
+  "expected_output_sha256": "2bbb9bc41958007d93597119590d1c16db073ca4d829647a06f7f516f08c853c",
   "replacements": [
     {
       "from": "        headers: getRequestHeaders(),\n        signal: signal,\n    });\n\n    if (!response.ok) {\n        tryParseStreamingError(response, await response.text());",
@@ -17,7 +17,7 @@
     },
     {
       "from": "    // Insert and free new chat\n",
-      "to": "    // RQ-1: use native token counts and preserve complete tool turns.\n    await eventSource.emit('vc-chat-history-ready', { messages, chatCompletion, type });\n\n    // Insert and free new chat\n",
+      "to": "    // RQ-1: use native token counts and preserve complete tool turns.\n    await eventSource.emit('vc-chat-history-ready', { messages, chatCompletion, type });\n\n    // Insert and free the bounded chat\n",
       "count": 1
     }
   ],

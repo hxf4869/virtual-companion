@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { chunkHistory } from '../extension/vc-model-settings/prompt-history.js';
 
+test('原生预算钩子补丁能完整应用到锁定宿主，仍只安装一次',()=>{
+    const spec=JSON.parse(fs.readFileSync(path.join(INTEG,'patches/st-memory-status-client.json'),'utf8'));
+    const input=fs.readFileSync(path.join(ST_DIR,spec.target),'utf8');
+    const {output}=applySpecToText(input,spec);
+    assert.equal(output.split("eventSource.emit('vc-chat-history-ready'").length-1,1);
+    assert.ok(output.indexOf("eventSource.emit('vc-chat-history-ready'")<output.indexOf('// Insert and free the bounded chat'));
+});
+
 function round(count, nativeStart, context, tools = false) {
     const messages = Array.from({ length: count }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `synthetic-${i}` }));
     if (tools) messages[7].invocations = [{ id: 'synthetic-call' }];
@@ -42,3 +50,7 @@ test('剧情与额外 quiet 调用保留宿主原样', () => {
     assert.equal(round(16, 7, context).length, 10);
     assert.equal(context.chatMetadata.vc_history_window, undefined);
 });
+import fs from 'node:fs';
+import path from 'node:path';
+import { applySpecToText } from '../scripts/lib/patcher.mjs';
+import { INTEG, ST_DIR } from '../scripts/lib/paths.mjs';
