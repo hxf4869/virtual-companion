@@ -38,7 +38,7 @@ async function pixelDiff(page,a,b,exceptions){return page.evaluate(async({urls,e
  return {total,outside,exceptions:exceptions.map(e=>e.name)};
 },{urls:[a,b].map(buf=>'data:image/png;base64,'+buf.toString('base64')),exceptions});}
 async function geometry(page){return page.evaluate(()=>{
- const visible=n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>1&&r.height>1&&s.display!=='none'&&s.visibility!=='hidden';};
+ const visible=n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>1&&r.height>1&&s.display!=='none'&&s.visibility!=='hidden'&&s.opacity!=='0';};
  const rects=nodes=>[...nodes].filter(visible).map(n=>({tag:n.tagName,cls:n.className,text:n.textContent.trim().slice(0,20),r:n.getBoundingClientRect()}));
  const overlaps=nodes=>{const a=rects(nodes),found=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){const r=a[i].r,s=a[j].r;if(Math.min(r.right,s.right)-Math.max(r.left,s.left)>1&&Math.min(r.bottom,s.bottom)-Math.max(r.top,s.top)>1)found.push([a[i].text,a[j].text]);}return found;};
  const errors=[];if(document.documentElement.scrollWidth>innerWidth+1)errors.push('横向滚动');

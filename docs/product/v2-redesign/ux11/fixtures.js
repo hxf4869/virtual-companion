@@ -10,6 +10,7 @@ export const previewRelationships=[
  {...relationship,relationshipId:'12',personaRef:'st-character',characterRef:'synthetic-linzhou',mode:'COMPANION',displayName:'散步',companionName:'林舟 · 散步',remindersAllowed:true,avoidTopics:[]},
 ];
 export const previewMemories=['喜欢桂花乌龙，不加糖','周末喜欢睡到自然醒','傍晚喜欢沿湖散步','喜欢拍照，尤其是傍晚的光','不喜欢香菜','晚上更喜欢语音聊天'].map((summary,i)=>({memoryId:String(101+i),relationshipId:'11',mode:'COMPANION',summary,lifecycle:'ACTIVE',sourceStatus:i===3?'PENDING_VERIFICATION':'VALID',type:'PREFERENCE',version:1,time:{eventDate:'2026-10-'+String(28-i).padStart(2,'0')},createdAt:'2026-11-01T08:00:00+08:00'}));
+export const previewPrompts={vc_long_term_memory:{value:previewMemories.slice(0,3).map(row=>row.summary).join('\n')}};
 export const previewFollowUps=[{followUpId:'201',relationshipId:'11',status:'SCHEDULED',eventId:'synthetic-follow',body:'一起去看展',eventDate:'2026-11-02',eventTime:'10:00',triggerAt:'2026-11-02T10:00:00+08:00'}];
 export const previewInbox=[{eventId:'synthetic-greeting',relationshipId:'11',intent:'GREETING',body:'早呀，今天降温了，出门记得带围巾',createdAt:'2026-11-01T08:02:00+08:00',linkStatus:'present',stDelivered:true}];
 export const previewPolicy={relationshipId:'11',enabled:true,mode:'DAILY',checkInAfterMinutes:120,quietHoursStart:'23:00',quietHoursEnd:'07:30',quietHoursTimezone:'Asia/Shanghai',dailyLimit:4,recentInteractionMinutes:120,allowedModes:['COMPANION'],offlineCapable:true};
@@ -35,7 +36,7 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/relationships'))data=contentView?(scenario==='empty'?[]:previewRelationships):[relationship];
   else if(/\/relationships\/\d+$/.test(path)&&method==='PATCH'){data=contentView?previewRelationships.find(row=>row.relationshipId===path.split('/').at(-1)):relationship;Object.assign(data,JSON.parse(init.body));}
   else if(path.endsWith('/proactive-policy')){if(method==='PUT')Object.assign(previewPolicy,JSON.parse(init.body));data=previewPolicy;}
-  else if(path.endsWith('/companion-state'))data={dailyMood:'CURIOUS',vibe:'好奇',mood:'好奇'};
+  else if(path.endsWith('/companion-state'))data={mood:{vibe:'好奇'}};
   else if(path.endsWith('/follow-ups'))data=scenario==='empty'?[]:previewFollowUps;
   else if(path.includes('/follow-ups/')&&path.endsWith('/cancel')){data=previewFollowUps[0];data.status='CANCELLED';}
   else if(/\/relationships\/\d+\/memories$/.test(path))data=scenario==='empty'?[]:previewMemories.map(row=>scenario==='long'?{...row,summary:row.summary.repeat(20)}:row);
@@ -71,6 +72,8 @@ export function installSyntheticAPI(){
 export function installHostFixture(doc = document) {
  const sheld=doc.createElement('div');sheld.id='sheld';
  sheld.innerHTML='<div id="chat">'+Array.from({length:24},(_,i)=>`<div class="mes" is_user="${i%2===0}"><div class="mesAvatarWrapper"><div class="avatar"></div></div><div class="mes_block"><div class="ch_name"><span class="name_text">${i%2===0?'你':'小满'}</span></div><div class="mes_text">${i%2===0?'今天想去湖边走走':'等你忙完，我们一起去'}</div></div></div>`).join('')+'</div><form id="send_form"><button type="button" id="options_button" aria-label="更多">+</button><textarea id="send_textarea" aria-label="消息" placeholder="发消息…"></textarea><button type="button" id="vc-voice-input" aria-label="语音输入"></button><button type="button" id="send_but" aria-label="发送"></button></form>';
+ // 桌面加载真实 chat-view.js 后由生产模块绘制图标；手机旧 fixture 与原基线保持相同。
+ if(innerWidth>=744)new URLSearchParams(location.search).get('baseline')!=='1'&&sheld.querySelector('#options_button').replaceChildren();
  doc.body.append(sheld);return sheld;
 }
 

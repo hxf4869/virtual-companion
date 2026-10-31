@@ -1,4 +1,4 @@
-import { installSyntheticAPI, installHostFixture, installDrawerFixtures, relationship, previewRelationships } from './fixtures.js';
+import { installSyntheticAPI, installHostFixture, installDrawerFixtures, previewPrompts } from './fixtures.js';
 installSyntheticAPI();
 const params=new URLSearchParams(location.search);
 const baseline=params.get('baseline')==='1';
@@ -21,9 +21,9 @@ const api=await import(`${source}/api.js`);api.setStHeadersProvider(()=>({'X-CSR
 installHostFixture();
 if(view==='settings')installDrawerFixtures();
 const context={characters:[],chatMetadata:{},chat:[],name1:'合成验收用户'};
-if(['characters','memory','inbox','story'].includes(view)&&params.get('state')!=='empty')context.characters=[{name:'小满',avatar:'',data:{extensions:{vc_character_ref:'synthetic-xiaoman'}}},{name:'林舟',avatar:'',data:{extensions:{vc_character_ref:'synthetic-linzhou'}}}];
+if((['characters','memory','inbox','story'].includes(view)||view==='chat'&&loadDesktop&&innerWidth>=744)&&params.get('state')!=='empty')context.characters=[{name:'小满',avatar:'',data:{extensions:{vc_character_ref:'synthetic-xiaoman'}}},{name:'林舟',avatar:'',data:{extensions:{vc_character_ref:'synthetic-linzhou'}}}];
 if(view==='story')context.chatMetadata={vc_binding:{conversationId:'21',relationshipId:'11',mode:'STORY'}};
-if(view==='chat'){context.name2='小满';context.characterId=0;context.chatMetadata={vc_binding:{relationshipId:'11'}};}
+if(view==='chat'){context.name2='小满';context.characterId=0;context.chatMetadata={vc_binding:{relationshipId:'11'}};if(loadDesktop&&innerWidth>=744)context.extensionPrompts=previewPrompts;}
 const {mountShell,registerShellTabs}=await import(`${source}/shell.js`);
 const mounts={characters:'mountCharactersTab',memory:'mountMemoryTab',inbox:'mountInboxTab',story:'mountStoryTab'};
 const files={characters:'instance-page',memory:'memory-page',inbox:'inbox-page',story:'story-page'};
@@ -53,7 +53,7 @@ for(const key of Object.keys(mounts))registry[key]=(container,args)=>{
  void import(`${source}/${files[key]}.js`).then(mod=>mod[mounts[key]](container,args));return {refresh(){}};
 };
 registerShellTabs(registry);
-const shell=mountShell({getContext:()=>context,loadRelationships:async()=>['chat','characters','memory','inbox','story'].includes(view)?previewRelationships:[relationship],loadInbox:async()=>[],loadNative:async()=>({})});
+const shell=mountShell({getContext:()=>context,loadRelationships:()=>api.fetchRelationships(),loadInbox:async()=>[],loadNative:async()=>({})});
 let desktop;
 if(loadDesktop){
  const {mountAurora}=await import(`${source}/desktop/aurora.js`);desktop=mountAurora();
