@@ -158,11 +158,16 @@ async function sendText(page, text) {
 }
 
 async function waitReply(page, reply) {
-    await page.waitForFunction((text) => {
+    try { await page.waitForFunction((text) => {
         const chat = window.SillyTavern.getContext().chat || [];
         return chat.length >= (window.vcReplyStartLength || 0) + 2 && chat.at(-1)?.is_user === false && chat.at(-1)?.mes === text
             && document.body.getAttribute('data-generating') !== 'true';
-    }, reply, { timeout: 60000 });
+    }, reply, { timeout: 60000 }); } catch(error) {
+        const state=await page.evaluate((expected)=>({chatLength:SillyTavern.getContext().chat.length,startLength:window.vcReplyStartLength,
+            lastUser:SillyTavern.getContext().chat.at(-1)?.is_user,lastChars:SillyTavern.getContext().chat.at(-1)?.mes?.length,
+            expectedReply:SillyTavern.getContext().chat.at(-1)?.mes===expected,generating:document.body.getAttribute('data-generating'),events:window.vcReplyEvents}),reply);
+        throw Error(`native reply wait ${JSON.stringify(state)}: ${error.message}`);
+    }
 }
 
 export async function sceneHlReply(ctx) {
@@ -221,7 +226,13 @@ export async function sceneHlReply(ctx) {
         await page.waitForFunction(() => document.body.classList.contains('vc-ui') && document.body.classList.contains('vc-reply-bubble'));
         await page.waitForFunction(() => !document.querySelector('#send_form')?.classList.contains('no-connection'));
 
-        await page.evaluate(() => { const c=SillyTavern.getContext(); window.vcHistoryHookCalls=0; c.eventSource.on('vc-chat-history-ready',()=>{window.vcHistoryHookCalls++;}); });
+        await page.evaluate(() => {
+            const c=SillyTavern.getContext(); window.vcHistoryHookCalls=0; c.eventSource.on('vc-chat-history-ready',()=>{window.vcHistoryHookCalls++;});
+            window.vcReplyEvents=[];
+            for(const name of ['GENERATION_STARTED','GENERATION_ENDED','CHARACTER_MESSAGE_RENDERED','GENERATION_STOPPED']) {
+                c.eventSource.on(c.eventTypes[name],(type,_options,dryRun)=>{window.vcReplyEvents.push({event:name,type:name==='GENERATION_STARTED'?type:undefined,dryRun:!!dryRun});window.vcReplyEvents=window.vcReplyEvents.slice(-12);});
+            }
+        });
 
         const expressionSince=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: BUBBLES, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
@@ -321,6 +332,7 @@ export async function sceneHlReply(ctx) {
         console.log('[hl-reply] RQ-8 默认关闭与两步生成 A/B');
         const samples=[];
         for(const enabled of [false,true]) {
+            console.log(`[hl-reply] planner ${enabled?'on':'off'}`);
             await page.evaluate(async(enabled)=>{
                 const c=SillyTavern.getContext();
                 const {openCompanionStyle}=await import('/scripts/extensions/third-party/vc-model-settings/persona.js');
@@ -349,11 +361,13 @@ export async function sceneHlReply(ctx) {
             samples.push({enabled,calls:rows.length,replyMs:Date.now()-start});
         }
         // A malformed plan uses the normal reply; an explicit closing may stay quiet.
+        console.log('[hl-reply] planner malformed fallback');
         await ctx.fixtureHttp.setOverride('vc03m-chat',{text:CALM,replyPlanner:'invalid',chunks:1});
         let since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
         await sendText(page,LONG);await waitReply(page,CALM);
         assert.equal((await chatCaptures(ctx,since)).length,2);
         const assistantCount=await page.evaluate(()=>SillyTavern.getContext().chat.filter(m=>!m.is_user).length);
+        console.log('[hl-reply] planner closing silence');
         await ctx.fixtureHttp.setOverride('vc03m-chat',{text:CALM,replyPlanner:'{"kind":"stay_silent","direction":""}',chunks:1});
         since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
         await sendText(page,'晚安！');
