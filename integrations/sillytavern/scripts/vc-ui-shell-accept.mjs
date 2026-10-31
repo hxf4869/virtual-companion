@@ -84,10 +84,10 @@ async function assertStartup(ctx, browser, dir) {
             await reload.waitFor({ state: 'visible', timeout: 25000 });
             const fit = await reload.evaluate((el) => {
                 const r = el.getBoundingClientRect();
-                return { height: r.height, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+                return { height: r.height, shadow: getComputedStyle(el).textShadow, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
                     overflow: document.documentElement.scrollWidth - innerWidth };
             });
-            if (fit.height < 44 || !fit.inside || fit.overflow > 1) throw new Error(`载入恢复布局 ${width}/${colorScheme}: ${JSON.stringify(fit)}`);
+            if (fit.height < 44 || !fit.inside || fit.overflow > 1 || fit.shadow !== 'none') throw new Error(`载入恢复布局 ${width}/${colorScheme}: ${JSON.stringify(fit)}`);
             const file = path.join(dir, `startup-${width}-${colorScheme}.png`);
             await page.screenshot({ path: file }); ctx.screenshots.push(file);
             if (width === 390 && colorScheme === 'light') {
