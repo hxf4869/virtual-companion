@@ -58,6 +58,14 @@ UX-11 选图定稿 + DESIGN.md v4 + ADR-0010（文档）
                      UX-21 迁移生产（未授权，等 Owner 在 UX-20 后明确开启）
 ```
 
+## 2.1 分支、合并与部署（覆盖 AGENTS.md「合并与发布」对本组条目的默认做法）
+
+- 集成分支：`ux-11-desktop-immersive`。每个 ID 从它新建自己的分支 / worktree（如 `codex/ux-13-desktop-base`），
+  完成并通过 7.3 节检查后合并回 `ux-11-desktop-immersive` 并推送；**不合并 main、不部署**，直到 UX-21。
+- 并行条目合并前先 rebase 到最新集成分支；文件归属表保证不会冲突，出现冲突说明越界，停下来在 backlog 写 [问]。
+- 进度按 ID 回填 `TODO.md`「陪伴体验后续」，写明提交、检查结果、截图目录，标注「未合并 main、未部署」。
+- UX-13 完成后通知 Owner；每个页面条目完成后，截图留在 `.review-queue/UX-11/<ID>/` 供 Claude 视觉复核，复核不阻塞下一个条目。
+
 ## 3. 文件与写入归属
 
 扩展根目录 `E = integrations/sillytavern/extension/vc-model-settings/`，样板目录 `S = docs/product/v2-redesign/ux11/`。
