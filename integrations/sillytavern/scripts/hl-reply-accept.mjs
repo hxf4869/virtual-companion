@@ -388,7 +388,12 @@ export async function sceneHlReply(ctx) {
         const actual=await page.evaluate(()=>SillyTavern.getContext().chat);
         assert.equal(actual.at(-1).mes,longReply);
         assert.ok(actual.at(-1).extra?.vc_reply_length_tier);
-        ctx.results.rq9Lengths={provider:'managed synthetic fixture',...replyLengthStats(actual)};
+        const current=actual.at(-1);
+        assert.equal(current.swipe_info[current.swipe_id].extra.vc_reply_length_tier,current.extra.vc_reply_length_tier);
+        const persisted=await st.call('POST','/api/chats/get',{avatar_url:avatar,file_name:file});
+        assert.equal(persisted.status,200);
+        assert.equal(persisted.json.at(-1).extra.vc_reply_length_tier,current.extra.vc_reply_length_tier,'actual tier must survive native save');
+        ctx.results.rq9Lengths={provider:'managed synthetic fixture',...replyLengthStats(persisted.json)};
         fs.writeFileSync(path.join(ctx.artifactsDir,'rq9-lengths.json'),JSON.stringify(ctx.results.rq9Lengths,null,2));
         fs.writeFileSync(path.resolve('.review-queue/RQ-9/NOTES.md'),'# RQ-9\n\n普通陪伴长回复提供展开全文 / 收起，完整原文保持一条消息；卡片和 iframe 继续原生渲染。截图涵盖气泡 / 铺开、390 / 1440 与浅深色，仅含合成数据。交互断言覆盖可逆展开、存储完整与实际篇幅标签。\n');
         await bc.close();

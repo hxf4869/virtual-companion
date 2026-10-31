@@ -927,7 +927,12 @@ function settleReply(id) {
         }
     }
     const tier = lengthTierFor(chat);
-    if (tier) { message.extra ||= {}; message.extra.vc_reply_length_tier = tier; }
+    if (tier) {
+        message.extra ||= {};
+        message.extra.vc_reply_length_tier = tier;
+        const swipe = message.swipe_info?.[message.swipe_id];
+        if (swipe) { swipe.extra ||= {}; swipe.extra.vc_reply_length_tier = tier; }
+    }
     // MESSAGE_RECEIVED precedes the native save; the tier joins that same save.
     if (textChanged) {
         try { safeContext()?.saveChat?.(); } catch { /* 原生保存仍保留完整消息。 */ }
