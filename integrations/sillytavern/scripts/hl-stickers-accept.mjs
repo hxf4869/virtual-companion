@@ -131,6 +131,12 @@ async function openStickers(page) {
         throw new Error(`设置页没有出现 ${JSON.stringify(state)} (${error.name})`);
     });
     if (!ready) throw new Error('设置页没有出现');
+    // 等弹层到达全高再滚动入口，避免 scrollIntoView 把仍在运动的宿主一并滚出视口。
+    await page.waitForFunction(() => {
+        const form = [...document.querySelectorAll('.vc-settings-form')].find((el) => el.getClientRects().length > 0);
+        const sheet = form?.closest('.vc-sheet');
+        return Boolean(form) && (!sheet || sheet.style.transform === 'translateY(0px)');
+    }, null, { timeout: 8000 });
     await page.waitForFunction(() => [...document.querySelectorAll('[data-vc-sticker-entry]')].some((el) => el.getClientRects().length > 0), null, { timeout: 10000 });
     await page.evaluate(() => {
         const button = [...document.querySelectorAll('[data-vc-sticker-entry]')].find((el) => el.getClientRects().length > 0);
@@ -278,12 +284,21 @@ export async function sceneHlStickers(ctx) {
                     const list = page.querySelector('[data-vc-sticker-list]').getBoundingClientRect();
                     const upload = page.querySelector('[data-vc-sticker-upload]').getBoundingClientRect();
                     const title = page.querySelector('[data-vc-sticker-title]');
+                    const titleBox = title.getBoundingClientRect();
+                    const navBox = title.parentElement.getBoundingClientRect();
                     const host = page.closest('.vc-sheet,.vc-shell-settings');
                     const outerNav = host?.querySelector(':scope > .vc-sheet-head,:scope > .vc-navbar');
                     return { insetX: upload.left - list.left, insetY: upload.top - list.top,
                         width: page.getBoundingClientRect().width,
+                        titleTop: titleBox.top, titleBottom: titleBox.bottom,
+                        navTop: navBox.top, navBottom: navBox.bottom,
+                        hostTop: host?.getBoundingClientRect().top,
+                        documentScroll: document.scrollingElement.scrollTop,
+                        bodyScroll: host?.querySelector('.vc-sheet-body')?.scrollTop,
                         duplicateNav: Boolean(outerNav?.getClientRects().length),
-                        titleVisible: title.getClientRects().length > 0 && Number(getComputedStyle(title).opacity) >= 0.99 };
+                        titleVisible: title.getClientRects().length > 0 && Number(getComputedStyle(title).opacity) >= 0.99
+                            && titleBox.top >= 0 && titleBox.bottom <= innerHeight
+                            && navBox.top >= 0 && navBox.bottom <= innerHeight };
                 });
                 if (layout.insetX < 15 || layout.insetY < 9 || !layout.titleVisible || layout.duplicateNav || layout.width > 721) throw new Error(`表情包标题、内容列或上传间距异常 ${JSON.stringify(layout)}`);
                 await shot(page, dir, `settings-${viewport.name}-${mode}.png`, ctx);
