@@ -1648,8 +1648,7 @@ export function mountModelSettings() {
         const row = ev.target.closest?.('.vcms-model-row');
         if (row && (ev.key === 'Enter' || ev.key === ' ')) {
             ev.preventDefault();
-            state.selectedProfileKey = row.getAttribute('data-key');
-            render();
+            void handleAction('select-model', row);
         }
     });
 

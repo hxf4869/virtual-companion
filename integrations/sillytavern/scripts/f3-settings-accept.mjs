@@ -233,6 +233,14 @@ export async function sceneF3Settings(ctx) {
         const readBack = await page.inputValue('#vcms-f-display');
         if (readBack !== '受管 Chat（F3）') throw new Error('F3 改名读回不一致');
         await shot(page, path.join(ctx.artifactsDir, 'f3-390-light-model-provider.png'));
+        await page.locator('[data-action="select-model"]').first().focus();
+        await page.keyboard.press('Enter');
+        await page.locator('[data-vc-screen="model"]').waitFor();
+        if (!await page.evaluate(() => document.activeElement?.classList.contains('vc-nav-title'))) throw new Error('F3 键盘进入模型未聚焦标题');
+        await page.click('[data-action="vc-back"]');
+        await page.locator('[data-vc-screen="provider"]').waitFor();
+        if (await page.evaluate(() => document.activeElement?.getAttribute('data-action')) !== 'select-model') throw new Error('F3 返回未归还模型行焦点');
+
 
         await page.fill('#vcms-f-display', '受管 Chat（F3 草稿）');
         const current = (await ctx.admin.listProviders()).json.find((item) => item.providerId === 'vc03m-chat');
