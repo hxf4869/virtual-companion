@@ -7,6 +7,14 @@ import assert from 'node:assert/strict';
 const root=fileURLToPath(new URL('../../../../',import.meta.url));
 const args=process.argv.slice(2);const option=(name,fallback)=>{const i=args.indexOf(name);return i>=0?args[i+1]:fallback;};
 const id=option('--id','UX-13'),views=option('--views','components,model,voice').split(','),baseline=args.includes('--baseline');
+// 既有载入态 PNG 的拍摄相位（从保留图恢复）。只固定原生动画时钟，不处理图像像素。
+// Chromium 的帧时钟在这些记录中舍入到 0.1ms；以后不根据候选图片重新拟合。
+const CAPTURE_FRAMES = [
+ {view:'chat-loading',width:390,theme:'light',shimmerMs:216.7},
+ {view:'chat-loading',width:390,theme:'dark',shimmerMs:216.7},
+ {view:'chat-loading',width:360,theme:'light',shimmerMs:216.7},
+ {view:'chat-loading',width:360,theme:'dark',shimmerMs:216.6},
+];
 // Owner 2026-11-01 批准；仅原底部保存按钮，不覆盖其余 Sheet 区域。
 export const PIXEL_EXCEPTIONS = [
  {name:'relationship-sheet-save-390-light',view:'voice-relationship',width:390,theme:'light',rect:{x:0,y:756,width:390,height:50},clause:'方案 §5.3'},
@@ -92,12 +100,14 @@ async function runCase({entry,width,height,theme}){
   const page=await browser.newPage({viewport:{width,height},reducedMotion:'reduce'});const errors=[];page.on('pageerror',error=>errors.push(error.message));
   const url=new URL('/frame.html',base);url.search=new URLSearchParams({view:entry.view,theme,state:'ready',...entry.params,...(baseline?{baseline:'1'}:{})}).toString();
   await page.goto(url.href);await settle(page);assert.deepEqual(errors,[],`${view} ${width} ${theme} 浏览器错误`);
+  const frame=CAPTURE_FRAMES.find(f=>f.view===view&&f.width===width&&f.theme===theme);
+  await page.evaluate(ms=>{for(const animation of document.getAnimations())if(animation.animationName==='vc-shimmer'){animation.pause();animation.currentTime=ms;}},frame?.shimmerMs??216.7);
   if(width<744&&!baseline)assert.notEqual(await page.locator('html').getAttribute('data-vc-layout'),'desktop','手机不能进入桌面布局');
   const name=`${view}-${width}-${theme}.png`;
   if(baseline){await writeFile(path.join(baselineDir,name),await page.screenshot(),{flag:'wx'});results.push({view,width,theme,baseline:'14b67677'});await page.close();return;}
   const layout=await geometry(page);assert.deepEqual(layout.errors,[],`${view} ${width} ${theme} 几何检查`);
   let pixels;
-  if(width<744){const before=await readFile(path.join(baselineDir,name));const current=await page.screenshot();const exceptions=PIXEL_EXCEPTIONS.filter(e=>e.view===view&&e.width===width&&e.theme===theme);pixels=await pixelDiff(page,before,current,exceptions);if(pixels.total){await writeFile(path.join(out,name),current);}assert.equal(pixels.outside,0,`${view} ${width} ${theme} 手机像素基线（具名例外之外）`);}
+  if(width<744){const before=await readFile(path.join(baselineDir,name));const current=await page.screenshot();const exceptions=PIXEL_EXCEPTIONS.filter(e=>e.view===view&&e.width===width&&e.theme===theme);pixels=await pixelDiff(page,before,current,exceptions);await writeFile(path.join(out,name),current);assert.equal(pixels.outside,0,`${view} ${width} ${theme} 手机像素基线（具名例外之外）`);}
   if(width===1440||width===1024||width===768&&theme==='light')await page.screenshot({path:path.join(out,name)});
   if(view==='components'&&width===1440)await overlays(page);
   if(entry.view==='model'&&entry.params.screen==='home'&&theme==='light'&&[1440,390].includes(width))await modelInteraction(page);
@@ -107,7 +117,10 @@ async function runCase({entry,width,height,theme}){
   results.push({view,width,theme,status:'PASS',glass:layout.glass.length,...(pixels?{pixels}:{})});await page.close();
 }
 try{
- const jobs=[];for(const entry of cases)for(const [width,height] of matrix)for(const theme of ['light','dark'])if(!baseline||width<744)jobs.push({entry,width,height,theme});
+ const jobs=[];for(const entry of cases)for(const [width,height] of matrix)for(const theme of ['light','dark'])if(!baseline||width<744){
+  if(baseline){try{await readFile(path.join(baselineDir,`${entry.key}-${width}-${theme}.png`));results.push({view:entry.key,width,theme,baseline:'preserved'});continue;}catch(error){if(error.code!=='ENOENT')throw error;}}
+  jobs.push({entry,width,height,theme});
+ }
  const failures=[];
  await Promise.all(Array.from({length:3},async()=>{while(jobs.length){const job=jobs.shift();try{await runCase(job);}catch(error){failures.push(error);}}}));
  if(failures.length)throw failures[0];

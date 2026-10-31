@@ -73,7 +73,13 @@ export function installHostFixture(doc = document) {
  const sheld=doc.createElement('div');sheld.id='sheld';
  sheld.innerHTML='<div id="chat">'+Array.from({length:24},(_,i)=>`<div class="mes" is_user="${i%2===0}"><div class="mesAvatarWrapper"><div class="avatar"></div></div><div class="mes_block"><div class="ch_name"><span class="name_text">${i%2===0?'你':'小满'}</span></div><div class="mes_text">${i%2===0?'今天想去湖边走走':'等你忙完，我们一起去'}</div></div></div>`).join('')+'</div><form id="send_form"><button type="button" id="options_button" aria-label="更多">+</button><textarea id="send_textarea" aria-label="消息" placeholder="发消息…"></textarea><button type="button" id="vc-voice-input" aria-label="语音输入"></button><button type="button" id="send_but" aria-label="发送"></button></form>';
  // 桌面加载真实 chat-view.js 后由生产模块绘制图标；手机旧 fixture 与原基线保持相同。
- if(innerWidth>=744)new URLSearchParams(location.search).get('baseline')!=='1'&&sheld.querySelector('#options_button').replaceChildren();
+ if(innerWidth>=744&&new URLSearchParams(location.search).get('baseline')!=='1'){
+  sheld.querySelector('#options_button').replaceChildren();
+  sheld.querySelector('#vc-voice-input').remove();
+ }
+ const state=new URLSearchParams(location.search).get('state');
+ if(state==='empty')sheld.querySelector('#chat').replaceChildren();
+ if(state==='long')for(const text of sheld.querySelectorAll('.mes_text'))text.textContent=text.textContent.repeat(24);
  doc.body.append(sheld);return sheld;
 }
 
