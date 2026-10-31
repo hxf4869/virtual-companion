@@ -202,10 +202,13 @@ export async function sceneHlProactive(ctx) {
     if((await save(changedRows)).status!==200)throw Error('RQ-10 source opt-out save failed');
     await speak('我回来了',at(0,'14:00:00'));
     const since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
-    const withoutTopic=await runAt(at(0,'16:00:00'));
+    // Before the greeting cluster's six-hour cooldown expires, the fixture
+    // selects sharing. At 16:00 a fresh greeting is also valid.
+    const withoutTopic=await runAt(at(0,'15:50:00'));
     if(withoutTopic.outcome!=='READY' || withoutTopic.reason!=='share_day')throw Error('RQ-10 invalid source remained a continuation candidate');
     const after=await ctx.fixtureHttp.captures({protocol:'chat',since});
     if(JSON.stringify(after).includes('上次有个话题还没说完，见下方已记录话题'))throw Error('RQ-10 opted-out source leaked into continuation prompt');
+    if(JSON.stringify(after).includes('<vc-open-topic>'))throw Error('RQ-10 opted-out source remained in topic data');
     await speak('旅行安排已经解决了，不聊这个了',at(0,'16:10:00'));
     if(ctx.w10.psql(`SELECT open_topic_source_ref IS NULL FROM vc.companion_affect WHERE owner_user_id=${owner} AND relationship_id=${relationshipId};`).trim()!=='t')throw Error('RQ-10 resolution did not clear pending topic');
     ctx.results.rq10Topic={persisted:true,continued:true,optedOutSourceExcluded:true,resolved:true};
