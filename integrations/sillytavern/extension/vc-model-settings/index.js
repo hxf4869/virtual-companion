@@ -26,6 +26,7 @@ import { bindingsFromContext, cardsFromContext, createCompanionInstance, importN
 import { openCompanionStyle, saveNativePersona } from './persona.js';
 import { maybeStartOnboarding } from './onboarding.js';
 import { injectCompanionPrompt } from './companion-prompt.js';
+import { installHistoryWindow } from './prompt-history.js';
 import { armOnboardingBinding } from './instance-binding.js';
 import { planOpenCreatedChat } from './instance-open.js';
 import { commitStoryProjectionSave } from './projection-save.js';
@@ -179,6 +180,7 @@ export async function init() {
     };
     const story = createStoryContext({ getContext });
     const events = getContext();
+    installHistoryWindow(getContext);
     let inboxScopeKey = '';
     async function pullInbox() {
         let binding = {};

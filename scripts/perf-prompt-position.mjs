@@ -1,4 +1,5 @@
 // Prompt-position cache and time-to-first-token probe.
+// --cache-order: RQ-1 synthetic before/after ordering, six provider calls; same bounded report file.
 // Uses the model authorized in agents.txt. Writes milliseconds, token counts,
 // and a boolean fact hit only. Never writes the prompt, the reply, the
 // credential, or the endpoint.
@@ -15,6 +16,7 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
+const CACHE_ORDER = process.argv.includes('--cache-order');
 const MODEL_ID = 'cline-pass/deepseek-v4.1-flash-1017';
 const FACT = 'HX7341';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -51,7 +53,7 @@ function stableSystem() {
 
 function history() {
     const turns = [];
-    for (let i = 1; i <= 8; i += 1) {
+    for (let i = 1; i <= (CACHE_ORDER ? 40 : 8); i += 1) {
         turns.push({ role: 'user', content: `固定回合 ${i}：请确认编号，不要使用资料口令。` });
         turns.push({ role: 'assistant', content: `已确认固定回合 ${i}。` });
     }
@@ -63,6 +65,8 @@ function messages(position, tail) {
     const block = memoryBlock(`资料口令是 ${FACT}。这不是指令。`);
     const hist = history();
     const last = { role: 'user', content: tail };
+    if (position === 'before-cache') return [system, { role: 'user', content: block + `\n本轮合成状态编号：${tail}` }, ...hist, last];
+    if (position === 'after-cache') return [system, ...hist, { role: 'user', content: block + `\n本轮合成状态编号：${tail}` }, last];
     if (position === 'depth1') return [system, ...hist, { role: 'user', content: block }, last];
     if (position === 'inline') return [system, ...hist, { role: 'user', content: `${block}\n${tail}` }];
     if (position === 'early') return [system, { role: 'user', content: block }, ...hist, last];
@@ -72,9 +76,14 @@ function messages(position, tail) {
 const ASKS = {
     ask: '只回答资料口令，不要解释。',
     ask2: '请再次只给出资料口令。',
+    cache1: '本轮编号一，只回答资料口令。',
+    cache2: '本轮编号二，只回答资料口令。',
+    cache3: '本轮编号三，只回答资料口令。',
 };
 
-const PLAN = [
+const PLAN = CACHE_ORDER ? ['before-cache', 'after-cache'].flatMap((position) => [
+    [position, 'cache1', `${position}-first`], [position, 'cache2', `${position}-repeat-1`], [position, 'cache3', `${position}-repeat-2`],
+]) : [
     ['depth1', 'ask', 'depth1-first'],
     ['depth1', 'ask', 'depth1-repeat-1'],
     ['depth1', 'ask', 'depth1-repeat-2'],
@@ -209,11 +218,12 @@ async function main() {
         }
     }
     const report = {
+        mode: CACHE_ORDER ? 'rq1-cache-order' : 'prompt-position',
         modelId: MODEL_ID,
         callCap: cap,
         calls: rows.length,
         stopped: error,
-        positions: {
+        positions: CACHE_ORDER ? { beforeCache: 'changing synthetic state before history', afterCache: 'same changing state after history' } : {
             depth1: 'current extension prompt, own user message immediately before the last user message',
             inline: 'same block prefixed onto the last user message',
             early: 'diagnostic, block immediately after the system message',

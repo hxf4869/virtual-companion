@@ -281,6 +281,19 @@ test('拟人提示只在陪伴模式注入，全局规则在角色卡后，状�
     assert.equal(prompts.vc_companion_state[0], '');
 });
 
+test('语音点名和心情变化不改变固定规则前缀', async () => {
+    const prompts = {};
+    const context = { chat: [{is_user:true,mes:'今天过得怎么样'}], extensionSettings:{},
+        chatMetadata:{vc_binding:{mode:'COMPANION'}}, setExtensionPrompt(key,...args){prompts[key]=args;} };
+    const options = {getContext:()=>context,fetchState:async()=>null,listTags:null,pickLengthTier:null,
+        loadVoicePolicy:async()=>({available:true,relationship:{}})};
+    await injectCompanionPrompt(options);const fixed=prompts.vc_companion_rules[0];
+    assert.match(prompts.vc_companion_state[0],/想用语音/);
+    context.chat[0].mes='说句话给我听';await injectCompanionPrompt(options);
+    assert.equal(prompts.vc_companion_rules[0],fixed);
+    assert.match(prompts.vc_companion_state[0],/对方这次想听你的声音/);
+});
+
 test('陪伴状态或表情标签缺失时不注入对应段', async () => {
     const prompts = {};
     const context = {

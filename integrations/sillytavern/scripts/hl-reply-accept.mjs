@@ -213,6 +213,8 @@ export async function sceneHlReply(ctx) {
         await page.waitForFunction(() => document.body.classList.contains('vc-ui') && document.body.classList.contains('vc-reply-bubble'));
         await page.waitForFunction(() => !document.querySelector('#send_form')?.classList.contains('no-connection'));
 
+        await page.evaluate(() => { const c=SillyTavern.getContext(); window.vcHistoryHookCalls=0; c.eventSource.on('vc-chat-history-ready',()=>{window.vcHistoryHookCalls++;}); });
+
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: BUBBLES, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
         const before = await page.locator('#chat > .mes').count();
         console.log('[hl-reply] 多气泡');
@@ -235,6 +237,8 @@ export async function sceneHlReply(ctx) {
                 greetingSegs: nodes[0]?.querySelectorAll('.vc-seg').length || 0,
             };
         }, BUBBLES);
+        const windowState=await page.evaluate(()=>({calls:window.vcHistoryHookCalls,saved:SillyTavern.getContext().chatMetadata.vc_history_window}));
+        if(!windowState.calls || !Number.isInteger(windowState.saved?.count)) throw new Error('RQ-1 原生历史预算钩子没有执行');
         if (shown.user !== LONG) throw new Error('长消息被拆进了多条用户消息');
         if (shown.assistant !== BUBBLES || shown.copies !== 1) throw new Error('多句回复没有保持为一条消息');
         if (shown.segs.length < 2) throw new Error(`气泡数量不足 ${shown.segs.length}`);

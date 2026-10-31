@@ -146,7 +146,7 @@ test('常驻摘要进系统提示，话题记忆留在最后一条用户消息�
     assert.match(topic[0], new RegExp(MEMORY_NOTE));
     assert.equal(topic[0].includes('会话摘要'), false);
     const core = h.get().prompts[CORE_PROMPT];
-    assert.deepEqual(core.slice(1), [0, 0, false, 0]);
+    assert.deepEqual(core.slice(1), [1, 1, false, 1]);
     assert.equal(core[0], coreMemoryBlock(parts.core));
     const body = { messages: [{ role: 'system', content: core[0] }, { role: 'user', content: topic[0] }, { role: 'user', content: '现在问' }] };
     const next = [

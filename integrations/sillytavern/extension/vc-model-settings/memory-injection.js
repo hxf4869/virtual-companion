@@ -68,7 +68,7 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
     const clear = () => {
         const ctx = getContext();
         ctx.setExtensionPrompt(MEMORY_PROMPT, '', 1, 1, false, 1);
-        ctx.setExtensionPrompt(CORE_PROMPT, '', 0, 0, false, 0);
+        ctx.setExtensionPrompt(CORE_PROMPT, '', 1, 1, false, 1);
     };
     const banner = () => onStatus('');
     const emitNotice = (text) => {
@@ -142,7 +142,7 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
         ready = { input, block, snapshot };
         const parts = splitMemoryFacts(block);
         c.setExtensionPrompt(MEMORY_PROMPT, memoryBlock(parts.topic), 1, 1, false, 1);
-        c.setExtensionPrompt(CORE_PROMPT, coreMemoryBlock(parts.core), 0, 0, false, 0);
+        c.setExtensionPrompt(CORE_PROMPT, coreMemoryBlock(parts.core), 1, 1, false, 1);
         if (result.status === 'ok' || result.status === 'skipped' || result.status === 'disabled') clearNotice();
         else failRound();
     }

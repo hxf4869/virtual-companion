@@ -1,18 +1,23 @@
 {
   "id": "st-memory-status-client",
-  "reason": "W07：Go长期记忆在实际出站前再次核对来源；服务端跳过或清除旧资料时，原生生成响应头必须反馈到对应聊天页面，不把初次召回成功误显示为最终注入成功。只传状态与聊天版本，不传记忆正文。",
+  "reason": "W07：Go长期记忆在实际出站前再次核对来源；服务端跳过或清除旧资料时，原生生成响应头必须反馈到对应聊天页面，不把初次召回成功误显示为最终注入成功。只传状态与聊天版本，不传记忆正文。 RQ-1：原生完成历史预算后通知扩展，由扩展按已计数的完整用户回合分段截断；不重排宿主固定提示、不改模型窗口。",
   "upstream": {
     "component": "sillytavern",
     "commit": "7e8663cd9c184a550b37238218bdd32c6efc68e9"
   },
-  "removal_condition": "上游提供带原始请求上下文的生成响应事件，且可读取最终来源状态时移除此单点补丁。",
+  "removal_condition": "上游提供带原始请求上下文的生成响应事件，且可读取最终来源状态时移除此单点补丁。 历史预算事件须有等价的原生钩子后再移除此部分。",
   "target": "public/scripts/openai.js",
   "expected_input_sha256": "0b77c30282825540265d5a09e681e5ccacf6760b05111ec880ffe237a9250604",
-  "expected_output_sha256": "33184d4017a735bd2f8371f2edef21cb527f366a753c5b97d061405f53aa44cb",
+  "expected_output_sha256": "733e8c641dbfbdc450657d25fac0804cc7c66fe7aaf48fa4b636bffb1a9bf1be",
   "replacements": [
     {
       "from": "        headers: getRequestHeaders(),\n        signal: signal,\n    });\n\n    if (!response.ok) {\n        tryParseStreamingError(response, await response.text());",
       "to": "        headers: getRequestHeaders(),\n        signal: signal,\n    });\n\n    // W07: report the final server-side memory decision without exposing content.\n    if (generate_data.vc_memory && response.headers.has('X-VC-Memory-Status')) {\n        globalThis.dispatchEvent(new CustomEvent('vc-memory-status', { detail: {\n            chatIdentity: generate_data.vc_memory.chatIdentity,\n            revision: generate_data.vc_memory.revision,\n            status: response.headers.get('X-VC-Memory-Status'),\n        } }));\n    }\n    if (!response.ok) {\n        tryParseStreamingError(response, await response.text());",
+      "count": 1
+    },
+    {
+      "from": "    // Insert and free new chat\n",
+      "to": "    // RQ-1: use native token counts and preserve complete tool turns.\n    await eventSource.emit('vc-chat-history-ready', { messages, chatCompletion, type });\n\n    // Insert and free new chat\n",
       "count": 1
     }
   ],

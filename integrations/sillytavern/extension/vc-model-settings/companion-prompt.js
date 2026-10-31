@@ -86,11 +86,11 @@ export async function injectCompanionPrompt({ getContext, fetchState, listTags, 
     const tags = await tagsFrom(listTags);
     const ruleParts = [rules, STYLE_NOTE];
     const voiceGuide = await chatVoiceGuidance(context, loadVoicePolicy);
-    if (voiceGuide) ruleParts.push(voiceGuide);
     if (tags.length) ruleParts.push(`可用表情：${tags.join('、')}。需要时单独一行 <sticker tag="标签"/>。`);
     const companion = await stateFrom(context, fetchState);
     const tier = await tierFrom(lastUserText(context), pickLengthTier);
     const stateParts = [
+        voiceGuide,
         moodGuidance(companion?.mood),
         emotionGuidance(companion?.emotion),
         tier ? `本轮篇幅档：${tier}` : '',
