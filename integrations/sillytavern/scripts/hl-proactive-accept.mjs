@@ -142,7 +142,7 @@ export async function sceneHlProactive(ctx) {
     await reconcile();
     await speak('昨天还好', at(-2,'10:00:00'));
 
-    expectGate(await runAt('2026-10-29T23:30:00+08:00'), 'QUIET', '安静时段');
+    expectGate(await runAt(at(-1,'23:30:00')), 'QUIET', '安静时段');
     await speak('我在开会', at(0,'09:00:00'));
     const busy = await ctx.admin.call('GET', `/api/v1/relationships/${relationshipId}/companion-state`);
     if (busy.status !== 200 || !busy.json?.busyUntil) throw new Error(`开会后应有忙碌截止 ${busy.status} ${busy.text.slice(0, 240)}`);
