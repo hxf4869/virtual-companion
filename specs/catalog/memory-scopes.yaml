@@ -12,6 +12,11 @@ retrievalPolicy:
     digits, or symbol-only emoji, skip long-term retrieval. Mixed factual queries
     and short genuine questions still recall. Apply after authoritative source
     reconciliation and affect observation, at both initial and final recall.
+  uncertainty: >-
+    Preserve explicit uncertainty wording. Sources older than 90 days relative
+    to the persisted query clock are marked as uncertain in injected facts and
+    their summaries. The mark affects prompt tone only, never stored records,
+    eligibility, ordering or deletion. Do not invent numeric confidence scores.
   selection: >-
     Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first;
     Build a trusted allowlist from published current Go projections. MemoryCore

@@ -337,7 +337,7 @@ func TestRecallSearchOmitsRerankUntilTheOwnerTurnsItOff(t *testing.T) {
 func TestPureReactionSkipsEngineAfterSourceValidation(t *testing.T) {
 	b, snapshots := stMemoryFixture(t)
 	ctx := context.Background()
-	snapshot := stMemorySnapshot(sourceChat, "我长期居住在上海，平时在上海工作。", time.Now().UTC())
+	snapshot := stMemorySnapshot(sourceChat, "我长期居住在上海，平时在上海工作。", time.Now().UTC().Add(-120*24*time.Hour))
 	snapshots[sourceChat] = snapshot
 	if _, err := testEnv.store.ReconcileSTSources(ctx, 1, []string{sourceChat}); err != nil {
 		t.Fatal(err)
@@ -357,6 +357,9 @@ func TestPureReactionSkipsEngineAfterSourceValidation(t *testing.T) {
 			}
 		} else if lastEngineSearch == nil || !strings.Contains(out.Block, "上海") {
 			t.Fatal("mixed factual question must still recall")
+		}
+		if index == 3 && !strings.Contains(out.Block, "记不太清——") {
+			t.Fatal("old verified source must remain recallable with uncertainty")
 		}
 	}
 }

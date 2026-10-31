@@ -3117,11 +3117,12 @@
           "operationId": "recallSTMemory",
           "querySource": "last_persisted_user_message",
           "selection": "Filter by owner, instance, mode and allowed SESSION/RELATIONSHIP scope first; Build a trusted allowlist from published current Go projections. MemoryCore ranks candidates within that set before KNN/FTS top-K, using only the current embedding space and rejecting low relevance before fusion. Reconcile each candidate and L2/L3 summary's complete persisted source dependencies before selecting and applying the token budget.",
-          "time": "Keep source timestamp/timezone, recording time, normalized local event date/time and reminder instant distinct. Relative source expressions use their saved source timezone and calendar; queries use their own snapshot. Unknown or ambiguous time stays needs_clarification. A date never creates a midnight reminder."
+          "time": "Keep source timestamp/timezone, recording time, normalized local event date/time and reminder instant distinct. Relative source expressions use their saved source timezone and calendar; queries use their own snapshot. Unknown or ambiguous time stays needs_clarification. A date never creates a midnight reminder.",
+          "uncertainty": "Preserve explicit uncertainty wording. Sources older than 90 days relative to the persisted query clock are marked as uncertain in injected facts and their summaries. The mark affects prompt tone only, never stored records, eligibility, ordering or deletion. Do not invent numeric confidence scores."
         },
         "schemaVersion": 1
       },
-      "sha256": "9b8b2cd304a1a8aae94ce82d66edf50a4abf1051472c48dad5c10aa2aa9b20f8"
+      "sha256": "6c6fe3146979d71241a858df7a28f67b461fd60bf250c56016ac56522d32c9f3"
     },
     "message-feedback-kinds.yaml": {
       "document": {
