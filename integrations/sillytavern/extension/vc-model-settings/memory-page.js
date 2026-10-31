@@ -156,7 +156,7 @@ export function createMemoryPage({ onChange = () => {}, schedule = setTimeout, c
             try {
                 await api.captureSessionContext();
                 if (!alive(e)) return;
-                const relationships = await api.fetchRelationships();
+                const relationships = (await api.fetchRelationships()).filter((row) => row.personaRef === 'st-character');
                 if (!alive(e)) return;
                 state.relationships = relationships;
                 state.relationshipId = String(relationships.find(r => String(r.relationshipId) === String(preferredRelationshipId))?.relationshipId ?? relationships[0]?.relationshipId ?? '');

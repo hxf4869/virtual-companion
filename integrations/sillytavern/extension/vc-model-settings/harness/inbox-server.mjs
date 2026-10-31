@@ -135,8 +135,8 @@ function handle(req, res, goPath, scenario, state, body) {
     if (req.method === 'POST' && goPath === '/api/v1/auth/reauth') return send(res, 200, { ok: true });
     if (req.method === 'GET' && goPath === '/api/v1/relationships') {
         return send(res, 200, [
-            { relationshipId: '11', companionName: '澄夏' },
-            { relationshipId: '12', companionName: '周澈' },
+            { relationshipId: '11', personaRef: 'st-character', companionName: '澄夏' },
+            { relationshipId: '12', personaRef: 'st-character', companionName: '周澈' },
         ]);
     }
     const policyPath = goPath.match(/^\/api\/v1\/relationships\/([1-9][0-9]{0,18})\/proactive-policy$/);

@@ -109,7 +109,11 @@ function install(next) {
 test.beforeEach(() => {
     install((url) => {
         if (url.endsWith('/auth/session')) return { body: { accountId: '9007199254740993', sessionId: '42' } };
-        if (url.endsWith('/relationships')) return { body: [{ relationshipId: '11', companionName: '澄夏' }, { relationshipId: '12', companionName: '周澈' }] };
+        if (url.endsWith('/relationships')) return { body: [
+            { relationshipId: '9', personaRef: 'gentle-listener', companionName: null },
+            { relationshipId: '11', personaRef: 'st-character', companionName: '澄夏' },
+            { relationshipId: '12', personaRef: 'st-character', companionName: '周澈' },
+        ] };
         if (url.endsWith('/proactive-policy')) return { body: url.includes('/relationships/12/') ? { ...policy, relationshipId: '12', enabled: false, quietHoursStart: null, quietHoursEnd: null, quietHoursTimezone: null } : policy };
         if (url.endsWith('/follow-ups')) return { body: url.includes('/relationships/12/') ? [] : followUps };
         if (url.endsWith('/inbox')) return { body: inbox };
@@ -173,6 +177,8 @@ test('路由常量只覆盖本页需要放行的方法与路径', () => {
 
 test('打开页面读取策略、跟进、inbox、渠道与投递，凭据不进页面、状态或 localStorage', async () => {
     const page = await opened();
+    assert.equal(page.state.relationshipId, '11');
+    assert.deepEqual(page.state.relationships.map((row) => row.relationshipId), ['11', '12']);
     const text = html(page);
     for (const item of ['澄夏', '22:00', '08:00', 'Asia/Shanghai', '周末散步待跟进', '待跟进', '取消跟进', '已取消', '待写入', '已写入', '当前链接已移除', '链接失效', '需要打开此会话继续', '渠道已接受', '结果未知', '待发送', '发送中', '失败', '已停止', '过期', '已启用', '已关闭', '不回显', '群成员可见', '应用未读', '应用已读']) {
         assert.ok(text.includes(item), item);

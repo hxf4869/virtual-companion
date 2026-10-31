@@ -175,7 +175,7 @@ test('主页面样式把二级页、玻璃胶囊和阅读列写进令牌', async
     const inbox = await readFile(new URL('inbox.css', root), 'utf8');
     const instance = await readFile(new URL('instance.css', root), 'utf8');
     const memory = await readFile(new URL('memory.css', root), 'utf8');
-    assert.match(shell, /:has\(\.vc-memory-tab\.is-detail\)[\s\S]*:has\(\.vc-characters\.is-detail\)[\s\S]*:has\(\.vc-inbox-tab\.is-detail\)[\s\S]*> \.vc-tabbar/);
+    assert.match(shell, /:has\(\.vc-shell-page\.is-on \.vc-memory-tab\.is-detail\)[\s\S]*:has\(\.vc-shell-page\.is-on \.vc-characters\.is-detail\)[\s\S]*:has\(\.vc-shell-page\.is-on \.vc-inbox-tab\.is-detail\)[\s\S]*> \.vc-tabbar/);
     assert.match(shell, /\.vc-who \{[^}]*border-radius:\s*var\(--vc-radius-pill\)[^}]*backdrop-filter:\s*blur\(22px\) saturate\(180%\)/);
     assert.match(shell, /\[data-memory\]\s*\{[^}]*display:\s*none/);
     assert.match(shell, /#chat,\s*body\.vc-ui #sheld,\s*body\.vc-ui #send_form \{\s*border:\s*0 !important/);

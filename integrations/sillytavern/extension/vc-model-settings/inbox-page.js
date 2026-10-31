@@ -546,7 +546,8 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
                     fetchRelationships(), listInbox(), listChannels(), listDeliveries(),
                 ]);
                 if (!alive(ticket)) return;
-                state.relationships = (Array.isArray(relationships) ? relationships : []).map(allowRelationship).filter(Boolean);
+                state.relationships = (Array.isArray(relationships) ? relationships : [])
+                    .filter((row) => row.personaRef === 'st-character').map(allowRelationship).filter(Boolean);
                 state.relationshipId = state.relationships[0]?.relationshipId || '';
                 state.inbox = events.map(allowInbox).filter(Boolean);
                 state.channels = channelRows.map(allowChannel).filter(Boolean);

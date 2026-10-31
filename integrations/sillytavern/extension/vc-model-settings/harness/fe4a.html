@@ -95,8 +95,8 @@
       if (path.endsWith('/relationships')) {
         if (pageName === 'memory' && shot === 'unbound') return json([]);
         return json([
-          { relationshipId: '11', companionName: '澄夏', mode: 'COMPANION' },
-          { relationshipId: '12', companionName: '澄夏', mode: 'STORY' },
+          { relationshipId: '11', personaRef: 'st-character', companionName: '澄夏', mode: 'COMPANION' },
+          { relationshipId: '12', personaRef: 'st-character', companionName: '澄夏', mode: 'STORY' },
         ]);
       }
       if (path.includes('/memories') && !/\/memories\/[^/]+/.test(path)) {

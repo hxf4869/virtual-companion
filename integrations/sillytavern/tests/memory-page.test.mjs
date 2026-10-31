@@ -11,7 +11,11 @@ let calls, route;
 test.beforeEach(() => {
     calls = [];
     route = (url) => url.endsWith('/auth/session') ? { body: { accountId: '9007199254740993', sessionId: '42' } }
-        : url.endsWith('/relationships') ? { body: [{ relationshipId: '11', companionName: '澄夏' }, { relationshipId: '12', companionName: '澄夏' }] }
+        : url.endsWith('/relationships') ? { body: [
+            { relationshipId: '9', personaRef: 'gentle-listener', companionName: null },
+            { relationshipId: '11', personaRef: 'st-character', companionName: '澄夏' },
+            { relationshipId: '12', personaRef: 'st-character', companionName: '澄夏' },
+        ] }
         : url.includes('/relationships/') ? { body: [item()] }
         : url.endsWith('/evidence') ? { body: [{ chatDisplayName: '湖边散步', messageId: 'm1', revision: 3, status: 'VALID', sourceTimestamp: '2026-10-27T10:00:00Z', sourceTimezone: 'Asia/Shanghai', excerpt: '喜欢散步' }] }
         : { body: item() };
@@ -29,6 +33,14 @@ async function opened(options = {}) {
     await page.open('11');
     return page;
 }
+
+test('初次进入选择 ST 实例，预置空关系不进入选择列表', async () => {
+    const page = createMemoryPage();
+    await page.open();
+    assert.equal(page.state.relationshipId, '11');
+    assert.deepEqual(page.state.relationships.map((row) => row.relationshipId), ['11', '12']);
+    page.close();
+});
 
 test('列表查询、游标响应头与同源桥；实例列表复用 relationships', async () => {
     route = () => ({ body: [item()], headers: { 'X-Next-Cursor': 'next/+=' } });

@@ -25,7 +25,7 @@ test('挂载后的记忆页响应聊天入口，不改动关闭焦点约定', as
             return new Response(JSON.stringify({ accountId: '7', sessionId: '8' }), { status: 200 });
         }
         if (String(url).endsWith('/relationships')) {
-            return new Response(JSON.stringify([{ relationshipId: '11', companionName: '澄夏' }]), { status: 200 });
+            return new Response(JSON.stringify([{ relationshipId: '11', personaRef: 'st-character', companionName: '澄夏' }]), { status: 200 });
         }
         return new Response(JSON.stringify([]), { status: 200 });
     };

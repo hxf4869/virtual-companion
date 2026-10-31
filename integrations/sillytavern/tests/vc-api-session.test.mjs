@@ -98,13 +98,15 @@ test('快照之后：其余写路径（用途 PUT / discover POST / reauth POST�
     }
 });
 
-test('ST 实例列表排除宿主预置空关系，保留有名与尚未命名的 ST 实例', async () => {
+test('通用关系列表保留 personaRef，页面可据此选择范围而不丢失接口字段', async () => {
     router = () => ({ status: 200, body: [
         { relationshipId: 1, personaRef: 'gentle-listener', companionName: null },
         { relationshipId: 2, personaRef: 'st-character', companionName: '合成角色' },
         { relationshipId: 3, personaRef: 'st-character', companionName: null },
     ] });
-    assert.deepEqual((await fetchRelationships()).map((row) => row.relationshipId), [2, 3]);
+    assert.deepEqual((await fetchRelationships()).map((row) => [row.relationshipId, row.personaRef]), [
+        [1, 'gentle-listener'], [2, 'st-character'], [3, 'st-character'],
+    ]);
 });
 
 test('读路径 GET providers / purposes 不携带 Expected 头', async () => {
