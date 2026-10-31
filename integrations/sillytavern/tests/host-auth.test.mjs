@@ -7,7 +7,7 @@ function harness({ identity = active, status = 200, fetchImpl } = {}) {
     const requests = [];
     const gate = createHostAuth({
         config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '42': 'owner', '43': 'other' } },
-        getUser: async (handle) => ({ handle, enabled: true }), accountVersion: () => 'v1', indexHtml: () => '<html><head></head><body></body></html>',
+        getUser: async (handle) => ({ handle, enabled: true }), accountVersion: () => 'v1', indexHtml: () => '<html><head></head><body><div id="preloader"></div></body></html>',
         fetchImpl: fetchImpl || (async (url, options) => { requests.push({ url, options }); if(url.endsWith('/service/st/profile')) return new Response(options.body, { status:200 }); return new Response(JSON.stringify(identity), { status }); }),
     });
     async function call(path = '/', { method = 'GET', session = {}, headers = {}, body } = {}) {
@@ -47,6 +47,8 @@ test('页面绑定捕获身份；换账号/会话后的旧页面写入被拒绝'
     const h = harness();
     const page = await h.call('/');
     assert.match(page.res.payload, /name="vc-session-id" content="7"/);
+    assert.match(page.res.payload, /role="status">正在打开聊天…/);
+    assert.match(page.res.payload, /href="\/">重新加载/);
     assert.equal(page.req.session.handle, 'owner');
     const headers = { 'x-vc-expected-account-id': '42', 'x-vc-expected-session-id': '7' };
     assert.equal((await h.call('/api/chats/save', { method: 'POST', session: page.req.session, headers })).next, true);

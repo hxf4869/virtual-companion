@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { PRIVATE_ST_PATHS } from './source-bridge.js';
 
 const ASSETS = new Map([['/auth/', 'index.html'], ['/auth/index.js', 'index.js'], ['/auth/style.css', 'style.css']]);
+// 首屏反馈随 HTML 返回，不等待宿主脚本或扩展初始化；由原生 preloader 一并移除。
+const STARTUP_HTML = fs.readFileSync(new URL('../auth/startup.html', import.meta.url), 'utf8');
 const AUTH_API = [
     ['GET', /^session$/], ['POST', /^(login|logout|password|reauth)$/],
     ['DELETE', /^account$/],
@@ -119,7 +121,8 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 const meta = `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`;
                 res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
                 res.setHeader('Content-Type', 'text/html; charset=utf-8');
-                return res.end(indexHtml().replace('<head>', `<head>${meta}`));
+                return res.end(indexHtml().replace('<head>', `<head>${meta}`)
+                    .replace('<div id="preloader"></div>', STARTUP_HTML));
             }
             next();
         } catch { fail(res, 503, 'VC_AUTH_UNAVAILABLE', '登录服务暂不可用，请稍后重试'); }

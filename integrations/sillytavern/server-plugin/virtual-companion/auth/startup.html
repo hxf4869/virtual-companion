@@ -1,0 +1,62 @@
+<div id="preloader">
+  <style>
+    #preloader:has(.vc-startup) {
+      --vc-startup-canvas: #f5f5f7;
+      --vc-startup-ink: #1d1d1f;
+      --vc-startup-accent: #0066cc;
+      background: var(--vc-canvas, var(--vc-startup-canvas));
+      color: var(--vc-ink, var(--vc-startup-ink));
+      backdrop-filter: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      #preloader:has(.vc-startup) {
+        --vc-startup-canvas: #000000;
+        --vc-startup-ink: #f5f5f7;
+        --vc-startup-accent: #2997ff;
+      }
+    }
+    #preloader .vc-startup {
+      position: absolute;
+      top: 50%;
+      left: 24px;
+      right: 24px;
+      transform: translateY(-50%);
+      text-align: center;
+      font: 400 17px/1.47 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+    }
+    #preloader .vc-startup::before {
+      content: "";
+      display: block;
+      box-sizing: border-box;
+      width: 24px;
+      height: 24px;
+      margin: 0 auto 20px;
+      border: 3px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: vc-startup-spin 1s linear infinite;
+    }
+    #preloader .vc-startup p { margin: 0; }
+    #preloader .vc-startup a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      margin-top: 12px;
+      color: var(--vc-accent-text, var(--vc-startup-accent));
+      text-decoration: none;
+      visibility: hidden;
+      animation: vc-startup-retry 0s 20s forwards;
+    }
+    #preloader .vc-startup a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+    #preloader:has(.vc-startup) #load-spinner { display: none; }
+    @keyframes vc-startup-spin { to { transform: rotate(360deg); } }
+    @keyframes vc-startup-retry { to { visibility: visible; } }
+    @media (prefers-reduced-motion: reduce) {
+      #preloader .vc-startup::before { animation: none; }
+    }
+  </style>
+  <div class="vc-startup">
+    <p role="status">正在打开聊天…</p>
+    <a href="/">重新加载</a>
+  </div>
+</div>

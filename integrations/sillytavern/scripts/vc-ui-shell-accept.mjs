@@ -61,6 +61,52 @@ async function dropSameSecondTwins(ctx, keepIds = []) {
     }
 }
 
+// 原生模块迟迟未完成时，状态和恢复操作必须早于扩展可用。
+async function assertStartup(ctx, browser, dir) {
+    const bc = await browser.newContext();
+    await bc.addCookies([
+        { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
+        { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },
+    ]);
+    try {
+        await Promise.all([390, 1440].flatMap((width) => THEMES.map(async (colorScheme) => {
+            const page = await bc.newPage();
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await page.emulateMedia({ colorScheme });
+            await page.route(`${ctx.w05.stBase}/script.js`, async (route) => {
+                const response = await route.fetch();
+                await route.fulfill({ response, body: `await new Promise(() => {});\n${await response.text()}` });
+            }, { times: 1 });
+            await page.goto(ctx.w05.stBase, { waitUntil: 'commit' });
+            await page.getByRole('status').filter({ hasText: '正在打开聊天…' }).waitFor({ state: 'visible' });
+            const reload = page.getByRole('link', { name: '重新加载', exact: true });
+            if (await reload.isVisible()) throw new Error('首屏不应立即要求重新加载');
+            await reload.waitFor({ state: 'visible', timeout: 25000 });
+            const fit = await reload.evaluate((el) => {
+                const r = el.getBoundingClientRect();
+                return { height: r.height, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+                    overflow: document.documentElement.scrollWidth - innerWidth };
+            });
+            if (fit.height < 44 || !fit.inside || fit.overflow > 1) throw new Error(`载入恢复布局 ${width}/${colorScheme}: ${JSON.stringify(fit)}`);
+            const file = path.join(dir, `startup-${width}-${colorScheme}.png`);
+            await page.screenshot({ path: file }); ctx.screenshots.push(file);
+            if (width === 390 && colorScheme === 'light') {
+                await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }), reload.click()]);
+                await waitFor(async () => page.evaluate(async () => (await import('/script.js')).settingsReady || Boolean(document.querySelector('dialog[open] .onboarding'))), { timeoutMs: 45000, label: '重新加载后恢复宿主' });
+                const onboarding = page.locator('dialog[open].popup').filter({ has: page.locator('.onboarding') });
+                if (await onboarding.count()) {
+                    await onboarding.locator('textarea').fill('vc-ui-owner');
+                    await onboarding.locator('.popup-button-ok').click();
+                    await onboarding.waitFor({ state: 'hidden' });
+                }
+                await page.locator('#preloader').waitFor({ state: 'hidden', timeout: 45000 });
+                if (new URL(page.url()).pathname !== '/') throw new Error('重新加载不应要求重复登录');
+            }
+            await page.close();
+        })));
+    } finally { await bc.close(); }
+}
+
 export async function sceneVcUiShell(ctx) {
     const dir = path.join(ctx.artifactsDir, 'vc-ui-shell');
     fs.mkdirSync(dir, { recursive: true });
@@ -105,6 +151,7 @@ export async function sceneVcUiShell(ctx) {
         ...(process.env.VC_W03_CHROMIUM_PATH ? { executablePath: process.env.VC_W03_CHROMIUM_PATH } : {}),
     });
     try {
+        await assertStartup(ctx, browser, dir);
         const bc = await browser.newContext({ viewport: VIEWPORTS[1] });
         await bc.addCookies([
             { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
