@@ -539,8 +539,16 @@ body.vc-ui .vc-characters .vc-instance-alert {
 
 body.vc-ui .vc-characters .vc-instance-form {
     max-width: var(--vc-read);
-    margin: 0 auto var(--vc-space-xl);
-    padding: 0 var(--vc-page-pad);
+    margin: 0 var(--vc-page-pad) var(--vc-space-xl);
+    padding: var(--vc-space-md);
+    border: 0;
+    border-radius: var(--vc-radius-md);
+    background: var(--vc-group);
+}
+
+body.vc-ui .vc-characters .vc-instance-form-actions {
+    position: static;
+    background: transparent;
 }
 
 body.vc-ui .vc-characters .vc-instance-form label {

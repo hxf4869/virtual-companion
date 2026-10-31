@@ -282,6 +282,22 @@ export async function sceneVcUiWalkthrough(ctx) {
             throw new Error(`截图前残留浮层 ${width} ${theme} ${pageName}: ${String(error?.message || error).split('\n')[0]}`);
         }
         const file = path.join(dir, `${width}-${theme}-${pageName}.png`);
+        if (pageName === 'character-detail') {
+            const forms = await page.locator('.vc-characters .vc-instance-form:visible').evaluateAll((els) => els.map((el) => {
+                const input = el.querySelector('input').getBoundingClientRect();
+                const actions = el.querySelector('.vc-instance-form-actions').getBoundingClientRect();
+                const r = el.getBoundingClientRect();
+                return { overlap: input.bottom - actions.top, height: input.height, inset: Math.min(r.left, innerWidth - r.right) };
+            }));
+            if (forms.some((r) => r.overlap > 0 || r.height < 44 || r.inset < 15)) throw new Error(`实例编辑框被裁切 ${width}/${theme}: ${JSON.stringify(forms)}`);
+        }
+        if (pageName === 'tavern-world') {
+            const fields = await page.locator('#WorldInfo .select2-selection--multiple').evaluateAll((els) => els.map((el) => {
+                const r = el.getBoundingClientRect(), f = el.querySelector('.select2-search__field').getBoundingClientRect();
+                return { top: f.top - r.top, bottom: r.bottom - f.bottom, height: f.height, fits: f.left >= r.left && f.right <= r.right };
+            }));
+            if (!fields.length || fields.some((r) => r.top < 0 || r.bottom < 0 || r.height < 28 || !r.fits)) throw new Error(`世界书输入框被裁切 ${width}/${theme}: ${JSON.stringify(fields)}`);
+        }
         await page.screenshot({ path: file });
         bucket.shots.push({ file, caption: `${width} ${theme} ${pageName}` });
         if (Array.isArray(ctx.screenshots)) ctx.screenshots.push(file);
@@ -488,6 +504,15 @@ export async function sceneVcUiWalkthrough(ctx) {
                     if (openedChat) break;
                 }
                 if (!openedChat) notes.push(`${viewport.width} ${theme} chat：没有打开有消息的会话`);
+                if (openedChat) {
+                    await page.waitForFunction(() => {
+                        const ctx = window.SillyTavern.getContext();
+                        const character = ctx.characters[ctx.characterId];
+                        if (!character?.avatar) return true;
+                        const src = document.querySelector('#vc-poster-avatar')?.getAttribute('src');
+                        return src && new URL(src, location.href).searchParams.get('file') === character.avatar;
+                    }, null, { timeout: 5000 });
+                }
                 await record(page, viewport.width, theme, 'chat', bucket);
                 if (theme === 'light' && viewport.width === 390) {
                     await page.evaluate(() => {

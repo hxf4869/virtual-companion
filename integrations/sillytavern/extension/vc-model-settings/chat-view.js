@@ -474,9 +474,9 @@ function refreshPoster(ctx) {
 }
 
 function avatarSrc(ctx, character) {
-    const fromMes = safeAvatarUrl(document.querySelector('#chat .mes .avatar img')?.getAttribute?.('src'));
-    if (fromMes) return fromMes;
-    return safeAvatarUrl(character?.avatar || ctx?.characters?.[ctx?.characterId]?.avatar);
+    const fromCharacter = safeAvatarUrl(character?.avatar || ctx?.characters?.[ctx?.characterId]?.avatar);
+    if (fromCharacter) return fromCharacter;
+    return safeAvatarUrl(document.querySelector('#chat .mes[is_user="false"] .avatar img')?.getAttribute?.('src'));
 }
 
 function openPage(destination, opener) {

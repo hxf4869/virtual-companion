@@ -871,7 +871,38 @@ body.vc-ui #WorldInfo.vc-drawer-page .select2-selection__rendered {
   line-height: 42px !important;
   white-space: nowrap !important;
   text-overflow: ellipsis !important;
-  color: var(--vc-ink-2) !important;
+  color: var(--vc-ink) !important;
+}
+
+body.vc-ui #WorldInfo.vc-drawer-page .select2-selection--multiple {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vc-space-xxs);
+  height: auto !important;
+  padding: 6px 8px;
+}
+
+body.vc-ui #WorldInfo.vc-drawer-page .select2-selection--multiple .select2-selection__rendered {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-xxs);
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: normal !important;
+  white-space: normal !important;
+}
+
+body.vc-ui #WorldInfo.vc-drawer-page .select2-selection--multiple .select2-selection__rendered:empty {
+  display: none;
+}
+
+body.vc-ui #WorldInfo.vc-drawer-page .select2-search--inline {
+  display: flex;
+  align-items: center;
+  flex: 1 1 120px;
+  min-width: 0;
+  float: none;
 }
 
 body.vc-ui #WorldInfo.vc-drawer-page .select2-selection__placeholder {
@@ -879,15 +910,15 @@ body.vc-ui #WorldInfo.vc-drawer-page .select2-selection__placeholder {
   overflow: hidden !important;
   white-space: nowrap !important;
   text-overflow: ellipsis !important;
-  color: var(--vc-ink-2) !important;
+  color: var(--vc-ink) !important;
   opacity: 1 !important;
 }
 
 body.vc-ui #WorldInfo.vc-drawer-page .select2-search__field,
 body.vc-ui #WorldInfo.vc-drawer-page .select2-search__field::placeholder {
   background: transparent !important;
-  color: var(--vc-ink-2) !important;
-  -webkit-text-fill-color: var(--vc-ink-2) !important;
+  color: var(--vc-ink) !important;
+  -webkit-text-fill-color: var(--vc-ink) !important;
   border: 0 !important;
   box-shadow: none !important;
   opacity: 1 !important;
@@ -895,9 +926,16 @@ body.vc-ui #WorldInfo.vc-drawer-page .select2-search__field::placeholder {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   height: 28px !important;
+  min-height: 28px !important;
+  width: 100% !important;
   margin: 0 !important;
   padding: 0 8px !important;
   line-height: 28px !important;
+}
+
+body.vc-ui .vc-drawer-page :is(input, textarea):not(:disabled)::placeholder {
+  color: var(--vc-ink) !important;
+  opacity: 1 !important;
 }
 
 body.vc-ui #WorldInfo.vc-drawer-page .select2-selection {
