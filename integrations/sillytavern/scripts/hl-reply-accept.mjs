@@ -369,10 +369,16 @@ export async function sceneHlReply(ctx) {
             if(enabled) {
                 for(const width of [390,1440]) {
                     await page.setViewportSize({width,height:width===390?844:900});
-                    await page.waitForFunction(()=>{
+                    try { await page.waitForFunction(()=>{
                         const area=document.querySelector('[data-field="rules"]'),card=area?.parentElement;
                         return area && area.scrollHeight<=area.clientHeight+1 && card.scrollHeight<=card.clientHeight+1;
-                    },null,{timeout:3000});
+                    },null,{timeout:3000}); } catch(error) {
+                        const bounds=await page.evaluate(()=>{
+                            const a=document.querySelector('[data-field="rules"]'),c=a.parentElement;
+                            return {width:innerWidth,area:a.clientHeight,content:a.scrollHeight,card:c.clientHeight,cardContent:c.scrollHeight};
+                        });
+                        throw Error(`rules layout ${JSON.stringify(bounds)}: ${error.message}`);
+                    }
                 }
                 await voiceShots(page,ctx,'RQ-8','planner');
                 for(const mode of ['light','dark']) {
