@@ -39,7 +39,7 @@ body.vc-ui #vc-model-settings-root :is(.vcms-binding-revision, .vcms-binding-upd
   body.vc-ui #vc-model-settings-root .vcms-bindings-table thead { display: none; }
   body.vc-ui #vc-model-settings-root .vcms-bindings-table,
   body.vc-ui #vc-model-settings-root .vcms-bindings-table tbody { display: block; }
-  body.vc-ui #vc-model-settings-root .vcms-binding-row {
+  body.vc-ui #vc-model-settings-root .vcms-bindings-table .vcms-binding-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "purpose status" "select select";
