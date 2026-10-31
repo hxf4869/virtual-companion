@@ -71,6 +71,15 @@ async function closeDrawer(page, id) {
         const root = document.getElementById(drawerId);
         return root && !root.classList.contains('openDrawer') && !root.classList.contains('vc-drawer-page') && !root.querySelector('[data-vc-drawer-nav]');
     }, id, { timeout: 8000 });
+    // 返回入口现在恢复设置；继续原生抽屉 / 魔法棒流程前，按页面操作关闭设置。
+    if (await page.locator('.vc-sheet .vc-settings-form').count()) {
+        await page.waitForFunction(() => [...document.querySelectorAll('.vc-sheet')].filter(el => el.querySelector('.vc-settings-form')).length === 1, null, { timeout: 8000 });
+        const settings = page.locator('.vc-sheet').filter({ has: page.locator('.vc-settings-form') });
+        await settings.locator('.vc-sheet-done').click();
+        await settings.waitFor({ state: 'detached' });
+    } else if (await page.locator('#vc-shell[data-settings="page"]').count()) {
+        await page.locator('#vc-shell [data-settings-done]:visible').click();
+    }
 }
 
 async function clickControl(page, selector) {
