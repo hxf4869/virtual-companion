@@ -463,6 +463,12 @@ export async function sceneVcUiShell(ctx) {
                     await closeDrawer();
 
                     for (const tab of TABS) {
+                        const detail = '#vc-shell .vc-shell-page.is-on :is(.vc-characters,.vc-memory-tab,.vc-inbox-tab).is-detail';
+                        const detailBack = page.locator(`${detail} [data-action="back"]:visible`).first();
+                        if (await detailBack.count()) {
+                            await detailBack.click();
+                            await page.waitForFunction(() => !document.querySelector('#vc-shell .vc-shell-page.is-on :is(.vc-characters,.vc-memory-tab,.vc-inbox-tab).is-detail'));
+                        }
                         await page.locator(`#vc-shell [data-nav="${tab.name}"]:visible`).click();
                         if (tab.kind === 'dialog') {
                             await page.locator(tab.selector).waitFor();
@@ -490,6 +496,10 @@ export async function sceneVcUiShell(ctx) {
                         }
                         await shot(`${theme}-${viewport.name}-tab-${tab.name}.png`);
                         if (tab.name === 'characters' && theme === 'light' && viewport.name === '1440') {
+                            await page.waitForFunction(() => {
+                                const root = document.querySelector('#vc-shell .vc-characters');
+                                return root && !root.querySelector('[aria-busy="true"]') && root.querySelector('[data-action="select-template"]');
+                            }, null, { timeout: 15000 });
                             const found = await page.evaluate((name) => {
                                 const buttons = [...document.querySelectorAll('#vc-shell .vc-characters [data-action="select-template"]')];
                                 const card = buttons.find((el) => (el.textContent || '').includes(name));
