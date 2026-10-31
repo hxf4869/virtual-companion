@@ -75,7 +75,7 @@ if(view==='voice'){
  const voice=await import(`${source}/voice-settings.js`);if(params.get('screen')==='relationship')await voice.openRelationshipVoiceSettings('11');else await voice.openGlobalVoiceSettings();
 }
 if(view==='settings'){
- const voice=await import(`${source}/voice-settings.js`);await voice.refreshVoiceAvailability();window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'settings'}}));
+ const voice=await import(`${source}/voice-settings.js`);if(params.get('state')==='loading')void voice.refreshVoiceAvailability();else await voice.refreshVoiceAvailability();window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'settings'}}));
  const res=await fetch('views/settings.js',{method:'HEAD'});if(res.ok){modules.settings=await import('./views/settings.js');await modules.settings.mount({container:shell.querySelector('.vc-shell-settings .vc-shell-scroll'),source,params,context,model});}
 }
 document.addEventListener('click',async e=>{

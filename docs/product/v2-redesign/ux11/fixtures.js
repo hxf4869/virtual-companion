@@ -51,8 +51,8 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/rewind'))data={branchId:'42',worldVersion:0,stage:'investigation'};
 
   else if(path.endsWith('/inbox'))data=contentView&&scenario!=='empty'?previewInbox:[];
-  else if(path.endsWith('/admin/providers')&&method==='GET')data=scenario==='empty'?[]:providers;
-  else if(path.endsWith('/admin/model-purposes')&&method==='GET')data=purposes;
+  else if(path.endsWith('/admin/providers')&&method==='GET')data=scenario==='empty'?[]:scenario==='long'?providers.map(row=>({...row,displayName:row.displayName.repeat(8),models:row.models.map(model=>({...model,displayName:model.displayName.repeat(8)}))})):providers;
+  else if(path.endsWith('/admin/model-purposes')&&method==='GET')data=scenario==='empty'?purposes.map(row=>({...row,providerId:null,profileKey:null,status:'PENDING_CONFIGURATION'})):purposes;
   else if(path.endsWith('/admin/usage'))data=[];
   else if(path.endsWith('/admin/local-models'))data={embedding:{configured:true,enabled:true,healthy:true},rerank:{configured:true,enabled:true,healthy:true,revision:1}};
   else if(path.endsWith('/admin/local-models/rerank'))data={configured:true,enabled:true,healthy:true,revision:2};
