@@ -500,7 +500,18 @@ export async function sceneVcUiShell(ctx) {
                                 card.click();
                                 return true;
                             }, cardName);
-                            if (!found) throw new Error('本场合成卡没有可进入的实例');
+                            if (!found) {
+                                const details = await page.evaluate((name) => {
+                                    const card = [...document.querySelectorAll('#vc-shell .vc-characters [data-action="select-template"]')].find((el) => el.textContent.includes(name));
+                                    return { cardFound: Boolean(card), cardRef: card?.getAttribute('data-ref'),
+                                        count: card?.querySelector(':scope > span:last-child')?.textContent,
+                                        loading: Boolean(document.querySelector('.vc-characters [aria-busy="true"]')) };
+                                }, cardName);
+                                const currentRows = await ctx.admin.call('GET', '/api/v1/relationships');
+                                details.boundExists = currentRows.json?.some((row) => String(row.relationshipId) === boundNow);
+                                details.matchesCard = currentRows.json?.filter((row) => row.characterRef === details.cardRef).length;
+                                throw new Error(`本场合成卡没有可进入的实例 ${JSON.stringify(details)}`);
+                            }
                             const instance = page.locator('#vc-shell .vc-characters > .vc-screen:not(.vc-characters-list) [data-action="select-instance"]').first();
                             await instance.waitFor({ timeout: 15000 });
                             const relationshipId = await instance.getAttribute('data-id');
