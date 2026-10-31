@@ -206,6 +206,7 @@ export async function sceneHlReply(ctx) {
     if (saved.status !== 200) throw new Error(`保存聊天 HTTP ${saved.status}`);
 
     const browser = await launchBrowser();
+    let page;
     try {
         const bc = await browser.newContext({ viewport: { width: 1440, height: 900 } });
         await bc.addCookies([
@@ -217,7 +218,7 @@ export async function sceneHlReply(ctx) {
             localStorage.setItem('vc-theme', 'light');
             localStorage.setItem('vc-reply-style', 'bubble');
         });
-        const page = await bc.newPage();
+        page = await bc.newPage();
         page.setDefaultTimeout(120000);
         console.log('[hl-reply] 打开宿主');
         await page.goto(ctx.w05.stBase);
@@ -225,6 +226,15 @@ export async function sceneHlReply(ctx) {
         await openChat(page, avatar, file);
         await page.waitForFunction(() => document.body.classList.contains('vc-ui') && document.body.classList.contains('vc-reply-bubble'));
         await page.waitForFunction(() => !document.querySelector('#send_form')?.classList.contains('no-connection'));
+        await page.emulateMedia({reducedMotion:'reduce'});
+        await page.evaluate(async()=>{
+            const {openCompanionStyle}=await import('/scripts/extensions/third-party/vc-model-settings/persona.js');
+            openCompanionStyle({getContext:SillyTavern.getContext});
+            document.querySelector('[data-action="restore-rules"]').click();
+            await (await import('/script.js')).saveSettings();
+        });
+        await page.locator('.vc-sheet-done').last().click();
+        await page.emulateMedia({reducedMotion:'no-preference'});
 
         await page.evaluate(() => {
             const c=SillyTavern.getContext(); window.vcHistoryHookCalls=0; c.eventSource.on('vc-chat-history-ready',()=>{window.vcHistoryHookCalls++;});
@@ -333,6 +343,7 @@ export async function sceneHlReply(ctx) {
         const samples=[];
         for(const enabled of [false,true]) {
             console.log(`[hl-reply] planner ${enabled?'on':'off'}`);
+            await page.emulateMedia({reducedMotion:'reduce'});
             await page.evaluate(async(enabled)=>{
                 const c=SillyTavern.getContext();
                 const {openCompanionStyle}=await import('/scripts/extensions/third-party/vc-model-settings/persona.js');
@@ -346,6 +357,7 @@ export async function sceneHlReply(ctx) {
                 fs.writeFileSync(path.resolve('.review-queue/RQ-8/NOTES.md'),'# RQ-8\n\n设置 › 陪伴风格新增默认关闭的「先想再说」，沿用分组、开关与脚注。截图仅含合成数据。受管断言覆盖开关保存、恢复默认和实际调用数。\n');
             }
             await page.locator('.vc-sheet-done').last().click();
+            await page.emulateMedia({reducedMotion:'no-preference'});
             await ctx.fixtureHttp.setOverride('vc03m-chat',{text:CALM,replyPlanner:'{"kind":"reply","direction":"回应近况"}',chunks:1,delay:{firstMs:30,perChunkMs:20}});
             const since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
             const start=Date.now();await sendText(page,LONG);await waitReply(page,CALM);
@@ -380,6 +392,7 @@ export async function sceneHlReply(ctx) {
             if(SillyTavern.getContext().extensionSettings.vc_reply_planner!==false)throw Error('default planner must be off');
         });
         await page.locator('.vc-sheet-done').last().click();
+        await page.evaluate(async()=>await (await import('/script.js')).saveSettings());
         ctx.results.rq8Planner={provider:'managed synthetic fixture',samples,qualityComparison:'fixture validates routing only; no real-model quality claim'};
         fs.writeFileSync(path.join(ctx.artifactsDir,'rq8-planner.json'),JSON.stringify(ctx.results.rq8Planner,null,2));
 
@@ -412,6 +425,10 @@ export async function sceneHlReply(ctx) {
         fs.writeFileSync(path.resolve('.review-queue/RQ-9/NOTES.md'),'# RQ-9\n\n普通陪伴长回复提供展开全文 / 收起，完整原文保持一条消息；卡片和 iframe 继续原生渲染。截图涵盖气泡 / 铺开、390 / 1440 与浅深色，仅含合成数据。交互断言覆盖可逆展开、存储完整与实际篇幅标签。\n');
         await bc.close();
     } finally {
+        if(page && !page.isClosed())await page.evaluate(async()=>{
+            SillyTavern.getContext().extensionSettings.vc_reply_planner=false;
+            await (await import('/script.js')).saveSettings();
+        });
         await ctx.fixtureHttp.setOverride('vc03m-chat', null);
         await browser.close();
     }
