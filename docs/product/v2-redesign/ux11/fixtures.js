@@ -53,7 +53,7 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/projections'))data=[];
   else if(path.endsWith('/rewind'))data={branchId:'42',worldVersion:0,stage:'investigation'};
 
-  else if(path.endsWith('/inbox'))data=contentView&&scenario!=='empty'?previewInbox:[];
+  else if(path.endsWith('/inbox'))data=contentView&&scenario!=='empty'?(params.get('messages')==='1'?previewInbox.map(row=>({...row,conversationId:'21',intent:'BODY',body:scenario==='long'?row.body.repeat(50):row.body,...(params.get('voice')==='1'?{voice:{clipId:'701',status:'ready',durationMs:3000}}:{})})):previewInbox):[];
   else if(path.endsWith('/admin/providers')&&method==='GET')data=scenario==='empty'?[]:scenario==='long'?providers.map(row=>({...row,displayName:row.displayName.repeat(8),models:row.models.map(model=>({...model,displayName:model.displayName.repeat(8)}))})):providers;
   else if(path.endsWith('/admin/model-purposes')&&method==='GET')data=scenario==='empty'?purposes.map(row=>({...row,providerId:null,profileKey:null,status:'PENDING_CONFIGURATION'})):purposes;
   else if(path.endsWith('/admin/usage'))data=[];
