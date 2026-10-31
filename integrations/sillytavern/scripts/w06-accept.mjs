@@ -69,7 +69,7 @@ export async function sceneRightsBrowser(ctx){
     const browser=await chromium.launch({headless:true,...(process.env.VC_W03_CHROMIUM_PATH?{executablePath:process.env.VC_W03_CHROMIUM_PATH}:{})});
     try{
         const bc=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
-        await pinVcUi(bc, 'off');
+        await pinVcUi(bc, 'on');
         await bc.addCookies([{name:'vc_session',value:ctx.secrets.session.vcSession,url:ctx.w05.stBase},{name:'vc_csrf',value:ctx.secrets.session.vcCsrf,url:ctx.w05.stBase}]);
         const page=await bc.newPage();const errors=[];page.on('pageerror',()=>errors.push('pageerror'));
         await page.goto(ctx.w05.stBase,{waitUntil:'domcontentloaded'});
@@ -78,18 +78,20 @@ export async function sceneRightsBrowser(ctx){
         const onboarding=page.locator('dialog[open].popup').filter({has:page.locator('.onboarding')});
         if(await onboarding.count()){await onboarding.locator('textarea').fill('合成验收用户');await onboarding.locator('.popup-button-ok').click();await onboarding.waitFor({state:'hidden'});}
         await page.waitForSelector('#preloader',{state:'hidden'});
-        // Open the actual native extensions menu; do not call the controller directly.
-        await page.locator('#extensionsMenuButton').click();
-        await page.locator('#vc_data_menu_button').click();
+        // Use the current settings flow, including its sensitive-action reauthentication.
+        await page.getByRole('button',{name:'设置',exact:true}).click();
+        await page.locator('.vc-settings-form [data-action="data"]').click();
         await page.locator('.vc-data-dialog[open]').waitFor();
         await page.screenshot({path:path.join(ctx.artifactsDir,'D05-data-desktop.png')});
         await page.setViewportSize({width:390,height:844});
-        await page.locator('.vc-data-delete summary').click();
+        await page.locator('[data-vc-account-go="delete"]').click();
         assert.equal(await page.evaluate(()=>document.querySelector('.vc-data-dialog').scrollWidth<=innerWidth),true,'手机不能横向溢出');
         await page.screenshot({path:path.join(ctx.artifactsDir,'D05-data-mobile.png')});
-        await page.locator('.vc-data-delete summary').click();
-        await page.locator('[data-export] input[name=password]').fill(ctx.secrets.password);
-        await page.locator('[data-export] button[type=submit]').click();
+        await page.locator('[data-vc-account-back]').click();
+        await page.locator('[data-vc-account-go="export"]').click();
+        await page.locator('[data-export]').click();
+        await page.locator('[data-reauth-password]').fill(ctx.secrets.password);
+        await page.locator('[data-reauth] button[type=submit]').click();
         await page.waitForFunction(() => !document.querySelector('[data-download]').hidden || /未生成|未完成|暂不可用/.test(document.querySelector('[data-export-status]').textContent), null, {timeout:60000});
         assert.equal(await page.locator('[data-download]').isVisible(),true,`导出未完成：${await page.locator('[data-export-status]').textContent()}`);
         const downloading=page.waitForEvent('download');await page.locator('[data-download]').click();
