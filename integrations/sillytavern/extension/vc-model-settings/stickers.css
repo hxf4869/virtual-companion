@@ -5,6 +5,8 @@ body.vc-ui .vc-sticker-page {
     flex-direction: column;
     gap: var(--vc-space-sm);
     min-width: 0;
+    width: min(100%, var(--vc-read));
+    margin-inline: auto;
 }
 
 /* 桌面聊天目的地的对话列选择器比设置页更具体，设置层会被挤到下一行。表情包页打开时盖住这一列。 */
@@ -29,7 +31,7 @@ body.vc-ui .vc-sticker-page > .vc-navbar {
 
 body.vc-ui .vc-shell-settings:has(.vc-sticker-page) > .vc-navbar,
 body.vc-ui .vc-sheet:has(.vc-sticker-page) > .vc-sheet-head {
-    display: none;
+    display: none !important;
 }
 
 body.vc-ui .vc-sticker-row {

@@ -273,10 +273,14 @@ export async function sceneHlStickers(ctx) {
                     const list = page.querySelector('[data-vc-sticker-list]').getBoundingClientRect();
                     const upload = page.querySelector('[data-vc-sticker-upload]').getBoundingClientRect();
                     const title = page.querySelector('[data-vc-sticker-title]');
+                    const host = page.closest('.vc-sheet,.vc-shell-settings');
+                    const outerNav = host?.querySelector(':scope > .vc-sheet-head,:scope > .vc-navbar');
                     return { insetX: upload.left - list.left, insetY: upload.top - list.top,
+                        width: page.getBoundingClientRect().width,
+                        duplicateNav: Boolean(outerNav?.getClientRects().length),
                         titleVisible: title.getClientRects().length > 0 && Number(getComputedStyle(title).opacity) >= 0.99 };
                 });
-                if (layout.insetX < 15 || layout.insetY < 9 || !layout.titleVisible) throw new Error(`表情包标题或上传间距异常 ${JSON.stringify(layout)}`);
+                if (layout.insetX < 15 || layout.insetY < 9 || !layout.titleVisible || layout.duplicateNav || layout.width > 721) throw new Error(`表情包标题、内容列或上传间距异常 ${JSON.stringify(layout)}`);
                 await shot(page, dir, `settings-${viewport.name}-${mode}.png`, ctx);
                 await closeSettings(page);
             }
