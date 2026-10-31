@@ -71,6 +71,7 @@ type EngineOperation struct {
 	Proposal             json.RawMessage
 	SourceKey, SourceRef string
 	Timestamp            time.Time
+	SourceTime           *memorytime.Result
 	Input                MemoryExtractInput
 	Embedding            EmbeddingConfig
 	Allowed              []string
@@ -146,9 +147,17 @@ func (s *Store) PrepareEngineOperation(ctx context.Context, c JobClaim) (EngineO
 		return op, e
 	}
 	e = s.WithOwner(ctx, c.OwnerID, func(ctx context.Context, tx pgx.Tx) error {
-		if e := tx.QueryRow(ctx, `SELECT 'source-'||id||'-'||source_revision||'-'||source_generation,COALESCE(source_timestamp,clock_timestamp()) FROM vc.st_message_source WHERE owner_user_id=$1 AND id=$2 AND source_ref=$3`, c.OwnerID, c.RefID, op.SourceRef).Scan(&op.SourceKey, &op.Timestamp); e != nil {
+		var sourceAt *time.Time
+		var zone string
+		if e := tx.QueryRow(ctx, `SELECT 'source-'||id||'-'||source_revision||'-'||source_generation,COALESCE(source_timestamp,clock_timestamp()),source_timestamp,COALESCE(source_timezone,'') FROM vc.st_message_source WHERE owner_user_id=$1 AND id=$2 AND source_ref=$3`, c.OwnerID, c.RefID, op.SourceRef).Scan(&op.SourceKey, &op.Timestamp, &sourceAt, &zone); e != nil {
 			return e
 		}
+		var at time.Time
+		if sourceAt != nil {
+			at = *sourceAt
+		}
+		normalized := memorytime.Normalize(in.UserContent, at, zone)
+		op.SourceTime = &normalized
 		raw, _ := json.Marshal(op.Scope)
 		var attempt int
 		if e := tx.QueryRow(ctx, `SELECT attempt_count FROM vc.work_item WHERE owner_user_id=$1 AND id=$2`, c.OwnerID, c.JobID).Scan(&attempt); e != nil {

@@ -33,6 +33,19 @@ retrievalPolicy:
     and reminder instant distinct. Relative source expressions use their saved
     source timezone and calendar; queries use their own snapshot. Unknown or
     ambiguous time stays needs_clarification. A date never creates a midnight reminder.
+extractionPolicy:
+  transientStates: Do not retain pure same-day tiredness, sleepiness or hunger as long-term facts.
+  sourceTime: >-
+    The private Go-to-engine propose payload may carry sourceTime, the existing
+    memorytime normalization result derived from the frozen source timestamp and
+    timezone. The engine may replace that exact sourceExpression with eventDate
+    only for normalized or explicit_date results. Missing or ambiguous time is
+    never inferred from the worker clock. This is derived data, not a separate
+    mutable operation input or a new persistent clock.
+  replacements: >-
+    Conflicting new facts use existing update targets and SUPERSEDED projection
+    links; previous encrypted Go summaries remain visible in revision history
+    and are excluded from recall. Do not turn factual corrections into deletion.
 entries:
 - code: SESSION
   order: 0

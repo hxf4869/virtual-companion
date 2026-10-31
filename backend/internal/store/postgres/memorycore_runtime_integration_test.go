@@ -70,6 +70,9 @@ func TestEngineProjectionPublicationRecoveryAndSourceFence(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	if op.SourceTime == nil || op.SourceTime.EventDate == nil || *op.SourceTime.EventDate != "2026-10-30" {
+		t.Fatal("source timezone / timestamp did not reach the extraction projection")
+	}
 	raw, _ := json.Marshal(EngineProposal{Records: []EngineRecord{{ID: "record-new", Content: snapshot.Messages[0].Text, Version: 1}}, Targets: []EngineTarget{}, Dependencies: []string{op.SourceKey}})
 	if _, e = s.ValidateEngineProposal(ctx, c, op, raw); e != nil {
 		t.Fatal(e)

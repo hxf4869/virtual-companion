@@ -7,7 +7,7 @@
       "total": 4
     },
     "preference": {
-      "passed": 2,
+      "passed": 4,
       "total": 4
     },
     "relationship": {
@@ -15,8 +15,8 @@
       "total": 4
     },
     "event": {
-      "passed": 4,
-      "total": 4
+      "passed": 6,
+      "total": 6
     },
     "replacement": {
       "passed": 4,
@@ -45,8 +45,8 @@
     {
       "id": "preference-transient",
       "category": "preference",
-      "extraction": false,
-      "recall": false
+      "extraction": true,
+      "recall": true
     },
     {
       "id": "relationship-sister",
@@ -81,6 +81,12 @@
     {
       "id": "replacement-drink",
       "category": "replacement",
+      "extraction": true,
+      "recall": true
+    },
+    {
+      "id": "event-relative",
+      "category": "event",
       "extraction": true,
       "recall": true
     }

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { createControlledEngine } from './business.mjs';
 import { createOllamaEmbedding, embeddingCacheStats } from './embedding.mjs';
 import { createCallbackRunner } from './llm-runner.mjs';
+import { extractionRunner, prepareMemoryFact } from './memory-policy.mjs';
 import { engineRerank, looseRetrievalFilter, rerankCacheStats, summaryUnits } from './rerank.mjs';
 
 // Calibrated on fixtures/memorycore-calibration.json (88 synthetic Chinese
@@ -360,13 +361,13 @@ export async function createNativeFactory(api) {
             list,
             listSources: () => store.getRawDb().prepare('SELECT * FROM l0_conversations ORDER BY record_id').all(),
             forgetSources: (ids, scope) => store.forgetSources(ids, scope),
-            async prepare({ messages, scope, allowedRecordIds, runner, embedding, recordedAt }) {
+            async prepare({ messages, scope, allowedRecordIds, runner, embedding, recordedAt, sourceTime }) {
                 const queryEmbedding = { ...embedding, embed: embedding.embedQuery || embedding.embed,
                     embedBatch: async texts => { const out = []; for (const text of texts) out.push(await (embedding.embedQuery || embedding.embed)(text)); return out; } };
                 const result = await api.extractL1Memories({ messages, ...scope, baseDir: dir, config: {},
-                    options: { prepareOnly: true, allowedRecordIds, recordedAt,
+                    options: { prepareOnly: true, allowedRecordIds, recordedAt, transformMemory: memory => prepareMemoryFact(memory, sourceTime),
                         relevance: { ...RELEVANCE }, vectorStore: store,
-                        embeddingService: store.getSpace()?.rebuilding ? undefined : queryEmbedding, llmRunner: runner } });
+                        embeddingService: store.getSpace()?.rebuilding ? undefined : queryEmbedding, llmRunner: extractionRunner(runner, sourceTime) } });
                 if (!result.success) throw new Error('MEMORYCORE_EXTRACTION_FAILED');
                 const proposal = JSON.parse(JSON.stringify(result.proposal || { records: [], targets: [] }));
                 if (typeof result.emptyDisposition === 'string' && /^[A-Z0-9_]+$/u.test(result.emptyDisposition)) proposal.emptyDisposition = result.emptyDisposition;

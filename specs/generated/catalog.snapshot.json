@@ -3095,6 +3095,11 @@
             "relationshipIdRequired": false
           }
         ],
+        "extractionPolicy": {
+          "replacements": "Conflicting new facts use existing update targets and SUPERSEDED projection links; previous encrypted Go summaries remain visible in revision history and are excluded from recall. Do not turn factual corrections into deletion.",
+          "sourceTime": "The private Go-to-engine propose payload may carry sourceTime, the existing memorytime normalization result derived from the frozen source timestamp and timezone. The engine may replace that exact sourceExpression with eventDate only for normalized or explicit_date results. Missing or ambiguous time is never inferred from the worker clock. This is derived data, not a separate mutable operation input or a new persistent clock.",
+          "transientStates": "Do not retain pure same-day tiredness, sleepiness or hunger as long-term facts."
+        },
         "forbiddenAliases": [
           "COMPANION",
           "SAFETY_INTERNAL"
@@ -3115,7 +3120,7 @@
         },
         "schemaVersion": 1
       },
-      "sha256": "54d3d1a24de0d2e4f68e2896b90c05b7b6e1e468f080b0bb154164427c18f765"
+      "sha256": "ffa939f91c3582ca57c22a63e764a0ca160f1f8c95bf5f908061eb3e9db2aca5"
     },
     "message-feedback-kinds.yaml": {
       "document": {

@@ -121,6 +121,9 @@ export async function sceneMemoryExtractProd(ctx) {
         assert.ok(Number(profiles) >= 1, '画像应写入当前关系且 persona 非空');
         const calls = (await ctx.fixtureHttp.captures({ protocol: 'chat' })).filter((row) => row.body?.model === modelId);
         assert.ok(calls.length >= 1, '提取请求应到达模型，而不是在回调里 4ms 被拒');
+        assert.ok(calls.some((row)=>row.body.messages.some((message)=>message.role==='system'
+            && message.content.includes('今天累、困、饿等会过去的状态不记')
+            && message.content.includes('2026-11-02'))),'RQ-2 提取规则和权威来源日期应到达模型');
         for (const row of calls) {
             assert.equal(row.body.reasoning_effort, 'max');
             assert.equal(row.body.temperature, undefined);

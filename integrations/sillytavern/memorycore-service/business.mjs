@@ -351,7 +351,7 @@ export function createControlledEngine({ dataRoot, nativeFactory, embeddingFacto
                     try {
                         const embedding = await embeddingCall(embeddingFactory, input);
                         const proposal = await native.prepare({ messages: input.messages, scope: mapped, allowedRecordIds: ids,
-                            runner: runnerFactory(input.operationToken), embedding, recordedAt: input.messages.at(-1).timestamp });
+                            runner: runnerFactory(input.operationToken), embedding, recordedAt: input.messages.at(-1).timestamp, sourceTime: input.sourceTime });
                         const targets = proposal.targets || [];
                         if (targets.some(t => !ids.includes(t.id))) fail('TARGET_NOT_ALLOWED');
                         const existing = native.list(ids, mapped);

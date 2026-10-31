@@ -1,7 +1,7 @@
 {
   "id": "vc-memorycore-01-prepare",
   "group": "proposal-commit",
-  "reason": "Expose side-effect-free extraction and strict scoped dedup before live writes.",
+  "reason": "Expose side-effect-free extraction and strict scoped dedup before live writes. RQ-2 applies the controlled deterministic fact policy before dedup, so discarded candidates cannot delete replacement targets.",
   "upstream": {
     "commit": "084bed45cad6bb7f877455082cee82835d65671a",
     "version": "1.0.2-beta.1"
@@ -9,10 +9,10 @@
   "removal_condition": "Upstream exposes an equivalent prepare API with strict errors and trusted target versions.",
   "target": "MemoryCore/src/core/record/l1-extractor.ts",
   "expected_input_sha256": "eb354b4571ed088398ccd1885baee7800933d4005b4dad4e42b755d0d3ef7e7b",
-  "expected_output_sha256": "1722f62844a370463e04e26482aed01fddff33286ea1c6d347f39b7502fe99a3",
+  "expected_output_sha256": "f645dc290d34c9d92d24b0d8f5583e46504fabc38d3ed5d50cd9a73f9db5742e",
   "changed_lines": {
-    "added": 38,
-    "removed": 7
+    "added": 42,
+    "removed": 8
   },
   "validation": [
     "node --test integrations/sillytavern/tests/memorycore-patches.test.mjs",
@@ -31,7 +31,7 @@
     },
     {
       "from": "    /** Max new messages to send in one extraction call */",
-      "to": "    prepareOnly?: boolean;\n    allowedRecordIds?: string[];\n    recordedAt?: string;\n    relevance?: { minCosine?: number; minFtsScore?: number };\n    /** Maximum new messages sent in an extraction call. */",
+      "to": "    prepareOnly?: boolean;\n    allowedRecordIds?: string[];\n    recordedAt?: string;\n    transformMemory?: (memory: ExtractedMemory) => ExtractedMemory | null;\n    relevance?: { minCosine?: number; minFtsScore?: number };\n    /** Maximum new messages sent in an extraction call. */",
       "count": 1
     },
     {
@@ -62,6 +62,11 @@
     {
       "from": "    return {\n      success: true,\n      extractedCount: 0,\n      storedCount: 0,\n      records: [],\n      sceneNames,\n      lastSceneName: sceneNames[sceneNames.length - 1],\n    };",
       "to": "    return {\n      success: true,\n      extractedCount: 0,\n      storedCount: 0,\n      records: [],\n      sceneNames,\n      lastSceneName: sceneNames[sceneNames.length - 1],\n      emptyDisposition: finalReason === \"normalized_all_dropped\" ? \"DROPPED_GATE\" : \"NO_NEW_FACT\",\n    };",
+      "count": 1
+    },
+    {
+      "from": "  let extracted = allExtracted;",
+      "to": "  let extracted = options.prepareOnly && options.transformMemory\n    ? allExtracted.flatMap(memory => { const value = options.transformMemory!(memory); return value ? [value] : []; })\n    : allExtracted;",
       "count": 1
     }
   ]

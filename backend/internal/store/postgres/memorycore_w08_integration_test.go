@@ -164,7 +164,7 @@ func TestEngineCorrectionRebuildsProfileWithoutOldFact(t *testing.T) {
 	s, snapshots := engineSampleStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
-	oldBinding, oldClaim, oldOp, _ := publishEngineMemory(t, s, snapshots, engineSample{
+	oldBinding, oldClaim, oldOp, oldMemory := publishEngineMemory(t, s, snapshots, engineSample{
 		chat: sourceChat, message: sourceMessage, candidate: sourceCandidate,
 		text: "我最喜欢喝乌龙茶，每天下午都会喝一杯。", zone: "Asia/Shanghai", at: at,
 		summary: "当前事实：喜欢乌龙茶", recordID: "record-old",
@@ -187,6 +187,17 @@ func TestEngineCorrectionRebuildsProfileWithoutOldFact(t *testing.T) {
 		targets:      []EngineTarget{{ID: "record-old", Version: 1}},
 		dependencies: []string{oldOp.SourceKey},
 	})
+	history, err := s.GetManagedMemory(ctx, 1, oldMemory.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var previous map[string]any
+	if err := json.Unmarshal(history, &previous); err != nil {
+		t.Fatal(err)
+	}
+	if previous["lifecycle"] != "SUPERSEDED" || previous["summary"] == "" || previous["supersededByMemoryId"] == nil || previous["recallEligible"] != false {
+		t.Fatal("replaced fact must remain visible in history with a superseding link, outside recall")
+	}
 	allowed := []string{}
 	built, published := false, false
 	var verified []string

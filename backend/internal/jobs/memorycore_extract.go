@@ -82,7 +82,8 @@ func (l *Loop) handleEngineExtract(ctx context.Context, c postgres.JobClaim) err
 				return l.failExtract(ctx, c, "MEMORYCORE_CAPABILITY")
 			}
 			input := map[string]any{"scope": op.Scope, "operationId": op.ID, "revision": op.Revision, "operationToken": token, "embedding": op.Embedding, "allowedRecordIds": op.Allowed,
-				"messages": []map[string]any{{"id": op.SourceKey, "content": op.Input.UserContent, "role": "user", "timestamp": op.Timestamp.Format(time.RFC3339Nano)}}}
+				"sourceTime": op.SourceTime,
+				"messages":   []map[string]any{{"id": op.SourceKey, "content": op.Input.UserContent, "role": "user", "timestamp": op.Timestamp.Format(time.RFC3339Nano)}}}
 			if err = s.EngineCall(ctx, "propose", input, &proposal); err != nil {
 				if code := memoryengine.ClosedCode(err); code != "" {
 					if status, ok := admissionOutcome(code); ok {

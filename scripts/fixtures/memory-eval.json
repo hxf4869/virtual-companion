@@ -10,6 +10,7 @@
     {"id":"event-date","category":"event","source":"我在2026年11月1日去苏州参加朋友婚礼，火车票已经买好了。","candidate":"用户将于2026年11月1日去苏州参加朋友婚礼。","type":"episodic","metadata":{"eventDate":"2026-11-01"},"required":["苏州","婚礼"],"query":"苏州婚礼","eventDate":"2026-11-01"},
     {"id":"event-other-day","category":"event","source":"我在2026年11月1日去苏州参加朋友婚礼，火车票已经买好了。","candidate":"用户将于2026年11月1日去苏州参加朋友婚礼。","type":"episodic","metadata":{"eventDate":"2026-11-01"},"required":["婚礼"],"query":"婚礼","eventDate":"2026-11-02","expectRecall":false},
     {"id":"replacement-city","category":"replacement","previous":"用户长期居住在杭州，已经在当地生活多年。","source":"我已经从杭州搬到了上海，以后说我现在住哪里请用上海，旧的住址不再用了。","candidate":"用户现在居住在上海，已从杭州搬走。","required":["上海"],"query":"居住上海"},
-    {"id":"replacement-drink","category":"replacement","previous":"用户最喜欢喝乌龙茶，平时经常买乌龙茶。","source":"我现在更喜欢茉莉花茶了，不再喝乌龙茶，以后买茶就选茉莉花茶。","candidate":"用户现在最喜欢茉莉花茶。","required":["茉莉花茶"],"forbidden":["乌龙茶"],"query":"茉莉花茶"}
+    {"id":"replacement-drink","category":"replacement","previous":"用户最喜欢喝乌龙茶，平时经常买乌龙茶。","source":"我现在更喜欢茉莉花茶了，不再喝乌龙茶，以后买茶就选茉莉花茶。","candidate":"用户现在最喜欢茉莉花茶。","required":["茉莉花茶"],"forbidden":["乌龙茶"],"query":"茉莉花茶"},
+    {"id":"event-relative","category":"event","source":"我明天去苏州参加朋友婚礼，火车票已经买好了。","candidate":"用户明天去苏州参加朋友婚礼。","type":"episodic","sourceTime":{"sourceExpression":"明天","eventDate":"2026-11-01","normalizationStatus":"normalized"},"required":["2026-11-01","苏州"],"query":"苏州婚礼","eventDate":"2026-11-01"}
   ]
 }

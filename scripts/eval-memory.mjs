@@ -62,7 +62,7 @@ export async function evaluateMemory() {
                         }]}]);
                     }};
                     const proposal=await native.prepare({messages:[{id:source,role:'user',content,timestamp:dataset.recordedAt}],
-                        scope,allowedRecordIds:old,runner,embedding,recordedAt:dataset.recordedAt});
+                        scope,allowedRecordIds:old,runner,embedding,recordedAt:dataset.recordedAt,sourceTime:sample.sourceTime});
                     native.commitPrepared({operationId:operation,scopeKey:'7:COMPANION:daily-7:main',revision:0,spaceId:'offline-16',filter:scope,targets:proposal.targets,
                         l0Records:[{id:source,...scope,role:'user',messageText:content,recordedAt:dataset.recordedAt,timestamp:Date.parse(dataset.recordedAt)}],
                         records:proposal.records.map((record)=>({record,embedding:vector(record.content)}))});
