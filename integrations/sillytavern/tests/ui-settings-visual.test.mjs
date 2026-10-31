@@ -63,7 +63,8 @@ test('浅色抽屉：对比度、数值胶囊、通栏导航、世界书与扩�
     assert.match(css, /#user-settings-block\.vc-drawer-page[\s\S]{0,200}margin-top:\s*12px/);
     assert.match(css, /#WorldInfo\.vc-drawer-page \.select2-selection__rendered[\s\S]{0,220}text-overflow:\s*ellipsis/);
     assert.match(css, /#WorldInfo\.vc-drawer-page \.select2-selection[\s\S]{0,240}0\.5px solid var\(--vc-separator\)/);
-    assert.match(css, /\.BGSampleTitle[\s\S]{0,220}color:\s*var\(--vc-on-accent\)/);
+    assert.match(css, /\.BGSampleTitle[\s\S]{0,220}color:\s*var\(--vc-ink\)/);
+    assert.match(css, /\.BGSampleTitle[\s\S]{0,340}background:\s*var\(--vc-glass-strong\)/);
     assert.match(css, /#rm_extensions_block\.vc-drawer-page \.inline-drawer \+ \.inline-drawer[\s\S]{0,180}var\(--vc-separator\)/);
     assert.doesNotMatch(css, /#Backgrounds[\s\S]{0,400}\.bg_example[\s\S]{0,80}background/);
     for (const selector of css.match(/([^{}]+)\{/g) || []) {
