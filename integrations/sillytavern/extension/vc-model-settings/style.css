@@ -1871,3 +1871,6 @@ body.vc-chat-shell #send_textarea { min-height: 44px; font-size: max(16px, var(-
     .vc-memory-root .vc-memory-confirm .vc-memory-actions { flex-direction: column-reverse; }
     .vc-memory-root .vc-memory-confirm .vcms-btn { width: 100%; }
 }
+
+/* UX-12：模型页遵守外壳叠层，不把公共确认框与提示条压在根节点之下。 */
+body.vc-ui .vcms-root { z-index: auto; }

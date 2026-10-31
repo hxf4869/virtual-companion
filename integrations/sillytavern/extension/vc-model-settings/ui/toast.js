@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 export const TOAST_MS = 1800;
 
 const timers = new WeakMap();
+const instances = new WeakMap();
 
 function failure(type) {
     return type === 'failure' || type === 'fail' || type === 'error';
@@ -13,14 +14,16 @@ export function showToast(message, { type = 'ok', icon: iconName, root, duration
     const doc = (root || document.body).ownerDocument || document;
     const host = root || doc.body;
     const sticky = failure(type);
-    let toast = host.querySelector(':scope > .vc-toast');
+    let toast = instances.get(doc);
+    if (toast && toast.parentElement !== host) host.append(toast);
     if (!toast) {
         toast = doc.createElement('div');
         toast.className = 'vc-toast vc-glass';
         host.append(toast);
+        instances.set(doc, toast);
     }
     const existing = timers.get(toast);
-    if (existing) clearTimeout(existing);
+    if (existing) { clearTimeout(existing.expire); clearTimeout(existing.remove); }
     toast.classList.toggle('is-failure', sticky);
     toast.setAttribute('role', sticky ? 'alert' : 'status');
     toast.replaceChildren();
@@ -43,11 +46,12 @@ export function showToast(message, { type = 'ok', icon: iconName, root, duration
     }
     requestAnimationFrame(() => toast.classList.add('is-on'));
     if (!sticky) {
-        const timer = setTimeout(() => {
+        const pending = {};
+        pending.expire = setTimeout(() => {
             toast.classList.remove('is-on');
-            setTimeout(() => { if (!toast.classList.contains('is-on')) toast.remove(); }, 400);
+            pending.remove = setTimeout(() => { if (!toast.classList.contains('is-on')) toast.remove(); }, 400);
         }, duration);
-        timers.set(toast, timer);
+        timers.set(toast, pending);
     }
     return toast;
 }

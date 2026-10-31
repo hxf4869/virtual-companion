@@ -7,7 +7,7 @@ function focusable(root) {
     return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]')].filter((el) => !el.hasAttribute('disabled') && el.tabIndex >= 0);
 }
 
-export function confirmAlert({ title = '', message = '', action = '删除', root, opener } = {}) {
+export function confirmAlert({ title = '', message = '', action = '删除', cancel = '取消', root, opener } = {}) {
     const doc = (root || document.body).ownerDocument || document;
     const host = root || doc.body;
     const previous = opener || doc.activeElement;
@@ -26,6 +26,7 @@ export function confirmAlert({ title = '', message = '', action = '删除', root
         dialog.querySelector('h4').textContent = title;
         dialog.querySelector('p').textContent = message;
         dialog.querySelector('[data-vc-ok]').textContent = action;
+        dialog.querySelector('[data-vc-cancel]').textContent = cancel;
         const fixed = host === doc.body;
         scrim.style.position = fixed ? 'fixed' : 'absolute';
         dialog.style.position = fixed ? 'fixed' : 'absolute';
@@ -53,7 +54,7 @@ export function confirmAlert({ title = '', message = '', action = '删除', root
             if (!dialog.isConnected) return;
             if (event.key === 'Escape') {
                 event.preventDefault();
-                event.stopPropagation();
+                event.stopImmediatePropagation();
                 finish(false);
                 return;
             }
@@ -83,6 +84,10 @@ export function confirmAlert({ title = '', message = '', action = '删除', root
             { opacity: 0, transform: 'translate(-50%, -50%) scale(1.15)' },
             { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
         ], { duration: 520 });
-        dialog.querySelector('[data-vc-ok]').focus();
+        dialog.querySelector('[data-vc-cancel]').focus();
     });
+}
+
+export function confirmDiscard(options = {}) {
+    return confirmAlert({ ...options, title: '放弃更改？', message: '关闭后本次输入将丢失。', cancel: '继续编辑', action: '放弃' });
 }
