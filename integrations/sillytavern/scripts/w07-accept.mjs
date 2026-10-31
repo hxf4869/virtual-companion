@@ -374,7 +374,7 @@ export async function sceneMemoryBrowser(ctx) {
         assert.ok(third.includes(revisedReading), '新摘要必须来自编辑后真实持久来源');
         assert.equal(pageErrors.length, 0, '原生记忆流程不得有未捕获页面异常');
         ctx.results.memoryBrowser = { cases: ['M01', 'M09', 'M05-current-request'], precedingNoiseRecords: 101,
-            nativeGenerations: 4, nativeExtractionVisible: true, correctionConflict: true, crossInstanceListIsolated: true, cleanupStates: ['PARTIAL', cleanup.cleanup.state], widths: [1440,360,390], summaryFromOtherChat: true, disabledBlockAbsent: true,
+            nativeGenerations: 7, nativeExtractionVisible: true, correctionConflict: true, crossInstanceListIsolated: true, cleanupStates: ['PARTIAL', cleanup.cleanup.state], widths: [1440,360,390], summaryFromOtherChat: true, disabledBlockAbsent: true,
             forgottenSourceAbsent: true, unreportedEditReconciled: true, realModelCalls: false };
     } catch (error) {
         if (page && !page.isClosed()) {
