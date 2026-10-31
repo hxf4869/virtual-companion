@@ -1,6 +1,7 @@
 // 拟人提示：全局规则在角色卡之后（IN_PROMPT），状态与篇幅档在最末（IN_CHAT depth 0）。仅陪伴模式。
 import { moodGuidance, readGlobalRules, STYLE_NOTE } from './persona.js';
 import { chatVoiceGuidance } from './voice-chat.js';
+import { userExpressionHint } from './user-expressions.js';
 
 export const COMPANION_RULES_PROMPT = 'vc_companion_rules';
 export const COMPANION_STATE_PROMPT = 'vc_companion_state';
@@ -91,6 +92,7 @@ export async function injectCompanionPrompt({ getContext, fetchState, listTags, 
     const tier = await tierFrom(lastUserText(context), pickLengthTier);
     const stateParts = [
         voiceGuide,
+        userExpressionHint(context),
         moodGuidance(companion?.mood),
         emotionGuidance(companion?.emotion),
         tier ? `本轮篇幅档：${tier}` : '',

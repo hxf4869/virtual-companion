@@ -188,6 +188,10 @@ export async function sceneHlReply(ctx) {
                 chat_metadata: { vc_f2: { id: crypto.randomUUID(), revision: 0 }, vc_binding: { mode: 'COMPANION', displayName: '合成实例' } },
             },
             { name: cardName, is_user: false, mes: GREETING, swipe_id: 0, swipes: [GREETING] },
+            ...Array.from({length:7},(_,i)=>[
+                {name:'合成用户',is_user:true,mes:i<3?'好家伙':`合成背景编号${i}`,extra:{}},
+                {name:cardName,is_user:false,mes:'嗯',extra:{}},
+            ]).flat(),
         ],
     });
     if (saved.status !== 200) throw new Error(`保存聊天 HTTP ${saved.status}`);
@@ -215,6 +219,7 @@ export async function sceneHlReply(ctx) {
 
         await page.evaluate(() => { const c=SillyTavern.getContext(); window.vcHistoryHookCalls=0; c.eventSource.on('vc-chat-history-ready',()=>{window.vcHistoryHookCalls++;}); });
 
+        const expressionSince=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: BUBBLES, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
         const before = await page.locator('#chat > .mes').count();
         console.log('[hl-reply] 多气泡');
@@ -239,6 +244,8 @@ export async function sceneHlReply(ctx) {
         }, BUBBLES);
         const windowState=await page.evaluate(()=>({calls:window.vcHistoryHookCalls,saved:SillyTavern.getContext().chatMetadata.vc_history_window}));
         if(!windowState.calls || !Number.isInteger(windowState.saved?.count)) throw new Error('RQ-1 原生历史预算钩子没有执行');
+        const expressionRequests=await chatCaptures(ctx,expressionSince);
+        assert.ok(expressionRequests.some((row)=>row.body.messages.some((message)=>typeof message.content==='string' && message.content.includes('<vc-user-expressions>') && message.content.includes('[\"好家伙\"]'))),'RQ-5 第八轮应携带有界用户表达数据');
         if (shown.user !== LONG) throw new Error('长消息被拆进了多条用户消息');
         if (shown.assistant !== BUBBLES || shown.copies !== 1) throw new Error('多句回复没有保持为一条消息');
         if (shown.segs.length < 2) throw new Error(`气泡数量不足 ${shown.segs.length}`);
