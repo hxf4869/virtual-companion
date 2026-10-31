@@ -17,6 +17,14 @@ const CAPTURE_FRAMES = [
 ];
 // Owner 2026-11-01 批准；仅原底部保存按钮，不覆盖其余 Sheet 区域。
 export const PIXEL_EXCEPTIONS = [
+ {name:'relationship-timbre-label-390-light',view:'voice-relationship',width:390,theme:'light',rect:{x:32,y:300,width:102,height:21},clause:'方案 §6.6，两端共用文案'},
+ {name:'relationship-proactive-label-390-light',view:'voice-relationship',width:390,theme:'light',rect:{x:32,y:622,width:102,height:20},clause:'方案 §6.6，两端共用文案'},
+ {name:'relationship-timbre-label-390-dark',view:'voice-relationship',width:390,theme:'dark',rect:{x:32,y:300,width:102,height:21},clause:'方案 §6.6，两端共用文案'},
+ {name:'relationship-proactive-label-390-dark',view:'voice-relationship',width:390,theme:'dark',rect:{x:32,y:622,width:102,height:20},clause:'方案 §6.6，两端共用文案'},
+ {name:'relationship-timbre-label-360-light',view:'voice-relationship',width:360,theme:'light',rect:{x:32,y:300,width:102,height:21},clause:'方案 §6.6，两端共用文案'},
+ {name:'relationship-proactive-label-360-light',view:'voice-relationship',width:360,theme:'light',rect:{x:32,y:622,width:102,height:20},clause:'方案 §6.6，两端共用文案'},
+ {name:'relationship-timbre-label-360-dark',view:'voice-relationship',width:360,theme:'dark',rect:{x:32,y:300,width:102,height:21},clause:'方案 §6.6，两端共用文案'},
+ {name:'relationship-proactive-label-360-dark',view:'voice-relationship',width:360,theme:'dark',rect:{x:32,y:622,width:102,height:20},clause:'方案 §6.6，两端共用文案'},
  {name:'relationship-sheet-save-390-light',view:'voice-relationship',width:390,theme:'light',rect:{x:0,y:756,width:390,height:50},clause:'方案 §5.3'},
  {name:'relationship-sheet-save-390-dark',view:'voice-relationship',width:390,theme:'dark',rect:{x:0,y:756,width:390,height:50},clause:'方案 §5.3'},
  {name:'relationship-sheet-save-360-light',view:'voice-relationship',width:360,theme:'light',rect:{x:0,y:756,width:360,height:50},clause:'方案 §5.3'},
