@@ -33,6 +33,7 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/auth/reauth'))data={ok:true};
   else if(path.endsWith('/voice/settings')){if(method==='PUT'){Object.assign(voiceSettings,JSON.parse(init.body),{revision:voiceSettings.revision+1});delete voiceSettings.expectedRevision;}data=voiceSettings;}
   else if(path.endsWith('/voice/engines'))data=engines;
+  else if(path.endsWith('/st/bindings')&&method==='POST'){const body=JSON.parse(init.body),id=String(Math.max(...previewRelationships.map(row=>Number(row.relationshipId)))+1);previewRelationships.push({...relationship,...body,relationshipId:id,personaRef:'st-character',companionName:body.displayName});data={relationshipId:id,conversationId:String(300+Number(id))};}
   else if(path.endsWith('/relationships'))data=contentView?(scenario==='empty'?[]:previewRelationships):[relationship];
   else if(/\/relationships\/\d+$/.test(path)&&method==='PATCH'){data=contentView?previewRelationships.find(row=>row.relationshipId===path.split('/').at(-1)):relationship;Object.assign(data,JSON.parse(init.body));}
   else if(path.endsWith('/proactive-policy')){if(method==='PUT')Object.assign(previewPolicy,JSON.parse(init.body));data=previewPolicy;}

@@ -22,6 +22,7 @@ installHostFixture();
 if(view==='settings')installDrawerFixtures();
 const context={characters:[],chatMetadata:{},chat:[],name1:'合成验收用户'};
 if((['characters','memory','inbox','story'].includes(view)||view==='chat'&&loadDesktop&&innerWidth>=744)&&params.get('state')!=='empty')context.characters=[{name:'小满',avatar:'',data:{extensions:{vc_character_ref:'synthetic-xiaoman'}}},{name:'林舟',avatar:'',data:{extensions:{vc_character_ref:'synthetic-linzhou'}}}];
+if(view==='characters'&&params.get('state')==='long')for(const card of context.characters)card.description='这是用于长内容验收的合成角色介绍。'.repeat(40);
 if(view==='story')context.chatMetadata={vc_binding:{conversationId:'21',relationshipId:'11',mode:'STORY'}};
 if(view==='chat'){context.name2='小满';context.characterId=0;context.chatMetadata={vc_binding:{relationshipId:'11'}};if(loadDesktop&&innerWidth>=744)context.extensionPrompts=previewPrompts;}
 const {mountShell,registerShellTabs}=await import(`${source}/shell.js`);
@@ -46,10 +47,11 @@ function components(container){
  container.append(root);bindRangeFills(document);for(const el of root.querySelectorAll('.vc-switch'))bindSwitch(el);for(const el of root.querySelectorAll('.vc-segment'))bindSegment(el);
  return {refresh(){},destroy(){window.removeEventListener('resize',syncDesktop);}};
 }
+const pendingMounts=[];
 const registry={};
 for(const key of Object.keys(mounts))registry[key]=(container,args)=>{
  if(view==='components'&&key==='characters')return components(container);
- if(modules[key])return modules[key].mount({container,args,source,params,context});
+ if(modules[key]){const result=Promise.resolve(modules[key].mount({container,args,source,params,context}));pendingMounts.push(result);return {refresh(){void result.then(handle=>handle?.refresh?.());},destroy(){void result.then(handle=>handle?.destroy?.());}};}
  void import(`${source}/${files[key]}.js`).then(mod=>mod[mounts[key]](container,args));return {refresh(){}};
 };
 registerShellTabs(registry);
@@ -99,6 +101,7 @@ if(loadDesktop){
  for(const node of shell.querySelectorAll('.vc-side-link'))node.setAttribute('data-vc-light','');
  const {bindPointerLights}=await import(`${source}/desktop/pointer-light.js`);bindPointerLights(document);
 }
+await Promise.all(pendingMounts);
 window.VC_PREVIEW={model,shell,desktop,source,params,modules};
 await Promise.all([...document.querySelectorAll('link[rel="stylesheet"]')].map(link=>link.sheet?Promise.resolve():new Promise(resolve=>{link.addEventListener('load',resolve,{once:true});link.addEventListener('error',resolve,{once:true});})));
 await new Promise(requestAnimationFrame);document.documentElement.dataset.previewReady='true';
