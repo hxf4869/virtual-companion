@@ -1,0 +1,59 @@
+/* UX-14。宿主节点、消息树与滚动容器沿用原版。 */
+html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-chat="open"] .vc-shell-pages { background: none; }
+html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"] > .vc-shell-body { gap: var(--vc-space-sm); grid-template-columns: 320px minmax(560px,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-list="hidden"] > .vc-shell-body { grid-template-columns: minmax(560px,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="chat"] .vc-shell-scroll { padding: 0 12px 12px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="chat"] > .vc-navbar { padding: 0 24px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-convo { border-radius: var(--vc-radius-md); padding: 12px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-convo[aria-current="true"] { background: var(--vc-select-fill); box-shadow: inset 0 1px 0 var(--vc-hi); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-convo:hover { background: var(--vc-hover-fill); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat { min-width: 0; border-radius: var(--vc-radius-xl); border: 1px solid var(--vc-rim); background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat > .vc-navbar { height: 64px; min-height: 64px; padding: 0 24px; gap: var(--vc-space-xs); background: var(--vc-raised); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat :is(.vc-who,.vc-capsule) { background: none; box-shadow: none; backdrop-filter: none; border: 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who-slot { position: static; transform: none; max-width: none; min-width: 0; margin-right: auto; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who { height: auto; padding: 0; gap: var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who .vc-convo-avatar { width: 36px; height: 36px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule { display: flex; gap: var(--vc-space-xs); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule > button { width: 40px; height: 40px; border-radius: var(--vc-radius-pill); background: var(--vc-raised); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat-body { --vc-poster-pad: 0px; }
+html[data-vc-layout="desktop"] body.vc-ui #vc-chat-poster { display: none; }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes { padding: 12px 24px; font-size: var(--vc-fs-reading); line-height: var(--vc-lh-reading); }
+html[data-vc-layout="desktop"] body.vc-ui #send_form { margin-top: auto; gap: var(--vc-space-xs); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character { position: absolute; right: 0; top: 0; bottom: 0; width: 340px; box-sizing: border-box; overflow: auto; z-index: var(--vc-z-popup); padding: 64px 24px 24px; border-radius: var(--vc-radius-xl); border: 1px solid var(--vc-rim); background: var(--vc-glass-3); backdrop-filter: blur(var(--vc-blur-3)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-overlay); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character[hidden] { display: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-close { position: absolute; top: 12px; right: 12px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-identity { display: flex; flex-direction: column; align-items: center; text-align: center; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-avatar { display: grid; place-items: center; width: 96px; height: 96px; border-radius: var(--vc-radius-pill); background: var(--vc-raised); font-size: var(--vc-fs-large-title); box-shadow: 0 0 0 3px rgb(var(--vc-tint) / .35),0 8px 24px rgb(var(--vc-tint) / .35); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-identity h1 { font-size: var(--vc-fs-title-1); line-height: var(--vc-lh-title); margin: 16px 0 4px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-identity p { margin: 4px 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-mood { font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-actions { display: flex; justify-content: space-between; gap: var(--vc-space-md); margin: 24px 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-actions > div { display: grid; justify-items: center; gap: var(--vc-space-xs); color: var(--vc-ink-2); font-size: var(--vc-fs-footnote); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-section { border-top: .5px solid var(--vc-raised-edge); margin-top: 24px; padding-top: 16px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-section h2 { font-size: var(--vc-fs-headline); margin: 0 0 8px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-recalled { background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); border-radius: var(--vc-radius-md); padding: 12px 16px; margin-top: 8px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-recalled p { margin: 0; overflow-wrap: anywhere; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-recalled-actions { display: flex; justify-content: flex-end; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-recalled-actions .vc-btn { min-width: 0; max-width: none; height: auto; padding: 8px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-recalled-actions .is-danger { color: var(--vc-danger); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-memory-editor { display: grid; gap: var(--vc-space-sm); padding: 24px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-memory-editor textarea { height: auto; min-height: 160px; padding: 12px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-editor-actions { display: flex; justify-content: flex-end; gap: var(--vc-space-xs); }
+@media(min-width:1504px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"] > .vc-shell-body { grid-template-columns: 320px minmax(560px,1fr) 340px; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character { position: relative; width: 340px; background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); }
+}
+@media(max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"]:not([data-settings="page"]):not([data-list="hidden"]) > .vc-shell-body { grid-template-columns: minmax(560px,1fr); }
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-chat="open"] .vc-list-toggle { display: grid; }
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-chat="open"][data-list="open"] .vc-shell-pages { position: absolute; inset: 0 auto 0 0; width: 320px; z-index: var(--vc-z-popup); }
+}
+html[data-vc-layout="desktop"] body.vc-ui #sheld { background: none; }
+html[data-vc-layout="desktop"] body.vc-ui #send_textarea { background: var(--vc-raised); backdrop-filter: none; -webkit-backdrop-filter: none; }
+html[data-vc-layout="desktop"] body.vc-ui #options_button { background: var(--vc-raised); backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* 新回复胶囊属于对话面板内反馈，不增加常驻模糊表面。 */
+html[data-vc-layout="desktop"] body.vc-ui #vc-new-reply { background: var(--vc-raised); backdrop-filter: none; -webkit-backdrop-filter: none; }
+@media(max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="closed"]:not([data-settings="page"]) .vc-shell-chat { display: none; }
+}
