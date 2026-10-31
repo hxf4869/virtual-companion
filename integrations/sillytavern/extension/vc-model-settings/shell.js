@@ -1109,14 +1109,15 @@ export function mountShell(options = {}) {
         });
         if (chromeForWidth(globalThis.innerWidth).nav === 'tabbar') {
             closeSettings();
-            sheetHandle = openSheet({
+            const handle = openSheet({
                 title: '设置',
                 large: true,
                 body: form,
                 opener,
                 root: doc.body,
-                onDone: () => { sheetHandle = null; },
+                onDone: () => { if (sheetHandle === handle) sheetHandle = null; },
             });
+            sheetHandle = handle;
             return;
         }
         settingsScroll.replaceChildren(settingsHeading, form);

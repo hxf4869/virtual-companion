@@ -556,7 +556,17 @@ export async function sceneVcUiWalkthrough(ctx) {
                     const back = page.locator(`#${drawer.panel} [data-vc-drawer-back]`).first();
                     if (await back.count()) await back.click();
                     await page.waitForFunction((panelId) => !document.getElementById(panelId)?.classList.contains('openDrawer'), drawer.panel, { timeout: 8000 });
-                    assert.ok(await until(settingsOpen, 8000), `${viewport.width}/${theme} ${drawer.page} 未返回设置`);
+                    const returned = await until(settingsOpen, 8000);
+                    const returnState = returned ? null : await page.evaluate(() => ({
+                        settings: document.querySelector('#vc-shell')?.dataset.settings,
+                        drawers: [...document.querySelectorAll('.openDrawer,.vc-drawer-leave')].map(el => el.id),
+                        sheets: [...document.querySelectorAll('.vc-sheet')].map(el => {
+                            const r = el.getBoundingClientRect();
+                            return { top: r.top, bottom: r.bottom, title: el.querySelector('.vc-sheet-head h3')?.textContent, form: !!el.querySelector('.vc-settings-form') };
+                        }),
+                        probe: document.elementFromPoint(innerWidth / 2, Math.min(innerHeight * 0.42, innerHeight - 120))?.className,
+                    }));
+                    assert.ok(returned, `${viewport.width}/${theme} ${drawer.page} 未返回设置 ${JSON.stringify(returnState)}`);
                 }
 
                 try {
