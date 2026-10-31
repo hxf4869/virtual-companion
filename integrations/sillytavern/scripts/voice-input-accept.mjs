@@ -7,6 +7,13 @@ export async function sceneVoiceInput(ctx) {
     await voiceControl('asr');
     const {browser,page}=await openVoiceChat(ctx,'语音输入',{fakeAudio:true});
     let stage='recording start';
+    const sourceErrors=[];
+    page.on('response',async(response)=>{
+        if(!response.url().includes('/st/sources/reconcile') || response.status()<400)return;
+        let data;try{data=await response.json();}catch{data={};}
+        const code=data.code || data.error?.code;
+        sourceErrors.push({status:response.status(),code:typeof code==='string'&&/^[A-Z_]+$/.test(code)?code:'unclassified'});
+    });
     const uploads=path.join(ctx.w05.dataRoot,'default-user','.uploads');
     const uploaded=()=>fs.existsSync(uploads)?fs.readdirSync(uploads).sort():[];
     const uploadsBefore=uploaded();
@@ -52,8 +59,13 @@ export async function sceneVoiceInput(ctx) {
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.length),before,'failed recognition does not send');
         await voiceControl('asr');
     } catch(error) {
-        const state=await page.evaluate(()=>({pressed:document.querySelector('#vc-voice-input')?.getAttribute('aria-pressed'),note:document.querySelector('#vc-voice-input-note')?.textContent,probe:window.vcRecordingProbe}));
-        throw new Error(`voice-input ${stage}: ${JSON.stringify(state)}; ${error.message}`);
+        const state=await page.evaluate(()=>{
+            const c=SillyTavern.getContext(),last=c.chat.at(-1);
+            return {pressed:document.querySelector('#vc-voice-input')?.getAttribute('aria-pressed'),note:document.querySelector('#vc-voice-input-note')?.textContent,probe:window.vcRecordingProbe,
+                chatLength:c.chat.length,lastUser:last?.is_user,voiceSent:last?.extra?.vc_voice_attempt?.sent,voiceStatus:last?.extra?.vc_voice?.status,
+                tier:last?.extra?.vc_reply_length_tier,sourcePresent:!!last?.extra?.vc_source?.id,conflictVisible:!!document.querySelector('#vc-f2-conflict[open]')};
+        });
+        throw new Error(`voice-input ${stage}: ${JSON.stringify({state,sourceErrors})}; ${error.message}`);
     } finally {await browser.close();await ctx.fixtureHttp.setOverride('vc03m-chat',null);}
 }
 export const voiceInputScene={id:'voice-input',title:'VO-7 录音、16k 重采样、情绪和语音回复',needs:['catalog','stack','fixture','browser'],default:false,run:sceneVoiceInput};
