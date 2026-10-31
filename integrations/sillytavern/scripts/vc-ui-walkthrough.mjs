@@ -502,7 +502,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                     const preview = String(previews[i] ?? '').trim();
                     if (!preview || preview === '暂无消息') continue;
                     const row = rows.nth(i);
-                    await row.scrollIntoViewIfNeeded();
+                    // click 自带滚动和重定位；列表异步刷新时避免持有额外滚动步骤的旧节点。
                     await row.click();
                     openedChat = await page.waitForFunction(() => {
                         const shell = document.querySelector('#vc-shell');
@@ -678,7 +678,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 }
                 });
                 } catch (error) {
-                    if (String(error?.message || error).includes('残留浮层')) throw error;
+                    if (error?.code === 'ERR_ASSERTION' || String(error?.message || error).includes('残留浮层')) throw error;
                     notes.push(`${viewport.width} ${theme}：${error.message || error}`);
                 }
         }
