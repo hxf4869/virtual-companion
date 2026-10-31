@@ -108,7 +108,23 @@ func (s *Store) GetCompanionState(ctx context.Context, owner, relationshipID int
 
 func (s *Store) LoadProactiveContext(ctx context.Context, owner, relationshipID int64, now time.Time) (ProactiveContext, error) {
 	var out ProactiveContext
+	var topicRef string
 	err := s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `SELECT COALESCE(open_topic_source_ref,'') FROM vc.companion_affect WHERE owner_user_id=$1 AND relationship_id=$2`, owner, relationshipID).Scan(&topicRef)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	})
+	if err != nil {
+		return out, mapFollowUpErr(err)
+	}
+	if chats := sourceChats([]string{topicRef}); len(chats) > 0 {
+		if _, err := s.ReconcileSTSources(ctx, owner, chats); err != nil {
+			return out, err
+		}
+	}
+	err = s.WithOwner(ctx, owner, func(ctx context.Context, tx pgx.Tx) error {
 		policy, err := scanProactivePolicy(ctx, tx, owner, relationshipID)
 		if err != nil {
 			return err
@@ -156,10 +172,21 @@ func (s *Store) LoadProactiveContext(ctx context.Context, owner, relationshipID 
 		if err != nil {
 			return err
 		}
-		turns, topic, err := loadRecentTurnsTx(ctx, tx, owner, relationshipID)
+		turns, err := loadRecentTurnsTx(ctx, tx, owner, relationshipID)
 		if err != nil {
 			return err
 		}
+		var topic string
+		err = tx.QueryRow(ctx, `SELECT s.content_cipher
+            FROM vc.companion_affect a JOIN vc.st_message_source s ON s.owner_user_id=a.owner_user_id AND s.source_ref=a.open_topic_source_ref
+            JOIN vc.conversation c ON (c.owner_user_id,c.id)=(s.owner_user_id,s.conversation_id)
+            WHERE a.owner_user_id=$1 AND a.relationship_id=$2 AND c.relationship_id=$2
+              AND s.role='user' AND s.present AND s.settled AND s.eligible AND NOT s.suppressed
+              AND NOT c.incognito AND c.st_mode='COMPANION' AND c.st_source_state='PRESENT'`, owner, relationshipID).Scan(&topic)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		topic = clipRunes(topic, 160)
 		recent, err := loadRecentProactiveTx(ctx, tx, owner, relationshipID)
 		if err != nil {
 			return err
@@ -218,6 +245,16 @@ func (s *Store) ObserveCompanionUserText(ctx context.Context, owner, relationshi
 		affect.LastUserAt = at
 		if err := saveCompanionAffectTx(ctx, tx, owner, relationshipID, affect); err != nil {
 			return err
+		}
+		switch proactive.TopicAction(text) {
+		case "open":
+			if _, err := tx.Exec(ctx, `SELECT vc.set_companion_topic($1,$2,$3)`, owner, relationshipID, ref); err != nil {
+				return err
+			}
+		case "clear":
+			if _, err := tx.Exec(ctx, `SELECT vc.set_companion_topic($1,$2,NULL)`, owner, relationshipID); err != nil {
+				return err
+			}
 		}
 		_, err = tx.Exec(ctx, `SELECT vc.cancel_open_proactive($1,$2,$3)`, owner, relationshipID, at)
 		return err
@@ -538,7 +575,7 @@ func loadCooldownsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64
 	return out, rows.Err()
 }
 
-func loadRecentTurnsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64) (string, string, error) {
+func loadRecentTurnsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64) (string, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT s.role, s.content_cipher
 		  FROM vc.st_message_source s
@@ -549,7 +586,7 @@ func loadRecentTurnsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int
 		 ORDER BY s.source_position DESC, s.id DESC
 		 LIMIT 6`, owner, relationshipID)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	defer rows.Close()
 	type turn struct{ role, text string }
@@ -557,20 +594,14 @@ func loadRecentTurnsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int
 	for rows.Next() {
 		var row turn
 		if err := rows.Scan(&row.role, &row.text); err != nil {
-			return "", "", err
+			return "", err
 		}
 		got = append(got, row)
 	}
 	if err := rows.Err(); err != nil {
-		return "", "", err
+		return "", err
 	}
 	var lines []string
-	topic := ""
-	for _, row := range got {
-		if row.role == "user" && topic == "" {
-			topic = clipRunes(row.text, 40)
-		}
-	}
 	for i := len(got) - 1; i >= 0; i-- {
 		label := "你"
 		if got[i].role == "user" {
@@ -578,7 +609,7 @@ func loadRecentTurnsTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int
 		}
 		lines = append(lines, label+"："+clipRunes(got[i].text, 80))
 	}
-	return strings.Join(lines, "\n"), topic, nil
+	return strings.Join(lines, "\n"), nil
 }
 
 func loadRecentProactiveTx(ctx context.Context, tx pgx.Tx, owner, relationshipID int64) (string, error) {

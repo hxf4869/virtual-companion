@@ -1,6 +1,7 @@
 package proactive
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,9 @@ func judgmentPrompt(w World, found []Trigger) string {
 	b.WriteString(strconv.Itoa(w.Unanswered))
 	b.WriteString(" 次没回你的主动消息。\n")
 	b.WriteString(JudgmentInstruction)
+	if strings.TrimSpace(w.Topic) != "" {
+		b.WriteString(topicData(w.Topic))
+	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
@@ -44,6 +48,9 @@ func pregenPrompt(w World, item Trigger) string {
 	b.WriteString(fill(item.Line, w))
 	b.WriteString("。\n")
 	b.WriteString(PregenInstruction)
+	if item.Kind == KindContinue {
+		b.WriteString(topicData(w.Topic))
+	}
 	b.WriteString("\n最近你主动发过的话（不要重复意思或句式）：\n")
 	b.WriteString(blank(w.RecentProactive, ""))
 	if w.Unanswered == 1 {
@@ -51,6 +58,13 @@ func pregenPrompt(w World, item Trigger) string {
 		b.WriteString(UnansweredOnce)
 	}
 	return b.String()
+}
+
+func topicData(topic string) string {
+	data, _ := json.Marshal(struct {
+		Text string `json:"text"`
+	}{topic})
+	return "\n" + TopicDataInstruction + "\n<vc-open-topic>\n" + string(data) + "\n</vc-open-topic>\n"
 }
 
 func fill(line string, w World) string {

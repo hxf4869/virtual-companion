@@ -1,5 +1,13 @@
 schemaVersion: 1
 catalogId: companion-prefs
+openTopic:
+  consumer: CLOSE_FRIEND continue_topic trigger
+  source: verified companion user-source observations; one source reference per relationship
+  detection: explicit unfinished / resume-later wording; never infer from the latest ordinary line
+  clear: explicit completion or change-topic wording
+  persistence: companion_affect.open_topic_source_ref; no duplicated conversation text
+  validation: reconcile the referenced ST chat before planning; require current settled eligible unsuppressed user source in a present non-incognito companion conversation
+  prompt: bounded historical topic data; never instructions
 enums:
 - typeName: CompanionReplyLength
   entries:

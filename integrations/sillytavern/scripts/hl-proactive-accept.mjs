@@ -162,6 +162,10 @@ export async function sceneHlProactive(ctx) {
     }
     if (!emotion.line) throw new Error('情绪状态句缺失');
 
+    const pendingTopic='周末旅行路线还没聊完，回头接着说';
+    await speak(pendingTopic,'2026-10-28T18:10:00+08:00');
+    if(ctx.w10.psql(`SELECT open_topic_source_ref IS NOT NULL FROM vc.companion_affect WHERE owner_user_id=${owner} AND relationship_id=${relationshipId};`).trim()!=='t')throw Error('RQ-10 explicit topic was not persisted');
+
     await putPolicy(1, 120);
     const planned = await runAt('2026-10-30T10:00:00+08:00');
     if (planned.outcome !== 'READY' || !['good_morning', 'cold_hello'].includes(planned.reason)) {
@@ -174,8 +178,8 @@ export async function sceneHlProactive(ctx) {
 
     await putPolicy(3, 120);
     const second = await runAt('2026-10-30T13:00:00+08:00');
-    if (second.outcome !== 'READY' || !['continue_topic', 'share_day'].includes(second.reason)) {
-        throw new Error(`第二条应预生成接话或分享，得到 ${second.outcome}/${second.reason || ''}`);
+    if (second.outcome !== 'READY' || second.reason !== 'continue_topic') {
+        throw new Error(`第二条应延续已记录话题，得到 ${second.outcome}/${second.reason || ''}`);
     }
     const captures = await ctx.fixtureHttp.captures({ protocol: 'chat' });
     const blob = JSON.stringify(captures);
@@ -186,6 +190,21 @@ export async function sceneHlProactive(ctx) {
     if ((await inboxMine()).length !== 2) throw new Error('收件箱主动消息不是两条');
     expectGate(await runAt('2026-10-30T13:40:00+08:00'), 'UNANSWERED', '未回复上限');
     if ((await inboxMine()).length !== 2) throw new Error('达到未回复上限后又投了一条');
+
+    const changedRows=await read();
+    const topicRow=changedRows.find(row=>row.is_user && row.mes===pendingTopic);
+    topicRow.extra.no_memory=true;
+    prepareSourceIdentities(changedRows,{settled:true,sourceTimezone:'Asia/Shanghai'});
+    if((await save(changedRows)).status!==200)throw Error('RQ-10 source opt-out save failed');
+    await speak('我回来了','2026-10-30T14:00:00+08:00');
+    const since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
+    const withoutTopic=await runAt('2026-10-30T16:00:00+08:00');
+    if(withoutTopic.outcome!=='READY' || withoutTopic.reason!=='share_day')throw Error('RQ-10 invalid source remained a continuation candidate');
+    const after=await ctx.fixtureHttp.captures({protocol:'chat',since});
+    if(JSON.stringify(after).includes('上次有个话题还没说完，见下方已记录话题'))throw Error('RQ-10 opted-out source leaked into continuation prompt');
+    await speak('旅行安排已经解决了，不聊这个了','2026-10-30T16:10:00+08:00');
+    if(ctx.w10.psql(`SELECT open_topic_source_ref IS NULL FROM vc.companion_affect WHERE owner_user_id=${owner} AND relationship_id=${relationshipId};`).trim()!=='t')throw Error('RQ-10 resolution did not clear pending topic');
+    ctx.results.rq10Topic={persisted:true,continued:true,optedOutSourceExcluded:true,resolved:true};
 }
 
 export const hlProactiveScene = {

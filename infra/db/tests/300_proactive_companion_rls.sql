@@ -131,6 +131,20 @@ DECLARE
     v_user text := 'st:27100000-0000-4000-8000-000000002710:27133333-3333-4333-8333-333333333333:27144444-4444-4444-8444-444444444444:1:1';
 BEGIN
     SELECT rel INTO v_rel FROM hl_ids;
+    PERFORM vc.set_companion_topic(27101,v_rel,v_user);
+    PERFORM vc.set_companion_topic(27101,v_rel,v_user);
+    IF (SELECT open_topic_source_ref FROM vc.companion_affect WHERE relationship_id=v_rel) IS DISTINCT FROM v_user THEN
+        RAISE EXCEPTION 'open topic was not persisted idempotently';
+    END IF;
+    PERFORM vc.set_companion_topic(27101,v_rel,v_assistant);
+    IF (SELECT open_topic_source_ref FROM vc.companion_affect WHERE relationship_id=v_rel) IS DISTINCT FROM v_user THEN
+        RAISE EXCEPTION 'assistant source replaced user topic';
+    END IF;
+    PERFORM vc.set_companion_topic(27101,v_rel,NULL);
+    IF (SELECT open_topic_source_ref FROM vc.companion_affect WHERE relationship_id=v_rel) IS NOT NULL THEN
+        RAISE EXCEPTION 'topic resolution did not clear reference';
+    END IF;
+    PERFORM vc.set_companion_topic(27101,v_rel,v_user);
     IF vc.memory_profile_source_allowed(27101, 27120, v_assistant) IS NOT TRUE
        OR vc.memory_profile_source_allowed(27101, 27120, v_user) IS NOT TRUE THEN
         RAISE EXCEPTION 'both sources should be allowed before suppression';
@@ -167,6 +181,12 @@ BEGIN
        OR (SELECT count(*) FROM vc.proactive_cooldown) <> 0 THEN
         RAISE EXCEPTION 'other owner can read proactive state';
     END IF;
+    BEGIN
+        PERFORM vc.set_companion_topic(27102,v_rel,NULL);
+        RAISE EXCEPTION 'cross-owner topic clear was accepted';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM <> 'proactive: affect not found' THEN RAISE; END IF;
+    END;
     BEGIN
         INSERT INTO vc.companion_affect(owner_user_id, relationship_id) VALUES (27101, v_rel);
         RAISE EXCEPTION 'cross-owner affect write was accepted';
