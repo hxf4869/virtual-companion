@@ -17,6 +17,10 @@ body.vc-ui #sheld {
   overflow: hidden;
   /* 颜色和渐变必须拆开。带斜杠的 rgb(var(--vc-tint) / alpha) 在简写里会整段失效，
      把 !important 背景算成透明，聊天打开后这一列就没有底色。 */
+}
+
+/* UX-14：桌面背景/模糊由 desktop/chat.css 接管；原声明内容保持不变。 */
+html:not([data-vc-layout="desktop"]) body.vc-ui #sheld {
   background-color: var(--vc-canvas) !important;
   background-image: radial-gradient(120% 42% at 50% 0%, color-mix(in srgb, rgb(var(--vc-tint)) calc(var(--vc-tint-alpha) * 100%), transparent), transparent 68%) !important;
   background-repeat: no-repeat !important;
@@ -589,9 +593,14 @@ body.vc-ui.no-blur #send_form {
   border: 0 !important;
   border-radius: 0 !important;
   outline: none !important;
+  box-shadow: none !important;
+}
+
+/* UX-14：桌面背景/模糊由 desktop/chat.css 接管；原声明内容保持不变。 */
+html:not([data-vc-layout="desktop"]) body.vc-ui #send_form,
+html:not([data-vc-layout="desktop"]) body.vc-ui.no-blur #send_form {
   background: transparent !important;
   background-color: transparent !important;
-  box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -613,10 +622,14 @@ body.vc-ui #options_button {
   padding: 0;
   border: 0 !important;
   border-radius: var(--vc-radius-pill) !important;
-  background: var(--vc-glass) !important;
   color: var(--vc-ink);
   opacity: 1 !important;
   box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge);
+}
+
+/* UX-14：桌面背景/模糊由 desktop/chat.css 接管；原声明内容保持不变。 */
+html:not([data-vc-layout="desktop"]) body.vc-ui #options_button {
+  background: var(--vc-glass) !important;
   -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
   backdrop-filter: blur(22px) saturate(180%) !important;
 }
@@ -640,8 +653,6 @@ body.vc-ui #send_textarea {
   border-top: 0 !important;
   /* 单行时是胶囊；多行时保持 22px 圆角，不变成长条体育场形 */
   border-radius: 22px !important;
-  background: var(--vc-glass) !important;
-  background-color: var(--vc-glass) !important;
   box-shadow: inset 0 0.5px 0 var(--vc-glass-hi), inset 0 0 0 0.5px var(--vc-glass-edge), 0 8px 28px var(--vc-glass-shadow) !important;
   clip-path: none !important;
   field-sizing: fixed !important;
@@ -651,6 +662,12 @@ body.vc-ui #send_textarea {
   font-size: 17px !important;
   line-height: var(--vc-lh-body);
   white-space: pre-wrap;
+}
+
+/* UX-14：桌面背景/模糊由 desktop/chat.css 接管；原声明内容保持不变。 */
+html:not([data-vc-layout="desktop"]) body.vc-ui #send_textarea {
+  background: var(--vc-glass) !important;
+  background-color: var(--vc-glass) !important;
   -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
   backdrop-filter: blur(22px) saturate(180%) !important;
 }

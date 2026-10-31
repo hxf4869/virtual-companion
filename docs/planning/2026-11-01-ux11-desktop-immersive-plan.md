@@ -95,7 +95,7 @@ UX-11 选图定稿 + DESIGN.md v4 + ADR-0010（文档）
 | UX-16 | `E/desktop/memory.css`、`S/views/memory.js` | 记忆 |
 | UX-17 | `E/desktop/inbox.css`、`S/views/inbox.js` | 陪伴 |
 | UX-18 | `E/desktop/story.css`、`S/views/story.js` | 剧情（列表 / 存档；舞台动画沿用原版） |
-| UX-19 | `E/desktop/settings.css`、`E/desktop/settings-shell.js`、`S/views/settings.js`；以及模型页清理涉及的 `E/page.js` 渲染函数（与 UX-12 串行：UX-12 合并后再开始改 `page.js`） | 设置壳 + 模型 + 语音 + 账户 + 通知 + 外观 + 酒馆抽屉容器 |
+| UX-19 | `E/desktop/settings.css`、`E/desktop/settings-shell.js`、`S/views/settings.js`；`E/settings-pages.css` 仅限阻止嵌入设置右栏的旧全页 `!important` 规则（Owner 2026-11-01 追加：以「新设置壳根节点不存在」为条件收窄，例如 `:not(:has(.vc-settings-shell))` 或壳内 `:where()` 覆盖，不用 `data-vc-layout`，壳未挂载时旧规则原样生效）；`E/voice-settings.js` 仅限关系声音两处标签文案（两端一起改为文案文档的 `主动语音音色` / `主动发送语音`）；以及模型页清理涉及的 `E/page.js` 渲染函数（与 UX-12 串行：UX-12 合并后再开始改 `page.js`） | 设置壳 + 模型 + 语音 + 账户 + 通知 + 外观 + 酒馆抽屉容器 |
 
 - 页面条目若需要调整 `E/desktop/base.css` 或公共组件，**不要直接改**，在 backlog 本条目下写 [问]，由 UX-13 / UX-12 的 owner 处理。
 - `E/desktop/**` 在 UX-21 之前**不得加入生产加载链**（`index.js` 的样式 / 模块注入、`manifest.json`）。样板框架直接引用它们。
@@ -284,7 +284,7 @@ UX-11 按 Owner 选中的图调整下表的数值，写进 DESIGN.md v4 新增�
   （存 `.review-queue/UX-11/baseline/`），之后每次检查加载全部桌面文件再截同样画面，逐像素一致才通过。
 - **像素例外（只允许第 5 节规定的改动）**：`check.mjs` 用具名例外表登记，每条写明视图、宽度、明暗、矩形坐标与对应的第 5 节条款；
   例外矩形内允许不同，矩形外仍要求 0 差异。当前唯一例外（Owner 2026-11-01）：手机语音 / 关系声音 Sheet 删除的底部通栏「保存」按钮
-  所在矩形（§5.3），390 与 360 浅深色。新增例外必须先写进本条并经 Owner 同意；腾出的区域需人工确认没有留下空白底栏或残留分隔线。
+  所在矩形（§5.3），390 与 360 浅深色；第二条（Owner 2026-11-01）：手机关系声音 Sheet 中两处改名标签的文字矩形（§6.6 文案统一），390 与 360 浅深色。新增例外必须先写进本条并经 Owner 同意；腾出的区域需人工确认没有留下空白底栏或残留分隔线。
 - 截图输出到 `.review-queue/UX-11/<ID>/`，每个视图只保留最终一份；`NOTES.md` 写改了什么、自查发现了什么、性能记录。
 
 ### 7.3 每个条目的完成条件
