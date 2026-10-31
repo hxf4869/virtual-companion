@@ -423,6 +423,8 @@ export async function sceneVcUiWalkthrough(ctx) {
             return shell?.dataset.settings === 'page' && Boolean(probe?.closest?.('.vc-shell-settings'));
         });
         const ensureSettings = async () => {
+            // 抽屉返回后设置已在前台，不点击弹层下面的聊天返回按钮。
+            if (await settingsOpen()) return;
             if (await page.evaluate(() => window.innerWidth < 744 && document.querySelector('#vc-shell')?.dataset.chat === 'open')) {
                 await page.locator('#vc-shell [data-back]:visible').click();
                 await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.chat !== 'open', null, { timeout: 8000 });
@@ -550,8 +552,8 @@ export async function sceneVcUiWalkthrough(ctx) {
                         }, drawer.panel, { timeout: 8000 });
                         await record(page, viewport.width, theme, drawer.page, bucket);
                     } catch (error) {
-                        if (error?.code === 'ERR_ASSERTION' || String(error?.message || error).includes('残留浮层')) throw error;
-                        notes.push(`${viewport.width} ${theme} ${drawer.page}：${error.message}`);
+                        if (error?.code === 'ERR_ASSERTION') throw error;
+                        assert.fail(`${viewport.width} ${theme} ${drawer.page}：${error.message}`);
                     }
                     const back = page.locator(`#${drawer.panel} [data-vc-drawer-back]`).first();
                     if (await back.count()) await back.click();
