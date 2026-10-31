@@ -1,0 +1,46 @@
+export const scenarios=[{key:'inbox',params:{}},{key:'inbox-messages',params:{messages:'1'}},{key:'inbox-voice',params:{messages:'1',voice:'1'}},...['empty','loading','error','long'].map(state=>({key:`inbox-${state}`,params:{state,...(state==='long'?{messages:'1'}:{})}}))];
+export async function mount({container,args={},source,params}){
+ const mod=await import(`${source}/inbox-page.js`);
+ if(source.startsWith('/baseline/')||innerWidth<744){const handle=mod.mountInboxTab(container,args);if(params.get('state')!=='loading')for(let i=0;i<150&&(container.querySelector('[role="status"]')?.textContent.includes('加载')||!container.querySelector('.vc-inbox-workspace'));i++){if(container.querySelector('[role="alert"]'))break;await new Promise(r=>setTimeout(r,20));}return handle;}
+ const {confirmAlert,confirmDiscard}=await import(`${source}/ui/alert.js`),{popMenu}=await import(`${source}/ui/menu.js`),{bindSegment}=await import(`${source}/ui/controls.js`),{openSheet}=await import(`${source}/ui/sheet.js`),{icon}=await import(`${source}/ui/icons.js`);
+ const root=document.createElement('section');root.className='vc-desktop-inbox vc-inbox-tab';container.append(root);
+ let dead=false,typing=false,segment,menu,baseline,width=0,native,layer;
+ const page=mod.createInboxPage({onOpenConversation:args.onOpenConversation,onChange(){if(!typing)paint();}});
+ const dirty=()=>mod.inboxPolicyDirty(page.state);
+ async function leave(){if(page.state.busy)return false;if(!dirty())return true;if(!await confirmDiscard({opener:document.activeElement}))return false;page.setPolicy(structuredClone(baseline));return true;}
+ function syncButtons(){const save=root.querySelector('[data-save-policy]'),discard=root.querySelector('[data-discard-policy]');if(!save)return;save.disabled=!dirty()||page.state.busy||page.state.loading||!page.state.relationshipId||page.state.policyConflict;discard.hidden=!dirty();discard.disabled=page.state.busy;}
+ function paint(){if(dead)return;segment?.dispose();const top=root.scrollTop,active=document.activeElement,field=active?.dataset.field,caret=active?.selectionStart;root.innerHTML=mod.renderInboxTab(page.state);const column=root.firstElementChild,title=column.querySelector('h1');const header=document.createElement('header');header.className='vc-inbox-heading';header.append(title);const discard=document.createElement('button');discard.type='button';discard.className='vc-btn vc-btn-text';discard.textContent='放弃修改';discard.dataset.discardPolicy='';const save=document.createElement('button');save.type='button';save.className='vc-btn vc-btn-fill';save.dataset.savePolicy='';save.innerHTML=page.state.busy?`${icon('loader-circle',{size:16})}保存中…`:'保存';if(page.state.busy&&width){save.style.width=`${width}px`;save.style.minWidth=`${width}px`;save.style.padding='0';}header.append(discard,save);column.prepend(header);
+ const follows=column.querySelector('[aria-label="跟进"]'),preferences=column.querySelector('.vc-inbox-preferences');if(follows&&preferences)preferences.prepend(follows);
+ for(const heading of column.querySelectorAll('.vc-group-title')){const group=heading.nextElementSibling;if(group?.classList.contains('vc-group')){if(heading.textContent==='静默时段')group.classList.add('vc-inbox-quiet');group.prepend(heading);}}
+ for(const input of root.querySelectorAll('input[data-field]'))input.disabled=page.state.busy||page.state.loading||!page.state.relationshipId;
+ if(field){const next=root.querySelector(`[data-field="${field}"]`);next?.focus();if(Number.isInteger(caret))next?.setSelectionRange(caret,caret);}
+ mod.mountInboxVoices(root,page.state);const segments=root.querySelector('[data-vc-inbox-segment]');if(segments)segment=bindSegment(segments,{onChange:index=>page.setInboxFilter(['all','pending','written','broken'][index])});
+ root.scrollTop=top;syncButtons();
+ const state=page.state;if(state.reauth.open||state.policyConflict){const temp=document.createElement('div');temp.innerHTML=mod.renderInboxPage(state);const content=temp.querySelector('.vc-inbox-layer');if(content){content.classList.add('vc-inbox-public-layer');if(!layer){layer=openSheet({title:content.getAttribute('aria-label'),body:content,canClose:()=>!page.state.busy,onDone(){layer=null;if(page.state.reauth.open)page.cancelReauth();if(page.state.policyConflict)page.keepPolicyDraft();}});layer.el.addEventListener('click',async e=>{const action=e.target.closest('button')?.dataset.action;if(action==='view-latest-policy')await page.viewLatestPolicy();if(action==='keep-policy-draft')page.keepPolicyDraft();if(action==='reauth-cancel')page.cancelReauth();if(action==='reauth-submit'){const input=layer.el.querySelector('[data-field="reauth-password"]');page.setReauthPassword(input.value);input.value='';await page.authenticate();}});}else layer.el.querySelector('.vc-sheet-body').replaceChildren(content);for(const control of layer.el.querySelectorAll('input,button'))control.disabled=state.busy;}}else if(layer){const current=layer;layer=null;current.dismiss();}
+
+ }
+ async function save(){width=root.querySelector('[data-save-policy]').getBoundingClientRect().width;await page.savePolicy();if(!dirty())baseline=structuredClone(page.state.policyDraft);}
+ root.addEventListener('input',e=>{const field=e.target.dataset.field;if(!field||field==='reauth-password')return;const value=field==='quietHoursTimezone'?mod.quietZoneValue(e.target.value,e.target.dataset.zone):e.target.value;typing=true;page.setPolicy({[field]:value});typing=false;syncButtons();});
+ root.addEventListener('click',async e=>{const button=e.target.closest('button');if(!button||button.disabled)return;
+ if(button.hasAttribute('data-save-policy')){await save();return;}if(button.hasAttribute('data-discard-policy')){await leave();return;}
+ const action=button.dataset.action;if(action==='pick-character'){menu?.close();menu=popMenu(button,page.state.relationships.map(rel=>({label:rel.name,check:rel.relationshipId===page.state.relationshipId,run:async()=>{if(await leave()){await page.selectRelationship(rel.relationshipId);baseline=structuredClone(page.state.policyDraft);}}})),{below:true});}
+ if(action==='retry-open'){if(await leave()){await page.open();baseline=structuredClone(page.state.policyDraft);}}
+ if(action==='set-proactive-mode')page.setProactiveMode(button.dataset.mode);
+ if(action==='toggle-offline')page.togglePolicy('offlineCapable');if(action==='toggle-enabled')page.togglePolicy('enabled');if(action==='toggle-mode')page.toggleMode(button.dataset.mode);
+ if(action==='filter-inbox')page.setInboxFilter(button.dataset.filter);
+ if(action==='open-conversation'&&await leave())await page.openConversation(button.dataset.eventId);
+ if(action==='open-follow'||action==='ask-cancel'){const id=button.dataset.followUpId;const ok=await confirmAlert({title:'取消这条跟进？',message:'取消后不会再对外发送。',action:'取消跟进',opener:button});if(ok){page.askCancel(id);await page.confirmCancel();}}
+ if(action==='view-latest-policy')await page.viewLatestPolicy();if(action==='keep-policy-draft')page.keepPolicyDraft();
+ if(action==='open-channel'&&await leave()){native||=mod.mountInboxPage({onOpenConversation:args.onOpenConversation});native.open(button);}
+ });
+ const opening=page.open();if(params.get('state')!=='loading')await opening;baseline=structuredClone(page.state.policyDraft);root.querySelector('h1')?.focus();
+ window.VC_INBOX_PREVIEW={page,root,leave,save};return {refresh:async()=>{if(await leave()){await page.open();baseline=structuredClone(page.state.policyDraft);}},destroy(){dead=true;segment?.dispose();menu?.close();native?.close();layer?.dismiss();page.close();root.remove();}};
+}
+export async function check({params}){
+ if(innerWidth<744||['empty','loading','error'].includes(params.get('state')))return;
+ const {page,root,leave,save}=window.VC_INBOX_PREVIEW;const wait=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(r=>setTimeout(r,20));}throw Error('陪伴状态未更新');};
+ const right=root.querySelector('.vc-inbox-preferences');if(innerWidth>=1180&&Math.abs(right.getBoundingClientRect().width-320)>1)throw Error('陪伴右栏宽度');
+ const input=root.querySelector('[data-field="quietHoursStart"]');input.value='22:30';input.dispatchEvent(new Event('input',{bubbles:true}));const pending=leave();await wait(()=>document.querySelector('.vc-alert'));if(document.activeElement.textContent!=='继续编辑')throw Error('陪伴默认焦点');window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',cancelable:true}));await pending;if(page.state.policyDraft.quietHoursStart!=='22:30')throw Error('陪伴Esc丢草稿');
+ window.VC_PREVIEW_DELAY=200;const saving=save();await wait(()=>page.state.busy);if(!root.querySelector('[data-save-policy]').disabled||!root.querySelector('[data-field="quietHoursStart"]').disabled)throw Error('陪伴等待未锁定');await saving;window.VC_PREVIEW_DELAY=0;if(modified())throw Error('陪伴保存未读回');function modified(){return page.state.policyDraft.quietHoursStart!=='22:30'||!root.querySelector('[data-save-policy]').disabled;}
+ const follow=root.querySelector('[data-action="open-follow"]');if(follow){follow.click();await wait(()=>document.querySelector('.vc-alert'));if(document.activeElement.textContent!=='取消')throw Error('取消跟进默认焦点');document.querySelector('[data-vc-ok]').click();await wait(()=>page.state.followUps[0]?.status==='CANCELLED'&&!page.state.busy);}
+}

@@ -1,0 +1,47 @@
+/* UX-17：使用既有陪伴状态与动作。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-navbar { display:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-shell-scroll { padding:0 24px 24px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox { height:100%; position:relative; overflow:auto; background:transparent; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox > .vc-column { max-width:1052px; width:100%; padding:0; margin:auto; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-heading { height:64px; display:flex; align-items:center; gap:var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-heading h1 { flex:1; margin:0; padding:0; font-size:var(--vc-fs-title-1); font-weight:700; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace { display:grid; grid-template-columns:minmax(0,720px) 320px; gap:var(--vc-space-sm); align-items:start; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace > div { min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-layout > .vc-group { max-width:360px; margin:0 0 var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-group { margin:0 0 var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-group > .vc-group-title { margin:0; padding:16px 0 8px; font-size:var(--vc-fs-headline); font-weight:600; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-segment { margin:0 0 var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-activity section > .vc-group { background:transparent; border:0; padding:0; box-shadow:none; display:grid; gap:var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-msg { background:var(--vc-raised); border:1px solid var(--vc-raised-edge); border-radius:var(--vc-radius-md); padding:16px; min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-msg .vc-inbox-body { font-size:var(--vc-fs-input); line-height:var(--vc-lh-reading); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences .vc-cell { padding-inline:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-group-title { grid-column:1/-1; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell { justify-content:center; padding:0; min-height:44px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-grow { flex:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes [aria-pressed="true"] { background:var(--vc-thumb); border-radius:var(--vc-radius-sm); color:var(--vc-ink); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-follow-main { flex-direction:column; align-items:stretch; padding:var(--vc-space-xs) 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [data-save-policy] { display:inline-flex; align-items:center; justify-content:center; gap:var(--vc-space-xs); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [hidden] { display:none; }
+@media(max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace { display:flex; flex-direction:column-reverse; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace > div { width:100%; max-width:720px; }
+}
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-group > .vc-group-title { color:var(--vc-ink); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [data-save-policy] .vc-icon { animation:vc-inbox-spin 1s linear infinite; }
+@keyframes vc-inbox-spin { to { transform:rotate(360deg); } }
+html[data-vc-layout="desktop"] body.vc-ui .vc-sheet:has(.vc-inbox-public-layer[aria-label="重新验证身份"]) { max-width:min(420px,calc(100vw - 64px)); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-inbox-public-layer { padding:24px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-inbox-public-layer .vc-inbox-actions { display:flex; gap:var(--vc-space-sm); margin-top:var(--vc-space-sm); }
+@media(prefers-reduced-motion:reduce) { html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [data-save-policy] .vc-icon { animation:none; } }
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell::before,html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell::after { display:none; }
+@media(max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace { flex-direction:column; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences,html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences > section[aria-label="主动设置"] { display:contents; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences > section[aria-label="跟进"] { order:0; width:100%; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-quiet { order:1; width:100%; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-activity { order:2; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences > section[aria-label="渠道"],html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences > section[aria-label="主动设置"] > :not(.vc-inbox-quiet) { order:3; width:100%; }
+}
