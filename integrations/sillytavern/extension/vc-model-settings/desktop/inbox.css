@@ -29,7 +29,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [hidden] { display:n
 }
 
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-group > .vc-group-title { color:var(--vc-ink); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [data-save-policy] .vc-icon { animation:vc-inbox-spin 1s linear infinite; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox [data-save-policy] .vc-icon { animation:vc-inbox-spin var(--vc-dur-emphasized) linear infinite; }
 @keyframes vc-inbox-spin { to { transform:rotate(360deg); } }
 html[data-vc-layout="desktop"] body.vc-ui .vc-sheet:has(.vc-inbox-public-layer[aria-label="重新验证身份"]) { max-width:min(420px,calc(100vw - 64px)); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-inbox-public-layer { padding:24px; }
