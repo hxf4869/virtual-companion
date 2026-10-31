@@ -1,0 +1,63 @@
+/* UX-16：仅公开记忆视图的桌面排版。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="memory"]:has(.vc-desktop-memory) > .vc-navbar { display:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="memory"]:has(.vc-desktop-memory) > .vc-shell-scroll { padding:0 24px 24px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory { height:100%; overflow:auto; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory > .vc-column { max-width:996px; width:100%; padding:0; margin:auto; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-large-title { display:flex; align-items:center; height:64px; margin:0; padding:0; font-size:var(--vc-fs-title-1); font-weight:700; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-filters { display:grid; grid-template-columns:240px minmax(0,720px); gap:var(--vc-space-sm); margin:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-sidebar { display:flex; flex-direction:column; gap:var(--vc-space-sm); min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-main { min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-group { margin:0 0 var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-sidebar .vc-group { margin:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-search { height:36px; margin:0 0 var(--vc-space-sm); width:100%; max-width:360px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-search input { height:36px; min-width:0; width:100%; background:transparent; border:0; box-shadow:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-segment { display:flex; flex-direction:column; height:auto; min-height:132px; padding:4px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-segment > button { width:100%; min-height:40px; text-align:left; padding:0 16px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-segment-thumb { display:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-segment > [aria-pressed="true"] { background:var(--vc-thumb); border-radius:var(--vc-radius-sm); box-shadow:inset 0 1px 0 var(--vc-hi); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-list > li { position:relative; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-summary { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; -webkit-line-clamp:unset; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row { padding-right:24px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row .vc-grow { min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row-actions { display:flex; gap:var(--vc-space-xs); position:absolute; right:16px; top:50%; transform:translateY(-50%); opacity:0; pointer-events:none; background:var(--vc-raised); border-radius:var(--vc-radius-pill); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory li:is(:hover,:focus-within) .vc-memory-row-actions { opacity:1; pointer-events:auto; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-dates { padding:16px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-dates label { display:block; min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-dates input { width:100%; min-width:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor { width:560px; max-width:calc(100vw - 64px); max-height:calc(100vh - 64px); margin:auto; padding:0; color:var(--vc-ink); background:var(--vc-glass-3); backdrop-filter:blur(var(--vc-blur-3)) saturate(180%); border:1px solid var(--vc-rim); border-radius:var(--vc-radius-xl); box-shadow:var(--vc-shadow-overlay); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor::backdrop { background:var(--vc-scrim-desk); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-navbar { position:sticky; top:0; height:64px; min-height:64px; padding:0 24px; background:var(--vc-raised); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-scroll { padding:24px; max-height:calc(100vh - 128px); overflow:auto; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-column { padding:0; max-width:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-title { font-size:var(--vc-fs-headline); overflow-wrap:anywhere; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-facts .vc-cell { display:grid; grid-template-columns:200px minmax(0,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-facts dd { white-space:normal; text-align:left; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-group-title { margin:0; padding:16px 16px 8px; border-radius:var(--vc-radius-md) var(--vc-radius-md) 0 0; background:var(--vc-raised); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-group-title + .vc-group { border-radius:0 0 var(--vc-radius-md) var(--vc-radius-md); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor textarea { width:100%; padding:16px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-actions { justify-content:flex-end; flex-wrap:wrap; padding:var(--vc-space-sm) 0; }
+@media(pointer:coarse) { html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row-actions { position:static; transform:none; opacity:1; pointer-events:auto; justify-content:flex-end; } }
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory.vc-memory-tab { position:relative; display:block; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory.vc-memory-tab > .vc-column { padding-top:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-search input { min-height:36px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-segment { margin:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-summary { width:100%; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-results > .vc-group { background:transparent; border:0; padding:0; box-shadow:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-list { display:grid; gap:var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-list > li { background:var(--vc-raised); border:1px solid var(--vc-raised-edge); border-radius:var(--vc-radius-md); overflow:hidden; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor { display:block; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); height:auto; z-index:var(--vc-z-sheet); overflow:hidden; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor-scrim { position:fixed; inset:0; z-index:var(--vc-z-scrim); opacity:1; background:var(--vc-scrim-desk); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor[hidden],html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor-scrim[hidden] { display:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-title { margin:0 0 var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-detail-actions { flex-direction:row; }
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory.vc-memory-tab { background:transparent; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-scroll { padding-top:24px; padding-bottom:24px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-column { padding-top:0; }
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-row { padding:12px 16px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-search input[type="search"] { background:transparent; border:0; border-radius:0; padding:0; box-shadow:none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor textarea { height:auto; min-height:120px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor.vc-memory-tab textarea { height:auto; min-height:120px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-group-title { font-size:var(--vc-fs-headline); font-weight:600; }
