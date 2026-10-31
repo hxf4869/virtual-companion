@@ -1,6 +1,7 @@
 // 人设与全局拟人规则。文案来自 docs/planning/2026-10-30-companion-copy.md，原样使用。
 import { icon } from './ui/icons.js';
 import { openSheet } from './ui/sheet.js';
+import { PLANNER_KEY } from './reply-planner.js';
 
 export const STYLE_NOTE = '只作语气参考，不要照搬或重复';
 
@@ -121,8 +122,8 @@ export function buildCharacterCard({ name, relation = '好朋友', gender = '女
     };
 }
 
-export function renderCompanionStyle(text) {
-    return `<label class="vc-style-rule"><textarea data-field="rules" aria-label="陪伴风格">${esc(text)}</textarea></label><button type="button" class="vc-btn vc-btn-text" data-action="restore-rules">恢复默认</button>`;
+export function renderCompanionStyle(text, { plannerEnabled = false } = {}) {
+    return `<div data-planner-row><div class="vc-group"><div class="vc-cell"><span class="vc-grow">先想再说</span><button type="button" class="vc-switch" role="switch" aria-label="先想再说" aria-describedby="vc-planner-cost" aria-checked="${plannerEnabled?'true':'false'}" data-action="toggle-planner"><span></span></button></div></div><p class="vc-footnote" id="vc-planner-cost">可能增加一次模型用量。</p></div><label class="vc-style-rule"><textarea data-field="rules" aria-label="陪伴风格">${esc(text)}</textarea></label><button type="button" class="vc-btn vc-btn-text" data-action="restore-rules">恢复默认</button>`;
 }
 
 export function fitStyleField(area) {
@@ -135,8 +136,9 @@ export function fitStyleField(area) {
     const scroller = page?.parentElement;
     const button = page?.querySelector?.('[data-action="restore-rules"]');
     const buttonHeight = Number(button?.offsetHeight) || 0;
+    const plannerHeight = Number(page?.querySelector?.('[data-planner-row]')?.offsetHeight) || 0;
     const scrollerHeight = Number(scroller?.clientHeight) || 0;
-    const room = scrollerHeight > 0 ? Math.max(0, scrollerHeight - buttonHeight) : Number(area.parentElement?.clientHeight) || 0;
+    const room = scrollerHeight > 0 ? Math.max(0, scrollerHeight - buttonHeight - plannerHeight) : Number(area.parentElement?.clientHeight) || 0;
     const next = Math.max(content, room);
     if (next > 0) area.style.height = `${next}px`;
 }
@@ -161,7 +163,7 @@ export function openCompanionStyle({ getContext, opener, document: doc = globalT
     if (!context.extensionSettings || typeof context.extensionSettings !== 'object') context.extensionSettings = {};
     const box = doc.createElement('div');
     box.className = 'vc-column vc-style-page';
-    box.innerHTML = renderCompanionStyle(readGlobalRules(context.extensionSettings));
+    box.innerHTML = renderCompanionStyle(readGlobalRules(context.extensionSettings), { plannerEnabled: context.extensionSettings[PLANNER_KEY] === true });
     const sheet = openSheet({
         title: '陪伴风格',
         large: true,
@@ -171,6 +173,12 @@ export function openCompanionStyle({ getContext, opener, document: doc = globalT
     });
     const area = box.querySelector('[data-field="rules"]');
     const fit = () => fitStyleField(area);
+    const planner = box.querySelector('[data-action="toggle-planner"]');
+    planner?.addEventListener('click', () => {
+        context.extensionSettings[PLANNER_KEY] = planner.getAttribute('aria-checked') !== 'true';
+        planner.setAttribute('aria-checked', String(context.extensionSettings[PLANNER_KEY]));
+        context.saveSettingsDebounced?.();
+    });
     area?.addEventListener('input', () => {
         context.extensionSettings[RULES_KEY] = area.value;
         context.saveSettingsDebounced?.();
@@ -178,6 +186,8 @@ export function openCompanionStyle({ getContext, opener, document: doc = globalT
     });
     box.querySelector('[data-action="restore-rules"]')?.addEventListener('click', () => {
         restoreDefaultRules(context.extensionSettings);
+        context.extensionSettings[PLANNER_KEY] = false;
+        planner?.setAttribute('aria-checked', 'false');
         context.saveSettingsDebounced?.();
         if (area) area.value = DEFAULT_GLOBAL_RULES;
         fit();

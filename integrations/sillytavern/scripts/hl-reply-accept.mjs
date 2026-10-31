@@ -1,11 +1,13 @@
 // HL-REPLY 受管场景：多气泡、硬违规只重写一次、连发三条只生成一次。
 import crypto from 'node:crypto';
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStClient } from './managed-lib.mjs';
 import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
+import { voiceShots } from './voice-accept-lib.mjs';
 
 const DEV = process.env.VC_W03_DEV_DIR
     || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dev-managed');
@@ -145,6 +147,7 @@ async function chatCaptures(ctx, since) {
 
 async function sendText(page, text) {
     await page.evaluate((value) => {
+        window.vcReplyStartLength = SillyTavern.getContext().chat.length;
         const box = document.querySelector('#send_textarea');
         const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
         set.call(box, value);
@@ -156,7 +159,7 @@ async function sendText(page, text) {
 async function waitReply(page, reply) {
     await page.waitForFunction((text) => {
         const chat = window.SillyTavern.getContext().chat || [];
-        return chat.at(-1)?.is_user === false && chat.at(-1)?.mes === text
+        return chat.length >= (window.vcReplyStartLength || 0) + 2 && chat.at(-1)?.is_user === false && chat.at(-1)?.mes === text
             && document.body.getAttribute('data-generating') !== 'true';
     }, reply, { timeout: 60000 });
 }
@@ -312,6 +315,58 @@ export async function sceneHlReply(ctx) {
             const chat = window.SillyTavern.getContext().chat || [];
             return chat.some((item) => item?.is_user && item.mes === text);
         }, BURST.join('\n'), { timeout: 15000 });
+        await waitReply(page,CALM);
+
+        console.log('[hl-reply] RQ-8 默认关闭与两步生成 A/B');
+        const samples=[];
+        for(const enabled of [false,true]) {
+            await page.evaluate(async(enabled)=>{
+                const c=SillyTavern.getContext();
+                const {openCompanionStyle}=await import('/scripts/extensions/third-party/vc-model-settings/persona.js');
+                openCompanionStyle({getContext:SillyTavern.getContext});
+                const button=document.querySelector('[data-action="toggle-planner"]');
+                if((button.getAttribute('aria-checked')==='true')!==enabled)button.click();
+                if((c.extensionSettings.vc_reply_planner===true)!==enabled)throw Error('planner setting not saved');
+            },enabled);
+            if(enabled) {
+                await voiceShots(page,ctx,'RQ-8','planner');
+                fs.writeFileSync(path.resolve('.review-queue/RQ-8/NOTES.md'),'# RQ-8\n\n设置 › 陪伴风格新增默认关闭的「先想再说」，沿用分组、开关与脚注。截图仅含合成数据。受管断言覆盖开关保存、恢复默认和实际调用数。\n');
+            }
+            await page.locator('.vc-sheet-done').last().click();
+            await ctx.fixtureHttp.setOverride('vc03m-chat',{text:CALM,replyPlanner:'{"kind":"reply","direction":"回应近况"}',chunks:1,delay:{firstMs:30,perChunkMs:20}});
+            const since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
+            const start=Date.now();await sendText(page,LONG);await waitReply(page,CALM);
+            const rows=await chatCaptures(ctx,since);
+            assert.equal(rows.length,enabled?2:1,'RQ-8 actual native model calls');
+            if(enabled) {
+                const helper=rows[0].body;
+                assert.ok(helper.messages.some(m=>String(m.content).includes('<vc-reply-planner>')));
+                assert.ok(!helper.tools?.length,'planner must not execute tools');
+                assert.ok(!JSON.stringify(helper.messages).includes('<vc_memory'),'planner must not consume final memory injection');
+                assert.ok(rows[1].body.messages.some(m=>String(m.content).includes('<vc-reply-plan>')));
+            }
+            samples.push({enabled,calls:rows.length,replyMs:Date.now()-start});
+        }
+        // A malformed plan uses the normal reply; an explicit closing may stay quiet.
+        await ctx.fixtureHttp.setOverride('vc03m-chat',{text:CALM,replyPlanner:'invalid',chunks:1});
+        let since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
+        await sendText(page,LONG);await waitReply(page,CALM);
+        assert.equal((await chatCaptures(ctx,since)).length,2);
+        const assistantCount=await page.evaluate(()=>SillyTavern.getContext().chat.filter(m=>!m.is_user).length);
+        await ctx.fixtureHttp.setOverride('vc03m-chat',{text:CALM,replyPlanner:'{"kind":"stay_silent","direction":""}',chunks:1});
+        since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
+        await sendText(page,'晚安！');
+        await page.waitForFunction(()=>SillyTavern.getContext().chat.at(-1)?.mes==='晚安！' && document.body.getAttribute('data-generating')!=='true',null,{timeout:30000});
+        assert.equal((await chatCaptures(ctx,since)).length,1);
+        assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.filter(m=>!m.is_user).length),assistantCount);
+        await page.evaluate(async()=>{
+            const {openCompanionStyle}=await import('/scripts/extensions/third-party/vc-model-settings/persona.js');openCompanionStyle({getContext:SillyTavern.getContext});
+            document.querySelector('[data-action="restore-rules"]').click();
+            if(SillyTavern.getContext().extensionSettings.vc_reply_planner!==false)throw Error('default planner must be off');
+        });
+        await page.locator('.vc-sheet-done').last().click();
+        ctx.results.rq8Planner={provider:'managed synthetic fixture',samples,qualityComparison:'fixture validates routing only; no real-model quality claim'};
+        fs.writeFileSync(path.join(ctx.artifactsDir,'rq8-planner.json'),JSON.stringify(ctx.results.rq8Planner,null,2));
         await bc.close();
     } finally {
         await ctx.fixtureHttp.setOverride('vc03m-chat', null);

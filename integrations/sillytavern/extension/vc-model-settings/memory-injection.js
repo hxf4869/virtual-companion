@@ -104,7 +104,8 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
         return c.chatMetadata === snapshot.metadata && c.chatMetadata?.vc_f2?.id === snapshot.id
             && c.chatMetadata?.vc_f2?.revision === snapshot.revision && c.groupId === snapshot.groupId;
     };
-    function reset() { epoch++; ready = null; clear(); clearNotice(); }
+    function discardPending() { epoch++; ready = null; clear(); }
+    function reset() { discardPending(); clearNotice(); }
     async function intercept(_chat, _contextSize, abort, type) {
         noteTurn(type);
         try { installReplyTail(getContext); } catch { /* 宿主事件未就绪时下一轮再挂。 */ }
@@ -160,7 +161,7 @@ export function createMemoryInjection({ getContext, recall, ensureBinding, onSta
         // 跳过、空召回和来源核对都留在后台。连续失败的安静说明不在这里被单次跳过抹掉。
         if (status === 'skipped') banner();
     }
-    return { intercept, attach, reset, finalStatus };
+    return { intercept, attach, reset, discardPending, finalStatus };
 }
 
 export function mountMemoryControls({ getContext, reset, document: doc = document }) {

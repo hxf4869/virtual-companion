@@ -27,6 +27,7 @@ import { openCompanionStyle, saveNativePersona } from './persona.js';
 import { maybeStartOnboarding } from './onboarding.js';
 import { injectCompanionPrompt } from './companion-prompt.js';
 import { installHistoryWindow } from './prompt-history.js';
+import { planReply } from './reply-planner.js';
 import { armOnboardingBinding } from './instance-binding.js';
 import { planOpenCreatedChat } from './instance-open.js';
 import { commitStoryProjectionSave } from './projection-save.js';
@@ -175,6 +176,8 @@ export async function init() {
     reportMemory = mountMemoryControls({ getContext, reset: memory.reset });
     const memoryIntercept = memory.intercept.bind(memory);
     globalThis[MEMORY_INTERCEPTOR] = async (...args) => {
+        const plan=await planReply({getContext,type:args[3] || 'normal',discardPending:memory.discardPending});
+        if(plan?.silent || plan?.cancelled){args[2](true);return;}
         await memoryIntercept(...args);
         try { await injectCompanionPrompt({ getContext }); } catch { /* 状态接口缺失时不注入心情。 */ }
     };

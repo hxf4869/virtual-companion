@@ -244,6 +244,11 @@ export function buildPlan(model, body, headerDirective, ctlOverride) {
     let text = Array.isArray(merged.memorycoreDocuments) ? memorycoreFixture(body, merged.memorycoreDocuments) : typeof merged.text === 'string' ? merged.text : base.text ?? '';
     let reasoning = merged.reasoning ?? null;
     let tool = merged.tool ?? null;
+    if (typeof merged.replyPlanner === 'string' && messageBlob(body).includes('<vc-reply-planner>')) {
+        text = merged.replyPlanner;
+        reasoning = null;
+        tool = null;
+    }
     // 只在显式打开时，把「已带工具结果的后续请求」收成纯文本。默认剧本保持原样。
     if (merged.stopAfterToolResult === true && requestHasToolResult(body)) {
         tool = null;

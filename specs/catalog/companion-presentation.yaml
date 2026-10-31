@@ -1,5 +1,17 @@
 schemaVersion: 1
 catalogId: companion-presentation
+replyPlanner:
+  setting: vc_reply_planner
+  default: false
+  consumer: companion foreground generation interceptor
+  call: >-
+    One bounded native generateRaw quiet request using the existing foreground
+    provider binding, authentication, cancellation, context guard and usage ledger.
+    No tools or memory snapshot are borrowed. Only a normal companion turn may
+    plan; STORY, groups and auxiliary generations retain their existing path.
+  output: reply_or_stay_silent_with_direction_up_to_80_characters
+  failure: one direct reply without planning; no planner retry
+  persistence: existing owner ST extension settings; no stored plans
 enums:
 - typeName: CompanionGender
   entries:

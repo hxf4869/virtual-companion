@@ -439,6 +439,10 @@ test('陪伴风格编辑框是圆角卡片，高度随内容填满，恢复默�
     assert.equal(area.getAttribute('aria-label'), '陪伴风格');
     assert.equal(area.value.includes('你正在和{{user}}用手机聊天') || area.textContent.includes('你正在和{{user}}用手机聊天'), true);
     assert.equal(restore.textContent, '恢复默认');
+    assert.equal(host.querySelector('[role="switch"]').getAttribute('aria-checked'), 'false');
+    const enabled = doc.createElement('div');
+    enabled.innerHTML = renderCompanionStyle(DEFAULT_GLOBAL_RULES, { plannerEnabled: true });
+    assert.equal(enabled.querySelector('[role="switch"]').getAttribute('aria-checked'), 'true');
     assert.equal(restore.parent, card.parent);
     const css = await readFile(new URL('../extension/vc-model-settings/companion-persona.css', import.meta.url), 'utf8');
     assert.match(css, /\.vc-style-rule \{[\s\S]*?background:\s*var\(--vc-sheet-group\)/);
