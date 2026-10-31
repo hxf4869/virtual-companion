@@ -8530,6 +8530,10 @@ components:
         personaRef:
           type: string
           description: Reference to the Persona bound to this Companion
+        characterRef:
+          type: string
+          readOnly: true
+          description: Stable native card reference for ST-backed relationships, including instances without a current chat file. Absent for other personas.
         active:
           type: boolean
           description: Whether this instance is active; other instances may also be active

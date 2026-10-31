@@ -47,7 +47,8 @@ func (m *memStore) ResolveSTBinding(_ context.Context, owner int64, input postgr
 		relationshipID = m.next
 		m.next++
 		m.stInstances[relationshipID] = memSTInstance{owner, input.CharacterRef}
-		m.rels[relationshipID] = postgres.Relationship{ID: relationshipID, PersonaRef: "st-character", Active: true}
+		ref := input.CharacterRef
+		m.rels[relationshipID] = postgres.Relationship{ID: relationshipID, PersonaRef: "st-character", CharacterRef: &ref, Active: true}
 	}
 	conversationID := m.next
 	m.next++
@@ -94,6 +95,16 @@ func TestSTBindingHTTPIdempotencyBranchesAndStringIDs(t *testing.T) {
 	separate := readSTBinding(t, doJSON(t, s, http.MethodPost, "/api/v1/st/bindings", strings.Replace(body, "chat-one", "chat-two", 1), 1))
 	if separate.RelationshipID == first.RelationshipID {
 		t.Fatal("same card must not merge independent instances")
+	}
+	listed := doJSON(t, s, http.MethodGet, "/api/v1/relationships", "", 1)
+	var relationships []relationshipJSON
+	if listed.Code != http.StatusOK || json.Unmarshal(listed.Body.Bytes(), &relationships) != nil || len(relationships) != 2 {
+		t.Fatalf("list ST instances status=%d", listed.Code)
+	}
+	for _, rel := range relationships {
+		if rel.CharacterRef == nil || *rel.CharacterRef != "card-one" {
+			t.Fatal("persisted card association missing from relationship response")
+		}
 	}
 	for _, changed := range []string{
 		strings.Replace(body, "card-one", "other-card", 1),

@@ -13,6 +13,7 @@ type relationshipJSON struct {
 	voice.RelationshipPrefs
 	RelationshipID   int64    `json:"relationshipId"`
 	PersonaRef       string   `json:"personaRef"`
+	CharacterRef     *string  `json:"characterRef,omitempty"`
 	Active           bool     `json:"active"`
 	CreatedAt        string   `json:"createdAt"`
 	CompanionName    *string  `json:"companionName"`
@@ -37,6 +38,7 @@ func relationshipJSONFrom(rel postgres.Relationship) relationshipJSON {
 		RelationshipPrefs: rel.RelationshipPrefs,
 		RelationshipID:    rel.ID,
 		PersonaRef:        rel.PersonaRef,
+		CharacterRef:      rel.CharacterRef,
 		Active:            rel.Active,
 		CreatedAt:         rfc3339(rel.CreatedAt),
 		CompanionName:     rel.CompanionName,

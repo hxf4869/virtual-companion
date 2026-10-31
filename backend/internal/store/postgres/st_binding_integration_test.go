@@ -92,6 +92,9 @@ func TestSTBindingSeparateInstancesAndExplicitBranch(t *testing.T) {
 		if !rel.Active {
 			t.Fatalf("creating another instance disabled relationship %d", rel.ID)
 		}
+		if rel.PersonaRef == "st-character" && (rel.CharacterRef == nil || *rel.CharacterRef != "card-one") {
+			t.Fatalf("instance %d lost its persisted card association", rel.ID)
+		}
 	}
 	if _, err := testEnv.store.DeactivateRelationship(ctx, 1, first.RelationshipID); err != nil {
 		t.Fatal(err)

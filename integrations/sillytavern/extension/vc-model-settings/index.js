@@ -36,7 +36,6 @@ import { createMemoryInjection, mountMemoryControls, MEMORY_INTERCEPTOR } from '
 import { attachCompanionIdentity, companionToolSpecs, companionToolsShouldRegister, COMPANION_TOOL_ACTION_ERROR } from './companion-tools.js';
 import { createStoryContext } from './story-context.js';
 import { TAVERN_ENTRIES, mountShell, registerShellTabs } from './shell.js';
-import { loadRecentChatSnapshots } from './conversations.js';
 import { mountConsentGate } from './consent.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
@@ -244,11 +243,8 @@ export async function init() {
     const characterCards = () => {
         try { return cardsFromContext(getContext()); } catch { return []; }
     };
-    const characterBindings = async () => {
-        const recent = await loadRecentChatSnapshots(() => import('/script.js'));
-        const bindings = new Map(recent.map((row) => [row.relationshipId, row]));
-        for (const row of bindingsFromContext(getContext())) bindings.set(row.relationshipId, row);
-        return [...bindings.values()];
+    const characterBindings = () => {
+        try { return bindingsFromContext(getContext()); } catch { return []; }
     };
     const createBinding = async (args) => {
         const created = await createCompanionInstance(args);

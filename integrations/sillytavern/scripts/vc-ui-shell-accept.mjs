@@ -276,6 +276,11 @@ export async function sceneVcUiShell(ctx) {
                 return Boolean(binding?.relationshipId) && Boolean(document.querySelector('#vc-shell .vc-convo'));
             }), { timeoutMs: 30000, label: '会话行' });
             const boundNow = await page.evaluate(() => String(window.SillyTavern.getContext().chatMetadata?.vc_binding?.relationshipId || ''));
+            const cardRef = await page.evaluate(() => window.SillyTavern.getContext().chatMetadata.vc_binding.characterRef);
+            const relationships = await ctx.admin.call('GET', '/api/v1/relationships');
+            if (relationships.status !== 200 || relationships.json.find((row) => String(row.relationshipId) === boundNow)?.characterRef !== cardRef) {
+                throw new Error('关系接口缺少持久化的角色卡归属');
+            }
             await dropSameSecondTwins(ctx, [boundNow]);
             await new Promise((resolve) => setTimeout(resolve, 800));
             await page.evaluate(() => {

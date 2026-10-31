@@ -16,7 +16,9 @@ const (
 		out_companion_name, out_user_address_as, out_reply_length,
 		out_initiative, out_humor, out_advice_pref, out_reminders_allowed,
 		out_memory_share_scope, out_avoid_topics, out_gender, out_avatar_ref,
-		out_kokoro_voice, out_cosy_voice, out_voice_speed, out_voice_frequency, out_proactive_voice, out_proactive_engine `
+		out_kokoro_voice, out_cosy_voice, out_voice_speed, out_voice_frequency, out_proactive_voice, out_proactive_engine,
+		(SELECT r.st_character_ref FROM vc.relationship r
+		 WHERE r.owner_user_id = vc.current_owner_id() AND r.id = out_id) `
 	previewMaxRunes = 200
 )
 
@@ -25,6 +27,7 @@ type Relationship struct {
 	voice.RelationshipPrefs
 	ID               int64
 	PersonaRef       string
+	CharacterRef     *string
 	Active           bool
 	CreatedAt        time.Time
 	CompanionName    *string
@@ -671,6 +674,7 @@ func scanRelationshipRow(row relationshipRow) (Relationship, error) {
 		&name, &addr, &rel.ReplyLength, &rel.Initiative, &rel.Humor, &rel.AdvicePref,
 		&rel.RemindersAllowed, &rel.MemoryShareScope, &topics, &rel.Gender, &rel.AvatarRef,
 		&rel.KokoroVoice, &rel.CosyVoice, &rel.Speed, &rel.VoiceFrequency, &rel.ProactiveVoice, &rel.ProactiveEngine,
+		&rel.CharacterRef,
 	); err != nil {
 		return Relationship{}, err
 	}

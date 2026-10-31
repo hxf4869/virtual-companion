@@ -199,7 +199,8 @@ export async function sceneHlProactive(ctx) {
     const topicRow=changedRows.find(row=>row.is_user && row.mes===pendingTopic);
     topicRow.extra.no_memory=true;
     prepareSourceIdentities(changedRows,{settled:true,sourceTimezone:'Asia/Shanghai'});
-    if((await save(changedRows)).status!==200)throw Error('RQ-10 source opt-out save failed');
+    const optOutSaved=await save(changedRows);
+    if(optOutSaved.status!==200)throw Error(`RQ-10 source opt-out save failed HTTP ${optOutSaved.status} ${optOutSaved.json?.error?.code || optOutSaved.json?.code || ''}`);
     await speak('我回来了',at(0,'13:45:00'));
     const since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
     // Allow the full 120-minute interaction gap while staying before the
