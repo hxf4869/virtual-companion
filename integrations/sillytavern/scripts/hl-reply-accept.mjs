@@ -146,7 +146,15 @@ async function chatCaptures(ctx, since) {
     return rows.filter((row) => Array.isArray(row.body?.messages) && row.body.model === 'vc03m-chat');
 }
 
+async function nativeIdle(page) {
+    await page.waitForFunction(async()=>{
+        const s=await import('/script.js');
+        return !s.isGenerating() && !s.swipesHidden && !s.isChatSaving && s.swipeState==='none'
+            && !(await import('/scripts/slash-commands.js')).isExecutingCommandsFromChatInput;
+    },null,{timeout:15000});
+}
 async function sendText(page, text) {
+    await nativeIdle(page);
     await page.evaluate((value) => {
         window.vcReplyStartLength = SillyTavern.getContext().chat.length;
         const box = document.querySelector('#send_textarea');
@@ -162,7 +170,7 @@ async function waitReply(page, reply) {
         const chat = window.SillyTavern.getContext().chat || [];
         return chat.length >= (window.vcReplyStartLength || 0) + 2 && chat.at(-1)?.is_user === false && chat.at(-1)?.mes === text
             && document.body.getAttribute('data-generating') !== 'true';
-    }, reply, { timeout: 60000 }); } catch(error) {
+    }, reply, { timeout: 60000 }); await nativeIdle(page); } catch(error) {
         const state=await page.evaluate((expected)=>({chatLength:SillyTavern.getContext().chat.length,startLength:window.vcReplyStartLength,
             lastUser:SillyTavern.getContext().chat.at(-1)?.is_user,lastChars:SillyTavern.getContext().chat.at(-1)?.mes?.length,
             expectedReply:SillyTavern.getContext().chat.at(-1)?.mes===expected,generating:document.body.getAttribute('data-generating'),events:window.vcReplyEvents}),reply);
