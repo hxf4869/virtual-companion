@@ -99,13 +99,23 @@ export async function sceneUi03Browser(ctx) {
             await page.click('#vc_models_menu_button');
             await page.waitForSelector('.vcms-overlay', { state: 'visible', timeout: 10000 });
         };
+        const discardDraft = async () => {
+            if (!await page.locator('#vcms-discard').isVisible()) return;
+            const loadedName = await page.evaluate(async () => (await import('/scripts/extensions/third-party/vc-model-settings/page.js')).mountModelSettings()._state.originalDraft?.displayName);
+            const draftName = await page.locator('#vcms-f-display').inputValue();
+            await page.click('#vcms-discard');
+            await page.getByRole('alertdialog', { name: '放弃更改？' }).waitFor();
+            if (await page.evaluate(() => document.activeElement?.textContent) !== '继续编辑') throw new Error('未保存确认默认焦点不是继续编辑');
+            await page.keyboard.press('Escape');
+            await page.locator('.vc-alert').waitFor({ state: 'detached' });
+            if (await page.inputValue('#vcms-f-display') !== draftName) throw new Error('Esc 丢失草稿');
+            await page.click('#vcms-discard'); await page.locator('[data-vc-ok]').click();
+            await page.locator('.vc-alert').waitFor({ state: 'detached' });
+            if (await page.inputValue('#vcms-f-display') !== loadedName) throw new Error('放弃后没有恢复载入值');
+        };
         const closePanel = async () => {
             if (!(await page.locator('.vcms-overlay').isVisible())) return;
-            // 有未保存修改时关闭会先确认；按真实用户路径先放弃修改（阶段 2 保留的冲突草稿等）
-            if (await page.locator('#vcms-dirty').isVisible()) {
-                await page.click('#vcms-discard');
-                await page.waitForSelector('#vcms-dirty', { state: 'hidden', timeout: 5000 });
-            }
+            await discardDraft();
             await page.click('.vcms-overlay [data-action="close"]');
             await page.waitForSelector('.vcms-overlay', { state: 'hidden', timeout: 10000 });
         };
@@ -142,6 +152,7 @@ export async function sceneUi03Browser(ctx) {
             const row = l.json.find((p) => p.providerId === 'vc03m-chat');
             return row && row.displayName === '受管 Chat（UI03）' && row.revision === beforeRow.revision + 1;
         }, { timeoutMs: 15000, label: 'UI 保存落库（displayName + revision+1）' });
+        await page.waitForFunction(() => document.querySelector('#vcms-discard')?.hidden === true); // 保存后的目录读回完成
         await chatCard.click(); // 重新选中读回
         await page.waitForSelector('#vcms-f-display', { timeout: 5000 });
         const readBack = await page.inputValue('#vcms-f-display');
@@ -176,6 +187,7 @@ export async function sceneUi03Browser(ctx) {
         }
         log.ok('UI03 版本冲突保留草稿通过：409 后界面草稿原样、服务端保持他侧更新');
 
+        await discardDraft(); // 阶段 2 的冲突草稿已验证，此处按原场景意图显式放弃。
         // —— 阶段 3：Key 只显示状态 ——
         // 受管 Chat 已配置合成 Key：选中即显示状态盒（不回显、无输入框），替换才出现 password 输入
         await chatCard.click();
@@ -201,6 +213,8 @@ export async function sceneUi03Browser(ctx) {
             // 连接只发生在用户显式点击"连接"）
             const count0 = await ctx.fixtureHttp.count();
             await openPanel();
+            // 阶段 2 的冲突草稿用于验证保留，此处显式放弃；原业务断言已经核对服务端他侧值。
+            await discardDraft();
             await page.click('[data-action="tab"][data-tab="bindings"]');
             await page.waitForSelector('select[data-bind="binding.FOREGROUND_CHAT"]', { timeout: 5000 });
             await page.selectOption('select[data-bind="binding.FOREGROUND_CHAT"]', optionValue);

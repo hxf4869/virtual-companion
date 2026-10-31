@@ -89,7 +89,7 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
     cancel.addEventListener('click',()=>void sheet.close());
     discard.addEventListener('click',async()=>{if(!await confirmDiscard({opener:discard}))return;content.innerHTML=relationship?renderRelationshipVoiceSettings(relationship,engines):renderGlobalVoiceSettings(settings,engines);feedback();});
     function feedback(){
-        const dirty=isDirty();discard.hidden=!dirty;cancel.hidden=!desktop();
+        const dirty=isDirty();discard.hidden=!dirty;discard.style.display=dirty?'':'none';cancel.hidden=!desktop();cancel.style.display=desktop()?'':'none';
         sheet.done.disabled=working || !loaded || (desktop() && !dirty);
         sheet.done.textContent=working?'保存中…':desktop()?'保存':'完成';
     }
@@ -118,7 +118,7 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
         if(button.vcPreview?.voice===voice && button.vcPreview.speed===speed){
             await voicePlayer.toggle(button.vcPreview.clipId,{onState(playing){button.textContent=playing?'暂停语音':'试听';},onError(){button.vcPreview=null;status.textContent='没有完成，请重试。';}});return;
         }
-        button.style.width=`${button.getBoundingClientRect().width}px`;button.style.minWidth=button.style.width;button.disabled=true;button.textContent='正在生成语音…';
+        button.style.whiteSpace='nowrap';button.style.justifyContent='flex-end';button.style.width=`${button.getBoundingClientRect().width}px`;button.style.minWidth=button.style.width;button.disabled=true;button.textContent='正在生成语音…';
         try{
             const queued=await previewVoice({relationshipId:String(relationshipId),engine,voice,speed});
             const clip=await waitForVoiceClip(queued.clipId,{timeoutMs:(engine==='kokoro'?settings.kokoroTimeoutSeconds:settings.cosyVoiceTimeoutSeconds)*1000+5000});
@@ -132,7 +132,7 @@ async function openVoiceForm({relationshipId,opener,doc=globalThis.document}={})
     content.addEventListener('input',(event)=>{feedback();if(event.target.type==='range'){const output=event.target.parentElement.querySelector('output');if(output)output.textContent=`${Number(event.target.value).toFixed(2)}×`;}});
     async function submit(){
         if(working || !isDirty() || !form.reportValidity())return false;
-        const width=sheet.done.getBoundingClientRect().width;sheet.done.style.width=`${width}px`;sheet.done.style.minWidth=`${width}px`;
+        const width=sheet.done.getBoundingClientRect().width;sheet.done.style.whiteSpace='nowrap';sheet.done.style.textAlign='right';sheet.done.style.width=`${width}px`;sheet.done.style.minWidth=`${width}px`;
         working=true;feedback();status.textContent='';let saved=false;
         try{
             if(relationship)relationship=await storyRequest('PATCH',`/api/v1/relationships/${relationshipId}`,relationshipVoicePayload(relationship,content));

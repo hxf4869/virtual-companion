@@ -157,4 +157,4 @@
 - 已答（Owner 2026-11-01）：允许 UX-12 先通过现有单测与受管场景单独提交推送，再由 UX-13 创建 `S/check.mjs` 补验 UX-12。
 - [问] §5 的「所有页面」未保存与焦点规则涉及 `shell.js`、`memory-page.js`、`inbox-page.js`、`instance-page.js` 等控制器，均不在 UX-12 白名单。本项只处理模型页、语音窗与公共 Sheet；其余页面的行为调整待文件归属授权。
 
-- [问] UX-12 受管 `ui03-browser`、`voice-settings` 脚本仍依赖旧「未保存」标签、直接切页与 Sheet 底部保存。新规则下分别等待超时；更新场景脚本超出白名单，已向 Owner 申请仅扩展这两份及 `f3-settings-accept.mjs` 的相关交互断言，业务断言全部保留。
+- 已答（Owner 2026-11-01）：允许更新 `ui03-browser`、`voice-settings` 与 `f3-settings-accept.mjs` 的相关交互步骤；原业务断言保留，并补默认焦点、Esc 草稿保留、完成保存及干净关闭断言。范围已写入方案 §3。

@@ -1,4 +1,5 @@
 // 确认框：一句标题、一句后果、取消与红色动作，返回是否确认。
+import { icon } from './icons.js';
 import { animate } from './motion.js';
 
 let seq = 0;
@@ -16,7 +17,8 @@ export function confirmAlert({ title = '', message = '', action = '删除', canc
         const scrim = doc.createElement('div');
         scrim.className = 'vc-scrim';
         scrim.style.zIndex = 'var(--vc-z-alert)';
-        const dialog = doc.createElement('div');
+        const native = !doc.body.classList.contains('vc-ui');
+        const dialog = doc.createElement(native ? 'dialog' : 'div');
         dialog.className = 'vc-alert vc-glass';
         dialog.setAttribute('role', 'alertdialog');
         dialog.setAttribute('aria-modal', 'true');
@@ -24,7 +26,7 @@ export function confirmAlert({ title = '', message = '', action = '删除', canc
         const textId = `vc-alert-text-${seq}`;
         dialog.setAttribute('aria-labelledby', titleId);
         dialog.setAttribute('aria-describedby', textId);
-        dialog.innerHTML = `<div class="vc-alert-copy"><h4 id="${titleId}"></h4><p id="${textId}"></p></div><div class="vc-alert-actions"><button type="button" data-vc-cancel>取消</button><button type="button" class="is-danger" data-vc-ok></button></div>`;
+        dialog.innerHTML = `<span class="vc-alert-icon" hidden aria-hidden="true">${icon('circle-alert', { size: 22 })}</span><div class="vc-alert-copy"><h4 id="${titleId}"></h4><p id="${textId}"></p></div><div class="vc-alert-actions"><button type="button" data-vc-cancel>取消</button><button type="button" class="is-danger" data-vc-ok></button></div>`;
         dialog.querySelector('h4').textContent = title;
         dialog.querySelector('p').textContent = message;
         dialog.querySelector('[data-vc-ok]').textContent = action;
@@ -34,6 +36,10 @@ export function confirmAlert({ title = '', message = '', action = '删除', canc
         dialog.style.position = fixed ? 'fixed' : 'absolute';
         if (!fixed && getComputedStyle(host).position === 'static') host.style.position = 'relative';
         host.append(scrim, dialog);
+        if (native && typeof dialog.showModal === 'function') {
+            dialog.style.left = '50%'; dialog.style.top = '50%'; dialog.style.margin = '0';
+            dialog.showModal();
+        }
         let settled = false;
         const finish = (value) => {
             if (settled) return;

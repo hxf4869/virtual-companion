@@ -30,7 +30,7 @@ export function showToast(message, { type = 'ok', icon: iconName, root, duration
         const rect = panel?.getBoundingClientRect();
         if (rect) {
             toast.style.left = `${rect.left + rect.width / 2}px`;
-            toast.style.top = `calc(${header?.getBoundingClientRect().bottom ?? rect.top + 64}px + var(--vc-space-m))`;
+            toast.style.top = `calc(${header?.getBoundingClientRect().bottom ?? rect.top + 64}px + var(--vc-space-sm))`;
         }
     } else { toast.style.left = ''; toast.style.top = ''; }
     toast.classList.toggle('is-failure', sticky);

@@ -355,7 +355,6 @@ export function mountModelSettings() {
         try {
             const providerId = isNew ? state.draft.providerId.trim() : state.draft.providerId;
             await api.saveProvider(providerId, payload);
-            state.saving = false;
             state.creatingNew = false;
             state.impact = null;
             state.stash = null;
@@ -382,6 +381,7 @@ export function mountModelSettings() {
             }
             state.selectedProviderId = keepId;
             selectProvider(keepId, { silent: true });
+            state.saving = false;
             render();
             notifyCatalogSaved(); // 目录已更新 → 前台投影刷新
         } catch (err) {

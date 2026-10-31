@@ -265,7 +265,17 @@ export async function sceneF3Settings(ctx) {
         if (pageHtml.includes(ctx.secrets.fixtureKey)) throw new Error('页面 DOM 泄露明文密钥');
         await page.click('[data-action="key-undo"]');
         await page.click('[data-action="vc-back"]');
-        if (await page.locator('#vcms-dirty').isVisible()) await page.click('#vcms-discard');
+        await page.getByRole('alertdialog', { name: '放弃更改？' }).waitFor();
+        if (await page.evaluate(() => document.activeElement?.textContent) !== '继续编辑') throw new Error('F3 未保存确认默认焦点错误');
+        await page.keyboard.press('Escape');
+        await page.locator('.vc-alert').waitFor({ state: 'detached' });
+        if (await page.inputValue('#vcms-f-display') !== '受管 Chat（F3 草稿）') throw new Error('F3 Esc 丢失草稿');
+        await page.click('[data-action="vc-back"]'); await page.locator('[data-vc-ok]').click();
+        await page.locator('.vc-alert').waitFor({ state: 'detached' });
+        await page.click('#vcms-provider-list [data-id="vc03m-chat"]');
+        const restored = await page.evaluate(async () => (await import('/scripts/extensions/third-party/vc-model-settings/page.js')).mountModelSettings()._state.originalDraft?.displayName);
+        if (await page.inputValue('#vcms-f-display') !== restored) throw new Error('F3 放弃后没有恢复载入值');
+        await page.click('[data-action="vc-back"]');
         await page.click('[data-action="vc-back"]');
         await page.waitForSelector('.vcms-overlay', { state: 'hidden', timeout: 10000 });
 
