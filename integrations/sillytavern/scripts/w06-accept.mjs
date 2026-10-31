@@ -65,6 +65,9 @@ function assertNoCredential(text,ctx){
     for(const key of [ctx.secrets.serviceToken,ctx.secrets.restKey,ctx.secrets.password,ctx.secrets.session.vcSession,ctx.secrets.session.vcCsrf]) assert.equal(text.includes(key),false,'普通副本不得包含凭据值');
 }
 export async function sceneRightsBrowser(ctx){
+    expect(await ctx.admin.call('POST','/api/v1/st/bindings',{
+        chatIdentity:crypto.randomUUID(),characterRef:crypto.randomUUID(),mode:'COMPANION',displayName:'数据权利合成前置',
+    }),200,'数据权利场景的已初始化陪伴前置');
     const {chromium}=await import('playwright-core');
     const browser=await chromium.launch({headless:true,...(process.env.VC_W03_CHROMIUM_PATH?{executablePath:process.env.VC_W03_CHROMIUM_PATH}:{})});
     try{
