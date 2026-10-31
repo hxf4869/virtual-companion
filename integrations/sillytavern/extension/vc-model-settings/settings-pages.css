@@ -1,5 +1,25 @@
 /* 模型页与账户页在 body.vc-ui 下的设置页外观。关闭新外观时不加载本文件。 */
 
+body.vc-ui #vc-model-settings-root {
+  --vcms-bg: var(--vc-group);
+  --vcms-text-2: var(--vc-ink-2);
+  --vcms-border-soft: var(--vc-separator);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-table-wrap {
+  border: 0;
+  border-radius: var(--vc-radius-md);
+  background: var(--vc-group);
+}
+
+body.vc-ui #vc-model-settings-root .vcms-bindings-table,
+body.vc-ui #vc-model-settings-root .vcms-bindings-table tr { border: 0; }
+
+body.vc-ui #vc-model-settings-root .vcms-bindings-table :is(th, td) {
+  border: 0;
+  border-bottom: 0.5px solid var(--vc-separator);
+}
+
 body.vc-ui #vc-model-settings-root .vcms-overlay:not([hidden]) {
   position: fixed !important;
   z-index: var(--vc-z-page) !important;

@@ -1,6 +1,6 @@
 // HL-PROACTIVE 受管场景：CLOSE_FRIEND 在模拟时间下生成主动消息，并验证安静时段、每日上限、未回复上限和「在开会」暂停。
 import crypto from 'node:crypto';
-import { createStClient } from './managed-lib.mjs';
+import { createStClient, waitFor } from './managed-lib.mjs';
 import { providerCatalogSpec } from './lib/accept-scene-helpers.mjs';
 import { importSyntheticCard } from './w05-accept.mjs';
 import { prepareSourceIdentities } from '../server-plugin/virtual-companion/lib/source-identity.js';
@@ -194,6 +194,10 @@ export async function sceneHlProactive(ctx) {
     if ((await inboxMine()).length !== 2) throw new Error('收件箱主动消息不是两条');
     expectGate(await runAt(at(0,'13:40:00')), 'UNANSWERED', '未回复上限');
     if ((await inboxMine()).length !== 2) throw new Error('达到未回复上限后又投了一条');
+    await waitFor(async () => {
+        const events = await inboxMine();
+        return events.length === 2 && events.every((event) => event.stDelivered);
+    }, { timeoutMs: 30000, label: '两条主动消息已完成原生聊天投递' });
 
     const changedRows=await read();
     const topicRow=changedRows.find(row=>row.is_user && row.mes===pendingTopic);

@@ -254,7 +254,7 @@ export async function sceneHlReply(ctx) {
             };
             window.vcReplyEvents=[];
             for(const name of ['GENERATION_STARTED','GENERATION_ENDED','CHARACTER_MESSAGE_RENDERED','GENERATION_STOPPED']) {
-                c.eventSource.on(c.eventTypes[name],(type,_options,dryRun)=>{window.vcReplyEvents.push({event:name,type:name==='GENERATION_STARTED'?type:undefined,dryRun:!!dryRun});window.vcReplyEvents=window.vcReplyEvents.slice(-12);});
+                c.eventSource.on(c.eventTypes[name],(type,_options,dryRun)=>{window.vcReplyEvents.push({event:name,type:name==='GENERATION_STARTED'?type:undefined,dryRun:!!dryRun,nativeBusy:script.isGenerating()});window.vcReplyEvents=window.vcReplyEvents.slice(-12);});
             }
         });
 
@@ -303,21 +303,34 @@ export async function sceneHlReply(ctx) {
         }
 
         console.log('[hl-reply] 硬违规只重写一次');
-        await ctx.fixtureHttp.setOverride('vc03m-chat', { text: BAD, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
-        const sinceRewrite = (await ctx.fixtureHttp.captures()).at(-1)?.seq ?? 0;
-        await sendText(page, LONG_AGAIN);
-        const rewriteDeadline = Date.now() + 45000;
-        let rewriteRows = [];
-        while (Date.now() < rewriteDeadline) {
-            rewriteRows = await chatCaptures(ctx, sinceRewrite);
-            if (rewriteRows.length >= 2) break;
-            await page.waitForTimeout(300);
+        const previousStream = await page.evaluate(() => SillyTavern.getContext().chatCompletionSettings.stream_openai);
+        try {
+            for (const stream of [false, true]) {
+                await page.evaluate((enabled) => {
+                    SillyTavern.getContext().chatCompletionSettings.stream_openai = enabled;
+                    window.vcReplyEvents = [];
+                }, stream);
+                await ctx.fixtureHttp.setOverride('vc03m-chat', { text: BAD, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
+                const sinceRewrite = (await ctx.fixtureHttp.captures()).at(-1)?.seq ?? 0;
+                await sendText(page, LONG_AGAIN);
+                const rewriteDeadline = Date.now() + 45000;
+                let rewriteRows = [];
+                while (Date.now() < rewriteDeadline) {
+                    rewriteRows = await chatCaptures(ctx, sinceRewrite);
+                    if (rewriteRows.length >= 2) break;
+                    await page.waitForTimeout(300);
+                }
+                if (rewriteRows.length < 2) throw new Error(`硬违规没有触发重写 stream=${stream} 捕获 ${rewriteRows.length}`);
+                assert.ok(rewriteRows.every((row) => (row.body.stream === true) === stream), 'actual protocol uses requested streaming mode');
+                await page.waitForTimeout(3000);
+                const rewriteAfter = await chatCaptures(ctx, sinceRewrite);
+                if (rewriteAfter.length !== 2) throw new Error(`重写不是一次，捕获 ${rewriteAfter.length}`);
+                await waitReply(page, BAD);
+                if (!stream) assert.ok(await page.evaluate(() => window.vcReplyEvents.some((event) => event.event === 'CHARACTER_MESSAGE_RENDERED' && event.nativeBusy)), 'non-streaming render occurs before native busy state clears');
+            }
+        } finally {
+            await page.evaluate((value) => { SillyTavern.getContext().chatCompletionSettings.stream_openai = value; }, previousStream);
         }
-        if (rewriteRows.length < 2) throw new Error(`硬违规没有触发重写，捕获 ${rewriteRows.length}`);
-        await page.waitForTimeout(3000);
-        const rewriteAfter = await chatCaptures(ctx, sinceRewrite);
-        if (rewriteAfter.length !== 2) throw new Error(`重写不是一次，捕获 ${rewriteAfter.length}`);
-        await waitReply(page, BAD);
 
         console.log('[hl-reply] 连发三条只生成一次');
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: CALM, chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });

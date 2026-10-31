@@ -62,6 +62,7 @@ let shellFrame = 0;
 let generatingMes = null;
 let generationLive = false;
 let rewriteCount = 0;
+let pendingRewrite = null;
 let revealMesId = '';
 const seenMessages = new WeakSet();
 let foldSequence = 0;
@@ -366,6 +367,7 @@ function subscribe(doc) {
     const on = (name, fn) => { if (name && events?.on) events.on(name, fn); };
     on(types.CHAT_CHANGED, () => {
         voicePlayer.stop();
+        pendingRewrite = null;
         rewriteCount = 0;
         revealMesId = '';
         const id = String(safeContext()?.chatId ?? '');
@@ -377,7 +379,7 @@ function subscribe(doc) {
         armPin();
         refreshAll();
     });
-    on(types.MESSAGE_SENT, () => { rewriteCount = 0; });
+    on(types.MESSAGE_SENT, () => { rewriteCount = 0; pendingRewrite = null; });
     on(types.CHARACTER_MESSAGE_RENDERED, (id, type) => {
         const live = generationLive;
         generationLive = false;
@@ -390,12 +392,14 @@ function subscribe(doc) {
         // 宿主 PromptManager 在生成结束后用 dryRun 的 Generate('normal') 重算上下文，
         // 仍会发出 GENERATION_STARTED。那不是用户新发的一轮，不能清掉「已停止」。
         if (type === 'quiet' || type === 'impersonate' || dryRun) return;
+        pendingRewrite = null;
         generationLive = true;
         userStopped = false;
         generationFailed = false;
         syncGenerating();
     });
     on(types.GENERATION_STOPPED, () => {
+        pendingRewrite = null;
         generationLive = false;
         userStopped = true;
         syncGenerating();
@@ -914,8 +918,19 @@ function settleReply(id) {
     const plan = planReplyAction({ text: message.mes, rewritten: rewriteCount > 0 });
     if (plan.action === 'rewrite') {
         rewriteCount += 1;
-        armRewrite(plan.hint);
-        regenerate();
+        const pending = { chat, message, text: message.mes };
+        pendingRewrite = pending;
+        // Do not await inside the render event: the native generator must
+        // finish its save and release its busy flag before regeneration.
+        void Promise.all([import('../../../../script.js'), import('../../../../scripts/utils.js')]).then(async ([native, { waitUntilCondition }]) => {
+            const current = () => pendingRewrite === pending && safeContext()?.chat === chat
+                && chat.at(-1) === message && message.mes === pending.text;
+            await waitUntilCondition(() => !current() || !native.isGenerating() && !native.isChatSaving, 10000, 50);
+            if (!current()) return;
+            pendingRewrite = null;
+            armRewrite(plan.hint);
+            regenerate();
+        }).catch(() => { if (pendingRewrite === pending) pendingRewrite = null; });
         return;
     }
     const textChanged = plan.processed.text !== message.mes;

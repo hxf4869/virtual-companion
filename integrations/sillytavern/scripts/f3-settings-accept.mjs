@@ -443,13 +443,22 @@ export async function sceneF3Settings(ctx) {
                 }
                 await openModels();
                 await page.waitForSelector('.vcms-local', { timeout: 10000 });
-                const homeLayout = await page.evaluate(() => ({
+                const homeLayout = await page.evaluate(() => {
+                    const luminance = (color) => color.match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => {
+                        const n = v / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+                    }).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+                    const desc = getComputedStyle(document.querySelector('.vcms-binding-desc'));
+                    const background = getComputedStyle(document.querySelector('.vcms-table-wrap'));
+                    const values = [luminance(desc.color), luminance(background.backgroundColor)].sort((a, b) => a - b);
+                    return {
                     providers: document.querySelector('.vcms-providers').getBoundingClientRect().top,
                     usage: document.querySelector('.vcms-usage').getBoundingClientRect().top,
                     saveHeight: document.querySelector('#vcms-save').getBoundingClientRect().height,
-                }));
+                    bindingContrast: (values[1] + 0.05) / (values[0] + 0.05),
+                }; });
                 if (homeLayout.providers >= homeLayout.usage) throw new Error('用量挤占模型配置入口');
                 if (homeLayout.saveHeight < 43.5) throw new Error('模型保存按钮命中高度不足 44px');
+                if (homeLayout.bindingContrast < 4.5) throw new Error(`用途说明对比度不足 ${homeLayout.bindingContrast}`);
                 await shot(page, path.join(ctx.artifactsDir, `f3-${tag}-model-home.png`));
                 await page.evaluate(() => document.querySelector('.vcms-usage')?.scrollIntoView({ block: 'center' }));
                 await shot(page, path.join(ctx.artifactsDir, `f3-${tag}-model-usage.png`));
