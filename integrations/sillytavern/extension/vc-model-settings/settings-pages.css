@@ -20,6 +20,37 @@ body.vc-ui #vc-model-settings-root .vcms-bindings-table :is(th, td) {
   border-bottom: 0.5px solid var(--vc-separator);
 }
 
+body.vc-ui #vc-model-settings-root .vcms-bindings-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+body.vc-ui #vc-model-settings-root :is(.vcms-binding-purpose, .vcms-binding-select) { display: table-cell; }
+body.vc-ui #vc-model-settings-root .vcms-binding-purpose > span { display: block; }
+body.vc-ui #vc-model-settings-root .vcms-bindings-table th:first-child { width: 27%; }
+body.vc-ui #vc-model-settings-root .vcms-bindings-table th:nth-child(2) { width: 53%; }
+body.vc-ui #vc-model-settings-root .vcms-bindings-table th:nth-child(3) { width: 20%; }
+body.vc-ui #vc-model-settings-root .vcms-binding-select select { min-width: 0; max-width: 100%; }
+body.vc-ui #vc-model-settings-root .vcms-binding-enabled { min-height: var(--vc-touch); }
+body.vc-ui #vc-model-settings-root .vcms-bindings-table th:nth-child(n+4),
+body.vc-ui #vc-model-settings-root :is(.vcms-binding-revision, .vcms-binding-updated) { display: none; }
+
+@media (max-width: 743px) {
+  body.vc-ui #vc-model-settings-root .vcms-bindings-table thead { display: none; }
+  body.vc-ui #vc-model-settings-root .vcms-bindings-table,
+  body.vc-ui #vc-model-settings-root .vcms-bindings-table tbody { display: block; }
+  body.vc-ui #vc-model-settings-root .vcms-binding-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "purpose status" "select select";
+    border-bottom: 0.5px solid var(--vc-separator);
+  }
+  body.vc-ui #vc-model-settings-root .vcms-binding-row > td { border: 0; }
+  body.vc-ui #vc-model-settings-root .vcms-binding-purpose { display: block; grid-area: purpose; }
+  body.vc-ui #vc-model-settings-root .vcms-binding-select { display: block; grid-area: select; }
+  body.vc-ui #vc-model-settings-root .vcms-binding-status { grid-area: status; align-self: start; }
+}
+
 body.vc-ui #vc-model-settings-root .vcms-overlay:not([hidden]) {
   position: fixed !important;
   z-index: var(--vc-z-page) !important;
