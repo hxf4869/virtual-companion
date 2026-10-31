@@ -14,6 +14,7 @@ RUN CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags="-s -w" \
 FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
 
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /usr/local/go/lib/time/zoneinfo.zip /usr/local/go/lib/time/zoneinfo.zip
 COPY --from=build /out/companiond /usr/local/bin/companiond
 
 RUN addgroup -S vc && adduser -S -G vc vc

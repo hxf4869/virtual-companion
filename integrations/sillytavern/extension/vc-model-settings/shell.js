@@ -472,7 +472,10 @@ function buildSettings(doc, { accountName, theme, reply, onTheme, onReply, onAct
         tavern.append(link(entry.id, entry.label, entry.icon, entry.tile));
     }
 
-    form.append(accountGroup, links, appearance, themeSeg, replySeg, tavernTitle, tavern);
+    const tavernSection = doc.createElement('div');
+    tavernSection.className = 'vc-settings-tavern';
+    tavernSection.append(tavernTitle, tavern);
+    form.append(accountGroup, links, appearance, themeSeg, replySeg, tavernSection);
     form.addEventListener('click', (event) => {
         const button = event.target.closest?.('button[data-action]');
         if (!button || !form.contains(button)) return;
@@ -577,7 +580,13 @@ export function mountShell(options = {}) {
     }
     const foot = doc.createElement('div');
     foot.className = 'vc-side-foot';
-    foot.append(makeSettingsButton());
+    const settingsLink = makeSettingsButton();
+    settingsLink.className = 'vc-side-link';
+    const settingsLabel = doc.createElement('span');
+    settingsLabel.className = 'vc-side-label';
+    settingsLabel.textContent = '设置';
+    settingsLink.append(settingsLabel);
+    foot.append(settingsLink);
     sidebar.append(foot);
 
     const body = doc.createElement('div');

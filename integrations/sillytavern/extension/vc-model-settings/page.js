@@ -809,6 +809,7 @@ export function mountModelSettings() {
         return `
         <div class="vcms-layout">
             <aside class="vcms-providers" aria-label="供应商列表">
+                ${screen === 'home' ? '<h2 class="vcms-providers-title">供应商</h2>' : ''}
                 <div class="vcms-provider-list" id="vcms-provider-list">${renderProviderCards()}</div>
             </aside>
             <main class="vcms-main">

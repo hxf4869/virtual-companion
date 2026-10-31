@@ -90,7 +90,8 @@ export async function sceneFe4aUi(ctx = {}) {
         };
         const shotBudget = createShotBudget();
         const shot = async (name) => {
-            if (!keepSceneShot(shotBudget, name)) return;
+            // 本轮验证窗口独立保留 390/1440 浅深色 4 张及 2 张短视口；其余沿用两张上限。
+            if (!name.startsWith('inbox-reauth-') && !keepSceneShot(shotBudget, name)) return;
             const file = path.join(OUT, name);
             await page.screenshot({ path: file });
             shots.push(file);
@@ -265,6 +266,53 @@ export async function sceneFe4aUi(ctx = {}) {
                         && !document.querySelector('[data-action="save-policy"]')?.disabled);
                     await shot(`inbox-quiet-${suffix}.png`);
                     await assertClean(`inbox-quiet-${suffix}`);
+
+                    await open('inbox', 'reauth', theme);
+                    await page.locator('[data-field="quietHoursStart"]').fill('23:00');
+                    await page.locator('[data-action="save-policy"]').click();
+                    await page.locator('.vc-reauth-dialog[open]').waitFor();
+                    const modal = await page.locator('.vc-reauth-dialog').evaluate((dialog) => {
+                        const r = dialog.getBoundingClientRect();
+                        const input = dialog.querySelector('input');
+                        return { width: r.width, height: r.height, left: r.left, top: r.top,
+                            focused: document.activeElement === input, modal: dialog.matches(':modal'),
+                            inputHeight: input.getBoundingClientRect().height };
+                    });
+                    if (!modal.modal || !modal.focused || modal.width > 421 || modal.height > 360
+                        || modal.left < 15 || modal.top < 15 || modal.inputHeight < 44) {
+                        throw new Error(`重新验证窗口布局或焦点错误 ${JSON.stringify(modal)}`);
+                    }
+                    await shot(`inbox-reauth-${suffix}.png`);
+                    if (viewport.width === 390) {
+                        await page.setViewportSize({ width: 390, height: 450 });
+                        const fits = await page.locator('.vc-reauth-dialog').evaluate((d) => {
+                            const r = d.getBoundingClientRect();
+                            return r.top >= 15 && r.bottom <= innerHeight - 15;
+                        });
+                        if (!fits) throw new Error('短视口验证窗口超出屏幕');
+                        await shot(`inbox-reauth-short-${suffix}.png`);
+                        await page.setViewportSize(viewport);
+                    }
+                    await page.locator('.vc-reauth-dialog input').fill('harness-wrong');
+                    await page.locator('.vc-reauth-dialog input').press('Enter');
+                    await page.getByText('密码不正确，请重试。', { exact: true }).last().waitFor();
+                    const cleared = await page.locator('.vc-reauth-dialog input').inputValue();
+                    if (cleared || await page.evaluate(() => window.__fe4a.policyPuts) !== 1) {
+                        throw new Error('验证失败保留密码或重放了写入');
+                    }
+                    await page.locator('.vc-reauth-dialog input').fill('harness-current');
+                    await page.locator('.vc-reauth-dialog input').press('Enter');
+                    await page.locator('.vc-reauth-dialog').waitFor({ state: 'detached' });
+                    await page.waitForFunction(() => window.__fe4a.policyPuts === 2);
+                    await open('inbox', 'reauth', theme);
+                    await page.locator('[data-field="quietHoursStart"]').fill('23:00');
+                    await page.locator('[data-action="save-policy"]').click();
+                    await page.locator('.vc-reauth-dialog[open]').waitFor();
+                    await page.locator('.vc-reauth-dialog input').press('Escape');
+                    await page.locator('.vc-reauth-dialog').waitFor({ state: 'detached' });
+                    if (await page.locator('[data-field="quietHoursStart"]').inputValue() !== '23:00') {
+                        throw new Error('取消身份验证丢失策略草稿');
+                    }
 
                     for (const [scene, name] of [
                         ['empty', 'inbox-empty'],

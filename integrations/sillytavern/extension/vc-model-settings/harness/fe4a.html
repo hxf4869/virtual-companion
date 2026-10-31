@@ -21,7 +21,7 @@
     document.documentElement.dataset.vcTheme = theme;
     document.body.classList.add('vc-ui');
     document.cookie = 'vc_csrf=fe4a-harness';
-    window.__fe4a = { policyPuts: 0, cancels: 0, forgets: 0 };
+    window.__fe4a = { policyPuts: 0, cancels: 0, forgets: 0, reauthed: false };
     window.addEventListener('error', (event) => {
       document.body.dataset.vcError = String(event.message || 'error').slice(0, 180);
     });
@@ -85,7 +85,13 @@
       const parsed = new URL(String(url), location.origin);
       const path = parsed.pathname;
       if (path.endsWith('/auth/session')) return json({ accountId: '9007199254740993', sessionId: '42' });
-      if (path.endsWith('/auth/reauth')) return json({ ok: true });
+      if (path.endsWith('/auth/reauth')) {
+        if (shot === 'reauth' && JSON.parse(init.body || '{}').password !== 'harness-current') {
+          return json({ code: 'NOT_FOUND_OR_FORBIDDEN' }, 404);
+        }
+        window.__fe4a.reauthed = true;
+        return json({ ok: true });
+      }
       if (pageName === 'memory' && shot === 'offline' && path.includes('/memories')) return Promise.reject(new TypeError('Failed to fetch'));
       if (pageName === 'inbox' && shot === 'offline' && path.endsWith('/inbox')) return Promise.reject(new TypeError('Failed to fetch'));
       if (pageName === 'memory' && shot === 'loading' && path.includes('/memories')) return new Promise(() => {});
@@ -143,6 +149,7 @@
       }
       if (path.endsWith('/proactive-policy') && method === 'PUT') {
         window.__fe4a.policyPuts += 1;
+        if (shot === 'reauth' && !window.__fe4a.reauthed) return json({ code: 'ACCESS_DENIED' }, 403);
         return json(JSON.parse(init.body || '{}'));
       }
       if (path.endsWith('/proactive-policy')) return json(policy());

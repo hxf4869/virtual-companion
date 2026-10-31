@@ -398,7 +398,7 @@ function channelCard(draft, relationships) {
 function proactiveControls(draft) {
     if (!draft?.supportsMode && !draft?.supportsCheckIn) return '';
     const modes = draft.supportsMode
-        ? `<h2 class="vc-group-title">模式</h2><div class="vc-group" aria-label="模式">${PROACTIVE_MODES.map((value) => `<button type="button" class="vc-cell" data-action="set-proactive-mode" data-mode="${value}" aria-pressed="${draft.mode === value ? 'true' : 'false'}"><span class="vc-grow">${PROACTIVE_LABELS[value]}</span></button>`).join('')}</div>`
+        ? `<h2 class="vc-group-title">模式</h2><div class="vc-group vc-proactive-modes" aria-label="模式">${PROACTIVE_MODES.map((value) => `<button type="button" class="vc-cell" data-action="set-proactive-mode" data-mode="${value}" aria-pressed="${draft.mode === value ? 'true' : 'false'}"><span class="vc-grow">${PROACTIVE_LABELS[value]}</span></button>`).join('')}</div>`
         : '';
     const check = draft.supportsCheckIn
         ? `<div class="vc-group"><label class="vc-cell"><span class="vc-grow">多久没聊</span><input data-field="checkInAfterMinutes" aria-label="多久没聊" inputmode="numeric" value="${esc(draft.checkInAfterMinutes ?? '')}"></label></div>`
@@ -524,7 +524,8 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
             return;
         }
         if (error?.kind === 'context-changed') {
-            state.policyError = '登录状态已变化，请重新打开。';
+            state.policyError = error.code === 'VC_HOST_SESSION_EXPIRED'
+                ? error.message : '登录状态已变化，请重新加载页面后再试。';
             return;
         }
         const message = error?.kind === 'invalid' ? (error.message || '请求内容未通过校验，请检查表单。') : '没有保存，请重试。';
@@ -848,6 +849,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
             if (!password || state.busy) return;
             const ticket = epoch;
             state.busy = true;
+            state.policyError = '';
             emit();
             try {
                 await reauth(password);
@@ -863,7 +865,20 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
                 state.busy = false;
                 state.reauth.password = '';
                 state.reauth.open = true;
-                state.policyError = '身份验证未完成，请检查密码后重试。';
+                if (error?.kind === 'context-changed') {
+                    state.policyError = error.code === 'VC_HOST_SESSION_EXPIRED'
+                        ? error.message : '登录状态已变化，请重新加载页面后再试。';
+                } else if (error?.kind === 'unauthenticated') {
+                    state.policyError = '登录已过期，请重新登录后再试。';
+                } else if (error?.status === 404 && error?.code === 'NOT_FOUND_OR_FORBIDDEN') {
+                    state.policyError = '密码不正确，请重试。';
+                } else if (error?.status === 429) {
+                    state.policyError = '验证次数过多，请稍后再试。';
+                } else if (error?.kind === 'network' || error?.status >= 500) {
+                    state.policyError = '暂时无法验证身份，请稍后重试。';
+                } else {
+                    state.policyError = '身份验证未完成，请重试。';
+                }
                 emit();
             }
         },
@@ -1195,17 +1210,19 @@ export function renderInboxTab(state) {
         const glyph = item.channel === 'FEISHU' ? 'link' : 'bell';
         return `<button type="button" class="vc-cell vc-inbox-channel-link" data-action="open-channel" data-key="${esc(item.key)}" data-channel="${esc(item.channel)}" data-preview="${item.previewBody ? 'true' : 'false'}"><span class="vc-tile ${item.channel === 'FEISHU' ? 'vc-tile-teal' : 'vc-tile-blue'}">${icon(glyph, { size: 18 })}</span><span class="vc-grow"><span class="vc-inbox-name">${title}</span><span class="vc-meta">${esc(channelText(item))}</span></span><span class="vc-chevron">${icon('chevron-right', { size: 16 })}</span></button>`;
     }).join('');
-    return `<div class="vc-column">${reauth}${cancel}${conflict}
+    return `<div class="vc-column vc-inbox-layout">${reauth}${cancel}${conflict}
         <h1 class="vc-large-title" tabindex="-1" data-vc-owned-title>陪伴</h1>
         ${state.error ? `<p role="alert">${esc(state.error)}</p>` : ''}
         ${character}
-        <section aria-label="消息">
+        <div class="vc-inbox-workspace"><div class="vc-inbox-activity"><section aria-label="消息">
             <div class="vc-segment" data-vc-inbox-segment><i class="vc-segment-thumb"></i>${filters}</div>
             ${messageBlock}
         </section>
         <section aria-label="跟进">
             <h2 class="vc-group-title">跟进</h2>
             <div class="vc-group">${follows || '<div class="vc-cell" role="status">没有跟进</div>'}</div>
+        </section></div>
+        <div class="vc-inbox-preferences"><section aria-label="主动设置">
             ${proactiveControls(draft)}
             <h2 class="vc-group-title">静默时段</h2>
             <div class="vc-group">
@@ -1229,7 +1246,7 @@ export function renderInboxTab(state) {
             <h2 class="vc-group-title">渠道</h2>
             ${state.channelError ? `<p role="alert">${esc(state.channelError)}</p>` : ''}
             <div class="vc-group vc-inbox-channel-row">${channels}</div>
-        </section>
+        </section></div></div>
     </div>`;
 }
 
@@ -1282,7 +1299,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
     let segmentBinding = null;
     let conflictSheet = null;
     let conflictOpen = false;
-    let reauthSheet = null;
+    let reauthDialog = null;
     const signal = ac.signal;
 
     const page = createInboxPage({
@@ -1392,40 +1409,49 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
 
     function syncReauth(state) {
         if (!state.reauth.open) {
-            if (reauthSheet) {
-                const current = reauthSheet;
-                reauthSheet = null;
+            if (reauthDialog) {
+                const current = reauthDialog;
+                reauthDialog = null;
                 current.close();
+                current.remove();
+                const target = container.querySelector(`[data-action="${current.dataset.returnAction}"]:not(:disabled)`)
+                    || container.querySelector('h1');
+                target?.focus({ preventScroll: true });
             }
             return;
         }
-        if (reauthSheet) {
-            const note = reauthSheet.el.querySelector('[data-reauth-error]');
-            if (note) note.textContent = state.policyError || state.channelError || '';
-            return;
+        if (!reauthDialog) {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'vc-reauth-dialog';
+            dialog.dataset.returnAction = state.reauth.action === 'channel' ? 'save-channel' : 'save-policy';
+            dialog.setAttribute('aria-labelledby', 'vc-inbox-reauth-title');
+            dialog.setAttribute('aria-describedby', 'vc-inbox-reauth-description');
+            dialog.innerHTML = `<form><header><h2 id="vc-inbox-reauth-title">重新验证身份</h2><p id="vc-inbox-reauth-description">保存前，请验证当前账号的密码。</p></header><label>当前密码<input type="password" data-field="reauth-password" autocomplete="current-password" spellcheck="false" required autofocus></label><p data-reauth-error role="alert" hidden></p><div class="vc-reauth-actions"><button type="button" class="vc-btn vc-btn-text" data-action="reauth-cancel">取消</button><button type="submit" class="vc-btn vc-btn-fill" data-action="reauth-submit">验证并继续</button></div></form>`;
+            dialog.addEventListener('cancel', (event) => {
+                event.preventDefault();
+                if (!page.state.busy) page.cancelReauth();
+            });
+            dialog.querySelector('[data-action="reauth-cancel"]').addEventListener('click', () => page.cancelReauth());
+            dialog.querySelector('form').addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (page.state.busy) return;
+                const input = dialog.querySelector('[data-field="reauth-password"]');
+                page.setReauthPassword(input.value);
+                input.value = '';
+                void page.authenticate();
+            });
+            document.body.append(dialog);
+            reauthDialog = dialog;
+            dialog.showModal();
         }
-        const body = document.createElement('div');
-        body.innerHTML = `<p>需要重新验证身份。</p><label class="vc-cell">当前密码<input type="password" data-field="reauth-password" autocomplete="current-password" spellcheck="false"></label><p data-reauth-error role="alert"></p><div class="vc-inbox-actions"><button type="button" class="vc-btn vc-btn-text" data-action="reauth-cancel">取消</button><button type="button" class="vc-btn vc-btn-fill" data-action="reauth-submit">验证并继续</button></div>`;
-        const sheet = openSheet({
-            title: '重新验证身份',
-            body,
-            onDone() {
-                const current = reauthSheet;
-                reauthSheet = null;
-                if (current && page.state.reauth.open) page.cancelReauth();
-            },
-        });
-        sheet.el.setAttribute('aria-label', '重新验证身份');
-        reauthSheet = sheet;
-        const note = body.querySelector('[data-reauth-error]');
-        if (note) note.textContent = state.policyError || state.channelError || '';
-        body.querySelector('[data-action="reauth-cancel"]').addEventListener('click', () => page.cancelReauth());
-        body.querySelector('[data-action="reauth-submit"]').addEventListener('click', () => {
-            const input = body.querySelector('[data-field="reauth-password"]');
-            page.setReauthPassword(input?.value || '');
-            if (input) input.value = '';
-            void page.authenticate();
-        });
+        const note = reauthDialog.querySelector('[data-reauth-error]');
+        note.textContent = state.policyError || state.channelError || '';
+        note.hidden = !note.textContent;
+        const submit = reauthDialog.querySelector('[data-action="reauth-submit"]');
+        submit.textContent = state.busy ? '正在验证…' : '验证并继续';
+        for (const control of reauthDialog.querySelectorAll('button,input')) control.disabled = state.busy;
+        reauthDialog.setAttribute('aria-busy', String(state.busy));
+        if (!state.busy && note.textContent) reauthDialog.querySelector('input').focus({ preventScroll: true });
     }
 
     const policyFields = new Set(['quietHoursStart', 'quietHoursEnd', 'quietHoursTimezone', 'dailyLimit', 'recentInteractionMinutes', 'checkInAfterMinutes']);
@@ -1543,7 +1569,8 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
             segmentBinding = null;
             menuHandle?.close();
             conflictSheet?.close();
-            reauthSheet?.close();
+            reauthDialog?.close();
+            reauthDialog?.remove();
             ac.abort();
             page.close();
             channelEl = null;

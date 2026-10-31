@@ -1,5 +1,9 @@
 /* 模型页与账户页在 body.vc-ui 下的设置页外观。关闭新外观时不加载本文件。 */
 
+@media (min-width: 1100px) {
+  body.vc-ui .vc-shell-settings > .vc-shell-scroll > .vc-large-title { width: min(100%, var(--vc-list)); }
+}
+
 body.vc-ui #vc-model-settings-root {
   --vcms-bg: var(--vc-group);
   --vcms-surface: var(--vc-group);
@@ -1189,5 +1193,35 @@ body.vc-ui [data-vc-account-home] .vc-icon {
   body.vc-ui .vc-data-dialog [data-vc-account-nav] > *,
   body.vc-ui #vc-model-settings-root .vcms-header > * {
     grid-row: 1;
+  }
+}
+
+body.vc-ui #vc-model-settings-root .vcms-providers-title { display: none; }
+
+@media (min-width: 1100px) {
+  body.vc-ui .vc-shell-settings > .vc-navbar {
+    grid-template-columns: 1fr min(var(--vc-list), calc(100% - 32px)) 1fr;
+  }
+  body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-body {
+    width: min(calc(100% - 48px), 1080px);
+    padding-top: 24px;
+  }
+  body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-layout {
+    display: grid !important;
+    grid-template-columns: 260px minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+    width: 100%;
+  }
+  body.vc-ui #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-header {
+    grid-template-columns: 1fr min(1080px, calc(100% - 48px)) 1fr;
+  }
+  body.vc-ui #vc-model-settings-root .vcms-providers-title {
+    display: block;
+    margin: 0 16px 12px;
+    color: var(--vc-ink-2);
+    font-size: var(--vc-fs-footnote);
+    font-weight: 400;
+    line-height: 20px;
   }
 }

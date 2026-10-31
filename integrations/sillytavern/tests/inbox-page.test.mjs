@@ -102,7 +102,7 @@ function install(next) {
     globalThis.fetch = async (url, init = {}) => {
         calls.push({ url: String(url), method: init.method || 'GET', headers: init.headers, body: init.body, credentials: init.credentials });
         const result = await route(String(url), init);
-        return new Response(JSON.stringify(result.body), { status: result.status || 200, headers: result.headers });
+        return new Response(result.rawBody ?? JSON.stringify(result.body), { status: result.status || 200, headers: result.headers });
     };
 }
 
@@ -371,6 +371,59 @@ test('写入被拒绝时保留草稿，重新验证后才再次提交', async ()
     assert.deepEqual(JSON.parse(reauth.body), { password: 'current-password-value' });
     assert.equal(calls.filter((call) => call.method === 'PUT').every((call) => !String(call.body).includes('current-password-value')), true);
     page.close();
+});
+
+test('宿主页面失效时保留策略草稿并提示重载，不打开密码验证', async () => {
+    const page = await opened();
+    page.setPolicy({ quietHoursStart: '21:00' });
+    const base = route;
+    route = (url, init) => init.method === 'PUT' && url.includes('/proactive-policy')
+        ? { status: 403, rawBody: '<html><body>Forbidden</body></html>' } : base(url, init);
+    const before = calls.length;
+    await page.savePolicy();
+    assert.equal(page.state.policyDraft.quietHoursStart, '21:00');
+    assert.equal(page.state.reauth.open, false);
+    assert.equal(page.state.policyError, '页面验证已过期，请重新加载页面后再试。');
+    assert.equal(calls.length, before + 1);
+    page.close();
+});
+
+test('重新验证按真实失败原因提示，失败不重放策略、不保留密码', async () => {
+    const base = route;
+    const cases = [
+        { response: { status: 403, rawBody: '<html><body>Forbidden</body></html>' }, message: '页面验证已过期，请重新加载页面后再试。' },
+        { response: { status: 409, body: { code: 'ACCOUNT_CONTEXT_CHANGED' } }, message: '登录状态已变化，请重新加载页面后再试。' },
+        { response: { status: 404, body: { code: 'NOT_FOUND_OR_FORBIDDEN' } }, message: '密码不正确，请重试。' },
+        { response: { status: 429, body: { code: 'AUTH_RATE_LIMITED' } }, message: '验证次数过多，请稍后再试。' },
+        { response: { status: 503, body: { code: 'INVALID_REQUEST' } }, message: '暂时无法验证身份，请稍后重试。' },
+        { network: true, message: '暂时无法验证身份，请稍后重试。' },
+    ];
+    for (const scenario of cases) {
+        route = base;
+        const page = await opened();
+        page.setPolicy({ quietHoursStart: '21:00' });
+        let puts = 0;
+        route = (url, init) => {
+            if (init.method === 'PUT' && url.includes('/proactive-policy')) {
+                puts += 1;
+                return { status: 403, body: { code: 'ACCESS_DENIED' } };
+            }
+            if (url.endsWith('/reauth')) {
+                if (scenario.network) throw new TypeError('synthetic network failure');
+                return scenario.response;
+            }
+            return base(url, init);
+        };
+        await page.savePolicy();
+        page.setReauthPassword('synthetic-password');
+        await page.authenticate();
+        assert.equal(page.state.policyError, scenario.message);
+        assert.equal(page.state.policyDraft.quietHoursStart, '21:00');
+        assert.equal(page.state.reauth.password, '');
+        assert.doesNotMatch(JSON.stringify(page.state), /synthetic-password/);
+        assert.equal(puts, 1);
+        page.close();
+    }
 });
 
 test('渠道页清除凭据是整行危险按钮，内容与页头之间有顶部留白', async () => {

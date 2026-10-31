@@ -37,7 +37,7 @@ globalThis.fetch = async (url, init = {}) => {
     return {
         ok: res.status >= 200 && res.status < 300,
         status: res.status,
-        text: async () => (res.body === undefined ? '' : JSON.stringify(res.body)),
+        text: async () => (res.rawBody ?? (res.body === undefined ? '' : JSON.stringify(res.body))),
     };
 };
 test.after(() => {
@@ -132,6 +132,22 @@ test('409 ACCOUNT_CONTEXT_CHANGED → context-changed（不与 revision 冲突�
             return true;
         },
     );
+});
+
+test('宿主 HTML 403 提示显式重载，不要求密码、不刷新上下文或重放写入', async () => {
+    router = () => ({ status: 403, rawBody: '<html><body>Forbidden</body></html>' });
+    const before = calls.length;
+    await assert.rejects(() => reauth('synthetic-password'), (err) => {
+        assert.equal(err.kind, 'context-changed');
+        assert.equal(err.code, 'VC_HOST_SESSION_EXPIRED');
+        assert.equal(err.message, '页面验证已过期，请重新加载页面后再试。');
+        assert.doesNotMatch(err.message, /密码/);
+        return true;
+    });
+    assert.equal(calls.length, before + 1);
+    assert.equal(calls.at(-1).headers['X-VC-Expected-Session-ID'], SESSION_ID);
+    router = () => ({ status: 403, body: { code: 'ACCESS_DENIED' } });
+    await assert.rejects(() => reauth('synthetic-password'), (err) => err.kind === 'forbidden');
 });
 
 test('会话身份形状异常（数字 accountId 违反字符串契约）→ 拒绝捕获，旧快照不被半更新', async () => {

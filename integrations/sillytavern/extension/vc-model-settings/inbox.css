@@ -1,4 +1,49 @@
 /* UI-P04 主动陪伴 / 通知。本模块自行插入，不改 style.css。 */
+
+body.vc-ui .vc-reauth-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  margin: auto;
+  padding: 28px;
+  overflow: auto;
+  border: 0;
+  border-radius: var(--vc-radius-xl);
+  background: var(--vc-sheet);
+  color: var(--vc-ink);
+  font: var(--vc-fs-body)/var(--vc-lh-body) var(--vc-font);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+}
+body.vc-ui .vc-reauth-dialog::backdrop {
+  background: var(--vc-scrim);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+body.vc-ui .vc-reauth-dialog form { display: grid; gap: 20px; margin: 0; }
+body.vc-ui .vc-reauth-dialog h2 { margin: 0 0 8px; font-size: var(--vc-fs-title-2); line-height: var(--vc-lh-title-2); }
+body.vc-ui .vc-reauth-dialog p { margin: 0; color: var(--vc-ink-2); font-size: var(--vc-fs-subhead); }
+body.vc-ui .vc-reauth-dialog label { display: grid; gap: 8px; font-size: var(--vc-fs-subhead); }
+body.vc-ui .vc-reauth-dialog input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--vc-touch);
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--vc-radius-sm);
+  background: var(--vc-fill);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-fs-input);
+}
+body.vc-ui .vc-reauth-dialog input:focus-visible { outline: 2px solid var(--vc-accent); outline-offset: 2px; }
+body.vc-ui .vc-reauth-dialog [data-reauth-error] { color: var(--vc-danger); }
+body.vc-ui .vc-reauth-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+body.vc-ui .vc-reauth-actions .vc-btn { width: 100%; min-height: var(--vc-touch); margin: 0; }
+body.vc-ui .vc-reauth-actions .vc-btn-text { background: var(--vc-fill); color: var(--vc-ink); }
+
 .vc-inbox-root {
     --vcms-bg: var(--SmartThemeBlurTintColor, #14181F);
     --vcms-surface: var(--SmartThemeChatTintColor, #1C222C);
@@ -567,5 +612,22 @@ body.vc-ui .vc-inbox-tab [role="alert"] { color: var(--vc-danger); }
 
 @media (min-width: 744px) {
   body.vc-ui .vc-inbox-tab .vc-column { padding-top: var(--vc-space-xl); }
+}
+
+@media (min-width: 1100px) {
+  body.vc-ui .vc-inbox-layout > .vc-group { max-width: 360px; }
+  body.vc-ui .vc-inbox-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 24px;
+    align-items: start;
+  }
+  body.vc-ui .vc-inbox-workspace > div { min-width: 0; }
+  body.vc-ui .vc-inbox-preferences > section:first-child > .vc-group-title:first-child { margin-top: 0; }
+  body.vc-ui .vc-inbox-preferences .vc-proactive-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 4px; }
+  body.vc-ui .vc-inbox-preferences .vc-proactive-modes .vc-cell { justify-content: center; padding: 0 4px; min-height: 44px; border-radius: var(--vc-radius-sm); }
+  body.vc-ui .vc-inbox-preferences .vc-proactive-modes .vc-grow { flex: none; }
+  body.vc-ui .vc-inbox-preferences .vc-proactive-modes .vc-cell::after { display: none; }
+  body.vc-ui .vc-inbox-preferences .vc-proactive-modes [aria-pressed="true"] { background: var(--vc-fill); color: var(--vc-accent-text); font-weight: 600; }
 }
 /* vc-ui: end */

@@ -85,6 +85,13 @@ function classify(status, body) {
         return new ApiError('unauthenticated', '尚未登录或登录已过期，请先登录 Go 服务后再操作。', { status, code, details });
     }
     if (status === 403) {
+        // 宿主 CSRF 拒绝返回 HTML / 空正文，尚未进入 Go 密码校验。
+        // 不能把部署后旧页面的拒绝当作 FreshReauth，再让用户反复输入密码。
+        if (!body) {
+            return new ApiError('context-changed', '页面验证已过期，请重新加载页面后再试。', {
+                status, code: 'VC_HOST_SESSION_EXPIRED',
+            });
+        }
         return new ApiError('forbidden', '没有管理权限，或需要重新验证身份后重试。', { status, code, details });
     }
     if (status === 404) {
@@ -147,7 +154,7 @@ async function request(method, goPath, body, { page = false } = {}) {
         }
     }
     if (!response.ok) {
-        const error = classify(response.status, data ?? {});
+        const error = classify(response.status, data);
         if (Array.isArray(data?.pendingDomains)) error.pendingDomains = data.pendingDomains;
         throw error;
     }
