@@ -19,6 +19,19 @@ body.vc-ui .vc-sticker-page .vc-large-title {
     margin: var(--vc-space-xs) 0 var(--vc-space-sm);
 }
 
+body.vc-ui .vc-sticker-page > .vc-navbar {
+    --vc-nav-p: 1;
+    position: sticky;
+    top: 0;
+    flex: none;
+    background: var(--vc-canvas);
+}
+
+body.vc-ui .vc-shell-settings:has(.vc-sticker-page) > .vc-navbar,
+body.vc-ui .vc-sheet:has(.vc-sticker-page) > .vc-sheet-head {
+    display: none;
+}
+
 body.vc-ui .vc-sticker-row {
     gap: var(--vc-space-sm);
     min-width: 0;
@@ -68,7 +81,7 @@ body.vc-ui .vc-sticker-file {
 }
 
 body.vc-ui .vc-sticker-upload {
-    margin-top: var(--vc-space-sm);
+    margin: 0;
 }
 
 body.vc-ui .vc-sticker-bubble {

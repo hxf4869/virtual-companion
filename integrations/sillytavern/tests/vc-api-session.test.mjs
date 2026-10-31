@@ -19,6 +19,7 @@ import {
     discoverProviderModels,
     fetchModelPurposes,
     fetchProviders,
+    fetchRelationships,
     reauth,
     saveModelPurpose,
     saveProvider,
@@ -95,6 +96,15 @@ test('快照之后：其余写路径（用途 PUT / discover POST / reauth POST�
         assert.equal(hit.headers['X-VC-Expected-Account-ID'], BIG_ACCOUNT_ID, hit.url);
         assert.equal(hit.headers['X-VC-Expected-Session-ID'], SESSION_ID, hit.url);
     }
+});
+
+test('ST 实例列表排除宿主预置空关系，保留有名与尚未命名的 ST 实例', async () => {
+    router = () => ({ status: 200, body: [
+        { relationshipId: 1, personaRef: 'gentle-listener', companionName: null },
+        { relationshipId: 2, personaRef: 'st-character', companionName: '合成角色' },
+        { relationshipId: 3, personaRef: 'st-character', companionName: null },
+    ] });
+    assert.deepEqual((await fetchRelationships()).map((row) => row.relationshipId), [2, 3]);
 });
 
 test('读路径 GET providers / purposes 不携带 Expected 头', async () => {

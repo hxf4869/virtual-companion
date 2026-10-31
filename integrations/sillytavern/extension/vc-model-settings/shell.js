@@ -499,6 +499,15 @@ export function mountShell(options = {}) {
     if (doc.getElementById?.('vc-shell')) return doc.getElementById('vc-shell');
 
     ensureShellCss(doc);
+    const oldNav = doc.querySelector('#vc-chat-nav');
+    if (oldNav) {
+        oldNav.inert = true;
+        oldNav.setAttribute('aria-hidden', 'true');
+    }
+    for (const toggle of doc.querySelectorAll('#top-bar .drawer-toggle')) {
+        toggle.inert = true;
+        toggle.setAttribute('aria-hidden', 'true');
+    }
     const getContext = () => {
         try { return options.getContext?.() || {}; } catch { return {}; }
     };
@@ -1249,6 +1258,10 @@ export function mountShell(options = {}) {
         else if (typeof who.style.removeProperty === 'function') who.style.removeProperty('background');
     }
     const routeExternal = (nav, opener) => {
+        if (nav === 'settings') {
+            openSettings(opener);
+            return;
+        }
         if (!DESTINATIONS.some((item) => item.nav === nav)) return;
         selectDestination(nav, opener);
     };

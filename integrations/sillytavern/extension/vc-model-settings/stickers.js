@@ -541,7 +541,10 @@ export function renderStickerPage(doc, options = {}) {
         empty.append(mark, copy, makeUpload());
         list.append(empty);
     } else {
-        list.append(makeUpload());
+        const actions = doc.createElement('div');
+        actions.className = 'vc-cell vc-sticker-actions';
+        actions.append(makeUpload());
+        list.append(actions);
         for (const row of rows) {
             const cell = doc.createElement('div');
             cell.className = 'vc-cell vc-sticker-row';

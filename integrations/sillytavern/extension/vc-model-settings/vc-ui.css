@@ -608,7 +608,7 @@ body.vc-ui .vc-search input {
   font-size: var(--vc-fs-input);
   outline: none;
 }
-body.vc-ui .vc-search input::placeholder { color: var(--vc-ink-3); }
+body.vc-ui .vc-search input::placeholder { color: var(--vc-ink-2); opacity: 1; }
 body.vc-ui .vc-search input:focus-visible { outline: none; }
 body.vc-ui .vc-search:focus-within,
 body.vc-ui .vc-search.is-focus { box-shadow: 0 0 0 2px var(--vc-accent); }
@@ -1268,13 +1268,13 @@ body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormat
 
 body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel) input[type="checkbox"]:disabled { opacity: 0.35; }
 
-/* 桌面且为鼠标指针时按钮降到 36；触屏平板保持 44 触控高度。 */
+/* 桌面鼠标与触屏均保留 DESIGN.md 的最小命中高度。 */
 @media (min-width: 744px) and (pointer: fine) {
   body.vc-ui .vc-btn-fill,
   body.vc-ui .vc-btn-light,
   body.vc-ui .vc-btn-gray,
-  body.vc-ui .vc-btn-danger { height: 36px; min-height: 36px; }
-  body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel) .menu_button { min-height: 36px; }
+  body.vc-ui .vc-btn-danger { height: var(--vc-touch); min-height: var(--vc-touch); }
+  body.vc-ui :is(.vc-form, .popup, #left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel) .menu_button { min-height: var(--vc-touch); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -34,6 +34,7 @@ const ADMIN_BRIDGE_BASE = [
     { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*$/, where: 'VO-2 语音状态与转文字' },
     { method: 'GET', path: /^\/api\/v1\/voice-clips\/[1-9][0-9]*\/audio$/, where: 'VO-2 鉴权 WAV 与单范围下载' },
     { method: 'GET', path: /^\/api\/v1\/relationships$/, where: 'W08 记忆页角色实例' },
+    { method: 'GET', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/companion-state$/, where: 'HL 聊天心情与情绪提示' },
     { method: 'GET', path: /^\/api\/v1\/relationships\/[1-9][0-9]*\/memories$/, where: 'W08 记忆列表' },
     { method: 'GET', path: /^\/api\/v1\/memories\/[1-9][0-9]*(?:\/evidence)?$/, where: 'W08 记忆详情与证据' },
     { method: 'PATCH', path: /^\/api\/v1\/memories\/[1-9][0-9]*$/, where: 'W08 版本纠正' },

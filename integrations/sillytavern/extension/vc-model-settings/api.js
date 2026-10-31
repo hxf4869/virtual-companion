@@ -284,7 +284,8 @@ export async function downloadDataExport(url) {
 }
 
 // UI-P03 沿用 Go 的 memoryId / summary / time.*，不另建响应信封。
-export const fetchRelationships = () => request('GET', '/api/v1/relationships');
+export const fetchRelationships = async () => (await request('GET', '/api/v1/relationships'))
+    .filter((row) => row.personaRef === 'st-character');
 export const fetchVoiceEngines = () => request('GET', '/api/v1/voice/engines');
 export const fetchVoiceSettings = () => request('GET', '/api/v1/voice/settings');
 export const fetchVoiceUsage = () => request('GET', '/api/v1/voice/usage');

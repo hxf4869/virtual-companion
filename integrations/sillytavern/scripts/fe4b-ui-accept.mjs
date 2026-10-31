@@ -63,8 +63,7 @@ async function layoutOf(page) {
             }
         }
         const small = [];
-        const dense = window.matchMedia('(pointer: fine)').matches && window.innerWidth >= 744;
-        const min = dense ? 35.5 : 43.5;
+        const min = 43.5;
         for (const el of document.querySelectorAll('.vc-characters button, .vc-story-tab button, .vc-story-tab textarea, .vc-characters input')) {
             const rect = el.getBoundingClientRect();
             const style = getComputedStyle(el);

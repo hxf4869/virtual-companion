@@ -772,7 +772,7 @@ body.vc-ui .vc-story-tab .vc-story-ending textarea {
     line-height: var(--vc-lh-body);
 }
 
-body.vc-ui .vc-field textarea::placeholder { color: var(--vc-ink-3); }
+body.vc-ui .vc-field textarea::placeholder { color: var(--vc-ink-2); opacity: 1; }
 
 body.vc-ui .vc-send {
     display: grid;

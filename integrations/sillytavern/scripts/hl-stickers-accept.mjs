@@ -268,6 +268,15 @@ export async function sceneHlStickers(ctx) {
                 await page.setViewportSize(viewport);
                 await openStickers(page);
                 await page.waitForSelector('[data-vc-sticker-id="hl-happy"]', { timeout: 8000 });
+                const layout = await page.evaluate(() => {
+                    const page = document.querySelector('[data-vc-sticker-page]');
+                    const list = page.querySelector('[data-vc-sticker-list]').getBoundingClientRect();
+                    const upload = page.querySelector('[data-vc-sticker-upload]').getBoundingClientRect();
+                    const title = page.querySelector('[data-vc-sticker-title]');
+                    return { insetX: upload.left - list.left, insetY: upload.top - list.top,
+                        titleVisible: title.getClientRects().length > 0 && Number(getComputedStyle(title).opacity) >= 0.99 };
+                });
+                if (layout.insetX < 15 || layout.insetY < 9 || !layout.titleVisible) throw new Error(`表情包标题或上传间距异常 ${JSON.stringify(layout)}`);
                 await shot(page, dir, `settings-${viewport.name}-${mode}.png`, ctx);
                 await closeSettings(page);
             }

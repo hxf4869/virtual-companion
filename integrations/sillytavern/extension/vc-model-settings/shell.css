@@ -663,9 +663,9 @@ body.vc-ui #vc-shell[data-cover="story"] > .vc-tabbar {
   display: none;
 }
 
-body.vc-ui #vc-shell[data-chrome="tabbar"]:has(.vc-memory-tab.is-detail) > .vc-tabbar,
-body.vc-ui #vc-shell[data-chrome="tabbar"]:has(.vc-characters.is-detail) > .vc-tabbar,
-body.vc-ui #vc-shell[data-chrome="tabbar"]:has(.vc-inbox-tab.is-detail) > .vc-tabbar {
+body.vc-ui #vc-shell[data-chrome="tabbar"]:has(.vc-shell-page.is-on .vc-memory-tab.is-detail) > .vc-tabbar,
+body.vc-ui #vc-shell[data-chrome="tabbar"]:has(.vc-shell-page.is-on .vc-characters.is-detail) > .vc-tabbar,
+body.vc-ui #vc-shell[data-chrome="tabbar"]:has(.vc-shell-page.is-on .vc-inbox-tab.is-detail) > .vc-tabbar {
   transform: translateY(140%);
   opacity: 0;
   pointer-events: none;

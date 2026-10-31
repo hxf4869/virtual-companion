@@ -141,8 +141,8 @@ body.vc-ui #vc-model-settings-root #vcms-discard {
 }
 
 body.vc-ui #vc-model-settings-root #vcms-save {
-  height: 36px;
-  min-height: 36px;
+  height: var(--vc-touch);
+  min-height: var(--vc-touch);
   padding: 0 14px;
   border: 0 !important;
   border-radius: var(--vc-radius-pill) !important;

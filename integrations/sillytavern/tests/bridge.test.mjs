@@ -78,6 +78,25 @@ function fakeGo(state) {
 
 const baseConfig = (goPort) => ({ goBaseUrl: `http://127.0.0.1:${goPort}`, serviceToken: 'S'.repeat(40), timeoutMs: 5000 });
 
+test('陪伴状态经本人会话读取，桥不放行写方法或服务令牌', async () => {
+    let calls = 0;
+    const handler = createAdminBridge({ config: baseConfig(9999), fetchImpl: async (url, init) => {
+        calls += 1;
+        assert.equal(url, 'http://127.0.0.1:9999/api/v1/relationships/12/companion-state');
+        assert.equal(init.headers.Cookie, 'vc_session=synthetic');
+        assert.equal(init.headers.Authorization, undefined);
+        return new Response(JSON.stringify({ mood: 'CURIOUS' }), { headers: { 'content-type': 'application/json' } });
+    } });
+    const response = mockRes();
+    await handler(bridgeReq({ url: '/api/v1/relationships/12/companion-state', headers: { cookie: 'vc_session=synthetic; other=private' } }), response);
+    assert.equal(response.statusCode, 200);
+    assert.equal(JSON.parse(response.body()).mood, 'CURIOUS');
+    const rejected = mockRes();
+    await handler(bridgeReq({ method: 'POST', url: '/api/v1/relationships/12/companion-state' }), rejected);
+    assert.equal(rejected.statusCode, 404);
+    assert.equal(calls, 1);
+});
+
 test('ASR 桥只向固定路径转发有界 multipart，保持本人会话而不附服务令牌', async()=>{
     const payload=Buffer.from('--synthetic\r\nContent-Disposition: form-data; name="file"; filename="recording.wav"\r\n\r\nRIFF_SYNTHETIC\r\n--synthetic--\r\n');
     const req=Readable.from([payload]);Object.assign(req,{method:'POST',url:'/api/v1/voice/asr',headers:{'content-type':'multipart/form-data; boundary=synthetic','x-vc-csrf-token':'synthetic-csrf',cookie:'vc_session=synthetic; other=private'}});

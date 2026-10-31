@@ -112,6 +112,7 @@ export function mountModelSettings() {
         bindingsSaving: false,
         bindingsConflict: null, // {purpose, currentRevision}
         closing: false, // 关闭确认条
+        returnToSettings: false,
         toast: null,
         check: { busy: false, error: null, result: null }, // 连接检查（check-only，不改草稿）
         budget: { known: false, insufficient: false },
@@ -529,7 +530,8 @@ export function mountModelSettings() {
         root.querySelector('.vcms-panel')?.focus();
     }
 
-    function requestClose() {
+    function requestClose({ toSettings = false } = {}) {
+        state.returnToSettings = toSettings;
         if (isDirty()) {
             state.closing = true;
             render();
@@ -545,6 +547,10 @@ export function mountModelSettings() {
         const back = returnFocus;
         returnFocus = null;
         back?.focus?.();
+        if (state.returnToSettings) {
+            state.returnToSettings = false;
+            globalThis.dispatchEvent?.(new CustomEvent('vc-shell-navigate', { detail: { destination: 'settings' } }));
+        }
     }
 
     function toast(message, kind) {
@@ -801,8 +807,6 @@ export function mountModelSettings() {
         const screen = state.vcScreen || 'home';
         const pane = screen === 'provider' || screen === 'model' ? renderProviderPane() : renderBindingsPane();
         return `
-        ${renderLocalModels()}
-        ${renderUsagePanel()}
         <div class="vcms-layout">
             <aside class="vcms-providers" aria-label="供应商列表">
                 <div class="vcms-provider-list" id="vcms-provider-list">${renderProviderCards()}</div>
@@ -814,7 +818,9 @@ export function mountModelSettings() {
                 </div>
                 <div class="vcms-tabpanes">${pane}</div>
             </main>
-        </div>`;
+        </div>
+        ${renderLocalModels()}
+        ${renderUsagePanel()}`;
     }
 
     function localRow(kind, service, extra = '') {
@@ -1757,7 +1763,7 @@ export function mountModelSettings() {
                 else if (state.vcScreen === 'provider') {
                     state.vcScreen = 'home';
                     state.tab = 'bindings';
-                } else requestClose();
+                } else requestClose({ toSettings: true });
                 render();
                 break;
             case 'local-models-retry':
@@ -1769,6 +1775,7 @@ export function mountModelSettings() {
                 break;
             case 'keep-editing':
                 state.closing = false;
+                state.returnToSettings = false;
                 render();
                 break;
             case 'discard-close':

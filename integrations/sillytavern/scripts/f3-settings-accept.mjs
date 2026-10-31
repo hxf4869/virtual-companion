@@ -443,6 +443,13 @@ export async function sceneF3Settings(ctx) {
                 }
                 await openModels();
                 await page.waitForSelector('.vcms-local', { timeout: 10000 });
+                const homeLayout = await page.evaluate(() => ({
+                    providers: document.querySelector('.vcms-providers').getBoundingClientRect().top,
+                    usage: document.querySelector('.vcms-usage').getBoundingClientRect().top,
+                    saveHeight: document.querySelector('#vcms-save').getBoundingClientRect().height,
+                }));
+                if (homeLayout.providers >= homeLayout.usage) throw new Error('用量挤占模型配置入口');
+                if (homeLayout.saveHeight < 43.5) throw new Error('模型保存按钮命中高度不足 44px');
                 await shot(page, path.join(ctx.artifactsDir, `f3-${tag}-model-home.png`));
                 await page.evaluate(() => document.querySelector('.vcms-usage')?.scrollIntoView({ block: 'center' }));
                 await shot(page, path.join(ctx.artifactsDir, `f3-${tag}-model-usage.png`));
@@ -459,8 +466,13 @@ export async function sceneF3Settings(ctx) {
                 });
                 await shot(page, path.join(ctx.artifactsDir, `f3-${tag}-model-provider.png`));
                 await page.click('[data-action="vc-back"]');
-                await page.click('.vcms-overlay [data-action="close"]');
+                await page.click('.vcms-overlay [data-action="vc-back"]');
                 await page.waitForSelector('.vcms-overlay', { state: 'hidden', timeout: 10000 });
+                await page.waitForFunction(() => [...document.querySelectorAll('.vc-settings-form')].some((el) => el.getClientRects().length > 0), null, { timeout: 8000 });
+                if (width < 744) {
+                    await page.locator('.vc-sheet-done').click();
+                    await page.locator('.vc-sheet').waitFor({ state: 'detached' });
+                } else await page.locator('[data-settings-done]').click();
                 await clickControl(page, '#extensionsMenuButton');
                 await clickControl(page, '#vc_data_menu_button');
                 await page.waitForSelector('.vc-data-dialog[open] [data-vc-account-home]', { timeout: 10000 });

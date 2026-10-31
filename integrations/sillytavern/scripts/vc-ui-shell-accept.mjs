@@ -305,9 +305,10 @@ export async function sceneVcUiShell(ctx) {
                     if (nav.join(',') !== 'characters,chat,inbox,memory,story') throw new Error(`data-nav ${nav.join(',')}`);
                     const hiddenOld = await page.evaluate(() => {
                         const old = document.querySelector('#vc-chat-nav');
-                        return Boolean(old) && getComputedStyle(old).pointerEvents === 'none';
+                        return Boolean(old) && getComputedStyle(old).pointerEvents === 'none'
+                            && old.inert && old.getAttribute('aria-hidden') === 'true';
                     });
-                    if (!hiddenOld) throw new Error('旧导航未被视觉隐藏');
+                    if (!hiddenOld) throw new Error('旧导航未同时退出视觉、键盘与辅助技术导航');
                     await page.setViewportSize({ width: 390, height: 844 });
                     await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.chrome === 'tabbar');
                     if (await page.evaluate(() => document.querySelector('#vc-shell')?.dataset.chat === 'open')) {

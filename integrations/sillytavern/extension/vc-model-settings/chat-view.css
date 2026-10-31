@@ -655,7 +655,7 @@ body.vc-ui #send_textarea {
   backdrop-filter: blur(22px) saturate(180%) !important;
 }
 
-body.vc-ui #send_textarea::placeholder { color: var(--vc-ink-3) !important; }
+body.vc-ui #send_textarea::placeholder { color: var(--vc-ink-2) !important; opacity: 1; }
 
 body.vc-ui #send_form:has(#send_textarea:focus-visible) { outline: none; border-color: transparent; }
 
