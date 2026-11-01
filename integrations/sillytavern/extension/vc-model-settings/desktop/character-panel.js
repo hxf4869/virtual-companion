@@ -147,6 +147,6 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
     };
     const resize = () => { if (innerWidth < 744) setOpen(false, false); };
     window.addEventListener('keydown', esc); window.addEventListener('resize', resize);
-    setOpen(innerWidth >= 1440, false); void refresh();
+    setOpen(innerWidth >= 1600, false); void refresh();
     return { panel, toggle, refresh, setOpen, destroy() { dead = true; generation++; memories.close(); window.removeEventListener('keydown', esc); window.removeEventListener('resize', resize); panel.remove(); toggle.remove(); } };
 }

@@ -43,9 +43,16 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desk-recalled-actions .is-danger {
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-memory-editor { display: grid; gap: var(--vc-space-sm); padding: 24px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-memory-editor textarea { height: auto; min-height: 160px; padding: 12px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-editor-actions { display: flex; justify-content: flex-end; gap: var(--vc-space-xs); }
-@media(min-width:1504px) {
- html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: 320px minmax(560px,1fr) 340px; }
+/* UX-22 R1：≥1180 角色面板始终并排，不覆盖对话；1180–1599 打开面板时会话列表让位。 */
+@media(min-width:1180px) {
  html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character { position: relative; width: 340px; background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); }
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: minmax(560px,1fr) 340px; }
+}
+@media(min-width:1180px) and (max-width:1599px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body > .vc-shell-pages { display: none; }
+}
+@media(min-width:1600px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: 320px minmax(560px,1fr) 340px; }
 }
 @media(max-width:1179px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"]:not([data-settings="page"]):not([data-list="hidden"]) > .vc-shell-body { grid-template-columns: minmax(560px,1fr); }
