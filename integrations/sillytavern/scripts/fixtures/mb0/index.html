@@ -1,0 +1,192 @@
+<!doctype html>
+<!-- MB-0 可行性验证页（ADR-0011）：同源页面先显示历史，再在隐藏 iframe 中启动 ST 引擎。
+     只供受管场景 mb0-spike 使用，运行时复制到受管 st-run/public/mb0/，不进生产。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MB-0</title>
+<style>
+  body { margin: 0; font: 17px/1.5 system-ui, sans-serif; background: #eef0f6; color: #1d1d1f; }
+  #list { padding: 12px 16px 80px; }
+  .m { margin: 4px 0; padding: 8px 12px; border-radius: 18px; max-width: 75%; background: #fff; }
+  .m.u { margin-left: auto; background: #0071e3; color: #fff; }
+  #state { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); font-size: 13px; padding: 4px 10px; border-radius: 999px; background: rgba(0,0,0,.06); }
+  #engine { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; pointer-events: none; z-index: -1; }
+  #engine.on { opacity: 1; pointer-events: auto; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="state">正在连接…</div>
+<div id="list"></div>
+<iframe id="engine" title="engine"></iframe>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const mark = (k) => { M.metrics[k] = Math.round(performance.now()); };
+  const M = window.mb0 = { metrics: {}, tokens: 0, firstTokenAt: 0, ended: 0, errors: [] };
+  const frame = document.getElementById('engine');
+  const iw = () => frame.contentWindow;
+  const ctx = () => iw()?.SillyTavern?.getContext?.();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function until(fn, ms = 60000, label = '') {
+    const end = Date.now() + ms;
+    while (Date.now() < end) { try { const v = await fn(); if (v) return v; } catch {} await sleep(50); }
+    throw new Error(`timeout ${label}`);
+  }
+
+  // 1. 历史先行：直接读 ST 服务端接口，不等引擎。
+  async function history() {
+    const id = await (await fetch('/auth/api/session', { headers: { Accept: 'application/json' } })).json();
+    M.headers = { 'x-vc-expected-account-id': id.accountId, 'x-vc-expected-session-id': id.sessionId };
+    const token = (await (await fetch('/csrf-token')).json()).token;
+    M.headers['X-CSRF-Token'] = token;
+    const r = await fetch('/api/chats/get', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...M.headers },
+      body: JSON.stringify({ ch_name: q.get('name'), file_name: q.get('file'), avatar_url: q.get('avatar') }),
+    });
+    const rows = (await r.json()).slice(1);
+    document.getElementById('list').innerHTML = rows.slice(-20)
+      .map((m) => `<div class="m ${m.is_user ? 'u' : ''}"></div>`).join('');
+    [...document.querySelectorAll('.m')].forEach((el, i) => { el.textContent = rows.slice(-20)[i].mes; });
+    M.historyCount = rows.length;
+    mark('historyMs');
+  }
+
+  // 2. 引擎：同源隐藏 iframe 运行完整 ST（含 Helper / EJS / MVU 与自有扩展）。
+  async function engine() {
+    frame.src = '/';
+    await until(() => ctx()?.eventSource, 120000, 'context');
+    mark('contextMs');
+    const script = await iw().eval("import('/script.js')");
+    await until(() => script.settingsReady || iw().document.querySelector('dialog[open] .onboarding'), 120000, 'settings');
+    M.onboarding = Boolean(iw().document.querySelector('dialog[open] .onboarding'));
+    if (M.onboarding) {
+      const d = iw().document.querySelector('dialog[open].popup');
+      const box = d.querySelector('textarea');
+      box.value = '合成验收用户'; box.dispatchEvent(new (iw().Event)('input', { bubbles: true }));
+      d.querySelector('.popup-button-ok').click();
+      await until(() => script.settingsReady, 60000, 'settings after onboarding');
+    }
+    await until(() => getComputedStyle(iw().document.querySelector('#preloader') || iw().document.body).display === 'none'
+      || !iw().document.querySelector('#preloader'), 60000, 'preloader');
+    mark('engineReadyMs');
+    const c = ctx();
+    const types = c.eventTypes || c.event_types;
+    c.eventSource.on(types.STREAM_TOKEN_RECEIVED, () => { M.tokens += 1; if (!M.firstTokenAt) M.firstTokenAt = performance.now(); });
+    c.eventSource.on(types.GENERATION_ENDED, () => { M.ended += 1; });
+    c.eventSource.on(types.GENERATION_STOPPED, () => { M.stopped = (M.stopped || 0) + 1; });
+    M.script = script;
+  }
+
+  // 3. 适配接口：场景只通过这些函数驱动引擎，记录每个能力用的是哪类入口。
+  M.api = {
+    async open(avatar, file) {
+      const script = M.script;
+      const index = script.characters.findIndex((c) => c.avatar === avatar);
+      if (index < 0) throw new Error('card not found');
+      await until(() => !script.isChatSaving, 20000, 'saving');
+      await script.selectCharacterById(index, { switchMenu: false });
+      if (file) await script.openCharacterChat(file);
+      await until(() => String(ctx().characterId) === String(index), 20000, 'open');
+      mark('chatOpenMs');
+      document.getElementById('state').textContent = '';
+      return { chatId: ctx().chatId, length: ctx().chat.length };
+    },
+    async send(text) {
+      const doc = iw().document;
+      const box = doc.querySelector('#send_textarea');
+      const set = Object.getOwnPropertyDescriptor(iw().HTMLTextAreaElement.prototype, 'value').set;
+      set.call(box, text); box.dispatchEvent(new (iw().Event)('input', { bubbles: true }));
+      M.tokens = 0; M.firstTokenAt = 0; M.sentAt = performance.now();
+      const before = M.ended;
+      doc.querySelector('#send_but').click();
+      return before;
+    },
+    async waitEnded(before, ms = 60000) { await until(() => M.ended > before, ms, 'generation end'); await until(() => !M.script.isChatSaving, 20000); },
+    stop() { ctx().stopGeneration(); },
+    async regenerate() { const before = M.ended; await ctx().generate('regenerate'); return before; },
+    swipe(dir) { const before = M.ended; iw().document.querySelector(`#chat .last_mes .swipe_${dir}`)?.click(); return before; },
+    async save() { await ctx().saveChat(); },
+    async edit(id, text) {
+      const c = ctx(); const m = c.chat[id];
+      m.mes = text; if (Array.isArray(m.swipes)) m.swipes[m.swipe_id ?? 0] = text;
+      await c.saveChat(); await c.reloadCurrentChat();
+    },
+    async remove(id) { await ctx().deleteMessage(id, undefined, false, true); await until(() => !M.script.isChatSaving, 20000); },
+    chat() { return ctx().chat.map((m) => ({ u: !!m.is_user, mes: m.mes, swipes: m.swipes?.length || 0, swipe: m.swipe_id ?? 0 })); },
+    chatId() { return ctx().chatId; },
+    // 隐藏引擎里的宿主确认框（导入内嵌世界书、启用角色脚本等）必须由外层接管；验证中按确认处理并计数。
+    confirmPopups() {
+      let n = 0;
+      for (const d of iw().document.querySelectorAll('dialog.popup[open]')) {
+        const b = [...d.querySelectorAll('.popup-button-ok, .popup-button-custom, .menu_button')]
+          .find((x) => /确认|确定|是|OK|Confirm|Import|导入|Yes|允许|启用/.test(x.textContent || ''));
+        if (b) { M.popups = (M.popups || []).concat((d.textContent || '').trim().slice(0, 40)); b.click(); n += 1; }
+      }
+      return n;
+    },
+    async openWithPopups(avatar) {
+      let done = false; let err = null;
+      const p = M.api.open(avatar, '').catch((e) => { err = e; }).finally(() => { done = true; });
+      const end = Date.now() + 30000;
+      while (!done && Date.now() < end) { M.api.confirmPopups(); await sleep(200); }
+      await p; if (err) throw err;
+      for (let i = 0; i < 20; i += 1) { M.api.confirmPopups(); await sleep(200); }
+      return M.popups || [];
+    },
+    showSt(on) { frame.classList.toggle('on', !!on); },
+    async bindBook(book) {
+      const th = iw().TavernHelper;
+      await th.setCurrentCharLorebooks({ primary: book, additional: [] });
+      await until(() => th.getCharLorebooks().primary === book, 10000, 'bind book');
+      await sleep(1500);
+    },
+    // ST 视图：用现有外壳把聊天区展开（与桌面 / 手机网页同一入口）。
+    async reveal() {
+      const root = iw().document.querySelector('#vc-shell');
+      await until(() => typeof root?.openConversation === 'function', 20000, 'shell');
+      const c = ctx(); const i = Number(c.characterId); const ch = c.characters[i];
+      return root.openConversation({ relationshipId: c.chatMetadata?.vc_binding?.relationshipId || '', file: c.chatId || '',
+        characterIndex: i, name: ch?.name || '', avatar: ch?.avatar || '' });
+    },
+    async allowCard(avatar) {
+      const c = ctx(); const s = c.extensionSettings;
+      s.character_allowed_regex ??= []; if (!s.character_allowed_regex.includes(avatar)) s.character_allowed_regex.push(avatar);
+      s.tavern_helper ??= {}; s.tavern_helper.script ??= {}; s.tavern_helper.script.enabled ??= {}; s.tavern_helper.script.popuped ??= {};
+      const en = s.tavern_helper.script.enabled.characters ??= []; const po = s.tavern_helper.script.popuped.characters ??= [];
+      if (!en.includes(avatar)) en.push(avatar); if (!po.includes(avatar)) po.push(avatar);
+      await M.script.saveSettings();
+    },
+    async reloadEngine() {
+      await until(() => !M.script.isChatSaving, 20000, 'saving before reload');
+      const old = iw(); frame.src = 'about:blank';
+      await until(() => iw() !== old || !old.SillyTavern, 20000, 'old engine unloaded');
+      await until(() => !ctx(), 20000, 'blank');
+      await engine();
+    },
+    thAllowed(avatar) {
+      const s = ctx().extensionSettings;
+      return { regex: !!s.character_allowed_regex?.includes(avatar), th: !!s.tavern_helper?.script?.enabled?.characters?.includes(avatar) };
+    },
+    mvu(id) {
+      const w = iw(); if (!w.Mvu) return null;
+      const d = w.Mvu.getMvuData({ type: 'message', message_id: id });
+      const v = (k) => Array.isArray(d.stat_data?.[k]) ? d.stat_data[k][0] : d.stat_data?.[k];
+      return { trust: v('trust'), scene: v('scene') };
+    },
+    panel(id) {
+      const f = iw().document.querySelector(`#chat .mes[mesid="${id}"] .mes_text iframe`);
+      if (!f) return null;
+      const b = f.getBoundingClientRect();
+      let trust = ''; try { trust = f.contentDocument.querySelector('#trust')?.textContent || ''; } catch {}
+      return { h: Math.round(b.height), w: Math.round(b.width), trust };
+    },
+  };
+
+  M.ready = Promise.all([history().catch((e) => M.errors.push(`history ${e.message}`)), engine()])
+    .catch((e) => { M.errors.push(e.message); throw e; });
+})();
+</script>
+</body>
+</html>

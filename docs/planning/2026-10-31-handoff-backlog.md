@@ -356,6 +356,8 @@ Owner 认为桌面细节与功能仍有差距，问答全选聊天细节、功�
 - 环境：本地真实环境 `vc-local-dev` + 合成测试账号（Owner 不再登录，用完清理）；MuMu 模拟器 + adb；
   Android 签名与 DCloud（AppID `__UNI__CD7650F`、包名 `com.virtualcompanion.owner`）的密钥只在 `~/.virtual-companion-local/android/`。
 - 迁移号：实施时取 `mb-mobile` 与 `ux-11-desktop-immersive` 两边最大版本再顺延。
+- 顺序调整（Owner 2026-11-02）：先完成全部 H5 工作；App 壳相关搁置——MB-6 整条，以及 MB-9 的系统来电全屏通知
+  （MB-9 只做服务端触发、陪伴页未接来电与语音留言）。MB-0 的 Android 部分只记录已跑通的打包与安装，其余随 MB-6 再验。
 
 | ID | P | 内容 | 验收要点 |
 |---|---|---|---|

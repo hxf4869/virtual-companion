@@ -31,6 +31,7 @@ import { hlReplyScene } from './hl-reply-accept.mjs';
 import { consentUiScene } from './consent-accept.mjs';
 import { hlPersonaScene } from './hl-persona-accept.mjs';
 import { hlStickersScene } from './hl-stickers-accept.mjs';
+import { mb0SpikeScene } from './mb0-spike-accept.mjs';
 
 export const ACCEPT_SCENES = [
     memoryRealModelScene,
@@ -85,4 +86,5 @@ export const ACCEPT_SCENES = [
     consentUiScene,
     hlPersonaScene,
     hlStickersScene,
+    mb0SpikeScene,
 ];
