@@ -8,6 +8,9 @@ export async function mount({ shell, source, params, context, desktop }) {
     seedTimeline(context, params);
     const { mountChatView } = await import(`${source}/chat-view.js`);
     mountChatView({ getContext: () => context });
+    const [{ mountChatReact }, { mountLightbox }] = await Promise.all([import(`${source}/chat-react.js`), import(`${source}/lightbox.js`)]);
+    mountChatReact({ getContext: () => context });
+    mountLightbox({ getContext: () => context });
     const { fetchRelationships } = await import(`${source}/api.js`);
     const { installVoiceInput } = await import(`${source}/voice-input.js`);
     void fetchRelationships().then(rows => {

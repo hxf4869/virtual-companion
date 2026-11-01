@@ -41,6 +41,8 @@ import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
 import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
 import { mountChatCompose } from './chat-compose.js';
+import { mountChatReact } from './chat-react.js';
+import { mountLightbox } from './lightbox.js';
 import { installStickers } from './stickers.js';
 import { installChatVoice } from './voice-chat.js';
 import { installVoiceInput } from './voice-input.js';
@@ -74,6 +76,8 @@ function mountVcUi() {
     enableVcUi();
     mountChatView({ getContext });
     mountChatCompose({ getContext });
+    mountChatReact({ getContext });
+    mountLightbox({ getContext });
     if (!document.head) return;
     for (const [id, file] of [
         ['vc-ui-css', './vc-ui.css'],
@@ -82,7 +86,7 @@ function mountVcUi() {
         ['vc-companion-persona-css', './companion-persona.css'],
         ['vc-stickers-css', './stickers.css'],
         ['vc-voice-css', './voice.css'],
-        ...['base', 'chat', 'characters', 'memory', 'inbox', 'story', 'settings'].map(name => [`vc-desktop-${name}-css`, `./desktop/${name}.css`]),
+        ...['base', 'chat', 'chat-react', 'rich', 'characters', 'memory', 'inbox', 'story', 'settings'].map(name => [`vc-desktop-${name}-css`, `./desktop/${name}.css`]),
     ]) {
         if (document.getElementById(id)) continue;
         const link = document.createElement('link');
