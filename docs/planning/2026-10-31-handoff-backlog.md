@@ -347,6 +347,16 @@ Owner 认为桌面细节与功能仍有差距，问答全选聊天细节、功�
 原因：Owner 决定移动端独立开发（H5 + Android 先，iOS 后），走 D 路线：独立 uni-app 界面 + 同源隐藏 ST 作引擎，
 只有一条生成链与一份聊天文件。按 ADR-0011「实施顺序」串行推进；MB-0 不通过先回 ADR 修订。迁移号在实施时从当前最大版本顺延。
 
+### Goal 约定（Owner 2026-11-02）
+
+- 范围：MB-0 → MB-10 按表中顺序串行；每个 ID 单独提交并推送到 `mb-mobile`（独立 worktree `../virtual-companion-mobile`，
+  从 `ux-11-desktop-immersive` 拉出，定期合入其新提交）；不部署、不合并 main、不改桌面分支的工作区。
+- 暂停并问 Owner：MB-0 有验证项不通过；需要产品取舍；需要真机；需要费用、新的外部账号或对外写入。
+  可以绕开的阻塞先记在对应条目下，继续做后面不依赖它的条目。
+- 环境：本地真实环境 `vc-local-dev` + 合成测试账号（Owner 不再登录，用完清理）；MuMu 模拟器 + adb；
+  Android 签名与 DCloud（AppID `__UNI__CD7650F`、包名 `com.virtualcompanion.owner`）的密钥只在 `~/.virtual-companion-local/android/`。
+- 迁移号：实施时取 `mb-mobile` 与 `ux-11-desktop-immersive` 两边最大版本再顺延。
+
 | ID | P | 内容 | 验收要点 |
 |---|---|---|---|
 | MB-0 | P1 | 可行性验证（ADR-0011「MB-0 必须验证」全部条目）：最小 H5 页 + 同源隐藏 ST、引擎适配原型、Android web-view 壳原型；只写验证代码，不做产品界面；用 MuMu 模拟器 + adb，厂商后台策略与真实性能标「待真机」留给 MB-6 | 每项 PASS / FAIL 与数据（冷启动、内存、后台 30 分钟）写入 `docs/planning/` 验证报告；不通过项先回 ADR |

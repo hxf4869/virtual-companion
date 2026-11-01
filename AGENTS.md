@@ -60,6 +60,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
   不因任务未使用 Goal 就提前停止，也不自动扩展到下一个 Backlog 项。例外：Owner 可用一个 Goal 覆盖整个
   V2 执行序列，按执行计划第 2 节的顺序、完成标准与暂停条件逐项推进；Owner 2026-11-01 另授权用一个 Goal 串行完成
   UX-12–UX-19，按 `docs/planning/2026-11-01-ux11-desktop-immersive-plan.md` 第 2.1 节执行。
+  Owner 2026-11-02 另授权用一个 Goal 串行完成移动端 MB-0–MB-10，范围、暂停条件与环境见 Backlog H 节「Goal 约定」。
 - 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、
   机器真源和已对账的路线图条目，不恢复下述历史档案流程。
 
