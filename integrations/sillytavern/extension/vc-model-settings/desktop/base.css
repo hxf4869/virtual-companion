@@ -1,22 +1,24 @@
 /* DESIGN.md §16。真实宿主与样板共用的桌面基础材质与公共控件。 */
 html[data-vc-layout="desktop"] body.vc-ui {
   --vc-desk-base: #f4f1f6;
-  --vc-aurora-alpha: .45;
+  --vc-aurora-alpha: .90;
   --vc-grain-alpha: .03;
-  --vc-glass-1: rgba(255,255,255,.42);
-  --vc-glass-2: rgba(255,255,255,.64);
-  --vc-raised: rgba(255,255,255,.66);
+  --vc-glass-1: rgba(255,255,255,.30);
+  --vc-glass-2: rgba(255,255,255,.46);
+  --vc-raised: rgba(255,255,255,.72);
   --vc-glass-3: rgba(252,252,254,.82);
   --vc-blur-1: 30px;
   --vc-blur-2: 40px;
   --vc-blur-3: 40px;
   --vc-rim: rgba(255,255,255,.55);
+  --vc-rim-outer: rgba(255,255,255,.25);
   --vc-hi: rgba(255,255,255,.75);
   --vc-raised-edge: rgba(0,0,0,.05);
-  --vc-shadow-panel: 0 20px 50px rgba(80,60,100,.10);
-  --vc-shadow-overlay: 0 30px 80px rgba(60,40,90,.18);
+  --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(80,60,100,.10);
+  --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(60,40,90,.18);
   --vc-select-fill: rgba(0,113,227,.12);
   --vc-hover-fill: rgba(255,255,255,.45);
+  --vc-ink-2: #55555a; /* UX-22：次级文字直接落在玻璃上，加深以保持 ≥4.5:1。 */
   --vc-scrim-desk: rgba(30,20,40,.18);
   --vc-z-backdrop: 0;
   --vc-fs-body: 15px;
@@ -30,17 +32,19 @@ html[data-vc-layout="desktop"] body.vc-ui {
 }
 html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui {
   --vc-desk-base: #07070a;
-  --vc-aurora-alpha: .55;
+  --vc-aurora-alpha: .85;
   --vc-grain-alpha: .04;
-  --vc-glass-1: rgba(30,30,36,.46);
-  --vc-glass-2: rgba(24,24,30,.60);
-  --vc-raised: rgba(255,255,255,.06);
+  --vc-glass-1: rgba(64,64,76,.36);
+  --vc-glass-2: rgba(36,36,44,.44);
+  --vc-raised: rgba(255,255,255,.08);
   --vc-glass-3: rgba(38,38,44,.82);
   --vc-rim: rgba(255,255,255,.10);
+  --vc-rim-outer: rgba(255,255,255,.06);
   --vc-hi: rgba(255,255,255,.10);
   --vc-raised-edge: rgba(255,255,255,.08);
-  --vc-shadow-panel: 0 20px 50px rgba(0,0,0,.45);
-  --vc-shadow-overlay: 0 30px 80px rgba(0,0,0,.60);
+  --vc-ink-2: #b2b2b7;
+  --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(0,0,0,.45);
+  --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(0,0,0,.60);
   --vc-select-fill: rgba(41,151,255,.20);
   --vc-hover-fill: rgba(255,255,255,.06);
   --vc-scrim-desk: rgba(0,0,0,.50);
@@ -52,12 +56,12 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora {
 html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-set { position: absolute; inset: 0; transition: opacity 900ms var(--vc-spring); }
 html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-set.is-leaving { opacity: 0; }
 html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot {
-  position: absolute; width: 70vmax; height: 70vmax; left: -15vw; top: -25vh;
+  position: absolute; width: 60vmax; height: 60vmax; left: calc(15vw - 30vmax); top: calc(20vh - 30vmax);
   background: radial-gradient(closest-side, rgb(var(--c)) 0%, transparent 70%);
   opacity: var(--vc-aurora-alpha); animation: vc-desktop-drift 40s ease-in-out infinite alternate;
 }
-html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(2) { left: 30vw; top: 0; animation-duration: 52s; animation-direction: alternate-reverse; }
-html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(3) { left: 15vw; top: 35vh; animation-duration: 64s; }
+html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(2) { left: calc(85vw - 30vmax); top: calc(50vh - 30vmax); animation-duration: 52s; animation-direction: alternate-reverse; }
+html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(3) { left: calc(50vw - 30vmax); top: calc(95vh - 30vmax); animation-duration: 64s; }
 html[data-vc-layout="desktop"] .vc-desktop-aurora::after {
   content: ''; position: absolute; inset: 0; opacity: var(--vc-grain-alpha);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23000' filter='url(%23n)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
@@ -75,7 +79,7 @@ html[data-vc-layout="desktop"] body.vc-ui #vc-shell > .vc-sidebar {
   box-shadow: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-panel);
 }
 html[data-vc-layout="desktop"] body.vc-ui .vc-sidebar .vc-side-collapse { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-link { border-radius: var(--vc-radius-sm); min-height: 44px; font-size: var(--vc-fs-body); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-link { border-radius: var(--vc-radius-sm); min-height: 44px; font-size: var(--vc-fs-body); color: var(--vc-ink); /* 侧栏直接坐在极光上，用 ink 保证 4.5:1 */ }
 html[data-vc-layout="desktop"] body.vc-ui .vc-side-link[aria-current="page"] { background: var(--vc-select-fill); box-shadow: inset 0 1px 0 var(--vc-hi); }
 html[data-vc-layout="desktop"] body.vc-ui :is(.vc-shell-page, .vc-desk-panel) {
   border-radius: var(--vc-radius-xl); background: var(--vc-glass-2); border: 1px solid var(--vc-rim);
@@ -137,7 +141,7 @@ html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]::after { content: ''; 
 html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui [data-vc-light]::after { background: radial-gradient(160px at var(--mx) var(--my),rgba(255,255,255,.06),transparent); }
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]:hover::after { opacity: 1; }
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]:hover { background-color: var(--vc-hover-fill); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute; z-index: -1; background: var(--vc-select-fill); border-radius: var(--vc-radius-sm); box-shadow: inset 0 1px 0 var(--vc-hi); transition: transform var(--vc-dur-emphasized) var(--vc-spring); pointer-events: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute; z-index: -1; background: linear-gradient(var(--vc-select-fill),var(--vc-select-fill)),var(--vc-raised); /* 选中行的文字坐在 raised 底上，保证对比度 */ border-radius: var(--vc-radius-sm); box-shadow: inset 0 1px 0 var(--vc-hi); transition: transform var(--vc-dur-emphasized) var(--vc-spring); pointer-events: none; }
 @media (max-width:1179px) {
   html[data-vc-layout="desktop"] body.vc-ui { --vc-sidebar: 72px; }
   html[data-vc-layout="desktop"] body.vc-ui { --vc-native-page-left: calc(var(--vc-sidebar) + var(--vc-space-md) + var(--vc-space-sm)); }
@@ -145,6 +149,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute;
   html[data-vc-layout="desktop"] body.vc-ui #vc-shell > .vc-sidebar { width: 72px; padding: 8px; }
   html[data-vc-layout="desktop"] body.vc-ui .vc-sidebar :is(.vc-side-label,.vc-side-foot-name,.vc-side-settings-label) { display: none; }
   html[data-vc-layout="desktop"] body.vc-ui .vc-side-link { justify-content: center; padding: 0; }
+  html[data-vc-layout="desktop"] body.vc-ui .vc-side-avatar { align-self: center; margin-left: 0; }
 }
 @media (pointer:coarse) {
   html[data-vc-layout="desktop"] body.vc-ui { --vc-touch: 50px; --vc-fs-body: 17px; }
@@ -179,7 +184,10 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-aurora-set.is-entering { opacity: 
 html[data-vc-layout="desktop"] body.vc-ui .vc-side-link[aria-current="page"],
 html[data-vc-layout="desktop"] body.vc-ui .vc-side-link[aria-current="page"] .vc-side-label { color: var(--vc-accent-text); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-sidebar:has(.vc-desktop-lens) .vc-side-link[aria-current="page"] { background: transparent; box-shadow: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-foot .vc-side-link > .vc-icon { width: 36px; height: 36px; padding: 7px; box-sizing: border-box; border-radius: var(--vc-radius-pill); background: var(--vc-raised); }
+html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui .vc-side-link[aria-current="page"] .vc-side-label { color: var(--vc-ink); /* 深色下 accent 蓝字落在暖色光斑上不足 3:1 */ }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-foot { flex-direction: column; gap: var(--vc-space-xs); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-avatar { display: grid; place-items: center; flex: none; width: 36px; height: 36px; margin-left: 12px; overflow: hidden; border-radius: var(--vc-radius-pill); background: var(--vc-raised); box-shadow: 0 0 0 1px var(--vc-rim); color: var(--vc-ink); font-size: var(--vc-fs-body); font-weight: 600; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-avatar img { width: 100%; height: 100%; object-fit: cover; }
 html[data-vc-layout="desktop"] body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]),select,textarea) { background: rgba(255,255,255,.72); }
 html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]),select,textarea) { background: var(--vc-raised); }
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-tilt],
@@ -222,3 +230,6 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desk-error { grid-column: 2; color
 html[data-vc-layout="desktop"] body.vc-ui .vc-cell:has(> .vc-range) { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--vc-space-xs); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-cell:has(> .vc-range) .vc-grow { white-space: nowrap; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-cell > .vc-range { width: 100%; min-width: 0; }
+
+/* UX-22：常规状态文字用 ink-2，只有圆点带状态色（DESIGN 16.4）；警告 / 错误保持颜色。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-status-ok { color: var(--vc-ink-2); }

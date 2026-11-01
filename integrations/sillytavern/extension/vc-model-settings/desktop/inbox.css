@@ -48,3 +48,19 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes 
  html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-activity { order:2; }
  html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences > section[aria-label="渠道"],html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences > section[aria-label="主动设置"] > :not(.vc-inbox-quiet) { order:3; width:100%; }
 }
+
+/* UX-22 R8：双栏时右栏与消息栏各自滚动，底部渐隐；窄桌面仍由整页滚动。 */
+@media(min-width:1180px) {
+ html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-shell-scroll { padding-bottom:0; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox { overflow:hidden; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox > .vc-column { display:flex; flex-direction:column; height:100%; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace { flex:1; min-height:0; grid-template-rows:minmax(0,1fr); align-items:stretch; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace > div { min-height:0; overflow-y:auto; scrollbar-width:thin; padding-bottom:calc(var(--vc-space-lg) + var(--vc-space-sm)); -webkit-mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); }
+}
+/* 空状态：48 圆角方框图标 + 一句话（DESIGN 16.5）。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-empty { padding:var(--vc-space-lg) var(--vc-space-md); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-empty > .vc-icon { border:.5px solid var(--vc-raised-edge); }
+@media(max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-shell-scroll { padding-bottom:0; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox { padding-bottom:calc(var(--vc-space-lg) + var(--vc-space-sm)); scrollbar-width:thin; -webkit-mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); }
+}

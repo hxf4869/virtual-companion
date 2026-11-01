@@ -799,3 +799,49 @@ test('一对一不显示发送者名字，群聊仍标记发言人', () => {
     assert.ok(speakerAt >= 0 && directAt > speakerAt);
     assert.match(css, /body\.vc-ui\.vc-direct #chat > \.mes \.ch_name \{[^}]*display:\s*none\s*!important/);
 });
+
+const DESKTOP_CHAT_CSS = new URL('../extension/vc-model-settings/desktop/chat.css', import.meta.url);
+const CHARACTER_PANEL_JS = new URL('../extension/vc-model-settings/desktop/character-panel.js', import.meta.url);
+const desktopRule = (css, selector) => {
+    const at = css.indexOf(`${selector} {`);
+    assert.ok(at >= 0, selector);
+    return css.slice(at, css.indexOf('}', at));
+};
+
+test('UX-22 R5：桌面消息头像 36、工具行靠左贴正文、阅读列 720 居中', () => {
+    const css = fs.readFileSync(DESKTOP_CHAT_CSS, 'utf8');
+    const P = 'html[data-vc-layout="desktop"] body.vc-ui';
+    assert.match(desktopRule(css, `${P} #chat > .mes`), /grid-template-columns:\s*36px[^;]*;[^}]*calc\(var\(--vc-read\) \+ 48px\)/);
+    assert.match(desktopRule(css, `${P} #chat > .mes.vc-speaker .avatar,\n${P} #chat > .mes.vc-speaker .avatar img`), /width:\s*36px !important;\s*height:\s*36px !important/);
+    assert.match(desktopRule(css, `${P} #chat > .mes .vc-mes-tools`), /grid-column:\s*2;\s*justify-content:\s*flex-start/);
+    assert.match(desktopRule(css, `${P} .vc-mes-gap`), /display:\s*none/);
+    assert.match(desktopRule(css, `${P} #chat > .mes:not(.vc-speaker):not([is_user="true"]):not([is_system="true"]) > .mes_block`), /grid-column:\s*2/);
+});
+
+test('UX-22 R5：桌面输入区占位左对齐，语音与发送并列且生成中只留停止', () => {
+    const css = fs.readFileSync(DESKTOP_CHAT_CSS, 'utf8');
+    const P = 'html[data-vc-layout="desktop"] body.vc-ui';
+    assert.match(desktopRule(css, `${P} #send_textarea::placeholder`), /text-align:\s*left/);
+    assert.match(desktopRule(css, `${P} #send_form.vc-voice-input-available #send_but`), /display:\s*inline-flex !important/);
+    assert.match(desktopRule(css, `${P}[data-generating="true"] #send_form.vc-voice-input-available #send_but`), /display:\s*none !important/);
+    assert.match(css, /\.vc-shell-chat \.vc-who \{ background: none !important/);
+});
+
+test('UX-22 R6：角色面板头像光晕、56 圆形快捷动作、高度随内容、窄桌面不覆盖对话', () => {
+    const css = fs.readFileSync(DESKTOP_CHAT_CSS, 'utf8');
+    const P = 'html[data-vc-layout="desktop"] body.vc-ui';
+    const glow = desktopRule(css, `${P} .vc-desk-character-avatar`);
+    assert.match(glow, /width:\s*96px;\s*height:\s*96px/);
+    assert.match(glow, /color-mix\(in srgb, rgb\(var\(--vc-tint\)\)/);
+    assert.equal(/rgb\(var\(--vc-tint\) \//.test(css), false, '逗号形式的 --vc-tint 不能写成斜杠 alpha');
+    assert.match(desktopRule(css, `${P} .vc-desk-character-actions .vc-circle`), /width:\s*56px;[^}]*height:\s*56px/);
+    assert.match(desktopRule(css, `${P} .vc-desk-character-actions:empty`), /display:\s*none/);
+    assert.match(css, /\.vc-desk-character \{ align-self: start; max-height: 100%; \}/);
+    const narrow = css.slice(css.indexOf('/* UX-22 R5/R6：<1180'), css.indexOf('@media(min-width:1600px)'));
+    assert.match(narrow, /position: relative/);
+    assert.equal(/position:\s*absolute/.test(narrow), false);
+    assert.match(narrow, /\.vc-shell-chat \{ display: none; \}/);
+    const panel = fs.readFileSync(CHARACTER_PANEL_JS, 'utf8');
+    assert.equal((panel.match(/\), 24\);|\}, 24\);/g) || []).length, 3);
+    assert.match(panel, /memorySection\.hidden = !rows\.length/);
+});

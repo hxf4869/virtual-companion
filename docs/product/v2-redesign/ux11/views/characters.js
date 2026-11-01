@@ -3,6 +3,8 @@ export async function mount({container,args={},source,params,context}) {
     const mod=await import(`${source}/instance-page.js`);
     const options={...args,getCards:()=>mod.cardsFromContext(context),getBindings:()=>mod.bindingsFromContext(context)};
     if(source.startsWith('/baseline/')||innerWidth<744){const legacyFixture=!params.get('detail')&&!params.get('selected')&&['ready',null].includes(params.get('state'));const mounted=mod.mountCharactersTab(container,legacyFixture?args:options);if(params.get('state')!=='loading'){for(let i=0;i<150&&container.querySelector('[aria-busy="true"]');i++)await new Promise(r=>setTimeout(r,20));if(container.querySelector('[aria-busy="true"]'))throw Error('角色手机挂载未完成');}if(params.get('selected')==='1'){container.querySelector('.vc-role')?.click();await new Promise(r=>setTimeout(r,20));}return mounted;}
+    // 真实宿主里无模板的实例（如「雨夜旅馆」）显示在角色网格下方；样板用 ?loose=1 复现，不进入验收矩阵。
+    if(params.get('loose')){const {previewRelationships:rows}=await import('../fixtures.js');if(!rows.some(row=>row.relationshipId==='99'))rows.push({...rows[0],relationshipId:'99',companionName:'雨夜旅馆',characterRef:''});}
     // 使用同一公开业务控制器与渲染函数；桌面不调用会隐藏底层页面的手机页面栈。
     const {confirmDiscard}=await import(`${source}/ui/alert.js`),{bindPointerLights}=await import(`${source}/desktop/pointer-light.js`),{transitionContent}=await import(`${source}/desktop/transition.js`);
     const root=document.createElement('div');root.className='vc-characters vc-desktop-characters';

@@ -17,9 +17,9 @@ function node(tag, className, text) {
     if (text != null) el.textContent = text;
     return el;
 }
-function action(label, glyph, run) {
+function action(label, glyph, run, size = 20) {
     const button = node('button', 'vc-circle'); button.type = 'button';
-    button.setAttribute('aria-label', label); button.innerHTML = icon(glyph, { size: 20 });
+    button.setAttribute('aria-label', label); button.innerHTML = icon(glyph, { size });
     button.addEventListener('click', run); return button;
 }
 export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
@@ -109,12 +109,12 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
         if (src) { const image = node('img', ''); image.src = src; image.alt = ''; avatar.replaceChildren(image); }
         identity.replaceChildren(avatar, node('h1', '', name));
         shortcuts.replaceChildren(); memorySection.hidden = followSection.hidden = true;
-        const voice = action('声音', 'volume-2', () => void openRelationshipVoiceSettings(id, { opener: voice }));
-        const memory = action('记忆', 'brain', () => requestOpenMemory(memory));
+        const voice = action('声音', 'volume-2', () => void openRelationshipVoiceSettings(id, { opener: voice }), 24);
+        const memory = action('记忆', 'brain', () => requestOpenMemory(memory), 24);
         const settings = action('设置', 'settings', async () => {
             instancePage ||= mountInstancePage({ getContext });
             await instancePage.open(settings); instancePage.page.selectInstance(id);
-        });
+        }, 24);
         for (const button of [voice, memory, settings]) {
             const wrap = node('div', ''); wrap.append(button, node('span', '', button.getAttribute('aria-label'))); shortcuts.append(wrap);
         }

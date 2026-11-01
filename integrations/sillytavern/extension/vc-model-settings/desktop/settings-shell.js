@@ -6,7 +6,7 @@ import { showToast } from '../ui/toast.js';
 import { bindSegment, bindSwitch } from '../ui/controls.js';
 import { readThemeMode, setThemeMode } from '../ui/theme.js';
 import { TAVERN_ENTRIES } from '../shell.js';
-import { openDrawerPage } from '../drawers.js';
+import { openDrawerPage, closeDrawerPage } from '../drawers.js';
 import { readReplyStyle, writeReplyStyle } from '../chat-view.js';
 import { mountModelSettings } from '../page.js';
 import { renderGlobalVoiceSettings, readGlobalVoiceSettings } from '../voice-settings.js';
@@ -26,6 +26,32 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
     const modelHome = model.root.parentNode;
     function restoreModel() { if (root.contains(model.root)) (modelHome || document.body).append(model.root); }
     const ac = new AbortController();
+    // 酒馆抽屉在内容区原位打开；离开分类、返回、关闭设置时一并关闭，避免宿主抽屉留在设置之外。
+    function leaveDrawer() {
+        const key = root.dataset.drawer; if (!key) return;
+        delete root.dataset.drawer;
+        const node = document.getElementById(key);
+        if (node?.classList.contains('openDrawer')) closeDrawerPage(node);
+    }
+    async function openDrawer(key) {
+        root.dataset.drawer = key;
+        if (!openDrawerPage(key)) { delete root.dataset.drawer; return; }
+        await Promise.resolve();
+        const node = document.getElementById(key);
+        for (const animation of node?.getAnimations?.() || []) animation.cancel();
+        if (node) transitionContent(node, () => {});
+    }
+    function mountAccount(body) {
+        const name = String(getContext().name1 || '').trim() || '账户';
+        const persona = document.querySelector('#user_avatar_block .avatar-container.selected')?.getAttribute('data-avatar-id');
+        const row = (screen, label) => `<button type="button" class="vc-cell" data-account-go="${screen}"><span class="vc-grow">${label}</span>${icon('chevron-right',{size:16})}</button>`;
+        body.innerHTML = `<div class="vc-desk-group vc-settings-profile"><div class="vc-cell vc-settings-profile-head"><span data-who-avatar>${persona?`<img alt="" src="/thumbnail?type=persona&file=${encodeURIComponent(persona)}">`:esc([...name][0]||'')}</span><strong>${esc(name)}</strong></div>${row('password','密码')}${row('auth','身份验证器')}</div>`;
+        body.querySelector('.vc-settings-profile').addEventListener('click', event => {
+            const go = event.target.closest('[data-account-go]'); if (!go) return;
+            (account ??= mountDataRights()).open(go);
+            document.querySelector(`[data-vc-account-go="${go.dataset.accountGo}"]`)?.click();
+        });
+    }
     const header = title => `<header class="vc-settings-header"><button type="button" class="vc-circle vc-settings-category-toggle" data-settings-categories aria-label="设置">${icon('settings')}</button><h1 tabindex="-1">${esc(title)}</h1></header>`;
     async function requestLeave() {
         if (current === 'model') return model.requestLeave();
@@ -37,6 +63,7 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         if (key === current && !initial) return;
         if (!initial && !await requestLeave()) return;
         if (current === 'model') { model.close(); restoreModel(); }
+        leaveDrawer();
         voice = null; current = key; root.dataset.category = key;root.dataset.categoriesOpen = 'false';
         for (const row of nav.querySelectorAll('[data-category]')) { row.setAttribute('aria-current',row.dataset.category===key?'page':'false'); }
         transitionContent(content, () => { content.replaceChildren(); });
@@ -46,15 +73,17 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         const body = document.createElement('div'); body.className='vc-settings-body';content.append(body);
         if (key === 'voice') { voice = await mountVoice(content,body); }
         else if (key === 'appearance') mountAppearance(body);
-        else if (key === 'account' || key === 'data') {
-            body.innerHTML = `<div class="vc-desk-group">${key==='account'?`<div class="vc-cell">${esc(getContext().name1||'账户')}</div>`:''}<button type="button" class="vc-cell vc-settings-open-account"><span class="vc-grow">账户与数据</span>${icon('chevron-right',{size:16})}</button></div>`;
+        else if (key === 'account') mountAccount(body);
+        else if (key === 'data') {
+            body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell vc-settings-open-account"><span class="vc-grow">账户与数据</span>${icon('chevron-right',{size:16})}</button></div>`;
             body.querySelector('button').onclick = event => (account ??= mountDataRights()).open(event.currentTarget);
         } else if (key === 'notifications') {
             body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell"><span class="vc-grow">陪伴</span>${icon('chevron-right',{size:16})}</button></div>`;
             body.querySelector('button').onclick = () => window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'inbox'}}));
         } else {
             body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell"><span class="vc-grow">${esc(title)}</span>${icon('chevron-right',{size:16})}</button></div>`;
-            body.querySelector('button').onclick = () => { openDrawerPage(key); if (shell) delete shell.dataset.settings; };
+            body.querySelector('button').onclick = () => void openDrawer(key);
+            await openDrawer(key);
         }
         content.querySelector('h1')?.focus();
     }
@@ -67,6 +96,10 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         const back=event.target.closest('[data-action="vc-back"]');
         if(back && model.root.querySelector('[data-vc-screen="home"]')){event.stopImmediatePropagation();void select('account');}
     },{capture:true,signal:ac.signal});
+    // 抽屉标题栏自带返回（窄桌面分类列收起时才显示）：回到设置首页，不再重开抽屉。
+    document.addEventListener('click',event=>{
+        if(root.dataset.drawer&&event.target.closest?.('[data-vc-drawer-back]')){delete root.dataset.drawer;current='';}
+    },{capture:true,signal:ac.signal});
     const shell=container.closest('#vc-shell');
     shell?.addEventListener('click',async event=>{
         const target=event.target.closest('[data-nav],[data-settings-done]');
@@ -76,8 +109,8 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
     },{capture:true,signal:ac.signal});
     return { root, model, select, requestLeave,
         resume(){ if (current === 'model') { content.append(model.root); model.open(); } else if (!current) void select('account', { initial: true }); },
-        close(){ if (current === 'model') { model.close(); restoreModel(); } },
-        destroy(){ac.abort();if(current==='model')model.close();restoreModel();root.remove();} };
+        close(){ if (current === 'model') { model.close(); restoreModel(); } if (root.dataset.drawer) { leaveDrawer(); current = ''; } },
+        destroy(){ac.abort();leaveDrawer();if(current==='model')model.close();restoreModel();root.remove();} };
 }
 async function mountVoice(content,body) {
     let settings, engines, baseline='', working=false, loaded=false;

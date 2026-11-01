@@ -534,7 +534,8 @@ export async function sceneVcUiShell(ctx) {
                             const open = document.querySelector('#left-nav-panel')?.classList.contains('openDrawer') === true;
                             const sheet = [...document.querySelectorAll('.vc-sheet')].some((el) => el.getClientRects().length > 0);
                             const pageOn = document.querySelector('#vc-shell')?.dataset.settings === 'page';
-                            return open && !sheet && !pageOn;
+                            // 手机：抽屉整页覆盖，设置 sheet 已让位；桌面：抽屉在设置页内容区原位打开，设置仍是页面。
+                            return open && !sheet && (window.innerWidth < 744 ? !pageOn : pageOn);
                         }, null, { timeout: 8000 });
                     } catch (error) {
                         const state = await page.evaluate(() => ({
@@ -544,8 +545,45 @@ export async function sceneVcUiShell(ctx) {
                         }));
                         throw new Error(`抽屉未保持打开 ${JSON.stringify(state)} (${error.name})`);
                     }
+                    if (viewport.width >= 744) {
+                        const desk = await page.evaluate(() => ({
+                            settings: document.querySelector('#vc-shell')?.dataset.settings,
+                            drawer: document.querySelector('.vc-settings-shell')?.dataset.drawer,
+                            current: document.querySelector('.vc-settings-shell [data-category][aria-current="page"]')?.dataset.category,
+                        }));
+                        if (desk.settings !== 'page') throw new Error(`桌面抽屉打开时 settings 应为 page ${JSON.stringify(desk)}`);
+                        if (desk.drawer !== 'left-nav-panel') throw new Error(`设置壳缺少 data-drawer ${JSON.stringify(desk)}`);
+                        if (desk.current !== 'left-nav-panel') throw new Error(`对应分类未标 aria-current=page ${JSON.stringify(desk)}`);
+                    }
                     await shot(`${theme}-${viewport.name}-drawer.png`);
+                    if (viewport.width >= 1024) {
+                        // 分类列常驻、无返回按钮：切到其他分类离开，抽屉随之关闭。
+                        const hiddenBack = await page.locator('#left-nav-panel [data-vc-drawer-back]:visible').count();
+                        if (hiddenBack) throw new Error('常驻分类列时抽屉不应显示返回按钮');
+                        await page.locator('.vc-settings-shell [data-category="account"]').evaluate((el) => el.click());
+                        await page.waitForFunction(() => document.querySelector('#left-nav-panel')?.classList.contains('openDrawer') !== true
+                            && !document.querySelector('.vc-settings-shell')?.dataset.drawer
+                            && document.querySelector('#vc-shell')?.dataset.settings === 'page', null, { timeout: 8000 });
+                    } else if (viewport.width >= 744) {
+                        // 744–1023：标题栏返回按钮可见且中心命中自身；点后抽屉关闭、回到设置分类页且不重开。
+                        const back = page.locator('#left-nav-panel [data-vc-drawer-back]');
+                        const hit = await back.evaluate((el) => {
+                            const rect = el.getBoundingClientRect();
+                            const probe = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                            return { width: rect.width, hit: probe === el || el.contains(probe) };
+                        });
+                        if (!(hit.width > 0 && hit.hit)) throw new Error(`返回按钮中心未命中自身 ${JSON.stringify(hit)}`);
+                        await back.click();
+                        await page.waitForFunction(() => document.querySelector('#left-nav-panel')?.classList.contains('openDrawer') !== true
+                            && !document.querySelector('.vc-settings-shell')?.dataset.drawer
+                            && document.querySelector('#vc-shell')?.dataset.settings === 'page', null, { timeout: 8000 });
+                    }
                     await closeDrawer();
+                    if (viewport.width >= 744) {
+                        await page.waitForTimeout(600);
+                        const reopened = await page.evaluate(() => document.querySelector('#left-nav-panel')?.classList.contains('openDrawer') === true);
+                        if (reopened) throw new Error('关闭抽屉后又被重新打开');
+                    }
 
                     for (const tab of TABS) {
                         const detail = '#vc-shell .vc-shell-page.is-on :is(.vc-characters,.vc-memory-tab,.vc-inbox-tab).is-detail';

@@ -66,6 +66,46 @@ async function geometry(page){return page.evaluate(()=>{
  const glass=[...document.querySelectorAll('body *')].filter(n=>getComputedStyle(n).backdropFilter!=='none'&&visible(n)).map(n=>n.className);
  if(innerWidth>=744&&glass.length>4)errors.push(['常驻模糊表面超预算',glass]);return {errors,glass};
 });}
+// UX-22 R3：侧栏恰好一项 aria-current，且是当前位置（设置页只高亮底部「设置」）。
+async function sidebarCurrent(page,entry){
+ const expected=entry.view==='settings'?'settings':['components','model','voice'].includes(entry.view)?'characters':entry.view;
+ const found=await page.evaluate(()=>[...document.querySelectorAll('.vc-sidebar [aria-current="page"]')].map(n=>n.hasAttribute('data-settings')?'settings':n.getAttribute('data-nav')));
+ assert.deepEqual(found,[expected],`${entry.key} 侧栏 aria-current`);
+}
+// UX-22 R2：面板空白处（无文字、无自身底色的点）背景饱和度。极光在减弱动态下降到 .20，所以取样期间临时恢复正常动态。
+// 每个面板取空白点中最饱和的一点：浅色 HSL S ≥ 18%，深色 ≥ 15%；另以 HSV 色度 ≥ 18% 防止浅色近白底的 HSL 虚高。
+async function auroraSaturation(page,entry,theme){
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ try{
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  // 遮罩或模态编辑器盖住外壳面板时（语音设置、模型页、记忆详情 / 纠正），面板空白处无法取样。
+  if(await page.evaluate(()=>[...document.querySelectorAll('.vc-scrim,.vcms-overlay,.vc-memory-editor,.vc-sheet')].some(n=>n.getBoundingClientRect().width>1&&getComputedStyle(n).display!=='none')))return;
+  const panels=await page.evaluate(()=>{
+   const visible=n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>150&&r.height>150&&s.display!=='none'&&s.visibility!=='hidden'&&s.opacity!=='0';};
+   const bare=n=>!['IMG','SVG','svg','BUTTON','INPUT','SELECT','TEXTAREA','CANVAS','VIDEO'].includes(n.tagName)&&![...n.childNodes].some(c=>c.nodeType===3&&c.textContent.trim());
+   const alpha=n=>{const m=getComputedStyle(n).backgroundColor.match(/rgba?\(([^)]+)\)/);if(!m)return 0;const p=m[1].split(',').map(Number);return p.length===4?p[3]:1;};
+   return [...document.querySelectorAll('body *')].filter(n=>getComputedStyle(n).backdropFilter!=='none'&&visible(n)&&!n.matches('.vc-menu,.vc-sheet,.vc-alert,.vc-toast,.vc-memory-editor,.vc-account-reauth form')).map(panel=>{
+    const r=panel.getBoundingClientRect(),points=[];
+    for(let y=r.top+16;y<Math.min(r.bottom,innerHeight)-16;y+=16)for(let x=r.left+16;x<Math.min(r.right,innerWidth)-16;x+=16){const e=document.elementFromPoint(x,y);if(e&&panel.contains(e)&&(e===panel||bare(e)&&alpha(e)<=.02))points.push([Math.round(x),Math.round(y)]);}
+    return {name:panel.className.toString().slice(0,40),points};
+   });
+  });
+  const shot=await page.screenshot();
+  const measured=await page.evaluate(async({b64,panels})=>{
+   const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src='data:image/png;base64,'+b64;});
+   const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;const g=canvas.getContext('2d');g.drawImage(img,0,0);
+   return panels.map(({name,points})=>{let hsl=0,hsv=0;for(const [x,y] of points){let [r,gr,b]=g.getImageData(x,y,1,1).data;r/=255;gr/=255;b/=255;const max=Math.max(r,gr,b),min=Math.min(r,gr,b),d=max-min,l=(max+min)/2;
+    hsl=Math.max(hsl,d?d/(1-Math.abs(2*l-1)):0);hsv=Math.max(hsv,max?d/max:0);}
+    return {name,points:points.length,hsl:hsl*100,hsv:hsv*100};});
+  },{b64:shot.toString('base64'),panels});
+  const judged=measured.filter(panel=>panel.points>=6);
+  assert.ok(judged.length>=1,`${entry.key} ${theme} 没有可取样的面板空白处`);
+  for(const panel of judged){
+   assert.ok(panel.hsl>=(theme==='dark'?15:18),`${entry.key} ${theme} ${panel.name} 面板空白处（${panel.points} 点）HSL 饱和度 ${panel.hsl.toFixed(1)}% 不足`);
+   assert.ok(panel.hsv>=18,`${entry.key} ${theme} ${panel.name} 面板空白处 HSV 色度 ${panel.hsv.toFixed(1)}% 不足，极光不可见`);
+  }
+ }finally{await page.emulateMedia({reducedMotion:'reduce'});}
+}
 async function overlays(page){
  await page.locator('[data-demo="discard"]').click();await page.locator('.vc-alert').waitFor();await page.waitForTimeout(180);
  assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'继续编辑','确认默认焦点');
@@ -118,6 +158,8 @@ async function runCase({entry,width,height,theme},page){
   let pixels;
   if(width<744){const before=await readFile(path.join(baselineDir,name));const current=await page.screenshot();const exceptions=PIXEL_EXCEPTIONS.filter(e=>e.view===view&&e.width===width&&e.theme===theme);pixels=await pixelDiff(page,before,current,exceptions);await writeFile(path.join(out,name),current);assert.equal(pixels.outside,0,`${view} ${width} ${theme} 手机像素基线（具名例外之外）`);}
   if(width===1440||width===1024||width===768&&theme==='light')await page.screenshot({path:path.join(out,name)});
+  if(width>=744)await sidebarCurrent(page,entry);
+  if(width===1440)await auroraSaturation(page,entry,theme);
   if(view==='components'&&width===1440)await overlays(page);
   if(entry.view==='model'&&entry.params.screen==='home'&&theme==='light'&&[1440,390].includes(width))await modelInteraction(page);
   if(entry.view==='voice'&&entry.params.screen==='home'&&theme==='light'&&[1440,390].includes(width))await voiceInteraction(page,width);

@@ -213,10 +213,12 @@ export async function sceneVcUiWalkthrough(ctx) {
     const record = async (page, width, theme, pageName, bucket) => {
         await settle(page);
         const allowed = allowedOverlays(pageName);
+        // 桌面酒馆抽屉在设置页内原位打开，设置页本身是预期状态。
+        if (String(pageName).startsWith('tavern-') && width >= 744) allowed.push('settings');
         try {
             if (!allowed.includes('drawer')) {
                 for (let i = 0; i < 4; i += 1) {
-                    const back = page.locator('.openDrawer [data-vc-drawer-back]').first();
+                    const back = page.locator('.openDrawer [data-vc-drawer-back]:visible').first();
                     if (!(await back.count())) break;
                     await back.click();
                     await page.waitForFunction(() => !document.querySelector('.openDrawer'), null, { timeout: 8000 });
@@ -479,7 +481,8 @@ export async function sceneVcUiWalkthrough(ctx) {
                 if (!key) throw new Error(`没有桌面设置项 ${action}`);
                 await page.locator(`.vc-settings-shell [data-category="${key}"]`).evaluate(el => el.click());
                 await page.waitForFunction(value => document.querySelector('.vc-settings-shell')?.dataset.category === value, key);
-                if (key !== 'model') await page.locator('.vc-settings-body button').first().click();
+                // 酒馆分类被选中时设置壳已自动在内容区打开抽屉，抽屉盖住内容区按钮，不再二次点击；只有「数据」需要点内容区按钮。
+                if (key === 'data') await page.locator('.vc-settings-body button').first().click();
                 return;
             }
             const ok = await page.evaluate((name) => {
@@ -570,8 +573,35 @@ export async function sceneVcUiWalkthrough(ctx) {
                         if (error?.code === 'ERR_ASSERTION') throw error;
                         assert.fail(`${viewport.width} ${theme} ${drawer.page}：${error.message}`);
                     }
-                    const back = page.locator(`#${drawer.panel} [data-vc-drawer-back]`).first();
-                    if (await back.count()) await back.click();
+                    if (viewport.width >= 744) {
+                        // 桌面抽屉在设置内容区原位打开：设置仍是页面，壳带 data-drawer，对应分类高亮。
+                        const desk = await page.evaluate((panelId) => ({
+                            settings: document.querySelector('#vc-shell')?.dataset.settings,
+                            drawer: document.querySelector('.vc-settings-shell')?.dataset.drawer,
+                            current: document.querySelector('.vc-settings-shell [data-category][aria-current="page"]')?.dataset.category,
+                            panelId,
+                        }), drawer.panel);
+                        assert.equal(desk.settings, 'page', `${viewport.width}/${theme} ${drawer.page} 桌面抽屉打开时 settings 应为 page`);
+                        assert.equal(desk.drawer, drawer.panel, `${viewport.width}/${theme} ${drawer.page} 设置壳缺少 data-drawer`);
+                        assert.equal(desk.current, drawer.panel, `${viewport.width}/${theme} ${drawer.page} 对应分类未高亮`);
+                    }
+                    if (viewport.width >= 1024) {
+                        // 分类列常驻、无返回按钮：切到「账户」分类离开，抽屉随之关闭。
+                        assert.equal(await page.locator(`#${drawer.panel} [data-vc-drawer-back]:visible`).count(), 0, `${viewport.width}/${theme} ${drawer.page} 常驻分类列时不应显示返回按钮`);
+                        await page.locator('.vc-settings-shell [data-category="account"]').evaluate(el => el.click());
+                        await page.waitForFunction(() => document.querySelector('.vc-settings-shell')?.dataset.category === 'account' && !document.querySelector('.vc-settings-shell')?.dataset.drawer);
+                    } else {
+                        const back = page.locator(`#${drawer.panel} [data-vc-drawer-back]`).first();
+                        if (viewport.width >= 744) {
+                            const hit = await back.evaluate((el) => {
+                                const rect = el.getBoundingClientRect();
+                                const probe = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                return { width: rect.width, hit: probe === el || el.contains(probe), cls: probe?.className?.toString?.() || '', tag: probe?.tagName };
+                            });
+                            assert.ok(hit.width > 0 && hit.hit, `${viewport.width}/${theme} ${drawer.page} 返回按钮中心未命中自身 ${JSON.stringify(hit)}`);
+                        }
+                        if (await back.count()) await back.click();
+                    }
                     await page.waitForFunction((panelId) => !document.getElementById(panelId)?.classList.contains('openDrawer'), drawer.panel, { timeout: 8000 });
                     const returned = await until(settingsOpen, 8000);
                     const returnState = returned ? null : await page.evaluate(() => ({

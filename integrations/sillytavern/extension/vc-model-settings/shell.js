@@ -584,8 +584,11 @@ export function mountShell(options = {}) {
     const settingsLabel = doc.createElement('span');
     settingsLabel.className = 'vc-side-label';
     settingsLabel.textContent = '设置';
-    settingsLink.append(settingsLabel);
-    foot.append(settingsLink);
+    settingsLink.replaceChildren(iconEl('settings', 24), settingsLabel);
+    const sideAvatar = doc.createElement('span');
+    sideAvatar.className = 'vc-side-avatar';
+    sideAvatar.setAttribute('aria-hidden', 'true');
+    foot.append(sideAvatar, settingsLink);
     sidebar.append(foot);
 
     const body = doc.createElement('div');
@@ -814,6 +817,7 @@ export function mountShell(options = {}) {
         syncKeyboard();
         releaseCoveredSettings();
         if (chrome.nav === 'tabbar' && desktopSettings && root.dataset.settings === 'page') closeSettings({ immediate: true });
+        syncSidebarCurrent();
     }
 
     function syncKeyboard() {
@@ -864,6 +868,7 @@ export function mountShell(options = {}) {
             if (button.getAttribute('data-nav') === nav) button.setAttribute('aria-current', 'page');
             else button.removeAttribute('aria-current');
         }
+        syncSidebarCurrent();
         for (const page of root.querySelectorAll('.vc-shell-page')) {
             const on = page.getAttribute('data-page') === nav;
             const wasOn = page.classList.contains('is-on');
@@ -1057,6 +1062,34 @@ export function mountShell(options = {}) {
         return list('.vcms-overlay').some((node) => !node.closest?.('.vc-settings-shell') && node.hidden !== true && node.getAttribute?.('hidden') == null);
     }
 
+    // 侧栏恰好一项 aria-current：设置页与酒馆抽屉只高亮底部「设置」，五个目的地都不高亮。
+    function syncSidebarCurrent() {
+        const settingsOn = root.dataset.chrome !== 'tabbar'
+            && (root.dataset.settings === 'page' || doc.body?.classList?.contains('vc-host-drawer') === true);
+        for (const button of sidebar.querySelectorAll('button')) {
+            if (!button.hasAttribute('data-nav') && !button.hasAttribute('data-settings')) continue;
+            const on = button.hasAttribute('data-settings')
+                ? settingsOn
+                : !settingsOn && button.getAttribute('data-nav') === root.dataset.destination;
+            if (on) button.setAttribute('aria-current', 'page');
+            else button.removeAttribute('aria-current');
+        }
+        if (root.dataset.chrome !== 'tabbar') syncSideAvatar();
+        globalThis.dispatchEvent?.(new Event('vc-shell-destination'));
+    }
+
+    function syncSideAvatar() {
+        const name = String(getContext()?.name1 || '').trim();
+        const persona = doc.querySelector?.('#user_avatar_block .avatar-container.selected')?.getAttribute?.('data-avatar-id');
+        sideAvatar.replaceChildren();
+        if (persona) {
+            const image = doc.createElement('img');
+            image.src = `/thumbnail?type=persona&file=${encodeURIComponent(persona)}`;
+            image.alt = '';
+            sideAvatar.append(image);
+        } else sideAvatar.textContent = [...name][0] || '';
+    }
+
     function closeSettings({ immediate = false } = {}) {
         desktopSettings?.close();
         const handle = sheetHandle;
@@ -1066,6 +1099,7 @@ export function mountShell(options = {}) {
             else handle.close?.();
         }
         delete root.dataset.settings;
+        syncSidebarCurrent();
     }
 
     function releaseCoveredSettings() {
@@ -1079,6 +1113,7 @@ export function mountShell(options = {}) {
             desktopSettings ??= options.mountDesktopSettings(settingsScroll);
             desktopSettings.resume();
             root.dataset.settings = 'page';
+            syncSidebarCurrent();
             return;
         }
         const form = buildSettings(doc, {
@@ -1142,11 +1177,13 @@ export function mountShell(options = {}) {
         }
         settingsScroll.replaceChildren(settingsHeading, form);
         root.dataset.settings = 'page';
+        syncSidebarCurrent();
     }
 
     function syncHostDrawer() {
         const open = TAVERN_ENTRIES.some((entry) => doc.getElementById?.(entry.panel)?.classList?.contains('openDrawer'));
         doc.body.classList.toggle('vc-host-drawer', open === true);
+        syncSidebarCurrent();
     }
 
     root.addEventListener('click', (event) => {

@@ -639,3 +639,41 @@ function walkCss(css, fn) {
         i = end + 1;
     }
 }
+
+test('侧栏恰好一项 aria-current：设置页与酒馆抽屉只高亮底部设置', () => {
+    const doc = installMiniDom();
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'innerWidth');
+    Object.defineProperty(globalThis, 'innerWidth', { value: 1440, configurable: true, writable: true });
+    try {
+        const shell = mountShell({
+            document: doc,
+            storage: { getItem() { return null; }, setItem() {} },
+            getContext: () => ({ name1: '合成用户' }),
+            mountDesktopSettings: () => ({ resume() {}, close() {} }),
+        });
+        const side = shell.querySelector('.vc-sidebar');
+        const current = () => side.querySelectorAll('button').filter((node) => node.getAttribute('aria-current') === 'page');
+        const only = (expected) => {
+            const nodes = current();
+            assert.equal(nodes.length, 1);
+            assert.equal(nodes[0].getAttribute(expected.attr), expected.value);
+        };
+        only({ attr: 'data-nav', value: 'chat' });
+        globalThis.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'memory' } }));
+        only({ attr: 'data-nav', value: 'memory' });
+        globalThis.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'settings' } }));
+        assert.equal(shell.dataset.settings, 'page');
+        assert.equal(side.querySelectorAll('button').filter((node) => node.hasAttribute('data-nav') && node.hasAttribute('aria-current')).length, 0);
+        assert.equal(current()[0].hasAttribute('data-settings'), true);
+        assert.equal(current().length, 1);
+        globalThis.dispatchEvent(new CustomEvent('vc-shell-navigate', { detail: { destination: 'characters' } }));
+        only({ attr: 'data-nav', value: 'characters' });
+        const foot = shell.querySelector('.vc-side-foot');
+        assert.ok(foot.querySelector('.vc-side-avatar'));
+        assert.match(foot.querySelector('[data-settings]').innerHTML, /#settings"/);
+        assert.equal(foot.querySelector('[data-settings]').innerHTML.includes('#user-round"'), false);
+    } finally {
+        if (previous) Object.defineProperty(globalThis, 'innerWidth', previous);
+        else delete globalThis.innerWidth;
+    }
+});

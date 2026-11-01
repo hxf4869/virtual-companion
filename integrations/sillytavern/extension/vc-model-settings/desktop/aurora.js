@@ -19,7 +19,7 @@ export function mountAurora(doc = document) {
         current=tint;clearTimeout(timer);
         const old=root.firstElementChild;
         const group=doc.createElement('div');group.className='vc-aurora-set';
-        for(const color of [tint||'255,176,150',tint?rotateHue(tint):'176,150,255','120,170,255']){
+        for(const color of [tint||'255,150,120',tint?rotateHue(tint):'170,135,255',tint?'120,170,255':'100,165,255']){
             const spot=doc.createElement('div');spot.className='vc-aurora-spot';spot.style.setProperty('--c',color);group.append(spot);
         }
         // 最多保留新旧两组，切换完成立即移除旧组。

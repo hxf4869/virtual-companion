@@ -10,29 +10,51 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-convo:hover { background: var(--vc
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat { min-width: 0; border-radius: var(--vc-radius-xl); border: 1px solid var(--vc-rim); background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat > .vc-navbar { height: 64px; min-height: 64px; padding: 0 24px; gap: var(--vc-space-xs); background: var(--vc-raised); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat :is(.vc-who,.vc-capsule) { background: none; box-shadow: none; backdrop-filter: none; border: 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who { background: none !important; /* 压过外壳写在 .vc-who 上的内联渐变底 */ }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who-copy b { font-size: var(--vc-fs-headline); line-height: var(--vc-lh-title); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who-copy small { font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who-slot { position: static; transform: none; max-width: none; min-width: 0; margin-right: auto; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who { height: auto; padding: 0; gap: var(--vc-space-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who .vc-convo-avatar { width: 36px; height: 36px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule { display: flex; gap: var(--vc-space-xs); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule > button { width: 40px; height: 40px; border-radius: var(--vc-radius-pill); background: var(--vc-raised); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule > button { width: 40px; height: 40px; border-radius: var(--vc-radius-pill); background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule > [data-memory] { display:grid; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat-body { --vc-poster-pad: 0px; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-chat-poster { display: none; }
-html[data-vc-layout="desktop"] body.vc-ui #chat .mes { padding: 12px 24px; font-size: var(--vc-fs-reading); line-height: var(--vc-lh-reading); }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes { padding: 8px 24px 0; font-size: var(--vc-fs-reading); line-height: var(--vc-lh-reading); }
+/* UX-22 R5：阅读列 720 在对话面板内居中；头像 36 与首行顶部对齐；工具行紧贴消息、与正文左缘对齐。 */
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes { grid-template-columns: 36px minmax(0,1fr); column-gap: var(--vc-space-sm); width: min(100%, calc(var(--vc-read) + 48px)); max-width: calc(var(--vc-read) + 48px); }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes.vc-speaker .mesAvatarWrapper { width: 36px; height: 36px !important; /* 压过移动端 24px 的 !important */ }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes.vc-speaker .avatar,
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes.vc-speaker .avatar img { width: 36px !important; height: 36px !important; min-width: 36px; min-height: 36px; /* 压过移动端 24px 的 !important */ }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes:not(.vc-speaker):not([is_user="true"]):not([is_system="true"]) > .mes_block { grid-column: 2; }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes .vc-mes-tools { grid-column: 2; justify-content: flex-start; min-height: 36px; margin: -4px 0 0 -9px; }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[is_user="true"] .vc-mes-tools { grid-column: 1 / -1; justify-content: flex-end; margin: -4px -9px 0 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-mes-gap { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui #send_form { margin-top: auto; gap: var(--vc-space-xs); }
+html[data-vc-layout="desktop"] body.vc-ui #form_sheld { width: min(100%, calc(var(--vc-read) + 48px)); padding: 8px 24px 16px; }
+html[data-vc-layout="desktop"] body.vc-ui #send_textarea { text-align: left; padding-right: 56px; }
+html[data-vc-layout="desktop"] body.vc-ui #send_form.vc-voice-input-available #send_textarea { padding-right: 104px; }
+html[data-vc-layout="desktop"] body.vc-ui #send_textarea::placeholder { text-align: left; }
+html[data-vc-layout="desktop"] body.vc-ui #send_form.vc-voice-input-available #send_but { display: inline-flex !important; /* 压过语音样式在空输入时隐藏发送的 !important */ }
+html[data-vc-layout="desktop"] body.vc-ui[data-generating="true"] #send_form.vc-voice-input-available #send_but { display: none !important; /* 生成中只留停止 */ }
+html[data-vc-layout="desktop"] body.vc-ui #vc-voice-input { width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0; margin-inline-end: 48px; background: none; color: var(--vc-ink-2); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character { position: absolute; right: 0; top: 0; bottom: 0; width: 340px; box-sizing: border-box; overflow: auto; z-index: var(--vc-z-popup); padding: 64px 24px 24px; border-radius: var(--vc-radius-xl); border: 1px solid var(--vc-rim); background: var(--vc-glass-3); backdrop-filter: blur(var(--vc-blur-3)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-overlay); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character[hidden] { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell:not([data-destination="chat"]) .vc-desk-character { display:none; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-settings="page"] .vc-desk-character { display:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-close { position: absolute; top: 12px; right: 12px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-identity { display: flex; flex-direction: column; align-items: center; text-align: center; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-avatar { display: grid; place-items: center; flex:none; overflow:hidden; width: 96px; height: 96px; border-radius: var(--vc-radius-pill); background: var(--vc-raised); font-size: var(--vc-fs-large-title); box-shadow: 0 0 0 3px rgb(var(--vc-tint) / .35),0 8px 24px rgb(var(--vc-tint) / .35); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-avatar { display: grid; place-items: center; flex:none; overflow:hidden; width: 96px; height: 96px; border-radius: var(--vc-radius-pill); background: var(--vc-raised); font-size: var(--vc-fs-large-title); box-shadow: 0 0 0 3px color-mix(in srgb, rgb(var(--vc-tint)) 45%, transparent), 0 0 32px 6px color-mix(in srgb, rgb(var(--vc-tint)) 45%, transparent); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-avatar img { display:block; min-width:0; min-height:0; max-width:100%; max-height:100%; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-identity h1 { font-size: var(--vc-fs-title-1); line-height: var(--vc-lh-title); margin: 16px 0 4px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-identity p { margin: 4px 0; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-mood { font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-actions { display: flex; justify-content: space-between; gap: var(--vc-space-md); margin: 24px 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-mood { display: flex; align-items: center; gap: var(--vc-space-xs); font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-mood::before { content: ""; width: 8px; height: 8px; border-radius: var(--vc-radius-pill); background: var(--vc-success); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-actions { display: flex; justify-content: center; gap: var(--vc-space-xl); margin: 24px 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-actions:empty { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-actions > div { display: grid; justify-items: center; gap: var(--vc-space-xs); color: var(--vc-ink-2); font-size: var(--vc-fs-footnote); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-actions .vc-circle { width: 56px; min-height: 56px; height: 56px; box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-section { border-top: .5px solid var(--vc-raised-edge); margin-top: 24px; padding-top: 16px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character-section h2 { font-size: var(--vc-fs-headline); margin: 0 0 8px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-recalled { background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); border-radius: var(--vc-radius-md); padding: 12px 16px; margin-top: 8px; }
@@ -50,6 +72,22 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desk-editor-actions { display: fle
 }
 @media(min-width:1180px) and (max-width:1599px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body > .vc-shell-pages { display: none; }
+}
+/* UX-22 R6：面板高度随内容；超出时在面板内滚动。 */
+@media(min-width:744px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-chat="open"]:not([data-settings="page"]) .vc-desk-character { align-self: start; max-height: 100%; }
+}
+/* UX-22 R5/R6：<1180 面板不再浮在对话上。1024–1179 与对话并排；744–1023 打开时占用对话位置，面板自带关闭。 */
+@media(min-width:744px) and (max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) .vc-desk-character { position: relative; width: auto; z-index: auto; background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); }
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="closed"] .vc-desk-character { display: none; }
+}
+@media(min-width:1024px) and (max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="open"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: minmax(0,1fr) 340px; }
+}
+@media(min-width:744px) and (max-width:1023px) {
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="open"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: minmax(0,1fr); }
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="open"][data-character-panel="open"]:not([data-settings="page"]) .vc-shell-chat { display: none; }
 }
 @media(min-width:1600px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: 320px minmax(560px,1fr) 340px; }

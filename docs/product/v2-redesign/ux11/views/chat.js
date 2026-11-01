@@ -30,6 +30,19 @@ export async function check({ params, source }) {
     const { panel } = window.VC_CHAT_PREVIEW;
     panel.setOpen(true, false);
     if (panel.toggle.getAttribute('aria-expanded') !== 'true' || panel.panel.hidden) throw Error('角色面板未展开');
+    // UX-22 R5/R6：面板打开时不盖住标题栏按钮与输入区，也不与对话重叠；窄桌面对话让位时跳过不可见项。
+    for (const selector of ['.vc-desk-character-toggle', '.vc-capsule [data-memory]', '.vc-capsule [data-more]', '#send_textarea', '#options_button']) {
+        const el = document.querySelector(selector);
+        if (!el.getClientRects().length) continue;
+        const r = el.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        if (!hit || !el.contains(hit)) throw Error(`角色面板盖住了 ${selector}`);
+    }
+    const chatBox = document.querySelector('.vc-shell-chat').getBoundingClientRect(), panelBox = panel.panel.getBoundingClientRect();
+    if (chatBox.width && Math.min(chatBox.right, panelBox.right) - Math.max(chatBox.left, panelBox.left) > 1) throw Error('角色面板与对话重叠');
+    const speaker = chatBox.width ? document.querySelector('#chat > .mes.vc-speaker') : null;
+    if (speaker && speaker.querySelector('.avatar').offsetWidth !== 36) throw Error('角色消息头像不是 36');
+    const tool = speaker?.querySelector('.vc-mes-tools > button');
+    if (tool && Math.abs(tool.getBoundingClientRect().left + 9 - speaker.querySelector('.mes_block').getBoundingClientRect().left) > 1.5) throw Error('消息工具行没有与正文左缘对齐');
     panel.panel.querySelector('.vc-desk-character-close').click();
     if (!panel.panel.hidden || document.activeElement !== panel.toggle) throw Error('角色面板关闭焦点未归还');
     panel.setOpen(true, false);
