@@ -26,3 +26,14 @@ page, body {
 .vc-engine.is-shown { opacity: 1; pointer-events: auto; z-index: var(--vc-z-stview); }
 /* uni-h5 自带样式会在 3 秒后用 body::after 预加载 DCloud CDN 图片；手机界面不发起跨域请求，关闭它。 */
 body::after { animation: none !important; background-image: none !important; }
+button { margin: 0; padding: 0 var(--vc-space-sm); font-family: inherit; line-height: var(--vc-lh-body); cursor: pointer; }
+button::after { border: 0; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--vc-accent); outline-offset: 2px; }
+input, textarea { caret-color: var(--vc-accent); }
+::selection { background: var(--vc-fill-2); color: var(--vc-ink); }
+.vc-round { border: 0; padding: 0; }
+.vc-plain-btn { min-height: var(--vc-touch); border: 0; background: none; color: var(--vc-accent-text); font-size: var(--vc-fs-body); }
+/* 各页面共用的圆形命中区；不能放在一级页的局部样式里。 */
+.vc-round { width: var(--vc-touch); height: var(--vc-touch); flex: none; display: flex; align-items: center; justify-content: center; border-radius: var(--vc-radius-pill); color: var(--vc-ink); }
+.vc-round:not(.vc-glass):not(.vc-send) { background: none; }

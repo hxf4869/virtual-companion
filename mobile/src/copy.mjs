@@ -20,6 +20,7 @@ export const COPY = Object.freeze({
     send: '发送',
     stop: '停止',
     failed: '没有发送成功',
+    saveFailed: '没有保存成功，草稿已保留。',
     slow: '回复较慢，可以继续等或停止',
     stopped: '已停止',
     unfinished: '未完成',

@@ -128,7 +128,12 @@ export async function sceneMbEngine(ctx) {
         const shown = await E(() => ({ shown: document.querySelector('#vc-engine').classList.contains('is-shown'), back: Boolean(document.querySelector('.vc-stview-bar')) }));
         await page.screenshot({ path: path.join(SHOTS, 'popup-st-view-390.png') });
         check(shown.shown && shown.back, '宿主弹窗切到 ST 视图并提供返回', JSON.stringify(shown));
-        await page.frameLocator('#vc-engine').locator('dialog.popup[open] .popup-button-ok').first().click().catch(() => {});
+        // 合成复杂卡会先询问正则许可，再询问内嵌世界书；DISPLAY 弹窗里的隐藏按钮不是确认入口。
+        for (let i = 0; i < 10; i += 1) {
+            const accept = page.frameLocator('#vc-engine').locator('dialog.popup[open]').last().locator('.popup-button-ok:visible, .popup-button-custom:visible').filter({ hasText: /^(Yes|OK|是|确定|导入)$/ }).first();
+            if (await accept.count()) await accept.click({ timeout: 3000 });
+            await page.waitForTimeout(200);
+        }
         await page.locator('.vc-stview-bar [aria-label="返回"]').click();
         await page.waitForTimeout(500);
         check(!(await E(() => document.querySelector('#vc-engine').classList.contains('is-shown'))), '返回后 ST 视图关闭');

@@ -10,7 +10,7 @@
         <view v-else-if="error" class="vc-empty">
             <VcIcon name="circle-alert" size="var(--vc-icon-xl)" />
             <text>{{ copy.error }}</text>
-            <button class="vc-text-btn" @click="load">{{ copy.retry }}</button>
+            <button role="button" tabindex="0" class="vc-text-btn" @click="load">{{ copy.retry }}</button>
         </view>
         <view v-else-if="!shown.length" class="vc-empty">
             <VcIcon name="message-circle" size="var(--vc-icon-xl)" />
@@ -18,14 +18,14 @@
         </view>
         <view v-else class="vc-rows">
             <view v-for="row in shown" :key="row.key" class="vc-row-wrap">
-                <view class="vc-row-actions" aria-hidden="true">
-                    <button class="vc-action is-neutral" tabindex="-1" @click="togglePin(row)"><VcIcon name="layout-grid" size="var(--vc-icon-sm)" /><text>{{ row.pinned ? copy.unpin : copy.pin }}</text></button>
-                    <button class="vc-action is-danger" tabindex="-1" @click="remove(row)"><VcIcon name="trash-2" size="var(--vc-icon-sm)" /><text>{{ copy.remove }}</text></button>
+                <view class="vc-row-actions" :style="{ width: `${Math.max(0, -offset(row))}px` }" :aria-hidden="swiped !== row.key">
+                    <button role="button" tabindex="0" class="vc-action is-neutral" :tabindex="swiped === row.key ? 0 : -1" @click="togglePin(row)"><VcIcon name="layout-grid" size="var(--vc-icon-sm)" /><text>{{ row.pinned ? copy.unpin : copy.pin }}</text></button>
+                    <button role="button" tabindex="0" class="vc-action is-danger" :tabindex="swiped === row.key ? 0 : -1" @click="remove(row)"><VcIcon name="trash-2" size="var(--vc-icon-sm)" /><text>{{ copy.remove }}</text></button>
                 </view>
-                <view class="vc-row" :style="{ transform: `translateX(${offset(row)}px)` }" role="button" tabindex="0"
+                <view class="vc-row" :data-chat-file="row.file" :style="{ transform: `translateX(${offset(row)}px)` }" role="button" tabindex="0"
                     :aria-label="`${row.name} ${row.instance}`"
                     @touchstart="swipeStart($event, row)" @touchmove="swipeMove($event, row)" @touchend="swipeEnd(row)"
-                    @click="open(row)" @keydown.enter="open(row)">
+                    @click="open(row)" @keydown.enter="open(row)" @keydown.delete="remove(row)" @contextmenu.prevent="swiped = row.key">
                     <VcAvatar :avatar="row.avatar" :name="row.name" />
                     <view class="vc-row-main">
                         <view class="vc-row-top">
@@ -72,7 +72,7 @@ export default {
                 this.rows = chats.filter((c) => names.has(c.avatar)).map((c) => ({
                     key: `${c.avatar}/${c.file}`, avatar: c.avatar, file: c.file, name: names.get(c.avatar),
                     instance: c.binding?.displayName || '', preview: previewText(c.preview), updated: c.updated,
-                    time: listTime(c.updated), draft: readDraft(c.file), pinned: false,
+                    time: listTime(c.updated), draft: readDraft(`${c.avatar}/${c.file}`), pinned: false,
                 }));
                 if (engineState.state === 'ready') await this.applyPins();
             } catch { this.error = true; }
@@ -126,10 +126,10 @@ export default {
 .vc-search-input { flex: 1; font-size: var(--vc-fs-body); color: var(--vc-ink); }
 .vc-rows { display: flex; flex-direction: column; gap: var(--vc-space-sm); }
 .vc-row-wrap { position: relative; border-radius: var(--vc-radius-lg); overflow: hidden; }
-.vc-row-actions { position: absolute; inset: 0 0 0 auto; display: flex; gap: var(--vc-space-xxs); align-items: stretch; }
-.vc-action { width: 86px; border: 0; border-radius: var(--vc-radius-lg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--vc-space-xxs);
+.vc-row-actions { position: absolute; inset: 0 0 0 auto; display: flex; gap: var(--vc-space-xxs); align-items: stretch; justify-content: flex-end; overflow: hidden; }
+.vc-action { flex: none; width: 86px; border: 0; border-radius: var(--vc-radius-lg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--vc-space-xxs);
     font-size: var(--vc-fs-footnote); color: var(--vc-on-accent); }
-.vc-action.is-neutral { background: var(--vc-ink-3); }
+.vc-action.is-neutral { background: var(--vc-fill-2); color: var(--vc-ink); }
 .vc-action.is-danger { background: var(--vc-danger-fill); }
 .vc-row { position: relative; display: flex; align-items: center; gap: var(--vc-space-sm); padding: var(--vc-space-md); border-radius: var(--vc-radius-lg);
     background: var(--vc-card); transition: transform var(--vc-dur-quick) var(--vc-spring); }

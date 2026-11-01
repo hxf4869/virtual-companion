@@ -95,6 +95,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         const relay = (name, type) => c.eventSource.on(types[name], (...args) => bus.emit(type, args));
         c.eventSource.on(types.STREAM_TOKEN_RECEIVED, (text) => bus.emit('token', { text: String(text ?? '') }));
         c.eventSource.on(types.GENERATION_ENDED, () => { ended += 1; bus.emit('ended', { count: ended }); });
+        c.eventSource.on(types.GENERATION_STARTED, (type, options, dryRun) => { if (!dryRun) bus.emit('started', { type }); });
         relay('GENERATION_STOPPED', 'stopped');
         relay('MESSAGE_RECEIVED', 'message');
         relay('MESSAGE_SENT', 'message');
@@ -160,7 +161,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
             const ch = Number.isInteger(i) ? c.characters[i] : null;
             return ch ? { index: i, name: ch.name, avatar: ch.avatar, theme: ch.data?.extensions?.vc_theme || '' } : null;
         },
-        generating: () => Boolean(win()?.document?.querySelector('#mes_stop:not([style*="display: none"])')) || Boolean(script?.isGenerating?.()),
+        generating: () => Boolean(script?.isGenerating?.()),
         // 发送走原生输入框与发送键：与现有扩展同一路径（含陪伴模式的连发合并）。
         send(text) {
             const d = win().document;
@@ -193,10 +194,10 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         mvuReady: () => Boolean(win()?.Mvu),
         async continueReply() { const before = ended; await ctx().generate('continue'); return before; },
         // ST 原生格式化（正则显示规则 + Markdown + DOMPurify），与 ST 自己的显示一致。
-        formatMessage(id) {
+        formatMessage(id, text) {
             const m = ctx()?.chat?.[id];
             if (!m || typeof script?.messageFormatting !== 'function') return '';
-            return script.messageFormatting(m.mes, m.name, Boolean(m.is_system), Boolean(m.is_user), id);
+            return script.messageFormatting(text ?? m.mes, m.name, Boolean(m.is_system), Boolean(m.is_user), id, { FORBID_TAGS: ['style', 'custom-style', 'iframe', 'object', 'embed'], FORBID_ATTR: ['style'] });
         },
         // 置顶与 ST 欢迎页共用账号存储（键 pinnedChats，格式 char_<avatar>_<file>.jsonl），随设置存服务器。
         async pinnedChats() {

@@ -8,6 +8,7 @@ export function weightedTint(data) {
         if (A < 128) continue;
         const max = Math.max(R, G, B); const min = Math.min(R, G, B);
         const sat = max === 0 ? 0 : (max - min) / max;
+        if (sat < .15) continue;
         const weight = sat * sat * (max / 255) + 0.001;
         r += R * weight; g += G * weight; b += B * weight; w += weight;
     }

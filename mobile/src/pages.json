@@ -1,6 +1,20 @@
 {
-    "pages": [
-        { "path": "pages/main/index", "style": { "navigationStyle": "custom" } }
-    ],
-    "globalStyle": { "navigationStyle": "custom" }
+  "pages": [
+    {
+      "path": "pages/main/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/chat/conversation",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom"
+  }
 }

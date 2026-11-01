@@ -2,12 +2,12 @@
     <view>
         <view v-if="fb.toast" class="vc-toast vc-glass" :class="{ 'is-error': fb.toast.error }" role="status" @click="dismiss">{{ fb.toast.text }}</view>
         <view v-if="fb.alert" class="vc-scrim" @click.self="fb.alert.resolve(false)">
-            <view class="vc-alert vc-glass" role="alertdialog" :aria-label="fb.alert.title">
+            <view class="vc-alert vc-glass" role="alertdialog" aria-modal="true" :aria-label="fb.alert.title" @keydown.esc="fb.alert.resolve(false)" @keydown.tab.prevent="focusOther">
                 <text class="vc-alert-title">{{ fb.alert.title }}</text>
                 <text v-if="fb.alert.message" class="vc-alert-message">{{ fb.alert.message }}</text>
                 <view class="vc-alert-actions">
-                    <button class="vc-alert-btn" autofocus @click="fb.alert.resolve(false)">{{ fb.alert.cancel }}</button>
-                    <button class="vc-alert-btn" :class="{ 'is-danger': fb.alert.danger }" @click="fb.alert.resolve(true)">{{ fb.alert.action }}</button>
+                    <button role="button" tabindex="0" class="vc-alert-btn" autofocus @click="fb.alert.resolve(false)">{{ fb.alert.cancel }}</button>
+                    <button role="button" tabindex="0" class="vc-alert-btn" :class="{ 'is-danger': fb.alert.danger }" @click="fb.alert.resolve(true)">{{ fb.alert.action }}</button>
                 </view>
             </view>
         </view>
@@ -16,7 +16,14 @@
 <script>
 import { feedback, dismissToast } from '../ui/feedback.mjs';
 
-export default { data() { return { fb: feedback }; }, methods: { dismiss() { dismissToast(); } } };
+export default {
+    data() { return { fb: feedback }; },
+    watch: { 'fb.alert'(value) { if(value) { this.opener=document.activeElement; this.$nextTick(()=>this.$el.querySelector('.vc-alert-btn')?.focus()); } else this.opener?.focus?.(); } },
+    methods: {
+        dismiss() { dismissToast(); },
+        focusOther() { const buttons=[...this.$el.querySelectorAll('.vc-alert-btn')]; buttons[(buttons.indexOf(document.activeElement)+1)%buttons.length]?.focus(); },
+    },
+};
 </script>
 <style>
 .vc-toast { position: fixed; z-index: var(--vc-z-toast); top: calc(env(safe-area-inset-top) + var(--vc-space-xs)); left: 50%; transform: translateX(-50%);

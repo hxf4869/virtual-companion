@@ -9,6 +9,19 @@ export function stripJsonl(name) {
     return String(name || '').replace(/\.jsonl$/i, '');
 }
 
+// 与锁定 ST timestampToMoment 对当前 humanized 格式的解释保持一致（按 UTC 解析）。
+export function toDate(value) {
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    const text = String(value ?? '');
+    const native = /^(\d{4})-(\d{1,2})-(\d{1,2})\s?@(\d{1,2})h\s?(\d{1,2})m\s?(\d{1,2})s(?:\s?(\d{1,3})ms)?$/.exec(text);
+    let d;
+    if (native) {
+        const [,y,mon,day,h,min,sec,ms='0'] = native;
+        d = new Date(Date.UTC(+y,+mon-1,+day,+h,+min,+sec,+ms.padStart(3,'0')));
+    } else d = new Date(typeof value === 'number' || /^\d+$/.test(text) ? Number(value) : Date.parse(text));
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // ST 聊天行 → 界面消息。id 是楼层号（与 ST mesid 一致）。
 export function toMessage(row, id) {
     const swipes = Array.isArray(row?.swipes) ? row.swipes.length : 1;
@@ -21,6 +34,7 @@ export function toMessage(row, id) {
         time: row?.send_date || '',
         swipes: Math.max(1, swipes),
         swipe: Number.isInteger(row?.swipe_id) ? row.swipe_id : 0,
+        ...(row?.extra ? { extra: row.extra } : {}),
     };
 }
 
@@ -63,7 +77,7 @@ export function createServer({ fetchImpl = (...a) => fetch(...a) } = {}) {
                 avatar: r.avatar,
                 file: stripJsonl(r.file_name),
                 preview: String(r.mes ?? ''),
-                updated: Number(r.last_mes) || 0,
+                updated: toDate(r.last_mes)?.getTime() || 0,
                 items: Number(r.chat_items) || 0,
                 binding: r.chat_metadata?.vc_binding || null,
             }));

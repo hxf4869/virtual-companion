@@ -1,3 +1,5 @@
+import { toDate } from '../engine/server.mjs';
+export { toDate } from '../engine/server.mjs';
 // 聊天的纯逻辑：引用与草稿（与扩展 chat-compose.js 同格式，单测逐项比对）、时间胶囊、分组、气泡分段。
 // 与桌面共用扩展里的纯逻辑模块（无 DOM 依赖），两端对同一条消息的拆分一致。
 import { splitReply } from '../../../integrations/sillytavern/extension/vc-model-settings/reply-pipeline.js';
@@ -54,13 +56,6 @@ const pad = (n) => String(n).padStart(2, '0');
 const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const day0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-export function toDate(value) {
-    if (value instanceof Date) return value;
-    if (typeof value === 'number') return new Date(value);
-    const t = Date.parse(String(value || ''));
-    return Number.isNaN(t) ? null : new Date(t);
-}
-
 // 日期 / 间隔胶囊（文案第 19 节）：今天 / 昨天 / 7 天内周几 / 更早 M月D日 / 跨年带年份。
 export function timePill(value, now = new Date()) {
     const d = toDate(value);
@@ -75,6 +70,7 @@ export function timePill(value, now = new Date()) {
 
 // 会话列表右侧时间：今天 HH:mm / 昨天 / 周几 / M/D。
 export function listTime(value, now = new Date()) {
+    if (!value) return '';
     const d = toDate(value);
     if (!d) return '';
     const days = Math.round((day0(now) - day0(d)) / 86400000);

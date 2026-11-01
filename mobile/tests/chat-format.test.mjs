@@ -65,3 +65,10 @@ test('列表预览', () => {
     assert.equal(m.previewText('x', { card: true }), '[互动卡片]');
     assert.equal(m.previewText('> 小满：早\n\n收到'), '收到');
 });
+
+test('SillyTavern 当前写入的 humanized 时间与桌面解析一致，ISO 和数字时间保持有效', () => {
+    const d=m.toDate('2026-11-02@08h02m00s123ms');
+    assert.ok(d instanceof Date);
+    assert.equal(d.toISOString(),'2026-11-02T08:02:00.123Z');
+    assert.equal(m.toDate('1793570520000').getTime(),1793570520000);
+});

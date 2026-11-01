@@ -47,6 +47,7 @@ export function applyTheme(root, { theme, mode, tint } = {}) {
     const vars = cssVars(theme, mode);
     for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
     if (typeof tint === 'string' && /^\d{1,3},\d{1,3},\d{1,3}$/.test(tint)) root.style.setProperty('--tint', tint);
+    if (!tint) root.style.removeProperty('--tint');
     root.dataset.vcThemeId = theme.id;
     root.dataset.vcTheme = mode;
     for (const [name, value] of Object.entries(resolveVariants(theme))) root.dataset[`vcVariant${name[0].toUpperCase()}${name.slice(1)}`] = value;
