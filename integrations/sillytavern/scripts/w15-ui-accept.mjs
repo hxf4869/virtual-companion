@@ -456,6 +456,9 @@ export async function sceneW15Ui(ctx) {
                 await page.locator('#vcms-f-display').waitFor();
                 const beforeBudget = await page.locator('.vcms-overlay').innerText();
                 if (beforeBudget.includes('当月可用额度不足')) throw new Error('进入模型页时不应显示预算不足');
+                if (!await page.locator('#vcms-save').isDisabled()) throw new Error('干净表单的保存应禁用');
+                const budgetProviderName = await page.locator('#vcms-f-display').inputValue();
+                await page.locator('#vcms-f-display').fill(`${budgetProviderName} · 合成预算检查`);
                 await page.evaluate(() => window.dispatchEvent(new CustomEvent('vc-apply-budget', { detail: { budgetInsufficient: true } })));
                 await page.locator('#vcms-budget').waitFor();
                 const gated = await page.evaluate(() => ({
@@ -469,7 +472,13 @@ export async function sceneW15Ui(ctx) {
                 await assertLayout(viewport.width);
                 await page.evaluate(() => window.dispatchEvent(new CustomEvent('vc-apply-budget', { detail: {} })));
                 await waitFor(async () => page.evaluate(() => document.querySelector('#send_but')?.disabled !== true), { timeoutMs: 5000, label: '预算门禁解除' });
-                if (await page.locator('#vcms-discard').isVisible()) await page.locator('#vcms-discard').click();
+                await page.locator('#vcms-discard').click();
+                const discardBudget = page.getByRole('alertdialog', { name: '放弃更改？' });
+                await discardBudget.waitFor();
+                if (await page.evaluate(() => document.activeElement?.textContent) !== '继续编辑') throw new Error('放弃更改默认焦点应为继续编辑');
+                await discardBudget.locator('[data-vc-ok]').click();
+                await discardBudget.waitFor({ state: 'detached' });
+                if (await page.locator('#vcms-f-display').inputValue() !== budgetProviderName) throw new Error('预算测试草稿未恢复');
                 const showLedger = async (key, includes, excludes) => {
                     await page.locator(`[data-action="select-model"][data-key="${key}"]`).click();
                     await waitFor(async () => page.evaluate(({ profile, want, block }) => {

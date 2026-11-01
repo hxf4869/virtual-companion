@@ -4,7 +4,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
-import { MANAGED_MEMORYCORE_DATA } from './lib/paths.mjs';
 import { pinVcUi } from './vc-ui-pin.mjs';
 import path from 'node:path';
 import { createStClient, waitFor } from './managed-lib.mjs';
@@ -332,7 +331,7 @@ export async function sceneMemoryBrowser(ctx) {
         // A real filesystem write failure exercises PARTIAL without adding a
         // production fault switch. Only this synthetic owner's records directory
         // is made read-only, and finally always restores it before stack cleanup.
-        restrictedRecords = path.join(MANAGED_MEMORYCORE_DATA, 'owners', ctx.secrets.session.accountId, 'records');
+        restrictedRecords = path.join(path.dirname(ctx.w05.dataRoot), 'memorycore-data', 'owners', ctx.secrets.session.accountId, 'records');
         await fs.chmod(restrictedRecords, 0o500);
         await reauthForWrite(ctx);
         const forgetResponse = page.waitForResponse(r => r.request().method() === 'DELETE' && r.url().includes(`/memories/${memory.memoryId}`));

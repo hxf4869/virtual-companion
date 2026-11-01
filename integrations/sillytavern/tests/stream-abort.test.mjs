@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
+import vm from 'node:vm';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { absorbStreamAbort } from '../server-plugin/virtual-companion/lib/stream-abort.js';
@@ -12,6 +13,42 @@ function abortError() {
     error.name = 'AbortError';
     error.type = 'aborted';
     return error;
+}
+
+for (const protocol of ['Chat', 'Claude']) {
+    for (const cancelled of [false, true]) {
+        test(`${protocol} 原生出站在最终复核期间${cancelled ? '取消时不调用 node-fetch' : '未取消时正常发送和结算'}`, async () => {
+            const spec = JSON.parse(fs.readFileSync(new URL('../patches/st-chat-completions-vc-bridge.json', import.meta.url), 'utf8'));
+            const source = spec.replacements.find(row => row.to.includes(`console.debug('${protocol === 'Chat' ? 'Chat Completion' : 'Claude'} request:'`)).to;
+            const controller = new AbortController();
+            const request = {};
+            const response = {};
+            const requestBody = { messages: [] };
+            const upstream = {};
+            let sent = 0, abandoned = 0, settled = 0;
+            const bridge = {
+                async finalOutboundGuard() { if (cancelled) controller.abort(); return false; },
+                async abandonOutbound(_url, actualRequest) { assert.equal(actualRequest, request); abandoned++; },
+                settleOutboundResponse(actualResponse, _url, actualRequest) {
+                    assert.equal(actualResponse, upstream); assert.equal(actualRequest, request); settled++;
+                },
+            };
+            const result = vm.runInNewContext(`(async () => { ${source} })()`, {
+                controller, request, response, requestBody,
+                config: { method: 'POST', body: '{}', signal: controller.signal },
+                endpointUrl: 'http://127.0.0.1/upstream', apiUrl: 'http://127.0.0.1',
+                apiKey: 'synthetic', additionalHeaders: {},
+                fetch: async () => { sent++; return upstream; },
+                console: { debug() {} },
+                globalThis: { [Symbol.for('virtual-companion.bridge')]: bridge },
+            });
+            if (cancelled) await assert.rejects(result, error => error.name === 'AbortError');
+            else await result;
+            assert.equal(sent, cancelled ? 0 : 1);
+            assert.equal(abandoned, cancelled ? 1 : 0, '取消只回收本请求的预留');
+            assert.equal(settled, cancelled ? 0 : 1);
+        });
+    }
 }
 
 test('pipe 在没有持久 error 监听时会把 AbortError 重新抛出', () => {

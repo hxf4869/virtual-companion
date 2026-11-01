@@ -70,7 +70,7 @@ const INTEG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = path.resolve(INTEG, '..', '..');
 const BACKEND = path.join(REPO_ROOT, 'backend');
 const SCRIPTS = path.join(INTEG, 'scripts');
-const DEV_MANAGED = path.resolve(process.env.VC_W03_DEV_DIR || path.join(INTEG, 'dev-managed'));
+const DEV_MANAGED = path.resolve(process.env.VC_W03_DEV_DIR || process.env.VC_ST_DEV_DIR || path.join(INTEG, 'dev-managed'));
 const RUN_DIR = path.join(DEV_MANAGED, 'run');
 const ARTIFACTS_ROOT = path.join(DEV_MANAGED, 'artifacts');
 
@@ -502,7 +502,7 @@ async function startManagedStack(secrets, artifactsDir) {
     }
     runChecked(process.execPath, [path.join(SCRIPTS, 'assemble-managed.mjs')], {
         cwd: INTEG,
-        env: { VC_ST_PORT: String(ST_PORT) },
+        env: { VC_ST_DEV_DIR: DEV_MANAGED, VC_ST_PORT: String(ST_PORT) },
         label: 'assemble-managed（受管 st-run 组装，幂等）',
     });
     // 仅给一次性合成验收创建第二个本地 profile。复用 ST 的存储实现，在进程启动前写入。
@@ -540,6 +540,7 @@ async function startManagedStack(secrets, artifactsDir) {
     runChecked(process.execPath, [path.join(SCRIPTS, 'start-managed.mjs')], {
         cwd: INTEG,
         env: {
+            VC_ST_DEV_DIR: DEV_MANAGED,
             VC_ST_PORT: String(ST_PORT),
             VC_ST_GO_BASE_URL: GO_BASE,
             VC_ST_PLUGIN_SERVICE_TOKEN: secrets.serviceToken,

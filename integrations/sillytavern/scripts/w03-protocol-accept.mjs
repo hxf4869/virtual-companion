@@ -707,7 +707,15 @@ export async function sceneUi04Browser(ctx) {
             child.on('error', reject);
             child.on('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(`W04 浏览器子进程失败：${code ?? signal}`)));
         });
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+        const host = await fetch(`${rt.ST_BASE}/auth/`, { signal: AbortSignal.timeout(5000) });
+        if (!host.ok) throw new Error(`停止生成后宿主不可用：HTTP ${host.status}`);
+    } finally {
+        try {
+            await ctx.fixtureHttp.setOverride('*', null);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    }
 }
 
 

@@ -245,8 +245,10 @@ export async function sceneStoryOutbound(ctx) {
                 await page.waitForSelector('.vcms-overlay', { state: 'visible', timeout: 10000 });
             }
             await page.click('[data-action="tab"][data-tab="bindings"]');
+            const previousBinding = await page.locator('select[data-bind="binding.FOREGROUND_CHAT"]').inputValue();
             await page.selectOption('select[data-bind="binding.FOREGROUND_CHAT"]', optionValue);
-            await page.click('[data-action="save-bindings"]');
+            // 相同绑定没有草稿，也不会渲染保存按钮；下面仍严格回读绑定与原生投影。
+            if (previousBinding !== optionValue) await page.click('[data-action="save-bindings"]');
             await waitFor(async () => {
                 const purposes = await ctx.admin.listPurposes();
                 const row = purposes.json.find((item) => item.purpose === 'FOREGROUND_CHAT');

@@ -546,8 +546,9 @@ async function caseC05(page) {
     });
     ok = await step('C05.3 从 15 候选创建原生分支，与父聊天 8 候选隔离', ok, async () => {
         await swipeReady(page); await page.locator('#chat .last_mes .swipe_left').click(); await expectTrust(page, 15); await swipeReady(page);
+        await persistedTrust(page, complex.replyId, 15);
         complex.parent = await page.evaluate(() => SillyTavern.getContext().getCurrentChatId());
-        await runSlash(page, `/branch-create ${complex.replyId}`);
+        await runSlash(page, `/branch-create ${complex.replyId}`, { waitForCompletion: true });
         await poll(() => page.evaluate((id) => SillyTavern.getContext().getCurrentChatId() !== id, complex.parent), 20000, '分支打开');
         complex.branch = await page.evaluate(() => SillyTavern.getContext().getCurrentChatId());
         await expectTrust(page, 15); await persistedTrust(page, complex.replyId, 15);
@@ -730,7 +731,7 @@ async function caseC06(page) {
 }
 // ---------- C07 原生群聊 ----------
 const groupSnapshot = (page, from) => ctxEval(page, (n) => { const c = window.SillyTavern.getContext(); const s = document.querySelector('#mes_stop'); return { len: c.chat.length, idle: !s || getComputedStyle(s).display === 'none', added: c.chat.slice(n).map((m) => ({ is_user: m.is_user, name: m.name, len: m.mes.length, original_avatar: m.original_avatar ?? null })) }; }, from);
-const runSlash = (page, cmd) => ctxEval(page, (c) => { const ctx = window.SillyTavern.getContext(); const p = typeof ctx.executeSlashCommandsWithOptions === 'function' ? ctx.executeSlashCommandsWithOptions(c) : globalThis.TavernHelper.triggerSlash(c); Promise.resolve(p).catch((e) => { window.__vcSlashErr = String(e?.message || e); }); return true; }, cmd);
+const runSlash = (page, cmd, { waitForCompletion = false } = {}) => ctxEval(page, ({ cmd, waitForCompletion }) => { const ctx = window.SillyTavern.getContext(); const p = typeof ctx.executeSlashCommandsWithOptions === 'function' ? ctx.executeSlashCommandsWithOptions(cmd) : globalThis.TavernHelper.triggerSlash(cmd); if (waitForCompletion) return p; Promise.resolve(p).catch((e) => { window.__vcSlashErr = String(e?.message || e); }); return true; }, { cmd, waitForCompletion });
 const slashError = (page) => ctxEval(page, () => { const e = window.__vcSlashErr || null; window.__vcSlashErr = null; return e; });
 async function caseC07(page) {
     beginCase('C07', '原生群聊：指定发言、回复策略、停止和角色身份');
