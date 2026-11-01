@@ -332,13 +332,13 @@ export async function sceneF2ChatUi(ctx) {
         try {
             await swipeNext.waitFor({ state: 'visible', timeout: 30000 });
         } catch (error) {
-            const counter = await page.evaluate(() => (document.querySelector('#chat .swipes-counter')?.textContent || '').replace(/\u200b/g, ''));
+            const counter = await page.evaluate(() => (document.querySelector('#chat .mes[is_user=false] .swipes-counter')?.textContent || '').replace(/\u200b/g, ''));
             fail(new Error(`候选按钮未出现，计数=${counter || '无'} (${error.message.split('\n')[0]})`));
         }
         console.log('[f2-chat-ui] 滑动候选');
         await swipeNext.scrollIntoViewIfNeeded();
         await swipeNext.click();
-        await page.waitForFunction(() => /2\s*\/\s*2/.test((document.querySelector('#chat .swipes-counter')?.textContent || '').replace(/\u200b/g, '')));
+        await page.waitForFunction(() => /2\s*\/\s*2/.test((document.querySelector('#chat .mes[is_user=false] .swipes-counter')?.textContent || '').replace(/\u200b/g, '')));
 
         await ctx.fixtureHttp.setOverride('vc03m-chat', { text: '合成回复已收到。', chunks: 1, delay: { firstMs: 30, perChunkMs: 20 } });
         await page.waitForFunction(() => !document.querySelector('#send_form')?.classList.contains('no-connection'));
