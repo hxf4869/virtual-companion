@@ -29,7 +29,7 @@ export default {
 };
 </script>
 <style>
-.vc-tabbar { position: fixed; z-index: 20; left: var(--vc-space-md); right: var(--vc-space-md);
+.vc-tabbar { position: fixed; z-index: var(--vc-z-tabbar); left: var(--vc-space-md); right: var(--vc-space-md);
     bottom: calc(var(--vc-space-xs) + env(safe-area-inset-bottom)); height: var(--vc-tabbar-height);
     display: flex; align-items: center; padding: 0 var(--vc-space-xxs); border-radius: var(--vc-radius-pill); }
 .vc-tab { flex: 1; height: calc(var(--vc-tabbar-height) - var(--vc-space-xs)); display: flex; flex-direction: column; align-items: center; justify-content: center;

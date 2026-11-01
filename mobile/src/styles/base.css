@@ -20,3 +20,9 @@ page, body {
 @media (prefers-reduced-motion: reduce) {
     * { transition-duration: var(--vc-dur-quick) !important; animation: none !important; }
 }
+
+/* 引擎：同源隐藏 ST；ST 视图时全屏显示（ADR-0011 §2）。 */
+.vc-engine { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; pointer-events: none; z-index: -1; background: var(--vc-canvas); }
+.vc-engine.is-shown { opacity: 1; pointer-events: auto; z-index: var(--vc-z-stview); }
+/* uni-h5 自带样式会在 3 秒后用 body::after 预加载 DCloud CDN 图片；手机界面不发起跨域请求，关闭它。 */
+body::after { animation: none !important; background-image: none !important; }

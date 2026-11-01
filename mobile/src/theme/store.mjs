@@ -29,3 +29,12 @@ export function setGlobalTheme(id) { themeState.global = id; writeCache(globalTh
 export function setThemeMode(mode) { themeState.mode = mode; writeCache(globalThis.localStorage, themeState); apply(); }
 // 进入某角色的对话 / 通话 / 来电时调用；离开时传 undefined 恢复全局。
 export function setCharacterTheme(id, tint) { themeState.character = id; themeState.tint = tint; apply(); }
+
+// 引擎就绪后用服务器上的设置对齐（ST 扩展设置 vc_theme）；没有设置时保留本机缓存。
+export function syncThemeFromServer({ global, mode } = {}) {
+    let changed = false;
+    if (typeof global === 'string' && global !== themeState.global) { themeState.global = global; changed = true; }
+    if (typeof mode === 'string' && mode !== themeState.mode) { themeState.mode = mode; changed = true; }
+    if (changed) { writeCache(globalThis.localStorage, themeState); apply(); }
+    return changed;
+}

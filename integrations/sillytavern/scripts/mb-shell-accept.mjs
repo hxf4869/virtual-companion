@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { completeStOnboarding } from './lib/st-onboarding.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV = process.env.VC_W03_DEV_DIR || path.resolve(HERE, '../dev-managed');
@@ -32,10 +33,11 @@ export async function sceneMbShell(ctx) {
                 { name: 'vc_session', value: ctx.secrets.session.vcSession, url: ctx.w05.stBase },
                 { name: 'vc_csrf', value: ctx.secrets.session.vcCsrf, url: ctx.w05.stBase },
             ]);
+            await completeStOnboarding(bc, ctx.w05.stBase);
             const page = await bc.newPage();
             const foreign = [];
             const errors = [];
-            page.on('request', (r) => { const u = r.url(); if (/^https?:/.test(u) && new URL(u).origin !== origin) foreign.push(u.slice(0, 80)); });
+            page.on('request', (r) => { const u = r.url(); if (r.frame() === page.mainFrame() && /^https?:/.test(u) && new URL(u).origin !== origin) foreign.push(u.slice(0, 80)); });
             page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 120)));
             const resp = await page.goto(`${ctx.w05.stBase}/m/`);
             if (resp?.status() !== 200) throw new Error(`/m/ HTTP ${resp?.status()}`);
@@ -58,7 +60,7 @@ export async function sceneMbShell(ctx) {
             await page.waitForFunction(() => document.querySelector('.vc-large-title')?.textContent === '剧情');
             if (await page.locator('.vc-tab.is-on').count() !== 1) throw new Error('标签选中态不唯一');
             await page.locator('.vc-tab', { hasText: '聊天' }).click();
-            await page.waitForTimeout(800);
+            await page.waitForTimeout(3500); // 越过 uni-h5 的 3 秒远程预加载，确认已关闭
             await page.screenshot({ path: path.join(SHOTS, `shell-390-${scheme}.png`) });
             if (foreign.length) throw new Error(`页面发起了跨域请求：${[...new Set(foreign)].join(' | ')}`);
             if (errors.length) throw new Error(`页面错误：${errors.join(' | ')}`);
