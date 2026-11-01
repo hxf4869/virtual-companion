@@ -71,7 +71,15 @@ func TestMeterToolProbeRetriesCancelWithoutTheCallerContext(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
 	cancel()
 	var logs bytes.Buffer
-	server.log = slog.New(slog.NewTextHandler(&logs, nil))
+	// 日志时间中的秒数 / 毫秒可能包含 41；泄漏断言只检查业务日志内容。
+	server.log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return attr
+		},
+	}))
 	store.usageCancelFailures = 2
 	_ = server.meterToolProbe(parent, store, 9, 41, modelprovider.ToolProbeResult{Sent: true}, false)
 	if store.usageCancelTries != 3 || store.usageLastCancel != "UNKNOWN" || store.usageCancelSawCanceled ||
