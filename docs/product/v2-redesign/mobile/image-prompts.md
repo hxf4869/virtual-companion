@@ -33,10 +33,11 @@ soft depth shadow; content surfaces are calm solid cards. Simplified Chinese UI 
 Single accent color Apple blue #0071E3 only for interactive elements and the user's own bubbles.
 Status = small colored dot + text. Thin rounded line icons (Lucide style). Touch targets at least 44px.
 Root pages: large title at top-left, round avatar button at top-right (opens settings), and a floating glass capsule
-tab bar at the bottom with 5 tabs with icons and labels: 聊天, 角色, 记忆, 陪伴, 剧情. The tab bar is hidden inside
-a conversation. Respect the status bar (time 9:41, no carrier name) and the home indicator safe area.
+tab bar at the bottom with 5 tabs with icons and labels, icons exactly: 聊天 = speech bubble, 角色 = person,
+记忆 = open book, 陪伴 = heart, 剧情 = clapperboard. The tab bar is hidden inside a conversation.
+Pages without a background block use only the soft aurora, never an illustrated picture. Respect the status bar (time 9:41, no carrier name) and the home indicator safe area.
 No page subtitles or explanatory paragraphs; layout explains itself.
-Do NOT draw: read receipts, "online" status, message reactions, ads, VIP, coins, follower counts, real brand logos.
+Do NOT draw: read receipts, "online" status or presence dots on avatars, message reactions, ads, VIP, coins, follower counts, real brand logos.
 Realistic product screenshot, pixel-aligned, no device frame, no watermark, no lorem ipsum.
 Original anime-style characters only (no real people).
 ```
@@ -54,14 +55,16 @@ no picture. Character bubbles are light glass (white 72% opacity).
 
 ```text
 Background: a soft, slightly blurred anime-style illustrated scene behind the conversation (for 小满: a sunlit room by a
-window with sheer curtains, cherry blossoms outside, warm morning light), with a gentle top and bottom fade so the
+window with sheer curtains, cherry blossoms outside, warm morning light). The scene itself is environment only: no people, no character
+figure or face in the scene (avatars still show the character as usual); low contrast and softly blurred, with a gentle top and bottom fade so the
 navigation and composer stay readable. Character bubbles are light glass (white 78% opacity) over the scene.
 ```
 
 ## 深色块（选定后追加）
 
 ```text
-Dark mode: near-black base #07070A, aurora glows brighter (scene illustration, if any, dimmed to dusk tones),
+Dark mode (this whole screen is the DARK version, overriding any light base color above): near-black base #07070A,
+aurora glows brighter (scene illustration, if any, becomes an evening / night version with dim warm lamps),
 glass controls smoky dark gray, character bubbles rgba(255,255,255,0.10) with off-white text #F5F5F7,
 user bubbles Apple blue, secondary text #B2B2B7, hairlines light at 8% opacity.
 ```
