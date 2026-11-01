@@ -63,3 +63,8 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-role:nth-ch
 /* 无模板的实例不是角色卡：移出网格，成为带标题的分组（标题取自既有 aria-label）。 */
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-characters-list .vc-roles + .vc-group { margin-top: var(--vc-space-lg); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-characters-list .vc-roles + .vc-group::before { content: attr(aria-label); display: block; padding: 16px 0 8px; font-size: var(--vc-fs-headline); font-weight: 600; color: var(--vc-ink); }
+
+/* UX-22 QA P2-17：详情面板里的文字型控件（展开 / 正在编辑 / 创建实例）与分组正文同一缩进（分组内边距 16）。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-character-detail .vc-card-description .vc-btn-text { min-width:0; padding-inline:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-character-detail .vc-cell .vc-instance-badge { padding-inline:0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-character-detail .vc-instance-create { min-width:0; padding-inline:0; margin-left:var(--vc-space-md); }

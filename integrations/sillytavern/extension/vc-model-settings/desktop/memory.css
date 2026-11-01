@@ -66,8 +66,10 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-group-title { fo
 
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory > .vc-screen:first-child { position:relative; inset:auto; height:100%; background:transparent; }
 
-/* UX-22 R8：内容列正好等于筛选栏 + 列表（240 + 12 + 720），标题、筛选与列表同一左缘；搜索与列表同宽。 */
+/* UX-22 R8：标题、筛选与列表同一左缘；搜索与列表同宽。
+   UX-22 QA P2-17：左缘与陪伴 / 剧情共用 1052 盒（陪伴双栏宽度）的左缘：列宽仍是 240 + 12 + 720，在盒内左对齐，三页标题与内容左缘一致。 */
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory > .vc-column { max-width:972px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory > .vc-column { margin:0 auto 0 max(0px, calc((100% - 1052px) / 2)); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-search { max-width:none; background:var(--vc-raised); border:.5px solid var(--vc-raised-edge); }
 /* 状态筛选沿用设置分类行样式：无底色轨道，选中为 select-fill。 */
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-segment { min-height:0; padding:0; background:transparent; border-radius:0; gap:2px; }
@@ -77,3 +79,8 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-segment > [aria
 /* 列表在面板内滚动时，底部渐隐到面板边缘，不在卡片中间硬切。 */
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="memory"]:has(.vc-desktop-memory) > .vc-shell-scroll { padding-bottom:0; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory { padding-bottom:calc(var(--vc-space-lg) + var(--vc-space-sm)); scrollbar-width:thin; -webkit-mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); }
+
+/* UX-22 QA P2-15：详情弹窗。来源 / 修订历史两张卡之间留 12px；纠正时操作区常驻在滚动区底部，文本框不被弹窗底边切掉。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-group-title + .vc-group { margin-bottom:var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor form[data-form="edit"] { overflow:visible; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor form[data-form="edit"] .vc-memory-actions { position:sticky; bottom:calc(-1 * var(--vc-space-lg)); z-index:1; margin-top:var(--vc-space-xs); padding:var(--vc-space-sm) var(--vc-space-md); background:var(--vc-group); border-radius:0 0 var(--vc-radius-md) var(--vc-radius-md); box-shadow:0 -.5px 0 var(--vc-raised-edge); }

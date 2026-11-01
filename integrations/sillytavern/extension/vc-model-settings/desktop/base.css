@@ -236,3 +236,6 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-status-ok { color: var(--vc-ink-2)
 
 /* 桌面统一细滚动条，颜色随明暗；不出现系统默认粗滚动条。 */
 html[data-vc-layout="desktop"] body.vc-ui * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--vc-ink) 18%, transparent) transparent; }
+
+/* UX-22 QA P2-9：复选框已用背景图画白色对勾；宿主 style.css 的 ::before 对勾（黑）不再叠在上面。 */
+html[data-vc-layout="desktop"] body.vc-ui input[type="checkbox"]::before { content: none; }

@@ -26,7 +26,8 @@ export function showToast(message, { type = 'ok', icon: iconName, root, duration
     if (existing) { clearTimeout(existing.expire); clearTimeout(existing.remove); }
     if (doc.defaultView?.innerWidth >= 744) {
         const panel = [...doc.querySelectorAll('.vcms-panel, [data-vc-content-panel], .vc-shell-page')].findLast((node) => node.getBoundingClientRect().width > 0);
-        const header = panel?.querySelector('.vcms-header, header, .vc-navbar');
+        // 页面自带标题栏被隐藏时（陪伴 / 记忆用页内标题），取第一个真正可见的标题栏，避免提示条贴到窗口顶部。
+        const header = panel && [...panel.querySelectorAll('.vcms-header, header, .vc-navbar')].find((node) => node.getBoundingClientRect().height > 0);
         const rect = panel?.getBoundingClientRect();
         if (rect) {
             toast.style.left = `${rect.left + rect.width / 2}px`;

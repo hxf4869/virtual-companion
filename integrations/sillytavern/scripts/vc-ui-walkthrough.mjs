@@ -747,6 +747,28 @@ export async function sceneVcUiWalkthrough(ctx) {
                 await go('inbox');
                 await page.waitForSelector('[data-vc-page="inbox"]', { timeout: 15000 });
                 await record(page, viewport.width, theme, 'inbox', bucket);
+                // UX-22 QA P1-7：陪伴页有未保存修改时切换目的地必须先确认，默认焦点「继续编辑」；放弃后回来恢复已保存值。
+                if (viewport.width >= 744 && theme === 'light') {
+                    const quiet = page.locator('[data-vc-page="inbox"] input[data-field="quietHoursStart"]:visible').first();
+                    if (await quiet.count()) {
+                        const saved = await quiet.inputValue();
+                        await quiet.fill(saved === '21:15' ? '21:30' : '21:15');
+                        const draft = await quiet.inputValue();
+                        await page.locator('#vc-shell [data-nav="characters"]:visible').first().click();
+                        await page.locator('.vc-alert').waitFor();
+                        assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), '继续编辑', '陪伴离开确认默认焦点');
+                        await page.keyboard.press('Escape');
+                        await page.locator('.vc-alert').waitFor({ state: 'detached' });
+                        assert.equal(await page.evaluate(() => document.querySelector('#vc-shell')?.dataset.destination), 'inbox', '继续编辑后仍在陪伴页');
+                        assert.equal(await quiet.inputValue(), draft, '继续编辑后草稿保留');
+                        await page.locator('#vc-shell [data-nav="characters"]:visible').first().click();
+                        await page.locator('.vc-alert [data-vc-ok]').click();
+                        await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.destination === 'characters', null, { timeout: 8000 });
+                        await go('inbox');
+                        await page.waitForSelector('[data-vc-page="inbox"] input[data-field="quietHoursStart"]', { timeout: 15000 });
+                        assert.equal(await page.locator('[data-vc-page="inbox"] input[data-field="quietHoursStart"]:visible').first().inputValue(), saved, '放弃后恢复已保存的静默开始时间');
+                    } else notes.push(`${viewport.width} ${theme} inbox-guard：没有静默时段输入`);
+                }
                 const channel = page.locator('[data-vc-page="inbox"] [data-action="open-channel"]:visible').first();
                 if (await channel.count()) {
                     await channel.click();

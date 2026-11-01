@@ -219,6 +219,34 @@ test('保存主动策略不带版本号；静默时段缺一时不发出请求',
     page.close();
 });
 
+test('静默时段时间或时区不合法时给出与原因一致的提示，不发出请求（UX-22 QA P2-16）', async () => {
+    const page = await opened();
+    calls = [];
+    page.setPolicy({ quietHoursStart: '25:99', quietHoursEnd: '07:00', quietHoursTimezone: 'Asia/Shanghai' });
+    await page.savePolicy();
+    assert.equal(calls.length, 0);
+    assert.match(html(page), /时间格式不正确/);
+    assert.doesNotMatch(html(page), /需要同时填写/);
+    page.setPolicy({ quietHoursStart: '21:00', quietHoursEnd: '07:00', quietHoursTimezone: '中国 标准' });
+    await page.savePolicy();
+    assert.equal(calls.length, 0);
+    assert.match(html(page), /时区格式不正确/);
+    page.close();
+});
+
+test('保存成功通过 onPolicySaved 通知页面一次（提示条由页面挂载层显示）', async () => {
+    let saved = 0;
+    const page = createInboxPage({ onPolicySaved: () => { saved += 1; } });
+    await page.open();
+    page.setPolicy({ quietHoursStart: '21:00', quietHoursEnd: '07:00', quietHoursTimezone: 'Asia/Shanghai', dailyLimit: 2, recentInteractionMinutes: 120, allowedModes: ['COMPANION'], offlineCapable: false, enabled: true });
+    await page.savePolicy();
+    assert.equal(saved, 1);
+    page.setPolicy({ quietHoursStart: '25:99' });
+    await page.savePolicy();
+    assert.equal(saved, 1);
+    page.close();
+});
+
 test('版本冲突保留草稿，不能强制覆盖', async () => {
     const page = await opened();
     page.setPolicy({ quietHoursStart: '21:00', quietHoursEnd: '07:00', quietHoursTimezone: 'Asia/Shanghai' });

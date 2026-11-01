@@ -31,3 +31,11 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="story"] .vc-
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-story .vc-nav-title { justify-content:flex-start; }
 
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-story .vc-nav-title { flex-direction:row; align-items:center; }
+
+/* UX-22 QA P2-17：案件页标题与内容列的左缘与记忆 / 陪伴一致——1052 盒居中，盒内左对齐，操作靠 720 内容列右缘。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-story .vc-navbar { --vc-story-left: max(24px, calc((100% - 1052px) / 2)); width:min(var(--vc-read),calc(100% - var(--vc-story-left) - 24px)); margin:0 0 0 var(--vc-story-left); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-story .vc-story { width:min(var(--vc-read),100%); margin:0 0 0 max(0px, calc((100% - 1052px) / 2)); }
+/* 舞台底色：壳层的 `#vc-shell[data-cover="story"]` 规则带 id，上面的同类规则压不过；改回面板玻璃，让极光透出。舞台动画不动。 */
+html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-cover="story"] .vc-story-tab[data-view="stage"] { background:transparent; }
+/* 舞台输入坞：no-blur 下 vc-ui.css 给 .vc-glass 加了 !important 的 22px 模糊；舞台改成玻璃后它会在极光上显出一块矩形，关掉（坞本身无底色）。 */
+html[data-vc-layout="desktop"] body.vc-ui.no-blur .vc-desktop-story-stage .vc-dock.vc-glass { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; } /* 压过 vc-ui.css 的 .no-blur .vc-glass !important */

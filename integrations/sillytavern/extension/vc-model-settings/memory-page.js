@@ -457,7 +457,9 @@ export function renderMemoryTab(s) {
     } else if (!(s.relationships || []).length) {
         results = emptyBlock('brain', '还没有角色实例，请先在聊天中绑定角色。', 'retry-list', '重试');
     } else if (!(s.items || []).length) {
-        results = `<div class="vc-empty">${icon('brain', { size: 32 })}<p class="vc-memory-empty" role="status">${MEMORY_EMPTY_TAB}</p>${tabBtn('clear-filters', '清除筛选', { fill: true })}</div>`;
+        // 桌面无筛选时没有可清除的条件，只给图标与一句话（DESIGN 16.5）；手机保持原样。
+        const filtered = Object.values(s.filters || {}).some((value) => String(value ?? '').trim() !== '');
+        results = `<div class="vc-empty">${icon('brain', { size: 32 })}<p class="vc-memory-empty" role="status">${MEMORY_EMPTY_TAB}</p>${filtered || !desktopLayout() ? tabBtn('clear-filters', '清除筛选', { fill: true }) : ''}</div>`;
     } else {
         const rows = s.items.map((item) => {
             const rel = (s.relationships || []).find((row) => String(row.relationshipId) === String(item.relationshipId));
@@ -823,6 +825,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
         if (action === 'edit') {
             page.edit();
             detailEl?.querySelector('#vc-memory-draft')?.focus();
+            if (desktopLayout()) detailEl?.querySelector('[data-form="edit"]')?.scrollIntoView({ block: 'nearest' });
         }
         if (action === 'cancel-edit') page.cancelEdit();
         if (action === 'cancel-reauth') page.cancelReauth();

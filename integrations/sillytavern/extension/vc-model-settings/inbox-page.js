@@ -1,7 +1,8 @@
 // UI-P04 主动陪伴 / 通知。跟进、静默、角色开关、inbox 与邮箱 / 飞书状态。
 // 凭据只在本次输入里存在，不回显、不写 localStorage。渠道接受不写成手机已收到。
 import { ApiError, captureSessionContext, fetchRelationships, reauth, storyRequest } from './api.js';
-import { confirmAlert } from './ui/alert.js';
+import { confirmAlert, confirmDiscard } from './ui/alert.js';
+import { showToast } from './ui/toast.js';
 import { bindSegment } from './ui/controls.js';
 import { releaseSegment } from './memory-page.js';
 
@@ -305,9 +306,8 @@ function validatePolicy(draft) {
     const any = quiet.some((item) => item);
     const all = quiet.every((item) => item);
     if (any && !all) return '静默时段需要同时填写开始、结束和时区。';
-    if (all && (!TIME.test(body.quietHoursStart) || !TIME.test(body.quietHoursEnd) || !ZONE.test(body.quietHoursTimezone))) {
-        return '静默时段需要同时填写开始、结束和时区。';
-    }
+    if (all && (!TIME.test(body.quietHoursStart) || !TIME.test(body.quietHoursEnd))) return '时间格式不正确';
+    if (all && !ZONE.test(body.quietHoursTimezone)) return '时区格式不正确';
     if (body.dailyLimit === null || body.recentInteractionMinutes === null || body.allowedModes.length === 0) return '请检查每日上限和间隔。';
     if (draft.supportsMode && !PROACTIVE_MODES.includes(draft.mode)) return '请检查模式。';
     if (draft.supportsCheckIn && body.checkInAfterMinutes === null) return '请检查多久没聊。';
@@ -486,7 +486,7 @@ function freshState() {
     };
 }
 
-export function createInboxPage({ onChange = () => {}, onOpenConversation = () => {} } = {}) {
+export function createInboxPage({ onChange = () => {}, onOpenConversation = () => {}, onPolicySaved = () => {} } = {}) {
     const state = freshState();
     let epoch = 0;
     const emit = () => onChange(state);
@@ -655,6 +655,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
                 noteInboxPolicy(state);
                 state.policyConflict = false;
                 state.policyStash = null;
+                onPolicySaved();
             } catch (error) {
                 if (alive(ticket)) failWrite(error, 'policy');
             } finally {
@@ -1315,6 +1316,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
         onChange(next) {
             paint(next);
         },
+        onPolicySaved() { if (!stopped) showToast('已保存', { type: 'ok' }); },
     });
 
     function paint(state) {
@@ -1490,6 +1492,21 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
     container.addEventListener('change', (event) => {
         if (event.target?.dataset?.field === 'character') void page.selectRelationship(event.target.value);
     }, { signal });
+    // 离开守卫（DESIGN 16.7.1）：与设置 › 模型页相同，在外壳捕获阶段拦截目的地切换，确认后放行同一次点击。
+    const shell = container.closest('#vc-shell');
+    let leaveConfirmed = false;
+    shell?.addEventListener('click', async (event) => {
+        const target = event.target?.closest?.('[data-nav],[data-settings]');
+        if (!target || leaveConfirmed || stopped || shell.dataset.settings === 'page') return;
+        if (shell.dataset.destination !== 'inbox' || target.getAttribute('data-nav') === 'inbox') return;
+        page.applyForm(readForm(container));
+        if (!inboxPolicyDirty(page.state)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!await confirmDiscard({ opener: target })) return;
+        leaveConfirmed = true;
+        try { target.click(); } finally { leaveConfirmed = false; }
+    }, { capture: true, signal });
     container.addEventListener('click', async (event) => {
         const target = event.target.closest('button');
         if (!target || !container.contains(target) || target.disabled) return;

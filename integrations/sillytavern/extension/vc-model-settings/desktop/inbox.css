@@ -64,3 +64,22 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-empty > .vc-icon
  html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="inbox"]:has(.vc-desktop-inbox) > .vc-shell-scroll { padding-bottom:0; }
  html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox { padding-bottom:calc(var(--vc-space-lg) + var(--vc-space-sm)); scrollbar-width:thin; -webkit-mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); }
 }
+
+/* UX-22 QA P1-9：模式分段控件。轨道 rgba(118,118,128,.12)，白色滑块（深色 #636366）+ 阴影；高 32。
+   滑块以伪元素内缩 2px，选中项文字仍在其上；不改 DOM，手机不受影响。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes { padding-bottom: 12px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed] { position: relative; isolation: isolate; min-height: 32px; height: 32px; border-radius: 0; background: rgba(118,118,128,.12); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-group-title + .vc-cell[aria-pressed] { border-radius: 10px 0 0 10px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed]:last-child { border-radius: 0 10px 10px 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed="true"] { font-weight: 600; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-proactive-modes .vc-cell[aria-pressed="true"]::before { display: block; content: ''; position: absolute; inset: 2px; height: auto; z-index: -1; border-radius: 8px; background: var(--vc-thumb); box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+
+/* UX-22 QA P2-16：窄桌面（<1180）与双栏同构：标题栏固定，内容区自己滚动并向底部渐隐；
+   滚动条不再穿过标题栏，也不被面板圆角裁切；渐隐区由内容区的底部内边距让出，最后一张卡完整可读。 */
+@media(max-width:1179px) {
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox { overflow:hidden; padding-bottom:0; -webkit-mask-image:none; mask-image:none; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox > .vc-column { display:flex; flex-direction:column; height:100%; }
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace :is(.vc-inbox-activity, .vc-inbox-quiet, .vc-inbox-preferences > section, .vc-inbox-preferences > section[aria-label="主动设置"] > *) { flex:none; } /* 工作区固定高度后，列内各块不随之压缩 */
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-preferences > section[aria-label="主动设置"] > .vc-footnote { width:auto; } /* 100% 宽 + 左右外距会横向溢出 */
+ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-inbox .vc-inbox-workspace { flex:1; min-height:0; overflow-x:hidden; overflow-y:auto; scrollbar-width:thin; padding-bottom:calc(var(--vc-space-lg) + var(--vc-space-sm)); -webkit-mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); mask-image:linear-gradient(to bottom,var(--vc-ink) calc(100% - var(--vc-space-lg) - var(--vc-space-sm)),transparent); }
+}

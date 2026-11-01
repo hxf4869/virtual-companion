@@ -178,3 +178,44 @@ html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :
   :is(i.menu_button, .menu_button:has(> i:only-child)) { width: 40px; min-width: 40px; padding: 0; border-radius: var(--vc-radius-pill) !important; } /* 同上 */
   .menu_button:not(i.menu_button, :has(> i:only-child)) { padding: 0 20px; }
 }
+
+/* UX-22 QA P2-9 / P2-14：模型页。
+   · 内容区与其他设置页同为面板玻璃：分组、表格外层统一用 --vc-raised（第 16.1 节内卡），不再是不透明白 / 黑。
+   · `.vcms-layout` 在 `.vcms-body` 里取了 100% 高度，内容更高时下一块（本机模型）压在用途表最后一行上；改为随内容。
+   · 用途表三列（用途 / 模型配置 + 启用 / 状态）同一行内垂直居中，选择框与复选框按 16.4。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-layout { height: auto; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(.vcms-local .vc-group, .vcms-usage-cards.vc-group) { background: var(--vc-raised); border: .5px solid var(--vc-raised-edge); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-table-wrap { background: transparent; border-radius: 0; overflow: visible; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table { display: block; min-width: 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(thead, tbody) { display: block; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table tr { display: grid; grid-template-columns: 200px minmax(0, 1fr) 96px; align-items: center; column-gap: var(--vc-space-xs); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(th, td) { display: block; width: auto; min-width: 0; padding: 4px 0; border-bottom: 0; box-sizing: border-box; background: transparent; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table tbody tr { min-height: 52px; border-bottom: .5px solid var(--vc-raised-edge); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table tbody tr:last-child { border-bottom: 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table th { font-size: var(--vc-fs-footnote); color: var(--vc-ink-2); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-bindings-table :is(th, td):nth-child(n+4) { display: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root td.vcms-binding-select { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--vc-space-xs) var(--vc-space-sm); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select > select { flex: 0 1 240px; width: 240px; min-width: 160px; max-width: 100%; margin: 0; }
+/* 16.4 控件：底 --vc-raised（浅 .72 白 / 深 .08 白）、0.5px raised-edge、圆角 10。settings-pages.css 对模型页全部输入框用 !important 写了灰底 / 无描边 / 圆角 12，只能同级 !important 压过。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(input:not([type="radio"], [type="checkbox"], [type="range"]), select, textarea) { background: var(--vc-raised) !important; border: .5px solid var(--vc-raised-edge) !important; border-radius: 10px !important; } /* 压过 settings-pages.css 的 --vc-fill / border:0 / radius !important */
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check { min-height: 36px; gap: var(--vc-space-xs); font-size: var(--vc-fs-body); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-select .vcms-check input { width: 18px; height: 18px; margin: 0; border-radius: 5px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root td.vcms-binding-purpose { display: block; min-width: 0; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root .vcms-binding-status { align-self: center; }
+
+/* UX-22 QA P2-10 / P2-11 / P2-12：酒馆抽屉补丁（同上，只作用于设置内容区里的九个抽屉）。 */
+html[data-vc-layout="desktop"] body.vc-ui:has(.vc-settings-shell[data-drawer]) :is(#left-nav-panel, #rm_api_block, #AdvancedFormatting, #WorldInfo, #user-settings-block, #Backgrounds, #rm_extensions_block, #PersonaManagement, #right-nav-panel).vc-drawer-page {
+  /* 滑杆：宿主 range 带 filter 变暗、内阴影与 15px 灰钮；统一为 vc-ui.css 的 4px 轨道 + 圆钮 + 已填比例。 */
+  input[type="range"] { filter: none !important; box-shadow: none !important; opacity: 1; cursor: pointer; transition: none; } /* 压过宿主 style.css 的 brightness(.75) 与 inset 阴影；drawers.css 的 !important 同源 */
+  /* 抽屉标题栏的返回钮：16.4 圆形按钮 40px，只留图标（可访问名称已在 aria-label）。 */
+  > [data-vc-drawer-nav] [data-vc-drawer-back] { min-width: 40px; width: 40px; padding: 0; border-radius: var(--vc-radius-pill); color: var(--vc-ink); }
+  > [data-vc-drawer-nav] [data-vc-drawer-back] > span { display: none; }
+  > [data-vc-drawer-nav] [data-vc-drawer-back] .vc-icon { width: 20px; height: 20px; }
+  /* 标题栏下方至少留 16px：首个内容行不再贴着标题栏上沿（原规则只作用于紧邻的隐藏拖拽柄）。 */
+  > [data-vc-drawer-nav] { margin-bottom: var(--vc-space-md); }
+  /* 白色内卡里的控件需要可见边缘：raised 底的行里改用分隔线色（--vc-raised-edge 在白卡上近乎透明）。 */
+  :is(.range-block, .inline-drawer, .flexFlowColumn) :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"], [type="color"], [type="button"], [type="submit"], .select2-search__field), select, textarea) { border-color: var(--vc-separator) !important; background: var(--vc-raised) !important; } /* 压过本文件上方的 raised-edge 与宿主透明底 */
+}
+
+/* UX-22 QA P2-14：分组自带 16px 内边距，标题不再叠加 16px 外距（本机模型 / 用量与用途表同一左缘）。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-settings-content #vc-model-settings-root :is(.vcms-local .vcms-desktop-group-title, .vcms-usage > .vcms-usage-head, .vcms-usage > .vcms-usage-note) { margin-inline: 0; }
