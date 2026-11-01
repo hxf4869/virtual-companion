@@ -239,3 +239,32 @@ html[data-vc-layout="desktop"] body.vc-ui * { scrollbar-width: thin; scrollbar-c
 
 /* UX-22 QA P2-9：复选框已用背景图画白色对勾；宿主 style.css 的 ::before 对勾（黑）不再叠在上面。 */
 html[data-vc-layout="desktop"] body.vc-ui input[type="checkbox"]::before { content: none; }
+
+/* 主题「自动」时没有 data-vc-theme，随系统深色同样套用上面的深色规则。 */
+@media (prefers-color-scheme: dark) {
+  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui {
+    --vc-desk-base: #07070a;
+    --vc-aurora-alpha: .85;
+    --vc-grain-alpha: .04;
+    --vc-glass-1: rgba(64,64,76,.36);
+    --vc-glass-2: rgba(36,36,44,.44);
+    --vc-raised: rgba(255,255,255,.08);
+    --vc-glass-3: rgba(38,38,44,.82);
+    --vc-rim: rgba(255,255,255,.10);
+    --vc-rim-outer: rgba(255,255,255,.06);
+    --vc-hi: rgba(255,255,255,.10);
+    --vc-raised-edge: rgba(255,255,255,.08);
+    --vc-ink-2: #b2b2b7;
+    --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(0,0,0,.45);
+    --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(0,0,0,.60);
+    --vc-select-fill: rgba(41,151,255,.20);
+    --vc-hover-fill: rgba(255,255,255,.06);
+    --vc-scrim-desk: rgba(0,0,0,.50);
+  }
+  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui [data-vc-light]::after { background: radial-gradient(160px at var(--mx) var(--my),rgba(255,255,255,.06),transparent); }
+  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui .vc-side-link[aria-current="page"] .vc-side-label { color: var(--vc-ink); /* 深色下 accent 蓝字落在暖色光斑上不足 3:1 */ }
+  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]),select,textarea) { background: var(--vc-raised); }
+}
+@media (prefers-color-scheme: dark) and (prefers-reduced-transparency: reduce) {
+  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui { --vc-glass-1:#1c1c20; --vc-glass-2:#1c1c20; --vc-glass-3:#1c1c20; }
+}

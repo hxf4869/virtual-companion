@@ -156,6 +156,33 @@ html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-r
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_text > :last-child { margin-bottom: 0; }
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .mes_text { color: var(--vc-on-accent); }
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .mes_text a { color: inherit; text-decoration: underline; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_text { padding: 0; /* 去掉宿主为右侧按钮留的空 */ }
+/* 角色单段回复：气泡画在 .mes_text 上，推理胶囊、语音条留在气泡外（与分段回复一致） */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_user="true"]):not([is_system="true"]):not(.vc-segmented) > .mes_block {
+ display: flex; flex-direction: column; align-items: flex-start; gap: var(--vc-space-xxs);
+ padding: 0; background: none; box-shadow: none; border-radius: 0;
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_user="true"]):not([is_system="true"]):not(.vc-segmented):not(:has(.edit_textarea)) .mes_text {
+ box-sizing: border-box; width: fit-content; max-width: 100%; padding: 10px 14px;
+ background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge);
+ border-radius: var(--vc-jt) var(--vc-bub-r) var(--vc-bub-r) var(--vc-jb);
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_reasoning_details { margin: 0; max-width: var(--vc-bub-max); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_reasoning_summary { margin-right: 0; /* 宿主负外边距会把箭头推出胶囊 */ }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_reasoning_header { white-space: nowrap; }
+/* 语音回复：语音条与「转文字」同一行，转出的文字另起一个气泡 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice { display: grid; grid-template-columns: auto 1fr; align-items: center; justify-items: start; width: max-content; max-width: 100%; gap: var(--vc-space-xxs) var(--vc-space-md); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice { grid-template-columns: 1fr auto; justify-items: end; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-bar { grid-column: 2; grid-row: 1; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .vc-voice-transcribe { grid-column: 1; grid-row: 1; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-bar { width: auto; max-width: none; /* 百分比宽在收缩容器里无效，⑩ 重做按时长定宽 */ }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-transcribe { white-space: nowrap; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich) .vc-voice-text {
+ grid-column: 1 / -1; box-sizing: border-box; padding: 10px 14px; background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge);
+ border-radius: var(--vc-bub-r); font-size: var(--vc-fs-bubble); line-height: 1.5;
+}
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_reasoning_header .mes_reasoning_arrow { line-height: 1; transform: none; }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_reasoning_details:not([open]) .mes_reasoning_header .mes_reasoning_arrow { transform: rotate(180deg); }
 /* 分段回复：每段一个气泡，同一条消息内按组内处理 */
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not(.vc-rich):not([is_user="true"]):not([is_system="true"]) > .mes_block { padding: 0 !important; /* 压过分段容器的 !important */ background: none !important; box-shadow: none; border-radius: 0 !important; max-width: none !important; }
 html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not(.vc-rich) .vc-segs { gap: var(--vc-space-xxs); }

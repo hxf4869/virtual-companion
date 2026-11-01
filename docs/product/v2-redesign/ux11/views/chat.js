@@ -75,16 +75,18 @@ export async function check({ params, source }) {
     if (rows[7].dataset.vcPos || !rows[7].classList.contains('vc-rich')) throw Error('图片消息应按铺开呈现');
     if (!rows[9].dataset.vcFoot.endsWith('· 已发送') || rows.filter((mes) => mes.dataset.vcFoot?.includes('已发送')).length !== 1) throw Error('「已发送」只在最后一条用户消息组尾');
     if (chatVisible()) {
-        const radius = (mes) => ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map((corner) => getComputedStyle(mes.querySelector('.mes_block'))[`border${corner}Radius`]).join(' ');
+        // 角色单段回复的气泡画在 .mes_text（推理胶囊、语音条在气泡外）；用户与分段回复仍是 .mes_block / .vc-seg。
+        const bubble = (mes) => mes.querySelector(mes.classList.contains('vc-segmented') ? '.vc-seg' : mes.getAttribute('is_user') === 'true' ? '.mes_block' : '.mes_text');
+        const radius = (mes) => ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map((corner) => getComputedStyle(bubble(mes))[`border${corner}Radius`]).join(' ');
         if (radius(rows[0]) !== '18px 18px 18px 6px' || radius(rows[1]) !== '6px 18px 18px 18px') throw Error(`角色气泡圆角 ${radius(rows[0])} / ${radius(rows[1])}`);
         if (radius(rows[8]) !== '18px 18px 6px 18px') throw Error(`用户气泡圆角 ${radius(rows[8])}`);
-        const gapBetween = (a, b) => rows[b].querySelector('.mes_block').getBoundingClientRect().top - rows[a].querySelector('.mes_block').getBoundingClientRect().bottom;
+        const gapBetween = (a, b) => bubble(rows[b]).getBoundingClientRect().top - bubble(rows[a]).getBoundingClientRect().bottom;
         if (gapBetween(4, 5) !== 4) throw Error(`组内间距 ${gapBetween(4, 5)}`);
         const tailAvatar = rows[1].querySelector('.avatar'), midAvatar = rows[0].querySelector('.avatar');
         if (tailAvatar.offsetWidth !== 32 || midAvatar.offsetWidth !== 0) throw Error('头像只在组末气泡旁，宽 32');
-        const width = rows[4].querySelector('.mes_block').getBoundingClientRect().width;
+        const width = bubble(rows[4]).getBoundingClientRect().width;
         if (width > 540 + 1) throw Error(`气泡宽度 ${width}`);
-        if (getComputedStyle(rows[8].querySelector('.mes_block')).backgroundColor === getComputedStyle(rows[4].querySelector('.mes_block')).backgroundColor) throw Error('用户气泡应为强调色');
+        if (getComputedStyle(bubble(rows[8])).backgroundColor === getComputedStyle(bubble(rows[4])).backgroundColor) throw Error('用户气泡应为强调色');
         if (getComputedStyle(rows[1], '::after').content !== '"22:14"') throw Error(`组尾时间 ${getComputedStyle(rows[1], '::after').content}`);
         if (getComputedStyle(rows[0], '::after').opacity !== '0') throw Error('组内时间应只在悬停时显示');
     }
