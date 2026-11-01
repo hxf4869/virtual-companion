@@ -159,6 +159,8 @@ async function closeHostChrome(page) {
     for (let i = 0; i < 8; i += 1) {
         const acted = await page.evaluate(() => {
             let hit = false;
+            const panelClose = document.querySelector('.vc-desk-character:not([hidden]) .vc-desk-character-close');
+            if (panelClose) { panelClose.click(); hit = true; }
             for (const toggle of document.querySelectorAll('.drawer-toggle')) {
                 if (!toggle.parentElement?.querySelector('.drawer-content.openDrawer')) continue;
                 toggle.click();

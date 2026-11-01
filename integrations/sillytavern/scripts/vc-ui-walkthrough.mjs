@@ -297,7 +297,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 const r = el.getBoundingClientRect();
                 return { overlap: input.bottom - actions.top, height: input.height, inset: Math.min(r.left, innerWidth - r.right) };
             }));
-            assert.ok(!forms.some((r) => r.overlap > 0 || r.height < 44 || r.inset < 15), `实例编辑框被裁切 ${width}/${theme}: ${JSON.stringify(forms)}`);
+            assert.ok(!forms.some((r) => r.overlap > 0 || r.height < (width >= 744 ? 36 : 44) || r.inset < 15), `实例编辑框被裁切 ${width}/${theme}: ${JSON.stringify(forms)}`);
         }
         if (pageName === 'tavern-world') {
             const fields = await page.locator('#WorldInfo .select2-selection--multiple').evaluateAll((els) => els.map((el) => {

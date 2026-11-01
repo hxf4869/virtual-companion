@@ -7,6 +7,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters.is-detail { gri
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters > .vc-screen { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); border: 1px solid var(--vc-rim); border-radius: var(--vc-radius-xl); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); overflow: hidden; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters > [hidden] { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-navbar { position: static; min-height: 64px; height: 64px; padding: 0 24px; flex: none; background: transparent; box-shadow: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters.is-shell-list .vc-characters-list > .vc-navbar { display:flex; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-navbar::before { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-nav-title { position: static; transform: none; opacity: 1; font-size: var(--vc-fs-title-1); font-weight: 700; min-width: 0; max-width: none; flex: 1; text-align: left; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-navbar .vc-nav-spacer { display: none; }

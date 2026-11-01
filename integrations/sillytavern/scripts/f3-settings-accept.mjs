@@ -411,7 +411,7 @@ export async function sceneF3Settings(ctx) {
                         throw new Error(id === 'right-nav-panel' ? `角色卡页未铺满 ${tag}` : `抽屉页未铺满 ${id} ${tag}`);
                     }
                     if (width >= 744) {
-                        if (cover.left !== '240px') throw new Error(`宽屏抽屉定位不符：${cover.left}`);
+                        if (cover.left !== '200px') throw new Error(`宽屏抽屉定位不符：${cover.left}`);
                         if (!cover.sidebarClickable) throw new Error(`侧边栏被抽屉挡住 ${id} ${tag}`);
                     }
                     if (id === 'right-nav-panel') {

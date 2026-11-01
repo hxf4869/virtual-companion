@@ -481,6 +481,16 @@ export async function sceneVcUiShell(ctx) {
                             && Boolean(document.querySelector('#chat > .mes[mesid="35"]'));
                     }, { id: boundNow, file: chatFile }, { timeout: 15000 });
                     await assertChatFit(viewport);
+                    if (viewport.width >= 744) {
+                        const avatarFit = await page.evaluate(() => {
+                            const avatar = document.querySelector('.vc-desk-character:not([hidden]) .vc-desk-character-avatar');
+                            if (!avatar) return true;
+                            const box = avatar.getBoundingClientRect(), image = avatar.querySelector('img')?.getBoundingClientRect();
+                            const name = avatar.parentElement.querySelector('h1')?.getBoundingClientRect();
+                            return (!image || image.width <= 97 && image.height <= 97) && (!name || name.top >= box.bottom);
+                        });
+                        if (!avatarFit) throw new Error('真实角色头像超出 96px 或遮挡名字');
+                    }
                     await page.locator('.vc-shell-chat-body #send_textarea').focus();
                     const focused = await page.evaluate(() => document.activeElement?.id === 'send_textarea' && Boolean(document.activeElement.closest('.vc-shell-chat-body')));
                     if (!focused) throw new Error('对话页里的输入框未能聚焦');
