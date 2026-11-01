@@ -2,6 +2,7 @@
 
 > 2026-11-02 Owner 问答定稿：聊天细节、功能、陪伴感三组全选，并采纳调研补充项；需要后端的条目本轮一起做。
 > 调研：`.review-queue/UX-23/research-A.md`、`research-B.md`，`.review-queue/UX-24/research-C.md`、`research-D.md`（Git 忽略，仅本机）。
+> UX-35 主题骨架为 Owner 追加，与 ADR-0011 §7.1 移动端主题模型对齐。
 > 设计图：`docs/product/v2-redesign/ux24/desktop-image-prompts.md` → `.review-queue/UX-24/images/`，选择记在 `PICKS.md`。
 > 约束沿用 UX-23 规格开头：**只改桌面（`html[data-vc-layout="desktop"]`），手机像素不变**；不改宿主 `#chat > .mes` 结构、
 > 不往 `.mes_text` 子树插节点、不往 `#chat` 插非 `.mes` 节点（分割线、日期等用 `.mes` 上的 `data-vc-*` + 伪元素；
@@ -89,6 +90,17 @@
 - 共享元素过渡：会话行头像 → 标题栏头像、图片 → 灯箱，250ms，View Transitions API，不支持时直接切换。
 - 骨架：会话加载时气泡形骨架（与真实尺寸一致），300ms 内完成则不显示；会话列表、记忆、日记同规则。
 - 晨昏氛围：极光色调随本地时段（早 / 午 / 晚 / 夜）轻微偏移，切换 60s 过渡；减少透明度时不变。
+
+### UX-35 桌面主题骨架（纯前端，Owner 2026-11-02 追加）
+与移动端 ADR-0011 §7.1 同一模型：首版只有默认主题，但加主题只新增主题文件，不改页面代码。
+- 两个维度：**模式**（浅 / 深 / 自动，沿用 `data-vc-theme`，不变）与**主题**（`html[data-vc-theme-id]`，默认 `aurora`「极光」）。每个主题都提供浅色、深色两套值；角色氛围色是主题的输入。
+- 主题文件：`desktop/themes/<id>.css`，只含自定义属性声明（浅色、`[data-vc-theme="dark"]`、自动深色媒体查询三段）；现 `desktop/base.css` 及各桌面样式顶部的 token 定义块迁入 `themes/aurora.css`。主题能改颜色、材质、圆角、阴影、字体、背景、动效时长与曲线。
+- 组件变体：组件内定义的有限枚举（首批：气泡形状 `data-vc-variant-bubble`），主题只选择变体、不注入样式。
+- 注册表 `desktop/themes/index.js`：`{ id, name, css, variants }` 列表；运行时 `desktop/theme.js` 负责加载主题样式、写 `data-vc-theme-id` 与变体属性、`resolveTheme({ global, character })`（角色单独指定优先）。
+- 偏好存储：先存本机；移动端 MB-2 定下服务器设置契约后，桌面改读同一设置（多端同步），只换存取一处。
+- 外观设置加「主题」选择（注册表只有一个主题时不显示）。
+- 守护：单测扫描 `desktop/*.css`（不含 `themes/`），出现字面颜色、阴影即失败；新增组件只能用语义 token。
+- 验收：样板全视图 + 手机 0 差异（迁移前后桌面像素一致）；用测试夹具注册第二个主题验证切换、变体、角色覆盖与深浅模式组合。
 
 ## 2. 实施顺序与归属
 
