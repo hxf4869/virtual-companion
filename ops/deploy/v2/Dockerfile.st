@@ -1,3 +1,12 @@
+FROM node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS mobile
+# 手机界面 H5（ADR-0011）：锁文件安装后构建，产物放进服务端插件，由插件在 /m/ 提供。
+WORKDIR /opt/vc/mobile
+COPY mobile/package.json mobile/package-lock.json ./
+RUN npm ci --no-audit --no-fund --loglevel=error
+COPY mobile/index.html mobile/vite.config.js ./
+COPY mobile/src ./src
+RUN npx uni build
+
 FROM node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 RUN apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=0 update \
     && apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=0 install -y --no-install-recommends git ca-certificates python3 openssl \
@@ -7,6 +16,7 @@ COPY integrations/sillytavern/upstream.lock.json integrations/sillytavern/vendor
 COPY integrations/sillytavern/scripts ./integrations/sillytavern/scripts
 COPY integrations/sillytavern/patches ./integrations/sillytavern/patches
 COPY integrations/sillytavern/server-plugin ./integrations/sillytavern/server-plugin
+COPY --from=mobile /opt/vc/mobile/dist/build/h5 ./integrations/sillytavern/server-plugin/virtual-companion/mobile-dist
 COPY integrations/sillytavern/extension ./integrations/sillytavern/extension
 COPY integrations/sillytavern/memorycore-service ./integrations/sillytavern/memorycore-service
 COPY infra/db/backup/vc_aead.py ./infra/db/backup/vc_aead.py

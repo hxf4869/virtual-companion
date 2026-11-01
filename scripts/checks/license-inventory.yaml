@@ -33,3 +33,25 @@ integrationDirectDependencies:
   - name: playwright-core
     licenseFamily: Apache-2.0
     scope: dev   # 浏览器验收脚本驱动系统 Chrome；不进 check.sh
+# 手机界面 mobile/package.json 直接依赖（ADR-0011；按全局 allowedLicenseFamilies 核对）。
+mobileDirectDependencies:
+  - package: "@dcloudio/uni-app"
+    licenseFamily: Apache-2.0
+  - package: "@dcloudio/uni-app-plus"
+    licenseFamily: Apache-2.0
+  - package: "@dcloudio/uni-components"
+    licenseFamily: Apache-2.0
+  - package: "@dcloudio/uni-h5"
+    licenseFamily: Apache-2.0
+  - package: "@dcloudio/uni-cli-shared"
+    licenseFamily: Apache-2.0
+  - package: "@dcloudio/uni-stacktracey"
+    licenseFamily: Apache-2.0
+  - package: "@dcloudio/vite-plugin-uni"
+    licenseFamily: Apache-2.0
+  - package: vue
+    licenseFamily: MIT
+  - package: vue-i18n
+    licenseFamily: MIT
+  - package: vite
+    licenseFamily: MIT

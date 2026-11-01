@@ -99,3 +99,6 @@ ops/local/state/
 
 # 接手 agent 的 UI 截图复核队列（AGENTS.md「接手开发」）
 .review-queue/
+
+# 手机 H5 构建产物，由 mobile/scripts/publish-h5.mjs 生成（ADR-0011）
+integrations/sillytavern/server-plugin/virtual-companion/mobile-dist/

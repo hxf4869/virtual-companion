@@ -1,0 +1,35 @@
+{
+    "name": "Virtual Companion",
+    "appid": "__UNI__CD7650F",
+    "description": "",
+    "versionName": "0.1.0",
+    "versionCode": "1",
+    "transformPx": false,
+    "h5": {
+        "title": "Virtual Companion",
+        "router": {
+            "mode": "hash",
+            "base": "/m/"
+        },
+        "uniStatistics": {
+            "enable": false
+        }
+    },
+    "app-plus": {
+        "usingComponents": true,
+        "compilerVersion": 3,
+        "modules": {},
+        "distribute": {
+            "android": {},
+            "ios": {},
+            "sdkConfigs": {}
+        },
+        "uniStatistics": {
+            "enable": false
+        }
+    },
+    "vueVersion": "3",
+    "uniStatistics": {
+        "enable": false
+    }
+}

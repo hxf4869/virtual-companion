@@ -50,6 +50,7 @@ run licenses         "${PY[@]}" scripts/checks/check_licenses.py
 if [ "$QUICK" -eq 0 ]; then
   run go-test          bash -c 'command -v go >/dev/null || { echo "需要 Go（版本以 backend/go.mod 为准，当前 go 1.26.10）" >&2; exit 1; }; GOPROXY=off go test -C backend -count=1 ./... >&2'
   run st-integration-test bash -c 'command -v node >/dev/null || { echo "需要 Node 22（integrations/sillytavern 测试）" >&2; exit 1; }; node --test "integrations/sillytavern/tests/*.test.mjs" >&2'
+  run mobile-test      bash -c 'command -v node >/dev/null || { echo "需要 Node 22（mobile 测试）" >&2; exit 1; }; node --test "mobile/tests/*.test.mjs" >&2'
 fi
 
 if [ "$fail" -eq 0 ]; then

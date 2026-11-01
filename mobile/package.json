@@ -1,0 +1,26 @@
+{
+  "name": "vc-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Virtual Companion 手机界面（uni-app，ADR-0011）",
+  "scripts": {
+    "dev:h5": "uni",
+    "build:h5": "uni build && node scripts/publish-h5.mjs",
+    "build:app": "uni build -p app",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-5030420261029002",
+    "@dcloudio/uni-app-plus": "3.0.0-5030420261029002",
+    "@dcloudio/uni-components": "3.0.0-5030420261029002",
+    "@dcloudio/uni-h5": "3.0.0-5030420261029002",
+    "vue": "3.4.21",
+    "vue-i18n": "9.14.5"
+  },
+  "devDependencies": {
+    "@dcloudio/uni-cli-shared": "3.0.0-5030420261029002",
+    "@dcloudio/uni-stacktracey": "3.0.0-5030420261029002",
+    "@dcloudio/vite-plugin-uni": "3.0.0-5030420261029002",
+    "vite": "5.2.8"
+  }
+}

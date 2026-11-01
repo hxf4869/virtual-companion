@@ -35,9 +35,33 @@ export function parseAccountHandles(raw) {
     return map;
 }
 
+
+// 手机界面（ADR-0011）：uni-app H5 产物，同源在 /m/ 提供；只读产物目录内的文件。
+const MOBILE_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+    '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.ico': 'image/x-icon' };
+export function serveMobile(mobileDir, req, res) {
+    let rel;
+    try { rel = decodeURIComponent(req.path.slice('/m/'.length)) || 'index.html'; } catch { return fail(res, 400, 'INVALID_REQUEST', '路径无效'); }
+    if (rel.split('/').some((part) => part === '' || part === '..' || part.includes('\\') || part.includes('\0'))) {
+        return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    }
+    const root = path.resolve(mobileDir);
+    const file = path.resolve(root, rel);
+    if (!file.startsWith(root + path.sep)) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    if (!fs.existsSync(path.join(root, 'index.html'))) return fail(res, 503, 'VC_MOBILE_UNAVAILABLE', '手机界面暂不可用');
+    let stat;
+    try { stat = fs.statSync(file); } catch { return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口'); }
+    if (!stat.isFile()) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
+    res.setHeader('Content-Type', MOBILE_TYPES[path.extname(file)] || 'application/octet-stream');
+    res.setHeader('Cache-Control', rel.startsWith('assets/') ? 'private, max-age=31536000, immutable' : 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.end(req.method === 'HEAD' ? undefined : fs.readFileSync(file));
+}
+
 export function createHostAuth({ config, getUser, accountVersion, indexHtml, fetchImpl = fetch,
     sourceBridge, accountData,
-    authDir = fileURLToPath(new URL('../auth/', import.meta.url)) }) {
+    authDir = fileURLToPath(new URL('../auth/', import.meta.url)) ,
+    mobileDir = fileURLToPath(new URL('../mobile-dist/', import.meta.url))}) {
     async function proxyAuth(req, res, suffix) {
         if (!AUTH_API.some(([method, pattern]) => req.method === method && pattern.test(suffix))) return fail(res, 404, 'NOT_FOUND_OR_FORBIDDEN', '未找到此入口');
         const headers = { Accept: 'application/json', Cookie: goCookies(req.headers.cookie) };
@@ -64,6 +88,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 return await sourceBridge(req, res);
             }
             if (req.method === 'GET' && req.path === '/index.html') return res.redirect(303, '/');
+            if (req.method === 'GET' && req.path === '/m') return res.redirect(303, '/m/');
             if (req.method === 'GET' && ['/auth', '/login'].includes(req.path)) return res.redirect(303, '/auth/');
             if (req.method === 'GET' && ASSETS.has(req.path)) {
                 const file = ASSETS.get(req.path);
@@ -81,7 +106,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
                 redirect: 'error', signal: AbortSignal.timeout(config.timeoutMs),
             });
             if (!response.ok) {
-                if (response.status === 401 && req.method === 'GET' && req.path === '/') return res.redirect(303, '/auth/');
+                if (response.status === 401 && req.method === 'GET' && ['/', '/m/'].includes(req.path)) return res.redirect(303, '/auth/');
                 return fail(res, response.status === 401 ? 401 : 503, 'AUTHENTICATION_REQUIRED', '请重新登录');
             }
             const identity = await response.json();
@@ -89,14 +114,14 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             if (identity.deletionPending) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             if (identity.nextStep !== 'ACTIVE' || identity.authenticatorEnabled !== true || identity.passwordMustChange !== false || !handle
                 || !/^[1-9][0-9]*$/.test(identity.sessionId)) {
-                if (req.method === 'GET' && req.path === '/') return res.redirect(303, '/auth/');
+                if (req.method === 'GET' && ['/', '/m/'].includes(req.path)) return res.redirect(303, '/auth/');
                 return fail(res, 403, 'ACCESS_DENIED', '请完成登录与身份验证');
             }
             if (identity.stDataConfigured !== true) return fail(res, 503, 'VC_DATA_NOT_CONFIGURED', '聊天数据服务尚未配置');
             const user = await getUser(handle);
             if (!user?.enabled || user.handle !== handle) return fail(res, 403, 'ACCESS_DENIED', '此账号尚未绑定可用的聊天空间');
             const mismatch = req.session?.vcAccountId !== identity.accountId || req.session?.vcSessionId !== identity.sessionId || req.session?.handle !== handle;
-            const canBind = req.method === 'GET' && (['/', '/auth/access'].includes(req.path) || req.path === '/csrf-token' && !req.session?.vcSessionId);
+            const canBind = req.method === 'GET' && (['/', '/m/', '/auth/access'].includes(req.path) || req.path === '/csrf-token' && !req.session?.vcSessionId);
             if (mismatch && !canBind) return fail(res, 409, 'ACCOUNT_CONTEXT_CHANGED', '登录状态已变化，请重新打开聊天');
             if (canBind) {
                 const registered = await fetchImpl(`${config.goBaseUrl}/api/v1/service/st/profile`, {
@@ -116,6 +141,7 @@ export function createHostAuth({ config, getUser, accountVersion, indexHtml, fet
             if (accountData && !await accountData.enter(identity.accountId, handle, res)) return fail(res, 409, 'ACCOUNT_DELETION_PENDING', '账号删除处理中，聊天已暂停。');
             res.setHeader('Cache-Control', 'no-store'); res.setHeader('Vary', 'Cookie');
             if (req.method === 'GET' && req.path === '/auth/access') return res.json({ allowed: true });
+            if (['GET', 'HEAD'].includes(req.method) && req.path.startsWith('/m/')) return serveMobile(mobileDir, req, res);
             if (req.method === 'GET' && req.path === '/') {
                 // 只输出非凭据十进制 ID；getRequestHeaders 在模块初始化时捕获，旧页不能冒用新 cookie。
                 const meta = `<meta name="vc-account-id" content="${identity.accountId}"><meta name="vc-session-id" content="${identity.sessionId}">`;

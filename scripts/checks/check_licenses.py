@@ -28,6 +28,7 @@ LICENSE_INVENTORY = ROOT / "scripts/checks/license-inventory.yaml"
 ST_UPSTREAM_LOCK = ROOT / "integrations/sillytavern/upstream.lock.json"
 ST_VENDOR_LOCK = ROOT / "integrations/sillytavern/vendor.lock.json"
 ST_PACKAGE_JSON = ROOT / "integrations/sillytavern/package.json"
+MOBILE_PACKAGE_JSON = ROOT / "mobile/package.json"
 GO_REQUIRE = re.compile(r"^([^\s]+)\s+v[^\s]+(?:\s+//\s+indirect)?$")
 
 
@@ -181,6 +182,20 @@ def main() -> int:
 
     st_checked = check_st_integration(policy, inventory, errors)
 
+    # 手机界面（ADR-0011）：直接依赖按全局许可族核对。
+    mobile_inventory = {
+        str(entry.get("package", "")).strip(): str(entry.get("licenseFamily", "")).strip()
+        for entry in inventory.get("mobileDirectDependencies", [])
+        if str(entry.get("package", "")).strip()
+    }
+    mobile_dependencies = extract_frontend_dependencies(MOBILE_PACKAGE_JSON) if MOBILE_PACKAGE_JSON.exists() else set()
+    for name, scope in sorted(mobile_dependencies):
+        family = mobile_inventory.get(name)
+        if not family:
+            errors.append(f"mobile/package.json: {scope} '{name}' is not in license-inventory.yaml")
+        elif family not in allowed:
+            errors.append(f"mobile/package.json: {scope} '{name}' has disallowed license family '{family}'")
+
     if errors:
         for item in sorted(set(errors)):
             print(f"ERROR: {item}", file=sys.stderr)
@@ -189,7 +204,7 @@ def main() -> int:
     total = len(go_dependencies)
     print(
         f"License inventory check: PASS ({total} direct dependencies: "
-        f"{len(go_dependencies)} Go; "
+        f"{len(go_dependencies)} Go; {len(mobile_dependencies)} mobile; "
         f"stIntegration domain {st_checked} items)"
     )
     return 0

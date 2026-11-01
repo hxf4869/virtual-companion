@@ -88,3 +88,48 @@ test('没有Go数据通道时拒绝原生空间，首次入口必须登记实际
     assert.ok(registration);assert.deepEqual(JSON.parse(registration.options.body),{ownerAccountId:'42',handle:'owner'});
     assert.match(registration.options.headers.Authorization,/^Bearer /);assert.equal(registration.options.headers.Origin,undefined);
 });
+
+test('手机界面 /m/：未登录跳登录页；入口绑定会话；只读产物目录；入口不缓存', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vc-m-'));
+    try {
+        fs.writeFileSync(path.join(dir, 'index.html'), '<html>m</html>');
+        fs.mkdirSync(path.join(dir, 'assets'));
+        fs.writeFileSync(path.join(dir, 'assets', 'a-1.js'), 'x');
+        fs.writeFileSync(path.join(path.dirname(dir), 'vc-m-secret.txt'), 's');
+        // 直接构造一个指向临时产物目录的网关。
+        const { createHostAuth: create } = await import('../server-plugin/virtual-companion/lib/host-auth.js');
+        const gateFor = (identity, status = 200) => create({
+            config: { serviceToken: 'synthetic-service-token-0123456789', goBaseUrl: 'http://go.local', timeoutMs: 1000, accountHandles: { '42': 'owner' } },
+            getUser: async (handle) => ({ handle, enabled: true }), accountVersion: () => 'v1', indexHtml: () => '<html><head></head><body></body></html>',
+            fetchImpl: async (url, options) => url.endsWith('/service/st/profile') ? new Response(options.body, { status: 200 }) : new Response(JSON.stringify(identity), { status }),
+            mobileDir: dir,
+        });
+        const run = async (gate, p, session = {}, method = 'GET') => {
+            const req = { path: p, method, session, headers: { cookie: 'vc_session=synthetic' } };
+            const res = { statusCode: 200, headers: {}, payload: undefined, setHeader(n, v) { this.headers[n] = v; }, appendHeader(n, v) { this.headers[n] = v; },
+                status(c) { this.statusCode = c; return this; }, json(v) { this.payload = v; return this; }, end(v) { this.payload = v; }, redirect(c, u) { this.statusCode = c; this.headers.Location = u; } };
+            let next = false; await gate(req, res, () => { next = true; }); return { req, res, next };
+        };
+        assert.equal((await run(gateFor(active, 401), '/m/')).res.headers.Location, '/auth/');
+        assert.equal((await run(gateFor(active), '/m')).res.headers.Location, '/m/');
+        const gate = gateFor(active);
+        const entry = await run(gate, '/m/');
+        assert.equal(String(entry.res.payload), '<html>m</html>');
+        assert.equal(entry.res.headers['Cache-Control'], 'no-store');
+        assert.equal(entry.req.session.vcSessionId, '7');
+        const asset = await run(gate, '/m/assets/a-1.js', entry.req.session);
+        assert.match(asset.res.headers['Cache-Control'], /immutable/);
+        for (const bad of ['/m/../vc-m-secret.txt', '/m/%2e%2e/vc-m-secret.txt', '/m/assets//a-1.js', '/m/assets', '/m/missing.js']) {
+            const r = await run(gate, bad, entry.req.session);
+            assert.equal(r.res.statusCode, 404, bad); assert.equal(r.next, false);
+        }
+        // 其他路径首个请求仍不能绑定会话。
+        assert.equal((await run(gate, '/m/assets/a-1.js')).res.statusCode, 409);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(path.join(path.dirname(dir), 'vc-m-secret.txt'), { force: true });
+    }
+});
