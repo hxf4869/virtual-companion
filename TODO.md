@@ -424,6 +424,9 @@
 - [x] 陪伴体验（Owner 2026-10-30）：默认女生「亲近的好朋友」可设置；首次引导起名；拟人全局规则（可编辑）；回复拆 1–3 条短消息 + 正在输入；主动引擎（mode OFF/FOLLOW_UP/DAILY/CLOSE_FRIEND + checkInAfterMinutes、7 触发、判断 JSON、预生成与失效、未回复上限 2，V271）；今日心情与情绪；表情包（内置 Fluent Emoji MIT + 72 颜文字 + 上传，代码限频）；绑定竞态修复。
       设计 `docs/planning/2026-10-30-companion-humanlike-design.md`，文案 `2026-10-30-companion-copy.md`。合并 `32dd10ca`、`49ff62d6`，界面验收两轮修复 `3ca6bb69`、`2820cca3`；`check.sh` PASS，受管 9 场景 PASS（2026-10-31）。2026-10-31 01:46 部署 `2820cca3` 上线（192 迁移/V271，部署前自动加密备份，自检全部 ok）。真实模型对话效果待 Owner 体验。已有关系被迁移为 FOLLOW_UP，需在陪伴页切到亲近好友（OP-5）。
 - [ ] 陪伴体验后续（2026-10-31 起由接手 agent 执行）：任务清单 `docs/planning/2026-10-31-handoff-backlog.md`，语音 `docs/planning/2026-10-31-voice-plan.md`，规则见 `AGENTS.md`「接手开发」。按 ID 在下方回填（提交、验证、`.review-queue/<ID>/`、是否已部署）。
+      - [x] REV-1（2026-11-01）：修复 OCR delegate 确认的五项缺陷。ASR 迟到结果按聊天身份和取消状态丢弃；工具轮内用完整参数去重、持久化键区分聊天/回合/步骤，中文提醒不再碰撞；主动生成失败只在明确未发送时释放预算；Anthropic JSON/SSE 总输入包含缓存读写，工具结算保留缓存量，Responses 不重复累加。
+        验证：定向 Node 42/42、Go jobs PASS；`bash scripts/check.sh` 全量 PASS（37s，ST 885/885、0 skip）；受管 `catalog-admin,w11-tool-meter,hl-proactive,voice-input` 4/4 PASS，含真实 ST 原地切换数组、数据库执行数和 UNKNOWN 账本断言。隔离目录缺依赖的首次启动失败已定位，复用本机既有依赖后通过，无新增依赖。
+        390/1440 浅深色四图已逐张查看，记录及结果在 `.review-queue/REV-1/`；本轮容器和隔离运行副本已清理。交付分支为 `ux-11-desktop-immersive`，Owner 已授权本次提交与推送；未合并 main、未部署，不回填历史计量数据。
       - [ ] UX-10：本轮 13 类确认问题已修复，清单见接手 Backlog 的 UX-10。应用 `d1f19905` 已合入、推送 main 并部署生产；来源竞争有真实 PG 的确定性回归，未新增迁移。
         验证 PASS：同一提交 `bash scripts/check.sh` 全量（36s）和 `catalog-admin,ui03-browser,f3-settings,vc-ui-shell,vc-ui-walkthrough` 5/5；此前 27 场景按改动增量复验，原始失败及修复结果保留，未把历史失败写成通过。390 / 1440 浅深色共 102 张图与记录归 `.review-queue/UX-10/`，另覆盖 360 / 768 / 1024 的功能断言。
         部署自检 PASS：198 迁移 / V277、Go、MemoryCore、重排、向量、ST、Kokoro / CosyVoice / ASR。线上已分别复验 1440 与 390 深浅色，表格对齐、输入框完整、世界书选择框和返回设置均正常；手机为浏览器视口，未替代真机验收。

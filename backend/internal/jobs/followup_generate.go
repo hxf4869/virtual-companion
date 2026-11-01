@@ -256,10 +256,7 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		return errFollowUpSendAbandoned
 	}
 	if callErr != nil {
-		disposition := "UNKNOWN"
-		if pe := companion.AsError(callErr); pe != nil && pe.Delivery == companion.DeliveryNotSent {
-			disposition = "NOT_SENT"
-		}
+		disposition, _, _, _ := followUsageSettlement(companion.Usage{}, callErr)
 		if settleErr := store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, nil, nil, nil); settleErr != nil {
 			return settleErr
 		}
@@ -271,7 +268,7 @@ func generateFollowUp(ctx context.Context, store followUpStore, factory func(mod
 		return closeFollowSnapshot(ctx, store, claim, resolved, followGenNotGenerated, reason, nil)
 	}
 	outcome, reason, greeting := reviewGreeting(reviewer, written.String())
-	disposition, inTokens, outTokens, cachedTokens := followUsageSettlement(result.Usage)
+	disposition, inTokens, outTokens, cachedTokens := followUsageSettlement(result.Usage, nil)
 	if err := finishFollowUp(ctx, store, claim, snapshotFollowFinish(resolved, outcome, reason, greeting)); err != nil {
 		_ = store.SettleFollowUpModelCall(ctx, claim.OwnerID, attempt, disposition, inTokens, outTokens, cachedTokens)
 		settled = true
@@ -452,7 +449,13 @@ func reviewGreeting(reviewer *safety.Policy, text string) (string, string, *stri
 	return followGenBodyReady, followGenBodyReady, &trimmed
 }
 
-func followUsageSettlement(usage companion.Usage) (string, *int64, *int64, *int64) {
+func followUsageSettlement(usage companion.Usage, callErr error) (string, *int64, *int64, *int64) {
+	if callErr != nil {
+		if pe := companion.AsError(callErr); pe != nil && pe.Delivery == companion.DeliveryNotSent {
+			return "NOT_SENT", nil, nil, nil
+		}
+		return "UNKNOWN", nil, nil, nil
+	}
 	if usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.TotalTokens > 0 {
 		in, out := usage.InputTokens, usage.OutputTokens
 		return "USAGE_REPORTED", &in, &out, usage.CachedInputTokens

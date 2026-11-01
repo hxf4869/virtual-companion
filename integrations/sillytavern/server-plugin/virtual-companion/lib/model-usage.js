@@ -54,8 +54,11 @@ export function readUsageTokens(usage) {
         };
     }
     if ('input_tokens' in usage || 'output_tokens' in usage) {
+        // Anthropic reports uncached input separately; Responses input_tokens
+        // already includes its input_tokens_details.cached_tokens subset.
+        const anthropicCache = 'cache_read_input_tokens' in usage || 'cache_creation_input_tokens' in usage;
         return {
-            inputTokens: Number(usage.input_tokens ?? 0),
+            inputTokens: Number(usage.input_tokens ?? 0) + (anthropicCache ? cachedInputTokens ?? 0 : 0),
             outputTokens: Number(usage.output_tokens ?? 0),
             cachedInputTokens,
         };
@@ -257,29 +260,13 @@ async function readJsonUsage(response) {
 
 async function readSseUsage(response) {
     const text = await response.text();
-    let input;
-    let output;
-    let cached = null;
-    let saw = false;
-    const take = (usage, kind) => {
+    let reported = {};
+    const take = (usage) => {
         if (!usage || typeof usage !== 'object') return;
-        const cache = readCachedInputTokens(usage);
-        if (cache === undefined) return;
-        if (cache !== null) cached = cache;
-        if (kind === 'chat' && ('prompt_tokens' in usage || 'completion_tokens' in usage)) {
-            input = Number(usage.prompt_tokens ?? input ?? 0);
-            output = Number(usage.completion_tokens ?? output ?? 0);
-            saw = true;
-            return;
-        }
-        if ('input_tokens' in usage) {
-            input = Number(usage.input_tokens ?? 0);
-            saw = true;
-        }
-        if ('output_tokens' in usage) {
-            output = Number(usage.output_tokens ?? 0);
-            saw = true;
-        }
+        if (readCachedInputTokens(usage) === undefined) return;
+        // message_delta may omit input or one cache component. Normalize only
+        // after merging all reported fields, using the same rule as JSON.
+        reported = { ...reported, ...usage };
     };
     for (const block of text.split('\n\n')) {
         for (const line of block.split('\n')) {
@@ -293,11 +280,9 @@ async function readSseUsage(response) {
             } catch {
                 continue;
             }
-            take(json.usage, 'chat');
-            take(json.message?.usage, 'anthropic');
-            if (json.type === 'message_delta') take(json.usage, 'anthropic');
+            take(json.usage);
+            take(json.message?.usage);
         }
     }
-    if (!saw) return undefined;
-    return { inputTokens: input ?? 0, outputTokens: output ?? 0, cachedInputTokens: cached };
+    return readUsageTokens(reported);
 }

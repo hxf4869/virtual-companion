@@ -135,13 +135,6 @@ export function canonicalArguments(value) {
     return stableStringify(stripOwnerFields(normalizeArgs(value)));
 }
 
-export function idempotencyKey(tool, args) {
-    let key = `${tool}.${canonicalArguments(args)}`.replace(/[^A-Za-z0-9._:~-]/g, '');
-    if (key.length < 8) key = `${key}.tool`.padEnd(8, '0');
-    if (key.length > 200) key = `${key.slice(0, 120)}~${key.slice(-79)}`;
-    return key;
-}
-
 function textOf(content) {
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) return content.map((part) => (typeof part?.text === 'string' ? part.text : '')).join('');
@@ -400,6 +393,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
     const sessionAuth = sessionPieces(request);
     const modelRevision = `provider:${resolved.provider.revision};binding:${resolved.bindingRevision}`.slice(0, 128);
     const messages = JSON.parse(JSON.stringify(Array.isArray(body.messages) ? body.messages : []));
+    const turnId = crypto.randomUUID();
     const cache = new Map();
     let sends = 0;
     let executions = 0;
@@ -479,6 +473,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
                     ownerAccountId: reservation.ownerAccountId,
                     inputTokens: usage.inputTokens,
                     outputTokens: usage.outputTokens,
+                    ...(usage.cachedInputTokens != null ? { cachedInputTokens: usage.cachedInputTokens } : {}),
                 });
             } catch (error) {
                 await cancelQuiet(config, reservation, 'UNKNOWN');
@@ -498,7 +493,9 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
         const jobs = [];
         const seen = new Set();
         for (const call of extracted.calls) {
-            const key = idempotencyKey(call.name, call.arguments);
+            // Keep all argument bytes for in-turn deduplication; the persistent
+            // key below identifies this execution rather than its contents.
+            const key = `${call.name}.${canonicalArguments(call.arguments)}`;
             if (cache.has(key) || seen.has(key)) {
                 jobs.push({ call, key, cached: true });
                 continue;
@@ -528,7 +525,7 @@ export async function runBoundedToolLoop({ config, request, response, body, reso
                 signal: stepSignal(),
                 payload: {
                     chatIdentity,
-                    idempotencyKey: job.key,
+                    idempotencyKey: `${chatIdentity}:${turnId}:${job.step}`,
                     tool: job.call.name,
                     arguments: stripOwnerFields(normalizeArgs(job.call.arguments)),
                     purpose: 'TOOL_TURN',

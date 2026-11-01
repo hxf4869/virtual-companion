@@ -201,11 +201,12 @@ func (l *Loop) completeProactive(ctx context.Context, store *postgres.Store, own
 		return "", "BUDGET", nil
 	}
 	settled := false
+	abandonDisposition := "NOT_SENT"
 	defer func() {
 		if settled {
 			return
 		}
-		_ = store.SettleFollowUpModelCall(ctx, owner, attempt, "NOT_SENT", nil, nil, nil)
+		_ = store.SettleFollowUpModelCall(ctx, owner, attempt, abandonDisposition, nil, nil, nil)
 	}()
 	provider, err := l.providerFactory(route)
 	if err != nil {
@@ -215,6 +216,7 @@ func (l *Loop) completeProactive(ctx context.Context, store *postgres.Store, own
 		defer closer.Close()
 	}
 	var written strings.Builder
+	abandonDisposition = "UNKNOWN"
 	result, callErr := provider.Stream(ctx, companion.ModelRequest{
 		Messages:  []companion.Message{{Role: companion.RoleUser, Content: prompt}},
 		Stream:    false,
@@ -223,11 +225,7 @@ func (l *Loop) completeProactive(ctx context.Context, store *postgres.Store, own
 		written.WriteString(delta.Text)
 		return nil
 	})
-	disposition, in, out, cached := followUsageSettlement(result.Usage)
-	if callErr != nil {
-		disposition = "NOT_SENT"
-		in, out, cached = nil, nil, nil
-	}
+	disposition, in, out, cached := followUsageSettlement(result.Usage, callErr)
 	if err := store.SettleFollowUpModelCall(ctx, owner, attempt, disposition, in, out, cached); err != nil {
 		return "", "", err
 	}

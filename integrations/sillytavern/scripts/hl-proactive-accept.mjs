@@ -218,6 +218,20 @@ export async function sceneHlProactive(ctx) {
     await speak('旅行安排已经解决了，不聊这个了',at(0,'16:10:00'));
     if(ctx.w10.psql(`SELECT open_topic_source_ref IS NULL FROM vc.companion_affect WHERE owner_user_id=${owner} AND relationship_id=${relationshipId};`).trim()!=='t')throw Error('RQ-10 resolution did not clear pending topic');
     ctx.results.rq10Topic={persisted:true,continued:true,optedOutSourceExcluded:true,resolved:true};
+
+    // The peer has received the request even when its response is an error.
+    // Such a call must retain an UNKNOWN budget reservation, not a refund.
+    ctx.w10.psql(`INSERT INTO vc.companion_daily_mood(owner_user_id, relationship_id, local_date, tier, vibe, line, redrawn)
+        VALUES (${owner}, ${relationshipId}, DATE '${baseDay}' + 1, 'WANT_TO_CHAT', '开心', '今天心情不错，话有点多', true)
+        ON CONFLICT (owner_user_id, relationship_id, local_date) DO UPDATE SET tier = EXCLUDED.tier, redrawn = true;`);
+    await ctx.fixtureHttp.setOverride('vc03m-chat', { error: { status: 500, message: 'synthetic upstream failure' } });
+    try {
+        expectGate(await runAt(at(1,'10:00:00')), 'PROVIDER', '已发送的模型调用失败');
+        const status = ctx.w10.psql(`SELECT status FROM vc.model_cost_reservation
+            WHERE owner_user_id = ${owner} AND provider_attempt_id LIKE 'proactive-${relationshipId}-%'
+            ORDER BY id DESC LIMIT 1;`).trim();
+        if (status !== 'UNKNOWN') throw new Error(`已发送失败应保留 UNKNOWN 预算，实际 ${status}`);
+    } finally { await ctx.fixtureHttp.setOverride('vc03m-chat', null); }
 }
 
 export const hlProactiveScene = {

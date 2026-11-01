@@ -455,14 +455,16 @@ test('上游超时标 UNKNOWN，不按 0 token 结算', async () => {
     });
 });
 
-test('三协议各一次工具后续轮：预留与结算各一次', async () => {
+test('三协议各一次工具后续轮：预留与结算各一次，缓存输入口径一致', async () => {
     for (const protocol of ['OPENAI_CHAT_COMPLETIONS', 'OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES']) {
+        const scripts = [toolPayload(protocol, 'query_scheduled_follow_ups', '{}', 'call-1'), textPayload(protocol, '已查询。')];
+        for (const payload of scripts) {
+            if (protocol === 'ANTHROPIC_MESSAGES') Object.assign(payload.usage, { cache_read_input_tokens: 7, cache_creation_input_tokens: 3 });
+            else payload.usage[protocol === 'OPENAI_RESPONSES' ? 'input_tokens_details' : 'prompt_tokens_details'] = { cached_tokens: 10 };
+        }
         await withStack({
             protocol,
-            scripts: [
-                toolPayload(protocol, 'query_scheduled_follow_ups', '{}', 'call-1'),
-                textPayload(protocol, '已查询。'),
-            ],
+            scripts,
         }, async ({ bridge, state }) => {
             const res = mockRes();
             assert.equal(await bridge.interceptGenerate(mockReq(requestBody(protocol)), res), true, protocol);
@@ -477,6 +479,8 @@ test('三协议各一次工具后续轮：预留与结算各一次', async () =>
             assert.equal(turns[0].estimatedOutputTokens, 512, protocol);
             assert.equal(state.settles.length, 2, protocol);
             assert.deepEqual(state.settles.map((row) => row.id), ['1', '2'], protocol);
+            assert.deepEqual(state.settles.map((row) => row.body.inputTokens), protocol === 'ANTHROPIC_MESSAGES' ? [31, 40] : [21, 30], protocol);
+            assert.deepEqual(state.settles.map((row) => row.body.cachedInputTokens), [10, 10], protocol);
             const execution = [...state.executionsByKey.values()][0];
             const outputs = toolOutputs(protocol, state.providerReqs[1]);
             assert.equal(outputs.length, 1, protocol);
@@ -486,6 +490,41 @@ test('三协议各一次工具后续轮：预留与结算各一次', async () =>
             assert.equal(outbound.includes('web_search'), false, protocol);
         });
     }
+});
+
+test('相同查询在新回合或另一聊天中重新执行，不回放旧快照', async () => {
+    const chats = [CHAT_ID, CHAT_ID, '30000000-0000-4000-8000-0000000000bb'];
+    await withStack({
+        protocol: 'OPENAI_CHAT_COMPLETIONS',
+        scripts: chats.flatMap((_, index) => [chatTool('query_scheduled_follow_ups', '{}', `query-${index}`), chatText('已查询。')]),
+    }, async ({ bridge, state }) => {
+        for (const chatIdentity of chats) {
+            const res = mockRes();
+            assert.equal(await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS', { vc_chat_identity: chatIdentity })), res), true);
+            assert.equal(res.statusCode, 200);
+        }
+        assert.equal(state.executes.length, 3);
+        assert.equal(state.executionsByKey.size, 3);
+        assert.deepEqual([1, 3, 5].map((index) => JSON.parse(toolOutputs('OPENAI_CHAT_COMPLETIONS', state.providerReqs[index])[0]).executionId), ['exec-1', 'exec-2', 'exec-3']);
+        for (const { body } of state.executes) assert.match(body.idempotencyKey, /^[A-Za-z0-9._:~-]{8,200}$/);
+    });
+});
+
+test('同轮不同中文提醒分别执行，只有完整参数相同才去重', async () => {
+    const args = (text) => JSON.stringify({ action: 'create', text, remindAt: '2026-11-02T10:00:00+08:00', recurrence: 'NONE' });
+    const first = chatTool('manage_reminder', args('喝水'), 'water');
+    first.choices[0].message.tool_calls.push(
+        { id: 'rest', type: 'function', function: { name: 'manage_reminder', arguments: args('休息') } },
+        { id: 'water-again', type: 'function', function: { name: 'manage_reminder', arguments: JSON.stringify({ recurrence: 'NONE', remindAt: '2026-11-02T10:00:00+08:00', text: '喝水', action: 'create' }) } },
+    );
+    await withStack({ protocol: 'OPENAI_CHAT_COMPLETIONS', scripts: [first, chatText('已处理。')] }, async ({ bridge, state }) => {
+        const res = mockRes();
+        assert.equal(await bridge.interceptGenerate(mockReq(requestBody('OPENAI_CHAT_COMPLETIONS')), res), true);
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(state.executes.map((row) => row.body.arguments.text), ['喝水', '休息']);
+        const outputs = toolOutputs('OPENAI_CHAT_COMPLETIONS', state.providerReqs[1]).map((row) => JSON.parse(row).executionId);
+        assert.deepEqual(outputs, ['exec-1', 'exec-2', 'exec-1']);
+    });
 });
 
 test('toolCalls 未验证或剧情回合不把陪伴工具发给上游', async () => {

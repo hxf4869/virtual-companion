@@ -38,7 +38,7 @@ export function installVoiceInput({getContext,sendText,doc=globalThis.document,r
     const note=doc.createElement('div');note.id='vc-voice-input-note';note.setAttribute('role','status');note.hidden=true;
     const label=doc.createElement('span');const level=doc.createElement('span');level.className='vc-voice-input-level';level.setAttribute('aria-hidden','true');note.append(label,level);
     form.append(button,note);
-    let available=false,maxSeconds=60,phase='idle',recorder,stream,audioContext,frame,timer,started=0,cancelled=false,startY=0,touch=false,recordingChat;
+    let available=false,maxSeconds=60,phase='idle',recorder,stream,audioContext,frame,timer,started=0,cancelled=false,startY=0,touch=false;
     const sync=()=>{
         const context=getContext();const companion=context?.chatMetadata?.vc_binding?.mode==='COMPANION' && !context.groupId;
         const show=available && companion && !box.value.trim() && doc.body.getAttribute('data-generating')!=='true';
@@ -57,19 +57,23 @@ export function installVoiceInput({getContext,sendText,doc=globalThis.document,r
     const finish=(cancel=false)=>{cancelled=cancel;clearTimeout(timer);if(phase==='requesting'){phase='cancelled';return;}if(phase!=='recording')return;phase='listening';button.disabled=true;label.textContent=INPUT_COPY.listening;recorder.stop();};
     const start=async()=>{
         if(phase!=='idle' || !available)return;
-        phase='requesting';cancelled=false;recordingChat=getContext().chat;note.hidden=true;
+        phase='requesting';cancelled=false;note.hidden=true;
+        const context=getContext(),chatId=context.chatId,chatIdentity=context.chatMetadata?.vc_f2?.id;
+        // ST replaces chat contents in place; the array is not a chat identity.
+        const active=()=>{const current=getContext();return !cancelled && current.chatId===chatId && current.chatMetadata?.vc_f2?.id===chatIdentity;};
         try {
             stream=await navigator.mediaDevices.getUserMedia({audio:true});
-            if(phase==='cancelled' || getContext().chat!==recordingChat){reset();return;}
+            if(phase==='cancelled' || !active()){reset();return;}
             const chunks=[];recorder=new MediaRecorder(stream);const activeRecorder=recorder;
             recorder.addEventListener('dataavailable',(event)=>{if(event.data.size)chunks.push(event.data);});
             recorder.addEventListener('stop',async()=>{
                 const raw=new Blob(chunks,{type:activeRecorder.mimeType});chunks.length=0;release();
-                if(cancelled || getContext().chat!==recordingChat){reset();return;}
+                if(!active()){reset();return;}
                 try {
                     const {wav,durationMs}=await recordingWAV(raw,{maxSeconds});
+                    if(!active()){reset();return;}
                     const result=await recognize(wav);
-                    if(getContext().chat!==recordingChat){reset();return;}
+                    if(!active()){reset();return;}
                     const metadata={durationMs};if(['HAPPY','SAD','ANGRY'].includes(result.emotion))metadata.emotion=result.emotion;
                     reset();await sendText(result.text,metadata);
                 } catch {fail();}

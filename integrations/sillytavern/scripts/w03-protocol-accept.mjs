@@ -894,6 +894,10 @@ export async function sceneW11ToolMeter(ctx) {
             await ctx.fixtureHttp.setOverride(round.modelId, null);
         }
     }
+    const executionCount = psql(`SELECT count(*) FROM vc.tool_execution
+        WHERE owner_user_id = ${ctx.w05.ownerId} AND chat_identity = '${chatIdentity}'
+          AND tool_name = 'query_scheduled_follow_ups' AND status = 'SUCCEEDED';`).trim();
+    if (executionCount !== '3') throw new Error(`三次独立工具回合应有三条执行记录，实际 ${executionCount}`);
     const usage = await ctx.admin.call('GET', '/api/v1/auth/admin/usage?days=14');
     if (usage.status !== 200 || !Array.isArray(usage.json?.purposes)) {
         throw new Error(`用量汇总失败：HTTP ${usage.status} ${String(usage.text).slice(0, 180)}`);

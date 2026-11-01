@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { openVoiceChat, voiceControl, voiceShots } from './voice-accept-lib.mjs';
 
 export async function sceneVoiceInput(ctx) {
     await voiceControl('asr');
-    const {browser,page}=await openVoiceChat(ctx,'语音输入',{fakeAudio:true});
+    const {browser,page,st,card}=await openVoiceChat(ctx,'语音输入',{fakeAudio:true});
     let stage='recording start';
     const sourceErrors=[];
     page.on('response',async(response)=>{
@@ -58,6 +59,33 @@ export async function sceneVoiceInput(ctx) {
         await page.getByText('没听清，再说一次？',{exact:true}).waitFor({state:'visible'});
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.length),before,'failed recognition does not send');
         await voiceControl('asr');
+
+        stage='late transcription after native chat switch';
+        const nextFile=`voice-switch-${crypto.randomUUID()}`;
+        const nextIdentity=crypto.randomUUID();
+        assert.equal((await st.call('POST','/api/chats/save',{avatar_url:card.avatar,file_name:nextFile,force:false,
+            chat:[{chat_metadata:{vc_f2:{id:nextIdentity,revision:0},vc_binding:{mode:'COMPANION',displayName:'语音切换验收'}}},
+                {name:card.name,is_user:false,mes:'合成切换会话。',extra:{}}]})).status,200);
+        const asrRoute='**/api/plugins/virtual-companion/go/api/v1/voice/asr';
+        let releaseASR,asrStarted;
+        const held=new Promise(resolve=>{asrStarted=resolve;});
+        const gate=new Promise(resolve=>{releaseASR=resolve;});
+        await page.route(asrRoute,async route=>{asrStarted();await gate;await route.continue();});
+        try {
+            await page.evaluate(()=>{window.vcRecordingChatArray=SillyTavern.getContext().chat;});
+            await mic.click();await page.waitForFunction(()=>document.querySelector('#vc-voice-input-note')?.textContent.startsWith('1″'));await mic.click();
+            await held;
+            await page.evaluate(async file=>{await (await import('/script.js')).openCharacterChat(file);},nextFile);
+            assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat===window.vcRecordingChatArray),true,'native switch retains the chat array');
+            assert.equal(await page.evaluate(()=>SillyTavern.getContext().chatId),nextFile);
+            const response=page.waitForResponse(r=>r.url().endsWith('/api/v1/voice/asr'));
+            releaseASR();await (await response).finished();
+            await page.waitForFunction(()=>document.querySelector('#vc-voice-input')?.getAttribute('aria-pressed')==='false');
+            assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.some(row=>row.is_user)),false,'late transcription must not enter the new chat');
+            const persisted=await st.call('POST','/api/chats/get',{avatar_url:card.avatar,file_name:nextFile});
+            assert.equal(persisted.status,200);
+            assert.equal(persisted.json.slice(1).some(row=>row.is_user),false,'late transcription must not persist in the new chat');
+        } finally {releaseASR();await page.unroute(asrRoute);}
     } catch(error) {
         const state=await page.evaluate(()=>{
             const c=SillyTavern.getContext(),last=c.chat.at(-1);

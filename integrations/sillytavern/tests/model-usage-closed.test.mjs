@@ -25,7 +25,11 @@ test('供应商信封里的 usage 可结算，且不带回正文', () => {
     );
     assert.deepEqual(
         readProviderUsage({ usage: { input_tokens: 9, output_tokens: 1, cache_read_input_tokens: 3, cache_creation_input_tokens: 2 } }),
-        { inputTokens: 9, outputTokens: 1, cachedInputTokens: 5 },
+        { inputTokens: 14, outputTokens: 1, cachedInputTokens: 5 },
+    );
+    assert.deepEqual(
+        readProviderUsage({ usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: { cached_tokens: 8 } } }),
+        { inputTokens: 10, outputTokens: 2, cachedInputTokens: 8 },
     );
     assert.equal(readProviderUsage({ success: true, data: { choices: [] } }), undefined);
     const packed = JSON.stringify(readProviderUsage({
@@ -92,7 +96,7 @@ function claudeSse(secret) {
         ev('message_start', {
             message: {
                 id: 'msg_1', type: 'message', role: 'assistant', content: [],
-                usage: { input_tokens: 25, output_tokens: 1 },
+                usage: { input_tokens: 25, output_tokens: 1, cache_read_input_tokens: 80, cache_creation_input_tokens: 20 },
             },
         }),
         ev('content_block_delta', { index: 0, delta: { type: 'text_delta', text: secret } }),
@@ -142,8 +146,8 @@ test('Claude SSE 与非流式 JSON 的用量都能结算，正文不入账', asy
         assert.ok(sseHit, 'message_start 与 message_delta 应结算');
         const ssePayload = JSON.parse(sseHit.body);
         assert.deepEqual(
-            { inputTokens: ssePayload.inputTokens, outputTokens: ssePayload.outputTokens },
-            { inputTokens: 25, outputTokens: 15 },
+            { inputTokens: ssePayload.inputTokens, outputTokens: ssePayload.outputTokens, cachedInputTokens: ssePayload.cachedInputTokens },
+            { inputTokens: 125, outputTokens: 15, cachedInputTokens: 100 },
         );
         assert.equal(sseHit.body.includes('secret-claude'), false);
 
@@ -154,7 +158,7 @@ test('Claude SSE 与非流式 JSON 的用量都能结算，正文不入账', asy
             id: 'msg_2',
             type: 'message',
             content: [{ type: 'text', text: 'secret-json' }],
-            usage: { input_tokens: 10, output_tokens: 4 },
+            usage: { input_tokens: 10, output_tokens: 4, cache_read_input_tokens: 7, cache_creation_input_tokens: 3 },
         }), expectedUrl, request);
         while (!ledger.hits.some((hit) => hit.path.includes('/22/settle')) && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 20));
@@ -163,8 +167,8 @@ test('Claude SSE 与非流式 JSON 的用量都能结算，正文不入账', asy
         assert.ok(jsonHit, '非流式 usage 应结算');
         const jsonPayload = JSON.parse(jsonHit.body);
         assert.deepEqual(
-            { inputTokens: jsonPayload.inputTokens, outputTokens: jsonPayload.outputTokens },
-            { inputTokens: 10, outputTokens: 4 },
+            { inputTokens: jsonPayload.inputTokens, outputTokens: jsonPayload.outputTokens, cachedInputTokens: jsonPayload.cachedInputTokens },
+            { inputTokens: 20, outputTokens: 4, cachedInputTokens: 10 },
         );
         assert.equal(jsonHit.body.includes('secret-json'), false);
     } finally {
