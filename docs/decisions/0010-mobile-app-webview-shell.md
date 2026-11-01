@@ -1,6 +1,6 @@
 # ADR-0010：移动 App 采用 uni-app 壳 + web-view 承载同一 ST Web
 
-- 状态：Accepted（规划，不含实现）
+- 状态：Superseded by [ADR-0011](0011-mobile-uniapp-ui-st-engine.md)（2026-11-02）
 - 日期：2026-11-01
 - 决策人：Owner
 - 关联：ADR-0009（V2 SillyTavern 宿主方向）、`DESIGN.md` 第 15 节、`docs/planning/2026-11-01-ux11-desktop-immersive-plan.md`

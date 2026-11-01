@@ -427,8 +427,8 @@ Owner 选型：手机 93 项均保留原版；桌面已记录 89 项（原版 37
 
 ## 15. H5、App 与 iOS 的边界
 
-> 决策见 [ADR-0010](docs/decisions/0010-mobile-app-webview-shell.md)：未来 App 为 uni-app 壳 + web-view 承载同一 ST Web，
-> 手机界面只有当前这一套手机网页布局。以下为背景说明。
+> 决策见 [ADR-0011](docs/decisions/0011-mobile-uniapp-ui-st-engine.md)（替代 ADR-0010）：手机界面改为独立 uni-app 工程，
+> 同源隐藏 ST 作引擎；ST 手机布局冻结为「ST 视图」显示层。手机规范在 MB-1 选图后重写，以下为背景说明。
 
 - 当前实现是 SillyTavern 网页宿主 + 自有 UI 扩展 / server plugin + Go 服务。旧 Vue / uni-app 前端已按 ADR-0009 在 W15 删除，当前手机网页不由 uni-app 编译。
 - uni-app 的多端目标包含 Web / H5、Android App、iOS App；iOS 是 App 的一个目标平台。未来可评估其 `web-view` 承载现有网页，或为新的移动界面单独实现跨端页面。
