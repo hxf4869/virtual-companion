@@ -15,6 +15,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who { height: auto;
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-who .vc-convo-avatar { width: 36px; height: 36px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule { display: flex; gap: var(--vc-space-xs); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule > button { width: 40px; height: 40px; border-radius: var(--vc-radius-pill); background: var(--vc-raised); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat .vc-capsule > [data-memory] { display:grid; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat-body { --vc-poster-pad: 0px; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-chat-poster { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui #chat .mes { padding: 12px 24px; font-size: var(--vc-fs-reading); line-height: var(--vc-lh-reading); }
