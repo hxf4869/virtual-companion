@@ -141,7 +141,7 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
         const tint = getComputedStyle(document.body).getPropertyValue('--vc-tint').trim(); if (src && tint) aurora?.setTint(tint);
     }
     const esc = event => {
-        if (event.key === 'Escape' && !event.defaultPrevented && !panel.hidden && !document.querySelector('.vc-sheet,.vc-alert,.vc-menu')) {
+        if (event.key === 'Escape' && !event.defaultPrevented && !panel.hidden && panel.getClientRects().length && !document.querySelector('.vc-sheet,.vc-alert,.vc-menu')) {
             event.preventDefault(); setOpen(false); toggle.focus();
         }
     };

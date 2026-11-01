@@ -613,12 +613,17 @@ export async function sceneVcUiShell(ctx) {
                             }
                             const instance = page.locator(`#vc-shell .vc-characters > .vc-screen:not(.vc-characters-list) [data-action="select-instance"][data-id="${boundNow}"]`);
                             await instance.waitFor({ timeout: 15000 });
-                            const split = await page.evaluate(() => {
-                                const list = document.querySelector('.vc-characters-list').getBoundingClientRect();
-                                const detail = document.querySelector('.vc-character-detail').getBoundingClientRect();
-                                return Math.abs(detail.width - 400) <= 1 && detail.left >= list.right;
-                            });
-                            if (!split) throw new Error('桌面角色详情未按 400px 分栏');
+                            try {
+                                await page.waitForFunction(() => {
+                                    const root = document.querySelector('#vc-shell .vc-characters');
+                                    const list = root?.querySelector(':scope > .vc-characters-list')?.getBoundingClientRect();
+                                    const detail = root?.querySelector(':scope > .vc-character-detail')?.getBoundingClientRect();
+                                    return list && detail && Math.abs(detail.width - 400) <= 1 && detail.left >= list.right;
+                                }, null, { timeout: 3000 });
+                            } catch {
+                                throw new Error('桌面角色详情动画结束后未按 400px 分栏');
+                            }
+                            if (await page.locator('.vc-desk-character:visible').count()) throw new Error('聊天角色面板遮住了角色详情');
                             await page.locator('.vc-character-detail [data-action="edit-persona"]').click();
                             await page.locator('.vc-character-persona [data-persona="personality"]').fill('合成人设编辑验收');
                             await page.locator('.vc-character-persona [data-action="save-persona"]').click();

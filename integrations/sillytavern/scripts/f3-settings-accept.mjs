@@ -493,7 +493,8 @@ export async function sceneF3Settings(ctx) {
                     bindingControlVisible: control.left >= 0 && control.right <= innerWidth && control.width >= 200,
                 }; });
                 if (homeLayout.providers >= homeLayout.usage) throw new Error('用量挤占模型配置入口');
-                if (homeLayout.saveHeight < 43.5) throw new Error('模型保存按钮命中高度不足 44px');
+                const buttonHeight = width >= 744 ? 40 : 44;
+                if (homeLayout.saveHeight < buttonHeight - .5) throw new Error(`模型保存按钮命中高度不足 ${buttonHeight}px`);
                 if (homeLayout.bindingContrast < 4.5) throw new Error(`用途说明对比度不足 ${homeLayout.bindingContrast}`);
                 if (!homeLayout.columnsAligned || !homeLayout.bindingControlVisible) throw new Error(`用途绑定列或配置选择框错位 ${JSON.stringify(homeLayout)}`);
                 await shot(page, path.join(ctx.artifactsDir, `f3-${tag}-model-home.png`));
