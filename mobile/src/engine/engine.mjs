@@ -191,6 +191,35 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
             return Boolean(mes?.querySelector('.TH-render, iframe'));
         },
         mvuReady: () => Boolean(win()?.Mvu),
+        async continueReply() { const before = ended; await ctx().generate('continue'); return before; },
+        // ST 原生格式化（正则显示规则 + Markdown + DOMPurify），与 ST 自己的显示一致。
+        formatMessage(id) {
+            const m = ctx()?.chat?.[id];
+            if (!m || typeof script?.messageFormatting !== 'function') return '';
+            return script.messageFormatting(m.mes, m.name, Boolean(m.is_system), Boolean(m.is_user), id);
+        },
+        // 置顶与 ST 欢迎页共用账号存储（键 pinnedChats，格式 char_<avatar>_<file>.jsonl），随设置存服务器。
+        async pinnedChats() {
+            const { accountStorage } = await win().eval("import('/scripts/util/AccountStorage.js')");
+            try { return JSON.parse(accountStorage.getItem('pinnedChats') || '{}'); } catch { return {}; }
+        },
+        async setPinned(avatar, file, on) {
+            const { accountStorage } = await win().eval("import('/scripts/util/AccountStorage.js')");
+            let state = {};
+            try { state = JSON.parse(accountStorage.getItem('pinnedChats') || '{}'); } catch { state = {}; }
+            const name = `${file}.jsonl`;
+            const key = `char_${avatar}_${name}`;
+            if (on) state[key] = { avatar, file_name: name }; else delete state[key];
+            accountStorage.setItem('pinnedChats', JSON.stringify(state));
+            await script.saveSettings();
+        },
+        // 删除走 ST 原生流程（与 ST 界面删除同一路径）。
+        async deleteChat(avatar, file) {
+            const index = script.characters.findIndex((c) => c.avatar === avatar);
+            if (index < 0) throw new Error('character not found');
+            await idle();
+            await script.deleteCharacterChatByName(index, file);
+        },
         // ST 视图：把同一个引擎全屏显示，并用现有外壳展开聊天、定位楼层（MB-0 发现 3）。
         async showStView(on, { messageId } = {}) {
             frame.classList.toggle('is-shown', Boolean(on));
