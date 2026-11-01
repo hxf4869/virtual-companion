@@ -317,7 +317,7 @@ export async function sceneF3Settings(ctx) {
         await setTheme(page, 'light');
         await openDrawer(page, 'left-nav-panel');
         const wide = await page.locator('#left-nav-panel').evaluate((el) => getComputedStyle(el).left);
-        if (wide !== '240px') throw new Error(`宽屏抽屉定位不符：${wide}`);
+        if (wide !== '200px') throw new Error(`宽屏抽屉定位不符：${wide}`);
         await shot(page, path.join(ctx.artifactsDir, 'f3-1440-light-left-nav-panel.png'));
         await page.evaluate(() => {
             const pop = document.getElementById('character_popup');
@@ -325,7 +325,7 @@ export async function sceneF3Settings(ctx) {
             pop.style.display = 'flex';
         });
         const popWide = await page.locator('#character_popup').evaluate((el) => getComputedStyle(el).left);
-        if (popWide !== '240px') throw new Error('宽屏角色卡弹层定位不符');
+        if (popWide !== '200px') throw new Error('宽屏角色卡弹层定位不符');
         await page.evaluate(() => {
             const pop = document.getElementById('character_popup');
             pop.classList.remove('open');

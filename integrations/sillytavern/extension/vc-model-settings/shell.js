@@ -52,8 +52,8 @@ export function chromeForWidth(width) {
     const value = Number(width);
     const w = Number.isFinite(value) ? value : 0;
     if (w < 744) return { nav: 'tabbar', sidebar: 0, collapsible: false, wide: false, list: 0 };
-    if (w < 1180) return { nav: 'sidebar', sidebar: 240, collapsible: true, wide: false, list: 0 };
-    return { nav: 'sidebar', sidebar: 240, collapsible: false, wide: true, list: 320 };
+    if (w < 1180) return { nav: 'sidebar', sidebar: 72, collapsible: true, wide: false, list: 0 };
+    return { nav: 'sidebar', sidebar: 200, collapsible: false, wide: true, list: 320 };
 }
 
 export const CHAT_EMPTY_COPY = '选择一个会话开始聊天';
@@ -61,8 +61,7 @@ export const CHAT_EMPTY_COPY = '选择一个会话开始聊天';
 export function sidebarCssWidth(width, collapsed) {
     const chrome = chromeForWidth(width);
     if (chrome.nav !== 'sidebar') return 0;
-    if (chrome.collapsible && collapsed) return 72;
-    return 240;
+    return chrome.sidebar;
 }
 
 const DESTINATION_MOUNTS = {

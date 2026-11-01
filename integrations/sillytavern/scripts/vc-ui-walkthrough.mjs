@@ -288,7 +288,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 chatVisible: [...document.querySelectorAll('#vc-shell .vc-shell-chat')].some((el) => el.getClientRects().length > 0),
                 top: document.querySelector('.vc-shell-settings')?.getBoundingClientRect().top,
             }));
-            assert.ok(!layout.chatVisible && Math.abs(layout.top) < 1, `桌面设置仍露出聊天 ${width}/${theme}: ${JSON.stringify(layout)}`);
+            assert.ok(!layout.chatVisible && Math.abs(layout.top - (width >= 1180 ? 24 : 16)) < 1, `桌面设置遮挡或留白不符 ${width}/${theme}: ${JSON.stringify(layout)}`);
         }
         if (pageName === 'character-detail') {
             const forms = await page.locator('.vc-characters .vc-instance-form:visible').evaluateAll((els) => els.map((el) => {

@@ -248,12 +248,12 @@ export async function sceneVcUiShell(ctx) {
             if (fit.mesRight > fit.inner + 1) throw new Error(`消息超出视口 ${fit.mesRight}>${fit.inner}`);
             if (fit.sheld && fit.sheld.r > fit.inner + 1) throw new Error(`对话超出视口 ${JSON.stringify(fit.sheld)}`);
             if (viewport.width >= 1180) {
-                if (!fit.side || Math.abs(fit.side.w - 240) > 8) throw new Error(`侧边栏宽度 ${fit.side?.w}`);
+                if (!fit.side || Math.abs(fit.side.w - 200) > 1) throw new Error(`侧边栏宽度 ${fit.side?.w}`);
                 if (!fit.list || Math.abs(fit.list.w - 320) > 8) throw new Error(`列表宽度 ${fit.list?.w}`);
                 if (!fit.chatCol || Math.abs(fit.chatCol.x - (fit.list.r + 12)) > 1) throw new Error(`对话区起点 ${JSON.stringify(fit.chatCol)}`);
                 if (!fit.chatCol || fit.chatCol.w < 700) throw new Error(`对话区过窄 ${fit.chatCol?.w}`);
                 if (!fit.sheld || fit.sheld.w < 480 || fit.sheld.w > 724) throw new Error(`阅读列 ${fit.sheld?.w}`);
-                if (fit.sidebarVar !== '240px') throw new Error(`--vc-sidebar ${fit.sidebarVar}`);
+                if (fit.sidebarVar !== '200px') throw new Error(`--vc-sidebar ${fit.sidebarVar}`);
             } else if (viewport.width >= 744) {
                 const sheldMin = Math.min(720, viewport.width - 116) - 24;
                 if (!fit.side || Math.abs(fit.side.w - 72) > 8) throw new Error(`中等侧边栏 ${fit.side?.w}`);
@@ -363,7 +363,7 @@ export async function sceneVcUiShell(ctx) {
                     const desktopWiring = await page.evaluate(() => ({
                         aurora: document.querySelectorAll('.vc-desktop-aurora').length,
                         panel: document.querySelectorAll('.vc-desk-character-toggle').length,
-                        glass: getComputedStyle(document.querySelector('.vc-sidebar')).backdropFilter,
+                        glass: getComputedStyle(document.querySelector('#vc-shell > .vc-sidebar')).backdropFilter,
                         nativeChat: document.querySelector('#chat')?.parentElement?.id === 'sheld',
                     }));
                     if (!desktopWiring.nativeChat || desktopWiring.aurora !== Number(viewport.width >= 744)

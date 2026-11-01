@@ -279,6 +279,11 @@ export async function sceneF2ChatUi(ctx) {
                 character_name: cardName,
                 chat_metadata: { vc_f2: { id: crypto.randomUUID(), revision: 0 }, vc_binding: { mode: 'COMPANION', displayName: '合成实例' } },
             },
+            // 桌面移除海报后短会话可以完整放下；滚动/新回复用例使用真实长历史。
+            ...Array.from({ length: 18 }, (_, index) => ({
+                name: 'owner', is_user: true, mes: `合成滚动记录 ${index + 1}。`,
+                send_date: new Date(Date.now() - (18 - index) * 60000).toISOString(),
+            })),
             { name: cardName, is_user: false, mes: GREETING, swipe_id: 0, swipes: [GREETING, SECOND] },
         ],
     });
