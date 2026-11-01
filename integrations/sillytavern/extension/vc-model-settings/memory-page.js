@@ -720,7 +720,9 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
     async function closeDetail() {
         if (page.state.busy) return;
         if (page.state.editing) {
-            if (page.state.draft !== page.state.detail?.summary && !await confirmDiscard({ opener: document.activeElement })) return;
+            const opener = detailEl?.contains(document.activeElement) ? document.activeElement
+                : detailEl?.querySelector('textarea:not(:disabled)') || detailEl?.querySelector('button:not(:disabled)');
+            if (page.state.draft !== page.state.detail?.summary && !await confirmDiscard({ opener })) return;
             page.cancelEdit();
         }
         page.back();
@@ -741,7 +743,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             const controls = [...detailEl.querySelectorAll('button,input,textarea,select,[tabindex]')]
                 .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
             if (event.shiftKey && (document.activeElement === controls[0] || !controls.includes(document.activeElement))) { event.preventDefault(); controls.at(-1)?.focus(); }
-            else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0]?.focus(); }
+            else if (!event.shiftKey && (document.activeElement === controls.at(-1) || !detailEl.contains(document.activeElement))) { event.preventDefault(); controls[0]?.focus(); }
         }
     }, { signal, capture: true });
 

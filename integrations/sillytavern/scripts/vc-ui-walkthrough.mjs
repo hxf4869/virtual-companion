@@ -689,6 +689,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                                 await page.keyboard.press('Escape');
                                 await page.locator('.vc-alert').waitFor({ state: 'detached' });
                                 assert.equal(await draft.inputValue(), '合成桌面纠正草稿');
+                                assert.ok(await draft.evaluate(el => document.activeElement === el), '取消放弃后没有回到记忆草稿');
                                 await page.locator('.vc-memory-editor [data-action="cancel-edit"]').click();
                             }
                         }
