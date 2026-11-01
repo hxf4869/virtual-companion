@@ -598,7 +598,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                     } else notes.push(`${viewport.width} ${theme} model-provider：没有供应商行`);
                 } catch (error) {
                     if (String(error?.message || error).includes('残留浮层')) throw error;
-                    notes.push(`${viewport.width} ${theme} model：${error.message}`);
+                    throw new Error(`${viewport.width}/${theme} model: ${error.message}`, { cause: error });
                 }
                 const modelClose = page.locator('.vcms-overlay:not([hidden]) [data-action="close"]').first();
                 if (await modelClose.count()) await modelClose.click();
@@ -613,7 +613,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                     await record(page, viewport.width, theme, 'account', bucket);
                 } catch (error) {
                     if (String(error?.message || error).includes('残留浮层')) throw error;
-                    notes.push(`${viewport.width} ${theme} account：${error.message}`);
+                    throw new Error(`${viewport.width}/${theme} account: ${error.message}`, { cause: error });
                 }
                 try {
                     await closeAccountDialog(page);
@@ -698,8 +698,8 @@ export async function sceneVcUiWalkthrough(ctx) {
                 } catch (error) {
                     if (String(error?.message || error).includes('残留浮层')) throw error;
                     if (error?.code === 'ERR_ASSERTION') throw error;
-                    notes.push(`${viewport.width} ${theme} memory-detail：${String(error?.message || error).split('\n')[0]}`);
-                    await removeSheets(page);
+                    const site = String(error.stack || '').match(/vc-ui-walkthrough\.mjs:\d+:\d+/)?.[0];
+                    throw new Error(`${viewport.width}/${theme} memory-detail: ${String(error?.message || error).split('\n')[0]}${site ? ` (${site})` : ''}`, { cause: error });
                 }
 
                 await go('inbox');
@@ -734,8 +734,8 @@ export async function sceneVcUiWalkthrough(ctx) {
                 }
                 });
                 } catch (error) {
-                    if (error?.code === 'ERR_ASSERTION' || String(error?.message || error).includes('残留浮层')) throw error;
-                    notes.push(`${viewport.width} ${theme}：${error.message || error}`);
+                    const site = String(error.stack || '').match(/vc-ui-walkthrough\.mjs:\d+:\d+/)?.[0];
+                    throw new Error(`${viewport.width}/${theme}: ${String(error.message || error).split('\n')[0]}${site ? ` (${site})` : ''}`, { cause: error });
                 }
         }
         const groups = walkthroughGroups(selectedWidths());
