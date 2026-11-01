@@ -109,6 +109,10 @@ func TokenHash(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// reauthClockSkew tolerates ReauthAt (written with the database clock) being slightly
+// ahead of the application clock when the two run on different hosts or VMs.
+const reauthClockSkew = 2 * time.Second
+
 // FreshReauth reports whether principal.ReauthAt is within window of now.
 func FreshReauth(p *Principal, now time.Time, window time.Duration) bool {
 	if p == nil || p.ReauthAt.IsZero() || window <= 0 {
@@ -117,5 +121,5 @@ func FreshReauth(p *Principal, now time.Time, window time.Duration) bool {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	return !p.ReauthAt.After(now) && now.Sub(p.ReauthAt) <= window
+	return !p.ReauthAt.After(now.Add(reauthClockSkew)) && now.Sub(p.ReauthAt) <= window
 }

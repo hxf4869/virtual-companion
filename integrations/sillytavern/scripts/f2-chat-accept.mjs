@@ -699,15 +699,20 @@ export async function sceneF2ChatUi(ctx) {
             const chat = document.querySelector('#chat');
             if (chat) chat.scrollTop = 0;
         });
+        // UX-23 P1-5：桌面「记忆」改为打开角色面板（本次想起），不再出现旧版右栏。
         await page.locator('#vc-shell .vc-shell-chat [data-memory]').click();
-        await page.waitForSelector('#vc-memory-rail');
+        await page.waitForFunction(() => {
+            const panel = document.querySelector('#vc-desktop-character-panel');
+            return panel && !panel.hidden && panel.getClientRects().length > 0;
+        }, null, { timeout: 8000 });
         await page.waitForTimeout(320);
-        await shot(page, ctx, 'memory-rail-1440-light.png');
+        if (await page.locator('#vc-memory-rail').count()) fail(new Error('桌面记忆按钮仍打开了旧版右栏'));
+        await shot(page, ctx, 'memory-panel-1440-light.png');
         await theme(page, 'dark');
         await page.waitForTimeout(200);
-        await shot(page, ctx, 'memory-rail-1440-dark.png');
-        await page.locator('#vc-memory-rail button').filter({ hasText: '完成' }).click();
-        await page.waitForSelector('#vc-memory-rail', { state: 'detached' });
+        await shot(page, ctx, 'memory-panel-1440-dark.png');
+        await page.locator('#vc-desktop-character-panel .vc-desk-character-close').click();
+        await page.waitForFunction(() => document.querySelector('#vc-desktop-character-panel')?.hidden === true, null, { timeout: 8000 });
         await page.setViewportSize({ width: 390, height: 844 });
         await theme(page, 'light');
         await page.evaluate(() => {

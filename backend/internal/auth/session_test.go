@@ -66,3 +66,16 @@ func TestFreshReauthWindow(t *testing.T) {
 		t.Fatal("missing")
 	}
 }
+
+func TestFreshReauthToleratesSmallClockSkew(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 2, 1, 4, 21, 0, time.UTC)
+	// 数据库时钟略快于应用时钟：刚完成的再验证仍算新鲜。
+	if !FreshReauth(&Principal{ReauthAt: now.Add(5 * time.Millisecond)}, now, DefaultReauthWindow) {
+		t.Fatal("reauth a few ms in the future must count as fresh")
+	}
+	// 明显来自未来的时间戳仍拒绝。
+	if FreshReauth(&Principal{ReauthAt: now.Add(time.Minute)}, now, DefaultReauthWindow) {
+		t.Fatal("reauth far in the future must be rejected")
+	}
+}

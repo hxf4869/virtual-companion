@@ -7,7 +7,11 @@ import {
     NEAR_BOTTOM_PX,
     applyReplyStyle,
     armStreamFade,
+    clockText,
     commitHostDelete,
+    gapLabel,
+    parseSendDate,
+    planMessageMarks,
     inspectorOverlayRoot,
     isNearBottom,
     keepsTail,
@@ -838,10 +842,147 @@ test('UX-22 R6：角色面板头像光晕、56 圆形快捷动作、高度随内
     assert.match(desktopRule(css, `${P} .vc-desk-character-actions:empty`), /display:\s*none/);
     assert.match(css, /\.vc-desk-character \{ align-self: start; max-height: 100%; \}/);
     const narrow = css.slice(css.indexOf('/* UX-22 R5/R6：<1180'), css.indexOf('@media(min-width:1600px)'));
+    // UX-23 P1-6：≥1028 与对话并排（relative）；更窄时面板是浮层（absolute），对话不再被隐藏。
     assert.match(narrow, /position: relative/);
-    assert.equal(/position:\s*absolute/.test(narrow), false);
-    assert.match(narrow, /\.vc-shell-chat \{ display: none; \}/);
+    assert.match(narrow, /@media\(min-width:744px\) and \(max-width:1027px\)[\s\S]*position: absolute; top: 72px/);
+    assert.equal(/\.vc-shell-chat \{ display: none; \}/.test(narrow), false);
     const panel = fs.readFileSync(CHARACTER_PANEL_JS, 'utf8');
     assert.equal((panel.match(/\), 24\);|\}, 24\);/g) || []).length, 3);
     assert.match(panel, /memorySection\.hidden = !rows\.length/);
+});
+
+test('UX-23 桌面无偏好时按气泡，手机与已存偏好不变', () => {
+    const document = installMiniDom();
+    const store = memoryStore();
+    assert.equal(readReplyStyle(store), 'spread');
+    document.documentElement.setAttribute('data-vc-layout', 'desktop');
+    assert.equal(readReplyStyle(store), 'bubble');
+    assert.equal(readReplyStyle(memoryStore({ 'vc-reply-style': 'spread' })), 'spread');
+    assert.equal(readReplyStyle(memoryStore({ 'vc-reply-style': 'bubble' })), 'bubble');
+    assert.equal(readReplyStyle({ getItem() { throw new Error('closed'); } }), 'bubble');
+    document.documentElement.setAttribute('data-vc-layout', 'mobile');
+    assert.equal(readReplyStyle(store), 'spread');
+});
+
+test('UX-23 send_date 解析：毫秒数、ISO、宿主旧格式；解析不了不猜', () => {
+    const iso = '2026-11-02T08:02:00';
+    assert.equal(parseSendDate(1700000000000), 1700000000000);
+    assert.equal(parseSendDate(iso), new Date(2026, 10, 2, 8, 2).getTime());
+    assert.equal(parseSendDate('一句话'), null);
+    assert.equal(parseSendDate('一句话', () => ({ valueOf: () => 42 })), 42);
+    assert.equal(parseSendDate('一句话', () => { throw new Error('bad'); }), null);
+    assert.equal(parseSendDate(''), null);
+    assert.equal(parseSendDate(undefined), null);
+});
+
+test('UX-23 日期 / 间隔胶囊文案：今天、昨天、周几、月日、跨年', () => {
+    const now = new Date(2026, 10, 2, 12, 0).getTime();
+    const at = (y, mo, d, h = 8, mi = 5) => new Date(y, mo, d, h, mi).getTime();
+    assert.equal(clockText(at(2026, 10, 2, 8, 5)), '08:05');
+    assert.equal(gapLabel(at(2026, 10, 2), now), '今天 08:05');
+    assert.equal(gapLabel(at(2026, 10, 1, 22, 14), now), '昨天 22:14');
+    assert.equal(gapLabel(at(2026, 9, 31), now), '周六 08:05');
+    assert.equal(gapLabel(at(2026, 9, 27), now), '周二 08:05');
+    assert.equal(gapLabel(at(2026, 9, 26), now), '10月26日 08:05');
+    assert.equal(gapLabel(at(2025, 11, 31), now), '2025年12月31日 08:05');
+});
+
+test('UX-23 成组：同发送者且间隔小于 5 分钟；日期 / ≥20 分钟出胶囊并断组；组尾带时间与「已发送」', () => {
+    const base = new Date(2026, 10, 2, 8, 0).getTime();
+    const min = 60000;
+    const char = (m, extra = {}) => ({ user: false, system: false, name: '小满', ts: base + m * min, ...extra });
+    const user = (m, extra = {}) => ({ user: true, system: false, name: '我', ts: base + m * min, ...extra });
+    const rows = [char(0), char(1), char(4), char(9), user(10), user(12), char(40), { user: false, system: true, name: '', ts: null }, char(41, { rich: true }), char(42)];
+    const marks = planMessageMarks(rows, { now: base + 60 * min });
+    assert.deepEqual(marks.map((item) => item.pos), ['start', 'mid', 'end', 'solo', 'start', 'end', 'solo', '', '', 'solo']);
+    assert.deepEqual(marks.map((item) => item.gap), ['今天 08:00', '', '', '', '', '', '今天 08:40', '', '', '']);
+    assert.deepEqual(marks.map((item) => item.tail), [false, false, true, true, false, true, true, false, false, true]);
+    assert.equal(marks[2].foot, '08:04');
+    assert.equal(marks[5].foot, '08:12 · 已发送');
+    assert.equal(marks[0].time, '08:00');
+    assert.equal(marks[7].time, '');
+    assert.equal(marks[8].time, '');
+    assert.equal(marks.filter((item) => item.foot.includes('已发送')).length, 1);
+});
+
+test('UX-23 跨天断组、空消息与无时间的消息不带标记、也不连累邻居', () => {
+    const late = new Date(2026, 10, 1, 23, 58).getTime();
+    const early = new Date(2026, 10, 2, 0, 1).getTime();
+    const rows = [
+        { user: false, name: '小满', ts: late },
+        { user: false, name: '小满', ts: early },
+        { user: false, name: '小满', ts: null },
+        { user: false, name: '小满', ts: early, empty: true },
+        { user: true, name: '我', ts: null },
+    ];
+    const marks = planMessageMarks(rows, { now: early + 1000 });
+    assert.equal(marks[0].gap, '昨天 23:58');
+    assert.equal(marks[1].gap, '今天 00:01');
+    assert.deepEqual(marks.map((item) => item.pos), ['solo', 'solo', 'solo', '', 'solo']);
+    assert.equal(marks[2].foot, '');
+    assert.equal(marks[4].foot, '已发送');
+    assert.equal(planMessageMarks([]).length, 0);
+});
+
+test('UX-23 桌面气泡 CSS：只挂桌面 + 气泡类，用 attr() 绘制，不写字面颜色，手机文件不动', () => {
+    const css = fs.readFileSync(DESKTOP_CHAT_CSS, 'utf8');
+    const block = css.slice(css.indexOf('/* UX-23：即时通讯气泡'));
+    assert.ok(block.length > 2000);
+    for (const selector of block.replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((rule) => rule.split('{')[0].trim()).filter(Boolean)) {
+        for (const part of selector.split(/,\s*(?=html\[)/)) assert.ok(part.startsWith('html[data-vc-layout="desktop"] body.vc-ui'), part);
+    }
+    assert.doesNotMatch(block, /#[0-9a-f]{3,8}\b|rgba?\(/i);
+    assert.match(block, /content:\s*attr\(data-vc-gap\)/);
+    assert.match(block, /content:\s*attr\(data-vc-foot\)/);
+    assert.match(block, /\[data-vc-time\]:hover::after \{ opacity: 1; \}/);
+    assert.match(block, /grid-template-columns: 32px fit-content\(var\(--vc-bub-max\)\)/);
+    assert.match(block, /--vc-bub-r: 18px; --vc-bub-join: 6px;/);
+    assert.match(block, /\.mes\.vc-thinking:not\(\.vc-rich\) \{ display: none;/);
+    assert.match(block, /#vc-chat-gen\[data-vc-typing\]/);
+    assert.match(block, /content: "取消"/);
+    assert.match(block, /content: "保存"/);
+    const mobile = fs.readFileSync(CSS_PATH, 'utf8');
+    assert.equal(/data-vc-(gap|foot|time|pos|tail)/.test(mobile), false);
+});
+
+test('UX-23 桌面气泡：data-vc-* 写在 .mes 上，不插节点；回到手机布局即清除', async () => {
+    const document = installMiniDom();
+    document.documentElement.setAttribute('data-vc-layout', 'desktop');
+    document.body.classList.add('vc-ui', 'vc-reply-bubble');
+    const { chat } = stage(document, { ui: true });
+    const base = new Date(2026, 10, 2, 8, 0).getTime();
+    const log = [];
+    for (const [index, [user, minute]] of [[false, 0], [false, 1], [true, 10]].entries()) {
+        const node = mes(document, { user, name: user ? '我' : '小满', text: `第${index}句` });
+        node.setAttribute('mesid', String(index));
+        chat.append(node);
+        log.push({ mes: `第${index}句`, is_user: user, send_date: new Date(base + minute * 60000).toISOString() });
+    }
+    const ctx = { chat: log, chatMetadata: {}, characters: [], eventSource: null };
+    mountChatView({ getContext: () => ctx, document });
+    const rows = [...chat.children];
+    assert.equal(rows.length, 3);
+    assert.deepEqual(rows.map((node) => node.getAttribute('data-vc-pos')), ['start', 'end', 'solo']);
+    assert.equal(rows[0].getAttribute('data-vc-gap'), gapLabel(base, Date.now()));
+    assert.equal(rows[1].getAttribute('data-vc-foot'), '08:01');
+    assert.equal(rows[2].getAttribute('data-vc-foot'), '08:10 · 已发送');
+    assert.equal(rows[0].hasAttribute('data-vc-tail'), false);
+    assert.equal(rows[1].hasAttribute('data-vc-tail'), true);
+    assert.equal(rows[0].querySelector('.mes_text').children.length, 0);
+});
+
+test('UX-23 桌面气泡生成中：#vc-chat-gen 是「正在输入」气泡，手机仍是「思考中」', () => {
+    for (const layout of ['desktop', 'mobile']) {
+        const document = installMiniDom();
+        document.documentElement.setAttribute('data-vc-layout', layout);
+        document.body.classList.add('vc-ui', 'vc-reply-bubble');
+        stage(document, { ui: true });
+        document.body.setAttribute('data-generating', 'true');
+        mountChatView({ getContext: () => ({ chat: [], chatMetadata: {}, characters: [] }), document });
+        const line = document.querySelector('#vc-chat-gen');
+        assert.equal(line.hasAttribute('hidden'), false, layout);
+        assert.equal(line.hasAttribute('data-vc-typing'), layout === 'desktop', layout);
+        assert.equal(line.textContent, layout === 'desktop' ? '正在输入' : '思考中', layout);
+        assert.equal(Boolean(line.querySelector('.vc-gen-bubble')), layout === 'desktop', layout);
+    }
 });

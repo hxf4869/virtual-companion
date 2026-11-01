@@ -1,0 +1,56 @@
+/* UX-23 B：桌面右键菜单、引用、输入框、发送失败。只在桌面生效，手机像素不变。 */
+
+/* 右键菜单的定位锚点：零尺寸、不拦截指针。 */
+#vc-ctx-anchor { position: fixed; width: 0; height: 0; pointer-events: none; }
+
+/* 被点的气泡轻微抬起：气泡模式抬 .mes_block，铺开模式抬 .mes_text。 */
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes :is(.mes_text, .mes_block) { transition: transform var(--vc-dur-quick) var(--vc-spring), box-shadow var(--vc-dur-quick) var(--vc-ease-out); }
+html[data-vc-layout="desktop"] body.vc-ui:not(.vc-reply-bubble) #chat > .mes.vc-ctx-target .mes_text,
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-ctx-target > .mes_block { position: relative; z-index: 1; transform: scale(1.02); transform-origin: left center; box-shadow: var(--vc-shadow-panel); }
+html[data-vc-layout="desktop"] body.vc-ui:not(.vc-reply-bubble) #chat > .mes.vc-ctx-target[is_user="true"] .mes_text,
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-ctx-target[is_user="true"] > .mes_block { transform-origin: right center; }
+
+/* 桌面菜单：行更紧、分隔线用细线（参照 C2）。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-menu.vc-compose-menu { min-width: 180px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-menu.vc-compose-menu button { height: 36px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-menu.vc-compose-menu hr { height: .5px; margin: var(--vc-space-xxs) var(--vc-space-xs); background: var(--vc-raised-edge); }
+
+/* 引用条：输入区上方。 */
+html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar {
+  display: flex; align-items: center; gap: var(--vc-space-xs);
+  margin: 0 0 var(--vc-space-xs); padding: var(--vc-space-xs) var(--vc-space-xs) var(--vc-space-xs) var(--vc-space-sm);
+  border-radius: var(--vc-radius-md); background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge);
+  color: var(--vc-ink-2); font-size: var(--vc-fs-footnote); line-height: var(--vc-lh-footnote);
+}
+html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar::before { content: ""; align-self: stretch; flex: none; width: 2px; border-radius: var(--vc-radius-pill); background: var(--vc-accent); }
+html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar .vc-quote-label { flex: none; }
+html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar .vc-quote-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vc-ink); }
+html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar .vc-quote-close { flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--vc-radius-pill); background: none; color: var(--vc-ink-2); }
+html[data-vc-layout="desktop"] body.vc-ui #vc-quote-bar .vc-quote-close:hover { background: var(--vc-hover-fill); }
+
+/* 消息里的引用块（正文开头的 blockquote）：左竖线加灰字，随气泡文字色走。 */
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_text > blockquote:first-child {
+  margin: 0 0 var(--vc-space-xs); padding: 0 0 0 var(--vc-space-xs); background: none;
+  border-left: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  font-size: var(--vc-fs-footnote); line-height: var(--vc-lh-footnote);
+}
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_text > blockquote:first-child p { margin: 0; }
+
+/* 发送失败：最后一条用户消息组尾，红字加「重试」。 */
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-failed="true"] .vc-mes-tools { opacity: 1; pointer-events: auto; }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-failed="true"] .vc-mes-tools > button:not(.vc-send-retry),
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes[data-vc-failed="true"]::after { display: none; }
+/* 气泡模式：重试行占「已发送」所在的组尾格（盖过工具行贴在气泡侧边的摆法）。 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"][data-vc-failed="true"]:not(.vc-rich) > .vc-mes-tools { grid-column: 2; grid-row: 3; justify-self: end; margin: 0; opacity: 1; pointer-events: auto; }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes .vc-mes-tools > button.vc-send-retry {
+  display: inline-flex; align-items: center; gap: var(--vc-space-xxs);
+  width: auto; height: auto; min-width: 0; min-height: 0; padding: var(--vc-space-xxs) 0 0;
+  border: 0; border-radius: var(--vc-radius-sm); background: none;
+  color: var(--vc-danger); font: inherit; font-size: var(--vc-fs-footnote); line-height: var(--vc-lh-footnote); white-space: nowrap;
+}
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes .vc-send-retry .vc-send-retry-act { color: var(--vc-accent-text); }
+html[data-vc-layout="desktop"] body.vc-ui #chat > .mes .vc-send-retry:hover .vc-send-retry-act { text-decoration: underline; }
+
+/* 60 秒仍无内容：接在「正在输入」后面。#vc-chat-gen 的版式由聊天样式负责。 */
+html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen[data-vc-slow]::after { content: "· " attr(data-vc-slow); margin-left: var(--vc-space-xs); color: var(--vc-ink-2); }

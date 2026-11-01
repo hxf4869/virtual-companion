@@ -49,6 +49,30 @@ export function formatConversationTime(value) {
     }
 }
 
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// 桌面会话行的时间：今天 HH:mm、昨天、周X（一周内）、M/D。解析不了的原样返回空串，由调用方保留已有文字。
+export function desktopConversationTime(value, now = new Date()) {
+    const raw = value == null ? '' : String(value).trim();
+    if (!raw) return '';
+    const parsed = /^\d{10,}$/.test(raw) ? Number(raw) : Date.parse(raw.replace('@', ' '));
+    if (Number.isNaN(parsed)) return '';
+    const date = new Date(parsed);
+    const day = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    const gap = Math.round((day(now) - day(date)) / 86400000);
+    if (gap === 0) return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+    if (gap === 1) return '昨天';
+    if (gap > 1 && gap < 7) return WEEKDAYS[date.getDay()];
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+// 桌面会话行：实例名以「角色名 · 」开头时只显示后半，避免与名字重复。
+export function instanceTail(name, inst) {
+    const prefix = `${String(name ?? '').trim()} · `;
+    return prefix.length > 3 && String(inst ?? '').startsWith(prefix) && inst.length > prefix.length ? inst.slice(prefix.length) : inst;
+}
+
 function textField(value) {
     if (typeof value !== 'string') return '';
     const trimmed = value.trim();
@@ -188,7 +212,7 @@ function dropSharedFiles(rows) {
         }
         const prior = kept[index];
         if (!textField(prior.preview) && textField(row.preview)) prior.preview = row.preview;
-        if (!textField(prior.time) && textField(row.time)) prior.time = row.time;
+        if (!textField(prior.time) && textField(row.time)) { prior.time = row.time; prior.timeMs = row.timeMs; }
     }
     return kept;
 }
@@ -277,7 +301,11 @@ export function conversationRows(relationships, { chats = [], chatsComplete = fa
         const preview = textField(chat?.preview);
         if (preview) row.preview = preview.split('\n')[0].trim();
         const time = formatConversationTime(chat?.time);
-        if (time) row.time = time;
+        if (time) {
+            row.time = time;
+            const ms = Date.parse(String(chat.time).trim().replace('@', ' '));
+            if (!Number.isNaN(ms)) row.timeMs = ms;
+        }
         const file = textField(chat?.file);
         if (file) row.file = file;
         if (Number.isInteger(chat?.characterIndex) && chat.characterIndex >= 0) row.characterIndex = chat.characterIndex;
@@ -322,7 +350,7 @@ export function renderConversationRow(row) {
     const label = [title.name, title.inst, row?.unread ? '未读' : ''].filter(Boolean).join('，');
     const time = textField(row?.time);
     const preview = textField(row?.preview) || '暂无消息';
-    return `<button type="button" class="vc-cell vc-convo" data-relationship-id="${esc(row?.relationshipId || '')}" aria-label="${esc(label)}"><span class="vc-convo-avatar-slot">${avatarHtml(row, title)}</span><span class="vc-grow"><span class="vc-convo-top"><span class="vc-convo-name">${esc(title.name)}</span>${title.inst ? `<span class="vc-convo-inst">${esc(title.inst)}</span>` : ''}${time ? `<span class="vc-convo-time vc-num">${esc(time)}</span>` : ''}</span><span class="vc-convo-preview">${esc(preview)}</span></span>${row?.unread ? '<i class="vc-convo-unread" aria-hidden="true"></i>' : ''}</button>`;
+    return `<button type="button" class="vc-cell vc-convo" data-relationship-id="${esc(row?.relationshipId || '')}"${title.inst && title.inst === title.name ? ' data-same-name' : ''} aria-label="${esc(label)}"><span class="vc-convo-avatar-slot">${avatarHtml(row, title)}</span><span class="vc-grow"><span class="vc-convo-top"><span class="vc-convo-name">${esc(title.name)}</span>${title.inst ? `<span class="vc-convo-inst">${esc(title.inst)}</span>` : ''}${time ? `<span class="vc-convo-time vc-num"${Number.isFinite(row?.timeMs) ? ` data-time="${row.timeMs}"` : ''}>${esc(time)}</span>` : ''}</span><span class="vc-convo-preview">${esc(preview)}</span></span>${row?.unread ? '<i class="vc-convo-unread" aria-hidden="true"></i>' : ''}</button>`;
 }
 
 export function renderConversationRows(rows) {

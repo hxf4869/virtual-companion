@@ -68,12 +68,17 @@ const seenMessages = new WeakSet();
 let foldSequence = 0;
 
 export function readReplyStyle(storage) {
+    let stored = null;
     try {
         const store = storage ?? globalThis.localStorage;
-        return store?.getItem?.(REPLY_STYLE_KEY) === 'bubble' ? 'bubble' : 'spread';
-    } catch {
-        return 'spread';
-    }
+        stored = store?.getItem?.(REPLY_STYLE_KEY);
+    } catch { /* 偏好读不到时按布局给默认 */ }
+    if (stored === 'bubble' || stored === 'spread') return stored;
+    return desktopLayout() ? 'bubble' : 'spread';
+}
+
+function desktopLayout() {
+    return globalThis.document?.documentElement?.getAttribute?.('data-vc-layout') === 'desktop';
 }
 
 export function writeReplyStyle(style, storage) {
@@ -142,6 +147,87 @@ export function markSpeakers(rows) {
         previous = key;
         return show;
     });
+}
+
+export const GROUP_GAP_MS = 5 * 60 * 1000;
+export const PILL_GAP_MS = 20 * 60 * 1000;
+export const SENT_COPY = '已发送';
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/** send_date 可能是毫秒数、ISO 串或宿主旧格式；解析不了就返回 null，不猜。 */
+export function parseSendDate(value, toMoment) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const direct = Date.parse(value);
+    if (Number.isFinite(direct)) return direct;
+    try {
+        const ms = toMoment?.(value)?.valueOf?.();
+        return Number.isFinite(ms) ? ms : null;
+    } catch {
+        return null;
+    }
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+export function clockText(ms) {
+    const date = new Date(ms);
+    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function dayStart(ms) {
+    const date = new Date(ms);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+/** 日期 / 间隔胶囊：今天、昨天、7 天内周几、更早月日，跨年带年份。 */
+export function gapLabel(ms, now = Date.now()) {
+    const date = new Date(ms);
+    const days = Math.round((dayStart(now) - dayStart(ms)) / 86400000);
+    const clock = clockText(ms);
+    if (days === 0) return `今天 ${clock}`;
+    if (days === 1) return `昨天 ${clock}`;
+    if (days > 1 && days < 7) return `${WEEKDAYS[date.getDay()]} ${clock}`;
+    const year = date.getFullYear() === new Date(now).getFullYear() ? '' : `${date.getFullYear()}年`;
+    return `${year}${date.getMonth() + 1}月${date.getDate()}日 ${clock}`;
+}
+
+/**
+ * 成组 / 胶囊 / 组尾时间。rows: { user, system, name, ts, rich, empty }。
+ * 系统消息、富消息、空消息不入组、不带标记；返回与 rows 等长的 { gap, time, pos, tail, foot }。
+ */
+export function planMessageMarks(rows, { now = Date.now() } = {}) {
+    const marks = rows.map(() => ({ gap: '', time: '', pos: '', tail: false, foot: '' }));
+    const eligible = rows.map((row) => !row?.system && !row?.rich && !row?.empty);
+    const key = (row) => (row.user ? 'user' : `c:${row.name || ''}`);
+    let lastTs = null;
+    const joins = rows.map(() => false);
+    rows.forEach((row, i) => {
+        const ts = Number.isFinite(row?.ts) ? row.ts : null;
+        if (eligible[i]) {
+            const showGap = ts !== null && (lastTs === null || dayStart(ts) !== dayStart(lastTs) || Math.abs(ts - lastTs) >= PILL_GAP_MS);
+            if (showGap) marks[i].gap = gapLabel(ts, now);
+            if (ts !== null) marks[i].time = clockText(ts);
+            const prev = rows[i - 1];
+            joins[i] = Boolean(i > 0 && eligible[i - 1] && !showGap && ts !== null && Number.isFinite(prev?.ts)
+                && key(prev) === key(row) && Math.abs(ts - prev.ts) < GROUP_GAP_MS);
+        }
+        if (ts !== null && !row?.system && !row?.empty) lastTs = ts;
+    });
+    let lastUser = -1;
+    rows.forEach((row, i) => { if (row?.user && !row?.system && !row?.empty) lastUser = i; });
+    rows.forEach((_, i) => {
+        if (!eligible[i]) return;
+        const joinedNext = Boolean(joins[i + 1]);
+        const joinedPrev = joins[i];
+        marks[i].pos = joinedPrev && joinedNext ? 'mid' : joinedPrev ? 'end' : joinedNext ? 'start' : 'solo';
+        marks[i].tail = !joinedNext;
+        if (marks[i].tail) {
+            const sent = i === lastUser && eligible[i];
+            marks[i].foot = [marks[i].time, sent ? SENT_COPY : ''].filter(Boolean).join(' · ');
+        }
+    });
+    return marks;
 }
 
 export function refreshIndexes(count, streaming) {
@@ -281,6 +367,12 @@ export function mountChatView({ getContext, document: doc = document } = {}) {
     if (chat) {
         watch(chat, { childList: true, subtree: true, characterData: true }, scheduleChatMutations);
     }
+    watchComposerHeight(doc);
+    // 窗口在手机 / 桌面布局间切换时，回复样式的布局默认值随之变化。
+    watch(doc.documentElement, { attributes: true, attributeFilter: ['data-vc-layout'] }, () => {
+        applyReplyStyle(doc, readReplyStyle());
+        refreshMessages();
+    });
     watch(doc.body, { attributes: true, attributeFilter: ['data-generating'] }, () => {
         syncGenerating();
         if (document.body?.getAttribute?.('data-generating') !== 'true') refreshMessages();
@@ -598,6 +690,62 @@ function refreshMessages() {
     if (!streaming) arrivalsPrimed = true;
     syncGenerating();
     paintReplyMessages(list);
+    syncTimeline(list);
+}
+
+/** 桌面气泡：分组、日期胶囊、组尾时间与「已发送」都写成 .mes 上的 data-vc-*，由 CSS 渲染，不插节点。 */
+export function desktopBubble() {
+    return desktopLayout() && Boolean(document.body?.classList?.contains('vc-reply-bubble'));
+}
+
+const MARK_ATTRS = ['data-vc-gap', 'data-vc-time', 'data-vc-pos', 'data-vc-foot', 'data-vc-tail'];
+let marksOn = false;
+
+function writeMark(mes, name, value) {
+    if (value === '') {
+        if (mes.hasAttribute?.(name)) mes.removeAttribute(name);
+    } else if (mes.getAttribute?.(name) !== value) {
+        mes.setAttribute(name, value);
+    }
+}
+
+function syncTimeline(list) {
+    if (!desktopBubble()) {
+        if (!marksOn) return;
+        marksOn = false;
+        for (const mes of list) {
+            for (const name of MARK_ATTRS) mes.removeAttribute?.(name);
+            removeClass(mes, 'vc-rich');
+        }
+        return;
+    }
+    marksOn = true;
+    const ctx = safeContext();
+    const story = ctx?.chatMetadata?.vc_binding?.mode === 'STORY';
+    const log = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    const rows = list.map((mes) => {
+        const text = mes.querySelector?.('.mes_text')?.textContent?.trim() || '';
+        const row = log[Number(mes.getAttribute?.('mesid'))];
+        const media = richMessage(mes);
+        return {
+            user: isUser(mes),
+            system: isSystem(mes),
+            name: mes.getAttribute?.('ch_name') || mes.querySelector?.('.name_text')?.textContent || '',
+            ts: parseSendDate(row?.send_date, ctx?.timestampToMoment),
+            rich: story || media,
+            empty: !text && !media && !mes.querySelector?.('.edit_textarea'),
+        };
+    });
+    const marks = planMessageMarks(rows);
+    list.forEach((mes, i) => {
+        toggleClass(mes, 'vc-rich', rows[i].rich && !rows[i].system);
+        writeMark(mes, 'data-vc-gap', marks[i].gap);
+        writeMark(mes, 'data-vc-time', marks[i].time);
+        writeMark(mes, 'data-vc-pos', marks[i].pos);
+        writeMark(mes, 'data-vc-foot', marks[i].foot);
+        if (!marks[i].tail) mes.removeAttribute?.('data-vc-tail');
+        else if (!mes.hasAttribute?.('data-vc-tail')) mes.setAttribute('data-vc-tail', '');
+    });
 }
 
 function ensureTools(mes, { character }) {
@@ -687,7 +835,8 @@ function runAction(act, mes) {
         return;
     }
     if (act === 'copy') {
-        mes.querySelector('.mes_copy')?.click();
+        // 宿主的复制按钮监听 pointerup（文档委托），click() 触发不了。
+        mes.querySelector('.mes_copy')?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
         return;
     }
     if (act === 'regen') regenerate();
@@ -1197,6 +1346,16 @@ function bindComposer(doc) {
     fit();
 }
 
+/** 窄桌面的角色面板是浮层，要让出输入区；输入区高度由这里量给 CSS（--vc-composer-h）。 */
+function watchComposerHeight(doc) {
+    const form = doc.querySelector?.('#form_sheld') || doc.querySelector?.('#send_form');
+    const root = doc.documentElement;
+    if (!form || !root?.style?.setProperty || typeof globalThis.ResizeObserver !== 'function') return;
+    const paint = () => root.style.setProperty('--vc-composer-h', `${Math.ceil(form.getBoundingClientRect?.().height || 0)}px`);
+    new globalThis.ResizeObserver(paint).observe(form);
+    paint();
+}
+
 function readMaxHeight(box) {
     try {
         const max = Number.parseFloat(globalThis.getComputedStyle?.(box)?.maxHeight);
@@ -1452,15 +1611,28 @@ function syncGenerating() {
     const line = document.querySelector('#vc-chat-gen');
     if (!line) return;
     clearChildren(line);
+    line.removeAttribute?.('data-vc-typing');
     if (on) {
+        // 桌面气泡下，空回复节点本身不画（CSS 隐藏），由这一行给出「正在输入」。
+        const typing = desktopBubble();
+        const waiting = generatingMes && !generatingMes.querySelector?.('.mes_text')?.textContent?.trim();
         // 回复节点还没出现时，在输入区上方给出可见的思考态。
-        if (generatingMes) { hide(line); return; }
+        if (generatingMes && !(typing && waiting)) { hide(line); return; }
         const dots = document.createElement('span');
         dots.className = 'vc-gen-dots';
         dots.setAttribute('aria-hidden', 'true');
         const label = document.createElement('span');
-        label.textContent = '思考中';
-        line.append(dots, label);
+        if (typing) {
+            const bubble = document.createElement('span');
+            bubble.className = 'vc-gen-bubble';
+            bubble.append(dots);
+            label.textContent = TYPING_COPY;
+            line.setAttribute('data-vc-typing', '');
+            line.append(bubble, label);
+        } else {
+            label.textContent = '思考中';
+            line.append(dots, label);
+        }
         show(line);
         return;
     }

@@ -40,6 +40,7 @@ import { mountConsentGate } from './consent.js';
 import { enableVcUi, readVcUiFlag } from './ui/theme.js';
 import { mountDrawerPages, openAccountData, openDrawerPage, openModelSettings } from './drawers.js';
 import { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget } from './chat-view.js';
+import { mountChatCompose } from './chat-compose.js';
 import { installStickers } from './stickers.js';
 import { installChatVoice } from './voice-chat.js';
 import { installVoiceInput } from './voice-input.js';
@@ -72,6 +73,7 @@ function mountVcUi() {
     if (!readVcUiFlag()) return;
     enableVcUi();
     mountChatView({ getContext });
+    mountChatCompose({ getContext });
     if (!document.head) return;
     for (const [id, file] of [
         ['vc-ui-css', './vc-ui.css'],

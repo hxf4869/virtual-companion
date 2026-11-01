@@ -77,17 +77,17 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desk-editor-actions { display: fle
 @media(min-width:744px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-chat="open"]:not([data-settings="page"]) .vc-desk-character { align-self: start; max-height: 100%; }
 }
-/* UX-22 R5/R6：<1180 面板不再浮在对话上。1024–1179 与对话并排；744–1023 打开时占用对话位置，面板自带关闭。 */
+/* UX-22 R5/R6：<1180 面板不再浮在对话上。UX-23 P1-6：对话宽 ≥560（≥1028）时与对话并排；更窄时面板是浮层，对话、标题栏按钮与输入区都不被盖住。 */
 @media(min-width:744px) and (max-width:1179px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) .vc-desk-character { position: relative; width: auto; z-index: auto; background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); }
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="closed"] .vc-desk-character { display: none; }
 }
-@media(min-width:1024px) and (max-width:1179px) {
+@media(min-width:1028px) and (max-width:1179px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="open"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: minmax(0,1fr) 340px; }
 }
-@media(min-width:744px) and (max-width:1023px) {
+@media(min-width:744px) and (max-width:1027px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="open"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: minmax(0,1fr); }
- html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="open"][data-character-panel="open"]:not([data-settings="page"]) .vc-shell-chat { display: none; }
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="open"][data-character-panel="open"]:not([data-settings="page"]) .vc-desk-character { position: absolute; top: 72px; right: 0; bottom: auto; width: 340px; max-width: 100%; max-height: calc(100% - 72px - var(--vc-composer-h, 72px) - var(--vc-space-sm)); padding-top: 56px; z-index: var(--vc-z-popup); background: var(--vc-glass-3); backdrop-filter: blur(var(--vc-blur-3)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-overlay); }
 }
 @media(min-width:1600px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: 320px minmax(560px,1fr) 340px; }
@@ -108,3 +108,116 @@ html[data-vc-layout="desktop"] body.vc-ui #vc-new-reply { background: var(--vc-r
 /* 滚动容器铺满对话面板，滚动条贴面板边缘；阅读宽度由 .mes 与 #form_sheld 各自限制。 */
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat-body #sheld { width: 100% !important; max-width: none !important; align-self: stretch; /* 压过 shell.css 的 720 限宽 !important */ }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat-body #chat { width: 100% !important; max-width: none !important; /* 同上 */ }
+
+/* UX-23：即时通讯气泡。只在桌面且回复样式为「气泡」时生效；富消息 / 剧情（.vc-rich）与系统消息保持铺开。
+   分组、日期胶囊、组尾时间、悬停时间、「已发送」由 chat-view.js 写在 .mes 的 data-vc-* 上，这里用 attr() 绘制，不插节点。 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat { --vc-bub-r: 18px; --vc-bub-join: 6px; --vc-bub-max: min(75%, calc(var(--vc-read) * .75)); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat:not(.vc-jump-pad) { padding-bottom: var(--vc-space-sm); }
+/* 铺开的富消息与气泡对齐同一条左缘与头像宽度 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-rich:not([is_user="true"]):not([is_system="true"]) { grid-template-columns: 32px minmax(0,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-rich.vc-speaker .mesAvatarWrapper { width: 32px; height: 32px !important; /* 压过 .vc-speaker 的 !important */ }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-rich.vc-speaker :is(.avatar,.avatar img) { width: 32px !important; height: 32px !important; min-width: 32px; min-height: 32px; /* 压过 .vc-speaker 的 !important */ }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) {
+ --vc-jt: var(--vc-bub-r); --vc-jb: var(--vc-bub-r);
+ display: grid; grid-template-columns: 32px fit-content(var(--vc-bub-max)) minmax(0,1fr); grid-template-rows: auto auto auto;
+ align-items: end; justify-items: start; column-gap: var(--vc-space-xs); row-gap: 0;
+ padding: var(--vc-space-sm) var(--vc-space-xl) 0;
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) { grid-template-columns: minmax(0,1fr) fit-content(var(--vc-bub-max)); justify-items: end; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]):is([data-vc-pos="mid"],[data-vc-pos="end"]) { --vc-jt: var(--vc-bub-join); padding-top: var(--vc-space-xxs); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]):is([data-vc-pos="start"],[data-vc-pos="mid"]) { --vc-jb: var(--vc-bub-join); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"])[data-vc-gap] { padding-top: 0; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-thinking:not(.vc-rich) { display: none; /* 空回复由 #vc-chat-gen 的「正在输入」代替 */ }
+/* 日期 / 间隔胶囊 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"])[data-vc-gap]::before {
+ content: attr(data-vc-gap); grid-column: 1 / -1; grid-row: 1; justify-self: center;
+ width: auto; height: auto; margin: var(--vc-space-sm) 0; padding: 4px 12px; border-radius: var(--vc-radius-pill);
+ background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); box-sizing: border-box;
+ color: var(--vc-ink-2); font-size: var(--vc-fs-footnote); line-height: 1.3; animation: none;
+}
+/* 头像：只在组末气泡旁，其余位置留空占位 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([data-vc-tail]):not([is_system="true"]) .mesAvatarWrapper { display: none !important; /* 压过 .vc-speaker 的 flex !important */ }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich)[data-vc-tail]:not([is_user="true"]):not([is_system="true"]) .mesAvatarWrapper { display: flex !important; /* 压过非 .vc-speaker 行隐藏头像的 !important */ grid-column: 1; grid-row: 2; align-self: end; width: 32px; height: 32px !important; /* 压过 .vc-speaker 的 !important */ }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich)[data-vc-tail]:not([is_user="true"]):not([is_system="true"]) :is(.avatar,.avatar img) { width: 32px !important; height: 32px !important; min-width: 32px; min-height: 32px; /* 压过 .vc-speaker 的 !important */ }
+/* 气泡本体：.mes_block */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) > .mes_block {
+ grid-column: 2; grid-row: 2; justify-self: start; box-sizing: border-box;
+ width: auto !important; max-width: none !important; /* 压过用户 / 角色气泡 80% 的 !important */
+ margin: 0; padding: 10px 14px;
+ background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge);
+ border-radius: var(--vc-jt) var(--vc-bub-r) var(--vc-bub-r) var(--vc-jb);
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) > .mes_block {
+ grid-column: 2; justify-self: end; background: var(--vc-accent); box-shadow: none;
+ border-radius: var(--vc-bub-r) var(--vc-jt) var(--vc-jb) var(--vc-bub-r);
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_text { font-size: var(--vc-fs-bubble); line-height: 1.5; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_text > :first-child { margin-top: 0; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) .mes_text > :last-child { margin-bottom: 0; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .mes_text { color: var(--vc-on-accent); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) .mes_text a { color: inherit; text-decoration: underline; }
+/* 分段回复：每段一个气泡，同一条消息内按组内处理 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not(.vc-rich):not([is_user="true"]):not([is_system="true"]) > .mes_block { padding: 0 !important; /* 压过分段容器的 !important */ background: none !important; box-shadow: none; border-radius: 0 !important; max-width: none !important; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not(.vc-rich) .vc-segs { gap: var(--vc-space-xxs); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not(.vc-rich) .vc-seg {
+ --vc-st: var(--vc-bub-join); --vc-sb: var(--vc-bub-join);
+ padding: 10px 14px; background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge);
+ border-radius: var(--vc-st) var(--vc-bub-r) var(--vc-bub-r) var(--vc-sb); font-size: var(--vc-fs-bubble); line-height: 1.5;
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not(.vc-rich) .vc-seg:first-child { --vc-st: var(--vc-jt); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-segmented:not(.vc-rich) .vc-seg:last-child { --vc-sb: var(--vc-jb); }
+/* 工具行：悬停才出现，贴在气泡外侧；组内时间在同一格里，工具让开时间 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"]) > .vc-mes-tools { grid-column: 3; grid-row: 2; align-self: center; justify-self: start; justify-content: flex-start; min-height: 0; margin: 0 0 0 44px; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich) > .vc-mes-tools { grid-column: 1; justify-self: end; justify-content: flex-end; margin: 0 44px 0 0; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[data-vc-tail]:not(.vc-rich):not([is_system="true"]) > .vc-mes-tools { margin-inline: 0; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes.vc-tools-pin:not(.vc-rich):not(:hover):not(:focus-within):not(:has(.vc-mes-pager)) > .vc-mes-tools { opacity: 0; pointer-events: none; }
+/* 组尾时间（含「已发送」）；组内单条悬停时间 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"])[data-vc-time]::after,
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"])[data-vc-foot]::after {
+ content: attr(data-vc-time); grid-column: 3; grid-row: 2; align-self: end; justify-self: start;
+ width: auto; height: auto; margin: 0; padding: 0 0 var(--vc-space-xxs); border-radius: 0; background: none; animation: none;
+ color: var(--vc-ink-2); font-size: var(--vc-fs-caption); line-height: 1.3; white-space: nowrap;
+ opacity: 0; transition: opacity var(--vc-dur-press) var(--vc-ease-out);
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich)[data-vc-time]::after { grid-column: 1; justify-self: end; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"])[data-vc-time]:hover::after { opacity: 1; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:not(.vc-rich):not([is_system="true"])[data-vc-foot]::after {
+ content: attr(data-vc-foot); grid-column: 2; grid-row: 3; justify-self: start; padding: var(--vc-space-xxs) 0 0; opacity: 1;
+}
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:not(.vc-rich)[data-vc-foot]::after { justify-self: end; }
+/* 编辑态：本系统输入样式，取消 / 保存在下方 */
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:has(.edit_textarea):not(.vc-rich):not([is_system="true"]) { grid-template-columns: 32px minmax(0,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:has(.edit_textarea):not(.vc-rich) { grid-template-columns: minmax(0,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:has(.edit_textarea):not(.vc-rich)::before,
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:has(.edit_textarea):not(.vc-rich)::after,
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:has(.edit_textarea):not(.vc-rich) > .vc-mes-tools { display: none; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes:has(.edit_textarea):not(.vc-rich):not([is_system="true"]) > .mes_block { grid-column: 2; justify-self: stretch; width: 100% !important; /* 压过气泡宽度 */ padding: 0; background: none; box-shadow: none; border-radius: 0; }
+html[data-vc-layout="desktop"] body.vc-ui.vc-reply-bubble #chat > .mes[is_user="true"]:has(.edit_textarea):not(.vc-rich) > .mes_block { grid-column: 1; }
+html[data-vc-layout="desktop"] body.vc-ui #chat .edit_textarea {
+ box-sizing: border-box; width: 100%; min-height: 96px; margin: 0; padding: 10px 14px; border: 0; border-radius: var(--vc-radius-sm);
+ background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); color: var(--vc-ink);
+ font: inherit; font-size: var(--vc-fs-bubble); line-height: 1.5; resize: vertical;
+}
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons { gap: var(--vc-space-xs); justify-content: flex-end; width: 100%; margin-top: var(--vc-space-xs); }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons :is(.mes_edit_copy,.mes_edit_add_reasoning,.mes_edit_delete,.mes_edit_up,.mes_edit_down) { display: none; /* 复制、删除由消息菜单提供 */ }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons :is(.mes_edit_done,.mes_edit_cancel) {
+ display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 64px; height: 36px; padding: 0 var(--vc-space-md); margin: 0;
+ border-radius: var(--vc-radius-pill); border: 0; font: inherit; font-size: 0; font-weight: 600; cursor: pointer;
+}
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons :is(.mes_edit_done,.mes_edit_cancel)::before { content: none; /* 去掉图标字体字形 */ }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons :is(.mes_edit_done,.mes_edit_cancel)::after { font-size: var(--vc-fs-subhead); }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons .mes_edit_cancel { order: 1; background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); color: var(--vc-ink); }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons .mes_edit_cancel::after { content: "取消"; }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons .mes_edit_done { order: 2; background: var(--vc-accent); color: var(--vc-on-accent); }
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_edit_buttons .mes_edit_done::after { content: "保存"; }
+/* #vc-chat-gen：桌面在输入区上方、左对齐；「正在输入」是气泡，其余提示是小胶囊 */
+html[data-vc-layout="desktop"] body.vc-ui #sheld > #form_sheld,
+html[data-vc-layout="desktop"] body.vc-ui #sheld > #send_form { order: 2; }
+html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen:not([hidden]) {
+ position: static; order: 1; align-self: flex-start; left: auto; bottom: auto; transform: none; flex: none;
+ margin: 0 0 var(--vc-space-xs) var(--vc-space-xl); min-height: 0; padding: 6px var(--vc-space-sm);
+ background: var(--vc-raised); backdrop-filter: none; box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); color: var(--vc-ink-2);
+}
+html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen[data-vc-typing]:not([hidden]) { padding: 0; gap: var(--vc-space-xs); background: none; box-shadow: none; }
+html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen .vc-gen-bubble { display: inline-flex; align-items: center; padding: 19px 18px; border-radius: var(--vc-bub-r, 18px); background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); }
+html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen .vc-gen-dots { margin-right: 18px; }

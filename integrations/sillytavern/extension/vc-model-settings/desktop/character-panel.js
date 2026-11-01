@@ -3,6 +3,8 @@ import { fetchRelationships, storyRequest } from '../api.js';
 import { createMemoryPage, FORGET_NOTICE, requestOpenMemory } from '../memory-page.js';
 import { recalledItems, safeAvatarUrl } from '../chat-view.js';
 import { listFollowUps } from '../inbox-page.js';
+import { mountChatSearch } from '../chat-search.js';
+import { chatSnapshotFromContext, desktopConversationTime, instanceTail } from '../conversations.js';
 import { mountInstancePage } from '../instance-page.js';
 import { openRelationshipVoiceSettings } from '../voice-settings.js';
 import { confirmAlert } from '../ui/alert.js';
@@ -28,6 +30,7 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
     const toggle = action('角色面板', 'user-round', () => setOpen(panel.hidden));
     toggle.classList.add('vc-desk-character-toggle');
     pane.querySelector('.vc-capsule').prepend(toggle);
+    const search = mountChatSearch({ pane, getContext });
     const panel = node('aside', 'vc-desk-character'); panel.id = 'vc-desktop-character-panel';
     panel.setAttribute('aria-label', '角色面板'); toggle.setAttribute('aria-controls', panel.id);
     const close = action('关闭角色面板', 'x', () => { setOpen(false); toggle.focus(); });
@@ -62,6 +65,47 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
             row.append(actions); memorySection.append(row);
         }
     }
+    // P1-5：桌面「记忆」不再开旧右栏，改为打开角色面板并滚到「本次想起」。外壳的点击监听在冒泡阶段，这里在捕获阶段先接管。
+    function openMemory() {
+        setOpen(true);
+        if (memorySection.hidden) return;
+        const heading = memorySection.querySelector('h2'); heading?.setAttribute('tabindex', '-1'); heading?.focus({ preventScroll: true });
+        panel.scrollTo({ top: Math.max(0, memorySection.offsetTop - 16), behavior: reducedMotion() ? 'auto' : 'smooth' });
+    }
+    const takeMemory = event => {
+        if (!event.target.closest?.('.vc-shell-chat .vc-capsule > [data-memory]')) return;
+        event.preventDefault(); event.stopPropagation(); openMemory();
+    };
+    shell.addEventListener('click', takeMemory, true);
+    // P2-2：会话行时间改为 今天 HH:mm / 昨天 / 周X / M/D；当前会话的预览与时间随最新消息刷新（外壳只在切换会话时重绘列表）。
+    function paintRows() {
+        const now = new Date();
+        for (const time of shell.querySelectorAll('.vc-convo .vc-convo-time[data-time]')) {
+            const label = desktopConversationTime(time.dataset.time, now);
+            if (label && time.textContent !== label) time.textContent = label;
+        }
+        for (const row of shell.querySelectorAll('.vc-convo')) {
+            const inst = row.querySelector('.vc-convo-inst'), tail = inst && instanceTail(row.querySelector('.vc-convo-name')?.textContent, inst.textContent);
+            if (tail && tail !== inst.textContent) inst.textContent = tail;
+        }
+    }
+    function syncCurrentRow() {
+        const snap = chatSnapshotFromContext(getContext());
+        const row = snap?.preview && shell.querySelector(`.vc-convo[data-relationship-id="${CSS.escape(snap.relationshipId)}"]`);
+        if (!row) return;
+        row.querySelector('.vc-convo-preview').textContent = snap.preview;
+        if (!desktopConversationTime(snap.time)) return;
+        let time = row.querySelector('.vc-convo-time');
+        if (!time) { time = node('span', 'vc-convo-time vc-num'); row.querySelector('.vc-convo-top').append(time); }
+        time.dataset.time = String(Date.parse(snap.time) || snap.time); paintRows();
+    }
+    const rowObserver = new MutationObserver(paintRows);
+    const rowList = shell.querySelector('[data-convo-list]');
+    if (rowList) rowObserver.observe(rowList, { childList: true });
+    const ctx = getContext(), messageEvents = ['MESSAGE_SENT', 'MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED']
+        .map(name => ctx.eventTypes?.[name]).filter(Boolean);
+    for (const type of messageEvents) ctx.eventSource?.on(type, syncCurrentRow);
+    paintRows();
     async function edit(item) {
         const opener = document.activeElement;
         await memories.select(String(item.memoryId));
@@ -134,6 +178,7 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
             }
             followSection.hidden = followSection.children.length < 2;
         }
+        paintRows();
         for (const row of shell.querySelectorAll('.vc-convo[data-relationship-id]')) {
             row.setAttribute('data-vc-light', '');
             row.setAttribute('aria-current', String(row.dataset.relationshipId === id));
@@ -148,5 +193,5 @@ export function mountCharacterPanel({ shell, getContext, aurora } = {}) {
     const resize = () => { if (innerWidth < 744) setOpen(false, false); };
     window.addEventListener('keydown', esc); window.addEventListener('resize', resize);
     setOpen(innerWidth >= 1600, false); void refresh();
-    return { panel, toggle, refresh, setOpen, destroy() { dead = true; generation++; memories.close(); window.removeEventListener('keydown', esc); window.removeEventListener('resize', resize); panel.remove(); toggle.remove(); } };
+    return { panel, toggle, search, refresh, setOpen, openMemory, destroy() { dead = true; generation++; memories.close(); search?.destroy(); shell.removeEventListener('click', takeMemory, true); rowObserver.disconnect(); for (const type of messageEvents) ctx.eventSource?.removeListener(type, syncCurrentRow); window.removeEventListener('keydown', esc); window.removeEventListener('resize', resize); panel.remove(); toggle.remove(); } };
 }
