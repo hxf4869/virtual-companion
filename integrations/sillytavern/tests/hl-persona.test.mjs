@@ -14,11 +14,54 @@ import {
     readGlobalRules,
     renderCompanionStyle,
     restoreDefaultRules,
+    saveNativePersona,
 } from '../extension/vc-model-settings/persona.js';
 import { injectCompanionPrompt } from '../extension/vc-model-settings/companion-prompt.js';
 import { bindOnboardingDismiss, finishOnboarding, mountOnboarding, noteCompanionBound, renderOnboarding, shouldOfferOnboarding } from '../extension/vc-model-settings/onboarding.js';
 import { proactivePolicyPayload, readProactivePolicy, renderInboxTab } from '../extension/vc-model-settings/inbox-page.js';
 import { renderCharactersTab } from '../extension/vc-model-settings/instance-page.js';
+
+test('原生人设单卡合并保留扩展，确认成功后才更新上下文', async () => {
+    const card = buildCharacterCard({ name: '合成角色' });
+    card.avatar = 'synthetic-persona.png';
+    card.data.extensions.vc_character_ref = 'synthetic-ref';
+    card.data.extensions.world = 'synthetic-world';
+    card.data.system_prompt = '合成保留规则';
+    card.data.tags = ['合成保留标签'];
+    const before = structuredClone(card);
+    const fields = { description: '合成介绍', personality: '合成性格', scenario: '', first_mes: '合成开场', mes_example: '' };
+    await saveNativePersona({
+        getContext: () => ({ characters: [card] }), characterRef: 'synthetic-ref', fields,
+        headers: { 'X-CSRF-Token': 'synthetic-csrf' },
+        fetchImpl: async (url, init) => {
+            assert.equal(url, '/api/characters/merge-attributes');
+            assert.equal(init.headers.get('Content-Type'), 'application/json');
+            assert.equal(init.headers.get('X-CSRF-Token'), 'synthetic-csrf');
+            const update = JSON.parse(init.body);
+            assert.equal(update.avatar, card.avatar);
+            assert.deepEqual(update.data, fields);
+            for (const [key, value] of Object.entries(fields)) assert.equal(update[key], value);
+            assert.equal(Object.hasOwn(update.data, 'extensions'), false);
+            assert.deepEqual(card, before);
+            return { ok: true };
+        },
+    });
+    for (const [key, value] of Object.entries(fields)) { assert.equal(card[key], value); assert.equal(card.data[key], value); }
+    assert.deepEqual(card.data.extensions, before.data.extensions);
+    assert.equal(card.data.system_prompt, before.data.system_prompt);
+    assert.deepEqual(card.data.tags, before.data.tags);
+});
+
+test('原生人设保存失败不修改上下文卡片', async () => {
+    const card = buildCharacterCard({ name: '合成角色' });
+    card.avatar = 'synthetic-persona.png';
+    card.data.extensions.vc_character_ref = 'synthetic-ref';
+    const before = structuredClone(card);
+    await assert.rejects(saveNativePersona({ getContext: () => ({ characters: [card] }),
+        characterRef: 'synthetic-ref', fields: { personality: '失败草稿' }, fetchImpl: async () => ({ ok: false }),
+    }), /save failed/);
+    assert.deepEqual(card, before);
+});
 
 const ALL_STYLES = ['口语短句，偶尔表情', '幽默会接梗', '好奇你的生活', '分享自己的日常'];
 

@@ -627,12 +627,17 @@ export async function sceneVcUiShell(ctx) {
                             await page.locator('.vc-character-detail [data-action="edit-persona"]').click();
                             await page.locator('.vc-character-persona [data-persona="personality"]').fill('合成人设编辑验收');
                             await page.locator('.vc-character-persona [data-action="save-persona"]').click();
-                            await page.waitForFunction(() => !document.querySelector('.vc-character-persona'));
+                            await page.waitForFunction(() => !document.querySelector('.vc-character-persona')
+                                || document.querySelector('.vc-character-persona [data-persona-error]')?.textContent, null, { timeout: 10000 });
+                            if (await page.locator('.vc-character-persona').count()) throw new Error('真实宿主人设保存失败，草稿仍保留');
                             const nativePersona = await page.evaluate(ref => {
                                 const card = window.SillyTavern.getContext().characters.find(row => row.data?.extensions?.vc_character_ref === ref);
                                 return (card?.data?.personality || card?.personality) === '合成人设编辑验收';
                             }, cardRef);
                             if (!nativePersona) throw new Error('桌面人设编辑没有保存到原生角色卡');
+                            const persistedPersona = await ctx.st.call('POST', '/api/characters/get', { avatar_url: avatar });
+                            if (persistedPersona.status !== 200 || persistedPersona.json?.data?.personality !== '合成人设编辑验收'
+                                || persistedPersona.json?.data?.extensions?.vc_character_ref !== cardRef) throw new Error('人设没有真实落盘或角色卡扩展被覆盖');
                             const relationshipId = await instance.getAttribute('data-id');
                             await instance.click();
                             try {

@@ -206,19 +206,19 @@ export async function saveNativePersona({ getContext, characterRef, fields, fetc
     const characters = Array.isArray(ctx.characters) ? ctx.characters : [];
     const card = characters.find((item) => item?.data?.extensions?.vc_character_ref === characterRef);
     if (!card) throw new Error('missing card');
-    const data = { ...(card.data || {}) };
+    const changes = {};
     for (const key of ['description', 'personality', 'scenario', 'first_mes', 'mes_example']) {
-        const value = String(fields?.[key] ?? '');
-        data[key] = value;
-        card[key] = value;
+        changes[key] = String(fields?.[key] ?? '');
     }
-    card.data = data;
-    const body = new FormData();
-    body.set('avatar_url', String(card.avatar || ''));
-    body.set('ch_name', String(card.name || data.name || ''));
-    for (const key of ['description', 'personality', 'scenario', 'first_mes', 'mes_example']) body.set(key, data[key]);
-    body.set('json_data', JSON.stringify(data));
-    const response = await fetchImpl('/api/characters/edit', { method: 'POST', headers, body });
+    // ST 的整卡 edit 会重新生成其他字段；原生单卡 merge 只原子修改这五项。
+    const requestHeaders = new Headers(headers);
+    requestHeaders.set('Content-Type', 'application/json');
+    const response = await fetchImpl('/api/characters/merge-attributes', {
+        method: 'POST', headers: requestHeaders,
+        body: JSON.stringify({ avatar: String(card.avatar || ''), ...changes, data: changes }),
+    });
     if (!response?.ok) throw new Error('save failed');
-    return data;
+    Object.assign(card, changes);
+    card.data = { ...(card.data || {}), ...changes };
+    return card.data;
 }

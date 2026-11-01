@@ -515,11 +515,13 @@ export async function sceneF3Settings(ctx) {
                 await page.click('[data-action="vc-back"]');
                 await page.click('.vcms-overlay [data-action="vc-back"]');
                 await page.waitForSelector('.vcms-overlay', { state: 'hidden', timeout: 10000 });
-                await page.waitForFunction(() => [...document.querySelectorAll('.vc-settings-form')].some((el) => el.getClientRects().length > 0), null, { timeout: 8000 });
+                await page.waitForFunction(() => innerWidth >= 744
+                    ? document.querySelector('#vc-shell')?.dataset.settings === 'page' && document.querySelector('.vc-settings-shell')?.getClientRects().length > 0
+                    : [...document.querySelectorAll('.vc-settings-form')].some((el) => el.getClientRects().length > 0), null, { timeout: 8000 });
                 if (width < 744) {
                     await page.locator('.vc-sheet-done').click();
                     await page.locator('.vc-sheet').waitFor({ state: 'detached' });
-                } else await page.locator('[data-settings-done]').click();
+                } else await page.locator('#vc-shell [data-nav="chat"]:visible').click();
                 await clickControl(page, '#extensionsMenuButton');
                 await clickControl(page, '#vc_data_menu_button');
                 await page.waitForSelector('.vc-data-dialog[open] [data-vc-account-home]', { timeout: 10000 });
@@ -545,6 +547,10 @@ export async function sceneF3Settings(ctx) {
         }
         pageErrors.assertNone();
         console.log('[accept] ✓ F3 抽屉页、模型页与账户页截图完成');
+    } catch (error) {
+        const site = String(error.stack || '').match(/f3-settings-accept\.mjs:\d+:\d+/)?.[0];
+        if (site) error.message += ` (${site})`;
+        throw error;
     } finally {
         await browser.close();
     }
