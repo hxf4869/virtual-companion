@@ -1,42 +1,5 @@
 /* UX-26 表情与回应（桌面）。字面值只在顶部变量块出现，其余全部引用语义变量。 */
-html[data-vc-layout="desktop"] body.vc-ui {
-  --vc-emoji-size-1: 56px;
-  --vc-emoji-size-2: 48px;
-  --vc-emoji-size-3: 40px;
-  --vc-emoji-panel-w: 340px;
-  --vc-emoji-cell: 36px;
-  --vc-emoji-zoom: 64px;
-  --vc-react-size: 18px;
-  --vc-fx-1: #ff6b6b;
-  --vc-fx-2: #ffd166;
-  --vc-fx-3: #4dd599;
-  --vc-fx-4: #5fa8ff;
-  --vc-fx-5: #c084fc;
-  --vc-fx-star: #ffd166;
-  --vc-pat-dur: 360ms;
-  --vc-fx-dur: 1100ms;
-  --vc-fx-stagger: 12ms;
-  /* UX-28 建议回复 */
-  --vc-suggest-dur: 320ms;
-  --vc-suggest-stagger: 60ms;
-  --vc-suggest-rise: 8px;
-  /* UX-29 状态卡与里程碑卡 */
-  --vc-card-w: 340px;
-  --vc-card-avatar: 72px;
-  --vc-bar-h: 6px;
-  --vc-meter-fill: rgb(var(--vc-tint)); /* 状态卡三条随角色氛围色（E7-3） */
-  --vc-face-fade: 500ms;
-  --vc-milestone-w: 280px;
-  --vc-sub-gap: 2px;
-  /* UX-30 横幅与未读 */
-  --vc-notify-w: 360px;
-  --vc-notify-avatar: 40px;
-  --vc-notify-in: 250ms;
-  --vc-notify-out: 220ms;
-  --vc-notify-rise: 12px;
-  --vc-unread-h: 18px;
-  --vc-dot: 8px;
-}
+
 
 /* ---- 纯 emoji 放大：去掉气泡底色 ---- */
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-emoji="1"] { --vc-emoji-size: var(--vc-emoji-size-1); }
@@ -139,7 +102,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-pat-shake { animation: vc-pat-shak
 /* ---- 关键词轻特效：浮层在 #chat 之外 ---- */
 html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx { position: fixed; inset: 0; z-index: var(--vc-z-popup); pointer-events: none; overflow: hidden; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece {
-  position: absolute; width: 7px; height: 11px; border-radius: 2px; opacity: 0;
+  position: absolute; width: 7px; height: 11px; border-radius: var(--vc-radius-particle); opacity: 0;
   animation: vc-fx-fly var(--vc-fx-dur) var(--vc-ease-out) forwards; animation-delay: calc(var(--i) * var(--vc-fx-stagger));
 }
 html[data-vc-layout="desktop"] body.vc-ui #vc-react-fx .vc-fx-piece.is-confetti:nth-child(5n+1) { background: var(--vc-fx-1); }

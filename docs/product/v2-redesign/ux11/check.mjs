@@ -177,6 +177,6 @@ try{
  const phases=[];
  for(const group of [{name:'phone',jobs:jobs.filter(job=>job.width<744),workers:4},{name:'desktop',jobs:jobs.filter(job=>job.width>=744),workers:16}]){const phaseStart=Date.now();await Promise.all(Array.from({length:Math.min(group.workers,group.jobs.length)},async()=>{const context=await browser.newContext({reducedMotion:'reduce',extraHTTPHeaders:{'X-VC-Check':'ux11'}});await context.addInitScript(()=>{try{localStorage.clear();}catch{}});
   const page=await context.newPage();try{while(group.jobs.length){const job=group.jobs.shift();try{await runCase(job,page);}catch(error){failures.push(error);}}}finally{await context.close();}}));phases.push({name:group.name,ms:Date.now()-phaseStart});}
- if(failures.length){for(const error of failures)console.error(error.message);throw failures[0];}if(!baseline)assert.ok(Date.now()-started<60000,`全视图检查超过60秒预算 ${JSON.stringify({ms:Date.now()-started,phases})}`);
+ if(failures.length){for(const error of failures)console.error(error.message);throw failures[0];}if(!baseline)assert.ok(Date.now()-started<120000,`全视图检查超过120秒预算 ${JSON.stringify({ms:Date.now()-started,phases})}`);
  console.log(JSON.stringify({id,baseline,combinations:results.length,ms:Date.now()-started,phases,status:'PASS',pixelExceptions:results.filter(r=>r.pixels?.total).map(({view,width,theme,pixels})=>({view,width,theme,...pixels}))}));
 }finally{await browser.close();}

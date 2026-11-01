@@ -378,3 +378,11 @@ Owner 要求把模型设成 1M 上下文、384k 输出。上下文上限原本�
 | ID | P | 内容 | 验收要点 |
 |---|---|---|---|
 | MDL-1 | P1 | V281 放宽 `provider_model_output_check` 与 `go_admin_upsert_provider_model` 校验；Go openai / anthropic / responses 适配层与存储校验、OpenAPI 三处 `maximum`、前端与样板校验同步 | 迁移计数 + RLS 整组；Go 测试；`check.sh --quick`；本地真实环境改为 393,216 后真实对话可用 |
+
+### UX-36 新对话记忆偏好接入修复（UX-31 必要收尾）
+
+Owner 续接选择把「这次不记」改名为「新对话不记」，沿用现有 `incognito-pref` 契约。追查发现 ST 的 `resolve_st_binding` 新建对话时仍传固定 false，导致该偏好对酒馆新对话完全无效；这是 UX-31 已选能力的实际接入缺口。
+
+| ID | P | 内容 | 验收要点 |
+|---|---|---|---|
+| UX-36 | P1 | V282 仅修改 ST 新建对话时读取已有账户 incognito 默认值；已有绑定不变，不新增接口、字段或表。同步文案「新对话不记」 | SQL/RLS 覆盖开启/关闭、新旧绑定及 owner 隔离；真实新对话读回；现有对话不翻转 |

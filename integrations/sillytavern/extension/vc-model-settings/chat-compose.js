@@ -630,6 +630,7 @@ function ensureCss(doc) {
     if (doc.getElementById?.('vc-desktop-chat-compose-css')) return;
     const link = doc.createElement('link');
     link.id = 'vc-desktop-chat-compose-css';
+    link.media = '(min-width: 744px)';
     link.setAttribute('rel', 'stylesheet');
     link.setAttribute('href', new URL('./desktop/chat-compose.css', import.meta.url).href);
     (doc.head || doc.documentElement).append(link);

@@ -45,26 +45,27 @@ test('时间线按本地日期分组并保持接口顺序', () => {
 });
 
 test('来源一句：优先已核验且有摘录的证据，解析聊天标识与消息序号', () => {
-    assert.deepEqual(parseSourceRef('st:chat-7:23:cand:2:1'), { chatIdentity: 'chat-7', mesId: 23 });
+    assert.deepEqual(parseSourceRef('st:chat-7:23:cand:2:1'), { chatIdentity: 'chat-7', messageId: '23', mesId: 23 });
     assert.equal(parseSourceRef('st:chat-7:abc:cand:2:1').mesId, null);
+    assert.equal(parseSourceRef('st:chat-7:abc:cand:2:1').messageId, 'abc');
     assert.equal(parseSourceRef('other'), null);
     const picked = pickSource([
         { status: 'PENDING_VERIFICATION', excerpt: '待核验的', sourceRef: 'st:c:1:x:1:1', sourceTimestamp: at(0, 9) },
         { status: 'VALID', excerpt: '刚才开会的时候突然想起你', sourceRef: 'st:chat-7:23:x:1:1', sourceTimestamp: at(0, 15, 42), messageId: '23' },
     ], now);
-    assert.deepEqual(picked, { line: '来自 今天 15:42：「刚才开会的时候突然想起你」', chatIdentity: 'chat-7', mesId: 23 });
+    assert.deepEqual(picked, { line: '来自 今天 15:42：「刚才开会的时候突然想起你」', chatIdentity: 'chat-7', messageId: '23', mesId: 23 });
     assert.equal(pickSource([{ status: 'VALID', excerpt: '  ' }], now), null);
     assert.equal(pickSource([], now), null);
     assert.equal(excerptOf('甲'.repeat(40), 36), `${'甲'.repeat(36)}…`);
 });
 
-test('桌面渲染：左栏分区与计数、钉住卡、悬停操作、来源槽、这次不记', () => {
+test('桌面渲染：左栏分区与计数、钉住卡、悬停操作、来源槽、新对话不记', () => {
     const items = [memory(1, { pinnedAt: at(0, 15, 43) }), memory(2, { createdAt: at(-1, 19, 3) }), memory(3, { lifecycle: 'FORGOTTEN', createdAt: at(-1, 8) })];
     const html = renderDesktopMemory(state(items, { nextCursor: '9' }), {
         section: 'timeline', now, sources: new Map([['1', { line: '来自 今天 15:42：「刚才」' }]]), incognito: true,
     });
     assert.deepEqual(MEMORY_SECTIONS.map(([key]) => key), ['timeline', 'pinned', 'pending', 'invalid']);
-    for (const label of ['时间线', '已钉住', '待核验', '已失效', '日记', '收藏', '这次不记']) assert.ok(html.includes(label), label);
+    for (const label of ['时间线', '已钉住', '待核验', '已失效', '日记', '收藏', '新对话不记']) assert.ok(html.includes(label), label);
     assert.match(html, /data-section="timeline" aria-pressed="true"[^>]*>[\s\S]*?<span class="vc-mem-count">3\+<\/span>/);
     assert.match(html, /data-section="diary" aria-pressed="false"/);
     assert.match(html, /<h2>今天<\/h2>/);
@@ -73,7 +74,7 @@ test('桌面渲染：左栏分区与计数、钉住卡、悬停操作、来源�
     assert.match(html, /data-pinned="true"/);
     assert.match(html, /aria-label="取消钉住"/);
     assert.match(html, /aria-label="钉住"/);
-    assert.match(html, /data-vc-incognito aria-label="这次不记" aria-checked="true"/);
+    assert.match(html, /data-vc-incognito aria-label="新对话不记" aria-checked="true"/);
     assert.match(html, /<button type="button" class="vc-mem-source" data-action="open-source" data-mid="1" >来自 今天 15:42：「刚才」/);
     assert.match(html, /data-mid="2" hidden/);
     // 已遗忘的卡片不再提供「忘记」与「编辑」

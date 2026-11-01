@@ -274,7 +274,7 @@ UX-11 按 Owner 选中的图调整下表的数值，写进 DESIGN.md v4 新增�
 
 ### 7.2 自动检查 `S/check.mjs`（UX-13 写框架，各页面条目补自己的断言）
 
-用仓库已有的 `integrations/sillytavern/node_modules/playwright-core`，不安装新依赖；全部视图跑完 < 60s。
+用仓库已有的 `integrations/sillytavern/node_modules/playwright-core`，不安装新依赖；全部视图跑完 < 120s（Owner 2026-11-02 批准：样板从 636 增至 768 组合；像素阈值及既有具名例外不变，`scripts/check.sh` 的 60s 预算不变）。
 
 - 宽度矩阵：1440×900、1280×800、1024×768、768×1024、390×844、360×780；浅 / 深；
 - 每个组合：无横向滚动；内容列直接子块的包围盒互不重叠；标题栏子元素互不重叠且不换成竖排；

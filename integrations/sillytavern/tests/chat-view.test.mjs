@@ -836,7 +836,9 @@ test('UX-22 R6：角色面板头像光晕、56 圆形快捷动作、高度随内
     const P = 'html[data-vc-layout="desktop"] body.vc-ui';
     const glow = desktopRule(css, `${P} .vc-desk-character-avatar`);
     assert.match(glow, /width:\s*96px;\s*height:\s*96px/);
-    assert.match(glow, /color-mix\(in srgb, rgb\(var\(--vc-tint\)\)/);
+    assert.match(glow, /box-shadow: var\(--vc-shadow-avatar-glow\)/);
+    const theme = fs.readFileSync(new URL('../extension/vc-model-settings/desktop/themes/aurora.css', import.meta.url), 'utf8');
+    assert.match(theme, /--vc-shadow-avatar-glow:[^;]*color-mix\(in srgb, rgb\(var\(--vc-tint\)\)/);
     assert.equal(/rgb\(var\(--vc-tint\) \//.test(css), false, '逗号形式的 --vc-tint 不能写成斜杠 alpha');
     assert.match(desktopRule(css, `${P} .vc-desk-character-actions .vc-circle`), /width:\s*56px;[^}]*height:\s*56px/);
     assert.match(desktopRule(css, `${P} .vc-desk-character-actions:empty`), /display:\s*none/);
@@ -936,7 +938,9 @@ test('UX-23 桌面气泡 CSS：只挂桌面 + 气泡类，用 attr() 绘制，�
     assert.match(block, /content:\s*attr\(data-vc-foot\)/);
     assert.match(block, /\[data-vc-time\]:hover::after \{ opacity: 1; \}/);
     assert.match(block, /grid-template-columns: 32px fit-content\(var\(--vc-bub-max\)\)/);
-    assert.match(block, /--vc-bub-r: 18px; --vc-bub-join: 6px;/);
+    const theme = fs.readFileSync(new URL('../extension/vc-model-settings/desktop/themes/aurora.css', import.meta.url), 'utf8');
+    assert.match(theme, /--vc-bub-r: 18px;/);
+    assert.match(theme, /--vc-bub-join: 6px;/);
     assert.match(block, /\.mes\.vc-thinking:not\(\.vc-rich\) \{ display: none;/);
     assert.match(block, /#vc-chat-gen\[data-vc-typing\]/);
     assert.match(block, /content: "取消"/);

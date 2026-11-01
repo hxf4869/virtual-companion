@@ -1,16 +1,9 @@
 /* UX-27 富消息：语音条、图片查看；UX-34 共享元素过渡与晨昏氛围（桌面）。 */
-html[data-vc-layout="desktop"] body.vc-ui {
-  --vc-lightbox-scrim: rgb(0 0 0 / .6);
-  --vc-lightbox-blur: 16px;
-  --vc-dur-shared: 250ms;
-  --vc-dur-ambient: 60s;
-  --vc-ambient-hue-shift: 0deg;
-  --vc-ambient-bright: 1;
-}
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="morning"] { --vc-ambient-hue-shift: -8deg; --vc-ambient-bright: 1.06; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="noon"] { --vc-ambient-hue-shift: 0deg; --vc-ambient-bright: 1.03; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="evening"] { --vc-ambient-hue-shift: 10deg; --vc-ambient-bright: .98; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="night"] { --vc-ambient-hue-shift: -14deg; --vc-ambient-bright: .9; }
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="morning"] { --vc-ambient-hue-shift: var(--vc-ambient-hue-morning); --vc-ambient-bright: var(--vc-ambient-bright-morning); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="noon"] { --vc-ambient-hue-shift: var(--vc-ambient-hue-noon); --vc-ambient-bright: var(--vc-ambient-bright-noon); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="evening"] { --vc-ambient-hue-shift: var(--vc-ambient-hue-evening); --vc-ambient-bright: var(--vc-ambient-bright-evening); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period="night"] { --vc-ambient-hue-shift: var(--vc-ambient-hue-night); --vc-ambient-bright: var(--vc-ambient-bright-night); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora { filter: hue-rotate(var(--vc-ambient-hue-shift)) brightness(var(--vc-ambient-bright)); transition: filter var(--vc-dur-ambient) linear; }
 @media (prefers-reduced-transparency: reduce) {
   html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora[data-vc-period] { --vc-ambient-hue-shift: 0deg; --vc-ambient-bright: 1; }

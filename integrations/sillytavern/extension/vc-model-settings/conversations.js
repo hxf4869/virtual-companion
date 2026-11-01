@@ -85,6 +85,8 @@ export function chatSnapshotsFromRecent(list) {
         const binding = item?.chat_metadata?.vc_binding;
         if (binding?.relationshipId == null || binding.relationshipId === '') continue;
         const snap = { relationshipId: String(binding.relationshipId) };
+        const chatIdentity = textField(item.chat_metadata?.vc_f2?.id);
+        if (chatIdentity) snap.chatIdentity = chatIdentity;
         const file = textField(item.file_id) || textField(item.file_name).replace(/\.jsonl$/i, '');
         if (file) snap.file = file;
         const characterRef = textField(binding.characterRef);

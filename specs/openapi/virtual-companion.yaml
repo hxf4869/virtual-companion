@@ -450,7 +450,9 @@ paths:
         for an established binding returns 409 without overwriting it. Omitting
         relationshipId creates an independent active instance for a new chat, even
         when another instance uses the same card. An explicit relationshipId reuses
-        that owned instance for a branch and must match its characterRef. ST keeps
+        that owned instance for a branch and must match its characterRef. A newly
+        created conversation takes the owner's current incognito-pref; resolving
+        an existing binding preserves its frozen incognito flag. ST keeps
         content and F2 revision authority; this operation stores neither message
         bodies nor a second revision counter. Group-chat memory bindings are outside
         this single-character operation.

@@ -340,7 +340,7 @@ export const deleteReminder = (id) => request('DELETE', `/api/v1/reminders/${enc
 /** UX-33 日记：month 为 YYYY-MM。 */
 export const fetchDiaryMonth = (relationshipId, month) => request('GET', `${relPath(relationshipId, 'diary')}?${new URLSearchParams({ month })}`);
 export const fetchDiaryEntry = (id) => request('GET', `/api/v1/diary/${encodeURIComponent(id)}`);
-/** UX-31 下一个新会话是否默认「这次不记」：{ defaultIncognito }。 */
+/** UX-31 下一个新会话是否默认「新对话不记」：{ defaultIncognito }。 */
 export const getIncognitoPref = () => request('GET', '/api/v1/incognito-pref');
 export const setIncognitoPref = (defaultIncognito) => request('PUT', '/api/v1/incognito-pref', { defaultIncognito: Boolean(defaultIncognito) });
 

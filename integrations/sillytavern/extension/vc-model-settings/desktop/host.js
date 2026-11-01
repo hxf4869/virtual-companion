@@ -3,10 +3,12 @@ import { mountCharacterPanel } from './character-panel.js';
 import { bindPointerLights } from './pointer-light.js';
 import { bindSidebarLens, readReducedMotion } from './transition.js';
 import { desktopLayout } from './presentation.js';
+import { mountDesktopTheme } from './theme.js';
 
 // 跟随真实宿主的断点和聊天事件；手机不创建桌面节点。
 export function mountDesktopShell({ shell, getContext }) {
     const doc = shell.ownerDocument;
+    const theme = mountDesktopTheme({ shell, getContext, document: doc });
     doc.documentElement.dataset.vcReducedMotion = String(readReducedMotion());
     let aurora, panel, releaseLens, releaseLights;
     function sync() {
@@ -29,6 +31,7 @@ export function mountDesktopShell({ shell, getContext }) {
     globalThis.addEventListener('resize', sync);
     sync();
     return { destroy() {
+        theme.destroy();
         for (const type of events) ctx.eventSource?.removeListener(type, refresh);
         globalThis.removeEventListener('resize', sync);
         panel?.destroy(); aurora?.destroy(); releaseLens?.(); releaseLights?.();

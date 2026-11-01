@@ -1,67 +1,30 @@
+@import url("./themes/aurora.css");
 /* DESIGN.md §16。真实宿主与样板共用的桌面基础材质与公共控件。 */
 html[data-vc-layout="desktop"] body.vc-ui {
-  --vc-desk-base: #f4f1f6;
-  --vc-aurora-alpha: .90;
-  --vc-grain-alpha: .03;
-  --vc-glass-1: rgba(255,255,255,.30);
-  --vc-glass-2: rgba(255,255,255,.46);
-  --vc-raised: rgba(255,255,255,.72);
-  --vc-glass-3: rgba(252,252,254,.82);
-  --vc-blur-1: 30px;
-  --vc-blur-2: 40px;
-  --vc-blur-3: 40px;
-  --vc-rim: rgba(255,255,255,.55);
-  --vc-rim-outer: rgba(255,255,255,.25);
-  --vc-hi: rgba(255,255,255,.75);
-  --vc-raised-edge: rgba(0,0,0,.05);
-  --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(80,60,100,.10);
-  --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(60,40,90,.18);
-  --vc-select-fill: rgba(0,113,227,.12);
-  --vc-hover-fill: rgba(255,255,255,.45);
-  --vc-ink-2: #55555a; /* UX-22：次级文字直接落在玻璃上，加深以保持 ≥4.5:1。 */
-  --vc-scrim-desk: rgba(30,20,40,.18);
   --vc-z-backdrop: 0;
-  --vc-fs-body: 15px;
+
   --vc-touch: 40px;
   --vc-read: 720px;
   --vc-sidebar: 200px;
   --vc-native-page-left: calc(var(--vc-sidebar) + var(--vc-space-xl) + var(--vc-space-sm));
-  --vc-dur-quick: 260ms;
-  --vc-dur-emphasized: 320ms;
+
+
   background: var(--vc-desk-base);
 }
-html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui {
-  --vc-desk-base: #07070a;
-  --vc-aurora-alpha: .85;
-  --vc-grain-alpha: .04;
-  --vc-glass-1: rgba(64,64,76,.36);
-  --vc-glass-2: rgba(36,36,44,.44);
-  --vc-raised: rgba(255,255,255,.08);
-  --vc-glass-3: rgba(38,38,44,.82);
-  --vc-rim: rgba(255,255,255,.10);
-  --vc-rim-outer: rgba(255,255,255,.06);
-  --vc-hi: rgba(255,255,255,.10);
-  --vc-raised-edge: rgba(255,255,255,.08);
-  --vc-ink-2: #b2b2b7;
-  --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(0,0,0,.45);
-  --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(0,0,0,.60);
-  --vc-select-fill: rgba(41,151,255,.20);
-  --vc-hover-fill: rgba(255,255,255,.06);
-  --vc-scrim-desk: rgba(0,0,0,.50);
-}
+
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora {
   /* ST ≤1000px 固定 body，且 html 带变换；不能用它的零高度作为 fixed 参考。 */
   position: fixed; inset: 0; width:100dvw; height:100dvh; z-index: var(--vc-z-backdrop); overflow: hidden; pointer-events: none;
 }
-html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-set { position: absolute; inset: 0; transition: opacity 900ms var(--vc-spring); }
+html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-set { position: absolute; inset: 0; transition: opacity var(--vc-dur-aurora-change) var(--vc-spring); }
 html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-set.is-leaving { opacity: 0; }
 html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot {
   position: absolute; width: 60vmax; height: 60vmax; left: calc(15vw - 30vmax); top: calc(20vh - 30vmax);
   background: radial-gradient(closest-side, rgb(var(--c)) 0%, transparent 70%);
-  opacity: var(--vc-aurora-alpha); animation: vc-desktop-drift 40s ease-in-out infinite alternate;
+  opacity: var(--vc-aurora-alpha); animation: vc-desktop-drift var(--vc-dur-aurora-drift-1) var(--vc-ease-aurora) infinite alternate;
 }
-html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(2) { left: calc(85vw - 30vmax); top: calc(50vh - 30vmax); animation-duration: 52s; animation-direction: alternate-reverse; }
-html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(3) { left: calc(50vw - 30vmax); top: calc(95vh - 30vmax); animation-duration: 64s; }
+html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(2) { left: calc(85vw - 30vmax); top: calc(50vh - 30vmax); animation-duration: var(--vc-dur-aurora-drift-2); animation-direction: alternate-reverse; }
+html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-spot:nth-child(3) { left: calc(50vw - 30vmax); top: calc(95vh - 30vmax); animation-duration: var(--vc-dur-aurora-drift-3); }
 html[data-vc-layout="desktop"] .vc-desktop-aurora::after {
   content: ''; position: absolute; inset: 0; opacity: var(--vc-grain-alpha);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23000' filter='url(%23n)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
@@ -76,14 +39,14 @@ html[data-vc-layout="desktop"] body.vc-ui #vc-shell > .vc-sidebar {
   width: 200px; padding: var(--vc-space-sm); box-sizing: border-box;
   border-radius: var(--vc-radius-xl); background: var(--vc-glass-1);
   backdrop-filter: blur(var(--vc-blur-1)) saturate(180%); border: 1px solid var(--vc-rim);
-  box-shadow: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-panel);
+  box-shadow: var(--vc-shadow-rim-panel);
 }
 html[data-vc-layout="desktop"] body.vc-ui .vc-sidebar .vc-side-collapse { display: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-side-link { border-radius: var(--vc-radius-sm); min-height: 44px; font-size: var(--vc-fs-body); color: var(--vc-ink); /* 侧栏直接坐在极光上，用 ink 保证 4.5:1 */ }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-link[aria-current="page"] { background: var(--vc-select-fill); box-shadow: inset 0 1px 0 var(--vc-hi); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-link[aria-current="page"] { background: var(--vc-select-fill); box-shadow: var(--vc-shadow-rim); }
 html[data-vc-layout="desktop"] body.vc-ui :is(.vc-shell-page, .vc-desk-panel) {
   border-radius: var(--vc-radius-xl); background: var(--vc-glass-2); border: 1px solid var(--vc-rim);
-  backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-panel);
+  backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: var(--vc-shadow-rim-panel);
   min-width: 0; min-height: 0; overflow: hidden;
 }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-scroll { padding: 0 var(--vc-space-xl) var(--vc-space-xl); }
@@ -107,27 +70,27 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desk-field > label { white-space: 
 html[data-vc-layout="desktop"] body.vc-ui :is(.vc-btn, .vc-circle) { min-height: 40px; height: 40px; font-size: var(--vc-fs-body); font-weight: 600; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-btn { min-width: 88px; max-width: 176px; width: max-content; padding: 0 20px; white-space: nowrap; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-circle { width: 40px; background: var(--vc-raised); backdrop-filter: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-btn-fill { background: linear-gradient(180deg,#2f8bff,#0071e3); box-shadow: 0 6px 16px rgba(0,113,227,.28); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-btn-fill { background: var(--vc-button-fill); box-shadow: var(--vc-shadow-button); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-btn-gray { background: var(--vc-raised); color: var(--vc-ink); border: .5px solid var(--vc-raised-edge); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-btn-danger { background: linear-gradient(180deg,#ff4d5e,#d70015); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-btn-fill:hover { box-shadow: 0 0 0 4px rgba(0,113,227,.15), 0 8px 24px rgba(0,113,227,.30); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-btn-danger { background: var(--vc-button-danger-fill); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-btn-fill:hover { box-shadow: var(--vc-shadow-button-hover); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-btn:active { transform: scale(.96); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-btn:disabled { opacity: .4; box-shadow: none; }
 html[data-vc-layout="desktop"] body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]), select, textarea) {
-  height: 36px; min-height: 36px; border-radius: 10px; border: .5px solid var(--vc-raised-edge);
+  height: 36px; min-height: 36px; border-radius: var(--vc-radius-control); border: .5px solid var(--vc-raised-edge);
   font: inherit; font-size: var(--vc-fs-body); color: var(--vc-ink); background: var(--vc-raised); padding: 0 12px; box-sizing: border-box;
 }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-field :is(input,select) { max-width: 360px; width: 100%; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-field input[type="number"] { width: 160px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-field select { width: min(100%,240px); min-width: 160px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-field textarea { height: auto; min-height: 80px; padding: 8px 12px; }
-html[data-vc-layout="desktop"] body.vc-ui :is(button,input,select,textarea):focus-visible { outline: 2px solid var(--vc-accent); outline-offset: 2px; box-shadow: 0 0 0 4px rgb(from var(--vc-accent) r g b / .25); }
+html[data-vc-layout="desktop"] body.vc-ui :is(button,input,select,textarea):focus-visible { outline: 2px solid var(--vc-accent); outline-offset: 2px; box-shadow: var(--vc-shadow-focus); }
 html[data-vc-layout="desktop"] body.vc-ui :is(.vc-menu,.vc-sheet,.vc-alert,.vc-toast) {
   background: var(--vc-glass-3); border: 1px solid var(--vc-rim); backdrop-filter: blur(var(--vc-blur-3)) saturate(180%);
-  box-shadow: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-overlay);
+  box-shadow: var(--vc-shadow-rim-overlay);
 }
 html[data-vc-layout="desktop"] body.vc-ui .vc-scrim { background: var(--vc-scrim-desk); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-alert { width: 360px; padding: 20px; border-radius: 20px; box-sizing: border-box; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-alert { width: 360px; padding: 20px; border-radius: var(--vc-radius-dialog); box-sizing: border-box; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-alert-copy { text-align: left; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-alert-copy h4 { font-size: var(--vc-fs-headline); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-alert-copy p { font-size: var(--vc-fs-body); }
@@ -137,11 +100,11 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-toast { height: 44px; font-size: v
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-components { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,calc(200px + 160px + 32px + 8px + 1px)),1fr)); gap: var(--vc-space-sm); padding-top: var(--vc-space-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-actions { display: flex; flex-wrap: wrap; gap: var(--vc-space-xs); padding: var(--vc-space-sm) 0; }
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-light] { position: relative; isolation: isolate; }
-html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; background: radial-gradient(160px at var(--mx) var(--my),rgba(255,255,255,.10),transparent); }
-html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui [data-vc-light]::after { background: radial-gradient(160px at var(--mx) var(--my),rgba(255,255,255,.06),transparent); }
+html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; background: radial-gradient(160px at var(--mx) var(--my),var(--vc-pointer-glow),transparent); }
+html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui [data-vc-light]::after { background: radial-gradient(160px at var(--mx) var(--my),var(--vc-pointer-glow),transparent); }
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]:hover::after { opacity: 1; }
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]:hover { background-color: var(--vc-hover-fill); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute; z-index: -1; background: linear-gradient(var(--vc-select-fill),var(--vc-select-fill)),var(--vc-raised); /* 选中行的文字坐在 raised 底上，保证对比度 */ border-radius: var(--vc-radius-sm); box-shadow: inset 0 1px 0 var(--vc-hi); transition: transform var(--vc-dur-emphasized) var(--vc-spring); pointer-events: none; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute; z-index: -1; background: linear-gradient(var(--vc-select-fill),var(--vc-select-fill)),var(--vc-raised); /* 选中行的文字坐在 raised 底上，保证对比度 */ border-radius: var(--vc-radius-sm); box-shadow: var(--vc-shadow-rim); transition: transform var(--vc-dur-emphasized) var(--vc-spring); pointer-events: none; }
 @media (max-width:1179px) {
   html[data-vc-layout="desktop"] body.vc-ui { --vc-sidebar: 72px; }
   html[data-vc-layout="desktop"] body.vc-ui { --vc-native-page-left: calc(var(--vc-sidebar) + var(--vc-space-md) + var(--vc-space-sm)); }
@@ -156,8 +119,8 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute;
   html[data-vc-layout="desktop"] body.vc-ui :is(.vc-btn,.vc-circle,input:not([type="range"]):not([type="checkbox"]),select) { min-height: 50px; }
 }
 @media (prefers-reduced-transparency:reduce) {
-  html[data-vc-layout="desktop"] body.vc-ui { --vc-glass-1:#fbfafc; --vc-glass-2:#fbfafc; --vc-glass-3:#fbfafc; --vc-aurora-alpha:.20; }
-  html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui { --vc-glass-1:#1c1c20; --vc-glass-2:#1c1c20; --vc-glass-3:#1c1c20; }
+  html[data-vc-layout="desktop"] body.vc-ui { --vc-glass-1:var(--vc-glass-opaque); --vc-glass-2:var(--vc-glass-opaque); --vc-glass-3:var(--vc-glass-opaque); --vc-aurora-alpha:var(--vc-aurora-reduced-alpha); }
+  html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui { --vc-glass-1:var(--vc-glass-opaque); --vc-glass-2:var(--vc-glass-opaque); --vc-glass-3:var(--vc-glass-opaque); }
 }
 @media (prefers-reduced-motion:reduce) {
   html[data-vc-layout="desktop"] body.vc-ui .vc-aurora-spot { animation: none; opacity: .20; }
@@ -165,7 +128,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute;
 }
 html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui .vc-aurora-spot { animation: none; opacity: .20; }
 html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui [data-vc-light]::after { display: none; }
-html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui :is(button,.vc-desktop-lens) { transition-property: opacity; transition-duration: 150ms; transform: none; }
+html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui :is(button,.vc-desktop-lens) { transition-property: opacity; transition-duration: var(--vc-dur-reduced); transform: none; }
 
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell > .vc-sidebar { position: relative; isolation: isolate; }
 html[data-vc-layout="desktop"] body.vc-ui.no-blur #vc-shell > .vc-sidebar { backdrop-filter:blur(var(--vc-blur-1)) saturate(180%) !important; /* 压过 ST FastUI 的 body.no-blur * { backdrop-filter:unset !important }。 */ }
@@ -186,36 +149,36 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-side-link[aria-current="page"] .vc
 html[data-vc-layout="desktop"] body.vc-ui .vc-sidebar:has(.vc-desktop-lens) .vc-side-link[aria-current="page"] { background: transparent; box-shadow: none; }
 html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui .vc-side-link[aria-current="page"] .vc-side-label { color: var(--vc-ink); /* 深色下 accent 蓝字落在暖色光斑上不足 3:1 */ }
 html[data-vc-layout="desktop"] body.vc-ui .vc-side-foot { flex-direction: column; gap: var(--vc-space-xs); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-side-avatar { display: grid; place-items: center; flex: none; width: 36px; height: 36px; margin-left: 12px; overflow: hidden; border-radius: var(--vc-radius-pill); background: var(--vc-raised); box-shadow: 0 0 0 1px var(--vc-rim); color: var(--vc-ink); font-size: var(--vc-fs-body); font-weight: 600; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-side-avatar { display: grid; place-items: center; flex: none; width: 36px; height: 36px; margin-left: 12px; overflow: hidden; border-radius: var(--vc-radius-pill); background: var(--vc-raised); box-shadow: var(--vc-shadow-avatar-ring); color: var(--vc-ink); font-size: var(--vc-fs-body); font-weight: 600; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-side-avatar img { width: 100%; height: 100%; object-fit: cover; }
-html[data-vc-layout="desktop"] body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]),select,textarea) { background: rgba(255,255,255,.72); }
+html[data-vc-layout="desktop"] body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]),select,textarea) { background: var(--vc-control-fill); }
 html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]),select,textarea) { background: var(--vc-raised); }
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-tilt],
 html[data-vc-layout="desktop"] body.vc-ui [data-vc-tilt] img { transition: transform var(--vc-dur-standard) var(--vc-spring); }
 @media (prefers-reduced-motion:reduce) {
-  html[data-vc-layout="desktop"] body.vc-ui .vc-aurora-set { transition-duration: 150ms; }
+  html[data-vc-layout="desktop"] body.vc-ui .vc-aurora-set { transition-duration: var(--vc-dur-reduced); }
 }
-html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui .vc-aurora-set { transition-duration: 150ms; }
+html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui .vc-aurora-set { transition-duration: var(--vc-dur-reduced); }
 
-html[data-vc-layout="desktop"] body.vc-ui input[type="checkbox"] { width: 18px; height: 18px; border-radius: 5px; accent-color: var(--vc-accent); }
+html[data-vc-layout="desktop"] body.vc-ui input[type="checkbox"] { width: 18px; height: 18px; border-radius: var(--vc-radius-check); accent-color: var(--vc-accent); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-empty > .vc-icon { width: 48px; height: 48px; padding: var(--vc-space-xs); box-sizing: border-box; background: var(--vc-raised); border-radius: var(--vc-radius-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-empty > p { font-size: var(--vc-fs-headline); font-weight: 600; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-skeleton { position: relative; overflow: hidden; animation: none; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-skeleton::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg,transparent,var(--vc-hi),transparent); animation: vc-desktop-shimmer 1.6s linear infinite; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-skeleton::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg,transparent,var(--vc-hi),transparent); animation: vc-desktop-shimmer var(--vc-dur-shimmer) linear infinite; }
 @keyframes vc-desktop-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @media (prefers-reduced-motion:reduce) {
   html[data-vc-layout="desktop"] body.vc-ui .vc-skeleton::after { animation: none; }
 }
 html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui .vc-skeleton::after { animation: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-account-reauth { z-index: var(--vc-z-alert); background: var(--vc-scrim-desk); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-account-reauth form { background: var(--vc-glass-3); border: 1px solid var(--vc-rim); backdrop-filter: blur(var(--vc-blur-3)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi), var(--vc-shadow-overlay); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-account-reauth form { background: var(--vc-glass-3); border: 1px solid var(--vc-rim); backdrop-filter: blur(var(--vc-blur-3)) saturate(180%); box-shadow: var(--vc-shadow-rim-overlay); }
 html[data-vc-layout="desktop"] body.vc-ui input[type="checkbox"] { appearance: none; margin: 0; border: .5px solid var(--vc-raised-edge); background: var(--vc-raised); flex: none; }
 /* 复用 Lucide check 的路径；基础层中的色值来自 DESIGN §16.4。 */
 html[data-vc-layout="desktop"] body.vc-ui input[type="checkbox"]:checked { background-color: var(--vc-accent); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m20 6-11 11-5-5'/%3E%3C/svg%3E"); }
 
-html[data-vc-layout="desktop"] body.vc-ui .vc-segment { height: 32px; margin: 0 0 var(--vc-space-sm); background: rgba(118,118,128,.12); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-segment-thumb { box-shadow: 0 2px 6px rgba(0,0,0,.12); }
-html[data-vc-layout="desktop"] body.vc-ui .vc-menu { border-radius: 14px; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-segment { height: 32px; margin: 0 0 var(--vc-space-sm); background: var(--vc-segment-fill); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-segment-thumb { box-shadow: var(--vc-shadow-segment); }
+html[data-vc-layout="desktop"] body.vc-ui .vc-menu { border-radius: var(--vc-radius-card-inset); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-menu [role="menuitem"] { min-height: 36px; font-size: var(--vc-fs-body); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-menu .vc-icon { width: 16px; height: 16px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-sheet { max-width: min(560px,calc(100vw - 64px)); border-radius: var(--vc-radius-xl); }
@@ -242,29 +205,11 @@ html[data-vc-layout="desktop"] body.vc-ui input[type="checkbox"]::before { conte
 
 /* 主题「自动」时没有 data-vc-theme，随系统深色同样套用上面的深色规则。 */
 @media (prefers-color-scheme: dark) {
-  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui {
-    --vc-desk-base: #07070a;
-    --vc-aurora-alpha: .85;
-    --vc-grain-alpha: .04;
-    --vc-glass-1: rgba(64,64,76,.36);
-    --vc-glass-2: rgba(36,36,44,.44);
-    --vc-raised: rgba(255,255,255,.08);
-    --vc-glass-3: rgba(38,38,44,.82);
-    --vc-rim: rgba(255,255,255,.10);
-    --vc-rim-outer: rgba(255,255,255,.06);
-    --vc-hi: rgba(255,255,255,.10);
-    --vc-raised-edge: rgba(255,255,255,.08);
-    --vc-ink-2: #b2b2b7;
-    --vc-shadow-panel: 0 0 0 1px var(--vc-rim-outer), 0 20px 50px rgba(0,0,0,.45);
-    --vc-shadow-overlay: 0 0 0 1px var(--vc-rim-outer), 0 30px 80px rgba(0,0,0,.60);
-    --vc-select-fill: rgba(41,151,255,.20);
-    --vc-hover-fill: rgba(255,255,255,.06);
-    --vc-scrim-desk: rgba(0,0,0,.50);
-  }
-  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui [data-vc-light]::after { background: radial-gradient(160px at var(--mx) var(--my),rgba(255,255,255,.06),transparent); }
+
+  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui [data-vc-light]::after { background: radial-gradient(160px at var(--mx) var(--my),var(--vc-pointer-glow),transparent); }
   html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui .vc-side-link[aria-current="page"] .vc-side-label { color: var(--vc-ink); /* 深色下 accent 蓝字落在暖色光斑上不足 3:1 */ }
   html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui :is(input:not([type="range"]):not([type="checkbox"]),select,textarea) { background: var(--vc-raised); }
 }
 @media (prefers-color-scheme: dark) and (prefers-reduced-transparency: reduce) {
-  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui { --vc-glass-1:#1c1c20; --vc-glass-2:#1c1c20; --vc-glass-3:#1c1c20; }
+  html[data-vc-layout="desktop"]:not([data-vc-theme]) body.vc-ui { --vc-glass-1:var(--vc-glass-opaque); --vc-glass-2:var(--vc-glass-opaque); --vc-glass-3:var(--vc-glass-opaque); }
 }

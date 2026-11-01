@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { waitFor } from './managed-lib.mjs';
 import { createShotBudget, keepSceneShot } from './lib/scene-shots.mjs';
+import { checkDesktopThemes } from './desktop-theme-checks.mjs';
 
 const VIEWPORTS = [
     { name: '360', width: 360, height: 780 },
@@ -706,6 +707,7 @@ export async function sceneVcUiShell(ctx) {
                     }
                 }
             }
+            await checkDesktopThemes(page);
             const leaked = await page.evaluate((needles) => {
                 const surface = document.body.innerText || '';
                 return needles.some((item) => item && surface.includes(item));

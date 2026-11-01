@@ -34,6 +34,7 @@ export function spanOf(parts, start, end) {
 function ensureStyle(doc) {
     if (doc.getElementById(STYLE_ID) || !doc.head) return;
     const link = doc.createElement('link');
+    link.media = '(min-width: 744px)';
     link.id = STYLE_ID; link.rel = 'stylesheet'; link.href = new URL('./desktop/chat-search.css', import.meta.url).href;
     doc.head.append(link);
 }

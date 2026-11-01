@@ -17,6 +17,8 @@ import { readReducedMotion, writeReducedMotion, transitionContent } from './tran
 import { SUGGEST_KEY, suggestEnabled } from './suggest.js';
 import { EFFECTS_KEY, effectsEnabled } from '../chat-react.js';
 import { NOTIFY_KEY, notifySupported, requestNotifyPermission, systemNotifyEnabled } from './notify.js';
+import { DESKTOP_THEMES } from './themes/index.js';
+import { readThemePreferences, setGlobalThemePreference, setCharacterThemePreference, characterThemeKey } from './theme.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const categories = [['account','账户','user-round','gray'],['model','模型','cpu','blue'],['voice','语音','mic','orange'],['notifications','通知','bell','pink'],['appearance','外观','monitor','purple'],['data','账户与数据','shield','green']];
 export function mountSettingsShell(container, { getContext = () => ({}) } = {}) {
@@ -75,7 +77,7 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         content.innerHTML = header(title);
         const body = document.createElement('div'); body.className='vc-settings-body';content.append(body);
         if (key === 'voice') { voice = await mountVoice(content,body); }
-        else if (key === 'appearance') mountAppearance(body);
+        else if (key === 'appearance') mountAppearance(body, getContext);
         else if (key === 'account') mountAccount(body);
         else if (key === 'data') {
             body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell vc-settings-open-account"><span class="vc-grow">账户与数据</span>${icon('chevron-right',{size:16})}</button></div>`;
@@ -148,7 +150,7 @@ async function mountVoice(content,body) {
     }
     save.onclick=()=>void submit();form.onsubmit=event=>{event.preventDefault();void submit();};void load();return {isDirty,working:()=>working};
 }
-function mountAppearance(body) {
+function mountAppearance(body, getContext) {
     const segment=(key,labels,index)=>`<div class="vc-segment" data-preference="${key}"><i class="vc-segment-thumb"></i>${labels.map((label,i)=>`<button type="button" aria-pressed="${i===index}">${label}</button>`).join('')}</div>`;
     body.innerHTML=`<section class="vc-desk-group"><h2>外观</h2><div class="vc-desk-field"><span>外观</span>${segment('theme',['跟随系统','浅色','深色'],['auto','light','dark'].indexOf(readThemeMode()))}</div><div class="vc-desk-field"><span>回复样式</span>${segment('reply',['铺开','气泡'],readReplyStyle()==='bubble'?1:0)}</div><div class="vc-desk-field"><span>减弱动态效果</span><button type="button" class="vc-switch" role="switch" data-preference="motion" aria-label="减弱动态效果" aria-checked="${readReducedMotion()}"><span></span></button></div><div class="vc-desk-field"><span>建议回复</span><button type="button" class="vc-switch" role="switch" data-preference="suggest" aria-label="建议回复" aria-checked="${suggestEnabled()}"><span></span></button></div><div class="vc-desk-field"><span>关键词特效</span><button type="button" class="vc-switch" role="switch" data-preference="effects" aria-label="关键词特效" aria-checked="${effectsEnabled()}"><span></span></button></div></section>`;
     bindSegment(body.querySelector('[data-preference="theme"]'),{onChange:index=>setThemeMode(['auto','light','dark'][index])});
@@ -157,4 +159,23 @@ function mountAppearance(body) {
     const writePref=(key)=>(on)=>{try{localStorage.setItem(key,on?'on':'off');}catch{/* 隐私模式下仅本次有效 */}};
     bindSwitch(body.querySelector('[data-preference="suggest"]'),{onChange:writePref(SUGGEST_KEY)});
     bindSwitch(body.querySelector('[data-preference="effects"]'),{onChange:writePref(EFFECTS_KEY)});
+    // 首版只有极光时不显示无意义的单选；新增主题登记后自动出现选择器。
+    if (DESKTOP_THEMES.length > 1) {
+        const preferences = readThemePreferences();
+        const character = characterThemeKey(getContext());
+        const addSelect = (label, selected, inherited, onChange) => {
+            const row = document.createElement('label'); row.className = 'vc-desk-field';
+            const name = document.createElement('span'); name.textContent = label;
+            const select = document.createElement('select'); select.setAttribute('aria-label', label);
+            const entries = inherited ? [{ id: '', name: '跟随全局' }, ...DESKTOP_THEMES] : DESKTOP_THEMES;
+            for (const entry of entries) {
+                const option = document.createElement('option'); option.value = entry.id; option.textContent = entry.name; select.append(option);
+            }
+            select.value = entries.some(entry => entry.id === selected) ? selected : entries[0].id;
+            select.addEventListener('change', () => onChange(select.value));
+            row.append(name, select); body.querySelector('.vc-desk-group').append(row);
+        };
+        addSelect('主题', preferences.global, false, setGlobalThemePreference);
+        if (character) addSelect('当前角色主题', preferences.characters[character] || '', true, id => setCharacterThemePreference(character, id));
+    }
 }

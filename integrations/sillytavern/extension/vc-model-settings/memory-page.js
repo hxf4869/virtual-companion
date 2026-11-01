@@ -497,7 +497,7 @@ export const MEMORY_SECTIONS = Object.freeze([
     ['invalid', '已失效', 'ban', 'INVALID'],
 ]);
 export const SECTION_STATUS = Object.freeze(Object.fromEntries(MEMORY_SECTIONS.map(([key, , , status]) => [key, status])));
-export const INCOGNITO_LABEL = '这次不记';
+export const INCOGNITO_LABEL = '新对话不记';
 const pad2 = (n) => String(n).padStart(2, '0');
 const localKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
@@ -546,7 +546,7 @@ export function excerptOf(text, max = 36) {
 export function parseSourceRef(ref) {
     const match = /^st:([^:]+):([^:]+):/.exec(String(ref ?? ''));
     if (!match) return null;
-    return { chatIdentity: match[1], mesId: /^\d+$/.test(match[2]) ? Number(match[2]) : null };
+    return { chatIdentity: match[1], messageId: match[2], mesId: /^\d+$/.test(match[2]) ? Number(match[2]) : null };
 }
 
 /** 卡片上的「来自 今天 15:42：「……」」；没有可展示的摘录时返回 null。 */
@@ -557,7 +557,7 @@ export function pickSource(evidence, now = new Date()) {
     const key = dayKeyOf(row.sourceTimestamp);
     const when = key ? `${dayGroupLabel(key, now)} ${clockOf(row.sourceTimestamp)}`.trim() : '';
     const ref = parseSourceRef(row.sourceRef);
-    return { line: `来自${when ? ` ${when}` : ''}：「${excerptOf(row.excerpt)}」`, chatIdentity: ref?.chatIdentity || '', mesId: ref?.mesId ?? (/^\d+$/.test(String(row.messageId)) ? Number(row.messageId) : null) };
+    return { line: `来自${when ? ` ${when}` : ''}：「${excerptOf(row.excerpt)}」`, chatIdentity: ref?.chatIdentity || '', messageId: String(row.messageId || ref?.messageId || ''), mesId: ref?.mesId ?? (/^\d+$/.test(String(row.messageId)) ? Number(row.messageId) : null) };
 }
 
 function memoryCard(item, s, ui, locked) {
@@ -938,15 +938,16 @@ export function mountMemoryTab(container, { getRelationshipId = () => '', onOpen
     }
 
     async function openMessage(detail) {
+        let mesId = detail.mesId;
         try {
-            if (typeof onOpenMessage === 'function') await onOpenMessage(detail);
+            if (typeof onOpenMessage === 'function') mesId = await onOpenMessage(detail);
             else globalThis.dispatchEvent(new CustomEvent(OPEN_MESSAGE_EVENT, { detail }));
         } catch { showToast('没有完成，请重试。', { type: 'failure' }); return; }
-        if (!Number.isInteger(detail.mesId)) return;
+        if (!Number.isInteger(mesId)) return;
         // 会话切换与渲染是异步的：等目标消息出现后滚动并高亮。
         const chat = await import('./chat-view.js').catch(() => null);
         for (let i = 0; i < 12 && !stopped; i++) {
-            if (chat?.highlightMessage?.(detail.mesId)) return;
+            if (chat?.highlightMessage?.(mesId)) return;
             await new Promise((resolve) => setTimeout(resolve, 250));
         }
     }
@@ -1147,7 +1148,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '', onOpen
         if (action === 'open-source') {
             const entry = sources.get(target.dataset.mid);
             const item = page.state.items.find((row) => idOf(row) === target.dataset.mid);
-            if (entry) await openMessage({ relationshipId: String(item?.relationshipId ?? page.state.relationshipId), chatIdentity: entry.chatIdentity, mesId: entry.mesId });
+            if (entry) await openMessage({ relationshipId: String(item?.relationshipId ?? page.state.relationshipId), chatIdentity: entry.chatIdentity, messageId: entry.messageId, mesId: entry.mesId });
             return;
         }
         if (action === 'diary-day') { diary.select(target.dataset.day); return; }
@@ -1171,7 +1172,8 @@ export function mountMemoryTab(container, { getRelationshipId = () => '', onOpen
         if (action === 'fav-more') { await favorites.more(); return; }
         if (action === 'open-favorite') {
             const row = favorites.state.favorites.find((item) => item.favoriteId === target.dataset.favoriteId);
-            if (row) await openMessage({ relationshipId: String(row.relationshipId), chatFile: row.chatFile, mesId: row.mesId });
+            if (row) await openMessage({ relationshipId: String(row.relationshipId), chatFile: row.chatFile,
+                body: row.body, role: row.role, messageAt: row.messageAt });
             return;
         }
         if (action === 'remove-favorite' || action === 'cancel-reminder') {

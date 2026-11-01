@@ -189,7 +189,8 @@ export function createVoiceBubble({ document: doc = globalThis.document, text = 
         const shut = { height: '0px', paddingBlock: '0px', opacity: 0 };
         const wide = { height: `${full}px`, opacity: 1 };
         const css = globalThis.getComputedStyle?.(transcript);
-        const duration = parseFloat(css?.getPropertyValue('--vc-dur-shared')) || 0;
+        const time = css?.getPropertyValue('--vc-dur-shared').trim() || '';
+        const duration = (parseFloat(time) || 0) * (time.endsWith('ms') ? 1 : 1000);
         const easing = css?.getPropertyValue('--vc-spring').trim() || 'ease';
         if (!duration) { setOpen(open); return; }
         const anim = transcript.animate(open ? [shut, wide] : [wide, shut], { duration, easing });

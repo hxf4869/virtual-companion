@@ -1,9 +1,19 @@
-import { SPRING } from '../ui/motion.js';
 export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.vcReducedMotion==='true';
 export function transitionContent(element, update, { shared = false } = {}) {
     if(document.documentElement.dataset.vcLayout!=='desktop')return update();
     if(shared && document.startViewTransition && !reducedMotion())return document.startViewTransition(update);
-    const result=update();element.animate(reducedMotion()?[{opacity:0},{opacity:1}]:[{opacity:0,transform:'translateY(8px)',filter:'blur(6px)'},{opacity:1,transform:'none',filter:'blur(0)'}],{duration:reducedMotion()?150:320,easing:reducedMotion()?'ease':SPRING});return result;
+    const result = update();
+    const reduced = reducedMotion();
+    const css = globalThis.getComputedStyle?.(element);
+    const value = name => css?.getPropertyValue(name).trim() || '';
+    const time = value(reduced ? '--vc-dur-reduced' : '--vc-dur-emphasized');
+    const duration = (parseFloat(time) || 0) * (time.endsWith('ms') ? 1 : 1000);
+    if (!duration) return result;
+    element.animate(reduced ? [{opacity:0},{opacity:1}] : [
+        {opacity:0,transform:`translateY(${value('--vc-content-rise') || '0px'})`,filter:`blur(${value('--vc-content-blur') || '0px'})`},
+        {opacity:1,transform:'none',filter:'blur(0)'},
+    ], {duration,easing:value(reduced ? '--vc-ease-reduced' : '--vc-spring') || 'linear'});
+    return result;
 }
 export function readReducedMotion(storage = localStorage) {try{return storage.getItem('vc-reduced-motion')==='true';}catch{return false;}}
 export function writeReducedMotion(value, storage = localStorage) {try{storage.setItem('vc-reduced-motion',String(Boolean(value)));}catch{/* 与现有回复样式相同，本机存储不可用时仅当前窗口生效。 */}document.documentElement.dataset.vcReducedMotion=String(Boolean(value));window.dispatchEvent(new Event('vc-motion-preference'));}
@@ -15,7 +25,6 @@ export function bindSidebarLens(sidebar) {
 
 // UX-34 共享元素过渡：from 与 to 在同一次视图过渡中共用 view-transition-name，250ms。
 // update 完成后 to 才出现（可为函数，在 update 之后求值）；不支持 View Transitions 或减少动效时直接 update。
-export const SHARED_TRANSITION_MS = 250;
 // 视图过渡回调的启动宽限：超过即放弃动画直接更新（窗口在后台或渲染被节流时浏览器会一直推迟回调）。
 export const TRANSITION_START_GRACE_MS = 120;
 export function sharedTransition(update, { from, to, name = 'vc-shared' } = {}) {
