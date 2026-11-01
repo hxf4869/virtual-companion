@@ -1623,12 +1623,21 @@ function syncGenerating() {
         dots.setAttribute('aria-hidden', 'true');
         const label = document.createElement('span');
         if (typing) {
+            // 与角色消息同构：头像 + 气泡（三点 + 正在输入）。
+            const src = avatarSrc(safeContext());
+            if (src) {
+                const avatar = document.createElement('img');
+                avatar.className = 'vc-gen-avatar';
+                avatar.alt = '';
+                avatar.src = src;
+                line.append(avatar);
+            }
             const bubble = document.createElement('span');
             bubble.className = 'vc-gen-bubble';
-            bubble.append(dots);
             label.textContent = TYPING_COPY;
+            bubble.append(dots, label);
             line.setAttribute('data-vc-typing', '');
-            line.append(bubble, label);
+            line.append(bubble);
         } else {
             label.textContent = '思考中';
             line.append(dots, label);
