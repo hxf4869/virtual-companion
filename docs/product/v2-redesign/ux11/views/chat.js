@@ -40,8 +40,13 @@ export async function check({ params, source }) {
             throw Error(`聊天编辑控件未出现：${selector}`);
         };
         const waitRemoved = async selector => {
-            for (let i = 0; i < 80; i++) { if (!document.querySelector(selector)) return; await new Promise(r => setTimeout(r, 25)); }
-            throw Error(`聊天编辑控件未关闭：${selector}`);
+            for (let i = 0; i < 80; i++) {
+                const target=document.querySelector(selector);if(!target)return;
+                // 截图/录像单独验动效；交互断言推进已启动的有限关闭动画，不改业务状态或超时。
+                for(const animation of target.closest('.vc-sheet')?.getAnimations()||[]){const frames=animation.effect.getKeyframes();if(frames[0]?.opacity==='1'&&frames.at(-1)?.opacity==='0'&&Number.isFinite(animation.effect.getTiming().iterations))animation.finish();}
+                await new Promise(r => setTimeout(r, 25));
+            }
+            throw Error(`聊天编辑控件未关闭：${selector} ${JSON.stringify({alerts:[...document.querySelectorAll('.vc-alert')].map(n=>n.textContent),sheets:[...document.querySelectorAll('.vc-sheet')].map(n=>({opacity:getComputedStyle(n).opacity,transform:getComputedStyle(n).transform})),animations:document.getAnimations().map(a=>({name:a.animationName,state:a.playState,time:a.currentTime,duration:a.effect.getTiming().duration,target:a.effect.target?.className}))})}`);
         };
         correct.click(); const form = await wait('.vc-desk-memory-editor');
         const input = form.querySelector('textarea'); input.value += '（草稿）'; input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -67,6 +72,6 @@ export async function check({ params, source }) {
         await waitRemoved('.vc-desk-memory-editor');
         window.VC_PREVIEW_DELAY = 0;
         const { fetchMemory } = await import(`${source}/api.js`);
-        if ((await fetchMemory(memoryId)).summary !== savedSummary) throw Error('纠正保存未读回');
+        const previous=await fetchMemory(memoryId);if(previous.lifecycle!=='SUPERSEDED'||!previous.supersededByMemoryId||previous.supersededByMemoryId===memoryId)throw Error('纠正未产生替代身份');if((await fetchMemory(previous.supersededByMemoryId)).summary!==savedSummary)throw Error('纠正保存未读回');
     }
 }
