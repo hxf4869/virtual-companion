@@ -574,7 +574,11 @@ export async function sceneVcUiShell(ctx) {
                         const hit = await back.evaluate((el) => {
                             const rect = el.getBoundingClientRect();
                             const probe = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-                            return { width: rect.width, hit: probe === el || el.contains(probe) };
+                            return { width: rect.width, hit: probe === el || el.contains(probe),
+                                rect: { x: rect.x, y: rect.y, h: rect.height },
+                                blocker: probe ? { tag: probe.tagName, id: probe.id, class: String(probe.className), position: getComputedStyle(probe).position, z: getComputedStyle(probe).zIndex } : null,
+                                layers: document.elementsFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2).slice(0, 6).map(node => `${node.tagName}#${node.id}.${String(node.className)}`),
+                            };
                         });
                         if (!(hit.width > 0 && hit.hit)) throw new Error(`返回按钮中心未命中自身 ${JSON.stringify(hit)}`);
                         await back.click();

@@ -888,7 +888,7 @@ export function createInboxPage({ onChange = () => {}, onOpenConversation = () =
     return controller;
 }
 
-function readForm(dialog) {
+export function readForm(dialog) {
     const value = (field) => dialog.querySelector(`[data-field="${field}"]`)?.value ?? '';
     const zoneInput = dialog.querySelector('[data-field="quietHoursTimezone"]');
     const pressed = (field) => dialog.querySelector(`[data-field="${field}"]`)?.getAttribute('aria-pressed') === 'true';
@@ -905,7 +905,8 @@ function readForm(dialog) {
         };
     });
     return {
-        policy: {
+        // 加载骨架没有策略控件；缺少控件不表示用户把已载入的草稿清空。
+        policy: dialog.querySelector('[data-field="dailyLimit"]') ? {
             enabled: pressed('enabled'),
             offlineCapable: pressed('offlineCapable'),
             quietHoursStart: value('quietHoursStart'),
@@ -916,7 +917,7 @@ function readForm(dialog) {
             allowedModes: modes.length ? modes : undefined,
             ...(dialog.querySelector('[data-action="set-proactive-mode"]') ? { mode: dialog.querySelector('[data-action="set-proactive-mode"][aria-pressed="true"]')?.dataset.mode || '' } : {}),
             ...(dialog.querySelector('[data-field="checkInAfterMinutes"]') ? { checkInAfterMinutes: value('checkInAfterMinutes') } : {}),
-        },
+        } : undefined,
         channels,
     };
 }
