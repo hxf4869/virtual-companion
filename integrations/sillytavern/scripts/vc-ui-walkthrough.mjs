@@ -671,12 +671,23 @@ export async function sceneVcUiWalkthrough(ctx) {
                             const geometry = await page.evaluate(() => {
                                 const editor = document.querySelector('.vc-memory-editor');
                                 const rect = editor?.getBoundingClientRect();
+                                const style = editor && getComputedStyle(editor);
                                 return { body: editor?.parentElement === document.body,
                                     width: rect?.width, center: rect ? rect.left + rect.width / 2 : 0,
+                                    top: rect?.top, bottom: rect?.bottom, centerY: rect ? rect.top + rect.height / 2 : 0,
+                                    height: rect?.height, viewportHeight: innerHeight,
+                                    position: style?.position, usedTop: style?.top, usedBottom: style?.bottom,
+                                    transform: style?.transform, translate: style?.translate, margin: style?.margin,
+                                    bodyHeight: document.body.getBoundingClientRect().height,
+                                    bodyFilter: getComputedStyle(document.body).filter,
+                                    bodyTransform: getComputedStyle(document.body).transform,
+                                    scrimHeight: document.querySelector('.vc-memory-editor-scrim')?.getBoundingClientRect().height || 0,
                                     filters: document.querySelector('.vc-memory-sidebar')?.getBoundingClientRect().width };
                             });
                             assert.ok(geometry.body && Math.abs(geometry.width - 560) <= 1
-                                && Math.abs(geometry.center - viewport.width / 2) <= 1 && Math.abs(geometry.filters - 240) <= 1,
+                                && Math.abs(geometry.center - viewport.width / 2) <= 1 && Math.abs(geometry.filters - 240) <= 1
+                                && Math.abs(geometry.centerY - geometry.viewportHeight / 2) <= 1 && geometry.top >= 31
+                                && Math.abs(geometry.scrimHeight - geometry.viewportHeight) <= 1,
                             `桌面记忆详情布局 ${JSON.stringify(geometry)}`);
                             const edit = page.locator('.vc-memory-editor [data-action="edit"]');
                             if (viewport.width === 1440 && theme === 'light' && await edit.count()) {

@@ -46,7 +46,8 @@ html[data-vc-layout="desktop"][data-vc-theme="dark"] body.vc-ui {
   --vc-scrim-desk: rgba(0,0,0,.50);
 }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-aurora {
-  position: fixed; inset: 0; z-index: var(--vc-z-backdrop); overflow: hidden; pointer-events: none;
+  /* ST ≤1000px 固定 body，且 html 带变换；不能用它的零高度作为 fixed 参考。 */
+  position: fixed; inset: 0; width:100dvw; height:100dvh; z-index: var(--vc-z-backdrop); overflow: hidden; pointer-events: none;
 }
 html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-set { position: absolute; inset: 0; transition: opacity 900ms var(--vc-spring); }
 html[data-vc-layout="desktop"] .vc-desktop-aurora .vc-aurora-set.is-leaving { opacity: 0; }

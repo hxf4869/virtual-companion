@@ -362,12 +362,14 @@ export async function sceneVcUiShell(ctx) {
                     }, viewport.width);
                     const desktopWiring = await page.evaluate(() => ({
                         aurora: document.querySelectorAll('.vc-desktop-aurora').length,
+                        auroraHeight: document.querySelector('.vc-desktop-aurora')?.getBoundingClientRect().height || 0,
                         panel: document.querySelectorAll('.vc-desk-character-toggle').length,
                         glass: getComputedStyle(document.querySelector('#vc-shell > .vc-sidebar')).backdropFilter,
                         nativeChat: document.querySelector('#chat')?.parentElement?.id === 'sheld',
                     }));
                     if (!desktopWiring.nativeChat || desktopWiring.aurora !== Number(viewport.width >= 744)
                         || desktopWiring.panel !== Number(viewport.width >= 744)
+                        || viewport.width >= 744 && Math.abs(desktopWiring.auroraHeight - viewport.height) > 1
                         || viewport.width >= 744 && desktopWiring.glass === 'none') throw new Error(`桌面接线 ${JSON.stringify(desktopWiring)}`);
                     const nav = await page.evaluate(() => [...new Set([...document.querySelectorAll('#vc-shell [data-nav]')].map((el) => el.getAttribute('data-nav')))].sort());
                     if (nav.join(',') !== 'characters,chat,inbox,memory,story') throw new Error(`data-nav ${nav.join(',')}`);

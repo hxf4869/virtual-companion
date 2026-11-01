@@ -47,8 +47,9 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-summary 
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-results > .vc-group { background:transparent; border:0; padding:0; box-shadow:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-list { display:grid; gap:var(--vc-space-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-memory-list > li { background:var(--vc-raised); border:1px solid var(--vc-raised-edge); border-radius:var(--vc-radius-md); overflow:hidden; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor { display:block; position:fixed; inset:auto; left:50%; top:50%; transform:translate(-50%,-50%); margin:0; height:auto; z-index:var(--vc-z-sheet); overflow:hidden; }
-html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor-scrim { position:fixed; inset:0; z-index:var(--vc-z-scrim); opacity:1; background:var(--vc-scrim-desk); }
+/* ST 的变换 html 在 ≤1000px 会变为零高度，浮层与遮罩直接按视口定位。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor { display:block; position:fixed; inset:auto; left:50dvw; top:50dvh; transform:translate(-50%,-50%); margin:0; height:auto; z-index:var(--vc-z-sheet); overflow:hidden; }
+html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor-scrim { position:fixed; inset:0; width:100dvw; height:100dvh; z-index:var(--vc-z-scrim); opacity:1; background:var(--vc-scrim-desk); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor[hidden],html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor-scrim[hidden] { display:none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-title { margin:0 0 var(--vc-space-sm); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-memory-detail-actions { flex-direction:row; }
