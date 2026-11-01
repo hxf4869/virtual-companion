@@ -317,7 +317,7 @@ export async function sceneF3Settings(ctx) {
         await setTheme(page, 'light');
         await openDrawer(page, 'left-nav-panel');
         const wide = await page.locator('#left-nav-panel').evaluate((el) => getComputedStyle(el).left);
-        if (wide !== '200px') throw new Error(`宽屏抽屉定位不符：${wide}`);
+        if (wide !== '236px') throw new Error(`宽屏抽屉定位不符：${wide}`);
         await shot(page, path.join(ctx.artifactsDir, 'f3-1440-light-left-nav-panel.png'));
         await page.evaluate(() => {
             const pop = document.getElementById('character_popup');
@@ -325,7 +325,7 @@ export async function sceneF3Settings(ctx) {
             pop.style.display = 'flex';
         });
         const popWide = await page.locator('#character_popup').evaluate((el) => getComputedStyle(el).left);
-        if (popWide !== '200px') throw new Error('宽屏角色卡弹层定位不符');
+        if (popWide !== '236px') throw new Error('宽屏角色卡弹层定位不符');
         await page.evaluate(() => {
             const pop = document.getElementById('character_popup');
             pop.classList.remove('open');
@@ -388,7 +388,8 @@ export async function sceneF3Settings(ctx) {
                         const y = Math.min(window.innerHeight - 12, Math.max(box.top + 96, 96));
                         const hit = document.elementFromPoint(x, y);
                         const sidebar = document.querySelector('#vc-shell .vc-sidebar');
-                        const sideHit = document.elementFromPoint(12, Math.min(240, window.innerHeight - 12));
+                        const sideBox = sidebar?.getBoundingClientRect();
+                        const sideHit = sideBox ? document.elementFromPoint(sideBox.left + 12, Math.min(sideBox.top + 216, sideBox.bottom - 12)) : null;
                         return {
                             bg: style.backgroundColor,
                             z: Number.parseFloat(style.zIndex),
@@ -401,6 +402,7 @@ export async function sceneF3Settings(ctx) {
                             hitName: hit ? `${hit.tagName}#${hit.id}.${String(hit.className).split(' ').slice(0, 4).join('.')}` : 'none',
                             pointerEvents: style.pointerEvents,
                             sidebarClickable: !!(sidebar && sideHit && sidebar.contains(sideHit) && !el.contains(sideHit)),
+                            sidebarRight: sideBox?.right || 0,
                         };
                     });
                     const covered = cover.bg && cover.bg !== 'rgba(0, 0, 0, 0)' && cover.z > cover.sheldZ && cover.z > cover.shellZ && cover.hit;
@@ -411,7 +413,7 @@ export async function sceneF3Settings(ctx) {
                         throw new Error(id === 'right-nav-panel' ? `角色卡页未铺满 ${tag}` : `抽屉页未铺满 ${id} ${tag}`);
                     }
                     if (width >= 744) {
-                        if (cover.left !== '200px') throw new Error(`宽屏抽屉定位不符：${cover.left}`);
+                        if (cover.left !== '236px' || cover.x < cover.sidebarRight) throw new Error(`宽屏抽屉定位不符：${cover.left}`);
                         if (!cover.sidebarClickable) throw new Error(`侧边栏被抽屉挡住 ${id} ${tag}`);
                     }
                     if (id === 'right-nav-panel') {

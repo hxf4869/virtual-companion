@@ -720,7 +720,7 @@ body.vc-ui:has(.vc-data-dialog[open]) :is(#vc-chat-nav, .vc-tabbar) {
 @media (min-width: 744px) {
   body.vc-ui #vc-model-settings-root .vcms-overlay:not([hidden]),
   body.vc-ui .vc-data-dialog[open] {
-    left: var(--vc-sidebar, 240px) !important;
+    left: var(--vc-native-page-left, var(--vc-sidebar, 240px)) !important;
     width: auto !important;
   }
 }

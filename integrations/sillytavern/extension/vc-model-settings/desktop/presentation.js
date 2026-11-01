@@ -56,3 +56,15 @@ export function presentInbox(screen) {
         group.prepend(heading);
     }
 }
+
+export function presentStory(body) {
+    const header = body.querySelector('.vc-navbar');
+    const title = header?.querySelector('.vc-nav-title');
+    if (!header || !title) return;
+    title.setAttribute('role', 'heading');
+    title.setAttribute('aria-level', '1');
+    title.tabIndex = -1;
+    body.querySelector('.vc-large-title')?.remove();
+    const start = body.querySelector('[data-action="start"]');
+    if (start) header.append(start);
+}

@@ -23,6 +23,7 @@ html[data-vc-layout="desktop"] body.vc-ui {
   --vc-touch: 40px;
   --vc-read: 720px;
   --vc-sidebar: 200px;
+  --vc-native-page-left: calc(var(--vc-sidebar) + var(--vc-space-xl) + var(--vc-space-sm));
   --vc-dur-quick: 260ms;
   --vc-dur-emphasized: 320ms;
   background: var(--vc-desk-base);
@@ -138,6 +139,7 @@ html[data-vc-layout="desktop"] body.vc-ui [data-vc-light]:hover { background-col
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { position: absolute; z-index: -1; background: var(--vc-select-fill); border-radius: var(--vc-radius-sm); box-shadow: inset 0 1px 0 var(--vc-hi); transition: transform var(--vc-dur-emphasized) var(--vc-spring); pointer-events: none; }
 @media (max-width:1179px) {
   html[data-vc-layout="desktop"] body.vc-ui { --vc-sidebar: 72px; }
+  html[data-vc-layout="desktop"] body.vc-ui { --vc-native-page-left: calc(var(--vc-sidebar) + var(--vc-space-md) + var(--vc-space-sm)); }
   html[data-vc-layout="desktop"] body.vc-ui #vc-shell { inset: 16px; height: calc(100dvh - 32px); grid-template-columns: 72px minmax(0,1fr); }
   html[data-vc-layout="desktop"] body.vc-ui #vc-shell > .vc-sidebar { width: 72px; padding: 8px; }
   html[data-vc-layout="desktop"] body.vc-ui .vc-sidebar :is(.vc-side-label,.vc-side-foot-name,.vc-side-settings-label) { display: none; }

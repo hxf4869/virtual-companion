@@ -5,6 +5,7 @@ import { STORY_SYNC_PENDING } from './story-projection.js';
 import { confirmAlert } from './ui/alert.js';
 import { icon } from './ui/icons.js';
 import { readVcUiFlag } from './ui/theme.js';
+import { desktopLayout, presentStory } from './desktop/presentation.js';
 import { popMenu } from './ui/menu.js';
 import { animate, EASE_IN_OUT, EASE_OUT, prefersReducedMotion, SPRING } from './ui/motion.js';
 import { showToast } from './ui/toast.js';
@@ -1092,6 +1093,14 @@ export function mountStoryTab(container, options = {}) {
     let draftSummary = '';
     let letterbox = null;
     let lastNotice = '';
+    let desktop = desktopLayout();
+    const resize = () => {
+        const next = desktopLayout();
+        if (next === desktop) return;
+        desktop = next;
+        if (!dead) paint();
+    };
+    globalThis.addEventListener('resize', resize);
     let holdTimer = 0;
     const page = createStoryPage({
         getConversation: options.getConversation,
@@ -1140,6 +1149,7 @@ export function mountStoryTab(container, options = {}) {
         const fresh = seenVersion >= 0 && version > seenVersion;
         if (version >= 0) seenVersion = version;
         body.innerHTML = renderStoryTab(state, { view, loading, fresh, draftSay, draftSummary });
+        if (view === 'gate' && desktopLayout()) presentStory(body);
         hydrateIcons(body);
         const scroll = body.querySelector('.vc-scroll');
         if (scroll && prevScroll) scroll.scrollTop = scrollTop;
@@ -1343,6 +1353,7 @@ export function mountStoryTab(container, options = {}) {
         clearTimeout(holdTimer);
         holdTimer = 0;
         dead = true;
+        globalThis.removeEventListener('resize', resize);
         syncCover('gate');
         page.close();
         root.remove();

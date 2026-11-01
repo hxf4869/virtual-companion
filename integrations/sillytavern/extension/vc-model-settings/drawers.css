@@ -250,7 +250,7 @@ body.vc-ui #character_popup.open {
     #right-nav-panel
   ).vc-drawer-leave,
   body.vc-ui #character_popup.open {
-    left: var(--vc-sidebar, 240px) !important;
+    left: var(--vc-native-page-left, var(--vc-sidebar, 240px)) !important;
     width: auto !important;
     padding-left: 32px !important;
     padding-right: 32px !important;
@@ -500,7 +500,7 @@ body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer {
   body.vc-ui #PersonaManagement.vc-drawer-page.openDrawer,
   body.vc-ui #right-nav-panel.vc-drawer-page.openDrawer,
   body.vc-ui #character_popup.open {
-    left: var(--vc-sidebar, 240px) !important;
+    left: var(--vc-native-page-left, var(--vc-sidebar, 240px)) !important;
     width: auto !important;
   }
 }
