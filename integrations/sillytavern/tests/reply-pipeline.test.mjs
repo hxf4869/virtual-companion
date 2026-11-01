@@ -164,7 +164,7 @@ test('连发短消息在 2 到 5 秒内合并，最长等待 8 秒，只刷出�
         onFlush(text) { sent.push(text); },
     });
     const first = burst.push('在吗');
-    assert.equal(first.waitMs, 5000);
+    assert.equal(first.waitMs, 3000);
     now = 200;
     burst.push('吃了吗');
     now = 400;

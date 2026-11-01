@@ -230,6 +230,7 @@ export async function sceneVcUiShell(ctx) {
                     list: box(shell?.querySelector('.vc-shell-pages')),
                     chatCol: box(shell?.querySelector('.vc-shell-chat')),
                     sheld: box(document.querySelector('.vc-shell-chat-body #sheld')),
+                    read: box(document.querySelector('.vc-shell-chat-body #form_sheld')),
                     overflow: Math.max(doc.scrollWidth - doc.clientWidth, document.body.scrollWidth - document.body.clientWidth),
                     mesRight: mes.length ? Math.max(...mes) : 0,
                     inner: window.innerWidth,
@@ -252,7 +253,9 @@ export async function sceneVcUiShell(ctx) {
                 if (!fit.list || Math.abs(fit.list.w - 320) > 8) throw new Error(`列表宽度 ${fit.list?.w}`);
                 if (!fit.chatCol || Math.abs(fit.chatCol.x - (fit.list.r + 12)) > 1) throw new Error(`对话区起点 ${JSON.stringify(fit.chatCol)}`);
                 if (!fit.chatCol || fit.chatCol.w < 700) throw new Error(`对话区过窄 ${fit.chatCol?.w}`);
-                if (!fit.sheld || fit.sheld.w < 480 || fit.sheld.w > 724) throw new Error(`阅读列 ${fit.sheld?.w}`);
+                // UX-23：桌面滚动容器铺满对话面板（滚动条贴面板边），阅读宽度由输入区 / 消息自身限制（720 + 两侧 24）。
+                if (!fit.read || fit.read.w < 480 || fit.read.w > 772) throw new Error(`阅读列 ${fit.read?.w}`);
+                if (!fit.sheld || Math.abs(fit.sheld.r - fit.chatCol.r) > 2) throw new Error(`滚动容器未铺满对话面板 ${JSON.stringify(fit.sheld)}`);
                 if (fit.sidebarVar !== '200px') throw new Error(`--vc-sidebar ${fit.sidebarVar}`);
             } else if (viewport.width >= 744) {
                 const sheldMin = Math.min(720, viewport.width - 116) - 24;
@@ -260,7 +263,8 @@ export async function sceneVcUiShell(ctx) {
                 if (fit.list && fit.list.w > 8) throw new Error(`打开会话后列表仍占宽 ${JSON.stringify(fit.list)}`);
                 if (!fit.chatCol || Math.abs(fit.chatCol.x - (fit.side.r + 12)) > 1) throw new Error(`中等对话起点 ${JSON.stringify(fit.chatCol)}`);
                 if (!fit.chatCol || Math.abs(fit.chatCol.w - (viewport.width - 116)) > 1) throw new Error(`中等对话区 ${JSON.stringify(fit.chatCol)}`);
-                if (!fit.sheld || fit.sheld.w < sheldMin || fit.sheld.w > 724) throw new Error(`中等阅读列 ${JSON.stringify(fit.sheld)}`);
+                if (!fit.read || fit.read.w < sheldMin || fit.read.w > 772) throw new Error(`中等阅读列 ${JSON.stringify(fit.read)}`);
+                if (!fit.sheld || Math.abs(fit.sheld.r - fit.chatCol.r) > 2) throw new Error(`中等滚动容器未铺满对话面板 ${JSON.stringify(fit.sheld)}`);
                 if (fit.sidebarVar !== '72px') throw new Error(`中等 --vc-sidebar ${fit.sidebarVar}`);
                 if (fit.listState !== 'hidden') throw new Error(`中等列表未收起 ${fit.listState}`);
                 if (!fit.back) throw new Error('中等宽度打开会话后没有返回列表按钮');

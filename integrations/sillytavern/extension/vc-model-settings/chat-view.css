@@ -804,6 +804,16 @@ body.vc-ui #vc-chat-skeleton[hidden] { display: none; }
 body.vc-ui #vc-chat-gen,
 body.vc-ui #vc-chat-load-error { color: var(--vc-ink); }
 
+body.vc-ui #vc-chat-gen .vc-gen-dots {
+  width: 6px;
+  height: 6px;
+  margin-right: 20px;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-ink-2);
+  box-shadow: 9px 0 0 var(--vc-ink-2), 18px 0 0 var(--vc-ink-2);
+  animation: vc-breathe 1.2s var(--vc-ease-in-out) infinite;
+}
+
 body.vc-ui #vc-chat-skeleton {
   position: absolute;
   z-index: 3;
@@ -1059,6 +1069,7 @@ body.vc-ui:has(#vc-memory-rail) #sheld { margin-right: 320px; }
   body.vc-ui #chat > .mes.vc-swipe-in .mes_text,
   body.vc-ui #chat > .mes.vc-thinking::before,
   body.vc-ui #chat > .mes.vc-generating::after,
+  body.vc-ui #vc-chat-gen .vc-gen-dots,
   body.vc-ui .vc-lift,
   body.vc-ui #vc-new-reply,
   body.vc-ui[data-generating="true"] #mes_stop {
@@ -1097,4 +1108,30 @@ body.vc-ui:has(#vc-memory-rail) #sheld { margin-right: 320px; }
 @keyframes vc-stop-in {
   from { transform: rotate(-90deg) scale(0.9); }
   to { transform: none; }
+}
+
+/* 推理块：宿主主题的深灰胶囊与浅色图标改为本系统 token（两端一致）。 */
+body.vc-ui #chat .mes_reasoning_details { margin: 0 0 var(--vc-space-xs); }
+body.vc-ui #chat .mes_reasoning_summary { list-style: none; cursor: pointer; }
+body.vc-ui #chat .mes_reasoning_summary::-webkit-details-marker { display: none; }
+body.vc-ui #chat .mes_reasoning_header {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vc-space-xxs);
+  min-height: 28px;
+  padding: 0 var(--vc-space-sm);
+  border: 0;
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-fill);
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-footnote);
+}
+body.vc-ui #chat .mes_reasoning_summary :is(.mes_button, .menu_button) { color: var(--vc-ink-2); background: transparent; }
+body.vc-ui #chat .mes_reasoning {
+  margin: var(--vc-space-xs) 0 0;
+  padding: 0 0 0 var(--vc-space-sm);
+  border-left: 2px solid var(--vc-separator);
+  border-radius: 0;
+  color: var(--vc-ink-2);
+  font-size: var(--vc-fs-subhead);
 }

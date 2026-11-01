@@ -105,3 +105,6 @@ html[data-vc-layout="desktop"] body.vc-ui #vc-new-reply { background: var(--vc-r
 @media(max-width:1179px) {
  html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-chat="closed"]:not([data-settings="page"]) .vc-shell-chat { display: none; }
 }
+/* 滚动容器铺满对话面板，滚动条贴面板边缘；阅读宽度由 .mes 与 #form_sheld 各自限制。 */
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat-body #sheld { width: 100% !important; max-width: none !important; align-self: stretch; /* 压过 shell.css 的 720 限宽 !important */ }
+html[data-vc-layout="desktop"] body.vc-ui .vc-shell-chat-body #chat { width: 100% !important; max-width: none !important; /* 同上 */ }

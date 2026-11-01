@@ -723,17 +723,27 @@ function installSendBurst(doc) {
     const send = doc.querySelector('#send_but');
     if (!box || !send) return;
     let bypass = false;
+    let burstChat = '';
+    const chatKey = () => { const ctx = safeContext(); return String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? ''); };
+    // 连发合并只延后「回复」：用户每条消息立刻显示并保存，安静一段时间后用空输入触发一次原生生成。
     const burst = createSendBurst({
-        onFlush(text) {
+        onFlush() {
             bypass = true;
             try {
-                writeBox(box, text);
+                if (String(box.value || '').trim()) return; // 用户已开始输入下一句，交给下一次发送
+                if (chatKey() !== burstChat) return; // 等待期间切换了会话：消息已留在原会话，不在新会话里触发生成
                 send.click();
             } finally {
                 bypass = false;
             }
         },
     });
+    const postNow = (text) => import('../../../../script.js')
+        .then(async (native) => {
+            await native.sendMessageAsUser(text, '');
+            await native.saveChatConditional?.();
+        })
+        .catch(() => { writeBox(box, text); }); // 失败时把文字还给输入框，不丢草稿
     const queue = (event) => {
         if (bypass || !companionMode()) return;
         const text = String(box.value || '');
@@ -742,6 +752,8 @@ function installSendBurst(doc) {
         event.stopPropagation?.();
         event.stopImmediatePropagation?.();
         writeBox(box, '');
+        burstChat = chatKey();
+        void postNow(text.trim());
         burst.push(text.trim());
     };
     send.addEventListener('click', queue, true);
@@ -1413,7 +1425,10 @@ function syncGenerating() {
     const on = document.body?.getAttribute?.('data-generating') === 'true';
     const chat = document.querySelector('#chat');
     const list = childMes(chat);
-    const last = [...list].reverse().find((mes) => !isUser(mes) && !isSystem(mes));
+    let last = [...list].reverse().find((mes) => !isUser(mes) && !isSystem(mes));
+    // 新回复节点出现前，最后一条角色消息在用户最新消息之上；不能把思考态挂到旧回复上。
+    const lastUser = [...list].reverse().find(isUser);
+    if (on && last && lastUser && list.indexOf(last) < list.indexOf(lastUser)) last = null;
     const targets = on ? [generatingMes, last].filter(Boolean) : list;
     const seen = new Set();
     for (const mes of targets) {
@@ -1438,7 +1453,15 @@ function syncGenerating() {
     if (!line) return;
     clearChildren(line);
     if (on) {
-        hide(line);
+        // 回复节点还没出现时，在输入区上方给出可见的思考态。
+        if (generatingMes) { hide(line); return; }
+        const dots = document.createElement('span');
+        dots.className = 'vc-gen-dots';
+        dots.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.textContent = '思考中';
+        line.append(dots, label);
+        show(line);
         return;
     }
     if (userStopped) {

@@ -349,6 +349,12 @@ export async function sceneHlReply(ctx) {
         await page.waitForTimeout(700);
         const early = await chatCaptures(ctx, sinceBurst);
         if (early.length !== 0) throw new Error(`连发在安静窗口内就生成了 ${early.length} 次`);
+        // UX-23：连发只延后回复，用户每条消息在安静窗口内就已逐条显示。
+        const shownEarly = await page.evaluate((parts) => {
+            const chat = window.SillyTavern.getContext().chat || [];
+            return parts.every((text) => chat.some((item) => item?.is_user && item.mes === text));
+        }, BURST);
+        if (!shownEarly) throw new Error('连发的用户消息没有在安静窗口内逐条显示');
         const burstDeadline = Date.now() + 15000;
         let burstRows = [];
         while (Date.now() < burstDeadline) {
@@ -360,10 +366,10 @@ export async function sceneHlReply(ctx) {
         await page.waitForTimeout(1500);
         const burstAfter = await chatCaptures(ctx, sinceBurst);
         if (burstAfter.length !== 1) throw new Error(`连发之后又生成了，捕获 ${burstAfter.length}`);
-        await page.waitForFunction((text) => {
+        await page.waitForFunction((parts) => {
             const chat = window.SillyTavern.getContext().chat || [];
-            return chat.some((item) => item?.is_user && item.mes === text);
-        }, BURST.join('\n'), { timeout: 15000 });
+            return parts.every((text) => chat.some((item) => item?.is_user && item.mes === text));
+        }, BURST, { timeout: 15000 });
         await waitReply(page,CALM);
 
         console.log('[hl-reply] RQ-8 默认关闭与两步生成 A/B');
@@ -428,6 +434,8 @@ export async function sceneHlReply(ctx) {
         await ctx.fixtureHttp.setOverride('vc03m-chat',{text:CALM,replyPlanner:'{"kind":"stay_silent","direction":""}',chunks:1});
         since=(await ctx.fixtureHttp.captures()).at(-1)?.seq || 0;
         await sendText(page,'晚安！');
+        // UX-23：用户消息立刻落地，生成在安静窗口后才开始；先等到生成请求真正发出，再等生成结束。
+        for(const end=Date.now()+15000;Date.now()<end&&(await chatCaptures(ctx,since)).length<1;)await page.waitForTimeout(200);
         await page.waitForFunction(()=>SillyTavern.getContext().chat.at(-1)?.mes==='晚安！' && document.body.getAttribute('data-generating')!=='true',null,{timeout:30000});
         assert.equal((await chatCaptures(ctx,since)).length,1);
         assert.equal(await page.evaluate(()=>SillyTavern.getContext().chat.filter(m=>!m.is_user).length),assistantCount);

@@ -4,7 +4,7 @@
 export const FIRST_DELAY_MS = 350;
 export const ROUND_CAP_MS = 8000;
 export const DEBOUNCE_SHORT_MS = 2000;
-export const DEBOUNCE_LONG_MS = 5000;
+export const DEBOUNCE_LONG_MS = 3000; // UX-23：桌面实测 5 秒显得无响应，取设计区间 2–5 秒内的 3 秒
 export const DEBOUNCE_CAP_MS = 8000;
 export const SHORT_SEND_CHARS = 40;
 export const TYPING_COPY = '正在输入';
