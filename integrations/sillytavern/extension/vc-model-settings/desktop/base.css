@@ -1,4 +1,4 @@
-/* DESIGN.md §16。桌面基础材质与公共控件；未加入生产加载链。 */
+/* DESIGN.md §16。真实宿主与样板共用的桌面基础材质与公共控件。 */
 html[data-vc-layout="desktop"] body.vc-ui {
   --vc-desk-base: #f4f1f6;
   --vc-aurora-alpha: .45;
@@ -160,6 +160,8 @@ html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui [data-v
 html[data-vc-layout="desktop"][data-vc-reduced-motion="true"] body.vc-ui :is(button,.vc-desktop-lens) { transition-property: opacity; transition-duration: 150ms; transform: none; }
 
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell > .vc-sidebar { position: relative; isolation: isolate; }
+html[data-vc-layout="desktop"] body.vc-ui.no-blur #vc-shell > .vc-sidebar { backdrop-filter:blur(var(--vc-blur-1)) saturate(180%) !important; /* 压过 ST FastUI 的 body.no-blur * { backdrop-filter:unset !important }。 */ }
+html[data-vc-layout="desktop"] body.vc-ui.no-blur :is(.vc-shell-page:not([data-page="characters"]),.vc-desk-panel,.vc-shell-chat,.vc-desk-character,.vc-desktop-characters > .vc-screen,.vc-memory-editor,.vc-menu,.vc-sheet,.vc-alert,.vc-toast,.vc-account-reauth form) { backdrop-filter:blur(var(--vc-blur-2)) saturate(180%) !important; /* 压过 ST FastUI 的全局 !important；只作用于桌面玻璃面板。 */ }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-lens { top: 0; left: 0; }
 
 html[data-vc-layout="desktop"] body.vc-ui .vc-alert { display: grid; grid-template-columns: 40px minmax(0,1fr); gap: var(--vc-space-sm); }

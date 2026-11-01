@@ -549,7 +549,7 @@ export async function sceneF2ChatUi(ctx) {
             if (poster) poster.style.transform = 'none';
             const toast = document.querySelector('#toast-container .toast');
             const avatar = document.querySelector('#vc-poster-avatar');
-            if (!toast || !avatar) return { skipped: true };
+            if (!toast || !avatar || !avatar.getClientRects().length) return { skipped: true };
             const band = toast.getBoundingClientRect();
             const face = avatar.getBoundingClientRect();
             const space = getComputedStyle(document.querySelector('#sheld')).getPropertyValue('--vc-status-space').trim();
@@ -697,7 +697,7 @@ export async function sceneF2ChatUi(ctx) {
             const chat = document.querySelector('#chat');
             if (chat) chat.scrollTop = 0;
         });
-        await page.locator('[data-vc-poster="memory"]').click();
+        await page.locator('#vc-shell .vc-shell-chat [data-memory]').click();
         await page.waitForSelector('#vc-memory-rail');
         await page.waitForTimeout(320);
         await shot(page, ctx, 'memory-rail-1440-light.png');

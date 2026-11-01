@@ -66,7 +66,7 @@ body.vc-ui #vc-model-settings-root :is(.vcms-binding-revision, .vcms-binding-upd
   body.vc-ui #vc-model-settings-root .vcms-binding-status { grid-area: status; align-self: start; }
 }
 
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-overlay:not([hidden]) {
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-overlay:not([hidden]) {
   position: fixed !important;
   z-index: var(--vc-z-page) !important;
   inset: 0 !important;
@@ -87,7 +87,7 @@ body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-overlay:n
   box-shadow: none !important;
 }
 
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel {
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-panel {
   display: block !important;
   width: min(100%, var(--vc-read));
   height: auto !important;
@@ -99,17 +99,17 @@ body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel {
   color: var(--vc-ink);
 }
 
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-body {
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-body {
   display: block !important;
   overflow: visible !important;
   height: auto !important;
   min-height: 0 !important;
 }
 
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-layout,
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-local,
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-usage,
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-main {
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-layout,
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-local,
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-usage,
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-main {
   display: block !important;
   width: auto !important;
   min-width: 0 !important;
@@ -117,7 +117,7 @@ body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-main {
   box-sizing: border-box;
 }
 
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-providers {
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-providers {
   display: flex !important;
   flex-direction: column !important;
   align-items: stretch !important;
@@ -129,7 +129,7 @@ body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-providers
   overflow: visible !important;
 }
 
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-provider-list {
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-provider-list {
   display: flex !important;
   flex-direction: column !important;
   align-items: stretch !important;
@@ -1133,7 +1133,7 @@ body.vc-ui [data-vc-account-home] .vc-icon {
 
   body.vc-ui:not(:has(.vc-settings-shell)) .vc-shell-settings > .vc-navbar,
   body.vc-ui .vc-data-dialog [data-vc-account-nav],
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-header {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-header {
     display: grid !important;
     grid-template-columns: 1fr min(var(--vc-read), calc(100% - 32px)) 1fr;
     align-items: center;
@@ -1141,14 +1141,14 @@ body.vc-ui [data-vc-account-home] .vc-icon {
 
   body.vc-ui:not(:has(.vc-settings-shell)) .vc-shell-settings > .vc-navbar [data-settings-done],
   body.vc-ui .vc-data-dialog [data-vc-account-nav] [data-vc-account-back],
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-header .vc-circle {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-header .vc-circle {
     grid-column: 2;
     justify-self: start;
   }
 
   body.vc-ui:not(:has(.vc-settings-shell)) .vc-shell-settings > .vc-navbar .vc-nav-title,
   body.vc-ui .vc-data-dialog [data-vc-account-nav] .vc-nav-title,
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-header .vc-nav-title {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-header .vc-nav-title {
     grid-column: 2;
     justify-self: center;
     position: static;
@@ -1160,27 +1160,27 @@ body.vc-ui [data-vc-account-home] .vc-icon {
 
   body.vc-ui:not(:has(.vc-settings-shell)) .vc-shell-settings > .vc-navbar .vc-nav-spacer,
   body.vc-ui .vc-data-dialog [data-vc-account-nav] .vc-nav-spacer,
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-header .vc-nav-spacer {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-header .vc-nav-spacer {
     display: none;
   }
 
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-header #vcms-save {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-header #vcms-save {
     grid-column: 2;
     justify-self: end;
   }
 
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-header #vcms-discard {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-header #vcms-discard {
     grid-column: 2;
     justify-self: end;
     margin-right: 120px;
   }
 
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-panel {
     width: 100%;
     max-width: none;
   }
 
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-body,
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-body,
   body.vc-ui .vc-data-dialog .vc-data-body {
     width: min(100%, var(--vc-read));
     margin-left: auto;
@@ -1191,32 +1191,32 @@ body.vc-ui [data-vc-account-home] .vc-icon {
 
   body.vc-ui:not(:has(.vc-settings-shell)) .vc-shell-settings > .vc-navbar > *,
   body.vc-ui .vc-data-dialog [data-vc-account-nav] > *,
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-header > * {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-header > * {
     grid-row: 1;
   }
 }
 
-body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-providers-title { display: none; }
+body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-providers-title { display: none; }
 
 @media (min-width: 1100px) {
   body.vc-ui:not(:has(.vc-settings-shell)) .vc-shell-settings > .vc-navbar {
     grid-template-columns: 1fr min(var(--vc-list), calc(100% - 32px)) 1fr;
   }
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-body {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-panel[data-vc-screen="home"] .vcms-body {
     width: min(calc(100% - 48px), 1080px);
     padding-top: 24px;
   }
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-layout {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-panel[data-vc-screen="home"] .vcms-layout {
     display: grid !important;
     grid-template-columns: 260px minmax(0, 1fr);
     align-items: start;
     gap: 24px;
     width: 100%;
   }
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-header {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-panel[data-vc-screen="home"] .vcms-header {
     grid-template-columns: 1fr min(1080px, calc(100% - 48px)) 1fr;
   }
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-providers-title {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-providers-title {
     display: block;
     margin: 0 16px 12px;
     color: var(--vc-ink-2);
@@ -1224,12 +1224,12 @@ body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-providers
     font-weight: 400;
     line-height: 20px;
   }
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-section-title {
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-panel[data-vc-screen="home"] .vcms-section-title {
     margin: 0 0 12px;
     min-height: 20px;
     line-height: 20px;
   }
-  body.vc-ui:not(:has(.vc-settings-shell)) #vc-model-settings-root .vcms-panel[data-vc-screen="home"] .vcms-tabpanes { padding-top: 0 !important; }
+  body.vc-ui #vc-model-settings-root:not(.vc-settings-content *) .vcms-panel[data-vc-screen="home"] .vcms-tabpanes { padding-top: 0 !important; }
 }
 
 /* UX-12：只有修改态重新分配标题与操作宽度，干净状态沿用原布局。 */

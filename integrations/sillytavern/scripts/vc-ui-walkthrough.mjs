@@ -604,7 +604,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 if (await modelClose.count()) await modelClose.click();
                 await page.waitForFunction(() => !document.querySelector('.vcms-overlay:not([hidden])'), null, { timeout: 8000 });
                 if (viewport.width >= 744) {
-                    assert.ok(await page.evaluate(() => document.querySelector('.vcms-overlay')?.parentElement === document.body), '桌面模型关闭后没有归还原页面根节点');
+                    assert.ok(await page.evaluate(() => document.querySelector('#vc-model-settings-root')?.parentElement === document.body), '桌面模型关闭后没有归还原页面根节点');
                 }
 
                 try {
