@@ -49,9 +49,9 @@ export function installSyntheticAPI(){
   else if(path.endsWith('/notification-channels')||path.endsWith('/notification-deliveries')||path.endsWith('/auth/sessions')||path.endsWith('/auth/trusted-devices')||path.endsWith('/consents'))data=[];
   else if(path.endsWith('/voice/usage'))data={storageBytes:0};
   else if(path.endsWith('/story/runs'))data=previewRun;
-  else if(path.includes('/actors/player/view'))data=previewStoryView;
+  else if(path.includes('/actors/player/view'))data=scenario==='long'?{...previewStoryView,publicLore:{...previewStoryView.publicLore,setting:previewStoryView.publicLore.setting.repeat(40)},events:previewStoryView.events.map(row=>({...row,body:{...row.body,text:row.body.text.repeat(30)}}))}:previewStoryView;
   else if(path.endsWith('/projections'))data=[];
-  else if(path.endsWith('/rewind'))data={branchId:'42',worldVersion:0,stage:'investigation'};
+  else if(path.endsWith('/rewind')){const version=JSON.parse(init.body).toWorldVersion;Object.assign(previewRun,{branchId:'42',worldVersion:version,stage:'investigation'});Object.assign(previewStoryView,{branchId:'42',worldVersion:version,events:previewStoryView.events.filter(event=>event.worldVersion<=version)});data={branchId:'42',worldVersion:version,stage:'investigation'};}
 
   else if(path.endsWith('/inbox'))data=contentView&&scenario!=='empty'?(params.get('messages')==='1'?previewInbox.map(row=>({...row,conversationId:'21',intent:'BODY',body:scenario==='long'?row.body.repeat(50):row.body,...(params.get('voice')==='1'?{voice:{clipId:'701',status:'ready',durationMs:3000}}:{})})):previewInbox):[];
   else if(path.endsWith('/admin/providers')&&method==='GET')data=scenario==='empty'?[]:scenario==='long'?providers.map(row=>({...row,displayName:row.displayName.repeat(8),models:row.models.map(model=>({...model,displayName:model.displayName.repeat(8)}))})):providers;

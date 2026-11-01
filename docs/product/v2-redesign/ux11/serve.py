@@ -32,7 +32,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404); return
         self.send_response(200)
         self.send_header('Content-Type', self.guess_type(str(target)))
-        self.send_header('Cache-Control','no-store')
+        # 检查上下文只存活一轮，候选固定；日常样板仍实时读文件。
+        self.send_header('Cache-Control','private, max-age=600' if self.headers.get('X-VC-Check') == 'ux11' else 'no-store')
+        self.send_header('Vary','X-VC-Check')
         self.send_header('Content-Length',str(len(data)))
         self.end_headers()
         if self.command != 'HEAD': self.wfile.write(data)

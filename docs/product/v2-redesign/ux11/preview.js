@@ -10,7 +10,7 @@ document.documentElement.dataset.vcTheme=theme==='auto'?(matchMedia('(prefers-co
 for(const name of ['style','vc-ui','shell','chat-shell','chat-view','settings-pages','voice','instance','memory','inbox','story','drawers','account']){
  const link=document.createElement('link');link.rel='stylesheet';link.href=`${source}/${name}.css`;if(name==='shell')link.id='vc-shell-css';document.head.append(link);
 }
-if(loadDesktop){for(const file of ['base','chat','settings','characters','memory','inbox','story']){if(file!=='base'&&!await fetch(`${source}/desktop/${file}.css`,{method:'HEAD'}).then(r=>r.ok))continue;const link=document.createElement('link');link.rel='stylesheet';link.href=`${source}/desktop/${file}.css`;document.head.append(link);}}
+if(loadDesktop){for(const file of ['base','chat','settings','characters','memory','inbox','story']){const link=document.createElement('link');link.rel='stylesheet';link.href=`${source}/desktop/${file}.css`;document.head.append(link);}}
 const {icon}=await import(`${source}/ui/icons.js`);
 const {bindSegment,bindSwitch,bindRangeFills}=await import(`${source}/ui/controls.js`);
 const {confirmAlert,confirmDiscard}=await import(`${source}/ui/alert.js`);
@@ -23,16 +23,14 @@ if(view==='settings')installDrawerFixtures();
 const context={characters:[],chatMetadata:{},chat:[],name1:'合成验收用户'};
 if((['characters','memory','inbox','story'].includes(view)||view==='chat'&&loadDesktop&&innerWidth>=744)&&params.get('state')!=='empty')context.characters=[{name:'小满',avatar:'',data:{extensions:{vc_character_ref:'synthetic-xiaoman'}}},{name:'林舟',avatar:'',data:{extensions:{vc_character_ref:'synthetic-linzhou'}}}];
 if(view==='characters'&&params.get('state')==='long')for(const card of context.characters)card.description='这是用于长内容验收的合成角色介绍。'.repeat(40);
-if(view==='story')context.chatMetadata={vc_binding:{conversationId:'21',relationshipId:'11',mode:'STORY'}};
+if(view==='story')context.chatMetadata={vc_binding:{conversationId:'21',relationshipId:'11',mode:'STORY',chatIdentity:'synthetic-story-chat'}};
 if(view==='chat'){context.name2='小满';context.characterId=0;context.chatMetadata={vc_binding:{relationshipId:'11'}};if(loadDesktop&&innerWidth>=744)context.extensionPrompts=previewPrompts;}
 const {mountShell,registerShellTabs}=await import(`${source}/shell.js`);
 const mounts={characters:'mountCharactersTab',memory:'mountMemoryTab',inbox:'mountInboxTab',story:'mountStoryTab'};
 const files={characters:'instance-page',memory:'memory-page',inbox:'inbox-page',story:'story-page'};
 const modules={};
-for(const key of ['chat',...Object.keys(mounts)]){
- const response=await fetch(`views/${key}.js`,{method:'HEAD'});
- if(response.ok)modules[key]=await import(`./views/${key}.js`);
-}
+async function viewModule(key){if(modules[key])return modules[key];const response=await fetch(`views/${key}.js`,{method:'HEAD'});if(!response.ok)return null;return modules[key]=await import(`./views/${key}.js`);}
+if(view==='chat')await viewModule('chat');
 function components(container){
  container.querySelector('.vc-large-title')?.setAttribute('hidden','');
  const root=document.createElement('div');root.className='vc-desk-components';root.dataset.vcComponents='';
@@ -51,8 +49,7 @@ const pendingMounts=[];
 const registry={};
 for(const key of Object.keys(mounts))registry[key]=(container,args)=>{
  if(view==='components'&&key==='characters')return components(container);
- if(modules[key]){const result=Promise.resolve(modules[key].mount({container,args,source,params,context}));pendingMounts.push(result);return {refresh(){void result.then(handle=>handle?.refresh?.());},destroy(){void result.then(handle=>handle?.destroy?.());}};}
- void import(`${source}/${files[key]}.js`).then(mod=>mod[mounts[key]](container,args));return {refresh(){}};
+ const result=(async()=>{const module=await viewModule(key);if(module)return module.mount({container,args,source,params,context});const mod=await import(`${source}/${files[key]}.js`);return mod[mounts[key]](container,args);})();pendingMounts.push(result);return {refresh(){void result.then(handle=>handle?.refresh?.());},destroy(){void result.then(handle=>handle?.destroy?.());}};
 };
 registerShellTabs(registry);
 const shell=mountShell({getContext:()=>context,loadRelationships:()=>api.fetchRelationships(),loadInbox:async()=>[],loadNative:async()=>({})});
@@ -78,7 +75,7 @@ if(view==='voice'){
 }
 if(view==='settings'){
  const voice=await import(`${source}/voice-settings.js`);if(params.get('state')==='loading')void voice.refreshVoiceAvailability();else await voice.refreshVoiceAvailability();window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'settings'}}));
- const res=await fetch('views/settings.js',{method:'HEAD'});if(res.ok){modules.settings=await import('./views/settings.js');await modules.settings.mount({container:shell.querySelector('.vc-shell-settings .vc-shell-scroll'),source,params,context,model});}
+ const module=await viewModule('settings');if(module)await module.mount({container:shell.querySelector('.vc-shell-settings .vc-shell-scroll'),source,params,context,model});
 }
 document.addEventListener('click',async e=>{
  const button=e.target.closest('[data-demo]');if(!button)return;
