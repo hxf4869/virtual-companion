@@ -45,3 +45,18 @@ test('客户端出现消息不等于保存成功；保存失败保留草稿且�
     await f.session.send();
     assert.equal(f.engine.messages().filter(m=>m.user).length,1);
 });
+
+test('通话文字写入聊天时保留输入框中尚未发送的草稿与引用',async()=>{
+ const f=fixture();await f.session.open({avatar:'a.png',file:'f',name:'A'});
+ f.session.draft('待会儿再发');f.state.quote={name:'A',text:'留着的引用'};
+ await f.session.send({text:'通话识别文字',voiceInput:{durationMs:1200}});
+ assert.equal(f.engine.messages().find(m=>m.user).text,'通话识别文字');
+ assert.equal(f.state.draft,'待会儿再发');assert.equal(f.state.quote.text,'留着的引用');
+});
+test('打断后旧回复的完成不能清掉新一轮的忙碌状态',async()=>{
+ const f=fixture();await f.session.open({avatar:'a.png',file:'f',name:'A'});const done=[];
+ f.engine.waitEnded=()=>new Promise(r=>done.push(r));
+ f.session.draft('第一句');await f.session.send();f.session.stop();f.session.draft('第二句');await f.session.send();
+ done[0]();await new Promise(r=>setImmediate(r));assert.equal(f.state.busy,true);assert.equal(f.state.error,'');
+ f.engine.messages().push({user:false,text:'新回复'});done[1]();await new Promise(r=>setImmediate(r));assert.equal(f.state.busy,false);
+});

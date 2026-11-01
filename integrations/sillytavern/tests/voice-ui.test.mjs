@@ -69,6 +69,13 @@ test('转文字、录音状态和用户转写只用文本节点，不注入消�
     assert.equal(pending.getAttribute('role'), 'status');
 });
 
+test('通话输入与普通语音通过图标和可访问名称区分',()=>{
+    const document=installMiniDom();
+    const call=createVoiceBubble({document,text:'通话文字',input:{durationMs:1000,call:true}});
+    assert.equal(call.querySelector('.vc-voice-bar').getAttribute('aria-label'),'语音通话');
+    assert.match(call.querySelector('.vc-voice-glyph').innerHTML,/#phone/);
+});
+
 test('播放出错展开原文；ready 转 failed 撤销语音 UI', async () => {
     const document = installMiniDom();
     const player = { async toggle(_id, { onError }) { onError(); } };

@@ -19,9 +19,18 @@ import {
     registerBubbleTransformer,
     rewriteHint,
     shouldQueueSend,
+    setCallReplyMode,
     splitReply,
     typingDelay,
 } from '../extension/vc-model-settings/reply-pipeline.js';
+
+test('前台通话固定简短档，挂断恢复原篇幅规则；安静调用不受影响',()=>{
+    const context={chat:[{is_user:true,mes:'请详细解释这个问题。'.repeat(20)}],chatMetadata:{vc_binding:{mode:'COMPANION'}}};
+    noteTurn('normal');setCallReplyMode(context.chat,true);
+    const call={messages:[]};placeGuidance(call,context,{random:()=>.5});assert.ok(call.messages.at(-1).content.includes(LENGTH_TIER_LINES['简短']));
+    noteTurn('quiet');assert.equal(placeGuidance({messages:[]},context),false);
+    setCallReplyMode(context.chat,false);noteTurn('normal');const normal={messages:[]};placeGuidance(normal,context,{random:()=>.5});assert.ok(normal.messages.at(-1).content.includes(LENGTH_TIER_LINES['长']));
+});
 
 const steady = () => 0.5;
 

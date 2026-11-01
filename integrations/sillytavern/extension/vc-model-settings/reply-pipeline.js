@@ -35,6 +35,8 @@ const bubbleTransformers = [];
 let turnType = 'normal';
 let rewriteHintText = '';
 let lastTier = null;
+const callChats = new WeakSet();
+export function setCallReplyMode(chat, enabled) { if (enabled) callChats.add(chat); else callChats.delete(chat); }
 export function lengthTierFor(chat) { return lastTier?.chat === chat ? lastTier.tier : null; }
 
 export function registerBubbleTransformer(fn) {
@@ -316,7 +318,7 @@ export function placeGuidance(generateData, context, options = {}) {
     const blob = generateData.messages.map((message) => (typeof message?.content === 'string' ? message.content : '')).join('\n');
     const stateText = stateRaw && !blob.includes(stateRaw) ? stateRaw : '';
     const userText = lastUserText(context);
-    const tier = pickLengthTier(userText, { random: options.random });
+    const tier = callChats.has(context.chat) ? '简短' : pickLengthTier(userText, { random: options.random });
     lastTier = { chat: context.chat, tier };
     const body = guidanceTail({
         stateText, userText, hint, tier,

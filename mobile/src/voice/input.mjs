@@ -1,5 +1,5 @@
 // H5 麦克风生命周期；原音只留内存，识别使用现有 Go 边界。
-function startMeter(stream,onLevel) {
+export function startMeter(stream,onLevel) {
  const Context=globalThis.AudioContext || globalThis.webkitAudioContext;
  const audio=new Context(),source=audio.createMediaStreamSource(stream),analyser=audio.createAnalyser();
  analyser.fftSize=256;source.connect(analyser);const values=new Uint8Array(analyser.fftSize);let frame;

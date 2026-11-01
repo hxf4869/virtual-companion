@@ -5,6 +5,7 @@
             <button role="button" tabindex="0" class="vc-round vc-glass" aria-label="返回" @click="back"><VcIcon name="chevron-left" /></button>
             <button role="button" tabindex="0" v-if="!searching" class="vc-identity vc-glass" @click="character"><VcAvatar :avatar="chat.target?.avatar" :name="chat.target?.name" size="var(--vc-avatar-nav)" /><text>{{ chat.target?.name }}</text><VcIcon name="chevron-right" size="var(--vc-icon-sm)" /></button>
             <input v-field-label v-else class="vc-chat-search vc-glass" v-model="query" :placeholder="copy.search" :aria-label="copy.search" focus />
+            <button v-if="readAvailable && voiceAvailable && !searching" role="button" tabindex="0" class="vc-round vc-glass" aria-label="语音通话" :disabled="!chat.ready||chat.busy" :aria-disabled="!chat.ready||chat.busy" @click="startCall"><VcIcon name="phone" /></button>
             <button role="button" tabindex="0" class="vc-round vc-glass" :aria-label="searching ? '完成' : copy.search" @click="toggleSearch"><VcIcon :name="searching ? 'x' : 'search'" /></button>
         </view>
         <view v-if="searching" class="vc-search-results"><text>{{ matches.length ? `${matchIndex + 1} / ${matches.length}` : '没有找到' }}</text><button role="button" tabindex="0" class="vc-plain-btn" aria-label="上一条" :disabled="!matches.length" :aria-disabled="!matches.length" @click="jump(-1)">‹</button><button role="button" tabindex="0" class="vc-plain-btn" aria-label="下一条" :disabled="!matches.length" :aria-disabled="!matches.length" @click="jump(1)">›</button></view>
@@ -45,6 +46,7 @@
         </view>
         <view v-if="selectedText !== null" class="vc-menu-scrim" @click.self="selectedText = null"><view class="vc-edit-sheet vc-glass" role="dialog"><button role="button" tabindex="0" class="vc-plain-btn" @click="selectedText = null">完成</button><text class="vc-select-text" selectable>{{ selectedText }}</text></view></view>
         <view v-if="image" class="vc-image-viewer" role="dialog" aria-modal="true" aria-label="图片预览" @click="image = ''"> <button role="button" tabindex="0" class="vc-round vc-glass vc-image-close" aria-label="关闭图片" @click.stop="image = ''"><VcIcon name="x" /></button><image :src="image" mode="aspectFit" /></view>
+        <VcCall v-if="callActive" ref="callView" :chat="chat" :session="session" :name="chat.target?.name" :avatar="chat.target?.avatar" :max-seconds="voicePolicy?.settings.maxRecordingSeconds || 60" @close="callActive=false" />
         <VcOverlays />
     </view>
 </template>
@@ -54,6 +56,7 @@ import VcAvatar from '../../components/VcAvatar.vue';
 import VcIcon from '../../components/VcIcon.vue';
 import VcOverlays from '../../components/VcOverlays.vue';
 import ChatMessage from '../../components/ChatMessage.vue';
+import VcCall from '../../components/VcCall.vue';
 import { getEngine, getServer, showStView } from '../../engine/index.mjs';
 import { createChatSession } from '../../chat/session.mjs';
 import { groupMessages, quoteSummary } from '../../chat/format.mjs';
@@ -64,8 +67,8 @@ import { createVoiceInput } from '../../voice/input.mjs';
 import { confirmAlert, showToast } from '../../ui/feedback.mjs';
 
 export default {
-    components: { VcAurora, VcAvatar, VcIcon, ChatMessage, VcOverlays },
-    data: () => ({ copy: COPY, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null }),
+    components: { VcAurora, VcAvatar, VcIcon, ChatMessage, VcOverlays, VcCall },
+    data: () => ({ copy: COPY, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null,voicePolicy:null,callActive:false }),
     computed: {
         groups() { return groupMessages(this.chat.messages || []); },
         lastId() { return this.chat.messages?.at(-1)?.id ?? -1; },
@@ -83,13 +86,16 @@ export default {
         this.resize = () => document.documentElement.style.setProperty('--vc-vh', `${window.visualViewport?.height || window.innerHeight}px`);
         window.visualViewport?.addEventListener('resize', this.resize); this.resize();
     },
-    onHide() { this.recorder?.cancel();getEngine().stopVoice().catch(()=>{}); },
+    onHide() { this.recorder?.cancel();if(this.$refs.callView)this.$refs.callView.close();else getEngine().stopVoice().catch(()=>{}); },
     onUnload() { this.live=false; this.recorder?.dispose();this.session?.dispose(); setCharacterTheme(); window.visualViewport?.removeEventListener('resize', this.resize); document.documentElement.style.removeProperty('--vc-vh'); },
     methods: {
+        startCall(){const focused=document.activeElement;if(focused?.matches('input,textarea'))focused.blur();this.callActive=true;},
         async setupVoice(){
             const engine=getEngine(),policy=await engine.voicePolicy();if(!this.live)return;
-            this.readAvailable=Boolean(policy?.available)&&policy.relationship.voiceFrequency!=='OFF';
-            this.voiceAvailable=Boolean(policy?.engines?.asr?.enabled&&policy.engines.asr.healthy&&navigator.mediaDevices?.getUserMedia&&globalThis.MediaRecorder);
+            this.voicePolicy=policy;
+            const companion=engine.binding().mode==='COMPANION';
+            this.readAvailable=companion&&Boolean(policy?.available)&&policy.relationship.voiceFrequency!=='OFF';
+            this.voiceAvailable=companion&&Boolean(policy?.engines?.asr?.enabled&&policy.engines.asr.healthy&&navigator.mediaDevices?.getUserMedia&&globalThis.MediaRecorder);
             if(this.voiceAvailable)this.recorder=createVoiceInput({state:this.voice,maxSeconds:policy.settings.maxRecordingSeconds,convert:(...args)=>engine.call('voiceInput','recordingWAV',...args),transcribe:wav=>engine.call('api','transcribeVoice',wav),onText:async(text,metadata)=>{this.session.draft(text);await this.session.send({voiceInput:metadata});this.latest(true);}});
         },
         recordDown(e){if(e.pointerType!=='touch'||!this.chat.ready||this.voice.phase==='transcribing')return;e.preventDefault();this.recordTouch=true;this.recordY=e.clientY;e.currentTarget.setPointerCapture(e.pointerId);void this.recorder.start();},

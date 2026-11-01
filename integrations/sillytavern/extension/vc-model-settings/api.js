@@ -299,11 +299,11 @@ export const saveVoiceSettings = (values) => request('PUT', '/api/v1/voice/setti
 export const createVoiceClip = (relationshipId, values) => request('POST', `/api/v1/relationships/${encodeURIComponent(relationshipId)}/voice-clips`, values);
 export const fetchVoiceClip = (id) => request('GET', `/api/v1/voice-clips/${encodeURIComponent(id)}`);
 export const previewVoice = (values) => request('POST', '/api/v1/voice/preview', values);
-export async function transcribeVoice(wav) {
+export async function transcribeVoice(wav, {signal} = {}) {
     if (!sessionContext) throw new ApiError('context-changed','请重新加载页面。');
     const headers=writeHeaders(true);delete headers['Content-Type'];
     const form=new FormData();form.append('file',wav,'recording.wav');
-    const response=await fetch(`${BRIDGE_PREFIX}/api/v1/voice/asr`,{method:'POST',headers,body:form,credentials:'same-origin',cache:'no-store'});
+    const response=await fetch(`${BRIDGE_PREFIX}/api/v1/voice/asr`,{method:'POST',headers,body:form,credentials:'same-origin',cache:'no-store',signal});
     const result=await response.json().catch(()=>({}));if (!response.ok) throw classify(response.status,result);return result;
 }
 export function fetchMemories(relationshipId, filters = {}) {

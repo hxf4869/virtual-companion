@@ -2,6 +2,7 @@
 // 手机界面只通过这里驱动聊天。这是唯一接触 ST 内部的模块（ADR-0011 §1）。
 // 入口与 MB-0 验证一致：公开 getContext()、原生 script.js 导出、原生 DOM（与现有扩展同一路径）。
 import { toMessage } from './server.mjs';
+import { CALL_COPY } from '../copy.mjs';
 
 export const STATES = ['idle', 'loading', 'ready', 'reloading', 'error'];
 
@@ -46,6 +47,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
     let observer = null;
     let ended = 0;
     let lastPopup = null;
+    let activeCall = null;
 
     const win = () => frame?.contentWindow;
     const ctx = () => win()?.SillyTavern?.getContext?.();
@@ -166,10 +168,14 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         // 发送走原生输入框与发送键：与现有扩展同一路径（含陪伴模式的连发合并）。
         send(text, voiceInput) {
             if(voiceInput) return (async()=>{
-                const before=ended,c=ctx();
+                const c=ctx(),chatId=c.chatId,identity=c.chatMetadata?.vc_f2?.id;
+                const active=()=>ctx().chatId===chatId&&ctx().chatMetadata?.vc_f2?.id===identity;
+                await until(()=>!script.isGenerating(),{timeout:20000,label:'voice idle'});await idle();
+                if(!active())throw Error('chat changed');const before=ended;
                 const message=await script.sendMessageAsUser(text);
                 message.extra.vc_voice_input=voiceInput;
                 await c.saveChat();
+                if(!active())throw Error('chat changed');
                 win().document.dispatchEvent(new (win().Event)('vc-chat-retry'));
                 void c.generate('normal');
                 return before;
@@ -252,12 +258,25 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         },
         async call(module, method, ...args) {
             await api.ready();
-            const files = { api: 'api.js', inbox: 'inbox-page.js', instances: 'instance-page.js', drawers: 'drawers.js', story: 'story-page.js', voice: 'voice-chat.js', audio: 'voice.js', voiceInput: 'voice-input.js', shell: 'chat-shell.js' };
+            const files = { api: 'api.js', inbox: 'inbox-page.js', instances: 'instance-page.js', drawers: 'drawers.js', story: 'story-page.js', voice: 'voice-chat.js', audio: 'voice.js', voiceInput: 'voice-input.js', pipeline:'reply-pipeline.js', shell: 'chat-shell.js' };
             if (!files[module]) throw new Error('unknown module');
             const mod = await win().eval(`import('/scripts/extensions/third-party/vc-model-settings/${files[module]}')`);
             return mod[method](...args);
         },
         async voicePolicy() { return api.call('voice','loadVoicePolicy',ctx()); },
+        async setCallMode(enabled) {
+            await api.ready();
+            if(activeCall)await api.call('pipeline','setCallReplyMode',activeCall.chat,false);
+            activeCall=null;const c=ctx();
+            c.setExtensionPrompt('vc_mobile_call','',script.extension_prompt_types.IN_CHAT,0,false,0);
+            if(enabled){
+                if(c.chatMetadata?.vc_binding?.mode!=='COMPANION')throw Error('call requires companion');
+                activeCall={chat:c.chat,chatId:c.chatId};
+                await api.call('pipeline','setCallReplyMode',c.chat,true);
+                c.setExtensionPrompt('vc_mobile_call',CALL_COPY.prompt,script.extension_prompt_types.IN_CHAT,0,false,0);
+            }
+        },
+        async playVoice(clipId,options) { await api.ready();const mod=await win().eval("import('/scripts/extensions/third-party/vc-model-settings/voice.js')");return mod.voicePlayer.toggle(clipId,options); },
         async voiceBubble(snapshot, document) {
             await api.ready();
             const message=ctx().chat[snapshot.id];

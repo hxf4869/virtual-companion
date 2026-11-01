@@ -4,9 +4,9 @@ import { until } from '../engine/engine.mjs';
 
 export function createChatSession({ engine, server, state, storage = globalThis.localStorage, changed = () => {} }) {
     Object.assign(state, { target: null, messages: [], draft: '', quote: null, loading: true, ready: false, busy: false, error: '', interrupted: false });
-    let version = 0; let alive = true;
+    let version = 0; let operation = 0; let alive = true;
     const key = () => `${state.target?.avatar || ''}/${state.target?.file || ''}`;
-    const valid = (v) => alive && version === v;
+    const valid = (v, op) => alive && version === v && (op === undefined || operation === op);
     function sync() {
         if (!alive || !state.ready || engine.chatId() !== state.target?.file) return;
         state.messages = engine.messages(); changed();
@@ -16,12 +16,12 @@ export function createChatSession({ engine, server, state, storage = globalThis.
     }));
     off.push(engine.on('started', () => { if (engine.chatId() === state.target?.file) { state.busy = true; state.interrupted = false; } }));
     function draft(text) { state.draft = text; writeDraft(key(), text, storage); }
-    async function finish(before, v, previousLength) {
+    async function finish(before, v, previousLength, op) {
         try {
             await engine.waitEnded(before);
-            if (valid(v)) { sync(); if (state.messages.length <= previousLength || state.messages.at(-1)?.user) state.error = 'reply'; }
-        } catch { if (valid(v)) state.error = 'reply'; }
-        finally { if (valid(v)) { state.busy = false; changed(); } }
+            if (valid(v, op)) { sync(); if (state.messages.length <= previousLength || state.messages.at(-1)?.user) state.error = 'reply'; }
+        } catch { if (valid(v, op)) state.error = 'reply'; }
+        finally { if (valid(v, op)) { state.busy = false; changed(); } }
     }
     return {
         async open(target) {
@@ -41,14 +41,15 @@ export function createChatSession({ engine, server, state, storage = globalThis.
             await history;
         },
         draft, sync,
-        async send({ voiceInput } = {}) {
-            if (!state.ready || state.busy || state.error === 'save' || !state.draft.trim()) return false;
-            const v = version; const raw = state.draft; const text = withQuote(state.quote, raw); const len = engine.messages().length;
+        async send({ voiceInput, text: spoken } = {}) {
+            const fromDraft = spoken === undefined; const raw = fromDraft ? state.draft : String(spoken);
+            if (!state.ready || state.busy || state.error === 'save' || !raw.trim()) return false;
+            const v = version, op = ++operation; const text = fromDraft ? withQuote(state.quote, raw) : raw; const len = engine.messages().length;
             state.busy = true; state.error = ''; state.interrupted = false;
             try {
                 const before = await engine.send(text, voiceInput);
                 await until(() => engine.messages().slice(len).some(m => m.user && m.text === text), { timeout: 15000, label: 'send accepted' });
-                if (!valid(v)) return true;
+                if (!valid(v, op)) return true;
                 // 以服务端聊天读回确认保存，客户端 MESSAGE_SENT 早于实际保存完成。
                 try {
                     let readError;
@@ -59,21 +60,21 @@ export function createChatSession({ engine, server, state, storage = globalThis.
                         } catch (e) { readError = e; return true; }
                     }, { timeout: 6000, interval: 200, label: 'send saved' });
                     if (readError) throw readError;
-                } catch { if (valid(v)) { state.error = 'save'; state.busy = false; } return false; }
-                if (!valid(v)) return true;
-                if (state.draft === raw) draft(''); state.quote = null; sync();
-                void finish(before, v, len + 1);
+                } catch { if (valid(v, op)) { state.error = 'save'; state.busy = false; } return false; }
+                if (!valid(v, op)) return true;
+                if (fromDraft) { if (state.draft === raw) draft(''); state.quote = null; } sync();
+                void finish(before, v, len + 1, op);
                 return true;
-            } catch { if (valid(v)) { state.busy = false; state.error = 'send'; } return false; }
+            } catch { if (valid(v, op)) { state.busy = false; state.error = 'send'; } return false; }
         },
         async generate(kind = 'regenerate') {
             if (!state.ready || state.busy) return;
-            const v = version; state.busy = true; state.error = ''; state.interrupted = false;
-            try { const before = await engine[kind](); await engine.waitEnded(before); if(valid(v)) sync(); }
-            catch { if(valid(v)) state.error='reply'; }
-            finally { if(valid(v)) state.busy=false; }
+            const v = version, op = ++operation; state.busy = true; state.error = ''; state.interrupted = false;
+            try { const before = await engine[kind](); await engine.waitEnded(before); if(valid(v,op)) sync(); }
+            catch { if(valid(v,op)) state.error='reply'; }
+            finally { if(valid(v,op)) state.busy=false; }
         },
-        stop() { engine.stop(); state.interrupted = true; state.busy = false; sync(); },
+        stop() { operation++; engine.stop(); state.interrupted = true; state.busy = false; sync(); },
         dispose() { alive = false; version++; off.forEach(f=>f()); },
     };
 }

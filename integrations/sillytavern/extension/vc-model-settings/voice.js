@@ -3,7 +3,7 @@ import { icon } from './ui/icons.js';
 
 export const VOICE_COPY = Object.freeze({
     recording: '正在录音…', play: '播放语音', pause: '暂停语音',
-    transcript: '转文字', collapse: '收起文字', unread: '未播放', input: '语音消息',
+    transcript: '转文字', collapse: '收起文字', unread: '未播放', input: '语音消息', call: '语音通话',
 });
 
 export const voiceText = (text) => String(text ?? '').replace(/<voice\s*\/>/gi, '').replace(/<sticker\s+tag="[^"]*"\s*\/>/g, '').trim();
@@ -90,10 +90,10 @@ export function createVoiceBubble({ document: doc = globalThis.document, text = 
         bar.type = 'button';
         bar.setAttribute('aria-label', VOICE_COPY.play);
         bar.setAttribute('aria-pressed', 'false');
-    } else bar.setAttribute('aria-label', VOICE_COPY.input);
+    } else bar.setAttribute('aria-label', input.call === true ? VOICE_COPY.call : VOICE_COPY.input);
     const glyph = doc.createElement('span');
     glyph.className = 'vc-voice-glyph';
-    glyph.innerHTML = icon(input ? 'mic' : 'play');
+    glyph.innerHTML = icon(input ? input.call === true ? 'phone' : 'mic' : 'play');
     const wave = doc.createElement('span');
     wave.className = 'vc-voice-wave';
     wave.setAttribute('aria-hidden', 'true');
@@ -151,7 +151,7 @@ export function renderMessageVoice(mes, message, { onPlayed } = {}) {
     const input = message?.is_user ? message?.extra?.vc_voice_input : null;
     const valid = voice && voiceAudioUrl(voice.clipId) && ['queued', 'running', 'ready'].includes(voice.status);
     if (!input && !valid) { clearMessageVoice(mes); return false; }
-    const key = JSON.stringify([voice?.clipId, voice?.status, voice?.durationMs, input?.durationMs, message.mes]);
+    const key = JSON.stringify([voice?.clipId, voice?.status, voice?.durationMs, input?.durationMs, input?.call, message.mes]);
     if (mes.getAttribute?.('data-vc-voice') === key && mes.querySelector?.('.vc-voice')) return true;
     clearMessageVoice(mes);
     mes.setAttribute('data-vc-voice', key);
