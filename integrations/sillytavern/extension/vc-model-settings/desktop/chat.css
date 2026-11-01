@@ -1,7 +1,7 @@
 /* UX-14。宿主节点、消息树与滚动容器沿用原版。 */
 html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-chat="open"] .vc-shell-pages { background: none; }
-html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"] > .vc-shell-body { gap: var(--vc-space-sm); grid-template-columns: 320px minmax(560px,1fr); }
-html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-list="hidden"] > .vc-shell-body { grid-template-columns: minmax(560px,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"]:not([data-settings="page"]) > .vc-shell-body { gap: var(--vc-space-sm); grid-template-columns: 320px minmax(560px,1fr); }
+html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-chrome="sidebar"][data-destination="chat"][data-list="hidden"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: minmax(560px,1fr); }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="chat"] .vc-shell-scroll { padding: 0 12px 12px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-shell-page[data-page="chat"] > .vc-navbar { padding: 0 24px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-convo { border-radius: var(--vc-radius-md); padding: 12px; }
@@ -44,7 +44,7 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desk-memory-editor { display: grid
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-memory-editor textarea { height: auto; min-height: 160px; padding: 12px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desk-editor-actions { display: flex; justify-content: flex-end; gap: var(--vc-space-xs); }
 @media(min-width:1504px) {
- html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"] > .vc-shell-body { grid-template-columns: 320px minmax(560px,1fr) 340px; }
+ html[data-vc-layout="desktop"] body.vc-ui #vc-shell[data-destination="chat"][data-character-panel="open"]:not([data-settings="page"]) > .vc-shell-body { grid-template-columns: 320px minmax(560px,1fr) 340px; }
  html[data-vc-layout="desktop"] body.vc-ui .vc-desk-character { position: relative; width: 340px; background: var(--vc-glass-2); backdrop-filter: blur(var(--vc-blur-2)) saturate(180%); box-shadow: inset 0 1px 0 var(--vc-hi),var(--vc-shadow-panel); }
 }
 @media(max-width:1179px) {
