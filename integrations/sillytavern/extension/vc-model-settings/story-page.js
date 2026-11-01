@@ -1129,6 +1129,8 @@ export function mountStoryTab(container, options = {}) {
             : null;
         const pushing = view === 'stage' && root.dataset.view !== 'stage';
         root.dataset.view = view;
+        root.classList.toggle('vc-desktop-story', view === 'gate');
+        container.classList.toggle('vc-desktop-story-stage', view === 'stage');
         syncCover();
         if (pushing) {
             root.classList.add('is-push');

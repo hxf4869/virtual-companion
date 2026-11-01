@@ -5,6 +5,7 @@ export function allowedOverlays(pageName) {
     if (pageName === 'settings') return ['sheet', 'settings'];
     if (pageName === 'model-home' || pageName === 'model-provider') return ['model', 'settings'];
     if (pageName === 'account') return ['dialog', 'settings'];
+    if (pageName === 'memory-detail') return ['dialog'];
     if (String(pageName).startsWith('tavern-')) return ['drawer'];
     return [];
 }

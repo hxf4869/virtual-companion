@@ -61,3 +61,5 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory .vc-search input[ty
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor textarea { height:auto; min-height:120px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor.vc-memory-tab textarea { height:auto; min-height:120px; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-memory-editor .vc-group-title { font-size:var(--vc-fs-headline); font-weight:600; }
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-memory > .vc-screen { background:transparent; }

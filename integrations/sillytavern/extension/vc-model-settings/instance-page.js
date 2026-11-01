@@ -8,6 +8,7 @@ import { createNav } from './ui/nav.js';
 import { NEUTRAL_TINT, tintOf } from './ui/tint.js';
 import { openRelationshipVoiceSettings, voiceSettingsAvailable } from './voice-settings.js';
 import { popMenu } from './ui/menu.js';
+import { desktopLayout } from './desktop/presentation.js';
 
 export const IMPORT_FAILED_COPY = '文件不是受支持的角色卡格式，原有角色未发生变动。请核对 JSON / PNG 角色元数据规范。';
 export const UNSAVED_INSTANCE_COPY = '当前存在未保存更改，切换实例前请先保存。';
@@ -827,7 +828,7 @@ export function mountCharactersTab(container, options = {}) {
     if (!isVcUiOn()) return { async refresh() {}, destroy() {} };
     if (!container) throw new Error('mountCharactersTab requires a container');
     const root = container.ownerDocument.createElement('div');
-    root.className = 'vc-characters';
+    root.className = 'vc-characters vc-desktop-characters';
     root.setAttribute('aria-label', '角色');
     container.append(root);
     const file = container.ownerDocument.createElement('input');
@@ -836,7 +837,7 @@ export function mountCharactersTab(container, options = {}) {
     file.hidden = true;
     root.append(file);
     const releaseImport = attachShellImport(container, root, file);
-    const nav = createNav(root);
+    const nav = createNav(root, { stacked: () => !desktopLayout() });
     const list = container.ownerDocument.createElement('section');
     list.className = 'vc-screen vc-characters-list';
     root.append(list);
@@ -850,6 +851,17 @@ export function mountCharactersTab(container, options = {}) {
     let suppress = false;
     let alertOpen = false;
     let loading = true;
+    let query = '';
+    let desktop = desktopLayout();
+    const resize = () => {
+        const next = desktopLayout();
+        if (next === desktop) return;
+        desktop = next;
+        nav.syncLayout();
+        list.inert = Boolean(personaEl && desktop);
+        paint();
+    };
+    globalThis.addEventListener('resize', resize);
     const page = createInstancePage({
         ...options,
         importCard: options.importCard || ((spec) => importNativeCharacterFile({ ...spec, getContext: options.getContext })),
@@ -920,8 +932,19 @@ export function mountCharactersTab(container, options = {}) {
         const mark = rememberField(el);
         el.innerHTML = renderCharactersTab(decorate(page.state), { screen, detailRef, loading: screen === 'list' && loading, descriptionOpen: screen === 'detail' && descriptionOpen });
         hydrateIcons(el);
-        restoreField(el, mark);
         applyTints(el);
+        if (screen === 'list' && desktopLayout()) {
+            const search = container.ownerDocument.createElement('input');
+            search.type = 'search';
+            search.className = 'vc-character-search';
+            search.name = 'character-search';
+            search.setAttribute('aria-label', '搜索角色');
+            search.placeholder = '搜索角色';
+            search.value = query;
+            el.querySelector('.vc-navbar [data-action="import"]')?.before(search);
+            filterCards();
+        }
+        restoreField(el, mark);
         const scroll = el.querySelector('.vc-scroll');
         const bar = el.querySelector('.vc-navbar');
         if (scroll && bar && !bar.style.getPropertyValue('--vc-nav-p')) {
@@ -933,6 +956,14 @@ export function mountCharactersTab(container, options = {}) {
     function paint() {
         fill(list, 'list');
         if (detailEl?.isConnected) fill(detailEl, 'detail');
+    }
+    function filterCards() {
+        for (const row of list.querySelectorAll('.vc-role[data-ref]')) {
+            row.hidden = !row.textContent.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+            row.setAttribute('data-vc-light', '');
+            row.setAttribute('data-vc-tilt', '');
+            row.setAttribute('aria-current', String(row.dataset.ref === detailRef));
+        }
     }
     async function maybeUnsaved() {
         if (!page.state.unsaved || alertOpen || dead) return;
@@ -982,13 +1013,19 @@ export function mountCharactersTab(container, options = {}) {
     }
     function openPersona(ref) {
         const el = container.ownerDocument.createElement('section');
-        el.className = 'vc-screen';
+        el.className = 'vc-screen vc-character-persona';
         el.dataset.personaRef = ref;
         el.innerHTML = renderPersonaEditor(readPersona(ref));
         nav.push(el);
         personaEl = el;
+        list.inert = desktopLayout();
     }
-    function openDetail(ref, from) {
+    async function openDetail(ref, from) {
+        if (personaEl || page.state.busy) return;
+        if (detailEl?.isConnected && detailRef !== ref) {
+            await goBack();
+            if (detailEl?.isConnected) return;
+        }
         if (detailRef !== ref) descriptionOpen = false;
         detailRef = ref;
         suppress = true;
@@ -1000,8 +1037,9 @@ export function mountCharactersTab(container, options = {}) {
             root.classList.add('is-detail');
             return;
         }
+        if (detailEl?.isConnected) { nav.pop(); detailEl = null; }
         const el = container.ownerDocument.createElement('section');
-        el.className = 'vc-screen';
+        el.className = 'vc-screen vc-character-detail';
         el.dataset.ref = ref;
         fill(el, 'detail');
         const fromAvatar = from?.querySelector?.('.vc-role-avatar img, .vc-role-avatar');
@@ -1062,6 +1100,7 @@ export function mountCharactersTab(container, options = {}) {
         if (action === 'close-persona') {
             nav.pop();
             personaEl = null;
+            list.inert = false;
         }
         if (action === 'save-persona' && personaEl) {
             const fields = {};
@@ -1072,6 +1111,7 @@ export function mountCharactersTab(container, options = {}) {
                 if (card && typeof fields.description === 'string') card.description = fields.description;
                 nav.pop();
                 personaEl = null;
+                list.inert = false;
                 paint();
             }).catch(() => {
                 const note = personaEl?.querySelector('[data-persona-error]');
@@ -1095,6 +1135,7 @@ export function mountCharactersTab(container, options = {}) {
         }
     });
     root.addEventListener('input', (event) => {
+        if (event.target?.name === 'character-search') { query = event.target.value; filterCards(); }
         if (event.target?.name === 'displayName') page.setName(event.target.value);
     });
     root.addEventListener('submit', (event) => {
@@ -1126,6 +1167,7 @@ export function mountCharactersTab(container, options = {}) {
     }
     function destroy() {
         dead = true;
+        globalThis.removeEventListener('resize', resize);
         detailEl = null;
         releaseImport();
         root.remove();

@@ -43,7 +43,7 @@ export function flyAvatar(fromImg, toImg, { container, fromRect, toRect } = {}) 
     return anim;
 }
 
-export function createNav(container) {
+export function createNav(container, { stacked = () => true } = {}) {
     if (!container) throw new Error('createNav requires a container');
     const stack = [];
 
@@ -58,6 +58,10 @@ export function createNav(container) {
         el.classList.add('vc-screen');
         container.append(el);
         prepare?.(el);
+        if (!stacked()) {
+            stack.push({ el, base });
+            return el;
+        }
         const toEl = typeof fly?.to === 'function' ? fly.to(el) : fly?.to;
         const toRect = toEl?.getBoundingClientRect?.() ?? null;
         const incoming = animate(el, [
@@ -84,6 +88,12 @@ export function createNav(container) {
         commit(top.incoming);
         commit(top.under);
         const { el, base } = top;
+        if (!stacked()) {
+            el.remove();
+            syncLayout();
+            el.dispatchEvent(new Event('popped'));
+            return true;
+        }
         if (base) {
             animate(base, [
                 { transform: 'translateX(-28%)', filter: 'brightness(0.9)' },
@@ -100,5 +110,14 @@ export function createNav(container) {
         return true;
     }
 
-    return { push, pop, flyAvatar, get depth() { return stack.length; } };
+    function syncLayout() {
+        if (stacked()) return;
+        for (const item of stack) {
+            for (const motion of [item.incoming, item.under]) motion?.cancel?.();
+            for (const el of [item.el, item.base]) {
+                for (const key of ['transform', 'filter', 'opacity', 'box-shadow']) el?.style.removeProperty(key);
+            }
+        }
+    }
+    return { push, pop, syncLayout, flyAvatar, get depth() { return stack.length; } };
 }

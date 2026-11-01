@@ -78,7 +78,8 @@ async function closeDrawer(page, id) {
         await settings.locator('.vc-sheet-done').click();
         await settings.waitFor({ state: 'detached' });
     } else if (await page.locator('#vc-shell[data-settings="page"]').count()) {
-        await page.locator('#vc-shell [data-settings-done]:visible').click();
+        if (await page.locator('#vc-shell .vc-settings-shell').count()) await page.locator('#vc-shell [data-nav="chat"]:visible').click();
+        else await page.locator('#vc-shell [data-settings-done]:visible').click();
     }
 }
 

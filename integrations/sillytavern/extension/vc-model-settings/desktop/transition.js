@@ -10,5 +10,5 @@ export function writeReducedMotion(value, storage = localStorage) {try{storage.s
 export function bindSidebarLens(sidebar) {
     const lens=document.createElement('i');lens.className='vc-desktop-lens';lens.setAttribute('aria-hidden','true');sidebar.prepend(lens);
     const sync=()=>{const active=sidebar.querySelector('[aria-current="page"]');if(!active)return;const r=active.getBoundingClientRect(),p=sidebar.getBoundingClientRect();lens.style.width=`${r.width}px`;lens.style.height=`${r.height}px`;lens.style.transform=`translate(${r.left-p.left}px,${r.top-p.top+sidebar.scrollTop}px)`;};
-    const click=()=>queueMicrotask(sync);sidebar.addEventListener('click',click);window.addEventListener('resize',sync);sync();return ()=>{sidebar.removeEventListener('click',click);window.removeEventListener('resize',sync);lens.remove();};
+    const click=()=>requestAnimationFrame(sync);sidebar.addEventListener('click',click);window.addEventListener('vc-shell-destination',click);window.addEventListener('resize',sync);sync();return ()=>{sidebar.removeEventListener('click',click);window.removeEventListener('vc-shell-destination',click);window.removeEventListener('resize',sync);lens.remove();};
 }

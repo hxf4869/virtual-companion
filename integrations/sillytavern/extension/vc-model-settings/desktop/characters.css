@@ -48,3 +48,5 @@ html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-characters-
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-characters-list .vc-nav-title { flex: none; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-character-search { flex: 0 1 360px; width: 360px; min-width: 0; max-width: 360px; margin-left: auto; }
 html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters .vc-role[hidden] { display: none; }
+
+html[data-vc-layout="desktop"] body.vc-ui .vc-desktop-characters > .vc-character-persona { position:absolute; inset:0 0 0 auto; width:400px; z-index:var(--vc-z-popup); background:var(--vc-glass-3); }

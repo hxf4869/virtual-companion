@@ -708,6 +708,7 @@ export function mountShell(options = {}) {
     settingsHeading.className = 'vc-large-title';
     settingsHeading.textContent = '设置';
     settingsScroll.append(settingsHeading);
+    let desktopSettings = null;
     settingsPane.append(settingsNav, settingsScroll);
     bindNavScroll(settingsScroll, settingsNav, settingsPane);
 
@@ -813,6 +814,7 @@ export function mountShell(options = {}) {
         releaseMotion(pages);
         syncKeyboard();
         releaseCoveredSettings();
+        if (chrome.nav === 'tabbar' && desktopSettings && root.dataset.settings === 'page') closeSettings({ immediate: true });
     }
 
     function syncKeyboard() {
@@ -855,8 +857,9 @@ export function mountShell(options = {}) {
         if (index < 0) return;
         const previous = root.dataset.destination || '';
         if (previous && previous !== nav) listHeld = false;
-        if (root.dataset.settings === 'page') delete root.dataset.settings;
+        if (root.dataset.settings === 'page') closeSettings();
         root.dataset.destination = nav;
+        globalThis.dispatchEvent?.(new Event('vc-shell-destination'));
         tabbar.style.setProperty('--vc-tab', String(index));
         for (const button of root.querySelectorAll('[data-nav]')) {
             if (button.getAttribute('data-nav') === nav) button.setAttribute('aria-current', 'page');
@@ -1052,10 +1055,11 @@ export function mountShell(options = {}) {
     function coveringPageOpen() {
         const list = (sel) => (typeof doc.querySelectorAll === 'function' ? [...doc.querySelectorAll(sel)] : []);
         if (list('.vc-data-dialog').some((node) => node.hasAttribute?.('open') || node.open === true)) return true;
-        return list('.vcms-overlay').some((node) => node.hidden !== true && node.getAttribute?.('hidden') == null);
+        return list('.vcms-overlay').some((node) => !node.closest?.('.vc-settings-shell') && node.hidden !== true && node.getAttribute?.('hidden') == null);
     }
 
     function closeSettings({ immediate = false } = {}) {
+        desktopSettings?.close();
         const handle = sheetHandle;
         sheetHandle = null;
         if (handle) {
@@ -1072,6 +1076,12 @@ export function mountShell(options = {}) {
     }
 
     function openSettings(opener) {
+        if (chromeForWidth(globalThis.innerWidth).nav !== 'tabbar' && options.mountDesktopSettings) {
+            desktopSettings ??= options.mountDesktopSettings(settingsScroll);
+            desktopSettings.resume();
+            root.dataset.settings = 'page';
+            return;
+        }
         const form = buildSettings(doc, {
             voiceAvailable: options.voiceAvailable?.()===true,
             accountName: accountLabel(getContext()),

@@ -244,7 +244,7 @@ export async function sceneVcUiWalkthrough(ctx) {
                 const openDrawer = document.querySelector('.openDrawer');
                 const drawer = Boolean(openDrawer);
                 const model = Boolean(document.querySelector('.vcms-overlay:not([hidden])'));
-                const dialog = Boolean(document.querySelector('dialog[open], .vc-data-dialog[open]'));
+                const dialog = Boolean(document.querySelector('dialog[open], .vc-data-dialog[open], .vc-memory-editor[role="dialog"]'));
                 const sheet = [...document.querySelectorAll('.vc-sheet')].some((el) => {
                     if (!visible(el)) return false;
                     // 手机设置 sheet 是酒馆抽屉的宿主，抽屉步骤里它不是上一步残留。
@@ -474,6 +474,14 @@ export async function sceneVcUiWalkthrough(ctx) {
         };
         const clickSettings = async (action) => {
             await ensureSettings();
+            if (await page.evaluate(() => innerWidth >= 744)) {
+                const key = action === 'models' ? 'model' : action === 'data' ? 'data' : DRAWERS.find(row => row.id === action)?.panel;
+                if (!key) throw new Error(`没有桌面设置项 ${action}`);
+                await page.locator(`.vc-settings-shell [data-category="${key}"]`).evaluate(el => el.click());
+                await page.waitForFunction(value => document.querySelector('.vc-settings-shell')?.dataset.category === value, key);
+                if (key !== 'model') await page.locator('.vc-settings-body button').first().click();
+                return;
+            }
             const ok = await page.evaluate((name) => {
                 const shown = (el) => el && el.getClientRects().length > 0;
                 const forms = [...document.querySelectorAll('.vc-settings-form')].filter(shown);
@@ -595,6 +603,9 @@ export async function sceneVcUiWalkthrough(ctx) {
                 const modelClose = page.locator('.vcms-overlay:not([hidden]) [data-action="close"]').first();
                 if (await modelClose.count()) await modelClose.click();
                 await page.waitForFunction(() => !document.querySelector('.vcms-overlay:not([hidden])'), null, { timeout: 8000 });
+                if (viewport.width >= 744) {
+                    assert.ok(await page.evaluate(() => document.querySelector('.vcms-overlay')?.parentElement === document.body), '桌面模型关闭后没有归还原页面根节点');
+                }
 
                 try {
                     await clickSettings('data');
@@ -656,11 +667,37 @@ export async function sceneVcUiWalkthrough(ctx) {
                         await memory.click();
                         await page.waitForSelector('[data-vc-page="memory"] [data-action="back"], .vc-memory-title', { timeout: 8000 });
                         await record(page, viewport.width, theme, 'memory-detail', bucket);
-                        const back = page.locator('[data-vc-page="memory"] [data-action="back"]');
+                        if (viewport.width >= 744) {
+                            const geometry = await page.evaluate(() => {
+                                const editor = document.querySelector('.vc-memory-editor');
+                                const rect = editor?.getBoundingClientRect();
+                                return { body: editor?.parentElement === document.body,
+                                    width: rect?.width, center: rect ? rect.left + rect.width / 2 : 0,
+                                    filters: document.querySelector('.vc-memory-sidebar')?.getBoundingClientRect().width };
+                            });
+                            assert.ok(geometry.body && Math.abs(geometry.width - 560) <= 1
+                                && Math.abs(geometry.center - viewport.width / 2) <= 1 && Math.abs(geometry.filters - 240) <= 1,
+                            `桌面记忆详情布局 ${JSON.stringify(geometry)}`);
+                            const edit = page.locator('.vc-memory-editor [data-action="edit"]');
+                            if (viewport.width === 1440 && theme === 'light' && await edit.count()) {
+                                await edit.click();
+                                const draft = page.locator('.vc-memory-editor textarea[name="summary"]');
+                                await draft.fill('合成桌面纠正草稿');
+                                await page.locator('.vc-memory-editor-scrim').click({ position: { x: 8, y: 8 } });
+                                await page.locator('.vc-alert').waitFor();
+                                assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), '继续编辑');
+                                await page.keyboard.press('Escape');
+                                await page.locator('.vc-alert').waitFor({ state: 'detached' });
+                                assert.equal(await draft.inputValue(), '合成桌面纠正草稿');
+                                await page.locator('.vc-memory-editor [data-action="cancel-edit"]').click();
+                            }
+                        }
+                        const back = page.locator('[data-vc-page="memory"] [data-action="back"], .vc-memory-editor [data-action="back"]');
                         if (await back.count()) await back.first().click();
                     } else notes.push(`${viewport.width} ${theme} memory-detail：没有记忆行`);
                 } catch (error) {
                     if (String(error?.message || error).includes('残留浮层')) throw error;
+                    if (error?.code === 'ERR_ASSERTION') throw error;
                     notes.push(`${viewport.width} ${theme} memory-detail：${String(error?.message || error).split('\n')[0]}`);
                     await removeSheets(page);
                 }

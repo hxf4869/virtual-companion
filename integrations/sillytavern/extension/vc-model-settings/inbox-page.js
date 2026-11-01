@@ -9,6 +9,7 @@ export { releaseSegment };
 import { icon } from './ui/icons.js';
 import { popMenu } from './ui/menu.js';
 import { createNav } from './ui/nav.js';
+import { desktopLayout, presentInbox } from './desktop/presentation.js';
 import { openSheet } from './ui/sheet.js';
 import { readVcUiFlag } from './ui/theme.js';
 import { createVoiceBubble } from './voice.js';
@@ -1284,7 +1285,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
     if (!inboxVcUi()) return { active: false, refresh() {}, destroy() {} };
     if (!container || typeof container.append !== 'function') throw new Error('mountInboxTab requires a container');
     ensureInboxStyles();
-    container.classList.add('vc-inbox-tab');
+    container.classList.add('vc-inbox-tab', 'vc-desktop-inbox');
     container.setAttribute('data-vc-page', 'inbox');
     container.replaceChildren();
     const listScreen = document.createElement('div');
@@ -1301,6 +1302,13 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
     let conflictOpen = false;
     let reauthDialog = null;
     const signal = ac.signal;
+    let desktop = desktopLayout();
+    globalThis.addEventListener('resize', () => {
+        const next = desktopLayout();
+        if (desktop === next) return;
+        desktop = next;
+        paint(page.state);
+    }, { signal });
 
     const page = createInboxPage({
         onOpenConversation,
@@ -1312,11 +1320,12 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
     function paint(state) {
         if (stopped || !state.open) return;
         const top = listScreen.querySelector('.vc-scroll')?.scrollTop || 0;
-        const saveDisabled = !state.relationshipId || state.policyConflict || state.busy || state.loading;
-        const saveButton = inboxPolicyDirty(state)
+        const saveDisabled = !state.relationshipId || state.policyConflict || state.busy || state.loading || !inboxPolicyDirty(state);
+        const saveButton = inboxPolicyDirty(state) || desktopLayout()
             ? `<button type="button" class="vc-nav-save" data-action="save-policy" ${saveDisabled ? 'disabled' : ''}>保存</button>`
             : '';
         listScreen.innerHTML = `<header class="vc-navbar"><div class="vc-nav-spacer"></div>${saveButton}</header><div class="vc-scroll">${renderInboxTab(state)}</div>`;
+        if (desktopLayout()) presentInbox(listScreen);
         mountInboxVoices(listScreen,state);
         const segment = listScreen.querySelector('[data-vc-inbox-segment]');
         releaseSegment(segmentBinding);
@@ -1462,7 +1471,7 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
         const bar = listScreen.querySelector('.vc-navbar');
         if (!bar) return;
         let button = bar.querySelector('[data-action="save-policy"]');
-        if (!inboxPolicyDirty(page.state)) {
+        if (!inboxPolicyDirty(page.state) && !desktopLayout()) {
             button?.remove();
             return;
         }
@@ -1475,7 +1484,8 @@ export function mountInboxTab(container, { onOpenConversation } = {}) {
             button.textContent = '保存';
             bar.append(button);
         }
-        button.disabled = saveDisabled;
+        button.disabled = saveDisabled || !inboxPolicyDirty(page.state);
+        if (desktopLayout()) { button.className = 'vc-btn vc-btn-fill'; button.setAttribute('data-save-policy', ''); }
     }, { signal });
     container.addEventListener('change', (event) => {
         if (event.target?.dataset?.field === 'character') void page.selectRelationship(event.target.value);

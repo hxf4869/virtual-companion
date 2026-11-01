@@ -1,11 +1,12 @@
-// 桌面设置表现层；控制器与协议继续来自公共生产模块。UX-21 前只由样板加载。
+// 桌面设置表现层；控制器与协议继续来自公共生产模块。
 import { icon } from '../ui/icons.js';
 import { confirmDiscard } from '../ui/alert.js';
 import { popMenu } from '../ui/menu.js';
 import { showToast } from '../ui/toast.js';
 import { bindSegment, bindSwitch } from '../ui/controls.js';
 import { readThemeMode, setThemeMode } from '../ui/theme.js';
-import { TAVERN_ENTRIES, openHostDrawer } from '../shell.js';
+import { TAVERN_ENTRIES } from '../shell.js';
+import { openDrawerPage } from '../drawers.js';
 import { readReplyStyle, writeReplyStyle } from '../chat-view.js';
 import { mountModelSettings } from '../page.js';
 import { renderGlobalVoiceSettings, readGlobalVoiceSettings } from '../voice-settings.js';
@@ -22,6 +23,8 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
     nav.innerHTML = `<h1>设置</h1>${categories.map(row=>category(...row)).join('')}<h2>酒馆</h2>${TAVERN_ENTRIES.map(row=>category(row.panel,row.label,row.icon,row.tile)).join('')}`;
     const content = document.createElement('div'); content.className = 'vc-settings-content vc-desk-panel'; root.append(nav,content);container.replaceChildren(root);
     const model = mountModelSettings(); let account; let current = '', voice = null;
+    const modelHome = model.root.parentNode;
+    function restoreModel() { if (root.contains(model.root)) (modelHome || document.body).append(model.root); }
     const ac = new AbortController();
     const header = title => `<header class="vc-settings-header"><button type="button" class="vc-circle vc-settings-category-toggle" data-settings-categories aria-label="设置">${icon('settings')}</button><h1 tabindex="-1">${esc(title)}</h1></header>`;
     async function requestLeave() {
@@ -33,7 +36,7 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
     async function select(key, { initial = false } = {}) {
         if (key === current && !initial) return;
         if (!initial && !await requestLeave()) return;
-        if (current === 'model') { await model.close(); model.root.remove(); }
+        if (current === 'model') { model.close(); restoreModel(); }
         voice = null; current = key; root.dataset.category = key;root.dataset.categoriesOpen = 'false';
         for (const row of nav.querySelectorAll('[data-category]')) { row.setAttribute('aria-current',row.dataset.category===key?'page':'false'); }
         transitionContent(content, () => { content.replaceChildren(); });
@@ -51,7 +54,7 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
             body.querySelector('button').onclick = () => window.dispatchEvent(new CustomEvent('vc-shell-navigate',{detail:{destination:'inbox'}}));
         } else {
             body.innerHTML = `<div class="vc-desk-group"><button type="button" class="vc-cell"><span class="vc-grow">${esc(title)}</span>${icon('chevron-right',{size:16})}</button></div>`;
-            body.querySelector('button').onclick = () => openHostDrawer(key);
+            body.querySelector('button').onclick = () => { openDrawerPage(key); if (shell) delete shell.dataset.settings; };
         }
         content.querySelector('h1')?.focus();
     }
@@ -59,6 +62,8 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         const toggle=event.target.closest('[data-settings-categories]');
         if(toggle){popMenu(toggle,[...categories.map(([key,label])=>({label,run:()=>void select(key)})),'-',...TAVERN_ENTRIES.map(row=>({label:row.label,run:()=>void select(row.panel)}))]);return;}
         const row=event.target.closest('[data-category]');if(row)void select(row.dataset.category);
+        const close=event.target.closest('[data-action="close"]');
+        if(close && model.root.contains(close)){event.preventDefault();event.stopImmediatePropagation();void select('account');return;}
         const back=event.target.closest('[data-action="vc-back"]');
         if(back && model.root.querySelector('[data-vc-screen="home"]')){event.stopImmediatePropagation();void select('account');}
     },{capture:true,signal:ac.signal});
@@ -69,7 +74,10 @@ export function mountSettingsShell(container, { getContext = () => ({}) } = {}) 
         if(!voice?.isDirty() && !(current==='model'&&model.isDirty()))return;
         event.preventDefault();event.stopImmediatePropagation();if(await requestLeave()){voice=null;current='';target.click();}
     },{capture:true,signal:ac.signal});
-    return { root, model, select, requestLeave, destroy(){ac.abort();void model.close();root.remove();} };
+    return { root, model, select, requestLeave,
+        resume(){ if (current === 'model') { content.append(model.root); model.open(); } else if (!current) void select('account', { initial: true }); },
+        close(){ if (current === 'model') { model.close(); restoreModel(); } },
+        destroy(){ac.abort();if(current==='model')model.close();restoreModel();root.remove();} };
 }
 async function mountVoice(content,body) {
     let settings, engines, baseline='', working=false, loaded=false;

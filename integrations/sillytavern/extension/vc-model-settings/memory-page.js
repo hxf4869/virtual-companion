@@ -1,7 +1,8 @@
 // UI-P03：沿用扩展深色 tokens；桌面阅读分栏，手机列表/详情独立呈现。
 // Go 为唯一数据入口。发生时间使用 time，不从记录时间推算；关闭/切换会废弃迟到响应。
 import * as api from './api.js';
-import { confirmAlert } from './ui/alert.js';
+import { confirmAlert, confirmDiscard } from './ui/alert.js';
+import { desktopLayout, presentMemory } from './desktop/presentation.js';
 import { bindSegment } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 import { popMenu } from './ui/menu.js';
@@ -571,16 +572,18 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
     if (!vcUiEnabled()) return { active: false, refresh() {}, destroy() {} };
     if (!container || typeof container.append !== 'function') throw new Error('mountMemoryTab requires a container');
     ensureMemoryStyles();
-    container.classList.add('vc-memory-tab');
+    container.classList.add('vc-memory-tab', 'vc-desktop-memory');
     container.setAttribute('data-vc-page', 'memory');
     container.replaceChildren();
     const listScreen = document.createElement('div');
     listScreen.className = 'vc-screen';
     container.append(listScreen);
-    const nav = createNav(container);
+    const nav = createNav(container, { stacked: () => !desktopLayout() });
     const ac = new AbortController();
     const page = createMemoryPage({ onChange: (state) => paint(state) });
     let detailEl = null;
+    let scrim = null;
+    let desktop = desktopLayout();
     let stopped = false;
     let segmentBinding = null;
     let menuHandle = null;
@@ -629,7 +632,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
     function paint(state) {
         if (stopped || !state.open) return;
         noteLife(state);
-        const saved = captureFocus(container);
+        const saved = captureFocus(detailEl?.contains(document.activeElement) ? detailEl : container);
         datesOpen = listScreen.querySelector('.vc-memory-filters details')?.open || datesOpen;
         const parked = [...listScreen.querySelectorAll('li.is-collapsing')];
         for (const item of parked) item.remove();
@@ -639,6 +642,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             items: (state.items || []).filter((item) => !gone.has(idOf(item)) && !started.has(idOf(item))),
         };
         listScreen.innerHTML = `<div class="vc-scroll">${renderMemoryTab(visible)}</div>`;
+        if (desktopLayout()) presentMemory(listScreen, visible);
         if (datesOpen) {
             const details = listScreen.querySelector('.vc-memory-filters details');
             if (details) details.open = true;
@@ -680,14 +684,69 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
         } else if (detailEl) {
             nav.pop();
             detailEl = null;
+            scrim?.remove(); scrim = null;
         }
+        syncDetailLayout();
         if (state.view === 'list') {
             for (const id of [...pendingCollapse]) beginCollapse(id);
         }
-        restoreFocus(container, saved);
+        restoreFocus(detailEl?.classList.contains('vc-memory-editor') ? detailEl : container, saved);
     }
 
-    container.addEventListener('input', (event) => {
+    function syncDetailLayout() {
+        if (!detailEl) return;
+        const portal = desktopLayout();
+        detailEl.classList.toggle('vc-memory-editor', portal);
+        detailEl.classList.toggle('vc-memory-tab', portal);
+        if (portal) {
+            nav.syncLayout();
+            detailEl.setAttribute('role', 'dialog');
+            detailEl.setAttribute('aria-modal', 'true');
+            if (!scrim) {
+                scrim = document.createElement('div');
+                scrim.className = 'vc-memory-editor-scrim';
+                scrim.addEventListener('click', () => void closeDetail(), { signal });
+                document.body.append(scrim);
+            }
+            document.body.append(detailEl);
+        } else {
+            scrim?.remove(); scrim = null;
+            detailEl.removeAttribute('role');
+            detailEl.removeAttribute('aria-modal');
+            container.append(detailEl);
+        }
+    }
+
+    async function closeDetail() {
+        if (page.state.busy) return;
+        if (page.state.editing) {
+            if (page.state.draft !== page.state.detail?.summary && !await confirmDiscard({ opener: document.activeElement })) return;
+            page.cancelEdit();
+        }
+        page.back();
+        container.querySelector('.vc-memory-row[aria-current="true"]')?.focus();
+    }
+
+    const owns = target => container.contains(target) || detailEl?.contains(target);
+    globalThis.addEventListener('resize', () => {
+        const next = desktopLayout();
+        if (desktop === next) return;
+        desktop = next;
+        paint(page.state);
+    }, { signal });
+    document.addEventListener('keydown', event => {
+        if (!desktopLayout() || !detailEl || document.querySelector('.vc-alert,.vc-menu,.vc-sheet')) return;
+        if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); void closeDetail(); }
+        if (event.key === 'Tab') {
+            const controls = [...detailEl.querySelectorAll('button,input,textarea,select,[tabindex]')]
+                .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+            if (event.shiftKey && (document.activeElement === controls[0] || !controls.includes(document.activeElement))) { event.preventDefault(); controls.at(-1)?.focus(); }
+            else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0]?.focus(); }
+        }
+    }, { signal, capture: true });
+
+    document.addEventListener('input', (event) => {
+        if (!owns(event.target)) return;
         const name = event.target?.name;
         if (name === 'summary') page.setDraft(event.target.value);
         if (['q', 'status', 'eventDateFrom', 'eventDateTo'].includes(name)) page.setFilterDraft(name, event.target.value);
@@ -695,7 +754,8 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             event.target.form.elements.eventDateTo.setCustomValidity('');
         }
     }, { signal });
-    container.addEventListener('change', (event) => {
+    document.addEventListener('change', (event) => {
+        if (!owns(event.target)) return;
         if (event.target?.name === 'relationshipId') {
             gone.clear();
             void page.changeRelationship(event.target.value);
@@ -705,9 +765,9 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             event.target.form?.requestSubmit();
         }
     }, { signal });
-    container.addEventListener('submit', (event) => {
+    document.addEventListener('submit', (event) => {
         const form = event.target;
-        if (!(form instanceof HTMLFormElement) || !container.contains(form)) return;
+        if (!(form instanceof HTMLFormElement) || !owns(form)) return;
         event.preventDefault();
         if (form.dataset.form === 'edit') void page.save();
         if (form.dataset.form === 'filters') {
@@ -725,13 +785,13 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             void page.authenticate(password);
         }
     }, { signal });
-    container.addEventListener('click', async (event) => {
+    document.addEventListener('click', async (event) => {
         const target = event.target.closest('button');
-        if (!target || !container.contains(target) || target.disabled) return;
+        if (!target || !owns(target) || target.disabled) return;
         if (target.dataset.memoryId) {
             await page.select(target.dataset.memoryId);
-            container.querySelector('.vc-memory-detail-screen .vc-memory-title')?.focus();
-            return;
+            detailEl?.querySelector('.vc-memory-title')?.focus();
+            if (!target.dataset.action) return;
         }
         const action = target.dataset.action;
         if (action === 'pick-instance') {
@@ -747,6 +807,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             })), { below: true });
         }
         if (action === 'back') {
+            if (desktopLayout()) { await closeDetail(); return; }
             page.back();
             container.querySelector('.vc-memory-row[aria-current="true"]')?.focus();
         }
@@ -759,7 +820,7 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
         if (action === 'refresh-detail') await page.refreshDetail();
         if (action === 'edit') {
             page.edit();
-            container.querySelector('#vc-memory-draft')?.focus();
+            detailEl?.querySelector('#vc-memory-draft')?.focus();
         }
         if (action === 'cancel-edit') page.cancelEdit();
         if (action === 'cancel-reauth') page.cancelReauth();
@@ -803,9 +864,11 @@ export function mountMemoryTab(container, { getRelationshipId = () => '' } = {})
             menuHandle?.close();
             ac.abort();
             page.close();
+            detailEl?.remove();
+            scrim?.remove();
             detailEl = null;
             container.replaceChildren();
-            container.classList.remove('vc-memory-tab', 'is-detail');
+            container.classList.remove('vc-memory-tab', 'vc-desktop-memory', 'is-detail');
         },
     };
 }

@@ -250,16 +250,16 @@ export async function sceneVcUiShell(ctx) {
             if (viewport.width >= 1180) {
                 if (!fit.side || Math.abs(fit.side.w - 240) > 8) throw new Error(`侧边栏宽度 ${fit.side?.w}`);
                 if (!fit.list || Math.abs(fit.list.w - 320) > 8) throw new Error(`列表宽度 ${fit.list?.w}`);
-                if (!fit.chatCol || Math.abs(fit.chatCol.x - 560) > 16) throw new Error(`对话区起点 ${JSON.stringify(fit.chatCol)}`);
+                if (!fit.chatCol || Math.abs(fit.chatCol.x - (fit.list.r + 12)) > 1) throw new Error(`对话区起点 ${JSON.stringify(fit.chatCol)}`);
                 if (!fit.chatCol || fit.chatCol.w < 700) throw new Error(`对话区过窄 ${fit.chatCol?.w}`);
                 if (!fit.sheld || fit.sheld.w < 480 || fit.sheld.w > 724) throw new Error(`阅读列 ${fit.sheld?.w}`);
                 if (fit.sidebarVar !== '240px') throw new Error(`--vc-sidebar ${fit.sidebarVar}`);
             } else if (viewport.width >= 744) {
-                const sheldMin = Math.min(720, viewport.width - 72) - 24;
+                const sheldMin = Math.min(720, viewport.width - 116) - 24;
                 if (!fit.side || Math.abs(fit.side.w - 72) > 8) throw new Error(`中等侧边栏 ${fit.side?.w}`);
                 if (fit.list && fit.list.w > 8) throw new Error(`打开会话后列表仍占宽 ${JSON.stringify(fit.list)}`);
-                if (!fit.chatCol || Math.abs(fit.chatCol.x - 72) > 16) throw new Error(`中等对话起点 ${JSON.stringify(fit.chatCol)}`);
-                if (!fit.chatCol || fit.chatCol.w < viewport.width - 96) throw new Error(`中等对话区 ${JSON.stringify(fit.chatCol)}`);
+                if (!fit.chatCol || Math.abs(fit.chatCol.x - (fit.side.r + 12)) > 1) throw new Error(`中等对话起点 ${JSON.stringify(fit.chatCol)}`);
+                if (!fit.chatCol || Math.abs(fit.chatCol.w - (viewport.width - 116)) > 1) throw new Error(`中等对话区 ${JSON.stringify(fit.chatCol)}`);
                 if (!fit.sheld || fit.sheld.w < sheldMin || fit.sheld.w > 724) throw new Error(`中等阅读列 ${JSON.stringify(fit.sheld)}`);
                 if (fit.sidebarVar !== '72px') throw new Error(`中等 --vc-sidebar ${fit.sidebarVar}`);
                 if (fit.listState !== 'hidden') throw new Error(`中等列表未收起 ${fit.listState}`);
@@ -279,7 +279,7 @@ export async function sceneVcUiShell(ctx) {
                     renderedMessages: chat?.querySelectorAll(':scope > .mes').length,
                     chatHeight: chat?.clientHeight, scrollHeight: chat?.scrollHeight };
             }).catch(() => ({ unavailable: true }));
-            throw new Error(`${error.message} state=${JSON.stringify(state)} consoleErrors=${consoleLines.length}`);
+            throw new Error(`${error.message} state=${JSON.stringify(state)} consoleErrors=${JSON.stringify(consoleLines.map(redact))}`);
         };
         const closeOpen = async (selector, action) => {
             const open = page.locator(selector);
@@ -360,6 +360,15 @@ export async function sceneVcUiShell(ctx) {
                         const shell = document.querySelector('#vc-shell');
                         return shell && shell.dataset.chrome === (width < 744 ? 'tabbar' : 'sidebar');
                     }, viewport.width);
+                    const desktopWiring = await page.evaluate(() => ({
+                        aurora: document.querySelectorAll('.vc-desktop-aurora').length,
+                        panel: document.querySelectorAll('.vc-desk-character-toggle').length,
+                        glass: getComputedStyle(document.querySelector('.vc-sidebar')).backdropFilter,
+                        nativeChat: document.querySelector('#chat')?.parentElement?.id === 'sheld',
+                    }));
+                    if (!desktopWiring.nativeChat || desktopWiring.aurora !== Number(viewport.width >= 744)
+                        || desktopWiring.panel !== Number(viewport.width >= 744)
+                        || viewport.width >= 744 && desktopWiring.glass === 'none') throw new Error(`桌面接线 ${JSON.stringify(desktopWiring)}`);
                     const nav = await page.evaluate(() => [...new Set([...document.querySelectorAll('#vc-shell [data-nav]')].map((el) => el.getAttribute('data-nav')))].sort());
                     if (nav.join(',') !== 'characters,chat,inbox,memory,story') throw new Error(`data-nav ${nav.join(',')}`);
                     const hiddenOld = await page.evaluate(() => {
@@ -380,7 +389,7 @@ export async function sceneVcUiShell(ctx) {
                         return shell && shell.dataset.chrome === (width < 744 ? 'tabbar' : 'sidebar') && shell.dataset.chat === 'closed';
                     }, viewport.width);
                     await page.locator('#vc-shell [data-nav="chat"]:visible').click();
-                    if (viewport.width >= 744) {
+                    if (viewport.width >= 1180) {
                         const empty = await page.evaluate(() => {
                             const el = document.querySelector('#vc-shell .vc-chat-empty');
                             return Boolean(el) && getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0;
@@ -412,8 +421,8 @@ export async function sceneVcUiShell(ctx) {
                         });
                         if (!closed.collapsed) throw new Error(`中等宽度侧边栏默认应收起 ${JSON.stringify(closed)}`);
                         if (!closed.side || Math.abs(closed.side.w - 72) > 8) throw new Error(`未开会话侧边栏 ${closed.side?.w}`);
-                        if (!closed.list || Math.abs(closed.list.w - 320) > 12) throw new Error(`未开会话列表 ${JSON.stringify(closed.list)}`);
-                        if (!closed.chatCol || closed.chatCol.w < 240) throw new Error(`未开会话对话区 ${JSON.stringify(closed.chatCol)}`);
+                        if (!closed.list || Math.abs(closed.list.w - (viewport.width - 116)) > 1) throw new Error(`未开会话列表 ${JSON.stringify(closed.list)}`);
+                        if (closed.chatCol?.w) throw new Error(`未开会话应只显示列表 ${JSON.stringify(closed.chatCol)}`);
                         if (closed.sidebarVar !== '72px') throw new Error(`未开会话 --vc-sidebar ${closed.sidebarVar}`);
                         if (closed.listState !== 'open') throw new Error(`未开会话列表未展开 ${closed.listState}`);
                         if (closed.back) throw new Error('未开会话不应显示返回列表按钮');
@@ -498,8 +507,12 @@ export async function sceneVcUiShell(ctx) {
                     if (viewport.width < 744) await page.locator('.vc-sheet').waitFor();
                     else await page.waitForFunction(() => document.querySelector('#vc-shell')?.dataset.settings === 'page');
                     await shot(`${theme}-${viewport.name}-settings.png`);
-                    const settingsRoot = viewport.width < 744 ? page.locator('.vc-sheet') : page.locator('#vc-shell .vc-settings-form');
-                    const tavern = settingsRoot.locator('button', { hasText: 'AI 回复配置' });
+                    const settingsRoot = viewport.width < 744 ? page.locator('.vc-sheet') : page.locator('#vc-shell .vc-settings-shell');
+                    if (viewport.width >= 744) {
+                        await settingsRoot.locator('[data-category="left-nav-panel"]').evaluate(el => el.click());
+                        await page.waitForFunction(() => document.querySelector('.vc-settings-shell')?.dataset.category === 'left-nav-panel');
+                    }
+                    const tavern = settingsRoot.locator(viewport.width < 744 ? 'button' : '.vc-settings-body button', { hasText: 'AI 回复配置' });
                     await tavern.evaluate((el) => {
                         el.scrollIntoView({ block: 'center', inline: 'nearest' });
                         el.click();
@@ -539,7 +552,8 @@ export async function sceneVcUiShell(ctx) {
                         try {
                             await page.waitForFunction(({ root, dialog, owned }) => {
                                 const host = document.querySelector(`#vc-shell ${root}`);
-                                const titles = [...document.querySelectorAll('#vc-shell .vc-shell-page.is-on .vc-large-title')].filter((el) => getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0);
+                                const selector = innerWidth >= 744 ? '.vc-large-title,.vc-characters-list > .vc-navbar .vc-nav-title,.vc-desktop-story .vc-navbar .vc-nav-title' : '.vc-large-title';
+                                const titles = [...document.querySelector('#vc-shell .vc-shell-page.is-on').querySelectorAll(selector)].filter((el) => getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0);
                                 const ownedOk = !owned || titles.some((el) => el.hasAttribute('data-vc-owned-title'));
                                 return Boolean(host) && !document.querySelector(dialog) && titles.length === 1 && ownedOk;
                             }, { root: tab.root, dialog: tab.dialog, owned: tab.owned === true }, { timeout: 15000 });
@@ -560,6 +574,11 @@ export async function sceneVcUiShell(ctx) {
                                 const root = document.querySelector('#vc-shell .vc-characters');
                                 return root && !root.querySelector('[aria-busy="true"]') && root.querySelector('[data-action="select-template"]');
                             }, null, { timeout: 15000 });
+                            const search = page.getByRole('searchbox', { name: '搜索角色' });
+                            await search.fill(cardName);
+                            const filtered = await page.locator('.vc-characters .vc-role:visible').allTextContents();
+                            if (!filtered.length || filtered.some(text => !text.includes(cardName))) throw new Error('桌面角色搜索没有筛选');
+                            await search.fill('');
                             const found = await page.evaluate((name) => {
                                 const buttons = [...document.querySelectorAll('#vc-shell .vc-characters [data-action="select-template"]')];
                                 const card = buttons.find((el) => (el.textContent || '').includes(name));
@@ -584,6 +603,21 @@ export async function sceneVcUiShell(ctx) {
                             }
                             const instance = page.locator(`#vc-shell .vc-characters > .vc-screen:not(.vc-characters-list) [data-action="select-instance"][data-id="${boundNow}"]`);
                             await instance.waitFor({ timeout: 15000 });
+                            const split = await page.evaluate(() => {
+                                const list = document.querySelector('.vc-characters-list').getBoundingClientRect();
+                                const detail = document.querySelector('.vc-character-detail').getBoundingClientRect();
+                                return Math.abs(detail.width - 400) <= 1 && detail.left >= list.right;
+                            });
+                            if (!split) throw new Error('桌面角色详情未按 400px 分栏');
+                            await page.locator('.vc-character-detail [data-action="edit-persona"]').click();
+                            await page.locator('.vc-character-persona [data-persona="personality"]').fill('合成人设编辑验收');
+                            await page.locator('.vc-character-persona [data-action="save-persona"]').click();
+                            await page.waitForFunction(() => !document.querySelector('.vc-character-persona'));
+                            const nativePersona = await page.evaluate(ref => {
+                                const card = window.SillyTavern.getContext().characters.find(row => row.data?.extensions?.vc_character_ref === ref);
+                                return (card?.data?.personality || card?.personality) === '合成人设编辑验收';
+                            }, cardRef);
+                            if (!nativePersona) throw new Error('桌面人设编辑没有保存到原生角色卡');
                             const relationshipId = await instance.getAttribute('data-id');
                             await instance.click();
                             try {

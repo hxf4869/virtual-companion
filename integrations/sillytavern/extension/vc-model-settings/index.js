@@ -44,6 +44,8 @@ import { installStickers } from './stickers.js';
 import { installChatVoice } from './voice-chat.js';
 import { installVoiceInput } from './voice-input.js';
 import { openGlobalVoiceSettings, refreshVoiceAvailability, voiceSettingsAvailable } from './voice-settings.js';
+import { mountDesktopShell } from './desktop/host.js';
+import { mountSettingsShell } from './desktop/settings-shell.js';
 export { openAccountData, openDrawerPage, openModelSettings };
 export { mountChatView, openChatMoreMenu, openMemoryInspector, posterTarget };
 
@@ -78,6 +80,7 @@ function mountVcUi() {
         ['vc-companion-persona-css', './companion-persona.css'],
         ['vc-stickers-css', './stickers.css'],
         ['vc-voice-css', './voice.css'],
+        ...['base', 'chat', 'characters', 'memory', 'inbox', 'story', 'settings'].map(name => [`vc-desktop-${name}-css`, `./desktop/${name}.css`]),
     ]) {
         if (document.getElementById(id)) continue;
         const link = document.createElement('link');
@@ -358,6 +361,7 @@ export async function init() {
         });
         const shell = mountShell({
             getContext,
+            mountDesktopSettings: container => mountSettingsShell(container, { getContext }),
             openModels: (opener) => { if (!pageController.isOpen()) pageController.open(opener); },
             openCharacters: openCharactersLegacy,
             openInbox: openInboxOnce,
@@ -380,6 +384,7 @@ export async function init() {
             },
         });
         navigation.openInstance = (instance, opener) => shell?.openConversation?.(instance, opener);
+        if (shell) mountDesktopShell({ shell, getContext });
     }
     void mountConsentGate();
     void maybeStartOnboarding({
