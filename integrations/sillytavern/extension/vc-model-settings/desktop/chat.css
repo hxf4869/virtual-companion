@@ -221,3 +221,5 @@ html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen:not([hidden]) {
 html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen[data-vc-typing]:not([hidden]) { padding: 0; gap: var(--vc-space-xs); background: none; box-shadow: none; }
 html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen .vc-gen-bubble { display: inline-flex; align-items: center; padding: 19px 18px; border-radius: var(--vc-bub-r, 18px); background: var(--vc-raised); box-shadow: inset 0 0 0 .5px var(--vc-raised-edge); }
 html[data-vc-layout="desktop"] body.vc-ui #vc-chat-gen .vc-gen-dots { margin-right: 18px; }
+/* DESIGN 第 6 节：字重只用 400 / 600 / 700；宿主给消息正文的 500 在桌面统一回 400。 */
+html[data-vc-layout="desktop"] body.vc-ui #chat .mes_text { font-weight: 400; }

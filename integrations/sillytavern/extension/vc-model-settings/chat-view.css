@@ -1135,3 +1135,4 @@ body.vc-ui #chat .mes_reasoning {
   color: var(--vc-ink-2);
   font-size: var(--vc-fs-subhead);
 }
+body.vc-ui #chat .mes_reasoning_header .mes_reasoning_arrow { position: static; margin: 0 0 0 var(--vc-space-xxs); font-size: var(--vc-fs-caption); }
