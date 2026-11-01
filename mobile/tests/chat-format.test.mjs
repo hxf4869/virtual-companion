@@ -59,6 +59,11 @@ test('分段：陪伴回复用扩展同一规则拆分，表情包段与引用�
     assert.equal(m.segments({ user: false, text: '一整段' }, { companion: false }).parts.length, 1);
 });
 
+test('图片等富内容保留完整 Markdown，不把图片地址拆进口语气泡',()=>{
+    const text='合成图片\n\n![环境](data:image/png;base64,'+'abcd'.repeat(100)+')';
+    assert.deepEqual(m.segments({user:false,text}).parts,[{type:'text',text}]);
+});
+
 test('列表预览', () => {
     assert.equal(m.previewText('<sticker tag="开心"/>'), '[表情]');
     assert.equal(m.previewText('好呀<voice/>'), '好呀');

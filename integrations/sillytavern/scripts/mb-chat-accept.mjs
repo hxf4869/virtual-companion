@@ -7,6 +7,7 @@ import { createStClient } from './managed-lib.mjs';
 import { completeStOnboarding } from './lib/st-onboarding.mjs';
 import { reauthForWrite } from './lib/reauth-write.mjs';
 import { ownerBudgetResetSql } from './lib/owner-budget.mjs';
+import { makePng } from './lib/fixtures.mjs';
 
 const SHOTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../.review-queue/MB-4');
 export async function sceneMbChat(ctx) {
@@ -45,7 +46,7 @@ export async function sceneMbChat(ctx) {
         await reply('测试回复：今天也一起好好过。');
         await page.getByRole('button',{name:'发送',exact:true}).click();
         await page.locator('.vc-markdown',{hasText:'今天也一起好好过'}).waitFor();
-        await page.getByRole('button',{name:'发送',exact:true}).waitFor();
+        await page.waitForFunction(()=>!document.querySelector('.vc-typing'));
         if(await input.inputValue())throw Error('发送成功草稿未清');
         console.log('[mb-chat] PASS 页面发送、流式、草稿清除');
         // 长按等价的右键菜单：引用、编辑与删除都走可见操作。
@@ -66,9 +67,13 @@ export async function sceneMbChat(ctx) {
         await page.getByRole('button',{name:'完成',exact:true}).click();
         await page.locator('.vc-markdown').last().click({button:'right'});
         await page.getByRole('menuitem',{name:'编辑',exact:true}).click();
-        await page.locator('.vc-edit-sheet textarea').fill('测试：修改过的回复');
+        const image='data:image/png;base64,'+makePng({width:640,height:320}).toString('base64');
+        await page.locator('.vc-edit-sheet textarea').fill(`测试：修改过的回复\n\n![合成图片](${image})`);
         await page.getByRole('button',{name:'保存',exact:true}).click();
         await page.locator('.vc-markdown',{hasText:'修改过的回复'}).waitFor();
+        const picture=page.locator('.vc-markdown img').last();await picture.waitFor();
+        if(!await picture.evaluate(el=>el.getBoundingClientRect().width<=el.closest('.vc-bubble').getBoundingClientRect().width))throw Error('富内容图片超出气泡');
+        await picture.click();await page.getByRole('dialog',{name:'图片预览',exact:true}).waitFor();await page.getByRole('button',{name:'关闭图片',exact:true}).click();
         await page.locator('.vc-markdown').last().click({button:'right'});
         await page.getByRole('menuitem',{name:'删除',exact:true}).click();
         await page.getByRole('button',{name:'取消',exact:true}).evaluate(el=>{if(el!==document.activeElement)throw Error('危险确认没有默认聚焦取消')});

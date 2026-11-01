@@ -103,6 +103,7 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         relay('MESSAGE_SWIPED', 'message');
         relay('MESSAGE_EDITED', 'message');
         relay('CHAT_CHANGED', 'chat');
+        win().document.addEventListener('vc-chat-retry',()=>bus.emit('message'));
     }
 
     async function boot() {
@@ -163,7 +164,16 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         },
         generating: () => Boolean(script?.isGenerating?.()),
         // 发送走原生输入框与发送键：与现有扩展同一路径（含陪伴模式的连发合并）。
-        send(text) {
+        send(text, voiceInput) {
+            if(voiceInput) return (async()=>{
+                const before=ended,c=ctx();
+                const message=await script.sendMessageAsUser(text);
+                message.extra.vc_voice_input=voiceInput;
+                await c.saveChat();
+                win().document.dispatchEvent(new (win().Event)('vc-chat-retry'));
+                void c.generate('normal');
+                return before;
+            })();
             const d = win().document;
             const box = d.querySelector('#send_textarea');
             const set = Object.getOwnPropertyDescriptor(win().HTMLTextAreaElement.prototype, 'value').set;
@@ -242,11 +252,26 @@ export function createEngine({ doc = globalThis.document, src = '/', onState } =
         },
         async call(module, method, ...args) {
             await api.ready();
-            const files = { api: 'api.js', inbox: 'inbox-page.js', instances: 'instance-page.js', drawers: 'drawers.js', story: 'story-page.js', voice: 'voice-chat.js', shell: 'chat-shell.js' };
+            const files = { api: 'api.js', inbox: 'inbox-page.js', instances: 'instance-page.js', drawers: 'drawers.js', story: 'story-page.js', voice: 'voice-chat.js', audio: 'voice.js', voiceInput: 'voice-input.js', shell: 'chat-shell.js' };
             if (!files[module]) throw new Error('unknown module');
             const mod = await win().eval(`import('/scripts/extensions/third-party/vc-model-settings/${files[module]}')`);
             return mod[method](...args);
         },
+        async voicePolicy() { return api.call('voice','loadVoicePolicy',ctx()); },
+        async voiceBubble(snapshot, document) {
+            await api.ready();
+            const message=ctx().chat[snapshot.id];
+            return api.call('audio','createVoiceBubble',{document,text:snapshot.text,voice:snapshot.extra?.vc_voice,input:snapshot.user?snapshot.extra?.vc_voice_input:null,onPlayed(){
+                if(ctx().chat[snapshot.id]===message&&message?.extra?.vc_voice?.clipId===snapshot.extra?.vc_voice?.clipId){message.extra.vc_voice.played=true;void ctx().saveChat();}
+            }});
+        },
+        async readAloud(id) {
+            await api.ready();
+            const button=win().document.querySelector(`#chat .mes[mesid="${id}"] [data-vc-act="read"]`);
+            if(!button)throw Error('voice unavailable');
+            return api.call('voice','readReplyAloud',id,button);
+        },
+        async stopVoice() { const mod=await win().eval("import('/scripts/extensions/third-party/vc-model-settings/voice.js')");mod.voicePlayer.stop(); },
         card(avatar) {
             const ch = script?.characters?.find(c=>c.avatar===avatar);
             return ch ? { avatar: ch.avatar, name: ch.name, description: ch.description || ch.data?.description || '', characterRef: ch.data?.extensions?.vc_character_ref || '', theme: ch.data?.extensions?.vc_theme || '' } : null;

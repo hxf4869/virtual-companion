@@ -24,17 +24,25 @@ export async function voiceControl(engine, plan = {}) {
 export async function voiceShots(page, ctx, id, name) {
     const dir = path.resolve(process.cwd(), '.review-queue', id);
     fs.mkdirSync(dir, { recursive: true });
-    for (const theme of ['light', 'dark']) for (const width of [390, 1440]) {
+    for (const theme of ['light', 'dark']) {
+      const mobile=new URL(page.url()).pathname.startsWith('/m/');
+      if(mobile) {
+        await page.evaluate(async value=>{await globalThis.__vcEngine.saveThemeSettings({mode:value});},theme);
+        await page.reload();await page.waitForFunction(value=>document.documentElement.dataset.vcTheme===value&&!document.querySelector('.vc-connection'),theme);
+      }
+      for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-        await page.evaluate((value) => { localStorage.setItem('vc-theme', value); document.documentElement.setAttribute('data-vc-theme', value); }, theme);
+        if(!mobile)await page.evaluate((value) => { localStorage.setItem('vc-theme', value); document.documentElement.setAttribute('data-vc-theme', value); }, theme);
         await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth <= 1), 'voice viewport overflow');
+        if(mobile)assert.ok(await page.evaluate(()=>[...document.querySelectorAll('.vc-voice-wave i')].every(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0;})),'H5 waveform bars have visible dimensions');
         assert.ok(await page.evaluate(()=>[...document.querySelectorAll('.vc-voice-bar')].every((bar)=>{
             const duration=bar.querySelector('.vc-voice-duration')?.getBoundingClientRect(),bounds=bar.getBoundingClientRect();
             return !duration || duration.right<=bounds.right+1 && duration.left>=bounds.left-1;
         })),'short voice duration stays inside its bar');
         const file = path.join(dir, `${name}-${width}-${theme}.png`);
         await page.screenshot({ path: file }); ctx.screenshots?.push(file);
+      }
     }
     fs.writeFileSync(path.join(dir, 'NOTES.md'), `# ${id}\n\n语音条与设置沿用现有组件、语义颜色和 44px 触控区。截图只含合成验收数据。\n390/1440 浅深色、横向溢出及对应场景交互断言已检查；请结合本批次受管结果复核。\n`);
 }

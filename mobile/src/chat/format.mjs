@@ -91,7 +91,7 @@ export function previewText(text, { card = false } = {}) {
 // 陪伴会话：一条回复按扩展同一规则拆成多个气泡；表情包段先显示为 [表情]（MB-7 换成图片）。
 export function segments(message, { companion = true } = {}) {
     const { quote, body } = splitQuote(message.text);
-    if (message.user || !companion) return { quote, parts: [{ type: 'text', text: body }] };
+    if (message.user || !companion || /!\[[^\]]*\]\(|<img\b|```/i.test(body)) return { quote, parts: [{ type: 'text', text: body }] };
     const parts = splitReply(body).map((seg) => (typeof seg === 'string' && STICKER_RE.test(seg))
         ? { type: 'sticker', tag: (STICKER_RE.exec(seg)[1] ?? STICKER_RE.exec(seg)[2] ?? '') }
         : typeof seg === 'string' ? { type: 'text', text: seg } : { type: 'sticker', tag: seg.tag || '' });

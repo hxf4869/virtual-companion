@@ -6,8 +6,9 @@ import { openVoiceChat, voiceControl, voiceShots } from './voice-accept-lib.mjs'
 
 export async function sceneVoiceInput(ctx) {
     await voiceControl('asr');
-    const {browser,page,st,card}=await openVoiceChat(ctx,'语音输入',{fakeAudio:true});
+    const {browser,page,st,card,file}=await openVoiceChat(ctx,'语音输入',{fakeAudio:true});
     let stage='recording start';
+    const pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message.slice(0,120)));
     const sourceErrors=[];
     page.on('response',async(response)=>{
         if(!response.url().includes('/st/sources/reconcile') || response.status()<400)return;
@@ -86,14 +87,38 @@ export async function sceneVoiceInput(ctx) {
             assert.equal(persisted.status,200);
             assert.equal(persisted.json.slice(1).some(row=>row.is_user),false,'late transcription must not persist in the new chat');
         } finally {releaseASR();await page.unroute(asrRoute);}
+
+        stage='MB-7 H5 touch recording';
+        await page.setViewportSize({width:390,height:844});
+        await page.goto(`${ctx.w05.stBase}/m/?vcdebug=1`);await page.locator(`[data-chat-file="${file}"]`).click();
+        await page.locator('.vc-connection').waitFor({state:'hidden'});
+        const mobileMic=page.getByRole('button',{name:'开始录音',exact:true});await mobileMic.waitFor();
+        const mobileCDP=await page.context().newCDPSession(page),box=await mobileMic.boundingBox(),mx=box.x+box.width/2,my=box.y+box.height/2;
+        const beforeMobile=await page.evaluate(()=>globalThis.__vcEngine.messages().filter(m=>m.user).length);
+        await mobileCDP.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:mx,y:my,id:1}]});
+        await page.getByRole('button',{name:'结束录音',exact:true}).waitFor();await page.waitForTimeout(1100);
+        await mobileCDP.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        await page.waitForFunction(before=>globalThis.__vcEngine.messages().filter(m=>m.user).length===before+1,beforeMobile);
+        await page.waitForFunction(()=>globalThis.__vcEngine.messages().at(-1)?.extra?.vc_voice?.status==='ready',null,{timeout:30000});
+        const latestInput=await page.evaluate(()=>globalThis.__vcEngine.messages().findLast(m=>m.user).extra.vc_voice_input);
+        assert.equal(latestInput.emotion,'HAPPY');assert.ok(latestInput.durationMs>0);await page.locator('.is-user .vc-voice-text').last().waitFor();
+        const mobileBeforeCancel=await page.evaluate(()=>globalThis.__vcEngine.messages().length);
+        await page.getByRole('button',{name:'开始录音',exact:true}).waitFor();
+        await mobileCDP.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:mx,y:my,id:1}]});await page.getByRole('button',{name:'结束录音',exact:true}).waitFor();
+        await mobileCDP.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:mx,y:my-100,id:1}]});await page.getByText(/松开取消/).waitFor();await mobileCDP.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        await page.getByRole('button',{name:'开始录音',exact:true}).waitFor();assert.equal(await page.evaluate(()=>globalThis.__vcEngine.messages().length),mobileBeforeCancel);
+        const mobileState=await (await fetch(`http://127.0.0.1:${process.env.VC_W03_FIXTURE_PORT}/__voice/state`)).json();assert.equal(mobileState.asr.maxActive,1);assert.ok(mobileState.asr.requests.every(r=>r.sampleRate===16000&&r.channels===1&&r.bits===16));
+        assert.deepEqual(uploaded(),uploadsBefore,'H5 raw audio never enters native disk uploads');
+        await voiceShots(page,ctx,'MB-7','voice-input');console.log('[MB-7] PASS H5 按住录音、上滑取消、WAV 规格和用户语音条');
     } catch(error) {
         const state=await page.evaluate(()=>{
-            const c=SillyTavern.getContext(),last=c.chat.at(-1);
-            return {pressed:document.querySelector('#vc-voice-input')?.getAttribute('aria-pressed'),note:document.querySelector('#vc-voice-input-note')?.textContent,probe:window.vcRecordingProbe,
+            const c=globalThis.SillyTavern?.getContext?.() || document.querySelector('#vc-engine')?.contentWindow?.SillyTavern?.getContext?.() || {chat:[]},last=c.chat.at(-1);
+            return {pressed:document.querySelector('#vc-voice-input')?.getAttribute('aria-pressed'),note:document.querySelector('#vc-voice-input-note,.vc-recording-note')?.textContent,mobilePressed:document.querySelector('.vc-microphone')?.getAttribute('aria-pressed'),probe:window.vcRecordingProbe,
                 chatLength:c.chat.length,lastUser:last?.is_user,voiceSent:last?.extra?.vc_voice_attempt?.sent,voiceStatus:last?.extra?.vc_voice?.status,
                 tier:last?.extra?.vc_reply_length_tier,sourcePresent:!!last?.extra?.vc_source?.id,conflictVisible:!!document.querySelector('#vc-f2-conflict[open]')};
         });
-        throw new Error(`voice-input ${stage}: ${JSON.stringify({state,sourceErrors})}; ${error.message}`);
+        const dir=path.resolve('.review-queue/MB-7');fs.mkdirSync(dir,{recursive:true});await page.screenshot({path:path.join(dir,'voice-input-failure.png')});
+        throw new Error(`voice-input ${stage}: ${JSON.stringify({state,sourceErrors,pageErrors})}; ${error.message}`);
     } finally {await browser.close();await ctx.fixtureHttp.setOverride('vc03m-chat',null);}
 }
 export const voiceInputScene={id:'voice-input',title:'VO-7 录音、16k 重采样、情绪和语音回复',needs:['catalog','stack','fixture','browser'],default:false,run:sceneVoiceInput};

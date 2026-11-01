@@ -41,12 +41,12 @@ export function createChatSession({ engine, server, state, storage = globalThis.
             await history;
         },
         draft, sync,
-        async send() {
+        async send({ voiceInput } = {}) {
             if (!state.ready || state.busy || state.error === 'save' || !state.draft.trim()) return false;
             const v = version; const raw = state.draft; const text = withQuote(state.quote, raw); const len = engine.messages().length;
             state.busy = true; state.error = ''; state.interrupted = false;
             try {
-                const before = engine.send(text);
+                const before = await engine.send(text, voiceInput);
                 await until(() => engine.messages().slice(len).some(m => m.user && m.text === text), { timeout: 15000, label: 'send accepted' });
                 if (!valid(v)) return true;
                 // 以服务端聊天读回确认保存，客户端 MESSAGE_SENT 早于实际保存完成。

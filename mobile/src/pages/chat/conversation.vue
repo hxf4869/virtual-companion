@@ -11,7 +11,7 @@
         <view v-if="!chat.ready || chat.error" class="vc-connection vc-glass" role="status">
             <text>{{ status }}</text><button role="button" tabindex="0" v-if="chat.error" class="vc-plain-btn" @click="retry">{{ copy.retry }}</button>
         </view>
-        <view class="vc-thread" ref="thread" @scroll="scrolled">
+        <div class="vc-thread" ref="thread" @scroll="scrolled">
             <view v-if="chat.loading" class="vc-chat-loading" aria-busy="true"><view v-for="n in 3" :key="n" class="vc-history-skeleton"></view></view>
             <template v-for="row in groups" :key="row.key">
                 <view v-if="row.type === 'pill'" class="vc-date-row"><text>{{ row.text }}</text></view>
@@ -20,15 +20,18 @@
             </template>
             <view v-if="chat.busy" class="vc-typing" role="status"><VcAvatar :avatar="chat.target?.avatar" :name="chat.target?.name" size="var(--vc-avatar-sm)" /><view class="vc-typing-bubble">··· <text>{{ copy.typing }}</text></view></view>
             <text v-if="chat.interrupted && !chat.busy" class="vc-chat-note">{{ copy.stopped }}</text>
-        </view>
+        </div>
         <button role="button" tabindex="0" v-if="!atBottom" class="vc-jump vc-glass" aria-label="回到最新" @click="latest(true)"><VcIcon name="arrow-down" /></button>
         <view class="vc-composer-wrap">
+            <view v-if="voice.phase!=='idle' || voice.error" class="vc-recording-note vc-glass" role="status"><text>{{ voice.error || (voice.phase==='transcribing'?'正在听…':voice.phase==='requesting'?'正在连接…':`${voice.seconds}″ · ${voice.cancelled?'松开取消':'松开发送，上滑取消'}`) }}</text><view v-if="voice.phase==='recording'" class="vc-recording-meter" :style="{transform:`scaleX(${voice.level})`}" aria-hidden="true"></view></view>
             <view v-if="chat.quote" class="vc-compose-quote vc-glass"><text>{{ copy.quote }} {{ chat.quote.name }}：{{ summary(chat.quote.text) }}</text><button role="button" tabindex="0" class="vc-round" :aria-label="copy.cancelQuote" @click="chat.quote = null"><VcIcon name="x" size="var(--vc-icon-sm)" /></button></view>
             <view v-if="more" class="vc-composer-more vc-glass"><button role="button" tabindex="0" class="vc-plain-btn" :disabled="!chat.ready || chat.busy" :aria-disabled="!chat.ready || chat.busy" @click="generate('regenerate')">{{ copy.regenerate }}</button><button role="button" tabindex="0" class="vc-plain-btn" :disabled="!chat.ready || chat.busy" :aria-disabled="!chat.ready || chat.busy" @click="generate('continueReply')">{{ copy.continue }}</button></view>
             <view class="vc-composer vc-glass">
                 <button role="button" tabindex="0" class="vc-round" aria-label="更多" :aria-expanded="more" @click="more = !more"><VcIcon name="plus" /></button>
-                <textarea v-field-label class="vc-chat-input" :value="chat.draft" :placeholder="copy.placeholder" :aria-label="copy.placeholder" auto-height :maxlength="-1" :adjust-position="false" @input="session.draft($event.detail.value)" @confirm="send" />
+                <textarea v-field-label class="vc-chat-input" :value="chat.draft" :disabled="voice.phase!=='idle'" :placeholder="copy.placeholder" :aria-label="copy.placeholder" auto-height :maxlength="-1" :adjust-position="false" @input="session.draft($event.detail.value)" @confirm="send" />
                 <button role="button" tabindex="0" v-if="chat.busy" class="vc-round vc-send" :aria-label="copy.stop" @click="session.stop()"><VcIcon name="square" size="var(--vc-icon-sm)" /></button>
+                <!-- H5 原生元素保留 PointerEvent；uni-button 的事件规范化不保留 pointerType / 指针捕获。 -->
+                <div role="button" tabindex="0" v-else-if="voiceAvailable && !chat.draft?.trim()" class="vc-round vc-microphone" :aria-label="voice.phase==='recording'?'结束录音':'开始录音'" :aria-pressed="voice.phase==='recording'" :aria-disabled="!chat.ready || voice.phase==='transcribing'" title="按住说话" @pointerdown="recordDown" @pointermove="recordMove" @pointerup="recordUp" @pointercancel="recordCancel" @click="recordClick" @keydown.enter.prevent="recordClick" @keydown.space.prevent="recordClick" @keydown.esc="recorder?.cancel()"><VcIcon :name="voice.phase==='recording'?'square':'mic'" /></div>
                 <button role="button" tabindex="0" v-else class="vc-round vc-send" :aria-label="copy.send" :disabled="!chat.ready || chat.error === 'save' || !chat.draft.trim()" :aria-disabled="!chat.ready || chat.error === 'save' || !chat.draft.trim()" @click="send"><VcIcon name="arrow-up" /></button>
             </view>
         </view>
@@ -57,30 +60,43 @@ import { groupMessages, quoteSummary } from '../../chat/format.mjs';
 import { setCharacterTheme } from '../../theme/store.mjs';
 import { tintOf, avatarUrl } from '../../ui/tint.mjs';
 import { COPY } from '../../copy.mjs';
+import { createVoiceInput } from '../../voice/input.mjs';
 import { confirmAlert, showToast } from '../../ui/feedback.mjs';
 
 export default {
     components: { VcAurora, VcAvatar, VcIcon, ChatMessage, VcOverlays },
-    data: () => ({ copy: COPY, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0 }),
+    data: () => ({ copy: COPY, chat: {}, session: null, menu: null, more: false, editing: null, editText: '', selectedText: null, saving: false, image: '', atBottom: true, searching: false, query: '', matchIndex: 0,voice:{phase:'idle'},voiceAvailable:false,readAvailable:false,recorder:null }),
     computed: {
         groups() { return groupMessages(this.chat.messages || []); },
         lastId() { return this.chat.messages?.at(-1)?.id ?? -1; },
         lastUser() { return this.chat.messages?.findLast(m=>m.user)?.id ?? -1; },
         matches() { return this.query ? (this.chat.messages || []).filter(m=>m.text.toLocaleLowerCase().includes(this.query.toLocaleLowerCase())).map(m=>m.id) : []; },
         status() { return this.chat.error === 'send' ? COPY.failed : this.chat.error === 'save' ? COPY.saveFailed : this.chat.error === 'reply' ? COPY.error : this.chat.error ? COPY.connectFailed : COPY.connecting; },
-        actions() { const a = [{id:'quote',label:COPY.quote,icon:'quote'},{id:'copy',label:COPY.copy,icon:'copy'},{id:'select',label:COPY.selectText,icon:'text-cursor'}]; if(!this.chat.busy) a.push({id:'edit',label:COPY.edit,icon:'pencil'}); if(!this.chat.busy && !this.menu?.user && this.menu?.id === this.lastId) a.push({id:'regenerate',label:COPY.regenerate,icon:'refresh-cw'}); return this.chat.busy ? a : [...a,{id:'remove',label:COPY.remove,icon:'trash-2'}]; },
+        actions() { const a = [{id:'quote',label:COPY.quote,icon:'quote'},{id:'copy',label:COPY.copy,icon:'copy'},{id:'select',label:COPY.selectText,icon:'text-cursor'}]; if(this.readAvailable&&!this.menu?.user&&!this.chat.busy)a.push({id:'read',label:'朗读',icon:'volume-2'});if(!this.chat.busy) a.push({id:'edit',label:COPY.edit,icon:'pencil'}); if(!this.chat.busy && !this.menu?.user && this.menu?.id === this.lastId) a.push({id:'regenerate',label:COPY.regenerate,icon:'refresh-cw'}); return this.chat.busy ? a : [...a,{id:'remove',label:COPY.remove,icon:'trash-2'}]; },
     },
     watch: { query() { this.matchIndex = 0; this.jump(0); } },
     onLoad(options) {
         this.live = true;
         this.session = createChatSession({ state: this.chat, engine: getEngine(), server: getServer(), changed: () => this.latest() });
         const target = { avatar: options.avatar || '', file: options.file || '', name: options.name || '' };
-        this.session.open(target).then(async()=>{ if(!this.live) return; const ch=getEngine().character(); const tint=await tintOf(avatarUrl(target.avatar)); if(!this.live) return; setCharacterTheme(ch?.theme, tint); this.latest(true); });
+        this.session.open(target).then(async()=>{ if(!this.live) return; const ch=getEngine().character(); const tint=await tintOf(avatarUrl(target.avatar)); if(!this.live) return; setCharacterTheme(ch?.theme, tint); this.latest(true);await this.setupVoice(); });
         this.resize = () => document.documentElement.style.setProperty('--vc-vh', `${window.visualViewport?.height || window.innerHeight}px`);
         window.visualViewport?.addEventListener('resize', this.resize); this.resize();
     },
-    onUnload() { this.live=false; this.session?.dispose(); setCharacterTheme(); window.visualViewport?.removeEventListener('resize', this.resize); document.documentElement.style.removeProperty('--vc-vh'); },
+    onHide() { this.recorder?.cancel();getEngine().stopVoice().catch(()=>{}); },
+    onUnload() { this.live=false; this.recorder?.dispose();this.session?.dispose(); setCharacterTheme(); window.visualViewport?.removeEventListener('resize', this.resize); document.documentElement.style.removeProperty('--vc-vh'); },
     methods: {
+        async setupVoice(){
+            const engine=getEngine(),policy=await engine.voicePolicy();if(!this.live)return;
+            this.readAvailable=Boolean(policy?.available)&&policy.relationship.voiceFrequency!=='OFF';
+            this.voiceAvailable=Boolean(policy?.engines?.asr?.enabled&&policy.engines.asr.healthy&&navigator.mediaDevices?.getUserMedia&&globalThis.MediaRecorder);
+            if(this.voiceAvailable)this.recorder=createVoiceInput({state:this.voice,maxSeconds:policy.settings.maxRecordingSeconds,convert:(...args)=>engine.call('voiceInput','recordingWAV',...args),transcribe:wav=>engine.call('api','transcribeVoice',wav),onText:async(text,metadata)=>{this.session.draft(text);await this.session.send({voiceInput:metadata});this.latest(true);}});
+        },
+        recordDown(e){if(e.pointerType!=='touch'||!this.chat.ready||this.voice.phase==='transcribing')return;e.preventDefault();this.recordTouch=true;this.recordY=e.clientY;e.currentTarget.setPointerCapture(e.pointerId);void this.recorder.start();},
+        recordMove(e){if(this.recordTouch)this.recorder.move(this.recordY-e.clientY>64);},
+        recordUp(e){if(!this.recordTouch)return;e.preventDefault();this.recordTouch=false;this.recorder.finish();},
+        recordCancel(){this.recordTouch=false;this.recorder.cancel();},
+        recordClick(e){if(e.pointerType==='touch'||!this.chat.ready||this.voice.phase==='transcribing')return;if(this.voice.phase==='recording')this.recorder.finish();else void this.recorder.start();},
         summary: quoteSummary,
         toggleSearch() { this.searching=!this.searching; if(!this.searching) this.query=''; },
         back() { uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/main/index' }) }); },
@@ -99,6 +115,7 @@ export default {
             else if(id==='select') this.selectedText=m.text;
             else if(id==='copy') { try { await navigator.clipboard.writeText(m.text); showToast(COPY.copied); } catch { this.selectedText=m.text; } }
             else if(id==='edit') { this.editing=m; this.editText=m.text; }
+            else if(id==='read') { try {await getEngine().readAloud(m.id);} catch {showToast(COPY.error,{error:true});} }
             else if(id==='regenerate') this.generate('regenerate');
             else if(id==='remove' && await confirmAlert({title:COPY.deleteMessageTitle,message:COPY.deleteBody,action:COPY.remove})) {
                 try { await getEngine().remove(m.id); this.session.sync(); showToast(COPY.deleted); } catch { showToast(COPY.error,{error:true}); }
@@ -109,6 +126,9 @@ export default {
 };
 </script>
 <style>
+.vc-microphone { touch-action: none; user-select: none; }
+.vc-recording-note { padding: var(--vc-space-xs) var(--vc-space-md); border-radius: var(--vc-radius-pill); font-size: var(--vc-fs-footnote); margin-bottom: var(--vc-space-xs); text-align: center; }
+.vc-recording-meter { height: 3px; background: var(--vc-accent); transform-origin: center; margin-top: var(--vc-space-xxs); border-radius: var(--vc-radius-pill); }
 .vc-conversation { position: fixed; inset: 0; height: var(--vc-vh, 100dvh); display: flex; flex-direction: column; color: var(--vc-ink); }
 .vc-conv-nav { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--vc-space-xs); padding: calc(env(safe-area-inset-top) + var(--vc-space-xs)) var(--vc-space-md) var(--vc-space-xs); position: relative; z-index: var(--vc-z-content); }
 .vc-identity { min-width: 0; max-width: 70%; display: flex; gap: var(--vc-space-xs); align-items: center; border: 0; border-radius: var(--vc-radius-pill); min-height: var(--vc-touch); color: var(--vc-ink); font-size: var(--vc-fs-headline); font-weight: 600; }
